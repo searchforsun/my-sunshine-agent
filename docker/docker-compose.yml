@@ -1,0 +1,507 @@
+version: '3.8'
+
+networks:
+  smt-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${SUBNET:-10.10.0.0/16}
+
+services:
+  mysql:
+    image: mysql:8.0.35
+    container_name: smt-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+      TZ: Asia/Shanghai
+      DOCKER_HOST_IP: ${DOCKER_HOST_IP:-localhost}
+      MINIO_API_PORT: ${MINIO_API_PORT:-9000}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - ./mysql/conf:/etc/mysql/conf.d
+    networks:
+      - smt-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: smt-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-redis123}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - smt-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nacos:
+    image: nacos/nacos-server:v2.3.1
+    container_name: smt-nacos
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+      NACOS_AUTH_ENABLE: "true"
+      NACOS_AUTH_USER: ${NACOS_USERNAME:-nacos}
+      NACOS_AUTH_PASSWORD: ${NACOS_PASSWORD:-nacos}
+      NACOS_AUTH_IDENTITY_KEY: super-market-token-key-2025-abcdefgh
+      NACOS_AUTH_IDENTITY_VALUE: super-market-token-value-2025-abcdefghijkl
+      NACOS_AUTH_TOKEN: QifAine6LoWXm9zWe6JIskJKYXmQim3yvgeCOrVw9xps=
+      SPRING_DATASOURCE_PLATFORM: mysql
+      MYSQL_SERVICE_HOST: mysql
+      MYSQL_SERVICE_PORT: 3306
+      MYSQL_SERVICE_DB_NAME: nacos
+      MYSQL_SERVICE_USER: root
+      MYSQL_SERVICE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+    ports:
+      - "${NACOS_PORT:-8848}:8848"
+      - "${NACOS_GRPC_PORT:-9848}:9848"
+    volumes:
+      - nacos-data:/home/nacos/data
+    networks:
+      - smt-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.2
+    container_name: smt-rocketmq-namesrv
+    restart: unless-stopped
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+    command: sh mqnamesrv
+    ports:
+      - "${ROCKETMQ_NAMESRV_PORT:-9876}:9876"
+    volumes:
+      - rocketmq-namesrv-data:/home/rocketmq/store
+    networks:
+      - smt-net
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9876 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.2
+    container_name: smt-rocketmq-broker
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+      HEAP_OPTS: "-Xms256m -Xmx256m -Xmn64m -XX:MaxDirectMemorySize=128m"
+    command: sh mqbroker
+    ports:
+      - "${ROCKETMQ_BROKER_PORT:-10911}:10911"
+      - "${ROCKETMQ_BROKER_VIP_PORT:-10909}:10909"
+    volumes:
+      - rocketmq-broker-data:/home/rocketmq/store
+      - ./rocketmq/conf/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/broker.conf
+    networks:
+      - smt-net
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+
+  rocketmq-proxy:
+    image: apache/rocketmq:5.3.2
+    container_name: smt-rocketmq-proxy
+    restart: unless-stopped
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+    command: sh mqproxy
+    ports:
+      - "${ROCKETMQ_PROXY_PORT:-8080}:8080"
+      - "${ROCKETMQ_PROXY_GRPC_PORT:-8081}:8081"
+    networks:
+      - smt-net
+    depends_on:
+      - rocketmq-broker
+
+  rocketmq-dashboard:
+    image: apacherocketmq/rocketmq-dashboard:2.1.0
+    container_name: smt-rocketmq-dashboard
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx256m -Drocketmq.namesrv.addr=rocketmq-namesrv:9876"
+    ports:
+      - "${ROCKETMQ_DASHBOARD_PORT:-8082}:8082"
+    networks:
+      - smt-net
+    depends_on:
+      - rocketmq-broker
+
+  es01:
+    image: elasticsearch:7.17.23
+    container_name: smt-es01
+    restart: unless-stopped
+    environment:
+      cluster.name: smt-es-cluster
+      node.name: es01
+      node.roles: master,data
+      discovery.seed_hosts: es02,es03
+      cluster.initial_master_nodes: es01,es02,es03
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+    ports:
+      - "${ES01_PORT:-9200}:9200"
+    volumes:
+      - es01-data:/usr/share/elasticsearch/data
+    networks:
+      smt-net:
+        ipv4_address: ${ES01_IP:-10.10.5.21}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  es02:
+    image: elasticsearch:7.17.23
+    container_name: smt-es02
+    restart: unless-stopped
+    environment:
+      cluster.name: smt-es-cluster
+      node.name: es02
+      node.roles: master,data
+      discovery.seed_hosts: es01,es03
+      cluster.initial_master_nodes: es01,es02,es03
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+    ports:
+      - "${ES02_PORT:-9201}:9200"
+    volumes:
+      - es02-data:/usr/share/elasticsearch/data
+    networks:
+      smt-net:
+        ipv4_address: ${ES02_IP:-10.10.5.22}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  es03:
+    image: elasticsearch:7.17.23
+    container_name: smt-es03
+    restart: unless-stopped
+    environment:
+      cluster.name: smt-es-cluster
+      node.name: es03
+      node.roles: master,data
+      discovery.seed_hosts: es01,es02
+      cluster.initial_master_nodes: es01,es02,es03
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+    ports:
+      - "${ES03_PORT:-9202}:9200"
+    volumes:
+      - es03-data:/usr/share/elasticsearch/data
+    networks:
+      smt-net:
+        ipv4_address: ${ES03_IP:-10.10.5.23}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.23
+    container_name: smt-kibana
+    restart: unless-stopped
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=256"
+      ELASTICSEARCH_HOSTS: '["http://es01:9200","http://es02:9200","http://es03:9200"]'
+      I18N_LOCALE: zh-CN
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+    networks:
+      - smt-net
+    depends_on:
+      es01:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-05-10T01-41-38Z
+    container_name: smt-minio
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/minio-init/entrypoint-wrapper.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      DOCKER_HOST_IP: ${DOCKER_HOST_IP:-localhost}
+      MINIO_API_PORT: ${MINIO_API_PORT:-9000}
+      MINIO_CONSOLE_PORT: ${MINIO_CONSOLE_PORT:-9001}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+      - ./minio/init:/minio-init:ro
+    networks:
+      - smt-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  xxl-job-admin:
+    image: xuxueli/xxl-job-admin:2.4.1
+    container_name: smt-xxl-job
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx256m"
+      PARAMS: >
+        --spring.datasource.url=jdbc:mysql://mysql:3306/xxl_job?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+        --spring.datasource.username=root
+        --spring.datasource.password=${MYSQL_ROOT_PASSWORD:-root123}
+        --xxl.job.accessToken=xxl-job-access-token-2024
+    ports:
+      - "${XXL_JOB_PORT:-8083}:8080"
+    networks:
+      - smt-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:1.8.0
+    container_name: smt-sentinel
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx256m"
+      SERVER_PORT: 8858
+      AUTH_USERNAME: ${SENTINEL_USERNAME:-sentinel}
+      AUTH_PASSWORD: ${SENTINEL_PASSWORD:-sentinel123}
+      NACOS_SERVER_ADDR: nacos:8848
+    ports:
+      - "${SENTINEL_PORT:-8858}:8858"
+    networks:
+      - smt-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+
+  skywalking-oap:
+    image: apache/skywalking-oap-server:9.7.0
+    container_name: smt-skywalking-oap
+    restart: unless-stopped
+    environment:
+      SW_STORAGE: elasticsearch
+      SW_STORAGE_ES_CLUSTER_NODES: es01:9200,es02:9200,es03:9200
+      JAVA_OPTS: "-Xms256m -Xmx512m -XX:MaxDirectMemorySize=128m -XX:MaxMetaspaceSize=256m -Djava.net.preferIPv4Stack=true"
+    ports:
+      - "${SKYWALKING_GRPC_PORT:-11800}:11800"
+      - "${SKYWALKING_HTTP_PORT:-12800}:12800"
+    dns_search: []
+    networks:
+      - smt-net
+    depends_on:
+      es01:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:12800/internal/l7check >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  skywalking-ui:
+    image: apache/skywalking-ui:9.7.0
+    container_name: smt-skywalking-ui
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx256m"
+      SW_OAP_ADDRESS: http://skywalking-oap:12800
+    ports:
+      - "${SKYWALKING_UI_PORT:-8084}:8080"
+    networks:
+      - smt-net
+    depends_on:
+      skywalking-oap:
+        condition: service_healthy
+
+#   canal-admin:
+#     image: canal/canal-admin:v1.1.7
+#     container_name: smt-canal-admin
+#     restart: unless-stopped
+#     environment:
+#       JAVA_OPTS: "-Xms256m -Xmx256m"
+#       server.port: "8089"
+#       spring.datasource.address: mysql:3306
+#       spring.datasource.database: canal_manager
+#       spring.datasource.username: root
+#       spring.datasource.password: ${MYSQL_ROOT_PASSWORD:-root123}
+#       canal.adminUser: admin
+#       canal.adminPasswd: ${CANAL_ADMIN_PASSWORD:-123456}
+#     ports:
+#       - "${CANAL_ADMIN_PORT:-8089}:8089"
+#     networks:
+#       - smt-net
+#     depends_on:
+#       mysql:
+#         condition: service_healthy
+#     healthcheck:
+#       test: ["CMD-SHELL", "nc -z 127.0.0.1 8089 || exit 1"]
+#       interval: 15s
+#       timeout: 10s
+#       retries: 15
+#       start_period: 90s
+
+  canal-server:
+    image: canal/canal-server:v1.1.7
+    container_name: smt-canal
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx256m"
+    #   canal.admin.manager: http://canal-admin:8089
+    #   canal.admin.port: "11110"
+      canal.instance.master.address: mysql:3306
+      canal.instance.dbUsername: root
+      canal.instance.dbPassword: ${MYSQL_ROOT_PASSWORD:-root123}
+      canal.instance.filter.regex: .*\\..*
+    ports:
+      - "${CANAL_PORT:-11111}:11111"
+    networks:
+      - smt-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  seata-server:
+    image: seataio/seata-server:1.7.1
+    container_name: smt-seata
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx256m"
+      SEATA_PORT: 8091
+      STORE_MODE: db
+    ports:
+      - "${SEATA_PORT:-8091}:8091"
+      - "${SEATA_CONSOLE_PORT:-7091}:7091"
+    volumes:
+      - ./seata/application.yml:/seata-server/resources/application.yml
+    networks:
+      - smt-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: smt-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - smt-net
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: smt-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin123}
+      GF_INSTALL_PLUGINS: ""
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - smt-net
+    depends_on:
+      - prometheus
+      
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.15
+    container_name: smt-etcd
+    restart: unless-stopped
+    command: >
+      etcd -advertise-client-urls=http://0.0.0.0:2379
+      -listen-client-urls=http://0.0.0.0:2379
+    networks:
+      - smt-net
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Milvus Standalone（内嵌 etcd + minio，无需外部依赖）
+  milvus:
+    image: milvusdb/milvus:v2.6.16
+    container_name: smt-milvus
+    command: ["milvus", "run", "standalone"]
+    restart: unless-stopped
+    ports:
+      - "${MILVUS_PORT:-19530}:19530"
+      - "${MILVUS_HTTP_PORT:-9091}:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    networks:
+      - smt-net
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  mysql-data:
+  redis-data:
+  nacos-data:
+  rocketmq-namesrv-data:
+  rocketmq-broker-data:
+  es01-data:
+  es02-data:
+  es03-data:
+  minio-data:
+  milvus-data:

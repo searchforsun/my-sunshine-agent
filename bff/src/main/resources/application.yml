@@ -1,0 +1,25 @@
+server:
+  port: 8001
+
+spring:
+  application:
+    name: sunshine-bff
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+      config:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+
+orchestrator:
+  base-url: http://localhost:8200
+
+logging:
+  level:
+    com.sunshine: debug

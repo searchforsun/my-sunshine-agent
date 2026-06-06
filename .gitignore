@@ -1,0 +1,39 @@
+# ===== Java / Maven =====
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+*.log
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*.swo
+*~
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Node / Vue =====
+sunshine-ui/node_modules/
+sunshine-ui/dist/
+sunshine-ui/.vite/
+
+# ===== 运行时 =====
+logs/
+*.log
+
+# ===== 凭据 / 敏感信息 =====
+.env
+*.env.local
+application-local.yml
+
+# ===== Remember =====
+.remember/tmp/

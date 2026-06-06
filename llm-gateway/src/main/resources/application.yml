@@ -1,0 +1,42 @@
+server:
+  port: 8300
+
+spring:
+  application:
+    name: sunshine-llm-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+      config:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+  data:
+    redis:
+      host: 8.140.48.6
+      port: 6379
+      password: redis123
+
+llm:
+  providers:
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY:sk-1e18dbd6edd4477bac49a0a290e92462}
+      models:
+        - deepseek-v4-pro
+        - deepseek-v4-flash
+    qwen:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: ${QWEN_API_KEY:sk-22e7ab6f7bbb4078b7163facb4d3aee0}
+      models:
+        - qwen-plus
+        - qwen-max
+
+logging:
+  level:
+    com.sunshine: debug

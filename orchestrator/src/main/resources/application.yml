@@ -1,0 +1,30 @@
+server:
+  port: 8200
+
+spring:
+  application:
+    name: sunshine-orchestrator
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+      config:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+
+agent:
+  system-prompt: 你是一个智能助手，优先检索知识库回答用户问题。
+  max-iters: 5
+  model:
+    base-url: http://localhost:8300/v1
+    name: deepseek-v4-pro
+    api-key: sunshine-gateway
+
+logging:
+  level:
+    com.sunshine: debug

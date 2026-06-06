@@ -1,0 +1,16 @@
+server:
+  port: 8700
+
+spring:
+  application:
+    name: sunshine-oa
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+
+logging:
+  level:
+    com.sunshine: debug

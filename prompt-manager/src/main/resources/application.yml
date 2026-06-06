@@ -1,0 +1,30 @@
+server:
+  port: 8500
+
+spring:
+  application:
+    name: sunshine-prompt
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+      config:
+        server-addr: 8.140.48.6:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+  datasource:
+    url: jdbc:mysql://8.140.48.6:3306/sunshine_prompt?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root123
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+logging:
+  level:
+    com.sunshine: debug
