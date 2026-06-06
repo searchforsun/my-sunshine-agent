@@ -2,7 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.memory.InMemoryMemory;
-import io.agentscope.core.model.DashScopeChatModel;
+import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * AgentScope ReActAgent 配置
- * 模型客户端指向自建 LLM Gateway（OpenAI 兼容接口）
+ * 使用 OpenAIChatModel 指向自建 LLM Gateway（OpenAI 兼容接口）
  */
 @Slf4j
 @Configuration
@@ -34,7 +34,7 @@ public class AgentConfig {
 
     @Bean
     public ReActAgent sunshineReActAgent(Toolkit toolkit) {
-        DashScopeChatModel model = DashScopeChatModel.builder()
+        OpenAIChatModel model = OpenAIChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(modelName)
                 .baseUrl(modelBaseUrl)
