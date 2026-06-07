@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: sunshine-orchestrator
+  config:
+    import:
+      - optional:nacos:sunshine-orchestrator.yaml
   cloud:
     nacos:
       discovery:
@@ -16,6 +19,8 @@ spring:
         password: nacos
         import-check:
           enabled: false
+        file-extension: yaml
+        group: DEFAULT_GROUP
 
 agent:
   system-prompt: 你是一个智能助手，优先检索知识库回答用户问题。
