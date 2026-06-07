@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NCard, NTag, NGrid, NGridItem, NScrollbar, NButton, NSpace, NDivider, NText } from 'naive-ui'
+import { NCard, NTag, NGrid, NGridItem, NButton, NSpace, NDivider, NText } from 'naive-ui'
 
 interface ServiceStatus {
   name: string
@@ -68,7 +68,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <NScrollbar class="status-root">
+  <div class="status-root">
     <div class="status-content">
       <header class="page-header">
         <div>
@@ -151,7 +151,7 @@ onMounted(() => {
         </NGrid>
       </NCard>
     </div>
-  </NScrollbar>
+  </div>
 </template>
 
 <style scoped>

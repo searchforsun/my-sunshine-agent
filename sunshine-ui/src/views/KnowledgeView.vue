@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { uploadDocument, searchKnowledge } from '../api/knowledge'
-import { NCard, NInput, NButton, NResult, NText, NScrollbar, NTag, NSpace, NDivider } from 'naive-ui'
+import { NCard, NInput, NButton, NResult, NText, NTag, NSpace, NDivider } from 'naive-ui'
 
 const docContent = ref('')
 const uploading = ref(false)
@@ -38,7 +38,7 @@ async function handleSearch() {
 </script>
 
 <template>
-  <NScrollbar class="knowledge-root">
+  <div class="knowledge-root">
     <div class="knowledge-content">
       <header class="page-header">
         <h2>知识库管理</h2>
@@ -140,7 +140,7 @@ async function handleSearch() {
         </div>
       </NCard>
     </div>
-  </NScrollbar>
+  </div>
 </template>
 
 <style scoped>
