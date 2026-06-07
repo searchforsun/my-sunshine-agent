@@ -78,11 +78,7 @@ const activeKey = computed(() => (route.name as string) || 'chat')
 
     <!-- Content -->
     <NLayoutContent class="content-area">
-      <router-view v-slot="{ Component }">
-        <transition name="page" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
+      <router-view />
     </NLayoutContent>
   </NLayout>
 </template>

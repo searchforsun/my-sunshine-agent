@@ -38,13 +38,15 @@ async function checkServices() {
     svc.status = 'checking'
     const start = Date.now()
     try {
-      const resp = await fetch(`http://localhost:${svc.port}/actuator/health`, {
+      // 任意 HTTP 响应（包括 404）都说明服务在线
+      await fetch(`http://localhost:${svc.port}/`, {
         signal: AbortSignal.timeout(3000),
       })
-      svc.status = resp.ok ? 'online' : 'offline'
+      svc.status = 'online'
       svc.latency = Date.now() - start
     } catch {
       svc.status = 'offline'
+      svc.latency = undefined
     }
   }
 }
