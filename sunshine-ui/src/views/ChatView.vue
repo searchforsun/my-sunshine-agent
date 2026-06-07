@@ -3,31 +3,14 @@ import { ref, nextTick, watch, onMounted } from 'vue'
 import { useChat } from '../api/chat'
 import { NInput, NButton, NAvatar, NSpace, NTag } from 'naive-ui'
 import MarkdownIt from 'markdown-it'
-import markdownItHighlightjs from 'markdown-it-highlightjs'
 import 'highlight.js/styles/github-dark.css'
 
-const md = new MarkdownIt({
-  html: true,
-  breaks: true,
-  linkify: true,
-  typographer: true,
-}).use(markdownItHighlightjs)
-
-// Fix incomplete markdown during streaming (unclosed ** or ```)
-function fixIncompleteMarkdown(content: string): string {
-  let fixed = content
-  if ((fixed.match(/\*\*/g) || []).length % 2 !== 0) fixed += '**'
-  if ((fixed.match(/```/g) || []).length % 2 !== 0) fixed += '\n```'
-  return fixed
-}
+const md = new MarkdownIt({ html: false, breaks: true, linkify: true })
 
 function renderMarkdown(text: string): string {
   if (!text) return ''
-  try {
-    return md.render(fixIncompleteMarkdown(text))
-  } catch {
-    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  }
+  // 先把连续文本中的 **text** 和 -  等标记正确渲染
+  return md.render(text)
 }
 
 const { messages, loading, send, stop, clear } = useChat()

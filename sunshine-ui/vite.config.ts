@@ -12,4 +12,7 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    include: ['markdown-it', 'highlight.js'],
+  },
 })
