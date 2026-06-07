@@ -2,27 +2,29 @@
 import { ref, nextTick, watch, onMounted } from 'vue'
 import { useChat } from '../api/chat'
 import { NInput, NButton, NAvatar, NSpace, NTag } from 'naive-ui'
-import hljs from 'highlight.js'
+import MarkdownIt from 'markdown-it'
+import markdownItHighlightjs from 'markdown-it-highlightjs'
 import 'highlight.js/styles/github-dark.css'
-// markdown-it CJS → ESM interop
-import mi from 'markdown-it'
 
-const md = new mi({
-  html: false,
+const md = new MarkdownIt({
+  html: true,
   breaks: true,
   linkify: true,
-  highlight(str: string, lang: string): string {
-    if (lang && hljs.getLanguage(lang)) {
-      try { return hljs.highlight(str, { language: lang }).value } catch { /* */ }
-    }
-    return ''
-  },
-})
+  typographer: true,
+}).use(markdownItHighlightjs)
+
+// Fix incomplete markdown during streaming (unclosed ** or ```)
+function fixIncompleteMarkdown(content: string): string {
+  let fixed = content
+  if ((fixed.match(/\*\*/g) || []).length % 2 !== 0) fixed += '**'
+  if ((fixed.match(/```/g) || []).length % 2 !== 0) fixed += '\n```'
+  return fixed
+}
 
 function renderMarkdown(text: string): string {
   if (!text) return ''
   try {
-    return md.render(text)
+    return md.render(fixIncompleteMarkdown(text))
   } catch {
     return text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
   }
@@ -115,7 +117,12 @@ watch(
               </NTag>
             </div>
             <!-- 用户消息纯文本，AI 消息 Markdown 渲染 -->
-            <div v-if="msg.role === 'assistant'" class="msg-md" v-html="renderMarkdown(msg.content || (loading && idx === messages.length - 1 ? '思考中...' : ''))" />
+            <div
+              v-if="msg.role === 'assistant'"
+              class="msg-md"
+              :class="{ streaming: loading && idx === messages.length - 1 }"
+              v-html="renderMarkdown(msg.content || (loading && idx === messages.length - 1 ? '思考中...' : ''))"
+            />
             <div v-else class="msg-text">{{ msg.content }}</div>
           </div>
         </div>
@@ -203,4 +210,16 @@ watch(
 .msg-md :deep(th), .msg-md :deep(td) { border: 1px solid var(--sun-border); padding: 8px 14px; text-align: left; }
 .msg-md :deep(th) { background: var(--sun-surface); font-weight: 600; }
 .msg-md :deep(img) { max-width: 100%; border-radius: 8px; }
+
+/* Blinking cursor for streaming */
+.msg-md.streaming::after {
+  content: '▋';
+  animation: blink 1s step-end infinite;
+  margin-left: 2px;
+  color: var(--sun-amber);
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
 </style>
