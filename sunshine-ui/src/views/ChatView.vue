@@ -3,8 +3,8 @@ import { ref, nextTick, watch, onMounted } from 'vue'
 import { useChat } from '../api/chat'
 import { NInput, NButton, NScrollbar, NAvatar, NSpace, NTag } from 'naive-ui'
 import { marked } from 'marked'
+import 'github-markdown-css/github-markdown-dark.css'
 
-// Configure marked for safe rendering
 marked.setOptions({ breaks: true, gfm: true })
 
 function renderMarkdown(text: string): string {
@@ -17,10 +17,63 @@ const inputText = ref('')
 const chatBody = ref<InstanceType<typeof NScrollbar>>()
 const inputRef = ref<InstanceType<typeof NInput>>()
 
+// Typewriter: each assistant message tracks how many characters are revealed
+const revealed = ref<Record<number, number>>({})
+
+function displayedContent(msg: any, idx: number): string {
+  if (msg.role !== 'assistant') return msg.content
+  const max = msg.content.length
+  const r = revealed.value[idx] ?? max
+  if (r >= max) return msg.content
+  return msg.content.substring(0, r)
+}
+
+// Reveal characters gradually for streaming effect
+let typewriterTimer: ReturnType<typeof setInterval> | null = null
+
+watch(() => messages.value.length, () => {
+  const lastIdx = messages.value.length - 1
+  const last = messages.value[lastIdx]
+  if (!last || last.role !== 'assistant') return
+
+  // When loading and content is received, start typewriter
+  typewriterTimer = setInterval(() => {
+    const max = last.content.length
+    const current = revealed.value[lastIdx] ?? 0
+    if (current >= max) {
+      if (!loading.value && typewriterTimer) {
+        clearInterval(typewriterTimer)
+        typewriterTimer = null
+      }
+      return
+    }
+    // Reveal more chars — faster for longer content
+    const speed = max > 500 ? 8 : max > 200 ? 4 : 2
+    revealed.value[lastIdx] = Math.min(current + speed, max)
+    revealed.value = { ...revealed.value }
+  }, 30)
+})
+
+watch(loading, (v) => {
+  if (!v && typewriterTimer) {
+    // When loading stops, reveal all immediately
+    const lastIdx = messages.value.length - 1
+    if (lastIdx >= 0) {
+      revealed.value[lastIdx] = messages.value[lastIdx].content.length
+      revealed.value = { ...revealed.value }
+    }
+    clearInterval(typewriterTimer)
+    typewriterTimer = null
+  }
+})
+
 async function handleSend() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
   inputText.value = ''
+  // Reset revealed for the upcoming assistant message
+  const nextIdx = messages.value.length + 1 // user msg + assistant msg slots
+  revealed.value[nextIdx] = 0
   await send(text)
   await nextTick()
   chatBody.value?.scrollTo({ top: 999999, behavior: 'smooth' })
@@ -33,13 +86,15 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
-// Auto-focus input on mount
 onMounted(() => {
   inputRef.value?.focus()
 })
 
-// Auto-scroll when new messages arrive
-watch(() => messages.value.length, async () => {
+// Auto-scroll when content changes
+watch(() => {
+  const lastIdx = messages.value.length - 1
+  return lastIdx >= 0 ? revealed.value[lastIdx] : 0
+}, async () => {
   await nextTick()
   chatBody.value?.scrollTo({ top: 999999, behavior: 'smooth' })
 })
@@ -92,7 +147,6 @@ watch(() => messages.value.length, async () => {
           :key="idx"
           class="msg-row"
           :class="msg.role"
-          :style="{ animationDelay: idx === messages.length - 1 ? '0s' : '0s' }"
         >
           <div class="msg-avatar">
             <NAvatar :size="34" :style="{
@@ -120,12 +174,16 @@ watch(() => messages.value.length, async () => {
                 </span>
               </NTag>
             </div>
+            <!-- User messages: plain text. Assistant messages: Markdown rendered -->
             <div
-              class="msg-text"
-              v-html="msg.role === 'assistant'
-                ? renderMarkdown(msg.content || (loading && idx === messages.length - 1 ? '思考中...' : ''))
-                : (msg.content || (loading && idx === messages.length - 1 ? '思考中...' : ''))"
+              v-if="msg.role === 'assistant'"
+              class="markdown-body msg-md"
+              v-html="renderMarkdown(displayedContent(msg, idx))"
             />
+            <div
+              v-else
+              class="msg-text"
+            >{{ displayedContent(msg, idx) || (loading && idx === messages.length - 1 ? '思考中...' : '') }}</div>
           </div>
         </div>
       </div>
@@ -337,70 +395,41 @@ watch(() => messages.value.length, async () => {
   color: var(--sun-text);
 }
 
-/* Markdown content */
-.msg-text :deep(h1),
-.msg-text :deep(h2),
-.msg-text :deep(h3) {
-  margin: 12px 0 6px;
-  font-weight: 600;
+/* GitHub Markdown overrides for dark theme */
+.msg-md {
+  font-size: 14.5px;
   color: var(--sun-text);
+  background: transparent !important;
 }
-.msg-text :deep(h3) { font-size: 15px; }
-.msg-text :deep(h2) { font-size: 16px; }
-.msg-text :deep(h1) { font-size: 18px; }
-
-.msg-text :deep(p) {
-  margin: 4px 0 8px;
+.msg-md :deep(h1), .msg-md :deep(h2), .msg-md :deep(h3),
+.msg-md :deep(h4), .msg-md :deep(h5), .msg-md :deep(h6) {
+  color: var(--sun-text);
+  border-bottom-color: var(--sun-border);
 }
-
-.msg-text :deep(strong) {
-  color: var(--sun-amber-light);
-  font-weight: 600;
-}
-
-.msg-text :deep(ul), .msg-text :deep(ol) {
-  margin: 6px 0;
-  padding-left: 20px;
-}
-
-.msg-text :deep(li) {
-  margin: 2px 0;
-}
-
-.msg-text :deep(hr) {
-  border: none;
-  border-top: 1px solid var(--sun-border);
-  margin: 12px 0;
-}
-
-.msg-text :deep(code) {
+.msg-md :deep(strong) { color: var(--sun-amber-light); }
+.msg-md :deep(a) { color: var(--sun-blue); }
+.msg-md :deep(code) {
   background: rgba(245, 158, 11, 0.08);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  color: var(--sun-amber-light);
 }
-
-.msg-text :deep(pre) {
+.msg-md :deep(pre) {
   background: var(--sun-deep);
   border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  overflow-x: auto;
-  margin: 8px 0;
 }
-
-.msg-text :deep(pre code) {
-  background: none;
-  padding: 0;
-}
-
-.msg-text :deep(blockquote) {
-  border-left: 3px solid var(--sun-amber);
-  padding-left: 12px;
-  margin: 8px 0;
+.msg-md :deep(blockquote) {
   color: var(--sun-text-secondary);
+  border-left-color: var(--sun-amber);
 }
+.msg-md :deep(table) {
+  border-color: var(--sun-border);
+}
+.msg-md :deep(th), .msg-md :deep(td) {
+  border-color: var(--sun-border);
+}
+.msg-md :deep(hr) {
+  border-color: var(--sun-border);
+}
+.msg-md :deep(li) { color: var(--sun-text); }
 
 /* --- Typing dots --- */
 .typing-tag {
