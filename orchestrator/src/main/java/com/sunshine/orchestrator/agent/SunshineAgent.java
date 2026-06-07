@@ -30,7 +30,7 @@ public class SunshineAgent {
     }
 
     /**
-     * 流式对话
+     * 流式对话 — 启用 AgentScope 原生增量流式
      */
     public Flux<String> chat(String userMessage, String userId, String tenantId) {
         log.info("[Orchestrator] user={}, msg={}", userId,
@@ -42,10 +42,12 @@ public class SunshineAgent {
                 .textContent(userMessage)
                 .build();
 
-        // Track last content to skip duplicates from ReActAgent thinking loops
-        final StringBuilder lastContent = new StringBuilder();
+        // incremental(true): AgentScope 逐 token 发射增量文本而非全量累积
+        StreamOptions options = StreamOptions.builder()
+                .incremental(true)
+                .build();
 
-        return agent.stream(List.of(input), StreamOptions.defaults())
+        return agent.stream(List.of(input), options)
                 .filter(event -> {
                     Msg msg = event.getMessage();
                     return msg != null
@@ -53,15 +55,6 @@ public class SunshineAgent {
                             && !msg.getTextContent().isEmpty();
                 })
                 .map(event -> event.getMessage().getTextContent())
-                .filter(text -> {
-                    // Skip if identical to what we already sent
-                    if (text.equals(lastContent.toString())) {
-                        return false;
-                    }
-                    lastContent.setLength(0);
-                    lastContent.append(text);
-                    return true;
-                })
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成"))
                 .doOnError(e -> log.error("[Orchestrator] 异常: {}", e.getMessage(), e));
     }
