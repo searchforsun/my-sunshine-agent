@@ -15,8 +15,8 @@ import io.milvus.param.dml.SearchParam;
 import io.milvus.param.index.CreateIndexParam;
 import io.milvus.response.SearchResultsWrapper;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -24,29 +24,20 @@ import java.util.List;
 
 /**
  * Milvus 向量数据库操作服务
- * MilvusServiceClient 注入为 optional，Milvus 不可用时服务正常启动
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MilvusService {
 
-    @Autowired(required = false)
-    private MilvusServiceClient client;
+    private final MilvusServiceClient client;
 
     private static final String COLLECTION = "sunshine_knowledge";
     private static final int DIMENSION = 1024;
 
     @PostConstruct
     public void init() {
-        if (client == null) {
-            log.warn("[RAG] Milvus 不可用，知识库功能降级");
-            return;
-        }
-        try {
-            ensureCollection();
-        } catch (Exception e) {
-            log.warn("[RAG] Collection 初始化失败: {}", e.getMessage());
-        }
+        ensureCollection();
     }
 
     private void ensureCollection() {
@@ -58,6 +49,7 @@ public class MilvusService {
             return;
         }
 
+        // 创建 Collection
         client.createCollection(CreateCollectionParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withDescription("Sunshine AI 知识库")
@@ -79,6 +71,7 @@ public class MilvusService {
                         .build())
                 .build());
 
+        // 创建索引
         client.createIndex(CreateIndexParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withFieldName("embedding")
@@ -87,6 +80,7 @@ public class MilvusService {
                 .withExtraParam("{\"nlist\":128}")
                 .build());
 
+        // 加载到内存
         client.loadCollection(LoadCollectionParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .build());
@@ -95,10 +89,6 @@ public class MilvusService {
     }
 
     public void insert(String content, List<Float> embedding) {
-        if (client == null) {
-            log.warn("[RAG] Milvus 不可用，跳过插入");
-            return;
-        }
         List<InsertParam.Field> fields = new ArrayList<>();
         fields.add(new InsertParam.Field("content", List.of(content)));
         fields.add(new InsertParam.Field("embedding", List.of(embedding)));
@@ -110,10 +100,6 @@ public class MilvusService {
     }
 
     public List<String> search(List<Float> queryVector, int topK) {
-        if (client == null) {
-            log.warn("[RAG] Milvus 不可用，返回空检索结果");
-            return List.of();
-        }
         R<SearchResults> result = client.search(SearchParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withMetricType(MetricType.IP)
