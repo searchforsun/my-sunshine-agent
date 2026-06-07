@@ -8,7 +8,7 @@ server:
   port: 8001
 
 orchestrator:
-  base-url: http://sunshine-orchestrator:8200
+  base-url: http://localhost:8200
 
 logging:
   level:
