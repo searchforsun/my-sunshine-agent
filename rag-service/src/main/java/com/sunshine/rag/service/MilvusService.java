@@ -17,6 +17,7 @@ import io.milvus.response.SearchResultsWrapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ import java.util.List;
  */
 @Slf4j
 @Service
+@Lazy
 @RequiredArgsConstructor
 public class MilvusService {
 
@@ -37,7 +39,19 @@ public class MilvusService {
 
     @PostConstruct
     public void init() {
-        ensureCollection();
+        if (client == null) {
+            log.warn("[RAG] Milvus 客户端为空，跳过 Collection 初始化");
+            return;
+        }
+        try {
+            ensureCollection();
+        } catch (Exception e) {
+            log.warn("[RAG] Milvus 连接不可用，知识库功能暂不可用: {}", e.getMessage());
+        }
+    }
+
+    private boolean isAvailable() {
+        return client != null;
     }
 
     private void ensureCollection() {
@@ -89,6 +103,10 @@ public class MilvusService {
     }
 
     public void insert(String content, List<Float> embedding) {
+        if (!isAvailable()) {
+            log.warn("[RAG] Milvus 不可用，跳过插入");
+            return;
+        }
         List<InsertParam.Field> fields = new ArrayList<>();
         fields.add(new InsertParam.Field("content", List.of(content)));
         fields.add(new InsertParam.Field("embedding", List.of(embedding)));
@@ -100,6 +118,10 @@ public class MilvusService {
     }
 
     public List<String> search(List<Float> queryVector, int topK) {
+        if (!isAvailable()) {
+            log.warn("[RAG] Milvus 不可用，返回空检索结果");
+            return List.of();
+        }
         R<SearchResults> result = client.search(SearchParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withMetricType(MetricType.IP)
