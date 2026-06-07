@@ -11,26 +11,26 @@ interface ServiceStatus {
 }
 
 const services = ref<ServiceStatus[]>([
-  { name: 'Gateway', port: 8000, status: 'checking', description: 'API Gateway & Router' },
-  { name: 'BFF', port: 8001, status: 'checking', description: 'SSE Stream Proxy' },
-  { name: 'Orchestrator', port: 8200, status: 'checking', description: 'AgentScope ReActAgent' },
-  { name: 'LLM Gateway', port: 8300, status: 'checking', description: 'Multi-Provider LLM Router' },
-  { name: 'RAG Service', port: 8400, status: 'checking', description: 'Milvus Vector Search' },
-  { name: 'Auth Center', port: 8100, status: 'offline', description: 'Sa-Token Authentication' },
-  { name: 'Tool Manager', port: 8210, status: 'offline', description: 'Business Tool Wrapper' },
-  { name: 'Prompt Manager', port: 8500, status: 'offline', description: 'Prompt Template Management' },
-  { name: 'Desensitize', port: 8600, status: 'offline', description: 'Data Masking Engine' },
+  { name: 'Gateway', port: 8000, status: 'checking', description: 'API 网关与路由' },
+  { name: 'BFF', port: 8001, status: 'checking', description: 'SSE 流式转发' },
+  { name: 'Orchestrator', port: 8200, status: 'checking', description: 'AgentScope ReActAgent 编排' },
+  { name: 'LLM Gateway', port: 8300, status: 'checking', description: '多厂商大模型路由' },
+  { name: 'RAG Service', port: 8400, status: 'checking', description: 'Milvus 向量检索' },
+  { name: 'Auth Center', port: 8100, status: 'offline', description: 'Sa-Token 认证中心' },
+  { name: 'Tool Manager', port: 8210, status: 'offline', description: '业务工具包装' },
+  { name: 'Prompt Manager', port: 8500, status: 'offline', description: '提示词模板管理' },
+  { name: 'Desensitize', port: 8600, status: 'offline', description: '数据脱敏引擎' },
 ])
 
 const middleware = ref<ServiceStatus[]>([
-  { name: 'Nacos', port: 8848, status: 'online', description: 'Registry & Config Center' },
-  { name: 'Redis', port: 6379, status: 'online', description: 'Cache & Session Store' },
-  { name: 'MySQL', port: 3306, status: 'online', description: 'Relational Database' },
-  { name: 'Milvus', port: 19530, status: 'online', description: 'Vector Database' },
-  { name: 'RocketMQ', port: 9876, status: 'online', description: 'Message Queue' },
-  { name: 'Sentinel', port: 8858, status: 'online', description: 'Flow Control Dashboard' },
-  { name: 'SkyWalking', port: 8084, status: 'online', description: 'APM & Tracing UI' },
-  { name: 'Grafana', port: 3000, status: 'online', description: 'Metrics Visualization' },
+  { name: 'Nacos', port: 8848, status: 'online', description: '注册与配置中心' },
+  { name: 'Redis', port: 6379, status: 'online', description: '缓存与会话' },
+  { name: 'MySQL', port: 3306, status: 'online', description: '关系型数据库' },
+  { name: 'Milvus', port: 19530, status: 'online', description: '向量数据库' },
+  { name: 'RocketMQ', port: 9876, status: 'online', description: '消息队列' },
+  { name: 'Sentinel', port: 8858, status: 'online', description: '流量控制面板' },
+  { name: 'SkyWalking', port: 8084, status: 'online', description: '全链路追踪' },
+  { name: 'Grafana', port: 3000, status: 'online', description: '监控可视化' },
 ])
 
 async function checkServices() {
@@ -54,7 +54,7 @@ function statusType(s: string) {
 }
 
 function statusLabel(s: string) {
-  return s === 'online' ? 'Online' : s === 'offline' ? 'Offline' : 'Checking...'
+  return s === 'online' ? '在线' : s === 'offline' ? '离线' : '检测中...'
 }
 
 const onlineServices = () => services.value.filter(s => s.status === 'online').length
@@ -70,11 +70,11 @@ onMounted(() => {
     <div class="status-content">
       <header class="page-header">
         <div>
-          <h2>System Status</h2>
-          <p>Real-time service and middleware health overview.</p>
+          <h2>系统状态</h2>
+          <p>微服务与中间件健康状态概览。</p>
         </div>
         <NButton @click="checkServices" size="small" round secondary>
-          Refresh
+          刷新
         </NButton>
       </header>
 
@@ -82,16 +82,16 @@ onMounted(() => {
       <div class="stats-row">
         <div class="stat-card">
           <span class="stat-val">{{ onlineServices() }}/{{ services.length }}</span>
-          <span class="stat-label">Microservices Online</span>
+          <span class="stat-label">微服务在线</span>
         </div>
         <div class="stat-card">
           <span class="stat-val">{{ onlineMiddleware() }}/{{ middleware.length }}</span>
-          <span class="stat-label">Middleware Online</span>
+          <span class="stat-label">中间件在线</span>
         </div>
       </div>
 
       <!-- Microservices -->
-      <NCard title="Microservices" size="medium" class="section-card">
+      <NCard title="微服务" size="medium" class="section-card">
         <NGrid cols="3" x-gap="10" y-gap="10" responsive="screen">
           <NGridItem v-for="svc in services" :key="svc.name">
             <NCard size="small" :bordered="true" class="svc-card">
@@ -128,7 +128,7 @@ onMounted(() => {
       </NCard>
 
       <!-- Middleware -->
-      <NCard title="Middleware" size="medium" class="section-card">
+      <NCard title="中间件" size="medium" class="section-card">
         <NGrid cols="4" x-gap="10" y-gap="10" responsive="screen">
           <NGridItem v-for="mw in middleware" :key="mw.name">
             <NCard size="small" :bordered="true" class="mw-card">

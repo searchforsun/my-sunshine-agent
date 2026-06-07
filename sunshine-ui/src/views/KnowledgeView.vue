@@ -17,10 +17,10 @@ async function handleUpload() {
   uploadResult.value = null
   try {
     const result = await uploadDocument(docContent.value)
-    uploadResult.value = { chunks: result.chunks, msg: 'Document ingested successfully' }
+    uploadResult.value = { chunks: result.chunks, msg: '文档入库成功' }
     docContent.value = ''
   } catch (e: any) {
-    uploadResult.value = { chunks: 0, msg: `Upload failed: ${e.message}` }
+    uploadResult.value = { chunks: 0, msg: `上传失败: ${e.message}` }
   } finally {
     uploading.value = false
   }
@@ -41,29 +41,29 @@ async function handleSearch() {
   <NScrollbar class="knowledge-root">
     <div class="knowledge-content">
       <header class="page-header">
-        <h2>Knowledge Base</h2>
-        <p>Manage documents and search your vector knowledge base powered by Milvus + Embedding.</p>
+        <h2>知识库管理</h2>
+        <p>文档上传与语义检索，基于 Milvus + Embedding 向量化。</p>
       </header>
 
       <!-- Upload Card -->
       <NCard
-        title="Upload Document"
+        title="上传文档"
         class="kb-card"
         size="medium"
       >
         <template #header-extra>
-          <NTag :bordered="false" size="small" type="info">Markdown / Plain Text</NTag>
+          <NTag :bordered="false" size="small" type="info">Markdown / 纯文本</NTag>
         </template>
         <NInput
           v-model:value="docContent"
           type="textarea"
-          placeholder="Paste Markdown document content here..."
+          placeholder="粘贴 Markdown 文档内容..."
           :autosize="{ minRows: 5, maxRows: 12 }"
           class="doc-textarea"
         />
         <div class="card-footer">
           <NText depth="3" class="card-hint">
-            Content will be chunked, embedded, and stored in Milvus for semantic retrieval.
+            文档将自动分段、向量化，存入 Milvus 供语义检索。
           </NText>
           <NButton
             type="warning"
@@ -72,14 +72,14 @@ async function handleSearch() {
             :disabled="!docContent.trim()"
             round
           >
-            Upload & Index
+            上传入库
           </NButton>
         </div>
 
         <NResult
           v-if="uploadResult"
           :status="uploadResult.chunks > 0 ? 'success' : 'error'"
-          :title="uploadResult.chunks > 0 ? 'Ingested' : 'Failed'"
+          :title="uploadResult.chunks > 0 ? '入库成功' : '入库失败'"
           :description="uploadResult.msg"
           size="small"
           style="margin-top: 16px"
@@ -88,17 +88,17 @@ async function handleSearch() {
 
       <!-- Search Card -->
       <NCard
-        title="Semantic Search"
+        title="语义检索"
         class="kb-card"
         size="medium"
       >
         <template #header-extra>
-          <NTag :bordered="false" size="small" type="warning">Vector Search</NTag>
+          <NTag :bordered="false" size="small" type="warning">向量检索</NTag>
         </template>
         <div class="search-row">
           <NInput
             v-model:value="searchQuery"
-            placeholder="Enter your search query..."
+            placeholder="输入查询文本..."
             size="large"
             round
             @keydown.enter="handleSearch"
@@ -111,7 +111,7 @@ async function handleSearch() {
             round
             size="large"
           >
-            Search
+            检索
           </NButton>
         </div>
 
@@ -127,7 +127,7 @@ async function handleSearch() {
             >
               <template #header>
                 <NTag :bordered="false" size="tiny" type="info">
-                  Fragment #{{ idx + 1 }}
+                  片段 #{{ idx + 1 }}
                 </NTag>
               </template>
               <div class="result-text">{{ result }}</div>
@@ -136,7 +136,7 @@ async function handleSearch() {
         </template>
 
         <div v-else-if="!searching && searchQuery" class="no-results">
-          <NText depth="3">No results found. Try a different query or upload relevant documents first.</NText>
+          <NText depth="3">未找到结果，尝试其他查询或先上传相关文档。</NText>
         </div>
       </NCard>
     </div>

@@ -41,8 +41,8 @@ watch(() => messages.value.length, async () => {
     <!-- Header -->
     <header class="chat-header">
       <div>
-        <h2 class="chat-title">AI Assistant</h2>
-        <p class="chat-subtitle">ReActAgent · Knowledge-base augmented</p>
+        <h2 class="chat-title">AI 智能助手</h2>
+        <p class="chat-subtitle">ReActAgent · 知识库增强</p>
       </div>
       <NButton
         text
@@ -51,7 +51,7 @@ watch(() => messages.value.length, async () => {
         :disabled="messages.length === 0"
         class="clear-btn"
       >
-        Clear conversation
+        清空对话
       </NButton>
     </header>
 
@@ -65,14 +65,14 @@ watch(() => messages.value.length, async () => {
             <circle cx="24" cy="24" r="4" fill="#f59e0b" opacity="0.4" />
           </svg>
         </div>
-        <h3>Start a conversation</h3>
-        <p>Ask anything — your AI assistant with knowledge base access is ready.</p>
+        <h3>开始对话</h3>
+        <p>向 AI 助手提问，知识库已就绪。</p>
         <div class="hint-chips">
           <button class="hint-chip" @click="inputText='介绍一下你的能力'; handleSend()">
-            What can you do?
+            你能做什么？
           </button>
           <button class="hint-chip" @click="inputText='考勤制度是什么？'; handleSend()">
-            Search knowledge base
+            检索知识库
           </button>
         </div>
       </div>
@@ -91,12 +91,12 @@ watch(() => messages.value.length, async () => {
                 ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)'
                 : 'linear-gradient(135deg, #f59e0b, #d97706)'
             }">
-              {{ msg.role === 'user' ? 'U' : 'AI' }}
+              {{ msg.role === 'user' ? '我' : 'AI' }}
             </NAvatar>
           </div>
           <div class="msg-bubble">
             <div class="msg-meta">
-              <span class="msg-sender">{{ msg.role === 'user' ? 'You' : 'Sunshine AI' }}</span>
+              <span class="msg-sender">{{ msg.role === 'user' ? '我' : 'AI 助手' }}</span>
               <NTag
                 v-if="msg.role === 'assistant' && loading && idx === messages.length - 1"
                 size="tiny"
@@ -111,7 +111,7 @@ watch(() => messages.value.length, async () => {
                 </span>
               </NTag>
             </div>
-            <div class="msg-text" v-text="msg.content || (loading && idx === messages.length - 1 ? 'Thinking...' : '')" />
+            <div class="msg-text" v-text="msg.content || (loading && idx === messages.length - 1 ? '思考中...' : '')" />
           </div>
         </div>
       </div>
@@ -124,7 +124,7 @@ watch(() => messages.value.length, async () => {
           ref="inputRef"
           v-model:value="inputText"
           type="textarea"
-          placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
+          placeholder="输入消息（Enter 发送，Shift+Enter 换行）"
           :autosize="{ minRows: 1, maxRows: 4 }"
           :disabled="loading"
           @keydown="handleKeydown"
@@ -134,10 +134,10 @@ watch(() => messages.value.length, async () => {
         />
         <div class="input-actions">
           <span class="char-hint" v-if="loading">
-            <span class="pulse-dot online" /> AI is responding...
+            <span class="pulse-dot online" /> AI 回复中...
           </span>
           <span class="char-hint" v-else>
-            Ready
+            就绪
           </span>
           <NSpace>
             <NButton
@@ -148,7 +148,7 @@ watch(() => messages.value.length, async () => {
               secondary
               round
             >
-              Stop
+              停止
             </NButton>
             <NButton
               @click="handleSend"
@@ -162,7 +162,7 @@ watch(() => messages.value.length, async () => {
                   <path d="M2 8l12-6-6 12-2-6-4-0z" fill="currentColor" />
                 </svg>
               </template>
-              Send
+              发送
             </NButton>
           </NSpace>
         </div>

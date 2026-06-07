@@ -57,7 +57,7 @@ const activeKey = computed(() => (route.name as string) || 'chat')
         </div>
         <div>
           <div class="brand-name">Sunshine AI</div>
-          <div class="brand-sub">Enterprise Platform</div>
+          <div class="brand-sub">企业级 AI 中台</div>
         </div>
       </div>
 
@@ -72,7 +72,7 @@ const activeKey = computed(() => (route.name as string) || 'chat')
       <!-- Footer -->
       <div class="sidebar-footer">
         <span class="pulse-dot online" />
-        <span class="status-text">System Online</span>
+        <span class="status-text">系统运行中</span>
       </div>
     </NLayoutSider>
 
