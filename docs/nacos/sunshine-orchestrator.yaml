@@ -1,0 +1,20 @@
+# ============================================================
+# sunshine-orchestrator — Nacos 配置
+# Data ID: sunshine-orchestrator.yaml
+# Group:   DEFAULT_GROUP
+# ============================================================
+
+server:
+  port: 8200
+
+agent:
+  system-prompt: 你是一个智能助手，优先检索知识库回答用户问题。
+  max-iters: 5
+  model:
+    base-url: http://sunshine-llm-gateway:8300/v1
+    name: deepseek-v4-pro
+    api-key: sunshine-gateway
+
+logging:
+  level:
+    com.sunshine: debug

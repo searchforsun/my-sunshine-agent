@@ -1,0 +1,15 @@
+# ============================================================
+# sunshine-bff — Nacos 配置
+# Data ID: sunshine-bff.yaml
+# Group:   DEFAULT_GROUP
+# ============================================================
+
+server:
+  port: 8001
+
+orchestrator:
+  base-url: http://sunshine-orchestrator:8200
+
+logging:
+  level:
+    com.sunshine: debug

@@ -1,0 +1,19 @@
+# ============================================================
+# sunshine-orchestrator — 本地开发配置（--spring.profiles.active=dev）
+# 无需 Nacos 即可启动，覆盖 application.yml 中的空值
+# ============================================================
+
+server:
+  port: 8200
+
+agent:
+  system-prompt: 你是一个智能助手，优先检索知识库回答用户问题。
+  max-iters: 5
+  model:
+    base-url: http://localhost:8300/v1
+    name: deepseek-v4-pro
+    api-key: sunshine-gateway
+
+logging:
+  level:
+    com.sunshine: debug
