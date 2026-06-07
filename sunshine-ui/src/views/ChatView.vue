@@ -2,6 +2,15 @@
 import { ref, nextTick, watch, onMounted } from 'vue'
 import { useChat } from '../api/chat'
 import { NInput, NButton, NScrollbar, NAvatar, NSpace, NTag } from 'naive-ui'
+import { marked } from 'marked'
+
+// Configure marked for safe rendering
+marked.setOptions({ breaks: true, gfm: true })
+
+function renderMarkdown(text: string): string {
+  if (!text) return ''
+  return marked(text) as string
+}
 
 const { messages, loading, send, stop, clear } = useChat()
 const inputText = ref('')
@@ -111,7 +120,12 @@ watch(() => messages.value.length, async () => {
                 </span>
               </NTag>
             </div>
-            <div class="msg-text" v-text="msg.content || (loading && idx === messages.length - 1 ? '思考中...' : '')" />
+            <div
+              class="msg-text"
+              v-html="msg.role === 'assistant'
+                ? renderMarkdown(msg.content || (loading && idx === messages.length - 1 ? '思考中...' : ''))
+                : (msg.content || (loading && idx === messages.length - 1 ? '思考中...' : ''))"
+            />
           </div>
         </div>
       </div>
@@ -317,10 +331,75 @@ watch(() => messages.value.length, async () => {
 
 .msg-text {
   font-size: 14.5px;
-  line-height: 1.7;
+  line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--sun-text);
+}
+
+/* Markdown content */
+.msg-text :deep(h1),
+.msg-text :deep(h2),
+.msg-text :deep(h3) {
+  margin: 12px 0 6px;
+  font-weight: 600;
+  color: var(--sun-text);
+}
+.msg-text :deep(h3) { font-size: 15px; }
+.msg-text :deep(h2) { font-size: 16px; }
+.msg-text :deep(h1) { font-size: 18px; }
+
+.msg-text :deep(p) {
+  margin: 4px 0 8px;
+}
+
+.msg-text :deep(strong) {
+  color: var(--sun-amber-light);
+  font-weight: 600;
+}
+
+.msg-text :deep(ul), .msg-text :deep(ol) {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.msg-text :deep(li) {
+  margin: 2px 0;
+}
+
+.msg-text :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--sun-border);
+  margin: 12px 0;
+}
+
+.msg-text :deep(code) {
+  background: rgba(245, 158, 11, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+
+.msg-text :deep(pre) {
+  background: var(--sun-deep);
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.msg-text :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+
+.msg-text :deep(blockquote) {
+  border-left: 3px solid var(--sun-amber);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--sun-text-secondary);
 }
 
 /* --- Typing dots --- */

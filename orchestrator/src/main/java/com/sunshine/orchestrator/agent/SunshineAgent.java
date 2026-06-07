@@ -42,6 +42,9 @@ public class SunshineAgent {
                 .textContent(userMessage)
                 .build();
 
+        // Track last content to skip duplicates from ReActAgent thinking loops
+        final StringBuilder lastContent = new StringBuilder();
+
         return agent.stream(List.of(input), StreamOptions.defaults())
                 .filter(event -> {
                     Msg msg = event.getMessage();
@@ -50,6 +53,15 @@ public class SunshineAgent {
                             && !msg.getTextContent().isEmpty();
                 })
                 .map(event -> event.getMessage().getTextContent())
+                .filter(text -> {
+                    // Skip if identical to what we already sent
+                    if (text.equals(lastContent.toString())) {
+                        return false;
+                    }
+                    lastContent.setLength(0);
+                    lastContent.append(text);
+                    return true;
+                })
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成"))
                 .doOnError(e -> log.error("[Orchestrator] 异常: {}", e.getMessage(), e));
     }

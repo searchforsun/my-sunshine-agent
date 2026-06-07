@@ -39,12 +39,11 @@ export function useChat() {
       }
 
       const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('No reader')
-      }
+      if (!reader) throw new Error('No reader')
 
       const decoder = new TextDecoder()
       let buffer = ''
+      let seen = new Set<string>()
 
       while (true) {
         const { done, value } = await reader.read()
@@ -52,15 +51,20 @@ export function useChat() {
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
+        // Keep incomplete last line in buffer
         buffer = lines.pop() || ''
 
         for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const data = line.substring(5).trim()
-            if (data && data !== '[DONE]') {
-              assistantMsg.content += data
-            }
-          }
+          if (!line.startsWith('data:')) continue
+          const data = line.substring(5).trim()
+          if (!data || data === '[DONE]') continue
+
+          // Deduplicate — skip chunks already seen (ReActAgent may repeat content)
+          const key = data.substring(0, 40)
+          if (seen.has(key)) continue
+          seen.add(key)
+
+          assistantMsg.content += data
         }
       }
     } catch (err: any) {
