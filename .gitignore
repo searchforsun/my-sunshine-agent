@@ -37,3 +37,5 @@ application-local.yml
 
 # ===== Remember =====
 .remember/tmp/
+
+!skywalking-agent.jar
