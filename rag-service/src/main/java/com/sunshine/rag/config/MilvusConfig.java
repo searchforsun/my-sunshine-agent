@@ -6,13 +6,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
 
 import java.util.concurrent.TimeUnit;
 
 /**
  * Milvus 向量数据库连接配置
- * 使用 @Lazy + 短超时：Milvus 不可用时服务仍可启动，首次调用时报错
+ * 连接失败时返回 null，服务仍可启动（知识库功能降级）
  */
 @Slf4j
 @Configuration
@@ -28,7 +27,6 @@ public class MilvusConfig {
     private String database;
 
     @Bean
-    @Lazy
     public MilvusServiceClient milvusClient() {
         log.info("[RAG] 连接 Milvus: {}:{}, db={}", host, port, database);
         ConnectParam param = ConnectParam.newBuilder()
@@ -39,8 +37,8 @@ public class MilvusConfig {
                 .build();
         try {
             return new MilvusServiceClient(param);
-        } catch (Exception e) {
-            log.warn("[RAG] Milvus 连接失败（服务仍可启动，知识库功能不可用）: {}", e.getMessage());
+        } catch (RuntimeException e) {
+            log.warn("[RAG] Milvus 不可用，知识库功能降级: {}", e.getMessage());
             return null;
         }
     }
