@@ -2,11 +2,12 @@
 import { ref, nextTick, watch, onMounted } from 'vue'
 import { useChat } from '../api/chat'
 import { NInput, NButton, NAvatar, NSpace, NTag } from 'naive-ui'
-import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
+// markdown-it CJS → ESM interop
+import mi from 'markdown-it'
 
-const md = new MarkdownIt({
+const md = new mi({
   html: false,
   breaks: true,
   linkify: true,
@@ -20,7 +21,11 @@ const md = new MarkdownIt({
 
 function renderMarkdown(text: string): string {
   if (!text) return ''
-  return md.render(text)
+  try {
+    return md.render(text)
+  } catch {
+    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
 }
 
 const { messages, loading, send, stop, clear } = useChat()
