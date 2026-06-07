@@ -2,14 +2,27 @@
 import { ref, nextTick, watch, onMounted } from 'vue'
 import { useChat } from '../api/chat'
 import { NInput, NButton, NScrollbar, NAvatar, NSpace, NTag } from 'naive-ui'
-import { marked } from 'marked'
-import 'github-markdown-css/github-markdown-dark.css'
+import MarkdownIt from 'markdown-it'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github-dark.css'
 
-marked.setOptions({ breaks: true, gfm: true })
+const md = new MarkdownIt({
+  html: false,
+  breaks: true,
+  linkify: true,
+  highlight(str: string, lang: string): string {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return hljs.highlight(str, { language: lang }).value
+      } catch { /* fall through */ }
+    }
+    return '' // use external default escaping
+  },
+})
 
 function renderMarkdown(text: string): string {
   if (!text) return ''
-  return marked(text) as string
+  return md.render(text)
 }
 
 const { messages, loading, send, stop, clear } = useChat()
@@ -177,7 +190,7 @@ watch(() => {
             <!-- User messages: plain text. Assistant messages: Markdown rendered -->
             <div
               v-if="msg.role === 'assistant'"
-              class="markdown-body msg-md"
+              class="msg-md"
               v-html="renderMarkdown(displayedContent(msg, idx))"
             />
             <div
@@ -395,41 +408,66 @@ watch(() => {
   color: var(--sun-text);
 }
 
-/* GitHub Markdown overrides for dark theme */
+/* Markdown content styling */
 .msg-md {
   font-size: 14.5px;
+  line-height: 1.75;
   color: var(--sun-text);
-  background: transparent !important;
+  word-break: break-word;
 }
-.msg-md :deep(h1), .msg-md :deep(h2), .msg-md :deep(h3),
-.msg-md :deep(h4), .msg-md :deep(h5), .msg-md :deep(h6) {
+.msg-md :deep(h1), .msg-md :deep(h2), .msg-md :deep(h3) {
+  margin: 14px 0 8px;
+  font-weight: 600;
   color: var(--sun-text);
-  border-bottom-color: var(--sun-border);
 }
-.msg-md :deep(strong) { color: var(--sun-amber-light); }
+.msg-md :deep(h3) { font-size: 16px; }
+.msg-md :deep(h2) { font-size: 17px; border-bottom: 1px solid var(--sun-border); padding-bottom: 4px; }
+.msg-md :deep(h1) { font-size: 19px; border-bottom: 1px solid var(--sun-border); padding-bottom: 6px; }
+.msg-md :deep(p) { margin: 4px 0 10px; }
+.msg-md :deep(strong) { color: var(--sun-amber-light); font-weight: 600; }
 .msg-md :deep(a) { color: var(--sun-blue); }
+.msg-md :deep(ul), .msg-md :deep(ol) { margin: 6px 0; padding-left: 22px; }
+.msg-md :deep(li) { margin: 2px 0; color: var(--sun-text); }
+.msg-md :deep(hr) { border: none; border-top: 1px solid var(--sun-border); margin: 14px 0; }
+.msg-md :deep(blockquote) {
+  border-left: 3px solid var(--sun-amber);
+  padding-left: 14px;
+  margin: 10px 0;
+  color: var(--sun-text-secondary);
+}
 .msg-md :deep(code) {
   background: rgba(245, 158, 11, 0.08);
   color: var(--sun-amber-light);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
 }
 .msg-md :deep(pre) {
   background: var(--sun-deep);
   border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  overflow-x: auto;
+  margin: 10px 0;
 }
-.msg-md :deep(blockquote) {
-  color: var(--sun-text-secondary);
-  border-left-color: var(--sun-amber);
+.msg-md :deep(pre code) {
+  background: none;
+  color: var(--sun-text);
+  padding: 0;
+  font-size: 13px;
 }
 .msg-md :deep(table) {
-  border-color: var(--sun-border);
+  border-collapse: collapse;
+  margin: 10px 0;
+  width: 100%;
 }
 .msg-md :deep(th), .msg-md :deep(td) {
-  border-color: var(--sun-border);
+  border: 1px solid var(--sun-border);
+  padding: 6px 12px;
+  text-align: left;
 }
-.msg-md :deep(hr) {
-  border-color: var(--sun-border);
-}
-.msg-md :deep(li) { color: var(--sun-text); }
+.msg-md :deep(th) { background: var(--sun-surface); font-weight: 600; }
 
 /* --- Typing dots --- */
 .typing-tag {
