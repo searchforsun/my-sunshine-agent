@@ -1,0 +1,240 @@
+- generic [ref=e5]:
+  - complementary [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - img [ref=e10]
+        - generic [ref=e17]:
+          - generic [ref=e18]: Sunshine AI
+          - generic [ref=e19]: 企业级 AI 中台
+      - menu [ref=e20]:
+        - menuitem "AI 对话" [ref=e21]:
+          - img [ref=e22] [cursor=pointer]
+          - text: AI 对话
+        - menuitem "知识库" [ref=e25]:
+          - img [ref=e26] [cursor=pointer]
+          - text: 知识库
+        - menuitem "系统状态" [ref=e28]:
+          - img [ref=e29] [cursor=pointer]
+          - text: 系统状态
+      - generic [ref=e36]: 系统运行中
+  - generic [ref=e40]:
+    - banner [ref=e41]:
+      - generic [ref=e42]:
+        - heading "AI 智能助手" [level=2] [ref=e43]
+        - paragraph [ref=e44]: ReActAgent · 知识库增强 · 流式输出
+      - button "清空对话" [ref=e45] [cursor=pointer]:
+        - generic [ref=e46]: 清空对话
+    - generic [ref=e59]:
+      - generic [ref=e72]:
+        - generic [ref=e75]: 我
+        - generic [ref=e76]:
+          - generic [ref=e78]: 我
+          - generic [ref=e79]: go
+      - generic [ref=e80]:
+        - generic [ref=e83]: AI
+        - generic [ref=e84]:
+          - generic [ref=e86]: AI 助手
+          - generic [ref=e210]:
+            - generic [ref=e211]:
+              - heading "�� Markdown 流式渲染测试" [level=2] [ref=e212]
+              - blockquote [ref=e213]:
+                - paragraph [ref=e214]: 本测试覆盖加粗、斜体、代码块、表格、列表、引用、链接、分割线等全部常用语法。
+            - separator [ref=e216]
+            - generic [ref=e217]:
+              - heading "1. 内联格式" [level=3] [ref=e218]
+              - paragraph [ref=e219]:
+                - text: 这是
+                - strong [ref=e220]: 粗体文字
+                - text: ，这是
+                - emphasis [ref=e221]: 斜体文字
+                - text: ，这是 删除线，这是
+                - code [ref=e222]: 行内代码
+                - text: ，以及
+                - emphasis [ref=e223]:
+                  - strong [ref=e224]: 粗斜体
+                - text: 。
+              - paragraph [ref=e225]: 化学式 H~2~O，数学公式 x^2^ + y^2^ = 1。
+            - generic [ref=e226]:
+              - heading "2. 代码块" [level=3] [ref=e227]
+              - code [ref=e229]:
+                - text: def quick_sort(
+                - generic [ref=e230]: "arr: list[int]"
+                - text: ") -> list[int]: \"\"\"快速排序\"\"\" if len(arr) <= 1: return arr pivot = arr[len(arr) // 2] left = [x for x in arr if x < pivot] middle = [x for x in arr if x == pivot] right = [x for x in arr if x > pivot] return quick_sort(left) + middle + quick_sort(right) print(quick_sort([3, 6, 8, 10, 1, 2, 1])) # 输出: [1, 1, 2, 3, 6, 8, 10]"
+              - code [ref=e232]: SELECT u.name, COUNT(o.id) AS order_count FROM users u LEFT JOIN orders o ON u.id = o.user_id WHERE u.created_at > '2025-01-01' GROUP BY u.name HAVING COUNT(o.id) > 5 ORDER BY order_count DESC;
+            - generic [ref=e233]:
+              - heading "3. 表格" [level=3] [ref=e234]
+              - table [ref=e235]:
+                - rowgroup [ref=e236]:
+                  - row "服务 端口 技术栈 状态" [ref=e237]:
+                    - columnheader "服务" [ref=e238]
+                    - columnheader "端口" [ref=e239]
+                    - columnheader "技术栈" [ref=e240]
+                    - columnheader "状态" [ref=e241]
+                - rowgroup [ref=e242]:
+                  - row "BFF 8001 Spring WebFlux + SSE ✅" [ref=e243]:
+                    - cell "BFF" [ref=e244]
+                    - cell "8001" [ref=e245]
+                    - cell "Spring WebFlux + SSE" [ref=e246]
+                    - cell "✅" [ref=e247]
+                  - row "Orchestrator 8200 AgentScope + Reactor ✅" [ref=e248]:
+                    - cell "Orchestrator" [ref=e249]
+                    - cell "8200" [ref=e250]
+                    - cell "AgentScope + Reactor" [ref=e251]
+                    - cell "✅" [ref=e252]
+                  - row "LLM Gateway 8300 DeepSeek / Qwen 适配 ✅" [ref=e253]:
+                    - cell "LLM Gateway" [ref=e254]
+                    - cell "8300" [ref=e255]
+                    - cell "DeepSeek / Qwen 适配" [ref=e256]
+                    - cell "✅" [ref=e257]
+                  - row "RAG Service 8400 Milvus + 通义 Embedding ��" [ref=e258]:
+                    - cell "RAG Service" [ref=e259]
+                    - cell "8400" [ref=e260]
+                    - cell "Milvus + 通义 Embedding" [ref=e261]
+                    - cell "��" [ref=e262]
+            - generic [ref=e263]:
+              - heading "4. 无序列表与多层嵌套" [level=3] [ref=e264]
+              - list [ref=e265]:
+                - listitem [ref=e266]: 第一阶段：基础设施
+                - listitem [ref=e267]: LLM Gateway OpenAI 兼容接口
+                - listitem [ref=e268]: Nacos 服务注册与配置中心
+                - listitem [ref=e269]: Redis 语义缓存（成本降低 98%）
+                - listitem [ref=e270]: 第二阶段：智能体核心
+                - listitem [ref=e271]: ReActAgent 多轮推理
+                - listitem [ref=e272]: 知识库检索（Milvus + 通义 Embedding）
+                - listitem [ref=e273]: 业务工具动态调用
+                - listitem [ref=e274]: 第三阶段：企业落地
+                - listitem [ref=e275]: 多租户数据隔离
+                - listitem [ref=e276]:
+                  - text: 权限精细化控制
+                  - list [ref=e277]:
+                    - listitem [ref=e278]: RBAC 角色权限模型
+                    - listitem [ref=e279]: 数据行级安全过滤
+                - listitem [ref=e280]: SkyWalking 全链路监控
+                - listitem [ref=e281]: Grafana 实时告警大屏
+            - generic [ref=e282]:
+              - heading "5. 有序列表" [level=3] [ref=e283]
+              - list [ref=e284]:
+                - listitem [ref=e285]: 用户通过 BFF 发送消息
+                - listitem [ref=e286]: Orchestrator 根据意图分流
+                - listitem [ref=e287]: 简单对话 → 直连 LLM Gateway 逐 token 流式
+                - listitem [ref=e288]: 知识检索 → ReActAgent + RAG 工具链
+                - listitem [ref=e289]: 业务操作 → ReActAgent + OA/财务工具
+                - listitem [ref=e290]: ReActAgent 调用工具链（检索 / 计算 / API）
+                - listitem [ref=e291]: LLM 结合工具结果生成最终回答
+                - listitem [ref=e292]: 逐 token 流式返回前端渲染
+            - generic [ref=e293]:
+              - heading "6. 任务列表" [level=3] [ref=e294]
+              - list [ref=e295]:
+                - listitem [ref=e296]:
+                  - checkbox [checked] [disabled] [ref=e297]
+                  - text: LLM Gateway OpenAI 兼容接口
+                - listitem [ref=e298]:
+                  - checkbox [checked] [disabled] [ref=e299]
+                  - text: ReActAgent 流式对话
+                - listitem [ref=e300]:
+                  - checkbox [checked] [disabled] [ref=e301]
+                  - text: RAG 知识库检索
+                - listitem [ref=e302]:
+                  - checkbox [checked] [disabled] [ref=e303]
+                  - text: Markdown 实时渲染
+                - listitem [ref=e304]:
+                  - checkbox [disabled] [ref=e305]
+                  - text: 多模态支持（图片 / 文件识别）
+                - listitem [ref=e306]:
+                  - checkbox [disabled] [ref=e307]
+                  - text: 会话记忆与上下文管理
+                - listitem [ref=e308]:
+                  - checkbox [disabled] [ref=e309]
+                  - text: WebSocket 双向通信
+                - listitem [ref=e310]:
+                  - checkbox [disabled] [ref=e311]
+                  - text: 多语言国际化
+            - generic [ref=e312]:
+              - heading "7. 引用嵌套" [level=3] [ref=e313]
+              - blockquote [ref=e314]:
+                - paragraph [ref=e315]:
+                  - strong [ref=e316]: Sunshine AI Platform
+                  - text: — 企业级 AI 中台
+                - paragraph [ref=e317]:
+                  - text: 基于 AgentScope 多智能体编排框架，集成知识库检索、业务工具调用、
+                  - text: 流式对话等核心能力。
+                - blockquote [ref=e318]:
+                  - paragraph [ref=e319]:
+                    - emphasis [ref=e320]: “让每个企业都拥有自己的 AI 中台”
+            - generic [ref=e321]:
+              - heading "8. 链接" [level=3] [ref=e322]
+              - list [ref=e323]:
+                - listitem [ref=e324]:
+                  - text: 官网：
+                  - link "Sunshine AI" [ref=e325] [cursor=pointer]:
+                    - /url: https://github.com/sunshine-ai
+                - listitem [ref=e326]:
+                  - text: 文档：
+                  - link "AgentScope Java SDK" [ref=e327] [cursor=pointer]:
+                    - /url: https://github.com/agentscope-ai/agentscope-java
+                - listitem [ref=e328]:
+                  - text: 邮箱：
+                  - link "dev@sunshine-ai.com" [ref=e329] [cursor=pointer]:
+                    - /url: mailto:dev@sunshine-ai.com
+            - heading "9. Mermaid 图表" [level=3] [ref=e331]
+            - document [ref=e334]:
+              - generic [ref=e336]:
+                - generic [ref=e343]:
+                  - paragraph [ref=e349]: 简单对话
+                  - paragraph [ref=e355]: 知识检索
+                  - paragraph [ref=e361]: 业务操作
+                - generic [ref=e362]:
+                  - paragraph [ref=e369]: 用户请求
+                  - paragraph [ref=e376]: 意图分流
+                  - paragraph [ref=e383]: LLM Gateway
+                  - paragraph [ref=e390]: RAG Service
+                  - paragraph [ref=e397]: Tool Manager
+                  - paragraph [ref=e404]: 流式返回
+                  - paragraph [ref=e411]: ReActAgent
+                  - paragraph [ref=e418]: 前端渲染
+            - generic [ref=e419]:
+              - generic [ref=e420]: mermaid
+              - paragraph [ref=e423]: 正在生成图表…
+            - document [ref=e425]:
+              - generic [ref=e428]: LLM Gateway
+              - generic [ref=e431]: Orchestrator
+              - generic [ref=e434]: BFF
+              - generic [ref=e437]: 用户
+              - generic [ref=e441]: LLM Gateway
+              - generic [ref=e445]: Orchestrator
+              - generic [ref=e449]: BFF
+              - generic [ref=e453]: 用户
+              - generic [ref=e454]:
+                - generic [ref=e456]: alt
+                - generic [ref=e457]: "[简单对话]"
+                - generic [ref=e458]: "[知识检索]"
+              - generic [ref=e459]: 发送消息
+              - generic [ref=e460]: 转发请求
+              - generic [ref=e461]: 意图分类
+              - generic [ref=e463]: 直连流式
+              - generic [ref=e464]: token 流
+              - generic [ref=e465]: ReActAgent 推理
+              - generic [ref=e467]: 调用 LLM
+              - generic [ref=e468]: 工具调用结果
+              - generic [ref=e469]: 最终生成
+              - generic [ref=e470]: SSE 流式输出
+            - generic [ref=e471]:
+              - separator [ref=e472]
+              - paragraph [ref=e473]:
+                - text: ✨
+                - strong [ref=e474]: 全部测试通过！
+                - text: 以上所有 Markdown 元素均应在流式输出过程中正常渲染，且不出现原生
+                - code [ref=e475]: "**"
+                - code [ref=e476]: "#"
+                - code [ref=e477]: "-"
+                - text: 等标记字符的闪现。
+    - contentinfo [ref=e60]:
+      - generic [ref=e61]:
+        - generic [ref=e63]:
+          - textbox "输入消息（Enter 发送，Shift+Enter 换行）" [ref=e64]
+          - generic: 输入消息（Enter 发送，Shift+Enter 换行）
+        - generic [ref=e65]:
+          - generic [ref=e478]: 就绪
+          - button "发送" [disabled] [ref=e67]:
+            - img [ref=e69]
+            - generic [ref=e71]: 发送

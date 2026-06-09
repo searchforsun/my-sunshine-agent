@@ -4,11 +4,15 @@ import naive from 'naive-ui'
 import router from './router'
 import App from './App.vue'
 import './styles/global.css'
+import { useChatStore } from './stores/chatStore'
 
 const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
 app.use(naive)
+
+// 启动时加载历史对话
+useChatStore().load()
 
 app.mount('#app')

@@ -1,0 +1,48 @@
+- generic [ref=e5]:
+  - complementary [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - img [ref=e10]
+        - generic [ref=e17]:
+          - generic [ref=e18]: Sunshine AI
+          - generic [ref=e19]: 企业级 AI 中台
+      - menu [ref=e20]:
+        - menuitem "AI 对话" [ref=e21]:
+          - img [ref=e22] [cursor=pointer]
+          - text: AI 对话
+        - menuitem "知识库" [ref=e25]:
+          - img [ref=e26] [cursor=pointer]
+          - text: 知识库
+        - menuitem "系统状态" [ref=e28]:
+          - img [ref=e29] [cursor=pointer]
+          - text: 系统状态
+      - generic [ref=e34]:
+        - generic [ref=e36]: 系统运行中
+        - button "切换浅色模式" [ref=e37] [cursor=pointer]:
+          - img [ref=e38]
+  - generic [ref=e45]:
+    - banner [ref=e46]:
+      - heading "知识库管理" [level=2] [ref=e47]
+      - paragraph [ref=e48]: 文档上传与语义检索，基于 Milvus + Embedding 向量化。
+    - generic [ref=e49]:
+      - heading "上传文档 Markdown / 纯文本" [ref=e50]:
+        - heading "上传文档" [ref=e51]
+        - generic [ref=e54]: Markdown / 纯文本
+      - generic [ref=e56]:
+        - textbox "粘贴 Markdown 文档内容..." [ref=e57]
+        - generic: 粘贴 Markdown 文档内容...
+      - generic [ref=e58]:
+        - generic [ref=e59]: 文档将自动分段、向量化，存入 Milvus 供语义检索。
+        - button "上传入库" [disabled] [ref=e60]:
+          - generic [ref=e61]: 上传入库
+    - generic [ref=e62]:
+      - heading "语义检索 向量检索" [ref=e63]:
+        - heading "语义检索" [ref=e64]
+        - generic [ref=e67]: 向量检索
+      - generic [ref=e68]:
+        - generic [ref=e71]:
+          - textbox "输入查询文本..." [ref=e72]
+          - generic:
+            - generic: 输入查询文本...
+        - button "检索" [disabled] [ref=e73]:
+          - generic [ref=e74]: 检索

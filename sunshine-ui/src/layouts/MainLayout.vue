@@ -3,6 +3,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, type MenuOption } from 'naive-ui'
 import { ChatbubblesOutline, BookOutline, StatsChartOutline } from '@vicons/ionicons5'
 import { h, type Component, computed } from 'vue'
+import { useTheme } from '../composables/useTheme'
+import { useChatStore } from '../stores/chatStore'
 
 const router = useRouter()
 const route = useRoute()
@@ -22,6 +24,35 @@ function handleMenuClick(key: string) {
 }
 
 const activeKey = computed(() => (route.name as string) || 'chat')
+const { theme, toggle: toggleTheme } = useTheme()
+const isDark = computed(() => theme.value === 'dark')
+const chatStore = useChatStore()
+
+function handleNewChat() {
+  chatStore.create()
+  if (route.name !== 'chat') router.push('/chat')
+}
+
+function handleSwitchConversation(id: string) {
+  chatStore.switchTo(id)
+  if (route.name !== 'chat') router.push('/chat')
+}
+
+function handleDeleteConversation(id: string) {
+  chatStore.remove(id)
+}
+
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return '刚刚'
+  if (mins < 60) return `${mins}分钟前`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}小时前`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}天前`
+  return new Date(ts).toLocaleDateString('zh-CN')
+}
 </script>
 
 <template>
@@ -69,10 +100,62 @@ const activeKey = computed(() => (route.name as string) || 'chat')
         class="nav-menu"
       />
 
+      <!-- Chat History -->
+      <div class="chat-history" v-if="route.name === 'chat'">
+        <div class="history-header">
+          <span class="history-label">历史对话</span>
+          <button class="new-chat-btn" @click="handleNewChat" title="新对话">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        </div>
+        <div class="history-list" v-if="chatStore.sortedConversations.length > 0">
+          <div
+            v-for="conv in chatStore.sortedConversations"
+            :key="conv.id"
+            class="history-item"
+            :class="{ active: conv.id === chatStore.currentId }"
+            @click="handleSwitchConversation(conv.id)"
+          >
+            <div class="history-item-content">
+              <span class="history-item-title">{{ conv.title }}</span>
+              <span class="history-item-time">{{ formatRelativeTime(conv.createdAt) }}</span>
+            </div>
+            <button
+              class="history-item-delete"
+              @click.stop="handleDeleteConversation(conv.id)"
+              title="删除对话"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="history-empty" v-else>
+          <span class="history-empty-text">暂无历史对话</span>
+        </div>
+      </div>
+
       <!-- Footer -->
       <div class="sidebar-footer">
         <span class="pulse-dot online" />
         <span class="status-text">系统运行中</span>
+        <span class="footer-spacer" />
+        <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切换浅色模式' : '切换深色模式'">
+          <!-- 太阳 -->
+          <svg v-if="isDark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="5" />
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+          </svg>
+          <!-- 月亮 -->
+          <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        </button>
       </div>
     </NLayoutSider>
 
@@ -91,15 +174,18 @@ const activeKey = computed(() => (route.name as string) || 'chat')
 
 /* --- Sidebar --- */
 .sidebar {
-  background: linear-gradient(180deg,
-    rgba(17, 24, 39, 0.95) 0%,
-    rgba(15, 18, 29, 0.98) 100%
-  ) !important;
+  background: var(--sun-sidebar-bg) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--sun-border) !important;
   display: flex;
   flex-direction: column;
+}
+/* Naive UI 内部滚动容器也需要 flex 列布局，否则 margin-top:auto 不生效 */
+.sidebar :deep(.n-layout-sider-scroll-container) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 /* --- Brand --- */
@@ -141,7 +227,7 @@ const activeKey = computed(() => (route.name as string) || 'chat')
 
 /* --- Nav --- */
 .nav-menu {
-  flex: 1;
+  flex-shrink: 0;
   margin-top: 4px;
   padding: 0 8px;
 }
@@ -153,12 +239,158 @@ const activeKey = computed(() => (route.name as string) || 'chat')
   gap: 10px;
   padding: 16px 20px;
   border-top: 1px solid var(--sun-border);
+  margin-top: auto;
 }
 
 .status-text {
   font-size: 12px;
   color: var(--sun-text-muted);
   font-family: 'JetBrains Mono', monospace;
+}
+
+.footer-spacer { flex: 1; }
+
+.theme-toggle {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--sun-border);
+  background: transparent;
+  color: var(--sun-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  border-color: var(--sun-amber);
+  color: var(--sun-amber-light);
+  background: var(--sun-amber-glow);
+}
+
+/* --- Chat History --- */
+.chat-history {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 10px 4px 12px;
+  border-top: 1px solid var(--sun-border);
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 4px 6px;
+  flex-shrink: 0;
+}
+
+.history-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--sun-text-muted);
+}
+
+.new-chat-btn {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+}
+.new-chat-btn:hover {
+  background: var(--sun-amber-glow);
+  color: var(--sun-amber);
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all .15s;
+  flex-shrink: 0;
+}
+.history-item:hover { background: var(--sun-surface-hover); }
+.history-item.active { background: var(--sun-amber-glow); }
+.history-item.active .history-item-title { color: var(--sun-amber); }
+
+.history-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-item-title {
+  font-size: 13px;
+  color: var(--sun-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.history-item-time {
+  font-size: 10.5px;
+  color: var(--sun-text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.history-item-delete {
+  width: 24px; height: 24px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: all .15s;
+}
+.history-item:hover .history-item-delete { opacity: 0.5; }
+.history-item-delete:hover {
+  opacity: 1 !important;
+  color: var(--sun-red);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.history-empty {
+  padding: 24px 8px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.history-empty-text {
+  font-size: 12px;
+  color: var(--sun-text-muted);
 }
 
 /* --- Content --- */

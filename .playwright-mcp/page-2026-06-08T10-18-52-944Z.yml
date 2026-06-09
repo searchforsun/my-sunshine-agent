@@ -1,0 +1,62 @@
+- generic [ref=e5]:
+  - complementary [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - img [ref=e10]
+        - generic [ref=e17]:
+          - generic [ref=e18]: Sunshine AI
+          - generic [ref=e19]: 企业级 AI 中台
+      - menu [ref=e20]:
+        - menuitem "AI 对话" [ref=e21]:
+          - img [ref=e22] [cursor=pointer]
+          - text: AI 对话
+        - menuitem "知识库" [ref=e25]:
+          - img [ref=e26] [cursor=pointer]
+          - text: 知识库
+        - menuitem "系统状态" [ref=e28]:
+          - img [ref=e29] [cursor=pointer]
+          - text: 系统状态
+      - generic [ref=e36]: 系统运行中
+  - generic [ref=e40]:
+    - banner [ref=e41]:
+      - generic [ref=e42]:
+        - heading "AI 智能助手" [level=2] [ref=e43]
+        - paragraph [ref=e44]: ReActAgent · 知识库增强 · 流式输出
+      - button "清空对话" [ref=e45] [cursor=pointer]:
+        - generic [ref=e46]: 清空对话
+    - generic [ref=e59]:
+      - generic [ref=e72]:
+        - generic [ref=e75]: 我
+        - generic [ref=e76]:
+          - generic [ref=e78]: 我
+          - generic [ref=e79]: go
+      - generic [ref=e80]:
+        - generic [ref=e83]: AI
+        - generic [ref=e84]:
+          - generic [ref=e86]: AI 助手
+          - generic [ref=e93]:
+            - generic [ref=e94]: "## �� Markdown 流式渲染测试"
+            - generic [ref=e95]: "> 本测试覆盖加粗、斜体、代码块、表格、列表、引用、链接、分割线等全部常用语法。"
+            - generic [ref=e96]: "---"
+            - generic [ref=e97]: "### 1. 内联格式"
+            - generic [ref=e98]: "这是 **粗体文字**，这是 *斜体文字*，这是 ~~删除线~~，这是 `行内代码`，以及 ***粗斜体***。"
+            - generic [ref=e99]: 化学式 H~2~O，数学公式 x^2^ + y^2^ = 1。
+            - generic [ref=e100]: "### 2. 代码块"
+            - generic [ref=e101]: "def quick_sort(arr: list[int]) -> list[int]:"
+            - generic [ref=e102]: "\"\"\"快速排序\"\"\""
+            - generic [ref=e103]: "if len(arr) <= 1:"
+            - generic [ref=e104]: return arr
+            - generic [ref=e105]: pivot = arr[len(arr) // 2]
+            - text: ▋
+    - contentinfo [ref=e60]:
+      - generic [ref=e61]:
+        - generic [ref=e63]:
+          - textbox "输入消息（Enter 发送，Shift+Enter 换行）" [disabled] [ref=e64]
+          - generic: 输入消息（Enter 发送，Shift+Enter 换行）
+        - generic [ref=e65]:
+          - generic [ref=e106]: AI 回复中...
+          - button "停止" [ref=e108] [cursor=pointer]:
+            - generic [ref=e109]: 停止
+          - button "发送" [disabled] [ref=e67]:
+            - img [ref=e69]
+            - generic [ref=e71]: 发送

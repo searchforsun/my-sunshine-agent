@@ -1,0 +1,92 @@
+- generic [ref=e5]:
+  - complementary [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - img [ref=e10]
+        - generic [ref=e17]:
+          - generic [ref=e18]: Sunshine AI
+          - generic [ref=e19]: 企业级 AI 中台
+      - menu [ref=e20]:
+        - menuitem "AI 对话" [ref=e21]:
+          - img [ref=e22] [cursor=pointer]
+          - text: AI 对话
+        - menuitem "知识库" [ref=e25]:
+          - img [ref=e26] [cursor=pointer]
+          - text: 知识库
+        - menuitem "系统状态" [ref=e28]:
+          - img [ref=e29] [cursor=pointer]
+          - text: 系统状态
+      - generic [ref=e36]: 系统运行中
+  - generic [ref=e40]:
+    - banner [ref=e41]:
+      - generic [ref=e42]:
+        - heading "AI 智能助手" [level=2] [ref=e43]
+        - paragraph [ref=e44]: ReActAgent · 知识库增强 · 流式输出
+      - button "清空对话" [ref=e45] [cursor=pointer]:
+        - generic [ref=e46]: 清空对话
+    - generic [ref=e59]:
+      - generic [ref=e72]:
+        - generic [ref=e75]: 我
+        - generic [ref=e76]:
+          - generic [ref=e78]: 我
+          - generic [ref=e79]: test
+      - generic [ref=e80]:
+        - generic [ref=e83]: AI
+        - generic [ref=e84]:
+          - generic [ref=e86]: AI 助手
+          - generic [ref=e93]:
+            - heading "Markdown 流式渲染测试" [level=2] [ref=e99]
+            - paragraph [ref=e100]: "##1. 加粗与斜体"
+            - paragraph [ref=e101]:
+              - text: 这是
+              - strong [ref=e102]: 粗体文字
+              - text: 和
+              - emphasis [ref=e103]: 斜体文字
+              - text: ，以及
+              - emphasis [ref=e104]:
+                - strong [ref=e105]: 粗斜体
+              - text: 。
+            - paragraph [ref=e106]: "##2行内代码"
+            - paragraph [ref=e107]:
+              - text: 在 Python 中使用
+              - code [ref=e108]: print("hello")
+              - text: 输出内容##3代码块
+            - code [ref=e110]:
+              - text: def fibonacci(
+              - generic [ref=e111]: "n: int"
+              - text: ") -> list[]: \"\"\"生成斐波那契数列\"\"\" a, b = 01 result [] for _ in range(n): result.append(a) aba + b return result ((10)) [0112358132134]"
+            - paragraph [ref=e112]: "##4无序列表"
+            - list [ref=e113]:
+              - listitem [ref=e114]:
+                - text: 第一项：RAG 检索增强生成
+                - text: 第二项：AgentScope 多智能体编排
+                - text: 第三项：Spring Cloud Alibaba 微服务
+            - paragraph [ref=e115]:
+              - text: "##5有序列1用户发送消息到 BFF"
+              - text: 2Orchestrator 意图分流
+              - text: 3ReActAgent 调用工具
+              - text: 4LLM 生成最终回答
+            - paragraph [ref=e116]: "##6表格"
+            - paragraph [ref=e117]:
+              - text: "| 模块 端口 状态 |"
+              - text: "|------|------|------BFF 8001 ✅ 运行中 8200 运行Gateway 8300 运行|"
+            - paragraph [ref=e118]: "##7引用"
+            - paragraph [ref=e119]: Sunshine AI Platform 是企业级 中台，基于 AgentScope-Java 的多智能体编排##8链接
+            - paragraph [ref=e120]:
+              - text: 详见
+              - link "文档" [ref=e121] [cursor=pointer]:
+                - /url: https://github.com/agentscope-ai/-java
+              - text: —
+            - paragraph [ref=e122]:
+              - text: ✨ **测试完成！*以上所有 元素都应在流式输出过程中正常渲染。
+              - text: "**"
+    - contentinfo [ref=e60]:
+      - generic [ref=e61]:
+        - generic [ref=e63]:
+          - textbox "输入消息（Enter 发送，Shift+Enter 换行）" [ref=e64]
+          - generic: 输入消息（Enter 发送，Shift+Enter 换行）
+        - generic [ref=e65]:
+          - generic [ref=e123]: 就绪
+          - button "发送" [disabled] [ref=e67]:
+            - img [ref=e69]
+            - generic [ref=e71]: 发送

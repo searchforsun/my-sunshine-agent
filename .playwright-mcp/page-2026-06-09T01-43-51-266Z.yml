@@ -1,0 +1,57 @@
+- generic [ref=e5]:
+  - complementary [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - img [ref=e10]
+        - generic [ref=e17]:
+          - generic [ref=e18]: Sunshine AI
+          - generic [ref=e19]: 企业级 AI 中台
+      - menu [ref=e20]:
+        - menuitem "AI 对话" [ref=e21]:
+          - img [ref=e22] [cursor=pointer]
+          - text: AI 对话
+        - menuitem "知识库" [ref=e25]:
+          - img [ref=e26] [cursor=pointer]
+          - text: 知识库
+        - menuitem "系统状态" [ref=e28]:
+          - img [ref=e29] [cursor=pointer]
+          - text: 系统状态
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - generic [ref=e46]: 历史对话
+          - button "新对话" [ref=e47] [cursor=pointer]:
+            - img [ref=e48]
+        - generic [ref=e50] [cursor=pointer]:
+          - generic [ref=e51]:
+            - generic [ref=e52]: 新对话
+            - generic [ref=e53]: 1分钟前
+          - button "删除对话" [ref=e54]:
+            - img [ref=e55]
+      - generic [ref=e34]:
+        - generic [ref=e36]: 系统运行中
+        - button "切换深色模式" [active] [ref=e89] [cursor=pointer]:
+          - img [ref=e90]
+  - generic [ref=e57]:
+    - banner [ref=e58]:
+      - generic [ref=e59]:
+        - heading "AI 智能助手" [level=2] [ref=e60]
+        - paragraph [ref=e61]: ReActAgent · 知识库增强 · 流式输出
+      - button "清空对话" [disabled] [ref=e62]:
+        - generic [ref=e63]: 清空对话
+    - generic [ref=e65]:
+      - img [ref=e67]
+      - heading "开始对话" [level=3] [ref=e71]
+      - paragraph [ref=e72]: 向 AI 助手提问，知识库已就绪。
+      - generic [ref=e73]:
+        - button "RAG 原理" [ref=e74] [cursor=pointer]
+        - button "检索知识库" [ref=e75] [cursor=pointer]
+    - contentinfo [ref=e77]:
+      - generic [ref=e78]:
+        - generic [ref=e80]:
+          - textbox "输入消息（Enter 发送，Shift+Enter 换行）" [ref=e81]
+          - generic: 输入消息（Enter 发送，Shift+Enter 换行）
+        - generic [ref=e82]:
+          - generic [ref=e83]: 就绪
+          - button "发送" [disabled] [ref=e84]:
+            - img [ref=e86]
+            - generic [ref=e88]: 发送

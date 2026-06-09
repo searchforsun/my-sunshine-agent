@@ -1,30 +1,96 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted } from 'vue'
+import { ref, nextTick, watch, onMounted, onUpdated } from 'vue'
 import { useChat } from '../api/chat'
 import { NInput, NButton, NAvatar, NSpace, NTag } from 'naive-ui'
 import MarkdownIt from 'markdown-it'
+import markdownItHighlightjs from 'markdown-it-highlightjs'
+import markdownItTaskLists from 'markdown-it-task-lists'
 import 'highlight.js/styles/github-dark.css'
+import { StreamMarkdownRenderer } from '../utils/stream-markdown'
+import { enhanceStaticMarkdown, reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
+import '../utils/stream-markdown/styles.css'
+import hljs from 'highlight.js/lib/core'
+import { useChatStore } from '../stores/chatStore'
+import { useTheme } from '../composables/useTheme'
 
-const md = new MarkdownIt({ html: false, breaks: true, linkify: true })
+hljs.registerLanguage('mermaid', () => ({ contains: [] }))
+
+const md = new MarkdownIt({
+  html: true, breaks: true, linkify: true, typographer: true,
+}).use(markdownItHighlightjs).use(markdownItTaskLists)
+
+// ── 流式 Markdown 渲染引擎 ──
+let streamRenderer: StreamMarkdownRenderer | null = null
+const settledHtml = ref('') // 流式完成后的最终 HTML（防止 v-html 切换导致 DOM 丢失）
+
+const { messages, loading, send, stop, clear } = useChat(async (chunk) => {
+  if (!streamRenderer) {
+    // 等 Vue 渲染出 streaming div 后再查询 DOM
+    await nextTick()
+    const container = document.querySelector('.msg-md.streaming')
+    if (container instanceof HTMLElement) {
+      streamRenderer = new StreamMarkdownRenderer(container, {
+        debounceMs: 50,
+        renderMarkdown: (text: string) => {
+          try { return md.render(text) } catch { return text }
+        },
+      })
+    }
+  }
+  streamRenderer?.processChunk(chunk)
+})
+const inputText = ref('')
+const inputRef = ref<InstanceType<typeof NInput>>()
+const streamingContentRef = ref<HTMLElement>()
+
+const chatStore = useChatStore()
+const { theme } = useTheme()
+
+function enhanceAllStatic() {
+  nextTick(() => {
+    document.querySelectorAll('.msg-md:not(.streaming)').forEach(el => {
+      if (el instanceof HTMLElement) enhanceStaticMarkdown(el)
+    })
+  })
+}
+
+function scrollToBottom() {
+  const el = document.querySelector('.content-area')
+  if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+}
 
 function renderMarkdown(text: string): string {
   if (!text) return ''
-  // 先把连续文本中的 **text** 和 -  等标记正确渲染
-  return md.render(text)
+  try { return md.render(text) } catch { return text.replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 }
-
-const { messages, loading, send, stop, clear } = useChat()
-const inputText = ref('')
-const chatBody = ref<HTMLElement>()
-const inputRef = ref<InstanceType<typeof NInput>>()
 
 async function handleSend() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
+
+  // 首条用户消息自动生成标题
+  if (chatStore.currentId && messages.value.length === 0) {
+    chatStore.updateTitle(chatStore.currentId, text)
+  }
+
   inputText.value = ''
+  settledHtml.value = '' // 新消息清掉旧 HTML
+  streamRenderer?.clear()
+  streamRenderer = null
+
   await send(text)
   await nextTick()
-  chatBody.value?.scrollTo({ top: chatBody.value.scrollHeight, behavior: 'smooth' })
+  scrollToBottom()
+}
+
+function handleClear() {
+  clear()
+  settledHtml.value = ''
+  streamRenderer?.clear()
+  streamRenderer = null
+  if (chatStore.currentId) {
+    chatStore.syncMessages(chatStore.currentId, [])
+  }
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -34,9 +100,44 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => { inputRef.value?.focus() })
+onMounted(() => {
+  chatStore.ensureCurrent()
+  // 加载已有消息
+  if (chatStore.current && chatStore.current.messages.length > 0) {
+    messages.value = [...chatStore.current.messages]
+  }
+  enhanceAllStatic()
+  inputRef.value?.focus()
+})
 
-// Auto-scroll when assistant content grows (SSE streaming)
+// 每次 DOM 更新后增强静态渲染的消息（代码头、Mermaid 图表）
+onUpdated(() => {
+  enhanceAllStatic()
+})
+
+// 主题切换时重渲染所有 Mermaid 图表
+watch(theme, () => {
+  nextTick(() => reRenderStaticMermaids())
+})
+
+// 侧边栏切换对话时同步
+watch(() => chatStore.currentId, (newId, oldId) => {
+  if (!newId || newId === oldId) return
+  if (loading.value) stop()
+  // 保存当前对话
+  if (oldId && messages.value.length > 0) {
+    chatStore.syncMessages(oldId, [...messages.value])
+  }
+  // 加载新对话
+  const conv = chatStore.current
+  messages.value = conv?.messages?.length ? [...conv.messages] : []
+  settledHtml.value = ''
+  streamRenderer?.clear()
+  streamRenderer = null
+  enhanceAllStatic()
+})
+
+// 自动滚动（内容变化时）
 watch(
   () => {
     const last = messages.value[messages.value.length - 1]
@@ -44,9 +145,23 @@ watch(
   },
   async () => {
     await nextTick()
-    chatBody.value?.scrollTo({ top: chatBody.value.scrollHeight, behavior: 'smooth' })
+    scrollToBottom()
   },
 )
+
+// 流式结束：flush: 'sync' 确保在 Vue 销毁 streaming div 之前保存 HTML
+watch(() => loading.value, (val) => {
+  if (!val && streamRenderer) {
+    streamRenderer.finish()
+    const container = document.querySelector('.msg-md.streaming')
+    if (container) settledHtml.value = container.innerHTML
+    streamRenderer = null
+    // 同步消息到 store
+    if (chatStore.currentId) {
+      chatStore.syncMessages(chatStore.currentId, [...messages.value])
+    }
+  }
+}, { flush: 'sync' })
 </script>
 
 <template>
@@ -56,12 +171,12 @@ watch(
         <h2 class="chat-title">AI 智能助手</h2>
         <p class="chat-subtitle">ReActAgent · 知识库增强 · 流式输出</p>
       </div>
-      <NButton text size="small" @click="clear" :disabled="messages.length === 0" class="clear-btn">
+      <NButton text size="small" @click="handleClear" :disabled="messages.length === 0" class="clear-btn">
         清空对话
       </NButton>
     </header>
 
-    <div ref="chatBody" class="chat-body">
+    <div class="chat-body">
       <div v-if="messages.length === 0" class="empty-state">
         <div class="empty-glow">
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -99,12 +214,23 @@ watch(
                 <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
               </NTag>
             </div>
-            <!-- 用户消息纯文本，AI 消息 Markdown 渲染 -->
+            <!-- AI 消息：流式中的最后一条用 StreamMarkdownRenderer 直接写 DOM -->
             <div
-              v-if="msg.role === 'assistant'"
+              v-if="msg.role === 'assistant' && loading && idx === messages.length - 1"
+              ref="streamingContentRef"
+              class="msg-md streaming"
+            />
+            <!-- AI 消息：流式刚完成，保存的 HTML（防止 Vue 切换丢失 Mermaid SVG） -->
+            <div
+              v-else-if="msg.role === 'assistant' && settledHtml && idx === messages.length - 1"
               class="msg-md"
-              :class="{ streaming: loading && idx === messages.length - 1 }"
-              v-html="renderMarkdown(msg.content || (loading && idx === messages.length - 1 ? '思考中...' : ''))"
+              v-html="settledHtml"
+            />
+            <!-- AI 消息：历史消息，用 markdown-it 直接渲染 -->
+            <div
+              v-else-if="msg.role === 'assistant'"
+              class="msg-md"
+              v-html="renderMarkdown(msg.content || '')"
             />
             <div v-else class="msg-text">{{ msg.content }}</div>
           </div>
@@ -137,14 +263,21 @@ watch(
 </template>
 
 <style scoped>
-.chat-root { display: flex; flex-direction: column; height: 100vh; max-width: 820px; margin: 0 auto; padding: 0 24px; }
-.chat-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 0 12px; border-bottom: 1px solid var(--sun-border); flex-shrink: 0; }
+.chat-root { display: flex; flex-direction: column; min-height: 100vh; max-width: 820px; margin: 0 auto; padding: 0 24px; }
+.chat-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 20px 0 12px;
+  border-bottom: 1px solid var(--sun-border);
+  flex-shrink: 0;
+  position: sticky; top: 0; z-index: 10;
+  background: var(--sun-black);
+}
 .chat-title { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; color: var(--sun-text); margin: 0; }
 .chat-subtitle { font-size: 12.5px; color: var(--sun-text-muted); margin: 2px 0 0; }
 .clear-btn { color: var(--sun-text-muted) !important; font-size: 12px; }
-.chat-body { flex: 1; min-height: 0; }
+.chat-body { flex: 1; display: flex; flex-direction: column; }
 
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 72px 24px; text-align: center; }
+.empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .empty-glow { margin-bottom: 20px; animation: glow-pulse 3s ease-in-out infinite; }
 .empty-state h3 { font-size: 20px; font-weight: 600; color: var(--sun-text); margin-bottom: 6px; }
 .empty-state p { font-size: 14px; color: var(--sun-text-muted); max-width: 360px; line-height: 1.5; }
@@ -153,8 +286,7 @@ watch(
 .hint-chip:hover { border-color: var(--sun-amber); color: var(--sun-amber-light); background: var(--sun-amber-glow); }
 
 .msg-list { padding: 16px 0 8px; display: flex; flex-direction: column; gap: 6px; }
-.msg-row { display: flex; gap: 12px; padding: 12px 16px; border-radius: var(--radius-lg); animation: fade-in-up .35s var(--ease-out-expo) forwards; transition: background .2s; }
-.msg-row:hover { background: rgba(26, 35, 50, 0.4); }
+.msg-row { display: flex; gap: 12px; padding: 12px 16px; border-radius: var(--radius-lg); animation: fade-in-up .35s var(--ease-out-expo) forwards; }
 .msg-avatar { flex-shrink: 0; padding-top: 2px; }
 .msg-bubble { flex: 1; min-width: 0; }
 .msg-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
@@ -166,7 +298,7 @@ watch(
 .typing-dots .dot:nth-child(2) { animation-delay: .15s; }
 .typing-dots .dot:nth-child(3) { animation-delay: .3s; }
 
-.chat-footer { flex-shrink: 0; padding: 12px 0 20px; }
+.chat-footer { flex-shrink: 0; padding: 12px 0 20px; background: var(--sun-black); position: sticky; bottom: 0; }
 .input-wrapper { background: var(--sun-deep); border: 1px solid var(--sun-border); border-radius: var(--radius-xl); padding: 10px 14px 12px; transition: border-color .3s; }
 .input-wrapper:focus-within { border-color: var(--sun-amber); box-shadow: 0 0 0 3px var(--sun-amber-glow); }
 .chat-input { --n-border: none !important; --n-border-hover: none !important; --n-border-focus: none !important; --n-box-shadow-focus: none !important; --n-color: transparent !important; --n-color-focus: transparent !important; }
@@ -191,18 +323,9 @@ watch(
 .msg-md :deep(pre code) { background: none; color: var(--sun-text); padding: 0; font-size: 13px; }
 .msg-md :deep(table) { border-collapse: collapse; margin: 12px 0; width: 100%; }
 .msg-md :deep(th), .msg-md :deep(td) { border: 1px solid var(--sun-border); padding: 8px 14px; text-align: left; }
-.msg-md :deep(th) { background: var(--sun-surface); font-weight: 600; }
+.msg-md :deep(th) { background: var(--sun-deep); font-weight: 600; }
 .msg-md :deep(img) { max-width: 100%; border-radius: 8px; }
+.msg-md :deep(.mermaid-container) { display: flex; justify-content: center; margin: 16px 0; padding: 16px; background: var(--sun-deep); border: 1px solid var(--sun-border); border-radius: var(--radius-md); overflow-x: auto; }
+.msg-md :deep(.mermaid-container svg) { max-width: 100%; height: auto; }
 
-/* Blinking cursor for streaming */
-.msg-md.streaming::after {
-  content: '▋';
-  animation: blink 1s step-end infinite;
-  margin-left: 2px;
-  color: var(--sun-amber);
-}
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
 </style>
