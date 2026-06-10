@@ -79,9 +79,9 @@ ORDER BY order_count DESC;
 
 1. 用户通过 BFF 发送消息
 2. Orchestrator 根据意图分流
-   1. 简单对话 → 直连 LLM Gateway 逐 token 流式
-   2. 知识检索 → ReActAgent + RAG 工具链
-   3. 业务操作 → ReActAgent + OA/财务工具
+    1. 简单对话 → 直连 LLM Gateway 逐 token 流式
+    2. 知识检索 → ReActAgent + RAG 工具链
+    3. 业务操作 → ReActAgent + OA/财务工具
 3. ReActAgent 调用工具链（检索 / 计算 / API）
 4. LLM 结合工具结果生成最终回答
 5. 逐 token 流式返回前端渲染

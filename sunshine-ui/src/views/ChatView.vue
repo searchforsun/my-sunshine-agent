@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, onUpdated } from 'vue'
-import { useChat } from '../api/chat'
+import { useChatSessions } from '../api/chatSessions'
 import { NInput, NButton, NAvatar, NSpace, NTag } from 'naive-ui'
 import MarkdownIt from 'markdown-it'
 import markdownItHighlightjs from 'markdown-it-highlightjs'
@@ -19,40 +19,26 @@ const md = new MarkdownIt({
   html: true, breaks: true, linkify: true, typographer: true,
 }).use(markdownItHighlightjs).use(markdownItTaskLists)
 
-// ── 流式 Markdown 渲染引擎 ──
 let streamRenderer: StreamMarkdownRenderer | null = null
-const settledHtml = ref('') // 流式完成后的最终 HTML（防止 v-html 切换导致 DOM 丢失）
-
-const { messages, loading, send, stop, clear } = useChat(async (chunk) => {
-  if (!streamRenderer) {
-    // 等 Vue 渲染出 streaming div 后再查询 DOM
-    await nextTick()
-    const container = document.querySelector('.msg-md.streaming')
-    if (container instanceof HTMLElement) {
-      streamRenderer = new StreamMarkdownRenderer(container, {
-        debounceMs: 50,
-        renderMarkdown: (text: string) => {
-          try { return md.render(text) } catch { return text }
-        },
-      })
-    }
-  }
-  streamRenderer?.processChunk(chunk)
-})
-const inputText = ref('')
-const inputRef = ref<InstanceType<typeof NInput>>()
-const streamingContentRef = ref<HTMLElement>()
+const settledHtml = ref('')
 
 const chatStore = useChatStore()
 const { theme } = useTheme()
 
-function enhanceAllStatic() {
-  nextTick(() => {
-    document.querySelectorAll('.msg-md:not(.streaming)').forEach(el => {
-      if (el instanceof HTMLElement) enhanceStaticMarkdown(el)
-    })
-  })
-}
+const {
+  messages, loading, send, stop, clearSession,
+  switchTo, ensureActive, getMessages, setMessages, destroySession,
+} = useChatSessions(
+  (sid: string, chunk: string) => {
+    if (sid === chatStore.currentId) streamRenderer?.processChunk(chunk)
+  },
+  (id: string) => {
+    chatStore.syncMessages(id, getMessages(id))
+  },
+)
+
+const inputText = ref('')
+const inputRef = ref<InstanceType<typeof NInput>>()
 
 function scrollToBottom() {
   const el = document.querySelector('.content-area')
@@ -64,33 +50,43 @@ function renderMarkdown(text: string): string {
   try { return md.render(text) } catch { return text.replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 }
 
+function createStreamRenderer(): void {
+  nextTick(() => {
+    const container = document.querySelector('.msg-md.streaming')
+    if (container instanceof HTMLElement) {
+      streamRenderer = new StreamMarkdownRenderer(container, {
+        debounceMs: 50,
+        renderMarkdown: (text: string) => { try { return md.render(text) } catch { return text } },
+      })
+    }
+  })
+}
+
 async function handleSend() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
 
-  // 首条用户消息自动生成标题
   if (chatStore.currentId && messages.value.length === 0) {
     chatStore.updateTitle(chatStore.currentId, text)
   }
 
   inputText.value = ''
-  settledHtml.value = '' // 新消息清掉旧 HTML
+  settledHtml.value = ''
   streamRenderer?.clear()
   streamRenderer = null
 
+  createStreamRenderer()
   await send(text)
   await nextTick()
   scrollToBottom()
 }
 
 function handleClear() {
-  clear()
+  clearSession()
   settledHtml.value = ''
   streamRenderer?.clear()
   streamRenderer = null
-  if (chatStore.currentId) {
-    chatStore.syncMessages(chatStore.currentId, [])
-  }
+  if (chatStore.currentId) chatStore.syncMessages(chatStore.currentId, [])
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -102,66 +98,64 @@ function handleKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   chatStore.ensureCurrent()
-  // 加载已有消息
-  if (chatStore.current && chatStore.current.messages.length > 0) {
-    messages.value = [...chatStore.current.messages]
+  const cid = chatStore.currentId
+  if (cid) {
+    ensureActive(cid)
+    if (chatStore.current?.messages.length) setMessages(cid, [...chatStore.current.messages])
   }
-  enhanceAllStatic()
   inputRef.value?.focus()
 })
 
-// 每次 DOM 更新后增强静态渲染的消息（代码头、Mermaid 图表）
 onUpdated(() => {
-  enhanceAllStatic()
+  nextTick(() => {
+    document.querySelectorAll('.msg-md:not(.streaming)').forEach(el => {
+      if (el instanceof HTMLElement) enhanceStaticMarkdown(el)
+    })
+  })
 })
 
-// 主题切换时重渲染所有 Mermaid 图表
-watch(theme, () => {
-  nextTick(() => reRenderStaticMermaids())
-})
+watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
-// 侧边栏切换对话时同步
+// 对话切换
 watch(() => chatStore.currentId, (newId, oldId) => {
   if (!newId || newId === oldId) return
-  if (loading.value) stop()
-  // 保存当前对话
-  if (oldId && messages.value.length > 0) {
-    chatStore.syncMessages(oldId, [...messages.value])
-  }
-  // 加载新对话
-  const conv = chatStore.current
-  messages.value = conv?.messages?.length ? [...conv.messages] : []
+  if (oldId) chatStore.syncMessages(oldId, getMessages(oldId))
   settledHtml.value = ''
   streamRenderer?.clear()
   streamRenderer = null
-  enhanceAllStatic()
+  switchTo(newId)
+  const memMsgs = getMessages(newId)
+  if (memMsgs.length === 0) {
+    const conv = chatStore.current
+    if (conv?.messages.length) setMessages(newId, [...conv.messages])
+  }
+  // 如果新会话正在流式，创建对应渲染器
+  if (loading.value) createStreamRenderer()
 })
 
-// 自动滚动（内容变化时）
+// 自动滚动
 watch(
   () => {
     const last = messages.value[messages.value.length - 1]
     return last?.role === 'assistant' ? last.content.length : 0
   },
-  async () => {
-    await nextTick()
-    scrollToBottom()
-  },
+  async () => { await nextTick(); scrollToBottom() },
 )
 
-// 流式结束：flush: 'sync' 确保在 Vue 销毁 streaming div 之前保存 HTML
+// 流式结束
 watch(() => loading.value, (val) => {
   if (!val && streamRenderer) {
     streamRenderer.finish()
     const container = document.querySelector('.msg-md.streaming')
     if (container) settledHtml.value = container.innerHTML
     streamRenderer = null
-    // 同步消息到 store
-    if (chatStore.currentId) {
-      chatStore.syncMessages(chatStore.currentId, [...messages.value])
-    }
   }
 }, { flush: 'sync' })
+
+// loading 变 true 时准备渲染器
+watch(() => loading.value, (val) => {
+  if (val) createStreamRenderer()
+})
 </script>
 
 <template>
@@ -214,19 +208,18 @@ watch(() => loading.value, (val) => {
                 <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
               </NTag>
             </div>
-            <!-- AI 消息：流式中的最后一条用 StreamMarkdownRenderer 直接写 DOM -->
+            <!-- AI 流式中的最后一条：用 StreamMarkdownRenderer 直接写 DOM -->
             <div
               v-if="msg.role === 'assistant' && loading && idx === messages.length - 1"
-              ref="streamingContentRef"
               class="msg-md streaming"
             />
-            <!-- AI 消息：流式刚完成，保存的 HTML（防止 Vue 切换丢失 Mermaid SVG） -->
+            <!-- AI 流式刚完成的最后一条：保存的 HTML -->
             <div
               v-else-if="msg.role === 'assistant' && settledHtml && idx === messages.length - 1"
               class="msg-md"
               v-html="settledHtml"
             />
-            <!-- AI 消息：历史消息，用 markdown-it 直接渲染 -->
+            <!-- AI 历史消息 -->
             <div
               v-else-if="msg.role === 'assistant'"
               class="msg-md"
@@ -327,5 +320,4 @@ watch(() => loading.value, (val) => {
 .msg-md :deep(img) { max-width: 100%; border-radius: 8px; }
 .msg-md :deep(.mermaid-container) { display: flex; justify-content: center; margin: 16px 0; padding: 16px; background: var(--sun-deep); border: 1px solid var(--sun-border); border-radius: var(--radius-md); overflow-x: auto; }
 .msg-md :deep(.mermaid-container svg) { max-width: 100%; height: auto; }
-
 </style>

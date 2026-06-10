@@ -12,6 +12,7 @@ export function useChat(onChunk?: (data: string) => void) {
   const messages: Ref<ChatMessage[]> = ref([])
   const loading = ref(false)
   let abort: AbortController | null = null
+  let requestId = 0
 
   async function send(content: string) {
     if (!content.trim() || loading.value) return
@@ -23,6 +24,7 @@ export function useChat(onChunk?: (data: string) => void) {
     // 关键：必须通过 reactive proxy 修改内容，否则 Vue 不会触发 DOM 更新！
     messages.value.push({ role: 'assistant', content: '' })
     abort = new AbortController()
+    const thisRequestId = ++requestId
 
     try {
       const response = await fetch(`${API_BASE}/api/chat/stream`, {
@@ -96,11 +98,14 @@ export function useChat(onChunk?: (data: string) => void) {
         if (lastMsg) lastMsg.content = `请求失败: ${err.message}`
       }
     } finally {
-      loading.value = false
+      if (thisRequestId === requestId) {
+        loading.value = false
+      }
     }
   }
 
   function stop() {
+    requestId++ // 使旧请求的 finally 失效
     abort?.abort()
     loading.value = false
   }

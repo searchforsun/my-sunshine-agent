@@ -23,6 +23,13 @@ export class StreamBuffer {
     return remaining
   }
 
+  /** 刷新当前缓冲区中的不完整行（用于平滑流式） */
+  flushPartial(): string {
+    const partial = this.buffer
+    this.buffer = ''
+    return partial
+  }
+
   /** 只刷新完整行，保留不完整行 */
   private flushCompleteLines(): string {
     // 找到最后一个完整行的边界
@@ -49,6 +56,11 @@ export class StreamBuffer {
     }
 
     return complete
+  }
+
+  /** 查看缓冲区中未完成的内容（不消费） */
+  peek(): string {
+    return this.buffer
   }
 
   /** 缓冲区中是否有未处理的数据 */
