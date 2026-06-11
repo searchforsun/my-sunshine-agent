@@ -57,8 +57,13 @@ export function findSafeCutPosition(text: string): number {
       i += 2; continue
     }
 
-    // [链接](url) — 简化处理：找 ](url) 配对
+    // 任务列表 checkbox [ ] / [x] — 非链接，整段跳过
     if (text[i] === '[') {
+      const taskMatch = text.slice(i).match(/^\[([ xX])\]/)
+      if (taskMatch) {
+        i += taskMatch[0].length
+        continue
+      }
       stack.push({ marker: '[', pos: i })
       i += 1; continue
     }
@@ -99,7 +104,20 @@ function lastIndexOf(stack: Marker[], marker: string): number {
   return -1
 }
 
-/** 平滑渲染：安全部分 → markdown-it，未闭合标记之后的内容暂不显示 */
+function injectTailInline(html: string, tail: string): string {
+  if (!tail) return html
+  const span = `<span class="smd-h-fade-tail">${escape(tail)}</span>`
+  if (!html) return span
+  // 插入最后一个块级闭合标签前，避免 tail 换行到下一行
+  const hosts = ['</p>', '</li>', '</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>']
+  for (const tag of hosts) {
+    const idx = html.lastIndexOf(tag)
+    if (idx >= 0) return html.slice(0, idx) + span + html.slice(idx)
+  }
+  return html + span
+}
+
+/** 平滑渲染：安全部分 → markdown-it，未闭合尾部 inline 渐隐 */
 export function smoothRender(
   text: string,
   renderMd: (md: string) => string,
@@ -108,6 +126,8 @@ export function smoothRender(
 
   const cut = findSafeCutPosition(text)
   const safe = text.slice(0, cut)
-  if (!safe) return ''
-  return renderMd(safe)
+  const tail = text.slice(cut)
+
+  const html = safe ? renderMd(safe) : ''
+  return injectTailInline(html, tail)
 }

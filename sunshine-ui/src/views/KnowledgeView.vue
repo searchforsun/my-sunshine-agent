@@ -67,6 +67,7 @@ async function handleSearch() {
           </NText>
           <NButton
             type="warning"
+            class="kb-action-btn"
             @click="handleUpload"
             :loading="uploading"
             :disabled="!docContent.trim()"
@@ -96,16 +97,18 @@ async function handleSearch() {
           <NTag :bordered="false" size="small" type="warning">向量检索</NTag>
         </template>
         <div class="search-row">
-          <NInput
-            v-model:value="searchQuery"
-            placeholder="输入查询文本..."
-            size="large"
-            round
-            @keydown.enter="handleSearch"
-          />
-          <NButton
-            type="warning"
-            @click="handleSearch"
+        <NInput
+          v-model:value="searchQuery"
+          placeholder="输入查询文本..."
+          size="large"
+          round
+          class="search-input"
+          @keydown.enter="handleSearch"
+        />
+        <NButton
+          type="warning"
+          class="kb-action-btn"
+          @click="handleSearch"
             :loading="searching"
             :disabled="!searchQuery.trim()"
             round
@@ -166,6 +169,7 @@ async function handleSearch() {
   font-weight: 700;
   letter-spacing: -0.4px;
   margin: 0;
+  color: var(--sun-text);
 }
 .page-header p {
   font-size: 13px;
@@ -182,13 +186,44 @@ async function handleSearch() {
   transition: border-color .2s;
 }
 
-/* --- Upload --- */
-.doc-textarea {
+.kb-card :deep(.n-card-header__main) {
+  color: var(--sun-text);
+}
+
+/* --- Naive Input：跟随 CSS 变量，暗色模式不泛白 --- */
+.doc-textarea,
+.search-input {
   --n-color: var(--sun-deep) !important;
+  --n-color-focus: var(--sun-deep) !important;
+  --n-color-disabled: var(--sun-surface-hover) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-focus: 1px solid var(--sun-amber) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
+  --n-box-shadow-focus: 0 0 0 2px var(--sun-amber-glow) !important;
+}
+
+.doc-textarea {
   --n-border-radius: var(--radius-md) !important;
+}
+
+/* --- Naive Button warning --- */
+.kb-action-btn {
+  --n-color: var(--sun-amber) !important;
+  --n-color-hover: var(--sun-amber-light) !important;
+  --n-color-pressed: #d97706 !important;
+  --n-color-focus: var(--sun-amber-light) !important;
+  --n-color-disabled: var(--sun-border) !important;
+  --n-text-color: var(--btn-primary-text) !important;
+  --n-text-color-hover: var(--btn-primary-text) !important;
+  --n-text-color-pressed: var(--btn-primary-text) !important;
+  --n-text-color-focus: var(--btn-primary-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-border: none !important;
+  --n-border-disabled: none !important;
+  flex-shrink: 0;
 }
 
 .card-footer {
@@ -212,7 +247,7 @@ async function handleSearch() {
   align-items: center;
 }
 
-.search-row .n-input {
+.search-row .search-input {
   flex: 1;
 }
 

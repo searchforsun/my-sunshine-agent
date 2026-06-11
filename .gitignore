@@ -40,3 +40,4 @@ application-local.yml
 
 !skywalking-agent.jar
 .playwright-mcp/
+agent-workspace/

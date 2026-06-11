@@ -2,10 +2,19 @@
  * 多会话聊天管理 —— 每对话独立 DOM 容器 + StreamMarkdownRenderer
  * 切换只是显示/隐藏容器，不销毁、不中断后台渲染
  */
-import { ref, reactive, computed, type ComputedRef } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import type { ChatMessage } from './chat'
+import { applyStreamError } from './streamError'
+import { apiHeaders } from '../composables/useUserId'
+import {
+  saveActiveGeneration,
+  loadActiveGeneration,
+  clearActiveGeneration,
+  updateLastSeq,
+} from '../composables/useActiveGeneration'
+import { BFF_STREAM_BASE } from './config'
 
-const API_BASE = 'http://localhost:8001'
+const API_BASE = BFF_STREAM_BASE
 
 export interface SessionState {
   id: string
@@ -13,14 +22,57 @@ export interface SessionState {
   loading: boolean
   abort: AbortController | null
   requestId: number
-  /** 独立 DOM 容器（流式渲染写到这里，切换时保持存活） */
   containerEl: HTMLDivElement
-  /** 容器是否已挂载到当前文档 */
   mounted: boolean
 }
 
-// 全局 Map，存活于组件生命周期之外（切换不丢失）
 const sessions = new Map<string, SessionState>()
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    for (const s of sessions.values()) {
+      if (!s.loading) continue
+      s.requestId++
+      s.abort?.abort()
+      s.loading = false
+      const last = s.messages[s.messages.length - 1]
+      if (last?.role === 'assistant' && last.status === 'streaming') {
+        last.status = 'interrupted'
+      }
+    }
+  })
+}
+
+export function appendChunk(existing: string, chunk: string): string {
+  const maxOverlap = Math.min(existing.length, chunk.length, 64)
+  for (let n = maxOverlap; n > 0; n--) {
+    if (existing.endsWith(chunk.slice(0, n))) return existing + chunk.slice(n)
+  }
+  return existing + chunk
+}
+
+interface SseMeta {
+  type: string
+  id?: string
+  status?: string
+  resume?: boolean
+  text?: string
+  messageId?: string
+  seq?: number
+}
+
+function parseSsePayload(data: string): { kind: 'meta'; meta: SseMeta } | { kind: 'chunk'; text: string } {
+  try {
+    const obj = JSON.parse(data) as SseMeta
+    if (obj.type === 'conversation' || obj.type === 'message' || obj.type === 'generation') {
+      return { kind: 'meta', meta: obj }
+    }
+    if (obj.type === 'chunk' && typeof obj.text === 'string') {
+      return { kind: 'chunk', text: obj.text }
+    }
+  } catch { /* plain text chunk */ }
+  return { kind: 'chunk', text: data }
+}
 
 function getOrCreate(id: string): SessionState {
   if (!sessions.has(id)) {
@@ -43,6 +95,8 @@ function getOrCreate(id: string): SessionState {
 export function useChatSessions(
   onChunk?: (sessionId: string, data: string) => void,
   onSessionEnd?: (id: string) => void,
+  onProgress?: (sessionId: string) => void,
+  onConversationMeta?: (sessionId: string, convId: string) => void,
 ) {
   const activeId = ref<string | null>(null)
 
@@ -55,10 +109,8 @@ export function useChatSessions(
   const loading = computed(() => activeSession.value?.loading ?? false)
   const activeContainer = computed(() => activeSession.value?.containerEl ?? null)
 
-  /** 挂载容器到页面 */
   function mountContainer(session: SessionState, parent: HTMLElement): void {
     if (session.mounted) return
-    // 确保元素在 DOM 中（即使 display:none）
     if (!session.containerEl.parentElement) {
       parent.appendChild(session.containerEl)
     }
@@ -66,7 +118,6 @@ export function useChatSessions(
     session.mounted = true
   }
 
-  /** 隐藏容器（保留在 DOM 中，renderer 可继续写入） */
   function unmountContainer(session: SessionState): void {
     session.containerEl.style.display = 'none'
     session.mounted = false
@@ -80,74 +131,253 @@ export function useChatSessions(
     activeId.value = id
   }
 
-  function ensureActive(createId: string): void {
-    if (!activeId.value) switchTo(createId)
+  function ensureActive(id: string): void {
+    if (activeId.value !== id) switchTo(id)
   }
 
-  async function send(content: string): Promise<void> {
+  async function consumeSseStream(
+    s: SessionState,
+    response: Response,
+    thisRequestId: number,
+    options: { resume?: boolean; onMeta?: (meta: SseMeta) => void } = {},
+  ): Promise<void> {
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('No reader')
+
+    const decoder = new TextDecoder()
+    let buf = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buf += decoder.decode(value, { stream: true })
+      const events = buf.split('\n\n')
+      buf = events.pop() || ''
+
+      for (const rawEvent of events) {
+        const dataLines: string[] = []
+        let eventSeq: number | null = null
+        for (const line of rawEvent.split('\n')) {
+          if (line.startsWith('id:')) {
+            const idStr = line.startsWith('id: ') ? line.substring(4) : line.substring(3)
+            const n = parseInt(idStr, 10)
+            if (!Number.isNaN(n)) eventSeq = n
+          }
+          if (!line.startsWith('data:')) continue
+          dataLines.push(line.startsWith('data: ') ? line.substring(6) : line.substring(5))
+        }
+        if (dataLines.length === 0) continue
+        const data = dataLines.join('\n')
+        if (!data || data === '[DONE]') continue
+
+        const parsed = parseSsePayload(data)
+        if (parsed.kind === 'meta') {
+          options.onMeta?.(parsed.meta)
+          if (parsed.meta.type === 'generation' && parsed.meta.id && parsed.meta.messageId) {
+            saveActiveGeneration({
+              generationId: parsed.meta.id,
+              messageId: parsed.meta.messageId,
+              conversationId: s.id,
+              lastSeq: parsed.meta.seq ?? 0,
+            })
+            const last = s.messages[s.messages.length - 1]
+            if (last?.role === 'assistant') {
+              last.id = parsed.meta.messageId
+            }
+          }
+          if (parsed.meta.type === 'message' && parsed.meta.id) {
+            const last = s.messages[s.messages.length - 1]
+            if (last?.role === 'assistant') {
+              last.id = parsed.meta.id
+              if (parsed.meta.status) last.status = parsed.meta.status as ChatMessage['status']
+            }
+          }
+          if (parsed.meta.type === 'message' && parsed.meta.status === 'completed') {
+            const last = s.messages[s.messages.length - 1]
+            if (last?.role === 'assistant') last.status = 'completed'
+          }
+          if (parsed.meta.type === 'message' && parsed.meta.status === 'interrupted') {
+            const last = s.messages[s.messages.length - 1]
+            if (last?.role === 'assistant') last.status = 'interrupted'
+          }
+          if (parsed.meta.type === 'message' && parsed.meta.status === 'failed') {
+            const last = s.messages[s.messages.length - 1]
+            if (last?.role === 'assistant') last.status = 'failed'
+          }
+          continue
+        }
+
+        if (eventSeq !== null) updateLastSeq(eventSeq)
+
+        const lastMsg = s.messages[s.messages.length - 1]
+        if (lastMsg?.role === 'assistant') {
+          lastMsg.content = options.resume
+            ? appendChunk(lastMsg.content, parsed.text)
+            : lastMsg.content + parsed.text
+          if (!lastMsg.status || lastMsg.status === 'interrupted') {
+            lastMsg.status = 'streaming'
+          }
+        }
+
+        onChunk?.(s.id, parsed.text)
+        onProgress?.(s.id)
+      }
+
+      if (events.length > 0) await new Promise(r => setTimeout(r, 0))
+    }
+  }
+
+  async function send(content: string, conversationId?: string | null): Promise<void> {
+    const convId = conversationId ?? activeId.value
+    if (!convId || !content.trim()) return
+
+    ensureActive(convId)
     const s = activeSession.value
-    if (!s || !content.trim() || s.loading) return
+    if (!s || s.loading) return
 
     s.messages.push({ role: 'user', content })
     s.loading = true
-    s.messages.push({ role: 'assistant', content: '' })
+    s.messages.push({ role: 'assistant', content: '', status: 'streaming' })
 
     s.abort = new AbortController()
     const thisRequestId = ++s.requestId
     const sessionId = s.id
+    onProgress?.(sessionId)
 
     try {
+      const body: Record<string, string> = { content, conversationId: convId }
+
       const response = await fetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': 'demo-user', 'x-tenant-id': 'default' },
-        body: JSON.stringify({ content }),
+        headers: apiHeaders(),
+        body: JSON.stringify(body),
         signal: s.abort.signal,
       })
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('No reader')
 
-      const decoder = new TextDecoder()
-      let buf = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buf += decoder.decode(value, { stream: true })
-        const events = buf.split('\n\n')
-        buf = events.pop() || ''
-
-        for (const rawEvent of events) {
-          const dataLines: string[] = []
-          for (const line of rawEvent.split('\n')) {
-            if (!line.startsWith('data:')) continue
-            dataLines.push(line.startsWith('data: ') ? line.substring(6) : line.substring(5))
+      await consumeSseStream(s, response, thisRequestId, {
+        onMeta: (meta) => {
+          if (meta.type === 'conversation' && meta.id) {
+            onConversationMeta?.(sessionId, meta.id)
           }
-          if (dataLines.length === 0) continue
-          const data = dataLines.join('\n')
-          if (!data || data === '[DONE]') continue
-
-          const msgs = s.messages
-          const lastMsg = msgs[msgs.length - 1]
-          if (lastMsg && lastMsg.role === 'assistant') lastMsg.content += data
-
-          // 回调渲染器（无论是否活跃——容器始终在 DOM 中可用）
-          onChunk?.(sessionId, data)
-        }
-
-        if (events.length > 0) await new Promise(r => setTimeout(r, 0))
-      }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        const lastMsg = s.messages[s.messages.length - 1]
-        if (lastMsg) lastMsg.content = `请求失败: ${err.message}`
+        },
+      })
+    } catch (err: unknown) {
+      applyStreamError(s.messages, err)
+      const last = s.messages[s.messages.length - 1]
+      if (last?.role === 'assistant' && last.status === 'streaming') {
+        last.status = 'interrupted'
       }
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
+        const last = s.messages[s.messages.length - 1]
+        if (last?.role === 'assistant' && last.status === 'streaming') {
+          last.status = 'completed'
+        }
+        if (last?.role === 'assistant' && last.status === 'completed') {
+          clearActiveGeneration()
+        }
         onSessionEnd?.(sessionId)
+      }
+    }
+  }
+
+  async function resume(conversationId: string, resumeMessageId: string): Promise<void> {
+    ensureActive(conversationId)
+    const s = activeSession.value ?? getOrCreate(conversationId)
+    if (s.loading) return
+
+    const target = s.messages.find(m => m.id === resumeMessageId)
+    if (!target || target.role !== 'assistant') return
+
+    s.loading = true
+    target.status = 'streaming'
+    s.abort = new AbortController()
+    const thisRequestId = ++s.requestId
+    onProgress?.(conversationId)
+
+    try {
+      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ conversationId, resumeMessageId }),
+        signal: s.abort.signal,
+      })
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+      await consumeSseStream(s, response, thisRequestId, { resume: true })
+    } catch (err: unknown) {
+      applyStreamError(s.messages, err)
+      if (target.status === 'streaming') target.status = 'interrupted'
+    } finally {
+      if (thisRequestId === s.requestId) {
+        s.loading = false
+        if (target.status === 'streaming') target.status = 'completed'
+        if (target.status === 'completed') clearActiveGeneration()
+        onSessionEnd?.(conversationId)
+      }
+    }
+  }
+
+  async function reconnectStream(
+    generationId: string,
+    afterSeq: number,
+    conversationId: string,
+  ): Promise<void> {
+    ensureActive(conversationId)
+    const s = activeSession.value ?? getOrCreate(conversationId)
+    if (s.loading) return
+
+    const active = loadActiveGeneration()
+    const messageId = active?.messageId
+
+    let target = messageId
+      ? s.messages.find(m => m.id === messageId && m.role === 'assistant')
+      : s.messages[s.messages.length - 1]
+
+    if (!target || target.role !== 'assistant') {
+      target = { role: 'assistant', content: '', status: 'streaming', id: messageId }
+      s.messages.push(target)
+    }
+
+    s.loading = true
+    target.status = 'streaming'
+    s.abort = new AbortController()
+    const thisRequestId = ++s.requestId
+    onProgress?.(conversationId)
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/chat/stream/${generationId}?afterSeq=${afterSeq}`,
+        { headers: apiHeaders(), signal: s.abort.signal },
+      )
+
+      if (response.status === 410) {
+        clearActiveGeneration()
+        target.status = 'interrupted'
+        return
+      }
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+      await consumeSseStream(s, response, thisRequestId, { resume: true })
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        if (target.status === 'streaming') target.status = 'interrupted'
+        return
+      }
+      applyStreamError(s.messages, err)
+      if (target.status === 'streaming') target.status = 'interrupted'
+    } finally {
+      if (thisRequestId === s.requestId) {
+        s.loading = false
+        if (target.status === 'streaming') target.status = 'completed'
+        if (target.status === 'completed') clearActiveGeneration()
+        onSessionEnd?.(conversationId)
       }
     }
   }
@@ -155,9 +385,22 @@ export function useChatSessions(
   function stop(): void {
     const s = activeSession.value
     if (!s) return
+
+    const active = loadActiveGeneration()
+    if (active?.generationId) {
+      fetch(`${API_BASE}/api/generations/${active.generationId}/cancel`, {
+        method: 'POST',
+        headers: apiHeaders(),
+      }).catch(() => { /* fire and forget */ })
+    }
+
     s.requestId++
     s.abort?.abort()
     s.loading = false
+    const last = s.messages[s.messages.length - 1]
+    if (last?.role === 'assistant' && (last.status === 'streaming' || !last.status)) {
+      last.status = 'interrupted'
+    }
   }
 
   function clearSession(): void {
@@ -187,7 +430,7 @@ export function useChatSessions(
 
   return {
     messages, loading, activeContainer,
-    switchTo, ensureActive, send, stop, clearSession,
+    switchTo, ensureActive, send, resume, reconnectStream, stop, clearSession,
     getMessages, setMessages, destroySession,
     mountContainer, unmountContainer, getOrCreate,
   }

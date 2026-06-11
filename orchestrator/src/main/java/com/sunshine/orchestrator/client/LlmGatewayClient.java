@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.conversation.ChatTurn;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +27,12 @@ public class LlmGatewayClient {
     @Value("${agent.model.api-key:}")
     private String apiKey;
 
+    @Value("${agent.model.name:deepseek-v4-pro}")
+    private String modelName;
+
+    @Value("${agent.system-prompt:你是一个智能助手，优先检索知识库回答用户问题。}")
+    private String systemPrompt;
+
     private WebClient webClient;
     private final ObjectMapper om = new ObjectMapper();
 
@@ -37,17 +45,42 @@ public class LlmGatewayClient {
         log.info("[LlmGatewayClient] baseUrl={}", baseUrl);
     }
 
-    /**
-     * 直连 LLM Gateway 流式端点，解析 OpenAI delta 格式，逐 token 返回纯文本
-     */
     public Flux<String> streamDirectly(String userMessage) {
+        return streamWithHistory(List.of(), userMessage);
+    }
+
+    public Flux<String> streamWithHistory(List<ChatTurn> history, String userMessage) {
+        List<Map<String, Object>> messages = buildMessages(history, userMessage, null);
+        return doStream(messages);
+    }
+
+    public Flux<String> streamContinue(List<ChatTurn> history, String userMessage, String partialAssistant) {
+        List<Map<String, Object>> messages = buildMessages(history, userMessage, partialAssistant);
+        return doStream(messages);
+    }
+
+    private List<Map<String, Object>> buildMessages(
+            List<ChatTurn> history, String userMessage, String partialAssistant) {
+        List<Map<String, Object>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", systemPrompt));
+        if (history != null) {
+            for (ChatTurn turn : history) {
+                if ("user".equals(turn.role()) || "assistant".equals(turn.role())) {
+                    messages.add(Map.of("role", turn.role(), "content", turn.content()));
+                }
+            }
+        }
+        messages.add(Map.of("role", "user", "content", userMessage));
+        if (partialAssistant != null && !partialAssistant.isEmpty()) {
+            messages.add(Map.of("role", "assistant", "content", partialAssistant));
+        }
+        return messages;
+    }
+
+    private Flux<String> doStream(List<Map<String, Object>> messages) {
         Map<String, Object> request = Map.of(
-                "model", "deepseek-v4-pro",
-                "messages", List.of(
-                        Map.of("role", "system", "content",
-                                "你是一个智能助手，优先检索知识库回答用户问题。回答简洁准确。"),
-                        Map.of("role", "user", "content", userMessage)
-                ),
+                "model", modelName,
+                "messages", messages,
                 "stream", true
         );
 
@@ -64,27 +97,29 @@ public class LlmGatewayClient {
                 .doOnError(e -> log.error("[LlmGatewayClient] 流式异常: {}", e.getMessage()));
     }
 
-    /**
-     * 从 LLM Gateway SSE 流中提取 delta.content
-     * 兼容单行 data 和多行 SSE 帧格式
-     */
     @SuppressWarnings("unchecked")
-    private reactor.core.publisher.Flux<String> extractDelta(String chunk) {
+    private Flux<String> extractDelta(String chunk) {
         String json = chunk.trim();
-        if (json.isEmpty()) return reactor.core.publisher.Flux.empty();
+        if (json.isEmpty()) {
+            return Flux.empty();
+        }
 
         try {
             Map<String, Object> root = om.readValue(json, Map.class);
             List<Map<String, Object>> choices = (List<Map<String, Object>>) root.get("choices");
-            if (choices == null || choices.isEmpty()) return reactor.core.publisher.Flux.empty();
+            if (choices == null || choices.isEmpty()) {
+                return Flux.empty();
+            }
             Map<String, Object> delta = (Map<String, Object>) choices.get(0).get("delta");
-            if (delta == null) return reactor.core.publisher.Flux.empty();
+            if (delta == null) {
+                return Flux.empty();
+            }
             Object content = delta.get("content");
             if (content instanceof String s && !s.isEmpty()) {
-                return reactor.core.publisher.Flux.just(s);
+                return Flux.just(s);
             }
         } catch (Exception ignored) {
         }
-        return reactor.core.publisher.Flux.empty();
+        return Flux.empty();
     }
 }

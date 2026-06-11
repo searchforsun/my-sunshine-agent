@@ -1,0 +1,116 @@
+package com.sunshine.orchestrator.generation;
+
+import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
+import com.sunshine.orchestrator.conversation.MessageStatus;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+import reactor.core.publisher.Flux;
+
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+
+@ExtendWith(SpringExtension.class)
+@ContextConfiguration(classes = EmbeddedRedisTestConfig.class)
+@EnableConfigurationProperties(GenerationProperties.class)
+class GenerationJobTest {
+
+    private static final String CONVERSATION_ID = "conv-1";
+    private static final String MESSAGE_ID = "msg-1";
+    private static final String USER_ID = "alice";
+    private static final String TENANT_ID = "default";
+    private static final String INTENT = "chat";
+
+    @Autowired
+    private GenerationStreamService streamService;
+
+    @Autowired
+    private StringRedisTemplate redis;
+
+    @Autowired
+    private GenerationProperties properties;
+
+    private GenerationFlushScheduler flushScheduler;
+
+    @DynamicPropertySource
+    static void redisProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.data.redis.host", EmbeddedRedisTestConfig::redisHost);
+        registry.add("spring.data.redis.port", EmbeddedRedisTestConfig::redisPort);
+        registry.add("spring.data.redis.password", () -> "");
+        registry.add("agent.generation.ttl-sec", () -> 3600);
+        registry.add("agent.generation.orphan-timeout-sec", () -> 120);
+        registry.add("agent.generation.max-buffer-chunks", () -> 10000);
+        registry.add("agent.generation.reconnect-block-ms", () -> 100);
+        registry.add("agent.generation.flush-interval-ms", () -> 50);
+    }
+
+    @BeforeEach
+    void setUp() {
+        flushScheduler = mock(GenerationFlushScheduler.class);
+        Set<String> keys = redis.keys("sunshine:gen:*");
+        if (keys != null && !keys.isEmpty()) {
+            redis.delete(keys);
+        }
+    }
+
+    @Test
+    @DisplayName("start 消费 llmFlux → Redis 写入 seq 1,2,3 且 status=COMPLETED")
+    void start_writesChunksAndCompletes() throws Exception {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+
+        GenerationJob job = new GenerationJob(
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT,
+                streamService, properties, flushScheduler);
+
+        StringBuilder buffer = new StringBuilder();
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+
+        job.start(
+                Flux.just("a", "b", "c"),
+                buffer,
+                content -> { },
+                done::countDown,
+                errorRef::set
+        );
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(errorRef.get()).isNull();
+        assertThat(buffer.toString()).isEqualTo("abc");
+
+        List<StreamEvent> events = streamService.readFrom(generationId, 0, 10);
+        assertThat(events).hasSize(3);
+        assertThat(events.get(0).seq()).isEqualTo(1);
+        assertThat(events.get(0).text()).isEqualTo("a");
+        assertThat(events.get(1).seq()).isEqualTo(2);
+        assertThat(events.get(1).text()).isEqualTo("b");
+        assertThat(events.get(2).seq()).isEqualTo(3);
+        assertThat(events.get(2).text()).isEqualTo("c");
+
+        GenerationMeta meta = streamService.getMeta(generationId).orElseThrow();
+        assertThat(meta.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(meta.lastSeq()).isEqualTo(3);
+
+        ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
+        verify(flushScheduler).commitFinal(eq(MESSAGE_ID), contentCaptor.capture(), eq(MessageStatus.COMPLETED));
+        assertThat(contentCaptor.getValue()).isEqualTo("abc");
+    }
+}

@@ -5,6 +5,7 @@ import { StreamBuffer } from './StreamBuffer'
 import { MarkdownStateMachine } from './MarkdownStateMachine'
 import { MermaidRenderer } from './MermaidRenderer'
 import { registerGlobalHandlers } from './globalHandlers'
+import { createToolButton, flashCopied } from './toolIcons'
 import { smoothRender } from './smoothMarkdown'
 import type { RendererConfig, ProcessResult, RenderBlock } from './types'
 import { DEFAULT_CONFIG, RenderState } from './types'
@@ -66,10 +67,12 @@ export class StreamMarkdownRenderer {
     this.commitParagraph()
     this.clearTimers()
     this.renderAllPendingMermaids()
+    this.container.classList.add(CP('stream-done'))
   }
 
   clear(): void {
     this.clearTimers()
+    this.container.classList.remove(CP('stream-done'))
     this.container.innerHTML = ''
     this.blocks = [] ; this.pendingMermaids.clear()
     this.lastBlockEl = null ; this.lastBlockWasGroup = false
@@ -103,7 +106,14 @@ export class StreamMarkdownRenderer {
       const pre = document.createElement('pre')
       const head = document.createElement('div')
       head.className = CP('code-header')
-      head.innerHTML = `<span>${esc(result.lang || 'code')}</span><span class="${CP('code-copy')}" onclick="window.__smd_copyCode(this)" title="复制">◳</span>`
+      const label = document.createElement('span')
+      label.className = CP('code-lang')
+      label.textContent = result.lang || 'code'
+      const tools = document.createElement('div')
+      tools.className = CP('toolbtns')
+      const copyBtn = createToolButton(`${CP('toolbtn')} ${CP('toolbtn-copy')}`, 'copy', '复制')
+      tools.appendChild(copyBtn)
+      head.append(label, tools)
       pre.appendChild(head)
       const code = document.createElement('code')
       if (result.lang) code.className = `hljs language-${result.lang}`
@@ -123,12 +133,11 @@ export class StreamMarkdownRenderer {
     if (result.type === 'code_block_end') {
       if (this.currentCodePre) {
         const lang = this.currentCodeLang; const raw = this.currentCodeRaw
-        const copyBtn = this.currentCodePre.querySelector(`.${CP('code-copy')}`)
+        const copyBtn = this.currentCodePre.querySelector(`.${CP('toolbtn-copy')}`)
         if (copyBtn) {
           copyBtn.addEventListener('click', () => {
             navigator.clipboard.writeText(raw).then(() => {
-              (copyBtn as HTMLElement).textContent = '已复制'
-              setTimeout(() => { (copyBtn as HTMLElement).textContent = '复制' }, 1500)
+              flashCopied(copyBtn as HTMLElement)
             }).catch(() => {})
           })
         }
@@ -173,7 +182,7 @@ export class StreamMarkdownRenderer {
   private renderParagraph(): void {
     if (!this.config.renderMarkdown) return
     const text = this.paraBuf.trim()
-    if (!text) return // 跳过空段落
+    if (!text || isPartialListMarker(text)) return
     const html = smoothRender(text, this.config.renderMarkdown!)
     if (!this.paraEl) {
       this.paraEl = document.createElement('div')
@@ -185,18 +194,17 @@ export class StreamMarkdownRenderer {
 
   /** 提交（清空）段落缓冲区 */
   private commitParagraph(): void {
-    if (this.paraBuf && this.paraEl) {
-      if (this.config.renderMarkdown) {
-        try { this.paraEl.innerHTML = this.config.renderMarkdown(this.paraBuf) } catch {}
-      }
-      // 段落结束后，后续块级元素不应合并到段落元素
+    if (this.paraBuf && !isPartialListMarker(this.paraBuf) && this.paraEl && this.config.renderMarkdown) {
+      try { this.paraEl.innerHTML = this.config.renderMarkdown(this.paraBuf) } catch { /* ignore */ }
       this.lastBlockEl = null
+    } else if (this.paraEl) {
+      this.paraEl.remove()
     }
     this.paraBuf = ''
     this.paraEl = null
   }
 
-  /** 处理缓冲区中未完成的行 —— 加到段落缓冲并平滑渲染 */
+  /** 处理缓冲区中未完成的行 —— 仅预览当前行，不拼接到已落盘 paraBuf */
   private flushPendingParagraph(): void {
     // 代码块/Mermaid 内不处理
     if (this.currentCodePre || this.inMermaidBlock) return
@@ -205,23 +213,38 @@ export class StreamMarkdownRenderer {
     // 跳过块级标记和列表项（等完整行到达后由状态机处理）
     if (/^[\s>#|`~\-*+]/.test(pending)) return
     if (/^(\s*)([-*+]|\d+[.)])\s*/.test(pending)) return
-    // 追加到段落缓冲
-    const combined = this.paraBuf ? this.paraBuf + pending : pending
+    if (isPartialListMarker(pending)) return
     if (!this.config.renderMarkdown) return
-    const html = smoothRender(combined, this.config.renderMarkdown!)
-    if (!html) return
+
+    const renderMd = this.config.renderMarkdown
+    const parts: string[] = []
+
+    if (this.paraBuf && !isPartialListMarker(this.paraBuf)) {
+      parts.push(renderMd(this.paraBuf.trim()))
+    }
+
+    const previewHtml = smoothRender(pending, renderMd)
+    if (previewHtml) parts.push(previewHtml)
+
+    if (parts.length === 0) return
+
     if (!this.paraEl) {
       this.paraEl = document.createElement('div')
       this.paraEl.className = CP('markdown-block')
       this.container.appendChild(this.paraEl)
     }
-    this.paraEl.innerHTML = html
+    this.paraEl.innerHTML = parts.join('')
   }
 
   // ═══════════════════════ 块级元素 ═══════════════════════
 
   private handleBlockElement(block: RenderBlock, replacePrev?: boolean, newGroup?: boolean): void {
-    const html = this.config.renderMarkdown ? this.config.renderMarkdown(block.content) : block.content
+    const renderMd = this.config.renderMarkdown
+    const html = renderMd
+      ? (this.isStreaming && shouldSmoothRenderBlock(block.content)
+        ? smoothRender(block.content, renderMd)
+        : renderMd(block.content))
+      : block.content
     if (newGroup) { this.lastBlockEl = null; this.lastBlockWasGroup = false }
     if (replacePrev && this.lastBlockEl) {
       this.lastBlockEl.innerHTML = html; this.lastBlockWasGroup = true; return
@@ -245,7 +268,10 @@ export class StreamMarkdownRenderer {
     wrap.className = CP('mermaid-wrapper')
     const head = document.createElement('div')
     head.className = CP('mermaid-header')
-    head.textContent = 'mermaid'
+    const label = document.createElement('span')
+    label.className = CP('mermaid-label')
+    label.textContent = 'mermaid'
+    head.appendChild(label)
     wrap.appendChild(head)
     const { el: placeholder } = this.mermaidRenderer.createPlaceholder()
     wrap.appendChild(placeholder)
@@ -273,11 +299,22 @@ export class StreamMarkdownRenderer {
   private buildMermaidUI(wrap: HTMLElement, source: string): void {
     wrap.dataset.mermaidSource = source
     const header = wrap.querySelector(`.${CP('mermaid-header')}`)
-    if (header) {
-      header.innerHTML += `<span class="${CP('mermaid-toolbtns')}">
-        <span class="${CP('mermaid-toolbtn')} smd-toolbtn-toggle" onclick="window.__smd_mermaidToggle(this)" title="源码 / 图表">◫</span>
-        <span class="${CP('mermaid-toolbtn')} smd-toolbtn-zoom" onclick="window.__smd_mermaidZoom(this)" title="全屏">◰</span>
-      </span>`
+    if (header && !header.querySelector(`.${CP('toolbtn-toggle')}`)) {
+      const tools = document.createElement('div')
+      tools.className = CP('toolbtns')
+      tools.appendChild(createToolButton(
+        `${CP('toolbtn')} ${CP('toolbtn-toggle')} smd-toolbtn-toggle`,
+        'source',
+        '源码',
+        'window.__smd_mermaidToggle(this)',
+      ))
+      tools.appendChild(createToolButton(
+        `${CP('toolbtn')} ${CP('toolbtn-zoom')} smd-toolbtn-zoom`,
+        'zoom',
+        '全屏',
+        'window.__smd_mermaidZoom(this)',
+      ))
+      header.appendChild(tools)
     }
   }
 
@@ -305,11 +342,6 @@ export class StreamMarkdownRenderer {
   }
 }
 
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-/** 判断是否为纯段落行（非块级语法） */
 function isParagraphResult(r: ProcessResult): boolean {
   if (r.type !== 'markdown') return false
   if (r.replacePrev || r.newGroup) return false
@@ -318,5 +350,23 @@ function isParagraphResult(r: ProcessResult): boolean {
   if (/^#{1,6}\s/.test(line)) return false
   if (/^(---|\*\*\*|___)/.test(line)) return false
   if (line.startsWith('>') || line.startsWith('|')) return false
+  if (/^(\s*)([-*+]|\d+[.)])\s+/.test(line)) return false
+  return true
+}
+
+/** SSE 分块可能只收到 "1" / "2." 等不完整有序列表前缀，不应作为段落渲染 */
+function isPartialListMarker(s: string): boolean {
+  const t = s.trim()
+  if (!t) return false
+  if (/^\d+\.?\)?$/.test(t)) return true
+  if (/^\d+[.)]\s*$/.test(t)) return true
+  return false
+}
+
+/** 表格 / 列表等块级结构不做 smoothRender，避免 tail 污染整表 */
+function shouldSmoothRenderBlock(content: string): boolean {
+  const t = content.trimStart()
+  if (t.startsWith('|')) return false
+  if (/^(\s*)([-*+]|\d+[.)])\s/.test(t)) return false
   return true
 }

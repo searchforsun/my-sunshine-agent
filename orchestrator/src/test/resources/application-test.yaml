@@ -1,0 +1,52 @@
+# orchestrator 集成测试 — H2 内存库 + Mock LLM（无需 Nacos / MySQL / LLM Gateway）
+
+spring:
+  main:
+    allow-bean-definition-overriding: true
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+  datasource:
+    url: jdbc:h2:mem:sunshine_chat;DB_CLOSE_DELAY=-1;MODE=MySQL;DATABASE_TO_LOWER=TRUE;NON_KEYWORDS=USER
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+agent:
+  system-prompt: test assistant
+  max-iters: 2
+  history:
+    max-messages: 20
+  generation:
+    ttl-sec: 3600
+    orphan-timeout-sec: 120
+    max-buffer-chunks: 10000
+    reconnect-block-ms: 5000
+    flush-interval-ms: 50
+  resume:
+    max-resume-attempts: 3
+  model:
+    base-url: http://localhost:9999/v1
+    name: test-model
+    api-key: test-key
+
+logging:
+  level:
+    com.sunshine: warn
+    org.springframework: warn

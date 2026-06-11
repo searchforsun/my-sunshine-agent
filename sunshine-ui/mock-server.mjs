@@ -5,11 +5,162 @@
  */
 
 import http from 'node:http'
+import { randomUUID } from 'node:crypto'
 
 const PORT = 8001
 
+/** @type {Map<string, { id: string, userId: string, title: string, createdAt: string, updatedAt: string, messages: object[] }>} */
+const conversations = new Map()
+
+/**
+ * @type {Map<string, {
+ *   events: { seq: number, text: string }[],
+ *   status: 'RUNNING' | 'COMPLETED' | 'INTERRUPTED',
+ *   messageId: string,
+ *   conversationId: string,
+ *   userId: string,
+ *   lastSeq: number,
+ *   cancelled: boolean,
+ *   waiters: (() => void)[],
+ * }>}
+ */
+const generations = new Map()
+
+function nowIso() {
+  return new Date().toISOString()
+}
+
+function newId() {
+  return randomUUID().replace(/-/g, '')
+}
+
+function getUserId(req) {
+  return req.headers['x-user-id'] || 'anonymous'
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let body = ''
+    req.on('data', c => { body += c })
+    req.on('end', () => resolve(body))
+  })
+}
+
+function json(res, status, data) {
+  res.writeHead(status, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify(data))
+}
+
+function listForUser(userId) {
+  return [...conversations.values()]
+    .filter(c => c.userId === userId)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .map(({ messages, userId: _u, ...rest }) => rest)
+}
+
+function getOwned(id, userId) {
+  const c = conversations.get(id)
+  if (!c || c.userId !== userId) return null
+  return c
+}
+
+function getOwnedGeneration(id, userId) {
+  const g = generations.get(id)
+  if (!g || g.userId !== userId) return null
+  return g
+}
+
+function notifyGenerationWaiters(gen) {
+  const waiters = gen.waiters.splice(0)
+  for (const w of waiters) w()
+}
+
+function waitForGenerationEvent(gen, timeoutMs = 500) {
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, timeoutMs)
+    gen.waiters.push(() => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
+}
+
+async function emitGenerationChunks(generationId, tokens, res, assistantMsg, conv) {
+  const gen = generations.get(generationId)
+  if (!gen) return
+
+  let clientConnected = true
+  res.on('close', () => { clientConnected = false })
+
+  for (const token of tokens) {
+    if (gen.cancelled) break
+
+    const seq = gen.lastSeq + 1
+    gen.events.push({ seq, text: token })
+    gen.lastSeq = seq
+    assistantMsg.content += token
+    notifyGenerationWaiters(gen)
+
+    if (clientConnected && !res.writableEnded) {
+      writeSSEEvent(res, seq, token)
+    }
+
+    await sleep(15 + Math.random() * 20)
+  }
+
+  conv.updatedAt = nowIso()
+
+  if (gen.cancelled) {
+    gen.status = 'INTERRUPTED'
+    assistantMsg.status = 'interrupted'
+    notifyGenerationWaiters(gen)
+    if (clientConnected && !res.writableEnded) {
+      writeSSEEvent(res, 'meta-done', JSON.stringify({ type: 'message', id: assistantMsg.id, status: 'interrupted' }))
+      res.end()
+    }
+    return
+  }
+
+  gen.status = 'COMPLETED'
+  assistantMsg.status = 'completed'
+  notifyGenerationWaiters(gen)
+
+  if (clientConnected && !res.writableEnded) {
+    writeSSEEvent(res, 'meta-done', JSON.stringify({ type: 'message', id: assistantMsg.id, status: 'completed' }))
+    writeSSEEvent(res, 'done9999', '[DONE]')
+    res.end()
+  }
+  console.log(`[Mock] generation 完成 id=${generationId} seq=${gen.lastSeq}`)
+}
+
+async function replayGenerationStream(gen, res, afterSeq) {
+  let cursor = afterSeq
+
+  while (true) {
+    if (gen.status === 'INTERRUPTED') {
+      if (!res.writableEnded) res.end()
+      return
+    }
+
+    const pending = gen.events.filter(e => e.seq > cursor)
+    for (const e of pending) {
+      writeSSEEvent(res, e.seq, e.text)
+      cursor = e.seq
+    }
+
+    if (gen.status === 'COMPLETED') {
+      writeSSEEvent(res, 'meta-done', JSON.stringify({ type: 'message', id: gen.messageId, status: 'completed' }))
+      writeSSEEvent(res, 'done9999', '[DONE]')
+      res.end()
+      return
+    }
+
+    await waitForGenerationEvent(gen)
+  }
+}
+
 // 测试内容：覆盖所有常见 Markdown 特性
-const TEST_CONTENT = `## 📝 Markdown 流式渲染测试
+const TEST_CONTENT = `## Markdown 流式渲染测试
 
 > 本测试覆盖加粗、斜体、代码块、表格、列表、引用、链接、分割线等全部常用语法。
 
@@ -55,7 +206,7 @@ ORDER BY order_count DESC;
 | BFF | 8001 | Spring WebFlux + SSE | ✅ |
 | Orchestrator | 8200 | AgentScope + Reactor | ✅ |
 | LLM Gateway | 8300 | DeepSeek / Qwen 适配 | ✅ |
-| RAG Service | 8400 | Milvus + 通义 Embedding | 🔶 |
+| RAG Service | 8400 | Milvus + 通义 Embedding | ✅ |
 
 ### 4. 无序列表与多层嵌套
 
@@ -170,9 +321,8 @@ function writeSSEEvent(res, id, data) {
 }
 
 const server = http.createServer(async (req, res) => {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-user-id, x-tenant-id')
 
   if (req.method === 'OPTIONS') {
@@ -181,54 +331,240 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (req.method === 'POST' && req.url === '/api/chat/stream') {
-    // 读取请求体
-    let body = ''
-    for await (const chunk of req) {
-      body += chunk
-    }
-    console.log(`[Mock] 收到请求: ${body.substring(0, 100)}...`)
+  const userId = getUserId(req)
+  const url = req.url || ''
 
-    // SSE headers
+  // ── 会话 CRUD ──
+  if (req.method === 'GET' && url === '/api/conversations') {
+    return json(res, 200, listForUser(userId))
+  }
+
+  if (req.method === 'POST' && url === '/api/conversations') {
+    const id = newId()
+    const ts = nowIso()
+    const conv = { id, userId, title: '新对话', createdAt: ts, updatedAt: ts, messages: [] }
+    conversations.set(id, conv)
+    return json(res, 200, { id, title: conv.title, createdAt: ts, updatedAt: ts })
+  }
+
+  const detailMatch = url.match(/^\/api\/conversations\/([^/?]+)$/)
+  if (detailMatch) {
+    const id = detailMatch[1]
+    const conv = getOwned(id, userId)
+
+    if (req.method === 'GET') {
+      if (!conv) return json(res, 404, { error: 'not found' })
+      return json(res, 200, {
+        id: conv.id,
+        title: conv.title,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+        messages: conv.messages,
+      })
+    }
+
+    if (req.method === 'PATCH') {
+      if (!conv) return json(res, 404, { error: 'not found' })
+      const body = JSON.parse(await readBody(req) || '{}')
+      if (body.title) conv.title = body.title
+      conv.updatedAt = nowIso()
+      return json(res, 200, { id: conv.id, title: conv.title, createdAt: conv.createdAt, updatedAt: conv.updatedAt })
+    }
+
+    if (req.method === 'DELETE') {
+      if (!conv) return json(res, 404, { error: 'not found' })
+      conversations.delete(id)
+      res.writeHead(204)
+      res.end()
+      return
+    }
+  }
+
+  // ── Generation status / cancel ──
+  const genApiMatch = url.match(/^\/api\/generations\/([^/?]+)(?:\/(cancel))?$/)
+  if (genApiMatch) {
+    const generationId = genApiMatch[1]
+    const isCancel = genApiMatch[2] === 'cancel'
+    const gen = getOwnedGeneration(generationId, userId)
+
+    if (!gen) return json(res, 404, { error: 'not found' })
+
+    if (req.method === 'GET' && !isCancel) {
+      if (gen.status === 'INTERRUPTED') {
+        return json(res, 410, {
+          status: gen.status,
+          lastSeq: gen.lastSeq,
+          messageId: gen.messageId,
+          conversationId: gen.conversationId,
+          generationId,
+        })
+      }
+      return json(res, 200, {
+        status: gen.status,
+        lastSeq: gen.lastSeq,
+        messageId: gen.messageId,
+        conversationId: gen.conversationId,
+        generationId,
+      })
+    }
+
+    if (req.method === 'POST' && isCancel) {
+      gen.cancelled = true
+      gen.status = 'INTERRUPTED'
+      notifyGenerationWaiters(gen)
+      const conv = conversations.get(gen.conversationId)
+      const msg = conv?.messages.find(m => m.id === gen.messageId)
+      if (msg) msg.status = 'interrupted'
+      console.log(`[Mock] generation 已取消 id=${generationId}`)
+      return json(res, 200, { status: 'INTERRUPTED' })
+    }
+  }
+
+  // ── Generation reconnect SSE ──
+  const reconnectMatch = url.match(/^\/api\/chat\/stream\/([^/?]+)(?:\?.*)?$/)
+  if (req.method === 'GET' && reconnectMatch) {
+    const generationId = reconnectMatch[1]
+    const afterSeq = parseInt(new URL(url, 'http://localhost').searchParams.get('afterSeq') || '0', 10)
+    const gen = getOwnedGeneration(generationId, userId)
+
+    if (!gen) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end('Generation not found')
+      return
+    }
+
+    if (gen.status === 'INTERRUPTED') {
+      res.writeHead(410, { 'Content-Type': 'text/plain' })
+      res.end('Generation interrupted')
+      return
+    }
+
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',  // 禁用 nginx 缓冲
+      'X-Accel-Buffering': 'no',
     })
-    // 立即刷新 headers 和禁用 Nagle 算法
-    res.flushHeaders()
+    res.flushHeaders?.()
     if (res.socket) res.socket.setNoDelay(true)
 
-    // 按 token 粒度切分（模拟逐 token 输出）
-    const tokens = tokenize(TEST_CONTENT)
-    console.log(`[Mock] 共 ${tokens.length} 个 token，开始流式输出...`)
-
-    let counter = 0
-    for (const token of tokens) {
-      const id = String(counter++).padStart(8, '0')
-      writeSSEEvent(res, id, token)
-
-      // 模拟延迟：15-35ms，接近真实 LLM 逐 token 输出节奏
-      await sleep(15 + Math.random() * 20)
-    }
-
-    // 发送结束标记
-    writeSSEEvent(res, 'done9999', '[DONE]')
-    res.end()
-    console.log(`[Mock] 流式完成，共 ${counter} 个 token`)
+    console.log(`[Mock] 重连 generation=${generationId} afterSeq=${afterSeq} status=${gen.status}`)
+    await replayGenerationStream(gen, res, afterSeq)
     return
   }
 
-  // 其他请求返回 404
+  if (req.method === 'POST' && url === '/api/chat/stream') {
+    const body = await readBody(req)
+    console.log(`[Mock] 收到请求: ${body.substring(0, 120)}...`)
+    const payload = JSON.parse(body || '{}')
+
+    let conv = payload.conversationId ? getOwned(payload.conversationId, userId) : null
+    if (!conv && payload.conversationId) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end('Conversation not found')
+      return
+    }
+    if (!conv) {
+      const id = newId()
+      const ts = nowIso()
+      conv = { id, userId, title: '新对话', createdAt: ts, updatedAt: ts, messages: [] }
+      conversations.set(id, conv)
+    }
+
+    const isResume = !!payload.resumeMessageId
+    let assistantMsg
+
+    if (isResume) {
+      assistantMsg = conv.messages.find(m => m.id === payload.resumeMessageId)
+      if (!assistantMsg) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' })
+        res.end('Message not found')
+        return
+      }
+      assistantMsg.status = 'streaming'
+    } else {
+      conv.messages.push({ id: newId(), role: 'user', content: payload.content, status: 'completed', seq: conv.messages.length + 1, createdAt: nowIso() })
+      assistantMsg = { id: newId(), role: 'assistant', content: '', status: 'streaming', intent: 'simple', seq: conv.messages.length + 1, createdAt: nowIso() }
+      conv.messages.push(assistantMsg)
+      if (conv.title === '新对话' && payload.content) {
+        conv.title = payload.content.length > 28 ? payload.content.slice(0, 28) : payload.content
+      }
+    }
+    conv.updatedAt = nowIso()
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    })
+    res.flushHeaders?.()
+    if (res.socket) res.socket.setNoDelay(true)
+
+    writeSSEEvent(res, 'meta0', JSON.stringify({ type: 'conversation', id: conv.id }))
+    writeSSEEvent(res, 'meta1', JSON.stringify({ type: 'message', id: assistantMsg.id, status: 'streaming', resume: isResume }))
+
+    if (isResume) {
+      const suffix = '\n\n--- 续传内容 ---'
+      const tokens = tokenize(suffix)
+      console.log(`[Mock] 续传 conv=${conv.id} tokens=${tokens.length}`)
+
+      let counter = 2
+      for (const token of tokens) {
+        writeSSEEvent(res, String(counter++).padStart(8, '0'), token)
+        await sleep(15 + Math.random() * 20)
+      }
+
+      assistantMsg.content += suffix
+      assistantMsg.status = 'completed'
+      conv.updatedAt = nowIso()
+
+      writeSSEEvent(res, 'meta-done', JSON.stringify({ type: 'message', id: assistantMsg.id, status: 'completed' }))
+      writeSSEEvent(res, 'done9999', '[DONE]')
+      res.end()
+      console.log(`[Mock] 续传完成`)
+      return
+    }
+
+    const generationId = newId()
+    generations.set(generationId, {
+      events: [],
+      status: 'RUNNING',
+      messageId: assistantMsg.id,
+      conversationId: conv.id,
+      userId,
+      lastSeq: 0,
+      cancelled: false,
+      waiters: [],
+    })
+
+    writeSSEEvent(res, 'meta2', JSON.stringify({
+      type: 'generation',
+      id: generationId,
+      messageId: assistantMsg.id,
+      seq: 0,
+    }))
+
+    const tokens = tokenize(TEST_CONTENT)
+    console.log(`[Mock] 新消息 conv=${conv.id} generation=${generationId} tokens=${tokens.length}`)
+
+    emitGenerationChunks(generationId, tokens, res, assistantMsg, conv).catch(err => {
+      console.error(`[Mock] generation 异常 id=${generationId}`, err)
+    })
+    return
+  }
+
   res.writeHead(404, { 'Content-Type': 'text/plain' })
   res.end('Not Found')
 })
 
 server.listen(PORT, () => {
   console.log(`\n🎭 Mock SSE Server 已启动: http://localhost:${PORT}`)
-  console.log(`   端点: POST http://localhost:${PORT}/api/chat/stream`)
-  console.log(`   前端 npm run dev 后直接对话即可测试\n`)
+  console.log(`   CRUD: GET/POST/PATCH/DELETE /api/conversations`)
+  console.log(`   流式: POST /api/chat/stream`)
+  console.log(`   重连: GET /api/chat/stream/:generationId?afterSeq=N`)
+  console.log(`   状态: GET /api/generations/:id  |  取消: POST /api/generations/:id/cancel`)
+  console.log(`   前端 npm run dev 后直接对话即可测试（F5 可演示无感重连）\n`)
 })
 
 /**

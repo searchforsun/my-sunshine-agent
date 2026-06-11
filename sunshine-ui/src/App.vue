@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { darkTheme, NConfigProvider, NGlobalStyle, type GlobalThemeOverrides } from 'naive-ui'
+import { darkTheme, NConfigProvider, NDialogProvider, NGlobalStyle, type GlobalThemeOverrides } from 'naive-ui'
 import MainLayout from './layouts/MainLayout.vue'
-import { useTheme } from './composables/useTheme'
+import { theme } from './composables/useTheme'
 
-const { theme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const naiveTheme = computed(() => isDark.value ? darkTheme : null)
 
@@ -21,27 +20,50 @@ const darkOverrides: GlobalThemeOverrides = {
     inputColor: '#111827',
     borderColor: '#263348',
     dividerColor: '#263348',
+    textColor1: '#e2e8f0',
+    textColor2: '#94a3b8',
+    textColor3: '#64748b',
+    hoverColor: '#1f2b3d',
   },
   Layout: {
-    siderColor: 'rgba(17, 24, 39, 0.85)',
+    siderColor: 'transparent',
     siderBorderColor: '#263348',
+    color: '#090d14',
   },
   Menu: {
     itemTextColor: '#94a3b8',
     itemColorActive: 'rgba(245, 158, 11, 0.12)',
-    itemTextColorActive: '#f59e0b',
+    itemTextColorActive: '#fbbf24',
     itemColorActiveHover: 'rgba(245, 158, 11, 0.18)',
+    itemColorHover: '#1f2b3d',
   },
   Button: {
     colorPrimary: '#f59e0b',
     colorHoverPrimary: '#fbbf24',
     colorPressedPrimary: '#d97706',
     textColorPrimary: '#0f1722',
+    borderRadiusMedium: '10px',
+    borderRadiusSmall: '8px',
+    colorError: '#dc2626',
+    colorHoverError: '#ef4444',
+    colorPressedError: '#b91c1c',
+    textColorError: '#ffffff',
+  },
+  Dialog: {
+    borderRadius: '14px',
+    titleFontSize: '16px',
+    titleFontWeight: '600',
+    padding: '22px 24px 18px',
+    contentMargin: '10px 0 0 0',
+    iconSize: '22px',
   },
   Input: {
     border: '1px solid #263348',
     borderFocus: '1px solid #f59e0b',
     borderHover: '1px solid #334155',
+    color: '#e2e8f0',
+    colorFocus: '#e2e8f0',
+    placeholderColor: '#64748b',
   },
   Card: {
     borderColor: '#263348',
@@ -66,27 +88,50 @@ const lightOverrides: GlobalThemeOverrides = {
     inputColor: '#f1f5f9',
     borderColor: '#e2e8f0',
     dividerColor: '#e2e8f0',
+    textColor1: '#0f172a',
+    textColor2: '#475569',
+    textColor3: '#94a3b8',
+    hoverColor: '#f8fafc',
   },
   Layout: {
-    siderColor: 'rgba(255, 255, 255, 0.95)',
+    siderColor: 'transparent',
     siderBorderColor: '#e2e8f0',
+    color: '#f8fafc',
   },
   Menu: {
     itemTextColor: '#64748b',
     itemColorActive: 'rgba(245, 158, 11, 0.1)',
     itemTextColorActive: '#d97706',
     itemColorActiveHover: 'rgba(245, 158, 11, 0.15)',
+    itemColorHover: '#f8fafc',
   },
   Button: {
     colorPrimary: '#f59e0b',
     colorHoverPrimary: '#fbbf24',
     colorPressedPrimary: '#d97706',
     textColorPrimary: '#ffffff',
+    borderRadiusMedium: '10px',
+    borderRadiusSmall: '8px',
+    colorError: '#dc2626',
+    colorHoverError: '#ef4444',
+    colorPressedError: '#b91c1c',
+    textColorError: '#ffffff',
+  },
+  Dialog: {
+    borderRadius: '14px',
+    titleFontSize: '16px',
+    titleFontWeight: '600',
+    padding: '22px 24px 18px',
+    contentMargin: '10px 0 0 0',
+    iconSize: '22px',
   },
   Input: {
     border: '1px solid #e2e8f0',
     borderFocus: '1px solid #f59e0b',
     borderHover: '1px solid #cbd5e1',
+    color: '#0f172a',
+    colorFocus: '#0f172a',
+    placeholderColor: '#94a3b8',
   },
   Card: {
     borderColor: '#e2e8f0',
@@ -103,7 +148,9 @@ const themeOverrides = computed(() => isDark.value ? darkOverrides : lightOverri
 
 <template>
   <NConfigProvider :theme="naiveTheme" :theme-overrides="themeOverrides">
-    <NGlobalStyle />
-    <MainLayout />
+    <NDialogProvider>
+      <NGlobalStyle />
+      <MainLayout />
+    </NDialogProvider>
   </NConfigProvider>
 </template>

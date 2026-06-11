@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG } from './types'
 
 // 确保全局 onclick 处理器已注册
 import { registerGlobalHandlers } from './globalHandlers'
+import { createToolButton } from './toolIcons'
 
 registerGlobalHandlers()
 
@@ -13,10 +14,6 @@ const CP = (s: string) => `${DEFAULT_CONFIG.classPrefix}${s}`
 
 // 共享实例，保证 mermaid 图表 ID 全局唯一
 const sharedMermaidRenderer = new MermaidRenderer()
-
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
 
 /** 为静态渲染的 .msg-md 容器补充代码块头部和 Mermaid 渲染 */
 export function enhanceStaticMarkdown(container: HTMLElement): void {
@@ -47,7 +44,18 @@ export function enhanceStaticMarkdown(container: HTMLElement): void {
 function enhanceCodeBlock(pre: HTMLElement, lang: string, _raw: string): void {
   const head = document.createElement('div')
   head.className = CP('code-header')
-  head.innerHTML = `<span>${esc(lang || 'code')}</span><span class="${CP('code-copy')}" onclick="window.__smd_copyCode(this)" title="复制">◳</span>`
+  const label = document.createElement('span')
+  label.className = CP('code-lang')
+  label.textContent = lang || 'code'
+  const tools = document.createElement('div')
+  tools.className = CP('toolbtns')
+  tools.appendChild(createToolButton(
+    `${CP('toolbtn')} ${CP('toolbtn-copy')}`,
+    'copy',
+    '复制',
+    'window.__smd_copyCode(this)',
+  ))
+  head.append(label, tools)
   pre.insertBefore(head, pre.firstChild)
 }
 
@@ -58,7 +66,10 @@ function enhanceMermaidBlock(pre: HTMLElement, source: string): void {
 
   const head = document.createElement('div')
   head.className = CP('mermaid-header')
-  head.textContent = 'mermaid'
+  const label = document.createElement('span')
+  label.className = CP('mermaid-label')
+  label.textContent = 'mermaid'
+  head.appendChild(label)
 
   const { el: placeholder } = sharedMermaidRenderer.createPlaceholder()
   wrap.appendChild(head)
@@ -75,11 +86,22 @@ function renderMermaidChart(wrap: HTMLElement, head: HTMLElement, placeholder: H
   sharedMermaidRenderer.render(placeholder.id, source, placeholder).then((ok) => {
     if (ok) {
       // 避免重复添加按钮
-      if (!head.querySelector('.smd-toolbtn-toggle')) {
-        head.innerHTML += `<span class="${CP('mermaid-toolbtns')}">
-          <span class="${CP('mermaid-toolbtn')} smd-toolbtn-toggle" onclick="window.__smd_mermaidToggle(this)" title="源码 / 图表">◫</span>
-          <span class="${CP('mermaid-toolbtn')} smd-toolbtn-zoom" onclick="window.__smd_mermaidZoom(this)" title="全屏">◰</span>
-        </span>`
+      if (!head.querySelector(`.${CP('toolbtn-toggle')}`)) {
+        const tools = document.createElement('div')
+        tools.className = CP('toolbtns')
+        tools.appendChild(createToolButton(
+          `${CP('toolbtn')} ${CP('toolbtn-toggle')} smd-toolbtn-toggle`,
+          'source',
+          '源码',
+          'window.__smd_mermaidToggle(this)',
+        ))
+        tools.appendChild(createToolButton(
+          `${CP('toolbtn')} ${CP('toolbtn-zoom')} smd-toolbtn-zoom`,
+          'zoom',
+          '全屏',
+          'window.__smd_mermaidZoom(this)',
+        ))
+        head.appendChild(tools)
       }
     }
   })

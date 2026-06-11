@@ -1,11 +1,15 @@
 import { ref, type Ref } from 'vue'
+import { applyStreamError } from './streamError'
 
 // 直连 BFF，不经过 Vite proxy（proxy 会缓冲 SSE 流式响应）
 const API_BASE = 'http://localhost:8001'
 
 export interface ChatMessage {
+  id?: string
   role: 'user' | 'assistant'
   content: string
+  status?: 'streaming' | 'interrupted' | 'failed' | 'completed'
+  intent?: string
 }
 
 export function useChat(onChunk?: (data: string) => void) {
@@ -92,11 +96,8 @@ export function useChat(onChunk?: (data: string) => void) {
           await new Promise(r => setTimeout(r, 0))
         }
       }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        const lastMsg = messages.value[messages.value.length - 1]
-        if (lastMsg) lastMsg.content = `请求失败: ${err.message}`
-      }
+    } catch (err: unknown) {
+      applyStreamError(messages.value, err)
     } finally {
       if (thisRequestId === requestId) {
         loading.value = false
