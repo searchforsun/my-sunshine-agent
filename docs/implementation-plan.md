@@ -50,7 +50,7 @@ my-sunshine-agent/
 
 | 任务 | 产出 | 状态 |
 |------|------|:--:|
-| 中间件部署 | 服务器 8.140.48.6 部署 Nacos/Redis/MySQL/Milvus/RocketMQ/SkyWalking 等 | ✅ |
+| 中间件部署 | 服务器 ecs4c16g 部署 Nacos/Redis/MySQL/Milvus/RocketMQ/SkyWalking 等 | ✅ |
 | 项目骨架 | Maven 多模块 + 11 服务 + 公共模块 | ✅ |
 | 前端骨架 | Vue3 + Naive UI + Vite + TypeScript | ✅ |
 
@@ -200,7 +200,7 @@ my-sunshine-agent/
 
 ---
 
-### 服务器中间件（8.140.48.6）
+### 服务器中间件（ecs4c16g）
 
 | 组件 | 端口 | 凭据 |
 |------|------|------|

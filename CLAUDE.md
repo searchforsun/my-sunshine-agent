@@ -73,7 +73,7 @@ Browser (:5173) → BFF (:8001) → Orchestrator (:8200) → LLM Gateway (:8300)
 
 ## Server Infrastructure
 
-所有中间件部署在远程服务器 `8.140.48.6`（Docker 网络 `middleware-docker_smt-net`）：
+所有中间件部署在远程服务器 `ecs4c16g`（Docker 网络 `middleware-docker_smt-net`）：
 
 | 组件 | 端口 | 凭据 |
 |------|------|------|

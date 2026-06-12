@@ -110,7 +110,7 @@ spring.cloud.gateway.routes:
   ```
   -javaagent:docker/skywalking/agent/skywalking-agent.jar
   -Dskywalking.agent.service_name=sunshine-{service-name}
-  -Dskywalking.collector.backend_service=8.140.48.6:11800
+  -Dskywalking.collector.backend_service=ecs4c16g:11800
   ```
 
 ### D3：集成测试
@@ -129,7 +129,7 @@ curl http://localhost:8000/api/chat/stream -H "x-user-id:test" -d '{"content":"h
 # 预期：200 + SSE 流
 
 # SkyWalking
-# 打开 http://8.140.48.6:8084 → 拓扑图可见 sunshine-bff → sunshine-orchestrator → sunshine-llm-gateway
+# 打开 http://ecs4c16g:8084 → 拓扑图可见 sunshine-bff → sunshine-orchestrator → sunshine-llm-gateway
 
 # 测试
 mvn test -pl orchestrator -am

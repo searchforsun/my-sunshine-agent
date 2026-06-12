@@ -62,7 +62,7 @@ my-sunshine-agent/
 - JDK 21
 - Maven 3.9+
 - Node.js 22+
-- 服务器中间件已部署（8.140.48.6）
+- 服务器中间件已部署（ecs4c16g）
 
 ### 2. 编译
 

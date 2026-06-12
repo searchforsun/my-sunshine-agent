@@ -597,11 +597,11 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: 8.140.48.6:8848
+        server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
       config:
-        server-addr: 8.140.48.6:8848
+        server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
         import-check:
@@ -622,11 +622,11 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: 8.140.48.6:8848
+        server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
       config:
-        server-addr: 8.140.48.6:8848
+        server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
         import-check:
@@ -678,11 +678,11 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: 8.140.48.6:8848
+        server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
       config:
-        server-addr: 8.140.48.6:8848
+        server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
         import-check:
@@ -704,7 +704,7 @@ spring:
             - Path=/v1/**
   sentinel:
     transport:
-      dashboard: 8.140.48.6:8858
+      dashboard: ecs4c16g:8858
 
 logging:
   level:
@@ -915,7 +915,7 @@ git commit -m "test: add ChatIntegrationTest for end-to-end SSE streaming valida
 
 ## 附录：Nacos Console 配置示例
 
-在 Nacos Console (`http://8.140.48.6:8848/nacos`) 中创建配置：
+在 Nacos Console (`http://ecs4c16g:8848/nacos`) 中创建配置：
 
 - **Data ID**: `sunshine-orchestrator.yaml`
 - **Group**: `DEFAULT_GROUP`

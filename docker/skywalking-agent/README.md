@@ -17,5 +17,5 @@ cp skywalking-agent/skywalking-agent.jar ./
 ## 版本
 
 - **Agent**: 9.7.0（匹配服务器 OAP 版本）
-- **OAP Backend**: 8.140.48.6:11800
-- **UI**: http://8.140.48.6:8084
+- **OAP Backend**: ecs4c16g:11800
+- **UI**: http://ecs4c16g:8084

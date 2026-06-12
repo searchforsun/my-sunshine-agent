@@ -5,7 +5,7 @@ set -e
 
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
 SW_AGENT="$PROJ/docker/skywalking-agent/skywalking-agent.jar"
-SW_OAP="8.140.48.6:11800"
+SW_OAP="ecs4c16g:11800"
 JAVA="java"
 
 # JDK 21 优先

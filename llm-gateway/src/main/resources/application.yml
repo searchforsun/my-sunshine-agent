@@ -13,11 +13,11 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: 8.140.48.6:8848
+        server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
       config:
-        server-addr: 8.140.48.6:8848
+        server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
         import-check:

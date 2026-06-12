@@ -8,7 +8,7 @@ server:
 spring:
   data:
     redis:
-      host: 8.140.48.6
+      host: ecs4c16g
       port: 6379
       password: redis123
 

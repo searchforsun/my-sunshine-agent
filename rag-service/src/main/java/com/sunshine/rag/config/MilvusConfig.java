@@ -14,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MilvusConfig {
 
-    @Value("${milvus.host:8.140.48.6}")
+    @Value("${milvus.host:ecs4c16g}")
     private String host;
 
     @Value("${milvus.port:19530}")
