@@ -1,7 +1,10 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.testsupport.EmbeddedRedisTestConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,9 +26,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = EmbeddedRedisTestConfig.class)
@@ -64,6 +69,12 @@ class GenerationJobTest {
     @BeforeEach
     void setUp() {
         flushScheduler = mock(GenerationFlushScheduler.class);
+        when(flushScheduler.metaReasoning(anyString()))
+                .thenAnswer(inv -> "{\"type\":\"reasoning\",\"text\":\"" + inv.getArgument(0) + "\"}");
+        when(flushScheduler.metaContent(anyString()))
+                .thenAnswer(inv -> "{\"type\":\"content\",\"text\":\"" + inv.getArgument(0) + "\"}");
+        when(flushScheduler.metaStep(org.mockito.ArgumentMatchers.any()))
+                .thenReturn("{\"type\":\"step\"}");
         Set<String> keys = redis.keys("sunshine:gen:*");
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
@@ -85,7 +96,7 @@ class GenerationJobTest {
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
 
         job.start(
-                Flux.just("a", "b", "c"),
+                Flux.just(StreamToken.content("a"), StreamToken.content("b"), StreamToken.content("c")),
                 buffer,
                 content -> { },
                 done::countDown,
@@ -99,18 +110,87 @@ class GenerationJobTest {
         List<StreamEvent> events = streamService.readFrom(generationId, 0, 10);
         assertThat(events).hasSize(3);
         assertThat(events.get(0).seq()).isEqualTo(1);
-        assertThat(events.get(0).text()).isEqualTo("a");
+        assertThat(events.get(0).text()).isEqualTo("{\"type\":\"content\",\"text\":\"a\"}");
         assertThat(events.get(1).seq()).isEqualTo(2);
-        assertThat(events.get(1).text()).isEqualTo("b");
+        assertThat(events.get(1).text()).isEqualTo("{\"type\":\"content\",\"text\":\"b\"}");
         assertThat(events.get(2).seq()).isEqualTo(3);
-        assertThat(events.get(2).text()).isEqualTo("c");
+        assertThat(events.get(2).text()).isEqualTo("{\"type\":\"content\",\"text\":\"c\"}");
 
         GenerationMeta meta = streamService.getMeta(generationId).orElseThrow();
         assertThat(meta.status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(meta.lastSeq()).isEqualTo(3);
 
         ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
-        verify(flushScheduler).commitFinal(eq(MESSAGE_ID), contentCaptor.capture(), eq(MessageStatus.COMPLETED));
+        verify(flushScheduler).commitFinal(eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), eq(null));
         assertThat(contentCaptor.getValue()).isEqualTo("abc");
+    }
+
+    @Test
+    @DisplayName("reasoning token 写入 Redis 并在 commitFinal 时落库")
+    void start_persistsReasoningOnComplete() throws Exception {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+
+        GenerationJob job = new GenerationJob(
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT,
+                streamService, properties, flushScheduler);
+
+        StringBuilder buffer = new StringBuilder();
+        CountDownLatch done = new CountDownLatch(1);
+
+        job.start(
+                Flux.just(StreamToken.reasoning("think"), StreamToken.content("ok")),
+                buffer,
+                content -> { },
+                done::countDown,
+                error -> { }
+        );
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(buffer.toString()).isEqualTo("ok");
+
+        ArgumentCaptor<String> reasoningCaptor = ArgumentCaptor.forClass(String.class);
+        verify(flushScheduler).commitFinal(
+                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), eq(null));
+        assertThat(reasoningCaptor.getValue()).isEqualTo("think");
+    }
+
+    @Test
+    @DisplayName("step token 在 commitFinal 时落库为 steps JSON")
+    void start_persistsStepsOnComplete() throws Exception {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+
+        GenerationJob job = new GenerationJob(
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT,
+                streamService, properties, flushScheduler);
+
+        StringBuilder buffer = new StringBuilder();
+        CountDownLatch done = new CountDownLatch(1);
+
+        var session = com.sunshine.orchestrator.processing.ProcessingTimelineSupport.newSession();
+        session.pending("intent", "intent");
+        session.start("intent", "intent");
+        session.complete("intent", "简单对话");
+        ProcessingStep intentDone = session.snapshot().get(0);
+
+        job.start(
+                Flux.just(
+                        StreamToken.step(intentDone),
+                        StreamToken.content("ok")),
+                buffer,
+                content -> { },
+                done::countDown,
+                error -> { }
+        );
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+
+        ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
+        verify(flushScheduler).commitFinal(
+                eq(MESSAGE_ID), eq("ok"), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture());
+        String stepsJson = stepsCaptor.getValue();
+        assertThat(stepsJson).contains("识别意图").contains("简单对话");
+        assertThat(stepsJson).contains("lifecycle").contains("summary");
     }
 }

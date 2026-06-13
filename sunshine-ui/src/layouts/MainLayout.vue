@@ -43,8 +43,10 @@ function handleNewChat() {
 }
 
 function handleSwitchConversation(id: string) {
-  chatStore.switchTo(id)
-  if (route.name !== 'chat') router.push('/chat')
+  void (async () => {
+    await chatStore.switchTo(id)
+    if (route.name !== 'chat') router.push('/chat')
+  })()
 }
 
 function handleDeleteConversation(id: string) {
@@ -405,12 +407,13 @@ onMounted(() => {
 
 .history-item:hover { background: var(--sun-surface-hover); }
 .history-item.active { background: var(--sun-amber-glow); }
-.history-item.active .history-item-title { color: var(--sun-amber-light); font-weight: 500; }
+.history-item.active .history-item-title { color: var(--sun-amber-light); }
 
 .history-item-title {
   flex: 1;
   min-width: 0;
   font-size: 13px;
+  font-weight: 500;
   color: var(--sun-text-secondary);
   white-space: nowrap;
   overflow: hidden;

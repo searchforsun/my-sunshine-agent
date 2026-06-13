@@ -31,6 +31,13 @@ public class ChatMessageEntity {
     @Column(nullable = false, columnDefinition = "MEDIUMTEXT")
     private String content;
 
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String reasoning;
+
+    /** 处理流水线步骤 JSON 数组 */
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String steps;
+
     @Column(nullable = false, length = 16)
     private String status = "completed";
 

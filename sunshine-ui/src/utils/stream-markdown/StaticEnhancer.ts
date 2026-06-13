@@ -35,7 +35,7 @@ export function enhanceStaticMarkdown(container: HTMLElement): void {
 
     if (lang === 'mermaid') {
       enhanceMermaidBlock(pre, raw)
-    } else if (lang || cls.includes('hljs')) {
+    } else {
       enhanceCodeBlock(pre, lang, raw)
     }
   }

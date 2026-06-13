@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -44,7 +45,15 @@ public class GenerationFlushScheduler {
     }
 
     public void commitFinal(String messageId, String content, String status) {
-        conversationService.updateMessageContent(messageId, content, status);
+        commitFinal(messageId, content, null, status);
+    }
+
+    public void commitFinal(String messageId, String content, String reasoning, String status) {
+        commitFinal(messageId, content, reasoning, status, null);
+    }
+
+    public void commitFinal(String messageId, String content, String reasoning, String status, String stepsJson) {
+        conversationService.updateMessage(messageId, content, reasoning, status, stepsJson);
     }
 
     public String metaConversation(String convId) {
@@ -66,6 +75,74 @@ public class GenerationFlushScheduler {
         } catch (Exception e) {
             return "{\"type\":\"generation\",\"id\":\"" + generationId
                     + "\",\"messageId\":\"" + messageId + "\",\"seq\":0}";
+        }
+    }
+
+    /** 处理步骤 — 结构化 SSE，不写入消息正文 */
+    public String metaStep(ProcessingStep step) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "step");
+            map.put("id", step.id());
+            map.put("phase", step.phase());
+            if (step.lifecycle() != null) {
+                map.put("lifecycle", step.lifecycle());
+            }
+            if (step.summary() != null) {
+                java.util.Map<String, Object> summary = new java.util.LinkedHashMap<>();
+                if (step.summary().before() != null) {
+                    summary.put("before", step.summary().before());
+                }
+                if (step.summary().active() != null) {
+                    summary.put("active", step.summary().active());
+                }
+                if (step.summary().after() != null) {
+                    summary.put("after", step.summary().after());
+                }
+                if (!summary.isEmpty()) {
+                    map.put("summary", summary);
+                }
+            }
+            if (step.startedAt() != null) {
+                map.put("startedAt", step.startedAt());
+            }
+            if (step.endedAt() != null) {
+                map.put("endedAt", step.endedAt());
+            }
+            if (step.durationMs() != null) {
+                map.put("durationMs", step.durationMs());
+            }
+            if (step.detail() != null) {
+                map.put("detail", step.detail());
+            }
+            map.put("ts", step.ts());
+            map.put("status", step.status());
+            map.put("label", step.label());
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"step\",\"id\":\"" + step.id() + "\",\"status\":\""
+                    + step.status() + "\",\"label\":\"" + step.label() + "\"}";
+        }
+    }
+
+    /** 推理过程 — 结构化 SSE，不写入消息正文 */
+    public String metaReasoning(String text) {
+        return metaText("reasoning", text);
+    }
+
+    /** 正文 content — 结构化 SSE */
+    public String metaContent(String text) {
+        return metaText("content", text);
+    }
+
+    private String metaText(String type, String text) {
+        try {
+            return objectMapper.writeValueAsString(java.util.Map.of(
+                    "type", type,
+                    "text", text
+            ));
+        } catch (Exception e) {
+            return "{\"type\":\"" + type + "\",\"text\":\"\"}";
         }
     }
 

@@ -4,9 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
+import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
-import com.sunshine.orchestrator.generation.EmbeddedRedisTestConfig;
+import com.sunshine.testsupport.EmbeddedRedisTestConfig;
 import com.sunshine.orchestrator.generation.GenerationMeta;
 import com.sunshine.orchestrator.generation.GenerationStatus;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
@@ -116,7 +117,7 @@ class GenerationReconnectIntegrationTest {
         when(llmGateway.streamWithHistory(anyList(), eq("buffer test")))
                 .thenReturn(Flux.range(1, 100)
                         .delayElements(Duration.ofMillis(40))
-                        .map(i -> "t"));
+                        .map(i -> StreamToken.content("t")));
 
         String convId = createConversation(ALICE);
         AtomicReference<String> generationId = new AtomicReference<>();
@@ -157,7 +158,7 @@ class GenerationReconnectIntegrationTest {
         when(llmGateway.streamWithHistory(anyList(), eq("reconnect test")))
                 .thenReturn(Flux.range(1, 25)
                         .delayElements(Duration.ofMillis(30))
-                        .map(i -> "c" + i));
+                        .map(i -> StreamToken.content("c" + i)));
 
         String convId = createConversation(ALICE);
         AtomicReference<String> generationId = new AtomicReference<>();
@@ -212,7 +213,7 @@ class GenerationReconnectIntegrationTest {
         when(llmGateway.streamWithHistory(anyList(), eq("cancel test")))
                 .thenReturn(Flux.range(1, 100)
                         .delayElements(Duration.ofMillis(50))
-                        .map(i -> "x"));
+                        .map(i -> StreamToken.content("x")));
 
         String convId = createConversation(ALICE);
         AtomicReference<String> generationId = new AtomicReference<>();
@@ -265,7 +266,7 @@ class GenerationReconnectIntegrationTest {
         when(llmGateway.streamWithHistory(anyList(), eq("forbidden test")))
                 .thenReturn(Flux.range(1, 50)
                         .delayElements(Duration.ofMillis(40))
-                        .map(i -> "y"));
+                        .map(i -> StreamToken.content("y")));
 
         String convId = createConversation(ALICE);
         AtomicReference<String> generationId = new AtomicReference<>();

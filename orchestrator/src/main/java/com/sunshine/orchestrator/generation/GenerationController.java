@@ -5,8 +5,6 @@ import com.sunshine.orchestrator.conversation.ConversationNotFoundException;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +23,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 @RestController
 @RequiredArgsConstructor
-@ConditionalOnBean(StringRedisTemplate.class)
 public class GenerationController {
 
     private final GenerationStreamService streamService;

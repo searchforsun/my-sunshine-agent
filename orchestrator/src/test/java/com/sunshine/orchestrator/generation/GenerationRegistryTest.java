@@ -60,7 +60,7 @@ class GenerationRegistryTest {
 
         registry.cancel("gen-2");
 
-        verify(flushScheduler).commitFinal("msg-2", "", MessageStatus.INTERRUPTED);
+        verify(flushScheduler).commitFinal("msg-2", "", "", MessageStatus.INTERRUPTED, null);
         assertThat(registry.get("gen-2")).isEmpty();
         assertThat(registry.tryLockMessage("msg-2", "gen-3")).isTrue();
     }

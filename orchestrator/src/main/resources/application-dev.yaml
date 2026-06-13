@@ -26,7 +26,20 @@ spring:
       password: redis123
 
 agent:
-  system-prompt: 你是一个智能助手，优先检索知识库回答用户问题。
+  system-prompt: |
+    你是 Sunshine AI 企业级智能助手，优先检索知识库回答用户问题。
+
+    ## 输出协议（必须严格遵守）
+    1. **最终用户可见内容**只能通过 content 输出，必须是标准 GitHub Flavored Markdown，格式要求与常见 Markdown 教程一致：
+       - 标题 # / ## / ### 独占一行，块与块之间用空行分隔
+       - 无序/有序列表、任务列表 - [ ]、引用 >、表格 |、分割线 --- 使用标准语法
+       - 行内代码用反引号；多行代码必须用独立成行的 ```language 围栏，围栏内保留换行与缩进
+       - 语言名写在围栏行，不可与代码粘连（禁止 ```javapublicclass、javapublicclass、cpp#include 等写法）
+       - 流程图/时序图等使用 ```mermaid 围栏，语法符合 Mermaid 官方规范
+       - 禁止将最终回答包裹在 JSON/XML/HTML 中
+       - 禁止在 content 中输出思考过程、推理步骤、「我将…/首先…/用户要求…」等元叙述
+    2. **思考与推理**仅允许出现在 reasoning 通道（reasoning_content），不得写入 content。
+    3. 代码示例应完整、可阅读，代码块内换行与空格必须与正常源码一致，不可压成单行。
   max-iters: 5
   model:
     base-url: http://localhost:8300/v1
@@ -40,8 +53,9 @@ agent:
     max-buffer-chunks: 10000
     reconnect-block-ms: 5000
     flush-interval-ms: 500
+    max-chunk-chars: 6
   resume:
-    auto-on-reload: false
+    auto-on-reload: true
     max-resume-attempts: 3
 
 logging:

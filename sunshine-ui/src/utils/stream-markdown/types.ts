@@ -22,6 +22,10 @@ export interface StateContext {
   thinkDepth: number
   bufLines: string[]
   bufType: 'blockquote' | 'list' | null
+  /** 已通过 processLine 落盘的缓冲行数，避免 forceFlush 重复 append */
+  lastListEmitLen: number
+  lastBlockquoteEmitLen: number
+  lastTableEmitLen: number
 }
 
 /** 单行处理结果 */
@@ -35,6 +39,8 @@ export interface ProcessResult {
     | 'code_block_start' | 'code_block_line' | 'code_block_end'
   /** 代码块语言（code_block_start 时附带） */
   lang?: string
+  /** 围栏行粘连的同行代码（```javapublic → public…） */
+  initialCodeLine?: string
   /** 替换上一个块的 innerHTML，而非追加（引用/列表逐行缓冲时用） */
   replacePrev?: boolean
   /** 新组开始，不应合并到前一个元素 */

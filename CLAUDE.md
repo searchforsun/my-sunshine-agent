@@ -94,3 +94,8 @@ Browser (:5173) → BFF (:8001) → Orchestrator (:8200) → LLM Gateway (:8300)
 - **不要升级 Spring Boot 3.3+**：Spring Cloud Alibaba 尚未发布 2024.x 兼容版，2023.0.3.4 是当前最新稳定版。
 - **不要升级 AgentScope 2.0.0**：2026-06-05 刚发布，Maven Central 尚未同步，`1.0.7` 是仓库中实际可用的最新版。
 - **前端 Vite proxy**：`/api` 代理到 `localhost:8001`（BFF），开发时绕过跨域问题。
+
+## other
+
+- 禁止保存临时生成的脚本文件，用完即删
+- 更改dev-yml配置内容后,同步一份搭配/docs/ncaos下，并提醒更新nacos线上配置

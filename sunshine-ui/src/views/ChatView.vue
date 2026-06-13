@@ -1,15 +1,26 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, onUnmounted, onUpdated, computed } from 'vue'
+import { ref, nextTick, watch, onMounted, onUnmounted, onUpdated, computed, reactive } from 'vue'
 import { useChatSessions } from '../api/chatSessions'
 import { NInput } from 'naive-ui'
-import MarkdownIt from 'markdown-it'
-import markdownItHighlightjs from 'markdown-it-highlightjs'
-import markdownItTaskLists from 'markdown-it-task-lists'
+import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
+import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github-dark.css'
 import { StreamMarkdownRenderer } from '../utils/stream-markdown'
+import { normalizeStreamingMarkdown } from '../utils/stream-markdown/normalizeStreamingMarkdown'
 import { enhanceStaticMarkdown, reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 import '../utils/stream-markdown/styles.css'
 import hljs from 'highlight.js/lib/core'
+import bash from 'highlight.js/lib/languages/bash'
+import cpp from 'highlight.js/lib/languages/cpp'
+import java from 'highlight.js/lib/languages/java'
+import javascript from 'highlight.js/lib/languages/javascript'
+import json from 'highlight.js/lib/languages/json'
+import python from 'highlight.js/lib/languages/python'
+import rust from 'highlight.js/lib/languages/rust'
+import sql from 'highlight.js/lib/languages/sql'
+import typescript from 'highlight.js/lib/languages/typescript'
+import xml from 'highlight.js/lib/languages/xml'
+import yaml from 'highlight.js/lib/languages/yaml'
 import { useChatStore } from '../stores/chatStore'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
@@ -20,16 +31,43 @@ import {
   type ActiveGeneration,
 } from '../composables/useActiveGeneration'
 import { BFF_STREAM_BASE } from '../api/config'
+import ReasoningPanel from '../components/ReasoningPanel.vue'
+import ProcessingTimeline from '../components/ProcessingTimeline.vue'
+import type { ChatMessage } from '../api/chat'
+import {
+  derivePlaceholderSteps,
+  hasActiveStep,
+  type ProcessingStep,
+} from '../api/processingSteps'
 
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('shell', bash)
+hljs.registerLanguage('cpp', cpp)
+hljs.registerLanguage('c', cpp)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('rust', rust)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('ts', typescript)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('yaml', yaml)
 hljs.registerLanguage('mermaid', () => ({ contains: [] }))
 
-const md = new MarkdownIt({
-  html: true, breaks: true, linkify: true, typographer: true,
-}).use(markdownItHighlightjs).use(markdownItTaskLists)
+const md = createMarkdownIt(hljs)
 
 let streamRenderer: StreamMarkdownRenderer | null = null
 const settledHtml = ref('')
 const sessionSettledHtml = new Map<string, string>()
+const streamingMdRef = ref<HTMLElement | null>(null)
+
+function setStreamingMdRef(el: unknown) {
+  streamingMdRef.value = el instanceof HTMLElement ? el : null
+}
 
 const chatStore = useChatStore()
 const { theme, toggle: toggleTheme } = useTheme()
@@ -38,22 +76,152 @@ const { sidebarVisible, toggleSidebar } = useSidebar()
 
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 
+/** 流式回复是否已有正文（用于切换等待动画 → 渲染区） */
+const streamingHasContent = computed(() => {
+  if (!loading.value) return false
+  const last = messages.value[messages.value.length - 1]
+  return last?.role === 'assistant' && !!last.content?.trim()
+})
+
+const reasoningExpanded = reactive(new Map<string, boolean>())
+const reasoningUserToggled = reactive(new Set<string>())
+const timelineExpanded = reactive(new Map<string, boolean>())
+const timelineUserToggled = reactive(new Set<string>())
+
+function reasoningKey(msg: ChatMessage, idx: number): string {
+  return msg.id ?? `_idx_${idx}`
+}
+
+function clearReasoningUiState(): void {
+  reasoningExpanded.clear()
+  reasoningUserToggled.clear()
+  timelineExpanded.clear()
+  timelineUserToggled.clear()
+}
+
+function isReasoningExpanded(msg: ChatMessage, idx: number): boolean {
+  if (!msg?.reasoning?.trim()) return false
+  const key = reasoningKey(msg, idx)
+  if (reasoningUserToggled.has(key)) return reasoningExpanded.get(key) ?? false
+  if (loading.value && idx === messages.value.length - 1 && !msg.content?.trim()) return true
+  return false
+}
+
+function isReasoningLive(msg: ChatMessage, idx: number): boolean {
+  return loading.value
+    && idx === messages.value.length - 1
+    && !!msg?.reasoning?.trim()
+    && !msg.content?.trim()
+}
+
+function toggleReasoning(msg: ChatMessage, idx: number): void {
+  const key = reasoningKey(msg, idx)
+  const currentlyExpanded = isReasoningExpanded(msg, idx)
+  reasoningUserToggled.add(key)
+  reasoningExpanded.set(key, !currentlyExpanded)
+}
+
+function timelineKey(msg: ChatMessage, idx: number): string {
+  return `tl-${msg.id ?? `_idx_${idx}`}`
+}
+
+function resolveTimelineSteps(msg: ChatMessage, idx: number): ProcessingStep[] {
+  if (msg.steps?.length) return msg.steps
+  if (loading.value && idx === messages.value.length - 1) {
+    return derivePlaceholderSteps(true)
+  }
+  return []
+}
+
+function showTimeline(msg: ChatMessage, idx: number): boolean {
+  const steps = resolveTimelineSteps(msg, idx)
+  return steps.length > 0
+}
+
+function isTimelineExpanded(msg: ChatMessage, idx: number): boolean {
+  const steps = resolveTimelineSteps(msg, idx)
+  if (!steps.length) return false
+  const key = timelineKey(msg, idx)
+  if (timelineUserToggled.has(key)) return timelineExpanded.get(key) ?? false
+  if (loading.value && idx === messages.value.length - 1) {
+    const hasContent = !!msg.content?.trim()
+    const hasReasoning = !!msg.reasoning?.trim()
+    if (!hasContent && (hasActiveStep(steps) || !hasReasoning)) return true
+  }
+  return false
+}
+
+function isTimelineLive(msg: ChatMessage, idx: number): boolean {
+  return loading.value
+    && idx === messages.value.length - 1
+    && hasActiveStep(resolveTimelineSteps(msg, idx))
+}
+
+function toggleTimeline(msg: ChatMessage, idx: number): void {
+  const key = timelineKey(msg, idx)
+  const currentlyExpanded = isTimelineExpanded(msg, idx)
+  timelineUserToggled.add(key)
+  timelineExpanded.set(key, !currentlyExpanded)
+}
+
+function migrateReasoningKeys(): void {
+  messages.value.forEach((msg, idx) => {
+    if (!msg.id) return
+    const legacyKey = `_idx_${idx}`
+    if (!reasoningUserToggled.has(legacyKey) && !reasoningExpanded.has(legacyKey)) return
+    reasoningUserToggled.add(msg.id)
+    reasoningUserToggled.delete(legacyKey)
+    if (reasoningExpanded.has(legacyKey)) {
+      reasoningExpanded.set(msg.id, reasoningExpanded.get(legacyKey)!)
+      reasoningExpanded.delete(legacyKey)
+    }
+  })
+}
+
+/** 首 token 已到达但渲染引擎尚未画出内容时仍显示等待点 */
+const showStreamWaiting = computed(() => {
+  if (!loading.value) return false
+  const last = messages.value[messages.value.length - 1]
+  if (last?.role !== 'assistant') return true
+  if (last.reasoning?.trim()) return false
+  if (hasActiveStep(last.steps)) return false
+  if (!last.content?.trim()) return true
+  const el = streamingMdRef.value
+  return !el || el.childElementCount === 0
+})
+
 const {
   messages, loading, send, resume, reconnectStream, stop,
-  switchTo, ensureActive, getMessages, setMessages,
+  switchTo, ensureActive, getMessages, setMessages, migrateSession, destroySession,
 } = useChatSessions(
-  (sid: string, chunk: string) => {
-    if (sid === chatStore.currentId) streamRenderer?.processChunk(chunk)
+  (sid: string, _chunk: string) => {
+    const cid = chatStore.currentId ?? sid
+    if (cid !== chatStore.currentId && sid !== chatStore.currentId) return
+    const last = messages.value[messages.value.length - 1]
+    if (last?.role !== 'assistant') return
+    const apply = () => streamRenderer?.syncFromContent(last.content)
+    if (!streamRenderer) {
+      void ensureStreamRenderer().then(apply)
+      return
+    }
+    apply()
   },
   (id: string) => {
-    flushPersist(id)
-    chatStore.syncMessages(id, getMessages(id))
+    const cid = chatStore.currentId ?? id
+    flushPersist(cid)
+    chatStore.syncMessages(cid, getMessages(cid))
   },
   (id: string) => {
-    schedulePersist(id)
+    const cid = chatStore.currentId ?? id
+    schedulePersist(cid)
+    chatStore.syncMessages(cid, getMessages(cid))
   },
   (sid: string, convId: string) => {
-    if (sid === chatStore.currentId) chatStore.setConversationIdFromStream(convId)
+    if (convId !== sid) migrateSession(sid, convId)
+    if (sid === chatStore.currentId || convId === chatStore.currentId) {
+      chatStore.setConversationIdFromStream(convId)
+      setMessages(convId, [...getMessages(convId)])
+    }
   },
 )
 
@@ -120,25 +288,30 @@ function scrollToBottom() {
 
 function renderMarkdown(text: string): string {
   if (!text) return ''
-  try { return md.render(text) } catch { return text.replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+  const normalized = normalizeStreamingMarkdown(text)
+  try { return md.render(normalized) } catch { return normalized.replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 }
 
-function createStreamRenderer(replay = false): void {
-  nextTick(() => {
-    const container = document.querySelector('.msg-md.streaming')
-    if (container instanceof HTMLElement) {
-      streamRenderer = new StreamMarkdownRenderer(container, {
-        debounceMs: 50,
-        renderMarkdown: (text: string) => { try { return md.render(text) } catch { return text } },
-      })
-      if (replay) {
-        const last = messages.value[messages.value.length - 1]
-        if (last?.role === 'assistant' && last.content) {
-          streamRenderer.processChunk(last.content)
-        }
-      }
-    }
+async function ensureStreamRenderer(): Promise<void> {
+  await nextTick()
+  let container = streamingMdRef.value
+  if (!container) {
+    await nextTick()
+    container = streamingMdRef.value
+  }
+  if (!container) return
+
+  streamRenderer?.clear()
+  streamRenderer = new StreamMarkdownRenderer(container, {
+    debounceMs: 50,
+    renderMarkdown: (text: string) => {
+      try { return md.render(normalizeStreamingMarkdown(text)) } catch { return text }
+    },
   })
+  const last = messages.value[messages.value.length - 1]
+  if (last?.role === 'assistant' && last.content) {
+    streamRenderer.syncFromContent(last.content)
+  }
 }
 
 function canResume(msg: { role: string; status?: string; intent?: string }, idx: number): boolean {
@@ -167,8 +340,11 @@ async function handleSend() {
     streamRenderer?.clear()
     streamRenderer = null
 
-    createStreamRenderer()
-    await send(text, convId)
+    await nextTick()
+    const sendPromise = send(text, convId)
+    await nextTick()
+    await ensureStreamRenderer()
+    await sendPromise
     await nextTick()
     scrollToBottom()
   } catch (e) {
@@ -184,8 +360,11 @@ async function handleResume() {
 
   settledHtml.value = ''
   sessionSettledHtml.delete(convId)
-  createStreamRenderer(true)
-  await resume(convId, last.id)
+  await nextTick()
+  const resumePromise = resume(convId, last.id)
+  await nextTick()
+  await ensureStreamRenderer()
+  await resumePromise
   await nextTick()
   scrollToBottom()
 }
@@ -222,13 +401,16 @@ async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
     }
 
     if (
-      (status.status === 'RUNNING' || status.status === 'COMPLETED')
-      && active.lastSeq < status.lastSeq
+      status.status === 'RUNNING'
+      || (status.status === 'COMPLETED' && active.lastSeq < status.lastSeq)
     ) {
       settledHtml.value = ''
       sessionSettledHtml.delete(cid)
-      createStreamRenderer(true)
-      await reconnectStream(active.generationId, active.lastSeq, cid)
+      await nextTick()
+      const reconnectPromise = reconnectStream(active.generationId, active.lastSeq, cid)
+      await nextTick()
+      await ensureStreamRenderer()
+      await reconnectPromise
       await nextTick()
       scrollToBottom()
     }
@@ -246,13 +428,33 @@ function handleKeydown(e: KeyboardEvent) {
 
 onMounted(async () => {
   await chatStore.init()
-  const cid = await chatStore.ensureCurrent()
-  ensureActive(cid)
-  if (chatStore.current?.messages.length) {
-    setMessages(cid, [...chatStore.current.messages])
-  }
 
   const active = loadActiveGeneration()
+  let cid: string
+  if (active?.conversationId) {
+    try {
+      await chatStore.ensureConversation(active.conversationId)
+      cid = active.conversationId
+    } catch {
+      cid = await chatStore.ensureCurrent()
+    }
+  } else {
+    cid = await chatStore.ensureCurrent()
+  }
+
+  ensureActive(cid)
+  const restored = chatStore.conversations.find(c => c.id === cid)?.messages
+    ?? chatStore.current?.messages
+    ?? []
+  if (restored.length) {
+    setMessages(cid, [...restored])
+    const lastAssistant = [...restored].reverse().find(m => m.role === 'assistant')
+    if (lastAssistant?.content?.trim()) {
+      settledHtml.value = captureSettledAssistantHtml(lastAssistant.content)
+      sessionSettledHtml.set(cid, settledHtml.value)
+    }
+  }
+
   if (active && active.conversationId === cid) {
     await tryAutoReconnect(cid, active)
   }
@@ -274,52 +476,86 @@ onUnmounted(() => {
 })
 
 onUpdated(() => {
-  nextTick(() => {
-    document.querySelectorAll('.msg-md:not(.streaming)').forEach(el => {
-      if (el instanceof HTMLElement) enhanceStaticMarkdown(el)
-    })
-  })
+  nextTick(() => enhanceAllStaticMarkdown())
 })
 
 watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
-watch(() => chatStore.currentId, (newId, oldId) => {
-  if (!newId || newId === oldId) return
+watch(() => chatStore.currentId, async (newId, oldId) => {
+  if (newId === oldId) return
+
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
     if (settledHtml.value) sessionSettledHtml.set(oldId, settledHtml.value)
+    if (!chatStore.conversations.some(c => c.id === oldId)) {
+      destroySession(oldId)
+      sessionSettledHtml.delete(oldId)
+    }
   }
+
+  clearReasoningUiState()
+  streamRenderer?.clear()
   streamRenderer = null
+  settledHtml.value = ''
+
+  if (!newId) return
+
   switchTo(newId)
-  const msgs = getMessages(newId)
-  if (msgs.length === 0) {
-    const conv = chatStore.current
-    if (conv?.messages.length) setMessages(newId, [...conv.messages])
+
+  const storeMsgs = chatStore.current?.messages ?? []
+  if (storeMsgs.length) {
+    setMessages(newId, [...storeMsgs])
   }
-  settledHtml.value = loading.value ? '' : (sessionSettledHtml.get(newId) ?? '')
-  nextTick(() => {
-    if (loading.value) createStreamRenderer(true)
-    scrollToBottom()
-  })
+
+  const lastAssistant = [...storeMsgs].reverse().find(m => m.role === 'assistant')
+  if (!loading.value && lastAssistant?.content?.trim()) {
+    settledHtml.value = captureSettledAssistantHtml(lastAssistant.content)
+    sessionSettledHtml.set(newId, settledHtml.value)
+  } else {
+    settledHtml.value = loading.value ? '' : (sessionSettledHtml.get(newId) ?? '')
+  }
+
+  await nextTick()
+  if (loading.value) void ensureStreamRenderer()
+  scrollToBottom()
 }, { flush: 'post' })
 
 watch(
   () => {
     const last = messages.value[messages.value.length - 1]
-    return last?.role === 'assistant' ? last.content.length : 0
+    if (last?.role !== 'assistant') return 0
+    return (last.content?.length ?? 0) + (last.reasoning?.length ?? 0)
   },
   async () => { await nextTick(); scrollToBottom() },
 )
 
+watch(
+  () => messages.value.map(m => m.id ?? '').join('\0'),
+  () => migrateReasoningKeys(),
+)
+
+function captureSettledAssistantHtml(content: string): string {
+  return renderMarkdown(content)
+}
+
+function enhanceAllStaticMarkdown(): void {
+  document.querySelectorAll('.msg-md:not(.streaming)').forEach(el => {
+    if (el instanceof HTMLElement) enhanceStaticMarkdown(el)
+  })
+}
+
 watch(() => loading.value, (val) => {
   if (!val && streamRenderer) {
     streamRenderer.finish()
-    const container = document.querySelector('.msg-md.streaming')
-    if (container) {
-      settledHtml.value = container.innerHTML
+    const last = messages.value[messages.value.length - 1]
+    if (last?.role === 'assistant' && last.content) {
+      settledHtml.value = captureSettledAssistantHtml(last.content)
       if (chatStore.currentId) sessionSettledHtml.set(chatStore.currentId, settledHtml.value)
+    } else {
+      settledHtml.value = ''
     }
     streamRenderer = null
+    nextTick(() => enhanceAllStaticMarkdown())
   }
 }, { flush: 'sync' })
 </script>
@@ -390,7 +626,7 @@ watch(() => loading.value, (val) => {
         <div v-else class="msg-list">
           <div
             v-for="(msg, idx) in messages"
-            :key="idx"
+            :key="msg.id ?? `local-${idx}`"
             class="msg-block"
             :class="msg.role"
           >
@@ -399,10 +635,30 @@ watch(() => loading.value, (val) => {
 
             <!-- AI 消息：全宽左对齐 -->
             <div v-else class="assistant-body">
-              <div
-                v-if="loading && idx === messages.length - 1"
-                class="msg-md streaming"
+              <ProcessingTimeline
+                v-if="showTimeline(msg, idx)"
+                :steps="resolveTimelineSteps(msg, idx)"
+                :expanded="isTimelineExpanded(msg, idx)"
+                :live="isTimelineLive(msg, idx)"
+                @toggle="toggleTimeline(msg, idx)"
               />
+              <ReasoningPanel
+                v-if="msg.reasoning?.trim()"
+                :text="msg.reasoning"
+                :expanded="isReasoningExpanded(msg, idx)"
+                :live="isReasoningLive(msg, idx)"
+                @toggle="toggleReasoning(msg, idx)"
+              />
+              <template v-if="loading && idx === messages.length - 1">
+                <div v-if="showStreamWaiting" class="stream-waiting-dots" aria-label="正在生成">
+                  <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
+                </div>
+                <div
+                  v-if="streamingHasContent"
+                  :ref="setStreamingMdRef"
+                  class="msg-md streaming"
+                />
+              </template>
               <div
                 v-else-if="settledHtml && idx === messages.length - 1"
                 class="msg-md"
@@ -687,6 +943,13 @@ watch(() => loading.value, (val) => {
   min-width: 0;
 }
 
+.stream-waiting-dots {
+  padding: 8px 0 12px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+
 .msg-copy-bar {
   margin-top: 10px;
   display: flex;
@@ -934,11 +1197,35 @@ watch(() => loading.value, (val) => {
   margin: 0;
   padding: 14px 16px 16px;
 }
-.msg-md :deep(pre code) { background: none; color: var(--sun-text); padding: 0; }
+.msg-md :deep(pre code.hljs) {
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.msg-md :deep(pre code:not(.hljs)) {
+  background: none;
+  color: var(--sun-text);
+  padding: 0;
+}
+.msg-md :deep(pre.hljs),
+.msg-md :deep(pre code.hljs) {
+  background: var(--sun-deep);
+}
 .msg-md :deep(table) { border-collapse: collapse; margin: 12px 0; width: 100%; }
 .msg-md :deep(th), .msg-md :deep(td) { border: 1px solid var(--sun-border); padding: 8px 14px; text-align: left; }
 .msg-md :deep(th) { background: var(--sun-deep); font-weight: 600; }
 .msg-md :deep(img) { max-width: 100%; border-radius: 8px; }
+.msg-md :deep(.katex-display) {
+  margin: 14px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+.msg-md :deep(.katex) { font-size: 1.05em; }
+.msg-md :deep(.katex-display > .katex) { font-size: 1.15em; }
+/* 流式过程中隐藏 KaTeX 解析失败红字，结束后再完整渲染 */
+.msg-md.streaming :deep(.katex-error) { display: none !important; }
 .msg-md :deep(.mermaid-container) {
   display: flex;
   justify-content: center;

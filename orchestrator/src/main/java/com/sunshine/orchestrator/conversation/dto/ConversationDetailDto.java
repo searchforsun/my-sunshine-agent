@@ -40,6 +40,8 @@ public class ConversationDetailDto {
         private String id;
         private String role;
         private String content;
+        private String reasoning;
+        private String steps;
         private String status;
         private String intent;
         private int seq;
@@ -50,6 +52,8 @@ public class ConversationDetailDto {
             dto.setId(m.getId());
             dto.setRole(m.getRole());
             dto.setContent(m.getContent());
+            dto.setReasoning(m.getReasoning());
+            dto.setSteps(m.getSteps());
             dto.setStatus(m.getStatus());
             dto.setIntent(m.getIntent());
             dto.setSeq(m.getSeq());

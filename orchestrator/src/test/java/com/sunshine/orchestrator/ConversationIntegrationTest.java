@@ -3,6 +3,7 @@ package com.sunshine.orchestrator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
+import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.MessageStatus;
@@ -94,10 +95,10 @@ class ConversationIntegrationTest {
         when(llmGateway.streamWithHistory(anyList(), anyString()))
                 .thenAnswer(inv -> {
                     String userMsg = inv.getArgument(1);
-                    return Flux.just("reply:" + userMsg);
+                    return Flux.just(StreamToken.content("reply:" + userMsg));
                 });
         when(llmGateway.streamContinue(anyList(), anyString(), anyString()))
-                .thenReturn(Flux.just(" continued"));
+                .thenReturn(Flux.just(StreamToken.content(" continued")));
     }
 
     @Test
@@ -162,7 +163,7 @@ class ConversationIntegrationTest {
         when(llmGateway.streamWithHistory(anyList(), eq("long stream")))
                 .thenReturn(Flux.range(1, 100)
                         .delayElements(Duration.ofMillis(40))
-                        .map(i -> "t"));
+                        .map(i -> StreamToken.content("t")));
 
         String convId = createConversation(ALICE);
 
@@ -262,7 +263,7 @@ class ConversationIntegrationTest {
     @DisplayName("concurrentResume_returns409 — 同一条消息并行续传一条 409")
     void concurrentResume_returns409() throws Exception {
         when(llmGateway.streamContinue(anyList(), anyString(), anyString()))
-                .thenReturn(Flux.just("x").concatWith(Flux.never()));
+                .thenReturn(Flux.just(StreamToken.content("x")).concatWith(Flux.never()));
 
         ChatConversationEntity conv = conversationService.create(ALICE, TENANT);
         conversationService.appendMessage(conv.getId(), "user", "hi", MessageStatus.COMPLETED);

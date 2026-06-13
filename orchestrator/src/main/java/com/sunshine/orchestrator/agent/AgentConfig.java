@@ -48,7 +48,7 @@ public class AgentConfig {
     }
 
     @Bean
-    public ReActAgent sunshineReActAgent(Toolkit toolkit, Memory agentMemory) {
+    public ReActAgent sunshineReActAgent(Toolkit toolkit, Memory agentMemory, ProcessingStepHook stepHook) {
         OpenAIChatModel model = OpenAIChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(modelName)
@@ -67,6 +67,7 @@ public class AgentConfig {
                 .model(model)
                 .memory(agentMemory)
                 .toolkit(toolkit)
+                .hook(stepHook)
                 .maxIters(maxIters)
                 .build();
     }

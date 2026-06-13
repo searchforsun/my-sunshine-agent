@@ -45,8 +45,17 @@ export function findSafeCutPosition(text: string): number {
       i += 1; continue
     }
 
-    // ` 行内代码
+    // ` 行内代码（行首 ``` / ~~~ 围栏不参与内联栈）
     if (text[i] === '`') {
+      const lineStart = text.lastIndexOf('\n', i - 1) + 1
+      const linePrefix = text.slice(lineStart, i)
+      if (/^\s*$/.test(linePrefix)) {
+        const fenceMatch = text.slice(i).match(/^(`{3,}|~{3,})/)
+        if (fenceMatch) {
+          i += fenceMatch[0].length
+          continue
+        }
+      }
       closeOrOpen(stack, '`', i)
       i += 1; continue
     }
@@ -58,6 +67,19 @@ export function findSafeCutPosition(text: string): number {
     }
 
     // 任务列表 checkbox [ ] / [x] — 非链接，整段跳过
+    if (text[i] === '$') {
+      if (text[i + 1] === '$') {
+        if (closeOrOpenMathBlock(stack, i)) { i += 2; continue }
+        stack.push({ marker: '$$', pos: i })
+        i += 2
+        continue
+      }
+      if (closeOrOpenMathInline(stack, i)) { i += 1; continue }
+      stack.push({ marker: '$', pos: i })
+      i += 1
+      continue
+    }
+
     if (text[i] === '[') {
       const taskMatch = text.slice(i).match(/^\[([ xX])\]/)
       if (taskMatch) {
@@ -84,6 +106,25 @@ export function findSafeCutPosition(text: string): number {
   if (stack.length === 0) return text.length
   // 最早未闭合标记之前都是安全的
   return Math.min(...stack.map(s => s.pos))
+}
+
+function closeOrOpenMathBlock(stack: Marker[], pos: number): boolean {
+  const idx = lastIndexOf(stack, '$$')
+  if (idx >= 0) {
+    stack.splice(idx, 1)
+    return true
+  }
+  return false
+}
+
+function closeOrOpenMathInline(stack: Marker[], pos: number): boolean {
+  if (lastIndexOf(stack, '$$') >= 0) return false
+  const idx = lastIndexOf(stack, '$')
+  if (idx >= 0) {
+    stack.splice(idx, 1)
+    return true
+  }
+  return false
 }
 
 function closeOrOpen(stack: Marker[], marker: string, pos: number): void {

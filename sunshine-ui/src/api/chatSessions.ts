@@ -4,7 +4,7 @@
  */
 import { ref, reactive, computed } from 'vue'
 import type { ChatMessage } from './chat'
-import { applyStreamError } from './streamError'
+import { applyStreamError, isAbortError, isPageUnloading } from './streamError'
 import { apiHeaders } from '../composables/useUserId'
 import {
   saveActiveGeneration,
@@ -13,6 +13,10 @@ import {
   updateLastSeq,
 } from '../composables/useActiveGeneration'
 import { BFF_STREAM_BASE } from './config'
+import { parseSseEvent } from './sseParse'
+import { normalizeStreamChunk } from './streamInvisible'
+import { normalizeStep, upsertStep } from './processingSteps'
+import type { ProcessingStep } from './processingSteps'
 
 const API_BASE = BFF_STREAM_BASE
 
@@ -35,10 +39,7 @@ if (typeof window !== 'undefined') {
       s.requestId++
       s.abort?.abort()
       s.loading = false
-      const last = s.messages[s.messages.length - 1]
-      if (last?.role === 'assistant' && last.status === 'streaming') {
-        last.status = 'interrupted'
-      }
+      // 刷新/关页：仅断开 SSE，保留 streaming + active generation 供 Track G 重连
     }
   })
 }
@@ -61,17 +62,24 @@ interface SseMeta {
   seq?: number
 }
 
-function parseSsePayload(data: string): { kind: 'meta'; meta: SseMeta } | { kind: 'chunk'; text: string } {
+function parseSsePayload(data: string): { kind: 'meta'; meta: SseMeta } | { kind: 'chunk'; text: string } | { kind: 'reasoning'; text: string } | { kind: 'step'; step: ProcessingStep } {
   try {
-    const obj = JSON.parse(data) as SseMeta
+    const obj = JSON.parse(data) as SseMeta & Record<string, unknown>
+    if (obj.type === 'step') {
+      const step = normalizeStep(obj)
+      if (step) return { kind: 'step', step }
+    }
     if (obj.type === 'conversation' || obj.type === 'message' || obj.type === 'generation') {
       return { kind: 'meta', meta: obj }
     }
-    if (obj.type === 'chunk' && typeof obj.text === 'string') {
-      return { kind: 'chunk', text: obj.text }
+    if (obj.type === 'reasoning' && typeof obj.text === 'string') {
+      return { kind: 'reasoning', text: normalizeStreamChunk(obj.text) }
+    }
+    if ((obj.type === 'content' || obj.type === 'chunk') && typeof obj.text === 'string') {
+      return { kind: 'chunk', text: normalizeStreamChunk(obj.text) }
     }
   } catch { /* plain text chunk */ }
-  return { kind: 'chunk', text: data }
+  return { kind: 'chunk', text: normalizeStreamChunk(data) }
 }
 
 function getOrCreate(id: string): SessionState {
@@ -146,6 +154,7 @@ export function useChatSessions(
 
     const decoder = new TextDecoder()
     let buf = ''
+    let streamConversationId = s.id
 
     while (true) {
       const { done, value } = await reader.read()
@@ -156,29 +165,26 @@ export function useChatSessions(
       buf = events.pop() || ''
 
       for (const rawEvent of events) {
-        const dataLines: string[] = []
+        const { id: eventId, payload: data } = parseSseEvent(rawEvent)
+        if (data === null) continue
+
         let eventSeq: number | null = null
-        for (const line of rawEvent.split('\n')) {
-          if (line.startsWith('id:')) {
-            const idStr = line.startsWith('id: ') ? line.substring(4) : line.substring(3)
-            const n = parseInt(idStr, 10)
-            if (!Number.isNaN(n)) eventSeq = n
-          }
-          if (!line.startsWith('data:')) continue
-          dataLines.push(line.startsWith('data: ') ? line.substring(6) : line.substring(5))
+        if (eventId) {
+          const n = parseInt(eventId, 10)
+          if (!Number.isNaN(n)) eventSeq = n
         }
-        if (dataLines.length === 0) continue
-        const data = dataLines.join('\n')
-        if (!data || data === '[DONE]') continue
 
         const parsed = parseSsePayload(data)
         if (parsed.kind === 'meta') {
           options.onMeta?.(parsed.meta)
+          if (parsed.meta.type === 'conversation' && parsed.meta.id) {
+            streamConversationId = parsed.meta.id
+          }
           if (parsed.meta.type === 'generation' && parsed.meta.id && parsed.meta.messageId) {
             saveActiveGeneration({
               generationId: parsed.meta.id,
               messageId: parsed.meta.messageId,
-              conversationId: s.id,
+              conversationId: streamConversationId,
               lastSeq: parsed.meta.seq ?? 0,
             })
             const last = s.messages[s.messages.length - 1]
@@ -205,6 +211,29 @@ export function useChatSessions(
             const last = s.messages[s.messages.length - 1]
             if (last?.role === 'assistant') last.status = 'failed'
           }
+          continue
+        }
+
+        if (parsed.kind === 'reasoning') {
+          if (eventSeq !== null) updateLastSeq(eventSeq)
+          const lastMsg = s.messages[s.messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            const prev = lastMsg.reasoning ?? ''
+            lastMsg.reasoning = options.resume
+              ? appendChunk(prev, parsed.text)
+              : prev + parsed.text
+          }
+          onProgress?.(s.id)
+          continue
+        }
+
+        if (parsed.kind === 'step') {
+          if (eventSeq !== null) updateLastSeq(eventSeq)
+          const lastMsg = s.messages[s.messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            lastMsg.steps = upsertStep(lastMsg.steps ?? [], parsed.step)
+          }
+          onProgress?.(s.id)
           continue
         }
 
@@ -238,7 +267,7 @@ export function useChatSessions(
 
     s.messages.push({ role: 'user', content })
     s.loading = true
-    s.messages.push({ role: 'assistant', content: '', status: 'streaming' })
+    s.messages.push({ role: 'assistant', content: '', reasoning: '', steps: [], status: 'streaming' })
 
     s.abort = new AbortController()
     const thisRequestId = ++s.requestId
@@ -266,6 +295,9 @@ export function useChatSessions(
       })
     } catch (err: unknown) {
       applyStreamError(s.messages, err)
+      if (isAbortError(err) || isPageUnloading()) {
+        return
+      }
       const last = s.messages[s.messages.length - 1]
       if (last?.role === 'assistant' && last.status === 'streaming') {
         last.status = 'interrupted'
@@ -274,7 +306,8 @@ export function useChatSessions(
       if (thisRequestId === s.requestId) {
         s.loading = false
         const last = s.messages[s.messages.length - 1]
-        if (last?.role === 'assistant' && last.status === 'streaming') {
+        const aborted = s.abort?.signal.aborted ?? false
+        if (last?.role === 'assistant' && last.status === 'streaming' && !aborted) {
           last.status = 'completed'
         }
         if (last?.role === 'assistant' && last.status === 'completed') {
@@ -340,7 +373,7 @@ export function useChatSessions(
       : s.messages[s.messages.length - 1]
 
     if (!target || target.role !== 'assistant') {
-      target = { role: 'assistant', content: '', status: 'streaming', id: messageId }
+      target = { role: 'assistant', content: '', reasoning: '', steps: [], status: 'streaming', id: messageId }
       s.messages.push(target)
     }
 
@@ -353,7 +386,7 @@ export function useChatSessions(
     try {
       const response = await fetch(
         `${API_BASE}/api/chat/stream/${generationId}?afterSeq=${afterSeq}`,
-        { headers: apiHeaders(), signal: s.abort.signal },
+        { headers: { ...apiHeaders(), Accept: 'text/event-stream' }, signal: s.abort.signal },
       )
 
       if (response.status === 410) {
@@ -418,6 +451,19 @@ export function useChatSessions(
     getOrCreate(id).messages = msgs
   }
 
+  /** SSE 返回的 conversationId 与本地 sessionId 不一致时迁移消息 */
+  function migrateSession(fromId: string, toId: string): void {
+    if (!fromId || !toId || fromId === toId) return
+    const from = sessions.get(fromId)
+    if (!from) return
+    const to = getOrCreate(toId)
+    if (!to.messages.length && from.messages.length) {
+      to.messages = from.messages
+    }
+    if (activeId.value === fromId) activeId.value = toId
+    sessions.delete(fromId)
+  }
+
   function destroySession(id: string): void {
     const s = sessions.get(id)
     if (s) {
@@ -431,7 +477,7 @@ export function useChatSessions(
   return {
     messages, loading, activeContainer,
     switchTo, ensureActive, send, resume, reconnectStream, stop, clearSession,
-    getMessages, setMessages, destroySession,
+    getMessages, setMessages, destroySession, migrateSession,
     mountContainer, unmountContainer, getOrCreate,
   }
 }

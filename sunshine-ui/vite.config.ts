@@ -13,6 +13,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['markdown-it', 'highlight.js', 'markdown-it-highlightjs', 'markdown-it-task-lists'],
+    include: ['markdown-it', 'highlight.js', 'markdown-it-highlightjs', 'markdown-it-task-lists', '@mdit/plugin-katex', 'katex'],
   },
 })

@@ -1,6 +1,8 @@
-package com.sunshine.orchestrator.generation;
+package com.sunshine.testsupport;
 
 import com.github.fppt.jedismock.RedisServer;
+import com.sunshine.orchestrator.generation.GenerationProperties;
+import com.sunshine.orchestrator.generation.GenerationStreamService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -10,6 +12,9 @@ import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+/**
+ * 放在 {@code com.sunshine.testsupport}，避免被 {@code com.sunshine.orchestrator} 组件扫描误加载。
+ */
 @Slf4j
 @TestConfiguration
 public class EmbeddedRedisTestConfig {

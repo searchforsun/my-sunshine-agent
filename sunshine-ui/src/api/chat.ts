@@ -1,5 +1,22 @@
 import { ref, type Ref } from 'vue'
 import { applyStreamError } from './streamError'
+import { parseSseEvent } from './sseParse'
+import { normalizeStreamChunk } from './streamInvisible'
+import type { ProcessingStep } from './processingSteps'
+
+function extractChunkText(data: string): string | null {
+  try {
+    const obj = JSON.parse(data) as { type?: string; text?: string }
+    if (obj.type === 'reasoning') return null
+    if ((obj.type === 'content' || obj.type === 'chunk') && typeof obj.text === 'string') {
+      return normalizeStreamChunk(obj.text)
+    }
+    if (obj.type === 'conversation' || obj.type === 'message' || obj.type === 'generation' || obj.type === 'step') {
+      return null
+    }
+  } catch { /* plain text fallback */ }
+  return normalizeStreamChunk(data)
+}
 
 // 直连 BFF，不经过 Vite proxy（proxy 会缓冲 SSE 流式响应）
 const API_BASE = 'http://localhost:8001'
@@ -8,6 +25,10 @@ export interface ChatMessage {
   id?: string
   role: 'user' | 'assistant'
   content: string
+  /** 模型推理过程（SSE type:reasoning，不落库） */
+  reasoning?: string
+  /** 后端处理流水线步骤（SSE type:step） */
+  steps?: ProcessingStep[]
   status?: 'streaming' | 'interrupted' | 'failed' | 'completed'
   intent?: string
 }
@@ -64,31 +85,15 @@ export function useChat(onChunk?: (data: string) => void) {
         buffer = events.pop() || ''
 
         for (const rawEvent of events) {
-          // 提取事件中所有 data: 行
-          const dataLines: string[] = []
-          for (const line of rawEvent.split('\n')) {
-            if (!line.startsWith('data:')) continue
-            let payload: string
-            if (line.startsWith('data: ')) {
-              payload = line.substring(6)
-            } else {
-              payload = line.substring(5)
-            }
-            dataLines.push(payload)
-          }
+          const { payload: data } = parseSseEvent(rawEvent)
+          if (data === null) continue
 
-          if (dataLines.length === 0) continue
+          const chunkText = extractChunkText(data)
+          if (chunkText === null) continue
 
-          // SSE 规范：多行 data 用 \n 拼接
-          const data = dataLines.join('\n')
-
-          if (!data || data === '[DONE]') continue
-
-          // 通过 Vue 响应式代理引用修改内容
           const lastMsg = messages.value[messages.value.length - 1]
-          lastMsg.content += data
-          // 通知外部渲染器（流式 Markdown 引擎）
-          onChunk?.(data)
+          lastMsg.content += chunkText
+          onChunk?.(chunkText)
         }
 
         // 让出主线程给 Vue 渲染

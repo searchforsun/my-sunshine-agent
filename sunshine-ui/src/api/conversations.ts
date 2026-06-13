@@ -1,5 +1,7 @@
 import { apiHeaders } from '../composables/useUserId'
 import { BFF_API_BASE } from './config'
+import type { ProcessingStep } from './processingSteps'
+import { migrateV1Step, normalizeStep } from './processingSteps'
 
 const API_BASE = BFF_API_BASE
 export interface ConversationSummary {
@@ -13,6 +15,8 @@ export interface ConversationMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  reasoning?: string
+  steps?: ProcessingStep[]
   status?: string
   intent?: string
   seq?: number
@@ -38,11 +42,36 @@ function mapSummary(raw: Record<string, unknown>): ConversationSummary {
   }
 }
 
+function parseSteps(raw: unknown): ProcessingStep[] | undefined {
+  if (!raw) return undefined
+  if (typeof raw === 'string') {
+    try {
+      const arr = JSON.parse(raw) as unknown[]
+      return arr
+        .map(item => normalizeStep(item as Record<string, unknown>))
+        .filter(Boolean)
+        .map(s => migrateV1Step(s!)) as ProcessingStep[]
+    } catch {
+      return undefined
+    }
+  }
+  if (Array.isArray(raw)) {
+    const steps = raw
+      .map(item => normalizeStep(item as Record<string, unknown>))
+      .filter(Boolean)
+      .map(s => migrateV1Step(s!)) as ProcessingStep[]
+    return steps.length ? steps : undefined
+  }
+  return undefined
+}
+
 function mapDetail(raw: Record<string, unknown>): ConversationDetail {
   const messages = (raw.messages as Record<string, unknown>[] | undefined ?? []).map(m => ({
     id: String(m.id),
     role: m.role as 'user' | 'assistant',
     content: String(m.content ?? ''),
+    reasoning: typeof m.reasoning === 'string' ? m.reasoning : undefined,
+    steps: parseSteps(m.steps),
     status: m.status as string | undefined,
     intent: m.intent as string | undefined,
     seq: m.seq as number | undefined,

@@ -40,4 +40,6 @@ application-local.yml
 
 !skywalking-agent.jar
 .playwright-mcp/
+sunshine-ui/test-results/
+sunshine-ui/playwright-report/
 agent-workspace/

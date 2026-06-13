@@ -111,9 +111,26 @@ public class ConversationService {
 
     @Transactional
     public ChatMessageEntity updateMessageContent(String messageId, String content, String status) {
+        return updateMessage(messageId, content, null, status);
+    }
+
+    @Transactional
+    public ChatMessageEntity updateMessage(String messageId, String content, String reasoning, String status) {
+        return updateMessage(messageId, content, reasoning, status, null);
+    }
+
+    @Transactional
+    public ChatMessageEntity updateMessage(
+            String messageId, String content, String reasoning, String status, String stepsJson) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
                 .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
         msg.setContent(content != null ? content : "");
+        if (reasoning != null) {
+            msg.setReasoning(reasoning);
+        }
+        if (stepsJson != null) {
+            msg.setSteps(stepsJson);
+        }
         msg.setStatus(status);
         msg.setUpdatedAt(Instant.now());
         ChatMessageEntity saved = messageRepo.save(msg);

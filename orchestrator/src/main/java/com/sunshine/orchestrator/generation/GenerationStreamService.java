@@ -2,19 +2,12 @@ package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.conversation.ConversationNotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.MapRecord;
-import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.RecordId;
-import org.springframework.data.redis.connection.stream.StreamOffset;
-import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
-import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -22,11 +15,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 
-@Service
 @RequiredArgsConstructor
-@ConditionalOnBean(StringRedisTemplate.class)
 public class GenerationStreamService {
 
     private static final String META_KEY_PREFIX = "sunshine:gen:";
@@ -93,11 +84,21 @@ public class GenerationStreamService {
     }
 
     public Flux<StreamEvent> subscribe(String generationId, long afterSeq) {
-        String eventsKey = eventsKey(generationId);
-        AtomicReference<String> lastId = new AtomicReference<>(streamId(afterSeq));
+        AtomicLong cursor = new AtomicLong(afterSeq);
+        Duration pollInterval = Duration.ofMillis(
+                Math.min(properties.reconnectBlockMs(), 100));
 
-        return Flux.<StreamEvent>create(sink -> startBlockingRead(eventsKey, lastId, sink), FluxSink.OverflowStrategy.BUFFER)
-                .subscribeOn(Schedulers.boundedElastic());
+        return Flux.interval(Duration.ZERO, pollInterval)
+                .concatMap(tick -> Flux.defer(() -> {
+                    long after = cursor.get();
+                    List<StreamEvent> batch = readFrom(
+                            generationId, after, properties.maxBufferChunks());
+                    if (batch.isEmpty()) {
+                        return Flux.empty();
+                    }
+                    return Flux.fromIterable(batch)
+                            .doOnNext(e -> cursor.updateAndGet(cur -> Math.max(cur, e.seq())));
+                }));
     }
 
     public void assertOwned(String generationId, String userId, String tenantId) {
@@ -106,35 +107,6 @@ public class GenerationStreamService {
         if (!meta.userId().equals(userId) || !meta.tenantId().equals(normalizeTenant(tenantId))) {
             throw new ConversationNotFoundException("generation不存在");
         }
-    }
-
-    private void startBlockingRead(String eventsKey, AtomicReference<String> lastId, FluxSink<StreamEvent> sink) {
-        while (!sink.isCancelled()) {
-            try {
-                List<MapRecord<String, Object, Object>> records = redis.opsForStream().read(
-                        StreamReadOptions.empty()
-                                .count(properties.maxBufferChunks())
-                                .block(Duration.ofMillis(properties.reconnectBlockMs())),
-                        StreamOffset.create(eventsKey, ReadOffset.from(lastId.get())));
-
-                if (records == null || records.isEmpty()) {
-                    continue;
-                }
-
-                for (MapRecord<String, Object, Object> record : records) {
-                    if (sink.isCancelled()) {
-                        sink.complete();
-                        return;
-                    }
-                    lastId.set(record.getId().getValue());
-                    sink.next(toStreamEvent(record));
-                }
-            } catch (Exception ex) {
-                sink.error(ex);
-                return;
-            }
-        }
-        sink.complete();
     }
 
     private void refreshTtl(String generationId) {

@@ -85,24 +85,42 @@ function waitForGenerationEvent(gen, timeoutMs = 500) {
   })
 }
 
-async function emitGenerationChunks(generationId, tokens, res, assistantMsg, conv) {
+async function emitGenerationChunks(generationId, tokens, res, assistantMsg, conv, options = {}) {
   const gen = generations.get(generationId)
   if (!gen) return
 
   let clientConnected = true
   res.on('close', () => { clientConnected = false })
 
+  const reasoningTokens = options.reasoningTokens ?? []
+  await emitProcessingSteps(gen, res, clientConnected, options)
+
+  for (const token of reasoningTokens) {
+    if (gen.cancelled) break
+
+    const seq = gen.lastSeq + 1
+    gen.events.push({ seq, text: reasoningPayload(token) })
+    gen.lastSeq = seq
+    notifyGenerationWaiters(gen)
+
+    if (clientConnected && !res.writableEnded) {
+      writeSSEEvent(res, seq, reasoningPayload(token))
+    }
+
+    await sleep(15 + Math.random() * 20)
+  }
+
   for (const token of tokens) {
     if (gen.cancelled) break
 
     const seq = gen.lastSeq + 1
-    gen.events.push({ seq, text: token })
+    gen.events.push({ seq, text: contentPayload(token) })
     gen.lastSeq = seq
     assistantMsg.content += token
     notifyGenerationWaiters(gen)
 
     if (clientConnected && !res.writableEnded) {
-      writeSSEEvent(res, seq, token)
+      writeSSEEvent(res, seq, contentPayload(token))
     }
 
     await sleep(15 + Math.random() * 20)
@@ -124,6 +142,17 @@ async function emitGenerationChunks(generationId, tokens, res, assistantMsg, con
   gen.status = 'COMPLETED'
   assistantMsg.status = 'completed'
   notifyGenerationWaiters(gen)
+
+  if (!gen.cancelled) {
+    await pushGenerationEvent(gen, res, clientConnected, stepPayload('generate', 'generate', 'done', '生成回答', {
+      summary: v2Summary('generate', 'done'),
+    }))
+    if (options.knowledge) {
+      await pushGenerationEvent(gen, res, clientConnected, stepPayload('agent', 'agent', 'done', 'Agent 推理', {
+        summary: v2Summary('agent', 'done'),
+      }))
+    }
+  }
 
   if (clientConnected && !res.writableEnded) {
     writeSSEEvent(res, 'meta-done', JSON.stringify({ type: 'message', id: assistantMsg.id, status: 'completed' }))
@@ -170,7 +199,15 @@ const TEST_CONTENT = `## Markdown 流式渲染测试
 
 这是 **粗体文字**，这是 *斜体文字*，这是 ~~删除线~~，这是 \`行内代码\`，以及 ***粗斜体***。
 
-化学式 H~2~O，数学公式 x^2^ + y^2^ = 1。
+化学式 H~2~O。
+
+行内公式：$E = mc^2$
+
+块级公式：
+
+$$
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+$$
 
 ### 2. 代码块
 
@@ -311,6 +348,122 @@ function sleep(ms) {
 /**
  * 正确写入 SSE 事件 — 数据中的 \n 编码为多行 data:
  */
+function contentPayload(text) {
+  return JSON.stringify({ type: 'content', text })
+}
+
+function reasoningPayload(text) {
+  return JSON.stringify({ type: 'reasoning', text })
+}
+
+function stepPayload(id, phase, lifecycle, label, opts = {}) {
+  const now = Date.now()
+  const durationMs = opts.durationMs ?? (lifecycle === 'done' ? 80 + Math.floor(Math.random() * 200) : undefined)
+  const startedAt = opts.startedAt ?? (lifecycle !== 'pending' ? now - (durationMs ?? 100) : undefined)
+  const endedAt = opts.endedAt ?? (lifecycle === 'done' ? now : undefined)
+  const obj = {
+    type: 'step',
+    id,
+    phase,
+    lifecycle,
+    summary: opts.summary ?? null,
+    startedAt: startedAt ?? null,
+    endedAt: endedAt ?? null,
+    durationMs: durationMs ?? null,
+    detail: opts.detail ?? null,
+    ts: now,
+    status: lifecycle,
+    label,
+  }
+  return JSON.stringify(obj)
+}
+
+const STEP_V2 = {
+  intent: {
+    before: '准备识别意图',
+    active: '正在分析用户输入',
+    after: detail => `判定为：${detail}`,
+  },
+  rag: {
+    before: '准备检索向量库',
+    active: '正在查询 Milvus',
+    after: detail => detail ?? '检索完成',
+  },
+  agent: {
+    before: '准备 Agent 推理',
+    active: '正在调用 ReActAgent',
+    after: detail => detail ?? '推理完成',
+  },
+  generate: {
+    before: '准备生成回答',
+    active: '正在调用 LLM 流式输出',
+    after: detail => detail ?? '回答已生成',
+  },
+}
+
+function v2Summary(stepId, lifecycle, detail) {
+  const tpl = STEP_V2[stepId]
+  if (!tpl) return null
+  const summary = {}
+  if (lifecycle === 'pending' || lifecycle === 'running' || lifecycle === 'done') {
+    summary.before = tpl.before
+  }
+  if (lifecycle === 'running' || lifecycle === 'done') {
+    summary.active = tpl.active
+  }
+  if (lifecycle === 'done') {
+    summary.after = tpl.after(detail)
+  }
+  return summary
+}
+
+async function pushGenerationEvent(gen, res, clientConnected, text) {
+  const seq = gen.lastSeq + 1
+  gen.events.push({ seq, text })
+  gen.lastSeq = seq
+  notifyGenerationWaiters(gen)
+  if (clientConnected && !res.writableEnded) {
+    writeSSEEvent(res, seq, text)
+  }
+  await sleep(80 + Math.random() * 120)
+}
+
+async function emitProcessingSteps(gen, res, clientConnected, options = {}) {
+  const knowledge = !!options.knowledge
+  const intentDetail = knowledge ? '知识库查询' : '简单对话'
+
+  await pushGenerationEvent(gen, res, clientConnected, stepPayload('intent', 'intent', 'pending', '识别意图', {
+    summary: v2Summary('intent', 'pending'),
+  }))
+  await pushGenerationEvent(gen, res, clientConnected, stepPayload('intent', 'intent', 'running', '识别意图', {
+    summary: v2Summary('intent', 'running'),
+  }))
+  await pushGenerationEvent(gen, res, clientConnected, stepPayload('intent', 'intent', 'done', '识别意图', {
+    summary: v2Summary('intent', 'done', intentDetail),
+    detail: intentDetail,
+  }))
+
+  if (knowledge) {
+    await pushGenerationEvent(gen, res, clientConnected, stepPayload('rag', 'rag', 'pending', '检索知识库', {
+      summary: v2Summary('rag', 'pending'),
+    }))
+    await pushGenerationEvent(gen, res, clientConnected, stepPayload('rag', 'rag', 'running', '检索知识库', {
+      summary: v2Summary('rag', 'running'),
+    }))
+    await pushGenerationEvent(gen, res, clientConnected, stepPayload('rag', 'rag', 'done', '检索知识库', {
+      summary: v2Summary('rag', 'done', '命中 3 条'),
+      detail: '命中 3 条',
+    }))
+    await pushGenerationEvent(gen, res, clientConnected, stepPayload('agent', 'agent', 'running', 'Agent 推理', {
+      summary: v2Summary('agent', 'running'),
+    }))
+  }
+
+  await pushGenerationEvent(gen, res, clientConnected, stepPayload('generate', 'generate', 'running', '生成回答', {
+    summary: v2Summary('generate', 'running'),
+  }))
+}
+
 function writeSSEEvent(res, id, data) {
   res.write(`id:${id}\n`)
   const lines = data.split('\n')
@@ -511,7 +664,7 @@ const server = http.createServer(async (req, res) => {
 
       let counter = 2
       for (const token of tokens) {
-        writeSSEEvent(res, String(counter++).padStart(8, '0'), token)
+        writeSSEEvent(res, String(counter++).padStart(8, '0'), contentPayload(token))
         await sleep(15 + Math.random() * 20)
       }
 
@@ -545,10 +698,21 @@ const server = http.createServer(async (req, res) => {
       seq: 0,
     }))
 
-    const tokens = tokenize(TEST_CONTENT)
-    console.log(`[Mock] 新消息 conv=${conv.id} generation=${generationId} tokens=${tokens.length}`)
+    const isE2eReasoning = payload.content === '__e2e_reasoning__'
+    const isKnowledge = payload.content === '__e2e_knowledge__'
+      || (typeof payload.content === 'string' && payload.content.includes('考勤'))
+    const tokens = isE2eReasoning
+      ? tokenize('这是正式回复正文，不含思考措辞。')
+      : tokenize(TEST_CONTENT)
+    const reasoningTokens = isE2eReasoning
+      ? tokenize('E2E思考：分析用户问题并构造回复。')
+      : []
+    if (isKnowledge) {
+      assistantMsg.intent = 'knowledge'
+    }
+    console.log(`[Mock] 新消息 conv=${conv.id} generation=${generationId} tokens=${tokens.length} reasoning=${reasoningTokens.length} knowledge=${isKnowledge}`)
 
-    emitGenerationChunks(generationId, tokens, res, assistantMsg, conv).catch(err => {
+    emitGenerationChunks(generationId, tokens, res, assistantMsg, conv, { reasoningTokens, knowledge: isKnowledge }).catch(err => {
       console.error(`[Mock] generation 异常 id=${generationId}`, err)
     })
     return

@@ -2,13 +2,8 @@ package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Component;
 
-@Component
 @RequiredArgsConstructor
-@ConditionalOnBean(StringRedisTemplate.class)
 public class GenerationJobFactory {
 
     private final GenerationStreamService streamService;

@@ -1,5 +1,8 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import lombok.Getter;
@@ -34,6 +37,8 @@ public class GenerationJob {
     private volatile Disposable llmSubscription;
     private volatile Disposable orphanTimer;
     private volatile StringBuilder mysqlBufferRef;
+    private volatile StringBuilder reasoningBufferRef;
+    private final java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>();
 
     GenerationJob(String generationId, String messageId, String conversationId,
             String userId, String tenantId, String intent,
@@ -51,9 +56,10 @@ public class GenerationJob {
         this.flushScheduler = flushScheduler;
     }
 
-    public void start(Flux<String> llmFlux, StringBuilder mysqlBuffer,
+    public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError) {
         this.mysqlBufferRef = mysqlBuffer;
+        this.reasoningBufferRef = new StringBuilder();
         streamService.updateStatus(generationId, GenerationStatus.RUNNING);
 
         AtomicLong lastFlush = new AtomicLong(0);
@@ -88,15 +94,30 @@ public class GenerationJob {
             cancelOrphanTimer();
             disposeLlmSubscription();
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
-            flushScheduler.commitFinal(messageId, bufferContent(), MessageStatus.INTERRUPTED);
+            flushScheduler.commitFinal(
+                    messageId, bufferContent(), bufferReasoning(), MessageStatus.INTERRUPTED, stepsJson());
         });
     }
 
-    private void onChunk(String chunk, StringBuilder mysqlBuffer,
+    private void onChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
         long nextSeq = seq.incrementAndGet();
-        streamService.appendChunk(generationId, nextSeq, chunk);
-        mysqlBuffer.append(chunk);
+        if (token.isStep()) {
+            ProcessingStepMerger.upsert(stepsBuffer, token.step());
+            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
+            return;
+        }
+        String wire = token.isContent()
+                ? flushScheduler.metaContent(token.text())
+                : flushScheduler.metaReasoning(token.text());
+        streamService.appendChunk(generationId, nextSeq, wire);
+        if (!token.isContent()) {
+            if (reasoningBufferRef != null) {
+                reasoningBufferRef.append(token.text());
+            }
+            return;
+        }
+        mysqlBuffer.append(token.text());
 
         long now = System.currentTimeMillis();
         if (now - lastFlush.get() >= properties.flushIntervalMs()) {
@@ -109,7 +130,8 @@ public class GenerationJob {
         cancelOrphanTimer();
         disposeLlmSubscription();
         streamService.updateStatus(generationId, GenerationStatus.COMPLETED);
-        flushScheduler.commitFinal(messageId, bufferContent(), MessageStatus.COMPLETED);
+        flushScheduler.commitFinal(
+                messageId, bufferContent(), bufferReasoning(), MessageStatus.COMPLETED, stepsJson());
         onComplete.run();
     }
 
@@ -117,7 +139,8 @@ public class GenerationJob {
         cancelOrphanTimer();
         disposeLlmSubscription();
         streamService.updateStatus(generationId, GenerationStatus.FAILED);
-        flushScheduler.commitFinal(messageId, bufferContent(), MessageStatus.FAILED);
+        flushScheduler.commitFinal(
+                messageId, bufferContent(), bufferReasoning(), MessageStatus.FAILED, stepsJson());
         onError.accept(error);
     }
 
@@ -145,5 +168,14 @@ public class GenerationJob {
     private String bufferContent() {
         StringBuilder buffer = mysqlBufferRef;
         return buffer != null ? buffer.toString() : "";
+    }
+
+    private String bufferReasoning() {
+        StringBuilder buffer = reasoningBufferRef;
+        return buffer != null ? buffer.toString() : "";
+    }
+
+    private String stepsJson() {
+        return ProcessingStepMerger.toJson(stepsBuffer);
     }
 }

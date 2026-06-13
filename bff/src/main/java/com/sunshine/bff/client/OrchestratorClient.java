@@ -6,10 +6,12 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -42,6 +44,7 @@ public class OrchestratorClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .doOnSubscribe(s -> log.info("[BFF] 连接 Orchestrator SSE"))
                 .doOnError(e -> log.error("[BFF] Orchestrator 连接异常", e));
@@ -73,6 +76,7 @@ public class OrchestratorClient {
                 .header("x-user-id", userId)
                 .header("x-tenant-id", tenantId)
                 .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -94,6 +98,7 @@ public class OrchestratorClient {
                 .header("x-user-id", userId)
                 .header("x-tenant-id", tenantId)
                 .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToMono(Void.class);
     }
 
@@ -108,6 +113,7 @@ public class OrchestratorClient {
                 .header("x-tenant-id", tenantId)
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .doOnSubscribe(s -> log.info("[BFF] 重连 generation SSE id={} afterSeq={}", generationId, afterSeq))
                 .doOnError(e -> log.error("[BFF] generation 重连异常 id={}", generationId, e));
@@ -119,6 +125,7 @@ public class OrchestratorClient {
                 .header("x-user-id", userId)
                 .header("x-tenant-id", tenantId)
                 .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -128,6 +135,14 @@ public class OrchestratorClient {
                 .header("x-user-id", userId)
                 .header("x-tenant-id", tenantId)
                 .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    private Mono<? extends Throwable> toStatusException(
+            org.springframework.web.reactive.function.client.ClientResponse response) {
+        return response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .flatMap(body -> Mono.error(new ResponseStatusException(response.statusCode(), body)));
     }
 }
