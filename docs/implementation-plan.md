@@ -67,38 +67,40 @@ my-sunshine-agent/
 | 1.5 全链路追踪 | SkyWalking 探针 + Nacos 配置热更新 | ✅ |
 
 #### 阶段一检查门
-- [ ] 上传文档 → RAG 知识库问答可演示
-- [ ] LLM Gateway → DeepSeek 调用成功
-- [ ] BFF → Orchestrator → LLM Gateway SSE 流式输出正常
-- [ ] 修改 Nacos System Prompt → Agent 行为即时变化
+> 自动化脚本：[`scripts/phase1-demo.ps1`](../scripts/phase1-demo.ps1) / [`scripts/phase1-demo.sh`](../scripts/phase1-demo.sh)（2026-06-14 本地联调通过 Step 1–4）
+
+- [x] 上传文档 → RAG 知识库问答可演示 — 入库 14 chunk + 检索命中 + BFF 知识库流
+- [x] LLM Gateway → DeepSeek 调用成功
+- [x] BFF → Orchestrator → LLM Gateway SSE 流式输出正常
+- [ ] 修改 Nacos System Prompt → Agent 行为即时变化（脚本 Step 6，纯手动）
 
 ---
 
-### 阶段 1.5：会话 MVP（可选，约 2 周）⬜
+### 阶段 1.5：会话 MVP（可选，约 2 周）✅ 核心已完成
 
 > 技术设计 spec：[superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md](./superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md)  
 > 实施计划：[superpowers/plans/2026-06-11-phase1.5-conversation-mvp.md](./superpowers/plans/2026-06-11-phase1.5-conversation-mvp.md)
 
 介于阶段一与阶段二之间，补齐**产品可用性**（非阶段一正式交付物）：
 
-| 任务卡 | 内容 |
-|--------|------|
-| 1.5.1 | MySQL 会话/消息表 + JPA + Flyway | 🔶 进行中 |
-| 1.5.2 | Orchestrator 多轮上下文（DB history 注入 LLM/Agent） | 🔶 进行中 |
-| 1.5.3 | BFF 会话 CRUD + `conversationId` 全链路贯通 | 🔶 进行中 |
-| 1.5.4 | 前端 chatStore 改后端数据源 | 🔶 进行中 |
+| 任务卡 | 内容 | 状态 |
+|--------|------|:--:|
+| 1.5.1 | MySQL 会话/消息表 + JPA + Flyway | ✅ |
+| 1.5.2 | Orchestrator 多轮上下文（DB history 注入 LLM/Agent） | ✅ |
+| 1.5.3 | BFF 会话 CRUD + `conversationId` 全链路贯通 | ✅ |
+| 1.5.4 | 前端 chatStore 改后端数据源 | ✅ |
 | 1.5.5 | `x-user-id` 轻量隔离 + 集成测试 | ✅ |
 | 1.5.6 | **断点续传**：message 状态机 + resume API + 周期性 flush + 继续生成 UI | ✅ |
 
 #### 阶段 1.5 检查门
-- [ ] 同一会话 3 轮追问，上下文连贯
-- [ ] 换浏览器同用户可恢复历史
-- [ ] 越权访问会话返回 404
-- [ ] Stop / 刷新后可「继续生成」，同一条 assistant 追加完成
+- [x] 同一会话 3 轮追问，上下文连贯 — `ConversationIntegrationTest.threeTurnContext_simpleIntent`
+- [ ] 换浏览器同用户可恢复历史（脚本 Step 7 / 前端手动验收）
+- [x] 越权访问会话返回 404 — `ConversationIntegrationTest.forbiddenAccess_returns404`
+- [x] Stop / 刷新后可「继续生成」，同一条 assistant 追加完成 — `streamInterrupted_*` + `resumeContinue_*`
 
 ---
 
-### 阶段 1.6：Redis SSE 无感重连（约 1 周）🔶 进行中
+### 阶段 1.6：Redis SSE 无感重连（约 1 周）✅ 核心已完成
 
 > 技术设计 spec 同文档 **Track G**：[superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md](./superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md#track-g--redis-sse-缓冲--客户端无感重连阶段-16)  
 > 实施计划：[superpowers/plans/2026-06-11-phase1.6-generation-reconnect.md](./superpowers/plans/2026-06-11-phase1.6-generation-reconnect.md)  
@@ -113,10 +115,10 @@ my-sunshine-agent/
 | 1.6.5 | 集成测试（jedis-mock）+ mock-server | ✅ |
 
 #### 阶段 1.6 检查门
-- [ ] 中途断 SSE 后 Redis 仍缓冲至 complete 或 orphan-timeout
-- [ ] `afterSeq` 重连 chunk 连续、不重复开新 assistant
-- [ ] generation 已停时 reconnect 410，自动降级「继续生成」（Track F）
-- [ ] 越权 reconnect → 404
+- [x] 中途断 SSE 后 Redis 仍缓冲至 complete 或 orphan-timeout — `GenerationReconnectIntegrationTest.generationBuffersWhileNoSubscriber`
+- [x] `afterSeq` 重连 chunk 连续、不重复开新 assistant — `reconnectAfterSeq_resumesStream`
+- [x] generation 已停时 reconnect 410，自动降级「继续生成」（Track F）— `reconnectWhenInterrupted_returns410`（前端降级需手动点验）
+- [x] 越权 reconnect → 404 — `reconnectForbiddenUser_returns404`
 
 ---
 

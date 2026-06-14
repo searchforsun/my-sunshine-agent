@@ -9,16 +9,11 @@ import io.agentscope.core.message.ToolResultBlock;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 /**
  * AgentScope Hook — 工具调用步骤（跨线程，经 StepEventBridge 写入 TimelineSession）
  */
 @Component
 public class ProcessingStepHook implements Hook {
-
-    private static final Pattern HIT_COUNT = Pattern.compile("共\\s*(\\d+)\\s*条");
 
     @Override
     public <T extends HookEvent> Mono<T> onEvent(T event) {
@@ -74,13 +69,6 @@ public class ProcessingStepHook implements Hook {
                 .map(block -> ((TextBlock) block).getText())
                 .findFirst()
                 .orElse("");
-        if (text.isBlank() || text.contains("未找到")) {
-            return "命中 0 条";
-        }
-        Matcher matcher = HIT_COUNT.matcher(text);
-        if (matcher.find()) {
-            return "命中 " + matcher.group(1) + " 条";
-        }
-        return "命中 0 条";
+        return RagHitSummarizer.summarize(text);
     }
 }

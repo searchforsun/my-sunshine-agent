@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -36,12 +37,13 @@ public class RagClient {
 
     /**
      * 检索知识库
+     *
      * @param query 查询文本
-     * @param topK  返回结果数量，默认 3
-     * @return 文档片段内容列表
+     * @param topK  返回结果数量
+     * @return 文档片段列表（含文档名称）
      */
     @SuppressWarnings("unchecked")
-    public Mono<List<String>> search(String query, int topK) {
+    public Mono<List<RagHit>> search(String query, int topK) {
         Map<String, Object> body = Map.of("query", query, "topK", topK);
 
         return webClient.post()
@@ -53,14 +55,37 @@ public class RagClient {
                 })
                 .map(response -> {
                     List<?> rawList = (List<?>) response.get("results");
-                    List<String> results = rawList != null
-                            ? rawList.stream().map(Object::toString).toList()
-                            : List.of();
+                    if (rawList == null || rawList.isEmpty()) {
+                        return List.<RagHit>of();
+                    }
+                    List<RagHit> results = new ArrayList<>();
+                    for (Object item : rawList) {
+                        if (item instanceof Map<?, ?> map) {
+                            results.add(parseHit(map));
+                        } else {
+                            results.add(new RagHit("未知文档", item.toString(), 0f));
+                        }
+                    }
                     log.info("[RagClient] 检索完成: query='{}', 命中 {} 条",
                             query.length() > 30 ? query.substring(0, 30) + "..." : query,
                             results.size());
                     return results;
                 })
                 .doOnError(e -> log.error("[RagClient] 检索失败: {}", e.getMessage()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static RagHit parseHit(Map<?, ?> map) {
+        String docName = map.get("docName") != null ? map.get("docName").toString() : "未知文档";
+        String content = map.get("content") != null ? map.get("content").toString() : "";
+        float score = 0f;
+        Object scoreObj = map.get("score");
+        if (scoreObj instanceof Number number) {
+            score = number.floatValue();
+        }
+        return new RagHit(docName, content, score);
+    }
+
+    public record RagHit(String docName, String content, float score) {
     }
 }

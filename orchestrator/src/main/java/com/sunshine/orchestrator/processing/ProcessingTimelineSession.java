@@ -53,7 +53,11 @@ public final class ProcessingTimelineSession {
     }
 
     public void start(String stepId, String phase) {
-        apply(stepId, phase, EventKind.START, resolveActive(stepId), null);
+        startAt(stepId, phase, System.currentTimeMillis());
+    }
+
+    public void startAt(String stepId, String phase, long startedAt) {
+        applyAt(stepId, phase, EventKind.START, resolveActive(stepId), null, startedAt);
     }
 
     public void progress(String stepId, String activeSummary) {

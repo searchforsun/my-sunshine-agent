@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
+import com.sunshine.testsupport.SseEventTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -142,6 +143,27 @@ class ConversationIntegrationTest {
     }
 
     @Test
+    @DisplayName("threeTurnContext_simpleIntent — 三轮追问 history 连贯")
+    void threeTurnContext_simpleIntent() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatTurn>> historyCaptor = ArgumentCaptor.forClass(List.class);
+
+        String convId = createConversation(ALICE);
+        streamChat(ALICE, convId, "我叫小明，在上海工作");
+        streamChat(ALICE, convId, "我在哪个城市？");
+        streamChat(ALICE, convId, "我叫什么名字？");
+
+        verify(llmGateway, times(3)).streamWithHistory(historyCaptor.capture(), anyString());
+        List<ChatTurn> thirdRoundHistory = historyCaptor.getAllValues().get(2);
+        assertThat(thirdRoundHistory).hasSizeGreaterThanOrEqualTo(4);
+        assertThat(thirdRoundHistory.stream().anyMatch(t -> t.content().contains("小明"))).isTrue();
+        assertThat(thirdRoundHistory.stream().anyMatch(t -> t.content().contains("上海"))).isTrue();
+
+        ConversationDetailDto detail = getConversation(ALICE, convId);
+        assertThat(detail.getMessages()).hasSizeGreaterThanOrEqualTo(6);
+    }
+
+    @Test
     @DisplayName("forbiddenAccess_returns404 — 越权访问会话")
     void forbiddenAccess_returns404() {
         String convId = createConversation(ALICE);
@@ -186,8 +208,7 @@ class ConversationIntegrationTest {
                 .retrieve()
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .doOnNext(ev -> {
-                    String data = ev.data();
-                    if (data != null && !data.startsWith("{")) {
+                    if (SseEventTestSupport.isContentChunk(objectMapper, ev)) {
                         chunks.countDown();
                     }
                 })
@@ -217,7 +238,7 @@ class ConversationIntegrationTest {
 
     @Test
     @DisplayName("resumeContinue_appendsContent — interrupted 续传后 content 变长且 completed")
-    void resumeContinue_appendsContent() {
+    void resumeContinue_appendsContent() throws InterruptedException {
         ChatConversationEntity conv = conversationService.create(ALICE, TENANT);
         conversationService.appendMessage(conv.getId(), "user", "hello", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
@@ -226,11 +247,8 @@ class ConversationIntegrationTest {
 
         streamResume(ALICE, conv.getId(), assistant.getId());
 
-        ConversationDetailDto detail = getConversation(ALICE, conv.getId());
-        ConversationDetailDto.MessageDto last = detail.getMessages().stream()
-                .filter(m -> m.getId().equals(assistant.getId()))
-                .findFirst()
-                .orElseThrow();
+        ConversationDetailDto.MessageDto last = awaitMessageStatus(
+                ALICE, conv.getId(), assistant.getId(), MessageStatus.COMPLETED, 50);
 
         assertThat(last.getContent()).contains("partial").contains("continued");
         assertThat(last.getStatus()).isEqualTo(MessageStatus.COMPLETED);
@@ -390,6 +408,25 @@ class ConversationIntegrationTest {
                 .exchangeToMono(resp -> resp.bodyToMono(Void.class)
                         .thenReturn(resp.statusCode().value()))
                 .block(Duration.ofSeconds(10));
+    }
+
+    private ConversationDetailDto.MessageDto awaitMessageStatus(
+            String userId, String convId, String messageId, String status, int maxAttempts)
+            throws InterruptedException {
+        ConversationDetailDto.MessageDto last = null;
+        for (int i = 0; i < maxAttempts; i++) {
+            ConversationDetailDto detail = getConversation(userId, convId);
+            last = detail.getMessages().stream()
+                    .filter(m -> m.getId().equals(messageId))
+                    .findFirst()
+                    .orElseThrow();
+            if (status.equals(last.getStatus())) {
+                return last;
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("message " + messageId + " did not reach status " + status
+                + ", last=" + (last != null ? last.getStatus() : null));
     }
 
     private void awaitStreamingStatus(String messageId) throws InterruptedException {

@@ -35,7 +35,7 @@ agent:
     max-messages: 20
   generation:
     ttl-sec: 3600
-    orphan-timeout-sec: 120
+    orphan-timeout-sec: 5
     max-buffer-chunks: 10000
     reconnect-block-ms: 5000
     flush-interval-ms: 50

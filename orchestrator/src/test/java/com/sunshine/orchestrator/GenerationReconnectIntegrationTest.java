@@ -8,10 +8,13 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
+import com.sunshine.testsupport.SseEventTestSupport;
 import com.sunshine.orchestrator.generation.GenerationMeta;
 import com.sunshine.orchestrator.generation.GenerationStatus;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
 import com.sunshine.orchestrator.model.ChatMessage;
+import com.sunshine.orchestrator.generation.GenerationRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -75,6 +78,9 @@ class GenerationReconnectIntegrationTest {
     private GenerationStreamService streamService;
 
     @Autowired
+    private GenerationRegistry registry;
+
+    @Autowired
     private StringRedisTemplate redis;
 
     @Autowired
@@ -109,6 +115,11 @@ class GenerationReconnectIntegrationTest {
             redis.delete(keys);
         }
         when(intentRouter.classify(anyString())).thenReturn(Mono.just("simple"));
+    }
+
+    @AfterEach
+    void tearDownGenerations() {
+        registry.cancelAll();
     }
 
     @Test
@@ -199,7 +210,7 @@ class GenerationReconnectIntegrationTest {
                 .retrieve()
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .take(Duration.ofSeconds(10))
-                .flatMap(ev -> parseSeq(ev).map(Mono::just).orElse(Mono.empty()))
+                .flatMap(ev -> SseEventTestSupport.contentSeq(objectMapper, ev).map(Mono::just).orElse(Mono.empty()))
                 .collectList()
                 .block(Duration.ofSeconds(15));
 
@@ -355,18 +366,6 @@ class GenerationReconnectIntegrationTest {
             // not generation meta
         }
         return false;
-    }
-
-    private Optional<Long> parseSeq(ServerSentEvent<String> ev) {
-        String id = ev.id();
-        if (id == null || !id.matches("\\d+")) {
-            return Optional.empty();
-        }
-        String data = ev.data();
-        if (data != null && data.startsWith("{")) {
-            return Optional.empty();
-        }
-        return Optional.of(Long.parseLong(id));
     }
 
     private void awaitLastSeqBeyond(String generationId, long beyond, long timeoutMs) throws InterruptedException {

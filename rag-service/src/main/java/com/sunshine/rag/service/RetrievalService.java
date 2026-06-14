@@ -1,5 +1,6 @@
 package com.sunshine.rag.service;
 
+import com.sunshine.rag.config.RagSearchProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,20 +18,33 @@ public class RetrievalService {
 
     private final EmbeddingService embeddingService;
     private final MilvusService milvusService;
+    private final RagSearchProperties searchProperties;
 
     public Mono<List<DocFragment>> search(String query, int topK) {
         log.info("[RAG] 检索: query='{}', topK={}", query, topK);
 
         return embeddingService.embed(query)
                 .map(vector -> {
-                    List<String> contents = milvusService.search(vector, topK);
-                    return contents.stream()
-                            .map(c -> new DocFragment(c, 0.0f))
+                    List<MilvusService.SearchHit> raw = milvusService.search(vector, topK);
+                    float minScore = searchProperties.getMinScore();
+                    List<MilvusService.SearchHit> filtered = SearchScoreFilter.apply(raw, minScore);
+                    if (log.isDebugEnabled() && !raw.isEmpty()) {
+                        raw.forEach(hit -> log.debug("[RAG] score={} doc={} pass={}",
+                                String.format("%.4f", hit.score()),
+                                hit.docName(),
+                                hit.score() >= minScore));
+                    }
+                    if (raw.size() != filtered.size()) {
+                        log.info("[RAG] 相似度过滤: minScore={}, raw={}, effective={}",
+                                minScore, raw.size(), filtered.size());
+                    }
+                    return filtered.stream()
+                            .map(hit -> new DocFragment(hit.docName(), hit.content(), hit.score()))
                             .toList();
                 })
-                .doOnSuccess(r -> log.info("[RAG] 检索完成: {} 条结果", r.size()));
+                .doOnSuccess(r -> log.info("[RAG] 有效命中: {} 条", r.size()));
     }
 
-    public record DocFragment(String content, float score) {
+    public record DocFragment(String docName, String content, float score) {
     }
 }

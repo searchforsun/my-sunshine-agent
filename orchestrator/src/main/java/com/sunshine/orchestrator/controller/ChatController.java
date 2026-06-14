@@ -7,6 +7,8 @@ import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.SunshineAgent;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.RagClient;
+import com.sunshine.orchestrator.client.RagContextFormatter;
+import com.sunshine.orchestrator.client.RagDetailFormatter;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.client.StreamTokenCoalescer;
@@ -424,43 +426,45 @@ public class ChatController {
     }
 
     private Flux<StreamToken> knowledgeAgentFlux(StreamContext ctx) {
-        return Flux.concat(
-                ragSearchWithSteps(ctx.userContent(), ctx.assistantMsgId()),
-                sunshineAgent.chat(ctx.history(), ctx.userContent(), "", "", ctx.assistantMsgId())
-        );
+        long ragStartMs = System.currentTimeMillis();
+        return ragClient.search(ctx.userContent(), 3)
+                .flatMapMany(hits -> {
+                    long ragEndMs = System.currentTimeMillis();
+                    List<RagClient.RagHit> results = hits != null ? hits : List.of();
+                    String ragContext = RagContextFormatter.formatAgentContext(results);
+                    return Flux.concat(
+                            emitRagSteps(ctx.userContent(), ctx.assistantMsgId(), results, ragStartMs, ragEndMs),
+                            sunshineAgent.chat(
+                                    ctx.history(), ctx.userContent(), "", "",
+                                    ctx.assistantMsgId(), ragContext)
+                    );
+                })
+                .onErrorResume(e -> {
+                    log.warn("[Orchestrator] 知识库预检索失败，Agent 无注入上下文: {}", e.getMessage());
+                    long ragEndMs = System.currentTimeMillis();
+                    return Flux.concat(
+                            emitRagSteps(ctx.userContent(), ctx.assistantMsgId(), List.of(), ragStartMs, ragEndMs),
+                            sunshineAgent.chat(
+                                    ctx.history(), ctx.userContent(), "", "", ctx.assistantMsgId())
+                    );
+                });
     }
 
-    /** knowledge 路径主动检索知识库并发射 rag 步骤（含 0 命中） */
-    private Flux<StreamToken> ragSearchWithSteps(String query, String assistantMsgId) {
+    /** 根据已检索结果发射 rag 步骤（不再重复调用 RAG） */
+    private Flux<StreamToken> emitRagSteps(
+            String query, String assistantMsgId, List<RagClient.RagHit> hits,
+            long ragStartMs, long ragEndMs) {
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(query);
         StepEventBridge.setUserQuery(assistantMsgId, query);
+        String detail = RagDetailFormatter.formatDetail(hits);
         List<StreamToken> startTokens = ProcessingTimelineSupport.run(session, () -> {
             session.pending("rag", "rag");
-            session.start("rag", "rag");
+            session.startAt("rag", "rag", ragStartMs);
+            session.completeAt("rag", detail, ragEndMs);
         });
-        return Flux.concat(
-                Flux.fromIterable(startTokens),
-                ragClient.search(query, 3)
-                        .flatMapMany(results -> {
-                            String detail = results == null || results.isEmpty()
-                                    ? "命中 0 条"
-                                    : "命中 " + results.size() + " 条";
-                            List<StreamToken> done = ProcessingTimelineSupport.run(session, () -> {
-                                session.complete("rag", detail);
-                                StepEventBridge.setRagDetail(assistantMsgId, detail);
-                            });
-                            return Flux.fromIterable(done);
-                        })
-                        .onErrorResume(e -> {
-                            log.warn("[Orchestrator] 知识库检索失败: {}", e.getMessage());
-                            List<StreamToken> done = ProcessingTimelineSupport.run(session, () -> {
-                                session.complete("rag", "命中 0 条");
-                                StepEventBridge.setRagDetail(assistantMsgId, "命中 0 条");
-                            });
-                            return Flux.fromIterable(done);
-                        })
-        );
+        StepEventBridge.setRagDetail(assistantMsgId, detail);
+        return Flux.fromIterable(startTokens);
     }
 
     private static List<StreamToken> drainStepTokens(List<ProcessingStep> stepEmissions) {

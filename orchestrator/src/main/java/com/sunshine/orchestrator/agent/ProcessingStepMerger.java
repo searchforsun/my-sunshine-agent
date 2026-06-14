@@ -38,7 +38,8 @@ public final class ProcessingStepMerger {
         Long startedAt = minNonNull(existing.startedAt(), incoming.startedAt());
         StepSummary summary = mergeSummary(existing.summary(), incoming.summary());
         Long endedAt = moreComplete(existing.endedAt(), incoming.endedAt());
-        Long durationMs = moreComplete(existing.durationMs(), incoming.durationMs());
+        Long durationMs = computeDuration(startedAt, endedAt,
+                existing.durationMs(), incoming.durationMs());
 
         return new ProcessingStep(
                 incoming.id(),
@@ -80,6 +81,13 @@ public final class ProcessingStepMerger {
     }
 
     private static Long moreComplete(Long existing, Long incoming) {
+        return incoming != null ? incoming : existing;
+    }
+
+    private static Long computeDuration(Long startedAt, Long endedAt, Long existing, Long incoming) {
+        if (startedAt != null && endedAt != null) {
+            return endedAt - startedAt;
+        }
         return incoming != null ? incoming : existing;
     }
 

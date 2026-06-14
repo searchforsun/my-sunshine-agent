@@ -47,7 +47,7 @@ public final class AgentScopeEventMapper {
                 out.addAll(ProcessingTimelineSupport.run(session, () ->
                         session.progress("agent", progress)));
             }
-            appendTextTokens(msg, out, true);
+            appendThinkingTokens(msg, out);
             return out;
         }
 
@@ -59,11 +59,14 @@ public final class AgentScopeEventMapper {
         if (type == EventType.AGENT_RESULT) {
             boolean hasContent = hasAnswerContent(msg);
             if (hasContent) {
-                appendTextTokens(msg, out, false);
+                appendContentTokens(msg, out);
                 if (generateStarted.compareAndSet(false, true)) {
+                    long firstTokenAt = System.currentTimeMillis();
+                    agentCompleted.set(true);
                     out.addAll(ProcessingTimelineSupport.run(session, () -> {
+                        session.completeAt("agent", ragDetailHint, firstTokenAt);
                         session.pending("generate", "generate");
-                        session.start("generate", "generate");
+                        session.startAt("generate", "generate", firstTokenAt);
                     }));
                 }
             } else if (event.isLast() && agentCompleted.compareAndSet(false, true)) {
@@ -103,22 +106,26 @@ public final class AgentScopeEventMapper {
         });
     }
 
-    private static void appendTextTokens(Msg msg, List<StreamToken> out, boolean reasoning) {
+    /** 仅 ThinkingBlock 进入 reasoning 通道；REASONING 事件中的 TextBlock 是成稿预览，不传输。 */
+    static void appendThinkingTokens(Msg msg, List<StreamToken> out) {
         for (ThinkingBlock block : msg.getContentBlocks(ThinkingBlock.class)) {
             String thinking = block.getThinking();
             if (thinking != null && !thinking.isEmpty()) {
                 out.add(StreamToken.reasoning(thinking));
             }
         }
+    }
+
+    static void appendContentTokens(Msg msg, List<StreamToken> out) {
         for (TextBlock block : msg.getContentBlocks(TextBlock.class)) {
             String text = block.getText();
             if (text != null && !text.isEmpty()) {
-                out.add(reasoning ? StreamToken.reasoning(text) : StreamToken.content(text));
+                out.add(StreamToken.content(text));
             }
         }
         String fallback = msg.getTextContent();
-        if (out.stream().noneMatch(t -> t.isContent() || t.isReasoning()) && fallback != null && !fallback.isEmpty()) {
-            out.add(reasoning ? StreamToken.reasoning(fallback) : StreamToken.content(fallback));
+        if (out.stream().noneMatch(StreamToken::isContent) && fallback != null && !fallback.isEmpty()) {
+            out.add(StreamToken.content(fallback));
         }
     }
 
@@ -148,16 +155,6 @@ public final class AgentScopeEventMapper {
                 .map(b -> ((TextBlock) b).getText())
                 .findFirst()
                 .orElse("");
-        if (text.isBlank() || text.contains("未找到")) {
-            return "命中 0 条";
-        }
-        int idx = text.indexOf("共 ");
-        if (idx >= 0) {
-            int end = text.indexOf(" 条", idx);
-            if (end > idx) {
-                return "命中 " + text.substring(idx + 2, end) + " 条";
-            }
-        }
-        return "命中 0 条";
+        return RagHitSummarizer.summarize(text);
     }
 }

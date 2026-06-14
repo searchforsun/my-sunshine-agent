@@ -5,7 +5,6 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
-import com.sunshine.orchestrator.processing.StepDurationFinalizer;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.Event;
 import io.agentscope.core.agent.EventType;
@@ -21,7 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Sunshine Agent — 封装 AgentScope ReActAgent，复用 Event 流推送步骤与正文
@@ -56,19 +54,29 @@ public class SunshineAgent {
     public Flux<StreamToken> chat(
             List<ChatTurn> history, String userMessage, String userId, String tenantId,
             String assistantMessageId) {
+        return chat(history, userMessage, userId, tenantId, assistantMessageId, null);
+    }
 
-        log.info("[Orchestrator] user={}, history={}, msg={}", userId,
+    /**
+     * @param ragContext 预检索知识库上下文，注入为独立 user 消息（可为 null）
+     */
+    public Flux<StreamToken> chat(
+            List<ChatTurn> history, String userMessage, String userId, String tenantId,
+            String assistantMessageId, String ragContext) {
+
+        log.info("[Orchestrator] user={}, history={}, ragInjected={}, msg={}", userId,
                 history != null ? history.size() : 0,
+                ragContext != null && !ragContext.isBlank(),
                 userMessage != null && userMessage.length() > 60
                         ? userMessage.substring(0, 60) + "..."
                         : userMessage);
 
-        List<Msg> inputs = buildInputs(history, userMessage);
+        List<Msg> inputs = buildInputs(history, userMessage, ragContext);
 
         StreamOptions options = StreamOptions.builder()
                 .incremental(true)
                 .eventTypes(EventType.REASONING, EventType.TOOL_RESULT, EventType.AGENT_RESULT, EventType.HINT)
-                .includeReasoningChunk(true)
+                .includeReasoningChunk(false)
                 .includeActingChunk(true)
                 .build();
 
@@ -90,7 +98,6 @@ public class SunshineAgent {
         AtomicBoolean agentCompleted = new AtomicBoolean(false);
         AtomicBoolean generateStarted = new AtomicBoolean(false);
         AtomicBoolean generateCompleted = new AtomicBoolean(false);
-        AtomicInteger contentChars = new AtomicInteger();
 
         return Flux.concat(
                 Flux.fromIterable(agentBootstrap),
@@ -101,16 +108,11 @@ public class SunshineAgent {
                             return Flux.fromIterable(tokens);
                         })
                         .transform(StreamDeltaNormalizer::normalizeTokens)
-                        .doOnNext(token -> {
-                            if (token.isContent() && token.text() != null) {
-                                contentChars.addAndGet(token.text().length());
-                            }
-                        })
                         .concatWith(Flux.defer(() -> {
                             List<StreamToken> tail = new ArrayList<>(drainHookSteps(stepQueue));
                             tail.addAll(finishAgentGenerateSteps(
                                     session, agentCompleted, generateStarted, generateCompleted,
-                                    assistantMessageId, contentChars.get()));
+                                    assistantMessageId));
                             return Flux.fromIterable(tail);
                         }))
         )
@@ -128,8 +130,7 @@ public class SunshineAgent {
             AtomicBoolean agentCompleted,
             AtomicBoolean generateStarted,
             AtomicBoolean generateCompleted,
-            String assistantMessageId,
-            int contentChars) {
+            String assistantMessageId) {
 
         if (!generateCompleted.compareAndSet(false, true)) {
             return List.of();
@@ -137,30 +138,15 @@ public class SunshineAgent {
 
         String ragDetail = StepEventBridge.ragDetail(assistantMessageId);
         long now = System.currentTimeMillis();
-        Long agentStart = session.snapshot().stream()
-                .filter(s -> "agent".equals(s.id()))
-                .map(ProcessingStep::startedAt)
-                .findFirst()
-                .orElse(null);
 
-        if (generateStarted.get() && agentStart != null) {
-            long phaseEnd = now;
-            long agentEnd = StepDurationFinalizer.agentEndAt(agentStart, phaseEnd, contentChars);
-            long generateEnd = phaseEnd;
-            final long finalAgentEnd = agentEnd;
-            return ProcessingTimelineSupport.run(session, () -> {
-                session.completeAt("agent", ragDetail, finalAgentEnd);
-                session.completeAt("generate", null, generateEnd);
-            });
+        if (generateStarted.get()) {
+            return ProcessingTimelineSupport.run(session, () ->
+                    session.completeAt("generate", null, now));
         }
 
         if (agentCompleted.compareAndSet(false, true)) {
-            return ProcessingTimelineSupport.run(session, () -> {
-                session.complete("agent", ragDetail);
-                session.pending("generate", "generate");
-                session.start("generate", "generate");
-                session.complete("generate", null);
-            });
+            return ProcessingTimelineSupport.run(session, () ->
+                    session.complete("agent", ragDetail));
         }
         return List.of();
     }
@@ -174,7 +160,7 @@ public class SunshineAgent {
         return tokens;
     }
 
-    private static List<Msg> buildInputs(List<ChatTurn> history, String userMessage) {
+    private static List<Msg> buildInputs(List<ChatTurn> history, String userMessage, String ragContext) {
         List<Msg> inputs = new ArrayList<>();
         if (history != null) {
             for (ChatTurn turn : history) {
@@ -184,6 +170,12 @@ public class SunshineAgent {
                         .textContent(turn.content())
                         .build());
             }
+        }
+        if (ragContext != null && !ragContext.isBlank()) {
+            inputs.add(Msg.builder()
+                    .role(MsgRole.USER)
+                    .textContent(ragContext.strip())
+                    .build());
         }
         inputs.add(Msg.builder()
                 .role(MsgRole.USER)

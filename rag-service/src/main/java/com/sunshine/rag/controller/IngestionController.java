@@ -24,6 +24,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class IngestionController {
 
+    private static final String DEFAULT_DOC_NAME = "未命名文档";
+
     private final MarkdownParser parser;
     private final EmbeddingService embeddingService;
     private final MilvusService milvusService;
@@ -35,19 +37,38 @@ public class IngestionController {
             return Mono.just(Map.of("code", 400, "msg", "内容不能为空"));
         }
 
+        String docName = resolveDocName(body, content);
         List<String> chunks = parser.parse(content);
-        log.info("[RAG] 文档入库: {} 个分段", chunks.size());
+        log.info("[RAG] 文档入库: docName='{}', {} 个分段", docName, chunks.size());
 
         return Flux.fromIterable(chunks)
                 .flatMap(chunk ->
                         embeddingService.embed(chunk)
-                                .doOnNext(vector -> milvusService.insert(chunk, vector))
+                                .doOnNext(vector -> milvusService.insert(docName, chunk, vector))
                 )
                 .collectList()
                 .map(vectors -> Map.of(
                         "code", 200,
                         "msg", "入库成功",
+                        "docName", docName,
                         "chunks", (Object) chunks.size()
                 ));
+    }
+
+    private static String resolveDocName(Map<String, String> body, String content) {
+        String docName = body.get("docName");
+        if (docName == null || docName.isBlank()) {
+            docName = body.get("title");
+        }
+        if (docName != null && !docName.isBlank()) {
+            return docName.trim();
+        }
+        for (String line : content.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("# ")) {
+                return trimmed.substring(2).trim();
+            }
+        }
+        return DEFAULT_DOC_NAME;
     }
 }

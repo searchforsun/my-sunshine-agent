@@ -24,6 +24,10 @@ embedding:
   base-url: https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding
   model: text-embedding-v4
 
+rag:
+  search:
+    min-score: 0.48
+
 logging:
   level:
     com.sunshine: debug

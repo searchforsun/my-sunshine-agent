@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,8 +36,16 @@ public class RetrievalController {
                         "code", 200,
                         "query", query,
                         "results", (Object) fragments.stream()
-                                .map(RetrievalService.DocFragment::content)
+                                .map(RetrievalController::toResultMap)
                                 .toList()
                 ));
+    }
+
+    private static Map<String, Object> toResultMap(RetrievalService.DocFragment fragment) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("docName", fragment.docName());
+        item.put("content", fragment.content());
+        item.put("score", fragment.score());
+        return item;
     }
 }

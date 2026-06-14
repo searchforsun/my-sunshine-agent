@@ -40,7 +40,13 @@ public class GenerationFlushScheduler {
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                         null,
-                        e -> log.warn("[Flush] partial 写库失败 msgId={}: {}", messageId, e.getMessage())
+                        e -> {
+                            if (e instanceof ConversationNotFoundException) {
+                                log.debug("[Flush] partial 跳过 msgId={}: 消息已不存在", messageId);
+                                return;
+                            }
+                            log.warn("[Flush] partial 写库失败 msgId={}: {}", messageId, e.getMessage());
+                        }
                 );
     }
 

@@ -22,6 +22,11 @@ embedding:
   base-url: https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding
   model: text-embedding-v4
 
+rag:
+  search:
+    # IP 相似度下限（归一化向量下近似 cosine）；报销 vs 请假文档通常 < 0.48
+    min-score: 0.48
+
 logging:
   level:
     com.sunshine: debug

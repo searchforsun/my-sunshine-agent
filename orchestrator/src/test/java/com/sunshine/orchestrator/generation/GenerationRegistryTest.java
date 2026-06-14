@@ -79,4 +79,20 @@ class GenerationRegistryTest {
         registry.cancel("missing");
         assertThat(registry.get("missing")).isEmpty();
     }
+
+    @Test
+    @DisplayName("cancelAll 停止全部 running job")
+    void cancelAll_stopsEveryRunningJob() {
+        GenerationJob job1 = newJob("gen-a", "msg-a");
+        GenerationJob job2 = newJob("gen-b", "msg-b");
+        registry.register(job1);
+        registry.register(job2);
+
+        registry.cancelAll();
+
+        assertThat(registry.get("gen-a")).isEmpty();
+        assertThat(registry.get("gen-b")).isEmpty();
+        verify(flushScheduler).commitFinal("msg-a", "", "", MessageStatus.INTERRUPTED, null);
+        verify(flushScheduler).commitFinal("msg-b", "", "", MessageStatus.INTERRUPTED, null);
+    }
 }

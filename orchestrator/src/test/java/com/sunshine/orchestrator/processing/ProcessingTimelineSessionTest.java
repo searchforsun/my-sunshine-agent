@@ -33,6 +33,24 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void startAtCompleteAt_usesWallClockDuration() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("怎么请假");
+
+        session.pending("agent", "agent");
+        session.startAt("agent", "agent", 1_000L);
+        session.completeAt("agent", null, 11_000L);
+
+        ProcessingStep agent = session.snapshot().stream()
+                .filter(s -> "agent".equals(s.id()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(10_000L, agent.durationMs());
+        assertEquals(1_000L, agent.startedAt());
+        assertEquals(11_000L, agent.endedAt());
+    }
+
+    @Test
     void doesNotEmitDuplicateOnSameState() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         List<ProcessingStep> emitted = new ArrayList<>();

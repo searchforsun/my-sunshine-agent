@@ -84,6 +84,15 @@ public final class StepSummarizer {
         if (detail == null || detail.contains("0 条")) {
             return "未找到与" + q + "直接相关的制度或文档";
         }
+        if (detail.contains("来源：")) {
+            int idx = detail.indexOf("来源：");
+            String sources = detail.substring(idx + 3).trim();
+            Matcher countMatcher = HIT_COUNT.matcher(detail);
+            if (countMatcher.find()) {
+                return "找到 " + countMatcher.group(1) + " 条参考片段，来源文档：" + sources;
+            }
+            return "已匹配到相关文档：" + sources;
+        }
         Matcher matcher = HIT_COUNT.matcher(detail);
         if (matcher.find()) {
             return "找到 " + matcher.group(1) + " 条与" + q + "相关的参考文档";

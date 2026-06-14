@@ -35,6 +35,13 @@ public class GenerationRegistry {
         }
     }
 
+    /** 停止所有进行中的 generation（测试 teardown / 优雅停机） */
+    public void cancelAll() {
+        for (String generationId : java.util.List.copyOf(running.keySet())) {
+            cancel(generationId);
+        }
+    }
+
     public boolean tryLockMessage(String messageId, String generationId) {
         return messageLocks.putIfAbsent(messageId, generationId) == null;
     }

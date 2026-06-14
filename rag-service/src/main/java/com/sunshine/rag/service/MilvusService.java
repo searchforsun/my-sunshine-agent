@@ -7,12 +7,16 @@ import io.milvus.grpc.SearchResults;
 import io.milvus.param.MetricType;
 import io.milvus.param.R;
 import io.milvus.param.collection.CreateCollectionParam;
+import io.milvus.param.collection.DescribeCollectionParam;
+import io.milvus.param.collection.DropCollectionParam;
 import io.milvus.param.collection.FieldType;
 import io.milvus.param.collection.HasCollectionParam;
 import io.milvus.param.collection.LoadCollectionParam;
+import io.milvus.param.collection.ReleaseCollectionParam;
 import io.milvus.param.dml.InsertParam;
 import io.milvus.param.dml.SearchParam;
 import io.milvus.param.index.CreateIndexParam;
+import io.milvus.response.DescCollResponseWrapper;
 import io.milvus.response.SearchResultsWrapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -45,11 +49,38 @@ public class MilvusService {
                 HasCollectionParam.newBuilder().withCollectionName(COLLECTION).build());
 
         if (Boolean.TRUE.equals(exists.getData())) {
-            log.info("[RAG] Collection '{}' 已存在", COLLECTION);
-            return;
+            if (hasDocNameField()) {
+                loadCollection();
+                log.info("[RAG] Collection '{}' 已存在且 schema 匹配", COLLECTION);
+                return;
+            }
+            log.warn("[RAG] Collection '{}' schema 过旧，重建以支持 doc_name", COLLECTION);
+            dropCollection();
         }
 
-        // 创建 Collection
+        createCollection();
+    }
+
+    private boolean hasDocNameField() {
+        R<io.milvus.grpc.DescribeCollectionResponse> response = client.describeCollection(
+                DescribeCollectionParam.newBuilder().withCollectionName(COLLECTION).build());
+        if (response.getData() == null) {
+            return false;
+        }
+        DescCollResponseWrapper wrapper = new DescCollResponseWrapper(response.getData());
+        return wrapper.getFields().stream().anyMatch(field -> "doc_name".equals(field.getName()));
+    }
+
+    private void dropCollection() {
+        client.releaseCollection(ReleaseCollectionParam.newBuilder()
+                .withCollectionName(COLLECTION)
+                .build());
+        client.dropCollection(DropCollectionParam.newBuilder()
+                .withCollectionName(COLLECTION)
+                .build());
+    }
+
+    private void createCollection() {
         client.createCollection(CreateCollectionParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withDescription("Sunshine AI 知识库")
@@ -58,6 +89,11 @@ public class MilvusService {
                         .withDataType(DataType.Int64)
                         .withPrimaryKey(true)
                         .withAutoID(true)
+                        .build())
+                .addFieldType(FieldType.newBuilder()
+                        .withName("doc_name")
+                        .withDataType(DataType.VarChar)
+                        .withMaxLength(512)
                         .build())
                 .addFieldType(FieldType.newBuilder()
                         .withName("content")
@@ -71,7 +107,6 @@ public class MilvusService {
                         .build())
                 .build());
 
-        // 创建索引
         client.createIndex(CreateIndexParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withFieldName("embedding")
@@ -80,16 +115,19 @@ public class MilvusService {
                 .withExtraParam("{\"nlist\":128}")
                 .build());
 
-        // 加载到内存
-        client.loadCollection(LoadCollectionParam.newBuilder()
-                .withCollectionName(COLLECTION)
-                .build());
-
+        loadCollection();
         log.info("[RAG] Collection '{}' 创建完成", COLLECTION);
     }
 
-    public void insert(String content, List<Float> embedding) {
+    private void loadCollection() {
+        client.loadCollection(LoadCollectionParam.newBuilder()
+                .withCollectionName(COLLECTION)
+                .build());
+    }
+
+    public void insert(String docName, String content, List<Float> embedding) {
         List<InsertParam.Field> fields = new ArrayList<>();
+        fields.add(new InsertParam.Field("doc_name", List.of(docName)));
         fields.add(new InsertParam.Field("content", List.of(content)));
         fields.add(new InsertParam.Field("embedding", List.of(embedding)));
 
@@ -99,11 +137,11 @@ public class MilvusService {
                 .build());
     }
 
-    public List<String> search(List<Float> queryVector, int topK) {
+    public List<SearchHit> search(List<Float> queryVector, int topK) {
         R<SearchResults> result = client.search(SearchParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withMetricType(MetricType.IP)
-                .withOutFields(List.of("content"))
+                .withOutFields(List.of("doc_name", "content"))
                 .withTopK(topK)
                 .withVectors(List.of(queryVector))
                 .withVectorFieldName("embedding")
@@ -115,18 +153,28 @@ public class MilvusService {
             return List.of();
         }
 
-        SearchResultsWrapper wrapper = new SearchResultsWrapper(
-                result.getData().getResults());
+        SearchResultsWrapper wrapper = new SearchResultsWrapper(result.getData().getResults());
+        List<?> docNames = wrapper.getFieldData("doc_name", 0);
+        List<?> contents = wrapper.getFieldData("content", 0);
+        List<SearchResultsWrapper.IDScore> idScores = wrapper.getIDScore(0);
 
-        List<String> results = new ArrayList<>();
-        List<?> contentList = wrapper.getFieldData("content", 0);
-        for (Object obj : contentList) {
-            if (obj != null) {
-                results.add(obj.toString());
+        List<SearchHit> results = new ArrayList<>();
+        for (int i = 0; i < contents.size(); i++) {
+            Object content = contents.get(i);
+            if (content == null) {
+                continue;
             }
+            String docName = docNames != null && i < docNames.size() && docNames.get(i) != null
+                    ? docNames.get(i).toString()
+                    : "未知文档";
+            float score = idScores != null && i < idScores.size() ? idScores.get(i).getScore() : 0f;
+            results.add(new SearchHit(docName, content.toString(), score));
         }
 
-        log.info("[RAG] 检索完成: topK={}, 命中={}", topK, results.size());
+        log.info("[RAG] 检索完成: topK={}, 返回={}", topK, results.size());
         return results;
+    }
+
+    public record SearchHit(String docName, String content, float score) {
     }
 }

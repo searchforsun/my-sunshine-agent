@@ -84,6 +84,10 @@ java -jar bff/target/sunshine-bff-*.jar &                    # :8001
 
 # 或使用脚本一键启动全部
 bash scripts/start.sh
+
+# 阶段一检查门联调演示（服务已启动后）
+powershell -ExecutionPolicy Bypass -File scripts/phase1-demo.ps1   # Windows
+bash scripts/phase1-demo.sh                                         # Linux / Git Bash
 ```
 
 ### 4. 启动前端
