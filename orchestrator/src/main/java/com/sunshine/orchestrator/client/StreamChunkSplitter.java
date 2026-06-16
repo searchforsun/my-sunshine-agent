@@ -25,6 +25,9 @@ public final class StreamChunkSplitter {
         if (token.isStep()) {
             return List.of(token);
         }
+        if (token.isStepDelta()) {
+            return splitStepDelta(token, maxChars);
+        }
         String text = token.text();
         if (text == null || text.isEmpty()) {
             return List.of();
@@ -45,6 +48,30 @@ public final class StreamChunkSplitter {
             }
             String piece = text.substring(i, end);
             parts.add(token.isReasoning() ? StreamToken.reasoning(piece) : StreamToken.content(piece));
+            i = end;
+        }
+        return parts;
+    }
+
+    private static List<StreamToken> splitStepDelta(StreamToken token, int maxChars) {
+        String text = token.text();
+        if (text == null || text.isEmpty()) {
+            return List.of();
+        }
+        if (text.length() <= maxChars) {
+            return List.of(token);
+        }
+        List<StreamToken> parts = new ArrayList<>();
+        int i = 0;
+        while (i < text.length()) {
+            int end = Math.min(i + maxChars, text.length());
+            if (end < text.length()) {
+                int preferred = findPreferredBreak(text, i, end);
+                if (preferred > i) {
+                    end = preferred;
+                }
+            }
+            parts.add(StreamToken.stepDelta(token.stepId(), token.channel(), text.substring(i, end)));
             i = end;
         }
         return parts;

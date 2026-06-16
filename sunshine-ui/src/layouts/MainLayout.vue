@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { NLayout, NLayoutSider, NLayoutContent, NMenu, useDialog, type MenuOption } from 'naive-ui'
-import { ChatbubblesOutline, BookOutline, StatsChartOutline } from '@vicons/ionicons5'
-import { h, type Component, computed, onMounted } from 'vue'
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
+import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal } from '@vicons/ionicons5'
+import { h, type Component, computed, onMounted, ref } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { useChatStore } from '../stores/chatStore'
+import { useAuthStore } from '../stores/authStore'
+import BrandMark from '../components/BrandMark.vue'
+import UserSettingsModal from '../components/UserSettingsModal.vue'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 function renderIcon(icon: Component) {
   return () => h(icon)
+}
+
+function renderDropdownIcon(icon: Component) {
+  return () => h(NIcon, { size: 16 }, { default: () => h(icon) })
 }
 
 const menuOptions: MenuOption[] = [
@@ -30,6 +38,33 @@ const { sidebarVisible, toggleSidebar } = useSidebar()
 const isDark = computed(() => theme.value === 'dark')
 const chatStore = useChatStore()
 const dialog = useDialog()
+
+const displayNickname = computed(() => authStore.user?.nickname || '用户')
+const userInitial = computed(() => displayNickname.value.charAt(0).toUpperCase())
+const showSettings = ref(false)
+
+const userMenuOptions: DropdownOption[] = [
+  { label: '设置', key: 'settings', icon: renderDropdownIcon(SettingsOutline) },
+  { type: 'divider', key: 'd1' },
+  { label: '退出登录', key: 'logout', icon: renderDropdownIcon(LogOutOutline) },
+]
+
+function handleUserMenu(key: string) {
+  if (key === 'settings') {
+    showSettings.value = true
+    return
+  }
+  if (key === 'logout') {
+    handleLogout()
+  }
+}
+
+function handleLogout() {
+  void (async () => {
+    await authStore.logout()
+    await router.replace('/login')
+  })()
+}
 
 function handleNewChat() {
   void (async () => {
@@ -54,12 +89,13 @@ function handleDeleteConversation(id: string) {
   const title = conv?.title || '该对话'
   dialog.create({
     class: 'sunshine-dialog',
+    showIcon: false,
     title: '永久删除对话',
     content: `确定删除「${title}」吗？\n此操作不可撤销，对话内容将永久删除且无法恢复。`,
     positiveText: '永久删除',
     negativeText: '取消',
-    positiveButtonProps: { type: 'error', size: 'medium', round: true },
-    negativeButtonProps: { size: 'medium', round: true },
+    positiveButtonProps: { type: 'error', size: 'medium' },
+    negativeButtonProps: { quaternary: true, size: 'medium' },
     onPositiveClick: () => {
       void chatStore.remove(id)
     },
@@ -77,32 +113,12 @@ onMounted(() => {
     <NLayoutSider
       v-if="sidebarVisible"
       bordered
-      :width="232"
+      :width="280"
       class="sidebar"
     >
-      <!-- Brand · 三足金乌 -->
+      <!-- Brand -->
       <div class="brand">
-        <svg class="brand-mark" width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="jinwu-sun" x1="4" y1="2" x2="24" y2="26" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#fef9c3" />
-              <stop offset="0.45" stop-color="#fbbf24" />
-              <stop offset="1" stop-color="#c2410c" />
-            </linearGradient>
-          </defs>
-          <rect width="28" height="28" rx="8" fill="url(#jinwu-sun)" />
-          <g fill="white" fill-opacity="0.94">
-            <path d="M14 8.5C8.8 8.5 4.5 10.6 3.2 13.4c3-1.4 6.2-2 10.8-2s7.8.6 10.8 2C22.5 10.6 19.2 8.5 14 8.5Z" />
-            <ellipse cx="14" cy="11.8" rx="2" ry="2.3" />
-            <path d="M13.2 9.6 11.6 8.2 13.8 10.2Z" />
-            <ellipse cx="14" cy="14.8" rx="1.7" ry="2" />
-          </g>
-          <g stroke="white" stroke-opacity="0.94" stroke-width="1.1" stroke-linecap="round">
-            <line x1="12.7" y1="16.2" x2="12.7" y2="20.8" />
-            <line x1="14" y1="15.8" x2="14" y2="21.4" />
-            <line x1="15.3" y1="16.2" x2="15.3" y2="20.8" />
-          </g>
-        </svg>
+        <BrandMark class="brand-mark" />
         <span class="brand-name">Sunshine<span class="brand-ai"> AI</span></span>
       </div>
 
@@ -148,25 +164,32 @@ onMounted(() => {
           <span class="history-empty-text">暂无对话</span>
         </div>
       </div>
+      <div v-else class="sidebar-spacer" aria-hidden="true" />
 
-      <!-- 用户区（后续接入头像 / 登录信息） -->
+      <!-- 用户区 -->
       <div class="sidebar-user">
-        <div class="user-avatar" aria-hidden="true">访</div>
-        <div class="user-meta">
-          <span class="user-name">访客用户</span>
-          <span class="user-sub">demo-user</span>
+        <div class="user-avatar" aria-hidden="true">{{ userInitial }}</div>
+        <span class="user-nickname" :title="displayNickname">{{ displayNickname }}</span>
+        <div class="sidebar-user-actions">
+          <button class="theme-toggle" type="button" @click="toggleTheme" :title="isDark ? '切换浅色模式' : '切换深色模式'">
+            <svg v-if="isDark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="5" />
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+            </svg>
+            <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </button>
+          <NDropdown trigger="click" size="small" :options="userMenuOptions" @select="handleUserMenu">
+            <button type="button" class="user-more-btn" title="更多" aria-label="更多">
+              <EllipsisHorizontal width="18" height="18" />
+            </button>
+          </NDropdown>
         </div>
-        <button class="theme-toggle" type="button" @click="toggleTheme" :title="isDark ? '切换浅色模式' : '切换深色模式'">
-          <svg v-if="isDark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="12" cy="12" r="5" />
-            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-          </svg>
-          <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-          </svg>
-        </button>
       </div>
     </NLayoutSider>
+
+    <UserSettingsModal v-model:show="showSettings" />
 
     <!-- Content -->
     <NLayoutContent class="content-area" :class="{ 'content-area--chat': route.name === 'chat' }">
@@ -189,19 +212,30 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.app-shell {
-  height: 100vh;
-  background: var(--sun-black);
+.sidebar-user-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* --- Sidebar --- */
+.app-shell {
+  height: 100vh;
+  min-height: 100vh;
+}
+
+.app-shell :deep(.n-layout-scroll-container) {
+  height: 100%;
+}
+
 .sidebar {
   background: var(--sun-sidebar-bg) !important;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--sun-border) !important;
   display: flex;
   flex-direction: column;
+  height: 100vh;
 }
 
 /* 与自定义边框统一，避免 Naive bordered 延迟换色 */
@@ -212,6 +246,7 @@ onMounted(() => {
 .sidebar :deep(.n-layout-sider-scroll-container) {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
   height: 100%;
 }
 
@@ -263,9 +298,9 @@ onMounted(() => {
 }
 
 .sidebar-expand-fab:hover {
-  border-color: var(--sun-amber);
-  color: var(--sun-amber-light);
-  background: var(--sun-amber-glow);
+  border-color: var(--sun-border-light);
+  color: var(--sun-text);
+  background: var(--sun-surface-hover);
 }
 
 /* --- Nav --- */
@@ -286,34 +321,15 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
+  padding: 14px 14px 14px 16px;
   margin-top: auto;
+  flex-shrink: 0;
   border-top: 1px solid var(--sun-border);
 }
 
-.user-avatar {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--sun-amber), #d97706);
-  color: #0f1722;
-  font-size: 14px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.user-meta {
+.user-nickname {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.user-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--sun-text);
@@ -322,18 +338,44 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 
-.user-sub {
-  font-size: 11px;
+.user-more-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
   color: var(--sun-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.user-more-btn:hover {
+  background: var(--sun-surface-hover);
+  color: var(--sun-text);
+}
+
+.user-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--sun-surface);
+  border: 1px solid var(--sun-border);
+  color: var(--sun-text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .theme-toggle {
   width: 28px; height: 28px;
   border-radius: 6px;
-  border: 1px solid var(--sun-border);
+  border: none;
   background: transparent;
   color: var(--sun-text-muted);
   cursor: pointer;
@@ -344,12 +386,16 @@ onMounted(() => {
   flex-shrink: 0;
 }
 .theme-toggle:hover {
-  border-color: var(--sun-amber);
-  color: var(--sun-amber-light);
-  background: var(--sun-amber-glow);
+  color: var(--sun-text);
+  background: var(--sun-surface-hover);
 }
 
 /* --- Chat History（豆包式） --- */
+.sidebar-spacer {
+  flex: 1;
+  min-height: 0;
+}
+
 .chat-history {
   flex: 1;
   min-height: 0;
@@ -381,9 +427,9 @@ onMounted(() => {
 }
 
 .new-chat-primary:hover {
-  border-color: var(--sun-amber);
-  background: var(--sun-amber-glow);
-  color: var(--sun-amber-light);
+  border-color: var(--sun-border-light);
+  background: var(--sun-surface-hover);
+  color: var(--sun-text);
 }
 
 .history-list {
@@ -405,9 +451,9 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.history-item:hover { background: var(--sun-surface-hover); }
-.history-item.active { background: var(--sun-amber-glow); }
-.history-item.active .history-item-title { color: var(--sun-amber-light); }
+.history-item:hover { background: var(--sun-row-hover); }
+.history-item.active { background: var(--sun-accent-muted); }
+.history-item.active .history-item-title { color: var(--sun-text); }
 
 .history-item-title {
   flex: 1;
@@ -457,15 +503,17 @@ onMounted(() => {
 
 /* --- Content --- */
 .content-area {
-  background: radial-gradient(ellipse 60% 50% at 50% -10%, rgba(245, 158, 11, 0.03), transparent),
-              var(--sun-black);
+  background: var(--sun-black);
   overflow: auto;
+  height: 100%;
+  min-height: 0;
 }
 
 .content-area--chat {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: 100vh;
 }
 
 .content-area--chat :deep(> *) {

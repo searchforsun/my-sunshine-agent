@@ -5,7 +5,7 @@
 import { ref, reactive, computed } from 'vue'
 import type { ChatMessage } from './chat'
 import { applyStreamError, isAbortError, isPageUnloading } from './streamError'
-import { apiHeaders } from '../composables/useUserId'
+import { apiHeaders } from '../stores/authStore'
 import {
   saveActiveGeneration,
   loadActiveGeneration,
@@ -14,8 +14,8 @@ import {
 } from '../composables/useActiveGeneration'
 import { BFF_STREAM_BASE } from './config'
 import { parseSseEvent } from './sseParse'
-import { normalizeStreamChunk } from './streamInvisible'
-import { normalizeStep, upsertStep } from './processingSteps'
+import { parseSsePayload, type SseMeta } from './sseDispatch'
+import { upsertStep, applyStepDelta, findRunningStepId } from './processingSteps'
 import type { ProcessingStep } from './processingSteps'
 
 const API_BASE = BFF_STREAM_BASE
@@ -50,36 +50,6 @@ export function appendChunk(existing: string, chunk: string): string {
     if (existing.endsWith(chunk.slice(0, n))) return existing + chunk.slice(n)
   }
   return existing + chunk
-}
-
-interface SseMeta {
-  type: string
-  id?: string
-  status?: string
-  resume?: boolean
-  text?: string
-  messageId?: string
-  seq?: number
-}
-
-function parseSsePayload(data: string): { kind: 'meta'; meta: SseMeta } | { kind: 'chunk'; text: string } | { kind: 'reasoning'; text: string } | { kind: 'step'; step: ProcessingStep } {
-  try {
-    const obj = JSON.parse(data) as SseMeta & Record<string, unknown>
-    if (obj.type === 'step') {
-      const step = normalizeStep(obj)
-      if (step) return { kind: 'step', step }
-    }
-    if (obj.type === 'conversation' || obj.type === 'message' || obj.type === 'generation') {
-      return { kind: 'meta', meta: obj }
-    }
-    if (obj.type === 'reasoning' && typeof obj.text === 'string') {
-      return { kind: 'reasoning', text: normalizeStreamChunk(obj.text) }
-    }
-    if ((obj.type === 'content' || obj.type === 'chunk') && typeof obj.text === 'string') {
-      return { kind: 'chunk', text: normalizeStreamChunk(obj.text) }
-    }
-  } catch { /* plain text chunk */ }
-  return { kind: 'chunk', text: normalizeStreamChunk(data) }
 }
 
 function getOrCreate(id: string): SessionState {
@@ -175,6 +145,8 @@ export function useChatSessions(
         }
 
         const parsed = parseSsePayload(data)
+        if (parsed.kind === 'ignore') continue
+
         if (parsed.kind === 'meta') {
           options.onMeta?.(parsed.meta)
           if (parsed.meta.type === 'conversation' && parsed.meta.id) {
@@ -222,6 +194,14 @@ export function useChatSessions(
             lastMsg.reasoning = options.resume
               ? appendChunk(prev, parsed.text)
               : prev + parsed.text
+            const runningId = findRunningStepId(lastMsg.steps ?? [])
+            if (runningId) {
+              lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], {
+                stepId: runningId,
+                channel: 'reasoning',
+                text: parsed.text,
+              })
+            }
           }
           onProgress?.(s.id)
           continue
@@ -232,6 +212,29 @@ export function useChatSessions(
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
             lastMsg.steps = upsertStep(lastMsg.steps ?? [], parsed.step)
+          }
+          onProgress?.(s.id)
+          continue
+        }
+
+        if (parsed.kind === 'step_delta') {
+          if (eventSeq !== null) updateLastSeq(eventSeq)
+          const lastMsg = s.messages[s.messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            let delta = parsed.delta
+            if (delta.channel === 'reasoning' && delta.stepId === 'generate') {
+              const steps = lastMsg.steps ?? []
+              if (steps.some(st => st.id === 'think') || findRunningStepId(steps) === 'think') {
+                delta = { ...delta, stepId: 'think' }
+              }
+            }
+            lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
+            if (delta.channel === 'reasoning') {
+              const prev = lastMsg.reasoning ?? ''
+              lastMsg.reasoning = options.resume
+                ? appendChunk(prev, delta.text)
+                : prev + delta.text
+            }
           }
           onProgress?.(s.id)
           continue

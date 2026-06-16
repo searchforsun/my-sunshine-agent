@@ -2,68 +2,100 @@
 import { ref, onMounted } from 'vue'
 import { NCard, NTag, NGrid, NGridItem, NButton, NSpace, NDivider, NText } from 'naive-ui'
 
+const MIDDLEWARE_HOST = 'ecs4c16g'
+
 interface ServiceStatus {
   name: string
+  host: string
   port: number
-  status: 'online' | 'offline' | 'checking'
+  status: 'online' | 'offline' | 'checking' | 'external'
   description: string
   latency?: number
+  /** HTTP 健康检查路径；无则浏览器无法探测（标记为 external） */
+  healthPath?: string
 }
 
 const services = ref<ServiceStatus[]>([
-  { name: 'Gateway', port: 8000, status: 'checking', description: 'API 网关与路由' },
-  { name: 'BFF', port: 8001, status: 'checking', description: 'SSE 流式转发' },
-  { name: 'Orchestrator', port: 8200, status: 'checking', description: 'AgentScope ReActAgent 编排' },
-  { name: 'LLM Gateway', port: 8300, status: 'checking', description: '多厂商大模型路由' },
-  { name: 'RAG Service', port: 8400, status: 'checking', description: 'Milvus 向量检索' },
-  { name: 'Auth Center', port: 8100, status: 'offline', description: 'Sa-Token 认证中心' },
-  { name: 'Tool Manager', port: 8210, status: 'offline', description: '业务工具包装' },
-  { name: 'Prompt Manager', port: 8500, status: 'offline', description: '提示词模板管理' },
-  { name: 'Desensitize', port: 8600, status: 'offline', description: '数据脱敏引擎' },
+  { name: 'Gateway', host: 'localhost', port: 8000, status: 'checking', description: 'API 网关与路由', healthPath: '/' },
+  { name: 'BFF', host: 'localhost', port: 8001, status: 'checking', description: 'SSE 流式转发', healthPath: '/' },
+  { name: 'Orchestrator', host: 'localhost', port: 8200, status: 'checking', description: 'AgentScope ReActAgent 编排', healthPath: '/' },
+  { name: 'LLM Gateway', host: 'localhost', port: 8300, status: 'checking', description: '多厂商大模型路由', healthPath: '/' },
+  { name: 'RAG Service', host: 'localhost', port: 8400, status: 'checking', description: 'Milvus 向量检索', healthPath: '/' },
+  { name: 'Auth Center', host: 'localhost', port: 8100, status: 'checking', description: 'Sa-Token 认证中心', healthPath: '/' },
+  { name: 'Tool Manager', host: 'localhost', port: 8210, status: 'offline', description: '业务工具包装', healthPath: '/' },
+  { name: 'Prompt Manager', host: 'localhost', port: 8500, status: 'offline', description: '提示词模板管理', healthPath: '/' },
+  { name: 'Desensitize', host: 'localhost', port: 8600, status: 'offline', description: '数据脱敏引擎', healthPath: '/' },
 ])
 
 const middleware = ref<ServiceStatus[]>([
-  { name: 'Nacos', port: 8848, status: 'online', description: '注册与配置中心' },
-  { name: 'Redis', port: 6379, status: 'online', description: '缓存与会话' },
-  { name: 'MySQL', port: 3306, status: 'online', description: '关系型数据库' },
-  { name: 'Milvus', port: 19530, status: 'online', description: '向量数据库' },
-  { name: 'RocketMQ', port: 9876, status: 'online', description: '消息队列' },
-  { name: 'Sentinel', port: 8858, status: 'online', description: '流量控制面板' },
-  { name: 'SkyWalking', port: 8084, status: 'online', description: '全链路追踪' },
-  { name: 'Grafana', port: 3000, status: 'online', description: '监控可视化' },
+  { name: 'Nacos', host: MIDDLEWARE_HOST, port: 8848, status: 'checking', description: '注册与配置中心', healthPath: '/nacos/' },
+  { name: 'Redis', host: MIDDLEWARE_HOST, port: 6379, status: 'external', description: '缓存与会话' },
+  { name: 'MySQL', host: MIDDLEWARE_HOST, port: 3306, status: 'external', description: '关系型数据库' },
+  { name: 'Milvus', host: MIDDLEWARE_HOST, port: 9091, status: 'checking', description: '向量数据库', healthPath: '/healthz' },
+  { name: 'RocketMQ', host: MIDDLEWARE_HOST, port: 9876, status: 'external', description: '消息队列' },
+  { name: 'Sentinel', host: MIDDLEWARE_HOST, port: 8858, status: 'checking', description: '流量控制面板', healthPath: '/' },
+  { name: 'SkyWalking', host: MIDDLEWARE_HOST, port: 8084, status: 'checking', description: '全链路追踪', healthPath: '/' },
+  { name: 'Grafana', host: MIDDLEWARE_HOST, port: 3000, status: 'checking', description: '监控可视化', healthPath: '/api/health' },
 ])
 
-async function checkServices() {
-  for (const svc of services.value) {
-    svc.status = 'checking'
-    const start = Date.now()
-    try {
-      // 任意 HTTP 响应（包括 404）都说明服务在线
-      await fetch(`http://localhost:${svc.port}/`, {
-        signal: AbortSignal.timeout(3000),
-      })
-      svc.status = 'online'
-      svc.latency = Date.now() - start
-    } catch {
-      svc.status = 'offline'
-      svc.latency = undefined
-    }
+async function probeHttp(item: ServiceStatus) {
+  if (!item.healthPath) {
+    item.status = 'external'
+    item.latency = undefined
+    return
+  }
+  item.status = 'checking'
+  const start = Date.now()
+  try {
+    // no-cors：仅探测 TCP/HTTP 可达，避免各微服务未配 CORS 时误报离线
+    await fetch(`http://${item.host}:${item.port}${item.healthPath}`, {
+      signal: AbortSignal.timeout(3000),
+      mode: 'no-cors',
+    })
+    item.status = 'online'
+    item.latency = Date.now() - start
+  } catch {
+    item.status = 'offline'
+    item.latency = undefined
   }
 }
 
+async function checkServices() {
+  await Promise.all(services.value.map(probeHttp))
+}
+
+async function checkMiddleware() {
+  await Promise.all(middleware.value.map(probeHttp))
+}
+
+async function refreshAll() {
+  await Promise.all([checkServices(), checkMiddleware()])
+}
+
 function statusType(s: string) {
-  return s === 'online' ? 'success' : s === 'offline' ? 'error' : 'warning'
+  if (s === 'online') return 'success'
+  if (s === 'offline') return 'error'
+  if (s === 'external') return 'info'
+  return 'warning'
 }
 
 function statusLabel(s: string) {
-  return s === 'online' ? '在线' : s === 'offline' ? '离线' : '检测中...'
+  if (s === 'online') return '在线'
+  if (s === 'offline') return '离线'
+  if (s === 'external') return '远程'
+  return '检测中...'
+}
+
+function endpoint(item: ServiceStatus) {
+  return `${item.host}:${item.port}`
 }
 
 const onlineServices = () => services.value.filter(s => s.status === 'online').length
-const onlineMiddleware = () => middleware.value.filter(s => s.status === 'online').length
+const onlineMiddleware = () =>
+  middleware.value.filter(s => s.status === 'online' || s.status === 'external').length
 
 onMounted(() => {
-  checkServices()
+  refreshAll()
 })
 </script>
 
@@ -75,7 +107,7 @@ onMounted(() => {
           <h2>系统状态</h2>
           <p>微服务与中间件健康状态概览。</p>
         </div>
-        <NButton @click="checkServices" size="small" round secondary>
+        <NButton @click="refreshAll" size="small" round secondary>
           刷新
         </NButton>
       </header>
@@ -115,14 +147,14 @@ onMounted(() => {
                   {{ statusLabel(svc.status) }}
                 </NTag>
               </div>
-              <div class="svc-info">
-                <span class="svc-desc">{{ svc.description }}</span>
-                <span class="svc-port">
-                  :{{ svc.port }}
+              <div class="svc-body">
+                <p class="svc-desc">{{ svc.description }}</p>
+                <p class="svc-port">
+                  {{ endpoint(svc) }}
                   <template v-if="svc.latency !== undefined && svc.status === 'online'">
                     · {{ svc.latency }}ms
                   </template>
-                </span>
+                </p>
               </div>
             </NCard>
           </NGridItem>
@@ -142,10 +174,25 @@ onMounted(() => {
                   size="tiny"
                   round
                 >
-                  :{{ mw.port }}
+                  <template v-if="mw.status !== 'external'" #icon>
+                    <span
+                      class="pulse-dot"
+                      :class="mw.status"
+                      style="margin-right: 5px"
+                    />
+                  </template>
+                  {{ statusLabel(mw.status) }}
                 </NTag>
               </div>
-              <span class="mw-desc">{{ mw.description }}</span>
+              <div class="mw-body">
+                <p class="mw-desc">{{ mw.description }}</p>
+                <p class="mw-endpoint">
+                  {{ endpoint(mw) }}
+                  <template v-if="mw.latency !== undefined && mw.status === 'online'">
+                    · {{ mw.latency }}ms
+                  </template>
+                </p>
+              </div>
             </NCard>
           </NGridItem>
         </NGrid>
@@ -204,7 +251,7 @@ onMounted(() => {
 .stat-val {
   font-size: 26px;
   font-weight: 700;
-  color: var(--sun-amber-light);
+  color: var(--sun-text);
   letter-spacing: -0.5px;
   font-family: 'JetBrains Mono', monospace;
 }
@@ -229,53 +276,64 @@ onMounted(() => {
   border-color: var(--sun-border) !important;
   background: var(--sun-deep) !important;
   transition: border-color .2s, transform .15s;
+  height: 100%;
 }
 .svc-card:hover, .mw-card:hover {
   border-color: var(--sun-border-light) !important;
+}
+.svc-card :deep(.n-card__content),
+.mw-card :deep(.n-card__content) {
+  display: flex;
+  flex-direction: column;
+  min-height: 88px;
 }
 
 .svc-top, .mw-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
 }
 
-.svc-name {
+.svc-name, .mw-name {
   font-size: 13.5px;
   font-weight: 600;
   color: var(--sun-text);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.svc-info {
+.svc-body, .mw-body {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 6px;
+  flex-direction: column;
+  flex: 1;
+  margin-top: 8px;
+  gap: 8px;
+  min-height: 0;
 }
 
-.svc-desc {
+.svc-desc, .mw-desc {
   font-size: 11.5px;
   color: var(--sun-text-muted);
-  max-width: 65%;
+  line-height: 1.45;
+  margin: 0;
 }
 
-.svc-port {
+.svc-port, .mw-endpoint {
+  margin-top: auto;
+  margin-bottom: 0;
   font-size: 11px;
   color: var(--sun-text-muted);
   font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- Middleware cards --- */
 .mw-name {
   font-size: 13px;
-  font-weight: 600;
-  color: var(--sun-text);
-}
-
-.mw-desc {
-  font-size: 11px;
-  color: var(--sun-text-muted);
-  display: block;
-  margin-top: 4px;
 }
 </style>

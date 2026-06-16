@@ -29,6 +29,7 @@ import com.sunshine.orchestrator.generation.StreamEvent;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,7 +89,7 @@ public class ChatController {
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chatStream(
             @RequestBody ChatMessage msg,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
 
         validateRequest(msg);
@@ -131,7 +132,7 @@ public class ChatController {
 
         GenerationJob job = jobFactory.create(
                 generationId, ctx.assistantMsgId(), ctx.conversationId(),
-                ctx.userId(), ctx.tenantId(), ctx.intent());
+                ctx.userId(), ctx.tenantId(), ctx.intent(), ctx.userContent());
         registry.register(job);
 
         StringBuilder buffer = new StringBuilder();
@@ -229,6 +230,7 @@ public class ChatController {
         StringBuilder reasoningBuffer = new StringBuilder(resume ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
                 ProcessingStepMerger.fromJson(ctx.existingStepsJson()));
+        ThinkStepMapper thinkMapper = new ThinkStepMapper(stepsBuffer, ctx.userContent());
         var appender = flushScheduler.createChunkAppender(buffer, ctx.assistantMsgId(), flushIntervalMs);
 
         Flux<ServerSentEvent<String>> meta = Flux.just(
@@ -237,14 +239,24 @@ public class ChatController {
         );
 
         Flux<ServerSentEvent<String>> chunks = chunkFlux
+                .concatMap(token -> Flux.fromIterable(thinkMapper.map(token)))
+                .concatWith(Flux.defer(() -> Flux.fromIterable(thinkMapper.finish())))
                 .doOnNext(token -> {
                     if (token.isStep()) {
                         ProcessingStepMerger.upsert(stepsBuffer, token.step());
                         return;
                     }
+                    if (token.isStepDelta()) {
+                        ProcessingStepMerger.applyDelta(
+                                stepsBuffer, token.stepId(), token.channel(), token.text());
+                        if ("reasoning".equals(token.channel())) {
+                            reasoningBuffer.append(token.text());
+                        }
+                        return;
+                    }
                     if (token.isContent()) {
                         appender.accept(token.text());
-                    } else {
+                    } else if (token.isReasoning()) {
                         reasoningBuffer.append(token.text());
                     }
                 })
@@ -414,22 +426,7 @@ public class ChatController {
             return knowledgeAgentFlux(ctx);
         }
         log.info("[Orchestrator] → 直连流式（简单对话）");
-        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
-        session.bindUserQuery(ctx.userContent());
-        List<ProcessingStep> stepEmissions = new ArrayList<>();
-        session.onStepChanged(stepEmissions::add);
-        session.pending("generate", "generate");
-        session.start("generate", "generate");
-        List<StreamToken> generateStartTokens = drainStepTokens(stepEmissions);
-
-        return Flux.concat(
-                Flux.fromIterable(generateStartTokens),
-                llmGateway.streamWithHistory(ctx.history(), ctx.userContent())
-                        .concatWith(Flux.defer(() -> {
-                            session.complete("generate", null);
-                            return Flux.fromIterable(drainStepTokens(stepEmissions));
-                        }))
-        );
+        return llmGateway.streamWithHistory(ctx.history(), ctx.userContent());
     }
 
     private Flux<StreamToken> knowledgeAgentFlux(StreamContext ctx) {
@@ -516,6 +513,10 @@ public class ChatController {
     private ServerSentEvent<String> tokenToSse(StreamToken token) {
         if (token.isStep()) {
             return sse(flushScheduler.metaStep(token.step()));
+        }
+        if (token.isStepDelta()) {
+            return sse(flushScheduler.metaStepDelta(
+                    token.stepId(), token.channel(), token.text()));
         }
         if (token.isContent()) {
             return sse(flushScheduler.metaContent(token.text()));

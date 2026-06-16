@@ -31,6 +31,7 @@ public final class StepSummarizer {
             case "intent" -> "阅读" + q;
             case "rag" -> "在企业知识库中查找与" + q + "相关的资料";
             case "agent" -> "理解" + q + "，规划作答思路";
+            case "think" -> "分析" + q + "的作答逻辑";
             case "generate" -> "为" + q + "组织回答内容";
             default -> StepLabels.beforeFor(stepId);
         };
@@ -42,6 +43,7 @@ public final class StepSummarizer {
             case "intent" -> "判断" + q + "该直接回答还是查阅知识库";
             case "rag" -> "正在匹配与" + q + "最相关的文档片段";
             case "agent" -> "结合检索结果分析" + q;
+            case "think" -> "正在推演针对" + q + "的回答思路";
             case "generate" -> "正在撰写并输出针对" + q + "的回复";
             default -> StepLabels.activeFor(stepId);
         };
@@ -53,6 +55,7 @@ public final class StepSummarizer {
             case "intent" -> afterIntent(q, detail);
             case "rag" -> afterRag(q, detail);
             case "agent" -> afterAgent(userQuery, detail);
+            case "think" -> "已完成对" + q + "的思考";
             case "generate" -> "已完成对" + q + "的回复";
             default -> StepLabels.afterTemplate(stepId, detail);
         };

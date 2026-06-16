@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Start core Sunshine services (llm-gateway → orchestrator → bff → gateway)
-# Optional SkyWalking agent when docker/skywalking-agent/skywalking-agent.jar exists
-# Usage: bash scripts/start.sh [--profile dev]
+# Start core Sunshine services — 配置来自 Nacos（见 docs/nacos、scripts/sync-nacos.ps1）
+# Usage: bash scripts/start.sh
 
 set -euo pipefail
 
-PROFILE="${1:-dev}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKY_AGENT="$ROOT/docker/skywalking-agent/skywalking-agent.jar"
 JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}java"
@@ -47,12 +45,9 @@ start_service() {
   jar="$(find_jar "$module" "$artifact")"
   local opts
   opts="$(skywalking_opts "$name")"
-  echo "Starting sunshine-${name} ($jar) profile=${PROFILE} ..."
-  if [[ -n "$opts" ]]; then
-    echo "  SkyWalking agent enabled"
-  fi
+  echo "Starting sunshine-${name} ($jar) [Nacos config] ..."
   # shellcheck disable=SC2086
-  nohup "$JAVA_BIN" $opts -jar "$jar" --spring.profiles.active="$PROFILE" \
+  nohup "$JAVA_BIN" $opts -jar "$jar" \
     > "$ROOT/$module/logs/startup.log" 2>&1 &
   PIDS+=("$!")
   sleep 3

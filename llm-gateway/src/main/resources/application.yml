@@ -1,8 +1,6 @@
-# ============================================================
 # sunshine-llm-gateway — 配置入口
-# 业务配置托管在 Nacos（Data ID: sunshine-llm-gateway.yaml）
-# 本地开发: 使用 application-dev.yaml 覆盖（--spring.profiles.active=dev）
-# ============================================================
+# 业务配置唯一来源：Nacos（Data ID: sunshine-llm-gateway.yaml）
+# 本地维护副本：docs/nacos/sunshine-llm-gateway.yaml → scripts/sync-nacos.ps1 同步线上
 
 spring:
   application:

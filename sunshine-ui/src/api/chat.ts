@@ -18,8 +18,10 @@ function extractChunkText(data: string): string | null {
   return normalizeStreamChunk(data)
 }
 
-// 直连 BFF，不经过 Vite proxy（proxy 会缓冲 SSE 流式响应）
-const API_BASE = 'http://localhost:8001'
+import { apiHeaders } from '../stores/authStore'
+
+// 直连 Gateway SSE（避免 Vite proxy 缓冲）
+const API_BASE = import.meta.env.VITE_BFF_STREAM_BASE ?? 'http://localhost:8000'
 
 export interface ChatMessage {
   id?: string
@@ -55,9 +57,8 @@ export function useChat(onChunk?: (data: string) => void) {
       const response = await fetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': 'demo-user',
-          'x-tenant-id': 'default',
+          ...apiHeaders(),
+          Accept: 'text/event-stream',
         },
         body: JSON.stringify({ content }),
         signal: abort.signal,

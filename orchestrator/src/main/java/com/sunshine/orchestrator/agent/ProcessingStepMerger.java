@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.processing.StepLabels;
 import com.sunshine.orchestrator.processing.StepSummary;
 
 import java.util.ArrayList;
@@ -34,6 +35,78 @@ public final class ProcessingStepMerger {
         steps.addAll(byId.values());
     }
 
+    public static void applyDelta(List<ProcessingStep> steps, String stepId, String channel, String text) {
+        if (stepId == null || channel == null || text == null || text.isEmpty()) {
+            return;
+        }
+        Map<String, ProcessingStep> byId = new LinkedHashMap<>();
+        for (ProcessingStep step : steps) {
+            byId.put(step.id(), step);
+        }
+        ProcessingStep existing = byId.get(stepId);
+        if (existing == null) {
+            existing = ProcessingStep.running(stepId, stepId, StepLabels.labelFor(stepId));
+        }
+        byId.put(stepId, applyDeltaToStep(existing, channel, text));
+        steps.clear();
+        steps.addAll(byId.values());
+    }
+
+    private static ProcessingStep applyDeltaToStep(ProcessingStep step, String channel, String text) {
+        return switch (channel) {
+            case "reasoning" -> copyStep(step,
+                    concat(step.reasoning(), text),
+                    step.output(),
+                    step.result());
+            case "output" -> copyStep(step,
+                    step.reasoning(),
+                    concat(step.output(), text),
+                    step.result());
+            case "result" -> copyStep(step, step.reasoning(), step.output(), text);
+            default -> copyStep(step, step.reasoning(), concat(step.output(), text), step.result());
+        };
+    }
+
+    private static String concat(String existing, String chunk) {
+        if (existing == null || existing.isEmpty()) {
+            return chunk;
+        }
+        if (chunk == null || chunk.isEmpty()) {
+            return existing;
+        }
+        return existing + chunk;
+    }
+
+    private static ProcessingStep copyStep(
+            ProcessingStep step, String reasoning, String output, String result) {
+        return new ProcessingStep(
+                step.id(),
+                step.phase(),
+                step.lifecycle() != null ? step.lifecycle() : "running",
+                step.summary(),
+                step.startedAt(),
+                step.endedAt(),
+                step.durationMs(),
+                step.detail(),
+                reasoning,
+                output,
+                result,
+                step.ts(),
+                step.status() != null ? step.status() : "running",
+                step.label()
+        );
+    }
+
+    private static String longer(String a, String b) {
+        if (a == null || a.isEmpty()) {
+            return b;
+        }
+        if (b == null || b.isEmpty()) {
+            return a;
+        }
+        return b.length() >= a.length() && b.startsWith(a) ? b : a + b;
+    }
+
     private static ProcessingStep mergeSteps(ProcessingStep existing, ProcessingStep incoming) {
         Long startedAt = minNonNull(existing.startedAt(), incoming.startedAt());
         StepSummary summary = mergeSummary(existing.summary(), incoming.summary());
@@ -50,6 +123,9 @@ public final class ProcessingStepMerger {
                 endedAt,
                 durationMs,
                 incoming.detail() != null ? incoming.detail() : existing.detail(),
+                longer(existing.reasoning(), incoming.reasoning()),
+                longer(existing.output(), incoming.output()),
+                incoming.result() != null ? incoming.result() : existing.result(),
                 Math.max(existing.ts(), incoming.ts()),
                 incoming.status() != null ? incoming.status() : existing.status(),
                 incoming.label() != null ? incoming.label() : existing.label()

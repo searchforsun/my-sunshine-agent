@@ -18,7 +18,7 @@ public final class StreamDeltaNormalizer {
         AtomicReference<String> lastReasoning = new AtomicReference<>("");
 
         return source.mapNotNull(token -> {
-            if (token.isStep()) {
+            if (token.isStep() || token.isStepDelta()) {
                 return token;
             }
             if (token.isReasoning()) {

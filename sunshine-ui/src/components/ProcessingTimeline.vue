@@ -88,13 +88,13 @@ const isDone = (step: ProcessingStep) => lifecycleOf(step) === 'done'
 
 <template>
 
-  <div class="timeline-panel" :class="{ 'is-expanded': expanded, 'is-live': live }">
+  <div class="chat-meta-panel timeline-panel" :class="{ 'is-expanded': expanded, 'is-live': live }">
 
-    <button type="button" class="timeline-toggle" @click="emit('toggle')">
+    <button type="button" class="chat-meta-toggle timeline-toggle" @click="emit('toggle')">
 
       <svg
 
-        class="timeline-chevron"
+        class="chat-meta-chevron"
 
         width="14"
 
@@ -116,17 +116,17 @@ const isDone = (step: ProcessingStep) => lifecycleOf(step) === 'done'
 
       </svg>
 
-      <span class="timeline-title">处理过程</span>
+      <span class="chat-meta-title">处理过程</span>
 
-      <span v-if="live" class="timeline-badge">处理中</span>
+      <span v-if="live" class="chat-meta-badge">处理中</span>
 
-      <span v-if="!expanded && summary" class="timeline-preview">{{ summary }}</span>
+      <span v-if="!expanded && summary" class="chat-meta-preview">{{ summary }}</span>
 
       <span v-if="showTotal && totalMs" class="timeline-total">总耗时 {{ formatDuration(totalMs) }}</span>
 
     </button>
 
-    <div v-show="expanded" class="timeline-body">
+    <div v-show="expanded" class="chat-meta-body timeline-body">
 
       <div
 
@@ -212,157 +212,17 @@ const isDone = (step: ProcessingStep) => lifecycleOf(step) === 'done'
 
 <style scoped>
 
-.timeline-panel {
-
-  position: relative;
-
-  z-index: 3;
-
-  margin-bottom: 10px;
-
-  border: 1px solid var(--sun-border, #263348);
-
-  border-left: 3px solid var(--sun-blue, #3b82f6);
-
-  border-radius: 10px;
-
-  background: rgba(59, 130, 246, 0.06);
-
-  overflow: hidden;
-
-}
-
-
-
-.timeline-panel.is-live {
-
-  border-color: rgba(59, 130, 246, 0.35);
-
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.08);
-
-}
-
-
-
-.timeline-toggle {
-
-  display: flex;
-
-  align-items: center;
-
-  gap: 8px;
-
-  width: 100%;
-
-  padding: 8px 12px;
-
-  border: none;
-
-  background: transparent;
-
-  color: var(--sun-text-secondary, #94a3b8);
-
-  font-size: 13px;
-
-  cursor: pointer;
-
-  text-align: left;
-
-  font-family: inherit;
-
-}
-
-
-
-.timeline-toggle:hover {
-
-  background: rgba(255, 255, 255, 0.04);
-
-  color: var(--sun-text, #e2e8f0);
-
-}
-
-
-
-.timeline-chevron {
-
-  flex-shrink: 0;
-
-  transition: transform 0.2s ease;
-
-  color: var(--sun-blue-light, #60a5fa);
-
-}
-
-
-
-.is-expanded .timeline-chevron {
-
-  transform: rotate(90deg);
-
-}
-
-
-
-.timeline-title {
-
-  font-weight: 600;
-
-  color: var(--sun-blue-light, #60a5fa);
-
-  flex-shrink: 0;
-
-}
-
-
-
-.timeline-badge {
-
-  flex-shrink: 0;
-
-  padding: 1px 8px;
-
-  border-radius: 999px;
-
-  font-size: 11px;
-
-  background: rgba(59, 130, 246, 0.15);
-
-  color: var(--sun-blue-light, #60a5fa);
-
-}
-
-
-
-.timeline-preview {
-
-  flex: 1;
-
-  min-width: 0;
-
-  overflow: hidden;
-
-  text-overflow: ellipsis;
-
-  white-space: nowrap;
-
-  font-size: 12px;
-
-  color: var(--sun-text-muted, #64748b);
-
-}
-
-
-
 .timeline-total {
 
   flex-shrink: 0;
 
   margin-left: auto;
 
+  padding-left: 8px;
+
   font-size: 11px;
 
-  color: var(--sun-text-muted, #64748b);
+  color: var(--sun-text-muted);
 
   font-variant-numeric: tabular-nums;
 
@@ -372,9 +232,7 @@ const isDone = (step: ProcessingStep) => lifecycleOf(step) === 'done'
 
 .timeline-body {
 
-  border-top: 1px solid rgba(59, 130, 246, 0.12);
-
-  padding: 8px 12px 10px;
+  padding: 0;
 
   display: flex;
 
@@ -420,7 +278,7 @@ const isDone = (step: ProcessingStep) => lifecycleOf(step) === 'done'
 
 .timeline-row.is-running {
 
-  color: var(--sun-blue-light, #60a5fa);
+  color: var(--sun-text, #ececec);
 
 }
 
@@ -478,7 +336,7 @@ const isDone = (step: ProcessingStep) => lifecycleOf(step) === 'done'
 
 .timeline-row.is-running .timeline-dot {
 
-  background: var(--sun-blue, #3b82f6);
+  background: var(--sun-text-muted, #8e8e8e);
 
   animation: pulse 1.2s ease-in-out infinite;
 
@@ -562,7 +420,7 @@ const isDone = (step: ProcessingStep) => lifecycleOf(step) === 'done'
 
 .timeline-duration.is-pulse {
 
-  color: var(--sun-blue-light, #60a5fa);
+  color: var(--sun-text-muted, #8e8e8e);
 
   animation: pulse 1.2s ease-in-out infinite;
 
@@ -598,7 +456,7 @@ const isDone = (step: ProcessingStep) => lifecycleOf(step) === 'done'
 
 .summary-line.is-active {
 
-  color: var(--sun-blue-light, #60a5fa);
+  color: var(--sun-text-secondary, #b4b4b4);
 
 }
 

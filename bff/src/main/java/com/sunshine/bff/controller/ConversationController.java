@@ -24,14 +24,14 @@ public class ConversationController {
 
     @GetMapping("/api/conversations")
     public Mono<List<Map<String, Object>>> list(
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.listConversations(userId, tenantId);
     }
 
     @PostMapping("/api/conversations")
     public Mono<Map<String, Object>> create(
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.createConversation(userId, tenantId);
     }
@@ -39,7 +39,7 @@ public class ConversationController {
     @GetMapping("/api/conversations/{id}")
     public Mono<Map<String, Object>> get(
             @PathVariable String id,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.getConversation(id, userId, tenantId);
     }
@@ -48,7 +48,7 @@ public class ConversationController {
     public Mono<Map<String, Object>> updateTitle(
             @PathVariable String id,
             @RequestBody UpdateTitleRequest body,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.updateConversationTitle(id, body, userId, tenantId);
     }
@@ -56,7 +56,7 @@ public class ConversationController {
     @DeleteMapping("/api/conversations/{id}")
     public Mono<Void> delete(
             @PathVariable String id,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.deleteConversation(id, userId, tenantId);
     }

@@ -1,16 +1,8 @@
-# Start core Sunshine services (llm-gateway -> rag -> orchestrator -> bff -> gateway)
-# Default: Nacos 配置（无 --spring.profiles.active=dev，需 ecs4c16g Nacos 可达且配置已上传）
-# 本地直连: -Profile dev
-# Usage:
-#   powershell -ExecutionPolicy Bypass -File scripts/start.ps1
-#   powershell -ExecutionPolicy Bypass -File scripts/start.ps1 -Profile dev
-
-param(
-    [string]$Profile = ""
-)
+# Start core Sunshine services (llm-gateway -> rag -> orchestrator -> auth -> bff -> gateway)
+# 配置来源：Nacos（docs/nacos 同步后启动，见 scripts/sync-nacos.ps1）
+# Usage: powershell -ExecutionPolicy Bypass -File scripts/start.ps1
 
 $ErrorActionPreference = "Stop"
-
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $SkyAgent = Join-Path $Root "docker\skywalking-agent\skywalking-agent.jar"
 $JavaBin = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME "bin\java.exe" } else { "java" }
@@ -47,11 +39,8 @@ function Start-Service([string]$Name, [string]$Module, [string]$Artifact) {
     $args = @()
     $args += Get-SkywalkingOpts $Name
     $args += @("-jar", $jar)
-    if ($Profile) {
-        $args += "--spring.profiles.active=$Profile"
-    }
 
-    Write-Host "Starting sunshine-$Name ($jar) profile=$(if ($Profile) { $Profile } else { 'nacos' }) ..."
+    Write-Host "Starting sunshine-$Name ($jar) [Nacos config] ..."
     if (Test-Path -LiteralPath $SkyAgent) {
         Write-Host "  SkyWalking agent enabled"
     }
@@ -63,7 +52,7 @@ function Start-Service([string]$Name, [string]$Module, [string]$Artifact) {
     Start-Sleep -Seconds 3
 }
 
-foreach ($dir in @("llm-gateway", "rag-service", "orchestrator", "bff", "gateway")) {
+foreach ($dir in @("llm-gateway", "rag-service", "orchestrator", "auth-center", "bff", "gateway")) {
     $logDir = Join-Path $Root "$dir\logs"
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 }
@@ -75,14 +64,16 @@ if (-not (Test-Path -LiteralPath $SkyAgent)) {
 Start-Service "llm-gateway" "llm-gateway" "sunshine-llm-gateway"
 Start-Service "rag" "rag-service" "sunshine-rag"
 Start-Service "orchestrator" "orchestrator" "sunshine-orchestrator"
+Start-Service "auth" "auth-center" "sunshine-auth"
 Start-Service "bff" "bff" "sunshine-bff"
 Start-Service "gateway" "gateway" "sunshine-gateway"
 
 Write-Host ""
-Write-Host "[OK] Core services started (mode: $(if ($Profile) { 'dev profile' } else { 'Nacos config' }))" -ForegroundColor Green
+Write-Host "[OK] Core services started (Nacos config)" -ForegroundColor Green
 Write-Host "  LLM Gateway  :8300"
 Write-Host "  RAG Service  :8400"
 Write-Host "  Orchestrator :8200"
+Write-Host "  Auth Center  :8100"
 Write-Host "  BFF          :8001"
 Write-Host "  Gateway      :8000"
 Write-Host "Live SkyWalking trace requires OAP at ecs4c16g:11800"

@@ -13,6 +13,19 @@ public final class ProcessingTimelineSession {
     private Consumer<ProcessingStep> onStepChanged = s -> {};
     private ProcessingStep lastEmitted;
     private String userQuery;
+    private String activeStepId;
+
+    public String activeStepId() {
+        return activeStepId;
+    }
+
+    public void appendDelta(String channel, String text) {
+        if (activeStepId == null || channel == null || text == null || text.isEmpty()) {
+            return;
+        }
+        long ts = System.currentTimeMillis();
+        aggregator.appendDelta(activeStepId, channel, text, ts);
+    }
 
     public void bindUserQuery(String query) {
         if (query != null && !query.isBlank()) {
@@ -57,7 +70,20 @@ public final class ProcessingTimelineSession {
     }
 
     public void startAt(String stepId, String phase, long startedAt) {
+        completeRunningActive(startedAt);
+        activeStepId = stepId;
         applyAt(stepId, phase, EventKind.START, resolveActive(stepId), null, startedAt);
+    }
+
+    private void completeRunningActive(long endedAt) {
+        if (activeStepId == null) {
+            return;
+        }
+        aggregator.get(activeStepId).ifPresent(step -> {
+            if ("running".equals(step.lifecycle())) {
+                completeAt(activeStepId, step.detail(), endedAt);
+            }
+        });
     }
 
     public void progress(String stepId, String activeSummary) {
@@ -71,6 +97,9 @@ public final class ProcessingTimelineSession {
     public void completeAt(String stepId, String detail, long endedAt) {
         String after = resolveAfter(stepId, detail);
         applyAt(stepId, null, EventKind.COMPLETE, after, detail, endedAt);
+        if (stepId.equals(activeStepId)) {
+            activeStepId = null;
+        }
     }
 
     private String resolveBefore(String stepId) {
@@ -134,6 +163,9 @@ public final class ProcessingTimelineSession {
                 && Objects.equals(prev.endedAt(), next.endedAt())
                 && Objects.equals(prev.durationMs(), next.durationMs())
                 && Objects.equals(prev.detail(), next.detail())
+                && Objects.equals(prev.reasoning(), next.reasoning())
+                && Objects.equals(prev.output(), next.output())
+                && Objects.equals(prev.result(), next.result())
                 && Objects.equals(prev.status(), next.status())
                 && Objects.equals(prev.label(), next.label());
     }

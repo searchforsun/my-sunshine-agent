@@ -121,6 +121,15 @@ public class GenerationFlushScheduler {
             if (step.detail() != null) {
                 map.put("detail", step.detail());
             }
+            if (step.reasoning() != null) {
+                map.put("reasoning", step.reasoning());
+            }
+            if (step.output() != null) {
+                map.put("output", step.output());
+            }
+            if (step.result() != null) {
+                map.put("result", step.result());
+            }
             map.put("ts", step.ts());
             map.put("status", step.status());
             map.put("label", step.label());
@@ -128,6 +137,22 @@ public class GenerationFlushScheduler {
         } catch (Exception e) {
             return "{\"type\":\"step\",\"id\":\"" + step.id() + "\",\"status\":\""
                     + step.status() + "\",\"label\":\"" + step.label() + "\"}";
+        }
+    }
+
+    /** 步骤流式增量 — 结构化 SSE */
+    public String metaStepDelta(String stepId, String channel, String text) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "step_delta");
+            map.put("v", 1);
+            map.put("stepId", stepId);
+            map.put("channel", channel);
+            map.put("text", text);
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"step_delta\",\"v\":1,\"stepId\":\"" + stepId
+                    + "\",\"channel\":\"" + channel + "\",\"text\":\"\"}";
         }
     }
 

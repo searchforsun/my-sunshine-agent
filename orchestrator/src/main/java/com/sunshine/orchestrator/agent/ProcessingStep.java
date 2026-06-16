@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.processing.StepSummary;
 
 /**
- * 后端处理流水线步骤 — 通过 SSE type:step 推送给前端时间线
+ * 后端处理流水线步骤 — 通过 SSE type:step 推送给前端时间线（V3）
  */
 public record ProcessingStep(
         String id,
@@ -14,6 +14,9 @@ public record ProcessingStep(
         Long endedAt,
         Long durationMs,
         String detail,
+        String reasoning,
+        String output,
+        String result,
         long ts,
         String status,
         String label
@@ -26,6 +29,9 @@ public record ProcessingStep(
                 "running",
                 new StepSummary(null, label, null),
                 ts,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -47,6 +53,9 @@ public record ProcessingStep(
                 ts,
                 null,
                 detail,
+                null,
+                null,
+                detail,
                 ts,
                 "done",
                 label
@@ -62,6 +71,9 @@ public record ProcessingStep(
                 new StepSummary(null, null, detail),
                 null,
                 ts,
+                null,
+                detail,
+                null,
                 null,
                 detail,
                 ts,

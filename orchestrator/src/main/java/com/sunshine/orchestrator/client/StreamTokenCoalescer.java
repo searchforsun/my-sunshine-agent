@@ -18,7 +18,7 @@ public final class StreamTokenCoalescer {
         AtomicReference<StringBuilder> contentBuffer = new AtomicReference<>(new StringBuilder());
 
         return source.concatMap(token -> {
-                    if (token.isStep()) {
+                    if (token.isStep() || token.isStepDelta()) {
                         return flushContent(contentBuffer).concatWith(Mono.just(token));
                     }
                     if (token.isReasoning()) {

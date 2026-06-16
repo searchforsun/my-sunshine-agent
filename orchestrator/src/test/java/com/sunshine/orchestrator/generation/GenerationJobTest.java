@@ -75,6 +75,10 @@ class GenerationJobTest {
                 .thenAnswer(inv -> "{\"type\":\"content\",\"text\":\"" + inv.getArgument(0) + "\"}");
         when(flushScheduler.metaStep(org.mockito.ArgumentMatchers.any()))
                 .thenReturn("{\"type\":\"step\"}");
+        when(flushScheduler.metaStepDelta(anyString(), anyString(), anyString()))
+                .thenAnswer(inv -> "{\"type\":\"step_delta\",\"stepId\":\"" + inv.getArgument(0)
+                        + "\",\"channel\":\"" + inv.getArgument(1)
+                        + "\",\"text\":\"" + inv.getArgument(2) + "\"}");
         Set<String> keys = redis.keys("sunshine:gen:*");
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
@@ -88,7 +92,7 @@ class GenerationJobTest {
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
 
         GenerationJob job = new GenerationJob(
-                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT,
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
                 streamService, properties, flushScheduler);
 
         StringBuilder buffer = new StringBuilder();
@@ -108,21 +112,23 @@ class GenerationJobTest {
         assertThat(buffer.toString()).isEqualTo("abc");
 
         List<StreamEvent> events = streamService.readFrom(generationId, 0, 10);
-        assertThat(events).hasSize(3);
-        assertThat(events.get(0).seq()).isEqualTo(1);
-        assertThat(events.get(0).text()).isEqualTo("{\"type\":\"content\",\"text\":\"a\"}");
-        assertThat(events.get(1).seq()).isEqualTo(2);
-        assertThat(events.get(1).text()).isEqualTo("{\"type\":\"content\",\"text\":\"b\"}");
-        assertThat(events.get(2).seq()).isEqualTo(3);
-        assertThat(events.get(2).text()).isEqualTo("{\"type\":\"content\",\"text\":\"c\"}");
+        assertThat(events).hasSize(5);
+        assertThat(events.get(0).text()).isEqualTo("{\"type\":\"step\"}");
+        assertThat(events.get(1).text()).isEqualTo("{\"type\":\"content\",\"text\":\"a\"}");
+        assertThat(events.get(2).text()).isEqualTo("{\"type\":\"content\",\"text\":\"b\"}");
+        assertThat(events.get(3).text()).isEqualTo("{\"type\":\"content\",\"text\":\"c\"}");
+        assertThat(events.get(4).text()).isEqualTo("{\"type\":\"step\"}");
 
         GenerationMeta meta = streamService.getMeta(generationId).orElseThrow();
         assertThat(meta.status()).isEqualTo(GenerationStatus.COMPLETED);
-        assertThat(meta.lastSeq()).isEqualTo(3);
+        assertThat(meta.lastSeq()).isEqualTo(5);
 
         ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
-        verify(flushScheduler).commitFinal(eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), eq(null));
+        ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
+        verify(flushScheduler).commitFinal(
+                eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture());
         assertThat(contentCaptor.getValue()).isEqualTo("abc");
+        assertThat(stepsCaptor.getValue()).contains("generate");
     }
 
     @Test
@@ -132,7 +138,7 @@ class GenerationJobTest {
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
 
         GenerationJob job = new GenerationJob(
-                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT,
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
                 streamService, properties, flushScheduler);
 
         StringBuilder buffer = new StringBuilder();
@@ -150,9 +156,11 @@ class GenerationJobTest {
         assertThat(buffer.toString()).isEqualTo("ok");
 
         ArgumentCaptor<String> reasoningCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), eq(null));
+                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture());
         assertThat(reasoningCaptor.getValue()).isEqualTo("think");
+        assertThat(stepsCaptor.getValue()).contains("think").contains("generate");
     }
 
     @Test
@@ -162,7 +170,7 @@ class GenerationJobTest {
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
 
         GenerationJob job = new GenerationJob(
-                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT,
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
                 streamService, properties, flushScheduler);
 
         StringBuilder buffer = new StringBuilder();

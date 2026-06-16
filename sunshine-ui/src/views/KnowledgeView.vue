@@ -199,10 +199,10 @@ async function handleSearch() {
   --n-text-color: var(--sun-text) !important;
   --n-placeholder-color: var(--sun-text-muted) !important;
   --n-border: 1px solid var(--sun-border) !important;
-  --n-border-focus: 1px solid var(--sun-amber) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-disabled: 1px solid var(--sun-border) !important;
-  --n-box-shadow-focus: 0 0 0 2px var(--sun-amber-glow) !important;
+  --n-box-shadow-focus: none !important;
 }
 
 .doc-textarea {
@@ -211,10 +211,10 @@ async function handleSearch() {
 
 /* --- Naive Button warning --- */
 .kb-action-btn {
-  --n-color: var(--sun-amber) !important;
-  --n-color-hover: var(--sun-amber-light) !important;
-  --n-color-pressed: #d97706 !important;
-  --n-color-focus: var(--sun-amber-light) !important;
+  --n-color: var(--sun-accent) !important;
+  --n-color-hover: var(--sun-accent-hover) !important;
+  --n-color-pressed: var(--sun-text-secondary) !important;
+  --n-color-focus: var(--sun-accent-hover) !important;
   --n-color-disabled: var(--sun-border) !important;
   --n-text-color: var(--btn-primary-text) !important;
   --n-text-color-hover: var(--btn-primary-text) !important;

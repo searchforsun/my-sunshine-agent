@@ -50,6 +50,29 @@ public final class TimelineAggregator {
         }
     }
 
+    /**
+     * 流式 append 到步骤文本字段（reasoning / output）或覆盖 result
+     */
+    public void appendDelta(String stepId, String channel, String text, long ts) {
+        if (stepId == null || channel == null || text == null || text.isEmpty()) {
+            return;
+        }
+        StepState state = steps.computeIfAbsent(stepId, StepState::new);
+        state.ts = ts;
+        if (state.lifecycle == null) {
+            state.lifecycle = "running";
+        }
+        if (state.startedAt == null) {
+            state.startedAt = ts;
+        }
+        switch (channel) {
+            case "reasoning" -> state.reasoning = concat(state.reasoning, text);
+            case "output" -> state.output = concat(state.output, text);
+            case "result" -> state.result = text;
+            default -> state.output = concat(state.output, text);
+        }
+    }
+
     public List<ProcessingStep> snapshot() {
         List<ProcessingStep> result = new ArrayList<>(steps.size());
         for (StepState state : steps.values()) {
@@ -71,7 +94,14 @@ public final class TimelineAggregator {
         state.after = event.summary();
         if (event.detail() != null) {
             state.detail = event.detail();
+            if (state.result == null) {
+                state.result = event.detail();
+            }
         }
+    }
+
+    private static String concat(String existing, String chunk) {
+        return existing == null ? chunk : existing + chunk;
     }
 
     private static final class StepState {
@@ -85,6 +115,9 @@ public final class TimelineAggregator {
         private Long endedAt;
         private Long durationMs;
         private String detail;
+        private String reasoning;
+        private String output;
+        private String result;
         private long ts;
 
         private StepState(String id) {
@@ -102,6 +135,9 @@ public final class TimelineAggregator {
                     endedAt,
                     durationMs,
                     detail,
+                    reasoning,
+                    output,
+                    result,
                     ts,
                     lifecycle,
                     label

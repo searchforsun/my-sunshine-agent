@@ -1,55 +1,52 @@
-# Nacos 配置上传
+# Nacos 配置（唯一配置源）
+
+业务配置**只**维护在本目录，与线上 Nacos 保持一致。各服务 `application.yml` 仅负责 `import nacos:{dataId}.yaml`，**无** `application-dev.yaml`。
 
 ## 配置清单
 
-| Data ID | 模块 | 说明 |
-|---------|------|------|
-| `sunshine-llm-gateway.yaml` | LLM Gateway | Redis、LLM 厂商配置 |
-| `sunshine-orchestrator.yaml` | Orchestrator | Agent Prompt、模型配置 |
-| `sunshine-bff.yaml` | BFF | Orchestrator 地址 |
-| `sunshine-gateway.yaml` | API Gateway | 路由规则、Sentinel |
-| `sunshine-rag.yaml` | RAG Service | Milvus、Embedding 配置 |
+| Data ID | 模块 |
+|---------|------|
+| `sunshine-gateway.yaml` | API Gateway |
+| `sunshine-auth.yaml` | Auth Center |
+| `sunshine-bff.yaml` | BFF |
+| `sunshine-orchestrator.yaml` | Orchestrator |
+| `sunshine-llm-gateway.yaml` | LLM Gateway |
+| `sunshine-rag.yaml` | RAG Service |
 
-均为 `DEFAULT_GROUP`，YAML 格式。
+Group：`DEFAULT_GROUP`，格式：YAML。
 
-## 上传方式
+## 变更流程
 
-### 方式 1：Nacos Console（推荐）
+1. **只改** `docs/nacos/{dataId}.yaml`
+2. 同步到线上：
 
-1. 打开 http://ecs4c16g:8848/nacos（nacos/nacos）
-2. 配置管理 → 配置列表 → 新建配置（或导入）
-3. 逐个创建上述 5 个配置，内容见同目录下 `.yaml` 文件
-
-### 方式 2：API 批量上传
-
-```bash
-NACOS="http://ecs4c16g:8848/nacos"
-AUTH="username=nacos&password=nacos"
-
-for f in sunshine-llm-gateway.yaml sunshine-orchestrator.yaml sunshine-bff.yaml sunshine-gateway.yaml sunshine-rag.yaml; do
-  curl -X POST "$NACOS/v1/cs/configs" \
-    -d "$AUTH" \
-    --data-urlencode "dataId=$f" \
-    --data-urlencode "group=DEFAULT_GROUP" \
-    --data-urlencode "type=yaml" \
-    --data-urlencode "content=$(cat $f)"
-  echo " uploaded: $f"
-done
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1
+# 或单文件：
+powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1 -DataId sunshine-gateway.yaml
 ```
 
-### 方式 3：使用 Python 脚本
+3. **重启**受影响的服务（Nacos 动态刷新对多数 Spring 配置不自动生效）
 
-```bash
-pip install nacos-sdk-python  # 或直接 curl
-python upload_nacos_configs.py
+## 启动服务
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start.ps1
+# 或
+java -jar target/sunshine-xxx.jar
 ```
 
-## 本地开发
+无需 `--spring.profiles.active=dev`。需保证 `ecs4c16g:8848` Nacos 可达且配置已上传。
 
-本地开发无需 Nacos，使用 `application-dev.yaml`：
+## CORS / SSE（Gateway）
 
-```bash
-java -jar target/sunshine-xxx.jar --spring.profiles.active=dev
-```
+| 项 | 说明 |
+|----|------|
+| `globalcors` | 浏览器跨域（含 SSE） |
+| `DedupeResponseHeader` | 去重下游误带的 CORS 头 |
+| `DevCorsWebFilter` | 代码层仅处理 `OPTIONS` 预检 |
+| BFF | **勿**配置 `CorsWebFilter` |
 
-`application-dev.yaml` 包含与 Nacos 配置相同的本地默认值。
+## 上传方式（备选）
+
+Nacos Console：http://ecs4c16g:8848/nacos（nacos/nacos）→ 配置管理 → 粘贴同名文件内容。

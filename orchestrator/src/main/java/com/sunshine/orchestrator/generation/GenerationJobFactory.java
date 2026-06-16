@@ -11,9 +11,9 @@ public class GenerationJobFactory {
     private final GenerationFlushScheduler flushScheduler;
 
     public GenerationJob create(String generationId, String messageId, String conversationId,
-            String userId, String tenantId, String intent) {
+            String userId, String tenantId, String intent, String userQuery) {
         return new GenerationJob(
-                generationId, messageId, conversationId, userId, tenantId, intent,
+                generationId, messageId, conversationId, userId, tenantId, intent, userQuery,
                 streamService, properties, flushScheduler);
     }
 }

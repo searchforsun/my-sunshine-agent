@@ -27,7 +27,7 @@ public class ConversationController {
 
     @GetMapping("/conversations")
     public Mono<List<ConversationSummaryDto>> list(
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> conversationService.list(userId, tenantId).stream()
                 .map(ConversationSummaryDto::from)
@@ -36,7 +36,7 @@ public class ConversationController {
 
     @PostMapping("/conversations")
     public Mono<ConversationSummaryDto> create(
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> {
             ChatConversationEntity conv = conversationService.create(userId, tenantId);
@@ -47,7 +47,7 @@ public class ConversationController {
     @GetMapping("/conversations/{id}")
     public Mono<ConversationDetailDto> get(
             @PathVariable("id") String id,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> {
             ChatConversationEntity conv = conversationService.getOwned(id, userId, tenantId);
@@ -59,7 +59,7 @@ public class ConversationController {
     public Mono<ConversationSummaryDto> updateTitle(
             @PathVariable("id") String id,
             @RequestBody UpdateTitleRequest body,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> {
             ChatConversationEntity conv = conversationService.updateTitle(
@@ -71,7 +71,7 @@ public class ConversationController {
     @DeleteMapping("/conversations/{id}")
     public Mono<Void> delete(
             @PathVariable("id") String id,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.run(() -> conversationService.delete(id, userId, tenantId));
     }

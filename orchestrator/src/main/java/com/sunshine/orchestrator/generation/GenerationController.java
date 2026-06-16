@@ -33,7 +33,7 @@ public class GenerationController {
     @GetMapping("/generations/{id}")
     public Mono<GenerationStatusResponse> getStatus(
             @PathVariable("id") String id,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> {
             streamService.assertOwned(id, userId, tenantId);
@@ -46,7 +46,7 @@ public class GenerationController {
     @PostMapping("/generations/{id}/cancel")
     public Mono<Map<String, String>> cancel(
             @PathVariable("id") String id,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> {
             streamService.assertOwned(id, userId, tenantId);
@@ -63,7 +63,7 @@ public class GenerationController {
     public Flux<ServerSentEvent<String>> reconnectStream(
             @PathVariable String generationId,
             @RequestParam(defaultValue = "0") long afterSeq,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> {
             streamService.assertOwned(generationId, userId, tenantId);

@@ -1,0 +1,15 @@
+package com.sunshine.auth.dto;
+
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class LoginResponse {
+
+    private String token;
+    private String tokenName;
+    private String userId;
+    private String username;
+    private String nickname;
+}

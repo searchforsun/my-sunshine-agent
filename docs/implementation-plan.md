@@ -72,7 +72,7 @@ my-sunshine-agent/
 - [x] 上传文档 → RAG 知识库问答可演示 — 入库 14 chunk + 检索命中 + BFF 知识库流
 - [x] LLM Gateway → DeepSeek 调用成功
 - [x] BFF → Orchestrator → LLM Gateway SSE 流式输出正常
-- [x] 修改 Nacos System Prompt → Agent 行为即时变化（mock/单测已验；live Nacos 待中间件启动后复验）
+- [x] 修改 Nacos System Prompt → Agent 行为即时变化（live Nacos 热更新已验，2026-06-16）
 
 ---
 
@@ -126,7 +126,7 @@ my-sunshine-agent/
 
 | 任务卡 | 内容 |
 |--------|------|
-| 2.1 Auth Center | Sa-Token JWT 认证中心 + Gateway 鉴权 |
+| 2.1 Auth Center | Sa-Token JWT 认证中心 + Gateway 鉴权 — 设计：[REQ-PHASE2-AUTH-design.md](../requirements/in-progress/REQ-PHASE2-AUTH-design.md) |
 | 2.2 Tool Manager | 业务 API → AgentScope Tool 包装机制 |
 | 2.3 Finance Service | 财务微服务模拟（消息/交易 API） |
 | 2.4 端到端串联 | 财务智能助手全链路演示 |
@@ -136,7 +136,7 @@ my-sunshine-agent/
 | 2.8 联调演示 | 一键演示脚本 + 问题修复 |
 
 #### 阶段二检查门
-- [ ] JWT 校验：无效 Token → 401
+- [ ] JWT 校验：无效 Token → 401（`scripts/phase2-auth-demo.ps1` Step 5）
 - [ ] Agent 调用财务工具 → 查询消息列表
 - [ ] 脱敏：手机号/身份证号自动过滤
 - [ ] LLM 故障 → 自动切换备用模型

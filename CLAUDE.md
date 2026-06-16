@@ -4,112 +4,108 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Sunshine AI Platform — 企业级 AI 中台。基于 AgentScope-Java 的多智能体编排，Spring Cloud Alibaba 微服务架构，Vue3 + Naive UI 前端。当前阶段一已完成（LLM Gateway + ReActAgent + RAG + SSE 流式对话），阶段二（认证 + 业务工具）待开发。
+Sunshine AI Platform — 企业级 AI 中台。AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI。
+**阶段一已完成**；**阶段二 2.1 认证与用户体系已实现**（Sa-Token JWT、Gateway 鉴权、登录/注册 UI），Tool Manager / 脱敏等待开发。
 
 ## Build & Run Commands
 
 ```bash
-# 后端（需要 JDK 21）
-mvn clean package -DskipTests          # 全量打包
-mvn compile -pl <module> -am           # 单模块编译（-am 含依赖）
+# 后端（JDK 21）
+mvn clean package -DskipTests
+mvn compile -pl <module> -am
 
-# 启动核心服务链（按顺序，前一个启动完成再启下一个）
-java -jar llm-gateway/target/sunshine-llm-gateway-*.jar &     # :8300
-java -jar orchestrator/target/sunshine-orchestrator-*.jar &   # :8200
-java -jar bff/target/sunshine-bff-*.jar &                     # :8001
-bash scripts/start.sh                                         # 一键启动全部 11 服务
+# 本地服务链（Nacos 配置，需 ecs4c16g 可达 + docs/nacos 已 sync）
+powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1
+powershell -ExecutionPolicy Bypass -File scripts/start.ps1
+# 顺序：llm-gateway:8300 → rag:8400 → orchestrator:8200 → auth-center:8100 → bff:8001 → gateway:8000
 
 # 前端
-cd sunshine-ui && npm run dev           # :5173 开发模式
-cd sunshine-ui && npm run build         # 生产构建
+cd sunshine-ui && npm run dev    # :5173，/api → Gateway :8000
 
-# 测试（默认 exclude integration，无需外部中间件）
+# 认证验收（服务已启）
+powershell -ExecutionPolicy Bypass -File scripts/phase2-auth-demo.ps1
+
+# 单测
+mvn test -pl auth-center "-Dtest=AuthControllerTest" -q
 mvn test -pl orchestrator -am
-mvn test -pl orchestrator -am "-Dtest=ConversationIntegrationTest,GenerationReconnectIntegrationTest" -q
-# 全链路 live 集成测试（需 LLM Gateway :8300 已启动）
-mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest" -q
 mvn test -pl llm-gateway -am "-Dtest=QwenAdapterTest,ModelRouterTest" -q
-
-# 前端 E2E mock（需 mock-server + vite，CI 自动启动）
-cd sunshine-ui && npx playwright test e2e/processing-timeline.spec.ts e2e/chat.spec.ts
-
-# 手动 curl 冒烟
-curl -X POST http://localhost:8300/v1/chat/completions -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}]}'
-curl -N -X POST http://localhost:8001/api/chat/stream -H "Content-Type: application/json" \
-  -H "x-user-id:test" -d '{"content":"你好"}'
-
-# 阶段一演示脚本
-powershell -ExecutionPolicy Bypass -File scripts/phase1-demo.ps1
-bash scripts/phase1-demo.sh
 ```
 
-**注意**：本机 bash 默认 Java 17，需用 `D:/MyWorkStation/Java/jdk/jdk-21/bin/java` 或先 `switch-java 21`（PowerShell）。
+**Java**：本机默认可能是 17，需 `switch-java 21` 或 `C:\Program Files\Java\jdk-21`。
+**首次 auth**：`CREATE DATABASE sunshine_auth;`，`scripts/sync-nacos.ps1` 上传全部 Nacos 配置。
 
 ## Architecture
 
-### Request Flow
+### Request Flow（当前）
 
 ```
-Browser (:5173) → BFF (:8001) → Orchestrator (:8200) → LLM Gateway (:8300) → DeepSeek/Qwen API
-                     ↑                ↑                       ↑
-                  WebFlux SSE     AgentScope              LlmAdapter 接口
-                  透传流式        OpenAIChatModel          DeepSeekAdapter（唯一实现）
-                                  ReActAgent.stream()
+Browser (:5173)
+  → Gateway (:8000)  [Sa-Token JWT 校验，注入 x-user-id]
+       ├─ /api/auth/** → auth-center (:8100)
+       └─ /api/**      → BFF (:8001) → Orchestrator (:8200) → LLM GW (:8300)
+SSE 流式：浏览器直连 Gateway :8000（避免 Vite 缓冲），Header 带 Authorization: Bearer
 ```
 
-### Key Modules (by role, not deployment order)
+### Key Modules
 
-| 模块 | 职责 | 当前状态 |
+| 模块 | 职责 | 状态 |
 |------|------|:--:|
-| `llm-gateway` | OpenAI 兼容 `/v1/chat/completions`，`LlmAdapter` 接口 → `DeepSeekAdapter` 实现，Redis MD5 语义缓存，`ModelRouter` 路由 | ✅ 可用 |
-| `orchestrator` | `AgentConfig` 创建 `OpenAIChatModel` → `ReActAgent`，`SunshineAgent.chat()` 调用 `agent.stream()` 返回 `Flux<String>` | ✅ 可用 |
-| `bff` | `OrchestratorClient` (WebClient) 转发到 Orchestrator，`ChatController` SSE 透传 | ✅ 可用 |
-| `rag-service` | Milvus 2.6 向量库 + 通义 Embedding API，文档分段入库 + 向量检索 | 🔶 代码完整，Milvus 待联调 |
-| `gateway` | Spring Cloud Gateway 骨架，Nacos 路由 + Sentinel | 🟡 骨架 |
-| `auth-center` | Sa-Token JWT 认证 | 🟡 骨架，阶段二开发 |
-| `tool-manager` | 业务 API → AgentScope `@Tool` 注解包装 | 🟡 骨架 |
-| `desensitize` | 正则 + AhoCorasick 脱敏 | 🟡 骨架 |
-| `oa/finance-service` | 业务模拟服务 | 🟡 骨架 |
-| `prompt-manager` | 提示词模板管理，Nacos 热更新 | 🟡 骨架 |
+| `gateway` | 路由、JWT 鉴权、header 注入 | ✅ 2.1 |
+| `auth-center` | 注册/登录、sys_user、Sa-Token JWT | ✅ 2.1 |
+| `bff` | SSE/会话 CRUD 透传，信任 Gateway 注入的 x-user-id | ✅ |
+| `orchestrator` | ReActAgent + 会话持久化 | ✅ |
+| `llm-gateway` | LlmAdapter + ModelRouter + 缓存 | ✅ |
+| `rag-service` | Milvus + Embedding | 🔶 |
+| `tool-manager` / `desensitize` / 业务模拟 | 阶段二后续 | 🟡 |
 
 ### Critical Design Decisions
 
-1. **为什么用 `OpenAIChatModel` 而不是 `DashScopeChatModel`**：AgentScope 的 `DashScopeChatModel` 请求路径是 `/v1/services/aigc/text-generation/generation`（阿里 DashScope 专有），而自建 LLM Gateway 提供 OpenAI 兼容接口 `/v1/chat/completions`。`OpenAIChatModel` 的默认 endpoint 与此匹配。
+1. **OpenAIChatModel** 对接自建 LLM Gateway `/v1/chat/completions`（非 DashScope 专有路径）。
+2. **Gateway 集中鉴权**：BFF/Orchestrator 不验 Token，只读 `x-user-id`；客户端不得自填该 header。
+3. **BFF 只做透传**：SSE 与 CRUD 原样转发。
+4. **不做多租户**：`x-tenant-id` 固定 `default`。
+5. **ChatCompletionResponse**：`@Builder` 须配合 `@NoArgsConstructor` + `@AllArgsConstructor`。
 
-2. **LLM Gateway 的设计模式**：`LlmAdapter` 接口 + `ModelRouter` 路由 + `SemanticCacheService` 缓存。新增厂商只需实现 `LlmAdapter` 并注册为 Spring Bean，`ModelRouter` 自动发现。缓存采用 `(model + messages + temperature)` MD5 哈希，配合 DeepSeek 缓存命中定价（¥0.02/M tokens）成本可降 98%+。
-
-3. **BFF 只做透传**：BFF 不处理业务逻辑，只将请求头和消息体转发给 Orchestrator，SSE 流原样返回前端。身份信息通过 `x-user-id`、`x-tenant-id` 透传。
-
-4. **AgentScope ReActAgent 的流式调用**：`agent.stream(List.of(msg), StreamOptions.defaults())` 返回 `Flux<Event>`，需过滤 `event.getMessage().getTextContent()` 非空的事件才是有意义的文本块。
-
-5. **ChatCompletionResponse 的 Jackson 序列化**：使用 `@Builder` 时必须同时加 `@NoArgsConstructor` + `@AllArgsConstructor`，否则 Jackson 反序列化 DeepSeek 响应时报 `InvalidDefinitionException`。
-
-## Server Infrastructure
-
-所有中间件部署在远程服务器 `ecs4c16g`（Docker 网络 `middleware-docker_smt-net`）：
+## Server Infrastructure（ecs4c16g）
 
 | 组件 | 端口 | 凭据 |
 |------|------|------|
-| Nacos | 8848/9848 | nacos/nacos |
+| Nacos | 8848 | nacos/nacos |
 | MySQL | 3306 | root/root123 |
-| Redis | 6379 | redis123（密码） |
-| Milvus | 19530 | standalone 模式（内嵌 etcd+minio） |
-| RocketMQ | 9876（ns）/10911（broker） | — |
-| SkyWalking OAP | 11800 | — |
-| SkyWalking UI | 8084 | — |
-| Sentinel | 8858 | sentinel/sentinel123 |
-| Grafana | 3000 | admin/admin123 |
+| Redis | 6379 | redis123（auth 用 DB index 1） |
+| Milvus | 19530 | — |
 
-每个服务的 `application.yml` 已配置 Nacos `import-check.enabled: false`（因为用 BOM import 方式而非 `spring.config.import`）。
+各服务 `application.yml` 仅 Nacos 入口；**业务配置唯一维护于 `docs/nacos/`**，用 `scripts/sync-nacos.ps1` 同步线上。
 
 ## Version Constraints
 
-- **不要升级 Spring Boot 3.3+**：Spring Cloud Alibaba 尚未发布 2024.x 兼容版，2023.0.3.4 是当前最新稳定版。
-- **不要升级 AgentScope 2.0.0**：2026-06-05 刚发布，Maven Central 尚未同步，`1.0.7` 是仓库中实际可用的最新版。
-- **前端 Vite proxy**：`/api` 代理到 `localhost:8001`（BFF），开发时绕过跨域问题。
+- 勿升级 Spring Boot 3.3+、AgentScope 2.0.0。
+- Sa-Token **1.45.0**；JWT 需 `sa-token-jwt` 依赖。
+
+## Frontend UI（sunshine-ui）
+
+**风格**：Codex 桌面端 — 中性灰阶、扁平；品牌金色仅 Logo。
+**令牌 SSOT**：`src/styles/global.css`（`--sun-*`）；Naive 主题覆盖在 `App.vue`（含 `NMessageProvider` + `NDialogProvider`）。
+
+| 用途 | 变量 |
+|------|------|
+| 页面底 | `--sun-black` |
+| 卡片/输入 | `--sun-surface` |
+| 主按钮 | `--sun-accent`（随 Naive primary） |
+| 圆角/间距 | `--radius-md`、`--gap-md` |
+
+**路由**
+
+| 路径 | 说明 |
+|------|------|
+| `/login`, `/register` | 公开页，居中卡片（`.auth-page`） |
+| `/chat`, `/knowledge`, `/status` | 需登录，MainLayout 侧栏布局 |
+
+**认证**：`authStore` + `localStorage` key `sunshine-token`；`apiHeaders()` 发 `Authorization: Bearer`；未登录跳转 `/login?redirect=`。
+**API**：CRUD 走相对路径 `/api`（Vite → Gateway）；SSE 用 `BFF_STREAM_BASE` 默认 `http://localhost:8000`。
+**约定**：Inter + JetBrains Mono；明暗 `useTheme`；弹窗 `.sunshine-dialog`；图标 SVG；可点击加 `cursor-pointer`。
 
 ## other
 
-- 禁止保存临时生成的脚本文件，用完即删
-- 更改dev-yml配置内容后,同步一份搭配/docs/ncaos下，并提醒更新nacos线上配置
+- 禁止保存临时脚本，用完即删
+- 上线 auth 前可执行 `scripts/phase2-auth-reset.sql` 清会话表

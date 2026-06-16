@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
@@ -27,6 +28,7 @@ public class GenerationJob {
     private final String userId;
     private final String tenantId;
     private final String intent;
+    private final String userQuery;
     private final GenerationStreamService streamService;
     private final GenerationProperties properties;
     private final GenerationFlushScheduler flushScheduler;
@@ -39,9 +41,10 @@ public class GenerationJob {
     private volatile StringBuilder mysqlBufferRef;
     private volatile StringBuilder reasoningBufferRef;
     private final java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>();
+    private ThinkStepMapper thinkMapper;
 
     GenerationJob(String generationId, String messageId, String conversationId,
-            String userId, String tenantId, String intent,
+            String userId, String tenantId, String intent, String userQuery,
             GenerationStreamService streamService,
             GenerationProperties properties,
             GenerationFlushScheduler flushScheduler) {
@@ -51,6 +54,7 @@ public class GenerationJob {
         this.userId = userId;
         this.tenantId = tenantId;
         this.intent = intent;
+        this.userQuery = userQuery;
         this.streamService = streamService;
         this.properties = properties;
         this.flushScheduler = flushScheduler;
@@ -60,6 +64,7 @@ public class GenerationJob {
             Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError) {
         this.mysqlBufferRef = mysqlBuffer;
         this.reasoningBufferRef = new StringBuilder();
+        this.thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery);
         streamService.updateStatus(generationId, GenerationStatus.RUNNING);
 
         AtomicLong lastFlush = new AtomicLong(0);
@@ -93,6 +98,7 @@ public class GenerationJob {
         finishOnce(() -> {
             cancelOrphanTimer();
             disposeLlmSubscription();
+            emitFinishSteps();
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
             flushScheduler.commitFinal(
                     messageId, bufferContent(), bufferReasoning(), MessageStatus.INTERRUPTED, stepsJson());
@@ -101,17 +107,34 @@ public class GenerationJob {
 
     private void onChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
+        for (StreamToken mapped : thinkMapper.map(token)) {
+            emitMappedChunk(mapped, mysqlBuffer, flushPartial, lastFlush);
+        }
+    }
+
+    private void emitMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
+            Consumer<String> flushPartial, AtomicLong lastFlush) {
         long nextSeq = seq.incrementAndGet();
         if (token.isStep()) {
             ProcessingStepMerger.upsert(stepsBuffer, token.step());
             streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
             return;
         }
+        if (token.isStepDelta()) {
+            ProcessingStepMerger.applyDelta(
+                    stepsBuffer, token.stepId(), token.channel(), token.text());
+            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStepDelta(
+                    token.stepId(), token.channel(), token.text()));
+            if ("reasoning".equals(token.channel()) && reasoningBufferRef != null) {
+                reasoningBufferRef.append(token.text());
+            }
+            return;
+        }
         String wire = token.isContent()
                 ? flushScheduler.metaContent(token.text())
                 : flushScheduler.metaReasoning(token.text());
         streamService.appendChunk(generationId, nextSeq, wire);
-        if (!token.isContent()) {
+        if (token.isReasoning()) {
             if (reasoningBufferRef != null) {
                 reasoningBufferRef.append(token.text());
             }
@@ -129,6 +152,7 @@ public class GenerationJob {
     private void handleComplete(Runnable onComplete) {
         cancelOrphanTimer();
         disposeLlmSubscription();
+        emitFinishSteps();
         streamService.updateStatus(generationId, GenerationStatus.COMPLETED);
         flushScheduler.commitFinal(
                 messageId, bufferContent(), bufferReasoning(), MessageStatus.COMPLETED, stepsJson());
@@ -138,6 +162,7 @@ public class GenerationJob {
     private void handleError(Throwable error, Consumer<Throwable> onError) {
         cancelOrphanTimer();
         disposeLlmSubscription();
+        emitFinishSteps();
         streamService.updateStatus(generationId, GenerationStatus.FAILED);
         flushScheduler.commitFinal(
                 messageId, bufferContent(), bufferReasoning(), MessageStatus.FAILED, stepsJson());
@@ -177,5 +202,17 @@ public class GenerationJob {
 
     private String stepsJson() {
         return ProcessingStepMerger.toJson(stepsBuffer);
+    }
+
+    private void emitFinishSteps() {
+        if (thinkMapper == null) {
+            return;
+        }
+        StringBuilder mysqlBuffer = mysqlBufferRef;
+        AtomicLong lastFlush = new AtomicLong(0);
+        for (StreamToken token : thinkMapper.finish()) {
+            emitMappedChunk(token, mysqlBuffer != null ? mysqlBuffer : new StringBuilder(),
+                    content -> flushScheduler.flushPartial(messageId, content), lastFlush);
+        }
     }
 }

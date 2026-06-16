@@ -1,4 +1,4 @@
-import { apiHeaders } from '../composables/useUserId'
+import { apiHeaders } from '../stores/authStore'
 import { BFF_API_BASE } from './config'
 import type { ProcessingStep } from './processingSteps'
 import { migrateV1Step, normalizeStep } from './processingSteps'

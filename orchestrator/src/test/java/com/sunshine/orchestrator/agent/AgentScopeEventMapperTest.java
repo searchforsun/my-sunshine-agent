@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
@@ -22,20 +23,41 @@ class AgentScopeEventMapperTest {
                 .build();
 
         List<StreamToken> tokens = new java.util.ArrayList<>();
-        AgentScopeEventMapper.appendThinkingTokens(msg, tokens);
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.start("agent", "agent");
+        AgentScopeEventMapper.appendThinkingTokens(msg, session, tokens);
 
         assertThat(tokens).isEmpty();
     }
 
     @Test
-    void reasoningEvent_thinkingBlock_emitsReasoningTokens() {
+    void reasoningEvent_thinkingBlock_emitsStepDeltaWhenActive() {
         Msg msg = Msg.builder()
                 .role(MsgRole.ASSISTANT)
                 .content(List.of(ThinkingBlock.builder().thinking("内部分析步骤").build()))
                 .build();
 
         List<StreamToken> tokens = new java.util.ArrayList<>();
-        AgentScopeEventMapper.appendThinkingTokens(msg, tokens);
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.start("agent", "agent");
+        AgentScopeEventMapper.appendThinkingTokens(msg, session, tokens);
+
+        assertThat(tokens).hasSize(1);
+        assertThat(tokens.get(0).isStepDelta()).isTrue();
+        assertThat(tokens.get(0).stepId()).isEqualTo("agent");
+        assertThat(tokens.get(0).channel()).isEqualTo("reasoning");
+        assertThat(tokens.get(0).text()).isEqualTo("内部分析步骤");
+    }
+
+    @Test
+    void reasoningEvent_thinkingBlock_fallbackToReasoningWithoutActiveStep() {
+        Msg msg = Msg.builder()
+                .role(MsgRole.ASSISTANT)
+                .content(List.of(ThinkingBlock.builder().thinking("内部分析步骤").build()))
+                .build();
+
+        List<StreamToken> tokens = new java.util.ArrayList<>();
+        AgentScopeEventMapper.appendThinkingTokens(msg, new ProcessingTimelineSession(), tokens);
 
         assertThat(tokens).hasSize(1);
         assertThat(tokens.get(0).isReasoning()).isTrue();

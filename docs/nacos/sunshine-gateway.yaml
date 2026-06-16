@@ -12,11 +12,27 @@ spring:
     web-application-type: reactive
   cloud:
     gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials Vary, RETAIN_FIRST
+      globalcors:
+        # false：避免与 Gateway 全局 CORS 过滤器重复写响应头
+        add-to-simple-url-handler-mapping: false
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
       discovery:
         locator:
           enabled: true
           lower-case-service-id: true
       routes:
+        - id: sunshine-auth-api
+          uri: lb://sunshine-auth
+          predicates:
+            - Path=/api/auth/**
         - id: sunshine-bff-api
           uri: lb://sunshine-bff
           predicates:
@@ -25,9 +41,27 @@ spring:
           uri: lb://sunshine-llm-gateway
           predicates:
             - Path=/v1/**
+  data:
+    redis:
+      host: ecs4c16g
+      port: 6379
+      password: redis123
+      database: 1
   sentinel:
     transport:
       dashboard: ecs4c16g:8858
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  is-read-header: true
+  is-read-cookie: false
+  token-style: jwt
+  jwt-secret-key: ${SA_TOKEN_JWT_SECRET:sunshine-auth-dev-jwt-secret-change-in-nacos}
+  timeout: 86400
+  active-timeout: -1
+  is-concurrent: true
+  is-share: false
 
 logging:
   level:

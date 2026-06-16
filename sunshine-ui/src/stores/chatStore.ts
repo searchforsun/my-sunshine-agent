@@ -3,6 +3,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useAuthStore } from './authStore'
 import type { ChatMessage } from '../api/chat'
 import type { ConversationSummary, ConversationMessage } from '../api/conversations'
 import {
@@ -140,6 +141,14 @@ export const useChatStore = defineStore('chat', () => {
     initPromise = (async () => {
       initializing.value = true
       try {
+        const auth = useAuthStore()
+        if (!auth.initialized) {
+          await auth.fetchMe()
+        }
+        if (!auth.isLoggedIn) {
+          loaded = true
+          return
+        }
         const list = await listConversations()
         mergeApiList(list)
         restoreCurrentFromSavedOrFirst()

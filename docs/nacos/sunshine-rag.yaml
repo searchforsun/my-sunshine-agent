@@ -26,6 +26,7 @@ embedding:
 
 rag:
   search:
+    # IP 相似度下限（归一化向量下近似 cosine）；报销 vs 请假文档通常 < 0.48
     min-score: 0.48
 
 logging:

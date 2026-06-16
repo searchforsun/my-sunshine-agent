@@ -30,11 +30,13 @@ import {
   clearActiveGeneration,
   type ActiveGeneration,
 } from '../composables/useActiveGeneration'
-import { BFF_STREAM_BASE } from '../api/config'
-import ReasoningPanel from '../components/ReasoningPanel.vue'
-import ProcessingTimeline from '../components/ProcessingTimeline.vue'
+
+/** 挂载/切换会话 hydration 期间，跳过 currentId watch 避免切到空 session */
+let sessionHydrating = false
+import OperationStack from '../components/operation/OperationStack.vue'
 import type { ChatMessage } from '../api/chat'
 import {
+  normalizeTimelineSteps,
   derivePlaceholderSteps,
   hasActiveStep,
   type ProcessingStep,
@@ -85,8 +87,6 @@ const streamingHasContent = computed(() => {
 
 const reasoningExpanded = reactive(new Map<string, boolean>())
 const reasoningUserToggled = reactive(new Set<string>())
-const timelineExpanded = reactive(new Map<string, boolean>())
-const timelineUserToggled = reactive(new Set<string>())
 
 function reasoningKey(msg: ChatMessage, idx: number): string {
   return msg.id ?? `_idx_${idx}`
@@ -95,8 +95,6 @@ function reasoningKey(msg: ChatMessage, idx: number): string {
 function clearReasoningUiState(): void {
   reasoningExpanded.clear()
   reasoningUserToggled.clear()
-  timelineExpanded.clear()
-  timelineUserToggled.clear()
 }
 
 function isReasoningExpanded(msg: ChatMessage, idx: number): boolean {
@@ -121,16 +119,16 @@ function toggleReasoning(msg: ChatMessage, idx: number): void {
   reasoningExpanded.set(key, !currentlyExpanded)
 }
 
-function timelineKey(msg: ChatMessage, idx: number): string {
-  return `tl-${msg.id ?? `_idx_${idx}`}`
-}
-
 function resolveTimelineSteps(msg: ChatMessage, idx: number): ProcessingStep[] {
-  if (msg.steps?.length) return msg.steps
-  if (loading.value && idx === messages.value.length - 1) {
-    return derivePlaceholderSteps(true)
+  let steps: ProcessingStep[]
+  if (msg.steps?.length) {
+    steps = msg.steps
+  } else if (loading.value && idx === messages.value.length - 1) {
+    steps = derivePlaceholderSteps(true)
+  } else {
+    return []
   }
-  return []
+  return normalizeTimelineSteps(steps, msg.reasoning)
 }
 
 function showTimeline(msg: ChatMessage, idx: number): boolean {
@@ -138,30 +136,10 @@ function showTimeline(msg: ChatMessage, idx: number): boolean {
   return steps.length > 0
 }
 
-function isTimelineExpanded(msg: ChatMessage, idx: number): boolean {
-  const steps = resolveTimelineSteps(msg, idx)
-  if (!steps.length) return false
-  const key = timelineKey(msg, idx)
-  if (timelineUserToggled.has(key)) return timelineExpanded.get(key) ?? false
-  if (loading.value && idx === messages.value.length - 1) {
-    const hasContent = !!msg.content?.trim()
-    const hasReasoning = !!msg.reasoning?.trim()
-    if (!hasContent && (hasActiveStep(steps) || !hasReasoning)) return true
-  }
-  return false
-}
-
 function isTimelineLive(msg: ChatMessage, idx: number): boolean {
   return loading.value
     && idx === messages.value.length - 1
     && hasActiveStep(resolveTimelineSteps(msg, idx))
-}
-
-function toggleTimeline(msg: ChatMessage, idx: number): void {
-  const key = timelineKey(msg, idx)
-  const currentlyExpanded = isTimelineExpanded(msg, idx)
-  timelineUserToggled.add(key)
-  timelineExpanded.set(key, !currentlyExpanded)
 }
 
 function migrateReasoningKeys(): void {
@@ -178,16 +156,15 @@ function migrateReasoningKeys(): void {
   })
 }
 
-/** 首 token 已到达但渲染引擎尚未画出内容时仍显示等待点 */
+/** 首 token 尚未到达时显示等待点（已有正文时不遮挡已恢复内容） */
 const showStreamWaiting = computed(() => {
   if (!loading.value) return false
   const last = messages.value[messages.value.length - 1]
   if (last?.role !== 'assistant') return true
+  if (last.content?.trim()) return false
   if (last.reasoning?.trim()) return false
   if (hasActiveStep(last.steps)) return false
-  if (!last.content?.trim()) return true
-  const el = streamingMdRef.value
-  return !el || el.childElementCount === 0
+  return true
 })
 
 const {
@@ -292,13 +269,12 @@ function renderMarkdown(text: string): string {
   try { return md.render(normalized) } catch { return normalized.replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 }
 
-async function ensureStreamRenderer(): Promise<void> {
-  await nextTick()
-  let container = streamingMdRef.value
-  if (!container) {
+async function ensureStreamRenderer(retries = 5): Promise<void> {
+  for (let i = 0; i < retries; i++) {
     await nextTick()
-    container = streamingMdRef.value
+    if (streamingMdRef.value) break
   }
+  const container = streamingMdRef.value
   if (!container) return
 
   streamRenderer?.clear()
@@ -379,43 +355,72 @@ function markAssistantInterrupted(convId: string, messageId?: string) {
   }
 }
 
+async function hydrateSessionFromStore(cid: string) {
+  await chatStore.loadDetail(cid)
+  const restored = chatStore.conversations.find(c => c.id === cid)?.messages ?? []
+  if (!restored.length) {
+    settledHtml.value = ''
+    return
+  }
+  setMessages(cid, [...restored])
+  migrateReasoningKeys()
+  const lastAssistant = [...restored].reverse().find(m => m.role === 'assistant')
+  if (lastAssistant?.content?.trim() && !loading.value) {
+    settledHtml.value = captureSettledAssistantHtml(lastAssistant.content)
+    sessionSettledHtml.set(cid, settledHtml.value)
+  } else if (!loading.value) {
+    settledHtml.value = sessionSettledHtml.get(cid) ?? ''
+  }
+  await nextTick()
+  enhanceAllStaticMarkdown()
+  scrollToBottom()
+}
+
 async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
   try {
-    const resp = await fetch(`${BFF_STREAM_BASE}/api/generations/${active.generationId}`, {
+    const resp = await fetch(`/api/generations/${active.generationId}`, {
       headers: apiHeaders(),
     })
 
     if (resp.status === 410 || resp.status === 404) {
       clearActiveGeneration()
       markAssistantInterrupted(cid, active.messageId)
+      await hydrateSessionFromStore(cid)
       return
     }
 
-    if (!resp.ok) return
+    if (!resp.ok) {
+      await hydrateSessionFromStore(cid)
+      return
+    }
 
     const status = await resp.json() as { status: string; lastSeq: number }
+
     if (status.status === 'INTERRUPTED' || status.status === 'FAILED') {
       clearActiveGeneration()
       markAssistantInterrupted(cid, active.messageId)
+      await hydrateSessionFromStore(cid)
       return
     }
 
-    if (
-      status.status === 'RUNNING'
-      || (status.status === 'COMPLETED' && active.lastSeq < status.lastSeq)
-    ) {
-      settledHtml.value = ''
-      sessionSettledHtml.delete(cid)
+    if (status.status === 'COMPLETED') {
+      clearActiveGeneration()
+      await hydrateSessionFromStore(cid)
+      return
+    }
+
+    if (status.status === 'RUNNING') {
       await nextTick()
       const reconnectPromise = reconnectStream(active.generationId, active.lastSeq, cid)
       await nextTick()
       await ensureStreamRenderer()
       await reconnectPromise
-      await nextTick()
-      scrollToBottom()
+      await hydrateSessionFromStore(cid)
     }
   } catch (e) {
     console.error('[ChatView] auto reconnect failed', e)
+    clearActiveGeneration()
+    await hydrateSessionFromStore(cid)
   }
 }
 
@@ -427,36 +432,33 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
-  await chatStore.init()
+  sessionHydrating = true
+  try {
+    await chatStore.init()
 
-  const active = loadActiveGeneration()
-  let cid: string
-  if (active?.conversationId) {
-    try {
-      await chatStore.ensureConversation(active.conversationId)
-      cid = active.conversationId
-    } catch {
+    const active = loadActiveGeneration()
+    let cid: string
+    if (active?.conversationId) {
+      try {
+        await chatStore.ensureConversation(active.conversationId)
+        cid = active.conversationId
+      } catch {
+        cid = await chatStore.ensureCurrent()
+      }
+    } else {
       cid = await chatStore.ensureCurrent()
     }
-  } else {
-    cid = await chatStore.ensureCurrent()
-  }
 
-  ensureActive(cid)
-  const restored = chatStore.conversations.find(c => c.id === cid)?.messages
-    ?? chatStore.current?.messages
-    ?? []
-  if (restored.length) {
-    setMessages(cid, [...restored])
-    const lastAssistant = [...restored].reverse().find(m => m.role === 'assistant')
-    if (lastAssistant?.content?.trim()) {
-      settledHtml.value = captureSettledAssistantHtml(lastAssistant.content)
-      sessionSettledHtml.set(cid, settledHtml.value)
+    await chatStore.switchTo(cid)
+    ensureActive(cid)
+    await hydrateSessionFromStore(cid)
+
+    if (active && active.conversationId === cid) {
+      await tryAutoReconnect(cid, active)
+      await hydrateSessionFromStore(cid)
     }
-  }
-
-  if (active && active.conversationId === cid) {
-    await tryAutoReconnect(cid, active)
+  } finally {
+    sessionHydrating = false
   }
 
   inputRef.value?.focus()
@@ -482,7 +484,7 @@ onUpdated(() => {
 watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
 watch(() => chatStore.currentId, async (newId, oldId) => {
-  if (newId === oldId) return
+  if (sessionHydrating || newId === oldId) return
 
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
@@ -500,24 +502,11 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
 
   if (!newId) return
 
-  switchTo(newId)
-
-  const storeMsgs = chatStore.current?.messages ?? []
-  if (storeMsgs.length) {
-    setMessages(newId, [...storeMsgs])
-  }
-
-  const lastAssistant = [...storeMsgs].reverse().find(m => m.role === 'assistant')
-  if (!loading.value && lastAssistant?.content?.trim()) {
-    settledHtml.value = captureSettledAssistantHtml(lastAssistant.content)
-    sessionSettledHtml.set(newId, settledHtml.value)
-  } else {
-    settledHtml.value = loading.value ? '' : (sessionSettledHtml.get(newId) ?? '')
-  }
+  ensureActive(newId)
+  await hydrateSessionFromStore(newId)
 
   await nextTick()
   if (loading.value) void ensureStreamRenderer()
-  scrollToBottom()
 }, { flush: 'post' })
 
 watch(
@@ -538,14 +527,26 @@ function captureSettledAssistantHtml(content: string): string {
   return renderMarkdown(content)
 }
 
+function renderAssistantHtml(msg: { content?: string }, idx: number): string {
+  if (idx === messages.value.length - 1 && settledHtml.value && !loading.value) {
+    return settledHtml.value
+  }
+  return renderMarkdown(msg.content || '')
+}
+
 function enhanceAllStaticMarkdown(): void {
   document.querySelectorAll('.msg-md:not(.streaming)').forEach(el => {
     if (el instanceof HTMLElement) enhanceStaticMarkdown(el)
   })
 }
 
-watch(() => loading.value, (val) => {
-  if (!val && streamRenderer) {
+watch(() => loading.value, async (val) => {
+  if (val) {
+    await nextTick()
+    await ensureStreamRenderer()
+    return
+  }
+  if (streamRenderer) {
     streamRenderer.finish()
     const last = messages.value[messages.value.length - 1]
     if (last?.role === 'assistant' && last.content) {
@@ -607,7 +608,16 @@ watch(() => loading.value, (val) => {
     <!-- 消息区 -->
     <div ref="scrollRef" class="chat-scroll">
       <div class="chat-inner">
-        <div v-if="messages.length === 0" class="empty-state">
+        <div v-if="chatStore.initializing && messages.length === 0" class="empty-state">
+          <div class="empty-icon">
+            <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="14" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
+              <circle cx="24" cy="24" r="5" fill="currentColor" opacity="0.5" />
+            </svg>
+          </div>
+          <h2 class="empty-title">正在加载对话…</h2>
+        </div>
+        <div v-else-if="messages.length === 0" class="empty-state">
           <div class="empty-icon">
             <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
               <circle cx="24" cy="24" r="14" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
@@ -635,21 +645,12 @@ watch(() => loading.value, (val) => {
 
             <!-- AI 消息：全宽左对齐 -->
             <div v-else class="assistant-body">
-              <ProcessingTimeline
+              <OperationStack
                 v-if="showTimeline(msg, idx)"
                 :steps="resolveTimelineSteps(msg, idx)"
-                :expanded="isTimelineExpanded(msg, idx)"
                 :live="isTimelineLive(msg, idx)"
-                @toggle="toggleTimeline(msg, idx)"
               />
-              <ReasoningPanel
-                v-if="msg.reasoning?.trim()"
-                :text="msg.reasoning"
-                :expanded="isReasoningExpanded(msg, idx)"
-                :live="isReasoningLive(msg, idx)"
-                @toggle="toggleReasoning(msg, idx)"
-              />
-              <template v-if="loading && idx === messages.length - 1">
+              <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">
                 <div v-if="showStreamWaiting" class="stream-waiting-dots" aria-label="正在生成">
                   <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
                 </div>
@@ -660,14 +661,9 @@ watch(() => loading.value, (val) => {
                 />
               </template>
               <div
-                v-else-if="settledHtml && idx === messages.length - 1"
-                class="msg-md"
-                v-html="settledHtml"
-              />
-              <div
                 v-else
                 class="msg-md"
-                v-html="renderMarkdown(msg.content || '')"
+                v-html="renderAssistantHtml(msg, idx)"
               />
               <div v-if="canCopyAssistant(msg, idx)" class="msg-copy-bar">
                 <button
@@ -749,7 +745,7 @@ watch(() => loading.value, (val) => {
 .chat-header {
   flex-shrink: 0;
   width: 100%;
-  height: 52px;
+  height: 48px;
   border-bottom: 1px solid var(--sun-border);
   background: var(--sun-black);
   z-index: 10;
@@ -862,17 +858,17 @@ watch(() => loading.value, (val) => {
 }
 
 .empty-icon {
-  color: var(--sun-amber);
+  color: var(--sun-text-muted);
   margin-bottom: 20px;
-  opacity: 0.85;
+  opacity: 0.7;
 }
 
 .empty-title {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--sun-text);
   margin: 0 0 8px;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.4px;
 }
 
 .empty-desc {
@@ -903,9 +899,9 @@ watch(() => loading.value, (val) => {
 }
 
 .hint-chip:hover {
-  border-color: var(--sun-amber);
-  color: var(--sun-amber-light);
-  background: var(--sun-amber-glow);
+  border-color: var(--sun-border-light);
+  color: var(--sun-text);
+  background: var(--sun-surface-hover);
 }
 
 /* ── 消息列表 ── */
@@ -925,8 +921,8 @@ watch(() => loading.value, (val) => {
   max-width: 75%;
   padding: 10px 16px;
   background: var(--sun-surface);
-  border: 1px solid var(--sun-border);
-  border-radius: 18px 18px 4px 18px;
+  border: none;
+  border-radius: 20px;
   font-size: 14.5px;
   line-height: 1.65;
   color: var(--sun-text);
@@ -973,9 +969,9 @@ watch(() => loading.value, (val) => {
 }
 
 .resume-btn:hover {
-  background: rgba(245, 158, 11, 0.1);
-  color: var(--sun-accent, #f59e0b);
-  border-color: rgba(245, 158, 11, 0.35);
+  background: var(--sun-accent-muted);
+  color: var(--sun-text);
+  border-color: var(--sun-border-light);
 }
 
 .msg-copy-btn {
@@ -1014,7 +1010,7 @@ watch(() => loading.value, (val) => {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--sun-amber);
+  background: var(--sun-text-muted);
   animation: dot-bounce 1.3s ease-in-out infinite;
 }
 
@@ -1029,7 +1025,7 @@ watch(() => loading.value, (val) => {
   right: 0;
   z-index: 20;
   padding: 0 24px 20px;
-  background: linear-gradient(to bottom, transparent 0%, var(--sun-black) 28%);
+  background: linear-gradient(to bottom, transparent 0%, var(--sun-black) 32%);
   pointer-events: none;
 }
 
@@ -1043,12 +1039,12 @@ watch(() => loading.value, (val) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--sun-surface);
+  background: var(--sun-deep);
   border: 1px solid var(--sun-border);
-  border-radius: 24px;
+  border-radius: 20px;
   padding: 8px 10px 8px 18px;
   min-height: 48px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.15s, box-shadow 0.15s;
   box-shadow: var(--composer-shadow);
 }
 
@@ -1076,7 +1072,7 @@ watch(() => loading.value, (val) => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--sun-amber);
+  background: var(--sun-text-muted);
   flex-shrink: 0;
   animation: glow-pulse 1.5s ease-in-out infinite;
 }
@@ -1110,12 +1106,12 @@ watch(() => loading.value, (val) => {
 }
 
 .composer-icon-btn.send {
-  background: var(--sun-amber);
+  background: var(--sun-accent);
   color: var(--btn-primary-text);
 }
 
 .composer-icon-btn.send:hover:not(:disabled) {
-  background: var(--sun-amber-light);
+  background: var(--sun-accent-hover);
 }
 
 .composer-icon-btn.send:disabled {
@@ -1162,20 +1158,20 @@ watch(() => loading.value, (val) => {
 .msg-md :deep(h2) { font-size: 17px; }
 .msg-md :deep(h1) { font-size: 19px; }
 .msg-md :deep(p) { margin: 6px 0; }
-.msg-md :deep(strong) { color: var(--sun-amber-light); font-weight: 600; }
+.msg-md :deep(strong) { color: var(--sun-text); font-weight: 600; }
 .msg-md :deep(a) { color: var(--sun-blue); }
 .msg-md :deep(ul), .msg-md :deep(ol) { margin: 8px 0; padding-left: 22px; }
 .msg-md :deep(li) { margin: 3px 0; }
 .msg-md :deep(hr) { border: none; border-top: 1px solid var(--sun-border); margin: 16px 0; }
 .msg-md :deep(blockquote) {
-  border-left: 3px solid var(--sun-amber);
+  border-left: 3px solid var(--sun-border-light);
   padding: 4px 14px;
   margin: 12px 0;
   color: var(--sun-text-secondary);
 }
 .msg-md :deep(code) {
-  background: rgba(245, 158, 11, 0.08);
-  color: var(--sun-amber-light);
+  background: var(--sun-accent-muted);
+  color: var(--sun-text);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'JetBrains Mono', monospace;

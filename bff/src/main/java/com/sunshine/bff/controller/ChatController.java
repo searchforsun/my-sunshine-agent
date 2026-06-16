@@ -26,7 +26,7 @@ public class ChatController {
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> stream(
             @RequestBody ChatRequest request,
-            @RequestHeader(value = "x-user-id", defaultValue = "anonymous") String userId,
+            @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
 
         log.info("[BFF] 用户 {} 发送消息 conv={} resume={}",

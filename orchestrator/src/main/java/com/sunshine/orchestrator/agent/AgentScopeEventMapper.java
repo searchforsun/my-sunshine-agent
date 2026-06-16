@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.processing.StepDeltaEmitter;
 import com.sunshine.orchestrator.processing.StepSummarizer;
 import io.agentscope.core.agent.Event;
 import io.agentscope.core.agent.EventType;
@@ -47,7 +48,7 @@ public final class AgentScopeEventMapper {
                 out.addAll(ProcessingTimelineSupport.run(session, () ->
                         session.progress("agent", progress)));
             }
-            appendThinkingTokens(msg, out);
+            appendThinkingTokens(msg, session, out);
             return out;
         }
 
@@ -106,12 +107,17 @@ public final class AgentScopeEventMapper {
         });
     }
 
-    /** 仅 ThinkingBlock 进入 reasoning 通道；REASONING 事件中的 TextBlock 是成稿预览，不传输。 */
-    static void appendThinkingTokens(Msg msg, List<StreamToken> out) {
+    /** 仅 ThinkingBlock 进入 step_delta(reasoning)；无 activeStep 时 fallback 到 message 级 reasoning。 */
+    static void appendThinkingTokens(Msg msg, ProcessingTimelineSession session, List<StreamToken> out) {
         for (ThinkingBlock block : msg.getContentBlocks(ThinkingBlock.class)) {
             String thinking = block.getThinking();
             if (thinking != null && !thinking.isEmpty()) {
-                out.add(StreamToken.reasoning(thinking));
+                StreamToken delta = StepDeltaEmitter.emit(session, "reasoning", thinking);
+                if (delta != null) {
+                    out.add(delta);
+                } else {
+                    out.add(StreamToken.reasoning(thinking));
+                }
             }
         }
     }

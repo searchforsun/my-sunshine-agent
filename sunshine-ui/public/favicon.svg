@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="Sunshine AI">
+  <style>
+    .bg { fill: #212121; stroke: #424242; }
+    .glow { fill: #ececec; fill-opacity: .22; }
+    .core { fill: #ececec; fill-opacity: .96; }
+    .rays { stroke: #ececec; stroke-opacity: .96; stroke-width: 2.2; stroke-linecap: round; }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #0d0d0d; stroke: #d4d4d4; }
+      .glow { fill: #ffffff; }
+      .core { fill: #ffffff; }
+      .rays { stroke: #ffffff; }
+    }
+  </style>
+  <rect class="bg" width="32" height="32" rx="9" stroke-width="1"/>
+  <path class="glow" d="M16 9.2c-3.6 0-6.7 1.2-8.2 2.9 2.3-1 4.7-1.4 8.2-1.4s5.9.4 8.2 1.4C22.7 10.4 19.6 9.2 16 9.2Z"/>
+  <circle class="core" cx="16" cy="13.5" r="3.8"/>
+  <g class="rays">
+    <line x1="13" y1="18.5" x2="12" y2="25"/>
+    <line x1="16" y1="18" x2="16" y2="25.5"/>
+    <line x1="19" y1="18.5" x2="20" y2="25"/>
+  </g>
+</svg>

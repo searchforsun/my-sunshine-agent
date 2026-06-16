@@ -35,7 +35,7 @@ class GenerationRegistryTest {
 
     private GenerationJob newJob(String generationId, String messageId) {
         return new GenerationJob(
-                generationId, messageId, "conv-1", "alice", "default", "chat",
+                generationId, messageId, "conv-1", "alice", "default", "chat", "hello",
                 streamService, properties, flushScheduler);
     }
 

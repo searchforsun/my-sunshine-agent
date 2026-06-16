@@ -6,7 +6,7 @@
 
 
 
-export type StepPhase = 'intent' | 'rag' | 'agent' | 'generate' | string
+export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
 export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped'
 
@@ -44,6 +44,15 @@ export interface ProcessingStep {
 
   detail?: string
 
+  /** V3：步骤内流式思考 */
+  reasoning?: string
+
+  /** V3：步骤内输出/日志 */
+  output?: string
+
+  /** V3：步骤结果摘要 */
+  result?: string
+
   ts?: number
 
   /** @deprecated V1 兼容 */
@@ -58,7 +67,7 @@ export interface ProcessingStep {
 
 
 
-export const STEP_ORDER: StepPhase[] = ['intent', 'rag', 'agent', 'generate']
+export const STEP_ORDER: StepPhase[] = ['intent', 'rag', 'agent', 'think', 'generate']
 
 
 
@@ -123,6 +132,12 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
     durationMs: typeof raw.durationMs === 'number' ? raw.durationMs : undefined,
 
     detail: typeof raw.detail === 'string' ? raw.detail : undefined,
+
+    reasoning: typeof raw.reasoning === 'string' ? raw.reasoning : undefined,
+
+    output: typeof raw.output === 'string' ? raw.output : undefined,
+
+    result: typeof raw.result === 'string' ? raw.result : undefined,
 
     ts: typeof raw.ts === 'number' ? raw.ts : undefined,
 
@@ -204,7 +219,21 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
   if (idx >= 0) {
 
-    next[idx] = { ...next[idx], ...incoming }
+    const prev = next[idx]
+
+    next[idx] = {
+
+      ...prev,
+
+      ...incoming,
+
+      reasoning: longerText(prev.reasoning, incoming.reasoning),
+
+      output: longerText(prev.output, incoming.output),
+
+      result: incoming.result ?? prev.result,
+
+    }
 
   } else {
 
@@ -213,6 +242,180 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
   }
 
   return sortSteps(next)
+
+}
+
+
+
+export interface StepDelta {
+
+  stepId: string
+
+  channel: string
+
+  text: string
+
+}
+
+
+
+export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): ProcessingStep[] {
+
+  const idx = steps.findIndex(s => s.id === delta.stepId)
+
+  const base: ProcessingStep = idx >= 0 ? { ...steps[idx] } : {
+
+    id: delta.stepId,
+
+    phase: delta.stepId as StepPhase,
+
+    lifecycle: 'running',
+
+    status: 'running',
+
+    label: delta.stepId,
+
+    summary: { active: delta.stepId },
+
+  }
+
+  switch (delta.channel) {
+
+    case 'reasoning':
+
+      base.reasoning = concatText(base.reasoning, delta.text)
+
+      break
+
+    case 'output':
+
+      base.output = concatText(base.output, delta.text)
+
+      break
+
+    case 'result':
+
+      base.result = delta.text
+
+      break
+
+    default:
+
+      base.output = concatText(base.output, delta.text)
+
+  }
+
+  if (base.lifecycle == null) base.lifecycle = 'running'
+
+  return upsertStep(steps.filter(s => s.id !== delta.stepId), base)
+
+}
+
+
+
+function concatText(existing: string | undefined, chunk: string): string {
+
+  return existing ? existing + chunk : chunk
+
+}
+
+
+
+const REASONING_STEP_PRIORITY = ['agent', 'think', 'generate', 'rag', 'intent'] as const
+
+
+
+export function findRunningStepId(steps: ProcessingStep[]): string | undefined {
+
+  for (const id of REASONING_STEP_PRIORITY) {
+
+    const step = steps.find(s => s.id === id)
+
+    if (step && (step.lifecycle === 'running' || step.status === 'running')) {
+
+      return id
+
+    }
+
+  }
+
+  return steps.find(s => s.lifecycle === 'running' || s.status === 'running')?.id
+
+}
+
+
+
+/** 将 message / generate 上的 reasoning 归并到独立 think 步骤（历史数据兼容） */
+
+export function normalizeTimelineSteps(
+
+  steps: ProcessingStep[],
+
+  reasoning?: string,
+
+): ProcessingStep[] {
+
+  if (steps.length === 0) return steps
+
+  let result = [...steps]
+
+  const hasThink = result.some(s => s.id === 'think')
+
+  const genIdx = result.findIndex(s => s.id === 'generate')
+
+  const gen = genIdx >= 0 ? result[genIdx] : undefined
+
+  const orphanedReasoning = gen?.reasoning?.trim() || reasoning?.trim()
+
+  if (!hasThink && orphanedReasoning) {
+
+    const thinkStep: ProcessingStep = {
+
+      id: 'think',
+
+      phase: 'think',
+
+      lifecycle: 'done',
+
+      status: 'done',
+
+      label: '思考过程',
+
+      reasoning: orphanedReasoning,
+
+      summary: { after: '思考完成' },
+
+    }
+
+    if (gen && gen.reasoning) {
+
+      const { reasoning: _removed, ...genWithoutReasoning } = gen
+
+      result[genIdx] = genWithoutReasoning
+
+    }
+
+    result = [...result, thinkStep]
+
+  }
+
+  return sortSteps(result)
+
+}
+
+
+
+function longerText(a?: string, b?: string): string | undefined {
+
+  if (!a) return b
+
+  if (!b) return a
+
+  if (b.length >= a.length && b.startsWith(a)) return b
+
+  if (a.length >= b.length && a.startsWith(b)) return a
+
+  return a + b
 
 }
 
