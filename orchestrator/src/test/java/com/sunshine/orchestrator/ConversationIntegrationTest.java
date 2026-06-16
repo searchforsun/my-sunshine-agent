@@ -13,6 +13,8 @@ import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.sunshine.testsupport.EmbeddedRedisTestConfig;
 import com.sunshine.testsupport.SseEventTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,10 +25,14 @@ import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWeb
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.Disposable;
@@ -36,10 +42,12 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -58,6 +66,7 @@ import static org.mockito.Mockito.when;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
 @ActiveProfiles("test")
+@Import(EmbeddedRedisTestConfig.class)
 class ConversationIntegrationTest {
 
     private static final String ALICE = "alice";
@@ -88,10 +97,24 @@ class ConversationIntegrationTest {
     @MockBean
     private IntentRouter intentRouter;
 
+    @Autowired
+    private StringRedisTemplate redis;
+
+    @DynamicPropertySource
+    static void redisProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.data.redis.host", EmbeddedRedisTestConfig::redisHost);
+        registry.add("spring.data.redis.port", EmbeddedRedisTestConfig::redisPort);
+        registry.add("spring.data.redis.password", () -> "");
+    }
+
     @BeforeEach
     void setUpMocks() {
         messageRepository.deleteAll();
         conversationRepository.deleteAll();
+        Set<String> keys = redis.keys("sunshine:gen:*");
+        if (keys != null && !keys.isEmpty()) {
+            redis.delete(keys);
+        }
         when(intentRouter.classify(anyString())).thenReturn(Mono.just("simple"));
         when(llmGateway.streamWithHistory(anyList(), anyString()))
                 .thenAnswer(inv -> {
@@ -197,6 +220,7 @@ class ConversationIntegrationTest {
         req.setConversationId(convId);
         req.setContent("long stream");
 
+        AtomicReference<String> generationId = new AtomicReference<>();
         CountDownLatch chunks = new CountDownLatch(5);
         Disposable disposable = client.post()
                 .uri("/chat/stream")
@@ -208,6 +232,17 @@ class ConversationIntegrationTest {
                 .retrieve()
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .doOnNext(ev -> {
+                    if (generationId.get() == null && ev.data() != null
+                            && ev.data().contains("\"type\":\"generation\"")) {
+                        try {
+                            JsonNode node = objectMapper.readTree(ev.data());
+                            if ("generation".equals(node.path("type").asText())) {
+                                generationId.set(node.path("id").asText());
+                            }
+                        } catch (Exception ignored) {
+                            // not generation meta
+                        }
+                    }
                     if (SseEventTestSupport.isContentChunk(objectMapper, ev)) {
                         chunks.countDown();
                     }
@@ -216,6 +251,14 @@ class ConversationIntegrationTest {
 
         assertThat(chunks.await(10, TimeUnit.SECONDS)).isTrue();
         disposable.dispose();
+
+        assertThat(generationId.get()).isNotNull();
+        webTestClient.post()
+                .uri("/generations/{id}/cancel", generationId.get())
+                .header("x-user-id", ALICE)
+                .header("x-tenant-id", TENANT)
+                .exchange()
+                .expectStatus().isOk();
 
         ConversationDetailDto.MessageDto lastAssistant = null;
         for (int i = 0; i < 30; i++) {
@@ -255,26 +298,25 @@ class ConversationIntegrationTest {
     }
 
     @Test
-    @DisplayName("resumeKnowledgeIntent_returns409 — knowledge 意图不可续传")
-    void resumeKnowledgeIntent_returns409() {
+    @DisplayName("resumeKnowledgeIntent_appendsContent — knowledge 意图可续传")
+    void resumeKnowledgeIntent_appendsContent() throws InterruptedException {
+        when(llmGateway.streamContinue(anyList(), anyString(), anyString()))
+                .thenReturn(Flux.just(StreamToken.content(" continued")));
+
         ChatConversationEntity conv = conversationService.create(ALICE, TENANT);
         conversationService.appendMessage(conv.getId(), "user", "查制度", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "half answer", MessageStatus.INTERRUPTED);
         conversationService.updateMessageIntent(assistant.getId(), "knowledge");
 
-        assertThat(conversationService.getMessageOwned(assistant.getId(), ALICE, TENANT).getIntent())
-                .isEqualTo("knowledge");
-        assertThatThrownBy(() -> conversationService.validateResumeAllowed(
-                conversationService.getMessageOwned(assistant.getId(), ALICE, TENANT), ALICE, TENANT))
-                .isInstanceOf(com.sunshine.orchestrator.conversation.ResumeNotAllowedException.class);
+        streamResume(ALICE, conv.getId(), assistant.getId());
 
-        ChatMessage resume = new ChatMessage();
-        resume.setConversationId(conv.getId());
-        resume.setResumeMessageId(assistant.getId());
+        ConversationDetailDto.MessageDto last = awaitMessageStatus(
+                ALICE, conv.getId(), assistant.getId(), MessageStatus.COMPLETED, 50);
 
-        int status = postStreamStatus(ALICE, resume);
-        assertThat(status).isEqualTo(409);
+        assertThat(last.getContent()).contains("half answer").contains("continued");
+        assertThat(last.getStatus()).isEqualTo(MessageStatus.COMPLETED);
+        verify(llmGateway).streamContinue(anyList(), eq("查制度"), eq("half answer"));
     }
 
     @Test

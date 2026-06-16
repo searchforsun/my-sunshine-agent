@@ -23,11 +23,25 @@ bash scripts/start.sh                                         # 一键启动全�
 cd sunshine-ui && npm run dev           # :5173 开发模式
 cd sunshine-ui && npm run build         # 生产构建
 
-# 测试
+# 测试（默认 exclude integration，无需外部中间件）
+mvn test -pl orchestrator -am
+mvn test -pl orchestrator -am "-Dtest=ConversationIntegrationTest,GenerationReconnectIntegrationTest" -q
+# 全链路 live 集成测试（需 LLM Gateway :8300 已启动）
+mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest" -q
+mvn test -pl llm-gateway -am "-Dtest=QwenAdapterTest,ModelRouterTest" -q
+
+# 前端 E2E mock（需 mock-server + vite，CI 自动启动）
+cd sunshine-ui && npx playwright test e2e/processing-timeline.spec.ts e2e/chat.spec.ts
+
+# 手动 curl 冒烟
 curl -X POST http://localhost:8300/v1/chat/completions -H "Content-Type: application/json" \
   -d '{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}]}'
 curl -N -X POST http://localhost:8001/api/chat/stream -H "Content-Type: application/json" \
   -H "x-user-id:test" -d '{"content":"你好"}'
+
+# 阶段一演示脚本
+powershell -ExecutionPolicy Bypass -File scripts/phase1-demo.ps1
+bash scripts/phase1-demo.sh
 ```
 
 **注意**：本机 bash 默认 Java 17，需用 `D:/MyWorkStation/Java/jdk/jdk-21/bin/java` 或先 `switch-java 21`（PowerShell）。

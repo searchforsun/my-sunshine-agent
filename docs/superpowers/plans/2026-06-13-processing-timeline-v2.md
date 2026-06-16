@@ -1,6 +1,6 @@
 # Processing Timeline V2 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Refactor backend processing events into an extensible event-stream + aggregator architecture, exposing per-step before/active/after summaries with duration timeline; upgrade frontend `ProcessingTimeline` to render V2 fields with V1 fallback.
 
@@ -48,7 +48,7 @@
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/processing/TimelineAggregator.java`
 - Create: `orchestrator/src/test/java/com/sunshine/orchestrator/processing/TimelineAggregatorTest.java`
 
-- [ ] **Step 1: Write failing aggregator test**
+- [x] **Step 1: Write failing aggregator test**
 
 ```java
 // TimelineAggregatorTest.java
@@ -72,13 +72,13 @@ void pendingStartComplete_producesThreePhaseSummaryAndDuration() {
 }
 ```
 
-- [ ] **Step 2: Run test — expect FAIL**
+- [x] **Step 2: Run test — expect FAIL**
 
 ```bash
 mvn test -pl orchestrator "-Dtest=TimelineAggregatorTest" -q
 ```
 
-- [ ] **Step 3: Implement EventKind, ProcessingEvent, StepSummary, TimelineAggregator**
+- [x] **Step 3: Implement EventKind, ProcessingEvent, StepSummary, TimelineAggregator**
 
 `TimelineAggregator` 要点：
 - `LinkedHashMap<String, MutableStep>` 按 stepId 保序
@@ -86,9 +86,9 @@ mvn test -pl orchestrator "-Dtest=TimelineAggregatorTest" -q
 - COMPLETE/FAIL 时 `durationMs = endedAt - startedAt`（startedAt 缺失则用 ts）
 - 输出 `ProcessingStep` record（先扩展 `agent/ProcessingStep.java`）
 
-- [ ] **Step 4: Run test — expect PASS**
+- [x] **Step 4: Run test — expect PASS**
 
-- [ ] **Step 5: Add progress + fail + skip tests and implement**
+- [x] **Step 5: Add progress + fail + skip tests and implement**
 
 ```java
 @Test
@@ -106,7 +106,7 @@ void replayPreservesEarliestStartedAt() { /* 重放 START 不覆盖更早 starte
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/ProcessingStep.java`
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/ProcessingStepMerger.java`
 
-- [ ] **Step 1: Extend ProcessingStep**
+- [x] **Step 1: Extend ProcessingStep**
 
 ```java
 public record ProcessingStep(
@@ -127,11 +127,11 @@ public record ProcessingStep(
 }
 ```
 
-- [ ] **Step 2: Update ProcessingStepMerger.upsert**
+- [x] **Step 2: Update ProcessingStepMerger.upsert**
 
 合并规则：同 id 时 `startedAt` 取非 null 更小值；`summary` 字段按非 null 覆盖合并。
 
-- [ ] **Step 3: Run existing tests**
+- [x] **Step 3: Run existing tests**
 
 ```bash
 mvn test -pl orchestrator "-Dtest=GenerationJobTest,StreamTokenCoalescerTest" -q
@@ -148,7 +148,7 @@ mvn test -pl orchestrator "-Dtest=GenerationJobTest,StreamTokenCoalescerTest" -q
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/processing/ProcessingTimelineSession.java`
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/processing/ProcessingStepEmitter.java`
 
-- [ ] **Step 1: Implement StepLabels**
+- [x] **Step 1: Implement StepLabels**
 
 ```java
 public final class StepLabels {
@@ -159,7 +159,7 @@ public final class StepLabels {
 }
 ```
 
-- [ ] **Step 2: Implement Session**
+- [x] **Step 2: Implement Session**
 
 ```java
 public final class ProcessingTimelineSession {
@@ -189,7 +189,7 @@ public final class ProcessingTimelineSession {
 }
 ```
 
-- [ ] **Step 3: ProcessingStepEmitter**
+- [x] **Step 3: ProcessingStepEmitter**
 
 ```java
 public final class ProcessingStepEmitter {
@@ -199,7 +199,7 @@ public final class ProcessingStepEmitter {
 }
 ```
 
-- [ ] **Step 4: Unit test Session emits on change only**
+- [x] **Step 4: Unit test Session emits on change only**
 
 ---
 
@@ -210,7 +210,7 @@ public final class ProcessingStepEmitter {
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/controller/ChatController.java`
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/conversation/GenerationFlushScheduler.java`
 
-- [ ] **Step 1: GenerationJob holds ProcessingTimelineSession**
+- [x] **Step 1: GenerationJob holds ProcessingTimelineSession**
 
 ```java
 private final ProcessingTimelineSession timelineSession = new ProcessingTimelineSession();
@@ -222,7 +222,7 @@ timelineSession.onStepChanged(step -> {
 });
 ```
 
-- [ ] **Step 2: ChatController intent 路径改用 session**
+- [x] **Step 2: ChatController intent 路径改用 session**
 
 替换：
 ```java
@@ -238,11 +238,11 @@ timelineSession.complete("intent", detail);
 
 `wrapStream` 路径同样创建 session 并接入 `stepsBuffer`。
 
-- [ ] **Step 3: metaStep 序列化 V2 全字段**
+- [x] **Step 3: metaStep 序列化 V2 全字段**
 
 `GenerationFlushScheduler.metaStep` 用 Jackson 输出 `lifecycle/summary/startedAt/.../status/label`。
 
-- [ ] **Step 4: Run GenerationJobTest + manual curl**
+- [x] **Step 4: Run GenerationJobTest + manual curl**
 
 ```bash
 mvn test -pl orchestrator "-Dtest=GenerationJobTest" -q
@@ -260,7 +260,7 @@ mvn test -pl orchestrator "-Dtest=GenerationJobTest" -q
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/AgentScopeEventMapper.java`
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/SunshineAgent.java`
 
-- [ ] **Step 1: StepEventBridge binds ProcessingTimelineSession**
+- [x] **Step 1: StepEventBridge binds ProcessingTimelineSession**
 
 ```java
 private static final ThreadLocal<ProcessingTimelineSession> SESSION = new ThreadLocal<>();
@@ -272,7 +272,7 @@ public static void emit(Consumer<ProcessingTimelineSession> action) {
 }
 ```
 
-- [ ] **Step 2: ProcessingStepHook**
+- [x] **Step 2: ProcessingStepHook**
 
 ```java
 // PreActing search_knowledge:
@@ -283,13 +283,13 @@ StepEventBridge.emit(s -> s.complete("rag", detail));
 StepEventBridge.emit(s -> { s.pending("tool-"+name,"agent"); s.start(...); });
 ```
 
-- [ ] **Step 3: AgentScopeEventMapper**
+- [x] **Step 3: AgentScopeEventMapper**
 
 REASONING 首次 → `session.start("agent","agent")`  
 AGENT_RESULT last → `session.complete("agent", null)` + generate complete  
 HINT search_knowledge → 若 Hook 未覆盖则 fallback `session.start("rag","rag")`
 
-- [ ] **Step 4: SunshineAgent binds session before agent.stream()**
+- [x] **Step 4: SunshineAgent binds session before agent.stream()**
 
 ```java
 ProcessingTimelineSession session = new ProcessingTimelineSession();
@@ -297,7 +297,7 @@ StepEventBridge.bind(session);
 // session.onStepChanged → stepSink.tryEmitNext 改为直接 emit ProcessingStep
 ```
 
-- [ ] **Step 5: Integration smoke**
+- [x] **Step 5: Integration smoke**
 
 ```bash
 mvn compile -pl orchestrator -am -q
@@ -313,7 +313,7 @@ mvn compile -pl orchestrator -am -q
 - Modify: `sunshine-ui/src/api/conversations.ts`
 - Modify: `sunshine-ui/src/components/ProcessingTimeline.vue`
 
-- [ ] **Step 1: Extend types + normalizeStep + migrateV1Step**
+- [x] **Step 1: Extend types + normalizeStep + migrateV1Step**
 
 ```typescript
 export function migrateV1Step(step: ProcessingStep): ProcessingStep {
@@ -340,14 +340,14 @@ export function totalDuration(steps: ProcessingStep[]): number {
 }
 ```
 
-- [ ] **Step 2: Upgrade ProcessingTimeline.vue**
+- [x] **Step 2: Upgrade ProcessingTimeline.vue**
 
 - 标题行右侧：`总耗时 {{ formatDuration(totalDuration(steps)) }}`
 - 每行：左侧轴点 + 竖线；右侧 `durationMs`
 - body 内三行摘要：`summary.before` / `summary.active` / `summary.after`（带图标 ✓ / …）
 - 无 summary 时 fallback V1 label/detail
 
-- [ ] **Step 3: parseSteps in conversations.ts 调用 migrateV1Step**
+- [x] **Step 3: parseSteps in conversations.ts 调用 migrateV1Step**
 
 ---
 
@@ -358,7 +358,7 @@ export function totalDuration(steps: ProcessingStep[]): number {
 - Modify: `sunshine-ui/e2e/processing-timeline.spec.ts`
 - Modify: `sunshine-ui/e2e/processing-timeline-real.spec.ts`
 
-- [ ] **Step 1: mock-server stepPayload V2**
+- [x] **Step 1: mock-server stepPayload V2**
 
 ```javascript
 function stepPayload(id, phase, lifecycle, label, opts = {}) {
@@ -375,7 +375,7 @@ function stepPayload(id, phase, lifecycle, label, opts = {}) {
 }
 ```
 
-- [ ] **Step 2: E2E assert 三态文案 + 耗时**
+- [x] **Step 2: E2E assert 三态文案 + 耗时**
 
 ```typescript
 await expect(timeline.getByText('准备识别意图')).toBeVisible()
@@ -384,7 +384,7 @@ await expect(timeline.getByText(/判定为/)).toBeVisible()
 await expect(timeline.getByText(/\d+ms|\d+\.\d+s/)).toBeVisible()
 ```
 
-- [ ] **Step 3: Run E2E**
+- [x] **Step 3: Run E2E**
 
 ```bash
 cd sunshine-ui

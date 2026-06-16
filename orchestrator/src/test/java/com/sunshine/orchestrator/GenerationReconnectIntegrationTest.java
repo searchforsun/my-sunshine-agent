@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
@@ -52,6 +54,7 @@ import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -115,6 +118,8 @@ class GenerationReconnectIntegrationTest {
             redis.delete(keys);
         }
         when(intentRouter.classify(anyString())).thenReturn(Mono.just("simple"));
+        when(llmGateway.streamContinue(anyList(), anyString(), anyString()))
+                .thenReturn(Flux.just(StreamToken.content(" continued")));
     }
 
     @AfterEach
@@ -269,6 +274,104 @@ class GenerationReconnectIntegrationTest {
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .exchange()
                 .expectStatus().isEqualTo(410);
+    }
+
+    @Test
+    @DisplayName("reconnect410ThenResume_succeeds — cancel → reconnect 410 → resume 200")
+    void reconnect410ThenResume_succeeds() throws Exception {
+        when(llmGateway.streamWithHistory(anyList(), eq("resume combo")))
+                .thenReturn(Flux.range(1, 100)
+                        .delayElements(Duration.ofMillis(50))
+                        .map(i -> StreamToken.content("p")));
+
+        String convId = createConversation(ALICE);
+        AtomicReference<String> generationId = new AtomicReference<>();
+        CountDownLatch metaReady = new CountDownLatch(1);
+        CountDownLatch chunks = new CountDownLatch(3);
+
+        WebClient client = webClient();
+        ChatMessage req = chatRequest(convId, "resume combo");
+
+        Disposable disposable = client.post()
+                .uri("/chat/stream")
+                .header("x-user-id", ALICE)
+                .header("x-tenant-id", TENANT)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .bodyValue(req)
+                .retrieve()
+                .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
+                .doOnNext(ev -> {
+                    if (captureGenerationId(ev, generationId)) {
+                        metaReady.countDown();
+                    }
+                    if (SseEventTestSupport.isContentChunk(objectMapper, ev)) {
+                        chunks.countDown();
+                    }
+                })
+                .subscribe();
+
+        assertThat(metaReady.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(chunks.await(10, TimeUnit.SECONDS)).isTrue();
+        disposable.dispose();
+
+        webTestClient.post()
+                .uri("/generations/{id}/cancel", generationId.get())
+                .header("x-user-id", ALICE)
+                .header("x-tenant-id", TENANT)
+                .exchange()
+                .expectStatus().isOk();
+
+        webTestClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/chat/stream/" + generationId.get())
+                        .queryParam("afterSeq", 0)
+                        .build())
+                .header("x-user-id", ALICE)
+                .header("x-tenant-id", TENANT)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .exchange()
+                .expectStatus().isEqualTo(410);
+
+        String messageId = streamService.getMeta(generationId.get())
+                .orElseThrow()
+                .messageId();
+
+        ChatMessage resume = new ChatMessage();
+        resume.setConversationId(convId);
+        resume.setResumeMessageId(messageId);
+
+        webTestClient.post()
+                .uri("/chat/stream")
+                .header("x-user-id", ALICE)
+                .header("x-tenant-id", TENANT)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .bodyValue(resume)
+                .exchange()
+                .expectStatus().isOk()
+                .returnResult(String.class)
+                .getResponseBody()
+                .blockLast(Duration.ofSeconds(15));
+
+        ConversationDetailDto detail = webTestClient.get()
+                .uri("/conversations/{id}", convId)
+                .header("x-user-id", ALICE)
+                .header("x-tenant-id", TENANT)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(ConversationDetailDto.class)
+                .returnResult()
+                .getResponseBody();
+
+        assertThat(detail).isNotNull();
+        ConversationDetailDto.MessageDto assistant = detail.getMessages().stream()
+                .filter(m -> messageId.equals(m.getId()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(assistant.getStatus()).isEqualTo(MessageStatus.COMPLETED);
+        assertThat(assistant.getContent()).contains("p").contains("continued");
+        verify(llmGateway).streamContinue(anyList(), anyString(), anyString());
     }
 
     @Test

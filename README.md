@@ -81,9 +81,14 @@ cd sunshine-ui && npm install && npm run build
 java -jar llm-gateway/target/sunshine-llm-gateway-*.jar &    # :8300
 java -jar orchestrator/target/sunshine-orchestrator-*.jar &  # :8200
 java -jar bff/target/sunshine-bff-*.jar &                    # :8001
+java -jar gateway/target/sunshine-gateway-*.jar &            # :8000
 
-# 或使用脚本一键启动全部
+# 或使用脚本一键启动核心链（含 Gateway，可选 SkyWalking agent）
 bash scripts/start.sh
+powershell -ExecutionPolicy Bypass -File scripts/start.ps1   # Windows
+
+# SkyWalking agent（可选，live trace 需 OAP ecs4c16g:11800）
+bash scripts/download-skywalking-agent.sh
 
 # 阶段一检查门联调演示（服务已启动后）
 powershell -ExecutionPolicy Bypass -File scripts/phase1-demo.ps1   # Windows
@@ -109,6 +114,24 @@ curl -N -X POST http://localhost:8001/api/chat/stream \
   -H "Content-Type: application/json" \
   -H "x-user-id: test" \
   -d '{"content":"你好，请介绍一下你自己"}'
+```
+
+#### 集成测试（Orchestrator）
+
+默认 `mvn test` **排除** `@Tag("integration")` 用例（无需外部中间件）。Mock/H2/jedis-mock 集成测试可直接运行：
+
+```bash
+# 阶段 1.5 / 1.6 mock 集成测试（推荐 CI 默认跑）
+mvn test -pl orchestrator -am "-Dtest=ConversationIntegrationTest,GenerationReconnectIntegrationTest" -q
+
+# 全链路 live 集成测试（需 LLM Gateway :8300 已启动）
+mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest" -q
+```
+
+LLM Gateway 单元测试（Qwen 路由 mock）：
+
+```bash
+mvn test -pl llm-gateway -am "-Dtest=QwenAdapterTest,ModelRouterTest" -q
 ```
 
 ## 服务器中间件

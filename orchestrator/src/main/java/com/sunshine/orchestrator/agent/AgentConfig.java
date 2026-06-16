@@ -1,8 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
 import io.agentscope.core.ReActAgent;
-import io.agentscope.core.memory.InMemoryMemory;
-import io.agentscope.core.memory.Memory;
 import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
  * 使用 OpenAIChatModel 指向自建 LLM Gateway（OpenAI 兼容接口）
  * <p>
  * {@link RefreshScope} 支持 Nacos 配置热更新 System Prompt。
- * Memory 独立 Bean（不加 RefreshScope）保证热更新时不丢失对话历史。
+ * 对话历史由 {@link SunshineAgent#buildInputs} 从 DB 注入，ReActAgent 不使用全局 Memory。
  */
 @Slf4j
 @Configuration
@@ -38,17 +36,8 @@ public class AgentConfig {
     @Value("${agent.model.api-key:}")
     private String apiKey;
 
-    /**
-     * 对话记忆 — 独立 Bean，不加 @RefreshScope
-     * 保证 Nacos 配置热更新 System Prompt 时对话历史不丢失
-     */
     @Bean
-    public Memory agentMemory() {
-        return new InMemoryMemory();
-    }
-
-    @Bean
-    public ReActAgent sunshineReActAgent(Toolkit toolkit, Memory agentMemory, ProcessingStepHook stepHook) {
+    public ReActAgent sunshineReActAgent(Toolkit toolkit, ProcessingStepHook stepHook) {
         OpenAIChatModel model = OpenAIChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(modelName)
@@ -65,7 +54,6 @@ public class AgentConfig {
                 .name("Sunshine-Assistant")
                 .sysPrompt(systemPrompt)
                 .model(model)
-                .memory(agentMemory)
                 .toolkit(toolkit)
                 .hook(stepHook)
                 .maxIters(maxIters)

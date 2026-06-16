@@ -219,11 +219,7 @@ public class ChatController {
             ChatMessage msg, String userId, String tenantId) {
 
         return ReactiveBlocking.call(() -> prepareResume(msg, userId, tenantId))
-                .flatMapMany(ctx -> {
-                    Flux<StreamToken> chunkFlux = prepareChunkFlux(
-                            llmGateway.streamContinue(ctx.history(), ctx.userContent(), ctx.existingContent()));
-                    return wrapStream(ctx, chunkFlux, true);
-                });
+                .flatMapMany(ctx -> wrapStream(ctx, resolveChunkFlux(ctx), true));
     }
 
     private Flux<ServerSentEvent<String>> wrapStream(
@@ -367,6 +363,17 @@ public class ChatController {
 
     private Flux<StreamToken> resolveChunkFlux(StreamContext ctx) {
         if (ctx.intent() != null) {
+            // 续传（Track F）：已有 partial 时直连 LLM 追加，避免重复跑 RAG/Agent
+            if ("knowledge".equals(ctx.intent()) && !StringUtils.hasText(ctx.existingContent())) {
+                return prepareChunkFlux(knowledgeAgentFlux(ctx));
+            }
+            if (StringUtils.hasText(ctx.existingContent())) {
+                return prepareChunkFlux(llmGateway.streamContinue(
+                        ctx.history(), ctx.userContent(), ctx.existingContent()));
+            }
+            if ("simple".equals(ctx.intent())) {
+                return prepareChunkFlux(llmGateway.streamWithHistory(ctx.history(), ctx.userContent()));
+            }
             if ("knowledge".equals(ctx.intent())) {
                 return prepareChunkFlux(knowledgeAgentFlux(ctx));
             }

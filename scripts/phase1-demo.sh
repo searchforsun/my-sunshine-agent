@@ -19,7 +19,7 @@ fail() { echo "[FAIL] $*" >&2; }
 warn() { echo "[WARN] $*" >&2; }
 
 step "0. 服务探活"
-for name_url in "LLM|$LLM_URL/actuator/health" "BFF|$BFF_URL/actuator/health" "RAG|$RAG_URL/actuator/health"; do
+for name_url in "LLM|$LLM_URL/actuator/health" "Orchestrator|http://localhost:8200/actuator/health" "BFF|$BFF_URL/actuator/health" "RAG|$RAG_URL/actuator/health"; do
   name="${name_url%%|*}"
   url="${name_url#*|}"
   if curl -sf --max-time 5 "$url" >/dev/null 2>&1; then
@@ -71,21 +71,33 @@ step "3. BFF SSE 流式（5 秒采样）"
 timeout 5 curl -N -s -X POST "$BFF_URL/api/chat/stream" \
   -H "Content-Type: application/json" \
   -H "x-user-id: $USER_ID" \
-  -d '{"content":"你好，请用一句话介绍 Sunshine AI"}' | head -n 8 || true
+  -H "x-tenant-id: default" \
+  -d '{"content":"hello, introduce Sunshine AI in one sentence"}' | head -n 8 || true
 ok "SSE 流已采样"
 
 step "4. 知识库问答全链路（10 秒采样）"
 timeout 10 curl -N -s -X POST "$BFF_URL/api/chat/stream" \
   -H "Content-Type: application/json" \
   -H "x-user-id: $USER_ID" \
+  -H "x-tenant-id: default" \
   -d '{"content":"公司病假需要提交什么材料？"}' | head -n 12 || true
 ok "知识库问答流已采样"
 
-step "5. Gateway 转发（可选）"
-timeout 5 curl -N -s -X POST "$GATEWAY_URL/api/chat/stream" \
-  -H "Content-Type: application/json" \
-  -H "x-user-id: $USER_ID" \
-  -d '{"content":"hi"}' | head -n 5 || warn "Gateway 未启动或路由失败"
+step "5. Gateway 转发"
+if curl -sf --max-time 3 "$GATEWAY_URL/actuator/health" >/dev/null 2>&1 \
+  || (command -v nc >/dev/null && nc -z localhost 8000 2>/dev/null); then
+  if timeout 8 curl -N -s -X POST "$GATEWAY_URL/api/chat/stream" \
+    -H "Content-Type: application/json" \
+    -H "x-user-id: $USER_ID" \
+    -H "x-tenant-id: default" \
+    -d '{"content":"hello via gateway"}' | head -n 8; then
+    ok "Gateway SSE 采样成功"
+  else
+    fail "Gateway 转发失败 — 请确认 Nacos 注册与 BFF/Orchestrator 已启动"
+  fi
+else
+  warn "Gateway 端口 8000 未监听 [SKIP]"
+fi
 
 step "6. Nacos System Prompt 热更新（手动）"
 cat <<'EOF'

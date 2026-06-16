@@ -12,6 +12,8 @@ import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import java.net.ServerSocket;
+
 /**
  * 放在 {@code com.sunshine.testsupport}，避免被 {@code com.sunshine.orchestrator} 组件扫描误加载。
  */
@@ -19,16 +21,21 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 @TestConfiguration
 public class EmbeddedRedisTestConfig {
 
-    private static final int REDIS_PORT = 6370;
-
     private static final RedisServer REDIS_SERVER;
 
     static {
         try {
-            REDIS_SERVER = RedisServer.newRedisServer(REDIS_PORT).start();
+            int port = findFreePort();
+            REDIS_SERVER = RedisServer.newRedisServer(port).start();
             log.info("Jedis-Mock Redis started at {}:{}", REDIS_SERVER.getHost(), REDIS_SERVER.getBindPort());
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to start Jedis-Mock Redis on port " + REDIS_PORT, ex);
+            throw new IllegalStateException("Failed to start Jedis-Mock Redis", ex);
+        }
+    }
+
+    private static int findFreePort() throws Exception {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
         }
     }
 

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Maven test (exclude integration)
+        run: mvn test -pl orchestrator,bff,llm-gateway,rag-service -am -DfailIfNoTests=false
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sunshine-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: sunshine-ui/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  e2e-mock:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sunshine-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: sunshine-ui/package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+      - name: Playwright mock E2E
+        run: npx playwright test e2e/processing-timeline.spec.ts e2e/chat.spec.ts
+        env:
+          CI: true

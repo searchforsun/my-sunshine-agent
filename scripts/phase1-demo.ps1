@@ -128,8 +128,32 @@ try {
 }
 Write-Host "[OK] Knowledge stream sample done" -ForegroundColor Green
 
-Write-Step "5. Gateway route optional"
-Write-Host "Optional: curl -N -m 5 -X POST $($GATEWAY)/api/chat/stream ..."
+Write-Step "5. Gateway route"
+$gwUri = $GATEWAY + "/api/chat/stream"
+if (Test-Port "Gateway" 8000) {
+    if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+        $gwTmp = Write-TempJson '{"content":"hello via gateway"}'
+        try {
+            $gwOut = curl.exe -N -s -m 8 -X POST $gwUri `
+                -H "Content-Type: application/json" `
+                -H "x-user-id: $USER_ID" `
+                -H "x-tenant-id: default" `
+                --data-binary "@$gwTmp" 2>&1 | Select-Object -First 8
+            if ($gwOut) {
+                Write-Host "[OK] Gateway SSE sample" -ForegroundColor Green
+                $gwOut | ForEach-Object { Write-Host $_ }
+            } else {
+                Write-Host "[FAIL] Gateway returned empty SSE" -ForegroundColor Red
+            }
+        } catch {
+            Write-Host "[FAIL] Gateway: $($_.Exception.Message)" -ForegroundColor Red
+        } finally {
+            Remove-Item -LiteralPath $gwTmp -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-Host "[SKIP] curl.exe not found" -ForegroundColor Yellow
+    }
+}
 
 Write-Step "6. Nacos prompt hot-reload manual"
 Write-Host "(MANUAL) Edit agent.system-prompt in Nacos sunshine-orchestrator.yaml" -ForegroundColor Yellow

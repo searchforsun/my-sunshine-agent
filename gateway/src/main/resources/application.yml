@@ -1,11 +1,15 @@
-server:
-  port: 8000
+# ============================================================
+# sunshine-gateway — 配置入口
+# 业务配置托管在 Nacos（Data ID: sunshine-gateway.yaml）
+# 本地开发: 使用 application-dev.yaml 覆盖（--spring.profiles.active=dev）
+# ============================================================
 
 spring:
-  main:
-    web-application-type: reactive
   application:
     name: sunshine-gateway
+  config:
+    import:
+      - optional:nacos:sunshine-gateway.yaml
   cloud:
     nacos:
       discovery:
@@ -19,24 +23,4 @@ spring:
         import-check:
           enabled: false
         file-extension: yaml
-    gateway:
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
-      routes:
-        - id: sunshine-bff-api
-          uri: lb://sunshine-bff
-          predicates:
-            - Path=/api/**
-        - id: sunshine-llm-gateway-api
-          uri: lb://sunshine-llm-gateway
-          predicates:
-            - Path=/v1/**
-  sentinel:
-    transport:
-      dashboard: ecs4c16g:8858
-
-logging:
-  level:
-    com.sunshine: debug
+        group: DEFAULT_GROUP

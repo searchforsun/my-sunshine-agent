@@ -15,6 +15,8 @@ spring:
       password: redis123
 
 llm:
+  webclient:
+    insecure-ssl: true
   providers:
     deepseek:
       base-url: https://api.deepseek.com

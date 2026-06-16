@@ -250,10 +250,6 @@ public class ConversationService {
             }
         }
 
-        if ("knowledge".equals(assistant.getIntent())) {
-            throw new ResumeNotAllowedException("知识库检索消息暂不支持续传，请重新提问");
-        }
-
         if (assistant.getResumeCount() >= maxResumeAttempts) {
             throw new ResumeNotAllowedException("续传次数已达上限");
         }

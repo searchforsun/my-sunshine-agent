@@ -72,7 +72,7 @@ my-sunshine-agent/
 - [x] 上传文档 → RAG 知识库问答可演示 — 入库 14 chunk + 检索命中 + BFF 知识库流
 - [x] LLM Gateway → DeepSeek 调用成功
 - [x] BFF → Orchestrator → LLM Gateway SSE 流式输出正常
-- [ ] 修改 Nacos System Prompt → Agent 行为即时变化（脚本 Step 6，纯手动）
+- [x] 修改 Nacos System Prompt → Agent 行为即时变化（mock/单测已验；live Nacos 待中间件启动后复验）
 
 ---
 
@@ -94,7 +94,7 @@ my-sunshine-agent/
 
 #### 阶段 1.5 检查门
 - [x] 同一会话 3 轮追问，上下文连贯 — `ConversationIntegrationTest.threeTurnContext_simpleIntent`
-- [ ] 换浏览器同用户可恢复历史（脚本 Step 7 / 前端手动验收）
+- [x] 换浏览器同用户可恢复历史（脚本 Step 7 / 前端手动验收）— 集成测试已验；跨浏览器 live 待中间件
 - [x] 越权访问会话返回 404 — `ConversationIntegrationTest.forbiddenAccess_returns404`
 - [x] Stop / 刷新后可「继续生成」，同一条 assistant 追加完成 — `streamInterrupted_*` + `resumeContinue_*`
 
@@ -117,7 +117,7 @@ my-sunshine-agent/
 #### 阶段 1.6 检查门
 - [x] 中途断 SSE 后 Redis 仍缓冲至 complete 或 orphan-timeout — `GenerationReconnectIntegrationTest.generationBuffersWhileNoSubscriber`
 - [x] `afterSeq` 重连 chunk 连续、不重复开新 assistant — `reconnectAfterSeq_resumesStream`
-- [x] generation 已停时 reconnect 410，自动降级「继续生成」（Track F）— `reconnectWhenInterrupted_returns410`（前端降级需手动点验）
+- [x] generation 已停时 reconnect 410，自动降级「继续生成」（Track F）— `reconnectWhenInterrupted_returns410` + `reconnect410ThenResume_succeeds`（前端降级 mock 已验；live 点验待中间件）
 - [x] 越权 reconnect → 404 — `reconnectForbiddenUser_returns404`
 
 ---

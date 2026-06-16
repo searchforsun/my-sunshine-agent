@@ -1,5 +1,6 @@
 package com.sunshine.llm.adapter;
 
+import com.sunshine.llm.config.LlmWebClientFactory;
 import com.sunshine.llm.config.ProviderProperties;
 import com.sunshine.llm.model.ChatCompletionRequest;
 import com.sunshine.llm.model.ChatCompletionResponse;
@@ -23,11 +24,13 @@ import java.util.UUID;
 public class QwenAdapter implements LlmAdapter {
 
     private final ProviderProperties props;
+    private final LlmWebClientFactory webClientFactory;
 
     private WebClient client;
 
-    public QwenAdapter(ProviderProperties props) {
+    public QwenAdapter(ProviderProperties props, LlmWebClientFactory webClientFactory) {
         this.props = props;
+        this.webClientFactory = webClientFactory;
     }
 
     @Override
@@ -83,10 +86,7 @@ public class QwenAdapter implements LlmAdapter {
     private WebClient webClient() {
         if (client == null) {
             ProviderProperties.ProviderConfig config = props.getProviders().get("qwen");
-            client = WebClient.builder()
-                    .baseUrl(config.getBaseUrl())
-                    .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
-                    .build();
+            client = webClientFactory.create(config.getBaseUrl());
         }
         return client;
     }

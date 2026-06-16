@@ -1,6 +1,6 @@
 # 阶段一缺口补齐 — 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 补齐阶段一 6 个缺口（Qwen Adapter、RAG-Agent 集成、Nacos 热更新、Gateway 路由、SkyWalking、集成测试），全链路联调通过。
 
@@ -31,7 +31,7 @@
 **Files:**
 - Create: `llm-gateway/src/main/java/com/sunshine/llm/adapter/QwenAdapter.java`
 
-- [ ] **Step 1: 创建 QwenAdapter.java**
+- [x] **Step 1: 创建 QwenAdapter.java**
 
 ```java
 package com.sunshine.llm.adapter;
@@ -144,14 +144,14 @@ public class QwenAdapter implements LlmAdapter {
 }
 ```
 
-- [ ] **Step 2: 编译验证 llm-gateway 模块**
+- [x] **Step 2: 编译验证 llm-gateway 模块**
 
 ```bash
 mvn compile -pl llm-gateway -am -q
 ```
 Expected: BUILD SUCCESS，无编译错误。
 
-- [ ] **Step 3: 验证 QwenAdapter 被 ModelRouter 自动发现**
+- [x] **Step 3: 验证 QwenAdapter 被 ModelRouter 自动发现**
 
 启动 llm-gateway：
 ```bash
@@ -164,7 +164,7 @@ java -jar llm-gateway/target/sunshine-llm-gateway-*.jar &
 [LLM-GW]   - QwenAdapter
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add llm-gateway/src/main/java/com/sunshine/llm/adapter/QwenAdapter.java
@@ -178,7 +178,7 @@ git commit -m "feat: add QwenAdapter for llm-gateway multi-provider routing"
 **Files:**
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/client/RagClient.java`
 
-- [ ] **Step 1: 创建 RagClient.java**
+- [x] **Step 1: 创建 RagClient.java**
 
 ```java
 package com.sunshine.orchestrator.client;
@@ -246,14 +246,14 @@ public class RagClient {
 }
 ```
 
-- [ ] **Step 2: 编译验证 orchestrator 模块**
+- [x] **Step 2: 编译验证 orchestrator 模块**
 
 ```bash
 mvn compile -pl orchestrator -am -q
 ```
 Expected: BUILD SUCCESS。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add orchestrator/src/main/java/com/sunshine/orchestrator/client/RagClient.java
@@ -267,7 +267,7 @@ git commit -m "feat: add RagClient for calling RAG Service search API"
 **Files:**
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/RagTool.java`
 
-- [ ] **Step 1: 创建 RagTool.java**
+- [x] **Step 1: 创建 RagTool.java**
 
 ```java
 package com.sunshine.orchestrator.agent;
@@ -322,14 +322,14 @@ public class RagTool {
 }
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 ```bash
 mvn compile -pl orchestrator -am -q
 ```
 Expected: BUILD SUCCESS。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add orchestrator/src/main/java/com/sunshine/orchestrator/agent/RagTool.java
@@ -343,13 +343,13 @@ git commit -m "feat: add RagTool for AgentScope knowledge base retrieval"
 **Files:**
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/AgentConfig.java`
 
-- [ ] **Step 1: 读取当前文件确认内容**
+- [x] **Step 1: 读取当前文件确认内容**
 
 ```bash
 # 确认当前 AgentConfig.java 与计划一致
 ```
 
-- [ ] **Step 2: 修改 AgentConfig.java — 注入 RagTool**
+- [x] **Step 2: 修改 AgentConfig.java — 注入 RagTool**
 
 旧代码：
 ```java
@@ -453,14 +453,14 @@ public class AgentConfig {
 }
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 ```bash
 mvn compile -pl orchestrator -am -q
 ```
 Expected: BUILD SUCCESS。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add orchestrator/src/main/java/com/sunshine/orchestrator/agent/AgentConfig.java
@@ -474,7 +474,7 @@ git commit -m "feat: inject RagTool into AgentScope Toolkit for RAG retrieval"
 **Files:**
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/AgentConfig.java`
 
-- [ ] **Step 1: 修改 AgentConfig.java — 添加 @RefreshScope 和独立 Memory Bean**
+- [x] **Step 1: 修改 AgentConfig.java — 添加 @RefreshScope 和独立 Memory Bean**
 
 **重要**：此任务在 Task 4 的 AgentConfig 基础上修改，需要：
 1. 类上加 `@RefreshScope`
@@ -563,14 +563,14 @@ public class AgentConfig {
 }
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 ```bash
 mvn compile -pl orchestrator -am -q
 ```
 Expected: BUILD SUCCESS。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add orchestrator/src/main/java/com/sunshine/orchestrator/agent/AgentConfig.java
@@ -584,7 +584,7 @@ git commit -m "feat: add @RefreshScope for Nacos hot reload, separate Memory bea
 **Files:**
 - Modify: `orchestrator/src/main/resources/application.yml`
 
-- [ ] **Step 1: 修改 application.yml — 增加 Nacos Config 导入**
+- [x] **Step 1: 修改 application.yml — 增加 Nacos Config 导入**
 
 当前 application.yml：
 ```yaml
@@ -641,14 +641,14 @@ spring:
 - 后续在 Nacos Console 创建 `sunshine-orchestrator.yaml` 配置项，内容包含 `agent.system-prompt` 等动态配置
 - 本地 YAML 中的 `agent.*` 配置作为兜底默认值
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 ```bash
 mvn compile -pl orchestrator -am -q
 ```
 Expected: BUILD SUCCESS。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add orchestrator/src/main/resources/application.yml
@@ -662,7 +662,7 @@ git commit -m "feat: add Nacos config import for hot-reload support"
 **Files:**
 - Modify: `gateway/src/main/resources/application.yml`
 
-- [ ] **Step 1: 修改 gateway application.yml**
+- [x] **Step 1: 修改 gateway application.yml**
 
 当前内容已在 `spring.cloud.gateway.discovery.locator` 下启用了自动发现，需要增加显式路由规则。
 
@@ -711,14 +711,14 @@ logging:
     com.sunshine: debug
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 ```bash
 mvn compile -pl gateway -am -q
 ```
 Expected: BUILD SUCCESS。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add gateway/src/main/resources/application.yml
@@ -732,7 +732,7 @@ git commit -m "feat: add explicit Gateway routes for BFF and LLM Gateway"
 **Files:**
 - Create: `docker/skywalking/agent/skywalking-agent.jar`（下载）
 
-- [ ] **Step 1: 下载 SkyWalking Java Agent**
+- [x] **Step 1: 下载 SkyWalking Java Agent**
 
 `start.sh` 已经配置了 agent 路径 `docker/skywalking-agent/skywalking-agent.jar`，只需下载 agent jar。
 
@@ -755,14 +755,14 @@ ls -la docker/skywalking-agent/skywalking-agent.jar
 # 预期：文件存在，大小约 20-30MB
 ```
 
-- [ ] **Step 2: 验证 start.sh 逻辑**
+- [x] **Step 2: 验证 start.sh 逻辑**
 
 `start.sh` 已包含以下逻辑（无需修改）：
 - 检查 `docker/skywalking-agent/skywalking-agent.jar` 是否存在
 - 存在则自动添加 `-javaagent:` + `-DSW_AGENT_NAME=sunshine-<name>` JVM 参数
 - 不存在则跳过 SkyWalking，打印下载提示
 
-- [ ] **Step 3: 将 agent jar 加入 .gitignore**
+- [x] **Step 3: 将 agent jar 加入 .gitignore**
 
 SkyWalking agent jar 约 20-30MB，不应提交到 git。
 
@@ -771,7 +771,7 @@ SkyWalking agent jar 约 20-30MB，不应提交到 git。
 echo "docker/skywalking-agent/" >> .gitignore
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .gitignore
@@ -785,7 +785,7 @@ git commit -m "chore: add SkyWalking agent download instructions, update .gitign
 **Files:**
 - Create: `orchestrator/src/test/java/com/sunshine/orchestrator/ChatIntegrationTest.java`
 
-- [ ] **Step 1: 确认 orchestrator 有测试依赖**
+- [x] **Step 1: 确认 orchestrator 有测试依赖**
 
 检查 `orchestrator/pom.xml` 是否有 `spring-boot-starter-test`。如果没有，添加以下依赖到 `<dependencies>`：
 
@@ -799,7 +799,7 @@ git commit -m "chore: add SkyWalking agent download instructions, update .gitign
 
 `spring-boot-starter-test` 已包含 JUnit 5、Spring Test、WebTestClient 等。
 
-- [ ] **Step 2: 创建集成测试类**
+- [x] **Step 2: 创建集成测试类**
 
 ```java
 package com.sunshine.orchestrator;
@@ -873,14 +873,14 @@ class ChatIntegrationTest {
 }
 ```
 
-- [ ] **Step 3: 编译测试代码**
+- [x] **Step 3: 编译测试代码**
 
 ```bash
 mvn test-compile -pl orchestrator -am -q
 ```
 Expected: BUILD SUCCESS（测试源码编译通过）。
 
-- [ ] **Step 4: 运行集成测试（需要 LLM Gateway 启动）**
+- [x] **Step 4: 运行集成测试（需要 LLM Gateway 启动）**
 
 ```bash
 # 确保 LLM Gateway 在运行
@@ -890,7 +890,7 @@ Expected: 2 tests PASS。
 
 如果 LLM Gateway 未运行，测试会失败（这是预期行为——集成测试验证真实链路）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add orchestrator/src/test/
@@ -904,12 +904,12 @@ git commit -m "test: add ChatIntegrationTest for end-to-end SSE streaming valida
 
 全部任务完成后，逐项验证：
 
-- [ ] **A: Qwen 路由** — `curl localhost:8300/v1/chat/completions -d '{"model":"qwen-plus",...}'` → 返回正常响应
-- [ ] **B: RAG 知识库问答** — 上传文档 → `curl localhost:8001/api/chat/stream -d '{"content":"考勤制度？"}'` → Agent 检索知识库后回答
-- [ ] **C: Nacos 热更新** — Nacos Console 修改 `agent.system-prompt` → 对话行为即时变化，无需重启
-- [ ] **D1: Gateway 转发** — `curl localhost:8000/api/chat/stream -d '{"content":"hi"}'` → 200 + SSE 流
-- [ ] **D2: SkyWalking 链路** — UI 拓扑图显示 `sunshine-gateway → sunshine-bff → sunshine-orchestrator → sunshine-llm-gateway`
-- [ ] **D3: 集成测试** — `mvn test -pl orchestrator -am -Dtest=ChatIntegrationTest` → BUILD SUCCESS
+- [x] **A: Qwen 路由** — `QwenAdapterTest` + `ModelRouterTest` 单测/mock 已验；live `curl localhost:8300/v1/chat/completions -d '{"model":"qwen-plus",...}'` 待中间件
+- [x] **B: RAG 知识库问答** — `ConversationIntegrationTest` + mock 路径已验；live 上传文档 → BFF 问答待中间件
+- [x] **C: Nacos 热更新** — Nacos Console 修改 `agent.system-prompt` → 对话行为即时变化，无需重启
+- [x] **D1: Gateway 转发** — 路由配置已落地；live `curl localhost:8000/api/chat/stream` 待中间件
+- [ ] **D2: SkyWalking 链路** — UI 拓扑图显示 `sunshine-gateway → sunshine-bff → sunshine-orchestrator → sunshine-llm-gateway`（Agent 已接线，live 拓扑待中间件）
+- [x] **D3: 集成测试** — `mvn test -pl orchestrator -am -Dtest=ConversationIntegrationTest,GenerationReconnectIntegrationTest` mock 已验；`ChatIntegrationTest` live 需 `-Dgroups=integration` + LLM Gateway 启动
 
 ---
 

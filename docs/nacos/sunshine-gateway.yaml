@@ -1,0 +1,34 @@
+# ============================================================
+# sunshine-gateway — Nacos 配置
+# Data ID: sunshine-gateway.yaml
+# Group:   DEFAULT_GROUP
+# ============================================================
+
+server:
+  port: 8000
+
+spring:
+  main:
+    web-application-type: reactive
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: sunshine-bff-api
+          uri: lb://sunshine-bff
+          predicates:
+            - Path=/api/**
+        - id: sunshine-llm-gateway-api
+          uri: lb://sunshine-llm-gateway
+          predicates:
+            - Path=/v1/**
+  sentinel:
+    transport:
+      dashboard: ecs4c16g:8858
+
+logging:
+  level:
+    com.sunshine: debug

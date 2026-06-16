@@ -7,6 +7,7 @@
 | `sunshine-llm-gateway.yaml` | LLM Gateway | Redis、LLM 厂商配置 |
 | `sunshine-orchestrator.yaml` | Orchestrator | Agent Prompt、模型配置 |
 | `sunshine-bff.yaml` | BFF | Orchestrator 地址 |
+| `sunshine-gateway.yaml` | API Gateway | 路由规则、Sentinel |
 | `sunshine-rag.yaml` | RAG Service | Milvus、Embedding 配置 |
 
 均为 `DEFAULT_GROUP`，YAML 格式。
@@ -17,7 +18,7 @@
 
 1. 打开 http://ecs4c16g:8848/nacos（nacos/nacos）
 2. 配置管理 → 配置列表 → 新建配置（或导入）
-3. 逐个创建上述 4 个配置，内容见同目录下 `.yaml` 文件
+3. 逐个创建上述 5 个配置，内容见同目录下 `.yaml` 文件
 
 ### 方式 2：API 批量上传
 
@@ -25,7 +26,7 @@
 NACOS="http://ecs4c16g:8848/nacos"
 AUTH="username=nacos&password=nacos"
 
-for f in sunshine-llm-gateway.yaml sunshine-orchestrator.yaml sunshine-bff.yaml sunshine-rag.yaml; do
+for f in sunshine-llm-gateway.yaml sunshine-orchestrator.yaml sunshine-bff.yaml sunshine-gateway.yaml sunshine-rag.yaml; do
   curl -X POST "$NACOS/v1/cs/configs" \
     -d "$AUTH" \
     --data-urlencode "dataId=$f" \
