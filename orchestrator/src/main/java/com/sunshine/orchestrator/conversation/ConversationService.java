@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.conversation;
 
+import com.sunshine.orchestrator.audit.AuditService;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
@@ -21,6 +22,7 @@ public class ConversationService {
 
     private final ChatConversationRepository conversationRepo;
     private final ChatMessageRepository messageRepo;
+    private final AuditService auditService;
 
     @Value("${agent.generation.orphan-timeout-sec:60}")
     private int orphanTimeoutSec;
@@ -135,6 +137,7 @@ public class ConversationService {
         msg.setUpdatedAt(Instant.now());
         ChatMessageEntity saved = messageRepo.save(msg);
         touchConversation(msg.getConversationId());
+        auditService.auditAssistantMessage(saved);
         return saved;
     }
 
@@ -143,6 +146,19 @@ public class ConversationService {
         ChatMessageEntity msg = messageRepo.findById(messageId)
                 .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
         msg.setIntent(intent);
+        msg.setUpdatedAt(Instant.now());
+        return messageRepo.save(msg);
+    }
+
+    /** 保存结构化执行计划（intent 列写 intentLabel 兼容审计） */
+    @Transactional
+    public ChatMessageEntity updateMessageExecutionPlan(String messageId,
+            com.sunshine.orchestrator.routing.ExecutionPlan plan) {
+        ChatMessageEntity msg = messageRepo.findById(messageId)
+                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+        msg.setIntent(plan.intentLabel());
+        msg.setExecutionMode(plan.mode().name().toLowerCase().replace('_', '-'));
+        msg.setWorkflowId(plan.workflowId());
         msg.setUpdatedAt(Instant.now());
         return messageRepo.save(msg);
     }

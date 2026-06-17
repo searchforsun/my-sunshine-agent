@@ -30,8 +30,8 @@ public class ProcessingStepHook implements Hook {
                 String stepId = "tool-" + toolName;
                 StepEventBridge.emitSingleton(session -> {
                     if (!session.hasStep(stepId)) {
-                        session.pending(stepId, "agent");
-                        session.start(stepId, "agent");
+                        session.pending(stepId, "tool");
+                        session.start(stepId, "tool");
                     }
                 });
             }

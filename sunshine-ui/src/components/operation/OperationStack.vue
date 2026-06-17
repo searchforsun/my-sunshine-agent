@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { reactive } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import OperationCard from './OperationCard.vue'
 
-const props = defineProps<{
+defineProps<{
   steps: ProcessingStep[]
   live?: boolean
 }>()
@@ -15,44 +15,18 @@ function lifecycleOf(step: ProcessingStep) {
   return step.lifecycle ?? step.status ?? 'pending'
 }
 
-function stepHasBody(step: ProcessingStep): boolean {
-  const before = step.summary?.before?.trim()
-  const active = step.summary?.active?.trim()
-  const after = step.summary?.after?.trim()
-  return !!(
-    before
-    || active
-    || after
-    || step.reasoning?.trim()
-    || step.output?.trim()
-  )
-}
-
-/** 默认展开：running 或含详情；用户可手动折叠已完成步骤 */
+/** 默认折叠；用户手动展开/折叠后记住选择 */
 function isCardExpanded(step: ProcessingStep): boolean {
   if (cardUserToggled.has(step.id)) {
-    return cardExpanded.get(step.id) ?? true
+    return cardExpanded.get(step.id) ?? false
   }
-  if (lifecycleOf(step) === 'running') return true
-  return stepHasBody(step)
+  return false
 }
 
 function toggleCard(step: ProcessingStep): void {
   cardUserToggled.add(step.id)
   cardExpanded.set(step.id, !isCardExpanded(step))
 }
-
-watch(
-  () => props.steps,
-  (steps) => {
-    for (const step of steps) {
-      if (!cardUserToggled.has(step.id) && lifecycleOf(step) === 'running') {
-        cardExpanded.set(step.id, true)
-      }
-    }
-  },
-  { immediate: true, deep: true },
-)
 </script>
 
 <template>

@@ -1,0 +1,100 @@
+# ============================================================
+# sunshine-workflows — Nacos 配置
+# Data ID: sunshine-workflows.yaml
+# Group:   DEFAULT_GROUP
+# Workflow 目录 + DAG 图定义（简化 Dify）
+# ============================================================
+
+workflow:
+  catalog:
+    - id: knowledge-qa
+      mode: workflow
+      desc: 查企业制度/手册，检索后作答
+      nodes: [start, rag, llm, answer]
+      examples: ["请假制度是什么", "报销流程规定"]
+    - id: finance-list
+      mode: workflow
+      desc: 列出待审批/已审批财务消息
+      nodes: [start, tool, llm, answer]
+      examples: ["有哪些待审批报销"]
+    - id: finance-smart
+      mode: workflow
+      desc: 财务综合分析，含 Agent 推理
+      nodes: [start, tool, agent, llm, answer]
+      examples: ["待审批是否合规", "对比制度与待办"]
+
+  definitions:
+    knowledge-qa:
+      nodes:
+        - id: start
+          type: start
+        - id: rag
+          type: rag
+          params:
+            topK: "3"
+        - id: llm
+          type: llm
+          params:
+            prompt: |
+              根据知识库检索结果回答用户问题。
+
+              检索结果：
+              {{rag.output}}
+
+              用户问题：{{start.userQuery}}
+        - id: answer
+          type: answer
+      edges: [start, rag, llm, answer]
+
+    finance-list:
+      nodes:
+        - id: start
+          type: start
+        - id: finance-list
+          type: tool
+          params:
+            tool: list_finance_messages
+            status: "{{plan.params.status}}"
+        - id: llm
+          type: llm
+          params:
+            prompt: |
+              根据财务工具查询结果回答。
+
+              数据：
+              {{finance-list.output}}
+
+              用户问题：{{start.userQuery}}
+        - id: answer
+          type: answer
+      edges: [start, finance-list, llm, answer]
+
+    finance-smart:
+      nodes:
+        - id: start
+          type: start
+        - id: finance-list
+          type: tool
+          params:
+            tool: list_finance_messages
+            status: "{{plan.params.status}}"
+        - id: analyze
+          type: agent
+          params:
+            query: "{{start.userQuery}}"
+            context: "{{finance-list.output}}"
+            tools: [list_finance_messages]
+            maxIters: "5"
+        - id: llm
+          type: llm
+          params:
+            prompt: |
+              根据 Agent 分析结果生成用户可见回答。
+
+              分析：
+              {{analyze.answer}}
+
+              用户问题：{{start.userQuery}}
+        - id: answer
+          type: answer
+      edges: [start, finance-list, analyze, llm, answer]

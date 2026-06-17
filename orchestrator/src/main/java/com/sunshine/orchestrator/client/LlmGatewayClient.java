@@ -4,10 +4,13 @@ package com.sunshine.orchestrator.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
-
+import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.memory.MemoryMessageBuilder;
+import com.sunshine.orchestrator.memory.MemoryProperties;
 import jakarta.annotation.PostConstruct;
-
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -41,36 +44,21 @@ import java.util.Map;
  */
 
 @Slf4j
-
 @Component
-
+@RequiredArgsConstructor
 public class LlmGatewayClient {
 
-
+    private final AgentPromptProperties prompts;
+    private final MemoryProperties memoryProperties;
 
     @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
-
     private String baseUrl;
 
-
-
     @Value("${agent.model.api-key:}")
-
     private String apiKey;
 
-
-
     @Value("${agent.model.name:deepseek-v4-pro}")
-
     private String modelName;
-
-
-
-    @Value("${agent.system-prompt:你是一个智能助手，优先检索知识库回答用户问题。}")
-
-    private String systemPrompt;
-
-
 
     private WebClient webClient;
 
@@ -105,57 +93,85 @@ public class LlmGatewayClient {
 
 
     public Flux<StreamToken> streamWithHistory(List<ChatTurn> history, String userMessage) {
-
-        List<Map<String, Object>> messages = buildMessages(history, userMessage, null);
-
-        return doStream(messages);
-
+        return streamWithMemory(MemoryContext.empty(), userMessage);
     }
 
-
+    public Flux<StreamToken> streamWithMemory(MemoryContext memory, String userMessage) {
+        List<Map<String, Object>> messages = buildMessages(memory, userMessage, null);
+        return doStream(messages);
+    }
 
     public Flux<StreamToken> streamContinue(List<ChatTurn> history, String userMessage, String partialAssistant) {
+        return streamContinue(MemoryContext.empty(), userMessage, partialAssistant);
+    }
 
-        List<Map<String, Object>> messages = buildMessages(history, userMessage, partialAssistant);
-
+    public Flux<StreamToken> streamContinue(MemoryContext memory, String userMessage, String partialAssistant) {
+        List<Map<String, Object>> messages = buildMessages(memory, userMessage, partialAssistant);
         return doStream(messages);
+    }
 
+    /**
+     * 非流式补全 — MTM 会话摘要等内部用途。
+     */
+    public String complete(String systemPrompt, String userContent) {
+        List<Map<String, Object>> messages = new ArrayList<>();
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            messages.add(Map.of("role", "system", "content", systemPrompt.strip()));
+        }
+        messages.add(Map.of("role", "user", "content", userContent != null ? userContent : ""));
+
+        Map<String, Object> request = Map.of(
+                "model", modelName,
+                "messages", messages,
+                "stream", false);
+
+        try {
+            Map<String, Object> response = webClient.post()
+                    .uri("/chat/completions")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                    .block();
+            if (response == null) {
+                return "";
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
+            if (choices == null || choices.isEmpty()) {
+                return "";
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+            if (message == null || message.get("content") == null) {
+                return "";
+            }
+            return message.get("content").toString().strip();
+        } catch (Exception e) {
+            log.warn("[LlmGatewayClient] complete 失败: {}", e.getMessage());
+            return "";
+        }
     }
 
 
 
     private List<Map<String, Object>> buildMessages(
+            MemoryContext memory, String userMessage, String partialAssistant) {
 
-            List<ChatTurn> history, String userMessage, String partialAssistant) {
-
-        List<Map<String, Object>> messages = new ArrayList<>();
-
-        messages.add(Map.of("role", "system", "content", systemPrompt));
-
-        if (history != null) {
-
-            for (ChatTurn turn : history) {
-
-                if ("user".equals(turn.role()) || "assistant".equals(turn.role())) {
-
-                    messages.add(Map.of("role", turn.role(), "content", turn.content()));
-
-                }
-
-            }
-
-        }
-
-        messages.add(Map.of("role", "user", "content", userMessage));
+        MemoryContext ctx = memory != null ? memory : MemoryContext.empty();
+        List<Map<String, Object>> messages = new ArrayList<>(
+                MemoryMessageBuilder.buildPrefix(prompts, memoryProperties, ctx));
+        MemoryMessageBuilder.appendStmTurns(messages, ctx, memoryProperties);
+        MemoryMessageBuilder.appendScopeHint(messages, prompts);
+        messages.add(Map.of(
+                "role", "user",
+                "content", MemoryMessageBuilder.formatCurrentUser(userMessage, memoryProperties)));
 
         if (partialAssistant != null && !partialAssistant.isEmpty()) {
-
             messages.add(Map.of("role", "assistant", "content", partialAssistant));
-
         }
-
         return messages;
-
     }
 
 

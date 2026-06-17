@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.client.DesensitizeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,6 +21,7 @@ import java.util.function.Consumer;
 public class GenerationFlushScheduler {
 
     private final ConversationService conversationService;
+    private final DesensitizeClient desensitizeClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Consumer<String> createChunkAppender(StringBuilder buffer, String messageId, long flushIntervalMs) {
@@ -59,7 +61,8 @@ public class GenerationFlushScheduler {
     }
 
     public void commitFinal(String messageId, String content, String reasoning, String status, String stepsJson) {
-        conversationService.updateMessage(messageId, content, reasoning, status, stepsJson);
+        String scrubbed = desensitizeClient.scrub(content);
+        conversationService.updateMessage(messageId, scrubbed, reasoning, status, stepsJson);
     }
 
     public String metaConversation(String convId) {

@@ -1,16 +1,24 @@
-server:
-  port: 8600
+# sunshine-desensitize — 配置入口
+# 业务配置唯一来源：Nacos（Data ID: sunshine-desensitize.yaml）
+# 本地维护副本：docs/nacos/sunshine-desensitize.yaml → scripts/sync-nacos.ps1 同步线上
 
 spring:
   application:
     name: sunshine-desensitize
+  config:
+    import:
+      - optional:nacos:sunshine-desensitize.yaml
   cloud:
     nacos:
       discovery:
         server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
-
-logging:
-  level:
-    com.sunshine: debug
+      config:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+        file-extension: yaml
+        group: DEFAULT_GROUP

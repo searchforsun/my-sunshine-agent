@@ -70,7 +70,14 @@ public final class ProcessingTimelineSession {
     }
 
     public void startAt(String stepId, String phase, long startedAt) {
-        completeRunningActive(startedAt);
+        if (stepId.equals(activeStepId)) {
+            ProcessingStep current = aggregator.get(stepId).orElse(null);
+            if (current != null && "running".equals(current.lifecycle())) {
+                return;
+            }
+        } else {
+            completeRunningActive(startedAt);
+        }
         activeStepId = stepId;
         applyAt(stepId, phase, EventKind.START, resolveActive(stepId), null, startedAt);
     }
@@ -126,6 +133,31 @@ public final class ProcessingTimelineSession {
 
     public void skip(String stepId, String afterSummary) {
         apply(stepId, null, EventKind.SKIP, afterSummary, null);
+    }
+
+    /** Agent 推理并行展示为 think 步骤，不抢占 agent 的 activeStepId */
+    public void openThinkParallel() {
+        long ts = System.currentTimeMillis();
+        if (!hasStep("think")) {
+            applyAt("think", "think", EventKind.PENDING, resolveBefore("think"), null, ts);
+        }
+        aggregator.get("think").ifPresent(step -> {
+            if ("pending".equals(step.lifecycle())) {
+                applyAt("think", "think", EventKind.START, resolveActive("think"), null, ts);
+            }
+        });
+    }
+
+    public boolean isThinkRunning() {
+        return aggregator.get("think")
+                .map(step -> "running".equals(step.lifecycle()))
+                .orElse(false);
+    }
+
+    public void completeThinkParallelAt(long endedAt) {
+        if (isThinkRunning()) {
+            completeAt("think", null, endedAt);
+        }
     }
 
     public List<ProcessingStep> snapshot() {

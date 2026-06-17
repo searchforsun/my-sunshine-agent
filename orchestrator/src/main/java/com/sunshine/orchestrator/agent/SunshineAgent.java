@@ -2,7 +2,13 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamDeltaNormalizer;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
+import com.sunshine.orchestrator.conversation.ConversationScopeHint;
+import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.memory.MemoryMessageBuilder;
+import com.sunshine.orchestrator.memory.MemoryProperties;
+import com.sunshine.orchestrator.memory.stm.StmBoundaryFormatter;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import io.agentscope.core.ReActAgent;
@@ -29,9 +35,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class SunshineAgent {
 
     private final ReActAgent agent;
+    private final AgentPromptProperties prompts;
+    private final MemoryProperties memoryProperties;
 
-    public SunshineAgent(ReActAgent agent) {
+    public SunshineAgent(ReActAgent agent, AgentPromptProperties prompts, MemoryProperties memoryProperties) {
         this.agent = agent;
+        this.prompts = prompts;
+        this.memoryProperties = memoryProperties;
     }
 
     @PostConstruct
@@ -41,81 +51,92 @@ public class SunshineAgent {
     }
 
     public Flux<StreamToken> chat(String userMessage, String userId, String tenantId) {
-        return chat(List.of(), userMessage, userId, tenantId, null);
+        return chat(MemoryContext.empty(), userMessage, userId, tenantId, null);
     }
 
     public Flux<StreamToken> chat(List<ChatTurn> history, String userMessage, String userId, String tenantId) {
-        return chat(history, userMessage, userId, tenantId, null);
+        return chat(MemoryContext.empty(), userMessage, userId, tenantId, null);
     }
 
     /**
      * 流式对话 — 步骤 token 内联在主流；Hook 异步步骤经 stepQueue 汇入
      */
     public Flux<StreamToken> chat(
-            List<ChatTurn> history, String userMessage, String userId, String tenantId,
+            MemoryContext memory, String userMessage, String userId, String tenantId,
             String assistantMessageId) {
-        return chat(history, userMessage, userId, tenantId, assistantMessageId, null);
+        return chat(memory, userMessage, userId, tenantId, assistantMessageId, null);
     }
 
     /**
      * @param ragContext 预检索知识库上下文，注入为独立 user 消息（可为 null）
      */
     public Flux<StreamToken> chat(
-            List<ChatTurn> history, String userMessage, String userId, String tenantId,
+            MemoryContext memory, String userMessage, String userId, String tenantId,
             String assistantMessageId, String ragContext) {
+        return chat(memory, userMessage, userId, tenantId, assistantMessageId, ragContext, null);
+    }
 
-        log.info("[Orchestrator] user={}, history={}, ragInjected={}, msg={}", userId,
-                history != null ? history.size() : 0,
+    /**
+     * @param financeContext 预查询财务工具结果，注入为独立 user 消息（可为 null）
+     */
+    /**
+     * Workflow Agent 子节点入口 — injectedContext 注入为预查询上下文（MVP 复用 financeContext 槽位）
+     */
+    public Flux<StreamToken> chatAsSubAgent(
+            MemoryContext memory, String query, String injectedContext,
+            String userId, String tenantId, String assistantMessageId) {
+        return chat(memory, query, userId, tenantId, assistantMessageId, null, injectedContext);
+    }
+
+    public Flux<StreamToken> chat(
+            MemoryContext memory, String userMessage, String userId, String tenantId,
+            String assistantMessageId, String ragContext, String financeContext) {
+
+        log.info("[Orchestrator] user={}, ltm={}, mtm={}, stmTurns={}, ragInjected={}, financeInjected={}, msg={}",
+                userId,
+                memory != null && hasText(memory.ltmSnippet()),
+                memory != null && hasText(memory.mtmSnippet()),
+                memory != null && memory.stmTurns() != null ? memory.stmTurns().size() : 0,
                 ragContext != null && !ragContext.isBlank(),
+                financeContext != null && !financeContext.isBlank(),
                 userMessage != null && userMessage.length() > 60
                         ? userMessage.substring(0, 60) + "..."
                         : userMessage);
 
-        List<Msg> inputs = buildInputs(history, userMessage, ragContext);
+        List<Msg> inputs = buildInputs(memory, userMessage, ragContext, financeContext);
 
         StreamOptions options = StreamOptions.builder()
                 .incremental(true)
                 .eventTypes(EventType.REASONING, EventType.TOOL_RESULT, EventType.AGENT_RESULT, EventType.HINT)
-                .includeReasoningChunk(false)
+                .includeReasoningChunk(true)
                 .includeActingChunk(true)
                 .build();
 
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery(userMessage);
         ConcurrentLinkedQueue<ProcessingStep> stepQueue = new ConcurrentLinkedQueue<>();
-        session.addStepListener(stepQueue::offer);
 
         if (assistantMessageId != null) {
-            StepEventBridge.bind(assistantMessageId, session);
+            StepEventBridge.bind(assistantMessageId, session, stepQueue);
             StepEventBridge.setUserQuery(assistantMessageId, userMessage);
         }
 
-        List<StreamToken> agentBootstrap = ProcessingTimelineSupport.run(session, () -> {
-            session.pending("agent", "agent");
-            session.start("agent", "agent");
-        });
-
-        AtomicBoolean agentCompleted = new AtomicBoolean(false);
         AtomicBoolean generateStarted = new AtomicBoolean(false);
         AtomicBoolean generateCompleted = new AtomicBoolean(false);
 
-        return Flux.concat(
-                Flux.fromIterable(agentBootstrap),
-                agent.stream(inputs, options)
-                        .flatMap(event -> {
-                            List<StreamToken> tokens = drainHookSteps(stepQueue);
-                            tokens.addAll(mapAgentEvent(event, session, agentCompleted, generateStarted, assistantMessageId));
-                            return Flux.fromIterable(tokens);
-                        })
-                        .transform(StreamDeltaNormalizer::normalizeTokens)
-                        .concatWith(Flux.defer(() -> {
-                            List<StreamToken> tail = new ArrayList<>(drainHookSteps(stepQueue));
-                            tail.addAll(finishAgentGenerateSteps(
-                                    session, agentCompleted, generateStarted, generateCompleted,
-                                    assistantMessageId));
-                            return Flux.fromIterable(tail);
-                        }))
-        )
+        return agent.stream(inputs, options)
+                .flatMap(event -> {
+                    List<StreamToken> tokens = drainHookSteps(stepQueue);
+                    tokens.addAll(mapAgentEvent(event, session, generateStarted, assistantMessageId));
+                    return Flux.fromIterable(tokens);
+                })
+                .transform(StreamDeltaNormalizer::normalizeTokens)
+                .concatWith(Flux.defer(() -> {
+                    List<StreamToken> tail = new ArrayList<>(drainHookSteps(stepQueue));
+                    tail.addAll(finishGenerateSteps(
+                            session, generateStarted, generateCompleted));
+                    return Flux.fromIterable(tail);
+                }))
                 .doFinally(sig -> {
                     if (assistantMessageId != null) {
                         StepEventBridge.clear(assistantMessageId);
@@ -125,18 +146,15 @@ public class SunshineAgent {
                 .doOnError(e -> log.error("[Orchestrator] Agent 异常: {}", e.getMessage(), e));
     }
 
-    private static List<StreamToken> finishAgentGenerateSteps(
+    private static List<StreamToken> finishGenerateSteps(
             ProcessingTimelineSession session,
-            AtomicBoolean agentCompleted,
             AtomicBoolean generateStarted,
-            AtomicBoolean generateCompleted,
-            String assistantMessageId) {
+            AtomicBoolean generateCompleted) {
 
         if (!generateCompleted.compareAndSet(false, true)) {
             return List.of();
         }
 
-        String ragDetail = StepEventBridge.ragDetail(assistantMessageId);
         long now = System.currentTimeMillis();
 
         if (generateStarted.get()) {
@@ -144,9 +162,8 @@ public class SunshineAgent {
                     session.completeAt("generate", null, now));
         }
 
-        if (agentCompleted.compareAndSet(false, true)) {
-            return ProcessingTimelineSupport.run(session, () ->
-                    session.complete("agent", ragDetail));
+        if (session.isThinkRunning()) {
+            return ProcessingTimelineSupport.run(session, () -> session.complete("think", null));
         }
         return List.of();
     }
@@ -160,38 +177,77 @@ public class SunshineAgent {
         return tokens;
     }
 
-    private static List<Msg> buildInputs(List<ChatTurn> history, String userMessage, String ragContext) {
+    private List<Msg> buildInputs(
+            MemoryContext memory, String userMessage, String ragContext, String financeContext) {
+        MemoryContext ctx = memory != null ? memory : MemoryContext.empty();
         List<Msg> inputs = new ArrayList<>();
-        if (history != null) {
-            for (ChatTurn turn : history) {
-                MsgRole role = "assistant".equals(turn.role()) ? MsgRole.ASSISTANT : MsgRole.USER;
-                inputs.add(Msg.builder()
-                        .role(role)
-                        .textContent(turn.content())
-                        .build());
-            }
+        if (memoryProperties != null && memoryProperties.getLayerPrompt() != null
+                && !memoryProperties.getLayerPrompt().isBlank()) {
+            inputs.add(Msg.builder()
+                    .role(MsgRole.SYSTEM)
+                    .textContent(memoryProperties.getLayerPrompt().strip())
+                    .build());
         }
+        addSystemMsg(inputs, ctx.ltmSnippet());
+        addSystemMsg(inputs, ctx.mtmSnippet());
+        appendStmTurns(inputs, ctx);
         if (ragContext != null && !ragContext.isBlank()) {
             inputs.add(Msg.builder()
                     .role(MsgRole.USER)
                     .textContent(ragContext.strip())
                     .build());
         }
+        if (financeContext != null && !financeContext.isBlank()) {
+            inputs.add(Msg.builder()
+                    .role(MsgRole.USER)
+                    .textContent(financeContext.strip())
+                    .build());
+        }
+        ConversationScopeHint.resolve(prompts).ifPresent(scope -> inputs.add(Msg.builder()
+                .role(MsgRole.SYSTEM)
+                .textContent(scope)
+                .build()));
         inputs.add(Msg.builder()
                 .role(MsgRole.USER)
-                .textContent(userMessage)
+                .textContent(MemoryMessageBuilder.formatCurrentUser(userMessage, memoryProperties))
                 .build());
         return inputs;
+    }
+
+    private void appendStmTurns(List<Msg> inputs, MemoryContext memory) {
+        if (memory.stmTurns() == null || memory.stmTurns().isEmpty()) {
+            return;
+        }
+        String boundary = StmBoundaryFormatter.format(memoryProperties);
+        if (boundary != null && !boundary.isBlank()) {
+            inputs.add(Msg.builder().role(MsgRole.SYSTEM).textContent(boundary.strip()).build());
+        }
+        for (ChatTurn turn : memory.stmTurns()) {
+            if (turn.content() == null || turn.content().isBlank()) {
+                continue;
+            }
+            MsgRole role = "assistant".equals(turn.role()) ? MsgRole.ASSISTANT : MsgRole.USER;
+            inputs.add(Msg.builder().role(role).textContent(turn.content()).build());
+        }
+    }
+
+    private static void addSystemMsg(List<Msg> inputs, String text) {
+        if (text != null && !text.isBlank()) {
+            inputs.add(Msg.builder().role(MsgRole.SYSTEM).textContent(text.strip()).build());
+        }
+    }
+
+    private static boolean hasText(String s) {
+        return s != null && !s.isBlank();
     }
 
     private static List<StreamToken> mapAgentEvent(
             Event event,
             ProcessingTimelineSession session,
-            AtomicBoolean agentCompleted,
             AtomicBoolean generateStarted,
             String assistantMessageId) {
         return AgentScopeEventMapper.map(
-                event, session, agentCompleted, generateStarted,
+                event, session, generateStarted,
                 StepEventBridge.ragDetail(assistantMessageId),
                 resolveUserQuery(assistantMessageId, session));
     }

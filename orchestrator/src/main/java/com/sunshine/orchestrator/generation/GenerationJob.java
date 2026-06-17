@@ -70,7 +70,6 @@ public class GenerationJob {
         AtomicLong lastFlush = new AtomicLong(0);
 
         llmSubscription = llmFlux
-                .publishOn(Schedulers.boundedElastic())
                 .subscribe(
                         chunk -> onChunk(chunk, mysqlBuffer, flushPartial, lastFlush),
                         error -> finishOnce(() -> handleError(error, onError)),

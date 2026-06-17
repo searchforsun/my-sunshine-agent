@@ -96,8 +96,8 @@ class GenerationJobStepDeltaTest {
 
         job.start(
                 Flux.just(
-                        StreamToken.stepDelta("agent", "reasoning", "思考"),
-                        StreamToken.stepDelta("agent", "reasoning", "过程"),
+                        StreamToken.stepDelta("think", "reasoning", "思考"),
+                        StreamToken.stepDelta("think", "reasoning", "过程"),
                         StreamToken.content("ok")),
                 buffer,
                 content -> { },
@@ -109,14 +109,16 @@ class GenerationJobStepDeltaTest {
 
         List<StreamEvent> events = streamService.readFrom(generationId, 0, 20);
         assertThat(events).hasSizeGreaterThanOrEqualTo(3);
-        assertThat(events.get(0).text()).contains("step_delta").contains("思考");
-        assertThat(events.get(1).text()).contains("过程");
+        assertThat(events.stream().map(StreamEvent::text).filter(t -> t.contains("step_delta")).toList())
+                .anyMatch(t -> t.contains("思考"));
+        assertThat(events.stream().map(StreamEvent::text).filter(t -> t.contains("step_delta")).toList())
+                .anyMatch(t -> t.contains("过程"));
 
         ArgumentCaptor<String> reasoningCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
                 eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture());
         assertThat(reasoningCaptor.getValue()).isEqualTo("思考过程");
-        assertThat(stepsCaptor.getValue()).contains("agent").contains("思考过程");
+        assertThat(stepsCaptor.getValue()).contains("think").contains("思考过程");
     }
 }

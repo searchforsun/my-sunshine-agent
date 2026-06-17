@@ -1,6 +1,6 @@
 # REQ-PHASE2-AUTH — 阶段二 2.1 认证与用户体系
 
-> **状态**：in-progress（设计已批准）  
+> **状态**：done（2026-06-16）  
 > **创建**：2026-06-16  
 > **关联文档**：[`docs/implementation-plan.md`](../../docs/implementation-plan.md) 任务卡 2.1
 
@@ -48,14 +48,16 @@
 
 ## 验收标准（需求级）
 
-- [ ] 开放注册；重复用户名 409
-- [ ] 登录返回 Token；错误密码 401
-- [ ] 无 Token / 无效 Token 访问 `/api/**` → 401（Gateway）
-- [ ] 有效 Token 下会话 CRUD 与 SSE 对话正常，userId 隔离有效
-- [ ] 登出后 Token 失效
-- [ ] 前端未登录访问 `/chat` 跳转 `/login`
-- [ ] 客户端伪造 `x-user-id` 无效（以 Token 解析为准）
-- [ ] `docs/implementation-plan.md` 阶段二检查门 JWT 项 `[x]`
+- [x] 开放注册；重复用户名 409
+- [x] 登录返回 Token；错误密码 401
+- [x] 无 Token / 无效 Token 访问 `/api/**` → 401（Gateway）
+- [x] 有效 Token 下会话 CRUD 与 SSE 对话正常，userId 隔离有效
+- [x] 登出后 Token 失效
+- [x] 前端未登录访问 `/chat` 跳转 `/login`
+- [x] 客户端伪造 `x-user-id` 无效（以 Token 解析为准）
+- [x] `docs/implementation-plan.md` 阶段二检查门 JWT 项 `[x]`
+
+> **状态**：done（2026-06-16，Task 1–7 + phase2-auth-demo 脚本）
 
 ## 设计文档
 

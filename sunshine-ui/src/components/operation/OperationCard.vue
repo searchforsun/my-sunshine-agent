@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
-import { formatDuration } from '../../api/processingSteps'
+import { formatDuration, resolveStepDurationMs, formatStepLabel } from '../../api/processingSteps'
 
 const props = defineProps<{
   step: ProcessingStep
@@ -16,7 +16,7 @@ const emit = defineEmits<{
 const lifecycle = computed(() => props.step.lifecycle ?? props.step.status ?? 'pending')
 const isRunning = computed(() => lifecycle.value === 'running')
 const isDone = computed(() => lifecycle.value === 'done')
-const label = computed(() => props.step.label ?? props.step.id)
+const label = computed(() => formatStepLabel(props.step))
 
 /** 主行摘要：running 用 active，done 用 after */
 const headerText = computed(() => {
@@ -55,13 +55,47 @@ const hasCollapsibleBody = computed(() => {
     || !!props.step.output?.trim()
 })
 
-const durationText = computed(() => {
-  if (isDone.value && props.step.durationMs != null) {
-    return formatDuration(props.step.durationMs)
+const liveElapsedMs = ref<number | null>(null)
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+
+function clearElapsedTimer() {
+  if (elapsedTimer != null) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
   }
-  if (isRunning.value && props.live) return '…'
+}
+
+watch(
+  () => [props.live, isRunning.value, props.step.startedAt] as const,
+  ([live, running, startedAt]) => {
+    clearElapsedTimer()
+    if (live && running && typeof startedAt === 'number') {
+      const tick = () => {
+        liveElapsedMs.value = Math.max(0, Date.now() - startedAt)
+      }
+      tick()
+      elapsedTimer = setInterval(tick, 200)
+    } else {
+      liveElapsedMs.value = null
+    }
+  },
+  { immediate: true },
+)
+
+onUnmounted(clearElapsedTimer)
+
+const durationText = computed(() => {
+  if (isDone.value) {
+    const ms = resolveStepDurationMs(props.step)
+    if (ms != null) return formatDuration(ms)
+  }
+  if (isRunning.value && props.live && liveElapsedMs.value != null) {
+    return formatDuration(liveElapsedMs.value)
+  }
   return ''
 })
+
+const showShimmer = computed(() => isRunning.value && !!props.live)
 </script>
 
 <template>
@@ -97,8 +131,11 @@ const durationText = computed(() => {
         </svg>
       </span>
       <span class="op-main">
-        <span class="op-label operation-card-title">{{ label }}</span>
-        <span v-if="headerText" class="op-text">
+        <span
+          class="op-label operation-card-title"
+          :class="{ 'op-shimmer': showShimmer }"
+        >{{ label }}</span>
+        <span v-if="headerText" class="op-text" :class="{ 'op-shimmer': showShimmer }">
           {{ headerText }}<span v-if="isRunning && live" class="op-pulse">…</span>
         </span>
       </span>
@@ -125,7 +162,9 @@ const durationText = computed(() => {
 .op-line {
   --op-gutter: 12px;
   --op-detail-inset: calc(var(--op-gutter) + 4px);
-  font-size: 12px;
+  --op-font: 13px;
+  --op-font-sm: 12px;
+  font-size: var(--op-font);
   line-height: 1.5;
   color: var(--sun-text-muted);
 }
@@ -181,6 +220,38 @@ const durationText = computed(() => {
   min-width: 0;
 }
 
+.op-shimmer {
+  --op-shimmer-base: var(--sun-text-muted);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 32%, white);
+  display: inline-block;
+  max-width: 100%;
+  background-image: linear-gradient(
+    90deg,
+    var(--op-shimmer-base) 0%,
+    var(--op-shimmer-base) 36%,
+    var(--op-shimmer-peak) 50%,
+    var(--op-shimmer-base) 64%,
+    var(--op-shimmer-base) 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  background-position: 100% center;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: op-text-shimmer 2.6s linear infinite;
+  will-change: background-position;
+}
+
+.op-label.op-shimmer {
+  --op-shimmer-base: var(--sun-text);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text) 22%, white);
+}
+
+.op-text.op-shimmer {
+  opacity: 1;
+}
+
 .op-label {
   flex-shrink: 0;
   color: var(--sun-text-secondary);
@@ -198,14 +269,14 @@ const durationText = computed(() => {
   flex-shrink: 0;
   padding-left: 10px;
   padding-top: 1px;
-  font-size: 11px;
+  font-size: var(--op-font-sm);
   color: var(--sun-text-muted);
   opacity: 0.65;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.op-line.is-running .op-label {
+.op-line.is-running .op-label:not(.op-shimmer) {
   color: var(--sun-text);
 }
 
@@ -223,7 +294,7 @@ const durationText = computed(() => {
 }
 
 .op-detail-line {
-  font-size: 11px;
+  font-size: var(--op-font-sm);
   color: var(--sun-text-muted);
   line-height: 1.5;
   opacity: 0.9;
@@ -246,7 +317,7 @@ const durationText = computed(() => {
   margin: 0;
   padding: 0;
   font-family: ui-monospace, 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-size: var(--op-font-sm);
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
@@ -257,5 +328,10 @@ const durationText = computed(() => {
 @keyframes op-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+@keyframes op-text-shimmer {
+  0% { background-position: 100% center; }
+  100% { background-position: 0% center; }
 }
 </style>

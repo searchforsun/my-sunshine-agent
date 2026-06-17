@@ -1,0 +1,15 @@
+# ============================================================
+# sunshine-tool-manager — Nacos 配置
+# Data ID: sunshine-tool-manager.yaml
+# Group:   DEFAULT_GROUP
+# ============================================================
+
+server:
+  port: 8210
+
+finance:
+  base-url: http://localhost:8710
+
+logging:
+  level:
+    com.sunshine: debug

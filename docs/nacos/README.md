@@ -10,8 +10,13 @@
 | `sunshine-auth.yaml` | Auth Center |
 | `sunshine-bff.yaml` | BFF |
 | `sunshine-orchestrator.yaml` | Orchestrator |
+| `sunshine-workflows.yaml` | Orchestrator Workflow 目录与 DAG |
 | `sunshine-llm-gateway.yaml` | LLM Gateway |
 | `sunshine-rag.yaml` | RAG Service |
+| `sunshine-finance.yaml` | Finance Service |
+| `sunshine-tool-manager.yaml` | Tool Manager |
+| `sunshine-desensitize.yaml` | Desensitize |
+| `sunshine-prompt.yaml` | Prompt Manager |
 
 Group：`DEFAULT_GROUP`，格式：YAML。
 

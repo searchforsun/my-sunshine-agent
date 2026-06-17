@@ -1,0 +1,12 @@
+# ============================================================
+# sunshine-prompt — Nacos 配置
+# Data ID: sunshine-prompt.yaml
+# Group:   DEFAULT_GROUP
+# ============================================================
+
+server:
+  port: 8500
+
+logging:
+  level:
+    com.sunshine: debug

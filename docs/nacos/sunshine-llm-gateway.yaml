@@ -15,6 +15,8 @@ spring:
       password: redis123
 
 llm:
+  io-trace:
+    enabled: true
   webclient:
     insecure-ssl: true
   providers:
@@ -30,6 +32,10 @@ llm:
       models:
         - qwen-plus
         - qwen-max
+  fallback:
+    routes:
+      deepseek-v4-pro: qwen-plus
+      deepseek-v4-flash: qwen-plus
 
 logging:
   level:

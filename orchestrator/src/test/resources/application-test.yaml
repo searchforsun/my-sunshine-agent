@@ -7,6 +7,7 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration
   cloud:
     nacos:
       discovery:
@@ -30,6 +31,11 @@ spring:
 
 agent:
   system-prompt: test assistant
+  scope-prompt: test scope
+  intent:
+    model: deepseek-v4-flash
+    classifier-prompt: |
+      Reply with one word: simple, knowledge, or finance.
   max-iters: 2
   history:
     max-messages: 20
@@ -41,10 +47,28 @@ agent:
     flush-interval-ms: 50
   resume:
     max-resume-attempts: 3
+  memory:
+    enabled: true
+    layer-prompt: test memory layers
+    current-user-marker: "【当前提问 · 仅此作答】"
+    mtm:
+      enabled: false
+    stm:
+      header: "[本会话近期对话 · STM]"
+      preamble: "以下为同一会话内已结束的完整对话轮次"
   model:
     base-url: http://localhost:9999/v1
     name: test-model
     api-key: test-key
+
+sunshine:
+  audit:
+    enabled: false
+    elasticsearch:
+      enabled: false
+
+desensitize:
+  enabled: false
 
 logging:
   level:

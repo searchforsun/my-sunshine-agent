@@ -5,12 +5,15 @@ import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
+import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.model.ChatMessage;
+import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -115,13 +118,14 @@ class ConversationIntegrationTest {
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
         }
-        when(intentRouter.classify(anyString())).thenReturn(Mono.just("simple"));
-        when(llmGateway.streamWithHistory(anyList(), anyString()))
+        when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(
+                new ExecutionPlan(ExecutionMode.SIMPLE_LLM, null, Map.of(), "test")));
+        when(llmGateway.streamWithMemory(any(MemoryContext.class), anyString()))
                 .thenAnswer(inv -> {
                     String userMsg = inv.getArgument(1);
                     return Flux.just(StreamToken.content("reply:" + userMsg));
                 });
-        when(llmGateway.streamContinue(anyList(), anyString(), anyString()))
+        when(llmGateway.streamContinue(any(MemoryContext.class), anyString(), anyString()))
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
     }
 
@@ -150,37 +154,32 @@ class ConversationIntegrationTest {
     }
 
     @Test
-    @DisplayName("multiTurnContext_simpleIntent — 第二轮携带第一轮 history")
+    @DisplayName("multiTurnContext_simpleIntent — 任意轮次均携带 STM 记忆块")
     void multiTurnContext_simpleIntent() {
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<ChatTurn>> historyCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<MemoryContext> memoryCaptor = ArgumentCaptor.forClass(MemoryContext.class);
 
         String convId = createConversation(ALICE);
         streamChat(ALICE, convId, "我叫小明");
         streamChat(ALICE, convId, "我叫什么？");
 
-        verify(llmGateway, times(2)).streamWithHistory(historyCaptor.capture(), anyString());
-        List<ChatTurn> secondRoundHistory = historyCaptor.getAllValues().get(1);
-        assertThat(secondRoundHistory).hasSizeGreaterThanOrEqualTo(2);
-        assertThat(secondRoundHistory.stream().anyMatch(t -> t.content().contains("小明"))).isTrue();
+        verify(llmGateway, times(2)).streamWithMemory(memoryCaptor.capture(), anyString());
+        assertThat(memoryCaptor.getAllValues().get(1).stmTurns()).anyMatch(t -> t.content().contains("小明"));
     }
 
     @Test
-    @DisplayName("threeTurnContext_simpleIntent — 三轮追问 history 连贯")
+    @DisplayName("threeTurnContext_simpleIntent — 三轮追问 STM 记忆块连贯")
     void threeTurnContext_simpleIntent() {
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<ChatTurn>> historyCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<MemoryContext> memoryCaptor = ArgumentCaptor.forClass(MemoryContext.class);
 
         String convId = createConversation(ALICE);
         streamChat(ALICE, convId, "我叫小明，在上海工作");
         streamChat(ALICE, convId, "我在哪个城市？");
         streamChat(ALICE, convId, "我叫什么名字？");
 
-        verify(llmGateway, times(3)).streamWithHistory(historyCaptor.capture(), anyString());
-        List<ChatTurn> thirdRoundHistory = historyCaptor.getAllValues().get(2);
-        assertThat(thirdRoundHistory).hasSizeGreaterThanOrEqualTo(4);
-        assertThat(thirdRoundHistory.stream().anyMatch(t -> t.content().contains("小明"))).isTrue();
-        assertThat(thirdRoundHistory.stream().anyMatch(t -> t.content().contains("上海"))).isTrue();
+        verify(llmGateway, times(3)).streamWithMemory(memoryCaptor.capture(), anyString());
+        List<ChatTurn> thirdStm = memoryCaptor.getAllValues().get(2).stmTurns();
+        assertThat(thirdStm.stream().anyMatch(t -> t.content().contains("小明"))).isTrue();
+        assertThat(thirdStm.stream().anyMatch(t -> t.content().contains("上海"))).isTrue();
 
         ConversationDetailDto detail = getConversation(ALICE, convId);
         assertThat(detail.getMessages()).hasSizeGreaterThanOrEqualTo(6);
@@ -205,7 +204,7 @@ class ConversationIntegrationTest {
     @Test
     @DisplayName("streamInterrupted_persistsPartial — 中途 cancel 后 partial 入库")
     void streamInterrupted_persistsPartial() throws Exception {
-        when(llmGateway.streamWithHistory(anyList(), eq("long stream")))
+        when(llmGateway.streamWithMemory(any(MemoryContext.class), eq("long stream")))
                 .thenReturn(Flux.range(1, 100)
                         .delayElements(Duration.ofMillis(40))
                         .map(i -> StreamToken.content("t")));
@@ -300,7 +299,7 @@ class ConversationIntegrationTest {
     @Test
     @DisplayName("resumeKnowledgeIntent_appendsContent — knowledge 意图可续传")
     void resumeKnowledgeIntent_appendsContent() throws InterruptedException {
-        when(llmGateway.streamContinue(anyList(), anyString(), anyString()))
+        when(llmGateway.streamContinue(any(MemoryContext.class), anyString(), anyString()))
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
 
         ChatConversationEntity conv = conversationService.create(ALICE, TENANT);
@@ -316,13 +315,13 @@ class ConversationIntegrationTest {
 
         assertThat(last.getContent()).contains("half answer").contains("continued");
         assertThat(last.getStatus()).isEqualTo(MessageStatus.COMPLETED);
-        verify(llmGateway).streamContinue(anyList(), eq("查制度"), eq("half answer"));
+        verify(llmGateway).streamContinue(any(MemoryContext.class), eq("查制度"), eq("half answer"));
     }
 
     @Test
     @DisplayName("concurrentResume_returns409 — 同一条消息并行续传一条 409")
     void concurrentResume_returns409() throws Exception {
-        when(llmGateway.streamContinue(anyList(), anyString(), anyString()))
+        when(llmGateway.streamContinue(any(MemoryContext.class), anyString(), anyString()))
                 .thenReturn(Flux.just(StreamToken.content("x")).concatWith(Flux.never()));
 
         ChatConversationEntity conv = conversationService.create(ALICE, TENANT);
@@ -387,7 +386,7 @@ class ConversationIntegrationTest {
                 .block(Duration.ofSeconds(15));
 
         assertThat(events).isNotNull();
-        verify(llmGateway, atLeastOnce()).streamWithHistory(anyList(), eq(content));
+        verify(llmGateway, atLeastOnce()).streamWithMemory(any(MemoryContext.class), eq(content));
     }
 
     private void streamResume(String userId, String convId, String resumeMessageId) {

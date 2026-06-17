@@ -1,8 +1,10 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.config.AgentPromptProperties;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -19,10 +21,10 @@ import org.springframework.context.annotation.Configuration;
 @Slf4j
 @Configuration
 @RefreshScope
+@RequiredArgsConstructor
 public class AgentConfig {
 
-    @Value("${agent.system-prompt:你是一个智能助手，优先检索知识库回答用户问题。}")
-    private String systemPrompt;
+    private final AgentPromptProperties prompts;
 
     @Value("${agent.max-iters:5}")
     private int maxIters;
@@ -42,17 +44,18 @@ public class AgentConfig {
                 .apiKey(apiKey)
                 .modelName(modelName)
                 .baseUrl(modelBaseUrl)
+                .stream(true)
                 .build();
 
         log.info("[Orchestrator] 创建 ReActAgent: model={}, baseUrl={}, maxIters={}, systemPrompt={}",
                 modelName, modelBaseUrl, maxIters,
-                systemPrompt != null && systemPrompt.length() > 40
-                        ? systemPrompt.substring(0, 40) + "..."
-                        : systemPrompt);
+                prompts.hasSystemPrompt()
+                        ? prompts.systemPromptOrEmpty().substring(0, Math.min(40, prompts.systemPromptOrEmpty().length())) + "..."
+                        : "(empty — configure agent.system-prompt in Nacos)");
 
         return ReActAgent.builder()
                 .name("Sunshine-Assistant")
-                .sysPrompt(systemPrompt)
+                .sysPrompt(prompts.systemPromptOrEmpty())
                 .model(model)
                 .toolkit(toolkit)
                 .hook(stepHook)
@@ -61,10 +64,7 @@ public class AgentConfig {
     }
 
     @Bean
-    public Toolkit toolkit(RagTool ragTool) {
-        Toolkit tk = new Toolkit();
-        tk.registerTool(ragTool);
-        log.info("[Orchestrator] Toolkit 已注册工具: search_knowledge");
-        return tk;
+    public Toolkit toolkit(DynamicToolkitFactory dynamicToolkitFactory) {
+        return dynamicToolkitFactory.build();
     }
 }

@@ -8,15 +8,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 将 LLM reasoning 拆为独立 {@code think} 步骤，置于 intent 与 generate 之间。
- * Agent 路径仍由 {@code agent} 步骤承载思考内容。
+ * 将 LLM reasoning 拆为独立 {@code think} 步骤；正文走 {@code generate}。
+ * 所有路径（直连 LLM / ReActAgent）统一语义，不再使用 {@code agent} 容器步。
  */
 public final class ThinkStepMapper {
 
     private static final String THINK = "think";
     private static final String GENERATE = "generate";
-    private static final String AGENT = "agent";
-    private static final String RAG = "rag";
 
     private final List<ProcessingStep> stepsBuffer;
     private final String userQuery;
@@ -72,18 +70,16 @@ public final class ThinkStepMapper {
         if (text == null || text.isEmpty()) {
             return List.of(token);
         }
-        if (AGENT.equals(token.stepId()) || RAG.equals(token.stepId())) {
-            return List.of(token);
+        if (THINK.equals(token.stepId())) {
+            List<StreamToken> out = new ArrayList<>(openThinkIfNeeded());
+            out.add(token);
+            return out;
         }
-        String target = reasoningTarget();
-        if (target == null) {
-            return List.of(token);
-        }
-        if (!target.equals(token.stepId())) {
+        if (!THINK.equals(token.stepId())) {
             return mapReasoning(text);
         }
         List<StreamToken> out = new ArrayList<>(openThinkIfNeeded());
-        out.add(StreamToken.stepDelta(target, "reasoning", text));
+        out.add(StreamToken.stepDelta(THINK, "reasoning", text));
         return out;
     }
 
@@ -91,12 +87,8 @@ public final class ThinkStepMapper {
         if (text == null || text.isEmpty()) {
             return List.of();
         }
-        String target = reasoningTarget();
-        if (target == null) {
-            return List.of(StreamToken.reasoning(text));
-        }
         List<StreamToken> out = new ArrayList<>(openThinkIfNeeded());
-        out.add(StreamToken.stepDelta(target, "reasoning", text));
+        out.add(StreamToken.stepDelta(THINK, "reasoning", text));
         return out;
     }
 
@@ -116,7 +108,7 @@ public final class ThinkStepMapper {
     }
 
     private List<StreamToken> openThinkIfNeeded() {
-        if (isRunning(AGENT) || thinkOpened || hasStep(THINK)) {
+        if (thinkOpened || hasStep(THINK)) {
             return List.of();
         }
         thinkOpened = true;
@@ -133,16 +125,6 @@ public final class ThinkStepMapper {
         ProcessingStep step = runningGenerateStep();
         ProcessingStepMerger.upsert(stepsBuffer, step);
         return List.of(stepToken(step));
-    }
-
-    private String reasoningTarget() {
-        if (isRunning(AGENT)) {
-            return AGENT;
-        }
-        if (isRunning(GENERATE) && !thinkOpened && !hasStep(THINK)) {
-            return GENERATE;
-        }
-        return THINK;
     }
 
     private ProcessingStep runningThinkStep() {

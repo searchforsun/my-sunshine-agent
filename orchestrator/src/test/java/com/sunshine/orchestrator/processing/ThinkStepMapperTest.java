@@ -42,15 +42,16 @@ class ThinkStepMapperTest {
     }
 
     @Test
-    void reasoningRoutesToAgentWhenAgentRunning() {
-        List<ProcessingStep> steps = new ArrayList<>(List.of(runningStep("agent")));
+    void reasoningAlwaysUsesThinkStep() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(runningStep("tool-list_finance_messages")));
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "考勤制度是什么");
 
         List<StreamToken> mapped = mapper.map(StreamToken.reasoning("检索结果分析"));
 
-        assertThat(mapped).hasSize(1);
-        assertThat(mapped.get(0).stepId()).isEqualTo("agent");
-        assertThat(mapped.stream().noneMatch(t -> t.isStep() && "think".equals(t.step().id()))).isTrue();
+        assertThat(mapped.stream().anyMatch(t -> t.isStep() && "think".equals(t.step().id()))).isTrue();
+        assertThat(mapped.stream().anyMatch(t -> t.isStepDelta()
+                && "think".equals(t.stepId())
+                && "检索结果分析".equals(t.text()))).isTrue();
     }
 
     @Test
@@ -62,6 +63,19 @@ class ThinkStepMapperTest {
 
         assertThat(steps.stream().noneMatch(s -> "think".equals(s.id()))).isTrue();
         assertThat(mapped.stream().anyMatch(t -> t.isStep() && "generate".equals(t.step().id()))).isTrue();
+    }
+
+    @Test
+    void contentOpensGenerateAndFinishCompletesIt() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(runningStep("think")));
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "有哪些待审批报销");
+
+        List<StreamToken> mapped = mapper.map(StreamToken.content("回答正文"));
+
+        assertThat(mapped.stream().anyMatch(t -> t.isStep() && "generate".equals(t.step().id()))).isTrue();
+        assertThat(mapper.finish().stream().anyMatch(t -> t.isStep()
+                && "generate".equals(t.step().id())
+                && "done".equals(t.step().lifecycle()))).isTrue();
     }
 
     private static ProcessingStep runningStep(String id) {

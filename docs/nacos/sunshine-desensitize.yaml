@@ -1,0 +1,12 @@
+# ============================================================
+# sunshine-desensitize — Nacos 配置
+# Data ID: sunshine-desensitize.yaml
+# Group:   DEFAULT_GROUP
+# ============================================================
+
+server:
+  port: 8600
+
+logging:
+  level:
+    com.sunshine: debug

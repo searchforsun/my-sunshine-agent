@@ -223,13 +223,14 @@ export function useChatSessions(
           if (lastMsg?.role === 'assistant') {
             let delta = parsed.delta
             if (delta.channel === 'reasoning' && delta.stepId === 'generate') {
-              const steps = lastMsg.steps ?? []
-              if (steps.some(st => st.id === 'think') || findRunningStepId(steps) === 'think') {
-                delta = { ...delta, stepId: 'think' }
+                const steps = lastMsg.steps ?? []
+                if (steps.some(st => st.id === 'think') || findRunningStepId(steps) === 'think') {
+                  delta = { ...delta, stepId: 'think' }
+                }
               }
-            }
             lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
-            if (delta.channel === 'reasoning') {
+            // Agent 路径 reasoning 已在 agent 步骤内展示，勿双写 message.reasoning
+            if (delta.channel === 'reasoning' && delta.stepId !== 'agent') {
               const prev = lastMsg.reasoning ?? ''
               lastMsg.reasoning = options.resume
                 ? appendChunk(prev, delta.text)

@@ -7,7 +7,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 合并仅含空白字符的 content token 到相邻 content，避免裸 \\n 在 SSE 中被编码为单行空 data: 而丢失。
- * 策略与 mock-server.mjs tokenize 一致：换行/空格追加到前一个 content token。
+ * 策略：空白 token 缓冲；非空白 token 立即输出（前缀附带已缓冲空白）。
+ * reasoning 不触发 content 刷新，避免 reasoning/content 交错时拆散数字与字段。
  */
 public final class StreamTokenCoalescer {
 
@@ -22,7 +23,7 @@ public final class StreamTokenCoalescer {
                         return flushContent(contentBuffer).concatWith(Mono.just(token));
                     }
                     if (token.isReasoning()) {
-                        return flushContent(contentBuffer).concatWith(Mono.just(token));
+                        return Mono.just(token);
                     }
                     String text = token.text();
                     if (text.isEmpty()) {
@@ -33,14 +34,9 @@ public final class StreamTokenCoalescer {
                         buf.append(text);
                         return Flux.empty();
                     }
-                    if (buf.length() > 0) {
-                        String toEmit = buf.toString();
-                        buf.setLength(0);
-                        buf.append(text);
-                        return Flux.just(StreamToken.content(toEmit));
-                    }
-                    buf.append(text);
-                    return Flux.empty();
+                    String combined = buf.toString() + text;
+                    buf.setLength(0);
+                    return Flux.just(StreamToken.content(combined));
                 })
                 .concatWith(Flux.defer(() -> flushContent(contentBuffer)));
     }

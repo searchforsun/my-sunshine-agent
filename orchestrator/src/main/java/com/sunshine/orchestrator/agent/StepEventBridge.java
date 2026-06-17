@@ -1,9 +1,13 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 /**
@@ -12,6 +16,7 @@ import java.util.function.Consumer;
 public final class StepEventBridge {
 
     private static final Map<String, ProcessingTimelineSession> SESSIONS = new ConcurrentHashMap<>();
+    private static final Map<String, ConcurrentLinkedQueue<ProcessingStep>> HOOK_QUEUES = new ConcurrentHashMap<>();
     private static final Map<String, String> RAG_DETAILS = new ConcurrentHashMap<>();
     private static final Map<String, String> USER_QUERIES = new ConcurrentHashMap<>();
 
@@ -19,8 +24,16 @@ public final class StepEventBridge {
     }
 
     public static void bind(String messageId, ProcessingTimelineSession session) {
+        bind(messageId, session, null);
+    }
+
+    public static void bind(String messageId, ProcessingTimelineSession session,
+            ConcurrentLinkedQueue<ProcessingStep> hookStepQueue) {
         if (messageId != null && session != null) {
             SESSIONS.put(messageId, session);
+        }
+        if (messageId != null && hookStepQueue != null) {
+            HOOK_QUEUES.put(messageId, hookStepQueue);
         }
     }
 
@@ -47,6 +60,7 @@ public final class StepEventBridge {
     public static void clear(String messageId) {
         if (messageId != null) {
             SESSIONS.remove(messageId);
+            HOOK_QUEUES.remove(messageId);
             RAG_DETAILS.remove(messageId);
             USER_QUERIES.remove(messageId);
         }
@@ -59,7 +73,7 @@ public final class StepEventBridge {
         }
         ProcessingTimelineSession session = SESSIONS.get(messageId);
         if (session != null) {
-            action.accept(session);
+            emitHookSteps(messageId, session, action);
         }
     }
 
@@ -70,6 +84,22 @@ public final class StepEventBridge {
         if (action == null || SESSIONS.size() != 1) {
             return;
         }
-        SESSIONS.values().forEach(action);
+        SESSIONS.forEach((id, session) -> emitHookSteps(id, session, action));
+    }
+
+    /**
+     * 仅 Hook 异步步骤入队；Timeline 同步步骤由 {@link ProcessingTimelineSupport#run} 直接返回，避免重复 drain。
+     */
+    private static void emitHookSteps(String messageId, ProcessingTimelineSession session,
+            Consumer<ProcessingTimelineSession> action) {
+        List<ProcessingStep> hookEmitted = ProcessingTimelineSupport.run(session, () -> action.accept(session))
+                .stream()
+                .filter(StreamToken::isStep)
+                .map(StreamToken::step)
+                .toList();
+        ConcurrentLinkedQueue<ProcessingStep> queue = HOOK_QUEUES.get(messageId);
+        if (queue != null) {
+            hookEmitted.forEach(queue::offer);
+        }
     }
 }

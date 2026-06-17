@@ -2,6 +2,8 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import io.agentscope.core.agent.Event;
+import io.agentscope.core.agent.EventType;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
@@ -10,28 +12,33 @@ import io.agentscope.core.message.ToolResultBlock;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AgentScopeEventMapperTest {
 
     @Test
-    void reasoningEvent_textBlockOnly_emitsNoReasoningTokens() {
-        Msg msg = Msg.builder()
-                .role(MsgRole.ASSISTANT)
-                .content(List.of(TextBlock.builder().text("完整回答正文").build()))
-                .build();
+    void reasoningEvent_emptyMessage_emitsThinkStep() {
+        Msg msg = Msg.builder().role(MsgRole.ASSISTANT).build();
+        Event event = new Event(EventType.REASONING, msg, true);
 
-        List<StreamToken> tokens = new java.util.ArrayList<>();
         ProcessingTimelineSession session = new ProcessingTimelineSession();
-        session.start("agent", "agent");
-        AgentScopeEventMapper.appendThinkingTokens(msg, session, tokens);
+        session.bindUserQuery("有哪些审批财务消息");
 
-        assertThat(tokens).isEmpty();
+        List<StreamToken> tokens = AgentScopeEventMapper.map(
+                event,
+                session,
+                new AtomicBoolean(false),
+                null,
+                "有哪些审批财务消息");
+
+        assertThat(tokens.stream().anyMatch(t -> t.isStep() && "think".equals(t.step().id()))).isTrue();
+        assertThat(tokens.stream().noneMatch(t -> t.isStep() && "agent".equals(t.step().id()))).isTrue();
     }
 
     @Test
-    void reasoningEvent_thinkingBlock_emitsStepDeltaWhenActive() {
+    void reasoningEvent_thinkingBlock_emitsThinkStepDelta() {
         Msg msg = Msg.builder()
                 .role(MsgRole.ASSISTANT)
                 .content(List.of(ThinkingBlock.builder().thinking("内部分析步骤").build()))
@@ -39,14 +46,14 @@ class AgentScopeEventMapperTest {
 
         List<StreamToken> tokens = new java.util.ArrayList<>();
         ProcessingTimelineSession session = new ProcessingTimelineSession();
-        session.start("agent", "agent");
+        session.bindUserQuery("测试问题");
         AgentScopeEventMapper.appendThinkingTokens(msg, session, tokens);
 
-        assertThat(tokens).hasSize(1);
-        assertThat(tokens.get(0).isStepDelta()).isTrue();
-        assertThat(tokens.get(0).stepId()).isEqualTo("agent");
-        assertThat(tokens.get(0).channel()).isEqualTo("reasoning");
-        assertThat(tokens.get(0).text()).isEqualTo("内部分析步骤");
+        assertThat(tokens.stream().anyMatch(t -> t.isStepDelta()
+                && "think".equals(t.stepId())
+                && "reasoning".equals(t.channel())
+                && "内部分析步骤".equals(t.text()))).isTrue();
+        assertThat(tokens.stream().noneMatch(t -> t.isStep() && "agent".equals(t.step().id()))).isTrue();
     }
 
     @Test
@@ -56,12 +63,13 @@ class AgentScopeEventMapperTest {
                 .content(List.of(ThinkingBlock.builder().thinking("内部分析步骤").build()))
                 .build();
 
-        List<StreamToken> tokens = new java.util.ArrayList<>();
-        AgentScopeEventMapper.appendThinkingTokens(msg, new ProcessingTimelineSession(), tokens);
+        Event event = new Event(EventType.REASONING, msg, true);
+        List<StreamToken> tokens = AgentScopeEventMapper.map(
+                event, new ProcessingTimelineSession(), new AtomicBoolean(false), null, "q");
 
-        assertThat(tokens).hasSize(1);
-        assertThat(tokens.get(0).isReasoning()).isTrue();
-        assertThat(tokens.get(0).text()).isEqualTo("内部分析步骤");
+        assertThat(tokens.stream().anyMatch(t -> t.isStepDelta()
+                && "think".equals(t.stepId())
+                && "内部分析步骤".equals(t.text()))).isTrue();
     }
 
     @Test

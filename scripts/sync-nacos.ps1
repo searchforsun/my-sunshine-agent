@@ -25,7 +25,11 @@ $files = if ($DataId) {
         "sunshine-bff.yaml",
         "sunshine-orchestrator.yaml",
         "sunshine-llm-gateway.yaml",
-        "sunshine-rag.yaml"
+        "sunshine-rag.yaml",
+        "sunshine-finance.yaml",
+        "sunshine-tool-manager.yaml",
+        "sunshine-desensitize.yaml",
+        "sunshine-prompt.yaml"
     )
 }
 

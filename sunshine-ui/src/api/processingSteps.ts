@@ -69,6 +69,25 @@ export interface ProcessingStep {
 
 export const STEP_ORDER: StepPhase[] = ['intent', 'rag', 'agent', 'think', 'generate']
 
+/** 与 orchestrator StepLabels.toolDisplayName 对齐 */
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  list_finance_messages: '查询待审批财务消息',
+  search_knowledge: '检索知识库',
+}
+
+export function toolDisplayName(toolId: string): string {
+  const name = toolId.startsWith('tool-') ? toolId.slice('tool-'.length) : toolId
+  return TOOL_DISPLAY_NAMES[name] ?? name
+}
+
+/** 步骤标题：工具 step 显示中文，其余用后端 label 或 id */
+export function formatStepLabel(step: ProcessingStep): string {
+  if (step.id.startsWith('tool-')) {
+    return `调用工具 ${toolDisplayName(step.id)}`
+  }
+  return step.label ?? step.id
+}
+
 
 
 function parseSummary(raw: unknown): StepSummary | undefined {
@@ -199,13 +218,34 @@ export function formatDuration(ms?: number): string {
 
 
 
+/** 优先 durationMs，否则由 startedAt / endedAt 推算 */
+export function resolveStepDurationMs(step: ProcessingStep): number | undefined {
+
+  if (step.durationMs != null && step.durationMs >= 0) {
+
+    return step.durationMs
+
+  }
+
+  if (step.startedAt != null && step.endedAt != null && step.endedAt >= step.startedAt) {
+
+    return step.endedAt - step.startedAt
+
+  }
+
+  return undefined
+
+}
+
+
+
 export function totalDuration(steps: ProcessingStep[]): number {
 
   return steps
 
-    .filter(s => (s.lifecycle ?? s.status) === 'done' && s.durationMs != null)
+    .filter(s => (s.lifecycle ?? s.status) === 'done')
 
-    .reduce((sum, s) => sum + (s.durationMs ?? 0), 0)
+    .reduce((sum, s) => sum + (resolveStepDurationMs(s) ?? 0), 0)
 
 }
 
@@ -221,7 +261,7 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
     const prev = next[idx]
 
-    next[idx] = {
+    const merged: ProcessingStep = {
 
       ...prev,
 
@@ -233,7 +273,17 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       result: incoming.result ?? prev.result,
 
+      durationMs: incoming.durationMs ?? prev.durationMs,
+
+      startedAt: incoming.startedAt ?? prev.startedAt,
+
+      endedAt: incoming.endedAt ?? prev.endedAt,
+
     }
+
+    merged.durationMs = resolveStepDurationMs(merged) ?? merged.durationMs
+
+    next[idx] = merged
 
   } else {
 
@@ -307,6 +357,12 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
 
   if (base.lifecycle == null) base.lifecycle = 'running'
 
+  if (base.lifecycle === 'running' && base.startedAt == null) {
+
+    base.startedAt = Date.now()
+
+  }
+
   return upsertStep(steps.filter(s => s.id !== delta.stepId), base)
 
 }
@@ -360,6 +416,15 @@ export function normalizeTimelineSteps(
   let result = [...steps]
 
   const hasThink = result.some(s => s.id === 'think')
+
+  const agentHasReasoning = result.some(s => s.id === 'agent' && !!s.reasoning?.trim())
+
+  // Agent 路径思考已挂在「分析作答」；勿再用 message.reasoning 合成独立 think
+  if (hasThink || agentHasReasoning) {
+
+    return sortSteps(result)
+
+  }
 
   const genIdx = result.findIndex(s => s.id === 'generate')
 

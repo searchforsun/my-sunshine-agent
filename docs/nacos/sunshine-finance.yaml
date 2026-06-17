@@ -1,0 +1,12 @@
+# ============================================================
+# sunshine-finance — Nacos 配置
+# Data ID: sunshine-finance.yaml
+# Group:   DEFAULT_GROUP
+# ============================================================
+
+server:
+  port: 8710
+
+logging:
+  level:
+    com.sunshine: debug

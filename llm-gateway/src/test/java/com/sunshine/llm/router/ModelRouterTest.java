@@ -1,16 +1,18 @@
 package com.sunshine.llm.router;
 
-import com.sunshine.llm.adapter.DeepSeekAdapter;
 import com.sunshine.llm.adapter.LlmAdapter;
-import com.sunshine.llm.adapter.QwenAdapter;
-import com.sunshine.llm.config.LlmWebClientFactory;
-import com.sunshine.llm.config.ProviderProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.llm.config.ModelFallbackProperties;
 import com.sunshine.llm.model.ChatCompletionRequest;
 import com.sunshine.llm.model.ChatCompletionResponse;
+import com.sunshine.llm.trace.LlmIoTracer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.codec.ServerSentEvent;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 import java.util.List;
 import java.util.Map;
@@ -25,37 +27,24 @@ import static org.mockito.Mockito.when;
 
 class ModelRouterTest {
 
-    private ProviderProperties props;
+    private ModelFallbackProperties fallbackProperties;
+    private AdapterCircuitBreaker circuitBreaker;
 
     @BeforeEach
     void setUp() {
-        props = new ProviderProperties();
-
-        ProviderProperties.ProviderConfig deepseek = new ProviderProperties.ProviderConfig();
-        deepseek.setBaseUrl("https://api.deepseek.com");
-        deepseek.setApiKey("ds-key");
-        deepseek.setModels(List.of("deepseek-v4-pro"));
-
-        ProviderProperties.ProviderConfig qwen = new ProviderProperties.ProviderConfig();
-        qwen.setBaseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1");
-        qwen.setApiKey("qw-key");
-        qwen.setModels(List.of("qwen-plus"));
-
-        props.setProviders(Map.of("deepseek", deepseek, "qwen", qwen));
+        fallbackProperties = new ModelFallbackProperties();
+        fallbackProperties.setRoutes(Map.of(
+                "deepseek-v4-pro", "qwen-plus",
+                "deepseek-v4-flash", "qwen-plus"));
+        circuitBreaker = new AdapterCircuitBreaker();
     }
 
-    @Test
-    @DisplayName("init 注册 DeepSeekAdapter 与 QwenAdapter")
-    void init_registersBothAdapters() {
-        LlmWebClientFactory factory = new LlmWebClientFactory();
-        List<LlmAdapter> adapters = List.of(new DeepSeekAdapter(props, factory), new QwenAdapter(props, factory));
-        ModelRouter router = new ModelRouter(adapters);
-        router.init();
-
-        assertThat(adapters).hasSize(2);
-        assertThat(adapters).anyMatch(QwenAdapter.class::isInstance);
-        assertThat(adapters).anyMatch(a -> a.supports("qwen-plus"));
-        assertThat(adapters).anyMatch(a -> a.supports("deepseek-v4-pro"));
+    private ModelRouter newRouter(LlmAdapter... adapters) {
+        return new ModelRouter(
+                List.of(adapters),
+                fallbackProperties,
+                circuitBreaker,
+                new LlmIoTracer(new ObjectMapper(), false));
     }
 
     @Test
@@ -65,16 +54,16 @@ class ModelRouterTest {
         LlmAdapter qwen = mock(LlmAdapter.class);
         when(deepseek.supports("qwen-plus")).thenReturn(false);
         when(qwen.supports("qwen-plus")).thenReturn(true);
-        when(qwen.chat(any())).thenReturn(Mono.empty());
+        when(qwen.chat(any())).thenReturn(Mono.just(new ChatCompletionResponse()));
 
-        ModelRouter router = new ModelRouter(List.of(deepseek, qwen));
+        ModelRouter router = newRouter(deepseek, qwen);
 
         ChatCompletionRequest request = new ChatCompletionRequest();
         request.setModel("qwen-plus");
 
         router.route(request).block();
 
-        verify(qwen).chat(request);
+        verify(qwen).chat(any());
         verify(deepseek, never()).chat(any());
     }
 
@@ -86,7 +75,7 @@ class ModelRouterTest {
         when(deepseek.supports("unknown-model")).thenReturn(false);
         when(qwen.supports("unknown-model")).thenReturn(false);
 
-        ModelRouter router = new ModelRouter(List.of(deepseek, qwen));
+        ModelRouter router = newRouter(deepseek, qwen);
 
         ChatCompletionRequest request = new ChatCompletionRequest();
         request.setModel("unknown-model");
@@ -94,5 +83,47 @@ class ModelRouterTest {
         assertThatThrownBy(() -> router.route(request).block())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unknown-model");
+    }
+
+    @Test
+    @DisplayName("主模型失败时自动降级到备用模型")
+    void route_primaryFails_fallbackToQwen() {
+        LlmAdapter deepseek = mock(LlmAdapter.class);
+        LlmAdapter qwen = mock(LlmAdapter.class);
+        when(deepseek.supports("deepseek-v4-pro")).thenReturn(true);
+        when(qwen.supports("qwen-plus")).thenReturn(true);
+        when(deepseek.chat(any())).thenReturn(Mono.error(new RuntimeException("upstream down")));
+        when(qwen.chat(any())).thenReturn(Mono.just(new ChatCompletionResponse()));
+
+        ModelRouter router = newRouter(deepseek, qwen);
+
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("deepseek-v4-pro");
+
+        ChatCompletionResponse resp = router.route(request).block();
+        assertThat(resp).isNotNull();
+        verify(qwen).chat(any());
+    }
+
+    @Test
+    @DisplayName("stream 主模型失败时降级")
+    void stream_primaryFails_fallbackToQwen() {
+        LlmAdapter deepseek = mock(LlmAdapter.class);
+        LlmAdapter qwen = mock(LlmAdapter.class);
+        when(deepseek.supports("deepseek-v4-pro")).thenReturn(true);
+        when(qwen.supports("qwen-plus")).thenReturn(true);
+        when(deepseek.stream(any())).thenReturn(Flux.error(new RuntimeException("stream fail")));
+        when(qwen.stream(any())).thenReturn(Flux.just(
+                ServerSentEvent.builder("chunk").build()));
+
+        ModelRouter router = newRouter(deepseek, qwen);
+
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("deepseek-v4-pro");
+
+        StepVerifier.create(router.stream(request))
+                .expectNextCount(1)
+                .verifyComplete();
+        verify(qwen).stream(any());
     }
 }

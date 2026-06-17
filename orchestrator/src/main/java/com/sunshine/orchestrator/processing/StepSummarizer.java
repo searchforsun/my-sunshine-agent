@@ -80,6 +80,9 @@ public final class StepSummarizer {
         if ("简单对话".equals(detail) || "simple".equalsIgnoreCase(detail)) {
             return q + "属于日常对话，将直接生成回复";
         }
+        if ("财务工具查询".equals(detail) || "finance".equalsIgnoreCase(detail)) {
+            return q + "属于财务类问题，将调用财务工具后作答";
+        }
         return q + "判定为：" + detail;
     }
 

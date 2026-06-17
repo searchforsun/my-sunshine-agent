@@ -1,14 +1,15 @@
 package com.sunshine.orchestrator.controller;
 
+import com.sunshine.orchestrator.execution.ExecutionDispatcher;
+import com.sunshine.orchestrator.execution.ExecutionPlanLabels;
+import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.agent.StepEventBridge;
-import com.sunshine.orchestrator.agent.SunshineAgent;
-import com.sunshine.orchestrator.client.LlmGatewayClient;
-import com.sunshine.orchestrator.client.RagClient;
-import com.sunshine.orchestrator.client.RagContextFormatter;
-import com.sunshine.orchestrator.client.RagDetailFormatter;
+import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.client.StreamTokenCoalescer;
@@ -17,6 +18,9 @@ import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.orchestrator.memory.MemoryComposer;
+import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.memory.MemoryLifecycleService;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.generation.GenerationJob;
@@ -50,6 +54,7 @@ import reactor.core.scheduler.Schedulers;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -61,12 +66,15 @@ import java.util.stream.Collectors;
 public class ChatController {
 
     private final IntentRouter intentRouter;
-    private final LlmGatewayClient llmGateway;
-    private final RagClient ragClient;
-    private final SunshineAgent sunshineAgent;
+    private final ExecutionDispatcher executionDispatcher;
+    private final ExecutionPlanParser executionPlanParser;
+    private final com.sunshine.orchestrator.execution.SimpleLlmExecutor simpleLlmExecutor;
     private final ConversationService conversationService;
     private final GenerationFlushScheduler flushScheduler;
     private final GenerationProperties generationProperties;
+    private final DesensitizeClient desensitizeClient;
+    private final MemoryComposer memoryComposer;
+    private final MemoryLifecycleService memoryLifecycleService;
 
     @Autowired(required = false)
     private GenerationJobFactory jobFactory;
@@ -83,7 +91,7 @@ public class ChatController {
     @Value("${agent.generation.flush-interval-ms:500}")
     private long flushIntervalMs;
 
-    @Value("${agent.generation.max-chunk-chars:6}")
+    @Value("${agent.generation.max-chunk-chars:32}")
     private int maxStreamChunkChars;
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -151,7 +159,7 @@ public class ChatController {
             log.error("[Orchestrator] generation 异常 genId={}", generationId, error);
         };
 
-        job.start(resolveChunkFlux(ctx), buffer, flushPartial, onComplete, onError);
+        job.start(prepareChunkFlux(resolveChunkFlux(ctx)), buffer, flushPartial, onComplete, onError);
 
         return sseFluxFromRedis(ctx, generationId, job);
     }
@@ -255,7 +263,7 @@ public class ChatController {
                         return;
                     }
                     if (token.isContent()) {
-                        appender.accept(token.text());
+                        appender.accept(desensitizeClient.scrub(token.text()));
                     } else if (token.isReasoning()) {
                         reasoningBuffer.append(token.text());
                     }
@@ -271,6 +279,8 @@ public class ChatController {
                                 MessageStatus.COMPLETED,
                                 ProcessingStepMerger.toJson(stepsBuffer));
                         maybeUpdateTitle(ctx);
+                        memoryLifecycleService.onAssistantCompleted(
+                                ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), MessageStatus.COMPLETED);
                     })
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe();
@@ -304,22 +314,30 @@ public class ChatController {
     private StreamContext prepareNewMessage(ChatMessage msg, String userId, String tenantId) {
         ChatConversationEntity conv = resolveConversation(msg.getConversationId(), userId, tenantId);
         // 先加载历史再落库本轮 user/assistant，避免 history + userContent 重复注入 LLM
-        List<ChatTurn> history = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
+        List<ChatTurn> loadedHistory = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
                 .filter(m -> !MessageStatus.STREAMING.equals(m.getStatus()))
                 .map(m -> new ChatTurn(m.getRole(), m.getContent()))
                 .collect(Collectors.toList());
 
-        conversationService.appendMessage(conv.getId(), "user", msg.getContent(), MessageStatus.COMPLETED);
+        conversationService.appendMessage(conv.getId(), "user",
+                desensitizeClient.scrub(msg.getContent()), MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "", MessageStatus.STREAMING);
-        String userContent = msg.getContent();
+        String userContent = desensitizeClient.scrub(msg.getContent());
+        MemoryContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
+                userId, tenantId, conv.getId(), loadedHistory, userContent));
+        if (!loadedHistory.isEmpty() && !memory.hasAnyLayer()) {
+            log.debug("[Orchestrator] 记忆块为空 loaded={} user={}",
+                    loadedHistory.size(),
+                    userContent.length() > 40 ? userContent.substring(0, 40) + "..." : userContent);
+        }
 
         return new StreamContext(
                 conv.getId(),
                 assistant.getId(),
                 conv.getTitle(),
                 userContent,
-                history,
+                memory,
                 "",
                 "",
                 null,
@@ -357,12 +375,15 @@ public class ChatController {
             history.remove(history.size() - 1);
         }
 
+        MemoryContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
+                userId, tenantId, assistant.getConversationId(), history, userContent));
+
         return new StreamContext(
                 assistant.getConversationId(),
                 assistant.getId(),
                 null,
                 userContent,
-                history,
+                memory,
                 assistant.getContent(),
                 assistant.getReasoning() != null ? assistant.getReasoning() : "",
                 assistant.getIntent(),
@@ -375,22 +396,12 @@ public class ChatController {
 
     private Flux<StreamToken> resolveChunkFlux(StreamContext ctx) {
         if (ctx.intent() != null) {
-            // 续传（Track F）：已有 partial 时直连 LLM 追加，避免重复跑 RAG/Agent
-            if ("knowledge".equals(ctx.intent()) && !StringUtils.hasText(ctx.existingContent())) {
-                return prepareChunkFlux(knowledgeAgentFlux(ctx));
-            }
+            ExecutionPlan plan = executionPlanParser.parseStoredIntent(ctx.intent());
+            ExecutionStreamContext execCtx = toExecutionContext(ctx, plan);
             if (StringUtils.hasText(ctx.existingContent())) {
-                return prepareChunkFlux(llmGateway.streamContinue(
-                        ctx.history(), ctx.userContent(), ctx.existingContent()));
+                return prepareChunkFlux(simpleLlmExecutor.execute(execCtx));
             }
-            if ("simple".equals(ctx.intent())) {
-                return prepareChunkFlux(llmGateway.streamWithHistory(ctx.history(), ctx.userContent()));
-            }
-            if ("knowledge".equals(ctx.intent())) {
-                return prepareChunkFlux(knowledgeAgentFlux(ctx));
-            }
-            return prepareChunkFlux(llmGateway.streamContinue(
-                    ctx.history(), ctx.userContent(), ctx.existingContent()));
+            return prepareChunkFlux(executionDispatcher.execute(execCtx));
         }
 
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
@@ -403,72 +414,36 @@ public class ChatController {
 
         return prepareChunkFlux(Flux.concat(
                 Flux.fromIterable(intentStartTokens),
-                intentRouter.classify(ctx.userContent())
-                        .flatMapMany(intent -> {
-                            String detail = "knowledge".equals(intent) ? "知识库查询" : "简单对话";
-                            Mono<Void> saveIntent = Mono.fromRunnable(() ->
-                                            conversationService.updateMessageIntent(ctx.assistantMsgId(), intent))
+                intentRouter.classifyPlan(ctx.userContent())
+                        .flatMapMany(plan -> {
+                            String detail = ExecutionPlanLabels.intentDetail(plan);
+                            Mono<Void> savePlan = Mono.fromRunnable(() ->
+                                            conversationService.updateMessageExecutionPlan(
+                                                    ctx.assistantMsgId(), plan))
                                     .subscribeOn(Schedulers.boundedElastic())
                                     .then();
                             session.complete("intent", detail);
                             List<StreamToken> intentDoneTokens = drainStepTokens(stepEmissions);
-                            return saveIntent.thenMany(Flux.concat(
+                            return savePlan.thenMany(Flux.concat(
                                     Flux.fromIterable(intentDoneTokens),
-                                    resolveByIntent(intent, ctx)
+                                    executionDispatcher.execute(toExecutionContext(ctx, plan))
                             ));
                         })
         ));
     }
 
-    private Flux<StreamToken> resolveByIntent(String intent, StreamContext ctx) {
-        if ("knowledge".equals(intent)) {
-            log.info("[Orchestrator] → Agent 路径（知识库检索）");
-            return knowledgeAgentFlux(ctx);
-        }
-        log.info("[Orchestrator] → 直连流式（简单对话）");
-        return llmGateway.streamWithHistory(ctx.history(), ctx.userContent());
-    }
-
-    private Flux<StreamToken> knowledgeAgentFlux(StreamContext ctx) {
-        long ragStartMs = System.currentTimeMillis();
-        return ragClient.search(ctx.userContent(), 3)
-                .flatMapMany(hits -> {
-                    long ragEndMs = System.currentTimeMillis();
-                    List<RagClient.RagHit> results = hits != null ? hits : List.of();
-                    String ragContext = RagContextFormatter.formatAgentContext(results);
-                    return Flux.concat(
-                            emitRagSteps(ctx.userContent(), ctx.assistantMsgId(), results, ragStartMs, ragEndMs),
-                            sunshineAgent.chat(
-                                    ctx.history(), ctx.userContent(), "", "",
-                                    ctx.assistantMsgId(), ragContext)
-                    );
-                })
-                .onErrorResume(e -> {
-                    log.warn("[Orchestrator] 知识库预检索失败，Agent 无注入上下文: {}", e.getMessage());
-                    long ragEndMs = System.currentTimeMillis();
-                    return Flux.concat(
-                            emitRagSteps(ctx.userContent(), ctx.assistantMsgId(), List.of(), ragStartMs, ragEndMs),
-                            sunshineAgent.chat(
-                                    ctx.history(), ctx.userContent(), "", "", ctx.assistantMsgId())
-                    );
-                });
-    }
-
-    /** 根据已检索结果发射 rag 步骤（不再重复调用 RAG） */
-    private Flux<StreamToken> emitRagSteps(
-            String query, String assistantMsgId, List<RagClient.RagHit> hits,
-            long ragStartMs, long ragEndMs) {
-        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
-        session.bindUserQuery(query);
-        StepEventBridge.setUserQuery(assistantMsgId, query);
-        String detail = RagDetailFormatter.formatDetail(hits);
-        List<StreamToken> startTokens = ProcessingTimelineSupport.run(session, () -> {
-            session.pending("rag", "rag");
-            session.startAt("rag", "rag", ragStartMs);
-            session.completeAt("rag", detail, ragEndMs);
-        });
-        StepEventBridge.setRagDetail(assistantMsgId, detail);
-        return Flux.fromIterable(startTokens);
+    private static ExecutionStreamContext toExecutionContext(StreamContext ctx, ExecutionPlan plan) {
+        return new ExecutionStreamContext(
+                ctx.conversationId(),
+                ctx.assistantMsgId(),
+                ctx.userContent(),
+                ctx.memory(),
+                ctx.existingContent(),
+                ctx.existingReasoning(),
+                ctx.intent(),
+                ctx.userId(),
+                ctx.tenantId(),
+                plan);
     }
 
     private static List<StreamToken> drainStepTokens(List<ProcessingStep> stepEmissions) {
@@ -543,7 +518,7 @@ public class ChatController {
             String assistantMsgId,
             String conversationTitle,
             String userContent,
-            List<ChatTurn> history,
+            MemoryContext memory,
             String existingContent,
             String existingReasoning,
             String intent,

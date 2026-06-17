@@ -12,8 +12,8 @@ function Get-SkywalkingOpts([string]$ServiceName) {
     if (Test-Path -LiteralPath $SkyAgent) {
         return @(
             "-javaagent:$SkyAgent",
-            "-DSW_AGENT_NAME=sunshine-$ServiceName",
-            "-DSW_AGENT_COLLECTOR_BACKEND_SERVICES=ecs4c16g:11800"
+            "-Dskywalking.agent.service_name=sunshine-$ServiceName",
+            "-Dskywalking.collector.backend_service=ecs4c16g:11800"
         )
     }
     return @()
@@ -35,6 +35,7 @@ function Start-Service([string]$Name, [string]$Module, [string]$Artifact) {
     $logDir = Join-Path $Root "$Module\logs"
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
     $logFile = Join-Path $logDir "startup.log"
+    $errFile = Join-Path $logDir "startup.err.log"
 
     $args = @()
     $args += Get-SkywalkingOpts $Name
@@ -46,13 +47,13 @@ function Start-Service([string]$Name, [string]$Module, [string]$Artifact) {
     }
 
     $proc = Start-Process -FilePath $JavaBin -ArgumentList $args `
-        -RedirectStandardOutput $logFile -RedirectStandardError $logFile `
+        -RedirectStandardOutput $logFile -RedirectStandardError $errFile `
         -PassThru -WindowStyle Hidden
     $script:Processes += $proc
     Start-Sleep -Seconds 3
 }
 
-foreach ($dir in @("llm-gateway", "rag-service", "orchestrator", "auth-center", "bff", "gateway")) {
+foreach ($dir in @("llm-gateway", "rag-service", "finance-service", "tool-manager", "desensitize", "prompt-manager", "orchestrator", "auth-center", "bff", "gateway")) {
     $logDir = Join-Path $Root "$dir\logs"
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 }
@@ -63,6 +64,10 @@ if (-not (Test-Path -LiteralPath $SkyAgent)) {
 
 Start-Service "llm-gateway" "llm-gateway" "sunshine-llm-gateway"
 Start-Service "rag" "rag-service" "sunshine-rag"
+Start-Service "finance" "finance-service" "sunshine-finance"
+Start-Service "tool-manager" "tool-manager" "sunshine-tool-manager"
+Start-Service "desensitize" "desensitize" "sunshine-desensitize"
+Start-Service "prompt" "prompt-manager" "sunshine-prompt"
 Start-Service "orchestrator" "orchestrator" "sunshine-orchestrator"
 Start-Service "auth" "auth-center" "sunshine-auth"
 Start-Service "bff" "bff" "sunshine-bff"
@@ -72,6 +77,10 @@ Write-Host ""
 Write-Host "[OK] Core services started (Nacos config)" -ForegroundColor Green
 Write-Host "  LLM Gateway  :8300"
 Write-Host "  RAG Service  :8400"
+Write-Host "  Finance      :8710"
+Write-Host "  Tool Manager :8210"
+Write-Host "  Desensitize  :8600"
+Write-Host "  Prompt Mgr   :8500"
 Write-Host "  Orchestrator :8200"
 Write-Host "  Auth Center  :8100"
 Write-Host "  BFF          :8001"

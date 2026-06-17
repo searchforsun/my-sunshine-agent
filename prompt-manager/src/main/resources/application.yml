@@ -1,9 +1,13 @@
-server:
-  port: 8500
+# sunshine-prompt — 配置入口
+# 业务配置唯一来源：Nacos（Data ID: sunshine-prompt.yaml）
+# 本地维护副本：docs/nacos/sunshine-prompt.yaml → scripts/sync-nacos.ps1 同步线上
 
 spring:
   application:
     name: sunshine-prompt
+  config:
+    import:
+      - optional:nacos:sunshine-prompt.yaml
   cloud:
     nacos:
       discovery:
@@ -16,15 +20,5 @@ spring:
         password: nacos
         import-check:
           enabled: false
-  datasource:
-    url: jdbc:mysql://ecs4c16g:3306/sunshine_prompt?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: root123
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-
-logging:
-  level:
-    com.sunshine: debug
+        file-extension: yaml
+        group: DEFAULT_GROUP

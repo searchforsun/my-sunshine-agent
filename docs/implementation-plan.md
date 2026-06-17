@@ -122,25 +122,57 @@ my-sunshine-agent/
 
 ---
 
-### 阶段二：标杆打通（8周）
+### 阶段二：标杆打通（8周）✅ MVP 核心已完成
 
-| 任务卡 | 内容 |
-|--------|------|
-| 2.1 Auth Center | Sa-Token JWT 认证中心 + Gateway 鉴权 — 设计：[REQ-PHASE2-AUTH-design.md](../requirements/in-progress/REQ-PHASE2-AUTH-design.md) |
-| 2.2 Tool Manager | 业务 API → AgentScope Tool 包装机制 |
-| 2.3 Finance Service | 财务微服务模拟（消息/交易 API） |
-| 2.4 端到端串联 | 财务智能助手全链路演示 |
-| 2.5 Data Desensitize | 正则 + AhoCorasick 脱敏引擎 |
-| 2.6 多厂商路由 | Qwen Adapter + Sentinel 熔断降级 |
-| 2.7 RocketMQ 审计 | 审计日志异步发送 + Elasticsearch 落盘 |
-| 2.8 联调演示 | 一键演示脚本 + 问题修复 |
+| 任务卡 | 内容 | 状态 |
+|--------|------|:--:|
+| 2.1 Auth Center | Sa-Token JWT 认证中心 + Gateway 鉴权 — 设计：[REQ-PHASE2-AUTH-design.md](../requirements/in-progress/REQ-PHASE2-AUTH-design.md) | ✅ MVP |
+| 2.2 Tool Manager | 业务 API → AgentScope Tool 包装机制 | ✅ 单工具标杆 |
+| 2.3 Finance Service | 财务微服务模拟（消息/交易 API） | ✅ 消息 Mock |
+| 2.4 端到端串联 | 财务智能助手全链路演示 | ✅ |
+| 2.5 Data Desensitize | 正则 + AhoCorasick 脱敏引擎 | ✅ 正则 MVP |
+| 2.6 多厂商路由 | Qwen Adapter + Sentinel 熔断降级 | ✅ 进程内熔断 |
+| 2.7 RocketMQ 审计 | 审计日志异步发送 + Elasticsearch 落盘 | ✅ |
+| 2.8 联调演示 | 一键演示脚本 + 问题修复 | ✅ |
+
+> **自动化脚本**：[`scripts/phase2-demo.ps1`](../scripts/phase2-demo.ps1)（含 2.4 Agent 全链路，可用 `PHASE2_SKIP_AGENT=1` 跳过）；[`scripts/phase2-agent-demo.ps1`](../scripts/phase2-agent-demo.ps1)（单独跑 2.4）；[`scripts/phase2-auth-demo.ps1`](../scripts/phase2-auth-demo.ps1)
 
 #### 阶段二检查门
-- [ ] JWT 校验：无效 Token → 401（`scripts/phase2-auth-demo.ps1` Step 5）
-- [ ] Agent 调用财务工具 → 查询消息列表
-- [ ] 脱敏：手机号/身份证号自动过滤
-- [ ] LLM 故障 → 自动切换备用模型
-- [ ] RocketMQ 审计日志完整
+- [x] JWT 校验：无效 Token → 401（`scripts/phase2-auth-demo.ps1` Step 5）
+- [x] Agent 调用财务工具 → 查询消息列表（`scripts/phase2-agent-demo.ps1` 全链路 + `phase2-demo.ps1` 分层 HTTP 探测）
+- [x] 脱敏：手机号/身份证号自动过滤（`scripts/phase2-demo.ps1` + desensitize-service）
+- [x] LLM 故障 → 自动切换备用模型（`ModelRouter` 降级链 + `AdapterCircuitBreaker` 单测）
+- [x] RocketMQ 审计日志完整（`sunshine-audit` topic + MySQL/ES 双写 + `/api/audit/recent`）
+
+#### 阶段二已知缺口（不阻塞进入阶段三）
+- ~~2.2 Tool Manager 尚未做成可注册通用框架~~ → **已落地 `ToolRegistry`（Task 11）**；新增工具仍须实现 `ToolHandler` Bean
+- 2.3 Finance 为内存 Mock，无交易 API / 持久化
+- 2.5 脱敏未实现 AhoCorasick 与可配置规则库
+- 2.6 熔断为进程内 `AdapterCircuitBreaker`，**Sentinel Dashboard 联调为后续增强**
+- 2.1 认证无登录限流 / Refresh Token / RBAC（设计非目标）
+- 2.7 审计粒度为 assistant 消息终态元数据，未覆盖 tool call 细项
+
+---
+
+### 阶段 2.9：Workflow 编排架构 ✅ 已完成
+
+> 设计 spec：[superpowers/specs/2026-06-18-workflow-orchestration-design.md](./superpowers/specs/2026-06-18-workflow-orchestration-design.md)  
+> 实施计划：[superpowers/plans/2026-06-18-workflow-orchestration.md](./superpowers/plans/2026-06-18-workflow-orchestration.md)
+
+| 任务卡 | 内容 | 状态 |
+|--------|------|:--:|
+| 2.9.1 | `ExecutionPlan` 三模式路由 + `WorkflowCatalog` | ✅ |
+| 2.9.2 | `WorkflowExecutor` 线性 DAG（start/rag/tool/llm/agent/answer） | ✅ |
+| 2.9.3 | Nacos `sunshine-workflows.yaml` SSOT | ✅ |
+| 2.9.4 | `ToolRegistry` 替代 switch 硬编码 | ✅ |
+| 2.9.5 | Timeline 统一（think/tool/node-*，废弃 agent 容器步） | ✅ |
+| 2.9.6 | `DynamicToolkit` + `RemoteToolProxy`（react 白名单） | ✅ |
+
+#### 阶段 2.9 检查门
+- [x] 意图 JSON 输出 `simple-llm | workflow | react` + workflowId
+- [x] knowledge-qa / finance-list / finance-smart 三张 workflow 图可配置
+- [x] orchestrator 单测全绿（`mvn test -pl orchestrator`）
+- [ ] live 验收：`sync-nacos.ps1` 后 `phase2-agent-demo.ps1`（需中间件在线）
 
 ---
 
