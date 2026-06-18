@@ -265,7 +265,7 @@ onMounted(() => {
 }
 
 .brand-name {
-  font-size: 16px;
+  font-size: var(--sun-font-lg);
   font-weight: 600;
   letter-spacing: -0.45px;
   color: var(--sun-text);
@@ -316,6 +316,14 @@ onMounted(() => {
   transition: background-color 0.15s, color 0.15s !important;
 }
 
+.nav-menu :deep(.n-menu-item-content-header) {
+  font-size: var(--sun-font-base);
+}
+
+.nav-menu :deep(.n-menu-item) {
+  height: 40px;
+}
+
 /* --- 用户区 --- */
 .sidebar-user {
   display: flex;
@@ -330,7 +338,7 @@ onMounted(() => {
 .user-nickname {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--sun-font-base);
   font-weight: 600;
   color: var(--sun-text);
   white-space: nowrap;
@@ -365,7 +373,7 @@ onMounted(() => {
   background: var(--sun-surface);
   border: 1px solid var(--sun-border);
   color: var(--sun-text-secondary);
-  font-size: 14px;
+  font-size: var(--sun-font-base);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -419,7 +427,7 @@ onMounted(() => {
   border-radius: 10px;
   background: var(--sun-surface);
   color: var(--sun-text);
-  font-size: 14px;
+  font-size: var(--sun-font-base);
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
@@ -444,7 +452,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
@@ -453,18 +461,21 @@ onMounted(() => {
 
 .history-item:hover { background: var(--sun-row-hover); }
 .history-item.active { background: var(--sun-accent-muted); }
-.history-item.active .history-item-title { color: var(--sun-text); }
+.history-item.active .history-item-title {
+  color: var(--sun-text);
+  font-weight: 500;
+}
 
 .history-item-title {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--sun-font-base);
+  font-weight: 400;
   color: var(--sun-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.35;
+  line-height: var(--sun-line);
 }
 
 .history-item-delete {
@@ -497,7 +508,7 @@ onMounted(() => {
 }
 
 .history-empty-text {
-  font-size: 12px;
+  font-size: var(--sun-font-sm);
   color: var(--sun-text-muted);
 }
 

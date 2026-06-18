@@ -27,7 +27,8 @@ class ProcessingStepMergerTest {
                 null,
                 2L,
                 "done",
-                "识别意图"
+                "识别意图",
+                null
         );
 
         StepSummary phase = ProcessingStepMerger.currentPhaseSummary(step);
@@ -54,7 +55,8 @@ class ProcessingStepMergerTest {
                 null,
                 1L,
                 "running",
-                "思考过程"
+                "思考过程",
+                null
         );
 
         StepSummary phase = ProcessingStepMerger.currentPhaseSummary(step);
@@ -65,7 +67,32 @@ class ProcessingStepMergerTest {
     }
 
     @Test
-    @DisplayName("toPersistJson：省略空字段且 summary 仅当前阶段")
+    @DisplayName("currentPhaseSummary：done 且 after 为空时不回退 active")
+    void currentPhaseSummary_doneNullAfterNoActiveFallback() {
+        ProcessingStep step = new ProcessingStep(
+                "intent",
+                "intent",
+                "done",
+                new StepSummary("阅读问题", "正在分析", null),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "done",
+                "识别意图",
+                null
+        );
+
+        StepSummary phase = ProcessingStepMerger.currentPhaseSummary(step);
+
+        assertThat(phase).isNull();
+    }
+
+    @Test
     void toPersistJson_omitsEmptyAndSinglePhaseSummary() {
         ProcessingStep done = new ProcessingStep(
                 "intent",
@@ -81,7 +108,8 @@ class ProcessingStepMergerTest {
                 null,
                 2L,
                 "done",
-                "识别意图"
+                "识别意图",
+                null
         );
         ProcessingStep think = new ProcessingStep(
                 "think",
@@ -97,7 +125,8 @@ class ProcessingStepMergerTest {
                 null,
                 4L,
                 "done",
-                "思考过程"
+                "思考过程",
+                null
         );
 
         String json = ProcessingStepMerger.toPersistJson(List.of(done, think));
@@ -111,11 +140,8 @@ class ProcessingStepMergerTest {
     }
 
     @Test
-    @DisplayName("appendReasoning：重复段落不翻倍")
-    void appendReasoning_skipsDuplicateChunk() {
-        String base = "用户要求调用工具。";
-        String dup = base + "用户要求调用工具。";
-        assertThat(ProcessingStepMerger.appendReasoning(base, dup)).isEqualTo(base);
-        assertThat(ProcessingStepMerger.appendReasoning(dup, base)).isEqualTo(dup);
+    @DisplayName("appendReasoning：真增量直接拼接")
+    void appendReasoning_concatenatesIncrements() {
+        assertThat(ProcessingStepMerger.appendReasoning("第一步", "完成。")).isEqualTo("第一步完成。");
     }
 }

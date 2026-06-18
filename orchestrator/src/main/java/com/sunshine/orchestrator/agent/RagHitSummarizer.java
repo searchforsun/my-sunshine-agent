@@ -7,13 +7,17 @@ import java.util.regex.Pattern;
 final class RagHitSummarizer {
 
     private static final Pattern HIT_COUNT = Pattern.compile("共\\s*(\\d+)\\s*条");
-    private static final Pattern SOURCE_DOCS = Pattern.compile("来源文档[：:]\\s*(.+)");
+    private static final Pattern NO_HIT_HEADER = Pattern.compile("^未找到相关知识库");
+    private static final Pattern SOURCE_DOCS = Pattern.compile("来源文档[：:]\\s*([^\\n【]+)");
 
     private RagHitSummarizer() {
     }
 
     static String summarize(String text) {
-        if (text == null || text.isBlank() || text.contains("未找到")) {
+        if (text == null || text.isBlank()) {
+            return "命中 0 条";
+        }
+        if (NO_HIT_HEADER.matcher(text.strip()).find()) {
             return "命中 0 条";
         }
         Matcher countMatcher = HIT_COUNT.matcher(text);
@@ -23,9 +27,7 @@ final class RagHitSummarizer {
         String count = countMatcher.group(1);
         Matcher docMatcher = SOURCE_DOCS.matcher(text);
         if (docMatcher.find()) {
-            String docLine = docMatcher.group(1).trim();
-            int newline = docLine.indexOf('\n');
-            String docNames = newline >= 0 ? docLine.substring(0, newline).trim() : docLine;
+            String docNames = docMatcher.group(1).trim();
             if (!docNames.isEmpty()) {
                 return "命中 " + count + " 条，来源：" + docNames;
             }

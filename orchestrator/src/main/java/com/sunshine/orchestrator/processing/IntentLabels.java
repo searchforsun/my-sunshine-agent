@@ -31,6 +31,18 @@ public final class IntentLabels {
         return fallbackAfterSummary(clippedQuery, detail);
     }
 
+    /** 有意图路由计划时生成 after（主行展示） */
+    public static String intentAfterForPlan(String userQuery, ExecutionPlan plan) {
+        if (service != null) {
+            return service.intentAfterForPlan(userQuery, plan);
+        }
+        String q = StepSummarizer.clipQuery(userQuery);
+        if (plan == null) {
+            return fallbackAfterSummary(q, null);
+        }
+        return fallbackAfterSummary(q, fallbackIntentDetail(plan));
+    }
+
     private static String fallbackIntentDetail(ExecutionPlan plan) {
         if (plan == null) {
             return "简单对话";

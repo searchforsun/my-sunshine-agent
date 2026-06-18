@@ -229,8 +229,9 @@ export function useChatSessions(
                 }
               }
             lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
-            // Agent 路径 reasoning 已在 agent 步骤内展示，勿双写 message.reasoning
-            if (delta.channel === 'reasoning' && delta.stepId !== 'agent') {
+            // ReAct think 步骤 reasoning 仅在 steps 内展示，勿双写 message.reasoning
+            const isThinkStep = delta.stepId === 'think' || delta.stepId.startsWith('think-')
+            if (delta.channel === 'reasoning' && delta.stepId !== 'agent' && !isThinkStep) {
               const prev = lastMsg.reasoning ?? ''
               lastMsg.reasoning = options.resume
                 ? appendChunk(prev, delta.text)

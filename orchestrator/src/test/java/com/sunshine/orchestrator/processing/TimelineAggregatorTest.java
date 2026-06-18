@@ -15,10 +15,10 @@ class TimelineAggregatorTest {
         long t1 = 1_100L;
         long t2 = 1_200L;
 
-        aggregator.apply(new ProcessingEvent("intent", "intent", EventKind.PENDING, "准备识别意图", t0, null));
-        aggregator.apply(new ProcessingEvent("intent", "intent", EventKind.START, "正在分析用户输入", t1, null));
+        aggregator.apply(new ProcessingEvent("intent", "intent", EventKind.PENDING, "准备识别意图", t0, null, null));
+        aggregator.apply(new ProcessingEvent("intent", "intent", EventKind.START, "正在分析用户输入", t1, null, null));
         aggregator.apply(new ProcessingEvent(
-                "intent", "intent", EventKind.COMPLETE, "判定为：知识库查询", t2, "知识库查询"));
+                "intent", "intent", EventKind.COMPLETE, "判定为：知识库查询", t2, "知识库查询", null));
 
         ProcessingStep step = aggregator.get("intent").orElseThrow();
         assertEquals("done", step.lifecycle());
@@ -40,9 +40,9 @@ class TimelineAggregatorTest {
         long t0 = 1_000L;
         long t1 = 1_100L;
 
-        aggregator.apply(new ProcessingEvent("rag", "rag", EventKind.START, "正在查询 Milvus", t0, null));
-        aggregator.apply(new ProcessingEvent("rag", "rag", EventKind.PROGRESS, "正在查询 Milvus…", t0 + 10, null));
-        aggregator.apply(new ProcessingEvent("rag", "rag", EventKind.PROGRESS, "命中 3 条", t1, null));
+        aggregator.apply(new ProcessingEvent("rag", "rag", EventKind.START, "正在查询 Milvus", t0, null, null));
+        aggregator.apply(new ProcessingEvent("rag", "rag", EventKind.PROGRESS, "正在查询 Milvus…", t0 + 10, null, null));
+        aggregator.apply(new ProcessingEvent("rag", "rag", EventKind.PROGRESS, "命中 3 条", t1, null, null));
 
         ProcessingStep step = aggregator.get("rag").orElseThrow();
         assertEquals("running", step.lifecycle());
@@ -55,9 +55,9 @@ class TimelineAggregatorTest {
         long earliest = 500L;
         long replay = 800L;
 
-        aggregator.apply(new ProcessingEvent("agent", "agent", EventKind.START, "正在调用 ReActAgent", earliest, null));
-        aggregator.apply(new ProcessingEvent("agent", "agent", EventKind.START, "正在调用 ReActAgent", replay, null));
-        aggregator.apply(new ProcessingEvent("agent", "agent", EventKind.COMPLETE, "推理完成", replay + 100, null));
+        aggregator.apply(new ProcessingEvent("agent", "agent", EventKind.START, "正在调用 ReActAgent", earliest, null, null));
+        aggregator.apply(new ProcessingEvent("agent", "agent", EventKind.START, "正在调用 ReActAgent", replay, null, null));
+        aggregator.apply(new ProcessingEvent("agent", "agent", EventKind.COMPLETE, "推理完成", replay + 100, null, null));
 
         ProcessingStep step = aggregator.get("agent").orElseThrow();
         assertEquals(earliest, step.startedAt());

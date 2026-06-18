@@ -144,8 +144,8 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 .op-line {
   --op-gutter: 12px;
   --op-detail-inset: calc(var(--op-gutter) + 4px);
-  --op-font: 13px;
-  --op-font-sm: 12px;
+  --op-font: var(--sun-font-md);
+  --op-font-sm: var(--sun-font-sm);
   font-size: var(--op-font);
   line-height: 1.5;
   color: var(--sun-text-muted);
@@ -288,6 +288,10 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.op-detail-thinking .op-detail-pre {
+  font-size: var(--sun-font-base);
 }
 
 .op-detail-pre {

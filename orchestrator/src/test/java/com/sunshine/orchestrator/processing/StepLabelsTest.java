@@ -40,4 +40,11 @@ class StepLabelsTest {
         assertThat(StepLabels.labelFor("tool-list_oa_tasks"))
                 .isEqualTo("调用工具 查询 OA 待办");
     }
+
+    @Test
+    void labelFor_toolStepWithTimestampId_usesDisplayNameOnly() {
+        when(catalogService.displayName("summarize_finance_by_status")).thenReturn("统计财务消息");
+        assertThat(StepLabels.labelFor("tool-summarize_finance_by_status@1718750000123"))
+                .isEqualTo("调用工具 统计财务消息");
+    }
 }

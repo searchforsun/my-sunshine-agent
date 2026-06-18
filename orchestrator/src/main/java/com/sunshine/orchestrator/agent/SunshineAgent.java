@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.agent;
 
-import com.sunshine.orchestrator.client.StreamDeltaNormalizer;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
@@ -23,11 +22,13 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Sunshine Agent — 封装 AgentScope ReActAgent，复用 Event 流推送步骤与正文
+ * Sunshine Agent — 封装 AgentScope ReActAgent。
+ * 轮次边界与 reasoning 增量由 Hook 产出；Event 流仅承载 AGENT_RESULT 正文。
  */
 @Slf4j
 @Component
@@ -57,30 +58,18 @@ public class SunshineAgent {
         return chat(MemoryContext.empty(), userMessage, userId, tenantId, null);
     }
 
-    /**
-     * 流式对话 — 步骤 token 内联在主流；Hook 异步步骤经 stepQueue 汇入
-     */
     public Flux<StreamToken> chat(
             MemoryContext memory, String userMessage, String userId, String tenantId,
             String assistantMessageId) {
         return chat(memory, userMessage, userId, tenantId, assistantMessageId, null);
     }
 
-    /**
-     * @param ragContext 预检索知识库上下文，注入为独立 user 消息（可为 null）
-     */
     public Flux<StreamToken> chat(
             MemoryContext memory, String userMessage, String userId, String tenantId,
             String assistantMessageId, String ragContext) {
         return chat(memory, userMessage, userId, tenantId, assistantMessageId, ragContext, null);
     }
 
-    /**
-     * @param financeContext 预查询财务工具结果，注入为独立 user 消息（可为 null）
-     */
-    /**
-     * Workflow Agent 子节点入口 — injectedContext 注入为预查询上下文（MVP 复用 financeContext 槽位）
-     */
     public Flux<StreamToken> chatAsSubAgent(
             MemoryContext memory, String query, String injectedContext,
             String userId, String tenantId, String assistantMessageId) {
@@ -106,17 +95,20 @@ public class SunshineAgent {
 
         StreamOptions options = StreamOptions.builder()
                 .incremental(true)
-                .eventTypes(EventType.REASONING, EventType.AGENT_RESULT, EventType.HINT)
+                .eventTypes(EventType.AGENT_RESULT)
                 .includeReasoningChunk(true)
+                .includeReasoningResult(false)
                 .includeActingChunk(true)
                 .build();
 
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery(userMessage);
-        ConcurrentLinkedQueue<ProcessingStep> stepQueue = new ConcurrentLinkedQueue<>();
+        ConcurrentLinkedQueue<StreamToken> hookQueue = new ConcurrentLinkedQueue<>();
 
+        // 子 Agent（Workflow 节点）用独立 bridge id，避免与主流冲突且让 Hook 能写入 timeline
+        String bridgeId = assistantMessageId != null ? assistantMessageId : "sub-" + UUID.randomUUID();
+        StepEventBridge.bind(bridgeId, session, hookQueue);
         if (assistantMessageId != null) {
-            StepEventBridge.bind(assistantMessageId, session, stepQueue);
             StepEventBridge.setUserQuery(assistantMessageId, userMessage);
         }
 
@@ -127,22 +119,16 @@ public class SunshineAgent {
         return agent.stream(inputs, options)
                 .flatMap(event -> {
                     List<StreamToken> tokens = new ArrayList<>();
-                    tokens.addAll(drainHookSteps(stepQueue));
-                    tokens.addAll(mapAgentEvent(event, session, generateStarted, assistantMessageId));
+                    tokens.addAll(drainHookTokens(hookQueue));
+                    tokens.addAll(mapAgentEvent(event, session, generateStarted));
                     return Flux.fromIterable(tokens);
                 })
-                .transform(StreamDeltaNormalizer::normalizeTokens)
                 .concatWith(Flux.defer(() -> {
-                    List<StreamToken> tail = new ArrayList<>(drainHookSteps(stepQueue));
-                    tail.addAll(finishGenerateSteps(
-                            session, generateStarted, generateCompleted));
+                    List<StreamToken> tail = new ArrayList<>(drainHookTokens(hookQueue));
+                    tail.addAll(finishGenerateSteps(session, generateStarted, generateCompleted));
                     return Flux.fromIterable(tail);
                 }))
-                .doFinally(sig -> {
-                    if (assistantMessageId != null) {
-                        StepEventBridge.clear(assistantMessageId);
-                    }
-                })
+                .doFinally(sig -> StepEventBridge.clear(bridgeId))
                 .doOnComplete(() -> log.info("[Orchestrator] Agent 流式完成"))
                 .doOnError(e -> log.error("[Orchestrator] Agent 异常: {}", e.getMessage(), e));
     }
@@ -169,11 +155,11 @@ public class SunshineAgent {
         return List.of();
     }
 
-    private static List<StreamToken> drainHookSteps(ConcurrentLinkedQueue<ProcessingStep> stepQueue) {
+    private static List<StreamToken> drainHookTokens(ConcurrentLinkedQueue<StreamToken> hookQueue) {
         List<StreamToken> tokens = new ArrayList<>();
-        ProcessingStep step;
-        while ((step = stepQueue.poll()) != null) {
-            tokens.add(StreamToken.step(step));
+        StreamToken token;
+        while ((token = hookQueue.poll()) != null) {
+            tokens.add(token);
         }
         return tokens;
     }
@@ -241,16 +227,7 @@ public class SunshineAgent {
     private static List<StreamToken> mapAgentEvent(
             Event event,
             ProcessingTimelineSession session,
-            AtomicBoolean generateStarted,
-            String assistantMessageId) {
-        return AgentScopeEventMapper.map(
-                event, session, generateStarted,
-                StepEventBridge.ragDetail(assistantMessageId),
-                resolveUserQuery(assistantMessageId, session));
-    }
-
-    private static String resolveUserQuery(String assistantMessageId, ProcessingTimelineSession session) {
-        String fromBridge = StepEventBridge.userQuery(assistantMessageId);
-        return fromBridge != null ? fromBridge : session.userQuery();
+            AtomicBoolean generateStarted) {
+        return AgentScopeEventMapper.map(event, session, generateStarted);
     }
 }

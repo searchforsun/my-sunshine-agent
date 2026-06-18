@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.processing.StepLabels;
+import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
 
 import java.util.ArrayList;
@@ -67,7 +68,7 @@ public final class ProcessingStepMerger {
         };
     }
 
-    /** 累积式/重复 reasoning 去重拼接 */
+    /** ReAct reasoning 已由 Hook 原生 incrementalChunk 保证为真增量 */
     static String appendReasoning(String existing, String chunk) {
         if (chunk == null || chunk.isEmpty()) {
             return existing;
@@ -75,41 +76,7 @@ public final class ProcessingStepMerger {
         if (existing == null || existing.isEmpty()) {
             return chunk;
         }
-        if (chunk.startsWith(existing)) {
-            if (chunk.length() <= existing.length()) {
-                return existing;
-            }
-            String suffix = chunk.substring(existing.length());
-            // 累积帧整段复读：chunk = existing + existing
-            if (suffix.equals(existing) || (suffix.length() > 40 && existing.contains(suffix))) {
-                return existing;
-            }
-            return chunk;
-        }
-        if (existing.startsWith(chunk)) {
-            return existing;
-        }
-        if (existing.endsWith(chunk)) {
-            return existing;
-        }
-        if (chunk.length() > 80 && existing.contains(chunk)) {
-            return existing;
-        }
-        int overlap = longestSuffixPrefixOverlap(existing, chunk);
-        if (overlap > 0) {
-            return existing + chunk.substring(overlap);
-        }
         return existing + chunk;
-    }
-
-    static int longestSuffixPrefixOverlap(String prev, String incoming) {
-        int max = Math.min(prev.length(), incoming.length());
-        for (int len = max; len > 0; len--) {
-            if (prev.regionMatches(prev.length() - len, incoming, 0, len)) {
-                return len;
-            }
-        }
-        return 0;
     }
 
     private static String concat(String existing, String chunk) {
@@ -138,7 +105,8 @@ public final class ProcessingStepMerger {
                 result,
                 step.ts(),
                 step.status() != null ? step.status() : "running",
-                step.label()
+                step.label(),
+                step.metadata()
         );
     }
 
@@ -173,7 +141,8 @@ public final class ProcessingStepMerger {
                 incoming.result() != null ? incoming.result() : existing.result(),
                 Math.max(existing.ts(), incoming.ts()),
                 incoming.status() != null ? incoming.status() : existing.status(),
-                incoming.label() != null ? incoming.label() : existing.label()
+                incoming.label() != null ? incoming.label() : existing.label(),
+                incoming.metadata() != null ? incoming.metadata() : existing.metadata()
         );
     }
 
@@ -249,10 +218,7 @@ public final class ProcessingStepMerger {
         return switch (lifecycle) {
             case "pending" -> nonEmptySummary(s.before(), null, null);
             case "running" -> nonEmptySummary(null, s.active(), null);
-            case "done", "error", "skipped" -> {
-                String after = s.after() != null ? s.after() : s.active();
-                yield nonEmptySummary(null, null, after);
-            }
+            case "done", "error", "skipped" -> nonEmptySummary(null, null, s.after());
             default -> nonEmptySummary(null, s.active(), null);
         };
     }
@@ -308,18 +274,32 @@ public final class ProcessingStepMerger {
         if (step.label() != null) {
             map.put("label", step.label());
         }
+        if (step.metadata() != null && !step.metadata().isEmpty()) {
+            map.put("metadata", metadataToMap(step.metadata()));
+        }
+        return map;
+    }
+
+    public static Map<String, Object> metadataToMap(StepMetadata metadata) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (metadata.hitCount() != null) {
+            map.put("hitCount", metadata.hitCount());
+        }
+        if (metadata.sources() != null && !metadata.sources().isEmpty()) {
+            map.put("sources", metadata.sources());
+        }
         return map;
     }
 
     public static Map<String, Object> summaryToMap(StepSummary summary) {
         Map<String, Object> map = new LinkedHashMap<>();
-        if (summary.before() != null) {
+        if (hasText(summary.before())) {
             map.put("before", summary.before());
         }
-        if (summary.active() != null) {
+        if (hasText(summary.active())) {
             map.put("active", summary.active());
         }
-        if (summary.after() != null) {
+        if (hasText(summary.after())) {
             map.put("after", summary.after());
         }
         return map;

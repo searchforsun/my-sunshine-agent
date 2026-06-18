@@ -180,7 +180,7 @@ public final class ThinkStepMapper {
                 stepId, "think", "running", summary,
                 ts, null, null, null,
                 null, null, null,
-                ts, "running", label);
+                ts, "running", label, null);
     }
 
     private ProcessingStep completeThinkStep(String stepId) {
@@ -199,7 +199,7 @@ public final class ThinkStepMapper {
                 prev != null ? prev.reasoning() : null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
-                ts, "done", label);
+                ts, "done", label, null);
     }
 
     private ProcessingStep runningGenerateStep() {
@@ -213,7 +213,7 @@ public final class ThinkStepMapper {
                 GENERATE, GENERATE, "running", summary,
                 ts, null, null, null,
                 null, null, null,
-                ts, "running", label);
+                ts, "running", label, null);
     }
 
     private ProcessingStep completeGenerateStep() {
@@ -232,7 +232,7 @@ public final class ThinkStepMapper {
                 prev != null ? prev.reasoning() : null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
-                ts, "done", label);
+                ts, "done", label, null);
     }
 
     private void trackExistingStep(ProcessingStep step) {

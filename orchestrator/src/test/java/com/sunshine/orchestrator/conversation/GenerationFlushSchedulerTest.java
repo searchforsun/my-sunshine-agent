@@ -33,7 +33,8 @@ class GenerationFlushSchedulerTest {
                 null,
                 1L,
                 "running",
-                "识别意图"
+                "识别意图",
+                null
         );
 
         JsonNode node = OM.readTree(scheduler.metaStep(running));

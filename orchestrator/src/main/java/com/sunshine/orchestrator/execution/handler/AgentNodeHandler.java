@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
+import com.sunshine.orchestrator.execution.agent.AgentNodeDetailSummarizer;
 import com.sunshine.orchestrator.execution.agent.AgentNodeOutput;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +60,10 @@ public class AgentNodeHandler implements NodeHandler {
                 .filter(StreamToken::isContent)
                 .map(StreamToken::text)
                 .collect(Collectors.joining());
+        String reasoning = tokens.stream()
+                .filter(t -> t.isStepDelta() && "reasoning".equals(t.channel()))
+                .map(StreamToken::text)
+                .collect(Collectors.joining());
 
         List<String> toolCalls = new ArrayList<>();
         for (StreamToken token : timeline) {
@@ -68,11 +73,14 @@ public class AgentNodeHandler implements NodeHandler {
             }
         }
 
+        String summaryLine = AgentNodeDetailSummarizer.summarize(answer, reasoning, toolCalls.size());
         AgentNodeOutput output = new AgentNodeOutput(answer, toolCalls);
         Map<String, String> outputs = new LinkedHashMap<>();
         outputs.put("answer", output.answer());
         outputs.put("output", output.answer());
         outputs.put("toolCalls", String.join(",", output.toolCalls()));
+        outputs.put("detail", summaryLine);
+        // 完整报告交给下游 llm 节点（analyze.answer），时间线不下发 expandable 正文
         return NodeResult.ok(outputs, timeline);
     }
 }

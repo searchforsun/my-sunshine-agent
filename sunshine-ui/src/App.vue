@@ -37,6 +37,8 @@ const darkOverrides: GlobalThemeOverrides = {
     itemColorActiveHover: 'rgba(255, 255, 255, 0.1)',
     itemColorHover: '#383838',
     borderRadius: '8px',
+    fontSize: '14px',
+    itemHeight: '40px',
   },
   Button: {
     colorPrimary: '#ececec',
@@ -71,6 +73,7 @@ const darkOverrides: GlobalThemeOverrides = {
     textColor: '#ececec',
     placeholderColor: '#8e8e8e',
     borderRadius: '10px',
+    fontSizeMedium: '15px',
   },
   Card: {
     borderColor: '#424242',
@@ -114,6 +117,8 @@ const lightOverrides: GlobalThemeOverrides = {
     itemColorActiveHover: 'rgba(0, 0, 0, 0.08)',
     itemColorHover: '#f4f4f4',
     borderRadius: '8px',
+    fontSize: '14px',
+    itemHeight: '40px',
   },
   Button: {
     colorPrimary: '#0d0d0d',
@@ -148,6 +153,7 @@ const lightOverrides: GlobalThemeOverrides = {
     textColor: '#0d0d0d',
     placeholderColor: '#737373',
     borderRadius: '10px',
+    fontSizeMedium: '15px',
   },
   Card: {
     borderColor: '#e5e5e5',

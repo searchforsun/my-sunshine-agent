@@ -38,7 +38,18 @@ public final class WorkflowNodeTimeline {
             ProcessingTimelineSession session,
             String nodeId,
             String nodeType,
-            String detail,
+            String summaryLine,
+            long startedAt,
+            long endedAt) {
+        return complete(session, nodeId, nodeType, summaryLine, summaryLine, startedAt, endedAt);
+    }
+
+    public static List<StreamToken> complete(
+            ProcessingTimelineSession session,
+            String nodeId,
+            String nodeType,
+            String summaryLine,
+            String expandDetail,
             long startedAt,
             long endedAt) {
         String stepId = stepId(nodeId);
@@ -47,7 +58,7 @@ public final class WorkflowNodeTimeline {
                 session.pending(stepId, "node");
                 session.startAt(stepId, "node", startedAt);
             }
-            session.completeAt(stepId, detail, endedAt);
+            session.completeAt(stepId, summaryLine, expandDetail, endedAt);
         });
     }
 

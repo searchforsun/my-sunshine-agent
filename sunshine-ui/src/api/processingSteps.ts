@@ -24,6 +24,12 @@ export interface StepSummary {
 
 }
 
+/** RAG 等步骤的结构化元数据（后端 SSE 下发） */
+export interface StepMetadata {
+  hitCount?: number
+  sources?: string[]
+}
+
 
 
 export interface ProcessingStep {
@@ -63,28 +69,18 @@ export interface ProcessingStep {
 
   label?: string
 
+  metadata?: StepMetadata
+
 }
 
 
 
 export const STEP_ORDER: StepPhase[] = ['intent', 'plan', 'node', 'rag', 'tool', 'agent', 'think', 'generate']
 
-/** 步骤标题：优先用后端 label，保留 think/plan 等固定 phase 本地文案 */
+/** 步骤标题：仅用后端 SSE 下发的 step.label，无则回退 step.id */
 export function formatStepLabel(step: ProcessingStep): string {
   if (step.label?.trim()) {
     return step.label
-  }
-  if (step.id.startsWith('tool-')) {
-    return step.id
-  }
-  if (step.id.startsWith('node-')) {
-    return step.id
-  }
-  if (step.id === 'think' || step.id.startsWith('think-')) {
-    return step.id === 'think' ? '规划推理' : '综合分析'
-  }
-  if (step.id === 'plan') {
-    return '执行计划'
   }
   return step.id
 }
@@ -107,6 +103,17 @@ function parseSummary(raw: unknown): StepSummary | undefined {
 
   return { before, active, after }
 
+}
+
+function parseMetadata(raw: unknown): StepMetadata | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const obj = raw as Record<string, unknown>
+  const hitCount = typeof obj.hitCount === 'number' ? obj.hitCount : undefined
+  const sources = Array.isArray(obj.sources)
+    ? obj.sources.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+    : undefined
+  if (hitCount == null && (!sources || sources.length === 0)) return undefined
+  return { hitCount, sources }
 }
 
 
@@ -164,6 +171,8 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
     status,
 
     label,
+
+    metadata: parseMetadata(raw.metadata),
 
   }
 
@@ -226,6 +235,23 @@ export function stepLifecycle(step: ProcessingStep): StepLifecycle {
 
 
 
+/** 展示后端下发的 metadata（如 RAG 命中数与来源文档） */
+export function formatStepMetadata(step: ProcessingStep): string {
+  const m = step.metadata
+  if (!m) return ''
+  const parts: string[] = []
+  if (typeof m.hitCount === 'number') {
+    parts.push(`命中 ${m.hitCount} 条`)
+  }
+  const sources = m.sources?.filter(s => s.trim())
+  if (sources?.length) {
+    parts.push(`来源：${sources.join('、')}`)
+  }
+  return parts.join('，')
+}
+
+
+
 /** 主行摘要：与标题重复时不展示，避免「生成回答 生成回答」 */
 export function resolveStepHeaderText(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
@@ -234,7 +260,8 @@ export function resolveStepHeaderText(step: ProcessingStep): string {
   if (lifecycle === 'running') {
     header = step.summary?.active?.trim() || step.label?.trim() || ''
   } else if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
-    header = step.summary?.after?.trim()
+    header = formatStepMetadata(step)
+      || step.summary?.after?.trim()
       || step.result?.trim()
       || step.detail?.trim()
       || ''
@@ -254,8 +281,10 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
   const header = resolveStepHeaderText(step)
   if (step.reasoning?.trim()) return true
   if (step.output?.trim()) return true
-  if (step.detail?.trim() && step.detail.trim() !== header) return true
-  if (step.result?.trim() && step.result.trim() !== header) return true
+  const detail = step.detail?.trim()
+  if (detail && detail !== header) return true
+  const result = step.result?.trim()
+  if (result && result !== header) return true
   return false
 }
 
@@ -294,6 +323,24 @@ export function totalDuration(steps: ProcessingStep[]): number {
 
 
 
+function mergeSummary(
+  prev?: StepSummary,
+  incoming?: StepSummary,
+  lifecycle?: StepLifecycle,
+): StepSummary | undefined {
+  if (!prev && !incoming) return undefined
+  if (!prev) return incoming
+  if (!incoming) return prev
+  const terminal = lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped'
+  return {
+    before: incoming.before ?? prev.before,
+    active: terminal ? undefined : (incoming.active ?? prev.active),
+    after: incoming.after ?? prev.after,
+  }
+}
+
+
+
 export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): ProcessingStep[] {
 
   const idx = steps.findIndex(s => s.id === incoming.id)
@@ -304,11 +351,16 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
     const prev = next[idx]
 
+    const lifecycle = incoming.lifecycle ?? prev.lifecycle
+    const status = incoming.status ?? prev.status
+
     const merged: ProcessingStep = {
 
       ...prev,
 
       ...incoming,
+
+      summary: mergeSummary(prev.summary, incoming.summary, lifecycle),
 
       reasoning: longerText(prev.reasoning, incoming.reasoning),
 
@@ -316,11 +368,19 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       result: incoming.result ?? prev.result,
 
+      detail: incoming.detail ?? prev.detail,
+
+      metadata: incoming.metadata ?? prev.metadata,
+
       durationMs: incoming.durationMs ?? prev.durationMs,
 
       startedAt: incoming.startedAt ?? prev.startedAt,
 
       endedAt: incoming.endedAt ?? prev.endedAt,
+
+      lifecycle,
+
+      status,
 
     }
 
@@ -415,26 +475,7 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
 function concatText(existing: string | undefined, chunk: string): string {
   if (!chunk) return existing ?? ''
   if (!existing) return chunk
-  if (chunk.startsWith(existing)) {
-    if (chunk.length <= existing.length) return existing
-    const suffix = chunk.slice(existing.length)
-    if (suffix === existing || (suffix.length > 40 && existing.includes(suffix))) return existing
-    return chunk
-  }
-  if (existing.startsWith(chunk)) return existing
-  if (existing.endsWith(chunk)) return existing
-  if (chunk.length > 80 && existing.includes(chunk)) return existing
-  const overlap = longestSuffixPrefixOverlap(existing, chunk)
-  if (overlap > 0) return existing + chunk.slice(overlap)
   return existing + chunk
-}
-
-function longestSuffixPrefixOverlap(prev: string, incoming: string): number {
-  const max = Math.min(prev.length, incoming.length)
-  for (let len = max; len > 0; len--) {
-    if (prev.slice(-len) === incoming.slice(0, len)) return len
-  }
-  return 0
 }
 
 
@@ -493,7 +534,7 @@ export function normalizeTimelineSteps(
   // Agent 路径思考已挂在「分析作答」；勿再用 message.reasoning 合成独立 think
   if (hasThink || agentHasReasoning) {
 
-    return sortSteps(result)
+    return filterTimelineDisplaySteps(sortSteps(result))
 
   }
 
@@ -515,11 +556,7 @@ export function normalizeTimelineSteps(
 
       status: 'done',
 
-      label: '思考过程',
-
       reasoning: orphanedReasoning,
-
-      summary: { after: '思考完成' },
 
     }
 
@@ -535,8 +572,15 @@ export function normalizeTimelineSteps(
 
   }
 
-  return sortSteps(result)
+  return filterTimelineDisplaySteps(sortSteps(result))
 
+}
+
+
+
+/** 时间线不展示 running 的 generate（消息区三个点兜底） */
+export function filterTimelineDisplaySteps(steps: ProcessingStep[]): ProcessingStep[] {
+  return steps.filter(s => !(s.id === 'generate' && stepLifecycle(s) === 'running'))
 }
 
 
@@ -612,32 +656,6 @@ export function summarizeSteps(steps: ProcessingStep[]): string {
 
 
   return parts.join(' · ')
-
-}
-
-
-
-/** 无 step 事件时的降级占位 */
-
-export function derivePlaceholderSteps(loading: boolean): ProcessingStep[] {
-
-  if (!loading) return []
-
-  return [{
-
-    id: 'generate',
-
-    phase: 'generate',
-
-    lifecycle: 'running',
-
-    status: 'running',
-
-    label: '生成回答',
-
-    summary: { active: '正在撰写回复' },
-
-  }]
 
 }
 

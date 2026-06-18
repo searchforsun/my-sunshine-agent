@@ -508,7 +508,7 @@ com.sunshine.orchestrator.routing
 - [ ] `ExecutionPlan` + `ExecutionDispatcher`
 - [ ] `SimpleLlmExecutor` / `ReactExecutor` 从 `ChatController` 抽出
 - [ ] `IntentRouter` 改 JSON + catalog 注入
-- [ ] 行为与现网一致（回归 `phase2-agent-demo.ps1`）
+- [ ] 行为与现网一致（回归 `phase2_agent_demo.py`）
 
 ### Phase 2（1–2 周）：Workflow 引擎 MVP
 
@@ -553,7 +553,7 @@ com.sunshine.orchestrator.routing
 | 单元 | `IntentRouter` JSON 解析 + catalog 匹配 |
 | 集成 | `ConversationIntegrationTest` 扩展三模式各 1 条 |
 | 集成 | workflow finance-smart 端到端 mock |
-| 回归 | `phase2-demo.ps1` / `phase2-agent-demo.ps1` |
+| 回归 | `phase2_agent_demo.py` |
 
 ---
 

@@ -1,0 +1,4 @@
+# Sunshine 运维脚本依赖（pip install -r scripts/requirements.txt）
+requests>=2.31.0
+redis>=5.0.0
+psutil>=5.9.0

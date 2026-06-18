@@ -87,14 +87,74 @@ public final class StreamDeltaNormalizer {
             lastFull.set(incoming);
             return "";
         }
+        if (incoming.contains(prev)) {
+            int idx = incoming.indexOf(prev);
+            String suffix = incoming.substring(idx + prev.length());
+            if (suffix.isEmpty()) {
+                lastFull.set(prev);
+                return "";
+            }
+            lastFull.set(prev + suffix);
+            return suffix;
+        }
         int overlap = longestSuffixPrefixOverlap(prev, incoming);
         if (overlap > 0) {
             String delta = incoming.substring(overlap);
             lastFull.set(prev + delta);
             return delta;
         }
+        String anchored = suffixAfterSharedAnchor(prev, incoming);
+        if (anchored != null) {
+            lastFull.set(prev + anchored);
+            return anchored;
+        }
         lastFull.set(prev + incoming);
         return incoming;
+    }
+
+    /**
+     * AgentScope 增量流后常跟整段重述：前后缀无法对齐时，用 prev 尾部锚点在 incoming 中定位，只取真正新增段。
+     */
+    static String suffixAfterSharedAnchor(String prev, String incoming) {
+        int minAnchor = 8;
+        int maxScan = Math.min(prev.length(), 120);
+        for (int len = maxScan; len >= minAnchor; len--) {
+            String anchor = trimEdgePunctuation(prev.substring(prev.length() - len));
+            if (anchor.length() < minAnchor) {
+                continue;
+            }
+            int idx = incoming.indexOf(anchor);
+            if (idx < 0) {
+                continue;
+            }
+            String suffix = incoming.substring(idx + anchor.length());
+            if (suffix.isEmpty() || prev.endsWith(suffix)) {
+                continue;
+            }
+            return suffix;
+        }
+        return null;
+    }
+
+    private static String trimEdgePunctuation(String text) {
+        int start = 0;
+        int end = text.length();
+        while (start < end && isEdgePunctuation(text.charAt(start))) {
+            start++;
+        }
+        while (end > start && isEdgePunctuation(text.charAt(end - 1))) {
+            end--;
+        }
+        return text.substring(start, end);
+    }
+
+    private static boolean isEdgePunctuation(char c) {
+        return switch (c) {
+            case '.', ',', '!', '?', ';', ':', '。', '，', '！', '？', '；', '：',
+                 '(', ')', '（', '）', '[', ']', '【', '】', '"', '\'', '“', '”', '‘', '’',
+                 ' ', '\n', '\r', '\t' -> true;
+            default -> false;
+        };
     }
 
     static int longestSuffixPrefixOverlap(String prev, String incoming) {

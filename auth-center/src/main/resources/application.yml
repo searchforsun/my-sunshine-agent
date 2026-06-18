@@ -1,6 +1,6 @@
 # sunshine-auth — 配置入口
 # 业务配置唯一来源：Nacos（Data ID: sunshine-auth.yaml）
-# 本地维护副本：docs/nacos/sunshine-auth.yaml → scripts/sync-nacos.ps1 同步线上
+# 本地维护副本：docs/nacos/sunshine-auth.yaml → scripts/sync_nacos.py 同步线上
 spring:
   application:
     name: sunshine-auth

@@ -6,6 +6,7 @@ public record ProcessingEvent(
         EventKind kind,
         String summary,
         long ts,
-        String detail
+        String detail,
+        StepMetadata metadata
 ) {
 }

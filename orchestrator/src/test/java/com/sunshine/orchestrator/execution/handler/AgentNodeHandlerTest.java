@@ -34,8 +34,7 @@ class AgentNodeHandlerTest {
     void collectsAnswerFromSubAgentFlux() {
         when(sunshineAgent.chatAsSubAgent(any(), anyString(), anyString(), anyString(), anyString(), isNull()))
                 .thenReturn(Flux.just(
-                        StreamToken.content("分析"),
-                        StreamToken.content("完成")));
+                        StreamToken.content("待审批 5 笔单据存在合规风险，建议优先处理 1004。")));
 
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
@@ -49,6 +48,7 @@ class AgentNodeHandlerTest {
         var result = handler.run(spec, ctx, streamCtx).block();
         assertThat(result).isNotNull();
         assertThat(result.success()).isTrue();
-        assertThat(result.safeOutputs().get("answer")).isEqualTo("分析完成");
+        assertThat(result.safeOutputs().get("answer")).contains("合规风险");
+        assertThat(result.safeOutputs().get("detail")).contains("合规风险");
     }
 }

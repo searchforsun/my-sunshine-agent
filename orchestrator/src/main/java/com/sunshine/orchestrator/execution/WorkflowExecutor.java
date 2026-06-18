@@ -102,11 +102,14 @@ public class WorkflowExecutor {
                                 return Flux.empty();
                             }
                             wfCtx.putNode(nodeId, result.safeOutputs());
-                            String detail = resolveNodeDetail(rawSpec, result.safeOutputs());
+                            Map<String, String> outs = result.safeOutputs();
+                            String summaryLine = resolveNodeDetail(rawSpec, outs);
+                            String expandDetail = resolveExpandDetail(rawSpec, outs, summaryLine);
                             List<StreamToken> all = new ArrayList<>(result.contentTokens());
                             if (showTimeline) {
                                 all.addAll(0, WorkflowNodeTimeline.complete(
-                                        session, nodeId, rawSpec.type(), detail, startedAt, endedAt));
+                                        session, nodeId, rawSpec.type(),
+                                        summaryLine, expandDetail, startedAt, endedAt));
                             }
                             return Flux.fromIterable(all);
                         })
@@ -128,7 +131,21 @@ public class WorkflowExecutor {
                 return "已完成回复";
             }
         }
+        if ("agent".equals(spec.type())) {
+            String summary = outputs.get("detail");
+            if (summary != null && !summary.isBlank()) {
+                return summary;
+            }
+        }
         return WorkflowNodeLabels.displayName(spec.id(), spec.type()) + "完成";
+    }
+
+    /** agent 节点不在时间线展开 Markdown 报告（完整 answer 仅写入 workflow 上下文） */
+    private static String resolveExpandDetail(NodeSpec spec, Map<String, String> outputs, String summaryLine) {
+        if ("agent".equals(spec.type())) {
+            return null;
+        }
+        return summaryLine;
     }
 
     private static NodeSpec resolveParams(NodeSpec spec, WorkflowContext ctx) {

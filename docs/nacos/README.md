@@ -25,18 +25,18 @@ Group：`DEFAULT_GROUP`，格式：YAML。
 1. **只改** `docs/nacos/{dataId}.yaml`
 2. 同步到线上：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1
+```bash
+python scripts/sync_nacos.py
 # 或单文件：
-powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1 -DataId sunshine-gateway.yaml
+python scripts/sync_nacos.py --data-id sunshine-gateway.yaml
 ```
 
 3. **重启**受影响的服务（Nacos 动态刷新对多数 Spring 配置不自动生效）
 
 ## 启动服务
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start.ps1
+```bash
+python scripts/start.py
 # 或
 java -jar target/sunshine-xxx.jar
 ```

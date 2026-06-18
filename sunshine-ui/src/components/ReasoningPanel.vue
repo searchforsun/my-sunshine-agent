@@ -49,7 +49,7 @@ const preview = computed(() => {
   margin: 0;
   padding: 0;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px;
+  font-size: var(--sun-font-base);
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;

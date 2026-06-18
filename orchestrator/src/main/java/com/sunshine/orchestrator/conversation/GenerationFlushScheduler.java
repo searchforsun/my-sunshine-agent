@@ -128,6 +128,9 @@ public class GenerationFlushScheduler {
             if (step.result() != null) {
                 map.put("result", step.result());
             }
+            if (step.metadata() != null && !step.metadata().isEmpty()) {
+                map.put("metadata", ProcessingStepMerger.metadataToMap(step.metadata()));
+            }
             map.put("ts", step.ts());
             map.put("status", step.status());
             map.put("label", step.label());

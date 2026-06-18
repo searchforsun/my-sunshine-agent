@@ -7,25 +7,45 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 ## 常用命令
 
 ```bash
+# 脚本依赖（首次）
+pip install -r scripts/requirements.txt
+
 # JDK 21
 mvn clean package -DskipTests
 mvn compile -pl <module> -am
 
 # 配置：docs/nacos/ → 同步 → 重启
-powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1
-powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1 -DataId sunshine-orchestrator.yaml
-powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1 -DataId sunshine-workflows.yaml
-powershell -ExecutionPolicy Bypass -File scripts/start.ps1
+python scripts/sync_nacos.py
+python scripts/sync_nacos.py --data-id sunshine-orchestrator.yaml
+python scripts/sync_nacos.py --data-id sunshine-workflows.yaml
+python scripts/start.py
+
+# 清会话（MySQL 对话表 + Redis STM/生成流；可选重启 orchestrator + llm-gateway）
+python scripts/clear_session_cache.py --force --restart-orchestrator
 
 # 前端 :5173；SSE 直连 Gateway :8000
 cd sunshine-ui && npm run dev
 
 # 验收
-powershell -ExecutionPolicy Bypass -File scripts/phase2-agent-demo.ps1
+python scripts/phase2_agent_demo.py
 mvn test -pl llm-gateway -Dtest=ModelRouterTest,AdapterCircuitBreakerTest
+mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest
 ```
 
-**首次部署**：MySQL `CREATE DATABASE sunshine_auth;` → `sync-nacos.ps1` → `start.ps1`。
+**首次部署**：MySQL `CREATE DATABASE sunshine_auth;` → `sync_nacos.py` → `start.py`。
+
+**运维脚本（SSOT：`scripts/*.py`）**
+
+| 脚本 | 用途 |
+|------|------|
+| `sunshine_lib.py` | 公共库（MySQL/Redis/启停 JVM） |
+| `sync_nacos.py` | Nacos 配置同步 |
+| `start.py` | 按依赖顺序启动全链路 |
+| `clear_session_cache.py` | 清会话 + 可选重启 |
+| `download_skywalking_agent.py` | 下载 SkyWalking Agent |
+| `phase2_agent_demo.py` | Phase 2.4 ReAct 验收 |
+
+目录内遗留 `.ps1`/`.sh` 为历史包装，**勿再维护**；新脚本一律 Python。
 
 ## 请求链路与模块
 
@@ -39,11 +59,13 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | 模块 | 端口 | 职责 |
 |------|:----:|------|
 | gateway / bff / auth-center | 8000/8001/8100 | 路由、SSE 透传、JWT |
-| orchestrator | 8200 | 三模式 + Timeline |
+| orchestrator | 8200 | 三模式 + Timeline + GenerationJob |
 | tool-manager | 8210 | `ToolRegistry` + `/api/tools/catalog` |
 | llm-gateway / rag-service | 8300/8400 | 模型路由 / Milvus |
 
 各服务 `application.yml` 仅 Nacos 入口；业务配置 SSOT 在 `docs/nacos/`。
+
+**SSE 链路**：`ChatController` → `ExecutionDispatcher` → `StreamToken` → `GenerationJob`（Redis 缓冲 + seq）→ BFF/Gateway 透传 → 前端 `parseSsePayload`。步骤事件 `type:step` / `type:step_delta` 由 `GenerationFlushScheduler.metaStep` 序列化。
 
 ## 架构与扩展（要点）
 
@@ -53,23 +75,36 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 |--------|--------|
 | 新工具 | `tool-manager` 新增 `ToolHandler`（含 displayName / timelinePhase / outputSummaryKind）→ Nacos `agent.execution.react.tools` 或 workflow 节点 `params.tool` → sync + 重启 tool-manager、orchestrator |
 | 新 Workflow | `docs/nacos/sunshine-workflows.yaml` 的 catalog + definitions → sync → 重启 orchestrator |
+| Workflow 节点中文名 | `sunshine-workflows.yaml` 节点 `displayName` → `WorkflowNodeLabelService` → SSE `step.label` |
 | 意图步骤文案 | Nacos `agent.timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
-| 步骤 before/active | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary`，勿写死步骤话术 |
-| 步骤中文名 | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
+| 步骤 before/active/after | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
+| 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` → orchestrator `ToolCatalogService` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels` / `ToolResultSummarizer`。
 
-**ReAct 时间线**：`intent → think → tool → think-2 → generate`；reasoning 走 `step_delta`；工具 `PreActing` 时 `noteToolCallPending()` 结束当前 think 并屏蔽工具往返 planning。
+### 时间线（ReAct vs Workflow）
+
+| 模式 | 步骤形态 | 说明 |
+|------|----------|------|
+| **ReAct** | `intent → think → tool → think-2 → generate` | reasoning 走 `step_delta`；Hook（`ProcessingStepHook`）经 `StepEventBridge` 绑定 assistantMsgId |
+| **Workflow** | `intent → plan → node-{id} → …` | DAG 由 `WorkflowExecutor` 线性执行；节点类型 rag / tool / agent / llm |
+| **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent（`AgentNodeHandler` → `chatAsSubAgent`）内部 think/tool **不上主时间线**；完成摘要一行由 `AgentNodeDetailSummarizer` 写入 `detail` → `WorkflowNodeTimeline.complete` 的 `summary.after` |
+| **Workflow 正文** | 通常 `node-llm` + answer 节点 | `ThinkStepMapper.workflowMode` 下不为 workflow 单独开 `generate` 占位 |
+
+**Timeline V2 约定**：步骤含 `lifecycle`（pending/running/done）+ `summary.{before,active,after}`；SSE 仅下发**当前阶段**一行（`ProcessingStepMerger.currentPhaseSummary`）。终态 COMPLETE/FAIL/SKIP **必须下发**（`ProcessingTimelineSession` 不因 `sameState` 吞掉）。
+
+**前端**：`OperationStack` / `OperationCard` 用 `step.label` + `resolveStepHeaderText`；`filterTimelineDisplaySteps` 隐藏 running 的 `generate`（消息区三点兜底）；**勿**再维护本地步骤话术 Map。
 
 ## 关键约定
 
 1. OpenAIChatModel 对接 Gateway `/v1/chat/completions`。
 2. Gateway 鉴权注入 `x-user-id`；BFF/Orchestrator 只读，客户端不得自填。
-3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync-nacos.ps1` → 重启（无 `application-dev.yaml`）。
+3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync_nacos.py` → 重启（无 `application-dev.yaml`）。
 4. 三模式：`IntentRouter` → `ExecutionDispatcher`；workflow 图在 `sunshine-workflows.yaml`。
 5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板（见 Nacos `agent.system-prompt`）。
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。
+8. Workflow 意图步：`summary.after` 保留路由文案（如「将按 xx 流程处理」）；`detail` 不下发，避免与 after 重复可展开。
 
 ## 中间件（ecs4c16g）
 
@@ -78,9 +113,13 @@ Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876
 ## 版本与前端
 
 - 勿升 Spring Boot 3.3+、AgentScope 2.0.0；Sa-Token **1.45.0**（需 `sa-token-jwt`）。
-- UI：Codex 灰阶；令牌 `src/styles/global.css`；`OperationStack` 用 SSE `step.label`；SSE 基址 `BFF_STREAM_BASE`（默认 `:8000`）。
+- UI：**Codex 中性灰**（`#212121` 系）；设计令牌 `src/styles/global.css`；字号阶梯保留（14/15/16）。
+- SSE 基址：`VITE_BFF_STREAM_BASE`（默认 `http://localhost:8000`），见 `sunshine-ui/src/api/config.ts`。
+- 思考区字号：`OperationCard` / `ReasoningPanel` 用 `--sun-font-base`（14px）。
 
 ## 其他
 
-- 禁止保存临时脚本；代码加适量中文注释。
-- `start.ps1` 可带 SkyWalking agent。
+- 代码加适量中文注释；**禁止**在业务代码中插入多余空行。
+- 禁止保存临时脚本；运维统一 **Python**（`scripts/*.py`）。
+- `start.py` 可带 SkyWalking agent（需先 `download_skywalking_agent.py`）。
+- 改 orchestrator 时间线 / workflow 后：编译 → 重启 `:8200` → 前端刷新；必要时 `clear_session_cache.py --force` 清 Redis 生成流。

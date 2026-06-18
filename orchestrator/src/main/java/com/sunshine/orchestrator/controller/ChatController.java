@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.controller;
 
 import com.sunshine.orchestrator.execution.ExecutionDispatcher;
-import com.sunshine.orchestrator.execution.ExecutionPlanLabels;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
@@ -416,13 +415,12 @@ public class ChatController {
                 Flux.fromIterable(intentStartTokens),
                 intentRouter.classifyPlan(ctx.userContent())
                         .flatMapMany(plan -> {
-                            String detail = ExecutionPlanLabels.intentDetail(plan);
                             Mono<Void> savePlan = Mono.fromRunnable(() ->
                                             conversationService.updateMessageExecutionPlan(
                                                     ctx.assistantMsgId(), plan))
                                     .subscribeOn(Schedulers.boundedElastic())
                                     .then();
-                            session.complete("intent", detail);
+                            session.completeIntent(plan);
                             List<StreamToken> intentDoneTokens = drainStepTokens(stepEmissions);
                             return savePlan.thenMany(Flux.concat(
                                     Flux.fromIterable(intentDoneTokens),

@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.catalog;
 
-import com.sunshine.orchestrator.agent.AgentScopeEventMapper;
 import com.sunshine.orchestrator.agent.ToolResultSummarizer;
 import com.sunshine.orchestrator.client.ToolCatalogClient;
 import com.sunshine.orchestrator.processing.StepLabels;
@@ -47,7 +46,6 @@ public class ToolCatalogService {
     void init() {
         refresh();
         StepLabels.bind(this);
-        AgentScopeEventMapper.bind(this);
     }
 
     public synchronized void refresh() {

@@ -1,6 +1,6 @@
 # sunshine-desensitize — 配置入口
 # 业务配置唯一来源：Nacos（Data ID: sunshine-desensitize.yaml）
-# 本地维护副本：docs/nacos/sunshine-desensitize.yaml → scripts/sync-nacos.ps1 同步线上
+# 本地维护副本：docs/nacos/sunshine-desensitize.yaml → scripts/sync_nacos.py 同步线上
 
 spring:
   application:

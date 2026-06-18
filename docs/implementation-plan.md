@@ -67,7 +67,7 @@ my-sunshine-agent/
 | 1.5 全链路追踪 | SkyWalking 探针 + Nacos 配置热更新 | ✅ |
 
 #### 阶段一检查门
-> 自动化脚本：[`scripts/phase1-demo.ps1`](../scripts/phase1-demo.ps1) / [`scripts/phase1-demo.sh`](../scripts/phase1-demo.sh)（2026-06-14 本地联调通过 Step 1–4）
+> 阶段一检查门（2026-06-14 本地联调通过 Step 1–4；历史 ps1/sh 验收脚本已移除，以集成测试 + 手动 curl 为准）
 
 - [x] 上传文档 → RAG 知识库问答可演示 — 入库 14 chunk + 检索命中 + BFF 知识库流
 - [x] LLM Gateway → DeepSeek 调用成功
@@ -135,12 +135,12 @@ my-sunshine-agent/
 | 2.7 RocketMQ 审计 | 审计日志异步发送 + Elasticsearch 落盘 | ✅ |
 | 2.8 联调演示 | 一键演示脚本 + 问题修复 | ✅ |
 
-> **自动化脚本**：[`scripts/phase2-demo.ps1`](../scripts/phase2-demo.ps1)（含 2.4 Agent 全链路，可用 `PHASE2_SKIP_AGENT=1` 跳过）；[`scripts/phase2-agent-demo.ps1`](../scripts/phase2-agent-demo.ps1)（单独跑 2.4）；[`scripts/phase2-auth-demo.ps1`](../scripts/phase2-auth-demo.ps1)
+> **自动化脚本**：[`scripts/phase2_agent_demo.py`](../scripts/phase2_agent_demo.py)（Phase 2.4 Agent E2E）
 
 #### 阶段二检查门
-- [x] JWT 校验：无效 Token → 401（`scripts/phase2-auth-demo.ps1` Step 5）
-- [x] Agent 调用财务工具 → 查询消息列表（`scripts/phase2-agent-demo.ps1` 全链路 + `phase2-demo.ps1` 分层 HTTP 探测）
-- [x] 脱敏：手机号/身份证号自动过滤（`scripts/phase2-demo.ps1` + desensitize-service）
+- [x] JWT 校验：无效 Token → 401（Gateway 手动 / 集成测试）
+- [x] Agent 调用财务工具 → 查询消息列表（`scripts/phase2_agent_demo.py`）
+- [x] 脱敏：手机号/身份证号自动过滤（desensitize-service + 集成测试）
 - [x] LLM 故障 → 自动切换备用模型（`ModelRouter` 降级链 + `AdapterCircuitBreaker` 单测）
 - [x] RocketMQ 审计日志完整（`sunshine-audit` topic + MySQL/ES 双写 + `/api/audit/recent`）
 
@@ -172,7 +172,7 @@ my-sunshine-agent/
 - [x] 意图 JSON 输出 `simple-llm | workflow | react` + workflowId
 - [x] knowledge-qa / finance-list / finance-smart 三张 workflow 图可配置
 - [x] orchestrator 单测全绿（`mvn test -pl orchestrator`）
-- [ ] live 验收：`sync-nacos.ps1` 后 `phase2-agent-demo.ps1`（需中间件在线）
+- [ ] live 验收：`sync_nacos.py` 后 `phase2_agent_demo.py`（需中间件在线）
 
 ---
 

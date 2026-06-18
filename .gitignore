@@ -43,3 +43,5 @@ application-local.yml
 sunshine-ui/test-results/
 sunshine-ui/playwright-report/
 agent-workspace/
+
+__pycache__/

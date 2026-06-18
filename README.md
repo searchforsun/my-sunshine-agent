@@ -51,7 +51,7 @@ my-sunshine-agent/
 ├── finance-service/ :8710      # 财务模拟（阶段二）
 ├── sunshine-ui/     :5173      # 前端 WebUI
 ├── docker/                     # Docker Compose + SkyWalking Agent
-├── scripts/                    # 启动脚本
+├── scripts/                    # Python 运维脚本（scripts/*.py）
 └── docs/                       # 设计文档
 ```
 
@@ -84,15 +84,14 @@ java -jar bff/target/sunshine-bff-*.jar &                    # :8001
 java -jar gateway/target/sunshine-gateway-*.jar &            # :8000
 
 # 或使用脚本一键启动核心链（含 Gateway，可选 SkyWalking agent）
-bash scripts/start.sh
-powershell -ExecutionPolicy Bypass -File scripts/start.ps1   # Windows
+pip install -r scripts/requirements.txt
+python scripts/start.py
 
 # SkyWalking agent（可选，live trace 需 OAP ecs4c16g:11800）
-bash scripts/download-skywalking-agent.sh
+python scripts/download_skywalking_agent.py
 
-# 阶段一检查门联调演示（服务已启动后）
-powershell -ExecutionPolicy Bypass -File scripts/phase1-demo.ps1   # Windows
-bash scripts/phase1-demo.sh                                         # Linux / Git Bash
+# 阶段二 Agent 验收（服务已启动后）
+python scripts/phase2_agent_demo.py
 ```
 
 ### 4. 启动前端

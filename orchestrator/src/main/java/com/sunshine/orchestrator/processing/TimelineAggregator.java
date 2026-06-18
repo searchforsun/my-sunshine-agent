@@ -98,6 +98,9 @@ public final class TimelineAggregator {
                 state.result = event.detail();
             }
         }
+        if (event.metadata() != null) {
+            state.metadata = event.metadata();
+        }
     }
 
     private static String concat(String existing, String chunk) {
@@ -118,6 +121,7 @@ public final class TimelineAggregator {
         private String reasoning;
         private String output;
         private String result;
+        private StepMetadata metadata;
         private long ts;
 
         private StepState(String id) {
@@ -140,7 +144,8 @@ public final class TimelineAggregator {
                     result,
                     ts,
                     lifecycle,
-                    label
+                    label,
+                    metadata
             );
         }
     }

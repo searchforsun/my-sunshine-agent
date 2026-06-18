@@ -792,7 +792,7 @@ public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
 
 ```bash
 mvn test -pl orchestrator -q
-powershell -ExecutionPolicy Bypass -File scripts/phase2-agent-demo.ps1
+python scripts/phase2_agent_demo.py
 ```
 
 - [ ] **Step 5: Commit**
@@ -928,9 +928,9 @@ git commit -m "feat(orchestrator): DynamicToolkit from react tool whitelist"
 
 - [ ] **Step 3: sync-nacos 并手动验证**
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1
-powershell -ExecutionPolicy Bypass -File scripts/phase2-agent-demo.ps1
+```bash
+python scripts/sync_nacos.py
+python scripts/phase2_agent_demo.py
 ```
 
 - [ ] **Step 4: Commit**

@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
 
 /**
@@ -19,7 +20,8 @@ public record ProcessingStep(
         String result,
         long ts,
         String status,
-        String label
+        String label,
+        StepMetadata metadata
 ) {
     public static ProcessingStep running(String id, String phase, String label) {
         long ts = System.currentTimeMillis();
@@ -37,7 +39,8 @@ public record ProcessingStep(
                 null,
                 ts,
                 "running",
-                label
+                label,
+                null
         );
     }
 
@@ -58,7 +61,8 @@ public record ProcessingStep(
                 detail,
                 ts,
                 "done",
-                label
+                label,
+                null
         );
     }
 
@@ -78,7 +82,8 @@ public record ProcessingStep(
                 detail,
                 ts,
                 "error",
-                label
+                label,
+                null
         );
     }
 }

@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.ToolResultSummarizer;
+import com.sunshine.orchestrator.routing.ExecutionPlan;
 
 import java.util.List;
 import java.util.Objects;
@@ -22,6 +24,35 @@ public final class ProcessingTimelineSession {
     private String currentThinkId;
     /** 工具执行中的并发计数（仅统计） */
     private int pendingToolCalls;
+    /** 最近一次完成的工具步骤（供 think-2+ 摘要引用） */
+    private String lastCompletedToolDisplayName;
+    /** 当前 PreActing 对应的工具步骤 id */
+    private String currentToolStepId;
+
+    public void recordToolCompleted(String displayName) {
+        if (displayName != null && !displayName.isBlank()) {
+            this.lastCompletedToolDisplayName = displayName.strip();
+        }
+    }
+
+    /** PreActing：每次调用新开工具步骤（id 含 @调用时刻） */
+    public String beginToolStep(String baseStepId, String phase) {
+        long startedAt = System.currentTimeMillis();
+        currentToolStepId = ToolStepIds.forInvocation(baseStepId, startedAt);
+        pending(currentToolStepId, phase);
+        startAt(currentToolStepId, phase, startedAt);
+        return currentToolStepId;
+    }
+
+    /** PostActing：结束当前工具步骤 */
+    public void completeToolStep(String detail) {
+        long endedAt = System.currentTimeMillis();
+        if (currentToolStepId == null) {
+            return;
+        }
+        completeAt(currentToolStepId, detail, endedAt);
+        currentToolStepId = null;
+    }
 
     public String activeStepId() {
         return activeStepId;
@@ -113,9 +144,34 @@ public final class ProcessingTimelineSession {
         completeAt(stepId, detail, System.currentTimeMillis());
     }
 
+    /** 意图步完成：主行 after 展示路由结论；detail 不下发，避免与 after 重复可展开 */
+    public void completeIntent(ExecutionPlan plan) {
+        String after = IntentLabels.intentAfterForPlan(userQuery, plan);
+        applyAt("intent", null, EventKind.COMPLETE, after, null, null, System.currentTimeMillis());
+        if ("intent".equals(activeStepId)) {
+            activeStepId = null;
+        }
+    }
+
     public void completeAt(String stepId, String detail, long endedAt) {
-        String after = resolveAfter(stepId, detail);
-        applyAt(stepId, null, EventKind.COMPLETE, after, detail, endedAt);
+        completeAt(stepId, detail, detail, endedAt);
+    }
+
+    /** @param summaryLine 主行 after 摘要；expandDetail 为展开区正文（可与主行不同） */
+    public void completeAt(String stepId, String summaryLine, String expandDetail, long endedAt) {
+        StepMetadata metadata = null;
+        String ragInput = summaryLine;
+        if (ToolStepIds.isRagStep(stepId) && summaryLine != null) {
+            String rawDetail = summaryLine;
+            if (containsRawRagBody(summaryLine)) {
+                ragInput = ToolResultSummarizer.summarize("search_knowledge", summaryLine);
+            }
+            metadata = StepMetadata.fromRagToolOutput(rawDetail, ragInput);
+        }
+        String after = resolveAfter(stepId, summaryLine, metadata);
+        // RAG 原文不下发 detail，结构化信息走 metadata
+        String storedDetail = ToolStepIds.isRagStep(stepId) ? null : expandDetail;
+        applyAt(stepId, null, EventKind.COMPLETE, after, storedDetail, metadata, endedAt);
         if (stepId.equals(activeStepId)) {
             activeStepId = null;
         }
@@ -123,19 +179,26 @@ public final class ProcessingTimelineSession {
 
     private String resolveBefore(String stepId) {
         return userQuery != null
-                ? StepSummarizer.before(stepId, userQuery)
+                ? StepSummarizer.before(stepId, userQuery, lastCompletedToolDisplayName)
                 : StepSummarizer.beforeFallback(stepId);
     }
 
     private String resolveActive(String stepId) {
         return userQuery != null
-                ? StepSummarizer.active(stepId, userQuery)
+                ? StepSummarizer.active(stepId, userQuery, lastCompletedToolDisplayName)
                 : StepSummarizer.activeFallback(stepId);
     }
 
     private String resolveAfter(String stepId, String detail) {
+        return resolveAfter(stepId, detail, null);
+    }
+
+    private String resolveAfter(String stepId, String detail, StepMetadata metadata) {
+        if (userQuery != null && ToolStepIds.isRagStep(stepId) && metadata != null && !metadata.isEmpty()) {
+            return StepSummarizer.afterRag(userQuery, detail, metadata);
+        }
         return userQuery != null
-                ? StepSummarizer.after(stepId, userQuery, detail)
+                ? StepSummarizer.after(stepId, userQuery, detail, lastCompletedToolDisplayName)
                 : StepSummarizer.afterFallback(stepId, detail);
     }
 
@@ -249,18 +312,29 @@ public final class ProcessingTimelineSession {
     }
 
     private void apply(String stepId, String phase, EventKind kind, String summary, String detail) {
-        applyAt(stepId, phase, kind, summary, detail, System.currentTimeMillis());
+        applyAt(stepId, phase, kind, summary, detail, null, System.currentTimeMillis());
     }
 
     private void applyAt(String stepId, String phase, EventKind kind, String summary, String detail, long ts) {
+        applyAt(stepId, phase, kind, summary, detail, null, ts);
+    }
+
+    private void applyAt(
+            String stepId, String phase, EventKind kind, String summary, String detail,
+            StepMetadata metadata, long ts) {
         ProcessingStep prev = aggregator.get(stepId).orElse(null);
         String effectivePhase = phase != null ? phase : prev != null ? prev.phase() : stepId;
-        aggregator.apply(new ProcessingEvent(stepId, effectivePhase, kind, summary, ts, detail));
+        aggregator.apply(new ProcessingEvent(stepId, effectivePhase, kind, summary, ts, detail, metadata));
         ProcessingStep next = aggregator.get(stepId).orElseThrow();
-        if (!sameState(prev, next)) {
+        // 终态事件必须下发 SSE，避免 sameState 误判导致 node-* 永远停在 running
+        if (!sameState(prev, next) || isTerminalEvent(kind)) {
             lastEmitted = next;
             onStepChanged.accept(next);
         }
+    }
+
+    private static boolean isTerminalEvent(EventKind kind) {
+        return kind == EventKind.COMPLETE || kind == EventKind.FAIL || kind == EventKind.SKIP;
     }
 
     private static boolean sameState(ProcessingStep prev, ProcessingStep next) {
@@ -279,7 +353,8 @@ public final class ProcessingTimelineSession {
                 && Objects.equals(prev.output(), next.output())
                 && Objects.equals(prev.result(), next.result())
                 && Objects.equals(prev.status(), next.status())
-                && Objects.equals(prev.label(), next.label());
+                && Objects.equals(prev.label(), next.label())
+                && Objects.equals(prev.metadata(), next.metadata());
     }
 
     private static boolean summaryEquals(StepSummary a, StepSummary b) {
@@ -292,5 +367,12 @@ public final class ProcessingTimelineSession {
         return Objects.equals(a.before(), b.before())
                 && Objects.equals(a.active(), b.active())
                 && Objects.equals(a.after(), b.after());
+    }
+
+    /** Hook 已摘要过的 RAG 一行结果不再二次 summarize（避免「命中 3 条」被误判为 0 条） */
+    private static boolean containsRawRagBody(String detail) {
+        return detail.contains("【")
+                || detail.contains("知识库检索结果（共")
+                || detail.contains("片段");
     }
 }

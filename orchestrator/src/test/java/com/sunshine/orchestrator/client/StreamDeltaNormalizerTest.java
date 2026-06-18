@@ -93,6 +93,38 @@ class StreamDeltaNormalizerTest {
     }
 
     @Test
+    @DisplayName("增量流后整段重述：锚点对齐只保留新增尾部")
+    void stepDeltaReasoningRestatement_usesSharedAnchor() {
+        String incremental = "调用，所以我需要按顺序逐个。\n\n先从第一步开始：统计 pending 财务。";
+        String restatement = "用户要求我依次调用以下工具：\n\n1. 先统计 pending 财务（summarize_finance_by_status）\n"
+                + "2. 再查 1001（get_finance_message_detail）\n";
+
+        List<StreamToken> out = collect(
+                StreamToken.stepDelta("think-2", "reasoning", incremental),
+                StreamToken.stepDelta("think-2", "reasoning", restatement)
+        );
+
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0).text()).isEqualTo(incremental);
+        assertThat(out.get(1).text()).isEqualTo("（summarize_finance_by_status）\n2. 再查 1001（get_finance_message_detail）\n");
+    }
+
+    @Test
+    @DisplayName("累积帧已包含 prev 全文时只取后缀")
+    void stepDeltaReasoningContainsPrev_emitsSuffixOnly() {
+        String prev = "第一步完成：pending 财务共 3 笔。";
+        String incoming = prev + "接下来第二步：查询单据 1001 详情。";
+
+        List<StreamToken> out = collect(
+                StreamToken.stepDelta("think-3", "reasoning", prev),
+                StreamToken.stepDelta("think-3", "reasoning", incoming)
+        );
+
+        assertThat(out).extracting(StreamToken::text)
+                .containsExactly(prev, "接下来第二步：查询单据 1001 详情。");
+    }
+
+    @Test
     @DisplayName("累积式 reasoning 整段复读不追加")
     void stepDeltaReasoningFullRepeat_dropsDuplicate() {
         String round = "用户要求依次调用三个工具。";

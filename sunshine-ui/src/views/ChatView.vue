@@ -37,7 +37,6 @@ import OperationStack from '../components/operation/OperationStack.vue'
 import type { ChatMessage } from '../api/chat'
 import {
   normalizeTimelineSteps,
-  derivePlaceholderSteps,
   hasActiveStep,
   type ProcessingStep,
 } from '../api/processingSteps'
@@ -120,15 +119,8 @@ function toggleReasoning(msg: ChatMessage, idx: number): void {
 }
 
 function resolveTimelineSteps(msg: ChatMessage, idx: number): ProcessingStep[] {
-  let steps: ProcessingStep[]
-  if (msg.steps?.length) {
-    steps = msg.steps
-  } else if (loading.value && idx === messages.value.length - 1) {
-    steps = derivePlaceholderSteps(true)
-  } else {
-    return []
-  }
-  return normalizeTimelineSteps(steps, msg.reasoning)
+  if (!msg.steps?.length) return []
+  return normalizeTimelineSteps(msg.steps, msg.reasoning)
 }
 
 function showTimeline(msg: ChatMessage, idx: number): boolean {
@@ -156,14 +148,15 @@ function migrateReasoningKeys(): void {
   })
 }
 
-/** 首 token 尚未到达时显示等待点（已有正文时不遮挡已恢复内容） */
+/** 首 token 尚未到达时显示等待点（已有正文时不遮挡） */
 const showStreamWaiting = computed(() => {
   if (!loading.value) return false
   const last = messages.value[messages.value.length - 1]
   if (last?.role !== 'assistant') return true
   if (last.content?.trim()) return false
   if (last.reasoning?.trim()) return false
-  if (hasActiveStep(last.steps)) return false
+  const idx = messages.value.length - 1
+  if (hasActiveStep(resolveTimelineSteps(last, idx))) return false
   return true
 })
 
@@ -808,7 +801,7 @@ watch(() => loading.value, async (val) => {
 }
 
 .header-title {
-  font-size: 15px;
+  font-size: var(--sun-font-lg);
   font-weight: 600;
   color: var(--sun-text);
   margin: 0;
@@ -825,7 +818,7 @@ watch(() => loading.value, async (val) => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--sun-font-sm);
   color: var(--sun-text-muted);
 }
 
@@ -864,7 +857,7 @@ watch(() => loading.value, async (val) => {
 }
 
 .empty-title {
-  font-size: 24px;
+  font-size: var(--sun-font-2xl);
   font-weight: 600;
   color: var(--sun-text);
   margin: 0 0 8px;
@@ -872,10 +865,10 @@ watch(() => loading.value, async (val) => {
 }
 
 .empty-desc {
-  font-size: 14px;
+  font-size: var(--sun-font-base);
   color: var(--sun-text-muted);
   margin: 0 0 28px;
-  line-height: 1.5;
+  line-height: var(--sun-line-relaxed);
 }
 
 .hint-chips {
@@ -892,7 +885,7 @@ watch(() => loading.value, async (val) => {
   border: 1px solid var(--sun-border);
   border-radius: 20px;
   color: var(--sun-text-secondary);
-  font-size: 13px;
+  font-size: var(--sun-font-base);
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s, color 0.2s;
   font-family: inherit;
@@ -923,8 +916,8 @@ watch(() => loading.value, async (val) => {
   background: var(--sun-surface);
   border: none;
   border-radius: 20px;
-  font-size: 14.5px;
-  line-height: 1.65;
+  font-size: var(--sun-font-md);
+  line-height: var(--sun-line-relaxed);
   color: var(--sun-text);
   white-space: pre-wrap;
   word-break: break-word;
@@ -957,12 +950,12 @@ watch(() => loading.value, async (val) => {
 }
 
 .resume-btn {
-  font-size: 13px;
+  font-size: var(--sun-font-base);
   padding: 4px 12px;
   border-radius: 8px;
-  border: 1px solid var(--sun-border, #334155);
+  border: 1px solid var(--sun-border);
   background: transparent;
-  color: var(--sun-text-muted, #94a3b8);
+  color: var(--sun-text-muted);
   cursor: pointer;
   font-family: inherit;
   transition: background 0.15s, color 0.15s;
@@ -999,23 +992,6 @@ watch(() => loading.value, async (val) => {
 .msg-copy-btn svg {
   flex-shrink: 0;
 }
-
-.typing-dots {
-  display: inline-flex;
-  gap: 3px;
-  align-items: center;
-}
-
-.typing-dots .dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--sun-text-muted);
-  animation: dot-bounce 1.3s ease-in-out infinite;
-}
-
-.typing-dots .dot:nth-child(2) { animation-delay: 0.15s; }
-.typing-dots .dot:nth-child(3) { animation-delay: 0.3s; }
 
 /* ── 悬浮输入区 ── */
 .chat-composer {
@@ -1063,7 +1039,7 @@ watch(() => loading.value, async (val) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 14px;
+  font-size: var(--sun-font-base);
   color: var(--sun-text-muted);
   user-select: none;
 }
@@ -1080,6 +1056,7 @@ watch(() => loading.value, async (val) => {
 .composer-input {
   flex: 1;
   min-width: 0;
+  --n-font-size: var(--sun-font-md) !important;
   --n-border: none !important;
   --n-border-hover: none !important;
   --n-border-focus: none !important;
@@ -1136,14 +1113,14 @@ watch(() => loading.value, async (val) => {
 .composer-hint {
   margin: 8px 0 0;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--sun-font-xs);
   color: var(--sun-text-muted);
 }
 
 /* Markdown */
 .msg-md {
-  font-size: 15px;
-  line-height: 1.75;
+  font-size: var(--sun-font-md);
+  line-height: var(--sun-line-loose);
   color: var(--sun-text);
   word-break: break-word;
 }
@@ -1154,9 +1131,9 @@ watch(() => loading.value, async (val) => {
   color: var(--sun-text);
 }
 
-.msg-md :deep(h3) { font-size: 15px; }
-.msg-md :deep(h2) { font-size: 17px; }
-.msg-md :deep(h1) { font-size: 19px; }
+.msg-md :deep(h3) { font-size: var(--sun-font-md); }
+.msg-md :deep(h2) { font-size: var(--sun-font-lg); }
+.msg-md :deep(h1) { font-size: var(--sun-font-xl); }
 .msg-md :deep(p) { margin: 6px 0; }
 .msg-md :deep(strong) { color: var(--sun-text); font-weight: 600; }
 .msg-md :deep(a) { color: var(--sun-blue); }
@@ -1175,7 +1152,7 @@ watch(() => loading.value, async (val) => {
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: var(--sun-font-sm);
 }
 .msg-md :deep(pre:not(.smd-mermaid-source)) {
   background: var(--sun-deep);
@@ -1196,8 +1173,8 @@ watch(() => loading.value, async (val) => {
 .msg-md :deep(pre code.hljs) {
   background: none;
   padding: 0;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: var(--sun-font-sm);
+  line-height: var(--sun-line);
 }
 .msg-md :deep(pre code:not(.hljs)) {
   background: none;

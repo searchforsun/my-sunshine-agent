@@ -1,6 +1,6 @@
 # sunshine-finance — 配置入口
 # 业务配置唯一来源：Nacos（Data ID: sunshine-finance.yaml）
-# 本地维护副本：docs/nacos/sunshine-finance.yaml → scripts/sync-nacos.ps1 同步线上
+# 本地维护副本：docs/nacos/sunshine-finance.yaml → scripts/sync_nacos.py 同步线上
 
 spring:
   application:

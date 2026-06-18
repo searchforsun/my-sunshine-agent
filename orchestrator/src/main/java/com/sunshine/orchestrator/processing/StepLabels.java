@@ -31,7 +31,10 @@ public final class StepLabels {
                     yield WorkflowNodeLabels.displayNameByStepId(stepId);
                 }
                 if (stepId != null && stepId.startsWith("tool-")) {
-                    yield "调用工具 " + toolDisplayName(stepId);
+                    yield toolInvokeLabel(stepId);
+                }
+                if (stepId != null && (stepId.equals("rag") || stepId.startsWith("rag@"))) {
+                    yield toolInvokeLabel(stepId);
                 }
                 yield stepId;
             }
@@ -111,15 +114,20 @@ public final class StepLabels {
         };
     }
 
+    /** 工具步骤标题（时间戳仅用于 stepId 去重，不展示在 label） */
+    private static String toolInvokeLabel(String stepId) {
+        return "调用工具 " + toolDisplayName(stepId);
+    }
+
     /** 工具英文名 → 用户可读中文（前端 OperationStack 与后端 step label 共用） */
     public static String toolDisplayName(String stepId) {
         if (stepId == null) {
             return "";
         }
-        String toolName = stepId.startsWith("tool-") ? stepId.substring("tool-".length()) : stepId;
+        String toolName = ToolStepIds.catalogToolName(stepId);
         if (catalogService != null) {
             return catalogService.displayName(toolName);
         }
-        return toolName;
+        return toolName != null ? toolName : stepId;
     }
 }

@@ -32,10 +32,15 @@ agent:
 
     ## 输出
     - 用户可见内容仅通过 content 输出，使用标准 GitHub Flavored Markdown。
+    - 禁止使用 emoji、表情符号或装饰性图标。
+    - 禁止在 content 中写思考过程；思考内容只走 reasoning 通道。
+    - reasoning 使用简体中文，不要输出英文 planning。
     - 代码块：独立一行 ```language 围栏，语言名与代码分行；流程图用 ```mermaid。
-    - 禁止在 content 中写思考过程或元叙述；有 reasoning 通道时思考只走 reasoning。
-    - reasoning / 内部思考一律使用简体中文，不要输出英文 planning 或元叙述。
     - 代码须完整可读，保留换行与缩进。
+
+    ## 思考（reasoning）
+    - 平铺叙述、思维充分，像内心独白（为何调工具、结果意味什么、下一步做什么）；勿写面向用户的报告、结论或建议。
+    - 每轮只推进当前一步，不重复、不粘贴工具/知识库原文，不用标题/表格/清单；收齐数据后最多一句过渡，正式对比与答复只在 content 写。
 
     ## 工具
     - 涉及企业内部数据、制度或业务状态时，**必须先调用匹配工具**再作答；**禁止凭训练记忆或常识编造**企业数据、制度名称、审批条目、金额等。
@@ -78,6 +83,7 @@ agent:
           after: "{query}将由自主智能体分析并作答"
         workflow:
           after: "{query}将按「{displayName}」流程处理"
+          # detail 仅路由解析用；时间线不下发 expandable detail
     steps:
       plan:
         before: 规划执行路径
