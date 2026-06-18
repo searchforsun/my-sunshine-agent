@@ -2,12 +2,13 @@ package com.sunshine.orchestrator.client;
 
 import reactor.core.publisher.Flux;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 将 LLM 累积式 delta（每帧携带已生成全文）转为真正增量 token。
- * 兼容增量式 delta（每帧仅新字符）——两种协议均可正确处理。
+ * 每个 stepId 独立维护基线。
  */
 public final class StreamDeltaNormalizer {
 
@@ -17,7 +18,7 @@ public final class StreamDeltaNormalizer {
     public static Flux<StreamToken> normalizeTokens(Flux<StreamToken> source) {
         AtomicReference<String> lastContent = new AtomicReference<>("");
         AtomicReference<String> lastReasoning = new AtomicReference<>("");
-        ConcurrentHashMap<String, AtomicReference<String>> lastStepReasoning = new ConcurrentHashMap<>();
+        Map<String, AtomicReference<String>> lastByStepReasoning = new ConcurrentHashMap<>();
 
         return source.mapNotNull(token -> {
             if (token.isStep()) {
@@ -27,9 +28,10 @@ public final class StreamDeltaNormalizer {
                 if (!"reasoning".equals(token.channel())) {
                     return token;
                 }
-                AtomicReference<String> last = lastStepReasoning.computeIfAbsent(
-                        token.stepId(), ignored -> new AtomicReference<>(""));
-                String incremental = diff(last, token.text());
+                String stepId = token.stepId() != null ? token.stepId() : "";
+                AtomicReference<String> lastStep = lastByStepReasoning
+                        .computeIfAbsent(stepId, k -> new AtomicReference<>(""));
+                String incremental = diff(lastStep, token.text());
                 return incremental.isEmpty()
                         ? null
                         : StreamToken.stepDelta(token.stepId(), token.channel(), incremental);
@@ -70,6 +72,14 @@ public final class StreamDeltaNormalizer {
                 return "";
             }
             String delta = incoming.substring(prev.length());
+            if (delta.equals(prev) || (prev.length() > 40 && prev.contains(delta) && delta.length() > prev.length() / 2)) {
+                lastFull.set(incoming);
+                return "";
+            }
+            if (prev.endsWith(delta)) {
+                lastFull.set(incoming);
+                return "";
+            }
             lastFull.set(incoming);
             return delta;
         }
@@ -87,7 +97,6 @@ public final class StreamDeltaNormalizer {
         return incoming;
     }
 
-    /** prev 后缀与 incoming 前缀的最长重叠，用于增量帧非前缀续写时的拼接 */
     static int longestSuffixPrefixOverlap(String prev, String incoming) {
         int max = Math.min(prev.length(), incoming.length());
         for (int len = max; len > 0; len--) {

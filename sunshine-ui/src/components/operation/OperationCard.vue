@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
-import { formatDuration, resolveStepDurationMs, formatStepLabel } from '../../api/processingSteps'
+import {
+  formatDuration,
+  resolveStepDurationMs,
+  formatStepLabel,
+  stepLifecycle,
+  resolveStepHeaderText,
+  hasExpandableContent,
+} from '../../api/processingSteps'
 
 const props = defineProps<{
   step: ProcessingStep
@@ -13,46 +20,25 @@ const emit = defineEmits<{
   toggle: []
 }>()
 
-const lifecycle = computed(() => props.step.lifecycle ?? props.step.status ?? 'pending')
+const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
 const isDone = computed(() => lifecycle.value === 'done')
 const label = computed(() => formatStepLabel(props.step))
 
-/** 主行摘要：running 用 active，done 用 after */
-const headerText = computed(() => {
-  if (isRunning.value && props.step.summary?.active) {
-    return props.step.summary.active
-  }
-  if (isDone.value && props.step.summary?.after) {
-    return props.step.summary.after
-  }
-  if (props.step.detail?.trim()) return props.step.detail
-  if (props.step.result?.trim()) return props.step.result
-  if (props.step.summary?.before) return props.step.summary.before
+/** 主行摘要：仅当前阶段一行 */
+const headerText = computed(() => resolveStepHeaderText(props.step))
+
+/** 无实际内容时不展示下拉 */
+const canExpand = computed(() => hasExpandableContent(props.step))
+
+/** 展开区 detail/result：跳过与主行重复的文本 */
+const expandableDetail = computed(() => {
+  const header = headerText.value
+  const detail = props.step.detail?.trim()
+  if (detail && detail !== header) return detail
+  const result = props.step.result?.trim()
+  if (result && result !== header) return result
   return ''
-})
-
-/** 详情区：展示 before / 中间态 / 流式 reasoning·output，不省略 */
-const bodyLines = computed(() => {
-  const lines: string[] = []
-  const before = props.step.summary?.before?.trim()
-  const active = props.step.summary?.active?.trim()
-  const after = props.step.summary?.after?.trim()
-
-  if (before) lines.push(before)
-  if (active && active !== headerText.value && (!after || active !== after)) {
-    lines.push(active)
-  }
-  if (after && after !== headerText.value && !isRunning.value) {
-    lines.push(after)
-  }
-  return lines
-})
-
-const hasCollapsibleBody = computed(() => {
-  return bodyLines.value.length > 0
-    || !!props.step.reasoning?.trim()
-    || !!props.step.output?.trim()
 })
 
 const liveElapsedMs = ref<number | null>(null)
@@ -104,20 +90,20 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
     :class="{
       'is-expanded': expanded,
       'is-running': isRunning && live,
-      'is-clickable': hasCollapsibleBody,
+      'is-clickable': canExpand,
     }"
   >
     <div
       class="op-line-row"
-      :role="hasCollapsibleBody ? 'button' : undefined"
-      :tabindex="hasCollapsibleBody ? 0 : -1"
-      @click="hasCollapsibleBody && emit('toggle')"
-      @keydown.enter.prevent="hasCollapsibleBody && emit('toggle')"
-      @keydown.space.prevent="hasCollapsibleBody && emit('toggle')"
+      :role="canExpand ? 'button' : undefined"
+      :tabindex="canExpand ? 0 : -1"
+      @click="canExpand && emit('toggle')"
+      @keydown.enter.prevent="canExpand && emit('toggle')"
+      @keydown.space.prevent="canExpand && emit('toggle')"
     >
       <span class="op-gutter" aria-hidden="true">
         <svg
-          v-if="hasCollapsibleBody"
+          v-if="canExpand"
           class="op-chevron"
           width="9"
           height="9"
@@ -142,13 +128,9 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       <span v-if="durationText" class="op-dur">{{ durationText }}</span>
     </div>
 
-    <div v-if="expanded && hasCollapsibleBody" class="op-detail">
-      <div
-        v-for="(line, i) in bodyLines"
-        :key="`${step.id}-body-${i}`"
-        class="op-detail-line"
-      >
-        {{ line }}
+    <div v-if="expanded && canExpand" class="op-detail">
+      <div v-if="expandableDetail" class="op-detail-line">
+        {{ expandableDetail }}
       </div>
       <div v-if="step.reasoning?.trim()" class="op-detail-thinking">
         <pre class="op-detail-pre">{{ step.reasoning }}</pre>
@@ -306,11 +288,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.op-detail-tag {
-  opacity: 0.75;
-  font-weight: 450;
 }
 
 .op-detail-pre {

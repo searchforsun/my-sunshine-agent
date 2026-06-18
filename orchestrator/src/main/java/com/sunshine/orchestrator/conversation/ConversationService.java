@@ -116,6 +116,19 @@ public class ConversationService {
         return updateMessage(messageId, content, null, status);
     }
 
+    /**
+     * 流式 partial 落库 — 若消息已终态则跳过，避免异步 flush 覆盖 completed 状态。
+     */
+    @Transactional
+    public ChatMessageEntity updateMessageContentIfStreaming(String messageId, String content) {
+        ChatMessageEntity msg = messageRepo.findById(messageId)
+                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+        if (!MessageStatus.STREAMING.equals(msg.getStatus())) {
+            return msg;
+        }
+        return updateMessageContent(messageId, content, MessageStatus.STREAMING);
+    }
+
     @Transactional
     public ChatMessageEntity updateMessage(String messageId, String content, String reasoning, String status) {
         return updateMessage(messageId, content, reasoning, status, null);

@@ -33,9 +33,10 @@ public class LlmIoTracer {
             return;
         }
         int messageCount = request.getMessages() != null ? request.getMessages().size() : 0;
+        int toolCount = request.getTools() != null ? request.getTools().size() : 0;
         String lastUser = lastUserPreview(request);
-        log.info("[LLM-IO] request model={} stream={} messages={} lastUser={}",
-                request.getModel(), request.getStream(), messageCount, lastUser);
+        log.info("[LLM-IO] request model={} stream={} messages={} tools={} lastUser={}",
+                request.getModel(), request.getStream(), messageCount, toolCount, lastUser);
     }
 
     public Flux<ServerSentEvent<String>> traceStream(String model, Flux<ServerSentEvent<String>> upstream) {
@@ -59,11 +60,18 @@ public class LlmIoTracer {
         for (int i = request.getMessages().size() - 1; i >= 0; i--) {
             ChatCompletionRequest.Message msg = request.getMessages().get(i);
             if (msg != null && "user".equals(msg.getRole())) {
-                return preview(msg.getContent());
+                return preview(contentAsString(msg.getContent()));
             }
         }
         ChatCompletionRequest.Message last = request.getMessages().get(request.getMessages().size() - 1);
-        return preview(last != null ? last.getContent() : null);
+        return preview(last != null ? contentAsString(last.getContent()) : null);
+    }
+
+    private static String contentAsString(Object content) {
+        if (content == null) {
+            return null;
+        }
+        return content instanceof String s ? s : String.valueOf(content);
     }
 
     static String preview(String text) {

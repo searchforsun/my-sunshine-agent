@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.orchestrator.memory.MemoryLifecycleService;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -93,7 +94,7 @@ class GenerationJobTest {
 
         GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler);
+                streamService, properties, flushScheduler, null);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);
@@ -132,6 +133,31 @@ class GenerationJobTest {
     }
 
     @Test
+    @DisplayName("完成后刷新 STM 记忆")
+    void start_refreshesMemoryAfterComplete() throws Exception {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+        MemoryLifecycleService memoryLifecycleService = mock(MemoryLifecycleService.class);
+
+        GenerationJob job = new GenerationJob(
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
+                streamService, properties, flushScheduler, memoryLifecycleService);
+
+        CountDownLatch done = new CountDownLatch(1);
+        job.start(
+                Flux.just(StreamToken.content("answer")),
+                new StringBuilder(),
+                content -> { },
+                done::countDown,
+                error -> { }
+        );
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        verify(memoryLifecycleService).onAssistantCompleted(
+                MESSAGE_ID, USER_ID, TENANT_ID, MessageStatus.COMPLETED);
+    }
+
+    @Test
     @DisplayName("reasoning token 写入 Redis 并在 commitFinal 时落库")
     void start_persistsReasoningOnComplete() throws Exception {
         String generationId = streamService.createGeneration(
@@ -139,7 +165,7 @@ class GenerationJobTest {
 
         GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler);
+                streamService, properties, flushScheduler, null);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);
@@ -171,7 +197,7 @@ class GenerationJobTest {
 
         GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler);
+                streamService, properties, flushScheduler, null);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);

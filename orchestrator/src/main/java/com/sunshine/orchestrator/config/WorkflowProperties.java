@@ -27,6 +27,10 @@ public class WorkflowProperties {
         private String id;
         private String mode;
         private String desc;
+        /** 用户可见工作流名，缺省用 desc */
+        private String displayName;
+        /** 可选：覆盖 agent.timeline.intent.modes.workflow.after，占位符同 ModeIntent */
+        private String intentAfter;
         private List<String> nodes = new ArrayList<>();
         private List<String> examples = new ArrayList<>();
     }
@@ -41,6 +45,8 @@ public class WorkflowProperties {
     public static class NodeProps {
         private String id;
         private String type;
+        /** 节点中文展示名，缺省按 type / 绑定工具推导 */
+        private String displayName;
         private Map<String, Object> params = new LinkedHashMap<>();
     }
 }

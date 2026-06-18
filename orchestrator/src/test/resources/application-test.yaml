@@ -31,7 +31,6 @@ spring:
 
 agent:
   system-prompt: test assistant
-  scope-prompt: test scope
   intent:
     model: deepseek-v4-flash
     classifier-prompt: |

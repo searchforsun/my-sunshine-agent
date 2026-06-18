@@ -1,74 +1,84 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import io.agentscope.core.hook.Hook;
 import io.agentscope.core.hook.HookEvent;
 import io.agentscope.core.hook.PostActingEvent;
 import io.agentscope.core.hook.PreActingEvent;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 /**
- * AgentScope Hook — 工具调用步骤（跨线程，经 StepEventBridge 写入 TimelineSession）
+ * AgentScope Hook — 推理/工具生命周期步骤（经 StepEventBridge 异步写入 TimelineSession）
+ * <ul>
+ *   <li>PreReasoning / PostReasoning：think 开闭（轮次边界）</li>
+ *   <li>PreActing / PostActing：工具步骤</li>
+ * </ul>
  */
 @Component
+@RequiredArgsConstructor
 public class ProcessingStepHook implements Hook {
+
+    private final ToolCatalogService toolCatalogService;
 
     @Override
     public <T extends HookEvent> Mono<T> onEvent(T event) {
+        if (event instanceof io.agentscope.core.hook.PreReasoningEvent) {
+            StepEventBridge.emitSingleton(ProcessingTimelineSession::beginReasoningRound);
+            return Mono.just(event);
+        }
+
+        if (event instanceof io.agentscope.core.hook.PostReasoningEvent) {
+            StepEventBridge.emitSingleton(ProcessingTimelineSession::endReasoningRound);
+            return Mono.just(event);
+        }
+
         if (event instanceof PreActingEvent pre) {
             String toolName = pre.getToolUse().getName();
-            if ("search_knowledge".equals(toolName)) {
-                StepEventBridge.emitSingleton(session -> {
-                    if (!session.hasStep("rag")) {
-                        session.pending("rag", "rag");
-                        session.start("rag", "rag");
-                    }
-                });
-            } else {
-                String stepId = "tool-" + toolName;
-                StepEventBridge.emitSingleton(session -> {
-                    if (!session.hasStep(stepId)) {
-                        session.pending(stepId, "tool");
-                        session.start(stepId, "tool");
-                    }
-                });
-            }
+            String stepId = toolCatalogService.timelineStepId(toolName);
+            String phase = toolCatalogService.timelinePhase(toolName);
+            StepEventBridge.emitSingleton(session -> {
+                session.noteToolCallPending();
+                if (!session.hasStep(stepId)) {
+                    session.pending(stepId, phase);
+                    session.start(stepId, phase);
+                }
+            });
             return Mono.just(event);
         }
 
         if (event instanceof PostActingEvent post) {
             String toolName = post.getToolUse().getName();
-            String detail = summarizeToolResult(post.getToolResult());
-            if ("search_knowledge".equals(toolName)) {
-                StepEventBridge.emitSingleton(session -> {
-                    if (!session.hasStep("rag")) {
-                        session.pending("rag", "rag");
-                        session.start("rag", "rag");
-                    }
-                    session.complete("rag", detail != null ? detail : "命中 0 条");
-                });
-            } else {
-                String stepId = "tool-" + toolName;
-                StepEventBridge.emitSingleton(session ->
-                        session.complete(stepId, detail));
-            }
+            String stepId = toolCatalogService.timelineStepId(toolName);
+            String phase = toolCatalogService.timelinePhase(toolName);
+            String detail = summarizeToolResult(toolName, post.getToolResult());
+            StepEventBridge.emitSingleton(session -> {
+                if (!session.hasStep(stepId)) {
+                    session.pending(stepId, phase);
+                    session.start(stepId, phase);
+                }
+                session.complete(stepId, detail != null ? detail : "命中 0 条");
+                session.noteToolCallDone();
+            });
             return Mono.just(event);
         }
 
         return Mono.just(event);
     }
 
-    private static String summarizeToolResult(ToolResultBlock result) {
+    private String summarizeToolResult(String toolName, ToolResultBlock result) {
         if (result == null || result.getOutput() == null) {
-            return "命中 0 条";
+            return toolCatalogService.summarizeOutput(toolName, "");
         }
         String text = result.getOutput().stream()
                 .filter(block -> block instanceof TextBlock)
                 .map(block -> ((TextBlock) block).getText())
                 .findFirst()
                 .orElse("");
-        return RagHitSummarizer.summarize(text);
+        return toolCatalogService.summarizeOutput(toolName, text);
     }
 }

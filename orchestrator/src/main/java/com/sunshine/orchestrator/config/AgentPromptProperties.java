@@ -19,10 +19,10 @@ public class AgentPromptProperties {
     /** 主系统提示词（直连 LLM + ReActAgent） */
     private String systemPrompt = "";
 
-    /** 多轮对话时追加的作答范围提示（history ≥ 2 且非空时注入） */
-    private String scopePrompt = "";
-
     private Intent intent = new Intent();
+
+    /** 时间线步骤文案（意图等），SSOT 见 Nacos agent.timeline */
+    private Timeline timeline = new Timeline();
 
     public boolean hasSystemPrompt() {
         return StringUtils.hasText(systemPrompt);
@@ -30,10 +30,6 @@ public class AgentPromptProperties {
 
     public String systemPromptOrEmpty() {
         return systemPrompt != null ? systemPrompt.strip() : "";
-    }
-
-    public String scopePromptOrEmpty() {
-        return scopePrompt != null ? scopePrompt.strip() : "";
     }
 
     @Getter
@@ -45,6 +41,90 @@ public class AgentPromptProperties {
 
         /** 意图分类 system 提示词 */
         private String classifierPrompt = "";
+    }
+
+    @Getter
+    @Setter
+    public static class Timeline {
+
+        private IntentTimeline intent = new IntentTimeline();
+        /** 通用步骤 before/active 模板（plan / generate / rag 等），占位符 {query} */
+        private java.util.LinkedHashMap<String, StepTimeline> steps = defaultSteps();
+
+        private static java.util.LinkedHashMap<String, StepTimeline> defaultSteps() {
+            var map = new java.util.LinkedHashMap<String, StepTimeline>();
+            var plan = new StepTimeline();
+            plan.setBefore("规划执行路径");
+            plan.setActive("正在编排业务节点顺序");
+            map.put("plan", plan);
+            var generate = new StepTimeline();
+            generate.setBefore("为{query}撰写回复");
+            generate.setActive("正在撰写并输出针对{query}的回复");
+            map.put("generate", generate);
+            var rag = new StepTimeline();
+            rag.setBefore("在企业知识库中查找与{query}相关的资料");
+            rag.setActive("正在匹配与{query}最相关的文档片段");
+            map.put("rag", rag);
+            return map;
+        }
+    }
+
+    @Getter
+    @Setter
+    public static class StepTimeline {
+
+        private String before;
+        private String active;
+    }
+
+    public Timeline timelineOrDefault() {
+        return timeline != null ? timeline : new Timeline();
+    }
+
+    /** 意图步骤 detail / before / active / after 模板，占位符：{query} {detail} {displayName} {workflowId} */
+    @Getter
+    @Setter
+    public static class IntentTimeline {
+
+        private String before = "阅读{query}";
+        private String active = "正在分析{query}，匹配最佳处理方式";
+        private String defaultAfter = "已完成对{query}的意图判断";
+        private String unmatchedAfter = "{query}将按「{detail}」处理";
+        private java.util.LinkedHashMap<String, ModeIntent> modes = defaultModes();
+
+        private static java.util.LinkedHashMap<String, ModeIntent> defaultModes() {
+            var map = new java.util.LinkedHashMap<String, ModeIntent>();
+            var simple = new ModeIntent();
+            simple.setDetail("简单对话");
+            simple.setAfter("{query}属于日常对话，将直接生成回复");
+            map.put("simple-llm", simple);
+            var react = new ModeIntent();
+            react.setDetail("自主智能体");
+            react.setAfter("{query}将由自主智能体分析并作答");
+            map.put("react", react);
+            var workflow = new ModeIntent();
+            workflow.setAfter("{query}将按「{displayName}」流程处理");
+            map.put("workflow", workflow);
+            return map;
+        }
+    }
+
+    @Getter
+    @Setter
+    public static class ModeIntent {
+
+        /** 写入 step.detail 的短标签（workflow 模式可省略，由 catalog displayName 填充） */
+        private String detail;
+        /** 意图完成后的用户向摘要模板 */
+        private String after;
+    }
+
+    public IntentTimeline intentTimelineOrDefault() {
+        if (timeline == null || timeline.intent == null) {
+            Timeline t = new Timeline();
+            return t.getIntent();
+        }
+        return timeline.intent;
     }
 
     public String intentClassifierPromptOrEmpty() {

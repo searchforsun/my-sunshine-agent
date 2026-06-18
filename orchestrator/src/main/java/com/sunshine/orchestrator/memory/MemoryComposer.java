@@ -56,14 +56,31 @@ public class MemoryComposer {
         return new MemoryContext(ltm, mtm, stmTurns);
     }
 
+    /**
+     * STM 以 MySQL 会话历史为 SSOT；Redis 仅作热缓存，不得覆盖 DB 中更完整的轮次
+     * （否则直接回答路径会出现 STM 缺 assistant 正文，重复提问时 LLM 合并旧答）。
+     */
     private List<ChatTurn> resolveStmSource(ComposeRequest request) {
-        if (stmStore != null) {
-            Optional<List<ChatTurn>> cached = stmStore.load(request.userId(), request.conversationId());
-            if (cached.isPresent() && !cached.get().isEmpty()) {
-                return cached.get();
-            }
+        List<ChatTurn> fromDb = sanitizeTurns(request.loadedHistory());
+        if (!fromDb.isEmpty()) {
+            return fromDb;
         }
-        return request.loadedHistory() != null ? request.loadedHistory() : List.of();
+        if (stmStore != null) {
+            return stmStore.load(request.userId(), request.conversationId())
+                    .map(MemoryComposer::sanitizeTurns)
+                    .filter(turns -> !turns.isEmpty())
+                    .orElse(List.of());
+        }
+        return List.of();
+    }
+
+    private static List<ChatTurn> sanitizeTurns(List<ChatTurn> turns) {
+        if (turns == null || turns.isEmpty()) {
+            return List.of();
+        }
+        return turns.stream()
+                .filter(t -> t.content() != null && !t.content().isBlank())
+                .toList();
     }
 
     public record ComposeRequest(

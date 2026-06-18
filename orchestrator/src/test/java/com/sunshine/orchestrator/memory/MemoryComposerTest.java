@@ -3,11 +3,13 @@ package com.sunshine.orchestrator.memory;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.ltm.LtmProfileService;
 import com.sunshine.orchestrator.memory.mtm.MtmService;
+import com.sunshine.orchestrator.memory.stm.StmStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -15,6 +17,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,6 +28,8 @@ class MemoryComposerTest {
     private LtmProfileService ltmProfileService;
     @Mock
     private MtmService mtmService;
+    @Mock
+    private StmStore stmStore;
 
     private MemoryProperties memoryProperties;
     private MemoryComposer composer;
@@ -32,6 +38,7 @@ class MemoryComposerTest {
     void setUp() {
         memoryProperties = new MemoryProperties();
         composer = new MemoryComposer(memoryProperties, ltmProfileService, mtmService);
+        ReflectionTestUtils.setField(composer, "stmStore", stmStore);
         when(ltmProfileService.buildSnippet(any(), any())).thenReturn(Optional.empty());
         when(ltmProfileService.ensureProfile(any(), any())).thenReturn(null);
         when(mtmService.recallSnippet(any(), any(), any(), any())).thenReturn(Optional.empty());
@@ -58,6 +65,33 @@ class MemoryComposerTest {
         MemoryContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
                 "u1", "default", "c1", loaded, "follow up"));
         assertThat(ctx.stmTurns().get(1).content()).hasSize(2000);
+    }
+
+    @Test
+    void compose_prefersDbOverStaleRedisCacheMissingAssistant() {
+        List<ChatTurn> fromDb = List.of(
+                new ChatTurn("user", "写 cpp 快排"),
+                new ChatTurn("assistant", "完整 cpp 快排代码"));
+
+        MemoryContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
+                "u1", "default", "c1", fromDb, "再写 py 快排"));
+
+        assertThat(ctx.stmTurns()).hasSize(2);
+        assertThat(ctx.stmTurns().get(1).content()).isEqualTo("完整 cpp 快排代码");
+        verify(stmStore, never()).load(eq("u1"), eq("c1"));
+    }
+
+    @Test
+    void compose_filtersBlankAssistantFromDb() {
+        List<ChatTurn> fromDb = List.of(
+                new ChatTurn("user", "hello"),
+                new ChatTurn("assistant", "  "));
+
+        MemoryContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
+                "u1", "default", "c1", fromDb, "again"));
+
+        assertThat(ctx.stmTurns()).hasSize(1);
+        assertThat(ctx.stmTurns().get(0).role()).isEqualTo("user");
     }
 
     @Test

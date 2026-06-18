@@ -38,4 +38,21 @@ class FinanceMessageControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].status").value("pending"));
     }
+
+    @Test
+    void getMessage_returnsDetail() throws Exception {
+        mockMvc.perform(get("/api/finance/messages/1001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(1001))
+                .andExpect(jsonPath("$.data.title").value("Q2 差旅报销审批"));
+    }
+
+    @Test
+    void summarizeMessages_returnsPendingAndApproved() throws Exception {
+        mockMvc.perform(get("/api/finance/messages/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].status").exists());
+    }
 }

@@ -1,5 +1,6 @@
 package com.sunshine.llm.adapter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.llm.config.LlmWebClientFactory;
 import com.sunshine.llm.config.ProviderProperties;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,7 +24,7 @@ class QwenAdapterTest {
         qwen.setApiKey("test-key");
         qwen.setModels(List.of("qwen-plus", "qwen-turbo"));
         props.setProviders(Map.of("qwen", qwen));
-        adapter = new QwenAdapter(props, new LlmWebClientFactory());
+        adapter = new QwenAdapter(props, new LlmWebClientFactory(), new OpenAiRequestBodyFactory(new ObjectMapper()));
     }
 
     @Test

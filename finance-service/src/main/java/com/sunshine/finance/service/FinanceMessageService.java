@@ -1,5 +1,6 @@
 package com.sunshine.finance.service;
 
+import com.sunshine.finance.dto.FinanceMessageSummaryVO;
 import com.sunshine.finance.dto.FinanceMessageVO;
 import org.springframework.stereotype.Service;
 
@@ -7,6 +8,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Service
 public class FinanceMessageService {
@@ -36,5 +38,34 @@ public class FinanceMessageService {
             }
         }
         return out;
+    }
+
+    public Optional<FinanceMessageVO> getById(long id) {
+        for (FinanceMessageVO msg : MOCK) {
+            if (msg.id() == id) {
+                return Optional.of(msg);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** 按状态汇总条数与金额；status 为空时返回 pending / approved 两组 */
+    public List<FinanceMessageSummaryVO> summarize(String status) {
+        if (status == null || status.isBlank() || "all".equalsIgnoreCase(status.trim())) {
+            List<FinanceMessageSummaryVO> summaries = new ArrayList<>();
+            summaries.add(buildSummary("pending"));
+            summaries.add(buildSummary("approved"));
+            return summaries;
+        }
+        return List.of(buildSummary(status.trim().toLowerCase(Locale.ROOT)));
+    }
+
+    private FinanceMessageSummaryVO buildSummary(String status) {
+        List<FinanceMessageVO> rows = list(status);
+        BigDecimal total = BigDecimal.ZERO;
+        for (FinanceMessageVO row : rows) {
+            total = total.add(row.amount());
+        }
+        return new FinanceMessageSummaryVO(status, rows.size(), total);
     }
 }

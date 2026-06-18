@@ -13,18 +13,23 @@ import java.util.List;
  */
 public final class ThinkStepMapper {
 
-    private static final String THINK = "think";
     private static final String GENERATE = "generate";
 
     private final List<ProcessingStep> stepsBuffer;
     private final String userQuery;
 
-    private boolean thinkOpened;
+    /** 当前 opened 的 think 步骤 id（支持 think / think-2 …） */
+    private String activeThinkId;
     private boolean generateOpened;
+    /** Workflow 路径已有 plan/node 步骤，正文不再单独开 generate */
+    private boolean workflowMode;
 
     public ThinkStepMapper(List<ProcessingStep> stepsBuffer, String userQuery) {
         this.stepsBuffer = stepsBuffer != null ? stepsBuffer : new ArrayList<>();
         this.userQuery = userQuery;
+        for (ProcessingStep step : this.stepsBuffer) {
+            trackExistingStep(step);
+        }
     }
 
     public List<StreamToken> map(StreamToken token) {
@@ -49,14 +54,17 @@ public final class ThinkStepMapper {
 
     /** 流结束时补齐 think / generate 的完成态 */
     public List<StreamToken> finish() {
+        return finish(false);
+    }
+
+    /** @param streamFailed 异常/中断时不伪造空的 generate 步骤 */
+    public List<StreamToken> finish(boolean streamFailed) {
         List<StreamToken> out = new ArrayList<>();
-        if (thinkOpened && isRunning(THINK)) {
-            out.add(stepToken(completeThinkStep()));
-        }
-        if (!generateOpened && !hasStep(GENERATE)) {
+        findRunningThinkId().ifPresent(id -> out.add(stepToken(completeThinkStep(id))));
+        if (!streamFailed && !workflowMode && !generateOpened && !hasStep(GENERATE)) {
             out.addAll(openGenerate());
         }
-        if (generateOpened && isRunning(GENERATE)) {
+        if (!streamFailed && !workflowMode && generateOpened && isRunning(GENERATE)) {
             out.add(stepToken(completeGenerateStep()));
         }
         return out;
@@ -70,29 +78,29 @@ public final class ThinkStepMapper {
         if (text == null || text.isEmpty()) {
             return List.of(token);
         }
-        if (THINK.equals(token.stepId())) {
-            List<StreamToken> out = new ArrayList<>(openThinkIfNeeded());
+        String stepId = token.stepId();
+        if (ThinkStepIds.isThinkStep(stepId)) {
+            List<StreamToken> out = new ArrayList<>(openThinkIfNeeded(stepId));
             out.add(token);
             return out;
         }
-        if (!THINK.equals(token.stepId())) {
-            return mapReasoning(text);
-        }
-        List<StreamToken> out = new ArrayList<>(openThinkIfNeeded());
-        out.add(StreamToken.stepDelta(THINK, "reasoning", text));
-        return out;
+        return mapReasoning(text);
     }
 
     private List<StreamToken> mapReasoning(String text) {
         if (text == null || text.isEmpty()) {
             return List.of();
         }
-        List<StreamToken> out = new ArrayList<>(openThinkIfNeeded());
-        out.add(StreamToken.stepDelta(THINK, "reasoning", text));
+        String thinkId = resolveThinkIdForReasoning();
+        List<StreamToken> out = new ArrayList<>(openThinkIfNeeded(thinkId));
+        out.add(StreamToken.stepDelta(thinkId, "reasoning", text));
         return out;
     }
 
     private List<StreamToken> mapContent(StreamToken token) {
+        if (workflowMode) {
+            return List.of(token);
+        }
         List<StreamToken> out = new ArrayList<>(transitionToGenerate());
         out.add(token);
         return out;
@@ -100,21 +108,55 @@ public final class ThinkStepMapper {
 
     private List<StreamToken> transitionToGenerate() {
         List<StreamToken> out = new ArrayList<>();
-        if (thinkOpened && isRunning(THINK)) {
-            out.add(stepToken(completeThinkStep()));
-        }
+        findRunningThinkId().ifPresent(id -> out.add(stepToken(completeThinkStep(id))));
         out.addAll(openGenerate());
         return out;
     }
 
-    private List<StreamToken> openThinkIfNeeded() {
-        if (thinkOpened || hasStep(THINK)) {
+    private List<StreamToken> openThinkIfNeeded(String stepId) {
+        if (stepId == null || hasStep(stepId)) {
             return List.of();
         }
-        thinkOpened = true;
-        ProcessingStep step = runningThinkStep();
+        activeThinkId = stepId;
+        ProcessingStep step = runningThinkStep(stepId);
         ProcessingStepMerger.upsert(stepsBuffer, step);
         return List.of(stepToken(step));
+    }
+
+    /** 直连 LLM 路径：复用 running think，否则开下一轮 */
+    private String resolveThinkIdForReasoning() {
+        return findRunningThinkId().orElseGet(this::nextThinkId);
+    }
+
+    private String nextThinkId() {
+        int max = 0;
+        for (ProcessingStep step : stepsBuffer) {
+            if (!ThinkStepIds.isThinkStep(step.id())) {
+                continue;
+            }
+            if ("think".equals(step.id())) {
+                max = Math.max(max, 1);
+            } else if (step.id().startsWith("think-")) {
+                try {
+                    max = Math.max(max, Integer.parseInt(step.id().substring("think-".length())));
+                } catch (NumberFormatException ignored) {
+                    // 非标准 id 忽略
+                }
+            }
+        }
+        return ThinkStepIds.forIteration(max + 1);
+    }
+
+    private java.util.Optional<String> findRunningThinkId() {
+        for (ProcessingStep step : stepsBuffer) {
+            if (ThinkStepIds.isThinkStep(step.id()) && isRunning(step.id())) {
+                return java.util.Optional.of(step.id());
+            }
+        }
+        if (activeThinkId != null && isRunning(activeThinkId)) {
+            return java.util.Optional.of(activeThinkId);
+        }
+        return java.util.Optional.empty();
     }
 
     private List<StreamToken> openGenerate() {
@@ -127,32 +169,32 @@ public final class ThinkStepMapper {
         return List.of(stepToken(step));
     }
 
-    private ProcessingStep runningThinkStep() {
+    private ProcessingStep runningThinkStep(String stepId) {
         long ts = System.currentTimeMillis();
-        String label = StepLabels.labelFor(THINK);
+        String label = StepLabels.labelFor(stepId);
         StepSummary summary = new StepSummary(
-                summarizeBefore(THINK),
-                summarizeActive(THINK),
+                summarizeBefore(stepId),
+                summarizeActive(stepId),
                 null);
         return new ProcessingStep(
-                THINK, THINK, "running", summary,
+                stepId, "think", "running", summary,
                 ts, null, null, null,
                 null, null, null,
                 ts, "running", label);
     }
 
-    private ProcessingStep completeThinkStep() {
+    private ProcessingStep completeThinkStep(String stepId) {
         long ts = System.currentTimeMillis();
-        ProcessingStep prev = findStep(THINK);
+        ProcessingStep prev = findStep(stepId);
         long startedAt = prev != null && prev.startedAt() != null ? prev.startedAt() : ts;
-        String label = StepLabels.labelFor(THINK);
-        String after = summarizeAfter(THINK);
+        String label = StepLabels.labelFor(stepId);
+        String after = summarizeAfter(stepId);
         StepSummary summary = mergeSummary(prev, new StepSummary(
-                summarizeBefore(THINK),
-                summarizeActive(THINK),
+                summarizeBefore(stepId),
+                summarizeActive(stepId),
                 after));
         return new ProcessingStep(
-                THINK, THINK, "done", summary,
+                stepId, "think", "done", summary,
                 startedAt, ts, ts - startedAt, null,
                 prev != null ? prev.reasoning() : null,
                 prev != null ? prev.output() : null,
@@ -197,12 +239,22 @@ public final class ThinkStepMapper {
         if (step == null) {
             return;
         }
-        if (THINK.equals(step.id())) {
-            thinkOpened = true;
+        if (ThinkStepIds.isThinkStep(step.id())) {
+            activeThinkId = step.id();
         }
         if (GENERATE.equals(step.id())) {
             generateOpened = true;
         }
+        if ("plan".equals(step.id())
+                || (step.id() != null && step.id().startsWith("node-"))) {
+            workflowMode = true;
+            generateOpened = true;
+        }
+    }
+
+    /** ReAct / Workflow 已内联 step 时同步状态，避免 finish 重复开 generate */
+    public void syncExternalStep(ProcessingStep step) {
+        trackExistingStep(step);
     }
 
     private boolean isRunning(String stepId) {

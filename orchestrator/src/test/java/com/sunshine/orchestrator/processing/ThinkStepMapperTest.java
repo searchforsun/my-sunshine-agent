@@ -66,6 +66,23 @@ class ThinkStepMapperTest {
     }
 
     @Test
+    void workflowContentDoesNotOpenGenerate() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(
+                doneStep("intent"),
+                doneStep("plan"),
+                runningStep("node-finance-list")));
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "有哪些待审批报销");
+
+        List<StreamToken> mapped = mapper.map(StreamToken.content("回答正文"));
+
+        assertThat(mapped).hasSize(1);
+        assertThat(mapped.get(0).isContent()).isTrue();
+        assertThat(steps.stream().noneMatch(s -> "generate".equals(s.id()))).isTrue();
+        assertThat(mapper.finish().stream().noneMatch(t -> t.isStep()
+                && "generate".equals(t.step().id()))).isTrue();
+    }
+
+    @Test
     void contentOpensGenerateAndFinishCompletesIt() {
         List<ProcessingStep> steps = new ArrayList<>(List.of(runningStep("think")));
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "有哪些待审批报销");
@@ -76,6 +93,40 @@ class ThinkStepMapperTest {
         assertThat(mapper.finish().stream().anyMatch(t -> t.isStep()
                 && "generate".equals(t.step().id())
                 && "done".equals(t.step().lifecycle()))).isTrue();
+    }
+
+    @Test
+    void finishOnStreamFailure_doesNotOpenEmptyGenerate() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(doneStep("intent")));
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "有哪些待审批报销");
+
+        assertThat(mapper.finish(true).stream().noneMatch(t -> t.isStep()
+                && "generate".equals(t.step().id()))).isTrue();
+    }
+
+    @Test
+    void reasoningAfterCompletedThinkOpensNewIteration() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(
+                doneStep("think"),
+                doneStep("rag")));
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "报销相关");
+
+        List<StreamToken> mapped = mapper.map(StreamToken.reasoning("结合检索结果分析"));
+
+        assertThat(mapped.stream().anyMatch(t -> t.isStep() && "think-2".equals(t.step().id()))).isTrue();
+        assertThat(mapped.stream().anyMatch(t -> t.isStepDelta()
+                && "think-2".equals(t.stepId())
+                && "结合检索结果分析".equals(t.text()))).isTrue();
+    }
+
+    @Test
+    void stepDeltaWithThink2Id_passesThrough() {
+        List<ProcessingStep> steps = new ArrayList<>();
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "test");
+
+        mapper.map(StreamToken.stepDelta("think-2", "reasoning", "第二轮思考"));
+
+        assertThat(steps.stream().anyMatch(s -> "think-2".equals(s.id()))).isTrue();
     }
 
     private static ProcessingStep runningStep(String id) {

@@ -30,7 +30,12 @@ public class RagTool {
                         ? query.substring(0, 50) + "..."
                         : query);
 
-        var results = ragClient.search(query, 3).block();
-        return RagContextFormatter.formatToolResult(results);
+        try {
+            var results = ragClient.search(query, 3).block();
+            return RagContextFormatter.formatToolResult(results);
+        } catch (Exception e) {
+            log.warn("[RagTool] 知识库检索失败: {}", e.getMessage());
+            return "工具调用失败：知识库服务不可用（" + e.getMessage() + "）。请如实告知用户当前无法检索企业知识库。";
+        }
     }
 }

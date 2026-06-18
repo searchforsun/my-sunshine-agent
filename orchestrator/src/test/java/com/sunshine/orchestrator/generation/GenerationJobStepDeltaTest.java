@@ -89,7 +89,7 @@ class GenerationJobStepDeltaTest {
 
         GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler);
+                streamService, properties, flushScheduler, null);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);

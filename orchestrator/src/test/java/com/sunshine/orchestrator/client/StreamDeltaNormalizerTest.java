@@ -76,6 +76,37 @@ class StreamDeltaNormalizerTest {
         assertThat(out).extracting(StreamToken::text).containsExactly("金额=3280", ".5");
     }
 
+    @Test
+    @DisplayName("每个 think stepId 独立累积基线")
+    void crossThinkStep_keepsFullRoundContentPerStep() {
+        String planning = "用户要求依次调用三个工具。";
+        String afterTool1 = planning + "第一步结果：3条 pending。";
+
+        List<StreamToken> out = collect(
+                StreamToken.stepDelta("think", "reasoning", planning),
+                StreamToken.stepDelta("think-2", "reasoning", afterTool1)
+        );
+
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0).text()).isEqualTo(planning);
+        assertThat(out.get(1).text()).isEqualTo(afterTool1);
+    }
+
+    @Test
+    @DisplayName("累积式 reasoning 整段复读不追加")
+    void stepDeltaReasoningFullRepeat_dropsDuplicate() {
+        String round = "用户要求依次调用三个工具。";
+        String doubled = round + round;
+
+        List<StreamToken> out = collect(
+                StreamToken.stepDelta("think-4", "reasoning", round),
+                StreamToken.stepDelta("think-4", "reasoning", doubled)
+        );
+
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).text()).isEqualTo(round);
+    }
+
     private static List<StreamToken> collect(StreamToken... tokens) {
         List<StreamToken> out = new ArrayList<>();
         StreamDeltaNormalizer.normalizeTokens(reactor.core.publisher.Flux.fromArray(tokens))

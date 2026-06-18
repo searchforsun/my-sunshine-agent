@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.generation.GenerationJobFactory;
 import com.sunshine.orchestrator.generation.GenerationProperties;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
+import com.sunshine.orchestrator.memory.MemoryLifecycleService;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -33,8 +34,10 @@ public class GenerationAutoConfiguration {
     GenerationJobFactory generationJobFactory(
             GenerationStreamService streamService,
             GenerationProperties properties,
-            GenerationFlushScheduler flushScheduler) {
-        return new GenerationJobFactory(streamService, properties, flushScheduler);
+            GenerationFlushScheduler flushScheduler,
+            MemoryLifecycleService memoryLifecycleService) {
+        return new GenerationJobFactory(
+                streamService, properties, flushScheduler, memoryLifecycleService);
     }
 
     @Bean

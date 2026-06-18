@@ -40,6 +40,9 @@ public class LlmNodeHandler implements NodeHandler {
                     Map<String, String> outputs = new LinkedHashMap<>();
                     outputs.put("answer", text);
                     outputs.put("output", text);
+                    outputs.put("detail", text.isBlank()
+                            ? "未生成内容"
+                            : "已完成回复");
                     return NodeResult.ok(outputs);
                 })
                 .onErrorResume(e -> {

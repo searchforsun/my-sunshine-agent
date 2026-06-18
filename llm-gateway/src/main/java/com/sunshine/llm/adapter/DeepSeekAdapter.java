@@ -13,7 +13,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -26,6 +25,7 @@ public class DeepSeekAdapter implements LlmAdapter {
 
     private final ProviderProperties props;
     private final LlmWebClientFactory webClientFactory;
+    private final OpenAiRequestBodyFactory requestBodyFactory;
 
     private WebClient client;
 
@@ -88,17 +88,6 @@ public class DeepSeekAdapter implements LlmAdapter {
     }
 
     private Object toRequestBody(ChatCompletionRequest request, boolean stream) {
-        List<Msg> messages = request.getMessages().stream()
-                .map(m -> new Msg(m.getRole(), m.getContent()))
-                .toList();
-        return new DeepSeekRequest(request.getModel(), messages,
-                request.getTemperature(), request.getMaxTokens(), stream);
-    }
-
-    record DeepSeekRequest(String model, List<Msg> messages, Double temperature,
-                           Integer maxTokens, Boolean stream) {
-    }
-
-    record Msg(String role, String content) {
+        return requestBodyFactory.build(request, stream);
     }
 }

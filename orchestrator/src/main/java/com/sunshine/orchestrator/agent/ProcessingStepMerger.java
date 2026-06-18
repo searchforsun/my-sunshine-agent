@@ -55,7 +55,7 @@ public final class ProcessingStepMerger {
     private static ProcessingStep applyDeltaToStep(ProcessingStep step, String channel, String text) {
         return switch (channel) {
             case "reasoning" -> copyStep(step,
-                    concat(step.reasoning(), text),
+                    appendReasoning(step.reasoning(), text),
                     step.output(),
                     step.result());
             case "output" -> copyStep(step,
@@ -65,6 +65,51 @@ public final class ProcessingStepMerger {
             case "result" -> copyStep(step, step.reasoning(), step.output(), text);
             default -> copyStep(step, step.reasoning(), concat(step.output(), text), step.result());
         };
+    }
+
+    /** 累积式/重复 reasoning 去重拼接 */
+    static String appendReasoning(String existing, String chunk) {
+        if (chunk == null || chunk.isEmpty()) {
+            return existing;
+        }
+        if (existing == null || existing.isEmpty()) {
+            return chunk;
+        }
+        if (chunk.startsWith(existing)) {
+            if (chunk.length() <= existing.length()) {
+                return existing;
+            }
+            String suffix = chunk.substring(existing.length());
+            // 累积帧整段复读：chunk = existing + existing
+            if (suffix.equals(existing) || (suffix.length() > 40 && existing.contains(suffix))) {
+                return existing;
+            }
+            return chunk;
+        }
+        if (existing.startsWith(chunk)) {
+            return existing;
+        }
+        if (existing.endsWith(chunk)) {
+            return existing;
+        }
+        if (chunk.length() > 80 && existing.contains(chunk)) {
+            return existing;
+        }
+        int overlap = longestSuffixPrefixOverlap(existing, chunk);
+        if (overlap > 0) {
+            return existing + chunk.substring(overlap);
+        }
+        return existing + chunk;
+    }
+
+    static int longestSuffixPrefixOverlap(String prev, String incoming) {
+        int max = Math.min(prev.length(), incoming.length());
+        for (int len = max; len > 0; len--) {
+            if (prev.regionMatches(prev.length() - len, incoming, 0, len)) {
+                return len;
+            }
+        }
+        return 0;
     }
 
     private static String concat(String existing, String chunk) {
@@ -123,7 +168,7 @@ public final class ProcessingStepMerger {
                 endedAt,
                 durationMs,
                 incoming.detail() != null ? incoming.detail() : existing.detail(),
-                longer(existing.reasoning(), incoming.reasoning()),
+                appendReasoning(existing.reasoning(), incoming.reasoning()),
                 longer(existing.output(), incoming.output()),
                 incoming.result() != null ? incoming.result() : existing.result(),
                 Math.max(existing.ts(), incoming.ts()),
@@ -176,6 +221,112 @@ public final class ProcessingStepMerger {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 落库用：summary 仅保留当前阶段一行，省略空的可展开字段 */
+    public static String toPersistJson(List<ProcessingStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return null;
+        }
+        try {
+            List<Map<String, Object>> rows = new ArrayList<>(steps.size());
+            for (ProcessingStep step : steps) {
+                rows.add(toPersistMap(step));
+            }
+            return OM.writeValueAsString(rows);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** SSE / 落库：只暴露当前 lifecycle 对应的一行 summary */
+    public static StepSummary currentPhaseSummary(ProcessingStep step) {
+        if (step == null || step.summary() == null) {
+            return null;
+        }
+        StepSummary s = step.summary();
+        String lifecycle = step.lifecycle() != null ? step.lifecycle() : "running";
+        return switch (lifecycle) {
+            case "pending" -> nonEmptySummary(s.before(), null, null);
+            case "running" -> nonEmptySummary(null, s.active(), null);
+            case "done", "error", "skipped" -> {
+                String after = s.after() != null ? s.after() : s.active();
+                yield nonEmptySummary(null, null, after);
+            }
+            default -> nonEmptySummary(null, s.active(), null);
+        };
+    }
+
+    private static StepSummary nonEmptySummary(String before, String active, String after) {
+        if (before == null && active == null && after == null) {
+            return null;
+        }
+        return new StepSummary(before, active, after);
+    }
+
+    private static Map<String, Object> toPersistMap(ProcessingStep step) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", step.id());
+        if (step.phase() != null) {
+            map.put("phase", step.phase());
+        }
+        if (step.lifecycle() != null) {
+            map.put("lifecycle", step.lifecycle());
+        }
+        StepSummary summary = currentPhaseSummary(step);
+        if (summary != null) {
+            Map<String, Object> summaryMap = summaryToMap(summary);
+            if (!summaryMap.isEmpty()) {
+                map.put("summary", summaryMap);
+            }
+        }
+        if (step.startedAt() != null) {
+            map.put("startedAt", step.startedAt());
+        }
+        if (step.endedAt() != null) {
+            map.put("endedAt", step.endedAt());
+        }
+        if (step.durationMs() != null) {
+            map.put("durationMs", step.durationMs());
+        }
+        if (hasText(step.detail())) {
+            map.put("detail", step.detail());
+        }
+        if (hasText(step.reasoning())) {
+            map.put("reasoning", step.reasoning());
+        }
+        if (hasText(step.output())) {
+            map.put("output", step.output());
+        }
+        if (hasText(step.result())) {
+            map.put("result", step.result());
+        }
+        map.put("ts", step.ts());
+        if (step.status() != null) {
+            map.put("status", step.status());
+        }
+        if (step.label() != null) {
+            map.put("label", step.label());
+        }
+        return map;
+    }
+
+    public static Map<String, Object> summaryToMap(StepSummary summary) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (summary.before() != null) {
+            map.put("before", summary.before());
+        }
+        if (summary.active() != null) {
+            map.put("active", summary.active());
+        }
+        if (summary.after() != null) {
+            map.put("after", summary.after());
+        }
+        return map;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     public static List<ProcessingStep> fromJson(String json) {

@@ -21,7 +21,11 @@ public class AgentExecutionProperties {
     @Data
     public static class React {
         private List<String> tools = new ArrayList<>(List.of(
-                "search_knowledge", "list_finance_messages"));
+                "search_knowledge",
+                "list_finance_messages",
+                "get_finance_message_detail",
+                "summarize_finance_by_status",
+                "list_oa_tasks"));
         private int maxIters = 5;
     }
 }

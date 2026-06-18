@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.execution.handler;
 
+import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeSpec;
@@ -25,6 +26,9 @@ class ToolNodeHandlerTest {
     @Mock
     private ToolManagerClient toolManagerClient;
 
+    @Mock
+    private ToolCatalogService toolCatalogService;
+
     @InjectMocks
     private ToolNodeHandler handler;
 
@@ -46,6 +50,6 @@ class ToolNodeHandlerTest {
         assertThat(result).isNotNull();
         assertThat(result.success()).isTrue();
         assertThat(result.safeOutputs().get("output")).contains("items");
-        assertThat(result.timelineTokens()).isNotEmpty();
+        assertThat(result.safeOutputs().get("tool")).isEqualTo("list_finance_messages");
     }
 }

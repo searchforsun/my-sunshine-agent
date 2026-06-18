@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
@@ -23,10 +24,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public final class AgentScopeEventMapper {
 
-    private static final String THINK = "think";
     private static final String GENERATE = "generate";
+    private static volatile ToolCatalogService catalogService;
 
     private AgentScopeEventMapper() {
+    }
+
+    public static void bind(ToolCatalogService catalog) {
+        catalogService = catalog;
     }
 
     public static List<StreamToken> map(
@@ -45,22 +50,21 @@ public final class AgentScopeEventMapper {
 
         if (type == EventType.REASONING) {
             List<String> reasoningTexts = collectReasoningTexts(msg);
-            if (!reasoningTexts.isEmpty()) {
-                int chars = reasoningTexts.stream().mapToInt(String::length).sum();
-                log.info("[Orchestrator] ReAct 思考 blocks={} chars={} preview={}",
-                        reasoningTexts.size(), chars, previewReasoning(reasoningTexts.get(0)));
-            } else {
-                log.info("[Orchestrator] ReAct 无 ThinkingBlock（上游未返回 reasoning_content）");
+            if (reasoningTexts.isEmpty()) {
+                log.debug("[Orchestrator] ReAct 跳过空 REASONING（无 ThinkingBlock）");
+                return out;
             }
-            out.addAll(ensureThinkStarted(session));
-            for (String text : reasoningTexts) {
-                emitThinkReasoningDelta(session, out, text);
+            if (!session.isThinkRunning()) {
+                log.debug("[Orchestrator] ReAct 跳过 REASONING（无 PreReasoning 打开的 think）");
+                return out;
             }
-            return out;
-        }
-
-        if (type == EventType.TOOL_RESULT) {
-            out.addAll(appendToolResultSteps(msg, session));
+            int chars = reasoningTexts.stream().mapToInt(String::length).sum();
+            log.info("[Orchestrator] ReAct 思考 blocks={} chars={} isLast={} preview={}",
+                    reasoningTexts.size(), chars, event.isLast(), previewReasoning(reasoningTexts.get(0)));
+            String merged = mergeReasoningTexts(reasoningTexts);
+            if (merged != null && !merged.isEmpty()) {
+                emitThinkReasoningDelta(session, out, merged);
+            }
             return out;
         }
 
@@ -70,21 +74,21 @@ public final class AgentScopeEventMapper {
                 if (generateStarted.compareAndSet(false, true)) {
                     long firstTokenAt = System.currentTimeMillis();
                     out.addAll(ProcessingTimelineSupport.run(session, () -> {
-                        completeThinkIfRunning(session);
+                        session.completeThinkIfRunning();
                         session.pending(GENERATE, GENERATE);
                         session.startAt(GENERATE, GENERATE, firstTokenAt);
                     }));
                 }
                 appendContentTokens(msg, out);
             } else if (event.isLast()) {
-                out.addAll(ProcessingTimelineSupport.run(session, () -> completeThinkIfRunning(session)));
+                out.addAll(ProcessingTimelineSupport.run(session, session::completeThinkIfRunning));
             }
             return out;
         }
 
         if (type == EventType.HINT) {
             for (ToolUseBlock toolUse : msg.getContentBlocks(ToolUseBlock.class)) {
-                if ("search_knowledge".equals(toolUse.getName())) {
+                if (isRagTool(toolUse.getName())) {
                     out.addAll(ensureRagStarted(session));
                 }
             }
@@ -92,6 +96,27 @@ public final class AgentScopeEventMapper {
         }
 
         return out;
+    }
+
+    private static boolean isRagTool(String toolName) {
+        if (catalogService != null) {
+            return catalogService.isRagTool(toolName);
+        }
+        return "search_knowledge".equals(toolName);
+    }
+
+    private static String timelineStepId(String toolName) {
+        if (catalogService != null) {
+            return catalogService.timelineStepId(toolName);
+        }
+        return isRagTool(toolName) ? "rag" : "tool-" + toolName;
+    }
+
+    private static String summarizeOutput(String toolName, String text) {
+        if (catalogService != null) {
+            return catalogService.summarizeOutput(toolName, text);
+        }
+        return ToolResultSummarizer.summarize(toolName, text);
     }
 
     private static boolean hasAnswerContent(Msg msg) {
@@ -112,26 +137,13 @@ public final class AgentScopeEventMapper {
         });
     }
 
-    private static List<StreamToken> ensureThinkStarted(ProcessingTimelineSession session) {
-        if (session.hasStep(THINK)) {
-            return List.of();
-        }
-        return ProcessingTimelineSupport.run(session, () -> {
-            session.pending(THINK, THINK);
-            session.start(THINK, THINK);
-        });
-    }
-
-    private static void completeThinkIfRunning(ProcessingTimelineSession session) {
-        if (session.isThinkRunning()) {
-            session.complete(THINK, null);
-        }
-    }
-
-    /** reasoning 写入 think 步骤 */
+    /** reasoning 写入 Hook 已开启的 think 步骤，不自行开闭 */
     static void appendThinkingTokens(Msg msg, ProcessingTimelineSession session, List<StreamToken> out) {
-        out.addAll(ensureThinkStarted(session));
-        for (String thinking : collectReasoningTexts(msg)) {
+        List<String> reasoningTexts = collectReasoningTexts(msg);
+        if (reasoningTexts.isEmpty() || !session.isThinkRunning()) {
+            return;
+        }
+        for (String thinking : reasoningTexts) {
             emitThinkReasoningDelta(session, out, thinking);
         }
     }
@@ -147,6 +159,25 @@ public final class AgentScopeEventMapper {
         return texts;
     }
 
+    /** 单帧多 block 时取最长全文，避免重复 emit 导致 reasoning 翻倍 */
+    private static String mergeReasoningTexts(List<String> texts) {
+        if (texts == null || texts.isEmpty()) {
+            return null;
+        }
+        String best = texts.get(0);
+        for (int i = 1; i < texts.size(); i++) {
+            String candidate = texts.get(i);
+            if (candidate.length() > best.length()) {
+                best = candidate;
+            } else if (best.length() > candidate.length() && best.startsWith(candidate)) {
+                continue;
+            } else if (candidate.length() >= best.length() && candidate.startsWith(best)) {
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
     private static String previewReasoning(String text) {
         if (text == null || text.isBlank()) {
             return "-";
@@ -157,10 +188,10 @@ public final class AgentScopeEventMapper {
 
     private static void emitThinkReasoningDelta(
             ProcessingTimelineSession session, List<StreamToken> out, String thinking) {
-        if (!session.hasStep(THINK)) {
-            out.addAll(ensureThinkStarted(session));
+        String thinkId = session.currentThinkStepId();
+        if (thinkId != null && session.isThinkRunning()) {
+            out.add(StreamToken.stepDelta(thinkId, "reasoning", thinking));
         }
-        out.add(StreamToken.stepDelta(THINK, "reasoning", thinking));
     }
 
     static void appendContentTokens(Msg msg, List<StreamToken> out) {
@@ -176,64 +207,25 @@ public final class AgentScopeEventMapper {
         }
     }
 
-    private static List<StreamToken> appendToolResultSteps(Msg msg, ProcessingTimelineSession session) {
-        List<StreamToken> steps = new ArrayList<>();
-        for (ToolResultBlock block : msg.getContentBlocks(ToolResultBlock.class)) {
-            if ("search_knowledge".equals(block.getName())) {
-                String detail = summarizeHits(block);
-                steps.addAll(ProcessingTimelineSupport.run(session, () -> {
-                    if (!session.hasStep("rag")) {
-                        session.pending("rag", "rag");
-                        session.start("rag", "rag");
-                    }
-                    session.complete("rag", detail);
-                }));
-                continue;
-            }
-            String toolName = block.getName();
-            if (toolName == null || toolName.isBlank()) {
-                continue;
-            }
-            String stepId = "tool-" + toolName;
-            String detail = summarizeToolOutput(block);
-            steps.addAll(ProcessingTimelineSupport.run(session, () -> {
-                if (!session.hasStep(stepId)) {
-                    session.pending(stepId, "tool");
-                    session.start(stepId, "tool");
-                }
-                session.complete(stepId, detail);
-            }));
+    private static String extractToolResultText(ToolResultBlock block) {
+        if (block == null || block.getOutput() == null) {
+            return "";
         }
-        return steps;
+        return block.getOutput().stream()
+                .filter(b -> b instanceof TextBlock)
+                .map(b -> ((TextBlock) b).getText())
+                .findFirst()
+                .orElse("");
     }
 
     private static String summarizeToolOutput(ToolResultBlock block) {
-        if (block == null || block.getOutput() == null) {
+        if (block == null) {
             return "无结果";
         }
-        String text = block.getOutput().stream()
-                .filter(b -> b instanceof TextBlock)
-                .map(b -> ((TextBlock) b).getText())
-                .findFirst()
-                .orElse("");
-        if (text.isBlank()) {
-            return "无结果";
-        }
-        if ("list_finance_messages".equals(block.getName())) {
-            return RagHitSummarizer.summarize(text);
-        }
-        return text.length() > 80 ? text.substring(0, 80) + "…" : text;
+        return summarizeOutput(block.getName(), extractToolResultText(block));
     }
 
     static String summarizeHits(ToolResultBlock block) {
-        if (block == null || block.getOutput() == null) {
-            return "命中 0 条";
-        }
-        String text = block.getOutput().stream()
-                .filter(b -> b instanceof TextBlock)
-                .map(b -> ((TextBlock) b).getText())
-                .findFirst()
-                .orElse("");
-        return RagHitSummarizer.summarize(text);
+        return ToolResultSummarizer.summarize("search_knowledge", extractToolResultText(block));
     }
 }

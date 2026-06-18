@@ -3,55 +3,55 @@ package com.sunshine.orchestrator.execution;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
-import com.sunshine.orchestrator.processing.StepLabels;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Workflow 节点级 Timeline step（node-{id}）
+ * Workflow 节点级 Timeline step（node-{id}），复用同一 session 保证耗时与顺序正确。
  */
 public final class WorkflowNodeTimeline {
 
     private WorkflowNodeTimeline() {
     }
 
-    public static List<StreamToken> start(String nodeId, String nodeType) {
-        String stepId = stepId(nodeId);
-        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
+    public static List<StreamToken> planStep(ProcessingTimelineSession session, WorkflowDefinition def) {
+        String detail = WorkflowNodeLabels.planChain(def);
+        long startedAt = System.currentTimeMillis();
         return ProcessingTimelineSupport.run(session, () -> {
-            session.pending(stepId, "node");
-            session.start(stepId, label(nodeId, nodeType));
+            session.pending("plan", "plan");
+            session.startAt("plan", "plan", startedAt);
+            session.completeAt("plan", detail, System.currentTimeMillis());
         });
     }
 
-    public static List<StreamToken> complete(String nodeId, String nodeType, String detail) {
+    public static List<StreamToken> start(
+            ProcessingTimelineSession session, String nodeId, String nodeType) {
         String stepId = stepId(nodeId);
-        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
+        long startedAt = System.currentTimeMillis();
+        return ProcessingTimelineSupport.run(session, () -> {
+            session.pending(stepId, "node");
+            session.startAt(stepId, "node", startedAt);
+        });
+    }
+
+    public static List<StreamToken> complete(
+            ProcessingTimelineSession session,
+            String nodeId,
+            String nodeType,
+            String detail,
+            long startedAt,
+            long endedAt) {
+        String stepId = stepId(nodeId);
         return ProcessingTimelineSupport.run(session, () -> {
             if (!session.hasStep(stepId)) {
                 session.pending(stepId, "node");
-                session.start(stepId, label(nodeId, nodeType));
+                session.startAt(stepId, "node", startedAt);
             }
-            session.complete(stepId, detail != null ? detail : label(nodeId, nodeType) + "完成");
+            session.completeAt(stepId, detail, endedAt);
         });
     }
 
     public static String stepId(String nodeId) {
         return "node-" + nodeId;
-    }
-
-    private static String label(String nodeId, String nodeType) {
-        return StepLabels.labelFor("node-" + nodeId) + " (" + nodeType + ")";
-    }
-
-    public static List<StreamToken> planStep(List<String> nodeIds) {
-        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
-        String detail = String.join(" → ", nodeIds);
-        return ProcessingTimelineSupport.run(session, () -> {
-            session.pending("plan", "plan");
-            session.start("plan", "plan");
-            session.complete("plan", detail);
-        });
     }
 }

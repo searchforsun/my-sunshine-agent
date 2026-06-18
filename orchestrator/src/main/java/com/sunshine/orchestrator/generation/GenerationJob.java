@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.orchestrator.memory.MemoryLifecycleService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.Disposable;
@@ -32,6 +33,7 @@ public class GenerationJob {
     private final GenerationStreamService streamService;
     private final GenerationProperties properties;
     private final GenerationFlushScheduler flushScheduler;
+    private final MemoryLifecycleService memoryLifecycleService;
 
     private final AtomicLong seq = new AtomicLong(0);
     private final AtomicBoolean finished = new AtomicBoolean(false);
@@ -47,7 +49,8 @@ public class GenerationJob {
             String userId, String tenantId, String intent, String userQuery,
             GenerationStreamService streamService,
             GenerationProperties properties,
-            GenerationFlushScheduler flushScheduler) {
+            GenerationFlushScheduler flushScheduler,
+            MemoryLifecycleService memoryLifecycleService) {
         this.generationId = generationId;
         this.messageId = messageId;
         this.conversationId = conversationId;
@@ -58,6 +61,7 @@ public class GenerationJob {
         this.streamService = streamService;
         this.properties = properties;
         this.flushScheduler = flushScheduler;
+        this.memoryLifecycleService = memoryLifecycleService;
     }
 
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
@@ -97,15 +101,21 @@ public class GenerationJob {
         finishOnce(() -> {
             cancelOrphanTimer();
             disposeLlmSubscription();
-            emitFinishSteps();
+            emitFinishSteps(true);
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
-            flushScheduler.commitFinal(
-                    messageId, bufferContent(), bufferReasoning(), MessageStatus.INTERRUPTED, stepsJson());
+            persistFinal(MessageStatus.INTERRUPTED, () -> { });
         });
     }
 
     private void onChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
+        if (token.isStep() || token.isStepDelta()) {
+            if (token.isStep()) {
+                thinkMapper.syncExternalStep(token.step());
+            }
+            emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
+            return;
+        }
         for (StreamToken mapped : thinkMapper.map(token)) {
             emitMappedChunk(mapped, mysqlBuffer, flushPartial, lastFlush);
         }
@@ -153,19 +163,46 @@ public class GenerationJob {
         disposeLlmSubscription();
         emitFinishSteps();
         streamService.updateStatus(generationId, GenerationStatus.COMPLETED);
-        flushScheduler.commitFinal(
-                messageId, bufferContent(), bufferReasoning(), MessageStatus.COMPLETED, stepsJson());
-        onComplete.run();
+        persistFinal(MessageStatus.COMPLETED, () -> {
+            refreshMemoryAfterComplete();
+            onComplete.run();
+        });
+    }
+
+    private void refreshMemoryAfterComplete() {
+        if (memoryLifecycleService == null) {
+            return;
+        }
+        try {
+            memoryLifecycleService.onAssistantCompleted(
+                    messageId, userId, tenantId, MessageStatus.COMPLETED);
+        } catch (Exception e) {
+            log.warn("[GenerationJob] STM 刷新失败 msg={}: {}", messageId, e.getMessage());
+        }
     }
 
     private void handleError(Throwable error, Consumer<Throwable> onError) {
         cancelOrphanTimer();
         disposeLlmSubscription();
-        emitFinishSteps();
+        emitFinishSteps(true);
         streamService.updateStatus(generationId, GenerationStatus.FAILED);
-        flushScheduler.commitFinal(
-                messageId, bufferContent(), bufferReasoning(), MessageStatus.FAILED, stepsJson());
-        onError.accept(error);
+        persistFinal(MessageStatus.FAILED, () -> onError.accept(error));
+    }
+
+    /** commitFinal 含脱敏 block 调用，须在 boundedElastic 执行，避免 reactor 线程 IllegalStateException */
+    private void persistFinal(String status, Runnable afterPersist) {
+        String content = bufferContent();
+        String reasoning = bufferReasoning();
+        String steps = stepsJson();
+        Mono.fromRunnable(() -> {
+                    flushScheduler.commitFinal(messageId, content, reasoning, status, steps);
+                    afterPersist.run();
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        null,
+                        e -> log.error("[GenerationJob] 落库失败 msg={} status={}: {}",
+                                messageId, status, e.getMessage()));
     }
 
     private void finishOnce(Runnable action) {
@@ -200,16 +237,20 @@ public class GenerationJob {
     }
 
     private String stepsJson() {
-        return ProcessingStepMerger.toJson(stepsBuffer);
+        return ProcessingStepMerger.toPersistJson(stepsBuffer);
     }
 
     private void emitFinishSteps() {
+        emitFinishSteps(false);
+    }
+
+    private void emitFinishSteps(boolean streamFailed) {
         if (thinkMapper == null) {
             return;
         }
         StringBuilder mysqlBuffer = mysqlBufferRef;
         AtomicLong lastFlush = new AtomicLong(0);
-        for (StreamToken token : thinkMapper.finish()) {
+        for (StreamToken token : thinkMapper.finish(streamFailed)) {
             emitMappedChunk(token, mysqlBuffer != null ? mysqlBuffer : new StringBuilder(),
                     content -> flushScheduler.flushPartial(messageId, content), lastFlush);
         }

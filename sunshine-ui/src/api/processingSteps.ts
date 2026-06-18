@@ -67,25 +67,26 @@ export interface ProcessingStep {
 
 
 
-export const STEP_ORDER: StepPhase[] = ['intent', 'rag', 'agent', 'think', 'generate']
+export const STEP_ORDER: StepPhase[] = ['intent', 'plan', 'node', 'rag', 'tool', 'agent', 'think', 'generate']
 
-/** 与 orchestrator StepLabels.toolDisplayName 对齐 */
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  list_finance_messages: '查询待审批财务消息',
-  search_knowledge: '检索知识库',
-}
-
-export function toolDisplayName(toolId: string): string {
-  const name = toolId.startsWith('tool-') ? toolId.slice('tool-'.length) : toolId
-  return TOOL_DISPLAY_NAMES[name] ?? name
-}
-
-/** 步骤标题：工具 step 显示中文，其余用后端 label 或 id */
+/** 步骤标题：优先用后端 label，保留 think/plan 等固定 phase 本地文案 */
 export function formatStepLabel(step: ProcessingStep): string {
-  if (step.id.startsWith('tool-')) {
-    return `调用工具 ${toolDisplayName(step.id)}`
+  if (step.label?.trim()) {
+    return step.label
   }
-  return step.label ?? step.id
+  if (step.id.startsWith('tool-')) {
+    return step.id
+  }
+  if (step.id.startsWith('node-')) {
+    return step.id
+  }
+  if (step.id === 'think' || step.id.startsWith('think-')) {
+    return step.id === 'think' ? '规划推理' : '综合分析'
+  }
+  if (step.id === 'plan') {
+    return '执行计划'
+  }
+  return step.id
 }
 
 
@@ -214,6 +215,48 @@ export function formatDuration(ms?: number): string {
 
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
 
+}
+
+
+
+/** 步骤 lifecycle（兼容 status） */
+export function stepLifecycle(step: ProcessingStep): StepLifecycle {
+  return (step.lifecycle ?? step.status ?? 'pending') as StepLifecycle
+}
+
+
+
+/** 主行摘要：与标题重复时不展示，避免「生成回答 生成回答」 */
+export function resolveStepHeaderText(step: ProcessingStep): string {
+  const lifecycle = stepLifecycle(step)
+  const title = formatStepLabel(step)
+  let header = ''
+  if (lifecycle === 'running') {
+    header = step.summary?.active?.trim() || step.label?.trim() || ''
+  } else if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+    header = step.summary?.after?.trim()
+      || step.result?.trim()
+      || step.detail?.trim()
+      || ''
+  } else {
+    header = step.summary?.before?.trim() || step.label?.trim() || ''
+  }
+  if (!header || header === title) {
+    return ''
+  }
+  return header
+}
+
+
+
+/** 是否有可下拉展开的实际内容（不含主行已展示的 summary 一行） */
+export function hasExpandableContent(step: ProcessingStep): boolean {
+  const header = resolveStepHeaderText(step)
+  if (step.reasoning?.trim()) return true
+  if (step.output?.trim()) return true
+  if (step.detail?.trim() && step.detail.trim() !== header) return true
+  if (step.result?.trim() && step.result.trim() !== header) return true
+  return false
 }
 
 
@@ -370,14 +413,37 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
 
 
 function concatText(existing: string | undefined, chunk: string): string {
+  if (!chunk) return existing ?? ''
+  if (!existing) return chunk
+  if (chunk.startsWith(existing)) {
+    if (chunk.length <= existing.length) return existing
+    const suffix = chunk.slice(existing.length)
+    if (suffix === existing || (suffix.length > 40 && existing.includes(suffix))) return existing
+    return chunk
+  }
+  if (existing.startsWith(chunk)) return existing
+  if (existing.endsWith(chunk)) return existing
+  if (chunk.length > 80 && existing.includes(chunk)) return existing
+  const overlap = longestSuffixPrefixOverlap(existing, chunk)
+  if (overlap > 0) return existing + chunk.slice(overlap)
+  return existing + chunk
+}
 
-  return existing ? existing + chunk : chunk
-
+function longestSuffixPrefixOverlap(prev: string, incoming: string): number {
+  const max = Math.min(prev.length, incoming.length)
+  for (let len = max; len > 0; len--) {
+    if (prev.slice(-len) === incoming.slice(0, len)) return len
+  }
+  return 0
 }
 
 
 
 const REASONING_STEP_PRIORITY = ['agent', 'think', 'generate', 'rag', 'intent'] as const
+
+function isThinkStepId(id: string): boolean {
+  return id === 'think' || id.startsWith('think-')
+}
 
 
 
@@ -394,6 +460,11 @@ export function findRunningStepId(steps: ProcessingStep[]): string | undefined {
     }
 
   }
+
+  const runningThink = steps.find(s => isThinkStepId(s.id)
+    && (s.lifecycle === 'running' || s.status === 'running'))
+
+  if (runningThink) return runningThink.id
 
   return steps.find(s => s.lifecycle === 'running' || s.status === 'running')?.id
 
@@ -415,7 +486,7 @@ export function normalizeTimelineSteps(
 
   let result = [...steps]
 
-  const hasThink = result.some(s => s.id === 'think')
+  const hasThink = result.some(s => isThinkStepId(s.id))
 
   const agentHasReasoning = result.some(s => s.id === 'agent' && !!s.reasoning?.trim())
 
@@ -490,6 +561,12 @@ export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {
 
   return [...steps].sort((a, b) => {
 
+    const aStart = a.startedAt ?? a.ts ?? 0
+
+    const bStart = b.startedAt ?? b.ts ?? 0
+
+    if (aStart !== bStart) return aStart - bStart
+
     const ai = STEP_ORDER.indexOf(a.phase)
 
     const bi = STEP_ORDER.indexOf(b.phase)
@@ -500,7 +577,7 @@ export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {
 
     if (aOrder !== bOrder) return aOrder - bOrder
 
-    return (a.ts ?? 0) - (b.ts ?? 0)
+    return a.id.localeCompare(b.id)
 
   })
 
@@ -558,7 +635,7 @@ export function derivePlaceholderSteps(loading: boolean): ProcessingStep[] {
 
     label: '生成回答',
 
-    summary: { active: '生成回答' },
+    summary: { active: '正在撰写回复' },
 
   }]
 

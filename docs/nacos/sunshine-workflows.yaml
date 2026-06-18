@@ -7,21 +7,31 @@
 
 workflow:
   catalog:
+    # 可选 intentAfter：覆盖 agent.timeline.intent.modes.workflow.after（占位符 {query} {displayName} {workflowId}）
     - id: knowledge-qa
       mode: workflow
+      displayName: 知识库问答
       desc: 查企业制度/手册，检索后作答
       nodes: [start, rag, llm, answer]
       examples: ["请假制度是什么", "报销流程规定"]
     - id: finance-list
       mode: workflow
+      displayName: 财务待办查询
       desc: 列出待审批/已审批财务消息
       nodes: [start, tool, llm, answer]
       examples: ["有哪些待审批报销"]
     - id: finance-smart
       mode: workflow
-      desc: 财务综合分析，含 Agent 推理
+      displayName: 财务智能分析
+      desc: 财务综合分析，含智能体推理
       nodes: [start, tool, agent, llm, answer]
       examples: ["待审批是否合规", "对比制度与待办"]
+    - id: finance-summary
+      mode: workflow
+      displayName: 财务汇总统计
+      desc: 统计各状态财务消息条数与金额
+      nodes: [start, tool, llm, answer]
+      examples: ["待审批有多少条", "pending 财务总额"]
 
   definitions:
     knowledge-qa:
@@ -34,6 +44,7 @@ workflow:
             topK: "3"
         - id: llm
           type: llm
+          displayName: 生成回答
           params:
             prompt: |
               根据知识库检索结果回答用户问题。
@@ -52,11 +63,13 @@ workflow:
           type: start
         - id: finance-list
           type: tool
+          displayName: 查询待审批财务消息
           params:
             tool: list_finance_messages
             status: "{{plan.params.status}}"
         - id: llm
           type: llm
+          displayName: 生成回答
           params:
             prompt: |
               根据财务工具查询结果回答。
@@ -75,11 +88,13 @@ workflow:
           type: start
         - id: finance-list
           type: tool
+          displayName: 查询待审批财务消息
           params:
             tool: list_finance_messages
             status: "{{plan.params.status}}"
         - id: analyze
           type: agent
+          displayName: 智能体分析
           params:
             query: "{{start.userQuery}}"
             context: "{{finance-list.output}}"
@@ -87,6 +102,7 @@ workflow:
             maxIters: "5"
         - id: llm
           type: llm
+          displayName: 生成回答
           params:
             prompt: |
               根据 Agent 分析结果生成用户可见回答。
@@ -98,3 +114,28 @@ workflow:
         - id: answer
           type: answer
       edges: [start, finance-list, analyze, llm, answer]
+
+    finance-summary:
+      nodes:
+        - id: start
+          type: start
+        - id: finance-summary
+          type: tool
+          displayName: 统计财务消息
+          params:
+            tool: summarize_finance_by_status
+            status: "{{plan.params.status}}"
+        - id: llm
+          type: llm
+          displayName: 生成回答
+          params:
+            prompt: |
+              根据财务汇总工具结果回答用户。
+
+              汇总：
+              {{finance-summary.output}}
+
+              用户问题：{{start.userQuery}}
+        - id: answer
+          type: answer
+      edges: [start, finance-summary, llm, answer]

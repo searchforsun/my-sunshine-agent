@@ -2,6 +2,8 @@ package com.sunshine.orchestrator.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.processing.StepSummary;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,8 +39,8 @@ public class GenerationFlushScheduler {
     }
 
     public void flushPartial(String messageId, String content) {
-        Mono.fromRunnable(() -> conversationService.updateMessageContent(
-                        messageId, content, MessageStatus.STREAMING))
+        Mono.fromRunnable(() -> conversationService.updateMessageContentIfStreaming(
+                        messageId, content))
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                         null,
@@ -97,17 +99,10 @@ public class GenerationFlushScheduler {
             if (step.lifecycle() != null) {
                 map.put("lifecycle", step.lifecycle());
             }
-            if (step.summary() != null) {
-                java.util.Map<String, Object> summary = new java.util.LinkedHashMap<>();
-                if (step.summary().before() != null) {
-                    summary.put("before", step.summary().before());
-                }
-                if (step.summary().active() != null) {
-                    summary.put("active", step.summary().active());
-                }
-                if (step.summary().after() != null) {
-                    summary.put("after", step.summary().after());
-                }
+            // 前端只需当前阶段一行摘要，不必同时下发 before/active/after
+            StepSummary phaseSummary = ProcessingStepMerger.currentPhaseSummary(step);
+            if (phaseSummary != null) {
+                java.util.Map<String, Object> summary = ProcessingStepMerger.summaryToMap(phaseSummary);
                 if (!summary.isEmpty()) {
                     map.put("summary", summary);
                 }

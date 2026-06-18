@@ -163,7 +163,6 @@ public class LlmGatewayClient {
         List<Map<String, Object>> messages = new ArrayList<>(
                 MemoryMessageBuilder.buildPrefix(prompts, memoryProperties, ctx));
         MemoryMessageBuilder.appendStmTurns(messages, ctx, memoryProperties);
-        MemoryMessageBuilder.appendScopeHint(messages, prompts);
         messages.add(Map.of(
                 "role", "user",
                 "content", MemoryMessageBuilder.formatCurrentUser(userMessage, memoryProperties)));

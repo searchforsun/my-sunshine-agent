@@ -57,8 +57,12 @@ public class MemoryLifecycleService {
         }
         List<ChatTurn> turns = messages.stream()
                 .filter(m -> "user".equals(m.getRole()) || "assistant".equals(m.getRole()))
+                .filter(m -> StringUtils.hasText(m.getContent()))
                 .map(m -> new ChatTurn(m.getRole(), m.getContent()))
                 .collect(Collectors.toList());
+        if (turns.isEmpty()) {
+            return;
+        }
         stmStore.replace(userId, convId, turns);
     }
 }

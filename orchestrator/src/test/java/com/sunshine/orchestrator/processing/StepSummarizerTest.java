@@ -1,6 +1,12 @@
 package com.sunshine.orchestrator.processing;
 
+import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.config.WorkflowProperties;
+import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,9 +14,23 @@ class StepSummarizerTest {
 
     @Test
     void intentAfter_knowledge_mentionsQuery() {
-        String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库查询");
-        assertThat(after).contains("公司考勤制度");
-        assertThat(after).contains("知识库");
+        AgentPromptProperties agentProps = new AgentPromptProperties();
+        WorkflowProperties workflowProps = new WorkflowProperties();
+        WorkflowProperties.CatalogEntry entry = new WorkflowProperties.CatalogEntry();
+        entry.setId("knowledge-qa");
+        entry.setDisplayName("知识库问答");
+        workflowProps.setCatalog(List.of(entry));
+        workflowProps.setDefinitions(new java.util.LinkedHashMap<>());
+        IntentLabels.bind(new IntentLabelService(
+                agentProps, workflowProps, new WorkflowNodeLabelService(
+                        workflowProps, Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class))));
+        try {
+            String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
+            assertThat(after).contains("公司考勤制度");
+            assertThat(after).contains("知识库问答");
+        } finally {
+            IntentLabels.bind(null);
+        }
     }
 
     @Test

@@ -27,37 +27,79 @@ public final class StepSummarizer {
 
     public static String before(String stepId, String userQuery) {
         String q = clipQuery(userQuery);
+        if (ThinkStepIds.isThinkStep(stepId)) {
+            return ThinkStepIds.iterationOf(stepId) <= 1
+                    ? "规划如何回答" + q
+                    : "准备结合工具结果分析" + q;
+        }
         return switch (stepId) {
-            case "intent" -> "阅读" + q;
-            case "rag" -> "在企业知识库中查找与" + q + "相关的资料";
+            case "intent" -> TimelineLabels.before("intent", q);
+            case "rag" -> TimelineLabels.before("rag", q);
             case "agent" -> "理解" + q + "，规划作答思路";
             case "think" -> "分析" + q + "的作答逻辑";
-            case "generate" -> "为" + q + "组织回答内容";
-            default -> StepLabels.beforeFor(stepId);
+            case "plan" -> TimelineLabels.before("plan", q);
+            case "generate" -> TimelineLabels.before("generate", q);
+            default -> {
+                if (stepId != null && stepId.startsWith("node-")) {
+                    yield "准备处理" + q + "的「" + com.sunshine.orchestrator.execution.WorkflowNodeLabels
+                            .displayNameByStepId(stepId) + "」环节";
+                }
+                yield StepLabels.beforeFor(stepId);
+            }
         };
     }
 
     public static String active(String stepId, String userQuery) {
         String q = clipQuery(userQuery);
+        if (ThinkStepIds.isThinkStep(stepId)) {
+            return ThinkStepIds.iterationOf(stepId) <= 1
+                    ? "正在规划" + q + "的工具调用方案"
+                    : "正在结合工具返回结果分析" + q;
+        }
         return switch (stepId) {
-            case "intent" -> "判断" + q + "该直接回答还是查阅知识库";
-            case "rag" -> "正在匹配与" + q + "最相关的文档片段";
-            case "agent" -> "结合检索结果分析" + q;
+            case "intent" -> TimelineLabels.active("intent", q);
+            case "rag" -> TimelineLabels.active("rag", q);
+            case "agent" -> "结合上下文分析" + q;
             case "think" -> "正在推演针对" + q + "的回答思路";
-            case "generate" -> "正在撰写并输出针对" + q + "的回复";
-            default -> StepLabels.activeFor(stepId);
+            case "plan" -> TimelineLabels.active("plan", q);
+            case "generate" -> TimelineLabels.active("generate", q);
+            default -> {
+                if (stepId != null && stepId.startsWith("node-")) {
+                    yield "正在" + com.sunshine.orchestrator.execution.WorkflowNodeLabels
+                            .displayNameByStepId(stepId);
+                }
+                yield StepLabels.activeFor(stepId);
+            }
         };
     }
 
     public static String after(String stepId, String userQuery, String detail) {
         String q = clipQuery(userQuery);
+        if (ThinkStepIds.isThinkStep(stepId)) {
+            if (detail != null && !detail.isBlank()) {
+                return detail;
+            }
+            return ThinkStepIds.iterationOf(stepId) <= 1
+                    ? "已完成" + q + "的工具调用规划"
+                    : "已完成" + q + "的工具结果综合分析";
+        }
         return switch (stepId) {
             case "intent" -> afterIntent(q, detail);
             case "rag" -> afterRag(q, detail);
             case "agent" -> afterAgent(userQuery, detail);
+            case "plan" -> detail != null ? detail : "执行计划已生成";
             case "think" -> "已完成对" + q + "的思考";
             case "generate" -> "已完成对" + q + "的回复";
-            default -> StepLabels.afterTemplate(stepId, detail);
+            default -> {
+                if (stepId != null && stepId.startsWith("node-")) {
+                    if (detail != null && !detail.isBlank()) {
+                        yield detail;
+                    }
+                    yield com.sunshine.orchestrator.execution.WorkflowNodeLabels
+                            .displayNameByStepId(stepId) + "完成";
+                }
+                yield StepLabels.afterTemplate(stepId, detail);
+            }
         };
     }
 
@@ -71,19 +113,7 @@ public final class StepSummarizer {
     }
 
     private static String afterIntent(String q, String detail) {
-        if (detail == null) {
-            return "已完成对" + q + "的意图判断";
-        }
-        if ("知识库查询".equals(detail) || "knowledge".equalsIgnoreCase(detail)) {
-            return q + "属于企业知识类问题，将检索知识库后作答";
-        }
-        if ("简单对话".equals(detail) || "simple".equalsIgnoreCase(detail)) {
-            return q + "属于日常对话，将直接生成回复";
-        }
-        if ("财务工具查询".equals(detail) || "finance".equalsIgnoreCase(detail)) {
-            return q + "属于财务类问题，将调用财务工具后作答";
-        }
-        return q + "判定为：" + detail;
+        return IntentLabels.intentAfterSummary(q, detail);
     }
 
     private static String afterRag(String q, String detail) {
@@ -110,7 +140,7 @@ public final class StepSummarizer {
         String q = clipQuery(userQuery);
         String detail = ragDetailHint;
         if (detail == null && userQuery == null) {
-            return "完成问题分析，开始组织回答";
+            return "完成问题分析，开始生成回复";
         }
         if (detail == null) {
             return "已梳理" + q + "的作答要点";
@@ -122,7 +152,7 @@ public final class StepSummarizer {
         if (matcher.find()) {
             return "已从 " + matcher.group(1) + " 条文档中提取与" + q + "相关的关键信息";
         }
-        return "已完成对" + q + "的分析，开始组织回答";
+        return "已完成对" + q + "的分析，开始生成回复";
     }
 
     /** 无用户问题时回退到通用文案 */

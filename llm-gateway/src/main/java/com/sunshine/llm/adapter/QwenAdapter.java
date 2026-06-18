@@ -12,7 +12,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -25,12 +24,17 @@ public class QwenAdapter implements LlmAdapter {
 
     private final ProviderProperties props;
     private final LlmWebClientFactory webClientFactory;
+    private final OpenAiRequestBodyFactory requestBodyFactory;
 
     private WebClient client;
 
-    public QwenAdapter(ProviderProperties props, LlmWebClientFactory webClientFactory) {
+    public QwenAdapter(
+            ProviderProperties props,
+            LlmWebClientFactory webClientFactory,
+            OpenAiRequestBodyFactory requestBodyFactory) {
         this.props = props;
         this.webClientFactory = webClientFactory;
+        this.requestBodyFactory = requestBodyFactory;
     }
 
     @Override
@@ -92,17 +96,6 @@ public class QwenAdapter implements LlmAdapter {
     }
 
     private Object toRequestBody(ChatCompletionRequest request, boolean stream) {
-        List<Msg> messages = request.getMessages().stream()
-                .map(m -> new Msg(m.getRole(), m.getContent()))
-                .toList();
-        return new QwenRequest(request.getModel(), messages,
-                request.getTemperature(), request.getMaxTokens(), stream);
-    }
-
-    record QwenRequest(String model, List<Msg> messages, Double temperature,
-                       Integer maxTokens, Boolean stream) {
-    }
-
-    record Msg(String role, String content) {
+        return requestBodyFactory.build(request, stream);
     }
 }

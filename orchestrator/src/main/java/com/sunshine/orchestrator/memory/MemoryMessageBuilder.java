@@ -2,7 +2,6 @@ package com.sunshine.orchestrator.memory;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.conversation.ConversationScopeHint;
 import com.sunshine.orchestrator.memory.stm.StmBoundaryFormatter;
 import org.springframework.util.StringUtils;
 
@@ -56,12 +55,6 @@ public final class MemoryMessageBuilder {
                 messages.add(Map.of("role", turn.role(), "content", turn.content()));
             }
         }
-    }
-
-    public static void appendScopeHint(
-            List<Map<String, Object>> messages, AgentPromptProperties prompts) {
-        ConversationScopeHint.resolve(prompts)
-                .ifPresent(scope -> messages.add(Map.of("role", "system", "content", scope)));
     }
 
     public static String formatCurrentUser(String userMessage, MemoryProperties memoryProperties) {

@@ -7,6 +7,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+/**
+ * ReAct 时间线会话：think 边界对齐 AgentScope PreReasoning/PostReasoning Hook，工具步骤由 PreActing/PostActing 写入。
+ */
 public final class ProcessingTimelineSession {
 
     private final TimelineAggregator aggregator = new TimelineAggregator();
@@ -14,6 +17,11 @@ public final class ProcessingTimelineSession {
     private ProcessingStep lastEmitted;
     private String userQuery;
     private String activeStepId;
+    /** ReAct 推理轮次，每轮独立 think 步骤 */
+    private int thinkIteration;
+    private String currentThinkId;
+    /** 工具执行中的并发计数（仅统计） */
+    private int pendingToolCalls;
 
     public String activeStepId() {
         return activeStepId;
@@ -86,6 +94,10 @@ public final class ProcessingTimelineSession {
         if (activeStepId == null) {
             return;
         }
+        // think 仅由 PostReasoning 结束，切到工具步骤时不抢先 complete
+        if (ThinkStepIds.isThinkStep(activeStepId)) {
+            return;
+        }
         aggregator.get(activeStepId).ifPresent(step -> {
             if ("running".equals(step.lifecycle())) {
                 completeAt(activeStepId, step.detail(), endedAt);
@@ -135,29 +147,97 @@ public final class ProcessingTimelineSession {
         apply(stepId, null, EventKind.SKIP, afterSummary, null);
     }
 
-    /** Agent 推理并行展示为 think 步骤，不抢占 agent 的 activeStepId */
-    public void openThinkParallel() {
-        long ts = System.currentTimeMillis();
-        if (!hasStep("think")) {
-            applyAt("think", "think", EventKind.PENDING, resolveBefore("think"), null, ts);
+    /** 当前 ReAct 推理轮对应的 think 步骤 id（可能为 null） */
+    public String currentThinkStepId() {
+        return currentThinkId;
+    }
+
+    /** 开启新一轮 think；若当前轮仍在 running 则复用 */
+    public String openNextThink() {
+        if (currentThinkId != null && isStepRunning(currentThinkId)) {
+            return currentThinkId;
         }
-        aggregator.get("think").ifPresent(step -> {
-            if ("pending".equals(step.lifecycle())) {
-                applyAt("think", "think", EventKind.START, resolveActive("think"), null, ts);
-            }
-        });
+        thinkIteration++;
+        currentThinkId = ThinkStepIds.forIteration(thinkIteration);
+        pending(currentThinkId, "think");
+        start(currentThinkId, "think");
+        return currentThinkId;
     }
 
     public boolean isThinkRunning() {
-        return aggregator.get("think")
-                .map(step -> "running".equals(step.lifecycle()))
-                .orElse(false);
+        if (currentThinkId != null && isStepRunning(currentThinkId)) {
+            return true;
+        }
+        return snapshot().stream()
+                .anyMatch(s -> ThinkStepIds.isThinkStep(s.id()) && isStepRunning(s.id()));
+    }
+
+    /** AgentScope PreReasoning：开启本轮 think */
+    public void beginReasoningRound() {
+        if (isThinkRunning()) {
+            completeThinkIfRunning();
+        }
+        openNextThink();
+    }
+
+    /** AgentScope PostReasoning：结束本轮 think */
+    public void endReasoningRound() {
+        completeThinkIfRunning();
+    }
+
+    /** PreActing：仅统计工具并发 */
+    public void noteToolCallPending() {
+        pendingToolCalls++;
+    }
+
+    public void noteToolCallDone() {
+        if (pendingToolCalls > 0) {
+            pendingToolCalls--;
+        }
+    }
+
+    public boolean hasPendingToolCalls() {
+        return pendingToolCalls > 0;
+    }
+
+    /** @deprecated 使用 {@link #endReasoningRound()} */
+    public void completeReasoningRound() {
+        endReasoningRound();
+    }
+
+    /** 结束当前 running 的 think 步骤 */
+    public void completeThinkIfRunning() {
+        if (currentThinkId != null && isStepRunning(currentThinkId)) {
+            complete(currentThinkId, null);
+            return;
+        }
+        snapshot().stream()
+                .filter(s -> ThinkStepIds.isThinkStep(s.id()) && isStepRunning(s.id()))
+                .map(ProcessingStep::id)
+                .findFirst()
+                .ifPresent(id -> complete(id, null));
+    }
+
+    public void openThinkParallel() {
+        openNextThink();
     }
 
     public void completeThinkParallelAt(long endedAt) {
-        if (isThinkRunning()) {
-            completeAt("think", null, endedAt);
+        if (currentThinkId != null && isStepRunning(currentThinkId)) {
+            completeAt(currentThinkId, null, endedAt);
+            return;
         }
+        snapshot().stream()
+                .filter(s -> ThinkStepIds.isThinkStep(s.id()) && isStepRunning(s.id()))
+                .map(ProcessingStep::id)
+                .findFirst()
+                .ifPresent(id -> completeAt(id, null, endedAt));
+    }
+
+    private boolean isStepRunning(String stepId) {
+        return aggregator.get(stepId)
+                .map(step -> "running".equals(step.lifecycle()))
+                .orElse(false);
     }
 
     public List<ProcessingStep> snapshot() {

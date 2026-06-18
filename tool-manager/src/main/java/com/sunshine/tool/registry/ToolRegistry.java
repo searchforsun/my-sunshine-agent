@@ -1,5 +1,6 @@
 package com.sunshine.tool.registry;
 
+import com.sunshine.tool.dto.ToolCatalogEntry;
 import com.sunshine.tool.tool.ToolHandler;
 import org.springframework.stereotype.Component;
 
@@ -27,5 +28,20 @@ public class ToolRegistry {
             throw new IllegalArgumentException("unknown tool: " + name);
         }
         return handler.invoke(params);
+    }
+
+    /** 供 orchestrator 拉取工具元数据 */
+    public List<ToolCatalogEntry> listCatalog() {
+        return handlers.values().stream()
+                .map(h -> new ToolCatalogEntry(
+                        h.name(),
+                        h.displayName(),
+                        h.description(),
+                        h.kind(),
+                        h.timelinePhase(),
+                        h.outputSummaryKind(),
+                        h.parametersSchema()))
+                .sorted((a, b) -> a.id().compareTo(b.id()))
+                .toList();
     }
 }

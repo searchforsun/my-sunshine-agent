@@ -10,6 +10,9 @@ server:
 finance:
   base-url: http://localhost:8710
 
+oa:
+  base-url: http://localhost:8700
+
 logging:
   level:
     com.sunshine: debug

@@ -113,12 +113,6 @@ public class ModelRouter {
     }
 
     private static ChatCompletionRequest withModel(ChatCompletionRequest source, String model) {
-        ChatCompletionRequest copy = new ChatCompletionRequest();
-        copy.setModel(model);
-        copy.setMessages(source.getMessages());
-        copy.setTemperature(source.getTemperature());
-        copy.setMaxTokens(source.getMaxTokens());
-        copy.setStream(source.getStream());
-        return copy;
+        return source.copyWithModel(model);
     }
 }

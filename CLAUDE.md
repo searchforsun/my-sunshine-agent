@@ -2,114 +2,85 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 2.1–2.8 MVP 已完成；**Workflow 编排**（三模式 + DAG 引擎）已落地；阶段三待启动。已知缺口见 `docs/implementation-plan.md`。
+**进度**：阶段二 MVP + Workflow 编排已完成；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
 ```bash
-# 后端（JDK 21，本机默认可能是 17：switch-java 21）
+# JDK 21
 mvn clean package -DskipTests
 mvn compile -pl <module> -am
 
-# Nacos 配置 SSOT：docs/nacos/ → 同步线上 → 启动
+# 配置：docs/nacos/ → 同步 → 重启
 powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1
 powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1 -DataId sunshine-orchestrator.yaml
 powershell -ExecutionPolicy Bypass -File scripts/sync-nacos.ps1 -DataId sunshine-workflows.yaml
-
-# 一键启动（10 个微服务，配置来自 Nacos）
 powershell -ExecutionPolicy Bypass -File scripts/start.ps1
-# :8300 llm-gateway → :8400 rag → :8710 finance → :8210 tool-manager → :8600 desensitize
-# → :8500 prompt-manager → :8200 orchestrator → :8100 auth → :8001 bff → :8000 gateway
 
-# 前端
-cd sunshine-ui && npm run dev   # :5173，/api → Gateway :8000
+# 前端 :5173；SSE 直连 Gateway :8000
+cd sunshine-ui && npm run dev
 
 # 验收
-powershell -ExecutionPolicy Bypass -File scripts/phase2-auth-demo.ps1
-powershell -ExecutionPolicy Bypass -File scripts/phase2-demo.ps1          # 分层 HTTP + 可选 Agent
-powershell -ExecutionPolicy Bypass -File scripts/phase2-agent-demo.ps1    # 2.4 全链路 SSE
-# 跳过 Agent 全链路：$env:PHASE2_SKIP_AGENT=1
-
-# 单测（模型降级）
+powershell -ExecutionPolicy Bypass -File scripts/phase2-agent-demo.ps1
 mvn test -pl llm-gateway -Dtest=ModelRouterTest,AdapterCircuitBreakerTest
 ```
 
-**首次部署**：MySQL 执行 `CREATE DATABASE sunshine_auth;`（auth）；`sync-nacos.ps1` 后再 `start.ps1`。
+**首次部署**：MySQL `CREATE DATABASE sunshine_auth;` → `sync-nacos.ps1` → `start.ps1`。
 
-## 请求链路
+## 请求链路与模块
 
 ```
-Browser (:5173)
-  → Gateway (:8000)  [JWT 校验，注入 x-user-id]
-       ├─ /api/auth/** → auth-center (:8100)
-       └─ /api/**      → BFF (:8001) → Orchestrator (:8200)
-                              ├─ LLM Gateway (:8300) → DeepSeek / Qwen
-                              ├─ rag-service (:8400) Milvus 检索
-                              ├─ tool-manager (:8210) → finance-service (:8710)
-                              └─ desensitize (:8600) 入站/出站脱敏
+Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
+  ├─ simple-llm / workflow(DAG) / react(ReActAgent)
+  ├─ llm-gateway :8300  rag :8400  tool-manager :8210 → finance :8710
+  └─ desensitize :8600
 ```
 
-SSE 流式直连 Gateway `:8000`（`Authorization: Bearer`），避免 Vite 缓冲。
+| 模块 | 端口 | 职责 |
+|------|:----:|------|
+| gateway / bff / auth-center | 8000/8001/8100 | 路由、SSE 透传、JWT |
+| orchestrator | 8200 | 三模式 + Timeline |
+| tool-manager | 8210 | `ToolRegistry` + `/api/tools/catalog` |
+| llm-gateway / rag-service | 8300/8400 | 模型路由 / Milvus |
 
-## 模块
+各服务 `application.yml` 仅 Nacos 入口；业务配置 SSOT 在 `docs/nacos/`。
 
-| 模块 | 端口 | 职责 | 状态 |
-|------|:----:|------|:----:|
-| `gateway` | 8000 | 路由、JWT、header 注入 | ✅ |
-| `bff` | 8001 | SSE/会话 CRUD 透传 | ✅ |
-| `auth-center` | 8100 | 注册/登录、JWT | ✅ |
-| `orchestrator` | 8200 | 三模式执行（simple-llm / workflow / react）+ ReActAgent + Timeline | ✅ |
-| `tool-manager` | 8210 | 业务 API → AgentScope `@Tool` + `ToolRegistry` | ✅ |
-| `llm-gateway` | 8300 | `LlmAdapter` + `ModelRouter` + 语义缓存 + 降级 | ✅ |
-| `rag-service` | 8400 | Milvus + Embedding | 🔶 待联调 |
-| `prompt-manager` | 8500 | 提示词模板（骨架） | 🟡 |
-| `desensitize` | 8600 | 正则脱敏 | ✅ MVP |
-| `finance-service` | 8710 | 财务消息 Mock API | ✅ |
-| `oa-service` | 8700 | OA 模拟 | 🟡 骨架 |
+## 架构与扩展（要点）
 
-各服务 `application.yml` **仅** Nacos 入口（`import nacos:{dataId}.yaml`），业务配置在 `docs/nacos/`。
+**原则**：注册 + Catalog 驱动，禁止 orchestrator/前端硬编码工具 Map。
+
+| 要扩展 | 改哪里 |
+|--------|--------|
+| 新工具 | `tool-manager` 新增 `ToolHandler`（含 displayName / timelinePhase / outputSummaryKind）→ Nacos `agent.execution.react.tools` 或 workflow 节点 `params.tool` → sync + 重启 tool-manager、orchestrator |
+| 新 Workflow | `docs/nacos/sunshine-workflows.yaml` 的 catalog + definitions → sync → 重启 orchestrator |
+| 意图步骤文案 | Nacos `agent.timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
+| 步骤 before/active | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary`，勿写死步骤话术 |
+| 步骤中文名 | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
+
+**Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` → orchestrator `ToolCatalogService` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels` / `ToolResultSummarizer`。
+
+**ReAct 时间线**：`intent → think → tool → think-2 → generate`；reasoning 走 `step_delta`；工具 `PreActing` 时 `noteToolCallPending()` 结束当前 think 并屏蔽工具往返 planning。
 
 ## 关键约定
 
-1. **OpenAIChatModel** 对接自建 Gateway `/v1/chat/completions`（不用 DashScope 专有路径）。
-2. **Gateway 集中鉴权**：BFF/Orchestrator 只读 `x-user-id`，客户端不得自填。
-3. **BFF 只透传**；**不做多租户**（`x-tenant-id` 固定 `default`）。
-4. `ChatCompletionResponse` 用 `@Builder` 时须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
-5. **Nacos SSOT**：只改 `docs/nacos/*.yaml` → `sync-nacos.ps1` → 重启受影响服务（无 `application-dev.yaml`）。
-6. **ReActAgent 流式**：`agent.stream()` 过滤 `event.getMessage().getTextContent()` 非空；reasoning 统一经 `ThinkStepMapper` / `AgentScopeEventMapper` 拆为独立 `think` 步骤（废弃 `agent` 容器步）。
-7. **三模式路由**：`IntentRouter.classifyPlan()` → `ExecutionDispatcher`；workflow 图 SSOT 在 `docs/nacos/sunshine-workflows.yaml`（catalog + definitions）；无图定义时回退 legacy。
-8. **财务路径**：workflow `finance-*` 或 react 模式经 `tool-manager` 预取/调用；**禁止在 Controller 拼接 prompt 模板**，输出规范见 Nacos `agent.system-prompt`。
-9. **审计**：assistant 消息终态 → RocketMQ `sunshine-audit` / 直写 MySQL `chat_audit_log` + ES `sunshine-audit`；查询 `GET /api/audit/recent`（orchestrator :8200）。
+1. OpenAIChatModel 对接 Gateway `/v1/chat/completions`。
+2. Gateway 鉴权注入 `x-user-id`；BFF/Orchestrator 只读，客户端不得自填。
+3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync-nacos.ps1` → 重启（无 `application-dev.yaml`）。
+4. 三模式：`IntentRouter` → `ExecutionDispatcher`；workflow 图在 `sunshine-workflows.yaml`。
+5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板（见 Nacos `agent.system-prompt`）。
+6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
+7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。
 
 ## 中间件（ecs4c16g）
 
-| 组件 | 端口 | 凭据 |
-|------|------|------|
-| Nacos | 8848 | nacos/nacos |
-| MySQL | 3306 | root/root123 |
-| Redis | 6379 | redis123 |
-| Milvus | 19530 | standalone |
-| RocketMQ NS | 9876 | — |
-| Elasticsearch | 9200 | — |
-| SkyWalking OAP/UI | 11800 / 8084 | — |
-| Sentinel | 8858 | sentinel/sentinel123 |
+Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876 | ES 9200 | SkyWalking 11800/8084
 
-## 版本约束
+## 版本与前端
 
-勿升 Spring Boot 3.3+、AgentScope 2.0.0；Sa-Token **1.45.0**（需 `sa-token-jwt`）。
-
-## 前端（sunshine-ui）
-
-Codex 风格：灰阶扁平，品牌色仅 Logo。令牌 SSOT：`src/styles/global.css`（`--sun-*`）。
-
-- 认证：`authStore` + `sunshine-token`；`apiHeaders()` 发 Bearer
-- CRUD：`/api`（Vite 代理）；SSE：`BFF_STREAM_BASE`（默认 `http://localhost:8000`）
-- 对话页：`OperationStack` 展示步骤流（含 `think` 独立步骤与耗时）
-- **工具步骤中文名**：后端 `StepLabels.toolDisplayName` / 前端 `processingSteps.toolDisplayName` 映射工具 id（如 `list_finance_messages` →「查询待审批财务消息」）；OperationStack 标题统一为「调用工具 {中文名}」，勿直接展示 snake_case
+- 勿升 Spring Boot 3.3+、AgentScope 2.0.0；Sa-Token **1.45.0**（需 `sa-token-jwt`）。
+- UI：Codex 灰阶；令牌 `src/styles/global.css`；`OperationStack` 用 SSE `step.label`；SSE 基址 `BFF_STREAM_BASE`（默认 `:8000`）。
 
 ## 其他
 
-- 禁止保存临时脚本
-- 上线 auth 前可跑 `scripts/phase2-auth-reset.sql`
-- `start.ps1` SkyWalking：`skywalking.agent.service_name` + stdout/stderr 分文件重定向
-- 生成的代码要加上一定量的中文注释方便阅读
+- 禁止保存临时脚本；代码加适量中文注释。
+- `start.ps1` 可带 SkyWalking agent。

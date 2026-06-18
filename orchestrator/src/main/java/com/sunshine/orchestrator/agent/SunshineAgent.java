@@ -4,7 +4,6 @@ import com.sunshine.orchestrator.client.StreamDeltaNormalizer;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.conversation.ConversationScopeHint;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.memory.MemoryMessageBuilder;
 import com.sunshine.orchestrator.memory.MemoryProperties;
@@ -34,20 +33,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 public class SunshineAgent {
 
-    private final ReActAgent agent;
+    private final ReActAgentFactory agentFactory;
     private final AgentPromptProperties prompts;
     private final MemoryProperties memoryProperties;
 
-    public SunshineAgent(ReActAgent agent, AgentPromptProperties prompts, MemoryProperties memoryProperties) {
-        this.agent = agent;
+    public SunshineAgent(ReActAgentFactory agentFactory, AgentPromptProperties prompts,
+            MemoryProperties memoryProperties) {
+        this.agentFactory = agentFactory;
         this.prompts = prompts;
         this.memoryProperties = memoryProperties;
     }
 
     @PostConstruct
     public void init() {
-        log.info("[Orchestrator] Agent 就绪: name={}, maxIters={}",
-                agent.getName(), agent.getMaxIters());
+        log.info("[Orchestrator] Agent 就绪: 按请求创建 ReActAgent（非单例）");
     }
 
     public Flux<StreamToken> chat(String userMessage, String userId, String tenantId) {
@@ -107,7 +106,7 @@ public class SunshineAgent {
 
         StreamOptions options = StreamOptions.builder()
                 .incremental(true)
-                .eventTypes(EventType.REASONING, EventType.TOOL_RESULT, EventType.AGENT_RESULT, EventType.HINT)
+                .eventTypes(EventType.REASONING, EventType.AGENT_RESULT, EventType.HINT)
                 .includeReasoningChunk(true)
                 .includeActingChunk(true)
                 .build();
@@ -124,9 +123,11 @@ public class SunshineAgent {
         AtomicBoolean generateStarted = new AtomicBoolean(false);
         AtomicBoolean generateCompleted = new AtomicBoolean(false);
 
+        ReActAgent agent = agentFactory.create();
         return agent.stream(inputs, options)
                 .flatMap(event -> {
-                    List<StreamToken> tokens = drainHookSteps(stepQueue);
+                    List<StreamToken> tokens = new ArrayList<>();
+                    tokens.addAll(drainHookSteps(stepQueue));
                     tokens.addAll(mapAgentEvent(event, session, generateStarted, assistantMessageId));
                     return Flux.fromIterable(tokens);
                 })
@@ -163,7 +164,7 @@ public class SunshineAgent {
         }
 
         if (session.isThinkRunning()) {
-            return ProcessingTimelineSupport.run(session, () -> session.complete("think", null));
+            return ProcessingTimelineSupport.run(session, session::completeThinkIfRunning);
         }
         return List.of();
     }
@@ -203,10 +204,6 @@ public class SunshineAgent {
                     .textContent(financeContext.strip())
                     .build());
         }
-        ConversationScopeHint.resolve(prompts).ifPresent(scope -> inputs.add(Msg.builder()
-                .role(MsgRole.SYSTEM)
-                .textContent(scope)
-                .build()));
         inputs.add(Msg.builder()
                 .role(MsgRole.USER)
                 .textContent(MemoryMessageBuilder.formatCurrentUser(userMessage, memoryProperties))
