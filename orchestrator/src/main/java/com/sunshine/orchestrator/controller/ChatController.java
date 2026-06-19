@@ -2,9 +2,10 @@ package com.sunshine.orchestrator.controller;
 
 import com.sunshine.orchestrator.execution.ExecutionDispatcher;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
-import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.routing.ExecutionPlanRouter;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.agent.StepEventBridge;
@@ -56,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -64,7 +66,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ChatController {
 
-    private final IntentRouter intentRouter;
+    private final ExecutionPlanRouter executionPlanRouter;
     private final ExecutionDispatcher executionDispatcher;
     private final ExecutionPlanParser executionPlanParser;
     private final com.sunshine.orchestrator.execution.SimpleLlmExecutor simpleLlmExecutor;
@@ -121,15 +123,17 @@ public class ChatController {
 
         return ReactiveBlocking.call(() -> prepareNewMessage(msg, userId, tenantId))
                 .flatMapMany(ctx -> {
+                    AtomicReference<ExecutionMode> executionMode = initialExecutionMode(ctx);
+                    Flux<StreamToken> chunkFlux = resolveChunkFlux(ctx, executionMode);
                     if (jobFactory != null && streamService != null && registry != null) {
-                        return handleNewMessageWithRedis(ctx);
+                        return handleNewMessageWithRedis(ctx, executionMode, chunkFlux);
                     }
-                    Flux<StreamToken> chunkFlux = resolveChunkFlux(ctx);
-                    return wrapStream(ctx, chunkFlux, false);
+                    return wrapStream(ctx, chunkFlux, false, executionMode);
                 });
     }
 
-    private Flux<ServerSentEvent<String>> handleNewMessageWithRedis(StreamContext ctx) {
+    private Flux<ServerSentEvent<String>> handleNewMessageWithRedis(
+            StreamContext ctx, AtomicReference<ExecutionMode> executionMode, Flux<StreamToken> chunkFlux) {
         String generationId = streamService.createGeneration(
                 ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), ctx.intent());
 
@@ -158,7 +162,7 @@ public class ChatController {
             log.error("[Orchestrator] generation 异常 genId={}", generationId, error);
         };
 
-        job.start(prepareChunkFlux(resolveChunkFlux(ctx)), buffer, flushPartial, onComplete, onError);
+        job.start(prepareChunkFlux(chunkFlux), buffer, flushPartial, onComplete, onError, executionMode);
 
         return sseFluxFromRedis(ctx, generationId, job);
     }
@@ -227,17 +231,21 @@ public class ChatController {
             ChatMessage msg, String userId, String tenantId) {
 
         return ReactiveBlocking.call(() -> prepareResume(msg, userId, tenantId))
-                .flatMapMany(ctx -> wrapStream(ctx, resolveChunkFlux(ctx), true));
+                .flatMapMany(ctx -> {
+                    AtomicReference<ExecutionMode> executionMode = initialExecutionMode(ctx);
+                    return wrapStream(ctx, resolveChunkFlux(ctx, executionMode), true, executionMode);
+                });
     }
 
     private Flux<ServerSentEvent<String>> wrapStream(
-            StreamContext ctx, Flux<StreamToken> chunkFlux, boolean resume) {
+            StreamContext ctx, Flux<StreamToken> chunkFlux, boolean resume,
+            AtomicReference<ExecutionMode> executionMode) {
 
         StringBuilder buffer = new StringBuilder(resume ? ctx.existingContent() : "");
         StringBuilder reasoningBuffer = new StringBuilder(resume ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
                 ProcessingStepMerger.fromJson(ctx.existingStepsJson()));
-        ThinkStepMapper thinkMapper = new ThinkStepMapper(stepsBuffer, ctx.userContent());
+        ThinkStepMapper thinkMapper = new ThinkStepMapper(stepsBuffer, ctx.userContent(), executionMode);
         var appender = flushScheduler.createChunkAppender(buffer, ctx.assistantMsgId(), flushIntervalMs);
 
         Flux<ServerSentEvent<String>> meta = Flux.just(
@@ -393,9 +401,10 @@ public class ChatController {
         );
     }
 
-    private Flux<StreamToken> resolveChunkFlux(StreamContext ctx) {
+    private Flux<StreamToken> resolveChunkFlux(StreamContext ctx, AtomicReference<ExecutionMode> executionMode) {
         if (ctx.intent() != null) {
             ExecutionPlan plan = executionPlanParser.parseStoredIntent(ctx.intent());
+            executionMode.set(plan.mode());
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan);
             if (StringUtils.hasText(ctx.existingContent())) {
                 return prepareChunkFlux(simpleLlmExecutor.execute(execCtx));
@@ -413,8 +422,9 @@ public class ChatController {
 
         return prepareChunkFlux(Flux.concat(
                 Flux.fromIterable(intentStartTokens),
-                intentRouter.classifyPlan(ctx.userContent())
+                executionPlanRouter.route(ctx.userContent())
                         .flatMapMany(plan -> {
+                            executionMode.set(plan.mode());
                             Mono<Void> savePlan = Mono.fromRunnable(() ->
                                             conversationService.updateMessageExecutionPlan(
                                                     ctx.assistantMsgId(), plan))
@@ -428,6 +438,14 @@ public class ChatController {
                             ));
                         })
         ));
+    }
+
+    private AtomicReference<ExecutionMode> initialExecutionMode(StreamContext ctx) {
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        if (ctx.intent() != null) {
+            mode.set(executionPlanParser.parseStoredIntent(ctx.intent()).mode());
+        }
+        return mode;
     }
 
     private static ExecutionStreamContext toExecutionContext(StreamContext ctx, ExecutionPlan plan) {

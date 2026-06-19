@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ToolResultSummarizer;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,12 +30,21 @@ public final class StepSummarizer {
     }
 
     public static String before(String stepId, String userQuery) {
-        return before(stepId, userQuery, null);
+        return before(stepId, userQuery, null, ExecutionMode.REACT);
     }
 
     public static String before(String stepId, String userQuery, String lastToolDisplayName) {
+        return before(stepId, userQuery, lastToolDisplayName, ExecutionMode.REACT);
+    }
+
+    public static String before(String stepId, String userQuery, String lastToolDisplayName, ExecutionMode mode) {
         String q = clipQuery(userQuery);
         if (ThinkStepIds.isThinkStep(stepId)) {
+            if (mode == ExecutionMode.SIMPLE_LLM) {
+                return ThinkStepIds.iterationOf(stepId) <= 1
+                        ? "构思如何回答" + q
+                        : "准备整理作答要点";
+            }
             if (ThinkStepIds.iterationOf(stepId) <= 1) {
                 return "规划如何回答" + q;
             }
@@ -62,12 +72,21 @@ public final class StepSummarizer {
     }
 
     public static String active(String stepId, String userQuery) {
-        return active(stepId, userQuery, null);
+        return active(stepId, userQuery, null, ExecutionMode.REACT);
     }
 
     public static String active(String stepId, String userQuery, String lastToolDisplayName) {
+        return active(stepId, userQuery, lastToolDisplayName, ExecutionMode.REACT);
+    }
+
+    public static String active(String stepId, String userQuery, String lastToolDisplayName, ExecutionMode mode) {
         String q = clipQuery(userQuery);
         if (ThinkStepIds.isThinkStep(stepId)) {
+            if (mode == ExecutionMode.SIMPLE_LLM) {
+                return ThinkStepIds.iterationOf(stepId) <= 1
+                        ? "正在构思针对" + q + "的作答思路"
+                        : "正在整理作答要点";
+            }
             if (ThinkStepIds.iterationOf(stepId) <= 1) {
                 return "正在规划" + q + "的工具调用方案";
             }
@@ -95,14 +114,24 @@ public final class StepSummarizer {
     }
 
     public static String after(String stepId, String userQuery, String detail) {
-        return after(stepId, userQuery, detail, null);
+        return after(stepId, userQuery, detail, null, ExecutionMode.REACT);
     }
 
     public static String after(String stepId, String userQuery, String detail, String lastToolDisplayName) {
+        return after(stepId, userQuery, detail, lastToolDisplayName, ExecutionMode.REACT);
+    }
+
+    public static String after(String stepId, String userQuery, String detail, String lastToolDisplayName,
+            ExecutionMode mode) {
         String q = clipQuery(userQuery);
         if (ThinkStepIds.isThinkStep(stepId)) {
             if (detail != null && !detail.isBlank()) {
                 return detail;
+            }
+            if (mode == ExecutionMode.SIMPLE_LLM) {
+                return ThinkStepIds.iterationOf(stepId) <= 1
+                        ? "已完成针对" + q + "的作答构思"
+                        : "作答要点整理完成";
             }
             if (ThinkStepIds.iterationOf(stepId) <= 1) {
                 return "已完成" + q + "的工具调用规划";

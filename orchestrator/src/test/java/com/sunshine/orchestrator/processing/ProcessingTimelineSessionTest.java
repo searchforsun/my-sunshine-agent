@@ -226,6 +226,6 @@ class ProcessingTimelineSessionTest {
         assertThat(toolSteps.get(0).id()).isNotEqualTo(toolSteps.get(1).id());
         assertThat(toolSteps.get(0).detail()).contains("pending").doesNotContain("·");
         assertThat(toolSteps.get(1).detail()).contains("approved").doesNotContain("·");
-        assertThat(toolSteps.get(0).label()).isEqualTo("调用工具 summarize_finance_by_status");
+        assertThat(toolSteps.get(0).label()).isEqualTo("调用工具 统计财务消息");
     }
 }

@@ -40,4 +40,18 @@ class RagContextFormatterTest {
         assertThat(tool).contains("公司请假流程规范");
         assertThat(tool).contains("知识库检索结果");
     }
+
+    @Test
+    void formatHits_toolAndWorkflow_shareHitBody() {
+        List<RagClient.RagHit> hits = List.of(
+                new RagClient.RagHit("公司报销管理制度", "单次上限 200 元", 0.9f));
+
+        String tool = RagContextFormatter.formatHits(hits, RagContextFormatter.Mode.TOOL);
+        String wf = RagContextFormatter.formatHits(hits, RagContextFormatter.Mode.WORKFLOW);
+
+        assertThat(tool).contains("公司报销管理制度");
+        assertThat(wf).contains("公司报销管理制度");
+        assertThat(tool).contains("200 元");
+        assertThat(wf).contains("200 元");
+    }
 }

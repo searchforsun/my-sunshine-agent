@@ -9,8 +9,13 @@ public record ExecutionPlan(
         ExecutionMode mode,
         String workflowId,
         Map<String, String> params,
-        String reason
+        String reason,
+        String ruleId
 ) {
+    public ExecutionPlan(ExecutionMode mode, String workflowId, Map<String, String> params, String reason) {
+        this(mode, workflowId, params, reason, null);
+    }
+
     public static ExecutionPlan reactFallback(String reason) {
         return new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), reason);
     }

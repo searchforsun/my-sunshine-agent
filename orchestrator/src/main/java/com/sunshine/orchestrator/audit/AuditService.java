@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -41,10 +42,17 @@ public class AuditService {
             return;
         }
         try {
-            String payloadJson = objectMapper.writeValueAsString(Map.of(
-                    "contentLen", message.getContent() != null ? message.getContent().length() : 0,
-                    "hasReasoning", message.getReasoning() != null && !message.getReasoning().isBlank(),
-                    "hasSteps", message.getSteps() != null && !message.getSteps().isBlank()));
+            StepsSummaryExtractor.Summary stepsSummary =
+                    StepsSummaryExtractor.fromStepsJson(message.getSteps());
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("contentLen", message.getContent() != null ? message.getContent().length() : 0);
+            payload.put("hasReasoning", message.getReasoning() != null && !message.getReasoning().isBlank());
+            payload.put("hasSteps", message.getSteps() != null && !message.getSteps().isBlank());
+            payload.put("stepsSummary", Map.of(
+                    "toolNames", stepsSummary.toolNames(),
+                    "stepCount", stepsSummary.stepCount(),
+                    "totalDurationMs", stepsSummary.totalDurationMs()));
+            String payloadJson = objectMapper.writeValueAsString(payload);
             AuditEvent event = new AuditEvent(
                     UUID.randomUUID().toString().replace("-", ""),
                     message.getConversationId(),

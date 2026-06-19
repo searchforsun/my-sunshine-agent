@@ -32,6 +32,7 @@ my-sunshine-agent/
 ├── auth-center/        :8100        # Sa-Token 认证
 ├── orchestrator/       :8200        # AgentScope ReActAgent 编排
 ├── tool-manager/       :8210        # 业务 Tool 包装
+├── skill-manager/      :8225        # Skills 上传/版本/Catalog
 ├── llm-gateway/        :8300        # 大模型网关（多厂商路由/缓存/熔断）
 ├── rag-service/        :8400        # RAG 检索（Milvus + Embedding）
 ├── prompt-manager/     :8500        # 提示词管理
@@ -144,13 +145,13 @@ my-sunshine-agent/
 - [x] LLM 故障 → 自动切换备用模型（`ModelRouter` 降级链 + `AdapterCircuitBreaker` 单测）
 - [x] RocketMQ 审计日志完整（`sunshine-audit` topic + MySQL/ES 双写 + `/api/audit/recent`）
 
-#### 阶段二已知缺口（不阻塞进入阶段三）
-- ~~2.2 Tool Manager 尚未做成可注册通用框架~~ → **已落地 `ToolRegistry`（Task 11）**；新增工具仍须实现 `ToolHandler` Bean
-- 2.3 Finance 为内存 Mock，无交易 API / 持久化
-- 2.5 脱敏未实现 AhoCorasick 与可配置规则库
-- 2.6 熔断为进程内 `AdapterCircuitBreaker`，**Sentinel Dashboard 联调为后续增强**
+#### 阶段二已知缺口（收尾方案见 `phase2-closure-plan.md`）
+- ~~2.2 Tool Manager 尚未做成可注册通用框架~~ → **已落地 `ToolRegistry`**；新增工具仍须实现 `ToolHandler` Bean
+- 2.3 Finance 为内存 Mock，无交易 API / 持久化（阶段三前可保持）
+- 2.5 脱敏未实现 AhoCorasick 与可配置规则库（阶段三并行）
+- 2.6 熔断为进程内 `AdapterCircuitBreaker`，Sentinel Dashboard 联调 → 阶段三 3.5
 - 2.1 认证无登录限流 / Refresh Token / RBAC（设计非目标）
-- 2.7 审计粒度为 assistant 消息终态元数据，未覆盖 tool call 细项
+- 2.7 审计粒度为 assistant 终态，tool call 细项 → 阶段二 2.13 轻量补强 + 阶段三 3.6
 
 ---
 
@@ -176,34 +177,96 @@ my-sunshine-agent/
 
 ---
 
+### 阶段 2.10–2.16：阶段二收尾（约 3–4 周）
+
+> **设计 spec（锁定）**：[superpowers/specs/2026-06-20-phase2-closure-design.md](./superpowers/specs/2026-06-20-phase2-closure-design.md)  
+> **摘要**：[phase2-closure-plan.md](./phase2-closure-plan.md)
+
+| 任务卡 | 内容 | 状态 |
+|--------|------|:--:|
+| 2.10 | Live：`phase2_agent_demo.py --suite all`（ecs4c16g） | ✅ 本地 localhost 全 PASS |
+| 2.11 | 删除 Legacy + Rag 统一（`default-top-k`、Formatter） | ✅ |
+| 2.12 | RAG：rebuild API + 7 篇语料 + 60–80 golden-set + eval 基线 | ✅ |
+| 2.13 | 审计 payload `stepsSummary` / `toolNames` | ✅ |
+| 2.14 | `RuleBasedRouter` 规则硬路由 | ✅ |
+| 2.15 | react 白名单 vs Catalog 启动校验 | ✅ |
+| 2.16 | CLAUDE / rag README 同步 | ✅ |
+
+#### 阶段二收尾检查门
+
+见 spec §12；核心：`rag_eval` 全量报告 + `--suite all` 全 PASS + Legacy 已删。
+
+---
+
 ### 阶段三：生产加固（6周）
+
+> 设计 spec：[superpowers/specs/2026-06-19-phase3-production-hardening-design.md](./superpowers/specs/2026-06-19-phase3-production-hardening-design.md)  
+> 实施计划：[superpowers/plans/2026-06-19-phase3-production-hardening.md](./superpowers/plans/2026-06-19-phase3-production-hardening.md)  
+> **多 Agent 主轴**：[superpowers/specs/2026-06-19-multi-agent-architecture-design.md](./superpowers/specs/2026-06-19-multi-agent-architecture-design.md)  
+> **主轴**：RAG 评测驱动的召回优化 + **Planner/主子 Agent 动态 DAG**
 
 | 任务卡 | 内容 |
 |--------|------|
-| 3.1 多 Agent 协作 | MsgHub + Planner/Executor Agent |
-| 3.2 多租户隔离 | Milvus Partition + Memory 隔离 + Sentinel 配额 |
-| 3.3 Human-in-the-Loop | PreToolCallHook 暂停 → 人工确认 |
-| 3.4 RAG 检索增强 | BM25 + 向量混合 + BGE-Reranker 精排 |
-| 3.5 Grafana 告警 | Dashboard 大盘 + 4 条 Prometheus 告警规则 |
+| 3.4 **RAG 检索增强**（优先） | 评测基建 → ES BM25 → Hybrid RRF → BGE-Reranker → Query Rewrite（可选）→ CI 回归门禁 |
+| 3.5 Grafana 告警 | 大盘含 **RAG 专区**（命中率/EmptyRate/延迟）+ 4 条 Prometheus 规则 |
+| 3.2 多租户隔离 | Milvus Partition + 入库/检索 tenant 过滤 + Memory 隔离 + Sentinel 配额 |
+| 3.3 Human-in-the-Loop | Catalog `sideEffect` + PreToolCallHook → 前端写操作确认 |
+| 3.1 多 Agent 协作 | **主子 Agent 主轴**：`AgentRuntime` + Planner + 动态 DAG 多子 Agent（见 multi-agent spec） |
+| 3.6 审计扩展 | `sunshine-tool-audit` + **`sub_agent_run` 子 Agent 审计** |
+| 3.7 Grounding 校验 | 无 tool/rag 支撑时拦截企业数据编造 |
+| 3.8 提示词改写 | `QueryRewriteService` + `PromptComposer`（见 advanced-capabilities spec） |
+| 3.9 动态 DAG Plan | **`PLAN_WORKFLOW` 模式** + Plan 持久化（`execution_plan` 表）+ 回放 API |
+| 3.10 多 Agent 运行时 | 主/子/Planner 三角色；Planner **flash 专用模型** |
+| 3.11 skill-manager | 新建 :8225 + Skills 上传 API + catalog 拉取 |
+| 3.12 Skills 管理页 | 前端 `/skills`（列表/上传/编辑/发布） |
+
+#### RAG 量化目标（相对阶段二基线）
+
+| 指标 | 阶段三目标 |
+|------|------------|
+| Recall@5 | ≥ 基线 × 1.15 |
+| MRR | ≥ 基线 × 1.10 |
+| EmptyRate（正例） | ≤ 基线 × 0.7 |
+| P95 检索延迟（hybrid+rerank） | ≤ 800ms |
 
 #### 阶段三检查门
-- [ ] Planner + Executor 协作完成复杂任务
-- [ ] 租户A数据对租户B不可见
+- [ ] `rag_eval.py --strategy hybrid` Recall@5 达标
+- [ ] Grafana RAG 面板 + 4 条告警可触发
+- [ ] 租户 A 语料对租户 B 不可见
 - [ ] 写操作工具 → 前端确认对话框
-- [ ] BM25 + 向量混合检索命中率提升
-- [ ] Grafana Dashboard + 告警触发
+- [ ] **`PLAN_WORKFLOW`**：Planner(flash) → 落库 → 执行 → `GET /api/execution-plans/{id}` 可回放
+- [ ] skill-manager catalog 可用；前端 `/skills` 可上传并发布
+- [ ] Tool audit 可按会话查询
+
+#### 阶段三进阶能力（可选并行）
+
+> 详设：[superpowers/specs/2026-06-19-advanced-capabilities-design.md](./superpowers/specs/2026-06-19-advanced-capabilities-design.md) · 多 Agent：[superpowers/specs/2026-06-19-multi-agent-architecture-design.md](./superpowers/specs/2026-06-19-multi-agent-architecture-design.md)
+
+| 任务卡 | 内容 |
+|--------|------|
+| 3.8 提示词改写 | `QueryRewriteService`（RAG/意图）+ `PromptComposer` 分层叠加 |
+| 3.9 动态 DAG Plan | `WorkflowPlanner` → `DAGValidator` → `DynamicWorkflowExecutor` |
+| 3.10 多 Agent 运行时 | 主/子/Planner 三角色 + Skill 工具子集 + `sub_agent_run` 审计 |
 
 ---
 
 ### 阶段四：平台化（按需启动）
 
-| 任务卡 | 触发条件 |
-|--------|---------|
-| 4.1 MCP 协议 | 有非 HTTP 协议遗留系统需被 Agent 调用 |
-| 4.2 K8s 生产部署 | 流量增长，需要水平扩展 |
-| 4.3 Seata 分布式事务 | 工具调用涉及跨服务写操作 |
-| 4.4 独立提示词管理后台 | 提示词 >10 个 + 非技术人员管理 |
-| 4.5 Serverless 冷启动 | 调用量波动大，降低闲置成本 |
+> 设计 spec：[superpowers/specs/2026-06-19-phase4-platformization-design.md](./superpowers/specs/2026-06-19-phase4-platformization-design.md)
+
+| 任务卡 | 触发条件 | 说明 |
+|--------|----------|------|
+| **4.RAG 平台化** | 语料 >20 篇、需运营自助 | 知识库多空间、检索调试页、Badcase 回流、策略 A/B、评测周报 |
+| **4.DOC 文档理解/OCR** | 需入库 PDF/扫描件/发票图 | **千问 DashScope OCR** + L2 版面 + 可选 L3 Qwen-VL；见 multimodal-ocr spec |
+| **4.MM 多模态对话** | 需聊天发图识图 | LLM Gateway vision + `/chat` 附件（依赖 4.DOC 或临时 OCR） |
+| **4.S Skills + Docker 沙箱** | 需代码执行 | Docker `SandboxExecutor` + `sunshine-sandbox-python` 镜像 |
+| **4.D 动态 DAG 增强** | 静态 workflow 不够 | if-else 分支、并行 fan-out、Plan 缓存与 Replan |
+| **4.MA 多 Agent 增强** | 复杂协作 | 主 Coordinator delegate、并行子 Agent、MsgHub Peer、子 Timeline 展开 UI |
+| 4.1 MCP 协议 | 非 HTTP 遗留系统接入 | Tool Manager 注册 MCP Server |
+| 4.2 K8s 生产部署 | 流量增长需水平扩展 | Helm + HPA + Nacos GitOps |
+| 4.3 Seata 分布式事务 | 跨服务写操作 | 与 HITL 串联 |
+| 4.4 独立提示词管理后台 | 提示词 >10 + 非研发维护 | 版本/审核/回滚，联动 rag_eval |
+| 4.5 Serverless 冷启动 | 调用量波动大 | 仅无状态服务缩容 |
 
 ---
 
@@ -212,8 +275,11 @@ my-sunshine-agent/
 | 页面 | 路由 | 功能 |
 |------|------|------|
 | AI 对话 | `/chat` | SSE 流式聊天，消息列表，发送/停止/清空 |
-| 知识库 | `/knowledge` | Markdown 文档上传入库 + 向量检索测试 |
+| 知识库 | `/knowledge` | Markdown 文档上传入库 + 向量检索测试；**阶段四** 扩展 PDF/图片 OCR 入库 |
+| **Skills** | **`/skills`** | **Skill 上传/编辑/版本发布/工具绑定** |
 | 系统状态 | `/status` | 11 微服务 + 12 中间件状态矩阵 |
+
+> **阶段四 OCR/多模态**：`/knowledge` 文件上传、`/chat` 图片附件（可选）— 见 `superpowers/specs/2026-06-21-multimodal-ocr-design.md`
 
 **技术栈**：Vue 3 + TypeScript + Naive UI + Vite + Pinia + Vue Router
 

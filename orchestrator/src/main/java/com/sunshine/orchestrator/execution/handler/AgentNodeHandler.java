@@ -80,7 +80,6 @@ public class AgentNodeHandler implements NodeHandler {
         outputs.put("output", output.answer());
         outputs.put("toolCalls", String.join(",", output.toolCalls()));
         outputs.put("detail", summaryLine);
-        // 完整报告交给下游 llm 节点（analyze.answer），时间线不下发 expandable 正文
         return NodeResult.ok(outputs, timeline);
     }
 }

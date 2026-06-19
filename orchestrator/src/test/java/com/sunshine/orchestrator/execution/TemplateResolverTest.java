@@ -17,9 +17,10 @@ class TemplateResolverTest {
     }
 
     @Test
-    void replacesPlanParams() {
+    void replacesHyphenatedNodeField() {
         WorkflowContext ctx = new WorkflowContext();
-        ctx.put("plan", Map.of("status", "pending"));
-        assertThat(TemplateResolver.resolve("{{plan.params.status}}", ctx)).isEqualTo("pending");
+        ctx.put("finance-list", Map.of("output", "共 3 条财务消息"));
+        assertThat(TemplateResolver.resolve("数据：{{finance-list.output}}", ctx))
+                .isEqualTo("数据：共 3 条财务消息");
     }
 }

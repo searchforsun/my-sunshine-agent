@@ -36,9 +36,6 @@ class WorkflowExecutorTest {
     private NodeHandlerRegistry registry;
 
     @Mock
-    private LegacyWorkflowExecutor legacyWorkflowExecutor;
-
-    @Mock
     private StartNodeHandler startNodeHandler;
 
     @Mock
@@ -70,7 +67,7 @@ class WorkflowExecutorTest {
                         Map.of("answer", "请假需提前申请"),
                         List.of(StreamToken.content("请假需提前申请")))));
 
-        executor = new WorkflowExecutor(loader, registry, legacyWorkflowExecutor);
+        executor = new WorkflowExecutor(loader, registry);
     }
 
     @Test
@@ -96,9 +93,8 @@ class WorkflowExecutorTest {
     }
 
     @Test
-    void fallsBackToLegacyWhenDefinitionMissing() {
+    void returnsErrorWhenDefinitionMissing() {
         when(loader.load("unknown")).thenReturn(java.util.Optional.empty());
-        when(legacyWorkflowExecutor.execute(any())).thenReturn(Flux.just(StreamToken.content("legacy")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "m1", "test", MemoryContext.empty(),
@@ -107,6 +103,7 @@ class WorkflowExecutorTest {
 
         List<StreamToken> tokens = executor.execute(ctx).collectList().block();
         assertThat(tokens).hasSize(1);
-        assertThat(tokens.get(0).text()).isEqualTo("legacy");
+        assertThat(tokens.get(0).text()).contains("unknown");
+        assertThat(tokens.get(0).text()).contains("未定义");
     }
 }

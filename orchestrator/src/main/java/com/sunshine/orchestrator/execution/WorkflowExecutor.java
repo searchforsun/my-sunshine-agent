@@ -26,18 +26,18 @@ public class WorkflowExecutor {
 
     private final WorkflowDefinitionLoader loader;
     private final NodeHandlerRegistry registry;
-    private final LegacyWorkflowExecutor legacyWorkflowExecutor;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         ExecutionPlan plan = ctx.plan();
         if (plan == null || plan.mode() != ExecutionMode.WORKFLOW) {
-            return legacyWorkflowExecutor.execute(ctx);
+            return Flux.just(StreamToken.content("内部错误：WorkflowExecutor 收到非 workflow 计划"));
         }
         String workflowId = plan.workflowId();
         Optional<WorkflowDefinition> defOpt = loader.load(workflowId);
         if (defOpt.isEmpty()) {
-            log.warn("[WorkflowExecutor] 未找到 workflow 定义 {}，回退 legacy", workflowId);
-            return legacyWorkflowExecutor.execute(ctx);
+            log.error("[WorkflowExecutor] 未找到 workflow 定义: {}", workflowId);
+            return Flux.just(StreamToken.content(
+                    "工作流「" + workflowId + "」未定义，请联系管理员。"));
         }
         return executeDefinition(defOpt.get(), ctx);
     }
@@ -140,10 +140,14 @@ public class WorkflowExecutor {
         return WorkflowNodeLabels.displayName(spec.id(), spec.type()) + "完成";
     }
 
-    /** agent 节点不在时间线展开 Markdown 报告（完整 answer 仅写入 workflow 上下文） */
+    /** agent 节点：展开区下发完整 answer，主行 after 由 AgentNodeDetailSummarizer 提供 */
     private static String resolveExpandDetail(NodeSpec spec, Map<String, String> outputs, String summaryLine) {
         if ("agent".equals(spec.type())) {
-            return null;
+            String answer = outputs.get("answer");
+            if (answer != null && !answer.isBlank()) {
+                return answer.strip();
+            }
+            return summaryLine;
         }
         return summaryLine;
     }

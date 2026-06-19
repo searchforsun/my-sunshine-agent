@@ -60,7 +60,7 @@ class IntentLabelServiceTest {
     void intentAfterSummary_simpleLlmMode() {
         String q = StepSummarizer.clipQuery("你好");
         assertThat(intentLabelService.intentAfterSummary(q, "简单对话"))
-                .isEqualTo(q + "属于日常对话，将直接生成回复");
+                .isEqualTo(q + "属于简单对话，将直接生成回复");
     }
 
     @Test

@@ -2,10 +2,9 @@ package com.sunshine.orchestrator.execution.agent;
 
 import java.util.regex.Pattern;
 
-/** Workflow agent 节点时间线摘要（一行纯文本，不含 Markdown 报告正文） */
+/** Workflow agent 节点时间线：主行一行预览（前端截断）+ 展开区完整 after/detail */
 public final class AgentNodeDetailSummarizer {
 
-    private static final int MAX_LEN = 80;
     private static final int MIN_PROSE_LEN = 8;
 
     private static final Pattern HORIZONTAL_RULE = Pattern.compile("^[-*_\\s]{3,}$");
@@ -21,14 +20,14 @@ public final class AgentNodeDetailSummarizer {
         return summarize(answer, null, toolCallCount);
     }
 
-    /** answer 为空时尝试从 reasoning 末段提取结论句 */
+    /** 主行/展开首行 after：完整首句（不截断，主行省略由前端处理） */
     public static String summarize(String answer, String reasoning, int toolCallCount) {
-        String line = pickSummaryLine(answer, false);
+        String line = pickPreviewLine(answer, false);
         if (line.isBlank() && reasoning != null && !reasoning.isBlank()) {
-            line = pickSummaryLine(reasoning, true);
+            line = pickPreviewLine(reasoning, true);
         }
         if (!line.isBlank()) {
-            return line.length() <= MAX_LEN ? line : line.substring(0, MAX_LEN) + "…";
+            return toOneLine(line);
         }
         if (toolCallCount > 0) {
             return "已完成 " + toolCallCount + " 次工具调用的综合分析";
@@ -36,13 +35,17 @@ public final class AgentNodeDetailSummarizer {
         return "智能体分析完成";
     }
 
-    private static String pickSummaryLine(String text, boolean fromEnd) {
+    private static String toOneLine(String line) {
+        return line.replace('\n', ' ').replaceAll("\\s+", " ").strip();
+    }
+
+    private static String pickPreviewLine(String text, boolean fromEnd) {
         if (text == null || text.isBlank()) {
             return "";
         }
         String[] lines = text.strip().split("\n");
 
-        for (String keyword : new String[] {"结论", "综合判断", "核心", "无法给出", "建议"}) {
+        for (String keyword : new String[] {"结论", "综合判断", "无法判断", "无法给出", "建议"}) {
             String hit = findLineContaining(lines, keyword);
             if (!hit.isBlank()) {
                 return hit;
@@ -88,7 +91,6 @@ public final class AgentNodeDetailSummarizer {
         return normalize(stripInlineMarkdown(line));
     }
 
-    /** 跳过 Markdown 结构行，只保留可读结论句 */
     private static boolean isProseCandidate(String line) {
         if (line.isEmpty()) {
             return false;

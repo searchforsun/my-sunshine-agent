@@ -96,7 +96,7 @@ public class AgentPromptProperties {
             var map = new java.util.LinkedHashMap<String, ModeIntent>();
             var simple = new ModeIntent();
             simple.setDetail("简单对话");
-            simple.setAfter("{query}属于日常对话，将直接生成回复");
+            simple.setAfter("{query}属于简单对话，将直接生成回复");
             map.put("simple-llm", simple);
             var react = new ModeIntent();
             react.setDetail("自主智能体");

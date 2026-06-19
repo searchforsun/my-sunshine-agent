@@ -175,6 +175,17 @@ public class MilvusService {
         return results;
     }
 
+    /** Admin：drop + recreate collection（清库重建） */
+    public void rebuildCollection() {
+        log.warn("[RAG] Admin rebuild: 清空 collection {}", COLLECTION);
+        R<Boolean> exists = client.hasCollection(
+                HasCollectionParam.newBuilder().withCollectionName(COLLECTION).build());
+        if (Boolean.TRUE.equals(exists.getData())) {
+            dropCollection();
+        }
+        createCollection();
+    }
+
     public record SearchHit(String docName, String content, float score) {
     }
 }

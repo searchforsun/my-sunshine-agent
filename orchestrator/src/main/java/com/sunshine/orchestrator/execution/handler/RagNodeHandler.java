@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.execution.handler;
 import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
 import com.sunshine.orchestrator.client.RagDetailFormatter;
+import com.sunshine.orchestrator.config.RagSearchProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
@@ -26,6 +27,7 @@ import java.util.Map;
 public class RagNodeHandler implements NodeHandler {
 
     private final RagClient ragClient;
+    private final RagSearchProperties ragSearchProperties;
 
     @Override
     public String type() {
@@ -38,7 +40,7 @@ public class RagNodeHandler implements NodeHandler {
         if (query.isBlank()) {
             query = streamCtx.userContent();
         }
-        int topK = parseTopK(spec.params().get("topK"));
+        int topK = parseTopK(spec.params().get("topK"), ragSearchProperties.getDefaultTopK());
         String finalQuery = query;
 
         return ragClient.search(finalQuery, topK)
@@ -62,14 +64,14 @@ public class RagNodeHandler implements NodeHandler {
                 });
     }
 
-    private static int parseTopK(String raw) {
+    private static int parseTopK(String raw, int defaultTopK) {
         if (raw == null || raw.isBlank()) {
-            return 3;
+            return defaultTopK;
         }
         try {
             return Integer.parseInt(raw.trim());
         } catch (NumberFormatException e) {
-            return 3;
+            return defaultTopK;
         }
     }
 }

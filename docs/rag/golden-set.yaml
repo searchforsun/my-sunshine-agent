@@ -1,0 +1,990 @@
+version: 5
+description: 阶段二 RAG 评测集 v5（11 篇语料 + 123 query，含多跳推理场景）
+corpus:
+- doc_id: leave-policy-v1
+  display_name: 公司请假流程规范
+  path: docs/knowledge/公司请假流程规范.md
+- doc_id: expense-policy-v1
+  display_name: 公司报销管理制度
+  path: docs/knowledge/公司报销管理制度.md
+- doc_id: attendance-policy-v1
+  display_name: 考勤与加班管理规定
+  path: docs/knowledge/考勤与加班管理规定.md
+- doc_id: onboarding-policy-v1
+  display_name: 新员工入职指引
+  path: docs/knowledge/新员工入职指引.md
+- doc_id: finance-approval-v1
+  display_name: 财务审批权限矩阵
+  path: docs/knowledge/财务审批权限矩阵.md
+- doc_id: invoice-faq-v1
+  display_name: 发票与税务合规FAQ
+  path: docs/knowledge/发票与税务合规FAQ.md
+- doc_id: budget-policy-v1
+  display_name: 部门预算管理办法
+  path: docs/knowledge/部门预算管理办法.md
+- doc_id: remote-policy-v1
+  display_name: 远程办公与混合办公管理办法
+  path: docs/knowledge/远程办公与混合办公管理办法.md
+- doc_id: security-policy-v1
+  display_name: 信息安全与数据保密制度
+  path: docs/knowledge/信息安全与数据保密制度.md
+- doc_id: travel-policy-v1
+  display_name: 差旅费管理办法
+  path: docs/knowledge/差旅费管理办法.md
+- doc_id: scenario-guide-v1
+  display_name: 员工场景速查与多制度交叉指引
+  path: docs/knowledge/员工场景速查与多制度交叉指引.md
+queries:
+- id: q001
+  query: 年假可以请几天
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 年假
+  - 工龄
+  category: leave
+- id: q002
+  query: 病假需要什么证明材料
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 病假
+  - 证明
+  - 材料
+  category: leave
+- id: q003
+  query: 请假要提前多久申请
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 提前
+  - 申请
+  category: leave
+- id: q004
+  query: 事假有没有工资
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 事假
+  - 无薪
+  category: leave
+- id: q005
+  query: 婚假有多少天
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 婚假
+  category: leave
+- id: q006
+  query: 产假陪产假怎么休
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 产假
+  - 陪产假
+  category: leave
+- id: q007
+  query: 直属主管审批职责是什么
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 直属主管
+  - 审批
+  category: process
+- id: q008
+  query: HR在请假流程中负责什么
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - HR
+  - 假期余额
+  category: process
+- id: q009
+  query: 三天以上请假谁审批
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 部门负责人
+  - '3'
+  category: process
+- id: q010
+  query: 销假是什么意思怎么操作
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 销假
+  category: process
+- id: q011
+  query: 加班调休余额在哪里查
+  relevant_docs:
+  - attendance-policy-v1
+  - leave-policy-v1
+  relevant_keywords:
+  - 调休
+  - 余额
+  - OA
+  category: leave
+- id: q012
+  query: 丧假可以请几天
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 丧假
+  category: leave
+- id: q_neg_001
+  query: 公司股票期权怎么兑现
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_002
+  query: 公司股权激励行权如何套现
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q013
+  query: 市内交通报销上限多少
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 市内交通
+  - '200'
+  category: expense
+- id: q014
+  query: 差旅住宿一晚能报多少钱
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 差旅
+  - 住宿
+  - '600'
+  category: expense
+- id: q015
+  query: 餐饮招待费人均标准
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 餐饮
+  - '150'
+  category: expense
+- id: q016
+  query: 报销需要什么样的发票
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 发票
+  - 增值税
+  category: expense
+- id: q017
+  query: 超过五千的报销谁审批
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - '5000'
+  - CFO
+  category: expense
+- id: q018
+  query: 拆单报销是否允许
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 拆单
+  - 禁止
+  category: expense
+- id: q019
+  query: 私人消费能报销吗
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 私人
+  - 禁止
+  category: expense
+- id: q020
+  query: 报销审批流程有几步
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 审批
+  - 财务复核
+  category: expense
+- id: q021
+  query: 电子发票报销要注意什么
+  relevant_docs:
+  - expense-policy-v1
+  - invoice-faq-v1
+  relevant_keywords:
+  - 电子发票
+  - 税号
+  category: expense
+- id: q022
+  query: 办公用品采购怎么报销
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 办公用品
+  category: expense
+- id: q023
+  query: 虚假发票报销后果
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 虚假发票
+  category: expense
+- id: q024
+  query: 因公交通费谁审批
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 直属主管
+  category: expense
+- id: q025
+  query: 迟到几次算旷工
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 迟到
+  - 旷工
+  category: attendance
+- id: q026
+  query: 加班需要提前申请吗
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 加班
+  - 申请
+  category: attendance
+- id: q027
+  query: 周末加班怎么算调休
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 周末
+  - 调休
+  category: attendance
+- id: q028
+  query: 弹性上下班时间规定
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 弹性
+  category: attendance
+- id: q029
+  query: 忘打卡怎么补签
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 补签
+  - 打卡
+  category: attendance
+- id: q030
+  query: 外出办公如何登记考勤
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 外出
+  category: attendance
+- id: q031
+  query: 夜班补贴标准
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 夜班
+  category: attendance
+- id: q032
+  query: 法定节假日加班工资
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 法定节假日
+  category: attendance
+- id: q033
+  query: 考勤异常申诉找谁
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 申诉
+  - HR
+  category: attendance
+- id: q034
+  query: 远程办公考勤要求
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 远程
+  category: attendance
+- id: q035
+  query: 新员工入职第一天做什么
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 入职
+  - 第一天
+  category: onboarding
+- id: q036
+  query: 入职需要带哪些材料
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 材料
+  - 身份证
+  category: onboarding
+- id: q037
+  query: 试用期多长时间
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 试用期
+  category: onboarding
+- id: q038
+  query: 入职培训有哪些环节
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 培训
+  category: onboarding
+- id: q039
+  query: 工牌和账号什么时候开通
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 工牌
+  - 账号
+  category: onboarding
+- id: q040
+  query: 入职导师制度是什么
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 导师
+  category: onboarding
+- id: q041
+  query: 劳动合同什么时候签
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 劳动合同
+  category: onboarding
+- id: q042
+  query: 入职体检要求
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 体检
+  category: onboarding
+- id: q043
+  query: 部门经理审批额度上限
+  relevant_docs:
+  - finance-approval-v1
+  relevant_keywords:
+  - 部门经理
+  - 额度
+  category: finance
+- id: q044
+  query: CFO审批什么金额以上的单据
+  relevant_docs:
+  - finance-approval-v1
+  relevant_keywords:
+  - CFO
+  category: finance
+- id: q045
+  query: 财务复核的职责是什么
+  relevant_docs:
+  - finance-approval-v1
+  relevant_keywords:
+  - 财务复核
+  category: finance
+- id: q046
+  query: 预算外支出谁批准
+  relevant_docs:
+  - finance-approval-v1
+  - budget-policy-v1
+  relevant_keywords:
+  - 预算外
+  category: finance
+- id: q047
+  query: 采购付款审批矩阵
+  relevant_docs:
+  - finance-approval-v1
+  relevant_keywords:
+  - 采购
+  - 付款
+  category: finance
+- id: q048
+  query: 差旅费审批权限分级
+  relevant_docs:
+  - finance-approval-v1
+  - expense-policy-v1
+  relevant_keywords:
+  - 差旅
+  - 审批
+  category: finance
+- id: q049
+  query: 增值税专用发票和普通发票区别
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 增值税
+  - 专用
+  category: finance
+- id: q050
+  query: 发票抬头必须写公司全称吗
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 抬头
+  category: finance
+- id: q051
+  query: 电子发票如何验真
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 验真
+  category: finance
+- id: q052
+  query: 报销发票税率有什么要求
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 税率
+  category: finance
+- id: q053
+  query: 丢失发票还能报销吗
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 丢失
+  category: finance
+- id: q054
+  query: 个人抬头发票能否报销
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 个人抬头
+  category: finance
+- id: q055
+  query: 部门预算什么时候编制
+  relevant_docs:
+  - budget-policy-v1
+  relevant_keywords:
+  - 编制
+  category: finance
+- id: q056
+  query: 预算调剂需要谁批准
+  relevant_docs:
+  - budget-policy-v1
+  relevant_keywords:
+  - 调剂
+  category: finance
+- id: q057
+  query: 季度预算执行率怎么考核
+  relevant_docs:
+  - budget-policy-v1
+  relevant_keywords:
+  - 执行率
+  category: finance
+- id: q058
+  query: 项目预算超支怎么办
+  relevant_docs:
+  - budget-policy-v1
+  relevant_keywords:
+  - 超支
+  category: finance
+- id: q059
+  query: 预算内采购流程
+  relevant_docs:
+  - budget-policy-v1
+  relevant_keywords:
+  - 采购
+  category: finance
+- id: q060
+  query: 年度预算调整窗口期
+  relevant_docs:
+  - budget-policy-v1
+  relevant_keywords:
+  - 调整
+  category: finance
+- id: q061
+  query: 远程办公算不算请假
+  relevant_docs:
+  - remote-policy-v1
+  relevant_keywords:
+  - 不算
+  - 请假
+  category: remote
+- id: q062
+  query: 混合办公每周几天可以远程
+  relevant_docs:
+  - remote-policy-v1
+  relevant_keywords:
+  - 1-2
+  category: remote
+- id: q063
+  query: 远程办公考勤怎么打卡
+  relevant_docs:
+  - remote-policy-v1
+  relevant_keywords:
+  - 远程签到
+  category: remote
+- id: q064
+  query: 长期远程办公谁审批
+  relevant_docs:
+  - remote-policy-v1
+  relevant_keywords:
+  - 部门负责人
+  category: remote
+- id: q065
+  query: 试用期可以远程办公吗
+  relevant_docs:
+  - remote-policy-v1
+  relevant_keywords:
+  - 首月
+  category: remote
+- id: q066
+  query: 远程办公期间能去外地吗
+  relevant_docs:
+  - remote-policy-v1
+  relevant_keywords:
+  - 24小时
+  category: remote
+- id: q067
+  query: 远程办公和出差有什么区别
+  relevant_docs:
+  - remote-policy-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 出差
+  category: remote
+- id: q068
+  query: 远程办公日加班怎么申请
+  relevant_docs:
+  - remote-policy-v1
+  - attendance-policy-v1
+  relevant_keywords:
+  - 加班
+  category: remote
+- id: q069
+  query: 公司账号密码多久要换一次
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - 90天
+  category: security
+- id: q070
+  query: 能不能把公司代码推到GitHub
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - 禁止
+  category: security
+- id: q071
+  query: 客户数据可以下载到笔记本本地吗
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - 禁止
+  category: security
+- id: q072
+  query: VPN连不上内网怎么办
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - it@company.com
+  category: security
+- id: q073
+  query: 离职之后还能用公司邮箱吗
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - 冻结
+  category: security
+- id: q074
+  query: 公司数据分几个保密级别
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - L1
+  - L4
+  category: security
+- id: q075
+  query: 信息安全考试多少分及格
+  relevant_docs:
+  - security-policy-v1
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 80
+  category: security
+- id: q076
+  query: 发现同事泄露敏感数据怎么举报
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - security@company.com
+  category: security
+- id: q077
+  query: 一线城市出差住宿标准是多少
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 600
+  category: travel
+- id: q078
+  query: 出差超过7天需要谁审批
+  relevant_docs:
+  - travel-policy-v1
+  - finance-approval-v1
+  relevant_keywords:
+  - CFO
+  category: travel
+- id: q079
+  query: 差旅费报销要在几天内提交
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 10个工作日
+  category: travel
+- id: q080
+  query: 客户招待餐能不能算在差旅费里
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 不能
+  category: travel
+- id: q081
+  query: 普通员工出差能报商务舱吗
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 经济舱
+  category: travel
+- id: q082
+  query: 出差遇到周末住宿费能报销吗
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 周末
+  category: travel
+- id: q083
+  query: 国际出差要提前多久申请
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 15日
+  category: travel
+- id: q084
+  query: 差旅费和日常打车费能混在一张单子报吗
+  relevant_docs:
+  - travel-policy-v1
+  - expense-policy-v1
+  relevant_keywords:
+  - 不能
+  category: travel
+- id: q085
+  query: 出差预算不够了要先走什么流程
+  relevant_docs:
+  - travel-policy-v1
+  - budget-policy-v1
+  relevant_keywords:
+  - 调剂
+  category: travel
+- id: q086
+  query: 远程办公违反信息安全规定会怎样
+  relevant_docs:
+  - remote-policy-v1
+  - security-policy-v1
+  relevant_keywords:
+  - 违规
+  category: security
+- id: q087
+  query: 新员工入职信息安全培训什么时候完成
+  relevant_docs:
+  - onboarding-policy-v1
+  - security-policy-v1
+  relevant_keywords:
+  - 第二天
+  category: onboarding
+- id: q088
+  query: 预算内的出差费用审批走哪张矩阵
+  relevant_docs:
+  - travel-policy-v1
+  - finance-approval-v1
+  relevant_keywords:
+  - 审批
+  category: finance
+- id: q089
+  query: 出差期间想请半天年假怎么操作
+  relevant_docs:
+  - scenario-guide-v1
+  - leave-policy-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 半天年假
+  category: multihop
+- id: q090
+  query: 项目预算超支了还能安排出差吗
+  relevant_docs:
+  - scenario-guide-v1
+  - budget-policy-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 超支
+  category: multihop
+- id: q091
+  query: 远程办公时生病了要先销远程单还是先请假
+  relevant_docs:
+  - scenario-guide-v1
+  - remote-policy-v1
+  - leave-policy-v1
+  relevant_keywords:
+  - 病假
+  category: multihop
+- id: q092
+  query: 试用期员工能申请出国出差吗
+  relevant_docs:
+  - scenario-guide-v1
+  - onboarding-policy-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 国际出差
+  category: multihop
+- id: q093
+  query: 出差回来超过10个工作日还能报销吗
+  relevant_docs:
+  - scenario-guide-v1
+  - travel-policy-v1
+  - expense-policy-v1
+  relevant_keywords:
+  - 10个工作日
+  category: multihop
+- id: q094
+  query: 加班到很晚第二天能直接远程办公吗
+  relevant_docs:
+  - scenario-guide-v1
+  - attendance-policy-v1
+  - remote-policy-v1
+  relevant_keywords:
+  - 事前
+  category: multihop
+- id: q095
+  query: 报销发票抬头错了同时预算不够怎么办
+  relevant_docs:
+  - scenario-guide-v1
+  - invoice-faq-v1
+  - budget-policy-v1
+  relevant_keywords:
+  - 发票
+  - 预算
+  category: multihop
+- id: q096
+  query: 预算调剂后采购出差用品走什么审批
+  relevant_docs:
+  - scenario-guide-v1
+  - budget-policy-v1
+  - finance-approval-v1
+  relevant_keywords:
+  - 采购
+  category: multihop
+- id: q097
+  query: 长期远程办公的人年假怎么申请
+  relevant_docs:
+  - scenario-guide-v1
+  - remote-policy-v1
+  - leave-policy-v1
+  relevant_keywords:
+  - 年假
+  category: multihop
+- id: q098
+  query: 出差能用个人笔记本处理客户数据吗
+  relevant_docs:
+  - scenario-guide-v1
+  - security-policy-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 禁止
+  category: multihop
+- id: q099
+  query: 新员工没签劳动合同能出差吗
+  relevant_docs:
+  - scenario-guide-v1
+  - onboarding-policy-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 劳动合同
+  category: multihop
+- id: q100
+  query: 什么金额的出差报销需要CFO审批
+  relevant_docs:
+  - scenario-guide-v1
+  - finance-approval-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - CFO
+  category: multihop
+- id: q101
+  query: 法定节假日远程办公算不算加班
+  relevant_docs:
+  - scenario-guide-v1
+  - remote-policy-v1
+  - attendance-policy-v1
+  relevant_keywords:
+  - 三倍工资
+  category: multihop
+- id: q102
+  query: 出差住宿超标没事前批准能报多少
+  relevant_docs:
+  - scenario-guide-v1
+  - travel-policy-v1
+  - expense-policy-v1
+  relevant_keywords:
+  - 标准内
+  category: multihop
+- id: q103
+  query: 离职前没报销的差旅和年假怎么处理
+  relevant_docs:
+  - scenario-guide-v1
+  - leave-policy-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 离职
+  category: multihop
+- id: q104
+  query: 预算内采购和差旅报销审批人一样吗
+  relevant_docs:
+  - scenario-guide-v1
+  - budget-policy-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 不一定
+  category: multihop
+- id: q105
+  query: 远程办公违反考勤又泄露代码怎么处理
+  relevant_docs:
+  - scenario-guide-v1
+  - remote-policy-v1
+  - security-policy-v1
+  relevant_keywords:
+  - 并查
+  category: multihop
+- id: q106
+  query: 病假三天以上要几位领导审批
+  relevant_docs:
+  - scenario-guide-v1
+  - leave-policy-v1
+  relevant_keywords:
+  - 部门负责人
+  category: multihop
+- id: q107
+  query: 国际出差和国内出差审批有什么不同
+  relevant_docs:
+  - scenario-guide-v1
+  - travel-policy-v1
+  - finance-approval-v1
+  relevant_keywords:
+  - 15日
+  category: multihop
+- id: q108
+  query: 信息安全考试没过能出差见客户吗
+  relevant_docs:
+  - scenario-guide-v1
+  - onboarding-policy-v1
+  - security-policy-v1
+  relevant_keywords:
+  - 80
+  category: multihop
+- id: q109
+  query: 出差周末加班调休和差旅餐补能同时拿吗
+  relevant_docs:
+  - scenario-guide-v1
+  - travel-policy-v1
+  - attendance-policy-v1
+  relevant_keywords:
+  - 餐补
+  category: multihop
+- id: q110
+  query: 电子发票验真失败出差费用还能报吗
+  relevant_docs:
+  - scenario-guide-v1
+  - invoice-faq-v1
+  - travel-policy-v1
+  relevant_keywords:
+  - 验真
+  category: multihop
+- id: q111
+  query: 直属主管批请假和批报销的金额上限各是多少
+  relevant_docs:
+  - scenario-guide-v1
+  - finance-approval-v1
+  - leave-policy-v1
+  relevant_keywords:
+  - 2000
+  category: multihop
+- id: q112
+  query: 紧急出差没做预算调剂就订票能报销吗
+  relevant_docs:
+  - scenario-guide-v1
+  - travel-policy-v1
+  - budget-policy-v1
+  relevant_keywords:
+  - 不予报销
+  category: multihop
+- id: q_neg_003
+  query: 如何投资比特币
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_004
+  query: 公司上市代码是多少
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_005
+  query: 帮我写一首唐诗
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_006
+  query: 明天上海天气怎么样
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_007
+  query: 公司食堂今天午餐有什么菜
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_008
+  query: 个人护照加急怎么办理
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_009
+  query: 帮我订一张明天去北京的机票
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_010
+  query: 滴滴打车首单优惠券在哪里领
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+- id: q_neg_011
+  query: 个人所得税专项附加扣除怎么填
+  relevant_docs: []
+  expect_empty: true
+  category: negative
+eval:
+  top_k:
+  - 3
+  - 5
+  - 10
+  min_score: 0.48
+  metrics:
+  - recall_at_k
+  - mrr
+  - empty_rate
+  - latency_ms
+  production_gates:
+    recall_at_3_min: 0.95
+    recall_at_5_min: 0.98
+    mrr_min: 0.92
+    empty_rate_positive_max: 0.0
+    empty_rate_negative_min: 0.95
+    latency_p95_ms_max: 500

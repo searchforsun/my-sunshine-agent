@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.memory.MemoryLifecycleService;
@@ -17,6 +18,7 @@ import reactor.core.scheduler.Schedulers;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -66,9 +68,16 @@ public class GenerationJob {
 
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError) {
+        start(llmFlux, mysqlBuffer, flushPartial, onComplete, onError,
+                new AtomicReference<>(ExecutionMode.REACT));
+    }
+
+    public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
+            Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError,
+            AtomicReference<ExecutionMode> executionMode) {
         this.mysqlBufferRef = mysqlBuffer;
         this.reasoningBufferRef = new StringBuilder();
-        this.thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery);
+        this.thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery, executionMode);
         streamService.updateStatus(generationId, GenerationStatus.RUNNING);
 
         AtomicLong lastFlush = new AtomicLong(0);

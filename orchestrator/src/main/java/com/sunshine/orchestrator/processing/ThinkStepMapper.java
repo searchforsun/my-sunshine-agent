@@ -3,9 +3,11 @@ package com.sunshine.orchestrator.processing;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 将 LLM reasoning 拆为独立 {@code think} 步骤；正文走 {@code generate}。
@@ -17,6 +19,7 @@ public final class ThinkStepMapper {
 
     private final List<ProcessingStep> stepsBuffer;
     private final String userQuery;
+    private final AtomicReference<ExecutionMode> executionMode;
 
     /** 当前 opened 的 think 步骤 id（支持 think / think-2 …） */
     private String activeThinkId;
@@ -25,11 +28,24 @@ public final class ThinkStepMapper {
     private boolean workflowMode;
 
     public ThinkStepMapper(List<ProcessingStep> stepsBuffer, String userQuery) {
+        this(stepsBuffer, userQuery, new AtomicReference<>(ExecutionMode.REACT));
+    }
+
+    public ThinkStepMapper(List<ProcessingStep> stepsBuffer, String userQuery,
+            AtomicReference<ExecutionMode> executionMode) {
         this.stepsBuffer = stepsBuffer != null ? stepsBuffer : new ArrayList<>();
         this.userQuery = userQuery;
+        this.executionMode = executionMode != null
+                ? executionMode
+                : new AtomicReference<>(ExecutionMode.REACT);
         for (ProcessingStep step : this.stepsBuffer) {
             trackExistingStep(step);
         }
+    }
+
+    private ExecutionMode mode() {
+        ExecutionMode current = executionMode.get();
+        return current != null ? current : ExecutionMode.REACT;
     }
 
     public List<StreamToken> map(StreamToken token) {
@@ -171,7 +187,7 @@ public final class ThinkStepMapper {
 
     private ProcessingStep runningThinkStep(String stepId) {
         long ts = System.currentTimeMillis();
-        String label = StepLabels.labelFor(stepId);
+        String label = ThinkStepIds.displayLabel(stepId, mode());
         StepSummary summary = new StepSummary(
                 summarizeBefore(stepId),
                 summarizeActive(stepId),
@@ -187,7 +203,7 @@ public final class ThinkStepMapper {
         long ts = System.currentTimeMillis();
         ProcessingStep prev = findStep(stepId);
         long startedAt = prev != null && prev.startedAt() != null ? prev.startedAt() : ts;
-        String label = StepLabels.labelFor(stepId);
+        String label = ThinkStepIds.displayLabel(stepId, mode());
         String after = summarizeAfter(stepId);
         StepSummary summary = mergeSummary(prev, new StepSummary(
                 summarizeBefore(stepId),
@@ -287,19 +303,19 @@ public final class ThinkStepMapper {
 
     private String summarizeBefore(String stepId) {
         return userQuery != null && !userQuery.isBlank()
-                ? StepSummarizer.before(stepId, userQuery)
+                ? StepSummarizer.before(stepId, userQuery, null, mode())
                 : StepSummarizer.beforeFallback(stepId);
     }
 
     private String summarizeActive(String stepId) {
         return userQuery != null && !userQuery.isBlank()
-                ? StepSummarizer.active(stepId, userQuery)
+                ? StepSummarizer.active(stepId, userQuery, null, mode())
                 : StepSummarizer.activeFallback(stepId);
     }
 
     private String summarizeAfter(String stepId) {
         return userQuery != null && !userQuery.isBlank()
-                ? StepSummarizer.after(stepId, userQuery, null)
+                ? StepSummarizer.after(stepId, userQuery, null, null, mode())
                 : StepSummarizer.afterFallback(stepId, null);
     }
 

@@ -1,11 +1,14 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -117,6 +120,28 @@ class ThinkStepMapperTest {
         assertThat(mapped.stream().anyMatch(t -> t.isStepDelta()
                 && "think-2".equals(t.stepId())
                 && "结合检索结果分析".equals(t.text()))).isTrue();
+    }
+
+    @Test
+    void simpleLlmMode_usesComposeWordingNotToolPlanning() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(doneStep("intent")));
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.SIMPLE_LLM);
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "个人所得税专项附加扣除怎么填", mode);
+
+        applyMapped(mapper, steps, StreamToken.reasoning("构思填报步骤"));
+        applyMapped(mapper, steps, StreamToken.content("回答正文"));
+        mapper.finish().stream().filter(StreamToken::isStep)
+                .forEach(t -> ProcessingStepMerger.upsert(steps, t.step()));
+
+        ProcessingStep think = steps.stream().filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
+        assertThat(think.label()).isEqualTo("构思回答");
+        assertThat(think.summary().active()).contains("构思").doesNotContain("工具");
+        assertThat(think.summary().after()).contains("作答构思").doesNotContain("工具");
+    }
+
+    private static void applyMapped(ThinkStepMapper mapper, List<ProcessingStep> steps, StreamToken token) {
+        mapper.map(token).stream().filter(StreamToken::isStep)
+                .forEach(t -> ProcessingStepMerger.upsert(steps, t.step()));
     }
 
     @Test

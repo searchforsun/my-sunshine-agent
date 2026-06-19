@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
  */
 public final class TemplateResolver {
 
-    private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z0-9_.]+)}}");
+    private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z0-9_.-]+)}}");
 
     private TemplateResolver() {
     }

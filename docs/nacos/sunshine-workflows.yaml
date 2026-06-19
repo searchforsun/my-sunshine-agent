@@ -11,21 +11,21 @@ workflow:
     - id: knowledge-qa
       mode: workflow
       displayName: 知识库问答
-      desc: 查企业制度/手册，检索后作答
+      desc: 查企业制度/流程/规定（请假、报销、差旅、预算管理办法等）；即使用到「预算」「审批」等词，只要不是查待办单据列表或合规对比
       nodes: [start, rag, llm, answer]
-      examples: ["请假制度是什么", "报销流程规定"]
+      examples: ["年假可以请几天", "项目预算超支了还能安排出差吗", "报销流程规定"]
     - id: finance-list
       mode: workflow
       displayName: 财务待办查询
-      desc: 列出待审批/已审批财务消息
+      desc: 仅列出待审批/已审批财务消息（报销单、付款单等），不做合规分析
       nodes: [start, tool, llm, answer]
-      examples: ["有哪些待审批报销"]
+      examples: ["有哪些待审批报销", "查询待审批的报销和付款消息"]
     - id: finance-smart
       mode: workflow
       displayName: 财务智能分析
-      desc: 财务综合分析，含智能体推理
+      desc: 待审批是否合规、制度与待办单据对比分析（含 Agent 推理）
       nodes: [start, tool, agent, llm, answer]
-      examples: ["待审批是否合规", "对比制度与待办"]
+      examples: ["待审批报销是否合规", "对比制度与待办"]
     - id: finance-summary
       mode: workflow
       displayName: 财务汇总统计
@@ -47,7 +47,11 @@ workflow:
           displayName: 生成回答
           params:
             prompt: |
-              根据知识库检索结果回答用户问题。
+              你是企业制度问答助手。仅根据下方「检索结果」回答，不得编造公司制度。
+
+              若检索结果为空、或明确无与用户问题相关的片段，只回复：
+              「企业知识库中暂无相关规定，请咨询 HR/财务或相关主管部门。」
+              禁止用通用常识、网络知识或税务/法律科普代替企业制度。
 
               检索结果：
               {{rag.output}}
@@ -72,7 +76,12 @@ workflow:
           displayName: 生成回答
           params:
             prompt: |
-              根据财务工具查询结果回答。
+              根据财务工具查询结果回答用户问题。
+
+              约束：
+              - 若「数据」中非空（有条目、条数>0、含 id/金额/标题等），必须逐条列出，不得回答「没有数据」。
+              - 仅当数据明确为空数组或条数为 0 时，才可说明当前无待审批记录。
+              - 不要编造单据；不要省略工具返回的字段。
 
               数据：
               {{finance-list.output}}

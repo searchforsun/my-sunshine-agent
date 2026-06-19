@@ -27,9 +27,17 @@ python scripts/clear_session_cache.py --force --restart-orchestrator
 cd sunshine-ui && npm run dev
 
 # 验收
-python scripts/phase2_agent_demo.py
+python scripts/phase2_agent_demo.py --suite all
+python scripts/phase2_agent_demo.py --suite react
+python scripts/phase2_agent_demo.py --suite workflow
+
+# RAG 基线（阶段二收尾）
+python scripts/rag_reset.py
+python scripts/rag_ingest_bulk.py
+python scripts/rag_eval.py
+
 mvn test -pl llm-gateway -Dtest=ModelRouterTest,AdapterCircuitBreakerTest
-mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest
+mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest,RuleBasedRouterTest
 ```
 
 **首次部署**：MySQL `CREATE DATABASE sunshine_auth;` → `sync_nacos.py` → `start.py`。
@@ -43,7 +51,10 @@ mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummari
 | `start.py` | 按依赖顺序启动全链路 |
 | `clear_session_cache.py` | 清会话 + 可选重启 |
 | `download_skywalking_agent.py` | 下载 SkyWalking Agent |
-| `phase2_agent_demo.py` | Phase 2.4 ReAct 验收 |
+| `phase2_agent_demo.py` | Phase 2.4 ReAct 验收；`--suite all\|react\|workflow` |
+| `rag_reset.py` | RAG Milvus 清库重建 |
+| `rag_ingest_bulk.py` | 按 golden-set 批量入库 |
+| `rag_eval.py` | RAG Recall/MRR 基线评测 |
 
 目录内遗留 `.ps1`/`.sh` 为历史包装，**勿再维护**；新脚本一律 Python。
 

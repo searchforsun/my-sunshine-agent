@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
+import com.sunshine.orchestrator.config.RagSearchProperties;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 public class RagTool {
 
     private final RagClient ragClient;
+    private final RagSearchProperties ragSearchProperties;
 
     @Tool(name = "search_knowledge",
             description = "搜索企业知识库获取相关文档。当用户询问专业知识、公司政策、"
@@ -31,7 +33,7 @@ public class RagTool {
                         : query);
 
         try {
-            var results = ragClient.search(query, 3).block();
+            var results = ragClient.search(query, ragSearchProperties.getDefaultTopK()).block();
             return RagContextFormatter.formatToolResult(results);
         } catch (Exception e) {
             log.warn("[RagTool] 知识库检索失败: {}", e.getMessage());

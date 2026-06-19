@@ -222,7 +222,7 @@ public class IntentLabelService {
 
             case SIMPLE_LLM -> applyTemplate(
 
-                    modeAfter(modeConfig(ExecutionMode.SIMPLE_LLM), "{query}属于日常对话，将直接生成回复"),
+                    modeAfter(modeConfig(ExecutionMode.SIMPLE_LLM), "{query}属于简单对话，将直接生成回复"),
 
                     vars(q, intentDetail(plan), null, null));
 

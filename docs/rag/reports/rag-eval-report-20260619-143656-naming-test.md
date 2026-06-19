@@ -1,0 +1,40 @@
+# RAG 评测报告 — 2026-06-19T14:36:56
+
+> golden-set v5 · 123 queries · min_score=0.48 · run=20260619-143656-naming-test
+
+## 汇总指标
+
+| 指标 | 值 | 生产门禁 | 结果 |
+|------|-----|----------|------|
+| Recall@3 | 1.0 | ≥ 0.95 | PASS |
+| Recall@5 | 1.0 | ≥ 0.98 | PASS |
+| MRR | 0.9449 | ≥ 0.92 | PASS |
+| 正例 EmptyRate | 0.0 | = 0 | — |
+| 负例 EmptyRate | 1.0 | ≥ 0.95 | — |
+| P50 延迟 (ms) | 165.9 | — | — |
+| P95 延迟 (ms) | 209.1 | ≤ 500 | — |
+
+**生产门禁：PASS**
+
+## 分类型 Recall@3
+
+| category | Recall@3 |
+|----------|----------|
+| attendance | 1.0 |
+| expense | 1.0 |
+| finance | 1.0 |
+| leave | 1.0 |
+| multihop | 1.0 |
+| onboarding | 1.0 |
+| process | 1.0 |
+| remote | 1.0 |
+| security | 1.0 |
+| travel | 1.0 |
+
+## Badcase（Recall@3 未命中）
+
+无。
+
+## 负例误召回
+
+无。

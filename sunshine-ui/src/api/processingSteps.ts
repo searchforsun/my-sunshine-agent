@@ -252,8 +252,20 @@ export function formatStepMetadata(step: ProcessingStep): string {
 
 
 
-/** 主行摘要：与标题重复时不展示，避免「生成回答 生成回答」 */
-export function resolveStepHeaderText(step: ProcessingStep): string {
+/** 主行摘要最大可见字数，超出部分折叠到展开区 */
+export const STEP_HEADER_PREVIEW_MAX = 42
+
+
+
+function truncateStepPreview(text: string, max = STEP_HEADER_PREVIEW_MAX): string {
+  if (text.length <= max) return text
+  return `${text.slice(0, max)}…`
+}
+
+
+
+/** 主行摘要全文（不截断，供展开区使用） */
+export function resolveStepSummaryFull(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
   const title = formatStepLabel(step)
   let header = ''
@@ -276,15 +288,74 @@ export function resolveStepHeaderText(step: ProcessingStep): string {
 
 
 
-/** 是否有可下拉展开的实际内容（不含主行已展示的 summary 一行） */
+/** 主行摘要：过长时截断为一行预览，完整内容在展开区（detail/result） */
+export function resolveStepHeaderText(step: ProcessingStep): string {
+  const full = resolveStepSummaryFull(step)
+  const oneLine = full.replace(/\s+/g, ' ').trim()
+  return truncateStepPreview(oneLine)
+}
+
+/** 从 Markdown 正文中提取首条中文叙述行（用于补全后端历史截断的 after） */
+function extractFirstProseLine(text: string): string {
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#') || /^\|/.test(line)) continue
+    if (/^[-*_]{3,}$/.test(line)) continue
+    const plain = line.replace(/\*\*|__|`/g, '').replace(/^>\s*/, '').trim()
+    if (plain.length >= 8 && /[\u4e00-\u9fff]/.test(plain)) {
+      return plain.replace(/\s+/g, ' ')
+    }
+  }
+  return ''
+}
+
+/** 展开区首行：完整 summary.after（主行预览的下移全文，不做任何截断） */
+export function resolveStepExpandSummary(step: ProcessingStep): string {
+  const lifecycle = stepLifecycle(step)
+  let oneLine = ''
+  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+    oneLine = (step.summary?.after?.trim() || resolveStepSummaryFull(step)).replace(/\s+/g, ' ').trim()
+  } else {
+    oneLine = resolveStepSummaryFull(step).replace(/\s+/g, ' ').trim()
+  }
+  if (oneLine.endsWith('…') && step.detail?.trim()) {
+    const fromDetail = extractFirstProseLine(step.detail)
+    const prefix = oneLine.slice(0, -1).trim()
+    if (fromDetail && (fromDetail.startsWith(prefix) || prefix.length >= 12 && fromDetail.startsWith(prefix.slice(0, 12)))) {
+      return fromDetail
+    }
+  }
+  return oneLine
+}
+
+/** 展开区正文：detail/result（如 Agent Markdown），与 after 摘要区分 */
+export function resolveStepExpandBody(step: ProcessingStep): string {
+  const summary = resolveStepExpandSummary(step)
+  const detail = step.detail?.trim()
+  if (detail && detail !== summary) return detail
+  const result = step.result?.trim()
+  if (result && result !== summary && result !== detail) return result
+  return ''
+}
+
+/** @deprecated 使用 resolveStepExpandSummary + resolveStepExpandBody */
+export function resolveStepExpandText(step: ProcessingStep): string {
+  return resolveStepExpandBody(step) || resolveStepExpandSummary(step)
+}
+
+/** 主行是否将摘要下移到展开区（展开后主行仅保留 label） */
+export function shouldShiftSummaryOnExpand(step: ProcessingStep): boolean {
+  const summary = resolveStepExpandSummary(step)
+  if (!summary) return false
+  return summary !== resolveStepHeaderText(step) || summary.length > STEP_HEADER_PREVIEW_MAX
+}
+
+/** 是否有可下拉展开的实际内容 */
 export function hasExpandableContent(step: ProcessingStep): boolean {
-  const header = resolveStepHeaderText(step)
+  if (shouldShiftSummaryOnExpand(step)) return true
+  if (resolveStepExpandBody(step)) return true
   if (step.reasoning?.trim()) return true
   if (step.output?.trim()) return true
-  const detail = step.detail?.trim()
-  if (detail && detail !== header) return true
-  const result = step.result?.trim()
-  if (result && result !== header) return true
   return false
 }
 
@@ -534,7 +605,7 @@ export function normalizeTimelineSteps(
   // Agent 路径思考已挂在「分析作答」；勿再用 message.reasoning 合成独立 think
   if (hasThink || agentHasReasoning) {
 
-    return filterTimelineDisplaySteps(sortSteps(result))
+    return sortSteps(result)
 
   }
 
@@ -572,15 +643,8 @@ export function normalizeTimelineSteps(
 
   }
 
-  return filterTimelineDisplaySteps(sortSteps(result))
+  return sortSteps(result)
 
-}
-
-
-
-/** 时间线不展示 running 的 generate（消息区三个点兜底） */
-export function filterTimelineDisplaySteps(steps: ProcessingStep[]): ProcessingStep[] {
-  return steps.filter(s => !(s.id === 'generate' && stepLifecycle(s) === 'running'))
 }
 
 

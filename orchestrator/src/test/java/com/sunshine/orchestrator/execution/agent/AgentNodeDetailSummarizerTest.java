@@ -40,6 +40,14 @@ class AgentNodeDetailSummarizerTest {
     }
 
     @Test
+    void summarize_longText_notTruncated() {
+        String line = "要完成本次合规审查，需要补充该报销的费用明细".repeat(5);
+        String preview = AgentNodeDetailSummarizer.summarize(line, 0);
+        assertThat(preview).isEqualTo(line);
+        assertThat(preview).doesNotContain("\n").doesNotEndWith("…");
+    }
+
+    @Test
     void summarize_skipsMarkdownReport_picksConclusionLine() {
         String answer = """
                 ---
