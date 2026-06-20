@@ -27,9 +27,26 @@ embedding:
 rag:
   admin:
     token: sunshine-rag-admin-dev
+  elasticsearch:
+    enabled: true
+    url: http://ecs4c16g:9200
+    index: sunshine_rag_chunks
   search:
     # IP 相似度下限（归一化向量下近似 cosine）；报销 vs 请假文档通常 < 0.48
     min-score: 0.48
+    # 默认策略：vector | hybrid | hybrid+rerank（请求体 strategy 可覆盖）
+    strategy: vector
+    rrf-k: 60
+    hybrid-pool-size: 20
+  rerank:
+    enabled: true
+    # 复用 embedding.api-key；也可单独配置 rag.rerank.api-key
+    model: gte-rerank-v2
+    base-url: https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
+    input-size: 20
+    timeout-seconds: 30
+    min-score: 0.25
+    min-relevance: 0.25
 
 logging:
   level:

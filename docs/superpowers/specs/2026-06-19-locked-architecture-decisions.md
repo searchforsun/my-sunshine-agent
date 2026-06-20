@@ -1,5 +1,7 @@
 # 架构锁定决策（2026-06-19）
 
+> **⚠️ 阶段三相关决策已摘要至** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.11**；OCR 见 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.2**。下文为完整锁定原文。
+
 > **状态**：已锁定 — 后续 spec / 实施计划须与本文件一致  
 > **适用范围**：动态 Plan、Planner 模型、Skills 运营、沙箱运行时、**OCR 提供商**
 

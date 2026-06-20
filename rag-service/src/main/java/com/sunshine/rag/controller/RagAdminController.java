@@ -1,6 +1,7 @@
 package com.sunshine.rag.controller;
 
 import com.sunshine.rag.config.RagAdminProperties;
+import com.sunshine.rag.service.ElasticsearchIndexService;
 import com.sunshine.rag.service.MilvusService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,6 +19,7 @@ import java.util.Map;
 public class RagAdminController {
 
     private final MilvusService milvusService;
+    private final ElasticsearchIndexService elasticsearchIndexService;
     private final RagAdminProperties adminProperties;
 
     @PostMapping("/rebuild")
@@ -28,6 +30,7 @@ public class RagAdminController {
             return Mono.just(Map.of("code", 403, "msg", "无效 admin token"));
         }
         milvusService.rebuildCollection();
+        elasticsearchIndexService.rebuildIndex();
         return Mono.just(Map.of(
                 "code", 200,
                 "msg", "rebuild ok",

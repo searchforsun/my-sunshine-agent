@@ -1,175 +1,237 @@
 # 阶段三：生产加固 — 实施计划
 
-> **For agentic workers:** 优先执行 **RAG 任务 R1–R8**；每完成一个 RAG 子阶段必须跑 `rag_eval.py` 并更新 `docs/rag/baseline-report.md`。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 按 Task 逐步执行。  
+> **覆盖度审计：** [2026-06-20-phased-implementation-coverage.md](./2026-06-20-phased-implementation-coverage.md)
 
-**Goal:** 生产级加固 — **RAG 评测驱动的召回优化**为主轴，叠加多租户、HITL、Planner、Grafana、审计扩展。
+**Goal:** RAG 双轨评测 + PLAN_WORKFLOW + 多租户 / HITL / 全链路可观测（17 条检查门）。
 
-**Architecture:** `rag-service` 内聚合检索策略；评测脚本独立；orchestrator 仅消费稳定 `RetrievalService` API。
+**Architecture:** `rag-service` 内聚合检索策略；`orchestrator` 负责编排/HITL/Plan；`skill-manager` 独立 Catalog；评测脚本 + golden-set 驱动回归。
 
-**Spec:** `docs/superpowers/specs/2026-06-19-phase3-production-hardening-design.md`
+**Tech Stack:** JDK 21, Spring Boot 3.2.9, Milvus, Elasticsearch, AgentScope-Java 1.0.7, Vue3/Naive UI, Python `rag_eval.py`
 
-**前置:** 阶段二 `phase2-closure-plan.md` 检查门通过
+**SSOT 设计:** [phase3-production-hardening-design.md](../specs/phase3-production-hardening-design.md)  
+**多 Agent / Skills:** [2026-06-19-multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md)（3.9–3.12）
+
+**前置:** 阶段二 golden-set v5 基线全 PASS
 
 ---
 
 ## 排期总览
 
 ```
-周 1–2  RAG 评测基建 + 入库 metadata + ES BM25
-周 3–4  Hybrid RRF + BGE-Reranker + 扫参回归
-周 4–5  多租户 Milvus + HITL + Grounding
-周 5–6  Planner/Executor + Grafana + Tool Audit
+周 1    3.4.1 评测 + 3.10.1 AgentRuntime（并行，见 multi-agent plan）
+周 2    3.4.2 ES 双写 + 3.10.2–3.10.3
+周 3    3.4.3–3.4.4 Hybrid + 3.11 skill-manager
+周 4    3.4.5 Rerank + 3.8.1 QueryRewrite + 3.5.1 Grafana
+周 5    3.4.8 CI + 3.2 多租户 + 3.5.2 Sentinel/告警
+周 6    3.4 验收 + 3.9 PLAN_WORKFLOW + 3.8.2 PromptComposer
+周 7    3.3 HITL + 3.6 审计
+周 8    3.7 Grounding + 3.12 前端 + 总检查门
 ```
 
 ---
 
-## RAG 任务（优先）
-
-### Task R1: 评测脚本与基线报告
-
-**Files:**
-- Create: `scripts/rag_eval.py`
-- Create: `docs/rag/baseline-report.md`
-- Use: `docs/rag/golden-set.yaml`
-
-- [ ] **R1.1** `rag_eval.py` 读取 golden-set，调用 `POST /api/retrieval/search`
-- [ ] **R1.2** 输出 Recall@3/5/10、MRR、EmptyRate、latency CSV
-- [ ] **R1.3** 跑通 vector 基线，填写 `baseline-report.md`
-- [ ] **R1.4** `mvn test -pl rag-service` 保持绿
-
-**验收:** `python scripts/rag_eval.py` 退出码 0，报告含实测数字
-
----
-
-### Task R2: 入库 metadata 与 ES 索引
-
-**Files:**
-- Modify: `rag-service/.../IngestionController.java`
-- Modify: `rag-service/.../MilvusService.java`
-- Create: `rag-service/.../ElasticsearchIndexService.java`
-- Modify: `docs/nacos/sunshine-rag.yaml`
-
-- [ ] **R2.1** Milvus schema 增加 `tenant_id`, `section_path`, `chunk_index`
-- [ ] **R2.2** 入库双写 ES（content + metadata）
-- [ ] **R2.3** Flyway 或启动迁移脚本处理旧 collection 重建
-- [ ] **R2.4** 单测：入库后 ES + Milvus 均可查到
-
-**验收:** 上传 `公司请假流程规范.md` 后 ES `_count` > 0
-
----
-
-### Task R3: BM25 稀疏检索
-
-**Files:**
-- Create: `rag-service/.../Bm25SearchService.java`
-
-- [ ] **R3.1** ES `match` 查询，返回 doc_id + score
-- [ ] **R3.2** 与 Milvus 结果统一为 `RetrievalCandidate` record
-- [ ] **R3.3** 单测：专有名词 query BM25 排名优于纯向量（mock）
-
-**验收:** 单测绿 + 日志可见 bm25 topK
-
----
-
-### Task R4: Hybrid RRF 融合
-
-**Files:**
-- Create: `rag-service/.../HybridRetrievalService.java`
-- Modify: `rag-service/.../RetrievalService.java`
-
-- [ ] **R4.1** 实现 RRF：`score = Σ 1/(k + rank)`
-- [ ] **R4.2** Nacos `rag.search.strategy` 切换 vector/hybrid
-- [ ] **R4.3** `rag_eval.py --strategy hybrid` 对比基线
-
-**验收:** Recall@5 不低于 vector 基线（混合应提升）
-
----
-
-### Task R5: BGE-Reranker 精排
-
-**Files:**
-- Create: `rag-service/.../RerankService.java`
-- Modify: `docs/nacos/sunshine-rag.yaml`
-
-- [ ] **R5.1** 接入 Rerank API（或本地模型）
-- [ ] **R5.2** 融合 top-20 → rerank → top-5
-- [ ] **R5.3** `min-score` 改为 rerank 分阈值
-- [ ] **R5.4** `rag_eval.py` 记录 hybrid vs hybrid+rerank 报告
-
-**验收:** Recall@5 较 R4 提升 ≥5% 或 MRR 提升 ≥8%
-
----
-
-### Task R6: RAG Metrics + Grafana 面板
-
-**Files:**
-- Modify: `rag-service` — Micrometer metrics
-- Create: `docs/grafana/rag-dashboard.json`（或 prometheus 规则片段）
-
-- [ ] **R6.1** 暴露 `rag_search_duration_seconds`, `rag_empty_total`, `rag_hits_total`
-- [ ] **R6.2** Grafana 导入 RAG 面板
-- [ ] **R6.3** 4 条告警规则（spec 3.5）
-
-**验收:** 压测 10 次检索后面板有数据
-
----
-
-### Task R7: Query Rewrite（可选）
-
-- [ ] **R7.1** 仅当 vector+hybrid 均为 empty 时触发
-- [ ] **R7.2** LLM 生成 1 个改写 query 再检索
-- [ ] **R7.3** 评测 EmptyRate 是否下降，记录 Token 成本
-
-**验收:** 负例 query 不触发 rewrite；正例 EmptyRate 下降
-
----
-
-### Task R8: CI 回归门禁
+## Task 3.4.1: golden-set v6 + rag_eval 双轨
 
 **Files:**
 - Modify: `scripts/rag_eval.py`
-- Create: `.github/workflows/rag-eval.yml`（或文档说明本地门禁）
+- Modify: `docs/rag/golden-set.yaml`
+- Modify: `docs/rag/baseline-report.md`
 
-- [ ] **R8.1** `--fail-if-recall5-below` 参数
-- [ ] **R8.2** 记录 regression 报告 `docs/rag/regression-YYYY-MM-DD.md`
+- [ ] **Step 1:** 在 `golden-set.yaml` 增加 `adversarial` 分类 ≥40 条（口语变体、专有名词、跨制度 multihop）
+- [ ] **Step 2:** `rag_eval.py` 增加 `--suite v5|v6|all` 与 `--strategy vector|hybrid|hybrid+rerank`
+- [ ] **Step 3:** 跑 vector 基线并写入 `baseline-report.md`
 
-**验收:** 故意降低 minScore 时脚本非零退出
+```bash
+set RAG_URL=http://localhost:8400
+python scripts/rag_reset.py
+python scripts/rag_ingest_bulk.py
+python scripts/rag_eval.py --suite v5 --strategy vector --report-md
+```
+
+Expected: 退出码 0；报告含 Recall@5/MRR/P95
+
+- [ ] **Step 4:** `mvn test -pl rag-service` 绿
 
 ---
 
-## 其他任务
+## Task 3.4.2: 入库 metadata + ES 双写
 
-### Task 3.2: 多租户 Milvus Partition
+**Files:**
+- Modify: `rag-service/src/main/java/com/sunshine/rag/service/MilvusService.java`
+- Modify: `rag-service/src/main/java/com/sunshine/rag/controller/IngestionController.java`
+- Create: `rag-service/src/main/java/com/sunshine/rag/service/ElasticsearchIndexService.java`
+- Modify: `docs/nacos/sunshine-rag.yaml`
+- Test: `rag-service/src/test/java/com/sunshine/rag/...`（新建 ES 双写单测）
 
-- [ ] **3.2.1** 检索/入库带 `tenantId`（来自 `x-tenant-id` 或默认 `default`）
-- [ ] **3.2.2** 集成测试：跨租户 0 命中
+- [ ] **Step 1:** Milvus schema 增加 `tenant_id`, `section_path`, `chunk_index`, 可空 `source_type`
+- [ ] **Step 2:** 入库路径双写 ES（content + metadata）
+- [ ] **Step 3:** 单测：mock ES 断言 index 调用
+- [ ] **Step 4:** 验收：`POST` 上传后 ES `_count` > 0
 
-### Task 3.3: HITL 写操作确认
+---
 
-- [ ] **3.3.1** Catalog `sideEffect` 字段
-- [ ] **3.3.2** `PreToolCallHook` + Redis 暂停
-- [ ] **3.3.3** 前端确认 UI + `POST /api/chat/confirm-tool`
+## Task 3.4.3–3.4.5: BM25 + Hybrid + Rerank
 
-### Task 3.1: Planner / Executor
+**Files:**
+- Create: `rag-service/.../Bm25SearchService.java`
+- Create: `rag-service/.../HybridRetrievalService.java`
+- Create: `rag-service/.../RerankService.java`
+- Modify: `rag-service/.../RetrievalService.java`
+- Modify: `docs/nacos/sunshine-rag.yaml`
 
-- [ ] **3.1.1** Nacos planner prompt + 工具白名单
-- [ ] **3.1.2** `PlannerExecutor` 新模式或 react 子流程
-- [ ] **3.1.3** Timeline `plan` 步骤展示
+- [ ] **3.4.3** ES match 查询 + `RetrievalCandidate` 统一模型 + 单测
+- [ ] **3.4.4** RRF 融合 + `rag.search.strategy` 开关 + `rag_eval --strategy hybrid`
+- [ ] **3.4.5** Rerank top-20→5 + v5/v6 对比报告
 
-### Task 3.6: Tool Audit 扩展
+**验收:** v5 hybrid+rerank 不退化；v6 较 vector Recall@5 +15%
 
-- [ ] **3.6.1** `sunshine-tool-audit` topic
-- [ ] **3.6.2** ES 索引 + 查询 API
+---
 
-### Task 3.7: Grounding 校验
+## Task 3.4.6–3.4.8: Metrics + CI
 
-- [ ] **3.7.1** `AnswerGroundingChecker` 规则 MVP
-- [ ] **3.7.2** 集成测试：无 tool 调用时拦截编造财务数据
+**Files:**
+- Modify: `rag-service` — Micrometer `rag_search_*` 指标
+- Create: `docs/grafana/rag-dashboard.json`（或 prometheus 规则片段）
+- Modify: `scripts/rag_eval.py` — `--fail-if-recall5-below`
+- Create: `.github/workflows/rag-eval.yml`（或文档说明本地门禁）
+
+- [ ] **3.4.6** Grafana RAG 面板（与 Task 3.5 联动）
+- [ ] **3.4.8** CI 门禁 + `docs/rag/regression-YYYY-MM-DD.md`
+
+---
+
+## Task 3.2: 多租户隔离
+
+**Files:**
+- Modify: `rag-service/.../RetrievalService.java`, `IngestionController.java`, `MilvusService.java`
+- Modify: `orchestrator/.../memory/MemoryMessageBuilder.java` 或 `MtmService` — tenant 过滤
+- Modify: `gateway/...` Sentinel 租户 QPS 规则
+- Modify: `docs/nacos/sunshine-gateway.yaml`, `sunshine-rag.yaml`
+- Test: `rag-service` 跨租户集成测试
+
+- [ ] **3.2.1** 检索/入库带 `x-tenant-id`（默认 `default`）
+- [ ] **3.2.2** MTM 向量召回同 tenant 过滤
+- [ ] **3.2.3** 集成测试：租户 A 语料，租户 B 检索 0 命中
+
+```bash
+mvn test -pl rag-service -Dtest=*Tenant*
+```
+
+---
+
+## Task 3.3: HITL 写操作确认
+
+**Files:**
+- Modify: `tool-manager/...` Catalog DTO — `sideEffect: read|write`
+- Modify: `docs/nacos/sunshine-tools.yaml` — 写工具标记 `write`
+- Create: `orchestrator/.../hook/PreToolCallConfirmationHook.java`
+- Modify: `orchestrator/.../controller/ChatController.java` — `POST /api/chat/confirm-tool`
+- Modify: `sunshine-ui/src/...` — 确认对话框 + SSE `type:confirmation` 处理
+- Modify: `bff/...` — 透传 confirm-tool
+
+- [ ] **3.3.1** Catalog `sideEffect` 字段 + 种子写工具（如未来 OA mock）
+- [ ] **3.3.2** Hook 暂停 Agent + Redis 令牌；**子 Agent run 同样拦截**
+- [ ] **3.3.3** 前端确认 → 恢复执行；拒绝/超时 → 步骤 SKIP
+
+**验收:** 标记 `write` 的工具必须弹窗确认后才执行
+
+---
+
+## Task 3.5: Grafana + Sentinel
+
+**Files:**
+- Modify: `rag-service` metrics（见 3.4.6）
+- Create/Modify: Prometheus 规则 + Grafana dashboard JSON
+- Modify: `docs/nacos/sunshine-gateway.yaml` — Sentinel 租户 QPS
+
+- [ ] **3.5.1** Grafana RAG 专区 6 面板有数据
+- [ ] **3.5.2** 4 条告警可触发（测试环境）
+- [ ] **3.5.3** Sentinel Dashboard 租户 QPS 可见
+
+---
+
+## Task 3.6: 审计扩展
+
+**Files:**
+- Create: RocketMQ topic 配置 `sunshine-tool-audit`
+- Modify: `orchestrator/.../audit/` — tool 调用细项
+- Create: ES 索引 mapping `tool-audit-*`
+- Modify: `orchestrator/.../audit/` — 与 3.10.6、3.9.4 联动
+
+- [ ] **3.6.1** `sunshine-tool-audit`：toolId、params（脱敏）、output 摘要、traceId
+- [ ] **3.6.2** ES 按 `conversationId` 查询 API
+- [ ] **3.6.3** `sub_agent_run` + `plan.*` 四类事件（见 multi-agent plan 3.10.6、3.9.4）
+
+---
+
+## Task 3.7: Grounding 校验
+
+**Files:**
+- Create: `orchestrator/.../grounding/AnswerGroundingChecker.java`
+- Test: `orchestrator/src/test/java/.../AnswerGroundingCheckerTest.java`
+
+- [ ] **Step 1:** 单测：无 tool/rag 步骤时含金额/制度名 → 拦截
+- [ ] **Step 2:** 子 Agent output 交下游 llm 前校验钩子
+- [ ] **Step 3:** 集成测试挂接 `ReactExecutor` / workflow answer 节点
+
+---
+
+## Task 3.8: 提示词改写
+
+**Files:**
+- Create: `orchestrator/.../rewrite/QueryRewriteService.java`
+- Create: `orchestrator/.../prompt/PromptComposer.java`
+- Modify: `orchestrator/.../SunshineAgent.java` 或 `LlmGatewayClient.java`
+- Modify: `docs/nacos/sunshine-orchestrator.yaml` — `agent.rewrite.*`
+
+- [ ] **3.8.1** `QueryRewriteService`：`rag` / `intent` / `empty-recall`（与 3.4.7 联动）
+- [ ] **3.8.2** `PromptComposer`：base → mode → skill → memory
+- [ ] **3.8.3** workflow `llm` 节点 prompt 走 Composer
+
+---
+
+## Task 3.9–3.12: 多 Agent / Skills / 前端
+
+→ 完整 Task 见 [2026-06-19-multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md)
+
+---
+
+## Task 3.13: 并行（不进检查门）
+
+- [ ] `desensitize-service` AhoCorasick + 可配置规则库
+- [ ] Milvus `source_type` metadata 可空字段（3.4.2 一并做更佳）
+
+---
+
+## Task 3.14: Redis GenerationJob 分布式锁
+
+**Files:**
+- Modify: `orchestrator/.../generation/GenerationRegistry.java`
+- Create: `orchestrator/.../generation/DistributedGenerationLock.java`（Redis）
+- Test: 多实例抢锁单测
+
+- [ ] **3.14.1** 仅一个实例持有 Job flush 权
+- [ ] **3.14.2** 多实例集成测试（可选，生产必做）
+
+---
+
+## 阶段三总验收
+
+```bash
+python scripts/rag_eval.py --suite all --strategy hybrid+rerank --gate
+python scripts/phase2_agent_demo.py --suite all
+mvn test -pl orchestrator,rag-service
+```
+
+对照 [phase3 SSOT §6](../specs/phase3-production-hardening-design.md) 17 条检查门逐项勾选。
 
 ---
 
 ## Spec Coverage Self-Review
 
-- [ ] RAG 全链路：评测 → 混合 → Rerank → 指标 → CI
-- [ ] orchestrator 对 RAG API 无破坏性变更
-- [ ] 阶段三检查门与 spec 第七章一一对应
+- [x] 3.2–3.8 均有 Files + 验收（本次补全）
+- [x] 3.4.1 含完整命令示例
+- [x] 3.9–3.12 指向 multi-agent plan
+- [x] 17 条检查门在 coverage audit 中可追溯
+- [ ] 3.4.2+ 逐步 TDD 代码块 — 实施周按 Task 3.4.1 模板展开

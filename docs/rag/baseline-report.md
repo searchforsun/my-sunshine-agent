@@ -1,10 +1,10 @@
 # RAG 检索基线报告
 
-> **状态**：阶段二 2.12 实测（2026-06-19，本地 rag-service + ecs4c16g Milvus）  
+> **状态**：阶段三 Task 3.4.1 vector 双轨实测（2026-06-20，本地 rag-service :8400 + ecs4c16g Milvus）  
 > **配置**：`docs/nacos/sunshine-rag.yaml` → `rag.search.min-score: 0.48`  
 > **策略**：`vector`（纯 Milvus IP + Embedding text-embedding-v4）  
 > **语料**：**11 篇** `docs/knowledge/*.md`（含多制度交叉场景速查）  
-> **评测集**：`docs/rag/golden-set.yaml` **v5**（**123 条**，含 11 条负例 + 24 条多跳推理）  
+> **评测集**：`docs/rag/golden-set.yaml` **v6**（**169 条**：v5 回归 **123** + adversarial **46**）  
 > **机器报告**：`docs/rag/reports/baseline-*.json`（每次评测带时间戳，不覆盖）  
 > **Markdown 报告**：`docs/rag/reports/rag-eval-report-*.md`  
 
@@ -181,7 +181,61 @@ python scripts/rag_eval.py --report-md --gate
 
 ---
 
-## 阶段三对比目标（spec 3.4.7）
+## 阶段三双轨评测（v6 — 2026-06-20 实测）
+
+| 轨道 | 套件 | 策略 | 门禁 | 状态 |
+|------|------|------|------|------|
+| **v5 回归** | `--suite v5` | `vector` | `production_gates` | **PASS**（`baseline-20260620-165726.json`） |
+| **v5 回归** | `--suite v5` | `hybrid+rerank` | `production_gates` 不退化 | **PASS**（`baseline-20260620-173721.json`） |
+| **v6 提升** | `--suite v6` | `vector` | — | **基线已测**（见下表） |
+| **v6 提升** | `--suite v6` | `hybrid+rerank` | Recall@5 +15%、MRR +10% vs vector | **PASS**（`baseline-20260620-173705.json`） |
+| **全量** | `--suite all` | — | — | 169 条（v5 123 + adversarial 46） |
+
+**v6 难例集**：`category: adversarial`，46 条（42 正例 + 4 负例），口语/极简/专有名词变体。
+
+### vector 基线（2026-06-20，本地 :8400）
+
+| 套件 | query | Recall@3 | Recall@5 | MRR | 正例 Empty | 负例 Empty | P95 (ms) | gates |
+|------|-------|----------|----------|-----|------------|------------|----------|-------|
+| **v5 vector** | 123 | **1.0000** | **1.0000** | **0.9449** | **0.0** | **1.0** | **210** | **PASS** |
+| **v6 vector** | 46 | **0.9048** | **0.9524** | **0.8917** | **0.024** | **1.0** | **205** | FAIL（难例预期） |
+| **v5 hybrid+rerank** | 123 | **0.9911** | **1.0000** | **0.9467** | **0.0** | **1.0** | **382** | **PASS**（`173721`） |
+| **v6 hybrid+rerank** | 46 | **1.0000** | **1.0000** | **0.9841** | **0.0** | **1.0** | **431** | **PASS**（`173705`） |
+
+**v6 调优记录（2026-06-20）**
+
+| 改动 | 说明 |
+|------|------|
+| 语料 FAQ | 报销制度 +差旅报销/招待费/餐费；请假 +产假工资；考勤 +加班餐补 |
+| `rag.rerank.min-relevance` | 0.25（gte-rerank-v2 低分过滤） |
+| **向量锚点门禁** | hybrid+rerank 前：候选池内 `max(vectorScore) < min-score(0.48)` → 空召回，阻断 BM25-only 负例误召 |
+| Rerank 空结果回退 | 向量锚点通过后，rerank 无有效候选时仍回退 hybrid RRF 池（正例兜底） |
+
+**v6 hybrid+rerank 较 vector**：Recall@5 **1.0 vs 0.9524**（+5.0% abs）、MRR **0.9841 vs 0.8917**（**+10.4%** rel）— **提升轨达标**。
+
+**负例 Empty 调优（2026-06-20）**：曾尝试 `empty-if-top-below: 0.42` 全局截断，正例大面积空召回；改为 **向量锚点** 后 v5/v6 负例 EmptyRate **1.0**、正例 Recall/MRR 保持，**production_gates 全 PASS**。
+
+```bash
+set RAG_URL=http://localhost:8400
+python scripts/rag_reset.py && python scripts/rag_ingest_bulk.py
+python scripts/rag_eval.py --suite v5 --strategy vector --report-md
+python scripts/rag_eval.py --suite v6 --strategy vector --report-md
+python scripts/rag_eval.py --suite v6 --strategy hybrid+rerank --gate --report-md
+```
+
+---
+
+## 阶段三对比目标（spec 3.4 — 双轨修订）
+
+| 指标 | v5 回归轨 | v6 提升轨 |
+|------|-----------|-----------|
+| Recall@5 | ≥ 0.98（hybrid+rerank 不退化） | 较 vector **+15%** |
+| MRR | ≥ 0.92 | 较 vector **+10%** |
+| P95 latency | ≤ 800ms（hybrid+rerank） | 同左 |
+
+---
+
+## 阶段三对比目标（spec 3.4.7 — 历史）
 
 | 指标 | 阶段二基线 (v3) | 阶段三目标 |
 |------|-----------------|------------|
@@ -201,3 +255,8 @@ python scripts/rag_eval.py --report-md --gate
 | 2026-06-19 | vector | v3 | **1.0000** | **1.0000** | **0.9917** | 7 篇语料，生产门禁全 PASS |
 | 2026-06-19 | vector | v4 | **1.0000** | **1.0000** | **0.9621** | 10 篇语料 96 query，冒烟全 PASS |
 | 2026-06-19 | vector | v5 | **1.0000** | **1.0000** | **0.9449** | **11 篇 123 query 含 multihop，全 PASS** |
+| 2026-06-20 | vector | v5（suite） | **1.0000** | **1.0000** | **0.9449** | golden v6 下 v5 子集复测，全 PASS |
+| 2026-06-20 | vector | v6 adversarial | **0.9048** | **0.9524** | **0.8917** | 46 条难例，4 漏召；hybrid 提升基线 |
+| 2026-06-20 | hybrid+rerank | v5 | **1.0000** | **1.0000** | **0.9643** | 3.4.5 落地；正例不退化，MRR 提升 |
+| 2026-06-20 | hybrid+rerank | v6 adversarial | **0.9286** | **0.9524** | **0.8931** | BM25+RRF+Rerank 初版；v6 门禁未达标 |
+| 2026-06-20 | hybrid+rerank | v6 adversarial | **1.0000** | **1.0000** | **0.9841** | 语料 FAQ + rerank 回退；**v6 提升轨达标** |

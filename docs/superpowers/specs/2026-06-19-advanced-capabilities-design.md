@@ -1,5 +1,7 @@
 # 进阶能力方案：提示词改写 · 动态 DAG · Skills 沙箱 · 多 Agent
 
+> **⚠️ 已按阶段拆分**：阶段三 → [phase3-production-hardening-design.md](./phase3-production-hardening-design.md)（§3.4.7、§3.8–3.11）；阶段四 → [phase4-platformization-design.md](./phase4-platformization-design.md)（§4.5–4.7）。下文为历史详设。
+
 > **日期**：2026-06-19  
 > **状态**：方案评审  
 > **定位**：阶段二收尾 / 阶段三 RAG 主线之外的**四条并行演进**路径  

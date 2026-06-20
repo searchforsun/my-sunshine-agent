@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RAG 基线评测 — Recall@K / MRR / EmptyRate / latency + badcase 明细 + 生产门禁。"""
+ 
 from __future__ import annotations
 
 import argparse
@@ -34,11 +34,14 @@ def doc_id_to_name(corpus: list) -> dict[str, str]:
     return {c["doc_id"]: c["display_name"] for c in corpus}
 
 
-def search(rag_url: str, query: str, top_k: int) -> tuple[list[dict], float]:
+def search(rag_url: str, query: str, top_k: int, strategy: str | None = None) -> tuple[list[dict], float]:
     t0 = time.perf_counter()
+    body: dict = {"query": query, "topK": top_k}
+    if strategy:
+        body["strategy"] = strategy
     resp = requests.post(
         f"{rag_url.rstrip('/')}/api/rag/search",
-        json={"query": query, "topK": top_k},
+        json=body,
         timeout=60,
     )
     resp.raise_for_status()
@@ -109,13 +112,31 @@ def check_gates(report: dict, gates: dict) -> list[str]:
     return failures
 
 
+def filter_queries(queries: list[dict], suite: str, eval_cfg: dict) -> list[dict]:
+    """按评测套件筛选 query：v5=回归轨（排除 adversarial），v6=难例轨，all=全量。"""
+    if suite == "core":
+        return [
+            q for q in queries
+            if q["id"].startswith("q0") and q["id"][1:4].isdigit() and int(q["id"][1:4]) <= 12
+        ]
+    suites_cfg = eval_cfg.get("suites") or {}
+    if suite == "v5":
+        exclude = set((suites_cfg.get("v5") or {}).get("exclude_categories") or ["adversarial"])
+        return [q for q in queries if q.get("category") not in exclude]
+    if suite == "v6":
+        include = set((suites_cfg.get("v6") or {}).get("include_categories") or ["adversarial"])
+        return [q for q in queries if q.get("category") in include]
+    return queries
+
+
 def write_markdown_report(report: dict, path: Path) -> None:
     gates = report.get("production_gates") or {}
     gate_result = report.get("gate_check") or {}
     lines = [
         f"# RAG 评测报告 — {report.get('run_at', report.get('date'))}",
         "",
-        f"> golden-set v{report.get('golden_version')} · {report.get('query_count')} queries · "
+        f"> golden-set v{report.get('golden_version')} · suite={report.get('suite')} · "
+        f"strategy={report.get('strategy')} · {report.get('query_count')} queries · "
         f"min_score={report.get('min_score')} · run={report.get('run_tag')}",
         "",
         "## 汇总指标",
@@ -185,7 +206,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--rag-url", default=os.environ.get("RAG_URL", "http://localhost:8400"))
     parser.add_argument("--golden-set", default=str(ROOT / "docs/rag/golden-set.yaml"))
-    parser.add_argument("--suite", default="all", choices=["all", "core"])
+    parser.add_argument("--suite", default="all", choices=["all", "core", "v5", "v6"])
+    parser.add_argument(
+        "--strategy",
+        default="vector",
+        choices=["vector", "hybrid", "hybrid+rerank"],
+        help="检索策略（透传 RAG API strategy）",
+    )
     parser.add_argument("--gate", action="store_true", help="未达 production_gates 时 exit 1")
     parser.add_argument("--report-md", action="store_true", help="输出 Markdown 报告")
     parser.add_argument("--tag", default="", help="报告文件名附加标记（可选，如 v5-smoke）")
@@ -202,9 +229,9 @@ def main() -> int:
     gates = eval_cfg.get("production_gates") or {}
     max_k = max(top_ks)
 
-    queries = data["queries"]
-    if args.suite == "core":
-        queries = [q for q in queries if q["id"].startswith("q0") and q["id"][1:4].isdigit() and int(q["id"][1:4]) <= 12]
+    queries = filter_queries(data["queries"], args.suite, eval_cfg)
+
+    strategy = None if args.strategy == "vector" else args.strategy
 
     latencies: list[float] = []
     recalls = {k: [] for k in top_ks}
@@ -220,7 +247,7 @@ def main() -> int:
 
     for q in queries:
         relevant = {id2name[d] for d in q.get("relevant_docs") or [] if d in id2name}
-        hits, ms = search(args.rag_url, q["query"], max_k)
+        hits, ms = search(args.rag_url, q["query"], max_k, strategy)
         latencies.append(ms)
         filtered = [h for h in hits if h.get("score", 0) >= min_score]
         top3_detail = [
@@ -268,6 +295,8 @@ def main() -> int:
         "run_tag": tag,
         "date": run_at.date().isoformat(),
         "golden_version": data.get("version"),
+        "suite": args.suite,
+        "strategy": args.strategy,
         "query_count": len(queries),
         "min_score": min_score,
         "recall_at_k": {str(k): round(statistics.mean(recalls[k]), 4) for k in top_ks},

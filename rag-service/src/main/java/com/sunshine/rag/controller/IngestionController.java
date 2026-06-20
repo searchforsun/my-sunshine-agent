@@ -1,6 +1,7 @@
 package com.sunshine.rag.controller;
 
 import com.sunshine.rag.parser.MarkdownParser;
+import com.sunshine.rag.service.ElasticsearchIndexService;
 import com.sunshine.rag.service.EmbeddingService;
 import com.sunshine.rag.service.MilvusService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class IngestionController {
     private final MarkdownParser parser;
     private final EmbeddingService embeddingService;
     private final MilvusService milvusService;
+    private final ElasticsearchIndexService elasticsearchIndexService;
 
     @PostMapping("/documents")
     public Mono<Map<String, Object>> ingest(@RequestBody Map<String, String> body) {
@@ -42,10 +44,18 @@ public class IngestionController {
         log.info("[RAG] 文档入库: docName='{}', {} 个分段", docName, chunks.size());
 
         return Flux.fromIterable(chunks)
-                .flatMap(chunk ->
-                        embeddingService.embed(chunk)
-                                .doOnNext(vector -> milvusService.insert(docName, chunk, vector))
-                )
+                .index()
+                .flatMap(tuple -> {
+                    long index = tuple.getT1();
+                    String chunk = tuple.getT2();
+                    String chunkId = docName + "#" + index;
+                    return embeddingService.embed(chunk)
+                            .doOnNext(vector -> {
+                                milvusService.insert(docName, chunk, vector);
+                                elasticsearchIndexService.indexChunk(
+                                        chunkId, docName, chunk, (int) index, "default");
+                            });
+                })
                 .collectList()
                 .map(vectors -> Map.of(
                         "code", 200,

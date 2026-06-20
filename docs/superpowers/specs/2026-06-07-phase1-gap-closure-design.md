@@ -1,5 +1,7 @@
 # 阶段一缺口补齐 — 技术设计
 
+> **⚠️ 已并入** [phase1-foundation-design.md](./phase1-foundation-design.md) **§5**。下文为历史详设。
+
 > 日期：2026-06-07 | 状态：待实施 | 对标：[tech-solution.md](../../tech-solution.md) + [implementation-plan.md](../../implementation-plan.md)
 
 ## 背景

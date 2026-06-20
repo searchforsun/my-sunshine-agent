@@ -1,5 +1,7 @@
 # 多 Agent 架构与主子 Agent 设计方案
 
+> **⚠️ 任务卡已并入** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.10**；实施计划 [plans/2026-06-19-multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md)（3.9.x / 3.10.x）。阶段四见 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.7**。下文为历史详设。
+
 > **日期**：2026-06-19  
 > **状态**：方案评审  
 > **定位**：企业助手**可控多智能体**的核心架构 — 与动态 DAG、Skills、提示词改写协同  

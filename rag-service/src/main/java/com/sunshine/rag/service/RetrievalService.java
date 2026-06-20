@@ -1,6 +1,9 @@
 package com.sunshine.rag.service;
 
+import com.sunshine.rag.config.RagRerankProperties;
 import com.sunshine.rag.config.RagSearchProperties;
+import com.sunshine.rag.model.RetrievalCandidate;
+import com.sunshine.rag.model.SearchStrategy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -9,40 +12,93 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 /**
- * RAG 检索编排服务
+ * RAG 检索编排：vector / hybrid / hybrid+rerank。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class RetrievalService {
 
-    private final EmbeddingService embeddingService;
-    private final MilvusService milvusService;
+    private final VectorSearchService vectorSearchService;
+    private final Bm25SearchService bm25SearchService;
+    private final HybridRetrievalService hybridRetrievalService;
+    private final RerankService rerankService;
     private final RagSearchProperties searchProperties;
+    private final RagRerankProperties rerankProperties;
 
-    public Mono<List<DocFragment>> search(String query, int topK) {
-        log.info("[RAG] 检索: query='{}', topK={}", query, topK);
+    public Mono<List<DocFragment>> search(String query, int topK, String strategyOverride) {
+        SearchStrategy strategy = SearchStrategy.from(strategyOverride, searchProperties.defaultStrategy());
+        log.info("[RAG] 检索: query='{}', topK={}, strategy={}", query, topK, strategy);
+        return switch (strategy) {
+            case VECTOR -> vectorSearch(query, topK);
+            case HYBRID -> hybridSearch(query, topK, false);
+            case HYBRID_RERANK -> hybridSearch(query, topK, true);
+        };
+    }
 
-        return embeddingService.embed(query)
-                .map(vector -> {
-                    List<MilvusService.SearchHit> raw = milvusService.search(vector, topK);
-                    float minScore = searchProperties.getMinScore();
-                    List<MilvusService.SearchHit> filtered = SearchScoreFilter.apply(raw, minScore);
-                    if (log.isDebugEnabled() && !raw.isEmpty()) {
-                        raw.forEach(hit -> log.debug("[RAG] score={} doc={} pass={}",
-                                String.format("%.4f", hit.score()),
-                                hit.docName(),
-                                hit.score() >= minScore));
-                    }
-                    if (raw.size() != filtered.size()) {
-                        log.info("[RAG] 相似度过滤: minScore={}, raw={}, effective={}",
-                                minScore, raw.size(), filtered.size());
-                    }
-                    return filtered.stream()
-                            .map(hit -> new DocFragment(hit.docName(), hit.content(), hit.score()))
-                            .toList();
-                })
+    private Mono<List<DocFragment>> vectorSearch(String query, int topK) {
+        return vectorSearchService.search(query, topK, true)
+                .map(this::toFragments)
                 .doOnSuccess(r -> log.info("[RAG] 有效命中: {} 条", r.size()));
+    }
+
+    private Mono<List<DocFragment>> hybridSearch(String query, int topK, boolean rerank) {
+        int pool = Math.max(searchProperties.getHybridPoolSize(), rerankProperties.getInputSize());
+        Mono<List<RetrievalCandidate>> vectorMono = vectorSearchService.search(query, pool, false);
+        Mono<List<RetrievalCandidate>> bm25Mono = bm25SearchService.search(query, pool);
+        return Mono.zip(vectorMono, bm25Mono)
+                .flatMap(tuple -> {
+                    List<RetrievalCandidate> vectorHits = tuple.getT1();
+                    List<RetrievalCandidate> bm25Hits = tuple.getT2();
+                    if (bm25Hits.isEmpty() && !bm25SearchService.isEnabled()) {
+                        log.warn("[RAG] BM25 未启用，hybrid 降级为 vector");
+                    }
+                    List<RetrievalCandidate> fused = hybridRetrievalService.fuse(
+                            List.of(vectorHits, bm25Hits), pool);
+                    List<RetrievalCandidate> scored = hybridRetrievalService.assignDisplayScores(
+                            fused, vectorHits, bm25Hits);
+                    if (!rerank || !rerankService.isEnabled()) {
+                        return Mono.just(applyMinScore(scored, topK));
+                    }
+                    float maxVector = vectorHits.stream()
+                            .map(RetrievalCandidate::score)
+                            .max(Float::compare)
+                            .orElse(0f);
+                    float vectorFloor = searchProperties.getMinScore();
+                    if (maxVector < vectorFloor) {
+                        log.info("[RAG] 向量锚点未达阈: maxVector={} < {}, hybrid+rerank 空召回",
+                                maxVector, vectorFloor);
+                        return Mono.just(List.<RetrievalCandidate>of());
+                    }
+                    int rerankIn = Math.min(scored.size(), rerankProperties.getInputSize());
+                    List<RetrievalCandidate> input = scored.subList(0, rerankIn);
+                    return rerankService.rerank(query, input, topK)
+                            .map(ranked -> applyMinScore(ranked, topK));
+                })
+                .map(this::toFragments)
+                .doOnSuccess(r -> log.info("[RAG] hybrid 有效命中: {} 条", r.size()));
+    }
+
+    private List<RetrievalCandidate> applyMinScore(List<RetrievalCandidate> candidates, int topK) {
+        float vectorMin = searchProperties.getMinScore();
+        float rerankMin = rerankProperties.getMinScore();
+        return candidates.stream()
+                .filter(c -> c.score() >= thresholdFor(c, vectorMin, rerankMin))
+                .limit(topK)
+                .toList();
+    }
+
+    private static float thresholdFor(RetrievalCandidate c, float vectorMin, float rerankMin) {
+        if (RetrievalCandidate.SOURCE_RERANK.equals(c.source())) {
+            return rerankMin;
+        }
+        return vectorMin;
+    }
+
+    private List<DocFragment> toFragments(List<RetrievalCandidate> candidates) {
+        return candidates.stream()
+                .map(c -> new DocFragment(c.docName(), c.content(), c.score()))
+                .toList();
     }
 
     public record DocFragment(String docName, String content, float score) {

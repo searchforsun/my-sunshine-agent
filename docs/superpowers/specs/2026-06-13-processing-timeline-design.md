@@ -1,5 +1,7 @@
 # 后端处理事件 — 前端展示方案
 
+> **⚠️ 已并入** [phase2-benchmark-design.md](./phase2-benchmark-design.md) **§2.18**（演进至 V2）。下文为历史详设。
+
 > 日期：2026-06-13 | 状态：待评审  
 > 前置：阶段 1.5 会话 MVP + 阶段 1.6 Generation 重连已落地  
 > 关联：`ChatView.vue`、`ReasoningPanel.vue`、`chatSessions.ts`、`GenerationFlushScheduler.java`

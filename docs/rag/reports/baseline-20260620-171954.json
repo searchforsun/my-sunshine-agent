@@ -1,0 +1,677 @@
+{
+  "run_at": "2026-06-20T17:19:54",
+  "run_tag": "20260620-171954",
+  "date": "2026-06-20",
+  "golden_version": 6,
+  "suite": "v6",
+  "strategy": "hybrid+rerank",
+  "query_count": 46,
+  "min_score": 0.48,
+  "recall_at_k": {
+    "3": 0.1667,
+    "5": 0.1667,
+    "10": 0.1667
+  },
+  "mrr": 0.1667,
+  "empty_rate_positive": 0.8333,
+  "empty_rate_negative": 1.0,
+  "latency_ms": {
+    "p50": 323.5,
+    "p95": 370.4
+  },
+  "by_category_recall_at_3": {
+    "adversarial": 0.1667
+  },
+  "production_gates": {
+    "recall_at_3_min": 0.95,
+    "recall_at_5_min": 0.98,
+    "mrr_min": 0.92,
+    "empty_rate_positive_max": 0.0,
+    "empty_rate_negative_min": 0.95,
+    "latency_p95_ms_max": 500
+  },
+  "badcases": {
+    "positive_miss": [
+      {
+        "id": "q_adv_001",
+        "query": "想请几天假咋整",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_002",
+        "query": "病假条要啥材料",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_003",
+        "query": "婚假能休多久啊",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_004",
+        "query": "陪产假男员工有吗",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_005",
+        "query": "事假扣钱不",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_006",
+        "query": "迟到五分钟算啥",
+        "category": "adversarial",
+        "expected": [
+          "考勤与加班管理规定"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_007",
+        "query": "加班换调休怎么算",
+        "category": "adversarial",
+        "expected": [
+          "考勤与加班管理规定"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_010",
+        "query": "餐费发票能报吗",
+        "category": "adversarial",
+        "expected": [
+          "公司报销管理制度"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_011",
+        "query": "招待费标准多少",
+        "category": "adversarial",
+        "expected": [
+          "公司报销管理制度"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_012",
+        "query": "发票抬头开错了",
+        "category": "adversarial",
+        "expected": [
+          "发票与税务合规FAQ"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_014",
+        "query": "专票普票区别报销",
+        "category": "adversarial",
+        "expected": [
+          "发票与税务合规FAQ"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_015",
+        "query": "出差住超标的酒店",
+        "category": "adversarial",
+        "expected": [
+          "差旅费管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_016",
+        "query": "机票退票费谁出",
+        "category": "adversarial",
+        "expected": [
+          "差旅费管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_017",
+        "query": "高铁商务座能报吗",
+        "category": "adversarial",
+        "expected": [
+          "差旅费管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_018",
+        "query": "新人入职要带啥",
+        "category": "adversarial",
+        "expected": [
+          "新员工入职指引"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_019",
+        "query": "试用期能请年假吗",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范",
+          "新员工入职指引"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_020",
+        "query": "转正流程多久",
+        "category": "adversarial",
+        "expected": [
+          "新员工入职指引"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_021",
+        "query": "五千块谁批",
+        "category": "adversarial",
+        "expected": [
+          "财务审批权限矩阵"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_022",
+        "query": "总监审批额度",
+        "category": "adversarial",
+        "expected": [
+          "财务审批权限矩阵"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_023",
+        "query": "部门预算花超了",
+        "category": "adversarial",
+        "expected": [
+          "部门预算管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_024",
+        "query": "季度预算调剂",
+        "category": "adversarial",
+        "expected": [
+          "部门预算管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_025",
+        "query": "在家办公算考勤吗",
+        "category": "adversarial",
+        "expected": [
+          "远程办公与混合办公管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_028",
+        "query": "客户资料能发微信吗",
+        "category": "adversarial",
+        "expected": [
+          "信息安全与数据保密制度"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_029",
+        "query": "泄密了要担责吗",
+        "category": "adversarial",
+        "expected": [
+          "信息安全与数据保密制度"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_030",
+        "query": "报销和请假能一块办吗",
+        "category": "adversarial",
+        "expected": [
+          "员工场景速查与多制度交叉指引"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_031",
+        "query": "出差途中请病假",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范",
+          "员工场景速查与多制度交叉指引"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_032",
+        "query": "远程期间加班怎么算",
+        "category": "adversarial",
+        "expected": [
+          "员工场景速查与多制度交叉指引",
+          "远程办公与混合办公管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_033",
+        "query": "离职前未报账",
+        "category": "adversarial",
+        "expected": [
+          "公司报销管理制度",
+          "员工场景速查与多制度交叉指引"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_035",
+        "query": "年休天数怎么查",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_036",
+        "query": "产假工资发多少",
+        "category": "adversarial",
+        "expected": [
+          "公司请假流程规范"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_038",
+        "query": "增值税专票丢失",
+        "category": "adversarial",
+        "expected": [
+          "发票与税务合规FAQ"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_039",
+        "query": "国际出差签证费用",
+        "category": "adversarial",
+        "expected": [
+          "差旅费管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_040",
+        "query": "固定资产采购谁批",
+        "category": "adversarial",
+        "expected": [
+          "财务审批权限矩阵",
+          "部门预算管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_041",
+        "query": "USB拷贝资料违规吗",
+        "category": "adversarial",
+        "expected": [
+          "信息安全与数据保密制度"
+        ],
+        "top3": [],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_042",
+        "query": "入职第一周能远程吗",
+        "category": "adversarial",
+        "expected": [
+          "新员工入职指引",
+          "远程办公与混合办公管理办法"
+        ],
+        "top3": [],
+        "first_rank": null
+      }
+    ],
+    "negative_false_positive": []
+  },
+  "per_query_summary": [
+    {
+      "id": "q_adv_001",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 468.2
+    },
+    {
+      "id": "q_adv_002",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 320.4
+    },
+    {
+      "id": "q_adv_003",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 349.6
+    },
+    {
+      "id": "q_adv_004",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 335.4
+    },
+    {
+      "id": "q_adv_005",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 323.5
+    },
+    {
+      "id": "q_adv_006",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 340.2
+    },
+    {
+      "id": "q_adv_007",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 304.5
+    },
+    {
+      "id": "q_adv_008",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 330.5
+    },
+    {
+      "id": "q_adv_009",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 307.9
+    },
+    {
+      "id": "q_adv_010",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 344.4
+    },
+    {
+      "id": "q_adv_011",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 320.4
+    },
+    {
+      "id": "q_adv_012",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 339.6
+    },
+    {
+      "id": "q_adv_013",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 347.6
+    },
+    {
+      "id": "q_adv_014",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 343.2
+    },
+    {
+      "id": "q_adv_015",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 395.2
+    },
+    {
+      "id": "q_adv_016",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 350.7
+    },
+    {
+      "id": "q_adv_017",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 340.8
+    },
+    {
+      "id": "q_adv_018",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 264.5
+    },
+    {
+      "id": "q_adv_019",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 333.9
+    },
+    {
+      "id": "q_adv_020",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 323.5
+    },
+    {
+      "id": "q_adv_021",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 370.4
+    },
+    {
+      "id": "q_adv_022",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 298.9
+    },
+    {
+      "id": "q_adv_023",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 292.3
+    },
+    {
+      "id": "q_adv_024",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 288.9
+    },
+    {
+      "id": "q_adv_025",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 344.8
+    },
+    {
+      "id": "q_adv_026",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 293.2
+    },
+    {
+      "id": "q_adv_027",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 346.7
+    },
+    {
+      "id": "q_adv_028",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 271.0
+    },
+    {
+      "id": "q_adv_029",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 304.7
+    },
+    {
+      "id": "q_adv_030",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 347.8
+    },
+    {
+      "id": "q_adv_031",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 317.6
+    },
+    {
+      "id": "q_adv_032",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 251.2
+    },
+    {
+      "id": "q_adv_033",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 308.9
+    },
+    {
+      "id": "q_adv_034",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 336.6
+    },
+    {
+      "id": "q_adv_035",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 249.4
+    },
+    {
+      "id": "q_adv_036",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 306.2
+    },
+    {
+      "id": "q_adv_037",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 292.1
+    },
+    {
+      "id": "q_adv_038",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 308.8
+    },
+    {
+      "id": "q_adv_039",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 364.1
+    },
+    {
+      "id": "q_adv_040",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 446.3
+    },
+    {
+      "id": "q_adv_041",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 356.0
+    },
+    {
+      "id": "q_adv_042",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 278.2
+    },
+    {
+      "id": "q_adv_neg_001",
+      "empty": true,
+      "latency_ms": 306.2
+    },
+    {
+      "id": "q_adv_neg_002",
+      "empty": true,
+      "latency_ms": 296.5
+    },
+    {
+      "id": "q_adv_neg_003",
+      "empty": true,
+      "latency_ms": 366.4
+    },
+    {
+      "id": "q_adv_neg_004",
+      "empty": true,
+      "latency_ms": 323.1
+    }
+  ],
+  "gate_check": {
+    "passed": false,
+    "failures": [
+      "recall@3 0.1667 < 0.95",
+      "recall@5 0.1667 < 0.98",
+      "mrr 0.1667 < 0.92",
+      "positive empty_rate 0.8333 > 0.0"
+    ]
+  }
+}

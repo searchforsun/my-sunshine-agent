@@ -1,0 +1,390 @@
+{
+  "run_at": "2026-06-20T17:24:37",
+  "run_tag": "20260620-172437",
+  "date": "2026-06-20",
+  "golden_version": 6,
+  "suite": "v6",
+  "strategy": "hybrid+rerank",
+  "query_count": 46,
+  "min_score": 0.48,
+  "recall_at_k": {
+    "3": 1.0,
+    "5": 1.0,
+    "10": 1.0
+  },
+  "mrr": 0.9841,
+  "empty_rate_positive": 0.0,
+  "empty_rate_negative": 0.0,
+  "latency_ms": {
+    "p50": 312.3,
+    "p95": 361.9
+  },
+  "by_category_recall_at_3": {
+    "adversarial": 1.0
+  },
+  "production_gates": {
+    "recall_at_3_min": 0.95,
+    "recall_at_5_min": 0.98,
+    "mrr_min": 0.92,
+    "empty_rate_positive_max": 0.0,
+    "empty_rate_negative_min": 0.95,
+    "latency_p95_ms_max": 500
+  },
+  "badcases": {
+    "positive_miss": [],
+    "negative_false_positive": [
+      {
+        "id": "q_adv_neg_001",
+        "query": "公司股价今天多少",
+        "top3": [
+          {
+            "docName": "员工场景速查与多制度交叉指引",
+            "score": 1.0
+          },
+          {
+            "docName": "考勤与加班管理规定",
+            "score": 0.8746
+          },
+          {
+            "docName": "新员工入职指引",
+            "score": 0.8357
+          }
+        ]
+      },
+      {
+        "id": "q_adv_neg_002",
+        "query": "帮我查快递到哪了",
+        "top3": [
+          {
+            "docName": "公司请假流程规范",
+            "score": 1.0
+          },
+          {
+            "docName": "信息安全与数据保密制度",
+            "score": 0.8788
+          },
+          {
+            "docName": "公司请假流程规范",
+            "score": 0.8605
+          }
+        ]
+      },
+      {
+        "id": "q_adv_neg_003",
+        "query": "附近哪家火锅好吃",
+        "top3": [
+          {
+            "docName": "新员工入职指引",
+            "score": 1.0
+          },
+          {
+            "docName": "公司报销管理制度",
+            "score": 0.8639
+          },
+          {
+            "docName": "发票与税务合规FAQ",
+            "score": 0.8011
+          }
+        ]
+      },
+      {
+        "id": "q_adv_neg_004",
+        "query": "Python怎么学",
+        "top3": [
+          {
+            "docName": "新员工入职指引",
+            "score": 1.0
+          },
+          {
+            "docName": "信息安全与数据保密制度",
+            "score": 0.8759
+          },
+          {
+            "docName": "财务审批权限矩阵",
+            "score": 0.8713
+          }
+        ]
+      }
+    ]
+  },
+  "per_query_summary": [
+    {
+      "id": "q_adv_001",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 398.5
+    },
+    {
+      "id": "q_adv_002",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 315.6
+    },
+    {
+      "id": "q_adv_003",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 325.4
+    },
+    {
+      "id": "q_adv_004",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 318.7
+    },
+    {
+      "id": "q_adv_005",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 307.1
+    },
+    {
+      "id": "q_adv_006",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 335.3
+    },
+    {
+      "id": "q_adv_007",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 345.3
+    },
+    {
+      "id": "q_adv_008",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 338.5
+    },
+    {
+      "id": "q_adv_009",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 298.5
+    },
+    {
+      "id": "q_adv_010",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 386.2
+    },
+    {
+      "id": "q_adv_011",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 342.1
+    },
+    {
+      "id": "q_adv_012",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 299.3
+    },
+    {
+      "id": "q_adv_013",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 269.3
+    },
+    {
+      "id": "q_adv_014",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 408.6
+    },
+    {
+      "id": "q_adv_015",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 305.6
+    },
+    {
+      "id": "q_adv_016",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 320.9
+    },
+    {
+      "id": "q_adv_017",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 297.6
+    },
+    {
+      "id": "q_adv_018",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 280.9
+    },
+    {
+      "id": "q_adv_019",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 307.6
+    },
+    {
+      "id": "q_adv_020",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 314.2
+    },
+    {
+      "id": "q_adv_021",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 270.2
+    },
+    {
+      "id": "q_adv_022",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 323.7
+    },
+    {
+      "id": "q_adv_023",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 261.3
+    },
+    {
+      "id": "q_adv_024",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 295.9
+    },
+    {
+      "id": "q_adv_025",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 328.0
+    },
+    {
+      "id": "q_adv_026",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 284.0
+    },
+    {
+      "id": "q_adv_027",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 310.7
+    },
+    {
+      "id": "q_adv_028",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 289.3
+    },
+    {
+      "id": "q_adv_029",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 313.8
+    },
+    {
+      "id": "q_adv_030",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 354.9
+    },
+    {
+      "id": "q_adv_031",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 361.9
+    },
+    {
+      "id": "q_adv_032",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 309.9
+    },
+    {
+      "id": "q_adv_033",
+      "recall@3": 1.0,
+      "mrr": 0.3333,
+      "latency_ms": 319.4
+    },
+    {
+      "id": "q_adv_034",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 301.3
+    },
+    {
+      "id": "q_adv_035",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 320.8
+    },
+    {
+      "id": "q_adv_036",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 337.4
+    },
+    {
+      "id": "q_adv_037",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 341.0
+    },
+    {
+      "id": "q_adv_038",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 315.0
+    },
+    {
+      "id": "q_adv_039",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 274.5
+    },
+    {
+      "id": "q_adv_040",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 289.3
+    },
+    {
+      "id": "q_adv_041",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 282.5
+    },
+    {
+      "id": "q_adv_042",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 297.0
+    },
+    {
+      "id": "q_adv_neg_001",
+      "empty": false,
+      "latency_ms": 260.8
+    },
+    {
+      "id": "q_adv_neg_002",
+      "empty": false,
+      "latency_ms": 256.6
+    },
+    {
+      "id": "q_adv_neg_003",
+      "empty": false,
+      "latency_ms": 309.9
+    },
+    {
+      "id": "q_adv_neg_004",
+      "empty": false,
+      "latency_ms": 324.8
+    }
+  ],
+  "gate_check": {
+    "passed": false,
+    "failures": [
+      "negative empty_rate 0.0 < 0.95"
+    ]
+  }
+}

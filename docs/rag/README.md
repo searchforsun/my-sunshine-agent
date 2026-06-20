@@ -44,4 +44,5 @@ python scripts/rag_eval.py --report-md --gate
 
 ## 阶段三
 
-基线报告 + `rag_eval.py` 将作为混合检索 / Reranker 优化前后的**回归对比**输入。
+基线报告 + `rag_eval.py` 作为 hybrid/rerank 优化前后的**回归对比**输入。  
+双轨门禁：v5 不退化 + v6 adversarial 提升 ≥15%。详见 `superpowers/specs/2026-06-19-phase3-production-hardening-design.md`。

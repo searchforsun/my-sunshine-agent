@@ -31,7 +31,7 @@ public class RetrievalController {
                 ? ((Number) body.get("topK")).intValue()
                 : 5;
 
-        return retrievalService.search(query, topK)
+        return retrievalService.search(query, topK, (String) body.get("strategy"))
                 .map(fragments -> Map.of(
                         "code", 200,
                         "query", query,

@@ -1,5 +1,6 @@
 package com.sunshine.rag.config;
 
+import com.sunshine.rag.model.SearchStrategy;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -17,4 +18,17 @@ public class RagSearchProperties {
      * 低于此值的片段视为弱相关，不计入命中。
      */
     private float minScore = 0.48f;
+
+    /** Nacos 默认策略；请求体 strategy 可覆盖 */
+    private String strategy = "vector";
+
+    /** RRF 常数 k（典型 60） */
+    private int rrfK = 60;
+
+    /** hybrid 每路召回池大小 */
+    private int hybridPoolSize = 20;
+
+    public SearchStrategy defaultStrategy() {
+        return SearchStrategy.from(strategy, SearchStrategy.VECTOR);
+    }
 }

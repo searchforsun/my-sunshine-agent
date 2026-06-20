@@ -1,5 +1,5 @@
-version: 5
-description: 阶段二 RAG 评测集 v5（11 篇语料 + 123 query，含多跳推理场景）
+version: 6
+description: 阶段三 RAG 评测集 v6（v5 123 条 + adversarial 难例集）
 corpus:
 - doc_id: leave-policy-v1
   display_name: 公司请假流程规范
@@ -970,6 +970,348 @@ queries:
   relevant_docs: []
   expect_empty: true
   category: negative
+- id: q_adv_001
+  query: 想请几天假咋整
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 年假
+  - 请假
+  category: adversarial
+- id: q_adv_002
+  query: 病假条要啥材料
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 病假
+  - 证明
+  category: adversarial
+- id: q_adv_003
+  query: 婚假能休多久啊
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 婚假
+  category: adversarial
+- id: q_adv_004
+  query: 陪产假男员工有吗
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 陪产
+  category: adversarial
+- id: q_adv_005
+  query: 事假扣钱不
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 事假
+  - 无薪
+  category: adversarial
+- id: q_adv_006
+  query: 迟到五分钟算啥
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 迟到
+  category: adversarial
+- id: q_adv_007
+  query: 加班换调休怎么算
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 调休
+  - 加班
+  category: adversarial
+- id: q_adv_008
+  query: 弹性上班几点打卡
+  relevant_docs:
+  - attendance-policy-v1
+  relevant_keywords:
+  - 弹性
+  category: adversarial
+- id: q_adv_009
+  query: 报一下上个月差旅
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 报销
+  - 差旅
+  category: adversarial
+- id: q_adv_010
+  query: 餐费发票能报吗
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 餐饮
+  category: adversarial
+- id: q_adv_011
+  query: 招待费标准多少
+  relevant_docs:
+  - expense-policy-v1
+  relevant_keywords:
+  - 招待
+  category: adversarial
+- id: q_adv_012
+  query: 发票抬头开错了
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 抬头
+  category: adversarial
+- id: q_adv_013
+  query: 电子票怎么验真
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 验真
+  category: adversarial
+- id: q_adv_014
+  query: 专票普票区别报销
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 专票
+  category: adversarial
+- id: q_adv_015
+  query: 出差住超标的酒店
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 住宿
+  - 标准
+  category: adversarial
+- id: q_adv_016
+  query: 机票退票费谁出
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 退票
+  category: adversarial
+- id: q_adv_017
+  query: 高铁商务座能报吗
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 高铁
+  category: adversarial
+- id: q_adv_018
+  query: 新人入职要带啥
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 入职
+  - 材料
+  category: adversarial
+- id: q_adv_019
+  query: 试用期能请年假吗
+  relevant_docs:
+  - onboarding-policy-v1
+  - leave-policy-v1
+  relevant_keywords:
+  - 试用
+  - 年假
+  category: adversarial
+- id: q_adv_020
+  query: 转正流程多久
+  relevant_docs:
+  - onboarding-policy-v1
+  relevant_keywords:
+  - 转正
+  category: adversarial
+- id: q_adv_021
+  query: 五千块谁批
+  relevant_docs:
+  - finance-approval-v1
+  relevant_keywords:
+  - 审批
+  - 权限
+  category: adversarial
+- id: q_adv_022
+  query: 总监审批额度
+  relevant_docs:
+  - finance-approval-v1
+  relevant_keywords:
+  - 总监
+  category: adversarial
+- id: q_adv_023
+  query: 部门预算花超了
+  relevant_docs:
+  - budget-policy-v1
+  relevant_keywords:
+  - 预算
+  - 超支
+  category: adversarial
+- id: q_adv_024
+  query: 季度预算调剂
+  relevant_docs:
+  - budget-policy-v1
+  relevant_keywords:
+  - 调剂
+  category: adversarial
+- id: q_adv_025
+  query: 在家办公算考勤吗
+  relevant_docs:
+  - remote-policy-v1
+  relevant_keywords:
+  - 远程
+  - 考勤
+  category: adversarial
+- id: q_adv_026
+  query: 混合办公每周几天
+  relevant_docs:
+  - remote-policy-v1
+  relevant_keywords:
+  - 混合
+  category: adversarial
+- id: q_adv_027
+  query: VPN连不上咋办
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - VPN
+  category: adversarial
+- id: q_adv_028
+  query: 客户资料能发微信吗
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - 保密
+  category: adversarial
+- id: q_adv_029
+  query: 泄密了要担责吗
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - 泄密
+  category: adversarial
+- id: q_adv_030
+  query: 报销和请假能一块办吗
+  relevant_docs:
+  - scenario-guide-v1
+  relevant_keywords:
+  - 报销
+  - 请假
+  category: adversarial
+- id: q_adv_031
+  query: 出差途中请病假
+  relevant_docs:
+  - scenario-guide-v1
+  - leave-policy-v1
+  relevant_keywords:
+  - 出差
+  - 病假
+  category: adversarial
+- id: q_adv_032
+  query: 远程期间加班怎么算
+  relevant_docs:
+  - scenario-guide-v1
+  - remote-policy-v1
+  relevant_keywords:
+  - 远程
+  - 加班
+  category: adversarial
+- id: q_adv_033
+  query: 离职前未报账
+  relevant_docs:
+  - scenario-guide-v1
+  - expense-policy-v1
+  relevant_keywords:
+  - 离职
+  - 报销
+  category: adversarial
+- id: q_adv_034
+  query: 差旅预算不够订票
+  relevant_docs:
+  - scenario-guide-v1
+  - travel-policy-v1
+  - budget-policy-v1
+  relevant_keywords:
+  - 差旅
+  - 预算
+  category: adversarial
+- id: q_adv_035
+  query: 年休天数怎么查
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 年假
+  - 工龄
+  category: adversarial
+- id: q_adv_036
+  query: 产假工资发多少
+  relevant_docs:
+  - leave-policy-v1
+  relevant_keywords:
+  - 产假
+  category: adversarial
+- id: q_adv_037
+  query: 加班餐补标准
+  relevant_docs:
+  - attendance-policy-v1
+  - expense-policy-v1
+  relevant_keywords:
+  - 加班
+  - 餐补
+  category: adversarial
+- id: q_adv_038
+  query: 增值税专票丢失
+  relevant_docs:
+  - invoice-faq-v1
+  relevant_keywords:
+  - 丢失
+  category: adversarial
+- id: q_adv_039
+  query: 国际出差签证费用
+  relevant_docs:
+  - travel-policy-v1
+  relevant_keywords:
+  - 签证
+  category: adversarial
+- id: q_adv_040
+  query: 固定资产采购谁批
+  relevant_docs:
+  - finance-approval-v1
+  - budget-policy-v1
+  relevant_keywords:
+  - 固定资产
+  category: adversarial
+- id: q_adv_041
+  query: USB拷贝资料违规吗
+  relevant_docs:
+  - security-policy-v1
+  relevant_keywords:
+  - USB
+  category: adversarial
+- id: q_adv_042
+  query: 入职第一周能远程吗
+  relevant_docs:
+  - onboarding-policy-v1
+  - remote-policy-v1
+  relevant_keywords:
+  - 入职
+  - 远程
+  category: adversarial
+- id: q_adv_neg_001
+  query: 公司股价今天多少
+  relevant_docs: []
+  expect_empty: true
+  category: adversarial
+- id: q_adv_neg_002
+  query: 帮我查快递到哪了
+  relevant_docs: []
+  expect_empty: true
+  category: adversarial
+- id: q_adv_neg_003
+  query: 附近哪家火锅好吃
+  relevant_docs: []
+  expect_empty: true
+  category: adversarial
+- id: q_adv_neg_004
+  query: Python怎么学
+  relevant_docs: []
+  expect_empty: true
+  category: adversarial
 eval:
   top_k:
   - 3
@@ -988,3 +1330,15 @@ eval:
     empty_rate_positive_max: 0.0
     empty_rate_negative_min: 0.95
     latency_p95_ms_max: 500
+  phase3_v6_gates:
+    description: v6 提升轨：hybrid+rerank 相对 vector 的提升阈值（阶段三 3.4）
+    recall_at_5_improvement_vs_vector_min: 0.15
+    mrr_improvement_vs_vector_min: 0.1
+    latency_p95_ms_max_hybrid_rerank: 800
+  suites:
+    v5:
+      exclude_categories:
+      - adversarial
+    v6:
+      include_categories:
+      - adversarial

@@ -1,6 +1,7 @@
 package com.sunshine.rag.controller;
 
 import com.sunshine.rag.config.RagAdminProperties;
+import com.sunshine.rag.service.ElasticsearchIndexService;
 import com.sunshine.rag.service.MilvusService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,11 +20,14 @@ class RagAdminControllerTest {
     @Mock
     private MilvusService milvusService;
 
+    @Mock
+    private ElasticsearchIndexService elasticsearchIndexService;
+
     @Test
     void rebuild_rejectsBadToken() {
         RagAdminProperties props = new RagAdminProperties();
         props.setToken("secret");
-        RagAdminController controller = new RagAdminController(milvusService, props);
+        RagAdminController controller = new RagAdminController(milvusService, elasticsearchIndexService, props);
 
         Map<String, Object> body = controller.rebuild("wrong").block();
 
@@ -35,12 +39,13 @@ class RagAdminControllerTest {
     void rebuild_okWithValidToken() {
         RagAdminProperties props = new RagAdminProperties();
         props.setToken("secret");
-        RagAdminController controller = new RagAdminController(milvusService, props);
+        RagAdminController controller = new RagAdminController(milvusService, elasticsearchIndexService, props);
 
         Map<String, Object> body = controller.rebuild("secret").block();
 
         assertThat(body).containsEntry("code", 200);
         assertThat(body).containsEntry("collection", "sunshine_knowledge");
         verify(milvusService).rebuildCollection();
+        verify(elasticsearchIndexService).rebuildIndex();
     }
 }

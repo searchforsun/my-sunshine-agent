@@ -1,6 +1,8 @@
 # Workflow 编排架构 — 简化 Dify 设计方案
 
-> 日期：2026-06-18 · 状态：**待评审**  
+> **⚠️ 已并入** [phase2-benchmark-design.md](./phase2-benchmark-design.md) **§2.9**。下文为历史详设。
+
+> 日期：2026-06-18   · 状态：**待评审**  
 > 前置：阶段二 MVP（ReActAgent、Timeline、Memory、Tool Manager 标杆）已落地  
 > 关联：`ChatController.java`、`SunshineAgent.java`、`IntentRouter.java`、`docs/nacos/sunshine-orchestrator.yaml`
 

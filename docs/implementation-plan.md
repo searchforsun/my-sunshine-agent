@@ -3,6 +3,8 @@
 > **前提约束**：兼职投入（1-2天/周）、2-3人全栈小团队、探索型节奏
 > **对标方案**：[tech-solution.md](./tech-solution.md)
 
+> **设计文档索引**：[superpowers/specs/README.md](./superpowers/specs/README.md)（阶段一～四 SSOT）
+
 ---
 
 ### 总览：里程碑时间线
@@ -14,7 +16,7 @@
 
 周10─17 ████████████████████████████████ 阶段二：标杆打通（8周）
 
-周18─23 ████████████████████████████████ 阶段三：生产加固（6周）
+周18─25 ████████████████████████████████████████ 阶段三：生产加固（8周）
 
 后续    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 阶段四：平台化（按需）
 ```
@@ -59,6 +61,8 @@ my-sunshine-agent/
 
 ### 阶段一：底座搭建（8周）✅ 核心已完成
 
+> 设计 spec（SSOT）：[superpowers/specs/phase1-foundation-design.md](./superpowers/specs/phase1-foundation-design.md)
+
 | 任务卡 | 内容 | 状态 |
 |--------|------|:--:|
 | 1.1 BFF SSE 转发 | WebFlux + SSE 透传 | ✅ |
@@ -79,7 +83,8 @@ my-sunshine-agent/
 
 ### 阶段 1.5：会话 MVP（可选，约 2 周）✅ 核心已完成
 
-> 技术设计 spec：[superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md](./superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md)  
+> 技术设计 spec：[superpowers/specs/phase1-foundation-design.md](./superpowers/specs/phase1-foundation-design.md) §1.5–1.6  
+> 历史详设：[superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md](./superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md)  
 > 实施计划：[superpowers/plans/2026-06-11-phase1.5-conversation-mvp.md](./superpowers/plans/2026-06-11-phase1.5-conversation-mvp.md)
 
 介于阶段一与阶段二之间，补齐**产品可用性**（非阶段一正式交付物）：
@@ -103,7 +108,7 @@ my-sunshine-agent/
 
 ### 阶段 1.6：Redis SSE 无感重连（约 1 周）✅ 核心已完成
 
-> 技术设计 spec 同文档 **Track G**：[superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md](./superpowers/specs/2026-06-11-phase1.5-conversation-mvp-design.md#track-g--redis-sse-缓冲--客户端无感重连阶段-16)  
+> 技术设计 spec 同文档 **Track G**：[superpowers/specs/phase1-foundation-design.md](./superpowers/specs/phase1-foundation-design.md) §1.6  
 > 实施计划：[superpowers/plans/2026-06-11-phase1.6-generation-reconnect.md](./superpowers/plans/2026-06-11-phase1.6-generation-reconnect.md)  
 > **前置**：Track F（断点续传）已落地
 
@@ -124,6 +129,8 @@ my-sunshine-agent/
 ---
 
 ### 阶段二：标杆打通（8周）✅ MVP 核心已完成
+
+> 设计 spec（SSOT）：[superpowers/specs/phase2-benchmark-design.md](./superpowers/specs/phase2-benchmark-design.md)
 
 | 任务卡 | 内容 | 状态 |
 |--------|------|:--:|
@@ -157,7 +164,8 @@ my-sunshine-agent/
 
 ### 阶段 2.9：Workflow 编排架构 ✅ 已完成
 
-> 设计 spec：[superpowers/specs/2026-06-18-workflow-orchestration-design.md](./superpowers/specs/2026-06-18-workflow-orchestration-design.md)  
+> 设计 spec：[superpowers/specs/phase2-benchmark-design.md](./superpowers/specs/phase2-benchmark-design.md) §2.9  
+> 历史详设：[superpowers/specs/2026-06-18-workflow-orchestration-design.md](./superpowers/specs/2026-06-18-workflow-orchestration-design.md)  
 > 实施计划：[superpowers/plans/2026-06-18-workflow-orchestration.md](./superpowers/plans/2026-06-18-workflow-orchestration.md)
 
 | 任务卡 | 内容 | 状态 |
@@ -179,7 +187,8 @@ my-sunshine-agent/
 
 ### 阶段 2.10–2.16：阶段二收尾（约 3–4 周）
 
-> **设计 spec（锁定）**：[superpowers/specs/2026-06-20-phase2-closure-design.md](./superpowers/specs/2026-06-20-phase2-closure-design.md)  
+> **设计 spec（锁定）**：[superpowers/specs/phase2-benchmark-design.md](./superpowers/specs/phase2-benchmark-design.md) §2.10–2.16  
+> 历史详设：[superpowers/specs/2026-06-20-phase2-closure-design.md](./superpowers/specs/2026-06-20-phase2-closure-design.md)  
 > **摘要**：[phase2-closure-plan.md](./phase2-closure-plan.md)
 
 | 任务卡 | 内容 | 状态 |
@@ -198,75 +207,69 @@ my-sunshine-agent/
 
 ---
 
-### 阶段三：生产加固（6周）
+### 阶段三：生产加固（8周）
 
-> 设计 spec：[superpowers/specs/2026-06-19-phase3-production-hardening-design.md](./superpowers/specs/2026-06-19-phase3-production-hardening-design.md)  
-> 实施计划：[superpowers/plans/2026-06-19-phase3-production-hardening.md](./superpowers/plans/2026-06-19-phase3-production-hardening.md)  
-> **多 Agent 主轴**：[superpowers/specs/2026-06-19-multi-agent-architecture-design.md](./superpowers/specs/2026-06-19-multi-agent-architecture-design.md)  
-> **主轴**：RAG 评测驱动的召回优化 + **Planner/主子 Agent 动态 DAG**
-
-| 任务卡 | 内容 |
-|--------|------|
-| 3.4 **RAG 检索增强**（优先） | 评测基建 → ES BM25 → Hybrid RRF → BGE-Reranker → Query Rewrite（可选）→ CI 回归门禁 |
-| 3.5 Grafana 告警 | 大盘含 **RAG 专区**（命中率/EmptyRate/延迟）+ 4 条 Prometheus 规则 |
-| 3.2 多租户隔离 | Milvus Partition + 入库/检索 tenant 过滤 + Memory 隔离 + Sentinel 配额 |
-| 3.3 Human-in-the-Loop | Catalog `sideEffect` + PreToolCallHook → 前端写操作确认 |
-| 3.1 多 Agent 协作 | **主子 Agent 主轴**：`AgentRuntime` + Planner + 动态 DAG 多子 Agent（见 multi-agent spec） |
-| 3.6 审计扩展 | `sunshine-tool-audit` + **`sub_agent_run` 子 Agent 审计** |
-| 3.7 Grounding 校验 | 无 tool/rag 支撑时拦截企业数据编造 |
-| 3.8 提示词改写 | `QueryRewriteService` + `PromptComposer`（见 advanced-capabilities spec） |
-| 3.9 动态 DAG Plan | **`PLAN_WORKFLOW` 模式** + Plan 持久化（`execution_plan` 表）+ 回放 API |
-| 3.10 多 Agent 运行时 | 主/子/Planner 三角色；Planner **flash 专用模型** |
-| 3.11 skill-manager | 新建 :8225 + Skills 上传 API + catalog 拉取 |
-| 3.12 Skills 管理页 | 前端 `/skills`（列表/上传/编辑/发布） |
-
-#### RAG 量化目标（相对阶段二基线）
-
-| 指标 | 阶段三目标 |
-|------|------------|
-| Recall@5 | ≥ 基线 × 1.15 |
-| MRR | ≥ 基线 × 1.10 |
-| EmptyRate（正例） | ≤ 基线 × 0.7 |
-| P95 检索延迟（hybrid+rerank） | ≤ 800ms |
-
-#### 阶段三检查门
-- [ ] `rag_eval.py --strategy hybrid` Recall@5 达标
-- [ ] Grafana RAG 面板 + 4 条告警可触发
-- [ ] 租户 A 语料对租户 B 不可见
-- [ ] 写操作工具 → 前端确认对话框
-- [ ] **`PLAN_WORKFLOW`**：Planner(flash) → 落库 → 执行 → `GET /api/execution-plans/{id}` 可回放
-- [ ] skill-manager catalog 可用；前端 `/skills` 可上传并发布
-- [ ] Tool audit 可按会话查询
-
-#### 阶段三进阶能力（可选并行）
-
-> 详设：[superpowers/specs/2026-06-19-advanced-capabilities-design.md](./superpowers/specs/2026-06-19-advanced-capabilities-design.md) · 多 Agent：[superpowers/specs/2026-06-19-multi-agent-architecture-design.md](./superpowers/specs/2026-06-19-multi-agent-architecture-design.md)
+> 设计 spec（SSOT）：[superpowers/specs/phase3-production-hardening-design.md](./superpowers/specs/phase3-production-hardening-design.md)  
+> 索引：[superpowers/specs/README.md](./superpowers/specs/README.md)  
+> 实施计划：[superpowers/plans/2026-06-19-phase3-production-hardening.md](./superpowers/plans/2026-06-19-phase3-production-hardening.md)（3.4 等）、[multi-agent-architecture.md](./superpowers/plans/2026-06-19-multi-agent-architecture.md)（3.9–3.12）  
+> **主轴**：RAG 双轨评测 + **PLAN_WORKFLOW** + 多租户 / HITL / 全链路可观测
 
 | 任务卡 | 内容 |
 |--------|------|
-| 3.8 提示词改写 | `QueryRewriteService`（RAG/意图）+ `PromptComposer` 分层叠加 |
-| 3.9 动态 DAG Plan | `WorkflowPlanner` → `DAGValidator` → `DynamicWorkflowExecutor` |
-| 3.10 多 Agent 运行时 | 主/子/Planner 三角色 + Skill 工具子集 + `sub_agent_run` 审计 |
+| **3.4** **RAG**（优先） | 3.4.1–3.4.8：评测 v6 → ES → Hybrid → Rerank → CI |
+| 3.2 多租户 | Milvus Partition + MTM tenant + Sentinel 配额 |
+| 3.3 HITL | Catalog `sideEffect` + 确认 UI（含子 Agent） |
+| 3.5 可观测 | Grafana RAG + Sentinel Dashboard + 4 告警 |
+| 3.6 审计 | tool-audit + sub_agent_run + plan.* |
+| 3.7 Grounding | 主答复 + 子 Agent output |
+| 3.8 提示词 | QueryRewrite + PromptComposer |
+| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API（含原 3.1） |
+| 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 |
+| 3.11 skill-manager | :8225 + SkillCatalogService |
+| 3.12 前端 | `/skills` + Plan 详情页 |
+| 3.13 并行 | AhoCorasick、`source_type` 预留 |
+| 3.14 多实例 | Redis GenerationJob 锁 |
+
+#### RAG 量化目标（双轨）
+
+| 轨道 | 指标 | 目标 |
+|------|------|------|
+| **v5 回归** | Recall@5 / MRR / 正例 EmptyRate | ≥0.98 / ≥0.92 / =0（hybrid+rerank 不退化） |
+| **v6 提升** | Recall@5 / MRR vs vector | hybrid+rerank 较 vector **+15% / +10%** |
+| **性能** | P95 latency | ≤ **800ms**（hybrid+rerank） |
+
+#### 阶段三检查门（17 条，见 spec §7）
+
+- [ ] v5 回归轨 + v6 提升轨 `rag_eval.py` 达标
+- [ ] Grafana RAG + Sentinel Dashboard + 4 条告警
+- [ ] 租户 A/B 隔离；写工具 HITL（含子 Agent）
+- [ ] `PLAN_WORKFLOW` 三 API + Plan 详情页 + 2+ agent 节点演示
+- [ ] IntentRouter `plan-workflow` + Planner fallback react
+- [ ] skill-manager + `/skills`；tool/sub_agent/plan 审计可查
+- [ ] Grounding + 子 Agent 不污染主 reasoning
+- [ ] `phase2_agent_demo.py --suite all` 仍 PASS
 
 ---
 
 ### 阶段四：平台化（按需启动）
 
-> 设计 spec：[superpowers/specs/2026-06-19-phase4-platformization-design.md](./superpowers/specs/2026-06-19-phase4-platformization-design.md)
+> 设计 spec（SSOT）：[superpowers/specs/phase4-platformization-design.md](./superpowers/specs/phase4-platformization-design.md)  
+> 索引：[superpowers/specs/README.md](./superpowers/specs/README.md)
 
 | 任务卡 | 触发条件 | 说明 |
 |--------|----------|------|
-| **4.RAG 平台化** | 语料 >20 篇、需运营自助 | 知识库多空间、检索调试页、Badcase 回流、策略 A/B、评测周报 |
-| **4.DOC 文档理解/OCR** | 需入库 PDF/扫描件/发票图 | **千问 DashScope OCR** + L2 版面 + 可选 L3 Qwen-VL；见 multimodal-ocr spec |
-| **4.MM 多模态对话** | 需聊天发图识图 | LLM Gateway vision + `/chat` 附件（依赖 4.DOC 或临时 OCR） |
-| **4.S Skills + Docker 沙箱** | 需代码执行 | Docker `SandboxExecutor` + `sunshine-sandbox-python` 镜像 |
-| **4.D 动态 DAG 增强** | 静态 workflow 不够 | if-else 分支、并行 fan-out、Plan 缓存与 Replan |
-| **4.MA 多 Agent 增强** | 复杂协作 | 主 Coordinator delegate、并行子 Agent、MsgHub Peer、子 Timeline 展开 UI |
-| 4.1 MCP 协议 | 非 HTTP 遗留系统接入 | Tool Manager 注册 MCP Server |
-| 4.2 K8s 生产部署 | 流量增长需水平扩展 | Helm + HPA + Nacos GitOps |
-| 4.3 Seata 分布式事务 | 跨服务写操作 | 与 HITL 串联 |
-| 4.4 独立提示词管理后台 | 提示词 >10 + 非研发维护 | 版本/审核/回滚，联动 rag_eval |
-| 4.5 Serverless 冷启动 | 调用量波动大 | 仅无状态服务缩容 |
+| **4.1** RAG 平台化 | 语料运营需求 | 多知识库、调试页、Badcase、A/B、周报 |
+| **4.2** OCR 入库 L1 | PDF/扫描件/发票 | DashScope OCR → 文本 chunk |
+| **4.3** 文档理解 L2 | L1 稳定 | 版面/表格/quarantine |
+| **4.4** 多模态对话 L3 | 聊天发图 | Vision + `/chat` 附件 |
+| **4.5** Skills 沙箱 | 代码执行 | Docker `SandboxExecutor` |
+| **4.6** 动态 DAG 增强 | Plan 不够用 | if-else、并行、Replan、ContextCompressor |
+| **4.7** 多 Agent 增强 | 复杂协作 | Coordinator、MsgHub、子 Timeline 展开 |
+| **4.8** MCP 协议 | 非 HTTP 系统 | Tool Manager 注册 MCP |
+| **4.9** K8s | 流量/HA | Helm + HPA + GitOps |
+| **4.10** Seata | 跨服务写 | 与 HITL 串联 |
+| **4.11** Prompt 后台 | 非研发维护提示词 | 版本/审核/回滚 |
+| **4.12** Serverless | 调用波动 | 无状态服务缩容 |
 
 ---
 
@@ -279,7 +282,7 @@ my-sunshine-agent/
 | **Skills** | **`/skills`** | **Skill 上传/编辑/版本发布/工具绑定** |
 | 系统状态 | `/status` | 11 微服务 + 12 中间件状态矩阵 |
 
-> **阶段四 OCR/多模态**：`/knowledge` 文件上传、`/chat` 图片附件（可选）— 见 `superpowers/specs/2026-06-21-multimodal-ocr-design.md`
+> **阶段四 OCR/多模态**：见 `superpowers/specs/phase4-platformization-design.md` §4.2–4.4
 
 **技术栈**：Vue 3 + TypeScript + Naive UI + Vite + Pinia + Vue Router
 

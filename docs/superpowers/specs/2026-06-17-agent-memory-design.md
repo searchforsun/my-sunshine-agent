@@ -1,5 +1,7 @@
 # Agent 三层记忆方案（方案 C）
 
+> **⚠️ 已并入** [phase2-benchmark-design.md](./phase2-benchmark-design.md) **§2.17**；租户过滤见 [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.2**。下文为历史详设。
+
 > 日期：2026-06-17 · **LTM/MTM 摘要 + STM 完整轮次**
 
 ## 注入顺序（LLM messages）
