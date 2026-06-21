@@ -46,6 +46,7 @@ public class WorkflowExecutor {
         WorkflowContext wfCtx = initContext(streamCtx);
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(streamCtx.userContent());
+        session.bindTraceMessageId(streamCtx.assistantMsgId());
         List<StreamToken> planTokens = WorkflowNodeTimeline.planStep(session, def);
 
         return Flux.concat(
@@ -104,7 +105,8 @@ public class WorkflowExecutor {
                             wfCtx.putNode(nodeId, result.safeOutputs());
                             Map<String, String> outs = result.safeOutputs();
                             String summaryLine = resolveNodeDetail(rawSpec, outs);
-                            String expandDetail = resolveExpandDetail(rawSpec, outs, summaryLine);
+                            String expandDetail = resolveExpandDetail(
+                                    rawSpec, outs, summaryLine, streamCtx.assistantMsgId());
                             List<StreamToken> all = new ArrayList<>(result.contentTokens());
                             if (showTimeline) {
                                 all.addAll(0, WorkflowNodeTimeline.complete(
@@ -141,7 +143,14 @@ public class WorkflowExecutor {
     }
 
     /** agent 节点：展开区下发完整 answer，主行 after 由 AgentNodeDetailSummarizer 提供 */
-    private static String resolveExpandDetail(NodeSpec spec, Map<String, String> outputs, String summaryLine) {
+    private static String resolveExpandDetail(
+            NodeSpec spec, Map<String, String> outputs, String summaryLine, String traceMessageId) {
+        if ("rag".equals(spec.type())) {
+            String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedTimelineDetail(traceMessageId);
+            if (rewriteDetail != null && !rewriteDetail.isBlank()) {
+                return rewriteDetail;
+            }
+        }
         if ("agent".equals(spec.type())) {
             String answer = outputs.get("answer");
             if (answer != null && !answer.isBlank()) {

@@ -2,7 +2,9 @@ package com.sunshine.rag.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.rag.config.RagRerankProperties;
+import com.sunshine.rag.metrics.RagSearchMetrics;
 import com.sunshine.rag.model.RetrievalCandidate;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +22,7 @@ class RerankServiceTest {
         props = new RagRerankProperties();
         props.setEnabled(false);
         props.setMinRelevance(0.25f);
-        service = new RerankService(props, new ObjectMapper());
+        service = new RerankService(props, new ObjectMapper(), new RagSearchMetrics(new SimpleMeterRegistry()));
     }
 
     @Test

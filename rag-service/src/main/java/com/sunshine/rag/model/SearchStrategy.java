@@ -10,6 +10,15 @@ public enum SearchStrategy {
     HYBRID,
     HYBRID_RERANK;
 
+    /** Prometheus / Grafana 标签值 */
+    public String metricTag() {
+        return switch (this) {
+            case VECTOR -> "vector";
+            case HYBRID -> "hybrid";
+            case HYBRID_RERANK -> "hybrid_rerank";
+        };
+    }
+
     public static SearchStrategy from(String raw, SearchStrategy defaultStrategy) {
         if (raw == null || raw.isBlank()) {
             return defaultStrategy;

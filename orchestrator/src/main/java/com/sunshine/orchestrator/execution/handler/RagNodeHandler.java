@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
 import com.sunshine.orchestrator.client.RagDetailFormatter;
 import com.sunshine.orchestrator.config.RagSearchProperties;
+import com.sunshine.orchestrator.rag.KnowledgeRetrievalService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
@@ -26,7 +27,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RagNodeHandler implements NodeHandler {
 
-    private final RagClient ragClient;
+    private final KnowledgeRetrievalService knowledgeRetrievalService;
     private final RagSearchProperties ragSearchProperties;
 
     @Override
@@ -43,7 +44,7 @@ public class RagNodeHandler implements NodeHandler {
         int topK = parseTopK(spec.params().get("topK"), ragSearchProperties.getDefaultTopK());
         String finalQuery = query;
 
-        return ragClient.search(finalQuery, topK)
+        return knowledgeRetrievalService.searchMono(finalQuery, topK, streamCtx.assistantMsgId())
                 .map(hits -> {
                     List<RagClient.RagHit> results = hits != null ? hits : List.of();
                     String output = RagContextFormatter.formatAgentContext(results);

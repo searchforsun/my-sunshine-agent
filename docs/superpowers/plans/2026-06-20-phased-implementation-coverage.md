@@ -1,8 +1,8 @@
 # 分阶段实施计划 — 覆盖度审计
 
-> **日期**：2026-06-20  
+> **日期**：2026-06-21（更新：3.4 + 3.8.1 已落地）  
 > **方法**：对照各阶段 SSOT（`specs/phaseN-*.md`）与 `plans/*.md`，按 writing-plans 标准检查（文件路径、测试命令、逐步 checkbox、无 TBD）。  
-> **结论摘要**：阶段一/二 **SSOT 与历史 plans 齐全（已交付）**；阶段三 **spec 齐全、plans 部分齐全**；阶段四 **仅 spec，无 plans**。
+> **结论摘要**：阶段一/二 **已交付**；阶段三 **spec + plans 齐全，3.4/3.8.1 已实现，其余待做**；阶段四 **仅 spec，无 plans**。
 
 ---
 
@@ -54,57 +54,62 @@
 
 ---
 
-## 阶段三：生产加固 ⬜ 当前重点
+## 阶段三：生产加固 ⬜ 当前重点（3.4 + 3.8.1 ✅）
 
 **SSOT：** [phase3-production-hardening-design.md](../specs/phase3-production-hardening-design.md)  
 **Plans：** [2026-06-19-phase3-production-hardening.md](./2026-06-19-phase3-production-hardening.md) + [2026-06-19-multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md)
 
+**已实现（2026-06-21）：** 3.4.1–3.4.8 全链路；3.8.1 QueryRewrite（rag/intent/empty-recall，默认开启）；3.4.6 指标 + Grafana JSON；3.13 `source_type` schema。
+
 ### 3.1 Spec → Plan 映射
 
-| 任务 | SSOT | Plan | 等级 | 缺口 |
-|------|:----:|:----:|:----:|------|
-| **3.4.1** 评测 + v6 | ✅ | ⚠️ | **B** | 有任务行；缺逐步 TDD（见 phase3 plan Task 3.4.1） |
-| **3.4.2** ES 双写 | ✅ | ⚠️ | **B** | 缺 Java 单测步骤 |
-| **3.4.3** BM25 | ✅ | ⚠️ | **B** | 同上 |
-| **3.4.4** Hybrid RRF | ✅ | ⚠️ | **B** | 同上 |
-| **3.4.5** Rerank | ✅ | ⚠️ | **B** | 同上 |
-| **3.4.6** Metrics | ✅ | ⚠️ | **B** | 与 3.5 分散 |
-| **3.4.7** Query rewrite | ✅ | ⚠️ | **B** | 与 3.8 分散 |
-| **3.4.8** CI 门禁 | ✅ | ⚠️ | **B** | 缺 workflow 文件步骤 |
-| **3.2** 多租户 | ✅ | ✅ | **A** | 已补入 phase3 plan |
-| **3.3** HITL | ✅ | ✅ | **A** | 已补入 phase3 plan |
-| **3.5** 可观测 | ✅ | ✅ | **A** | 已补入 phase3 plan |
-| **3.6** 审计 | ✅ | ✅ | **A** | 已补入 phase3 plan；与 3.10.6/3.9.4 交叉 |
-| **3.7** Grounding | ✅ | ✅ | **A** | 已补入 phase3 plan |
-| **3.8.1–3.8.3** 提示词 | ✅ | ✅ | **A** | 已补入 phase3 plan |
-| **3.9.1–3.9.4** PLAN_WORKFLOW | ✅ | ✅ | **A** | multi-agent plan |
-| **3.10.1–3.10.7** AgentRuntime | ✅ | ✅ | **A** | multi-agent plan |
-| **3.11.1–3.11.4** skill-manager | ✅ | ✅ | **A** | multi-agent plan |
-| **3.12.1–3.12.4** 前端 | ✅ | ✅ | **A** | multi-agent plan |
-| **3.13** 并行 | ✅ | ✅ | **B** | 任务表有；非检查门 |
-| **3.14** Job 锁 | ✅ | ✅ | **B** | 任务表有；缺 TDD 细步 |
+| 任务 | SSOT | Plan | 等级 | 实现 | 缺口 |
+|------|:----:|:----:|:----:|:----:|------|
+| **3.4.1** 评测 + v6 | ✅ | ✅ | **A** | ✅ | — |
+| **3.4.2** ES 双写 | ✅ | ✅ | **A** | ✅ | Step 4 联机 ES `_count` 可选 |
+| **3.4.3** BM25 | ✅ | ✅ | **A** | ✅ | — |
+| **3.4.4** Hybrid RRF | ✅ | ✅ | **A** | ✅ | — |
+| **3.4.5** Rerank | ✅ | ✅ | **A** | ✅ | 向量锚点门禁 |
+| **3.4.6** Metrics | ✅ | ✅ | **A** | ✅ | 远程 Grafana 部署 ⬜ |
+| **3.4.7** Query rewrite | ✅ | ✅ | **A** | ✅ | 与 3.8.1 合并 |
+| **3.4.8** CI 门禁 | ✅ | ✅ | **A** | ✅ | v6 提升轨 WARN 见 closure |
+| **3.2** 多租户 | ✅ | ✅ | **A** | ⬜ | — |
+| **3.3** HITL | ✅ | ✅ | **A** | ⬜ | — |
+| **3.5** 可观测 | ✅ | ✅ | **A** | 部分 | 指标+JSON ✅；Sentinel/告警触发 ⬜ |
+| **3.6** 审计 | ✅ | ✅ | **A** | ⬜ | 依赖 3.10.6 / 3.9.4 |
+| **3.7** Grounding | ✅ | ✅ | **A** | ⬜ | — |
+| **3.8.1** QueryRewrite | ✅ | ✅ | **A** | ✅ | 默认开启 |
+| **3.8.2** PromptComposer | ✅ | ✅ | **A** | ⬜ | 周 6 主线 |
+| **3.8.3** workflow llm → Composer | ✅ | ✅ | **A** | ⬜ | 依赖 3.8.2 |
+| **3.8.4–7** 改写增强 | ✅ | ✅ | **B** | ⬜ | 非检查门 |
+| **3.9.1–3.9.4** PLAN_WORKFLOW | ✅ | ✅ | **A** | ⬜ | multi-agent plan |
+| **3.10.1–3.10.7** AgentRuntime | ✅ | ✅ | **A** | ⬜ | 周 1–2 应与 3.4 并行，**滞后待补** |
+| **3.11.1–3.11.4** skill-manager | ✅ | ✅ | **A** | ⬜ | 阻塞 3.9 |
+| **3.12.1–3.12.4** 前端 | ✅ | ✅ | **A** | ⬜ | — |
+| **3.13** 并行 | ✅ | ✅ | **B** | 部分 | `source_type` ✅；AhoCorasick ⬜ |
+| **3.14** Job 锁 | ✅ | ✅ | **B** | ⬜ | 多实例生产必做 |
 
 ### 3.2 检查门 → Plan 覆盖（17 条）
 
-| # | 检查门 | 覆盖任务 | Plan 有？ |
-|---|--------|----------|:---------:|
-| 1 | v5 回归轨 | 3.4.1, 3.4.8 | ✅ |
-| 2 | v6 提升轨 | 3.4.1, 3.4.4–3.4.5 | ✅ |
-| 3 | Grafana + 4 告警 | 3.4.6, 3.5 | ✅ |
-| 4 | Sentinel Dashboard | 3.5 | ✅ |
-| 5 | 租户 A/B 隔离 | 3.2 | ✅ |
-| 6 | HITL 含子 Agent | 3.3 | ✅ |
-| 7 | PLAN_WORKFLOW 三 API | 3.9.2–3.9.3 | ✅ |
-| 8 | 2+ agent + Plan 详情页 | 3.10.5, 3.12.4 | ✅ |
-| 9 | IntentRouter + fallback | 3.9.1, 3.10.4d | ✅ |
-| 10 | finance-smart skill 子集 | 3.10.3, 3.11 | ✅ |
-| 11 | skill catalog + /skills | 3.11, 3.12 | ✅ |
-| 12 | tool/sub_agent/plan 审计 | 3.6, 3.10.6, 3.9.4 | ✅ |
-| 13 | Grounding | 3.7 | ✅ |
-| 14 | 子 Agent 不污染 reasoning | 3.10.7 | ✅ |
-| 15 | phase2 demo 仍 PASS | 全阶段回归 | ✅ 命令在 plan 末 |
-| 16 | *(spec 列表 12 条主项 + 子项)* | — | — |
-| 17 | 3.14 多实例（条件） | 3.14 | ✅ |
+| # | 检查门 | 覆盖任务 | Plan 有？ | 实现 |
+|---|--------|----------|:---------:|:----:|
+| 1 | v5 回归轨 | 3.4.1, 3.4.8 | ✅ | **PASS**（closure） |
+| 2 | v6 提升轨 | 3.4.1, 3.4.4–3.4.5 | ✅ | 生产门禁 PASS；**vs vector +15% WARN** |
+| 3 | Grafana + 4 告警 | 3.4.6, 3.5 | ✅ | 部分（JSON ✅） |
+| 4 | Sentinel Dashboard | 3.5 | ✅ | ⬜ |
+| 5 | 租户 A/B 隔离 | 3.2 | ✅ | ⬜ |
+| 6 | HITL 含子 Agent | 3.3 | ✅ | ⬜ |
+| 7 | PLAN_WORKFLOW 三 API | 3.9.2–3.9.3 | ✅ | ⬜ |
+| 8 | 2+ agent + Plan 详情页 | 3.10.5, 3.12.4 | ✅ | ⬜ |
+| 9 | IntentRouter + fallback | 3.9.1, 3.10.4d | ✅ | ⬜ |
+| 10 | finance-smart skill 子集 | 3.10.3, 3.11 | ✅ | ⬜ |
+| 11 | skill catalog + /skills | 3.11, 3.12 | ✅ | ⬜ |
+| 12 | tool/sub_agent/plan 审计 | 3.6, 3.10.6, 3.9.4 | ✅ | ⬜ |
+| 13 | Grounding | 3.7 | ✅ | ⬜ |
+| 14 | 子 Agent 不污染 reasoning | 3.10.7 | ✅ | ⬜ |
+| 15 | phase2 demo 仍 PASS | 全阶段回归 | ✅ | 待总验收 |
+| 16 | *(spec 列表 12 条主项 + 子项)* | — | — | — |
+| 17 | 3.14 多实例（条件） | 3.14 | ✅ | ⬜ |
 
 **结论：17 条检查门均有对应任务卡；无 spec 孤儿需求。**
 
@@ -125,7 +130,7 @@
 
 | 任务 | SSOT | Plan | 等级 |
 |------|:----:|:----:|:----:|
-| 4.1–4.12 全部 | ✅ 子任务表 | ❌ | **C** |
+| 4.1–4.12 全部 | ✅ 子任务表（**4.8** MCP 动态引入 + `/mcp` 前端已详设） | ❌ | **C** |
 
 **检查门：** SSOT §5 按子项列出；无执行 plan。
 
@@ -139,16 +144,24 @@
 |:----:|:----:|:---------:|:------------:|:------------------:|
 | 一 | ✅ | B+（子 plan 齐全） | ✅ | A（1.5/1.6） |
 | 二 | ✅ | A-（2.9/2.10–18） | ✅ | A（workflow/closure/timeline） |
-| **三** | ✅ | **A-（任务全覆盖）** | ✅ | **B（RAG 待逐步展开）** |
+| **三** | ✅ | **A-（任务全覆盖）** | ✅ | **B+（3.4 已交付；多 Agent 待 TDD 细步）** |
 | 四 | ✅ | C（无 plan） | ✅（spec 内） | — |
 
 ---
 
-## 推荐执行顺序（阶段三）
+## 推荐执行顺序（阶段三，2026-06-21 更新）
 
-1. [phase3-production-hardening.md](./2026-06-19-phase3-production-hardening.md) — **3.4.1** 起（RAG 优先）
-2. 同文件周 1–2 并行 **3.10.1**（multi-agent plan）
-3. 按 8 周排期表推进；每周对照 SSOT §6 检查门
+**已完成：** 3.4 全链路 + 3.8.1 QueryRewrite。
+
+**下一步（周 6 主线，可并行）：**
+
+1. [multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md) — **3.10.1 AgentRuntime**（原周 1 滞后，优先补）
+2. 同上 — **3.9 PLAN_WORKFLOW**（依赖 3.11 skill-manager 种子）
+3. [phase3-production-hardening.md](./2026-06-19-phase3-production-hardening.md) — **3.8.2 PromptComposer**
+4. 周 5 并行：**3.2 多租户** + **3.5 Sentinel/告警联调**
+5. 周 7–8：**3.3 HITL** → **3.6 审计** → **3.7 Grounding** → **3.12 前端** → 总检查门
+
+**排期偏差说明：** 原 8 周表假设 RAG 与 AgentRuntime 周 1 并行；实际 RAG 已提前完成，**3.10.x 整体滞后**，建议压缩多 Agent 与 PLAN_WORKFLOW 至当前迭代。
 
 ---
 

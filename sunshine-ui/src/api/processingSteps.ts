@@ -24,10 +24,15 @@ export interface StepSummary {
 
 }
 
-/** RAG 等步骤的结构化元数据（后端 SSE 下发） */
+/** RAG / QueryRewrite 等步骤的结构化元数据（后端 SSE 下发） */
 export interface StepMetadata {
   hitCount?: number
   sources?: string[]
+  rewriteApplied?: boolean
+  rewriteLatencyMs?: number
+  rewriteFrom?: string
+  rewriteTo?: string
+  rewriteScenario?: string
 }
 
 
@@ -112,8 +117,33 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const sources = Array.isArray(obj.sources)
     ? obj.sources.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
     : undefined
-  if (hitCount == null && (!sources || sources.length === 0)) return undefined
-  return { hitCount, sources }
+  const rewriteApplied = obj.rewriteApplied === true ? true : undefined
+  const rewriteLatencyMs = typeof obj.rewriteLatencyMs === 'number' ? obj.rewriteLatencyMs : undefined
+  const rewriteFrom = typeof obj.rewriteFrom === 'string' && obj.rewriteFrom.trim()
+    ? obj.rewriteFrom.trim()
+    : undefined
+  const rewriteTo = typeof obj.rewriteTo === 'string' && obj.rewriteTo.trim()
+    ? obj.rewriteTo.trim()
+    : undefined
+  const rewriteScenario = typeof obj.rewriteScenario === 'string' && obj.rewriteScenario.trim()
+    ? obj.rewriteScenario.trim()
+    : undefined
+  if (
+    hitCount == null
+    && (!sources || sources.length === 0)
+    && !rewriteApplied
+  ) {
+    return undefined
+  }
+  return {
+    hitCount,
+    sources,
+    rewriteApplied,
+    rewriteLatencyMs,
+    rewriteFrom,
+    rewriteTo,
+    rewriteScenario,
+  }
 }
 
 
@@ -250,6 +280,17 @@ export function formatStepMetadata(step: ProcessingStep): string {
   return parts.join('，')
 }
 
+/** 从 metadata 构造 Query 改写展开文案（与后端 detail 格式对齐） */
+export function formatRewriteMetadata(step: ProcessingStep): string {
+  const m = step.metadata
+  if (!m?.rewriteApplied || !m.rewriteFrom || !m.rewriteTo) return ''
+  const targetLabel = m.rewriteScenario === 'hyde' ? 'HyDE' : '改写后'
+  const latency = typeof m.rewriteLatencyMs === 'number'
+    ? `\n耗时：${m.rewriteLatencyMs}ms`
+    : ''
+  return `改写前：${m.rewriteFrom}\n${targetLabel}：${m.rewriteTo}${latency}`
+}
+
 
 
 /** 主行摘要最大可见字数，超出部分折叠到展开区 */
@@ -328,11 +369,13 @@ export function resolveStepExpandSummary(step: ProcessingStep): string {
   return oneLine
 }
 
-/** 展开区正文：detail/result（如 Agent Markdown），与 after 摘要区分 */
+/** 展开区正文：detail/result（如 Agent Markdown、Query 改写），与 after 摘要区分 */
 export function resolveStepExpandBody(step: ProcessingStep): string {
   const summary = resolveStepExpandSummary(step)
   const detail = step.detail?.trim()
   if (detail && detail !== summary) return detail
+  const rewrite = formatRewriteMetadata(step)
+  if (rewrite && rewrite !== summary && !(detail && detail.includes('改写前：'))) return rewrite
   const result = step.result?.trim()
   if (result && result !== summary && result !== detail) return result
   return ''
@@ -354,6 +397,7 @@ export function shouldShiftSummaryOnExpand(step: ProcessingStep): boolean {
 export function hasExpandableContent(step: ProcessingStep): boolean {
   if (shouldShiftSummaryOnExpand(step)) return true
   if (resolveStepExpandBody(step)) return true
+  if (formatRewriteMetadata(step)) return true
   if (step.reasoning?.trim()) return true
   if (step.output?.trim()) return true
   return false

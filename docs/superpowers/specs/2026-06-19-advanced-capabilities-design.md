@@ -110,18 +110,18 @@ L4 Prompt Ops        — 版本/A-B/评测门禁（阶段四 prompt 后台）
 
 | 编号 | 任务 | 模块 | 阶段 |
 |------|------|------|------|
-| P1 | `QueryRewriteService` 接口 + `rag` 场景 MVP | orchestrator | 阶段三（与 RAG R7 合并） |
-| P2 | `PromptComposer` 抽离 `SunshineAgent.buildInputs` 逻辑 | orchestrator | 阶段三 |
-| P3 | workflow `llm` 节点 prompt 走 Composer 第 6 层 | orchestrator | 阶段三 |
-| P4 | `empty-recall` 二次改写检索 | rag-service + orchestrator | 阶段三 |
+| P1 | `QueryRewriteService` 三场景 | orchestrator | 阶段三 | **✅ 已落地** |
+| P2 | `PromptComposer` 抽离 `SunshineAgent.buildInputs` | orchestrator | 阶段三 | ⬜ 见 plan Task 3.8.2 |
+| P3 | workflow `llm` 节点 prompt 走 Composer | orchestrator | 阶段三 | ⬜ 见 plan Task 3.8.3 |
+| P4 | `empty-recall` 二次改写检索 | orchestrator | 阶段三 | **✅ 已落地** |
 | P5 | STM 工具结果 `ContextCompressor`（摘要已命中条目） | orchestrator | 阶段三末 |
 | P6 | prompt-manager 版本化 + 发布流 | prompt-manager | 阶段四 4.4 |
 
 ### 1.5 可控与可观测
 
-- 改写**默认关闭**，按场景白名单开启；改写前后 query 写入 Timeline `detail`（可折叠）
-- 审计事件增加 `rewriteApplied: true/false`、`rewriteLatencyMs`
-- 评测：`golden-set` 增加 `raw_query` vs `rewritten_query` 对比报告
+- 改写**默认开启**（`agent.rewrite.*`）；可按场景在 Nacos 关闭
+- **待做（plan Task 3.8.5，非检查门）**：golden-set `raw_query` vs `rewritten_query` 报告
+- **✅ 3.8.4**：Timeline `detail` 改写前后 + 审计 `rewriteApplied` / `rewriteLatencyMs`（`QueryRewriteTrace` / `StepMetadata` / `AuditService`）
 
 ### 1.6 风险
 

@@ -28,6 +28,14 @@ public final class ProcessingTimelineSession {
     private String lastCompletedToolDisplayName;
     /** 当前 PreActing 对应的工具步骤 id */
     private String currentToolStepId;
+    /** 关联 QueryRewriteTrace 的 assistant messageId */
+    private String traceMessageId;
+
+    public void bindTraceMessageId(String messageId) {
+        if (messageId != null && !messageId.isBlank()) {
+            this.traceMessageId = messageId.strip();
+        }
+    }
 
     public void recordToolCompleted(String displayName) {
         if (displayName != null && !displayName.isBlank()) {
@@ -144,10 +152,16 @@ public final class ProcessingTimelineSession {
         completeAt(stepId, detail, System.currentTimeMillis());
     }
 
-    /** 意图步完成：主行 after 展示路由结论；detail 不下发，避免与 after 重复可展开 */
+    /** 意图步完成：主行 after 展示路由结论；改写信息写入 detail/metadata 供展开与审计 */
     public void completeIntent(ExecutionPlan plan) {
+        completeIntent(plan, com.sunshine.orchestrator.rewrite.QueryRewriteTrace.intentOutcome(traceMessageId).orElse(null));
+    }
+
+    public void completeIntent(ExecutionPlan plan, com.sunshine.orchestrator.rewrite.QueryRewriteOutcome intentRewrite) {
         String after = IntentLabels.intentAfterForPlan(userQuery, plan);
-        applyAt("intent", null, EventKind.COMPLETE, after, null, null, System.currentTimeMillis());
+        StepMetadata metadata = StepMetadata.fromRewrite(intentRewrite);
+        String detail = intentRewrite != null ? intentRewrite.timelineDetail() : null;
+        applyAt("intent", null, EventKind.COMPLETE, after, detail, metadata, System.currentTimeMillis());
         if ("intent".equals(activeStepId)) {
             activeStepId = null;
         }
@@ -160,17 +174,22 @@ public final class ProcessingTimelineSession {
     /** @param summaryLine 主行 after 摘要；expandDetail 为展开区正文（可与主行不同） */
     public void completeAt(String stepId, String summaryLine, String expandDetail, long endedAt) {
         StepMetadata metadata = null;
-        String ragInput = summaryLine;
-        if (ToolStepIds.isRagStep(stepId) && summaryLine != null) {
-            String rawDetail = summaryLine;
-            if (containsRawRagBody(summaryLine)) {
+        if (summaryLine != null && (ToolStepIds.isRagStep(stepId) || isWorkflowRagNode(stepId))) {
+            String ragInput = summaryLine;
+            if (ToolStepIds.isRagStep(stepId) && containsRawRagBody(summaryLine)) {
                 ragInput = ToolResultSummarizer.summarize("search_knowledge", summaryLine);
             }
-            metadata = StepMetadata.fromRagToolOutput(rawDetail, ragInput);
+            metadata = StepMetadata.fromRagToolOutput(summaryLine, ragInput);
         }
         String after = resolveAfter(stepId, summaryLine, metadata);
-        // RAG 原文不下发 detail，结构化信息走 metadata
-        String storedDetail = ToolStepIds.isRagStep(stepId) ? null : expandDetail;
+        String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedTimelineDetail(traceMessageId);
+        String storedDetail;
+        if (ToolStepIds.isRagStep(stepId) || isWorkflowRagNode(stepId)) {
+            metadata = mergeRewriteMetadata(metadata);
+            storedDetail = resolveRagStoredDetail(stepId, summaryLine, rewriteDetail);
+        } else {
+            storedDetail = expandDetail;
+        }
         applyAt(stepId, null, EventKind.COMPLETE, after, storedDetail, metadata, endedAt);
         if (stepId.equals(activeStepId)) {
             activeStepId = null;
@@ -194,7 +213,8 @@ public final class ProcessingTimelineSession {
     }
 
     private String resolveAfter(String stepId, String detail, StepMetadata metadata) {
-        if (userQuery != null && ToolStepIds.isRagStep(stepId) && metadata != null && !metadata.isEmpty()) {
+        if (userQuery != null && metadata != null && !metadata.isEmpty()
+                && (ToolStepIds.isRagStep(stepId) || isWorkflowRagNode(stepId))) {
             return StepSummarizer.afterRag(userQuery, detail, metadata);
         }
         return userQuery != null
@@ -374,5 +394,47 @@ public final class ProcessingTimelineSession {
         return detail.contains("【")
                 || detail.contains("知识库检索结果（共")
                 || detail.contains("片段");
+    }
+
+    private StepMetadata mergeRewriteMetadata(StepMetadata metadata) {
+        if (traceMessageId == null) {
+            return metadata;
+        }
+        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome ragRewrite =
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latest(traceMessageId, "rag").orElse(null);
+        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome hydeRewrite =
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latest(traceMessageId, "hyde").orElse(null);
+        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome emptyRewrite =
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latest(traceMessageId, "empty-recall").orElse(null);
+        StepMetadata merged = StepMetadata.mergeRewrite(metadata, ragRewrite);
+        merged = StepMetadata.mergeRewrite(merged, hydeRewrite);
+        return StepMetadata.mergeRewrite(merged, emptyRewrite);
+    }
+
+    private static boolean isWorkflowRagNode(String stepId) {
+        return stepId != null && stepId.startsWith("node-rag");
+    }
+
+    /** ReAct rag 仅下发改写 detail；workflow node-rag 合并改写与命中摘要 */
+    private static String resolveRagStoredDetail(String stepId, String summaryLine, String rewriteDetail) {
+        if (isWorkflowRagNode(stepId)) {
+            return joinDetailBlocks(rewriteDetail, summaryLine);
+        }
+        return rewriteDetail;
+    }
+
+    private static String joinDetailBlocks(String first, String second) {
+        boolean hasFirst = first != null && !first.isBlank();
+        boolean hasSecond = second != null && !second.isBlank();
+        if (hasFirst && hasSecond && first.strip().equals(second.strip())) {
+            return first;
+        }
+        if (hasFirst && hasSecond) {
+            return first.strip() + "\n\n" + second.strip();
+        }
+        if (hasFirst) {
+            return first.strip();
+        }
+        return hasSecond ? second.strip() : null;
     }
 }

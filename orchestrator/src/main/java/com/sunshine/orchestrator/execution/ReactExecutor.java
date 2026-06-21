@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.agent.SunshineAgent;
+import com.sunshine.orchestrator.client.StreamDeltaNormalizer;
 import com.sunshine.orchestrator.client.StreamToken;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ public class ReactExecutor {
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         return sunshineAgent.chat(
                 ctx.memory(), ctx.userContent(), ctx.userId(), ctx.tenantId(),
-                ctx.assistantMsgId());
+                ctx.assistantMsgId())
+                .transform(StreamDeltaNormalizer::normalizeTokens);
     }
 }

@@ -33,6 +33,7 @@ import com.sunshine.orchestrator.generation.StreamEvent;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -134,6 +135,7 @@ public class ChatController {
 
     private Flux<ServerSentEvent<String>> handleNewMessageWithRedis(
             StreamContext ctx, AtomicReference<ExecutionMode> executionMode, Flux<StreamToken> chunkFlux) {
+        QueryRewriteTrace.bind(ctx.assistantMsgId());
         String generationId = streamService.createGeneration(
                 ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), ctx.intent());
 
@@ -150,12 +152,14 @@ public class ChatController {
         Consumer<String> flushPartial = content ->
                 flushScheduler.flushPartial(ctx.assistantMsgId(), content);
         Runnable onComplete = () -> Mono.fromRunnable(() -> {
+                    QueryRewriteTrace.clear(ctx.assistantMsgId());
                     maybeUpdateTitle(ctx);
                     registry.remove(generationId);
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
         Consumer<Throwable> onError = error -> {
+            QueryRewriteTrace.clear(ctx.assistantMsgId());
             Mono.fromRunnable(() -> registry.remove(generationId))
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe();
@@ -245,6 +249,7 @@ public class ChatController {
         StringBuilder reasoningBuffer = new StringBuilder(resume ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
                 ProcessingStepMerger.fromJson(ctx.existingStepsJson()));
+        QueryRewriteTrace.bind(ctx.assistantMsgId());
         ThinkStepMapper thinkMapper = new ThinkStepMapper(stepsBuffer, ctx.userContent(), executionMode);
         var appender = flushScheduler.createChunkAppender(buffer, ctx.assistantMsgId(), flushIntervalMs);
 
@@ -315,7 +320,8 @@ public class ChatController {
                         .subscribeOn(Schedulers.boundedElastic())
                         .subscribe())
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成 conv={}", ctx.conversationId()))
-                .doOnError(e -> log.error("[Orchestrator] 异常", e));
+                .doOnError(e -> log.error("[Orchestrator] 异常", e))
+                .doFinally(sig -> QueryRewriteTrace.clear(ctx.assistantMsgId()));
     }
 
     private StreamContext prepareNewMessage(ChatMessage msg, String userId, String tenantId) {
@@ -414,6 +420,7 @@ public class ChatController {
 
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(ctx.userContent());
+        session.bindTraceMessageId(ctx.assistantMsgId());
         List<ProcessingStep> stepEmissions = new ArrayList<>();
         session.onStepChanged(stepEmissions::add);
         session.pending("intent", "intent");
@@ -422,7 +429,7 @@ public class ChatController {
 
         return prepareChunkFlux(Flux.concat(
                 Flux.fromIterable(intentStartTokens),
-                executionPlanRouter.route(ctx.userContent())
+                executionPlanRouter.route(ctx.userContent(), ctx.assistantMsgId())
                         .flatMapMany(plan -> {
                             executionMode.set(plan.mode());
                             Mono<Void> savePlan = Mono.fromRunnable(() ->

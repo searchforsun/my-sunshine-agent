@@ -1,20 +1,18 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
-import com.sunshine.orchestrator.memory.MemoryMessageBuilder;
 import com.sunshine.orchestrator.memory.MemoryProperties;
-import com.sunshine.orchestrator.memory.stm.StmBoundaryFormatter;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.prompt.PromptComposeRequest;
+import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.Event;
 import io.agentscope.core.agent.EventType;
 import io.agentscope.core.agent.StreamOptions;
 import io.agentscope.core.message.Msg;
-import io.agentscope.core.message.MsgRole;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -35,13 +33,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class SunshineAgent {
 
     private final ReActAgentFactory agentFactory;
-    private final AgentPromptProperties prompts;
+    private final PromptComposer promptComposer;
     private final MemoryProperties memoryProperties;
 
-    public SunshineAgent(ReActAgentFactory agentFactory, AgentPromptProperties prompts,
+    public SunshineAgent(ReActAgentFactory agentFactory, PromptComposer promptComposer,
             MemoryProperties memoryProperties) {
         this.agentFactory = agentFactory;
-        this.prompts = prompts;
+        this.promptComposer = promptComposer;
         this.memoryProperties = memoryProperties;
     }
 
@@ -91,7 +89,15 @@ public class SunshineAgent {
                         ? userMessage.substring(0, 60) + "..."
                         : userMessage);
 
-        List<Msg> inputs = buildInputs(memory, userMessage, ragContext, financeContext);
+        List<String> injected = new ArrayList<>(2);
+        if (ragContext != null && !ragContext.isBlank()) {
+            injected.add(ragContext.strip());
+        }
+        if (financeContext != null && !financeContext.isBlank()) {
+            injected.add(financeContext.strip());
+        }
+        List<Msg> inputs = promptComposer.composeReactInputs(
+                PromptComposeRequest.forReact(memory, userMessage, injected));
 
         StreamOptions options = StreamOptions.builder()
                 .incremental(true)
@@ -103,6 +109,7 @@ public class SunshineAgent {
 
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery(userMessage);
+        session.bindTraceMessageId(assistantMessageId);
         ConcurrentLinkedQueue<StreamToken> hookQueue = new ConcurrentLinkedQueue<>();
 
         // 子 Agent（Workflow 节点）用独立 bridge id，避免与主流冲突且让 Hook 能写入 timeline
@@ -115,7 +122,7 @@ public class SunshineAgent {
         AtomicBoolean generateStarted = new AtomicBoolean(false);
         AtomicBoolean generateCompleted = new AtomicBoolean(false);
 
-        ReActAgent agent = agentFactory.create();
+        ReActAgent agent = agentFactory.create(bridgeId);
         return agent.stream(inputs, options)
                 .flatMap(event -> {
                     List<StreamToken> tokens = new ArrayList<>();
@@ -162,62 +169,6 @@ public class SunshineAgent {
             tokens.add(token);
         }
         return tokens;
-    }
-
-    private List<Msg> buildInputs(
-            MemoryContext memory, String userMessage, String ragContext, String financeContext) {
-        MemoryContext ctx = memory != null ? memory : MemoryContext.empty();
-        List<Msg> inputs = new ArrayList<>();
-        if (memoryProperties != null && memoryProperties.getLayerPrompt() != null
-                && !memoryProperties.getLayerPrompt().isBlank()) {
-            inputs.add(Msg.builder()
-                    .role(MsgRole.SYSTEM)
-                    .textContent(memoryProperties.getLayerPrompt().strip())
-                    .build());
-        }
-        addSystemMsg(inputs, ctx.ltmSnippet());
-        addSystemMsg(inputs, ctx.mtmSnippet());
-        appendStmTurns(inputs, ctx);
-        if (ragContext != null && !ragContext.isBlank()) {
-            inputs.add(Msg.builder()
-                    .role(MsgRole.USER)
-                    .textContent(ragContext.strip())
-                    .build());
-        }
-        if (financeContext != null && !financeContext.isBlank()) {
-            inputs.add(Msg.builder()
-                    .role(MsgRole.USER)
-                    .textContent(financeContext.strip())
-                    .build());
-        }
-        inputs.add(Msg.builder()
-                .role(MsgRole.USER)
-                .textContent(MemoryMessageBuilder.formatCurrentUser(userMessage, memoryProperties))
-                .build());
-        return inputs;
-    }
-
-    private void appendStmTurns(List<Msg> inputs, MemoryContext memory) {
-        if (memory.stmTurns() == null || memory.stmTurns().isEmpty()) {
-            return;
-        }
-        String boundary = StmBoundaryFormatter.format(memoryProperties);
-        if (boundary != null && !boundary.isBlank()) {
-            inputs.add(Msg.builder().role(MsgRole.SYSTEM).textContent(boundary.strip()).build());
-        }
-        for (ChatTurn turn : memory.stmTurns()) {
-            if (turn.content() == null || turn.content().isBlank()) {
-                continue;
-            }
-            MsgRole role = "assistant".equals(turn.role()) ? MsgRole.ASSISTANT : MsgRole.USER;
-            inputs.add(Msg.builder().role(role).textContent(turn.content()).build());
-        }
-    }
-
-    private static void addSystemMsg(List<Msg> inputs, String text) {
-        if (text != null && !text.isBlank()) {
-            inputs.add(Msg.builder().role(MsgRole.SYSTEM).textContent(text.strip()).build());
-        }
     }
 
     private static boolean hasText(String s) {

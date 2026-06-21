@@ -150,7 +150,7 @@ services:
     container_name: smt-rocketmq-dashboard
     restart: unless-stopped
     environment:
-      JAVA_OPTS: "-Xms256m -Xmx256m -Drocketmq.namesrv.addr=rocketmq-namesrv:9876"
+      JAVA_OPTS: "-Xms256m -Xmx256m -Drocketmq.namesrv.addr=rocketmq-namesrv:9876 -Drocketmq.config.proxyAddr=rocketmq-proxy:8080"
     ports:
       - "${ROCKETMQ_DASHBOARD_PORT:-8082}:8082"
     networks:

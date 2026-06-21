@@ -181,6 +181,33 @@ python scripts/rag_eval.py --report-md --gate
 
 ---
 
+## 阶段三 Closure 验收（2026-06-21，本地 :8400）
+
+> 命令：`rag_reset` → `rag_ingest_bulk` → `rag_eval --tag closure*`；`mvn test -pl rag-service`
+
+| 项 | 结果 | 报告 |
+|----|------|------|
+| v5 hybrid+rerank 生产门禁 | **PASS** | `baseline-20260621-142022-closure.json` |
+| v6 hybrid+rerank 生产门禁 | **PASS**（Recall@5=1.0, MRR=0.9841, 负例 Empty=1.0） | `baseline-20260621-142111-closure-v6.json` |
+| v6 提升轨 vs vector | **WARN** | vector 基线升高至 Recall@5=0.9762，hybrid 绝对提升仅 +2.4pp（<5pp 阈值） |
+| v6 vector 基线 | Recall@5=0.9762（3 条漏召：q_adv_009/010/011） | `baseline-20260621-142104-closure-v6-vector.json` |
+| rag-service 单测 | **PASS** | `mvn test -pl rag-service` |
+| phase2 react demo | **SKIP** | 需 ecs4c16g Gateway/Finance 联机，本地仅 RAG 验收 |
+
+**结论**：v5/v6 **生产门禁** closure PASS；v6 **相对 vector 提升轨** 因 vector 基线变高未过 `--compare-vector-json`（hybrid 本身已满 Recall@5）。
+
+### Query 改写（3.8.1 / 3.4.7 — 2026-06-21）
+
+| 场景 | 接入 | 配置 |
+|------|------|------|
+| `rag` | `KnowledgeRetrievalService` 首次检索前 | `agent.rewrite.rag.enabled`（**默认 true**） |
+| `intent` | `ExecutionPlanRouter`，规则未命中且 query `<8` 字 | `agent.rewrite.intent.*` |
+| `empty-recall` | 首次 0 命中 → 改写 → 二次检索 merge | `agent.rewrite.empty-recall.*` |
+
+联调样例：`待审批`（intent）| `打车能报吗`（empty-recall）| 日志 `orchestrator/logs` 搜 `[QueryRewrite]`。
+
+---
+
 ## 阶段三双轨评测（v6 — 2026-06-20 实测）
 
 | 轨道 | 套件 | 策略 | 门禁 | 状态 |
@@ -221,7 +248,10 @@ python scripts/rag_reset.py && python scripts/rag_ingest_bulk.py
 python scripts/rag_eval.py --suite v5 --strategy vector --report-md
 python scripts/rag_eval.py --suite v6 --strategy vector --report-md
 python scripts/rag_eval.py --suite v6 --strategy hybrid+rerank --gate --report-md
+python scripts/rag_eval.py --suite v5 --strategy hybrid+rerank --ci --fail-if-recall5-below 0.98
 ```
+
+**CI 门禁（3.4.8）**：`.github/workflows/rag-eval.yml`；`python scripts/test_rag_eval_gates.py`；回归摘要 `docs/rag/regression-*.md`。
 
 ---
 

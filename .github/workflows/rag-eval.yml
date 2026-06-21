@@ -1,0 +1,98 @@
+name: RAG Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      rag_url:
+        description: RAG service base URL (default from secret RAG_URL)
+        required: false
+        default: ""
+  push:
+    branches: [main, master]
+    paths:
+      - rag-service/**
+      - scripts/rag_eval.py
+      - scripts/test_rag_eval_gates.py
+      - docs/rag/golden-set.yaml
+
+jobs:
+  gate-logic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install script deps
+        run: pip install -r scripts/requirements.txt
+      - name: Gate logic unit tests
+        run: python scripts/test_rag_eval_gates.py -v
+
+  rag-regression:
+    runs-on: ubuntu-latest
+    needs: gate-logic
+    if: ${{ secrets.RAG_URL != '' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install script deps
+        run: pip install -r scripts/requirements.txt
+      - name: Resolve RAG_URL
+        id: rag
+        run: |
+          if [ -n "${{ github.event.inputs.rag_url }}" ]; then
+            echo "url=${{ github.event.inputs.rag_url }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ secrets.RAG_URL }}" ]; then
+            echo "url=${{ secrets.RAG_URL }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "RAG_URL not configured" >&2
+            exit 1
+          fi
+      - name: Health check
+        run: |
+          curl -sf "${{ steps.rag.outputs.url }}/actuator/health" || \
+          curl -sf "${{ steps.rag.outputs.url }}/api/rag/search" \
+            -H 'Content-Type: application/json' \
+            -d '{"query":"ping","topK":1}' >/dev/null
+      - name: v5 hybrid+rerank regression gate
+        env:
+          RAG_URL: ${{ steps.rag.outputs.url }}
+        run: |
+          python scripts/rag_eval.py \
+            --suite v5 \
+            --strategy hybrid+rerank \
+            --ci \
+            --fail-if-recall5-below 0.98 \
+            --tag ci-v5
+      - name: v6 vector baseline
+        env:
+          RAG_URL: ${{ steps.rag.outputs.url }}
+        run: |
+          python scripts/rag_eval.py \
+            --suite v6 \
+            --strategy vector \
+            --tag ci-v6-vector
+      - name: v6 hybrid+rerank improvement gate
+        env:
+          RAG_URL: ${{ steps.rag.outputs.url }}
+        run: |
+          VECTOR_JSON=$(ls -t docs/rag/reports/baseline-*-ci-v6-vector.json | head -1)
+          python scripts/rag_eval.py \
+            --suite v6 \
+            --strategy hybrid+rerank \
+            --ci \
+            --fail-if-recall5-below 0.98 \
+            --compare-vector-json "$VECTOR_JSON" \
+            --tag ci-v6
+      - name: Upload regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-regression-${{ github.run_id }}
+          path: |
+            docs/rag/reports/baseline-*-ci-*.json
+            docs/rag/reports/rag-eval-report-*-ci-*.md
+            docs/rag/regression-*.md
+          if-no-files-found: ignore

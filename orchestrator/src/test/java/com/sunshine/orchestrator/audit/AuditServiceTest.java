@@ -12,7 +12,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,6 +38,10 @@ class AuditServiceTest {
         msg.setStatus("completed");
         msg.setContent("hello");
         msg.setIntent("simple");
+        msg.setSteps("""
+                [{"id":"intent","metadata":{"rewriteApplied":true,"rewriteLatencyMs":10,
+                  "rewriteFrom":"待审批","rewriteTo":"查询待审批","rewriteScenario":"intent"}}]
+                """);
 
         ChatConversationEntity conv = new ChatConversationEntity();
         conv.setId("c1");
@@ -45,7 +51,10 @@ class AuditServiceTest {
 
         auditService.auditAssistantMessage(msg);
 
-        verify(auditPublisher).publish(any(AuditEvent.class));
+        verify(auditPublisher).publish(argThat(event ->
+                event.payloadJson() != null
+                        && event.payloadJson().contains("\"rewriteApplied\":true")
+                        && event.payloadJson().contains("\"rewriteLatencyMs\":10")));
     }
 
     @Test

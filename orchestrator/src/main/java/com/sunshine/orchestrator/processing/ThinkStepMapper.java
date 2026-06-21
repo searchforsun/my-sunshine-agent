@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
-import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 

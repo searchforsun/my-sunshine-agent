@@ -27,7 +27,7 @@
 | **4.5** | Skills Docker 沙箱 | 代码执行 skill | 中 |
 | **4.6** | 动态 DAG 增强：if-else、并行 fan-out、Replan | 静态 workflow 不够 | 中 |
 | **4.7** | 多 Agent 增强：Coordinator、并行子 Agent、MsgHub、子 Timeline 展开 | 复杂协作 | 中 |
-| **4.8** | MCP 协议：Tool Manager 注册 MCP Server | 非 HTTP 遗留系统 | 中 |
+| **4.8** | MCP 动态引入 + 前端管理：tool-manager 注册 MCP Server + `/mcp` 管理页 | 非 HTTP 遗留系统 / 异构工具接入 | 中 |
 | **4.9** | K8s：Helm + HPA + Nacos GitOps | 流量/HA | 中 |
 | **4.10** | Seata 分布式事务 + HITL 串联 | 跨服务写操作 | 低 |
 | **4.11** | Prompt 运营后台：版本/审核/回滚 | 提示词 >10 + 非研发维护 | 中 |
@@ -114,10 +114,30 @@
 | **4.7.3** | M11 MsgHub Peer（maxRounds≤3，transcript 审计） |
 | **4.7.4** | M9 前端子 Agent 详情展开 UI |
 
-### 4.8 MCP 协议
+### 4.8 MCP 动态引入 + 前端管理
 
-- `McpToolAdapter` → Catalog `kind=mcp`
-- 检查门：注册 1 个 MCP Server，ReAct 可调用
+> **阶段归属**：阶段三 **非目标**（见 [phase3](./phase3-production-hardening-design.md) §1）；**前置** 阶段三 3.11 skill-manager + 3.12 `/skills` Catalog 管理模式、3.3 HITL `sideEffect`、3.6 tool 审计。  
+> **对称参照**：与 skill-manager（:8225 + `/skills`）同模式 — **tool-manager 扩 Catalog**，前端新增 **`/mcp`** 管理页，orchestrator 经 `ToolCatalogService` 拉取，**禁止**前端维护 MCP 工具 Map。
+
+| 子任务 | 内容 |
+|--------|------|
+| **4.8.1** | `mcp_server` 表 + 动态注册 API（`POST /api/mcp/servers`）：name、transport（`stdio` \| `sse`）、command/args 或 endpoint、env、启停 |
+| **4.8.2** | `McpClient` 连接池：启动/健康检查/断线重连；`tools/list` 定时刷新 |
+| **4.8.3** | `McpToolAdapter implements ToolHandler` → Catalog `kind=mcp`；`displayName` / `timelinePhase` / `sideEffect` 与 HTTP 工具一致 |
+| **4.8.4** | `GET /api/tools/catalog` 合并 MCP 工具；`DynamicToolkitFactory` + react 白名单校验（复用 2.15） |
+| **4.8.5** | 前端 **`/mcp`**：Server 列表、新增连接（stdio 命令 / SSE URL）、**探测**（`tools/list` 预览）、启用/禁用、工具明细 |
+| **4.8.6** | MCP 写工具走 **3.3 HITL**；调用审计写入 **3.6** `sunshine-tool-audit`（`source=mcp`） |
+| **4.8.7** | Workflow `tool` 节点可选 `kind=mcp` 工具（Nacos `params.tool` 白名单） |
+
+**动态引入流程**：
+
+```
+运维/研发 → /mcp 注册 Server → tool-manager 持久化 + McpClient 连接
+         → tools/list 发现 → 写入 Catalog（kind=mcp）
+         → orchestrator ToolCatalogService 拉取 → ReAct / Workflow 可调用
+```
+
+**检查门**：UI 注册 1 个 MCP Server（stdio 或 sse）→ 探测可见工具列表 → 启用后 ReAct 白名单可调用；写工具弹出 HITL 确认；审计可查 `source=mcp`。
 
 ### 4.9 K8s 生产部署
 
@@ -148,7 +168,7 @@
 阶段一 → 底座 + 会话 + SSE 重连
 阶段二 → 三模式 + Workflow + RAG 基线 + Timeline V2
 阶段三 → hybrid RAG + 租户 + HITL + PLAN_WORKFLOW + Skills
-阶段四 → 运营平台 + OCR + 沙箱 + MCP + K8s + …
+阶段四 → 运营平台 + OCR + 沙箱 + **MCP 动态引入** + K8s + …
 ```
 
 ---
@@ -161,7 +181,7 @@
 | 4.2–4.3 | PDF/发票 OCR 入库可检索 + ocr eval |
 | 4.4 | 聊天发图识图 + Grounding |
 | 4.5 | Docker 沙箱执行 + 审计 |
-| 4.8 | MCP 工具可调用 |
+| 4.8 | `/mcp` 动态注册 + 探测 + ReAct 可调用 + HITL/审计 |
 | 4.9 | 3 副本 orchestrator 滚动无中断 |
 
 ---

@@ -1,0 +1,159 @@
+{
+  "run_at": "2026-06-21T17:33:24",
+  "run_tag": "20260621-173324-rewrite-smoke",
+  "date": "2026-06-21",
+  "golden_version": 6,
+  "suite": "core",
+  "strategy": "hybrid+rerank",
+  "query_count": 12,
+  "rewrite_report": {
+    "summary": {
+      "enabled": true,
+      "model": "deepseek-v4-flash",
+      "query_count": 12,
+      "applied_count": 12,
+      "applied_rate": 1.0,
+      "rewrite_latency_ms": {
+        "p50": 2249.6,
+        "p95": 2450.2
+      },
+      "recall_at_5_raw_mean": 1.0,
+      "recall_at_5_rewritten_mean": 0.9167,
+      "recall_at_5_delta_mean": -0.0833
+    },
+    "rows": [
+      {
+        "id": "q001",
+        "category": "leave",
+        "raw_query": "年假可以请几天",
+        "rewritten_query": "年假 可请天数 年休假 制度 规定 条件 员工",
+        "applied": true,
+        "rewrite_latency_ms": 2353.3,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q002",
+        "category": "leave",
+        "raw_query": "病假需要什么证明材料",
+        "rewritten_query": "病假证明材料要求 病假申请流程 医院诊断证明 请假规定 病假休假规定",
+        "applied": true,
+        "rewrite_latency_ms": 2228.1,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q003",
+        "category": "leave",
+        "raw_query": "请假要提前多久申请",
+        "rewritten_query": "请假提前申请时间要求 请假制度 提前多久申请",
+        "applied": true,
+        "rewrite_latency_ms": 1668.6,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q004",
+        "category": "leave",
+        "raw_query": "事假有没有工资",
+        "rewritten_query": "事假期间是否有工资 请假制度 考勤 事假工资规定",
+        "applied": true,
+        "rewrite_latency_ms": 2100.1,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q005",
+        "category": "leave",
+        "raw_query": "婚假有多少天",
+        "rewritten_query": "企业婚假天数 婚假规定 假期制度",
+        "applied": true,
+        "rewrite_latency_ms": 1904.6,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q006",
+        "category": "leave",
+        "raw_query": "产假陪产假怎么休",
+        "rewritten_query": "产假陪产假休假规定 申请流程 制度 请假",
+        "applied": true,
+        "rewrite_latency_ms": 2108.5,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q007",
+        "category": "process",
+        "raw_query": "直属主管审批职责是什么",
+        "rewritten_query": "直属主管审批职责 制度 流程 审批权限 直属主管 职责",
+        "applied": true,
+        "rewrite_latency_ms": 2279.2,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 0.0,
+        "recall_at_5_delta": -1.0
+      },
+      {
+        "id": "q008",
+        "category": "process",
+        "raw_query": "HR在请假流程中负责什么",
+        "rewritten_query": "HR 在请假流程中的职责 人力资源部门 请假审批 考勤管理",
+        "applied": true,
+        "rewrite_latency_ms": 2396.6,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q009",
+        "category": "process",
+        "raw_query": "三天以上请假谁审批",
+        "rewritten_query": "三天以上请假审批流程 审批人 规定",
+        "applied": true,
+        "rewrite_latency_ms": 2271.1,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q010",
+        "category": "process",
+        "raw_query": "销假是什么意思怎么操作",
+        "rewritten_query": "销假的定义及操作流程（请假制度、考勤管理、销假步骤）",
+        "applied": true,
+        "rewrite_latency_ms": 2542.6,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q011",
+        "category": "leave",
+        "raw_query": "加班调休余额在哪里查",
+        "rewritten_query": "加班调休余额查询方法 考勤 调休制度 查询流程",
+        "applied": true,
+        "rewrite_latency_ms": 2450.2,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      },
+      {
+        "id": "q012",
+        "category": "leave",
+        "raw_query": "丧假可以请几天",
+        "rewritten_query": "丧假 请假天数 规定 制度 标准",
+        "applied": true,
+        "rewrite_latency_ms": 2181.2,
+        "recall_at_5_raw": 1.0,
+        "recall_at_5_rewritten": 1.0,
+        "recall_at_5_delta": 0.0
+      }
+    ]
+  }
+}

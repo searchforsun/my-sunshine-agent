@@ -56,7 +56,7 @@ class StepSummarizerTest {
 
     @Test
     void ragAfter_withMetadata_usesDocTitlesOnly() {
-        StepMetadata metadata = new StepMetadata(3, List.of("公司请假流程规范"));
+        StepMetadata metadata = new StepMetadata(3, List.of("公司请假流程规范"), null, null, null, null, null);
         String after = StepSummarizer.afterRag("项目预算审批流程", "命中 0 条", metadata);
         assertThat(after).isEqualTo("找到 3 条参考片段，来源：公司请假流程规范");
     }

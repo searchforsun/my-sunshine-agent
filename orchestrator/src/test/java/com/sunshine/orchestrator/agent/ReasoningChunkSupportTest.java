@@ -30,6 +30,24 @@ class ReasoningChunkSupportTest {
     }
 
     @Test
+    void emitReasoningChunk_enqueuesStepDelta() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("对比财务与 OA");
+        ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
+        StepEventBridge.bind("msg-1", session, queue);
+
+        session.beginReasoningRound();
+        StepEventBridge.emitReasoningChunk("msg-1", "pending 共 3 笔");
+
+        StreamToken token = queue.poll();
+        assertThat(token).isNotNull();
+        assertThat(token.isStepDelta()).isTrue();
+        assertThat(token.stepId()).isEqualTo("think");
+        assertThat(token.channel()).isEqualTo("reasoning");
+        assertThat(token.text()).isEqualTo("pending 共 3 笔");
+    }
+
+    @Test
     void emitSingletonReasoningChunk_enqueuesStepDelta() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("对比财务与 OA");
@@ -48,12 +66,12 @@ class ReasoningChunkSupportTest {
     }
 
     @Test
-    void emitSingletonReasoningChunk_skipsWhenThinkNotRunning() {
+    void emitReasoningChunk_skipsWhenThinkNotRunning() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
         StepEventBridge.bind("msg-1", session, queue);
 
-        StepEventBridge.emitSingletonReasoningChunk("不应出现");
+        StepEventBridge.emitReasoningChunk("msg-1", "不应出现");
 
         assertThat(queue.poll()).isNull();
     }

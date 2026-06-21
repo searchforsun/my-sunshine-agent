@@ -209,6 +209,8 @@ my-sunshine-agent/
 
 ### 阶段三：生产加固（8周）
 
+> **进度（2026-06-21）：** 3.4 RAG 全链路 ✅、3.8.1–3.8.6 提示词链路 ✅；其余待做。
+
 > 设计 spec（SSOT）：[superpowers/specs/phase3-production-hardening-design.md](./superpowers/specs/phase3-production-hardening-design.md)  
 > 索引：[superpowers/specs/README.md](./superpowers/specs/README.md)  
 > 实施计划：[superpowers/plans/2026-06-19-phase3-production-hardening.md](./superpowers/plans/2026-06-19-phase3-production-hardening.md)（3.4 等）、[multi-agent-architecture.md](./superpowers/plans/2026-06-19-multi-agent-architecture.md)（3.9–3.12）  
@@ -216,18 +218,18 @@ my-sunshine-agent/
 
 | 任务卡 | 内容 |
 |--------|------|
-| **3.4** **RAG**（优先） | 3.4.1–3.4.8：评测 v6 → ES → Hybrid → Rerank → CI |
+| **3.4** **RAG**（优先） | 3.4.1–3.4.8：**✅ 已实现**（closure 见 `docs/rag/baseline-report.md`、`regression-2026-06-21.md`） |
 | 3.2 多租户 | Milvus Partition + MTM tenant + Sentinel 配额 |
 | 3.3 HITL | Catalog `sideEffect` + 确认 UI（含子 Agent） |
 | 3.5 可观测 | Grafana RAG + Sentinel Dashboard + 4 告警 |
 | 3.6 审计 | tool-audit + sub_agent_run + plan.* |
 | 3.7 Grounding | 主答复 + 子 Agent output |
-| 3.8 提示词 | QueryRewrite + PromptComposer |
+| 3.8 提示词 | **✅ 3.8.1–3.8.6** · **⬜ 3.8.7** Planner（非检查门） |
 | 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API（含原 3.1） |
 | 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 |
 | 3.11 skill-manager | :8225 + SkillCatalogService |
 | 3.12 前端 | `/skills` + Plan 详情页 |
-| 3.13 并行 | AhoCorasick、`source_type` 预留 |
+| 3.13 并行 | AhoCorasick ⬜；`source_type` **✅**（3.4.2） |
 | 3.14 多实例 | Redis GenerationJob 锁 |
 
 #### RAG 量化目标（双轨）
@@ -238,10 +240,11 @@ my-sunshine-agent/
 | **v6 提升** | Recall@5 / MRR vs vector | hybrid+rerank 较 vector **+15% / +10%** |
 | **性能** | P95 latency | ≤ **800ms**（hybrid+rerank） |
 
-#### 阶段三检查门（17 条，见 spec §7）
+#### 阶段三检查门（17 条，见 spec §6）
 
-- [ ] v5 回归轨 + v6 提升轨 `rag_eval.py` 达标
-- [ ] Grafana RAG + Sentinel Dashboard + 4 条告警
+- [x] v5 回归轨 `rag_eval.py` 达标（hybrid+rerank PASS）
+- [ ] v6 提升轨：生产门禁 PASS；**相对 vector +15% 轨 WARN**（vector 基线 97.6%）
+- [ ] Grafana RAG + Sentinel Dashboard + 4 条告警（指标+JSON ✅；远程部署/触发 ⬜）
 - [ ] 租户 A/B 隔离；写工具 HITL（含子 Agent）
 - [ ] `PLAN_WORKFLOW` 三 API + Plan 详情页 + 2+ agent 节点演示
 - [ ] IntentRouter `plan-workflow` + Planner fallback react
@@ -265,7 +268,7 @@ my-sunshine-agent/
 | **4.5** Skills 沙箱 | 代码执行 | Docker `SandboxExecutor` |
 | **4.6** 动态 DAG 增强 | Plan 不够用 | if-else、并行、Replan、ContextCompressor |
 | **4.7** 多 Agent 增强 | 复杂协作 | Coordinator、MsgHub、子 Timeline 展开 |
-| **4.8** MCP 协议 | 非 HTTP 系统 | Tool Manager 注册 MCP |
+| **4.8** MCP 动态引入 + 前端管理 | 异构系统接入 | tool-manager 动态注册 MCP Server + `/mcp` 管理页 + Catalog `kind=mcp` |
 | **4.9** K8s | 流量/HA | Helm + HPA + GitOps |
 | **4.10** Seata | 跨服务写 | 与 HITL 串联 |
 | **4.11** Prompt 后台 | 非研发维护提示词 | 版本/审核/回滚 |
@@ -280,9 +283,11 @@ my-sunshine-agent/
 | AI 对话 | `/chat` | SSE 流式聊天，消息列表，发送/停止/清空 |
 | 知识库 | `/knowledge` | Markdown 文档上传入库 + 向量检索测试；**阶段四** 扩展 PDF/图片 OCR 入库 |
 | **Skills** | **`/skills`** | **Skill 上传/编辑/版本发布/工具绑定** |
+| **MCP 工具** | **`/mcp`** | **阶段四 4.8**：MCP Server 动态注册、探测、启停、工具预览 |
 | 系统状态 | `/status` | 11 微服务 + 12 中间件状态矩阵 |
 
-> **阶段四 OCR/多模态**：见 `superpowers/specs/phase4-platformization-design.md` §4.2–4.4
+> **阶段四 OCR/多模态**：见 `superpowers/specs/phase4-platformization-design.md` §4.2–4.4  
+> **阶段四 MCP**：见同文档 §4.8（动态注册 + `/mcp` 管理页；阶段三非目标）
 
 **技术栈**：Vue 3 + TypeScript + Naive UI + Vite + Pinia + Vue Router
 

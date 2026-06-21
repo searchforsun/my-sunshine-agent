@@ -79,6 +79,21 @@ public final class ProcessingStepMerger {
         return existing + chunk;
     }
 
+    /** done 态 step 的 reasoning 为全量；running 态 step_delta 仍为增量拼接 */
+    private static String mergeReasoning(ProcessingStep existing, ProcessingStep incoming) {
+        if (incoming.reasoning() == null) {
+            return existing.reasoning();
+        }
+        if (isDone(incoming)) {
+            return incoming.reasoning();
+        }
+        return appendReasoning(existing.reasoning(), incoming.reasoning());
+    }
+
+    private static boolean isDone(ProcessingStep step) {
+        return "done".equals(step.lifecycle()) || "done".equals(step.status());
+    }
+
     private static String concat(String existing, String chunk) {
         if (existing == null || existing.isEmpty()) {
             return chunk;
@@ -136,7 +151,7 @@ public final class ProcessingStepMerger {
                 endedAt,
                 durationMs,
                 incoming.detail() != null ? incoming.detail() : existing.detail(),
-                appendReasoning(existing.reasoning(), incoming.reasoning()),
+                mergeReasoning(existing, incoming),
                 longer(existing.output(), incoming.output()),
                 incoming.result() != null ? incoming.result() : existing.result(),
                 Math.max(existing.ts(), incoming.ts()),
@@ -287,6 +302,21 @@ public final class ProcessingStepMerger {
         }
         if (metadata.sources() != null && !metadata.sources().isEmpty()) {
             map.put("sources", metadata.sources());
+        }
+        if (metadata.rewriteApplied() != null) {
+            map.put("rewriteApplied", metadata.rewriteApplied());
+        }
+        if (metadata.rewriteLatencyMs() != null) {
+            map.put("rewriteLatencyMs", metadata.rewriteLatencyMs());
+        }
+        if (hasText(metadata.rewriteFrom())) {
+            map.put("rewriteFrom", metadata.rewriteFrom());
+        }
+        if (hasText(metadata.rewriteTo())) {
+            map.put("rewriteTo", metadata.rewriteTo());
+        }
+        if (hasText(metadata.rewriteScenario())) {
+            map.put("rewriteScenario", metadata.rewriteScenario());
         }
         return map;
     }

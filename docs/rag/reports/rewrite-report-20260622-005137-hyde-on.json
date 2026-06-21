@@ -1,0 +1,1135 @@
+{
+  "run_at": "2026-06-22T00:51:37",
+  "run_tag": "20260622-005137-hyde-on",
+  "date": "2026-06-22",
+  "golden_version": 6,
+  "suite": "v5",
+  "strategy": "hybrid+rerank",
+  "query_count": 123,
+  "rewrite_report": {
+    "summary": {
+      "enabled": true,
+      "model": "deepseek-v4-flash",
+      "hyde_enabled": true,
+      "query_count": 123,
+      "applied_count": 0,
+      "applied_rate": 0.0,
+      "rewrite_latency_ms": {
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "hyde_model": "deepseek-v4-flash",
+      "hyde_applied_count": 0,
+      "hyde_applied_rate": 0.0
+    },
+    "rows": [
+      {
+        "id": "q001",
+        "category": "leave",
+        "raw_query": "年假可以请几天",
+        "rewritten_query": "年假可以请几天",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q002",
+        "category": "leave",
+        "raw_query": "病假需要什么证明材料",
+        "rewritten_query": "病假需要什么证明材料",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q003",
+        "category": "leave",
+        "raw_query": "请假要提前多久申请",
+        "rewritten_query": "请假要提前多久申请",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q004",
+        "category": "leave",
+        "raw_query": "事假有没有工资",
+        "rewritten_query": "事假有没有工资",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q005",
+        "category": "leave",
+        "raw_query": "婚假有多少天",
+        "rewritten_query": "婚假有多少天",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q006",
+        "category": "leave",
+        "raw_query": "产假陪产假怎么休",
+        "rewritten_query": "产假陪产假怎么休",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q007",
+        "category": "process",
+        "raw_query": "直属主管审批职责是什么",
+        "rewritten_query": "直属主管审批职责是什么",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q008",
+        "category": "process",
+        "raw_query": "HR在请假流程中负责什么",
+        "rewritten_query": "HR在请假流程中负责什么",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q009",
+        "category": "process",
+        "raw_query": "三天以上请假谁审批",
+        "rewritten_query": "三天以上请假谁审批",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q010",
+        "category": "process",
+        "raw_query": "销假是什么意思怎么操作",
+        "rewritten_query": "销假是什么意思怎么操作",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q011",
+        "category": "leave",
+        "raw_query": "加班调休余额在哪里查",
+        "rewritten_query": "加班调休余额在哪里查",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q012",
+        "category": "leave",
+        "raw_query": "丧假可以请几天",
+        "rewritten_query": "丧假可以请几天",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_001",
+        "category": "negative",
+        "raw_query": "公司股票期权怎么兑现",
+        "rewritten_query": "公司股票期权怎么兑现",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_002",
+        "category": "negative",
+        "raw_query": "公司股权激励行权如何套现",
+        "rewritten_query": "公司股权激励行权如何套现",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q013",
+        "category": "expense",
+        "raw_query": "市内交通报销上限多少",
+        "rewritten_query": "市内交通报销上限多少",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q014",
+        "category": "expense",
+        "raw_query": "差旅住宿一晚能报多少钱",
+        "rewritten_query": "差旅住宿一晚能报多少钱",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q015",
+        "category": "expense",
+        "raw_query": "餐饮招待费人均标准",
+        "rewritten_query": "餐饮招待费人均标准",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q016",
+        "category": "expense",
+        "raw_query": "报销需要什么样的发票",
+        "rewritten_query": "报销需要什么样的发票",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q017",
+        "category": "expense",
+        "raw_query": "超过五千的报销谁审批",
+        "rewritten_query": "超过五千的报销谁审批",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q018",
+        "category": "expense",
+        "raw_query": "拆单报销是否允许",
+        "rewritten_query": "拆单报销是否允许",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q019",
+        "category": "expense",
+        "raw_query": "私人消费能报销吗",
+        "rewritten_query": "私人消费能报销吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q020",
+        "category": "expense",
+        "raw_query": "报销审批流程有几步",
+        "rewritten_query": "报销审批流程有几步",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q021",
+        "category": "expense",
+        "raw_query": "电子发票报销要注意什么",
+        "rewritten_query": "电子发票报销要注意什么",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q022",
+        "category": "expense",
+        "raw_query": "办公用品采购怎么报销",
+        "rewritten_query": "办公用品采购怎么报销",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q023",
+        "category": "expense",
+        "raw_query": "虚假发票报销后果",
+        "rewritten_query": "虚假发票报销后果",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q024",
+        "category": "expense",
+        "raw_query": "因公交通费谁审批",
+        "rewritten_query": "因公交通费谁审批",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q025",
+        "category": "attendance",
+        "raw_query": "迟到几次算旷工",
+        "rewritten_query": "迟到几次算旷工",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q026",
+        "category": "attendance",
+        "raw_query": "加班需要提前申请吗",
+        "rewritten_query": "加班需要提前申请吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q027",
+        "category": "attendance",
+        "raw_query": "周末加班怎么算调休",
+        "rewritten_query": "周末加班怎么算调休",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q028",
+        "category": "attendance",
+        "raw_query": "弹性上下班时间规定",
+        "rewritten_query": "弹性上下班时间规定",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q029",
+        "category": "attendance",
+        "raw_query": "忘打卡怎么补签",
+        "rewritten_query": "忘打卡怎么补签",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q030",
+        "category": "attendance",
+        "raw_query": "外出办公如何登记考勤",
+        "rewritten_query": "外出办公如何登记考勤",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q031",
+        "category": "attendance",
+        "raw_query": "夜班补贴标准",
+        "rewritten_query": "夜班补贴标准",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q032",
+        "category": "attendance",
+        "raw_query": "法定节假日加班工资",
+        "rewritten_query": "法定节假日加班工资",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q033",
+        "category": "attendance",
+        "raw_query": "考勤异常申诉找谁",
+        "rewritten_query": "考勤异常申诉找谁",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q034",
+        "category": "attendance",
+        "raw_query": "远程办公考勤要求",
+        "rewritten_query": "远程办公考勤要求",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q035",
+        "category": "onboarding",
+        "raw_query": "新员工入职第一天做什么",
+        "rewritten_query": "新员工入职第一天做什么",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q036",
+        "category": "onboarding",
+        "raw_query": "入职需要带哪些材料",
+        "rewritten_query": "入职需要带哪些材料",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q037",
+        "category": "onboarding",
+        "raw_query": "试用期多长时间",
+        "rewritten_query": "试用期多长时间",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q038",
+        "category": "onboarding",
+        "raw_query": "入职培训有哪些环节",
+        "rewritten_query": "入职培训有哪些环节",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q039",
+        "category": "onboarding",
+        "raw_query": "工牌和账号什么时候开通",
+        "rewritten_query": "工牌和账号什么时候开通",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q040",
+        "category": "onboarding",
+        "raw_query": "入职导师制度是什么",
+        "rewritten_query": "入职导师制度是什么",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q041",
+        "category": "onboarding",
+        "raw_query": "劳动合同什么时候签",
+        "rewritten_query": "劳动合同什么时候签",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q042",
+        "category": "onboarding",
+        "raw_query": "入职体检要求",
+        "rewritten_query": "入职体检要求",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q043",
+        "category": "finance",
+        "raw_query": "部门经理审批额度上限",
+        "rewritten_query": "部门经理审批额度上限",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q044",
+        "category": "finance",
+        "raw_query": "CFO审批什么金额以上的单据",
+        "rewritten_query": "CFO审批什么金额以上的单据",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q045",
+        "category": "finance",
+        "raw_query": "财务复核的职责是什么",
+        "rewritten_query": "财务复核的职责是什么",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q046",
+        "category": "finance",
+        "raw_query": "预算外支出谁批准",
+        "rewritten_query": "预算外支出谁批准",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q047",
+        "category": "finance",
+        "raw_query": "采购付款审批矩阵",
+        "rewritten_query": "采购付款审批矩阵",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q048",
+        "category": "finance",
+        "raw_query": "差旅费审批权限分级",
+        "rewritten_query": "差旅费审批权限分级",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q049",
+        "category": "finance",
+        "raw_query": "增值税专用发票和普通发票区别",
+        "rewritten_query": "增值税专用发票和普通发票区别",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q050",
+        "category": "finance",
+        "raw_query": "发票抬头必须写公司全称吗",
+        "rewritten_query": "发票抬头必须写公司全称吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q051",
+        "category": "finance",
+        "raw_query": "电子发票如何验真",
+        "rewritten_query": "电子发票如何验真",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q052",
+        "category": "finance",
+        "raw_query": "报销发票税率有什么要求",
+        "rewritten_query": "报销发票税率有什么要求",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q053",
+        "category": "finance",
+        "raw_query": "丢失发票还能报销吗",
+        "rewritten_query": "丢失发票还能报销吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q054",
+        "category": "finance",
+        "raw_query": "个人抬头发票能否报销",
+        "rewritten_query": "个人抬头发票能否报销",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q055",
+        "category": "finance",
+        "raw_query": "部门预算什么时候编制",
+        "rewritten_query": "部门预算什么时候编制",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q056",
+        "category": "finance",
+        "raw_query": "预算调剂需要谁批准",
+        "rewritten_query": "预算调剂需要谁批准",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q057",
+        "category": "finance",
+        "raw_query": "季度预算执行率怎么考核",
+        "rewritten_query": "季度预算执行率怎么考核",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q058",
+        "category": "finance",
+        "raw_query": "项目预算超支怎么办",
+        "rewritten_query": "项目预算超支怎么办",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q059",
+        "category": "finance",
+        "raw_query": "预算内采购流程",
+        "rewritten_query": "预算内采购流程",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q060",
+        "category": "finance",
+        "raw_query": "年度预算调整窗口期",
+        "rewritten_query": "年度预算调整窗口期",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q061",
+        "category": "remote",
+        "raw_query": "远程办公算不算请假",
+        "rewritten_query": "远程办公算不算请假",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q062",
+        "category": "remote",
+        "raw_query": "混合办公每周几天可以远程",
+        "rewritten_query": "混合办公每周几天可以远程",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q063",
+        "category": "remote",
+        "raw_query": "远程办公考勤怎么打卡",
+        "rewritten_query": "远程办公考勤怎么打卡",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q064",
+        "category": "remote",
+        "raw_query": "长期远程办公谁审批",
+        "rewritten_query": "长期远程办公谁审批",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q065",
+        "category": "remote",
+        "raw_query": "试用期可以远程办公吗",
+        "rewritten_query": "试用期可以远程办公吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q066",
+        "category": "remote",
+        "raw_query": "远程办公期间能去外地吗",
+        "rewritten_query": "远程办公期间能去外地吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q067",
+        "category": "remote",
+        "raw_query": "远程办公和出差有什么区别",
+        "rewritten_query": "远程办公和出差有什么区别",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q068",
+        "category": "remote",
+        "raw_query": "远程办公日加班怎么申请",
+        "rewritten_query": "远程办公日加班怎么申请",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q069",
+        "category": "security",
+        "raw_query": "公司账号密码多久要换一次",
+        "rewritten_query": "公司账号密码多久要换一次",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q070",
+        "category": "security",
+        "raw_query": "能不能把公司代码推到GitHub",
+        "rewritten_query": "能不能把公司代码推到GitHub",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q071",
+        "category": "security",
+        "raw_query": "客户数据可以下载到笔记本本地吗",
+        "rewritten_query": "客户数据可以下载到笔记本本地吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q072",
+        "category": "security",
+        "raw_query": "VPN连不上内网怎么办",
+        "rewritten_query": "VPN连不上内网怎么办",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q073",
+        "category": "security",
+        "raw_query": "离职之后还能用公司邮箱吗",
+        "rewritten_query": "离职之后还能用公司邮箱吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q074",
+        "category": "security",
+        "raw_query": "公司数据分几个保密级别",
+        "rewritten_query": "公司数据分几个保密级别",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q075",
+        "category": "security",
+        "raw_query": "信息安全考试多少分及格",
+        "rewritten_query": "信息安全考试多少分及格",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q076",
+        "category": "security",
+        "raw_query": "发现同事泄露敏感数据怎么举报",
+        "rewritten_query": "发现同事泄露敏感数据怎么举报",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q077",
+        "category": "travel",
+        "raw_query": "一线城市出差住宿标准是多少",
+        "rewritten_query": "一线城市出差住宿标准是多少",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q078",
+        "category": "travel",
+        "raw_query": "出差超过7天需要谁审批",
+        "rewritten_query": "出差超过7天需要谁审批",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q079",
+        "category": "travel",
+        "raw_query": "差旅费报销要在几天内提交",
+        "rewritten_query": "差旅费报销要在几天内提交",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q080",
+        "category": "travel",
+        "raw_query": "客户招待餐能不能算在差旅费里",
+        "rewritten_query": "客户招待餐能不能算在差旅费里",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q081",
+        "category": "travel",
+        "raw_query": "普通员工出差能报商务舱吗",
+        "rewritten_query": "普通员工出差能报商务舱吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q082",
+        "category": "travel",
+        "raw_query": "出差遇到周末住宿费能报销吗",
+        "rewritten_query": "出差遇到周末住宿费能报销吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q083",
+        "category": "travel",
+        "raw_query": "国际出差要提前多久申请",
+        "rewritten_query": "国际出差要提前多久申请",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q084",
+        "category": "travel",
+        "raw_query": "差旅费和日常打车费能混在一张单子报吗",
+        "rewritten_query": "差旅费和日常打车费能混在一张单子报吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q085",
+        "category": "travel",
+        "raw_query": "出差预算不够了要先走什么流程",
+        "rewritten_query": "出差预算不够了要先走什么流程",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q086",
+        "category": "security",
+        "raw_query": "远程办公违反信息安全规定会怎样",
+        "rewritten_query": "远程办公违反信息安全规定会怎样",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q087",
+        "category": "onboarding",
+        "raw_query": "新员工入职信息安全培训什么时候完成",
+        "rewritten_query": "新员工入职信息安全培训什么时候完成",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q088",
+        "category": "finance",
+        "raw_query": "预算内的出差费用审批走哪张矩阵",
+        "rewritten_query": "预算内的出差费用审批走哪张矩阵",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q089",
+        "category": "multihop",
+        "raw_query": "出差期间想请半天年假怎么操作",
+        "rewritten_query": "出差期间想请半天年假怎么操作",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q090",
+        "category": "multihop",
+        "raw_query": "项目预算超支了还能安排出差吗",
+        "rewritten_query": "项目预算超支了还能安排出差吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q091",
+        "category": "multihop",
+        "raw_query": "远程办公时生病了要先销远程单还是先请假",
+        "rewritten_query": "远程办公时生病了要先销远程单还是先请假",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q092",
+        "category": "multihop",
+        "raw_query": "试用期员工能申请出国出差吗",
+        "rewritten_query": "试用期员工能申请出国出差吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q093",
+        "category": "multihop",
+        "raw_query": "出差回来超过10个工作日还能报销吗",
+        "rewritten_query": "出差回来超过10个工作日还能报销吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q094",
+        "category": "multihop",
+        "raw_query": "加班到很晚第二天能直接远程办公吗",
+        "rewritten_query": "加班到很晚第二天能直接远程办公吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q095",
+        "category": "multihop",
+        "raw_query": "报销发票抬头错了同时预算不够怎么办",
+        "rewritten_query": "报销发票抬头错了同时预算不够怎么办",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q096",
+        "category": "multihop",
+        "raw_query": "预算调剂后采购出差用品走什么审批",
+        "rewritten_query": "预算调剂后采购出差用品走什么审批",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q097",
+        "category": "multihop",
+        "raw_query": "长期远程办公的人年假怎么申请",
+        "rewritten_query": "长期远程办公的人年假怎么申请",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q098",
+        "category": "multihop",
+        "raw_query": "出差能用个人笔记本处理客户数据吗",
+        "rewritten_query": "出差能用个人笔记本处理客户数据吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q099",
+        "category": "multihop",
+        "raw_query": "新员工没签劳动合同能出差吗",
+        "rewritten_query": "新员工没签劳动合同能出差吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q100",
+        "category": "multihop",
+        "raw_query": "什么金额的出差报销需要CFO审批",
+        "rewritten_query": "什么金额的出差报销需要CFO审批",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q101",
+        "category": "multihop",
+        "raw_query": "法定节假日远程办公算不算加班",
+        "rewritten_query": "法定节假日远程办公算不算加班",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q102",
+        "category": "multihop",
+        "raw_query": "出差住宿超标没事前批准能报多少",
+        "rewritten_query": "出差住宿超标没事前批准能报多少",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q103",
+        "category": "multihop",
+        "raw_query": "离职前没报销的差旅和年假怎么处理",
+        "rewritten_query": "离职前没报销的差旅和年假怎么处理",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q104",
+        "category": "multihop",
+        "raw_query": "预算内采购和差旅报销审批人一样吗",
+        "rewritten_query": "预算内采购和差旅报销审批人一样吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q105",
+        "category": "multihop",
+        "raw_query": "远程办公违反考勤又泄露代码怎么处理",
+        "rewritten_query": "远程办公违反考勤又泄露代码怎么处理",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q106",
+        "category": "multihop",
+        "raw_query": "病假三天以上要几位领导审批",
+        "rewritten_query": "病假三天以上要几位领导审批",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q107",
+        "category": "multihop",
+        "raw_query": "国际出差和国内出差审批有什么不同",
+        "rewritten_query": "国际出差和国内出差审批有什么不同",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q108",
+        "category": "multihop",
+        "raw_query": "信息安全考试没过能出差见客户吗",
+        "rewritten_query": "信息安全考试没过能出差见客户吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q109",
+        "category": "multihop",
+        "raw_query": "出差周末加班调休和差旅餐补能同时拿吗",
+        "rewritten_query": "出差周末加班调休和差旅餐补能同时拿吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q110",
+        "category": "multihop",
+        "raw_query": "电子发票验真失败出差费用还能报吗",
+        "rewritten_query": "电子发票验真失败出差费用还能报吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q111",
+        "category": "multihop",
+        "raw_query": "直属主管批请假和批报销的金额上限各是多少",
+        "rewritten_query": "直属主管批请假和批报销的金额上限各是多少",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q112",
+        "category": "multihop",
+        "raw_query": "紧急出差没做预算调剂就订票能报销吗",
+        "rewritten_query": "紧急出差没做预算调剂就订票能报销吗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_003",
+        "category": "negative",
+        "raw_query": "如何投资比特币",
+        "rewritten_query": "如何投资比特币",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_004",
+        "category": "negative",
+        "raw_query": "公司上市代码是多少",
+        "rewritten_query": "公司上市代码是多少",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_005",
+        "category": "negative",
+        "raw_query": "帮我写一首唐诗",
+        "rewritten_query": "帮我写一首唐诗",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_006",
+        "category": "negative",
+        "raw_query": "明天上海天气怎么样",
+        "rewritten_query": "明天上海天气怎么样",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_007",
+        "category": "negative",
+        "raw_query": "公司食堂今天午餐有什么菜",
+        "rewritten_query": "公司食堂今天午餐有什么菜",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_008",
+        "category": "negative",
+        "raw_query": "个人护照加急怎么办理",
+        "rewritten_query": "个人护照加急怎么办理",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_009",
+        "category": "negative",
+        "raw_query": "帮我订一张明天去北京的机票",
+        "rewritten_query": "帮我订一张明天去北京的机票",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_010",
+        "category": "negative",
+        "raw_query": "滴滴打车首单优惠券在哪里领",
+        "rewritten_query": "滴滴打车首单优惠券在哪里领",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      },
+      {
+        "id": "q_neg_011",
+        "category": "negative",
+        "raw_query": "个人所得税专项附加扣除怎么填",
+        "rewritten_query": "个人所得税专项附加扣除怎么填",
+        "applied": false,
+        "rewrite_latency_ms": 0.0,
+        "error": "HTTPConnectionPool(host='ecs4c16g', port=8300): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError(\"HTTPConnection(host='ecs4c16g', port=8300): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。\"))"
+      }
+    ]
+  }
+}

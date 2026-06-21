@@ -58,6 +58,14 @@ public final class StepEventBridge {
         return messageId == null ? null : USER_QUERIES.get(messageId);
     }
 
+    /** ReAct 单会话时返回当前 bridge messageId，供 RagTool 等 Hook 侧组件关联 trace */
+    public static String activeMessageId() {
+        if (SESSIONS.size() != 1) {
+            return null;
+        }
+        return SESSIONS.keySet().iterator().next();
+    }
+
     public static void clear(String messageId) {
         if (messageId != null) {
             SESSIONS.remove(messageId);
@@ -88,21 +96,31 @@ public final class StepEventBridge {
         SESSIONS.forEach((id, session) -> emitHookTokens(id, session, action));
     }
 
-    /** ReasoningChunkEvent 原生增量 — 直接 step_delta，不经 Event REASONING 转换 */
+    /** ReasoningChunkEvent 原生增量 — 按 messageId 精确路由 */
+    public static void emitReasoningChunk(String messageId, String incrementalText) {
+        if (messageId == null || incrementalText == null || incrementalText.isEmpty()) {
+            return;
+        }
+        ProcessingTimelineSession session = SESSIONS.get(messageId);
+        if (session == null) {
+            return;
+        }
+        String thinkId = session.currentThinkStepId();
+        if (thinkId == null || !session.isThinkRunning()) {
+            return;
+        }
+        ConcurrentLinkedQueue<StreamToken> queue = HOOK_TOKEN_QUEUES.get(messageId);
+        if (queue != null) {
+            queue.offer(StreamToken.stepDelta(thinkId, "reasoning", incrementalText));
+        }
+    }
+
+    /** Hook 无法拿到 messageId 时的兜底：仅当存在唯一活跃 session 时发射（单并发安全） */
     public static void emitSingletonReasoningChunk(String incrementalText) {
         if (incrementalText == null || incrementalText.isEmpty() || SESSIONS.size() != 1) {
             return;
         }
-        SESSIONS.forEach((id, session) -> {
-            String thinkId = session.currentThinkStepId();
-            if (thinkId == null || !session.isThinkRunning()) {
-                return;
-            }
-            ConcurrentLinkedQueue<StreamToken> queue = HOOK_TOKEN_QUEUES.get(id);
-            if (queue != null) {
-                queue.offer(StreamToken.stepDelta(thinkId, "reasoning", incrementalText));
-            }
-        });
+        SESSIONS.forEach((id, session) -> emitReasoningChunk(id, incrementalText));
     }
 
     private static void emitHookTokens(String messageId, ProcessingTimelineSession session,

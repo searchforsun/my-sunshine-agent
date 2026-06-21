@@ -1,0 +1,388 @@
+{
+  "run_at": "2026-06-21T14:21:04",
+  "run_tag": "20260621-142104-closure-v6-vector",
+  "date": "2026-06-21",
+  "golden_version": 6,
+  "suite": "v6",
+  "strategy": "vector",
+  "query_count": 46,
+  "min_score": 0.48,
+  "recall_at_k": {
+    "3": 0.9286,
+    "5": 0.9762,
+    "10": 0.9762
+  },
+  "mrr": 0.9274,
+  "empty_rate_positive": 0.0,
+  "empty_rate_negative": 1.0,
+  "latency_ms": {
+    "p50": 156.7,
+    "p95": 190.4
+  },
+  "by_category_recall_at_3": {
+    "adversarial": 0.9286
+  },
+  "production_gates": {
+    "recall_at_3_min": 0.95,
+    "recall_at_5_min": 0.98,
+    "mrr_min": 0.92,
+    "empty_rate_positive_max": 0.0,
+    "empty_rate_negative_min": 0.95,
+    "latency_p95_ms_max": 500
+  },
+  "badcases": {
+    "positive_miss": [
+      {
+        "id": "q_adv_009",
+        "query": "报一下上个月差旅",
+        "category": "adversarial",
+        "expected": [
+          "公司报销管理制度"
+        ],
+        "top3": [
+          {
+            "docName": "员工场景速查与多制度交叉指引",
+            "score": 0.6958
+          },
+          {
+            "docName": "差旅费管理办法",
+            "score": 0.6826
+          },
+          {
+            "docName": "差旅费管理办法",
+            "score": 0.6614
+          }
+        ],
+        "first_rank": null
+      },
+      {
+        "id": "q_adv_010",
+        "query": "餐费发票能报吗",
+        "category": "adversarial",
+        "expected": [
+          "公司报销管理制度"
+        ],
+        "top3": [
+          {
+            "docName": "发票与税务合规FAQ",
+            "score": 0.7001
+          },
+          {
+            "docName": "发票与税务合规FAQ",
+            "score": 0.6528
+          },
+          {
+            "docName": "发票与税务合规FAQ",
+            "score": 0.6239
+          }
+        ],
+        "first_rank": 5
+      },
+      {
+        "id": "q_adv_011",
+        "query": "招待费标准多少",
+        "category": "adversarial",
+        "expected": [
+          "公司报销管理制度"
+        ],
+        "top3": [
+          {
+            "docName": "差旅费管理办法",
+            "score": 0.7001
+          },
+          {
+            "docName": "差旅费管理办法",
+            "score": 0.6917
+          },
+          {
+            "docName": "差旅费管理办法",
+            "score": 0.6561
+          }
+        ],
+        "first_rank": 4
+      }
+    ],
+    "negative_false_positive": []
+  },
+  "per_query_summary": [
+    {
+      "id": "q_adv_001",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 138.3
+    },
+    {
+      "id": "q_adv_002",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 133.9
+    },
+    {
+      "id": "q_adv_003",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 158.3
+    },
+    {
+      "id": "q_adv_004",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 146.7
+    },
+    {
+      "id": "q_adv_005",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 166.0
+    },
+    {
+      "id": "q_adv_006",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 147.5
+    },
+    {
+      "id": "q_adv_007",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 138.0
+    },
+    {
+      "id": "q_adv_008",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 174.2
+    },
+    {
+      "id": "q_adv_009",
+      "recall@3": 0.0,
+      "mrr": 0.0,
+      "latency_ms": 206.8
+    },
+    {
+      "id": "q_adv_010",
+      "recall@3": 0.0,
+      "mrr": 0.2,
+      "latency_ms": 131.0
+    },
+    {
+      "id": "q_adv_011",
+      "recall@3": 0.0,
+      "mrr": 0.25,
+      "latency_ms": 170.0
+    },
+    {
+      "id": "q_adv_012",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 127.9
+    },
+    {
+      "id": "q_adv_013",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 178.2
+    },
+    {
+      "id": "q_adv_014",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 158.2
+    },
+    {
+      "id": "q_adv_015",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 180.8
+    },
+    {
+      "id": "q_adv_016",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 143.8
+    },
+    {
+      "id": "q_adv_017",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 163.5
+    },
+    {
+      "id": "q_adv_018",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 172.4
+    },
+    {
+      "id": "q_adv_019",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 152.1
+    },
+    {
+      "id": "q_adv_020",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 197.1
+    },
+    {
+      "id": "q_adv_021",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 152.4
+    },
+    {
+      "id": "q_adv_022",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 148.4
+    },
+    {
+      "id": "q_adv_023",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 190.4
+    },
+    {
+      "id": "q_adv_024",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 134.4
+    },
+    {
+      "id": "q_adv_025",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 137.4
+    },
+    {
+      "id": "q_adv_026",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 143.4
+    },
+    {
+      "id": "q_adv_027",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 177.3
+    },
+    {
+      "id": "q_adv_028",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 172.3
+    },
+    {
+      "id": "q_adv_029",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 158.7
+    },
+    {
+      "id": "q_adv_030",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 129.5
+    },
+    {
+      "id": "q_adv_031",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 175.2
+    },
+    {
+      "id": "q_adv_032",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 151.0
+    },
+    {
+      "id": "q_adv_033",
+      "recall@3": 1.0,
+      "mrr": 0.5,
+      "latency_ms": 145.9
+    },
+    {
+      "id": "q_adv_034",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 155.5
+    },
+    {
+      "id": "q_adv_035",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 165.4
+    },
+    {
+      "id": "q_adv_036",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 135.3
+    },
+    {
+      "id": "q_adv_037",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 128.2
+    },
+    {
+      "id": "q_adv_038",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 189.9
+    },
+    {
+      "id": "q_adv_039",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 252.0
+    },
+    {
+      "id": "q_adv_040",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 170.9
+    },
+    {
+      "id": "q_adv_041",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 147.2
+    },
+    {
+      "id": "q_adv_042",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 157.8
+    },
+    {
+      "id": "q_adv_neg_001",
+      "empty": true,
+      "latency_ms": 140.4
+    },
+    {
+      "id": "q_adv_neg_002",
+      "empty": true,
+      "latency_ms": 168.2
+    },
+    {
+      "id": "q_adv_neg_003",
+      "empty": true,
+      "latency_ms": 132.0
+    },
+    {
+      "id": "q_adv_neg_004",
+      "empty": true,
+      "latency_ms": 170.7
+    }
+  ],
+  "gate_check": {
+    "passed": false,
+    "failures": [
+      "recall@3 0.9286 < 0.95",
+      "recall@5 0.9762 < 0.98"
+    ]
+  }
+}

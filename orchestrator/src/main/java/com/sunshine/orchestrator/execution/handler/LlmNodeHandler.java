@@ -6,9 +6,13 @@ import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
+import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.prompt.PromptComposeRequest;
+import com.sunshine.orchestrator.routing.ExecutionPlan;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -16,7 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * LLM 节点 — 同步补全，结果写入上下文供下游 answer 节点流式输出
+ * LLM 节点 — PromptComposer 第 6 层 node-prompt + 同步补全，结果写入上下文供 answer 流式输出。
  */
 @Slf4j
 @Component
@@ -32,8 +36,17 @@ public class LlmNodeHandler implements NodeHandler {
 
     @Override
     public Mono<NodeResult> run(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
-        String prompt = spec.params().getOrDefault("prompt", "");
-        return Mono.fromCallable(() -> llmGateway.complete(null, prompt))
+        String nodePrompt = spec.params().getOrDefault("prompt", "");
+        String userQuery = ctx.resolvePath("start.userQuery");
+        if (!StringUtils.hasText(userQuery)) {
+            userQuery = streamCtx.userContent();
+        }
+        ExecutionPlan plan = streamCtx.plan();
+        String workflowId = plan != null ? plan.workflowId() : null;
+        MemoryContext memory = streamCtx.memory() != null ? streamCtx.memory() : MemoryContext.empty();
+        PromptComposeRequest request = PromptComposeRequest.forWorkflowLlm(
+                workflowId, memory, userQuery, nodePrompt);
+        return Mono.fromCallable(() -> llmGateway.completeComposed(request))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(answer -> {
                     String text = answer != null ? answer : "";

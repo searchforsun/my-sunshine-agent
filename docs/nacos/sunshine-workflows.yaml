@@ -52,11 +52,10 @@ workflow:
               若检索结果为空、或明确无与用户问题相关的片段，只回复：
               「企业知识库中暂无相关规定，请咨询 HR/财务或相关主管部门。」
               禁止用通用常识、网络知识或税务/法律科普代替企业制度。
+              禁止向用户输出 finance-list、finance-smart、knowledge-qa 等内部名称；改用中文业务表述。
 
               检索结果：
               {{rag.output}}
-
-              用户问题：{{start.userQuery}}
         - id: answer
           type: answer
       edges: [start, rag, llm, answer]
@@ -79,14 +78,13 @@ workflow:
               根据财务工具查询结果回答用户问题。
 
               约束：
+              - 禁止向用户暴露英文流程/工具内部名（如 finance-list、list_finance_messages）。
               - 若「数据」中非空（有条目、条数>0、含 id/金额/标题等），必须逐条列出，不得回答「没有数据」。
               - 仅当数据明确为空数组或条数为 0 时，才可说明当前无待审批记录。
               - 不要编造单据；不要省略工具返回的字段。
 
               数据：
               {{finance-list.output}}
-
-              用户问题：{{start.userQuery}}
         - id: answer
           type: answer
       edges: [start, finance-list, llm, answer]
@@ -116,10 +114,10 @@ workflow:
             prompt: |
               根据 Agent 分析结果生成用户可见回答。
 
+              约束：禁止向用户暴露英文流程/工具内部名（如 finance-smart、finance-list）。
+
               分析：
               {{analyze.answer}}
-
-              用户问题：{{start.userQuery}}
         - id: answer
           type: answer
       edges: [start, finance-list, analyze, llm, answer]
@@ -141,10 +139,10 @@ workflow:
             prompt: |
               根据财务汇总工具结果回答用户。
 
+              约束：禁止向用户暴露英文流程/工具内部名。
+
               汇总：
               {{finance-summary.output}}
-
-              用户问题：{{start.userQuery}}
         - id: answer
           type: answer
       edges: [start, finance-summary, llm, answer]

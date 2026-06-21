@@ -3,6 +3,7 @@ package com.sunshine.rag.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.rag.config.RagRerankProperties;
+import com.sunshine.rag.metrics.RagSearchMetrics;
 import com.sunshine.rag.model.RetrievalCandidate;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class RerankService {
 
     private final RagRerankProperties rerankProperties;
     private final ObjectMapper objectMapper;
+    private final RagSearchMetrics searchMetrics;
 
     @Value("${embedding.api-key:}")
     private String embeddingApiKey;
@@ -66,6 +68,7 @@ public class RerankService {
         body.put("parameters", Map.of(
                 "top_n", documents.size(),
                 "return_documents", false));
+        long rerankStart = System.nanoTime();
         return webClient.post()
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
@@ -78,7 +81,11 @@ public class RerankService {
                         throw new IllegalStateException("rerank parse failed", e);
                     }
                 })
-                .doOnError(e -> log.warn("[RAG-Rerank] 调用失败: {}", e.getMessage()))
+                .doOnSuccess(r -> searchMetrics.recordRerank(rerankStart, "success"))
+                .doOnError(e -> {
+                    log.warn("[RAG-Rerank] 调用失败: {}", e.getMessage());
+                    searchMetrics.recordRerank(rerankStart, "error");
+                })
                 .onErrorReturn(candidates.stream().limit(topN).toList());
     }
 

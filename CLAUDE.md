@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 MVP + Workflow 编排已完成；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.6 提示词链路** 已落地；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -31,13 +31,15 @@ python scripts/phase2_agent_demo.py --suite all
 python scripts/phase2_agent_demo.py --suite react
 python scripts/phase2_agent_demo.py --suite workflow
 
-# RAG 基线（阶段二收尾）
+# RAG 基线（阶段三）
 python scripts/rag_reset.py
 python scripts/rag_ingest_bulk.py
-python scripts/rag_eval.py
+python scripts/rag_eval.py --suite v5 --strategy hybrid+rerank --ci --fail-if-recall5-below 0.98
+python scripts/rag_eval.py --suite v5 --rewrite-only --strategy hybrid+rerank
 
 mvn test -pl llm-gateway -Dtest=ModelRouterTest,AdapterCircuitBreakerTest
-mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest,RuleBasedRouterTest
+mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest,RuleBasedRouterTest,QueryRewriteServiceTest,KnowledgeRetrievalServiceTest,ExecutionPlanRouterTest,PromptComposerTest,LlmNodeHandlerTest
+mvn test -pl rag-service
 ```
 
 **首次部署**：MySQL `CREATE DATABASE sunshine_auth;` → `sync_nacos.py` → `start.py`。
@@ -55,6 +57,7 @@ mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummari
 | `rag_reset.py` | RAG Milvus 清库重建 |
 | `rag_ingest_bulk.py` | 按 golden-set 批量入库 |
 | `rag_eval.py` | RAG Recall/MRR 基线评测 |
+| `verify_rewrite_timeline.py` | Timeline 改写 detail/metadata 验收 |
 
 目录内遗留 `.ps1`/`.sh` 为历史包装，**勿再维护**；新脚本一律 Python。
 
@@ -86,12 +89,19 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 |--------|--------|
 | 新工具 | `tool-manager` 新增 `ToolHandler`（含 displayName / timelinePhase / outputSummaryKind）→ Nacos `agent.execution.react.tools` 或 workflow 节点 `params.tool` → sync + 重启 tool-manager、orchestrator |
 | 新 Workflow | `docs/nacos/sunshine-workflows.yaml` 的 catalog + definitions → sync → 重启 orchestrator |
+| Query 改写 | `agent.rewrite.{rag,intent,empty-recall}`（**默认开启**，flash）→ `QueryRewriteService` + `KnowledgeRetrievalService` + `ExecutionPlanRouter` |
 | Workflow 节点中文名 | `sunshine-workflows.yaml` 节点 `displayName` → `WorkflowNodeLabelService` → SSE `step.label` |
 | 意图步骤文案 | Nacos `agent.timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
 | 步骤 before/active/after | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
 | 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` → orchestrator `ToolCatalogService` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels` / `ToolResultSummarizer`。
+
+**Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall` | 可选 **HyDE**（`agent.rewrite.rag.hyde.enabled`，默认 false）；日志 `[QueryRewrite]`。
+
+**待做（§3.8）**：3.8.7 Planner 前改写（依赖 3.9/3.10）。
+
+**RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）；向量锚点门禁见 `RetrievalService`。
 
 ### 时间线（ReAct vs Workflow）
 
@@ -134,3 +144,4 @@ Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876
 - 禁止保存临时脚本；运维统一 **Python**（`scripts/*.py`）。
 - `start.py` 可带 SkyWalking agent（需先 `download_skywalking_agent.py`）。
 - 改 orchestrator 时间线 / workflow 后：编译 → 重启 `:8200` → 前端刷新；必要时 `clear_session_cache.py --force` 清 Redis 生成流。
+- 项目中禁止硬编码提示词等，统一在nacos管理

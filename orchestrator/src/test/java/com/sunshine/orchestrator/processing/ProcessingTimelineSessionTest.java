@@ -4,6 +4,8 @@ import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
+import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
+import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.Test;
@@ -159,6 +161,67 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void completeIntent_exposesRewriteDetailWhenProvided() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("待审批");
+        session.pending("intent", "intent");
+        session.start("intent", "intent");
+
+        QueryRewriteOutcome rewrite = QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 15L);
+        session.completeIntent(
+                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                rewrite);
+
+        ProcessingStep intent = session.snapshot().stream()
+                .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
+        assertThat(intent.detail()).contains("改写前：待审批");
+        assertThat(intent.metadata().rewriteApplied()).isTrue();
+        assertThat(intent.metadata().rewriteLatencyMs()).isEqualTo(15L);
+    }
+
+    @Test
+    void completeAt_workflowRagNode_keepsHitDetailWithoutRewrite() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("报销呢？");
+        session.bindTraceMessageId("msg-1");
+        session.pending("node-rag", "node");
+        session.start("node-rag", "node");
+
+        session.completeAt("node-rag", "命中 3 条，来源：公司报销管理制度", "命中 3 条，来源：公司报销管理制度",
+                System.currentTimeMillis());
+
+        ProcessingStep rag = session.snapshot().stream()
+                .filter(s -> "node-rag".equals(s.id())).findFirst().orElseThrow();
+        assertThat(rag.detail()).isEqualTo("命中 3 条，来源：公司报销管理制度");
+        assertThat(rag.metadata()).isNotNull();
+        assertThat(rag.metadata().hitCount()).isEqualTo(3);
+        assertThat(rag.metadata().sources()).containsExactly("公司报销管理制度");
+    }
+
+    @Test
+    void completeAt_workflowRagNode_mergesRewriteAndHitDetail() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("报差旅");
+        session.bindTraceMessageId("msg-2");
+        QueryRewriteTrace.bind("msg-2");
+        QueryRewriteTrace.record("msg-2",
+                QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 9L));
+        session.pending("node-rag", "node");
+        session.start("node-rag", "node");
+
+        session.completeAt("node-rag", "命中 2 条，来源：公司差旅费报销管理办法", "命中 2 条，来源：公司差旅费报销管理办法",
+                System.currentTimeMillis());
+
+        ProcessingStep rag = session.snapshot().stream()
+                .filter(s -> "node-rag".equals(s.id())).findFirst().orElseThrow();
+        assertThat(rag.detail()).contains("改写前：报差旅");
+        assertThat(rag.detail()).contains("命中 2 条，来源：公司差旅费报销管理办法");
+        assertThat(rag.metadata().rewriteApplied()).isTrue();
+        assertThat(rag.metadata().hitCount()).isEqualTo(2);
+        QueryRewriteTrace.clear("msg-2");
+    }
+
+    @Test
     void completeIntent_keepsAfterWithoutExpandableDetail() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("项目能否按时交付");
@@ -210,22 +273,31 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void repeatedToolInvocation_createsSeparateStepsWithTimestampId() throws InterruptedException {
-        ProcessingTimelineSession session = new ProcessingTimelineSession();
-        String base = "tool-summarize_finance_by_status";
+        com.sunshine.orchestrator.catalog.ToolCatalogService catalogService =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class);
+        org.mockito.Mockito.when(catalogService.displayName("summarize_finance_by_status"))
+                .thenReturn("统计财务消息");
+        StepLabels.bind(catalogService);
+        try {
+            ProcessingTimelineSession session = new ProcessingTimelineSession();
+            String base = "tool-summarize_finance_by_status";
 
-        session.beginToolStep(base, "tool");
-        session.completeToolStep("pending 3 条，合计 ¥124140.5");
-        Thread.sleep(2);
-        session.beginToolStep(base, "tool");
-        session.completeToolStep("approved 2 条，合计 ¥47199.0");
+            session.beginToolStep(base, "tool");
+            session.completeToolStep("pending 3 条，合计 ¥124140.5");
+            Thread.sleep(2);
+            session.beginToolStep(base, "tool");
+            session.completeToolStep("approved 2 条，合计 ¥47199.0");
 
-        List<ProcessingStep> toolSteps = session.snapshot().stream()
-                .filter(s -> s.id().startsWith(base + "@"))
-                .toList();
-        assertThat(toolSteps).hasSize(2);
-        assertThat(toolSteps.get(0).id()).isNotEqualTo(toolSteps.get(1).id());
-        assertThat(toolSteps.get(0).detail()).contains("pending").doesNotContain("·");
-        assertThat(toolSteps.get(1).detail()).contains("approved").doesNotContain("·");
-        assertThat(toolSteps.get(0).label()).isEqualTo("调用工具 统计财务消息");
+            List<ProcessingStep> toolSteps = session.snapshot().stream()
+                    .filter(s -> s.id().startsWith(base + "@"))
+                    .toList();
+            assertThat(toolSteps).hasSize(2);
+            assertThat(toolSteps.get(0).id()).isNotEqualTo(toolSteps.get(1).id());
+            assertThat(toolSteps.get(0).detail()).contains("pending").doesNotContain("·");
+            assertThat(toolSteps.get(1).detail()).contains("approved").doesNotContain("·");
+            assertThat(toolSteps.get(0).label()).isEqualTo("调用工具 统计财务消息");
+        } finally {
+            StepLabels.bind(null);
+        }
     }
 }

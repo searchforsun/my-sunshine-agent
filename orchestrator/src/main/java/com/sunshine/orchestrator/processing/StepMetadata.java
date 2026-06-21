@@ -6,10 +6,15 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 时间线步骤结构化元数据（如 RAG 命中数与来源文档） */
+/** 时间线步骤结构化元数据（如 RAG 命中数与来源文档、QueryRewrite 可观测） */
 public record StepMetadata(
         Integer hitCount,
-        List<String> sources
+        List<String> sources,
+        Boolean rewriteApplied,
+        Long rewriteLatencyMs,
+        String rewriteFrom,
+        String rewriteTo,
+        String rewriteScenario
 ) {
 
     private static final Pattern HIT_COUNT = Pattern.compile("(?:共|命中)\\s*(\\d+)\\s*条");
@@ -27,7 +32,7 @@ public record StepMetadata(
     /** 原始正文提取文档名，摘要行补充命中数 */
     public static StepMetadata fromRagToolOutput(String rawText, String summarizedText) {
         if (isEmptyRagOutput(rawText) && isEmptyRagOutput(summarizedText)) {
-            return new StepMetadata(0, List.of());
+            return emptyRag();
         }
         int hitCount = parseHitCount(rawText);
         if (hitCount == 0 && summarizedText != null && !summarizedText.isBlank()) {
@@ -37,7 +42,43 @@ public record StepMetadata(
         if (sources.isEmpty() && summarizedText != null && !summarizedText.isBlank()) {
             sources = parseSources(summarizedText);
         }
-        return new StepMetadata(hitCount, sources);
+        return new StepMetadata(hitCount, sources, null, null, null, null, null);
+    }
+
+    public static StepMetadata fromRewrite(com.sunshine.orchestrator.rewrite.QueryRewriteOutcome outcome) {
+        if (outcome == null || !outcome.applied()) {
+            return null;
+        }
+        return new StepMetadata(
+                null,
+                null,
+                true,
+                outcome.latencyMs(),
+                outcome.originalQuery(),
+                outcome.rewrittenQuery(),
+                outcome.scenario());
+    }
+
+    public static StepMetadata mergeRewrite(StepMetadata base, com.sunshine.orchestrator.rewrite.QueryRewriteOutcome outcome) {
+        StepMetadata rewriteMeta = fromRewrite(outcome);
+        if (rewriteMeta == null) {
+            return base;
+        }
+        if (base == null) {
+            return rewriteMeta;
+        }
+        return new StepMetadata(
+                base.hitCount(),
+                base.sources(),
+                rewriteMeta.rewriteApplied(),
+                rewriteMeta.rewriteLatencyMs(),
+                rewriteMeta.rewriteFrom(),
+                rewriteMeta.rewriteTo(),
+                rewriteMeta.rewriteScenario());
+    }
+
+    private static StepMetadata emptyRag() {
+        return new StepMetadata(0, List.of(), null, null, null, null, null);
     }
 
     public String sourcesLabel() {
@@ -49,7 +90,8 @@ public record StepMetadata(
 
     public boolean isEmpty() {
         return (hitCount == null || hitCount == 0)
-                && (sources == null || sources.isEmpty());
+                && (sources == null || sources.isEmpty())
+                && (rewriteApplied == null || !rewriteApplied);
     }
 
     private static boolean isEmptyRagOutput(String text) {

@@ -1,8 +1,9 @@
 package com.sunshine.orchestrator.agent;
 
-import com.sunshine.orchestrator.client.RagClient;
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.RagContextFormatter;
 import com.sunshine.orchestrator.config.RagSearchProperties;
+import com.sunshine.orchestrator.rag.KnowledgeRetrievalService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RagTool {
 
-    private final RagClient ragClient;
+    private final KnowledgeRetrievalService knowledgeRetrievalService;
     private final RagSearchProperties ragSearchProperties;
 
     @Tool(name = "search_knowledge",
@@ -33,7 +34,8 @@ public class RagTool {
                         : query);
 
         try {
-            var results = ragClient.search(query, ragSearchProperties.getDefaultTopK()).block();
+            var results = knowledgeRetrievalService.search(
+                    query, ragSearchProperties.getDefaultTopK(), StepEventBridge.activeMessageId());
             return RagContextFormatter.formatToolResult(results);
         } catch (Exception e) {
             log.warn("[RagTool] 知识库检索失败: {}", e.getMessage());

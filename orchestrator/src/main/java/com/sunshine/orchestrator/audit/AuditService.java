@@ -44,10 +44,17 @@ public class AuditService {
         try {
             StepsSummaryExtractor.Summary stepsSummary =
                     StepsSummaryExtractor.fromStepsJson(message.getSteps());
+            QueryRewriteAuditExtractor.Summary rewriteSummary =
+                    QueryRewriteAuditExtractor.fromStepsJson(message.getSteps());
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("contentLen", message.getContent() != null ? message.getContent().length() : 0);
             payload.put("hasReasoning", message.getReasoning() != null && !message.getReasoning().isBlank());
             payload.put("hasSteps", message.getSteps() != null && !message.getSteps().isBlank());
+            payload.put("rewriteApplied", rewriteSummary.rewriteApplied());
+            payload.put("rewriteLatencyMs", rewriteSummary.rewriteLatencyMs());
+            if (!rewriteSummary.rewrites().isEmpty()) {
+                payload.put("rewrites", rewriteSummary.rewrites());
+            }
             payload.put("stepsSummary", Map.of(
                     "toolNames", stepsSummary.toolNames(),
                     "stepCount", stepsSummary.stepCount(),

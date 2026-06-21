@@ -2,6 +2,7 @@ package com.sunshine.rag.service;
 
 import com.sunshine.rag.config.RagRerankProperties;
 import com.sunshine.rag.config.RagSearchProperties;
+import com.sunshine.rag.metrics.RagSearchMetrics;
 import com.sunshine.rag.model.RetrievalCandidate;
 import com.sunshine.rag.model.SearchStrategy;
 import lombok.RequiredArgsConstructor;
@@ -25,10 +26,19 @@ public class RetrievalService {
     private final RerankService rerankService;
     private final RagSearchProperties searchProperties;
     private final RagRerankProperties rerankProperties;
+    private final RagSearchMetrics searchMetrics;
 
     public Mono<List<DocFragment>> search(String query, int topK, String strategyOverride) {
         SearchStrategy strategy = SearchStrategy.from(strategyOverride, searchProperties.defaultStrategy());
+        String strategyTag = strategy.metricTag();
+        long start = System.nanoTime();
         log.info("[RAG] 检索: query='{}', topK={}, strategy={}", query, topK, strategy);
+        return executeSearch(query, topK, strategy)
+                .doOnSuccess(results -> searchMetrics.recordSuccess(strategyTag, start, results.size()))
+                .doOnError(e -> searchMetrics.recordError(strategyTag, start));
+    }
+
+    private Mono<List<DocFragment>> executeSearch(String query, int topK, SearchStrategy strategy) {
         return switch (strategy) {
             case VECTOR -> vectorSearch(query, topK);
             case HYBRID -> hybridSearch(query, topK, false);
@@ -68,6 +78,7 @@ public class RetrievalService {
                     if (maxVector < vectorFloor) {
                         log.info("[RAG] 向量锚点未达阈: maxVector={} < {}, hybrid+rerank 空召回",
                                 maxVector, vectorFloor);
+                        searchMetrics.recordVectorAnchorEmpty();
                         return Mono.just(List.<RetrievalCandidate>of());
                     }
                     int rerankIn = Math.min(scored.size(), rerankProperties.getInputSize());

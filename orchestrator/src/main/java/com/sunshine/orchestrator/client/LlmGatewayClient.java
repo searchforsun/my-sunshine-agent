@@ -4,11 +4,10 @@ package com.sunshine.orchestrator.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
-import com.sunshine.orchestrator.memory.MemoryMessageBuilder;
-import com.sunshine.orchestrator.memory.MemoryProperties;
+import com.sunshine.orchestrator.prompt.PromptComposeRequest;
+import com.sunshine.orchestrator.prompt.PromptComposer;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,8 +47,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class LlmGatewayClient {
 
-    private final AgentPromptProperties prompts;
-    private final MemoryProperties memoryProperties;
+    private final PromptComposer promptComposer;
 
     @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
     private String baseUrl;
@@ -114,17 +112,31 @@ public class LlmGatewayClient {
      * 非流式补全 — MTM 会话摘要等内部用途。
      */
     public String complete(String systemPrompt, String userContent) {
+        return complete(modelName, systemPrompt, userContent);
+    }
+
+    /**
+     * 非流式补全 — 指定模型（QueryRewrite 等内部用途）。
+     */
+    public String complete(String model, String systemPrompt, String userContent) {
         List<Map<String, Object>> messages = new ArrayList<>();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             messages.add(Map.of("role", "system", "content", systemPrompt.strip()));
         }
         messages.add(Map.of("role", "user", "content", userContent != null ? userContent : ""));
+        return completeMessages(model, messages);
+    }
 
+    /** 非流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
+    public String completeComposed(PromptComposeRequest request) {
+        return completeMessages(modelName, promptComposer.composeGatewayMessages(request));
+    }
+
+    private String completeMessages(String model, List<Map<String, Object>> messages) {
         Map<String, Object> request = Map.of(
-                "model", modelName,
+                "model", model,
                 "messages", messages,
                 "stream", false);
-
         try {
             Map<String, Object> response = webClient.post()
                     .uri("/chat/completions")
@@ -158,19 +170,10 @@ public class LlmGatewayClient {
 
     private List<Map<String, Object>> buildMessages(
             MemoryContext memory, String userMessage, String partialAssistant) {
-
-        MemoryContext ctx = memory != null ? memory : MemoryContext.empty();
-        List<Map<String, Object>> messages = new ArrayList<>(
-                MemoryMessageBuilder.buildPrefix(prompts, memoryProperties, ctx));
-        MemoryMessageBuilder.appendStmTurns(messages, ctx, memoryProperties);
-        messages.add(Map.of(
-                "role", "user",
-                "content", MemoryMessageBuilder.formatCurrentUser(userMessage, memoryProperties)));
-
-        if (partialAssistant != null && !partialAssistant.isEmpty()) {
-            messages.add(Map.of("role", "assistant", "content", partialAssistant));
-        }
-        return messages;
+        PromptComposeRequest request = partialAssistant != null && !partialAssistant.isEmpty()
+                ? PromptComposeRequest.forSimpleLlmContinue(memory, userMessage, partialAssistant)
+                : PromptComposeRequest.forSimpleLlm(memory, userMessage);
+        return promptComposer.composeGatewayMessages(request);
     }
 
 

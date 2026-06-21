@@ -12,4 +12,6 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "rag.search")
 public class RagSearchProperties {
     private int defaultTopK = 3;
+    /** 透传 rag-service strategy：vector | hybrid | hybrid+rerank */
+    private String strategy = "hybrid+rerank";
 }

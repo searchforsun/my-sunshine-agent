@@ -10,6 +10,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,9 +43,18 @@ public class RagClient {
      * @param topK  返回结果数量
      * @return 文档片段列表（含文档名称）
      */
-    @SuppressWarnings("unchecked")
     public Mono<List<RagHit>> search(String query, int topK) {
-        Map<String, Object> body = Map.of("query", query, "topK", topK);
+        return search(query, topK, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Mono<List<RagHit>> search(String query, int topK, String strategy) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("query", query);
+        body.put("topK", topK);
+        if (strategy != null && !strategy.isBlank()) {
+            body.put("strategy", strategy);
+        }
 
         return webClient.post()
                 .uri("/api/rag/search")
