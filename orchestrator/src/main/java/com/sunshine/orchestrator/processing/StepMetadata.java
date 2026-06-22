@@ -14,7 +14,8 @@ public record StepMetadata(
         Long rewriteLatencyMs,
         String rewriteFrom,
         String rewriteTo,
-        String rewriteScenario
+        String rewriteScenario,
+        String rewriteScenarioLabel
 ) {
 
     private static final Pattern HIT_COUNT = Pattern.compile("(?:共|命中)\\s*(\\d+)\\s*条");
@@ -42,13 +43,14 @@ public record StepMetadata(
         if (sources.isEmpty() && summarizedText != null && !summarizedText.isBlank()) {
             sources = parseSources(summarizedText);
         }
-        return new StepMetadata(hitCount, sources, null, null, null, null, null);
+        return new StepMetadata(hitCount, sources, null, null, null, null, null, null);
     }
 
     public static StepMetadata fromRewrite(com.sunshine.orchestrator.rewrite.QueryRewriteOutcome outcome) {
         if (outcome == null || !outcome.applied()) {
             return null;
         }
+        String scenarioLabel = RewriteTimelineLabels.labelFor(outcome.scenario());
         return new StepMetadata(
                 null,
                 null,
@@ -56,7 +58,8 @@ public record StepMetadata(
                 outcome.latencyMs(),
                 outcome.originalQuery(),
                 outcome.rewrittenQuery(),
-                outcome.scenario());
+                outcome.scenario(),
+                scenarioLabel.isBlank() ? null : scenarioLabel);
     }
 
     public static StepMetadata mergeRewrite(StepMetadata base, com.sunshine.orchestrator.rewrite.QueryRewriteOutcome outcome) {
@@ -74,11 +77,12 @@ public record StepMetadata(
                 rewriteMeta.rewriteLatencyMs(),
                 rewriteMeta.rewriteFrom(),
                 rewriteMeta.rewriteTo(),
-                rewriteMeta.rewriteScenario());
+                rewriteMeta.rewriteScenario(),
+                rewriteMeta.rewriteScenarioLabel());
     }
 
     private static StepMetadata emptyRag() {
-        return new StepMetadata(0, List.of(), null, null, null, null, null);
+        return new StepMetadata(0, List.of(), null, null, null, null, null, null);
     }
 
     public String sourcesLabel() {

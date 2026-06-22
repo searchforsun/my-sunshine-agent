@@ -112,7 +112,7 @@ public class QueryRewriteService {
     public QueryRewriteOutcome rewriteForRag(String originalQuery, String traceMessageId) {
         long start = System.nanoTime();
         AgentRewriteProperties.Rag cfg = rewriteProperties.getRag();
-        if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery)) {
+        if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery) || !StringUtils.hasText(cfg.getSystemPrompt())) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
                     "rag", originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
@@ -147,7 +147,8 @@ public class QueryRewriteService {
         long start = System.nanoTime();
         AgentRewriteProperties.Rag ragCfg = rewriteProperties.getRag();
         AgentRewriteProperties.Hyde hydeCfg = ragCfg.getHyde();
-        if (hydeCfg == null || !hydeCfg.isEnabled() || !StringUtils.hasText(originalQuery)) {
+        if (hydeCfg == null || !hydeCfg.isEnabled() || !StringUtils.hasText(originalQuery)
+                || !StringUtils.hasText(hydeCfg.getSystemPrompt())) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
                     "hyde", originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
@@ -193,6 +194,12 @@ public class QueryRewriteService {
             return skipped;
         }
         AgentRewriteProperties.Intent cfg = rewriteProperties.getIntent();
+        if (!StringUtils.hasText(cfg.getSystemPrompt())) {
+            QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
+                    "intent", originalQuery, elapsedMs(start));
+            QueryRewriteTrace.record(traceMessageId, skipped);
+            return skipped;
+        }
         String user = "用户输入：" + originalQuery.strip();
         String raw = llmGatewayClient.complete(cfg.getModel(), cfg.getSystemPrompt(), user);
         String rewritten = parseSingleQuery(raw, originalQuery);
@@ -226,7 +233,7 @@ public class QueryRewriteService {
     public EmptyRecallRewrite rewriteEmptyRecall(String originalQuery, String traceMessageId) {
         long start = System.nanoTime();
         AgentRewriteProperties.EmptyRecall cfg = rewriteProperties.getEmptyRecall();
-        if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery)) {
+        if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery) || !StringUtils.hasText(cfg.getSystemPrompt())) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
                     "empty-recall", originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);

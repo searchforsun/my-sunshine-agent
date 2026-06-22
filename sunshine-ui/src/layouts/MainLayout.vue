@@ -95,7 +95,7 @@ function handleDeleteConversation(id: string) {
     positiveText: '永久删除',
     negativeText: '取消',
     positiveButtonProps: { type: 'error', size: 'medium' },
-    negativeButtonProps: { quaternary: true, size: 'medium' },
+    negativeButtonProps: { ghost: false, quaternary: true, size: 'medium' },
     onPositiveClick: () => {
       void chatStore.remove(id)
     },

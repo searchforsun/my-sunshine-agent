@@ -9,7 +9,7 @@
 
 **Goal:** L1 增强（skill 子集）→ L3 主轴（PLAN_WORKFLOW + 多子 Agent）。
 
-**实现状态（2026-06-21）：** **3.9 / 3.10 / 3.11 / 3.12 全部 ⬜ 未开始**。现有 `AgentNodeHandler` 为阶段二子集实现，**不含** `AgentRuntime` / `PLAN_WORKFLOW` / `skill-manager` 模块。
+**实现状态（2026-06-22）：** **3.10.1 ✅** · **3.9 / 3.10.2+ / 3.11 / 3.12 ⬜ 未开始**。现有 `AgentNodeHandler` 已改调 `AgentRuntime`；**不含** `PLAN_WORKFLOW` / `skill-manager` 模块。
 
 **排期偏差：** 原周 1–2 应与 3.4 并行启动 3.10.1–3.10.3；RAG 已提前完成，**多 Agent 主线滞后**，当前迭代优先补 3.10.1 → 3.11 → 3.9。
 
@@ -62,12 +62,12 @@
 - Create: `orchestrator/.../agent/runtime/AgentRunRequest.java`
 - Create: `orchestrator/.../agent/runtime/AgentRuntime.java`
 - Create: `orchestrator/.../agent/runtime/ReActAgentRuntime.java`
-- Modify: `SunshineAgent.java` — 委托 `AgentRuntime`
+- Modify: `ReactExecutor` / `AgentNodeHandler` — 直接注入 `AgentRuntime`（已删除 `SunshineAgent` 门面）
 
-- [ ] **3.10.1a** 定义 `MAIN | SUB | PLANNER` 三角色
-- [ ] **3.10.1b** `ReActAgentRuntime.run(AgentRunRequest)`
-- [ ] **3.10.1c** `ReactExecutor` / `AgentNodeHandler` 改调 `AgentRuntime`
-- [ ] **3.10.1d** 现有单测绿
+- [x] **3.10.1a** 定义 `MAIN | SUB | PLANNER` 三角色
+- [x] **3.10.1b** `ReActAgentRuntime.run(AgentRunRequest)`
+- [x] **3.10.1c** `ReactExecutor` / `AgentNodeHandler` 改调 `AgentRuntime`
+- [x] **3.10.1d** 现有单测绿
 
 **验收:** `mvn test -pl orchestrator -Dtest=AgentNodeHandlerTest` 绿
 

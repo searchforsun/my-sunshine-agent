@@ -25,6 +25,8 @@ embedding:
   model: text-embedding-v4
 
 rag:
+  webclient:
+    insecure-ssl: true
   admin:
     token: sunshine-rag-admin-dev
   elasticsearch:

@@ -33,6 +33,8 @@ export interface StepMetadata {
   rewriteFrom?: string
   rewriteTo?: string
   rewriteScenario?: string
+  /** 改写场景时机说明（后端 SSE / metadata 下发，勿在前端硬编码） */
+  rewriteScenarioLabel?: string
 }
 
 
@@ -128,6 +130,9 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const rewriteScenario = typeof obj.rewriteScenario === 'string' && obj.rewriteScenario.trim()
     ? obj.rewriteScenario.trim()
     : undefined
+  const rewriteScenarioLabel = typeof obj.rewriteScenarioLabel === 'string' && obj.rewriteScenarioLabel.trim()
+    ? obj.rewriteScenarioLabel.trim()
+    : undefined
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -143,6 +148,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     rewriteFrom,
     rewriteTo,
     rewriteScenario,
+    rewriteScenarioLabel,
   }
 }
 
@@ -288,7 +294,11 @@ export function formatRewriteMetadata(step: ProcessingStep): string {
   const latency = typeof m.rewriteLatencyMs === 'number'
     ? `\n耗时：${m.rewriteLatencyMs}ms`
     : ''
-  return `改写前：${m.rewriteFrom}\n${targetLabel}：${m.rewriteTo}${latency}`
+  const body = `改写前：${m.rewriteFrom}\n${targetLabel}：${m.rewriteTo}${latency}`
+  if (m.rewriteScenarioLabel?.trim()) {
+    return `${m.rewriteScenarioLabel.trim()}\n${body}`
+  }
+  return body
 }
 
 

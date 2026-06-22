@@ -182,7 +182,7 @@ public final class ProcessingTimelineSession {
             metadata = StepMetadata.fromRagToolOutput(summaryLine, ragInput);
         }
         String after = resolveAfter(stepId, summaryLine, metadata);
-        String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedTimelineDetail(traceMessageId);
+        String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedRagTimelineDetail(traceMessageId);
         String storedDetail;
         if (ToolStepIds.isRagStep(stepId) || isWorkflowRagNode(stepId)) {
             metadata = mergeRewriteMetadata(metadata);

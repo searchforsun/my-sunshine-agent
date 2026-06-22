@@ -1,5 +1,7 @@
 package com.sunshine.rag.service;
 
+import com.sunshine.rag.config.RagWebClientFactory;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -14,7 +16,10 @@ import java.util.Map;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class EmbeddingService {
+
+    private final RagWebClientFactory webClientFactory;
 
     @Value("${embedding.api-key:}")
     private String apiKey;
@@ -29,8 +34,8 @@ public class EmbeddingService {
 
     private WebClient client() {
         if (webClient == null) {
-            webClient = WebClient.builder()
-                    .baseUrl(baseUrl)
+            webClient = webClientFactory.create(baseUrl)
+                    .mutate()
                     .defaultHeader("Authorization", "Bearer " + apiKey)
                     .build();
         }

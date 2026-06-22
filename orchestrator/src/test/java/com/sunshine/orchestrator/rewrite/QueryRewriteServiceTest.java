@@ -43,8 +43,8 @@ class QueryRewriteServiceTest {
         props = new AgentRewriteProperties();
 
         props.getEmptyRecall().setEnabled(true);
-
         props.getEmptyRecall().setMaxAlternatives(2);
+        props.getEmptyRecall().setSystemPrompt("gen %d queries");
 
         service = new QueryRewriteService(props, mock(com.sunshine.orchestrator.client.LlmGatewayClient.class),
 
@@ -119,6 +119,7 @@ class QueryRewriteServiceTest {
     void rewriteForRagCallsLlm() {
 
         props.getRag().setEnabled(true);
+        props.getRag().setSystemPrompt("test rag prompt");
 
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
 
@@ -139,6 +140,7 @@ class QueryRewriteServiceTest {
     void shouldRewriteIntentOnlyWhenShort() {
 
         props.getIntent().setEnabled(true);
+        props.getIntent().setSystemPrompt("test intent prompt");
 
         props.getIntent().setMaxChars(8);
 
@@ -155,6 +157,7 @@ class QueryRewriteServiceTest {
     void rewriteForIntentSkipsLongQuery() {
 
         props.getIntent().setEnabled(true);
+        props.getIntent().setSystemPrompt("test intent prompt");
 
         assertThat(service.rewriteForIntent("请问年假可以请几天")).isEqualTo("请问年假可以请几天");
 
@@ -167,6 +170,7 @@ class QueryRewriteServiceTest {
     void rewriteForIntentCallsLlm() {
 
         props.getIntent().setEnabled(true);
+        props.getIntent().setSystemPrompt("test intent prompt");
 
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
 
@@ -231,6 +235,7 @@ class QueryRewriteServiceTest {
     @Test
     void hydeForRagCallsLlm() {
         props.getRag().getHyde().setEnabled(true);
+        props.getRag().getHyde().setSystemPrompt("test hyde prompt");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
         when(llm.complete(anyString(), anyString(), anyString()))
                 .thenReturn("{\"document\":\"差旅费报销须附出差审批单与合规发票。\"}");

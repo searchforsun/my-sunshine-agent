@@ -146,7 +146,7 @@ public class WorkflowExecutor {
     private static String resolveExpandDetail(
             NodeSpec spec, Map<String, String> outputs, String summaryLine, String traceMessageId) {
         if ("rag".equals(spec.type())) {
-            String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedTimelineDetail(traceMessageId);
+            String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedRagTimelineDetail(traceMessageId);
             if (rewriteDetail != null && !rewriteDetail.isBlank()) {
                 return rewriteDetail;
             }

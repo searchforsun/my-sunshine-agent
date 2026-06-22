@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.rewrite;
 
+import com.sunshine.orchestrator.config.AgentRewriteProperties;
+import com.sunshine.orchestrator.processing.RewriteTimelineLabels;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -14,17 +16,30 @@ class QueryRewriteTraceTest {
 
     @Test
     void recordsAndSummarizesRewriteEvents() {
+        AgentRewriteProperties props = new AgentRewriteProperties();
+        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
+        timeline.setIntent("【意图识别前】短问句补全");
+        timeline.setRag("【知识库检索前】优化检索词");
+        props.setTimeline(timeline);
+        RewriteTimelineLabels.bind(props);
         QueryRewriteTrace.bind("m1");
         QueryRewriteTrace.record("m1", QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 12L));
         QueryRewriteTrace.record("m1", QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 8L));
 
         assertThat(QueryRewriteTrace.intentOutcome("m1")).isPresent();
         assertThat(QueryRewriteTrace.combinedTimelineDetail("m1"))
+                .contains("【意图识别前】短问句补全")
                 .contains("改写前：待审批")
+                .contains("【知识库检索前】优化检索词")
                 .contains("改写后：查询待审批报销");
+
+        assertThat(QueryRewriteTrace.combinedRagTimelineDetail("m1"))
+                .contains("【知识库检索前】优化检索词")
+                .doesNotContain("【意图识别前】");
 
         QueryRewriteTrace.AuditRewriteSummary summary = QueryRewriteTrace.auditSummary("m1");
         assertThat(summary.rewriteApplied()).isTrue();
         assertThat(summary.rewriteLatencyMs()).isEqualTo(20L);
+        RewriteTimelineLabels.bind(null);
     }
 }

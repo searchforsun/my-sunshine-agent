@@ -3,6 +3,7 @@ package com.sunshine.rag.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.rag.config.RagRerankProperties;
+import com.sunshine.rag.config.RagWebClientFactory;
 import com.sunshine.rag.metrics.RagSearchMetrics;
 import com.sunshine.rag.model.RetrievalCandidate;
 import jakarta.annotation.PostConstruct;
@@ -30,6 +31,7 @@ public class RerankService {
     private final RagRerankProperties rerankProperties;
     private final ObjectMapper objectMapper;
     private final RagSearchMetrics searchMetrics;
+    private final RagWebClientFactory webClientFactory;
 
     @Value("${embedding.api-key:}")
     private String embeddingApiKey;
@@ -46,8 +48,8 @@ public class RerankService {
             log.warn("[RAG-Rerank] 未配置 API Key，rerank 将降级为 RRF 顺序");
             return;
         }
-        webClient = WebClient.builder()
-                .baseUrl(rerankProperties.getBaseUrl())
+        webClient = webClientFactory.create(rerankProperties.getBaseUrl())
+                .mutate()
                 .defaultHeader("Authorization", "Bearer " + apiKey)
                 .build();
         log.info("[RAG-Rerank] enabled model={}", rerankProperties.getModel());

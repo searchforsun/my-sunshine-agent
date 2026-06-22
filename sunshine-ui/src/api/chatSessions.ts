@@ -153,12 +153,15 @@ export function useChatSessions(
             streamConversationId = parsed.meta.id
           }
           if (parsed.meta.type === 'generation' && parsed.meta.id && parsed.meta.messageId) {
-            saveActiveGeneration({
-              generationId: parsed.meta.id,
-              messageId: parsed.meta.messageId,
-              conversationId: streamConversationId,
-              lastSeq: parsed.meta.seq ?? 0,
-            })
+            const convId = streamConversationId ?? s.id
+            if (convId) {
+              saveActiveGeneration({
+                generationId: parsed.meta.id,
+                messageId: parsed.meta.messageId,
+                conversationId: convId,
+                lastSeq: parsed.meta.seq ?? 0,
+              })
+            }
             const last = s.messages[s.messages.length - 1]
             if (last?.role === 'assistant') {
               last.id = parsed.meta.messageId

@@ -173,18 +173,43 @@ agent:
     rag:
       enabled: true
       model: deepseek-v4-flash
+      system-prompt: |
+        你是企业知识库检索 query 优化助手。用户问题将用于向量/混合检索。
+        请补全域内关键词（制度、流程、报销、请假、差旅、考勤等），标准化专有名词表述。
+        保留原意，不要编造事实；若已足够清晰则轻微润色即可。
+        只输出 JSON：{"query":"优化后的检索 query"}，不要 markdown 或其他文字。
       hyde:
         enabled: true
         model: deepseek-v4-flash
         max-chars: 480
+        system-prompt: |
+          你是企业知识库 HyDE 助手。根据用户问题，写一段**可能出现在企业制度/流程文档中**的中文段落，
+          用于向量检索匹配；不要写问答体，不要写「根据…规定」等元叙述，直接写制度条文式正文。
+          只引用常见域内概念（报销、差旅、请假、考勤、审批等），**禁止编造**具体金额/日期/人名。
+          只输出 JSON：{"document":"假想文档段落"}，不要 markdown 或其他文字。
     intent:
       enabled: true
       model: deepseek-v4-flash
       max-chars: 8
+      system-prompt: |
+        你是企业助手意图补全助手。用户输入过短，需补全为可分类的完整中文问句。
+        保留原意，补充「查询/了解/请问」等必要语境，偏向制度、财务待办、知识库问答。
+        不要编造具体业务事实。
+        只输出 JSON：{"query":"补全后的问句"}，不要 markdown 或其他文字。
     empty-recall:
       enabled: true
       model: deepseek-v4-flash
       max-alternatives: 2
+      system-prompt: |
+        你是企业知识库检索 query 改写助手。用户原始问题在向量/混合检索中零命中。
+        请生成 %d 个不同表述的中文检索 query，用于二次检索。
+        要求：保留原意、补充制度/流程/报销/请假等域内关键词，不要编造事实。
+        只输出 JSON：{"queries":["改写1","改写2"]}，不要 markdown 或其他文字。
+    timeline:
+      intent: "【意图识别前】规则未命中且问句过短时，补全为可分类的完整问句"
+      rag: "【知识库检索前】进入向量/混合检索前，补全域内关键词并标准化表述"
+      hyde: "【HyDE 检索前】生成假想制度文档段落，作为向量检索 query"
+      empty-recall: "【零命中二次检索】首次检索无结果时，生成替代检索表述"
   memory:
     enabled: true
     layer-prompt: |

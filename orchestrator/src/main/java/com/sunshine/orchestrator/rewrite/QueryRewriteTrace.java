@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -14,6 +15,8 @@ import java.util.stream.Collectors;
 public final class QueryRewriteTrace {
 
     private static final Map<String, List<QueryRewriteOutcome>> TRACES = new ConcurrentHashMap<>();
+    /** RAG 步骤展开区仅展示检索相关改写，意图改写已在 intent 步展示 */
+    private static final Set<String> RAG_SCENARIOS = Set.of("rag", "hyde", "empty-recall");
 
     private QueryRewriteTrace() {
     }
@@ -68,7 +71,19 @@ public final class QueryRewriteTrace {
     }
 
     public static String combinedTimelineDetail(String messageId) {
-        List<String> parts = all(messageId).stream()
+        return joinTimelineDetails(all(messageId));
+    }
+
+    /** RAG / workflow node-rag 展开区：不含 intent 改写（避免与意图步重复） */
+    public static String combinedRagTimelineDetail(String messageId) {
+        List<QueryRewriteOutcome> ragOnly = all(messageId).stream()
+                .filter(o -> RAG_SCENARIOS.contains(o.scenario()))
+                .collect(Collectors.toList());
+        return joinTimelineDetails(ragOnly);
+    }
+
+    private static String joinTimelineDetails(List<QueryRewriteOutcome> outcomes) {
+        List<String> parts = outcomes.stream()
                 .map(QueryRewriteOutcome::timelineDetail)
                 .filter(d -> d != null && !d.isBlank())
                 .collect(Collectors.toList());

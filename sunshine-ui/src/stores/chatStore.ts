@@ -11,6 +11,7 @@ import {
   createConversation,
   getConversation,
   deleteConversation,
+  isValidConversationId,
 } from '../api/conversations'
 import { sanitizeRestoredMessages } from '../api/streamError'
 import {
@@ -67,7 +68,7 @@ export const useChatStore = defineStore('chat', () => {
   let initPromise: Promise<void> | null = null
 
   function persistCurrentId() {
-    if (currentId.value) {
+    if (isValidConversationId(currentId.value)) {
       localStorage.setItem(CURRENT_ID_KEY, currentId.value)
     } else {
       localStorage.removeItem(CURRENT_ID_KEY)
@@ -92,7 +93,7 @@ export const useChatStore = defineStore('chat', () => {
         messages: prev?.messages ?? [],
       }
     })
-    conversations.value = merged
+    conversations.value = merged.filter(c => isValidConversationId(c.id))
   }
 
   /** 仅给已存在的会话补本地缓存消息，避免侧栏出现重复幽灵条目 */
@@ -109,12 +110,15 @@ export const useChatStore = defineStore('chat', () => {
 
   function restoreCurrentFromSavedOrFirst(): void {
     const savedId = localStorage.getItem(CURRENT_ID_KEY)
-    if (savedId && conversations.value.some(c => c.id === savedId)) {
+    if (!isValidConversationId(savedId)) {
+      localStorage.removeItem(CURRENT_ID_KEY)
+    }
+    if (isValidConversationId(savedId) && conversations.value.some(c => c.id === savedId)) {
       currentId.value = savedId
       persistCurrentId()
       return
     }
-    if (savedId) {
+    if (isValidConversationId(savedId)) {
       const cachedMeta = loadCachedIndex().find(c => c.id === savedId)
       if (cachedMeta && !conversations.value.some(c => c.id === savedId)) {
         conversations.value.unshift({
@@ -152,7 +156,7 @@ export const useChatStore = defineStore('chat', () => {
         const list = await listConversations()
         mergeApiList(list)
         restoreCurrentFromSavedOrFirst()
-        if (currentId.value) {
+        if (isValidConversationId(currentId.value)) {
           await loadDetail(currentId.value)
         }
         enrichFromCache()
@@ -180,6 +184,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function loadDetail(id: string) {
+    if (!isValidConversationId(id)) return
     try {
       const detail = await getConversation(id)
       const conv = conversations.value.find(c => c.id === id)
@@ -335,13 +340,14 @@ export const useChatStore = defineStore('chat', () => {
 
   async function ensureCurrent(): Promise<string> {
     await init()
-    if (!currentId.value || !conversations.value.some(c => c.id === currentId.value)) {
+    if (!isValidConversationId(currentId.value) || !conversations.value.some(c => c.id === currentId.value)) {
       return create()
     }
     return currentId.value
   }
 
   function setConversationIdFromStream(newId: string) {
+    if (!isValidConversationId(newId)) return
     const oldId = currentId.value
     if (oldId === newId) return
 

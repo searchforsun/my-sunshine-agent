@@ -22,6 +22,7 @@ import typescript from 'highlight.js/lib/languages/typescript'
 import xml from 'highlight.js/lib/languages/xml'
 import yaml from 'highlight.js/lib/languages/yaml'
 import { useChatStore } from '../stores/chatStore'
+import { isValidConversationId } from '../api/conversations'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { apiHeaders } from '../composables/useUserId'
@@ -493,7 +494,7 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   streamRenderer = null
   settledHtml.value = ''
 
-  if (!newId) return
+  if (!isValidConversationId(newId)) return
 
   ensureActive(newId)
   await hydrateSessionFromStore(newId)

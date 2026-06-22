@@ -88,6 +88,28 @@ class KnowledgeRetrievalServiceTest {
     }
 
     @Test
+    void searchRetriesWithOriginalQueryWhenRagAndHydeEmpty() {
+        when(queryRewriteService.isRagEnabled()).thenReturn(true);
+        when(queryRewriteService.isHydeEnabled()).thenReturn(true);
+        when(queryRewriteService.rewriteForRag(eq("口语问"), isNull()))
+                .thenReturn(QueryRewriteOutcome.of("rag", "口语问", "公司报销管理制度 差旅报销", 1L));
+        when(queryRewriteService.hydeForRag(eq("口语问"), isNull()))
+                .thenReturn(QueryRewriteOutcome.of("hyde", "口语问", "员工出差应提交审批单", 2L));
+        when(ragClient.search("员工出差应提交审批单", 3, "hybrid+rerank"))
+                .thenReturn(Mono.just(List.of()));
+        when(queryRewriteService.isEmptyRecallEnabled()).thenReturn(true);
+        when(queryRewriteService.rewriteEmptyRecall(eq("口语问"), isNull()))
+                .thenReturn(new QueryRewriteService.EmptyRecallRewrite(
+                        List.of("差旅费报销管理办法 打车"),
+                        QueryRewriteOutcome.emptyRecall("口语问", List.of("差旅费报销管理办法 打车"), 1L)));
+        when(ragClient.search("差旅费报销管理办法 打车", 3, "hybrid+rerank"))
+                .thenReturn(Mono.just(List.of(new RagClient.RagHit("差旅费管理办法", "content", 0.8f))));
+        List<RagClient.RagHit> out = service.search("口语问", 3);
+        assertThat(out).hasSize(1);
+        verify(queryRewriteService).rewriteEmptyRecall(eq("口语问"), isNull());
+    }
+
+    @Test
     void searchUsesHydeDocumentWhenEnabled() {
         when(queryRewriteService.isRagEnabled()).thenReturn(true);
         when(queryRewriteService.isHydeEnabled()).thenReturn(true);

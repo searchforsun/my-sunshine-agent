@@ -42,7 +42,8 @@ public class KnowledgeRetrievalService {
     }
 
     public Mono<List<RagClient.RagHit>> searchMono(String query, int topK, String traceMessageId) {
-        return prepareSearch(query, traceMessageId)
+        String originalQuery = query != null ? query.strip() : "";
+        return prepareSearch(originalQuery, traceMessageId)
                 .flatMap(prep -> {
                     String strategy = ragSearchProperties.getStrategy();
                     return ragClient.search(prep.searchQuery(), topK, strategy)
@@ -51,19 +52,18 @@ public class KnowledgeRetrievalService {
                                     return Mono.just(first);
                                 }
                                 return retryWithRewrite(
-                                        prep.emptyRecallBase(), topK, strategy, first, traceMessageId);
+                                        originalQuery, topK, strategy, first, traceMessageId);
                             });
                 });
     }
 
-    /** rag 改写 + 可选 HyDE 假想文档 → 检索 query；empty-recall 仍基于改写 query */
+    /** rag 改写 + 可选 HyDE 假想文档 → 检索 query */
     private Mono<SearchPrep> prepareSearch(String query, String traceMessageId) {
         return Mono.fromCallable(() -> {
-                    String emptyRecallBase = query;
+                    String searchQuery = query;
                     if (queryRewriteService.isRagEnabled()) {
-                        emptyRecallBase = queryRewriteService.rewriteForRag(query, traceMessageId).effectiveQuery();
+                        searchQuery = queryRewriteService.rewriteForRag(query, traceMessageId).effectiveQuery();
                     }
-                    String searchQuery = emptyRecallBase;
                     if (queryRewriteService.isHydeEnabled()) {
                         QueryRewriteOutcome hyde =
                                 queryRewriteService.hydeForRag(query, traceMessageId);
@@ -71,12 +71,12 @@ public class KnowledgeRetrievalService {
                             searchQuery = hyde.rewrittenQuery();
                         }
                     }
-                    return new SearchPrep(searchQuery, emptyRecallBase);
+                    return new SearchPrep(searchQuery);
                 })
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private record SearchPrep(String searchQuery, String emptyRecallBase) {}
+    private record SearchPrep(String searchQuery) {}
 
     private Mono<List<RagClient.RagHit>> retryWithRewrite(
             String originalQuery, int topK, String strategy, List<RagClient.RagHit> emptyFirst, String traceMessageId) {

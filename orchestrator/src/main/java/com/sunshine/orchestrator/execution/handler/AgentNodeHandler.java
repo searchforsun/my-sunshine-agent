@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution.handler;
 
-import com.sunshine.orchestrator.agent.SunshineAgent;
+import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
+import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeHandler;
@@ -20,15 +21,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Agent 子节点 — 包装 SunshineAgent 为 f(input)→output，引擎不交给 LLM 调度
- */
+/** Agent 子节点 — 黑盒 f(input)→output，由引擎调度 */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AgentNodeHandler implements NodeHandler {
 
-    private final SunshineAgent sunshineAgent;
+    private final AgentRuntime agentRuntime;
 
     @Override
     public String type() {
@@ -38,21 +37,27 @@ public class AgentNodeHandler implements NodeHandler {
     @Override
     public Mono<NodeResult> run(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
         String query = spec.params().getOrDefault("query", ctx.resolvePath("start.userQuery"));
-        String injectedContext = spec.params().getOrDefault("context", "");
+        List<String> injected = parseInjectedBlocks(spec.params().getOrDefault("context", ""));
 
-        // 子 Agent 不绑定主 assistantMsgId，避免 StepEventBridge 与主流冲突
-        return sunshineAgent.chatAsSubAgent(
-                        streamCtx.memory(), query, injectedContext,
-                        streamCtx.userId(), streamCtx.tenantId(), null)
+        return agentRuntime.run(AgentRunRequest.sub(
+                        streamCtx.memory(), query, injected,
+                        streamCtx.userId(), streamCtx.tenantId()))
                 .collectList()
-                .map(tokens -> toNodeResult(tokens, query))
+                .map(tokens -> toNodeResult(tokens))
                 .onErrorResume(e -> {
                     log.warn("[AgentNodeHandler] 子 Agent 失败: {}", e.getMessage());
                     return Mono.just(NodeResult.fail(e.getMessage()));
                 });
     }
 
-    private static NodeResult toNodeResult(List<StreamToken> tokens, String query) {
+    private static List<String> parseInjectedBlocks(String context) {
+        if (context == null || context.isBlank()) {
+            return List.of();
+        }
+        return List.of(context.strip());
+    }
+
+    private static NodeResult toNodeResult(List<StreamToken> tokens) {
         List<StreamToken> timeline = tokens.stream()
                 .filter(t -> t.isStep() || t.isStepDelta())
                 .toList();

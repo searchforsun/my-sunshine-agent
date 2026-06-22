@@ -5,9 +5,7 @@ import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.ToolManagerClient;
-import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -21,7 +19,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-class SunshineAgentMemoryTest {
+/** Agent 基础设施单测：Toolkit / ReActAgentFactory 装配 */
+class AgentInfraTest {
 
     @Test
     void toolkit_beanMethodUsesDynamicToolkitFactory() throws Exception {
@@ -66,7 +65,7 @@ class SunshineAgentMemoryTest {
     }
 
     @Test
-    void reactAgentFactory_isRequestScopedComponent() {
+    void reactAgentFactory_isSpringComponent() {
         assertThat(ReActAgentFactory.class.isAnnotationPresent(
                 org.springframework.stereotype.Component.class)).isTrue();
     }

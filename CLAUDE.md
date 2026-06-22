@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.6 提示词链路** 已落地；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.6 提示词链路** + **3.10.1 AgentRuntime** 已落地；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -38,7 +38,7 @@ python scripts/rag_eval.py --suite v5 --strategy hybrid+rerank --ci --fail-if-re
 python scripts/rag_eval.py --suite v5 --rewrite-only --strategy hybrid+rerank
 
 mvn test -pl llm-gateway -Dtest=ModelRouterTest,AdapterCircuitBreakerTest
-mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest,RuleBasedRouterTest,QueryRewriteServiceTest,KnowledgeRetrievalServiceTest,ExecutionPlanRouterTest,PromptComposerTest,LlmNodeHandlerTest
+mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest,RuleBasedRouterTest,QueryRewriteServiceTest,KnowledgeRetrievalServiceTest,ExecutionPlanRouterTest,PromptComposerTest,LlmNodeHandlerTest,ReActAgentRuntimeTest,ReactExecutorTest,AgentNodeHandlerTest
 mvn test -pl rag-service
 ```
 
@@ -73,7 +73,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | 模块 | 端口 | 职责 |
 |------|:----:|------|
 | gateway / bff / auth-center | 8000/8001/8100 | 路由、SSE 透传、JWT |
-| orchestrator | 8200 | 三模式 + Timeline + GenerationJob |
+| orchestrator | 8200 | 三模式 + Timeline + GenerationJob + `AgentRuntime` |
 | tool-manager | 8210 | `ToolRegistry` + `/api/tools/catalog` |
 | llm-gateway / rag-service | 8300/8400 | 模型路由 / Milvus |
 
@@ -94,12 +94,17 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | 意图步骤文案 | Nacos `agent.timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
 | 步骤 before/active/after | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
 | 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
+| 新 Agent 能力 / 子 Agent 配置 | `agent/runtime/` — 扩展 `AgentRunRequest` + `ReActAgentFactory`；workflow agent 节点 params 见 `sunshine-workflows.yaml` |
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` → orchestrator `ToolCatalogService` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels` / `ToolResultSummarizer`。
 
+**Agent 运行时（3.10.1 ✅）**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；`ReActAgentRuntime` 实现 MAIN/SUB。`ReactExecutor` → `AgentRunRequest.main(...)`；`AgentNodeHandler` → `AgentRunRequest.sub(...)`。MAIN 绑定 `assistantMsgId` 作 `StepEventBridge` id；SUB 用 `sub-{uuid}` 独立 bridge。**禁止**再引入 `SunshineAgent` 等兼容门面。
+
+**Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `LlmNodeHandler`；workflow llm 节点走 `node-prompt` 层。
+
 **Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall` | 可选 **HyDE**（`agent.rewrite.rag.hyde.enabled`，默认 false）；日志 `[QueryRewrite]`。
 
-**待做（§3.8）**：3.8.7 Planner 前改写（依赖 3.9/3.10）。
+**待做（阶段三多 Agent）**：3.10.2 子 Agent 工具白名单 + overlay → 3.11 skill-manager → 3.9 PLAN_WORKFLOW；3.8.7 Planner 前改写（依赖 3.9/3.10）。
 
 **RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）；向量锚点门禁见 `RetrievalService`。
 
@@ -107,9 +112,9 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 | 模式 | 步骤形态 | 说明 |
 |------|----------|------|
-| **ReAct** | `intent → think → tool → think-2 → generate` | reasoning 走 `step_delta`；Hook（`ProcessingStepHook`）经 `StepEventBridge` 绑定 assistantMsgId |
+| **ReAct** | `intent → think → tool → think-2 → generate` | `ReactExecutor` → `AgentRuntime`；reasoning 走 `step_delta`；Hook（`ProcessingStepHook`）经 `StepEventBridge` 绑定 assistantMsgId |
 | **Workflow** | `intent → plan → node-{id} → …` | DAG 由 `WorkflowExecutor` 线性执行；节点类型 rag / tool / agent / llm |
-| **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent（`AgentNodeHandler` → `chatAsSubAgent`）内部 think/tool **不上主时间线**；完成摘要一行由 `AgentNodeDetailSummarizer` 写入 `detail` → `WorkflowNodeTimeline.complete` 的 `summary.after` |
+| **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent（`AgentNodeHandler` → `AgentRuntime.sub`）内部 think/tool **不上主时间线**；完成摘要一行由 `AgentNodeDetailSummarizer` 写入 `detail` → `WorkflowNodeTimeline.complete` 的 `summary.after` |
 | **Workflow 正文** | 通常 `node-llm` + answer 节点 | `ThinkStepMapper.workflowMode` 下不为 workflow 单独开 `generate` 占位 |
 
 **Timeline V2 约定**：步骤含 `lifecycle`（pending/running/done）+ `summary.{before,active,after}`；SSE 仅下发**当前阶段**一行（`ProcessingStepMerger.currentPhaseSummary`）。终态 COMPLETE/FAIL/SKIP **必须下发**（`ProcessingTimelineSession` 不因 `sameState` 吞掉）。
@@ -126,6 +131,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。
 8. Workflow 意图步：`summary.after` 保留路由文案（如「将按 xx 流程处理」）；`detail` 不下发，避免与 after 重复可展开。
+9. ReAct / workflow agent 节点统一经 `AgentRuntime.run(AgentRunRequest)`；禁止新增兼容门面或绕过 `AgentRunRequest` 直接调 ReActAgent。
 
 ## 中间件（ecs4c16g）
 

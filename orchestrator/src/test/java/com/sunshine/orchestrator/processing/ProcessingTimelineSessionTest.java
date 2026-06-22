@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
@@ -162,6 +163,11 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeIntent_exposesRewriteDetailWhenProvided() {
+        AgentRewriteProperties props = new AgentRewriteProperties();
+        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
+        timeline.setIntent("【意图识别前】短问句补全");
+        props.setTimeline(timeline);
+        RewriteTimelineLabels.bind(props);
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("待审批");
         session.pending("intent", "intent");
@@ -174,9 +180,12 @@ class ProcessingTimelineSessionTest {
 
         ProcessingStep intent = session.snapshot().stream()
                 .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
+        assertThat(intent.detail()).contains("【意图识别前】短问句补全");
         assertThat(intent.detail()).contains("改写前：待审批");
         assertThat(intent.metadata().rewriteApplied()).isTrue();
         assertThat(intent.metadata().rewriteLatencyMs()).isEqualTo(15L);
+        assertThat(intent.metadata().rewriteScenarioLabel()).isEqualTo("【意图识别前】短问句补全");
+        RewriteTimelineLabels.bind(null);
     }
 
     @Test
@@ -200,10 +209,18 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeAt_workflowRagNode_mergesRewriteAndHitDetail() {
+        AgentRewriteProperties props = new AgentRewriteProperties();
+        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
+        timeline.setIntent("【意图识别前】短问句补全");
+        timeline.setRag("【知识库检索前】优化检索词");
+        props.setTimeline(timeline);
+        RewriteTimelineLabels.bind(props);
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("报差旅");
         session.bindTraceMessageId("msg-2");
         QueryRewriteTrace.bind("msg-2");
+        QueryRewriteTrace.record("msg-2",
+                QueryRewriteOutcome.of("intent", "报差旅", "查询差旅报销制度", 12L));
         QueryRewriteTrace.record("msg-2",
                 QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 9L));
         session.pending("node-rag", "node");
@@ -214,11 +231,14 @@ class ProcessingTimelineSessionTest {
 
         ProcessingStep rag = session.snapshot().stream()
                 .filter(s -> "node-rag".equals(s.id())).findFirst().orElseThrow();
+        assertThat(rag.detail()).contains("【知识库检索前】优化检索词");
         assertThat(rag.detail()).contains("改写前：报差旅");
+        assertThat(rag.detail()).doesNotContain("【意图识别前】");
         assertThat(rag.detail()).contains("命中 2 条，来源：公司差旅费报销管理办法");
         assertThat(rag.metadata().rewriteApplied()).isTrue();
         assertThat(rag.metadata().hitCount()).isEqualTo(2);
         QueryRewriteTrace.clear("msg-2");
+        RewriteTimelineLabels.bind(null);
     }
 
     @Test

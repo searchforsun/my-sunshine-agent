@@ -12,7 +12,7 @@ import java.util.function.Consumer;
 
 /**
  * 按 assistant messageId 关联 Hook 与 TimelineSession（Hook 运行在 AgentScope 线程）。
- * Hook 产出的 step / step_delta 统一入队，由 {@link SunshineAgent} 与 Event 流按序 drain。
+ * Hook 产出的 step / step_delta 统一入队，由 {@link com.sunshine.orchestrator.agent.runtime.ReActAgentRuntime} 与 Event 流按序 drain。
  */
 public final class StepEventBridge {
 

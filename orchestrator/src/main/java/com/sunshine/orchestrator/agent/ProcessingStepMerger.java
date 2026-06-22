@@ -318,6 +318,9 @@ public final class ProcessingStepMerger {
         if (hasText(metadata.rewriteScenario())) {
             map.put("rewriteScenario", metadata.rewriteScenario());
         }
+        if (hasText(metadata.rewriteScenarioLabel())) {
+            map.put("rewriteScenarioLabel", metadata.rewriteScenarioLabel());
+        }
         return map;
     }
 

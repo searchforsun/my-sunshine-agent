@@ -226,7 +226,7 @@ my-sunshine-agent/
 | 3.7 Grounding | 主答复 + 子 Agent output |
 | 3.8 提示词 | **✅ 3.8.1–3.8.6** · **⬜ 3.8.7** Planner（非检查门） |
 | 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API（含原 3.1） |
-| 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 |
+| 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 · **3.10.1 ✅** · 3.10.2+ ⬜ |
 | 3.11 skill-manager | :8225 + SkillCatalogService |
 | 3.12 前端 | `/skills` + Plan 详情页 |
 | 3.13 并行 | AhoCorasick ⬜；`source_type` **✅**（3.4.2） |

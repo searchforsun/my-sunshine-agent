@@ -33,9 +33,20 @@ function toTimestamp(iso: string | undefined): number {
   return Number.isNaN(t) ? Date.now() : t
 }
 
+export function isValidConversationId(id: unknown): id is string {
+  return typeof id === 'string' && id.length > 0 && id !== 'undefined' && id !== 'null'
+}
+
+function requireConversationId(raw: Record<string, unknown>): string {
+  if (!isValidConversationId(raw.id)) {
+    throw new Error('会话 id 无效')
+  }
+  return raw.id
+}
+
 function mapSummary(raw: Record<string, unknown>): ConversationSummary {
   return {
-    id: String(raw.id),
+    id: requireConversationId(raw),
     title: String(raw.title ?? '新对话'),
     createdAt: toTimestamp(raw.createdAt as string | undefined),
     updatedAt: toTimestamp(raw.updatedAt as string | undefined),
@@ -80,11 +91,48 @@ function mapDetail(raw: Record<string, unknown>): ConversationDetail {
   return { ...mapSummary(raw), messages }
 }
 
+interface ApiResult<T> {
+  code: number
+  msg: string
+  data: T
+}
+
+function isApiResult(raw: unknown): raw is ApiResult<unknown> {
+  return typeof raw === 'object' && raw !== null && 'code' in raw && 'msg' in raw
+}
+
+/** BFF 成功时返回裸 JSON；GlobalExceptionHandler 失败时返回 { code, msg, data } 且 HTTP 仍为 200 */
+function unwrapApiError(raw: unknown): unknown {
+  if (!isApiResult(raw)) return raw
+  if (raw.code !== 200) {
+    throw new Error(raw.msg || '请求失败')
+  }
+  if (raw.data === null || raw.data === undefined) {
+    throw new Error(raw.msg || '响应无数据')
+  }
+  return raw.data
+}
+
+function unwrapList(raw: unknown): Record<string, unknown>[] {
+  const body = unwrapApiError(raw)
+  if (!Array.isArray(body)) {
+    throw new Error('对话列表格式异常')
+  }
+  return body as Record<string, unknown>[]
+}
+
+function unwrapObject(raw: unknown): Record<string, unknown> {
+  const body = unwrapApiError(raw)
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new Error('对话详情格式异常')
+  }
+  return body as Record<string, unknown>
+}
+
 export async function listConversations(): Promise<ConversationSummary[]> {
   const res = await fetch(`${API_BASE}/api/conversations`, { headers: apiHeaders() })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const data = await res.json()
-  return (data as Record<string, unknown>[]).map(mapSummary)
+  return unwrapList(await res.json()).map(mapSummary)
 }
 
 export async function createConversation(): Promise<ConversationSummary> {
@@ -94,13 +142,16 @@ export async function createConversation(): Promise<ConversationSummary> {
     body: '{}',
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return mapSummary(await res.json())
+  return mapSummary(unwrapObject(await res.json()))
 }
 
 export async function getConversation(id: string): Promise<ConversationDetail> {
+  if (!isValidConversationId(id)) {
+    throw new Error('会话 id 无效')
+  }
   const res = await fetch(`${API_BASE}/api/conversations/${id}`, { headers: apiHeaders() })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return mapDetail(await res.json())
+  return mapDetail(unwrapObject(await res.json()))
 }
 
 export async function deleteConversation(id: string): Promise<void> {
