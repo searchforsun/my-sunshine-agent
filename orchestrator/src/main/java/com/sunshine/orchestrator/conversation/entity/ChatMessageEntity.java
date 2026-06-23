@@ -50,6 +50,9 @@ public class ChatMessageEntity {
     @Column(name = "workflow_id", length = 64)
     private String workflowId;
 
+    @Column(name = "execution_plan_id", length = 36)
+    private String executionPlanId;
+
     @Column(name = "resume_count", nullable = false)
     private int resumeCount = 0;
 

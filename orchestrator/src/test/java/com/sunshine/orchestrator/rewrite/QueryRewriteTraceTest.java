@@ -18,8 +18,8 @@ class QueryRewriteTraceTest {
     void recordsAndSummarizesRewriteEvents() {
         AgentRewriteProperties props = new AgentRewriteProperties();
         AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("【意图识别前】短问句补全");
-        timeline.setRag("【知识库检索前】优化检索词");
+        timeline.setIntent("补全问句");
+        timeline.setRag("优化检索词");
         props.setTimeline(timeline);
         RewriteTimelineLabels.bind(props);
         QueryRewriteTrace.bind("m1");
@@ -28,14 +28,14 @@ class QueryRewriteTraceTest {
 
         assertThat(QueryRewriteTrace.intentOutcome("m1")).isPresent();
         assertThat(QueryRewriteTrace.combinedTimelineDetail("m1"))
-                .contains("【意图识别前】短问句补全")
-                .contains("改写前：待审批")
-                .contains("【知识库检索前】优化检索词")
-                .contains("改写后：查询待审批报销");
+                .contains("补全问句")
+                .contains("原问题：待审批")
+                .contains("优化检索词")
+                .contains("优化后：查询待审批报销");
 
         assertThat(QueryRewriteTrace.combinedRagTimelineDetail("m1"))
-                .contains("【知识库检索前】优化检索词")
-                .doesNotContain("【意图识别前】");
+                .contains("优化检索词")
+                .doesNotContain("补全问句");
 
         QueryRewriteTrace.AuditRewriteSummary summary = QueryRewriteTrace.auditSummary("m1");
         assertThat(summary.rewriteApplied()).isTrue();

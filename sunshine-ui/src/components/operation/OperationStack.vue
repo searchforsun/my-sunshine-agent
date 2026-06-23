@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
+import { resolvePlanIdFromStep } from '../../api/processingSteps'
 import OperationCard from './OperationCard.vue'
+import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
 
-defineProps<{
+const props = defineProps<{
   steps: ProcessingStep[]
   live?: boolean
+  executionPlanId?: string
 }>()
 
 const cardExpanded = reactive(new Map<string, boolean>())
@@ -15,7 +18,6 @@ function lifecycleOf(step: ProcessingStep) {
   return step.lifecycle ?? step.status ?? 'pending'
 }
 
-/** 默认折叠；用户手动展开/折叠后记住选择 */
 function isCardExpanded(step: ProcessingStep): boolean {
   if (cardUserToggled.has(step.id)) {
     return cardExpanded.get(step.id) ?? false
@@ -27,18 +29,40 @@ function toggleCard(step: ProcessingStep): void {
   cardUserToggled.add(step.id)
   cardExpanded.set(step.id, !isCardExpanded(step))
 }
+
+const planStep = computed(() => props.steps.find(s => s.phase === 'plan'))
+
+const showPlanDag = computed(() => {
+  const plan = planStep.value
+  if (!plan) return false
+  return !!(resolvePlanIdFromStep(plan) ?? props.executionPlanId)
+})
+
+const displaySteps = computed(() => {
+  if (!showPlanDag.value) return props.steps
+  return props.steps.filter(s => s.phase !== 'node')
+})
 </script>
 
 <template>
   <div class="operation-lines">
-    <OperationCard
-      v-for="step in steps"
-      :key="step.id"
-      :step="step"
-      :expanded="isCardExpanded(step)"
-      :live="live && lifecycleOf(step) === 'running'"
-      @toggle="toggleCard(step)"
-    />
+    <template v-for="step in displaySteps" :key="step.id">
+      <PlanWorkflowPanel
+        v-if="step.phase === 'plan' && showPlanDag"
+        :plan-step="step"
+        :all-steps="steps"
+        :live="live"
+        :execution-plan-id="executionPlanId"
+      />
+      <OperationCard
+        v-else
+        :step="step"
+        :expanded="isCardExpanded(step)"
+        :live="live && lifecycleOf(step) === 'running'"
+        :execution-plan-id="executionPlanId"
+        @toggle="toggleCard(step)"
+      />
+    </template>
   </div>
 </template>
 

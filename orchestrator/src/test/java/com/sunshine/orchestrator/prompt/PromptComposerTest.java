@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.prompt;
 
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
@@ -10,6 +11,9 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,8 +21,13 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class PromptComposerTest {
+
+    @Mock
+    private SkillCatalogService skillCatalogService;
 
     private AgentPromptProperties prompts;
     private MemoryProperties memoryProperties;
@@ -33,7 +42,7 @@ class PromptComposerTest {
         memoryProperties.setLayerPrompt("memory-layer-prompt");
         memoryProperties.setCurrentUserMarker("【当前提问 · 仅此作答】");
         overlayProperties = new PromptOverlayProperties();
-        composer = new PromptComposer(prompts, overlayProperties, memoryProperties);
+        composer = new PromptComposer(prompts, overlayProperties, memoryProperties, skillCatalogService);
     }
 
     @Test
@@ -126,5 +135,33 @@ class PromptComposerTest {
 
         assertThat(inputs).hasSize(2);
         assertThat(inputs.get(0).getTextContent()).isEqualTo("有效上下文");
+    }
+
+    @Test
+    void composeReactInputs_appliesSkillOverlayFromCatalog() {
+        when(skillCatalogService.overlayOrEmpty("finance-analysis")).thenReturn("catalog-skill-overlay");
+        memoryProperties.setLayerPrompt("");
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                MemoryContext.forSubAgent(), "分析待办", "finance-analysis", List.of("待办 JSON")));
+
+        assertThat(inputs.stream().map(Msg::getTextContent))
+                .anyMatch(t -> t.contains("catalog-skill-overlay"));
+    }
+
+    @Test
+    void composeReactInputs_appliesSkillOverlay() {
+        overlayProperties.setSkillOverlays(new LinkedHashMap<>(Map.of(
+                "finance-analysis", "skill-finance-overlay")));
+        memoryProperties.setLayerPrompt("");
+        when(skillCatalogService.overlayOrEmpty("finance-analysis")).thenReturn("");
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                MemoryContext.forSubAgent(), "分析待办", "finance-analysis", List.of("待办 JSON")));
+
+        assertThat(inputs.stream().map(Msg::getTextContent))
+                .anyMatch(t -> t.contains("skill-finance-overlay"));
+        assertThat(inputs.get(inputs.size() - 2).getTextContent()).isEqualTo("待办 JSON");
+        assertThat(inputs.stream().map(Msg::getTextContent)).noneMatch(t -> t.contains("ltm"));
     }
 }

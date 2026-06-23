@@ -176,6 +176,16 @@ public class ConversationService {
         return messageRepo.save(msg);
     }
 
+    /** 关联动态 Plan 记录 */
+    @Transactional
+    public ChatMessageEntity linkMessageExecutionPlan(String messageId, String executionPlanId) {
+        ChatMessageEntity msg = messageRepo.findById(messageId)
+                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+        msg.setExecutionPlanId(executionPlanId);
+        msg.setUpdatedAt(Instant.now());
+        return messageRepo.save(msg);
+    }
+
     @Transactional
     public ChatMessageEntity incrementResumeCount(String messageId) {
         ChatMessageEntity msg = messageRepo.findById(messageId)

@@ -18,19 +18,22 @@ interface ServiceStatus {
 const services = ref<ServiceStatus[]>([
   { name: 'Gateway', host: 'localhost', port: 8000, status: 'checking', description: 'API 网关与路由', healthPath: '/' },
   { name: 'BFF', host: 'localhost', port: 8001, status: 'checking', description: 'SSE 流式转发', healthPath: '/' },
-  { name: 'Orchestrator', host: 'localhost', port: 8200, status: 'checking', description: 'AgentScope ReActAgent 编排', healthPath: '/' },
+  { name: 'Auth Center', host: 'localhost', port: 8100, status: 'checking', description: 'Sa-Token 认证中心', healthPath: '/' },
+  { name: 'Orchestrator', host: 'localhost', port: 8200, status: 'checking', description: 'Agent 编排与 Workflow', healthPath: '/' },
+  { name: 'Tool Manager', host: 'localhost', port: 8210, status: 'checking', description: '业务工具注册与 Catalog', healthPath: '/' },
+  { name: 'Skill Manager', host: 'localhost', port: 8225, status: 'checking', description: 'Skill 包管理与 Catalog', healthPath: '/' },
   { name: 'LLM Gateway', host: 'localhost', port: 8300, status: 'checking', description: '多厂商大模型路由', healthPath: '/' },
   { name: 'RAG Service', host: 'localhost', port: 8400, status: 'checking', description: 'Milvus 向量检索', healthPath: '/' },
-  { name: 'Auth Center', host: 'localhost', port: 8100, status: 'checking', description: 'Sa-Token 认证中心', healthPath: '/' },
-  { name: 'Tool Manager', host: 'localhost', port: 8210, status: 'offline', description: '业务工具包装', healthPath: '/' },
-  { name: 'Prompt Manager', host: 'localhost', port: 8500, status: 'offline', description: '提示词模板管理', healthPath: '/' },
-  { name: 'Desensitize', host: 'localhost', port: 8600, status: 'offline', description: '数据脱敏引擎', healthPath: '/' },
+  { name: 'Prompt Manager', host: 'localhost', port: 8500, status: 'checking', description: '提示词模板管理', healthPath: '/' },
+  { name: 'Desensitize', host: 'localhost', port: 8600, status: 'checking', description: '数据脱敏引擎', healthPath: '/' },
+  { name: 'Finance', host: 'localhost', port: 8710, status: 'checking', description: '财务消息与审批 Mock', healthPath: '/' },
 ])
 
 const middleware = ref<ServiceStatus[]>([
   { name: 'Nacos', host: MIDDLEWARE_HOST, port: 8848, status: 'checking', description: '注册与配置中心', healthPath: '/nacos/' },
   { name: 'Redis', host: MIDDLEWARE_HOST, port: 6379, status: 'external', description: '缓存与会话' },
   { name: 'MySQL', host: MIDDLEWARE_HOST, port: 3306, status: 'external', description: '关系型数据库' },
+  { name: 'MinIO', host: MIDDLEWARE_HOST, port: 9000, status: 'checking', description: 'Skill 包对象存储', healthPath: '/minio/health/live' },
   { name: 'Milvus', host: MIDDLEWARE_HOST, port: 9091, status: 'checking', description: '向量数据库', healthPath: '/healthz' },
   { name: 'RocketMQ', host: MIDDLEWARE_HOST, port: 9876, status: 'external', description: '消息队列' },
   { name: 'Sentinel', host: MIDDLEWARE_HOST, port: 8858, status: 'checking', description: '流量控制面板', healthPath: '/' },
@@ -105,7 +108,7 @@ onMounted(() => {
       <header class="page-header">
         <div>
           <h2>系统状态</h2>
-          <p>微服务与中间件健康状态概览。</p>
+          <p>微服务与中间件健康探测（按端口顺序）。</p>
         </div>
         <NButton @click="refreshAll" size="small" round secondary>
           刷新

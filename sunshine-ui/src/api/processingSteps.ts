@@ -84,7 +84,30 @@ export interface ProcessingStep {
 
 export const STEP_ORDER: StepPhase[] = ['intent', 'plan', 'node', 'rag', 'tool', 'agent', 'think', 'generate']
 
-/** 步骤标题：仅用后端 SSE 下发的 step.label，无则回退 step.id */
+export function parsePlanStepMeta(text?: string): { planId?: string; chain?: string } {
+  if (!text?.trim()) return {}
+  const trimmed = text.trim()
+  const match = trimmed.match(/^planId=([^|]+)\|chain=(.*)$/s)
+  if (match) {
+    return { planId: match[1].trim(), chain: match[2].trim() }
+  }
+  return { chain: trimmed }
+}
+
+export function resolvePlanIdFromStep(step: ProcessingStep): string | undefined {
+  for (const source of [step.detail, step.summary?.after, step.result]) {
+    const id = parsePlanStepMeta(source)?.planId
+    if (id) return id
+  }
+  return undefined
+}
+
+function stripPlanMetaText(text: string): string {
+  const meta = parsePlanStepMeta(text)
+  if (meta.chain != null) return meta.chain
+  return text
+}
+
 export function formatStepLabel(step: ProcessingStep): string {
   if (step.label?.trim()) {
     return step.label
@@ -286,15 +309,24 @@ export function formatStepMetadata(step: ProcessingStep): string {
   return parts.join('，')
 }
 
+/** 改写耗时展示（与后端 QueryRewriteOutcome 对齐） */
+function formatRewriteLatency(latencyMs: number): string {
+  if (latencyMs >= 1000) {
+    const seconds = latencyMs / 1000
+    return seconds >= 10 ? `用时：${Math.round(seconds)} 秒` : `用时：${seconds.toFixed(1)} 秒`
+  }
+  return `用时：${latencyMs} 毫秒`
+}
+
 /** 从 metadata 构造 Query 改写展开文案（与后端 detail 格式对齐） */
 export function formatRewriteMetadata(step: ProcessingStep): string {
   const m = step.metadata
   if (!m?.rewriteApplied || !m.rewriteFrom || !m.rewriteTo) return ''
-  const targetLabel = m.rewriteScenario === 'hyde' ? 'HyDE' : '改写后'
+  const targetLabel = m.rewriteScenario === 'hyde' ? '参考文档' : '优化后'
   const latency = typeof m.rewriteLatencyMs === 'number'
-    ? `\n耗时：${m.rewriteLatencyMs}ms`
+    ? `\n${formatRewriteLatency(m.rewriteLatencyMs)}`
     : ''
-  const body = `改写前：${m.rewriteFrom}\n${targetLabel}：${m.rewriteTo}${latency}`
+  const body = `原问题：${m.rewriteFrom}\n${targetLabel}：${m.rewriteTo}${latency}`
   if (m.rewriteScenarioLabel?.trim()) {
     return `${m.rewriteScenarioLabel.trim()}\n${body}`
   }
@@ -328,6 +360,9 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
       || step.result?.trim()
       || step.detail?.trim()
       || ''
+    if (step.phase === 'plan' && header) {
+      header = stripPlanMetaText(header)
+    }
   } else {
     header = step.summary?.before?.trim() || step.label?.trim() || ''
   }
@@ -366,6 +401,9 @@ export function resolveStepExpandSummary(step: ProcessingStep): string {
   let oneLine = ''
   if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
     oneLine = (step.summary?.after?.trim() || resolveStepSummaryFull(step)).replace(/\s+/g, ' ').trim()
+    if (step.phase === 'plan' && oneLine) {
+      oneLine = stripPlanMetaText(oneLine)
+    }
   } else {
     oneLine = resolveStepSummaryFull(step).replace(/\s+/g, ' ').trim()
   }
@@ -385,10 +423,24 @@ export function resolveStepExpandBody(step: ProcessingStep): string {
   const detail = step.detail?.trim()
   if (detail && detail !== summary) return detail
   const rewrite = formatRewriteMetadata(step)
-  if (rewrite && rewrite !== summary && !(detail && detail.includes('改写前：'))) return rewrite
+  if (rewrite && rewrite !== summary && !(detail && detail.includes('原问题：'))) return rewrite
   const result = step.result?.trim()
   if (result && result !== summary && result !== detail) return result
   return ''
+}
+
+/** 从 agent 节点 detail / 展开正文解析「已加载技能：xxx」 */
+export function parseLoadedSkillLabel(text?: string): string | undefined {
+  if (!text?.trim()) return undefined
+  const match = text.trim().match(/^已加载技能：([^\n]+)/)
+  const label = match?.[1]?.trim()
+  return label || undefined
+}
+
+/** 去掉展开正文开头的已加载技能行，避免与头部重复 */
+export function stripLoadedSkillPrefix(text?: string): string {
+  if (!text?.trim()) return ''
+  return text.replace(/^已加载技能：[^\n]+\n\n?/, '').trim()
 }
 
 /** @deprecated 使用 resolveStepExpandSummary + resolveStepExpandBody */
@@ -611,6 +663,11 @@ function isThinkStepId(id: string): boolean {
   return id === 'think' || id.startsWith('think-')
 }
 
+/** plan-workflow / 静态 workflow 的节点级 reasoning，不走 ReAct think 步骤 */
+export function isWorkflowNodeStepId(id: string | undefined): boolean {
+  return !!id && id.startsWith('node-')
+}
+
 
 
 export function findRunningStepId(steps: ProcessingStep[]): string | undefined {
@@ -656,8 +713,10 @@ export function normalizeTimelineSteps(
 
   const agentHasReasoning = result.some(s => s.id === 'agent' && !!s.reasoning?.trim())
 
-  // Agent 路径思考已挂在「分析作答」；勿再用 message.reasoning 合成独立 think
-  if (hasThink || agentHasReasoning) {
+  const workflowPath = result.some(s => s.phase === 'plan' || isWorkflowNodeStepId(s.id))
+
+  // Agent / workflow：思考挂在 agent 或 node-*；勿再用 message.reasoning 合成 ReAct think
+  if (hasThink || agentHasReasoning || workflowPath) {
 
     return sortSteps(result)
 

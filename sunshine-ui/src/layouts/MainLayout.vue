@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
-import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal } from '@vicons/ionicons5'
+import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, ref } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
@@ -25,6 +25,7 @@ function renderDropdownIcon(icon: Component) {
 const menuOptions: MenuOption[] = [
   { label: 'AI 对话', key: 'chat', icon: renderIcon(ChatbubblesOutline) },
   { label: '知识库',  key: 'knowledge', icon: renderIcon(BookOutline) },
+  { label: 'Skills', key: 'skills', icon: renderIcon(LayersOutline) },
   { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
 ]
 

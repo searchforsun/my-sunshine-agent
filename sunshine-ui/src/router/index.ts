@@ -35,6 +35,18 @@ const router = createRouter({
           meta: { title: '知识库' },
         },
         {
+          path: 'skills',
+          name: 'skills',
+          component: () => import('../views/SkillsView.vue'),
+          meta: { title: 'Skills' },
+        },
+        {
+          path: 'plans/:planId',
+          name: 'plan-detail',
+          component: () => import('../views/PlanDetailView.vue'),
+          meta: { title: '执行计划' },
+        },
+        {
           path: 'status',
           name: 'status',
           component: () => import('../views/StatusView.vue'),

@@ -41,6 +41,7 @@
 | `2026-06-19-locked-architecture-decisions.md` | 阶段三 §3.9–3.11 |
 | `2026-06-19-multi-agent-architecture-design.md` | 阶段三 §3.9–3.10 |
 | `2026-06-19-advanced-capabilities-design.md` | 阶段三 §3.4.7、§3.8–3.11；阶段四 §4.5–4.7 |
+| `skills-management-ui-design.md` | 阶段三 **§3.12** `/skills` 管理页 UI/API SSOT |
 | `2026-06-21-multimodal-ocr-design.md` | 阶段四 §4.2–4.3 |
 | `2026-06-19-phase3-production-hardening-design.md` | → 已迁移为 `phase3-production-hardening-design.md` |
 | `2026-06-19-phase4-platformization-design.md` | → 已迁移为 `phase4-platformization-design.md` |

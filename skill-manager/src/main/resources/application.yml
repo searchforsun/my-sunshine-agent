@@ -1,0 +1,22 @@
+# sunshine-skill-manager — 配置入口（业务 SSOT：Nacos sunshine-skill-manager.yaml）
+
+spring:
+  application:
+    name: sunshine-skill-manager
+  config:
+    import:
+      - optional:nacos:sunshine-skill-manager.yaml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+      config:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+        file-extension: yaml
+        group: DEFAULT_GROUP

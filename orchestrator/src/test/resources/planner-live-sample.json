@@ -1,0 +1,15 @@
+{
+  "planId": null,
+  "reason": "sample",
+  "nodes": [
+    {"id": "start", "type": "start", "label": "开始"},
+    {"id": "rag_retrieve", "type": "rag", "label": "检索差旅报销制度", "config": {"query": "差旅报销制度", "tool": "search_knowledge"}},
+    {"id": "agent_compliance", "type": "agent", "label": "合规分析", "config": {"tools": ["list_finance_messages", "get_finance_message_detail"]}},
+    {"id": "answer", "type": "answer", "label": "输出结论"}
+  ],
+  "edges": [
+    {"from": "start", "to": "rag_retrieve"},
+    {"from": "rag_retrieve", "to": "agent_compliance"},
+    {"from": "agent_compliance", "to": "answer"}
+  ]
+}

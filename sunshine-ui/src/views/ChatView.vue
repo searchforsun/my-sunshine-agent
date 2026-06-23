@@ -35,12 +35,18 @@ import {
 /** 挂载/切换会话 hydration 期间，跳过 currentId watch 避免切到空 session */
 let sessionHydrating = false
 import OperationStack from '../components/operation/OperationStack.vue'
+import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
+import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
 import type { ChatMessage } from '../api/chat'
 import {
   normalizeTimelineSteps,
   hasActiveStep,
   type ProcessingStep,
 } from '../api/processingSteps'
+import {
+  listSkillCatalogIndex,
+  type SkillCatalogIndexEntry,
+} from '../api/skills'
 
 hljs.registerLanguage('bash', bash)
 hljs.registerLanguage('shell', bash)
@@ -75,6 +81,7 @@ const chatStore = useChatStore()
 const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible, toggleSidebar } = useSidebar()
+const { state: planDrawerState, close: closePlanDrawer } = usePlanNodeDrawer()
 
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 
@@ -198,6 +205,52 @@ const {
 
 const inputText = ref('')
 const inputRef = ref<InstanceType<typeof NInput>>()
+const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
+const showSkillSuggest = ref(false)
+const skillSuggestIndex = ref(0)
+const skillMentionStart = ref(-1)
+const skillQuery = ref('')
+
+const filteredSkills = computed(() => {
+  const q = skillQuery.value.trim().toLowerCase()
+  return skillCatalog.value
+    .filter(s => s.enabled && (
+      !q
+      || s.id.toLowerCase().includes(q)
+      || s.displayName.toLowerCase().includes(q)
+    ))
+    .slice(0, 8)
+})
+
+function refreshSkillMention(text: string) {
+  const match = text.match(/@([\w\u4e00-\u9fff-]*)$/)
+  if (!match || match.index == null) {
+    showSkillSuggest.value = false
+    return
+  }
+  skillMentionStart.value = match.index
+  skillQuery.value = match[1]
+  showSkillSuggest.value = skillCatalog.value.some(s => s.enabled)
+  skillSuggestIndex.value = 0
+}
+
+watch(inputText, refreshSkillMention)
+
+function applySkillSuggest(skill: SkillCatalogIndexEntry) {
+  if (skillMentionStart.value < 0) return
+  const prefix = inputText.value.slice(0, skillMentionStart.value)
+  inputText.value = `${prefix}@${skill.id} `
+  showSkillSuggest.value = false
+  nextTick(() => inputRef.value?.focus())
+}
+
+async function loadSkillCatalog() {
+  try {
+    skillCatalog.value = await listSkillCatalogIndex()
+  } catch (e) {
+    console.warn('[ChatView] skill catalog load failed', e)
+  }
+}
 const scrollRef = ref<HTMLElement | null>(null)
 const copiedIndex = ref<number | null>(null)
 let copyResetTimer: ReturnType<typeof setTimeout> | null = null
@@ -419,6 +472,28 @@ async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (showSkillSuggest.value && filteredSkills.value.length > 0) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      skillSuggestIndex.value = (skillSuggestIndex.value + 1) % filteredSkills.value.length
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      skillSuggestIndex.value = (skillSuggestIndex.value - 1 + filteredSkills.value.length)
+        % filteredSkills.value.length
+      return
+    }
+    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+      e.preventDefault()
+      applySkillSuggest(filteredSkills.value[skillSuggestIndex.value])
+      return
+    }
+    if (e.key === 'Escape') {
+      showSkillSuggest.value = false
+      return
+    }
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     handleSend()
@@ -426,6 +501,7 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  void loadSkillCatalog()
   sessionHydrating = true
   try {
     await chatStore.init()
@@ -479,6 +555,8 @@ watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
 watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating || newId === oldId) return
+
+  closePlanDrawer()
 
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
@@ -556,7 +634,7 @@ watch(() => loading.value, async (val) => {
 </script>
 
 <template>
-  <div class="chat-page">
+  <div class="chat-page" :class="{ 'plan-drawer-open': planDrawerState.open }">
     <!-- 全宽会话头（豆包式） -->
     <header class="chat-header">
       <button
@@ -643,6 +721,7 @@ watch(() => loading.value, async (val) => {
                 v-if="showTimeline(msg, idx)"
                 :steps="resolveTimelineSteps(msg, idx)"
                 :live="isTimelineLive(msg, idx)"
+                :execution-plan-id="msg.executionPlanId"
               />
               <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">
                 <div v-if="showStreamWaiting" class="stream-waiting-dots" aria-label="正在生成">
@@ -698,12 +777,23 @@ watch(() => loading.value, async (val) => {
           </button>
         </div>
         <!-- 就绪：正常输入 -->
-        <div v-else class="composer-box">
+        <div v-else class="composer-box composer-box--input">
+          <ul v-if="showSkillSuggest && filteredSkills.length" class="skill-suggest">
+            <li
+              v-for="(skill, idx) in filteredSkills"
+              :key="skill.id"
+              :class="{ active: idx === skillSuggestIndex }"
+              @mousedown.prevent="applySkillSuggest(skill)"
+            >
+              <span class="skill-suggest-id">@{{ skill.id }}</span>
+              <span class="skill-suggest-name">{{ skill.displayName }}</span>
+            </li>
+          </ul>
           <NInput
             ref="inputRef"
             v-model:value="inputText"
             type="textarea"
-            placeholder="发消息，Enter 发送"
+            placeholder="发消息，Enter 发送；输入 @ 指定 Skill"
             :autosize="{ minRows: 1, maxRows: 6 }"
             @keydown="handleKeydown"
             class="composer-input"
@@ -721,6 +811,7 @@ watch(() => loading.value, async (val) => {
         <p class="composer-hint">AI 生成内容仅供参考，请核实重要信息</p>
       </div>
     </footer>
+    <PlanNodeDrawer />
   </div>
 </template>
 
@@ -733,6 +824,14 @@ watch(() => loading.value, async (val) => {
   min-height: 0;
   position: relative;
   background: var(--sun-black);
+  --chat-header-h: 48px;
+}
+
+.chat-page.plan-drawer-open .chat-header,
+.chat-page.plan-drawer-open .chat-scroll,
+.chat-page.plan-drawer-open .chat-composer {
+  margin-right: min(400px, 92vw);
+  transition: margin-right 0.25s ease;
 }
 
 /* ── 全宽会话头 ── */
@@ -1035,6 +1134,56 @@ watch(() => loading.value, async (val) => {
   cursor: default;
 }
 
+.composer-box--input {
+  position: relative;
+  flex-wrap: wrap;
+}
+
+.skill-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--sun-deep);
+  border: 1px solid var(--sun-border);
+  border-radius: 12px;
+  box-shadow: var(--composer-shadow-focus);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 20;
+}
+
+.skill-suggest li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: var(--sun-font-base);
+}
+
+.skill-suggest li:hover,
+.skill-suggest li.active {
+  background: var(--sun-surface-hover, rgba(128, 128, 128, 0.12));
+}
+
+.skill-suggest-id {
+  font-family: var(--sun-font-mono, monospace);
+  color: var(--sun-accent);
+  flex-shrink: 0;
+}
+
+.skill-suggest-name {
+  color: var(--sun-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .streaming-status {
   flex: 1;
   display: flex;
@@ -1116,98 +1265,5 @@ watch(() => loading.value, async (val) => {
   text-align: center;
   font-size: var(--sun-font-xs);
   color: var(--sun-text-muted);
-}
-
-/* Markdown */
-.msg-md {
-  font-size: var(--sun-font-md);
-  line-height: var(--sun-line-loose);
-  color: var(--sun-text);
-  word-break: break-word;
-}
-
-.msg-md :deep(h1), .msg-md :deep(h2), .msg-md :deep(h3) {
-  margin: 16px 0 8px;
-  font-weight: 700;
-  color: var(--sun-text);
-}
-
-.msg-md :deep(h3) { font-size: var(--sun-font-md); }
-.msg-md :deep(h2) { font-size: var(--sun-font-lg); }
-.msg-md :deep(h1) { font-size: var(--sun-font-xl); }
-.msg-md :deep(p) { margin: 6px 0; }
-.msg-md :deep(strong) { color: var(--sun-text); font-weight: 600; }
-.msg-md :deep(a) { color: var(--sun-blue); }
-.msg-md :deep(ul), .msg-md :deep(ol) { margin: 8px 0; padding-left: 22px; }
-.msg-md :deep(li) { margin: 3px 0; }
-.msg-md :deep(hr) { border: none; border-top: 1px solid var(--sun-border); margin: 16px 0; }
-.msg-md :deep(blockquote) {
-  border-left: 3px solid var(--sun-border-light);
-  padding: 4px 14px;
-  margin: 12px 0;
-  color: var(--sun-text-secondary);
-}
-.msg-md :deep(code) {
-  background: var(--sun-accent-muted);
-  color: var(--sun-text);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: var(--sun-font-sm);
-}
-.msg-md :deep(pre:not(.smd-mermaid-source)) {
-  background: var(--sun-deep);
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-  padding: 14px 18px;
-  overflow-x: auto;
-  margin: 12px 0;
-}
-.msg-md :deep(.smd-mermaid-wrapper .smd-mermaid-source) {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  margin: 0;
-  padding: 14px 16px 16px;
-}
-.msg-md :deep(pre code.hljs) {
-  background: none;
-  padding: 0;
-  font-size: var(--sun-font-sm);
-  line-height: var(--sun-line);
-}
-.msg-md :deep(pre code:not(.hljs)) {
-  background: none;
-  color: var(--sun-text);
-  padding: 0;
-}
-.msg-md :deep(pre.hljs),
-.msg-md :deep(pre code.hljs) {
-  background: var(--sun-deep);
-}
-.msg-md :deep(table) { border-collapse: collapse; margin: 12px 0; width: 100%; }
-.msg-md :deep(th), .msg-md :deep(td) { border: 1px solid var(--sun-border); padding: 8px 14px; text-align: left; }
-.msg-md :deep(th) { background: var(--sun-deep); font-weight: 600; }
-.msg-md :deep(img) { max-width: 100%; border-radius: 8px; }
-.msg-md :deep(.katex-display) {
-  margin: 14px 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 4px 0;
-}
-.msg-md :deep(.katex) { font-size: 1.05em; }
-.msg-md :deep(.katex-display > .katex) { font-size: 1.15em; }
-/* 流式过程中隐藏 KaTeX 解析失败红字，结束后再完整渲染 */
-.msg-md.streaming :deep(.katex-error) { display: none !important; }
-.msg-md :deep(.mermaid-container) {
-  display: flex;
-  justify-content: center;
-  margin: 16px 0;
-  padding: 16px;
-  background: var(--sun-deep);
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-  overflow-x: auto;
 }
 </style>

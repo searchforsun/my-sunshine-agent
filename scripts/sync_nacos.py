@@ -29,6 +29,7 @@ DEFAULT_DATA_IDS = [
     "sunshine-rag.yaml",
     "sunshine-finance.yaml",
     "sunshine-tool-manager.yaml",
+    "sunshine-skill-manager.yaml",
     "sunshine-desensitize.yaml",
     "sunshine-prompt.yaml",
 ]

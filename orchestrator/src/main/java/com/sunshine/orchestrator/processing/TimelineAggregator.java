@@ -86,6 +86,14 @@ public final class TimelineAggregator {
         return state == null ? Optional.empty() : Optional.of(state.toSnapshot());
     }
 
+    /** Workflow 节点步骤 label 覆盖（与 SSE step.label 对齐） */
+    public void bindLabel(String stepId, String label) {
+        if (stepId == null || label == null || label.isBlank()) {
+            return;
+        }
+        steps.computeIfAbsent(stepId, StepState::new).labelOverride = label.strip();
+    }
+
     private static void finish(StepState state, ProcessingEvent event) {
         state.endedAt = event.ts();
         if (state.startedAt != null) {
@@ -122,6 +130,7 @@ public final class TimelineAggregator {
         private String output;
         private String result;
         private StepMetadata metadata;
+        private String labelOverride;
         private long ts;
 
         private StepState(String id) {
@@ -129,7 +138,9 @@ public final class TimelineAggregator {
         }
 
         private ProcessingStep toSnapshot() {
-            String label = StepLabels.labelFor(id);
+            String label = labelOverride != null && !labelOverride.isBlank()
+                    ? labelOverride
+                    : StepLabels.labelFor(id);
             return new ProcessingStep(
                     id,
                     phase,

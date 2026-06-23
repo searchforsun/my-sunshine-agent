@@ -22,9 +22,35 @@ public class WorkflowNodeLabelService {
     private final WorkflowProperties workflowProperties;
     private final ToolCatalogService toolCatalogService;
 
+    /** 动态 Plan 执行期节点展示名（nodeId → displayName） */
+    private final ThreadLocal<java.util.Map<String, String>> runtimeNodeLabels = new ThreadLocal<>();
+
     @PostConstruct
     void init() {
         WorkflowNodeLabels.bind(this);
+    }
+
+    public void bindRuntimeNodeLabels(WorkflowDefinition def) {
+        if (def == null || def.nodesById() == null) {
+            return;
+        }
+        java.util.Map<String, String> labels = new java.util.LinkedHashMap<>();
+        for (var entry : def.nodesById().entrySet()) {
+            NodeSpec spec = entry.getValue();
+            if (spec == null) {
+                continue;
+            }
+            if (StringUtils.hasText(spec.displayName())) {
+                labels.put(entry.getKey(), spec.displayName().strip());
+            } else {
+                labels.put(entry.getKey(), displayNameWithoutRuntime(entry.getKey(), spec.type()));
+            }
+        }
+        runtimeNodeLabels.set(labels);
+    }
+
+    public void clearRuntimeNodeLabels() {
+        runtimeNodeLabels.remove();
     }
 
     public String workflowDisplayName(String workflowId) {
@@ -43,6 +69,17 @@ public class WorkflowNodeLabelService {
     }
 
     public String displayName(String nodeId, String nodeType) {
+        java.util.Map<String, String> runtime = runtimeNodeLabels.get();
+        if (runtime != null && StringUtils.hasText(nodeId)) {
+            String bound = runtime.get(nodeId);
+            if (StringUtils.hasText(bound)) {
+                return bound;
+            }
+        }
+        return displayNameWithoutRuntime(nodeId, nodeType);
+    }
+
+    private String displayNameWithoutRuntime(String nodeId, String nodeType) {
         String effectiveType = nodeType != null ? nodeType : resolveNodeType(nodeId);
         String fromDefinition = resolveFromDefinitions(nodeId, effectiveType);
         if (StringUtils.hasText(fromDefinition)) {
@@ -53,8 +90,9 @@ public class WorkflowNodeLabelService {
         }
         return switch (effectiveType) {
             case "rag" -> "检索知识库";
-            case "llm" -> "生成回答";
+            case "llm" -> "综合分析";
             case "agent" -> "智能体分析";
+            case "answer" -> "汇总输出";
             case "tool" -> nodeId != null
                     ? toolCatalogService.displayName(resolveBoundTool(nodeId))
                     : "调用工具";
@@ -152,12 +190,17 @@ public class WorkflowNodeLabelService {
     }
 
     public String planChain(WorkflowDefinition def) {
-        return def.linearOrder().stream()
-                .filter(nodeId -> {
-                    NodeSpec spec = def.node(nodeId);
-                    return spec != null && WorkflowNodeLabels.isVisibleNode(spec.type());
-                })
-                .map(nodeId -> displayName(nodeId, def.node(nodeId).type()))
-                .collect(Collectors.joining(" → "));
+        bindRuntimeNodeLabels(def);
+        try {
+            return def.linearOrder().stream()
+                    .filter(nodeId -> {
+                        NodeSpec spec = def.node(nodeId);
+                        return spec != null && WorkflowNodeLabels.isVisibleNode(spec.type());
+                    })
+                    .map(nodeId -> displayName(nodeId, def.node(nodeId).type()))
+                    .collect(Collectors.joining(" → "));
+        } finally {
+            clearRuntimeNodeLabels();
+        }
     }
 }

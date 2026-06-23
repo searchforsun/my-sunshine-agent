@@ -365,13 +365,25 @@ html.theme-switching *::after {
   border-radius: 8px !important;
 }
 
-.sunshine-dialog .n-dialog__action .n-button:not(.n-button--error-type) {
+.sunshine-dialog .n-dialog__action .n-button:not(.n-button--error-type):not(.n-button--primary-type) {
   --n-color: transparent !important;
   --n-color-hover: var(--sun-accent-muted) !important;
   --n-color-pressed: var(--sun-accent-muted) !important;
   --n-border: none !important;
   --n-text-color: var(--sun-text-secondary) !important;
   --n-text-color-hover: var(--sun-text) !important;
+}
+
+.sunshine-dialog .n-dialog__action .n-button--primary-type {
+  --n-color: var(--sun-accent) !important;
+  --n-color-hover: var(--sun-accent-hover) !important;
+  --n-color-pressed: var(--sun-accent-hover) !important;
+  --n-color-focus: var(--sun-accent-hover) !important;
+  --n-text-color: var(--btn-primary-text) !important;
+  --n-text-color-hover: var(--btn-primary-text) !important;
+  --n-text-color-pressed: var(--btn-primary-text) !important;
+  --n-text-color-focus: var(--btn-primary-text) !important;
+  --n-border: none !important;
 }
 
 .sunshine-dialog .n-dialog__action .n-button--error-type {

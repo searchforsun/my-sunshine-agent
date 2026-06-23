@@ -51,7 +51,7 @@
 | D6 | 意图识别输入 | classifier prompt **必须注入 workflow catalog**（id + 描述 + 节点摘要 + 示例问法） |
 | D7 | 意图识别输出 | 结构化 JSON：`mode` + `workflowId`（workflow 时）+ `params` |
 | D8 | 配置 SSOT | `docs/nacos/sunshine-workflows.yaml`（catalog + 图定义）+ `sunshine-orchestrator.yaml`（路由/执行器） |
-| D9 | Agent 节点实现 | 复用现有 `SunshineAgent` + `ReActAgent`，外层加 `AgentNodeHandler` 包装 |
+| D9 | Agent 节点实现 | `AgentNodeHandler` → `AgentRuntime.run(SUB)`；3.10.1 起不再经 `SunshineAgent` |
 | D10 | Timeline | Workflow 节点一层 step；agent 节点内展开 think/tool（统一语义，废弃 `agent` 容器步） |
 | D11 | Tool 扩展 | tool-manager 引入 `ToolRegistry`（`List<ToolHandler>` 自动注册），消除 switch |
 | D12 | 迁移策略 | 渐进式：先三 Executor 抽离，再 Workflow 引擎，不推倒重来 |
@@ -123,7 +123,7 @@ flowchart TB
 | LLM Node | `LlmNodeHandler` |
 | Knowledge Retrieval | `RagNodeHandler` |
 | Tool / HTTP | `ToolNodeHandler` → tool-manager |
-| **Agent Node** | `AgentNodeHandler` → `SunshineAgent` |
+| **Agent Node** | `AgentNodeHandler` → `AgentRuntime`（SUB） |
 | If/Else | `IfElseNodeHandler`（第二阶段） |
 | Answer | `AnswerNodeHandler`（汇聚输出） |
 | Chatflow 纯 Agent | 顶层 `react` 模式 |
@@ -149,7 +149,7 @@ flowchart TB
 ### 5.3 react
 
 - **适用**：无匹配 workflow；多工具组合不确定；意图分类 fallback
-- **执行**：`ReactExecutor` → `SunshineAgent.chat()`，Toolkit 白名单
+- **执行**：`ReactExecutor` → `AgentRuntime.run(MAIN)`，Toolkit 白名单
 - **Timeline**：`intent → think → tool-* → generate`
 - **约束**：`max-iters` + `agent.react.tools` 白名单（Nacos）
 
@@ -240,6 +240,8 @@ return ctx.get("answer").asStreamTokens();
 
 ## 7. Agent 节点 — 子 Agent 函数
 
+> **实现目标 SSOT**：[2026-06-19-multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)（2026-06-22）
+
 ### 7.1 语义
 
 Agent 节点是 Workflow 中的一种 **NodeHandler**，对外是黑盒函数：
@@ -249,62 +251,61 @@ AgentNodeHandler.run(input) → output
 Workflow 引擎拿到 output 继续下一节点
 ```
 
-**不是**整条链路的调度器；**不是**顶层 react 模式。
+**不是**整条链路的调度器；**不是**顶层 react 模式。子 Agent **默认不面向用户**；用户正文由下游 `llm` / `answer` 合成。
 
-### 7.2 输入 `AgentNodeInput`
+### 7.2 输入（workflow params → `AgentRunRequest.sub`）
 
-```json
-{
-  "query": "{{start.userQuery}}",
-  "context": "{{rag.chunks}}\n{{finance-list.data}}",
-  "tools": ["search_knowledge", "list_finance_messages"],
-  "maxIters": 5,
-  "systemPrompt": "本节点仅完成财务分析子任务…",
-  "memory": "{{start.memory}}"
-}
+```yaml
+params:
+  query: "{{start.userQuery}}"          # 本子任务
+  context: "{{finance-list.output}}"    # 上游材料 → injectedBlocks（唯一默认上下文）
+  skill: finance-analysis               # skill overlay + 默认工具（3.11 Catalog）
+  tools: [list_finance_messages]        # 可选，覆盖/收窄 skill 默认
+  maxIters: "4"
+  systemOverlay: 本节点仅输出内部分析结论，不面向用户
 ```
+
+**不含** `memory: {{start.memory}}` — 子 Agent **不**默认注入 STM/LTM/MTM（见 3.10.7）。
 
 ### 7.3 输出 `AgentNodeOutput`
 
 ```json
 {
   "answer": "子任务结论文本",
-  "reasoningTrace": "可选，供 Timeline 展开",
-  "toolCalls": [
-    { "tool": "list_finance_messages", "params": {"status":"pending"}, "resultSummary": "3 条待审批" }
-  ],
-  "usage": { "inputTokens": 1200, "outputTokens": 400 }
+  "toolCalls": ["tool-list_finance_messages"],
+  "detail": "节点 summary.after 一行摘要"
 }
 ```
 
-### 7.4 内部实现
+`reasoning` 完整链落审计（3.10.6），**不写回**主 `chat_message.reasoning`。
+
+### 7.4 内部实现（当前）
 
 ```java
 @Component
 public class AgentNodeHandler implements NodeHandler {
-    private final SunshineAgent sunshineAgent;
+    private final AgentRuntime agentRuntime;
 
-    public NodeResult run(NodeSpec spec, WorkflowContext ctx) {
-        AgentNodeInput input = AgentNodeInput.from(spec, ctx);
-        // 调用现有 SunshineAgent，注入 context，限制 tools 白名单
-        Flux<StreamToken> stream = sunshineAgent.chatAsSubAgent(input);
-        AgentNodeOutput output = stream.collectAndBuildOutput();
-        return NodeResult.of(output);
+    public Mono<NodeResult> run(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
+        // 目标态（3.10.7）：MemoryContext.injectedOnly(injected)，非 streamCtx.memory()
+        return agentRuntime.run(AgentRunRequest.sub(...)).collectList().map(this::toNodeResult);
     }
 }
 ```
 
-- 节点内：ReAct 循环（`EventType.REASONING / TOOL_RESULT / AGENT_RESULT`）
-- 节点外：引擎只看到 `AgentNodeOutput`
+- 节点内：ReAct（`ReActAgentRuntime` + 独立 `sub-{runId}` bridge）
+- 节点外：引擎仅见 `node-{id}` Timeline 一步 + `AgentNodeOutput`
 
 ### 7.5 与顶层 react 对比
 
 | | workflow 内 agent 节点 | 顶层 react |
 |---|----------------------|------------|
-| 输入 context | 上游节点拼接 | memory + 用户问题 |
-| 工具范围 | 节点级白名单 | 全局 react 白名单 |
+| 输入 context | 上游 `context` 模板 → `injectedBlocks` | 完整 memory + 用户问题 |
+| 记忆 | **仅注入块**（目标态） | LTM/MTM/STM 全量 |
+| 工具范围 | 节点/skill 白名单 | react 全局白名单 |
+| System prompt | base + skill + `systemOverlay` | base + mode overlay |
 | 输出 | 交给下游 llm/answer | 直接给用户 |
-| 观测 | workflow step + 内层 think/tool | think/tool/generate |
+| 观测 | 主 Timeline 仅 `node-{id}`；内层 think/tool 压缩 | think/tool/generate 全量 |
 
 ---
 

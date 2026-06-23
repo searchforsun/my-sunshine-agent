@@ -139,6 +139,41 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> getExecutionPlan(String planId, String userId, String tenantId) {
+        return webClient.get()
+                .uri("/execution-plans/{planId}", planId)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<List<Map<String, Object>>> listExecutionPlans(
+            String conversationId, String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/execution-plans")
+                        .queryParam("conversationId", conversationId)
+                        .build())
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+    }
+
+    public Mono<List<Map<String, Object>>> getExecutionPlanNodes(
+            String planId, String userId, String tenantId) {
+        return webClient.get()
+                .uri("/execution-plans/{planId}/nodes", planId)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+    }
+
     private Mono<? extends Throwable> toStatusException(
             org.springframework.web.reactive.function.client.ClientResponse response) {
         return response.bodyToMono(String.class)

@@ -11,13 +11,20 @@ import {
   resolveStepExpandBody,
   shouldShiftSummaryOnExpand,
   hasExpandableContent,
+  resolvePlanIdFromStep,
 } from '../../api/processingSteps'
+import { useRouter } from 'vue-router'
+import StaticMarkdown from '../StaticMarkdown.vue'
 
 const props = defineProps<{
   step: ProcessingStep
   expanded: boolean
   live?: boolean
+  /** 消息级 executionPlanId 兜底（历史数据） */
+  executionPlanId?: string
 }>()
+
+const router = useRouter()
 
 const emit = defineEmits<{
   toggle: []
@@ -38,12 +45,18 @@ const showHeaderPreview = computed(
 const expandSummary = computed(() => resolveStepExpandSummary(props.step))
 const expandBody = computed(() => resolveStepExpandBody(props.step))
 
-const expandBodyAsPre = computed(() => {
-  const t = expandBody.value
-  return !!t && (/^#|\n#|^\|/m.test(t) || t.includes('**'))
+const canExpand = computed(() => hasExpandableContent(props.step))
+
+const planLinkId = computed(() => {
+  if (props.step.phase !== 'plan') return undefined
+  return resolvePlanIdFromStep(props.step) ?? props.executionPlanId
 })
 
-const canExpand = computed(() => hasExpandableContent(props.step))
+function openPlanDetail() {
+  const id = planLinkId.value
+  if (!id) return
+  void router.push({ name: 'plan-detail', params: { planId: id } })
+}
 
 const liveElapsedMs = ref<number | null>(null)
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
@@ -130,16 +143,25 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
         </span>
       </span>
       <span v-if="durationText" class="op-dur">{{ durationText }}</span>
+      <button
+        v-if="planLinkId"
+        type="button"
+        class="op-plan-link"
+        @click.stop="openPlanDetail"
+      >
+        查看详情
+      </button>
     </div>
 
     <div v-if="expanded && canExpand" class="op-detail">
-      <div v-if="expandSummary && shiftSummary" class="op-detail-after">{{ expandSummary }}</div>
-      <pre v-if="expandBody && expandBodyAsPre" class="op-detail-pre">{{ expandBody }}</pre>
-      <div v-else-if="expandBody" class="op-detail-line">{{ expandBody }}</div>
-      <div v-if="step.reasoning?.trim()" class="op-detail-thinking">
-        <pre class="op-detail-pre">{{ step.reasoning }}</pre>
+      <div v-if="expandSummary && shiftSummary" class="op-detail-after">
+        <StaticMarkdown :source="expandSummary" compact />
       </div>
-      <pre v-if="step.output?.trim()" class="op-detail-pre">{{ step.output }}</pre>
+      <StaticMarkdown v-if="expandBody" :source="expandBody" compact />
+      <div v-if="step.reasoning?.trim()" class="op-detail-thinking">
+        <StaticMarkdown :source="step.reasoning" compact scrollable />
+      </div>
+      <StaticMarkdown v-if="step.output?.trim()" :source="step.output" compact />
     </div>
   </div>
 </template>
@@ -158,7 +180,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 
 .op-line-row {
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr) auto;
+  grid-template-columns: var(--op-gutter) minmax(0, 1fr) auto auto;
   column-gap: 4px;
   align-items: start;
   width: 100%;
@@ -266,6 +288,25 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   white-space: nowrap;
 }
 
+.op-plan-link {
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 0 8px;
+  height: 22px;
+  border: 1px solid var(--sun-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sun-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.op-plan-link:hover {
+  color: var(--sun-text);
+  border-color: var(--sun-border-light);
+}
+
 .op-line.is-running .op-label:not(.op-shimmer) {
   color: var(--sun-text);
 }
@@ -284,21 +325,11 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 }
 
 .op-detail-after {
-  font-size: var(--op-detail-font);
-  color: var(--sun-text-muted);
-  line-height: 1.55;
   opacity: 0.92;
-  white-space: normal;
-  word-break: break-word;
 }
 
-.op-detail-line {
-  font-size: var(--op-detail-font);
+.op-detail-after :deep(.static-md-compact) {
   color: var(--sun-text-muted);
-  line-height: 1.55;
-  opacity: 0.9;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .op-detail-thinking {
@@ -307,16 +338,13 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   gap: 2px;
 }
 
-.op-detail-pre {
-  margin: 0;
-  padding: 0;
-  font-family: ui-monospace, 'JetBrains Mono', monospace;
-  font-size: var(--op-detail-font);
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-word;
+.op-detail-thinking :deep(.static-md-scroll) {
+  max-height: min(36vh, 280px);
+}
+
+.op-detail :deep(.static-md-compact) {
   color: var(--sun-text-muted);
-  opacity: 0.88;
+  opacity: 0.9;
 }
 
 @keyframes op-pulse {

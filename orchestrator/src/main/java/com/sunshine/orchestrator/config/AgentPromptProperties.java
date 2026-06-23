@@ -21,6 +21,8 @@ public class AgentPromptProperties {
 
     private Intent intent = new Intent();
 
+    private Planner planner = new Planner();
+
     /** 时间线步骤文案（意图等），SSOT 见 Nacos agent.timeline */
     private Timeline timeline = new Timeline();
 
@@ -41,6 +43,21 @@ public class AgentPromptProperties {
 
         /** 意图分类 system 提示词 */
         private String classifierPrompt = "";
+    }
+
+    @Getter
+    @Setter
+    public static class Planner {
+
+        private String model = "deepseek-v4-flash";
+        private double temperature = 0;
+        private int maxTokens = 1024;
+        private int maxNodes = 8;
+        private String prompt = "";
+
+        public String promptOrEmpty() {
+            return prompt != null ? prompt.strip() : "";
+        }
     }
 
     @Getter
@@ -105,6 +122,10 @@ public class AgentPromptProperties {
             var workflow = new ModeIntent();
             workflow.setAfter("{query}将按「{displayName}」流程处理");
             map.put("workflow", workflow);
+            var planWorkflow = new ModeIntent();
+            planWorkflow.setDetail("动态规划");
+            planWorkflow.setAfter("{query}将动态规划多步执行");
+            map.put("plan-workflow", planWorkflow);
             return map;
         }
     }
@@ -138,5 +159,9 @@ public class AgentPromptProperties {
             return "deepseek-v4-flash";
         }
         return intent.model.strip();
+    }
+
+    public Planner plannerOrDefault() {
+        return planner != null ? planner : new Planner();
     }
 }

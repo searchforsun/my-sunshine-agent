@@ -92,6 +92,7 @@ public class IntentRouter {
     static String toLegacyIntentLabel(ExecutionPlan plan) {
         return switch (plan.mode()) {
             case SIMPLE_LLM -> "simple";
+            case PLAN_WORKFLOW -> "react";
             case WORKFLOW -> switch (plan.workflowId() != null ? plan.workflowId() : "") {
                 case "knowledge-qa" -> "knowledge";
                 case "finance-list", "finance-smart" -> "finance";

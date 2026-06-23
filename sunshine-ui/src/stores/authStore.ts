@@ -85,13 +85,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 })
 
-export function apiHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
+export function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {}
   const token = localStorage.getItem(TOKEN_KEY)
   if (token) {
     headers.Authorization = `Bearer ${token}`
   }
   return headers
+}
+
+export function apiHeaders(): Record<string, string> {
+  return { ...authHeaders(), 'Content-Type': 'application/json' }
 }

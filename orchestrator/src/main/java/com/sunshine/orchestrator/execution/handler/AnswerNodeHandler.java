@@ -1,24 +1,33 @@
 package com.sunshine.orchestrator.execution.handler;
 
+import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
-import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
+import com.sunshine.orchestrator.execution.StreamingNodeHandler;
 import com.sunshine.orchestrator.execution.WorkflowContext;
+import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * 终态节点 — 将上游 LLM 答案转为流式 content token
+ * 终态 answer 节点 — 综合分析（reasoning/detail）+ 流式正文；
+ * 有 params.prompt 时走 LLM 流式；无 prompt 时透传上游 answer（兼容旧 DAG）。
  */
+@Slf4j
 @Component
-public class AnswerNodeHandler implements NodeHandler {
+@RequiredArgsConstructor
+public class AnswerNodeHandler implements StreamingNodeHandler {
+
+    private final LlmGatewayClient llmGateway;
 
     @Override
     public String type() {
@@ -27,45 +36,63 @@ public class AnswerNodeHandler implements NodeHandler {
 
     @Override
     public Mono<NodeResult> run(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
-        String answer = resolveAnswer(spec, ctx);
+        if (!WorkflowLlmStreamSupport.hasNodePrompt(spec)) {
+            return Mono.just(passThrough(spec, ctx));
+        }
+        WorkflowStreamCollector collector = new WorkflowStreamCollector();
+        return streamTokens(spec, ctx, streamCtx, spec.id())
+                .doOnNext(collector::accept)
+                .then(Mono.fromSupplier(() -> buildResult(collector)))
+                .onErrorResume(e -> {
+                    log.warn("[AnswerNodeHandler] 流式失败: {}", e.getMessage());
+                    return Mono.just(NodeResult.fail(e.getMessage()));
+                });
+    }
+
+    @Override
+    public Flux<StreamToken> streamTokens(
+            NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx, String nodeId) {
+        if (!WorkflowLlmStreamSupport.hasNodePrompt(spec)) {
+            return Flux.empty();
+        }
+        return WorkflowLlmStreamSupport.streamTokens(llmGateway, spec, ctx, streamCtx, nodeId)
+                .onErrorResume(e -> {
+                    log.warn("[AnswerNodeHandler] 流式失败: {}", e.getMessage());
+                    return Flux.error(e);
+                });
+    }
+
+    @Override
+    public NodeResult buildResult(WorkflowStreamCollector collector) {
+        return WorkflowLlmStreamSupport.buildResult(collector);
+    }
+
+    private static NodeResult passThrough(NodeSpec spec, WorkflowContext ctx) {
+        String answer = resolveUpstreamAnswer(spec, ctx);
         Map<String, String> outputs = new LinkedHashMap<>();
         outputs.put("answer", answer);
         outputs.put("output", answer);
-        return Mono.just(NodeResult.withContent(outputs, toContentTokens(answer)));
+        outputs.put("detail", answer);
+        return NodeResult.ok(outputs);
     }
 
-    private static String resolveAnswer(NodeSpec spec, WorkflowContext ctx) {
+    private static String resolveUpstreamAnswer(NodeSpec spec, WorkflowContext ctx) {
         String fromParam = spec.params().get("from");
-        if (fromParam != null && !fromParam.isBlank()) {
-            String direct = ctx.resolvePath(fromParam);
-            if (!direct.isBlank()) {
+        if (StringUtils.hasText(fromParam)) {
+            String direct = ctx.resolvePath(fromParam.strip());
+            if (StringUtils.hasText(direct)) {
                 return direct;
             }
         }
-        // 扫描所有已执行节点，取最后一个非空 answer/output
         String last = "";
         for (Map.Entry<String, Map<String, String>> entry : ctx.nodeEntries()) {
             Map<String, String> node = entry.getValue();
-            if (node.containsKey("answer") && !node.get("answer").isBlank()) {
+            if (node.containsKey("answer") && StringUtils.hasText(node.get("answer"))) {
                 last = node.get("answer");
-            } else if (node.containsKey("output") && !node.get("output").isBlank()) {
+            } else if (node.containsKey("output") && StringUtils.hasText(node.get("output"))) {
                 last = node.get("output");
             }
         }
         return last;
-    }
-
-    private static List<StreamToken> toContentTokens(String answer) {
-        if (answer == null || answer.isEmpty()) {
-            return List.of();
-        }
-        List<StreamToken> tokens = new ArrayList<>();
-        // 按句切分模拟流式输出
-        int chunkSize = 80;
-        for (int i = 0; i < answer.length(); i += chunkSize) {
-            int end = Math.min(i + chunkSize, answer.length());
-            tokens.add(StreamToken.content(answer.substring(i, end)));
-        }
-        return tokens;
     }
 }

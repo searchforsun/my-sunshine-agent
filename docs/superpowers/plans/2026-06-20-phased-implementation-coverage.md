@@ -83,9 +83,11 @@
 | **3.8.3** workflow llm → Composer | ✅ | ✅ | **A** | ⬜ | 依赖 3.8.2 |
 | **3.8.4–7** 改写增强 | ✅ | ✅ | **B** | ⬜ | 非检查门 |
 | **3.9.1–3.9.4** PLAN_WORKFLOW | ✅ | ✅ | **A** | ⬜ | multi-agent plan |
-| **3.10.1–3.10.7** AgentRuntime | ✅ | ✅ | **A** | ⬜ | 周 1–2 应与 3.4 并行，**滞后待补** |
-| **3.11.1–3.11.4** skill-manager | ✅ | ✅ | **A** | ⬜ | 阻塞 3.9 |
-| **3.12.1–3.12.4** 前端 | ✅ | ✅ | **A** | ⬜ | — |
+| **3.10.1–3.10.3** AgentRuntime 基础 | ✅ | ✅ | **A** | ✅ | params + 白名单 |
+| **3.10.7** 子 Agent 上下文隔离 | ✅ | ✅ | **A** | ✅ | memory + skill→Composer |
+| **3.10.4–3.10.6** Planner / 动态 DAG / 审计 | ✅ | ✅ | **A** | ⬜ | — |
+| **3.11.1–3.11.4** skill-manager | ✅ | ✅ | **A** | ✅ | Catalog 驱动 overlay/工具默认值 |
+| **3.12.1–3.12.4** 前端 | ✅ | ✅ | **A** | **部分** | 3.12.1/1a ✅；UI SSOT：`specs/skills-management-ui-design.md` |
 | **3.13** 并行 | ✅ | ✅ | **B** | 部分 | `source_type` ✅；AhoCorasick ⬜ |
 | **3.14** Job 锁 | ✅ | ✅ | **B** | ⬜ | 多实例生产必做 |
 
@@ -102,11 +104,11 @@
 | 7 | PLAN_WORKFLOW 三 API | 3.9.2–3.9.3 | ✅ | ⬜ |
 | 8 | 2+ agent + Plan 详情页 | 3.10.5, 3.12.4 | ✅ | ⬜ |
 | 9 | IntentRouter + fallback | 3.9.1, 3.10.4d | ✅ | ⬜ |
-| 10 | finance-smart skill 子集 | 3.10.3, 3.11 | ✅ | ⬜ |
-| 11 | skill catalog + /skills | 3.11, 3.12 | ✅ | ⬜ |
+| 10 | finance-smart skill 子集 | 3.10.3, 3.11 | ✅ | 部分 | params ✅；Catalog ⬜ |
+| 11 | skill catalog + /skills | 3.11, 3.12 | ✅ | **部分** |
 | 12 | tool/sub_agent/plan 审计 | 3.6, 3.10.6, 3.9.4 | ✅ | ⬜ |
 | 13 | Grounding | 3.7 | ✅ | ⬜ |
-| 14 | 子 Agent 不污染 reasoning | 3.10.7 | ✅ | ⬜ |
+| 14 | 子 Agent 不污染 reasoning | 3.10.7 | ✅ | 部分 | Prompt 无 STM ✅；持久化集成 ⬜ |
 | 15 | phase2 demo 仍 PASS | 全阶段回归 | ✅ | 待总验收 |
 | 16 | *(spec 列表 12 条主项 + 子项)* | — | — | — |
 | 17 | 3.14 多实例（条件） | 3.14 | ✅ | ⬜ |

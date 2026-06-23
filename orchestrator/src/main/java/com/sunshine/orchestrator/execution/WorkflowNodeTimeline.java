@@ -26,9 +26,17 @@ public final class WorkflowNodeTimeline {
 
     public static List<StreamToken> start(
             ProcessingTimelineSession session, String nodeId, String nodeType) {
+        return start(session, nodeId, nodeType, null);
+    }
+
+    public static List<StreamToken> start(
+            ProcessingTimelineSession session, String nodeId, String nodeType, String displayName) {
         String stepId = stepId(nodeId);
         long startedAt = System.currentTimeMillis();
         return ProcessingTimelineSupport.run(session, () -> {
+            if (displayName != null && !displayName.isBlank()) {
+                session.bindStepDisplayName(stepId, displayName.strip());
+            }
             session.pending(stepId, "node");
             session.startAt(stepId, "node", startedAt);
         });

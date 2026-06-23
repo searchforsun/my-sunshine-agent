@@ -69,6 +69,7 @@ public class RuleBasedRouter {
         return switch (raw.toLowerCase()) {
             case "react" -> ExecutionMode.REACT;
             case "simple-llm", "simple_llm", "simple" -> ExecutionMode.SIMPLE_LLM;
+            case "plan-workflow", "plan_workflow", "plan" -> ExecutionMode.PLAN_WORKFLOW;
             default -> ExecutionMode.WORKFLOW;
         };
     }

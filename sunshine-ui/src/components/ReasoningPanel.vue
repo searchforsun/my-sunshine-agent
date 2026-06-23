@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import StaticMarkdown from './StaticMarkdown.vue'
 
 const props = defineProps<{
   text: string
@@ -39,20 +40,7 @@ const preview = computed(() => {
       <span v-if="!expanded && preview" class="chat-meta-preview">{{ preview }}</span>
     </button>
     <div v-show="expanded" class="chat-meta-body">
-      <pre class="reasoning-body">{{ text }}</pre>
+      <StaticMarkdown :source="text" compact scrollable />
     </div>
   </div>
 </template>
-
-<style scoped>
-.reasoning-body {
-  margin: 0;
-  padding: 0;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: var(--sun-font-base);
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--sun-text-muted);
-}
-</style>

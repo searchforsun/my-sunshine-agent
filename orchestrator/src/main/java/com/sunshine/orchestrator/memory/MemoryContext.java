@@ -16,6 +16,11 @@ public record MemoryContext(
         return new MemoryContext("", "", List.of());
     }
 
+    /** 子 Agent：不携带 LTM/MTM/STM；上游材料经 AgentRunRequest.injectedBlocks 注入 */
+    public static MemoryContext forSubAgent() {
+        return empty();
+    }
+
     public boolean hasAnyLayer() {
         return hasText(ltmSnippet) || hasText(mtmSnippet) || (stmTurns != null && !stmTurns.isEmpty());
     }

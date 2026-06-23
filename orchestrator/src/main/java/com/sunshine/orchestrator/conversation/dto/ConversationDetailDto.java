@@ -44,6 +44,7 @@ public class ConversationDetailDto {
         private String steps;
         private String status;
         private String intent;
+        private String executionPlanId;
         private int seq;
         private Instant createdAt;
 
@@ -56,6 +57,7 @@ public class ConversationDetailDto {
             dto.setSteps(m.getSteps());
             dto.setStatus(m.getStatus());
             dto.setIntent(m.getIntent());
+            dto.setExecutionPlanId(m.getExecutionPlanId());
             dto.setSeq(m.getSeq());
             dto.setCreatedAt(m.getCreatedAt());
             return dto;

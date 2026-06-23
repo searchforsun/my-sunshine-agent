@@ -32,6 +32,10 @@ public class ChatCompletionRequest {
     @JsonProperty("tool_choice")
     private Object toolChoice;
 
+    /** 为 true 时 llm-gateway 语义缓存不读不写（Planner 等结构化输出） */
+    @JsonProperty("skip_cache")
+    private Boolean skipCache;
+
     /** 降级链切换模型时保留 tools 等字段 */
     public ChatCompletionRequest copyWithModel(String model) {
         ChatCompletionRequest copy = new ChatCompletionRequest();
@@ -42,6 +46,7 @@ public class ChatCompletionRequest {
         copy.setStream(this.stream);
         copy.setTools(this.tools);
         copy.setToolChoice(this.toolChoice);
+        copy.setSkipCache(this.skipCache);
         return copy;
     }
 

@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.prompt;
 
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
@@ -28,6 +29,7 @@ public class PromptComposer {
     private final AgentPromptProperties prompts;
     private final PromptOverlayProperties overlayProperties;
     private final MemoryProperties memoryProperties;
+    private final SkillCatalogService skillCatalogService;
 
     /** simple-llm / workflow llm 直连 Gateway 的消息列表（含 base-system） */
     public List<Map<String, Object>> composeGatewayMessages(PromptComposeRequest request) {
@@ -153,7 +155,14 @@ public class PromptComposer {
     }
 
     private String resolveSkillOverlay(String skillId) {
-        if (!StringUtils.hasText(skillId) || overlayProperties.getSkillOverlays() == null) {
+        if (!StringUtils.hasText(skillId)) {
+            return "";
+        }
+        String fromCatalog = skillCatalogService.overlayOrEmpty(skillId);
+        if (StringUtils.hasText(fromCatalog)) {
+            return fromCatalog.strip();
+        }
+        if (overlayProperties.getSkillOverlays() == null) {
             return "";
         }
         String text = overlayProperties.getSkillOverlays().get(skillId.strip());

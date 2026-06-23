@@ -1,0 +1,135 @@
+/* 对话区 / Skills 预览 — 统一 Markdown 正文与代码块（随 data-theme 切换） */
+.msg-md {
+  font-size: var(--sun-font-md);
+  line-height: var(--sun-line-loose);
+  color: var(--sun-text);
+  word-break: break-word;
+}
+
+.msg-md h1,
+.msg-md h2,
+.msg-md h3 {
+  margin: 16px 0 8px;
+  font-weight: 700;
+  color: var(--sun-text);
+}
+
+.msg-md h3 { font-size: var(--sun-font-md); }
+.msg-md h2 { font-size: var(--sun-font-lg); }
+.msg-md h1 { font-size: var(--sun-font-xl); }
+.msg-md p { margin: 6px 0; }
+.msg-md strong { color: var(--sun-text); font-weight: 600; }
+.msg-md a { color: var(--sun-blue); }
+.msg-md ul,
+.msg-md ol { margin: 8px 0; padding-left: 22px; }
+.msg-md li { margin: 3px 0; }
+.msg-md hr { border: none; border-top: 1px solid var(--sun-border); margin: 16px 0; }
+.msg-md blockquote {
+  border-left: 3px solid var(--sun-border-light);
+  padding: 4px 14px;
+  margin: 12px 0;
+  color: var(--sun-text-secondary);
+}
+.msg-md code {
+  background: var(--sun-accent-muted);
+  color: var(--sun-text);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: var(--sun-font-sm);
+}
+.msg-md pre:not(.smd-mermaid-source) {
+  background: var(--sun-deep);
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+.msg-md .smd-mermaid-wrapper .smd-mermaid-source {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 14px 16px 16px;
+}
+.msg-md pre code.hljs {
+  background: none;
+  padding: 0;
+  font-size: var(--sun-font-sm);
+  line-height: var(--sun-line);
+}
+.msg-md pre code:not(.hljs) {
+  background: none;
+  color: var(--sun-text);
+  padding: 0;
+}
+.msg-md pre.hljs,
+.msg-md pre code.hljs {
+  background: var(--sun-deep);
+}
+.msg-md table { border-collapse: collapse; margin: 12px 0; width: 100%; }
+.msg-md th,
+.msg-md td { border: 1px solid var(--sun-border); padding: 8px 14px; text-align: left; }
+.msg-md th { background: var(--sun-deep); font-weight: 600; }
+.msg-md img { max-width: 100%; border-radius: 8px; }
+.msg-md .katex-display {
+  margin: 14px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+.msg-md .katex { font-size: 1.05em; }
+.msg-md .katex-display > .katex { font-size: 1.15em; }
+.msg-md.streaming .katex-error { display: none !important; }
+.msg-md .mermaid-container {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--sun-deep);
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+/* Skills 预览容器内边距 */
+.msg-md.skill-md-preview {
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: var(--sun-line-relaxed);
+}
+
+/* 非 md 文本文件：无代码块包边，仅语法高亮 */
+.skill-file-plain {
+  padding: 12px 16px;
+}
+
+.skill-file-plain-pre {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--sun-text);
+}
+
+.skill-file-plain-pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
+}
+
+.skill-file-plain-pre code.hljs {
+  background: none;
+}

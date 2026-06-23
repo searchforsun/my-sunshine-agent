@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "terms": [
+    { "id": "reimburse", "label": "报销", "definition": "员工因公务支出申请的费用返还" },
+    { "id": "approval_chain", "label": "审批链", "definition": "从申请人到终审人的逐级审批路径" },
+    { "id": "attachment", "label": "附件", "definition": "发票、行程单等支撑材料" }
+  ]
+}

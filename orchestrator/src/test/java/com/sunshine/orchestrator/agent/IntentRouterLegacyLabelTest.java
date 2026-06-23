@@ -33,4 +33,10 @@ class IntentRouterLegacyLabelTest {
         ExecutionPlan plan = ExecutionPlan.reactFallback("test");
         assertThat(IntentRouter.toLegacyIntentLabel(plan)).isEqualTo("simple");
     }
+
+    @Test
+    void planWorkflowMapsToReactForLegacyController() {
+        ExecutionPlan plan = new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test");
+        assertThat(IntentRouter.toLegacyIntentLabel(plan)).isEqualTo("react");
+    }
 }

@@ -196,45 +196,48 @@
 - Trace：`plan.planner` / `plan.validate` / `plan.node.*`
 - 演示：制度 + 财务 + 合规，**2+ agent 节点**
 
-### 3.10 多 Agent 运行时 ⬜
+### 3.10 多 Agent 运行时（部分 ✅）
 
 | 子任务 | 内容 | 状态 |
 |--------|------|:----:|
-| **3.10.1** | `AgentRuntime` + `AgentRole` MAIN\|SUB\|PLANNER | ⬜ |
-| **3.10.2** | `ReActAgentFactory` overlay + 工具白名单 | ⬜ |
-| **3.10.3** | `AgentNodeHandler`：`skillId` / `tools` / `maxIters` / `systemOverlay` | ⬜ |
+| **3.10.1** | `AgentRuntime` + `AgentRole` MAIN\|SUB\|PLANNER | ✅ |
+| **3.10.2** | `ReActAgentFactory` overlay + 工具白名单 | ✅ |
+| **3.10.3** | `AgentNodeHandler`：`skillId` / `tools` / `maxIters` / `systemOverlay` | ✅ |
 | **3.10.4** | `PlannerAgentRuntime` + `WorkflowPlanner` | ⬜ |
 | **3.10.5** | `DynamicWorkflowExecutor` 多 agent 节点 | ⬜ |
 | **3.10.6** | `sub_agent_run` 审计事件 | ⬜ |
-| **3.10.7** | 子 Agent 不写主 reasoning、不污染 STM | ⬜ |
+| **3.10.7** | 上下文隔离：无 STM/LTM、skill→Composer、不写主 reasoning | ✅ |
 
-子 Agent 默认 maxIters=**4**。
+子 Agent 默认 maxIters=**4**。实现目标 SSOT 见 [multi-agent plan §子 Agent 实现目标](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)。
 
 详设历史稿：`2026-06-19-multi-agent-architecture-design.md`  
 实施计划：`../plans/2026-06-19-multi-agent-architecture.md`（3.9.x / 3.10.x / 3.11.x / 3.12.x）
 
-### 3.11 skill-manager ⬜
+### 3.11 skill-manager ✅
 
 | 子任务 | 内容 | 状态 |
 |--------|------|:----:|
-| **3.11.1** | CRUD + 上传 API | ⬜ |
-| **3.11.2** | `GET /api/skills/catalog` | ⬜ |
-| **3.11.3** | 种子 skill 三件套 | ⬜ |
-| **3.11.4** | orchestrator `SkillCatalogService` 缓存 | ⬜ |
+| **3.11.1** | CRUD + 上传 + 版本/delete/download API | ✅ |
+| **3.11.2** | `GET /api/skills/catalog` | ✅ |
+| **3.11.3** | 种子 skill | ✅ |
+| **3.11.4** | orchestrator `SkillCatalogService` 缓存 | ✅ |
+| **3.11.6** | Catalog index / detail 拆分 | ✅ |
+| **3.11.7** | `@` + 强提示绑定 | ⬜ |
 
-- 新建 **:8225**；MySQL + `SKILL.md`/zip 上传
-- API：`/api/skills/catalog`、upload、publish（原 locked D3）
-- orchestrator **`SkillCatalogService`** 拉取缓存
-- 种子：`finance-analysis`、`policy-review`、`compliance-check`
+- 模块 **:8225**；MySQL + MinIO/本地存储
+- 详设 API 表见 [locked D3](./2026-06-19-locked-architecture-decisions.md#d3-skills-服务端管理--前端运营页)
 
-### 3.12 前端 ⬜
+### 3.12 前端 `/skills`（部分 ✅）
 
 | 子任务 | 内容 | 状态 |
 |--------|------|:----:|
-| **3.12.1** | `/skills` 列表 + 上传 | ⬜ |
-| **3.12.2** | 编辑 + 版本发布 | ⬜ |
-| **3.12.3** | 工具绑定 | ⬜ |
+| **3.12.1** | 列表 + 上传 + 预览 + 版本运营 | ✅ |
+| **3.12.1a** | 元数据修改、下载/删除版本、卡片删除 | ✅ |
+| **3.12.2** | 在线编辑 overlay 正文 + diff | ⬜ |
+| **3.12.3** | ~~工具绑定~~（已取消） | — |
 | **3.12.4** | Plan 详情页（Timeline 跳转） | ⬜ |
+
+**UI SSOT**：[skills-management-ui-design.md](./skills-management-ui-design.md)
 
 ### 3.13 并行（不进检查门）
 

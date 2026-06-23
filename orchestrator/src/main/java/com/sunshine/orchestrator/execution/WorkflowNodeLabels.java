@@ -116,9 +116,7 @@ public final class WorkflowNodeLabels {
 
 
     public static boolean isVisibleNode(String nodeType) {
-
-        return nodeType != null && !"start".equals(nodeType) && !"answer".equals(nodeType);
-
+        return nodeType != null && !"start".equals(nodeType);
     }
 
 }

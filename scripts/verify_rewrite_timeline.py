@@ -111,7 +111,7 @@ def rewrite_applied(step: dict | None) -> bool:
     if meta.get("rewriteApplied") is True:
         return True
     detail = str(step.get("detail") or "")
-    return "改写前：" in detail
+    return "原问题：" in detail
 
 
 def main() -> int:

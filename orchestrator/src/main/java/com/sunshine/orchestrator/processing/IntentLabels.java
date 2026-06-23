@@ -50,6 +50,7 @@ public final class IntentLabels {
         return switch (plan.mode()) {
             case SIMPLE_LLM -> "简单对话";
             case REACT -> "自主智能体";
+            case PLAN_WORKFLOW -> "动态规划";
             case WORKFLOW -> plan.workflowId() != null ? plan.workflowId() : "工作流";
         };
     }

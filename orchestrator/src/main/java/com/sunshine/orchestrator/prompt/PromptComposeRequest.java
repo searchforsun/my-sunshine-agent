@@ -34,8 +34,13 @@ public record PromptComposeRequest(
 
     public static PromptComposeRequest forReact(
             MemoryContext memory, String userMessage, List<String> injectedUserContexts) {
+        return forReact(memory, userMessage, null, injectedUserContexts);
+    }
+
+    public static PromptComposeRequest forReact(
+            MemoryContext memory, String userMessage, String skillId, List<String> injectedUserContexts) {
         return new PromptComposeRequest(
-                PromptMode.REACT, memory, userMessage, null, null, null, injectedUserContexts, null);
+                PromptMode.REACT, memory, userMessage, null, skillId, null, injectedUserContexts, null);
     }
 
     /** workflow llm 节点 — nodePrompt 为 TemplateResolver 渲染后的第 6 层 */

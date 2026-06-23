@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.agent.ToolResultSummarizer;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -30,6 +31,18 @@ public final class ProcessingTimelineSession {
     private String currentToolStepId;
     /** 关联 QueryRewriteTrace 的 assistant messageId */
     private String traceMessageId;
+
+    private final Map<String, String> stepDisplayNames = new java.util.LinkedHashMap<>();
+
+    /** Workflow 节点：绑定 node-{id} 步骤的中文展示名（避免 正在n3） */
+    public void bindStepDisplayName(String stepId, String displayName) {
+        if (stepId == null || displayName == null || displayName.isBlank()) {
+            return;
+        }
+        String name = displayName.strip();
+        stepDisplayNames.put(stepId, name);
+        aggregator.bindLabel(stepId, name);
+    }
 
     public void bindTraceMessageId(String messageId) {
         if (messageId != null && !messageId.isBlank()) {
@@ -70,8 +83,16 @@ public final class ProcessingTimelineSession {
         if (activeStepId == null || channel == null || text == null || text.isEmpty()) {
             return;
         }
+        appendDelta(activeStepId, channel, text);
+    }
+
+    /** 向指定步骤写入增量（workflow 节点完成前写入 result 等） */
+    public void appendDelta(String stepId, String channel, String text) {
+        if (stepId == null || channel == null || text == null || text.isEmpty()) {
+            return;
+        }
         long ts = System.currentTimeMillis();
-        aggregator.appendDelta(activeStepId, channel, text, ts);
+        aggregator.appendDelta(stepId, channel, text, ts);
     }
 
     public void bindUserQuery(String query) {
@@ -197,12 +218,24 @@ public final class ProcessingTimelineSession {
     }
 
     private String resolveBefore(String stepId) {
+        if (stepId != null && stepId.startsWith("node-")) {
+            String name = stepDisplayNames.get(stepId);
+            if (name != null && !name.isBlank()) {
+                return "准备" + name;
+            }
+        }
         return userQuery != null
                 ? StepSummarizer.before(stepId, userQuery, lastCompletedToolDisplayName)
                 : StepSummarizer.beforeFallback(stepId);
     }
 
     private String resolveActive(String stepId) {
+        if (stepId != null && stepId.startsWith("node-")) {
+            String name = stepDisplayNames.get(stepId);
+            if (name != null && !name.isBlank()) {
+                return "正在" + name;
+            }
+        }
         return userQuery != null
                 ? StepSummarizer.active(stepId, userQuery, lastCompletedToolDisplayName)
                 : StepSummarizer.activeFallback(stepId);

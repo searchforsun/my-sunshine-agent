@@ -31,6 +31,9 @@ public class SemanticCacheService {
     private static final Duration TTL = Duration.ofHours(24);
 
     public Mono<ChatCompletionResponse> get(ChatCompletionRequest request) {
+        if (Boolean.TRUE.equals(request.getSkipCache())) {
+            return Mono.empty();
+        }
         String key = cacheKey(request);
 
         return redisTemplate.opsForValue()
@@ -39,6 +42,10 @@ public class SemanticCacheService {
                     try {
                         ChatCompletionResponse response = objectMapper.readValue(
                                 json, ChatCompletionResponse.class);
+                        if (hasEmptyAssistantContent(response)) {
+                            log.warn("[LLM-GW] 忽略空 content 缓存: key={}", key);
+                            return redisTemplate.delete(key).then(Mono.empty());
+                        }
                         log.debug("[LLM-GW] 缓存命中: key={}", key);
                         return Mono.just(response);
                     } catch (JsonProcessingException e) {
@@ -49,6 +56,9 @@ public class SemanticCacheService {
     }
 
     public Mono<Boolean> put(ChatCompletionRequest request, ChatCompletionResponse response) {
+        if (Boolean.TRUE.equals(request.getSkipCache()) || hasEmptyAssistantContent(response)) {
+            return Mono.just(false);
+        }
         String key = cacheKey(request);
         try {
             String json = objectMapper.writeValueAsString(response);
@@ -58,6 +68,31 @@ public class SemanticCacheService {
         } catch (JsonProcessingException e) {
             log.warn("[LLM-GW] 缓存序列化失败: {}", e.getMessage());
             return Mono.just(false);
+        }
+    }
+
+    private static boolean hasEmptyAssistantContent(ChatCompletionResponse response) {
+        if (response == null || response.getChoices() == null || response.getChoices().isEmpty()) {
+            return true;
+        }
+        ChatCompletionResponse.Message message = response.getChoices().get(0).getMessage();
+        if (message == null || message.getContent() == null || message.getContent().isBlank()) {
+            return true;
+        }
+        String trimmed = message.getContent().strip();
+        if (trimmed.startsWith("{") && !isCompleteJson(trimmed)) {
+            log.warn("[LLM-GW] 忽略不完整 JSON 缓存");
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isCompleteJson(String text) {
+        try {
+            new ObjectMapper().readTree(text);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 

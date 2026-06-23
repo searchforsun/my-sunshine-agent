@@ -9,6 +9,12 @@ server:
 
 orchestrator:
   base-url: http://localhost:8200
+auth-center:
+  base-url: http://localhost:8100
+skill-manager:
+  base-url: http://localhost:8225
+tool-manager:
+  base-url: http://localhost:8210
 
 logging:
   level:

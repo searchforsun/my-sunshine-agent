@@ -59,4 +59,21 @@ class ExecutionPlanParserTest {
         ExecutionPlan plan = parser.parseStoredIntent("simple-llm");
         assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
     }
+
+    @Test
+    void parsesPlanWorkflowJson() {
+        String json = """
+                {"mode":"plan-workflow","workflowId":null,"params":{},"reason":"跨领域多步"}
+                """;
+        ExecutionPlan plan = parser.parse(json);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        assertThat(plan.intentLabel()).isEqualTo("plan-workflow");
+        assertThat(plan.reason()).isEqualTo("跨领域多步");
+    }
+
+    @Test
+    void parseStoredIntentPlanWorkflow() {
+        ExecutionPlan plan = parser.parseStoredIntent("plan-workflow");
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+    }
 }

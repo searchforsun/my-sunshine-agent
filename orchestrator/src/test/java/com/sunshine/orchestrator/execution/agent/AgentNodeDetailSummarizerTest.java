@@ -67,4 +67,16 @@ class AgentNodeDetailSummarizerTest {
                 .doesNotContain("---")
                 .doesNotContain("|");
     }
+
+    @Test
+    void expandDetail_prefixesLoadedSkill() {
+        assertThat(AgentNodeDetailSummarizer.expandDetail("财务合规分析", "结论：待补充制度"))
+                .isEqualTo("已加载技能：财务合规分析\n\n结论：待补充制度");
+    }
+
+    @Test
+    void expandDetail_withoutSkill_returnsAnswerOnly() {
+        assertThat(AgentNodeDetailSummarizer.expandDetail(null, "纯分析正文"))
+                .isEqualTo("纯分析正文");
+    }
 }

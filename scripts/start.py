@@ -17,6 +17,7 @@ SERVICES = [
     ("rag", "rag-service", "sunshine-rag"),
     ("finance", "finance-service", "sunshine-finance"),
     ("tool-manager", "tool-manager", "sunshine-tool-manager"),
+    ("skill-manager", "skill-manager", "sunshine-skill-manager"),
     ("desensitize", "desensitize", "sunshine-desensitize"),
     ("prompt", "prompt-manager", "sunshine-prompt"),
     ("orchestrator", "orchestrator", "sunshine-orchestrator"),
@@ -41,7 +42,7 @@ def main() -> int:
         procs.append(start_java_detached(module, artifact, service_name=name))
 
     print("\n[OK] Core services started (Nacos config)")
-    print("  LLM Gateway  :8300 | RAG :8400 | Finance :8710 | Tool Manager :8210")
+    print("  LLM Gateway  :8300 | RAG :8400 | Finance :8710 | Tool Manager :8210 | Skill Manager :8225")
     print("  Desensitize  :8600 | Prompt :8500 | Orchestrator :8200")
     print("  Auth Center  :8100 | BFF :8001 | Gateway :8000")
     print("Live SkyWalking trace requires OAP at ecs4c16g:11800")

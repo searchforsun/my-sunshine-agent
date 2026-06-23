@@ -2,43 +2,39 @@
 
 > **⚠️ 任务卡已并入** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.10**；实施计划 [plans/2026-06-19-multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md)（3.9.x / 3.10.x）。阶段四见 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.7**。下文为历史详设。
 
-> **日期**：2026-06-19  
-> **状态**：方案评审  
+> **日期**：2026-06-19（**2026-06-23** 对齐 3.10.1–3.10.7、3.11.1–3.11.6、3.12.1/1a；**`/skills` UI** 见 [skills-management-ui-design.md](./skills-management-ui-design.md)）  
+> **状态**：历史详设；**实现目标 SSOT** 见 [plans/2026-06-19-multi-agent-architecture.md §子 Agent 实现目标](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)  
 > **定位**：企业助手**可控多智能体**的核心架构 — 与动态 DAG、Skills、提示词改写协同  
-> **前置**：Workflow 2.9 已落地 `AgentNodeHandler` + `chatAsSubAgent`；阶段三原 3.1 需与本方案对齐  
+> **前置**：Workflow 2.9 已落地 `AgentNodeHandler`；3.10.1 起改调 `AgentRuntime`（`SunshineAgent` 已删除）  
 > **关联**：`2026-06-18-workflow-orchestration-design.md` §7、`2026-06-19-advanced-capabilities-design.md`、`CLAUDE.md` Timeline 约定
 
 ---
 
 ## 1. 背景：已有能力与缺口
 
-### 1.1 已落地（阶段二 / 2.9）
+### 1.1 已落地（阶段二 2.9 + 阶段三 3.10.1–3.10.7、3.11.1–3.11.6）
 
 | 层级 | 实现 | 代码锚点 |
 |------|------|----------|
-| **主 Agent（顶层 react）** | 整单 ReAct，绑定 `assistantMsgId`，think/tool/generate 全上主 Timeline | `ReactExecutor` → `SunshineAgent.chat(..., assistantMsgId)` |
-| **子 Agent（workflow 节点）** | 黑盒函数 `f(query, context)→output`，引擎机械推进下一节点 | `AgentNodeHandler` → `chatAsSubAgent(..., null)` |
-| **子 Agent 隔离** | 独立 `StepEventBridge` id（`sub-{uuid}`），不污染主会话 bridge | `SunshineAgent` L108–110 |
-| **主时间线压缩** | 子 Agent 内 think/tool **不上主 Timeline**；`node-{id}` 一步 + `summary.after` 一行 | `WorkflowNodeTimeline` + `AgentNodeDetailSummarizer` |
+| **主 Agent（顶层 react）** | 整单 ReAct，绑定 `assistantMsgId`，think/tool/generate 全上主 Timeline | `ReactExecutor` → `AgentRunRequest.main(...)` → `AgentRuntime` |
+| **子 Agent（workflow 节点）** | 黑盒 `f(query, context)→output`，引擎机械推进下一节点 | `AgentNodeHandler` → `AgentRunRequest.sub(...)` → `AgentRuntime` |
+| **Bridge / Timeline 隔离** | SUB 独立 `sub-{runId}` bridge；主 SSE 仅 `node-{id}` | `AgentRunRequest.resolveBridgeId()` + `WorkflowExecutor` |
+| **工具白名单 + overlay** | SUB 按节点 `tools` 限制 Toolkit；`systemOverlay` 叠 sysPrompt | `ReActAgentFactory` + `DynamicToolkitFactory`（3.10.2 ✅） |
+| **节点 params** | `skill` / `tools` / `maxIters` / `systemOverlay` / `query` / `context` | `AgentNodeHandler` + `sunshine-workflows.yaml` `finance-smart`（3.10.3 ✅） |
+| **记忆隔离 + skill overlay** | SUB 无 STM/LTM；`skillId` → `PromptComposer` Catalog overlay | `MemoryContext.forSubAgent()` + 3.10.7 ✅ |
+| **skill-manager Catalog** | 摘要/详情拆分；MinIO 存储 | `SkillCatalogController` `/catalog/index` + `/{id}/catalog`（3.11.6 ✅） |
 
-```43:46:orchestrator/src/main/java/com/sunshine/orchestrator/execution/handler/AgentNodeHandler.java
-        // 子 Agent 不绑定主 assistantMsgId，避免 StepEventBridge 与主流冲突
-        return sunshineAgent.chatAsSubAgent(
-                        streamCtx.memory(), query, injectedContext,
-                        streamCtx.userId(), streamCtx.tenantId(), null)
-```
+### 1.2 缺口（相对 SSOT 目标）
 
-### 1.2 缺口
-
-| 缺口 | 影响 |
-|------|------|
-| 主/子共用同一 `ReActAgentFactory` + 全局 Toolkit | 子 Agent 无法按节点限制工具、专属 prompt |
-| `AgentNodeInput` 设计未完全实现 | 无 `tools`/`maxIters`/`systemPrompt`/`skillId` 节点级配置 |
-| 仅 **1 层** 主子关系 | 子 Agent 不能再委派下级 Agent |
-| 无 **Coordinator** 模式 | 顶层 react 单 Agent 扛所有开放任务，不可控 |
-| 无 **多子并行** | 不能同时跑「制度分析子 Agent + 财务子 Agent」再汇总 |
-| MsgHub 未接入 | 设计文档提及阶段三，无实现 |
-| 子 Agent 细节不可展开 | 前端只见 `summary.after` 一行，无法 drill-down 审计 |
+| 缺口 | 影响 | 任务 |
+|------|------|------|
+| 无 Planner / 动态 DAG | 不能自动规划多子 Agent | 3.9 + 3.10.4–3.10.5 |
+| 无 `sub_agent_run` 审计 | 子 run 不可查 | 3.10.6 |
+| 无 `@` / 强提示绑定 | 用户无法显式指定 skill | 3.11.7 |
+| 主 ReAct 未贯通 skillId | 流程 1–3 未落地 | 3.10.4 + 3.11.7 |
+| 仅 **1 层** 主子关系 | 子 Agent 不能再委派下级 Agent | 阶段四 |
+| 无 **Coordinator** / **多子并行** / MsgHub | L2/L4 未开始 | 阶段三末 / 四 |
+| 子 Agent 详情不可展开 | 前端只见 `summary.after` 一行 | 4.7.4 |
 
 ---
 
@@ -107,7 +103,7 @@ flowchart TB
 
 ### 4.1 统一运行时接口
 
-将 `SunshineAgent` 拆为门面 + 可配置运行时：
+将 `SunshineAgent` 拆为 `AgentRuntime` 可配置运行时（**3.10.1 已完成**，门面已删除）：
 
 ```java
 /** 主/子 Agent 统一执行契约 */
@@ -119,9 +115,9 @@ public record AgentRunRequest(
     AgentRole role,              // MAIN | SUB | PLANNER
     String runId,                // 全局唯一，用于 Trace / 审计
     String parentRunId,          // 子 Agent 指向父（主或引擎）
-    MemoryContext memory,        // 主：完整；子：通常仅注入块，不写回 STM
+    MemoryContext memory,        // 主：完整；子：injectedOnly（无 STM/LTM，3.10.7）
     String query,
-    String injectedContext,
+    List<String> injectedBlocks, // 上游 context 模板渲染结果
     String skillId,              // 可选，绑定 SkillRegistry
     List<String> toolWhitelist,  // 子 Agent 必填；主 Agent 用 react 白名单
     String systemOverlay,        // 叠加在 base system 之上
@@ -136,7 +132,7 @@ public record AgentRunRequest(
 |------|------------------|-----------------|---------------------|
 | `assistantMsgId` | 绑定，走 GenerationJob | **不绑定** | 不绑定 |
 | Timeline | think/tool/generate 全量 | 仅 `node-{id}` 一步 + 可选 expand | 仅 `plan` 步 |
-| Toolkit | react 全局白名单 | **节点/skill 子集** | 无工具或仅 `search_knowledge` |
+| Toolkit | react 全局白名单 | **节点 params.tools** | 无工具或仅 `search_knowledge` |
 | System Prompt | base + mode overlay | base + **skill overlay + 节点 overlay** | planner 专用 prompt |
 | Memory 写回 | 完整 STM 写回 | **不写回** reasoning；可选写 `output` 摘要 | 不写回 |
 | 输出 | 用户可见 content | `AgentNodeOutput` 交给引擎 | `PlanJson` 交给 Validator |
@@ -175,8 +171,9 @@ start → rag → tool → agent(子) → llm → answer
 ```
 
 **增强项（阶段三）**：
-- 子 Agent 支持 `skillId` + `toolWhitelist`
-- `node-{id}` 步骤可展开 `expandDetail`（子 Agent tool 列表 + 摘要 reasoning）
+- ~~子 Agent 支持 `skillId` + `toolWhitelist`~~ ✅ 3.10.2–3.10.3
+- 记忆裁剪 + skill overlay 贯通 PromptComposer ⬜ 3.10.7
+- `node-{id}` 步骤可展开 `expandDetail`（子 Agent tool 列表 + 摘要 reasoning）⬜ 4.7.4
 
 ### 5.2 模式 B：主 Coordinator + 串行子 Agent（阶段三）
 
@@ -281,13 +278,17 @@ AgentScope MsgHub: [角色A 制度专家] [角色B 财务专家] [角色C 仲裁
 
 ## 7. 记忆与上下文隔离
 
-| 数据 | 主 Agent | 子 Agent |
-|------|----------|----------|
-| LTM/MTM | 注入 | **不注入**（防噪音） |
-| STM 轮次 | 注入 | **不注入**完整历史 |
-| 上游节点 output | — | 通过 `injectedContext` / `context` 模板注入 |
-| 子 Agent reasoning | 写入主 `reasoning` 字段 | **不写回**；仅 ES 审计 |
-| 子 Agent answer | 作为 tool-like 中间结果 | 写入 `WorkflowContext` 供下游 `{{analyze.output}}` |
+> **实现目标 SSOT**：[plans/2026-06-19-multi-agent-architecture.md §子 Agent 实现目标](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)
+
+| 数据 | 主 Agent | 子 Agent（目标态） | 当前代码（2026-06-22） |
+|------|----------|-------------------|------------------------|
+| LTM/MTM | 注入 | **不注入** | ✅ `MemoryContext.forSubAgent()` |
+| STM 轮次 | 注入 | **不注入** | ✅ 同上 |
+| 上游节点 output | — | `params.context` → `injectedBlocks` | ✅ |
+| 节点 query | 用户问题 | `params.query` 或 `{{start.userQuery}}` | ✅ |
+| skill / tools / overlay | — | skill overlay ← Catalog；tools ← 节点 params | ✅ 3.10.7 |
+| 子 Agent reasoning | 写入主 `reasoning` | **不写回**；ES 审计（3.10.6） | ✅ 不上主 SSE；SUB 不写 STM |
+| 子 Agent answer | 用户可见 content | `WorkflowContext` → 下游 `llm` | ✅ |
 
 **子 Agent user 消息模板**：
 
@@ -307,7 +308,7 @@ AgentScope MsgHub: [角色A 制度专家] [角色B 财务专家] [角色C 仲裁
 
 | 机制 | 主 Agent | 子 Agent |
 |------|----------|----------|
-| 工具白名单 | react 全局 | skill + 节点 params 交集 |
+| 工具白名单 | react 全局 | **节点 params**（Skill 包不绑工具） |
 | HITL | 写工具确认 | 同左，且在子 run 上下文 |
 | maxIters | 5 | 3–4（节点配置） |
 | maxDelegates | 2（模式 B） | 0（子 Agent 不能再委派，MVP） |
@@ -320,15 +321,15 @@ AgentScope MsgHub: [角色A 制度专家] [角色B 财务专家] [角色C 仲裁
 
 ### 阶段三（与 3.1 / 3.9 合并）
 
-| 编号 | 任务 | 模块 |
-|------|------|------|
-| M1 | `AgentRunRequest` + `AgentRole` + `AgentRuntime` 接口 | orchestrator |
-| M2 | `ReActAgentFactory.create(AgentRunRequest)` 支持 overlay + 工具子集 | orchestrator |
-| M3 | `AgentNodeHandler` 补齐 skillId / tools / maxIters / systemOverlay | orchestrator |
-| M4 | `PlannerAgentRuntime`：输出 Plan JSON，Timeline `plan` 步 | orchestrator |
-| M5 | `DynamicWorkflowExecutor` 调度多 `agent` 节点 | orchestrator |
-| M6 | `sub_agent_run` 审计事件 + ES 索引 | orchestrator |
-| M7 | 单测：子 Agent 工具超白名单被拒绝 | orchestrator |
+| 编号 | 任务 | 模块 | 状态 |
+|------|------|------|:----:|
+| 3.10.1 / M1 | `AgentRunRequest` + `AgentRole` + `AgentRuntime` 接口 | orchestrator | ✅ |
+| 3.10.2 / M2 | `ReActAgentFactory.create(AgentRunRequest)` overlay + 工具子集 | orchestrator | ✅ |
+| 3.10.3 / M3 | `AgentNodeHandler` skillId / tools / maxIters / systemOverlay | orchestrator | ✅ |
+| 3.10.4 / M4 | `PlannerAgentRuntime`：Plan JSON，Timeline `plan` 步 | orchestrator | ⬜ |
+| 3.10.5 / M5 | `DynamicWorkflowExecutor` 多 `agent` 节点 | orchestrator | ⬜ |
+| 3.10.6 / M6 | `sub_agent_run` 审计 + ES | orchestrator | ⬜ |
+| 3.10.7 / M7 | 记忆裁剪 + skill→Composer；不污染 STM/reasoning | orchestrator | ⬜ |
 
 ### 阶段三末 / 阶段四
 
@@ -415,7 +416,7 @@ flowchart LR
 | 4 | Skills | **skill-manager** 服务端上传 + 前端 `/skills` |
 | 5 | 沙箱 | **Docker** |
 | 6 | 子 Agent 默认 maxIters | 4 |
-| 7 | 子 Agent 共享主 memory | 否；仅 `injectedContext` |
+| 7 | 子 Agent 共享主 memory | **否**；仅 `injectedContext` / `injectedBlocks`（见 locked **D9**、plan §子 Agent 实现目标） |
 
 **仍开放**：顶层 react 是否升级为 Coordinator（L2）— 阶段三末可选。
 

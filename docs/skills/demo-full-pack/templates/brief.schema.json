@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "InternalBrief",
+  "type": "object",
+  "required": ["summary", "items"],
+  "properties": {
+    "summary": { "type": "string", "description": "一句话内部分析摘要" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "verdict"],
+        "properties": {
+          "id": { "type": "string" },
+          "verdict": { "enum": ["pass", "questionable", "need_more"] },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "risks": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -48,6 +48,22 @@ class WorkflowNodeTimelineTest {
     }
 
     @Test
+    @DisplayName("节点 start 绑定 displayName 时 active/label 不使用内部 id")
+    void startWithDisplayName_usesFriendlyActiveAndLabel() {
+        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
+        session.bindUserQuery("测试");
+
+        WorkflowNodeTimeline.start(session, "n3", "agent", "合规对比分析");
+
+        var step = session.snapshot().stream()
+                .filter(s -> "node-n3".equals(s.id()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(step.label()).isEqualTo("合规对比分析");
+        assertThat(step.summary().active()).isEqualTo("正在合规对比分析");
+    }
+
+    @Test
     @DisplayName("llm 节点 start 时应补全仍 running 的前序 agent 节点")
     void llmStart_autoCompletesRunningAgentNode() {
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();

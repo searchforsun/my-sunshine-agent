@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.agent.AgentScopeEventMapper;
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
@@ -20,7 +21,6 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -43,20 +43,23 @@ public class ReActAgentRuntime implements AgentRuntime {
     }
 
     private Flux<StreamToken> runReAct(AgentRunRequest request) {
-        var memory = request.memory();
+        MemoryContext memory = request.role() == AgentRole.SUB
+                ? MemoryContext.forSubAgent()
+                : request.memory();
         String query = request.query();
         String assistantMessageId = request.assistantMessageId();
 
-        log.info("[AgentRuntime] role={}, runId={}, user={}, stmTurns={}, injected={}, msg={}",
+        log.info("[AgentRuntime] role={}, runId={}, user={}, stmTurns={}, injected={}, skill={}, msg={}",
                 request.role(),
                 request.runId(),
                 request.userId(),
                 memory.stmTurns() != null ? memory.stmTurns().size() : 0,
                 request.injectedBlocks().size(),
+                request.skillId(),
                 query != null && query.length() > 60 ? query.substring(0, 60) + "..." : query);
 
         List<Msg> inputs = promptComposer.composeReactInputs(
-                PromptComposeRequest.forReact(memory, query, request.injectedBlocks()));
+                PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks()));
 
         StreamOptions options = StreamOptions.builder()
                 .incremental(true)
@@ -71,7 +74,7 @@ public class ReActAgentRuntime implements AgentRuntime {
         session.bindTraceMessageId(assistantMessageId);
         ConcurrentLinkedQueue<StreamToken> hookQueue = new ConcurrentLinkedQueue<>();
 
-        String bridgeId = resolveBridgeId(request);
+        String bridgeId = request.resolveBridgeId();
         StepEventBridge.bind(bridgeId, session, hookQueue);
         if (assistantMessageId != null) {
             StepEventBridge.setUserQuery(assistantMessageId, query);
@@ -80,7 +83,7 @@ public class ReActAgentRuntime implements AgentRuntime {
         AtomicBoolean generateStarted = new AtomicBoolean(false);
         AtomicBoolean generateCompleted = new AtomicBoolean(false);
 
-        ReActAgent agent = agentFactory.create(bridgeId);
+        ReActAgent agent = agentFactory.create(request);
         return agent.stream(inputs, options)
                 .flatMap(event -> {
                     List<StreamToken> tokens = new ArrayList<>();
@@ -97,14 +100,6 @@ public class ReActAgentRuntime implements AgentRuntime {
                 .doOnComplete(() -> log.info("[AgentRuntime] role={} runId={} 完成", request.role(), request.runId()))
                 .doOnError(e -> log.error("[AgentRuntime] role={} runId={} 异常: {}",
                         request.role(), request.runId(), e.getMessage(), e));
-    }
-
-    /** MAIN 绑定 assistantMessageId；SUB 使用独立 bridge，避免与主流冲突 */
-    static String resolveBridgeId(AgentRunRequest request) {
-        if (request.assistantMessageId() != null && !request.assistantMessageId().isBlank()) {
-            return request.assistantMessageId();
-        }
-        return "sub-" + UUID.randomUUID();
     }
 
     private static List<StreamToken> finishGenerateSteps(

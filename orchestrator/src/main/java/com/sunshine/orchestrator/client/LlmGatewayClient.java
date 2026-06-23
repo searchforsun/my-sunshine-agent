@@ -124,15 +124,20 @@ public class LlmGatewayClient {
             messages.add(Map.of("role", "system", "content", systemPrompt.strip()));
         }
         messages.add(Map.of("role", "user", "content", userContent != null ? userContent : ""));
-        return completeMessages(model, messages);
+        return completeMessages(model, messages).contentOrEmpty();
+    }
+
+    /** 流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
+    public Flux<StreamToken> streamComposed(PromptComposeRequest request) {
+        return doStream(promptComposer.composeGatewayMessages(request));
     }
 
     /** 非流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
-    public String completeComposed(PromptComposeRequest request) {
+    public LlmCompletion completeComposed(PromptComposeRequest request) {
         return completeMessages(modelName, promptComposer.composeGatewayMessages(request));
     }
 
-    private String completeMessages(String model, List<Map<String, Object>> messages) {
+    private LlmCompletion completeMessages(String model, List<Map<String, Object>> messages) {
         Map<String, Object> request = Map.of(
                 "model", model,
                 "messages", messages,
@@ -147,23 +152,35 @@ public class LlmGatewayClient {
                     .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
                     .block();
             if (response == null) {
-                return "";
+                return new LlmCompletion("", "");
             }
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
             if (choices == null || choices.isEmpty()) {
-                return "";
+                return new LlmCompletion("", "");
             }
             @SuppressWarnings("unchecked")
             Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
-            if (message == null || message.get("content") == null) {
-                return "";
+            if (message == null) {
+                return new LlmCompletion("", "");
             }
-            return message.get("content").toString().strip();
+            String content = stringField(message.get("content"));
+            String reasoning = stringField(message.get("reasoning_content"));
+            if (reasoning == null || reasoning.isBlank()) {
+                reasoning = stringField(message.get("reasoning"));
+            }
+            return new LlmCompletion(content, reasoning);
         } catch (Exception e) {
             log.warn("[LlmGatewayClient] complete 失败: {}", e.getMessage());
+            return new LlmCompletion("", "");
+        }
+    }
+
+    private static String stringField(Object value) {
+        if (value == null) {
             return "";
         }
+        return value.toString().strip();
     }
 
 

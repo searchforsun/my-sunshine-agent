@@ -1,0 +1,136 @@
+package com.sunshine.orchestrator.plan;
+
+import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** 调用 flash 模型生成 PlanJson */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class WorkflowPlanner {
+
+    private final AgentPromptProperties prompts;
+    private final PlanCatalogRenderer catalogRenderer;
+    private final PlanJsonParser planJsonParser;
+
+    @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
+    private String baseUrl;
+
+    @Value("${agent.model.api-key:}")
+    private String apiKey;
+
+    private WebClient webClient;
+
+    public Mono<PlanJson> plan(ExecutionStreamContext ctx) {
+        String systemPrompt = catalogRenderer.renderIntoPrompt(
+                prompts.plannerOrDefault().promptOrEmpty());
+        if (!StringUtils.hasText(systemPrompt)) {
+            return Mono.error(new PlanParseException("agent.planner.prompt 未配置"));
+        }
+        String userMessage = ctx.userContent() != null ? ctx.userContent() : "";
+        AgentPromptProperties.Planner cfg = prompts.plannerOrDefault();
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("model", cfg.getModel());
+        request.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userMessage)));
+        request.put("max_tokens", cfg.getMaxTokens());
+        request.put("temperature", cfg.getTemperature());
+        request.put("skip_cache", true);
+        request.put("response_format", Map.of("type", "json_object"));
+
+        return invokePlanner(request);
+    }
+
+    private Mono<PlanJson> invokePlanner(Map<String, Object> request) {
+        return client().post()
+                .uri("/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(resp -> {
+                    logFinishReason(resp);
+                    return planJsonParser.parse(extractPlannerText(resp));
+                })
+                .doOnNext(p -> log.info("[WorkflowPlanner] planId={}, nodes={}, reason={}",
+                        p.planId(), p.nodes().size(), p.reason()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void logFinishReason(Map<String, Object> resp) {
+        List<Map<String, Object>> choices = (List<Map<String, Object>>) resp.get("choices");
+        if (choices == null || choices.isEmpty()) {
+            return;
+        }
+        Object reason = choices.get(0).get("finish_reason");
+        Map<String, Object> usage = (Map<String, Object>) resp.get("usage");
+        log.info("[WorkflowPlanner] finish_reason={}, usage={}", reason, usage);
+    }
+
+    private WebClient client() {
+        if (webClient == null) {
+            webClient = WebClient.builder().baseUrl(baseUrl).build();
+        }
+        return webClient;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String extractPlannerText(Map<String, Object> resp) {
+        List<Map<String, Object>> choices = (List<Map<String, Object>>) resp.get("choices");
+        if (choices == null || choices.isEmpty()) {
+            log.warn("[WorkflowPlanner] LLM 响应无 choices");
+            return "";
+        }
+        Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+        if (message == null) {
+            log.warn("[WorkflowPlanner] LLM 响应无 message");
+            return "";
+        }
+        String content = stringField(message.get("content"));
+        String reasoning = stringField(message.get("reasoning_content"));
+        if (!StringUtils.hasText(reasoning)) {
+            reasoning = stringField(message.get("reasoning"));
+        }
+        String best = pickBestPlannerPayload(content, reasoning);
+        if (StringUtils.hasText(best)) {
+            return best.trim();
+        }
+        log.warn("[WorkflowPlanner] message.content 与 reasoning 均为空");
+        return "";
+    }
+
+    private static String pickBestPlannerPayload(String content, String reasoning) {
+        java.util.List<String> candidates = new java.util.ArrayList<>();
+        if (StringUtils.hasText(content)) {
+            candidates.add(content.strip());
+        }
+        if (StringUtils.hasText(reasoning)) {
+            candidates.add(reasoning.strip());
+        }
+        if (StringUtils.hasText(content) && StringUtils.hasText(reasoning)) {
+            candidates.add(content.strip() + reasoning.strip());
+        }
+        return candidates.stream()
+                .filter(s -> s.contains("\"nodes\""))
+                .max(java.util.Comparator.comparingInt(String::length))
+                .orElseGet(() -> StringUtils.hasText(content) ? content.strip()
+                        : (StringUtils.hasText(reasoning) ? reasoning.strip() : ""));
+    }
+
+    private static String stringField(Object value) {
+        return value instanceof String s ? s : null;
+    }
+}

@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.execution.agent;
 
+import org.springframework.util.StringUtils;
+
 import java.util.regex.Pattern;
 
 /** Workflow agent 节点时间线：主行一行预览（前端截断）+ 展开区完整 after/detail */
@@ -33,6 +35,18 @@ public final class AgentNodeDetailSummarizer {
             return "已完成 " + toolCallCount + " 次工具调用的综合分析";
         }
         return "智能体分析完成";
+    }
+
+    /** 展开区 detail：可选前缀已加载技能，后接完整 agent 输出 */
+    public static String expandDetail(String skillLabel, String answer) {
+        if (!StringUtils.hasText(answer)) {
+            return StringUtils.hasText(skillLabel) ? "已加载技能：" + skillLabel.strip() : "";
+        }
+        String body = answer.strip();
+        if (!StringUtils.hasText(skillLabel)) {
+            return body;
+        }
+        return "已加载技能：" + skillLabel.strip() + "\n\n" + body;
     }
 
     private static String toOneLine(String line) {

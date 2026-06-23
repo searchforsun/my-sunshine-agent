@@ -1,0 +1,6 @@
+item,required,note
+SKILL.md,yes,根目录主文件
+references/,yes,引用文档目录
+scripts/,yes,脚本目录
+templates/,yes,输出模板
+assets/,yes,样例与静态资源

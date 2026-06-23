@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,10 +50,28 @@ public class WorkflowDefinitionLoader {
                 params.put(k, "");
             } else if (v instanceof List<?> list) {
                 params.put(k, String.join(",", list.stream().map(Object::toString).toList()));
+            } else if (v instanceof Map<?, ?> map && isIndexedListMap(map)) {
+                params.put(k, String.join(",", indexedListValues(map)));
             } else {
                 params.put(k, v.toString());
             }
         });
         return params;
+    }
+
+    /** Nacos/Spring 有时将 YAML 短列表绑成 {0: a, 1: b} */
+    static boolean isIndexedListMap(Map<?, ?> map) {
+        if (map.isEmpty()) {
+            return false;
+        }
+        return map.keySet().stream().allMatch(key ->
+                key instanceof Number || (key instanceof String s && s.matches("\\d+")));
+    }
+
+    static List<String> indexedListValues(Map<?, ?> map) {
+        return map.entrySet().stream()
+                .sorted(Comparator.comparingInt(e -> Integer.parseInt(e.getKey().toString())))
+                .map(e -> String.valueOf(e.getValue()))
+                .toList();
     }
 }

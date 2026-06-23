@@ -27,8 +27,13 @@ public class UserIdInjectGatewayFilter implements GlobalFilter, Ordered {
             ServerHttpRequest request = exchange.getRequest().mutate()
                     .headers(headers -> {
                         headers.remove("x-user-id");
+                        headers.remove("x-user-name");
                         headers.remove("x-tenant-id");
                         headers.set("x-user-id", StpUtil.getLoginIdAsString());
+                        Object nickname = StpUtil.getExtra("nickname");
+                        if (nickname != null && !String.valueOf(nickname).isBlank()) {
+                            headers.set("x-user-name", String.valueOf(nickname).trim());
+                        }
                         headers.set("x-tenant-id", "default");
                     })
                     .build();

@@ -143,7 +143,8 @@ public class GenerationJob {
                     stepsBuffer, token.stepId(), token.channel(), token.text());
             streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStepDelta(
                     token.stepId(), token.channel(), token.text()));
-            if ("reasoning".equals(token.channel()) && reasoningBufferRef != null) {
+            if ("reasoning".equals(token.channel()) && reasoningBufferRef != null
+                    && (token.stepId() == null || !token.stepId().startsWith("node-"))) {
                 reasoningBufferRef.append(token.text());
             }
             return;

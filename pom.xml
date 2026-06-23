@@ -17,6 +17,7 @@
         <module>auth-center</module>
         <module>orchestrator</module>
         <module>tool-manager</module>
+        <module>skill-manager</module>
         <module>llm-gateway</module>
         <module>rag-service</module>
         <module>prompt-manager</module>

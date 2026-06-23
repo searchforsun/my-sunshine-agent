@@ -33,6 +33,7 @@ export interface ChatMessage {
   steps?: ProcessingStep[]
   status?: 'streaming' | 'interrupted' | 'failed' | 'completed'
   intent?: string
+  executionPlanId?: string
 }
 
 export function useChat(onChunk?: (data: string) => void) {

@@ -46,16 +46,16 @@ public record QueryRewriteOutcome(
         if (!applied) {
             return null;
         }
-        return rewriteTimelineDetail("hyde".equals(scenario) ? "HyDE" : "改写后", rewrittenQuery);
+        return rewriteTimelineDetail("hyde".equals(scenario) ? "参考文档" : "优化后", rewrittenQuery);
     }
 
     private String emptyRecallTimelineDetail() {
         String scenarioLabel = RewriteTimelineLabels.labelFor(scenario);
         if (applied) {
-            return rewriteTimelineDetail("改写后", rewrittenQuery);
+            return rewriteTimelineDetail("优化后", rewrittenQuery);
         }
-        String body = "结果：未生成有效替代 query（未启用、LLM 无输出或解析失败）"
-                + "\n耗时：" + latencyMs + "ms";
+        String body = "未能生成新的检索词"
+                + "\n" + formatLatency(latencyMs);
         if (StringUtils.hasText(scenarioLabel)) {
             return scenarioLabel + "\n" + body;
         }
@@ -63,9 +63,9 @@ public record QueryRewriteOutcome(
     }
 
     private String rewriteTimelineDetail(String targetLabel, String targetText) {
-        String body = "改写前：" + clip(originalQuery)
+        String body = "原问题：" + clip(originalQuery)
                 + "\n" + targetLabel + "：" + clip(targetText)
-                + "\n耗时：" + latencyMs + "ms";
+                + "\n" + formatLatency(latencyMs);
         String scenarioLabel = RewriteTimelineLabels.labelFor(scenario);
         if (StringUtils.hasText(scenarioLabel)) {
             return scenarioLabel + "\n" + body;
@@ -79,5 +79,13 @@ public record QueryRewriteOutcome(
         }
         String s = text.strip();
         return s.length() > 120 ? s.substring(0, 120) + "..." : s;
+    }
+
+    private static String formatLatency(long latencyMs) {
+        if (latencyMs >= 1000) {
+            double seconds = latencyMs / 1000.0;
+            return seconds >= 10 ? "用时：" + Math.round(seconds) + " 秒" : "用时：" + String.format("%.1f", seconds) + " 秒";
+        }
+        return "用时：" + latencyMs + " 毫秒";
     }
 }

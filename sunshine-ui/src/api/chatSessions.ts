@@ -15,7 +15,7 @@ import {
 import { BFF_STREAM_BASE } from './config'
 import { parseSseEvent } from './sseParse'
 import { parseSsePayload, type SseMeta } from './sseDispatch'
-import { upsertStep, applyStepDelta, findRunningStepId } from './processingSteps'
+import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId } from './processingSteps'
 import type { ProcessingStep } from './processingSteps'
 
 const API_BASE = BFF_STREAM_BASE
@@ -193,10 +193,6 @@ export function useChatSessions(
           if (eventSeq !== null) updateLastSeq(eventSeq)
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
-            const prev = lastMsg.reasoning ?? ''
-            lastMsg.reasoning = options.resume
-              ? appendChunk(prev, parsed.text)
-              : prev + parsed.text
             const runningId = findRunningStepId(lastMsg.steps ?? [])
             if (runningId) {
               lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], {
@@ -204,6 +200,13 @@ export function useChatSessions(
                 channel: 'reasoning',
                 text: parsed.text,
               })
+            }
+            // workflow node-* 的 reasoning 只挂在步骤上，不写入 message.reasoning
+            if (!isWorkflowNodeStepId(runningId)) {
+              const prev = lastMsg.reasoning ?? ''
+              lastMsg.reasoning = options.resume
+                ? appendChunk(prev, parsed.text)
+                : prev + parsed.text
             }
           }
           onProgress?.(s.id)
@@ -232,9 +235,10 @@ export function useChatSessions(
                 }
               }
             lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
-            // ReAct think 步骤 reasoning 仅在 steps 内展示，勿双写 message.reasoning
+            // ReAct think / workflow node-*：reasoning 仅在 steps 内展示
             const isThinkStep = delta.stepId === 'think' || delta.stepId.startsWith('think-')
-            if (delta.channel === 'reasoning' && delta.stepId !== 'agent' && !isThinkStep) {
+            const isNodeStep = isWorkflowNodeStepId(delta.stepId)
+            if (delta.channel === 'reasoning' && delta.stepId !== 'agent' && !isThinkStep && !isNodeStep) {
               const prev = lastMsg.reasoning ?? ''
               lastMsg.reasoning = options.resume
                 ? appendChunk(prev, delta.text)

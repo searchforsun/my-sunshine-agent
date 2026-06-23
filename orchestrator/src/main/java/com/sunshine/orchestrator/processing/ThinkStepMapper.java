@@ -100,6 +100,9 @@ public final class ThinkStepMapper {
             out.add(token);
             return out;
         }
+        if (stepId != null && stepId.startsWith("node-")) {
+            return List.of(token);
+        }
         return mapReasoning(text);
     }
 

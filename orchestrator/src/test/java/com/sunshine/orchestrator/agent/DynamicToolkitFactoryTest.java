@@ -1,8 +1,10 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.agent.remote.CatalogRemoteAgentTool;
+import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
+import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -12,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,5 +41,21 @@ class DynamicToolkitFactoryTest {
         when(remoteToolFactory.create("ghost_tool")).thenReturn(Optional.empty());
 
         factory.build();
+    }
+
+    @Test
+    void build_withExplicitWhitelist_registersOnlyListedTools() {
+        ToolCatalogEntry financeEntry = new ToolCatalogEntry(
+                "list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", java.util.Map.of());
+        com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
+
+        when(toolCatalogService.isRagTool("list_finance_messages")).thenReturn(false);
+        when(remoteToolFactory.create("list_finance_messages"))
+                .thenReturn(Optional.of(new CatalogRemoteAgentTool(financeEntry, toolManagerClient)));
+
+        var toolkit = factory.build(List.of("list_finance_messages"));
+
+        assertThat(toolkit.getToolNames()).containsExactly("list_finance_messages");
     }
 }

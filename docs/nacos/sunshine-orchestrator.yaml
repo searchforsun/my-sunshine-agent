@@ -57,6 +57,9 @@ agent:
     mode-overlays:
       simple-llm: ""
       react: ""
+      workflow: |
+        工作流终态 answer 节点：reasoning 基于上游节点输出做内部分析判断；content 直接回答用户问题，给出结论与可操作的建议。
+    skill-overlays: {}
     scope-prompt: ""
 
   intent:
@@ -66,16 +69,49 @@ agent:
       只回复一行 JSON，不要 markdown 代码块，不要其他文字。
 
       输出格式：
-      {"mode":"simple-llm|workflow|react","workflowId":null或目录中的id,"params":{},"reason":"一句话"}
+      {"mode":"simple-llm|workflow|react|plan-workflow","workflowId":null或目录中的id,"params":{},"reason":"一句话"}
 
       规则：
       - simple-llm：**仅**简单对话、通识百科、写作润色、代码讲解等，**明确不需**企业知识库/业务系统，单轮直答；**不得**用于需查公司制度、内部流程、财务/审批/业务数据的问题
       - workflow：匹配下方目录中某一模板，workflowId 填对应 id，params 填本次参数（如 status: pending）；区分边界见各条 desc/示例
-      - react：无匹配模板、需多工具组合、需查企业知识库或业务数据、或不确定
+      - plan-workflow：需**跨多领域/多步骤**协作（如「先检索制度，再查待审批，再合规分析」），**无固定 workflow 模板**；含「先…再…」「分步」「并对…分析」等多步表述时**必须**选 plan-workflow，**不得**选单一 finance-list / finance-smart
+      - react：无匹配模板、需多工具组合、或不确定
       - 拿不准时用 react
 
       ## Workflow 目录
       {{workflow-catalog}}
+
+  planner:
+    model: deepseek-v4-flash
+    temperature: 0
+    max_tokens: 2048
+    max_nodes: 8
+    prompt: |
+      你是 Workflow Planner。根据用户问题与可用 skill / tool 目录，输出**一行 JSON** 表示线性执行计划（nodes + edges）。
+      禁止 markdown 代码块；**全部输出必须且只能是单行 JSON**（可含 planId/reason/nodes/edges），禁止 JSON 以外的任何文字。
+
+      输出格式：
+      {"planId":null,"reason":"一句话","nodes":[{"id":"n1","type":"rag","params":{"topK":"3"}},...],"edges":[{"from":"start","to":"n1"},...]}
+
+      规则：
+      - 节点 type 仅允许：rag | tool | agent | answer（start 仅出现在 edges.from，勿把 start 放进 nodes）
+      - 节点参数键名必须是 **params**（禁止用 config）；tool 节点 params.tool 须来自下方 tool 目录
+      - agent 节点 params.skill 须来自下方 skill 目录
+      - agent 节点 **必须**写 params.context（引用上游，如 "{{n1.output}}"）与 params.query（如 "{{start.userQuery}}" 或具体子任务描述）；缺任一项视为无效 Plan
+      - 知识库/制度检索必须用 **rag** 节点，勿用 tool 代替
+      - tool 节点须写齐业务参数（如 list_finance_messages 须带 status: pending）
+      - 全链以 **一个 answer 节点** 终点：须写 params.prompt（引用上游 agent/rag/tool 输出），负责综合分析 + 流式用户正文
+      - answer 的 params.prompt 须引用上游 {{n*.output}}，并写明：reasoning 仅基于上游数据分析；content 直接作答用户问题
+      - answer prompt 示例：「用户问题：{{start.userQuery}}\n\n上游数据：\n{{n1.output}}\n\n要求：reasoning 写合规/制度分析要点；content 面向用户给出结论与建议。」
+      - edges 形成**单链** start → … → answer（MVP 不支持并行分支，勿输出分叉 DAG）
+      - 节点数（不含 start/answer）≤ 8
+      - **每个节点（含 answer）必须填写 displayName**（中文，如「检索知识库」「生成回答」），供 UI 展示
+
+      ## Skill 目录
+      {{skill-catalog}}
+
+      ## Tool 目录
+      {{tool-catalog}}
 
   timeline:
     intent:
@@ -90,6 +126,9 @@ agent:
         react:
           detail: 自主智能体
           after: "{query}将由自主智能体分析并作答"
+        plan-workflow:
+          detail: 动态规划
+          after: "{query}将动态规划多步执行"
         workflow:
           after: "{query}将按「{displayName}」流程处理"
           # detail 仅路由解析用；时间线不下发 expandable detail
@@ -110,7 +149,30 @@ agent:
       tools: [search_knowledge, list_finance_messages, get_finance_message_detail, summarize_finance_by_status, list_oa_tasks]
       max-iters: 5
 
+  skill:
+    # P1 强提示句式 — 须含命名组 skill；P0 @ 由 SkillBindingParser 硬编码
+    hint-patterns:
+      - "请使用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill"
+      - "用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill\\s+处理"
+      - "请用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill"
+
   routing:
+    # L1 结构守卫 — SSOT 验收提示词见 docs/routing/routing-golden-set.md
+    structural:
+      enabled: true
+      min-domain-groups: 2
+      multi-step-patterns:
+        - "先.+再"
+        - "再.+(并|然后|接着)"
+        - "分步"
+        - "多步"
+        - "并对.+?(分析|审查|检查|评估)"
+        - "完整处理"
+        - "一套.+(分析|流程|处理)"
+      domain-groups:
+        knowledge: [制度, 检索, 知识库, 政策, 差旅办法, 报销规定]
+        finance: [待审批, 报销, 财务, 付款, 单据]
+        analysis: [合规, 分析, 审查, 对比, 评估, 结论]
     rules:
       - id: rule-finance-smart-compliance
         priority: 20
@@ -206,10 +268,10 @@ agent:
         要求：保留原意、补充制度/流程/报销/请假等域内关键词，不要编造事实。
         只输出 JSON：{"queries":["改写1","改写2"]}，不要 markdown 或其他文字。
     timeline:
-      intent: "【意图识别前】规则未命中且问句过短时，补全为可分类的完整问句"
-      rag: "【知识库检索前】进入向量/混合检索前，补全域内关键词并标准化表述"
-      hyde: "【HyDE 检索前】生成假想制度文档段落，作为向量检索 query"
-      empty-recall: "【零命中二次检索】首次检索无结果时，生成替代检索表述"
+      intent: "补全问句"
+      rag: "优化检索词"
+      hyde: "生成参考文档"
+      empty-recall: "换种方式再查"
   memory:
     enabled: true
     layer-prompt: |
@@ -234,6 +296,8 @@ agent:
       max-chars: 500
 tool-manager:
   base-url: http://localhost:8210
+skill-manager:
+  base-url: http://localhost:8225
 desensitize:
   enabled: true
   base-url: http://localhost:8600

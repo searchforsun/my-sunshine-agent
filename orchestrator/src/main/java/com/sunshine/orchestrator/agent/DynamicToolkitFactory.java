@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.agent;
 
-import com.sunshine.orchestrator.agent.remote.CatalogRemoteAgentTool;
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -27,13 +26,26 @@ public class DynamicToolkitFactory {
     private final ToolCatalogService toolCatalogService;
     private final AgentExecutionProperties executionProperties;
 
+    /** 主 Agent：Nacos react 全局白名单 */
     public Toolkit build() {
-        Toolkit tk = new Toolkit();
-        List<String> registered = new ArrayList<>();
-        Set<String> registeredRemote = new HashSet<>();
         List<String> whitelist = executionProperties.getReact() != null
                 ? executionProperties.getReact().getTools()
                 : List.of();
+        return buildFromWhitelist(whitelist);
+    }
+
+    /** 子 Agent：仅注册节点/skill 指定的工具子集 */
+    public Toolkit build(List<String> toolWhitelist) {
+        if (toolWhitelist == null || toolWhitelist.isEmpty()) {
+            return build();
+        }
+        return buildFromWhitelist(toolWhitelist);
+    }
+
+    private Toolkit buildFromWhitelist(List<String> whitelist) {
+        Toolkit tk = new Toolkit();
+        List<String> registered = new ArrayList<>();
+        Set<String> registeredRemote = new HashSet<>();
         List<String> missing = new ArrayList<>();
 
         for (String toolName : whitelist) {

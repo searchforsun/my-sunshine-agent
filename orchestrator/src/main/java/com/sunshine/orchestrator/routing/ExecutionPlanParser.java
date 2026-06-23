@@ -51,6 +51,9 @@ public class ExecutionPlanParser {
         if ("react".equalsIgnoreCase(stored)) {
             return ExecutionPlan.reactFallback("stored");
         }
+        if ("plan-workflow".equalsIgnoreCase(stored)) {
+            return new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "stored");
+        }
         return legacyPlan(stored);
     }
 

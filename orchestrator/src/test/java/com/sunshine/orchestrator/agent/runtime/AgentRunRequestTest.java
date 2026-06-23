@@ -37,6 +37,32 @@ class AgentRunRequestTest {
     }
 
     @Test
+    void resolveBridgeId_subUsesRunIdPrefix() {
+        AgentRunRequest req = AgentRunRequest.sub(
+                MemoryContext.empty(), "analyze", java.util.List.of("ctx block"), "u1", "default");
+        assertThat(req.resolveBridgeId()).isEqualTo("sub-" + req.runId());
+    }
+
+    @Test
+    void sub_withNodeParams_carriesSkillToolsOverlayAndMaxIters() {
+        AgentRunRequest req = AgentRunRequest.sub(
+                MemoryContext.empty(),
+                "analyze",
+                java.util.List.of("ctx"),
+                "u1",
+                "default",
+                "finance-analysis",
+                java.util.List.of("list_finance_messages"),
+                "仅内部分析",
+                4);
+        assertThat(req.role()).isEqualTo(AgentRole.SUB);
+        assertThat(req.skillId()).isEqualTo("finance-analysis");
+        assertThat(req.toolWhitelist()).containsExactly("list_finance_messages");
+        assertThat(req.systemOverlay()).isEqualTo("仅内部分析");
+        assertThat(req.maxIters()).isEqualTo(4);
+    }
+
+    @Test
     void compactConstructor_normalizesNullMemoryAndBlocks() {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.MAIN, "run-1", null, null, "q", null,

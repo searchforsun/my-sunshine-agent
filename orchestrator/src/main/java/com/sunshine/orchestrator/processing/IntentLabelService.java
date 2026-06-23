@@ -152,6 +152,8 @@ public class IntentLabelService {
 
             case REACT -> modeDetail(modeConfig(ExecutionMode.REACT), "自主智能体");
 
+            case PLAN_WORKFLOW -> modeDetail(modeConfig(ExecutionMode.PLAN_WORKFLOW), "动态规划");
+
             case WORKFLOW -> workflowNodeLabelService.workflowDisplayName(plan.workflowId());
 
         };
@@ -232,6 +234,12 @@ public class IntentLabelService {
 
                     vars(q, intentDetail(plan), null, null));
 
+            case PLAN_WORKFLOW -> applyTemplate(
+
+                    modeAfter(modeConfig(ExecutionMode.PLAN_WORKFLOW), "{query}将动态规划多步执行"),
+
+                    vars(q, intentDetail(plan), null, null));
+
             case WORKFLOW -> {
 
                 WorkflowProperties.CatalogEntry entry = findCatalogById(plan.workflowId());
@@ -285,6 +293,8 @@ public class IntentLabelService {
             case WORKFLOW -> "workflow";
 
             case REACT -> "react";
+
+            case PLAN_WORKFLOW -> "plan-workflow";
 
         };
 

@@ -171,7 +171,7 @@ my-sunshine-agent/
 | 任务卡 | 内容 | 状态 |
 |--------|------|:--:|
 | 2.9.1 | `ExecutionPlan` 三模式路由 + `WorkflowCatalog` | ✅ |
-| 2.9.2 | `WorkflowExecutor` 线性 DAG（start/rag/tool/llm/agent/answer） | ✅ |
+| 2.9.2 | `WorkflowExecutor` 线性 DAG（start/rag/tool/agent/**answer**；`llm` 已合并入 answer） | ✅ |
 | 2.9.3 | Nacos `sunshine-workflows.yaml` SSOT | ✅ |
 | 2.9.4 | `ToolRegistry` 替代 switch 硬编码 | ✅ |
 | 2.9.5 | Timeline 统一（think/tool/node-*，废弃 agent 容器步） | ✅ |
@@ -198,6 +198,7 @@ my-sunshine-agent/
 | 2.12 | RAG：rebuild API + 7 篇语料 + 60–80 golden-set + eval 基线 | ✅ |
 | 2.13 | 审计 payload `stepsSummary` / `toolNames` | ✅ |
 | 2.14 | `RuleBasedRouter` 规则硬路由 | ✅ |
+| 2.14+ | **RoutingPolicyChain** + `StructuralPlanMatcher`（L1 Nacos 结构守卫） | ✅ |
 | 2.15 | react 白名单 vs Catalog 启动校验 | ✅ |
 | 2.16 | CLAUDE / rag README 同步 | ✅ |
 
@@ -225,10 +226,12 @@ my-sunshine-agent/
 | 3.6 审计 | tool-audit + sub_agent_run + plan.* |
 | 3.7 Grounding | 主答复 + 子 Agent output |
 | 3.8 提示词 | **✅ 3.8.1–3.8.6** · **⬜ 3.8.7** Planner（非检查门） |
-| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API（含原 3.1） |
-| 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 · **3.10.1 ✅** · 3.10.2+ ⬜ |
-| 3.11 skill-manager | :8225 + SkillCatalogService |
-| 3.12 前端 | `/skills` + Plan 详情页 |
+| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API + DAG/抽屉 UI · **3.9.1–3.9.3 ✅** · 3.9.4 ⬜ |
+| 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 · **3.10.1–3.10.4 ✅（MVP）** · 3.10.5–3.10.6 ⬜ |
+
+子 Agent 实现目标（编排器-Worker、`query`+`context` 传入、分层 system、无默认 STM）见 [multi-agent plan §子 Agent 实现目标](./superpowers/plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)。
+| 3.11 skill-manager | **✅** :8225 + SkillCatalogService + **3.11.7 @/强提示** |
+| 3.12 前端 | `/skills` ✅；Chat `@` ✅；Plan DAG + 抽屉 ✅（3.12.4）· diff ⬜ |
 | 3.13 并行 | AhoCorasick ⬜；`source_type` **✅**（3.4.2） |
 | 3.14 多实例 | Redis GenerationJob 锁 |
 
@@ -246,8 +249,9 @@ my-sunshine-agent/
 - [ ] v6 提升轨：生产门禁 PASS；**相对 vector +15% 轨 WARN**（vector 基线 97.6%）
 - [ ] Grafana RAG + Sentinel Dashboard + 4 条告警（指标+JSON ✅；远程部署/触发 ⬜）
 - [ ] 租户 A/B 隔离；写工具 HITL（含子 Agent）
-- [ ] `PLAN_WORKFLOW` 三 API + Plan 详情页 + 2+ agent 节点演示
-- [ ] IntentRouter `plan-workflow` + Planner fallback react
+- [x] `PLAN_WORKFLOW` 三 API + Plan 详情/DAG 抽屉（3.12.4 ✅）
+- [x] IntentRouter `plan-workflow` + Planner/校验失败 **降级 ReAct**（无执行期 Enricher）
+- [ ] 2+ agent 节点 Plan 演示（3.10.5）
 - [ ] skill-manager + `/skills`；tool/sub_agent/plan 审计可查
 - [ ] Grounding + 子 Agent 不污染主 reasoning
 - [ ] `phase2_agent_demo.py --suite all` 仍 PASS
@@ -280,9 +284,10 @@ my-sunshine-agent/
 
 | 页面 | 路由 | 功能 |
 |------|------|------|
-| AI 对话 | `/chat` | SSE 流式聊天，消息列表，发送/停止/清空 |
+| AI 对话 | `/chat` | SSE 流式；Plan 成功路径展示 `PlanWorkflowPanel`（DAG）+ `PlanNodeDrawer`（节点 reasoning/result） |
+| **Plan 详情** | **`/plans/:planId`** | Planner JSON、节点 trace、状态机 |
 | 知识库 | `/knowledge` | Markdown 文档上传入库 + 向量检索测试；**阶段四** 扩展 PDF/图片 OCR 入库 |
-| **Skills** | **`/skills`** | **Skill 上传/编辑/版本发布/工具绑定** |
+| **Skills** | **`/skills`** | **Skill 列表/上传/版本/预览/元数据编辑**（见 [skills-management-ui-design.md](./superpowers/specs/skills-management-ui-design.md)） |
 | **MCP 工具** | **`/mcp`** | **阶段四 4.8**：MCP Server 动态注册、探测、启停、工具预览 |
 | 系统状态 | `/status` | 11 微服务 + 12 中间件状态矩阵 |
 

@@ -158,24 +158,35 @@ skill-manager
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/skills/catalog` | orchestrator 拉取（等同 Tool Catalog） |
+| GET | `/api/skills/catalog/index` | 摘要（无 overlay） |
+| GET | `/api/skills/{id}/catalog` | 详情含 overlay |
 | GET | `/api/skills` | 列表（管理端） |
 | POST | `/api/skills` | 创建元数据 |
+| PUT | `/api/skills/{id}` | 修改 displayName、description |
 | POST | `/api/skills/{id}/upload` | 上传 SKILL.md 或 zip |
-| PUT | `/api/skills/{id}/enable` | 启用/禁用 |
+| PUT | `/api/skills/{id}/enable` | 启用/禁用 Skill |
 | GET | `/api/skills/{id}/versions` | 版本历史 |
-| POST | `/api/skills/{id}/publish` | 发布版本 → 对 runtime 可见 |
+| POST | `/api/skills/{id}/publish` | 发布版本 → 设为 active |
+| DELETE | `/api/skills/{id}/versions/{version}` | 删除单版本 |
+| DELETE | `/api/skills/{id}` | 删除整个 Skill |
+| GET | `/api/skills/{id}/versions/{version}/download` | 下载版本 zip |
 
 `SkillCatalogService`（orchestrator）从 `skill-manager` HTTP 拉取并缓存，**禁止**前端维护 skill 话术 Map。
 
 ### 前端 `/skills` 页面
 
-| 功能 | 说明 |
-|------|------|
-| 列表 | id、displayName、状态、工具数、是否含沙箱 |
-| 上传 | 拖拽 SKILL.md / zip |
-| 编辑 | 在线编辑 overlay prompt（Markdown） |
-| 版本 | 查看 diff、回滚 |
-| 调试 | 绑定工具白名单预览、试跑子 Agent（阶段四） |
+> **SSOT**：[skills-management-ui-design.md](./skills-management-ui-design.md)（2026-06-23 对齐实现）
+
+| 功能 | 说明 | 状态 |
+|------|------|:----:|
+| 列表 + 搜索 | 卡片、Switch、单行描述 | ✅ |
+| 卡片 ⋯ | 修改元数据、删除整个 Skill | ✅ |
+| 详情 ⋯ | 发布/上传/下载该版本/删除该版本 | ✅ |
+| 版本 + 预览 | 文件树、Markdown/Mermaid/代码/图片 | ✅ |
+| 上传 | 文件夹 → zip → Gateway  multipart | ✅ |
+| 左右 loading | 列表刷新 vs 详情加载 **独立** | ✅ |
+| 在线编辑 overlay | SKILL.md 正文 | ⬜ 3.12.2 |
+| 版本 diff / 试跑 | — | ⬜ 阶段四 |
 
 技术栈：Vue3 + Naive UI，与 `knowledge` 页一致；BFF 透传 skill-manager。
 
@@ -250,6 +261,23 @@ rag:
 - 入库记录 `ocrProvider: qwen`、`model`、`pageCount`；便于计费与问题追溯。
 
 详设：`2026-06-21-multimodal-ocr-design.md` §3.1。
+
+---
+
+## D9. 子 Agent = 编排器-Worker（上下文由编排层传入）
+
+### 决策
+
+- 子 Agent **不是**第二个面向用户的聊天助手；默认 **不**生成用户可见正文（由下游 `llm` / `answer` 合成）。
+- **调度权在 Workflow / Planner 引擎**，不在子 Agent LLM 自由委派。
+- 子 Agent 输入 **仅** 编排层显式传入：`query` + 上游 `context`（→ `injectedBlocks`）+ 节点 `skill` / `tools` / `systemOverlay`。
+- 子 Agent **不默认共享**主会话 LTM/MTM/STM；锁定决策与 [multi-agent plan §子 Agent 实现目标](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot) 一致。
+- System prompt：**base + skill overlay + 节点 systemOverlay**（分层叠加，非独立人格）。
+- 内部 think/tool **不上主 Timeline SSE**；`sub_agent_run` 审计独立落库（3.10.6）。
+
+### 与主流对齐
+
+编排器-Worker（LangGraph Supervisor-Worker、Dify DAG 节点）— **非** MsgHub 自由对话式多 Agent 默认路径。
 
 ---
 

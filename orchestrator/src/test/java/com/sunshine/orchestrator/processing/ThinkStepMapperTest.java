@@ -146,6 +146,19 @@ class ThinkStepMapperTest {
     }
 
     @Test
+    void stepDeltaWithNodeId_passesThroughToWorkflowNode() {
+        List<ProcessingStep> steps = new ArrayList<>();
+        steps.add(runningStep("node-n4"));
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "test");
+
+        List<StreamToken> mapped = mapper.map(StreamToken.stepDelta("node-n4", "reasoning", "分析合规点"));
+
+        assertThat(mapped).hasSize(1);
+        assertThat(mapped.get(0).stepId()).isEqualTo("node-n4");
+        assertThat(mapped.get(0).channel()).isEqualTo("reasoning");
+    }
+
+    @Test
     void stepDeltaWithThink2Id_passesThrough() {
         List<ProcessingStep> steps = new ArrayList<>();
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "test");

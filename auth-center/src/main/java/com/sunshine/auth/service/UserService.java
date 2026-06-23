@@ -5,9 +5,11 @@ import com.sunshine.auth.dto.LoginRequest;
 import com.sunshine.auth.dto.LoginResponse;
 import com.sunshine.auth.dto.RegisterRequest;
 import com.sunshine.auth.dto.UpdateProfileRequest;
+import com.sunshine.auth.dto.UserBriefVO;
 import com.sunshine.auth.entity.UserEntity;
 import com.sunshine.auth.repo.UserRepository;
 import com.sunshine.common.core.exception.BizException;
+import cn.dev33.satoken.stp.SaLoginModel;
 import cn.dev33.satoken.stp.StpUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -15,6 +17,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -53,7 +60,8 @@ public class UserService {
         if (user.getStatus() == null || user.getStatus() != STATUS_ACTIVE) {
             throw new BizException(403, "账号已禁用");
         }
-        StpUtil.login(user.getId());
+        StpUtil.login(user.getId(), SaLoginModel.create()
+                .setExtra("nickname", resolveNickname(user.getNickname(), user.getUsername())));
         return LoginResponse.builder()
                 .token(StpUtil.getTokenValue())
                 .tokenName("Authorization")
@@ -83,6 +91,37 @@ public class UserService {
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
         return toVo(user);
+    }
+
+    /** 批量查询用户展示信息 — 供 skill-manager BFF 解析维护人 */
+    public List<UserBriefVO> findBriefByIds(Collection<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<String> normalized = ids.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) {
+            return List.of();
+        }
+        Map<String, UserEntity> found = new LinkedHashMap<>();
+        for (UserEntity user : userRepository.findAllById(normalized)) {
+            found.put(user.getId(), user);
+        }
+        List<UserBriefVO> result = new ArrayList<>(normalized.size());
+        for (String id : normalized) {
+            UserEntity user = found.get(id);
+            if (user != null) {
+                result.add(UserBriefVO.builder()
+                        .userId(user.getId())
+                        .username(user.getUsername())
+                        .nickname(resolveNickname(user.getNickname(), user.getUsername()))
+                        .build());
+            }
+        }
+        return result;
     }
 
     private static String resolveNickname(String nickname, String username) {

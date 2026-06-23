@@ -165,7 +165,7 @@ class ProcessingTimelineSessionTest {
     void completeIntent_exposesRewriteDetailWhenProvided() {
         AgentRewriteProperties props = new AgentRewriteProperties();
         AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("【意图识别前】短问句补全");
+        timeline.setIntent("补全问句");
         props.setTimeline(timeline);
         RewriteTimelineLabels.bind(props);
         ProcessingTimelineSession session = new ProcessingTimelineSession();
@@ -180,11 +180,11 @@ class ProcessingTimelineSessionTest {
 
         ProcessingStep intent = session.snapshot().stream()
                 .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
-        assertThat(intent.detail()).contains("【意图识别前】短问句补全");
-        assertThat(intent.detail()).contains("改写前：待审批");
+        assertThat(intent.detail()).contains("补全问句");
+        assertThat(intent.detail()).contains("原问题：待审批");
         assertThat(intent.metadata().rewriteApplied()).isTrue();
         assertThat(intent.metadata().rewriteLatencyMs()).isEqualTo(15L);
-        assertThat(intent.metadata().rewriteScenarioLabel()).isEqualTo("【意图识别前】短问句补全");
+        assertThat(intent.metadata().rewriteScenarioLabel()).isEqualTo("补全问句");
         RewriteTimelineLabels.bind(null);
     }
 
@@ -211,8 +211,8 @@ class ProcessingTimelineSessionTest {
     void completeAt_workflowRagNode_mergesRewriteAndHitDetail() {
         AgentRewriteProperties props = new AgentRewriteProperties();
         AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("【意图识别前】短问句补全");
-        timeline.setRag("【知识库检索前】优化检索词");
+        timeline.setIntent("补全问句");
+        timeline.setRag("优化检索词");
         props.setTimeline(timeline);
         RewriteTimelineLabels.bind(props);
         ProcessingTimelineSession session = new ProcessingTimelineSession();
@@ -231,9 +231,9 @@ class ProcessingTimelineSessionTest {
 
         ProcessingStep rag = session.snapshot().stream()
                 .filter(s -> "node-rag".equals(s.id())).findFirst().orElseThrow();
-        assertThat(rag.detail()).contains("【知识库检索前】优化检索词");
-        assertThat(rag.detail()).contains("改写前：报差旅");
-        assertThat(rag.detail()).doesNotContain("【意图识别前】");
+        assertThat(rag.detail()).contains("优化检索词");
+        assertThat(rag.detail()).contains("原问题：报差旅");
+        assertThat(rag.detail()).doesNotContain("补全问句");
         assertThat(rag.detail()).contains("命中 2 条，来源：公司差旅费报销管理办法");
         assertThat(rag.metadata().rewriteApplied()).isTrue();
         assertThat(rag.metadata().hitCount()).isEqualTo(2);

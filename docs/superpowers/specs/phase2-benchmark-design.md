@@ -63,7 +63,7 @@ IntentRouter → ExecutionDispatcher
 ```
 
 - Workflow 节点：`rag` / `tool` / `llm` / `agent` / `answer`
-- 子 Agent：`AgentNodeHandler` → `chatAsSubAgent`；主 Timeline 仅 `node-{id}` 一步
+- 子 Agent：`AgentNodeHandler` → `AgentRunRequest.sub` → `AgentRuntime`；主 Timeline 仅 `node-{id}` 一步；上下文 SSOT 见 multi-agent plan §子 Agent 实现目标
 - 配置：`docs/nacos/sunshine-workflows.yaml`（catalog + definitions）
 
 详设历史稿：`2026-06-18-workflow-orchestration-design.md`
