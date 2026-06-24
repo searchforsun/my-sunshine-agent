@@ -10,24 +10,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PlanNormalizerTest {
 
     @Test
-    void infersLinearEdgesWhenMissing() {
+    void infersLinearEdgesAndAppendsAnswer() {
         PlanJson raw = new PlanJson("p1", "r",
                 List.of(
                         new PlanNode("n1", "rag", Map.of()),
-                        new PlanNode("n2", "tool", Map.of("tool", "list_finance_messages")),
-                        new PlanNode("n3", "answer", Map.of())),
+                        new PlanNode("n2", "tool", Map.of("tool", "list_finance_messages"))),
                 List.of());
         PlanJson normalized = PlanNormalizer.normalize(raw);
         assertThat(normalized.edges()).hasSize(3);
         assertThat(PlanLinearizer.linearOrder(normalized))
-                .containsExactly("n1", "n2", "n3");
+                .containsExactly("n1", "n2", PlanNormalizer.ANSWER_NODE_ID);
+        assertThat(normalized.nodesById().get(PlanNormalizer.ANSWER_NODE_ID).type()).isEqualTo("answer");
     }
 
     @Test
-    void keepsExistingEdges() {
+    void appendsAnswerWhenEdgesPresent() {
         PlanJson raw = new PlanJson("p1", "r",
-                List.of(new PlanNode("n1", "llm", Map.of())),
+                List.of(new PlanNode("n1", "rag", Map.of())),
                 List.of(new PlanEdge("start", "n1")));
-        assertThat(PlanNormalizer.normalize(raw).edges()).hasSize(1);
+        PlanJson normalized = PlanNormalizer.normalize(raw);
+        assertThat(normalized.edges()).hasSize(2);
+        assertThat(normalized.edges()).contains(new PlanEdge("n1", PlanNormalizer.ANSWER_NODE_ID));
     }
 }

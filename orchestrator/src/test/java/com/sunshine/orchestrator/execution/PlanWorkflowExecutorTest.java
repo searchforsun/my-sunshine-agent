@@ -1,15 +1,18 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PlanJson;
 import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
 import com.sunshine.orchestrator.plan.PlanMaterializer;
 import com.sunshine.orchestrator.plan.PlanValidator;
+import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -44,8 +47,21 @@ class PlanWorkflowExecutorTest {
     private ReactExecutor reactExecutor;
     @Mock
     private ExecutionPlanStore executionPlanStore;
+    @Mock
+    private PlanExecutionAuditService planExecutionAuditService;
+    private AgentExecutionProperties executionProperties;
     @InjectMocks
     private PlanWorkflowExecutor planWorkflowExecutor;
+
+    @BeforeEach
+    void setUp() {
+        executionProperties = new AgentExecutionProperties();
+        executionProperties.getPlanWorkflow().getReplan().setMaxAttempts(1);
+        planWorkflowExecutor = new PlanWorkflowExecutor(
+                workflowPlanner, planValidator, displayNameEnricher, planMaterializer,
+                workflowExecutor, reactExecutor, executionPlanStore, executionProperties,
+                planExecutionAuditService);
+    }
 
     @Test
     void execute_runsDynamicWorkflowWhenPlanValid() {
@@ -59,19 +75,21 @@ class PlanWorkflowExecutorTest {
 
         when(executionPlanStore.createDraft(eq(ctx), any(PlanJson.class))).thenReturn("plan-db-1");
         when(workflowPlanner.plan(ctx)).thenReturn(Mono.just(planJson));
+        when(planValidator.validatePlannerOutput(any(PlanJson.class))).thenReturn(null);
         when(displayNameEnricher.enrich(any(PlanJson.class))).thenAnswer(inv -> inv.getArgument(0));
         when(planValidator.validate(any(PlanJson.class))).thenReturn(null);
         when(planMaterializer.materialize(any(PlanJson.class))).thenReturn(def);
-        when(workflowExecutor.executeDynamicDefinition(eq(def), any(ExecutionStreamContext.class)))
+        when(workflowExecutor.executeDynamicDefinition(eq(def), any(ExecutionStreamContext.class), any()))
                 .thenReturn(Flux.just(StreamToken.content("done")));
 
         List<StreamToken> tokens = planWorkflowExecutor.execute(ctx).collectList().block();
         assertThat(tokens).isNotNull();
         assertThat(tokens.stream().anyMatch(t -> t.isStep() || t.isContent())).isTrue();
+        verify(executionPlanStore).updatePlannerOutput(eq("plan-db-1"), any(PlanJson.class));
         verify(executionPlanStore).markValidated(eq("plan-db-1"), any(PlanJson.class));
         verify(executionPlanStore).markRunning("plan-db-1");
         verify(executionPlanStore).markCompleted("plan-db-1");
-        verify(workflowExecutor).executeDynamicDefinition(eq(def), any(ExecutionStreamContext.class));
+        verify(workflowExecutor).executeDynamicDefinition(eq(def), any(ExecutionStreamContext.class), any());
     }
 
     @Test
@@ -82,6 +100,7 @@ class PlanWorkflowExecutorTest {
                 List.of());
         when(executionPlanStore.createDraft(eq(ctx), any(PlanJson.class))).thenReturn("plan-db-1");
         when(workflowPlanner.plan(ctx)).thenReturn(Mono.just(invalidPlan));
+        when(planValidator.validatePlannerOutput(any(PlanJson.class))).thenReturn(null);
         when(displayNameEnricher.enrich(any(PlanJson.class))).thenAnswer(inv -> inv.getArgument(0));
         when(planValidator.validate(any(PlanJson.class))).thenReturn("未知工具: bad-tool");
         when(reactExecutor.execute(ctx)).thenReturn(Flux.just(StreamToken.content("react")));
@@ -94,6 +113,7 @@ class PlanWorkflowExecutorTest {
     @Test
     void execute_fallsBackToReactWhenPlannerFails() {
         ExecutionStreamContext ctx = context();
+        when(executionPlanStore.createDraft(eq(ctx), any(PlanJson.class))).thenReturn("plan-db-1");
         when(workflowPlanner.plan(ctx)).thenReturn(Mono.error(new RuntimeException("llm down")));
         when(reactExecutor.execute(ctx)).thenReturn(Flux.just(StreamToken.content("react")));
 

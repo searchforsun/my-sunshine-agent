@@ -43,19 +43,29 @@ class PlanValidatorTest {
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
                         "compliance-check", "合规审查", "desc", 1, true)));
 
-        PlanJson plan = samplePlan();
-        assertThat(validator.validate(plan)).isNull();
+        PlanJson raw = samplePlan();
+        assertThat(validator.validatePlannerOutput(raw)).isNull();
+        PlanJson normalized = PlanNormalizer.normalize(raw);
+        assertThat(validator.validate(normalized)).isNull();
+    }
+
+    @Test
+    void rejectsPlannerAnswerNode() {
+        PlanJson raw = new PlanJson("p", "r",
+                List.of(
+                        new PlanNode("n1", "rag", Map.of(), "检索"),
+                        new PlanNode("n4", "answer", Map.of(), "生成回答")),
+                List.of(new PlanEdge("start", "n1"), new PlanEdge("n1", "n4")));
+        assertThat(validator.validatePlannerOutput(raw)).contains("Planner 非法节点 type: answer");
     }
 
     @Test
     void rejectsUnknownTool() {
         when(toolCatalogService.find("unknown_tool")).thenReturn(Optional.empty());
-        PlanJson plan = new PlanJson("p", "r",
-                List.of(
-                        new PlanNode("n1", "tool", Map.of("tool", "unknown_tool")),
-                        new PlanNode("n2", "answer", Map.of())),
-                List.of(new PlanEdge("start", "n1"), new PlanEdge("n1", "n2")));
-        assertThat(validator.validate(plan)).contains("未知工具");
+        PlanJson raw = new PlanJson("p", "r",
+                List.of(new PlanNode("n1", "tool", Map.of("tool", "unknown_tool"), "查工具")),
+                List.of(new PlanEdge("start", "n1")));
+        assertThat(validator.validatePlannerOutput(raw)).contains("未知工具");
     }
 
     private static PlanJson samplePlan() {
@@ -66,13 +76,9 @@ class PlanValidatorTest {
                         new PlanNode("n2", "agent",
                                 Map.of("skill", "compliance-check", "context", "{{n1.output}}",
                                         "query", "{{start.userQuery}}"),
-                                "合规分析"),
-                        new PlanNode("n3", "answer",
-                                Map.of("prompt", "汇总 {{n2.output}} 并给出结论"),
-                                "生成回答")),
+                                "合规分析")),
                 List.of(
                         new PlanEdge("start", "n1"),
-                        new PlanEdge("n1", "n2"),
-                        new PlanEdge("n2", "n3")));
+                        new PlanEdge("n1", "n2")));
     }
 }

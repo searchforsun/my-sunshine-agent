@@ -51,11 +51,36 @@ class WorkflowExecutorTest {
     @Mock
     private WorkflowNodeLabelService labelService;
 
+    @Mock
+    private com.sunshine.orchestrator.execution.retry.NodeRetryPolicyResolver retryPolicyResolver;
+
+    @Mock
+    private com.sunshine.orchestrator.execution.retry.NodeRetryExecutor nodeRetryExecutor;
+
+    @Mock
+    private UpstreamOutputResolver upstreamOutputResolver;
+
+    @Mock
+    private com.sunshine.orchestrator.plan.PlanExecutionAuditService planExecutionAuditService;
+
     @InjectMocks
     private WorkflowExecutor executor;
 
     @BeforeEach
     void setUp() {
+        when(retryPolicyResolver.resolve(any(), any(Boolean.class)))
+                .thenReturn(com.sunshine.orchestrator.execution.retry.NodeRetryPolicy.noRetry(
+                        com.sunshine.orchestrator.execution.retry.OnFailureAction.CONTINUE));
+        when(nodeRetryExecutor.runWithRetry(any(), any()))
+                .thenAnswer(inv -> {
+                    @SuppressWarnings("unchecked")
+                    java.util.function.Supplier<Mono<NodeResult>> supplier = inv.getArgument(1);
+                    return supplier.get().map(result ->
+                            new com.sunshine.orchestrator.execution.retry.NodeRetryExecutor.AttemptOutcome(
+                                    result, List.of()));
+                });
+        when(upstreamOutputResolver.resolvePrompt(any(), any(), any()))
+                .thenAnswer(inv -> inv.getArgument(0));
         when(registry.require("start")).thenReturn(startNodeHandler);
         when(registry.require("rag")).thenReturn(ragNodeHandler);
         when(registry.require("answer")).thenReturn(answerNodeHandler);
@@ -73,7 +98,10 @@ class WorkflowExecutorTest {
                         "reasoning", "先核对制度条款再归纳要点",
                         "detail", "先核对制度条款再归纳要点")));
 
-        executor = new WorkflowExecutor(loader, registry, executionPlanStore, labelService);
+        executor = new WorkflowExecutor(
+                loader, registry, executionPlanStore, labelService,
+                retryPolicyResolver, nodeRetryExecutor, upstreamOutputResolver,
+                planExecutionAuditService);
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.execution.handler;
 
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
@@ -18,16 +19,14 @@ import reactor.core.publisher.Mono;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * 终态 answer 节点 — 综合分析（reasoning/detail）+ 流式正文；
- * 有 params.prompt 时走 LLM 流式；无 prompt 时透传上游 answer（兼容旧 DAG）。
- */
+/** 终态 answer 节点 — 仅 content 流式正文；上游数据已在 nodePrompt 注入 */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AnswerNodeHandler implements StreamingNodeHandler {
 
     private final LlmGatewayClient llmGateway;
+    private final PromptOverlayProperties overlayProperties;
 
     @Override
     public String type() {
@@ -55,7 +54,8 @@ public class AnswerNodeHandler implements StreamingNodeHandler {
         if (!WorkflowLlmStreamSupport.hasNodePrompt(spec)) {
             return Flux.empty();
         }
-        return WorkflowLlmStreamSupport.streamTokens(llmGateway, spec, ctx, streamCtx, nodeId)
+        return WorkflowLlmStreamSupport.streamTokens(
+                        llmGateway, spec, ctx, streamCtx, nodeId, true, overlayProperties.getAnswerOverlay())
                 .onErrorResume(e -> {
                     log.warn("[AnswerNodeHandler] 流式失败: {}", e.getMessage());
                     return Flux.error(e);
@@ -64,7 +64,7 @@ public class AnswerNodeHandler implements StreamingNodeHandler {
 
     @Override
     public NodeResult buildResult(WorkflowStreamCollector collector) {
-        return WorkflowLlmStreamSupport.buildResult(collector);
+        return WorkflowLlmStreamSupport.buildResult(collector, true);
     }
 
     private static NodeResult passThrough(NodeSpec spec, WorkflowContext ctx) {

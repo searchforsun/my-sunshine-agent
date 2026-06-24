@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan;
 
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import lombok.RequiredArgsConstructor;
@@ -8,8 +9,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +25,7 @@ import java.util.Map;
 public class WorkflowPlanner {
 
     private final AgentPromptProperties prompts;
+    private final AgentExecutionProperties executionProperties;
     private final PlanCatalogRenderer catalogRenderer;
     private final PlanJsonParser planJsonParser;
 
@@ -33,12 +38,21 @@ public class WorkflowPlanner {
     private WebClient webClient;
 
     public Mono<PlanJson> plan(ExecutionStreamContext ctx) {
+        return plan(ctx, null, 1);
+    }
+
+    /** 带校验错误反馈的 Replan */
+    public Mono<PlanJson> replan(ExecutionStreamContext ctx, String validationError, int attemptNo) {
+        return plan(ctx, validationError, attemptNo);
+    }
+
+    private Mono<PlanJson> plan(ExecutionStreamContext ctx, String validationError, int attemptNo) {
         String systemPrompt = catalogRenderer.renderIntoPrompt(
                 prompts.plannerOrDefault().promptOrEmpty());
         if (!StringUtils.hasText(systemPrompt)) {
             return Mono.error(new PlanParseException("agent.planner.prompt 未配置"));
         }
-        String userMessage = ctx.userContent() != null ? ctx.userContent() : "";
+        String userMessage = buildUserMessage(ctx, validationError);
         AgentPromptProperties.Planner cfg = prompts.plannerOrDefault();
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", cfg.getModel());
@@ -49,8 +63,34 @@ public class WorkflowPlanner {
         request.put("temperature", cfg.getTemperature());
         request.put("skip_cache", true);
         request.put("response_format", Map.of("type", "json_object"));
+        int maxInvoke = Math.max(1, executionProperties.getPlanWorkflow().getPlanner().getMaxAttempts());
+        long backoffMs = executionProperties.getPlanWorkflow().getPlanner().getBackoffMs();
+        return invokePlanner(request)
+                .retryWhen(Retry.backoff(maxInvoke - 1, Duration.ofMillis(Math.max(backoffMs, 200)))
+                        .filter(this::isInvokeRetryable)
+                        .doBeforeRetry(sig -> log.warn("[WorkflowPlanner] invoke 重试 #{}: {}",
+                                sig.totalRetries() + 1, sig.failure().getMessage())));
+    }
 
-        return invokePlanner(request);
+    private String buildUserMessage(ExecutionStreamContext ctx, String validationError) {
+        String query = ctx.userContent() != null ? ctx.userContent() : "";
+        if (!StringUtils.hasText(validationError)) {
+            return query;
+        }
+        String template = executionProperties.getPlanWorkflow().getReplan().getUserFeedbackTemplate();
+        if (!StringUtils.hasText(template)) {
+            return query + "\n\n上次规划未通过校验：" + validationError.strip();
+        }
+        return query + "\n\n" + template.replace("{{error}}", validationError.strip());
+    }
+
+    private boolean isInvokeRetryable(Throwable error) {
+        if (error instanceof WebClientResponseException ex) {
+            int code = ex.getStatusCode().value();
+            return code >= 500 || code == 429;
+        }
+        String msg = error.getMessage() != null ? error.getMessage().toLowerCase() : "";
+        return msg.contains("timeout") || msg.contains("connection") || msg.contains("refused");
     }
 
     private Mono<PlanJson> invokePlanner(Map<String, Object> request) {

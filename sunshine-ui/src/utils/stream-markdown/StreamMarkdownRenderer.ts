@@ -18,6 +18,14 @@ export type { RendererConfig }
 
 const CP = (s: string) => `${DEFAULT_CONFIG.classPrefix}${s}`
 
+/** 单行即完整的块级 Markdown（标题、分隔线），流式阶段不做尾部渐隐 */
+function isAtomicMarkdownBlock(text: string): boolean {
+  const t = text.trim()
+  if (/^#{1,6}\s/.test(t)) return true
+  if (/^(---|\*\*\*|___)\s*$/.test(t)) return true
+  return false
+}
+
 /** 与 highlight.js / markdown-it 对齐的语言别名 */
 function normalizeCodeLang(lang: string): string {
   const l = lang.toLowerCase().trim()
@@ -207,6 +215,7 @@ export class StreamMarkdownRenderer {
     const block: RenderBlock = { id: `smd-${this.blocks.length}-${Date.now()}`, type: result.type === 'mermaid' ? 'mermaid' : 'markdown', content: result.content }
     if (block.type === 'mermaid') this.handleMermaidBlock(block)
     else this.handleBlockElement(block, result.replacePrev, result.newGroup, blockType)
+    if (this.isStreaming) this.finalizeStreamedBlocksExceptLast()
   }
 
   private renderMarkdownHtml(text: string, blockType?: ProcessResult['type']): string {
@@ -214,13 +223,29 @@ export class StreamMarkdownRenderer {
     if (!renderMd || !text.trim()) return ''
 
     const isTable = blockType === 'table' || text.trimStart().startsWith('|')
-    if (isTable) {
+    if (isTable || isAtomicMarkdownBlock(text)) {
       return renderMd(text)
     }
     if (this.isStreaming) {
       return streamSafeMarkdownRender(text, renderMd, this.syncedContent)
     }
     return renderMd(text)
+  }
+
+  /** 将渐隐尾部还原为普通文本（已落盘块不再保留流式渐隐） */
+  private stripFadeTails(root: HTMLElement): void {
+    root.querySelectorAll('.smd-h-fade-tail').forEach((span) => {
+      span.replaceWith(document.createTextNode(span.textContent ?? ''))
+    })
+  }
+
+  /** 除最后一个子节点外，清除已输出块的流式渐隐 */
+  private finalizeStreamedBlocksExceptLast(): void {
+    const kids = Array.from(this.container.children)
+    for (let i = 0; i < kids.length - 1; i++) {
+      const el = kids[i]
+      if (el instanceof HTMLElement) this.stripFadeTails(el)
+    }
   }
 
   /** 段落文本：用 smoothRender 渲染，替换段落专属元素（不影响 lastBlockEl） */
@@ -243,10 +268,9 @@ export class StreamMarkdownRenderer {
   private commitParagraph(): void {
     if (this.paraBuf && !isPartialListMarker(this.paraBuf) && this.paraEl && this.config.renderMarkdown) {
       try {
-        const html = this.isStreaming
-          ? streamSafeMarkdownRender(this.paraBuf, this.config.renderMarkdown, this.syncedContent)
-          : this.config.renderMarkdown(this.paraBuf)
+        const html = this.config.renderMarkdown(this.paraBuf)
         this.paraEl.innerHTML = html
+        this.stripFadeTails(this.paraEl)
       } catch { /* ignore */ }
       this.lastBlockEl = null
     } else if (this.paraEl) {
@@ -278,9 +302,7 @@ export class StreamMarkdownRenderer {
     const parts: string[] = []
 
     if (this.paraBuf && !isPartialListMarker(this.paraBuf)) {
-      parts.push(this.isStreaming
-        ? streamSafeMarkdownRender(this.paraBuf.trim(), renderMd!, this.syncedContent)
-        : renderMd!(this.paraBuf.trim()))
+      parts.push(renderMd!(this.paraBuf.trim()))
     }
 
     const previewHtml = this.isStreaming
@@ -479,6 +501,7 @@ export class StreamMarkdownRenderer {
     this.commitParagraph()
     this.finalizeOpenCodeBlock()
     if (streaming) this.flushPendingParagraph()
+    if (streaming) this.finalizeStreamedBlocksExceptLast()
     this.scheduleMermaidPolling()
   }
 

@@ -43,6 +43,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
             <PlanNodeIcon :type="node.type" :size="14" />
           </span>
           <span class="node-label">{{ node.label }}</span>
+          <span v-if="node.attemptCount != null && node.attemptCount > 1" class="node-attempt">×{{ node.attemptCount }}</span>
           <span v-if="node.durationMs != null" class="node-dur">{{ formatDuration(node.durationMs) }}</span>
           <span v-else-if="live && node.status === 'running'" class="node-dur node-dur-live">进行中</span>
           <span v-else class="node-dur node-dur-placeholder" aria-hidden="true">&nbsp;</span>
@@ -62,6 +63,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 .plan-dag {
   margin: 8px 0 4px calc(var(--op-gutter, 12px) + 4px);
   padding: 12px 14px;
+  min-height: 94px;
   border: 1px solid var(--sun-border);
   border-radius: 10px;
   background: color-mix(in srgb, var(--sun-bg) 92%, var(--sun-text-muted));
@@ -136,6 +138,22 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 .plan-dag-node.is-live {
   border-color: var(--sun-blue, #58a6ff);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 40%, transparent);
+}
+
+.plan-dag-node.is-live {
+  transition: color 0.15s;
+  animation: dag-node-breathe 2.2s ease-in-out infinite;
+}
+
+.plan-dag-node.is-selected.is-live {
+  animation: dag-node-breathe-selected 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-dag-node.is-live,
+  .plan-dag-node.is-selected.is-live {
+    animation: none;
+  }
 }
 
 .plan-dag-node.is-done {
@@ -231,5 +249,34 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   color: var(--sun-text-muted);
   opacity: 0.45;
   padding: 0 2px;
+}
+
+@keyframes dag-node-breathe {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--sun-blue, #58a6ff) 72%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 28%, transparent);
+  }
+  50% {
+    border-color: var(--sun-blue, #58a6ff);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 52%, transparent),
+      0 0 10px color-mix(in srgb, var(--sun-blue, #58a6ff) 22%, transparent);
+  }
+}
+
+@keyframes dag-node-breathe-selected {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--sun-blue, #58a6ff) 72%, transparent);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 28%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--sun-blue, #58a6ff) 22%, transparent);
+  }
+  50% {
+    border-color: var(--sun-blue, #58a6ff);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 48%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--sun-blue, #58a6ff) 42%, transparent),
+      0 0 12px color-mix(in srgb, var(--sun-blue, #58a6ff) 20%, transparent);
+  }
 }
 </style>

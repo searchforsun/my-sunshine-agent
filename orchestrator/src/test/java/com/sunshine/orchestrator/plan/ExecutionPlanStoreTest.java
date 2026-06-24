@@ -62,7 +62,21 @@ class ExecutionPlanStoreTest {
         assertThat(saved.getConversationId()).isEqualTo("conv-1");
         assertThat(saved.getMessageId()).isEqualTo("msg-1");
         assertThat(saved.getPlanJson()).contains("\"type\":\"llm\"");
-        verify(conversationService).linkMessageExecutionPlan("msg-1", planId);
+    }
+
+    @Test
+    void markValidated_linksMessage() {
+        ExecutionPlanEntity entity = new ExecutionPlanEntity();
+        entity.setId("p1");
+        entity.setStatus("draft");
+        entity.setMessageId("msg-1");
+        when(repository.findById("p1")).thenReturn(Optional.of(entity));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        store.markValidated("p1", new PlanJson("p1", "ok", List.of(), List.of()));
+
+        verify(conversationService).linkMessageExecutionPlan("msg-1", "p1");
+        assertThat(entity.getStatus()).isEqualTo("validated");
     }
 
     @Test
@@ -88,7 +102,7 @@ class ExecutionPlanStoreTest {
         when(repository.findById("p1")).thenReturn(Optional.of(entity));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        store.appendNodeTrace("p1", new PlanNodeTrace("n1", "rag", "completed", "命中 2 条", null, 1L, 2L));
+        store.upsertNodeTrace("p1", new PlanNodeTrace("n1", "rag", "completed", "命中 2 条", null, 1L, 2L));
 
         assertThat(entity.getExecutionTrace()).contains("\"nodeId\":\"n1\"");
         assertThat(entity.getExecutionTrace()).contains("\"status\":\"completed\"");

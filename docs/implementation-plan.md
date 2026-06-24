@@ -226,7 +226,7 @@ my-sunshine-agent/
 | 3.6 审计 | tool-audit + sub_agent_run + plan.* |
 | 3.7 Grounding | 主答复 + 子 Agent output |
 | 3.8 提示词 | **✅ 3.8.1–3.8.6** · **⬜ 3.8.7** Planner（非检查门） |
-| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API + DAG/抽屉 UI · **3.9.1–3.9.3 ✅** · 3.9.4 ⬜ |
+| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API + DAG/抽屉 UI + **重试/降级** · **3.9.1–3.9.3 ✅** · 3.9.4 ⬜ |
 | 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 · **3.10.1–3.10.4 ✅（MVP）** · 3.10.5–3.10.6 ⬜ |
 
 子 Agent 实现目标（编排器-Worker、`query`+`context` 传入、分层 system、无默认 STM）见 [multi-agent plan §子 Agent 实现目标](./superpowers/plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)。
@@ -250,7 +250,8 @@ my-sunshine-agent/
 - [ ] Grafana RAG + Sentinel Dashboard + 4 条告警（指标+JSON ✅；远程部署/触发 ⬜）
 - [ ] 租户 A/B 隔离；写工具 HITL（含子 Agent）
 - [x] `PLAN_WORKFLOW` 三 API + Plan 详情/DAG 抽屉（3.12.4 ✅）
-- [x] IntentRouter `plan-workflow` + Planner/校验失败 **降级 ReAct**（无执行期 Enricher）
+- [x] IntentRouter `plan-workflow` + Planner/校验 **Replan** → 耗尽 **降级 ReAct**（`docs/routing/plan-workflow-retry-degradation.md`）
+- [x] 节点 `NodeRetryExecutor` + `on-failure` + `completed_with_errors` / `degraded_react` 终态
 - [ ] 2+ agent 节点 Plan 演示（3.10.5）
 - [ ] skill-manager + `/skills`；tool/sub_agent/plan 审计可查
 - [ ] Grounding + 子 Agent 不污染主 reasoning
@@ -271,7 +272,7 @@ my-sunshine-agent/
 | **4.4** 多模态对话 L3 | 聊天发图 | Vision + `/chat` 附件 |
 | **4.5** Skills 沙箱 | 代码执行 | Docker `SandboxExecutor` |
 | **4.6** 动态 DAG 增强 | Plan 不够用 | if-else、并行、Replan、ContextCompressor |
-| **4.7** 多 Agent 增强 | 复杂协作 | Coordinator、MsgHub、子 Timeline 展开 |
+| **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 | **第五模式 `PEER_COLLAB`**、Coordinator、并行子 Agent、MsgHub、子 Timeline · [peer-collab spec](./superpowers/specs/2026-06-24-peer-collab-routing-design.md) |
 | **4.8** MCP 动态引入 + 前端管理 | 异构系统接入 | tool-manager 动态注册 MCP Server + `/mcp` 管理页 + Catalog `kind=mcp` |
 | **4.9** K8s | 流量/HA | Helm + HPA + GitOps |
 | **4.10** Seata | 跨服务写 | 与 HITL 串联 |

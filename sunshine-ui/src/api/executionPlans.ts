@@ -9,6 +9,18 @@ export interface PlanNodeTrace {
   detail?: string
   startedAt?: number
   endedAt?: number
+  attemptCount?: number
+  onFailure?: string
+  attempts?: PlanNodeAttempt[]
+}
+
+export interface PlanNodeAttempt {
+  attemptNo: number
+  status: string
+  errorClass?: string
+  summary?: string
+  startedAt?: number
+  endedAt?: number
 }
 
 export interface PlanGraphNode {

@@ -35,7 +35,8 @@ const planStep = computed(() => props.steps.find(s => s.phase === 'plan'))
 const showPlanDag = computed(() => {
   const plan = planStep.value
   if (!plan) return false
-  return !!(resolvePlanIdFromStep(plan) ?? props.executionPlanId)
+  // 仅校验通过的路径下发 planId=；降级步不含 planId，不展示 DAG
+  return !!resolvePlanIdFromStep(plan)
 })
 
 const displaySteps = computed(() => {

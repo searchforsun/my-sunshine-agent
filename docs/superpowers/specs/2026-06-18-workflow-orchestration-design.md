@@ -541,10 +541,15 @@ com.sunshine.orchestrator.routing
 |------|------|
 | 意图 JSON 解析失败 | fallback `react` |
 | workflowId 不存在 | fallback `react` |
-| 节点执行失败 | 节点级重试 1 次 → 整体 fallback `react` 或返回错误 SSE |
+| Planner/校验失败 | Replan（带反馈）→ 耗尽降级 `react` |
+| 节点临时错误 | `NodeRetryExecutor` 同参重试（按类型/节点配置） |
+| 节点永久失败 | `on-failure`：`continue` / `fail_fast` / `skip` / `fallback_react` |
+| 关键 tool 失败 | 默认 `fail_fast` → `failed` |
 | Agent 节点达 maxIters | 返回已有 `answer` 或错误提示 |
-| tool-manager 不可用 | 节点返回失败，workflow 走降级或中断 |
+| tool-manager 不可用 | 节点失败 → 重试或 workflow 降级 |
 | 续传 / resume | `mode` + `workflowId` 写入 message；续传时 **不重新跑 workflow**，走现有 `streamContinue` |
+
+详设：`docs/routing/plan-workflow-retry-degradation.md`
 
 ---
 

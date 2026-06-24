@@ -673,6 +673,7 @@ flowchart LR
 - [x] **3.9.1b** IntentRouter 路由 `plan-workflow` 单测
 - [x] **3.9.1c** Policy Chain + `StructuralPlanMatcher`（Nacos 可配置）+ `RoutingGoldenSetTest`
 - [x] **3.9.1d** `PlanNormalizer`（缺 edges 推断）+ Planner 失败 plan 步可视化 + 降级 react 说明
+- [x] **3.9.1e** 重试与降级：`NodeRetryExecutor`、Replan、`completed_with_errors` / `degraded_react` · SSOT [plan-workflow-retry-degradation.md](../../routing/plan-workflow-retry-degradation.md)
 
 ---
 
@@ -683,7 +684,7 @@ flowchart LR
 - Flyway: `Vx__execution_plan.sql`
 - Modify: `chat_message` — `execution_plan_id` 外键
 
-- [x] **3.9.2a** 状态机 draft→validated→running→completed|failed|rejected
+- [x] **3.9.2a** 状态机 draft→validated→running→completed|completed_with_errors|failed|rejected|degraded_react
 - [x] **3.9.2b** `plan_json` / `execution_trace` 字段 + `chat_message.execution_plan_id`
 
 ---
@@ -703,7 +704,7 @@ flowchart LR
 
 ### 3.9.4 plan.* 审计事件
 
-- [ ] **3.9.4a** RocketMQ：`plan.created` / `plan.validated` / `plan.completed` / `plan.failed`
+- [ ] **3.9.4a** RocketMQ：`plan.created` / `plan.validated` / `plan.completed` / `plan.failed` / `plan.planner_attempt` / `plan.node.attempt` / `plan.fallback_react`
 
 ---
 
@@ -733,12 +734,17 @@ flowchart LR
 
 | 新编号 | 内容 |
 |--------|------|
-| **4.7.1** | `DelegateSkillTool` — react Coordinator 委派 |
-| **4.7.2** | `ParallelAgentNodeHandler` fan-out/join |
-| **4.7.3** | MsgHub Peer + transcript 审计 |
-| **4.7.4** | 前端子 Agent Timeline 展开 |
+| **4.7.1** | `DelegateSkillTool` — react Coordinator 委派（非第五模式） |
+| **4.7.2** | `ParallelAgentNodeHandler` — plan-workflow 内 fan-out/join |
+| **4.7.3** | **第五顶层模式 `PEER_COLLAB`** — 路由 + MsgHub 受控协作 + transcript 审计 |
+| **4.7.3a–d** | ExecutionMode / Policy Chain / Executor / `peer_run` 审计（见 peer-collab spec） |
+| **4.7.4** | 前端子 Agent / Peer transcript 摘要展开 |
 
-详设：[phase4-platformization-design.md](../specs/phase4-platformization-design.md) §4.7
+详设：
+- 第五模式 SSOT：[2026-06-24-peer-collab-routing-design.md](../specs/2026-06-24-peer-collab-routing-design.md)
+- 平台任务卡：[phase4-platformization-design.md](../specs/phase4-platformization-design.md) §4.7
+- 锁定：[D10](../specs/2026-06-19-locked-architecture-decisions.md#d10-第五顶层模式--peer_collab阶段四)
+- 路由验收：[routing-golden-set.md](../../routing/routing-golden-set.md#e-peer_collab阶段四)
 
 ---
 

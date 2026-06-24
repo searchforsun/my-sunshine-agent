@@ -3,7 +3,7 @@
 > **⚠️ 阶段三相关决策已摘要至** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.11**；OCR 见 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.2**。下文为完整锁定原文。
 
 > **状态**：已锁定 — 后续 spec / 实施计划须与本文件一致  
-> **适用范围**：动态 Plan、Planner 模型、Skills 运营、沙箱运行时、**OCR 提供商**
+> **适用范围**：动态 Plan、Planner 模型、Skills 运营、沙箱运行时、**OCR 提供商**、**第五模式 Peer 协作（阶段四）**
 
 ---
 
@@ -45,12 +45,14 @@ CREATE TABLE execution_plan (
     message_id      VARCHAR(36) NOT NULL,   -- 关联 assistant 占位消息
     user_id         VARCHAR(64) NOT NULL,
     tenant_id       VARCHAR(64) DEFAULT 'default',
-    status          VARCHAR(24) NOT NULL,   -- draft|validated|running|completed|failed|rejected
+    status          VARCHAR(24) NOT NULL,   -- draft|validated|running|completed|completed_with_errors|failed|rejected|degraded_react
     planner_model   VARCHAR(64),
     planner_reason  VARCHAR(512),
     plan_json       MEDIUMTEXT NOT NULL,    -- Planner 原始输出
     validated_json  MEDIUMTEXT,             -- Validator 修正后（可选）
-    execution_trace MEDIUMTEXT,             -- 节点执行摘要 JSON 数组
+    execution_trace MEDIUMTEXT,             -- 节点执行摘要 JSON 数组（含 attemptCount/attempts[]）
+    planner_attempts MEDIUMTEXT,            -- V8：Planner/Replan 尝试记录
+    replan_count    INT DEFAULT 0,          -- V8：Replan 次数
     trace_id        VARCHAR(64),              -- SkyWalking traceId
     created_at      TIMESTAMP NOT NULL,
     validated_at    TIMESTAMP NULL,
@@ -66,14 +68,14 @@ CREATE TABLE execution_plan (
 #### 状态机
 
 ```
-draft → validated → running → completed
-              ↘ rejected    ↘ failed
+draft → validated → running → completed | completed_with_errors
+              ↘ rejected    ↘ failed | degraded_react
 ```
 
 - **draft**：Planner 产出，待 Validator
 - **validated**：通过白名单/无环/技能校验
-- **running**：`DynamicWorkflowExecutor` 执行中
-- **completed / failed**：终态，触发审计
+- **running**：`PlanWorkflowExecutor` / `WorkflowExecutor` 执行中
+- **completed / completed_with_errors / failed / rejected / degraded_react**：终态，触发审计（重试/Replan 见 `docs/routing/plan-workflow-retry-degradation.md`）
 
 #### API
 
@@ -88,7 +90,7 @@ draft → validated → running → completed
 | 层 | 内容 |
 |----|------|
 | Timeline | `plan` 步 `detail` 含 `planId` + 节点链摘要；每 `node-*` 关联 `planNodeId` |
-| 审计 | RocketMQ：`plan.created` / `plan.validated` / `plan.completed` / `plan.failed` |
+| 审计 | RocketMQ：`plan.created` / `plan.validated` / `plan.completed` / `plan.failed` / `plan.planner_attempt` / `plan.node.attempt` / `plan.fallback_react` |
 | Trace | Span：`plan.planner`、`plan.validate`、`plan.node.{nodeId}` |
 | 前端 | 消息时间线 `plan` 步可点击跳转 Plan 详情（阶段三末） |
 
@@ -277,7 +279,50 @@ rag:
 
 ### 与主流对齐
 
-编排器-Worker（LangGraph Supervisor-Worker、Dify DAG 节点）— **非** MsgHub 自由对话式多 Agent 默认路径。
+编排器-Worker（LangGraph Supervisor-Worker、Dify DAG 节点）— **非** MsgHub 自由对话式多 Agent **默认路径**（第五模式 `PEER_COLLAB` 见 **D10**，阶段四可选）。
+
+---
+
+## D10. 第五顶层模式 = `ExecutionMode.PEER_COLLAB`（阶段四）
+
+### 决策
+
+- 阶段四新增顶层执行模式 **`PEER_COLLAB`**（对外标签 **`peer-collab`**），与 `simple-llm` / `workflow` / `react` / `plan-workflow` **平级**，由 `ExecutionDispatcher` **第五**分支分发。
+- **禁止**将 MsgHub 对等协作隐式塞入 `react` 或 `plan-workflow`；**禁止**作为默认路由或替代 L3 DAG 主轴。
+- 详设 SSOT：[2026-06-24-peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) · 任务卡 **4.7.3**（phase4 §4.7）。
+
+### 路由
+
+```java
+public enum ExecutionMode {
+    SIMPLE_LLM,
+    WORKFLOW,
+    REACT,
+    PLAN_WORKFLOW,
+    PEER_COLLAB;  // 阶段四：受控 MsgHub 多角色交叉验证
+}
+```
+
+`IntentRouter` / Policy Chain 输出示例：
+
+```json
+{"mode":"peer-collab","workflowId":null,"params":{"templateId":"compliance-cross-review"},"reason":"需多专家交叉验证"}
+```
+
+### 硬约束
+
+| 项 | 要求 |
+|----|------|
+| 轮次 | `maxRounds ≤ 3`（Nacos 可配） |
+| 角色 | peer-template + skill Catalog 白名单 |
+| Timeline | MsgHub 内部对话 **不上** 主 SSE；仅压缩步 + 终态 answer |
+| 审计 | 完整 transcript → audit ES + `peer_run` 落库 |
+| 降级 | 非法 template / 超时 → `plan-workflow` 或 `react` |
+
+### 与 D1 / D9 关系
+
+- **D1 `PLAN_WORKFLOW`**：结构化多步 / 验证链（A → Reviewer → answer）— **阶段三主轴，保持默认**。
+- **D9 编排器-Worker**：plan/workflow 内子 Agent 仍为 Worker；**D10** 仅用于需 **对等协商、相互质疑** 的窄场景（L4）。
 
 ---
 
@@ -290,6 +335,7 @@ rag:
 | S6 Skill 运营 UI | **阶段三末/四初**，路由 `/skills` |
 | S4 Sandbox | **明确 Docker**，可放在 skill-manager 或独立 sandbox-service |
 | ExecutionMode | 阶段三增加 `PLAN_WORKFLOW` 枚举与 Dispatcher 分支 |
+| ExecutionMode | 阶段四增加 `PEER_COLLAB` 第五模式（4.7.3，见 D10） |
 
 ---
 
@@ -297,4 +343,5 @@ rag:
 
 - `2026-06-19-advanced-capabilities-design.md`
 - `2026-06-19-multi-agent-architecture-design.md`
+- `2026-06-24-peer-collab-routing-design.md`（第五模式，阶段四）
 - `implementation-plan.md`

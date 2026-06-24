@@ -1,8 +1,9 @@
 # 路由 Golden-Set（验收提示词）
 
 > **SSOT**：人工/UI 验收 + `RoutingGoldenSetTest` 单测对照  
-> **配置**：`docs/nacos/sunshine-orchestrator.yaml` → `agent.routing.structural` / `agent.routing.rules`  
-> **代码**：`ExecutionPlanRouter` → `RoutingPolicyChain`（L0→L3）
+> **配置**：`docs/nacos/sunshine-orchestrator.yaml` → `agent.routing.structural` / `agent.routing.rules` / `agent.execution.plan-workflow`  
+> **代码**：`ExecutionPlanRouter` → `RoutingPolicyChain`（L0→L3）  
+> **重试/降级详设**：[plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md)
 
 ## 策略链（意图识别步内）
 
@@ -12,6 +13,7 @@
 | L1 | `StructuralRoutingPolicy` | `agent.routing.structural` | `PLAN_WORKFLOW` |
 | L2 | `GoldenRuleRoutingPolicy` | `agent.routing.rules` | 静态 `WORKFLOW` |
 | L3 | `LlmClassifierRoutingPolicy` | `agent.intent.classifier-prompt` | LLM 选 mode/workflow |
+| L3+ | （阶段四）第五 mode `peer-collab` | 同上 + `agent.routing.peer.*` | 见 [§E](#e-peer_collab阶段四) |
 
 **链规则**：首个返回 `ExecutionPlan` 的策略胜出；L1 命中后 L2/L3 不执行。L2 内仍调用 `StructuralPlanMatcher` 作 L1 漏判保险丝。
 
@@ -47,7 +49,7 @@ node-n2  → …
 生成回答 → …
 ```
 
-- **「查看详情」**：跳转 `/plans/:planId`，展示 Planner JSON、节点 trace、状态（draft/validated/running/completed/rejected）
+- **「查看详情」**：跳转 `/plans/:planId`，展示 Planner JSON、节点 trace、状态（draft/validated/running/completed/**completed_with_errors**/failed/**rejected**/**degraded_react**）
 - **不应**在成功路径出现：`规划推理` / `think` / 自主 ReAct 工具链（除非 Planner 失败降级，见下）
 - **`think` 仅属 ReAct**：Plan 成功路径 answer 的 reasoning 在 `node-*` 步骤与 Plan 抽屉「综合分析」，**不得**再合成顶层 `think` 行（见 `normalizeTimelineSteps` / `chatSessions`）
 
@@ -59,26 +61,31 @@ node-n2  → …
 |------|--------|------|
 | 综合分析 | `step.reasoning` | 模型 reasoning 通道，原样 Markdown |
 | 最终输出 | `step.result` | 模型 content 通道（消息正文同步） |
+| 执行记录 | `execution_trace.attempts[]` | 节点重试时展示 attemptNo / errorClass / summary |
 | （无）执行摘要 | — | answer/llm 不展示时间线 after |
 
-长文由抽屉 `.drawer-body` 统一滚动；**禁止**区块内嵌套滚动条。内容质量不对 → 改 Planner `answer.params.prompt` 或 `agent.prompt.mode-overlays.workflow`，**禁止**前端/后端截断摘要。
+长文由抽屉 `.drawer-body` 统一滚动；**禁止**区块内嵌套滚动条。answer prompt 不对 → 改 Nacos `agent.prompt.answer-template` 或 `mode-overlays.workflow`。
 
-### 降级路径（Planner/校验失败）
+### 降级路径（Planner/校验失败 → Replan → ReAct）
 
-若 Flash Planner 解析失败或 Plan 校验不通过，会 **降级 ReAct**（你看到的「规划推理 + 工具调用」即此情况）：
+规划期：**Planner 调用重试** → **Replan**（带校验错误反馈，默认最多 2 次）→ 仍失败则 **降级 ReAct**（`status=rejected`）。
 
 | 现象 | 含义 |
 |------|------|
-| 有 `执行计划` + 「查看详情」+ 后续 `规划推理` | Plan 已落库但校验 rejected，改 ReAct 执行 |
+| plan 步 `detail` 含 `replanCount` | 曾触发 Replan |
+| **执行计划** after「规划经 N 次修正后开始执行」 | Replan 后校验通过 |
+| **执行计划** 一行摘要「Plan 校验未通过，降级为 ReAct」、**无 DAG 图** | 校验耗尽，改 ReAct 执行 |
 | 有 `执行计划` 摘要含「Planner 未产出…改由自主智能体」 | Planner 调用/解析失败 |
-| 仅有 `规划推理`、无 `node-*` | 旧版行为；升级后应至少有一条 plan 步说明 |
+| 有 `执行计划` + DAG + 后续 `规划推理` | 旧版行为；升级后 reject 不应再出 DAG |
+
+执行期降级见 [§H](#h-plan-workflow-重试与降级执行期)。
 
 **排查**：orchestrator 日志搜 `[PlanWorkflowExecutor]` / `[WorkflowPlanner]` / `[PlanJsonParser]`。
 
 | 现象 | 常见原因 | 处理 |
 |------|----------|------|
 | `Planner 输出为空` | ① Nacos prompt 含「禁止面向用户的答复」→ flash 返回空 content；② **llm-gateway 语义缓存**曾缓存该空响应（plan 步 **0ms** 即失败） | 更新 planner prompt；`skip_cache: true`；清 Redis `llm:cache:*`；重启 llm-gateway + orchestrator |
-| Plan 有步但校验 rejected | 模型用 `config` 非 `params`、或缺 answer | 已增强 Parser；同步最新 planner prompt |
+| Plan 有步但校验 rejected | 模型用 `config` 非 `params`、非法节点 type、缺 displayName 等 | 已增强 Parser；answer 由引擎固定拼接 |
 
 | # | 提示词 | 说明 |
 |---|--------|------|
@@ -167,6 +174,23 @@ node-n2  → …
 
 ---
 
+## H. Plan-Workflow 重试与降级（执行期）
+
+> **详设**：[plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md)
+
+| # | 场景 | 提示词 / 操作 | 预期 |
+|---|------|---------------|------|
+| H1 | 基线成功 | A1 主验收句 | `completed`；DAG + `node-answer` |
+| H2 | 节点重试 | A1 + 短暂停 tool-manager/finance | DAG 角标 `×2`；`attempts[]` |
+| H3 | 关键 tool fail_fast | A1 + 停 finance | `failed`；不进入 `completed_with_errors` |
+| H4 | 非关键 continue | 部分 tool 失败且 `on-failure: continue` | `completed_with_errors`；answer 含上游失败行 |
+| H5 | fallback_react | 同上 + Nacos `critical-on-failure: fallback_react` | `degraded_react`；接续 ReAct |
+| H6 | ReAct overlay | 「查制度 + 列待审批 + 对比超标」走 ReAct | 工具失败时模型可改参再调（非引擎重试） |
+
+单测：`mvn test -pl orchestrator -Dtest=PlanWorkflowExecutorTest,WorkflowExecutorTest,NodeRetryExecutorTest`
+
+---
+
 ## 配置变更指引
 
 | 需求 | 改哪里 |
@@ -176,5 +200,47 @@ node-n2  → …
 | 新增单域快路径 | `agent.routing.rules` 追加 rule（勿与 structural 重复 plan 规则） |
 | 意图步文案 | `agent.timeline.intent.modes` |
 | 语义兜底 | `agent.intent.classifier-prompt` |
+| Plan 重试/降级/Replan | `agent.execution.plan-workflow` · 见 [plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md) |
+| ReAct 工具策略 overlay | `agent.prompt.mode-overlays.react` |
+| 第五模式 peer 模板 / 句式（阶段四） | `agent.peer.templates` / `agent.routing.peer.structural-patterns` · 见 [peer-collab spec](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) |
 
 改完：`sync_nacos.py` → 重启 orchestrator → 跑上表至少 A1/B1/C1/D1 + G 对照。
+
+---
+
+## E. PEER_COLLAB（阶段四 · 第五顶层模式）
+
+> **状态**：⬜ 阶段四 4.7.3 实施后启用  
+> **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · **锁定 D10** · 配置键 `agent.routing.peer.*` / `agent.peer.templates`
+
+**预期 intent after**：「…将由多专家协作交叉验证」（`agent.timeline.intent.modes.peer-collab`）
+
+### E1. 应对 → `peer-collab`
+
+| 提示词 | 必须 **不是** | 必须是 |
+|--------|--------------|--------|
+| 请制度专家和财务专家分别审查这笔报销是否合规，并互相验证 | plan-workflow / finance-smart | **peer-collab** |
+| 从合规和财务两个角度交叉审查上述制度条款 | workflow | **peer-collab** |
+
+### E2. 应对 → 仍 `plan-workflow`（边界对照）
+
+| 提示词 | 必须是 | 说明 |
+|--------|--------|------|
+| 先检索报销制度，再查待审批列表，并对结果做合规分析 | plan-workflow | 结构化流水线，非对等协商 |
+
+### E3. Timeline（成功路径）
+
+```
+识别意图 → 将由多专家协作交叉验证
+peer-collab → …（压缩摘要，无 MsgHub 多轮 raw 对话）
+生成回答 → …
+```
+
+- transcript 仅 audit / Plan 类详情页可查，**不上**主 SSE 逐步卡片
+- 失败降级：intent 步或 peer 步说明改走 plan-workflow / react
+
+### 单测（阶段四）
+
+```bash
+mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest#peerCollab*
+```

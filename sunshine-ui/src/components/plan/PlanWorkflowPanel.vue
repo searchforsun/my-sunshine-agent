@@ -8,7 +8,7 @@ import {
   resolveStepDurationMs,
   stepLifecycle,
 } from '../../api/processingSteps'
-import { getExecutionPlan, type ExecutionPlanDetail } from '../../api/executionPlans'
+import { getExecutionPlan, type ExecutionPlanDetail, type PlanGraph } from '../../api/executionPlans'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../../api/skills'
 import { buildDagNodes, type DagNodeView } from '../../utils/planGraph'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
@@ -23,7 +23,40 @@ const props = defineProps<{
 
 const { open: openDrawer, state: drawerState } = usePlanNodeDrawer()
 
+function stepContentSignature(step?: ProcessingStep): string {
+  if (!step) return ''
+  return [
+    step.lifecycle ?? step.status ?? '',
+    step.result ?? '',
+    step.detail ?? '',
+    step.reasoning ?? '',
+  ].join('\u0001')
+}
+
+function syncDrawerSelection(nodes: DagNodeView[]) {
+  if (!drawerState.open || !drawerState.node) return
+  const nodeId = drawerState.node.id
+  const fresh = nodes.find(n => n.id === nodeId)
+  if (!fresh) return
+  const step = stepForNode(nodeId)
+  const cur = drawerState.node
+  if (
+    fresh.status !== cur.status
+    || fresh.durationMs !== cur.durationMs
+    || fresh.summary !== cur.summary
+    || fresh.detail !== cur.detail
+  ) {
+    drawerState.node = fresh
+  }
+  if (stepContentSignature(step) !== stepContentSignature(drawerState.step)) {
+    drawerState.step = step
+  }
+}
+
 const planDetail = ref<ExecutionPlanDetail | null>(null)
+/** 校验通过的 Plan 拓扑只加载一次，执行期状态由 SSE nodeSteps 驱动 */
+const frozenGraph = ref<PlanGraph | null>(null)
+const graphPlanId = ref<string | null>(null)
 const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
 const loadingPlan = ref(false)
 
@@ -31,11 +64,7 @@ const planId = computed(() =>
   resolvePlanIdFromStep(props.planStep) ?? props.executionPlanId,
 )
 
-const graphSource = computed(() => {
-  const d = planDetail.value
-  if (!d) return undefined
-  return d.validatedPlan?.nodes?.length ? d.validatedPlan : d.plan
-})
+const graphSource = computed(() => frozenGraph.value ?? undefined)
 
 const nodeSteps = computed(() =>
   props.allSteps.filter(s => s.phase === 'node' && s.id.startsWith('node-')),
@@ -45,7 +74,7 @@ const dagNodes = computed(() =>
   buildDagNodes(
     graphSource.value,
     nodeSteps.value,
-    planDetail.value?.nodes,
+    props.live ? undefined : planDetail.value?.nodes,
     skillCatalog.value,
   ),
 )
@@ -71,37 +100,50 @@ function onSelectNode(node: DagNodeView) {
 async function loadPlan() {
   const id = planId.value
   if (!id) return
-  loadingPlan.value = true
+  const hasGraph = graphPlanId.value === id && !!frozenGraph.value
+  // 流式执行期图结构只拉一次，避免 answer 阶段重复请求导致拓扑闪动
+  if (props.live && hasGraph) return
+
+  const firstLoad = !hasGraph
+  if (firstLoad) loadingPlan.value = true
   try {
-    planDetail.value = await getExecutionPlan(id)
+    const detail = await getExecutionPlan(id)
+    planDetail.value = detail
+    if (detail.validatedPlan?.nodes?.length) {
+      frozenGraph.value = detail.validatedPlan
+      graphPlanId.value = id
+    }
   } catch {
-    planDetail.value = null
+    if (!planDetail.value) planDetail.value = null
   } finally {
-    loadingPlan.value = false
+    if (firstLoad) loadingPlan.value = false
   }
+}
+
+function resetGraphForPlan(id: string | undefined) {
+  if (!id) {
+    frozenGraph.value = null
+    graphPlanId.value = null
+    planDetail.value = null
+    return
+  }
+  if (graphPlanId.value === id) return
+  frozenGraph.value = null
+  graphPlanId.value = null
+  planDetail.value = null
 }
 
 onMounted(() => {
   void loadPlan()
   void listSkillCatalogIndex().then(list => { skillCatalog.value = list }).catch(() => {})
 })
-watch(planId, () => { void loadPlan() })
-watch(
-  () => lifecycle.value,
-  (lc, prev) => {
-    if (lc === 'done' && prev === 'running') void loadPlan()
-  },
-)
-watch(nodeSteps, () => {
-  if (!drawerState.open) return
+watch(planId, (id, prev) => {
+  if (id === prev) return
+  resetGraphForPlan(id)
   void loadPlan()
-}, { deep: true })
+})
 watch(dagNodes, (nodes) => {
-  if (!drawerState.open || !drawerState.node) return
-  const fresh = nodes.find(n => n.id === drawerState.node!.id)
-  if (fresh) {
-    openDrawer({ node: fresh, step: stepForNode(fresh.id) })
-  }
+  syncDrawerSelection(nodes)
 }, { deep: true })
 </script>
 
@@ -121,7 +163,7 @@ watch(dagNodes, (nodes) => {
       :live="live"
       @select="onSelectNode"
     />
-    <div v-else-if="loadingPlan" class="plan-dag-skeleton">加载执行图…</div>
+    <div v-else-if="loadingPlan && !frozenGraph" class="plan-dag-skeleton">加载执行图…</div>
   </div>
 </template>
 

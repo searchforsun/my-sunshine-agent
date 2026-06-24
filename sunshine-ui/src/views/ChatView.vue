@@ -72,6 +72,7 @@ let streamRenderer: StreamMarkdownRenderer | null = null
 const settledHtml = ref('')
 const sessionSettledHtml = new Map<string, string>()
 const streamingMdRef = ref<HTMLElement | null>(null)
+const chatBodyRef = ref<HTMLElement | null>(null)
 
 function setStreamingMdRef(el: unknown) {
   streamingMdRef.value = el instanceof HTMLElement ? el : null
@@ -81,7 +82,7 @@ const chatStore = useChatStore()
 const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible, toggleSidebar } = useSidebar()
-const { state: planDrawerState, close: closePlanDrawer } = usePlanNodeDrawer()
+const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
 
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 
@@ -252,6 +253,8 @@ async function loadSkillCatalog() {
   }
 }
 const scrollRef = ref<HTMLElement | null>(null)
+/** 流式生成时是否跟随滚到底（用户手动上滑后暂停） */
+const chatScrollPinned = ref(true)
 const copiedIndex = ref<number | null>(null)
 let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -305,9 +308,21 @@ async function copyAssistantMessage(text: string, idx: number) {
   copyResetTimer = setTimeout(() => { copiedIndex.value = null }, 2000)
 }
 
-function scrollToBottom() {
+function isNearChatBottom(el: HTMLElement, threshold = 96): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
+}
+
+function onChatScroll() {
   const el = scrollRef.value
-  if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  if (!el || !loading.value) return
+  chatScrollPinned.value = isNearChatBottom(el)
+}
+
+function scrollToBottom(force = false) {
+  const el = scrollRef.value
+  if (!el) return
+  if (!force && !chatScrollPinned.value) return
+  el.scrollTo({ top: el.scrollHeight, behavior: force ? 'smooth' : 'auto' })
 }
 
 function renderMarkdown(text: string): string {
@@ -362,6 +377,7 @@ async function handleSend() {
     sessionSettledHtml.delete(convId)
     streamRenderer?.clear()
     streamRenderer = null
+    chatScrollPinned.value = true
 
     await nextTick()
     const sendPromise = send(text, convId)
@@ -369,7 +385,7 @@ async function handleSend() {
     await ensureStreamRenderer()
     await sendPromise
     await nextTick()
-    scrollToBottom()
+    scrollToBottom(true)
   } catch (e) {
     console.error('[ChatView] 发送失败', e)
     inputText.value = text
@@ -545,7 +561,10 @@ function onPageHide() {
 
 onUnmounted(() => {
   window.removeEventListener('pagehide', onPageHide)
+  registerChatBody(null)
 })
+
+watch(chatBodyRef, (el) => registerChatBody(el), { immediate: true })
 
 onUpdated(() => {
   nextTick(() => enhanceAllStaticMarkdown())
@@ -634,7 +653,7 @@ watch(() => loading.value, async (val) => {
 </script>
 
 <template>
-  <div class="chat-page" :class="{ 'plan-drawer-open': planDrawerState.open }">
+  <div class="chat-page">
     <!-- 全宽会话头（豆包式） -->
     <header class="chat-header">
       <button
@@ -677,8 +696,10 @@ watch(() => loading.value, async (val) => {
       </button>
     </header>
 
+    <div ref="chatBodyRef" class="chat-body">
+      <div class="chat-main">
     <!-- 消息区 -->
-    <div ref="scrollRef" class="chat-scroll">
+    <div ref="scrollRef" class="chat-scroll" @scroll="onChatScroll">
       <div class="chat-inner">
         <div v-if="chatStore.initializing && messages.length === 0" class="empty-state">
           <div class="empty-icon">
@@ -811,7 +832,9 @@ watch(() => loading.value, async (val) => {
         <p class="composer-hint">AI 生成内容仅供参考，请核实重要信息</p>
       </div>
     </footer>
-    <PlanNodeDrawer />
+      </div>
+      <PlanNodeDrawer />
+    </div>
   </div>
 </template>
 
@@ -822,16 +845,24 @@ watch(() => loading.value, async (val) => {
   height: 100%;
   width: 100%;
   min-height: 0;
-  position: relative;
   background: var(--sun-black);
-  --chat-header-h: 48px;
 }
 
-.chat-page.plan-drawer-open .chat-header,
-.chat-page.plan-drawer-open .chat-scroll,
-.chat-page.plan-drawer-open .chat-composer {
-  margin-right: min(400px, 92vw);
-  transition: margin-right 0.25s ease;
+.chat-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.chat-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
 /* ── 全宽会话头 ── */

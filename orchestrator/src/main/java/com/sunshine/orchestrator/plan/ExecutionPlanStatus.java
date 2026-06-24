@@ -6,8 +6,10 @@ public enum ExecutionPlanStatus {
     VALIDATED,
     RUNNING,
     COMPLETED,
+    COMPLETED_WITH_ERRORS,
     FAILED,
-    REJECTED;
+    REJECTED,
+    DEGRADED_REACT;
 
     public String dbValue() {
         return name().toLowerCase();

@@ -71,6 +71,24 @@ function hasMathTailLeak(container: HTMLElement): boolean {
   return false
 }
 
+/** 标题后接表格流式输出时，已落盘标题不应保留 smd-h-fade-tail */
+export function runStreamHeadingBeforeTableFadeTest(): boolean {
+  const container = document.createElement('div')
+  const renderer = new StreamMarkdownRenderer(container, {
+    debounceMs: 0,
+    renderMarkdown: (t) => md.render(t),
+  })
+  const head = '### 小节标题\n\n'
+  const table = '| a | b |\n| --- | --- |\n| 1 | 2 |\n\n'
+  renderer.syncFromContent(head + table)
+  renderer.syncFromContent(head + table + '后续正文仍在输出…')
+  const heading = container.querySelector('h3')
+  if (!heading) return false
+  const block = heading.closest('.smd-markdown-block')
+  if (!block) return false
+  return block.querySelectorAll('.smd-h-fade-tail').length === 0
+}
+
 /** 逐字增量同步，检测块级公式是否分裂 */
 export function runStreamMathIncrementalTest(content: string): {
   leaked: boolean

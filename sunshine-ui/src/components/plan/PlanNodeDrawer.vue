@@ -16,7 +16,7 @@ import PlanNodeIcon from './PlanNodeIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 
-const { state, close } = usePlanNodeDrawer()
+const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
 
 const node = computed(() => state.node)
 const step = computed(() => state.step)
@@ -111,18 +111,54 @@ const loadedSkillLabel = computed(() => {
 const showSkillBlock = computed(() => !!(loadedSkillId.value || loadedSkillLabel.value))
 
 const bodyRef = ref<HTMLElement | null>(null)
+const drawerScrollTop = ref(0)
+
+function onDrawerBodyScroll() {
+  drawerScrollTop.value = bodyRef.value?.scrollTop ?? 0
+}
+
+async function restoreDrawerScroll() {
+  const top = drawerScrollTop.value
+  await nextTick()
+  if (bodyRef.value) bodyRef.value.scrollTop = top
+}
 
 watch(
   () => [state.open, state.node?.id] as const,
-  ([open]) => {
+  ([open, nodeId], [, prevId]) => {
     if (!open) return
-    void nextTick(() => bodyRef.value?.scrollTo(0, 0))
+    if (nodeId !== prevId) {
+      drawerScrollTop.value = 0
+      void nextTick(() => bodyRef.value?.scrollTo(0, 0))
+    }
+  },
+)
+
+watch(
+  () => [bodyDisplay.value, analysisDisplay.value, summary.value, reasoning.value, output.value],
+  () => {
+    if (!state.open) return
+    void restoreDrawerScroll()
   },
 )
 </script>
 
 <template>
-  <aside v-if="state.open && node" class="plan-drawer" role="complementary" aria-label="节点详情">
+  <aside
+    v-if="state.open && node"
+    class="plan-drawer"
+    role="complementary"
+    aria-label="节点详情"
+    :style="{ width: `${drawerWidth}px` }"
+  >
+    <div
+      v-if="canResizeDrawer"
+      class="drawer-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="调整抽屉宽度"
+      @pointerdown="onResizePointerDown"
+    />
     <header class="drawer-header">
       <div class="drawer-head-top">
         <div class="drawer-title-row">
@@ -157,7 +193,17 @@ watch(
         </div>
       </div>
     </header>
-    <div ref="bodyRef" class="drawer-body">
+    <div ref="bodyRef" class="drawer-body" @scroll="onDrawerBodyScroll">
+      <div v-if="node.attempts?.length" class="drawer-section">
+        <h4>执行记录（{{ node.attemptCount ?? node.attempts.length }} 次）</h4>
+        <ul class="attempt-list">
+          <li v-for="a in node.attempts" :key="a.attemptNo" class="attempt-item">
+            <span class="attempt-no">#{{ a.attemptNo }}</span>
+            <span class="attempt-status" :class="`is-${a.status}`">{{ a.status }}</span>
+            <span v-if="a.summary" class="attempt-summary">{{ a.summary }}</span>
+          </li>
+        </ul>
+      </div>
       <section v-if="showSummary" class="drawer-section">
         <h4>执行摘要</h4>
         <StaticMarkdown :source="summary" compact />
@@ -191,19 +237,53 @@ watch(
 
 <style scoped>
 .plan-drawer {
-  position: absolute;
-  top: var(--chat-header-h, 48px);
-  right: 0;
-  bottom: 0;
-  width: min(400px, 92vw);
+  position: relative;
+  flex-shrink: 0;
+  height: 100%;
+  min-height: 0;
   z-index: 120;
   display: flex;
   flex-direction: column;
-  min-height: 0;
   overflow: hidden;
   border-left: 1px solid var(--sun-border);
   background: var(--sun-bg);
   box-shadow: -8px 0 24px color-mix(in srgb, black 8%, transparent);
+}
+
+.drawer-resize-handle {
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.drawer-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.drawer-resize-handle:hover::after {
+  background: color-mix(in srgb, var(--sun-blue, #58a6ff) 55%, transparent);
+}
+
+:global(body.plan-drawer-resizing) {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+:global(body.plan-drawer-resizing .drawer-resize-handle::after) {
+  background: var(--sun-blue, #58a6ff);
 }
 
 .drawer-header {
@@ -392,6 +472,37 @@ watch(
 
 .drawer-section {
   margin-bottom: 16px;
+}
+
+.attempt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attempt-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--sun-text-secondary);
+}
+
+.attempt-no {
+  font-weight: 600;
+  color: var(--sun-text-muted);
+}
+
+.attempt-status.is-failed {
+  color: #f87171;
+}
+
+.attempt-status.is-completed {
+  color: #4ade80;
 }
 
 .drawer-section h4 {

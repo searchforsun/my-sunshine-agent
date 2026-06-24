@@ -44,6 +44,12 @@ public class ExecutionPlanEntity {
     @Column(name = "plan_json", nullable = false, columnDefinition = "MEDIUMTEXT")
     private String planJson;
 
+    @Column(name = "planner_attempts", columnDefinition = "MEDIUMTEXT")
+    private String plannerAttempts;
+
+    @Column(name = "replan_count", nullable = false)
+    private int replanCount;
+
     @Column(name = "validated_json", columnDefinition = "MEDIUMTEXT")
     private String validatedJson;
 

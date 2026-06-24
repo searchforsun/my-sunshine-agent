@@ -39,6 +39,26 @@ public class PlanJsonCodec {
         }
     }
 
+    public String plannerAttemptsToJson(List<PlannerAttempt> attempts) {
+        try {
+            return objectMapper.writeValueAsString(attempts);
+        } catch (Exception e) {
+            throw new PlanParseException("planner_attempts 序列化失败: " + e.getMessage());
+        }
+    }
+
+    public List<PlannerAttempt> plannerAttemptsFromJson(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
     public List<PlanNodeTrace> traceFromJson(String json) {
         if (json == null || json.isBlank()) {
             return List.of();

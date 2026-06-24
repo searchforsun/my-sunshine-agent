@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.6** + **3.10.1–3.10.4** + **3.10.7** + **3.11 skill-manager** + **3.12.1–3.12.4** + **3.9.1–3.9.3 PLAN_WORKFLOW** ✅；下一迭代 **3.9.4 / 3.10.5–3.10.6**；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.6** + **3.10.1–3.10.4** + **3.10.7** + **3.11 skill-manager** + **3.12.1–3.12.4** + **3.9.1–3.9.3 PLAN_WORKFLOW**（含重试/降级）✅；下一迭代 **3.9.4 / 3.10.5–3.10.6**；阶段四 **4.7.3 `PEER_COLLAB` 第五模式** ⬜ 见 `docs/superpowers/specs/2026-06-24-peer-collab-routing-design.md`；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -89,8 +89,8 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 |--------|--------|
 | 新工具 | `tool-manager` 新增 `ToolHandler`（含 displayName / timelinePhase / outputSummaryKind）→ Nacos `agent.execution.react.tools` 或 workflow 节点 `params.tool` → sync + 重启 tool-manager、orchestrator |
 | 新 Workflow | `docs/nacos/sunshine-workflows.yaml` 的 catalog + definitions → sync → 重启 orchestrator |
-| **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner 单行 JSON → `PlanValidator`；**非法 Plan 直接降级 ReAct**，执行期不加节点/Enricher 兜底 |
-| **Plan 终态 answer** | 全链**一个 `answer` 节点**（`llm` 已合并废弃）；`params.prompt` 引用上游 `{{n*.output}}`；reasoning/content 分工靠 Nacos 提示词，**禁止**代码截断/摘要模型输出 |
+| **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md` |
+| **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | `agent.rewrite.{rag,intent,empty-recall}`（**默认开启**，flash）→ `QueryRewriteService` + `KnowledgeRetrievalService` + `ExecutionPlanRouter` |
 | **意图路由** | **Policy Chain**：L0 Skill → L1 `agent.routing.structural` → L2 `agent.routing.rules` → L3 `agent.intent`；验收见 `docs/routing/routing-golden-set.md` |
 | Workflow 节点中文名 | `sunshine-workflows.yaml` 节点 `displayName` → `WorkflowNodeLabelService` → SSE `step.label` |
@@ -105,7 +105,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 **子 Agent 目标（SSOT：`docs/superpowers/plans/2026-06-19-multi-agent-architecture.md` §子 Agent 实现目标）**：编排器-Worker；`query` + 上游 `context` 由 workflow 传入；system = base + skill overlay + 节点 `systemOverlay`；用户正文由下游 **answer** 节点合成。
 
-**Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `LlmNodeHandler`；SUB 的 `skillId` 走 skill overlay 层。
+**Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `LlmNodeHandler`；SUB 的 `skillId` 走 skill overlay 层；ReAct 工具策略见 Nacos `agent.prompt.mode-overlays.react`。
 
 **Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall` | 可选 HyDE；日志 `[QueryRewrite]`。
 
@@ -119,7 +119,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 |------|----------|------|
 | **ReAct** | `intent → think → tool → think-2 → generate` | `ReactExecutor` → `AgentRuntime`；reasoning 走 `step_delta(think*)`；Hook 经 `StepEventBridge` 绑定 assistantMsgId |
 | **静态 Workflow** | `intent → plan? → node-{id} → … → node-answer` | `WorkflowExecutor` 线性 DAG；节点 rag / tool / agent / **answer**（静态图已无独立 `llm`） |
-| **Plan-Workflow** | `intent → plan → node-{id} → … → node-answer` | Planner 动态 JSON；**成功路径无 `think`/`generate`**；`OperationStack` 用 `PlanWorkflowPanel` 展示 DAG，**隐藏** `phase=node` 逐步卡片 |
+| **Plan-Workflow** | `intent → plan → node-{id} → … → node-answer` | Planner 动态 JSON；**成功路径无 `think`/`generate`**；`OperationStack` 用 `PlanWorkflowPanel` 展示 DAG，**隐藏** `phase=node` 逐步卡片；节点重试/Replan/降级见 `docs/routing/plan-workflow-retry-degradation.md` |
 | **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent 内部 think/tool **不上主时间线**；`AgentNodeDetailSummarizer` 供主行 after + 展开 detail |
 | **Workflow / Plan answer 节点** | 主时间线 `node-{id}` 一步 | `WorkflowLlmStreamSupport`：reasoning → `step_delta(node-*, reasoning)`；content → 消息正文 + `step.result`；主行 after = **displayName+「完成」**（非模型正文） |
 
@@ -130,7 +130,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | ReAct | `think*` step | 可选（generate 路径） | `normalizeTimelineSteps` 可合成 |
 | Plan/Workflow `node-*` | 挂在对应 node step | **不写**（`GenerationJob` + `chatSessions`） | **不合成**（有 plan/node 即跳过） |
 
-**Plan 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析**（`step.reasoning` 原样）+ **最终输出**（`step.result` 原样）；无「执行摘要」；长文随 `.drawer-body` 整体滚动（区块内无嵌套滚动条）。
+**Plan 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析**（`step.reasoning` 原样）+ **最终输出**（`step.result` 原样）；业务节点可展开 **执行记录**（`attempts[]`）；无「执行摘要」；长文随 `.drawer-body` 整体滚动（区块内无嵌套滚动条）。
 
 **Timeline V2 约定**：步骤含 `lifecycle` + `summary.{before,active,after}`；SSE 仅下发当前阶段一行。终态 COMPLETE/FAIL/SKIP **必须下发**。
 
@@ -141,7 +141,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 1. OpenAIChatModel 对接 Gateway `/v1/chat/completions`。
 2. Gateway 鉴权注入 `x-user-id`；BFF/Orchestrator 只读，客户端不得自填。
 3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync_nacos.py` → 重启（无 `application-dev.yaml`）。
-4. 三模式：`IntentRouter` → `ExecutionDispatcher`；workflow 图在 `sunshine-workflows.yaml`。
+4. 四模式（阶段四增第五）：`IntentRouter` → `ExecutionDispatcher`（`simple-llm` / `workflow` / `react` / `plan-workflow`；阶段四 **`peer-collab`** 见 D10 + `2026-06-24-peer-collab-routing-design.md`）；workflow 图在 `sunshine-workflows.yaml`。
 5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板（见 Nacos `agent.system-prompt`）。
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。

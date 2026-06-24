@@ -273,8 +273,8 @@
 - [ ] 3.5 Sentinel Dashboard 租户 QPS
 - [ ] 3.2 租户 A/B 隔离
 - [ ] 3.3 写工具 HITL（含子 Agent）
-- [ ] 3.9 PLAN_WORKFLOW 三 API + 2+ agent 演示 + Plan 详情页
-- [ ] 3.9 IntentRouter plan-workflow + fallback react
+- [x] 3.9 PLAN_WORKFLOW 三 API + Plan 详情/DAG 抽屉（2+ agent 演示 ⬜ 3.10.5）
+- [x] 3.9 IntentRouter plan-workflow + Replan + 节点重试/降级（`docs/routing/plan-workflow-retry-degradation.md`）
 - [ ] 3.10 finance-smart skill 工具子集
 - [ ] 3.11 catalog + 3.12 `/skills` 发布
 - [ ] 3.6 tool + sub_agent + plan.* 可查

@@ -16,13 +16,24 @@ public final class PlanTimeline {
     }
 
     public static List<StreamToken> planStep(ProcessingTimelineSession session, PlanJson plan, String persistedPlanId) {
+        return planStep(session, plan, persistedPlanId, 0);
+    }
+
+    public static List<StreamToken> planStep(
+            ProcessingTimelineSession session,
+            PlanJson plan,
+            String persistedPlanId,
+            int replanCount) {
         String chain = planChainSummary(plan);
-        String detail = formatPlanDetail(persistedPlanId, chain);
+        String detail = formatPlanDetail(persistedPlanId, chain, replanCount);
         long startedAt = System.currentTimeMillis();
         return ProcessingTimelineSupport.run(session, () -> {
             session.pending("plan", "plan");
             session.startAt("plan", "plan", startedAt);
-            session.completeAt("plan", detail, System.currentTimeMillis());
+            String after = replanCount > 0
+                    ? "规划经 " + replanCount + " 次修正后开始执行"
+                    : chain;
+            session.completeAt("plan", after, detail, System.currentTimeMillis());
         });
     }
 
@@ -36,16 +47,42 @@ public final class PlanTimeline {
         });
     }
 
+    /** Plan 校验未通过、降级 ReAct — 不下发 planId，前端不展示 DAG */
+    public static List<StreamToken> planRejectedStep(ProcessingTimelineSession session, String reason) {
+        String after = "Plan 校验未通过，降级为 ReAct";
+        if (StringUtils.hasText(reason)) {
+            after = after + "（" + reason.strip() + "）";
+        }
+        return planFallbackStep(session, after);
+    }
+
     public static List<StreamToken> planStep(ProcessingTimelineSession session, PlanJson plan) {
         return planStep(session, plan, null);
     }
 
     /** Timeline plan 步 detail：planId + 节点链（供 3.12.4 跳转） */
     public static String formatPlanDetail(String persistedPlanId, String chainSummary) {
+        return formatPlanDetail(persistedPlanId, chainSummary, 0);
+    }
+
+    public static String formatPlanDetail(String persistedPlanId, String chainSummary, int replanCount) {
+        StringBuilder sb = new StringBuilder();
         if (StringUtils.hasText(persistedPlanId)) {
-            return "planId=" + persistedPlanId.strip() + "|chain=" + (chainSummary != null ? chainSummary : "");
+            sb.append("planId=").append(persistedPlanId.strip());
         }
-        return chainSummary != null ? chainSummary : "";
+        if (replanCount > 0) {
+            if (!sb.isEmpty()) {
+                sb.append("|");
+            }
+            sb.append("replanCount=").append(replanCount);
+        }
+        if (StringUtils.hasText(chainSummary)) {
+            if (!sb.isEmpty()) {
+                sb.append("|");
+            }
+            sb.append("chain=").append(chainSummary);
+        }
+        return !sb.isEmpty() ? sb.toString() : (chainSummary != null ? chainSummary : "");
     }
 
     public static String planChainSummary(PlanJson plan) {

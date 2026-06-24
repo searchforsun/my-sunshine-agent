@@ -26,7 +26,7 @@
 | **4.4** | 多模态对话 L3：Vision + `/chat` 附件 | 拍图问一问 | 中 |
 | **4.5** | Skills Docker 沙箱 | 代码执行 skill | 中 |
 | **4.6** | 动态 DAG 增强：if-else、并行 fan-out、Replan | 静态 workflow 不够 | 中 |
-| **4.7** | 多 Agent 增强：Coordinator、并行子 Agent、MsgHub、子 Timeline 展开 | 复杂协作 | 中 |
+| **4.7** | 多 Agent 增强：**第五顶层模式 `PEER_COLLAB`**、Coordinator、并行子 Agent、MsgHub、子 Timeline 展开 | 复杂协作 / 交叉验证 | 中 |
 | **4.8** | MCP 动态引入 + 前端管理：tool-manager 注册 MCP Server + `/mcp` 管理页 | 非 HTTP 遗留系统 / 异构工具接入 | 中 |
 | **4.9** | K8s：Helm + HPA + Nacos GitOps | 流量/HA | 中 |
 | **4.10** | Seata 分布式事务 + HITL 串联 | 跨服务写操作 | 低 |
@@ -189,5 +189,8 @@
 ## 6. 相关文档
 
 - [阶段三](./phase3-production-hardening-design.md)
+- [第五模式 Peer 协作路由](./2026-06-24-peer-collab-routing-design.md)
+- [多 Agent 架构详设](./2026-06-19-multi-agent-architecture-design.md) · [锁定决策 D10](./2026-06-19-locked-architecture-decisions.md#d10-第五顶层模式--peer_collab阶段四)
+- [路由 Golden-set §E](../../routing/routing-golden-set.md#e-peer_collab阶段四)
 - `docs/rag/golden-set.yaml`
 - 历史详设：`2026-06-21-multimodal-ocr-design.md`、`2026-06-19-advanced-capabilities-design.md`

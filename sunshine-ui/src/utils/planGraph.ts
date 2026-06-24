@@ -3,6 +3,7 @@ import {
   formatPlanNodeType,
   type PlanGraph,
   type PlanGraphNode,
+  type PlanNodeAttempt,
   type PlanNodeTrace,
 } from '../api/executionPlans'
 import { resolveStepDurationMs, stepLifecycle } from '../api/processingSteps'
@@ -15,6 +16,8 @@ export interface DagNodeView {
   label: string
   status: DagNodeStatus
   durationMs?: number
+  attemptCount?: number
+  attempts?: PlanNodeAttempt[]
   summary?: string
   detail?: string
   skillId?: string
@@ -181,6 +184,8 @@ export function buildDagNodes(
       label: nodeLabel(node),
       status,
       durationMs,
+      attemptCount: trace?.attemptCount,
+      attempts: trace?.attempts,
       summary: (stepSummary(step) ?? trace?.summary?.trim()) || undefined,
       detail: step?.detail?.trim() || step?.result?.trim() || trace?.detail?.trim() || undefined,
       skillId,

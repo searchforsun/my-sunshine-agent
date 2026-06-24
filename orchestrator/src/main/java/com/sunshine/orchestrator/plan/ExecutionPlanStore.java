@@ -40,11 +40,33 @@ public class ExecutionPlanStore {
         entity.setPlannerModel(agentPromptProperties.plannerOrDefault().getModel());
         entity.setPlannerReason(truncate(planJson.reason(), 512));
         entity.setPlanJson(codec.toJson(planJson));
+        entity.setReplanCount(0);
         entity.setCreatedAt(now);
         repository.save(entity);
-        conversationService.linkMessageExecutionPlan(ctx.assistantMsgId(), id);
         log.info("[ExecutionPlanStore] draft id={} msg={}", id, ctx.assistantMsgId());
         return id;
+    }
+
+    @Transactional
+    public void appendPlannerAttempt(String planId, PlannerAttempt attempt) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        List<PlannerAttempt> attempts = new ArrayList<>(codec.plannerAttemptsFromJson(entity.getPlannerAttempts()));
+        attempts.add(attempt);
+        entity.setPlannerAttempts(codec.plannerAttemptsToJson(attempts));
+        if ("replan".equals(attempt.phase()) && attempt.attemptNo() > 1) {
+            entity.setReplanCount(Math.max(entity.getReplanCount(), attempt.attemptNo() - 1));
+        }
+        repository.save(entity);
+    }
+
+    @Transactional
+    public void updatePlannerOutput(String planId, PlanJson planJson) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        entity.setPlanJson(codec.toJson(planJson));
+        if (StringUtils.hasText(planJson.reason())) {
+            entity.setPlannerReason(truncate(planJson.reason(), 512));
+        }
+        repository.save(entity);
     }
 
     @Transactional
@@ -55,6 +77,7 @@ public class ExecutionPlanStore {
         entity.setValidatedJson(codec.toJson(planJson));
         entity.setValidatedAt(Instant.now());
         repository.save(entity);
+        conversationService.linkMessageExecutionPlan(entity.getMessageId(), planId);
         log.info("[ExecutionPlanStore] validated id={}", planId);
     }
 
@@ -82,10 +105,21 @@ public class ExecutionPlanStore {
     }
 
     @Transactional
-    public void appendNodeTrace(String planId, PlanNodeTrace trace) {
+    public void upsertNodeTrace(String planId, PlanNodeTrace trace) {
         ExecutionPlanEntity entity = requireEntity(planId);
         List<PlanNodeTrace> traces = new ArrayList<>(codec.traceFromJson(entity.getExecutionTrace()));
-        traces.add(trace);
+        int idx = -1;
+        for (int i = 0; i < traces.size(); i++) {
+            if (trace.nodeId().equals(traces.get(i).nodeId())) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx >= 0) {
+            traces.set(idx, trace);
+        } else {
+            traces.add(trace);
+        }
         entity.setExecutionTrace(codec.traceToJson(traces));
         repository.save(entity);
     }
@@ -100,6 +134,31 @@ public class ExecutionPlanStore {
         entity.setCompletedAt(Instant.now());
         repository.save(entity);
         log.info("[ExecutionPlanStore] completed id={}", planId);
+    }
+
+    @Transactional
+    public void markCompletedWithErrors(String planId) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        if (isTerminal(entity.getStatus())) {
+            return;
+        }
+        entity.setStatus(ExecutionPlanStatus.COMPLETED_WITH_ERRORS.dbValue());
+        entity.setCompletedAt(Instant.now());
+        repository.save(entity);
+        log.info("[ExecutionPlanStore] completed_with_errors id={}", planId);
+    }
+
+    @Transactional
+    public void markDegradedReact(String planId, String reason) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        if (isTerminal(entity.getStatus())) {
+            return;
+        }
+        entity.setStatus(ExecutionPlanStatus.DEGRADED_REACT.dbValue());
+        entity.setRejectReason(truncate(reason, 512));
+        entity.setCompletedAt(Instant.now());
+        repository.save(entity);
+        log.info("[ExecutionPlanStore] degraded_react id={} reason={}", planId, reason);
     }
 
     @Transactional
@@ -142,8 +201,10 @@ public class ExecutionPlanStore {
     private static boolean isTerminal(String status) {
         ExecutionPlanStatus s = ExecutionPlanStatus.fromDb(status);
         return s == ExecutionPlanStatus.COMPLETED
+                || s == ExecutionPlanStatus.COMPLETED_WITH_ERRORS
                 || s == ExecutionPlanStatus.FAILED
-                || s == ExecutionPlanStatus.REJECTED;
+                || s == ExecutionPlanStatus.REJECTED
+                || s == ExecutionPlanStatus.DEGRADED_REACT;
     }
 
     private static String requireText(String value, String field) {

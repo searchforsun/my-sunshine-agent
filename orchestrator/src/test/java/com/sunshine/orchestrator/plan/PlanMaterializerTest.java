@@ -19,6 +19,8 @@ class PlanMaterializerTest {
 
     @Mock
     private PlanDisplayNameEnricher displayNameEnricher;
+    @Mock
+    private PlanAnswerPromptAssembler answerPromptAssembler;
 
     @InjectMocks
     private PlanMaterializer materializer;
@@ -35,6 +37,7 @@ class PlanMaterializerTest {
                         new PlanEdge("n1", "n2"),
                         new PlanEdge("n2", "n3")));
         when(displayNameEnricher.enrich(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(answerPromptAssembler.apply(any())).thenAnswer(inv -> inv.getArgument(0));
 
         WorkflowDefinition def = materializer.materialize(plan);
         assertThat(def.id()).isEqualTo("dyn-1");

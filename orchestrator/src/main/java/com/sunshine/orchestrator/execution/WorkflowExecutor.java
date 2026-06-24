@@ -1,7 +1,13 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.execution.retry.NodeRetryExecutor;
+import com.sunshine.orchestrator.execution.retry.NodeRetryPolicy;
+import com.sunshine.orchestrator.execution.retry.NodeRetryPolicyResolver;
+import com.sunshine.orchestrator.execution.retry.OnFailureAction;
+import com.sunshine.orchestrator.execution.retry.WorkflowRunSession;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.plan.PlanNodeAttempt;
 import com.sunshine.orchestrator.plan.PlanNodeTrace;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
@@ -12,12 +18,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Workflow DAG 线性执行引擎
@@ -31,6 +39,10 @@ public class WorkflowExecutor {
     private final NodeHandlerRegistry registry;
     private final ExecutionPlanStore executionPlanStore;
     private final WorkflowNodeLabelService labelService;
+    private final NodeRetryPolicyResolver retryPolicyResolver;
+    private final NodeRetryExecutor nodeRetryExecutor;
+    private final UpstreamOutputResolver upstreamOutputResolver;
+    private final com.sunshine.orchestrator.plan.PlanExecutionAuditService planExecutionAuditService;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         ExecutionPlan plan = ctx.plan();
@@ -44,32 +56,44 @@ public class WorkflowExecutor {
             return Flux.just(StreamToken.content(
                     "工作流「" + workflowId + "」未定义，请联系管理员。"));
         }
-        return executeDefinition(defOpt.get(), ctx);
+        return executeDefinition(defOpt.get(), ctx, new WorkflowRunSession());
     }
 
     /** 动态 Plan 物化后的 DAG 执行（plan 步由 PlanWorkflowExecutor 前置下发） */
     public Flux<StreamToken> executeDynamicDefinition(WorkflowDefinition def, ExecutionStreamContext streamCtx) {
+        return executeDynamicDefinition(def, streamCtx, new WorkflowRunSession());
+    }
+
+    public Flux<StreamToken> executeDynamicDefinition(
+            WorkflowDefinition def,
+            ExecutionStreamContext streamCtx,
+            WorkflowRunSession runSession) {
         labelService.bindRuntimeNodeLabels(def);
         WorkflowContext wfCtx = initContext(streamCtx);
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(streamCtx.userContent());
         session.bindTraceMessageId(streamCtx.assistantMsgId());
+        boolean planWorkflow = StringUtils.hasText(streamCtx.persistedPlanId());
         return Flux.fromIterable(def.linearOrder())
-                .concatMap(nodeId -> executeNode(session, def, nodeId, wfCtx, streamCtx))
+                .concatMap(nodeId -> executeNode(
+                        session, def, nodeId, wfCtx, streamCtx, runSession, planWorkflow))
                 .doFinally(signal -> labelService.clearRuntimeNodeLabels());
     }
 
-    private Flux<StreamToken> executeDefinition(WorkflowDefinition def, ExecutionStreamContext streamCtx) {
+    private Flux<StreamToken> executeDefinition(
+            WorkflowDefinition def,
+            ExecutionStreamContext streamCtx,
+            WorkflowRunSession runSession) {
         WorkflowContext wfCtx = initContext(streamCtx);
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(streamCtx.userContent());
         session.bindTraceMessageId(streamCtx.assistantMsgId());
         List<StreamToken> planTokens = WorkflowNodeTimeline.planStep(session, def);
-
         return Flux.concat(
                 Flux.fromIterable(planTokens),
                 Flux.fromIterable(def.linearOrder())
-                        .concatMap(nodeId -> executeNode(session, def, nodeId, wfCtx, streamCtx))
+                        .concatMap(nodeId -> executeNode(
+                                session, def, nodeId, wfCtx, streamCtx, runSession, false))
         );
     }
 
@@ -92,26 +116,29 @@ public class WorkflowExecutor {
             WorkflowDefinition def,
             String nodeId,
             WorkflowContext wfCtx,
-            ExecutionStreamContext streamCtx) {
-
+            ExecutionStreamContext streamCtx,
+            WorkflowRunSession runSession,
+            boolean planWorkflow) {
+        if (runSession.isAborted()) {
+            return Flux.empty();
+        }
         NodeSpec rawSpec = def.node(nodeId);
         if (rawSpec == null) {
             log.warn("[WorkflowExecutor] 节点 {} 不存在", nodeId);
             return Flux.empty();
         }
-
-        NodeSpec resolved = resolveParams(rawSpec, wfCtx);
+        NodeSpec resolved = resolveParams(rawSpec, wfCtx, def, planWorkflow);
         NodeHandler handler = registry.require(rawSpec.type());
         boolean showTimeline = WorkflowNodeLabels.isVisibleNode(rawSpec.type());
         long startedAt = System.currentTimeMillis();
-
+        NodeRetryPolicy retryPolicy = retryPolicyResolver.resolve(rawSpec, planWorkflow);
         List<StreamToken> startTokens = showTimeline
                 ? WorkflowNodeTimeline.start(session, nodeId, rawSpec.type(), rawSpec.displayName())
                 : List.of();
-
         return Flux.concat(
                 Flux.fromIterable(startTokens),
-                runNode(session, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx, showTimeline, startedAt)
+                runNode(session, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
+                        showTimeline, startedAt, retryPolicy, runSession, def)
         );
     }
 
@@ -124,14 +151,19 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             boolean showTimeline,
-            long startedAt) {
+            long startedAt,
+            NodeRetryPolicy retryPolicy,
+            WorkflowRunSession runSession,
+            WorkflowDefinition def) {
         if (handler instanceof StreamingNodeHandler streaming) {
             return executeStreamingNode(
-                    session, nodeId, rawSpec, resolved, streaming, wfCtx, streamCtx, showTimeline, startedAt);
+                    session, nodeId, rawSpec, resolved, streaming, wfCtx, streamCtx,
+                    showTimeline, startedAt, retryPolicy, runSession, def);
         }
-        return handler.run(resolved, wfCtx, streamCtx)
-                .flatMapMany(result -> finalizeNode(
-                        session, nodeId, rawSpec, result, wfCtx, streamCtx, showTimeline, startedAt));
+        return nodeRetryExecutor.runWithRetry(retryPolicy, () -> handler.run(resolved, wfCtx, streamCtx))
+                .flatMapMany(outcome -> finalizeNode(
+                        session, nodeId, rawSpec, outcome.result(), wfCtx, streamCtx,
+                        showTimeline, startedAt, retryPolicy, outcome.attempts(), runSession));
     }
 
     private Flux<StreamToken> executeStreamingNode(
@@ -143,16 +175,84 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             boolean showTimeline,
-            long startedAt) {
+            long startedAt,
+            NodeRetryPolicy retryPolicy,
+            WorkflowRunSession runSession,
+            WorkflowDefinition def) {
+        return streamingAttempt(
+                session, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
+                showTimeline, startedAt, retryPolicy, runSession, def, 1, new ArrayList<>());
+    }
+
+    private Flux<StreamToken> streamingAttempt(
+            ProcessingTimelineSession session,
+            String nodeId,
+            NodeSpec rawSpec,
+            NodeSpec resolved,
+            StreamingNodeHandler handler,
+            WorkflowContext wfCtx,
+            ExecutionStreamContext streamCtx,
+            boolean showTimeline,
+            long startedAt,
+            NodeRetryPolicy retryPolicy,
+            WorkflowRunSession runSession,
+            WorkflowDefinition def,
+            int attemptNo,
+            List<NodeRetryExecutor.PlanNodeAttemptRecord> attempts) {
+        long attemptStarted = System.currentTimeMillis();
         WorkflowStreamCollector collector = new WorkflowStreamCollector();
         return handler.streamTokens(resolved, wfCtx, streamCtx, nodeId)
                 .doOnNext(collector::accept)
-                .concatWith(Flux.defer(() -> finalizeNode(
-                        session, nodeId, rawSpec, handler.buildResult(collector),
-                        wfCtx, streamCtx, showTimeline, startedAt)))
-                .onErrorResume(e -> finalizeNode(
-                        session, nodeId, rawSpec, NodeResult.fail(e.getMessage()),
-                        wfCtx, streamCtx, showTimeline, startedAt));
+                .concatWith(Flux.defer(() -> {
+                    NodeResult result = handler.buildResult(collector);
+                    long attemptEnded = System.currentTimeMillis();
+                    if (result.success()) {
+                        attempts.add(new NodeRetryExecutor.PlanNodeAttemptRecord(
+                                attemptNo, "completed", null, "完成", attemptStarted, attemptEnded));
+                        return finalizeNode(session, nodeId, rawSpec, result, wfCtx, streamCtx,
+                                showTimeline, startedAt, retryPolicy, attempts, runSession);
+                    }
+                    String err = result.safeOutputs().getOrDefault("error", "节点执行失败");
+                    attempts.add(new NodeRetryExecutor.PlanNodeAttemptRecord(
+                            attemptNo, "failed", null, "失败: " + err, attemptStarted, attemptEnded));
+                    if (attemptNo < retryPolicy.maxAttempts() && isStreamRetryable(err, retryPolicy)) {
+                        long delay = retryPolicy.backoffForAttempt(attemptNo + 1);
+                        Flux<StreamToken> next = streamingAttempt(
+                                session, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
+                                showTimeline, startedAt, retryPolicy, runSession, def, attemptNo + 1, attempts);
+                        return delay > 0
+                                ? Mono.delay(java.time.Duration.ofMillis(delay)).thenMany(next)
+                                : next;
+                    }
+                    return finalizeNode(session, nodeId, rawSpec, result, wfCtx, streamCtx,
+                            showTimeline, startedAt, retryPolicy, attempts, runSession);
+                }))
+                .onErrorResume(Throwable.class, e -> {
+                    long attemptEnded = System.currentTimeMillis();
+                    String err = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    attempts.add(new NodeRetryExecutor.PlanNodeAttemptRecord(
+                            attemptNo, "failed", null, "失败: " + err, attemptStarted, attemptEnded));
+                    if (attemptNo < retryPolicy.maxAttempts() && isStreamRetryable(err, retryPolicy)) {
+                        long delay = retryPolicy.backoffForAttempt(attemptNo + 1);
+                        Flux<StreamToken> next = streamingAttempt(
+                                session, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
+                                showTimeline, startedAt, retryPolicy, runSession, def, attemptNo + 1, attempts);
+                        return delay > 0
+                                ? Mono.delay(java.time.Duration.ofMillis(delay)).thenMany(next)
+                                : next;
+                    }
+                    return finalizeNode(session, nodeId, rawSpec, NodeResult.fail(err), wfCtx, streamCtx,
+                            showTimeline, startedAt, retryPolicy, attempts, runSession);
+                });
+    }
+
+    private static boolean isStreamRetryable(String err, NodeRetryPolicy policy) {
+        if (policy.maxAttempts() <= 1) {
+            return false;
+        }
+        String lower = err != null ? err.toLowerCase() : "";
+        return lower.contains("timeout") || lower.contains("超时")
+                || lower.contains("503") || lower.contains("502") || lower.contains("不可用");
     }
 
     private Flux<StreamToken> finalizeNode(
@@ -163,27 +263,38 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             boolean showTimeline,
-            long startedAt) {
+            long startedAt,
+            NodeRetryPolicy retryPolicy,
+            List<NodeRetryExecutor.PlanNodeAttemptRecord> attemptRecords,
+            WorkflowRunSession runSession) {
         long endedAt = System.currentTimeMillis();
+        int attemptCount = attemptRecords != null ? attemptRecords.size() : 1;
+        List<PlanNodeAttempt> attempts = toPlanAttempts(attemptRecords);
         if (!result.success()) {
             String err = result.safeOutputs().getOrDefault("error", "节点执行失败");
+            String summary = formatFailureSummary(err, attemptCount);
+            runSession.noteNodeFailure(nodeId);
+            wfCtx.putNodeFailure(nodeId, err, attemptCount);
             recordNodeTrace(streamCtx, nodeId, rawSpec.type(), "failed",
-                    "失败: " + err, null, startedAt, endedAt);
+                    summary, null, startedAt, endedAt, attemptCount, retryPolicy.onFailure(), attempts);
+            applyOnFailure(retryPolicy.onFailure(), nodeId, err, wfCtx, runSession);
             if (showTimeline) {
-                List<StreamToken> failComplete = WorkflowNodeTimeline.complete(
-                        session, nodeId, rawSpec.type(),
-                        "失败: " + err, startedAt, endedAt);
-                return Flux.fromIterable(failComplete);
+                return Flux.fromIterable(WorkflowNodeTimeline.complete(
+                        session, nodeId, rawSpec.type(), summary, startedAt, endedAt));
             }
             return Flux.empty();
         }
         wfCtx.putNode(nodeId, result.safeOutputs());
+        runSession.noteNodeSuccess(nodeId, result.safeOutputs());
         Map<String, String> outs = result.safeOutputs();
         String summaryLine = resolveNodeDetail(rawSpec, outs);
+        if (attemptCount > 1) {
+            summaryLine = summaryLine + "（第 " + attemptCount + " 次尝试成功）";
+        }
         String expandDetail = resolveExpandDetail(
                 rawSpec, outs, summaryLine, streamCtx.assistantMsgId());
         recordNodeTrace(streamCtx, nodeId, rawSpec.type(), "completed",
-                summaryLine, expandDetail, startedAt, endedAt);
+                summaryLine, expandDetail, startedAt, endedAt, attemptCount, retryPolicy.onFailure(), attempts);
         if (showTimeline && isStreamingOutputNode(rawSpec.type())) {
             String answer = outs.getOrDefault("answer", outs.get("output"));
             if (StringUtils.hasText(answer)) {
@@ -199,8 +310,45 @@ public class WorkflowExecutor {
         return Flux.fromIterable(all);
     }
 
+    private static void applyOnFailure(
+            OnFailureAction action,
+            String nodeId,
+            String err,
+            WorkflowContext wfCtx,
+            WorkflowRunSession runSession) {
+        switch (action) {
+            case SKIP -> {
+                Map<String, String> placeholder = new LinkedHashMap<>();
+                placeholder.put("output", "");
+                placeholder.put("degraded", "true");
+                wfCtx.putNode(nodeId, placeholder);
+            }
+            case FAIL_FAST -> runSession.abort(OnFailureAction.FAIL_FAST, "节点 " + nodeId + " 失败: " + err);
+            case FALLBACK_REACT -> runSession.abort(OnFailureAction.FALLBACK_REACT, "节点 " + nodeId + " 失败: " + err);
+            default -> { }
+        }
+    }
+
+    private static String formatFailureSummary(String err, int attemptCount) {
+        String base = "失败: " + err;
+        if (attemptCount > 1) {
+            return base + "（已重试 " + attemptCount + " 次）";
+        }
+        return base;
+    }
+
+    private static List<PlanNodeAttempt> toPlanAttempts(List<NodeRetryExecutor.PlanNodeAttemptRecord> records) {
+        if (records == null || records.isEmpty()) {
+            return List.of();
+        }
+        return records.stream()
+                .map(r -> new PlanNodeAttempt(
+                        r.attemptNo(), r.status(), r.errorClass(), r.summary(),
+                        r.startedAt(), r.endedAt()))
+                .collect(Collectors.toList());
+    }
+
     private static String resolveNodeDetail(NodeSpec spec, Map<String, String> outputs) {
-        // answer/llm 主行 after 仅用节点 displayName，模型正文走 reasoning/result
         if ("llm".equals(spec.type()) || "answer".equals(spec.type())) {
             return nodeDisplayName(spec) + "完成";
         }
@@ -221,7 +369,6 @@ public class WorkflowExecutor {
         return nodeDisplayName(spec) + "完成";
     }
 
-    /** 优先 NodeSpec.displayName，避免 Reactor 切线程后 ThreadLocal 标签丢失 */
     private static String nodeDisplayName(NodeSpec spec) {
         if (StringUtils.hasText(spec.displayName())) {
             return spec.displayName().strip();
@@ -229,7 +376,6 @@ public class WorkflowExecutor {
         return WorkflowNodeLabels.displayName(spec.id(), spec.type());
     }
 
-    /** agent 节点：展开区下发完整 answer，主行 after 由 AgentNodeDetailSummarizer 提供 */
     private static String resolveExpandDetail(
             NodeSpec spec, Map<String, String> outputs, String summaryLine, String traceMessageId) {
         if ("rag".equals(spec.type())) {
@@ -277,11 +423,16 @@ public class WorkflowExecutor {
         return "answer".equals(type) || "llm".equals(type);
     }
 
-    private static NodeSpec resolveParams(NodeSpec spec, WorkflowContext ctx) {
+    private NodeSpec resolveParams(NodeSpec spec, WorkflowContext ctx, WorkflowDefinition def, boolean planWorkflow) {
         Map<String, String> resolved = new LinkedHashMap<>();
         if (spec.params() != null) {
-            spec.params().forEach((k, v) ->
-                    resolved.put(k, TemplateResolver.resolve(v, ctx)));
+            spec.params().forEach((k, v) -> {
+                if (planWorkflow && "prompt".equals(k)) {
+                    resolved.put(k, upstreamOutputResolver.resolvePrompt(v, ctx, def));
+                } else {
+                    resolved.put(k, TemplateResolver.resolve(v, ctx));
+                }
+            });
         }
         return new NodeSpec(spec.id(), spec.type(), resolved, spec.displayName());
     }
@@ -294,14 +445,26 @@ public class WorkflowExecutor {
             String summary,
             String detail,
             long startedAt,
-            long endedAt) {
+            long endedAt,
+            int attemptCount,
+            OnFailureAction onFailure,
+            List<PlanNodeAttempt> attempts) {
         String planId = streamCtx.persistedPlanId();
         if (planId == null || planId.isBlank()) {
             return;
         }
         try {
-            executionPlanStore.appendNodeTrace(planId, new PlanNodeTrace(
-                    nodeId, type, status, summary, detail, startedAt, endedAt));
+            executionPlanStore.upsertNodeTrace(planId, new PlanNodeTrace(
+                    nodeId, type, status, summary, detail, startedAt, endedAt,
+                    attemptCount, onFailure.name(), attempts));
+            if (attempts != null) {
+                for (PlanNodeAttempt attempt : attempts) {
+                    planExecutionAuditService.nodeAttempt(
+                            streamCtx.conversationId(), streamCtx.assistantMsgId(),
+                            streamCtx.userId(), streamCtx.tenantId(),
+                            planId, nodeId, attempt, attemptCount);
+                }
+            }
         } catch (Exception e) {
             log.warn("[WorkflowExecutor] 写入 execution_trace 失败 planId={} node={}: {}",
                     planId, nodeId, e.getMessage());

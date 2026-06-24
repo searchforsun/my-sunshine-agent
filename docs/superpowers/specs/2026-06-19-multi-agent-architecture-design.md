@@ -1,6 +1,6 @@
 # 多 Agent 架构与主子 Agent 设计方案
 
-> **⚠️ 任务卡已并入** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.10**；实施计划 [plans/2026-06-19-multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md)（3.9.x / 3.10.x）。阶段四见 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.7**。下文为历史详设。
+> **⚠️ 任务卡已并入** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.10**；实施计划 [plans/2026-06-19-multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md)（3.9.x / 3.10.x）。**第五模式 `PEER_COLLAB`** 见 [2026-06-24-peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) · 阶段四 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.7.3**。下文为历史详设。
 
 > **日期**：2026-06-19（**2026-06-23** 对齐 3.10.1–3.10.7、3.11.1–3.11.6、3.12.1/1a；**`/skills` UI** 见 [skills-management-ui-design.md](./skills-management-ui-design.md)）  
 > **状态**：历史详设；**实现目标 SSOT** 见 [plans/2026-06-19-multi-agent-architecture.md §子 Agent 实现目标](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)  
@@ -33,7 +33,8 @@
 | 无 `@` / 强提示绑定 | 用户无法显式指定 skill | 3.11.7 |
 | 主 ReAct 未贯通 skillId | 流程 1–3 未落地 | 3.10.4 + 3.11.7 |
 | 仅 **1 层** 主子关系 | 子 Agent 不能再委派下级 Agent | 阶段四 |
-| 无 **Coordinator** / **多子并行** / MsgHub | L2/L4 未开始 | 阶段三末 / 四 |
+| 无 **Coordinator** / **多子并行** | L2/L4 未开始 | 阶段四 **4.7.1–4.7.2** |
+| 无 **`PEER_COLLAB` 第五模式** | 对等协商 / 交叉验证不可路由 | 阶段四 **4.7.3** · [peer-collab spec](./2026-06-24-peer-collab-routing-design.md) |
 | 子 Agent 详情不可展开 | 前端只见 `summary.after` 一行 | 4.7.4 |
 
 ---
@@ -91,11 +92,11 @@ flowchart TB
 | **L1** | 静态 Workflow + 单子 Agent 节点 | `finance-smart`：tool → agent → llm | ✅ |
 | **L2** | 主 Coordinator + 多子 Agent（串行） | 主 Agent 按步骤委派不同 skill 子 Agent | ⬜ 阶段三 |
 | **L3** | Planner + 动态 DAG + 多 agent 节点 | Planner 产出 Plan，引擎调度多个子 Agent | ⬜ 阶段三 |
-| **L4** | 并行子 Agent + MsgHub 协商 | 多子并行汇总；极少数场景 MsgHub Peer 讨论 | ⬜ 阶段四 |
+| **L4** | 并行子 Agent + **`PEER_COLLAB` 第五模式**（受控 MsgHub） | 多子并行汇总；对等协商 / 交叉验证 | ⬜ 阶段四 · [peer-collab spec](./2026-06-24-peer-collab-routing-design.md) · **D10** |
 
 **推荐路径**：L1（已有）→ **L3**（动态 DAG + Skills，性价比最高）→ L2（顶层 Coordinator react）→ L4（按需）。
 
-> 跳过「纯 MsgHub 对话式多 Agent」作为默认路径 — 难审计、难回放、与 Timeline V2 理念冲突。MsgHub 仅作为 L4 可选补充。
+> 跳过「纯 MsgHub 对话式多 Agent」作为**默认路径** — 难审计、难回放、与 Timeline V2 理念冲突。阶段四 **D10** 将受控 MsgHub 收敛为第五顶层模式 `peer-collab`（[详设](./2026-06-24-peer-collab-routing-design.md)），仅作 L4 窄场景补充。
 
 ---
 
@@ -213,7 +214,9 @@ delegate_to_skill(skillId, query, context) → 内部触发 Sub Agent run
 
 **与 advanced-capabilities 动态 DAG 方案合并**，Planner 输出必须含 `type: agent` 节点及 `skillId`。
 
-### 5.4 模式 D：MsgHub Peer 协商（阶段四，慎用）
+### 5.4 模式 D：`PEER_COLLAB` 对等协商（阶段四 · 第五顶层模式）
+
+> **SSOT**：[2026-06-24-peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) · **锁定** [D10](./2026-06-19-locked-architecture-decisions.md#d10-第五顶层模式--peer_collab阶段四) · 任务 **4.7.3**
 
 ```
 AgentScope MsgHub: [角色A 制度专家] [角色B 财务专家] [角色C 仲裁]
@@ -338,7 +341,7 @@ AgentScope MsgHub: [角色A 制度专家] [角色B 财务专家] [角色C 仲裁
 | M8 | `DelegateSkillTool`（模式 B，react 委派） | orchestrator |
 | M9 | 前端子 Agent 展开 UI + sub-runs API | sunshine-ui + orchestrator |
 | M10 | `ParallelAgentNodeHandler`：多子 Agent fan-out/join | orchestrator |
-| M11 | MsgHub Peer 模式（模式 D）+ transcript 审计 | orchestrator |
+| M11 | **`PEER_COLLAB` 第五模式**（原 MsgHub Peer）+ transcript 审计 | orchestrator · [peer-collab spec](./2026-06-24-peer-collab-routing-design.md) |
 | M12 | 子 Agent 嵌套（子调子）— 默认禁止，仅 audit 特批 | — |
 
 ---
@@ -376,13 +379,13 @@ flowchart LR
 | Workflow 单子 Agent（L1） | ★★★★ | ★★★★ | ★★★ | 财务智能分析（现状） |
 | 主 Coordinator + delegate（L2） | ★★★ | ★★★ | ★★★★ | react 增强，谨慎启用 |
 | **Planner + 动态 DAG 多子（L3）** | ★★★★★ | ★★★★★ | ★★★★ | **企业复杂任务主轴** |
-| MsgHub Peer（L4） | ★★ | ★★ | ★★★★★ | 头脑风暴、策略研讨 |
+| MsgHub Peer / **`PEER_COLLAB`（L4）** | ★★ | ★★ | ★★★★★ | 交叉验证、头脑风暴、策略研讨 · 阶段四 [peer-collab spec](./2026-06-24-peer-collab-routing-design.md) |
 
 **最终推荐**：
 
 1. **短期**：增强 L1（`AgentNodeHandler` + Skill + 工具子集 + 审计）
 2. **中期**：以 **L3** 为企业多 Agent 主轴（Planner 产出 DAG，引擎调度多子 Agent）
-3. **长期**：L4 MsgHub 仅作补充；L2 delegate 作为 react 可选能力
+3. **长期**：L4 **`PEER_COLLAB`（第五模式）** 仅作补充（4.7.3）；L2 delegate 作为 react 可选能力（4.7.1）
 
 ---
 

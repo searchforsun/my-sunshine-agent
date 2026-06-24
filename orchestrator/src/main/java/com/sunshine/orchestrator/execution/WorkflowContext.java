@@ -10,6 +10,7 @@ import java.util.Map;
 public class WorkflowContext {
 
     private final Map<String, Map<String, String>> nodes = new LinkedHashMap<>();
+    private final Map<String, NodeFailureInfo> failures = new LinkedHashMap<>();
 
     public void putNode(String nodeId, Map<String, String> outputs) {
         if (nodeId == null || outputs == null) {
@@ -32,6 +33,17 @@ public class WorkflowContext {
         return nodes.entrySet();
     }
 
+    public void putNodeFailure(String nodeId, String error, int attemptCount) {
+        if (nodeId == null) {
+            return;
+        }
+        failures.put(nodeId, new NodeFailureInfo(error, attemptCount));
+    }
+
+    public NodeFailureInfo nodeFailure(String nodeId) {
+        return failures.get(nodeId);
+    }
+
     /** 解析 plan.params.xxx 或 nodeId.field */
     public String resolvePath(String path) {
         if (path == null || path.isBlank()) {
@@ -48,5 +60,8 @@ public class WorkflowContext {
             return node("plan").getOrDefault(paramKey, "");
         }
         return node(nodeId).getOrDefault(field, "");
+    }
+
+    public record NodeFailureInfo(String error, int attemptCount) {
     }
 }

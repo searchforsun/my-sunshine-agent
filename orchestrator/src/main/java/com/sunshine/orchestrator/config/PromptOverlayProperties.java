@@ -27,4 +27,10 @@ public class PromptOverlayProperties {
 
     /** 作答边界 — 注入在 memory 层之后、当前提问之前 */
     private String scopePrompt = "";
+
+    /** 动态 Plan answer 节点 prompt 模板（占位符 {{start.userQuery}} / {{plan.upstream}}） */
+    private String answerTemplate = "";
+
+    /** 终态 answer 节点叠加（拼在 nodePrompt 前；reasoning 由引擎丢弃） */
+    private String answerOverlay = "";
 }

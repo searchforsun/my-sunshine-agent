@@ -27,8 +27,28 @@ public class ReactExecutor {
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
         String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
+        return executeWithInjected(ctx, List.of(), query, skillId);
+    }
+
+    /** plan-workflow 降级 ReAct — 注入已成功节点上下文 */
+    public Flux<StreamToken> executeWithInjected(ExecutionStreamContext ctx, List<String> injectedBlocks) {
+        Map<String, String> params = ctx.plan() != null && ctx.plan().params() != null
+                ? ctx.plan().params() : Map.of();
+        String query = StringUtils.hasText(params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY))
+                ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
+                : ctx.userContent();
+        String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
+        return executeWithInjected(ctx, injectedBlocks, query, skillId);
+    }
+
+    private Flux<StreamToken> executeWithInjected(
+            ExecutionStreamContext ctx,
+            List<String> injectedBlocks,
+            String query,
+            String skillId) {
         return agentRuntime.run(AgentRunRequest.main(
-                        ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(), List.of(), skillId))
+                        ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
+                        injectedBlocks != null ? injectedBlocks : List.of(), skillId))
                 .transform(StreamDeltaNormalizer::normalizeTokens);
     }
 

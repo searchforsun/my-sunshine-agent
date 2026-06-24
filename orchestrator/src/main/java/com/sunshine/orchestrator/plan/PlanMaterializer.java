@@ -14,16 +14,18 @@ import java.util.List;
 public class PlanMaterializer {
 
     private final PlanDisplayNameEnricher displayNameEnricher;
+    private final PlanAnswerPromptAssembler answerPromptAssembler;
 
     public WorkflowDefinition materialize(PlanJson plan) {
         PlanJson enriched = displayNameEnricher.enrich(plan);
-        List<String> linearOrder = PlanLinearizer.linearOrder(enriched).stream()
+        PlanJson ready = answerPromptAssembler.apply(enriched);
+        List<String> linearOrder = PlanLinearizer.linearOrder(ready).stream()
                 .filter(id -> {
-                    PlanNode node = enriched.nodesById().get(id);
+                    PlanNode node = ready.nodesById().get(id);
                     return node != null && !"start".equals(node.type());
                 })
                 .toList();
-        List<NodeSpec> specs = enriched.nodes().stream()
+        List<NodeSpec> specs = ready.nodes().stream()
                 .filter(n -> !"start".equals(n.type()))
                 .map(n -> new NodeSpec(
                         n.id(),
@@ -31,7 +33,7 @@ public class PlanMaterializer {
                         n.params(),
                         StringUtils.hasText(n.displayName()) ? n.displayName() : null))
                 .toList();
-        String id = StringUtils.hasText(enriched.planId()) ? enriched.planId() : "dynamic-plan";
+        String id = StringUtils.hasText(ready.planId()) ? ready.planId() : "dynamic-plan";
         return WorkflowDefinition.from(id, specs, linearOrder);
     }
 }
