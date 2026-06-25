@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.skill.SkillBindingSource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
@@ -34,7 +35,9 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
         if (!ctx.allowsSkillBinding()) {
             return Mono.just(Optional.empty());
         }
-        SkillBindingOutcome binding = skillBindingParser.parse(ctx.userMessage());
+        SkillBindingOutcome binding = StringUtils.hasText(ctx.clientSkillId())
+                ? skillBindingParser.parse(ctx.userMessage(), ctx.clientSkillId())
+                : skillBindingParser.parse(ctx.userMessage());
         if (binding.unknown()) {
             return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "未找到 Skill「" + binding.unknownToken() + "」，请检查 /skills 列表或使用 @skillId"));
@@ -45,9 +48,11 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
         Map<String, String> params = new LinkedHashMap<>();
         params.put(SkillBindingOutcome.PARAM_SKILL, binding.skillId());
         params.put(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY, binding.effectiveQuery());
-        String reason = binding.source() == SkillBindingSource.AT_MENTION
-                ? "skill:@mention"
-                : "skill:hint";
+        String reason = switch (binding.source()) {
+            case AT_MENTION -> "skill:@mention";
+            case HINT_PATTERN -> "skill:hint";
+            case CLIENT -> "skill:client";
+        };
         if (structuralPlanMatcher.looksLikeMultiStepPlan(binding.effectiveQuery())) {
             params.put(SkillBindingOutcome.PARAM_PLANNER_MODE, SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
             return Mono.just(Optional.of(new ExecutionPlan(

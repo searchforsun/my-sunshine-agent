@@ -85,6 +85,7 @@
   --sun-line: 1.5;
   --sun-line-relaxed: 1.65;
   --sun-line-loose: 1.75;
+  --sun-font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
 }
 
 * {
@@ -475,4 +476,83 @@ html.theme-switching *::after {
 
 .chat-meta-body {
   padding: 0 0 0 4px;
+}
+
+/* Chat @skill chip — 气泡与输入框共用 */
+.skill-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(100%, 240px);
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 5px;
+  background: var(--sun-surface);
+  border: 1px solid var(--sun-border);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  user-select: none;
+  vertical-align: -0.12em;
+  margin: 0 1px;
+}
+
+.skill-mention-chip__at {
+  color: var(--sun-text-muted);
+  font-family: var(--sun-font-mono);
+  font-size: var(--sun-font-base);
+  font-weight: 500;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+.skill-mention-chip__label {
+  font-family: var(--sun-font-mono);
+  font-size: var(--sun-font-base);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  color: var(--sun-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 输入框 contenteditable — chip 与正文同一行高/基线 */
+.composer-editor .skill-mention-chip {
+  display: inline;
+  height: auto;
+  max-width: none;
+  padding: 0 5px;
+  margin: 0 1px;
+  line-height: inherit;
+  vertical-align: baseline;
+  border-radius: 4px;
+}
+
+.composer-editor .skill-mention-chip__at,
+.composer-editor .skill-mention-chip__label {
+  display: inline;
+  font-size: 0.94em;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
+/* 已发送 user 气泡 — 与输入框一致，chip 与正文同行/同基线 */
+.user-message-content .skill-mention-chip {
+  display: inline;
+  height: auto;
+  max-width: none;
+  padding: 0 5px;
+  margin: 0 1px;
+  line-height: inherit;
+  vertical-align: baseline;
+  border-radius: 4px;
+}
+
+.user-message-content .skill-mention-chip__at,
+.user-message-content .skill-mention-chip__label {
+  display: inline;
+  font-size: 0.94em;
+  line-height: inherit;
+  vertical-align: baseline;
 }

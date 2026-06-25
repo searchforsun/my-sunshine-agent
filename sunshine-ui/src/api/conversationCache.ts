@@ -89,6 +89,7 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       reasoning: a.reasoning?.trim() ? a.reasoning : c.reasoning,
       steps: a.steps?.length ? a.steps : c.steps,
       status: a.status ?? c.status,
+      executionPreference: a.executionPreference ?? c.executionPreference,
     })
     if (a.id) byId.delete(a.id)
   }

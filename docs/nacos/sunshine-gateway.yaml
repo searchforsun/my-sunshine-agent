@@ -41,15 +41,36 @@ spring:
           uri: lb://sunshine-llm-gateway
           predicates:
             - Path=/v1/**
+    sentinel:
+      transport:
+        dashboard: ecs4c16g:8858
+        port: 8720
+        # Dashboard 与 Gateway 跨机时设为 Dashboard 可达 IP（见 docs/sentinel/README.md）
+        client-ip: ${SENTINEL_CLIENT_IP:}
+      eager: true
+      datasource:
+        gw-flow:
+          nacos:
+            server-addr: ecs4c16g:8848
+            username: nacos
+            password: nacos
+            data-id: sunshine-gateway-gw-flow-rules.json
+            group-id: DEFAULT_GROUP
+            rule-type: gw-flow
+      scg:
+        # 晚于 UserIdInjectGatewayFilter(HIGHEST_PRECEDENCE+10)，确保 x-tenant-id 已注入
+        order: -100
   data:
     redis:
       host: ecs4c16g
       port: 6379
       password: redis123
       database: 1
-  sentinel:
-    transport:
-      dashboard: ecs4c16g:8858
+
+sunshine:
+  gateway:
+    tenant-qps:
+      enabled: true
 
 sa-token:
   token-name: Authorization

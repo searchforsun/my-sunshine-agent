@@ -2,6 +2,7 @@ package com.sunshine.gateway.filter;
 
 import cn.dev33.satoken.reactor.context.SaReactorSyncHolder;
 import cn.dev33.satoken.stp.StpUtil;
+import com.sunshine.gateway.tenant.TenantIdResolver;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -21,23 +22,22 @@ public class UserIdInjectGatewayFilter implements GlobalFilter, Ordered {
         }
         SaReactorSyncHolder.setContext(exchange);
         return Mono.defer(() -> {
-            if (!StpUtil.isLogin()) {
-                return chain.filter(exchange);
-            }
-            ServerHttpRequest request = exchange.getRequest().mutate()
-                    .headers(headers -> {
-                        headers.remove("x-user-id");
-                        headers.remove("x-user-name");
-                        headers.remove("x-tenant-id");
-                        headers.set("x-user-id", StpUtil.getLoginIdAsString());
-                        Object nickname = StpUtil.getExtra("nickname");
-                        if (nickname != null && !String.valueOf(nickname).isBlank()) {
-                            headers.set("x-user-name", String.valueOf(nickname).trim());
-                        }
-                        headers.set("x-tenant-id", resolveTenantId());
-                    })
-                    .build();
-            return chain.filter(exchange.mutate().request(request).build());
+            boolean loggedIn = StpUtil.isLogin();
+            ServerHttpRequest.Builder builder = exchange.getRequest().mutate();
+            builder.headers(headers -> {
+                headers.remove("x-user-id");
+                headers.remove("x-user-name");
+                headers.remove("x-tenant-id");
+                headers.set("x-tenant-id", TenantIdResolver.forRateLimit(loggedIn));
+                if (loggedIn) {
+                    headers.set("x-user-id", StpUtil.getLoginIdAsString());
+                    Object nickname = StpUtil.getExtra("nickname");
+                    if (nickname != null && !String.valueOf(nickname).isBlank()) {
+                        headers.set("x-user-name", String.valueOf(nickname).trim());
+                    }
+                }
+            });
+            return chain.filter(exchange.mutate().request(builder.build()).build());
         }).doFinally(signal -> SaReactorSyncHolder.clearContext());
     }
 
@@ -49,17 +49,9 @@ public class UserIdInjectGatewayFilter implements GlobalFilter, Ordered {
         return "/api/auth/login".equals(path) || "/api/auth/register".equals(path);
     }
 
-    /** 从 JWT extra 解析租户，禁止信任客户端 header */
-    static String resolveTenantId() {
-        Object tenantId = StpUtil.getExtra("tenantId");
-        if (tenantId != null && !String.valueOf(tenantId).isBlank()) {
-            return String.valueOf(tenantId).strip();
-        }
-        return "default";
-    }
-
     @Override
     public int getOrder() {
-        return Ordered.HIGHEST_PRECEDENCE + 100;
+        // 早于 Sentinel SCG 过滤器注入 x-tenant-id，供热点参数分桶
+        return Ordered.HIGHEST_PRECEDENCE + 10;
     }
 }

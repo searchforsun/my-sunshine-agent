@@ -432,6 +432,8 @@ services:
     image: prom/prometheus:v2.51.2
     container_name: smt-prometheus
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -441,6 +443,7 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alerts:/etc/prometheus/alerts
       - prometheus-data:/prometheus
     networks:
       - smt-net

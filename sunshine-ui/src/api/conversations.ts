@@ -25,6 +25,7 @@ export interface ConversationMessage {
   seq?: number
   createdAt?: string
   executionPlanId?: string
+  executionPreference?: ExecutionPreference
 }
 
 export interface ConversationDetail extends ConversationSummary {
@@ -94,6 +95,7 @@ function mapDetail(raw: Record<string, unknown>): ConversationDetail {
     seq: m.seq as number | undefined,
     createdAt: m.createdAt as string | undefined,
     executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
+    executionPreference: isExecutionPreference(m.executionPreference) ? m.executionPreference : undefined,
   }))
   return { ...mapSummary(raw), messages }
 }

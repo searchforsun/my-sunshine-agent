@@ -70,7 +70,32 @@ Nacos `sunshine-rag.yaml`：`management.endpoints.web.exposure.include: health,i
 
 ---
 
-## 服务器 Grafana（可选，Task 3.5）
+## 服务器 Grafana（Task 3.5.1 / 3.5.2）
+
+**仓库已提供 Docker 一键配置**（`docker/prometheus/` + `docker/grafana/provisioning/`）。
+
+### 部署（ecs4c16g 与 rag-service 同机）
+
+```bash
+cd docker
+docker compose up -d prometheus grafana
+
+# 更新配置后热重载
+python ../scripts/observability_reload.py
+```
+
+- Prometheus：`http://ecs4c16g:9090` — 抓取 `host.docker.internal:8400/actuator/prometheus`
+- Grafana：`http://ecs4c16g:3000`（`admin` / `admin123`）— 自动导入 **Sunshine RAG 检索** 面板
+- 告警规则：`docker/prometheus/alerts/rag-alerts.yml`（4 条，Prometheus Rules 页可见）
+
+### Live 验收
+
+```bash
+# rag-service 需在 :8400 运行
+python scripts/verify_grafana_rag_live.py --rag-url http://ecs4c16g:8400
+```
+
+### 手工 Prometheus 片段（非 Docker 场景）
 
 仅当 **rag-service 与 Prometheus 同机（ecs4c16g）** 时再配置抓取：
 

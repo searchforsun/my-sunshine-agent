@@ -7,8 +7,8 @@ import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPreference;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.ExecutionPlanRouter;
-import com.sunshine.orchestrator.routing.ForcedExecutionRouter;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
+import com.sunshine.orchestrator.skill.SkillBindingParser;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.agent.StepEventBridge;
@@ -71,7 +71,7 @@ import java.util.stream.Collectors;
 public class ChatController {
 
     private final ExecutionPlanRouter executionPlanRouter;
-    private final ForcedExecutionRouter forcedExecutionRouter;
+    private final SkillBindingParser skillBindingParser;
     private final ExecutionDispatcher executionDispatcher;
     private final ExecutionPlanParser executionPlanParser;
     private final com.sunshine.orchestrator.execution.SimpleLlmExecutor simpleLlmExecutor;
@@ -108,14 +108,8 @@ public class ChatController {
 
         validateRequest(msg);
         if (!StringUtils.hasText(msg.getResumeMessageId())) {
-            ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
-            if (preference.isForced()) {
-                forcedExecutionRouter.validatePreference(msg.getContent(), preference);
-            }
-        }
-        if (!StringUtils.hasText(msg.getResumeMessageId())) {
-            log.info("[Orchestrator] chat pref={} workflowId={} conv={}",
-                    msg.getExecutionPreference(), msg.getWorkflowId(), msg.getConversationId());
+            log.info("[Orchestrator] chat pref={} workflowId={} skillId={} conv={}",
+                    msg.getExecutionPreference(), msg.getWorkflowId(), msg.getSkillId(), msg.getConversationId());
         }
 
         if (StringUtils.hasText(msg.getResumeMessageId())) {
@@ -346,27 +340,33 @@ public class ChatController {
                 .map(m -> new ChatTurn(m.getRole(), m.getContent()))
                 .collect(Collectors.toList());
 
+        ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
         conversationService.appendMessage(conv.getId(), "user",
-                desensitizeClient.scrub(msg.getContent()), MessageStatus.COMPLETED);
+                desensitizeClient.scrub(msg.getContent()), MessageStatus.COMPLETED, preference.wireValue());
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "", MessageStatus.STREAMING);
-        ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
         conversationService.updateExecutionPreference(
                 conv.getId(), userId, tenantId, preference.wireValue());
         String userContent = desensitizeClient.scrub(msg.getContent());
+        String executionQuery = userContent;
+        if (preference.isForced() && !preference.allowsSkillBinding()) {
+            executionQuery = skillBindingParser.stripAtMention(userContent);
+        } else if (StringUtils.hasText(msg.getSkillId())) {
+            executionQuery = skillBindingParser.stripSkillMentions(userContent);
+        }
         MemoryContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
-                userId, tenantId, conv.getId(), loadedHistory, userContent));
+                userId, tenantId, conv.getId(), loadedHistory, executionQuery));
         if (!loadedHistory.isEmpty() && !memory.hasAnyLayer()) {
             log.debug("[Orchestrator] 记忆块为空 loaded={} user={}",
                     loadedHistory.size(),
-                    userContent.length() > 40 ? userContent.substring(0, 40) + "..." : userContent);
+                    executionQuery.length() > 40 ? executionQuery.substring(0, 40) + "..." : executionQuery);
         }
 
         return new StreamContext(
                 conv.getId(),
                 assistant.getId(),
                 conv.getTitle(),
-                userContent,
+                executionQuery,
                 memory,
                 "",
                 "",
@@ -376,7 +376,8 @@ public class ChatController {
                 userId,
                 tenantId,
                 preference,
-                msg.getWorkflowId()
+                msg.getWorkflowId(),
+                msg.getSkillId()
         );
     }
 
@@ -424,6 +425,7 @@ public class ChatController {
                 userId,
                 tenantId,
                 ExecutionPreference.AUTO,
+                null,
                 null
         );
     }
@@ -454,7 +456,8 @@ public class ChatController {
                         ctx.userContent(),
                         ctx.assistantMsgId(),
                         ctx.executionPreference(),
-                        ctx.forcedWorkflowId()))
+                        ctx.forcedWorkflowId(),
+                        ctx.clientSkillId()))
                         .flatMapMany(plan -> {
                             executionMode.set(plan.mode());
                             Mono<Void> savePlan = Mono.fromRunnable(() ->
@@ -583,7 +586,8 @@ public class ChatController {
             String userId,
             String tenantId,
             ExecutionPreference executionPreference,
-            String forcedWorkflowId
+            String forcedWorkflowId,
+            String clientSkillId
     ) {
     }
 }

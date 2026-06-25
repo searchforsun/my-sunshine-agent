@@ -1,0 +1,17 @@
+[
+  {
+    "resource": "sunshine-bff-api",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0,
+    "burst": 0,
+    "maxQueueingTimeoutMs": 500,
+    "paramItem": {
+      "parseStrategy": 1,
+      "fieldName": "x-tenant-id",
+      "matchStrategy": 0
+    }
+  }
+]

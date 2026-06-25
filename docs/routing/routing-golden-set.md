@@ -217,7 +217,7 @@ python scripts/verify_skill_5b_live.py
 | J2 | `react` | 待审批是否合规 | `REACT`；`reason=user:forced-react` | ✅ |
 | J3 | `workflow` | 年假可以请几天 | `WORKFLOW` knowledge-qa | ❌ |
 | J4 | `plan-workflow` | 先查制度再查待审批 | `PLAN_WORKFLOW`；`reason=user:forced-plan-workflow` | ✅ |
-| J5 | `workflow` | `@policy-review 审查` | HTTP **400**（当前模式不支持 @Skill） | ❌ |
+| J5 | `workflow` | `@policy-review 年假可以请几天` | `WORKFLOW` knowledge-qa；**忽略** @skill（strip 正文） | ❌ |
 | J6 | `plan-workflow` | `@finance-analysis 是否合规` | `PLAN_WORKFLOW` + `params.skillId=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
 
 单测：`ForcedExecutionRouterTest` · `ExecutionPlanRouterTest` · `RoutingGoldenSetTest#forcedJ*`

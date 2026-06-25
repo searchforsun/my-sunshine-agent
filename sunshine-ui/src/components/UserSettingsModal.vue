@@ -73,12 +73,15 @@ async function handleSave() {
         />
       </NFormItem>
       <NFormItem label="默认执行模式">
-        <ExecutionModeSelector
-          :model-value="defaultMode"
-          :disabled="saving"
-          @update:model-value="defaultMode = $event"
-        />
-        <p class="settings-hint">新建或无记忆会话时使用；已有会话恢复其最近一次选择。</p>
+        <div class="execution-mode-field">
+          <ExecutionModeSelector
+            variant="block"
+            :model-value="defaultMode"
+            :disabled="saving"
+            @update:model-value="defaultMode = $event"
+          />
+          <p class="settings-hint">新建或无记忆会话时使用；已有会话恢复其最近一次选择。</p>
+        </div>
       </NFormItem>
     </NForm>
     <template #footer>
@@ -96,10 +99,18 @@ async function handleSave() {
   justify-content: flex-end;
   gap: 8px;
 }
+
+.execution-mode-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
 .settings-hint {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--sun-text-3, #888);
-  line-height: 1.4;
+  margin: 0;
+  font-size: var(--sun-font-xs, 11px);
+  color: var(--sun-text-muted, #888);
+  line-height: 1.5;
 }
 </style>

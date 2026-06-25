@@ -3,8 +3,6 @@ package com.sunshine.orchestrator.routing;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
-import com.sunshine.orchestrator.skill.SkillBindingOutcome;
-import com.sunshine.orchestrator.skill.SkillBindingParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -29,19 +27,6 @@ public class ForcedExecutionRouter {
     private final SkillBindingRoutingPolicy skillBindingRoutingPolicy;
     private final RuleBasedRouter ruleBasedRouter;
     private final IntentRouter intentRouter;
-    private final SkillBindingParser skillBindingParser;
-
-    public void validatePreference(String userMessage, ExecutionPreference preference) {
-        if (preference == null || preference.allowsSkillBinding()) {
-            return;
-        }
-        SkillBindingOutcome binding = skillBindingParser.parse(userMessage);
-        // @ 语法（含 catalog 未收录的 token）均视为 Skill 绑定尝试
-        if (binding.bound() || binding.unknown()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "当前执行模式不支持 @Skill，请切换为「自动」「自主推理」或「动态规划」");
-        }
-    }
 
     public Mono<ExecutionPlan> resolve(RoutingContext ctx, ExecutionPreference preference, String workflowId) {
         if (preference == null || preference == ExecutionPreference.AUTO) {

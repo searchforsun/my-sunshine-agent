@@ -101,6 +101,12 @@ public class ConversationService {
 
     @Transactional
     public ChatMessageEntity appendMessage(String convId, String role, String content, String status) {
+        return appendMessage(convId, role, content, status, null);
+    }
+
+    @Transactional
+    public ChatMessageEntity appendMessage(
+            String convId, String role, String content, String status, String executionPreference) {
         getOwnedInternal(convId);
         Instant now = Instant.now();
         int seq = messageRepo.findMaxSeq(convId) + 1;
@@ -112,6 +118,9 @@ public class ConversationService {
         msg.setRole(role);
         msg.setContent(content != null ? content : "");
         msg.setStatus(status);
+        if ("user".equals(role) && executionPreference != null && !executionPreference.isBlank()) {
+            msg.setExecutionPreference(executionPreference.strip());
+        }
         msg.setCreatedAt(now);
         msg.setUpdatedAt(now);
 

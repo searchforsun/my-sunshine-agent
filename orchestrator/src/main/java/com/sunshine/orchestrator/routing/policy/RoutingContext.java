@@ -7,14 +7,15 @@ public record RoutingContext(
         String userMessage,
         String traceMessageId,
         ExecutionPreference preference,
-        String forcedWorkflowId) {
+        String forcedWorkflowId,
+        String clientSkillId) {
 
     public RoutingContext(String userMessage, String traceMessageId) {
-        this(userMessage, traceMessageId, ExecutionPreference.AUTO, null);
+        this(userMessage, traceMessageId, ExecutionPreference.AUTO, null, null);
     }
 
     public static RoutingContext of(String userMessage) {
-        return new RoutingContext(userMessage, null, ExecutionPreference.AUTO, null);
+        return new RoutingContext(userMessage, null, ExecutionPreference.AUTO, null, null);
     }
 
     public boolean allowsSkillBinding() {

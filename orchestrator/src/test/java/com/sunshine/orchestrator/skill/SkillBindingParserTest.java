@@ -94,4 +94,58 @@ class SkillBindingParserTest {
         assertThat(outcome.unknown()).isFalse();
         assertThat(outcome.effectiveQuery()).isEqualTo("这笔报销是否合规？");
     }
+
+    @Test
+    void stripAtMention_removesPrefix() {
+        assertThat(parser.stripAtMention("@policy-review 年假可以请几天"))
+                .isEqualTo("年假可以请几天");
+    }
+
+    @Test
+    void stripAtMention_unknownSkillStillStrips() {
+        assertThat(parser.stripAtMention("@unknown-skill 问题")).isEqualTo("问题");
+    }
+
+    @Test
+    void stripAtMention_plainTextUnchanged() {
+        assertThat(parser.stripAtMention("年假制度")).isEqualTo("年假制度");
+    }
+
+    @Test
+    void inlineAtMention_bindsSkillAndStripsToken() {
+        when(skillCatalogService.findIndex("finance-analysis"))
+                .thenReturn(Optional.of(INDEX.get(0)));
+
+        SkillBindingOutcome outcome = parser.parse("123 @finance-analysis 123");
+        assertThat(outcome.bound()).isTrue();
+        assertThat(outcome.skillId()).isEqualTo("finance-analysis");
+        assertThat(outcome.effectiveQuery()).isEqualTo("123 123");
+        assertThat(outcome.source()).isEqualTo(SkillBindingSource.AT_MENTION);
+    }
+
+    @Test
+    void clientSkillId_bindsAndStripsMentions() {
+        when(skillCatalogService.findIndex("finance-analysis"))
+                .thenReturn(Optional.of(INDEX.get(0)));
+
+        SkillBindingOutcome outcome = parser.parse("123 @finance-analysis 123", "finance-analysis");
+        assertThat(outcome.bound()).isTrue();
+        assertThat(outcome.skillId()).isEqualTo("finance-analysis");
+        assertThat(outcome.effectiveQuery()).isEqualTo("123 123");
+        assertThat(outcome.source()).isEqualTo(SkillBindingSource.CLIENT);
+    }
+
+    @Test
+    void clientSkillId_unknownSkill() {
+        when(skillCatalogService.findIndex("unknown-skill")).thenReturn(Optional.empty());
+
+        SkillBindingOutcome outcome = parser.parse("问题", "unknown-skill");
+        assertThat(outcome.unknown()).isTrue();
+        assertThat(outcome.unknownToken()).isEqualTo("unknown-skill");
+    }
+
+    @Test
+    void stripSkillMentions_removesInlineToken() {
+        assertThat(parser.stripSkillMentions("123 @finance-analysis 123")).isEqualTo("123 123");
+    }
 }

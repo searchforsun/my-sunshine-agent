@@ -17,4 +17,7 @@ public class ChatMessage {
 
     /** 强制 workflow 模式时可选指定 catalog id */
     private String workflowId;
+
+    /** 前端解析到的 catalog skillId，L0 优先绑定 */
+    private String skillId;
 }

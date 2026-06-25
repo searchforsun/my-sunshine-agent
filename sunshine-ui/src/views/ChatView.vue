@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, onUnmounted, onUpdated, computed, reactive } from 'vue'
 import { useChatSessions } from '../api/chatSessions'
-import { NInput } from 'naive-ui'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
 import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github-dark.css'
@@ -50,8 +49,11 @@ import {
   type SkillCatalogIndexEntry,
 } from '../api/skills'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
+import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
+import UserMessageContent from '../components/chat/UserMessageContent.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { allowsSkillMention } from '../api/executionModes'
+import { resolveSkillBindingForSend } from '../utils/skillMention'
 
 hljs.registerLanguage('bash', bash)
 hljs.registerLanguage('shell', bash)
@@ -222,7 +224,7 @@ const {
 )
 
 const inputText = ref('')
-const inputRef = ref<InstanceType<typeof NInput>>()
+const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
 const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
 const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
 const showSkillSuggest = ref(false)
@@ -412,7 +414,11 @@ async function handleSend() {
     chatScrollPinned.value = true
 
     await nextTick()
-    const sendPromise = send(text, convId, { executionPreference: preference.value })
+    const binding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
+    const sendPromise = send(text, convId, {
+      executionPreference: preference.value,
+      skillId: binding.skillId,
+    })
     chatStore.updateExecutionPreferenceLocal(convId, preference.value)
     await nextTick()
     await ensureStreamRenderer()
@@ -771,7 +777,13 @@ watch(() => loading.value, async (val) => {
             :class="msg.role"
           >
             <!-- 用户消息：右对齐气泡 -->
-            <div v-if="msg.role === 'user'" class="user-bubble">{{ msg.content }}</div>
+            <div v-if="msg.role === 'user'" class="user-bubble">
+              <UserMessageContent
+                :content="msg.content"
+                :catalog="skillCatalog"
+                :execution-preference="msg.executionPreference"
+              />
+            </div>
 
             <!-- AI 消息：全宽左对齐 -->
             <div v-else class="assistant-body">
@@ -856,15 +868,14 @@ watch(() => loading.value, async (val) => {
               <span class="streaming-pulse" />
               <span>AI 正在回复…</span>
             </div>
-            <NInput
+            <ComposerSkillInput
               v-else
               ref="inputRef"
-              v-model:value="inputText"
-              type="textarea"
+              v-model="inputText"
+              :allows-skill-mention="skillMentionAllowed"
+              :catalog="skillCatalog"
               :placeholder="inputPlaceholder"
-              :autosize="{ minRows: 1, maxRows: 6 }"
               @keydown="handleKeydown"
-              class="composer-input"
             />
             <div class="composer-toolbar">
               <ExecutionModeSelector
@@ -1311,8 +1322,12 @@ watch(() => loading.value, async (val) => {
 }
 
 .skill-suggest-id {
-  font-family: var(--sun-font-mono, monospace);
-  color: var(--sun-accent);
+  font-family: var(--sun-font-mono);
+  font-size: var(--sun-font-base);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  color: var(--sun-text);
   flex-shrink: 0;
 }
 
@@ -1340,29 +1355,6 @@ watch(() => loading.value, async (val) => {
   background: var(--sun-text-muted);
   flex-shrink: 0;
   animation: glow-pulse 1.5s ease-in-out infinite;
-}
-
-.composer-input {
-  flex: 1;
-  min-width: 0;
-  --n-font-size: var(--sun-font-md) !important;
-  --n-border: none !important;
-  --n-border-hover: none !important;
-  --n-border-focus: none !important;
-  --n-border-disabled: none !important;
-  --n-box-shadow-focus: none !important;
-  --n-color: transparent !important;
-  --n-color-focus: transparent !important;
-  --n-color-disabled: transparent !important;
-  --n-padding-vertical: 4px !important;
-  --n-text-color: var(--sun-text) !important;
-  --n-placeholder-color: var(--sun-text-muted) !important;
-}
-
-.composer-input :deep(.n-input__border),
-.composer-input :deep(.n-input__state-border) {
-  border: none !important;
-  box-shadow: none !important;
 }
 
 .composer-icon-btn {

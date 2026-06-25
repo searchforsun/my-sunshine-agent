@@ -136,9 +136,18 @@ class RoutingGoldenSetTest {
         router = new ExecutionPlanRouter(chain, new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(
                         new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
-                        ruleRouter, intentRouter, skillBindingParser));
+                        ruleRouter, intentRouter),
+                skillBindingParser);
 
         when(skillBindingParser.parse(anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
+        when(skillBindingParser.stripAtMention(anyString())).thenAnswer(inv -> {
+            String msg = inv.getArgument(0);
+            if (msg != null && msg.startsWith("@")) {
+                int space = msg.indexOf(' ');
+                return space > 0 ? msg.substring(space + 1).strip() : "请处理";
+            }
+            return msg;
+        });
 
         when(skillCatalogService.indexEntries()).thenReturn(List.of());
 
@@ -405,13 +414,15 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void forcedJ5_workflow_rejectsAtSkill() {
-        String query = "@policy-review 审查";
-        SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "policy-review", "审查", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(query)).thenReturn(binding);
-        assertThatThrownBy(() -> forcedRoute(ExecutionPreference.WORKFLOW, query, null))
-                .isInstanceOf(ResponseStatusException.class);
+    void forcedJ5_workflow_ignoresAtSkill() {
+        String query = "@policy-review 年假可以请几天";
+        when(intentRouter.classifyPlan("年假可以请几天")).thenReturn(Mono.just(new ExecutionPlan(
+                ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
+        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
+        assertThat(plan.reason()).isEqualTo("user:forced-workflow");
+        assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_SKILL);
     }
 
     @Test
@@ -427,7 +438,7 @@ class RoutingGoldenSetTest {
     }
 
     private ExecutionPlan forcedRoute(ExecutionPreference preference, String query, String workflowId) {
-        return router.route(new RoutingContext(query, null, preference, workflowId)).block();
+        return router.route(new RoutingContext(query, null, preference, workflowId, null)).block();
     }
 
 

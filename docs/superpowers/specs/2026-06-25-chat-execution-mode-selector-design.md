@@ -101,8 +101,8 @@ flowchart TB
 
 ### 3.2 `@skill` 禁用
 
-- **工作流 / 简单对话**：`SkillBindingRoutingPolicy` 见 `RoutingContext.allowsSkillBinding()==false` 直接 skip。
-- **发送前校验**：正文以 `@skillId` 开头且 preference 禁用 skill → **400**「当前执行模式不支持 @Skill」。
+- **工作流 / 简单对话**：`SkillBindingRoutingPolicy` 见 `RoutingContext.allowsSkillBinding()==false` 直接 skip；正文若以 `@skillId` 开头则 **剥离 @ 前缀**，按剩余正文普通提问（路由、记忆、执行均用 strip 后 query；DB 仍存用户原文）。
+- **不再 400**：禁用 Skill 的模式下写 `@skill` 不拦截，等同未绑定 Skill 的普通对话。
 
 Workflow 节点内 `params.skill`（YAML）不受影响。
 
@@ -178,7 +178,7 @@ agent.timeline.intent.modes:
 | react | 待审批是否合规 | react | ✅ |
 | workflow | 年假制度 | workflow:knowledge-qa | ❌ |
 | plan-workflow | 先查制度再查待审批 | plan-workflow | ✅ |
-| workflow + `@x` | — | 400 | ❌ |
+| workflow + `@x` | `@x 年假制度` | workflow（strip 后按正文路由）；**无** skill 绑定 | ❌ |
 
 扩展现有 `docs/routing/routing-golden-set.md` **§J**（P0 ✅）。
 

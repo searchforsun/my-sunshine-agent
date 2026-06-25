@@ -3,6 +3,7 @@ import { applyStreamError } from './streamError'
 import { parseSseEvent } from './sseParse'
 import { normalizeStreamChunk } from './streamInvisible'
 import type { ProcessingStep } from './processingSteps'
+import type { ExecutionPreference } from './executionModes'
 
 function extractChunkText(data: string): string | null {
   try {
@@ -27,6 +28,8 @@ export interface ChatMessage {
   id?: string
   role: 'user' | 'assistant'
   content: string
+  /** user 消息发送时的 executionPreference */
+  executionPreference?: ExecutionPreference
   /** 模型推理过程（SSE type:reasoning，不落库） */
   reasoning?: string
   /** 后端处理流水线步骤（SSE type:step） */

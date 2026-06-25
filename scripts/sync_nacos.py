@@ -21,6 +21,7 @@ from sunshine_lib import ROOT
 
 DEFAULT_DATA_IDS = [
     "sunshine-gateway.yaml",
+    "sunshine-gateway-gw-flow-rules.json",
     "sunshine-auth.yaml",
     "sunshine-bff.yaml",
     "sunshine-orchestrator.yaml",
@@ -49,6 +50,7 @@ def upload(
     if not path.is_file():
         raise FileNotFoundError(f"Config file not found: {path}")
     content = path.read_text(encoding="utf-8")
+    cfg_type = "json" if data_id.endswith(".json") else "yaml"
     url = f"{nacos_server.rstrip('/')}/v1/cs/configs"
     resp = requests.post(
         url,
@@ -57,7 +59,7 @@ def upload(
             "password": password,
             "dataId": data_id,
             "group": group,
-            "type": "yaml",
+            "type": cfg_type,
             "content": content,
         },
         timeout=30,

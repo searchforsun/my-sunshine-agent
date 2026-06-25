@@ -3,22 +3,17 @@ package com.sunshine.orchestrator.routing;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
-import com.sunshine.orchestrator.skill.SkillBindingOutcome;
-import com.sunshine.orchestrator.skill.SkillBindingParser;
-import com.sunshine.orchestrator.skill.SkillBindingSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -31,40 +26,18 @@ class ForcedExecutionRouterTest {
     private RuleBasedRouter ruleBasedRouter;
     @Mock
     private IntentRouter intentRouter;
-    @Mock
-    private SkillBindingParser skillBindingParser;
 
     private ForcedExecutionRouter router;
 
     @BeforeEach
     void setUp() {
-        router = new ForcedExecutionRouter(
-                skillBindingRoutingPolicy, ruleBasedRouter, intentRouter, skillBindingParser);
-    }
-
-    @Test
-    void validatePreference_workflow_rejectsUnknownAtSkill() {
-        when(skillBindingParser.parse("@policy-review 审查"))
-                .thenReturn(SkillBindingOutcome.unknown("policy-review"));
-        assertThatThrownBy(() -> router.validatePreference(
-                "@policy-review 审查", ExecutionPreference.WORKFLOW))
-                .isInstanceOf(ResponseStatusException.class);
-    }
-
-    @Test
-    void validatePreference_workflow_rejectsAtSkill() {
-        when(skillBindingParser.parse("@finance-analysis 分析"))
-                .thenReturn(SkillBindingOutcome.bound(
-                        "finance-analysis", "分析", SkillBindingSource.AT_MENTION));
-        assertThatThrownBy(() -> router.validatePreference(
-                "@finance-analysis 分析", ExecutionPreference.WORKFLOW))
-                .isInstanceOf(ResponseStatusException.class);
+        router = new ForcedExecutionRouter(skillBindingRoutingPolicy, ruleBasedRouter, intentRouter);
     }
 
     @Test
     void resolve_simpleLlm() {
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("hello", null, ExecutionPreference.SIMPLE_LLM, null),
+                new RoutingContext("hello", null, ExecutionPreference.SIMPLE_LLM, null, null),
                 ExecutionPreference.SIMPLE_LLM, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
@@ -78,7 +51,7 @@ class ForcedExecutionRouterTest {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("@finance-analysis 分析", null, ExecutionPreference.REACT, null),
+                new RoutingContext("@finance-analysis 分析", null, ExecutionPreference.REACT, null, null),
                 ExecutionPreference.REACT, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
@@ -95,7 +68,7 @@ class ForcedExecutionRouterTest {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("@policy-review 老家有事请事假是否合理", null, ExecutionPreference.PLAN_WORKFLOW, null),
+                new RoutingContext("@policy-review 老家有事请事假是否合理", null, ExecutionPreference.PLAN_WORKFLOW, null, null),
                 ExecutionPreference.PLAN_WORKFLOW, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
@@ -106,7 +79,7 @@ class ForcedExecutionRouterTest {
     @Test
     void resolve_workflow_withExplicitId() {
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("年假", null, ExecutionPreference.WORKFLOW, "knowledge-qa"),
+                new RoutingContext("年假", null, ExecutionPreference.WORKFLOW, "knowledge-qa", null),
                 ExecutionPreference.WORKFLOW, "knowledge-qa").block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
@@ -120,7 +93,7 @@ class ForcedExecutionRouterTest {
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("年假制度", null, ExecutionPreference.WORKFLOW, null),
+                new RoutingContext("年假制度", null, ExecutionPreference.WORKFLOW, null, null),
                 ExecutionPreference.WORKFLOW, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");

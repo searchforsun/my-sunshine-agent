@@ -60,6 +60,7 @@ function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
     status: m.status as ChatMessage['status'],
     intent: m.intent,
     executionPlanId: m.executionPlanId,
+    executionPreference: m.executionPreference,
   }))
 }
 

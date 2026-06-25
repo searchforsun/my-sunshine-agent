@@ -60,7 +60,10 @@ class ExecutionPlanRouterTest {
         router = new ExecutionPlanRouter(chain, new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(
                         new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
-                        ruleBasedRouter, intentRouter, skillBindingParser));
+                        ruleBasedRouter, intentRouter),
+                skillBindingParser);
+        when(skillBindingParser.stripAtMention(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(inv -> inv.getArgument(0));
         when(skillCatalogService.indexEntries()).thenReturn(List.of());
     }
 

@@ -24,6 +24,8 @@ const API_BASE = BFF_STREAM_BASE
 export interface SendOptions {
   executionPreference?: ExecutionPreference
   workflowId?: string | null
+  /** 前端解析到的 catalog skill，后端 L0 优先绑定 */
+  skillId?: string
 }
 
 export interface SessionState {
@@ -283,7 +285,8 @@ export function useChatSessions(
     const s = activeSession.value
     if (!s || s.loading) return
 
-    s.messages.push({ role: 'user', content })
+    const pref = options?.executionPreference ?? 'auto'
+    s.messages.push({ role: 'user', content, executionPreference: pref })
     s.loading = true
     s.messages.push({ role: 'assistant', content: '', reasoning: '', steps: [], status: 'streaming' })
 
@@ -294,12 +297,14 @@ export function useChatSessions(
 
     try {
       const body: Record<string, string> = { content, conversationId: convId }
-      const pref = options?.executionPreference
-      if (pref && pref !== 'auto') {
+      if (pref !== 'auto') {
         body.executionPreference = pref
       }
       if (options?.workflowId) {
         body.workflowId = options.workflowId
+      }
+      if (options?.skillId) {
+        body.skillId = options.skillId
       }
 
       const response = await fetch(`${API_BASE}/api/chat/stream`, {

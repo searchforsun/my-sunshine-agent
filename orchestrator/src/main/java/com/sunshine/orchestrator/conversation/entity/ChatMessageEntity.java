@@ -53,6 +53,10 @@ public class ChatMessageEntity {
     @Column(name = "execution_plan_id", length = 36)
     private String executionPlanId;
 
+    /** user 消息发送时用户选择的 executionPreference */
+    @Column(name = "execution_preference", length = 32)
+    private String executionPreference;
+
     @Column(name = "resume_count", nullable = false)
     private int resumeCount = 0;
 

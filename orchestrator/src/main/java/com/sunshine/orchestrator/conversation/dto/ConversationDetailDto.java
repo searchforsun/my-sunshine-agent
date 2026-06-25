@@ -47,6 +47,8 @@ public class ConversationDetailDto {
         private String status;
         private String intent;
         private String executionPlanId;
+        /** user 消息发送时的 executionPreference */
+        private String executionPreference;
         private int seq;
         private Instant createdAt;
 
@@ -60,6 +62,7 @@ public class ConversationDetailDto {
             dto.setStatus(m.getStatus());
             dto.setIntent(m.getIntent());
             dto.setExecutionPlanId(m.getExecutionPlanId());
+            dto.setExecutionPreference(m.getExecutionPreference());
             dto.setSeq(m.getSeq());
             dto.setCreatedAt(m.getCreatedAt());
             return dto;
