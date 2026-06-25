@@ -31,6 +31,8 @@ public final class ProcessingTimelineSession {
     private String currentToolStepId;
     /** 关联 QueryRewriteTrace 的 assistant messageId */
     private String traceMessageId;
+    /** RAG 步骤开始时 trace 条数水位，complete 时仅拼接此后新增的改写 */
+    private final Map<String, Integer> ragRewriteBaselineByStep = new java.util.LinkedHashMap<>();
 
     private final Map<String, String> stepDisplayNames = new java.util.LinkedHashMap<>();
 
@@ -147,6 +149,7 @@ public final class ProcessingTimelineSession {
             completeRunningActive(startedAt);
         }
         activeStepId = stepId;
+        captureRagRewriteBaseline(stepId);
         applyAt(stepId, phase, EventKind.START, resolveActive(stepId), null, startedAt);
     }
 
@@ -180,10 +183,38 @@ public final class ProcessingTimelineSession {
 
     public void completeIntent(ExecutionPlan plan, com.sunshine.orchestrator.rewrite.QueryRewriteOutcome intentRewrite) {
         String after = IntentLabels.intentAfterForPlan(userQuery, plan);
-        StepMetadata metadata = StepMetadata.fromRewrite(intentRewrite);
+        StepMetadata metadata = StepMetadata.mergeRouting(
+                StepMetadata.fromRewrite(intentRewrite), plan);
         String detail = intentRewrite != null ? intentRewrite.timelineDetail() : null;
         applyAt("intent", null, EventKind.COMPLETE, after, detail, metadata, System.currentTimeMillis());
         if ("intent".equals(activeStepId)) {
+            activeStepId = null;
+        }
+    }
+
+    /** plan 步完成：写入 Planner 前 query 改写 metadata，供 DAG「开始」节点抽屉展示 */
+    public void completePlanAt(String after, String detail, long endedAt) {
+        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome plannerRewrite =
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.plannerOutcome(traceMessageId).orElse(null);
+        StepMetadata metadata = StepMetadata.fromRewrite(plannerRewrite);
+        applyAt("plan", null, EventKind.COMPLETE, after, detail, metadata, endedAt);
+        if ("plan".equals(activeStepId)) {
+            activeStepId = null;
+        }
+    }
+
+    /** L0 Skill 绑定：intent 之后插入一步，主行展示「加载技能: @id 展示名」 */
+    public void completeSkillLoad(String skillId) {
+        if (skillId == null || skillId.isBlank()) {
+            return;
+        }
+        long ts = System.currentTimeMillis();
+        pending("skill", "skill");
+        startAt("skill", "skill", ts);
+        String after = SkillLoadLabels.after(skillId.strip());
+        StepMetadata metadata = StepMetadata.fromSkillLoad(skillId.strip());
+        applyAt("skill", "skill", EventKind.COMPLETE, after, null, metadata, ts);
+        if ("skill".equals(activeStepId)) {
             activeStepId = null;
         }
     }
@@ -203,11 +234,17 @@ public final class ProcessingTimelineSession {
             metadata = StepMetadata.fromRagToolOutput(summaryLine, ragInput);
         }
         String after = resolveAfter(stepId, summaryLine, metadata);
-        String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedRagTimelineDetail(traceMessageId);
+        Integer baseline = ragRewriteBaselineByStep.remove(stepId);
+        int rewriteFromIndex = baseline != null ? baseline : 0;
+        String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace
+                .combinedRagTimelineDetailSince(traceMessageId, rewriteFromIndex);
         String storedDetail;
         if (ToolStepIds.isRagStep(stepId) || isWorkflowRagNode(stepId)) {
-            metadata = mergeRewriteMetadata(metadata);
+            metadata = mergeRagRewriteMetadataSince(metadata, rewriteFromIndex);
             storedDetail = resolveRagStoredDetail(stepId, summaryLine, rewriteDetail);
+            if (rewriteDetail != null && !rewriteDetail.isBlank()) {
+                metadata = StepMetadata.withRagExpandLayout(metadata);
+            }
         } else {
             storedDetail = expandDetail;
         }
@@ -429,16 +466,28 @@ public final class ProcessingTimelineSession {
                 || detail.contains("片段");
     }
 
-    private StepMetadata mergeRewriteMetadata(StepMetadata metadata) {
+    private void captureRagRewriteBaseline(String stepId) {
+        if (traceMessageId == null || stepId == null) {
+            return;
+        }
+        if (ToolStepIds.isRagStep(stepId) || isWorkflowRagNode(stepId)) {
+            ragRewriteBaselineByStep.put(stepId, com.sunshine.orchestrator.rewrite.QueryRewriteTrace.size(traceMessageId));
+        }
+    }
+
+    private StepMetadata mergeRagRewriteMetadataSince(StepMetadata metadata, int fromIndex) {
         if (traceMessageId == null) {
             return metadata;
         }
         com.sunshine.orchestrator.rewrite.QueryRewriteOutcome ragRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latest(traceMessageId, "rag").orElse(null);
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(traceMessageId, "rag", fromIndex)
+                        .orElse(null);
         com.sunshine.orchestrator.rewrite.QueryRewriteOutcome hydeRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latest(traceMessageId, "hyde").orElse(null);
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(traceMessageId, "hyde", fromIndex)
+                        .orElse(null);
         com.sunshine.orchestrator.rewrite.QueryRewriteOutcome emptyRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latest(traceMessageId, "empty-recall").orElse(null);
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(traceMessageId, "empty-recall", fromIndex)
+                        .orElse(null);
         StepMetadata merged = StepMetadata.mergeRewrite(metadata, ragRewrite);
         merged = StepMetadata.mergeRewrite(merged, hydeRewrite);
         return StepMetadata.mergeRewrite(merged, emptyRewrite);
@@ -448,26 +497,14 @@ public final class ProcessingTimelineSession {
         return stepId != null && stepId.startsWith("node-rag");
     }
 
-    /** ReAct rag 仅下发改写 detail；workflow node-rag 合并改写与命中摘要 */
+    /** ReAct rag / workflow node-rag：改写走 detail；命中摘要走 summary.after + metadata */
     private static String resolveRagStoredDetail(String stepId, String summaryLine, String rewriteDetail) {
-        if (isWorkflowRagNode(stepId)) {
-            return joinDetailBlocks(rewriteDetail, summaryLine);
+        if (rewriteDetail != null && !rewriteDetail.isBlank()) {
+            return rewriteDetail.strip();
+        }
+        if (isWorkflowRagNode(stepId) && summaryLine != null && !summaryLine.isBlank()) {
+            return summaryLine.strip();
         }
         return rewriteDetail;
-    }
-
-    private static String joinDetailBlocks(String first, String second) {
-        boolean hasFirst = first != null && !first.isBlank();
-        boolean hasSecond = second != null && !second.isBlank();
-        if (hasFirst && hasSecond && first.strip().equals(second.strip())) {
-            return first;
-        }
-        if (hasFirst && hasSecond) {
-            return first.strip() + "\n\n" + second.strip();
-        }
-        if (hasFirst) {
-            return first.strip();
-        }
-        return hasSecond ? second.strip() : null;
     }
 }

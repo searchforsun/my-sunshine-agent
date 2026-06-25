@@ -33,7 +33,7 @@ public final class PlanTimeline {
             String after = replanCount > 0
                     ? "规划经 " + replanCount + " 次修正后开始执行"
                     : chain;
-            session.completeAt("plan", after, detail, System.currentTimeMillis());
+            session.completePlanAt(after, detail, System.currentTimeMillis());
         });
     }
 

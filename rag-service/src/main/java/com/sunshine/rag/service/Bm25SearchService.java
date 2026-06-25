@@ -44,21 +44,19 @@ public class Bm25SearchService {
     }
 
     public Mono<List<RetrievalCandidate>> search(String query, int topK) {
+        return search(query, topK, "default");
+    }
+
+    public Mono<List<RetrievalCandidate>> search(String query, int topK, String tenantId) {
         if (!isEnabled() || query == null || query.isBlank()) {
             return Mono.just(List.of());
         }
-        return Mono.fromCallable(() -> searchBlocking(query, topK))
+        return Mono.fromCallable(() -> searchBlocking(query, topK, tenantId))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private List<RetrievalCandidate> searchBlocking(String query, int topK) throws Exception {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("size", topK);
-        body.put("query", Map.of(
-                "multi_match", Map.of(
-                        "query", query,
-                        "fields", List.of("content^2", "doc_name"),
-                        "type", "best_fields")));
+    private List<RetrievalCandidate> searchBlocking(String query, int topK, String tenantId) throws Exception {
+        Map<String, Object> body = buildSearchBody(query, topK, tenantId);
         String json = webClient.post()
                 .uri("/{index}/_search", properties.getIndex())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -67,6 +65,22 @@ public class Bm25SearchService {
                 .bodyToMono(String.class)
                 .block(Duration.ofSeconds(15));
         return parseHits(json);
+    }
+
+    /** 供单测校验 tenant 过滤 DSL */
+    static Map<String, Object> buildSearchBody(String query, int topK, String tenantId) {
+        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("size", topK);
+        body.put("query", Map.of(
+                "bool", Map.of(
+                        "must", List.of(
+                                Map.of("multi_match", Map.of(
+                                        "query", query,
+                                        "fields", List.of("content^2", "doc_name"),
+                                        "type", "best_fields")),
+                                Map.of("term", Map.of("tenant_id", tid))))));
+        return body;
     }
 
     List<RetrievalCandidate> parseHits(String json) throws Exception {

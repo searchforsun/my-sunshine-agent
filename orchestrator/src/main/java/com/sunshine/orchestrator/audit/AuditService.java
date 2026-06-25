@@ -46,6 +46,8 @@ public class AuditService {
                     StepsSummaryExtractor.fromStepsJson(message.getSteps());
             QueryRewriteAuditExtractor.Summary rewriteSummary =
                     QueryRewriteAuditExtractor.fromStepsJson(message.getSteps());
+            RoutingAuditExtractor.Summary routingSummary =
+                    RoutingAuditExtractor.fromStepsJson(message.getSteps());
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("contentLen", message.getContent() != null ? message.getContent().length() : 0);
             payload.put("hasReasoning", message.getReasoning() != null && !message.getReasoning().isBlank());
@@ -59,6 +61,9 @@ public class AuditService {
                     "toolNames", stepsSummary.toolNames(),
                     "stepCount", stepsSummary.stepCount(),
                     "totalDurationMs", stepsSummary.totalDurationMs()));
+            if (!RoutingAuditExtractor.toPayloadMap(routingSummary).isEmpty()) {
+                payload.put("routing", RoutingAuditExtractor.toPayloadMap(routingSummary));
+            }
             String payloadJson = objectMapper.writeValueAsString(payload);
             AuditEvent event = new AuditEvent(
                     UUID.randomUUID().toString().replace("-", ""),

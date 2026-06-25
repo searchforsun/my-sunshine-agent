@@ -69,6 +69,21 @@ public class SkillManagerClient {
         return get("/api/skills/" + id + "/versions");
     }
 
+    public Mono<Map<String, Object>> diffVersions(String id, int from, int to, String path) {
+        return webClient.get()
+                .uri(uri -> {
+                    var builder = uri.path("/api/skills/{id}/versions/diff")
+                            .queryParam("from", from)
+                            .queryParam("to", to);
+                    if (StringUtils.hasText(path)) {
+                        builder.queryParam("path", path);
+                    }
+                    return builder.build(id);
+                })
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> publish(String id, int version, String userId) {
         return webClient.post()
                 .uri(uri -> uri.path("/api/skills/{id}/publish").queryParam("version", version).build(id))

@@ -131,6 +131,13 @@ public class GenerationFlushScheduler {
             if (step.metadata() != null && !step.metadata().isEmpty()) {
                 map.put("metadata", ProcessingStepMerger.metadataToMap(step.metadata()));
             }
+            if (step.subSteps() != null && !step.subSteps().isEmpty()) {
+                java.util.List<java.util.Map<String, Object>> nested = new java.util.ArrayList<>();
+                for (ProcessingStep sub : step.subSteps()) {
+                    nested.add(ProcessingStepMerger.stepToMap(sub));
+                }
+                map.put("subSteps", nested);
+            }
             map.put("ts", step.ts());
             map.put("status", step.status());
             map.put("label", step.label());

@@ -156,7 +156,8 @@ public final class TimelineAggregator {
                     ts,
                     lifecycle,
                     label,
-                    metadata
+                    metadata,
+                    null
             );
         }
     }

@@ -32,7 +32,7 @@ public class WorkflowDefinitionLoader {
         }
         List<NodeSpec> nodes = new ArrayList<>();
         for (WorkflowProperties.NodeProps np : props.getNodes()) {
-            nodes.add(new NodeSpec(np.getId(), np.getType(), toStringParams(np.getParams())));
+            nodes.add(new NodeSpec(np.getId(), np.getType(), toStringParams(np.getParams()), np.getDisplayName()));
         }
         List<String> order = props.getEdges() != null && !props.getEdges().isEmpty()
                 ? props.getEdges()

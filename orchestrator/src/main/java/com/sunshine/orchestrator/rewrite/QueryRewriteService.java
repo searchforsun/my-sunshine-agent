@@ -185,6 +185,38 @@ public class QueryRewriteService {
         return rewriteForIntent(originalQuery, null).effectiveQuery();
     }
 
+    /** Plan-Workflow Planner 调用前优化 query；未启用或失败时返回原文 */
+    public String rewriteForPlanner(String originalQuery) {
+        return rewriteForPlanner(originalQuery, null).effectiveQuery();
+    }
+
+    public QueryRewriteOutcome rewriteForPlanner(String originalQuery, String traceMessageId) {
+        long start = System.nanoTime();
+        AgentRewriteProperties.Planner cfg = rewriteProperties.plannerOrDefault();
+        if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery) || !StringUtils.hasText(cfg.getSystemPrompt())) {
+            QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
+                    "planner", originalQuery, elapsedMs(start));
+            QueryRewriteTrace.record(traceMessageId, skipped);
+            return skipped;
+        }
+        String user = "用户问题：" + originalQuery.strip();
+        String raw = llmGatewayClient.complete(cfg.getModel(), cfg.getSystemPrompt(), user);
+        String rewritten = parseSingleQuery(raw, originalQuery);
+        if (!StringUtils.hasText(rewritten)) {
+            QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
+                    "planner", originalQuery, elapsedMs(start));
+            QueryRewriteTrace.record(traceMessageId, skipped);
+            return skipped;
+        }
+        QueryRewriteOutcome outcome = QueryRewriteOutcome.of("planner", originalQuery, rewritten, elapsedMs(start));
+        if (outcome.applied()) {
+            log.info("[QueryRewrite] planner: in='{}' out='{}'",
+                    abbreviate(originalQuery), abbreviate(outcome.rewrittenQuery()));
+        }
+        QueryRewriteTrace.record(traceMessageId, outcome);
+        return outcome;
+    }
+
     public QueryRewriteOutcome rewriteForIntent(String originalQuery, String traceMessageId) {
         long start = System.nanoTime();
         if (!shouldRewriteIntent(originalQuery)) {

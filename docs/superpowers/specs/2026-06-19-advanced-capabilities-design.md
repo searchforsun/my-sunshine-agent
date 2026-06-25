@@ -90,9 +90,9 @@ L4 Prompt Ops        — 版本/A-B/评测门禁（阶段四 prompt 后台）
 
 | 场景 | 触发条件 | 改写策略 | 模型 |
 |------|----------|----------|------|
-| `rag` | 进入 rag 节点 / RagTool | 关键词补全 + 专有名词标准化；可选 HyDE | flash |
+| `rag` | 进入 rag 节点 / RagTool | 关键词补全 + 专有名词标准化；**HyDE 为首次 0 命中 fallback** | flash |
 | `intent` | 规则未命中且 query < 8 字 | 补全意图短语 | flash |
-| `empty-recall` | RAG 首次 0 命中 | Multi-Query 生成 2 个改写 query 再检 | flash |
+| `empty-recall` | rag 改写首检 + HyDE 仍 0 命中 | Multi-Query 生成 2 个改写 query 再检（**同领域**，禁硬塞无关词） | flash |
 | `off` | simple-llm 闲聊 | 不改写 | — |
 
 **`PromptComposer` 叠加顺序**（与 memory-design 对齐）：
@@ -228,15 +228,16 @@ sequenceDiagram
 
 ```
                     ┌──────────────────┐
-IntentRouter ──────►│ mode=workflow    │──► 静态 YAML（高频标杆流程）
-                    │ mode=plan-workflow│──► WorkflowPlanner 动态实例
+IntentRouter ──────►│ mode=workflow    │──► Nacos YAML → StaticPlanAdapter → execution_plan + 同 Plan DAG UI
+                    │ mode=plan-workflow│──► WorkflowPlanner 动态实例 → 同执行/展示路径
                     │ mode=react       │──► 整单 Agent（开放问题）
                     └──────────────────┘
 ```
 
-- **静态 workflow**：财务列表、知识库问答等**高频、强约束、需审计**的场景
-- **动态 Plan**：**长尾组合**、探索性分析；Plan 本身落库可审计
-- 规则路由（阶段二 2.14）优先级仍最高
+- **静态 workflow**：财务列表、知识库问答等**高频、强约束**场景；图定义 SSOT 在 `sunshine-workflows.yaml`；执行时物化为 Plan 落库（审计/trace 与动态 Plan 一致）
+- **动态 Plan**：**长尾组合**、探索性分析；Planner 产出 JSON；answer prompt 由 `PlanAnswerPromptAssembler` 注入
+- **前端**：两种模式均用 `PlanWorkflowPanel`（`planId=` 门控）；**不再**对静态 workflow 单独展示逐步 node 卡片
+- 规则路由（阶段二 2.14）L2 仍优先于 L3 LLM
 
 ### 2.7 Timeline 可观测
 

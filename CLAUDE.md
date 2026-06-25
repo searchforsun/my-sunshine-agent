@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.6** + **3.10.1–3.10.4** + **3.10.7** + **3.11 skill-manager** + **3.12.1–3.12.4** + **3.9.1–3.9.3 PLAN_WORKFLOW**（含重试/降级）✅；下一迭代 **3.9.4 / 3.10.5–3.10.6**；阶段四 **4.7.3 `PEER_COLLAB` 第五模式** ⬜ 见 `docs/superpowers/specs/2026-06-24-peer-collab-routing-design.md`；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.7** + **3.10.1–3.10.7** + **3.11 skill-manager** + **3.12.1–3.12.4** + **3.12.2 diff** + **3.9.1–3.9.4 PLAN_WORKFLOW**（含重试/降级、**静态 workflow Plan DAG 统一**）✅；**Chat 执行模式选择器 P0** ✅ 见 `docs/superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md`；**RAG 检索链 HyDE fallback**（2026-06-25）✅；下一迭代 **3.7 Grounding** / **3.2–3.5 平台化**；阶段四 **4.7.3 `PEER_COLLAB` 第五模式** ⬜ 见 `docs/superpowers/specs/2026-06-24-peer-collab-routing-design.md`；**4.7.5 ReAct TaskBoard** ⬜ 见 `docs/superpowers/specs/2026-06-24-react-taskboard-design.md`；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -28,6 +28,7 @@ cd sunshine-ui && npm run dev
 
 # 验收
 python scripts/phase2_agent_demo.py --suite all
+python scripts/verify_execution_preference.py
 python scripts/phase2_agent_demo.py --suite react
 python scripts/phase2_agent_demo.py --suite workflow
 
@@ -54,6 +55,7 @@ mvn test -pl rag-service
 | `clear_session_cache.py` | 清会话 + 可选重启 |
 | `download_skywalking_agent.py` | 下载 SkyWalking Agent |
 | `phase2_agent_demo.py` | Phase 2.4 ReAct 验收；`--suite all\|react\|workflow` |
+| `verify_execution_preference.py` | Chat 底栏 `executionPreference` 强制路由 §J Live 验收 |
 | `rag_reset.py` | RAG Milvus 清库重建 |
 | `rag_ingest_bulk.py` | 按 golden-set 批量入库 |
 | `rag_eval.py` | RAG Recall/MRR 基线评测 |
@@ -88,11 +90,14 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | 要扩展 | 改哪里 |
 |--------|--------|
 | 新工具 | `tool-manager` 新增 `ToolHandler`（含 displayName / timelinePhase / outputSummaryKind）→ Nacos `agent.execution.react.tools` 或 workflow 节点 `params.tool` → sync + 重启 tool-manager、orchestrator |
-| 新 Workflow | `docs/nacos/sunshine-workflows.yaml` 的 catalog + definitions → sync → 重启 orchestrator |
+| 新 Workflow | **当前**：`docs/nacos/sunshine-workflows.yaml` catalog + definitions → sync → 重启 orchestrator；**4.13**：`/workflows` + `workflow-manager` DB 发布（同 ID 覆盖 Nacos） |
+| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanDagGraph`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
 | **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
-| Query 改写 | `agent.rewrite.{rag,intent,empty-recall}`（**默认开启**，flash）→ `QueryRewriteService` + `KnowledgeRetrievalService` + `ExecutionPlanRouter` |
+| Query 改写 | `agent.rewrite.{rag,intent,empty-recall}`（**默认开启**，flash）→ `QueryRewriteService` + `KnowledgeRetrievalService` + `ExecutionPlanRouter`；RAG 链：**rag 改写 → 首次检索 →（0 命中）HyDE fallback → empty-recall** |
 | **意图路由** | **Policy Chain**：L0 Skill → L1 `agent.routing.structural` → L2 `agent.routing.rules` → L3 `agent.intent`；验收见 `docs/routing/routing-golden-set.md` |
+| **Chat 执行模式** | 底栏 `executionPreference`（五模式）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 |
+| **Workflow 模板（4.13）** | `workflow-manager` + `/workflows` + Chat `#` 补全；Nacos 内置 + DB 合并 `CompositeWorkflowCatalog`；见 `2026-06-25-workflow-studio-design.md` |
 | Workflow 节点中文名 | `sunshine-workflows.yaml` 节点 `displayName` → `WorkflowNodeLabelService` → SSE `step.label` |
 | 意图步骤文案 | Nacos `agent.timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
 | 步骤 before/active/after | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
@@ -107,19 +112,19 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 **Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `LlmNodeHandler`；SUB 的 `skillId` 走 skill overlay 层；ReAct 工具策略见 Nacos `agent.prompt.mode-overlays.react`。
 
-**Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall` | 可选 HyDE；日志 `[QueryRewrite]`。
+**Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall`；HyDE 为 **首次 0 命中 fallback**（`agent.rewrite.rag.hyde.enabled`）；日志 `[QueryRewrite]`。
 
-**待做（阶段三多 Agent）**：3.9.2–3.9.4 Plan 持久化/回放 + 3.10.5–3.10.6；3.12.2 diff / 3.12.4 Plan 详情页；3.8.7 Planner 前改写（依赖 3.9/3.10）。
+**待做（阶段三多 Agent）**：3.7 Grounding；3.2–3.5 多租户/HITL/可观测 live 部署；阶段四 **PEER_COLLAB**。
 
 **RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）；向量锚点门禁见 `RetrievalService`。
 
-### 时间线（ReAct vs Workflow vs Plan-Workflow）
+### 时间线（ReAct vs Workflow DAG）
 
 | 模式 | 步骤形态 | 说明 |
 |------|----------|------|
 | **ReAct** | `intent → think → tool → think-2 → generate` | `ReactExecutor` → `AgentRuntime`；reasoning 走 `step_delta(think*)`；Hook 经 `StepEventBridge` 绑定 assistantMsgId |
-| **静态 Workflow** | `intent → plan? → node-{id} → … → node-answer` | `WorkflowExecutor` 线性 DAG；节点 rag / tool / agent / **answer**（静态图已无独立 `llm`） |
-| **Plan-Workflow** | `intent → plan → node-{id} → … → node-answer` | Planner 动态 JSON；**成功路径无 `think`/`generate`**；`OperationStack` 用 `PlanWorkflowPanel` 展示 DAG，**隐藏** `phase=node` 逐步卡片；节点重试/Replan/降级见 `docs/routing/plan-workflow-retry-degradation.md` |
+| **静态 Workflow** | `intent → plan → …`（DAG） | `WorkflowExecutor`：`StaticPlanAdapter` + `PlanTimeline`（`planId=`）→ `executeDynamicDefinition`；**无**逐步 `OperationCard` |
+| **Plan-Workflow** | `intent → plan → …`（DAG） | `PlanWorkflowExecutor` + Planner JSON；**成功路径无 `think`/`generate`**；与静态 workflow **共用** `PlanWorkflowPanel` / `PlanNodeDrawer` |
 | **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent 内部 think/tool **不上主时间线**；`AgentNodeDetailSummarizer` 供主行 after + 展开 detail |
 | **Workflow / Plan answer 节点** | 主时间线 `node-{id}` 一步 | `WorkflowLlmStreamSupport`：reasoning → `step_delta(node-*, reasoning)`；content → 消息正文 + `step.result`；主行 after = **displayName+「完成」**（非模型正文） |
 
@@ -130,7 +135,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | ReAct | `think*` step | 可选（generate 路径） | `normalizeTimelineSteps` 可合成 |
 | Plan/Workflow `node-*` | 挂在对应 node step | **不写**（`GenerationJob` + `chatSessions`） | **不合成**（有 plan/node 即跳过） |
 
-**Plan 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析**（`step.reasoning` 原样）+ **最终输出**（`step.result` 原样）；业务节点可展开 **执行记录**（`attempts[]`）；无「执行摘要」；长文随 `.drawer-body` 整体滚动（区块内无嵌套滚动条）。
+**Plan 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析**（`step.reasoning` 原样）+ **最终输出**（`step.result` 原样）；业务节点可展开 **执行记录**（`attempts[]`）；RAG 节点 `metadata.rewriteInDetail=true` 时改写 trace 进抽屉 **检索过程**（`expandSectionTitle`），前端勿关键字过滤；无「执行摘要」；长文随 `.drawer-body` 整体滚动（区块内无嵌套滚动条）。
 
 **Timeline V2 约定**：步骤含 `lifecycle` + `summary.{before,active,after}`；SSE 仅下发当前阶段一行。终态 COMPLETE/FAIL/SKIP **必须下发**。
 

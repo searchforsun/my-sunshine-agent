@@ -49,26 +49,36 @@ public class MilvusService {
                 HasCollectionParam.newBuilder().withCollectionName(COLLECTION).build());
 
         if (Boolean.TRUE.equals(exists.getData())) {
-            if (hasDocNameField()) {
+            if (schemaSupportsTenant()) {
                 loadCollection();
                 log.info("[RAG] Collection '{}' 已存在且 schema 匹配", COLLECTION);
                 return;
             }
-            log.warn("[RAG] Collection '{}' schema 过旧，重建以支持 doc_name", COLLECTION);
+            log.warn("[RAG] Collection '{}' schema 过旧，重建以支持 tenant_id", COLLECTION);
             dropCollection();
         }
 
         createCollection();
     }
 
-    private boolean hasDocNameField() {
+    private boolean schemaSupportsTenant() {
         R<io.milvus.grpc.DescribeCollectionResponse> response = client.describeCollection(
                 DescribeCollectionParam.newBuilder().withCollectionName(COLLECTION).build());
         if (response.getData() == null) {
             return false;
         }
         DescCollResponseWrapper wrapper = new DescCollResponseWrapper(response.getData());
-        return wrapper.getFields().stream().anyMatch(field -> "doc_name".equals(field.getName()));
+        boolean hasDocName = false;
+        boolean hasTenant = false;
+        for (var field : wrapper.getFields()) {
+            if ("doc_name".equals(field.getName())) {
+                hasDocName = true;
+            }
+            if ("tenant_id".equals(field.getName())) {
+                hasTenant = true;
+            }
+        }
+        return hasDocName && hasTenant;
     }
 
     private void dropCollection() {
@@ -94,6 +104,11 @@ public class MilvusService {
                         .withName("doc_name")
                         .withDataType(DataType.VarChar)
                         .withMaxLength(512)
+                        .build())
+                .addFieldType(FieldType.newBuilder()
+                        .withName("tenant_id")
+                        .withDataType(DataType.VarChar)
+                        .withMaxLength(32)
                         .build())
                 .addFieldType(FieldType.newBuilder()
                         .withName("content")
@@ -125,9 +140,11 @@ public class MilvusService {
                 .build());
     }
 
-    public void insert(String docName, String content, List<Float> embedding) {
+    public void insert(String docName, String content, List<Float> embedding, String tenantId) {
+        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         List<InsertParam.Field> fields = new ArrayList<>();
         fields.add(new InsertParam.Field("doc_name", List.of(docName)));
+        fields.add(new InsertParam.Field("tenant_id", List.of(tid)));
         fields.add(new InsertParam.Field("content", List.of(content)));
         fields.add(new InsertParam.Field("embedding", List.of(embedding)));
 
@@ -137,11 +154,13 @@ public class MilvusService {
                 .build());
     }
 
-    public List<SearchHit> search(List<Float> queryVector, int topK) {
+    public List<SearchHit> search(List<Float> queryVector, int topK, String tenantId) {
+        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         R<SearchResults> result = client.search(SearchParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withMetricType(MetricType.IP)
-                .withOutFields(List.of("doc_name", "content"))
+                .withExpr("tenant_id == \"" + escape(tid) + "\"")
+                .withOutFields(List.of("doc_name", "content", "tenant_id"))
                 .withTopK(topK)
                 .withVectors(List.of(queryVector))
                 .withVectorFieldName("embedding")
@@ -171,8 +190,16 @@ public class MilvusService {
             results.add(new SearchHit(docName, content.toString(), score));
         }
 
-        log.info("[RAG] 检索完成: topK={}, 返回={}", topK, results.size());
+        log.info("[RAG] 检索完成: tenant={}, topK={}, 返回={}", tid, topK, results.size());
         return results;
+    }
+
+    private static String escape(String value) {
+        return escapeForExpr(value);
+    }
+
+    static String escapeForExpr(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /** Admin：drop + recreate collection（清库重建） */

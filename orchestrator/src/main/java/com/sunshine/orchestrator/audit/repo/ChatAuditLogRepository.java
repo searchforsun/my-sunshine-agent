@@ -8,4 +8,10 @@ import java.util.List;
 public interface ChatAuditLogRepository extends JpaRepository<ChatAuditLogEntity, String> {
 
     List<ChatAuditLogEntity> findTop20ByOrderByCreatedAtDesc();
+
+    List<ChatAuditLogEntity> findByMessageIdAndEventTypeOrderByCreatedAtDesc(
+            String messageId, String eventType);
+
+    List<ChatAuditLogEntity> findByConversationIdAndEventTypeOrderByCreatedAtDesc(
+            String conversationId, String eventType);
 }

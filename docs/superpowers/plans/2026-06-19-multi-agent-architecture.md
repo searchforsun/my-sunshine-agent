@@ -9,7 +9,7 @@
 
 **Goal:** L1 增强（skill 子集）→ L3 主轴（PLAN_WORKFLOW + 多子 Agent）。
 
-**实现状态（2026-06-23）：** **3.10.1–3.10.4 ✅（MVP）** · **3.10.7 ✅** · **3.11.1–3.11.7 ✅** · **3.12.1–3.12.4 ✅** · **3.9.1–3.9.3 ✅** · **3.9.4 / 3.10.5–3.10.6 / 3.12.2 diff ⬜**。下一迭代：**3.9.4 审计** + **3.10.5 多 agent 演示**。
+**实现状态（2026-06-24）：** **3.10.1–3.10.7 ✅** · **3.11.1–3.11.7 ✅** · **3.12.1–3.12.4 ✅** · **Skill 六种触发 ✅**（Live 点验 ⬜）· **3.9.1–3.9.4 ✅** · **静态 workflow → Plan DAG ✅** · **3.8.7 ✅** · **3.6 tool.call ✅**。下一迭代：**3.7 Grounding** / **3.2–3.5 平台化**。
 
 ---
 
@@ -66,7 +66,7 @@ flowchart TB
 | Timeline / Bridge 隔离 | ✅ | `WorkflowExecutor` 仅发 `node-{id}`；`sub-{runId}` bridge |
 | skill overlay 进 PromptComposer | ✅ | 3.10.7c；SkillCatalog + `ReActAgentRuntime` |
 | 记忆裁剪（无 STM/LTM） | ✅ | 3.10.7；`MemoryContext.forSubAgent()` + Handler/Runtime 双保险 |
-| `sub_agent_run` 审计 | ⬜ | 3.10.6 |
+| `sub_agent_run` 审计 | ✅ | 3.10.6 |
 
 ---
 
@@ -160,7 +160,7 @@ flowchart TB
 
 ---
 
-#### 流程 1：用户 `@` 指定 Skill（优先级最高）⬜ 3.11.7
+#### 流程 1：用户 `@` 指定 Skill（优先级最高）✅ 3.11.7
 
 **示例**：`@finance-analysis 这笔报销是否合规？`
 
@@ -177,7 +177,7 @@ flowchart TD
 
 ---
 
-#### 流程 2：强提示「请使用 xxx skill 处理」⬜ 3.11.7
+#### 流程 2：强提示「请使用 xxx skill 处理」✅ 3.11.7
 
 **示例**：`请使用 finance-analysis skill 处理待审批单据`
 
@@ -192,7 +192,7 @@ flowchart TD
 
 ---
 
-#### 流程 3：系统自动发现 Skill ⬜ 3.10.4
+#### 流程 3：系统自动发现 Skill ✅ 3.10.4 / SkillDiscoveryService
 
 **示例**：`帮我做一笔报销的合规分析`（无 @）
 
@@ -245,7 +245,7 @@ flowchart TB
 
 ---
 
-##### 流程 5A：任务驱动 Plan（Planner 拼 DAG，Skill 仅挂步）⬜ 3.9
+##### 流程 5A：任务驱动 Plan（Planner 拼 DAG，Skill 仅挂步）✅ 3.9
 
 **示例**：`对照制度、拉待办、做合规分析，最后友好答复`（无 @）
 
@@ -262,7 +262,7 @@ flowchart TD
 
 ---
 
-##### 流程 5B：Skill 驱动生成 Plan JSON ⬜ 3.10.4 + 3.9
+##### 流程 5B：Skill 驱动生成 Plan JSON ✅ 3.10.4b（L0 多步 + Planner 读 L2）
 
 **有这条流程**，但 **尚未实现**。适用于：用户已锁定 skillId，且 **Skill 正文（标准 SKILL.md）** 描述了跨节点的平台编排步骤（如「先检索制度 → 拉待办 → 子 Agent 分析 → 润色答复」）。
 
@@ -372,14 +372,13 @@ flowchart TB
     M1[ReactExecutor] --> M2[MAIN AgentRuntime<br/>overlay + 收窄工具]
     M2 --> M3[完整 Timeline think/tool]
   end
-  subgraph static [静态 workflow 子 Agent — 流程 4 ✅]
-    S1[WorkflowExecutor] --> S2[AgentNodeHandler]
-    S2 --> S3[SUB AgentRuntime]
-    S3 --> S4[主时间线一步<br/>可展开已加载技能]
+  subgraph static [静态 workflow — 流程 4 ✅ + Plan DAG UI ✅]
+    S1[WorkflowExecutor<br/>StaticPlanAdapter] --> S2[executeDynamicDefinition]
+    S2 --> S3[AgentNodeHandler 等 NodeHandler]
   end
-  subgraph dynamic [动态 Plan — 流程 5A/5B ⬜]
-    D1[Planner 生成 Plan JSON] --> D2[DynamicWorkflowExecutor]
-    D2 --> D3[各 agent 步 SUB]
+  subgraph dynamic [动态 Plan — 流程 5A/5B ✅]
+    D1[Planner 生成 Plan JSON] --> D2[PlanWorkflowExecutor]
+    D2 --> D3[executeDynamicDefinition]
   end
 ```
 
@@ -424,7 +423,7 @@ flowchart TB
 
 | 运行角色 | 入口 | 状态 |
 |----------|------|:----:|
-| **主 Agent** | `ReactExecutor` | ⬜ skillId 待贯通 |
+| **主 Agent** | `ReactExecutor` | ✅ skillId 贯通（含自动发现） |
 | **子 Agent** | `AgentNodeHandler` | ✅ 不传完整会话记忆 |
 
 ---
@@ -458,11 +457,14 @@ flowchart LR
     D4[展开 detail]
     D5[Catalog 摘要/详情拆分 3.11.6]
   end
-  subgraph todo [⬜ 待做]
+  subgraph todo [⬜ 待做 / Live]
+    T6[5B / 自动发现 Live 点验]
+  end
+  subgraph done2 [✅ Skill 六种触发]
     T2[@ + 强提示 3.11.7]
-    T3[自动发现 + 主ReAct 3.10.4]
+    T3[自动发现 3.10.4]
     T4[5A 任务驱动 Plan 3.9]
-    T5[5B Skill→Plan JSON 3.10.4+3.9]
+    T5[5B Skill→Plan 3.10.4b]
   end
 ```
 
@@ -473,12 +475,12 @@ flowchart LR
 | PromptComposer / 子 Agent overlay | 4 | ✅ |
 | 展开 detail「已加载技能：」 | 4 | ✅ |
 | Catalog 摘要与详情拆分 | 加载 | ✅ 3.11.6 |
-| `@` + 强提示解析 | 1、2 | ✅ 3.11.7 |
+| `@` + 强提示解析（含多步→5B） | 1、2、5B | ✅ 3.11.7 |
 | Chat `@` 补全 | 1 | ✅ 3.11.7 |
-| 自动发现 + 主 ReAct 贯通 | 3 | ⬜ 3.10.4 |
-| Intent 注入 Skill 目录摘要 | 5A、5B | ⬜ 3.9.1 |
-| 5A 任务驱动 Planner | 5A | ⬜ 3.9 |
-| 5B Skill 驱动 Planner（读 L2 正文→解析工作流→Plan JSON） | 5B | ⬜ 3.10.4 + 3.9 |
+| 自动发现 + 主 ReAct 贯通 | 3 | ✅ SkillDiscoveryService |
+| Intent / Planner 注入 Skill 目录摘要 | 5A、5B | ✅ PlanCatalogRenderer |
+| 5A 任务驱动 Planner | 5A | ✅ 3.9 |
+| 5B Skill 驱动 Planner（读 L2 正文→Plan JSON） | 5B | ✅ 3.10.4b（Live 点验 ⬜） |
 
 ---
 
@@ -613,9 +615,9 @@ flowchart LR
 - Create: `orchestrator/.../plan/DAGValidator.java`
 - Create: `orchestrator/.../execution/DynamicWorkflowExecutor.java`
 
-- [ ] **3.10.5a** Validator：skillId 须在 Catalog、无环、≤8 节点
-- [ ] **3.10.5b** Plan → `WorkflowDefinition` 物化
-- [ ] **3.10.5c** 含 2+ `agent` 节点端到端演示
+- [x] **3.10.5a** Validator：skillId 须在 Catalog、无环、≤8 节点
+- [x] **3.10.5b** Plan → `WorkflowDefinition` 物化
+- [x] **3.10.5c** 含 2+ `agent` 节点单测 + Nacos 双 agent 示例（live 点验待中间件）
 
 **验收:** 「制度+财务+合规」三 agent 节点 Plan 执行成功
 
@@ -629,9 +631,9 @@ flowchart LR
 - Create: `orchestrator/.../audit/SubAgentAuditEvent.java`
 - Modify: `AuditService` 或新建 `SubAgentAuditService`
 
-- [ ] **3.10.6a** 子 Agent 完成时发 `sub_agent_run` 事件
-- [ ] **3.10.6b** payload：runId, skillId, toolCalls, outputSummary
-- [ ] **3.10.6c** `GET /api/audit/sub-runs?messageId=` 查询
+- [x] **3.10.6a** 子 Agent 完成时发 `sub_agent_run` 事件
+- [x] **3.10.6b** payload：runId, skillId, toolCalls, outputSummary
+- [x] **3.10.6c** `GET /api/audit/sub-runs?messageId=` 查询
 
 ---
 
@@ -674,6 +676,9 @@ flowchart LR
 - [x] **3.9.1c** Policy Chain + `StructuralPlanMatcher`（Nacos 可配置）+ `RoutingGoldenSetTest`
 - [x] **3.9.1d** `PlanNormalizer`（缺 edges 推断）+ Planner 失败 plan 步可视化 + 降级 react 说明
 - [x] **3.9.1e** 重试与降级：`NodeRetryExecutor`、Replan、`completed_with_errors` / `degraded_react` · SSOT [plan-workflow-retry-degradation.md](../../routing/plan-workflow-retry-degradation.md)
+- [x] **3.9.1f** 静态 `WORKFLOW`：`StaticPlanAdapter` 物化 Plan + `execution_plan` 落库；Chat 复用 `PlanWorkflowPanel`（与 L1 Plan 同 UI）
+
+**Files（3.9.1f）：** `StaticPlanAdapter.java`、`PlanRunFinalizer.java`；Modify `WorkflowExecutor.execute()`
 
 ---
 
@@ -704,7 +709,7 @@ flowchart LR
 
 ### 3.9.4 plan.* 审计事件
 
-- [ ] **3.9.4a** RocketMQ：`plan.created` / `plan.validated` / `plan.completed` / `plan.failed` / `plan.planner_attempt` / `plan.node.attempt` / `plan.fallback_react`
+- [x] **3.9.4a** RocketMQ：`plan.created` / `plan.validated` / `plan.completed` / `plan.failed` / `plan.planner_attempt` / `plan.node.attempt` / `plan.fallback_react`
 
 ---
 
@@ -724,7 +729,7 @@ flowchart LR
 - [x] **3.12.1a** 元数据修改（displayName/description）· 下载/删除版本 · 卡片级删除 Skill
 - [x] **3.11.6** Catalog 拆分：`GET /catalog/index`（无 overlay）+ `GET /skills/{id}/catalog`（含 overlay）
 - [x] **3.11.7** Skill 显式绑定：`SkillBindingParser`（P0 `@` + P1 强提示句）+ Chat `@` 补全 + Nacos `hint-patterns`
-- [x] **3.12.2** 在线编辑 overlay 正文（草稿版本 PUT file；SKILL.md 同步 overlay）；版本 diff ⬜
+- [x] **3.12.2** 在线编辑 overlay 正文（草稿版本 PUT file；SKILL.md 同步 overlay）；**版本 diff ✅**
 - [ ] **3.12.3** ~~工具绑定~~（已取消：工具由 workflow 节点 params 配置）
 - [x] **3.12.4** Timeline `plan` 步跳转 Plan 详情（`/plans/:planId`）
 

@@ -63,6 +63,18 @@ class StepMetadataTest {
     }
 
     @Test
+    void isEmpty_falseWhenOnlyRoutingReason() {
+        StepMetadata metadata = StepMetadata.fromRouting(
+                new com.sunshine.orchestrator.routing.ExecutionPlan(
+                        com.sunshine.orchestrator.routing.ExecutionMode.SIMPLE_LLM,
+                        null,
+                        java.util.Map.of(),
+                        "user:forced-simple-llm"));
+        assertThat(metadata).isNotNull();
+        assertThat(metadata.isEmpty()).isFalse();
+    }
+
+    @Test
     void fromRagToolOutput_fragmentContainsWeiZhaoDao_stillCountsHits() {
         String raw = """
                 知识库检索结果（共 3 条）：

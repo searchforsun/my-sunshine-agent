@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.agent.remote.CatalogRemoteAgentTool;
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
@@ -44,14 +45,15 @@ class AgentInfraTest {
         ToolCatalogEntry oaEntry = new ToolCatalogEntry(
                 "list_oa_tasks", "查询 OA 待办", "desc", "remote", "tool", "oa-tasks", Map.of());
         ToolManagerClient toolManagerClient = Mockito.mock(ToolManagerClient.class);
+        ToolAuditService toolAuditService = Mockito.mock(ToolAuditService.class);
 
         when(toolCatalogService.isRagTool("search_knowledge")).thenReturn(true);
         when(toolCatalogService.isRagTool("list_finance_messages")).thenReturn(false);
         when(toolCatalogService.isRagTool("list_oa_tasks")).thenReturn(false);
         when(remoteToolFactory.create("list_finance_messages"))
-                .thenReturn(Optional.of(new CatalogRemoteAgentTool(financeEntry, toolManagerClient)));
+                .thenReturn(Optional.of(new CatalogRemoteAgentTool(financeEntry, toolManagerClient, toolAuditService)));
         when(remoteToolFactory.create("list_oa_tasks"))
-                .thenReturn(Optional.of(new CatalogRemoteAgentTool(oaEntry, toolManagerClient)));
+                .thenReturn(Optional.of(new CatalogRemoteAgentTool(oaEntry, toolManagerClient, toolAuditService)));
 
         DynamicToolkitFactory factory = new DynamicToolkitFactory(
                 ragTool,

@@ -179,6 +179,20 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.username").value("frank01"));
     }
 
+    @Test
+    void register_withTenantId_persistsTenant() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"tenant01","password":"password123","tenantId":"tenant-a"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+        var user = userRepository.findByUsername("tenant01");
+        assertThat(user).isPresent();
+        assertThat(user.get().getTenantId()).isEqualTo("tenant-a");
+    }
+
     private void registerUser(String username) throws Exception {
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)

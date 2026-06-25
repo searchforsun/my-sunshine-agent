@@ -223,6 +223,37 @@ export function writeSkillFileKeepalive(
   })
 }
 
+export interface SkillDiffLine {
+  type: 'unchanged' | 'added' | 'removed'
+  text: string
+  oldLineNo: number | null
+  newLineNo: number | null
+}
+
+export interface SkillVersionDiffResponse {
+  path: string
+  fromVersion: number
+  toVersion: number
+  binary?: boolean
+  fromMd5?: string | null
+  toMd5?: string | null
+  lines: SkillDiffLine[]
+}
+
+export async function diffSkillVersions(
+  id: string,
+  from: number,
+  to: number,
+  path = 'SKILL.md',
+): Promise<SkillVersionDiffResponse> {
+  const q = new URLSearchParams({ from: String(from), to: String(to), path })
+  const res = await fetch(
+    apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/diff?${q}`),
+    { headers: apiHeaders() },
+  )
+  return parseResponse<SkillVersionDiffResponse>(res)
+}
+
 /** 下载指定版本 Skill 包（zip），直连 Gateway 避免 proxy 破坏二进制 */
 export async function downloadSkillPackage(id: string, version: number): Promise<Blob> {
   const res = await fetch(

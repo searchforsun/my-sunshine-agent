@@ -29,8 +29,8 @@ public class ChatController {
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
 
-        log.info("[BFF] 用户 {} 发送消息 conv={} resume={}",
-                userId, request.getConversationId(), request.getResumeMessageId());
+        log.info("[BFF] 用户 {} 发送消息 conv={} pref={} resume={}",
+                userId, request.getConversationId(), request.getExecutionPreference(), request.getResumeMessageId());
 
         return client.stream(request, userId, tenantId)
                 .doOnComplete(() -> log.info("[BFF] 流式完成"))

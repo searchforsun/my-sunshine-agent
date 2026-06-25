@@ -9,6 +9,7 @@ const props = defineProps<{
   steps: ProcessingStep[]
   live?: boolean
   executionPlanId?: string
+  userQuery?: string
 }>()
 
 const cardExpanded = reactive(new Map<string, boolean>())
@@ -54,6 +55,7 @@ const displaySteps = computed(() => {
         :all-steps="steps"
         :live="live"
         :execution-plan-id="executionPlanId"
+        :user-query="userQuery"
       />
       <OperationCard
         v-else

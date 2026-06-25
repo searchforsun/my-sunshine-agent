@@ -44,7 +44,8 @@ public class RagNodeHandler implements NodeHandler {
         int topK = parseTopK(spec.params().get("topK"), ragSearchProperties.getDefaultTopK());
         String finalQuery = query;
 
-        return knowledgeRetrievalService.searchMono(finalQuery, topK, streamCtx.assistantMsgId())
+        return knowledgeRetrievalService.searchMono(
+                        finalQuery, topK, streamCtx.tenantId(), streamCtx.assistantMsgId())
                 .map(hits -> {
                     List<RagClient.RagHit> results = hits != null ? hits : List.of();
                     String output = RagContextFormatter.formatAgentContext(results);

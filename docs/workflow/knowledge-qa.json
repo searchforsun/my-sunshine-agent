@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "workflowId": "knowledge-qa",
+  "displayName": "知识库问答",
+  "description": "查企业制度/流程/规定（请假、报销、差旅、预算管理办法等）；即使用到「预算」「审批」等词，只要不是查待办单据列表或合规对比",
+  "mode": "workflow",
+  "enabled": true,
+  "source": "import",
+  "catalog": {
+    "examples": [
+      "年假可以请几天",
+      "项目预算超支了还能安排出差吗",
+      "报销流程规定"
+    ],
+    "nodeSummary": ["start", "rag", "answer"]
+  },
+  "plan": {
+    "planId": null,
+    "reason": "导入自 sunshine-workflows.yaml · knowledge-qa",
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "displayName": "开始",
+        "params": {}
+      },
+      {
+        "id": "rag",
+        "type": "rag",
+        "displayName": "知识检索",
+        "params": {
+          "topK": "3"
+        }
+      },
+      {
+        "id": "answer",
+        "type": "answer",
+        "displayName": "生成回答",
+        "params": {
+          "prompt": "你是企业制度问答助手。仅根据下方「检索结果」回答，不得编造公司制度。\n\n若「检索结果」正文为空、或明确写「未找到与用户问题直接相关的片段」，只回复：\n「企业知识库中暂无相关规定，请咨询 HR/财务或相关主管部门。」\n若检索结果非空且含与用户问题相关的制度片段（表述可不完全一致，如打车/差旅/交通费/报销），须基于片段作答，不得回复暂无。\n禁止用通用常识、网络知识或税务/法律科普代替企业制度。\n禁止向用户输出 finance-list、finance-smart、knowledge-qa 等内部名称；改用中文业务表述。\n\n检索结果：\n{{rag.output}}"
+        }
+      }
+    ],
+    "edges": [
+      { "from": "start", "to": "rag" },
+      { "from": "rag", "to": "answer" }
+    ]
+  }
+}

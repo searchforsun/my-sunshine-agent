@@ -1,9 +1,23 @@
 package com.sunshine.orchestrator.routing.policy;
 
+import com.sunshine.orchestrator.routing.ExecutionPreference;
+
 /** 路由链上下文 */
-public record RoutingContext(String userMessage, String traceMessageId) {
+public record RoutingContext(
+        String userMessage,
+        String traceMessageId,
+        ExecutionPreference preference,
+        String forcedWorkflowId) {
+
+    public RoutingContext(String userMessage, String traceMessageId) {
+        this(userMessage, traceMessageId, ExecutionPreference.AUTO, null);
+    }
 
     public static RoutingContext of(String userMessage) {
-        return new RoutingContext(userMessage, null);
+        return new RoutingContext(userMessage, null, ExecutionPreference.AUTO, null);
+    }
+
+    public boolean allowsSkillBinding() {
+        return preference == null || preference.allowsSkillBinding();
     }
 }

@@ -26,14 +26,17 @@
 | **4.4** | 多模态对话 L3：Vision + `/chat` 附件 | 拍图问一问 | 中 |
 | **4.5** | Skills Docker 沙箱 | 代码执行 skill | 中 |
 | **4.6** | 动态 DAG 增强：if-else、并行 fan-out、Replan | 静态 workflow 不够 | 中 |
-| **4.7** | 多 Agent 增强：**第五顶层模式 `PEER_COLLAB`**、Coordinator、并行子 Agent、MsgHub、子 Timeline 展开 | 复杂协作 / 交叉验证 | 中 |
+| **4.7** | 多 Agent 增强：**第五顶层模式 `PEER_COLLAB`**、Coordinator、并行子 Agent、MsgHub、子 Timeline、**ReAct TaskBoard** | 复杂协作 / 交叉验证 / ReAct 软规划 | 中 |
 | **4.8** | MCP 动态引入 + 前端管理：tool-manager 注册 MCP Server + `/mcp` 管理页 | 非 HTTP 遗留系统 / 异构工具接入 | 中 |
 | **4.9** | K8s：Helm + HPA + Nacos GitOps | 流量/HA | 中 |
 | **4.10** | Seata 分布式事务 + HITL 串联 | 跨服务写操作 | 低 |
 | **4.11** | Prompt 运营后台：版本/审核/回滚 | 提示词 >10 + 非研发维护 | 中 |
 | **4.12** | Serverless 冷启动 | 调用量波动大 | 低 |
+| **4.13** | **Workflow Studio**：Dify 式可视化维护 + DB PlanJson + `docs/workflow` 导入包 | 静态 workflow 运维 / 业务自助编排 | **中** |
 
-**建议顺序**：4.1 → 4.2 → 4.8 → 4.11 → 4.4 → 4.9 → 4.10 → 4.12
+**三/四交界（已落地）**：Chat 底栏 **执行路径选择器** P0 ✅（`executionPreference` + `ForcedExecutionRouter`）；**workflow 模板 catalog / `#` 绑定** 归属 **4.13**，见 [chat-execution-mode-selector-design.md](./2026-06-25-chat-execution-mode-selector-design.md) §1.1、[workflow-studio-design.md](./2026-06-25-workflow-studio-design.md) §3.4。
+
+**建议顺序**：4.1 → 4.2 → **4.13** → 4.8 → 4.11 → 4.4 → 4.9 → 4.10 → 4.12
 
 ---
 
@@ -113,6 +116,9 @@
 | **4.7.2** | M10 并行子 Agent fan-out/join |
 | **4.7.3** | M11 MsgHub Peer（maxRounds≤3，transcript 审计） |
 | **4.7.4** | M9 前端子 Agent 详情展开 UI |
+| **4.7.5** | **ReAct TaskBoard**（`manage_tasks` 元工具 + `tasks` Timeline + 审计） · [详设](./2026-06-24-react-taskboard-design.md) · **D11** |
+
+**4.7.5 摘要**：不新增顶层 mode；`react` 内软规划 Todo，对齐 Claude Code 体验；与 `plan-workflow` / `peer-collab` 互斥展示。
 
 ### 4.8 MCP 动态引入 + 前端管理
 
@@ -159,6 +165,26 @@
 ### 4.12 Serverless
 
 - 仅无状态服务（rag、llm-gateway 适配器）缩容；orchestrator + Redis 保持热实例
+
+### 4.13 Workflow Studio（可视化工作流维护）
+
+> **详设**：[2026-06-25-workflow-studio-design.md](./2026-06-25-workflow-studio-design.md)  
+> **对称参照**：skill-manager + `/skills`；执行引擎复用 `WorkflowExecutor` + `PlanMaterializer`
+
+| 子任务 | 内容 |
+|--------|------|
+| **4.13.1** | `workflow-manager` :8230 + Flyway（**无 workflow 种子**） |
+| **4.13.1b** | `docs/workflow/*.json` 与 Nacos YAML 同步维护 |
+| **4.13.2** | Admin / Catalog API + `PlanValidator` 发布校验 |
+| **4.13.3** | orchestrator `CompositeWorkflowDefinitionLoader` + Catalog 合并 |
+| **4.13.4** | BFF/Gateway 透传 |
+| **4.13.5** | 前端 **`/workflows`** DAG 编辑器 MVP |
+| **4.13.6** | **`WorkflowBindingParser/Policy`（L0 `#`）** + golden-set §I |
+| **4.13.7** | 并行节点编辑（依赖 **4.7.2**） |
+
+**检查门**：Studio 导入 `docs/workflow/knowledge-qa.json` 并发布 → `#knowledge-qa` 命中 DB；未导入时仍走 Nacos；`@` / `#` 互不混用。
+
+**P0 多 Agent 接入边界**（MsgHub / Parallel / TaskBoard）：[2026-06-25-phase4-agent-capabilities-boundaries.md](./2026-06-25-phase4-agent-capabilities-boundaries.md)
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "exportedFrom": "docs/nacos/sunshine-workflows.yaml",
+  "workflows": [
+    "knowledge-qa.json",
+    "finance-list.json",
+    "finance-smart.json",
+    "finance-summary.json"
+  ]
+}

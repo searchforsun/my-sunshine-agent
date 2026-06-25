@@ -6,6 +6,7 @@ import { ref, computed } from 'vue'
 import { useAuthStore } from './authStore'
 import type { ChatMessage } from '../api/chat'
 import type { ConversationSummary, ConversationMessage } from '../api/conversations'
+import type { ExecutionPreference } from '../api/executionModes'
 import {
   listConversations,
   createConversation,
@@ -29,6 +30,7 @@ export interface Conversation {
   createdAt: number
   updatedAt: number
   messages: ChatMessage[]
+  executionPreference?: ExecutionPreference
 }
 
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
@@ -92,6 +94,7 @@ export const useChatStore = defineStore('chat', () => {
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
         messages: prev?.messages ?? [],
+        executionPreference: c.executionPreference ?? prev?.executionPreference,
       }
     })
     conversations.value = merged.filter(c => isValidConversationId(c.id))
@@ -191,6 +194,7 @@ export const useChatStore = defineStore('chat', () => {
       const conv = conversations.value.find(c => c.id === id)
       if (conv) {
         conv.title = detail.title
+        conv.executionPreference = detail.executionPreference
         const apiMsgs = mapApiMessages(detail.messages)
         const cached = loadCachedMessages(id)
         conv.messages = sanitizeRestoredMessages(mergeRestoredMessages(apiMsgs, cached))
@@ -230,6 +234,7 @@ export const useChatStore = defineStore('chat', () => {
         createdAt: created.createdAt,
         updatedAt: created.updatedAt,
         messages: [],
+        executionPreference: created.executionPreference,
       }
       conversations.value.unshift(conv)
       currentId.value = conv.id
@@ -293,6 +298,11 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
+  function updateExecutionPreferenceLocal(id: string, pref: ExecutionPreference) {
+    const conv = conversations.value.find(c => c.id === id)
+    if (conv) conv.executionPreference = pref
+  }
+
   function syncMessages(id: string, msgs: ChatMessage[]) {
     const conv = conversations.value.find(c => c.id === id)
     if (!conv) return
@@ -318,6 +328,7 @@ export const useChatStore = defineStore('chat', () => {
           createdAt: detail.createdAt,
           updatedAt: detail.updatedAt,
           messages: sanitizeRestoredMessages(mergeRestoredMessages(apiMsgs, cached)),
+          executionPreference: detail.executionPreference,
         })
       } catch (e) {
         const cached = loadCachedMessages(id)
@@ -393,5 +404,6 @@ export const useChatStore = defineStore('chat', () => {
     conversations, currentId, current, sortedConversations, initializing,
     init, create, remove, switchTo, ensureConversation, updateTitle: updateTitleLocal,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
+    updateExecutionPreferenceLocal,
   }
 })

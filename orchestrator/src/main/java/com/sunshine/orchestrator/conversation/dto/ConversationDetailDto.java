@@ -20,6 +20,7 @@ public class ConversationDetailDto {
     private String title;
     private Instant createdAt;
     private Instant updatedAt;
+    private String executionPreference;
     private List<MessageDto> messages;
 
     public static ConversationDetailDto from(ChatConversationEntity conv, List<ChatMessageEntity> messages) {
@@ -28,6 +29,7 @@ public class ConversationDetailDto {
                 .title(conv.getTitle())
                 .createdAt(conv.getCreatedAt())
                 .updatedAt(conv.getUpdatedAt())
+                .executionPreference(conv.getExecutionPreference())
                 .messages(messages.stream().map(MessageDto::from).toList())
                 .build();
     }

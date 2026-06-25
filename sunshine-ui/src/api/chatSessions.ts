@@ -17,8 +17,14 @@ import { parseSseEvent } from './sseParse'
 import { parseSsePayload, type SseMeta } from './sseDispatch'
 import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId } from './processingSteps'
 import type { ProcessingStep } from './processingSteps'
+import type { ExecutionPreference } from './executionModes'
 
 const API_BASE = BFF_STREAM_BASE
+
+export interface SendOptions {
+  executionPreference?: ExecutionPreference
+  workflowId?: string | null
+}
 
 export interface SessionState {
   id: string
@@ -269,7 +275,7 @@ export function useChatSessions(
     }
   }
 
-  async function send(content: string, conversationId?: string | null): Promise<void> {
+  async function send(content: string, conversationId?: string | null, options?: SendOptions): Promise<void> {
     const convId = conversationId ?? activeId.value
     if (!convId || !content.trim()) return
 
@@ -288,6 +294,13 @@ export function useChatSessions(
 
     try {
       const body: Record<string, string> = { content, conversationId: convId }
+      const pref = options?.executionPreference
+      if (pref && pref !== 'auto') {
+        body.executionPreference = pref
+      }
+      if (options?.workflowId) {
+        body.workflowId = options.workflowId
+      }
 
       const response = await fetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',

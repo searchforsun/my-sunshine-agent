@@ -10,15 +10,20 @@ import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
+import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
+import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
@@ -32,6 +37,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AgentNodeHandlerTest {
 
     @Mock
@@ -40,8 +46,19 @@ class AgentNodeHandlerTest {
     @Mock
     private SkillCatalogService skillCatalogService;
 
+    @Mock
+    private com.sunshine.orchestrator.audit.SubAgentAuditService subAgentAuditService;
+
+    @Mock
+    private AnswerGroundingChecker groundingChecker;
+
     @InjectMocks
     private AgentNodeHandler handler;
+
+    @BeforeEach
+    void stubGroundingPass() {
+        when(groundingChecker.check(any(), any())).thenReturn(GroundingVerdict.pass());
+    }
 
     @Test
     void run_buildsSubAgentRunRequestAndCollectsAnswer() {
@@ -175,6 +192,27 @@ class AgentNodeHandlerTest {
         verify(agentRuntime).run(captor.capture());
         assertThat(captor.getValue().toolWhitelist()).isNull();
         assertThat(captor.getValue().maxIters()).isZero();
+    }
+
+    @Test
+    void run_blocksSubAgentOutputWhenGroundingFails() {
+        when(agentRuntime.run(any(AgentRunRequest.class)))
+                .thenReturn(Flux.just(StreamToken.content("报销上限为 5000 元。")));
+        when(groundingChecker.check(any(), any())).thenReturn(
+                GroundingVerdict.fail("未经验证", List.of("5000 元")));
+
+        WorkflowContext ctx = new WorkflowContext();
+        ExecutionStreamContext streamCtx = new ExecutionStreamContext(
+                "c1", "m1", "报销上限", MemoryContext.empty(),
+                null, null, null, "u1", "default",
+                new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
+
+        NodeSpec spec = new NodeSpec("analyze", "agent", Map.of("query", "报销上限"));
+
+        var result = handler.run(spec, ctx, streamCtx).block();
+        assertThat(result).isNotNull();
+        assertThat(result.success()).isFalse();
+        assertThat(result.safeOutputs().get("error")).contains("未经验证");
     }
 
     @Test

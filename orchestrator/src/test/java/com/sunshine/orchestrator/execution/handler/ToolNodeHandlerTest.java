@@ -29,6 +29,9 @@ class ToolNodeHandlerTest {
     @Mock
     private ToolCatalogService toolCatalogService;
 
+    @Mock
+    private com.sunshine.orchestrator.audit.ToolAuditService toolAuditService;
+
     @InjectMocks
     private ToolNodeHandler handler;
 

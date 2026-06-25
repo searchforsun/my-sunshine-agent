@@ -20,11 +20,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--rag-url", default=DEFAULT_RAG_URL)
     parser.add_argument("--golden-set", default=str(GOLDEN_SET))
+    parser.add_argument("--tenant-id", default=os.environ.get("RAG_TENANT_ID", "default"),
+                        help="x-tenant-id 请求头（多租户隔离）")
     args = parser.parse_args()
 
     data = yaml.safe_load(Path(args.golden_set).read_text(encoding="utf-8"))
     corpus = data.get("corpus") or []
     base = args.rag_url.rstrip("/")
+    headers = {"x-tenant-id": args.tenant_id.strip() or "default"}
 
     for item in corpus:
         path = ROOT / item["path"]
@@ -36,6 +39,7 @@ def main() -> int:
                 resp = requests.post(
                     f"{base}/api/rag/documents",
                     json={"content": content, "docName": doc_name},
+                    headers=headers,
                     timeout=300,
                 )
                 resp.raise_for_status()

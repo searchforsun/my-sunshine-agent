@@ -17,6 +17,7 @@ public class AgentRewriteProperties {
 
     private Rag rag = new Rag();
     private Intent intent = new Intent();
+    private Planner planner = new Planner();
     private EmptyRecall emptyRecall = new EmptyRecall();
     /** 时间线展开区：各改写场景的时机说明（SSOT 见 Nacos agent.rewrite.timeline） */
     private Timeline timeline = new Timeline();
@@ -38,6 +39,14 @@ public class AgentRewriteProperties {
         private String model = "deepseek-v4-flash";
         /** 假想文档最大字符数（检索 query 截断） */
         private int maxChars = 480;
+        private String systemPrompt = "";
+    }
+
+    @Data
+    public static class Planner {
+        /** Plan-Workflow Planner 调用前优化用户 query；Nacos 默认开启 */
+        private boolean enabled = true;
+        private String model = "deepseek-v4-flash";
         private String systemPrompt = "";
     }
 
@@ -71,6 +80,8 @@ public class AgentRewriteProperties {
         private String hyde = "";
         /** 首次零命中后，生成替代 query 二次检索 */
         private String emptyRecall = "";
+        /** Plan-Workflow Planner 调用前优化规划输入 */
+        private String planner = "";
 
         public String labelFor(String scenario) {
             if (scenario == null) {
@@ -81,9 +92,14 @@ public class AgentRewriteProperties {
                 case "rag" -> rag;
                 case "hyde" -> hyde;
                 case "empty-recall" -> emptyRecall;
+                case "planner" -> planner;
                 default -> "";
             };
         }
+    }
+
+    public Planner plannerOrDefault() {
+        return planner != null ? planner : new Planner();
     }
 
     public Timeline timelineOrDefault() {

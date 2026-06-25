@@ -1,8 +1,12 @@
 package com.sunshine.orchestrator.plan;
 
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
+import com.sunshine.orchestrator.rewrite.QueryRewriteService;
+import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,6 +32,8 @@ public class WorkflowPlanner {
     private final AgentExecutionProperties executionProperties;
     private final PlanCatalogRenderer catalogRenderer;
     private final PlanJsonParser planJsonParser;
+    private final QueryRewriteService queryRewriteService;
+    private final SkillCatalogService skillCatalogService;
 
     @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
     private String baseUrl;
@@ -74,7 +80,16 @@ public class WorkflowPlanner {
 
     private String buildUserMessage(ExecutionStreamContext ctx, String validationError) {
         String query = ctx.userContent() != null ? ctx.userContent() : "";
+        Map<String, String> routeParams = ctx.plan() != null && ctx.plan().params() != null
+                ? ctx.plan().params() : Map.of();
+        String plannerMode = routeParams.get(SkillBindingOutcome.PARAM_PLANNER_MODE);
+        String skillId = routeParams.get(SkillBindingOutcome.PARAM_SKILL);
         if (!StringUtils.hasText(validationError)) {
+            QueryRewriteOutcome outcome = queryRewriteService.rewriteForPlanner(query, ctx.assistantMsgId());
+            query = outcome.effectiveQuery();
+            if (SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN.equals(plannerMode) && StringUtils.hasText(skillId)) {
+                return buildSkillDrivenPlannerMessage(query, skillId.strip());
+            }
             return query;
         }
         String template = executionProperties.getPlanWorkflow().getReplan().getUserFeedbackTemplate();
@@ -82,6 +97,22 @@ public class WorkflowPlanner {
             return query + "\n\n上次规划未通过校验：" + validationError.strip();
         }
         return query + "\n\n" + template.replace("{{error}}", validationError.strip());
+    }
+
+    /** 流程 5B：Planner 读 Skill L2 正文语义生成 Plan JSON */
+    private String buildSkillDrivenPlannerMessage(String query, String skillId) {
+        String overlay = skillCatalogService.overlayOrEmpty(skillId);
+        String body = StringUtils.hasText(overlay) ? overlay.strip() : "(Skill 正文为空)";
+        return """
+                用户问题（已锁定 Skill: %s）：
+                %s
+
+                ## Skill 正文（工作流说明，请据此生成节点顺序）
+                %s
+
+                请基于 Skill 正文中的步骤说明，为上述用户问题输出一行 Plan JSON（5B Skill 驱动模式）。
+                节点 type 仅 rag | tool | agent；勿含 start/answer。
+                """.formatted(skillId, query, body);
     }
 
     private boolean isInvokeRetryable(Throwable error) {

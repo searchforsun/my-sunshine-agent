@@ -37,6 +37,11 @@ class QueryRewriteTraceTest {
                 .contains("优化检索词")
                 .doesNotContain("补全问句");
 
+        assertThat(QueryRewriteTrace.combinedRagTimelineDetailSince("m1", 1))
+                .contains("优化检索词")
+                .doesNotContain("补全问句");
+        assertThat(QueryRewriteTrace.combinedRagTimelineDetailSince("m1", 2)).isNull();
+
         QueryRewriteTrace.AuditRewriteSummary summary = QueryRewriteTrace.auditSummary("m1");
         assertThat(summary.rewriteApplied()).isTrue();
         assertThat(summary.rewriteLatencyMs()).isEqualTo(20L);

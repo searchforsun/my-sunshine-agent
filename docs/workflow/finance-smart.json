@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "workflowId": "finance-smart",
+  "displayName": "财务智能分析",
+  "description": "待审批是否合规、制度与待办单据对比分析（含 Agent 推理）",
+  "mode": "workflow",
+  "enabled": true,
+  "source": "import",
+  "catalog": {
+    "examples": [
+      "待审批报销是否合规",
+      "对比制度与待办"
+    ],
+    "nodeSummary": ["start", "tool", "agent", "answer"]
+  },
+  "plan": {
+    "planId": null,
+    "reason": "导入自 sunshine-workflows.yaml · finance-smart",
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "displayName": "开始",
+        "params": {}
+      },
+      {
+        "id": "finance-list",
+        "type": "tool",
+        "displayName": "查询待审批财务消息",
+        "params": {
+          "tool": "list_finance_messages",
+          "status": "{{plan.params.status}}"
+        }
+      },
+      {
+        "id": "analyze",
+        "type": "agent",
+        "displayName": "智能体分析",
+        "params": {
+          "query": "{{start.userQuery}}",
+          "context": "{{finance-list.output}}",
+          "skill": "finance-analysis",
+          "tools": "list_finance_messages",
+          "maxIters": "4",
+          "systemOverlay": "本节点仅输出内部分析结论，不面向用户；禁止调用白名单外工具"
+        }
+      },
+      {
+        "id": "answer",
+        "type": "answer",
+        "displayName": "生成回答",
+        "params": {
+          "prompt": "根据 Agent 分析结果生成用户可见回答。\n\n约束：禁止向用户暴露英文流程/工具内部名（如 finance-smart、finance-list）。\n\n分析：\n{{analyze.answer}}"
+        }
+      }
+    ],
+    "edges": [
+      { "from": "start", "to": "finance-list" },
+      { "from": "finance-list", "to": "analyze" },
+      { "from": "analyze", "to": "answer" }
+    ]
+  }
+}

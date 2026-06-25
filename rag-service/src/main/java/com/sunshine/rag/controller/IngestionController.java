@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
@@ -33,15 +34,18 @@ public class IngestionController {
     private final ElasticsearchIndexService elasticsearchIndexService;
 
     @PostMapping("/documents")
-    public Mono<Map<String, Object>> ingest(@RequestBody Map<String, String> body) {
+    public Mono<Map<String, Object>> ingest(
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         String content = body.get("content");
         if (content == null || content.isBlank()) {
             return Mono.just(Map.of("code", 400, "msg", "内容不能为空"));
         }
 
+        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         String docName = resolveDocName(body, content);
         List<String> chunks = parser.parse(content);
-        log.info("[RAG] 文档入库: docName='{}', {} 个分段", docName, chunks.size());
+        log.info("[RAG] 文档入库: tenant={}, docName='{}', {} 个分段", tid, docName, chunks.size());
 
         return Flux.fromIterable(chunks)
                 .index()
@@ -51,9 +55,9 @@ public class IngestionController {
                     String chunkId = docName + "#" + index;
                     return embeddingService.embed(chunk)
                             .doOnNext(vector -> {
-                                milvusService.insert(docName, chunk, vector);
+                                milvusService.insert(docName, chunk, vector, tid);
                                 elasticsearchIndexService.indexChunk(
-                                        chunkId, docName, chunk, (int) index, "default");
+                                        chunkId, docName, chunk, (int) index, tid);
                             });
                 })
                 .collectList()

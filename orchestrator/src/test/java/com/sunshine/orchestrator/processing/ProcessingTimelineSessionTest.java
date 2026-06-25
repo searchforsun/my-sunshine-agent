@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -189,6 +190,46 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void completeIntent_skill5B_exposesRoutingMetadata() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("@finance-analysis 先查制度再分析");
+        session.pending("intent", "intent");
+        session.start("intent", "intent");
+        Map<String, String> params = Map.of(
+                SkillBindingOutcome.PARAM_SKILL, "finance-analysis",
+                SkillBindingOutcome.PARAM_PLANNER_MODE, SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
+        session.completeIntent(new ExecutionPlan(
+                ExecutionMode.PLAN_WORKFLOW, null, params, "skill:@mention:5b-skill-plan"));
+
+        ProcessingStep intent = session.snapshot().stream()
+                .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
+        assertThat(intent.metadata().skillId()).isEqualTo("finance-analysis");
+        assertThat(intent.metadata().plannerMode()).isEqualTo("skill-driven");
+        assertThat(intent.metadata().routingReason()).contains("5b-skill-plan");
+    }
+
+    @Test
+    void completeSkillLoad_emitsSkillTimelineAfterLine() {
+        com.sunshine.orchestrator.catalog.SkillCatalogService catalog =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.SkillCatalogService.class);
+        org.mockito.Mockito.when(catalog.findIndex("skill-demo")).thenReturn(java.util.Optional.of(
+                new com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry(
+                        "skill-demo", "测试技能", "desc", 1, true)));
+        SkillLoadLabelService labelService = new SkillLoadLabelService(
+                catalog, new com.sunshine.orchestrator.config.AgentPromptProperties());
+        labelService.init();
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.completeSkillLoad("skill-demo");
+        ProcessingStep skill = session.snapshot().stream()
+                .filter(s -> "skill".equals(s.id())).findFirst().orElseThrow();
+        assertThat(skill.phase()).isEqualTo("skill");
+        assertThat(skill.label()).isEqualTo("加载技能");
+        assertThat(skill.summary().after()).isEqualTo("@skill-demo 测试技能");
+        assertThat(skill.metadata().skillId()).isEqualTo("skill-demo");
+        SkillLoadLabels.bind(null);
+    }
+
+    @Test
     void completeAt_workflowRagNode_keepsHitDetailWithoutRewrite() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("报销呢？");
@@ -221,10 +262,10 @@ class ProcessingTimelineSessionTest {
         QueryRewriteTrace.bind("msg-2");
         QueryRewriteTrace.record("msg-2",
                 QueryRewriteOutcome.of("intent", "报差旅", "查询差旅报销制度", 12L));
-        QueryRewriteTrace.record("msg-2",
-                QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 9L));
         session.pending("node-rag", "node");
         session.start("node-rag", "node");
+        QueryRewriteTrace.record("msg-2",
+                QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 9L));
 
         session.completeAt("node-rag", "命中 2 条，来源：公司差旅费报销管理办法", "命中 2 条，来源：公司差旅费报销管理办法",
                 System.currentTimeMillis());
@@ -234,10 +275,53 @@ class ProcessingTimelineSessionTest {
         assertThat(rag.detail()).contains("优化检索词");
         assertThat(rag.detail()).contains("原问题：报差旅");
         assertThat(rag.detail()).doesNotContain("补全问句");
-        assertThat(rag.detail()).contains("命中 2 条，来源：公司差旅费报销管理办法");
+        assertThat(rag.detail()).doesNotContain("命中 2 条");
         assertThat(rag.metadata().rewriteApplied()).isTrue();
         assertThat(rag.metadata().hitCount()).isEqualTo(2);
+        assertThat(rag.metadata().rewriteInDetail()).isTrue();
+        assertThat(rag.metadata().expandSectionTitle()).isEqualTo("检索过程");
+        assertThat(rag.summary().after()).contains("2 条");
         QueryRewriteTrace.clear("msg-2");
+        RewriteTimelineLabels.bind(null);
+    }
+
+    @Test
+    void completeToolStep_doubleRag_scopesRewriteDetailPerInvocation() {
+        AgentRewriteProperties props = new AgentRewriteProperties();
+        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
+        timeline.setRag("优化检索词");
+        timeline.setHyde("生成参考文档");
+        props.setTimeline(timeline);
+        RewriteTimelineLabels.bind(props);
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("报销合规");
+        session.bindTraceMessageId("msg-multi");
+        QueryRewriteTrace.bind("msg-multi");
+
+        String rag1 = session.beginToolStep("rag", "rag");
+        QueryRewriteTrace.record("msg-multi",
+                QueryRewriteOutcome.of("rag", "q1", "rewrite-q1", 10L));
+        QueryRewriteTrace.record("msg-multi",
+                QueryRewriteOutcome.of("hyde", "q1", "hyde-doc-1", 20L));
+        session.completeToolStep("命中 1 条");
+
+        String rag2 = session.beginToolStep("rag", "rag");
+        QueryRewriteTrace.record("msg-multi",
+                QueryRewriteOutcome.of("rag", "q2", "rewrite-q2", 11L));
+        session.completeToolStep("命中 2 条");
+
+        ProcessingStep first = session.snapshot().stream()
+                .filter(s -> rag1.equals(s.id())).findFirst().orElseThrow();
+        ProcessingStep second = session.snapshot().stream()
+                .filter(s -> rag2.equals(s.id())).findFirst().orElseThrow();
+        assertThat(first.detail()).contains("rewrite-q1", "hyde-doc-1");
+        assertThat(first.detail()).doesNotContain("rewrite-q2", "命中 1 条");
+        assertThat(first.metadata().rewriteInDetail()).isTrue();
+        assertThat(first.metadata().expandSectionTitle()).isEqualTo("检索过程");
+        assertThat(second.detail()).contains("rewrite-q2");
+        assertThat(second.detail()).doesNotContain("rewrite-q1", "hyde-doc-1", "命中 2 条");
+
+        QueryRewriteTrace.clear("msg-multi");
         RewriteTimelineLabels.bind(null);
     }
 
@@ -274,6 +358,27 @@ class ProcessingTimelineSessionTest {
         props.setCatalog(List.of(entry));
         props.setDefinitions(new LinkedHashMap<>());
         return props;
+    }
+
+    @Test
+    void completePlanAt_attachesPlannerRewriteMetadata() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("帮我查报销");
+        session.bindTraceMessageId("msg-plan");
+        QueryRewriteTrace.bind("msg-plan");
+        QueryRewriteTrace.record("msg-plan",
+                QueryRewriteOutcome.of("planner", "帮我查报销", "请规划差旅报销合规审查流程", 120L));
+        session.pending("plan", "plan");
+        session.start("plan", "plan");
+        session.completePlanAt("检索 → 查询 → 分析", "planId=p1|chain=检索 → 查询", System.currentTimeMillis());
+        ProcessingStep plan = session.snapshot().stream()
+                .filter(s -> "plan".equals(s.id())).findFirst().orElseThrow();
+        assertThat(plan.metadata()).isNotNull();
+        assertThat(plan.metadata().rewriteApplied()).isTrue();
+        assertThat(plan.metadata().rewriteScenario()).isEqualTo("planner");
+        assertThat(plan.metadata().rewriteFrom()).isEqualTo("帮我查报销");
+        assertThat(plan.metadata().rewriteTo()).isEqualTo("请规划差旅报销合规审查流程");
+        QueryRewriteTrace.clear("msg-plan");
     }
 
     @Test

@@ -35,6 +35,13 @@ export interface StepMetadata {
   rewriteScenario?: string
   /** 改写场景时机说明（后端 SSE / metadata 下发，勿在前端硬编码） */
   rewriteScenarioLabel?: string
+  skillId?: string
+  plannerMode?: string
+  routingReason?: string
+  /** 改写链路已在 detail，勿再渲染结构化改写区 */
+  rewriteInDetail?: boolean
+  /** 展开区 detail 区块标题 */
+  expandSectionTitle?: string
 }
 
 
@@ -78,20 +85,75 @@ export interface ProcessingStep {
 
   metadata?: StepMetadata
 
+  /** Workflow agent 节点：子 Agent 完整 ReAct 步骤（抽屉内展示） */
+  subSteps?: ProcessingStep[]
+
 }
 
 
 
-export const STEP_ORDER: StepPhase[] = ['intent', 'plan', 'node', 'rag', 'tool', 'agent', 'think', 'generate']
+export const STEP_ORDER: StepPhase[] = ['intent', 'skill', 'plan', 'node', 'rag', 'tool', 'agent', 'think', 'generate']
+
+export interface PlanStepDetailView {
+  planId?: string
+  chain?: string
+  chainSteps: string[]
+  replanCount?: number
+}
+
+export interface RewriteDetailView {
+  from: string
+  to: string
+  targetLabel: string
+  latencyText?: string
+}
+
+function parsePlanStepDetailText(text: string): PlanStepDetailView {
+  const trimmed = text.trim()
+  const parts: Record<string, string> = {}
+  let hasKeyedParts = false
+  for (const segment of trimmed.split('|')) {
+    const eq = segment.indexOf('=')
+    if (eq <= 0) continue
+    hasKeyedParts = true
+    parts[segment.slice(0, eq).trim()] = segment.slice(eq + 1).trim()
+  }
+  let chain = parts.chain
+  if (!hasKeyedParts) {
+    chain = trimmed
+  }
+  const chainSteps = chain
+    ? chain.split(/\s*→\s*/).map(s => s.trim()).filter(Boolean)
+    : []
+  const replanParsed = parts.replanCount != null ? Number.parseInt(parts.replanCount, 10) : Number.NaN
+  const replanCount = Number.isFinite(replanParsed) && replanParsed > 0 ? replanParsed : undefined
+  return {
+    planId: parts.planId,
+    chain,
+    chainSteps,
+    replanCount,
+  }
+}
 
 export function parsePlanStepMeta(text?: string): { planId?: string; chain?: string } {
   if (!text?.trim()) return {}
-  const trimmed = text.trim()
-  const match = trimmed.match(/^planId=([^|]+)\|chain=(.*)$/s)
-  if (match) {
-    return { planId: match[1].trim(), chain: match[2].trim() }
+  const parsed = parsePlanStepDetailText(text.trim())
+  if (parsed.planId || parsed.chain) {
+    return { planId: parsed.planId, chain: parsed.chain }
   }
-  return { chain: trimmed }
+  return { chain: text.trim() }
+}
+
+/** 解析 plan 步 detail/after，供「开始」节点抽屉结构化展示 */
+export function resolvePlanStepDetail(step: ProcessingStep): PlanStepDetailView {
+  for (const source of [step.detail, step.summary?.after]) {
+    if (!source?.trim()) continue
+    const parsed = parsePlanStepDetailText(source)
+    if (parsed.planId || parsed.chainSteps.length > 0 || parsed.replanCount != null) {
+      return parsed
+    }
+  }
+  return { chainSteps: [] }
 }
 
 export function resolvePlanIdFromStep(step: ProcessingStep): string | undefined {
@@ -156,10 +218,28 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const rewriteScenarioLabel = typeof obj.rewriteScenarioLabel === 'string' && obj.rewriteScenarioLabel.trim()
     ? obj.rewriteScenarioLabel.trim()
     : undefined
+  const skillId = typeof obj.skillId === 'string' && obj.skillId.trim()
+    ? obj.skillId.trim()
+    : undefined
+  const plannerMode = typeof obj.plannerMode === 'string' && obj.plannerMode.trim()
+    ? obj.plannerMode.trim()
+    : undefined
+  const routingReason = typeof obj.routingReason === 'string' && obj.routingReason.trim()
+    ? obj.routingReason.trim()
+    : undefined
+  const rewriteInDetail = obj.rewriteInDetail === true ? true : undefined
+  const expandSectionTitle = typeof obj.expandSectionTitle === 'string' && obj.expandSectionTitle.trim()
+    ? obj.expandSectionTitle.trim()
+    : undefined
   if (
     hitCount == null
     && (!sources || sources.length === 0)
     && !rewriteApplied
+    && !skillId
+    && !plannerMode
+    && !routingReason
+    && !rewriteInDetail
+    && !expandSectionTitle
   ) {
     return undefined
   }
@@ -172,7 +252,22 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     rewriteTo,
     rewriteScenario,
     rewriteScenarioLabel,
+    skillId,
+    plannerMode,
+    routingReason,
+    rewriteInDetail,
+    expandSectionTitle,
   }
+}
+
+
+
+function parseSubSteps(raw: unknown): ProcessingStep[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const steps = raw
+    .map(item => (item && typeof item === 'object' ? normalizeStep(item as Record<string, unknown>) : null))
+    .filter((s): s is ProcessingStep => !!s)
+  return steps.length > 0 ? steps : undefined
 }
 
 
@@ -232,6 +327,8 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
     label,
 
     metadata: parseMetadata(raw.metadata),
+
+    subSteps: parseSubSteps(raw.subSteps),
 
   }
 
@@ -309,13 +406,9 @@ export function formatStepMetadata(step: ProcessingStep): string {
   return parts.join('，')
 }
 
-/** 改写耗时展示（与后端 QueryRewriteOutcome 对齐） */
-function formatRewriteLatency(latencyMs: number): string {
-  if (latencyMs >= 1000) {
-    const seconds = latencyMs / 1000
-    return seconds >= 10 ? `用时：${Math.round(seconds)} 秒` : `用时：${seconds.toFixed(1)} 秒`
-  }
-  return `用时：${latencyMs} 毫秒`
+/** 改写耗时展示（与后端 QueryRewriteOutcome / formatDuration 对齐） */
+export function formatRewriteLatency(latencyMs: number): string {
+  return formatDuration(latencyMs) || '<1ms'
 }
 
 /** 从 metadata 构造 Query 改写展开文案（与后端 detail 格式对齐） */
@@ -331,6 +424,23 @@ export function formatRewriteMetadata(step: ProcessingStep): string {
     return `${m.rewriteScenarioLabel.trim()}\n${body}`
   }
   return body
+}
+
+/** 从 metadata 解析 Query 改写，供结构化展示 */
+export function resolveRewriteDetail(step: ProcessingStep): RewriteDetailView | undefined {
+  const m = step.metadata
+  if (m?.rewriteInDetail) return undefined
+  if (!m?.rewriteApplied || !m.rewriteFrom || !m.rewriteTo) return undefined
+  const targetLabel = m.rewriteScenario === 'hyde' ? '参考文档' : '优化后'
+  const latencyText = typeof m.rewriteLatencyMs === 'number'
+    ? formatRewriteLatency(m.rewriteLatencyMs)
+    : undefined
+  return {
+    from: m.rewriteFrom,
+    to: m.rewriteTo,
+    targetLabel,
+    latencyText,
+  }
 }
 
 
@@ -355,9 +465,9 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
   if (lifecycle === 'running') {
     header = step.summary?.active?.trim() || step.label?.trim() || ''
   } else if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
-    header = formatStepMetadata(step)
-      || step.summary?.after?.trim()
-      || step.result?.trim()
+    header = step.summary?.after?.trim()
+      || formatStepMetadata(step)
+      || (!isWorkflowAnswerStep(step) && step.result?.trim())
       || step.detail?.trim()
       || ''
     if (step.phase === 'plan' && header) {
@@ -419,11 +529,14 @@ export function resolveStepExpandSummary(step: ProcessingStep): string {
 
 /** 展开区正文：detail/result（如 Agent Markdown、Query 改写），与 after 摘要区分 */
 export function resolveStepExpandBody(step: ProcessingStep): string {
+  if (isWorkflowAnswerStep(step)) {
+    return ''
+  }
   const summary = resolveStepExpandSummary(step)
   const detail = step.detail?.trim()
   if (detail && detail !== summary) return detail
   const rewrite = formatRewriteMetadata(step)
-  if (rewrite && rewrite !== summary && !(detail && detail.includes('原问题：'))) return rewrite
+  if (rewrite && rewrite !== summary) return rewrite
   const result = step.result?.trim()
   if (result && result !== summary && result !== detail) return result
   return ''
@@ -457,6 +570,12 @@ export function shouldShiftSummaryOnExpand(step: ProcessingStep): boolean {
 
 /** 是否有可下拉展开的实际内容 */
 export function hasExpandableContent(step: ProcessingStep): boolean {
+  if (isWorkflowAnswerStep(step)) {
+    return shouldShiftSummaryOnExpand(step)
+      || !!formatRewriteMetadata(step)
+      || !!step.reasoning?.trim()
+      || !!step.output?.trim()
+  }
   if (shouldShiftSummaryOnExpand(step)) return true
   if (resolveStepExpandBody(step)) return true
   if (formatRewriteMetadata(step)) return true
@@ -518,6 +637,34 @@ function mergeSummary(
 
 
 
+function mergeSubSteps(
+  prev?: ProcessingStep[],
+  incoming?: ProcessingStep[],
+): ProcessingStep[] | undefined {
+  if (!incoming?.length) return prev
+  if (!prev?.length) return incoming
+  const byId = new Map(prev.map(s => [s.id, s]))
+  for (const step of incoming) {
+    const existing = byId.get(step.id)
+    if (existing) {
+      byId.set(step.id, {
+        ...existing,
+        ...step,
+        summary: mergeSummary(existing.summary, step.summary, step.lifecycle ?? existing.lifecycle),
+        reasoning: longerText(existing.reasoning, step.reasoning),
+        output: longerText(existing.output, step.output),
+        result: step.result ?? existing.result,
+        detail: step.detail ?? existing.detail,
+      })
+    } else {
+      byId.set(step.id, step)
+    }
+  }
+  return sortSteps([...byId.values()])
+}
+
+
+
 export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): ProcessingStep[] {
 
   const idx = steps.findIndex(s => s.id === incoming.id)
@@ -548,6 +695,8 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
       detail: incoming.detail ?? prev.detail,
 
       metadata: incoming.metadata ?? prev.metadata,
+
+      subSteps: mergeSubSteps(prev.subSteps, incoming.subSteps),
 
       durationMs: incoming.durationMs ?? prev.durationMs,
 
@@ -666,6 +815,11 @@ function isThinkStepId(id: string): boolean {
 /** plan-workflow / 静态 workflow 的节点级 reasoning，不走 ReAct think 步骤 */
 export function isWorkflowNodeStepId(id: string | undefined): boolean {
   return !!id && id.startsWith('node-')
+}
+
+/** 终态 answer 节点：流式正文仅展示在消息区，时间线勿复述 step.result */
+export function isWorkflowAnswerStep(step: ProcessingStep): boolean {
+  return step.id === 'node-answer'
 }
 
 

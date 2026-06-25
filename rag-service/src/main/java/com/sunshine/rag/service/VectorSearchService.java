@@ -22,9 +22,14 @@ public class VectorSearchService {
     private final RagSearchProperties searchProperties;
 
     public Mono<List<RetrievalCandidate>> search(String query, int topK, boolean applyMinScoreFilter) {
+        return search(query, topK, applyMinScoreFilter, "default");
+    }
+
+    public Mono<List<RetrievalCandidate>> search(
+            String query, int topK, boolean applyMinScoreFilter, String tenantId) {
         return embeddingService.embed(query)
                 .map(vector -> {
-                    List<MilvusService.SearchHit> raw = milvusService.search(vector, topK);
+                    List<MilvusService.SearchHit> raw = milvusService.search(vector, topK, tenantId);
                     List<MilvusService.SearchHit> hits = applyMinScoreFilter
                             ? SearchScoreFilter.apply(raw, searchProperties.getMinScore())
                             : raw;

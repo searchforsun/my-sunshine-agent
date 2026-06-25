@@ -44,14 +44,20 @@ public class RagClient {
      * @return 文档片段列表（含文档名称）
      */
     public Mono<List<RagHit>> search(String query, int topK) {
-        return search(query, topK, null);
+        return search(query, topK, null, "default");
+    }
+
+    public Mono<List<RagHit>> search(String query, int topK, String strategy) {
+        return search(query, topK, strategy, "default");
     }
 
     @SuppressWarnings("unchecked")
-    public Mono<List<RagHit>> search(String query, int topK, String strategy) {
+    public Mono<List<RagHit>> search(String query, int topK, String strategy, String tenantId) {
+        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("query", query);
         body.put("topK", topK);
+        body.put("tenantId", tid);
         if (strategy != null && !strategy.isBlank()) {
             body.put("strategy", strategy);
         }
@@ -59,6 +65,7 @@ public class RagClient {
         return webClient.post()
                 .uri("/api/rag/search")
                 .contentType(MediaType.APPLICATION_JSON)
+                .header("x-tenant-id", tid)
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {

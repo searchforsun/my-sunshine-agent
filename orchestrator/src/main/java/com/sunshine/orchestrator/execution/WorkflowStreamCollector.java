@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.execution;
 import com.sunshine.orchestrator.client.StreamToken;
 
 /** 聚合 Workflow 流式节点 token，供 finalize 写入上下文 */
-public final class WorkflowStreamCollector {
+public class WorkflowStreamCollector {
 
     private final StringBuilder content = new StringBuilder();
     private final StringBuilder reasoning = new StringBuilder();

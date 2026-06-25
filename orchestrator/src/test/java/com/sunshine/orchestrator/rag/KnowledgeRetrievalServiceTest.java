@@ -43,7 +43,7 @@ class KnowledgeRetrievalServiceTest {
     @Test
     void searchReturnsFirstHitsWithoutRewrite() {
         List<RagClient.RagHit> hits = List.of(new RagClient.RagHit("A", "c", 0.9f));
-        when(ragClient.search("q", 3, "hybrid+rerank")).thenReturn(Mono.just(hits));
+        when(ragClient.search("q", 3, "hybrid+rerank", "default")).thenReturn(Mono.just(hits));
         assertThat(service.search("q", 3)).isEqualTo(hits);
         verify(queryRewriteService, never()).rewriteEmptyRecall(anyString());
     }
@@ -53,23 +53,23 @@ class KnowledgeRetrievalServiceTest {
         when(queryRewriteService.isRagEnabled()).thenReturn(true);
         when(queryRewriteService.rewriteForRag(eq("口语问"), isNull()))
                 .thenReturn(QueryRewriteOutcome.of("rag", "口语问", "公司报销管理制度 差旅报销", 1L));
-        when(ragClient.search("公司报销管理制度 差旅报销", 3, "hybrid+rerank"))
+        when(ragClient.search("公司报销管理制度 差旅报销", 3, "hybrid+rerank", "default"))
                 .thenReturn(Mono.just(List.of(new RagClient.RagHit("公司报销管理制度", "content", 0.8f))));
         List<RagClient.RagHit> out = service.search("口语问", 3);
         assertThat(out).hasSize(1);
-        verify(ragClient).search("公司报销管理制度 差旅报销", 3, "hybrid+rerank");
+        verify(ragClient).search("公司报销管理制度 差旅报销", 3, "hybrid+rerank", "default");
     }
 
     @Test
     void searchRetriesWhenEmptyAndRewriteEnabled() {
-        when(ragClient.search(eq("口语问"), anyInt(), anyString()))
+        when(ragClient.search(eq("口语问"), anyInt(), anyString(), eq("default")))
                 .thenReturn(Mono.just(List.of()));
         when(queryRewriteService.isEmptyRecallEnabled()).thenReturn(true);
         when(queryRewriteService.rewriteEmptyRecall(eq("口语问"), isNull()))
                 .thenReturn(new QueryRewriteService.EmptyRecallRewrite(
                         List.of("公司报销管理制度 差旅报销"),
                         QueryRewriteOutcome.emptyRecall("口语问", List.of("公司报销管理制度 差旅报销"), 1L)));
-        when(ragClient.search("公司报销管理制度 差旅报销", 3, "hybrid+rerank"))
+        when(ragClient.search("公司报销管理制度 差旅报销", 3, "hybrid+rerank", "default"))
                 .thenReturn(Mono.just(List.of(new RagClient.RagHit("公司报销管理制度", "content", 0.8f))));
         List<RagClient.RagHit> out = service.search("口语问", 3);
         assertThat(out).hasSize(1);
@@ -88,40 +88,64 @@ class KnowledgeRetrievalServiceTest {
     }
 
     @Test
-    void searchRetriesWithOriginalQueryWhenRagAndHydeEmpty() {
+    void searchRetriesWithEmptyRecallWhenRagAndHydeFallbackEmpty() {
         when(queryRewriteService.isRagEnabled()).thenReturn(true);
         when(queryRewriteService.isHydeEnabled()).thenReturn(true);
         when(queryRewriteService.rewriteForRag(eq("口语问"), isNull()))
                 .thenReturn(QueryRewriteOutcome.of("rag", "口语问", "公司报销管理制度 差旅报销", 1L));
+        when(ragClient.search("公司报销管理制度 差旅报销", 3, "hybrid+rerank", "default"))
+                .thenReturn(Mono.just(List.of()));
         when(queryRewriteService.hydeForRag(eq("口语问"), isNull()))
                 .thenReturn(QueryRewriteOutcome.of("hyde", "口语问", "员工出差应提交审批单", 2L));
-        when(ragClient.search("员工出差应提交审批单", 3, "hybrid+rerank"))
+        when(ragClient.search("员工出差应提交审批单", 3, "hybrid+rerank", "default"))
                 .thenReturn(Mono.just(List.of()));
         when(queryRewriteService.isEmptyRecallEnabled()).thenReturn(true);
         when(queryRewriteService.rewriteEmptyRecall(eq("口语问"), isNull()))
                 .thenReturn(new QueryRewriteService.EmptyRecallRewrite(
                         List.of("差旅费报销管理办法 打车"),
                         QueryRewriteOutcome.emptyRecall("口语问", List.of("差旅费报销管理办法 打车"), 1L)));
-        when(ragClient.search("差旅费报销管理办法 打车", 3, "hybrid+rerank"))
+        when(ragClient.search("差旅费报销管理办法 打车", 3, "hybrid+rerank", "default"))
                 .thenReturn(Mono.just(List.of(new RagClient.RagHit("差旅费管理办法", "content", 0.8f))));
         List<RagClient.RagHit> out = service.search("口语问", 3);
         assertThat(out).hasSize(1);
+        verify(queryRewriteService).hydeForRag(eq("口语问"), isNull());
         verify(queryRewriteService).rewriteEmptyRecall(eq("口语问"), isNull());
     }
 
     @Test
-    void searchUsesHydeDocumentWhenEnabled() {
+    void searchUsesHydeAsFallbackAfterFirstSearchEmpty() {
         when(queryRewriteService.isRagEnabled()).thenReturn(true);
         when(queryRewriteService.isHydeEnabled()).thenReturn(true);
         when(queryRewriteService.rewriteForRag(eq("报差旅"), isNull()))
                 .thenReturn(QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 1L));
+        when(ragClient.search("公司差旅费报销管理办法", 3, "hybrid+rerank", "default"))
+                .thenReturn(Mono.just(List.of()));
         when(queryRewriteService.hydeForRag(eq("报差旅"), isNull()))
                 .thenReturn(QueryRewriteOutcome.of("hyde", "报差旅", "员工出差应提交差旅审批单并附发票", 2L));
-        when(ragClient.search("员工出差应提交差旅审批单并附发票", 3, "hybrid+rerank"))
+        when(ragClient.search("员工出差应提交差旅审批单并附发票", 3, "hybrid+rerank", "default"))
                 .thenReturn(Mono.just(List.of(new RagClient.RagHit("公司差旅费报销管理办法", "content", 0.8f))));
         List<RagClient.RagHit> out = service.search("报差旅", 3);
         assertThat(out).hasSize(1);
-        verify(ragClient).search("员工出差应提交差旅审批单并附发票", 3, "hybrid+rerank");
-        verify(ragClient, never()).search("公司差旅费报销管理办法", 3, "hybrid+rerank");
+        verify(ragClient).search("公司差旅费报销管理办法", 3, "hybrid+rerank", "default");
+        verify(ragClient).search("员工出差应提交差旅审批单并附发票", 3, "hybrid+rerank", "default");
+    }
+
+    @Test
+    void searchPassesTenantToRagClient() {
+        when(ragClient.search("q", 3, "hybrid+rerank", "tenant-a")).thenReturn(Mono.just(List.of()));
+        service.search("q", 3, "tenant-a", null);
+        verify(ragClient).search("q", 3, "hybrid+rerank", "tenant-a");
+    }
+
+    @Test
+    void searchSkipsHydeWhenFirstSearchHits() {
+        when(queryRewriteService.isRagEnabled()).thenReturn(true);
+        when(queryRewriteService.rewriteForRag(eq("报差旅"), isNull()))
+                .thenReturn(QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 1L));
+        when(ragClient.search("公司差旅费报销管理办法", 3, "hybrid+rerank", "default"))
+                .thenReturn(Mono.just(List.of(new RagClient.RagHit("公司差旅费报销管理办法", "content", 0.8f))));
+        List<RagClient.RagHit> out = service.search("报差旅", 3);
+        assertThat(out).hasSize(1);
+        verify(queryRewriteService, never()).hydeForRag(anyString(), isNull());
     }
 }

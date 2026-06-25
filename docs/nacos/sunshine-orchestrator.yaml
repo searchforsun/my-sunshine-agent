@@ -70,7 +70,7 @@ agent:
       上游数据：
       {{plan.upstream}}
 
-      请基于以上结果向用户给出结论与可执行建议。
+      请严格针对上述「用户问题」作答：仅依据上游数据回答用户所问。
 
   intent:
     model: deepseek-v4-flash
@@ -111,8 +111,8 @@ agent:
       - edges 单链 start → … → **末节点**（勿连 answer）
       - 节点数 ≤ 8；每节点填 displayName（中文）
 
-      示例（制度+待审批+合规，单行 JSON，**无 answer 节点**）：
-      {"planId":null,"reason":"制度检索、待审批查询与合规分析","nodes":[{"id":"n1","type":"rag","displayName":"检索差旅报销制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查询待审批报销单","params":{"tool":"list_finance_messages","status":"pending"}},{"id":"n3","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\n{{n2.output}}","query":"对每条单据做合规审查并归纳要点"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"}]}
+      示例（制度+待审批+双 agent 合规链，单行 JSON，**无 answer 节点**）：
+      {"planId":null,"reason":"制度检索、待审批查询、制度解读与合规分析","nodes":[{"id":"n1","type":"rag","displayName":"检索差旅报销制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查询待审批报销单","params":{"tool":"list_finance_messages","status":"pending"}},{"id":"n3","type":"agent","displayName":"制度解读","params":{"skill":"policy-review","context":"{{n1.output}}","query":"归纳差旅报销制度要点"}},{"id":"n4","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\n{{n2.output}}\\n{{n3.output}}","query":"对每条单据做合规审查并归纳风险"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"},{"from":"n3","to":"n4"}]}
 
       ## Skill 目录
       {{skill-catalog}}
@@ -130,14 +130,18 @@ agent:
         simple-llm:
           detail: 简单对话
           after: "{query}属于简单对话，将直接生成回复"
+          forced-after: "{query}将按您指定的「简单对话」模式直接回复"
         react:
           detail: 自主智能体
           after: "{query}将由自主智能体分析并作答"
+          forced-after: "{query}将按您指定的「自主推理」模式处理"
         plan-workflow:
           detail: 动态规划
           after: "{query}将动态规划多步执行"
+          forced-after: "{query}将按您指定的「动态规划」模式处理"
         workflow:
           after: "{query}将按「{displayName}」流程处理"
+          forced-after: "{query}将按您指定的「工作流」模式处理"
           # detail 仅路由解析用；时间线不下发 expandable detail
     steps:
       plan:
@@ -149,6 +153,10 @@ agent:
       rag:
         before: "在企业知识库中查找与{query}相关的资料"
         active: "正在匹配与{query}最相关的文档片段"
+      skill:
+        before: "准备加载 Skill"
+        active: "正在加载 Skill 指令"
+        after: "@{skillId} {skillDisplayName}"
 
   execution:
     default-mode: react
@@ -271,6 +279,10 @@ agent:
   resume:
     auto-on-reload: true
     max-resume-attempts: 3
+  grounding:
+    enabled: true
+    block-on-failure: true
+    rejection-message: 答复包含未经验证的企业数据表述，请先调用知识库或业务工具后再作答。
   rewrite:
     rag:
       enabled: true
@@ -298,6 +310,14 @@ agent:
         保留原意，补充「查询/了解/请问」等必要语境，偏向制度、财务待办、知识库问答。
         不要编造具体业务事实。
         只输出 JSON：{"query":"补全后的问句"}，不要 markdown 或其他文字。
+    planner:
+      enabled: true
+      model: deepseek-v4-flash
+      system-prompt: |
+        你是 Plan-Workflow 规划前 query 优化助手。用户问题将交给 Planner 动态编排 rag/tool/agent 节点。
+        补全多步意图表述（如先检索制度、再查待审批、再做合规分析），保留原意，补充制度/财务/合规等域内关键词。
+        不要编造具体业务事实。
+        只输出 JSON：{"query":"优化后的规划输入"}，不要 markdown 或其他文字。
     empty-recall:
       enabled: true
       model: deepseek-v4-flash
@@ -305,13 +325,17 @@ agent:
       system-prompt: |
         你是企业知识库检索 query 改写助手。用户原始问题在向量/混合检索中零命中。
         请生成 %d 个不同表述的中文检索 query，用于二次检索。
-        要求：保留原意、补充制度/流程/报销/请假等域内关键词，不要编造事实。
+        要求：
+        - 必须保留原问题的核心业务领域与关键名词（如信息安全、保密、数据保护、财务、合规等），禁止改问无关主题；
+        - 仅在同领域内补充「制度」「管理办法」「流程规范」等同义表述，勿硬塞报销、请假等与原问无关的关键词；
+        - 不要编造事实。
         只输出 JSON：{"queries":["改写1","改写2"]}，不要 markdown 或其他文字。
     timeline:
       intent: "补全问句"
       rag: "优化检索词"
       hyde: "生成参考文档"
       empty-recall: "换种方式再查"
+      planner: "优化规划输入"
   memory:
     enabled: true
     layer-prompt: |

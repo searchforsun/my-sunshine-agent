@@ -21,6 +21,48 @@ public class PlanExecutionAuditService {
     private final AuditPublisher auditPublisher;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    public void created(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId) {
+        publish(conversationId, messageId, userId, tenantId, "plan.created", planId, Map.of());
+    }
+
+    public void validated(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            int nodeCount) {
+        publish(conversationId, messageId, userId, tenantId, "plan.validated", planId, Map.of(
+                "nodeCount", nodeCount));
+    }
+
+    public void completed(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            String terminalStatus) {
+        publish(conversationId, messageId, userId, tenantId, "plan.completed", planId, Map.of(
+                "terminalStatus", terminalStatus));
+    }
+
+    public void failed(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            String reason) {
+        publish(conversationId, messageId, userId, tenantId, "plan.failed", planId, Map.of(
+                "reason", reason != null ? reason : ""));
+    }
+
     public void plannerAttempt(
             String conversationId,
             String messageId,

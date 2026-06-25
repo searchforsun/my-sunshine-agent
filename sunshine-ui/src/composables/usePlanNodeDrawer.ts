@@ -3,6 +3,8 @@ import type { ProcessingStep } from '../api/processingSteps'
 import type { DagNodeView } from '../utils/planGraph'
 
 export interface PlanNodeDrawerPayload {
+  planId: string
+  userQuery?: string
   node: DagNodeView
   step?: ProcessingStep
 }
@@ -15,6 +17,8 @@ const STORAGE_KEY = 'sunshine-plan-drawer-width'
 
 const state = reactive({
   open: false,
+  activePlanId: null as string | null,
+  userQuery: '',
   node: null as DagNodeView | null,
   step: undefined as ProcessingStep | undefined,
 })
@@ -104,6 +108,8 @@ function onResizePointerDown(e: PointerEvent) {
 
 export function usePlanNodeDrawer() {
   function open(payload: PlanNodeDrawerPayload) {
+    state.activePlanId = payload.planId
+    state.userQuery = payload.userQuery?.trim() ?? ''
     state.node = payload.node
     state.step = payload.step
     state.open = true
@@ -111,14 +117,21 @@ export function usePlanNodeDrawer() {
 
   function close() {
     state.open = false
+    state.activePlanId = null
+    state.userQuery = ''
     state.node = null
     state.step = undefined
+  }
+
+  function isActivePlan(planId: string | undefined) {
+    return !!planId && state.open && state.activePlanId === planId
   }
 
   return {
     state,
     open,
     close,
+    isActivePlan,
     drawerWidth,
     canResizeDrawer,
     registerChatBody,

@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent.remote;
 
+import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.ToolManagerClient;
@@ -17,14 +18,15 @@ public class GenericRemoteToolFactory {
 
     private final ToolCatalogService toolCatalogService;
     private final ToolManagerClient toolManagerClient;
+    private final ToolAuditService toolAuditService;
 
     public Optional<CatalogRemoteAgentTool> create(String toolName) {
         return toolCatalogService.find(toolName)
                 .filter(entry -> "remote".equals(entry.kind()))
-                .map(entry -> new CatalogRemoteAgentTool(entry, toolManagerClient));
+                .map(entry -> new CatalogRemoteAgentTool(entry, toolManagerClient, toolAuditService));
     }
 
     public CatalogRemoteAgentTool createRequired(ToolCatalogEntry entry) {
-        return new CatalogRemoteAgentTool(entry, toolManagerClient);
+        return new CatalogRemoteAgentTool(entry, toolManagerClient, toolAuditService);
     }
 }

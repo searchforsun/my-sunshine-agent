@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 知识库检索编排：rag 前置改写 + 可选 HyDE + 首次检索 + empty-recall 二次检索。
+ * 知识库检索编排：rag 前置改写 → 首次检索 → HyDE fallback → empty-recall 二次检索。
  */
 @Slf4j
 @Service
@@ -30,56 +30,82 @@ public class KnowledgeRetrievalService {
     private final QueryRewriteService queryRewriteService;
 
     public List<RagClient.RagHit> search(String query, int topK) {
-        return search(query, topK, null);
+        return search(query, topK, "default", null);
     }
 
     public List<RagClient.RagHit> search(String query, int topK, String traceMessageId) {
-        return searchMono(query, topK, traceMessageId).blockOptional().orElse(List.of());
+        return search(query, topK, "default", traceMessageId);
+    }
+
+    public List<RagClient.RagHit> search(String query, int topK, String tenantId, String traceMessageId) {
+        return searchMono(query, topK, tenantId, traceMessageId).blockOptional().orElse(List.of());
     }
 
     public Mono<List<RagClient.RagHit>> searchMono(String query, int topK) {
-        return searchMono(query, topK, null);
+        return searchMono(query, topK, "default", null);
     }
 
     public Mono<List<RagClient.RagHit>> searchMono(String query, int topK, String traceMessageId) {
+        return searchMono(query, topK, "default", traceMessageId);
+    }
+
+    public Mono<List<RagClient.RagHit>> searchMono(String query, int topK, String tenantId, String traceMessageId) {
         String originalQuery = query != null ? query.strip() : "";
-        return prepareSearch(originalQuery, traceMessageId)
-                .flatMap(prep -> {
+        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
+        return resolveInitialSearchQuery(originalQuery, traceMessageId)
+                .flatMap(searchQuery -> {
                     String strategy = ragSearchProperties.getStrategy();
-                    return ragClient.search(prep.searchQuery(), topK, strategy)
+                    return ragClient.search(searchQuery, topK, strategy, tid)
                             .flatMap(first -> {
-                                if (!first.isEmpty() || !queryRewriteService.isEmptyRecallEnabled()) {
+                                if (!first.isEmpty()) {
                                     return Mono.just(first);
                                 }
-                                return retryWithRewrite(
-                                        originalQuery, topK, strategy, first, traceMessageId);
+                                return tryHydeFallback(originalQuery, topK, strategy, tid, traceMessageId);
                             });
                 });
     }
 
-    /** rag 改写 + 可选 HyDE 假想文档 → 检索 query */
-    private Mono<SearchPrep> prepareSearch(String query, String traceMessageId) {
+    /** rag 改写后的首次检索 query（HyDE 不在此阶段覆盖） */
+    private Mono<String> resolveInitialSearchQuery(String query, String traceMessageId) {
         return Mono.fromCallable(() -> {
-                    String searchQuery = query;
                     if (queryRewriteService.isRagEnabled()) {
-                        searchQuery = queryRewriteService.rewriteForRag(query, traceMessageId).effectiveQuery();
+                        return queryRewriteService.rewriteForRag(query, traceMessageId).effectiveQuery();
                     }
-                    if (queryRewriteService.isHydeEnabled()) {
-                        QueryRewriteOutcome hyde =
-                                queryRewriteService.hydeForRag(query, traceMessageId);
-                        if (hyde.applied()) {
-                            searchQuery = hyde.rewrittenQuery();
-                        }
-                    }
-                    return new SearchPrep(searchQuery);
+                    return query;
                 })
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private record SearchPrep(String searchQuery) {}
+    /** 首次 0 命中且 HyDE 开启时，用假想文档再检一次 */
+    private Mono<List<RagClient.RagHit>> tryHydeFallback(
+            String originalQuery, int topK, String strategy, String tenantId, String traceMessageId) {
+        if (!queryRewriteService.isHydeEnabled()) {
+            return retryWithRewrite(originalQuery, topK, strategy, tenantId, List.of(), traceMessageId);
+        }
+        return Mono.fromCallable(() -> queryRewriteService.hydeForRag(originalQuery, traceMessageId))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(hyde -> {
+                    String hydeDoc = hyde.applied() ? hyde.rewrittenQuery() : null;
+                    if (hydeDoc == null || hydeDoc.isBlank()) {
+                        return retryWithRewrite(originalQuery, topK, strategy, tenantId, List.of(), traceMessageId);
+                    }
+                    log.info("[KnowledgeRetrieval] HyDE fallback 检索");
+                    return ragClient.search(hydeDoc, topK, strategy, tenantId)
+                            .flatMap(hydeHits -> {
+                                if (!hydeHits.isEmpty()) {
+                                    return Mono.just(hydeHits);
+                                }
+                                return retryWithRewrite(originalQuery, topK, strategy, tenantId, List.of(), traceMessageId);
+                            });
+                });
+    }
 
     private Mono<List<RagClient.RagHit>> retryWithRewrite(
-            String originalQuery, int topK, String strategy, List<RagClient.RagHit> emptyFirst, String traceMessageId) {
+            String originalQuery, int topK, String strategy, String tenantId,
+            List<RagClient.RagHit> emptyFirst, String traceMessageId) {
+        if (!queryRewriteService.isEmptyRecallEnabled()) {
+            return Mono.just(emptyFirst);
+        }
         return Mono.fromCallable(() -> queryRewriteService.rewriteEmptyRecall(originalQuery, traceMessageId))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(result -> {
@@ -89,7 +115,7 @@ public class KnowledgeRetrievalService {
                     }
                     log.info("[KnowledgeRetrieval] empty-recall 二次检索: alts={}", alternatives);
                     return Flux.fromIterable(alternatives)
-                            .flatMap(alt -> ragClient.search(alt, topK, strategy))
+                            .flatMap(alt -> ragClient.search(alt, topK, strategy, tenantId))
                             .collectList()
                             .map(batchLists -> mergeHits(batchLists, topK));
                 });

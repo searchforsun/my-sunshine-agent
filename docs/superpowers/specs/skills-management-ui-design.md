@@ -115,6 +115,18 @@
 
 保存后仍需 **发布并生效**，runtime Catalog 才会更新。
 
+### 5.4 版本 diff（3.12.2 ✅）
+
+| 规则 | 说明 |
+|------|------|
+| 入口 | 版本列表 **对比** → 独立页 `/skills/:skillId/diff?from=&to=&path=` |
+| 文本文件 | 行级 diff（inline / split 视图） |
+| 二进制文件 | 展示 **v{from} / v{to} MD5**（如 `assets/pixel.png`）；相同 MD5 表示内容未变 |
+| 默认 path | `SKILL.md`；左侧文件树切换 path 同步 query |
+| API | `GET /api/skills/{id}/versions/diff?from=&to=&path=` |
+
+**运维**：改 diff 逻辑后需 **重启 skill-manager :8225**（`SkillVersionDiffService`）；skill-manager 须 `@Import(GlobalExceptionHandler)`，避免业务异常被 BFF 显示为「系统繁忙」。
+
 ---
 
 ## 6. 上传流程
@@ -153,6 +165,7 @@
 | GET | `/api/skills/{id}/versions/{version}/file?path=` | 读单文件 |
 | PUT | `/api/skills/{id}/versions/{version}/file?path=` | 在线编辑（仅草稿） |
 | POST | `/api/skills/{id}/versions/{version}/fork` | 基于指定版本复制为新草稿 |
+| GET | `/api/skills/{id}/versions/diff?from=&to=&path=` | 版本 diff（文本行级 / 二进制 MD5） |
 | GET | `/api/skills/{id}/versions/{version}/download` | 下载 zip |
 
 Runtime Catalog（orchestrator 用，非本页主路径）：
@@ -167,12 +180,13 @@ Runtime Catalog（orchestrator 用，非本页主路径）：
 | 层级 | 路径 |
 |------|------|
 | 页面 | `sunshine-ui/src/views/SkillsView.vue` |
+| 版本 diff 页 | `sunshine-ui/src/views/SkillVersionDiffView.vue`（路由 `/skills/:skillId/diff`） |
 | API | `sunshine-ui/src/api/skills.ts` |
 | 文件夹 zip | `sunshine-ui/src/utils/zipStore.ts` |
 | 文件树 | `sunshine-ui/src/utils/buildFileTree.ts` |
 | 版本时间 | `sunshine-ui/src/utils/formatSkillVersionTime.ts` |
 | BFF | `bff/.../SkillsController.java`、`SkillManagerClient.java` |
-| 服务 | `skill-manager/.../SkillAdminController.java` |
+| 服务 | `skill-manager/.../SkillAdminController.java`、`SkillVersionDiffService.java` |
 
 ---
 
@@ -180,9 +194,9 @@ Runtime Catalog（orchestrator 用，非本页主路径）：
 
 | 编号 | 内容 | 状态 |
 |------|------|:----:|
-| 3.12.2 | 在线编辑 **overlay 正文**（SKILL.md body）；版本 diff / 回滚 | ✅ 编辑 ✅；diff ⬜ |
-| 3.12.4 | Timeline `plan` 步跳转 Plan 详情页 | ⬜ |
-| 3.11.7 | Chat `@` + 强提示绑定 Skill | ⬜ |
+| 3.12.2 | 在线编辑 overlay + **版本 diff 独立页**（文本行级 / 二进制 MD5） | ✅ |
+| 3.12.4 | Timeline `plan` 步跳转 Plan 详情页 | ✅ |
+| 3.11.7 | Chat `@` + 强提示绑定 Skill | ✅ |
 | — | 子 Agent 试跑 / 沙箱调试 | 阶段四 |
 
 ~~3.12.3 工具绑定~~：已取消；工具由 workflow 节点 `params.tools` 配置。
@@ -197,3 +211,4 @@ Runtime Catalog（orchestrator 用，非本页主路径）：
 - [x] 上传/刷新时左右 loading **相互独立**
 - [x] 加载遮罩不透出其他 Skill 文件内容
 - [x] 在线编辑 overlay（3.12.2）— 草稿版本文本文件 + SKILL.md 同步 overlay
+- [x] 版本 diff（3.12.2）— `/skills/:skillId/diff`；二进制展示 MD5

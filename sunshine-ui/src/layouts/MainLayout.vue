@@ -33,7 +33,10 @@ function handleMenuClick(key: string) {
   router.push(`/${key}`)
 }
 
-const activeKey = computed(() => (route.name as string) || 'chat')
+const activeKey = computed(() => {
+  if (route.name === 'skill-diff') return 'skills'
+  return (route.name as string) || 'chat'
+})
 const { theme, toggle: toggleTheme } = useTheme()
 const { sidebarVisible, toggleSidebar } = useSidebar()
 const isDark = computed(() => theme.value === 'dark')

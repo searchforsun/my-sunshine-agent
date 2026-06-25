@@ -12,7 +12,8 @@ public final class StepSummarizer {
     private static final Pattern HIT_COUNT = Pattern.compile("(\\d+)");
     private static final Pattern RAG_HIT = Pattern.compile("命中\\s*(\\d+)\\s*条");
     private static final Pattern RAG_SOURCE = Pattern.compile("来源[：:](.+)");
-    private static final int QUERY_CLIP = 18;
+    /** 问句摘要显示宽度预算（约 18 个汉字；拉丁字母按 1 计、CJK 按 2 计） */
+    private static final int QUERY_DISPLAY_BUDGET = 36;
     private static final int RAG_SOURCE_CLIP = 80;
 
     private StepSummarizer() {
@@ -23,10 +24,53 @@ public final class StepSummarizer {
             return "您的问题";
         }
         String trimmed = query.strip().replaceAll("\\s+", " ");
-        if (trimmed.length() <= QUERY_CLIP) {
+        String clipped = clipByDisplayBudget(trimmed, QUERY_DISPLAY_BUDGET);
+        if (clipped.equals(trimmed)) {
             return "「" + trimmed + "」";
         }
-        return "「" + trimmed.substring(0, QUERY_CLIP) + "…」";
+        return "「" + clipped + "…」";
+    }
+
+    /** 按显示宽度截断：ASCII 1、CJK/全角 2，避免英文 @skill-id 被 18 字符硬切过短 */
+    static String clipByDisplayBudget(String text, int budget) {
+        if (text == null || text.isBlank() || budget <= 0) {
+            return text != null ? text : "";
+        }
+        int used = 0;
+        int end = 0;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            int width = displayWidth(cp);
+            if (used + width > budget) {
+                break;
+            }
+            used += width;
+            end = i + Character.charCount(cp);
+            i = end;
+        }
+        if (end >= text.length()) {
+            return text;
+        }
+        return text.substring(0, end).stripTrailing();
+    }
+
+    private static int displayWidth(int codePoint) {
+        if (codePoint <= 0x007F) {
+            return 1;
+        }
+        if (codePoint >= 0xFF00 && codePoint <= 0xFFEF) {
+            return 2;
+        }
+        Character.UnicodeBlock block = Character.UnicodeBlock.of(codePoint);
+        if (block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                || block == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION
+                || block == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS) {
+            return 2;
+        }
+        return 1;
     }
 
     public static String before(String stepId, String userQuery) {
@@ -56,6 +100,7 @@ public final class StepSummarizer {
         }
         return switch (stepId) {
             case "intent" -> TimelineLabels.before("intent", q);
+            case "skill" -> SkillLoadLabels.before();
             case "rag" -> TimelineLabels.before("rag", q);
             case "agent" -> "理解" + q + "，规划作答思路";
             case "think" -> "分析" + q + "的作答逻辑";
@@ -98,6 +143,7 @@ public final class StepSummarizer {
         }
         return switch (stepId) {
             case "intent" -> TimelineLabels.active("intent", q);
+            case "skill" -> SkillLoadLabels.active();
             case "rag" -> TimelineLabels.active("rag", q);
             case "agent" -> "结合上下文分析" + q;
             case "think" -> "正在推演针对" + q + "的回答思路";
@@ -144,6 +190,7 @@ public final class StepSummarizer {
         }
         return switch (stepId) {
             case "intent" -> afterIntent(q, detail);
+            case "skill" -> detail != null && !detail.isBlank() ? detail : "Skill 已加载";
             case "rag" -> afterRag(q, detail);
             case "agent" -> afterAgent(userQuery, detail);
             case "plan" -> detail != null ? detail : "执行计划已生成";

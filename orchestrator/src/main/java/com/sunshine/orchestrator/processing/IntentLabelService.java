@@ -220,6 +220,12 @@ public class IntentLabelService {
 
         }
 
+        if (plan.reason() != null && plan.reason().startsWith("user:forced")) {
+
+            return forcedIntentAfterForPlan(q, plan);
+
+        }
+
         return switch (plan.mode()) {
 
             case SIMPLE_LLM -> applyTemplate(
@@ -409,6 +415,54 @@ public class IntentLabelService {
         map.put("displayName", displayName != null ? displayName : "");
 
         return map;
+
+    }
+
+
+
+    private String forcedIntentAfterForPlan(String q, ExecutionPlan plan) {
+
+        AgentPromptProperties.ModeIntent mode = modeConfig(plan.mode());
+
+        String template = modeForcedAfter(mode, plan.mode());
+
+        if (plan.mode() == ExecutionMode.WORKFLOW) {
+
+            WorkflowProperties.CatalogEntry entry = findCatalogById(plan.workflowId());
+
+            String displayName = entry != null ? displayNameOf(entry)
+
+                    : workflowNodeLabelService.workflowDisplayName(plan.workflowId());
+
+            return applyTemplate(template, vars(q, displayName, plan.workflowId(), displayName));
+
+        }
+
+        return applyTemplate(template, vars(q, intentDetail(plan), null, null));
+
+    }
+
+
+
+    private String modeForcedAfter(AgentPromptProperties.ModeIntent mode, ExecutionMode executionMode) {
+
+        if (StringUtils.hasText(mode.getForcedAfter())) {
+
+            return mode.getForcedAfter();
+
+        }
+
+        return switch (executionMode) {
+
+            case SIMPLE_LLM -> "{query}将按您指定的「简单对话」模式直接回复";
+
+            case REACT -> "{query}将按您指定的「自主推理」模式处理";
+
+            case WORKFLOW -> "{query}将按您指定的「工作流」模式处理";
+
+            case PLAN_WORKFLOW -> "{query}将按您指定的「动态规划」模式处理";
+
+        };
 
     }
 

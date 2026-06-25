@@ -2,9 +2,9 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import {
   formatDuration,
-  formatStepMetadata,
-  formatRewriteMetadata,
   parseLoadedSkillLabel,
+  resolvePlanStepDetail,
+  resolveRewriteDetail,
   resolveStepDurationMs,
   resolveStepExpandBody,
   resolveStepExpandSummary,
@@ -14,12 +14,14 @@ import {
 import { formatPlanNodeType } from '../../api/executionPlans'
 import PlanNodeIcon from './PlanNodeIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
+import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
 
 const node = computed(() => state.node)
 const step = computed(() => state.step)
+const userQuery = computed(() => state.userQuery?.trim() ?? '')
 
 const title = computed(() => node.value?.label ?? '节点详情')
 const typeLabel = computed(() => formatPlanNodeType(node.value?.type ?? ''))
@@ -34,13 +36,14 @@ const statusLabel = computed(() => {
 })
 
 const durationText = computed(() => {
-  const ms = step.value ? resolveStepDurationMs(step.value) : node.value?.durationMs
+  const fromStep = step.value ? resolveStepDurationMs(step.value) : undefined
+  const ms = fromStep ?? node.value?.durationMs
   return ms != null ? formatDuration(ms) : ''
 })
 
 const summary = computed(() => {
   if (step.value) {
-    return resolveStepExpandSummary(step.value) || formatStepMetadata(step.value) || ''
+    return resolveStepExpandSummary(step.value) || ''
   }
   return node.value?.summary ?? ''
 })
@@ -77,7 +80,7 @@ const bodySectionTitle = computed(() => {
   const t = node.value?.type
   if (t === 'answer') return '最终输出'
   if (t === 'llm') return '思考过程'
-  return '详细输出'
+  return step.value?.metadata?.expandSectionTitle?.trim() || '详细输出'
 })
 
 const showAnalysisSection = computed(() =>
@@ -86,10 +89,27 @@ const showAnalysisSection = computed(() =>
 )
 
 const showSummary = computed(() => {
-  if (node.value?.type === 'answer' || node.value?.type === 'llm') return false
+  if (node.value?.type === 'start' || node.value?.type === 'answer' || node.value?.type === 'llm') return false
   return !!summary.value.trim()
 })
-const rewrite = computed(() => (step.value ? formatRewriteMetadata(step.value) : ''))
+const rewriteDetail = computed(() => (step.value ? resolveRewriteDetail(step.value) : undefined))
+const rewriteSectionTitle = computed(() => {
+  const scenario = step.value?.metadata?.rewriteScenario
+  if (scenario === 'planner') return '输入优化'
+  if (scenario === 'intent') return '问句补全'
+  return '检索优化'
+})
+const showRewriteDetail = computed(() => !!rewriteDetail.value)
+const startPlan = computed(() => (step.value ? resolvePlanStepDetail(step.value) : { chainSteps: [] }))
+const showStartPlan = computed(() => {
+  if (node.value?.type !== 'start') return false
+  const plan = startPlan.value
+  return !!(plan.planId || plan.chainSteps.length || plan.replanCount)
+})
+const showBodySection = computed(() => {
+  if (node.value?.type === 'start') return false
+  return !!bodyDisplay.value && bodyDisplay.value !== summary.value
+})
 const showReasoningSection = computed(() =>
   node.value?.type !== 'llm'
   && node.value?.type !== 'answer'
@@ -109,6 +129,23 @@ const loadedSkillLabel = computed(() => {
 })
 
 const showSkillBlock = computed(() => !!(loadedSkillId.value || loadedSkillLabel.value))
+
+const skillDetailText = computed(() => {
+  const id = loadedSkillId.value
+  const label = loadedSkillLabel.value
+  if (id && label && label !== id) return `@${id} ${label}`
+  if (id) return `@${id}`
+  return label || ''
+})
+
+const skillLineText = computed(() => {
+  const detail = skillDetailText.value
+  return detail ? `加载技能 ${detail}` : ''
+})
+
+const subSteps = computed(() => step.value?.subSteps ?? [])
+const showSubTimeline = computed(() => node.value?.type === 'agent' && subSteps.value.length > 0)
+const subTimelineLive = computed(() => node.value?.status === 'running')
 
 const bodyRef = ref<HTMLElement | null>(null)
 const drawerScrollTop = ref(0)
@@ -135,7 +172,7 @@ watch(
 )
 
 watch(
-  () => [bodyDisplay.value, analysisDisplay.value, summary.value, reasoning.value, output.value],
+  () => [bodyDisplay.value, analysisDisplay.value, summary.value, reasoning.value, output.value, subSteps.value],
   () => {
     if (!state.open) return
     void restoreDrawerScroll()
@@ -170,6 +207,11 @@ watch(
         <button type="button" class="drawer-close" aria-label="关闭" @click="close">×</button>
       </div>
 
+      <p v-if="userQuery" class="drawer-meta-line" :title="`用户问题 ${userQuery}`">
+        <span class="meta-line-label">用户问题</span>
+        <span class="meta-line-detail">{{ userQuery }}</span>
+      </p>
+
       <div class="drawer-status-row">
         <div class="drawer-status-left">
           <span class="meta-type">{{ typeLabel }}</span>
@@ -181,17 +223,10 @@ watch(
         <span v-if="durationText" class="meta-dur">{{ durationText }}</span>
       </div>
 
-      <div v-if="showSkillBlock" class="drawer-skill-row">
-        <span class="skill-label">已加载技能</span>
-        <div class="skill-line">
-          <code v-if="loadedSkillId" class="skill-id">{{ loadedSkillId }}</code>
-          <template v-if="loadedSkillLabel && loadedSkillLabel !== loadedSkillId">
-            <span v-if="loadedSkillId" class="skill-sep" aria-hidden="true">·</span>
-            <span class="skill-value">{{ loadedSkillLabel }}</span>
-          </template>
-          <span v-else-if="loadedSkillLabel && !loadedSkillId" class="skill-value">{{ loadedSkillLabel }}</span>
-        </div>
-      </div>
+      <p v-if="showSkillBlock" class="drawer-meta-line" :title="skillLineText">
+        <span class="meta-line-label">加载技能</span>
+        <span class="meta-line-detail">{{ skillDetailText }}</span>
+      </p>
     </header>
     <div ref="bodyRef" class="drawer-body" @scroll="onDrawerBodyScroll">
       <div v-if="node.attempts?.length" class="drawer-section">
@@ -204,19 +239,55 @@ watch(
           </li>
         </ul>
       </div>
+      <section v-if="showSubTimeline" class="drawer-section drawer-sub-timeline">
+        <h4>执行过程</h4>
+        <OperationStack :steps="subSteps" :live="subTimelineLive" />
+      </section>
       <section v-if="showSummary" class="drawer-section">
         <h4>执行摘要</h4>
         <StaticMarkdown :source="summary" compact />
       </section>
-      <section v-if="rewrite" class="drawer-section">
-        <h4>检索优化</h4>
-        <StaticMarkdown :source="rewrite" compact />
+      <section v-if="showRewriteDetail" class="drawer-section">
+        <h4>{{ rewriteSectionTitle }}</h4>
+        <p class="drawer-meta-line" :title="rewriteDetail!.from">
+          <span class="meta-line-label">原问题</span>
+          <span class="meta-line-detail">{{ rewriteDetail!.from }}</span>
+        </p>
+        <p class="drawer-meta-line" :title="rewriteDetail!.to">
+          <span class="meta-line-label">{{ rewriteDetail!.targetLabel }}</span>
+          <span class="meta-line-detail">{{ rewriteDetail!.to }}</span>
+        </p>
+        <p v-if="rewriteDetail!.latencyText" class="drawer-meta-line" :title="rewriteDetail!.latencyText">
+          <span class="meta-line-label">耗时</span>
+          <span class="meta-line-detail">{{ rewriteDetail!.latencyText }}</span>
+        </p>
+      </section>
+      <section v-if="showStartPlan" class="drawer-section">
+        <h4>执行计划</h4>
+        <p v-if="startPlan.replanCount" class="plan-replan-hint">
+          经 {{ startPlan.replanCount }} 次修正后确定
+        </p>
+        <template v-if="startPlan.chainSteps.length">
+          <p
+            v-for="(name, index) in startPlan.chainSteps"
+            :key="`${index}-${name}`"
+            class="drawer-meta-line plan-step-line"
+            :title="name"
+          >
+            <span class="meta-line-label">{{ index + 1 }}</span>
+            <span class="meta-line-detail">{{ name }}</span>
+          </p>
+        </template>
+        <p v-if="startPlan.planId" class="drawer-meta-line plan-id-line" :title="startPlan.planId">
+          <span class="meta-line-label">Plan ID</span>
+          <span class="meta-line-detail plan-id-value">{{ startPlan.planId }}</span>
+        </p>
       </section>
       <section v-if="showAnalysisSection" class="drawer-section">
         <h4>综合分析</h4>
         <StaticMarkdown :source="analysisDisplay" compact />
       </section>
-      <section v-if="bodyDisplay && bodyDisplay !== summary" class="drawer-section">
+      <section v-if="showBodySection" class="drawer-section">
         <h4>{{ bodySectionTitle }}</h4>
         <StaticMarkdown :source="bodyDisplay" compact />
       </section>
@@ -228,7 +299,7 @@ watch(
         <h4>日志</h4>
         <StaticMarkdown :source="output" compact />
       </section>
-      <p v-if="!showSummary && !showAnalysisSection && !bodyDisplay && !showReasoningSection && !output && !showSkillBlock" class="drawer-empty">
+      <p v-if="!showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showSubTimeline && !output && !showSkillBlock && !node.attempts?.length" class="drawer-empty">
         {{ stepLifecycle(step ?? { id: '', phase: 'node', lifecycle: node.status === 'running' ? 'running' : 'pending' }) === 'running' ? '节点执行中…' : '暂无详情' }}
       </p>
     </div>
@@ -337,6 +408,46 @@ watch(
   word-break: break-word;
 }
 
+.drawer-meta-line {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--sun-font-md);
+  line-height: var(--sun-line-relaxed);
+  overflow: hidden;
+}
+
+.meta-line-label {
+  flex-shrink: 0;
+  font-weight: 450;
+  color: var(--sun-text-secondary);
+}
+
+.meta-line-detail {
+  min-width: 0;
+  font-weight: 400;
+  color: var(--sun-text-muted);
+  opacity: 0.92;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .drawer-status-row {
   display: flex;
   align-items: center;
@@ -389,74 +500,6 @@ watch(
   font-variant-numeric: tabular-nums;
 }
 
-.drawer-skill-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--sun-border) 90%, var(--sun-gold));
-  background: color-mix(in srgb, var(--sun-gold-glow) 40%, var(--sun-row-hover, var(--sun-surface)));
-}
-
-.skill-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--sun-text-muted);
-}
-
-.skill-line {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
-.skill-sep {
-  color: var(--sun-text-muted);
-  opacity: 0.55;
-  user-select: none;
-}
-
-.skill-id {
-  display: inline-block;
-  flex-shrink: 0;
-  max-width: 100%;
-  padding: 1px 7px;
-  border-radius: 6px;
-  border: 1px solid var(--sun-border);
-  background: color-mix(in srgb, var(--sun-bg) 90%, var(--sun-text-muted));
-  font-family: ui-monospace, 'JetBrains Mono', monospace;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.45;
-  color: var(--sun-text);
-}
-
-.skill-value {
-  font-size: var(--sun-font-sm);
-  font-weight: 450;
-  line-height: 1.45;
-  color: var(--sun-text-secondary);
-  word-break: break-word;
-}
-
-.drawer-close {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--sun-text-muted);
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-}
-
 .drawer-close:hover {
   background: var(--sun-row-hover);
   color: var(--sun-text);
@@ -506,14 +549,73 @@ watch(
 }
 
 .drawer-section h4 {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   font-size: var(--sun-font-sm);
   font-weight: 600;
   color: var(--sun-text-secondary);
 }
 
+.drawer-section .drawer-meta-line + .drawer-meta-line {
+  margin-top: 6px;
+}
+
+.drawer-section .drawer-meta-line {
+  align-items: flex-start;
+}
+
+.drawer-section .meta-line-detail {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.plan-id-line {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sun-border);
+  align-items: center;
+  font-size: var(--sun-font-sm);
+  line-height: 1.45;
+}
+
+.plan-id-line .meta-line-label,
+.plan-id-line .meta-line-detail {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.plan-id-value {
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+}
+
+.plan-replan-hint {
+  margin: 0 0 8px;
+  font-size: var(--sun-font-sm);
+  color: var(--sun-text-muted);
+}
+
+.plan-step-line {
+  align-items: center;
+}
+
+.plan-step-line .meta-line-label {
+  min-width: 1.25rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-step-line + .plan-step-line {
+  margin-top: 6px;
+}
+
 .drawer-section :deep(.static-md-compact) {
   color: var(--sun-text-muted);
+}
+
+.drawer-sub-timeline :deep(.operation-lines) {
+  margin-left: 0;
+  padding-bottom: 0;
 }
 
 .drawer-empty {

@@ -210,7 +210,7 @@ my-sunshine-agent/
 
 ### 阶段三：生产加固（8周）
 
-> **进度（2026-06-21）：** 3.4 RAG 全链路 ✅、3.8.1–3.8.6 提示词链路 ✅；其余待做。
+> **进度（2026-06-25）：** 3.4 RAG 全链路 ✅、3.8.1–3.8.7 提示词链路 ✅、3.9.1–3.9.4 Plan 审计 ✅、3.10.1–3.10.7 AgentRuntime ✅、3.11 skill-manager ✅、3.12.1–3.12.4 + **3.12.2 diff ✅**；**静态 workflow 与 Plan DAG UI 统一 ✅**；**Chat 执行模式选择器 P0 ✅**（`executionPreference` + `ForcedExecutionRouter`）；**RAG HyDE fallback + empty-recall prompt 收紧 ✅**；其余待做见检查门。
 
 > 设计 spec（SSOT）：[superpowers/specs/phase3-production-hardening-design.md](./superpowers/specs/phase3-production-hardening-design.md)  
 > 索引：[superpowers/specs/README.md](./superpowers/specs/README.md)  
@@ -223,15 +223,15 @@ my-sunshine-agent/
 | 3.2 多租户 | Milvus Partition + MTM tenant + Sentinel 配额 |
 | 3.3 HITL | Catalog `sideEffect` + 确认 UI（含子 Agent） |
 | 3.5 可观测 | Grafana RAG + Sentinel Dashboard + 4 告警 |
-| 3.6 审计 | tool-audit + sub_agent_run + plan.* |
+| 3.6 审计 | **tool.call ✅** + sub_agent_run ✅ + plan.* ✅ |
 | 3.7 Grounding | 主答复 + 子 Agent output |
-| 3.8 提示词 | **✅ 3.8.1–3.8.6** · **⬜ 3.8.7** Planner（非检查门） |
-| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API + DAG/抽屉 UI + **重试/降级** · **3.9.1–3.9.3 ✅** · 3.9.4 ⬜ |
-| 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 · **3.10.1–3.10.4 ✅（MVP）** · 3.10.5–3.10.6 ⬜ |
+| 3.8 提示词 | **✅ 3.8.1–3.8.7** |
+| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API + DAG/抽屉 UI + **重试/降级** · **3.9.1–3.9.4 ✅**；静态 workflow **物化 Plan 同路径** ✅ |
+| 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 · **3.10.1–3.10.6 ✅** |
 
 子 Agent 实现目标（编排器-Worker、`query`+`context` 传入、分层 system、无默认 STM）见 [multi-agent plan §子 Agent 实现目标](./superpowers/plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)。
-| 3.11 skill-manager | **✅** :8225 + SkillCatalogService + **3.11.7 @/强提示** |
-| 3.12 前端 | `/skills` ✅；Chat `@` ✅；Plan DAG + 抽屉 ✅（3.12.4）· diff ⬜ |
+| 3.11 skill-manager | **✅** :8225 + SkillCatalogService + **六种 Skill 触发 ✅**（Live ⬜） |
+| 3.12 前端 | `/skills` ✅；Chat `@` ✅；Plan DAG + 抽屉 ✅（3.12.4）；**版本 diff 独立页 ✅**（3.12.2）；**Chat 底栏执行模式 P0 ✅**（不含 workflow catalog 下拉，模板选取移交 **4.13 `#`**） |
 | 3.13 并行 | AhoCorasick ⬜；`source_type` **✅**（3.4.2） |
 | 3.14 多实例 | Redis GenerationJob 锁 |
 
@@ -250,10 +250,11 @@ my-sunshine-agent/
 - [ ] Grafana RAG + Sentinel Dashboard + 4 条告警（指标+JSON ✅；远程部署/触发 ⬜）
 - [ ] 租户 A/B 隔离；写工具 HITL（含子 Agent）
 - [x] `PLAN_WORKFLOW` 三 API + Plan 详情/DAG 抽屉（3.12.4 ✅）
+- [x] 静态 `WORKFLOW`（L2）Chat 时间线展示 Plan DAG（`StaticPlanAdapter` + `planId=`，见 `routing-golden-set.md` §B–D）
 - [x] IntentRouter `plan-workflow` + Planner/校验 **Replan** → 耗尽 **降级 ReAct**（`docs/routing/plan-workflow-retry-degradation.md`）
 - [x] 节点 `NodeRetryExecutor` + `on-failure` + `completed_with_errors` / `degraded_react` 终态
-- [ ] 2+ agent 节点 Plan 演示（3.10.5）
-- [ ] skill-manager + `/skills`；tool/sub_agent/plan 审计可查
+- [ ] 2+ agent 节点 Plan 演示（3.10.5 ✅ 单测 + Nacos 双 agent 示例；live 点验待中间件）
+- [ ] skill-manager + `/skills`；tool/sub_agent/plan 审计可查（**✅ 三链路 API 已就绪**）
 - [ ] Grounding + 子 Agent 不污染主 reasoning
 - [ ] `phase2_agent_demo.py --suite all` 仍 PASS
 
@@ -272,7 +273,8 @@ my-sunshine-agent/
 | **4.4** 多模态对话 L3 | 聊天发图 | Vision + `/chat` 附件 |
 | **4.5** Skills 沙箱 | 代码执行 | Docker `SandboxExecutor` |
 | **4.6** 动态 DAG 增强 | Plan 不够用 | if-else、并行、Replan、ContextCompressor |
-| **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 | **第五模式 `PEER_COLLAB`**、Coordinator、并行子 Agent、MsgHub、子 Timeline · [peer-collab spec](./superpowers/specs/2026-06-24-peer-collab-routing-design.md) |
+| **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 / ReAct 软规划 | **第五模式 `PEER_COLLAB`**、Coordinator、并行子 Agent、MsgHub、子 Timeline · [peer-collab spec](./superpowers/specs/2026-06-24-peer-collab-routing-design.md)；**4.7.5 ReAct TaskBoard** · [taskboard spec](./superpowers/specs/2026-06-24-react-taskboard-design.md)；**P0 接入边界** · [agent-capabilities-boundaries](./superpowers/specs/2026-06-25-phase4-agent-capabilities-boundaries.md) |
+| **4.13** Workflow Studio | 静态 workflow 运维 / 业务自助编排 | Dify 式 **`/workflows`** + DB PlanJson + `docs/workflow` 导入包 · **Chat `#` + catalog SSOT**（与底栏 executionPreference 正交）· [workflow-studio spec](./superpowers/specs/2026-06-25-workflow-studio-design.md) |
 | **4.8** MCP 动态引入 + 前端管理 | 异构系统接入 | tool-manager 动态注册 MCP Server + `/mcp` 管理页 + Catalog `kind=mcp` |
 | **4.9** K8s | 流量/HA | Helm + HPA + GitOps |
 | **4.10** Seata | 跨服务写 | 与 HITL 串联 |
@@ -285,11 +287,12 @@ my-sunshine-agent/
 
 | 页面 | 路由 | 功能 |
 |------|------|------|
-| AI 对话 | `/chat` | SSE 流式；Plan 成功路径展示 `PlanWorkflowPanel`（DAG）+ `PlanNodeDrawer`（节点 reasoning/result） |
+| AI 对话 | `/chat` | SSE 流式；底栏 **执行路径**选择器（五模式）；workflow **模板**用 `#id`（4.13）非底栏下拉；**静态 / Plan workflow** 均展示 `PlanWorkflowPanel` + `PlanNodeDrawer` |
 | **Plan 详情** | **`/plans/:planId`** | Planner JSON、节点 trace、状态机 |
 | 知识库 | `/knowledge` | Markdown 文档上传入库 + 向量检索测试；**阶段四** 扩展 PDF/图片 OCR 入库 |
-| **Skills** | **`/skills`** | **Skill 列表/上传/版本/预览/元数据编辑**（见 [skills-management-ui-design.md](./superpowers/specs/skills-management-ui-design.md)） |
+| **Skills** | **`/skills`** | Skill 列表/上传/版本/预览/元数据；**版本 diff** → `/skills/:skillId/diff`（见 [skills-management-ui-design.md](./superpowers/specs/skills-management-ui-design.md)） |
 | **MCP 工具** | **`/mcp`** | **阶段四 4.8**：MCP Server 动态注册、探测、启停、工具预览 |
+| **工作流** | **`/workflows`** | **阶段四 4.13**：Workflow Studio 可视化编辑、JSON 导入、发布；导入包 **`docs/workflow/`** |
 | 系统状态 | `/status` | 11 微服务 + 12 中间件状态矩阵 |
 
 > **阶段四 OCR/多模态**：见 `superpowers/specs/phase4-platformization-design.md` §4.2–4.4  

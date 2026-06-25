@@ -121,7 +121,8 @@ public final class ProcessingStepMerger {
                 step.ts(),
                 step.status() != null ? step.status() : "running",
                 step.label(),
-                step.metadata()
+                step.metadata(),
+                step.subSteps()
         );
     }
 
@@ -157,8 +158,24 @@ public final class ProcessingStepMerger {
                 Math.max(existing.ts(), incoming.ts()),
                 incoming.status() != null ? incoming.status() : existing.status(),
                 incoming.label() != null ? incoming.label() : existing.label(),
-                incoming.metadata() != null ? incoming.metadata() : existing.metadata()
+                incoming.metadata() != null ? incoming.metadata() : existing.metadata(),
+                mergeSubSteps(existing.subSteps(), incoming.subSteps())
         );
+    }
+
+    private static java.util.List<ProcessingStep> mergeSubSteps(
+            java.util.List<ProcessingStep> existing,
+            java.util.List<ProcessingStep> incoming) {
+        if (incoming == null || incoming.isEmpty()) {
+            return existing;
+        }
+        java.util.List<ProcessingStep> merged = existing != null && !existing.isEmpty()
+                ? new java.util.ArrayList<>(existing)
+                : new java.util.ArrayList<>();
+        for (ProcessingStep step : incoming) {
+            upsert(merged, step);
+        }
+        return merged;
     }
 
     private static StepSummary mergeSummary(StepSummary existing, StepSummary incoming) {
@@ -245,6 +262,10 @@ public final class ProcessingStepMerger {
         return new StepSummary(before, active, after);
     }
 
+    public static Map<String, Object> stepToMap(ProcessingStep step) {
+        return toPersistMap(step);
+    }
+
     private static Map<String, Object> toPersistMap(ProcessingStep step) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", step.id());
@@ -292,6 +313,13 @@ public final class ProcessingStepMerger {
         if (step.metadata() != null && !step.metadata().isEmpty()) {
             map.put("metadata", metadataToMap(step.metadata()));
         }
+        if (step.subSteps() != null && !step.subSteps().isEmpty()) {
+            java.util.List<java.util.Map<String, Object>> nested = new java.util.ArrayList<>();
+            for (ProcessingStep sub : step.subSteps()) {
+                nested.add(toPersistMap(sub));
+            }
+            map.put("subSteps", nested);
+        }
         return map;
     }
 
@@ -320,6 +348,21 @@ public final class ProcessingStepMerger {
         }
         if (hasText(metadata.rewriteScenarioLabel())) {
             map.put("rewriteScenarioLabel", metadata.rewriteScenarioLabel());
+        }
+        if (hasText(metadata.skillId())) {
+            map.put("skillId", metadata.skillId());
+        }
+        if (hasText(metadata.plannerMode())) {
+            map.put("plannerMode", metadata.plannerMode());
+        }
+        if (hasText(metadata.routingReason())) {
+            map.put("routingReason", metadata.routingReason());
+        }
+        if (metadata.rewriteInDetail() != null) {
+            map.put("rewriteInDetail", metadata.rewriteInDetail());
+        }
+        if (hasText(metadata.expandSectionTitle())) {
+            map.put("expandSectionTitle", metadata.expandSectionTitle());
         }
         return map;
     }

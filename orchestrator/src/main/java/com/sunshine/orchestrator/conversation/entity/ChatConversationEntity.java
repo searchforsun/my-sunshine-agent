@@ -33,4 +33,8 @@ public class ChatConversationEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /** 本会话最近一次发送时用户选择的 executionPreference */
+    @Column(name = "execution_preference", length = 32)
+    private String executionPreference;
 }

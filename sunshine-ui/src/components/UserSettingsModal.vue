@@ -2,13 +2,17 @@
 import { ref, watch } from 'vue'
 import { NModal, NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 import { useAuthStore } from '../stores/authStore'
+import ExecutionModeSelector from './chat/ExecutionModeSelector.vue'
+import { useExecutionPreference } from '../composables/useExecutionPreference'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ 'update:show': [value: boolean] }>()
 
 const auth = useAuthStore()
 const message = useMessage()
+const { globalDefault, setGlobalDefault } = useExecutionPreference()
 const nickname = ref('')
+const defaultMode = ref(globalDefault.value)
 const saving = ref(false)
 
 watch(
@@ -16,6 +20,7 @@ watch(
   (open) => {
     if (open) {
       nickname.value = auth.user?.nickname ?? ''
+      defaultMode.value = globalDefault.value
     }
   },
 )
@@ -33,6 +38,7 @@ async function handleSave() {
   saving.value = true
   try {
     await auth.updateProfile(value)
+    setGlobalDefault(defaultMode.value)
     message.success('资料已更新')
     close()
   } catch (e) {
@@ -66,6 +72,14 @@ async function handleSave() {
           @keydown.enter="handleSave"
         />
       </NFormItem>
+      <NFormItem label="默认执行模式">
+        <ExecutionModeSelector
+          :model-value="defaultMode"
+          :disabled="saving"
+          @update:model-value="defaultMode = $event"
+        />
+        <p class="settings-hint">新建或无记忆会话时使用；已有会话恢复其最近一次选择。</p>
+      </NFormItem>
     </NForm>
     <template #footer>
       <div class="settings-footer">
@@ -81,5 +95,11 @@ async function handleSave() {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+.settings-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--sun-text-3, #888);
+  line-height: 1.4;
 }
 </style>

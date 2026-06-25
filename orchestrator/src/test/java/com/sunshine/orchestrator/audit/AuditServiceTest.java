@@ -58,6 +58,38 @@ class AuditServiceTest {
     }
 
     @Test
+    void routingExtractor_parsesForcedIntentStep() {
+        String steps = "[{\"id\":\"intent\",\"metadata\":{\"routingReason\":\"user:forced-simple-llm\"}}]";
+        RoutingAuditExtractor.Summary summary = RoutingAuditExtractor.fromStepsJson(steps);
+        assertThat(summary.userForced()).isTrue();
+        assertThat(summary.routingReason()).isEqualTo("user:forced-simple-llm");
+    }
+
+    @Test
+    void auditAssistantMessage_includesForcedRouting() {
+        ChatMessageEntity msg = new ChatMessageEntity();
+        msg.setId("m2");
+        msg.setConversationId("c1");
+        msg.setRole("assistant");
+        msg.setStatus("completed");
+        msg.setContent("ok");
+        msg.setSteps("[{\"id\":\"intent\",\"metadata\":{\"routingReason\":\"user:forced-simple-llm\"}}]");
+
+        ChatConversationEntity conv = new ChatConversationEntity();
+        conv.setId("c1");
+        conv.setUserId("u1");
+        conv.setTenantId("default");
+        when(conversationRepository.findById("c1")).thenReturn(java.util.Optional.of(conv));
+
+        auditService.auditAssistantMessage(msg);
+
+        verify(auditPublisher).publish(argThat(event ->
+                event.payloadJson() != null
+                        && event.payloadJson().contains("\"userForced\":true")
+                        && event.payloadJson().contains("user:forced-simple-llm")));
+    }
+
+    @Test
     void auditAssistantMessage_skipsStreaming() {
         ChatMessageEntity msg = new ChatMessageEntity();
         msg.setRole("assistant");

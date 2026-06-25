@@ -186,9 +186,9 @@ mvn test -pl rag-service -Dtest=*Tenant*
 - Create: ES 索引 mapping `tool-audit-*`
 - Modify: `orchestrator/.../audit/` — 与 3.10.6、3.9.4 联动
 
-- [ ] **3.6.1** `sunshine-tool-audit`：toolId、params（脱敏）、output 摘要、traceId
-- [ ] **3.6.2** ES 按 `conversationId` 查询 API
-- [ ] **3.6.3** `sub_agent_run` + `plan.*` 四类事件（见 multi-agent plan 3.10.6、3.9.4）
+- [x] **3.6.1** `tool.call`：toolId、params（脱敏）、output 摘要（复用 sunshine-audit topic）
+- [x] **3.6.2** `GET /api/audit/tool-calls?messageId=` / `?conversationId=` 查询
+- [x] **3.6.3** `sub_agent_run` + `plan.*` 事件（见 multi-agent plan 3.10.6、3.9.4）
 
 ---
 
@@ -268,13 +268,13 @@ mvn test -pl orchestrator -Dtest=QueryRewriteServiceTest,KnowledgeRetrievalServi
 |--------|------|------|----------------|
 | **3.8.4** | Timeline `detail` 展示改写前后 query；审计 `rewriteApplied` / `rewriteLatencyMs` | 3.8.1 | **✅** |
 | **3.8.5** | `rag_eval` 或脚本输出 `raw_query` vs `rewritten_query` 报告 | 3.8.1 | **✅** |
-| **3.8.6** | `rag` HyDE（可选，假想文档再检索） | 3.8.1 | **✅** |
+| **3.8.6** | `rag` HyDE：**首次 0 命中 fallback**（`KnowledgeRetrievalService` 链：rag 改写 → 首检 → HyDE → empty-recall） | 3.8.1 | **✅** |
 | **3.8.7** | Planner 前 QueryRewrite | 3.9.1, 3.10.4 | `PlannerAgentRuntime` |
 
 - [x] **3.8.4** Timeline + 审计字段
 - [x] **3.8.5** 改写评测报告
-- [x] **3.8.6** HyDE（可选，`agent.rewrite.rag.hyde.enabled`，默认 false）
-- [ ] **3.8.7** Planner 前改写
+- [x] **3.8.6** HyDE fallback（`agent.rewrite.rag.hyde.enabled`；首检 0 命中再 HyDE，默认 false）
+- [x] **3.8.7** Planner 前改写
 
 ---
 

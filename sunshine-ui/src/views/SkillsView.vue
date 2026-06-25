@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import {
   NButton,
   NCard,
@@ -90,6 +90,7 @@ const mdPreviewRef = ref<HTMLElement | null>(null)
 const copyPreviewDone = ref(false)
 
 const message = useMessage()
+const router = useRouter()
 const skills = ref<SkillEntry[]>([])
 const loading = ref(false)
 const selectedId = ref<string | null>(null)
@@ -219,6 +220,14 @@ const showDeleteVersionButton = computed(
   () => selectedId.value != null && selectedVersion.value != null && versions.value.length > 1,
 )
 
+const showDiffWithActiveButton = computed(() => {
+  const active = activeVersionNum.value
+  const current = selectedVersion.value
+  if (!selectedId.value || active == null || current == null || active === current) return false
+  if (!selectedFilePath.value || fileContent.value?.binary) return false
+  return selectedHasFiles.value
+})
+
 const cardMenuOptions: DropdownOption[] = [
   {
     label: '修改',
@@ -269,6 +278,13 @@ const moreMenuOptions = computed((): DropdownOption[] => {
       key: 'download',
       icon: () => h(NIcon, { component: DownloadOutline, size: 14 }),
       disabled: downloading.value,
+    })
+  }
+  if (showDiffWithActiveButton.value) {
+    opts.push({
+      label: '对比生效版',
+      key: 'diff-active',
+      icon: () => h(NIcon, { component: DocumentTextOutline, size: 14 }),
     })
   }
   if (showDeleteVersionButton.value) {
@@ -835,10 +851,25 @@ async function handleMoreMenuSelect(key: string) {
   else if (key === 'fork') await handleForkToDraft()
   else if (key === 'upload') await triggerFolderPick()
   else if (key === 'download') handleDownload()
+  else if (key === 'diff-active') await handleDiffWithActive()
   else if (key === 'delete-version') {
     if (!(await flushFileEditBeforeLeave())) return
     showDeleteVersionConfirm.value = true
   }
+}
+
+async function handleDiffWithActive() {
+  if (!selectedId.value || selectedVersion.value == null || activeVersionNum.value == null) return
+  const path = selectedFilePath.value ?? 'SKILL.md'
+  await router.push({
+    name: 'skill-diff',
+    params: { skillId: selectedId.value },
+    query: {
+      from: String(activeVersionNum.value),
+      to: String(selectedVersion.value),
+      path,
+    },
+  })
 }
 
 function openDeleteSkillConfirm(skill: SkillEntry) {

@@ -35,11 +35,23 @@ public class RagTool {
 
         try {
             var results = knowledgeRetrievalService.search(
-                    query, ragSearchProperties.getDefaultTopK(), StepEventBridge.activeMessageId());
+                    query, ragSearchProperties.getDefaultTopK(), resolveTenantId(), StepEventBridge.activeMessageId());
             return RagContextFormatter.formatToolResult(results);
         } catch (Exception e) {
             log.warn("[RagTool] 知识库检索失败: {}", e.getMessage());
             return "工具调用失败：知识库服务不可用（" + e.getMessage() + "）。请如实告知用户当前无法检索企业知识库。";
         }
+    }
+
+    private static String resolveTenantId() {
+        String messageId = StepEventBridge.activeMessageId();
+        if (messageId == null) {
+            return "default";
+        }
+        StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(messageId);
+        if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
+            return "default";
+        }
+        return ctx.tenantId().strip();
     }
 }

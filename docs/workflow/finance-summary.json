@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "workflowId": "finance-summary",
+  "displayName": "财务汇总统计",
+  "description": "统计各状态财务消息条数与金额",
+  "mode": "workflow",
+  "enabled": true,
+  "source": "import",
+  "catalog": {
+    "examples": [
+      "待审批有多少条",
+      "pending 财务总额"
+    ],
+    "nodeSummary": ["start", "tool", "answer"]
+  },
+  "plan": {
+    "planId": null,
+    "reason": "导入自 sunshine-workflows.yaml · finance-summary",
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "displayName": "开始",
+        "params": {}
+      },
+      {
+        "id": "finance-summary",
+        "type": "tool",
+        "displayName": "统计财务消息",
+        "params": {
+          "tool": "summarize_finance_by_status",
+          "status": "{{plan.params.status}}"
+        }
+      },
+      {
+        "id": "answer",
+        "type": "answer",
+        "displayName": "生成回答",
+        "params": {
+          "prompt": "根据财务汇总工具结果回答用户。\n\n约束：禁止向用户暴露英文流程/工具内部名。\n\n汇总：\n{{finance-summary.output}}"
+        }
+      }
+    ],
+    "edges": [
+      { "from": "start", "to": "finance-summary" },
+      { "from": "finance-summary", "to": "answer" }
+    ]
+  }
+}

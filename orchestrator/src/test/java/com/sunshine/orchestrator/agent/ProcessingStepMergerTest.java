@@ -28,6 +28,7 @@ class ProcessingStepMergerTest {
                 2L,
                 "done",
                 "识别意图",
+                null,
                 null
         );
 
@@ -56,6 +57,7 @@ class ProcessingStepMergerTest {
                 1L,
                 "running",
                 "思考过程",
+                null,
                 null
         );
 
@@ -84,6 +86,7 @@ class ProcessingStepMergerTest {
                 2L,
                 "done",
                 "识别意图",
+                null,
                 null
         );
 
@@ -109,6 +112,7 @@ class ProcessingStepMergerTest {
                 2L,
                 "done",
                 "识别意图",
+                null,
                 null
         );
         ProcessingStep think = new ProcessingStep(
@@ -126,6 +130,7 @@ class ProcessingStepMergerTest {
                 4L,
                 "done",
                 "思考过程",
+                null,
                 null
         );
 
@@ -137,6 +142,38 @@ class ProcessingStepMergerTest {
         assertThat(json).contains("\"reasoning\":\"完整推理\"");
         assertThat(json).doesNotContain("\"detail\"");
         assertThat(json).doesNotContain("\"output\"");
+    }
+
+    @Test
+    @DisplayName("toPersistJson：仅 routingReason 的 intent metadata 仍落库")
+    void toPersistJson_persistsRoutingReasonOnlyMetadata() {
+        com.sunshine.orchestrator.processing.StepMetadata metadata =
+                com.sunshine.orchestrator.processing.StepMetadata.fromRouting(
+                        new com.sunshine.orchestrator.routing.ExecutionPlan(
+                                com.sunshine.orchestrator.routing.ExecutionMode.REACT,
+                                null,
+                                java.util.Map.of(),
+                                "user:forced-react"));
+        ProcessingStep intent = new ProcessingStep(
+                "intent",
+                "intent",
+                "done",
+                new StepSummary(null, null, "将自主推理处理"),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "done",
+                "识别意图",
+                metadata,
+                null
+        );
+        String json = ProcessingStepMerger.toPersistJson(List.of(intent));
+        assertThat(json).contains("\"routingReason\":\"user:forced-react\"");
     }
 
     @Test

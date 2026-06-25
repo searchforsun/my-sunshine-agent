@@ -82,10 +82,12 @@ public record QueryRewriteOutcome(
     }
 
     private static String formatLatency(long latencyMs) {
-        if (latencyMs >= 1000) {
-            double seconds = latencyMs / 1000.0;
-            return seconds >= 10 ? "用时：" + Math.round(seconds) + " 秒" : "用时：" + String.format("%.1f", seconds) + " 秒";
+        if (latencyMs < 1) {
+            return "<1ms";
         }
-        return "用时：" + latencyMs + " 毫秒";
+        if (latencyMs < 1000) {
+            return latencyMs + "ms";
+        }
+        return String.format("%.1fs", latencyMs / 1000.0);
     }
 }

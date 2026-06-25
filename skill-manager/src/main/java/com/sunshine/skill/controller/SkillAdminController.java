@@ -11,6 +11,8 @@ import com.sunshine.skill.dto.SkillFileWriteRequest;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.service.SkillAdminService;
 import com.sunshine.skill.service.SkillFileService;
+import com.sunshine.skill.dto.SkillVersionDiffResponse;
+import com.sunshine.skill.service.SkillVersionDiffService;
 import com.sunshine.skill.skillmd.SkillPackage;
 import com.sunshine.skill.skillmd.SkillPackageImporter;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +45,7 @@ public class SkillAdminController {
 
     private final SkillAdminService skillAdminService;
     private final SkillFileService skillFileService;
+    private final SkillVersionDiffService skillVersionDiffService;
 
     @GetMapping
     public R<List<SkillCatalogEntry>> list() {
@@ -104,6 +107,15 @@ public class SkillAdminController {
     @DeleteMapping("/{id}/versions/{version}")
     public R<SkillCatalogEntry> deleteVersion(@PathVariable String id, @PathVariable int version) {
         return R.ok(skillAdminService.deleteVersion(id, version));
+    }
+
+    @GetMapping("/{id}/versions/diff")
+    public R<SkillVersionDiffResponse> diffVersions(
+            @PathVariable String id,
+            @RequestParam int from,
+            @RequestParam int to,
+            @RequestParam(required = false) String path) {
+        return R.ok(skillVersionDiffService.diff(id, from, to, path));
     }
 
     @GetMapping("/{id}/versions/{version}/files")

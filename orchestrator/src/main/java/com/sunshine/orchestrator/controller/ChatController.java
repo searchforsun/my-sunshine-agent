@@ -4,8 +4,11 @@ import com.sunshine.orchestrator.execution.ExecutionDispatcher;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.ExecutionPreference;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.ExecutionPlanRouter;
+import com.sunshine.orchestrator.routing.ForcedExecutionRouter;
+import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.agent.StepEventBridge;
@@ -68,6 +71,7 @@ import java.util.stream.Collectors;
 public class ChatController {
 
     private final ExecutionPlanRouter executionPlanRouter;
+    private final ForcedExecutionRouter forcedExecutionRouter;
     private final ExecutionDispatcher executionDispatcher;
     private final ExecutionPlanParser executionPlanParser;
     private final com.sunshine.orchestrator.execution.SimpleLlmExecutor simpleLlmExecutor;
@@ -103,6 +107,16 @@ public class ChatController {
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
 
         validateRequest(msg);
+        if (!StringUtils.hasText(msg.getResumeMessageId())) {
+            ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
+            if (preference.isForced()) {
+                forcedExecutionRouter.validatePreference(msg.getContent(), preference);
+            }
+        }
+        if (!StringUtils.hasText(msg.getResumeMessageId())) {
+            log.info("[Orchestrator] chat pref={} workflowId={} conv={}",
+                    msg.getExecutionPreference(), msg.getWorkflowId(), msg.getConversationId());
+        }
 
         if (StringUtils.hasText(msg.getResumeMessageId())) {
             return handleResume(msg, userId, tenantId);
@@ -336,6 +350,9 @@ public class ChatController {
                 desensitizeClient.scrub(msg.getContent()), MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "", MessageStatus.STREAMING);
+        ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
+        conversationService.updateExecutionPreference(
+                conv.getId(), userId, tenantId, preference.wireValue());
         String userContent = desensitizeClient.scrub(msg.getContent());
         MemoryContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
                 userId, tenantId, conv.getId(), loadedHistory, userContent));
@@ -357,7 +374,9 @@ public class ChatController {
                 null,
                 true,
                 userId,
-                tenantId
+                tenantId,
+                preference,
+                msg.getWorkflowId()
         );
     }
 
@@ -403,7 +422,9 @@ public class ChatController {
                 assistant.getSteps(),
                 false,
                 userId,
-                tenantId
+                tenantId,
+                ExecutionPreference.AUTO,
+                null
         );
     }
 
@@ -429,7 +450,11 @@ public class ChatController {
 
         return prepareChunkFlux(Flux.concat(
                 Flux.fromIterable(intentStartTokens),
-                executionPlanRouter.route(ctx.userContent(), ctx.assistantMsgId())
+                executionPlanRouter.route(new RoutingContext(
+                        ctx.userContent(),
+                        ctx.assistantMsgId(),
+                        ctx.executionPreference(),
+                        ctx.forcedWorkflowId()))
                         .flatMapMany(plan -> {
                             executionMode.set(plan.mode());
                             Mono<Void> savePlan = Mono.fromRunnable(() ->
@@ -439,8 +464,16 @@ public class ChatController {
                                     .then();
                             session.completeIntent(plan);
                             List<StreamToken> intentDoneTokens = drainStepTokens(stepEmissions);
+                            String skillId = plan.params() != null
+                                    ? plan.params().get(com.sunshine.orchestrator.skill.SkillBindingOutcome.PARAM_SKILL)
+                                    : null;
+                            if (org.springframework.util.StringUtils.hasText(skillId)) {
+                                session.completeSkillLoad(skillId.strip());
+                            }
+                            List<StreamToken> skillDoneTokens = drainStepTokens(stepEmissions);
                             return savePlan.thenMany(Flux.concat(
                                     Flux.fromIterable(intentDoneTokens),
+                                    Flux.fromIterable(skillDoneTokens),
                                     executionDispatcher.execute(toExecutionContext(ctx, plan))
                             ));
                         })
@@ -548,7 +581,9 @@ public class ChatController {
             String existingStepsJson,
             boolean autoTitle,
             String userId,
-            String tenantId
+            String tenantId,
+            ExecutionPreference executionPreference,
+            String forcedWorkflowId
     ) {
     }
 }

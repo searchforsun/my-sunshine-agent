@@ -20,6 +20,16 @@ public final class StepEventBridge {
     private static final Map<String, ConcurrentLinkedQueue<StreamToken>> HOOK_TOKEN_QUEUES = new ConcurrentHashMap<>();
     private static final Map<String, String> RAG_DETAILS = new ConcurrentHashMap<>();
     private static final Map<String, String> USER_QUERIES = new ConcurrentHashMap<>();
+    private static final Map<String, ToolAuditContext> TOOL_AUDIT_CONTEXTS = new ConcurrentHashMap<>();
+
+    /** ReAct / workflow 工具审计上下文 — 按 assistantMsgId 绑定 */
+    public record ToolAuditContext(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId) {
+    }
 
     private StepEventBridge() {
     }
@@ -50,6 +60,16 @@ public final class StepEventBridge {
         }
     }
 
+    public static void bindToolAudit(String messageId, ToolAuditContext context) {
+        if (messageId != null && context != null) {
+            TOOL_AUDIT_CONTEXTS.put(messageId, context);
+        }
+    }
+
+    public static ToolAuditContext toolAuditContext(String messageId) {
+        return messageId == null ? null : TOOL_AUDIT_CONTEXTS.get(messageId);
+    }
+
     public static String ragDetail(String messageId) {
         return messageId == null ? null : RAG_DETAILS.get(messageId);
     }
@@ -72,6 +92,7 @@ public final class StepEventBridge {
             HOOK_TOKEN_QUEUES.remove(messageId);
             RAG_DETAILS.remove(messageId);
             USER_QUERIES.remove(messageId);
+            TOOL_AUDIT_CONTEXTS.remove(messageId);
         }
     }
 

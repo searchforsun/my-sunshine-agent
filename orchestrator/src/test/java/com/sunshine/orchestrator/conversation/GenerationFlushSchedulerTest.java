@@ -34,6 +34,7 @@ class GenerationFlushSchedulerTest {
                 1L,
                 "running",
                 "识别意图",
+                null,
                 null
         );
 

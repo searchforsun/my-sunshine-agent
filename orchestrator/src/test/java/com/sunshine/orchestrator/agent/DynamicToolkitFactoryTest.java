@@ -49,10 +49,12 @@ class DynamicToolkitFactoryTest {
                 "list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", java.util.Map.of());
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
+        com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.audit.ToolAuditService.class);
 
         when(toolCatalogService.isRagTool("list_finance_messages")).thenReturn(false);
         when(remoteToolFactory.create("list_finance_messages"))
-                .thenReturn(Optional.of(new CatalogRemoteAgentTool(financeEntry, toolManagerClient)));
+                .thenReturn(Optional.of(new CatalogRemoteAgentTool(financeEntry, toolManagerClient, toolAuditService)));
 
         var toolkit = factory.build(List.of("list_finance_messages"));
 

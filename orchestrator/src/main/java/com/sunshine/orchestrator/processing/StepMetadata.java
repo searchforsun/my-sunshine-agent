@@ -1,8 +1,13 @@
 package com.sunshine.orchestrator.processing;
 
+import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.skill.SkillBindingOutcome;
+import org.springframework.util.StringUtils;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -15,8 +20,18 @@ public record StepMetadata(
         String rewriteFrom,
         String rewriteTo,
         String rewriteScenario,
-        String rewriteScenarioLabel
+        String rewriteScenarioLabel,
+        /** L0 Skill 绑定：intent 步可观测 */
+        String skillId,
+        String plannerMode,
+        String routingReason,
+        /** RAG 等：改写链路已在 detail 正文，前端勿再渲染 metadata 结构化改写区 */
+        Boolean rewriteInDetail,
+        /** 抽屉/展开区 detail 区块标题（如「检索过程」） */
+        String expandSectionTitle
 ) {
+
+    private static final String RAG_EXPAND_SECTION_TITLE = "检索过程";
 
     private static final Pattern HIT_COUNT = Pattern.compile("(?:共|命中)\\s*(\\d+)\\s*条");
     private static final Pattern NO_HIT_HEADER = Pattern.compile("^未找到相关知识库");
@@ -43,7 +58,61 @@ public record StepMetadata(
         if (sources.isEmpty() && summarizedText != null && !summarizedText.isBlank()) {
             sources = parseSources(summarizedText);
         }
-        return new StepMetadata(hitCount, sources, null, null, null, null, null, null);
+        return new StepMetadata(hitCount, sources, null, null, null, null, null, null, null, null, null, null, null);
+    }
+
+    public static StepMetadata fromRouting(ExecutionPlan plan) {
+        if (plan == null) {
+            return null;
+        }
+        Map<String, String> params = plan.params() != null ? plan.params() : Map.of();
+        String skill = params.get(SkillBindingOutcome.PARAM_SKILL);
+        String mode = params.get(SkillBindingOutcome.PARAM_PLANNER_MODE);
+        String reason = plan.reason();
+        if (!StringUtils.hasText(skill) && !StringUtils.hasText(mode) && !StringUtils.hasText(reason)) {
+            return null;
+        }
+        return new StepMetadata(
+                null, null, null, null, null, null, null, null,
+                textOrNull(skill), textOrNull(mode), textOrNull(reason), null, null);
+    }
+
+    /** skill 步：L0 绑定可观测 */
+    public static StepMetadata fromSkillLoad(String skillId) {
+        if (!StringUtils.hasText(skillId)) {
+            return null;
+        }
+        return new StepMetadata(
+                null, null, null, null, null, null, null, null,
+                skillId.strip(), null, null, null, null);
+    }
+
+    public static StepMetadata mergeRouting(StepMetadata base, ExecutionPlan plan) {
+        StepMetadata routing = fromRouting(plan);
+        if (routing == null) {
+            return base;
+        }
+        if (base == null) {
+            return routing;
+        }
+        return new StepMetadata(
+                base.hitCount(),
+                base.sources(),
+                base.rewriteApplied(),
+                base.rewriteLatencyMs(),
+                base.rewriteFrom(),
+                base.rewriteTo(),
+                base.rewriteScenario(),
+                base.rewriteScenarioLabel(),
+                routing.skillId(),
+                routing.plannerMode(),
+                routing.routingReason(),
+                base.rewriteInDetail(),
+                base.expandSectionTitle());
+    }
+
+    private static String textOrNull(String value) {
+        return StringUtils.hasText(value) ? value.strip() : null;
     }
 
     public static StepMetadata fromRewrite(com.sunshine.orchestrator.rewrite.QueryRewriteOutcome outcome) {
@@ -59,7 +128,8 @@ public record StepMetadata(
                 outcome.originalQuery(),
                 outcome.rewrittenQuery(),
                 outcome.scenario(),
-                scenarioLabel.isBlank() ? null : scenarioLabel);
+                scenarioLabel.isBlank() ? null : scenarioLabel,
+                null, null, null, null, null);
     }
 
     public static StepMetadata mergeRewrite(StepMetadata base, com.sunshine.orchestrator.rewrite.QueryRewriteOutcome outcome) {
@@ -78,11 +148,37 @@ public record StepMetadata(
                 rewriteMeta.rewriteFrom(),
                 rewriteMeta.rewriteTo(),
                 rewriteMeta.rewriteScenario(),
-                rewriteMeta.rewriteScenarioLabel());
+                rewriteMeta.rewriteScenarioLabel(),
+                base.skillId(),
+                base.plannerMode(),
+                base.routingReason(),
+                base.rewriteInDetail(),
+                base.expandSectionTitle());
+    }
+
+    /** RAG 步骤：改写已在 detail，命中摘要走 summary.after + metadata */
+    public static StepMetadata withRagExpandLayout(StepMetadata base) {
+        if (base == null) {
+            return new StepMetadata(null, null, null, null, null, null, null, null, null, null, null, true, RAG_EXPAND_SECTION_TITLE);
+        }
+        return new StepMetadata(
+                base.hitCount(),
+                base.sources(),
+                base.rewriteApplied(),
+                base.rewriteLatencyMs(),
+                base.rewriteFrom(),
+                base.rewriteTo(),
+                base.rewriteScenario(),
+                base.rewriteScenarioLabel(),
+                base.skillId(),
+                base.plannerMode(),
+                base.routingReason(),
+                true,
+                RAG_EXPAND_SECTION_TITLE);
     }
 
     private static StepMetadata emptyRag() {
-        return new StepMetadata(0, List.of(), null, null, null, null, null, null);
+        return new StepMetadata(0, List.of(), null, null, null, null, null, null, null, null, null, null, null);
     }
 
     public String sourcesLabel() {
@@ -95,7 +191,10 @@ public record StepMetadata(
     public boolean isEmpty() {
         return (hitCount == null || hitCount == 0)
                 && (sources == null || sources.isEmpty())
-                && (rewriteApplied == null || !rewriteApplied);
+                && (rewriteApplied == null || !rewriteApplied)
+                && !StringUtils.hasText(skillId)
+                && !StringUtils.hasText(plannerMode)
+                && !StringUtils.hasText(routingReason);
     }
 
     private static boolean isEmptyRagOutput(String text) {

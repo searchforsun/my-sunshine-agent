@@ -28,6 +28,9 @@ public class UserEntity {
     @Column(length = 64)
     private String nickname;
 
+    @Column(name = "tenant_id", nullable = false, length = 32)
+    private String tenantId = "default";
+
     @Column(nullable = false, columnDefinition = "TINYINT")
     private Byte status = 1;
 

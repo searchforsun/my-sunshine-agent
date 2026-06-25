@@ -187,8 +187,9 @@ skill-manager
 | 版本 + 预览 | 文件树、Markdown/Mermaid/代码/图片 | ✅ |
 | 上传 | 文件夹 → zip → Gateway  multipart | ✅ |
 | 左右 loading | 列表刷新 vs 详情加载 **独立** | ✅ |
-| 在线编辑 overlay | SKILL.md 正文 | ⬜ 3.12.2 |
-| 版本 diff / 试跑 | — | ⬜ 阶段四 |
+| 在线编辑 overlay | SKILL.md 正文 | ✅ 3.12.2 |
+| 版本 diff | 独立页；文本行级 + 二进制 MD5 | ✅ 3.12.2 |
+| 试跑 / 沙箱 | — | ⬜ 阶段四 |
 
 技术栈：Vue3 + Naive UI，与 `knowledge` 页一致；BFF 透传 skill-manager。
 
@@ -326,6 +327,21 @@ public enum ExecutionMode {
 
 ---
 
+## D11. ReAct TaskBoard = 软规划 Todo（阶段四）
+
+### 决策
+
+- 阶段四在 **`REACT` 模式内**增加可选 **TaskBoard**（任务卡 **4.7.5**）；**不**新增第六顶层 `ExecutionMode`。
+- **禁止**将 TaskBoard 做成 mini-DAG（无 `edges` / 节点 type / 工具绑定）；跨域结构化流水线仍走 **D1 `PLAN_WORKFLOW`**。
+- 元工具 **`manage_tasks`** 由 orchestrator 内置注册（类 `RagTool`）；**不**进入 tool-manager Catalog；**不**占用 Nacos `react.tools` 白名单槽位。
+- Timeline：**唯一** `tasks` 步聚合清单；`manage_tasks` **不**单独产生 tool 步；与 `plan` + `node-*` **互斥**（`planId=` 门控）。
+- **`peer-collab`（D10）** 成功路径 **禁止** TaskBoard。
+- 行为引导 **仅** Nacos `agent.prompt.mode-overlays.react` + tool schema；plan 降级 ReAct 时 **禁止** 将 Planner JSON 自动转为 DAG todo。
+
+详设 SSOT：[2026-06-24-react-taskboard-design.md](./2026-06-24-react-taskboard-design.md) · 验收 [routing-golden-set.md](../../routing/routing-golden-set.md) §F。
+
+---
+
 ## 对实施计划的影响
 
 | 原任务 | 调整 |
@@ -336,6 +352,7 @@ public enum ExecutionMode {
 | S4 Sandbox | **明确 Docker**，可放在 skill-manager 或独立 sandbox-service |
 | ExecutionMode | 阶段三增加 `PLAN_WORKFLOW` 枚举与 Dispatcher 分支 |
 | ExecutionMode | 阶段四增加 `PEER_COLLAB` 第五模式（4.7.3，见 D10） |
+| ReAct TaskBoard | 阶段四 **4.7.5**（见 D11）；`agent.execution.react.taskboard.enabled` Feature Flag |
 
 ---
 
@@ -344,4 +361,5 @@ public enum ExecutionMode {
 - `2026-06-19-advanced-capabilities-design.md`
 - `2026-06-19-multi-agent-architecture-design.md`
 - `2026-06-24-peer-collab-routing-design.md`（第五模式，阶段四）
+- `2026-06-24-react-taskboard-design.md`（ReAct 软规划，阶段四）
 - `implementation-plan.md`

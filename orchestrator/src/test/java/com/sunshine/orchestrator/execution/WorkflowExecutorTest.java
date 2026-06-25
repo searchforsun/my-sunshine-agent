@@ -1,11 +1,20 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.config.AgentGroundingProperties;
+import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
+import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.execution.handler.AnswerNodeHandler;
 import com.sunshine.orchestrator.execution.handler.RagNodeHandler;
 import com.sunshine.orchestrator.execution.handler.StartNodeHandler;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
+import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
+import com.sunshine.orchestrator.plan.PlanJson;
+import com.sunshine.orchestrator.plan.PlanRunFinalizer;
+import com.sunshine.orchestrator.plan.PlanTimeline;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +33,8 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -61,7 +72,18 @@ class WorkflowExecutorTest {
     private UpstreamOutputResolver upstreamOutputResolver;
 
     @Mock
-    private com.sunshine.orchestrator.plan.PlanExecutionAuditService planExecutionAuditService;
+    private PlanExecutionAuditService planExecutionAuditService;
+
+    @Mock
+    private PlanDisplayNameEnricher displayNameEnricher;
+
+    @Mock
+    private PlanRunFinalizer planRunFinalizer;
+
+    @Mock
+    private AnswerGroundingChecker groundingChecker;
+
+    private AgentGroundingProperties groundingProperties;
 
     @InjectMocks
     private WorkflowExecutor executor;
@@ -88,7 +110,12 @@ class WorkflowExecutorTest {
         when(startNodeHandler.run(any(), any(), any()))
                 .thenReturn(Mono.just(NodeResult.ok(Map.of("userQuery", "请假制度"))));
         when(ragNodeHandler.run(any(), any(), any()))
-                .thenReturn(Mono.just(NodeResult.ok(Map.of("output", "rag-hit", "detail", "命中 1 条"))));
+                .thenReturn(Mono.just(NodeResult.ok(Map.of(
+                        "output", "rag-hit", "detail", "命中 1 条", "hitCount", "1"))));
+        when(answerNodeHandler.createStreamCollector(any(), any()))
+                .thenReturn(new WorkflowStreamCollector());
+        when(answerNodeHandler.streamTokens(any(), any(), any(), any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("请假需提前申请")));
         when(answerNodeHandler.streamTokens(any(), any(), any(), any()))
                 .thenReturn(Flux.just(StreamToken.content("请假需提前申请")));
         when(answerNodeHandler.buildResult(any()))
@@ -98,14 +125,23 @@ class WorkflowExecutorTest {
                         "reasoning", "先核对制度条款再归纳要点",
                         "detail", "先核对制度条款再归纳要点")));
 
+        when(executionPlanStore.createDraft(any(), any(PlanJson.class))).thenReturn("static-plan-1");
+        when(displayNameEnricher.enrich(any(PlanJson.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(planRunFinalizer.postWorkflow(any(), eq("static-plan-1"), any()))
+                .thenReturn(Flux.empty());
+        when(groundingChecker.check(any(), any())).thenReturn(GroundingVerdict.pass());
+        groundingProperties = new AgentGroundingProperties();
+        groundingProperties.setEnabled(true);
+
         executor = new WorkflowExecutor(
                 loader, registry, executionPlanStore, labelService,
                 retryPolicyResolver, nodeRetryExecutor, upstreamOutputResolver,
-                planExecutionAuditService);
+                planExecutionAuditService, displayNameEnricher, planRunFinalizer,
+                groundingChecker, groundingProperties);
     }
 
     @Test
-    void runsLinearWorkflow() {
+    void runsLinearWorkflowAsPlanDag() {
         WorkflowDefinition def = WorkflowDefinition.from("knowledge-qa", List.of(
                 new NodeSpec("start", "start", Map.of()),
                 new NodeSpec("rag", "rag", Map.of("topK", "3")),
@@ -123,6 +159,12 @@ class WorkflowExecutorTest {
         assertThat(tokens).isNotNull().isNotEmpty();
         assertThat(tokens.stream().anyMatch(StreamToken::isStep)).isTrue();
         assertThat(tokens.stream().anyMatch(StreamToken::isContent)).isTrue();
+        assertThat(tokens.stream().filter(StreamToken::isStep).map(t -> t.step().detail()))
+                .anyMatch(detail -> detail != null && detail.contains("planId=static-plan-1"));
+        verify(executionPlanStore).createDraft(eq(ctx), any(PlanJson.class));
+        verify(executionPlanStore).markValidated(eq("static-plan-1"), any(PlanJson.class));
+        verify(executionPlanStore).markRunning("static-plan-1");
+        verify(planRunFinalizer).postWorkflow(eq(ctx), eq("static-plan-1"), any());
     }
 
     @Test

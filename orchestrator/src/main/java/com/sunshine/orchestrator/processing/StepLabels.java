@@ -20,6 +20,7 @@ public final class StepLabels {
         }
         return switch (stepId) {
             case "intent" -> "识别意图";
+            case "skill" -> "加载技能";
             case "plan" -> "执行计划";
             case "rag" -> catalogService != null
                     ? catalogService.displayName("search_knowledge")
@@ -47,6 +48,7 @@ public final class StepLabels {
         }
         return switch (stepId) {
             case "intent" -> "准备识别意图";
+            case "skill" -> SkillLoadLabels.before();
             case "plan" -> "规划执行路径";
             case "rag" -> "准备检索知识库";
             case "think" -> "推演回答逻辑";
@@ -69,6 +71,7 @@ public final class StepLabels {
         }
         return switch (stepId) {
             case "intent" -> "正在匹配处理方式";
+            case "skill" -> SkillLoadLabels.active();
             case "plan" -> "正在编排业务节点顺序";
             case "rag" -> "正在检索知识库";
             case "think" -> "正在推演作答思路";
@@ -94,6 +97,7 @@ public final class StepLabels {
         }
         return switch (stepId) {
             case "intent" -> detail != null ? detail : "意图识别完成";
+            case "skill" -> detail != null ? detail : "Skill 已加载";
             case "plan" -> detail != null ? detail : "执行计划已生成";
             case "rag" -> detail;
             case "think" -> detail != null ? detail : "思考完成";

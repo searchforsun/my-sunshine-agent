@@ -16,6 +16,8 @@
 
 **Query 改写（3.8.1）**：`agent.rewrite.{rag,intent,empty-recall}` 默认开启；orchestrator 日志 `[QueryRewrite]`。
 
+**2026-06-25 检索链调整**：HyDE 改为 **首次 0 命中 fallback**（不再在首检前覆盖 rag 改写 query）；`empty-recall.system-prompt` 收紧同领域约束，减少误召回。
+
 ## v5 — hybrid+rerank
 
 - run_tag: `20260621-142022-closure`

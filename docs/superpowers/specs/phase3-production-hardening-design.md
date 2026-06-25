@@ -160,7 +160,7 @@
 | **3.8.3** | workflow `llm` 节点 prompt 走 Composer 第 6 层 `node-prompt`（`LlmNodeHandler`） | **✅** |
 | **3.8.4** | QueryRewrite 可观测（**非检查门**）：Timeline `detail` 改写前后 query；审计 `rewriteApplied` / `rewriteLatencyMs` | **✅** |
 | **3.8.5** | QueryRewrite 评测（**非检查门**）：golden-set `raw_query` vs `rewritten_query` 对比报告 | **✅** |
-| **3.8.6** | `rag` 可选 HyDE（假想文档检索，**非检查门**） | **✅** |
+| **3.8.6** | `rag` 可选 HyDE：**首次 0 命中 fallback**（非首检前覆盖 rag 改写 query；**非检查门**） | **✅** |
 | **3.8.7** | Planner 前 QueryRewrite（依赖 **3.9 / 3.10** `PLAN_WORKFLOW`） | ⬜ |
 
 **PromptComposer 叠加顺序**（3.8.2 锁定）：
@@ -233,9 +233,9 @@
 |--------|------|:----:|
 | **3.12.1** | 列表 + 上传 + 预览 + 版本运营 | ✅ |
 | **3.12.1a** | 元数据修改、下载/删除版本、卡片删除 | ✅ |
-| **3.12.2** | 在线编辑 overlay 正文 + diff | ⬜ |
+| **3.12.2** | 在线编辑 overlay 正文 + diff（文本 / 二进制 MD5） | ✅ |
 | **3.12.3** | ~~工具绑定~~（已取消） | — |
-| **3.12.4** | Plan 详情页（Timeline 跳转） | ⬜ |
+| **3.12.4** | Plan 详情页（Timeline 跳转） | ✅ |
 
 **UI SSOT**：[skills-management-ui-design.md](./skills-management-ui-design.md)
 

@@ -56,7 +56,7 @@ class StepSummarizerTest {
 
     @Test
     void ragAfter_withMetadata_usesDocTitlesOnly() {
-        StepMetadata metadata = new StepMetadata(3, List.of("公司请假流程规范"), null, null, null, null, null, null);
+        StepMetadata metadata = new StepMetadata(3, List.of("公司请假流程规范"), null, null, null, null, null, null, null, null, null, null, null);
         String after = StepSummarizer.afterRag("项目预算审批流程", "命中 0 条", metadata);
         assertThat(after).isEqualTo("找到 3 条参考片段，来源：公司请假流程规范");
     }
@@ -89,5 +89,22 @@ class StepSummarizerTest {
                 .isEqualTo("阅读「测试问题」");
         assertThat(StepSummarizer.active("rag", "测试问题"))
                 .contains("测试问题");
+    }
+
+    @Test
+    void clipQuery_skillMention_keepsFullTokenAndMoreEnglish() {
+        String clipped = StepSummarizer.clipQuery("@finance-analysis 先查制度再分析");
+        assertThat(clipped).isEqualTo("「@finance-analysis 先查制度再分析」");
+        assertThat(clipped).doesNotContain("…");
+    }
+
+    @Test
+    void clipQuery_longEnglish_usesDisplayBudgetNotCharCount() {
+        String query = "@finance-analysis please analyze reimbursement compliance";
+        String clipped = StepSummarizer.clipQuery(query);
+        assertThat(clipped).startsWith("「@finance-analysis");
+        assertThat(clipped).contains("…");
+        // 旧 18 字符仅 "@finance-analysis "；按显示宽度应保留更多英文
+        assertThat(StepSummarizer.clipByDisplayBudget(query, 36).length()).isGreaterThan(18);
     }
 }

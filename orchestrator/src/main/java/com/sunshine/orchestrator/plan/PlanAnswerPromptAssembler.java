@@ -26,7 +26,7 @@ public class PlanAnswerPromptAssembler {
             上游数据：
             {{plan.upstream}}
 
-            请基于以上结果向用户给出结论与可执行建议。""";
+            请严格针对上述「用户问题」作答：仅依据上游数据回答用户所问。""";
 
     private final PromptOverlayProperties overlayProperties;
 

@@ -44,6 +44,7 @@ public class UserService {
         user.setUsername(request.getUsername());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setNickname(resolveNickname(request.getNickname(), request.getUsername()));
+        user.setTenantId(resolveTenantId(request.getTenantId()));
         user.setStatus(STATUS_ACTIVE);
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
@@ -61,7 +62,8 @@ public class UserService {
             throw new BizException(403, "账号已禁用");
         }
         StpUtil.login(user.getId(), SaLoginModel.create()
-                .setExtra("nickname", resolveNickname(user.getNickname(), user.getUsername())));
+                .setExtra("nickname", resolveNickname(user.getNickname(), user.getUsername()))
+                .setExtra("tenantId", resolveTenantId(user.getTenantId())));
         return LoginResponse.builder()
                 .token(StpUtil.getTokenValue())
                 .tokenName("Authorization")
@@ -126,6 +128,13 @@ public class UserService {
 
     private static String resolveNickname(String nickname, String username) {
         return (nickname == null || nickname.isBlank()) ? username : nickname;
+    }
+
+    private static String resolveTenantId(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return "default";
+        }
+        return tenantId.strip();
     }
 
     private static AuthUserVO toVo(UserEntity user) {

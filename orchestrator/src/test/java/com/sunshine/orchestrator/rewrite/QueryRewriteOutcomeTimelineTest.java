@@ -34,7 +34,7 @@ class QueryRewriteOutcomeTimelineTest {
                 .startsWith("优化检索词")
                 .contains("原问题：我今天打车了")
                 .contains("优化后：因公打车报销流程 交通费制度")
-                .contains("用时：2.6 秒");
+                .contains("2.6s");
     }
 
     @Test

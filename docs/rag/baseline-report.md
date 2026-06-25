@@ -196,13 +196,20 @@ python scripts/rag_eval.py --report-md --gate
 
 **结论**：v5/v6 **生产门禁** closure PASS；v6 **相对 vector 提升轨** 因 vector 基线变高未过 `--compare-vector-json`（hybrid 本身已满 Recall@5）。
 
-### Query 改写（3.8.1 / 3.4.7 — 2026-06-21）
+### Query 改写（3.8.1 / 3.4.7 — 2026-06-21，HyDE 链 2026-06-25）
+
+**RAG 检索链**（`KnowledgeRetrievalService`）：
+
+```
+rag 改写 → 首次检索 →（0 命中）HyDE fallback →（仍 0）empty-recall 二次检索 merge
+```
 
 | 场景 | 接入 | 配置 |
 |------|------|------|
-| `rag` | `KnowledgeRetrievalService` 首次检索前 | `agent.rewrite.rag.enabled`（**默认 true**） |
+| `rag` | 首次检索前 query 优化 | `agent.rewrite.rag.enabled`（**默认 true**） |
+| `hyde` | **仅**首次 0 命中后，用假想文档再检 | `agent.rewrite.rag.hyde.enabled`（默认 false） |
 | `intent` | `ExecutionPlanRouter`，规则未命中且 query `<8` 字 | `agent.rewrite.intent.*` |
-| `empty-recall` | 首次 0 命中 → 改写 → 二次检索 merge | `agent.rewrite.empty-recall.*` |
+| `empty-recall` | HyDE 仍 0 命中 → 改写 → 二次检索 merge | `agent.rewrite.empty-recall.*`（prompt 2026-06-25 收紧同领域约束） |
 
 联调样例：`待审批`（intent）| `打车能报吗`（empty-recall）| 日志 `orchestrator/logs` 搜 `[QueryRewrite]`。
 

@@ -6,7 +6,7 @@ import {
   type PlanNodeAttempt,
   type PlanNodeTrace,
 } from '../api/executionPlans'
-import { resolveStepDurationMs, stepLifecycle } from '../api/processingSteps'
+import { resolveStepDurationMs, stepLifecycle, type ProcessingStep } from '../api/processingSteps'
 
 export type DagNodeStatus = 'pending' | 'running' | 'done' | 'error'
 
@@ -141,6 +141,7 @@ export function buildDagNodes(
   nodeSteps: ProcessingStep[],
   traces?: PlanNodeTrace[],
   skillCatalog: SkillCatalogIndexEntry[] = [],
+  planStep?: ProcessingStep,
 ): DagNodeView[] {
   if (!graph?.nodes?.length) return []
   const stepByNodeId = new Map<string, ProcessingStep>()
@@ -160,11 +161,13 @@ export function buildDagNodes(
       const firstBiz = order.find(x => x !== 'start' && byId.has(x))
       const firstStep = firstBiz ? stepByNodeId.get(firstBiz) : undefined
       const status = firstStep ? mapStepStatus(firstStep) : 'pending'
+      const durationMs = planStep ? resolveStepDurationMs(planStep) : undefined
       return {
         id: 'start',
         type: 'start',
         label: '开始',
         status: status === 'pending' ? 'pending' : 'done',
+        durationMs,
       }
     }
     const node = byId.get(id)

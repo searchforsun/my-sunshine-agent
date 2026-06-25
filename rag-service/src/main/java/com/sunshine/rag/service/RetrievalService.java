@@ -29,33 +29,38 @@ public class RetrievalService {
     private final RagSearchMetrics searchMetrics;
 
     public Mono<List<DocFragment>> search(String query, int topK, String strategyOverride) {
+        return search(query, topK, strategyOverride, "default");
+    }
+
+    public Mono<List<DocFragment>> search(String query, int topK, String strategyOverride, String tenantId) {
         SearchStrategy strategy = SearchStrategy.from(strategyOverride, searchProperties.defaultStrategy());
         String strategyTag = strategy.metricTag();
+        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         long start = System.nanoTime();
-        log.info("[RAG] 检索: query='{}', topK={}, strategy={}", query, topK, strategy);
-        return executeSearch(query, topK, strategy)
+        log.info("[RAG] 检索: tenant={}, query='{}', topK={}, strategy={}", tid, query, topK, strategy);
+        return executeSearch(query, topK, strategy, tid)
                 .doOnSuccess(results -> searchMetrics.recordSuccess(strategyTag, start, results.size()))
                 .doOnError(e -> searchMetrics.recordError(strategyTag, start));
     }
 
-    private Mono<List<DocFragment>> executeSearch(String query, int topK, SearchStrategy strategy) {
+    private Mono<List<DocFragment>> executeSearch(String query, int topK, SearchStrategy strategy, String tenantId) {
         return switch (strategy) {
-            case VECTOR -> vectorSearch(query, topK);
-            case HYBRID -> hybridSearch(query, topK, false);
-            case HYBRID_RERANK -> hybridSearch(query, topK, true);
+            case VECTOR -> vectorSearch(query, topK, tenantId);
+            case HYBRID -> hybridSearch(query, topK, false, tenantId);
+            case HYBRID_RERANK -> hybridSearch(query, topK, true, tenantId);
         };
     }
 
-    private Mono<List<DocFragment>> vectorSearch(String query, int topK) {
-        return vectorSearchService.search(query, topK, true)
+    private Mono<List<DocFragment>> vectorSearch(String query, int topK, String tenantId) {
+        return vectorSearchService.search(query, topK, true, tenantId)
                 .map(this::toFragments)
                 .doOnSuccess(r -> log.info("[RAG] 有效命中: {} 条", r.size()));
     }
 
-    private Mono<List<DocFragment>> hybridSearch(String query, int topK, boolean rerank) {
+    private Mono<List<DocFragment>> hybridSearch(String query, int topK, boolean rerank, String tenantId) {
         int pool = Math.max(searchProperties.getHybridPoolSize(), rerankProperties.getInputSize());
-        Mono<List<RetrievalCandidate>> vectorMono = vectorSearchService.search(query, pool, false);
-        Mono<List<RetrievalCandidate>> bm25Mono = bm25SearchService.search(query, pool);
+        Mono<List<RetrievalCandidate>> vectorMono = vectorSearchService.search(query, pool, false, tenantId);
+        Mono<List<RetrievalCandidate>> bm25Mono = bm25SearchService.search(query, pool, tenantId);
         return Mono.zip(vectorMono, bm25Mono)
                 .flatMap(tuple -> {
                     List<RetrievalCandidate> vectorHits = tuple.getT1();

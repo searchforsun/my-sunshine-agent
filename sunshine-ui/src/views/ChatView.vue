@@ -36,7 +36,9 @@ import {
 let sessionHydrating = false
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
+import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
+import { usePlanDagExpand } from '../composables/usePlanDagExpand'
 import type { ChatMessage } from '../api/chat'
 import {
   normalizeTimelineSteps,
@@ -47,6 +49,9 @@ import {
   listSkillCatalogIndex,
   type SkillCatalogIndexEntry,
 } from '../api/skills'
+import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
+import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { allowsSkillMention } from '../api/executionModes'
 
 hljs.registerLanguage('bash', bash)
 hljs.registerLanguage('shell', bash)
@@ -83,6 +88,7 @@ const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible, toggleSidebar } = useSidebar()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
+const { state: planDagExpandState, isAnyExpanded: planDagExpanded, close: closePlanDagExpand, handleSelect: handlePlanDagExpandSelect } = usePlanDagExpand()
 
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 
@@ -130,6 +136,17 @@ function toggleReasoning(msg: ChatMessage, idx: number): void {
 function resolveTimelineSteps(msg: ChatMessage, idx: number): ProcessingStep[] {
   if (!msg.steps?.length) return []
   return normalizeTimelineSteps(msg.steps, msg.reasoning)
+}
+
+function resolveUserQuery(idx: number): string {
+  for (let i = idx - 1; i >= 0; i--) {
+    const m = messages.value[i]
+    if (m?.role === 'user') {
+      const text = m.content?.trim()
+      if (text) return text
+    }
+  }
+  return ''
 }
 
 function showTimeline(msg: ChatMessage, idx: number): boolean {
@@ -206,11 +223,19 @@ const {
 
 const inputText = ref('')
 const inputRef = ref<InstanceType<typeof NInput>>()
+const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
 const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
 const showSkillSuggest = ref(false)
 const skillSuggestIndex = ref(0)
 const skillMentionStart = ref(-1)
 const skillQuery = ref('')
+
+const skillMentionAllowed = computed(() => allowsSkillMention(preference.value))
+const inputPlaceholder = computed(() =>
+  skillMentionAllowed.value
+    ? '发消息，Enter 发送；输入 @ 指定 Skill'
+    : '发消息，Enter 发送',
+)
 
 const filteredSkills = computed(() => {
   const q = skillQuery.value.trim().toLowerCase()
@@ -224,6 +249,10 @@ const filteredSkills = computed(() => {
 })
 
 function refreshSkillMention(text: string) {
+  if (!skillMentionAllowed.value) {
+    showSkillSuggest.value = false
+    return
+  }
   const match = text.match(/@([\w\u4e00-\u9fff-]*)$/)
   if (!match || match.index == null) {
     showSkillSuggest.value = false
@@ -236,6 +265,9 @@ function refreshSkillMention(text: string) {
 }
 
 watch(inputText, refreshSkillMention)
+watch(skillMentionAllowed, (allowed) => {
+  if (!allowed) showSkillSuggest.value = false
+})
 
 function applySkillSuggest(skill: SkillCatalogIndexEntry) {
   if (skillMentionStart.value < 0) return
@@ -380,7 +412,8 @@ async function handleSend() {
     chatScrollPinned.value = true
 
     await nextTick()
-    const sendPromise = send(text, convId)
+    const sendPromise = send(text, convId, { executionPreference: preference.value })
+    chatStore.updateExecutionPreferenceLocal(convId, preference.value)
     await nextTick()
     await ensureStreamRenderer()
     await sendPromise
@@ -536,6 +569,7 @@ onMounted(async () => {
     }
 
     await chatStore.switchTo(cid)
+    applyConversationPreference(chatStore.current?.executionPreference)
     ensureActive(cid)
     await hydrateSessionFromStore(cid)
 
@@ -576,6 +610,7 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating || newId === oldId) return
 
   closePlanDrawer()
+  closePlanDagExpand()
 
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
@@ -592,6 +627,8 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   settledHtml.value = ''
 
   if (!isValidConversationId(newId)) return
+
+  applyConversationPreference(chatStore.current?.executionPreference)
 
   ensureActive(newId)
   await hydrateSessionFromStore(newId)
@@ -697,7 +734,7 @@ watch(() => loading.value, async (val) => {
     </header>
 
     <div ref="chatBodyRef" class="chat-body">
-      <div class="chat-main">
+      <div class="chat-main" :class="{ 'plan-dag-expanded': planDagExpanded }">
     <!-- 消息区 -->
     <div ref="scrollRef" class="chat-scroll" @scroll="onChatScroll">
       <div class="chat-inner">
@@ -743,6 +780,7 @@ watch(() => loading.value, async (val) => {
                 :steps="resolveTimelineSteps(msg, idx)"
                 :live="isTimelineLive(msg, idx)"
                 :execution-plan-id="msg.executionPlanId"
+                :user-query="resolveUserQuery(idx)"
               />
               <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">
                 <div v-if="showStreamWaiting" class="stream-waiting-dots" aria-label="正在生成">
@@ -784,22 +822,25 @@ watch(() => loading.value, async (val) => {
       </div>
     </div>
 
+    <PlanDagExpandLayer
+      v-if="planDagExpanded"
+      :nodes="planDagExpandState.nodes"
+      :selected-id="planDagExpandState.selectedId"
+      :live="planDagExpandState.live"
+      :title="planDagExpandState.title"
+      :user-query="planDagExpandState.userQuery"
+      @select="handlePlanDagExpandSelect"
+      @close="closePlanDagExpand"
+    />
+
     <!-- 悬浮输入区 -->
-    <footer class="chat-composer">
+    <footer v-show="!planDagExpanded" class="chat-composer">
       <div class="composer-inner">
-        <!-- 流式输出中：简洁状态条，避免 disabled 输入框 -->
-        <div v-if="loading" class="composer-box composer-box--streaming">
-          <div class="streaming-status">
-            <span class="streaming-pulse" />
-            <span>AI 正在回复…</span>
-          </div>
-          <button type="button" class="composer-icon-btn stop" title="停止生成" @click="stop">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
-          </button>
-        </div>
-        <!-- 就绪：正常输入 -->
-        <div v-else class="composer-box composer-box--input">
-          <ul v-if="showSkillSuggest && filteredSkills.length" class="skill-suggest">
+        <div
+          class="composer-box composer-box--input"
+          :class="{ 'composer-box--busy': loading }"
+        >
+          <ul v-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
             <li
               v-for="(skill, idx) in filteredSkills"
               :key="skill.id"
@@ -810,24 +851,48 @@ watch(() => loading.value, async (val) => {
               <span class="skill-suggest-name">{{ skill.displayName }}</span>
             </li>
           </ul>
-          <NInput
-            ref="inputRef"
-            v-model:value="inputText"
-            type="textarea"
-            placeholder="发消息，Enter 发送；输入 @ 指定 Skill"
-            :autosize="{ minRows: 1, maxRows: 6 }"
-            @keydown="handleKeydown"
-            class="composer-input"
-          />
-          <button
-            type="button"
-            class="composer-icon-btn send"
-            :disabled="!inputText.trim()"
-            title="发送"
-            @click="handleSend"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l12-6-6 12-2-6-4-0z" fill="currentColor"/></svg>
-          </button>
+          <div class="composer-input-area">
+            <div v-if="loading" class="composer-status">
+              <span class="streaming-pulse" />
+              <span>AI 正在回复…</span>
+            </div>
+            <NInput
+              v-else
+              ref="inputRef"
+              v-model:value="inputText"
+              type="textarea"
+              :placeholder="inputPlaceholder"
+              :autosize="{ minRows: 1, maxRows: 6 }"
+              @keydown="handleKeydown"
+              class="composer-input"
+            />
+            <div class="composer-toolbar">
+              <ExecutionModeSelector
+                :model-value="preference"
+                :disabled="loading"
+                @update:model-value="setPreference"
+              />
+              <button
+                v-if="loading"
+                type="button"
+                class="composer-icon-btn stop"
+                title="停止生成"
+                @click="stop"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
+              </button>
+              <button
+                v-else
+                type="button"
+                class="composer-icon-btn send"
+                :disabled="!inputText.trim()"
+                title="发送"
+                @click="handleSend"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l12-6-6 12-2-6-4-0z" fill="currentColor"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
         <p class="composer-hint">AI 生成内容仅供参考，请核实重要信息</p>
       </div>
@@ -863,6 +928,12 @@ watch(() => loading.value, async (val) => {
   display: flex;
   flex-direction: column;
   position: relative;
+}
+
+.chat-main.plan-dag-expanded .chat-scroll {
+  visibility: hidden;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 /* ── 全宽会话头 ── */
@@ -964,7 +1035,7 @@ watch(() => loading.value, async (val) => {
 .chat-inner {
   max-width: 820px;
   margin: 0 auto;
-  padding: 24px 24px 140px;
+  padding: 24px 24px 118px;
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -1131,14 +1202,16 @@ watch(() => loading.value, async (val) => {
   left: 0;
   right: 0;
   z-index: 20;
-  padding: 0 24px 20px;
-  background: linear-gradient(to bottom, transparent 0%, var(--sun-black) 32%);
+  padding: 0 24px 10px;
+  background: linear-gradient(to bottom, transparent 0%, var(--sun-black) 20%);
   pointer-events: none;
 }
 
 .composer-inner {
+  position: relative;
   max-width: 720px;
   margin: 0 auto;
+  padding-bottom: 18px;
   pointer-events: auto;
 }
 
@@ -1160,14 +1233,49 @@ watch(() => loading.value, async (val) => {
   box-shadow: var(--composer-shadow-focus);
 }
 
-.composer-box--streaming {
-  padding: 10px 12px 10px 18px;
-  cursor: default;
+.composer-box--busy {
+  opacity: 0.92;
+}
+
+.composer-box--busy:focus-within {
+  border-color: var(--sun-border);
+  box-shadow: var(--composer-shadow);
+}
+
+.composer-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 4px 2px;
+  font-size: var(--sun-font-base);
+  color: var(--sun-text-muted);
+  user-select: none;
 }
 
 .composer-box--input {
   position: relative;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 10px 12px 8px 14px;
+  gap: 0;
+}
+
+.composer-input-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+}
+
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+  min-height: 34px;
 }
 
 .skill-suggest {
@@ -1241,6 +1349,7 @@ watch(() => loading.value, async (val) => {
   --n-border: none !important;
   --n-border-hover: none !important;
   --n-border-focus: none !important;
+  --n-border-disabled: none !important;
   --n-box-shadow-focus: none !important;
   --n-color: transparent !important;
   --n-color-focus: transparent !important;
@@ -1248,6 +1357,12 @@ watch(() => loading.value, async (val) => {
   --n-padding-vertical: 4px !important;
   --n-text-color: var(--sun-text) !important;
   --n-placeholder-color: var(--sun-text-muted) !important;
+}
+
+.composer-input :deep(.n-input__border),
+.composer-input :deep(.n-input__state-border) {
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .composer-icon-btn {
@@ -1292,9 +1407,16 @@ watch(() => loading.value, async (val) => {
 }
 
 .composer-hint {
-  margin: 8px 0 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
   text-align: center;
   font-size: var(--sun-font-xs);
+  line-height: 1.3;
   color: var(--sun-text-muted);
+  pointer-events: none;
+  user-select: none;
 }
 </style>

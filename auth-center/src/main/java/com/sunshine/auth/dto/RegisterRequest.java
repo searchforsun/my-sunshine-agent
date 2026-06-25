@@ -19,4 +19,9 @@ public class RegisterRequest {
 
     @Size(max = 64, message = "昵称最长 64 字符")
     private String nickname;
+
+    /** 租户标识，缺省 default（仅测试/演示；生产由管理员分配） */
+    @Size(max = 32, message = "租户标识最长 32 字符")
+    @Pattern(regexp = "^[a-zA-Z0-9_-]*$", message = "租户标识仅允许字母、数字、下划线、连字符")
+    private String tenantId;
 }

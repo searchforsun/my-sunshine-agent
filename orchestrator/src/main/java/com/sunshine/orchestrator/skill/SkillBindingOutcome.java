@@ -9,6 +9,9 @@ public record SkillBindingOutcome(
 ) {
     public static final String PARAM_SKILL = "skill";
     public static final String PARAM_EFFECTIVE_QUERY = "effectiveQuery";
+    /** 5B Skill 驱动 Plan：Planner 读 L2 正文生成 DAG */
+    public static final String PARAM_PLANNER_MODE = "plannerMode";
+    public static final String PLANNER_MODE_SKILL_DRIVEN = "skill-driven";
 
     public boolean bound() {
         return skillId != null && !skillId.isBlank();

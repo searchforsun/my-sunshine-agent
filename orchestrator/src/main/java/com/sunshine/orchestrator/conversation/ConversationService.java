@@ -78,6 +78,15 @@ public class ConversationService {
         return conversationRepo.save(conv);
     }
 
+    /** 记录本会话最近一次用户指定的 executionPreference（auto 也落库便于恢复） */
+    @Transactional
+    public void updateExecutionPreference(String id, String userId, String tenantId, String preference) {
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        conv.setExecutionPreference(preference);
+        conv.setUpdatedAt(Instant.now());
+        conversationRepo.save(conv);
+    }
+
     @Transactional
     public void delete(String id, String userId, String tenantId) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);

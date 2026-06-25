@@ -1,143 +1,146 @@
-# ============================================================
-# sunshine-workflows — Nacos 配置
-# Data ID: sunshine-workflows.yaml
-# Group:   DEFAULT_GROUP
-# Workflow 目录 + DAG 图定义（简化 Dify）
-# ============================================================
-
-workflow:
-  catalog:
-    # 可选 intentAfter：覆盖 agent.timeline.intent.modes.workflow.after（占位符 {query} {displayName} {workflowId}）
-    - id: knowledge-qa
-      mode: workflow
-      displayName: 知识库问答
-      desc: 查企业制度/流程/规定（请假、报销、差旅、预算管理办法等）；即使用到「预算」「审批」等词，只要不是查待办单据列表或合规对比
-      nodes: [start, rag, answer]
-      examples: ["年假可以请几天", "项目预算超支了还能安排出差吗", "报销流程规定"]
-    - id: finance-list
-      mode: workflow
-      displayName: 财务待办查询
-      desc: 仅列出待审批/已审批财务消息（报销单、付款单等），不做合规分析
-      nodes: [start, tool, answer]
-      examples: ["有哪些待审批报销", "查询待审批的报销和付款消息"]
-    - id: finance-smart
-      mode: workflow
-      displayName: 财务智能分析
-      desc: 待审批是否合规、制度与待办单据对比分析（含 Agent 推理）
-      nodes: [start, tool, agent, answer]
-      examples: ["待审批报销是否合规", "对比制度与待办"]
-    - id: finance-summary
-      mode: workflow
-      displayName: 财务汇总统计
-      desc: 统计各状态财务消息条数与金额
-      nodes: [start, tool, answer]
-      examples: ["待审批有多少条", "pending 财务总额"]
-
-  definitions:
-    knowledge-qa:
-      nodes:
-        - id: start
-          type: start
-        - id: rag
-          type: rag
-          params:
-            topK: "3"
-        - id: answer
-          type: answer
-          displayName: 生成回答
-          params:
-            prompt: |
-              你是企业制度问答助手。仅根据下方「检索结果」回答，不得编造公司制度。
-
-              若「检索结果」正文为空、或明确写「未找到与用户问题直接相关的片段」，只回复：
-              「企业知识库中暂无相关规定，请咨询 HR/财务或相关主管部门。」
-              若检索结果非空且含与用户问题相关的制度片段（表述可不完全一致，如打车/差旅/交通费/报销），须基于片段作答，不得回复暂无。
-              禁止用通用常识、网络知识或税务/法律科普代替企业制度。
-              禁止向用户输出 finance-list、finance-smart、knowledge-qa 等内部名称；改用中文业务表述。
-
-              检索结果：
-              {{rag.output}}
-      edges: [start, rag, answer]
-
-    finance-list:
-      nodes:
-        - id: start
-          type: start
-        - id: finance-list
-          type: tool
-          displayName: 查询待审批财务消息
-          params:
-            tool: list_finance_messages
-            status: "{{plan.params.status}}"
-        - id: answer
-          type: answer
-          displayName: 生成回答
-          params:
-            prompt: |
-              根据财务工具查询结果回答用户问题。
-
-              约束：
-              - 禁止向用户暴露英文流程/工具内部名（如 finance-list、list_finance_messages）。
-              - 若「数据」中非空（有条目、条数>0、含 id/金额/标题等），必须逐条列出，不得回答「没有数据」。
-              - 仅当数据明确为空数组或条数为 0 时，才可说明当前无待审批记录。
-              - 不要编造单据；不要省略工具返回的字段。
-
-              数据：
-              {{finance-list.output}}
-      edges: [start, finance-list, answer]
-
-    finance-smart:
-      nodes:
-        - id: start
-          type: start
-        - id: finance-list
-          type: tool
-          displayName: 查询待审批财务消息
-          params:
-            tool: list_finance_messages
-            status: "{{plan.params.status}}"
-        - id: analyze
-          type: agent
-          displayName: 智能体分析
-          params:
-            query: "{{start.userQuery}}"
-            context: "{{finance-list.output}}"
-            skill: finance-analysis
-            tools: [list_finance_messages]
-            maxIters: "4"
-            systemOverlay: 本节点仅输出内部分析结论，不面向用户；禁止调用白名单外工具
-        - id: answer
-          type: answer
-          displayName: 生成回答
-          params:
-            prompt: |
-              根据 Agent 分析结果生成用户可见回答。
-
-              约束：禁止向用户暴露英文流程/工具内部名（如 finance-smart、finance-list）。
-
-              分析：
-              {{analyze.answer}}
-      edges: [start, finance-list, analyze, answer]
-
-    finance-summary:
-      nodes:
-        - id: start
-          type: start
-        - id: finance-summary
-          type: tool
-          displayName: 统计财务消息
-          params:
-            tool: summarize_finance_by_status
-            status: "{{plan.params.status}}"
-        - id: answer
-          type: answer
-          displayName: 生成回答
-          params:
-            prompt: |
-              根据财务汇总工具结果回答用户。
-
-              约束：禁止向用户暴露英文流程/工具内部名。
-
-              汇总：
-              {{finance-summary.output}}
-      edges: [start, finance-summary, answer]
+# ============================================================
+# sunshine-workflows — Nacos 配置
+# Data ID: sunshine-workflows.yaml
+# Group:   DEFAULT_GROUP
+# Workflow 目录 + DAG 图定义（简化 Dify）
+# ============================================================
+
+workflow:
+  catalog:
+    # 可选 intentAfter：覆盖 agent.timeline.intent.modes.workflow.after（占位符 {query} {displayName} {workflowId}）
+    - id: knowledge-qa
+      mode: workflow
+      displayName: 知识库问答
+      desc: 查企业制度/流程/规定（请假、报销、差旅、预算管理办法等）；即使用到「预算」「审批」等词，只要不是查待办单据列表或合规对比
+      nodes: [start, rag, answer]
+      examples: ["年假可以请几天", "项目预算超支了还能安排出差吗", "报销流程规定"]
+
+    - id: finance-list
+      mode: workflow
+      displayName: 财务待办查询
+      desc: 仅列出待审批/已审批财务消息（报销单、付款单等），不做合规分析
+      nodes: [start, tool, answer]
+      examples: ["有哪些待审批报销", "查询待审批的报销和付款消息"]
+
+    - id: finance-smart
+      mode: workflow
+      displayName: 财务智能分析
+      desc: 待审批是否合规、制度与待办单据对比分析（含 Agent 推理）
+      nodes: [start, tool, agent, answer]
+      examples: ["待审批报销是否合规", "对比制度与待办"]
+
+    - id: finance-summary
+      mode: workflow
+      displayName: 财务汇总统计
+      desc: 统计各状态财务消息条数与金额
+      nodes: [start, tool, answer]
+      examples: ["待审批有多少条", "pending 财务总额"]
+
+  definitions:
+    knowledge-qa:
+      nodes:
+        - id: start
+          type: start
+        - id: rag
+          type: rag
+          params:
+            topK: "3"
+        - id: answer
+          type: answer
+          displayName: 生成回答
+          params:
+            prompt: |
+              你是企业制度问答助手。仅根据下方「检索结果」回答，不得编造公司制度。
+
+              若「检索结果」正文为空、或明确写「未找到与用户问题直接相关的片段」，只回复：
+              「企业知识库中暂无相关规定，请咨询 HR/财务或相关主管部门。」
+              若检索结果非空且含与用户问题相关的制度片段（表述可不完全一致，如打车/差旅/交通费/报销），须基于片段作答，不得回复暂无。
+              禁止用通用常识、网络知识或税务/法律科普代替企业制度。
+              禁止向用户输出 finance-list、finance-smart、knowledge-qa 等内部名称；改用中文业务表述。
+
+              检索结果：
+              {{rag.output}}
+      edges: [start, rag, answer]
+
+    finance-list:
+      nodes:
+        - id: start
+          type: start
+        - id: finance-list
+          type: tool
+          displayName: 查询待审批财务消息
+          params:
+            tool: list_finance_messages
+            status: "{{plan.params.status}}"
+        - id: answer
+          type: answer
+          displayName: 生成回答
+          params:
+            prompt: |
+              根据财务工具查询结果回答用户问题。
+
+              约束：
+              - 禁止向用户暴露英文流程/工具内部名（如 finance-list、list_finance_messages）。
+              - 若「数据」中非空（有条目、条数>0、含 id/金额/标题等），必须逐条列出，不得回答「没有数据」。
+              - 仅当数据明确为空数组或条数为 0 时，才可说明当前无待审批记录。
+              - 不要编造单据；不要省略工具返回的字段。
+
+              数据：
+              {{finance-list.output}}
+      edges: [start, finance-list, answer]
+
+    finance-smart:
+      nodes:
+        - id: start
+          type: start
+        - id: finance-list
+          type: tool
+          displayName: 查询待审批财务消息
+          params:
+            tool: list_finance_messages
+            status: "{{plan.params.status}}"
+        - id: analyze
+          type: agent
+          displayName: 智能体分析
+          params:
+            query: "{{start.userQuery}}"
+            context: "{{finance-list.output}}"
+            skill: finance-analysis
+            tools: [list_finance_messages]
+            maxIters: "4"
+            systemOverlay: 本节点仅输出内部分析结论，不面向用户；禁止调用白名单外工具
+        - id: answer
+          type: answer
+          displayName: 生成回答
+          params:
+            prompt: |
+              根据 Agent 分析结果生成用户可见回答。
+
+              约束：禁止向用户暴露英文流程/工具内部名（如 finance-smart、finance-list）。
+
+              分析：
+              {{analyze.answer}}
+      edges: [start, finance-list, analyze, answer]
+
+    finance-summary:
+      nodes:
+        - id: start
+          type: start
+        - id: finance-summary
+          type: tool
+          displayName: 统计财务消息
+          params:
+            tool: summarize_finance_by_status
+            status: "{{plan.params.status}}"
+        - id: answer
+          type: answer
+          displayName: 生成回答
+          params:
+            prompt: |
+              根据财务汇总工具结果回答用户。
+
+              约束：禁止向用户暴露英文流程/工具内部名。
+
+              汇总：
+              {{finance-summary.output}}
+      edges: [start, finance-summary, answer]

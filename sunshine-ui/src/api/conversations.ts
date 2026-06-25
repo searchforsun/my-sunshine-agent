@@ -1,5 +1,7 @@
 import { apiHeaders } from '../stores/authStore'
 import { BFF_API_BASE } from './config'
+import type { ExecutionPreference } from './executionModes'
+import { isExecutionPreference } from './executionModes'
 import type { ProcessingStep } from './processingSteps'
 import { migrateV1Step, normalizeStep } from './processingSteps'
 
@@ -9,6 +11,7 @@ export interface ConversationSummary {
   title: string
   createdAt: number
   updatedAt: number
+  executionPreference?: ExecutionPreference
 }
 
 export interface ConversationMessage {
@@ -46,11 +49,13 @@ function requireConversationId(raw: Record<string, unknown>): string {
 }
 
 function mapSummary(raw: Record<string, unknown>): ConversationSummary {
+  const pref = raw.executionPreference
   return {
     id: requireConversationId(raw),
     title: String(raw.title ?? '新对话'),
     createdAt: toTimestamp(raw.createdAt as string | undefined),
     updatedAt: toTimestamp(raw.updatedAt as string | undefined),
+    executionPreference: isExecutionPreference(pref) ? pref : undefined,
   }
 }
 

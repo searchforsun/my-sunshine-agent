@@ -34,7 +34,7 @@ public class UserIdInjectGatewayFilter implements GlobalFilter, Ordered {
                         if (nickname != null && !String.valueOf(nickname).isBlank()) {
                             headers.set("x-user-name", String.valueOf(nickname).trim());
                         }
-                        headers.set("x-tenant-id", "default");
+                        headers.set("x-tenant-id", resolveTenantId());
                     })
                     .build();
             return chain.filter(exchange.mutate().request(request).build());
@@ -47,6 +47,15 @@ public class UserIdInjectGatewayFilter implements GlobalFilter, Ordered {
 
     static boolean isPublicAuthPath(String path) {
         return "/api/auth/login".equals(path) || "/api/auth/register".equals(path);
+    }
+
+    /** 从 JWT extra 解析租户，禁止信任客户端 header */
+    static String resolveTenantId() {
+        Object tenantId = StpUtil.getExtra("tenantId");
+        if (tenantId != null && !String.valueOf(tenantId).isBlank()) {
+            return String.valueOf(tenantId).strip();
+        }
+        return "default";
     }
 
     @Override

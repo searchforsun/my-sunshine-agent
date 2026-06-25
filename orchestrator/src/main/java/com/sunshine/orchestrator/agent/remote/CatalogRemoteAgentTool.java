@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.agent.remote;
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import io.agentscope.core.message.TextBlock;
@@ -20,10 +22,15 @@ public class CatalogRemoteAgentTool implements AgentTool {
 
     private final ToolCatalogEntry entry;
     private final ToolManagerClient toolManagerClient;
+    private final ToolAuditService toolAuditService;
 
-    public CatalogRemoteAgentTool(ToolCatalogEntry entry, ToolManagerClient toolManagerClient) {
+    public CatalogRemoteAgentTool(
+            ToolCatalogEntry entry,
+            ToolManagerClient toolManagerClient,
+            ToolAuditService toolAuditService) {
         this.entry = entry;
         this.toolManagerClient = toolManagerClient;
+        this.toolAuditService = toolAuditService;
     }
 
     @Override
@@ -50,10 +57,31 @@ public class CatalogRemoteAgentTool implements AgentTool {
         }
         log.info("[CatalogRemoteAgentTool] {} params={}", entry.id(), invokeParams);
         String result = toolManagerClient.invoke(entry.id(), invokeParams);
+        auditIfBound(entry.id(), invokeParams, result, "ok");
         String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
         return Mono.just(ToolResultBlock.of(
                 toolUseId,
                 entry.id(),
                 TextBlock.builder().text(result != null ? result : "").build()));
+    }
+
+    private void auditIfBound(String toolId, Map<String, String> params, String output, String status) {
+        String messageId = StepEventBridge.activeMessageId();
+        StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(messageId);
+        if (ctx == null || toolAuditService == null) {
+            return;
+        }
+        String summary = output != null && output.length() > 240 ? output.substring(0, 240) + "..." : output;
+        toolAuditService.toolCall(
+                ctx.conversationId(),
+                ctx.messageId(),
+                ctx.userId(),
+                ctx.tenantId(),
+                ctx.planId(),
+                null,
+                toolId,
+                params,
+                summary != null ? summary : "",
+                status);
     }
 }

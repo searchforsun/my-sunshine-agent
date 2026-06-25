@@ -184,6 +184,7 @@ def build_rewrite_report(
     strategy: str | None,
     top_k: int,
     min_score: float,
+    tenant_id: str = "default",
 ) -> dict:
     if not rewrite_cfg.get("enabled", True):
         return {
@@ -263,8 +264,8 @@ def build_rewrite_report(
         row["pipeline_query"] = pipeline_query
         relevant = {id2name[d] for d in q.get("relevant_docs") or [] if d in id2name}
         if relevant:
-            raw_hits, _ = search(rag_url, raw_query, top_k, strategy)
-            rew_hits, _ = search(rag_url, rewritten, top_k, strategy)
+            raw_hits, _ = search(rag_url, raw_query, top_k, strategy, tenant_id)
+            rew_hits, _ = search(rag_url, rewritten, top_k, strategy, tenant_id)
             raw_filtered = [h for h in raw_hits if h.get("score", 0) >= min_score]
             rew_filtered = [h for h in rew_hits if h.get("score", 0) >= min_score]
             raw_r5 = recall_at_k(raw_filtered, relevant, 5, min_score)
@@ -275,14 +276,14 @@ def build_rewrite_report(
             raw_recalls.append(raw_r5)
             rewritten_recalls.append(rew_r5)
             if hyde_enabled and hyde_applied:
-                hyde_hits, _ = search(rag_url, hyde_doc, top_k, strategy)
+                hyde_hits, _ = search(rag_url, hyde_doc, top_k, strategy, tenant_id)
                 hyde_filtered = [h for h in hyde_hits if h.get("score", 0) >= min_score]
                 hyde_r5 = recall_at_k(hyde_filtered, relevant, 5, min_score)
                 row["recall_at_5_hyde"] = hyde_r5
                 row["recall_at_5_hyde_delta"] = round(hyde_r5 - raw_r5, 4)
                 hyde_recalls.append(hyde_r5)
             if pipeline_query != raw_query:
-                pipe_hits, _ = search(rag_url, pipeline_query, top_k, strategy)
+                pipe_hits, _ = search(rag_url, pipeline_query, top_k, strategy, tenant_id)
                 pipe_filtered = [h for h in pipe_hits if h.get("score", 0) >= min_score]
                 pipe_r5 = recall_at_k(pipe_filtered, relevant, 5, min_score)
                 row["recall_at_5_pipeline"] = pipe_r5
@@ -426,7 +427,13 @@ def doc_id_to_name(corpus: list) -> dict[str, str]:
     return {c["doc_id"]: c["display_name"] for c in corpus}
 
 
-def search(rag_url: str, query: str, top_k: int, strategy: str | None = None) -> tuple[list[dict], float]:
+def search(
+    rag_url: str,
+    query: str,
+    top_k: int,
+    strategy: str | None = None,
+    tenant_id: str = "default",
+) -> tuple[list[dict], float]:
     t0 = time.perf_counter()
     body: dict = {"query": query, "topK": top_k}
     if strategy:
@@ -434,6 +441,7 @@ def search(rag_url: str, query: str, top_k: int, strategy: str | None = None) ->
     resp = requests.post(
         f"{rag_url.rstrip('/')}/api/rag/search",
         json=body,
+        headers={"x-tenant-id": tenant_id.strip() or "default"},
         timeout=60,
     )
     resp.raise_for_status()
@@ -702,6 +710,11 @@ def write_markdown_report(report: dict, path: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--rag-url", default=os.environ.get("RAG_URL", "http://localhost:8400"))
+    parser.add_argument(
+        "--tenant-id",
+        default=os.environ.get("RAG_TENANT_ID", "default"),
+        help="x-tenant-id 请求头（多租户 RAG 隔离，默认 default）",
+    )
     parser.add_argument("--golden-set", default=str(ROOT / "docs/rag/golden-set.yaml"))
     parser.add_argument("--suite", default="all", choices=["all", "core", "v5", "v6"])
     parser.add_argument(
@@ -801,6 +814,7 @@ def main() -> int:
             strategy,
             max(top_ks),
             min_score,
+            args.tenant_id,
         )
         print("[OK] rewrite report rows:", len(rewrite_report.get("rows") or []), file=sys.stderr)
 
@@ -840,7 +854,7 @@ def main() -> int:
 
     for q in queries:
         relevant = {id2name[d] for d in q.get("relevant_docs") or [] if d in id2name}
-        hits, ms = search(args.rag_url, q["query"], max_k, strategy)
+        hits, ms = search(args.rag_url, q["query"], max_k, strategy, args.tenant_id)
         latencies.append(ms)
         filtered = [h for h in hits if h.get("score", 0) >= min_score]
         top3_detail = [

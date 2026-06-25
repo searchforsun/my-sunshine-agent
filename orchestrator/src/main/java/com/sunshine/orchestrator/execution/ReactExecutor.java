@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.client.StreamDeltaNormalizer;
@@ -46,6 +47,14 @@ public class ReactExecutor {
             List<String> injectedBlocks,
             String query,
             String skillId) {
+        if (ctx.assistantMsgId() != null) {
+            StepEventBridge.bindToolAudit(ctx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
+                    ctx.conversationId(),
+                    ctx.assistantMsgId(),
+                    ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.persistedPlanId()));
+        }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
                         injectedBlocks != null ? injectedBlocks : List.of(), skillId))

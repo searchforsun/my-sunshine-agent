@@ -3,6 +3,10 @@ package com.sunshine.orchestrator.agent.runtime;
 import com.sunshine.orchestrator.agent.AgentScopeEventMapper;
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
 import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.config.AgentGroundingProperties;
+import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
+import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
+import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
@@ -32,6 +36,8 @@ public class ReActAgentRuntime implements AgentRuntime {
 
     private final ReActAgentFactory agentFactory;
     private final PromptComposer promptComposer;
+    private final AnswerGroundingChecker groundingChecker;
+    private final AgentGroundingProperties groundingProperties;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
@@ -82,6 +88,7 @@ public class ReActAgentRuntime implements AgentRuntime {
 
         AtomicBoolean generateStarted = new AtomicBoolean(false);
         AtomicBoolean generateCompleted = new AtomicBoolean(false);
+        StringBuilder answerContent = new StringBuilder();
 
         ReActAgent agent = agentFactory.create(request);
         return agent.stream(inputs, options)
@@ -89,11 +96,17 @@ public class ReActAgentRuntime implements AgentRuntime {
                     List<StreamToken> tokens = new ArrayList<>();
                     tokens.addAll(drainHookTokens(hookQueue));
                     tokens.addAll(mapAgentEvent(event, session, generateStarted));
+                    for (StreamToken token : tokens) {
+                        if (token.isContent() && token.text() != null) {
+                            answerContent.append(token.text());
+                        }
+                    }
                     return Flux.fromIterable(tokens);
                 })
                 .concatWith(Flux.defer(() -> {
                     List<StreamToken> tail = new ArrayList<>(drainHookTokens(hookQueue));
-                    tail.addAll(finishGenerateSteps(session, generateStarted, generateCompleted));
+                    tail.addAll(finishGenerateSteps(
+                            session, generateStarted, generateCompleted, request, answerContent.toString()));
                     return Flux.fromIterable(tail);
                 }))
                 .doFinally(sig -> StepEventBridge.clear(bridgeId))
@@ -102,14 +115,22 @@ public class ReActAgentRuntime implements AgentRuntime {
                         request.role(), request.runId(), e.getMessage(), e));
     }
 
-    private static List<StreamToken> finishGenerateSteps(
+    private List<StreamToken> finishGenerateSteps(
             ProcessingTimelineSession session,
             AtomicBoolean generateStarted,
-            AtomicBoolean generateCompleted) {
+            AtomicBoolean generateCompleted,
+            AgentRunRequest request,
+            String answerContent) {
         if (!generateCompleted.compareAndSet(false, true)) {
             return List.of();
         }
         long now = System.currentTimeMillis();
+        GroundingVerdict grounding = validateMainGrounding(request, answerContent, session);
+        if (grounding != null && !grounding.passed() && generateStarted.get()) {
+            return ProcessingTimelineSupport.run(session, () -> {
+                session.fail("generate", grounding.reason());
+            });
+        }
         if (generateStarted.get()) {
             return ProcessingTimelineSupport.run(session, () ->
                     session.completeAt("generate", null, now));
@@ -118,6 +139,28 @@ public class ReActAgentRuntime implements AgentRuntime {
             return ProcessingTimelineSupport.run(session, session::completeThinkIfRunning);
         }
         return List.of();
+    }
+
+    private GroundingVerdict validateMainGrounding(
+            AgentRunRequest request,
+            String answerContent,
+            ProcessingTimelineSession session) {
+        if (request.role() != AgentRole.MAIN || !groundingProperties.isEnabled()) {
+            return null;
+        }
+        GroundingVerdict verdict = groundingChecker.check(
+                answerContent,
+                GroundingEvidenceSupport.fromTimeline(
+                        session.snapshot(),
+                        StepEventBridge.ragDetail(request.assistantMessageId())));
+        if (verdict.passed()) {
+            return null;
+        }
+        log.warn("[AgentRuntime] ReAct Grounding 未通过: {}", verdict.reason());
+        if (!groundingProperties.isBlockOnFailure()) {
+            return null;
+        }
+        return verdict;
     }
 
     private static List<StreamToken> drainHookTokens(ConcurrentLinkedQueue<StreamToken> hookQueue) {

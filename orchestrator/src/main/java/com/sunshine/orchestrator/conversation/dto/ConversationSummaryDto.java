@@ -14,6 +14,7 @@ public class ConversationSummaryDto {
     private String title;
     private Instant createdAt;
     private Instant updatedAt;
+    private String executionPreference;
 
     public static ConversationSummaryDto from(ChatConversationEntity conv) {
         return ConversationSummaryDto.builder()
@@ -21,6 +22,7 @@ public class ConversationSummaryDto {
                 .title(conv.getTitle())
                 .createdAt(conv.getCreatedAt())
                 .updatedAt(conv.getUpdatedAt())
+                .executionPreference(conv.getExecutionPreference())
                 .build();
     }
 }

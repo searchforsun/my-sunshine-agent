@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
 import com.sunshine.orchestrator.plan.PlanMaterializer;
 import com.sunshine.orchestrator.plan.PlanValidator;
 import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
+import com.sunshine.orchestrator.plan.PlanRunFinalizer;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -50,6 +51,7 @@ class PlanWorkflowExecutorTest {
     @Mock
     private PlanExecutionAuditService planExecutionAuditService;
     private AgentExecutionProperties executionProperties;
+    private PlanRunFinalizer realFinalizer;
     @InjectMocks
     private PlanWorkflowExecutor planWorkflowExecutor;
 
@@ -57,10 +59,12 @@ class PlanWorkflowExecutorTest {
     void setUp() {
         executionProperties = new AgentExecutionProperties();
         executionProperties.getPlanWorkflow().getReplan().setMaxAttempts(1);
+        realFinalizer = new PlanRunFinalizer(
+                executionPlanStore, planExecutionAuditService, executionProperties, reactExecutor);
         planWorkflowExecutor = new PlanWorkflowExecutor(
                 workflowPlanner, planValidator, displayNameEnricher, planMaterializer,
                 workflowExecutor, reactExecutor, executionPlanStore, executionProperties,
-                planExecutionAuditService);
+                planExecutionAuditService, realFinalizer);
     }
 
     @Test

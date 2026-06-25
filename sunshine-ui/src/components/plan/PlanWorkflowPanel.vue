@@ -12,6 +12,7 @@ import { getExecutionPlan, type ExecutionPlanDetail, type PlanGraph } from '../.
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../../api/skills'
 import { buildDagNodes, type DagNodeView } from '../../utils/planGraph'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
+import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
 import PlanDagGraph from './PlanDagGraph.vue'
 
 const props = defineProps<{
@@ -19,9 +20,24 @@ const props = defineProps<{
   allSteps: ProcessingStep[]
   live?: boolean
   executionPlanId?: string
+  userQuery?: string
 }>()
 
-const { open: openDrawer, state: drawerState } = usePlanNodeDrawer()
+const { open: openDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()
+const { open: openExpand, close: closeExpand, isExpanded, update: updateExpand, state: expandState } = usePlanDagExpand()
+
+function subStepsSignature(steps?: ProcessingStep[]): string {
+  if (!steps?.length) return ''
+  return steps.map(s => [
+    s.id,
+    s.lifecycle ?? s.status ?? '',
+    s.summary?.after ?? '',
+    s.summary?.active ?? '',
+    s.reasoning?.length ?? 0,
+    s.result?.length ?? 0,
+    s.detail?.length ?? 0,
+  ].join(':')).join('\u0002')
+}
 
 function stepContentSignature(step?: ProcessingStep): string {
   if (!step) return ''
@@ -30,11 +46,17 @@ function stepContentSignature(step?: ProcessingStep): string {
     step.result ?? '',
     step.detail ?? '',
     step.reasoning ?? '',
+    step.metadata?.rewriteApplied ? '1' : '0',
+    step.metadata?.rewriteFrom ?? '',
+    step.metadata?.rewriteTo ?? '',
+    step.metadata?.rewriteScenario ?? '',
+    subStepsSignature(step.subSteps),
   ].join('\u0001')
 }
 
 function syncDrawerSelection(nodes: DagNodeView[]) {
-  if (!drawerState.open || !drawerState.node) return
+  const id = planId.value
+  if (!id || !isActivePlan(id) || !drawerState.node) return
   const nodeId = drawerState.node.id
   const fresh = nodes.find(n => n.id === nodeId)
   if (!fresh) return
@@ -76,6 +98,7 @@ const dagNodes = computed(() =>
     nodeSteps.value,
     props.live ? undefined : planDetail.value?.nodes,
     skillCatalog.value,
+    props.planStep,
   ),
 )
 
@@ -87,14 +110,46 @@ const durationText = computed(() => {
   return ms != null ? formatDuration(ms) : ''
 })
 
-const selectedId = computed(() => drawerState.node?.id)
+const selectedId = computed(() =>
+  isActivePlan(planId.value) ? drawerState.node?.id : undefined,
+)
 
 function stepForNode(nodeId: string): ProcessingStep | undefined {
+  if (nodeId === 'start') {
+    return props.planStep
+  }
   return nodeSteps.value.find(s => s.id === `node-${nodeId}`)
 }
 
 function onSelectNode(node: DagNodeView) {
-  openDrawer({ node, step: stepForNode(node.id) })
+  const id = planId.value
+  if (!id) return
+  openDrawer({ planId: id, userQuery: props.userQuery, node, step: stepForNode(node.id) })
+}
+
+function onExpandDag() {
+  const id = planId.value
+  if (!id) return
+  openExpand({
+    planId: id,
+    title: label.value,
+    userQuery: props.userQuery,
+    nodes: dagNodes.value,
+    selectedId: selectedId.value,
+    live: props.live,
+  }, onSelectNode)
+}
+
+function syncExpandLayer() {
+  const id = planId.value
+  if (!id || !isExpanded(id)) return
+  updateExpand({
+    title: label.value,
+    userQuery: props.userQuery,
+    nodes: dagNodes.value,
+    selectedId: selectedId.value,
+    live: props.live,
+  })
 }
 
 async function loadPlan() {
@@ -139,12 +194,15 @@ onMounted(() => {
 })
 watch(planId, (id, prev) => {
   if (id === prev) return
+  if (expandState.activePlanId && expandState.activePlanId !== id) closeExpand()
   resetGraphForPlan(id)
   void loadPlan()
 })
 watch(dagNodes, (nodes) => {
   syncDrawerSelection(nodes)
+  syncExpandLayer()
 }, { deep: true })
+watch(selectedId, () => syncExpandLayer())
 </script>
 
 <template>
@@ -157,12 +215,16 @@ watch(dagNodes, (nodes) => {
       <span v-if="durationText" class="op-dur">{{ durationText }}</span>
     </div>
     <PlanDagGraph
-      v-if="dagNodes.length"
+      v-if="dagNodes.length && !isExpanded(planId)"
       :nodes="dagNodes"
       :selected-id="selectedId"
       :live="live"
+      show-expand
       @select="onSelectNode"
+      @expand="onExpandDag"
     />
+    <!-- 放大时保留占位，避免布局跳动 -->
+    <div v-else-if="dagNodes.length && isExpanded(planId)" class="plan-dag-collapsed-slot" aria-hidden="true" />
     <div v-else-if="loadingPlan && !frozenGraph" class="plan-dag-skeleton">加载执行图…</div>
   </div>
 </template>
@@ -232,5 +294,10 @@ watch(dagNodes, (nodes) => {
   color: var(--sun-text-muted);
   border: 1px dashed var(--sun-border);
   border-radius: 10px;
+}
+
+.plan-dag-collapsed-slot {
+  margin: 8px 0 4px calc(var(--op-gutter) + 4px);
+  min-height: 94px;
 }
 </style>

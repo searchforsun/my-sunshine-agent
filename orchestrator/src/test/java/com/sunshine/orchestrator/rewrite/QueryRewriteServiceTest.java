@@ -245,6 +245,18 @@ class QueryRewriteServiceTest {
         assertThat(out.rewrittenQuery()).contains("差旅");
     }
 
+    @Test
+    void rewriteForPlannerCallsLlm() {
+        props.plannerOrDefault().setEnabled(true);
+        props.plannerOrDefault().setSystemPrompt("test planner prompt");
+        var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
+        when(llm.complete(anyString(), anyString(), anyString()))
+                .thenReturn("{\"query\":\"先检索差旅制度，再查待审批报销并做合规分析\"}");
+        service = new QueryRewriteService(props, llm, new ObjectMapper());
+        assertThat(service.rewriteForPlanner("先查制度再查报销"))
+                .isEqualTo("先检索差旅制度，再查待审批报销并做合规分析");
+    }
+
 }
 
 

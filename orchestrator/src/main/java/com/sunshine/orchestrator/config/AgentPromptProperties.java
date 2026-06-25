@@ -82,6 +82,11 @@ public class AgentPromptProperties {
             rag.setBefore("在企业知识库中查找与{query}相关的资料");
             rag.setActive("正在匹配与{query}最相关的文档片段");
             map.put("rag", rag);
+            var skill = new StepTimeline();
+            skill.setBefore("准备加载 Skill");
+            skill.setActive("正在加载 Skill 指令");
+            skill.setAfter("@{skillId} {skillDisplayName}");
+            map.put("skill", skill);
             return map;
         }
     }
@@ -92,6 +97,8 @@ public class AgentPromptProperties {
 
         private String before;
         private String active;
+        /** skill 等步骤完成态主行模板，占位符见 SkillLoadLabelService */
+        private String after;
     }
 
     public Timeline timelineOrDefault() {
@@ -138,6 +145,8 @@ public class AgentPromptProperties {
         private String detail;
         /** 意图完成后的用户向摘要模板 */
         private String after;
+        /** 用户底栏强制模式时的 after 模板 */
+        private String forcedAfter;
     }
 
     public IntentTimeline intentTimelineOrDefault() {

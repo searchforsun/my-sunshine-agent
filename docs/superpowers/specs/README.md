@@ -44,6 +44,10 @@
 | `skills-management-ui-design.md` | 阶段三 **§3.12** `/skills` 管理页 UI/API SSOT |
 | `2026-06-21-multimodal-ocr-design.md` | 阶段四 §4.2–4.3 |
 | `2026-06-24-peer-collab-routing-design.md` | 阶段四 §4.7.3 · 第五顶层模式 `PEER_COLLAB` |
+| `2026-06-24-react-taskboard-design.md` | 阶段四 §4.7.5 · ReAct TaskBoard 软规划 · **D11** |
+| `2026-06-25-phase4-agent-capabilities-boundaries.md` | 阶段四 §4.7 · P0 接入边界（MsgHub / Parallel / TaskBoard） |
+| `2026-06-25-workflow-studio-design.md` | 阶段四 **§4.13** · Workflow Studio + `docs/workflow` 导入包 · **workflow catalog / Chat `#` SSOT** |
+| `2026-06-25-chat-execution-mode-selector-design.md` | Chat 底栏执行**路径**选择器 · `executionPreference` · P0 ✅；workflow catalog **不做**（移交 4.13 `#`） |
 | `2026-06-19-phase3-production-hardening-design.md` | → 已迁移为 `phase3-production-hardening-design.md` |
 | `2026-06-19-phase4-platformization-design.md` | → 已迁移为 `phase4-platformization-design.md` |
 

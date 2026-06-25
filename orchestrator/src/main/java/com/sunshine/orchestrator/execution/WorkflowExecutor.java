@@ -1,14 +1,24 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.AgentGroundingProperties;
+import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
+import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
+import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.execution.retry.NodeRetryExecutor;
 import com.sunshine.orchestrator.execution.retry.NodeRetryPolicy;
 import com.sunshine.orchestrator.execution.retry.NodeRetryPolicyResolver;
 import com.sunshine.orchestrator.execution.retry.OnFailureAction;
 import com.sunshine.orchestrator.execution.retry.WorkflowRunSession;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
+import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
+import com.sunshine.orchestrator.plan.PlanJson;
 import com.sunshine.orchestrator.plan.PlanNodeAttempt;
 import com.sunshine.orchestrator.plan.PlanNodeTrace;
+import com.sunshine.orchestrator.plan.PlanRunFinalizer;
+import com.sunshine.orchestrator.plan.PlanTimeline;
+import com.sunshine.orchestrator.plan.StaticPlanAdapter;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.routing.ExecutionMode;
@@ -19,6 +29,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -42,7 +53,11 @@ public class WorkflowExecutor {
     private final NodeRetryPolicyResolver retryPolicyResolver;
     private final NodeRetryExecutor nodeRetryExecutor;
     private final UpstreamOutputResolver upstreamOutputResolver;
-    private final com.sunshine.orchestrator.plan.PlanExecutionAuditService planExecutionAuditService;
+    private final PlanExecutionAuditService planExecutionAuditService;
+    private final PlanDisplayNameEnricher displayNameEnricher;
+    private final PlanRunFinalizer planRunFinalizer;
+    private final AnswerGroundingChecker groundingChecker;
+    private final AgentGroundingProperties groundingProperties;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         ExecutionPlan plan = ctx.plan();
@@ -56,7 +71,50 @@ public class WorkflowExecutor {
             return Flux.just(StreamToken.content(
                     "工作流「" + workflowId + "」未定义，请联系管理员。"));
         }
-        return executeDefinition(defOpt.get(), ctx, new WorkflowRunSession());
+        WorkflowDefinition def = defOpt.get();
+        PlanJson rawPlan = StaticPlanAdapter.from(def, plan.reason());
+        return Mono.fromCallable(() -> executionPlanStore.createDraft(ctx, rawPlan))
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnSuccess(planId -> planExecutionAuditService.created(
+                        ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), planId))
+                .flatMapMany(planId -> runStaticAsPlan(ctx, planId, def, rawPlan));
+    }
+
+    /** 静态 workflow 物化为 Plan 并走与 plan-workflow 相同的 DAG 执行与终态路径 */
+    private Flux<StreamToken> runStaticAsPlan(
+            ExecutionStreamContext ctx,
+            String planId,
+            WorkflowDefinition def,
+            PlanJson rawPlan) {
+        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
+        session.bindUserQuery(ctx.userContent());
+        session.bindTraceMessageId(ctx.assistantMsgId());
+        PlanJson enriched = displayNameEnricher.enrich(rawPlan);
+        List<StreamToken> planTokens = PlanTimeline.planStep(session, enriched, planId);
+        ExecutionStreamContext execCtx = ctx.withPersistedPlanId(planId);
+        WorkflowRunSession runSession = new WorkflowRunSession();
+        int nodeCount = enriched.nodes().size();
+        log.info("[WorkflowExecutor] 静态工作流 {} 物化为 Plan id={} 链={}",
+                def.id(), planId, PlanTimeline.planChainSummary(enriched));
+        return Mono.fromRunnable(() -> {
+                    executionPlanStore.markValidated(planId, enriched);
+                    executionPlanStore.markRunning(planId);
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnSuccess(v -> planExecutionAuditService.validated(
+                        ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
+                        planId, nodeCount))
+                .thenMany(Flux.concat(
+                        Flux.fromIterable(planTokens),
+                        executeDynamicDefinition(def, execCtx, runSession)
+                                .concatWith(Flux.defer(() -> planRunFinalizer.postWorkflow(ctx, planId, runSession)))
+                                .doOnError(err -> {
+                                    executionPlanStore.markFailed(planId, err.getMessage());
+                                    planExecutionAuditService.failed(
+                                            ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(),
+                                            ctx.tenantId(), planId, err.getMessage());
+                                })
+                ));
     }
 
     /** 动态 Plan 物化后的 DAG 执行（plan 步由 PlanWorkflowExecutor 前置下发） */
@@ -78,23 +136,6 @@ public class WorkflowExecutor {
                 .concatMap(nodeId -> executeNode(
                         session, def, nodeId, wfCtx, streamCtx, runSession, planWorkflow))
                 .doFinally(signal -> labelService.clearRuntimeNodeLabels());
-    }
-
-    private Flux<StreamToken> executeDefinition(
-            WorkflowDefinition def,
-            ExecutionStreamContext streamCtx,
-            WorkflowRunSession runSession) {
-        WorkflowContext wfCtx = initContext(streamCtx);
-        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
-        session.bindUserQuery(streamCtx.userContent());
-        session.bindTraceMessageId(streamCtx.assistantMsgId());
-        List<StreamToken> planTokens = WorkflowNodeTimeline.planStep(session, def);
-        return Flux.concat(
-                Flux.fromIterable(planTokens),
-                Flux.fromIterable(def.linearOrder())
-                        .concatMap(nodeId -> executeNode(
-                                session, def, nodeId, wfCtx, streamCtx, runSession, false))
-        );
     }
 
     private static WorkflowContext initContext(ExecutionStreamContext streamCtx) {
@@ -200,8 +241,8 @@ public class WorkflowExecutor {
             int attemptNo,
             List<NodeRetryExecutor.PlanNodeAttemptRecord> attempts) {
         long attemptStarted = System.currentTimeMillis();
-        WorkflowStreamCollector collector = new WorkflowStreamCollector();
-        return handler.streamTokens(resolved, wfCtx, streamCtx, nodeId)
+        WorkflowStreamCollector collector = handler.createStreamCollector(resolved, nodeId);
+        return handler.streamTokens(resolved, wfCtx, streamCtx, nodeId, collector)
                 .doOnNext(collector::accept)
                 .concatWith(Flux.defer(() -> {
                     NodeResult result = handler.buildResult(collector);
@@ -284,9 +325,26 @@ public class WorkflowExecutor {
             }
             return Flux.empty();
         }
-        wfCtx.putNode(nodeId, result.safeOutputs());
-        runSession.noteNodeSuccess(nodeId, result.safeOutputs());
         Map<String, String> outs = result.safeOutputs();
+        if ("answer".equals(rawSpec.type())) {
+            GroundingVerdict grounding = validateAnswerGrounding(outs, wfCtx);
+            if (grounding != null && !grounding.passed()) {
+                String err = grounding.reason();
+                String summary = formatFailureSummary(err, attemptCount);
+                runSession.noteNodeFailure(nodeId);
+                wfCtx.putNodeFailure(nodeId, err, attemptCount);
+                recordNodeTrace(streamCtx, nodeId, rawSpec.type(), "failed",
+                        summary, null, startedAt, endedAt, attemptCount, retryPolicy.onFailure(), attempts);
+                applyOnFailure(retryPolicy.onFailure(), nodeId, err, wfCtx, runSession);
+                if (showTimeline) {
+                    return Flux.fromIterable(WorkflowNodeTimeline.complete(
+                            session, nodeId, rawSpec.type(), summary, startedAt, endedAt));
+                }
+                return Flux.empty();
+            }
+        }
+        wfCtx.putNode(nodeId, outs);
+        runSession.noteNodeSuccess(nodeId, outs);
         String summaryLine = resolveNodeDetail(rawSpec, outs);
         if (attemptCount > 1) {
             summaryLine = summaryLine + "（第 " + attemptCount + " 次尝试成功）";
@@ -301,13 +359,31 @@ public class WorkflowExecutor {
                 session.appendDelta(WorkflowNodeTimeline.stepId(nodeId), "result", answer.strip());
             }
         }
-        List<StreamToken> all = new ArrayList<>(result.contentTokens());
+        List<StreamToken> all = new ArrayList<>(result.timelineTokens());
+        all.addAll(result.contentTokens());
         if (showTimeline) {
             all.addAll(0, WorkflowNodeTimeline.complete(
                     session, nodeId, rawSpec.type(),
                     summaryLine, expandDetail, startedAt, endedAt));
         }
         return Flux.fromIterable(all);
+    }
+
+    private GroundingVerdict validateAnswerGrounding(Map<String, String> outs, WorkflowContext wfCtx) {
+        if (!groundingProperties.isEnabled()) {
+            return null;
+        }
+        String answer = outs.getOrDefault("answer", outs.get("output"));
+        GroundingVerdict verdict = groundingChecker.check(
+                answer, GroundingEvidenceSupport.fromWorkflow(wfCtx));
+        if (verdict.passed()) {
+            return null;
+        }
+        log.warn("[WorkflowExecutor] answer Grounding 未通过: {}", verdict.reason());
+        if (!groundingProperties.isBlockOnFailure()) {
+            return null;
+        }
+        return verdict;
     }
 
     private static void applyOnFailure(

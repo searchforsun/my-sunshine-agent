@@ -21,8 +21,13 @@ public record ProcessingStep(
         long ts,
         String status,
         String label,
-        StepMetadata metadata
+        StepMetadata metadata,
+        /** Workflow agent 节点：子 Agent 完整 ReAct 步骤（仅抽屉展示，不上主 Timeline 顶层） */
+        java.util.List<ProcessingStep> subSteps
 ) {
+    public ProcessingStep {
+        subSteps = subSteps != null && !subSteps.isEmpty() ? java.util.List.copyOf(subSteps) : null;
+    }
     public static ProcessingStep running(String id, String phase, String label) {
         long ts = System.currentTimeMillis();
         return new ProcessingStep(
@@ -40,6 +45,7 @@ public record ProcessingStep(
                 ts,
                 "running",
                 label,
+                null,
                 null
         );
     }
@@ -62,6 +68,7 @@ public record ProcessingStep(
                 ts,
                 "done",
                 label,
+                null,
                 null
         );
     }
@@ -83,6 +90,7 @@ public record ProcessingStep(
                 ts,
                 "error",
                 label,
+                null,
                 null
         );
     }
