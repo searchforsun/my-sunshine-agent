@@ -210,7 +210,7 @@ my-sunshine-agent/
 
 ### 阶段三：生产加固（8周）
 
-> **进度（2026-06-25）：** 3.4 RAG 全链路 ✅、3.8.1–3.8.7 提示词链路 ✅、3.9.1–3.9.4 Plan 审计 ✅、3.10.1–3.10.7 AgentRuntime ✅、3.11 skill-manager ✅、3.12.1–3.12.4 + **3.12.2 diff ✅**；**静态 workflow 与 Plan DAG UI 统一 ✅**；**Chat 执行模式选择器 P0 ✅**（`executionPreference` + `ForcedExecutionRouter`）；**RAG HyDE fallback + empty-recall prompt 收紧 ✅**；其余待做见检查门。
+> **进度（2026-06-26）：** 3.4 RAG 全链路 ✅、3.8.1–3.8.7 提示词链路 ✅、3.9.1–3.9.4 Plan 审计 ✅、3.10.1–3.10.7 AgentRuntime ✅、3.11 skill-manager ✅、3.12.1–3.12.4 + **3.12.2 diff ✅**；**静态 workflow 与 Plan DAG UI 统一 ✅**；**Chat 执行模式选择器 P0 ✅**；**Plan 节点重试/跳过/Recovery + 基础 pause/resume ✅**；**阶段三收尾 3.9.5 暂停/续跑一致性 ⬜**（[design](./superpowers/specs/2026-06-26-pause-resume-consistency-design.md)）；其余待做见检查门。
 
 > 设计 spec（SSOT）：[superpowers/specs/phase3-production-hardening-design.md](./superpowers/specs/phase3-production-hardening-design.md)  
 > 索引：[superpowers/specs/README.md](./superpowers/specs/README.md)  
@@ -226,7 +226,8 @@ my-sunshine-agent/
 | 3.6 审计 | **tool.call ✅** + sub_agent_run ✅ + plan.* ✅ |
 | 3.7 Grounding | 主答复 + 子 Agent output |
 | 3.8 提示词 | **✅ 3.8.1–3.8.7** |
-| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API + DAG/抽屉 UI + **重试/降级** · **3.9.1–3.9.4 ✅**；静态 workflow **物化 Plan 同路径** ✅ |
+| 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API + DAG/抽屉 UI + **重试/降级/Recovery/HITL** · **3.9.1–3.9.4 ✅**；静态 workflow **物化 Plan 同路径** ✅ |
+| **3.9.5 阶段三收尾** | **暂停/续跑一致性** · [design](./superpowers/specs/2026-06-26-pause-resume-consistency-design.md) · [plan](./superpowers/plans/2026-06-26-pause-resume-consistency.md) · **⬜** |
 | 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 · **3.10.1–3.10.6 ✅** |
 
 子 Agent 实现目标（编排器-Worker、`query`+`context` 传入、分层 system、无默认 STM）见 [multi-agent plan §子 Agent 实现目标](./superpowers/plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)。
@@ -243,19 +244,20 @@ my-sunshine-agent/
 | **v6 提升** | Recall@5 / MRR vs vector | hybrid+rerank 较 vector **+15% / +10%** |
 | **性能** | P95 latency | ≤ **800ms**（hybrid+rerank） |
 
-#### 阶段三检查门（17 条，见 spec §6）
+#### 阶段三检查门（19 条，见 spec §6）
 
 - [x] v5 回归轨 `rag_eval.py` 达标（hybrid+rerank PASS）
 - [ ] v6 提升轨：生产门禁 PASS；**相对 vector +15% 轨 WARN**（vector 基线 97.6%）
 - [ ] Grafana RAG + Sentinel Dashboard + 4 条告警（指标+JSON ✅；远程部署/触发 ⬜）
-- [ ] 租户 A/B 隔离；写工具 HITL（含子 Agent）
+- [ ] 租户 A/B 隔离（3.2）；写工具 HITL live 验收（3.3，含子 Agent）
 - [x] `PLAN_WORKFLOW` 三 API + Plan 详情/DAG 抽屉（3.12.4 ✅）
 - [x] 静态 `WORKFLOW`（L2）Chat 时间线展示 Plan DAG（`StaticPlanAdapter` + `planId=`，见 `routing-golden-set.md` §B–D）
 - [x] IntentRouter `plan-workflow` + Planner/校验 **Replan** → 耗尽 **降级 ReAct**（`docs/routing/plan-workflow-retry-degradation.md`）
-- [x] 节点 `NodeRetryExecutor` + `on-failure` + `completed_with_errors` / `degraded_react` 终态
+- [x] 节点 `NodeRetryExecutor` + `on-failure` + Recovery 重试/跳过/终止 + `completed_with_errors` / `degraded_react` 终态
+- [ ] **3.9.5** Planner 阶段 stop 可续跑；HITL/Recovery 停止后续跑恢复同一交互；无 checkpoint 按钮为「重新生成」
 - [ ] 2+ agent 节点 Plan 演示（3.10.5 ✅ 单测 + Nacos 双 agent 示例；live 点验待中间件）
-- [ ] skill-manager + `/skills`；tool/sub_agent/plan 审计可查（**✅ 三链路 API 已就绪**）
-- [ ] Grounding + 子 Agent 不污染主 reasoning
+- [ ] skill-manager + `/skills` live；tool/sub_agent/plan 审计可查（**✅ 三链路 API 已就绪**）
+- [ ] Grounding 集成测试 + 子 Agent 不污染主 reasoning（3.7 代码 ✅，检查门 ⬜）
 - [ ] `phase2_agent_demo.py --suite all` 仍 PASS
 
 ---

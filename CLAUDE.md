@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.7** + **3.10.1–3.10.7** + **3.11 skill-manager** + **3.12.1–3.12.4** + **3.12.2 diff** + **3.9.1–3.9.4 PLAN_WORKFLOW**（含重试/降级、**静态 workflow Plan DAG 统一**）✅；**Chat 执行模式选择器 P0** ✅ 见 `docs/superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md`；**RAG 检索链 HyDE fallback**（2026-06-25）✅；下一迭代 **3.7 Grounding** / **3.2–3.5 平台化**；阶段四 **4.7.3 `PEER_COLLAB` 第五模式** ⬜ 见 `docs/superpowers/specs/2026-06-24-peer-collab-routing-design.md`；**4.7.5 ReAct TaskBoard** ⬜ 见 `docs/superpowers/specs/2026-06-24-react-taskboard-design.md`；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.7** + **3.10.1–3.10.7** + **3.11 skill-manager** + **3.12.1–3.12.4** + **3.12.2 diff** + **3.9.1–3.9.4 PLAN_WORKFLOW**（含重试/降级/Recovery、**静态 workflow Plan DAG 统一**）✅；**Chat 执行模式选择器 P0** ✅；**收尾 3.9.5 暂停/续跑一致性** ⬜ 见 `docs/superpowers/plans/2026-06-26-pause-resume-consistency.md`；待关 **3.2–3.5 live** / **3.7 Grounding 检查门**；阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 

@@ -196,6 +196,21 @@
 - Trace：`plan.planner` / `plan.validate` / `plan.node.*`
 - 演示：制度 + 财务 + 合规，**2+ agent 节点**
 
+### 3.9.5 阶段三收尾：暂停/续跑一致性 ⬜
+
+> SSOT：[2026-06-26-pause-resume-consistency-design.md](./2026-06-26-pause-resume-consistency-design.md) · 实施：[2026-06-26-pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md)
+
+| 子任务 | 内容 | 状态 |
+|--------|------|:----:|
+| **3.9.5.1** | `WorkflowCheckpoint.pausePhase`（PLANNING / EXECUTING）；Planner 阶段 markPaused | ⬜ |
+| **3.9.5.2** | `pendingInteraction`（hitl / recovery）；停止保留 awaiting；续跑 re-await | ⬜ |
+| **3.9.5.3** | 续跑按钮分态（有 checkpoint →「继续执行」；无 →「重新生成」）；awaiting 优先于 paused | ⬜ |
+| **3.9.5.4** | ReAct stop 后 think/tool 步骤终态；wfCtx 空拒绝 Plan 检查点续跑 | ⬜ |
+
+**前置（✅）**：节点 Recovery 重试/跳过、基础 pause/resume、HITL/Recovery UI、`nodeAttempts` SSE 实时更新。
+
+**非本任务**：ReAct 逐步 checkpoint → 阶段四 **4.7.5 TaskBoard**。
+
 ### 3.10 多 Agent 运行时（部分 ✅）
 
 | 子任务 | 内容 | 状态 |
@@ -265,20 +280,21 @@
 
 ---
 
-## 6. 检查门（17 条）
+## 6. 检查门（19 条）
 
 - [x] 3.4 v5 回归轨达标（hybrid+rerank 生产门禁 PASS）
 - [ ] 3.4 v6 提升轨达标（生产门禁 PASS；**相对 vector +15% 轨 WARN**，见 closure 报告）
 - [ ] 3.5 Grafana 远程 6 面板 + 4 告警可触发（指标 JSON ✅；部署 ⬜）
 - [ ] 3.5 Sentinel Dashboard 租户 QPS
 - [ ] 3.2 租户 A/B 隔离
-- [ ] 3.3 写工具 HITL（含子 Agent）
-- [x] 3.9 PLAN_WORKFLOW 三 API + Plan 详情/DAG 抽屉（2+ agent 演示 ⬜ 3.10.5）
-- [x] 3.9 IntentRouter plan-workflow + Replan + 节点重试/降级（`docs/routing/plan-workflow-retry-degradation.md`）
-- [ ] 3.10 finance-smart skill 工具子集
-- [ ] 3.11 catalog + 3.12 `/skills` 发布
-- [ ] 3.6 tool + sub_agent + plan.* 可查
-- [ ] 3.7 Grounding 集成测试
+- [ ] 3.3 写工具 HITL live（含子 Agent；代码 ✅）
+- [x] 3.9 PLAN_WORKFLOW 三 API + Plan 详情/DAG 抽屉
+- [x] 3.9 IntentRouter plan-workflow + Replan + 节点重试/降级/Recovery（`docs/routing/plan-workflow-retry-degradation.md`）
+- [ ] **3.9.5** 暂停/续跑一致性（Planner stop、HITL/Recovery re-await、按钮分态、wfCtx 空拒绝）
+- [ ] 3.10 2+ agent 节点 Plan live 演示（单测 ✅）
+- [ ] 3.11 catalog + 3.12 `/skills` live
+- [ ] 3.6 tool + sub_agent + plan.* 可查（API ✅）
+- [ ] 3.7 Grounding 集成测试（代码 ✅）
 - [ ] 3.10.7 子 Agent 不污染主 reasoning
 - [ ] `phase2_agent_demo.py --suite all` 仍 PASS
 
