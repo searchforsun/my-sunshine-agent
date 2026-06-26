@@ -19,7 +19,6 @@ import type { DagNodeStatus } from '../../utils/planGraph'
 import PlanNodeIcon from './PlanNodeIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
-import HitlStepActions from '../operation/HitlStepActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 
@@ -192,15 +191,14 @@ const skillLineText = computed(() => {
 
 const subSteps = computed(() => step.value?.subSteps ?? [])
 const showSubTimeline = computed(() => node.value?.type === 'agent' && subSteps.value.length > 0)
-const hitlStep = computed(() => findHitlStep(step.value, pendingHitl.value))
-/** 执行过程下方独立「写操作确认」区块（子 Agent / 工具节点统一） */
-const showHitlSection = computed(() => !!hitlStep.value)
-const hitlUiKey = computed(() =>
-  hitlStep.value?.metadata?.hitlToken
-  ?? hitlStep.value?.metadata?.hitlStatus
-  ?? hitlStep.value?.id
-  ?? '',
-)
+/** agent 用 subSteps；workflow tool 等 HITL 挂在节点步时用单行 timeline */
+const drawerStackSteps = computed(() => {
+  if (showSubTimeline.value) return subSteps.value
+  const s = step.value
+  if (s && findHitlStep(s, pendingHitl.value)) return [s]
+  return []
+})
+const showDrawerOperationStack = computed(() => drawerStackSteps.value.length > 0)
 const showRecoverySection = computed(() => !!step.value && isRecoveryAwaiting(step.value))
 const subTimelineLive = computed(() => {
   const s = displayStatus.value
@@ -232,7 +230,7 @@ watch(
 )
 
 watch(
-  () => [bodyDisplay.value, analysisDisplay.value, summary.value, reasoning.value, output.value, subSteps.value, hitlUiKey.value],
+  () => [bodyDisplay.value, analysisDisplay.value, summary.value, reasoning.value, output.value, subSteps.value],
   () => {
     if (!state.open) return
     void restoreDrawerScroll()
@@ -302,21 +300,14 @@ watch(
       <section v-if="showRecoverySection && step" class="drawer-section drawer-recovery">
         <PlanNodeRecoveryActions :step="step" @decided="applyRecoveryDecision" />
       </section>
-      <section v-if="showSubTimeline" class="drawer-section drawer-sub-timeline">
-        <h4>执行过程</h4>
+      <section v-if="showDrawerOperationStack" class="drawer-section drawer-sub-timeline">
+        <h4 v-if="showSubTimeline">执行过程</h4>
         <OperationStack
-          :steps="subSteps"
+          :steps="drawerStackSteps"
           :live="subTimelineLive"
           :embed-hitl="false"
+          :pending-hitl-confirmation="pendingHitl"
           @hitl-decided="applyHitlDecision"
-        />
-      </section>
-      <section v-if="showHitlSection && hitlStep" class="drawer-section drawer-hitl">
-        <h4>写操作确认</h4>
-        <HitlStepActions
-          :key="hitlUiKey"
-          :step="hitlStep"
-          @decided="applyHitlDecision"
         />
       </section>
       <section v-if="showSummary" class="drawer-section">
@@ -375,7 +366,7 @@ watch(
         <h4>日志</h4>
         <StaticMarkdown :source="output" compact />
       </section>
-      <p v-if="!showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showSubTimeline && !showHitlSection && !showRecoverySection && !output && !showSkillBlock && !node.attempts?.length" class="drawer-empty">
+      <p v-if="!showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showRecoverySection && !output && !showSkillBlock && !node.attempts?.length" class="drawer-empty">
         {{ displayStatus === 'running' ? '节点执行中…' : displayStatus === 'paused' ? '节点已暂停' : '暂无详情' }}
       </p>
     </div>
@@ -696,13 +687,6 @@ watch(
 .drawer-sub-timeline :deep(.operation-lines) {
   margin-left: 0;
   padding-bottom: 0;
-}
-
-.drawer-hitl :deep(.collapsible-confirm) {
-  --confirm-inset-left: 0;
-  margin-left: 0;
-  margin-top: 0;
-  margin-bottom: 0;
 }
 
 .drawer-recovery :deep(.collapsible-confirm) {

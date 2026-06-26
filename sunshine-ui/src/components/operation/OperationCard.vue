@@ -379,6 +379,11 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   opacity: 0.9;
 }
 
+.op-line :deep(.collapsible-confirm) {
+  --confirm-inset-left: 0;
+  margin-left: var(--op-detail-inset);
+}
+
 @keyframes op-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }

@@ -6,7 +6,6 @@ import {
   hitlConfirmationForStep,
   isHitlAwaiting,
   isHitlSummaryAwaiting,
-  resolveHitlHint,
   resolveHitlStatus,
   resolveHitlToken,
   resolveHitlToolName,
@@ -75,7 +74,6 @@ const showPanel = computed(() => {
 
 const toolName = computed(() => resolveHitlToolName(displayStep.value))
 const paramsText = computed(() => displayStep.value.metadata?.hitlParamsSummary?.trim() || '')
-const hintText = computed(() => resolveHitlHint(displayStep.value))
 
 const summaryLine = computed(() => {
   if (displayStatus.value === 'approved') return '写操作确认 · 已确认'
@@ -109,7 +107,6 @@ async function submit(approved: boolean): Promise<void> {
   >
     <p class="hitl-tool">{{ toolName }}</p>
     <p v-if="paramsText" class="hitl-params">{{ paramsText }}</p>
-    <p v-if="hintText && canAct" class="hitl-hint">{{ hintText }}</p>
     <template v-if="canAct" #footer>
       <div class="hitl-actions hitl-actions-footer">
         <button type="button" class="hitl-btn hitl-btn-ghost" :disabled="loading" @click="submit(false)">
@@ -137,13 +134,6 @@ async function submit(approved: boolean): Promise<void> {
   font-size: var(--sun-font-sm, 12px);
   color: var(--sun-text-muted);
   word-break: break-all;
-}
-
-.hitl-hint {
-  margin: 0;
-  font-size: var(--sun-font-sm, 12px);
-  color: var(--sun-text-muted);
-  line-height: 1.45;
 }
 
 .hitl-actions {
@@ -193,9 +183,5 @@ async function submit(approved: boolean): Promise<void> {
 .hitl-btn-primary:hover:not(:disabled) {
   background: var(--sun-accent-hover);
   border-color: var(--sun-accent-hover);
-}
-
-:deep(.collapsible-confirm) {
-  margin-left: calc(var(--op-gutter, 12px) + 4px);
 }
 </style>

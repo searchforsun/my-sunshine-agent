@@ -74,7 +74,7 @@ const collapsedLine = computed(() => {
 <style scoped>
 .collapsible-confirm {
   margin: 6px 0;
-  margin-left: var(--confirm-inset-left, calc(var(--op-gutter, 12px) + 4px));
+  margin-left: var(--confirm-inset-left, 0);
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-sm, 6px);
   font-size: var(--sun-font-sm, 12px);

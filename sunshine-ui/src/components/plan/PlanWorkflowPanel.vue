@@ -423,4 +423,8 @@ watch(isRegenerating, () => syncExpandLayer())
   margin: 8px 0 4px calc(var(--op-gutter) + 4px);
   min-height: 94px;
 }
+
+.plan-panel :deep(.collapsible-confirm) {
+  margin-left: calc(var(--op-gutter) + 4px);
+}
 </style>
