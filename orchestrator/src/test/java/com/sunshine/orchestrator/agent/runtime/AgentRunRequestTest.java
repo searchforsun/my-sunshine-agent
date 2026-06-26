@@ -44,6 +44,23 @@ class AgentRunRequestTest {
     }
 
     @Test
+    void resolveBridgeId_subWithAssistantMsgIdStillUsesSubPrefix() {
+        AgentRunRequest req = AgentRunRequest.sub(
+                MemoryContext.empty(),
+                "审批",
+                java.util.List.of("ctx"),
+                "u1",
+                "default",
+                "msg-main",
+                null,
+                java.util.List.of("approve_oa_task"),
+                null,
+                0);
+        assertThat(req.assistantMessageId()).isEqualTo("msg-main");
+        assertThat(req.resolveBridgeId()).isEqualTo("sub-" + req.runId());
+    }
+
+    @Test
     void sub_withNodeParams_carriesSkillToolsOverlayAndMaxIters() {
         AgentRunRequest req = AgentRunRequest.sub(
                 MemoryContext.empty(),

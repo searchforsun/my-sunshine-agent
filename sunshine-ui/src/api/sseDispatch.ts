@@ -20,7 +20,17 @@ export type ParsedSsePayload =
   | { kind: 'reasoning'; text: string }
   | { kind: 'step'; step: ProcessingStep }
   | { kind: 'step_delta'; delta: StepDelta }
+  | { kind: 'confirmation'; confirmation: ToolConfirmationPayload }
+  | { kind: 'error'; text: string }
   | { kind: 'ignore' }
+
+export interface ToolConfirmationPayload {
+  toolId: string
+  toolDisplayName: string
+  paramsSummary: string
+  confirmationToken: string
+  expiresAt: number
+}
 
 type Handler = (obj: Record<string, unknown>) => ParsedSsePayload | null
 
@@ -71,6 +81,26 @@ const handlers: Record<string, Handler> = {
     const text = typeof obj.text === 'string' ? normalizeStreamChunk(obj.text) : ''
     if (!text) return { kind: 'ignore' }
     return { kind: 'chunk', text }
+  },
+  confirmation(obj) {
+    const token = typeof obj.confirmationToken === 'string' ? obj.confirmationToken : ''
+    const toolId = typeof obj.toolId === 'string' ? obj.toolId : ''
+    if (!token || !toolId) return { kind: 'ignore' }
+    return {
+      kind: 'confirmation',
+      confirmation: {
+        toolId,
+        toolDisplayName: typeof obj.toolDisplayName === 'string' ? obj.toolDisplayName : toolId,
+        paramsSummary: typeof obj.paramsSummary === 'string' ? obj.paramsSummary : '',
+        confirmationToken: token,
+        expiresAt: typeof obj.expiresAt === 'number' ? obj.expiresAt : 0,
+      },
+    }
+  },
+  error(obj) {
+    const text = typeof obj.text === 'string' ? obj.text.trim() : ''
+    if (!text) return { kind: 'ignore' }
+    return { kind: 'error', text }
   },
 }
 

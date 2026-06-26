@@ -10,4 +10,5 @@ public class AuthUserVO {
     private String userId;
     private String username;
     private String nickname;
+    private String tenantId;
 }

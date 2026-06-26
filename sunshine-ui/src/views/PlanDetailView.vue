@@ -12,6 +12,7 @@ import {
   type PlanNodeTrace,
 } from '../api/executionPlans'
 import { formatDuration } from '../api/processingSteps'
+import { friendlyErrorMessage } from '../api/apiError'
 
 const route = useRoute()
 const router = useRouter()
@@ -75,7 +76,7 @@ async function load() {
   try {
     detail.value = await getExecutionPlan(planId.value)
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : '加载失败'
+    error.value = friendlyErrorMessage(e, '加载失败，请稍后重试')
     detail.value = null
   } finally {
     loading.value = false

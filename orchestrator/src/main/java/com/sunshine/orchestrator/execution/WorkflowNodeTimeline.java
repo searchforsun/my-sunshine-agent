@@ -70,6 +70,58 @@ public final class WorkflowNodeTimeline {
         });
     }
 
+    public static List<StreamToken> fail(
+            ProcessingTimelineSession session,
+            String nodeId,
+            String nodeType,
+            String summaryLine,
+            long startedAt,
+            long endedAt) {
+        String stepId = stepId(nodeId);
+        return ProcessingTimelineSupport.run(session, () -> {
+            if (!session.hasStep(stepId)) {
+                session.pending(stepId, "node");
+                session.startAt(stepId, "node", startedAt);
+            }
+            session.fail(stepId, summaryLine);
+        });
+    }
+
+    /** 用户选择重试后重新进入 running */
+    /** 用户暂停 — 节点进入 paused 态 */
+    public static List<StreamToken> pause(
+            ProcessingTimelineSession session,
+            String nodeId,
+            String displayName) {
+        String stepId = stepId(nodeId);
+        return ProcessingTimelineSupport.run(session, () -> {
+            if (displayName != null && !displayName.isBlank()) {
+                session.bindStepDisplayName(stepId, displayName.strip());
+            }
+            if (!session.hasStep(stepId)) {
+                session.pending(stepId, "node");
+                session.start(stepId, "node");
+            }
+            session.pause(stepId, "已暂停");
+        });
+    }
+
+    public static List<StreamToken> restart(
+            ProcessingTimelineSession session,
+            String nodeId,
+            String nodeType,
+            String displayName) {
+        String stepId = stepId(nodeId);
+        long startedAt = System.currentTimeMillis();
+        return ProcessingTimelineSupport.run(session, () -> {
+            if (displayName != null && !displayName.isBlank()) {
+                session.bindStepDisplayName(stepId, displayName.strip());
+            }
+            session.pending(stepId, "node");
+            session.startAt(stepId, "node", startedAt);
+        });
+    }
+
     public static String stepId(String nodeId) {
         return "node-" + nodeId;
     }

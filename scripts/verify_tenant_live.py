@@ -234,15 +234,18 @@ def main() -> int:
         print("[3/6] skip ingest")
 
     print(f"[4/6] RAG 检索隔离 query={args.query!r}")
+    from sunshine_lib import unwrap_r
+
     results: dict[str, int] = {}
     for tenant in ("tenant-a", "tenant-b"):
-        resp = api_json(
+        body = api_json(
             "POST",
             f"{rag}/api/rag/search",
             headers={"x-tenant-id": tenant},
             json={"query": args.query, "topK": 5, "strategy": "hybrid+rerank"},
         )
-        hits = resp.get("results") or []
+        data = unwrap_r(body, context=f"rag search {tenant}") or {}
+        hits = data.get("results") or []
         results[tenant] = len(hits)
         top = hits[0].get("docName") if hits else None
         print(f"  tenant={tenant} hits={len(hits)} top={top!r}")

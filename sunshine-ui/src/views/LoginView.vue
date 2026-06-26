@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NCard, NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 import { useAuthStore } from '../stores/authStore'
+import { friendlyErrorMessage } from '../api/apiError'
 import { useTheme } from '../composables/useTheme'
 import AuthBrand from '../components/AuthBrand.vue'
 
@@ -24,7 +25,7 @@ async function onSubmit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/chat'
     await router.replace(redirect)
   } catch (e) {
-    message.error(e instanceof Error ? e.message : '登录失败')
+    message.error(friendlyErrorMessage(e, '登录失败'))
   } finally {
     loading.value = false
   }

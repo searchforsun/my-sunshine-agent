@@ -3,6 +3,8 @@ package com.sunshine.bff.controller;
 import com.sunshine.bff.client.SkillManagerClient;
 import com.sunshine.bff.client.ToolManagerClient;
 import com.sunshine.bff.service.SkillMaintainerEnricher;
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.multipart.FilePart;
@@ -131,7 +133,7 @@ public class SkillsController {
             @RequestBody Map<String, Object> body) {
         Object content = body.get("content");
         if (content == null) {
-            return Mono.error(new IllegalArgumentException("content 必填"));
+            return Mono.error(new BizException(CommonErrorCode.BAD_REQUEST));
         }
         return skillManagerClient.writeFile(id, version, path, String.valueOf(content), userId);
     }

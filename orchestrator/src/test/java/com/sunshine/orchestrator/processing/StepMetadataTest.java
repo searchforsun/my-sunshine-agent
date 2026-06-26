@@ -63,6 +63,13 @@ class StepMetadataTest {
     }
 
     @Test
+    void isEmpty_falseWhenOnlyHitl() {
+        StepMetadata metadata = StepMetadata.withHitl(
+                null, HitlStepMeta.awaiting("tok-1", "审批 OA 待办", "taskId=T1001", 1L));
+        assertThat(metadata.isEmpty()).isFalse();
+    }
+
+    @Test
     void isEmpty_falseWhenOnlyRoutingReason() {
         StepMetadata metadata = StepMetadata.fromRouting(
                 new com.sunshine.orchestrator.routing.ExecutionPlan(

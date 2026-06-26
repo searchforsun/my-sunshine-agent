@@ -1,8 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '../api/auth'
+import { syncTenantFromAuth } from '../composables/useTenantPreference'
 
 const TOKEN_KEY = 'sunshine-token'
+
+function toAuthUser(res: authApi.AuthUser): authApi.AuthUser {
+  return {
+    userId: res.userId,
+    username: res.username,
+    nickname: res.nickname,
+    tenantId: res.tenantId || 'default',
+  }
+}
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem(TOKEN_KEY))
@@ -21,14 +31,15 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('sunshine-user-id')
   }
 
+  function applyUser(next: authApi.AuthUser) {
+    user.value = toAuthUser(next)
+    syncTenantFromAuth(user.value.tenantId)
+  }
+
   async function login(username: string, password: string) {
     const res = await authApi.login(username, password)
     setToken(res.token)
-    user.value = {
-      userId: res.userId,
-      username: res.username,
-      nickname: res.nickname,
-    }
+    applyUser(res)
   }
 
   async function register(username: string, password: string, nickname?: string) {
@@ -42,7 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
       return false
     }
     try {
-      user.value = await authApi.me()
+      applyUser(await authApi.me())
       initialized.value = true
       return true
     } catch {
@@ -52,8 +63,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function updateProfile(nickname: string) {
-    user.value = await authApi.updateProfile(nickname)
+  async function updateProfile(nickname: string, tenantId: string) {
+    const res = await authApi.updateProfile(nickname, tenantId)
+    if (!res.token?.trim()) {
+      throw new Error('资料已保存但登录凭证刷新失败，请重新登录')
+    }
+    setToken(res.token)
+    applyUser(res)
   }
 
   async function logout() {

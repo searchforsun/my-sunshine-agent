@@ -1,7 +1,9 @@
 package com.sunshine.orchestrator.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.processing.StepSummary;
 import com.sunshine.orchestrator.client.DesensitizeClient;
@@ -45,7 +47,9 @@ public class GenerationFlushScheduler {
                 .subscribe(
                         null,
                         e -> {
-                            if (e instanceof ConversationNotFoundException) {
+                            if (e instanceof BizException biz
+                                    && (biz.getErrorCode() == OrchestratorErrorCode.MESSAGE_NOT_FOUND
+                                    || biz.getErrorCode() == OrchestratorErrorCode.CONVERSATION_NOT_FOUND)) {
                                 log.debug("[Flush] partial 跳过 msgId={}: 消息已不存在", messageId);
                                 return;
                             }
@@ -169,9 +173,36 @@ public class GenerationFlushScheduler {
         return metaText("reasoning", text);
     }
 
+    /** 流式失败 — type:error，供前端展示 */
+    public String metaError(String text) {
+        return metaText("error", text);
+    }
+
     /** 正文 content — 结构化 SSE */
     public String metaContent(String text) {
         return metaText("content", text);
+    }
+
+    /** 写工具 HITL 确认 — 结构化 SSE */
+    public String metaConfirmation(
+            String toolId,
+            String toolDisplayName,
+            String paramsSummary,
+            String confirmationToken,
+            long expiresAt) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "confirmation");
+            map.put("toolId", toolId);
+            map.put("toolDisplayName", toolDisplayName);
+            map.put("paramsSummary", paramsSummary != null ? paramsSummary : "");
+            map.put("confirmationToken", confirmationToken);
+            map.put("expiresAt", expiresAt);
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"confirmation\",\"toolId\":\"" + toolId
+                    + "\",\"confirmationToken\":\"" + confirmationToken + "\"}";
+        }
     }
 
     private String metaText(String type, String text) {

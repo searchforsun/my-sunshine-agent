@@ -57,6 +57,7 @@ import {
   type SkillFileContent,
   type SkillVersion,
 } from '../api/skills'
+import { friendlyErrorMessage } from '../api/apiError'
 import { buildFileTree, collectDirKeys, formatFileSize } from '../utils/buildFileTree'
 import { formatSkillVersionTime, formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTime'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
@@ -418,7 +419,7 @@ async function persistFileEdit(opts?: { silent?: boolean }): Promise<boolean> {
     }
     return true
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '保存失败')
+    message.error(friendlyErrorMessage(e, '保存失败'))
     return false
   } finally {
     savingFile.value = false
@@ -636,7 +637,7 @@ async function refreshPage() {
       suppressVersionWatch = false
     }
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '刷新失败')
+    message.error(friendlyErrorMessage(e, '刷新失败'))
   } finally {
     loading.value = false
     detailLoading.value = false
@@ -669,7 +670,7 @@ async function loadVersions(
     }
     syncCommittedVersion()
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '加载版本失败'
+    const msg = friendlyErrorMessage(e, '加载版本失败')
     message.error(msg)
     throw e instanceof Error ? e : new Error(msg)
   }
@@ -703,7 +704,7 @@ async function loadFiles(opts?: { preservePath?: string }) {
       clearPreview()
     }
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '加载文件失败'
+    const msg = friendlyErrorMessage(e, '加载文件失败')
     message.error(msg)
     throw e instanceof Error ? e : new Error(msg)
   }
@@ -760,7 +761,7 @@ async function loadFileContent(path: string, opts?: { silent?: boolean }): Promi
   try {
     fileContent.value = await readSkillFile(selectedId.value, selectedVersion.value, path)
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '读取文件失败'
+    const msg = friendlyErrorMessage(e, '读取文件失败')
     message.error(msg)
     throw e instanceof Error ? e : new Error(msg)
   } finally {
@@ -787,7 +788,7 @@ async function handleCreateConfirm() {
     createForm.value = { id: '', displayName: '', description: '' }
     message.success('Skill 已创建，请上传 Skill 文件夹')
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '创建失败')
+    message.error(friendlyErrorMessage(e, '创建失败'))
   } finally {
     creating.value = false
   }
@@ -904,7 +905,7 @@ async function handleEditConfirm() {
     showEdit.value = false
     message.success('已保存')
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '保存失败')
+    message.error(friendlyErrorMessage(e, '保存失败'))
   } finally {
     savingEdit.value = false
   }
@@ -933,7 +934,7 @@ async function toggleEnabled(skill: SkillEntry, enabled: boolean) {
     skills.value = skills.value.map(s => (s.id === updated.id ? updated : s))
     message.success(enabled ? 'Skill 已开启' : 'Skill 已关闭')
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '操作失败')
+    message.error(friendlyErrorMessage(e, '操作失败'))
   }
 }
 
@@ -974,7 +975,7 @@ async function onFolderPicked(e: Event) {
     await runUploadPackage(zip, 'skill-package.zip')
     message.success('已上传为草稿，请预览后发布并生效')
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '上传失败')
+    message.error(friendlyErrorMessage(e, '上传失败'))
   } finally {
     input.value = ''
     folderPickPending.value = false
@@ -991,7 +992,7 @@ async function handlePublish() {
     message.success(`版本 ${formatSkillVersionTime(updated.activeVersionCreatedAt)} 已生效，Skill 已自动开启`)
     await loadVersions(selectedId.value)
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '生效失败')
+    message.error(friendlyErrorMessage(e, '生效失败'))
   }
 }
 
@@ -1008,7 +1009,7 @@ async function handleForkToDraft() {
     await loadDetailContent()
     message.success('已复制为草稿')
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '复制草稿失败')
+    message.error(friendlyErrorMessage(e, '复制草稿失败'))
   } finally {
     suppressVersionWatch = false
     forking.value = false
@@ -1032,7 +1033,7 @@ async function handleDownload() {
     URL.revokeObjectURL(url)
     message.success('Skill 包已开始下载')
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '下载失败')
+    message.error(friendlyErrorMessage(e, '下载失败'))
   } finally {
     downloading.value = false
   }
@@ -1053,7 +1054,7 @@ async function handleDeleteConfirm() {
     deleteTargetSkill.value = null
     message.success('Skill 已删除')
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '删除失败')
+    message.error(friendlyErrorMessage(e, '删除失败'))
   } finally {
     deleting.value = false
   }
@@ -1076,7 +1077,7 @@ async function handleDeleteVersionConfirm() {
     showDeleteVersionConfirm.value = false
     message.success(`版本 ${versionTime} 已删除`)
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '删除版本失败')
+    message.error(friendlyErrorMessage(e, '删除版本失败'))
   } finally {
     deletingVersion.value = false
   }

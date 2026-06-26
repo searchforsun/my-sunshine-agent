@@ -4,7 +4,13 @@
  */
 import { ref, reactive, computed } from 'vue'
 import type { ChatMessage } from './chat'
-import { applyStreamError, isAbortError, isPageUnloading } from './streamError'
+import {
+  applyStreamError,
+  applyStreamErrorFromText,
+  hydrateStreamError,
+  isAbortError,
+  isPageUnloading,
+} from './streamError'
 import { apiHeaders } from '../stores/authStore'
 import {
   saveActiveGeneration,
@@ -13,9 +19,12 @@ import {
   updateLastSeq,
 } from '../composables/useActiveGeneration'
 import { BFF_STREAM_BASE } from './config'
+import { ApiError, throwIfHttpError } from './apiError'
 import { parseSseEvent } from './sseParse'
 import { parseSsePayload, type SseMeta } from './sseDispatch'
-import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId } from './processingSteps'
+import { mergeHitlIntoRunningToolStep, applyHitlDecision as applyHitlDecisionToSteps, relocateAgentNodeHitl } from './hitlSteps'
+import { applyRecoveryDecision as applyRecoveryDecisionToSteps } from './recoverySteps'
+import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, pauseRunningWorkflowNodes } from './processingSteps'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
 
@@ -128,7 +137,7 @@ export function useChatSessions(
     options: { resume?: boolean; onMeta?: (meta: SseMeta) => void } = {},
   ): Promise<void> {
     const reader = response.body?.getReader()
-    if (!reader) throw new Error('No reader')
+    if (!reader) throw new ApiError('服务响应异常，请稍后重试', { kind: 'parse' })
 
     const decoder = new TextDecoder()
     let buf = ''
@@ -192,8 +201,24 @@ export function useChatSessions(
           }
           if (parsed.meta.type === 'message' && parsed.meta.status === 'failed') {
             const last = s.messages[s.messages.length - 1]
-            if (last?.role === 'assistant') last.status = 'failed'
+            if (last?.role === 'assistant') {
+              last.status = 'failed'
+              hydrateStreamError(last)
+              if (!last.streamError) {
+                last.streamError = '可点击下方继续生成重试'
+              }
+            }
           }
+          continue
+        }
+
+        if (parsed.kind === 'error') {
+          if (eventSeq !== null) updateLastSeq(eventSeq)
+          const lastMsg = s.messages[s.messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            applyStreamErrorFromText(lastMsg, parsed.text)
+          }
+          onProgress?.(s.id)
           continue
         }
 
@@ -257,6 +282,19 @@ export function useChatSessions(
           continue
         }
 
+        if (parsed.kind === 'confirmation') {
+          if (eventSeq !== null) updateLastSeq(eventSeq)
+          const lastMsg = s.messages[s.messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            lastMsg.steps = mergeHitlIntoRunningToolStep(
+              lastMsg.steps ?? [],
+              parsed.confirmation,
+            ).map(s => (s.id.startsWith('node-') ? relocateAgentNodeHitl(s) : s))
+          }
+          onProgress?.(s.id)
+          continue
+        }
+
         if (eventSeq !== null) updateLastSeq(eventSeq)
 
         const lastMsg = s.messages[s.messages.length - 1]
@@ -314,7 +352,7 @@ export function useChatSessions(
         signal: s.abort.signal,
       })
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      if (!response.ok) await throwIfHttpError(response)
 
       await consumeSseStream(s, response, thisRequestId, {
         onMeta: (meta) => {
@@ -328,17 +366,14 @@ export function useChatSessions(
       if (isAbortError(err) || isPageUnloading()) {
         return
       }
-      const last = s.messages[s.messages.length - 1]
-      if (last?.role === 'assistant' && last.status === 'streaming') {
-        last.status = 'interrupted'
-      }
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
         const last = s.messages[s.messages.length - 1]
         const aborted = s.abort?.signal.aborted ?? false
         if (last?.role === 'assistant' && last.status === 'streaming' && !aborted) {
-          last.status = 'completed'
+          hydrateStreamError(last)
+          last.status = last.streamError ? 'failed' : 'completed'
         }
         if (last?.role === 'assistant' && last.status === 'completed') {
           clearActiveGeneration()
@@ -356,6 +391,14 @@ export function useChatSessions(
     const target = s.messages.find(m => m.id === resumeMessageId)
     if (!target || target.role !== 'assistant') return
 
+    const planWorkflowResume = target.steps?.some(
+      step => step.id.startsWith('node-') && (step.lifecycle === 'paused' || step.status === 'paused'),
+    )
+    if (planWorkflowResume) {
+      target.content = ''
+      target.reasoning = ''
+    }
+
     s.loading = true
     target.status = 'streaming'
     s.abort = new AbortController()
@@ -370,16 +413,21 @@ export function useChatSessions(
         signal: s.abort.signal,
       })
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      if (!response.ok) await throwIfHttpError(response)
 
       await consumeSseStream(s, response, thisRequestId, { resume: true })
     } catch (err: unknown) {
       applyStreamError(s.messages, err)
-      if (target.status === 'streaming') target.status = 'interrupted'
+      if (!isAbortError(err) && !isPageUnloading() && target.status === 'streaming') {
+        target.status = target.streamError ? 'failed' : 'interrupted'
+      }
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
-        if (target.status === 'streaming') target.status = 'completed'
+        if (target.status === 'streaming') {
+          hydrateStreamError(target)
+          target.status = target.streamError ? 'failed' : 'interrupted'
+        }
         if (target.status === 'completed') clearActiveGeneration()
         onSessionEnd?.(conversationId)
       }
@@ -425,7 +473,7 @@ export function useChatSessions(
         return
       }
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      if (!response.ok) await throwIfHttpError(response)
 
       await consumeSseStream(s, response, thisRequestId, { resume: true })
     } catch (err: unknown) {
@@ -434,7 +482,9 @@ export function useChatSessions(
         return
       }
       applyStreamError(s.messages, err)
-      if (target.status === 'streaming') target.status = 'interrupted'
+      if (target.status === 'streaming') {
+        target.status = target.streamError ? 'failed' : 'interrupted'
+      }
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
@@ -445,25 +495,33 @@ export function useChatSessions(
     }
   }
 
-  function stop(): void {
+  async function stop(): Promise<void> {
     const s = activeSession.value
     if (!s) return
 
     const active = loadActiveGeneration()
     if (active?.generationId) {
-      fetch(`${API_BASE}/api/generations/${active.generationId}/cancel`, {
-        method: 'POST',
-        headers: apiHeaders(),
-      }).catch(() => { /* fire and forget */ })
+      try {
+        await fetch(`${API_BASE}/api/generations/${active.generationId}/cancel`, {
+          method: 'POST',
+          headers: apiHeaders(),
+        })
+      } catch { /* fire and forget */ }
     }
 
     s.requestId++
+    const last = s.messages[s.messages.length - 1]
+    if (last?.role === 'assistant') {
+      if (last.steps?.length) {
+        last.steps = pauseRunningWorkflowNodes(last.steps)
+      }
+      if (last.status === 'streaming' || !last.status) {
+        last.status = 'interrupted'
+      }
+    }
     s.abort?.abort()
     s.loading = false
-    const last = s.messages[s.messages.length - 1]
-    if (last?.role === 'assistant' && (last.status === 'streaming' || !last.status)) {
-      last.status = 'interrupted'
-    }
+    onProgress?.(s.id)
   }
 
   function clearSession(): void {
@@ -504,10 +562,40 @@ export function useChatSessions(
     if (activeId.value === id) activeId.value = null
   }
 
+  function applyHitlDecision(token: string, approved: boolean): void {
+    const s = activeSession.value
+    if (!s) return
+    for (let i = s.messages.length - 1; i >= 0; i--) {
+      const msg = s.messages[i]
+      if (msg.role !== 'assistant' || !msg.steps?.length) continue
+      const next = applyHitlDecisionToSteps(msg.steps, token, approved)
+      if (next !== msg.steps) {
+        msg.steps = next
+        onProgress?.(s.id)
+        return
+      }
+    }
+  }
+
+  function applyRecoveryDecision(token: string, action: 'retry' | 'terminate' | 'skip'): void {
+    const s = activeSession.value
+    if (!s) return
+    for (let i = s.messages.length - 1; i >= 0; i--) {
+      const msg = s.messages[i]
+      if (msg.role !== 'assistant' || !msg.steps?.length) continue
+      const next = applyRecoveryDecisionToSteps(msg.steps, token, action)
+      if (next !== msg.steps) {
+        msg.steps = next
+        onProgress?.(s.id)
+        return
+      }
+    }
+  }
+
   return {
     messages, loading, activeContainer,
     switchTo, ensureActive, send, resume, reconnectStream, stop, clearSession,
     getMessages, setMessages, destroySession, migrateSession,
-    mountContainer, unmountContainer, getOrCreate,
+    mountContainer, unmountContainer, getOrCreate, applyHitlDecision, applyRecoveryDecision,
   }
 }

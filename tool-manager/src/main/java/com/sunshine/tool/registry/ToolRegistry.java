@@ -1,6 +1,8 @@
 package com.sunshine.tool.registry;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.tool.dto.ToolCatalogEntry;
+import com.sunshine.tool.exception.ToolErrorCode;
 import com.sunshine.tool.tool.ToolHandler;
 import org.springframework.stereotype.Component;
 
@@ -25,7 +27,7 @@ public class ToolRegistry {
     public String invoke(String name, Map<String, String> params) {
         ToolHandler handler = handlers.get(name);
         if (handler == null) {
-            throw new IllegalArgumentException("unknown tool: " + name);
+            throw new BizException(ToolErrorCode.UNKNOWN_TOOL);
         }
         return handler.invoke(params);
     }
@@ -40,7 +42,8 @@ public class ToolRegistry {
                         h.kind(),
                         h.timelinePhase(),
                         h.outputSummaryKind(),
-                        h.parametersSchema()))
+                        h.parametersSchema(),
+                        h.sideEffect()))
                 .sorted((a, b) -> a.id().compareTo(b.id()))
                 .toList();
     }

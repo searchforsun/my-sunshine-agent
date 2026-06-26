@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.execution.handler;
 
 
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
@@ -156,6 +157,8 @@ public class AgentNodeHandler implements StreamingNodeHandler {
 
         agentCollector.bindAuditContext(spec, streamCtx, request);
 
+        StepEventBridge.bindTokenWrapper(request.resolveBridgeId(), agentCollector::ingest);
+
         return agentRuntime.run(request)
 
                 .concatMap(token -> Flux.fromIterable(agentCollector.ingest(token)))
@@ -241,23 +244,15 @@ public class AgentNodeHandler implements StreamingNodeHandler {
         int maxIters = parseMaxIters(params.get("maxIters"));
 
         return AgentRunRequest.sub(
-
                 MemoryContext.forSubAgent(),
-
                 query,
-
                 injected,
-
                 streamCtx.userId(),
-
                 streamCtx.tenantId(),
-
+                streamCtx.assistantMsgId(),
                 skillId,
-
                 tools,
-
                 blankToNull(params.get("systemOverlay")),
-
                 maxIters);
 
     }

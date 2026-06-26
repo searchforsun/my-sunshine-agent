@@ -1,5 +1,8 @@
 package com.sunshine.rag.controller;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.result.R;
+import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.service.RetrievalService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,23 +29,25 @@ public class RetrievalController {
     private final RetrievalService retrievalService;
 
     @PostMapping("/search")
-    public Mono<Map<String, Object>> search(
+    public Mono<R<Map<String, Object>>> search(
             @RequestBody Map<String, Object> body,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         String query = (String) body.get("query");
+        if (query == null || query.isBlank()) {
+            throw new BizException(RagErrorCode.QUERY_EMPTY);
+        }
         int topK = body.containsKey("topK")
                 ? ((Number) body.get("topK")).intValue()
                 : 5;
         String tid = resolveTenantId(body.get("tenantId"), tenantId);
 
         return retrievalService.search(query, topK, (String) body.get("strategy"), tid)
-                .map(fragments -> Map.of(
-                        "code", 200,
+                .map(fragments -> R.ok(Map.of(
                         "query", query,
                         "results", (Object) fragments.stream()
                                 .map(RetrievalController::toResultMap)
                                 .toList()
-                ));
+                )));
     }
 
     private static Map<String, Object> toResultMap(RetrievalService.DocFragment fragment) {

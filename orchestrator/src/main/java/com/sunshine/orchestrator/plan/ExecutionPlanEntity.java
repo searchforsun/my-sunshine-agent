@@ -56,6 +56,9 @@ public class ExecutionPlanEntity {
     @Column(name = "execution_trace", columnDefinition = "MEDIUMTEXT")
     private String executionTrace;
 
+    @Column(name = "pause_checkpoint", columnDefinition = "MEDIUMTEXT")
+    private String pauseCheckpoint;
+
     @Column(name = "trace_id", length = 64)
     private String traceId;
 

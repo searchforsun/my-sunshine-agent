@@ -7,8 +7,9 @@ import {
   type PlanNodeTrace,
 } from '../api/executionPlans'
 import { resolveStepDurationMs, stepLifecycle, type ProcessingStep } from '../api/processingSteps'
+import { isRecoveryAwaiting, isRecoverySkipped, isRecoveryTerminated, stepHasHitlAwaiting } from '../api/recoverySteps'
 
-export type DagNodeStatus = 'pending' | 'running' | 'done' | 'error'
+export type DagNodeStatus = 'pending' | 'running' | 'done' | 'error' | 'awaiting_confirm' | 'paused' | 'terminated' | 'skipped'
 
 export interface DagNodeView {
   id: string
@@ -22,6 +23,8 @@ export interface DagNodeView {
   detail?: string
   skillId?: string
   skillLabel?: string
+  /** 失败且等待用户重试/终止 */
+  recoveryAwaiting?: boolean
 }
 
 function isDagNode(node: PlanGraphNode): boolean {
@@ -114,10 +117,16 @@ function mapTraceStatus(status: string): DagNodeStatus {
 
 function mapStepStatus(step?: ProcessingStep): DagNodeStatus {
   if (!step) return 'pending'
+  if (stepHasHitlAwaiting(step)) return 'awaiting_confirm'
+  if (isRecoveryTerminated(step)) return 'terminated'
+  if (isRecoverySkipped(step)) return 'skipped'
   const lc = stepLifecycle(step)
+  if (lc === 'paused') return 'paused'
+  if (lc === 'terminated') return 'terminated'
   if (lc === 'running') return 'running'
   if (lc === 'error') return 'error'
-  if (lc === 'done' || lc === 'skipped') return 'done'
+  if (lc === 'done') return 'done'
+  if (lc === 'skipped') return 'skipped'
   return 'pending'
 }
 
@@ -134,6 +143,18 @@ function resolveSkillLabel(skillId: string | undefined, catalog: SkillCatalogInd
   const id = skillId.trim()
   const hit = catalog.find(s => s.id === id)
   return hit?.displayName?.trim() || id
+}
+
+function resolveNodeAttempts(
+  step?: ProcessingStep,
+  trace?: PlanNodeTrace,
+): PlanNodeAttempt[] | undefined {
+  const fromTrace = trace?.attempts
+  const fromStep = step?.metadata?.nodeAttempts
+  if (fromTrace?.length && fromStep?.length) {
+    return fromTrace.length >= fromStep.length ? fromTrace : fromStep
+  }
+  return fromTrace?.length ? fromTrace : fromStep
 }
 
 export function buildDagNodes(
@@ -166,7 +187,7 @@ export function buildDagNodes(
         id: 'start',
         type: 'start',
         label: '开始',
-        status: status === 'pending' ? 'pending' : 'done',
+        status: (status === 'pending' ? 'pending' : 'done') as DagNodeStatus,
         durationMs,
       }
     }
@@ -175,24 +196,27 @@ export function buildDagNodes(
     const step = stepByNodeId.get(node.id)
     const trace = traceByNodeId.get(node.id)
     const status = step ? mapStepStatus(step) : mapTraceStatus(trace?.status ?? 'pending')
+    const recoveryAwaiting = isRecoveryAwaiting(step)
     const durationMs = step
       ? resolveStepDurationMs(step)
       : (trace?.startedAt != null && trace?.endedAt != null
         ? trace.endedAt - trace.startedAt
         : undefined)
     const skillId = node.type === 'agent' ? node.params?.skill?.trim() : undefined
+    const attempts = resolveNodeAttempts(step, trace)
     return {
       id: node.id,
       type: node.type,
       label: nodeLabel(node),
       status,
       durationMs,
-      attemptCount: trace?.attemptCount,
-      attempts: trace?.attempts,
+      attemptCount: trace?.attemptCount ?? attempts?.length,
+      attempts,
       summary: (stepSummary(step) ?? trace?.summary?.trim()) || undefined,
       detail: step?.detail?.trim() || step?.result?.trim() || trace?.detail?.trim() || undefined,
       skillId,
       skillLabel: resolveSkillLabel(skillId, skillCatalog),
+      recoveryAwaiting: recoveryAwaiting ? true : undefined,
     }
   }).filter((n): n is DagNodeView => !!n)
 }

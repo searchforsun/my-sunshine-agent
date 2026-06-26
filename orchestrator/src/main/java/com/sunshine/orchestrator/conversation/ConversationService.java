@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.conversation;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.audit.AuditService;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
@@ -52,9 +54,9 @@ public class ConversationService {
     @Transactional(readOnly = true)
     public ChatConversationEntity getOwned(String id, String userId, String tenantId) {
         ChatConversationEntity conv = conversationRepo.findById(id)
-                .orElseThrow(() -> new ConversationNotFoundException("会话不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.CONVERSATION_NOT_FOUND));
         if (!belongsTo(conv, userId, tenantId)) {
-            throw new ConversationNotFoundException("会话不存在");
+            throw new BizException(OrchestratorErrorCode.CONVERSATION_NOT_FOUND);
         }
         return conv;
     }
@@ -140,7 +142,7 @@ public class ConversationService {
     @Transactional
     public ChatMessageEntity updateMessageContentIfStreaming(String messageId, String content) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         if (!MessageStatus.STREAMING.equals(msg.getStatus())) {
             return msg;
         }
@@ -156,7 +158,7 @@ public class ConversationService {
     public ChatMessageEntity updateMessage(
             String messageId, String content, String reasoning, String status, String stepsJson) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setContent(content != null ? content : "");
         if (reasoning != null) {
             msg.setReasoning(reasoning);
@@ -175,7 +177,7 @@ public class ConversationService {
     @Transactional
     public ChatMessageEntity updateMessageIntent(String messageId, String intent) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setIntent(intent);
         msg.setUpdatedAt(Instant.now());
         return messageRepo.save(msg);
@@ -186,7 +188,7 @@ public class ConversationService {
     public ChatMessageEntity updateMessageExecutionPlan(String messageId,
             com.sunshine.orchestrator.routing.ExecutionPlan plan) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setIntent(plan.intentLabel());
         msg.setExecutionMode(plan.mode().name().toLowerCase().replace('_', '-'));
         msg.setWorkflowId(plan.workflowId());
@@ -198,7 +200,7 @@ public class ConversationService {
     @Transactional
     public ChatMessageEntity linkMessageExecutionPlan(String messageId, String executionPlanId) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setExecutionPlanId(executionPlanId);
         msg.setUpdatedAt(Instant.now());
         return messageRepo.save(msg);
@@ -207,7 +209,7 @@ public class ConversationService {
     @Transactional
     public ChatMessageEntity incrementResumeCount(String messageId) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setResumeCount(msg.getResumeCount() + 1);
         msg.setUpdatedAt(Instant.now());
         return messageRepo.save(msg);
@@ -216,7 +218,7 @@ public class ConversationService {
     @Transactional(readOnly = true)
     public ChatMessageEntity getMessageOwned(String messageId, String userId, String tenantId) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         getOwned(msg.getConversationId(), userId, tenantId);
         return msg;
     }
@@ -258,7 +260,7 @@ public class ConversationService {
     @Transactional
     public ChatMessageEntity markOrphanStreamingAsInterrupted(String messageId) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new ConversationNotFoundException("消息不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         if (!MessageStatus.STREAMING.equals(msg.getStatus())) {
             return msg;
         }
@@ -276,7 +278,7 @@ public class ConversationService {
         getOwned(msg.getConversationId(), userId, tenantId);
 
         if (!"assistant".equals(msg.getRole())) {
-            throw new ResumeNotAllowedException("只能续传 assistant 消息");
+            throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
         markOrphanStreamingAsInterrupted(msg.getId());
@@ -284,15 +286,15 @@ public class ConversationService {
 
         String status = assistant.getStatus();
         if (MessageStatus.STREAMING.equals(status)) {
-            throw new ResumeNotAllowedException("该消息仍在生成中");
+            throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
         if (!MessageStatus.isResumable(status)) {
-            throw new ResumeNotAllowedException("该消息不可续传");
+            throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
         ChatMessageEntity lastAssistant = findLastAssistantMessage(assistant.getConversationId());
         if (lastAssistant == null || !lastAssistant.getId().equals(assistant.getId())) {
-            throw new ResumeNotAllowedException("只能续传最后一条 assistant 消息");
+            throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
         if (messageRepo.countByConversationIdAndSeqGreaterThan(
@@ -303,12 +305,12 @@ public class ConversationService {
                     .toList();
             boolean hasNewUser = after.stream().anyMatch(m -> "user".equals(m.getRole()));
             if (hasNewUser) {
-                throw new ResumeNotAllowedException("已有新消息，无法续传");
+                throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
             }
         }
 
         if (assistant.getResumeCount() >= maxResumeAttempts) {
-            throw new ResumeNotAllowedException("续传次数已达上限");
+            throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
     }
 
@@ -318,7 +320,7 @@ public class ConversationService {
 
     private void getOwnedInternal(String convId) {
         conversationRepo.findById(convId)
-                .orElseThrow(() -> new ConversationNotFoundException("会话不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.CONVERSATION_NOT_FOUND));
     }
 
     private void touchConversation(String convId) {

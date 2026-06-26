@@ -1,38 +1,39 @@
-package com.sunshine.common.web;
-
-import com.sunshine.common.core.exception.BizException;
-import com.sunshine.common.core.result.R;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.server.ResponseStatusException;
-
-/**
- * 全局异常处理
- */
-@Slf4j
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-
-    @ExceptionHandler(BizException.class)
-    public R<?> handleBizException(BizException e) {
-        log.warn("业务异常: code={}, msg={}", e.getCode(), e.getMessage());
-        return R.fail(e.getCode(), e.getMessage());
-    }
-
-    @ExceptionHandler(ResponseStatusException.class)
-    public R<?> handleResponseStatusException(ResponseStatusException e) {
-        HttpStatus status = HttpStatus.resolve(e.getStatusCode().value());
-        int code = status != null ? status.value() : 400;
-        String msg = e.getReason() != null ? e.getReason() : "请求失败";
-        log.warn("HTTP异常: status={}, msg={}", code, msg);
-        return R.fail(code, msg);
-    }
-
-    @ExceptionHandler(Exception.class)
-    public R<?> handleException(Exception e) {
-        log.error("系统异常", e);
-        return R.fail("系统繁忙，请稍后重试");
-    }
-}
+package com.sunshine.common.web;
+
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.exception.CommonErrorCode;
+import com.sunshine.common.core.exception.ErrorCode;
+import com.sunshine.common.core.result.R;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/** 全局异常 — HTTP 状态与 ErrorCode.code 对齐，body 统一 {@link R#fail(ErrorCode)} */
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BizException.class)
+    public ResponseEntity<R<?>> handleBizException(BizException e) {
+        log.warn("业务异常: key={}, msg={}", e.getErrorCode().getKey(), e.getErrorCode().getMessage());
+        return failResponse(e.getErrorCode());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<R<?>> handleValidation(MethodArgumentNotValidException e) {
+        log.warn("参数校验失败: {}", e.getMessage());
+        return failResponse(CommonErrorCode.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<R<?>> handleException(Exception e) {
+        log.error("系统异常", e);
+        return failResponse(CommonErrorCode.INTERNAL_ERROR);
+    }
+
+    private static ResponseEntity<R<?>> failResponse(ErrorCode errorCode) {
+        return ResponseEntity.status(ErrorCodeHttpStatus.of(errorCode)).body(R.fail(errorCode));
+    }
+}

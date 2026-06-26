@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
 import com.sunshine.orchestrator.plan.PlanMaterializer;
 import com.sunshine.orchestrator.plan.PlanValidator;
 import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
+import com.sunshine.orchestrator.plan.PlanJsonParser;
 import com.sunshine.orchestrator.plan.PlanRunFinalizer;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
 import com.sunshine.orchestrator.routing.ExecutionMode;
@@ -52,6 +53,8 @@ class PlanWorkflowExecutorTest {
     private PlanExecutionAuditService planExecutionAuditService;
     private AgentExecutionProperties executionProperties;
     private PlanRunFinalizer realFinalizer;
+    @Mock
+    private PlanJsonParser planJsonParser;
     @InjectMocks
     private PlanWorkflowExecutor planWorkflowExecutor;
 
@@ -64,7 +67,7 @@ class PlanWorkflowExecutorTest {
         planWorkflowExecutor = new PlanWorkflowExecutor(
                 workflowPlanner, planValidator, displayNameEnricher, planMaterializer,
                 workflowExecutor, reactExecutor, executionPlanStore, executionProperties,
-                planExecutionAuditService, realFinalizer);
+                planExecutionAuditService, realFinalizer, planJsonParser);
     }
 
     @Test

@@ -41,19 +41,23 @@ class AgentInfraTest {
                 List.of("search_knowledge", "list_finance_messages", "list_oa_tasks"));
 
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", Map.of());
+                "list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", Map.of(), "read");
         ToolCatalogEntry oaEntry = new ToolCatalogEntry(
-                "list_oa_tasks", "查询 OA 待办", "desc", "remote", "tool", "oa-tasks", Map.of());
+                "list_oa_tasks", "查询 OA 待办", "desc", "remote", "tool", "oa-tasks", Map.of(), "read");
         ToolManagerClient toolManagerClient = Mockito.mock(ToolManagerClient.class);
         ToolAuditService toolAuditService = Mockito.mock(ToolAuditService.class);
+        com.sunshine.orchestrator.hitl.HitlConfirmationService hitlService =
+                Mockito.mock(com.sunshine.orchestrator.hitl.HitlConfirmationService.class);
 
         when(toolCatalogService.isRagTool("search_knowledge")).thenReturn(true);
         when(toolCatalogService.isRagTool("list_finance_messages")).thenReturn(false);
         when(toolCatalogService.isRagTool("list_oa_tasks")).thenReturn(false);
         when(remoteToolFactory.create("list_finance_messages"))
-                .thenReturn(Optional.of(new CatalogRemoteAgentTool(financeEntry, toolManagerClient, toolAuditService)));
+                .thenReturn(Optional.of(new CatalogRemoteAgentTool(
+                        financeEntry, toolManagerClient, toolAuditService, hitlService)));
         when(remoteToolFactory.create("list_oa_tasks"))
-                .thenReturn(Optional.of(new CatalogRemoteAgentTool(oaEntry, toolManagerClient, toolAuditService)));
+                .thenReturn(Optional.of(new CatalogRemoteAgentTool(
+                        oaEntry, toolManagerClient, toolAuditService, hitlService)));
 
         DynamicToolkitFactory factory = new DynamicToolkitFactory(
                 ragTool,

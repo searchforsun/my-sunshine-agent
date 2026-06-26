@@ -18,6 +18,7 @@ import {
   type SkillVersion,
   type SkillVersionDiffResponse,
 } from '../api/skills'
+import { friendlyErrorMessage } from '../api/apiError'
 import { buildFileTree, collectDirKeys, type FileEntryLike } from '../utils/buildFileTree'
 import { formatSkillVersionTime } from '../utils/formatSkillVersionTime'
 import {
@@ -124,7 +125,7 @@ async function loadDiff() {
       selectedPath.value,
     )
   } catch (e) {
-    message.error(e instanceof Error ? e.message : '加载 diff 失败')
+    message.error(friendlyErrorMessage(e, '加载 diff 失败'))
     diffData.value = null
   } finally {
     diffLoading.value = false

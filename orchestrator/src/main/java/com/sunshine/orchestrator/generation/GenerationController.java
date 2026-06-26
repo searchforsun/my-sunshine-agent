@@ -1,8 +1,9 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
-import com.sunshine.orchestrator.conversation.ConversationNotFoundException;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -38,7 +39,7 @@ public class GenerationController {
         return ReactiveBlocking.call(() -> {
             streamService.assertOwned(id, userId, tenantId);
             GenerationMeta meta = streamService.getMeta(id)
-                    .orElseThrow(() -> new ConversationNotFoundException("generation不存在"));
+                    .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
             return GenerationStatusResponse.from(meta);
         });
     }
@@ -68,9 +69,9 @@ public class GenerationController {
         return ReactiveBlocking.call(() -> {
             streamService.assertOwned(generationId, userId, tenantId);
             GenerationMeta meta = streamService.getMeta(generationId)
-                    .orElseThrow(() -> new ConversationNotFoundException("generation不存在"));
+                    .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
             if (meta.status() == GenerationStatus.INTERRUPTED || meta.status() == GenerationStatus.FAILED) {
-                throw new GenerationGoneException("generation 已停止");
+                throw new BizException(OrchestratorErrorCode.GENERATION_STOPPED);
             }
             return meta;
         }).flatMapMany(meta -> buildReconnectFlux(meta, generationId, afterSeq));

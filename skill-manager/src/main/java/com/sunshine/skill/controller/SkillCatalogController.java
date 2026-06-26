@@ -1,6 +1,8 @@
 package com.sunshine.skill.controller;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.result.R;
+import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.dto.SkillCatalogEntry;
 import com.sunshine.skill.dto.SkillCatalogIndexEntry;
 import com.sunshine.skill.service.SkillAdminService;
@@ -9,11 +11,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
-
-import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 /** Runtime Catalog — 摘要与详情分离（动态披露） */
 @RestController
@@ -38,6 +37,6 @@ public class SkillCatalogController {
     public R<SkillCatalogEntry> catalogDetail(@PathVariable String id) {
         return skillAdminService.findCatalogEntry(id)
                 .map(R::ok)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "skill 不存在或未启用: " + id));
+                .orElseThrow(() -> new BizException(SkillErrorCode.SKILL_NOT_ENABLED));
     }
 }

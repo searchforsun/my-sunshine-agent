@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.generation;
 
-import com.sunshine.orchestrator.conversation.ConversationNotFoundException;
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.MapRecord;
@@ -103,9 +104,9 @@ public class GenerationStreamService {
 
     public void assertOwned(String generationId, String userId, String tenantId) {
         GenerationMeta meta = getMeta(generationId)
-                .orElseThrow(() -> new ConversationNotFoundException("generation不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
         if (!meta.userId().equals(userId) || !meta.tenantId().equals(normalizeTenant(tenantId))) {
-            throw new ConversationNotFoundException("generation不存在");
+            throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
         }
     }
 

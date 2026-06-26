@@ -1,12 +1,14 @@
 package com.sunshine.orchestrator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.conversation.ConversationService;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
@@ -191,7 +193,9 @@ class ConversationIntegrationTest {
         String convId = createConversation(ALICE);
 
         assertThatThrownBy(() -> conversationService.getOwned(convId, BOB, TENANT))
-                .isInstanceOf(com.sunshine.orchestrator.conversation.ConversationNotFoundException.class);
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(OrchestratorErrorCode.CONVERSATION_NOT_FOUND);
 
         webTestClient.get()
                 .uri("/conversations/{id}", convId)

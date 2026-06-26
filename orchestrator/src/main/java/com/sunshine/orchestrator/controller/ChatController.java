@@ -1,7 +1,11 @@
 package com.sunshine.orchestrator.controller;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.execution.ExecutionDispatcher;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.execution.PlanWorkflowExecutor;
+import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPreference;
@@ -9,6 +13,7 @@ import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.ExecutionPlanRouter;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
+import com.sunshine.orchestrator.util.StreamErrorMessages;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.agent.StepEventBridge;
@@ -33,7 +38,11 @@ import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.generation.GenerationStatus;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
 import com.sunshine.orchestrator.generation.StreamEvent;
+import com.sunshine.orchestrator.hitl.HitlConfirmationService;
+import com.sunshine.orchestrator.hitl.WorkflowNodeRecoveryService;
 import com.sunshine.orchestrator.model.ChatMessage;
+import com.sunshine.orchestrator.model.ConfirmToolRequest;
+import com.sunshine.orchestrator.model.ConfirmWorkflowNodeRecoveryRequest;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
@@ -42,7 +51,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.StringUtils;
@@ -50,7 +58,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -73,6 +80,8 @@ public class ChatController {
     private final ExecutionPlanRouter executionPlanRouter;
     private final SkillBindingParser skillBindingParser;
     private final ExecutionDispatcher executionDispatcher;
+    private final PlanWorkflowExecutor planWorkflowExecutor;
+    private final ExecutionPlanStore executionPlanStore;
     private final ExecutionPlanParser executionPlanParser;
     private final com.sunshine.orchestrator.execution.SimpleLlmExecutor simpleLlmExecutor;
     private final ConversationService conversationService;
@@ -90,6 +99,12 @@ public class ChatController {
 
     @Autowired(required = false)
     private GenerationStreamService streamService;
+
+    @Autowired(required = false)
+    private HitlConfirmationService hitlConfirmationService;
+
+    @Autowired(required = false)
+    private WorkflowNodeRecoveryService workflowNodeRecoveryService;
 
     @Value("${agent.history.max-messages:20}")
     private int maxHistoryMessages;
@@ -118,12 +133,42 @@ public class ChatController {
         return handleNewMessage(msg, userId, tenantId);
     }
 
+    @PostMapping("/chat/confirm-tool")
+    public Mono<Map<String, Object>> confirmTool(@RequestBody ConfirmToolRequest request) {
+        if (hitlConfirmationService == null) {
+            return Mono.error(new BizException(OrchestratorErrorCode.HITL_DISABLED));
+        }
+        if (request == null || !StringUtils.hasText(request.token())) {
+            return Mono.error(new BizException(OrchestratorErrorCode.CONFIRM_TOKEN_REQUIRED));
+        }
+        return Mono.fromCallable(() -> {
+                    boolean ok = hitlConfirmationService.confirm(request.token(), request.approved());
+                    return Map.<String, Object>of("accepted", ok);
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @PostMapping("/chat/workflow-node-recovery")
+    public Mono<Map<String, Object>> confirmWorkflowNodeRecovery(
+            @RequestBody ConfirmWorkflowNodeRecoveryRequest request) {
+        if (workflowNodeRecoveryService == null) {
+            return Mono.error(new BizException(OrchestratorErrorCode.HITL_DISABLED));
+        }
+        if (request == null || !StringUtils.hasText(request.token()) || !StringUtils.hasText(request.action())) {
+            return Mono.error(new BizException(OrchestratorErrorCode.CONFIRM_TOKEN_REQUIRED));
+        }
+        return Mono.fromCallable(() -> {
+                    boolean ok = workflowNodeRecoveryService.confirm(request.token(), request.action());
+                    return Map.<String, Object>of("accepted", ok);
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
     private void validateRequest(ChatMessage msg) {
         boolean hasContent = StringUtils.hasText(msg.getContent());
         boolean hasResume = StringUtils.hasText(msg.getResumeMessageId());
         if (hasContent == hasResume) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "content 与 resumeMessageId 必须二选一");
+            throw new BizException(OrchestratorErrorCode.INVALID_CHAT_REQUEST);
         }
     }
 
@@ -143,12 +188,20 @@ public class ChatController {
 
     private Flux<ServerSentEvent<String>> handleNewMessageWithRedis(
             StreamContext ctx, AtomicReference<ExecutionMode> executionMode, Flux<StreamToken> chunkFlux) {
+        return startRedisGeneration(ctx, executionMode, chunkFlux, false);
+    }
+
+    private Flux<ServerSentEvent<String>> startRedisGeneration(
+            StreamContext ctx,
+            AtomicReference<ExecutionMode> executionMode,
+            Flux<StreamToken> chunkFlux,
+            boolean resume) {
         QueryRewriteTrace.bind(ctx.assistantMsgId());
         String generationId = streamService.createGeneration(
                 ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), ctx.intent());
 
         if (!registry.tryLockMessage(ctx.assistantMsgId(), generationId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "message 已在生成中");
+            throw new BizException(OrchestratorErrorCode.GENERATION_IN_PROGRESS);
         }
 
         GenerationJob job = jobFactory.create(
@@ -156,12 +209,22 @@ public class ChatController {
                 ctx.userId(), ctx.tenantId(), ctx.intent(), ctx.userContent());
         registry.register(job);
 
-        StringBuilder buffer = new StringBuilder();
+        boolean planWorkflowResume = resume
+                && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
+        // Plan 续跑仅重跑 checkpoint 之后节点，正文由 answer 重发，不拼接暂停前 partial
+        String initialContent = resume && !planWorkflowResume ? ctx.existingContent() : "";
+        StringBuilder buffer = new StringBuilder(initialContent != null ? initialContent : "");
+        java.util.List<ProcessingStep> initialSteps = resume
+                ? new java.util.ArrayList<>(ProcessingStepMerger.fromJson(ctx.existingStepsJson()))
+                : java.util.List.of();
+        String initialReasoning = resume ? ctx.existingReasoning() : "";
         Consumer<String> flushPartial = content ->
                 flushScheduler.flushPartial(ctx.assistantMsgId(), content);
         Runnable onComplete = () -> Mono.fromRunnable(() -> {
                     QueryRewriteTrace.clear(ctx.assistantMsgId());
-                    maybeUpdateTitle(ctx);
+                    if (!resume) {
+                        maybeUpdateTitle(ctx);
+                    }
                     registry.remove(generationId);
                 })
                 .subscribeOn(Schedulers.boundedElastic())
@@ -171,20 +234,21 @@ public class ChatController {
             Mono.fromRunnable(() -> registry.remove(generationId))
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe();
-            log.error("[Orchestrator] generation 异常 genId={}", generationId, error);
+            log.error("[Orchestrator] generation 异常 genId={} resume={}", generationId, resume, error);
         };
 
-        job.start(prepareChunkFlux(chunkFlux), buffer, flushPartial, onComplete, onError, executionMode);
+        job.start(prepareChunkFlux(chunkFlux), buffer, initialReasoning, initialSteps,
+                flushPartial, onComplete, onError, executionMode);
 
-        return sseFluxFromRedis(ctx, generationId, job);
+        return sseFluxFromRedis(ctx, generationId, job, resume);
     }
 
     private Flux<ServerSentEvent<String>> sseFluxFromRedis(
-            StreamContext ctx, String generationId, GenerationJob job) {
+            StreamContext ctx, String generationId, GenerationJob job, boolean resume) {
 
         Flux<ServerSentEvent<String>> meta = Flux.just(
                 sse(flushScheduler.metaConversation(ctx.conversationId())),
-                sse(flushScheduler.metaMessage(ctx.assistantMsgId(), MessageStatus.STREAMING, false)),
+                sse(flushScheduler.metaMessage(ctx.assistantMsgId(), MessageStatus.STREAMING, resume)),
                 sse(flushScheduler.metaGeneration(generationId, ctx.assistantMsgId()))
         );
 
@@ -245,15 +309,32 @@ public class ChatController {
         return ReactiveBlocking.call(() -> prepareResume(msg, userId, tenantId))
                 .flatMapMany(ctx -> {
                     AtomicReference<ExecutionMode> executionMode = initialExecutionMode(ctx);
-                    return wrapStream(ctx, resolveChunkFlux(ctx, executionMode), true, executionMode);
+                    Flux<StreamToken> chunkFlux = resolveChunkFlux(ctx, executionMode);
+                    if (jobFactory != null && streamService != null && registry != null) {
+                        return handleResumeWithRedis(ctx, executionMode, chunkFlux);
+                    }
+                    return wrapStream(ctx, chunkFlux, true, executionMode);
                 });
+    }
+
+    /** 续跑与首跑一致经 Redis GenerationJob，避免 reactor-http 线程执行 DAG */
+    private Flux<ServerSentEvent<String>> handleResumeWithRedis(
+            StreamContext ctx, AtomicReference<ExecutionMode> executionMode, Flux<StreamToken> chunkFlux) {
+        return startRedisGeneration(ctx, executionMode, chunkFlux, true);
     }
 
     private Flux<ServerSentEvent<String>> wrapStream(
             StreamContext ctx, Flux<StreamToken> chunkFlux, boolean resume,
             AtomicReference<ExecutionMode> executionMode) {
 
-        StringBuilder buffer = new StringBuilder(resume ? ctx.existingContent() : "");
+        StringBuilder buffer = new StringBuilder();
+        if (resume) {
+            boolean planWorkflowResume = executionPlanStore
+                    .findResumableForMessage(ctx.assistantMsgId()).isPresent();
+            if (!planWorkflowResume && StringUtils.hasText(ctx.existingContent())) {
+                buffer.append(ctx.existingContent());
+            }
+        }
         StringBuilder reasoningBuffer = new StringBuilder(resume ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
                 ProcessingStepMerger.fromJson(ctx.existingStepsJson()));
@@ -266,7 +347,9 @@ public class ChatController {
                 sse(flushScheduler.metaMessage(ctx.assistantMsgId(), MessageStatus.STREAMING, resume))
         );
 
+        // 续跑直连 SSE，须在 boundedElastic 执行 DAG/Agent，避免 reactor-http 线程 block()
         Flux<ServerSentEvent<String>> chunks = chunkFlux
+                .subscribeOn(Schedulers.boundedElastic())
                 .concatMap(token -> Flux.fromIterable(thinkMapper.map(token)))
                 .concatWith(Flux.defer(() -> Flux.fromIterable(thinkMapper.finish())))
                 .doOnNext(token -> {
@@ -309,21 +392,33 @@ public class ChatController {
         });
 
         return Flux.concat(meta, chunks, done)
+                .onErrorResume(e -> {
+                    String errMsg = StreamErrorMessages.resolve(e);
+                    if (buffer.length() > 0) {
+                        buffer.append("\n\n").append(errMsg);
+                    } else {
+                        buffer.append(errMsg);
+                    }
+                    Mono.fromRunnable(() ->
+                                    flushScheduler.commitFinal(
+                                            ctx.assistantMsgId(),
+                                            buffer.toString(),
+                                            reasoningBuffer.toString(),
+                                            MessageStatus.FAILED,
+                                            ProcessingStepMerger.toJson(stepsBuffer)))
+                            .subscribeOn(Schedulers.boundedElastic())
+                            .subscribe();
+                    return Flux.just(
+                            sse(flushScheduler.metaError(errMsg)),
+                            sse(flushScheduler.metaMessage(
+                                    ctx.assistantMsgId(), MessageStatus.FAILED, resume)));
+                })
                 .doOnCancel(() -> Mono.fromRunnable(() ->
                                 flushScheduler.commitFinal(
                                         ctx.assistantMsgId(),
                                         buffer.toString(),
                                         reasoningBuffer.toString(),
                                         MessageStatus.INTERRUPTED,
-                                        ProcessingStepMerger.toJson(stepsBuffer)))
-                        .subscribeOn(Schedulers.boundedElastic())
-                        .subscribe())
-                .doOnError(e -> Mono.fromRunnable(() ->
-                                flushScheduler.commitFinal(
-                                        ctx.assistantMsgId(),
-                                        buffer.toString(),
-                                        reasoningBuffer.toString(),
-                                        MessageStatus.FAILED,
                                         ProcessingStepMerger.toJson(stepsBuffer)))
                         .subscribeOn(Schedulers.boundedElastic())
                         .subscribe())
@@ -386,8 +481,11 @@ public class ChatController {
                 msg.getResumeMessageId(), userId, tenantId);
         conversationService.validateResumeAllowed(assistant, userId, tenantId);
         conversationService.incrementResumeCount(assistant.getId());
+        boolean planWorkflowResume = executionPlanStore
+                .findResumableForMessage(assistant.getId()).isPresent();
+        String resumeContent = planWorkflowResume ? "" : assistant.getContent();
         conversationService.updateMessageContent(
-                assistant.getId(), assistant.getContent(), MessageStatus.STREAMING);
+                assistant.getId(), resumeContent, MessageStatus.STREAMING);
 
         List<ChatMessageEntity> historyEntities = conversationService.loadHistoryForResume(
                 assistant.getConversationId(), assistant);
@@ -417,8 +515,8 @@ public class ChatController {
                 null,
                 userContent,
                 memory,
-                assistant.getContent(),
-                assistant.getReasoning() != null ? assistant.getReasoning() : "",
+                resumeContent,
+                planWorkflowResume ? "" : (assistant.getReasoning() != null ? assistant.getReasoning() : ""),
                 assistant.getIntent(),
                 assistant.getSteps(),
                 false,
@@ -431,6 +529,14 @@ public class ChatController {
     }
 
     private Flux<StreamToken> resolveChunkFlux(StreamContext ctx, AtomicReference<ExecutionMode> executionMode) {
+        var resumablePlan = executionPlanStore.findResumableForMessage(ctx.assistantMsgId());
+        if (resumablePlan.isPresent()) {
+            ExecutionPlan plan = new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "resume");
+            executionMode.set(ExecutionMode.PLAN_WORKFLOW);
+            ExecutionStreamContext execCtx = toExecutionContext(ctx, plan)
+                    .withPersistedPlanId(resumablePlan.get().getId());
+            return prepareChunkFlux(planWorkflowExecutor.resumePaused(execCtx, resumablePlan.get()));
+        }
         if (ctx.intent() != null) {
             ExecutionPlan plan = executionPlanParser.parseStoredIntent(ctx.intent());
             executionMode.set(plan.mode());

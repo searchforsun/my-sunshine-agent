@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.routing.policy;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.StructuralPlanMatcher;
@@ -7,10 +9,8 @@ import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import com.sunshine.orchestrator.skill.SkillBindingSource;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
 import java.util.LinkedHashMap;
@@ -39,8 +39,7 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
                 ? skillBindingParser.parse(ctx.userMessage(), ctx.clientSkillId())
                 : skillBindingParser.parse(ctx.userMessage());
         if (binding.unknown()) {
-            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "未找到 Skill「" + binding.unknownToken() + "」，请检查 /skills 列表或使用 @skillId"));
+            return Mono.error(new BizException(OrchestratorErrorCode.SKILL_NOT_FOUND));
         }
         if (!binding.bound()) {
             return Mono.just(Optional.empty());

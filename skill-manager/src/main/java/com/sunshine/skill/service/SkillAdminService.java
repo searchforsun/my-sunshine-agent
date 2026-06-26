@@ -1,10 +1,12 @@
 package com.sunshine.skill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.skill.dto.SkillCatalogEntry;
 import com.sunshine.skill.dto.SkillCatalogIndexEntry;
 import com.sunshine.skill.dto.SkillCreateRequest;
 import com.sunshine.skill.dto.SkillUpdateRequest;
+import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.entity.SkillDefinitionEntity;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.repo.SkillDefinitionRepository;
@@ -17,19 +19,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
-import static org.springframework.http.HttpStatus.CONFLICT;
-import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
-import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Slf4j
 @Service
@@ -66,11 +61,11 @@ public class SkillAdminService {
     @Transactional
     public SkillCatalogEntry create(SkillCreateRequest request) {
         if (!StringUtils.hasText(request.id()) || !StringUtils.hasText(request.displayName())) {
-            throw new ResponseStatusException(BAD_REQUEST, "id 与 displayName 必填");
+            throw new BizException(SkillErrorCode.ID_DISPLAY_NAME_REQUIRED);
         }
         String id = request.id().strip();
         if (definitionRepository.existsById(id)) {
-            throw new ResponseStatusException(CONFLICT, "skill 已存在: " + id);
+            throw new BizException(SkillErrorCode.SKILL_ALREADY_EXISTS);
         }
         SkillDefinitionEntity def = new SkillDefinitionEntity();
         def.setId(id);
@@ -99,7 +94,7 @@ public class SkillAdminService {
     @Transactional
     public SkillCatalogEntry updateMeta(String skillId, SkillUpdateRequest request) {
         if (!StringUtils.hasText(request.displayName())) {
-            throw new ResponseStatusException(BAD_REQUEST, "displayName 必填");
+            throw new BizException(SkillErrorCode.DISPLAY_NAME_REQUIRED);
         }
         SkillDefinitionEntity def = requireDefinition(skillId);
         def.setDisplayName(request.displayName().strip());
@@ -158,9 +153,9 @@ public class SkillAdminService {
     public SkillCatalogEntry forkVersion(String skillId, int sourceVersion, String maintainer) {
         SkillDefinitionEntity def = requireDefinition(skillId);
         SkillVersionEntity source = versionRepository.findBySkillIdAndVersion(skillId, sourceVersion)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "版本不存在"));
+                .orElseThrow(() -> new BizException(SkillErrorCode.VERSION_NOT_FOUND));
         if (!StringUtils.hasText(source.getStoragePath())) {
-            throw new ResponseStatusException(BAD_REQUEST, "源版本无 Skill 包，无法复制");
+            throw new BizException(SkillErrorCode.SOURCE_PACKAGE_MISSING);
         }
         Optional<SkillVersionEntity> draft = findDraftVersion(skillId);
         SkillVersionEntity target;
@@ -183,7 +178,7 @@ public class SkillAdminService {
         String storagePath = skillStorageService.copyPackage(
                 skillId, sourceVersion, source.getStoragePath(), targetVersion);
         if (!StringUtils.hasText(storagePath)) {
-            throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "复制 Skill 包失败");
+            throw new BizException(SkillErrorCode.PACKAGE_COPY_FAILED);
         }
         target.setSystemOverlay(source.getSystemOverlay());
         target.setToolsJson(source.getToolsJson());
@@ -221,9 +216,9 @@ public class SkillAdminService {
     public SkillCatalogEntry publish(String skillId, int version, String maintainer) {
         SkillDefinitionEntity def = requireDefinition(skillId);
         SkillVersionEntity ver = versionRepository.findBySkillIdAndVersion(skillId, version)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "版本不存在"));
+                .orElseThrow(() -> new BizException(SkillErrorCode.VERSION_NOT_FOUND));
         if (!StringUtils.hasText(ver.getStoragePath())) {
-            throw new ResponseStatusException(BAD_REQUEST, "该版本无 Skill 包，请先上传文件夹");
+            throw new BizException(SkillErrorCode.PUBLISH_PACKAGE_REQUIRED);
         }
         ver.setStatus("published");
         ver.setMaintainer(resolveMaintainer(maintainer));
@@ -254,10 +249,10 @@ public class SkillAdminService {
         SkillDefinitionEntity def = requireDefinition(skillId);
         List<SkillVersionEntity> all = versionRepository.findBySkillIdOrderByVersionDesc(skillId);
         if (all.size() <= 1) {
-            throw new ResponseStatusException(BAD_REQUEST, "仅剩一个版本，请从列表删除整个 Skill");
+            throw new BizException(SkillErrorCode.LAST_VERSION_DELETE_FORBIDDEN);
         }
         SkillVersionEntity ver = versionRepository.findBySkillIdAndVersion(skillId, version)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "版本不存在"));
+                .orElseThrow(() -> new BizException(SkillErrorCode.VERSION_NOT_FOUND));
         if (StringUtils.hasText(ver.getStoragePath())) {
             skillStorageService.deletePackage(skillId, ver.getVersion(), ver.getStoragePath());
         }
@@ -306,8 +301,8 @@ public class SkillAdminService {
         return versionRepository.findFirstBySkillIdAndStatusOrderByVersionDesc(skillId, "draft");
     }
 
-    private static ResponseStatusException draftAlreadyExists() {
-        return new ResponseStatusException(CONFLICT, "已有草稿版本，请先发布或删除后再操作");
+    private static BizException draftAlreadyExists() {
+        return new BizException(SkillErrorCode.DRAFT_ALREADY_EXISTS);
     }
 
     private static SkillVersionEntity newVersionEntity(String skillId, int targetVersion) {
@@ -334,8 +329,7 @@ public class SkillAdminService {
 
     private static void validateSkillName(String skillId, String name) {
         if (StringUtils.hasText(name) && !skillId.equals(name.strip())) {
-            throw new ResponseStatusException(BAD_REQUEST,
-                    "SKILL.md frontmatter name 与 skill id 不一致: " + name);
+            throw new BizException(SkillErrorCode.SKILL_NAME_MISMATCH);
         }
     }
 
@@ -350,14 +344,14 @@ public class SkillAdminService {
 
     private SkillDefinitionEntity requireDefinition(String skillId) {
         return definitionRepository.findById(skillId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "skill 不存在: " + skillId));
+                .orElseThrow(() -> new BizException(SkillErrorCode.SKILL_NOT_FOUND));
     }
 
     private void requirePublishedActiveVersion(SkillDefinitionEntity def) {
         SkillVersionEntity ver = versionRepository.findBySkillIdAndVersion(def.getId(), def.getActiveVersion())
-                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "请先发布并生效某一版本后再开启 Skill"));
+                .orElseThrow(() -> new BizException(SkillErrorCode.ENABLE_REQUIRES_PUBLISHED));
         if (!"published".equals(ver.getStatus()) || !StringUtils.hasText(ver.getStoragePath())) {
-            throw new ResponseStatusException(BAD_REQUEST, "请先发布并生效某一版本后再开启 Skill");
+            throw new BizException(SkillErrorCode.ENABLE_REQUIRES_PUBLISHED);
         }
     }
 

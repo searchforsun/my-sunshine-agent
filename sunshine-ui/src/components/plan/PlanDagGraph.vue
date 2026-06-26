@@ -54,7 +54,19 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
         <button
           type="button"
           class="plan-dag-node"
-          :class="[statusClass(node.status), { 'is-selected': selectedId === node.id, 'is-live': live && node.status === 'running', 'is-terminal': node.type === 'start' || node.type === 'answer' }]"
+          :class="[statusClass(node.status), {
+            'is-selected': selectedId === node.id,
+            'is-live': live && (node.status === 'running' || (node.status === 'error' && node.recoveryAwaiting)),
+            'is-paused-breathe': node.status === 'paused',
+            'is-awaiting-breathe': node.status === 'awaiting_confirm',
+            'is-live-recovery': live && node.status === 'error' && node.recoveryAwaiting,
+            'is-awaiting-confirm': node.status === 'awaiting_confirm',
+            'is-paused': node.status === 'paused',
+            'is-terminated': node.status === 'terminated',
+            'is-skipped': node.status === 'skipped',
+            'is-pending': node.status === 'pending' && node.type !== 'start',
+            'is-terminal': node.type === 'start' || node.type === 'answer',
+          }]"
           :title="node.label"
           @click="onSelect(node, $event)"
         >
@@ -62,8 +74,13 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
             <PlanNodeIcon :type="node.type" :size="iconSize" />
           </span>
           <span class="node-label">{{ node.label }}</span>
-          <span v-if="node.attemptCount != null && node.attemptCount > 1" class="node-attempt">×{{ node.attemptCount }}</span>
-          <span v-if="node.durationMs != null" class="node-dur">{{ formatDuration(node.durationMs) }}</span>
+          <span v-if="node.status === 'awaiting_confirm'" class="node-dur node-dur-awaiting">待确认</span>
+          <span v-else-if="node.status === 'paused'" class="node-dur node-dur-paused">暂停</span>
+          <span v-else-if="node.status === 'terminated'" class="node-dur node-dur-terminated">已终止</span>
+          <span v-else-if="node.status === 'skipped'" class="node-dur node-dur-skipped">已跳过</span>
+          <span v-else-if="node.status === 'pending' && node.type !== 'start'" class="node-dur node-dur-pending">待执行</span>
+          <span v-else-if="node.status === 'error' && (live && node.recoveryAwaiting)" class="node-dur node-dur-error">发生错误</span>
+          <span v-else-if="node.durationMs != null" class="node-dur">{{ formatDuration(node.durationMs) }}</span>
           <span v-else-if="live && node.status === 'running'" class="node-dur node-dur-live">进行中</span>
           <span v-else class="node-dur node-dur-placeholder" aria-hidden="true">&nbsp;</span>
         </button>
@@ -290,6 +307,10 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   box-shadow: 0 0 0 2px color-mix(in srgb, #4ade80 50%, transparent);
 }
 
+.plan-dag-node.is-selected.is-skipped {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #14b8a6 50%, transparent);
+}
+
 .plan-dag-node.is-selected.is-error {
   box-shadow: 0 0 0 2px color-mix(in srgb, #f87171 50%, transparent);
 }
@@ -317,13 +338,29 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 
 @media (prefers-reduced-motion: reduce) {
   .plan-dag-node.is-live,
-  .plan-dag-node.is-selected.is-live {
+  .plan-dag-node.is-selected.is-live,
+  .plan-dag-node.is-awaiting-breathe,
+  .plan-dag-node.is-paused-breathe,
+  .plan-dag-node.is-error.is-live-recovery {
     animation: none;
   }
 }
 
 .plan-dag-node.is-done {
   border-color: color-mix(in srgb, #4ade80 35%, var(--sun-border));
+}
+
+/* 已跳过：青绿实线（降级完成，区别于正常绿与错误红） */
+.plan-dag-node.is-skipped {
+  border-style: solid;
+  border-color: color-mix(in srgb, #14b8a6 42%, var(--sun-border));
+  background: color-mix(in srgb, #14b8a6 6%, var(--sun-bg));
+}
+
+.plan-dag-node.is-skipped .node-icon,
+.plan-dag-node.is-skipped .node-label,
+.plan-dag-node.is-skipped .node-dur-skipped {
+  color: #0f766e;
 }
 
 .plan-dag-node.is-terminal {
@@ -361,6 +398,103 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 
 .plan-dag-node.is-error {
   border-color: color-mix(in srgb, #f87171 45%, var(--sun-border));
+}
+
+/* 待执行：冷灰虚线，与已终止暖色实线区分 */
+.plan-dag-node.is-pending {
+  border-style: dashed;
+  border-color: color-mix(in srgb, #d4d4d8 80%, var(--sun-border));
+  background: color-mix(in srgb, var(--sun-bg) 97%, #e4e4e7);
+}
+
+.plan-dag-node.is-pending .node-icon,
+.plan-dag-node.is-pending .node-label,
+.plan-dag-node.is-pending .node-dur-pending {
+  color: #a1a1aa;
+}
+
+/* 已终止：暗玫瑰实线（静态），区别于待执行灰虚线与错误红呼吸 */
+.plan-dag-node.is-terminated {
+  border-style: solid;
+  border-color: color-mix(in srgb, #be123c 40%, var(--sun-border));
+  background: color-mix(in srgb, #be123c 5%, var(--sun-bg));
+}
+
+.plan-dag-node.is-terminated .node-icon,
+.plan-dag-node.is-terminated .node-label,
+.plan-dag-node.is-terminated .node-dur-terminated {
+  color: #9f1239;
+}
+
+.plan-dag-node.is-awaiting-confirm,
+.plan-dag-node.is-awaiting-confirm.is-live {
+  border-color: color-mix(in srgb, #a855f7 55%, var(--sun-border));
+}
+
+.plan-dag-node.is-awaiting-breathe,
+.plan-dag-node.is-selected.is-awaiting-breathe {
+  border-color: color-mix(in srgb, #a855f7 55%, var(--sun-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #a855f7 28%, transparent);
+  animation: dag-node-breathe-awaiting 2.2s ease-in-out infinite;
+}
+
+.plan-dag-node.is-paused,
+.plan-dag-node.is-paused-breathe {
+  border-color: color-mix(in srgb, #fbbf24 55%, var(--sun-border));
+}
+
+.plan-dag-node.is-paused-breathe,
+.plan-dag-node.is-selected.is-paused-breathe {
+  border-color: color-mix(in srgb, #fbbf24 55%, var(--sun-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #fbbf24 28%, transparent);
+  animation: dag-node-breathe-paused 2.2s ease-in-out infinite;
+}
+
+.plan-dag-node.is-awaiting-confirm.is-live,
+.plan-dag-node.is-selected.is-awaiting-confirm.is-live {
+  border-color: color-mix(in srgb, #a855f7 55%, var(--sun-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #a855f7 28%, transparent);
+  animation: dag-node-breathe-awaiting 2.2s ease-in-out infinite;
+}
+
+.plan-dag-node.is-error.is-live-recovery,
+.plan-dag-node.is-selected.is-error.is-live-recovery {
+  border-color: color-mix(in srgb, #f87171 50%, var(--sun-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #f87171 28%, transparent);
+  animation: dag-node-breathe-error 2.2s ease-in-out infinite;
+}
+
+.plan-dag-node.is-awaiting-confirm .node-icon,
+.plan-dag-node.is-awaiting-confirm .node-label,
+.plan-dag-node.is-awaiting-confirm .node-dur-awaiting,
+.plan-dag-node.is-awaiting-breathe .node-icon,
+.plan-dag-node.is-awaiting-breathe .node-label,
+.plan-dag-node.is-awaiting-breathe .node-dur-awaiting {
+  color: #9333ea;
+}
+
+.plan-dag-node.is-paused .node-icon,
+.plan-dag-node.is-paused .node-label,
+.plan-dag-node.is-paused .node-dur-paused,
+.plan-dag-node.is-paused-breathe .node-icon,
+.plan-dag-node.is-paused-breathe .node-label,
+.plan-dag-node.is-paused-breathe .node-dur-paused {
+  color: #d97706;
+}
+
+.plan-dag-node.is-error.is-live-recovery .node-icon,
+.plan-dag-node.is-error.is-live-recovery .node-label,
+.plan-dag-node.is-error.is-live-recovery .node-dur-error {
+  color: #f87171;
+}
+
+.node-dur-awaiting,
+.node-dur-error,
+.node-dur-skipped,
+.node-dur-pending,
+.node-dur-terminated {
+  opacity: 1;
+  font-weight: 500;
 }
 
 .node-icon {
@@ -463,6 +597,45 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
       0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 48%, transparent),
       0 0 0 3px color-mix(in srgb, var(--sun-blue, #58a6ff) 42%, transparent),
       0 0 12px color-mix(in srgb, var(--sun-blue, #58a6ff) 20%, transparent);
+  }
+}
+
+@keyframes dag-node-breathe-awaiting {
+  0%, 100% {
+    border-color: color-mix(in srgb, #a855f7 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #a855f7 22%, transparent);
+  }
+  50% {
+    border-color: #a855f7;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, #a855f7 45%, transparent),
+      0 0 10px color-mix(in srgb, #a855f7 24%, transparent);
+  }
+}
+
+@keyframes dag-node-breathe-paused {
+  0%, 100% {
+    border-color: color-mix(in srgb, #fbbf24 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #fbbf24 22%, transparent);
+  }
+  50% {
+    border-color: #fbbf24;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, #fbbf24 45%, transparent),
+      0 0 10px color-mix(in srgb, #fbbf24 24%, transparent);
+  }
+}
+
+@keyframes dag-node-breathe-error {
+  0%, 100% {
+    border-color: color-mix(in srgb, #f87171 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #f87171 22%, transparent);
+  }
+  50% {
+    border-color: #f87171;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, #f87171 45%, transparent),
+      0 0 10px color-mix(in srgb, #f87171 24%, transparent);
   }
 }
 </style>

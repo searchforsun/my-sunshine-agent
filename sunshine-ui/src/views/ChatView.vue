@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, onUnmounted, onUpdated, computed, reactive } from 'vue'
+import { ref, nextTick, watch, onMounted, onUnmounted, onUpdated, computed, reactive, provide } from 'vue'
 import { useChatSessions } from '../api/chatSessions'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
 import 'katex/dist/katex.min.css'
@@ -39,6 +39,7 @@ import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../composables/usePlanDagExpand'
 import type { ChatMessage } from '../api/chat'
+import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
 import {
   normalizeTimelineSteps,
   hasActiveStep,
@@ -191,6 +192,8 @@ const showStreamWaiting = computed(() => {
 const {
   messages, loading, send, resume, reconnectStream, stop,
   switchTo, ensureActive, getMessages, setMessages, migrateSession, destroySession,
+  applyHitlDecision,
+  applyRecoveryDecision,
 } = useChatSessions(
   (sid: string, _chunk: string) => {
     const cid = chatStore.currentId ?? sid
@@ -222,6 +225,9 @@ const {
     }
   },
 )
+
+provide('applyHitlDecision', applyHitlDecision)
+provide('applyRecoveryDecision', applyRecoveryDecision)
 
 const inputText = ref('')
 const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
@@ -447,6 +453,16 @@ async function handleResume() {
   scrollToBottom()
 }
 
+function markAssistantFailed(convId: string, messageId?: string) {
+  const msgs = getMessages(convId)
+  const target = messageId
+    ? msgs.find(m => m.id === messageId && m.role === 'assistant')
+    : msgs[msgs.length - 1]
+  if (target?.role === 'assistant' && target.status !== 'completed') {
+    target.status = 'failed'
+  }
+}
+
 function markAssistantInterrupted(convId: string, messageId?: string) {
   const msgs = getMessages(convId)
   const target = messageId
@@ -468,7 +484,7 @@ async function hydrateSessionFromStore(cid: string) {
   migrateReasoningKeys()
   const lastAssistant = [...restored].reverse().find(m => m.role === 'assistant')
   if (lastAssistant?.content?.trim() && !loading.value) {
-    settledHtml.value = captureSettledAssistantHtml(lastAssistant.content)
+    settledHtml.value = captureSettledAssistantHtml(resolveAssistantDisplayContent(lastAssistant))
     sessionSettledHtml.set(cid, settledHtml.value)
   } else if (!loading.value) {
     settledHtml.value = sessionSettledHtml.get(cid) ?? ''
@@ -498,9 +514,16 @@ async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
 
     const status = await resp.json() as { status: string; lastSeq: number }
 
-    if (status.status === 'INTERRUPTED' || status.status === 'FAILED') {
+    if (status.status === 'INTERRUPTED') {
       clearActiveGeneration()
       markAssistantInterrupted(cid, active.messageId)
+      await hydrateSessionFromStore(cid)
+      return
+    }
+
+    if (status.status === 'FAILED') {
+      clearActiveGeneration()
+      markAssistantFailed(cid, active.messageId)
       await hydrateSessionFromStore(cid)
       return
     }
@@ -661,11 +684,11 @@ function captureSettledAssistantHtml(content: string): string {
   return renderMarkdown(content)
 }
 
-function renderAssistantHtml(msg: { content?: string }, idx: number): string {
+function renderAssistantHtml(msg: ChatMessage, idx: number): string {
   if (idx === messages.value.length - 1 && settledHtml.value && !loading.value) {
     return settledHtml.value
   }
-  return renderMarkdown(msg.content || '')
+  return renderMarkdown(resolveAssistantDisplayContent(msg))
 }
 
 function enhanceAllStaticMarkdown(): void {
@@ -684,7 +707,7 @@ watch(() => loading.value, async (val) => {
     streamRenderer.finish()
     const last = messages.value[messages.value.length - 1]
     if (last?.role === 'assistant' && last.content) {
-      settledHtml.value = captureSettledAssistantHtml(last.content)
+      settledHtml.value = captureSettledAssistantHtml(resolveAssistantDisplayContent(last))
       if (chatStore.currentId) sessionSettledHtml.set(chatStore.currentId, settledHtml.value)
     } else {
       settledHtml.value = ''
@@ -793,6 +816,7 @@ watch(() => loading.value, async (val) => {
                 :live="isTimelineLive(msg, idx)"
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
+                @hitl-decided="applyHitlDecision"
               />
               <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">
                 <div v-if="showStreamWaiting" class="stream-waiting-dots" aria-label="正在生成">
@@ -825,6 +849,12 @@ watch(() => loading.value, async (val) => {
                   </svg>
                 </button>
               </div>
+              <p
+                v-if="resolveStreamErrorText(msg)"
+                class="msg-stream-error"
+              >
+                发生错误：{{ resolveStreamErrorText(msg) }}
+              </p>
               <div v-if="canResume(msg, idx)" class="msg-resume-bar">
                 <button type="button" class="resume-btn" @click="handleResume">继续生成</button>
               </div>
@@ -1160,6 +1190,13 @@ watch(() => loading.value, async (val) => {
 
 .msg-resume-bar {
   margin-top: 8px;
+}
+
+.msg-stream-error {
+  margin: 10px 0 0;
+  font-size: var(--sun-font-base);
+  line-height: 1.5;
+  color: var(--sun-text-muted);
 }
 
 .resume-btn {

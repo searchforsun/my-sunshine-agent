@@ -14,6 +14,8 @@ from pathlib import Path
 import requests
 import yaml
 
+from sunshine_lib import unwrap_r
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -446,7 +448,8 @@ def search(
     )
     resp.raise_for_status()
     ms = (time.perf_counter() - t0) * 1000
-    results = resp.json().get("results") or []
+    data = unwrap_r(resp.json(), context="rag search") or {}
+    results = data.get("results") or []
     return results, ms
 
 

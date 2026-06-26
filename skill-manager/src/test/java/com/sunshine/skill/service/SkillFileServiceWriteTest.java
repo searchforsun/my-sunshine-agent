@@ -1,6 +1,8 @@
 package com.sunshine.skill.service;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.skill.dto.SkillFileContent;
+import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.entity.SkillDefinitionEntity;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.repo.SkillDefinitionRepository;
@@ -11,10 +13,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -46,8 +48,9 @@ class SkillFileServiceWriteTest {
 
         assertThatThrownBy(() -> skillFileService.writeFile(
                 "finance-analysis", 1, "SKILL.md", "---\nname: finance-analysis\ndescription: d\n---\nbody", "u1"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("草稿");
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(SkillErrorCode.DRAFT_EDIT_ONLY));
         verifyNoInteractions(skillStorageService);
     }
 

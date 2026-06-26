@@ -30,7 +30,12 @@ public final class TimelineAggregator {
                 state.active = event.summary();
             }
             case PROGRESS -> {
-                state.active = event.summary();
+                if (event.summary() != null) {
+                    state.active = event.summary();
+                }
+                if (event.metadata() != null) {
+                    state.metadata = event.metadata();
+                }
             }
             case COMPLETE -> {
                 state.lifecycle = "done";
@@ -46,6 +51,26 @@ public final class TimelineAggregator {
                 if (event.detail() != null) {
                     state.detail = event.detail();
                 }
+            }
+            case PAUSE -> {
+                state.lifecycle = "paused";
+                state.active = event.summary();
+                state.after = event.summary();
+                state.endedAt = event.ts();
+                if (state.startedAt == null) {
+                    state.startedAt = event.ts();
+                }
+                if (state.startedAt != null) {
+                    state.durationMs = event.ts() - state.startedAt;
+                }
+                if (event.detail() != null) {
+                    state.detail = event.detail();
+                }
+            }
+            case TERMINATE -> {
+                state.lifecycle = "terminated";
+                state.after = event.summary();
+                finish(state, event);
             }
         }
     }
@@ -108,6 +133,10 @@ public final class TimelineAggregator {
         }
         if (event.metadata() != null) {
             state.metadata = event.metadata();
+        } else if (state.metadata != null && state.metadata.recovery() != null
+                && !NodeRecoveryMeta.STATUS_SKIPPED.equals(state.metadata.recovery().status())) {
+            // 重试成功后 complete 不带 recovery，须清除 retry 态
+            state.metadata = StepMetadata.withoutRecovery(state.metadata);
         }
     }
 

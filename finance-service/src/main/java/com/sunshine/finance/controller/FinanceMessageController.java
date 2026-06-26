@@ -28,9 +28,7 @@ public class FinanceMessageController {
 
     @GetMapping("/messages/{id}")
     public R<FinanceMessageVO> getMessage(@PathVariable long id) {
-        return messageService.getById(id)
-                .map(R::ok)
-                .orElseGet(() -> R.fail(404, "财务消息不存在: " + id));
+        return R.ok(messageService.requireById(id));
     }
 
     @GetMapping("/messages/summary")

@@ -1,6 +1,8 @@
 package com.sunshine.skill.service;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.skill.entity.SkillDefinitionEntity;
+import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.repo.SkillDefinitionRepository;
 import com.sunshine.skill.repo.SkillVersionRepository;
@@ -11,7 +13,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
 
@@ -81,8 +82,9 @@ class SkillAdminServiceForkTest {
                 .thenReturn(Optional.of(existingDraft));
 
         assertThatThrownBy(() -> skillAdminService.forkVersion("finance-analysis", 1, "user-1"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("已有草稿版本");
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(SkillErrorCode.DRAFT_ALREADY_EXISTS));
     }
 
     @Test
@@ -98,8 +100,9 @@ class SkillAdminServiceForkTest {
                 .thenReturn(Optional.of(source));
 
         assertThatThrownBy(() -> skillAdminService.forkVersion("finance-analysis", 1, "user-1"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("无 Skill 包");
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(SkillErrorCode.SOURCE_PACKAGE_MISSING));
     }
 
     private static SkillVersionEntity publishedVersion(int version, String storagePath) {

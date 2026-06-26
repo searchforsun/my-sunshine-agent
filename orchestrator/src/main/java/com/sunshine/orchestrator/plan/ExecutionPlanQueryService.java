@@ -1,7 +1,8 @@
 package com.sunshine.orchestrator.plan;
 
-import com.sunshine.orchestrator.conversation.ConversationNotFoundException;
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.conversation.ConversationService;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.plan.dto.ExecutionPlanDetailDto;
 import com.sunshine.orchestrator.plan.dto.ExecutionPlanSummaryDto;
 import lombok.RequiredArgsConstructor;
@@ -43,10 +44,10 @@ public class ExecutionPlanQueryService {
 
     private ExecutionPlanEntity requireOwned(String planId, String userId, String tenantId) {
         ExecutionPlanEntity entity = repository.findById(planId)
-                .orElseThrow(() -> new ConversationNotFoundException("执行计划不存在"));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.EXECUTION_PLAN_NOT_FOUND));
         if (!Objects.equals(entity.getUserId(), userId)
                 || !Objects.equals(entity.getTenantId(), tenantId)) {
-            throw new ConversationNotFoundException("执行计划不存在");
+            throw new BizException(OrchestratorErrorCode.EXECUTION_PLAN_NOT_FOUND);
         }
         return entity;
     }

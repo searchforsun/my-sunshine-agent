@@ -10,8 +10,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
+import com.sunshine.common.web.RemoteErrorMapper;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -48,6 +48,32 @@ public class OrchestratorClient {
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .doOnSubscribe(s -> log.info("[BFF] 连接 Orchestrator SSE"))
                 .doOnError(e -> log.error("[BFF] Orchestrator 连接异常", e));
+    }
+
+    public Mono<Map<String, Object>> confirmTool(
+            com.sunshine.bff.model.ConfirmToolRequest request, String userId, String tenantId) {
+        return webClient.post()
+                .uri("/chat/confirm-tool")
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> confirmWorkflowNodeRecovery(
+            com.sunshine.bff.model.ConfirmWorkflowNodeRecoveryRequest request, String userId, String tenantId) {
+        return webClient.post()
+                .uri("/chat/workflow-node-recovery")
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
     public Mono<List<Map<String, Object>>> listConversations(String userId, String tenantId) {
@@ -178,6 +204,6 @@ public class OrchestratorClient {
             org.springframework.web.reactive.function.client.ClientResponse response) {
         return response.bodyToMono(String.class)
                 .defaultIfEmpty("")
-                .flatMap(body -> Mono.error(new ResponseStatusException(response.statusCode(), body)));
+                .flatMap(body -> Mono.error(RemoteErrorMapper.fromBody(response.statusCode().value(), body)));
     }
 }

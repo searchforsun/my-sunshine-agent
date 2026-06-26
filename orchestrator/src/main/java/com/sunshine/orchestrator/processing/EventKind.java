@@ -6,5 +6,7 @@ public enum EventKind {
     PROGRESS,
     COMPLETE,
     FAIL,
-    SKIP
+    SKIP,
+    PAUSE,
+    TERMINATE
 }

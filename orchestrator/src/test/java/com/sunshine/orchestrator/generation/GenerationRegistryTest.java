@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,17 +29,21 @@ class GenerationRegistryTest {
     @Mock
     private GenerationFlushScheduler flushScheduler;
 
+    @Mock
+    private WorkflowPauseService workflowPauseService;
+
     private GenerationRegistry registry;
 
     @BeforeEach
     void setUp() {
-        registry = new GenerationRegistry();
+        registry = new GenerationRegistry(workflowPauseService);
     }
 
     private GenerationJob newJob(String generationId, String messageId) {
         return new GenerationJob(
                 generationId, messageId, "conv-1", "alice", "default", "chat", "hello",
-                streamService, properties, flushScheduler, null);
+                streamService, properties, flushScheduler, null,
+                workflowPauseService, mock(com.sunshine.orchestrator.plan.ExecutionPlanStore.class));
     }
 
     @Test
@@ -92,7 +99,7 @@ class GenerationRegistryTest {
 
         assertThat(registry.get("gen-a")).isEmpty();
         assertThat(registry.get("gen-b")).isEmpty();
-        verify(flushScheduler).commitFinal("msg-a", "", "", MessageStatus.INTERRUPTED, null);
-        verify(flushScheduler).commitFinal("msg-b", "", "", MessageStatus.INTERRUPTED, null);
+        verify(flushScheduler).commitFinal(eq("msg-a"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
+        verify(flushScheduler).commitFinal(eq("msg-b"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
     }
 }

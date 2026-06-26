@@ -67,6 +67,8 @@ public class AgentPromptProperties {
         private IntentTimeline intent = new IntentTimeline();
         /** 通用步骤 before/active 模板（plan / generate / rag 等），占位符 {query} */
         private java.util.LinkedHashMap<String, StepTimeline> steps = defaultSteps();
+        /** 写工具 HITL 各阶段 active/after 模板，占位符 {toolDisplayName} */
+        private HitlTimeline hitl = new HitlTimeline();
 
         private static java.util.LinkedHashMap<String, StepTimeline> defaultSteps() {
             var map = new java.util.LinkedHashMap<String, StepTimeline>();
@@ -99,6 +101,17 @@ public class AgentPromptProperties {
         private String active;
         /** skill 等步骤完成态主行模板，占位符见 SkillLoadLabelService */
         private String after;
+    }
+
+    @Getter
+    @Setter
+    public static class HitlTimeline {
+
+        private String pending = "将调用工具 {toolDisplayName}";
+        private String awaiting = "等待用户确认执行写操作";
+        private String approved = "用户已确认，正在调用 {toolDisplayName}";
+        private String denied = "用户取消调用";
+        private String skippedAfter = "用户取消调用，已跳过";
     }
 
     public Timeline timelineOrDefault() {

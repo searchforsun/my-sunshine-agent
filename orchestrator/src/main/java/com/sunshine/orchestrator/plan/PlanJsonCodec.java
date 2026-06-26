@@ -83,6 +83,36 @@ public class PlanJsonCodec {
         }
     }
 
+    public String checkpointToJson(WorkflowCheckpoint checkpoint) {
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "resumeNodeId", checkpoint.resumeNodeId(),
+                    "wfCtxJson", checkpoint.wfCtxJson() != null ? checkpoint.wfCtxJson() : "{}"));
+        } catch (Exception e) {
+            throw new PlanParseException("pause_checkpoint 序列化失败: " + e.getMessage());
+        }
+    }
+
+    public WorkflowCheckpoint checkpointFromJson(String json) {
+        if (json == null || json.isBlank()) {
+            throw new PlanParseException("pause_checkpoint 为空");
+        }
+        try {
+            Map<String, Object> map = objectMapper.readValue(json, new TypeReference<>() {
+            });
+            String resumeNodeId = String.valueOf(map.getOrDefault("resumeNodeId", ""));
+            String wfCtxJson = String.valueOf(map.getOrDefault("wfCtxJson", "{}"));
+            if (resumeNodeId.isBlank()) {
+                throw new PlanParseException("pause_checkpoint 缺少 resumeNodeId");
+            }
+            return new WorkflowCheckpoint(resumeNodeId, wfCtxJson);
+        } catch (PlanParseException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new PlanParseException("pause_checkpoint 解析失败: " + e.getMessage());
+        }
+    }
+
     private Map<String, Object> nodeMap(PlanNode node) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", node.id());

@@ -1,13 +1,13 @@
 package com.sunshine.orchestrator.routing;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
 import java.util.LinkedHashMap;
@@ -96,8 +96,7 @@ public class ForcedExecutionRouter {
                                 REASON_WORKFLOW,
                                 plan.ruleId()));
                     }
-                    return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "工作流模式下未能匹配到可用的 workflow 模板，请换问法或指定 workflowId"));
+                    return Mono.error(new BizException(OrchestratorErrorCode.WORKFLOW_TEMPLATE_NOT_FOUND));
                 });
     }
 }

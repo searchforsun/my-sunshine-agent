@@ -4,11 +4,11 @@
 
  */
 
-
+import { relocateAgentNodeHitl } from './hitlSteps'
 
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
-export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped'
+export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'
 
 export type StepLifecycle = StepStatus
 
@@ -42,6 +42,19 @@ export interface StepMetadata {
   rewriteInDetail?: boolean
   /** 展开区 detail 区块标题 */
   expandSectionTitle?: string
+  /** 写工具 HITL（step.metadata.hitl 扁平字段） */
+  hitlStatus?: 'awaiting' | 'approved' | 'denied'
+  hitlToken?: string
+  hitlToolDisplayName?: string
+  hitlParamsSummary?: string
+  hitlExpiresAt?: number
+  /** Workflow 节点失败：用户重试/终止 */
+  recoveryStatus?: 'awaiting' | 'retry' | 'skipped' | 'terminated'
+  recoveryToken?: string
+  recoveryError?: string
+  recoveryExpiresAt?: number
+  /** Workflow 节点执行 attempt（重试过程 SSE 实时下发） */
+  nodeAttempts?: import('./executionPlans').PlanNodeAttempt[]
 }
 
 
@@ -231,6 +244,36 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const expandSectionTitle = typeof obj.expandSectionTitle === 'string' && obj.expandSectionTitle.trim()
     ? obj.expandSectionTitle.trim()
     : undefined
+  const hitlRaw = obj.hitl && typeof obj.hitl === 'object'
+    ? obj.hitl as Record<string, unknown>
+    : null
+  const hitlStatus = typeof hitlRaw?.status === 'string'
+    ? hitlRaw.status as StepMetadata['hitlStatus']
+    : undefined
+  const hitlToken = typeof hitlRaw?.token === 'string' && hitlRaw.token.trim()
+    ? hitlRaw.token.trim()
+    : undefined
+  const hitlToolDisplayName = typeof hitlRaw?.toolDisplayName === 'string'
+    ? hitlRaw.toolDisplayName
+    : undefined
+  const hitlParamsSummary = typeof hitlRaw?.paramsSummary === 'string'
+    ? hitlRaw.paramsSummary
+    : undefined
+  const hitlExpiresAt = typeof hitlRaw?.expiresAt === 'number' ? hitlRaw.expiresAt : undefined
+  const recoveryRaw = obj.recovery && typeof obj.recovery === 'object'
+    ? obj.recovery as Record<string, unknown>
+    : null
+  const recoveryStatus = typeof recoveryRaw?.status === 'string'
+    ? recoveryRaw.status as StepMetadata['recoveryStatus']
+    : undefined
+  const recoveryToken = typeof recoveryRaw?.token === 'string' && recoveryRaw.token.trim()
+    ? recoveryRaw.token.trim()
+    : undefined
+  const recoveryError = typeof recoveryRaw?.errorMessage === 'string'
+    ? recoveryRaw.errorMessage
+    : undefined
+  const recoveryExpiresAt = typeof recoveryRaw?.expiresAt === 'number' ? recoveryRaw.expiresAt : undefined
+  const nodeAttempts = parseNodeAttempts(obj.nodeAttempts)
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -240,6 +283,9 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !routingReason
     && !rewriteInDetail
     && !expandSectionTitle
+    && !hitlStatus
+    && !recoveryStatus
+    && !nodeAttempts?.length
   ) {
     return undefined
   }
@@ -257,7 +303,75 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     routingReason,
     rewriteInDetail,
     expandSectionTitle,
+    hitlStatus,
+    hitlToken,
+    hitlToolDisplayName,
+    hitlParamsSummary,
+    hitlExpiresAt,
+    recoveryStatus,
+    recoveryToken,
+    recoveryError,
+    recoveryExpiresAt,
+    nodeAttempts,
   }
+}
+
+
+
+function parseNodeAttempts(raw: unknown): StepMetadata['nodeAttempts'] {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const attempts = raw
+    .map(item => {
+      if (!item || typeof item !== 'object') return null
+      const o = item as Record<string, unknown>
+      const attemptNo = typeof o.attemptNo === 'number' ? o.attemptNo : undefined
+      const status = typeof o.status === 'string' ? o.status : undefined
+      if (attemptNo == null || !status) return null
+      return {
+        attemptNo,
+        status,
+        errorClass: typeof o.errorClass === 'string' ? o.errorClass : undefined,
+        summary: typeof o.summary === 'string' ? o.summary : undefined,
+        startedAt: typeof o.startedAt === 'number' ? o.startedAt : undefined,
+        endedAt: typeof o.endedAt === 'number' ? o.endedAt : undefined,
+      }
+    })
+    .filter((a): a is NonNullable<typeof a> => !!a)
+  return attempts.length > 0 ? attempts : undefined
+}
+
+
+
+function mergeStepMetadata(
+  prev?: StepMetadata,
+  incoming?: StepMetadata,
+  lifecycle?: StepLifecycle,
+): StepMetadata | undefined {
+  if (!prev && !incoming) return undefined
+  if (!prev) return incoming
+  if (!incoming) return prev
+  const merged: StepMetadata = {
+    ...prev,
+    ...(Object.fromEntries(
+      Object.entries(incoming).filter(([, v]) => v !== undefined),
+    ) as Partial<StepMetadata>),
+  }
+  if (incoming.hitlStatus && incoming.hitlStatus !== 'awaiting') {
+    merged.hitlToken = undefined
+  }
+  // 重试成功后 complete 事件不带 recovery，须清除 retry 态以免与终态冲突
+  if (lifecycle === 'done' && merged.recoveryStatus === 'retry') {
+    merged.recoveryStatus = undefined
+    merged.recoveryToken = undefined
+    merged.recoveryError = undefined
+    merged.recoveryExpiresAt = undefined
+  }
+  const prevAttempts = prev.nodeAttempts?.length ?? 0
+  const incomingAttempts = incoming.nodeAttempts?.length ?? 0
+  if (incomingAttempts > prevAttempts) {
+    merged.nodeAttempts = incoming.nodeAttempts
+  }
+  return merged
 }
 
 
@@ -655,6 +769,9 @@ function mergeSubSteps(
         output: longerText(existing.output, step.output),
         result: step.result ?? existing.result,
         detail: step.detail ?? existing.detail,
+        metadata: mergeStepMetadata(existing.metadata, step.metadata, step.lifecycle ?? existing.lifecycle),
+        lifecycle: step.lifecycle ?? existing.lifecycle,
+        status: step.status ?? existing.status,
       })
     } else {
       byId.set(step.id, step)
@@ -694,7 +811,7 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       detail: incoming.detail ?? prev.detail,
 
-      metadata: incoming.metadata ?? prev.metadata,
+      metadata: mergeStepMetadata(prev.metadata, incoming.metadata, lifecycle),
 
       subSteps: mergeSubSteps(prev.subSteps, incoming.subSteps),
 
@@ -712,7 +829,7 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
     merged.durationMs = resolveStepDurationMs(merged) ?? merged.durationMs
 
-    next[idx] = merged
+    next[idx] = merged.id.startsWith('node-') ? relocateAgentNodeHitl(merged) : merged
 
   } else {
 
@@ -996,6 +1113,38 @@ export function hasActiveStep(steps: ProcessingStep[] | undefined): boolean {
 
   return !!steps?.some(s => (s.lifecycle ?? s.status) === 'running')
 
+}
+
+/** 用户停止生成：本地将 running 的 workflow 节点标为 paused（与后端 GenerationJob 对齐） */
+export function pauseRunningWorkflowNodes(steps: ProcessingStep[] | undefined): ProcessingStep[] {
+  if (!steps?.length) return steps ?? []
+  return steps.map(step => {
+    let next = step
+    if (step.subSteps?.length) {
+      const subs = pauseRunningWorkflowNodes(step.subSteps)
+      if (subs !== step.subSteps) next = { ...next, subSteps: subs }
+    }
+    if (next.id.startsWith('node-') && (next.lifecycle === 'running' || next.status === 'running')) {
+      next = toPausedStep(next)
+    }
+    return next
+  })
+}
+
+function toPausedStep(step: ProcessingStep): ProcessingStep {
+  const now = Date.now()
+  return {
+    ...step,
+    lifecycle: 'paused',
+    status: 'paused',
+    summary: {
+      ...step.summary,
+      active: '已暂停',
+      after: '已暂停',
+    },
+    endedAt: now,
+    durationMs: step.startedAt != null ? now - step.startedAt : step.durationMs,
+  }
 }
 
 

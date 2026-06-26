@@ -36,6 +36,11 @@ public interface ToolHandler {
         return "truncate";
     }
 
+    /** 副作用：read | write（write 触发 HITL 确认） */
+    default String sideEffect() {
+        return "read";
+    }
+
     /** OpenAI function parameters schema */
     default Map<String, Object> parametersSchema() {
         return Map.of("type", "object", "properties", Map.of());

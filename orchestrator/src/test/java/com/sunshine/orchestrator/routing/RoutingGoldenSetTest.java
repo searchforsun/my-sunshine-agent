@@ -60,9 +60,6 @@ import java.util.Map;
 
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 
-import org.springframework.web.server.ResponseStatusException;
-
-
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

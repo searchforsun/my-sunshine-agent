@@ -54,6 +54,7 @@ public class ReactExecutor {
                     ctx.userId(),
                     ctx.tenantId(),
                     ctx.persistedPlanId()));
+            StepEventBridge.bindHitl(ctx.assistantMsgId(), true);
         }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),

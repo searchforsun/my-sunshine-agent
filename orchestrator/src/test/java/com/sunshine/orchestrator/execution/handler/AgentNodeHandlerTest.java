@@ -86,7 +86,8 @@ class AgentNodeHandlerTest {
         AgentRunRequest req = captor.getValue();
         assertThat(req.role()).isEqualTo(AgentRole.SUB);
         assertThat(req.query()).isEqualTo("待审批是否合规");
-        assertThat(req.assistantMessageId()).isNull();
+        assertThat(req.assistantMessageId()).isEqualTo("m1");
+        assertThat(req.resolveBridgeId()).startsWith("sub-");
         assertThat(req.injectedBlocks()).containsExactly("制度摘要");
         assertThat(req.memory()).isEqualTo(MemoryContext.forSubAgent());
         assertThat(req.memory().stmTurns()).isEmpty();

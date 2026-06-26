@@ -8,6 +8,8 @@ import sys
 
 import requests
 
+from sunshine_lib import unwrap_r
+
 DEFAULT_RAG_URL = os.environ.get("RAG_URL", "http://ecs4c16g:8400")
 DEFAULT_TOKEN = os.environ.get("RAG_ADMIN_TOKEN", "sunshine-rag-admin-dev")
 
@@ -21,11 +23,8 @@ def main() -> int:
     url = f"{args.rag_url.rstrip('/')}/api/rag/admin/rebuild"
     resp = requests.post(url, headers={"X-Admin-Token": args.token}, timeout=120)
     resp.raise_for_status()
-    body = resp.json()
-    if body.get("code") != 200:
-        print(f"[FAIL] rebuild: {body}", file=sys.stderr)
-        return 1
-    print(f"[OK] rebuild collection={body.get('collection')}")
+    data = unwrap_r(resp.json(), context="rebuild") or {}
+    print(f"[OK] rebuild collection={data.get('collection')}")
     return 0
 
 

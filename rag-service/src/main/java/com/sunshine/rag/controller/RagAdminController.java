@@ -1,6 +1,9 @@
 package com.sunshine.rag.controller;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.result.R;
 import com.sunshine.rag.config.RagAdminProperties;
+import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.service.ElasticsearchIndexService;
 import com.sunshine.rag.service.MilvusService;
 import lombok.RequiredArgsConstructor;
@@ -23,17 +26,17 @@ public class RagAdminController {
     private final RagAdminProperties adminProperties;
 
     @PostMapping("/rebuild")
-    public Mono<Map<String, Object>> rebuild(
+    public Mono<R<Map<String, Object>>> rebuild(
             @RequestHeader(value = "X-Admin-Token", required = false) String token) {
         String required = adminProperties.getToken();
         if (required != null && !required.isBlank() && !required.equals(token)) {
-            return Mono.just(Map.of("code", 403, "msg", "无效 admin token"));
+            return Mono.error(new BizException(RagErrorCode.ADMIN_TOKEN_INVALID));
         }
         milvusService.rebuildCollection();
         elasticsearchIndexService.rebuildIndex();
-        return Mono.just(Map.of(
-                "code", 200,
-                "msg", "rebuild ok",
-                "collection", "sunshine_knowledge"));
+        return Mono.just(R.ok(Map.of(
+                "collection", "sunshine_knowledge",
+                "msg", "rebuild ok"
+        )));
     }
 }

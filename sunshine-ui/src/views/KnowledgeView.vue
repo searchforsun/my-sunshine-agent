@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { uploadDocument, searchKnowledge } from '../api/knowledge'
+import { uploadDocument, searchKnowledge, type KnowledgeHit } from '../api/knowledge'
 import { NCard, NInput, NButton, NResult, NText, NTag, NSpace, NDivider } from 'naive-ui'
+import TenantSelector from '../components/knowledge/TenantSelector.vue'
+import { useTenantPreference } from '../composables/useTenantPreference'
+import { friendlyErrorMessage } from '../api/apiError'
+
+const { tenantId, setTenantId } = useTenantPreference()
 
 const docContent = ref('')
 const uploading = ref(false)
@@ -9,18 +14,19 @@ const uploadResult = ref<{ chunks: number; msg: string } | null>(null)
 
 const searchQuery = ref('')
 const searching = ref(false)
-const searchResults = ref<string[]>([])
+const searchError = ref('')
+const searchResults = ref<KnowledgeHit[]>([])
 
 async function handleUpload() {
   if (!docContent.value.trim()) return
   uploading.value = true
   uploadResult.value = null
   try {
-    const result = await uploadDocument(docContent.value)
+    const result = await uploadDocument(docContent.value, tenantId.value)
     uploadResult.value = { chunks: result.chunks, msg: '文档入库成功' }
     docContent.value = ''
-  } catch (e: any) {
-    uploadResult.value = { chunks: 0, msg: `上传失败: ${e.message}` }
+  } catch (e) {
+    uploadResult.value = { chunks: 0, msg: friendlyErrorMessage(e, '上传失败，请稍后重试') }
   } finally {
     uploading.value = false
   }
@@ -29,8 +35,13 @@ async function handleUpload() {
 async function handleSearch() {
   if (!searchQuery.value.trim()) return
   searching.value = true
+  searchResults.value = []
+  searchError.value = ''
   try {
-    searchResults.value = await searchKnowledge(searchQuery.value)
+    searchResults.value = await searchKnowledge(searchQuery.value, tenantId.value)
+  } catch (e) {
+    searchResults.value = []
+    searchError.value = friendlyErrorMessage(e, '检索失败，请稍后重试')
   } finally {
     searching.value = false
   }
@@ -41,8 +52,20 @@ async function handleSearch() {
   <div class="knowledge-root">
     <div class="knowledge-content">
       <header class="page-header">
-        <h2>知识库管理</h2>
-        <p>文档上传与语义检索，基于 Milvus + Embedding 向量化。</p>
+        <div class="page-header-row">
+          <div>
+            <h2>知识库管理</h2>
+            <p>文档上传与语义检索，基于 Milvus + Embedding 向量化。</p>
+          </div>
+          <div class="tenant-row">
+            <NText depth="3" class="tenant-hint">当前租户</NText>
+            <TenantSelector
+              :model-value="tenantId"
+              :disabled="uploading || searching"
+              @update:model-value="setTenantId"
+            />
+          </div>
+        </div>
       </header>
 
       <!-- Upload Card -->
@@ -129,14 +152,22 @@ async function handleSearch() {
               class="result-item"
             >
               <template #header>
-                <NTag :bordered="false" size="tiny" type="info">
-                  片段 #{{ idx + 1 }}
-                </NTag>
+                <NSpace align="center" :size="8">
+                  <NTag :bordered="false" size="tiny" type="info">
+                    片段 #{{ idx + 1 }}
+                  </NTag>
+                  <NText v-if="result.docName" depth="3" class="result-doc-name">{{ result.docName }}</NText>
+                  <NTag v-if="result.score != null" :bordered="false" size="tiny">{{ result.score.toFixed(3) }}</NTag>
+                </NSpace>
               </template>
-              <div class="result-text">{{ result }}</div>
+              <div class="result-text">{{ result.content }}</div>
             </NCard>
           </div>
         </template>
+
+        <div v-else-if="searchError" class="no-results">
+          <NText depth="3">{{ searchError }}</NText>
+        </div>
 
         <div v-else-if="!searching && searchQuery" class="no-results">
           <NText depth="3">未找到结果，尝试其他查询或先上传相关文档。</NText>
@@ -163,6 +194,23 @@ async function handleSearch() {
 /* --- Header --- */
 .page-header {
   margin-bottom: 4px;
+}
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.tenant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.tenant-hint {
+  font-size: 12px;
+  white-space: nowrap;
 }
 .page-header h2 {
   font-size: 20px;
@@ -270,6 +318,10 @@ async function handleSearch() {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--sun-text);
+}
+
+.result-doc-name {
+  font-size: 12px;
 }
 
 .no-results {

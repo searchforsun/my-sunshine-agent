@@ -5,9 +5,11 @@ import com.sunshine.auth.dto.LoginRequest;
 import com.sunshine.auth.dto.LoginResponse;
 import com.sunshine.auth.dto.RegisterRequest;
 import com.sunshine.auth.dto.UpdateProfileRequest;
+import com.sunshine.auth.dto.UpdateProfileResponse;
 import com.sunshine.auth.dto.UserBriefVO;
 import com.sunshine.auth.entity.UserEntity;
 import com.sunshine.auth.repo.UserRepository;
+import com.sunshine.auth.exception.AuthErrorCode;
 import com.sunshine.common.core.exception.BizException;
 import cn.dev33.satoken.stp.SaLoginModel;
 import cn.dev33.satoken.stp.StpUtil;
@@ -36,7 +38,7 @@ public class UserService {
     @Transactional
     public AuthUserVO register(RegisterRequest request) {
         if (userRepository.findByUsername(request.getUsername()).isPresent()) {
-            throw new BizException(409, "用户名已存在");
+            throw new BizException(AuthErrorCode.USERNAME_TAKEN);
         }
         Instant now = Instant.now();
         UserEntity user = new UserEntity();
@@ -54,12 +56,12 @@ public class UserService {
 
     public LoginResponse login(LoginRequest request) {
         UserEntity user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new BizException(401, "用户名或密码错误"));
+                .orElseThrow(() -> new BizException(AuthErrorCode.LOGIN_FAILED));
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new BizException(401, "用户名或密码错误");
+            throw new BizException(AuthErrorCode.LOGIN_FAILED);
         }
         if (user.getStatus() == null || user.getStatus() != STATUS_ACTIVE) {
-            throw new BizException(403, "账号已禁用");
+            throw new BizException(AuthErrorCode.USER_DISABLED);
         }
         StpUtil.login(user.getId(), SaLoginModel.create()
                 .setExtra("nickname", resolveNickname(user.getNickname(), user.getUsername()))
@@ -70,6 +72,7 @@ public class UserService {
                 .userId(user.getId())
                 .username(user.getUsername())
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
+                .tenantId(resolveTenantId(user.getTenantId()))
                 .build();
     }
 
@@ -80,19 +83,34 @@ public class UserService {
     public AuthUserVO currentUser() {
         String userId = StpUtil.getLoginIdAsString();
         UserEntity user = userRepository.findById(userId)
-                .orElseThrow(() -> new BizException(401, "用户不存在或 Token 已失效"));
+                .orElseThrow(() -> new BizException(AuthErrorCode.USER_NOT_FOUND));
         return toVo(user);
     }
 
     @Transactional
-    public AuthUserVO updateProfile(UpdateProfileRequest request) {
+    public UpdateProfileResponse updateProfile(UpdateProfileRequest request) {
         String userId = StpUtil.getLoginIdAsString();
         UserEntity user = userRepository.findById(userId)
-                .orElseThrow(() -> new BizException(401, "用户不存在或 Token 已失效"));
+                .orElseThrow(() -> new BizException(AuthErrorCode.USER_NOT_FOUND));
         user.setNickname(request.getNickname().trim());
+        user.setTenantId(resolveTenantId(request.getTenantId()));
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
-        return toVo(user);
+        String newToken = reissueToken(user);
+        return toUpdateProfileResponse(user, newToken);
+    }
+
+    /** 注销当前 JWT 并签发含最新 extra 的新 token（避免 getTokenValue 返回旧值） */
+    private String reissueToken(UserEntity user) {
+        String nickname = resolveNickname(user.getNickname(), user.getUsername());
+        String tenantId = resolveTenantId(user.getTenantId());
+        String previousToken = StpUtil.getTokenValue();
+        if (previousToken != null && !previousToken.isBlank()) {
+            StpUtil.logoutByTokenValue(previousToken);
+        }
+        return StpUtil.createLoginSession(user.getId(), SaLoginModel.create()
+                .setExtra("nickname", nickname)
+                .setExtra("tenantId", tenantId));
     }
 
     /** 批量查询用户展示信息 — 供 skill-manager BFF 解析维护人 */
@@ -142,6 +160,17 @@ public class UserService {
                 .userId(user.getId())
                 .username(user.getUsername())
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
+                .tenantId(resolveTenantId(user.getTenantId()))
+                .build();
+    }
+
+    private UpdateProfileResponse toUpdateProfileResponse(UserEntity user, String token) {
+        return UpdateProfileResponse.builder()
+                .userId(user.getId())
+                .username(user.getUsername())
+                .nickname(resolveNickname(user.getNickname(), user.getUsername()))
+                .tenantId(resolveTenantId(user.getTenantId()))
+                .token(token)
                 .build();
     }
 }

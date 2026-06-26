@@ -14,6 +14,7 @@ import {
   resolvePlanIdFromStep,
 } from '../../api/processingSteps'
 import { useRouter } from 'vue-router'
+import HitlStepActions from './HitlStepActions.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 
 const props = defineProps<{
@@ -22,12 +23,15 @@ const props = defineProps<{
   live?: boolean
   /** 消息级 executionPlanId 兜底（历史数据） */
   executionPlanId?: string
+  /** 为 false 时不在卡片内嵌 HITL（由 PlanNodeDrawer 等外层承载） */
+  embedHitl?: boolean
 }>()
 
 const router = useRouter()
 
 const emit = defineEmits<{
   toggle: []
+  'hitl-decided': [token: string, approved: boolean]
 }>()
 
 const lifecycle = computed(() => stepLifecycle(props.step))
@@ -152,6 +156,8 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
         查看详情
       </button>
     </div>
+
+    <HitlStepActions v-if="embedHitl !== false" :step="step" @decided="(token, approved) => emit('hitl-decided', token, approved)" />
 
     <div v-if="expanded && canExpand" class="op-detail">
       <div v-if="expandSummary && shiftSummary" class="op-detail-after">

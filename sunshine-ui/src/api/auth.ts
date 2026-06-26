@@ -1,9 +1,11 @@
 import { apiHeaders } from '../stores/authStore'
+import { parseApiResponse } from './apiError'
 
 export interface AuthUser {
   userId: string
   username: string
   nickname: string
+  tenantId: string
 }
 
 export interface LoginResult extends AuthUser {
@@ -11,18 +13,8 @@ export interface LoginResult extends AuthUser {
   tokenName: string
 }
 
-interface ApiResult<T> {
-  code: number
-  msg: string
-  data: T
-}
-
-async function parseResponse<T>(res: Response): Promise<T> {
-  const body = (await res.json()) as ApiResult<T>
-  if (body.code !== 200) {
-    throw new Error(body.msg || `HTTP ${res.status}`)
-  }
-  return body.data
+export interface UpdateProfileResult extends AuthUser {
+  token: string
 }
 
 export async function register(username: string, password: string, nickname?: string): Promise<AuthUser> {
@@ -31,7 +23,7 @@ export async function register(username: string, password: string, nickname?: st
     headers: apiHeaders(),
     body: JSON.stringify({ username, password, nickname }),
   })
-  return parseResponse<AuthUser>(res)
+  return parseApiResponse<AuthUser>(res)
 }
 
 export async function login(username: string, password: string): Promise<LoginResult> {
@@ -40,7 +32,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     headers: apiHeaders(),
     body: JSON.stringify({ username, password }),
   })
-  return parseResponse<LoginResult>(res)
+  return parseApiResponse<LoginResult>(res)
 }
 
 export async function logout(): Promise<void> {
@@ -48,22 +40,19 @@ export async function logout(): Promise<void> {
     method: 'POST',
     headers: apiHeaders(),
   })
-  await parseResponse<null>(res)
+  await parseApiResponse<null>(res, { allowEmptyData: true })
 }
 
 export async function me(): Promise<AuthUser> {
   const res = await fetch('/api/auth/me', { headers: apiHeaders() })
-  if (res.status === 401) {
-    throw new Error('未登录')
-  }
-  return parseResponse<AuthUser>(res)
+  return parseApiResponse<AuthUser>(res)
 }
 
-export async function updateProfile(nickname: string): Promise<AuthUser> {
+export async function updateProfile(nickname: string, tenantId: string): Promise<UpdateProfileResult> {
   const res = await fetch('/api/auth/profile', {
     method: 'PATCH',
     headers: apiHeaders(),
-    body: JSON.stringify({ nickname }),
+    body: JSON.stringify({ nickname, tenantId }),
   })
-  return parseResponse<AuthUser>(res)
+  return parseApiResponse<UpdateProfileResult>(res)
 }

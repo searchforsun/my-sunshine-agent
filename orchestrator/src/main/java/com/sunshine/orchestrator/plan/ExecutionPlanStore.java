@@ -1,9 +1,12 @@
 package com.sunshine.orchestrator.plan;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.execution.WorkflowContext;
+import com.sunshine.orchestrator.execution.WorkflowContextCodec;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -179,6 +182,108 @@ public class ExecutionPlanStore {
         return requireEntity(planId);
     }
 
+    @Transactional(readOnly = true)
+    public java.util.Optional<ExecutionPlanEntity> findByMessageId(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return java.util.Optional.empty();
+        }
+        return repository.findByMessageId(messageId.strip());
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<ExecutionPlanEntity> findPausedForMessage(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return java.util.Optional.empty();
+        }
+        return repository.findByMessageId(messageId.strip())
+                .filter(e -> ExecutionPlanStatus.PAUSED == ExecutionPlanStatus.fromDb(e.getStatus()));
+    }
+
+    /** 续跑：PAUSED 或 FAILED 但保留检查点 */
+    @Transactional(readOnly = true)
+    public java.util.Optional<ExecutionPlanEntity> findResumableForMessage(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return java.util.Optional.empty();
+        }
+        return repository.findByMessageId(messageId.strip())
+                .filter(e -> {
+                    ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(e.getStatus());
+                    if (status == ExecutionPlanStatus.PAUSED) {
+                        return true;
+                    }
+                    return status == ExecutionPlanStatus.FAILED
+                            && StringUtils.hasText(e.getPauseCheckpoint());
+                });
+    }
+
+    @Transactional
+    public void markPaused(String planId, WorkflowCheckpoint checkpoint) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        ExecutionPlanStatus current = ExecutionPlanStatus.fromDb(entity.getStatus());
+        if (current != ExecutionPlanStatus.RUNNING && current != ExecutionPlanStatus.PAUSED) {
+            return;
+        }
+        WorkflowCheckpoint toSave = checkpoint;
+        if (!WorkflowContextCodec.hasNodes(checkpoint.wfCtxJson())
+                && StringUtils.hasText(entity.getPauseCheckpoint())) {
+            WorkflowCheckpoint prev = codec.checkpointFromJson(entity.getPauseCheckpoint());
+            if (WorkflowContextCodec.hasNodes(prev.wfCtxJson())) {
+                toSave = new WorkflowCheckpoint(checkpoint.resumeNodeId(), prev.wfCtxJson());
+                log.info("[ExecutionPlanStore] paused 使用 DB wfCtx 快照 id={}", planId);
+            }
+        }
+        entity.setStatus(ExecutionPlanStatus.PAUSED.dbValue());
+        entity.setPauseCheckpoint(codec.checkpointToJson(toSave));
+        repository.save(entity);
+        log.info("[ExecutionPlanStore] paused id={} resumeNode={}", planId, toSave.resumeNodeId());
+    }
+
+    /** 节点成功后刷新 wfCtx 快照，供暂停续跑（避免 cancel 时内存已清空） */
+    @Transactional
+    public void refreshCheckpointWfCtx(String planId, WorkflowContext wfCtx) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(entity.getStatus());
+        if (status != ExecutionPlanStatus.RUNNING && status != ExecutionPlanStatus.PAUSED) {
+            return;
+        }
+        String wfJson = WorkflowContextCodec.toJson(wfCtx);
+        if (!WorkflowContextCodec.hasNodes(wfJson)) {
+            return;
+        }
+        String resumeNodeId = "";
+        if (StringUtils.hasText(entity.getPauseCheckpoint())) {
+            try {
+                resumeNodeId = codec.checkpointFromJson(entity.getPauseCheckpoint()).resumeNodeId();
+            } catch (Exception ignored) {
+                resumeNodeId = "";
+            }
+        }
+        entity.setPauseCheckpoint(codec.checkpointToJson(
+                new WorkflowCheckpoint(resumeNodeId != null ? resumeNodeId : "", wfJson)));
+        repository.save(entity);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlanNodeTrace> listNodeTraces(String planId) {
+        return codec.traceFromJson(requireEntity(planId).getExecutionTrace());
+    }
+
+    @Transactional
+    public void markResumed(String planId) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(entity.getStatus());
+        if (status != ExecutionPlanStatus.PAUSED && status != ExecutionPlanStatus.FAILED) {
+            assertStatus(entity, ExecutionPlanStatus.PAUSED);
+        }
+        entity.setStatus(ExecutionPlanStatus.RUNNING.dbValue());
+        repository.save(entity);
+        log.info("[ExecutionPlanStore] resumed id={}", planId);
+    }
+
+    public WorkflowCheckpoint loadCheckpoint(ExecutionPlanEntity entity) {
+        return codec.checkpointFromJson(entity.getPauseCheckpoint());
+    }
+
     private static String resolvePlanId(PlanJson planJson) {
         if (planJson != null && StringUtils.hasText(planJson.planId())) {
             return planJson.planId().strip();
@@ -188,13 +293,13 @@ public class ExecutionPlanStore {
 
     private ExecutionPlanEntity requireEntity(String planId) {
         return repository.findById(planId)
-                .orElseThrow(() -> new BizException("执行计划不存在: " + planId));
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.EXECUTION_PLAN_NOT_FOUND));
     }
 
     private static void assertStatus(ExecutionPlanEntity entity, ExecutionPlanStatus expected) {
         ExecutionPlanStatus current = ExecutionPlanStatus.fromDb(entity.getStatus());
         if (current != expected) {
-            throw new BizException("Plan 状态非法: " + current + "，期望 " + expected);
+            throw new BizException(OrchestratorErrorCode.EXECUTION_PLAN_STATE_INVALID);
         }
     }
 
@@ -209,7 +314,7 @@ public class ExecutionPlanStore {
 
     private static String requireText(String value, String field) {
         if (!StringUtils.hasText(value)) {
-            throw new BizException("Plan 持久化缺少 " + field);
+            throw new BizException(OrchestratorErrorCode.EXECUTION_PLAN_PERSIST_INCOMPLETE);
         }
         return value;
     }

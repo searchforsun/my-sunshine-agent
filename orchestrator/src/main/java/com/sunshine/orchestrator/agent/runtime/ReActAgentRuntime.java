@@ -82,7 +82,10 @@ public class ReActAgentRuntime implements AgentRuntime {
 
         String bridgeId = request.resolveBridgeId();
         StepEventBridge.bind(bridgeId, session, hookQueue);
-        if (assistantMessageId != null) {
+        if (request.assistantMessageId() != null && !request.assistantMessageId().isBlank()) {
+            StepEventBridge.bindHitlBridge(bridgeId, request.assistantMessageId(), true);
+            StepEventBridge.setUserQuery(request.assistantMessageId(), query);
+        } else if (assistantMessageId != null) {
             StepEventBridge.setUserQuery(assistantMessageId, query);
         }
 

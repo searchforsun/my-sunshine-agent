@@ -1,6 +1,8 @@
 package com.sunshine.skill.controller;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.result.R;
+import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.dto.SkillCatalogEntry;
 import com.sunshine.skill.dto.SkillCreateRequest;
 import com.sunshine.skill.dto.SkillEnableRequest;
@@ -31,12 +33,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
 
 @RestController
 @RequestMapping("/api/skills")
@@ -163,6 +162,6 @@ public class SkillAdminController {
         if (StringUtils.hasText(content)) {
             return SkillPackageImporter.fromMarkdown(content);
         }
-        throw new ResponseStatusException(BAD_REQUEST, "请上传 SKILL.md / zip 或提供 content");
+        throw new BizException(SkillErrorCode.UPLOAD_PAYLOAD_INVALID);
     }
 }

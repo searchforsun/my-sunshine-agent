@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.config.AgentHitlProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
@@ -30,6 +31,7 @@ public class PromptComposer {
     private final PromptOverlayProperties overlayProperties;
     private final MemoryProperties memoryProperties;
     private final SkillCatalogService skillCatalogService;
+    private final AgentHitlProperties hitlProperties;
 
     /** simple-llm / workflow llm 直连 Gateway 的消息列表（含 base-system） */
     public List<Map<String, Object>> composeGatewayMessages(PromptComposeRequest request) {
@@ -66,6 +68,7 @@ public class PromptComposer {
             addReactSystem(inputs, prompts.systemPromptOrEmpty());
         }
         addReactSystem(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
+        addReactSystem(inputs, resolveHitlOverlay(request.mode()));
         addReactSystem(inputs, resolveSkillOverlay(request.skillId()));
         appendReactMemoryLayers(inputs, ctx);
         addReactSystem(inputs, scopePromptOrEmpty());
@@ -151,6 +154,14 @@ public class PromptComposer {
             }
         }
         String text = overlayProperties.getModeOverlays().get(mode.overlayKey());
+        return StringUtils.hasText(text) ? text.strip() : "";
+    }
+
+    private String resolveHitlOverlay(PromptMode mode) {
+        if (mode != PromptMode.REACT || hitlProperties == null || !hitlProperties.isEnabled()) {
+            return "";
+        }
+        String text = hitlProperties.getAgentPrompt();
         return StringUtils.hasText(text) ? text.strip() : "";
     }
 

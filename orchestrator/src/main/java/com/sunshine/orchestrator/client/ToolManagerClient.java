@@ -16,6 +16,9 @@ import java.util.Map;
 @Component
 public class ToolManagerClient {
 
+    /** ReAct 工具路径：将异常转为模型可读文案；Workflow tool 节点须再判定并 fail */
+    public static final String INVOKE_FAILURE_PREFIX = "工具调用失败:";
+
     @Value("${tool-manager.base-url:http://localhost:8210}")
     private String baseUrl;
 
@@ -40,8 +43,12 @@ public class ToolManagerClient {
                 .map(R::getData)
                 .onErrorResume(e -> {
                     log.warn("[ToolManagerClient] invoke {} failed: {}", name, e.getMessage());
-                    return Mono.just("工具调用失败: " + e.getMessage());
+                    return Mono.just(INVOKE_FAILURE_PREFIX + " " + e.getMessage());
                 })
                 .block();
+    }
+
+    public static boolean isInvokeFailureResult(String result) {
+        return result != null && result.startsWith(INVOKE_FAILURE_PREFIX);
     }
 }

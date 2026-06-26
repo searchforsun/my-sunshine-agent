@@ -11,6 +11,8 @@ from pathlib import Path
 import requests
 import yaml
 
+from sunshine_lib import unwrap_r
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RAG_URL = os.environ.get("RAG_URL", "http://ecs4c16g:8400")
 GOLDEN_SET = ROOT / "docs" / "rag" / "golden-set.yaml"
@@ -43,11 +45,8 @@ def main() -> int:
                     timeout=300,
                 )
                 resp.raise_for_status()
-                body = resp.json()
-                if body.get("code") != 200:
-                    print(f"[FAIL] {doc_name}: {body}", file=sys.stderr)
-                    return 1
-                print(f"[OK] {item['doc_id']} chunks={body.get('chunks')}")
+                data = unwrap_r(resp.json(), context=doc_name) or {}
+                print(f"[OK] {item['doc_id']} chunks={data.get('chunks')}")
                 last_err = None
                 break
             except requests.RequestException as exc:

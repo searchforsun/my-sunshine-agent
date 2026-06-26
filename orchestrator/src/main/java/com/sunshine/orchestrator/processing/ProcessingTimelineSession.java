@@ -77,6 +77,106 @@ public final class ProcessingTimelineSession {
         currentToolStepId = null;
     }
 
+    /** HITL 拒绝/超时：跳过当前工具步骤 */
+    public void skipCurrentToolStep(String afterSummary) {
+        if (currentToolStepId == null) {
+            return;
+        }
+        skip(currentToolStepId, afterSummary);
+        currentToolStepId = null;
+    }
+
+    /** 更新当前工具步骤 running 阶段摘要（HITL 等待/确认等） */
+    public void progressCurrentToolStep(String activeSummary) {
+        if (currentToolStepId == null || activeSummary == null || activeSummary.isBlank()) {
+            return;
+        }
+        progress(currentToolStepId, activeSummary);
+    }
+
+    public String currentToolStepId() {
+        return currentToolStepId;
+    }
+
+    /** 写工具 HITL：挂载待确认 metadata 到当前工具步骤 */
+    public void attachHitlPending(
+            String token, String toolDisplayName, String paramsSummary, long expiresAt) {
+        if (currentToolStepId == null || token == null || token.isBlank()) {
+            return;
+        }
+        StepMetadata base = aggregator.get(currentToolStepId).map(ProcessingStep::metadata).orElse(null);
+        StepMetadata meta = StepMetadata.withHitl(
+                base, HitlStepMeta.awaiting(token, toolDisplayName, paramsSummary, expiresAt));
+        applyAt(currentToolStepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
+    }
+
+    /** 写工具 HITL：用户确认/拒绝后更新 metadata（清除 token） */
+    public void resolveHitlPending(String status) {
+        if (currentToolStepId == null || status == null) {
+            return;
+        }
+        resolveHitlPendingOnStep(currentToolStepId, status);
+    }
+
+    /** Workflow / 指定步骤：挂载 HITL 待确认 metadata */
+    public void attachHitlPendingOnStep(
+            String stepId, String token, String toolDisplayName, String paramsSummary, long expiresAt) {
+        if (stepId == null || token == null || token.isBlank()) {
+            return;
+        }
+        StepMetadata base = aggregator.get(stepId).map(ProcessingStep::metadata).orElse(null);
+        StepMetadata meta = StepMetadata.withHitl(
+                base, HitlStepMeta.awaiting(token, toolDisplayName, paramsSummary, expiresAt));
+        applyAt(stepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
+    }
+
+    /** Workflow / 指定步骤：用户确认/拒绝后更新 metadata */
+    public void resolveHitlPendingOnStep(String stepId, String status) {
+        if (stepId == null || status == null) {
+            return;
+        }
+        StepMetadata base = aggregator.get(stepId).map(ProcessingStep::metadata).orElse(null);
+        if (base == null || base.hitl() == null) {
+            return;
+        }
+        StepMetadata meta = StepMetadata.withHitl(base, HitlStepMeta.resolved(status, base.hitl()));
+        applyAt(stepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
+    }
+
+    /** Workflow 节点失败：挂载重试/终止 metadata */
+    public void attachNodeRecoveryOnStep(
+            String stepId, String token, String errorMessage, long expiresAt) {
+        if (stepId == null || token == null || token.isBlank()) {
+            return;
+        }
+        StepMetadata base = aggregator.get(stepId).map(ProcessingStep::metadata).orElse(null);
+        StepMetadata meta = StepMetadata.withRecovery(
+                base, NodeRecoveryMeta.awaiting(token, errorMessage, expiresAt));
+        applyAt(stepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
+    }
+
+    public void resolveNodeRecoveryOnStep(String stepId, String status) {
+        if (stepId == null || status == null) {
+            return;
+        }
+        StepMetadata base = aggregator.get(stepId).map(ProcessingStep::metadata).orElse(null);
+        if (base == null || base.recovery() == null) {
+            return;
+        }
+        StepMetadata meta = StepMetadata.withRecovery(base, NodeRecoveryMeta.resolved(status, base.recovery()));
+        applyAt(stepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
+    }
+
+    /** Workflow 节点重试：实时下发 attempt 列表 */
+    public void updateNodeAttemptsOnStep(String stepId, List<NodeAttemptMeta> attempts) {
+        if (stepId == null || attempts == null || attempts.isEmpty()) {
+            return;
+        }
+        StepMetadata base = aggregator.get(stepId).map(ProcessingStep::metadata).orElse(null);
+        StepMetadata meta = StepMetadata.withNodeAttempts(base, attempts);
+        applyAt(stepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
+    }
+
     public String activeStepId() {
         return activeStepId;
     }
@@ -296,6 +396,16 @@ public final class ProcessingTimelineSession {
         apply(stepId, null, EventKind.FAIL, detail, detail);
     }
 
+    /** 用户暂停工作流 — lifecycle=paused */
+    public void pause(String stepId, String detail) {
+        apply(stepId, null, EventKind.PAUSE, "已暂停", detail);
+    }
+
+    /** 用户终止流程 — lifecycle=terminated */
+    public void terminate(String stepId, String detail) {
+        apply(stepId, null, EventKind.TERMINATE, "已终止", detail);
+    }
+
     public void skip(String stepId, String afterSummary) {
         apply(stepId, null, EventKind.SKIP, afterSummary, null);
     }
@@ -424,7 +534,8 @@ public final class ProcessingTimelineSession {
     }
 
     private static boolean isTerminalEvent(EventKind kind) {
-        return kind == EventKind.COMPLETE || kind == EventKind.FAIL || kind == EventKind.SKIP;
+        return kind == EventKind.COMPLETE || kind == EventKind.FAIL || kind == EventKind.SKIP
+                || kind == EventKind.PAUSE || kind == EventKind.TERMINATE;
     }
 
     private static boolean sameState(ProcessingStep prev, ProcessingStep next) {

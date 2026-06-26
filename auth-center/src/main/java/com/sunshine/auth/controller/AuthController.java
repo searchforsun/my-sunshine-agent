@@ -5,6 +5,7 @@ import com.sunshine.auth.dto.LoginRequest;
 import com.sunshine.auth.dto.LoginResponse;
 import com.sunshine.auth.dto.RegisterRequest;
 import com.sunshine.auth.dto.UpdateProfileRequest;
+import com.sunshine.auth.dto.UpdateProfileResponse;
 import com.sunshine.auth.service.UserService;
 import com.sunshine.common.core.result.R;
 import jakarta.validation.Valid;
@@ -45,7 +46,7 @@ public class AuthController {
     }
 
     @PatchMapping("/profile")
-    public R<AuthUserVO> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
+    public R<UpdateProfileResponse> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
         return R.ok(userService.updateProfile(request));
     }
 }

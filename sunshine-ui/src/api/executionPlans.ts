@@ -1,5 +1,6 @@
 import { apiHeaders } from '../stores/authStore'
 import { BFF_API_BASE } from './config'
+import { parseBffPayload } from './apiError'
 
 export interface PlanNodeTrace {
   nodeId: string
@@ -69,19 +70,7 @@ export interface ExecutionPlanSummary {
 }
 
 async function parseJson<T>(res: Response): Promise<T> {
-  const raw: unknown = await res.json()
-  if (!res.ok) {
-    const msg = typeof raw === 'object' && raw && 'msg' in raw
-      ? String((raw as { msg: string }).msg)
-      : `HTTP ${res.status}`
-    throw new Error(msg)
-  }
-  if (typeof raw === 'object' && raw && 'code' in raw && 'msg' in raw) {
-    const wrapped = raw as { code: number; msg: string; data: T }
-    if (wrapped.code !== 200) throw new Error(wrapped.msg || '请求失败')
-    return wrapped.data
-  }
-  return raw as T
+  return parseBffPayload<T>(res)
 }
 
 function apiUrl(path: string): string {

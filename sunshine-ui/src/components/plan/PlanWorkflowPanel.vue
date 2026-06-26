@@ -11,6 +11,7 @@ import {
 import { getExecutionPlan, type ExecutionPlanDetail, type PlanGraph } from '../../api/executionPlans'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../../api/skills'
 import { buildDagNodes, type DagNodeView } from '../../utils/planGraph'
+import { relocateAgentNodeHitl } from '../../api/hitlSteps'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
 import PlanDagGraph from './PlanDagGraph.vue'
@@ -50,8 +51,17 @@ function stepContentSignature(step?: ProcessingStep): string {
     step.metadata?.rewriteFrom ?? '',
     step.metadata?.rewriteTo ?? '',
     step.metadata?.rewriteScenario ?? '',
+    step.metadata?.hitlStatus ?? '',
+    step.metadata?.hitlToken ?? '',
+    step.metadata?.recoveryStatus ?? '',
+    step.metadata?.recoveryToken ?? '',
+    step.metadata?.nodeAttempts?.map(a => `${a.attemptNo}:${a.status}:${a.summary ?? ''}`).join('|') ?? '',
     subStepsSignature(step.subSteps),
   ].join('\u0001')
+}
+
+function attemptsSignature(node?: DagNodeView): string {
+  return node?.attempts?.map(a => `${a.attemptNo}:${a.status}:${a.summary ?? ''}`).join('|') ?? ''
 }
 
 function syncDrawerSelection(nodes: DagNodeView[]) {
@@ -67,12 +77,27 @@ function syncDrawerSelection(nodes: DagNodeView[]) {
     || fresh.durationMs !== cur.durationMs
     || fresh.summary !== cur.summary
     || fresh.detail !== cur.detail
+    || fresh.recoveryAwaiting !== cur.recoveryAwaiting
+    || attemptsSignature(fresh) !== attemptsSignature(cur)
   ) {
     drawerState.node = fresh
   }
   if (stepContentSignature(step) !== stepContentSignature(drawerState.step)) {
     drawerState.step = step
   }
+}
+
+function nodeNeedsDrawerAttention(node: DagNodeView): boolean {
+  return node.status === 'awaiting_confirm' || (!!node.recoveryAwaiting && node.status === 'error')
+}
+
+function maybeAutoOpenDrawer(nodes: DagNodeView[]) {
+  const id = planId.value
+  if (!id || !props.live) return
+  const target = nodes.find(nodeNeedsDrawerAttention)
+  if (!target) return
+  if (isActivePlan(id) && drawerState.node?.id === target.id) return
+  openDrawer({ planId: id, userQuery: props.userQuery, node: target, step: stepForNode(target.id) })
 }
 
 const planDetail = ref<ExecutionPlanDetail | null>(null)
@@ -118,7 +143,8 @@ function stepForNode(nodeId: string): ProcessingStep | undefined {
   if (nodeId === 'start') {
     return props.planStep
   }
-  return nodeSteps.value.find(s => s.id === `node-${nodeId}`)
+  const step = nodeSteps.value.find(s => s.id === `node-${nodeId}`)
+  return step?.id.startsWith('node-') ? relocateAgentNodeHitl(step) : step
 }
 
 function onSelectNode(node: DagNodeView) {
@@ -201,6 +227,7 @@ watch(planId, (id, prev) => {
 watch(dagNodes, (nodes) => {
   syncDrawerSelection(nodes)
   syncExpandLayer()
+  maybeAutoOpenDrawer(nodes)
 }, { deep: true })
 watch(selectedId, () => syncExpandLayer())
 </script>

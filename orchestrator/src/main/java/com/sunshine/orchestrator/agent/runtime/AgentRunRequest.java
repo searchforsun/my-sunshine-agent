@@ -28,8 +28,11 @@ public record AgentRunRequest(
         toolWhitelist = toolWhitelist != null ? List.copyOf(toolWhitelist) : null;
     }
 
-    /** MAIN 绑定 assistantMessageId；SUB 用 runId 生成独立 bridge */
+    /** MAIN 绑定 assistantMessageId；SUB 始终用 sub-{runId} 独立 bridge（SSE 经 bindHitlBridge 映射） */
     public String resolveBridgeId() {
+        if (role == AgentRole.SUB) {
+            return "sub-" + runId;
+        }
         if (assistantMessageId != null && !assistantMessageId.isBlank()) {
             return assistantMessageId;
         }
@@ -84,7 +87,7 @@ public record AgentRunRequest(
             List<String> injectedBlocks,
             String userId,
             String tenantId) {
-        return sub(memory, query, injectedBlocks, userId, tenantId, null, null, null, 0);
+        return sub(memory, query, injectedBlocks, userId, tenantId, null, null, null, null, 0);
     }
 
     /** Workflow 子 Agent — 含节点 params（skill / tools / overlay / maxIters） */
@@ -94,6 +97,7 @@ public record AgentRunRequest(
             List<String> injectedBlocks,
             String userId,
             String tenantId,
+            String assistantMessageId,
             String skillId,
             List<String> toolWhitelist,
             String systemOverlay,
@@ -107,12 +111,27 @@ public record AgentRunRequest(
                 injectedBlocks,
                 userId,
                 tenantId,
-                null,
+                assistantMessageId,
                 skillId,
                 toolWhitelist,
                 systemOverlay,
                 maxIters,
                 TimelineBinding.SUB_COMPRESSED);
+    }
+
+    /** @deprecated 使用带 assistantMessageId 的重载 */
+    public static AgentRunRequest sub(
+            MemoryContext memory,
+            String query,
+            List<String> injectedBlocks,
+            String userId,
+            String tenantId,
+            String skillId,
+            List<String> toolWhitelist,
+            String systemOverlay,
+            int maxIters) {
+        return sub(memory, query, injectedBlocks, userId, tenantId, null,
+                skillId, toolWhitelist, systemOverlay, maxIters);
     }
 
     /** Planner — 仅 plan 步 Timeline */

@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.StepLabels;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
@@ -250,7 +251,7 @@ public final class ProcessingStepMerger {
         return switch (lifecycle) {
             case "pending" -> nonEmptySummary(s.before(), null, null);
             case "running" -> nonEmptySummary(null, s.active(), null);
-            case "done", "error", "skipped" -> nonEmptySummary(null, null, s.after());
+            case "done", "error", "skipped", "terminated" -> nonEmptySummary(null, null, s.after());
             default -> nonEmptySummary(null, s.active(), null);
         };
     }
@@ -364,6 +365,67 @@ public final class ProcessingStepMerger {
         if (hasText(metadata.expandSectionTitle())) {
             map.put("expandSectionTitle", metadata.expandSectionTitle());
         }
+        if (metadata.hitl() != null) {
+            Map<String, Object> hitl = new LinkedHashMap<>();
+            if (hasText(metadata.hitl().status())) {
+                hitl.put("status", metadata.hitl().status());
+            }
+            if (hasText(metadata.hitl().token())) {
+                hitl.put("token", metadata.hitl().token());
+            }
+            if (hasText(metadata.hitl().toolDisplayName())) {
+                hitl.put("toolDisplayName", metadata.hitl().toolDisplayName());
+            }
+            if (hasText(metadata.hitl().paramsSummary())) {
+                hitl.put("paramsSummary", metadata.hitl().paramsSummary());
+            }
+            if (metadata.hitl().expiresAt() != null) {
+                hitl.put("expiresAt", metadata.hitl().expiresAt());
+            }
+            if (!hitl.isEmpty()) {
+                map.put("hitl", hitl);
+            }
+        }
+        if (metadata.recovery() != null) {
+            Map<String, Object> recovery = new LinkedHashMap<>();
+            if (hasText(metadata.recovery().status())) {
+                recovery.put("status", metadata.recovery().status());
+            }
+            if (hasText(metadata.recovery().token())) {
+                recovery.put("token", metadata.recovery().token());
+            }
+            if (hasText(metadata.recovery().errorMessage())) {
+                recovery.put("errorMessage", metadata.recovery().errorMessage());
+            }
+            if (metadata.recovery().expiresAt() != null) {
+                recovery.put("expiresAt", metadata.recovery().expiresAt());
+            }
+            if (!recovery.isEmpty()) {
+                map.put("recovery", recovery);
+            }
+        }
+        if (metadata.nodeAttempts() != null && !metadata.nodeAttempts().isEmpty()) {
+            List<Map<String, Object>> attempts = new ArrayList<>();
+            for (NodeAttemptMeta attempt : metadata.nodeAttempts()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("attemptNo", attempt.attemptNo());
+                item.put("status", attempt.status());
+                if (hasText(attempt.errorClass())) {
+                    item.put("errorClass", attempt.errorClass());
+                }
+                if (hasText(attempt.summary())) {
+                    item.put("summary", attempt.summary());
+                }
+                if (attempt.startedAt() != null) {
+                    item.put("startedAt", attempt.startedAt());
+                }
+                if (attempt.endedAt() != null) {
+                    item.put("endedAt", attempt.endedAt());
+                }
+                attempts.add(item);
+            }
+            map.put("nodeAttempts", attempts);
+        }
         return map;
     }
 
@@ -394,5 +456,119 @@ public final class ProcessingStepMerger {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    /** 取消生成时：将 running 的 workflow 节点（含子 Agent subSteps）标为 paused */
+    public static void pauseRunningWorkflowNodes(List<ProcessingStep> steps) {
+        pauseRunningWorkflowNodes(steps, null);
+    }
+
+    public static void pauseRunningWorkflowNodes(List<ProcessingStep> steps, String currentNodeId) {
+        if (steps == null || steps.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < steps.size(); i++) {
+            ProcessingStep step = steps.get(i);
+            if (step.id() == null || !step.id().startsWith("node-")) {
+                continue;
+            }
+            List<ProcessingStep> subSteps = step.subSteps();
+            if (subSteps != null && !subSteps.isEmpty()) {
+                List<ProcessingStep> updatedSubs = new ArrayList<>(subSteps);
+                pauseRunningInPlace(updatedSubs);
+                if (!updatedSubs.equals(subSteps)) {
+                    step = copyWithSubSteps(step, updatedSubs);
+                }
+            }
+            if (isRunning(step)) {
+                step = toPaused(step);
+            }
+            steps.set(i, step);
+        }
+        if (org.springframework.util.StringUtils.hasText(currentNodeId)) {
+            pauseWorkflowNodeAt(steps, "node-" + currentNodeId.strip());
+        }
+    }
+
+    private static void pauseWorkflowNodeAt(List<ProcessingStep> steps, String stepId) {
+        for (int i = 0; i < steps.size(); i++) {
+            ProcessingStep step = steps.get(i);
+            if (!stepId.equals(step.id()) || !isRunning(step)) {
+                continue;
+            }
+            steps.set(i, toPaused(step));
+            return;
+        }
+    }
+
+    private static void pauseRunningInPlace(List<ProcessingStep> steps) {
+        for (int i = 0; i < steps.size(); i++) {
+            ProcessingStep step = steps.get(i);
+            if (isRunning(step)) {
+                steps.set(i, toPaused(step));
+            }
+        }
+    }
+
+    private static ProcessingStep copyWithSubSteps(ProcessingStep step, List<ProcessingStep> subSteps) {
+        return new ProcessingStep(
+                step.id(),
+                step.phase(),
+                step.lifecycle(),
+                step.summary(),
+                step.startedAt(),
+                step.endedAt(),
+                step.durationMs(),
+                step.detail(),
+                step.reasoning(),
+                step.output(),
+                step.result(),
+                step.ts(),
+                step.status(),
+                step.label(),
+                step.metadata(),
+                subSteps);
+    }
+
+    public static String findLastRunningWorkflowNodeId(List<ProcessingStep> steps) {
+        if (steps == null) {
+            return null;
+        }
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep step = steps.get(i);
+            if (step.id() != null && step.id().startsWith("node-") && isRunning(step)) {
+                return step.id().substring("node-".length());
+            }
+        }
+        return null;
+    }
+
+    private static boolean isRunning(ProcessingStep step) {
+        return "running".equals(step.lifecycle()) || "running".equals(step.status());
+    }
+
+    private static ProcessingStep toPaused(ProcessingStep step) {
+        StepSummary summary = step.summary();
+        StepSummary pausedSummary = new StepSummary(
+                summary != null ? summary.before() : null,
+                "已暂停",
+                "已暂停");
+        return new ProcessingStep(
+                step.id(),
+                step.phase(),
+                "paused",
+                pausedSummary,
+                step.startedAt(),
+                System.currentTimeMillis(),
+                step.startedAt() != null ? System.currentTimeMillis() - step.startedAt() : step.durationMs(),
+                step.detail(),
+                step.reasoning(),
+                step.output(),
+                step.result(),
+                System.currentTimeMillis(),
+                "paused",
+                step.label(),
+                step.metadata(),
+                step.subSteps());
     }
 }

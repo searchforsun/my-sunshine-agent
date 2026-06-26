@@ -4,6 +4,7 @@ import type { ExecutionPreference } from './executionModes'
 import { isExecutionPreference } from './executionModes'
 import type { ProcessingStep } from './processingSteps'
 import { migrateV1Step, normalizeStep } from './processingSteps'
+import { ApiError, parseBffPayload } from './apiError'
 
 const API_BASE = BFF_API_BASE
 export interface ConversationSummary {
@@ -44,7 +45,7 @@ export function isValidConversationId(id: unknown): id is string {
 
 function requireConversationId(raw: Record<string, unknown>): string {
   if (!isValidConversationId(raw.id)) {
-    throw new Error('会话 id 无效')
+    throw new ApiError('数据加载失败，请刷新重试', { kind: 'unknown' })
   }
   return raw.id
 }
@@ -100,48 +101,23 @@ function mapDetail(raw: Record<string, unknown>): ConversationDetail {
   return { ...mapSummary(raw), messages }
 }
 
-interface ApiResult<T> {
-  code: number
-  msg: string
-  data: T
-}
-
-function isApiResult(raw: unknown): raw is ApiResult<unknown> {
-  return typeof raw === 'object' && raw !== null && 'code' in raw && 'msg' in raw
-}
-
-/** BFF 成功时返回裸 JSON；GlobalExceptionHandler 失败时返回 { code, msg, data } 且 HTTP 仍为 200 */
-function unwrapApiError(raw: unknown): unknown {
-  if (!isApiResult(raw)) return raw
-  if (raw.code !== 200) {
-    throw new Error(raw.msg || '请求失败')
-  }
-  if (raw.data === null || raw.data === undefined) {
-    throw new Error(raw.msg || '响应无数据')
-  }
-  return raw.data
-}
-
 function unwrapList(raw: unknown): Record<string, unknown>[] {
-  const body = unwrapApiError(raw)
-  if (!Array.isArray(body)) {
-    throw new Error('对话列表格式异常')
+  if (!Array.isArray(raw)) {
+    throw new ApiError('数据加载失败，请刷新重试', { kind: 'unknown' })
   }
-  return body as Record<string, unknown>[]
+  return raw as Record<string, unknown>[]
 }
 
 function unwrapObject(raw: unknown): Record<string, unknown> {
-  const body = unwrapApiError(raw)
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-    throw new Error('对话详情格式异常')
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new ApiError('数据加载失败，请刷新重试', { kind: 'unknown' })
   }
-  return body as Record<string, unknown>
+  return raw as Record<string, unknown>
 }
 
 export async function listConversations(): Promise<ConversationSummary[]> {
   const res = await fetch(`${API_BASE}/api/conversations`, { headers: apiHeaders() })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return unwrapList(await res.json()).map(mapSummary)
+  return unwrapList(await parseBffPayload(res)).map(mapSummary)
 }
 
 export async function createConversation(): Promise<ConversationSummary> {
@@ -150,17 +126,15 @@ export async function createConversation(): Promise<ConversationSummary> {
     headers: apiHeaders(),
     body: '{}',
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return mapSummary(unwrapObject(await res.json()))
+  return mapSummary(unwrapObject(await parseBffPayload(res)))
 }
 
 export async function getConversation(id: string): Promise<ConversationDetail> {
   if (!isValidConversationId(id)) {
-    throw new Error('会话 id 无效')
+    throw new ApiError('数据加载失败，请刷新重试', { kind: 'unknown' })
   }
   const res = await fetch(`${API_BASE}/api/conversations/${id}`, { headers: apiHeaders() })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return mapDetail(unwrapObject(await res.json()))
+  return mapDetail(unwrapObject(await parseBffPayload(res)))
 }
 
 export async function deleteConversation(id: string): Promise<void> {
@@ -168,7 +142,7 @@ export async function deleteConversation(id: string): Promise<void> {
     method: 'DELETE',
     headers: apiHeaders(),
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  await parseBffPayload(res, { allowEmptyData: true })
 }
 
 export async function updateConversationTitle(id: string, title: string): Promise<void> {
@@ -177,5 +151,5 @@ export async function updateConversationTitle(id: string, title: string): Promis
     headers: apiHeaders(),
     body: JSON.stringify({ title }),
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  await parseBffPayload(res, { allowEmptyData: true })
 }

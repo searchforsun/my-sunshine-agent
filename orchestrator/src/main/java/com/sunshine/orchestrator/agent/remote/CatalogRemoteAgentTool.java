@@ -4,12 +4,14 @@ import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
 import com.sunshine.orchestrator.client.ToolManagerClient;
+import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,14 +25,17 @@ public class CatalogRemoteAgentTool implements AgentTool {
     private final ToolCatalogEntry entry;
     private final ToolManagerClient toolManagerClient;
     private final ToolAuditService toolAuditService;
+    private final HitlConfirmationService hitlConfirmationService;
 
     public CatalogRemoteAgentTool(
             ToolCatalogEntry entry,
             ToolManagerClient toolManagerClient,
-            ToolAuditService toolAuditService) {
+            ToolAuditService toolAuditService,
+            HitlConfirmationService hitlConfirmationService) {
         this.entry = entry;
         this.toolManagerClient = toolManagerClient;
         this.toolAuditService = toolAuditService;
+        this.hitlConfirmationService = hitlConfirmationService;
     }
 
     @Override
@@ -55,14 +60,44 @@ public class CatalogRemoteAgentTool implements AgentTool {
         if (input != null) {
             input.forEach((k, v) -> invokeParams.put(k, v != null ? String.valueOf(v) : ""));
         }
+        return Mono.fromCallable(() -> executeWithHitl(param, invokeParams))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private ToolResultBlock executeWithHitl(ToolCallParam param, Map<String, String> invokeParams) {
+        String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
+        if (hitlConfirmationService != null && hitlConfirmationService.shouldConfirm(entry.id())) {
+            String bridgeId = StepEventBridge.activeBridgeId();
+            if (bridgeId == null) {
+                bridgeId = StepEventBridge.activeMessageId();
+            }
+            String generationMessageId = StepEventBridge.hitlAssistantMessageId(bridgeId);
+            boolean approved = generationMessageId != null
+                    ? hitlConfirmationService.awaitConfirmation(bridgeId, generationMessageId, entry.id(), invokeParams)
+                    : hitlConfirmationService.awaitConfirmation(bridgeId, entry.id(), invokeParams);
+            if (!approved) {
+                String skipBridgeId = bridgeId;
+                if (skipBridgeId != null) {
+                    StepEventBridge.emit(skipBridgeId, session -> session.skipCurrentToolStep(
+                            hitlConfirmationService.skippedAfterSummary()));
+                    String flushId = generationMessageId != null ? generationMessageId : skipBridgeId;
+                    hitlConfirmationService.flushTimeline(flushId);
+                }
+                String rejection = hitlConfirmationService.rejectionMessage();
+                auditIfBound(entry.id(), invokeParams, rejection, "skipped");
+                return ToolResultBlock.of(
+                        toolUseId,
+                        entry.id(),
+                        TextBlock.builder().text(rejection).build());
+            }
+        }
         log.info("[CatalogRemoteAgentTool] {} params={}", entry.id(), invokeParams);
         String result = toolManagerClient.invoke(entry.id(), invokeParams);
         auditIfBound(entry.id(), invokeParams, result, "ok");
-        String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
-        return Mono.just(ToolResultBlock.of(
+        return ToolResultBlock.of(
                 toolUseId,
                 entry.id(),
-                TextBlock.builder().text(result != null ? result : "").build()));
+                TextBlock.builder().text(result != null ? result : "").build());
     }
 
     private void auditIfBound(String toolId, Map<String, String> params, String output, String status) {

@@ -9,6 +9,7 @@ import reactor.core.scheduler.Schedulers;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** 节点级同参重试执行器 */
@@ -38,14 +39,22 @@ public class NodeRetryExecutor {
     public Mono<AttemptOutcome> runWithRetry(
             NodeRetryPolicy policy,
             Supplier<Mono<NodeResult>> runOnce) {
-        return Mono.defer(() -> executeLoop(policy, runOnce, 1, new ArrayList<>()));
+        return runWithRetry(policy, runOnce, null);
+    }
+
+    public Mono<AttemptOutcome> runWithRetry(
+            NodeRetryPolicy policy,
+            Supplier<Mono<NodeResult>> runOnce,
+            Consumer<List<PlanNodeAttemptRecord>> onAttemptsUpdated) {
+        return Mono.defer(() -> executeLoop(policy, runOnce, 1, new ArrayList<>(), onAttemptsUpdated));
     }
 
     private Mono<AttemptOutcome> executeLoop(
             NodeRetryPolicy policy,
             Supplier<Mono<NodeResult>> runOnce,
             int attemptNo,
-            List<PlanNodeAttemptRecord> attempts) {
+            List<PlanNodeAttemptRecord> attempts,
+            Consumer<List<PlanNodeAttemptRecord>> onAttemptsUpdated) {
         long startedAt = System.currentTimeMillis();
         return runOnce.get()
                 .flatMap(result -> {
@@ -60,9 +69,10 @@ public class NodeRetryExecutor {
                     boolean retryable = errorClassifier.isRetryable(errorClass, policy.retryOnErrorClass());
                     attempts.add(new PlanNodeAttemptRecord(
                             attemptNo, "failed", errorClass.name(), "失败: " + err, startedAt, endedAt));
+                    notifyAttemptsUpdated(onAttemptsUpdated, attempts);
                     if (retryable && attemptNo < policy.maxAttempts()) {
                         long delay = policy.backoffForAttempt(attemptNo + 1);
-                        Mono<AttemptOutcome> next = executeLoop(policy, runOnce, attemptNo + 1, attempts);
+                        Mono<AttemptOutcome> next = executeLoop(policy, runOnce, attemptNo + 1, attempts, onAttemptsUpdated);
                         if (delay > 0) {
                             return Mono.delay(Duration.ofMillis(delay))
                                     .then(next);
@@ -78,9 +88,10 @@ public class NodeRetryExecutor {
                     String err = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                     attempts.add(new PlanNodeAttemptRecord(
                             attemptNo, "failed", errorClass.name(), "失败: " + err, startedAt, endedAt));
+                    notifyAttemptsUpdated(onAttemptsUpdated, attempts);
                     if (retryable && attemptNo < policy.maxAttempts()) {
                         long delay = policy.backoffForAttempt(attemptNo + 1);
-                        Mono<AttemptOutcome> next = executeLoop(policy, runOnce, attemptNo + 1, attempts);
+                        Mono<AttemptOutcome> next = executeLoop(policy, runOnce, attemptNo + 1, attempts, onAttemptsUpdated);
                         if (delay > 0) {
                             return Mono.delay(Duration.ofMillis(delay))
                                     .subscribeOn(Schedulers.parallel())
@@ -90,5 +101,13 @@ public class NodeRetryExecutor {
                     }
                     return Mono.just(new AttemptOutcome(NodeResult.fail(err), List.copyOf(attempts)));
                 });
+    }
+
+    private static void notifyAttemptsUpdated(
+            Consumer<List<PlanNodeAttemptRecord>> onAttemptsUpdated,
+            List<PlanNodeAttemptRecord> attempts) {
+        if (onAttemptsUpdated != null && !attempts.isEmpty()) {
+            onAttemptsUpdated.accept(List.copyOf(attempts));
+        }
     }
 }

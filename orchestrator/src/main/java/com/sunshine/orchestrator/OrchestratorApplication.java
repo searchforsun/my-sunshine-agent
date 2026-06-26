@@ -6,18 +6,21 @@ import com.sunshine.orchestrator.generation.GenerationController;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.generation.GenerationProperties;
 import com.sunshine.orchestrator.memory.MemoryProperties;
+import com.sunshine.common.web.GlobalExceptionHandler;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableAsync;
 
 @SpringBootApplication(scanBasePackages = "com.sunshine")
 @EnableDiscoveryClient
 @EnableAsync
 @EnableConfigurationProperties({GenerationProperties.class, AgentPromptProperties.class, MemoryProperties.class, WorkflowProperties.class, AgentExecutionProperties.class})
+@Import(GlobalExceptionHandler.class)
 @ComponentScan(
         basePackages = "com.sunshine.orchestrator",
         excludeFilters = @ComponentScan.Filter(

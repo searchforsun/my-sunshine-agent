@@ -1,7 +1,8 @@
 package com.sunshine.orchestrator.plan;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sunshine.orchestrator.conversation.ConversationNotFoundException;
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.plan.dto.ExecutionPlanDetailDto;
@@ -56,7 +57,9 @@ class ExecutionPlanQueryServiceTest {
         when(repository.findById("p1")).thenReturn(Optional.of(entity));
 
         assertThatThrownBy(() -> queryService.getDetail("p1", "u1", "default"))
-                .isInstanceOf(ConversationNotFoundException.class);
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(OrchestratorErrorCode.EXECUTION_PLAN_NOT_FOUND);
     }
 
     @Test

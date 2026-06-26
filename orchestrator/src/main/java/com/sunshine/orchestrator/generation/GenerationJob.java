@@ -5,8 +5,13 @@ import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.util.StreamErrorMessages;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.orchestrator.execution.WorkflowPauseService;
+import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
+import com.sunshine.orchestrator.execution.WorkflowContextCodec;
 import com.sunshine.orchestrator.memory.MemoryLifecycleService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +41,8 @@ public class GenerationJob {
     private final GenerationProperties properties;
     private final GenerationFlushScheduler flushScheduler;
     private final MemoryLifecycleService memoryLifecycleService;
+    private final WorkflowPauseService workflowPauseService;
+    private final ExecutionPlanStore executionPlanStore;
 
     private final AtomicLong seq = new AtomicLong(0);
     private final AtomicBoolean finished = new AtomicBoolean(false);
@@ -52,7 +59,9 @@ public class GenerationJob {
             GenerationStreamService streamService,
             GenerationProperties properties,
             GenerationFlushScheduler flushScheduler,
-            MemoryLifecycleService memoryLifecycleService) {
+            MemoryLifecycleService memoryLifecycleService,
+            WorkflowPauseService workflowPauseService,
+            ExecutionPlanStore executionPlanStore) {
         this.generationId = generationId;
         this.messageId = messageId;
         this.conversationId = conversationId;
@@ -64,25 +73,40 @@ public class GenerationJob {
         this.properties = properties;
         this.flushScheduler = flushScheduler;
         this.memoryLifecycleService = memoryLifecycleService;
+        this.workflowPauseService = workflowPauseService;
+        this.executionPlanStore = executionPlanStore;
     }
 
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError) {
-        start(llmFlux, mysqlBuffer, flushPartial, onComplete, onError,
+        start(llmFlux, mysqlBuffer, "", java.util.List.of(), flushPartial, onComplete, onError,
                 new AtomicReference<>(ExecutionMode.REACT));
     }
 
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError,
             AtomicReference<ExecutionMode> executionMode) {
+        start(llmFlux, mysqlBuffer, "", java.util.List.of(), flushPartial, onComplete, onError, executionMode);
+    }
+
+    /** 续跑：预填正文 / reasoning / steps，与 wrapStream 对齐 */
+    public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer, String initialReasoning,
+            java.util.List<ProcessingStep> initialSteps,
+            Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError,
+            AtomicReference<ExecutionMode> executionMode) {
         this.mysqlBufferRef = mysqlBuffer;
-        this.reasoningBufferRef = new StringBuilder();
+        this.reasoningBufferRef = new StringBuilder(initialReasoning != null ? initialReasoning : "");
+        if (initialSteps != null && !initialSteps.isEmpty()) {
+            stepsBuffer.clear();
+            stepsBuffer.addAll(initialSteps);
+        }
         this.thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery, executionMode);
         streamService.updateStatus(generationId, GenerationStatus.RUNNING);
 
         AtomicLong lastFlush = new AtomicLong(0);
 
         llmSubscription = llmFlux
+                .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                         chunk -> onChunk(chunk, mysqlBuffer, flushPartial, lastFlush),
                         error -> finishOnce(() -> handleError(error, onError)),
@@ -107,13 +131,79 @@ public class GenerationJob {
     }
 
     public void cancel() {
+        workflowPauseService.requestPause(messageId);
         finishOnce(() -> {
             cancelOrphanTimer();
-            disposeLlmSubscription();
+            // 须在 dispose 之前落库：dispose 触发 WorkflowExecutor.doFinally → clearRun，会丢失 wfCtx
+            persistWorkflowPauseIfNeeded();
             emitFinishSteps(true);
+            emitPausedWorkflowSteps();
+            disposeLlmSubscription();
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
             persistFinal(MessageStatus.INTERRUPTED, () -> { });
         });
+    }
+
+    private void persistWorkflowPauseIfNeeded() {
+        executionPlanStore.findByMessageId(messageId)
+                .filter(e -> "running".equalsIgnoreCase(e.getStatus()))
+                .ifPresent(entity -> {
+                    String nodeId = workflowPauseService.getCurrentNodeId(messageId);
+                    if (!org.springframework.util.StringUtils.hasText(nodeId)) {
+                        nodeId = ProcessingStepMerger.findLastRunningWorkflowNodeId(stepsBuffer);
+                    }
+                    if (!org.springframework.util.StringUtils.hasText(nodeId)) {
+                        return;
+                    }
+                    String ctxJson = workflowPauseService.getCommittedContextJson(messageId);
+                    if (!WorkflowContextCodec.hasNodes(ctxJson)) {
+                        ctxJson = executionPlanStore.findByMessageId(messageId)
+                                .filter(e -> org.springframework.util.StringUtils.hasText(e.getPauseCheckpoint()))
+                                .map(executionPlanStore::loadCheckpoint)
+                                .filter(cp -> WorkflowContextCodec.hasNodes(cp.wfCtxJson()))
+                                .map(WorkflowCheckpoint::wfCtxJson)
+                                .orElse(ctxJson);
+                    }
+                    if (!WorkflowContextCodec.hasNodes(ctxJson)) {
+                        log.warn("[GenerationJob] 暂停检查点 wfCtx 为空 msg={} node={}，续跑可能丢失上游",
+                                messageId, nodeId);
+                    }
+                    executionPlanStore.markPaused(entity.getId(),
+                            new WorkflowCheckpoint(nodeId, ctxJson));
+                });
+    }
+
+    private void emitPausedWorkflowSteps() {
+        String nodeId = workflowPauseService.getCurrentNodeId(messageId);
+        ProcessingStepMerger.pauseRunningWorkflowNodes(stepsBuffer, nodeId);
+        StringBuilder mysqlBuffer = mysqlBufferRef;
+        AtomicLong lastFlush = new AtomicLong(0);
+        for (ProcessingStep step : stepsBuffer) {
+            if ("paused".equals(step.lifecycle())) {
+                emitMappedChunk(StreamToken.step(step), mysqlBuffer != null ? mysqlBuffer : new StringBuilder(),
+                        content -> flushScheduler.flushPartial(messageId, content), lastFlush);
+            }
+        }
+    }
+
+    /** HITL 等旁路事件 — 写入 Redis 流，不进入消息正文缓冲 */
+    public void emitOutbound(String wireJson) {
+        if (wireJson == null || wireJson.isBlank() || finished.get()) {
+            return;
+        }
+        long nextSeq = seq.incrementAndGet();
+        streamService.appendChunk(generationId, nextSeq, wireJson);
+    }
+
+    /** Hook 队列中的 step / step_delta 即时刷入 Redis（HITL 阻塞前须先下发 think / tool 步骤） */
+    public void emitStreamToken(StreamToken token) {
+        if (token == null || finished.get()) {
+            return;
+        }
+        if (token.isStep()) {
+            thinkMapper.syncExternalStep(token.step());
+        }
+        emitMappedChunk(token, new StringBuilder(), s -> { }, new java.util.concurrent.atomic.AtomicLong(0));
     }
 
     private void onChunk(StreamToken token, StringBuilder mysqlBuffer,
@@ -195,6 +285,18 @@ public class GenerationJob {
         cancelOrphanTimer();
         disposeLlmSubscription();
         emitFinishSteps(true);
+        String errMsg = StreamErrorMessages.resolve(error);
+        if (errMsg != null && !errMsg.isBlank()) {
+            long nextSeq = seq.incrementAndGet();
+            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaError(errMsg));
+            StringBuilder buf = mysqlBufferRef;
+            if (buf != null) {
+                if (buf.length() > 0) {
+                    buf.append("\n\n");
+                }
+                buf.append(errMsg);
+            }
+        }
         streamService.updateStatus(generationId, GenerationStatus.FAILED);
         persistFinal(MessageStatus.FAILED, () -> onError.accept(error));
     }

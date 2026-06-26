@@ -65,4 +65,44 @@ class TimelineAggregatorTest {
         assertEquals(400L, step.durationMs());
         assertTrue(step.summary().after().contains("推理完成"));
     }
+
+    @Test
+    void complete_clearsRetryRecoveryMetadata() {
+        TimelineAggregator aggregator = new TimelineAggregator();
+        long t0 = 1_000L;
+        NodeRecoveryMeta awaiting = NodeRecoveryMeta.awaiting("tok", "连接失败", t0 + 60_000);
+        StepMetadata withRecovery = StepMetadata.withRecovery(null, awaiting);
+        aggregator.apply(new ProcessingEvent(
+                "node-tool", "node", EventKind.PROGRESS, null, t0, null, withRecovery));
+        NodeRecoveryMeta resolved = NodeRecoveryMeta.resolved(NodeRecoveryMeta.STATUS_RETRY, awaiting);
+        StepMetadata retryMeta = StepMetadata.withRecovery(withRecovery, resolved);
+        aggregator.apply(new ProcessingEvent(
+                "node-tool", "node", EventKind.PROGRESS, null, t0 + 100, null, retryMeta));
+        aggregator.apply(new ProcessingEvent(
+                "node-tool", "node", EventKind.COMPLETE, "工具调用完成", t0 + 200, "ok", null));
+
+        ProcessingStep step = aggregator.get("node-tool").orElseThrow();
+        assertEquals("done", step.lifecycle());
+        assertTrue(step.metadata() == null || step.metadata().recovery() == null);
+    }
+
+    @Test
+    void complete_preservesSkippedRecoveryMetadata() {
+        TimelineAggregator aggregator = new TimelineAggregator();
+        long t0 = 1_000L;
+        NodeRecoveryMeta awaiting = NodeRecoveryMeta.awaiting("tok", "连接失败", t0 + 60_000);
+        StepMetadata withRecovery = StepMetadata.withRecovery(null, awaiting);
+        aggregator.apply(new ProcessingEvent(
+                "node-tool", "node", EventKind.PROGRESS, null, t0, null, withRecovery));
+        NodeRecoveryMeta skipped = NodeRecoveryMeta.resolved(NodeRecoveryMeta.STATUS_SKIPPED, awaiting);
+        StepMetadata skipMeta = StepMetadata.withRecovery(withRecovery, skipped);
+        aggregator.apply(new ProcessingEvent(
+                "node-tool", "node", EventKind.PROGRESS, null, t0 + 100, null, skipMeta));
+        aggregator.apply(new ProcessingEvent(
+                "node-tool", "node", EventKind.COMPLETE, "已跳过：连接失败", t0 + 200, "连接失败", null));
+
+        ProcessingStep step = aggregator.get("node-tool").orElseThrow();
+        assertEquals("done", step.lifecycle());
+        assertEquals(NodeRecoveryMeta.STATUS_SKIPPED, step.metadata().recovery().status());
+    }
 }

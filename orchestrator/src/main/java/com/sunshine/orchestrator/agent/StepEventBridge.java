@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * 按 assistant messageId 关联 Hook 与 TimelineSession（Hook 运行在 AgentScope 线程）。
@@ -21,6 +22,11 @@ public final class StepEventBridge {
     private static final Map<String, String> RAG_DETAILS = new ConcurrentHashMap<>();
     private static final Map<String, String> USER_QUERIES = new ConcurrentHashMap<>();
     private static final Map<String, ToolAuditContext> TOOL_AUDIT_CONTEXTS = new ConcurrentHashMap<>();
+    private static final Map<String, Boolean> HITL_ENABLED = new ConcurrentHashMap<>();
+    /** bridgeId → 主会话 assistantMessageId（子 Agent / workflow 写 SSE 用） */
+    private static final Map<String, String> HITL_ASSISTANT_BY_BRIDGE = new ConcurrentHashMap<>();
+    /** 子 Agent：Hook token 刷 SSE 前经 bridge.wrap 折叠进 node.subSteps */
+    private static final Map<String, Function<StreamToken, List<StreamToken>>> TOKEN_WRAPPERS = new ConcurrentHashMap<>();
 
     /** ReAct / workflow 工具审计上下文 — 按 assistantMsgId 绑定 */
     public record ToolAuditContext(
@@ -66,6 +72,60 @@ public final class StepEventBridge {
         }
     }
 
+    /** MAIN ReAct：bridgeId 与 assistantMessageId 相同 */
+    public static void bindHitl(String messageId, boolean enabled) {
+        bindHitlBridge(messageId, messageId, enabled);
+    }
+
+    /** 子 Agent / 多 bridge：timeline 用 bridgeId，SSE generation 用 assistantMessageId */
+    public static void bindHitlBridge(String bridgeId, String assistantMessageId, boolean enabled) {
+        if (bridgeId == null) {
+            return;
+        }
+        if (enabled) {
+            HITL_ENABLED.put(bridgeId, true);
+            if (assistantMessageId != null && !assistantMessageId.isBlank()) {
+                HITL_ASSISTANT_BY_BRIDGE.put(bridgeId, assistantMessageId.strip());
+            }
+        } else {
+            HITL_ENABLED.remove(bridgeId);
+            HITL_ASSISTANT_BY_BRIDGE.remove(bridgeId);
+        }
+    }
+
+    /** 子 Agent 执行前注册，使 HITL flush 与主 Timeline 隔离 */
+    public static void bindTokenWrapper(String bridgeId, Function<StreamToken, List<StreamToken>> wrapper) {
+        if (bridgeId != null && wrapper != null) {
+            TOKEN_WRAPPERS.put(bridgeId, wrapper);
+        }
+    }
+
+    public static boolean hitlEnabled() {
+        String bridgeId = activeBridgeId();
+        if (bridgeId == null) {
+            return false;
+        }
+        return Boolean.TRUE.equals(HITL_ENABLED.get(bridgeId));
+    }
+
+    public static String activeBridgeId() {
+        if (SESSIONS.size() != 1) {
+            return null;
+        }
+        return SESSIONS.keySet().iterator().next();
+    }
+
+    public static String hitlAssistantMessageId(String bridgeId) {
+        if (bridgeId == null || bridgeId.isBlank()) {
+            return null;
+        }
+        String mapped = HITL_ASSISTANT_BY_BRIDGE.get(bridgeId);
+        if (mapped != null && !mapped.isBlank()) {
+            return mapped;
+        }
+        return Boolean.TRUE.equals(HITL_ENABLED.get(bridgeId)) ? bridgeId : null;
+    }
+
     public static ToolAuditContext toolAuditContext(String messageId) {
         return messageId == null ? null : TOOL_AUDIT_CONTEXTS.get(messageId);
     }
@@ -80,10 +140,7 @@ public final class StepEventBridge {
 
     /** ReAct 单会话时返回当前 bridge messageId，供 RagTool 等 Hook 侧组件关联 trace */
     public static String activeMessageId() {
-        if (SESSIONS.size() != 1) {
-            return null;
-        }
-        return SESSIONS.keySet().iterator().next();
+        return activeBridgeId();
     }
 
     public static void clear(String messageId) {
@@ -93,6 +150,9 @@ public final class StepEventBridge {
             RAG_DETAILS.remove(messageId);
             USER_QUERIES.remove(messageId);
             TOOL_AUDIT_CONTEXTS.remove(messageId);
+            HITL_ENABLED.remove(messageId);
+            HITL_ASSISTANT_BY_BRIDGE.remove(messageId);
+            TOKEN_WRAPPERS.remove(messageId);
         }
     }
 
@@ -150,6 +210,30 @@ public final class StepEventBridge {
         ConcurrentLinkedQueue<StreamToken> queue = HOOK_TOKEN_QUEUES.get(messageId);
         if (queue != null) {
             hookEmitted.forEach(queue::offer);
+        }
+    }
+
+    /** 将 Hook 队列中的 step / step_delta 刷入 GenerationJob（避免 HITL confirmation 抢先于 think / tool 步骤） */
+    public static void drainHookQueueToGeneration(String messageId,
+            java.util.function.Consumer<StreamToken> tokenConsumer) {
+        if (messageId == null || tokenConsumer == null) {
+            return;
+        }
+        ConcurrentLinkedQueue<StreamToken> queue = HOOK_TOKEN_QUEUES.get(messageId);
+        if (queue == null) {
+            return;
+        }
+        StreamToken token;
+        Function<StreamToken, List<StreamToken>> wrapper = TOKEN_WRAPPERS.get(messageId);
+        while ((token = queue.poll()) != null) {
+            if (wrapper != null) {
+                List<StreamToken> wrapped = wrapper.apply(token);
+                if (wrapped != null) {
+                    wrapped.forEach(tokenConsumer);
+                }
+            } else {
+                tokenConsumer.accept(token);
+            }
         }
     }
 }

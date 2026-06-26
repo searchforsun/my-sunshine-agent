@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.config.AgentHitlProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
@@ -32,6 +33,7 @@ class PromptComposerTest {
     private AgentPromptProperties prompts;
     private MemoryProperties memoryProperties;
     private PromptOverlayProperties overlayProperties;
+    private AgentHitlProperties hitlProperties;
     private PromptComposer composer;
 
     @BeforeEach
@@ -42,7 +44,8 @@ class PromptComposerTest {
         memoryProperties.setLayerPrompt("memory-layer-prompt");
         memoryProperties.setCurrentUserMarker("【当前提问 · 仅此作答】");
         overlayProperties = new PromptOverlayProperties();
-        composer = new PromptComposer(prompts, overlayProperties, memoryProperties, skillCatalogService);
+        hitlProperties = new AgentHitlProperties();
+        composer = new PromptComposer(prompts, overlayProperties, memoryProperties, skillCatalogService, hitlProperties);
     }
 
     @Test
@@ -163,5 +166,31 @@ class PromptComposerTest {
                 .anyMatch(t -> t.contains("skill-finance-overlay"));
         assertThat(inputs.get(inputs.size() - 2).getTextContent()).isEqualTo("待办 JSON");
         assertThat(inputs.stream().map(Msg::getTextContent)).noneMatch(t -> t.contains("ltm"));
+    }
+
+    @Test
+    void composeReactInputs_injectsHitlAgentPromptWhenEnabled() {
+        memoryProperties.setLayerPrompt("");
+        hitlProperties.setEnabled(true);
+        hitlProperties.setAgentPrompt("写操作须直接 tool call");
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                MemoryContext.forSubAgent(), "审批 T1004", List.of()));
+
+        assertThat(inputs.stream().map(Msg::getTextContent))
+                .anyMatch(t -> t.contains("写操作须直接 tool call"));
+    }
+
+    @Test
+    void composeReactInputs_skipsHitlAgentPromptWhenDisabled() {
+        memoryProperties.setLayerPrompt("");
+        hitlProperties.setEnabled(false);
+        hitlProperties.setAgentPrompt("写操作须直接 tool call");
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                MemoryContext.forSubAgent(), "审批 T1004", List.of()));
+
+        assertThat(inputs.stream().map(Msg::getTextContent))
+                .noneMatch(t -> t.contains("写操作须直接 tool call"));
     }
 }

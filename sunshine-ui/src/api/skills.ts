@@ -1,24 +1,6 @@
 import { apiHeaders, authHeaders } from '../stores/authStore'
 import { BFF_STREAM_BASE } from './config'
-
-interface ApiResult<T> {
-  code: number
-  msg: string
-  data: T
-}
-
-async function parseResponse<T>(res: Response): Promise<T> {
-  let body: ApiResult<T>
-  try {
-    body = (await res.json()) as ApiResult<T>
-  } catch {
-    throw new Error(res.ok ? '响应解析失败' : `HTTP ${res.status}`)
-  }
-  if (body.code !== 200) {
-    throw new Error(body.msg || `HTTP ${res.status}`)
-  }
-  return body.data
-}
+import { apiHttpError, parseApiResponse } from './apiError'
 
 function apiUrl(path: string): string {
   return `${import.meta.env.VITE_BFF_API_BASE ?? ''}${path}`
@@ -76,7 +58,7 @@ export interface SkillFileContent {
 
 export async function listSkills(): Promise<SkillEntry[]> {
   const res = await fetch(apiUrl('/api/skills'), { headers: apiHeaders() })
-  return parseResponse<SkillEntry[]>(res)
+  return parseApiResponse<SkillEntry[]>(res)
 }
 
 export async function createSkill(id: string, displayName: string, description?: string): Promise<SkillEntry> {
@@ -85,7 +67,7 @@ export async function createSkill(id: string, displayName: string, description?:
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, displayName, description: description ?? '' }),
   })
-  return parseResponse<SkillEntry>(res)
+  return parseApiResponse<SkillEntry>(res)
 }
 
 export async function setSkillEnabled(id: string, enabled: boolean): Promise<SkillEntry> {
@@ -94,7 +76,7 @@ export async function setSkillEnabled(id: string, enabled: boolean): Promise<Ski
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
   })
-  return parseResponse<SkillEntry>(res)
+  return parseApiResponse<SkillEntry>(res)
 }
 
 export async function updateSkill(
@@ -107,7 +89,7 @@ export async function updateSkill(
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ displayName, description: description ?? '' }),
   })
-  return parseResponse<SkillEntry>(res)
+  return parseApiResponse<SkillEntry>(res)
 }
 
 export async function uploadSkillPackage(
@@ -122,14 +104,14 @@ export async function uploadSkillPackage(
     headers: authHeaders(),
     body: form,
   })
-  return parseResponse<SkillEntry>(res)
+  return parseApiResponse<SkillEntry>(res)
 }
 
 export async function listSkillVersions(id: string): Promise<SkillVersion[]> {
   const res = await fetch(apiUrl(`/api/skills/${encodeURIComponent(id)}/versions`), {
     headers: apiHeaders(),
   })
-  return parseResponse<SkillVersion[]>(res)
+  return parseApiResponse<SkillVersion[]>(res)
 }
 
 export async function publishSkillVersion(id: string, version: number): Promise<SkillEntry> {
@@ -137,7 +119,7 @@ export async function publishSkillVersion(id: string, version: number): Promise<
     apiUrl(`/api/skills/${encodeURIComponent(id)}/publish?version=${version}`),
     { method: 'POST', headers: apiHeaders() },
   )
-  return parseResponse<SkillEntry>(res)
+  return parseApiResponse<SkillEntry>(res)
 }
 
 /** 基于指定版本复制为新草稿，便于在线编辑 */
@@ -146,7 +128,7 @@ export async function forkSkillVersion(id: string, version: number): Promise<Ski
     apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}/fork`),
     { method: 'POST', headers: apiHeaders() },
   )
-  return parseResponse<SkillEntry>(res)
+  return parseApiResponse<SkillEntry>(res)
 }
 
 export async function deleteSkill(id: string): Promise<void> {
@@ -154,7 +136,7 @@ export async function deleteSkill(id: string): Promise<void> {
     method: 'DELETE',
     headers: apiHeaders(),
   })
-  await parseResponse<null>(res)
+  await parseApiResponse<null>(res, { allowEmptyData: true })
 }
 
 export async function deleteSkillVersion(id: string, version: number): Promise<SkillEntry> {
@@ -162,7 +144,7 @@ export async function deleteSkillVersion(id: string, version: number): Promise<S
     apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}`),
     { method: 'DELETE', headers: apiHeaders() },
   )
-  return parseResponse<SkillEntry>(res)
+  return parseApiResponse<SkillEntry>(res)
 }
 
 export async function listSkillFiles(id: string, version: number): Promise<SkillFileEntry[]> {
@@ -170,7 +152,7 @@ export async function listSkillFiles(id: string, version: number): Promise<Skill
     apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}/files`),
     { headers: apiHeaders() },
   )
-  return parseResponse<SkillFileEntry[]>(res)
+  return parseApiResponse<SkillFileEntry[]>(res)
 }
 
 export async function readSkillFile(
@@ -183,7 +165,7 @@ export async function readSkillFile(
     apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}/file?${q}`),
     { headers: apiHeaders() },
   )
-  return parseResponse<SkillFileContent>(res)
+  return parseApiResponse<SkillFileContent>(res)
 }
 
 export async function writeSkillFile(
@@ -201,7 +183,7 @@ export async function writeSkillFile(
       body: JSON.stringify({ content }),
     },
   )
-  return parseResponse<SkillFileContent>(res)
+  return parseApiResponse<SkillFileContent>(res)
 }
 
 /** 关闭标签页时尽力提交未保存编辑（fetch keepalive） */
@@ -251,7 +233,7 @@ export async function diffSkillVersions(
     apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/diff?${q}`),
     { headers: apiHeaders() },
   )
-  return parseResponse<SkillVersionDiffResponse>(res)
+  return parseApiResponse<SkillVersionDiffResponse>(res)
 }
 
 /** 下载指定版本 Skill 包（zip），直连 Gateway 避免 proxy 破坏二进制 */
@@ -261,14 +243,7 @@ export async function downloadSkillPackage(id: string, version: number): Promise
     { headers: authHeaders() },
   )
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`
-    try {
-      const body = (await res.json()) as ApiResult<unknown>
-      if (body.msg) msg = body.msg
-    } catch {
-      // 非 JSON 错误体
-    }
-    throw new Error(msg)
+    throw apiHttpError(res.status)
   }
   return res.blob()
 }
@@ -287,5 +262,5 @@ export interface SkillCatalogIndexEntry {
 
 export async function listSkillCatalogIndex(): Promise<SkillCatalogIndexEntry[]> {
   const res = await fetch(apiUrl('/api/skills/catalog/index'), { headers: apiHeaders() })
-  return parseResponse<SkillCatalogIndexEntry[]>(res)
+  return parseApiResponse<SkillCatalogIndexEntry[]>(res)
 }

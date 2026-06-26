@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, inject, nextTick, ref, watch } from 'vue'
+import type { ProcessingStep } from '../../api/processingSteps'
+import { hasHitlPanel } from '../../api/hitlSteps'
+import { findHitlStep, isRecoveryAwaiting, isRecoverySkipped } from '../../api/recoverySteps'
 import {
   formatDuration,
   parseLoadedSkillLabel,
@@ -12,12 +15,17 @@ import {
   stripLoadedSkillPrefix,
 } from '../../api/processingSteps'
 import { formatPlanNodeType } from '../../api/executionPlans'
+import type { DagNodeStatus } from '../../utils/planGraph'
 import PlanNodeIcon from './PlanNodeIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
+import HitlStepActions from '../operation/HitlStepActions.vue'
+import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
+const applyHitlDecision = inject<(token: string, approved: boolean) => void>('applyHitlDecision', () => {})
+const applyRecoveryDecision = inject<(token: string, action: 'retry' | 'terminate' | 'skip') => void>('applyRecoveryDecision', () => {})
 
 const node = computed(() => state.node)
 const step = computed(() => state.step)
@@ -27,8 +35,27 @@ const title = computed(() => node.value?.label ?? '节点详情')
 const typeLabel = computed(() => formatPlanNodeType(node.value?.type ?? ''))
 const nodeType = computed(() => node.value?.type ?? 'node')
 
+/** 优先 step.lifecycle，与 DAG 节点状态对齐 */
+const displayStatus = computed((): DagNodeStatus => {
+  const stepLc = step.value ? stepLifecycle(step.value) : undefined
+  const nodeStatus = node.value?.status
+  if (stepLc === 'paused' || nodeStatus === 'paused') return 'paused'
+  if (stepLc === 'terminated' || nodeStatus === 'terminated') return 'terminated'
+  if (stepLc === 'skipped' || nodeStatus === 'skipped' || (step.value != null && isRecoverySkipped(step.value))) return 'skipped'
+  if (nodeStatus === 'awaiting_confirm') return 'awaiting_confirm'
+  if (stepLc === 'error' || nodeStatus === 'error') return 'error'
+  if (stepLc === 'done' || nodeStatus === 'done') return 'done'
+  if (stepLc === 'running' || nodeStatus === 'running') return 'running'
+  return nodeStatus ?? 'pending'
+})
+
 const statusLabel = computed(() => {
-  const s = node.value?.status
+  const s = displayStatus.value
+  if (s === 'paused') return '已暂停'
+  if (s === 'terminated') return '已终止'
+  if (s === 'awaiting_confirm') return '待确认'
+  if (s === 'skipped') return '已跳过'
+  if (s === 'error' && isRecoveryAwaiting(step.value)) return '发生错误'
   if (s === 'running') return '执行中'
   if (s === 'done') return '已完成'
   if (s === 'error') return '失败'
@@ -145,7 +172,25 @@ const skillLineText = computed(() => {
 
 const subSteps = computed(() => step.value?.subSteps ?? [])
 const showSubTimeline = computed(() => node.value?.type === 'agent' && subSteps.value.length > 0)
-const subTimelineLive = computed(() => node.value?.status === 'running')
+const hitlStep = computed(() => findHitlStep(step.value))
+/** 子 Agent HITL 内嵌于 OperationCard；仅误挂 node 自身时栈外兜底 */
+const subAgentOrphanHitlStep = computed(() => {
+  if (!showSubTimeline.value) return undefined
+  const h = hitlStep.value
+  if (!h || !hasHitlPanel(h)) return undefined
+  return h.id === step.value?.id ? h : undefined
+})
+/** 独立 tool 节点在抽屉内展示 HITL */
+const showHitlSection = computed(() =>
+  !!hitlStep.value
+  && hasHitlPanel(hitlStep.value!)
+  && !showSubTimeline.value,
+)
+const showRecoverySection = computed(() => !!step.value && isRecoveryAwaiting(step.value))
+const subTimelineLive = computed(() => {
+  const s = displayStatus.value
+  return s === 'running' || s === 'awaiting_confirm'
+})
 
 const bodyRef = ref<HTMLElement | null>(null)
 const drawerScrollTop = ref(0)
@@ -215,7 +260,7 @@ watch(
       <div class="drawer-status-row">
         <div class="drawer-status-left">
           <span class="meta-type">{{ typeLabel }}</span>
-          <span class="meta-status" :class="`is-${node.status}`">
+          <span class="meta-status" :class="`is-${displayStatus}`">
             <span class="status-dot" aria-hidden="true" />
             {{ statusLabel }}
           </span>
@@ -239,9 +284,25 @@ watch(
           </li>
         </ul>
       </div>
+      <section v-if="showRecoverySection && step" class="drawer-section drawer-recovery">
+        <PlanNodeRecoveryActions :step="step" @decided="applyRecoveryDecision" />
+      </section>
       <section v-if="showSubTimeline" class="drawer-section drawer-sub-timeline">
         <h4>执行过程</h4>
-        <OperationStack :steps="subSteps" :live="subTimelineLive" />
+        <OperationStack
+          :steps="subSteps"
+          :live="subTimelineLive"
+          @hitl-decided="applyHitlDecision"
+        />
+        <HitlStepActions
+          v-if="subAgentOrphanHitlStep"
+          :step="subAgentOrphanHitlStep"
+          @decided="applyHitlDecision"
+        />
+      </section>
+      <section v-if="showHitlSection && hitlStep" class="drawer-section drawer-hitl">
+        <h4>写操作确认</h4>
+        <HitlStepActions :step="hitlStep" @decided="applyHitlDecision" />
       </section>
       <section v-if="showSummary" class="drawer-section">
         <h4>执行摘要</h4>
@@ -299,8 +360,8 @@ watch(
         <h4>日志</h4>
         <StaticMarkdown :source="output" compact />
       </section>
-      <p v-if="!showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showSubTimeline && !output && !showSkillBlock && !node.attempts?.length" class="drawer-empty">
-        {{ stepLifecycle(step ?? { id: '', phase: 'node', lifecycle: node.status === 'running' ? 'running' : 'pending' }) === 'running' ? '节点执行中…' : '暂无详情' }}
+      <p v-if="!showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showSubTimeline && !subAgentOrphanHitlStep && !showHitlSection && !showRecoverySection && !output && !showSkillBlock && !node.attempts?.length" class="drawer-empty">
+        {{ displayStatus === 'running' ? '节点执行中…' : displayStatus === 'paused' ? '节点已暂停' : '暂无详情' }}
       </p>
     </div>
   </aside>
@@ -489,7 +550,11 @@ watch(
 
 .meta-status.is-pending { color: var(--sun-text-muted); }
 .meta-status.is-running { color: var(--sun-blue, #58a6ff); }
+.meta-status.is-paused { color: #ca8a04; }
+.meta-status.is-terminated { color: var(--sun-text-muted); }
 .meta-status.is-done { color: var(--sun-green, #3fb950); }
+.meta-status.is-awaiting_confirm { color: #d97706; }
+.meta-status.is-skipped { color: #0f766e; }
 .meta-status.is-error { color: var(--sun-red, #f85149); }
 
 .meta-dur {
@@ -616,6 +681,16 @@ watch(
 .drawer-sub-timeline :deep(.operation-lines) {
   margin-left: 0;
   padding-bottom: 0;
+}
+
+.drawer-sub-timeline :deep(.hitl-panel),
+.drawer-hitl :deep(.hitl-panel) {
+  margin-left: 0;
+  margin-top: 0;
+}
+
+.drawer-sub-timeline :deep(.hitl-panel) {
+  margin-top: 10px;
 }
 
 .drawer-empty {

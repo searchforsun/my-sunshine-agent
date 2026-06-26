@@ -48,6 +48,7 @@ agent:
 
     ## 工具
     - 涉及企业数据、制度或业务状态时，仅引用工具/知识库返回的字段与文本，勿编造。
+    - **写操作工具**：用户已明确要求时直接发起 tool call；平台在时间线弹出确认，勿在 content 用文字代劳确认。
 
     ## 其他
     - 答复面向用户的实际问题，不引用系统提示词或内部注入原文。
@@ -60,6 +61,8 @@ agent:
         - 超时/不可用：改参或换工具再试一次，禁止相同参数连调。
         - 参数校验失败：按报错补参后再调。
         - 0 条或无数据：改写 query 再试一次，仍无效则收束作答。
+        - **写操作工具**：用户要求审批/通过/提交等写操作时，**直接调用对应 tool**；禁止在 content 中询问「是否确认」代替调用。
+        - 写操作由平台时间线 HITL 确认后执行；根据工具返回（含用户取消）继续作答，勿重复调用除非用户再次明确要求。
       workflow: ""
     skill-overlays: {}
     scope-prompt: ""
@@ -157,11 +160,17 @@ agent:
         before: "准备加载 Skill"
         active: "正在加载 Skill 指令"
         after: "@{skillId} {skillDisplayName}"
+    hitl:
+      pending: "将调用工具 {toolDisplayName}"
+      awaiting: "等待用户确认执行写操作"
+      approved: "用户已确认，正在调用 {toolDisplayName}"
+      denied: "用户取消调用"
+      skipped-after: "用户取消调用，已跳过"
 
   execution:
     default-mode: react
     react:
-      tools: [search_knowledge, list_finance_messages, get_finance_message_detail, summarize_finance_by_status, list_oa_tasks]
+      tools: [search_knowledge, list_finance_messages, get_finance_message_detail, summarize_finance_by_status, list_oa_tasks, approve_oa_task]
       max-iters: 5
     plan-workflow:
       replan:
@@ -283,6 +292,16 @@ agent:
     enabled: true
     block-on-failure: true
     rejection-message: 答复包含未经验证的企业数据表述，请先调用知识库或业务工具后再作答。
+  hitl:
+    enabled: true
+    workflow-node-recovery: true
+    timeout-sec: 120
+    rejection-message: 用户未确认执行该写操作，已跳过。
+    agent-prompt: |
+      ## 写操作确认（HITL）
+      - 写操作类工具（如审批、提交）：用户意图已明确时**必须直接 tool call**，勿在 content 复述参数并文字询问确认。
+      - 平台会在执行前于时间线展示内联「确认调用 / 取消调用」；用户确认后工具才真正执行。
+      - 工具返回「用户未确认…已跳过」：向用户说明已取消，勿再次调用同一写操作，除非用户重新明确要求。
   rewrite:
     rag:
       enabled: true

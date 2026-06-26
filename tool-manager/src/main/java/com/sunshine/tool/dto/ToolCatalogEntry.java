@@ -12,6 +12,7 @@ public record ToolCatalogEntry(
         String kind,
         String timelinePhase,
         String outputSummaryKind,
-        Map<String, Object> parameters
+        Map<String, Object> parameters,
+        String sideEffect
 ) {
 }

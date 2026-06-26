@@ -2,6 +2,7 @@
 import { computed, reactive } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import { resolvePlanIdFromStep } from '../../api/processingSteps'
+import { isToolStepId } from '../../api/hitlSteps'
 import OperationCard from './OperationCard.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
 
@@ -10,6 +11,12 @@ const props = defineProps<{
   live?: boolean
   executionPlanId?: string
   userQuery?: string
+  /** 为 false 时 HITL 由外层（如 PlanNodeDrawer）统一展示 */
+  embedHitl?: boolean
+}>()
+
+const emit = defineEmits<{
+  hitlDecided: [token: string, approved: boolean]
 }>()
 
 const cardExpanded = reactive(new Map<string, boolean>())
@@ -42,7 +49,13 @@ const showPlanDag = computed(() => {
 
 const displaySteps = computed(() => {
   if (!showPlanDag.value) return props.steps
-  return props.steps.filter(s => s.phase !== 'node')
+  // Plan DAG 模式：node 在面板内展示；子 Agent 泄漏的顶层 tool/think 不入主时间线
+  return props.steps.filter(s => {
+    if (s.phase === 'node') return false
+    if (isToolStepId(s.id)) return false
+    if (s.id === 'think' || s.id.startsWith('think-')) return false
+    return true
+  })
 })
 </script>
 
@@ -63,7 +76,9 @@ const displaySteps = computed(() => {
         :expanded="isCardExpanded(step)"
         :live="live && lifecycleOf(step) === 'running'"
         :execution-plan-id="executionPlanId"
+        :embed-hitl="embedHitl !== false"
         @toggle="toggleCard(step)"
+        @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
       />
     </template>
   </div>

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import com.sunshine.common.web.GlobalExceptionHandler;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -18,7 +19,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = com.sunshine.tool.controller.ToolInvokeController.class)
 @Import({com.sunshine.tool.service.ToolInvokeService.class,
         com.sunshine.tool.registry.ToolRegistry.class,
-        com.sunshine.tool.tool.FinanceToolHandler.class})
+        com.sunshine.tool.tool.FinanceToolHandler.class,
+        GlobalExceptionHandler.class})
 @ActiveProfiles("test")
 class ToolInvokeControllerTest {
 

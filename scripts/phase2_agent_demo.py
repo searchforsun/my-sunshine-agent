@@ -26,6 +26,8 @@ except ImportError:
     print("请先安装依赖: pip install -r scripts/requirements.txt", file=sys.stderr)
     sys.exit(1)
 
+from sunshine_lib import unwrap_r
+
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
 FINANCE_URL = os.environ.get("FINANCE_URL", "http://ecs4c16g:8710").rstrip("/")
 RAG_URL = os.environ.get("RAG_URL", "http://ecs4c16g:8400").rstrip("/")
@@ -148,7 +150,8 @@ def preflight_rag() -> None:
         timeout=30,
     )
     resp.raise_for_status()
-    results = resp.json().get("results") or []
+    data = unwrap_r(resp.json(), context="rag preflight") or {}
+    results = data.get("results") or []
     if not results:
         raise RuntimeError("rag search returned empty for leave query")
     print(f"  OK rag search hits={len(results)}")

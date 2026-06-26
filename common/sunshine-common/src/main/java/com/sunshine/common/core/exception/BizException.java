@@ -2,20 +2,14 @@ package com.sunshine.common.core.exception;
 
 import lombok.Getter;
 
-/**
- * 业务异常
- */
+/** 业务异常 — 仅允许 {@link ErrorCode}，禁止散落字符串 */
 @Getter
 public class BizException extends RuntimeException {
 
-    private final int code;
+    private final ErrorCode errorCode;
 
-    public BizException(int code, String message) {
-        super(message);
-        this.code = code;
-    }
-
-    public BizException(String message) {
-        this(500, message);
+    public BizException(ErrorCode errorCode) {
+        super(errorCode.getMessage());
+        this.errorCode = errorCode;
     }
 }

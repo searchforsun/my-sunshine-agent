@@ -1,5 +1,8 @@
 package com.sunshine.rag.controller;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.result.R;
+import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.parser.MarkdownParser;
 import com.sunshine.rag.service.ElasticsearchIndexService;
 import com.sunshine.rag.service.EmbeddingService;
@@ -34,12 +37,12 @@ public class IngestionController {
     private final ElasticsearchIndexService elasticsearchIndexService;
 
     @PostMapping("/documents")
-    public Mono<Map<String, Object>> ingest(
+    public Mono<R<Map<String, Object>>> ingest(
             @RequestBody Map<String, String> body,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         String content = body.get("content");
         if (content == null || content.isBlank()) {
-            return Mono.just(Map.of("code", 400, "msg", "内容不能为空"));
+            throw new BizException(RagErrorCode.CONTENT_EMPTY);
         }
 
         String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
@@ -61,12 +64,10 @@ public class IngestionController {
                             });
                 })
                 .collectList()
-                .map(vectors -> Map.of(
-                        "code", 200,
-                        "msg", "入库成功",
+                .map(vectors -> R.ok(Map.of(
                         "docName", docName,
                         "chunks", (Object) chunks.size()
-                ));
+                )));
     }
 
     private static String resolveDocName(Map<String, String> body, String content) {

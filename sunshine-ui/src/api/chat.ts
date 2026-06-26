@@ -20,6 +20,7 @@ function extractChunkText(data: string): string | null {
 }
 
 import { apiHeaders } from '../stores/authStore'
+import { ApiError, throwIfHttpError } from './apiError'
 
 // 直连 Gateway SSE（避免 Vite proxy 缓冲）
 const API_BASE = import.meta.env.VITE_BFF_STREAM_BASE ?? 'http://localhost:8000'
@@ -35,6 +36,8 @@ export interface ChatMessage {
   /** 后端处理流水线步骤（SSE type:step） */
   steps?: ProcessingStep[]
   status?: 'streaming' | 'interrupted' | 'failed' | 'completed'
+  /** 流式失败时的用户可见错误（与正文分离展示） */
+  streamError?: string
   intent?: string
   executionPlanId?: string
 }
@@ -69,11 +72,11 @@ export function useChat(onChunk?: (data: string) => void) {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        await throwIfHttpError(response)
       }
 
       const reader = response.body?.getReader()
-      if (!reader) throw new Error('No reader')
+      if (!reader) throw new ApiError('服务响应异常，请稍后重试', { kind: 'parse' })
 
       const decoder = new TextDecoder()
       let buffer = ''

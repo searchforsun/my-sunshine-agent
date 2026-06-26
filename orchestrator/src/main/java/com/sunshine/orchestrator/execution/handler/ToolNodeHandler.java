@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.execution.handler;
 
-import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.ToolManagerClient;
@@ -9,6 +8,8 @@ import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
+import com.sunshine.orchestrator.hitl.HitlConfirmationService;
+import com.sunshine.orchestrator.hitl.WorkflowHitlScope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -19,7 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 工具调用节点 — 委托 tool-manager，params 统一透传
+ * 工具调用节点 — 委托 tool-manager，params 统一透传；写工具走 HITL（streamCtx.workflowHitl）
  */
 @Slf4j
 @Component
@@ -29,6 +30,7 @@ public class ToolNodeHandler implements NodeHandler {
     private final ToolManagerClient toolManagerClient;
     private final ToolCatalogService toolCatalogService;
     private final ToolAuditService toolAuditService;
+    private final HitlConfirmationService hitlConfirmationService;
 
     @Override
     public String type() {
@@ -45,9 +47,12 @@ public class ToolNodeHandler implements NodeHandler {
             }
         });
 
-        return Mono.fromCallable(() -> toolManagerClient.invoke(tool, invokeParams))
+        return Mono.fromCallable(() -> invokeWithHitl(spec, streamCtx, tool, invokeParams))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(result -> {
+                    if (ToolManagerClient.isInvokeFailureResult(result)) {
+                        return NodeResult.fail(result);
+                    }
                     String text = result != null ? result : "";
                     Map<String, String> outputs = new LinkedHashMap<>();
                     outputs.put("output", text);
@@ -61,6 +66,22 @@ public class ToolNodeHandler implements NodeHandler {
                     auditToolFailure(spec, streamCtx, tool, invokeParams, e.getMessage());
                     return Mono.just(NodeResult.fail(e.getMessage()));
                 });
+    }
+
+    private String invokeWithHitl(
+            NodeSpec spec,
+            ExecutionStreamContext streamCtx,
+            String tool,
+            Map<String, String> invokeParams) {
+        WorkflowHitlScope.Binding hitl = streamCtx.workflowHitl();
+        if (hitlConfirmationService != null && hitlConfirmationService.shouldConfirmWorkflow(tool, hitl)) {
+            boolean approved = hitlConfirmationService.awaitWorkflowConfirmation(
+                    hitl, streamCtx.assistantMsgId(), tool, invokeParams);
+            if (!approved) {
+                return hitlConfirmationService.rejectionMessage();
+            }
+        }
+        return toolManagerClient.invoke(tool, invokeParams);
     }
 
     private void auditToolCall(

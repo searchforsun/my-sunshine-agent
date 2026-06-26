@@ -3,7 +3,10 @@ import { ref, watch } from 'vue'
 import { NModal, NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 import { useAuthStore } from '../stores/authStore'
 import ExecutionModeSelector from './chat/ExecutionModeSelector.vue'
+import TenantSelector from './knowledge/TenantSelector.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { friendlyErrorMessage } from '../api/apiError'
+import type { TenantId } from '../api/tenants'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ 'update:show': [value: boolean] }>()
@@ -13,6 +16,7 @@ const message = useMessage()
 const { globalDefault, setGlobalDefault } = useExecutionPreference()
 const nickname = ref('')
 const defaultMode = ref(globalDefault.value)
+const tenantId = ref<TenantId>('default')
 const saving = ref(false)
 
 watch(
@@ -21,6 +25,7 @@ watch(
     if (open) {
       nickname.value = auth.user?.nickname ?? ''
       defaultMode.value = globalDefault.value
+      tenantId.value = auth.user?.tenantId ?? 'default'
     }
   },
 )
@@ -37,12 +42,12 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    await auth.updateProfile(value)
+    await auth.updateProfile(value, tenantId.value)
     setGlobalDefault(defaultMode.value)
     message.success('资料已更新')
     close()
   } catch (e) {
-    message.error(e instanceof Error ? e.message : '保存失败')
+    message.error(friendlyErrorMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -71,6 +76,17 @@ async function handleSave() {
           :disabled="saving"
           @keydown.enter="handleSave"
         />
+      </NFormItem>
+      <NFormItem label="当前租户">
+        <div class="tenant-field">
+          <TenantSelector
+            variant="block"
+            :model-value="tenantId"
+            :disabled="saving"
+            @update:model-value="tenantId = $event"
+          />
+          <p class="settings-hint">影响 Chat 知识库检索与对话隔离；保存后自动刷新登录凭证，无需重新登录。</p>
+        </div>
       </NFormItem>
       <NFormItem label="默认执行模式">
         <div class="execution-mode-field">
@@ -101,6 +117,13 @@ async function handleSave() {
 }
 
 .execution-mode-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.tenant-field {
   display: flex;
   flex-direction: column;
   gap: 6px;

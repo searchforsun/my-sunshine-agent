@@ -14,7 +14,7 @@ import {
   deleteConversation,
   isValidConversationId,
 } from '../api/conversations'
-import { sanitizeRestoredMessages } from '../api/streamError'
+import { hydrateStreamError, isLikelyStreamFailureContent, sanitizeRestoredMessages } from '../api/streamError'
 import {
   cacheMessages,
   loadCachedIndex,
@@ -51,17 +51,23 @@ function createLocalConversation(): Conversation {
 }
 
 function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
-  return messages.map(m => ({
-    id: m.id,
-    role: m.role,
-    content: m.content,
-    reasoning: m.reasoning,
-    steps: m.steps,
-    status: m.status as ChatMessage['status'],
-    intent: m.intent,
-    executionPlanId: m.executionPlanId,
-    executionPreference: m.executionPreference,
-  }))
+  return messages.map(m => {
+    const msg: ChatMessage = {
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      reasoning: m.reasoning,
+      steps: m.steps,
+      status: m.status as ChatMessage['status'],
+      intent: m.intent,
+      executionPlanId: m.executionPlanId,
+      executionPreference: m.executionPreference,
+    }
+    if (msg.role === 'assistant' && (msg.status === 'failed' || isLikelyStreamFailureContent(msg.content))) {
+      hydrateStreamError(msg)
+    }
+    return msg
+  })
 }
 
 export const useChatStore = defineStore('chat', () => {

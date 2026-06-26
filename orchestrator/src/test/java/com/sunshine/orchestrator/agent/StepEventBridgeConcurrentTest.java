@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.execution.agent.SubAgentTimelineBridge;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,25 @@ class StepEventBridgeConcurrentTest {
 
         assertThat(lastStepId(drain(queueA))).startsWith("tool-list_finance_messages");
         assertThat(lastStepId(drain(queueB))).startsWith("tool-search_knowledge");
+    }
+
+    @Test
+    void drainHookQueue_appliesTokenWrapperForSubAgent() {
+        ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
+        String bridgeId = "sub-run-1";
+        bind(bridgeId, queue);
+        SubAgentTimelineBridge bridge = new SubAgentTimelineBridge("approve", "审批任务");
+        StepEventBridge.bindTokenWrapper(bridgeId, bridge::wrap);
+
+        StepEventBridge.emit(bridgeId, session -> session.beginToolStep("tool-approve_oa_task", "tool"));
+
+        List<StreamToken> out = new ArrayList<>();
+        StepEventBridge.drainHookQueueToGeneration(bridgeId, out::add);
+
+        assertThat(out).isNotEmpty();
+        assertThat(out).allMatch(t -> t.isStep() && "node-approve".equals(t.step().id()));
+        assertThat(out.get(out.size() - 1).step().subSteps()).isNotEmpty();
+        assertThat(out.get(out.size() - 1).step().subSteps().get(0).id()).startsWith("tool-approve_oa_task");
     }
 
     @Test

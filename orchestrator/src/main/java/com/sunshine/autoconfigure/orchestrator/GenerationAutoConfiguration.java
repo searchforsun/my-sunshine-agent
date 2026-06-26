@@ -1,12 +1,14 @@
 package com.sunshine.autoconfigure.orchestrator;
 
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
+import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.generation.GenerationController;
 import com.sunshine.orchestrator.generation.GenerationJobFactory;
 import com.sunshine.orchestrator.generation.GenerationProperties;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
 import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -35,9 +37,12 @@ public class GenerationAutoConfiguration {
             GenerationStreamService streamService,
             GenerationProperties properties,
             GenerationFlushScheduler flushScheduler,
-            MemoryLifecycleService memoryLifecycleService) {
+            MemoryLifecycleService memoryLifecycleService,
+            WorkflowPauseService workflowPauseService,
+            ExecutionPlanStore executionPlanStore) {
         return new GenerationJobFactory(
-                streamService, properties, flushScheduler, memoryLifecycleService);
+                streamService, properties, flushScheduler, memoryLifecycleService,
+                workflowPauseService, executionPlanStore);
     }
 
     @Bean

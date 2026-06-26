@@ -13,6 +13,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def unwrap_r(body: dict, *, context: str = "request") -> dict | list | None:
+    """解析后端 R<T> 响应；业务失败抛 RuntimeError。"""
+    code = body.get("code")
+    if code != 200:
+        msg = body.get("msg") or f"code={code}"
+        raise RuntimeError(f"[{context}] {msg}")
+    return body.get("data")
+
+
 def java_bin() -> str:
     java_home = os.environ.get("JAVA_HOME")
     if java_home:

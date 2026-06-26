@@ -4,7 +4,9 @@ import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,6 +56,8 @@ class GenerationJobTest {
     private GenerationProperties properties;
 
     private GenerationFlushScheduler flushScheduler;
+    private WorkflowPauseService workflowPauseService;
+    private ExecutionPlanStore executionPlanStore;
 
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
@@ -84,6 +88,15 @@ class GenerationJobTest {
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
         }
+        workflowPauseService = mock(WorkflowPauseService.class);
+        executionPlanStore = mock(ExecutionPlanStore.class);
+    }
+
+    private GenerationJob newJob(String generationId) {
+        return new GenerationJob(
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
+                streamService, properties, flushScheduler, null,
+                workflowPauseService, executionPlanStore);
     }
 
     @Test
@@ -92,9 +105,7 @@ class GenerationJobTest {
         String generationId = streamService.createGeneration(
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
 
-        GenerationJob job = new GenerationJob(
-                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler, null);
+        GenerationJob job = newJob(generationId);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);
@@ -141,7 +152,8 @@ class GenerationJobTest {
 
         GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler, memoryLifecycleService);
+                streamService, properties, flushScheduler, memoryLifecycleService,
+                workflowPauseService, executionPlanStore);
 
         CountDownLatch done = new CountDownLatch(1);
         job.start(
@@ -163,9 +175,7 @@ class GenerationJobTest {
         String generationId = streamService.createGeneration(
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
 
-        GenerationJob job = new GenerationJob(
-                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler, null);
+        GenerationJob job = newJob(generationId);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);
@@ -195,9 +205,7 @@ class GenerationJobTest {
         String generationId = streamService.createGeneration(
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
 
-        GenerationJob job = new GenerationJob(
-                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler, null);
+        GenerationJob job = newJob(generationId);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);

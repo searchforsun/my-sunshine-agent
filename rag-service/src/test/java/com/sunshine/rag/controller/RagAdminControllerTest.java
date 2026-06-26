@@ -1,6 +1,9 @@
 package com.sunshine.rag.controller;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.result.R;
 import com.sunshine.rag.config.RagAdminProperties;
+import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.service.ElasticsearchIndexService;
 import com.sunshine.rag.service.MilvusService;
 import org.junit.jupiter.api.Test;
@@ -11,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -29,9 +33,10 @@ class RagAdminControllerTest {
         props.setToken("secret");
         RagAdminController controller = new RagAdminController(milvusService, elasticsearchIndexService, props);
 
-        Map<String, Object> body = controller.rebuild("wrong").block();
-
-        assertThat(body).containsEntry("code", 403);
+        assertThatThrownBy(() -> controller.rebuild("wrong").block())
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(RagErrorCode.ADMIN_TOKEN_INVALID));
         verifyNoInteractions(milvusService);
     }
 
@@ -41,10 +46,11 @@ class RagAdminControllerTest {
         props.setToken("secret");
         RagAdminController controller = new RagAdminController(milvusService, elasticsearchIndexService, props);
 
-        Map<String, Object> body = controller.rebuild("secret").block();
+        R<Map<String, Object>> body = controller.rebuild("secret").block();
 
-        assertThat(body).containsEntry("code", 200);
-        assertThat(body).containsEntry("collection", "sunshine_knowledge");
+        assertThat(body).isNotNull();
+        assertThat(body.getCode()).isEqualTo(200);
+        assertThat(body.getData()).containsEntry("collection", "sunshine_knowledge");
         verify(milvusService).rebuildCollection();
         verify(elasticsearchIndexService).rebuildIndex();
     }

@@ -1,5 +1,7 @@
 package com.sunshine.finance.service;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.finance.exception.FinanceErrorCode;
 import com.sunshine.finance.dto.FinanceMessageSummaryVO;
 import com.sunshine.finance.dto.FinanceMessageVO;
 import org.springframework.stereotype.Service;
@@ -38,6 +40,10 @@ public class FinanceMessageService {
             }
         }
         return out;
+    }
+
+    public FinanceMessageVO requireById(long id) {
+        return getById(id).orElseThrow(() -> new BizException(FinanceErrorCode.MESSAGE_NOT_FOUND));
     }
 
     public Optional<FinanceMessageVO> getById(long id) {

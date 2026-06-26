@@ -33,7 +33,8 @@ public class ToolCatalogService {
                     "properties", Map.of(
                             "query", Map.of(
                                     "type", "string",
-                                    "description", "自然语言查询文本，将用于向量检索匹配相关文档片段"))));
+                                    "description", "自然语言查询文本，将用于向量检索匹配相关文档片段"))),
+            "read");
 
     private final ToolCatalogClient catalogClient;
     private volatile Map<String, ToolCatalogEntry> entries = Map.of();
@@ -90,6 +91,10 @@ public class ToolCatalogService {
 
     public boolean isRemoteTool(String toolId) {
         return find(toolId).map(e -> "remote".equals(e.kind())).orElse(false);
+    }
+
+    public boolean isWriteTool(String toolId) {
+        return find(toolId).map(ToolCatalogEntry::isWrite).orElse(false);
     }
 
     /** rag 工具用固定 stepId，其余为 tool-{name} */

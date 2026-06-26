@@ -8,12 +8,15 @@ import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PlanJson;
 import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
 import com.sunshine.orchestrator.plan.PlanMaterializer;
+import com.sunshine.orchestrator.plan.PlanJsonParser;
 import com.sunshine.orchestrator.plan.PlanNormalizer;
 import com.sunshine.orchestrator.plan.PlanTimeline;
 import com.sunshine.orchestrator.plan.PlanValidator;
 import com.sunshine.orchestrator.plan.PlannerAttempt;
+import com.sunshine.orchestrator.plan.ExecutionPlanEntity;
 import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
 import com.sunshine.orchestrator.plan.PlanRunFinalizer;
+import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
@@ -46,6 +49,7 @@ public class PlanWorkflowExecutor {
     private final AgentExecutionProperties executionProperties;
     private final PlanExecutionAuditService planExecutionAuditService;
     private final PlanRunFinalizer planRunFinalizer;
+    private final PlanJsonParser planJsonParser;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         return Mono.fromCallable(() -> executionPlanStore.createDraft(ctx, emptyPlan()))
@@ -57,6 +61,29 @@ public class PlanWorkflowExecutor {
                     log.warn("[PlanWorkflowExecutor] Planner 失败，降级 react: {}", e.getMessage());
                     return reactWithPlanFallback(ctx, "Planner 未产出有效 DAG：" + e.getMessage());
                 });
+    }
+
+    /** 用户「继续生成」— 从 PAUSED 检查点续跑 DAG */
+    public Flux<StreamToken> resumePaused(ExecutionStreamContext ctx, ExecutionPlanEntity entity) {
+        WorkflowCheckpoint checkpoint = executionPlanStore.loadCheckpoint(entity);
+        PlanJson enriched = PlanNormalizer.normalize(planJsonParser.parse(entity.getValidatedJson()));
+        WorkflowDefinition def = planMaterializer.materialize(enriched);
+        String planId = entity.getId();
+        ExecutionStreamContext execCtx = ctx.withPersistedPlanId(planId);
+        WorkflowRunSession runSession = new WorkflowRunSession();
+        log.info("[PlanWorkflowExecutor] 续跑 Plan id={} fromNode={}", planId, checkpoint.resumeNodeId());
+        return Mono.fromRunnable(() -> executionPlanStore.markResumed(planId))
+                .subscribeOn(Schedulers.boundedElastic())
+                .thenMany(Flux.concat(
+                        workflowExecutor.resumeDynamicDefinition(def, execCtx, runSession, checkpoint)
+                                .concatWith(Flux.defer(() -> planRunFinalizer.postWorkflow(ctx, planId, runSession)))
+                                .doOnError(err -> {
+                                    executionPlanStore.markPaused(planId, checkpoint);
+                                    planExecutionAuditService.failed(
+                                            ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(),
+                                            ctx.tenantId(), planId, err.getMessage());
+                                })
+                ));
     }
 
     private static PlanJson emptyPlan() {

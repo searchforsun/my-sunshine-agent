@@ -73,28 +73,32 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("重复用户名 409")
-    void register_duplicateUsername() throws Exception {
+    @DisplayName("重复用户名返回统一错误码与文案")
+    void register_duplicateUsername_returnsErrorCode() throws Exception {
         registerUser("bob001");
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"bob001","password":"password123"}
                                 """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(409));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.msg").value("用户名已被占用"))
+                .andExpect(jsonPath("$.errorKey").value("auth_username_taken"));
     }
 
     @Test
-    @DisplayName("非法用户名 400")
-    void register_invalidUsername() throws Exception {
+    @DisplayName("参数校验失败不泄露字段原文")
+    void register_invalidUsername_returnsGenericValidationMsg() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"ab","password":"password123"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400));
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("请求参数有误"))
+                .andExpect(jsonPath("$.errorKey").value("bad_request"));
     }
 
     @Test
@@ -122,7 +126,7 @@ class AuthControllerTest {
                         .content("""
                                 {"username":"dave001","password":"wrongpass1"}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
     }
 
@@ -145,7 +149,7 @@ class AuthControllerTest {
                         .content("""
                                 {"username":"disabled1","password":"password123"}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
     }
 
@@ -191,6 +195,42 @@ class AuthControllerTest {
         var user = userRepository.findByUsername("tenant01");
         assertThat(user).isPresent();
         assertThat(user.get().getTenantId()).isEqualTo("tenant-a");
+    }
+
+    @Test
+    @DisplayName("profile 变更租户后新 token 可用、旧 token 失效")
+    void updateProfile_changesTenant() throws Exception {
+        registerUser("grace01");
+        String token = loginAndGetToken("grace01");
+
+        MvcResult profileResult = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"Grace","tenantId":"tenant-b"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.tenantId").value("tenant-b"))
+                .andExpect(jsonPath("$.data.token").isNotEmpty())
+                .andReturn();
+
+        JsonNode profileBody = objectMapper.readTree(profileResult.getResponse().getContentAsString());
+        String newToken = profileBody.path("data").path("token").asText();
+        assertThat(newToken).isNotEqualTo(token);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tenantId").value("tenant-b"));
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+
+        var user = userRepository.findByUsername("grace01");
+        assertThat(user).isPresent();
+        assertThat(user.get().getTenantId()).isEqualTo("tenant-b");
     }
 
     private void registerUser(String username) throws Exception {

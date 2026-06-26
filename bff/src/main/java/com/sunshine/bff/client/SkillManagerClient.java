@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.http.codec.multipart.FilePart;
@@ -11,7 +12,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import com.sunshine.common.web.RemoteErrorMapper;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -44,6 +47,7 @@ public class SkillManagerClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -53,6 +57,7 @@ public class SkillManagerClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("enabled", enabled))
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -62,6 +67,7 @@ public class SkillManagerClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -81,6 +87,7 @@ public class SkillManagerClient {
                     return builder.build(id);
                 })
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -89,6 +96,7 @@ public class SkillManagerClient {
                 .uri(uri -> uri.path("/api/skills/{id}/publish").queryParam("version", version).build(id))
                 .headers(h -> applyUserId(h, userId))
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -97,6 +105,7 @@ public class SkillManagerClient {
                 .uri("/api/skills/{id}/versions/{version}/fork", id, version)
                 .headers(h -> applyUserId(h, userId))
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -104,6 +113,7 @@ public class SkillManagerClient {
         return webClient.delete()
                 .uri("/api/skills/{id}", id)
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -111,6 +121,7 @@ public class SkillManagerClient {
         return webClient.delete()
                 .uri("/api/skills/{id}/versions/{version}", id, version)
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -124,6 +135,7 @@ public class SkillManagerClient {
                         .queryParam("path", path)
                         .build(id, version))
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -137,6 +149,7 @@ public class SkillManagerClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("content", content))
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -146,8 +159,9 @@ public class SkillManagerClient {
                 .exchangeToMono(response -> {
                     if (response.statusCode().isError()) {
                         return response.bodyToMono(String.class)
-                                .defaultIfEmpty("下载失败")
-                                .flatMap(body -> Mono.error(new IllegalStateException(body)));
+                                .defaultIfEmpty("")
+                                .flatMap(body -> Mono.error(
+                                        RemoteErrorMapper.fromBody(response.statusCode().value(), body)));
                     }
                     return response.toEntity(byte[].class);
                 });
@@ -173,6 +187,7 @@ public class SkillManagerClient {
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(builder.build()))
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -194,6 +209,13 @@ public class SkillManagerClient {
         return webClient.get()
                 .uri(path)
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    private Mono<? extends Throwable> toBizError(ClientResponse response) {
+        return response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .flatMap(body -> Mono.error(RemoteErrorMapper.fromBody(response.statusCode().value(), body)));
     }
 }

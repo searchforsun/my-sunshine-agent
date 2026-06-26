@@ -1,5 +1,7 @@
 package com.sunshine.tool.service;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.tool.exception.ToolErrorCode;
 import com.sunshine.tool.registry.ToolRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -14,7 +16,7 @@ public class ToolInvokeService {
 
     public String invoke(String name, Map<String, String> params) {
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("tool name required");
+            throw new BizException(ToolErrorCode.TOOL_NAME_REQUIRED);
         }
         return toolRegistry.invoke(name, params);
     }

@@ -1,5 +1,7 @@
 package com.sunshine.tool.registry;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.tool.exception.ToolErrorCode;
 import com.sunshine.tool.tool.FinanceTool;
 import com.sunshine.tool.tool.FinanceToolHandler;
 import org.junit.jupiter.api.Test;
@@ -40,7 +42,8 @@ class ToolRegistryTest {
         ToolRegistry registry = new ToolRegistry(List.of(financeToolHandler));
 
         assertThatThrownBy(() -> registry.invoke("unknown_tool", Map.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("unknown tool");
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
+                        .isEqualTo(ToolErrorCode.UNKNOWN_TOOL));
     }
 }

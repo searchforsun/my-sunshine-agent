@@ -83,6 +83,15 @@ class WorkflowExecutorTest {
     @Mock
     private AnswerGroundingChecker groundingChecker;
 
+    @Mock
+    private com.sunshine.orchestrator.hitl.WorkflowNodeRecoveryService workflowNodeRecoveryService;
+
+    @Mock
+    private WorkflowPauseService workflowPauseService;
+
+    @Mock
+    private com.sunshine.orchestrator.generation.GenerationRegistry generationRegistry;
+
     private AgentGroundingProperties groundingProperties;
 
     @InjectMocks
@@ -93,7 +102,7 @@ class WorkflowExecutorTest {
         when(retryPolicyResolver.resolve(any(), any(Boolean.class)))
                 .thenReturn(com.sunshine.orchestrator.execution.retry.NodeRetryPolicy.noRetry(
                         com.sunshine.orchestrator.execution.retry.OnFailureAction.CONTINUE));
-        when(nodeRetryExecutor.runWithRetry(any(), any()))
+        when(nodeRetryExecutor.runWithRetry(any(), any(), any()))
                 .thenAnswer(inv -> {
                     @SuppressWarnings("unchecked")
                     java.util.function.Supplier<Mono<NodeResult>> supplier = inv.getArgument(1);
@@ -132,12 +141,14 @@ class WorkflowExecutorTest {
         when(groundingChecker.check(any(), any())).thenReturn(GroundingVerdict.pass());
         groundingProperties = new AgentGroundingProperties();
         groundingProperties.setEnabled(true);
+        when(workflowNodeRecoveryService.isEnabled()).thenReturn(false);
 
         executor = new WorkflowExecutor(
                 loader, registry, executionPlanStore, labelService,
                 retryPolicyResolver, nodeRetryExecutor, upstreamOutputResolver,
                 planExecutionAuditService, displayNameEnricher, planRunFinalizer,
-                groundingChecker, groundingProperties);
+                groundingChecker, groundingProperties, workflowNodeRecoveryService,
+                workflowPauseService, generationRegistry);
     }
 
     @Test

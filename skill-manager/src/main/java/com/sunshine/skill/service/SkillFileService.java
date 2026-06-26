@@ -1,7 +1,9 @@
 package com.sunshine.skill.service;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.skill.dto.SkillFileContent;
 import com.sunshine.skill.dto.SkillFileEntry;
+import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.entity.SkillDefinitionEntity;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.repo.SkillDefinitionRepository;
@@ -16,7 +18,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -26,10 +27,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.List;
-
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
-import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
-import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
 @RequiredArgsConstructor
@@ -50,13 +47,13 @@ public class SkillFileService {
 
     public SkillFileContent readFile(String skillId, int version, String relativePath) {
         if (!StringUtils.hasText(relativePath)) {
-            throw new ResponseStatusException(BAD_REQUEST, "path 必填");
+            throw new BizException(SkillErrorCode.PATH_REQUIRED);
         }
         SkillVersionEntity ver = requireVersion(skillId, version);
         SkillFileContent content = skillStorageService.readFile(
                 skillId, version, ver.getStoragePath(), relativePath);
         if (content == null) {
-            throw new ResponseStatusException(NOT_FOUND, "文件不存在: " + relativePath);
+            throw new BizException(SkillErrorCode.FILE_NOT_FOUND);
         }
         return content;
     }
@@ -65,29 +62,29 @@ public class SkillFileService {
     @Transactional
     public SkillFileContent writeFile(String skillId, int version, String relativePath, String content, String maintainer) {
         if (!StringUtils.hasText(relativePath)) {
-            throw new ResponseStatusException(BAD_REQUEST, "path 必填");
+            throw new BizException(SkillErrorCode.PATH_REQUIRED);
         }
         if (content == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "content 必填");
+            throw new BizException(SkillErrorCode.CONTENT_REQUIRED);
         }
         SkillDefinitionEntity def = definitionRepository.findById(skillId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "skill 不存在: " + skillId));
+                .orElseThrow(() -> new BizException(SkillErrorCode.SKILL_NOT_FOUND));
         SkillVersionEntity ver = requireVersion(skillId, version);
         if (!"draft".equals(ver.getStatus())) {
-            throw new ResponseStatusException(BAD_REQUEST, "仅草稿版本可在线编辑，请上传新版本后再改");
+            throw new BizException(SkillErrorCode.DRAFT_EDIT_ONLY);
         }
         if (!StringUtils.hasText(ver.getStoragePath())) {
-            throw new ResponseStatusException(BAD_REQUEST, "该版本无 Skill 包，请先上传");
+            throw new BizException(SkillErrorCode.PACKAGE_REQUIRED);
         }
         String path = relativePath.strip().replace('\\', '/');
         String fileName = SkillFileCodec.lowerName(path);
         if (!SkillFileCodec.isTextFile(fileName)) {
-            throw new ResponseStatusException(BAD_REQUEST, "不支持编辑二进制文件");
+            throw new BizException(SkillErrorCode.BINARY_EDIT_FORBIDDEN);
         }
         try {
             skillStorageService.writeTextFile(skillId, version, ver.getStoragePath(), path, content);
         } catch (IOException e) {
-            throw new ResponseStatusException(BAD_REQUEST, "保存失败: " + e.getMessage());
+            throw new BizException(SkillErrorCode.FILE_SAVE_FAILED);
         }
         if (isSkillMdPath(path)) {
             applySkillMdSideEffects(def, ver, content, skillId);
@@ -101,7 +98,7 @@ public class SkillFileService {
         catalogRegistry.refresh();
         SkillFileContent saved = skillStorageService.readFile(skillId, version, ver.getStoragePath(), path);
         if (saved == null) {
-            throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "保存后读取失败");
+            throw new BizException(SkillErrorCode.FILE_READ_AFTER_SAVE_FAILED);
         }
         return saved;
     }
@@ -112,7 +109,7 @@ public class SkillFileService {
         try {
             doc = SkillMdParser.parse(raw);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(BAD_REQUEST, e.getMessage());
+            throw new BizException(SkillErrorCode.SKILL_MD_INVALID);
         }
         validateSkillName(skillId, doc.name());
         if (StringUtils.hasText(doc.description())) {
@@ -129,20 +126,19 @@ public class SkillFileService {
 
     private static void validateSkillName(String skillId, String name) {
         if (StringUtils.hasText(name) && !skillId.equals(name.strip())) {
-            throw new ResponseStatusException(BAD_REQUEST,
-                    "SKILL.md frontmatter name 与 skill id 不一致: " + name);
+            throw new BizException(SkillErrorCode.SKILL_NAME_MISMATCH);
         }
     }
 
     public byte[] exportPackageZip(String skillId, int version) {
         SkillVersionEntity ver = requireVersion(skillId, version);
         if (!StringUtils.hasText(ver.getStoragePath())) {
-            throw new ResponseStatusException(BAD_REQUEST, "该版本无 Skill 包，无法下载");
+            throw new BizException(SkillErrorCode.PACKAGE_REQUIRED);
         }
         List<SkillFileEntry> files = skillStorageService.listFiles(skillId, version, ver.getStoragePath());
         boolean hasFile = files.stream().anyMatch(f -> !f.directory());
         if (!hasFile) {
-            throw new ResponseStatusException(BAD_REQUEST, "该版本无文件，无法下载");
+            throw new BizException(SkillErrorCode.PACKAGE_DOWNLOAD_EMPTY);
         }
         String storagePath = ver.getStoragePath();
         try {
@@ -157,9 +153,9 @@ public class SkillFileService {
                 return content.content().getBytes(StandardCharsets.UTF_8);
             });
         } catch (IOException e) {
-            throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "打包下载失败: " + e.getMessage());
+            throw new BizException(SkillErrorCode.PACKAGE_ZIP_FAILED);
         } catch (UncheckedIOException e) {
-            throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "打包下载失败: " + e.getCause().getMessage());
+            throw new BizException(SkillErrorCode.PACKAGE_ZIP_FAILED);
         }
     }
 
@@ -177,8 +173,8 @@ public class SkillFileService {
 
     private SkillVersionEntity requireVersion(String skillId, int version) {
         definitionRepository.findById(skillId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "skill 不存在: " + skillId));
+                .orElseThrow(() -> new BizException(SkillErrorCode.SKILL_NOT_FOUND));
         return versionRepository.findBySkillIdAndVersion(skillId, version)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "版本不存在"));
+                .orElseThrow(() -> new BizException(SkillErrorCode.VERSION_NOT_FOUND));
     }
 }

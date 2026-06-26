@@ -5,6 +5,7 @@ public enum ExecutionPlanStatus {
     DRAFT,
     VALIDATED,
     RUNNING,
+    PAUSED,
     COMPLETED,
     COMPLETED_WITH_ERRORS,
     FAILED,

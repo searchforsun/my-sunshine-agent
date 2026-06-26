@@ -1,6 +1,7 @@
 package com.sunshine.skill.service;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.dto.SkillFileContent;
 import com.sunshine.skill.dto.SkillVersionDiffResponse;
 import com.sunshine.skill.util.ContentMd5;
@@ -19,7 +20,7 @@ public class SkillVersionDiffService {
 
     public SkillVersionDiffResponse diff(String skillId, int fromVersion, int toVersion, String path) {
         if (fromVersion == toVersion) {
-            throw new BizException("对比版本不能相同");
+            throw new BizException(SkillErrorCode.VERSION_DIFF_SAME);
         }
         String relativePath = StringUtils.hasText(path) ? path.strip() : "SKILL.md";
         SkillFileContent from = skillFileService.readFile(skillId, fromVersion, relativePath);
