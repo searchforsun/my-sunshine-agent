@@ -5,19 +5,24 @@
 ## 架构概览
 
 ```
-前端 (Vue3 + Naive UI)
+Browser (Vue3 + Naive UI :5173)
   │
   ▼
-Gateway (:8000) ──▶ BFF (:8001) ──▶ Orchestrator (:8200) ──▶ LLM Gateway (:8300) ──▶ DeepSeek / Qwen API
-                    │                      │
-                    │              ┌───────┼───────┐
-                    │              │       │       │
-                    │         RAG (:8400) Tool   Prompt
-                    │         Milvus 2.6  Manager Manager
-                    │
-               Auth Center (:8100)
+Gateway (:8000, JWT + Sentinel) ──▶ BFF (:8001, SSE) ──▶ Orchestrator (:8200)
+                                                          │
+                    ┌─────────────────────────────────────┼─────────────────────┐
+                    │                                     │                     │
+              simple-llm / workflow(DAG) / react / plan-workflow                  │
+                    │                                     │                     │
+                    ▼                                     ▼                     ▼
+            LLM Gateway (:8300)                    RAG (:8400)           tool-manager (:8210)
+            DeepSeek / Qwen                        Milvus + ES           skill-manager (:8225)
+                    │                                     │
+               Auth Center (:8100)                  finance / oa 模拟服务
                Sa-Token JWT
 ```
+
+**执行模式**（IntentRouter → ExecutionDispatcher）：`simple-llm` · 静态 `workflow` · `react` · 动态 `plan-workflow`（Planner DAG + Plan 抽屉 UI）。阶段四规划第五模式 `peer-collab`。
 
 ## 技术栈
 
@@ -25,11 +30,11 @@ Gateway (:8000) ──▶ BFF (:8001) ──▶ Orchestrator (:8200) ──▶ L
 |---|------|------|
 | **JDK** | OpenJDK | 21 LTS |
 | **框架** | Spring Boot + Spring Cloud + Spring Cloud Alibaba | 3.2.9 / 2023.0.3 / 2023.0.3.4 |
-| **Agent** | AgentScope-Java（阿里通义实验室） | 1.0.7 |
+| **Agent** | AgentScope-Java | 1.0.7 |
 | **认证** | Sa-Token（JWT + Redis） | 1.45.0 |
-| **向量库** | Milvus | 2.6.16 |
+| **向量库** | Milvus + Elasticsearch | 2.6.16 |
 | **消息队列** | Apache RocketMQ | 5.3.2 |
-| **可观测** | SkyWalking + Prometheus + Grafana | 9.7.0 |
+| **可观测** | SkyWalking · Micrometer · Prometheus · Grafana · Sentinel | 9.7.0 |
 | **前端** | Vue 3 + TypeScript + Naive UI + Vite | — |
 
 ## 项目结构
@@ -41,57 +46,51 @@ my-sunshine-agent/
 ├── gateway/         :8000      # Spring Cloud Gateway + Sentinel
 ├── bff/             :8001      # WebFlux + SSE 流式转发
 ├── auth-center/     :8100      # Sa-Token 认证中心
-├── orchestrator/    :8200      # AgentScope ReActAgent 编排
-├── tool-manager/    :8210      # 业务 API → Agent Tool 包装
-├── llm-gateway/     :8300      # LLM 网关（多厂商路由/缓存/熔断）
-├── rag-service/     :8400      # RAG 检索（Milvus + Embedding）
+├── orchestrator/    :8200      # 四模式编排 + Timeline + AgentRuntime
+├── tool-manager/    :8210      # 业务 API → Agent Tool（Catalog 驱动）
+├── skill-manager/   :8225      # Skills 上传 / 版本 / Catalog
+├── llm-gateway/     :8300      # LLM 网关（多厂商路由 / 缓存 / 熔断）
+├── rag-service/     :8400      # RAG 检索（Milvus + Hybrid + Rerank）
 ├── prompt-manager/  :8500      # 提示词管理
 ├── desensitize/     :8600      # 数据脱敏
-├── oa-service/      :8700      # OA 模拟（阶段二）
-├── finance-service/ :8710      # 财务模拟（阶段二）
+├── oa-service/      :8700      # OA 模拟
+├── finance-service/ :8710      # 财务模拟
 ├── sunshine-ui/     :5173      # 前端 WebUI
-├── docker/                     # Docker Compose + SkyWalking Agent
-├── scripts/                    # Python 运维脚本（scripts/*.py）
-└── docs/                       # 设计文档
+├── docker/                     # Docker Compose（中间件 + Prometheus/Grafana）
+├── scripts/                    # Python 运维脚本（SSOT：scripts/*.py）
+└── docs/                       # 设计文档（Nacos SSOT：docs/nacos/）
 ```
 
 ## 快速开始
 
 ### 1. 环境要求
 
-- JDK 21
-- Maven 3.9+
-- Node.js 22+
-- 服务器中间件已部署（ecs4c16g）
+- JDK 21、Maven 3.9+、Node.js 22+、Python 3.10+（运维脚本）
+- 中间件已部署在 **ecs4c16g**（见下表）；业务配置 SSOT 在 `docs/nacos/`
+
+**首次部署**：MySQL 执行 `CREATE DATABASE sunshine_auth;`，再同步 Nacos 并启动服务。
 
 ### 2. 编译
 
 ```bash
-# 后端
 mvn clean package -DskipTests
-
-# 前端
 cd sunshine-ui && npm install && npm run build
 ```
 
-### 3. 启动服务
+### 3. 配置与启动
 
 ```bash
-# 按依赖顺序启动核心服务
-java -jar llm-gateway/target/sunshine-llm-gateway-*.jar &    # :8300
-java -jar orchestrator/target/sunshine-orchestrator-*.jar &  # :8200
-java -jar bff/target/sunshine-bff-*.jar &                    # :8001
-java -jar gateway/target/sunshine-gateway-*.jar &            # :8000
-
-# 或使用脚本一键启动核心链（含 Gateway，可选 SkyWalking agent）
 pip install -r scripts/requirements.txt
+
+# 同步 Nacos（改 docs/nacos/*.yaml 后必做）
+python scripts/sync_nacos.py
+
+# 按依赖顺序启动全链路（可选 SkyWalking agent）
+python scripts/download_skywalking_agent.py   # 首次可选
 python scripts/start.py
 
-# SkyWalking agent（可选，live trace 需 OAP ecs4c16g:11800）
-python scripts/download_skywalking_agent.py
-
-# 阶段二 Agent 验收（服务已启动后）
-python scripts/phase2_agent_demo.py
+# 清会话（MySQL + Redis 生成流；可选重启 orchestrator）
+python scripts/clear_session_cache.py --force --restart-orchestrator
 ```
 
 ### 4. 启动前端
@@ -100,40 +99,43 @@ python scripts/phase2_agent_demo.py
 cd sunshine-ui && npm run dev    # http://localhost:5173
 ```
 
-### 5. 测试
+SSE 默认经 Gateway `:8000`（`sunshine-ui` 环境变量 `VITE_BFF_STREAM_BASE`）。
+
+### 5. 验收
 
 ```bash
-# 直接测试 LLM Gateway → DeepSeek
-curl -X POST http://localhost:8300/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"你好"}]}'
+# Agent 四模式（react / workflow / plan-workflow 等）
+python scripts/phase2_agent_demo.py --suite all
 
-# 端到端 SSE 流式测试
-curl -N -X POST http://localhost:8001/api/chat/stream \
-  -H "Content-Type: application/json" \
-  -H "x-user-id: test" \
-  -d '{"content":"你好，请介绍一下你自己"}'
+# RAG 双轨门禁（v5 回归）
+python scripts/rag_reset.py
+python scripts/rag_ingest_bulk.py
+python scripts/rag_eval.py --suite v5 --strategy hybrid+rerank --ci --fail-if-recall5-below 0.98
+
+# Orchestrator 关键单测
+mvn test -pl orchestrator -Dtest=ExecutionPlanRouterTest,RoutingGoldenSetTest,WorkflowExecutorTest,ReactExecutorTest
 ```
 
 #### 集成测试（Orchestrator）
 
-默认 `mvn test` **排除** `@Tag("integration")` 用例（无需外部中间件）。Mock/H2/jedis-mock 集成测试可直接运行：
+默认 `mvn test` **排除** `@Tag("integration")`（无需外部中间件）：
 
 ```bash
-# 阶段 1.5 / 1.6 mock 集成测试（推荐 CI 默认跑）
 mvn test -pl orchestrator -am "-Dtest=ConversationIntegrationTest,GenerationReconnectIntegrationTest" -q
-
-# 全链路 live 集成测试（需 LLM Gateway :8300 已启动）
-mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest" -q
+mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest" -q   # 需 :8300 live
 ```
 
-LLM Gateway 单元测试（Qwen 路由 mock）：
+## 前端页面
 
-```bash
-mvn test -pl llm-gateway -am "-Dtest=QwenAdapterTest,ModelRouterTest" -q
-```
+| 路由 | 功能 |
+|------|------|
+| `/chat` | 流式对话；底栏执行路径选择；静态 / Plan workflow 共用 Plan DAG 面板 |
+| `/plans/:planId` | Plan 详情与节点 trace |
+| `/knowledge` | 知识库入库与检索测试 |
+| `/skills` | Skill 管理；版本 diff → `/skills/:skillId/diff` |
+| `/status` | 服务与中间件状态 |
 
-## 服务器中间件
+## 服务器中间件（ecs4c16g）
 
 | 组件 | 端口 | 凭据 |
 |------|------|------|
@@ -142,30 +144,53 @@ mvn test -pl llm-gateway -am "-Dtest=QwenAdapterTest,ModelRouterTest" -q
 | Redis | 6379 | redis123 |
 | Milvus | 19530 | — |
 | RocketMQ | 9876 | — |
-| SkyWalking OAP | 11800 | — |
-| SkyWalking UI | 8084 | — |
-| Sentinel Dashboard | 8858 | sentinel / sentinel123 |
-| Grafana | 3000 | admin / admin123 |
 | Elasticsearch | 9200 | — |
+| SkyWalking OAP / UI | 11800 / 8084 | — |
+| Prometheus | 9090 | — |
+| Grafana | 3000 | admin / admin123 |
+| Sentinel Dashboard | 8858 | sentinel / sentinel123 |
+
+## 可观测
+
+| 能力 | 本地开发 | Live 完整（阶段三 3.5 检查门） |
+|------|----------|--------------------------------|
+| **RAG 质量** | `rag_eval.py`（主验收，不依赖 Grafana） | 同左 |
+| **应用指标** | `curl :8400/actuator/prometheus` | Prometheus 能 scrape 到各服务 |
+| **Grafana RAG 面板 + 4 告警** | 可跳过（见 [docs/grafana/README.md](./docs/grafana/README.md) 方案 B） | rag-service 与 Prometheus **同机或内网可达**；`docker compose up prometheus grafana` |
+| **Sentinel 租户 QPS** | 本机 Gateway 时 Dashboard 可能看不到机器 | Gateway 与 Dashboard **同网段**；见 [docs/sentinel/README.md](./docs/sentinel/README.md) |
+| **SkyWalking 链路** | agent 上报 `ecs4c16g:11800`（OAP 在中间件机） | UI `:8084` 查 trace |
+
+本地开发**不必**起 Grafana 也能完成 RAG / Agent 功能开发；**关阶段三 3.5 检查门**需要在 ecs4c16g 联机部署观测栈与被观测服务。
 
 ## 环境变量
 
 ```bash
 export DEEPSEEK_API_KEY=sk-xxx    # DeepSeek API Key
-export QWEN_API_KEY=sk-xxx        # 通义千问 API Key（Embedding 也复用此 Key）
+export QWEN_API_KEY=sk-xxx        # 通义千问（Embedding 复用）
 ```
 
 ## 实施阶段
 
 | 阶段 | 状态 | 内容 |
 |------|:--:|------|
-| 阶段〇 | ✅ | 环境准备：中间件部署 + 项目骨架 |
-| 阶段一 | ✅ | 底座搭建：LLM Gateway + ReActAgent + RAG + SSE |
-| 阶段二 | ✅ | 标杆打通（MVP）：Sa-Token 认证 + 财务 Agent 工具链 + 脱敏 + 审计；Sentinel Dashboard / 通用 Tool 框架等为后续增强 |
-| 阶段三 | ⬜ | 生产加固：RAG 双轨评测 + PLAN_WORKFLOW + 多租户 + HITL + 监控告警 |
-| 阶段四 | ⬜ | 平台化：MCP + K8s + Seata + Serverless（按需） |
+| 阶段〇 | ✅ | 中间件 + 项目骨架 |
+| 阶段一 | ✅ | LLM Gateway · ReActAgent · RAG · SSE · SkyWalking 探针 |
+| 阶段二 | ✅ | 认证 · 财务/OA 工具链 · Workflow · Timeline V2 · 会话断点续传 |
+| 阶段三 | **进行中** | **已完成**：3.4 RAG 双轨 · 3.8 提示词链路 · 3.9 PLAN_WORKFLOW（含静态 DAG 统一、重试/Recovery）· 3.10 AgentRuntime · 3.11 skill-manager · 3.12 `/skills` + diff · Chat 执行模式选择器。**收尾**：3.9.5 暂停/续跑一致性。**待关检查门**：3.2 多租户 · 3.3 HITL live · 3.5 Grafana/Sentinel live · 3.7 Grounding |
+| 阶段四 | ⬜ | PEER_COLLAB · TaskBoard · Workflow Studio · MCP · K8s（按需） |
+
+进度 SSOT：[docs/implementation-plan.md](./docs/implementation-plan.md)
 
 ## 文档
 
-- [技术方案设计](./docs/tech-solution.md) — 完整架构设计与技术选型
-- [实施计划](./docs/implementation-plan.md) — 分阶段任务卡与检查门
+| 文档 | 说明 |
+|------|------|
+| [implementation-plan.md](./docs/implementation-plan.md) | 分阶段任务卡与检查门 |
+| [superpowers/specs/README.md](./docs/superpowers/specs/README.md) | 阶段一～四设计 SSOT 索引 |
+| [tech-solution.md](./docs/tech-solution.md) | 架构设计与技术选型 |
+| [CLAUDE.md](./CLAUDE.md) | 开发约定、请求链路、扩展指南 |
+| [grafana/README.md](./docs/grafana/README.md) | RAG 指标与 Grafana 部署 |
+| [sentinel/README.md](./docs/sentinel/README.md) | Gateway 租户 QPS 与 Dashboard |
+| [routing/routing-golden-set.md](./docs/routing/routing-golden-set.md) | 意图路由验收集 |
+| [2026-06-26-pause-resume-consistency-design.md](./docs/superpowers/specs/2026-06-26-pause-resume-consistency-design.md) | 阶段三收尾 3.9.5 设计 |
+| [2026-06-26-pause-resume-consistency.md](./docs/superpowers/plans/2026-06-26-pause-resume-consistency.md) | 3.9.5 实施计划 |
