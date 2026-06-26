@@ -18,17 +18,23 @@ import {
   clearActiveGeneration,
   updateLastSeq,
 } from '../composables/useActiveGeneration'
-import { BFF_STREAM_BASE } from './config'
-import { ApiError, throwIfHttpError } from './apiError'
-import { parseSseEvent } from './sseParse'
+import { resolveBffStreamBase } from './config'
+import { ApiError, isConversationNotFoundError, throwIfHttpError, throwIfNotEventStream } from './apiError'
+import { drainSseBuffer, parseSseEvent } from './sseParse'
 import { parseSsePayload, type SseMeta } from './sseDispatch'
-import { mergeHitlIntoRunningToolStep, applyHitlDecision as applyHitlDecisionToSteps, relocateAgentNodeHitl } from './hitlSteps'
+import {
+  mergeHitlIntoRunningToolStep,
+  applyHitlDecision as applyHitlDecisionToSteps,
+  reapplyPendingHitl,
+  relocateAgentNodeHitl,
+  applySyncedPendingHitl,
+} from './hitlSteps'
 import { applyRecoveryDecision as applyRecoveryDecisionToSteps } from './recoverySteps'
 import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, pauseRunningWorkflowNodes } from './processingSteps'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
 
-const API_BASE = BFF_STREAM_BASE
+const API_BASE = () => resolveBffStreamBase()
 
 export interface SendOptions {
   executionPreference?: ExecutionPreference
@@ -43,6 +49,8 @@ export interface SessionState {
   loading: boolean
   abort: AbortController | null
   requestId: number
+  /** 每 step/confirmation 递增，驱动 timeline 强制刷新 */
+  streamRevision: number
   containerEl: HTMLDivElement
   mounted: boolean
 }
@@ -80,6 +88,7 @@ function getOrCreate(id: string): SessionState {
       loading: false,
       abort: null,
       requestId: 0,
+      streamRevision: 0,
       containerEl: el,
       mounted: false,
     }) as SessionState)
@@ -92,6 +101,8 @@ export function useChatSessions(
   onSessionEnd?: (id: string) => void,
   onProgress?: (sessionId: string) => void,
   onConversationMeta?: (sessionId: string, convId: string) => void,
+  /** 会话在后端不存在时新建并返回新 conversationId */
+  onStaleConversation?: () => Promise<string | null>,
 ) {
   const activeId = ref<string | null>(null)
 
@@ -100,7 +111,13 @@ export function useChatSessions(
     return id ? getOrCreate(id) : null
   })
 
-  const messages = computed(() => (activeSession.value?.messages ?? []) as ChatMessage[])
+  const messages = computed(() => {
+    const session = activeSession.value
+    if (!session) return [] as ChatMessage[]
+    void session.streamRevision
+    return session.messages as ChatMessage[]
+  })
+  const streamRevision = computed(() => activeSession.value?.streamRevision ?? 0)
   const loading = computed(() => activeSession.value?.loading ?? false)
   const activeContainer = computed(() => activeSession.value?.containerEl ?? null)
 
@@ -130,6 +147,36 @@ export function useChatSessions(
     if (activeId.value !== id) switchTo(id)
   }
 
+  function cloneStepsForReactive(steps: ProcessingStep[]): ProcessingStep[] {
+    return steps.map(step => ({
+      ...step,
+      summary: step.summary ? { ...step.summary } : step.summary,
+      metadata: step.metadata ? { ...step.metadata } : step.metadata,
+      subSteps: step.subSteps?.map(sub => ({
+        ...sub,
+        summary: sub.summary ? { ...sub.summary } : sub.summary,
+        metadata: sub.metadata ? { ...sub.metadata } : sub.metadata,
+      })),
+    }))
+  }
+
+  function bumpAssistantMessage(session: SessionState): void {
+    const idx = session.messages.length - 1
+    const last = session.messages[idx]
+    if (last?.role !== 'assistant') return
+    session.streamRevision++
+    session.messages = [
+      ...session.messages.slice(0, idx),
+      {
+        ...last,
+        steps: last.steps?.length ? cloneStepsForReactive(last.steps) : last.steps,
+        pendingHitlConfirmation: last.pendingHitlConfirmation
+          ? { ...last.pendingHitlConfirmation }
+          : last.pendingHitlConfirmation,
+      },
+    ]
+  }
+
   async function consumeSseStream(
     s: SessionState,
     response: Response,
@@ -145,11 +192,12 @@ export function useChatSessions(
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (value) {
+        buf += decoder.decode(value, { stream: true })
+      }
 
-      buf += decoder.decode(value, { stream: true })
-      const events = buf.split('\n\n')
-      buf = events.pop() || ''
+      let { events, pending } = drainSseBuffer(done && buf.trim() ? `${buf}\n\n` : buf)
+      buf = pending
 
       for (const rawEvent of events) {
         const { id: eventId, payload: data } = parseSseEvent(rawEvent)
@@ -193,7 +241,10 @@ export function useChatSessions(
           }
           if (parsed.meta.type === 'message' && parsed.meta.status === 'completed') {
             const last = s.messages[s.messages.length - 1]
-            if (last?.role === 'assistant') last.status = 'completed'
+            if (last?.role === 'assistant') {
+              last.status = 'completed'
+              last.pendingHitlConfirmation = undefined
+            }
           }
           if (parsed.meta.type === 'message' && parsed.meta.status === 'interrupted') {
             const last = s.messages[s.messages.length - 1]
@@ -251,6 +302,13 @@ export function useChatSessions(
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
             lastMsg.steps = upsertStep(lastMsg.steps ?? [], parsed.step)
+            lastMsg.steps = lastMsg.steps.map(st =>
+              st.id.startsWith('node-') ? relocateAgentNodeHitl(st) : st,
+            )
+            const synced = applySyncedPendingHitl(lastMsg.steps, lastMsg.pendingHitlConfirmation)
+            lastMsg.steps = synced.steps
+            lastMsg.pendingHitlConfirmation = synced.pending
+            bumpAssistantMessage(s)
           }
           onProgress?.(s.id)
           continue
@@ -286,10 +344,16 @@ export function useChatSessions(
           if (eventSeq !== null) updateLastSeq(eventSeq)
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
-            lastMsg.steps = mergeHitlIntoRunningToolStep(
-              lastMsg.steps ?? [],
-              parsed.confirmation,
-            ).map(s => (s.id.startsWith('node-') ? relocateAgentNodeHitl(s) : s))
+            const prevSteps = lastMsg.steps ?? []
+            lastMsg.pendingHitlConfirmation = parsed.confirmation
+            const merged = mergeHitlIntoRunningToolStep(prevSteps, parsed.confirmation)
+            lastMsg.steps = (merged !== prevSteps ? merged : prevSteps).map(st =>
+              st.id.startsWith('node-') ? relocateAgentNodeHitl(st) : st,
+            )
+            const synced = applySyncedPendingHitl(lastMsg.steps, lastMsg.pendingHitlConfirmation)
+            lastMsg.steps = synced.steps
+            lastMsg.pendingHitlConfirmation = synced.pending
+            bumpAssistantMessage(s)
           }
           onProgress?.(s.id)
           continue
@@ -312,6 +376,8 @@ export function useChatSessions(
       }
 
       if (events.length > 0) await new Promise(r => setTimeout(r, 0))
+
+      if (done) break
     }
   }
 
@@ -345,14 +411,14 @@ export function useChatSessions(
         body.skillId = options.skillId
       }
 
-      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+      const response = await fetch(`${API_BASE()}/api/chat/stream`, {
         method: 'POST',
-        headers: apiHeaders(),
+        headers: { ...apiHeaders(), Accept: 'text/event-stream' },
         body: JSON.stringify(body),
         signal: s.abort.signal,
       })
 
-      if (!response.ok) await throwIfHttpError(response)
+      await throwIfNotEventStream(response)
 
       await consumeSseStream(s, response, thisRequestId, {
         onMeta: (meta) => {
@@ -362,7 +428,27 @@ export function useChatSessions(
         },
       })
     } catch (err: unknown) {
-      applyStreamError(s.messages, err)
+      if (
+        onStaleConversation
+        && isConversationNotFoundError(err)
+        && s.messages.length >= 2
+        && s.messages[s.messages.length - 1]?.role === 'assistant'
+        && s.messages[s.messages.length - 2]?.role === 'user'
+      ) {
+        s.messages.pop()
+        s.messages.pop()
+        try {
+          const newConvId = await onStaleConversation()
+          if (newConvId && newConvId !== convId) {
+            switchTo(newConvId)
+            return send(content, newConvId, options)
+          }
+        } catch (recoverErr) {
+          applyStreamError(s.messages, recoverErr)
+        }
+      } else {
+        applyStreamError(s.messages, err)
+      }
       if (isAbortError(err) || isPageUnloading()) {
         return
       }
@@ -406,14 +492,14 @@ export function useChatSessions(
     onProgress?.(conversationId)
 
     try {
-      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+      const response = await fetch(`${API_BASE()}/api/chat/stream`, {
         method: 'POST',
-        headers: apiHeaders(),
+        headers: { ...apiHeaders(), Accept: 'text/event-stream' },
         body: JSON.stringify({ conversationId, resumeMessageId }),
         signal: s.abort.signal,
       })
 
-      if (!response.ok) await throwIfHttpError(response)
+      await throwIfNotEventStream(response)
 
       await consumeSseStream(s, response, thisRequestId, { resume: true })
     } catch (err: unknown) {
@@ -463,7 +549,7 @@ export function useChatSessions(
 
     try {
       const response = await fetch(
-        `${API_BASE}/api/chat/stream/${generationId}?afterSeq=${afterSeq}`,
+        `${API_BASE()}/api/chat/stream/${generationId}?afterSeq=${afterSeq}`,
         { headers: { ...apiHeaders(), Accept: 'text/event-stream' }, signal: s.abort.signal },
       )
 
@@ -502,7 +588,7 @@ export function useChatSessions(
     const active = loadActiveGeneration()
     if (active?.generationId) {
       try {
-        await fetch(`${API_BASE}/api/generations/${active.generationId}/cancel`, {
+        await fetch(`${API_BASE()}/api/generations/${active.generationId}/cancel`, {
           method: 'POST',
           headers: apiHeaders(),
         })
@@ -571,6 +657,10 @@ export function useChatSessions(
       const next = applyHitlDecisionToSteps(msg.steps, token, approved)
       if (next !== msg.steps) {
         msg.steps = next
+        if (msg.pendingHitlConfirmation?.confirmationToken === token) {
+          msg.pendingHitlConfirmation = undefined
+        }
+        bumpAssistantMessage(s)
         onProgress?.(s.id)
         return
       }
@@ -593,7 +683,7 @@ export function useChatSessions(
   }
 
   return {
-    messages, loading, activeContainer,
+    messages, streamRevision, loading, activeContainer,
     switchTo, ensureActive, send, resume, reconnectStream, stop, clearSession,
     getMessages, setMessages, destroySession, migrateSession,
     mountContainer, unmountContainer, getOrCreate, applyHitlDecision, applyRecoveryDecision,

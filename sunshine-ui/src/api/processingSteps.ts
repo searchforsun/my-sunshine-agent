@@ -5,6 +5,8 @@
  */
 
 import { relocateAgentNodeHitl } from './hitlSteps'
+import type { PlanApprovalRoundView } from './planApprovalSteps'
+import type { PlanGraph } from './executionPlans'
 
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
@@ -55,6 +57,14 @@ export interface StepMetadata {
   recoveryExpiresAt?: number
   /** Workflow 节点执行 attempt（重试过程 SSE 实时下发） */
   nodeAttempts?: import('./executionPlans').PlanNodeAttempt[]
+  /** 动态 Plan 用户确认 */
+  planApproval?: {
+    status?: 'awaiting' | 'approved'
+    token?: string
+    expiresAt?: number
+    rounds?: PlanApprovalRoundView[]
+    planGraph?: PlanGraph
+  }
 }
 
 
@@ -274,6 +284,43 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     : undefined
   const recoveryExpiresAt = typeof recoveryRaw?.expiresAt === 'number' ? recoveryRaw.expiresAt : undefined
   const nodeAttempts = parseNodeAttempts(obj.nodeAttempts)
+  const planApprovalRaw = obj.planApproval && typeof obj.planApproval === 'object'
+    ? obj.planApproval as Record<string, unknown>
+    : null
+  const planApprovalStatus = typeof planApprovalRaw?.status === 'string'
+    ? planApprovalRaw.status as StepMetadata['planApproval'] extends { status?: infer S } ? S : never
+    : undefined
+  const planApprovalToken = typeof planApprovalRaw?.token === 'string' && planApprovalRaw.token.trim()
+    ? planApprovalRaw.token.trim()
+    : undefined
+  const planApprovalExpiresAt = typeof planApprovalRaw?.expiresAt === 'number'
+    ? planApprovalRaw.expiresAt
+    : undefined
+  const planApprovalRounds = Array.isArray(planApprovalRaw?.rounds)
+    ? planApprovalRaw.rounds
+        .filter((r): r is Record<string, unknown> => r && typeof r === 'object')
+        .map((r) => ({
+          roundNo: typeof r.roundNo === 'number' ? r.roundNo : 0,
+          status: (typeof r.status === 'string' ? r.status : 'awaiting') as PlanApprovalRoundView['status'],
+          userHint: typeof r.userHint === 'string' ? r.userHint : undefined,
+          chainSummary: typeof r.chainSummary === 'string' ? r.chainSummary : undefined,
+          createdAt: typeof r.createdAt === 'number' ? r.createdAt : undefined,
+          resolvedAt: typeof r.resolvedAt === 'number' ? r.resolvedAt : undefined,
+        }))
+    : undefined
+  const planApprovalGraphRaw = planApprovalRaw?.planGraph
+  const planApprovalPlanGraph = planApprovalGraphRaw && typeof planApprovalGraphRaw === 'object'
+    ? planApprovalGraphRaw as PlanGraph
+    : undefined
+  const planApproval = planApprovalRaw
+    ? {
+        status: planApprovalStatus,
+        token: planApprovalToken,
+        expiresAt: planApprovalExpiresAt,
+        rounds: planApprovalRounds,
+        planGraph: planApprovalPlanGraph,
+      }
+    : undefined
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -286,6 +333,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !hitlStatus
     && !recoveryStatus
     && !nodeAttempts?.length
+    && !planApproval
   ) {
     return undefined
   }
@@ -313,6 +361,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     recoveryError,
     recoveryExpiresAt,
     nodeAttempts,
+    planApproval,
   }
 }
 
@@ -370,6 +419,18 @@ function mergeStepMetadata(
   const incomingAttempts = incoming.nodeAttempts?.length ?? 0
   if (incomingAttempts > prevAttempts) {
     merged.nodeAttempts = incoming.nodeAttempts
+  }
+  if (incoming.planApproval || prev.planApproval) {
+    merged.planApproval = {
+      ...prev.planApproval,
+      ...incoming.planApproval,
+      rounds: incoming.planApproval?.rounds?.length
+        ? incoming.planApproval.rounds
+        : prev.planApproval?.rounds,
+      planGraph: incoming.planApproval?.planGraph?.nodes?.length
+        ? incoming.planApproval.planGraph
+        : prev.planApproval?.planGraph,
+    }
   }
   return merged
 }

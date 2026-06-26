@@ -14,25 +14,45 @@ import {
   resolvePlanIdFromStep,
 } from '../../api/processingSteps'
 import { useRouter } from 'vue-router'
-import HitlStepActions from './HitlStepActions.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
+import { isToolStepId, type HitlConfirmationPayload } from '../../api/hitlSteps'
+import HitlStepActions from './HitlStepActions.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   step: ProcessingStep
   expanded: boolean
   live?: boolean
   /** 消息级 executionPlanId 兜底（历史数据） */
   executionPlanId?: string
-  /** 为 false 时不在卡片内嵌 HITL（由 PlanNodeDrawer 等外层承载） */
+  /** 为 false 时不在卡片内嵌 HITL（Plan 抽屉等外层承载） */
   embedHitl?: boolean
-}>()
+  pendingHitlConfirmation?: HitlConfirmationPayload
+  hitlUiKey?: string
+}>(), {
+  embedHitl: true,
+  pendingHitlConfirmation: undefined,
+  hitlUiKey: '',
+})
 
 const router = useRouter()
 
 const emit = defineEmits<{
   toggle: []
-  'hitl-decided': [token: string, approved: boolean]
+  hitlDecided: [token: string, approved: boolean]
 }>()
+
+const showEmbeddedHitl = computed(() =>
+  props.embedHitl !== false && isToolStepId(props.step.id),
+)
+
+const hitlPanelKey = computed(() =>
+  props.hitlUiKey
+  || props.step.metadata?.hitlToken
+  || props.step.metadata?.hitlStatus
+  || props.pendingHitlConfirmation?.confirmationToken
+  || props.step.summary?.active
+  || props.step.id,
+)
 
 const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
@@ -157,7 +177,13 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       </button>
     </div>
 
-    <HitlStepActions v-if="embedHitl !== false" :step="step" @decided="(token, approved) => emit('hitl-decided', token, approved)" />
+    <HitlStepActions
+      v-if="showEmbeddedHitl"
+      :key="hitlPanelKey"
+      :step="step"
+      :pending-confirmation="pendingHitlConfirmation"
+      @decided="(token, approved) => emit('hitlDecided', token, approved)"
+    />
 
     <div v-if="expanded && canExpand" class="op-detail">
       <div v-if="expandSummary && shiftSummary" class="op-detail-after">
@@ -165,7 +191,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       </div>
       <StaticMarkdown v-if="expandBody" :source="expandBody" compact />
       <div v-if="step.reasoning?.trim()" class="op-detail-thinking">
-        <StaticMarkdown :source="step.reasoning" compact scrollable />
+        <StaticMarkdown :source="step.reasoning" compact />
       </div>
       <StaticMarkdown v-if="step.output?.trim()" :source="step.output" compact />
     </div>
@@ -328,6 +354,10 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   display: flex;
   flex-direction: column;
   gap: 3px;
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .op-detail-after {
@@ -342,10 +372,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.op-detail-thinking :deep(.static-md-scroll) {
-  max-height: min(36vh, 280px);
 }
 
 .op-detail :deep(.static-md-compact) {

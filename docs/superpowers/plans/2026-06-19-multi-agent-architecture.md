@@ -9,7 +9,7 @@
 
 **Goal:** L1 增强（skill 子集）→ L3 主轴（PLAN_WORKFLOW + 多子 Agent）。
 
-**实现状态（2026-06-24）：** **3.10.1–3.10.7 ✅** · **3.11.1–3.11.7 ✅** · **3.12.1–3.12.4 ✅** · **Skill 六种触发 ✅**（Live 点验 ⬜）· **3.9.1–3.9.4 ✅** · **静态 workflow → Plan DAG ✅** · **3.8.7 ✅** · **3.6 tool.call ✅**。下一迭代：**3.7 Grounding** / **3.2–3.5 平台化**。
+**实现状态（2026-06-27）：** **3.10.1–3.10.7 ✅** · **3.11.1–3.11.7 ✅** · **3.12 ✅** · **Skill 六种触发 ✅**（Live ⬜）· **3.9.1–3.9.4 + 3.9.1g 用户确认 ✅** · **静态 workflow → Plan DAG ✅** · **3.8.7 ✅** · **3.6 审计三链路 ✅** · **3.3 HITL 代码 ✅**（live ⬜）。下一迭代：**3.9.5** / **3.2 live** / **3.7 集成测试** / **3.5 部署** / **3.14**。
 
 ---
 
@@ -224,7 +224,7 @@ flowchart LR
 
 ---
 
-#### 流程 5：动态 Plan 与 Skill（两种子模式）⬜ 3.9
+#### 流程 5：动态 Plan 与 Skill（两种子模式）✅ 3.9 / 3.10.4
 
 动态 Plan **分两种**，都产出 Plan JSON，但 **Skill 参与方式不同**：
 
@@ -441,7 +441,7 @@ flowchart LR
 
 1. **默认**：新能力 → Skill 包 → 流程 1～3。  
 2. **补充**：跨节点、强审计 → 流程 4（静态）或 **5A/5B**（动态 Plan）。  
-3. **5B 明确存在**：**标准 Skill 正文不变**；Planner **解析正文工作流** → 动态生成 Plan JSON（⬜ 待实现），**不是**改 SKILL.md 标准、也不是 Markdown 机械解析。  
+3. **5B 明确存在**：**标准 Skill 正文不变**；Planner **解析正文工作流** → 动态生成 Plan JSON（**✅ 3.10.4b**），**不是**改 SKILL.md 标准、也不是 Markdown 机械解析。  
 4. **单步 @skill**：仍走流程 1；**@skill + 多步** → 流程 5B。
 
 ---
@@ -677,6 +677,7 @@ flowchart LR
 - [x] **3.9.1d** `PlanNormalizer`（缺 edges 推断）+ Planner 失败 plan 步可视化 + 降级 react 说明
 - [x] **3.9.1e** 重试与降级：`NodeRetryExecutor`、Replan、`completed_with_errors` / `degraded_react` · SSOT [plan-workflow-retry-degradation.md](../../routing/plan-workflow-retry-degradation.md)
 - [x] **3.9.1f** 静态 `WORKFLOW`：`StaticPlanAdapter` 物化 Plan + `execution_plan` 落库；Chat 复用 `PlanWorkflowPanel`（与 L1 Plan 同 UI）
+- [x] **3.9.1g** 动态 Plan **用户确认**：`PlanApprovalService` + `POST /api/chat/confirm-plan`；SSE `planApproval` / `planGraph`；前端 `PlanApprovalActions` + 重新生成仅图区 loading · [spec](../specs/2026-06-27-plan-user-approval-design.md)
 
 **Files（3.9.1f）：** `StaticPlanAdapter.java`、`PlanRunFinalizer.java`；Modify `WorkflowExecutor.execute()`
 
@@ -732,6 +733,7 @@ flowchart LR
 - [x] **3.12.2** 在线编辑 overlay 正文（草稿版本 PUT file；SKILL.md 同步 overlay）；**版本 diff ✅**
 - [ ] **3.12.3** ~~工具绑定~~（已取消：工具由 workflow 节点 params 配置）
 - [x] **3.12.4** Timeline `plan` 步跳转 Plan 详情（`/plans/:planId`）
+- [x] **3.12.5** Plan **用户确认** UI：`CollapsibleConfirmPanel` + `PlanApprovalActions`；重新生成图区 loading / 放大钮 / 文案约定 · [spec](../specs/2026-06-27-plan-user-approval-design.md)
 
 ---
 

@@ -1,5 +1,26 @@
-/** SSE 直连 Gateway，避免 Vite proxy 缓冲流式响应 */
-export const BFF_STREAM_BASE = import.meta.env.VITE_BFF_STREAM_BASE ?? 'http://localhost:8000'
+/** SSE / CRUD 公网 Gateway 基址（生产构建须设 VITE_BFF_STREAM_BASE） */
+export function resolveBffStreamBase(): string {
+  const configured = import.meta.env.VITE_BFF_STREAM_BASE?.trim()
+  if (configured) return configured.replace(/\/$/, '')
+  // 开发态走 Vite proxy，兼容 localhost:5173 端口转发（无需再暴露 8000）
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    return window.location.origin
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if (host) return `http://${host}:8000`
+  }
+  return 'http://localhost:8000'
+}
 
-/** CRUD 默认走相对路径 /api，开发时经 Vite proxy 转发 */
-export const BFF_API_BASE = import.meta.env.VITE_BFF_API_BASE ?? ''
+/** CRUD 与 SSE 统一走 Gateway；VITE_BFF_API_BASE 可单独覆盖 */
+export function resolveApiBase(): string {
+  const apiBase = import.meta.env.VITE_BFF_API_BASE?.trim()
+  if (apiBase) return apiBase.replace(/\/$/, '')
+  return resolveBffStreamBase()
+}
+
+/** 状态页探测基址：与 resolveApiBase 一致，统一经 Gateway :8000（开发态经 Vite /api、/v1 代理） */
+export function resolveGatewayProbeBase(): string {
+  return resolveApiBase()
+}

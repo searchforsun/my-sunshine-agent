@@ -10,6 +10,7 @@ spring:
         server-addr: ecs4c16g:8848
         username: nacos
         password: nacos
+        group: SUNSHINE_V2
 
 logging:
   level:

@@ -18,6 +18,11 @@ import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
 import com.sunshine.orchestrator.plan.PlanRunFinalizer;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
+import com.sunshine.orchestrator.plan.PlanApprovalRejectedException;
+import com.sunshine.orchestrator.plan.PlanApprovalRound;
+import com.sunshine.orchestrator.plan.PlanApprovalService;
+import com.sunshine.orchestrator.plan.PlanApprovalUserAction;
+import com.sunshine.orchestrator.plan.PlanApprovalWaitResult;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +33,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -50,6 +56,7 @@ public class PlanWorkflowExecutor {
     private final PlanExecutionAuditService planExecutionAuditService;
     private final PlanRunFinalizer planRunFinalizer;
     private final PlanJsonParser planJsonParser;
+    private final PlanApprovalService planApprovalService;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         return Mono.fromCallable(() -> executionPlanStore.createDraft(ctx, emptyPlan()))
@@ -144,8 +151,78 @@ public class PlanWorkflowExecutor {
                     if (StringUtils.hasText(validationError)) {
                         return handleValidationFailure(ctx, planId, session, validationError, planAttempt);
                     }
-                    return runValidatedPlan(ctx, planId, session, enriched, planAttempt);
+                    if (planApprovalService.isEnabled()) {
+                        try {
+                            List<StreamToken> approvalTokens = new ArrayList<>();
+                            PlanJson approved = runUserApprovalLoop(
+                                    ctx, planId, session, enriched, approvalTokens);
+                            return Flux.concat(
+                                    Flux.fromIterable(approvalTokens),
+                                    runValidatedPlan(ctx, planId, session, approved, planAttempt, true));
+                        } catch (PlanApprovalRejectedException e) {
+                            return handleApprovalFailure(ctx, planId, session, e.getMessage());
+                        }
+                    }
+                    return runValidatedPlan(ctx, planId, session, enriched, planAttempt, false);
                 });
+    }
+
+    private PlanJson runUserApprovalLoop(
+            ExecutionStreamContext ctx,
+            String planId,
+            ProcessingTimelineSession session,
+            PlanJson enriched,
+            List<StreamToken> approvalTokens) {
+        PlanJson current = enriched;
+        List<PlanApprovalRound> rounds = new ArrayList<>();
+        int roundNo = 1;
+        int maxRounds = Math.max(1, executionProperties.getPlanWorkflow().getApproval().getMaxUserRounds());
+        while (true) {
+            if (roundNo > maxRounds) {
+                throw new PlanApprovalRejectedException("超过最大重新生成次数");
+            }
+            PlanApprovalWaitResult wait = planApprovalService.awaitUserApproval(
+                    ctx, planId, current, session, rounds, roundNo);
+            approvalTokens.addAll(wait.tokens());
+            rounds = new ArrayList<>(executionPlanStore.listApprovalRounds(planId));
+            if (wait.action() == PlanApprovalUserAction.APPROVED) {
+                return current;
+            }
+            if (wait.action() == PlanApprovalUserAction.TIMED_OUT) {
+                throw new PlanApprovalRejectedException("用户未在时限内确认执行计划");
+            }
+            roundNo++;
+            current = workflowPlanner.replanWithUserHint(ctx, wait.modificationHint(), roundNo).block();
+            if (current == null) {
+                throw new PlanApprovalRejectedException("重新规划未产出有效 Plan");
+            }
+            String plannerError = planValidator.validatePlannerOutput(current);
+            if (StringUtils.hasText(plannerError)) {
+                throw new PlanApprovalRejectedException("重新规划未通过校验：" + plannerError);
+            }
+            current = displayNameEnricher.enrich(PlanNormalizer.normalize(current));
+            String validationError = planValidator.validate(current);
+            if (StringUtils.hasText(validationError)) {
+                throw new PlanApprovalRejectedException("重新规划未通过校验：" + validationError);
+            }
+            executionPlanStore.updatePlannerOutput(planId, current);
+        }
+    }
+
+    private Flux<StreamToken> handleApprovalFailure(
+            ExecutionStreamContext ctx,
+            String planId,
+            ProcessingTimelineSession session,
+            String reason) {
+        List<StreamToken> planTokens = PlanTimeline.planRejectedStep(session, reason);
+        return Mono.fromRunnable(() -> executionPlanStore.markRejected(planId, reason))
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnSuccess(v -> planExecutionAuditService.failed(
+                        ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
+                        planId, reason))
+                .thenMany(Flux.concat(
+                        Flux.fromIterable(planTokens),
+                        reactExecutor.execute(ctx)));
     }
 
     private Flux<StreamToken> handleValidationFailure(
@@ -176,8 +253,17 @@ public class PlanWorkflowExecutor {
             String planId,
             ProcessingTimelineSession session,
             PlanJson enriched,
-            int planAttempt) {
-        List<StreamToken> planTokens = PlanTimeline.planStep(session, enriched, planId, planAttempt - 1);
+            int planAttempt,
+            boolean afterUserApproval) {
+        List<StreamToken> planTokens;
+        if (afterUserApproval) {
+            String chain = PlanTimeline.planChainSummary(enriched);
+            String detail = PlanTimeline.formatPlanDetail(planId, chain, 0);
+            planTokens = ProcessingTimelineSupport.run(session, () ->
+                    session.completePlanAt(chain, detail, System.currentTimeMillis()));
+        } else {
+            planTokens = PlanTimeline.planStep(session, enriched, planId, planAttempt - 1);
+        }
         WorkflowDefinition def = planMaterializer.materialize(enriched);
         log.info("[PlanWorkflowExecutor] 执行动态 Plan: {} 节点链={}",
                 def.id(), PlanTimeline.planChainSummary(enriched));

@@ -159,7 +159,7 @@ public final class ProcessingStepMerger {
                 Math.max(existing.ts(), incoming.ts()),
                 incoming.status() != null ? incoming.status() : existing.status(),
                 incoming.label() != null ? incoming.label() : existing.label(),
-                incoming.metadata() != null ? incoming.metadata() : existing.metadata(),
+                incoming.metadata() != null ? mergeMetadata(existing.metadata(), incoming.metadata()) : existing.metadata(),
                 mergeSubSteps(existing.subSteps(), incoming.subSteps())
         );
     }
@@ -177,6 +177,12 @@ public final class ProcessingStepMerger {
             upsert(merged, step);
         }
         return merged;
+    }
+
+    private static com.sunshine.orchestrator.processing.StepMetadata mergeMetadata(
+            com.sunshine.orchestrator.processing.StepMetadata existing,
+            com.sunshine.orchestrator.processing.StepMetadata incoming) {
+        return com.sunshine.orchestrator.processing.StepMetadata.merge(existing, incoming);
     }
 
     private static StepSummary mergeSummary(StepSummary existing, StepSummary incoming) {
@@ -425,6 +431,52 @@ public final class ProcessingStepMerger {
                 attempts.add(item);
             }
             map.put("nodeAttempts", attempts);
+        }
+        if (metadata.planApproval() != null) {
+            Map<String, Object> approval = new LinkedHashMap<>();
+            com.sunshine.orchestrator.processing.PlanApprovalMeta pa = metadata.planApproval();
+            if (hasText(pa.status())) {
+                approval.put("status", pa.status());
+            }
+            if (hasText(pa.token())) {
+                approval.put("token", pa.token());
+            }
+            if (pa.expiresAt() != null) {
+                approval.put("expiresAt", pa.expiresAt());
+            }
+            if (pa.planGraph() != null && !pa.planGraph().isEmpty()) {
+                approval.put("planGraph", pa.planGraph());
+            }
+            if (pa.rounds() != null && !pa.rounds().isEmpty()) {
+                List<Map<String, Object>> rounds = new ArrayList<>();
+                for (com.sunshine.orchestrator.processing.PlanApprovalRoundMeta round : pa.rounds()) {
+                    if (round == null) {
+                        continue;
+                    }
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("roundNo", round.roundNo());
+                    if (hasText(round.status())) {
+                        item.put("status", round.status());
+                    }
+                    if (hasText(round.userHint())) {
+                        item.put("userHint", round.userHint());
+                    }
+                    if (hasText(round.chainSummary())) {
+                        item.put("chainSummary", round.chainSummary());
+                    }
+                    if (round.createdAt() != null) {
+                        item.put("createdAt", round.createdAt());
+                    }
+                    if (round.resolvedAt() != null) {
+                        item.put("resolvedAt", round.resolvedAt());
+                    }
+                    rounds.add(item);
+                }
+                approval.put("rounds", rounds);
+            }
+            if (!approval.isEmpty()) {
+                map.put("planApproval", approval);
+            }
         }
         return map;
     }

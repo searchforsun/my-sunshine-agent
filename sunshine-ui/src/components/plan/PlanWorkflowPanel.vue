@@ -15,6 +15,12 @@ import { relocateAgentNodeHitl } from '../../api/hitlSteps'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
 import PlanDagGraph from './PlanDagGraph.vue'
+import PlanApprovalActions from './PlanApprovalActions.vue'
+import {
+  isPlanApprovalAwaiting,
+  isPlanRegenerating,
+  resolvePlanApprovalToken,
+} from '../../api/planApprovalSteps'
 
 const props = defineProps<{
   planStep: ProcessingStep
@@ -34,6 +40,9 @@ function subStepsSignature(steps?: ProcessingStep[]): string {
     s.lifecycle ?? s.status ?? '',
     s.summary?.after ?? '',
     s.summary?.active ?? '',
+    s.metadata?.hitlStatus ?? '',
+    s.metadata?.hitlToken ?? '',
+    s.metadata?.hitlParamsSummary ?? '',
     s.reasoning?.length ?? 0,
     s.result?.length ?? 0,
     s.detail?.length ?? 0,
@@ -56,6 +65,7 @@ function stepContentSignature(step?: ProcessingStep): string {
     step.metadata?.recoveryStatus ?? '',
     step.metadata?.recoveryToken ?? '',
     step.metadata?.nodeAttempts?.map(a => `${a.attemptNo}:${a.status}:${a.summary ?? ''}`).join('|') ?? '',
+    step.metadata?.planApproval?.rounds?.map(r => `${r.roundNo}:${r.status}:${r.userHint ?? ''}`).join('|') ?? '',
     subStepsSignature(step.subSteps),
   ].join('\u0001')
 }
@@ -106,12 +116,66 @@ const frozenGraph = ref<PlanGraph | null>(null)
 const graphPlanId = ref<string | null>(null)
 const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
 const loadingPlan = ref(false)
+const localRegenerating = ref(false)
 
-const planId = computed(() =>
-  resolvePlanIdFromStep(props.planStep) ?? props.executionPlanId,
+const isRegenerating = computed(() =>
+  localRegenerating.value || isPlanRegenerating(props.planStep),
 )
 
-const graphSource = computed(() => frozenGraph.value ?? undefined)
+function onPlanApprovalDecided(action: 'approve' | 'regenerate') {
+  if (action === 'regenerate') {
+    localRegenerating.value = true
+  } else {
+    localRegenerating.value = false
+  }
+}
+
+watch(
+  () => [
+    isPlanApprovalAwaiting(props.planStep),
+    props.planStep.metadata?.planApproval?.token,
+    isPlanRegenerating(props.planStep),
+    stepLifecycle(props.planStep),
+  ],
+  () => {
+    if (isPlanApprovalAwaiting(props.planStep)) {
+      localRegenerating.value = false
+      return
+    }
+    if (!isPlanRegenerating(props.planStep) && stepLifecycle(props.planStep) !== 'running') {
+      localRegenerating.value = false
+    }
+  },
+)
+
+const showPlanApproval = computed(() =>
+  isPlanApprovalAwaiting(props.planStep)
+  || !!props.planStep.metadata?.planApproval?.token
+  || (props.planStep.metadata?.planApproval?.rounds?.length ?? 0) > 0,
+)
+
+const approvalRoundsKey = computed(() =>
+  props.planStep.metadata?.planApproval?.rounds
+    ?.map(r => `${r.roundNo}:${r.status}`)
+    .join('|') ?? '',
+)
+
+const planId = computed(() => {
+  const fromStep = resolvePlanIdFromStep(props.planStep)
+  if (fromStep) return fromStep
+  if (props.executionPlanId) return props.executionPlanId
+  const token = resolvePlanApprovalToken(props.planStep)
+  if (token) return `approval:${token}`
+  return undefined
+})
+
+const inlineApprovalGraph = computed((): PlanGraph | undefined => {
+  const g = props.planStep.metadata?.planApproval?.planGraph
+  if (!g?.nodes?.length) return undefined
+  return g
+})
+
+const graphSource = computed(() => frozenGraph.value ?? inlineApprovalGraph.value ?? undefined)
 
 const nodeSteps = computed(() =>
   props.allSteps.filter(s => s.phase === 'node' && s.id.startsWith('node-')),
@@ -163,6 +227,7 @@ function onExpandDag() {
     nodes: dagNodes.value,
     selectedId: selectedId.value,
     live: props.live,
+    loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
   }, onSelectNode)
 }
 
@@ -175,12 +240,13 @@ function syncExpandLayer() {
     nodes: dagNodes.value,
     selectedId: selectedId.value,
     live: props.live,
+    loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
   })
 }
 
 async function loadPlan() {
   const id = planId.value
-  if (!id) return
+  if (!id || id.startsWith('approval:')) return
   const hasGraph = graphPlanId.value === id && !!frozenGraph.value
   // 流式执行期图结构只拉一次，避免 answer 阶段重复请求导致拓扑闪动
   if (props.live && hasGraph) return
@@ -192,6 +258,9 @@ async function loadPlan() {
     planDetail.value = detail
     if (detail.validatedPlan?.nodes?.length) {
       frozenGraph.value = detail.validatedPlan
+      graphPlanId.value = id
+    } else if (detail.plan?.nodes?.length) {
+      frozenGraph.value = detail.plan
       graphPlanId.value = id
     }
   } catch {
@@ -218,9 +287,28 @@ onMounted(() => {
   void loadPlan()
   void listSkillCatalogIndex().then(list => { skillCatalog.value = list }).catch(() => {})
 })
+watch(approvalRoundsKey, (key, prev) => {
+  if (key !== prev && planId.value) {
+    if (!inlineApprovalGraph.value) {
+      frozenGraph.value = null
+      graphPlanId.value = null
+    }
+    void loadPlan()
+  }
+})
+watch(
+  () => props.planStep.metadata?.planApproval?.status,
+  (status) => {
+    if (status === 'awaiting' && planId.value) void loadPlan()
+  },
+)
 watch(planId, (id, prev) => {
   if (id === prev) return
-  if (expandState.activePlanId && expandState.activePlanId !== id) closeExpand()
+  if (expandState.activePlanId && expandState.activePlanId === prev && id) {
+    expandState.activePlanId = id
+  } else if (expandState.activePlanId && expandState.activePlanId !== id) {
+    closeExpand()
+  }
   resetGraphForPlan(id)
   void loadPlan()
 })
@@ -230,6 +318,7 @@ watch(dagNodes, (nodes) => {
   maybeAutoOpenDrawer(nodes)
 }, { deep: true })
 watch(selectedId, () => syncExpandLayer())
+watch(isRegenerating, () => syncExpandLayer())
 </script>
 
 <template>
@@ -246,9 +335,16 @@ watch(selectedId, () => syncExpandLayer())
       :nodes="dagNodes"
       :selected-id="selectedId"
       :live="live"
-      show-expand
+      :loading-label="isRegenerating ? '重新生成中…' : undefined"
+      :show-expand="!isRegenerating"
       @select="onSelectNode"
       @expand="onExpandDag"
+    />
+    <PlanApprovalActions
+      v-if="showPlanApproval"
+      :plan-step="planStep"
+      :regenerating="isRegenerating"
+      @decided="onPlanApprovalDecided"
     />
     <!-- 放大时保留占位，避免布局跳动 -->
     <div v-else-if="dagNodes.length && isExpanded(planId)" class="plan-dag-collapsed-slot" aria-hidden="true" />

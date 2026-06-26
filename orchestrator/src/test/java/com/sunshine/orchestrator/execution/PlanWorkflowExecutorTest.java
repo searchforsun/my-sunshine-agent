@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.plan.PlanApprovalService;
 import com.sunshine.orchestrator.plan.PlanJson;
 import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
 import com.sunshine.orchestrator.plan.PlanMaterializer;
@@ -55,6 +56,8 @@ class PlanWorkflowExecutorTest {
     private PlanRunFinalizer realFinalizer;
     @Mock
     private PlanJsonParser planJsonParser;
+    @Mock
+    private PlanApprovalService planApprovalService;
     @InjectMocks
     private PlanWorkflowExecutor planWorkflowExecutor;
 
@@ -64,10 +67,11 @@ class PlanWorkflowExecutorTest {
         executionProperties.getPlanWorkflow().getReplan().setMaxAttempts(1);
         realFinalizer = new PlanRunFinalizer(
                 executionPlanStore, planExecutionAuditService, executionProperties, reactExecutor);
+        when(planApprovalService.isEnabled()).thenReturn(false);
         planWorkflowExecutor = new PlanWorkflowExecutor(
                 workflowPlanner, planValidator, displayNameEnricher, planMaterializer,
                 workflowExecutor, reactExecutor, executionPlanStore, executionProperties,
-                planExecutionAuditService, realFinalizer, planJsonParser);
+                planExecutionAuditService, realFinalizer, planJsonParser, planApprovalService);
     }
 
     @Test

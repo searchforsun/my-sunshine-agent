@@ -123,13 +123,40 @@
 
 预期：`think → tool → think-2 → tool-2`；工具失败时模型可能改参再调（非引擎重试）。
 
-## 8. 单测
+## 8. 用户确认（Plan Approval）
+
+> SSOT：[2026-06-27-plan-user-approval-design.md](../superpowers/specs/2026-06-27-plan-user-approval-design.md)
+
+| 项 | 说明 |
+|----|------|
+| 配置 | `agent.execution.plan-workflow.approval`（`enabled`、`timeout-sec`、`on-timeout`、`max-user-rounds`） |
+| 阻塞点 | 校验通过后、`runValidatedPlan` 之前 |
+| API | `POST /api/chat/confirm-plan`（`approve` / `regenerate` + 可选 `hint`） |
+| SSE | `metadata.planApproval`（`token`、`rounds`、`planGraph`）；`summary.active` 重新规划文案 |
+| 前端 | `PlanApprovalActions` + `CollapsibleConfirmPanel`；多轮折叠历史 |
+| 重新生成 UX | 仅 `PlanDagGraph` loading；确认行「正在重新生成」；放大钮隐藏 |
+| DAG 文案 | 业务 pending → **等待中**；开始抽屉不跟 plan 步「执行中」 |
+
+### 8.1 用户确认（Live）
+
+```
+先查我有哪些 OA 待办，再检索相关制度，做合规分析后给建议
+```
+
+（需 `approval.enabled: true`）
+
+1. 出现 DAG +「执行计划确认 · 等待确认」
+2. 点「重新生成」→ 图区「重新生成中…」、无放大钮、确认行「正在重新生成」
+3. 新 Plan 就绪 →「等待确认」、可放大（右上角，DAG 不滚入按钮区）
+4. 点「确认执行」→ 节点逐步执行
+
+## 9. 单测
 
 ```bash
 mvn test -pl orchestrator -Dtest=PlanWorkflowExecutorTest,WorkflowExecutorTest,NodeRetryExecutorTest,ExecutionErrorClassifierTest
 ```
 
-## 9. 部署
+## 10. 部署
 
 ```bash
 python scripts/sync_nacos.py --data-id sunshine-orchestrator.yaml

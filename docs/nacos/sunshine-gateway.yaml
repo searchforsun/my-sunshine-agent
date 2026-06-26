@@ -19,7 +19,12 @@ spring:
         add-to-simple-url-handler-mapping: false
         cors-configurations:
           '[/**]':
-            allowedOriginPatterns: "*"
+            allowedOriginPatterns:
+              - "https://searchforsun.github.io"
+              - "http://localhost:5173"
+              - "http://localhost:5174"
+              - "http://127.0.0.1:5173"
+              - "http://ecs4c16g:5173"
             allowedMethods: "*"
             allowedHeaders: "*"
             allowCredentials: true
@@ -29,6 +34,67 @@ spring:
           enabled: true
           lower-case-service-id: true
       routes:
+        # 健康检查（StatusView 经 Gateway 统一探测，须在 /api/** 之前）
+        - id: health-auth
+          uri: lb://sunshine-auth
+          predicates:
+            - Path=/health/auth
+          filters:
+            - RewritePath=/health/auth, /health
+        - id: health-bff
+          uri: lb://sunshine-bff
+          predicates:
+            - Path=/health/bff
+          filters:
+            - RewritePath=/health/bff, /health
+        - id: health-orchestrator
+          uri: lb://sunshine-orchestrator
+          predicates:
+            - Path=/health/orchestrator
+          filters:
+            - RewritePath=/health/orchestrator, /health
+        - id: health-tool-manager
+          uri: lb://sunshine-tool-manager
+          predicates:
+            - Path=/health/tool-manager
+          filters:
+            - RewritePath=/health/tool-manager, /health
+        - id: health-skill-manager
+          uri: lb://sunshine-skill-manager
+          predicates:
+            - Path=/health/skill-manager
+          filters:
+            - RewritePath=/health/skill-manager, /health
+        - id: health-llm-gateway
+          uri: lb://sunshine-llm-gateway
+          predicates:
+            - Path=/health/llm-gateway
+          filters:
+            - RewritePath=/health/llm-gateway, /health
+        - id: health-rag
+          uri: lb://sunshine-rag
+          predicates:
+            - Path=/health/rag
+          filters:
+            - RewritePath=/health/rag, /health
+        - id: health-prompt
+          uri: lb://sunshine-prompt
+          predicates:
+            - Path=/health/prompt
+          filters:
+            - RewritePath=/health/prompt, /health
+        - id: health-desensitize
+          uri: lb://sunshine-desensitize
+          predicates:
+            - Path=/health/desensitize
+          filters:
+            - RewritePath=/health/desensitize, /health
+        - id: health-finance
+          uri: lb://sunshine-finance
+          predicates:
+            - Path=/health/finance
+          filters:
+            - RewritePath=/health/finance, /health
         - id: sunshine-auth-api
           uri: lb://sunshine-auth
           predicates:

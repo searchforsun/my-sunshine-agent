@@ -150,7 +150,7 @@ services:
     container_name: smt-rocketmq-dashboard
     restart: unless-stopped
     environment:
-      JAVA_OPTS: "-Xms256m -Xmx256m -Drocketmq.namesrv.addr=rocketmq-namesrv:9876 -Drocketmq.config.proxyAddr=rocketmq-proxy:8080"
+      JAVA_OPTS: "-Xms256m -Xmx256m -Drocketmq.namesrv.addr=rocketmq-namesrv:9876"
     ports:
       - "${ROCKETMQ_DASHBOARD_PORT:-8082}:8082"
     networks:
@@ -432,8 +432,6 @@ services:
     image: prom/prometheus:v2.51.2
     container_name: smt-prometheus
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -443,7 +441,6 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus/alerts:/etc/prometheus/alerts
       - prometheus-data:/prometheus
     networks:
       - smt-net
@@ -465,33 +462,54 @@ services:
       - smt-net
     depends_on:
       - prometheus
-      
+
   etcd:
-    image: quay.io/coreos/etcd:v3.5.15
     container_name: smt-etcd
+    image: quay.io/coreos/etcd:v3.5.25
     restart: unless-stopped
-    command: >
-      etcd -advertise-client-urls=http://0.0.0.0:2379
-      -listen-client-urls=http://0.0.0.0:2379
-    networks:
-      - smt-net
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - smt-net
 
-  # Milvus Standalone（内嵌 etcd + minio，无需外部依赖）
   milvus:
-    image: milvusdb/milvus:v2.6.16
     container_name: smt-milvus
-    command: ["milvus", "run", "standalone"]
+    image: milvusdb/milvus:v2.6.16
     restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+    - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MQ_TYPE: woodpecker
+    volumes:
+      - milvus-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
     ports:
       - "${MILVUS_PORT:-19530}:19530"
       - "${MILVUS_HTTP_PORT:-9091}:9091"
-    volumes:
-      - milvus-data:/var/lib/milvus
+    depends_on:
+      - etcd
+      - minio
     networks:
       - smt-net
 
@@ -508,3 +526,4 @@ volumes:
   es03-data:
   minio-data:
   milvus-data:
+  etcd-data:

@@ -16,37 +16,38 @@
 
 ---
 
-## 实施进度（2026-06-21）
+## 实施进度（2026-06-27）
 
-| 区域 | 状态 | 说明 |
-|------|:----:|------|
-| **3.4** RAG 全链路 | ✅ | closure：`docs/rag/regression-2026-06-21.md` |
-| **3.8.1** QueryRewrite | ✅ | 默认开启；见 Task 3.8.1 |
-| **3.5** 可观测 | 部分 | 指标+JSON ✅；远程 Grafana/Sentinel ⬜ |
-| **3.8.2+** PromptComposer 等 | **3.8.2–3.8.3 ✅** · 3.8.4+ ⬜ | 周 6 主线 |
-| **3.9–3.12** 多 Agent / Skills | ⬜ | → [multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md) |
-| **3.2 / 3.3 / 3.6 / 3.7 / 3.14** | ⬜ | 周 5–8 |
+| 区域 | 代码 | Live/检查门 | 说明 |
+|------|:----:|:-----------:|------|
+| **3.4** RAG 全链路 | ✅ | v5 ✅；v6 提升轨 WARN | `docs/rag/regression-2026-06-21.md` |
+| **3.8** 提示词 3.8.1–3.8.7 | ✅ | — | QueryRewrite / PromptComposer / HyDE / Planner 改写 |
+| **3.9–3.12** 多 Agent / Skills / 前端 | ✅ | 部分 live ⬜ | → [multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md) |
+| **3.6** 审计三链路 API | ✅ | 可查 live ⬜ | tool.call / sub_agent_run / plan.* |
+| **3.2** 多租户 | **部分** | ⬜ | 传播链 + 过滤已实现；缺跨租户集成测试 |
+| **3.3** HITL | ✅ | ⬜ | 全栈代码；`verify_hitl_live.py` |
+| **3.7** Grounding | ✅ | 集成测试 ⬜ | `AnswerGroundingChecker` 已接入 |
+| **3.5** 可观测 | **部分** | ⬜ | 指标+JSON ✅；Docker/远程部署未闭环 |
+| **3.9.5** 暂停/续跑 | **部分** | ⬜ | 基础续跑 ✅；pausePhase 等未做 |
+| **3.13** AhoCorasick | ⬜ | — | `source_type` ✅ |
+| **3.14** 多实例锁 | ⬜ | — | 进程内锁，非 Redis |
 
-**下一步推荐**：周 6 并行 **3.10.1 AgentRuntime** + **3.9 PLAN_WORKFLOW** + **3.8.2 PromptComposer**（见排期总览）。
+**下一迭代 P0**：**3.9.5** → 3.2 集成测试 → 3.3/3.5/3.11 live → 3.7 集成测试 → 3.14。
 
 ---
 
 ## 排期总览
 
-**原 8 周表（设计基准）** — RAG 已提前完成，3.10.x 滞后，见下方「剩余主线」。
+**原 8 周表（设计基准）** — 主线开发已完成，剩余 live / 3.9.5 / 3.13 / 3.14 见上方进度表。
 
 ```
-周 1    3.4.1 评测 + 3.10.1 AgentRuntime     ← 3.4 ✅；3.10.1 ⬜
-周 2    3.4.2 ES 双写 + 3.10.2–3.10.3        ← 3.4.2 ✅；3.10 ⬜
-周 3    3.4.3–3.4.4 Hybrid + 3.11 skill-manager
-周 4    3.4.5 Rerank + 3.8.1 QueryRewrite + 3.5.1 Grafana   ← 3.4.5/3.8.1/指标 ✅
-周 5    3.4.8 CI + 3.2 多租户 + 3.5.2 Sentinel/告警       ← 3.4.8 ✅
-周 6    3.4 验收 + 3.9 PLAN_WORKFLOW + 3.8.2 PromptComposer ← 3.4 closure ✅
-周 7    3.3 HITL + 3.6 审计
-周 8    3.7 Grounding + 3.12 前端 + 总检查门
+周 1–5   3.4 RAG + 3.8.1 + 指标                    ← ✅
+周 6–7   3.9 / 3.10 / 3.11 / 3.12 / 3.6 API        ← ✅
+周 7     3.3 HITL + 3.2 多租户（代码）              ← 代码 ✅；live ⬜
+周 8     3.7 Grounding + 3.5 部署 + 总检查门       ← 部分
 ```
 
-**剩余主线（建议当前迭代）：** 3.10.1 → 3.11 → 3.9 + 3.8.2（并行）→ 3.2/3.5 → 3.3/3.6/3.7/3.12
+**剩余主线**：3.9.5 → 3.2 集成测试 → live 验收（3.3/3.5/3.11/审计）→ 3.7 集成测试 → 3.14 → 3.13
 
 ---
 
@@ -137,9 +138,11 @@ Expected: 退出码 0；报告含 Recall@5/MRR/P95
 - Modify: `docs/nacos/sunshine-gateway.yaml`, `sunshine-rag.yaml`
 - Test: `rag-service` 跨租户集成测试
 
-- [ ] **3.2.1** 检索/入库带 `x-tenant-id`（默认 `default`）
-- [ ] **3.2.2** MTM 向量召回同 tenant 过滤
-- [ ] **3.2.3** 集成测试：租户 A 语料，租户 B 检索 0 命中
+- [x] **3.2.1** 检索/入库带 `x-tenant-id`（Gateway JWT → BFF → orchestrator → rag-service；未登录 `anonymous`）
+- [x] **3.2.2** MTM 向量召回同 tenant 过滤（`MtmService` + memory Milvus `tenant_id`）
+- [ ] **3.2.3** 集成测试：租户 A 语料，租户 B 检索 0 命中（`TenantSearchQueryTest` 仅单测级）
+
+**实现备注**：Milvus 为 `tenant_id` 字段 + expr 过滤，非 Partition API。Live：`scripts/verify_tenant_live.py`。
 
 ```bash
 mvn test -pl rag-service -Dtest=*Tenant*
@@ -150,18 +153,18 @@ mvn test -pl rag-service -Dtest=*Tenant*
 ## Task 3.3: HITL 写操作确认
 
 **Files:**
-- Modify: `tool-manager/...` Catalog DTO — `sideEffect: read|write`
-- Modify: `docs/nacos/sunshine-tools.yaml` — 写工具标记 `write`
-- Create: `orchestrator/.../hook/PreToolCallConfirmationHook.java`
-- Modify: `orchestrator/.../controller/ChatController.java` — `POST /api/chat/confirm-tool`
-- Modify: `sunshine-ui/src/...` — 确认对话框 + SSE `type:confirmation` 处理
-- Modify: `bff/...` — 透传 confirm-tool
+- Modify: `tool-manager/...` Catalog DTO — `sideEffect: read|write` ✅
+- Modify: `docs/nacos/sunshine-tools.yaml` — 写工具 `approve_oa_task` ✅
+- Create: `orchestrator/.../hitl/HitlConfirmationService.java` ✅（非独立 PreToolCallHook）
+- Modify: `orchestrator/.../controller/ChatController.java` — `POST /api/chat/confirm-tool` ✅
+- Modify: `sunshine-ui` — `HitlStepActions.vue` + SSE `type:confirmation` ✅
+- Modify: `bff/...` — 透传 confirm-tool ✅
 
-- [ ] **3.3.1** Catalog `sideEffect` 字段 + 种子写工具（如未来 OA mock）
-- [ ] **3.3.2** Hook 暂停 Agent + Redis 令牌；**子 Agent run 同样拦截**
-- [ ] **3.3.3** 前端确认 → 恢复执行；拒绝/超时 → 步骤 SKIP
+- [x] **3.3.1** Catalog `sideEffect` + 种子写工具 `approve_oa_task`
+- [x] **3.3.2** `HitlConfirmationService` + Redis 令牌；子 Agent / Workflow tool 节点拦截
+- [x] **3.3.3** 前端确认 → 恢复；拒绝/超时 → SKIP
 
-**验收:** 标记 `write` 的工具必须弹窗确认后才执行
+**验收:** `scripts/verify_hitl_live.py`；检查门 live ⬜。3.9.5 `pendingInteraction` 续跑 ⬜。
 
 ---
 
@@ -195,12 +198,12 @@ mvn test -pl rag-service -Dtest=*Tenant*
 ## Task 3.7: Grounding 校验
 
 **Files:**
-- Create: `orchestrator/.../grounding/AnswerGroundingChecker.java`
-- Test: `orchestrator/src/test/java/.../AnswerGroundingCheckerTest.java`
+- Create: `orchestrator/.../grounding/AnswerGroundingChecker.java` ✅
+- Test: `AnswerGroundingCheckerTest.java` ✅；`AgentNodeHandlerTest`（子 Agent）✅
 
-- [ ] **Step 1:** 单测：无 tool/rag 步骤时含金额/制度名 → 拦截
-- [ ] **Step 2:** 子 Agent output 交下游 llm 前校验钩子
-- [ ] **Step 3:** 集成测试挂接 `ReactExecutor` / workflow answer 节点
+- [x] **Step 1:** 单测：无 tool/rag 步骤时含金额/制度名 → 拦截
+- [x] **Step 2:** 子 Agent output 校验（`AgentNodeHandler`）
+- [ ] **Step 3:** 集成测试挂接 `ReactExecutor` / workflow answer 节点（检查门 ⬜）
 
 ---
 
@@ -239,7 +242,7 @@ mvn test -pl orchestrator -Dtest=QueryRewriteServiceTest,KnowledgeRetrievalServi
 
 - [x] **Step 1:** 定义 6 层叠加顺序与优先级（见 spec §3.8 PromptComposer 表）；**3.11 前 skill-overlay 可 no-op**
 - [x] **Step 2:** ReAct / simple-llm 路径接入；`mvn test -pl orchestrator -Dtest=PromptComposerTest`
-- [ ] **Step 3:** 与现有 `agent.system-prompt`、`MemoryComposer` 行为回归一致（`SunshineAgent` 集成测）
+- [x] **Step 3:** 与现有 `agent.system-prompt`、`MemoryComposer` 行为回归一致（`PromptComposerTest` + `ReActAgentRuntimeTest`）
 
 **验收:** ReAct 对话 system 块结构与改前一致；无重复注入 STM/LTM。
 
@@ -262,7 +265,7 @@ mvn test -pl orchestrator -Dtest=QueryRewriteServiceTest,KnowledgeRetrievalServi
 
 ---
 
-### 3.8.4–3.8.7 — 增强（⬜ 非检查门，可并行或阶段三末）
+### 3.8.4–3.8.7 — 增强（**✅** 非检查门）
 
 | 子任务 | 内容 | 依赖 | Files（规划） |
 |--------|------|------|----------------|
@@ -321,4 +324,4 @@ mvn test -pl orchestrator,rag-service
 - [x] 3.4.1 含完整命令示例
 - [x] 3.9–3.12 指向 multi-agent plan
 - [x] 17 条检查门在 coverage audit 中可追溯
-- [ ] 3.4.2+ 逐步 TDD 代码块 — 实施周按 Task 3.4.1 模板展开
+- [x] 3.4.2+ TDD 代码块 — Task 3.4 closure ✅

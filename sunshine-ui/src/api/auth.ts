@@ -1,4 +1,5 @@
 import { apiHeaders } from '../stores/authStore'
+import { resolveApiBase } from './config'
 import { parseApiResponse } from './apiError'
 
 export interface AuthUser {
@@ -18,7 +19,7 @@ export interface UpdateProfileResult extends AuthUser {
 }
 
 export async function register(username: string, password: string, nickname?: string): Promise<AuthUser> {
-  const res = await fetch('/api/auth/register', {
+  const res = await fetch(`${resolveApiBase()}/api/auth/register`, {
     method: 'POST',
     headers: apiHeaders(),
     body: JSON.stringify({ username, password, nickname }),
@@ -27,7 +28,7 @@ export async function register(username: string, password: string, nickname?: st
 }
 
 export async function login(username: string, password: string): Promise<LoginResult> {
-  const res = await fetch('/api/auth/login', {
+  const res = await fetch(`${resolveApiBase()}/api/auth/login`, {
     method: 'POST',
     headers: apiHeaders(),
     body: JSON.stringify({ username, password }),
@@ -36,7 +37,7 @@ export async function login(username: string, password: string): Promise<LoginRe
 }
 
 export async function logout(): Promise<void> {
-  const res = await fetch('/api/auth/logout', {
+  const res = await fetch(`${resolveApiBase()}/api/auth/logout`, {
     method: 'POST',
     headers: apiHeaders(),
   })
@@ -44,12 +45,12 @@ export async function logout(): Promise<void> {
 }
 
 export async function me(): Promise<AuthUser> {
-  const res = await fetch('/api/auth/me', { headers: apiHeaders() })
+  const res = await fetch(`${resolveApiBase()}/api/auth/me`, { headers: apiHeaders() })
   return parseApiResponse<AuthUser>(res)
 }
 
 export async function updateProfile(nickname: string, tenantId: string): Promise<UpdateProfileResult> {
-  const res = await fetch('/api/auth/profile', {
+  const res = await fetch(`${resolveApiBase()}/api/auth/profile`, {
     method: 'PATCH',
     headers: apiHeaders(),
     body: JSON.stringify({ nickname, tenantId }),

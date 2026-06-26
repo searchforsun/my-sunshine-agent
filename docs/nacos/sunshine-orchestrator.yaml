@@ -205,6 +205,14 @@ agent:
       fallback-react:
         enabled: true
         inject-partial-context: true
+      approval:
+        enabled: true
+        timeout-sec: 600
+        on-timeout: fallback_react
+        max-user-rounds: 10
+        user-modification-template: |
+          用户对当前执行计划的修改意见：{{hint}}
+          请据此重新输出一行 Plan JSON。仍须遵守：仅 rag/tool/agent；勿含 start/answer；edges 末节点勿连 answer。
 
   skill:
     # P1 强提示句式 — 须含命名组 skill；P0 @ 由 SkillBindingParser 硬编码

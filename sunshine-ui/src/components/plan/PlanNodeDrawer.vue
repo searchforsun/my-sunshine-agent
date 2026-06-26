@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, ref, watch } from 'vue'
+import { computed, inject, nextTick, ref, watch, type ComputedRef } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
-import { hasHitlPanel } from '../../api/hitlSteps'
+import type { HitlConfirmationPayload } from '../../api/hitlSteps'
 import { findHitlStep, isRecoveryAwaiting, isRecoverySkipped } from '../../api/recoverySteps'
 import {
   formatDuration,
@@ -18,25 +18,41 @@ import { formatPlanNodeType } from '../../api/executionPlans'
 import type { DagNodeStatus } from '../../utils/planGraph'
 import PlanNodeIcon from './PlanNodeIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
-import HitlStepActions from '../operation/HitlStepActions.vue'
 import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
+import HitlStepActions from '../operation/HitlStepActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
 const applyHitlDecision = inject<(token: string, approved: boolean) => void>('applyHitlDecision', () => {})
 const applyRecoveryDecision = inject<(token: string, action: 'retry' | 'terminate' | 'skip') => void>('applyRecoveryDecision', () => {})
+const resolveLiveNodeStep = inject<(nodeId: string) => ProcessingStep | undefined>('planDrawerLiveNodeStep', () => undefined)
+const pendingHitl = inject<ComputedRef<HitlConfirmationPayload | undefined>>(
+  'pendingHitlConfirmation',
+  computed(() => undefined),
+)
 
 const node = computed(() => state.node)
-const step = computed(() => state.step)
+/** 优先从当前 assistant 消息 steps 读取，避免抽屉 step 快照滞后于 SSE HITL metadata */
+const step = computed(() => {
+  const nodeId = state.node?.id
+  if (nodeId) {
+    const live = resolveLiveNodeStep(nodeId)
+    if (live) return live
+  }
+  return state.step
+})
 const userQuery = computed(() => state.userQuery?.trim() ?? '')
 
 const title = computed(() => node.value?.label ?? '节点详情')
 const typeLabel = computed(() => formatPlanNodeType(node.value?.type ?? ''))
 const nodeType = computed(() => node.value?.type ?? 'node')
 
-/** 优先 step.lifecycle，与 DAG 节点状态对齐 */
+/** 优先 step.lifecycle，与 DAG 节点状态对齐；start 不跟 plan 步 running */
 const displayStatus = computed((): DagNodeStatus => {
+  if (node.value?.type === 'start') {
+    return node.value.status === 'pending' ? 'pending' : 'done'
+  }
   const stepLc = step.value ? stepLifecycle(step.value) : undefined
   const nodeStatus = node.value?.status
   if (stepLc === 'paused' || nodeStatus === 'paused') return 'paused'
@@ -51,6 +67,10 @@ const displayStatus = computed((): DagNodeStatus => {
 
 const statusLabel = computed(() => {
   const s = displayStatus.value
+  if (node.value?.type === 'start') {
+    if (s === 'pending') return '等待中'
+    return '已通过'
+  }
   if (s === 'paused') return '已暂停'
   if (s === 'terminated') return '已终止'
   if (s === 'awaiting_confirm') return '待确认'
@@ -172,19 +192,14 @@ const skillLineText = computed(() => {
 
 const subSteps = computed(() => step.value?.subSteps ?? [])
 const showSubTimeline = computed(() => node.value?.type === 'agent' && subSteps.value.length > 0)
-const hitlStep = computed(() => findHitlStep(step.value))
-/** 子 Agent HITL 内嵌于 OperationCard；仅误挂 node 自身时栈外兜底 */
-const subAgentOrphanHitlStep = computed(() => {
-  if (!showSubTimeline.value) return undefined
-  const h = hitlStep.value
-  if (!h || !hasHitlPanel(h)) return undefined
-  return h.id === step.value?.id ? h : undefined
-})
-/** 独立 tool 节点在抽屉内展示 HITL */
-const showHitlSection = computed(() =>
-  !!hitlStep.value
-  && hasHitlPanel(hitlStep.value!)
-  && !showSubTimeline.value,
+const hitlStep = computed(() => findHitlStep(step.value, pendingHitl.value))
+/** 执行过程下方独立「写操作确认」区块（子 Agent / 工具节点统一） */
+const showHitlSection = computed(() => !!hitlStep.value)
+const hitlUiKey = computed(() =>
+  hitlStep.value?.metadata?.hitlToken
+  ?? hitlStep.value?.metadata?.hitlStatus
+  ?? hitlStep.value?.id
+  ?? '',
 )
 const showRecoverySection = computed(() => !!step.value && isRecoveryAwaiting(step.value))
 const subTimelineLive = computed(() => {
@@ -217,7 +232,7 @@ watch(
 )
 
 watch(
-  () => [bodyDisplay.value, analysisDisplay.value, summary.value, reasoning.value, output.value, subSteps.value],
+  () => [bodyDisplay.value, analysisDisplay.value, summary.value, reasoning.value, output.value, subSteps.value, hitlUiKey.value],
   () => {
     if (!state.open) return
     void restoreDrawerScroll()
@@ -292,17 +307,17 @@ watch(
         <OperationStack
           :steps="subSteps"
           :live="subTimelineLive"
+          :embed-hitl="false"
           @hitl-decided="applyHitlDecision"
-        />
-        <HitlStepActions
-          v-if="subAgentOrphanHitlStep"
-          :step="subAgentOrphanHitlStep"
-          @decided="applyHitlDecision"
         />
       </section>
       <section v-if="showHitlSection && hitlStep" class="drawer-section drawer-hitl">
         <h4>写操作确认</h4>
-        <HitlStepActions :step="hitlStep" @decided="applyHitlDecision" />
+        <HitlStepActions
+          :key="hitlUiKey"
+          :step="hitlStep"
+          @decided="applyHitlDecision"
+        />
       </section>
       <section v-if="showSummary" class="drawer-section">
         <h4>执行摘要</h4>
@@ -360,7 +375,7 @@ watch(
         <h4>日志</h4>
         <StaticMarkdown :source="output" compact />
       </section>
-      <p v-if="!showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showSubTimeline && !subAgentOrphanHitlStep && !showHitlSection && !showRecoverySection && !output && !showSkillBlock && !node.attempts?.length" class="drawer-empty">
+      <p v-if="!showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showSubTimeline && !showHitlSection && !showRecoverySection && !output && !showSkillBlock && !node.attempts?.length" class="drawer-empty">
         {{ displayStatus === 'running' ? '节点执行中…' : displayStatus === 'paused' ? '节点已暂停' : '暂无详情' }}
       </p>
     </div>
@@ -683,14 +698,18 @@ watch(
   padding-bottom: 0;
 }
 
-.drawer-sub-timeline :deep(.hitl-panel),
-.drawer-hitl :deep(.hitl-panel) {
+.drawer-hitl :deep(.collapsible-confirm) {
+  --confirm-inset-left: 0;
   margin-left: 0;
   margin-top: 0;
+  margin-bottom: 0;
 }
 
-.drawer-sub-timeline :deep(.hitl-panel) {
-  margin-top: 10px;
+.drawer-recovery :deep(.collapsible-confirm) {
+  --confirm-inset-left: 0;
+  margin-left: 0;
+  margin-top: 6px;
+  margin-bottom: 2px;
 }
 
 .drawer-empty {

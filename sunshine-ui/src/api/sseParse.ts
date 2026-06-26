@@ -46,3 +46,33 @@ export function parseSseEvent(rawEvent: string): ParsedSseEvent {
   logStreamChunk(id ?? 'event', payload, { dataLineCount: dataLines.length })
   return { id, payload }
 }
+
+/** 是否像完整 JSON SSE payload（用于末条无 trailing \\n\\n 时的 flush） */
+function isCompleteJsonPayload(payload: string): boolean {
+  const trimmed = payload.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false
+  try {
+    JSON.parse(trimmed)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 从 SSE 读缓冲区分出可解析事件。
+ * HITL 阻塞后连接仍开着，末条 confirmation/step 常无 trailing \\n\\n，须主动 flush。
+ */
+export function drainSseBuffer(buf: string): { events: string[]; pending: string } {
+  const parts = buf.split('\n\n')
+  let pending = parts.pop() ?? ''
+  const events = parts.filter(part => part.trim().length > 0)
+  if (pending.trim()) {
+    const { payload } = parseSseEvent(pending)
+    if (payload !== null && isCompleteJsonPayload(payload)) {
+      events.push(pending)
+      pending = ''
+    }
+  }
+  return { events, pending }
+}

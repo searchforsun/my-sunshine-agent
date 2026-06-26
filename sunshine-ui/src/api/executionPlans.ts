@@ -1,5 +1,5 @@
 import { apiHeaders } from '../stores/authStore'
-import { BFF_API_BASE } from './config'
+import { resolveApiBase } from './config'
 import { parseBffPayload } from './apiError'
 
 export interface PlanNodeTrace {
@@ -74,7 +74,7 @@ async function parseJson<T>(res: Response): Promise<T> {
 }
 
 function apiUrl(path: string): string {
-  return `${BFF_API_BASE}${path}`
+  return `${resolveApiBase()}${path}`
 }
 
 export async function getExecutionPlan(planId: string): Promise<ExecutionPlanDetail> {
@@ -101,7 +101,7 @@ export async function getExecutionPlanNodes(planId: string): Promise<PlanNodeTra
 
 export function formatPlanStatus(status: string): string {
   const map: Record<string, string> = {
-    draft: '草稿',
+    awaiting_approval: '待确认',
     validated: '已校验',
     running: '执行中',
     completed: '已完成',

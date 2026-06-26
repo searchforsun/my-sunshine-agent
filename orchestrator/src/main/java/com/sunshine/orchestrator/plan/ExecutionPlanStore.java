@@ -73,9 +73,32 @@ public class ExecutionPlanStore {
     }
 
     @Transactional
+    public void saveApprovalRounds(String planId, List<PlanApprovalRound> rounds) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        entity.setApprovalRounds(codec.approvalRoundsToJson(rounds));
+        repository.save(entity);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlanApprovalRound> listApprovalRounds(String planId) {
+        return codec.approvalRoundsFromJson(requireEntity(planId).getApprovalRounds());
+    }
+
+    @Transactional
+    public void markAwaitingApproval(String planId, PlanJson planJson) {
+        ExecutionPlanEntity entity = requireEntity(planId);
+        entity.setPlanJson(codec.toJson(planJson));
+        entity.setStatus(ExecutionPlanStatus.AWAITING_APPROVAL.dbValue());
+        repository.save(entity);
+    }
+
+    @Transactional
     public void markValidated(String planId, PlanJson planJson) {
         ExecutionPlanEntity entity = requireEntity(planId);
-        assertStatus(entity, ExecutionPlanStatus.DRAFT);
+        ExecutionPlanStatus current = ExecutionPlanStatus.fromDb(entity.getStatus());
+        if (current != ExecutionPlanStatus.DRAFT && current != ExecutionPlanStatus.AWAITING_APPROVAL) {
+            assertStatus(entity, ExecutionPlanStatus.DRAFT);
+        }
         entity.setStatus(ExecutionPlanStatus.VALIDATED.dbValue());
         entity.setValidatedJson(codec.toJson(planJson));
         entity.setValidatedAt(Instant.now());

@@ -59,6 +59,26 @@ public class PlanJsonCodec {
         }
     }
 
+    public String approvalRoundsToJson(List<PlanApprovalRound> rounds) {
+        try {
+            return objectMapper.writeValueAsString(rounds);
+        } catch (Exception e) {
+            throw new PlanParseException("approval_rounds 序列化失败: " + e.getMessage());
+        }
+    }
+
+    public List<PlanApprovalRound> approvalRoundsFromJson(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
     public List<PlanNodeTrace> traceFromJson(String json) {
         if (json == null || json.isBlank()) {
             return List.of();
@@ -81,6 +101,14 @@ public class PlanJsonCodec {
         } catch (Exception e) {
             return Map.of();
         }
+    }
+
+    /** Plan 确认态 SSE 内嵌 DAG 预览 */
+    public Map<String, Object> toGraphMap(PlanJson plan) {
+        if (plan == null || plan.nodes() == null || plan.nodes().isEmpty()) {
+            return Map.of();
+        }
+        return parseJsonMap(toJson(plan));
     }
 
     public String checkpointToJson(WorkflowCheckpoint checkpoint) {

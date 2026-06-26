@@ -34,7 +34,9 @@ public record StepMetadata(
         /** Workflow 节点失败：用户重试/终止 */
         NodeRecoveryMeta recovery,
         /** Workflow 节点执行 attempt 列表（重试过程实时下发） */
-        List<NodeAttemptMeta> nodeAttempts
+        List<NodeAttemptMeta> nodeAttempts,
+        /** 动态 Plan 用户确认轮次 */
+        PlanApprovalMeta planApproval
 ) {
 
     private static final String RAG_EXPAND_SECTION_TITLE = "检索过程";
@@ -64,7 +66,7 @@ public record StepMetadata(
         if (sources.isEmpty() && summarizedText != null && !summarizedText.isBlank()) {
             sources = parseSources(summarizedText);
         }
-        return new StepMetadata(hitCount, sources, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return new StepMetadata(hitCount, sources, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     public static StepMetadata fromRouting(ExecutionPlan plan) {
@@ -80,7 +82,7 @@ public record StepMetadata(
         }
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
-                textOrNull(skill), textOrNull(mode), textOrNull(reason), null, null, null, null, null);
+                textOrNull(skill), textOrNull(mode), textOrNull(reason), null, null, null, null, null, null);
     }
 
     /** skill 步：L0 绑定可观测 */
@@ -90,7 +92,7 @@ public record StepMetadata(
         }
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
-                skillId.strip(), null, null, null, null, null, null, null);
+                skillId.strip(), null, null, null, null, null, null, null, null);
     }
 
     public static StepMetadata mergeRouting(StepMetadata base, ExecutionPlan plan) {
@@ -117,7 +119,8 @@ public record StepMetadata(
                 base.expandSectionTitle(),
                 base.hitl(),
                 base.recovery(),
-                base.nodeAttempts());
+                base.nodeAttempts(),
+                base.planApproval());
     }
 
     /** 写工具步骤：挂载 HITL 待确认 metadata */
@@ -127,7 +130,7 @@ public record StepMetadata(
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, hitl, null, null);
+                    null, null, null, null, null, hitl, null, null, null);
         }
         return new StepMetadata(
                 base.hitCount(),
@@ -145,7 +148,8 @@ public record StepMetadata(
                 base.expandSectionTitle(),
                 hitl,
                 base.recovery(),
-                base.nodeAttempts());
+                base.nodeAttempts(),
+                base.planApproval());
     }
 
     /** 节点已成功完成：清除 recovery 元数据（保留 skip 态由调用方决定） */
@@ -169,7 +173,8 @@ public record StepMetadata(
                 base.expandSectionTitle(),
                 base.hitl(),
                 null,
-                base.nodeAttempts());
+                base.nodeAttempts(),
+                base.planApproval());
     }
 
     /** Workflow 节点 attempt 列表更新（重试过程实时下发） */
@@ -179,7 +184,7 @@ public record StepMetadata(
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, List.copyOf(nodeAttempts));
+                    null, null, null, null, null, null, null, List.copyOf(nodeAttempts), null);
         }
         return new StepMetadata(
                 base.hitCount(),
@@ -197,7 +202,8 @@ public record StepMetadata(
                 base.expandSectionTitle(),
                 base.hitl(),
                 base.recovery(),
-                List.copyOf(nodeAttempts));
+                List.copyOf(nodeAttempts),
+                base.planApproval());
     }
 
     /** Workflow 节点失败：挂载重试/终止 metadata */
@@ -207,7 +213,7 @@ public record StepMetadata(
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, recovery, null);
+                    null, null, null, null, null, null, recovery, null, null);
         }
         return new StepMetadata(
                 base.hitCount(),
@@ -225,7 +231,8 @@ public record StepMetadata(
                 base.expandSectionTitle(),
                 base.hitl(),
                 recovery,
-                base.nodeAttempts());
+                base.nodeAttempts(),
+                base.planApproval());
     }
 
     private static String textOrNull(String value) {
@@ -246,7 +253,35 @@ public record StepMetadata(
                 outcome.rewrittenQuery(),
                 outcome.scenario(),
                 scenarioLabel.isBlank() ? null : scenarioLabel,
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
+    }
+
+    public static StepMetadata withPlanApproval(StepMetadata base, PlanApprovalMeta planApproval) {
+        if (planApproval == null) {
+            return base;
+        }
+        if (base == null) {
+            return new StepMetadata(null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null, planApproval);
+        }
+        return new StepMetadata(
+                base.hitCount(),
+                base.sources(),
+                base.rewriteApplied(),
+                base.rewriteLatencyMs(),
+                base.rewriteFrom(),
+                base.rewriteTo(),
+                base.rewriteScenario(),
+                base.rewriteScenarioLabel(),
+                base.skillId(),
+                base.plannerMode(),
+                base.routingReason(),
+                base.rewriteInDetail(),
+                base.expandSectionTitle(),
+                base.hitl(),
+                base.recovery(),
+                base.nodeAttempts(),
+                planApproval);
     }
 
     public static StepMetadata mergeRewrite(StepMetadata base, com.sunshine.orchestrator.rewrite.QueryRewriteOutcome outcome) {
@@ -273,14 +308,68 @@ public record StepMetadata(
                 base.expandSectionTitle(),
                 base.hitl(),
                 base.recovery(),
-                base.nodeAttempts());
+                base.nodeAttempts(),
+                base.planApproval());
     }
 
-    /** RAG 步骤：改写已在 detail，命中摘要走 summary.after + metadata */
+    /** 步骤 metadata 增量合并 — 避免后续 SSE step 冲掉 planApproval 等字段 */
+    public static StepMetadata merge(StepMetadata base, StepMetadata overlay) {
+        if (overlay == null) {
+            return base;
+        }
+        if (base == null) {
+            return overlay;
+        }
+        return new StepMetadata(
+                overlay.hitCount() != null ? overlay.hitCount() : base.hitCount(),
+                overlay.sources() != null && !overlay.sources().isEmpty() ? overlay.sources() : base.sources(),
+                overlay.rewriteApplied() != null ? overlay.rewriteApplied() : base.rewriteApplied(),
+                overlay.rewriteLatencyMs() != null ? overlay.rewriteLatencyMs() : base.rewriteLatencyMs(),
+                overlay.rewriteFrom() != null ? overlay.rewriteFrom() : base.rewriteFrom(),
+                overlay.rewriteTo() != null ? overlay.rewriteTo() : base.rewriteTo(),
+                overlay.rewriteScenario() != null ? overlay.rewriteScenario() : base.rewriteScenario(),
+                overlay.rewriteScenarioLabel() != null ? overlay.rewriteScenarioLabel() : base.rewriteScenarioLabel(),
+                overlay.skillId() != null ? overlay.skillId() : base.skillId(),
+                overlay.plannerMode() != null ? overlay.plannerMode() : base.plannerMode(),
+                overlay.routingReason() != null ? overlay.routingReason() : base.routingReason(),
+                overlay.rewriteInDetail() != null ? overlay.rewriteInDetail() : base.rewriteInDetail(),
+                overlay.expandSectionTitle() != null ? overlay.expandSectionTitle() : base.expandSectionTitle(),
+                overlay.hitl() != null ? overlay.hitl() : base.hitl(),
+                overlay.recovery() != null ? overlay.recovery() : base.recovery(),
+                overlay.nodeAttempts() != null && !overlay.nodeAttempts().isEmpty()
+                        ? overlay.nodeAttempts() : base.nodeAttempts(),
+                overlay.planApproval() != null ? overlay.planApproval() : base.planApproval());
+    }
+
+    /** Plan 确认步：规划改写仅进抽屉，勿在主时间线展开区重复展示 */
+    public static StepMetadata withRewriteInDetail(StepMetadata base) {
+        if (base == null) {
+            return null;
+        }
+        return new StepMetadata(
+                base.hitCount(),
+                base.sources(),
+                base.rewriteApplied(),
+                base.rewriteLatencyMs(),
+                base.rewriteFrom(),
+                base.rewriteTo(),
+                base.rewriteScenario(),
+                base.rewriteScenarioLabel(),
+                base.skillId(),
+                base.plannerMode(),
+                base.routingReason(),
+                true,
+                base.expandSectionTitle(),
+                base.hitl(),
+                base.recovery(),
+                base.nodeAttempts(),
+                base.planApproval());
+    }
+
     public static StepMetadata withRagExpandLayout(StepMetadata base) {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, true, RAG_EXPAND_SECTION_TITLE, null, null, null);
+                    null, null, null, true, RAG_EXPAND_SECTION_TITLE, null, null, null, null);
         }
         return new StepMetadata(
                 base.hitCount(),
@@ -298,12 +387,13 @@ public record StepMetadata(
                 RAG_EXPAND_SECTION_TITLE,
                 base.hitl(),
                 base.recovery(),
-                base.nodeAttempts());
+                base.nodeAttempts(),
+                base.planApproval());
     }
 
     private static StepMetadata emptyRag() {
         return new StepMetadata(0, List.of(), null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
     }
 
     public String sourcesLabel() {
@@ -322,7 +412,8 @@ public record StepMetadata(
                 && !StringUtils.hasText(routingReason)
                 && hitl == null
                 && recovery == null
-                && (nodeAttempts == null || nodeAttempts.isEmpty());
+                && (nodeAttempts == null || nodeAttempts.isEmpty())
+                && planApproval == null;
     }
 
     private static boolean isEmptyRagOutput(String text) {

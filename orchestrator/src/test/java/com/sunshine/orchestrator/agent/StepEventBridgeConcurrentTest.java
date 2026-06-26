@@ -83,6 +83,28 @@ class StepEventBridgeConcurrentTest {
     }
 
     @Test
+    void resolveHitlBridgeId_prefersToolUseBindingWhenMultipleSessions() {
+        bind("msg-a", new ConcurrentLinkedQueue<>());
+        bind("msg-b", new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitl("msg-b", true);
+        StepEventBridge.bindToolUseBridge("tool-use-1", "msg-b");
+
+        assertThat(StepEventBridge.bridgeIdForToolUse("tool-use-1")).isEqualTo("msg-b");
+        assertThat(StepEventBridge.resolveHitlBridgeId()).isEqualTo("msg-b");
+
+        StepEventBridge.unbindToolUseBridge("tool-use-1");
+    }
+
+    @Test
+    void resolveHitlBridgeId_fallsBackToSingleHitlBridge() {
+        bind("msg-a", new ConcurrentLinkedQueue<>());
+        bind("msg-b", new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitl("msg-b", true);
+
+        assertThat(StepEventBridge.resolveHitlBridgeId()).isEqualTo("msg-b");
+    }
+
+    @Test
     void emitSingleton_stillSkippedWhenMultipleActive() {
         bind("singleton-1", new ConcurrentLinkedQueue<>());
         bind("singleton-2", new ConcurrentLinkedQueue<>());

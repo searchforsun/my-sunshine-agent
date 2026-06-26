@@ -2,6 +2,7 @@
  * 会话消息 localStorage 缓存 — 后端不可用或 reasoning 未落库时的恢复来源
  */
 import type { ChatMessage } from './chat'
+import { stepsHaveAwaitingHitl } from './hitlSteps'
 
 const INDEX_KEY = 'sunshine-conv-index'
 const messagesKey = (id: string) => `sunshine-conv-msgs:${id}`
@@ -83,13 +84,17 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       merged.push(a)
       continue
     }
+    const cachedHasHitl = stepsHaveAwaitingHitl(c.steps) || !!c.pendingHitlConfirmation
     merged.push({
       ...a,
       content: pickLongerContent(a.content, c.content),
       reasoning: a.reasoning?.trim() ? a.reasoning : c.reasoning,
-      steps: a.steps?.length ? a.steps : c.steps,
+      steps: cachedHasHitl
+        ? c.steps
+        : (a.steps?.length ? a.steps : c.steps),
       status: a.status ?? c.status,
       executionPreference: a.executionPreference ?? c.executionPreference,
+      pendingHitlConfirmation: a.pendingHitlConfirmation ?? c.pendingHitlConfirmation,
     })
     if (a.id) byId.delete(a.id)
   }

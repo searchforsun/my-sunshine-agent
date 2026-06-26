@@ -1,0 +1,49 @@
+server:
+  # Tomcat 控制台端口，须与 seata.server.service-port 不同
+  port: 7091
+
+spring:
+  application:
+    name: seata-server
+
+logging:
+  level:
+    io.seata: INFO
+  file:
+    path: /root/logs
+
+# Seata 1.7+ 控制台登录账号（与镜像默认 application.yml 一致）
+console:
+  user:
+    username: ${SEATA_CONSOLE_USERNAME:seata}
+    password: ${SEATA_CONSOLE_PASSWORD:seata}
+
+seata:
+  security:
+    secretKey: ${SEATA_SECURITY_SECRET_KEY:SeataSecretKey0c382ef121d778043159209298fd40bf3850a017}
+    tokenValidityInMilliseconds: ${SEATA_TOKEN_VALIDITY_MS:1800000}
+    ignore:
+      urls: /,/**/*.css,/**/*.js,/**/*.html,/**/*.map,/**/*.svg,/**/*.png,/**/*.jpeg,/**/*.ico,/api/v1/auth/login
+  config:
+    type: file
+  registry:
+    type: file
+  store:
+    mode: db
+    db:
+      datasource: druid
+      db-type: mysql
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://mysql:3306/seata?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false
+      user: root
+      password: root123
+      min-conn: 5
+      max-conn: 100
+      global-table: global_table
+      branch-table: branch_table
+      lock-table: lock_table
+      distributed-lock-table: distributed_lock
+      query-limit: 100
+      max-wait: 5000
+  server:
+    service-port: 8091

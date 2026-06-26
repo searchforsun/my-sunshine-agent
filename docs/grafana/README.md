@@ -86,7 +86,7 @@ python ../scripts/observability_reload.py
 
 - Prometheus：`http://ecs4c16g:9090` — 抓取 `host.docker.internal:8400/actuator/prometheus`
 - Grafana：`http://ecs4c16g:3000`（`admin` / `admin123`）— 自动导入 **Sunshine RAG 检索** 面板
-- 告警规则：`docker/prometheus/alerts/rag-alerts.yml`（4 条，Prometheus Rules 页可见）
+- 告警规则 JSON 源：`docs/grafana/rag-alerts.yml`（4 条）。**待补**：`docker/prometheus/prometheus.yml` 需配置 `rule_files` 并挂载该文件（当前 compose 未挂载，Rules 页暂无数据）
 
 ### Live 验收
 

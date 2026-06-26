@@ -56,4 +56,12 @@ public class ChatController {
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.confirmWorkflowNodeRecovery(request, userId, tenantId);
     }
+
+    @PostMapping("/api/chat/confirm-plan")
+    public Mono<Map<String, Object>> confirmPlan(
+            @RequestBody com.sunshine.bff.model.ConfirmPlanRequest request,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.confirmPlan(request, userId, tenantId);
+    }
 }

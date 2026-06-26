@@ -52,6 +52,16 @@ public class WorkflowPlanner {
         return plan(ctx, validationError, attemptNo);
     }
 
+    /** 用户修改意见后重新规划 */
+    public Mono<PlanJson> replanWithUserHint(ExecutionStreamContext ctx, String userHint, int roundNo) {
+        String template = executionProperties.getPlanWorkflow().getApproval().getUserModificationTemplate();
+        String hint = userHint != null ? userHint.strip() : "";
+        String feedback = StringUtils.hasText(template)
+                ? template.replace("{{hint}}", hint)
+                : "用户对当前执行计划的修改意见：" + hint;
+        return plan(ctx, feedback, roundNo);
+    }
+
     private Mono<PlanJson> plan(ExecutionStreamContext ctx, String validationError, int attemptNo) {
         String systemPrompt = catalogRenderer.renderIntoPrompt(
                 prompts.plannerOrDefault().promptOrEmpty());

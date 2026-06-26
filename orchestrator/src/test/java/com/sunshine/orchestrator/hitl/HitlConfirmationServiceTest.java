@@ -69,6 +69,13 @@ class HitlConfirmationServiceTest {
     }
 
     @Test
+    void shouldConfirmForBridge_whenHitlEnabledForBridge() {
+        when(toolCatalogService.isWriteTool("approve_oa_task")).thenReturn(true);
+        assertThat(service.shouldConfirmForBridge("approve_oa_task", "msg-1")).isTrue();
+        assertThat(service.shouldConfirmForBridge("approve_oa_task", null)).isFalse();
+    }
+
+    @Test
     void confirm_resolvesAwait() throws Exception {
         when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
         when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));

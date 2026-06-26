@@ -12,6 +12,8 @@ const props = defineProps<{
   showExpand?: boolean
   /** 布局级缩放（矢量清晰，非 transform scale） */
   zoom?: number
+  /** 覆盖层文案（如重新生成中） */
+  loadingLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -44,11 +46,32 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   <div
     v-if="visibleNodes.length"
     class="plan-dag"
-    :class="{ 'is-fluid': fluid, 'has-zoom': hasZoom }"
+    :class="{
+      'is-fluid': fluid,
+      'has-zoom': hasZoom,
+      'is-loading': loadingLabel,
+      'has-expand-btn': showExpand && !fluid,
+    }"
     :style="rootStyle"
   >
+    <button
+      v-if="showExpand && !fluid"
+      type="button"
+      class="plan-dag-expand-btn"
+      title="放大查看"
+      aria-label="放大执行图"
+      @click.stop="emit('expand')"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+      </svg>
+    </button>
     <div class="plan-dag-body">
       <div class="plan-dag-scroll">
+        <div v-if="loadingLabel" class="plan-dag-overlay" role="status" aria-live="polite">
+          <span class="plan-dag-spinner" aria-hidden="true" />
+          <span>{{ loadingLabel }}</span>
+        </div>
         <div class="plan-dag-track">
       <template v-for="(node, idx) in visibleNodes" :key="node.id">
         <button
@@ -78,7 +101,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
           <span v-else-if="node.status === 'paused'" class="node-dur node-dur-paused">暂停</span>
           <span v-else-if="node.status === 'terminated'" class="node-dur node-dur-terminated">已终止</span>
           <span v-else-if="node.status === 'skipped'" class="node-dur node-dur-skipped">已跳过</span>
-          <span v-else-if="node.status === 'pending' && node.type !== 'start'" class="node-dur node-dur-pending">待执行</span>
+          <span v-else-if="node.status === 'pending' && node.type !== 'start'" class="node-dur node-dur-pending">等待中</span>
           <span v-else-if="node.status === 'error' && (live && node.recoveryAwaiting)" class="node-dur node-dur-error">发生错误</span>
           <span v-else-if="node.durationMs != null" class="node-dur">{{ formatDuration(node.durationMs) }}</span>
           <span v-else-if="live && node.status === 'running'" class="node-dur node-dur-live">进行中</span>
@@ -94,19 +117,6 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
         </div>
       </div>
     </div>
-    <div v-if="showExpand && !fluid" class="plan-dag-aside">
-      <button
-        type="button"
-        class="plan-dag-expand-btn"
-        title="放大查看"
-        aria-label="放大执行图"
-        @click.stop="emit('expand')"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
-        </svg>
-      </button>
-    </div>
   </div>
 </template>
 
@@ -115,26 +125,75 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   position: relative;
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: stretch;
   margin: 8px 0 4px calc(var(--op-gutter, 12px) + 4px);
   padding: 12px 10px 12px 14px;
   min-height: 94px;
   border: 1px solid var(--sun-border);
   border-radius: 10px;
   background: color-mix(in srgb, var(--sun-bg) 92%, var(--sun-text-muted));
-  overflow: visible;
+  overflow: hidden;
+}
+
+.plan-dag.has-expand-btn {
+  padding-right: 42px;
 }
 
 .plan-dag-body {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 70px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.plan-dag.is-loading .plan-dag-scroll {
+  pointer-events: none;
+}
+
+.plan-dag.is-loading .plan-dag-track {
+  visibility: hidden;
+}
+
+.plan-dag-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  font-size: var(--sun-font-sm, 12px);
+  color: var(--sun-text-muted);
+}
+
+.plan-dag.is-fluid {
   overflow: visible;
 }
 
+.plan-dag.is-fluid .plan-dag-overlay {
+  border-radius: 0;
+}
+
+.plan-dag-spinner {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, var(--sun-text-muted) 28%, transparent);
+  border-top-color: var(--sun-text-muted);
+  border-radius: 50%;
+  animation: plan-dag-spin 0.75s linear infinite;
+}
+
+@keyframes plan-dag-spin {
+  to { transform: rotate(360deg); }
+}
+
 .plan-dag-scroll {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -145,14 +204,33 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   box-sizing: border-box;
 }
 
-.plan-dag-aside {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
+.plan-dag-expand-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 30;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  width: 36px;
-  margin-left: 6px;
+  justify-content: center;
+  border: 1px solid var(--sun-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--sun-bg) 88%, var(--sun-text-muted));
+  color: var(--sun-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.plan-dag-expand-btn:hover:not(:disabled) {
+  background: var(--sun-row-hover);
+  color: var(--sun-text);
+  border-color: var(--sun-border-light);
+}
+
+.plan-dag-expand-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .plan-dag.is-fluid {
@@ -232,26 +310,6 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   gap: 0;
   min-width: min-content;
   flex-shrink: 0;
-}
-
-.plan-dag-expand-btn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--sun-border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--sun-bg) 88%, var(--sun-text-muted));
-  color: var(--sun-text-muted);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.plan-dag-expand-btn:hover {
-  background: var(--sun-row-hover);
-  color: var(--sun-text);
-  border-color: var(--sun-border-light);
 }
 
 .plan-dag-node {

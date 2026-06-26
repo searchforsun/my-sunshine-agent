@@ -303,6 +303,23 @@ public final class ProcessingTimelineSession {
         }
     }
 
+    /** 动态 Plan：校验通过后等待用户确认 — plan 步保持 running */
+    public void beginPlanAwaitingApproval(String detail, StepMetadata metadata) {
+        long ts = System.currentTimeMillis();
+        pending("plan", "plan");
+        startAt("plan", "plan", ts);
+        applyAt("plan", null, EventKind.PROGRESS, PlanApprovalLabels.awaiting(), detail, metadata, ts);
+        activeStepId = "plan";
+    }
+
+    /** 更新 Plan 确认态（重新生成轮次 / 用户已确认） */
+    public void updatePlanApproval(StepMetadata metadata, String activeSummary) {
+        String summary = activeSummary != null && !activeSummary.isBlank()
+                ? activeSummary
+                : PlanApprovalLabels.awaiting();
+        applyAt("plan", null, EventKind.PROGRESS, summary, null, metadata, System.currentTimeMillis());
+    }
+
     /** L0 Skill 绑定：intent 之后插入一步，主行展示「加载技能: @id 展示名」 */
     public void completeSkillLoad(String skillId) {
         if (skillId == null || skillId.isBlank()) {

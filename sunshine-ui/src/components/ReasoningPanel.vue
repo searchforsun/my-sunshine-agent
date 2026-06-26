@@ -40,7 +40,7 @@ const preview = computed(() => {
       <span v-if="!expanded && preview" class="chat-meta-preview">{{ preview }}</span>
     </button>
     <div v-show="expanded" class="chat-meta-body">
-      <StaticMarkdown :source="text" compact scrollable />
+      <StaticMarkdown :source="text" compact />
     </div>
   </div>
 </template>

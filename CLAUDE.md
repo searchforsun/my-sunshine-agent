@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.7** + **3.10.1–3.10.7** + **3.11 skill-manager** + **3.12.1–3.12.4** + **3.12.2 diff** + **3.9.1–3.9.4 PLAN_WORKFLOW**（含重试/降级/Recovery、**静态 workflow Plan DAG 统一**）✅；**Chat 执行模式选择器 P0** ✅；**收尾 3.9.5 暂停/续跑一致性** ⬜ 见 `docs/superpowers/plans/2026-06-26-pause-resume-consistency.md`；待关 **3.2–3.5 live** / **3.7 Grounding 检查门**；阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.7** + **3.10.1–3.10.7** + **3.11 skill-manager** + **3.12** + **3.9.1–3.9.4 PLAN_WORKFLOW**（含重试/降级/Recovery、**Plan 用户确认**、**静态 workflow Plan DAG 统一**）+ **3.6 审计 API** + **3.2/3.3/3.7 代码** ✅；**Chat 执行模式选择器 P0** ✅；**基础 pause/resume** ✅；**收尾 3.9.5 暂停/续跑一致性** ⬜；待关 **3.2/3.3/3.5/3.11 live**、**3.7 集成测试**、**3.13/3.14**；阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md` 与 `docs/superpowers/specs/phase3-production-hardening-design.md` §0。
 
 ## 常用命令
 
@@ -92,7 +92,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | 新工具 | `tool-manager` 新增 `ToolHandler`（含 displayName / timelinePhase / outputSummaryKind）→ Nacos `agent.execution.react.tools` 或 workflow 节点 `params.tool` → sync + 重启 tool-manager、orchestrator |
 | 新 Workflow | **当前**：`docs/nacos/sunshine-workflows.yaml` catalog + definitions → sync → 重启 orchestrator；**4.13**：`/workflows` + `workflow-manager` DB 发布（同 ID 覆盖 Nacos） |
 | **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanDagGraph`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
-| **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md` |
+| **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | `agent.rewrite.{rag,intent,empty-recall}`（**默认开启**，flash）→ `QueryRewriteService` + `KnowledgeRetrievalService` + `ExecutionPlanRouter`；RAG 链：**rag 改写 → 首次检索 →（0 命中）HyDE fallback → empty-recall** |
 | **意图路由** | **Policy Chain**：L0 Skill → L1 `agent.routing.structural` → L2 `agent.routing.rules` → L3 `agent.intent`；验收见 `docs/routing/routing-golden-set.md` |
@@ -114,7 +114,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 **Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall`；HyDE 为 **首次 0 命中 fallback**（`agent.rewrite.rag.hyde.enabled`）；日志 `[QueryRewrite]`。
 
-**待做（阶段三多 Agent）**：3.7 Grounding；3.2–3.5 多租户/HITL/可观测 live 部署；阶段四 **PEER_COLLAB**。
+**待做（阶段三收尾）**：3.9.5 暂停/续跑一致性；3.2/3.3/3.5 live 验收；3.7 Grounding 集成测试；3.13 AhoCorasick；3.14 多实例锁；阶段四 **PEER_COLLAB**。
 
 **RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）；向量锚点门禁见 `RetrievalService`。
 
@@ -139,7 +139,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 **Timeline V2 约定**：步骤含 `lifecycle` + `summary.{before,active,after}`；SSE 仅下发当前阶段一行。终态 COMPLETE/FAIL/SKIP **必须下发**。
 
-**前端**：`OperationStack` / `PlanDagGraph` / `PlanNodeDrawer`；时间线主行用 `step.label` + `resolveStepHeaderText`；**勿**维护本地步骤话术 Map；**勿**对模型输出做截断/去重兜底（不对改 Nacos 提示词）。
+**前端**：`OperationStack` / `PlanDagGraph` / `PlanNodeDrawer` / `PlanApprovalActions`；时间线主行用 `step.label` + `resolveStepHeaderText`；**Plan 用户确认**折叠框与 HITL/Recovery 同组件；重新生成 **仅图区** loading、确认行「正在重新生成」、放大钮右上角且重生成中隐藏；DAG pending **等待中**；**勿**维护本地步骤话术 Map；**勿**对模型输出做截断/去重兜底（不对改 Nacos 提示词）。
 
 ## 关键约定
 

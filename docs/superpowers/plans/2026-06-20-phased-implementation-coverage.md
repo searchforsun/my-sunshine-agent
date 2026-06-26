@@ -1,8 +1,8 @@
 # 分阶段实施计划 — 覆盖度审计
 
-> **日期**：2026-06-21（更新：3.4 + 3.8.1 已落地）  
+> **日期**：2026-06-27（更新：主线代码审计）  
 > **方法**：对照各阶段 SSOT（`specs/phaseN-*.md`）与 `plans/*.md`，按 writing-plans 标准检查（文件路径、测试命令、逐步 checkbox、无 TBD）。  
-> **结论摘要**：阶段一/二 **已交付**；阶段三 **spec + plans 齐全，3.4/3.8.1 已实现，其余待做**；阶段四 **仅 spec，无 plans**。
+> **结论摘要**：阶段一/二 **已交付**；阶段三 **主线代码 ✅**（3.4/3.8/3.9/3.10/3.11/3.12/3.6 API）；**live 检查门 + 3.9.5/3.13/3.14 待关**；阶段四 **仅 spec，无 plans**。
 
 ---
 
@@ -54,12 +54,14 @@
 
 ---
 
-## 阶段三：生产加固 ⬜ 当前重点（3.4 + 3.8.1 ✅）
+## 阶段三：生产加固 🟡 进行中（主线代码 ✅；live/收尾待关）
 
 **SSOT：** [phase3-production-hardening-design.md](../specs/phase3-production-hardening-design.md)  
-**Plans：** [2026-06-19-phase3-production-hardening.md](./2026-06-19-phase3-production-hardening.md) + [2026-06-19-multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md)
+**Plans：** [2026-06-19-phase3-production-hardening.md](./2026-06-19-phase3-production-hardening.md) + [2026-06-19-multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md) + [2026-06-26-pause-resume-consistency.md](./2026-06-26-pause-resume-consistency.md)（3.9.5）
 
-**已实现（2026-06-21）：** 3.4.1–3.4.8 全链路；3.8.1 QueryRewrite（rag/intent/empty-recall，默认开启）；3.4.6 指标 + Grafana JSON；3.13 `source_type` schema。
+**已实现（2026-06-27 代码审计）：** 3.4 全链路；3.8.1–3.8.7；3.9.1–3.9.4 + 静态 workflow Plan DAG；3.10.1–3.10.7；3.11.1–3.11.7 + 六种 Skill 触发；3.12 前端；3.6 审计三链路 API；3.3 HITL 全栈；3.7 Grounding 代码接入；3.2 多租户传播链 + 过滤（非 Milvus Partition）；基础 pause/resume。
+
+**未实现 / 部分：** 3.9.5 pausePhase/pendingInteraction；3.13 AhoCorasick；3.14 Redis Job 锁；3.2 跨租户集成测试；3.7 集成测试；3.5 Docker/远程部署闭环。
 
 ### 3.1 Spec → Plan 映射
 
@@ -73,21 +75,22 @@
 | **3.4.6** Metrics | ✅ | ✅ | **A** | ✅ | 远程 Grafana 部署 ⬜ |
 | **3.4.7** Query rewrite | ✅ | ✅ | **A** | ✅ | 与 3.8.1 合并 |
 | **3.4.8** CI 门禁 | ✅ | ✅ | **A** | ✅ | v6 提升轨 WARN 见 closure |
-| **3.2** 多租户 | ✅ | ✅ | **A** | ⬜ | — |
-| **3.3** HITL | ✅ | ✅ | **A** | ⬜ | — |
+| **3.2** 多租户 | ✅ | ✅ | **A** | **部分** | 代码 ✅；跨租户集成测 + live ⬜ |
+| **3.3** HITL | ✅ | ✅ | **A** | **✅** | 代码 ✅；live ⬜ |
 | **3.5** 可观测 | ✅ | ✅ | **A** | 部分 | 指标+JSON ✅；Sentinel/告警触发 ⬜ |
-| **3.6** 审计 | ✅ | ✅ | **A** | ⬜ | 依赖 3.10.6 / 3.9.4 |
-| **3.7** Grounding | ✅ | ✅ | **A** | ⬜ | — |
+| **3.6** 审计 | ✅ | ✅ | **A** | **✅** | API ✅；可查 live ⬜ |
+| **3.7** Grounding | ✅ | ✅ | **A** | **部分** | 代码 ✅；集成测试 ⬜ |
 | **3.8.1** QueryRewrite | ✅ | ✅ | **A** | ✅ | 默认开启 |
-| **3.8.2** PromptComposer | ✅ | ✅ | **A** | ⬜ | 周 6 主线 |
-| **3.8.3** workflow llm → Composer | ✅ | ✅ | **A** | ⬜ | 依赖 3.8.2 |
-| **3.8.4–7** 改写增强 | ✅ | ✅ | **B** | ⬜ | 非检查门 |
-| **3.9.1–3.9.4** PLAN_WORKFLOW | ✅ | ✅ | **A** | ⬜ | multi-agent plan |
+| **3.8.2** PromptComposer | ✅ | ✅ | **A** | **✅** | — |
+| **3.8.3** workflow llm → Composer | ✅ | ✅ | **A** | **✅** | — |
+| **3.8.4–7** 改写增强 | ✅ | ✅ | **B** | **✅** | 非检查门 |
+| **3.9.1–3.9.4** PLAN_WORKFLOW | ✅ | ✅ | **A** | **✅** | live 2+ agent ⬜ |
+| **3.9.5** 暂停/续跑一致性 | ✅ | ✅ | **A** | **部分** | 基础续跑 ✅；pausePhase 等 ⬜ |
 | **3.10.1–3.10.3** AgentRuntime 基础 | ✅ | ✅ | **A** | ✅ | params + 白名单 |
 | **3.10.7** 子 Agent 上下文隔离 | ✅ | ✅ | **A** | ✅ | memory + skill→Composer |
-| **3.10.4–3.10.6** Planner / 动态 DAG / 审计 | ✅ | ✅ | **A** | ⬜ | — |
-| **3.11.1–3.11.4** skill-manager | ✅ | ✅ | **A** | ✅ | Catalog 驱动 overlay/工具默认值 |
-| **3.12.1–3.12.4** 前端 | ✅ | ✅ | **A** | **部分** | 3.12.1/1a ✅；UI SSOT：`specs/skills-management-ui-design.md` |
+| **3.10.4–3.10.6** Planner / 动态 DAG / 审计 | ✅ | ✅ | **A** | **✅** | live ⬜ |
+| **3.11.1–3.11.7** skill-manager | ✅ | ✅ | **A** | **✅** | Live ⬜ |
+| **3.12** 前端 | ✅ | ✅ | **A** | **✅** | `/skills` live ⬜ |
 | **3.13** 并行 | ✅ | ✅ | **B** | 部分 | `source_type` ✅；AhoCorasick ⬜ |
 | **3.14** Job 锁 | ✅ | ✅ | **B** | ⬜ | 多实例生产必做 |
 
@@ -101,13 +104,13 @@
 | 4 | Sentinel Dashboard | 3.5 | ✅ | ⬜ |
 | 5 | 租户 A/B 隔离 | 3.2 | ✅ | ⬜ |
 | 6 | HITL 含子 Agent | 3.3 | ✅ | ⬜ |
-| 7 | PLAN_WORKFLOW 三 API | 3.9.2–3.9.3 | ✅ | ⬜ |
-| 8 | 2+ agent + Plan 详情页 | 3.10.5, 3.12.4 | ✅ | ⬜ |
-| 9 | IntentRouter + fallback | 3.9.1, 3.10.4d | ✅ | ⬜ |
-| 10 | finance-smart skill 子集 | 3.10.3, 3.11 | ✅ | 部分 | params ✅；Catalog ⬜ |
-| 11 | skill catalog + /skills | 3.11, 3.12 | ✅ | **部分** |
-| 12 | tool/sub_agent/plan 审计 | 3.6, 3.10.6, 3.9.4 | ✅ | ⬜ |
-| 13 | Grounding | 3.7 | ✅ | ⬜ |
+| 7 | PLAN_WORKFLOW 三 API | 3.9.2–3.9.3 | ✅ | **✅** |
+| 8 | 2+ agent + Plan 详情页 | 3.10.5, 3.12.4 | ✅ | **部分** | 代码 ✅；live ⬜ |
+| 9 | IntentRouter + fallback | 3.9.1, 3.10.4d | ✅ | **✅** |
+| 10 | finance-smart skill 子集 | 3.10.3, 3.11 | ✅ | **✅** |
+| 11 | skill catalog + /skills | 3.11, 3.12 | ✅ | **部分** | 代码 ✅；live ⬜ |
+| 12 | tool/sub_agent/plan 审计 | 3.6, 3.10.6, 3.9.4 | ✅ | **部分** | API ✅；live ⬜ |
+| 13 | Grounding | 3.7 | ✅ | **部分** | 代码 ✅；集成测试 ⬜ |
 | 14 | 子 Agent 不污染 reasoning | 3.10.7 | ✅ | 部分 | Prompt 无 STM ✅；持久化集成 ⬜ |
 | 15 | phase2 demo 仍 PASS | 全阶段回归 | ✅ | 待总验收 |
 | 16 | *(spec 列表 12 条主项 + 子项)* | — | — | — |
@@ -146,24 +149,24 @@
 |:----:|:----:|:---------:|:------------:|:------------------:|
 | 一 | ✅ | B+（子 plan 齐全） | ✅ | A（1.5/1.6） |
 | 二 | ✅ | A-（2.9/2.10–18） | ✅ | A（workflow/closure/timeline） |
-| **三** | ✅ | **A-（任务全覆盖）** | ✅ | **B+（3.4 已交付；多 Agent 待 TDD 细步）** |
+| **三** | ✅ | **A-（任务全覆盖）** | ✅ | **A-（主线已交付；live/3.9.5 待关）** |
 | 四 | ✅ | C（无 plan） | ✅（spec 内） | — |
 
 ---
 
-## 推荐执行顺序（阶段三，2026-06-21 更新）
+## 推荐执行顺序（阶段三，2026-06-27 更新）
 
-**已完成：** 3.4 全链路 + 3.8.1 QueryRewrite。
+**已完成（代码）：** 3.4 / 3.8 / 3.9 / 3.10 / 3.11 / 3.12 / 3.6 API / 3.3 HITL / 3.7 Grounding 接入 / 3.2 传播链。
 
-**下一步（周 6 主线，可并行）：**
+**下一步 P0：**
 
-1. [multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md) — **3.10.1 AgentRuntime**（原周 1 滞后，优先补）
-2. 同上 — **3.9 PLAN_WORKFLOW**（依赖 3.11 skill-manager 种子）
-3. [phase3-production-hardening.md](./2026-06-19-phase3-production-hardening.md) — **3.8.2 PromptComposer**
-4. 周 5 并行：**3.2 多租户** + **3.5 Sentinel/告警联调**
-5. 周 7–8：**3.3 HITL** → **3.6 审计** → **3.7 Grounding** → **3.12 前端** → 总检查门
+1. [2026-06-26-pause-resume-consistency.md](./2026-06-26-pause-resume-consistency.md) — **3.9.5** 暂停/续跑一致性
+2. [phase3-production-hardening.md](./2026-06-19-phase3-production-hardening.md) — **3.2.3** 跨租户集成测试 + `verify_tenant_live.py`
+3. Live 验收：`verify_hitl_live.py`、`verify_grafana_rag_live.py`、`verify_sentinel_dashboard.py`、`verify_skill_5b_live.py`
+4. **3.7** Grounding 集成测试
+5. **3.14** Redis GenerationJob 锁 → **3.13** AhoCorasick
 
-**排期偏差说明：** 原 8 周表假设 RAG 与 AgentRuntime 周 1 并行；实际 RAG 已提前完成，**3.10.x 整体滞后**，建议压缩多 Agent 与 PLAN_WORKFLOW 至当前迭代。
+**排期偏差说明：** 原 8 周表假设多 Agent 滞后；实际 **3.10/3.9/3.11/3.12 已提前完成**；剩余为 live 检查门与 3.9.5/3.13/3.14。
 
 ---
 

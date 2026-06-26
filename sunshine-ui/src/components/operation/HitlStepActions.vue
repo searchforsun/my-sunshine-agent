@@ -3,18 +3,28 @@ import { computed, ref } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import {
   hasHitlPanel,
+  hitlConfirmationForStep,
   isHitlAwaiting,
+  isHitlSummaryAwaiting,
   resolveHitlHint,
   resolveHitlStatus,
   resolveHitlToken,
   resolveHitlToolName,
+  resolveStepForHitlDisplay,
+  isHitlToolStep,
+  type HitlConfirmationPayload,
   type HitlDecision,
 } from '../../api/hitlSteps'
 import { confirmToolExecution } from '../../api/hitl'
+import CollapsibleConfirmPanel from './CollapsibleConfirmPanel.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   step: ProcessingStep
-}>()
+  /** confirmation 早于 step.metadata 时的 SSE 载荷 */
+  pendingConfirmation?: HitlConfirmationPayload
+}>(), {
+  pendingConfirmation: undefined,
+})
 
 const emit = defineEmits<{
   decided: [token: string, approved: boolean]
@@ -23,26 +33,58 @@ const emit = defineEmits<{
 const loading = ref(false)
 const localDecision = ref<HitlDecision | null>(null)
 
+const displayStep = computed(() =>
+  resolveStepForHitlDisplay(props.step, props.pendingConfirmation),
+)
+
+const effectiveToken = computed(() =>
+  resolveHitlToken(displayStep.value)
+  ?? props.pendingConfirmation?.confirmationToken?.trim()
+  ?? null,
+)
+
 const displayStatus = computed((): HitlDecision | 'awaiting' | null => {
   if (localDecision.value) return localDecision.value
-  return resolveHitlStatus(props.step)
+  return resolveHitlStatus(displayStep.value)
 })
 
-const showPanel = computed(() => hasHitlPanel(props.step) || localDecision.value != null)
-const canAct = computed(() => isHitlAwaiting(props.step) && !localDecision.value && !loading.value)
+const canAct = computed(() => {
+  if (localDecision.value || loading.value) return false
+  if (!effectiveToken.value) return false
+  if (resolveHitlStatus(displayStep.value) === 'approved' || resolveHitlStatus(displayStep.value) === 'denied') {
+    return false
+  }
+  return isHitlAwaiting(displayStep.value)
+    || isHitlSummaryAwaiting(props.step)
+})
+const isResolved = computed(() =>
+  !!localDecision.value || displayStatus.value === 'approved' || displayStatus.value === 'denied',
+)
 
-const toolName = computed(() => resolveHitlToolName(props.step))
-const paramsText = computed(() => props.step.metadata?.hitlParamsSummary?.trim() || '')
-const hintText = computed(() => resolveHitlHint(props.step))
+/** metadata / summary 等待 / pending confirmation 任一满足即展示 */
+const showPanel = computed(() => {
+  if (localDecision.value) return true
+  if (hasHitlPanel(displayStep.value)) return true
+  if (isHitlSummaryAwaiting(props.step)) return true
+  if (hitlConfirmationForStep(props.step, props.pendingConfirmation)) return true
+  const active = props.step.summary?.active?.trim() ?? ''
+  return isHitlToolStep(props.step)
+    && active.includes('等待')
+    && active.includes('确认')
+})
 
-const statusLabel = computed(() => {
-  if (displayStatus.value === 'approved') return '已确认'
-  if (displayStatus.value === 'denied') return '已取消'
-  return ''
+const toolName = computed(() => resolveHitlToolName(displayStep.value))
+const paramsText = computed(() => displayStep.value.metadata?.hitlParamsSummary?.trim() || '')
+const hintText = computed(() => resolveHitlHint(displayStep.value))
+
+const summaryLine = computed(() => {
+  if (displayStatus.value === 'approved') return '写操作确认 · 已确认'
+  if (displayStatus.value === 'denied') return '写操作确认 · 已取消'
+  return '写操作确认 · 等待确认'
 })
 
 async function submit(approved: boolean): Promise<void> {
-  const token = resolveHitlToken(props.step)
+  const token = effectiveToken.value
   if (!token || loading.value || localDecision.value) return
   loading.value = true
   localDecision.value = approved ? 'approved' : 'denied'
@@ -58,17 +100,18 @@ async function submit(approved: boolean): Promise<void> {
 </script>
 
 <template>
-  <div v-if="showPanel" class="hitl-panel" :class="{ 'is-resolved': !!statusLabel }">
-    <div class="hitl-body">
-      <div class="hitl-info">
-        <p class="hitl-tool">{{ toolName }}</p>
-        <p v-if="paramsText" class="hitl-params">{{ paramsText }}</p>
-        <p v-if="hintText && canAct" class="hitl-hint">{{ hintText }}</p>
-        <p v-else-if="statusLabel" class="hitl-status" :class="displayStatus ?? ''">
-          {{ statusLabel }}
-        </p>
-      </div>
-      <div v-if="canAct" class="hitl-actions">
+  <CollapsibleConfirmPanel
+    v-if="showPanel"
+    :summary="summaryLine"
+    :detail="paramsText"
+    :resolved="isResolved"
+    :default-collapsed="isResolved"
+  >
+    <p class="hitl-tool">{{ toolName }}</p>
+    <p v-if="paramsText" class="hitl-params">{{ paramsText }}</p>
+    <p v-if="hintText && canAct" class="hitl-hint">{{ hintText }}</p>
+    <template v-if="canAct" #footer>
+      <div class="hitl-actions hitl-actions-footer">
         <button type="button" class="hitl-btn hitl-btn-ghost" :disabled="loading" @click="submit(false)">
           取消调用
         </button>
@@ -76,44 +119,20 @@ async function submit(approved: boolean): Promise<void> {
           {{ loading ? '提交中…' : '确认调用' }}
         </button>
       </div>
-    </div>
-  </div>
+    </template>
+  </CollapsibleConfirmPanel>
 </template>
 
 <style scoped>
-.hitl-panel {
-  margin: 4px 0 2px calc(var(--op-gutter, 12px) + 4px);
-  padding: 10px 12px;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--sun-accent-subtle);
-}
-
-.hitl-panel.is-resolved {
-  background: color-mix(in srgb, var(--sun-text-muted) 6%, transparent);
-}
-
-.hitl-body {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.hitl-info {
-  flex: 1;
-  min-width: 0;
-}
-
 .hitl-tool {
-  margin: 0;
+  margin: 0 0 6px;
   font-size: var(--sun-font-sm, 12px);
   font-weight: 500;
   color: var(--sun-text-secondary);
 }
 
 .hitl-params {
-  margin: 4px 0 0;
+  margin: 0 0 6px;
   font-family: var(--sun-font-mono, 'JetBrains Mono', monospace);
   font-size: var(--sun-font-sm, 12px);
   color: var(--sun-text-muted);
@@ -121,23 +140,10 @@ async function submit(approved: boolean): Promise<void> {
 }
 
 .hitl-hint {
-  margin: 6px 0 0;
+  margin: 0;
   font-size: var(--sun-font-sm, 12px);
   color: var(--sun-text-muted);
-}
-
-.hitl-status {
-  margin: 6px 0 0;
-  font-size: var(--sun-font-sm, 12px);
-  font-weight: 500;
-}
-
-.hitl-status.approved {
-  color: var(--sun-green, #3fb950);
-}
-
-.hitl-status.denied {
-  color: var(--sun-text-muted);
+  line-height: 1.45;
 }
 
 .hitl-actions {
@@ -145,7 +151,11 @@ async function submit(approved: boolean): Promise<void> {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
+}
+
+.hitl-actions-footer {
+  justify-content: flex-end;
+  width: 100%;
 }
 
 .hitl-btn {
@@ -155,7 +165,6 @@ async function submit(approved: boolean): Promise<void> {
   font-size: var(--sun-font-sm, 12px);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
 }
 
@@ -184,5 +193,9 @@ async function submit(approved: boolean): Promise<void> {
 .hitl-btn-primary:hover:not(:disabled) {
   background: var(--sun-accent-hover);
   border-color: var(--sun-accent-hover);
+}
+
+:deep(.collapsible-confirm) {
+  margin-left: calc(var(--op-gutter, 12px) + 4px);
 }
 </style>

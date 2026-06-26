@@ -1,5 +1,12 @@
 import type { ProcessingStep } from './processingSteps'
-import { hasHitlPanel, isHitlAwaiting } from './hitlSteps'
+import {
+  hasHitlPanel,
+  hitlConfirmationForStep,
+  isHitlAwaiting,
+  isHitlSummaryAwaiting,
+  resolveStepForHitlDisplay,
+  type HitlConfirmationPayload,
+} from './hitlSteps'
 
 /** 节点或 subSteps 内是否有待确认写工具 */
 export function stepHasHitlAwaiting(step?: ProcessingStep): boolean {
@@ -8,12 +15,20 @@ export function stepHasHitlAwaiting(step?: ProcessingStep): boolean {
   return step.subSteps?.some(s => isHitlAwaiting(s)) ?? false
 }
 
-/** 节点或 subSteps 内承载 HITL 面板的步骤（含已确认/已取消；子 Agent 优先 tool 子步） */
-export function findHitlStep(step?: ProcessingStep): ProcessingStep | undefined {
+/** 节点或 subSteps 内承载 HITL 面板的步骤（含 pending / summary 等待态） */
+export function findHitlStep(
+  step?: ProcessingStep,
+  pending?: HitlConfirmationPayload,
+): ProcessingStep | undefined {
   if (!step) return undefined
-  const subHitl = step.subSteps?.find(s => hasHitlPanel(s))
-  if (subHitl) return subHitl
-  if (hasHitlPanel(step)) return step
+  for (const sub of step.subSteps ?? []) {
+    if (hasHitlPanel(sub) || isHitlSummaryAwaiting(sub) || hitlConfirmationForStep(sub, pending)) {
+      return resolveStepForHitlDisplay(sub, pending)
+    }
+  }
+  if (hasHitlPanel(step) || isHitlSummaryAwaiting(step) || hitlConfirmationForStep(step, pending)) {
+    return resolveStepForHitlDisplay(step, pending)
+  }
   return undefined
 }
 

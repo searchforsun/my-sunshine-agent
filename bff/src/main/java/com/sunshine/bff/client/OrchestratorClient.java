@@ -76,6 +76,19 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> confirmPlan(
+            com.sunshine.bff.model.ConfirmPlanRequest request, String userId, String tenantId) {
+        return webClient.post()
+                .uri("/chat/confirm-plan")
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<List<Map<String, Object>>> listConversations(String userId, String tenantId) {
         return webClient.get()
                 .uri("/conversations")

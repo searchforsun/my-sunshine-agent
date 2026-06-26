@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.plan;
 /** execution_plan.status 状态机 */
 public enum ExecutionPlanStatus {
     DRAFT,
+    AWAITING_APPROVAL,
     VALIDATED,
     RUNNING,
     PAUSED,

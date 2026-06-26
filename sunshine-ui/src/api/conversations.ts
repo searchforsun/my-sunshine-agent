@@ -1,12 +1,12 @@
 import { apiHeaders } from '../stores/authStore'
-import { BFF_API_BASE } from './config'
+import { resolveApiBase } from './config'
 import type { ExecutionPreference } from './executionModes'
 import { isExecutionPreference } from './executionModes'
 import type { ProcessingStep } from './processingSteps'
 import { migrateV1Step, normalizeStep } from './processingSteps'
 import { ApiError, parseBffPayload } from './apiError'
 
-const API_BASE = BFF_API_BASE
+const API_BASE = () => resolveApiBase()
 export interface ConversationSummary {
   id: string
   title: string
@@ -116,12 +116,12 @@ function unwrapObject(raw: unknown): Record<string, unknown> {
 }
 
 export async function listConversations(): Promise<ConversationSummary[]> {
-  const res = await fetch(`${API_BASE}/api/conversations`, { headers: apiHeaders() })
+  const res = await fetch(`${API_BASE()}/api/conversations`, { headers: apiHeaders() })
   return unwrapList(await parseBffPayload(res)).map(mapSummary)
 }
 
 export async function createConversation(): Promise<ConversationSummary> {
-  const res = await fetch(`${API_BASE}/api/conversations`, {
+  const res = await fetch(`${API_BASE()}/api/conversations`, {
     method: 'POST',
     headers: apiHeaders(),
     body: '{}',
@@ -133,12 +133,12 @@ export async function getConversation(id: string): Promise<ConversationDetail> {
   if (!isValidConversationId(id)) {
     throw new ApiError('数据加载失败，请刷新重试', { kind: 'unknown' })
   }
-  const res = await fetch(`${API_BASE}/api/conversations/${id}`, { headers: apiHeaders() })
+  const res = await fetch(`${API_BASE()}/api/conversations/${id}`, { headers: apiHeaders() })
   return mapDetail(unwrapObject(await parseBffPayload(res)))
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/conversations/${id}`, {
+  const res = await fetch(`${API_BASE()}/api/conversations/${id}`, {
     method: 'DELETE',
     headers: apiHeaders(),
   })
@@ -146,7 +146,7 @@ export async function deleteConversation(id: string): Promise<void> {
 }
 
 export async function updateConversationTitle(id: string, title: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/conversations/${id}`, {
+  const res = await fetch(`${API_BASE()}/api/conversations/${id}`, {
     method: 'PATCH',
     headers: apiHeaders(),
     body: JSON.stringify({ title }),

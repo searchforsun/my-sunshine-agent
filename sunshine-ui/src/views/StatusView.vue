@@ -1,48 +1,66 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NCard, NTag, NGrid, NGridItem, NButton, NSpace, NDivider, NText } from 'naive-ui'
+import { NCard, NTag, NGrid, NGridItem, NButton } from 'naive-ui'
+import { resolveGatewayProbeBase } from '../api/config'
 
-const MIDDLEWARE_HOST = 'ecs4c16g'
+interface HealthPayload {
+  status?: string
+  service?: string
+}
 
 interface ServiceStatus {
   name: string
-  host: string
+  /** 原服务端口，仅展示 */
   port: number
   status: 'online' | 'offline' | 'checking' | 'external'
   description: string
   latency?: number
-  /** HTTP 健康检查路径；无则浏览器无法探测（标记为 external） */
-  healthPath?: string
+  /** Gateway 路由路径；无则表示未暴露经 Gateway，不可探测 */
+  gatewayPath?: string
+  /** 期望 JSON 中的 service 字段，用于防路由误配 */
+  expectedService?: string
 }
 
-const services = ref<ServiceStatus[]>([
-  { name: 'Gateway', host: 'localhost', port: 8000, status: 'checking', description: 'API 网关与路由', healthPath: '/' },
-  { name: 'BFF', host: 'localhost', port: 8001, status: 'checking', description: 'SSE 流式转发', healthPath: '/' },
-  { name: 'Auth Center', host: 'localhost', port: 8100, status: 'checking', description: 'Sa-Token 认证中心', healthPath: '/' },
-  { name: 'Orchestrator', host: 'localhost', port: 8200, status: 'checking', description: 'Agent 编排与 Workflow', healthPath: '/' },
-  { name: 'Tool Manager', host: 'localhost', port: 8210, status: 'checking', description: '业务工具注册与 Catalog', healthPath: '/' },
-  { name: 'Skill Manager', host: 'localhost', port: 8225, status: 'checking', description: 'Skill 包管理与 Catalog', healthPath: '/' },
-  { name: 'LLM Gateway', host: 'localhost', port: 8300, status: 'checking', description: '多厂商大模型路由', healthPath: '/' },
-  { name: 'RAG Service', host: 'localhost', port: 8400, status: 'checking', description: 'Milvus 向量检索', healthPath: '/' },
-  { name: 'Prompt Manager', host: 'localhost', port: 8500, status: 'checking', description: '提示词模板管理', healthPath: '/' },
-  { name: 'Desensitize', host: 'localhost', port: 8600, status: 'checking', description: '数据脱敏引擎', healthPath: '/' },
-  { name: 'Finance', host: 'localhost', port: 8710, status: 'checking', description: '财务消息与审批 Mock', healthPath: '/' },
-])
+/** 经 Gateway :8000 路由探测，不直连各微服务端口 */
+const SERVICE_DEFS: Omit<ServiceStatus, 'status'>[] = [
+  { name: 'Gateway', port: 8000, description: 'API 网关与路由', gatewayPath: '/health', expectedService: 'sunshine-gateway' },
+  { name: 'BFF', port: 8001, description: 'SSE 流式转发', gatewayPath: '/health/bff', expectedService: 'sunshine-bff' },
+  { name: 'Auth Center', port: 8100, description: 'Sa-Token 认证中心', gatewayPath: '/health/auth', expectedService: 'sunshine-auth' },
+  { name: 'Orchestrator', port: 8200, description: 'Agent 编排与 Workflow', gatewayPath: '/health/orchestrator', expectedService: 'sunshine-orchestrator' },
+  { name: 'Tool Manager', port: 8210, description: '业务工具注册与 Catalog', gatewayPath: '/health/tool-manager', expectedService: 'sunshine-tool-manager' },
+  { name: 'Skill Manager', port: 8225, description: 'Skill 包管理与 Catalog', gatewayPath: '/health/skill-manager', expectedService: 'sunshine-skill-manager' },
+  { name: 'LLM Gateway', port: 8300, description: '多厂商大模型路由', gatewayPath: '/health/llm-gateway', expectedService: 'sunshine-llm-gateway' },
+  { name: 'RAG Service', port: 8400, description: 'Milvus 向量检索', gatewayPath: '/health/rag', expectedService: 'sunshine-rag' },
+  { name: 'Prompt Manager', port: 8500, description: '提示词模板管理', gatewayPath: '/health/prompt', expectedService: 'sunshine-prompt' },
+  { name: 'Desensitize', port: 8600, description: '数据脱敏引擎', gatewayPath: '/health/desensitize', expectedService: 'sunshine-desensitize' },
+  { name: 'Finance', port: 8710, description: '财务消息与审批 Mock', gatewayPath: '/health/finance', expectedService: 'sunshine-finance' },
+]
 
-const middleware = ref<ServiceStatus[]>([
-  { name: 'Nacos', host: MIDDLEWARE_HOST, port: 8848, status: 'checking', description: '注册与配置中心', healthPath: '/nacos/' },
-  { name: 'Redis', host: MIDDLEWARE_HOST, port: 6379, status: 'external', description: '缓存与会话' },
-  { name: 'MySQL', host: MIDDLEWARE_HOST, port: 3306, status: 'external', description: '关系型数据库' },
-  { name: 'MinIO', host: MIDDLEWARE_HOST, port: 9000, status: 'checking', description: 'Skill 包对象存储', healthPath: '/minio/health/live' },
-  { name: 'Milvus', host: MIDDLEWARE_HOST, port: 9091, status: 'checking', description: '向量数据库', healthPath: '/healthz' },
-  { name: 'RocketMQ', host: MIDDLEWARE_HOST, port: 9876, status: 'external', description: '消息队列' },
-  { name: 'Sentinel', host: MIDDLEWARE_HOST, port: 8858, status: 'checking', description: '流量控制面板', healthPath: '/' },
-  { name: 'SkyWalking', host: MIDDLEWARE_HOST, port: 8084, status: 'checking', description: '全链路追踪', healthPath: '/' },
-  { name: 'Grafana', host: MIDDLEWARE_HOST, port: 3000, status: 'checking', description: '监控可视化', healthPath: '/api/health' },
-])
+function buildList(defs: Omit<ServiceStatus, 'status'>[]): ServiceStatus[] {
+  return defs.map((d) => ({
+    ...d,
+    status: d.gatewayPath ? 'checking' : 'external',
+  }))
+}
+
+const services = ref<ServiceStatus[]>(buildList(SERVICE_DEFS))
+
+const probeSubtitle = '经 Gateway :8000 /health/* 探测，校验 HTTP 200 且 JSON status=UP。'
+
+function resolveProbeUrl(item: ServiceStatus): string | null {
+  if (!item.gatewayPath) return null
+  return `${resolveGatewayProbeBase()}${item.gatewayPath}`
+}
+
+function isHealthyPayload(body: HealthPayload, expectedService?: string): boolean {
+  if (body.status !== 'UP') return false
+  if (expectedService && body.service !== expectedService) return false
+  return true
+}
 
 async function probeHttp(item: ServiceStatus) {
-  if (!item.healthPath) {
+  const url = resolveProbeUrl(item)
+  if (!url) {
     item.status = 'external'
     item.latency = undefined
     return
@@ -50,13 +68,24 @@ async function probeHttp(item: ServiceStatus) {
   item.status = 'checking'
   const start = Date.now()
   try {
-    // no-cors：仅探测 TCP/HTTP 可达，避免各微服务未配 CORS 时误报离线
-    await fetch(`http://${item.host}:${item.port}${item.healthPath}`, {
-      signal: AbortSignal.timeout(3000),
-      mode: 'no-cors',
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+      headers: { Accept: 'application/json' },
     })
-    item.status = 'online'
-    item.latency = Date.now() - start
+    const latency = Date.now() - start
+    if (!res.ok) {
+      item.status = 'offline'
+      item.latency = undefined
+      return
+    }
+    const body = (await res.json()) as HealthPayload
+    if (isHealthyPayload(body, item.expectedService)) {
+      item.status = 'online'
+      item.latency = latency
+    } else {
+      item.status = 'offline'
+      item.latency = undefined
+    }
   } catch {
     item.status = 'offline'
     item.latency = undefined
@@ -67,12 +96,8 @@ async function checkServices() {
   await Promise.all(services.value.map(probeHttp))
 }
 
-async function checkMiddleware() {
-  await Promise.all(middleware.value.map(probeHttp))
-}
-
 async function refreshAll() {
-  await Promise.all([checkServices(), checkMiddleware()])
+  await checkServices()
 }
 
 function statusType(s: string) {
@@ -85,17 +110,18 @@ function statusType(s: string) {
 function statusLabel(s: string) {
   if (s === 'online') return '在线'
   if (s === 'offline') return '离线'
-  if (s === 'external') return '远程'
+  if (s === 'external') return '内网'
   return '检测中...'
 }
 
 function endpoint(item: ServiceStatus) {
-  return `${item.host}:${item.port}`
+  if (item.gatewayPath) {
+    return `:8000${item.gatewayPath}`
+  }
+  return `:${item.port}（内网）`
 }
 
 const onlineServices = () => services.value.filter(s => s.status === 'online').length
-const onlineMiddleware = () =>
-  middleware.value.filter(s => s.status === 'online' || s.status === 'external').length
 
 onMounted(() => {
   refreshAll()
@@ -108,7 +134,7 @@ onMounted(() => {
       <header class="page-header">
         <div>
           <h2>系统状态</h2>
-          <p>微服务与中间件健康探测（按端口顺序）。</p>
+          <p>{{ probeSubtitle }}</p>
         </div>
         <NButton @click="refreshAll" size="small" round secondary>
           刷新
@@ -120,10 +146,6 @@ onMounted(() => {
         <div class="stat-card">
           <span class="stat-val">{{ onlineServices() }}/{{ services.length }}</span>
           <span class="stat-label">微服务在线</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-val">{{ onlineMiddleware() }}/{{ middleware.length }}</span>
-          <span class="stat-label">中间件在线</span>
         </div>
       </div>
 
@@ -156,43 +178,6 @@ onMounted(() => {
                   {{ endpoint(svc) }}
                   <template v-if="svc.latency !== undefined && svc.status === 'online'">
                     · {{ svc.latency }}ms
-                  </template>
-                </p>
-              </div>
-            </NCard>
-          </NGridItem>
-        </NGrid>
-      </NCard>
-
-      <!-- Middleware -->
-      <NCard title="中间件" size="medium" class="section-card">
-        <NGrid cols="4" x-gap="10" y-gap="10" responsive="screen">
-          <NGridItem v-for="mw in middleware" :key="mw.name">
-            <NCard size="small" :bordered="true" class="mw-card">
-              <div class="mw-top">
-                <span class="mw-name">{{ mw.name }}</span>
-                <NTag
-                  :type="statusType(mw.status)"
-                  :bordered="false"
-                  size="tiny"
-                  round
-                >
-                  <template v-if="mw.status !== 'external'" #icon>
-                    <span
-                      class="pulse-dot"
-                      :class="mw.status"
-                      style="margin-right: 5px"
-                    />
-                  </template>
-                  {{ statusLabel(mw.status) }}
-                </NTag>
-              </div>
-              <div class="mw-body">
-                <p class="mw-desc">{{ mw.description }}</p>
-                <p class="mw-endpoint">
-                  {{ endpoint(mw) }}
-                  <template v-if="mw.latency !== undefined && mw.status === 'online'">
-                    · {{ mw.latency }}ms
                   </template>
                 </p>
               </div>
@@ -274,31 +259,30 @@ onMounted(() => {
 }
 
 /* --- Service cards --- */
-.svc-card, .mw-card {
+.svc-card {
   border-radius: var(--radius-md) !important;
   border-color: var(--sun-border) !important;
   background: var(--sun-deep) !important;
   transition: border-color .2s, transform .15s;
   height: 100%;
 }
-.svc-card:hover, .mw-card:hover {
+.svc-card:hover {
   border-color: var(--sun-border-light) !important;
 }
-.svc-card :deep(.n-card__content),
-.mw-card :deep(.n-card__content) {
+.svc-card :deep(.n-card__content) {
   display: flex;
   flex-direction: column;
   min-height: 88px;
 }
 
-.svc-top, .mw-top {
+.svc-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
 }
 
-.svc-name, .mw-name {
+.svc-name {
   font-size: 13.5px;
   font-weight: 600;
   color: var(--sun-text);
@@ -308,7 +292,7 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 
-.svc-body, .mw-body {
+.svc-body {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -317,14 +301,14 @@ onMounted(() => {
   min-height: 0;
 }
 
-.svc-desc, .mw-desc {
+.svc-desc {
   font-size: 11.5px;
   color: var(--sun-text-muted);
   line-height: 1.45;
   margin: 0;
 }
 
-.svc-port, .mw-endpoint {
+.svc-port {
   margin-top: auto;
   margin-bottom: 0;
   font-size: 11px;
@@ -333,10 +317,5 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* --- Middleware cards --- */
-.mw-name {
-  font-size: 13px;
 }
 </style>

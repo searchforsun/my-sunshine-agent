@@ -22,6 +22,7 @@ import xml from 'highlight.js/lib/languages/xml'
 import yaml from 'highlight.js/lib/languages/yaml'
 import { useChatStore } from '../stores/chatStore'
 import { isValidConversationId } from '../api/conversations'
+import { resolveApiBase } from '../api/config'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { apiHeaders } from '../composables/useUserId'
@@ -45,6 +46,12 @@ import {
   hasActiveStep,
   type ProcessingStep,
 } from '../api/processingSteps'
+import {
+  resolveAgentNodeStepForDrawer,
+  applySyncedPendingHitl,
+  resolveHitlUiKey,
+  stepsHaveAwaitingHitl,
+} from '../api/hitlSteps'
 import {
   listSkillCatalogIndex,
   type SkillCatalogIndexEntry,
@@ -136,9 +143,20 @@ function toggleReasoning(msg: ChatMessage, idx: number): void {
   reasoningExpanded.set(key, !currentlyExpanded)
 }
 
-function resolveTimelineSteps(msg: ChatMessage, idx: number): ProcessingStep[] {
-  if (!msg.steps?.length) return []
-  return normalizeTimelineSteps(msg.steps, msg.reasoning)
+function resolveTimelineContext(msg: ChatMessage): {
+  steps: ProcessingStep[]
+  pending: ChatMessage['pendingHitlConfirmation']
+} {
+  if (!msg.steps?.length) return { steps: [], pending: undefined }
+  const synced = applySyncedPendingHitl(msg.steps, msg.pendingHitlConfirmation)
+  return {
+    steps: normalizeTimelineSteps(synced.steps, msg.reasoning),
+    pending: synced.pending,
+  }
+}
+
+function resolveTimelineSteps(msg: ChatMessage, _idx?: number): ProcessingStep[] {
+  return resolveTimelineContext(msg).steps
 }
 
 function resolveUserQuery(idx: number): string {
@@ -155,6 +173,12 @@ function resolveUserQuery(idx: number): string {
 function showTimeline(msg: ChatMessage, idx: number): boolean {
   const steps = resolveTimelineSteps(msg, idx)
   return steps.length > 0
+}
+
+function operationStackKey(msg: ChatMessage, idx: number): string {
+  const ctx = resolveTimelineContext(msg)
+  const hitl = resolveHitlUiKey(ctx.steps, ctx.pending)
+  return `${msg.id ?? idx}-${hitl}`
 }
 
 function isTimelineLive(msg: ChatMessage, idx: number): boolean {
@@ -190,7 +214,7 @@ const showStreamWaiting = computed(() => {
 })
 
 const {
-  messages, loading, send, resume, reconnectStream, stop,
+  messages, streamRevision, loading, send, resume, reconnectStream, stop,
   switchTo, ensureActive, getMessages, setMessages, migrateSession, destroySession,
   applyHitlDecision,
   applyRecoveryDecision,
@@ -224,10 +248,27 @@ const {
       setMessages(convId, [...getMessages(convId)])
     }
   },
+  () => chatStore.recoverAfterStaleConversation(),
 )
+
+const latestAssistantMessage = computed(() => {
+  const msgs = messages.value
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'assistant') return msgs[i]
+  }
+  return undefined
+})
 
 provide('applyHitlDecision', applyHitlDecision)
 provide('applyRecoveryDecision', applyRecoveryDecision)
+provide('pendingHitlConfirmation', computed(() => latestAssistantMessage.value?.pendingHitlConfirmation))
+provide('planDrawerLiveNodeStep', (nodeId: string) =>
+  resolveAgentNodeStepForDrawer(
+    latestAssistantMessage.value?.steps,
+    nodeId,
+    latestAssistantMessage.value?.pendingHitlConfirmation,
+  ),
+)
 
 const inputText = ref('')
 const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
@@ -476,6 +517,23 @@ function markAssistantInterrupted(convId: string, messageId?: string) {
 async function hydrateSessionFromStore(cid: string) {
   await chatStore.loadDetail(cid)
   const restored = chatStore.conversations.find(c => c.id === cid)?.messages ?? []
+  const local = getMessages(cid)
+  if (loading.value && local.length && restored.length) {
+    const localLast = local[local.length - 1]
+    const restoredLast = restored[restored.length - 1]
+    if (localLast?.role === 'assistant' && restoredLast?.role === 'assistant') {
+      const localSteps = localLast.steps?.length ?? 0
+      const restoredSteps = restoredLast.steps?.length ?? 0
+      const localHasHitl = stepsHaveAwaitingHitl(localLast.steps)
+        || !!localLast.pendingHitlConfirmation
+      if (localSteps >= restoredSteps || localHasHitl) {
+        restoredLast.steps = localLast.steps
+      }
+      if (localLast.pendingHitlConfirmation) {
+        restoredLast.pendingHitlConfirmation = localLast.pendingHitlConfirmation
+      }
+    }
+  }
   if (!restored.length) {
     settledHtml.value = ''
     return
@@ -496,7 +554,7 @@ async function hydrateSessionFromStore(cid: string) {
 
 async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
   try {
-    const resp = await fetch(`/api/generations/${active.generationId}`, {
+    const resp = await fetch(`${resolveApiBase()}/api/generations/${active.generationId}`, {
       headers: apiHeaders(),
     })
 
@@ -657,10 +715,12 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
 
   if (!isValidConversationId(newId)) return
 
-  applyConversationPreference(chatStore.current?.executionPreference)
-
   ensureActive(newId)
-  await hydrateSessionFromStore(newId)
+  applyConversationPreference(chatStore.current?.executionPreference)
+  // 流式进行中勿 loadDetail 覆盖内存 timeline（HITL metadata / pendingHitlConfirmation）
+  if (!loading.value) {
+    await hydrateSessionFromStore(newId)
+  }
 
   await nextTick()
   if (loading.value) void ensureStreamRenderer()
@@ -812,10 +872,13 @@ watch(() => loading.value, async (val) => {
             <div v-else class="assistant-body">
               <OperationStack
                 v-if="showTimeline(msg, idx)"
-                :steps="resolveTimelineSteps(msg, idx)"
+                :key="operationStackKey(msg, idx)"
+                :steps="resolveTimelineContext(msg).steps"
+                :timeline-revision="loading && idx === messages.length - 1 ? streamRevision : 0"
                 :live="isTimelineLive(msg, idx)"
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
+                :pending-hitl-confirmation="resolveTimelineContext(msg).pending"
                 @hitl-decided="applyHitlDecision"
               />
               <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">
@@ -871,6 +934,7 @@ watch(() => loading.value, async (val) => {
       :live="planDagExpandState.live"
       :title="planDagExpandState.title"
       :user-query="planDagExpandState.userQuery"
+      :loading-label="planDagExpandState.loadingLabel"
       @select="handlePlanDagExpandSelect"
       @close="closePlanDagExpand"
     />

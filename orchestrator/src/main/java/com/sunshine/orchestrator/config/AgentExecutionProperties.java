@@ -107,5 +107,19 @@ public class AgentExecutionProperties {
             private boolean enabled = true;
             private boolean injectPartialContext = true;
         }
+
+        @Data
+        public static class Approval {
+            private boolean enabled = true;
+            private int timeoutSec = 600;
+            private int maxUserRounds = 10;
+            /** 超时策略：fallback_react 降级 ReAct；auto_approve 视同用户确认并执行 Plan */
+            private String onTimeout = "fallback_react";
+            private String userModificationTemplate = """
+                    用户对当前执行计划的修改意见：{{hint}}
+                    请据此重新输出一行 Plan JSON。仍须遵守：仅 rag/tool/agent；勿含 start/answer；edges 末节点勿连 answer。""";
+        }
+
+        private Approval approval = new Approval();
     }
 }

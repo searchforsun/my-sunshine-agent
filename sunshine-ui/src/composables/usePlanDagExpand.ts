@@ -8,6 +8,7 @@ export interface PlanDagExpandPayload {
   nodes: DagNodeView[]
   selectedId?: string
   live?: boolean
+  loadingLabel?: string
 }
 
 const state = reactive({
@@ -17,6 +18,7 @@ const state = reactive({
   nodes: [] as DagNodeView[],
   selectedId: undefined as string | undefined,
   live: false,
+  loadingLabel: undefined as string | undefined,
 })
 
 let selectHandler: ((node: DagNodeView) => void) | null = null
@@ -29,6 +31,7 @@ export function usePlanDagExpand() {
     state.nodes = payload.nodes
     state.selectedId = payload.selectedId
     state.live = !!payload.live
+    state.loadingLabel = payload.loadingLabel
     selectHandler = onSelect
   }
 
@@ -39,6 +42,7 @@ export function usePlanDagExpand() {
     if (payload.nodes != null) state.nodes = payload.nodes
     if (payload.selectedId !== undefined) state.selectedId = payload.selectedId
     if (payload.live != null) state.live = payload.live
+    if (payload.loadingLabel !== undefined) state.loadingLabel = payload.loadingLabel
   }
 
   function close() {
@@ -48,6 +52,7 @@ export function usePlanDagExpand() {
     state.nodes = []
     state.selectedId = undefined
     state.live = false
+    state.loadingLabel = undefined
     selectHandler = null
   }
 

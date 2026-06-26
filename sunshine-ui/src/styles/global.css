@@ -2,8 +2,6 @@
    Sunshine AI — Codex-inspired neutral theme
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
 :root {
   /* Neutral surfaces (Codex-like) */
   --sun-black: #212121;
@@ -476,6 +474,21 @@ html.theme-switching *::after {
 
 .chat-meta-body {
   padding: 0 0 0 4px;
+}
+
+.chat-meta-panel.is-expanded .chat-meta-body {
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+/* 时间线/工具步骤等展开区统一内部滚动 */
+.expand-scroll {
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 /* Chat @skill chip — 气泡与输入框共用 */

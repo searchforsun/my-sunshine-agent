@@ -1,14 +1,14 @@
 import { apiHeaders, authHeaders } from '../stores/authStore'
-import { BFF_STREAM_BASE } from './config'
+import { resolveApiBase, resolveBffStreamBase } from './config'
 import { apiHttpError, parseApiResponse } from './apiError'
 
 function apiUrl(path: string): string {
-  return `${import.meta.env.VITE_BFF_API_BASE ?? ''}${path}`
+  return `${resolveApiBase()}${path}`
 }
 
 /** multipart 上传直连 Gateway，避免 Vite proxy 破坏 FormData */
 function uploadUrl(path: string): string {
-  return `${BFF_STREAM_BASE}${path}`
+  return `${resolveBffStreamBase()}${path}`
 }
 
 export interface SkillEntry {

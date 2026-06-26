@@ -8,7 +8,7 @@
 |:----:|:----:|------|:----:|
 | **一** | 8 周 + 1.5/1.6 | [phase1-foundation-design.md](./phase1-foundation-design.md) | ✅ 已完成 |
 | **二** | 8 周 + 2.9/收尾 | [phase2-benchmark-design.md](./phase2-benchmark-design.md) | ✅ 已完成 |
-| **三** | 8 周 | [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) | ⬜ 待实施 |
+| **三** | 8 周 | [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) | 🟡 进行中（主线代码 ✅；live/3.9.5/3.13/3.14 待关） |
 | **四** | 按需 | [phase4-platformization-design.md](./phase4-platformization-design.md) | ⬜ 按需 |
 
 总排期与检查门摘要：[implementation-plan.md](../../implementation-plan.md)
@@ -49,6 +49,7 @@
 | `2026-06-25-workflow-studio-design.md` | 阶段四 **§4.13** · Workflow Studio + `docs/workflow` 导入包 · **workflow catalog / Chat `#` SSOT** |
 | `2026-06-25-chat-execution-mode-selector-design.md` | Chat 底栏执行**路径**选择器 · `executionPreference` · P0 ✅；workflow catalog **不做**（移交 4.13 `#`） |
 | `2026-06-26-pause-resume-consistency-design.md` | 阶段三 **§3.9.5 收尾** · Plan/Workflow 暂停/续跑语义与 UI 一致性 · [plan](../plans/2026-06-26-pause-resume-consistency.md) |
+| `2026-06-27-plan-user-approval-design.md` | 阶段三 **§3.9 Plan 用户确认** · `confirm-plan` + 确认框 / 重新生成 UX · [routing §8](../../routing/plan-workflow-retry-degradation.md) |
 | `2026-06-19-phase3-production-hardening-design.md` | → 已迁移为 `phase3-production-hardening-design.md` |
 | `2026-06-19-phase4-platformization-design.md` | → 已迁移为 `phase4-platformization-design.md` |
 

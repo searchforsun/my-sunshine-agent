@@ -25,6 +25,8 @@ public final class StepEventBridge {
     private static final Map<String, Boolean> HITL_ENABLED = new ConcurrentHashMap<>();
     /** bridgeId → 主会话 assistantMessageId（子 Agent / workflow 写 SSE 用） */
     private static final Map<String, String> HITL_ASSISTANT_BY_BRIDGE = new ConcurrentHashMap<>();
+    /** AgentScope toolUseId → bridgeId（工具在 boundedElastic 线程执行，不能靠 SESSIONS.size==1） */
+    private static final Map<String, String> TOOL_USE_BRIDGE = new ConcurrentHashMap<>();
     /** 子 Agent：Hook token 刷 SSE 前经 bridge.wrap 折叠进 node.subSteps */
     private static final Map<String, Function<StreamToken, List<StreamToken>>> TOKEN_WRAPPERS = new ConcurrentHashMap<>();
 
@@ -101,11 +103,51 @@ public final class StepEventBridge {
     }
 
     public static boolean hitlEnabled() {
-        String bridgeId = activeBridgeId();
-        if (bridgeId == null) {
-            return false;
+        return hitlEnabledForBridge(resolveHitlBridgeId());
+    }
+
+    public static boolean hitlEnabledForBridge(String bridgeId) {
+        return bridgeId != null && Boolean.TRUE.equals(HITL_ENABLED.get(bridgeId));
+    }
+
+    /** PreActing 注册；PostActing 须 unbind */
+    public static void bindToolUseBridge(String toolUseId, String bridgeId) {
+        if (toolUseId != null && !toolUseId.isBlank() && bridgeId != null && !bridgeId.isBlank()) {
+            TOOL_USE_BRIDGE.put(toolUseId.strip(), bridgeId.strip());
         }
-        return Boolean.TRUE.equals(HITL_ENABLED.get(bridgeId));
+    }
+
+    public static void unbindToolUseBridge(String toolUseId) {
+        if (toolUseId != null && !toolUseId.isBlank()) {
+            TOOL_USE_BRIDGE.remove(toolUseId.strip());
+        }
+    }
+
+    public static String bridgeIdForToolUse(String toolUseId) {
+        if (toolUseId == null || toolUseId.isBlank()) {
+            return null;
+        }
+        return TOOL_USE_BRIDGE.get(toolUseId.strip());
+    }
+
+    /** 单会话优先；多并发时回退到唯一 HITL bridge 或 toolUse 映射 */
+    public static String resolveHitlBridgeId() {
+        if (TOOL_USE_BRIDGE.size() == 1) {
+            String fromToolUse = TOOL_USE_BRIDGE.values().iterator().next();
+            if (hitlEnabledForBridge(fromToolUse)) {
+                return fromToolUse;
+            }
+        }
+        if (SESSIONS.size() == 1) {
+            String id = SESSIONS.keySet().iterator().next();
+            if (hitlEnabledForBridge(id)) {
+                return id;
+            }
+        }
+        if (HITL_ENABLED.size() == 1) {
+            return HITL_ENABLED.keySet().iterator().next();
+        }
+        return null;
     }
 
     public static String activeBridgeId() {
@@ -153,6 +195,7 @@ public final class StepEventBridge {
             HITL_ENABLED.remove(messageId);
             HITL_ASSISTANT_BY_BRIDGE.remove(messageId);
             TOKEN_WRAPPERS.remove(messageId);
+            TOOL_USE_BRIDGE.entrySet().removeIf(e -> messageId.equals(e.getValue()));
         }
     }
 

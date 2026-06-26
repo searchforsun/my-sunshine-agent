@@ -44,6 +44,12 @@ export function isApiResult(raw: unknown): raw is ApiResult {
     && 'msg' in raw
 }
 
+/** orchestrator 会话不存在（清库 / 换账号后 localStorage 残留旧 conversationId） */
+export function isConversationNotFoundError(err: unknown): boolean {
+  return err instanceof ApiError
+    && (err.errorKey === 'orch_conversation_not_found' || err.httpStatus === 404 && err.code === 404)
+}
+
 const PARSE_FALLBACK = '服务响应异常，请稍后重试'
 const NETWORK_FALLBACK = '网络连接失败，请检查网络后重试'
 const DEFAULT_FALLBACK = '操作失败，请稍后重试'
@@ -102,6 +108,20 @@ export async function throwIfHttpError(response: Response): Promise<void> {
     throw bizApiError(raw, response.status)
   }
   throw apiHttpError(response.status)
+}
+
+/** SSE 建连：Sa-Token 401 等会以 HTTP 200 + text/plain JSON 返回，需提前拦截 */
+export async function throwIfNotEventStream(response: Response): Promise<void> {
+  const ct = response.headers.get('content-type') ?? ''
+  if (ct.includes('text/event-stream')) return
+  const raw = await readJsonBody(response).catch(() => null)
+  if (isApiResult(raw) && raw.code !== 200) {
+    throw bizApiError(raw, response.status)
+  }
+  if (!response.ok) {
+    throw apiHttpError(response.status)
+  }
+  throw new ApiError(PARSE_FALLBACK, { kind: 'parse', httpStatus: response.status })
 }
 
 function emptyBodyOrThrow<T>(res: Response, allowEmptyData?: boolean): T {

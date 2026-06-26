@@ -35,7 +35,6 @@ public class ConversationDetailDto {
     }
 
     @Data
-    @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class MessageDto {

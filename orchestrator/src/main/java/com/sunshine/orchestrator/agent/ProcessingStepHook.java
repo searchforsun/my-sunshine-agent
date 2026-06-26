@@ -50,6 +50,8 @@ public class ProcessingStepHook implements Hook {
 
         if (event instanceof PreActingEvent pre) {
             String toolName = pre.getToolUse().getName();
+            String toolUseId = pre.getToolUse().getId();
+            StepEventBridge.bindToolUseBridge(toolUseId, bridgeId);
             String baseStepId = toolCatalogService.timelineStepId(toolName);
             String phase = toolCatalogService.timelinePhase(toolName);
             StepEventBridge.emit(bridgeId, session -> {
@@ -61,6 +63,7 @@ public class ProcessingStepHook implements Hook {
 
         if (event instanceof PostActingEvent post) {
             String toolName = post.getToolUse().getName();
+            StepEventBridge.unbindToolUseBridge(post.getToolUse().getId());
             String detail = summarizeToolResult(toolName, post.getToolResult());
             StepEventBridge.emit(bridgeId, session -> {
                 session.completeToolStep(detail != null ? detail : "命中 0 条");

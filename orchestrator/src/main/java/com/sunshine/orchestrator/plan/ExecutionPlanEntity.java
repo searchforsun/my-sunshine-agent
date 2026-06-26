@@ -47,6 +47,9 @@ public class ExecutionPlanEntity {
     @Column(name = "planner_attempts", columnDefinition = "MEDIUMTEXT")
     private String plannerAttempts;
 
+    @Column(name = "approval_rounds", columnDefinition = "MEDIUMTEXT")
+    private String approvalRounds;
+
     @Column(name = "replan_count", nullable = false)
     private int replanCount;
 

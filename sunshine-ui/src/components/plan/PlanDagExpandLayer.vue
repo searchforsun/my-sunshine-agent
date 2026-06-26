@@ -9,6 +9,7 @@ const props = defineProps<{
   live?: boolean
   title?: string
   userQuery?: string
+  loadingLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -213,12 +214,16 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="plan-dag-viewport"
-      :class="{ 'is-dragging': dragging }"
+      :class="{ 'is-dragging': dragging, 'is-loading': loadingLabel }"
       @pointerdown="onViewportPointerDown"
       @pointermove="onViewportPointerMove"
       @pointerup="onViewportPointerUp"
       @pointercancel="onViewportPointerUp"
     >
+      <div v-if="loadingLabel" class="plan-dag-viewport-overlay" role="status" aria-live="polite">
+        <span class="plan-dag-spinner" aria-hidden="true" />
+        <span>{{ loadingLabel }}</span>
+      </div>
       <div ref="trackWrapRef" class="plan-dag-canvas" :style="transformStyle">
         <PlanDagGraph
           :nodes="nodes"
@@ -324,6 +329,7 @@ onUnmounted(() => {
 }
 
 .plan-dag-viewport {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -334,6 +340,38 @@ onUnmounted(() => {
     radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--sun-border) 55%, transparent) 1px, transparent 0);
   background-size: 16px 16px;
   contain: paint;
+}
+
+.plan-dag-viewport-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--sun-black);
+  font-size: var(--sun-font-sm, 12px);
+  color: var(--sun-text-muted);
+  pointer-events: auto;
+}
+
+.plan-dag-viewport.is-loading {
+  pointer-events: none;
+}
+
+.plan-dag-viewport-overlay .plan-dag-spinner {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, var(--sun-text-muted) 28%, transparent);
+  border-top-color: var(--sun-text-muted);
+  border-radius: 50%;
+  animation: plan-dag-spin 0.75s linear infinite;
+}
+
+@keyframes plan-dag-spin {
+  to { transform: rotate(360deg); }
 }
 
 .plan-dag-viewport.is-dragging {

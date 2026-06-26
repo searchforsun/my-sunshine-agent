@@ -66,11 +66,12 @@ public class CatalogRemoteAgentTool implements AgentTool {
 
     private ToolResultBlock executeWithHitl(ToolCallParam param, Map<String, String> invokeParams) {
         String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
-        if (hitlConfirmationService != null && hitlConfirmationService.shouldConfirm(entry.id())) {
-            String bridgeId = StepEventBridge.activeBridgeId();
-            if (bridgeId == null) {
-                bridgeId = StepEventBridge.activeMessageId();
-            }
+        String bridgeId = StepEventBridge.bridgeIdForToolUse(toolUseId);
+        if (bridgeId == null) {
+            bridgeId = StepEventBridge.resolveHitlBridgeId();
+        }
+        if (hitlConfirmationService != null
+                && hitlConfirmationService.shouldConfirmForBridge(entry.id(), bridgeId)) {
             String generationMessageId = StepEventBridge.hitlAssistantMessageId(bridgeId);
             boolean approved = generationMessageId != null
                     ? hitlConfirmationService.awaitConfirmation(bridgeId, generationMessageId, entry.id(), invokeParams)

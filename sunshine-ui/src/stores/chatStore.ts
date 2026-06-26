@@ -14,6 +14,7 @@ import {
   deleteConversation,
   isValidConversationId,
 } from '../api/conversations'
+import { isConversationNotFoundError } from '../api/apiError'
 import { hydrateStreamError, isLikelyStreamFailureContent, sanitizeRestoredMessages } from '../api/streamError'
 import {
   cacheMessages,
@@ -34,21 +35,6 @@ export interface Conversation {
 }
 
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
-
-function generateLocalId(): string {
-  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9)
-}
-
-function createLocalConversation(): Conversation {
-  const now = Date.now()
-  return {
-    id: generateLocalId(),
-    title: '新对话',
-    createdAt: now,
-    updatedAt: now,
-    messages: [],
-  }
-}
 
 function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
   return messages.map(m => {
@@ -82,6 +68,16 @@ export const useChatStore = defineStore('chat', () => {
       localStorage.setItem(CURRENT_ID_KEY, currentId.value)
     } else {
       localStorage.removeItem(CURRENT_ID_KEY)
+    }
+  }
+
+  function purgeStaleConversation(id: string): void {
+    removeCachedIndex(id)
+    const idx = conversations.value.findIndex(c => c.id === id)
+    if (idx !== -1) conversations.value.splice(idx, 1)
+    if (currentId.value === id) {
+      currentId.value = conversations.value[0]?.id ?? null
+      persistCurrentId()
     }
   }
 
@@ -119,7 +115,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function restoreCurrentFromSavedOrFirst(): void {
+  async function restoreCurrentFromSavedOrFirst(): Promise<void> {
     const savedId = localStorage.getItem(CURRENT_ID_KEY)
     if (!isValidConversationId(savedId)) {
       localStorage.removeItem(CURRENT_ID_KEY)
@@ -129,18 +125,26 @@ export const useChatStore = defineStore('chat', () => {
       persistCurrentId()
       return
     }
-    if (isValidConversationId(savedId)) {
-      const cachedMeta = loadCachedIndex().find(c => c.id === savedId)
-      if (cachedMeta && !conversations.value.some(c => c.id === savedId)) {
+    // 仅在后端确认会话仍存在时恢复 savedId，避免清库后 localStorage 幽灵会话导致 stream 404
+    if (isValidConversationId(savedId) && !conversations.value.some(c => c.id === savedId)) {
+      try {
+        const detail = await getConversation(savedId)
+        const cached = loadCachedMessages(savedId)
         conversations.value.unshift({
-          ...cachedMeta,
-          messages: sanitizeRestoredMessages(loadCachedMessages(savedId) ?? []),
+          id: detail.id,
+          title: detail.title,
+          createdAt: detail.createdAt,
+          updatedAt: detail.updatedAt,
+          messages: sanitizeRestoredMessages(mergeRestoredMessages(mapApiMessages(detail.messages), cached)),
+          executionPreference: detail.executionPreference,
         })
-      }
-      if (conversations.value.some(c => c.id === savedId)) {
         currentId.value = savedId
         persistCurrentId()
         return
+      } catch (e) {
+        if (isConversationNotFoundError(e)) {
+          purgeStaleConversation(savedId)
+        }
       }
     }
     if (conversations.value.length > 0) {
@@ -166,7 +170,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         const list = await listConversations()
         mergeApiList(list)
-        restoreCurrentFromSavedOrFirst()
+        await restoreCurrentFromSavedOrFirst()
         if (isValidConversationId(currentId.value)) {
           await loadDetail(currentId.value)
         }
@@ -183,7 +187,7 @@ export const useChatStore = defineStore('chat', () => {
             updatedAt: c.updatedAt,
             messages: sanitizeRestoredMessages(loadCachedMessages(c.id) ?? []),
           }))
-          restoreCurrentFromSavedOrFirst()
+          await restoreCurrentFromSavedOrFirst()
         }
         loaded = true
       } finally {
@@ -215,6 +219,10 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
     } catch (e) {
+      if (isConversationNotFoundError(e)) {
+        purgeStaleConversation(id)
+        return
+      }
       console.warn('[chatStore] 加载会话详情失败，尝试本地缓存', id, e)
       const conv = conversations.value.find(c => c.id === id)
       const cached = loadCachedMessages(id)
@@ -254,19 +262,17 @@ export const useChatStore = defineStore('chat', () => {
       })
       return conv.id
     } catch (e) {
-      console.warn('[chatStore] 后端创建失败，使用本地会话', e)
-      const conv = createLocalConversation()
-      conversations.value.unshift(conv)
-      currentId.value = conv.id
-      persistCurrentId()
-      upsertCachedIndex({
-        id: conv.id,
-        title: conv.title,
-        createdAt: conv.createdAt,
-        updatedAt: conv.updatedAt,
-      })
-      return conv.id
+      console.error('[chatStore] 后端创建会话失败', e)
+      throw e
     }
+  }
+
+  /** stream 404 后移除幽灵会话并新建 */
+  async function recoverAfterStaleConversation(): Promise<string> {
+    if (isValidConversationId(currentId.value)) {
+      purgeStaleConversation(currentId.value)
+    }
+    return create()
   }
 
   async function remove(id: string) {
@@ -409,7 +415,8 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     conversations, currentId, current, sortedConversations, initializing,
-    init, create, remove, switchTo, ensureConversation, updateTitle: updateTitleLocal,
+    init, create, remove, switchTo, ensureConversation, recoverAfterStaleConversation,
+    updateTitle: updateTitleLocal,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
     updateExecutionPreferenceLocal,
   }

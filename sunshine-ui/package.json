@@ -12,6 +12,8 @@
     "test:e2e:headed": "npx playwright test --headed"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@mdit/plugin-katex": "^0.25.2",
     "@types/markdown-it": "^14.1.2",
     "@vicons/ionicons5": "^0.12.0",

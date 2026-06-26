@@ -4,6 +4,7 @@ import { parseSseEvent } from './sseParse'
 import { normalizeStreamChunk } from './streamInvisible'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
+import type { HitlConfirmationPayload } from './hitlSteps'
 
 function extractChunkText(data: string): string | null {
   try {
@@ -20,10 +21,8 @@ function extractChunkText(data: string): string | null {
 }
 
 import { apiHeaders } from '../stores/authStore'
-import { ApiError, throwIfHttpError } from './apiError'
-
-// 直连 Gateway SSE（避免 Vite proxy 缓冲）
-const API_BASE = import.meta.env.VITE_BFF_STREAM_BASE ?? 'http://localhost:8000'
+import { ApiError, throwIfNotEventStream } from './apiError'
+import { resolveBffStreamBase } from './config'
 
 export interface ChatMessage {
   id?: string
@@ -35,6 +34,8 @@ export interface ChatMessage {
   reasoning?: string
   /** 后端处理流水线步骤（SSE type:step） */
   steps?: ProcessingStep[]
+  /** SSE confirmation 先于 tool 步骤到达时的暂存（合并成功后清除） */
+  pendingHitlConfirmation?: HitlConfirmationPayload
   status?: 'streaming' | 'interrupted' | 'failed' | 'completed'
   /** 流式失败时的用户可见错误（与正文分离展示） */
   streamError?: string
@@ -61,7 +62,7 @@ export function useChat(onChunk?: (data: string) => void) {
     const thisRequestId = ++requestId
 
     try {
-      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+      const response = await fetch(`${resolveBffStreamBase()}/api/chat/stream`, {
         method: 'POST',
         headers: {
           ...apiHeaders(),
@@ -71,9 +72,7 @@ export function useChat(onChunk?: (data: string) => void) {
         signal: abort.signal,
       })
 
-      if (!response.ok) {
-        await throwIfHttpError(response)
-      }
+      await throwIfNotEventStream(response)
 
       const reader = response.body?.getReader()
       if (!reader) throw new ApiError('服务响应异常，请稍后重试', { kind: 'parse' })

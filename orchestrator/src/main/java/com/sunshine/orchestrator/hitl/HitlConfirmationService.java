@@ -169,7 +169,11 @@ public class HitlConfirmationService {
     }
 
     public boolean shouldConfirm(String toolId) {
-        if (!properties.isEnabled() || !StepEventBridge.hitlEnabled()) {
+        return shouldConfirmForBridge(toolId, StepEventBridge.resolveHitlBridgeId());
+    }
+
+    public boolean shouldConfirmForBridge(String toolId, String bridgeId) {
+        if (!properties.isEnabled() || !StepEventBridge.hitlEnabledForBridge(bridgeId)) {
             return false;
         }
         return toolCatalogService.isWriteTool(toolId);
