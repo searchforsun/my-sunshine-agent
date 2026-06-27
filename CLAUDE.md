@@ -173,7 +173,7 @@ Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876
 
 - 勿升 Spring Boot 3.3+、AgentScope 2.0.0；Sa-Token **1.45.0**（需 `sa-token-jwt`）。
 - UI：**Codex 中性灰**（`#212121` 系）；设计令牌 `src/styles/global.css`；字号阶梯保留（14/15/16）。
-- SSE 基址：`VITE_BFF_STREAM_BASE`（默认 `http://localhost:8000`），见 `sunshine-ui/src/api/config.ts`。
+- SSE 基址：生产构建须设 `VITE_BFF_STREAM_BASE`（见 `sunshine-ui/.env.production.example`）；开发态走 Vite proxy。
 - 思考区字号：`OperationCard` / `ReasoningPanel` 用 `--sun-font-base`（14px）。
 
 ## 其他
@@ -183,5 +183,5 @@ Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876
 - 代码加适量中文注释；**禁止**在业务代码中插入多余空行。
 - 禁止保存临时脚本；运维统一 **Python**（`scripts/*.py`）。
 - `start.py` 可带 SkyWalking agent（需先 `download_skywalking_agent.py`）。
-- 改 orchestrator 时间线 / workflow 后：编译 → 重启 `:8200` → 前端刷新；必要时 `clear_session_cache.py --force` 清 Redis 生成流。
+- 改 orchestrator 时间线 / workflow 后：编译 → 重启 → Agent 跑 live/e2e 留记录（见 `/tech-debt-refactor` §7）；**改前须 §1.3 功能识别并获确认**。
 - 项目中禁止硬编码提示词等，统一在nacos管理

@@ -28,6 +28,7 @@ argument-hint: [模块/路径] [--scope=code|docs|all] [--depth=quick|standard|d
 | P6 | **配置外置** | 易变策略进配置/注册表，不进硬编码；**不绑定**特定配置中心实现 |
 | P7 | **质疑文档** | 文档若导致重复实现、硬编码清单、不可推翻的「锁定决策」→ 视为技术债，可提议简化 |
 | P8 | **小步可验证** | 每步可编译、可测试、可回滚；禁止大规模「顺手重构」 |
+| P9 | **开发阶段无历史包袱** | 对话 MySQL、Redis/STM 生成流、localStorage 缓存均可清空重建（`scripts/clear_session_cache.py`）；**禁止**为旧 wire format / 旧落库 / 旧 UI 形态写兼容、双读、迁移分支；发现即删 |
 
 **文档定位**：项目内现有文档（`CLAUDE.md`、`docs/**`）仅为**候选上下文**，使用前必须经 §0.1 审计。不得因「文档这么写」而保留明显冗余架构。
 
@@ -103,6 +104,36 @@ argument-hint: [模块/路径] [--scope=code|docs|all] [--depth=quick|standard|d
 - **P2**：可读性、注释、文档与代码不符
 - **P3**：命名、格式、非阻塞风格
 
+### 1.3 功能识别门禁（改代码前必须，用户确认前禁止动刀）
+
+涉及**可观测行为**（尤其前端页面、SSE 时间线、交互）时，在 §1.2 清单之后、写任何业务代码之前必须输出 **《功能识别与重构项》**：
+
+```markdown
+## 功能识别 — {日期} — {范围}
+
+### 实际逻辑（现状，附关键文件）
+- 数据流：…（例：SSE step → chatSessions upsert → OperationStack 渲染）
+- 前端页面：…（组件树、props、谁读 label/summary/contentBlocks）
+- 后端：…（谁产 label、wire 字段、落库字段）
+
+### 涉及功能点
+| # | 功能点 | 用户可见表现 | 关键路径 |
+|---|--------|-------------|----------|
+
+### 拟重构项（本轮）
+| # | 项 | 根因假设 | 改动面 | 风险 |
+|---|-----|---------|--------|------|
+
+### 未识别 / 需用户确认
+- （逻辑链断点、无法复现、需产品决策）→ **不得擅自改相关代码**
+```
+
+**纪律**：
+1. **先识别、后改动** — 无《功能识别》或未获用户确认 → 禁止修改该功能域代码（单测/文档/命令文件除外）
+2. **前端优先读渲染链** — `ChatView` → `OperationStack` → `OperationCard` / `contentInterleave` / SSE 解析，勿凭字段名猜测
+3. **区分「删兼容」与「删能力」** — P9 删 V1 字段时，须确认该字段是否为**展示 SSOT**（如后端 `StepLabels.label`），不可与 `status` 一并移除 wire 下发
+4. 用户回复 **「确认重构项 #…」** 或修订意见后，方可进入 §2 动刀
+
 ---
 
 ## 2. 删除冗余（原则 P3、P4）
@@ -113,6 +144,7 @@ argument-hint: [模块/路径] [--scope=code|docs|all] [--depth=quick|standard|d
 疑似冗余
   ├─ 仍有引用？ → 先迁移调用方
   ├─ 仅为 fallback / 「以防万一」？ → 删；用测试或上游修复替代
+  ├─ **开发阶段历史包袱（P9）**？ → 直接删；会话/缓存可 `clear_session_cache.py --force` 重建
   ├─ 文档要求保留但与 P2/P4 冲突？ → 记录为文档债；删代码 + 提议改文档（§5）
   ├─ 真实多版本共存（外部依赖未迁移）？ → 保留最小适配层 + ADR 一行说明 + 截止日期
   └─ else → 删除；同 PR 移除测试/文档引用
@@ -219,6 +251,7 @@ docs/domains/{name}/        ← 域内细节（可选）
 |------|------|
 | Scope 锁 | 单会话 1 模块或 1 垂直链路 |
 | 只增不删告警 | 新增行 > 删除行 ×2 → 先输出 §1.2 |
+| **P9 门禁** | 新增「兼容旧数据 / 旧 wire format」分支 → 须证明不可清库重建；默认禁止 |
 | 扩展点门禁 | 新增常量表/Map → 证明无法走 Registry/Config |
 | 入口门禁 | 禁止平行 `*Service2` / `*Manager2` |
 | 文档门禁 | 不得引用未审计文档作为「不可改」理由 |
@@ -248,14 +281,73 @@ docs/domains/{name}/        ← 域内细节（可选）
 
 ## 7. 验证与交付
 
-### 7.1 验证（从代码库发现，非硬编码）
+### 7.1 验证分层（从代码库发现，非硬编码）
 
+| 层级 | 谁执行 | 内容 |
+|------|--------|------|
+| **A 构建/单测** | Agent | compile / lint / `mvn test` / `vue-tsc` / `npm run build` |
+| **B 自动化业务** | Agent | `scripts/` 下与改动域相关的 live 脚本（如 `phase2_agent_demo.py`、`verify_*_live.py`）；能覆盖的 **Playwright e2e**（`sunshine-ui/e2e/`，mock 或真实链路按场景选） |
+| **C 手动验收** | **用户** | **仅** B 层无法稳定自动化的情况（见 §7.2） |
+
+Agent 必须：
 1. 识别改动模块的构建方式（`pom.xml` / `package.json`）
-2. 运行**相关** compile/lint/test（grep 改动目录的现有测试）
-3. 若有集成脚本目录（如 `scripts/`），选与改动域相关的冒烟脚本
-4. 无测试覆盖的删除 → 先补最小.characterization test 或说明手动验证步骤
+2. grep 改动目录现有测试，跑**相关**子集（勿空跑全仓）
+3. B 层脚本/e2e **能跑则必跑**；无覆盖的删除 → 补最小 characterization test，或说明为何只能进 C 层
+4. **保留测试记录**供用户评审（§7.4），勿只口头报「通过」
 
-### 7.2 报告格式
+### 7.2 验收门控
+
+重构涉及**可运行行为**（非纯文档/类型）时：
+
+**Agent 必做（无需用户动手）：**
+1. **编译并重启**本次改动链路上的服务（下表；Nacos 变更须 `sync_nacos.py` 后再重启）
+2. **清会话**（P9 / 时间线·SSE·对话类改动）：`python3 scripts/clear_session_cache.py --force --restart-orchestrator`；在交付物中附上浏览器 localStorage 清理 JS（用户仅在有旧前端缓存问题时执行）
+3. **前端**：`sunshine-ui` 改动后 `npm run build`；可跑 e2e 则跑，不必要求用户重启 dev
+4. 完成 **A + B** 层验证，输出 **§7.4 报告**（含测试记录摘要）
+
+**仅下列情况列入《手动验收》**（§7.3），交用户执行；**用户对手动项回复验收通过前，禁止下一 scope**：
+- 需**肉眼观察跨服务数据流**（SSE/Network/多服务日志联动），且现有脚本/e2e **无等价断言**
+- 前端交互 **Playwright 无法稳定复现**或 **e2e 未覆盖**该路径
+
+**下列情况不得甩给用户手动测**（Agent 用 B 层解决）：
+- 已有 `verify_*_live.py` / `phase2_agent_demo.py` 等脚本可断言的行为
+- `sunshine-ui/e2e/*.spec.ts` 已覆盖或可临时补最小 spec 的 UI 交互
+- 单测/编译/build 能证明的纯逻辑变更
+
+| 改动模块 | 至少重启 | B 层优先脚本 / e2e |
+|----------|----------|---------------------|
+| orchestrator / 时间线 / SSE | `:8200` orchestrator | `phase2_agent_demo.py --suite react\|workflow`；`e2e/processing-timeline*.spec.ts` |
+| llm-gateway / 模型路由 | `:8300` llm-gateway | `mvn test -pl llm-gateway -Dtest=ModelRouterTest` |
+| tool-manager / skills | `:8210`、`:8225` | `verify_skill_5b_live.py` / `verify_skills_ui_live.py` |
+| gateway / bff / auth | `:8000`、`:8001`、`:8100` | 对应 `verify_*_live.py` |
+| sunshine-ui only | 通常无需用户重启 | `npx vue-tsc -b`；相关 `e2e/*.spec.ts`（真实链路须 `E2E_USERNAME`/`E2E_PASSWORD`，见 `sunshine-ui/.env.e2e.example`） |
+| Nacos 配置 | 消费该配置的服务 | `sync_nacos.py` 后重启 + 上表脚本 |
+
+### 7.3 手动验收模板（**仅 C 层**，无则省略本节）
+
+```markdown
+## 手动验收 — {日期} — {本轮 scope}
+
+> 自动化（A+B）见报告 §测试记录；本节仅为 Agent 无法自动断言的项。
+
+### 为何需手动
+- {例：需 DevTools 对照 SSE step 字段与 Milvus 入库，无 live 脚本}
+
+### 前置（Agent 已完成）
+- 已重启：{端口}
+- （若适用）已清会话 / 附 localStorage JS
+
+### 步骤与复现提示词
+| # | 观察点 | 操作 / 提示词 | 预期 |
+|---|--------|---------------|------|
+| 1 | SSE 字段 | 新会话 + 「…」 | Network 中 step 含 lifecycle/summary，无 status |
+
+### 通过标准
+- 手动项全部符合预期 → 回复「验收通过」
+- 有问题 → 现象 + 截图 / step 事件 JSON
+```
+
+### 7.4 报告格式（含测试记录，供用户评审）
 
 ```markdown
 ## 技术债清理报告 — {日期}
@@ -278,8 +370,20 @@ docs/domains/{name}/        ← 域内细节（可选）
 ### Deferred
 | ID | 原因 |
 
-### 验证
-- [ ] ...
+### 测试记录（A+B 层，供评审）
+| 命令 | 结果 | 摘要 / 日志 |
+|------|------|-------------|
+| `mvn test -pl orchestrator -Dtest=...` | PASS | 44 tests |
+| `python3 scripts/phase2_agent_demo.py --suite react` | PASS/FAIL | 关键断言一行 |
+| `cd sunshine-ui && npx playwright test e2e/...` | PASS/SKIP | 用例数；失败附 `test-results/` |
+
+### 服务与环境（Agent 已执行）
+- 编译：`mvn package -pl ...`
+- 已重启：{端口}
+- 清会话：（是/否）+ localStorage JS（若需要）
+
+### 手动验收（C 层，无则写「无」）
+（粘贴 §7.3；**无手动项时用户仅需评审上表，回复「评审通过」即可继续**）
 
 ### 架构影响（一句话）
 例：「新 XX 能力只需实现 Y 接口，adapter 零改动」
@@ -290,11 +394,12 @@ docs/domains/{name}/        ← 域内细节（可选）
 ## 8. 执行纪律
 
 1. **原则 > 文档 > 习惯**
-2. **先清单后代码**
+2. **先清单后代码** — 含 §1.3 功能识别；**用户确认重构项前禁止改业务代码**
 3. **不扩 scope** — 跨模块债记入 register
 4. **文档与代码同 PR** — 倾向**缩短**文档
 5. **用户未要求不 commit**
-6. **快速模式**（`--depth=quick`）：仅审计 + Top 5 清单 + 最多 2 项 P0/P1 修复
+6. **验收门控**：§7.2 — A+B 自动化 + 测试记录；**仅 C 层手动项**需用户验收通过；无 C 层时用户**评审测试记录**回复「评审通过」即可
+7. **快速模式**（`--depth=quick`）：仅审计 + Top 5 清单 + 最多 2 项 P0/P1 修复；仍须 A 层 + 最小 B 层记录
 
 ---
 
