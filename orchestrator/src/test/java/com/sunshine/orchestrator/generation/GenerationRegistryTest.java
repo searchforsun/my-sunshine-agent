@@ -16,6 +16,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -69,9 +70,11 @@ class GenerationRegistryTest {
 
         registry.cancel("gen-2");
 
-        verify(flushScheduler).commitFinal("msg-2", "", "", MessageStatus.INTERRUPTED, null);
         assertThat(registry.get("gen-2")).isEmpty();
         assertThat(registry.tryLockMessage("msg-2", "gen-3")).isTrue();
+        // persistFinal 在 boundedElastic 异步落库，须等待 commitFinal
+        verify(flushScheduler, timeout(5000))
+                .commitFinal("msg-2", "", "", MessageStatus.INTERRUPTED, null);
     }
 
     @Test
@@ -101,8 +104,10 @@ class GenerationRegistryTest {
 
         assertThat(registry.get("gen-a")).isEmpty();
         assertThat(registry.get("gen-b")).isEmpty();
-        verify(flushScheduler).commitFinal(eq("msg-a"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
-        verify(flushScheduler).commitFinal(eq("msg-b"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
+        verify(flushScheduler, timeout(5000))
+                .commitFinal(eq("msg-a"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
+        verify(flushScheduler, timeout(5000))
+                .commitFinal(eq("msg-b"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
     }
 
     @Test
