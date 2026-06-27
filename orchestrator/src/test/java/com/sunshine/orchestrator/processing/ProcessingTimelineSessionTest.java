@@ -326,6 +326,16 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void beginToolStep_producesDistinctIdsWithinSameMillisecond() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < 20; i++) {
+            ids.add(session.beginToolStep("rag", "rag"));
+        }
+        assertThat(ids).hasSize(20);
+    }
+
+    @Test
     void completeIntent_keepsAfterWithoutExpandableDetail() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("项目能否按时交付");

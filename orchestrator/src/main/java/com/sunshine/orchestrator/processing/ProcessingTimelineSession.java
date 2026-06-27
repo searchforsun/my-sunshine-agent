@@ -61,10 +61,25 @@ public final class ProcessingTimelineSession {
     /** PreActing：每次调用新开工具步骤（id 含 @调用时刻） */
     public String beginToolStep(String baseStepId, String phase) {
         long startedAt = System.currentTimeMillis();
-        currentToolStepId = ToolStepIds.forInvocation(baseStepId, startedAt);
+        String stepId = uniqueToolStepId(baseStepId, startedAt);
+        currentToolStepId = stepId;
+        long invokeAt = ToolStepIds.invokeEpochMs(stepId).orElse(startedAt);
         pending(currentToolStepId, phase);
-        startAt(currentToolStepId, phase, startedAt);
+        startAt(currentToolStepId, phase, invokeAt);
         return currentToolStepId;
+    }
+
+    /** 同毫秒内多次调用须避免 rag@epoch 冲突导致步骤被覆盖 */
+    private String uniqueToolStepId(String baseStepId, long startedAt) {
+        long candidate = startedAt;
+        for (int i = 0; i < 1000; i++) {
+            String stepId = ToolStepIds.forInvocation(baseStepId, candidate);
+            if (!aggregator.get(stepId).isPresent()) {
+                return stepId;
+            }
+            candidate++;
+        }
+        return ToolStepIds.forInvocation(baseStepId, System.nanoTime());
     }
 
     /** PostActing：结束当前工具步骤 */
