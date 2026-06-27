@@ -26,6 +26,7 @@ public class ExecutionPlanStore {
 
     private final ExecutionPlanRepository repository;
     private final PlanJsonCodec codec;
+    private final PlanJsonParser planJsonParser;
     private final AgentPromptProperties agentPromptProperties;
     private final ConversationService conversationService;
 
@@ -243,7 +244,11 @@ public class ExecutionPlanStore {
     public void markPaused(String planId, WorkflowCheckpoint checkpoint) {
         ExecutionPlanEntity entity = requireEntity(planId);
         ExecutionPlanStatus current = ExecutionPlanStatus.fromDb(entity.getStatus());
-        if (current != ExecutionPlanStatus.RUNNING && current != ExecutionPlanStatus.PAUSED) {
+        if (current != ExecutionPlanStatus.RUNNING
+                && current != ExecutionPlanStatus.PAUSED
+                && current != ExecutionPlanStatus.VALIDATED
+                && current != ExecutionPlanStatus.DRAFT
+                && current != ExecutionPlanStatus.AWAITING_APPROVAL) {
             return;
         }
         WorkflowCheckpoint toSave = checkpoint;
@@ -251,14 +256,47 @@ public class ExecutionPlanStore {
                 && StringUtils.hasText(entity.getPauseCheckpoint())) {
             WorkflowCheckpoint prev = codec.checkpointFromJson(entity.getPauseCheckpoint());
             if (WorkflowContextCodec.hasNodes(prev.wfCtxJson())) {
-                toSave = new WorkflowCheckpoint(checkpoint.resumeNodeId(), prev.wfCtxJson());
+                PausePhase phase = checkpoint.pausePhase() != null ? checkpoint.pausePhase() : prev.pausePhase();
+                PendingInteraction pending = checkpoint.pendingInteraction() != null
+                        ? checkpoint.pendingInteraction() : prev.pendingInteraction();
+                toSave = new WorkflowCheckpoint(checkpoint.resumeNodeId(), prev.wfCtxJson(), phase, pending);
                 log.info("[ExecutionPlanStore] paused 使用 DB wfCtx 快照 id={}", planId);
             }
         }
         entity.setStatus(ExecutionPlanStatus.PAUSED.dbValue());
         entity.setPauseCheckpoint(codec.checkpointToJson(toSave));
         repository.save(entity);
-        log.info("[ExecutionPlanStore] paused id={} resumeNode={}", planId, toSave.resumeNodeId());
+        log.info("[ExecutionPlanStore] paused id={} resumeNode={} phase={}",
+                planId, toSave.resumeNodeId(), toSave.pausePhase());
+    }
+
+    /** 工作流停止时是否应落库检查点 */
+    @Transactional(readOnly = true)
+    public boolean isPausableForWorkflowStop(ExecutionPlanEntity entity) {
+        ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(entity.getStatus());
+        return status == ExecutionPlanStatus.RUNNING
+                || status == ExecutionPlanStatus.VALIDATED
+                || status == ExecutionPlanStatus.PAUSED
+                || status == ExecutionPlanStatus.DRAFT
+                || status == ExecutionPlanStatus.AWAITING_APPROVAL;
+    }
+
+    /** PLANNING 阶段续跑起始节点：validated 已有则取 DAG 首业务节点 */
+    @Transactional(readOnly = true)
+    public String inferPlanningResumeNodeId(ExecutionPlanEntity entity) {
+        if (!StringUtils.hasText(entity.getValidatedJson())) {
+            return "";
+        }
+        try {
+            PlanJson plan = PlanNormalizer.normalize(planJsonParser.parse(entity.getValidatedJson()));
+            return PlanLinearizer.linearOrder(plan).stream()
+                    .filter(id -> !"start".equals(id))
+                    .findFirst()
+                    .orElse("");
+        } catch (Exception e) {
+            log.warn("[ExecutionPlanStore] inferPlanningResumeNodeId failed: {}", e.getMessage());
+            return "";
+        }
     }
 
     /** 节点成功后刷新 wfCtx 快照，供暂停续跑（避免 cancel 时内存已清空） */

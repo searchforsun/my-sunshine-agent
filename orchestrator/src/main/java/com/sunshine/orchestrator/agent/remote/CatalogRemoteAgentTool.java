@@ -73,23 +73,29 @@ public class CatalogRemoteAgentTool implements AgentTool {
         if (hitlConfirmationService != null
                 && hitlConfirmationService.shouldConfirmForBridge(entry.id(), bridgeId)) {
             String generationMessageId = StepEventBridge.hitlAssistantMessageId(bridgeId);
-            boolean approved = generationMessageId != null
-                    ? hitlConfirmationService.awaitConfirmation(bridgeId, generationMessageId, entry.id(), invokeParams)
-                    : hitlConfirmationService.awaitConfirmation(bridgeId, entry.id(), invokeParams);
-            if (!approved) {
-                String skipBridgeId = bridgeId;
-                if (skipBridgeId != null) {
-                    StepEventBridge.emit(skipBridgeId, session -> session.skipCurrentToolStep(
-                            hitlConfirmationService.skippedAfterSummary()));
-                    String flushId = generationMessageId != null ? generationMessageId : skipBridgeId;
-                    hitlConfirmationService.flushTimeline(flushId);
+            String preApproveMsgId = generationMessageId != null ? generationMessageId : StepEventBridge.activeMessageId();
+            if (preApproveMsgId != null
+                    && StepEventBridge.consumeHitlPreApproval(preApproveMsgId, entry.id(), invokeParams)) {
+                log.info("[CatalogRemoteAgentTool] {} 续跑 re-await 已确认，跳过二次 HITL", entry.id());
+            } else {
+                boolean approved = generationMessageId != null
+                        ? hitlConfirmationService.awaitConfirmation(bridgeId, generationMessageId, entry.id(), invokeParams)
+                        : hitlConfirmationService.awaitConfirmation(bridgeId, entry.id(), invokeParams);
+                if (!approved) {
+                    String skipBridgeId = bridgeId;
+                    if (skipBridgeId != null) {
+                        StepEventBridge.emit(skipBridgeId, session -> session.skipCurrentToolStep(
+                                hitlConfirmationService.skippedAfterSummary()));
+                        String flushId = generationMessageId != null ? generationMessageId : skipBridgeId;
+                        hitlConfirmationService.flushTimeline(flushId);
+                    }
+                    String rejection = hitlConfirmationService.rejectionMessage();
+                    auditIfBound(entry.id(), invokeParams, rejection, "skipped");
+                    return ToolResultBlock.of(
+                            toolUseId,
+                            entry.id(),
+                            TextBlock.builder().text(rejection).build());
                 }
-                String rejection = hitlConfirmationService.rejectionMessage();
-                auditIfBound(entry.id(), invokeParams, rejection, "skipped");
-                return ToolResultBlock.of(
-                        toolUseId,
-                        entry.id(),
-                        TextBlock.builder().text(rejection).build());
             }
         }
         log.info("[CatalogRemoteAgentTool] {} params={}", entry.id(), invokeParams);

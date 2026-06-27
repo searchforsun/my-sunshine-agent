@@ -69,7 +69,7 @@ public class ReActAgentRuntime implements AgentRuntime {
 
         StreamOptions options = StreamOptions.builder()
                 .incremental(true)
-                .eventTypes(EventType.AGENT_RESULT)
+                .eventTypes(EventType.REASONING, EventType.AGENT_RESULT)
                 .includeReasoningChunk(true)
                 .includeReasoningResult(false)
                 .includeActingChunk(true)

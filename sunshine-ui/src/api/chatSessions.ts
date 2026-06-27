@@ -15,7 +15,7 @@ import { apiHeaders } from '../stores/authStore'
 import {
   saveActiveGeneration,
   loadActiveGeneration,
-  clearActiveGeneration,
+  clearActiveGenerationIfMatch,
   updateLastSeq,
 } from '../composables/useActiveGeneration'
 import { resolveBffStreamBase } from './config'
@@ -29,8 +29,9 @@ import {
   relocateAgentNodeHitl,
   applySyncedPendingHitl,
 } from './hitlSteps'
-import { applyRecoveryDecision as applyRecoveryDecisionToSteps } from './recoverySteps'
+import { applyRecoveryDecision as applyRecoveryDecisionToSteps, stepHasHitlAwaiting } from './recoverySteps'
 import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, pauseRunningWorkflowNodes } from './processingSteps'
+import { appendInterleavedContent } from './contentInterleave'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
 
@@ -49,6 +50,8 @@ export interface SessionState {
   loading: boolean
   abort: AbortController | null
   requestId: number
+  /** 当前会话进行中的 generationId，stop 时优先使用，避免误 cancel 其他会话 */
+  generationId?: string
   /** 每 step/confirmation 递增，驱动 timeline 强制刷新 */
   streamRevision: number
   containerEl: HTMLDivElement
@@ -170,6 +173,7 @@ export function useChatSessions(
       {
         ...last,
         steps: last.steps?.length ? cloneStepsForReactive(last.steps) : last.steps,
+        contentBlocks: last.contentBlocks?.map(b => ({ ...b })),
         pendingHitlConfirmation: last.pendingHitlConfirmation
           ? { ...last.pendingHitlConfirmation }
           : last.pendingHitlConfirmation,
@@ -220,6 +224,8 @@ export function useChatSessions(
           if (parsed.meta.type === 'generation' && parsed.meta.id && parsed.meta.messageId) {
             const convId = streamConversationId ?? s.id
             if (convId) {
+              const sess = getOrCreate(convId)
+              sess.generationId = parsed.meta.id
               saveActiveGeneration({
                 generationId: parsed.meta.id,
                 messageId: parsed.meta.messageId,
@@ -363,16 +369,17 @@ export function useChatSessions(
 
         const lastMsg = s.messages[s.messages.length - 1]
         if (lastMsg?.role === 'assistant') {
-          lastMsg.content = options.resume
-            ? appendChunk(lastMsg.content, parsed.text)
-            : lastMsg.content + parsed.text
+          appendInterleavedContent(lastMsg, parsed.text, !!options.resume)
           if (!lastMsg.status || lastMsg.status === 'interrupted') {
             lastMsg.status = 'streaming'
           }
+          bumpAssistantMessage(s)
         }
 
         onChunk?.(s.id, parsed.text)
         onProgress?.(s.id)
+        // 正文 chunk 单独让出帧，便于 OperationStack 挂载穿插流式锚点后再渲染
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       }
 
       if (events.length > 0) await new Promise(r => setTimeout(r, 0))
@@ -392,6 +399,7 @@ export function useChatSessions(
     const pref = options?.executionPreference ?? 'auto'
     s.messages.push({ role: 'user', content, executionPreference: pref })
     s.loading = true
+    s.generationId = undefined
     s.messages.push({ role: 'assistant', content: '', reasoning: '', steps: [], status: 'streaming' })
 
     s.abort = new AbortController()
@@ -462,7 +470,8 @@ export function useChatSessions(
           last.status = last.streamError ? 'failed' : 'completed'
         }
         if (last?.role === 'assistant' && last.status === 'completed') {
-          clearActiveGeneration()
+          clearActiveGenerationIfMatch(sessionId)
+          s.generationId = undefined
         }
         onSessionEnd?.(sessionId)
       }
@@ -480,9 +489,11 @@ export function useChatSessions(
     const planWorkflowResume = target.steps?.some(
       step => step.id.startsWith('node-') && (step.lifecycle === 'paused' || step.status === 'paused'),
     )
-    if (planWorkflowResume) {
+    const reactHitlResume = target.steps?.some(stepHasHitlAwaiting) ?? false
+    if (planWorkflowResume || reactHitlResume) {
       target.content = ''
       target.reasoning = ''
+      target.contentBlocks = undefined
     }
 
     s.loading = true
@@ -510,11 +521,16 @@ export function useChatSessions(
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
+        // consumeSseStream 可能在 meta 事件中将 target 置为 completed（同对象引用）
+        const streamDone = (target.status as ChatMessage['status']) === 'completed'
         if (target.status === 'streaming') {
           hydrateStreamError(target)
           target.status = target.streamError ? 'failed' : 'interrupted'
         }
-        if (target.status === 'completed') clearActiveGeneration()
+        if (streamDone) {
+          clearActiveGenerationIfMatch(conversationId)
+          s.generationId = undefined
+        }
         onSessionEnd?.(conversationId)
       }
     }
@@ -554,7 +570,8 @@ export function useChatSessions(
       )
 
       if (response.status === 410) {
-        clearActiveGeneration()
+        clearActiveGenerationIfMatch(conversationId)
+        s.generationId = undefined
         target.status = 'interrupted'
         return
       }
@@ -575,7 +592,10 @@ export function useChatSessions(
       if (thisRequestId === s.requestId) {
         s.loading = false
         if (target.status === 'streaming') target.status = 'completed'
-        if (target.status === 'completed') clearActiveGeneration()
+        if (target.status === 'completed') {
+          clearActiveGenerationIfMatch(conversationId)
+          s.generationId = undefined
+        }
         onSessionEnd?.(conversationId)
       }
     }
@@ -585,15 +605,21 @@ export function useChatSessions(
     const s = activeSession.value
     if (!s) return
 
-    const active = loadActiveGeneration()
-    if (active?.generationId) {
+    const stored = loadActiveGeneration()
+    const generationId = s.generationId
+      ?? (stored?.conversationId === s.id ? stored.generationId : undefined)
+    if (generationId) {
       try {
-        await fetch(`${API_BASE()}/api/generations/${active.generationId}/cancel`, {
+        await fetch(`${API_BASE()}/api/generations/${generationId}/cancel`, {
           method: 'POST',
           headers: apiHeaders(),
         })
       } catch { /* fire and forget */ }
     }
+    if (stored?.conversationId === s.id) {
+      clearActiveGenerationIfMatch(s.id)
+    }
+    s.generationId = undefined
 
     s.requestId++
     const last = s.messages[s.messages.length - 1]

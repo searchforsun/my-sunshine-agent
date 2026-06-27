@@ -7,6 +7,16 @@
 server:
   port: 8600
 
+desensitize:
+  regex-enabled: true
+  rules:
+    - id: salary
+      keywords: ["月薪", "年薪", "工资总额"]
+      replacement: "***"
+    - id: bank-account
+      keywords: ["银行卡号", "银行账号"]
+      replacement: "[账号已脱敏]"
+
 logging:
   level:
     com.sunshine: debug

@@ -24,8 +24,8 @@ class WorkflowContextResumeSupportTest {
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c", "m", "查待办", MemoryContext.empty(), "", "", null,
                 "u", "t",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "r"),
-                "plan-1", null);
+                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "r"))
+                .withPersistedPlanId("plan-1");
 
         WorkflowContextResumeSupport.prepare(
                 wfCtx,

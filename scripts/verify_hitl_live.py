@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -16,6 +17,27 @@ import requests
 
 ROOT = Path(__file__).resolve().parent.parent
 TIMEOUT_SEC = int(os.environ.get("PHASE2_AGENT_TIMEOUT_SEC", "120"))
+UNIT_TESTS = ("HitlConfirmationServiceTest", "ToolNodeHandlerTest")
+
+
+def run_unit_tests() -> None:
+    test_arg = ",".join(UNIT_TESTS)
+    cmd = [
+        "mvn", "test", "-pl", "orchestrator", "-am",
+        f"-Dtest={test_arg}",
+        "-Dsurefire.failIfNoSpecifiedTests=false",
+        "-q",
+    ]
+    print(f"[UNIT] {' '.join(cmd)}")
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if proc.stdout:
+        tail = proc.stdout[-1500:] if len(proc.stdout) > 1500 else proc.stdout
+        print(tail, end="")
+    if proc.returncode != 0:
+        if proc.stderr:
+            print(proc.stderr[-1500:], file=sys.stderr)
+        raise RuntimeError(f"单测失败 exit={proc.returncode}")
+    print("[OK] 单测 PASS")
 
 
 def wait_port(port: int, timeout: float = 90.0) -> bool:
@@ -208,11 +230,18 @@ def find_tool_steps(steps: list[dict]) -> list[dict]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="HITL write-tool live verification")
+    parser = argparse.ArgumentParser(description="HITL write-tool verification")
+    parser.add_argument("--live", action="store_true", help="单测通过后跑 Live 全链路")
+    parser.add_argument("--unit-only", action="store_true", help="仅跑单测（默认行为）")
     parser.add_argument("--gateway", default=os.environ.get("GATEWAY_URL", "http://localhost:8000"))
     parser.add_argument("--restart", action="store_true", help="重启 tool-manager/orchestrator/bff")
     parser.add_argument("--start-missing", action="store_true", help="启动缺失的核心服务")
     args = parser.parse_args()
+
+    run_unit_tests()
+    if args.unit_only or not args.live:
+        return 0
+
     gw = args.gateway.rstrip("/")
 
     if args.start_missing:

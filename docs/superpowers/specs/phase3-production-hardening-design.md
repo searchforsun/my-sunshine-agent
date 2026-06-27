@@ -1,7 +1,7 @@
 # 阶段三：生产加固 — 技术设计（SSOT）
 
 > **周期**：8 周（兼职 1–2 天/周；检查门严格全过）  
-> **状态**：🟡 **进行中**（2026-06-27 代码审计：主线 3.4/3.8/3.9/3.10/3.11/3.12/3.6 API ✅；3.2/3.3/3.7 代码 ✅ live ⬜；3.9.5/3.13/3.14 未做或部分）  
+> **状态**：🟡 **进行中**（2026-06-27：主线代码 ✅含 3.9.5/3.13/3.14；live 检查门部分 ⬜）  
 > **前置**：[阶段二](./phase2-benchmark-design.md) 收尾完成；golden-set v5 基线全 PASS  
 > **主轴**：RAG 双轨评测 + **PLAN_WORKFLOW** + 多租户 / HITL / 全链路可观测
 
@@ -14,17 +14,17 @@
 | **3.4** RAG 3.4.1–3.4.8 | 评测 / ES / Hybrid / Rerank / Metrics / CI | **✅** | v5 ✅；v6 提升轨 WARN | [phase3-production-hardening.md](../plans/2026-06-19-phase3-production-hardening.md) Task 3.4 |
 | **3.8** 提示词 3.8.1–3.8.7 | QueryRewrite / PromptComposer / HyDE / Planner 改写 | **✅** | — | 同上 Task 3.8 |
 | **3.9** PLAN_WORKFLOW | Planner + 持久化 + 三 API + 重试/降级/Recovery | **✅** 3.9.1–3.9.4 | 2+ agent live ⬜ | [multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md) §3.9 |
-| **3.9.5** 暂停/续跑一致性 | pausePhase / pendingInteraction / 按钮分态 | **部分** | ⬜ | [pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md) |
+| **3.9.5** 暂停/续跑一致性 | pausePhase / pendingInteraction / 按钮分态 | **✅** | live ✅（A6 + cancel 经 Gateway） | [pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md) |
 | **3.10** AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 | **✅** | — | multi-agent §3.10 |
-| **3.11** skill-manager | :8225 + Catalog + 六种触发 | **✅** | Live ⬜ | multi-agent §3.11 |
+| **3.11** skill-manager | :8225 + Catalog + 六种触发 | **✅** | Live ✅（`verify_skill_5b_live` + Plan 自动确认） | multi-agent §3.11 |
 | **3.12** 前端 | `/skills` + Plan DAG/抽屉 + 执行模式 | **✅** | `/skills` live ⬜ | multi-agent §3.12 |
 | **3.6** 审计扩展 | tool.call / sub_agent_run / plan.* + 查询 API | **✅** | 可查 live ⬜ | Task 3.6 |
-| **3.2** 多租户 | `tenant_id` 字段隔离 + MTM + Sentinel QPS | **部分** | 跨租户集成测 + live ⬜ | Task 3.2 |
+| **3.2** 多租户 | `tenant_id` 字段隔离 + MTM + Sentinel QPS | **✅** | live ✅（2026-06-27 RagClient R 解包 + knowledge-qa） | Task 3.2 |
 | **3.3** HITL | sideEffect + 确认 UI（主/子 Agent） | **✅** | live ⬜ | Task 3.3 |
 | **3.7** Grounding | AnswerGroundingChecker | **✅** | 集成测试 ⬜ | Task 3.7 |
 | **3.5** 可观测 | Micrometer + Grafana/告警 JSON | **部分** | 远程部署/触发 ⬜ | Task 3.5；[grafana/README.md](../../grafana/README.md) |
-| **3.13** 并行 | AhoCorasick；`source_type` 可空 | **部分** | `source_type` ✅；AhoCorasick ⬜ | Task 3.13 |
-| **3.14** 多实例锁 | Redis GenerationJob 分布式锁 | **⬜** | — | Task 3.14 |
+| **3.13** 并行 | AhoCorasick；`source_type` 可空 | **✅** | — | Task 3.13 |
+| **3.14** 多实例锁 | Redis GenerationJob 分布式锁 | **✅** | — | Task 3.14 |
 
 **实现备注（3.2）**：Milvus 采用 `tenant_id` 字段 + expr 过滤，**非** Milvus Partition API；Gateway 未登录注入 `anonymous`（非 `default`）。
 
@@ -99,7 +99,7 @@
 
 **`x-tenant-id` 传播链（已实现）：** Gateway `TenantIdResolver`（登录用户 JWT `tenantId`；未登录 `anonymous`）→ BFF `OrchestratorClient` 透传 → orchestrator 各 Controller → `RagClient` header + body。
 
-**缺口**：跨租户 `@SpringBootTest`（A 入库 B 检索 0 命中）；`scripts/verify_tenant_live.py` live 未关检查门。
+**缺口**：~~跨租户 `@SpringBootTest`~~ ✅；~~`scripts/verify_tenant_live.py` live~~ ✅（`RagClient` 解包 `R.data.results`）。
 
 ### 3.3 Human-in-the-Loop（代码 **✅**，live ⬜）
 
@@ -209,23 +209,19 @@
 - Trace：`plan.planner` / `plan.validate` / `plan.node.*`
 - 演示：制度 + 财务 + 合规，**2+ agent 节点**
 
-### 3.9.5 阶段三收尾：暂停/续跑一致性（**部分**）
+### 3.9.5 阶段三收尾：暂停/续跑一致性（**✅ 代码**）
 
 > SSOT：[2026-06-26-pause-resume-consistency-design.md](./2026-06-26-pause-resume-consistency-design.md) · 实施：[2026-06-26-pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md)
 
 | 子任务 | 内容 | 状态 |
 |--------|------|:----:|
 | **基础续跑** | `WorkflowCheckpoint(resumeNodeId, wfCtxJson)` + `resumePaused`（EXECUTING DAG） | **✅** |
-| **3.9.5.1** | `WorkflowCheckpoint.pausePhase`（PLANNING / EXECUTING）；Planner 阶段 markPaused | ⬜ |
-| **3.9.5.2** | `pendingInteraction`（hitl / recovery）；停止保留 awaiting；续跑 re-await | ⬜ |
-| **3.9.5.3** | 续跑按钮分态（有 checkpoint →「继续执行」；无 →「重新生成」）；awaiting 优先于 paused | ⬜ |
-| **3.9.5.4** | ReAct stop 后 think/tool 步骤终态；wfCtx 空拒绝 Plan 检查点续跑 | ⬜ |
+| **3.9.5.1** | `WorkflowCheckpoint.pausePhase`（PLANNING / EXECUTING）；Planner 阶段 markPaused | **✅** |
+| **3.9.5.2** | `pendingInteraction`（hitl / recovery）；停止保留 awaiting；续跑 re-await | **✅** |
+| **3.9.5.3** | 续跑按钮分态（有 checkpoint →「继续执行」；无 →「重新生成」）；awaiting 优先于 paused | **✅** |
+| **3.9.5.4** | ReAct stop 后 think/tool 步骤终态；wfCtx 空拒绝 Plan 检查点续跑 | **✅** |
 
-**前置（✅）**：节点 Recovery 重试/跳过、基础 pause/resume（仅 running 时落 checkpoint）、HITL/Recovery UI、`nodeAttempts` SSE。
-
-**缺口**：`pausePhase` / `PendingInteraction` / `resolveResumeMode` / `verify_pause_resume_consistency.py` 均未实现；Planner 阶段 stop 不可续跑。
-
-**非本任务**：ReAct 逐步 checkpoint → 阶段四 **4.7.5 TaskBoard**。
+**验收**：`python3 scripts/verify_pause_resume_consistency.py`（单测 ✅）；`--live` HITL/Recovery 场景 ⬜。
 
 ### 3.10 多 Agent 运行时（**✅**）
 
@@ -276,13 +272,13 @@
 | 子项 | 状态 |
 |------|:----:|
 | Milvus `source_type` metadata 可空字段 | ✅（3.4.2 schema） |
-| desensitize AhoCorasick + 可配置规则库 | ⬜ |
+| desensitize AhoCorasick + 可配置规则库 | **✅** |
 
-### 3.14 多实例 Job 锁 ⬜
+### 3.14 多实例 Job 锁 ✅
 
 - Redis 分布式 GenerationJob 锁（生产多实例必做）
-- **锁定：** key `sunshine:generation:lock:{jobId}`；TTL 30s + 续期；仅持锁实例执行 `GenerationFlushScheduler` flush
-- **现状**：`GenerationRegistry` 为进程内 `ConcurrentHashMap` 锁，**非** Redis 分布式锁
+- **锁定：** key `sunshine:generation:lock:{generationId}`；TTL 30s + flush 续期；仅持锁实例执行 MySQL partial/final flush
+- **实现：** `DistributedGenerationLock` + `GenerationJob` guard + `ChatController.tryAcquire`
 
 ---
 
@@ -308,10 +304,10 @@
 - [ ] 3.3 写工具 HITL live（含子 Agent；代码 ✅）
 - [x] 3.9 PLAN_WORKFLOW 三 API + Plan 详情/DAG 抽屉
 - [x] 3.9 IntentRouter plan-workflow + Replan + 节点重试/降级/Recovery（`docs/routing/plan-workflow-retry-degradation.md`）
-- [ ] **3.9.5** 暂停/续跑一致性（Planner stop、HITL/Recovery re-await、按钮分态、wfCtx 空拒绝）
+- [x] **3.9.5** 暂停/续跑一致性（Planner stop、HITL/Recovery re-await、按钮分态、wfCtx 空拒绝；单测 ✅ live ⬜）
 - [ ] 3.10 2+ agent 节点 Plan live 演示（单测 ✅）
 - [ ] 3.11 catalog + 3.12 `/skills` live
-- [ ] 3.6 tool + sub_agent + plan.* 可查（API ✅）
+- [ ] 3.6 tool + sub_agent + plan.* 可查（API ✅；`verify_audit_live.py` ecs4c16g **PASS**）
 - [ ] 3.7 Grounding 集成测试（代码 ✅）
 - [ ] 3.10.7 子 Agent 不污染主 reasoning
 - [ ] `phase2_agent_demo.py --suite all` 仍 PASS

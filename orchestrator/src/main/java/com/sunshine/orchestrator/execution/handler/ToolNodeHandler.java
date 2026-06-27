@@ -74,7 +74,9 @@ public class ToolNodeHandler implements NodeHandler {
             String tool,
             Map<String, String> invokeParams) {
         WorkflowHitlScope.Binding hitl = streamCtx.workflowHitl();
-        if (hitlConfirmationService != null && hitlConfirmationService.shouldConfirmWorkflow(tool, hitl)) {
+        if (hitlConfirmationService != null
+                && hitlConfirmationService.shouldConfirmWorkflow(tool, hitl)
+                && !streamCtx.workflowHitlPreApproved()) {
             boolean approved = hitlConfirmationService.awaitWorkflowConfirmation(
                     hitl, streamCtx.assistantMsgId(), tool, invokeParams);
             if (!approved) {

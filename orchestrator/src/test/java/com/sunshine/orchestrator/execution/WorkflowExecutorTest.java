@@ -87,6 +87,9 @@ class WorkflowExecutorTest {
     private com.sunshine.orchestrator.hitl.WorkflowNodeRecoveryService workflowNodeRecoveryService;
 
     @Mock
+    private com.sunshine.orchestrator.hitl.HitlConfirmationService hitlConfirmationService;
+
+    @Mock
     private WorkflowPauseService workflowPauseService;
 
     @Mock
@@ -148,7 +151,7 @@ class WorkflowExecutorTest {
                 retryPolicyResolver, nodeRetryExecutor, upstreamOutputResolver,
                 planExecutionAuditService, displayNameEnricher, planRunFinalizer,
                 groundingChecker, groundingProperties, workflowNodeRecoveryService,
-                workflowPauseService, generationRegistry);
+                hitlConfirmationService, workflowPauseService, generationRegistry);
     }
 
     @Test

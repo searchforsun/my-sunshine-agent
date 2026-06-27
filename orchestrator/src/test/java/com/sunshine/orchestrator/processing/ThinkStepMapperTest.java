@@ -36,10 +36,18 @@ class ThinkStepMapperTest {
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "hello");
 
         mapper.map(StreamToken.reasoning("思考"));
+        ProcessingStepMerger.applyDelta(steps, "think", "reasoning", "思考过程");
         List<StreamToken> mapped = mapper.map(StreamToken.content("回答"));
 
         assertThat(mapped.stream().anyMatch(t -> t.isStep() && "done".equals(t.step().lifecycle())
                 && "think".equals(t.step().id()))).isTrue();
+        ProcessingStep thinkDone = mapped.stream()
+                .filter(t -> t.isStep() && "think".equals(t.step().id()))
+                .map(StreamToken::step)
+                .findFirst().orElseThrow();
+        assertThat(thinkDone.reasoning()).isNull();
+        assertThat(steps.stream().filter(s -> "think".equals(s.id())).findFirst().orElseThrow().reasoning())
+                .isEqualTo("思考过程");
         assertThat(mapped.stream().anyMatch(t -> t.isStep() && "running".equals(t.step().lifecycle())
                 && "generate".equals(t.step().id()))).isTrue();
         assertThat(mapped.get(mapped.size() - 1).isContent()).isTrue();

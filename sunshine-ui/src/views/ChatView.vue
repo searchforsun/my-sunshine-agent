@@ -40,7 +40,12 @@ import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../composables/usePlanDagExpand'
 import type { ChatMessage } from '../api/chat'
+import { resumeButtonLabel } from '../api/resumeMode'
 import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
+import {
+  isContentFullyInterleaved,
+  resolveStreamingContentText,
+} from '../api/contentInterleave'
 import {
   normalizeTimelineSteps,
   hasActiveStep,
@@ -102,11 +107,25 @@ const { state: planDagExpandState, isAnyExpanded: planDagExpanded, close: closeP
 
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 
+function shouldShowBottomContent(msg: ChatMessage, idx: number): boolean {
+  if (!msg.content?.trim()) return false
+  if (loading.value && idx === messages.value.length - 1 && isContentFullyInterleaved(msg)) {
+    return false
+  }
+  if (!loading.value && isContentFullyInterleaved(msg)) return false
+  return true
+}
+
+function isInterleavedStreaming(msg: ChatMessage, idx: number): boolean {
+  return loading.value
+    && idx === messages.value.length - 1
+    && isContentFullyInterleaved(msg)
+}
 /** 流式回复是否已有正文（用于切换等待动画 → 渲染区） */
 const streamingHasContent = computed(() => {
   if (!loading.value) return false
   const last = messages.value[messages.value.length - 1]
-  return last?.role === 'assistant' && !!last.content?.trim()
+  return last?.role === 'assistant' && !!resolveStreamingContentText(last).trim()
 })
 
 const reasoningExpanded = reactive(new Map<string, boolean>())
@@ -224,7 +243,9 @@ const {
     if (cid !== chatStore.currentId && sid !== chatStore.currentId) return
     const last = messages.value[messages.value.length - 1]
     if (last?.role !== 'assistant') return
-    const apply = () => streamRenderer?.syncFromContent(last.content)
+    // 穿插 timeline 正文由 OperationStack + StaticMarkdown 随 contentBlocks 增量渲染
+    if (isContentFullyInterleaved(last)) return
+    const apply = () => streamRenderer?.syncFromContent(resolveStreamingContentText(last))
     if (!streamRenderer) {
       void ensureStreamRenderer().then(apply)
       return
@@ -422,14 +443,14 @@ async function ensureStreamRenderer(retries = 5): Promise<void> {
 
   streamRenderer?.clear()
   streamRenderer = new StreamMarkdownRenderer(container, {
-    debounceMs: 50,
+    debounceMs: 16,
     renderMarkdown: (text: string) => {
       try { return md.render(normalizeStreamingMarkdown(text)) } catch { return text }
     },
   })
   const last = messages.value[messages.value.length - 1]
-  if (last?.role === 'assistant' && last.content) {
-    streamRenderer.syncFromContent(last.content)
+  if (last?.role === 'assistant' && resolveStreamingContentText(last)) {
+    streamRenderer.syncFromContent(resolveStreamingContentText(last))
   }
 }
 
@@ -531,6 +552,9 @@ async function hydrateSessionFromStore(cid: string) {
       }
       if (localLast.pendingHitlConfirmation) {
         restoredLast.pendingHitlConfirmation = localLast.pendingHitlConfirmation
+      }
+      if (localLast.contentBlocks?.length) {
+        restoredLast.contentBlocks = localLast.contentBlocks
       }
     }
   }
@@ -874,6 +898,8 @@ watch(() => loading.value, async (val) => {
                 v-if="showTimeline(msg, idx)"
                 :key="operationStackKey(msg, idx)"
                 :steps="resolveTimelineContext(msg).steps"
+                :content-blocks="msg.contentBlocks"
+                :stream-live="isInterleavedStreaming(msg, idx)"
                 :timeline-revision="loading && idx === messages.length - 1 ? streamRevision : 0"
                 :live="isTimelineLive(msg, idx)"
                 :execution-plan-id="msg.executionPlanId"
@@ -886,13 +912,13 @@ watch(() => loading.value, async (val) => {
                   <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
                 </div>
                 <div
-                  v-if="streamingHasContent"
+                  v-if="streamingHasContent && !isInterleavedStreaming(msg, idx)"
                   :ref="setStreamingMdRef"
                   class="msg-md streaming"
                 />
               </template>
               <div
-                v-else
+                v-else-if="shouldShowBottomContent(msg, idx)"
                 class="msg-md"
                 v-html="renderAssistantHtml(msg, idx)"
               />
@@ -919,7 +945,7 @@ watch(() => loading.value, async (val) => {
                 发生错误：{{ resolveStreamErrorText(msg) }}
               </p>
               <div v-if="canResume(msg, idx)" class="msg-resume-bar">
-                <button type="button" class="resume-btn" @click="handleResume">继续生成</button>
+                <button type="button" class="resume-btn" @click="handleResume">{{ resumeButtonLabel(msg) }}</button>
               </div>
             </div>
           </div>

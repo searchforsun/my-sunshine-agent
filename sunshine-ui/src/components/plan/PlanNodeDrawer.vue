@@ -57,9 +57,9 @@ const displayStatus = computed((): DagNodeStatus => {
   if (stepLc === 'paused' || nodeStatus === 'paused') return 'paused'
   if (stepLc === 'terminated' || nodeStatus === 'terminated') return 'terminated'
   if (stepLc === 'skipped' || nodeStatus === 'skipped' || (step.value != null && isRecoverySkipped(step.value))) return 'skipped'
-  if (nodeStatus === 'awaiting_confirm') return 'awaiting_confirm'
   if (stepLc === 'error' || nodeStatus === 'error') return 'error'
   if (stepLc === 'done' || nodeStatus === 'done') return 'done'
+  if (nodeStatus === 'awaiting_confirm') return 'awaiting_confirm'
   if (stepLc === 'running' || nodeStatus === 'running') return 'running'
   return nodeStatus ?? 'pending'
 })

@@ -70,25 +70,31 @@ public class RagClient {
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {
                 })
-                .map(response -> {
-                    List<?> rawList = (List<?>) response.get("results");
-                    if (rawList == null || rawList.isEmpty()) {
-                        return List.<RagHit>of();
-                    }
-                    List<RagHit> results = new ArrayList<>();
-                    for (Object item : rawList) {
-                        if (item instanceof Map<?, ?> map) {
-                            results.add(parseHit(map));
-                        } else {
-                            results.add(new RagHit("未知文档", item.toString(), 0f));
-                        }
-                    }
-                    log.info("[RagClient] 检索完成: query='{}', 命中 {} 条",
-                            query.length() > 30 ? query.substring(0, 30) + "..." : query,
-                            results.size());
-                    return results;
-                })
+                .map(response -> parseSearchResults(response, query))
                 .doOnError(e -> log.error("[RagClient] 检索失败: {}", e.getMessage()));
+    }
+
+    @SuppressWarnings("unchecked")
+    static List<RagHit> parseSearchResults(Map<String, Object> response, String query) {
+        Object payload = response.get("data") instanceof Map<?, ?> dataMap
+                ? dataMap
+                : response;
+        List<?> rawList = payload instanceof Map<?, ?> map ? (List<?>) map.get("results") : null;
+        if (rawList == null || rawList.isEmpty()) {
+            return List.of();
+        }
+        List<RagHit> results = new ArrayList<>();
+        for (Object item : rawList) {
+            if (item instanceof Map<?, ?> hitMap) {
+                results.add(parseHit(hitMap));
+            } else {
+                results.add(new RagHit("未知文档", item.toString(), 0f));
+            }
+        }
+        log.info("[RagClient] 检索完成: query='{}', 命中 {} 条",
+                query != null && query.length() > 30 ? query.substring(0, 30) + "..." : query,
+                results.size());
+        return results;
     }
 
     @SuppressWarnings("unchecked")

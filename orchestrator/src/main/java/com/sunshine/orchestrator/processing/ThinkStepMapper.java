@@ -212,10 +212,11 @@ public final class ThinkStepMapper {
                 summarizeBefore(stepId),
                 summarizeActive(stepId),
                 after));
+        // reasoning 已由 step_delta 流式下发，终态 step 勿重复携带全文
         return new ProcessingStep(
                 stepId, "think", "done", summary,
                 startedAt, ts, ts - startedAt, null,
-                prev != null ? prev.reasoning() : null,
+                null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
                 ts, "done", label, null, null);

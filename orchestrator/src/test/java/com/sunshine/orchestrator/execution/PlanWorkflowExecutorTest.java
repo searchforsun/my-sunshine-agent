@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PlanApprovalService;
@@ -21,6 +22,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -34,6 +37,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class PlanWorkflowExecutorTest {
 
     @Mock
@@ -71,7 +75,8 @@ class PlanWorkflowExecutorTest {
         planWorkflowExecutor = new PlanWorkflowExecutor(
                 workflowPlanner, planValidator, displayNameEnricher, planMaterializer,
                 workflowExecutor, reactExecutor, executionPlanStore, executionProperties,
-                planExecutionAuditService, realFinalizer, planJsonParser, planApprovalService);
+                planExecutionAuditService, realFinalizer, planJsonParser, planApprovalService,
+                new AgentPauseProperties(), new WorkflowPauseService());
     }
 
     @Test

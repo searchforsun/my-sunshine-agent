@@ -8,9 +8,15 @@ import {
   type HitlConfirmationPayload,
 } from './hitlSteps'
 
-/** 节点或 subSteps 内是否有待确认写工具 */
+function isTerminalNodeStep(step: ProcessingStep): boolean {
+  const lc = step.lifecycle ?? step.status
+  return lc === 'done' || lc === 'skipped' || lc === 'terminated'
+}
+
+/** 节点或 subSteps 内是否有待确认写工具（终态节点上的 HITL 视为脏数据） */
 export function stepHasHitlAwaiting(step?: ProcessingStep): boolean {
   if (!step) return false
+  if (isTerminalNodeStep(step)) return false
   if (isHitlAwaiting(step)) return true
   return step.subSteps?.some(s => isHitlAwaiting(s)) ?? false
 }

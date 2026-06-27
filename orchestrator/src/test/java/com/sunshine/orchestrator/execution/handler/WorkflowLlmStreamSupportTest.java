@@ -18,8 +18,11 @@ class WorkflowLlmStreamSupportTest {
 
         List<StreamToken> content = WorkflowLlmStreamSupport.mapStreamToken(
                 StreamToken.content("正文"), "node-answer", true).collectList().block();
-        assertThat(content).hasSize(1);
+        assertThat(content).hasSize(2);
         assertThat(content.get(0).isContent()).isTrue();
+        assertThat(content.get(1).isStepDelta()).isTrue();
+        assertThat(content.get(1).channel()).isEqualTo("result");
+        assertThat(content.get(1).stepId()).isEqualTo("node-answer");
     }
 
     @Test

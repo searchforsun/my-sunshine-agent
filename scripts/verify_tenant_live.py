@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""多租户 PR-1 Live 验收：注册 → tenant-a 入库 → RAG 隔离 → knowledge-qa 全链路。"""
+"""多租户 PR-1 验收：单测 + 可选 Live（注册 → tenant-a 入库 → RAG 隔离 → knowledge-qa 全链路）。
+
+用法:
+  python3 scripts/verify_tenant_live.py              # 默认仅跑单测
+  python3 scripts/verify_tenant_live.py --live       # 单测 + Live（需 Gateway/RAG/llm-gateway）
+"""
 from __future__ import annotations
 
 import argparse
@@ -19,6 +24,27 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 TIMEOUT_SEC = int(os.environ.get("PHASE2_AGENT_TIMEOUT_SEC", "120"))
 RAG_STEP_ID = "node-rag"
+UNIT_TESTS = ("TenantIsolationIntegrationTest", "TenantSearchQueryTest")
+
+
+def run_unit_tests() -> None:
+    test_arg = ",".join(UNIT_TESTS)
+    cmd = [
+        "mvn", "test", "-pl", "rag-service", "-am",
+        f"-Dtest={test_arg}",
+        "-Dsurefire.failIfNoSpecifiedTests=false",
+        "-q",
+    ]
+    print(f"[UNIT] {' '.join(cmd)}")
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if proc.stdout:
+        tail = proc.stdout[-1500:] if len(proc.stdout) > 1500 else proc.stdout
+        print(tail, end="")
+    if proc.returncode != 0:
+        if proc.stderr:
+            print(proc.stderr[-1500:], file=sys.stderr)
+        raise RuntimeError(f"单测失败 exit={proc.returncode}")
+    print("[OK] 单测 PASS")
 
 
 def wait_port(port: int, timeout: float = 120.0) -> bool:
@@ -69,11 +95,24 @@ def create_conversation(gw: str, token: str) -> str:
     return conv_id
 
 
-def chat_sse(gw: str, token: str, conv_id: str, query: str) -> str:
+def chat_sse(
+    gw: str,
+    token: str,
+    conv_id: str,
+    query: str,
+    *,
+    execution_preference: str | None = None,
+    workflow_id: str | None = None,
+) -> str:
     curl = shutil.which("curl")
     if not curl:
         raise RuntimeError("curl not found (required for SSE)")
-    payload = json.dumps({"content": query, "conversationId": conv_id}, ensure_ascii=False)
+    body: dict = {"content": query, "conversationId": conv_id}
+    if execution_preference:
+        body["executionPreference"] = execution_preference
+    if workflow_id:
+        body["workflowId"] = workflow_id
+    payload = json.dumps(body, ensure_ascii=False)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as f:
         f.write(payload)
         tmp = f.name
@@ -142,8 +181,11 @@ def rag_hit_count(step: dict | None) -> int | None:
 
 def verify_chat_tenant(gw: str, token: str, tenant: str, query: str, expect_hits: int) -> tuple[bool, str]:
     conv_id = create_conversation(gw, token)
-    chat_query = f"#knowledge-qa {query}"
-    raw = chat_sse(gw, token, conv_id, chat_query)
+    raw = chat_sse(
+        gw, token, conv_id, query,
+        execution_preference="workflow",
+        workflow_id="knowledge-qa",
+    )
     steps = parse_done_steps(raw)
     rag_step = next((s for s in steps if str(s.get("id")) == RAG_STEP_ID), None)
     hits = rag_hit_count(rag_step)
@@ -163,6 +205,8 @@ def verify_chat_tenant(gw: str, token: str, tenant: str, query: str, expect_hits
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--live", action="store_true", help="单测通过后跑 Live 全链路")
+    parser.add_argument("--unit-only", action="store_true", help="仅跑单测（默认行为，显式兼容）")
     parser.add_argument("--gateway-url", default="http://127.0.0.1:8000")
     parser.add_argument("--rag-url", default="http://127.0.0.1:8400")
     parser.add_argument("--start-services", action="store_true", help="启动 auth/rag/orchestrator/bff/gateway")
@@ -170,6 +214,10 @@ def main() -> int:
     parser.add_argument("--skip-chat", action="store_true", help="跳过 knowledge-qa 全链路验收")
     parser.add_argument("--query", default="差旅报销管理办法")
     args = parser.parse_args()
+
+    run_unit_tests()
+    if args.unit_only or not args.live:
+        return 0
 
     if args.start_services:
         start_core_services()
@@ -266,7 +314,7 @@ def main() -> int:
         print("[6/6] skip chat")
         return 0
 
-    print(f"[6/6] knowledge-qa 全链路 (#knowledge-qa {args.query!r})")
+    print(f"[6/6] knowledge-qa 全链路 (workflow knowledge-qa {args.query!r})")
     chat_ok = True
     for tenant, expect in (("tenant-a", 1), ("tenant-b", 0)):
         ok, detail = verify_chat_tenant(gw, tokens[tenant], tenant, args.query, expect)

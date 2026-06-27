@@ -6,10 +6,13 @@ import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.util.StreamErrorMessages;
+import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.plan.PausePhase;
+import com.sunshine.orchestrator.plan.PendingInteraction;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.execution.WorkflowContextCodec;
 import com.sunshine.orchestrator.memory.MemoryLifecycleService;
@@ -43,6 +46,8 @@ public class GenerationJob {
     private final MemoryLifecycleService memoryLifecycleService;
     private final WorkflowPauseService workflowPauseService;
     private final ExecutionPlanStore executionPlanStore;
+    private final AgentPauseProperties pauseProperties;
+    private final DistributedGenerationLock flushLock;
 
     private final AtomicLong seq = new AtomicLong(0);
     private final AtomicBoolean finished = new AtomicBoolean(false);
@@ -61,7 +66,9 @@ public class GenerationJob {
             GenerationFlushScheduler flushScheduler,
             MemoryLifecycleService memoryLifecycleService,
             WorkflowPauseService workflowPauseService,
-            ExecutionPlanStore executionPlanStore) {
+            ExecutionPlanStore executionPlanStore,
+            AgentPauseProperties pauseProperties,
+            DistributedGenerationLock flushLock) {
         this.generationId = generationId;
         this.messageId = messageId;
         this.conversationId = conversationId;
@@ -75,6 +82,8 @@ public class GenerationJob {
         this.memoryLifecycleService = memoryLifecycleService;
         this.workflowPauseService = workflowPauseService;
         this.executionPlanStore = executionPlanStore;
+        this.pauseProperties = pauseProperties != null ? pauseProperties : new AgentPauseProperties();
+        this.flushLock = flushLock;
     }
 
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
@@ -102,13 +111,14 @@ public class GenerationJob {
         }
         this.thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery, executionMode);
         streamService.updateStatus(generationId, GenerationStatus.RUNNING);
+        Consumer<String> guardedFlush = guardFlush(flushPartial);
 
         AtomicLong lastFlush = new AtomicLong(0);
 
         llmSubscription = llmFlux
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
-                        chunk -> onChunk(chunk, mysqlBuffer, flushPartial, lastFlush),
+                        chunk -> onChunk(chunk, mysqlBuffer, guardedFlush, lastFlush),
                         error -> finishOnce(() -> handleError(error, onError)),
                         () -> finishOnce(() -> handleComplete(onComplete))
                 );
@@ -146,42 +156,65 @@ public class GenerationJob {
 
     private void persistWorkflowPauseIfNeeded() {
         executionPlanStore.findByMessageId(messageId)
-                .filter(e -> "running".equalsIgnoreCase(e.getStatus()))
+                .filter(executionPlanStore::isPausableForWorkflowStop)
                 .ifPresent(entity -> {
-                    String nodeId = workflowPauseService.getCurrentNodeId(messageId);
-                    if (!org.springframework.util.StringUtils.hasText(nodeId)) {
-                        nodeId = ProcessingStepMerger.findLastRunningWorkflowNodeId(stepsBuffer);
-                    }
-                    if (!org.springframework.util.StringUtils.hasText(nodeId)) {
-                        return;
-                    }
-                    String ctxJson = workflowPauseService.getCommittedContextJson(messageId);
-                    if (!WorkflowContextCodec.hasNodes(ctxJson)) {
-                        ctxJson = executionPlanStore.findByMessageId(messageId)
-                                .filter(e -> org.springframework.util.StringUtils.hasText(e.getPauseCheckpoint()))
-                                .map(executionPlanStore::loadCheckpoint)
-                                .filter(cp -> WorkflowContextCodec.hasNodes(cp.wfCtxJson()))
-                                .map(WorkflowCheckpoint::wfCtxJson)
-                                .orElse(ctxJson);
-                    }
-                    if (!WorkflowContextCodec.hasNodes(ctxJson)) {
-                        log.warn("[GenerationJob] 暂停检查点 wfCtx 为空 msg={} node={}，续跑可能丢失上游",
-                                messageId, nodeId);
-                    }
-                    executionPlanStore.markPaused(entity.getId(),
-                            new WorkflowCheckpoint(nodeId, ctxJson));
+                    WorkflowCheckpoint checkpoint = buildWorkflowPauseCheckpoint(entity);
+                    executionPlanStore.markPaused(entity.getId(), checkpoint);
                 });
+    }
+
+    private WorkflowCheckpoint buildWorkflowPauseCheckpoint(
+            com.sunshine.orchestrator.plan.ExecutionPlanEntity entity) {
+        PendingInteraction pending = pauseProperties.isResumeInteractionEnabled()
+                ? ProcessingStepMerger.findPendingInteraction(stepsBuffer) : null;
+        if (pending != null) {
+            String ctxJson = resolveWfCtxJson(pending.nodeId());
+            return new WorkflowCheckpoint(pending.nodeId(), ctxJson, PausePhase.EXECUTING, pending);
+        }
+        String nodeId = workflowPauseService.getCurrentNodeId(messageId);
+        if (!org.springframework.util.StringUtils.hasText(nodeId)) {
+            nodeId = ProcessingStepMerger.findLastRunningWorkflowNodeId(stepsBuffer);
+        }
+        if (org.springframework.util.StringUtils.hasText(nodeId)) {
+            return new WorkflowCheckpoint(nodeId, resolveWfCtxJson(nodeId), PausePhase.EXECUTING, null);
+        }
+        PausePhase pausePhase = PausePhase.PLANNING;
+        String resumeNodeId = executionPlanStore.inferPlanningResumeNodeId(entity);
+        return new WorkflowCheckpoint(resumeNodeId, "{}", pausePhase, null);
+    }
+
+    private String resolveWfCtxJson(String nodeId) {
+        String ctxJson = workflowPauseService.getCommittedContextJson(messageId);
+        if (!WorkflowContextCodec.hasNodes(ctxJson)) {
+            ctxJson = executionPlanStore.findByMessageId(messageId)
+                    .filter(e -> org.springframework.util.StringUtils.hasText(e.getPauseCheckpoint()))
+                    .map(executionPlanStore::loadCheckpoint)
+                    .filter(cp -> WorkflowContextCodec.hasNodes(cp.wfCtxJson()))
+                    .map(WorkflowCheckpoint::wfCtxJson)
+                    .orElse(ctxJson);
+        }
+        if (!WorkflowContextCodec.hasNodes(ctxJson)) {
+            log.warn("[GenerationJob] 暂停检查点 wfCtx 为空 msg={} node={}，续跑可能丢失上游",
+                    messageId, nodeId);
+        }
+        return ctxJson;
     }
 
     private void emitPausedWorkflowSteps() {
         String nodeId = workflowPauseService.getCurrentNodeId(messageId);
-        ProcessingStepMerger.pauseRunningWorkflowNodes(stepsBuffer, nodeId);
+        PendingInteraction pending = ProcessingStepMerger.findPendingInteraction(stepsBuffer);
+        String skipNodeId = pending != null ? pending.nodeId() : null;
+        if (ProcessingStepMerger.hasRunningWorkflowNode(stepsBuffer)
+                || org.springframework.util.StringUtils.hasText(nodeId)) {
+            ProcessingStepMerger.pauseRunningWorkflowNodes(stepsBuffer, nodeId, skipNodeId);
+        }
+        ProcessingStepMerger.pauseRunningReactSteps(stepsBuffer);
         StringBuilder mysqlBuffer = mysqlBufferRef;
         AtomicLong lastFlush = new AtomicLong(0);
         for (ProcessingStep step : stepsBuffer) {
             if ("paused".equals(step.lifecycle())) {
                 emitMappedChunk(StreamToken.step(step), mysqlBuffer != null ? mysqlBuffer : new StringBuilder(),
-                        content -> flushScheduler.flushPartial(messageId, content), lastFlush);
+                        directPartialFlush(), lastFlush);
             }
         }
     }
@@ -307,8 +340,16 @@ public class GenerationJob {
         String reasoning = bufferReasoning();
         String steps = stepsJson();
         Mono.fromRunnable(() -> {
-                    flushScheduler.commitFinal(messageId, content, reasoning, status, steps);
-                    afterPersist.run();
+                    try {
+                        if (flushLock == null || flushLock.isHeldByThisInstance(generationId)) {
+                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps);
+                        }
+                        afterPersist.run();
+                    } finally {
+                        if (flushLock != null) {
+                            flushLock.release(generationId);
+                        }
+                    }
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
@@ -364,7 +405,27 @@ public class GenerationJob {
         AtomicLong lastFlush = new AtomicLong(0);
         for (StreamToken token : thinkMapper.finish(streamFailed)) {
             emitMappedChunk(token, mysqlBuffer != null ? mysqlBuffer : new StringBuilder(),
-                    content -> flushScheduler.flushPartial(messageId, content), lastFlush);
+                    directPartialFlush(), lastFlush);
         }
+    }
+
+    private Consumer<String> guardFlush(Consumer<String> flushPartial) {
+        if (flushLock == null) {
+            return flushPartial;
+        }
+        return content -> {
+            if (flushLock.renewIfHeld(generationId)) {
+                flushPartial.accept(content);
+            }
+        };
+    }
+
+    /** pause/finish 路径直接写 MySQL partial，仍须持锁 */
+    private Consumer<String> directPartialFlush() {
+        return content -> {
+            if (flushLock == null || flushLock.renewIfHeld(generationId)) {
+                flushScheduler.flushPartial(messageId, content);
+            }
+        };
     }
 }

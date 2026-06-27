@@ -6,6 +6,9 @@ import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.StepLabels;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.processing.HitlStepMeta;
+import com.sunshine.orchestrator.processing.NodeRecoveryMeta;
+import com.sunshine.orchestrator.plan.PendingInteraction;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -512,16 +515,24 @@ public final class ProcessingStepMerger {
 
     /** 取消生成时：将 running 的 workflow 节点（含子 Agent subSteps）标为 paused */
     public static void pauseRunningWorkflowNodes(List<ProcessingStep> steps) {
-        pauseRunningWorkflowNodes(steps, null);
+        pauseRunningWorkflowNodes(steps, null, null);
     }
 
     public static void pauseRunningWorkflowNodes(List<ProcessingStep> steps, String currentNodeId) {
+        pauseRunningWorkflowNodes(steps, currentNodeId, null);
+    }
+
+    public static void pauseRunningWorkflowNodes(
+            List<ProcessingStep> steps, String currentNodeId, String skipNodeId) {
         if (steps == null || steps.isEmpty()) {
             return;
         }
         for (int i = 0; i < steps.size(); i++) {
             ProcessingStep step = steps.get(i);
             if (step.id() == null || !step.id().startsWith("node-")) {
+                continue;
+            }
+            if (shouldSkipInteractionPause(step, skipNodeId)) {
                 continue;
             }
             List<ProcessingStep> subSteps = step.subSteps();
@@ -537,15 +548,123 @@ public final class ProcessingStepMerger {
             }
             steps.set(i, step);
         }
-        if (org.springframework.util.StringUtils.hasText(currentNodeId)) {
-            pauseWorkflowNodeAt(steps, "node-" + currentNodeId.strip());
+        if (org.springframework.util.StringUtils.hasText(currentNodeId)
+                && !currentNodeId.strip().equals(skipNodeId != null ? skipNodeId.strip() : "")) {
+            pauseWorkflowNodeAt(steps, "node-" + currentNodeId.strip(), skipNodeId);
         }
     }
 
-    private static void pauseWorkflowNodeAt(List<ProcessingStep> steps, String stepId) {
+    /** ReAct 停止：think/tool/generate 等 running 步标 paused */
+    public static void pauseRunningReactSteps(List<ProcessingStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return;
+        }
         for (int i = 0; i < steps.size(); i++) {
             ProcessingStep step = steps.get(i);
-            if (!stepId.equals(step.id()) || !isRunning(step)) {
+            if (step.id() != null && step.id().startsWith("node-")) {
+                continue;
+            }
+            String phase = step.phase();
+            if (phase == null) {
+                continue;
+            }
+            if (!isRunning(step)) {
+                continue;
+            }
+            if (isAwaitingInteractionStep(step)) {
+                continue;
+            }
+            if ("think".equals(phase) || "agent".equals(phase) || "generate".equals(phase)
+                    || phase.startsWith("think") || phase.startsWith("tool")) {
+                steps.set(i, toPaused(step));
+            }
+        }
+    }
+
+    /** ReAct 写工具 HITL 待确认步（暂停续跑须先 re-await，勿走 simple-llm 续写） */
+    public static ProcessingStep findReactAwaitingHitlStep(List<ProcessingStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return null;
+        }
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep step = steps.get(i);
+            if (step.id() == null || step.id().startsWith("node-")) {
+                continue;
+            }
+            if (!com.sunshine.orchestrator.processing.ToolStepIds.isToolStep(step.id())) {
+                continue;
+            }
+            if (isAwaitingInteractionStep(step)) {
+                return step;
+            }
+        }
+        return null;
+    }
+
+    /** 扫描 HITL/Recovery awaiting 步，供暂停落库 pendingInteraction */
+    public static PendingInteraction findPendingInteraction(List<ProcessingStep> steps) {
+        if (steps == null) {
+            return null;
+        }
+        for (ProcessingStep step : steps) {
+            if (step.id() == null || !step.id().startsWith("node-")) {
+                continue;
+            }
+            StepMetadata meta = step.metadata();
+            if (meta == null) {
+                continue;
+            }
+            String nodeId = step.id().substring("node-".length());
+            HitlStepMeta hitl = meta.hitl();
+            if (hitl != null && HitlStepMeta.STATUS_AWAITING.equals(hitl.status())) {
+                return new PendingInteraction(
+                        "hitl", nodeId, null, hitl.toolDisplayName(), hitl.paramsSummary(), null);
+            }
+            NodeRecoveryMeta recovery = meta.recovery();
+            if (recovery != null && NodeRecoveryMeta.STATUS_AWAITING.equals(recovery.status())) {
+                String attemptsJson = null;
+                if (meta.nodeAttempts() != null && !meta.nodeAttempts().isEmpty()) {
+                    try {
+                        attemptsJson = OM.writeValueAsString(meta.nodeAttempts());
+                    } catch (Exception ignored) {
+                        attemptsJson = null;
+                    }
+                }
+                return new PendingInteraction(
+                        "recovery", nodeId, recovery.errorMessage(), null, null, attemptsJson);
+            }
+        }
+        return null;
+    }
+
+    private static boolean shouldSkipInteractionPause(ProcessingStep step, String skipNodeId) {
+        if (isAwaitingInteractionStep(step)) {
+            return true;
+        }
+        if (skipNodeId == null || step.id() == null) {
+            return false;
+        }
+        return step.id().equals("node-" + skipNodeId.strip());
+    }
+
+    public static boolean isAwaitingInteractionStep(ProcessingStep step) {
+        StepMetadata meta = step != null ? step.metadata() : null;
+        if (meta == null) {
+            return false;
+        }
+        if (meta.hitl() != null && HitlStepMeta.STATUS_AWAITING.equals(meta.hitl().status())) {
+            return true;
+        }
+        return meta.recovery() != null && NodeRecoveryMeta.STATUS_AWAITING.equals(meta.recovery().status());
+    }
+
+    private static void pauseWorkflowNodeAt(List<ProcessingStep> steps, String stepId, String skipNodeId) {
+        if (skipNodeId != null && stepId.equals("node-" + skipNodeId.strip())) {
+            return;
+        }
+        for (int i = 0; i < steps.size(); i++) {
+            ProcessingStep step = steps.get(i);
+            if (!stepId.equals(step.id()) || !isRunning(step) || isAwaitingInteractionStep(step)) {
                 continue;
             }
             steps.set(i, toPaused(step));
@@ -593,6 +712,11 @@ public final class ProcessingStepMerger {
             }
         }
         return null;
+    }
+
+    /** 是否存在 running 的 workflow 节点步 */
+    public static boolean hasRunningWorkflowNode(List<ProcessingStep> steps) {
+        return findLastRunningWorkflowNodeId(steps) != null;
     }
 
     private static boolean isRunning(ProcessingStep step) {

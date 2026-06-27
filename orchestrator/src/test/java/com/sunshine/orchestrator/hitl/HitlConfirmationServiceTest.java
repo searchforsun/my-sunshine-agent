@@ -92,6 +92,29 @@ class HitlConfirmationServiceTest {
         verify(generationJob).emitOutbound("{\"type\":\"confirmation\"}");
     }
 
+    @Test
+    void resumeAwaitingFromCheckpoint_reRegistersToken() throws Exception {
+        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
+        when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
+                .thenReturn("{\"type\":\"confirmation\"}");
+        when(redis.opsForValue()).thenReturn(valueOps);
+
+        com.sunshine.orchestrator.processing.ProcessingTimelineSession session =
+                com.sunshine.orchestrator.processing.ProcessingTimelineSupport.newSession();
+        WorkflowHitlScope.Binding hitl = new WorkflowHitlScope.Binding(
+                session, "node-approve", "msg-1");
+        com.sunshine.orchestrator.plan.PendingInteraction pending = new com.sunshine.orchestrator.plan.PendingInteraction(
+                "hitl", "approve", null, "approve_oa_task", "taskId=T1001", null);
+
+        CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
+                () -> service.resumeAwaitingFromCheckpoint(hitl, "msg-1", pending));
+
+        Thread.sleep(200);
+        assertThat(service.confirm(extractToken(), true)).isTrue();
+        assertThat(future.get(2, TimeUnit.SECONDS)).isTrue();
+    }
+
     private String extractToken() {
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).metaConfirmation(

@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
@@ -43,7 +44,8 @@ class GenerationRegistryTest {
         return new GenerationJob(
                 generationId, messageId, "conv-1", "alice", "default", "chat", "hello",
                 streamService, properties, flushScheduler, null,
-                workflowPauseService, mock(com.sunshine.orchestrator.plan.ExecutionPlanStore.class));
+                workflowPauseService, mock(com.sunshine.orchestrator.plan.ExecutionPlanStore.class),
+                new AgentPauseProperties(), null);
     }
 
     @Test

@@ -31,6 +31,14 @@ export function clearActiveGeneration(): void {
   } catch { /* ignore */ }
 }
 
+/** 仅清除与指定会话匹配的 active generation，避免误伤其他会话 */
+export function clearActiveGenerationIfMatch(conversationId: string): void {
+  const g = loadActiveGeneration()
+  if (g?.conversationId === conversationId) {
+    clearActiveGeneration()
+  }
+}
+
 export function updateLastSeq(seq: number): void {
   const g = loadActiveGeneration()
   if (!g || seq <= g.lastSeq) return

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { NCard, NTag, NGrid, NGridItem, NButton } from 'naive-ui'
-import { resolveGatewayProbeBase } from '../api/config'
+import { resolveHealthProbeUrl } from '../api/config'
 
 interface HealthPayload {
   status?: string
@@ -49,7 +49,7 @@ const probeSubtitle = '经 Gateway :8000 /health/* 探测，校验 HTTP 200 且 
 
 function resolveProbeUrl(item: ServiceStatus): string | null {
   if (!item.gatewayPath) return null
-  return `${resolveGatewayProbeBase()}${item.gatewayPath}`
+  return resolveHealthProbeUrl(item.gatewayPath)
 }
 
 function isHealthyPayload(body: HealthPayload, expectedService?: string): boolean {

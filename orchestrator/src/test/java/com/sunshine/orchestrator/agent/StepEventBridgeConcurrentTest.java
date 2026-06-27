@@ -105,6 +105,22 @@ class StepEventBridgeConcurrentTest {
     }
 
     @Test
+    void generationFlush_routesImmediatelyWithoutQueue() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        StepEventBridge.bind("msg-flush", session, new ConcurrentLinkedQueue<>());
+        boundIds.add("msg-flush");
+        List<StreamToken> flushed = new ArrayList<>();
+        StepEventBridge.bindGenerationFlush("msg-flush", flushed::add);
+
+        session.beginReasoningRound();
+        StepEventBridge.emitReasoningChunk("msg-flush", "增量推理");
+
+        assertThat(flushed).hasSize(1);
+        assertThat(flushed.get(0).isStepDelta()).isTrue();
+        assertThat(flushed.get(0).text()).isEqualTo("增量推理");
+    }
+
+    @Test
     void emitSingleton_stillSkippedWhenMultipleActive() {
         bind("singleton-1", new ConcurrentLinkedQueue<>());
         bind("singleton-2", new ConcurrentLinkedQueue<>());

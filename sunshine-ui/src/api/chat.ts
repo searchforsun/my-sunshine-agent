@@ -5,6 +5,7 @@ import { normalizeStreamChunk } from './streamInvisible'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
 import type { HitlConfirmationPayload } from './hitlSteps'
+import type { ContentBlock } from './contentInterleave'
 
 function extractChunkText(data: string): string | null {
   try {
@@ -34,6 +35,8 @@ export interface ChatMessage {
   reasoning?: string
   /** 后端处理流水线步骤（SSE type:step） */
   steps?: ProcessingStep[]
+  /** ReAct：正文按步骤锚点分段，与 OperationStack 穿插展示 */
+  contentBlocks?: ContentBlock[]
   /** SSE confirmation 先于 tool 步骤到达时的暂存（合并成功后清除） */
   pendingHitlConfirmation?: HitlConfirmationPayload
   status?: 'streaming' | 'interrupted' | 'failed' | 'completed'

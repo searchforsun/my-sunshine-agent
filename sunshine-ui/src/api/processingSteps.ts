@@ -952,7 +952,7 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
 
     case 'result':
 
-      base.result = delta.text
+      base.result = concatText(base.result, delta.text)
 
       break
 
@@ -1186,10 +1186,25 @@ export function pauseRunningWorkflowNodes(steps: ProcessingStep[] | undefined): 
       if (subs !== step.subSteps) next = { ...next, subSteps: subs }
     }
     if (next.id.startsWith('node-') && (next.lifecycle === 'running' || next.status === 'running')) {
+      if (isAwaitingInteractionStep(next)) return next
+      next = toPausedStep(next)
+      return next
+    }
+    const phase = next.phase ?? ''
+    if ((next.lifecycle === 'running' || next.status === 'running')
+        && !next.id.startsWith('node-')
+        && (phase === 'think' || phase === 'agent' || phase === 'generate'
+            || phase.startsWith('think') || phase.startsWith('tool'))) {
       next = toPausedStep(next)
     }
     return next
   })
+}
+
+function isAwaitingInteractionStep(step: ProcessingStep): boolean {
+  if (step.metadata?.hitlStatus === 'awaiting') return true
+  if (step.metadata?.recoveryStatus === 'awaiting') return true
+  return false
 }
 
 function toPausedStep(step: ProcessingStep): ProcessingStep {

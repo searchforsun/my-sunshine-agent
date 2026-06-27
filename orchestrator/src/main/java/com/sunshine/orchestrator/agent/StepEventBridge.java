@@ -27,8 +27,12 @@ public final class StepEventBridge {
     private static final Map<String, String> HITL_ASSISTANT_BY_BRIDGE = new ConcurrentHashMap<>();
     /** AgentScope toolUseId → bridgeId（工具在 boundedElastic 线程执行，不能靠 SESSIONS.size==1） */
     private static final Map<String, String> TOOL_USE_BRIDGE = new ConcurrentHashMap<>();
+    /** ReAct 续跑 re-await 已确认：同轮工具调用跳过一次 HITL（messageId → toolId|params） */
+    private static final Map<String, String> HITL_PREAPPROVED = new ConcurrentHashMap<>();
     /** 子 Agent：Hook token 刷 SSE 前经 bridge.wrap 折叠进 node.subSteps */
     private static final Map<String, Function<StreamToken, List<StreamToken>>> TOKEN_WRAPPERS = new ConcurrentHashMap<>();
+    /** Redis GenerationJob 路径：Hook 产出后立即刷 SSE，不等 agent.stream AGENT_RESULT */
+    private static final Map<String, Consumer<StreamToken>> GENERATION_FLUSH = new ConcurrentHashMap<>();
 
     /** ReAct / workflow 工具审计上下文 — 按 assistantMsgId 绑定 */
     public record ToolAuditContext(
@@ -102,12 +106,51 @@ public final class StepEventBridge {
         }
     }
 
+    /** GenerationJob 注册后绑定：Hook step / step_delta 即时写入 Redis 流 */
+    public static void bindGenerationFlush(String messageId, Consumer<StreamToken> consumer) {
+        if (messageId != null && consumer != null) {
+            GENERATION_FLUSH.put(messageId, consumer);
+        }
+    }
+
+    public static void unbindGenerationFlush(String messageId) {
+        if (messageId != null) {
+            GENERATION_FLUSH.remove(messageId);
+        }
+    }
+
     public static boolean hitlEnabled() {
         return hitlEnabledForBridge(resolveHitlBridgeId());
     }
 
     public static boolean hitlEnabledForBridge(String bridgeId) {
         return bridgeId != null && Boolean.TRUE.equals(HITL_ENABLED.get(bridgeId));
+    }
+
+    /** ReAct 续跑 re-await 通过后，同 message 下一次同参写工具免二次确认 */
+    public static void grantHitlPreApproval(String messageId, String toolId, Map<String, String> params) {
+        if (messageId == null || messageId.isBlank() || toolId == null || toolId.isBlank()) {
+            return;
+        }
+        HITL_PREAPPROVED.put(messageId.strip(), hitlPreApprovalKey(toolId.strip(), params));
+    }
+
+    public static boolean consumeHitlPreApproval(String messageId, String toolId, Map<String, String> params) {
+        if (messageId == null || messageId.isBlank() || toolId == null || toolId.isBlank()) {
+            return false;
+        }
+        String expected = hitlPreApprovalKey(toolId.strip(), params);
+        return expected.equals(HITL_PREAPPROVED.remove(messageId.strip()));
+    }
+
+    private static String hitlPreApprovalKey(String toolId, Map<String, String> params) {
+        if (params == null || params.isEmpty()) {
+            return toolId;
+        }
+        String summary = params.entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue())
+                .collect(java.util.stream.Collectors.joining(", "));
+        return toolId + "|" + summary;
     }
 
     /** PreActing 注册；PostActing 须 unbind */
@@ -195,6 +238,7 @@ public final class StepEventBridge {
             HITL_ENABLED.remove(messageId);
             HITL_ASSISTANT_BY_BRIDGE.remove(messageId);
             TOKEN_WRAPPERS.remove(messageId);
+            GENERATION_FLUSH.remove(messageId);
             TOOL_USE_BRIDGE.entrySet().removeIf(e -> messageId.equals(e.getValue()));
         }
     }
@@ -235,7 +279,7 @@ public final class StepEventBridge {
         }
         ConcurrentLinkedQueue<StreamToken> queue = HOOK_TOKEN_QUEUES.get(messageId);
         if (queue != null) {
-            queue.offer(StreamToken.stepDelta(thinkId, "reasoning", incrementalText));
+            routeHookToken(messageId, StreamToken.stepDelta(thinkId, "reasoning", incrementalText), queue);
         }
     }
 
@@ -251,8 +295,28 @@ public final class StepEventBridge {
             Consumer<ProcessingTimelineSession> action) {
         List<StreamToken> hookEmitted = ProcessingTimelineSupport.run(session, () -> action.accept(session));
         ConcurrentLinkedQueue<StreamToken> queue = HOOK_TOKEN_QUEUES.get(messageId);
+        if (queue != null || GENERATION_FLUSH.containsKey(messageId)) {
+            hookEmitted.forEach(token -> routeHookToken(messageId, token, queue));
+        }
+    }
+
+    private static void routeHookToken(String messageId, StreamToken token,
+            ConcurrentLinkedQueue<StreamToken> queue) {
+        Consumer<StreamToken> sink = GENERATION_FLUSH.get(messageId);
+        if (sink != null) {
+            Function<StreamToken, List<StreamToken>> wrapper = TOKEN_WRAPPERS.get(messageId);
+            if (wrapper != null) {
+                List<StreamToken> wrapped = wrapper.apply(token);
+                if (wrapped != null) {
+                    wrapped.forEach(sink);
+                }
+            } else {
+                sink.accept(token);
+            }
+            return;
+        }
         if (queue != null) {
-            hookEmitted.forEach(queue::offer);
+            queue.offer(token);
         }
     }
 

@@ -22,9 +22,8 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
+import threading
 import time
 from datetime import datetime
 
@@ -68,32 +67,77 @@ def setup_auth() -> tuple[str, str]:
     return token, conv_id
 
 
-def chat_sse(token: str, conv_id: str, query: str) -> str:
-    import shutil
-    curl = shutil.which("curl")
-    if not curl:
-        raise RuntimeError("curl not found")
-    payload = json.dumps({"content": query, "conversationId": conv_id}, ensure_ascii=False)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as f:
-        f.write(payload)
-        tmp = f.name
-    try:
-        proc = subprocess.run(
-            [
-                curl, "-N", "-s", "-m", str(TIMEOUT_SEC),
-                "-X", "POST", f"{GATEWAY_URL}/api/chat/stream",
-                "-H", f"Authorization: Bearer {token}",
-                "-H", "Content-Type: application/json",
-                "--data-binary", f"@{tmp}",
-            ],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-        raw = proc.stdout or proc.stderr
-        if proc.returncode != 0 and not raw.strip():
-            raise RuntimeError(f"SSE failed (curl exit {proc.returncode})")
-        return raw
-    finally:
-        os.unlink(tmp)
+def confirm_plan(token: str, approval_token: str) -> bool:
+    body = auth_json(
+        "POST",
+        "/api/chat/confirm-plan",
+        {"token": approval_token, "action": "approve"},
+        token,
+    )
+    data = body.get("data") or body
+    return data.get("accepted") is True
+
+
+def collect_sse_with_plan_approval(token: str, conv_id: str, query: str) -> list[dict]:
+    """消费 SSE；若 plan 步进入用户确认则自动 approve。"""
+    steps: list[dict] = []
+    approved_tokens: set[str] = set()
+    error: Exception | None = None
+    done = threading.Event()
+
+    def run() -> None:
+        nonlocal error
+        try:
+            with requests.post(
+                f"{GATEWAY_URL}/api/chat/stream",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={"content": query, "conversationId": conv_id},
+                stream=True,
+                timeout=TIMEOUT_SEC,
+            ) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if not payload:
+                        continue
+                    try:
+                        obj = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    if obj.get("type") != "step":
+                        continue
+                    steps.append(obj)
+                    if str(obj.get("id")) != "plan":
+                        continue
+                    pa = (obj.get("metadata") or {}).get("planApproval") or {}
+                    approval_token = pa.get("token")
+                    status = pa.get("status")
+                    if approval_token and status == "awaiting" and approval_token not in approved_tokens:
+                        approved_tokens.add(approval_token)
+                        ok = confirm_plan(token, approval_token)
+                        print(f"[skill-5b] auto approve plan token={approval_token[:8]}... accepted={ok}")
+        except Exception as e:
+            error = e
+        finally:
+            done.set()
+
+    threading.Thread(target=run, daemon=True).start()
+    deadline = time.time() + TIMEOUT_SEC
+    while time.time() < deadline:
+        plan = latest_step(steps, "plan")
+        if plan and plan.get("lifecycle") == "done" and extract_plan_id(plan.get("detail")):
+            break
+        if done.is_set():
+            break
+        time.sleep(0.3)
+    if error and not steps:
+        raise error
+    return steps
 
 
 def parse_sse_steps(raw: str) -> list[dict]:
@@ -131,7 +175,13 @@ def preflight_skill(skill_id: str) -> None:
         resp = requests.get(f"{SKILL_MANAGER_URL}/api/skills/catalog/index", timeout=10)
         resp.raise_for_status()
         body = resp.json()
-        entries = body.get("data") or body if isinstance(body, list) else []
+        data = body.get("data")
+        if isinstance(data, list):
+            entries = data
+        elif isinstance(body, list):
+            entries = body
+        else:
+            entries = []
         ids = {e.get("id") for e in entries if isinstance(e, dict)}
         if skill_id not in ids:
             raise RuntimeError(f"skill-manager catalog 无 {skill_id!r}，ids={sorted(ids)}")
@@ -175,8 +225,8 @@ def main() -> int:
     token, conv_id = setup_auth()
     print(f"[skill-5b] conversationId={conv_id}")
 
-    raw = chat_sse(token, conv_id, args.query)
-    steps = parse_sse_steps(raw)
+    raw = collect_sse_with_plan_approval(token, conv_id, args.query)
+    steps = raw
     step_ids = [str(s.get("id")) for s in steps]
     print(f"[skill-5b] SSE steps ({len(steps)}): {step_ids}")
 

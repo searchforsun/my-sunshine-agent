@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import SkillMentionChip from './SkillMentionChip.vue'
-import type { SkillCatalogIndexEntry } from '../api/skills'
-import type { ExecutionPreference } from '../api/executionModes'
+import type { SkillCatalogIndexEntry } from '../../api/skills'
+import type { ExecutionPreference } from '../../api/executionModes'
 import { segmentSkillMentionsForMessage } from '../../utils/skillMention'
 
 const props = defineProps<{

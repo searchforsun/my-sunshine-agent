@@ -271,7 +271,7 @@ export function mergeHitlIntoRunningToolStep(
   payload: HitlConfirmationPayload,
 ): ProcessingStep[] {
   const hitlPatch = buildHitlPatch(payload)
-  const topIdx = findHitlTargetToolStepIndex(steps, payload.toolId)
+  const topIdx = findHitlTargetToolStepIndex(steps, payload.toolId, true)
   if (topIdx >= 0 && isToolStepId(steps[topIdx].id)) {
     const prev = steps[topIdx]
     const next = [...steps]
@@ -281,7 +281,9 @@ export function mergeHitlIntoRunningToolStep(
   for (let i = steps.length - 1; i >= 0; i--) {
     const node = steps[i]
     if (!node.id.startsWith('node-') || !node.subSteps?.length) continue
-    const subIdx = findHitlTargetToolStepIndex(node.subSteps, payload.toolId)
+    // 仅挂到当前 running 的 workflow 节点，避免 HITL 落到已完成的前序子 Agent
+    if (!isRunningStep(node)) continue
+    const subIdx = findHitlTargetToolStepIndex(node.subSteps, payload.toolId, true)
     if (subIdx < 0) continue
     const subPrev = node.subSteps[subIdx]
     const subSteps = [...node.subSteps]
@@ -312,7 +314,12 @@ function stripHitlMetadata(meta?: ProcessingStep['metadata']): ProcessingStep['m
   return Object.keys(rest).length > 0 ? rest : undefined
 }
 
-function findHitlTargetToolStepIndex(steps: ProcessingStep[], toolId?: string): number {
+/** attachMode：仅匹配 running 工具步，避免 confirmation 早到误挂前序节点 */
+function findHitlTargetToolStepIndex(
+  steps: ProcessingStep[],
+  toolId?: string,
+  attachMode = false,
+): number {
   const prefix = toolId?.trim() ? toolStepIdPrefix(toolId.trim()) : null
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
@@ -320,6 +327,7 @@ function findHitlTargetToolStepIndex(steps: ProcessingStep[], toolId?: string): 
     if (prefix && !s.id.startsWith(prefix)) continue
     if (isRunningStep(s)) return i
   }
+  if (attachMode) return -1
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
     if (!isToolStepId(s.id)) continue

@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.execution.retry.WorkflowRunSession;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
@@ -17,6 +18,8 @@ import com.sunshine.orchestrator.plan.ExecutionPlanEntity;
 import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
 import com.sunshine.orchestrator.plan.PlanRunFinalizer;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
+import com.sunshine.orchestrator.plan.ResumeInteractionHint;
+import com.sunshine.orchestrator.plan.PausePhase;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
 import com.sunshine.orchestrator.plan.PlanApprovalRejectedException;
 import com.sunshine.orchestrator.plan.PlanApprovalRound;
@@ -57,40 +60,110 @@ public class PlanWorkflowExecutor {
     private final PlanRunFinalizer planRunFinalizer;
     private final PlanJsonParser planJsonParser;
     private final PlanApprovalService planApprovalService;
+    private final AgentPauseProperties pauseProperties;
+    private final WorkflowPauseService workflowPauseService;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
+        ProcessingTimelineSession session = newBoundSession(ctx);
         return Mono.fromCallable(() -> executionPlanStore.createDraft(ctx, emptyPlan()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnSuccess(planId -> planExecutionAuditService.created(
                         ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), planId))
-                .flatMapMany(planId -> planAndExecute(ctx, planId, 1, null))
+                .flatMapMany(planId -> {
+                    workflowPauseService.bindRun(ctx.assistantMsgId(), planId);
+                    return planAndExecute(ctx, planId, 1, null, session);
+                })
                 .onErrorResume(e -> {
                     log.warn("[PlanWorkflowExecutor] Planner 失败，降级 react: {}", e.getMessage());
                     return reactWithPlanFallback(ctx, "Planner 未产出有效 DAG：" + e.getMessage());
                 });
     }
 
+    private static ProcessingTimelineSession newBoundSession(ExecutionStreamContext ctx) {
+        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
+        session.bindUserQuery(ctx.userContent());
+        session.bindTraceMessageId(ctx.assistantMsgId());
+        return session;
+    }
+
     /** 用户「继续生成」— 从 PAUSED 检查点续跑 DAG */
     public Flux<StreamToken> resumePaused(ExecutionStreamContext ctx, ExecutionPlanEntity entity) {
         WorkflowCheckpoint checkpoint = executionPlanStore.loadCheckpoint(entity);
-        PlanJson enriched = PlanNormalizer.normalize(planJsonParser.parse(entity.getValidatedJson()));
-        WorkflowDefinition def = planMaterializer.materialize(enriched);
         String planId = entity.getId();
         ExecutionStreamContext execCtx = ctx.withPersistedPlanId(planId);
+        if (checkpoint.pausePhase() == PausePhase.PLANNING) {
+            log.info("[PlanWorkflowExecutor] 续跑 Plan id={} phase=PLANNING validated={}",
+                    planId, StringUtils.hasText(entity.getValidatedJson()));
+            return Mono.fromRunnable(() -> executionPlanStore.markResumed(planId))
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .thenMany(Flux.defer(() -> {
+                        if (StringUtils.hasText(entity.getValidatedJson())) {
+                            PlanJson enriched = displayNameEnricher.enrich(
+                                    PlanNormalizer.normalize(planJsonParser.parse(entity.getValidatedJson())));
+                            return resumeValidatedPlanExecution(ctx, planId, enriched);
+                        }
+                        return planAndExecute(ctx, planId, 1, null, newBoundSession(ctx));
+                    }));
+        }
+        PlanJson enriched = PlanNormalizer.normalize(planJsonParser.parse(entity.getValidatedJson()));
+        WorkflowDefinition def = planMaterializer.materialize(enriched);
         WorkflowRunSession runSession = new WorkflowRunSession();
-        log.info("[PlanWorkflowExecutor] 续跑 Plan id={} fromNode={}", planId, checkpoint.resumeNodeId());
+        WorkflowCheckpoint effectiveCheckpoint = checkpoint;
+        if (checkpoint.pausePhase() == PausePhase.EXECUTING
+                && !WorkflowContextCodec.hasNodes(checkpoint.wfCtxJson())) {
+            WorkflowContext wfCtx = WorkflowContextCodec.fromJson(checkpoint.wfCtxJson());
+            WorkflowContextResumeSupport.prepare(
+                    wfCtx, execCtx, executionPlanStore.listNodeTraces(planId), def);
+            String backfilled = WorkflowContextCodec.toJson(wfCtx);
+            if (!WorkflowContextCodec.hasNodes(backfilled)) {
+                return Flux.just(StreamToken.content("无法从检查点恢复执行上下文，请重新发送问题。"));
+            }
+            effectiveCheckpoint = new WorkflowCheckpoint(
+                    checkpoint.resumeNodeId(), backfilled, checkpoint.pausePhase(), checkpoint.pendingInteraction());
+        }
+        log.info("[PlanWorkflowExecutor] 续跑 Plan id={} fromNode={}", planId, effectiveCheckpoint.resumeNodeId());
+        WorkflowCheckpoint resumeCheckpoint = effectiveCheckpoint;
+        ExecutionStreamContext resumeCtx = execCtx;
+        if (resumeCheckpoint.pendingInteraction() != null && pauseProperties.isResumeInteractionEnabled()) {
+            resumeCtx = execCtx.withResumeInteraction(new ResumeInteractionHint(resumeCheckpoint.pendingInteraction()));
+        }
         return Mono.fromRunnable(() -> executionPlanStore.markResumed(planId))
                 .subscribeOn(Schedulers.boundedElastic())
                 .thenMany(Flux.concat(
-                        workflowExecutor.resumeDynamicDefinition(def, execCtx, runSession, checkpoint)
+                        workflowExecutor.resumeDynamicDefinition(def, resumeCtx, runSession, resumeCheckpoint)
                                 .concatWith(Flux.defer(() -> planRunFinalizer.postWorkflow(ctx, planId, runSession)))
                                 .doOnError(err -> {
-                                    executionPlanStore.markPaused(planId, checkpoint);
+                                    executionPlanStore.markPaused(planId, resumeCheckpoint);
                                     planExecutionAuditService.failed(
                                             ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(),
                                             ctx.tenantId(), planId, err.getMessage());
                                 })
                 ));
+    }
+
+    /** PLANNING 续跑且 validated 已存在 — 跳过 Planner/markValidated，直接执行 DAG */
+    private Flux<StreamToken> resumeValidatedPlanExecution(
+            ExecutionStreamContext ctx, String planId, PlanJson enriched) {
+        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
+        session.bindUserQuery(ctx.userContent());
+        session.bindTraceMessageId(ctx.assistantMsgId());
+        List<StreamToken> planTokens = PlanTimeline.planStep(session, enriched, planId, 0);
+        WorkflowDefinition def = planMaterializer.materialize(enriched);
+        ExecutionStreamContext execCtx = ctx.withPersistedPlanId(planId);
+        WorkflowRunSession runSession = new WorkflowRunSession();
+        log.info("[PlanWorkflowExecutor] 续跑已校验 Plan: {} 节点链={}",
+                def.id(), PlanTimeline.planChainSummary(enriched));
+        return Flux.concat(
+                Flux.fromIterable(planTokens),
+                workflowExecutor.executeDynamicDefinition(def, execCtx, runSession)
+                        .concatWith(Flux.defer(() -> planRunFinalizer.postWorkflow(ctx, planId, runSession)))
+                        .doOnError(err -> {
+                            executionPlanStore.markFailed(planId, err.getMessage());
+                            planExecutionAuditService.failed(
+                                    ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(),
+                                    ctx.tenantId(), planId, err.getMessage());
+                        })
+        );
     }
 
     private static PlanJson emptyPlan() {
@@ -101,44 +174,59 @@ public class PlanWorkflowExecutor {
             ExecutionStreamContext ctx,
             String persistedPlanId,
             int planAttempt,
-            String lastValidationError) {
+            String lastValidationError,
+            ProcessingTimelineSession session) {
         long startedAt = System.currentTimeMillis();
+        List<StreamToken> prelude;
+        if (planAttempt == 1 && !session.hasStep("plan")) {
+            prelude = PlanTimeline.beginPlanning(session, startedAt);
+        } else if (planAttempt > 1) {
+            prelude = ProcessingTimelineSupport.run(session, () -> session.progress("plan",
+                    StringUtils.hasText(lastValidationError)
+                            ? "校验未通过，正在重新规划"
+                            : "正在重新规划"));
+        } else {
+            prelude = List.of();
+        }
         Mono<PlanJson> plannerMono = planAttempt == 1
                 ? workflowPlanner.plan(ctx)
                 : workflowPlanner.replan(ctx, lastValidationError, planAttempt);
-        return plannerMono
-                .flatMapMany(plannerJson -> {
-                    recordPlannerAttempt(ctx, persistedPlanId, planAttempt, "plan", "completed", null, startedAt);
-                    return Mono.fromRunnable(() -> executionPlanStore.updatePlannerOutput(persistedPlanId, plannerJson))
-                            .subscribeOn(Schedulers.boundedElastic())
-                            .thenMany(executePlanned(ctx, persistedPlanId, plannerJson, planAttempt));
-                })
-                .onErrorResume(e -> {
-                    recordPlannerAttempt(ctx, persistedPlanId, planAttempt, "plan", "failed",
-                            e.getMessage(), startedAt);
-                    int maxReplan = Math.max(1, executionProperties.getPlanWorkflow().getReplan().getMaxAttempts());
-                    if (planAttempt < maxReplan) {
-                        log.warn("[PlanWorkflowExecutor] Planner 第 {} 次失败，将 Replan: {}", planAttempt, e.getMessage());
-                        return planAndExecute(ctx, persistedPlanId, planAttempt + 1, e.getMessage());
-                    }
-                    return Mono.fromRunnable(() -> executionPlanStore.markRejected(persistedPlanId, e.getMessage()))
-                            .subscribeOn(Schedulers.boundedElastic())
-                            .doOnSuccess(v -> planExecutionAuditService.failed(
-                                    ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
-                                    persistedPlanId, e.getMessage()))
-                            .thenMany(reactWithPlanFallback(ctx, "Planner 失败：" + e.getMessage()));
-                });
+        return Flux.concat(
+                Flux.fromIterable(prelude),
+                plannerMono
+                        .flatMapMany(plannerJson -> {
+                            recordPlannerAttempt(ctx, persistedPlanId, planAttempt, "plan", "completed", null, startedAt);
+                            return Mono.fromRunnable(() -> executionPlanStore.updatePlannerOutput(persistedPlanId, plannerJson))
+                                    .subscribeOn(Schedulers.boundedElastic())
+                                    .thenMany(executePlanned(ctx, persistedPlanId, plannerJson, planAttempt, session));
+                        })
+                        .onErrorResume(e -> {
+                            recordPlannerAttempt(ctx, persistedPlanId, planAttempt, "plan", "failed",
+                                    e.getMessage(), startedAt);
+                            int maxReplan = Math.max(1, executionProperties.getPlanWorkflow().getReplan().getMaxAttempts());
+                            if (planAttempt < maxReplan) {
+                                log.warn("[PlanWorkflowExecutor] Planner 第 {} 次失败，将 Replan: {}", planAttempt, e.getMessage());
+                                return planAndExecute(ctx, persistedPlanId, planAttempt + 1, e.getMessage(), session);
+                            }
+                            return Mono.fromRunnable(() -> executionPlanStore.markRejected(persistedPlanId, e.getMessage()))
+                                    .subscribeOn(Schedulers.boundedElastic())
+                                    .doOnSuccess(v -> planExecutionAuditService.failed(
+                                            ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
+                                            persistedPlanId, e.getMessage()))
+                                    .thenMany(reactWithPlanFallback(ctx, "Planner 失败：" + e.getMessage()));
+                        })
+        );
     }
 
     private Flux<StreamToken> executePlanned(
             ExecutionStreamContext ctx,
             String persistedPlanId,
             PlanJson plannerJson,
-            int planAttempt) {
+            int planAttempt,
+            ProcessingTimelineSession session) {
         return Mono.fromCallable(() -> persistedPlanId)
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(planId -> {
-                    ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
                     session.bindUserQuery(ctx.userContent());
                     session.bindTraceMessageId(ctx.assistantMsgId());
                     String plannerError = planValidator.validatePlannerOutput(plannerJson);
@@ -235,7 +323,7 @@ public class PlanWorkflowExecutor {
         recordPlannerAttempt(ctx, planId, planAttempt, "validate", "failed", validationError, System.currentTimeMillis());
         int maxReplan = Math.max(1, executionProperties.getPlanWorkflow().getReplan().getMaxAttempts());
         if (planAttempt < maxReplan) {
-            return planAndExecute(ctx, planId, planAttempt + 1, validationError);
+            return planAndExecute(ctx, planId, planAttempt + 1, validationError, session);
         }
         List<StreamToken> planTokens = PlanTimeline.planRejectedStep(session, validationError);
         return Mono.fromRunnable(() -> executionPlanStore.markRejected(planId, validationError))
@@ -262,7 +350,7 @@ public class PlanWorkflowExecutor {
             planTokens = ProcessingTimelineSupport.run(session, () ->
                     session.completePlanAt(chain, detail, System.currentTimeMillis()));
         } else {
-            planTokens = PlanTimeline.planStep(session, enriched, planId, planAttempt - 1);
+            planTokens = PlanTimeline.finishPlanStep(session, enriched, planId, planAttempt - 1);
         }
         WorkflowDefinition def = planMaterializer.materialize(enriched);
         log.info("[PlanWorkflowExecutor] 执行动态 Plan: {} 节点链={}",

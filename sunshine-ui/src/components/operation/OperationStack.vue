@@ -4,9 +4,18 @@ import type { ProcessingStep } from '../../api/processingSteps'
 import { resolvePlanIdFromStep } from '../../api/processingSteps'
 import { findHitlStep } from '../../api/recoverySteps'
 import { isToolStepId, resolveHitlUiKey, type HitlConfirmationPayload } from '../../api/hitlSteps'
+import type { ContentBlock } from '../../api/contentInterleave'
+import {
+  contentRowsAfterStep,
+  isHiddenReactTimelineStep,
+  leadingContentRows,
+  orphanContentRows,
+  resolveLastContentBlockIndex,
+} from '../../api/contentInterleave'
 import OperationCard from './OperationCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
+import StaticMarkdown from '../StaticMarkdown.vue'
 
 const props = withDefaults(defineProps<{
   steps: ProcessingStep[]
@@ -14,6 +23,10 @@ const props = withDefaults(defineProps<{
   executionPlanId?: string
   userQuery?: string
   timelineRevision?: number
+  /** ReAct 正文分段，穿插在步骤之间 */
+  contentBlocks?: ContentBlock[]
+  /** ReAct 穿插正文是否仍在输出（保留 prop 供 timeline 刷新） */
+  streamLive?: boolean
   /** 仅控制 OperationCard 内嵌 HITL；主 timeline 行下确认框见 inlineHitl */
   embedHitl?: boolean
   /** 步骤行下方 HitlStepActions（ReAct 主 timeline / 抽屉 subSteps）；仅 Plan 抽屉纯 tool 单行等特殊场景传 false */
@@ -22,6 +35,8 @@ const props = withDefaults(defineProps<{
 }>(), {
   embedHitl: true,
   inlineHitl: true,
+  contentBlocks: undefined,
+  streamLive: false,
 })
 
 const emit = defineEmits<{
@@ -59,13 +74,16 @@ const showPlanDag = computed(() => {
 
 const displaySteps = computed(() => {
   void props.timelineRevision
-  if (!showPlanDag.value) return props.steps
-  return props.steps.filter(s => {
-    if (s.phase === 'node') return false
-    if (isToolStepId(s.id)) return false
-    if (s.id === 'think' || s.id.startsWith('think-')) return false
-    return true
-  })
+  if (showPlanDag.value) {
+    return props.steps.filter(s => {
+      if (s.phase === 'node') return false
+      if (isToolStepId(s.id)) return false
+      if (s.id === 'think' || s.id.startsWith('think-')) return false
+      return true
+    })
+  }
+  // ReAct：正文已 inline 穿插，不再展示「生成回答」步骤行
+  return props.steps.filter(s => !isHiddenReactTimelineStep(s))
 })
 
 const hitlRevision = computed(() =>
@@ -105,10 +123,56 @@ const inlineHitlByStepId = computed(() => {
   }
   return map
 })
+
+const contentRowOpts = computed(() => ({
+  live: props.streamLive,
+  lastBlockIndex: resolveLastContentBlockIndex(props.contentBlocks),
+}))
+
+const leadingContent = computed(() => {
+  void props.timelineRevision
+  return leadingContentRows(
+    props.steps,
+    visibleStepIds.value,
+    props.contentBlocks,
+    contentRowOpts.value,
+  )
+})
+
+const visibleStepIds = computed(() => new Set(displaySteps.value.map(s => s.id)))
+
+function rowsAfterStep(stepId: string) {
+  void props.timelineRevision
+  return contentRowsAfterStep(
+    stepId,
+    props.steps,
+    visibleStepIds.value,
+    props.contentBlocks,
+    contentRowOpts.value,
+  )
+}
+
+const orphanContent = computed(() => {
+  void props.timelineRevision
+  return orphanContentRows(
+    props.steps,
+    visibleStepIds.value,
+    props.contentBlocks,
+    contentRowOpts.value,
+  )
+})
 </script>
 
 <template>
   <div class="operation-lines">
+    <template v-for="row in leadingContent" :key="row.key">
+      <div class="op-inline-content">
+        <span class="op-gutter" aria-hidden="true" />
+        <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
+          <StaticMarkdown :source="row.text" />
+        </div>
+      </div>
+    </template>
     <template v-for="step in displaySteps" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
       <PlanWorkflowPanel
         v-if="step.phase === 'plan' && showPlanDag"
@@ -137,6 +201,23 @@ const inlineHitlByStepId = computed(() => {
           />
         </div>
       </template>
+      <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanWorkflowPanel 之后渲染 -->
+      <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
+        <div class="op-inline-content">
+          <span class="op-gutter" aria-hidden="true" />
+          <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
+            <StaticMarkdown :source="crow.text" />
+          </div>
+        </div>
+      </template>
+    </template>
+    <template v-for="row in orphanContent" :key="row.key">
+      <div class="op-inline-content">
+        <span class="op-gutter" aria-hidden="true" />
+        <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
+          <StaticMarkdown :source="row.text" />
+        </div>
+      </div>
     </template>
     <div v-if="filteredToolHitl" class="op-line-hitl operation-hitl-fallback">
       <span class="op-gutter" aria-hidden="true" />
@@ -173,6 +254,33 @@ const inlineHitlByStepId = computed(() => {
 .op-line-hitl .op-gutter {
   width: var(--op-gutter);
   flex-shrink: 0;
+}
+
+.op-inline-content {
+  --op-gutter: 12px;
+  display: grid;
+  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
+  column-gap: 4px;
+  align-items: start;
+  margin: 4px 0 8px;
+}
+
+.op-inline-content .op-gutter {
+  width: var(--op-gutter);
+  flex-shrink: 0;
+}
+
+.op-inline-body {
+  min-width: 0;
+}
+
+.op-inline-body :deep(.msg-md) {
+  padding: 0;
+  margin: 0;
+}
+
+.op-inline-body.is-streaming-md :deep(.msg-md) {
+  min-height: 1.5em;
 }
 
 .op-line-hitl :deep(.collapsible-confirm) {

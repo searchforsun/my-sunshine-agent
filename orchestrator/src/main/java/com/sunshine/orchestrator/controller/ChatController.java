@@ -33,6 +33,7 @@ import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.generation.GenerationJob;
 import com.sunshine.orchestrator.generation.GenerationJobFactory;
+import com.sunshine.orchestrator.generation.DistributedGenerationLock;
 import com.sunshine.orchestrator.generation.GenerationProperties;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.generation.GenerationStatus;
@@ -101,6 +102,9 @@ public class ChatController {
 
     @Autowired(required = false)
     private GenerationStreamService streamService;
+
+    @Autowired(required = false)
+    private DistributedGenerationLock generationFlushLock;
 
     @Autowired(required = false)
     private HitlConfirmationService hitlConfirmationService;
@@ -199,7 +203,7 @@ public class ChatController {
         return ReactiveBlocking.call(() -> prepareNewMessage(msg, userId, tenantId))
                 .flatMapMany(ctx -> {
                     AtomicReference<ExecutionMode> executionMode = initialExecutionMode(ctx);
-                    Flux<StreamToken> chunkFlux = resolveChunkFlux(ctx, executionMode);
+                    Flux<StreamToken> chunkFlux = resolveChunkFlux(ctx, executionMode, false);
                     if (jobFactory != null && streamService != null && registry != null) {
                         return handleNewMessageWithRedis(ctx, executionMode, chunkFlux);
                     }
@@ -224,24 +228,33 @@ public class ChatController {
         if (!registry.tryLockMessage(ctx.assistantMsgId(), generationId)) {
             throw new BizException(OrchestratorErrorCode.GENERATION_IN_PROGRESS);
         }
+        if (generationFlushLock != null && !generationFlushLock.tryAcquire(generationId)) {
+            registry.unlockMessage(ctx.assistantMsgId());
+            throw new BizException(OrchestratorErrorCode.GENERATION_IN_PROGRESS);
+        }
 
         GenerationJob job = jobFactory.create(
                 generationId, ctx.assistantMsgId(), ctx.conversationId(),
                 ctx.userId(), ctx.tenantId(), ctx.intent(), ctx.userContent());
         registry.register(job);
+        StepEventBridge.bindGenerationFlush(ctx.assistantMsgId(), job::emitStreamToken);
 
         boolean planWorkflowResume = resume
                 && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
-        // Plan 续跑仅重跑 checkpoint 之后节点，正文由 answer 重发，不拼接暂停前 partial
-        String initialContent = resume && !planWorkflowResume ? ctx.existingContent() : "";
-        StringBuilder buffer = new StringBuilder(initialContent != null ? initialContent : "");
         java.util.List<ProcessingStep> initialSteps = resume
                 ? new java.util.ArrayList<>(ProcessingStepMerger.fromJson(ctx.existingStepsJson()))
                 : java.util.List.of();
+        boolean reactHitlResume = resume
+                && ProcessingStepMerger.findReactAwaitingHitlStep(initialSteps) != null;
+        // Plan / ReAct-HITL 续跑不拼接暂停前 partial 正文（ReAct-HITL 须先 re-await）
+        String initialContent = resume && !planWorkflowResume && !reactHitlResume
+                ? ctx.existingContent() : "";
+        StringBuilder buffer = new StringBuilder(initialContent != null ? initialContent : "");
         String initialReasoning = resume ? ctx.existingReasoning() : "";
         Consumer<String> flushPartial = content ->
                 flushScheduler.flushPartial(ctx.assistantMsgId(), content);
         Runnable onComplete = () -> Mono.fromRunnable(() -> {
+                    StepEventBridge.unbindGenerationFlush(ctx.assistantMsgId());
                     QueryRewriteTrace.clear(ctx.assistantMsgId());
                     if (!resume) {
                         maybeUpdateTitle(ctx);
@@ -251,6 +264,7 @@ public class ChatController {
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
         Consumer<Throwable> onError = error -> {
+            StepEventBridge.unbindGenerationFlush(ctx.assistantMsgId());
             QueryRewriteTrace.clear(ctx.assistantMsgId());
             Mono.fromRunnable(() -> registry.remove(generationId))
                     .subscribeOn(Schedulers.boundedElastic())
@@ -330,7 +344,7 @@ public class ChatController {
         return ReactiveBlocking.call(() -> prepareResume(msg, userId, tenantId))
                 .flatMapMany(ctx -> {
                     AtomicReference<ExecutionMode> executionMode = initialExecutionMode(ctx);
-                    Flux<StreamToken> chunkFlux = resolveChunkFlux(ctx, executionMode);
+                    Flux<StreamToken> chunkFlux = resolveChunkFlux(ctx, executionMode, true);
                     if (jobFactory != null && streamService != null && registry != null) {
                         return handleResumeWithRedis(ctx, executionMode, chunkFlux);
                     }
@@ -352,7 +366,9 @@ public class ChatController {
         if (resume) {
             boolean planWorkflowResume = executionPlanStore
                     .findResumableForMessage(ctx.assistantMsgId()).isPresent();
-            if (!planWorkflowResume && StringUtils.hasText(ctx.existingContent())) {
+            java.util.List<ProcessingStep> steps = ProcessingStepMerger.fromJson(ctx.existingStepsJson());
+            boolean reactHitlResume = ProcessingStepMerger.findReactAwaitingHitlStep(steps) != null;
+            if (!planWorkflowResume && !reactHitlResume && StringUtils.hasText(ctx.existingContent())) {
                 buffer.append(ctx.existingContent());
             }
         }
@@ -502,9 +518,10 @@ public class ChatController {
                 msg.getResumeMessageId(), userId, tenantId);
         conversationService.validateResumeAllowed(assistant, userId, tenantId);
         conversationService.incrementResumeCount(assistant.getId());
-        boolean planWorkflowResume = executionPlanStore
-                .findResumableForMessage(assistant.getId()).isPresent();
-        String resumeContent = planWorkflowResume ? "" : assistant.getContent();
+        java.util.List<ProcessingStep> existingSteps = ProcessingStepMerger.fromJson(assistant.getSteps());
+        boolean planWorkflowResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
+        boolean reactHitlResume = ProcessingStepMerger.findReactAwaitingHitlStep(existingSteps) != null;
+        String resumeContent = (planWorkflowResume || reactHitlResume) ? "" : assistant.getContent();
         conversationService.updateMessageContent(
                 assistant.getId(), resumeContent, MessageStatus.STREAMING);
 
@@ -549,7 +566,8 @@ public class ChatController {
         );
     }
 
-    private Flux<StreamToken> resolveChunkFlux(StreamContext ctx, AtomicReference<ExecutionMode> executionMode) {
+    private Flux<StreamToken> resolveChunkFlux(
+            StreamContext ctx, AtomicReference<ExecutionMode> executionMode, boolean resume) {
         var resumablePlan = executionPlanStore.findResumableForMessage(ctx.assistantMsgId());
         if (resumablePlan.isPresent()) {
             ExecutionPlan plan = new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "resume");
@@ -562,7 +580,21 @@ public class ChatController {
             ExecutionPlan plan = executionPlanParser.parseStoredIntent(ctx.intent());
             executionMode.set(plan.mode());
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan);
-            if (StringUtils.hasText(ctx.existingContent())) {
+            if (resume && plan.mode() == ExecutionMode.REACT && hitlConfirmationService != null) {
+                ProcessingStep awaiting = ProcessingStepMerger.findReactAwaitingHitlStep(
+                        ProcessingStepMerger.fromJson(ctx.existingStepsJson()));
+                if (awaiting != null) {
+                    return prepareChunkFlux(
+                            Mono.fromCallable(() -> hitlConfirmationService.resumeReactAwaiting(
+                                            awaiting.id(), ctx.assistantMsgId(), awaiting))
+                                    .subscribeOn(Schedulers.boundedElastic())
+                                    .flatMapMany(approved -> approved
+                                            ? executionDispatcher.execute(execCtx)
+                                            : Flux.empty()));
+                }
+            }
+            // 仅 simple-llm 续写 partial；ReAct/workflow 须走原执行器（含 HITL）
+            if (plan.mode() == ExecutionMode.SIMPLE_LLM && StringUtils.hasText(ctx.existingContent())) {
                 return prepareChunkFlux(simpleLlmExecutor.execute(execCtx));
             }
             return prepareChunkFlux(executionDispatcher.execute(execCtx));

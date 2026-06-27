@@ -50,6 +50,7 @@
 | `2026-06-25-chat-execution-mode-selector-design.md` | Chat 底栏执行**路径**选择器 · `executionPreference` · P0 ✅；workflow catalog **不做**（移交 4.13 `#`） |
 | `2026-06-26-pause-resume-consistency-design.md` | 阶段三 **§3.9.5 收尾** · Plan/Workflow 暂停/续跑语义与 UI 一致性 · [plan](../plans/2026-06-26-pause-resume-consistency.md) |
 | `2026-06-27-plan-user-approval-design.md` | 阶段三 **§3.9 Plan 用户确认** · `confirm-plan` + 确认框 / 重新生成 UX · [routing §8](../../routing/plan-workflow-retry-degradation.md) |
+| `2026-06-27-rag-knowledge-studio-design.md` | 阶段四 **§4.1–4.2** · `/knowledge` 知识库工作台 · rag-service 内聚 · 多 kb + 参数 publish + OCR + 评测 |
 | `2026-06-19-phase3-production-hardening-design.md` | → 已迁移为 `phase3-production-hardening-design.md` |
 | `2026-06-19-phase4-platformization-design.md` | → 已迁移为 `phase4-platformization-design.md` |
 
@@ -62,4 +63,4 @@
 | 一 | `plans/2026-06-11-phase1.5-conversation-mvp.md`、`plans/2026-06-11-phase1.6-generation-reconnect.md` |
 | 二 | `plans/2026-06-18-workflow-orchestration.md`、`plans/2026-06-20-phase2-closure.md` |
 | 三 | [phase3-production-hardening.md](../plans/2026-06-19-phase3-production-hardening.md)、[multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md)、[2026-06-26-pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md)（**3.9.5 收尾**）、[覆盖度审计](../plans/2026-06-20-phased-implementation-coverage.md) |
-| 四 | 按需；触发时从 spec §4.1 或 §4.2 写子 plan；**4.7.3 Peer 协作** 见 [peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) |
+| 四 | 按需；触发时从 spec §4.1 或 §4.2 写子 plan；**4.7.3 Peer 协作** 见 [peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) · **RAG 工作台** 见 [2026-06-27-rag-knowledge-studio.md](./2026-06-27-rag-knowledge-studio.md) |

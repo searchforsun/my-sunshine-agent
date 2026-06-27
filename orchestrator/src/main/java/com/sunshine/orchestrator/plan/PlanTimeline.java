@@ -15,6 +15,29 @@ public final class PlanTimeline {
     private PlanTimeline() {
     }
 
+    /** Planner 开始 — intent 完成后立即下发，避免 LLM 规划期间 timeline 空白 */
+    public static List<StreamToken> beginPlanning(ProcessingTimelineSession session, long startedAt) {
+        return ProcessingTimelineSupport.run(session, () -> {
+            session.pending("plan", "plan");
+            session.startAt("plan", "plan", startedAt);
+        });
+    }
+
+    /** 规划完成 — 配合 beginPlanning，不再重复 pending/start */
+    public static List<StreamToken> finishPlanStep(
+            ProcessingTimelineSession session,
+            PlanJson plan,
+            String persistedPlanId,
+            int replanCount) {
+        String chain = planChainSummary(plan);
+        String detail = formatPlanDetail(persistedPlanId, chain, replanCount);
+        String after = replanCount > 0
+                ? "规划经 " + replanCount + " 次修正后开始执行"
+                : chain;
+        return ProcessingTimelineSupport.run(session, () ->
+                session.completePlanAt(after, detail, System.currentTimeMillis()));
+    }
+
     public static List<StreamToken> planStep(ProcessingTimelineSession session, PlanJson plan, String persistedPlanId) {
         return planStep(session, plan, persistedPlanId, 0);
     }
@@ -49,11 +72,17 @@ public final class PlanTimeline {
 
     /** Plan 校验未通过、降级 ReAct — 不下发 planId，前端不展示 DAG */
     public static List<StreamToken> planRejectedStep(ProcessingTimelineSession session, String reason) {
-        String after = "Plan 校验未通过，降级为 ReAct";
-        if (StringUtils.hasText(reason)) {
-            after = after + "（" + reason.strip() + "）";
-        }
-        return planFallbackStep(session, after);
+        final String after = StringUtils.hasText(reason)
+                ? "Plan 校验未通过，降级为 ReAct（" + reason.strip() + "）"
+                : "Plan 校验未通过，降级为 ReAct";
+        return ProcessingTimelineSupport.run(session, () -> {
+            if (!session.hasStep("plan")) {
+                long ts = System.currentTimeMillis();
+                session.pending("plan", "plan");
+                session.startAt("plan", "plan", ts);
+            }
+            session.completeAt("plan", after, System.currentTimeMillis());
+        });
     }
 
     public static List<StreamToken> planStep(ProcessingTimelineSession session, PlanJson plan) {

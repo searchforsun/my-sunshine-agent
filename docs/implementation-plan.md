@@ -210,7 +210,7 @@ my-sunshine-agent/
 
 ### 阶段三：生产加固（8周）
 
-> **进度（2026-06-27）：** 3.4 RAG ✅、3.8.1–3.8.7 ✅、3.9.1–3.9.4 + **Plan 用户确认** ✅、3.10.1–3.10.7 ✅、3.11 ✅、3.12 ✅、3.6 审计 API ✅、**3.2/3.3/3.7 代码 ✅**（live/集成测试 ⬜）、**3.5 部分**（指标+JSON ✅，部署 ⬜）；**静态 workflow Plan DAG 统一** ✅、**Chat 执行模式 P0** ✅、**基础 pause/resume** ✅；**收尾 3.9.5** ⬜；**3.13/3.14** ⬜。详见 [phase3 SSOT](./superpowers/specs/phase3-production-hardening-design.md) §0。
+> **进度（2026-06-27）：** 3.4 RAG ✅、3.8.1–3.8.7 ✅、3.9.1–3.9.4 + **Plan 用户确认** ✅、3.10.1–3.10.7 ✅、3.11 ✅、3.12 ✅、3.6 审计 API ✅、**3.2/3.3/3.7 代码 ✅**（live/集成测试 ⬜）、**3.5 部分**（指标+JSON ✅，部署 ⬜）；**静态 workflow Plan DAG 统一** ✅、**Chat 执行模式 P0** ✅、**3.9.5 代码 ✅**（live ⬜）；**3.13/3.14** ⬜。详见 [phase3 SSOT](./superpowers/specs/phase3-production-hardening-design.md) §0。
 
 > 设计 spec（SSOT）：[superpowers/specs/phase3-production-hardening-design.md](./superpowers/specs/phase3-production-hardening-design.md)  
 > 索引：[superpowers/specs/README.md](./superpowers/specs/README.md)  
@@ -220,21 +220,21 @@ my-sunshine-agent/
 | 任务卡 | 内容 |
 |--------|------|
 | **3.4** **RAG**（优先） | 3.4.1–3.4.8：**✅ 已实现**（closure 见 `docs/rag/baseline-report.md`、`regression-2026-06-21.md`） |
-| 3.2 多租户 | `tenant_id` 字段隔离 + MTM tenant + Sentinel QPS · **代码部分 ✅**（非 Milvus Partition）；live ⬜ |
+| 3.2 多租户 | `tenant_id` 字段隔离 + MTM tenant + Sentinel QPS · **✅**（live ✅ 2026-06-27） |
 | 3.3 HITL | Catalog `sideEffect` + 确认 UI（含子 Agent）· **代码 ✅**；live ⬜ |
 | 3.5 可观测 | Grafana RAG + Sentinel Dashboard + 4 告警 · **指标+JSON ✅**；远程/Docker 部署 ⬜ |
 | 3.6 审计 | **tool.call ✅** + sub_agent_run ✅ + plan.* ✅（API）；可查 live ⬜ |
 | 3.7 Grounding | 主答复 + 子 Agent output · **代码 ✅**；集成测试 ⬜ |
 | 3.8 提示词 | **✅ 3.8.1–3.8.7** |
 | 3.9 PLAN_WORKFLOW | Planner + 动态 DAG + Plan 三 API + DAG/抽屉 UI + **重试/降级/Recovery/HITL** + **用户确认** · **3.9.1–3.9.4 + 3.9.1g ✅**；静态 workflow **物化 Plan 同路径** ✅ · [用户确认 spec](./superpowers/specs/2026-06-27-plan-user-approval-design.md) |
-| **3.9.5 阶段三收尾** | **暂停/续跑一致性** · [design](./superpowers/specs/2026-06-26-pause-resume-consistency-design.md) · [plan](./superpowers/plans/2026-06-26-pause-resume-consistency.md) · **⬜** |
+| **3.9.5 阶段三收尾** | **暂停/续跑一致性** · [design](./superpowers/specs/2026-06-26-pause-resume-consistency-design.md) · [plan](./superpowers/plans/2026-06-26-pause-resume-consistency.md) · **✅ 代码**（live ⬜） |
 | 3.10 AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 · **3.10.1–3.10.6 ✅** |
 
 子 Agent 实现目标（编排器-Worker、`query`+`context` 传入、分层 system、无默认 STM）见 [multi-agent plan §子 Agent 实现目标](./superpowers/plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)。
 | 3.11 skill-manager | **✅** :8225 + SkillCatalogService + **六种 Skill 触发 ✅**（Live ⬜） |
 | 3.12 前端 | `/skills` ✅；Chat `@` ✅；Plan DAG + 抽屉 ✅（3.12.4）；**Plan 用户确认 UI ✅**（3.12.5）；**版本 diff 独立页 ✅**（3.12.2）；**Chat 底栏执行模式 P0 ✅**（不含 workflow catalog 下拉，模板选取移交 **4.13 `#`**） |
-| 3.13 并行 | AhoCorasick ⬜；`source_type` **✅**（3.4.2） |
-| 3.14 多实例 | Redis GenerationJob 锁 |
+| 3.13 并行 | AhoCorasick **✅**；`source_type` **✅**（3.4.2） |
+| 3.14 多实例 | Redis GenerationJob 锁 · **✅ 3.14.1** |
 
 #### RAG 量化目标（双轨）
 
@@ -254,7 +254,7 @@ my-sunshine-agent/
 - [x] 静态 `WORKFLOW`（L2）Chat 时间线展示 Plan DAG（`StaticPlanAdapter` + `planId=`，见 `routing-golden-set.md` §B–D）
 - [x] IntentRouter `plan-workflow` + Planner/校验 **Replan** → 耗尽 **降级 ReAct**（`docs/routing/plan-workflow-retry-degradation.md`）
 - [x] 节点 `NodeRetryExecutor` + `on-failure` + Recovery 重试/跳过/终止 + `completed_with_errors` / `degraded_react` 终态
-- [ ] **3.9.5** Planner 阶段 stop 可续跑；HITL/Recovery 停止后续跑恢复同一交互；无 checkpoint 按钮为「重新生成」
+- [x] **3.9.5** Planner 阶段 stop 可续跑；HITL/Recovery 停止后续跑恢复同一交互；无 checkpoint 按钮为「重新生成」（单测 ✅；`--live` ⬜）
 - [ ] 2+ agent 节点 Plan 演示（3.10.5 ✅ 单测 + Nacos 双 agent 示例；live 点验待中间件）
 - [ ] skill-manager + `/skills` live；tool/sub_agent/plan 审计可查（**✅ 三链路 API 已就绪**）
 - [ ] Grounding 集成测试 + 子 Agent 不污染主 reasoning（3.7 代码 ✅，检查门 ⬜）

@@ -7,6 +7,7 @@ import {
   type PlanNodeTrace,
 } from '../api/executionPlans'
 import { resolveStepDurationMs, stepLifecycle, type ProcessingStep } from '../api/processingSteps'
+import { relocateAgentNodeHitl } from '../api/hitlSteps'
 import { isRecoveryAwaiting, isRecoverySkipped, isRecoveryTerminated, stepHasHitlAwaiting } from '../api/recoverySteps'
 
 export type DagNodeStatus = 'pending' | 'running' | 'done' | 'error' | 'awaiting_confirm' | 'paused' | 'terminated' | 'skipped'
@@ -117,16 +118,17 @@ function mapTraceStatus(status: string): DagNodeStatus {
 
 function mapStepStatus(step?: ProcessingStep): DagNodeStatus {
   if (!step) return 'pending'
-  if (stepHasHitlAwaiting(step)) return 'awaiting_confirm'
+  if (isRecoveryAwaiting(step)) return 'error'
   if (isRecoveryTerminated(step)) return 'terminated'
   if (isRecoverySkipped(step)) return 'skipped'
   const lc = stepLifecycle(step)
   if (lc === 'paused') return 'paused'
   if (lc === 'terminated') return 'terminated'
-  if (lc === 'running') return 'running'
-  if (lc === 'error') return 'error'
   if (lc === 'done') return 'done'
   if (lc === 'skipped') return 'skipped'
+  if (stepHasHitlAwaiting(step)) return 'awaiting_confirm'
+  if (lc === 'running') return 'running'
+  if (lc === 'error') return 'error'
   return 'pending'
 }
 
@@ -168,7 +170,7 @@ export function buildDagNodes(
   const stepByNodeId = new Map<string, ProcessingStep>()
   for (const s of nodeSteps) {
     if (s.id.startsWith('node-')) {
-      stepByNodeId.set(s.id.slice('node-'.length), s)
+      stepByNodeId.set(s.id.slice('node-'.length), relocateAgentNodeHitl(s))
     }
   }
   const traceByNodeId = new Map<string, PlanNodeTrace>()
@@ -177,22 +179,22 @@ export function buildDagNodes(
   }
   const byId = new Map(graph.nodes.filter(isDagNode).map(n => [n.id, n]))
   const order = fullDagOrder(graph)
-  return order.map(id => {
+  return order.flatMap(id => {
     if (id === 'start') {
       const firstBiz = order.find(x => x !== 'start' && byId.has(x))
       const firstStep = firstBiz ? stepByNodeId.get(firstBiz) : undefined
       const status = firstStep ? mapStepStatus(firstStep) : 'pending'
       const durationMs = planStep ? resolveStepDurationMs(planStep) : undefined
-      return {
+      return [{
         id: 'start',
         type: 'start',
         label: '开始',
         status: (status === 'pending' ? 'pending' : 'done') as DagNodeStatus,
         durationMs,
-      }
+      }]
     }
     const node = byId.get(id)
-    if (!node) return null
+    if (!node) return []
     const step = stepByNodeId.get(node.id)
     const trace = traceByNodeId.get(node.id)
     const status = step ? mapStepStatus(step) : mapTraceStatus(trace?.status ?? 'pending')
@@ -204,7 +206,7 @@ export function buildDagNodes(
         : undefined)
     const skillId = node.type === 'agent' ? node.params?.skill?.trim() : undefined
     const attempts = resolveNodeAttempts(step, trace)
-    return {
+    return [{
       id: node.id,
       type: node.type,
       label: nodeLabel(node),
@@ -217,6 +219,6 @@ export function buildDagNodes(
       skillId,
       skillLabel: resolveSkillLabel(skillId, skillCatalog),
       recoveryAwaiting: recoveryAwaiting ? true : undefined,
-    }
-  }).filter((n): n is DagNodeView => !!n)
+    }]
+  })
 }

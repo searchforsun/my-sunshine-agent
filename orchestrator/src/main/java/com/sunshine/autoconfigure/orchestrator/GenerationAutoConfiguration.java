@@ -1,7 +1,9 @@
 package com.sunshine.autoconfigure.orchestrator;
 
+import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
+import com.sunshine.orchestrator.generation.DistributedGenerationLock;
 import com.sunshine.orchestrator.generation.GenerationController;
 import com.sunshine.orchestrator.generation.GenerationJobFactory;
 import com.sunshine.orchestrator.generation.GenerationProperties;
@@ -39,10 +41,12 @@ public class GenerationAutoConfiguration {
             GenerationFlushScheduler flushScheduler,
             MemoryLifecycleService memoryLifecycleService,
             WorkflowPauseService workflowPauseService,
-            ExecutionPlanStore executionPlanStore) {
+            ExecutionPlanStore executionPlanStore,
+            AgentPauseProperties pauseProperties,
+            DistributedGenerationLock flushLock) {
         return new GenerationJobFactory(
                 streamService, properties, flushScheduler, memoryLifecycleService,
-                workflowPauseService, executionPlanStore);
+                workflowPauseService, executionPlanStore, pauseProperties, flushLock);
     }
 
     @Bean

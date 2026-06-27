@@ -44,9 +44,11 @@
 
 ### 4.1 RAG 平台化
 
+> **详设**：[2026-06-27-rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md)（**不新增微服务**，管理 API 内聚 rag-service :8400）
+
 | 子任务 | 内容 |
 |--------|------|
-| **4.1.1** | 知识库 `namespace`：`tenant/dept/kbId` 三级 |
+| **4.1.1** | 知识库 `namespace`：`tenant/kbId/docId`（dept 预留） |
 | **4.1.2** | 文档版本：新 v 入库自动失效旧 chunk |
 | **4.1.3** | `scripts/rag_reindex.py` 全量重建 + 进度 |
 | **4.1.4** | Admin API：`POST /api/kb/{kbId}/evaluate` |
@@ -58,6 +60,8 @@
 **检查门**：UI 上传 5 分钟内可检索；v2 入库后 v1 不可检；周报自动生成；调试页可见各阶段分数。
 
 ### 4.2 文档 OCR 入库（L1）
+
+> **详设**：同上 [rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md) §6.2
 
 **OCR 锁定**：千问 DashScope（与 Embedding 同账号）；电子版 PDF 优先本地文本层，失败再走 OCR。
 

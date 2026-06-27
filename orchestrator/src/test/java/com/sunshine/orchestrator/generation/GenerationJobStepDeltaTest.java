@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
@@ -96,7 +97,7 @@ class GenerationJobStepDeltaTest {
         GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
                 streamService, properties, flushScheduler, null,
-                workflowPauseService, executionPlanStore);
+                workflowPauseService, executionPlanStore, new AgentPauseProperties(), null);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);

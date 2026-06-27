@@ -113,9 +113,33 @@ public class PlanJsonCodec {
 
     public String checkpointToJson(WorkflowCheckpoint checkpoint) {
         try {
-            return objectMapper.writeValueAsString(Map.of(
-                    "resumeNodeId", checkpoint.resumeNodeId(),
-                    "wfCtxJson", checkpoint.wfCtxJson() != null ? checkpoint.wfCtxJson() : "{}"));
+            Map<String, Object> root = new LinkedHashMap<>();
+            root.put("resumeNodeId", checkpoint.resumeNodeId() != null ? checkpoint.resumeNodeId() : "");
+            root.put("wfCtxJson", checkpoint.wfCtxJson() != null ? checkpoint.wfCtxJson() : "{}");
+            PausePhase phase = checkpoint.pausePhase() != null ? checkpoint.pausePhase() : PausePhase.EXECUTING;
+            root.put("pausePhase", phase.name());
+            PendingInteraction pending = checkpoint.pendingInteraction();
+            if (pending != null) {
+                Map<String, Object> pi = new LinkedHashMap<>();
+                pi.put("kind", pending.kind());
+                pi.put("nodeId", pending.nodeId());
+                if (pending.errorMessage() != null) {
+                    pi.put("errorMessage", pending.errorMessage());
+                }
+                if (pending.hitlToolId() != null) {
+                    pi.put("hitlToolId", pending.hitlToolId());
+                }
+                if (pending.hitlParamsSummary() != null) {
+                    pi.put("hitlParamsSummary", pending.hitlParamsSummary());
+                }
+                if (pending.recoveryAttemptsJson() != null) {
+                    pi.put("recoveryAttempts", objectMapper.readValue(
+                            pending.recoveryAttemptsJson(), new TypeReference<>() {
+                            }));
+                }
+                root.put("pendingInteraction", pi);
+            }
+            return objectMapper.writeValueAsString(root);
         } catch (Exception e) {
             throw new PlanParseException("pause_checkpoint 序列化失败: " + e.getMessage());
         }
@@ -130,15 +154,36 @@ public class PlanJsonCodec {
             });
             String resumeNodeId = String.valueOf(map.getOrDefault("resumeNodeId", ""));
             String wfCtxJson = String.valueOf(map.getOrDefault("wfCtxJson", "{}"));
-            if (resumeNodeId.isBlank()) {
-                throw new PlanParseException("pause_checkpoint 缺少 resumeNodeId");
-            }
-            return new WorkflowCheckpoint(resumeNodeId, wfCtxJson);
+            PausePhase pausePhase = PausePhase.fromDb(String.valueOf(map.getOrDefault("pausePhase", "")));
+            PendingInteraction pendingInteraction = parsePendingInteraction(map.get("pendingInteraction"));
+            return new WorkflowCheckpoint(resumeNodeId, wfCtxJson, pausePhase, pendingInteraction);
         } catch (PlanParseException e) {
             throw e;
         } catch (Exception e) {
             throw new PlanParseException("pause_checkpoint 解析失败: " + e.getMessage());
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private PendingInteraction parsePendingInteraction(Object raw) throws Exception {
+        if (!(raw instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        Map<String, Object> map = (Map<String, Object>) rawMap;
+        String kind = String.valueOf(map.getOrDefault("kind", ""));
+        String nodeId = String.valueOf(map.getOrDefault("nodeId", ""));
+        if (kind.isBlank() || nodeId.isBlank()) {
+            return null;
+        }
+        String errorMessage = map.get("errorMessage") != null ? String.valueOf(map.get("errorMessage")) : null;
+        String hitlToolId = map.get("hitlToolId") != null ? String.valueOf(map.get("hitlToolId")) : null;
+        String hitlParamsSummary = map.get("hitlParamsSummary") != null
+                ? String.valueOf(map.get("hitlParamsSummary")) : null;
+        String recoveryAttemptsJson = null;
+        if (map.get("recoveryAttempts") != null) {
+            recoveryAttemptsJson = objectMapper.writeValueAsString(map.get("recoveryAttempts"));
+        }
+        return new PendingInteraction(kind, nodeId, errorMessage, hitlToolId, hitlParamsSummary, recoveryAttemptsJson);
     }
 
     private Map<String, Object> nodeMap(PlanNode node) {

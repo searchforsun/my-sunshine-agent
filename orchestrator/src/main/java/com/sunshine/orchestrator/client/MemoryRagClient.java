@@ -49,22 +49,28 @@ public class MemoryRagClient {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
-                .map(response -> {
-                    List<?> raw = (List<?>) response.get("results");
-                    if (raw == null || raw.isEmpty()) {
-                        return List.<MemoryHit>of();
-                    }
-                    List<MemoryHit> hits = new ArrayList<>();
-                    for (Object item : raw) {
-                        if (item instanceof Map<?, ?> map) {
-                            hits.add(parseHit(map));
-                        }
-                    }
-                    return hits;
-                })
+                .map(MemoryRagClient::parseSearchResults)
                 .timeout(Duration.ofSeconds(3))
                 .doOnError(e -> log.warn("[MemoryRagClient] search failed: {}", e.getMessage()))
                 .onErrorReturn(List.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    static List<MemoryHit> parseSearchResults(Map<String, Object> response) {
+        Object payload = response.get("data") instanceof Map<?, ?> dataMap
+                ? dataMap
+                : response;
+        List<?> raw = payload instanceof Map<?, ?> map ? (List<?>) map.get("results") : null;
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        List<MemoryHit> hits = new ArrayList<>();
+        for (Object item : raw) {
+            if (item instanceof Map<?, ?> hitMap) {
+                hits.add(parseHit(hitMap));
+            }
+        }
+        return hits;
     }
 
     public Mono<Void> upsert(String userId, String tenantId, String convId, String summary) {

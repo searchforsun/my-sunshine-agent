@@ -140,7 +140,7 @@ Expected: 退出码 0；报告含 Recall@5/MRR/P95
 
 - [x] **3.2.1** 检索/入库带 `x-tenant-id`（Gateway JWT → BFF → orchestrator → rag-service；未登录 `anonymous`）
 - [x] **3.2.2** MTM 向量召回同 tenant 过滤（`MtmService` + memory Milvus `tenant_id`）
-- [ ] **3.2.3** 集成测试：租户 A 语料，租户 B 检索 0 命中（`TenantSearchQueryTest` 仅单测级）
+- [x] **3.2.3** 集成测试：租户 A 语料，租户 B 检索 0 命中（`TenantSearchQueryTest` + `TenantIsolationIntegrationTest`）
 
 **实现备注**：Milvus 为 `tenant_id` 字段 + expr 过滤，非 Partition API。Live：`scripts/verify_tenant_live.py`。
 
@@ -290,7 +290,7 @@ mvn test -pl orchestrator -Dtest=QueryRewriteServiceTest,KnowledgeRetrievalServi
 ## Task 3.13: 并行（不进检查门）
 
 - [x] Milvus `source_type` metadata 可空字段（已在 Task 3.4.2 schema 落地）
-- [ ] `desensitize-service` AhoCorasick + 可配置规则库
+- [x] `desensitize-service` AhoCorasick + 可配置规则库（Nacos `desensitize.rules`）
 
 ---
 
@@ -301,7 +301,7 @@ mvn test -pl orchestrator -Dtest=QueryRewriteServiceTest,KnowledgeRetrievalServi
 - Create: `orchestrator/.../generation/DistributedGenerationLock.java`（Redis）
 - Test: 多实例抢锁单测
 
-- [ ] **3.14.1** 仅一个实例持有 Job flush 权（Redis key `sunshine:generation:lock:{jobId}`，TTL 30s）
+- [x] **3.14.1** 仅一个实例持有 Job flush 权（Redis key `sunshine:generation:lock:{generationId}`，TTL 30s）
 - [ ] **3.14.2** 多实例集成测试（可选，生产必做）
 
 ---

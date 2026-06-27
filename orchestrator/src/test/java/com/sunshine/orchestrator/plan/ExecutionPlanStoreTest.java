@@ -31,13 +31,16 @@ class ExecutionPlanStoreTest {
     private ExecutionPlanRepository repository;
     @Mock
     private ConversationService conversationService;
+    @Mock
+    private PlanJsonParser planJsonParser;
 
     private ExecutionPlanStore store;
 
     @BeforeEach
     void setUp() {
         AgentPromptProperties props = new AgentPromptProperties();
-        store = new ExecutionPlanStore(repository, new PlanJsonCodec(new ObjectMapper()), props, conversationService);
+        store = new ExecutionPlanStore(repository, new PlanJsonCodec(new ObjectMapper()),
+                planJsonParser, props, conversationService);
     }
 
     @Test
@@ -106,5 +109,32 @@ class ExecutionPlanStoreTest {
 
         assertThat(entity.getExecutionTrace()).contains("\"nodeId\":\"n1\"");
         assertThat(entity.getExecutionTrace()).contains("\"status\":\"completed\"");
+    }
+
+    @Test
+    void markPaused_acceptsValidatedStatus() {
+        ExecutionPlanEntity entity = new ExecutionPlanEntity();
+        entity.setId("p1");
+        entity.setStatus("validated");
+        when(repository.findById("p1")).thenReturn(Optional.of(entity));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        store.markPaused("p1", new WorkflowCheckpoint("n1", "{}", PausePhase.PLANNING, null));
+
+        assertThat(entity.getStatus()).isEqualTo("paused");
+        assertThat(entity.getPauseCheckpoint()).contains("\"pausePhase\":\"PLANNING\"");
+    }
+
+    @Test
+    void inferPlanningResumeNodeId_returnsFirstBusinessNode() {
+        ExecutionPlanEntity entity = new ExecutionPlanEntity();
+        entity.setValidatedJson("{\"nodes\":[{\"id\":\"n1\",\"type\":\"llm\"}],"
+                + "\"edges\":[{\"from\":\"start\",\"to\":\"n1\"}]}");
+        PlanJson plan = new PlanJson("p1", "r",
+                List.of(new PlanNode("n1", "llm", Map.of())),
+                List.of(new PlanEdge("start", "n1")));
+        when(planJsonParser.parse(entity.getValidatedJson())).thenReturn(plan);
+
+        assertThat(store.inferPlanningResumeNodeId(entity)).isEqualTo("n1");
     }
 }

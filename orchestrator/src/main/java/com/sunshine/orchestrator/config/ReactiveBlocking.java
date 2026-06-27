@@ -14,10 +14,10 @@ public final class ReactiveBlocking {
         return Mono.fromCallable(callable).subscribeOn(Schedulers.boundedElastic());
     }
 
+    /** 勿用 fromCallable(null).then() — WebFlux DELETE 会永久挂起 */
     public static Mono<Void> run(Runnable runnable) {
-        return call(() -> {
-            runnable.run();
-            return null;
-        }).then();
+        return Mono.fromRunnable(runnable)
+                .subscribeOn(Schedulers.boundedElastic())
+                .then();
     }
 }

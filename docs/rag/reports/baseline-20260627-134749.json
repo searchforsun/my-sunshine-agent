@@ -1,0 +1,779 @@
+{
+  "run_at": "2026-06-27T13:47:49",
+  "run_tag": "20260627-134749",
+  "date": "2026-06-27",
+  "golden_version": 6,
+  "suite": "v5",
+  "strategy": "hybrid+rerank",
+  "query_count": 123,
+  "min_score": 0.48,
+  "recall_at_k": {
+    "3": 1.0,
+    "5": 1.0,
+    "10": 1.0
+  },
+  "mrr": 0.9568,
+  "empty_rate_positive": 0.0,
+  "empty_rate_negative": 1.0,
+  "latency_ms": {
+    "p50": 280.1,
+    "p95": 350.3
+  },
+  "by_category_recall_at_3": {
+    "leave": 1.0,
+    "process": 1.0,
+    "expense": 1.0,
+    "attendance": 1.0,
+    "onboarding": 1.0,
+    "finance": 1.0,
+    "remote": 1.0,
+    "security": 1.0,
+    "travel": 1.0,
+    "multihop": 1.0
+  },
+  "production_gates": {
+    "recall_at_3_min": 0.95,
+    "recall_at_5_min": 0.98,
+    "mrr_min": 0.92,
+    "empty_rate_positive_max": 0.0,
+    "empty_rate_negative_min": 0.95,
+    "latency_p95_ms_max": 500
+  },
+  "badcases": {
+    "positive_miss": [],
+    "negative_false_positive": []
+  },
+  "per_query_summary": [
+    {
+      "id": "q001",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 350.3
+    },
+    {
+      "id": "q002",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 286.6
+    },
+    {
+      "id": "q003",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 358.0
+    },
+    {
+      "id": "q004",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 384.4
+    },
+    {
+      "id": "q005",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 302.0
+    },
+    {
+      "id": "q006",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 380.8
+    },
+    {
+      "id": "q007",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 320.7
+    },
+    {
+      "id": "q008",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 285.7
+    },
+    {
+      "id": "q009",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 273.9
+    },
+    {
+      "id": "q010",
+      "recall@3": 1.0,
+      "mrr": 0.3333,
+      "latency_ms": 345.8
+    },
+    {
+      "id": "q011",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 280.0
+    },
+    {
+      "id": "q012",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 301.5
+    },
+    {
+      "id": "q_neg_001",
+      "empty": true,
+      "latency_ms": 170.1
+    },
+    {
+      "id": "q_neg_002",
+      "empty": true,
+      "latency_ms": 141.7
+    },
+    {
+      "id": "q013",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 283.6
+    },
+    {
+      "id": "q014",
+      "recall@3": 1.0,
+      "mrr": 0.5,
+      "latency_ms": 352.2
+    },
+    {
+      "id": "q015",
+      "recall@3": 1.0,
+      "mrr": 0.3333,
+      "latency_ms": 338.9
+    },
+    {
+      "id": "q016",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 279.8
+    },
+    {
+      "id": "q017",
+      "recall@3": 1.0,
+      "mrr": 0.5,
+      "latency_ms": 267.0
+    },
+    {
+      "id": "q018",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 332.8
+    },
+    {
+      "id": "q019",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 262.3
+    },
+    {
+      "id": "q020",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 318.2
+    },
+    {
+      "id": "q021",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 289.8
+    },
+    {
+      "id": "q022",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 346.0
+    },
+    {
+      "id": "q023",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 308.1
+    },
+    {
+      "id": "q024",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 305.2
+    },
+    {
+      "id": "q025",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 235.4
+    },
+    {
+      "id": "q026",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 273.0
+    },
+    {
+      "id": "q027",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 272.1
+    },
+    {
+      "id": "q028",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 324.0
+    },
+    {
+      "id": "q029",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 277.2
+    },
+    {
+      "id": "q030",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 282.3
+    },
+    {
+      "id": "q031",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 319.2
+    },
+    {
+      "id": "q032",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 290.3
+    },
+    {
+      "id": "q033",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 288.4
+    },
+    {
+      "id": "q034",
+      "recall@3": 1.0,
+      "mrr": 0.5,
+      "latency_ms": 335.3
+    },
+    {
+      "id": "q035",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 290.9
+    },
+    {
+      "id": "q036",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 256.0
+    },
+    {
+      "id": "q037",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 257.5
+    },
+    {
+      "id": "q038",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 238.0
+    },
+    {
+      "id": "q039",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 311.8
+    },
+    {
+      "id": "q040",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 275.1
+    },
+    {
+      "id": "q041",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 248.3
+    },
+    {
+      "id": "q042",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 236.5
+    },
+    {
+      "id": "q043",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 354.6
+    },
+    {
+      "id": "q044",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 260.5
+    },
+    {
+      "id": "q045",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 282.8
+    },
+    {
+      "id": "q046",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 254.0
+    },
+    {
+      "id": "q047",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 309.0
+    },
+    {
+      "id": "q048",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 305.0
+    },
+    {
+      "id": "q049",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 295.5
+    },
+    {
+      "id": "q050",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 290.6
+    },
+    {
+      "id": "q051",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 303.0
+    },
+    {
+      "id": "q052",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 255.3
+    },
+    {
+      "id": "q053",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 291.5
+    },
+    {
+      "id": "q054",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 263.4
+    },
+    {
+      "id": "q055",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 269.1
+    },
+    {
+      "id": "q056",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 280.1
+    },
+    {
+      "id": "q057",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 270.2
+    },
+    {
+      "id": "q058",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 293.0
+    },
+    {
+      "id": "q059",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 281.6
+    },
+    {
+      "id": "q060",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 284.9
+    },
+    {
+      "id": "q061",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 344.1
+    },
+    {
+      "id": "q062",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 313.6
+    },
+    {
+      "id": "q063",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 259.6
+    },
+    {
+      "id": "q064",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 305.7
+    },
+    {
+      "id": "q065",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 261.5
+    },
+    {
+      "id": "q066",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 261.5
+    },
+    {
+      "id": "q067",
+      "recall@3": 1.0,
+      "mrr": 0.5,
+      "latency_ms": 279.3
+    },
+    {
+      "id": "q068",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 320.3
+    },
+    {
+      "id": "q069",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 329.5
+    },
+    {
+      "id": "q070",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 333.7
+    },
+    {
+      "id": "q071",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 304.7
+    },
+    {
+      "id": "q072",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 263.7
+    },
+    {
+      "id": "q073",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 264.8
+    },
+    {
+      "id": "q074",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 443.3
+    },
+    {
+      "id": "q075",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 241.2
+    },
+    {
+      "id": "q076",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 241.2
+    },
+    {
+      "id": "q077",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 275.0
+    },
+    {
+      "id": "q078",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 309.2
+    },
+    {
+      "id": "q079",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 311.1
+    },
+    {
+      "id": "q080",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 253.4
+    },
+    {
+      "id": "q081",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 256.3
+    },
+    {
+      "id": "q082",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 269.9
+    },
+    {
+      "id": "q083",
+      "recall@3": 1.0,
+      "mrr": 0.5,
+      "latency_ms": 274.3
+    },
+    {
+      "id": "q084",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 289.7
+    },
+    {
+      "id": "q085",
+      "recall@3": 1.0,
+      "mrr": 0.5,
+      "latency_ms": 311.0
+    },
+    {
+      "id": "q086",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 247.4
+    },
+    {
+      "id": "q087",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 271.8
+    },
+    {
+      "id": "q088",
+      "recall@3": 1.0,
+      "mrr": 0.5,
+      "latency_ms": 236.6
+    },
+    {
+      "id": "q089",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 270.3
+    },
+    {
+      "id": "q090",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 282.6
+    },
+    {
+      "id": "q091",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 290.3
+    },
+    {
+      "id": "q092",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 231.8
+    },
+    {
+      "id": "q093",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 302.3
+    },
+    {
+      "id": "q094",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 276.5
+    },
+    {
+      "id": "q095",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 352.7
+    },
+    {
+      "id": "q096",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 238.0
+    },
+    {
+      "id": "q097",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 242.5
+    },
+    {
+      "id": "q098",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 346.7
+    },
+    {
+      "id": "q099",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 277.6
+    },
+    {
+      "id": "q100",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 307.9
+    },
+    {
+      "id": "q101",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 219.4
+    },
+    {
+      "id": "q102",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 289.2
+    },
+    {
+      "id": "q103",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 266.6
+    },
+    {
+      "id": "q104",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 324.2
+    },
+    {
+      "id": "q105",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 262.4
+    },
+    {
+      "id": "q106",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 261.8
+    },
+    {
+      "id": "q107",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 275.9
+    },
+    {
+      "id": "q108",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 275.9
+    },
+    {
+      "id": "q109",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 280.6
+    },
+    {
+      "id": "q110",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 227.5
+    },
+    {
+      "id": "q111",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 281.2
+    },
+    {
+      "id": "q112",
+      "recall@3": 1.0,
+      "mrr": 1.0,
+      "latency_ms": 299.4
+    },
+    {
+      "id": "q_neg_003",
+      "empty": true,
+      "latency_ms": 136.4
+    },
+    {
+      "id": "q_neg_004",
+      "empty": true,
+      "latency_ms": 142.2
+    },
+    {
+      "id": "q_neg_005",
+      "empty": true,
+      "latency_ms": 137.3
+    },
+    {
+      "id": "q_neg_006",
+      "empty": true,
+      "latency_ms": 120.6
+    },
+    {
+      "id": "q_neg_007",
+      "empty": true,
+      "latency_ms": 131.1
+    },
+    {
+      "id": "q_neg_008",
+      "empty": true,
+      "latency_ms": 145.6
+    },
+    {
+      "id": "q_neg_009",
+      "empty": true,
+      "latency_ms": 143.0
+    },
+    {
+      "id": "q_neg_010",
+      "empty": true,
+      "latency_ms": 136.7
+    },
+    {
+      "id": "q_neg_011",
+      "empty": true,
+      "latency_ms": 139.8
+    }
+  ],
+  "gate_check": {
+    "passed": true,
+    "failures": []
+  }
+}

@@ -24,3 +24,14 @@ export function resolveApiBase(): string {
 export function resolveGatewayProbeBase(): string {
   return resolveApiBase()
 }
+
+/** 状态页 /health/* 探测 URL：Vite dev/preview 走同源代理，避免跨域 :8000 被 CORS/混合内容拦截 */
+export function resolveHealthProbeUrl(gatewayPath: string): string {
+  if (typeof window !== 'undefined') {
+    const port = window.location.port
+    if (import.meta.env.DEV || port === '5173' || port === '5174') {
+      return gatewayPath
+    }
+  }
+  return `${resolveGatewayProbeBase()}${gatewayPath}`
+}

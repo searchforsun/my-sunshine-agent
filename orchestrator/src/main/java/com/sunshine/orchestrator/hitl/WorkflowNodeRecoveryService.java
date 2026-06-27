@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
 import com.sunshine.orchestrator.execution.retry.OnFailureAction;
 import com.sunshine.orchestrator.execution.retry.WorkflowRunSession;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
+import com.sunshine.orchestrator.plan.PendingInteraction;
 import com.sunshine.orchestrator.processing.NodeRecoveryMeta;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
@@ -96,6 +97,63 @@ public class WorkflowNodeRecoveryService {
             return WorkflowRecoveryAction.TIMEOUT;
         } catch (Exception e) {
             log.warn("[WorkflowRecovery] token={} node={} 等待异常: {}", token, nodeId, e.getMessage());
+            waiters.remove(token);
+            redis.delete(redisKey(token));
+            runSession.abort(OnFailureAction.FAIL_FAST, err);
+            return WorkflowRecoveryAction.TERMINATE;
+        } finally {
+            waiters.remove(token);
+            redis.delete(redisKey(token));
+        }
+    }
+
+    /** 续跑：恢复 Recovery 三按钮等待，不重复 fail 节点 */
+    public WorkflowRecoveryAction resumeAwaiting(
+            ProcessingTimelineSession session,
+            String nodeId,
+            String generationMessageId,
+            PendingInteraction pending,
+            WorkflowRunSession runSession) {
+        String stepId = WorkflowNodeTimeline.stepId(nodeId);
+        String err = pending != null && StringUtils.hasText(pending.errorMessage())
+                ? pending.errorMessage().strip() : "节点执行失败";
+        String token = UUID.randomUUID().toString();
+        CompletableFuture<WorkflowRecoveryAction> future = new CompletableFuture<>();
+        waiters.put(token, new RecoveryWaiter(nodeId, future));
+        long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
+        storeToken(token, generationMessageId, nodeId, expiresAt);
+        emitSessionStep(session, stepId, s -> s.attachNodeRecoveryOnStep(
+                stepId, token, err, expiresAt), generationMessageId);
+        try {
+            WorkflowRecoveryAction action = future.get(properties.getTimeoutSec(), TimeUnit.SECONDS);
+            log.info("[WorkflowRecovery] resume token={} node={} action={}", token, nodeId, action);
+            String resolved = switch (action) {
+                case RETRY -> NodeRecoveryMeta.STATUS_RETRY;
+                case SKIP -> NodeRecoveryMeta.STATUS_SKIPPED;
+                default -> NodeRecoveryMeta.STATUS_TERMINATED;
+            };
+            emitSessionStep(session, stepId, s -> {
+                s.resolveNodeRecoveryOnStep(stepId, resolved);
+                if (NodeRecoveryMeta.STATUS_TERMINATED.equals(resolved)) {
+                    s.terminate(stepId, err);
+                }
+            }, generationMessageId);
+            if (action == WorkflowRecoveryAction.TERMINATE || action == WorkflowRecoveryAction.TIMEOUT) {
+                runSession.abort(OnFailureAction.FAIL_FAST, "用户终止流程: " + err);
+            }
+            return action;
+        } catch (TimeoutException e) {
+            log.warn("[WorkflowRecovery] resume token={} node={} 等待超时", token, nodeId);
+            waiters.remove(token);
+            redis.delete(redisKey(token));
+            emitSessionStep(session, stepId, s -> {
+                s.resolveNodeRecoveryOnStep(stepId, NodeRecoveryMeta.STATUS_TERMINATED);
+                s.terminate(stepId, err);
+            }, generationMessageId);
+            runSession.abort(OnFailureAction.FAIL_FAST, "节点恢复超时: " + err);
+            return WorkflowRecoveryAction.TIMEOUT;
+        } catch (Exception e) {
+            log.warn("[WorkflowRecovery] resume token={} node={} 等待异常: {}", token, nodeId, e.getMessage());
             waiters.remove(token);
             redis.delete(redisKey(token));
             runSession.abort(OnFailureAction.FAIL_FAST, err);

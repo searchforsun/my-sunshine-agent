@@ -403,10 +403,12 @@ def write_rewrite_markdown(report: dict, path: Path) -> None:
                 hyde_clip = str(r.get("hyde_document") or "—").replace("|", "\\|")
                 if len(hyde_clip) > 48:
                     hyde_clip = hyde_clip[:45] + "..."
+                raw_q = str(r.get("raw_query", "")).replace("|", "\\|")
+                rew_q = str(r.get("rewritten_query", "")).replace("|", "\\|")
                 lines.append(
                     f"| {r.get('id')} | {r.get('applied')} | "
-                    f"{str(r.get('raw_query', '')).replace('|', '\\|')} | "
-                    f"{str(r.get('rewritten_query', '')).replace('|', '\\|')} | "
+                    f"{raw_q} | "
+                    f"{rew_q} | "
                     f"{hyde_clip} | "
                     f"{r.get('recall_at_5_delta', '—')} | "
                     f"{r.get('recall_at_5_hyde_delta', '—')} | "
@@ -415,8 +417,8 @@ def write_rewrite_markdown(report: dict, path: Path) -> None:
             else:
                 delta = r.get("recall_at_5_delta")
                 delta_s = "—" if delta is None else str(delta)
-                raw_q = r.get("raw_query", "").replace("|", "\\|")
-                rew_q = r.get("rewritten_query", "").replace("|", "\\|")
+                raw_q = str(r.get("raw_query", "")).replace("|", "\\|")
+                rew_q = str(r.get("rewritten_query", "")).replace("|", "\\|")
                 lines.append(
                     f"| {r.get('id')} | {r.get('applied')} | {raw_q} | {rew_q} | {delta_s} | "
                     f"{r.get('rewrite_latency_ms', '—')} |"

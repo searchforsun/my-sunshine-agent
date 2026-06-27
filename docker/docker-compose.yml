@@ -439,8 +439,11 @@ services:
       - '--web.enable-lifecycle'
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ../docs/grafana/rag-alerts.yml:/etc/prometheus/rag-alerts.yml
       - prometheus-data:/prometheus
     networks:
       - smt-net

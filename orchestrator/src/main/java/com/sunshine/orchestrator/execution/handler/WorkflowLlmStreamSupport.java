@@ -81,6 +81,14 @@ final class WorkflowLlmStreamSupport {
             return Flux.just(StreamToken.stepDelta(stepId, "reasoning", text));
         }
         if (token.isContent()) {
+            String text = token.text();
+            if (!StringUtils.hasText(text)) {
+                return Flux.empty();
+            }
+            if (terminalAnswer) {
+                // 终态 answer：正文进消息 + node.result 流式，不落 reasoning
+                return Flux.just(token, StreamToken.stepDelta(stepId, "result", text));
+            }
             return Flux.just(token);
         }
         return Flux.empty();

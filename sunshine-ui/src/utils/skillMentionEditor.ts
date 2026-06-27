@@ -34,7 +34,7 @@ export function getCaretPlainOffset(root: HTMLElement): number {
   const pre = range.cloneRange()
   pre.selectNodeContents(root)
   pre.setEnd(range.startContainer, range.startOffset)
-  return plainTextFromFragment(pre.cloneContents())
+  return plainTextFromFragment(pre.cloneContents()).length
 }
 
 function plainTextFromFragment(frag: DocumentFragment): string {

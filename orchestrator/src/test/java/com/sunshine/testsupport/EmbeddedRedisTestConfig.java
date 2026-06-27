@@ -4,6 +4,8 @@ import com.github.fppt.jedismock.RedisServer;
 import com.sunshine.orchestrator.generation.GenerationProperties;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -21,13 +23,14 @@ import java.net.ServerSocket;
 @TestConfiguration
 public class EmbeddedRedisTestConfig {
 
+    private static final Logger STATIC_LOG = LoggerFactory.getLogger(EmbeddedRedisTestConfig.class);
     private static final RedisServer REDIS_SERVER;
 
     static {
         try {
             int port = findFreePort();
             REDIS_SERVER = RedisServer.newRedisServer(port).start();
-            log.info("Jedis-Mock Redis started at {}:{}", REDIS_SERVER.getHost(), REDIS_SERVER.getBindPort());
+            STATIC_LOG.info("Jedis-Mock Redis started at {}:{}", REDIS_SERVER.getHost(), REDIS_SERVER.getBindPort());
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to start Jedis-Mock Redis", ex);
         }

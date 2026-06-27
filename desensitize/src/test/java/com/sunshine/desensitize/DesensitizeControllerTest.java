@@ -28,4 +28,13 @@ class DesensitizeControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.text").value("联系138****5678，身份证110101********1234"));
     }
+
+    @Test
+    void scrub_masksAhoCorasickKeywords() throws Exception {
+        mockMvc.perform(post("/api/desensitize/scrub")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"该员工月薪12000元，请保密\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.text").value("该员工***12000元，请保密"));
+    }
 }

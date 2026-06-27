@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.7** + **3.10.1–3.10.7** + **3.11 skill-manager** + **3.12** + **3.9.1–3.9.4 PLAN_WORKFLOW**（含重试/降级/Recovery、**Plan 用户确认**、**静态 workflow Plan DAG 统一**）+ **3.6 审计 API** + **3.2/3.3/3.7 代码** ✅；**Chat 执行模式选择器 P0** ✅；**基础 pause/resume** ✅；**收尾 3.9.5 暂停/续跑一致性** ⬜；待关 **3.2/3.3/3.5/3.11 live**、**3.7 集成测试**、**3.13/3.14**；阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md` 与 `docs/superpowers/specs/phase3-production-hardening-design.md` §0。
+**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.7** + **3.10.1–3.10.7** + **3.11 skill-manager** + **3.12** + **3.9.1–3.9.4 PLAN_WORKFLOW**（含重试/降级/Recovery、**Plan 用户确认**、**静态 workflow Plan DAG 统一**）+ **3.6 审计 API** + **3.2/3.3/3.7 代码** ✅；**Chat 执行模式选择器 P0** ✅；**3.9.5 暂停/续跑一致性** ✅（live ✅）；**3.14 Redis flush 锁** ✅；**3.13 AhoCorasick 脱敏** ✅；**3.2 多租户 live** ✅；**3.11 skill 5B live** ✅；待关 **3.3/3.5 live**、**3.7 集成测试**；阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md` 与 `docs/superpowers/specs/phase3-production-hardening-design.md` §0。
 
 ## 常用命令
 
@@ -25,6 +25,7 @@ python scripts/clear_session_cache.py --force --restart-orchestrator
 
 # 前端 :5173；SSE 直连 Gateway :8000
 cd sunshine-ui && npm run dev
+# 改前端后必跑 TS 检查：cd sunshine-ui && npx vue-tsc -b
 
 # 验收
 python scripts/phase2_agent_demo.py --suite all
