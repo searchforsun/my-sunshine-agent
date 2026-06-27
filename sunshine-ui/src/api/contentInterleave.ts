@@ -3,7 +3,6 @@
  */
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
-import { findRunningStepId } from './processingSteps'
 
 function mergeStreamChunk(existing: string, chunk: string): string {
   const maxOverlap = Math.min(existing.length, chunk.length, 64)
@@ -40,12 +39,30 @@ export function resolveVisibleContentAnchor(
   return null
 }
 
-/** 正文 chunk 锚定：优先 running 步，否则 timeline 最后一步 */
+/** 正文 chunk 锚定 timeline 排序后的最后一步（隐藏步由 resolveVisibleContentAnchor 回退） */
 export function resolveContentAnchorStepId(steps: ProcessingStep[]): string | null {
   if (!steps.length) return null
-  const running = findRunningStepId(steps)
-  if (running) return running
   return steps[steps.length - 1].id
+}
+
+/** 新增步骤排在既有正文锚点之后时，将正文块整体挪到 timeline 末尾 */
+export function maybeReanchorContentBlocksToTail(
+  steps: ProcessingStep[],
+  blocks: ContentBlock[] | undefined,
+): void {
+  if (!blocks?.length || !steps.length) return
+  const lastStepId = steps[steps.length - 1].id
+  let maxAnchorIdx = -1
+  for (const block of blocks) {
+    if (block.afterStepId === null) continue
+    const idx = steps.findIndex(s => s.id === block.afterStepId)
+    if (idx >= 0) maxAnchorIdx = Math.max(maxAnchorIdx, idx)
+  }
+  const lastIdx = steps.length - 1
+  if (lastIdx <= maxAnchorIdx) return
+  for (const block of blocks) {
+    block.afterStepId = lastStepId
+  }
 }
 
 export function appendInterleavedContent(

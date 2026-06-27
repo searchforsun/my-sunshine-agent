@@ -16,23 +16,23 @@
 
 ---
 
-## 实施进度（2026-06-27）
+## 实施进度（2026-06-27 末）
 
 | 区域 | 代码 | Live/检查门 | 说明 |
 |------|:----:|:-----------:|------|
 | **3.4** RAG 全链路 | ✅ | v5 ✅；v6 提升轨 WARN | `docs/rag/regression-2026-06-21.md` |
 | **3.8** 提示词 3.8.1–3.8.7 | ✅ | — | QueryRewrite / PromptComposer / HyDE / Planner 改写 |
-| **3.9–3.12** 多 Agent / Skills / 前端 | ✅ | 部分 live ⬜ | → [multi-agent-architecture.md](./2026-06-19-multi-agent-architecture.md) |
-| **3.6** 审计三链路 API | ✅ | 可查 live ⬜ | tool.call / sub_agent_run / plan.* |
-| **3.2** 多租户 | **部分** | ⬜ | 传播链 + 过滤已实现；缺跨租户集成测试 |
-| **3.3** HITL | ✅ | ⬜ | 全栈代码；`verify_hitl_live.py` |
-| **3.7** Grounding | ✅ | 集成测试 ⬜ | `AnswerGroundingChecker` 已接入 |
-| **3.5** 可观测 | **部分** | ⬜ | 指标+JSON ✅；Docker/远程部署未闭环 |
-| **3.9.5** 暂停/续跑 | **部分** | ⬜ | 基础续跑 ✅；pausePhase 等未做 |
-| **3.13** AhoCorasick | ⬜ | — | `source_type` ✅ |
-| **3.14** 多实例锁 | ⬜ | — | 进程内锁，非 Redis |
+| **3.9–3.12** 多 Agent / Skills / 前端 | ✅ | live ✅ | `verify_skill_5b_live` + **`verify_skills_ui_live`** |
+| **3.6** 审计三链路 API | ✅ | live ✅ | `verify_audit_live.py` |
+| **3.2** 多租户 | ✅ | live ✅ | `verify_tenant_live.py --live` |
+| **3.3** HITL | ✅ | live ✅ | `verify_hitl_live.py --live` |
+| **3.7** Grounding | ✅ | live ✅ | `verify_grounding.py` |
+| **3.5** 可观测 | ✅ | live ✅ | `verify_grafana_rag_live` + Sentinel 脚本 |
+| **3.9.5** 暂停/续跑 | ✅ | live ✅ | `verify_pause_resume_consistency.py --live` |
+| **3.13** AhoCorasick | ✅ | — | `source_type` ✅ |
+| **3.14** 多实例锁 | ✅ | — | Redis GenerationJob 锁 |
 
-**下一迭代 P0**：**3.9.5** → 3.2 集成测试 → 3.3/3.5/3.11 live → 3.7 集成测试 → 3.14。
+**阶段三收尾**：除 v6 相对 vector **+15% WARN** 外检查门已通过。
 
 ---
 

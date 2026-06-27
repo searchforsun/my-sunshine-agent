@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -33,6 +34,7 @@ public class PlanApprovalService {
 
     private final AgentExecutionProperties executionProperties;
     private final ExecutionPlanStore executionPlanStore;
+    @Lazy
     private final GenerationRegistry generationRegistry;
     private final PlanJsonCodec planJsonCodec;
 
@@ -40,6 +42,7 @@ public class PlanApprovalService {
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> tokenHints = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> tokenToPlanToken = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> tokenToMessageId = new ConcurrentHashMap<>();
 
     public boolean isEnabled() {
         return executionProperties.getPlanWorkflow().getApproval().isEnabled();
@@ -86,6 +89,7 @@ public class PlanApprovalService {
         CompletableFuture<PlanApprovalUserAction> future = new CompletableFuture<>();
         waiters.put(token, future);
         tokenToPlanToken.put(token, token);
+        tokenToMessageId.put(token, ctx.assistantMsgId());
         try {
             PlanApprovalUserAction action = future.get(cfg.getTimeoutSec(), TimeUnit.SECONDS);
             log.info("[PlanApproval] planId={} round={} action={}", planId, roundNo, action);
@@ -146,8 +150,28 @@ public class PlanApprovalService {
         } finally {
             waiters.remove(token);
             tokenToPlanToken.remove(token);
+            tokenToMessageId.remove(token);
             tokenHints.remove(token);
         }
+    }
+
+    /** 用户暂停 generation：解除 Plan 确认阻塞，使 cancel 能完成并释放 message 锁 */
+    public void cancelWaitersForMessage(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return;
+        }
+        String target = messageId.strip();
+        waiters.entrySet().removeIf(entry -> {
+            String msgId = tokenToMessageId.get(entry.getKey());
+            if (!target.equals(msgId)) {
+                return false;
+            }
+            entry.getValue().complete(PlanApprovalUserAction.CANCELLED);
+            tokenToMessageId.remove(entry.getKey());
+            tokenToPlanToken.remove(entry.getKey());
+            tokenHints.remove(entry.getKey());
+            return true;
+        });
     }
 
     public void resolveRound(

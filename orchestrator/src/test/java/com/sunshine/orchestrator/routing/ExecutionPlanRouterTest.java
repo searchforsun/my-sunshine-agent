@@ -128,7 +128,7 @@ class ExecutionPlanRouterTest {
                 .thenReturn(SkillBindingOutcome.none("待审批"));
         when(ruleBasedRouter.match("待审批")).thenReturn(java.util.Optional.empty());
         when(queryRewriteService.shouldRewriteIntent("待审批")).thenReturn(true);
-        when(queryRewriteService.rewriteForIntent("待审批", null))
+        when(queryRewriteService.rewriteForIntent("待审批", null, null))
                 .thenReturn(QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销消息", 0));
         ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-list", Map.of(), "llm");
         when(intentRouter.classifyPlan("查询待审批报销消息")).thenReturn(Mono.just(plan));

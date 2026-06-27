@@ -16,6 +16,7 @@ import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -44,6 +45,7 @@ public class HitlConfirmationService {
 
     private final AgentHitlProperties properties;
     private final ToolCatalogService toolCatalogService;
+    @Lazy
     private final GenerationRegistry generationRegistry;
     private final GenerationFlushScheduler flushScheduler;
     private final StringRedisTemplate redis;
@@ -81,7 +83,7 @@ public class HitlConfirmationService {
 
         String token = UUID.randomUUID().toString();
         CompletableFuture<Boolean> future = new CompletableFuture<>();
-        waiters.put(token, new HitlPendingWaiter(timelineBridgeId, toolId, future));
+        waiters.put(token, new HitlPendingWaiter(generationMessageId, toolId, future));
         long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
         storeToken(token, generationMessageId, toolId, expiresAt);
         StepEventBridge.emit(timelineBridgeId, session -> session.attachHitlPending(
@@ -135,7 +137,7 @@ public class HitlConfirmationService {
 
         String token = UUID.randomUUID().toString();
         CompletableFuture<Boolean> future = new CompletableFuture<>();
-        waiters.put(token, new HitlPendingWaiter(nodeStepId, toolId, future));
+        waiters.put(token, new HitlPendingWaiter(genMsgId, toolId, future));
         long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
         storeToken(token, genMsgId, toolId, expiresAt);
         emitSessionStep(session, nodeStepId, s -> s.attachHitlPendingOnStep(
@@ -171,7 +173,7 @@ public class HitlConfirmationService {
         }
     }
 
-    /** ReAct 续跑：工具步仍 awaiting 时重新下发 confirmation 并阻塞，不先调 tool-manager */
+    /** ReAct 续跑：工具步仍 awaiting 时经 GenerationJob 重新下发 step + confirmation 并阻塞 */
     public boolean resumeReactAwaiting(String bridgeId, String assistantMsgId, ProcessingStep toolStep) {
         if (toolStep == null || toolStep.metadata() == null || toolStep.metadata().hitl() == null) {
             return false;
@@ -180,48 +182,100 @@ public class HitlConfirmationService {
         if (!HitlStepMeta.STATUS_AWAITING.equals(hitl.status())) {
             return false;
         }
-        String toolId = com.sunshine.orchestrator.processing.ToolStepIds.catalogToolName(toolStep.id());
-        if (!StringUtils.hasText(toolId)) {
+        String toolStepId = toolStep.id();
+        String toolId = com.sunshine.orchestrator.processing.ToolStepIds.catalogToolName(toolStepId);
+        if (!StringUtils.hasText(toolId) || !StringUtils.hasText(assistantMsgId)) {
             return false;
         }
         Map<String, String> params = parseParamsSummary(hitl.paramsSummary());
-        String timelineBridgeId = StringUtils.hasText(bridgeId) ? bridgeId.strip() : assistantMsgId;
-        StepEventBridge.bindHitlBridge(timelineBridgeId, assistantMsgId, true);
-        boolean approved = awaitBridgeConfirmation(timelineBridgeId, assistantMsgId, toolId, params);
-        if (approved) {
-            StepEventBridge.grantHitlPreApproval(assistantMsgId, toolId, params);
+        String displayName = toolCatalogService.displayName(toolId);
+        String genMsgId = assistantMsgId.strip();
+        ProcessingTimelineSession session = com.sunshine.orchestrator.processing.ProcessingTimelineSupport.newSession();
+        session.bindTraceMessageId(genMsgId);
+        long startedAt = System.currentTimeMillis();
+        emitSessionStep(session, toolStepId, s -> {
+            s.startAt(toolStepId, "tool", startedAt);
+            s.progress(toolStepId, HitlLabels.awaiting());
+        }, genMsgId);
+        String token = UUID.randomUUID().toString();
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        waiters.put(token, new HitlPendingWaiter(genMsgId, toolId, future));
+        long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
+        storeToken(token, genMsgId, toolId, expiresAt);
+        String paramsSummary = StringUtils.hasText(hitl.paramsSummary())
+                ? hitl.paramsSummary() : summarizeParams(params);
+        emitSessionStep(session, toolStepId, s -> s.attachHitlPendingOnStep(
+                toolStepId, token, displayName, paramsSummary, expiresAt), genMsgId);
+        emitConfirmation(genMsgId, toolId, params, token, expiresAt);
+        try {
+            boolean approved = future.get(properties.getTimeoutSec(), TimeUnit.SECONDS);
+            log.info("[HITL] react resume token={} tool={} step={} approved={}",
+                    token, toolId, toolStepId, approved);
+            if (approved) {
+                emitSessionStep(session, toolStepId,
+                        s -> s.progress(toolStepId, HitlLabels.approved(displayName)), genMsgId);
+                emitSessionStep(session, toolStepId,
+                        s -> s.resolveHitlPendingOnStep(toolStepId, HitlStepMeta.STATUS_APPROVED), genMsgId);
+                StepEventBridge.grantHitlPreApproval(genMsgId, toolId, params);
+            } else {
+                emitSessionStep(session, toolStepId, s -> s.progress(toolStepId, HitlLabels.denied()), genMsgId);
+                emitSessionStep(session, toolStepId,
+                        s -> s.resolveHitlPendingOnStep(toolStepId, HitlStepMeta.STATUS_DENIED), genMsgId);
+            }
+            return approved;
+        } catch (TimeoutException e) {
+            log.warn("[HITL] react resume token={} tool={} 确认超时", token, toolId);
+            waiters.remove(token);
+            redis.delete(redisKey(token));
+            emitSessionStep(session, toolStepId, s -> s.progress(toolStepId, HitlLabels.denied()), genMsgId);
+            emitSessionStep(session, toolStepId,
+                    s -> s.resolveHitlPendingOnStep(toolStepId, HitlStepMeta.STATUS_DENIED), genMsgId);
+            return false;
+        } catch (Exception e) {
+            log.warn("[HITL] react resume token={} tool={} 等待异常: {}", token, toolId, e.getMessage());
+            waiters.remove(token);
+            redis.delete(redisKey(token));
+            return false;
+        } finally {
+            waiters.remove(token);
+            redis.delete(redisKey(token));
         }
-        return approved;
     }
 
     /** 续跑：从 checkpoint 恢复 HITL 待确认，不先调 tool-manager */
     public boolean resumeAwaitingFromCheckpoint(
             WorkflowHitlScope.Binding workflow,
             String generationMessageId,
-            PendingInteraction pending) {
-        if (pending == null || !"hitl".equals(pending.kind()) || !StringUtils.hasText(pending.hitlToolId())) {
+            PendingInteraction pending,
+            String toolId) {
+        if (pending == null || !"hitl".equals(pending.kind())) {
             return false;
         }
-        String toolId = pending.hitlToolId().strip();
+        String resolvedToolId = StringUtils.hasText(toolId)
+                ? toolId.strip()
+                : (StringUtils.hasText(pending.hitlToolId()) ? pending.hitlToolId().strip() : "");
+        if (!StringUtils.hasText(resolvedToolId)) {
+            return false;
+        }
         Map<String, String> params = parseParamsSummary(pending.hitlParamsSummary());
-        String displayName = toolCatalogService.displayName(toolId);
+        String displayName = toolCatalogService.displayName(resolvedToolId);
         String nodeStepId = workflow.nodeStepId();
         ProcessingTimelineSession session = workflow.session();
         String genMsgId = generationMessageId != null ? generationMessageId : workflow.generationMessageId();
         emitSessionStep(session, nodeStepId, s -> s.progress(nodeStepId, HitlLabels.awaiting()), genMsgId);
         String token = UUID.randomUUID().toString();
         CompletableFuture<Boolean> future = new CompletableFuture<>();
-        waiters.put(token, new HitlPendingWaiter(nodeStepId, toolId, future));
+        waiters.put(token, new HitlPendingWaiter(genMsgId, resolvedToolId, future));
         long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
-        storeToken(token, genMsgId, toolId, expiresAt);
+        storeToken(token, genMsgId, resolvedToolId, expiresAt);
         String paramsSummary = StringUtils.hasText(pending.hitlParamsSummary())
                 ? pending.hitlParamsSummary() : summarizeParams(params);
         emitSessionStep(session, nodeStepId, s -> s.attachHitlPendingOnStep(
                 nodeStepId, token, displayName, paramsSummary, expiresAt), genMsgId);
-        emitConfirmation(genMsgId, toolId, params, token, expiresAt);
+        emitConfirmation(genMsgId, resolvedToolId, params, token, expiresAt);
         try {
             boolean approved = future.get(properties.getTimeoutSec(), TimeUnit.SECONDS);
-            log.info("[HITL] resume token={} tool={} approved={}", token, toolId, approved);
+            log.info("[HITL] resume token={} tool={} approved={}", token, resolvedToolId, approved);
             if (approved) {
                 emitSessionStep(session, nodeStepId, s -> s.progress(nodeStepId, HitlLabels.approved(displayName)), genMsgId);
             } else {
@@ -231,14 +285,14 @@ public class HitlConfirmationService {
             emitSessionStep(session, nodeStepId, s -> s.resolveHitlPendingOnStep(nodeStepId, hitlStatus), genMsgId);
             return approved;
         } catch (TimeoutException e) {
-            log.warn("[HITL] resume token={} tool={} 确认超时", token, toolId);
+            log.warn("[HITL] resume token={} tool={} 确认超时", token, resolvedToolId);
             waiters.remove(token);
             redis.delete(redisKey(token));
             emitSessionStep(session, nodeStepId, s -> s.progress(nodeStepId, HitlLabels.denied()), genMsgId);
             emitSessionStep(session, nodeStepId, s -> s.resolveHitlPendingOnStep(nodeStepId, HitlStepMeta.STATUS_DENIED), genMsgId);
             return false;
         } catch (Exception e) {
-            log.warn("[HITL] resume token={} tool={} 等待异常: {}", token, toolId, e.getMessage());
+            log.warn("[HITL] resume token={} tool={} 等待异常: {}", token, resolvedToolId, e.getMessage());
             waiters.remove(token);
             redis.delete(redisKey(token));
             emitSessionStep(session, nodeStepId, s -> s.progress(nodeStepId, HitlLabels.denied()), genMsgId);
@@ -284,6 +338,23 @@ public class HitlConfirmationService {
     /** 将 Hook 队列中尚未下发的 step 事件刷入 SSE */
     public void flushTimeline(String messageId) {
         flushHookTimeline(messageId);
+    }
+
+    /** 用户暂停 generation：唤醒阻塞中的 HITL 等待，使 cancel 能完成并释放 message 锁 */
+    public void cancelWaitersForMessage(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return;
+        }
+        String target = messageId.strip();
+        waiters.entrySet().removeIf(entry -> {
+            HitlPendingWaiter waiter = entry.getValue();
+            if (!target.equals(waiter.messageId())) {
+                return false;
+            }
+            waiter.future().complete(false);
+            redis.delete(redisKey(entry.getKey()));
+            return true;
+        });
     }
 
     /** confirm-tool API */

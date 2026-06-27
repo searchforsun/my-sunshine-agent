@@ -45,7 +45,8 @@ python scripts/sync_nacos.py --data-id sunshine-gateway-gw-flow-rules.json
 # 重启 gateway
 # Live 验收
 python scripts/verify_sentinel_dashboard.py
-python scripts/verify_tenant_qps_live.py --burst 20
+python scripts/verify_tenant_qps_live.py
+# 或显式：python scripts/verify_tenant_qps_live.py --burst 50 --min-blocked 5
 ```
 
 ## 与 Grafana 分工

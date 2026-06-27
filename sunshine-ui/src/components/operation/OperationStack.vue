@@ -239,7 +239,7 @@ const orphanContent = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 0 0 8px;
+  padding: 0 0 12px;
   margin-left: -2px;
 }
 

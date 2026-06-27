@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段二 MVP + Workflow 已完成；阶段三 **3.4 RAG** + **3.8.1–3.8.7** + **3.10.1–3.10.7** + **3.11 skill-manager** + **3.12** + **3.9.1–3.9.4 PLAN_WORKFLOW**（含重试/降级/Recovery、**Plan 用户确认**、**静态 workflow Plan DAG 统一**）+ **3.6 审计 API** + **3.2/3.3/3.7 代码** ✅；**Chat 执行模式选择器 P0** ✅；**3.9.5 暂停/续跑一致性** ✅（live ✅）；**3.14 Redis flush 锁** ✅；**3.13 AhoCorasick 脱敏** ✅；**3.2 多租户 live** ✅；**3.11 skill 5B live** ✅；待关 **3.3/3.5 live**、**3.7 集成测试**；阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md` 与 `docs/superpowers/specs/phase3-production-hardening-design.md` §0。
+**进度**：阶段三 **检查门基本通过**（live 脚本全绿；v6 相对 vector +15% 仍 WARN）— 3.4 RAG、3.8、3.9 PLAN_WORKFLOW、3.10 AgentRuntime、3.11 skill-manager、**3.12 `/skills` live ✅**、3.6 审计、3.2/3.3/3.5/3.7 live ✅、3.9.5、3.13/3.14 ✅；阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md` 与 `docs/superpowers/specs/phase3-production-hardening-design.md` §6。
 
 ## 常用命令
 
@@ -61,6 +61,17 @@ mvn test -pl rag-service
 | `rag_ingest_bulk.py` | 按 golden-set 批量入库 |
 | `rag_eval.py` | RAG Recall/MRR 基线评测 |
 | `verify_rewrite_timeline.py` | Timeline 改写 detail/metadata 验收 |
+| `verify_skills_ui_live.py` | **3.12** `/skills` 管理页 API Live（列表/版本/diff/上传） |
+| `verify_skill_5b_live.py` | **3.11** Skill 5B Chat `@` + Plan 触发 |
+| `verify_hitl_live.py` | **3.3** HITL 写工具（`--live`） |
+| `verify_audit_live.py` | **3.6** 审计三 API |
+| `verify_grafana_rag_live.py` | **3.5** Grafana RAG 可观测 |
+| `verify_sentinel_dashboard.py` | **3.5** Sentinel Dashboard 联调 |
+| `verify_tenant_qps_live.py` | **3.5** 租户 QPS 限流 burst |
+| `verify_tenant_live.py` | **3.2** 多租户隔离（`--live`） |
+| `verify_grounding.py` | **3.7** Grounding 单测 |
+| `verify_subagent_timeline.py` | **3.10** workflow agent subSteps |
+| `verify_pause_resume_consistency.py` | **3.9.5** 暂停/续跑（`--live`） |
 
 目录内遗留 `.ps1`/`.sh` 为历史包装，**勿再维护**；新脚本一律 Python。
 

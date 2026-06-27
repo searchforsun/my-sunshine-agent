@@ -16,12 +16,15 @@ const emit = defineEmits<{
 const loading = ref(false)
 const localAction = ref<'retry' | 'terminate' | 'skip' | null>(null)
 
-const awaiting = computed(() => isRecoveryAwaiting(props.step))
+const isPaused = computed(() => (props.step.lifecycle ?? props.step.status) === 'paused')
+const awaiting = computed(() => isRecoveryAwaiting(props.step) && !isPaused.value)
+const showPanel = computed(() => awaiting.value || !!localAction.value || isPaused.value)
 const isResolved = computed(() => !!localAction.value)
 const errorText = computed(() => resolveRecoveryError(props.step))
 const token = computed(() => props.step.metadata?.recoveryToken?.trim() ?? '')
 
 const summaryLine = computed(() => {
+  if (isPaused.value) return '节点失败 · 已暂停'
   if (localAction.value === 'retry') return '节点失败：已选择重试'
   if (localAction.value === 'skip') return '节点失败：已跳过并继续'
   if (localAction.value === 'terminate') return '节点失败：已终止流程'
@@ -47,7 +50,7 @@ async function submit(action: 'retry' | 'terminate' | 'skip') {
 
 <template>
   <CollapsibleConfirmPanel
-    v-if="awaiting || localAction"
+    v-if="showPanel"
     :summary="summaryLine"
     :detail="errorText"
     :resolved="isResolved"

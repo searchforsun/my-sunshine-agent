@@ -223,21 +223,35 @@ public class ExecutionPlanStore {
                 .filter(e -> ExecutionPlanStatus.PAUSED == ExecutionPlanStatus.fromDb(e.getStatus()));
     }
 
-    /** 续跑：PAUSED 或 FAILED 但保留检查点 */
+    /** 续跑：PAUSED、FAILED+checkpoint、或 cancel 竞态下 RUNNING/VALIDATED 但已有 checkpoint */
     @Transactional(readOnly = true)
     public java.util.Optional<ExecutionPlanEntity> findResumableForMessage(String messageId) {
         if (!StringUtils.hasText(messageId)) {
             return java.util.Optional.empty();
         }
         return repository.findByMessageId(messageId.strip())
-                .filter(e -> {
-                    ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(e.getStatus());
-                    if (status == ExecutionPlanStatus.PAUSED) {
-                        return true;
-                    }
-                    return status == ExecutionPlanStatus.FAILED
-                            && StringUtils.hasText(e.getPauseCheckpoint());
-                });
+                .filter(this::isResumablePlan);
+    }
+
+    private boolean isResumablePlan(ExecutionPlanEntity entity) {
+        ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(entity.getStatus());
+        if (status == ExecutionPlanStatus.PAUSED) {
+            return true;
+        }
+        if (status == ExecutionPlanStatus.AWAITING_APPROVAL
+                && StringUtils.hasText(entity.getValidatedJson())) {
+            return true;
+        }
+        if (status == ExecutionPlanStatus.FAILED
+                && StringUtils.hasText(entity.getPauseCheckpoint())) {
+            return true;
+        }
+        if (StringUtils.hasText(entity.getPauseCheckpoint())
+                && (status == ExecutionPlanStatus.RUNNING
+                || status == ExecutionPlanStatus.VALIDATED)) {
+            return true;
+        }
+        return false;
     }
 
     @Transactional
@@ -333,7 +347,11 @@ public class ExecutionPlanStore {
     public void markResumed(String planId) {
         ExecutionPlanEntity entity = requireEntity(planId);
         ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(entity.getStatus());
-        if (status != ExecutionPlanStatus.PAUSED && status != ExecutionPlanStatus.FAILED) {
+        if (status != ExecutionPlanStatus.PAUSED
+                && status != ExecutionPlanStatus.FAILED
+                && status != ExecutionPlanStatus.AWAITING_APPROVAL
+                && status != ExecutionPlanStatus.RUNNING
+                && status != ExecutionPlanStatus.VALIDATED) {
             assertStatus(entity, ExecutionPlanStatus.PAUSED);
         }
         entity.setStatus(ExecutionPlanStatus.RUNNING.dbValue());

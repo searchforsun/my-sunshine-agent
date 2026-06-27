@@ -396,3 +396,26 @@ export function relocateAgentNodeHitl(step: ProcessingStep): ProcessingStep {
   }
   return { ...step, subSteps, metadata: stripHitlMetadata(step.metadata) }
 }
+
+/** ReAct HITL 续跑：paused 工具步恢复 running，保留 metadata 供后端 re-await */
+export function reactivatePausedReactHitlSteps(steps: ProcessingStep[] | undefined): ProcessingStep[] {
+  if (!steps?.length) return steps ?? []
+  return steps.map(step => {
+    const lc = step.lifecycle ?? step.status
+    if (lc !== 'paused' || !isHitlToolStep(step)) return step
+    if (!isHitlAwaiting(step) && !isHitlSummaryAwaiting(step)) return step
+    return {
+      ...step,
+      lifecycle: 'running',
+      status: 'running',
+      summary: {
+        ...step.summary,
+        active: step.summary?.active?.includes('暂停')
+          ? '等待用户确认执行写操作'
+          : (step.summary?.active ?? '等待用户确认执行写操作'),
+        after: undefined,
+      },
+      endedAt: undefined,
+    }
+  })
+}

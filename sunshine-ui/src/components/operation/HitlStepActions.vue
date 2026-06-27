@@ -47,8 +47,10 @@ const displayStatus = computed((): HitlDecision | 'awaiting' | null => {
   return resolveHitlStatus(displayStep.value)
 })
 
+const isPaused = computed(() => (props.step.lifecycle ?? props.step.status) === 'paused')
+
 const canAct = computed(() => {
-  if (localDecision.value || loading.value) return false
+  if (isPaused.value || localDecision.value || loading.value) return false
   if (!effectiveToken.value) return false
   if (resolveHitlStatus(displayStep.value) === 'approved' || resolveHitlStatus(displayStep.value) === 'denied') {
     return false
@@ -76,6 +78,7 @@ const toolName = computed(() => resolveHitlToolName(displayStep.value))
 const paramsText = computed(() => displayStep.value.metadata?.hitlParamsSummary?.trim() || '')
 
 const summaryLine = computed(() => {
+  if (isPaused.value) return '写操作确认 · 已暂停'
   if (displayStatus.value === 'approved') return '写操作确认 · 已确认'
   if (displayStatus.value === 'denied') return '写操作确认 · 已取消'
   return '写操作确认 · 等待确认'

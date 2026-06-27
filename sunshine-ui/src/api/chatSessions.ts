@@ -28,10 +28,11 @@ import {
   reapplyPendingHitl,
   relocateAgentNodeHitl,
   applySyncedPendingHitl,
+  reactivatePausedReactHitlSteps,
 } from './hitlSteps'
 import { applyRecoveryDecision as applyRecoveryDecisionToSteps, stepHasHitlAwaiting } from './recoverySteps'
-import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, pauseRunningWorkflowNodes } from './processingSteps'
-import { appendInterleavedContent } from './contentInterleave'
+import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, pauseRunningWorkflowNodes, shouldIgnoreResumeStepReplay, reactivatePausedStepsForResume, reactivateOtherPausedWorkflowNodes } from './processingSteps'
+import { appendInterleavedContent, maybeReanchorContentBlocksToTail } from './contentInterleave'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
 
@@ -307,7 +308,18 @@ export function useChatSessions(
           if (eventSeq !== null) updateLastSeq(eventSeq)
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
+            if (options.resume && shouldIgnoreResumeStepReplay(lastMsg.steps ?? [], parsed.step)) {
+              onProgress?.(s.id)
+              continue
+            }
             lastMsg.steps = upsertStep(lastMsg.steps ?? [], parsed.step)
+            maybeReanchorContentBlocksToTail(lastMsg.steps, lastMsg.contentBlocks)
+            if (options.resume && parsed.step.id.startsWith('node-')) {
+              const lc = parsed.step.lifecycle ?? parsed.step.status
+              if (lc === 'pending' || lc === 'running') {
+                lastMsg.steps = reactivateOtherPausedWorkflowNodes(lastMsg.steps, parsed.step.id)
+              }
+            }
             lastMsg.steps = lastMsg.steps.map(st =>
               st.id.startsWith('node-') ? relocateAgentNodeHitl(st) : st,
             )
@@ -478,6 +490,21 @@ export function useChatSessions(
     }
   }
 
+  async function cancelActiveGenerationForSession(s: SessionState): Promise<void> {
+    const stored = loadActiveGeneration()
+    const generationId = s.generationId
+      ?? (stored?.conversationId === s.id ? stored.generationId : undefined)
+    if (!generationId) return
+    try {
+      await fetch(`${API_BASE()}/api/generations/${generationId}/cancel`, {
+        method: 'POST',
+        headers: apiHeaders(),
+      })
+    } catch { /* fire and forget */ }
+    clearActiveGenerationIfMatch(s.id)
+    s.generationId = undefined
+  }
+
   async function resume(conversationId: string, resumeMessageId: string): Promise<void> {
     ensureActive(conversationId)
     const s = activeSession.value ?? getOrCreate(conversationId)
@@ -495,6 +522,13 @@ export function useChatSessions(
       target.reasoning = ''
       target.contentBlocks = undefined
     }
+    if (target.steps?.length) {
+      if (reactHitlResume) {
+        target.steps = reactivatePausedReactHitlSteps(target.steps)
+      } else if (planWorkflowResume) {
+        target.steps = reactivatePausedStepsForResume(target.steps)
+      }
+    }
 
     s.loading = true
     target.status = 'streaming'
@@ -503,6 +537,7 @@ export function useChatSessions(
     onProgress?.(conversationId)
 
     try {
+      await cancelActiveGenerationForSession(s)
       const response = await fetch(`${API_BASE()}/api/chat/stream`, {
         method: 'POST',
         headers: { ...apiHeaders(), Accept: 'text/event-stream' },
@@ -510,6 +545,7 @@ export function useChatSessions(
         signal: s.abort.signal,
       })
 
+      await throwIfHttpError(response)
       await throwIfNotEventStream(response)
 
       await consumeSseStream(s, response, thisRequestId, { resume: true })

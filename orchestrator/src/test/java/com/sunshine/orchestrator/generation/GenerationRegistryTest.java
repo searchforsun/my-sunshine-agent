@@ -104,4 +104,13 @@ class GenerationRegistryTest {
         verify(flushScheduler).commitFinal(eq("msg-a"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
         verify(flushScheduler).commitFinal(eq("msg-b"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
     }
+
+    @Test
+    @DisplayName("clearStaleLockIfNoActiveJob 无 job 时清除遗留锁")
+    void clearStaleLockIfNoActiveJob_removesOrphanLock() {
+        assertThat(registry.tryLockMessage("msg-stale", "gen-old")).isTrue();
+        assertThat(registry.tryLockMessage("msg-stale", "gen-new")).isFalse();
+        registry.clearStaleLockIfNoActiveJob("msg-stale");
+        assertThat(registry.tryLockMessage("msg-stale", "gen-new")).isTrue();
+    }
 }

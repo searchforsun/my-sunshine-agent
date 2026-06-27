@@ -46,6 +46,6 @@ public class ExecutionPlanRouter {
         }
         String plain = skillBindingParser.stripAtMention(ctx.userMessage());
         return new RoutingContext(
-                plain, ctx.traceMessageId(), ctx.preference(), ctx.forcedWorkflowId(), null);
+                plain, ctx.traceMessageId(), ctx.preference(), ctx.forcedWorkflowId(), null, ctx.memory());
     }
 }

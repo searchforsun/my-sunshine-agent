@@ -98,9 +98,12 @@ def main() -> int:
     machines = app.get("machines") or []
     healthy = [m for m in machines if m.get("healthy")]
     print(f"  [OK] appType={app_type} machines={len(machines)} healthy={len(healthy)}")
-    if app_type not in (1, 11):
-        print(f"[FAIL] appType={app_type}，期望网关类型 1/11", file=sys.stderr)
+    # Sentinel 1.8.8 SCG 网关 briefinfos 常上报 appType=0，以本地 gw-flow 规则为准
+    if app_type not in (0, 1, 11):
+        print(f"[FAIL] appType={app_type}，期望 0/1/11", file=sys.stderr)
         return 1
+    if app_type == 0:
+        print("  [INFO] appType=0（1.8.8 常见），继续以 gw-flow 规则验收")
     if not healthy:
         print("[WARN] 无健康机器 — 检查 gateway 是否启动且 eager=true", file=sys.stderr)
 

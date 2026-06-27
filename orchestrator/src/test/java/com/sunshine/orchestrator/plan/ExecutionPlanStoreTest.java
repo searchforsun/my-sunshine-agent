@@ -126,6 +126,17 @@ class ExecutionPlanStoreTest {
     }
 
     @Test
+    void findResumableForMessage_acceptsRunningWithCheckpoint() {
+        ExecutionPlanEntity entity = new ExecutionPlanEntity();
+        entity.setId("p1");
+        entity.setStatus("running");
+        entity.setPauseCheckpoint("{\"resumeNodeId\":\"approve\",\"pausePhase\":\"EXECUTING\"}");
+        when(repository.findByMessageId("msg-1")).thenReturn(Optional.of(entity));
+
+        assertThat(store.findResumableForMessage("msg-1")).isPresent();
+    }
+
+    @Test
     void inferPlanningResumeNodeId_returnsFirstBusinessNode() {
         ExecutionPlanEntity entity = new ExecutionPlanEntity();
         entity.setValidatedJson("{\"nodes\":[{\"id\":\"n1\",\"type\":\"llm\"}],"

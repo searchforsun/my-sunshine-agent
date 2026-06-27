@@ -8,7 +8,7 @@
 |:----:|:----:|------|:----:|
 | **一** | 8 周 + 1.5/1.6 | [phase1-foundation-design.md](./phase1-foundation-design.md) | ✅ 已完成 |
 | **二** | 8 周 + 2.9/收尾 | [phase2-benchmark-design.md](./phase2-benchmark-design.md) | ✅ 已完成 |
-| **三** | 8 周 | [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) | 🟡 进行中（主线代码 ✅；live/3.9.5/3.13/3.14 待关） |
+| **三** | 8 周 | [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) | ✅ 已完成（v6 +15% 轨 WARN） |
 | **四** | 按需 | [phase4-platformization-design.md](./phase4-platformization-design.md) | ⬜ 按需 |
 
 总排期与检查门摘要：[implementation-plan.md](../../implementation-plan.md)

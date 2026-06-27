@@ -312,7 +312,8 @@ public class WorkflowExecutor {
             WorkflowHitlScope.Binding hitl = new WorkflowHitlScope.Binding(
                     session, WorkflowNodeTimeline.stepId(nodeId), streamCtx.assistantMsgId());
             return Mono.fromCallable(() -> hitlConfirmationService.resumeAwaitingFromCheckpoint(
-                            hitl, streamCtx.assistantMsgId(), pending))
+                            hitl, streamCtx.assistantMsgId(), pending,
+                            resolved.params().getOrDefault("tool", "")))
                     .subscribeOn(Schedulers.boundedElastic())
                     .flatMapMany(approved -> {
                         if (!approved) {

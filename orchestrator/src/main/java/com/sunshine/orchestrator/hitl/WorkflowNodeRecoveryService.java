@@ -14,6 +14,7 @@ import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -37,6 +38,7 @@ public class WorkflowNodeRecoveryService {
     private static final String REDIS_KEY_PREFIX = "sunshine:workflow-recovery:";
 
     private final AgentHitlProperties properties;
+    @Lazy
     private final GenerationRegistry generationRegistry;
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
@@ -62,7 +64,7 @@ public class WorkflowNodeRecoveryService {
 
         String token = UUID.randomUUID().toString();
         CompletableFuture<WorkflowRecoveryAction> future = new CompletableFuture<>();
-        waiters.put(token, new RecoveryWaiter(nodeId, future));
+        waiters.put(token, new RecoveryWaiter(nodeId, generationMessageId, future));
         long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
         storeToken(token, generationMessageId, nodeId, expiresAt);
         emitSessionStep(session, stepId, s -> s.attachNodeRecoveryOnStep(
@@ -119,7 +121,7 @@ public class WorkflowNodeRecoveryService {
                 ? pending.errorMessage().strip() : "节点执行失败";
         String token = UUID.randomUUID().toString();
         CompletableFuture<WorkflowRecoveryAction> future = new CompletableFuture<>();
-        waiters.put(token, new RecoveryWaiter(nodeId, future));
+        waiters.put(token, new RecoveryWaiter(nodeId, generationMessageId, future));
         long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
         storeToken(token, generationMessageId, nodeId, expiresAt);
         emitSessionStep(session, stepId, s -> s.attachNodeRecoveryOnStep(
@@ -162,6 +164,23 @@ public class WorkflowNodeRecoveryService {
             waiters.remove(token);
             redis.delete(redisKey(token));
         }
+    }
+
+    /** 用户暂停 generation：解除 Recovery 阻塞等待 */
+    public void cancelWaitersForMessage(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return;
+        }
+        String target = messageId.strip();
+        waiters.entrySet().removeIf(entry -> {
+            RecoveryWaiter waiter = entry.getValue();
+            if (!target.equals(waiter.messageId())) {
+                return false;
+            }
+            waiter.future().complete(WorkflowRecoveryAction.TERMINATE);
+            redis.delete(redisKey(entry.getKey()));
+            return true;
+        });
     }
 
     public boolean confirm(String token, String action) {
@@ -230,6 +249,9 @@ public class WorkflowNodeRecoveryService {
         return REDIS_KEY_PREFIX + token;
     }
 
-    private record RecoveryWaiter(String nodeId, CompletableFuture<WorkflowRecoveryAction> future) {
+    private record RecoveryWaiter(
+            String nodeId,
+            String messageId,
+            CompletableFuture<WorkflowRecoveryAction> future) {
     }
 }

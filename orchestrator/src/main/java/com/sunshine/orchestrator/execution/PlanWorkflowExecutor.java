@@ -20,6 +20,7 @@ import com.sunshine.orchestrator.plan.PlanRunFinalizer;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.plan.ResumeInteractionHint;
 import com.sunshine.orchestrator.plan.PausePhase;
+import com.sunshine.orchestrator.plan.PlanWorkflowPausedException;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
 import com.sunshine.orchestrator.plan.PlanApprovalRejectedException;
 import com.sunshine.orchestrator.plan.PlanApprovalRound;
@@ -247,6 +248,8 @@ public class PlanWorkflowExecutor {
                             return Flux.concat(
                                     Flux.fromIterable(approvalTokens),
                                     runValidatedPlan(ctx, planId, session, approved, planAttempt, true));
+                        } catch (PlanWorkflowPausedException e) {
+                            return Flux.empty();
                         } catch (PlanApprovalRejectedException e) {
                             return handleApprovalFailure(ctx, planId, session, e.getMessage());
                         }
@@ -272,6 +275,9 @@ public class PlanWorkflowExecutor {
             PlanApprovalWaitResult wait = planApprovalService.awaitUserApproval(
                     ctx, planId, current, session, rounds, roundNo);
             approvalTokens.addAll(wait.tokens());
+            if (wait.action() == PlanApprovalUserAction.CANCELLED) {
+                throw new PlanWorkflowPausedException();
+            }
             rounds = new ArrayList<>(executionPlanStore.listApprovalRounds(planId));
             if (wait.action() == PlanApprovalUserAction.APPROVED) {
                 return current;

@@ -98,6 +98,7 @@ function syncDrawerSelection(nodes: DagNodeView[]) {
 }
 
 function nodeNeedsDrawerAttention(node: DagNodeView): boolean {
+  if (node.status === 'paused') return false
   return node.status === 'awaiting_confirm' || (!!node.recoveryAwaiting && node.status === 'error')
 }
 

@@ -215,6 +215,25 @@ public class ConversationService {
         return messageRepo.save(msg);
     }
 
+    /** 续跑：在 generation 锁获取成功后再置 streaming，避免锁冲突后消息卡在 streaming */
+    @Transactional
+    public void commitResumeStart(String messageId, String resumeContent) {
+        incrementResumeCount(messageId);
+        updateMessageContent(messageId, resumeContent != null ? resumeContent : "", MessageStatus.STREAMING);
+    }
+
+    /** cancel 时 job 已不在内存：强制将 streaming 消息标为 interrupted */
+    @Transactional
+    public void forceInterruptedIfStreaming(String messageId) {
+        ChatMessageEntity msg = messageRepo.findById(messageId).orElse(null);
+        if (msg == null || !MessageStatus.STREAMING.equals(msg.getStatus())) {
+            return;
+        }
+        msg.setStatus(MessageStatus.INTERRUPTED);
+        msg.setUpdatedAt(Instant.now());
+        messageRepo.save(msg);
+    }
+
     @Transactional(readOnly = true)
     public ChatMessageEntity getMessageOwned(String messageId, String userId, String tenantId) {
         ChatMessageEntity msg = messageRepo.findById(messageId)

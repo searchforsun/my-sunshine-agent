@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.generation;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
+import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.MessageStatus;
@@ -30,6 +31,7 @@ public class GenerationController {
     private final GenerationRegistry registry;
     private final GenerationFlushScheduler flushScheduler;
     private final GenerationProperties generationProperties;
+    private final ConversationService conversationService;
 
     @GetMapping("/generations/{id}")
     public Mono<GenerationStatusResponse> getStatus(
@@ -53,8 +55,13 @@ public class GenerationController {
             streamService.assertOwned(id, userId, tenantId);
             if (registry.get(id).isPresent()) {
                 registry.cancel(id);
-            } else if (streamService.getMeta(id).isPresent()) {
-                streamService.updateStatus(id, GenerationStatus.INTERRUPTED);
+            } else {
+                streamService.getMeta(id).ifPresent(meta -> {
+                    registry.releaseBlockingWaitsForMessage(meta.messageId());
+                    streamService.updateStatus(id, GenerationStatus.INTERRUPTED);
+                    registry.unlockMessage(meta.messageId());
+                    conversationService.forceInterruptedIfStreaming(meta.messageId());
+                });
             }
             return Map.of("status", GenerationStatus.INTERRUPTED.name());
         });

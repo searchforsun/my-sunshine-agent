@@ -1,6 +1,6 @@
 # Skills 管理页设计（SSOT）
 
-> **状态**：3.12 已落地（2026-06-23 对齐 `sunshine-ui/src/views/SkillsView.vue`）  
+> **状态**：3.12 已落地 + **live ✅**（2026-06-27；`verify_skills_ui_live.py` + UI 手验）  
 > **路由**：`/skills` · **后端**：skill-manager :8225 · **BFF 透传** · **上传/下载二进制** 直连 Gateway :8000  
 > **关联**： [multi-agent plan §3.11–3.12](../plans/2026-06-19-multi-agent-architecture.md) · [locked D3](./2026-06-19-locked-architecture-decisions.md#d3-skills-服务端管理--前端运营页)
 
@@ -212,3 +212,12 @@ Runtime Catalog（orchestrator 用，非本页主路径）：
 - [x] 加载遮罩不透出其他 Skill 文件内容
 - [x] 在线编辑 overlay（3.12.2）— 草稿版本文本文件 + SKILL.md 同步 overlay
 - [x] 版本 diff（3.12.2）— `/skills/:skillId/diff`；二进制展示 MD5
+
+**Live API 自动化**（3.12 检查门）：
+
+```bash
+python3 scripts/verify_skills_ui_live.py
+# 本地: GATEWAY_URL=http://localhost:8000 python3 scripts/verify_skills_ui_live.py
+```
+
+与 Chat 触发互补：`python3 scripts/verify_skill_5b_live.py`（3.11 §E-Live）。

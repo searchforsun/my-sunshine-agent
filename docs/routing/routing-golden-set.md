@@ -180,6 +180,13 @@ python scripts/verify_skill_5b_live.py
 | orchestrator 日志 `[WorkflowPlanner]` 且 user 含「Skill 正文」 | 5B Planner 已读 L2 overlay |
 | Planner 失败 | 降级 ReAct（见 §A 降级路径）；脚本 exit 1 |
 
+**3.12 `/skills` 管理页 Live**（与 §E 互补，验 Admin API + UI 手验）：
+
+```bash
+python3 scripts/verify_skills_ui_live.py
+# 本地: GATEWAY_URL=http://localhost:8000 python3 scripts/verify_skills_ui_live.py
+```
+
 ---
 
 ## I. Workflow `#` 绑定（L0，阶段四 4.13）

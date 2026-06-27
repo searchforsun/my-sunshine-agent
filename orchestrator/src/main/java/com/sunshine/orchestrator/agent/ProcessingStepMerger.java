@@ -532,9 +532,6 @@ public final class ProcessingStepMerger {
             if (step.id() == null || !step.id().startsWith("node-")) {
                 continue;
             }
-            if (shouldSkipInteractionPause(step, skipNodeId)) {
-                continue;
-            }
             List<ProcessingStep> subSteps = step.subSteps();
             if (subSteps != null && !subSteps.isEmpty()) {
                 List<ProcessingStep> updatedSubs = new ArrayList<>(subSteps);
@@ -543,14 +540,13 @@ public final class ProcessingStepMerger {
                     step = copyWithSubSteps(step, updatedSubs);
                 }
             }
-            if (isRunning(step)) {
+            if (isRunning(step) || isAwaitingInteractionStep(step)) {
                 step = toPaused(step);
             }
             steps.set(i, step);
         }
-        if (org.springframework.util.StringUtils.hasText(currentNodeId)
-                && !currentNodeId.strip().equals(skipNodeId != null ? skipNodeId.strip() : "")) {
-            pauseWorkflowNodeAt(steps, "node-" + currentNodeId.strip(), skipNodeId);
+        if (org.springframework.util.StringUtils.hasText(currentNodeId)) {
+            pauseWorkflowNodeAt(steps, "node-" + currentNodeId.strip());
         }
     }
 
@@ -568,10 +564,7 @@ public final class ProcessingStepMerger {
             if (phase == null) {
                 continue;
             }
-            if (!isRunning(step)) {
-                continue;
-            }
-            if (isAwaitingInteractionStep(step)) {
+            if (!isRunning(step) && !isAwaitingInteractionStep(step)) {
                 continue;
             }
             if ("think".equals(phase) || "agent".equals(phase) || "generate".equals(phase)
@@ -618,7 +611,7 @@ public final class ProcessingStepMerger {
             HitlStepMeta hitl = meta.hitl();
             if (hitl != null && HitlStepMeta.STATUS_AWAITING.equals(hitl.status())) {
                 return new PendingInteraction(
-                        "hitl", nodeId, null, hitl.toolDisplayName(), hitl.paramsSummary(), null);
+                        "hitl", nodeId, null, "", hitl.paramsSummary(), null);
             }
             NodeRecoveryMeta recovery = meta.recovery();
             if (recovery != null && NodeRecoveryMeta.STATUS_AWAITING.equals(recovery.status())) {
@@ -637,14 +630,18 @@ public final class ProcessingStepMerger {
         return null;
     }
 
-    private static boolean shouldSkipInteractionPause(ProcessingStep step, String skipNodeId) {
-        if (isAwaitingInteractionStep(step)) {
-            return true;
+    private static void pauseWorkflowNodeAt(List<ProcessingStep> steps, String stepId) {
+        for (int i = 0; i < steps.size(); i++) {
+            ProcessingStep step = steps.get(i);
+            if (!stepId.equals(step.id())) {
+                continue;
+            }
+            if (!isRunning(step) && !isAwaitingInteractionStep(step)) {
+                continue;
+            }
+            steps.set(i, toPaused(step));
+            return;
         }
-        if (skipNodeId == null || step.id() == null) {
-            return false;
-        }
-        return step.id().equals("node-" + skipNodeId.strip());
     }
 
     public static boolean isAwaitingInteractionStep(ProcessingStep step) {
@@ -658,24 +655,10 @@ public final class ProcessingStepMerger {
         return meta.recovery() != null && NodeRecoveryMeta.STATUS_AWAITING.equals(meta.recovery().status());
     }
 
-    private static void pauseWorkflowNodeAt(List<ProcessingStep> steps, String stepId, String skipNodeId) {
-        if (skipNodeId != null && stepId.equals("node-" + skipNodeId.strip())) {
-            return;
-        }
-        for (int i = 0; i < steps.size(); i++) {
-            ProcessingStep step = steps.get(i);
-            if (!stepId.equals(step.id()) || !isRunning(step) || isAwaitingInteractionStep(step)) {
-                continue;
-            }
-            steps.set(i, toPaused(step));
-            return;
-        }
-    }
-
     private static void pauseRunningInPlace(List<ProcessingStep> steps) {
         for (int i = 0; i < steps.size(); i++) {
             ProcessingStep step = steps.get(i);
-            if (isRunning(step)) {
+            if (isRunning(step) || isAwaitingInteractionStep(step)) {
                 steps.set(i, toPaused(step));
             }
         }

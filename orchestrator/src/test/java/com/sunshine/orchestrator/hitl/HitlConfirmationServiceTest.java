@@ -108,11 +108,53 @@ class HitlConfirmationServiceTest {
                 "hitl", "approve", null, "approve_oa_task", "taskId=T1001", null);
 
         CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
-                () -> service.resumeAwaitingFromCheckpoint(hitl, "msg-1", pending));
+                () -> service.resumeAwaitingFromCheckpoint(hitl, "msg-1", pending, "approve_oa_task"));
 
         Thread.sleep(200);
         assertThat(service.confirm(extractToken(), true)).isTrue();
         assertThat(future.get(2, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void resumeReactAwaiting_reRegistersTokenViaGenerationJob() throws Exception {
+        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
+        when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
+                .thenReturn("{\"type\":\"confirmation\"}");
+        when(redis.opsForValue()).thenReturn(valueOps);
+
+        com.sunshine.orchestrator.agent.ProcessingStep toolStep = pausedReactHitlToolStep();
+        CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
+                () -> service.resumeReactAwaiting(toolStep.id(), "msg-1", toolStep));
+
+        Thread.sleep(200);
+        assertThat(service.confirm(extractToken(), true)).isTrue();
+        assertThat(future.get(2, TimeUnit.SECONDS)).isTrue();
+        verify(generationJob).emitOutbound("{\"type\":\"confirmation\"}");
+    }
+
+    private static com.sunshine.orchestrator.agent.ProcessingStep pausedReactHitlToolStep() {
+        com.sunshine.orchestrator.processing.HitlStepMeta hitl = com.sunshine.orchestrator.processing.HitlStepMeta.awaiting(
+                "old-token", "审批 OA 待办", "taskId=T1001", System.currentTimeMillis() + 60_000);
+        com.sunshine.orchestrator.processing.StepMetadata meta = com.sunshine.orchestrator.processing.StepMetadata.withHitl(
+                null, hitl);
+        return new com.sunshine.orchestrator.agent.ProcessingStep(
+                "tool-approve_oa_task@1",
+                "tool",
+                "paused",
+                new com.sunshine.orchestrator.processing.StepSummary(null, "已暂停", "已暂停"),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "paused",
+                null,
+                meta,
+                null);
     }
 
     private String extractToken() {

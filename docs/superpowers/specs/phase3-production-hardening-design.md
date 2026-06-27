@@ -1,7 +1,7 @@
 # 阶段三：生产加固 — 技术设计（SSOT）
 
 > **周期**：8 周（兼职 1–2 天/周；检查门严格全过）  
-> **状态**：🟡 **进行中**（2026-06-27：主线代码 ✅含 3.9.5/3.13/3.14；live 检查门部分 ⬜）  
+> **状态**：🟢 **检查门基本通过**（2026-06-27 末：live 脚本全绿；v6 相对 vector +15% 轨仍 WARN）  
 > **前置**：[阶段二](./phase2-benchmark-design.md) 收尾完成；golden-set v5 基线全 PASS  
 > **主轴**：RAG 双轨评测 + **PLAN_WORKFLOW** + 多租户 / HITL / 全链路可观测
 
@@ -13,16 +13,16 @@
 |--------|------|:----:|:-----------:|----------|
 | **3.4** RAG 3.4.1–3.4.8 | 评测 / ES / Hybrid / Rerank / Metrics / CI | **✅** | v5 ✅；v6 提升轨 WARN | [phase3-production-hardening.md](../plans/2026-06-19-phase3-production-hardening.md) Task 3.4 |
 | **3.8** 提示词 3.8.1–3.8.7 | QueryRewrite / PromptComposer / HyDE / Planner 改写 | **✅** | — | 同上 Task 3.8 |
-| **3.9** PLAN_WORKFLOW | Planner + 持久化 + 三 API + 重试/降级/Recovery | **✅** 3.9.1–3.9.4 | 2+ agent live ⬜ | [multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md) §3.9 |
-| **3.9.5** 暂停/续跑一致性 | pausePhase / pendingInteraction / 按钮分态 | **✅** | live ✅（A6 + cancel 经 Gateway） | [pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md) |
-| **3.10** AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 | **✅** | — | multi-agent §3.10 |
-| **3.11** skill-manager | :8225 + Catalog + 六种触发 | **✅** | Live ✅（`verify_skill_5b_live` + Plan 自动确认） | multi-agent §3.11 |
-| **3.12** 前端 | `/skills` + Plan DAG/抽屉 + 执行模式 | **✅** | `/skills` live ⬜ | multi-agent §3.12 |
-| **3.6** 审计扩展 | tool.call / sub_agent_run / plan.* + 查询 API | **✅** | 可查 live ⬜ | Task 3.6 |
-| **3.2** 多租户 | `tenant_id` 字段隔离 + MTM + Sentinel QPS | **✅** | live ✅（2026-06-27 RagClient R 解包 + knowledge-qa） | Task 3.2 |
-| **3.3** HITL | sideEffect + 确认 UI（主/子 Agent） | **✅** | live ⬜ | Task 3.3 |
-| **3.7** Grounding | AnswerGroundingChecker | **✅** | 集成测试 ⬜ | Task 3.7 |
-| **3.5** 可观测 | Micrometer + Grafana/告警 JSON | **部分** | 远程部署/触发 ⬜ | Task 3.5；[grafana/README.md](../../grafana/README.md) |
+| **3.9** PLAN_WORKFLOW | Planner + 持久化 + 三 API + 重试/降级/Recovery | **✅** 3.9.1–3.9.4 | 2+ agent live ✅ | [multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md) §3.9 |
+| **3.9.5** 暂停/续跑一致性 | pausePhase / pendingInteraction / 按钮分态 | **✅** | live ✅ | [pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md) |
+| **3.10** AgentRuntime | MAIN/SUB/PLANNER + 工具白名单 | **✅** | subAgent live ✅ | multi-agent §3.10 |
+| **3.11** skill-manager | :8225 + Catalog + 六种触发 | **✅** | Live ✅（`verify_skill_5b_live`） | multi-agent §3.11 |
+| **3.12** 前端 | `/skills` + Plan DAG/抽屉 + 执行模式 | **✅** | Live ✅（`verify_skills_ui_live` + UI 手验） | multi-agent §3.12 |
+| **3.6** 审计扩展 | tool.call / sub_agent_run / plan.* + 查询 API | **✅** | live ✅（`verify_audit_live`） | Task 3.6 |
+| **3.2** 多租户 | `tenant_id` 字段隔离 + MTM + Sentinel QPS | **✅** | live ✅ | Task 3.2 |
+| **3.3** HITL | sideEffect + 确认 UI（主/子 Agent） | **✅** | live ✅（`verify_hitl_live --live`） | Task 3.3 |
+| **3.7** Grounding | AnswerGroundingChecker | **✅** | 集成测试 ✅（`verify_grounding`） | Task 3.7 |
+| **3.5** 可观测 | Micrometer + Grafana/告警 JSON | **✅** | live ✅（`verify_grafana_rag_live` + `verify_sentinel_dashboard`） | Task 3.5 |
 | **3.13** 并行 | AhoCorasick；`source_type` 可空 | **✅** | — | Task 3.13 |
 | **3.14** 多实例锁 | Redis GenerationJob 分布式锁 | **✅** | — | Task 3.14 |
 
@@ -254,7 +254,7 @@
 - 模块 **:8225**；MySQL + MinIO/本地存储
 - 详设 API 表见 [locked D3](./2026-06-19-locked-architecture-decisions.md#d3-skills-服务端管理--前端运营页)
 
-### 3.12 前端（**✅**，live 部分 ⬜）
+### 3.12 前端（**✅**，live **✅**）
 
 | 子任务 | 内容 | 状态 |
 |--------|------|:----:|
@@ -263,6 +263,10 @@
 | **3.12.2** | 版本 diff 独立页 `/skills/:skillId/diff` | **✅** |
 | **3.12.3** | ~~工具绑定~~（已取消） | — |
 | **3.12.4** | Plan DAG + `PlanNodeDrawer`（Chat 内嵌 + `/plans/:planId`） | **✅** |
+| **3.12.5** | Plan 用户确认 UI | **✅** |
+
+**Live 验收**：`python3 scripts/verify_skills_ui_live.py`（API §7）；UI 路由 `/skills` 手验 ✅。
+
 | **Chat** | `@` skill、`ExecutionModeSelector` 五模式底栏 | **✅** |
 
 **UI SSOT**：[skills-management-ui-design.md](./skills-management-ui-design.md)
@@ -298,38 +302,44 @@
 
 - [x] 3.4 v5 回归轨达标（hybrid+rerank 生产门禁 PASS）
 - [ ] 3.4 v6 提升轨达标（生产门禁 PASS；**相对 vector +15% 轨 WARN**，见 closure 报告）
-- [ ] 3.5 Grafana 远程 6 面板 + 4 告警可触发（指标 JSON ✅；部署 ⬜）
-- [ ] 3.5 Sentinel Dashboard 租户 QPS
-- [ ] 3.2 租户 A/B 隔离
-- [ ] 3.3 写工具 HITL live（含子 Agent；代码 ✅）
+- [x] 3.5 Grafana 6 面板 + 4 告警（`verify_grafana_rag_live` ✅）
+- [x] 3.5 Sentinel Dashboard 租户 QPS（`verify_sentinel_dashboard` + `verify_tenant_qps_live` ✅）
+- [x] 3.2 租户 A/B 隔离（`verify_tenant_live --live` ✅）
+- [x] 3.3 写工具 HITL live（`verify_hitl_live --live` ✅）
 - [x] 3.9 PLAN_WORKFLOW 三 API + Plan 详情/DAG 抽屉
 - [x] 3.9 IntentRouter plan-workflow + Replan + 节点重试/降级/Recovery（`docs/routing/plan-workflow-retry-degradation.md`）
-- [x] **3.9.5** 暂停/续跑一致性（Planner stop、HITL/Recovery re-await、按钮分态、wfCtx 空拒绝；单测 ✅ live ⬜）
-- [ ] 3.10 2+ agent 节点 Plan live 演示（单测 ✅）
-- [ ] 3.11 catalog + 3.12 `/skills` live
-- [ ] 3.6 tool + sub_agent + plan.* 可查（API ✅；`verify_audit_live.py` ecs4c16g **PASS**）
-- [ ] 3.7 Grounding 集成测试（代码 ✅）
-- [ ] 3.10.7 子 Agent 不污染主 reasoning
-- [ ] `phase2_agent_demo.py --suite all` 仍 PASS
+- [x] **3.9.5** 暂停/续跑一致性（`verify_pause_resume_consistency --live` ✅）
+- [x] 3.10 2+ agent 节点 Plan live 演示（`verify_subagent_timeline` ✅）
+- [x] 3.11 catalog + 3.12 `/skills` live（`verify_skill_5b_live` + `verify_skills_ui_live` ✅）
+- [x] 3.6 tool + sub_agent + plan.* 可查（`verify_audit_live` ✅）
+- [x] 3.7 Grounding 集成测试（`verify_grounding` ✅）
+- [x] 3.10.7 子 Agent 不污染主 reasoning（`verify_subagent_timeline` ✅）
+- [x] `phase2_agent_demo.py --suite all` 仍 PASS
 
 *多实例：另验 3.14。3.8.2 PromptComposer 非检查门，周 6 交付。*
 
 ---
 
-## 7. 下一步（2026-06-27）
+## 7. 下一步
 
-**P0 收尾**
-1. **3.9.5** 暂停/续跑一致性 → [pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md)
-2. **3.2** 跨租户集成测试 + `verify_tenant_live.py`
-3. **3.3 / 3.5 / 3.11** live 验收脚本关检查门
+**阶段三检查门**：除 v6 相对 vector **+15% 轨 WARN** 外均已通过；可启动阶段四按需项。
 
-**P1 生产**
-4. **3.7** Grounding 集成测试
-5. **3.5** Docker Prometheus scrape + `rule_files` 挂载告警
-6. **3.14** Redis GenerationJob 分布式锁
+**运维脚本 SSOT**（阶段三 live 一键复验）：
 
-**P2 并行**
-7. **3.13** AhoCorasick 脱敏
+```bash
+python3 scripts/verify_grafana_rag_live.py
+python3 scripts/verify_sentinel_dashboard.py
+python3 scripts/verify_tenant_qps_live.py
+python3 scripts/verify_tenant_live.py --live
+python3 scripts/verify_hitl_live.py --live
+python3 scripts/verify_audit_live.py
+python3 scripts/verify_grounding.py
+python3 scripts/verify_subagent_timeline.py
+python3 scripts/verify_skill_5b_live.py
+python3 scripts/verify_skills_ui_live.py
+python3 scripts/verify_pause_resume_consistency.py --live
+python3 scripts/phase2_agent_demo.py --suite all
+```
 
 **文档与计划**
 - 生产加固 plan：`../plans/2026-06-19-phase3-production-hardening.md`

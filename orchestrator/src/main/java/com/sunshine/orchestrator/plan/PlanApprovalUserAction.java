@@ -4,5 +4,7 @@ package com.sunshine.orchestrator.plan;
 public enum PlanApprovalUserAction {
     APPROVED,
     REGENERATED,
-    TIMED_OUT
+    TIMED_OUT,
+    /** 用户暂停 generation，须落库 checkpoint 后退出 */
+    CANCELLED
 }

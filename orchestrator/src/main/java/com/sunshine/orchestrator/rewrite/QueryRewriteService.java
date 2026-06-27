@@ -10,6 +10,8 @@ import com.sunshine.orchestrator.client.LlmGatewayClient;
 
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
 
+import com.sunshine.orchestrator.memory.MemoryContext;
+
 import lombok.RequiredArgsConstructor;
 
 import lombok.extern.slf4j.Slf4j;
@@ -182,7 +184,11 @@ public class QueryRewriteService {
      */
 
     public String rewriteForIntent(String originalQuery) {
-        return rewriteForIntent(originalQuery, null).effectiveQuery();
+        return rewriteForIntent(originalQuery, null, null).effectiveQuery();
+    }
+
+    public QueryRewriteOutcome rewriteForIntent(String originalQuery, String traceMessageId) {
+        return rewriteForIntent(originalQuery, traceMessageId, null);
     }
 
     /** Plan-Workflow Planner 调用前优化 query；未启用或失败时返回原文 */
@@ -217,7 +223,7 @@ public class QueryRewriteService {
         return outcome;
     }
 
-    public QueryRewriteOutcome rewriteForIntent(String originalQuery, String traceMessageId) {
+    public QueryRewriteOutcome rewriteForIntent(String originalQuery, String traceMessageId, MemoryContext memory) {
         long start = System.nanoTime();
         if (!shouldRewriteIntent(originalQuery)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
@@ -232,7 +238,7 @@ public class QueryRewriteService {
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
-        String user = "用户输入：" + originalQuery.strip();
+        String user = RewriteConversationContext.buildUserMessage(originalQuery, memory);
         String raw = llmGatewayClient.complete(cfg.getModel(), cfg.getSystemPrompt(), user);
         String rewritten = parseSingleQuery(raw, originalQuery);
         if (!StringUtils.hasText(rewritten)) {
@@ -243,8 +249,9 @@ public class QueryRewriteService {
         }
         QueryRewriteOutcome outcome = QueryRewriteOutcome.of("intent", originalQuery, rewritten, elapsedMs(start));
         if (outcome.applied()) {
-            log.info("[QueryRewrite] intent: in='{}' out='{}'",
-                    abbreviate(originalQuery), abbreviate(outcome.rewrittenQuery()));
+            log.info("[QueryRewrite] intent: in='{}' out='{}' ctx={}",
+                    abbreviate(originalQuery), abbreviate(outcome.rewrittenQuery()),
+                    memory != null && memory.hasAnyLayer());
         }
         QueryRewriteTrace.record(traceMessageId, outcome);
         return outcome;

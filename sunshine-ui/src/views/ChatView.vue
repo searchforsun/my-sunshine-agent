@@ -40,7 +40,7 @@ import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../composables/usePlanDagExpand'
 import type { ChatMessage } from '../api/chat'
-import { resumeButtonLabel } from '../api/resumeMode'
+import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
 import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
 import {
   isContentFullyInterleaved,
@@ -280,7 +280,7 @@ const latestAssistantMessage = computed(() => {
   return undefined
 })
 
-provide('applyHitlDecision', applyHitlDecision)
+provide('applyHitlDecision', handleHitlDecision)
 provide('applyRecoveryDecision', applyRecoveryDecision)
 provide('pendingHitlConfirmation', computed(() => latestAssistantMessage.value?.pendingHitlConfirmation))
 provide('planDrawerLiveNodeStep', (nodeId: string) =>
@@ -357,6 +357,8 @@ async function loadSkillCatalog() {
 const scrollRef = ref<HTMLElement | null>(null)
 /** 流式生成时是否跟随滚到底（用户手动上滑后暂停） */
 const chatScrollPinned = ref(true)
+/** HITL 等用户确认后续跑：强制贴底直到本轮 loading 结束 */
+const forceChatScroll = ref(false)
 const copiedIndex = ref<number | null>(null)
 let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -423,8 +425,20 @@ function onChatScroll() {
 function scrollToBottom(force = false) {
   const el = scrollRef.value
   if (!el) return
-  if (!force && !chatScrollPinned.value) return
-  el.scrollTo({ top: el.scrollHeight, behavior: force ? 'smooth' : 'auto' })
+  const shouldScroll = force || forceChatScroll.value || chatScrollPinned.value
+  if (!shouldScroll) return
+  const apply = () => {
+    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+  }
+  apply()
+  requestAnimationFrame(apply)
+}
+
+function handleHitlDecision(token: string, approved: boolean) {
+  applyHitlDecision(token, approved)
+  chatScrollPinned.value = true
+  forceChatScroll.value = true
+  void nextTick(() => scrollToBottom(true))
 }
 
 function renderMarkdown(text: string): string {
@@ -507,9 +521,12 @@ async function handleResume() {
   settledHtml.value = ''
   sessionSettledHtml.delete(convId)
   await nextTick()
+  const resumeMode = resolveResumeMode(last)
   const resumePromise = resume(convId, last.id)
   await nextTick()
-  await ensureStreamRenderer()
+  if (resumeMode === 'regenerate') {
+    await ensureStreamRenderer()
+  }
   await resumePromise
   await nextTick()
   scrollToBottom()
@@ -751,12 +768,21 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
 }, { flush: 'post' })
 
 watch(
+  () => streamRevision.value,
+  async () => {
+    if (!loading.value) return
+    await nextTick()
+    scrollToBottom(forceChatScroll.value)
+  },
+)
+
+watch(
   () => {
     const last = messages.value[messages.value.length - 1]
     if (last?.role !== 'assistant') return 0
     return (last.content?.length ?? 0) + (last.reasoning?.length ?? 0)
   },
-  async () => { await nextTick(); scrollToBottom() },
+  async () => { await nextTick(); scrollToBottom(forceChatScroll.value) },
 )
 
 watch(
@@ -786,6 +812,11 @@ watch(() => loading.value, async (val) => {
     await nextTick()
     await ensureStreamRenderer()
     return
+  }
+  if (forceChatScroll.value) {
+    forceChatScroll.value = false
+    await nextTick()
+    scrollToBottom(true)
   }
   if (streamRenderer) {
     streamRenderer.finish()
@@ -905,7 +936,7 @@ watch(() => loading.value, async (val) => {
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
                 :pending-hitl-confirmation="resolveTimelineContext(msg).pending"
-                @hitl-decided="applyHitlDecision"
+                @hitl-decided="handleHitlDecision"
               />
               <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">
                 <div v-if="showStreamWaiting" class="stream-waiting-dots" aria-label="正在生成">
@@ -1059,6 +1090,8 @@ watch(() => loading.value, async (val) => {
   display: flex;
   flex-direction: column;
   position: relative;
+  /* 滚动区底部留白，避免最后一条回复贴住悬浮输入框 */
+  --chat-composer-gap: 152px;
 }
 
 .chat-main.plan-dag-expanded .chat-scroll {
@@ -1166,7 +1199,7 @@ watch(() => loading.value, async (val) => {
 .chat-inner {
   max-width: 820px;
   margin: 0 auto;
-  padding: 24px 24px 118px;
+  padding: 24px 24px calc(var(--chat-composer-gap) + 28px);
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -1235,7 +1268,7 @@ watch(() => loading.value, async (val) => {
   display: flex;
   flex-direction: column;
   gap: 28px;
-  padding-bottom: 16px;
+  padding-bottom: 32px;
 }
 
 .msg-block.user {
@@ -1274,6 +1307,7 @@ watch(() => loading.value, async (val) => {
 
 .msg-copy-bar {
   margin-top: 10px;
+  margin-bottom: 12px;
   display: flex;
   justify-content: flex-start;
 }

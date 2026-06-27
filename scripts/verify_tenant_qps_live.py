@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Gateway Sentinel 租户 QPS Live 验收。
 
-前置：Nacos `sunshine.gateway.tenant-qps.count-per-tenant` 建议设为 5 便于触发。
+默认 burst=50，适配 Nacos gw-flow `count=30`（见 sunshine-gateway-gw-flow-rules.json）。
+若调低 count，可减小 --burst / --min-blocked。
 用法:
   python scripts/verify_tenant_qps_live.py
-  python scripts/verify_tenant_qps_live.py --burst 15 --min-blocked 3
+  python scripts/verify_tenant_qps_live.py --burst 50 --min-blocked 5
 """
 from __future__ import annotations
 
@@ -47,14 +48,14 @@ def register_and_login(gw: str, tenant: str) -> str:
 
 
 def hit_conversations(gw: str, token: str) -> tuple[int, dict | None]:
-  headers = {"Authorization": f"Bearer {token}"}
-  resp = requests.get(f"{gw}/api/conversations", headers=headers, timeout=30)
-  body = None
-  try:
-      body = resp.json()
-  except Exception:
-      body = {"raw": resp.text[:200]}
-  return resp.status_code, body
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = requests.get(f"{gw}/api/conversations", headers=headers, timeout=30)
+    body = None
+    try:
+        body = resp.json()
+    except Exception:
+        body = {"raw": resp.text[:200]}
+    return resp.status_code, body
 
 
 def burst(gw: str, token: str, n: int) -> list[tuple[int, dict | None]]:
@@ -69,8 +70,8 @@ def burst(gw: str, token: str, n: int) -> list[tuple[int, dict | None]]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--gateway-url", default=DEFAULT_GW)
-    parser.add_argument("--burst", type=int, default=15, help="并发请求数")
-    parser.add_argument("--min-blocked", type=int, default=1, help="至少期望的 429 次数")
+    parser.add_argument("--burst", type=int, default=50, help="并发请求数（默认适配 count=30）")
+    parser.add_argument("--min-blocked", type=int, default=5, help="至少期望的 429 次数")
     args = parser.parse_args()
     gw = args.gateway_url.rstrip("/")
 
@@ -96,7 +97,8 @@ def main() -> int:
     if blocked_a < args.min_blocked:
         print(
             f"[FAIL] tenant-a 429={blocked_a} < min={args.min_blocked}；"
-            "请确认 Nacos count-per-tenant≤5 且已 sync+重启 gateway",
+            "请确认 gw-flow count 已生效（sync sunshine-gateway-gw-flow-rules.json + 重启 gateway），"
+            f"或增大 --burst（当前 {args.burst}，count=30 时建议 ≥40）",
             file=sys.stderr,
         )
         return 1

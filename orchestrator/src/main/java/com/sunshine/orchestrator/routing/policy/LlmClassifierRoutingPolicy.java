@@ -26,15 +26,17 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
 
     @Override
     public Mono<Optional<ExecutionPlan>> tryRoute(RoutingContext ctx) {
-        return classifyWithOptionalIntentRewrite(ctx.userMessage(), ctx.traceMessageId())
+        return classifyWithOptionalIntentRewrite(ctx)
                 .map(Optional::of);
     }
 
-    private Mono<ExecutionPlan> classifyWithOptionalIntentRewrite(String userMessage, String traceMessageId) {
+    private Mono<ExecutionPlan> classifyWithOptionalIntentRewrite(RoutingContext ctx) {
+        String userMessage = ctx.userMessage();
         if (!queryRewriteService.shouldRewriteIntent(userMessage)) {
             return intentRouter.classifyPlan(userMessage);
         }
-        return Mono.fromCallable(() -> queryRewriteService.rewriteForIntent(userMessage, traceMessageId))
+        return Mono.fromCallable(() -> queryRewriteService.rewriteForIntent(
+                        userMessage, ctx.traceMessageId(), ctx.memory()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(outcome -> {
                     String query = StringUtils.hasText(outcome.effectiveQuery())

@@ -1,6 +1,7 @@
 package com.sunshine.autoconfigure.orchestrator;
 
 import com.sunshine.orchestrator.config.AgentPauseProperties;
+import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.generation.DistributedGenerationLock;
@@ -54,7 +55,9 @@ public class GenerationAutoConfiguration {
             GenerationStreamService streamService,
             GenerationRegistry registry,
             GenerationFlushScheduler flushScheduler,
-            GenerationProperties generationProperties) {
-        return new GenerationController(streamService, registry, flushScheduler, generationProperties);
+            GenerationProperties generationProperties,
+            ConversationService conversationService) {
+        return new GenerationController(
+                streamService, registry, flushScheduler, generationProperties, conversationService);
     }
 }
