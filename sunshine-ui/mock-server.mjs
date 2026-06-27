@@ -487,6 +487,10 @@ const server = http.createServer(async (req, res) => {
   const userId = getUserId(req)
   const url = req.url || ''
 
+  if (req.method === 'GET' && url === '/health') {
+    return json(res, 200, { status: 'UP', service: 'mock-server' })
+  }
+
   // ── 会话 CRUD ──
   if (req.method === 'GET' && url === '/api/conversations') {
     return json(res, 200, listForUser(userId))

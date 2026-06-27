@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
+import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.conversation.ConversationService;
@@ -57,10 +59,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -89,6 +93,9 @@ class ConversationIntegrationTest {
 
     @MockBean
     private LlmGatewayClient llmGateway;
+
+    @MockBean
+    private RagClient ragClient;
 
     @Autowired
     private ChatMessageRepository messageRepository;
@@ -129,6 +136,10 @@ class ConversationIntegrationTest {
                 });
         when(llmGateway.streamContinue(any(MemoryContext.class), anyString(), anyString()))
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
+        when(llmGateway.streamComposed(any(PromptComposeRequest.class)))
+                .thenReturn(Flux.just(StreamToken.content(" continued")));
+        when(ragClient.search(anyString(), anyInt(), any(), any()))
+                .thenReturn(Mono.just(List.of(new RagClient.RagHit("制度", "年假5天", 0.9f))));
     }
 
     @Test
@@ -301,11 +312,8 @@ class ConversationIntegrationTest {
     }
 
     @Test
-    @DisplayName("resumeKnowledgeIntent_appendsContent — knowledge 意图可续传")
+    @DisplayName("resumeKnowledgeIntent_appendsContent — knowledge 意图续传走 workflow 重跑")
     void resumeKnowledgeIntent_appendsContent() throws InterruptedException {
-        when(llmGateway.streamContinue(any(MemoryContext.class), anyString(), anyString()))
-                .thenReturn(Flux.just(StreamToken.content(" continued")));
-
         ChatConversationEntity conv = conversationService.create(ALICE, TENANT);
         conversationService.appendMessage(conv.getId(), "user", "查制度", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
@@ -319,7 +327,9 @@ class ConversationIntegrationTest {
 
         assertThat(last.getContent()).contains("half answer").contains("continued");
         assertThat(last.getStatus()).isEqualTo(MessageStatus.COMPLETED);
-        verify(llmGateway).streamContinue(any(MemoryContext.class), eq("查制度"), eq("half answer"));
+        verify(llmGateway, never()).streamContinue(any(MemoryContext.class), anyString(), anyString());
+        verify(llmGateway, atLeastOnce()).streamComposed(any(PromptComposeRequest.class));
+        verify(ragClient, atLeastOnce()).search(anyString(), anyInt(), any(), any());
     }
 
     @Test

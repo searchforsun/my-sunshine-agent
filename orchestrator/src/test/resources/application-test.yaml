@@ -1,6 +1,8 @@
 # orchestrator 集成测试 — H2 内存库 + Mock LLM（无需 Nacos / MySQL / LLM Gateway）
 
 spring:
+  config:
+    import: []
   main:
     allow-bean-definition-overriding: true
   autoconfigure:
@@ -68,6 +70,26 @@ sunshine:
 
 desensitize:
   enabled: false
+
+workflow:
+  catalog:
+    - id: knowledge-qa
+      displayName: 知识库问答
+  definitions:
+    knowledge-qa:
+      nodes:
+        - id: start
+          type: start
+        - id: rag
+          type: rag
+          params:
+            topK: "3"
+        - id: answer
+          type: answer
+          displayName: 生成回答
+          params:
+            prompt: "检索结果：{{rag.output}}"
+      edges: [start, rag, answer]
 
 logging:
   level:

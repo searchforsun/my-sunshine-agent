@@ -26,15 +26,15 @@ export default defineConfig({
     ? [
         {
           command: 'node mock-server.mjs',
-          url: 'http://localhost:8001',
+          url: 'http://localhost:8001/health',
           reuseExistingServer: false,
-          timeout: 30_000,
+          timeout: 60_000,
         },
         {
-          command: 'npm run dev',
+          command: 'npm run dev -- --mode e2e-mock',
           url: 'http://localhost:5173',
           reuseExistingServer: false,
-          timeout: 30_000,
+          timeout: 60_000,
         },
       ]
     : undefined,

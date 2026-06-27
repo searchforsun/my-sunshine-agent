@@ -38,16 +38,14 @@ class WorkflowNodeLabelsTest {
         toolNode.setType("tool");
         toolNode.setDisplayName("查询待审批财务消息");
         toolNode.setParams(Map.of("tool", "list_finance_messages"));
-        WorkflowProperties.NodeProps llmNode = new WorkflowProperties.NodeProps();
-        llmNode.setId("llm");
-        llmNode.setType("llm");
         WorkflowProperties.NodeProps startNode = new WorkflowProperties.NodeProps();
         startNode.setId("start");
         startNode.setType("start");
         WorkflowProperties.NodeProps answerNode = new WorkflowProperties.NodeProps();
         answerNode.setId("answer");
         answerNode.setType("answer");
-        def.setNodes(List.of(startNode, toolNode, llmNode, answerNode));
+        answerNode.setDisplayName("生成回答");
+        def.setNodes(List.of(startNode, toolNode, answerNode));
         props.setDefinitions(new LinkedHashMap<>(Map.of("finance-list", def)));
 
         labelService = new WorkflowNodeLabelService(props, toolCatalogService);
@@ -64,17 +62,16 @@ class WorkflowNodeLabelsTest {
         WorkflowDefinition def = WorkflowDefinition.from("finance-list", List.of(
                 new NodeSpec("start", "start", Map.of()),
                 new NodeSpec("finance-list", "tool", Map.of("tool", "list_finance_messages")),
-                new NodeSpec("llm", "llm", Map.of()),
-                new NodeSpec("answer", "answer", Map.of())
-        ), List.of("start", "finance-list", "llm", "answer"));
+                new NodeSpec("answer", "answer", Map.of(), "生成回答")
+        ), List.of("start", "finance-list", "answer"));
 
         assertThat(WorkflowNodeLabels.planChain(def))
-                .isEqualTo("查询待审批财务消息 → 生成回答");
+                .isEqualTo("查询待审批财务消息");
     }
 
     @Test
     void displayNameByStepId_resolvesLlmWithoutExposingInternalType() {
-        assertThat(WorkflowNodeLabels.displayNameByStepId("node-llm")).isEqualTo("生成回答");
+        assertThat(WorkflowNodeLabels.displayNameByStepId("node-llm")).isEqualTo("综合分析");
     }
 
     @Test

@@ -115,8 +115,9 @@ public final class WorkflowNodeLabels {
 
 
 
+  /** 执行计划摘要：跳过 start/answer，仅展示业务节点链（与 PlanTimeline 一致） */
     public static boolean isVisibleNode(String nodeType) {
-        return nodeType != null && !"start".equals(nodeType);
+        return nodeType != null && !"start".equals(nodeType) && !"answer".equals(nodeType);
     }
 
 }
