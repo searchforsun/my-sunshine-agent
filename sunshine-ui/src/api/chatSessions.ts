@@ -32,7 +32,7 @@ import {
 } from './hitlSteps'
 import { applyRecoveryDecision as applyRecoveryDecisionToSteps, stepHasHitlAwaiting } from './recoverySteps'
 import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, pauseRunningWorkflowNodes, shouldIgnoreResumeStepReplay, reactivatePausedStepsForResume, reactivateOtherPausedWorkflowNodes } from './processingSteps'
-import { appendInterleavedContent, maybeReanchorContentBlocksToTail } from './contentInterleave'
+import { appendInterleavedContent, appendSegmentContent, appendStepSegmentContent, beginContentSegment, beginStepContentSegment, endContentSegment, endStepContentSegment, maybeReanchorContentBlocksToTail } from './contentInterleave'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
 
@@ -156,12 +156,32 @@ export function useChatSessions(
       ...step,
       summary: step.summary ? { ...step.summary } : step.summary,
       metadata: step.metadata ? { ...step.metadata } : step.metadata,
+      contentBlocks: step.contentBlocks?.map(b => ({ ...b })),
       subSteps: step.subSteps?.map(sub => ({
         ...sub,
         summary: sub.summary ? { ...sub.summary } : sub.summary,
         metadata: sub.metadata ? { ...sub.metadata } : sub.metadata,
       })),
     }))
+  }
+
+  function updateNodeStepContent(
+    steps: ProcessingStep[],
+    nodeStepId: string,
+    mutate: (step: ProcessingStep) => void,
+  ): ProcessingStep[] {
+    let changed = false
+    const next = steps.map(st => {
+      if (st.id !== nodeStepId) return st
+      const copy: ProcessingStep = {
+        ...st,
+        contentBlocks: st.contentBlocks?.map(b => ({ ...b })),
+      }
+      mutate(copy)
+      changed = true
+      return copy
+    })
+    return changed ? next : steps
   }
 
   function bumpAssistantMessage(session: SessionState): void {
@@ -377,21 +397,81 @@ export function useChatSessions(
           continue
         }
 
+        if (parsed.kind === 'content_start') {
+          if (eventSeq !== null) updateLastSeq(eventSeq)
+          const lastMsg = s.messages[s.messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            if (parsed.nodeStepId) {
+              lastMsg.steps = updateNodeStepContent(lastMsg.steps ?? [], parsed.nodeStepId, step => {
+                beginStepContentSegment(step, parsed.segmentId, parsed.afterStepId)
+              })
+            } else {
+              beginContentSegment(lastMsg, parsed.segmentId, parsed.afterStepId)
+            }
+            if (!lastMsg.status || lastMsg.status === 'interrupted') {
+              lastMsg.status = 'streaming'
+            }
+            bumpAssistantMessage(s)
+          }
+          onProgress?.(s.id)
+          continue
+        }
+
+        if (parsed.kind === 'content_end') {
+          if (eventSeq !== null) updateLastSeq(eventSeq)
+          const lastMsg = s.messages[s.messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            if (parsed.nodeStepId) {
+              lastMsg.steps = updateNodeStepContent(lastMsg.steps ?? [], parsed.nodeStepId, step => {
+                endStepContentSegment(step, parsed.segmentId)
+              })
+            } else {
+              endContentSegment(lastMsg, parsed.segmentId)
+            }
+            bumpAssistantMessage(s)
+          }
+          onProgress?.(s.id)
+          continue
+        }
+
+        if (parsed.kind === 'chunk') {
+          if (eventSeq !== null) updateLastSeq(eventSeq)
+          const lastMsg = s.messages[s.messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            if (parsed.nodeStepId) {
+              lastMsg.steps = updateNodeStepContent(lastMsg.steps ?? [], parsed.nodeStepId, step => {
+                if (parsed.segmentId) {
+                  appendStepSegmentContent(step, parsed.segmentId, parsed.text, !!options.resume)
+                }
+              })
+            } else if (parsed.segmentId) {
+              appendSegmentContent(lastMsg, parsed.segmentId, parsed.text, !!options.resume)
+            } else {
+              appendInterleavedContent(lastMsg, parsed.text, parsed.afterStepId, !!options.resume)
+            }
+            if (!lastMsg.status || lastMsg.status === 'interrupted') {
+              lastMsg.status = 'streaming'
+            }
+            bumpAssistantMessage(s)
+          }
+          onChunk?.(s.id, parsed.text)
+          onProgress?.(s.id)
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+          continue
+        }
+
         if (eventSeq !== null) updateLastSeq(eventSeq)
 
         const lastMsg = s.messages[s.messages.length - 1]
         if (lastMsg?.role === 'assistant') {
-          appendInterleavedContent(lastMsg, parsed.text, !!options.resume)
           if (!lastMsg.status || lastMsg.status === 'interrupted') {
             lastMsg.status = 'streaming'
           }
           bumpAssistantMessage(s)
         }
 
-        onChunk?.(s.id, parsed.text)
         onProgress?.(s.id)
-        // 正文 chunk 单独让出帧，便于 OperationStack 挂载穿插流式锚点后再渲染
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        continue
       }
 
       if (events.length > 0) await new Promise(r => setTimeout(r, 0))

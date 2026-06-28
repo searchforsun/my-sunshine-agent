@@ -46,6 +46,7 @@ agent:
     max-buffer-chunks: 10000
     reconnect-block-ms: 5000
     flush-interval-ms: 50
+    max-chunk-chars: 32
   resume:
     max-resume-attempts: 3
   memory:

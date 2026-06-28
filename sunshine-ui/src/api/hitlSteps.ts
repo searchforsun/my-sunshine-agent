@@ -214,6 +214,29 @@ export function resolveHitlToolName(step: ProcessingStep): string {
     || '写操作工具'
 }
 
+/** 解析 HITL 参数摘要为 key/value 对 */
+export function parseHitlParamsSummary(raw?: string | null, maxValueLen = 120): { key: string; value: string }[] {
+  if (!raw?.trim()) return []
+  const pairs: { key: string; value: string }[] = []
+  for (const segment of raw.split(/,\s*(?=[\w.-]+=)/)) {
+    const eq = segment.indexOf('=')
+    if (eq <= 0) continue
+    const key = segment.slice(0, eq).trim()
+    let val = segment.slice(eq + 1).trim()
+    if (!key) continue
+    if (val.length > maxValueLen) val = `${val.slice(0, maxValueLen)}…`
+    pairs.push({ key, value: val })
+  }
+  return pairs
+}
+
+/** HITL 参数摘要：仅展示 key=value，过长值截断（确认框专用，非业务正文） */
+export function formatHitlParamsSummary(raw?: string | null, maxValueLen = 120): string {
+  return parseHitlParamsSummary(raw, maxValueLen)
+    .map(({ key, value }) => `${key}=${value}`)
+    .join(', ')
+}
+
 export function resolveHitlHint(step: ProcessingStep): string {
   if (step.summary?.active?.trim()) {
     return step.summary.active.trim()

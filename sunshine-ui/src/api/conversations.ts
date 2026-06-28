@@ -3,7 +3,9 @@ import { resolveApiBase } from './config'
 import type { ExecutionPreference } from './executionModes'
 import { isExecutionPreference } from './executionModes'
 import type { ProcessingStep } from './processingSteps'
-import { migrateV1Step, normalizeStep } from './processingSteps'
+import { migrateV1Step, normalizeStep, parseContentBlocks } from './processingSteps'
+import type { ContentBlock } from './contentInterleave'
+import { hydratePlanAnswerFromContent } from './contentInterleave'
 import { ApiError, parseBffPayload } from './apiError'
 
 const API_BASE = () => resolveApiBase()
@@ -21,6 +23,7 @@ export interface ConversationMessage {
   content: string
   reasoning?: string
   steps?: ProcessingStep[]
+  contentBlocks?: ContentBlock[]
   status?: string
   intent?: string
   seq?: number
@@ -84,20 +87,40 @@ function parseSteps(raw: unknown): ProcessingStep[] | undefined {
   return undefined
 }
 
+function parseMessageContentBlocks(raw: unknown): ContentBlock[] | undefined {
+  if (raw == null) return undefined
+  if (typeof raw === 'string') {
+    if (!raw.trim()) return undefined
+    try {
+      return parseContentBlocks(JSON.parse(raw))
+    } catch {
+      return undefined
+    }
+  }
+  return parseContentBlocks(raw)
+}
+
 function mapDetail(raw: Record<string, unknown>): ConversationDetail {
-  const messages = (raw.messages as Record<string, unknown>[] | undefined ?? []).map(m => ({
-    id: String(m.id),
-    role: m.role as 'user' | 'assistant',
-    content: String(m.content ?? ''),
-    reasoning: typeof m.reasoning === 'string' ? m.reasoning : undefined,
-    steps: parseSteps(m.steps),
-    status: m.status as string | undefined,
-    intent: m.intent as string | undefined,
-    seq: m.seq as number | undefined,
-    createdAt: m.createdAt as string | undefined,
-    executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
-    executionPreference: isExecutionPreference(m.executionPreference) ? m.executionPreference : undefined,
-  }))
+  const messages = (raw.messages as Record<string, unknown>[] | undefined ?? []).map(m => {
+    const msg: ConversationMessage = {
+      id: String(m.id),
+      role: m.role as 'user' | 'assistant',
+      content: String(m.content ?? ''),
+      reasoning: typeof m.reasoning === 'string' ? m.reasoning : undefined,
+      steps: parseSteps(m.steps),
+      contentBlocks: parseMessageContentBlocks(m.contentBlocks),
+      status: m.status as string | undefined,
+      intent: m.intent as string | undefined,
+      seq: m.seq as number | undefined,
+      createdAt: m.createdAt as string | undefined,
+      executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
+      executionPreference: isExecutionPreference(m.executionPreference) ? m.executionPreference : undefined,
+    }
+    if (msg.role === 'assistant') {
+      hydratePlanAnswerFromContent(msg)
+    }
+    return msg
+  })
   return { ...mapSummary(raw), messages }
 }
 

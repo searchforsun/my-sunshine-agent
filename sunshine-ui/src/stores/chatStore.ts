@@ -24,6 +24,8 @@ import {
   removeCachedIndex,
   upsertCachedIndex,
 } from '../api/conversationCache'
+import { hydratePlanAnswerFromContent } from '../api/contentInterleave'
+import { ensurePlanTimelineSteps } from '../api/planHydrate'
 
 export interface Conversation {
   id: string
@@ -44,10 +46,17 @@ function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
       content: m.content,
       reasoning: m.reasoning,
       steps: m.steps,
+      contentBlocks: m.contentBlocks,
       status: m.status as ChatMessage['status'],
       intent: m.intent,
       executionPlanId: m.executionPlanId,
       executionPreference: m.executionPreference,
+    }
+    if (msg.role === 'assistant') {
+      hydratePlanAnswerFromContent(msg)
+      if (!msg.steps?.length && msg.executionPlanId) {
+        msg.steps = ensurePlanTimelineSteps(msg)
+      }
     }
     if (msg.role === 'assistant' && (msg.status === 'failed' || isLikelyStreamFailureContent(msg.content))) {
       hydrateStreamError(msg)

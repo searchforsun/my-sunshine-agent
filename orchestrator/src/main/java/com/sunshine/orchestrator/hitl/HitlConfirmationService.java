@@ -432,8 +432,21 @@ public class HitlConfirmationService {
             return "";
         }
         return params.entrySet().stream()
-                .map(e -> e.getKey() + "=" + e.getValue())
+                .map(e -> e.getKey() + "=" + truncateParamValue(e.getValue()))
                 .collect(Collectors.joining(", "));
+    }
+
+    /** HITL 确认框参数摘要：单行 key=value，过长截断 */
+    private static String truncateParamValue(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.strip().replace('\n', ' ');
+        int maxLen = 120;
+        if (normalized.length() <= maxLen) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLen) + "…";
     }
 
     private void storeToken(String token, String messageId, String toolId, long expiresAt) {

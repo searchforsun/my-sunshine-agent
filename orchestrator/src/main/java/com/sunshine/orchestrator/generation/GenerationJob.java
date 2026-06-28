@@ -2,7 +2,9 @@ package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.processing.ContentBlockAccumulator;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
+import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.util.StreamErrorMessages;
@@ -57,6 +59,7 @@ public class GenerationJob {
     private volatile StringBuilder mysqlBufferRef;
     private volatile StringBuilder reasoningBufferRef;
     private final java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>();
+    private final ContentBlockAccumulator contentBlockAccumulator = new ContentBlockAccumulator();
     private ThinkStepMapper thinkMapper;
 
     GenerationJob(String generationId, String messageId, String conversationId,
@@ -241,10 +244,14 @@ public class GenerationJob {
 
     private void onChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
-        if (token.isStep() || token.isStepDelta()) {
+        if (token.isStep() || token.isStepDelta() || token.isContentStart() || token.isContentEnd()) {
             if (token.isStep()) {
                 thinkMapper.syncExternalStep(token.step());
             }
+            emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
+            return;
+        }
+        if (token.isContent() && token.segmentId() != null) {
             emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
             return;
         }
@@ -254,6 +261,19 @@ public class GenerationJob {
     }
 
     private void emitMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
+            Consumer<String> flushPartial, AtomicLong lastFlush) {
+        int maxChars = properties.maxChunkChars();
+        if (maxChars <= 0) {
+            emitSingleMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
+            return;
+        }
+        for (StreamToken piece : StreamChunkSplitter.splitToken(token, maxChars)) {
+            emitSingleMappedChunk(piece, mysqlBuffer, flushPartial, lastFlush);
+        }
+    }
+
+    /** 单帧写入 Redis / MySQL 缓冲（Hook 与主 Flux 共用，大段在此层之前已切分） */
+    private void emitSingleMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
         long nextSeq = seq.incrementAndGet();
         if (token.isStep()) {
@@ -272,8 +292,24 @@ public class GenerationJob {
             }
             return;
         }
+        if (token.isContentStart()) {
+            contentBlockAccumulator.onContentStart(token);
+            streamService.appendChunk(generationId, nextSeq,
+                    flushScheduler.metaContentStart(
+                            token.segmentId(), token.afterStepId(), token.scopeNodeStepId()));
+            return;
+        }
+        if (token.isContentEnd()) {
+            contentBlockAccumulator.onContentEnd(token);
+            streamService.appendChunk(generationId, nextSeq,
+                    flushScheduler.metaContentEnd(token.segmentId(), token.scopeNodeStepId()));
+            return;
+        }
         String wire = token.isContent()
-                ? flushScheduler.metaContent(token.text())
+                ? (token.segmentId() != null
+                ? flushScheduler.metaContentInSegment(
+                        token.segmentId(), token.text(), token.scopeNodeStepId())
+                : flushScheduler.metaContent(token.text(), token.afterStepId()))
                 : flushScheduler.metaReasoning(token.text());
         streamService.appendChunk(generationId, nextSeq, wire);
         if (token.isReasoning()) {
@@ -282,7 +318,21 @@ public class GenerationJob {
             }
             return;
         }
-        mysqlBuffer.append(token.text());
+        if (token.isContent() && token.segmentId() != null) {
+            contentBlockAccumulator.onContent(token);
+        }
+        // 子 Agent 分段正文仅落 steps.contentBlocks，勿混入 message.content（避免污染 answer 节点）
+        if (org.springframework.util.StringUtils.hasText(token.scopeNodeStepId())) {
+            long now = System.currentTimeMillis();
+            if (now - lastFlush.get() >= properties.flushIntervalMs()) {
+                lastFlush.set(now);
+                flushPartial.accept(mysqlBuffer.toString());
+            }
+            return;
+        }
+        if (token.isContent() && token.text() != null) {
+            mysqlBuffer.append(token.text());
+        }
 
         long now = System.currentTimeMillis();
         if (now - lastFlush.get() >= properties.flushIntervalMs()) {
@@ -338,11 +388,17 @@ public class GenerationJob {
     private void persistFinal(String status, Runnable afterPersist) {
         String content = bufferContent();
         String reasoning = bufferReasoning();
+        contentBlockAccumulator.mergeIntoSteps(stepsBuffer);
         String steps = stepsJson();
+        String contentBlocks = contentBlockAccumulator.messageBlocksJson();
         Mono.fromRunnable(() -> {
                     try {
                         if (flushLock == null || flushLock.isHeldByThisInstance(generationId)) {
-                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps);
+                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks);
+                        } else {
+                            log.warn("[GenerationJob] 终态落库时 flush 锁已丢失，仍强制 commitFinal genId={} msg={}",
+                                    generationId, messageId);
+                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks);
                         }
                         afterPersist.run();
                     } finally {

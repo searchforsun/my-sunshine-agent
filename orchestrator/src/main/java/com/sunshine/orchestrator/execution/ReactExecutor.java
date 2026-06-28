@@ -3,7 +3,6 @@ package com.sunshine.orchestrator.execution;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
-import com.sunshine.orchestrator.client.StreamDeltaNormalizer;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import lombok.RequiredArgsConstructor;
@@ -58,8 +57,7 @@ public class ReactExecutor {
         }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
-                        injectedBlocks != null ? injectedBlocks : List.of(), skillId))
-                .transform(StreamDeltaNormalizer::normalizeTokens);
+                        injectedBlocks != null ? injectedBlocks : List.of(), skillId));
     }
 
     private static String blankToNull(String value) {

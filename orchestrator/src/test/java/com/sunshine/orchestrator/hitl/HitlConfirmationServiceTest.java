@@ -154,7 +154,32 @@ class HitlConfirmationServiceTest {
                 "paused",
                 null,
                 meta,
+                null,
                 null);
+    }
+
+    @Test
+    void awaitConfirmation_truncatesLongParamValuesInSummary() throws Exception {
+        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
+        when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
+                .thenReturn("{\"type\":\"confirmation\"}");
+        when(redis.opsForValue()).thenReturn(valueOps);
+
+        String longReason = "x".repeat(150);
+        CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
+                () -> service.awaitConfirmation("msg-1", "approve_oa_task", Map.of("taskId", longReason)));
+
+        Thread.sleep(200);
+        ArgumentCaptor<String> summaryCaptor = ArgumentCaptor.forClass(String.class);
+        verify(flushScheduler).metaConfirmation(
+                anyString(), anyString(), summaryCaptor.capture(), anyString(), anyLong());
+        assertThat(summaryCaptor.getValue()).startsWith("taskId=");
+        assertThat(summaryCaptor.getValue()).hasSizeLessThanOrEqualTo("taskId=".length() + 120 + 1);
+        assertThat(summaryCaptor.getValue()).endsWith("…");
+
+        service.confirm(extractToken(), true);
+        assertThat(future.get(2, TimeUnit.SECONDS)).isTrue();
     }
 
     private String extractToken() {

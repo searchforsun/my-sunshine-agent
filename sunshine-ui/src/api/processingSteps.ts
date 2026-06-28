@@ -7,6 +7,7 @@
 import { relocateAgentNodeHitl } from './hitlSteps'
 import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
+import type { ContentBlock } from './contentInterleave'
 
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
@@ -110,6 +111,9 @@ export interface ProcessingStep {
 
   /** Workflow agent 节点：子 Agent 完整 ReAct 步骤（抽屉内展示） */
   subSteps?: ProcessingStep[]
+
+  /** 子 Agent 正文分段（抽屉 OperationStack 穿插于 subSteps） */
+  contentBlocks?: ContentBlock[]
 
 }
 
@@ -437,6 +441,20 @@ function mergeStepMetadata(
 
 
 
+export function parseContentBlocks(raw: unknown): ContentBlock[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const blocks: ContentBlock[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const segmentId = typeof o.segmentId === 'string' ? o.segmentId : ''
+    const afterStepId = typeof o.afterStepId === 'string' ? o.afterStepId : ''
+    const text = typeof o.text === 'string' ? o.text : ''
+    if (segmentId && afterStepId) blocks.push({ segmentId, afterStepId, text })
+  }
+  return blocks.length > 0 ? blocks : undefined
+}
+
 function parseSubSteps(raw: unknown): ProcessingStep[] | undefined {
   if (!Array.isArray(raw) || raw.length === 0) return undefined
   const steps = raw
@@ -504,6 +522,8 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
     metadata: parseMetadata(raw.metadata),
 
     subSteps: parseSubSteps(raw.subSteps),
+
+    contentBlocks: parseContentBlocks(raw.contentBlocks),
 
   }
 
@@ -731,11 +751,6 @@ export function stripLoadedSkillPrefix(text?: string): string {
   return text.replace(/^已加载技能：[^\n]+\n\n?/, '').trim()
 }
 
-/** @deprecated 使用 resolveStepExpandSummary + resolveStepExpandBody */
-export function resolveStepExpandText(step: ProcessingStep): string {
-  return resolveStepExpandBody(step) || resolveStepExpandSummary(step)
-}
-
 /** 主行是否将摘要下移到展开区（展开后主行仅保留 label） */
 export function shouldShiftSummaryOnExpand(step: ProcessingStep): boolean {
   const summary = resolveStepExpandSummary(step)
@@ -877,13 +892,15 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       output: longerText(prev.output, incoming.output),
 
-      result: incoming.result ?? prev.result,
+      result: longerText(prev.result, incoming.result),
 
       detail: incoming.detail ?? prev.detail,
 
       metadata: mergeStepMetadata(prev.metadata, incoming.metadata, lifecycle),
 
       subSteps: mergeSubSteps(prev.subSteps, incoming.subSteps),
+
+      contentBlocks: incoming.contentBlocks?.length ? incoming.contentBlocks : prev.contentBlocks,
 
       durationMs: incoming.durationMs ?? prev.durationMs,
 
@@ -928,6 +945,10 @@ export interface StepDelta {
 export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): ProcessingStep[] {
 
   const idx = steps.findIndex(s => s.id === delta.stepId)
+
+  if (idx < 0 && isWorkflowNodeStepId(delta.stepId)) {
+    return steps
+  }
 
   const base: ProcessingStep = idx >= 0 ? { ...steps[idx] } : {
 

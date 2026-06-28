@@ -45,6 +45,7 @@ class GenerationStreamServiceTest {
         registry.add("agent.generation.max-buffer-chunks", () -> 10000);
         registry.add("agent.generation.reconnect-block-ms", () -> 100);
         registry.add("agent.generation.flush-interval-ms", () -> 50);
+        registry.add("agent.generation.max-chunk-chars", () -> 32);
     }
 
     @BeforeEach

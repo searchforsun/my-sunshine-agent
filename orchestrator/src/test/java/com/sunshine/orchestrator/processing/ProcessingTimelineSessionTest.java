@@ -86,6 +86,32 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void startTool_doesNotCompleteRunningGenerate() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("查待办");
+        session.pending("generate", "generate");
+        session.startAt("generate", "generate", 1000L);
+        session.pending("tool-list_oa_tasks@1", "tool");
+        session.startAt("tool-list_oa_tasks@1", "tool", 1001L);
+
+        ProcessingStep generate = session.snapshot().stream()
+                .filter(s -> "generate".equals(s.id())).findFirst().orElseThrow();
+        assertThat(generate.lifecycle()).isEqualTo("running");
+    }
+
+    @Test
+    void contentAnchorAfterStepId_returnsLastDoneThink() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("查待办");
+        session.beginReasoningRound();
+        session.endReasoningRound();
+        session.beginReasoningRound();
+        session.endReasoningRound();
+
+        assertThat(session.contentAnchorAfterStepId()).isEqualTo("think-2");
+    }
+
+    @Test
     void threeToolReactTimeline_oneAnalysisPerTool() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("请自主依次调用三个工具");

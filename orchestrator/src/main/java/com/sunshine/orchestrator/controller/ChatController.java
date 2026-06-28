@@ -781,8 +781,19 @@ public class ChatController {
             return sse(flushScheduler.metaStepDelta(
                     token.stepId(), token.channel(), token.text()));
         }
+        if (token.isContentStart()) {
+            return sse(flushScheduler.metaContentStart(
+                    token.segmentId(), token.afterStepId(), token.scopeNodeStepId()));
+        }
+        if (token.isContentEnd()) {
+            return sse(flushScheduler.metaContentEnd(token.segmentId(), token.scopeNodeStepId()));
+        }
         if (token.isContent()) {
-            return sse(flushScheduler.metaContent(token.text()));
+            if (token.segmentId() != null) {
+                return sse(flushScheduler.metaContentInSegment(
+                        token.segmentId(), token.text(), token.scopeNodeStepId()));
+            }
+            return sse(flushScheduler.metaContent(token.text(), token.afterStepId()));
         }
         return sse(flushScheduler.metaReasoning(token.text()));
     }

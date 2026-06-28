@@ -58,6 +58,7 @@ public final class SubAgentTimelineBridge {
                 "running",
                 nodeLabel,
                 null,
+                null,
                 List.copyOf(subSteps));
         return StreamToken.step(node);
     }

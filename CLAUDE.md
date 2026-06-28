@@ -40,7 +40,7 @@ python scripts/rag_eval.py --suite v5 --strategy hybrid+rerank --ci --fail-if-re
 python scripts/rag_eval.py --suite v5 --rewrite-only --strategy hybrid+rerank
 
 mvn test -pl llm-gateway -Dtest=ModelRouterTest,AdapterCircuitBreakerTest
-mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest,RuleBasedRouterTest,QueryRewriteServiceTest,KnowledgeRetrievalServiceTest,ExecutionPlanRouterTest,RoutingGoldenSetTest,StructuralPlanMatcherTest,PromptComposerTest,LlmNodeHandlerTest,ReActAgentRuntimeTest,ReactExecutorTest,AgentNodeHandlerTest
+mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest,RuleBasedRouterTest,QueryRewriteServiceTest,KnowledgeRetrievalServiceTest,ExecutionPlanRouterTest,RoutingGoldenSetTest,StructuralPlanMatcherTest,PromptComposerTest,ReActAgentRuntimeTest,ReactExecutorTest,AgentNodeHandlerTest
 mvn test -pl rag-service
 ```
 
@@ -122,7 +122,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 **子 Agent 目标（SSOT：`docs/superpowers/plans/2026-06-19-multi-agent-architecture.md` §子 Agent 实现目标）**：编排器-Worker；`query` + 上游 `context` 由 workflow 传入；system = base + skill overlay + 节点 `systemOverlay`；用户正文由下游 **answer** 节点合成。
 
-**Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `LlmNodeHandler`；SUB 的 `skillId` 走 skill overlay 层；ReAct 工具策略见 Nacos `agent.prompt.mode-overlays.react`。
+**Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `AnswerNodeHandler`；SUB 的 `skillId` 走 skill overlay 层；ReAct 工具策略见 Nacos `agent.prompt.mode-overlays.react`。
 
 **Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall`；HyDE 为 **首次 0 命中 fallback**（`agent.rewrite.rag.hyde.enabled`）；日志 `[QueryRewrite]`。
 

@@ -115,9 +115,20 @@ public final class WorkflowNodeLabels {
 
 
 
-  /** 执行计划摘要：跳过 start/answer，仅展示业务节点链（与 PlanTimeline 一致） */
-    public static boolean isVisibleNode(String nodeType) {
+    /** plan 摘要链 / 主 timeline 卡片：排除 start、answer（与 PlanTimeline 一致） */
+    public static boolean isPlanChainNode(String nodeType) {
         return nodeType != null && !"start".equals(nodeType) && !"answer".equals(nodeType);
+    }
+
+    /** DAG node-{id} 步骤生命周期：含 answer，排除 start */
+    public static boolean tracksNodeStep(String nodeType) {
+        return nodeType != null && !"start".equals(nodeType);
+    }
+
+    /** @deprecated 语义见 {@link #isPlanChainNode} */
+    @Deprecated
+    public static boolean isVisibleNode(String nodeType) {
+        return isPlanChainNode(nodeType);
     }
 
 }

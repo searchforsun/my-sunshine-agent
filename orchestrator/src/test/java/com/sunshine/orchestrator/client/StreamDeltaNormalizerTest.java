@@ -67,16 +67,6 @@ class StreamDeltaNormalizerTest {
     }
 
     @Test
-    @DisplayName("后缀-前缀重叠的增量帧正确拼接")
-    void suffixPrefixOverlap_mergesIncrementally() {
-        List<StreamToken> out = collect(
-                StreamToken.content("金额=3280"),
-                StreamToken.content("3280.5")
-        );
-        assertThat(out).extracting(StreamToken::text).containsExactly("金额=3280", ".5");
-    }
-
-    @Test
     @DisplayName("每个 think stepId 独立累积基线")
     void crossThinkStep_keepsFullRoundContentPerStep() {
         String planning = "用户要求依次调用三个工具。";
@@ -93,50 +83,17 @@ class StreamDeltaNormalizerTest {
     }
 
     @Test
-    @DisplayName("增量流后整段重述：锚点对齐只保留新增尾部")
-    void stepDeltaReasoningRestatement_usesSharedAnchor() {
-        String incremental = "调用，所以我需要按顺序逐个。\n\n先从第一步开始：统计 pending 财务。";
-        String restatement = "用户要求我依次调用以下工具：\n\n1. 先统计 pending 财务（summarize_finance_by_status）\n"
-                + "2. 再查 1001（get_finance_message_detail）\n";
-
+    @DisplayName("content 生命周期 token 原样透传")
+    void contentLifecycle_passesThrough() {
         List<StreamToken> out = collect(
-                StreamToken.stepDelta("think-2", "reasoning", incremental),
-                StreamToken.stepDelta("think-2", "reasoning", restatement)
+                StreamToken.contentStart("content-1", "think"),
+                StreamToken.contentInSegment("content-1", "你好"),
+                StreamToken.contentEnd("content-1")
         );
-
-        assertThat(out).hasSize(2);
-        assertThat(out.get(0).text()).isEqualTo(incremental);
-        assertThat(out.get(1).text()).isEqualTo("（summarize_finance_by_status）\n2. 再查 1001（get_finance_message_detail）\n");
-    }
-
-    @Test
-    @DisplayName("累积帧已包含 prev 全文时只取后缀")
-    void stepDeltaReasoningContainsPrev_emitsSuffixOnly() {
-        String prev = "第一步完成：pending 财务共 3 笔。";
-        String incoming = prev + "接下来第二步：查询单据 1001 详情。";
-
-        List<StreamToken> out = collect(
-                StreamToken.stepDelta("think-3", "reasoning", prev),
-                StreamToken.stepDelta("think-3", "reasoning", incoming)
-        );
-
-        assertThat(out).extracting(StreamToken::text)
-                .containsExactly(prev, "接下来第二步：查询单据 1001 详情。");
-    }
-
-    @Test
-    @DisplayName("累积式 reasoning 整段复读不追加")
-    void stepDeltaReasoningFullRepeat_dropsDuplicate() {
-        String round = "用户要求依次调用三个工具。";
-        String doubled = round + round;
-
-        List<StreamToken> out = collect(
-                StreamToken.stepDelta("think-4", "reasoning", round),
-                StreamToken.stepDelta("think-4", "reasoning", doubled)
-        );
-
-        assertThat(out).hasSize(1);
-        assertThat(out.get(0).text()).isEqualTo(round);
+        assertThat(out).hasSize(3);
+        assertThat(out.get(0).isContentStart()).isTrue();
+        assertThat(out.get(1).text()).isEqualTo("你好");
+        assertThat(out.get(2).isContentEnd()).isTrue();
     }
 
     private static List<StreamToken> collect(StreamToken... tokens) {

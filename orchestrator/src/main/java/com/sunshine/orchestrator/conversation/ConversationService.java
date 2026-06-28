@@ -25,6 +25,7 @@ public class ConversationService {
     private final ChatConversationRepository conversationRepo;
     private final ChatMessageRepository messageRepo;
     private final AuditService auditService;
+    private final MessagePersistenceReconciler messagePersistenceReconciler;
 
     @Value("${agent.generation.orphan-timeout-sec:60}")
     private int orphanTimeoutSec;
@@ -66,9 +67,13 @@ public class ConversationService {
         return getOwned(id, userId, tenantId);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ChatMessageEntity> getMessages(String conversationId, String userId, String tenantId) {
         getOwned(conversationId, userId, tenantId);
+        List<ChatMessageEntity> messages = messageRepo.findByConversationIdOrderBySeqAsc(conversationId);
+        for (ChatMessageEntity msg : messages) {
+            messagePersistenceReconciler.reconcileStreamingAssistant(msg);
+        }
         return messageRepo.findByConversationIdOrderBySeqAsc(conversationId);
     }
 
@@ -157,6 +162,17 @@ public class ConversationService {
     @Transactional
     public ChatMessageEntity updateMessage(
             String messageId, String content, String reasoning, String status, String stepsJson) {
+        return updateMessage(messageId, content, reasoning, status, stepsJson, null);
+    }
+
+    @Transactional
+    public ChatMessageEntity updateMessage(
+            String messageId,
+            String content,
+            String reasoning,
+            String status,
+            String stepsJson,
+            String contentBlocksJson) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
                 .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setContent(content != null ? content : "");
@@ -165,6 +181,9 @@ public class ConversationService {
         }
         if (stepsJson != null) {
             msg.setSteps(stepsJson);
+        }
+        if (contentBlocksJson != null) {
+            msg.setContentBlocks(contentBlocksJson);
         }
         msg.setStatus(status);
         msg.setUpdatedAt(Instant.now());

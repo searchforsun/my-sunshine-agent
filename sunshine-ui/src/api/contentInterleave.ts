@@ -1,5 +1,7 @@
 /**
- * ReAct 正文与 timeline 步骤穿插：按 SSE 到达时锚定到最后一步，渲染时插入对应步骤之后。
+ * 正文穿插：
+ * - ReAct：content_start → content(segmentId) → content_end
+ * - Plan answer / legacy：plain content 自动锚定 timeline 末步，渲染时 node-* 回退到 plan
  */
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
@@ -13,23 +15,34 @@ function mergeStreamChunk(existing: string, chunk: string): string {
 }
 
 export interface ContentBlock {
-  /** 正文锚定在其后的步骤 id；null 表示步骤列表之前 */
-  afterStepId: string | null
+  /** ReAct 分段 id；Plan 自动锚定为 tail:{stepId} */
+  segmentId: string
+  /** 正文穿插在该步骤之后（含隐藏 node-answer） */
+  afterStepId: string
   text: string
 }
 
-/** ReAct 主 timeline 不展示、但 SSE 仍可能锚定的步骤 */
+/** simple-llm 仍展示 generate 步骤行；ReAct 不再下发 generate */
 export function isHiddenReactTimelineStep(step: ProcessingStep): boolean {
   return step.id === 'generate' || step.phase === 'generate'
 }
 
+function appendMessageContent(msg: ChatMessage, chunk: string, resume: boolean): void {
+  msg.content = resume
+    ? mergeStreamChunk(msg.content ?? '', chunk)
+    : (msg.content ?? '') + chunk
+}
+
+function findBlock(blocks: ContentBlock[] | undefined, segmentId: string): ContentBlock | undefined {
+  return blocks?.find(b => b.segmentId === segmentId)
+}
+
 /** 隐藏步的正文块改挂到 timeline 中前一个可见步骤之后 */
 export function resolveVisibleContentAnchor(
-  afterStepId: string | null,
+  afterStepId: string,
   steps: ProcessingStep[],
   visibleStepIds: ReadonlySet<string>,
 ): string | null {
-  if (afterStepId === null) return null
   if (visibleStepIds.has(afterStepId)) return afterStepId
   const idx = steps.findIndex(s => s.id === afterStepId)
   if (idx < 0) return afterStepId
@@ -39,13 +52,13 @@ export function resolveVisibleContentAnchor(
   return null
 }
 
-/** 正文 chunk 锚定 timeline 排序后的最后一步（隐藏步由 resolveVisibleContentAnchor 回退） */
+/** Plan answer 等：正文锚定 timeline 排序后的最后一步 */
 export function resolveContentAnchorStepId(steps: ProcessingStep[]): string | null {
   if (!steps.length) return null
   return steps[steps.length - 1].id
 }
 
-/** 新增步骤排在既有正文锚点之后时，将正文块整体挪到 timeline 末尾 */
+/** 新增步骤排在既有正文锚点之后时，将非 ReAct 分段块整体挪到 timeline 末尾 */
 export function maybeReanchorContentBlocksToTail(
   steps: ProcessingStep[],
   blocks: ContentBlock[] | undefined,
@@ -54,36 +67,109 @@ export function maybeReanchorContentBlocksToTail(
   const lastStepId = steps[steps.length - 1].id
   let maxAnchorIdx = -1
   for (const block of blocks) {
-    if (block.afterStepId === null) continue
+    if (block.segmentId.startsWith('content-')) continue
     const idx = steps.findIndex(s => s.id === block.afterStepId)
     if (idx >= 0) maxAnchorIdx = Math.max(maxAnchorIdx, idx)
   }
   const lastIdx = steps.length - 1
   if (lastIdx <= maxAnchorIdx) return
   for (const block of blocks) {
+    if (block.segmentId.startsWith('content-')) continue
     block.afterStepId = lastStepId
+    block.segmentId = `tail:${lastStepId}`
   }
 }
 
-export function appendInterleavedContent(
+/** ReAct：content_start */
+export function beginContentSegment(msg: ChatMessage, segmentId: string, afterStepId: string): void {
+  if (!segmentId || !afterStepId) return
+  if (!msg.contentBlocks) msg.contentBlocks = []
+  if (findBlock(msg.contentBlocks, segmentId)) return
+  msg.contentBlocks.push({ segmentId, afterStepId, text: '' })
+}
+
+/** ReAct：段内 content */
+export function appendSegmentContent(
   msg: ChatMessage,
+  segmentId: string,
   chunk: string,
   resume: boolean,
 ): void {
+  if (!chunk || !segmentId) return
+  appendMessageContent(msg, chunk, resume)
+  const block = findBlock(msg.contentBlocks, segmentId)
+  if (!block) return
+  block.text = resume ? mergeStreamChunk(block.text, chunk) : block.text + chunk
+}
+
+/** ReAct：content_end */
+export function endContentSegment(_msg: ChatMessage, _segmentId: string): void {
+  // no-op
+}
+
+/** 子 Agent node 步：content_start */
+export function beginStepContentSegment(step: ProcessingStep, segmentId: string, afterStepId: string): void {
+  if (!segmentId || !afterStepId) return
+  if (!step.contentBlocks) step.contentBlocks = []
+  if (findBlock(step.contentBlocks, segmentId)) return
+  step.contentBlocks.push({ segmentId, afterStepId, text: '' })
+}
+
+/** 子 Agent node 步：段内 content */
+export function appendStepSegmentContent(
+  step: ProcessingStep,
+  segmentId: string,
+  chunk: string,
+  resume: boolean,
+): void {
+  if (!chunk || !segmentId) return
+  const block = findBlock(step.contentBlocks, segmentId)
+  if (!block) return
+  block.text = resume ? mergeStreamChunk(block.text, chunk) : block.text + chunk
+}
+
+/** 子 Agent node 步：content_end */
+export function endStepContentSegment(_step: ProcessingStep, _segmentId: string): void {
+  // no-op
+}
+
+/**
+ * plain content：
+ * - 带 afterStepId：simple-llm legacy
+ * - 无 afterStepId：Plan answer 自动锚定末步（含 node-answer，渲染回退到 plan）
+ */
+export function appendInterleavedContent(
+  msg: ChatMessage,
+  chunk: string,
+  afterStepId: string | null | undefined,
+  resume: boolean,
+): void {
   if (!chunk) return
-  msg.content = resume
-    ? mergeStreamChunk(msg.content ?? '', chunk)
-    : (msg.content ?? '') + chunk
+  appendMessageContent(msg, chunk, resume)
   const steps = msg.steps
   if (!steps?.length) return
   if (!msg.contentBlocks) msg.contentBlocks = []
-  const anchor = resolveContentAnchorStepId(steps)
   const blocks = msg.contentBlocks
+
+  if (afterStepId) {
+    const legacyId = `legacy:${afterStepId}`
+    const existing = findBlock(blocks, legacyId)
+    if (existing) {
+      existing.text = resume ? mergeStreamChunk(existing.text, chunk) : existing.text + chunk
+    } else {
+      blocks.push({ segmentId: legacyId, afterStepId, text: chunk })
+    }
+    return
+  }
+
+  const anchor = resolveContentAnchorStepId(steps)
+  if (!anchor) return
+  const tailId = `tail:${anchor}`
   const last = blocks[blocks.length - 1]
-  if (last && last.afterStepId === anchor) {
+  if (last && last.segmentId === tailId && last.afterStepId === anchor) {
     last.text = resume ? mergeStreamChunk(last.text, chunk) : last.text + chunk
   } else {
-    blocks.push({ afterStepId: anchor, text: chunk })
+    blocks.push({ segmentId: tailId, afterStepId: anchor, text: chunk })
   }
 }
 
@@ -107,7 +193,6 @@ export type TimelineContentRow = {
   streaming: boolean
 }
 
-/** 某可见步骤之后、按 SSE 顺序排列的正文块（含锚定在隐藏步如 generate 上的块） */
 export function contentRowsAfterStep(
   stepId: string,
   steps: ProcessingStep[],
@@ -123,7 +208,7 @@ export function contentRowsAfterStep(
     if (displayAnchor !== stepId) return
     rows.push({
       kind: 'content',
-      key: `content-${idx}-${stepId}`,
+      key: `content-${block.segmentId}-${stepId}`,
       text: block.text,
       streaming: opts.live && idx === opts.lastBlockIndex,
     })
@@ -131,25 +216,13 @@ export function contentRowsAfterStep(
   return rows
 }
 
-/** 步骤列表之前的正文块（afterStepId === null） */
 export function leadingContentRows(
   _steps: ProcessingStep[],
   _visibleStepIds: ReadonlySet<string>,
   blocks: ContentBlock[] | undefined,
   opts: { live: boolean; lastBlockIndex: number },
 ): TimelineContentRow[] {
-  if (!blocks?.length) return []
-  const rows: TimelineContentRow[] = []
-  blocks.forEach((block, idx) => {
-    if (!block.text || block.afterStepId !== null) return
-    rows.push({
-      kind: 'content',
-      key: `content-${idx}-start`,
-      text: block.text,
-      streaming: opts.live && idx === opts.lastBlockIndex,
-    })
-  })
-  return rows
+  return []
 }
 
 export function resolveLastContentBlockIndex(blocks: ContentBlock[] | undefined): number {
@@ -157,7 +230,42 @@ export function resolveLastContentBlockIndex(blocks: ContentBlock[] | undefined)
   return blocks.length - 1
 }
 
-/** 无法映射到可见步骤的正文块（Plan 过滤 tool 步等；已在 afterStep 展示的块不得重复） */
+/**
+ * 历史消息 hydrate：Plan answer 正文仅存 message.content + steps，
+ * 刷新后重建 contentBlocks 并修复 node-answer.result（后端 result delta 历史 bug）。
+ */
+export function hydratePlanAnswerFromContent(
+  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
+): void {
+  if (msg.role !== 'assistant') return
+  if (!msg.steps?.length) return
+  if (!msg.steps.some(s => s.phase === 'plan')) return
+  const answerIdx = msg.steps.findIndex(s => s.id === 'node-answer')
+  if (answerIdx < 0) return
+
+  const answerStep = msg.steps[answerIdx]
+  // 落库时 message.content 仅 answer 正文；优先 node-answer.result 避免历史脏数据
+  const content = answerStep.result?.trim() || msg.content?.trim()
+  if (!content) return
+  const prevResult = answerStep.result?.trim() ?? ''
+  if (!prevResult || content.length > prevResult.length) {
+    msg.steps[answerIdx] = { ...answerStep, result: content }
+  }
+
+  const joined = msg.contentBlocks?.map(b => b.text).join('') ?? ''
+  if (joined === content && msg.contentBlocks?.length) return
+
+  msg.contentBlocks = [{
+    segmentId: 'tail:node-answer',
+    afterStepId: 'node-answer',
+    text: content,
+  }]
+  if (!msg.content?.trim() || msg.content.trim() !== content) {
+    msg.content = content
+  }
+}
+
+/** 无法映射到可见步骤的正文块 */
 export function orphanContentRows(
   steps: ProcessingStep[],
   visibleStepIds: ReadonlySet<string>,
@@ -167,12 +275,12 @@ export function orphanContentRows(
   if (!blocks?.length) return []
   const rows: TimelineContentRow[] = []
   blocks.forEach((block, idx) => {
-    if (!block.text || block.afterStepId === null) return
+    if (!block.text) return
     const displayAnchor = resolveVisibleContentAnchor(block.afterStepId, steps, visibleStepIds)
     if (displayAnchor !== null) return
     rows.push({
       kind: 'content',
-      key: `content-${idx}-orphan`,
+      key: `content-${block.segmentId}-orphan`,
       text: block.text,
       streaming: opts.live && idx === opts.lastBlockIndex,
     })

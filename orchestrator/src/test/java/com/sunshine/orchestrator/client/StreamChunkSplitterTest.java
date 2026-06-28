@@ -37,6 +37,30 @@ class StreamChunkSplitterTest {
         assertThat(out).hasSize(1);
     }
 
+    @Test
+    @DisplayName("分段 content 切分保留 segmentId")
+    void segmentedContent_preservesSegmentId() {
+        String text = "我先为您查询待办任务和财务待办消息，同时检索合规制度。";
+        List<StreamToken> out = collect(StreamToken.contentInSegment("content-1", text), 12);
+
+        assertThat(out.size()).isGreaterThan(1);
+        assertThat(out).allMatch(t -> "content-1".equals(t.segmentId()));
+        assertThat(out.stream().map(StreamToken::text).reduce("", String::concat)).isEqualTo(text);
+    }
+
+    @Test
+    @DisplayName("content_start/end 不拆分")
+    void lifecycleTokens_passThrough() {
+        List<StreamToken> out = new ArrayList<>();
+        StreamChunkSplitter.split(reactor.core.publisher.Flux.just(
+                StreamToken.contentStart("content-1", "think"),
+                StreamToken.contentEnd("content-1")), 8).subscribe(out::add);
+
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0).isContentStart()).isTrue();
+        assertThat(out.get(1).isContentEnd()).isTrue();
+    }
+
     private static List<StreamToken> collect(StreamToken token, int maxChars) {
         List<StreamToken> out = new ArrayList<>();
         StreamChunkSplitter.split(reactor.core.publisher.Flux.just(token), maxChars).subscribe(out::add);

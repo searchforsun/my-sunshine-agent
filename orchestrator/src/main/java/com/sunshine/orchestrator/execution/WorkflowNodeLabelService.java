@@ -195,7 +195,7 @@ public class WorkflowNodeLabelService {
             return def.linearOrder().stream()
                     .filter(nodeId -> {
                         NodeSpec spec = def.node(nodeId);
-                        return spec != null && WorkflowNodeLabels.isVisibleNode(spec.type());
+                        return spec != null && WorkflowNodeLabels.isPlanChainNode(spec.type());
                     })
                     .map(nodeId -> displayName(nodeId, def.node(nodeId).type()))
                     .collect(Collectors.joining(" → "));

@@ -56,6 +56,12 @@ public final class ThinkStepMapper {
             trackExistingStep(token.step());
             return List.of(token);
         }
+        if (token.isContentStart() || token.isContentEnd()) {
+            if (mode() == ExecutionMode.REACT) {
+                return List.of(token);
+            }
+            return List.of();
+        }
         if (token.isStepDelta()) {
             return mapStepDelta(token);
         }
@@ -63,9 +69,12 @@ public final class ThinkStepMapper {
             return mapReasoning(token.text());
         }
         if (token.isContent()) {
+            if (mode() == ExecutionMode.REACT && token.segmentId() != null) {
+                return List.of(token);
+            }
             return mapContent(token);
         }
-        return List.of(token);
+        return List.of();
     }
 
     /** 流结束时补齐 think / generate 的完成态 */
@@ -77,6 +86,9 @@ public final class ThinkStepMapper {
     public List<StreamToken> finish(boolean streamFailed) {
         List<StreamToken> out = new ArrayList<>();
         findRunningThinkId().ifPresent(id -> out.add(stepToken(completeThinkStep(id))));
+        if (mode() == ExecutionMode.REACT) {
+            return out;
+        }
         if (!streamFailed && !workflowMode && !generateOpened && !hasStep(GENERATE)) {
             out.addAll(openGenerate());
         }
@@ -119,6 +131,13 @@ public final class ThinkStepMapper {
     private List<StreamToken> mapContent(StreamToken token) {
         if (workflowMode) {
             return List.of(token);
+        }
+        if (mode() == ExecutionMode.REACT) {
+            if (token.afterStepId() != null) {
+                return List.of(token);
+            }
+            String anchor = findLastDoneThinkId();
+            return List.of(StreamToken.content(token.text(), anchor));
         }
         List<StreamToken> out = new ArrayList<>(transitionToGenerate());
         out.add(token);
@@ -178,6 +197,16 @@ public final class ThinkStepMapper {
         return java.util.Optional.empty();
     }
 
+    private String findLastDoneThinkId() {
+        String last = null;
+        for (ProcessingStep step : stepsBuffer) {
+            if (ThinkStepIds.isThinkStep(step.id()) && "done".equals(step.lifecycle())) {
+                last = step.id();
+            }
+        }
+        return last;
+    }
+
     private List<StreamToken> openGenerate() {
         if (generateOpened || hasStep(GENERATE)) {
             return List.of();
@@ -199,7 +228,7 @@ public final class ThinkStepMapper {
                 stepId, "think", "running", summary,
                 ts, null, null, null,
                 null, null, null,
-                ts, "running", label, null, null);
+                ts, "running", label, null, null, null);
     }
 
     private ProcessingStep completeThinkStep(String stepId) {
@@ -219,7 +248,7 @@ public final class ThinkStepMapper {
                 null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
-                ts, "done", label, null, null);
+                ts, "done", label, null, null, null);
     }
 
     private ProcessingStep runningGenerateStep() {
@@ -233,7 +262,7 @@ public final class ThinkStepMapper {
                 GENERATE, GENERATE, "running", summary,
                 ts, null, null, null,
                 null, null, null,
-                ts, "running", label, null, null);
+                ts, "running", label, null, null, null);
     }
 
     private ProcessingStep completeGenerateStep() {
@@ -252,7 +281,7 @@ public final class ThinkStepMapper {
                 prev != null ? prev.reasoning() : null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
-                ts, "done", label, null, null);
+                ts, "done", label, null, null, null);
     }
 
     private void trackExistingStep(ProcessingStep step) {

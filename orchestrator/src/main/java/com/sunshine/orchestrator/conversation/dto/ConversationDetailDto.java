@@ -43,6 +43,7 @@ public class ConversationDetailDto {
         private String content;
         private String reasoning;
         private String steps;
+        private String contentBlocks;
         private String status;
         private String intent;
         private String executionPlanId;
@@ -58,6 +59,7 @@ public class ConversationDetailDto {
             dto.setContent(m.getContent());
             dto.setReasoning(m.getReasoning());
             dto.setSteps(m.getSteps());
+            dto.setContentBlocks(m.getContentBlocks());
             dto.setStatus(m.getStatus());
             dto.setIntent(m.getIntent());
             dto.setExecutionPlanId(m.getExecutionPlanId());

@@ -68,14 +68,4 @@ public class SkillCatalogClient {
             return Optional.empty();
         }
     }
-
-    /** @deprecated 使用 {@link #fetchCatalogIndex()} + {@link #fetchSkillDetail(String)} */
-    @Deprecated
-    public List<SkillCatalogEntry> fetchCatalog() {
-        return fetchCatalogIndex().stream()
-                .map(idx -> new SkillCatalogEntry(
-                        idx.id(), idx.displayName(), idx.description(), "",
-                        idx.version(), idx.enabled()))
-                .toList();
-    }
 }

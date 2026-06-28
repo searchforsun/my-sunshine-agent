@@ -15,13 +15,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 将 AgentScope {@link Event} 映射为 {@link StreamToken}。
- * think 轮 ThinkingBlock 由 Hook {@link io.agentscope.core.hook.ReasoningChunkEvent} 产出；
- * 正文增量由 {@code incremental=true} 下 REASONING/AGENT_RESULT 的 TextBlock 承载，
- * 累积全文经 {@link com.sunshine.orchestrator.client.StreamDeltaNormalizer} 转为真增量。
+ * ReAct 正文：{@link EventType#REASONING} 增量帧与 {@link EventType#AGENT_RESULT} 终态快照
+ * 均经 {@link com.sunshine.orchestrator.processing.ContentSegmentCoordinator} 单调 diff；
+ * 重复整段由段内 baseline 规则丢弃，禁止旁路直灌。
  */
 public final class AgentScopeEventMapper {
-
-    private static final String GENERATE = "generate";
 
     private AgentScopeEventMapper() {
     }
@@ -29,11 +27,15 @@ public final class AgentScopeEventMapper {
     public static List<StreamToken> map(
             Event event,
             ProcessingTimelineSession session,
-            AtomicBoolean generateStarted) {
+            AtomicBoolean answerContentStarted) {
 
         List<StreamToken> out = new ArrayList<>();
         EventType type = event.getType();
-        if (type != EventType.REASONING && type != EventType.AGENT_RESULT) {
+        if (type == EventType.REASONING) {
+            // TextBlock 增量由 ReasoningChunkEvent Hook 即时刷 SSE，避免与 agent.stream 双写
+            return out;
+        }
+        if (type != EventType.AGENT_RESULT) {
             return out;
         }
 
@@ -41,27 +43,28 @@ public final class AgentScopeEventMapper {
         if (msg == null || !hasAnswerContent(msg)) {
             return out;
         }
-        return emitAnswerContent(msg, session, generateStarted, out);
+        return emitAnswerContent(msg, session, answerContentStarted, out, type);
     }
 
     private static List<StreamToken> emitAnswerContent(
             Msg msg,
             ProcessingTimelineSession session,
-            AtomicBoolean generateStarted,
-            List<StreamToken> out) {
-        long tokenAt = System.currentTimeMillis();
-        if (!generateStarted.get()) {
-            out.addAll(ProcessingTimelineSupport.run(session, () -> {
-                session.completeThinkIfRunning();
-                session.pending(GENERATE, GENERATE);
-                session.startAt(GENERATE, GENERATE, tokenAt);
-            }));
-            generateStarted.set(true);
-        } else {
-            // 多轮 ReAct：第二轮及以后正文前须关闭当前 think，避免 generateStarted 已置位时漏关 think-2
-            out.addAll(ProcessingTimelineSupport.run(session, session::completeThinkIfRunning));
+            AtomicBoolean answerContentStarted,
+            List<StreamToken> out,
+            EventType type) {
+        out.addAll(ProcessingTimelineSupport.run(session, session::completeThinkIfRunning));
+        String anchor = session.contentAnchorAfterStepId();
+        String cumulative = extractCumulativeText(msg);
+        String baseline = session.contentSegmentBaseline();
+        // Hook 已流式写完：终态快照与 baseline 前缀不一致时跳过，避免空格/格式差异导致整段复读
+        if (!baseline.isEmpty() && !cumulative.startsWith(baseline)) {
+            out.addAll(session.drainAuxiliaryTokens());
+            answerContentStarted.set(true);
+            return out;
         }
-        appendContentTokens(msg, out);
+        session.contentSegments().ingest(cumulative, anchor, session::enqueueAuxiliary);
+        out.addAll(session.drainAuxiliaryTokens());
+        answerContentStarted.set(true);
         return out;
     }
 
@@ -73,18 +76,21 @@ public final class AgentScopeEventMapper {
         return text != null && !text.isEmpty();
     }
 
-    /** 每帧携带 AgentScope 累积正文；增量由 StreamDeltaNormalizer 提取 */
-    static void appendContentTokens(Msg msg, List<StreamToken> out) {
+    static String extractCumulativeText(Msg msg) {
+        StringBuilder sb = new StringBuilder();
         for (TextBlock block : msg.getContentBlocks(TextBlock.class)) {
             String text = block.getText();
             if (text != null && !text.isEmpty()) {
-                out.add(StreamToken.content(text));
+                sb.append(text);
             }
         }
-        String fallback = msg.getTextContent();
-        if (out.stream().noneMatch(StreamToken::isContent) && fallback != null && !fallback.isEmpty()) {
-            out.add(StreamToken.content(fallback));
+        if (sb.isEmpty()) {
+            String fallback = msg.getTextContent();
+            if (fallback != null) {
+                sb.append(fallback);
+            }
         }
+        return sb.toString();
     }
 
     static String summarizeHits(ToolResultBlock block) {

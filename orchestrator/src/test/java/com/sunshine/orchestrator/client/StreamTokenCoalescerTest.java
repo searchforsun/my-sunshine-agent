@@ -81,6 +81,30 @@ class StreamTokenCoalescerTest {
         assertThat(out.stream().map(StreamToken::text).reduce("", String::concat)).isEqualTo("a\n");
     }
 
+    @Test
+    @DisplayName("ReAct 分段契约原样透传")
+    void contentLifecycle_passesThrough() {
+        List<StreamToken> out = collect(
+                StreamToken.contentStart("content-1", "think"),
+                StreamToken.contentInSegment("content-1", "你好"),
+                StreamToken.contentEnd("content-1")
+        );
+
+        assertThat(out).hasSize(3);
+        assertThat(out.get(0).isContentStart()).isTrue();
+        assertThat(out.get(0).afterStepId()).isEqualTo("think");
+        assertThat(out.get(1).segmentId()).isEqualTo("content-1");
+        assertThat(out.get(2).isContentEnd()).isTrue();
+    }
+
+    @Test
+    @DisplayName("plain content 保留 afterStepId")
+    void plainContent_preservesAfterStepId() {
+        List<StreamToken> out = collect(StreamToken.content("过渡语", "think-2"));
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).afterStepId()).isEqualTo("think-2");
+    }
+
     private static List<StreamToken> collect(StreamToken... tokens) {
         List<StreamToken> out = new ArrayList<>();
         StreamTokenCoalescer.coalesce(reactor.core.publisher.Flux.fromArray(tokens)).subscribe(out::add);

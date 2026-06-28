@@ -78,30 +78,6 @@ public class IntentRouter {
                         plan.mode(), plan.workflowId(), plan.reason()));
     }
 
-    /**
-     * 兼容旧调用方 — 返回 legacy intent 字符串（simple/knowledge/finance/react）
-     *
-     * @deprecated 使用 {@link #classifyPlan(String)}
-     */
-    @Deprecated
-    public Mono<String> classify(String userMessage) {
-        return classifyPlan(userMessage).map(IntentRouter::toLegacyIntentLabel);
-    }
-
-    /** ChatController 迁移前仍识别 simple/knowledge/finance */
-    static String toLegacyIntentLabel(ExecutionPlan plan) {
-        return switch (plan.mode()) {
-            case SIMPLE_LLM -> "simple";
-            case PLAN_WORKFLOW -> "react";
-            case WORKFLOW -> switch (plan.workflowId() != null ? plan.workflowId() : "") {
-                case "knowledge-qa" -> "knowledge";
-                case "finance-list", "finance-smart" -> "finance";
-                default -> "finance";
-            };
-            case REACT -> "simple";
-        };
-    }
-
     @SuppressWarnings("unchecked")
     private static String extractContent(Map<String, Object> resp) {
         List<Map<String, Object>> choices = (List<Map<String, Object>>) resp.get("choices");

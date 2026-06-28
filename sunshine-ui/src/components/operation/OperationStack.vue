@@ -8,7 +8,6 @@ import type { ContentBlock } from '../../api/contentInterleave'
 import {
   contentRowsAfterStep,
   isHiddenReactTimelineStep,
-  leadingContentRows,
   orphanContentRows,
   resolveLastContentBlockIndex,
 } from '../../api/contentInterleave'
@@ -16,6 +15,7 @@ import OperationCard from './OperationCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
+import { ensurePlanTimelineSteps } from '../../api/planHydrate'
 
 const props = withDefaults(defineProps<{
   steps: ProcessingStep[]
@@ -62,7 +62,12 @@ function toggleCard(step: ProcessingStep): void {
   cardExpanded.set(step.id, !isCardExpanded(step))
 }
 
-const planStep = computed(() => props.steps.find(s => s.phase === 'plan'))
+const effectiveSteps = computed(() => ensurePlanTimelineSteps({
+  steps: props.steps,
+  executionPlanId: props.executionPlanId,
+}))
+
+const planStep = computed(() => effectiveSteps.value.find(s => s.phase === 'plan'))
 
 const showPlanDag = computed(() => {
   const plan = planStep.value
@@ -75,7 +80,7 @@ const showPlanDag = computed(() => {
 const displaySteps = computed(() => {
   void props.timelineRevision
   if (showPlanDag.value) {
-    return props.steps.filter(s => {
+    return effectiveSteps.value.filter(s => {
       if (s.phase === 'node') return false
       if (isToolStepId(s.id)) return false
       if (s.id === 'think' || s.id.startsWith('think-')) return false
@@ -129,16 +134,6 @@ const contentRowOpts = computed(() => ({
   lastBlockIndex: resolveLastContentBlockIndex(props.contentBlocks),
 }))
 
-const leadingContent = computed(() => {
-  void props.timelineRevision
-  return leadingContentRows(
-    props.steps,
-    visibleStepIds.value,
-    props.contentBlocks,
-    contentRowOpts.value,
-  )
-})
-
 const visibleStepIds = computed(() => new Set(displaySteps.value.map(s => s.id)))
 
 function rowsAfterStep(stepId: string) {
@@ -165,19 +160,11 @@ const orphanContent = computed(() => {
 
 <template>
   <div class="operation-lines">
-    <template v-for="row in leadingContent" :key="row.key">
-      <div class="op-inline-content">
-        <span class="op-gutter" aria-hidden="true" />
-        <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
-          <StaticMarkdown :source="row.text" />
-        </div>
-      </div>
-    </template>
     <template v-for="step in displaySteps" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
       <PlanWorkflowPanel
         v-if="step.phase === 'plan' && showPlanDag"
         :plan-step="step"
-        :all-steps="steps"
+        :all-steps="effectiveSteps"
         :live="live"
         :execution-plan-id="executionPlanId"
         :user-query="userQuery"

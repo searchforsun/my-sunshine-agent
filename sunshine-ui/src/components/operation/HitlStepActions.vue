@@ -9,6 +9,7 @@ import {
   resolveHitlStatus,
   resolveHitlToken,
   resolveHitlToolName,
+  parseHitlParamsSummary,
   resolveStepForHitlDisplay,
   isHitlToolStep,
   type HitlConfirmationPayload,
@@ -75,7 +76,9 @@ const showPanel = computed(() => {
 })
 
 const toolName = computed(() => resolveHitlToolName(displayStep.value))
-const paramsText = computed(() => displayStep.value.metadata?.hitlParamsSummary?.trim() || '')
+const paramPairs = computed(() =>
+  parseHitlParamsSummary(displayStep.value.metadata?.hitlParamsSummary),
+)
 
 const summaryLine = computed(() => {
   if (isPaused.value) return '写操作确认 · 已暂停'
@@ -83,6 +86,8 @@ const summaryLine = computed(() => {
   if (displayStatus.value === 'denied') return '写操作确认 · 已取消'
   return '写操作确认 · 等待确认'
 })
+
+const collapsedDetail = computed(() => toolName.value)
 
 async function submit(approved: boolean): Promise<void> {
   const token = effectiveToken.value
@@ -104,12 +109,17 @@ async function submit(approved: boolean): Promise<void> {
   <CollapsibleConfirmPanel
     v-if="showPanel"
     :summary="summaryLine"
-    :detail="paramsText"
+    :detail="collapsedDetail"
     :resolved="isResolved"
     :default-collapsed="isResolved"
   >
     <p class="hitl-tool">{{ toolName }}</p>
-    <p v-if="paramsText" class="hitl-params">{{ paramsText }}</p>
+    <dl v-if="paramPairs.length" class="hitl-params">
+      <template v-for="pair in paramPairs" :key="pair.key">
+        <dt>{{ pair.key }}</dt>
+        <dd>{{ pair.value }}</dd>
+      </template>
+    </dl>
     <template v-if="canAct" #footer>
       <div class="hitl-actions hitl-actions-footer">
         <button type="button" class="hitl-btn hitl-btn-ghost" :disabled="loading" @click="submit(false)">
@@ -133,9 +143,19 @@ async function submit(approved: boolean): Promise<void> {
 
 .hitl-params {
   margin: 0 0 6px;
-  font-family: var(--sun-font-mono, 'JetBrains Mono', monospace);
   font-size: var(--sun-font-sm, 12px);
   color: var(--sun-text-muted);
+}
+
+.hitl-params dt {
+  margin: 6px 0 2px;
+  font-weight: 500;
+  color: var(--sun-text-secondary);
+}
+
+.hitl-params dd {
+  margin: 0;
+  font-family: var(--sun-font-mono, 'JetBrains Mono', monospace);
   word-break: break-all;
 }
 

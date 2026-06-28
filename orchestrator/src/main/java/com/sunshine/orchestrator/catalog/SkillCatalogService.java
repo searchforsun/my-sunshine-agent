@@ -72,14 +72,4 @@ public class SkillCatalogService {
     public String overlayOrEmpty(String skillId) {
         return find(skillId).map(SkillCatalogEntry::systemOverlay).orElse("");
     }
-
-    /** @deprecated 使用 {@link #indexEntries()}；不含 overlay */
-    @Deprecated
-    public List<SkillCatalogEntry> allEntries() {
-        return indexEntries().stream()
-                .map(idx -> new SkillCatalogEntry(
-                        idx.id(), idx.displayName(), idx.description(), "",
-                        idx.version(), idx.enabled()))
-                .toList();
-    }
 }

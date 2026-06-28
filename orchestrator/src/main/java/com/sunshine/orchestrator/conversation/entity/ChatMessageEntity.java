@@ -38,6 +38,10 @@ public class ChatMessageEntity {
     @Column(columnDefinition = "MEDIUMTEXT")
     private String steps;
 
+    /** ReAct 正文分段 JSON 数组 */
+    @Column(name = "content_blocks", columnDefinition = "MEDIUMTEXT")
+    private String contentBlocks;
+
     @Column(nullable = false, length = 16)
     private String status = "completed";
 

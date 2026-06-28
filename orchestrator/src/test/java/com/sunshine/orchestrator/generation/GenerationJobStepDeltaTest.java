@@ -67,12 +67,13 @@ class GenerationJobStepDeltaTest {
         registry.add("agent.generation.max-buffer-chunks", () -> 10000);
         registry.add("agent.generation.reconnect-block-ms", () -> 100);
         registry.add("agent.generation.flush-interval-ms", () -> 50);
+        registry.add("agent.generation.max-chunk-chars", () -> 32);
     }
 
     @BeforeEach
     void setUp() {
         flushScheduler = mock(GenerationFlushScheduler.class);
-        when(flushScheduler.metaContent(anyString()))
+        when(flushScheduler.metaContent(anyString(), org.mockito.ArgumentMatchers.nullable(String.class)))
                 .thenAnswer(inv -> "{\"type\":\"content\",\"text\":\"" + inv.getArgument(0) + "\"}");
         when(flushScheduler.metaStepDelta(anyString(), anyString(), anyString()))
                 .thenAnswer(inv -> "{\"type\":\"step_delta\",\"stepId\":\"" + inv.getArgument(0)

@@ -20,7 +20,7 @@ from sunshine_lib import (
     redis_delete_patterns,
     run_mysql,
     start_java_detached,
-    stop_listening_port,
+    stop_java_service,
 )
 
 REDIS_PATTERNS = ["sunshine:stm:*", "sunshine:gen:*", "sunshine:user:*"]
@@ -109,10 +109,8 @@ def main() -> int:
 
     if args.restart_orchestrator:
         print(">> Restarting orchestrator + llm-gateway...")
-        if stop_listening_port(8300):
-            print("   stopped llm-gateway :8300")
-        if stop_listening_port(8200):
-            print("   stopped orchestrator :8200")
+        stop_java_service("llm-gateway", "sunshine-llm-gateway", 8300)
+        stop_java_service("orchestrator", "sunshine-orchestrator", 8200)
         start_java_detached("llm-gateway", "sunshine-llm-gateway", service_name="llm-gateway", wait_sec=6)
         print("   llm-gateway started (8300)")
         start_java_detached("orchestrator", "sunshine-orchestrator", service_name="orchestrator", wait_sec=6)

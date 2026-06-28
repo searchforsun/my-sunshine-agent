@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.processing.ContentBlock;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
 
@@ -22,10 +23,14 @@ public record ProcessingStep(
         String status,
         String label,
         StepMetadata metadata,
+        /** ReAct / 子 Agent 正文分段（抽屉 OperationStack 穿插） */
+        java.util.List<ContentBlock> contentBlocks,
         /** Workflow agent 节点：子 Agent 完整 ReAct 步骤（仅抽屉展示，不上主 Timeline 顶层） */
         java.util.List<ProcessingStep> subSteps
 ) {
     public ProcessingStep {
+        contentBlocks = contentBlocks != null && !contentBlocks.isEmpty()
+                ? java.util.List.copyOf(contentBlocks) : null;
         subSteps = subSteps != null && !subSteps.isEmpty() ? java.util.List.copyOf(subSteps) : null;
     }
     public static ProcessingStep running(String id, String phase, String label) {
@@ -45,6 +50,7 @@ public record ProcessingStep(
                 ts,
                 "running",
                 label,
+                null,
                 null,
                 null
         );
@@ -69,6 +75,7 @@ public record ProcessingStep(
                 "done",
                 label,
                 null,
+                null,
                 null
         );
     }
@@ -90,6 +97,7 @@ public record ProcessingStep(
                 ts,
                 "error",
                 label,
+                null,
                 null,
                 null
         );

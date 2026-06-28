@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.processing.NodeAttemptMeta;
+import com.sunshine.orchestrator.processing.ContentBlock;
 import com.sunshine.orchestrator.processing.StepLabels;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
@@ -67,7 +68,7 @@ public final class ProcessingStepMerger {
                     step.reasoning(),
                     concat(step.output(), text),
                     step.result());
-            case "result" -> copyStep(step, step.reasoning(), step.output(), text);
+            case "result" -> copyStep(step, step.reasoning(), step.output(), concat(step.result(), text));
             default -> copyStep(step, step.reasoning(), concat(step.output(), text), step.result());
         };
     }
@@ -126,6 +127,7 @@ public final class ProcessingStepMerger {
                 step.status() != null ? step.status() : "running",
                 step.label(),
                 step.metadata(),
+                step.contentBlocks(),
                 step.subSteps()
         );
     }
@@ -158,13 +160,33 @@ public final class ProcessingStepMerger {
                 incoming.detail() != null ? incoming.detail() : existing.detail(),
                 mergeReasoning(existing, incoming),
                 longer(existing.output(), incoming.output()),
-                incoming.result() != null ? incoming.result() : existing.result(),
+                longer(existing.result(), incoming.result()),
                 Math.max(existing.ts(), incoming.ts()),
                 incoming.status() != null ? incoming.status() : existing.status(),
                 incoming.label() != null ? incoming.label() : existing.label(),
                 incoming.metadata() != null ? mergeMetadata(existing.metadata(), incoming.metadata()) : existing.metadata(),
+                mergeContentBlocks(existing.contentBlocks(), incoming.contentBlocks()),
                 mergeSubSteps(existing.subSteps(), incoming.subSteps())
         );
+    }
+
+    private static List<ContentBlock> mergeContentBlocks(List<ContentBlock> existing, List<ContentBlock> incoming) {
+        if (incoming == null || incoming.isEmpty()) {
+            return existing;
+        }
+        return incoming;
+    }
+
+    public static void setStepContentBlocks(List<ProcessingStep> steps, String stepId, List<ContentBlock> blocks) {
+        if (steps == null || stepId == null || blocks == null || blocks.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < steps.size(); i++) {
+            if (stepId.equals(steps.get(i).id())) {
+                steps.set(i, copyWithContentBlocks(steps.get(i), blocks));
+                return;
+            }
+        }
     }
 
     private static java.util.List<ProcessingStep> mergeSubSteps(
@@ -322,6 +344,19 @@ public final class ProcessingStepMerger {
         }
         if (step.metadata() != null && !step.metadata().isEmpty()) {
             map.put("metadata", metadataToMap(step.metadata()));
+        }
+        if (step.contentBlocks() != null && !step.contentBlocks().isEmpty()) {
+            java.util.List<java.util.Map<String, Object>> blocks = new java.util.ArrayList<>();
+            for (ContentBlock block : step.contentBlocks()) {
+                java.util.Map<String, Object> row = new LinkedHashMap<>();
+                row.put("segmentId", block.segmentId());
+                if (hasText(block.afterStepId())) {
+                    row.put("afterStepId", block.afterStepId());
+                }
+                row.put("text", block.text());
+                blocks.add(row);
+            }
+            map.put("contentBlocks", blocks);
         }
         if (step.subSteps() != null && !step.subSteps().isEmpty()) {
             java.util.List<java.util.Map<String, Object>> nested = new java.util.ArrayList<>();
@@ -681,7 +716,29 @@ public final class ProcessingStepMerger {
                 step.status(),
                 step.label(),
                 step.metadata(),
+                step.contentBlocks(),
                 subSteps);
+    }
+
+    private static ProcessingStep copyWithContentBlocks(ProcessingStep step, List<ContentBlock> contentBlocks) {
+        return new ProcessingStep(
+                step.id(),
+                step.phase(),
+                step.lifecycle(),
+                step.summary(),
+                step.startedAt(),
+                step.endedAt(),
+                step.durationMs(),
+                step.detail(),
+                step.reasoning(),
+                step.output(),
+                step.result(),
+                step.ts(),
+                step.status(),
+                step.label(),
+                step.metadata(),
+                contentBlocks,
+                step.subSteps());
     }
 
     public static String findLastRunningWorkflowNodeId(List<ProcessingStep> steps) {
@@ -728,6 +785,7 @@ public final class ProcessingStepMerger {
                 "paused",
                 step.label(),
                 step.metadata(),
+                step.contentBlocks(),
                 step.subSteps());
     }
 }

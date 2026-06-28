@@ -29,6 +29,7 @@ class ProcessingStepMergerTest {
                 "done",
                 "识别意图",
                 null,
+                null,
                 null
         );
 
@@ -57,6 +58,7 @@ class ProcessingStepMergerTest {
                 1L,
                 "running",
                 "思考过程",
+                null,
                 null,
                 null
         );
@@ -87,6 +89,7 @@ class ProcessingStepMergerTest {
                 "done",
                 "识别意图",
                 null,
+                null,
                 null
         );
 
@@ -113,6 +116,7 @@ class ProcessingStepMergerTest {
                 "done",
                 "识别意图",
                 null,
+                null,
                 null
         );
         ProcessingStep think = new ProcessingStep(
@@ -130,6 +134,7 @@ class ProcessingStepMergerTest {
                 4L,
                 "done",
                 "思考过程",
+                null,
                 null,
                 null
         );
@@ -170,10 +175,24 @@ class ProcessingStepMergerTest {
                 "done",
                 "识别意图",
                 metadata,
+                null,
                 null
         );
         String json = ProcessingStepMerger.toPersistJson(List.of(intent));
         assertThat(json).contains("\"routingReason\":\"user:forced-react\"");
+    }
+
+    @Test
+    @DisplayName("applyDelta result 通道增量拼接并落库")
+    void applyDelta_resultChannelConcatenates() {
+        java.util.List<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.applyDelta(steps, "node-answer", "result", "您好，");
+        ProcessingStepMerger.applyDelta(steps, "node-answer", "result", "当前无待办。");
+        ProcessingStepMerger.applyDelta(steps, "node-answer", "result", "。");
+        assertThat(steps).hasSize(1);
+        assertThat(steps.get(0).result()).isEqualTo("您好，当前无待办。。");
+        String json = ProcessingStepMerger.toPersistJson(steps);
+        assertThat(json).contains("您好，当前无待办。");
     }
 
     @Test

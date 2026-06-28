@@ -24,7 +24,12 @@ public final class ProcessingTimelineSupport {
         } finally {
             session.onStepChanged(prev);
         }
-        return emitted.stream().map(StreamToken::step).toList();
+        List<StreamToken> out = new ArrayList<>();
+        for (ProcessingStep step : emitted) {
+            out.add(StreamToken.step(step));
+        }
+        out.addAll(session.drainAuxiliaryTokens());
+        return out;
     }
 
     public static ProcessingTimelineSession newSession() {

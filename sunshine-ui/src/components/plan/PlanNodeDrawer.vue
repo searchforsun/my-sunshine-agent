@@ -3,6 +3,7 @@ import { computed, inject, nextTick, ref, watch, type ComputedRef } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import type { HitlConfirmationPayload } from '../../api/hitlSteps'
 import { findHitlStep, isRecoveryAwaiting, isRecoverySkipped } from '../../api/recoverySteps'
+import HitlStepActions from '../operation/HitlStepActions.vue'
 import {
   formatDuration,
   parseLoadedSkillLabel,
@@ -16,6 +17,7 @@ import {
 } from '../../api/processingSteps'
 import { formatPlanNodeType } from '../../api/executionPlans'
 import type { DagNodeStatus } from '../../utils/planGraph'
+import type { PlanNodeAttempt } from '../../api/executionPlans'
 import PlanNodeIcon from './PlanNodeIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
@@ -135,7 +137,8 @@ const showAnalysisSection = computed(() =>
 )
 
 const showSummary = computed(() => {
-  if (node.value?.type === 'start' || node.value?.type === 'answer' || node.value?.type === 'llm') return false
+  // agent 子 Timeline 已在「执行过程」展示，勿重复执行摘要
+  if (node.value?.type === 'start' || node.value?.type === 'answer' || node.value?.type === 'llm' || node.value?.type === 'agent') return false
   return !!summary.value.trim()
 })
 const rewriteDetail = computed(() => (step.value ? resolveRewriteDetail(step.value) : undefined))
@@ -154,6 +157,7 @@ const showStartPlan = computed(() => {
 })
 const showBodySection = computed(() => {
   if (node.value?.type === 'start') return false
+  if (node.value?.type === 'agent' && (step.value?.contentBlocks?.length ?? 0) > 0) return false
   return !!bodyDisplay.value && bodyDisplay.value !== summary.value
 })
 const showReasoningSection = computed(() =>
@@ -191,11 +195,24 @@ const skillLineText = computed(() => {
 
 const subSteps = computed(() => step.value?.subSteps ?? [])
 const showSubTimeline = computed(() => node.value?.type === 'agent' && subSteps.value.length > 0)
-/** agent 用 subSteps；workflow tool 等 HITL 挂在节点步时用单行 timeline */
+/** workflow tool 写操作：与普通 tool 抽屉一致，仅在执行摘要前插入用户确认块 */
+const hitlStep = computed(() => findHitlStep(step.value, pendingHitl.value))
+const showHitlSection = computed(() => node.value?.type === 'tool' && !!hitlStep.value)
+/** 优先 live step.metadata.nodeAttempts，与 DAG 构建逻辑一致，保证调用次数实时更新 */
+const displayAttempts = computed((): PlanNodeAttempt[] | undefined => {
+  const fromStep = step.value?.metadata?.nodeAttempts
+  const fromNode = node.value?.attempts
+  if (fromStep?.length && fromNode?.length) {
+    return fromStep.length >= fromNode.length ? fromStep : fromNode
+  }
+  return fromStep?.length ? fromStep : fromNode
+})
+const displayAttemptCount = computed(() =>
+  node.value?.attemptCount ?? displayAttempts.value?.length ?? 0,
+)
+/** agent 用 subSteps；其余节点不用 OperationStack 承载 HITL */
 const drawerStackSteps = computed(() => {
   if (showSubTimeline.value) return subSteps.value
-  const s = step.value
-  if (s && findHitlStep(s, pendingHitl.value)) return [s]
   return []
 })
 const showDrawerOperationStack = computed(() => drawerStackSteps.value.length > 0)
@@ -287,10 +304,10 @@ watch(
       </p>
     </header>
     <div ref="bodyRef" class="drawer-body" @scroll="onDrawerBodyScroll">
-      <div v-if="node.attempts?.length" class="drawer-section">
-        <h4>执行记录（{{ node.attemptCount ?? node.attempts.length }} 次）</h4>
+      <div v-if="displayAttempts?.length" class="drawer-section">
+        <h4>执行记录（{{ displayAttemptCount }} 次）</h4>
         <ul class="attempt-list">
-          <li v-for="a in node.attempts" :key="a.attemptNo" class="attempt-item">
+          <li v-for="a in displayAttempts" :key="a.attemptNo" class="attempt-item">
             <span class="attempt-no">#{{ a.attemptNo }}</span>
             <span class="attempt-status" :class="`is-${a.status}`">{{ a.status }}</span>
             <span v-if="a.summary" class="attempt-summary">{{ a.summary }}</span>
@@ -304,10 +321,20 @@ watch(
         <h4 v-if="showSubTimeline">执行过程</h4>
         <OperationStack
           :steps="drawerStackSteps"
+          :content-blocks="step?.contentBlocks"
+          :stream-live="subTimelineLive"
           :live="subTimelineLive"
           :embed-hitl="false"
           :pending-hitl-confirmation="pendingHitl"
           @hitl-decided="applyHitlDecision"
+        />
+      </section>
+      <section v-if="showHitlSection && hitlStep" class="drawer-section drawer-hitl">
+        <h4>用户确认</h4>
+        <HitlStepActions
+          :step="hitlStep"
+          :pending-confirmation="pendingHitl"
+          @decided="applyHitlDecision"
         />
       </section>
       <section v-if="showSummary" class="drawer-section">
@@ -366,7 +393,7 @@ watch(
         <h4>日志</h4>
         <StaticMarkdown :source="output" compact />
       </section>
-      <p v-if="!showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showRecoverySection && !output && !showSkillBlock && !node.attempts?.length" class="drawer-empty">
+      <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showRecoverySection && !output && !showSkillBlock && !displayAttempts?.length" class="drawer-empty">
         {{ displayStatus === 'running' ? '节点执行中…' : displayStatus === 'paused' ? '节点已暂停' : '暂无详情' }}
       </p>
     </div>

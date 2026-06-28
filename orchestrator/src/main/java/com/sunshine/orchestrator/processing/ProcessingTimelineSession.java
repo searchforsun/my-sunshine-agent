@@ -2,8 +2,10 @@ package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ToolResultSummarizer;
+import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,6 +35,32 @@ public final class ProcessingTimelineSession {
     private String traceMessageId;
     /** RAG 步骤开始时 trace 条数水位，complete 时仅拼接此后新增的改写 */
     private final Map<String, Integer> ragRewriteBaselineByStep = new java.util.LinkedHashMap<>();
+    private final ContentSegmentCoordinator contentSegments = new ContentSegmentCoordinator();
+    private final List<StreamToken> auxiliaryTokens = new ArrayList<>();
+
+    public ContentSegmentCoordinator contentSegments() {
+        return contentSegments;
+    }
+
+    public void enqueueAuxiliary(StreamToken token) {
+        if (token != null) {
+            auxiliaryTokens.add(token);
+        }
+    }
+
+    public List<StreamToken> drainAuxiliaryTokens() {
+        if (auxiliaryTokens.isEmpty()) {
+            return List.of();
+        }
+        List<StreamToken> copy = new ArrayList<>(auxiliaryTokens);
+        auxiliaryTokens.clear();
+        return copy;
+    }
+
+    /** 工具/流结束前关闭当前正文段 */
+    public void closeContentSegment() {
+        contentSegments.closeIfOpen(new ArrayList<>(), this::enqueueAuxiliary);
+    }
 
     private final Map<String, String> stepDisplayNames = new java.util.LinkedHashMap<>();
 
@@ -272,8 +300,8 @@ public final class ProcessingTimelineSession {
         if (activeStepId == null) {
             return;
         }
-        // think 仅由 PostReasoning 结束，切到工具步骤时不抢先 complete
-        if (ThinkStepIds.isThinkStep(activeStepId)) {
+        // think / generate 由 Agent 事件或 ThinkStepMapper 结束，切到工具步骤时不抢先 complete
+        if (ThinkStepIds.isThinkStep(activeStepId) || "generate".equals(activeStepId)) {
             return;
         }
         aggregator.get(activeStepId).ifPresent(step -> {
@@ -467,8 +495,9 @@ public final class ProcessingTimelineSession {
                 .anyMatch(s -> ThinkStepIds.isThinkStep(s.id()) && isStepRunning(s.id()));
     }
 
-    /** AgentScope PreReasoning：开启本轮 think */
+    /** AgentScope PreReasoning：开启本轮 think；关闭上一轮正文段 */
     public void beginReasoningRound() {
+        closeContentSegment();
         if (isThinkRunning()) {
             completeThinkIfRunning();
         }
@@ -478,6 +507,24 @@ public final class ProcessingTimelineSession {
     /** AgentScope PostReasoning：结束本轮 think */
     public void endReasoningRound() {
         completeThinkIfRunning();
+    }
+
+    /** ReasoningChunk TextBlock 增量：关 think 并写入当前正文段 */
+    public void ingestStreamingContentDelta(String delta) {
+        if (delta == null || delta.isBlank()) {
+            return;
+        }
+        completeThinkIfRunning();
+        String anchor = contentAnchorAfterStepId();
+        if (anchor == null || anchor.isBlank()) {
+            return;
+        }
+        contentSegments().ingest(delta, anchor, this::enqueueAuxiliary);
+    }
+
+    /** 当前 open 段 baseline，无 open 段时返回空串 */
+    public String contentSegmentBaseline() {
+        return contentSegments().currentBaseline();
     }
 
     /** PreActing：仅统计工具并发 */
@@ -495,9 +542,15 @@ public final class ProcessingTimelineSession {
         return pendingToolCalls > 0;
     }
 
-    /** @deprecated 使用 {@link #endReasoningRound()} */
-    public void completeReasoningRound() {
-        endReasoningRound();
+    /** ReAct 正文穿插锚点：最近已完成的 think 步（由 Agent 在输出正文前关闭 think） */
+    public String contentAnchorAfterStepId() {
+        String lastDoneThink = null;
+        for (ProcessingStep step : snapshot()) {
+            if (ThinkStepIds.isThinkStep(step.id()) && "done".equals(step.lifecycle())) {
+                lastDoneThink = step.id();
+            }
+        }
+        return lastDoneThink;
     }
 
     /** 结束当前 running 的 think 步骤 */
@@ -511,10 +564,6 @@ public final class ProcessingTimelineSession {
                 .map(ProcessingStep::id)
                 .findFirst()
                 .ifPresent(id -> complete(id, null));
-    }
-
-    public void openThinkParallel() {
-        openNextThink();
     }
 
     public void completeThinkParallelAt(long endedAt) {

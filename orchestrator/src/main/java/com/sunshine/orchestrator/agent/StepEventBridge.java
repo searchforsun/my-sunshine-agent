@@ -264,6 +264,23 @@ public final class StepEventBridge {
         SESSIONS.forEach((id, session) -> emitHookTokens(id, session, action));
     }
 
+    /** ReasoningChunk TextBlock 正文增量 — 即时写入 GenerationJob（真流式） */
+    public static void emitReasoningContentChunk(String messageId, String incrementalText) {
+        if (messageId == null || incrementalText == null || incrementalText.isEmpty()) {
+            return;
+        }
+        ProcessingTimelineSession session = SESSIONS.get(messageId);
+        if (session == null) {
+            return;
+        }
+        List<StreamToken> emitted = ProcessingTimelineSupport.run(
+                session, () -> session.ingestStreamingContentDelta(incrementalText));
+        ConcurrentLinkedQueue<StreamToken> queue = HOOK_TOKEN_QUEUES.get(messageId);
+        if (queue != null || GENERATION_FLUSH.containsKey(messageId)) {
+            emitted.forEach(token -> routeHookToken(messageId, token, queue));
+        }
+    }
+
     /** ReasoningChunkEvent 原生增量 — 按 messageId 精确路由 */
     public static void emitReasoningChunk(String messageId, String incrementalText) {
         if (messageId == null || incrementalText == null || incrementalText.isEmpty()) {

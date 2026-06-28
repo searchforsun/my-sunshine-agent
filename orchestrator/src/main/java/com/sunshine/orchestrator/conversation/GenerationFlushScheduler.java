@@ -67,8 +67,18 @@ public class GenerationFlushScheduler {
     }
 
     public void commitFinal(String messageId, String content, String reasoning, String status, String stepsJson) {
+        commitFinal(messageId, content, reasoning, status, stepsJson, null);
+    }
+
+    public void commitFinal(
+            String messageId,
+            String content,
+            String reasoning,
+            String status,
+            String stepsJson,
+            String contentBlocksJson) {
         String scrubbed = desensitizeClient.scrub(content);
-        conversationService.updateMessage(messageId, scrubbed, reasoning, status, stepsJson);
+        conversationService.updateMessage(messageId, scrubbed, reasoning, status, stepsJson, contentBlocksJson);
     }
 
     public String metaConversation(String convId) {
@@ -178,9 +188,83 @@ public class GenerationFlushScheduler {
         return metaText("error", text);
     }
 
-    /** 正文 content — 结构化 SSE */
+    /** ReAct 正文段开始 */
+    public String metaContentStart(String segmentId, String afterStepId) {
+        return metaContentStart(segmentId, afterStepId, null);
+    }
+
+    public String metaContentStart(String segmentId, String afterStepId, String nodeStepId) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "content_start");
+            map.put("segmentId", segmentId);
+            map.put("afterStepId", afterStepId);
+            putNodeStepId(map, nodeStepId);
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"content_start\",\"segmentId\":\"" + segmentId
+                    + "\",\"afterStepId\":\"" + afterStepId + "\"}";
+        }
+    }
+
+    /** ReAct 正文段结束 */
+    public String metaContentEnd(String segmentId) {
+        return metaContentEnd(segmentId, null);
+    }
+
+    public String metaContentEnd(String segmentId, String nodeStepId) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "content_end");
+            map.put("segmentId", segmentId);
+            putNodeStepId(map, nodeStepId);
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"content_end\",\"segmentId\":\"" + segmentId + "\"}";
+        }
+    }
+
+    /** ReAct 段内正文增量 */
+    public String metaContentInSegment(String segmentId, String text) {
+        return metaContentInSegment(segmentId, text, null);
+    }
+
+    public String metaContentInSegment(String segmentId, String text, String nodeStepId) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "content");
+            map.put("segmentId", segmentId);
+            map.put("text", text);
+            putNodeStepId(map, nodeStepId);
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"content\",\"segmentId\":\"" + segmentId + "\",\"text\":\"\"}";
+        }
+    }
+
+    private static void putNodeStepId(java.util.Map<String, Object> map, String nodeStepId) {
+        if (nodeStepId != null && !nodeStepId.isBlank()) {
+            map.put("nodeStepId", nodeStepId);
+        }
+    }
+
+    /** 正文 content — 结构化 SSE；simple-llm 穿插时带 afterStepId */
     public String metaContent(String text) {
-        return metaText("content", text);
+        return metaContent(text, null);
+    }
+
+    public String metaContent(String text, String afterStepId) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "content");
+            map.put("text", text);
+            if (afterStepId != null && !afterStepId.isBlank()) {
+                map.put("afterStepId", afterStepId);
+            }
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"content\",\"text\":\"\"}";
+        }
     }
 
     /** 写工具 HITL 确认 — 结构化 SSE */

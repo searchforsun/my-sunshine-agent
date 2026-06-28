@@ -154,6 +154,15 @@ export function sanitizeRestoredMessages(msgs: ChatMessage[]): ChatMessage[] {
   }
   for (const m of msgs) {
     if (m.role !== 'assistant') continue
+    // 历史 REST 落库仍为 streaming 的 assistant（中断/关页），新窗口加载时归一化终态
+    if (m.status === 'streaming') {
+      const hasPartial = !!(m.content?.trim() || m.reasoning?.trim() || m.steps?.length)
+      if (m.executionPlanId && !hasPartial) {
+        m.status = 'completed'
+      } else {
+        m.status = hasPartial ? 'interrupted' : 'failed'
+      }
+    }
     if (m.status === 'failed' || isLikelyStreamFailureContent(m.content)) {
       hydrateStreamError(m)
     }

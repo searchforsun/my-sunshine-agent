@@ -28,13 +28,19 @@ public final class AgentStreamCollector extends WorkflowStreamCollector {
         this.skillId = skillId;
     }
 
-    /** 原始 sub-agent token → node 步骤更新（子 think 进 subSteps；终态正文流式写 node.result） */
+    /** 原始 sub-agent token → node 步骤更新（子 think 进 subSteps；分段正文透传 SSE） */
     public List<StreamToken> ingest(StreamToken token) {
         if (token == null) {
             return List.of();
         }
         if (token.isReasoning()) {
             return List.of();
+        }
+        if (token.isContentLifecycle() || (token.isContent() && token.segmentId() != null)) {
+            if (token.isContent() && token.text() != null) {
+                content.append(token.text());
+            }
+            return List.of(token.withScopeNodeStepId(nodeStepId));
         }
         if (token.isContent() && token.text() != null) {
             content.append(token.text());

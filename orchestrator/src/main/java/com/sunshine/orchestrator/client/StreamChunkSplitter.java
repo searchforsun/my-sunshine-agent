@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 将超大 content/reasoning token 切分为较小片段，保证前端始终有流式体验。
- * 典型场景：DeepSeek 缓存命中或模型一次返回整段 delta。
+ * ReAct 分段契约（content_start / segmentId / content_end）原样透传。
  */
 public final class StreamChunkSplitter {
 
@@ -21,8 +21,8 @@ public final class StreamChunkSplitter {
         return source.concatMap(token -> Flux.fromIterable(splitToken(token, maxChars)));
     }
 
-    static List<StreamToken> splitToken(StreamToken token, int maxChars) {
-        if (token.isStep()) {
+    public static List<StreamToken> splitToken(StreamToken token, int maxChars) {
+        if (token.isStep() || token.isContentStart() || token.isContentEnd()) {
             return List.of(token);
         }
         if (token.isStepDelta()) {
@@ -47,10 +47,28 @@ public final class StreamChunkSplitter {
                 }
             }
             String piece = text.substring(i, end);
-            parts.add(token.isReasoning() ? StreamToken.reasoning(piece) : StreamToken.content(piece));
+            parts.add(toSplitPiece(token, piece));
             i = end;
         }
         return parts;
+    }
+
+    private static StreamToken toSplitPiece(StreamToken token, String piece) {
+        StreamToken part;
+        if (token.isReasoning()) {
+            part = StreamToken.reasoning(piece);
+        } else {
+            String segmentId = token.segmentId();
+            if (segmentId != null) {
+                part = StreamToken.contentInSegment(segmentId, piece);
+            } else {
+                part = StreamToken.content(piece, token.afterStepId());
+            }
+        }
+        if (token.scopeNodeStepId() != null) {
+            return part.withScopeNodeStepId(token.scopeNodeStepId());
+        }
+        return part;
     }
 
     private static List<StreamToken> splitStepDelta(StreamToken token, int maxChars) {

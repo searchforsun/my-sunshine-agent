@@ -16,7 +16,9 @@ export interface SseMeta {
 
 export type ParsedSsePayload =
   | { kind: 'meta'; meta: SseMeta }
-  | { kind: 'chunk'; text: string }
+  | { kind: 'content_start'; segmentId: string; afterStepId: string; nodeStepId?: string }
+  | { kind: 'content_end'; segmentId: string; nodeStepId?: string }
+  | { kind: 'chunk'; text: string; afterStepId?: string; segmentId?: string; nodeStepId?: string }
   | { kind: 'reasoning'; text: string }
   | { kind: 'step'; step: ProcessingStep }
   | { kind: 'step_delta'; delta: StepDelta }
@@ -72,15 +74,32 @@ const handlers: Record<string, Handler> = {
     if (!text) return { kind: 'ignore' }
     return { kind: 'reasoning', text }
   },
+  content_start(obj) {
+    const segmentId = typeof obj.segmentId === 'string' ? obj.segmentId : ''
+    const afterStepId = typeof obj.afterStepId === 'string' ? obj.afterStepId : ''
+    const nodeStepId = typeof obj.nodeStepId === 'string' ? obj.nodeStepId : undefined
+    if (!segmentId || !afterStepId) return { kind: 'ignore' }
+    return { kind: 'content_start', segmentId, afterStepId, nodeStepId }
+  },
+  content_end(obj) {
+    const segmentId = typeof obj.segmentId === 'string' ? obj.segmentId : ''
+    const nodeStepId = typeof obj.nodeStepId === 'string' ? obj.nodeStepId : undefined
+    if (!segmentId) return { kind: 'ignore' }
+    return { kind: 'content_end', segmentId, nodeStepId }
+  },
   content(obj) {
     const text = typeof obj.text === 'string' ? normalizeStreamChunk(obj.text) : ''
     if (!text) return { kind: 'ignore' }
-    return { kind: 'chunk', text }
+    const segmentId = typeof obj.segmentId === 'string' ? obj.segmentId : undefined
+    const afterStepId = typeof obj.afterStepId === 'string' ? obj.afterStepId : undefined
+    const nodeStepId = typeof obj.nodeStepId === 'string' ? obj.nodeStepId : undefined
+    return { kind: 'chunk', text, afterStepId, segmentId, nodeStepId }
   },
   chunk(obj) {
     const text = typeof obj.text === 'string' ? normalizeStreamChunk(obj.text) : ''
     if (!text) return { kind: 'ignore' }
-    return { kind: 'chunk', text }
+    const afterStepId = typeof obj.afterStepId === 'string' ? obj.afterStepId : undefined
+    return { kind: 'chunk', text, afterStepId }
   },
   confirmation(obj) {
     const token = typeof obj.confirmationToken === 'string' ? obj.confirmationToken : ''

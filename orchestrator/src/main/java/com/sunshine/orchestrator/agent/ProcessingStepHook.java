@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import io.agentscope.core.hook.Hook;
 import io.agentscope.core.hook.HookEvent;
 import io.agentscope.core.hook.PostActingEvent;
+import io.agentscope.core.hook.PostReasoningEvent;
 import io.agentscope.core.hook.PreActingEvent;
 import io.agentscope.core.hook.ReasoningChunkEvent;
 import io.agentscope.core.message.TextBlock;
@@ -14,8 +15,8 @@ import reactor.core.publisher.Mono;
 /**
  * AgentScope Hook — ReAct 轮次边界与 reasoning 增量（唯一触达源）
  * <ul>
- *   <li>PreReasoning / PostReasoning：think 开闭</li>
- *   <li>ReasoningChunkEvent：think step_delta（原生 incrementalChunk）</li>
+ *   <li>PreReasoning / PostReasoning：think 开闭（正文仅 ReasoningChunk 流式，PostReasoning 不灌快照）</li>
+ *   <li>ReasoningChunkEvent：think step_delta + TextBlock 正文段（原生 incrementalChunk，即时刷 SSE）</li>
  *   <li>PreActing / PostActing：工具步骤</li>
  * </ul>
  * 每个 ReAct 请求通过 {@link ProcessingStepHookFactory} 绑定独立 bridgeId，并发安全。
@@ -37,14 +38,16 @@ public class ProcessingStepHook implements Hook {
             return Mono.just(event);
         }
 
-        if (event instanceof io.agentscope.core.hook.PostReasoningEvent) {
+        if (event instanceof PostReasoningEvent post) {
             StepEventBridge.emit(bridgeId, ProcessingTimelineSession::endReasoningRound);
             return Mono.just(event);
         }
 
         if (event instanceof ReasoningChunkEvent chunkEvent) {
-            String delta = ReasoningChunkSupport.extractIncrementalText(chunkEvent);
-            StepEventBridge.emitReasoningChunk(bridgeId, delta);
+            String thinkDelta = ReasoningChunkSupport.extractIncrementalText(chunkEvent);
+            StepEventBridge.emitReasoningChunk(bridgeId, thinkDelta);
+            String contentDelta = ReasoningChunkSupport.extractIncrementalContent(chunkEvent);
+            StepEventBridge.emitReasoningContentChunk(bridgeId, contentDelta);
             return Mono.just(event);
         }
 

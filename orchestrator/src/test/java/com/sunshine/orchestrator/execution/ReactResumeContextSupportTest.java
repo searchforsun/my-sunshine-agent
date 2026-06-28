@@ -63,6 +63,7 @@ class ReactResumeContextSupportTest {
                 "done",
                 "识别意图",
                 null,
+                null,
                 null);
     }
 
@@ -83,6 +84,7 @@ class ReactResumeContextSupportTest {
                 "done",
                 "规划推理",
                 null,
+                null,
                 null);
     }
 
@@ -102,6 +104,7 @@ class ReactResumeContextSupportTest {
                 2L,
                 "done",
                 "知识检索",
+                null,
                 null,
                 null);
     }
@@ -126,6 +129,7 @@ class ReactResumeContextSupportTest {
                 "paused",
                 "审批 OA 待办",
                 meta,
+                null,
                 null);
     }
 }

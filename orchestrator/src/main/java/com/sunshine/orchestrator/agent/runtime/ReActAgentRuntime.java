@@ -89,16 +89,16 @@ public class ReActAgentRuntime implements AgentRuntime {
             StepEventBridge.setUserQuery(assistantMessageId, query);
         }
 
-        AtomicBoolean generateStarted = new AtomicBoolean(false);
-        AtomicBoolean generateCompleted = new AtomicBoolean(false);
+        AtomicBoolean answerContentStarted = new AtomicBoolean(false);
+        AtomicBoolean answerStreamFinished = new AtomicBoolean(false);
         StringBuilder answerContent = new StringBuilder();
 
         ReActAgent agent = agentFactory.create(request);
         return agent.stream(inputs, options)
                 .flatMap(event -> {
                     List<StreamToken> tokens = new ArrayList<>();
+                    tokens.addAll(mapAgentEvent(event, session, answerContentStarted));
                     tokens.addAll(drainHookTokens(hookQueue));
-                    tokens.addAll(mapAgentEvent(event, session, generateStarted));
                     for (StreamToken token : tokens) {
                         if (token.isContent() && token.text() != null) {
                             answerContent.append(token.text());
@@ -108,8 +108,8 @@ public class ReActAgentRuntime implements AgentRuntime {
                 })
                 .concatWith(Flux.defer(() -> {
                     List<StreamToken> tail = new ArrayList<>(drainHookTokens(hookQueue));
-                    tail.addAll(finishGenerateSteps(
-                            session, generateStarted, generateCompleted, request, answerContent.toString()));
+                    tail.addAll(finishAnswerStream(
+                            session, answerContentStarted, answerStreamFinished, request, answerContent.toString()));
                     return Flux.fromIterable(tail);
                 }))
                 .doFinally(sig -> StepEventBridge.clear(bridgeId))
@@ -118,30 +118,26 @@ public class ReActAgentRuntime implements AgentRuntime {
                         request.role(), request.runId(), e.getMessage(), e));
     }
 
-    private List<StreamToken> finishGenerateSteps(
+    private List<StreamToken> finishAnswerStream(
             ProcessingTimelineSession session,
-            AtomicBoolean generateStarted,
-            AtomicBoolean generateCompleted,
+            AtomicBoolean answerContentStarted,
+            AtomicBoolean answerStreamFinished,
             AgentRunRequest request,
             String answerContent) {
-        if (!generateCompleted.compareAndSet(false, true)) {
+        if (!answerStreamFinished.compareAndSet(false, true)) {
             return List.of();
         }
-        long now = System.currentTimeMillis();
         GroundingVerdict grounding = validateMainGrounding(request, answerContent, session);
-        if (grounding != null && !grounding.passed() && generateStarted.get()) {
-            return ProcessingTimelineSupport.run(session, () -> {
-                session.fail("generate", grounding.reason());
-            });
+        if (grounding != null && !grounding.passed() && answerContentStarted.get()) {
+            String anchor = session.contentAnchorAfterStepId();
+            if (anchor != null) {
+                return ProcessingTimelineSupport.run(session, () -> session.fail(anchor, grounding.reason()));
+            }
         }
-        if (generateStarted.get()) {
-            return ProcessingTimelineSupport.run(session, () ->
-                    session.completeAt("generate", null, now));
-        }
-        if (session.isThinkRunning()) {
-            return ProcessingTimelineSupport.run(session, session::completeThinkIfRunning);
-        }
-        return List.of();
+        return ProcessingTimelineSupport.run(session, () -> {
+            session.closeContentSegment();
+            session.completeThinkIfRunning();
+        });
     }
 
     private GroundingVerdict validateMainGrounding(
@@ -178,7 +174,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     private static List<StreamToken> mapAgentEvent(
             Event event,
             ProcessingTimelineSession session,
-            AtomicBoolean generateStarted) {
-        return AgentScopeEventMapper.map(event, session, generateStarted);
+            AtomicBoolean answerContentStarted) {
+        return AgentScopeEventMapper.map(event, session, answerContentStarted);
     }
 }

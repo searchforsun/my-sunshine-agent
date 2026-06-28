@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -70,6 +71,7 @@ class GenerationJobTest {
         registry.add("agent.generation.max-buffer-chunks", () -> 10000);
         registry.add("agent.generation.reconnect-block-ms", () -> 100);
         registry.add("agent.generation.flush-interval-ms", () -> 50);
+        registry.add("agent.generation.max-chunk-chars", () -> 32);
     }
 
     @BeforeEach
@@ -77,8 +79,15 @@ class GenerationJobTest {
         flushScheduler = mock(GenerationFlushScheduler.class);
         when(flushScheduler.metaReasoning(anyString()))
                 .thenAnswer(inv -> "{\"type\":\"reasoning\",\"text\":\"" + inv.getArgument(0) + "\"}");
-        when(flushScheduler.metaContent(anyString()))
+        when(flushScheduler.metaContent(anyString(), org.mockito.ArgumentMatchers.nullable(String.class)))
                 .thenAnswer(inv -> "{\"type\":\"content\",\"text\":\"" + inv.getArgument(0) + "\"}");
+        when(flushScheduler.metaContentInSegment(anyString(), anyString(), org.mockito.ArgumentMatchers.nullable(String.class)))
+                .thenAnswer(inv -> "{\"type\":\"content\",\"segmentId\":\"" + inv.getArgument(0)
+                        + "\",\"text\":\"" + inv.getArgument(1) + "\"}");
+        when(flushScheduler.metaContentStart(anyString(), anyString(), org.mockito.ArgumentMatchers.nullable(String.class)))
+                .thenAnswer(inv -> "{\"type\":\"content_start\",\"segmentId\":\"" + inv.getArgument(0) + "\"}");
+        when(flushScheduler.metaContentEnd(anyString(), org.mockito.ArgumentMatchers.nullable(String.class)))
+                .thenAnswer(inv -> "{\"type\":\"content_end\",\"segmentId\":\"" + inv.getArgument(0) + "\"}");
         when(flushScheduler.metaStep(org.mockito.ArgumentMatchers.any()))
                 .thenReturn("{\"type\":\"step\"}");
         when(flushScheduler.metaStepDelta(anyString(), anyString(), anyString()))
@@ -117,7 +126,8 @@ class GenerationJobTest {
                 buffer,
                 content -> { },
                 done::countDown,
-                errorRef::set
+                errorRef::set,
+                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.SIMPLE_LLM)
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
@@ -139,13 +149,30 @@ class GenerationJobTest {
         ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture());
+                eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
         assertThat(contentCaptor.getValue()).isEqualTo("abc");
         assertThat(stepsCaptor.getValue()).contains("generate");
     }
 
     @Test
-    @DisplayName("完成后刷新 STM 记忆")
+    @DisplayName("emitStreamToken 大段 segment content 按 max-chunk-chars 切分写入 Redis")
+    void emitStreamToken_splitsLargeSegmentContent() {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+        GenerationJob job = newJob(generationId);
+        String text = "我先为您查询待办任务和财务待办消息，同时检索合规制度与报销流程说明。";
+        job.emitStreamToken(StreamToken.contentInSegment("content-1", text));
+        List<StreamEvent> events = streamService.readFrom(generationId, 0, 20);
+        assertThat(events.size()).isGreaterThan(1);
+        String joined = events.stream()
+                .map(StreamEvent::text)
+                .filter(w -> w.contains("\"segmentId\":\"content-1\""))
+                .map(w -> w.replaceAll(".*\"text\":\"([^\"]*)\".*", "$1"))
+                .reduce("", String::concat);
+        assertThat(joined).isEqualTo(text);
+    }
+
+    @Test
     void start_refreshesMemoryAfterComplete() throws Exception {
         String generationId = streamService.createGeneration(
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
@@ -186,7 +213,8 @@ class GenerationJobTest {
                 buffer,
                 content -> { },
                 done::countDown,
-                error -> { }
+                error -> { },
+                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.SIMPLE_LLM)
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
@@ -195,7 +223,7 @@ class GenerationJobTest {
         ArgumentCaptor<String> reasoningCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture());
+                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
         assertThat(reasoningCaptor.getValue()).isEqualTo("think");
         assertThat(stepsCaptor.getValue()).contains("think").contains("generate");
     }
@@ -231,7 +259,7 @@ class GenerationJobTest {
 
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture());
+                eq(MESSAGE_ID), eq("ok"), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
         String stepsJson = stepsCaptor.getValue();
         assertThat(stepsJson).contains("识别意图").contains("简单对话");
         assertThat(stepsJson).contains("lifecycle").contains("summary");

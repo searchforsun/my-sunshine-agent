@@ -8,6 +8,7 @@ public record GenerationProperties(
         long orphanTimeoutSec,
         int maxBufferChunks,
         long reconnectBlockMs,
-        long flushIntervalMs
+        long flushIntervalMs,
+        int maxChunkChars
 ) {
 }

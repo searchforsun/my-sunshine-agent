@@ -138,6 +138,10 @@ ALTER TABLE chat_message
 ALTER TABLE execution_plan
     ADD COLUMN pause_checkpoint MEDIUMTEXT NULL COMMENT '暂停续跑 JSON：resumeNodeId + wfCtx' AFTER execution_trace;
 
+-- V13__message_content_blocks.sql
+ALTER TABLE chat_message
+    ADD COLUMN content_blocks MEDIUMTEXT NULL COMMENT 'ReAct 正文分段 JSON' AFTER steps;
+
 -- Flyway 基线（与 classpath db/migration 校验一致，避免服务启动重复建表）
 USE sunshine_chat;
 CREATE TABLE IF NOT EXISTS flyway_schema_history (
@@ -166,3 +170,5 @@ INSERT INTO flyway_schema_history VALUES (8, '8', 'execution plan retry', 'SQL',
 INSERT INTO flyway_schema_history VALUES (9, '9', 'conversation execution preference', 'SQL', 'V9__conversation_execution_preference.sql', -726680187, 'docker-init', NOW(), 0, 1);
 INSERT INTO flyway_schema_history VALUES (10, '10', 'message execution preference', 'SQL', 'V10__message_execution_preference.sql', -1848876767, 'docker-init', NOW(), 0, 1);
 INSERT INTO flyway_schema_history VALUES (11, '11', 'execution plan pause checkpoint', 'SQL', 'V11__execution_plan_pause_checkpoint.sql', -1181160291, 'docker-init', NOW(), 0, 1);
+INSERT INTO flyway_schema_history VALUES (12, '12', 'execution plan approval rounds', 'SQL', 'V12__execution_plan_approval_rounds.sql', 0, 'docker-init', NOW(), 0, 1);
+INSERT INTO flyway_schema_history VALUES (13, '13', 'message content blocks', 'SQL', 'V13__message_content_blocks.sql', 0, 'docker-init', NOW(), 0, 1);

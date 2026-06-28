@@ -43,6 +43,20 @@ def find_jar(module: str, artifact: str) -> Path:
     return Path(jars[0])
 
 
+def package_java_modules(modules: list[str], *, skip_tests: bool = True) -> None:
+    """重启前打包指定 Maven 模块（含 -am 依赖）。"""
+    ordered = list(dict.fromkeys(m for m in modules if m))
+    if not ordered:
+        return
+    pl = ",".join(ordered)
+    cmd = ["mvn", "package", "-pl", pl, "-am", "-q"]
+    if skip_tests:
+        cmd.append("-DskipTests")
+    print(f">> mvn package -pl {pl} -am -DskipTests ...")
+    subprocess.run(cmd, cwd=str(ROOT), check=True)
+    print("   package done")
+
+
 def skywalking_agent() -> Path:
     return ROOT / "docker" / "skywalking-agent" / "skywalking-agent.jar"
 
@@ -87,26 +101,120 @@ def start_java_detached(
     return proc
 
 
+def force_kill_pid(pid: int) -> bool:
+    """SIGKILL 指定 PID（Windows 用 taskkill /F）。"""
+    if pid <= 0:
+        return False
+    if platform.system() == "Windows":
+        proc = subprocess.run(
+            ["taskkill", "/F", "/PID", str(pid)],
+            check=False,
+            capture_output=True,
+        )
+        return proc.returncode == 0
+    proc = subprocess.run(["kill", "-9", str(pid)], check=False, capture_output=True)
+    return proc.returncode == 0
+
+
+def force_stop_java_jar(jar: Path | str) -> list[int]:
+    """按 JAR 路径 SIGKILL 匹配的 Java 进程（兜底：端口已释放但旧 JVM 仍存活）。"""
+    jar_path = Path(jar)
+    jar_name = jar_path.name
+    jar_resolved = str(jar_path.resolve()) if jar_path.exists() else str(jar)
+    killed: list[int] = []
+    try:
+        import psutil
+    except ImportError:
+        return _force_stop_java_jar_fallback(jar_name)
+
+    for proc in psutil.process_iter(["pid", "cmdline"]):
+        try:
+            cmdline = proc.info.get("cmdline") or []
+            if not cmdline:
+                continue
+            joined = " ".join(cmdline)
+            if jar_name not in joined and jar_resolved not in joined:
+                continue
+            pid = proc.info["pid"]
+            if pid and force_kill_pid(pid):
+                killed.append(pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    if killed:
+        time.sleep(2)
+    return killed
+
+
+def _force_stop_java_jar_fallback(jar_name: str) -> list[int]:
+    if platform.system() == "Windows":
+        out = subprocess.run(
+            ["wmic", "process", "where",
+             f"CommandLine like '%{jar_name}%'", "get", "ProcessId"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        killed: list[int] = []
+        for line in out.stdout.splitlines():
+            line = line.strip()
+            if line.isdigit():
+                pid = int(line)
+                if force_kill_pid(pid):
+                    killed.append(pid)
+        if killed:
+            time.sleep(2)
+        return killed
+    out = subprocess.run(
+        ["pgrep", "-f", jar_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    killed = []
+    for line in out.stdout.splitlines():
+        line = line.strip()
+        if line.isdigit():
+            pid = int(line)
+            if force_kill_pid(pid):
+                killed.append(pid)
+    if killed:
+        time.sleep(2)
+    return killed
+
+
 def stop_listening_port(port: int) -> bool:
-    """停止占用端口的进程。"""
+    """SIGKILL 占用端口的进程，确保旧 JVM 释放。"""
     try:
         import psutil
     except ImportError:
         print("提示: pip install psutil 以支持跨平台停进程", file=sys.stderr)
         return _stop_port_fallback(port)
 
-    stopped = False
+    pids: set[int] = set()
     for conn in psutil.net_connections(kind="inet"):
         if conn.laddr and conn.laddr.port == port and conn.status == psutil.CONN_LISTEN:
             if conn.pid:
-                try:
-                    psutil.Process(conn.pid).terminate()
-                    stopped = True
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-    if stopped:
-        time.sleep(2)
-    return stopped
+                pids.add(conn.pid)
+    if not pids:
+        return False
+    for pid in pids:
+        force_kill_pid(pid)
+    time.sleep(2)
+    return True
+
+
+def stop_java_service(module: str, artifact: str, port: int) -> list[int]:
+    """停服：先 SIGKILL 占端口进程，再按 JAR 名清理残留 Java 进程。"""
+    if stop_listening_port(port):
+        print(f"  [KILL] :{port} released")
+    try:
+        jar = find_jar(module, artifact)
+    except FileNotFoundError:
+        jar = f"{artifact}-"
+    killed = force_stop_java_jar(jar)
+    for pid in killed:
+        print(f"  [KILL] {artifact} pid={pid}")
+    return killed
 
 
 def _stop_port_fallback(port: int) -> bool:

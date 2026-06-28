@@ -25,7 +25,7 @@ import { isValidConversationId } from '../api/conversations'
 import { resolveApiBase } from '../api/config'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
-import { apiHeaders } from '../composables/useUserId'
+import { apiHeaders } from '../stores/authStore'
 import {
   loadActiveGeneration,
   clearActiveGeneration,
@@ -46,6 +46,7 @@ import {
   isContentFullyInterleaved,
   resolveStreamingContentText,
 } from '../api/contentInterleave'
+import { ensurePlanTimelineSteps, hasPlanTimeline } from '../api/planHydrate'
 import {
   normalizeTimelineSteps,
   hasActiveStep,
@@ -166,8 +167,9 @@ function resolveTimelineContext(msg: ChatMessage): {
   steps: ProcessingStep[]
   pending: ChatMessage['pendingHitlConfirmation']
 } {
-  if (!msg.steps?.length) return { steps: [], pending: undefined }
-  const synced = applySyncedPendingHitl(msg.steps, msg.pendingHitlConfirmation)
+  const baseSteps = ensurePlanTimelineSteps(msg)
+  if (!baseSteps.length) return { steps: [], pending: undefined }
+  const synced = applySyncedPendingHitl(baseSteps, msg.pendingHitlConfirmation)
   return {
     steps: normalizeTimelineSteps(synced.steps, msg.reasoning),
     pending: synced.pending,
@@ -190,6 +192,7 @@ function resolveUserQuery(idx: number): string {
 }
 
 function showTimeline(msg: ChatMessage, idx: number): boolean {
+  if (hasPlanTimeline(msg)) return true
   const steps = resolveTimelineSteps(msg, idx)
   return steps.length > 0
 }

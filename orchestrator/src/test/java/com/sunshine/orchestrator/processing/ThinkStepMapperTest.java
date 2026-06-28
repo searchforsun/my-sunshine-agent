@@ -33,7 +33,8 @@ class ThinkStepMapperTest {
     @Test
     void contentCompletesThinkAndOpensGenerate() {
         List<ProcessingStep> steps = new ArrayList<>();
-        ThinkStepMapper mapper = new ThinkStepMapper(steps, "hello");
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.SIMPLE_LLM);
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "hello", mode);
 
         mapper.map(StreamToken.reasoning("思考"));
         ProcessingStepMerger.applyDelta(steps, "think", "reasoning", "思考过程");
@@ -69,7 +70,8 @@ class ThinkStepMapperTest {
     @Test
     void contentOnlySkipsThinkStep() {
         List<ProcessingStep> steps = new ArrayList<>(List.of(doneStep("intent")));
-        ThinkStepMapper mapper = new ThinkStepMapper(steps, "hello");
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.SIMPLE_LLM);
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "hello", mode);
 
         List<StreamToken> mapped = mapper.map(StreamToken.content("直接回答"));
 
@@ -97,7 +99,8 @@ class ThinkStepMapperTest {
     @Test
     void contentOpensGenerateAndFinishCompletesIt() {
         List<ProcessingStep> steps = new ArrayList<>(List.of(runningStep("think")));
-        ThinkStepMapper mapper = new ThinkStepMapper(steps, "有哪些待审批报销");
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.SIMPLE_LLM);
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "有哪些待审批报销", mode);
 
         List<StreamToken> mapped = mapper.map(StreamToken.content("回答正文"));
 
@@ -114,6 +117,22 @@ class ThinkStepMapperTest {
 
         assertThat(mapper.finish(true).stream().noneMatch(t -> t.isStep()
                 && "generate".equals(t.step().id()))).isTrue();
+    }
+
+    @Test
+    void reactContent_doesNotOpenGenerateAndPreservesAnchor() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(
+                doneStep("think"),
+                doneStep("tool-list_oa_tasks@1")));
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "查待办", mode);
+
+        List<StreamToken> mapped = mapper.map(StreamToken.content("过渡语", "think"));
+
+        assertThat(mapped).hasSize(1);
+        assertThat(mapped.get(0).afterStepId()).isEqualTo("think");
+        assertThat(steps.stream().noneMatch(s -> "generate".equals(s.id()))).isTrue();
+        assertThat(mapper.finish().stream().noneMatch(t -> t.isStep() && "generate".equals(t.step().id()))).isTrue();
     }
 
     @Test
@@ -181,7 +200,7 @@ class ThinkStepMapperTest {
                 id, id, "running",
                 new StepSummary("before", "active", null),
                 1L, null, null, null, null, null, null,
-                System.currentTimeMillis(), "running", id, null, null);
+                System.currentTimeMillis(), "running", id, null, null, null);
     }
 
     private static ProcessingStep doneStep(String id) {
@@ -189,6 +208,6 @@ class ThinkStepMapperTest {
                 id, id, "done",
                 new StepSummary("before", "active", "after"),
                 1L, 2L, 1L, null, null, null, null,
-                System.currentTimeMillis(), "done", id, null, null);
+                System.currentTimeMillis(), "done", id, null, null, null);
     }
 }
