@@ -125,11 +125,5 @@ public final class WorkflowNodeLabels {
         return nodeType != null && !"start".equals(nodeType);
     }
 
-    /** @deprecated 语义见 {@link #isPlanChainNode} */
-    @Deprecated
-    public static boolean isVisibleNode(String nodeType) {
-        return isPlanChainNode(nodeType);
-    }
-
 }
 

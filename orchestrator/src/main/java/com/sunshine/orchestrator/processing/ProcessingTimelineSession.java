@@ -634,7 +634,6 @@ public final class ProcessingTimelineSession {
                 && Objects.equals(prev.reasoning(), next.reasoning())
                 && Objects.equals(prev.output(), next.output())
                 && Objects.equals(prev.result(), next.result())
-                && Objects.equals(prev.status(), next.status())
                 && Objects.equals(prev.label(), next.label())
                 && Objects.equals(prev.metadata(), next.metadata());
     }

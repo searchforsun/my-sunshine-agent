@@ -153,12 +153,12 @@ public class GenerationFlushScheduler {
                 map.put("subSteps", nested);
             }
             map.put("ts", step.ts());
-            map.put("status", step.status());
             map.put("label", step.label());
             return objectMapper.writeValueAsString(map);
         } catch (Exception e) {
-            return "{\"type\":\"step\",\"id\":\"" + step.id() + "\",\"status\":\""
-                    + step.status() + "\",\"label\":\"" + step.label() + "\"}";
+            String lc = step.lifecycle() != null ? step.lifecycle() : "running";
+            return "{\"type\":\"step\",\"id\":\"" + step.id() + "\",\"lifecycle\":\""
+                    + lc + "\",\"label\":\"" + step.label() + "\"}";
         }
     }
 

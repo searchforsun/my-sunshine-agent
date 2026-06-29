@@ -183,7 +183,6 @@ public final class TimelineAggregator {
                     output,
                     result,
                     ts,
-                    lifecycle,
                     label,
                     metadata,
                     null,

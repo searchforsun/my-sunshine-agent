@@ -1,6 +1,7 @@
 package com.sunshine.skill.controller;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.exception.CommonErrorCode;
 import com.sunshine.common.core.result.R;
 import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.dto.SkillCatalogEntry;
@@ -22,10 +23,10 @@ public class SkillCatalogController {
 
     private final SkillAdminService skillAdminService;
 
-    /** 兼容旧路径：仅返回摘要（无 systemOverlay） */
+    /** 已废弃：请使用 {@link #catalogIndex()}（/catalog/index） */
     @GetMapping("/catalog")
-    public R<List<SkillCatalogIndexEntry>> catalog() {
-        return R.ok(skillAdminService.listCatalogIndex());
+    public R<Void> catalogRemoved() {
+        throw new BizException(CommonErrorCode.GONE);
     }
 
     @GetMapping("/catalog/index")

@@ -1,5 +1,7 @@
 # 后端处理事件 — 前端展示方案
 
+> **Superseded（2026-06-29）**：前端渲染见 `OperationStack.vue` / `OperationCard.vue`；勿再引用 `ProcessingTimeline.vue`。
+
 > **⚠️ 已并入** [phase2-benchmark-design.md](./phase2-benchmark-design.md) **§2.18**（演进至 V2）。下文为历史详设。
 
 > 日期：2026-06-13 | 状态：待评审  

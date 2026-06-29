@@ -155,6 +155,12 @@ public class SkillsController {
         return skillManagerClient.catalogIndex();
     }
 
+    /** 已废弃：请使用 /api/skills/catalog/index */
+    @GetMapping("/api/skills/catalog")
+    public Mono<Map<String, Object>> skillCatalogRemoved() {
+        return Mono.error(new BizException(CommonErrorCode.GONE));
+    }
+
     @GetMapping("/api/skills/{id}/catalog")
     public Mono<Map<String, Object>> skillCatalogDetail(@PathVariable String id) {
         return skillManagerClient.catalogDetail(id);

@@ -245,7 +245,7 @@ export function resolveHitlHint(step: ProcessingStep): string {
 }
 
 function isRunningStep(step: ProcessingStep): boolean {
-  return step.lifecycle === 'running' || step.status === 'running'
+  return step.lifecycle === 'running'
 }
 
 /** 乐观更新：用户点击确认/取消后立即反映到 tool 步 metadata */
@@ -424,13 +424,12 @@ export function relocateAgentNodeHitl(step: ProcessingStep): ProcessingStep {
 export function reactivatePausedReactHitlSteps(steps: ProcessingStep[] | undefined): ProcessingStep[] {
   if (!steps?.length) return steps ?? []
   return steps.map(step => {
-    const lc = step.lifecycle ?? step.status
+    const lc = step.lifecycle
     if (lc !== 'paused' || !isHitlToolStep(step)) return step
     if (!isHitlAwaiting(step) && !isHitlSummaryAwaiting(step)) return step
     return {
       ...step,
       lifecycle: 'running',
-      status: 'running',
       summary: {
         ...step.summary,
         active: step.summary?.active?.includes('暂停')

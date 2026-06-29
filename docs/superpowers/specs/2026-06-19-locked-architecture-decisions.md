@@ -2,7 +2,7 @@
 
 > **⚠️ 阶段三相关决策已摘要至** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.11**；OCR 见 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.2**。下文为完整锁定原文。
 
-> **状态**：已锁定 — 后续 spec / 实施计划须与本文件一致  
+> **状态**：**边界已锁定**（D1–D11）— 新 spec 不得违背执行模式、落库、服务边界等。**实现层**遗留 API/垫片若与 [ADR-001](../../architecture/ADR-001-delete-legacy-compat.md) 或代码冲突，以 ADR + 代码为准并回写本文件 API 表。  
 > **适用范围**：动态 Plan、Planner 模型、Skills 运营、沙箱运行时、**OCR 提供商**、**第五模式 Peer 协作（阶段四）**
 
 ---
@@ -159,9 +159,9 @@ skill-manager
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/skills/catalog` | orchestrator 拉取（等同 Tool Catalog） |
-| GET | `/api/skills/catalog/index` | 摘要（无 overlay） |
+| GET | `/api/skills/catalog/index` | orchestrator 拉取摘要（**SSOT**，见 ADR-001） |
 | GET | `/api/skills/{id}/catalog` | 详情含 overlay |
+| ~~GET~~ | ~~`/api/skills/catalog`~~ | **已删除**（2026-06-29，410 Gone） |
 | GET | `/api/skills` | 列表（管理端） |
 | POST | `/api/skills` | 创建元数据 |
 | PUT | `/api/skills/{id}` | 修改 displayName、description |

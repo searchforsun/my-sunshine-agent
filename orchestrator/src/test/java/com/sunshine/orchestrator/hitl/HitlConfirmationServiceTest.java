@@ -151,7 +151,6 @@ class HitlConfirmationServiceTest {
                 null,
                 null,
                 2L,
-                "paused",
                 null,
                 meta,
                 null,

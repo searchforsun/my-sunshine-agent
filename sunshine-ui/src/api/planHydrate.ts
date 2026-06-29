@@ -7,7 +7,6 @@ export function syntheticPlanStep(executionPlanId: string): ProcessingStep {
     id: 'plan',
     phase: 'plan',
     lifecycle: 'done',
-    status: 'done',
     detail: `planId=${executionPlanId}`,
     summary: { after: '执行计划' },
   }

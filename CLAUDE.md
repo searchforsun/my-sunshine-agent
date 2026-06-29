@@ -6,45 +6,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 
 ## 常用命令
 
-```bash
-# 脚本依赖（首次）
-pip install -r scripts/requirements.txt
-
-# JDK 21
-mvn clean package -DskipTests
-mvn compile -pl <module> -am
-
-# 配置：docs/nacos/ → 同步 → 重启
-python scripts/sync_nacos.py
-python scripts/sync_nacos.py --data-id sunshine-orchestrator.yaml
-python scripts/sync_nacos.py --data-id sunshine-workflows.yaml
-python scripts/start.py
-
-# 清会话（MySQL 对话表 + Redis STM/生成流；可选重启 orchestrator + llm-gateway）
-python scripts/clear_session_cache.py --force --restart-orchestrator
-
-# 前端 :5173；SSE 直连 Gateway :8000
-cd sunshine-ui && npm run dev
-# 改前端后必跑 TS 检查：cd sunshine-ui && npx vue-tsc -b
-
-# 验收
-python scripts/phase2_agent_demo.py --suite all
-python scripts/verify_execution_preference.py
-python scripts/phase2_agent_demo.py --suite react
-python scripts/phase2_agent_demo.py --suite workflow
-
-# RAG 基线（阶段三）
-python scripts/rag_reset.py
-python scripts/rag_ingest_bulk.py
-python scripts/rag_eval.py --suite v5 --strategy hybrid+rerank --ci --fail-if-recall5-below 0.98
-python scripts/rag_eval.py --suite v5 --rewrite-only --strategy hybrid+rerank
-
-mvn test -pl llm-gateway -Dtest=ModelRouterTest,AdapterCircuitBreakerTest
-mvn test -pl orchestrator -Dtest=WorkflowNodeTimelineTest,AgentNodeDetailSummarizerTest,RuleBasedRouterTest,QueryRewriteServiceTest,KnowledgeRetrievalServiceTest,ExecutionPlanRouterTest,RoutingGoldenSetTest,StructuralPlanMatcherTest,PromptComposerTest,ReActAgentRuntimeTest,ReactExecutorTest,AgentNodeHandlerTest
-mvn test -pl rag-service
-```
-
-**首次部署**：MySQL `CREATE DATABASE sunshine_auth;` → `sync_nacos.py` → `start.py`。
+编译、启动、验收命令见 [README.md](./README.md) §快速开始。改 `docs/nacos/*.yaml` 后必跑 `python scripts/sync_nacos.py` 并重启消费服务。
 
 **运维脚本（SSOT：`scripts/*.py`）**
 
@@ -126,8 +88,6 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 **Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall`；HyDE 为 **首次 0 命中 fallback**（`agent.rewrite.rag.hyde.enabled`）；日志 `[QueryRewrite]`。
 
-**待做（阶段三收尾）**：3.9.5 暂停/续跑一致性；3.2/3.3/3.5 live 验收；3.7 Grounding 集成测试；3.13 AhoCorasick；3.14 多实例锁；阶段四 **PEER_COLLAB**。
-
 **RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）；向量锚点门禁见 `RetrievalService`。
 
 ### 时间线（ReAct vs Workflow DAG）
@@ -178,6 +138,7 @@ Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876
 
 ## 其他
 
+- 架构决策（ADR）：[docs/architecture/README.md](./docs/architecture/README.md)
 - 禁止对模型输出内容做冗余的截断和摘要，模型返回什么就输出什么，不对就改提示词
 - 禁止冗余的兜底和兼容逻辑，直接在架构和提示词方面优化，合理兼容兜底逻辑要给出原因，并评审通过
 - 代码加适量中文注释；**禁止**在业务代码中插入多余空行。

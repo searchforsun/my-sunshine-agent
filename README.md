@@ -176,7 +176,7 @@ export QWEN_API_KEY=sk-xxx        # 通义千问（Embedding 复用）
 | 阶段〇 | ✅ | 中间件 + 项目骨架 |
 | 阶段一 | ✅ | LLM Gateway · ReActAgent · RAG · SSE · SkyWalking 探针 |
 | 阶段二 | ✅ | 认证 · 财务/OA 工具链 · Workflow · Timeline V2 · 会话断点续传 |
-| 阶段三 | **进行中** | **已完成**：3.4 RAG 双轨 · 3.8 提示词链路 · 3.9 PLAN_WORKFLOW（含静态 DAG 统一、重试/Recovery）· 3.10 AgentRuntime · 3.11 skill-manager · 3.12 `/skills` + diff · Chat 执行模式选择器。**收尾**：3.9.5 暂停/续跑一致性。**待关检查门**：3.2 多租户 · 3.3 HITL live · 3.5 Grafana/Sentinel live · 3.7 Grounding |
+| 阶段三 | **检查门基本通过** | 详见 [implementation-plan.md](./docs/implementation-plan.md) |
 | 阶段四 | ⬜ | PEER_COLLAB · TaskBoard · Workflow Studio · MCP · K8s（按需） |
 
 进度 SSOT：[docs/implementation-plan.md](./docs/implementation-plan.md)
@@ -188,9 +188,11 @@ export QWEN_API_KEY=sk-xxx        # 通义千问（Embedding 复用）
 | [implementation-plan.md](./docs/implementation-plan.md) | 分阶段任务卡与检查门 |
 | [superpowers/specs/README.md](./docs/superpowers/specs/README.md) | 阶段一～四设计 SSOT 索引 |
 | [tech-solution.md](./docs/tech-solution.md) | 架构设计与技术选型 |
-| [CLAUDE.md](./CLAUDE.md) | 开发约定、请求链路、扩展指南 |
+| [CLAUDE.md](./CLAUDE.md) | 扩展点、时间线约定、验收脚本索引 |
 | [grafana/README.md](./docs/grafana/README.md) | RAG 指标与 Grafana 部署 |
 | [sentinel/README.md](./docs/sentinel/README.md) | Gateway 租户 QPS 与 Dashboard |
+| [tech-debt-register.md](./docs/tech-debt-register.md) | 技术债 / 文档债 backlog |
+| [architecture/README.md](./docs/architecture/README.md) | 架构决策（ADR） |
 | [routing/routing-golden-set.md](./docs/routing/routing-golden-set.md) | 意图路由验收集 |
 | [2026-06-26-pause-resume-consistency-design.md](./docs/superpowers/specs/2026-06-26-pause-resume-consistency-design.md) | 阶段三收尾 3.9.5 设计 |
 | [2026-06-26-pause-resume-consistency.md](./docs/superpowers/plans/2026-06-26-pause-resume-consistency.md) | 3.9.5 实施计划 |

@@ -22,7 +22,6 @@ class TimelineAggregatorTest {
 
         ProcessingStep step = aggregator.get("intent").orElseThrow();
         assertEquals("done", step.lifecycle());
-        assertEquals("done", step.status());
         assertEquals("识别意图", step.label());
         assertEquals("准备识别意图", step.summary().before());
         assertEquals("正在分析用户输入", step.summary().active());

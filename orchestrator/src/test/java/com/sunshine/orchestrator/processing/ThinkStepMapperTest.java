@@ -200,7 +200,7 @@ class ThinkStepMapperTest {
                 id, id, "running",
                 new StepSummary("before", "active", null),
                 1L, null, null, null, null, null, null,
-                System.currentTimeMillis(), "running", id, null, null, null);
+                System.currentTimeMillis(), id, null, null, null);
     }
 
     private static ProcessingStep doneStep(String id) {
@@ -208,6 +208,6 @@ class ThinkStepMapperTest {
                 id, id, "done",
                 new StepSummary("before", "active", "after"),
                 1L, 2L, 1L, null, null, null, null,
-                System.currentTimeMillis(), "done", id, null, null, null);
+                System.currentTimeMillis(), id, null, null, null);
     }
 }

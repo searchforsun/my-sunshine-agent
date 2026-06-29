@@ -96,7 +96,7 @@ public final class ProcessingStepMerger {
     }
 
     private static boolean isDone(ProcessingStep step) {
-        return "done".equals(step.lifecycle()) || "done".equals(step.status());
+        return "done".equals(step.lifecycle());
     }
 
     private static String concat(String existing, String chunk) {
@@ -124,7 +124,6 @@ public final class ProcessingStepMerger {
                 output,
                 result,
                 step.ts(),
-                step.status() != null ? step.status() : "running",
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
@@ -162,7 +161,6 @@ public final class ProcessingStepMerger {
                 longer(existing.output(), incoming.output()),
                 longer(existing.result(), incoming.result()),
                 Math.max(existing.ts(), incoming.ts()),
-                incoming.status() != null ? incoming.status() : existing.status(),
                 incoming.label() != null ? incoming.label() : existing.label(),
                 incoming.metadata() != null ? mergeMetadata(existing.metadata(), incoming.metadata()) : existing.metadata(),
                 mergeContentBlocks(existing.contentBlocks(), incoming.contentBlocks()),
@@ -336,9 +334,6 @@ public final class ProcessingStepMerger {
             map.put("result", step.result());
         }
         map.put("ts", step.ts());
-        if (step.status() != null) {
-            map.put("status", step.status());
-        }
         if (step.label() != null) {
             map.put("label", step.label());
         }
@@ -713,7 +708,6 @@ public final class ProcessingStepMerger {
                 step.output(),
                 step.result(),
                 step.ts(),
-                step.status(),
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
@@ -734,7 +728,6 @@ public final class ProcessingStepMerger {
                 step.output(),
                 step.result(),
                 step.ts(),
-                step.status(),
                 step.label(),
                 step.metadata(),
                 contentBlocks,
@@ -760,7 +753,7 @@ public final class ProcessingStepMerger {
     }
 
     private static boolean isRunning(ProcessingStep step) {
-        return "running".equals(step.lifecycle()) || "running".equals(step.status());
+        return "running".equals(step.lifecycle());
     }
 
     private static ProcessingStep toPaused(ProcessingStep step) {
@@ -782,7 +775,6 @@ public final class ProcessingStepMerger {
                 step.output(),
                 step.result(),
                 System.currentTimeMillis(),
-                "paused",
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),

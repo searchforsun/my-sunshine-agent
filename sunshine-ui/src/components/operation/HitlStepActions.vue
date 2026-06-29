@@ -48,7 +48,7 @@ const displayStatus = computed((): HitlDecision | 'awaiting' | null => {
   return resolveHitlStatus(displayStep.value)
 })
 
-const isPaused = computed(() => (props.step.lifecycle ?? props.step.status) === 'paused')
+const isPaused = computed(() => props.step.lifecycle === 'paused')
 
 const canAct = computed(() => {
   if (isPaused.value || localDecision.value || loading.value) return false

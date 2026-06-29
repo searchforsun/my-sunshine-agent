@@ -10,7 +10,7 @@ function hasAwaitingInteraction(steps?: ProcessingStep[]): boolean {
 
 function hasPausedNode(steps?: ProcessingStep[]): boolean {
   return steps?.some(s =>
-    s.id.startsWith('node-') && (s.lifecycle === 'paused' || s.status === 'paused')) ?? false
+    s.id.startsWith('node-') && s.lifecycle === 'paused') ?? false
 }
 
 function hasPlanStep(steps?: ProcessingStep[]): boolean {

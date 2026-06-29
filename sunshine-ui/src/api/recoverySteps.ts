@@ -9,7 +9,7 @@ import {
 } from './hitlSteps'
 
 function isTerminalNodeStep(step: ProcessingStep): boolean {
-  const lc = step.lifecycle ?? step.status
+  const lc = step.lifecycle
   return lc === 'done' || lc === 'skipped' || lc === 'terminated'
 }
 
@@ -47,14 +47,14 @@ export function isRecoveryAwaiting(step?: ProcessingStep): boolean {
 /** 用户已选择跳过：错误结果已传给下游 */
 export function isRecoverySkipped(step?: ProcessingStep): boolean {
   if (step?.metadata?.recoveryStatus === 'skipped') return true
-  return (step?.lifecycle ?? step?.status) === 'skipped'
+  return step?.lifecycle === 'skipped'
 }
 
 /** 用户已选择终止流程 */
 export function isRecoveryTerminated(step?: ProcessingStep): boolean {
   if (!step) return false
   if (step.metadata?.recoveryStatus === 'terminated') return true
-  return (step.lifecycle ?? step.status) === 'terminated'
+  return step.lifecycle === 'terminated'
 }
 
 export function resolveRecoveryError(step?: ProcessingStep): string {
@@ -80,7 +80,6 @@ export function applyRecoveryDecision(
       next[idx] = {
         ...prev,
         lifecycle: 'terminated',
-        status: 'terminated',
         summary: { ...summary, active: '已终止', after: '已终止' },
         metadata: {
           ...prev.metadata,
@@ -93,7 +92,6 @@ export function applyRecoveryDecision(
       next[idx] = {
         ...prev,
         lifecycle: 'done',
-        status: 'done',
         summary: { ...summary, active: '已完成', after: err },
         result: err,
         detail: err,

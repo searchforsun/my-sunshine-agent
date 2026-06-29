@@ -1132,7 +1132,7 @@ public class WorkflowExecutor {
 
 删除 `LegacyWorkflowExecutor.java`；`grep -r LegacyWorkflowExecutor orchestrator` 应为 0。
 
-`IntentRouter.toLegacyIntentLabel` 保留仅供 `IntentRouterLegacyLabelTest`，加 `@Deprecated` 注释即可。
+`IntentRouter.toLegacyIntentLabel` ~~保留仅供 `IntentRouterLegacyLabelTest`~~ **已删**（见 [ADR-001](../../architecture/ADR-001-delete-legacy-compat.md) / TD-004）。
 
 - [ ] **Step 4: Run orchestrator tests**
 

@@ -16,7 +16,7 @@ const emit = defineEmits<{
 const loading = ref(false)
 const localAction = ref<'retry' | 'terminate' | 'skip' | null>(null)
 
-const isPaused = computed(() => (props.step.lifecycle ?? props.step.status) === 'paused')
+const isPaused = computed(() => props.step.lifecycle === 'paused')
 const awaiting = computed(() => isRecoveryAwaiting(props.step) && !isPaused.value)
 const showPanel = computed(() => awaiting.value || !!localAction.value || isPaused.value)
 const isResolved = computed(() => !!localAction.value)

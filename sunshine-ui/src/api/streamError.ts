@@ -128,7 +128,7 @@ export function applyStreamErrorFromText(msg: ChatMessage, text: string): void {
   }
 }
 
-/** 流式请求异常（数组版，兼容旧 chat.ts） */
+/** 流式请求异常（messages 数组版） */
 export function applyStreamError(messages: ChatMessage[], err: unknown): void {
   if (isAbortError(err) || isPageUnloading()) return
   const lastMsg = messages[messages.length - 1]

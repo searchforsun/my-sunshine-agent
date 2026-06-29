@@ -47,7 +47,7 @@ const cardExpanded = reactive(new Map<string, boolean>())
 const cardUserToggled = reactive(new Set<string>())
 
 function lifecycleOf(step: ProcessingStep) {
-  return step.lifecycle ?? step.status ?? 'pending'
+  return step.lifecycle ?? 'pending'
 }
 
 function isCardExpanded(step: ProcessingStep): boolean {

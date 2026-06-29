@@ -1,5 +1,7 @@
 # Processing Timeline V2 Implementation Plan
 
+> **Superseded（2026-06-29）**：`ProcessingTimeline.vue` 已删除；实现态见 `OperationStack.vue` + `processingSteps.ts` / `processingStepsPause.ts`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Refactor backend processing events into an extensible event-stream + aggregator architecture, exposing per-step before/active/after summaries with duration timeline; upgrade frontend `ProcessingTimeline` to render V2 fields with V1 fallback.

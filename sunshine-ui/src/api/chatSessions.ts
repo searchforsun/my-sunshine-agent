@@ -31,7 +31,13 @@ import {
   reactivatePausedReactHitlSteps,
 } from './hitlSteps'
 import { applyRecoveryDecision as applyRecoveryDecisionToSteps, stepHasHitlAwaiting } from './recoverySteps'
-import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, pauseRunningWorkflowNodes, shouldIgnoreResumeStepReplay, reactivatePausedStepsForResume, reactivateOtherPausedWorkflowNodes } from './processingSteps'
+import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId } from './processingSteps'
+import {
+  pauseRunningWorkflowNodes,
+  shouldIgnoreResumeStepReplay,
+  reactivatePausedStepsForResume,
+  reactivateOtherPausedWorkflowNodes,
+} from './processingStepsPause'
 import { appendInterleavedContent, appendSegmentContent, appendStepSegmentContent, beginContentSegment, beginStepContentSegment, endContentSegment, endStepContentSegment, maybeReanchorContentBlocksToTail } from './contentInterleave'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
@@ -335,7 +341,7 @@ export function useChatSessions(
             lastMsg.steps = upsertStep(lastMsg.steps ?? [], parsed.step)
             maybeReanchorContentBlocksToTail(lastMsg.steps, lastMsg.contentBlocks)
             if (options.resume && parsed.step.id.startsWith('node-')) {
-              const lc = parsed.step.lifecycle ?? parsed.step.status
+              const lc = parsed.step.lifecycle
               if (lc === 'pending' || lc === 'running') {
                 lastMsg.steps = reactivateOtherPausedWorkflowNodes(lastMsg.steps, parsed.step.id)
               }
@@ -594,7 +600,7 @@ export function useChatSessions(
     if (!target || target.role !== 'assistant') return
 
     const planWorkflowResume = target.steps?.some(
-      step => step.id.startsWith('node-') && (step.lifecycle === 'paused' || step.status === 'paused'),
+      step => step.id.startsWith('node-') && step.lifecycle === 'paused',
     )
     const reactHitlResume = target.steps?.some(stepHasHitlAwaiting) ?? false
     if (planWorkflowResume || reactHitlResume) {

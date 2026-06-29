@@ -37,7 +37,7 @@ function subStepsSignature(steps?: ProcessingStep[]): string {
   if (!steps?.length) return ''
   return steps.map(s => [
     s.id,
-    s.lifecycle ?? s.status ?? '',
+    s.lifecycle ?? '',
     s.summary?.after ?? '',
     s.summary?.active ?? '',
     s.metadata?.hitlStatus ?? '',
@@ -52,7 +52,7 @@ function subStepsSignature(steps?: ProcessingStep[]): string {
 function stepContentSignature(step?: ProcessingStep): string {
   if (!step) return ''
   return [
-    step.lifecycle ?? step.status ?? '',
+    step.lifecycle ?? '',
     step.result ?? '',
     step.detail ?? '',
     step.reasoning ?? '',

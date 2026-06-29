@@ -245,7 +245,7 @@
 | 子任务 | 内容 | 状态 |
 |--------|------|:----:|
 | **3.11.1** | CRUD + 上传 + 版本/delete/download API | ✅ |
-| **3.11.2** | `GET /api/skills/catalog` | ✅ |
+| **3.11.2** | `GET /api/skills/catalog/index`（`/catalog` 已删，ADR-001） | ✅ |
 | **3.11.3** | 种子 skill | ✅ |
 | **3.11.4** | orchestrator `SkillCatalogService` 缓存 | ✅ |
 | **3.11.6** | Catalog index / detail 拆分 | ✅ |

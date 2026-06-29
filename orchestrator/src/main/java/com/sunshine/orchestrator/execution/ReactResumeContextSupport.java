@@ -104,7 +104,7 @@ public final class ReactResumeContextSupport {
 
     private static boolean isCompletedLifecycle(ProcessingStep step) {
         String lifecycle = step.lifecycle();
-        if ("done".equals(lifecycle) || "done".equals(step.status())) {
+        if ("done".equals(lifecycle)) {
             return true;
         }
         return "paused".equals(lifecycle)

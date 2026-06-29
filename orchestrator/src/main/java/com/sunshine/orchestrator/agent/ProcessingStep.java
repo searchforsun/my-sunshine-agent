@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.sunshine.orchestrator.processing.ContentBlock;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
@@ -7,6 +8,7 @@ import com.sunshine.orchestrator.processing.StepSummary;
 /**
  * 后端处理流水线步骤 — 通过 SSE type:step 推送给前端时间线（V3）
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ProcessingStep(
         String id,
         String phase,
@@ -20,7 +22,6 @@ public record ProcessingStep(
         String output,
         String result,
         long ts,
-        String status,
         String label,
         StepMetadata metadata,
         /** ReAct / 子 Agent 正文分段（抽屉 OperationStack 穿插） */
@@ -48,7 +49,6 @@ public record ProcessingStep(
                 null,
                 null,
                 ts,
-                "running",
                 label,
                 null,
                 null,
@@ -72,7 +72,6 @@ public record ProcessingStep(
                 null,
                 detail,
                 ts,
-                "done",
                 label,
                 null,
                 null,
@@ -95,7 +94,6 @@ public record ProcessingStep(
                 null,
                 detail,
                 ts,
-                "error",
                 label,
                 null,
                 null,

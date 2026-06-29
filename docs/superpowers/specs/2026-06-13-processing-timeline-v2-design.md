@@ -1,5 +1,7 @@
 # 处理时间线 V2 — 步骤三态摘要 + 可扩展事件架构
 
+> **Superseded（2026-06-29）**：UI 已迁至 `sunshine-ui/src/components/operation/OperationStack.vue` + `OperationCard.vue`（`ProcessingTimeline.vue` 已删）；步骤态仅用 `lifecycle`（`status` 已移除）。日常 SSOT：`CLAUDE.md` 时间线约定 + 代码/测试。
+
 > **⚠️ 已并入** [phase2-benchmark-design.md](./phase2-benchmark-design.md) **§2.18**。下文为历史详设。
 
 > 日期：2026-06-13 | 状态：**已实施**  

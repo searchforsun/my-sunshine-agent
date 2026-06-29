@@ -8,6 +8,40 @@ import { relocateAgentNodeHitl } from './hitlSteps'
 import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
+import { mergeStepMetadata } from './processingStepsParse'
+import { resolveStepDurationMs } from './processingStepsDisplay'
+
+export { normalizeStep, migrateV1Step, parseContentBlocks } from './processingStepsParse'
+export type { RewriteDetailView } from './processingStepsDisplay'
+export {
+  formatStepLabel,
+  formatDuration,
+  stepLifecycle,
+  formatStepMetadata,
+  formatRewriteLatency,
+  formatRewriteMetadata,
+  resolveRewriteDetail,
+  STEP_HEADER_PREVIEW_MAX,
+  resolveStepSummaryFull,
+  resolveStepHeaderText,
+  resolveStepExpandSummary,
+  resolveStepExpandBody,
+  parseLoadedSkillLabel,
+  stripLoadedSkillPrefix,
+  shouldShiftSummaryOnExpand,
+  hasExpandableContent,
+  resolveStepDurationMs,
+  totalDuration,
+  summarizeSteps,
+  isWorkflowAnswerStep,
+} from './processingStepsDisplay'
+
+export {
+  parsePlanStepMeta,
+  resolvePlanStepDetail,
+  resolvePlanIdFromStep,
+} from './processingStepsPlan'
+export type { PlanStepDetailView } from './processingStepsPlan'
 
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
@@ -99,11 +133,7 @@ export interface ProcessingStep {
 
   ts?: number
 
-  /** @deprecated V1 兼容 */
-
-  status?: StepStatus
-
-  /** @deprecated V1 兼容 */
+  /** @deprecated V1 兼容，展示以 summary 为准 */
 
   label?: string
 
@@ -120,694 +150,6 @@ export interface ProcessingStep {
 
 
 export const STEP_ORDER: StepPhase[] = ['intent', 'skill', 'plan', 'node', 'rag', 'tool', 'agent', 'think', 'generate']
-
-export interface PlanStepDetailView {
-  planId?: string
-  chain?: string
-  chainSteps: string[]
-  replanCount?: number
-}
-
-export interface RewriteDetailView {
-  from: string
-  to: string
-  targetLabel: string
-  latencyText?: string
-}
-
-function parsePlanStepDetailText(text: string): PlanStepDetailView {
-  const trimmed = text.trim()
-  const parts: Record<string, string> = {}
-  let hasKeyedParts = false
-  for (const segment of trimmed.split('|')) {
-    const eq = segment.indexOf('=')
-    if (eq <= 0) continue
-    hasKeyedParts = true
-    parts[segment.slice(0, eq).trim()] = segment.slice(eq + 1).trim()
-  }
-  let chain = parts.chain
-  if (!hasKeyedParts) {
-    chain = trimmed
-  }
-  const chainSteps = chain
-    ? chain.split(/\s*→\s*/).map(s => s.trim()).filter(Boolean)
-    : []
-  const replanParsed = parts.replanCount != null ? Number.parseInt(parts.replanCount, 10) : Number.NaN
-  const replanCount = Number.isFinite(replanParsed) && replanParsed > 0 ? replanParsed : undefined
-  return {
-    planId: parts.planId,
-    chain,
-    chainSteps,
-    replanCount,
-  }
-}
-
-export function parsePlanStepMeta(text?: string): { planId?: string; chain?: string } {
-  if (!text?.trim()) return {}
-  const parsed = parsePlanStepDetailText(text.trim())
-  if (parsed.planId || parsed.chain) {
-    return { planId: parsed.planId, chain: parsed.chain }
-  }
-  return { chain: text.trim() }
-}
-
-/** 解析 plan 步 detail/after，供「开始」节点抽屉结构化展示 */
-export function resolvePlanStepDetail(step: ProcessingStep): PlanStepDetailView {
-  for (const source of [step.detail, step.summary?.after]) {
-    if (!source?.trim()) continue
-    const parsed = parsePlanStepDetailText(source)
-    if (parsed.planId || parsed.chainSteps.length > 0 || parsed.replanCount != null) {
-      return parsed
-    }
-  }
-  return { chainSteps: [] }
-}
-
-export function resolvePlanIdFromStep(step: ProcessingStep): string | undefined {
-  for (const source of [step.detail, step.summary?.after, step.result]) {
-    const id = parsePlanStepMeta(source)?.planId
-    if (id) return id
-  }
-  return undefined
-}
-
-function stripPlanMetaText(text: string): string {
-  const meta = parsePlanStepMeta(text)
-  if (meta.chain != null) return meta.chain
-  return text
-}
-
-export function formatStepLabel(step: ProcessingStep): string {
-  if (step.label?.trim()) {
-    return step.label
-  }
-  return step.id
-}
-
-
-
-function parseSummary(raw: unknown): StepSummary | undefined {
-
-  if (!raw || typeof raw !== 'object') return undefined
-
-  const obj = raw as Record<string, unknown>
-
-  const before = typeof obj.before === 'string' ? obj.before : undefined
-
-  const active = typeof obj.active === 'string' ? obj.active : undefined
-
-  const after = typeof obj.after === 'string' ? obj.after : undefined
-
-  if (!before && !active && !after) return undefined
-
-  return { before, active, after }
-
-}
-
-function parseMetadata(raw: unknown): StepMetadata | undefined {
-  if (!raw || typeof raw !== 'object') return undefined
-  const obj = raw as Record<string, unknown>
-  const hitCount = typeof obj.hitCount === 'number' ? obj.hitCount : undefined
-  const sources = Array.isArray(obj.sources)
-    ? obj.sources.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
-    : undefined
-  const rewriteApplied = obj.rewriteApplied === true ? true : undefined
-  const rewriteLatencyMs = typeof obj.rewriteLatencyMs === 'number' ? obj.rewriteLatencyMs : undefined
-  const rewriteFrom = typeof obj.rewriteFrom === 'string' && obj.rewriteFrom.trim()
-    ? obj.rewriteFrom.trim()
-    : undefined
-  const rewriteTo = typeof obj.rewriteTo === 'string' && obj.rewriteTo.trim()
-    ? obj.rewriteTo.trim()
-    : undefined
-  const rewriteScenario = typeof obj.rewriteScenario === 'string' && obj.rewriteScenario.trim()
-    ? obj.rewriteScenario.trim()
-    : undefined
-  const rewriteScenarioLabel = typeof obj.rewriteScenarioLabel === 'string' && obj.rewriteScenarioLabel.trim()
-    ? obj.rewriteScenarioLabel.trim()
-    : undefined
-  const skillId = typeof obj.skillId === 'string' && obj.skillId.trim()
-    ? obj.skillId.trim()
-    : undefined
-  const plannerMode = typeof obj.plannerMode === 'string' && obj.plannerMode.trim()
-    ? obj.plannerMode.trim()
-    : undefined
-  const routingReason = typeof obj.routingReason === 'string' && obj.routingReason.trim()
-    ? obj.routingReason.trim()
-    : undefined
-  const rewriteInDetail = obj.rewriteInDetail === true ? true : undefined
-  const expandSectionTitle = typeof obj.expandSectionTitle === 'string' && obj.expandSectionTitle.trim()
-    ? obj.expandSectionTitle.trim()
-    : undefined
-  const hitlRaw = obj.hitl && typeof obj.hitl === 'object'
-    ? obj.hitl as Record<string, unknown>
-    : null
-  const hitlStatus = typeof hitlRaw?.status === 'string'
-    ? hitlRaw.status as StepMetadata['hitlStatus']
-    : undefined
-  const hitlToken = typeof hitlRaw?.token === 'string' && hitlRaw.token.trim()
-    ? hitlRaw.token.trim()
-    : undefined
-  const hitlToolDisplayName = typeof hitlRaw?.toolDisplayName === 'string'
-    ? hitlRaw.toolDisplayName
-    : undefined
-  const hitlParamsSummary = typeof hitlRaw?.paramsSummary === 'string'
-    ? hitlRaw.paramsSummary
-    : undefined
-  const hitlExpiresAt = typeof hitlRaw?.expiresAt === 'number' ? hitlRaw.expiresAt : undefined
-  const recoveryRaw = obj.recovery && typeof obj.recovery === 'object'
-    ? obj.recovery as Record<string, unknown>
-    : null
-  const recoveryStatus = typeof recoveryRaw?.status === 'string'
-    ? recoveryRaw.status as StepMetadata['recoveryStatus']
-    : undefined
-  const recoveryToken = typeof recoveryRaw?.token === 'string' && recoveryRaw.token.trim()
-    ? recoveryRaw.token.trim()
-    : undefined
-  const recoveryError = typeof recoveryRaw?.errorMessage === 'string'
-    ? recoveryRaw.errorMessage
-    : undefined
-  const recoveryExpiresAt = typeof recoveryRaw?.expiresAt === 'number' ? recoveryRaw.expiresAt : undefined
-  const nodeAttempts = parseNodeAttempts(obj.nodeAttempts)
-  const planApprovalRaw = obj.planApproval && typeof obj.planApproval === 'object'
-    ? obj.planApproval as Record<string, unknown>
-    : null
-  const planApprovalStatus = typeof planApprovalRaw?.status === 'string'
-    ? planApprovalRaw.status as StepMetadata['planApproval'] extends { status?: infer S } ? S : never
-    : undefined
-  const planApprovalToken = typeof planApprovalRaw?.token === 'string' && planApprovalRaw.token.trim()
-    ? planApprovalRaw.token.trim()
-    : undefined
-  const planApprovalExpiresAt = typeof planApprovalRaw?.expiresAt === 'number'
-    ? planApprovalRaw.expiresAt
-    : undefined
-  const planApprovalRounds = Array.isArray(planApprovalRaw?.rounds)
-    ? planApprovalRaw.rounds
-        .filter((r): r is Record<string, unknown> => r && typeof r === 'object')
-        .map((r) => ({
-          roundNo: typeof r.roundNo === 'number' ? r.roundNo : 0,
-          status: (typeof r.status === 'string' ? r.status : 'awaiting') as PlanApprovalRoundView['status'],
-          userHint: typeof r.userHint === 'string' ? r.userHint : undefined,
-          chainSummary: typeof r.chainSummary === 'string' ? r.chainSummary : undefined,
-          createdAt: typeof r.createdAt === 'number' ? r.createdAt : undefined,
-          resolvedAt: typeof r.resolvedAt === 'number' ? r.resolvedAt : undefined,
-        }))
-    : undefined
-  const planApprovalGraphRaw = planApprovalRaw?.planGraph
-  const planApprovalPlanGraph = planApprovalGraphRaw && typeof planApprovalGraphRaw === 'object'
-    ? planApprovalGraphRaw as PlanGraph
-    : undefined
-  const planApproval = planApprovalRaw
-    ? {
-        status: planApprovalStatus,
-        token: planApprovalToken,
-        expiresAt: planApprovalExpiresAt,
-        rounds: planApprovalRounds,
-        planGraph: planApprovalPlanGraph,
-      }
-    : undefined
-  if (
-    hitCount == null
-    && (!sources || sources.length === 0)
-    && !rewriteApplied
-    && !skillId
-    && !plannerMode
-    && !routingReason
-    && !rewriteInDetail
-    && !expandSectionTitle
-    && !hitlStatus
-    && !recoveryStatus
-    && !nodeAttempts?.length
-    && !planApproval
-  ) {
-    return undefined
-  }
-  return {
-    hitCount,
-    sources,
-    rewriteApplied,
-    rewriteLatencyMs,
-    rewriteFrom,
-    rewriteTo,
-    rewriteScenario,
-    rewriteScenarioLabel,
-    skillId,
-    plannerMode,
-    routingReason,
-    rewriteInDetail,
-    expandSectionTitle,
-    hitlStatus,
-    hitlToken,
-    hitlToolDisplayName,
-    hitlParamsSummary,
-    hitlExpiresAt,
-    recoveryStatus,
-    recoveryToken,
-    recoveryError,
-    recoveryExpiresAt,
-    nodeAttempts,
-    planApproval,
-  }
-}
-
-
-
-function parseNodeAttempts(raw: unknown): StepMetadata['nodeAttempts'] {
-  if (!Array.isArray(raw) || raw.length === 0) return undefined
-  const attempts = raw
-    .map(item => {
-      if (!item || typeof item !== 'object') return null
-      const o = item as Record<string, unknown>
-      const attemptNo = typeof o.attemptNo === 'number' ? o.attemptNo : undefined
-      const status = typeof o.status === 'string' ? o.status : undefined
-      if (attemptNo == null || !status) return null
-      return {
-        attemptNo,
-        status,
-        errorClass: typeof o.errorClass === 'string' ? o.errorClass : undefined,
-        summary: typeof o.summary === 'string' ? o.summary : undefined,
-        startedAt: typeof o.startedAt === 'number' ? o.startedAt : undefined,
-        endedAt: typeof o.endedAt === 'number' ? o.endedAt : undefined,
-      }
-    })
-    .filter((a): a is NonNullable<typeof a> => !!a)
-  return attempts.length > 0 ? attempts : undefined
-}
-
-
-
-function mergeStepMetadata(
-  prev?: StepMetadata,
-  incoming?: StepMetadata,
-  lifecycle?: StepLifecycle,
-): StepMetadata | undefined {
-  if (!prev && !incoming) return undefined
-  if (!prev) return incoming
-  if (!incoming) return prev
-  const merged: StepMetadata = {
-    ...prev,
-    ...(Object.fromEntries(
-      Object.entries(incoming).filter(([, v]) => v !== undefined),
-    ) as Partial<StepMetadata>),
-  }
-  if (incoming.hitlStatus && incoming.hitlStatus !== 'awaiting') {
-    merged.hitlToken = undefined
-  }
-  // 重试成功后 complete 事件不带 recovery，须清除 retry 态以免与终态冲突
-  if (lifecycle === 'done' && merged.recoveryStatus === 'retry') {
-    merged.recoveryStatus = undefined
-    merged.recoveryToken = undefined
-    merged.recoveryError = undefined
-    merged.recoveryExpiresAt = undefined
-  }
-  const prevAttempts = prev.nodeAttempts?.length ?? 0
-  const incomingAttempts = incoming.nodeAttempts?.length ?? 0
-  if (incomingAttempts > prevAttempts) {
-    merged.nodeAttempts = incoming.nodeAttempts
-  }
-  if (incoming.planApproval || prev.planApproval) {
-    merged.planApproval = {
-      ...prev.planApproval,
-      ...incoming.planApproval,
-      rounds: incoming.planApproval?.rounds?.length
-        ? incoming.planApproval.rounds
-        : prev.planApproval?.rounds,
-      planGraph: incoming.planApproval?.planGraph?.nodes?.length
-        ? incoming.planApproval.planGraph
-        : prev.planApproval?.planGraph,
-    }
-  }
-  return merged
-}
-
-
-
-export function parseContentBlocks(raw: unknown): ContentBlock[] | undefined {
-  if (!Array.isArray(raw) || raw.length === 0) return undefined
-  const blocks: ContentBlock[] = []
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue
-    const o = item as Record<string, unknown>
-    const segmentId = typeof o.segmentId === 'string' ? o.segmentId : ''
-    const afterStepId = typeof o.afterStepId === 'string' ? o.afterStepId : ''
-    const text = typeof o.text === 'string' ? o.text : ''
-    if (segmentId && afterStepId) blocks.push({ segmentId, afterStepId, text })
-  }
-  return blocks.length > 0 ? blocks : undefined
-}
-
-function parseSubSteps(raw: unknown): ProcessingStep[] | undefined {
-  if (!Array.isArray(raw) || raw.length === 0) return undefined
-  const steps = raw
-    .map(item => (item && typeof item === 'object' ? normalizeStep(item as Record<string, unknown>) : null))
-    .filter((s): s is ProcessingStep => !!s)
-  return steps.length > 0 ? steps : undefined
-}
-
-
-
-export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | null {
-
-  if (typeof raw.id !== 'string') return null
-
-  const phase = (typeof raw.phase === 'string' ? raw.phase : 'generate') as StepPhase
-
-  const lifecycle = (
-
-    typeof raw.lifecycle === 'string' ? raw.lifecycle
-
-      : typeof raw.status === 'string' ? raw.status
-
-        : 'running'
-
-  ) as StepLifecycle
-
-  const status = (typeof raw.status === 'string' ? raw.status : lifecycle) as StepStatus
-
-  const label = typeof raw.label === 'string' ? raw.label : undefined
-
-  if (!label && !raw.summary) return null
-
-
-
-  const step: ProcessingStep = {
-
-    id: raw.id,
-
-    phase,
-
-    lifecycle,
-
-    summary: parseSummary(raw.summary),
-
-    startedAt: typeof raw.startedAt === 'number' ? raw.startedAt : undefined,
-
-    endedAt: typeof raw.endedAt === 'number' ? raw.endedAt : undefined,
-
-    durationMs: typeof raw.durationMs === 'number' ? raw.durationMs : undefined,
-
-    detail: typeof raw.detail === 'string' ? raw.detail : undefined,
-
-    reasoning: typeof raw.reasoning === 'string' ? raw.reasoning : undefined,
-
-    output: typeof raw.output === 'string' ? raw.output : undefined,
-
-    result: typeof raw.result === 'string' ? raw.result : undefined,
-
-    ts: typeof raw.ts === 'number' ? raw.ts : undefined,
-
-    status,
-
-    label,
-
-    metadata: parseMetadata(raw.metadata),
-
-    subSteps: parseSubSteps(raw.subSteps),
-
-    contentBlocks: parseContentBlocks(raw.contentBlocks),
-
-  }
-
-
-
-  return migrateV1Step(step)
-
-}
-
-
-
-export function migrateV1Step(step: ProcessingStep): ProcessingStep {
-
-  if (step.summary) return step
-
-  const lifecycle = step.lifecycle ?? step.status ?? 'running'
-
-  const label = step.label ?? step.id
-
-  return {
-
-    ...step,
-
-    lifecycle,
-
-    label,
-
-    summary: {
-
-      before: lifecycle === 'pending' ? label : undefined,
-
-      active: lifecycle === 'running' ? label : undefined,
-
-      after: lifecycle === 'done' ? (step.detail ?? label) : undefined,
-
-    },
-
-  }
-
-}
-
-
-
-export function formatDuration(ms?: number): string {
-
-  if (ms == null) return ''
-
-  if (ms < 1) return '<1ms'
-
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
-
-}
-
-
-
-/** 步骤 lifecycle（兼容 status） */
-export function stepLifecycle(step: ProcessingStep): StepLifecycle {
-  return (step.lifecycle ?? step.status ?? 'pending') as StepLifecycle
-}
-
-
-
-/** 展示后端下发的 metadata（如 RAG 命中数与来源文档） */
-export function formatStepMetadata(step: ProcessingStep): string {
-  const m = step.metadata
-  if (!m) return ''
-  const parts: string[] = []
-  if (typeof m.hitCount === 'number') {
-    parts.push(`命中 ${m.hitCount} 条`)
-  }
-  const sources = m.sources?.filter(s => s.trim())
-  if (sources?.length) {
-    parts.push(`来源：${sources.join('、')}`)
-  }
-  return parts.join('，')
-}
-
-/** 改写耗时展示（与后端 QueryRewriteOutcome / formatDuration 对齐） */
-export function formatRewriteLatency(latencyMs: number): string {
-  return formatDuration(latencyMs) || '<1ms'
-}
-
-/** 从 metadata 构造 Query 改写展开文案（与后端 detail 格式对齐） */
-export function formatRewriteMetadata(step: ProcessingStep): string {
-  const m = step.metadata
-  if (!m?.rewriteApplied || !m.rewriteFrom || !m.rewriteTo) return ''
-  const targetLabel = m.rewriteScenario === 'hyde' ? '参考文档' : '优化后'
-  const latency = typeof m.rewriteLatencyMs === 'number'
-    ? `\n${formatRewriteLatency(m.rewriteLatencyMs)}`
-    : ''
-  const body = `原问题：${m.rewriteFrom}\n${targetLabel}：${m.rewriteTo}${latency}`
-  if (m.rewriteScenarioLabel?.trim()) {
-    return `${m.rewriteScenarioLabel.trim()}\n${body}`
-  }
-  return body
-}
-
-/** 从 metadata 解析 Query 改写，供结构化展示 */
-export function resolveRewriteDetail(step: ProcessingStep): RewriteDetailView | undefined {
-  const m = step.metadata
-  if (m?.rewriteInDetail) return undefined
-  if (!m?.rewriteApplied || !m.rewriteFrom || !m.rewriteTo) return undefined
-  const targetLabel = m.rewriteScenario === 'hyde' ? '参考文档' : '优化后'
-  const latencyText = typeof m.rewriteLatencyMs === 'number'
-    ? formatRewriteLatency(m.rewriteLatencyMs)
-    : undefined
-  return {
-    from: m.rewriteFrom,
-    to: m.rewriteTo,
-    targetLabel,
-    latencyText,
-  }
-}
-
-
-
-/** 主行摘要最大可见字数，超出部分折叠到展开区 */
-export const STEP_HEADER_PREVIEW_MAX = 42
-
-
-
-function truncateStepPreview(text: string, max = STEP_HEADER_PREVIEW_MAX): string {
-  if (text.length <= max) return text
-  return `${text.slice(0, max)}…`
-}
-
-
-
-/** 主行摘要全文（不截断，供展开区使用） */
-export function resolveStepSummaryFull(step: ProcessingStep): string {
-  const lifecycle = stepLifecycle(step)
-  const title = formatStepLabel(step)
-  let header = ''
-  if (lifecycle === 'running') {
-    header = step.summary?.active?.trim() || step.label?.trim() || ''
-  } else if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
-    header = step.summary?.after?.trim()
-      || formatStepMetadata(step)
-      || (!isWorkflowAnswerStep(step) && step.result?.trim())
-      || step.detail?.trim()
-      || ''
-    if (step.phase === 'plan' && header) {
-      header = stripPlanMetaText(header)
-    }
-  } else {
-    header = step.summary?.before?.trim() || step.label?.trim() || ''
-  }
-  if (!header || header === title) {
-    return ''
-  }
-  return header
-}
-
-
-
-/** 主行摘要：过长时截断为一行预览，完整内容在展开区（detail/result） */
-export function resolveStepHeaderText(step: ProcessingStep): string {
-  const full = resolveStepSummaryFull(step)
-  const oneLine = full.replace(/\s+/g, ' ').trim()
-  return truncateStepPreview(oneLine)
-}
-
-/** 从 Markdown 正文中提取首条中文叙述行（用于补全后端历史截断的 after） */
-function extractFirstProseLine(text: string): string {
-  for (const raw of text.split('\n')) {
-    const line = raw.trim()
-    if (!line || line.startsWith('#') || /^\|/.test(line)) continue
-    if (/^[-*_]{3,}$/.test(line)) continue
-    const plain = line.replace(/\*\*|__|`/g, '').replace(/^>\s*/, '').trim()
-    if (plain.length >= 8 && /[\u4e00-\u9fff]/.test(plain)) {
-      return plain.replace(/\s+/g, ' ')
-    }
-  }
-  return ''
-}
-
-/** 展开区首行：完整 summary.after（主行预览的下移全文，不做任何截断） */
-export function resolveStepExpandSummary(step: ProcessingStep): string {
-  const lifecycle = stepLifecycle(step)
-  let oneLine = ''
-  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
-    oneLine = (step.summary?.after?.trim() || resolveStepSummaryFull(step)).replace(/\s+/g, ' ').trim()
-    if (step.phase === 'plan' && oneLine) {
-      oneLine = stripPlanMetaText(oneLine)
-    }
-  } else {
-    oneLine = resolveStepSummaryFull(step).replace(/\s+/g, ' ').trim()
-  }
-  if (oneLine.endsWith('…') && step.detail?.trim()) {
-    const fromDetail = extractFirstProseLine(step.detail)
-    const prefix = oneLine.slice(0, -1).trim()
-    if (fromDetail && (fromDetail.startsWith(prefix) || prefix.length >= 12 && fromDetail.startsWith(prefix.slice(0, 12)))) {
-      return fromDetail
-    }
-  }
-  return oneLine
-}
-
-/** 展开区正文：detail/result（如 Agent Markdown、Query 改写），与 after 摘要区分 */
-export function resolveStepExpandBody(step: ProcessingStep): string {
-  if (isWorkflowAnswerStep(step)) {
-    return ''
-  }
-  const summary = resolveStepExpandSummary(step)
-  const detail = step.detail?.trim()
-  if (detail && detail !== summary) return detail
-  const rewrite = formatRewriteMetadata(step)
-  if (rewrite && rewrite !== summary) return rewrite
-  const result = step.result?.trim()
-  if (result && result !== summary && result !== detail) return result
-  return ''
-}
-
-/** 从 agent 节点 detail / 展开正文解析「已加载技能：xxx」 */
-export function parseLoadedSkillLabel(text?: string): string | undefined {
-  if (!text?.trim()) return undefined
-  const match = text.trim().match(/^已加载技能：([^\n]+)/)
-  const label = match?.[1]?.trim()
-  return label || undefined
-}
-
-/** 去掉展开正文开头的已加载技能行，避免与头部重复 */
-export function stripLoadedSkillPrefix(text?: string): string {
-  if (!text?.trim()) return ''
-  return text.replace(/^已加载技能：[^\n]+\n\n?/, '').trim()
-}
-
-/** 主行是否将摘要下移到展开区（展开后主行仅保留 label） */
-export function shouldShiftSummaryOnExpand(step: ProcessingStep): boolean {
-  const summary = resolveStepExpandSummary(step)
-  if (!summary) return false
-  return summary !== resolveStepHeaderText(step) || summary.length > STEP_HEADER_PREVIEW_MAX
-}
-
-/** 是否有可下拉展开的实际内容 */
-export function hasExpandableContent(step: ProcessingStep): boolean {
-  if (isWorkflowAnswerStep(step)) {
-    return shouldShiftSummaryOnExpand(step)
-      || !!formatRewriteMetadata(step)
-      || !!step.reasoning?.trim()
-      || !!step.output?.trim()
-  }
-  if (shouldShiftSummaryOnExpand(step)) return true
-  if (resolveStepExpandBody(step)) return true
-  if (formatRewriteMetadata(step)) return true
-  if (step.reasoning?.trim()) return true
-  if (step.output?.trim()) return true
-  return false
-}
-
-
-
-/** 优先 durationMs，否则由 startedAt / endedAt 推算 */
-export function resolveStepDurationMs(step: ProcessingStep): number | undefined {
-
-  if (step.durationMs != null && step.durationMs >= 0) {
-
-    return step.durationMs
-
-  }
-
-  if (step.startedAt != null && step.endedAt != null && step.endedAt >= step.startedAt) {
-
-    return step.endedAt - step.startedAt
-
-  }
-
-  return undefined
-
-}
-
-
-
-export function totalDuration(steps: ProcessingStep[]): number {
-
-  return steps
-
-    .filter(s => (s.lifecycle ?? s.status) === 'done')
-
-    .reduce((sum, s) => sum + (resolveStepDurationMs(s) ?? 0), 0)
-
-}
-
-
 
 function mergeSummary(
   prev?: StepSummary,
@@ -847,24 +189,12 @@ function mergeSubSteps(
         detail: step.detail ?? existing.detail,
         metadata: mergeStepMetadata(existing.metadata, step.metadata, step.lifecycle ?? existing.lifecycle),
         lifecycle: step.lifecycle ?? existing.lifecycle,
-        status: step.status ?? existing.status,
       })
     } else {
       byId.set(step.id, step)
     }
   }
   return sortSteps([...byId.values()])
-}
-
-/** 续跑 SSE 重放：已完成的 intent/plan 不应再被 pending/running 覆盖 */
-export function shouldIgnoreResumeStepReplay(steps: ProcessingStep[], incoming: ProcessingStep): boolean {
-  const existing = steps.find(s => s.id === incoming.id)
-  if (!existing) return false
-  if (incoming.id !== 'intent' && incoming.id !== 'plan') return false
-  const wasDone = (existing.lifecycle ?? existing.status) === 'done'
-  const regresses = (incoming.lifecycle ?? incoming.status) === 'pending'
-    || (incoming.lifecycle ?? incoming.status) === 'running'
-  return wasDone && regresses
 }
 
 export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): ProcessingStep[] {
@@ -878,7 +208,6 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
     const prev = next[idx]
 
     const lifecycle = incoming.lifecycle ?? prev.lifecycle
-    const status = incoming.status ?? prev.status
 
     const merged: ProcessingStep = {
 
@@ -909,8 +238,6 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
       endedAt: incoming.endedAt ?? prev.endedAt,
 
       lifecycle,
-
-      status,
 
     }
 
@@ -957,8 +284,6 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
     phase: delta.stepId as StepPhase,
 
     lifecycle: 'running',
-
-    status: 'running',
 
     label: delta.stepId,
 
@@ -1025,20 +350,13 @@ export function isWorkflowNodeStepId(id: string | undefined): boolean {
   return !!id && id.startsWith('node-')
 }
 
-/** 终态 answer 节点：流式正文仅展示在消息区，时间线勿复述 step.result */
-export function isWorkflowAnswerStep(step: ProcessingStep): boolean {
-  return step.id === 'node-answer'
-}
-
-
-
 export function findRunningStepId(steps: ProcessingStep[]): string | undefined {
 
   for (const id of REASONING_STEP_PRIORITY) {
 
     const step = steps.find(s => s.id === id)
 
-    if (step && (step.lifecycle === 'running' || step.status === 'running')) {
+    if (step && step.lifecycle === 'running') {
 
       return id
 
@@ -1047,11 +365,11 @@ export function findRunningStepId(steps: ProcessingStep[]): string | undefined {
   }
 
   const runningThink = steps.find(s => isThinkStepId(s.id)
-    && (s.lifecycle === 'running' || s.status === 'running'))
+    && s.lifecycle === 'running')
 
   if (runningThink) return runningThink.id
 
-  return steps.find(s => s.lifecycle === 'running' || s.status === 'running')?.id
+  return steps.find(s => s.lifecycle === 'running')?.id
 
 }
 
@@ -1099,8 +417,6 @@ export function normalizeTimelineSteps(
       phase: 'think',
 
       lifecycle: 'done',
-
-      status: 'done',
 
       reasoning: orphanedReasoning,
 
@@ -1168,164 +484,16 @@ export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {
 
 
 
-export function summarizeSteps(steps: ProcessingStep[]): string {
-
-  const parts = steps
-
-    .filter(s => (s.lifecycle ?? s.status) === 'done')
-
-    .map(s => {
-
-      if (s.summary?.after) return s.summary.after
-
-      const label = s.label ?? s.id
-
-      return s.detail ? `${label} · ${s.detail}` : label
-
-    })
-
-    .filter(Boolean)
-
-
-
-  const total = totalDuration(steps)
-
-  if (total > 0) parts.push(formatDuration(total))
-
-
-
-  return parts.join(' · ')
-
-}
-
-
-
 export function hasActiveStep(steps: ProcessingStep[] | undefined): boolean {
 
-  return !!steps?.some(s => (s.lifecycle ?? s.status) === 'running')
+  return !!steps?.some(s => s.lifecycle === 'running')
 
 }
 
-/** 用户停止生成：running / HITL·Recovery 待确认 的 workflow 节点标为 paused */
-export function pauseRunningWorkflowNodes(steps: ProcessingStep[] | undefined): ProcessingStep[] {
-  if (!steps?.length) return steps ?? []
-  return steps.map(step => {
-    let next = step
-    if (step.subSteps?.length) {
-      const subs = pauseRunningWorkflowNodes(step.subSteps)
-      if (subs !== step.subSteps) next = { ...next, subSteps: subs }
-    }
-    if (next.id.startsWith('node-') && shouldPauseStepOnStop(next)) {
-      next = toPausedStep(next)
-      return next
-    }
-    const phase = next.phase ?? ''
-    if (shouldPauseStepOnStop(next)
-        && !next.id.startsWith('node-')
-        && (phase === 'think' || phase === 'agent' || phase === 'generate'
-            || phase.startsWith('think') || phase.startsWith('tool'))) {
-      next = toPausedStep(next)
-    }
-    return next
-  })
-}
-
-function shouldPauseStepOnStop(step: ProcessingStep): boolean {
-  const lc = step.lifecycle ?? step.status ?? ''
-  if (lc === 'running') return true
-  return isAwaitingInteractionStep(step)
-}
-
-function isAwaitingInteractionStep(step: ProcessingStep): boolean {
-  if (step.metadata?.hitlStatus === 'awaiting') return true
-  if (step.metadata?.recoveryStatus === 'awaiting') return true
-  return false
-}
-
-function toPausedStep(step: ProcessingStep): ProcessingStep {
-  const now = Date.now()
-  return {
-    ...step,
-    lifecycle: 'paused',
-    status: 'paused',
-    summary: {
-      ...step.summary,
-      active: '已暂停',
-      after: '已暂停',
-    },
-    endedAt: now,
-    durationMs: step.startedAt != null ? now - step.startedAt : step.durationMs,
-  }
-}
-
-function stripResumeInteractionMetadata(meta?: StepMetadata): StepMetadata | undefined {
-  if (!meta) return undefined
-  const {
-    hitlStatus,
-    hitlToken,
-    hitlToolDisplayName,
-    hitlParamsSummary,
-    hitlExpiresAt,
-    recoveryStatus,
-    recoveryToken,
-    recoveryError,
-    recoveryExpiresAt,
-    ...rest
-  } = meta
-  return Object.keys(rest).length > 0 ? rest : undefined
-}
-
-function toPendingResumeStep(step: ProcessingStep): ProcessingStep {
-  return {
-    ...step,
-    lifecycle: 'pending',
-    status: 'pending',
-    metadata: stripResumeInteractionMetadata(step.metadata),
-    summary: step.summary?.before ? { before: step.summary.before } : undefined,
-    startedAt: undefined,
-    endedAt: undefined,
-    durationMs: undefined,
-  }
-}
-
-function reactivatePausedStepIfNeeded(step: ProcessingStep): ProcessingStep {
-  let next = step
-  if (step.subSteps?.length) {
-    const subs = reactivatePausedStepsForResume(step.subSteps)
-    if (subs !== step.subSteps) next = { ...next, subSteps: subs }
-  }
-  const lc = next.lifecycle ?? next.status
-  if (lc !== 'paused') return next
-  if (next.id.startsWith('node-')) return toPendingResumeStep(next)
-  const phase = next.phase ?? ''
-  if (phase === 'think' || phase === 'agent' || phase === 'generate'
-      || phase.startsWith('think') || phase.startsWith('tool')) {
-    return toPendingResumeStep(next)
-  }
-  return next
-}
-
-/** 续跑开始：paused 节点重置为 pending（等待中），清除暂停前 HITL/Recovery 态 */
-export function reactivatePausedStepsForResume(steps: ProcessingStep[] | undefined): ProcessingStep[] {
-  if (!steps?.length) return steps ?? []
-  return steps.map(reactivatePausedStepIfNeeded)
-}
-
-/** 续跑执行中：上游节点重新 pending/running 时，其余 paused 节点改为等待中 */
-export function reactivateOtherPausedWorkflowNodes(
-  steps: ProcessingStep[],
-  activeNodeStepId: string,
-): ProcessingStep[] {
-  return steps.map(step => {
-    if (step.subSteps?.length) {
-      const subs = reactivateOtherPausedWorkflowNodes(step.subSteps, activeNodeStepId)
-      if (subs !== step.subSteps) return { ...step, subSteps: subs }
-    }
-    if (!step.id.startsWith('node-') || step.id === activeNodeStepId) return step
-    const lc = step.lifecycle ?? step.status
-    if (lc !== 'paused') return step
-    return toPendingResumeStep(step)
-  })
-}
-
+export {
+  shouldIgnoreResumeStepReplay,
+  pauseRunningWorkflowNodes,
+  reactivatePausedStepsForResume,
+  reactivateOtherPausedWorkflowNodes,
+} from './processingStepsPause'
 

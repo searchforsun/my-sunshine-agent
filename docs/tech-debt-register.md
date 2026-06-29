@@ -27,12 +27,13 @@
 
 | ID | 类型 | 严重度 | 模块 | 描述 | 状态 | 备注 |
 |----|------|:------:|------|------|:----:|------|
-| TD-009 | 代码债 | P1 | orchestrator + sunshine-ui | `ProcessingStep.status` 双写 + 前端 `lifecycle ?? status` fallback | open | 单独一轮：停写 status → 删 fallback → 清会话 |
-| TD-010 | 代码债 | P2 | skill-manager | `GET /catalog` 与 `/catalog/index` 重复 | open | 确认无外部调用后删旧路径 |
-| TD-011 | 代码债 | P2 | orchestrator + sunshine-ui | 上帝类：`WorkflowExecutor`(913) / `ChatController`(822) / `processingSteps.ts`(1310) | open | 按垂直链路拆分 |
-| DOC-001 | 文档债 | P2 | docs/ | CLAUDE + locked-decisions + implementation-plan 规则重复 | open | 入口 ≤200 行 + ADR 归档 |
-| DOC-002 | 文档债 | P2 | docs/superpowers/specs/ | timeline spec 仍引用已删 `ProcessingTimeline.vue` | open | 加 supersede 头或移 archive |
-| ADR-001 | ADR | P2 | routing | locked-decisions「禁止推翻」与 P3 删兼容冲突 | open | 记录 `toLegacyIntentLabel` 等已删决策 |
+| TD-009 | 代码债 | P1 | orchestrator + sunshine-ui | `ProcessingStep.status` 双写 + 前端 `lifecycle ?? status` fallback | done | 2026-06-29：SSE/落库停写 status；前端仅 lifecycle |
+| TD-010 | 代码债 | P2 | skill-manager | `GET /catalog` 与 `/catalog/index` 重复 | done | 2026-06-29：删 `/catalog` |
+| TD-011 | 代码债 | P2 | orchestrator + sunshine-ui | 上帝类：`WorkflowExecutor`(913) / `ChatController`(822) / `processingSteps.ts` | in-progress | 前端拆 Pause/Parse/Display/Plan；主文件 ~499 行 |
+| TD-012 | 代码债 | P1 | sunshine-ui | `chat.ts` 孤儿 `useChat()` | done | 2026-06-29：仅保留 `ChatMessage` 类型 |
+| TD-013 | 代码债 | P2 | orchestrator | `WorkflowNodeLabels.isVisibleNode` 零引用 | done | 2026-06-29 |
+| DOC-001 | 文档债 | P2 | docs/ | CLAUDE + README 规则重复 | done | 2026-06-29：入口 ≤200 行；命令去重；链 ADR |
+| DOC-002 | 文档债 | P2 | docs/superpowers/specs/ | timeline spec 仍引用已删 `ProcessingTimeline.vue` | done | 2026-06-29 supersede 头 |
 
 ---
 
@@ -48,3 +49,10 @@
 | TD-006 | 2026-06-28 | 删孤儿 `ProcessingTimeline.vue`（518 行） |
 | TD-007 | 2026-06-28 | 删 `resolveStepExpandText` |
 | TD-008 | 2026-06-28 | 删 `useUserId.ts` 垫片；`ChatView` 直引 `authStore` |
+| TD-009 | 2026-06-29 | SSE/落库停写 step `status`；前端仅 `lifecycle` |
+| TD-009-R4 | 2026-06-29 | `ProcessingStep` record 移除 `status` 字段；merger/构造全收敛 lifecycle |
+| TD-010 | 2026-06-29 | 删 skill-manager `GET /api/skills/catalog`；显式 410 + `/catalog/index` SSOT |
+| TD-012 | 2026-06-29 | 删 `chat.ts` 孤儿 `useChat()` |
+| TD-013 | 2026-06-29 | 删 `WorkflowNodeLabels.isVisibleNode` |
+| DOC-001 | 2026-06-29 | CLAUDE/README 去重；入口 ≤200 行；命令链 README |
+| ADR-001 | 2026-06-29 | 锁定文档 vs 删兼容：ADR-001；回写 D3 catalog API |

@@ -55,7 +55,6 @@ public final class SubAgentTimelineBridge {
                 null,
                 null,
                 ts,
-                "running",
                 nodeLabel,
                 null,
                 null,
