@@ -62,6 +62,7 @@ import { buildFileTree, collectDirKeys, formatFileSize } from '../utils/buildFil
 import { formatSkillVersionTime, formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTime'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
 import { enhanceStaticMarkdown, reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
+import { copyText } from '../utils/stream-markdown/clipboard'
 import '../utils/stream-markdown/styles.css'
 import { theme } from '../composables/useTheme'
 import 'katex/dist/katex.min.css'
@@ -74,7 +75,6 @@ import yaml from 'highlight.js/lib/languages/yaml'
 import sql from 'highlight.js/lib/languages/sql'
 import xml from 'highlight.js/lib/languages/xml'
 import javascript from 'highlight.js/lib/languages/javascript'
-import 'highlight.js/styles/github-dark.css'
 
 hljs.registerLanguage('markdown', markdown)
 hljs.registerLanguage('python', python)
@@ -571,12 +571,12 @@ const showPreviewCopy = computed(() => {
 async function copyPreviewContent() {
   const text = fileContent.value?.content
   if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
+  const ok = await copyText(text)
+  if (ok) {
     copyPreviewDone.value = true
     message.success('已复制')
     setTimeout(() => { copyPreviewDone.value = false }, 2000)
-  } catch {
+  } else {
     message.error('复制失败')
   }
 }
@@ -1291,6 +1291,7 @@ onBeforeUnmount(() => {
                   class="version-select"
                   placeholder="选择版本"
                   :disabled="isActionBusy"
+                  :menu-props="{ class: 'version-select-menu' }"
                   @update:value="onVersionSelected"
                 />
               </div>
@@ -1562,7 +1563,7 @@ onBeforeUnmount(() => {
 .detail-empty {
   border-radius: var(--radius-lg);
   border: 1px solid var(--sun-border);
-  background: var(--sun-surface);
+  background: var(--sun-black);
   min-height: 0;
   overflow: hidden;
 }
@@ -1590,8 +1591,8 @@ onBeforeUnmount(() => {
 }
 
 .search-input {
-  --n-color: var(--sun-deep) !important;
-  --n-color-focus: var(--sun-deep) !important;
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
   --n-text-color: var(--sun-text) !important;
   --n-placeholder-color: var(--sun-text-muted) !important;
   --n-border: 1px solid var(--sun-border) !important;
@@ -1632,8 +1633,8 @@ onBeforeUnmount(() => {
   padding: 12px 12px 30px;
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
-  background: var(--sun-deep);
-  transition: border-color 0.2s, background 0.2s;
+  background: var(--sun-black);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .skill-card-hit {
@@ -1665,19 +1666,18 @@ onBeforeUnmount(() => {
 }
 
 .skill-card-more-btn:hover {
-  background: var(--sun-surface-hover);
+  background: var(--sun-row-hover);
   color: var(--sun-text);
 }
 
 .skill-card:hover {
   border-color: var(--sun-border-light);
-  background: var(--sun-surface-hover);
 }
 
 .skill-card.active {
   border-color: var(--sun-border-light);
-  background: var(--sun-accent-muted);
-  box-shadow: inset 0 0 0 1px var(--sun-accent-muted);
+  outline: 1px solid color-mix(in srgb, var(--sun-text-muted) 45%, transparent);
+  outline-offset: -2px;
 }
 
 .skill-card.disabled {
@@ -1766,7 +1766,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--sun-surface);
+  background: var(--sun-black);
   border-radius: var(--radius-md);
 }
 
@@ -1785,7 +1785,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   border: 1px dashed var(--sun-border);
   border-radius: var(--radius-md);
-  background: var(--sun-deep);
+  background: var(--sun-black);
 }
 
 .detail-empty {
@@ -1794,7 +1794,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   border-radius: var(--radius-lg) !important;
   border: 1px solid var(--sun-border) !important;
-  background: var(--sun-surface) !important;
+  background: var(--sun-black) !important;
 }
 
 .detail-toolbar {
@@ -1861,7 +1861,24 @@ onBeforeUnmount(() => {
 }
 
 .version-select {
-  width: min(200px, 38vw);
+  width: min(228px, 44vw);
+}
+
+.version-select :deep(.n-base-selection) {
+  --n-color: var(--sun-black) !important;
+  --n-color-active: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-arrow-color: var(--sun-text-secondary) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-active: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+  --n-box-shadow-hover: none !important;
+  --n-box-shadow-active: none !important;
 }
 
 .preview-bar {
@@ -1871,7 +1888,7 @@ onBeforeUnmount(() => {
   padding: 8px 12px;
   border-bottom: 1px solid var(--sun-border);
   flex-shrink: 0;
-  background: var(--sun-surface);
+  background: transparent;
 }
 
 .preview-bar-actions {
@@ -1893,6 +1910,12 @@ onBeforeUnmount(() => {
   font-family: var(--sun-font-mono, 'JetBrains Mono', monospace);
   font-size: var(--sun-font-base);
   --n-font-size: var(--sun-font-base) !important;
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
 }
 
 .preview-copy-btn {
@@ -1938,7 +1961,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--sun-deep);
+  background: var(--sun-black);
   position: relative;
 }
 
@@ -1978,9 +2001,14 @@ onBeforeUnmount(() => {
 }
 
 .file-tree-pane :deep(.n-tree) {
-  --n-node-color-active: var(--sun-accent-muted) !important;
+  --n-node-color-active: transparent !important;
   --n-node-color-hover: var(--sun-row-hover) !important;
   font-size: 13px;
+}
+
+.file-tree-pane :deep(.n-tree-node--selected .n-tree-node-content__text) {
+  font-weight: 600;
+  color: var(--sun-text);
 }
 
 .file-tree-pane :deep(.n-tree-node-content) {
@@ -2081,5 +2109,21 @@ onBeforeUnmount(() => {
     border-right: none;
     border-bottom: 1px solid var(--sun-border);
   }
+}
+</style>
+
+<style>
+/* NSelect 下拉 teleport 到 body，须非 scoped */
+.version-select-menu.n-base-select-menu {
+  --n-color: var(--sun-black) !important;
+  --n-option-color-active: transparent !important;
+  --n-option-color-active-pending: var(--sun-row-hover) !important;
+  --n-option-color-pending: var(--sun-row-hover) !important;
+  --n-option-text-color: var(--sun-text) !important;
+  --n-option-text-color-active: var(--sun-text) !important;
+  --n-option-check-color: var(--sun-text) !important;
+  background: var(--sun-black) !important;
+  border: 1px solid var(--sun-border) !important;
+  box-shadow: var(--shadow-elevated) !important;
 }
 </style>

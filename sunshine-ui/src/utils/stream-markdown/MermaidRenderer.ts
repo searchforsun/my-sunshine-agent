@@ -43,7 +43,7 @@ export class MermaidRenderer {
       placeholder.innerHTML = [
         '<p class="smd-mermaid-error-title">图表语法有误，请检查 Mermaid 源码</p>',
         detail ? `<p class="smd-mermaid-error-detail">${escapeHtml(detail)}</p>` : '',
-        `<pre>${escapeHtml(content)}</pre>`,
+        `<pre class="smd-mermaid-error-source">${escapeHtml(content)}</pre>`,
       ].join('')
       return false
     }

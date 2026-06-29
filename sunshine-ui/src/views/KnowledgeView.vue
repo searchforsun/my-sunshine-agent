@@ -180,6 +180,7 @@ async function handleSearch() {
 <style scoped>
 .knowledge-root {
   height: 100vh;
+  background: var(--sun-black);
 }
 
 .knowledge-content {
@@ -230,20 +231,24 @@ async function handleSearch() {
 .kb-card {
   border-radius: var(--radius-lg) !important;
   border: 1px solid var(--sun-border) !important;
-  background: var(--sun-surface) !important;
+  background: var(--sun-black) !important;
   transition: border-color .2s;
+}
+
+.kb-card :deep(.n-card-header) {
+  background: transparent;
 }
 
 .kb-card :deep(.n-card-header__main) {
   color: var(--sun-text);
 }
 
-/* --- Naive Input：跟随 CSS 变量，暗色模式不泛白 --- */
+/* --- Naive Input：与 composer 一致 --- */
 .doc-textarea,
 .search-input {
-  --n-color: var(--sun-deep) !important;
-  --n-color-focus: var(--sun-deep) !important;
-  --n-color-disabled: var(--sun-surface-hover) !important;
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
   --n-text-color: var(--sun-text) !important;
   --n-placeholder-color: var(--sun-text-muted) !important;
   --n-border: 1px solid var(--sun-border) !important;
@@ -309,7 +314,11 @@ async function handleSearch() {
 .result-item {
   border-radius: var(--radius-md) !important;
   border-color: var(--sun-border) !important;
-  background: var(--sun-deep) !important;
+  background: var(--sun-black) !important;
+}
+
+.result-item :deep(.n-card-header) {
+  background: transparent;
 }
 
 .result-text {

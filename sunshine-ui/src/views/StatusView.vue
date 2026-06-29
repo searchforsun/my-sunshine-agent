@@ -192,6 +192,7 @@ onMounted(() => {
 <style scoped>
 .status-root {
   height: 100vh;
+  background: var(--sun-black);
 }
 
 .status-content {
@@ -212,6 +213,7 @@ onMounted(() => {
   font-weight: 700;
   letter-spacing: -0.4px;
   margin: 0;
+  color: var(--sun-text);
 }
 .page-header p {
   font-size: 13px;
@@ -228,7 +230,7 @@ onMounted(() => {
 
 .stat-card {
   flex: 1;
-  background: var(--sun-surface);
+  background: var(--sun-black);
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
   padding: 16px 20px;
@@ -255,15 +257,19 @@ onMounted(() => {
   margin-bottom: 20px;
   border-radius: var(--radius-lg) !important;
   border: 1px solid var(--sun-border) !important;
-  background: var(--sun-surface) !important;
+  background: var(--sun-black) !important;
+}
+
+.section-card :deep(.n-card-header) {
+  background: transparent;
 }
 
 /* --- Service cards --- */
 .svc-card {
   border-radius: var(--radius-md) !important;
   border-color: var(--sun-border) !important;
-  background: var(--sun-deep) !important;
-  transition: border-color .2s, transform .15s;
+  background: var(--sun-black) !important;
+  transition: border-color .2s;
   height: 100%;
 }
 .svc-card:hover {

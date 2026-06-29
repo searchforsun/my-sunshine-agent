@@ -29,7 +29,7 @@
 |----|------|:------:|------|------|:----:|------|
 | TD-009 | 代码债 | P1 | orchestrator + sunshine-ui | `ProcessingStep.status` 双写 + 前端 `lifecycle ?? status` fallback | done | 2026-06-29：SSE/落库停写 status；前端仅 lifecycle |
 | TD-010 | 代码债 | P2 | skill-manager | `GET /catalog` 与 `/catalog/index` 重复 | done | 2026-06-29：删 `/catalog` |
-| TD-011 | 代码债 | P2 | orchestrator + sunshine-ui | 上帝类：`WorkflowExecutor`(913) / `ChatController`(822) / `processingSteps.ts` | in-progress | 前端拆 Pause/Parse/Display/Plan；主文件 ~499 行 |
+| TD-011 | 代码债 | P2 | orchestrator + sunshine-ui | 上帝类：`WorkflowExecutor`(913) / `ChatController`(822) / `processingSteps.ts` | in-progress | 阶段1 ✅ C1 `ChatConfirmationController`；前端 ~499 行 |
 | TD-012 | 代码债 | P1 | sunshine-ui | `chat.ts` 孤儿 `useChat()` | done | 2026-06-29：仅保留 `ChatMessage` 类型 |
 | TD-013 | 代码债 | P2 | orchestrator | `WorkflowNodeLabels.isVisibleNode` 零引用 | done | 2026-06-29 |
 | DOC-001 | 文档债 | P2 | docs/ | CLAUDE + README 规则重复 | done | 2026-06-29：入口 ≤200 行；命令去重；链 ADR |

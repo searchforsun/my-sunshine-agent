@@ -25,7 +25,7 @@ const showMenu = ref(false)
 const current = computed(() => findExecutionModeOption(props.modelValue))
 const currentIcon = computed(() => executionModeIcon(props.modelValue))
 
-const COMPACT_MENU_WIDTH = 252
+const COMPACT_MENU_WIDTH = 304
 
 const popoverWidth = computed(() => (variant.value === 'block' ? 'trigger' : COMPACT_MENU_WIDTH))
 
@@ -90,7 +90,7 @@ function onShowUpdate(next: boolean) {
               v-if="modelValue === opt.value"
               class="mode-menu-check"
               :component="CheckmarkOutline"
-              :size="16"
+              :size="18"
             />
           </span>
         </button>
@@ -121,10 +121,10 @@ function onShowUpdate(next: boolean) {
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border, #e0e0e0);
+  border: 1px solid var(--sun-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--sun-bg, #fff) 90%, var(--sun-text-muted, #888));
-  color: var(--sun-text-secondary, #666);
+  background: transparent;
+  color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
   flex-shrink: 0;
@@ -160,8 +160,13 @@ function onShowUpdate(next: boolean) {
   min-width: 0;
 }
 
-.mode-icon {
+.mode-icon,
+.mode-chevron {
   flex-shrink: 0;
+  color: currentColor;
+}
+
+.mode-icon {
   opacity: 0.9;
 }
 
@@ -171,7 +176,6 @@ function onShowUpdate(next: boolean) {
 }
 
 .mode-chevron {
-  flex-shrink: 0;
   opacity: 0.55;
 }
 
@@ -194,7 +198,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .mode-menu--compact .mode-menu-desc {
-  font-size: 11px;
+  font-size: var(--sun-font-sm, 12px);
 }
 
 .mode-menu-item {
@@ -213,10 +217,6 @@ function onShowUpdate(next: boolean) {
 
 .mode-menu-item:hover {
   background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
-}
-
-.mode-menu-item.is-selected {
-  background: var(--sun-accent-muted, rgba(0, 0, 0, 0.04));
 }
 
 .mode-menu-icon {
@@ -241,12 +241,14 @@ function onShowUpdate(next: boolean) {
   font-weight: 500;
   line-height: 1.35;
   color: var(--sun-text, #212121);
+  white-space: nowrap;
 }
 
 .mode-menu-desc {
-  font-size: var(--sun-font-sm, 12px);
-  line-height: 1.4;
+  font-size: var(--sun-font-base, 14px);
+  line-height: 1.45;
   color: var(--sun-text-muted, #888);
+  white-space: nowrap;
 }
 
 .mode-menu-check-slot {
@@ -254,7 +256,7 @@ function onShowUpdate(next: boolean) {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 20px;
 }
 
 .mode-menu-check {

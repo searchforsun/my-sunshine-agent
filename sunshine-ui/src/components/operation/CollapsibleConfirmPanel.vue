@@ -79,7 +79,7 @@ const collapsedLine = computed(() => {
   border-radius: var(--radius-sm, 6px);
   font-size: var(--sun-font-sm, 12px);
   color: var(--sun-text-muted);
-  background: color-mix(in srgb, var(--sun-text-muted) 6%, var(--sun-bg));
+  background: transparent;
 }
 
 .collapse-line,

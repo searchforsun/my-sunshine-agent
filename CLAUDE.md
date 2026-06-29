@@ -132,9 +132,25 @@ Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876
 ## 版本与前端
 
 - 勿升 Spring Boot 3.3+、AgentScope 2.0.0；Sa-Token **1.45.0**（需 `sa-token-jwt`）。
-- UI：**Codex 中性灰**（`#212121` 系）；设计令牌 `src/styles/global.css`；字号阶梯保留（14/15/16）。
 - SSE 基址：生产构建须设 `VITE_BFF_STREAM_BASE`（见 `sunshine-ui/.env.production.example`）；开发态走 Vite proxy。
 - 思考区字号：`OperationCard` / `ReasoningPanel` 用 `--sun-font-base`（14px）。
+
+### UI 风格（Codex 简约）
+
+**SSOT**：`global.css`（`--sun-*`）、`markdown-content.css`（`--smd-*`）、`mermaidConfig.ts`、`useTheme.ts`（hljs）。
+
+**原则**：背景统一 **`--sun-black`（= `--sun-bg` = `--sun-sidebar-bg`）**，**边框**分区；**禁止**页面/面板/输入/选中态用 `--sun-surface` / `--sun-deep` / `--sun-accent-muted` 灰底。
+
+| 元素 | 规则 |
+|------|------|
+| 页面、卡片、composer、输入框 | `--sun-black` 底 + `1px var(--sun-border)`；focus 无 shadow |
+| 块头栏、Plan 确认框、预览顶栏 | `transparent` 底，保边框 |
+| 下拉选中 | 对号 **18px**、无灰底；compact 宽 **304px**、说明不换行（见 `ExecutionModeSelector` / `TenantSelector`） |
+| 卡片/DAG 选中 | 内描边或 ring，hover 仅改边框（见 `SkillsView` / `PlanDagGraph`） |
+| 文件树选中 | active 背景 transparent + 文字加粗 |
+| 代码/Mermaid | `--smd-block-bg` = 正文色；hljs/Mermaid 主题走 `useTheme` / `mermaidConfig`（`theme: 'base'`）；复制用 `stream-markdown/clipboard.ts` |
+
+**已对齐**：Chat、Plan 组件、Skills / Knowledge / Status 页、MainLayout 侧栏。
 
 ## 其他
 

@@ -291,20 +291,19 @@ onMounted(() => {
   height: 36px;
   border: 1px solid var(--sun-border);
   border-radius: 10px;
-  background: var(--sun-surface);
+  background: var(--sun-black);
   color: var(--sun-text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: border-color 0.15s, color 0.15s;
   box-shadow: var(--shadow-card);
 }
 
 .sidebar-expand-fab:hover {
   border-color: var(--sun-border-light);
   color: var(--sun-text);
-  background: var(--sun-surface-hover);
 }
 
 /* --- Nav --- */
@@ -314,14 +313,34 @@ onMounted(() => {
   padding: 0 8px;
 }
 
-.nav-menu :deep(.n-menu-item-content),
-.nav-menu :deep(.n-menu-item-content__icon),
-.nav-menu :deep(.n-menu-item-content-header) {
-  transition: background-color 0.15s, color 0.15s !important;
+.nav-menu :deep(.n-menu) {
+  --n-color: transparent !important;
+  --n-item-color-hover: var(--sun-row-hover) !important;
+  --n-item-color-active: var(--sun-row-hover) !important;
+  --n-item-color-active-hover: var(--sun-row-hover) !important;
+}
+
+.nav-menu :deep(.n-menu-item-content) {
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-menu :deep(.n-menu-item-content--selected) {
+  font-weight: 600;
+}
+
+.nav-menu :deep(.n-menu-item-content--selected .n-menu-item-content-header),
+.nav-menu :deep(.n-menu-item-content--selected .n-menu-item-content__icon) {
+  color: var(--sun-text) !important;
 }
 
 .nav-menu :deep(.n-menu-item-content-header) {
   font-size: var(--sun-font-base);
+  color: var(--sun-text-secondary);
+}
+
+.nav-menu :deep(.n-menu-item-content__icon) {
+  color: var(--sun-text-secondary);
 }
 
 .nav-menu :deep(.n-menu-item) {
@@ -365,7 +384,7 @@ onMounted(() => {
 }
 
 .user-more-btn:hover {
-  background: var(--sun-surface-hover);
+  background: var(--sun-row-hover);
   color: var(--sun-text);
 }
 
@@ -374,7 +393,7 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--sun-surface);
+  background: var(--sun-black);
   border: 1px solid var(--sun-border);
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-base);
@@ -399,7 +418,7 @@ onMounted(() => {
 }
 .theme-toggle:hover {
   color: var(--sun-text);
-  background: var(--sun-surface-hover);
+  background: var(--sun-row-hover);
 }
 
 /* --- Chat History（豆包式） --- */
@@ -429,10 +448,10 @@ onMounted(() => {
   padding: 10px 14px;
   border: 1px solid var(--sun-border);
   border-radius: 10px;
-  background: var(--sun-surface);
+  background: transparent;
   color: var(--sun-text);
   font-size: var(--sun-font-base);
-  font-weight: 500;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
@@ -440,8 +459,7 @@ onMounted(() => {
 
 .new-chat-primary:hover {
   border-color: var(--sun-border-light);
-  background: var(--sun-surface-hover);
-  color: var(--sun-text);
+  background: var(--sun-row-hover);
 }
 
 .history-list {
@@ -450,6 +468,9 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sun-border);
 }
 
 .history-item {
@@ -459,12 +480,14 @@ onMounted(() => {
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
   flex-shrink: 0;
 }
 
 .history-item:hover { background: var(--sun-row-hover); }
-.history-item.active { background: var(--sun-accent-muted); }
+.history-item.active {
+  background: var(--sun-row-hover);
+}
 .history-item.active .history-item-title {
   color: var(--sun-text);
   font-weight: 500;
@@ -506,9 +529,11 @@ onMounted(() => {
 }
 
 .history-empty {
-  padding: 20px 8px;
+  margin-top: 4px;
+  padding: 20px 8px 4px;
   text-align: center;
   flex-shrink: 0;
+  border-top: 1px solid var(--sun-border);
 }
 
 .history-empty-text {

@@ -19,7 +19,9 @@ const variant = computed(() => props.variant ?? 'compact')
 const showMenu = ref(false)
 const current = computed(() => findTenantOption(props.modelValue))
 
-const popoverWidth = computed(() => (variant.value === 'block' ? 'trigger' : 240))
+const COMPACT_MENU_WIDTH = 304
+
+const popoverWidth = computed(() => (variant.value === 'block' ? 'trigger' : COMPACT_MENU_WIDTH))
 
 function select(value: TenantId) {
   emit('update:modelValue', value)
@@ -61,7 +63,7 @@ function onShowUpdate(next: boolean) {
         </button>
       </template>
 
-      <div class="tenant-menu" role="listbox" aria-label="租户">
+      <div class="tenant-menu" :class="{ 'tenant-menu--compact': variant === 'compact' }" role="listbox" aria-label="租户">
         <button
           v-for="opt in TENANT_OPTIONS"
           :key="opt.value"
@@ -72,6 +74,7 @@ function onShowUpdate(next: boolean) {
           :aria-selected="modelValue === opt.value"
           @click="select(opt.value)"
         >
+          <NIcon class="tenant-menu-icon" :component="BusinessOutline" :size="18" />
           <span class="tenant-menu-text">
             <span class="tenant-menu-title">{{ opt.label }}</span>
             <span v-if="opt.description" class="tenant-menu-desc">{{ opt.description }}</span>
@@ -81,7 +84,7 @@ function onShowUpdate(next: boolean) {
               v-if="modelValue === opt.value"
               class="tenant-menu-check"
               :component="CheckmarkOutline"
-              :size="16"
+              :size="18"
             />
           </span>
         </button>
@@ -112,10 +115,10 @@ function onShowUpdate(next: boolean) {
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border, #e0e0e0);
+  border: 1px solid var(--sun-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--sun-bg, #fff) 90%, var(--sun-text-muted, #888));
-  color: var(--sun-text-secondary, #666);
+  background: transparent;
+  color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
   flex-shrink: 0;
@@ -151,8 +154,13 @@ function onShowUpdate(next: boolean) {
   min-width: 0;
 }
 
-.tenant-icon {
+.tenant-icon,
+.tenant-chevron {
   flex-shrink: 0;
+  color: currentColor;
+}
+
+.tenant-icon {
   opacity: 0.9;
 }
 
@@ -162,7 +170,6 @@ function onShowUpdate(next: boolean) {
 }
 
 .tenant-chevron {
-  flex-shrink: 0;
   opacity: 0.55;
 }
 
@@ -173,6 +180,19 @@ function onShowUpdate(next: boolean) {
   box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
   border: 1px solid var(--sun-border, #e8e8e8);
   overflow: hidden;
+}
+
+.tenant-menu--compact {
+  padding: 3px;
+}
+
+.tenant-menu--compact .tenant-menu-item {
+  gap: 8px;
+  padding: 7px 8px;
+}
+
+.tenant-menu--compact .tenant-menu-desc {
+  font-size: var(--sun-font-sm, 12px);
 }
 
 .tenant-menu-item {
@@ -193,8 +213,13 @@ function onShowUpdate(next: boolean) {
   background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
 }
 
-.tenant-menu-item.is-selected {
-  background: var(--sun-accent-muted, rgba(0, 0, 0, 0.04));
+.tenant-menu-icon {
+  flex-shrink: 0;
+  color: var(--sun-text-secondary, #666);
+}
+
+.tenant-menu-item.is-selected .tenant-menu-icon {
+  color: var(--sun-text, #212121);
 }
 
 .tenant-menu-text {
@@ -210,12 +235,14 @@ function onShowUpdate(next: boolean) {
   font-weight: 500;
   line-height: 1.35;
   color: var(--sun-text, #212121);
+  white-space: nowrap;
 }
 
 .tenant-menu-desc {
-  font-size: var(--sun-font-sm, 12px);
-  line-height: 1.4;
+  font-size: var(--sun-font-base, 14px);
+  line-height: 1.45;
   color: var(--sun-text-muted, #888);
+  white-space: nowrap;
 }
 
 .tenant-menu-check-slot {
@@ -223,7 +250,7 @@ function onShowUpdate(next: boolean) {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 20px;
 }
 
 .tenant-menu-check {

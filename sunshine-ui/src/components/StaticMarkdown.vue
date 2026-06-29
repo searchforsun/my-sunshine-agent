@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import 'katex/dist/katex.min.css'
-import 'highlight.js/styles/github-dark.css'
 import '../utils/stream-markdown/styles.css'
 import { renderStaticMarkdown } from '../utils/markdown/renderStaticMarkdown'
 import { enhanceStaticMarkdown } from '../utils/stream-markdown/StaticEnhancer'

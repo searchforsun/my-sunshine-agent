@@ -5,7 +5,7 @@ import { MermaidRenderer } from './MermaidRenderer'
 import { DEFAULT_CONFIG } from './types'
 
 // 确保全局 onclick 处理器已注册
-import { registerGlobalHandlers } from './globalHandlers'
+import { registerGlobalHandlers, createMermaidToolButtons } from './globalHandlers'
 import { createToolButton } from './toolIcons'
 
 registerGlobalHandlers()
@@ -53,7 +53,6 @@ function enhanceCodeBlock(pre: HTMLElement, lang: string, _raw: string): void {
     `${CP('toolbtn')} ${CP('toolbtn-copy')}`,
     'copy',
     '复制',
-    'window.__smd_copyCode(this)',
   ))
   head.append(label, tools)
   pre.insertBefore(head, pre.firstChild)
@@ -84,25 +83,8 @@ function enhanceMermaidBlock(pre: HTMLElement, source: string): void {
 function renderMermaidChart(wrap: HTMLElement, head: HTMLElement, placeholder: HTMLElement): void {
   const source = wrap.dataset.mermaidSource || ''
   sharedMermaidRenderer.render(placeholder.id, source, placeholder).then((ok) => {
-    if (ok) {
-      // 避免重复添加按钮
-      if (!head.querySelector(`.${CP('toolbtn-toggle')}`)) {
-        const tools = document.createElement('div')
-        tools.className = CP('toolbtns')
-        tools.appendChild(createToolButton(
-          `${CP('toolbtn')} ${CP('toolbtn-toggle')} smd-toolbtn-toggle`,
-          'source',
-          '源码',
-          'window.__smd_mermaidToggle(this)',
-        ))
-        tools.appendChild(createToolButton(
-          `${CP('toolbtn')} ${CP('toolbtn-zoom')} smd-toolbtn-zoom`,
-          'zoom',
-          '全屏',
-          'window.__smd_mermaidZoom(this)',
-        ))
-        head.appendChild(tools)
-      }
+    if (ok && !head.querySelector(`.${CP('toolbtn-toggle')}`)) {
+      head.appendChild(createMermaidToolButtons())
     }
   })
 }

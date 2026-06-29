@@ -1,5 +1,6 @@
 /**
  * Mermaid 初始化与 DOM 清理 — 避免语法错误时炸弹 SVG 泄漏到 body
+ * 节点填充与页面正文 (--sun-black) 一致，仅保留边框线
  */
 import mermaid from 'mermaid'
 
@@ -7,14 +8,37 @@ let lastTheme: string | null = null
 
 export function getMermaidTheme() {
   const isLight = document.documentElement.getAttribute('data-theme') === 'light'
+  const bg = isLight ? '#ffffff' : '#212121'
+  const border = isLight ? '#c8c8c8' : '#525252'
+  const text = isLight ? '#0d0d0d' : '#ececec'
+  const line = isLight ? '#525252' : '#b4b4b4'
   return {
-    theme: isLight ? 'neutral' : 'dark',
+    // themeVariables 仅 base 主题全量生效
+    theme: 'base',
     themeVariables: {
-      primaryColor: isLight ? '#525252' : '#b4b4b4',
-      primaryTextColor: isLight ? '#0d0d0d' : '#ececec',
-      lineColor: isLight ? '#737373' : '#8e8e8e',
-      secondaryColor: isLight ? '#f7f7f8' : '#2f2f2f',
-      tertiaryColor: isLight ? '#ffffff' : '#171717',
+      darkMode: !isLight,
+      background: 'transparent',
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, PingFang SC, Segoe UI, sans-serif',
+      fontSize: '14px',
+      primaryColor: bg,
+      primaryTextColor: text,
+      primaryBorderColor: border,
+      secondaryColor: bg,
+      secondaryTextColor: text,
+      secondaryBorderColor: border,
+      tertiaryColor: bg,
+      tertiaryTextColor: text,
+      tertiaryBorderColor: border,
+      mainBkg: bg,
+      nodeBorder: border,
+      clusterBkg: bg,
+      clusterBorder: border,
+      lineColor: line,
+      defaultLinkColor: line,
+      titleColor: text,
+      textColor: text,
+      nodeTextColor: text,
+      edgeLabelBackground: bg,
     },
   } as const
 }

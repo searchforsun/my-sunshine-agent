@@ -488,7 +488,7 @@ watch(
   justify-content: center;
   border-radius: 8px;
   border: 1px solid var(--sun-border);
-  background: color-mix(in srgb, var(--sun-bg) 88%, var(--sun-text-muted));
+  background: transparent;
   color: var(--sun-text-secondary);
 }
 

@@ -5,6 +5,7 @@
 :root {
   /* Neutral surfaces (Codex-like) */
   --sun-black: #212121;
+  --sun-bg: var(--sun-black);
   --sun-deep: #171717;
   --sun-surface: #2f2f2f;
   --sun-surface-hover: #383838;
@@ -58,7 +59,7 @@
   --shadow-glow-gold: none;
 
   /* Sidebar */
-  --sun-sidebar-bg: var(--sun-deep);
+  --sun-sidebar-bg: var(--sun-black);
 
   /* Message row hover */
   --sun-row-hover: rgba(255, 255, 255, 0.06);
@@ -238,7 +239,7 @@ html.theme-switching *::after {
   --shadow-glow-amber: none;
   --shadow-glow-gold: none;
 
-  --sun-sidebar-bg: var(--sun-deep);
+  --sun-sidebar-bg: var(--sun-black);
   --sun-row-hover: rgba(0, 0, 0, 0.04);
 
   --composer-shadow: 0 0 0 1px var(--sun-border);

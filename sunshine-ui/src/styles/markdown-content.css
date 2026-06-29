@@ -1,5 +1,7 @@
 /* 对话区 / Skills 预览 — 统一 Markdown 正文与代码块（随 data-theme 切换） */
 .msg-md {
+  --smd-block-bg: var(--sun-black);
+  --smd-block-header-bg: transparent;
   font-size: var(--sun-font-md);
   line-height: var(--sun-line-loose);
   color: var(--sun-text);
@@ -38,21 +40,29 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: var(--sun-font-sm);
 }
-.msg-md pre:not(.smd-mermaid-source) {
-  background: var(--sun-deep);
+.msg-md pre:not(.smd-mermaid-source):not(.smd-mermaid-error-source) {
+  background: var(--smd-block-bg);
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
   padding: 14px 18px;
   overflow-x: auto;
   margin: 12px 0;
 }
-.msg-md .smd-mermaid-wrapper .smd-mermaid-source {
+.msg-md .smd-mermaid-wrapper .smd-mermaid-source,
+.msg-md .smd-mermaid-wrapper .smd-mermaid-error-source {
   background: transparent;
   border: none;
   border-radius: 0;
   box-shadow: none;
   margin: 0;
   padding: 14px 16px 16px;
+}
+.msg-md .smd-mermaid-wrapper .smd-mermaid-error-source {
+  padding: 10px 0 0;
+  font-size: var(--sun-font-sm);
+  font-family: var(--sun-font-mono, 'JetBrains Mono', monospace);
+  color: var(--sun-text-muted);
+  white-space: pre-wrap;
 }
 .msg-md pre code.hljs {
   background: none;
@@ -67,12 +77,16 @@
 }
 .msg-md pre.hljs,
 .msg-md pre code.hljs {
-  background: var(--sun-deep);
+  background: var(--smd-block-bg);
 }
 .msg-md table { border-collapse: collapse; margin: 12px 0; width: 100%; }
 .msg-md th,
 .msg-md td { border: 1px solid var(--sun-border); padding: 8px 14px; text-align: left; }
-.msg-md th { background: var(--sun-deep); font-weight: 600; }
+.msg-md th {
+  background: var(--smd-block-header-bg);
+  font-weight: 600;
+  color: var(--sun-text);
+}
 .msg-md img { max-width: 100%; border-radius: 8px; }
 .msg-md .katex-display {
   margin: 14px 0;
@@ -88,7 +102,7 @@
   justify-content: center;
   margin: 16px 0;
   padding: 16px;
-  background: var(--sun-deep);
+  background: var(--smd-block-bg);
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
   overflow-x: auto;

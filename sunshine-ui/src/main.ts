@@ -11,7 +11,10 @@ import router from './router'
 import App from './App.vue'
 import './styles/global.css'
 import './styles/markdown-content.css'
+import { registerGlobalHandlers } from './utils/stream-markdown/globalHandlers'
 import { theme } from './composables/useTheme'
+
+registerGlobalHandlers()
 
 // 确保主题在挂载前已写入 DOM
 void theme.value

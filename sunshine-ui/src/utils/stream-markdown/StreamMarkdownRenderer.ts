@@ -4,7 +4,7 @@
 import { StreamBuffer } from './StreamBuffer'
 import { MarkdownStateMachine } from './MarkdownStateMachine'
 import { MermaidRenderer } from './MermaidRenderer'
-import { registerGlobalHandlers } from './globalHandlers'
+import { registerGlobalHandlers, createMermaidToolButtons } from './globalHandlers'
 import { createToolButton } from './toolIcons'
 import { smoothRender } from './smoothMarkdown'
 import { normalizeStreamingMarkdown } from './normalizeStreamingMarkdown'
@@ -161,7 +161,6 @@ export class StreamMarkdownRenderer {
         `${CP('toolbtn')} ${CP('toolbtn-copy')}`,
         'copy',
         '复制',
-        'window.__smd_copyCode(this)',
       ))
       head.append(label, tools)
       pre.appendChild(head)
@@ -413,21 +412,7 @@ export class StreamMarkdownRenderer {
     wrap.dataset.mermaidSource = source
     const header = wrap.querySelector(`.${CP('mermaid-header')}`)
     if (header && !header.querySelector(`.${CP('toolbtn-toggle')}`)) {
-      const tools = document.createElement('div')
-      tools.className = CP('toolbtns')
-      tools.appendChild(createToolButton(
-        `${CP('toolbtn')} ${CP('toolbtn-toggle')} smd-toolbtn-toggle`,
-        'source',
-        '源码',
-        'window.__smd_mermaidToggle(this)',
-      ))
-      tools.appendChild(createToolButton(
-        `${CP('toolbtn')} ${CP('toolbtn-zoom')} smd-toolbtn-zoom`,
-        'zoom',
-        '全屏',
-        'window.__smd_mermaidZoom(this)',
-      ))
-      header.appendChild(tools)
+      header.appendChild(createMermaidToolButtons())
     }
   }
 

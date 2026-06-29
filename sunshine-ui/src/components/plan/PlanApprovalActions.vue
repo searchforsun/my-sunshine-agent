@@ -192,7 +192,7 @@ async function regenerate(): Promise<void> {
   font-size: var(--sun-font-sm, 12px);
   font-family: inherit;
   resize: vertical;
-  background: var(--sun-bg);
+  background: transparent;
   color: var(--sun-text);
 }
 

@@ -131,7 +131,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   min-height: 94px;
   border: 1px solid var(--sun-border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--sun-bg) 92%, var(--sun-text-muted));
+  background: transparent;
   overflow: hidden;
 }
 
@@ -214,18 +214,17 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--sun-border);
+  border: none;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--sun-bg) 88%, var(--sun-text-muted));
+  background: transparent;
   color: var(--sun-text-muted);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .plan-dag-expand-btn:hover:not(:disabled) {
   background: var(--sun-row-hover);
   color: var(--sun-text);
-  border-color: var(--sun-border-light);
 }
 
 .plan-dag-expand-btn:disabled {
@@ -325,7 +324,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   padding: 8px 10px 6px;
   border: 1px solid var(--sun-border);
   border-radius: 8px;
-  background: var(--sun-bg);
+  background: transparent;
   color: var(--sun-text-secondary);
   font: inherit;
   text-align: center;
@@ -447,7 +446,6 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 
 .plan-dag-node.is-terminal:not(.is-done):not(.is-running):not(.is-error) {
   opacity: 0.88;
-  background: color-mix(in srgb, var(--sun-bg) 96%, var(--sun-text-muted));
 }
 
 .plan-dag-node.is-terminal.is-done .node-label {

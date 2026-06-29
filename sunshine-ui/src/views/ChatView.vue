@@ -3,7 +3,6 @@ import { ref, nextTick, watch, onMounted, onUnmounted, onUpdated, computed, reac
 import { useChatSessions } from '../api/chatSessions'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
 import 'katex/dist/katex.min.css'
-import 'highlight.js/styles/github-dark.css'
 import { StreamMarkdownRenderer } from '../utils/stream-markdown'
 import { normalizeStreamingMarkdown } from '../utils/stream-markdown/normalizeStreamingMarkdown'
 import { enhanceStaticMarkdown, reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
@@ -1394,7 +1393,7 @@ watch(() => loading.value, async (val) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--sun-deep);
+  background: var(--sun-black);
   border: 1px solid var(--sun-border);
   border-radius: 20px;
   padding: 8px 10px 8px 18px;
@@ -1461,7 +1460,7 @@ watch(() => loading.value, async (val) => {
   margin: 0;
   padding: 6px;
   list-style: none;
-  background: var(--sun-deep);
+  background: var(--sun-black);
   border: 1px solid var(--sun-border);
   border-radius: 12px;
   box-shadow: var(--composer-shadow-focus);
