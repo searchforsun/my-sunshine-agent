@@ -23,6 +23,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -155,6 +156,23 @@ class HitlConfirmationServiceTest {
                 meta,
                 null,
                 null);
+    }
+
+    @Test
+    void cancelWaitersForMessage_interruptsWithoutUserDeny() throws Exception {
+        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
+        when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
+                .thenReturn("{\"type\":\"confirmation\"}");
+        when(redis.opsForValue()).thenReturn(valueOps);
+
+        CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
+                () -> service.awaitConfirmation("msg-1", "approve_oa_task", Map.of("taskId", "T1001")));
+
+        Thread.sleep(200);
+        service.cancelWaitersForMessage("msg-1");
+        assertThatThrownBy(() -> future.get(2, TimeUnit.SECONDS))
+                .hasCauseInstanceOf(HitlWaitInterruptedException.class);
     }
 
     @Test

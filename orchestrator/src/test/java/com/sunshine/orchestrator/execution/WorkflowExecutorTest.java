@@ -10,11 +10,11 @@ import com.sunshine.orchestrator.execution.handler.RagNodeHandler;
 import com.sunshine.orchestrator.execution.handler.StartNodeHandler;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.execution.workflow.WorkflowStaticPlanRunner;
 import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
 import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
 import com.sunshine.orchestrator.plan.PlanJson;
 import com.sunshine.orchestrator.plan.PlanRunFinalizer;
-import com.sunshine.orchestrator.plan.PlanTimeline;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -146,10 +146,12 @@ class WorkflowExecutorTest {
         groundingProperties.setEnabled(true);
         when(workflowNodeRecoveryService.isEnabled()).thenReturn(false);
 
+        WorkflowStaticPlanRunner staticPlanRunner = new WorkflowStaticPlanRunner(
+                loader, executionPlanStore, planExecutionAuditService, displayNameEnricher, planRunFinalizer);
         executor = new WorkflowExecutor(
-                loader, registry, executionPlanStore, labelService,
+                staticPlanRunner, registry, executionPlanStore, labelService,
                 retryPolicyResolver, nodeRetryExecutor, upstreamOutputResolver,
-                planExecutionAuditService, displayNameEnricher, planRunFinalizer,
+                planExecutionAuditService,
                 groundingChecker, groundingProperties, workflowNodeRecoveryService,
                 hitlConfirmationService, workflowPauseService, generationRegistry);
     }

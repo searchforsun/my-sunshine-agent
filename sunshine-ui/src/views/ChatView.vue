@@ -294,6 +294,20 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
 )
 
 const inputText = ref('')
+
+/** 空会话快捷提示 — 对齐当前路由/工具/Skill 能力 */
+const EMPTY_HINTS = [
+  { label: '制度检索', prompt: '检索知识库：公司的差旅报销制度有哪些要点？' },
+  { label: '报销分析', prompt: '查询待审批报销单，并对金额与事由做合规分析' },
+  { label: '动态规划', prompt: '先检索报销制度，再查待审批单据，最后给出合规结论' },
+  { label: 'Skill 合规', prompt: '@compliance-check 对照制度审查一笔差旅报销是否合规' },
+] as const
+
+function applyEmptyHint(prompt: string) {
+  inputText.value = prompt
+  void handleSend()
+}
+
 const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
 const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
 const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
@@ -901,11 +915,17 @@ watch(() => loading.value, async (val) => {
             </svg>
           </div>
           <h2 class="empty-title">有什么可以帮你的？</h2>
-          <p class="empty-desc">基于 ReActAgent 与知识库，支持流式 Markdown 回复</p>
+          <p class="empty-desc">知识库检索 · ReAct 工具 · Plan 动态规划 · Skill @ 触发</p>
           <div class="hint-chips">
-            <button class="hint-chip" @click="inputText='介绍一下 RAG 的原理'; handleSend()">RAG 原理</button>
-            <button class="hint-chip" @click="inputText='考勤制度是什么？'; handleSend()">检索知识库</button>
-            <button class="hint-chip" @click="inputText='写一段 Python 快速排序'; handleSend()">写代码</button>
+            <button
+              v-for="hint in EMPTY_HINTS"
+              :key="hint.label"
+              type="button"
+              class="hint-chip"
+              @click="applyEmptyHint(hint.prompt)"
+            >
+              {{ hint.label }}
+            </button>
           </div>
         </div>
 
@@ -1009,7 +1029,7 @@ watch(() => loading.value, async (val) => {
             <li
               v-for="(skill, idx) in filteredSkills"
               :key="skill.id"
-              :class="{ active: idx === skillSuggestIndex }"
+              :class="{ 'is-highlighted': idx === skillSuggestIndex }"
               @mousedown.prevent="applySkillSuggest(skill)"
             >
               <span class="skill-suggest-id">@{{ skill.id }}</span>
@@ -1242,27 +1262,28 @@ watch(() => loading.value, async (val) => {
 .hint-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   justify-content: center;
-  max-width: 520px;
+  max-width: 560px;
 }
 
 .hint-chip {
-  padding: 8px 16px;
-  background: var(--sun-surface);
+  padding: 8px 14px;
+  background: transparent;
   border: 1px solid var(--sun-border);
-  border-radius: 20px;
+  border-radius: 999px;
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-base);
+  font-weight: 500;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s, color 0.2s;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
   font-family: inherit;
 }
 
 .hint-chip:hover {
   border-color: var(--sun-border-light);
   color: var(--sun-text);
-  background: var(--sun-surface-hover);
+  background: var(--sun-row-hover);
 }
 
 /* ── 消息列表 ── */
@@ -1458,12 +1479,12 @@ watch(() => loading.value, async (val) => {
   right: 0;
   bottom: calc(100% + 6px);
   margin: 0;
-  padding: 6px;
+  padding: 4px;
   list-style: none;
   background: var(--sun-black);
   border: 1px solid var(--sun-border);
-  border-radius: 12px;
-  box-shadow: var(--composer-shadow-focus);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated);
   max-height: 240px;
   overflow-y: auto;
   z-index: 20;
@@ -1473,15 +1494,16 @@ watch(() => loading.value, async (val) => {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 7px 8px;
+  border-radius: calc(var(--radius-lg) - 2px);
   cursor: pointer;
   font-size: var(--sun-font-base);
+  transition: background 0.15s;
 }
 
 .skill-suggest li:hover,
-.skill-suggest li.active {
-  background: var(--sun-surface-hover, rgba(128, 128, 128, 0.12));
+.skill-suggest li.is-highlighted {
+  background: var(--sun-row-hover);
 }
 
 .skill-suggest-id {

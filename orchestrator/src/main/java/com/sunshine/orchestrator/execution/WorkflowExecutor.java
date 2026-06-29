@@ -15,14 +15,11 @@ import com.sunshine.orchestrator.execution.retry.NodeRetryPolicyResolver;
 import com.sunshine.orchestrator.execution.retry.OnFailureAction;
 import com.sunshine.orchestrator.execution.retry.WorkflowRunSession;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
-import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
+import com.sunshine.orchestrator.execution.workflow.WorkflowStaticPlanRunner;
 import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
 import com.sunshine.orchestrator.plan.PlanJson;
 import com.sunshine.orchestrator.plan.PlanNodeAttempt;
 import com.sunshine.orchestrator.plan.PlanNodeTrace;
-import com.sunshine.orchestrator.plan.PlanRunFinalizer;
-import com.sunshine.orchestrator.plan.PlanTimeline;
-import com.sunshine.orchestrator.plan.StaticPlanAdapter;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.plan.PausePhase;
 import com.sunshine.orchestrator.plan.PendingInteraction;
@@ -45,7 +42,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -57,7 +53,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class WorkflowExecutor {
 
-    private final WorkflowDefinitionLoader loader;
+    private final WorkflowStaticPlanRunner staticPlanRunner;
     private final NodeHandlerRegistry registry;
     private final ExecutionPlanStore executionPlanStore;
     private final WorkflowNodeLabelService labelService;
@@ -65,8 +61,6 @@ public class WorkflowExecutor {
     private final NodeRetryExecutor nodeRetryExecutor;
     private final UpstreamOutputResolver upstreamOutputResolver;
     private final PlanExecutionAuditService planExecutionAuditService;
-    private final PlanDisplayNameEnricher displayNameEnricher;
-    private final PlanRunFinalizer planRunFinalizer;
     private final AnswerGroundingChecker groundingChecker;
     private final AgentGroundingProperties groundingProperties;
     private final WorkflowNodeRecoveryService workflowNodeRecoveryService;
@@ -75,61 +69,7 @@ public class WorkflowExecutor {
     private final GenerationRegistry generationRegistry;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
-        ExecutionPlan plan = ctx.plan();
-        if (plan == null || plan.mode() != ExecutionMode.WORKFLOW) {
-            return Flux.just(StreamToken.content("内部错误：WorkflowExecutor 收到非 workflow 计划"));
-        }
-        String workflowId = plan.workflowId();
-        Optional<WorkflowDefinition> defOpt = loader.load(workflowId);
-        if (defOpt.isEmpty()) {
-            log.error("[WorkflowExecutor] 未找到 workflow 定义: {}", workflowId);
-            return Flux.just(StreamToken.content(
-                    "工作流「" + workflowId + "」未定义，请联系管理员。"));
-        }
-        WorkflowDefinition def = defOpt.get();
-        PlanJson rawPlan = StaticPlanAdapter.from(def, plan.reason());
-        return Mono.fromCallable(() -> executionPlanStore.createDraft(ctx, rawPlan))
-                .subscribeOn(Schedulers.boundedElastic())
-                .doOnSuccess(planId -> planExecutionAuditService.created(
-                        ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), planId))
-                .flatMapMany(planId -> runStaticAsPlan(ctx, planId, def, rawPlan));
-    }
-
-    /** 静态 workflow 物化为 Plan 并走与 plan-workflow 相同的 DAG 执行与终态路径 */
-    private Flux<StreamToken> runStaticAsPlan(
-            ExecutionStreamContext ctx,
-            String planId,
-            WorkflowDefinition def,
-            PlanJson rawPlan) {
-        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
-        session.bindUserQuery(ctx.userContent());
-        session.bindTraceMessageId(ctx.assistantMsgId());
-        PlanJson enriched = displayNameEnricher.enrich(rawPlan);
-        List<StreamToken> planTokens = PlanTimeline.planStep(session, enriched, planId);
-        ExecutionStreamContext execCtx = ctx.withPersistedPlanId(planId);
-        WorkflowRunSession runSession = new WorkflowRunSession();
-        int nodeCount = enriched.nodes().size();
-        log.info("[WorkflowExecutor] 静态工作流 {} 物化为 Plan id={} 链={}",
-                def.id(), planId, PlanTimeline.planChainSummary(enriched));
-        return Mono.fromRunnable(() -> {
-                    executionPlanStore.markValidated(planId, enriched);
-                    executionPlanStore.markRunning(planId);
-                })
-                .subscribeOn(Schedulers.boundedElastic())
-                .doOnSuccess(v -> planExecutionAuditService.validated(
-                        ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
-                        planId, nodeCount))
-                .thenMany(Flux.concat(
-                        Flux.fromIterable(planTokens),
-                        executeDynamicDefinition(def, execCtx, runSession)
-                                .concatWith(Flux.defer(() -> planRunFinalizer.postWorkflow(ctx, planId, runSession)))
-                                .doOnError(err -> {
-                                    executionPlanStore.markFailed(planId, err.getMessage());
-                                    planExecutionAuditService.failed(
-                                            ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(),
-                                            ctx.tenantId(), planId, err.getMessage());
-                                })
-                ));
+        return staticPlanRunner.execute(ctx, this::executeDynamicDefinition);
     }
 
     /** 动态 Plan 物化后的 DAG 执行（plan 步由 PlanWorkflowExecutor 前置下发） */

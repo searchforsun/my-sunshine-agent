@@ -597,6 +597,10 @@ public final class ProcessingStepMerger {
             if (!isRunning(step) && !isAwaitingInteractionStep(step)) {
                 continue;
             }
+            // HITL/Recovery 等待中停止：保留 awaiting 元数据，续跑 re-await
+            if (isAwaitingInteractionStep(step)) {
+                continue;
+            }
             if ("think".equals(phase) || "agent".equals(phase) || "generate".equals(phase)
                     || phase.startsWith("think") || phase.startsWith("tool")) {
                 steps.set(i, toPaused(step));

@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
+import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.hitl.WorkflowHitlScope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,6 +63,10 @@ public class ToolNodeHandler implements NodeHandler {
                 })
                 .doOnSuccess(result -> auditToolCall(spec, streamCtx, tool, invokeParams, result))
                 .onErrorResume(e -> {
+                    if (e instanceof HitlWaitInterruptedException
+                            || (e.getCause() instanceof HitlWaitInterruptedException)) {
+                        return Mono.error(e);
+                    }
                     log.warn("[ToolNodeHandler] 工具 {} 失败: {}", tool, e.getMessage());
                     auditToolFailure(spec, streamCtx, tool, invokeParams, e.getMessage());
                     return Mono.just(NodeResult.fail(e.getMessage()));

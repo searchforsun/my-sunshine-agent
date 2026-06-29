@@ -12,6 +12,7 @@ import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
+import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PausePhase;
 import com.sunshine.orchestrator.plan.PendingInteraction;
@@ -365,6 +366,19 @@ public class GenerationJob {
     }
 
     private void handleError(Throwable error, Consumer<Throwable> onError) {
+        if (finished.get()) {
+            return;
+        }
+        if (error instanceof HitlWaitInterruptedException
+                || (error.getCause() instanceof HitlWaitInterruptedException)) {
+            cancelOrphanTimer();
+            disposeLlmSubscription();
+            emitFinishSteps(true);
+            emitPausedWorkflowSteps();
+            streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
+            persistFinal(MessageStatus.INTERRUPTED, () -> onError.accept(error));
+            return;
+        }
         cancelOrphanTimer();
         disposeLlmSubscription();
         emitFinishSteps(true);

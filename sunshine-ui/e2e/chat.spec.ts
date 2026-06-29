@@ -12,7 +12,7 @@ test.describe('AI 对话页', () => {
   test('快捷提示可触发对话', async ({ page }) => {
     await page.goto('/chat')
 
-    await page.getByRole('button', { name: 'RAG 原理' }).click()
-    await expect(page.locator('.user-bubble').filter({ hasText: '介绍一下 RAG 的原理' })).toBeVisible()
+    await page.getByRole('button', { name: '制度检索' }).click()
+    await expect(page.locator('.user-bubble').filter({ hasText: '检索知识库：公司的差旅报销制度有哪些要点？' })).toBeVisible()
   })
 })

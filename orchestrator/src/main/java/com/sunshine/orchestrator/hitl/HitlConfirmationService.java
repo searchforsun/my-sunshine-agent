@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -102,6 +103,9 @@ public class HitlConfirmationService {
             StepEventBridge.emit(timelineBridgeId, session -> session.resolveHitlPending(hitlStatus));
             flushHookTimeline(timelineBridgeId);
             return approved;
+        } catch (java.util.concurrent.CancellationException e) {
+            log.info("[HITL] token={} tool={} 等待被中断（暂停/断连）", token, toolId);
+            throw new HitlWaitInterruptedException();
         } catch (TimeoutException e) {
             log.warn("[HITL] token={} tool={} 确认超时", token, toolId);
             waiters.remove(token);
@@ -111,6 +115,10 @@ public class HitlConfirmationService {
             flushHookTimeline(timelineBridgeId);
             return false;
         } catch (Exception e) {
+            if (isWaitInterrupted(e)) {
+                log.info("[HITL] token={} tool={} 等待被中断（暂停/断连）", token, toolId);
+                throw new HitlWaitInterruptedException();
+            }
             log.warn("[HITL] token={} tool={} 等待异常: {}", token, toolId, e.getMessage());
             waiters.remove(token);
             redis.delete(redisKey(token));
@@ -154,6 +162,9 @@ public class HitlConfirmationService {
             String hitlStatus = approved ? HitlStepMeta.STATUS_APPROVED : HitlStepMeta.STATUS_DENIED;
             emitSessionStep(session, nodeStepId, s -> s.resolveHitlPendingOnStep(nodeStepId, hitlStatus), genMsgId);
             return approved;
+        } catch (java.util.concurrent.CancellationException e) {
+            log.info("[HITL] workflow token={} tool={} 等待被中断（暂停/断连）", token, toolId);
+            throw new HitlWaitInterruptedException();
         } catch (TimeoutException e) {
             log.warn("[HITL] workflow token={} tool={} 确认超时", token, toolId);
             waiters.remove(token);
@@ -162,6 +173,10 @@ public class HitlConfirmationService {
             emitSessionStep(session, nodeStepId, s -> s.resolveHitlPendingOnStep(nodeStepId, HitlStepMeta.STATUS_DENIED), genMsgId);
             return false;
         } catch (Exception e) {
+            if (isWaitInterrupted(e)) {
+                log.info("[HITL] workflow token={} tool={} 等待被中断（暂停/断连）", token, toolId);
+                throw new HitlWaitInterruptedException();
+            }
             log.warn("[HITL] workflow token={} tool={} 等待异常: {}", token, toolId, e.getMessage());
             waiters.remove(token);
             redis.delete(redisKey(token));
@@ -223,6 +238,9 @@ public class HitlConfirmationService {
                         s -> s.resolveHitlPendingOnStep(toolStepId, HitlStepMeta.STATUS_DENIED), genMsgId);
             }
             return approved;
+        } catch (java.util.concurrent.CancellationException e) {
+            log.info("[HITL] react resume token={} tool={} 等待被中断（暂停/断连）", token, toolId);
+            throw new HitlWaitInterruptedException();
         } catch (TimeoutException e) {
             log.warn("[HITL] react resume token={} tool={} 确认超时", token, toolId);
             waiters.remove(token);
@@ -232,6 +250,10 @@ public class HitlConfirmationService {
                     s -> s.resolveHitlPendingOnStep(toolStepId, HitlStepMeta.STATUS_DENIED), genMsgId);
             return false;
         } catch (Exception e) {
+            if (isWaitInterrupted(e)) {
+                log.info("[HITL] react resume token={} tool={} 等待被中断（暂停/断连）", token, toolId);
+                throw new HitlWaitInterruptedException();
+            }
             log.warn("[HITL] react resume token={} tool={} 等待异常: {}", token, toolId, e.getMessage());
             waiters.remove(token);
             redis.delete(redisKey(token));
@@ -284,6 +306,9 @@ public class HitlConfirmationService {
             String hitlStatus = approved ? HitlStepMeta.STATUS_APPROVED : HitlStepMeta.STATUS_DENIED;
             emitSessionStep(session, nodeStepId, s -> s.resolveHitlPendingOnStep(nodeStepId, hitlStatus), genMsgId);
             return approved;
+        } catch (java.util.concurrent.CancellationException e) {
+            log.info("[HITL] resume token={} tool={} 等待被中断（暂停/断连）", token, resolvedToolId);
+            throw new HitlWaitInterruptedException();
         } catch (TimeoutException e) {
             log.warn("[HITL] resume token={} tool={} 确认超时", token, resolvedToolId);
             waiters.remove(token);
@@ -292,6 +317,10 @@ public class HitlConfirmationService {
             emitSessionStep(session, nodeStepId, s -> s.resolveHitlPendingOnStep(nodeStepId, HitlStepMeta.STATUS_DENIED), genMsgId);
             return false;
         } catch (Exception e) {
+            if (isWaitInterrupted(e)) {
+                log.info("[HITL] resume token={} tool={} 等待被中断（暂停/断连）", token, resolvedToolId);
+                throw new HitlWaitInterruptedException();
+            }
             log.warn("[HITL] resume token={} tool={} 等待异常: {}", token, resolvedToolId, e.getMessage());
             waiters.remove(token);
             redis.delete(redisKey(token));
@@ -351,7 +380,7 @@ public class HitlConfirmationService {
             if (!target.equals(waiter.messageId())) {
                 return false;
             }
-            waiter.future().complete(false);
+            waiter.future().cancel(true);
             redis.delete(redisKey(entry.getKey()));
             return true;
         });
@@ -466,5 +495,14 @@ public class HitlConfirmationService {
 
     private static String redisKey(String token) {
         return REDIS_KEY_PREFIX + token;
+    }
+
+    private static boolean isWaitInterrupted(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof HitlWaitInterruptedException || t instanceof java.util.concurrent.CancellationException) {
+                return true;
+            }
+        }
+        return false;
     }
 }
