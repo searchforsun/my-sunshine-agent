@@ -7,7 +7,7 @@ import {
   type PlanNodeTrace,
 } from '../api/executionPlans'
 import { resolveStepDurationMs, stepLifecycle, type ProcessingStep } from '../api/processingSteps'
-import { relocateAgentNodeHitl } from '../api/hitlSteps'
+import { isHitlSummaryAwaiting, relocateAgentNodeHitl, reapplyPendingHitl, type HitlConfirmationPayload } from '../api/hitlSteps'
 import { isRecoveryAwaiting, isRecoverySkipped, isRecoveryTerminated, stepHasHitlAwaiting } from '../api/recoverySteps'
 
 export type DagNodeStatus = 'pending' | 'running' | 'done' | 'error' | 'awaiting_confirm' | 'paused' | 'terminated' | 'skipped'
@@ -126,7 +126,7 @@ function mapStepStatus(step?: ProcessingStep): DagNodeStatus {
   if (lc === 'terminated') return 'terminated'
   if (lc === 'done') return 'done'
   if (lc === 'skipped') return 'skipped'
-  if (stepHasHitlAwaiting(step)) return 'awaiting_confirm'
+  if (stepHasHitlAwaiting(step) || isHitlSummaryAwaiting(step)) return 'awaiting_confirm'
   if (lc === 'running') return 'running'
   if (lc === 'error') return 'error'
   return 'pending'
@@ -165,13 +165,18 @@ export function buildDagNodes(
   traces?: PlanNodeTrace[],
   skillCatalog: SkillCatalogIndexEntry[] = [],
   planStep?: ProcessingStep,
+  pendingHitl?: HitlConfirmationPayload,
 ): DagNodeView[] {
   if (!graph?.nodes?.length) return []
   const stepByNodeId = new Map<string, ProcessingStep>()
   for (const s of nodeSteps) {
-    if (s.id.startsWith('node-')) {
-      stepByNodeId.set(s.id.slice('node-'.length), relocateAgentNodeHitl(s))
+    if (!s.id.startsWith('node-')) continue
+    let step = relocateAgentNodeHitl(s)
+    if (pendingHitl) {
+      const merged = reapplyPendingHitl([step], pendingHitl)
+      step = merged[0] ?? step
     }
+    stepByNodeId.set(s.id.slice('node-'.length), step)
   }
   const traceByNodeId = new Map<string, PlanNodeTrace>()
   for (const t of traces ?? []) {

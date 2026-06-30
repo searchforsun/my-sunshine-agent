@@ -18,7 +18,8 @@ export function stepHasHitlAwaiting(step?: ProcessingStep): boolean {
   if (!step) return false
   if (isTerminalNodeStep(step)) return false
   if (isHitlAwaiting(step)) return true
-  return step.subSteps?.some(s => isHitlAwaiting(s)) ?? false
+  if (isHitlSummaryAwaiting(step)) return true
+  return step.subSteps?.some(s => isHitlAwaiting(s) || isHitlSummaryAwaiting(s)) ?? false
 }
 
 /** 节点或 subSteps 内承载 HITL 面板的步骤（含 pending / summary 等待态） */

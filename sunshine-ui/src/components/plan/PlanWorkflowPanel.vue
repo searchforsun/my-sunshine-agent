@@ -11,7 +11,8 @@ import {
 import { getExecutionPlan, type ExecutionPlanDetail, type PlanGraph } from '../../api/executionPlans'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../../api/skills'
 import { buildDagNodes, type DagNodeView } from '../../utils/planGraph'
-import { relocateAgentNodeHitl } from '../../api/hitlSteps'
+import { relocateAgentNodeHitl, type HitlConfirmationPayload } from '../../api/hitlSteps'
+import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
 import PlanDagGraph from './PlanDagGraph.vue'
@@ -28,6 +29,7 @@ const props = defineProps<{
   live?: boolean
   executionPlanId?: string
   userQuery?: string
+  pendingHitlConfirmation?: HitlConfirmationPayload
 }>()
 
 const { open: openDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()
@@ -178,9 +180,7 @@ const inlineApprovalGraph = computed((): PlanGraph | undefined => {
 
 const graphSource = computed(() => frozenGraph.value ?? inlineApprovalGraph.value ?? undefined)
 
-const nodeSteps = computed(() =>
-  props.allSteps.filter(s => s.phase === 'node' && s.id.startsWith('node-')),
-)
+const nodeSteps = computed(() => listPlanDagNodeSteps(props.allSteps))
 
 const dagNodes = computed(() =>
   buildDagNodes(
@@ -189,6 +189,7 @@ const dagNodes = computed(() =>
     props.live ? undefined : planDetail.value?.nodes,
     skillCatalog.value,
     props.planStep,
+    props.pendingHitlConfirmation,
   ),
 )
 
@@ -208,7 +209,7 @@ function stepForNode(nodeId: string): ProcessingStep | undefined {
   if (nodeId === 'start') {
     return props.planStep
   }
-  const step = nodeSteps.value.find(s => s.id === `node-${nodeId}`)
+  const step = props.allSteps.find(s => s.id === `node-${nodeId}`)
   return step?.id.startsWith('node-') ? relocateAgentNodeHitl(step) : step
 }
 

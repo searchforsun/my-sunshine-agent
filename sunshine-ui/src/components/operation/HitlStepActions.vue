@@ -70,7 +70,7 @@ const showPanel = computed(() => {
   if (isHitlSummaryAwaiting(props.step)) return true
   if (hitlConfirmationForStep(props.step, props.pendingConfirmation)) return true
   const active = props.step.summary?.active?.trim() ?? ''
-  return isHitlToolStep(props.step)
+  return (isHitlToolStep(props.step) || props.step.id.startsWith('node-'))
     && active.includes('等待')
     && active.includes('确认')
 })

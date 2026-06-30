@@ -9,7 +9,6 @@ import com.sunshine.orchestrator.execution.ExecutionDispatcher;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.PlanWorkflowExecutor;
 import com.sunshine.orchestrator.execution.ReactExecutor;
-import com.sunshine.orchestrator.execution.ReactResumeContextSupport;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -19,6 +18,7 @@ import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.util.StreamErrorMessages;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
@@ -182,20 +182,26 @@ public class ChatController {
                 generationId, ctx.assistantMsgId(), ctx.conversationId(),
                 ctx.userId(), ctx.tenantId(), ctx.intent(), ctx.userContent());
         registry.register(job);
-        StepEventBridge.bindGenerationFlush(ctx.assistantMsgId(), job::emitStreamToken);
+        long streamEpoch = StepEventBridge.currentStreamEpoch(ctx.assistantMsgId());
+        job.bindStreamEpoch(streamEpoch);
+        StepEventBridge.bindGenerationFlush(ctx.assistantMsgId(), streamEpoch, job::emitStreamToken);
 
         boolean planWorkflowResume = resume
                 && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
+        boolean reactRestartResume = resume && !planWorkflowResume && isReactStoredIntent(ctx.intent());
         java.util.List<ProcessingStep> initialSteps = resume
                 ? new java.util.ArrayList<>(ProcessingStepMerger.fromJson(ctx.existingStepsJson()))
                 : java.util.List.of();
-        boolean reactHitlResume = resume
-                && ProcessingStepMerger.findReactAwaitingHitlStep(initialSteps) != null;
-        // Plan / ReAct-HITL 续跑不拼接暂停前 partial 正文（ReAct-HITL 须先 re-await）
-        String initialContent = resume && !planWorkflowResume && !reactHitlResume
+        if (reactRestartResume) {
+            initialSteps.clear();
+            initialSteps.addAll(ProcessingStepMerger.retainIntentStepsOnly(
+                    ProcessingStepMerger.fromJson(ctx.existingStepsJson())));
+        }
+        String initialContent = resume && !planWorkflowResume && !reactRestartResume
                 ? ctx.existingContent() : "";
         StringBuilder buffer = new StringBuilder(initialContent != null ? initialContent : "");
-        String initialReasoning = resume ? ctx.existingReasoning() : "";
+        String initialReasoning = resume && !planWorkflowResume && !reactRestartResume
+                ? ctx.existingReasoning() : "";
         Consumer<String> flushPartial = content ->
                 flushScheduler.flushPartial(ctx.assistantMsgId(), content);
         Runnable onComplete = () -> Mono.fromRunnable(() -> {
@@ -291,7 +297,18 @@ public class ChatController {
                     if (jobFactory != null && streamService != null && registry != null) {
                         return startResumeWithRedis(prep);
                     }
-                    conversationService.commitResumeStart(prep.assistantId(), prep.resumeContent());
+                    conversationService.commitResumeStart(
+                            prep.assistantId(),
+                            prep.resumeContent(),
+                            prep.resumeReasoning(),
+                            prep.stepsJson(),
+                            prep.contentBlocksJson());
+                    if (prep.reactRestart()) {
+                        StepEventBridge.clearForReactRestart(prep.assistantId());
+                        if (hitlConfirmationService != null) {
+                            hitlConfirmationService.invalidateForMessageRestart(prep.assistantId());
+                        }
+                    }
                     ChatStreamContext ctx = prep.toStreamContext();
                     AtomicReference<ExecutionMode> executionMode = initialExecutionMode(ctx);
                     Flux<StreamToken> chunkFlux = resolveChunkFlux(ctx, executionMode, true);
@@ -304,8 +321,18 @@ public class ChatController {
         String generationId = streamService.createGeneration(
                 prep.conversationId(), prep.assistantId(), prep.userId(), prep.tenantId(), prep.intent());
         return Mono.fromCallable(() -> {
-                    registry.findByMessageId(prep.assistantId())
+                    String msgId = prep.assistantId();
+                    StepEventBridge.unbindGenerationFlush(msgId);
+                    registry.findByMessageId(msgId)
                             .ifPresent(job -> registry.cancel(job.getGenerationId()));
+                    registry.releaseBlockingWaitsForMessage(msgId);
+                    if (prep.reactRestart()) {
+                        StepEventBridge.bumpStreamEpoch(msgId);
+                        StepEventBridge.clearForReactRestart(msgId);
+                        if (hitlConfirmationService != null) {
+                            hitlConfirmationService.invalidateForMessageRestart(msgId);
+                        }
+                    }
                     registry.clearStaleLockIfNoActiveJob(prep.assistantId());
                     if (!registry.tryLockMessage(prep.assistantId(), generationId)) {
                         throw new BizException(OrchestratorErrorCode.GENERATION_IN_PROGRESS);
@@ -314,7 +341,12 @@ public class ChatController {
                         registry.unlockMessage(prep.assistantId());
                         throw new BizException(OrchestratorErrorCode.GENERATION_IN_PROGRESS);
                     }
-                    conversationService.commitResumeStart(prep.assistantId(), prep.resumeContent());
+                    conversationService.commitResumeStart(
+                            prep.assistantId(),
+                            prep.resumeContent(),
+                            prep.resumeReasoning(),
+                            prep.stepsJson(),
+                            prep.contentBlocksJson());
                     return prep.toStreamContext();
                 })
                 .flatMapMany(ctx -> {
@@ -333,13 +365,17 @@ public class ChatController {
         if (resume) {
             boolean planWorkflowResume = executionPlanStore
                     .findResumableForMessage(ctx.assistantMsgId()).isPresent();
-            java.util.List<ProcessingStep> steps = ProcessingStepMerger.fromJson(ctx.existingStepsJson());
-            boolean reactHitlResume = ProcessingStepMerger.findReactAwaitingHitlStep(steps) != null;
-            if (!planWorkflowResume && !reactHitlResume && StringUtils.hasText(ctx.existingContent())) {
+            boolean reactRestartResume = !planWorkflowResume && isReactStoredIntent(ctx.intent());
+            if (!planWorkflowResume && !reactRestartResume && StringUtils.hasText(ctx.existingContent())) {
                 buffer.append(ctx.existingContent());
             }
         }
-        StringBuilder reasoningBuffer = new StringBuilder(resume ? ctx.existingReasoning() : "");
+        boolean planWorkflowResumeOnResume = resume
+                && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
+        boolean reactRestartOnResume = resume && !planWorkflowResumeOnResume && isReactStoredIntent(ctx.intent());
+        StringBuilder reasoningBuffer = new StringBuilder(
+                resume && !planWorkflowResumeOnResume && !reactRestartOnResume
+                        ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
                 ProcessingStepMerger.fromJson(ctx.existingStepsJson()));
         QueryRewriteTrace.bind(ctx.assistantMsgId());
@@ -445,23 +481,7 @@ public class ChatController {
             ExecutionPlan plan = executionPlanParser.parseStoredIntent(ctx.intent());
             executionMode.set(plan.mode());
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan);
-            if (resume && plan.mode() == ExecutionMode.REACT && hitlConfirmationService != null) {
-                java.util.List<ProcessingStep> existingSteps =
-                        ProcessingStepMerger.fromJson(ctx.existingStepsJson());
-                ProcessingStep awaiting = ProcessingStepMerger.findReactAwaitingHitlStep(existingSteps);
-                if (awaiting != null) {
-                    java.util.List<String> resumeInjected =
-                            ReactResumeContextSupport.buildInjectedBlocks(existingSteps);
-                    return prepareChunkFlux(
-                            Mono.fromCallable(() -> hitlConfirmationService.resumeReactAwaiting(
-                                            awaiting.id(), ctx.assistantMsgId(), awaiting))
-                                    .subscribeOn(Schedulers.boundedElastic())
-                                    .flatMapMany(approved -> approved
-                                            ? reactExecutor.executeWithInjected(execCtx, resumeInjected)
-                                            : Flux.empty()));
-                }
-            }
-            // 仅 simple-llm 续写 partial；ReAct/workflow 须走原执行器（含 HITL）
+            // ReAct 暂停续跑：仅保留 intent，从规划推理重新开始（见 ChatStreamContextFactory）
             if (plan.mode() == ExecutionMode.SIMPLE_LLM && StringUtils.hasText(ctx.existingContent())) {
                 return prepareChunkFlux(simpleLlmExecutor.execute(execCtx));
             }
@@ -511,6 +531,13 @@ public class ChatController {
         ));
     }
 
+    private boolean isReactStoredIntent(String intent) {
+        if (intent == null || intent.isBlank()) {
+            return true;
+        }
+        return executionPlanParser.parseStoredIntent(intent).mode() == ExecutionMode.REACT;
+    }
+
     private AtomicReference<ExecutionMode> initialExecutionMode(ChatStreamContext ctx) {
         AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
         if (ctx.intent() != null) {
@@ -530,7 +557,12 @@ public class ChatController {
                 ctx.intent(),
                 ctx.userId(),
                 ctx.tenantId(),
-                plan);
+                plan,
+                null,
+                null,
+                null,
+                false,
+                ctx.reactRestart());
     }
 
     private static List<StreamToken> drainStepTokens(List<ProcessingStep> stepEmissions) {
@@ -544,14 +576,11 @@ public class ChatController {
     }
 
     private void maybeUpdateTitle(ChatStreamContext ctx) {
-        if (!ctx.autoTitle() || ctx.conversationTitle() == null || !"新对话".equals(ctx.conversationTitle())) {
+        if (!ctx.autoTitle()) {
             return;
         }
-        String title = ctx.userContent().length() > 28
-                ? ctx.userContent().substring(0, 28)
-                : ctx.userContent();
-        Mono.fromRunnable(() -> conversationService.updateTitle(
-                        ctx.conversationId(), ctx.userId(), ctx.tenantId(), title))
+        Mono.fromRunnable(() -> conversationService.autoTitleIfDefault(
+                        ctx.conversationId(), ctx.userId(), ctx.tenantId(), ctx.userContent()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
     }

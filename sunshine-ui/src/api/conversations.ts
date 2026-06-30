@@ -2,10 +2,11 @@ import { apiHeaders } from '../stores/authStore'
 import { resolveApiBase } from './config'
 import type { ExecutionPreference } from './executionModes'
 import { isExecutionPreference } from './executionModes'
+import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
 import { migrateV1Step, normalizeStep, parseContentBlocks } from './processingSteps'
 import type { ContentBlock } from './contentInterleave'
-import { hydratePlanAnswerFromContent } from './contentInterleave'
+import { hydratePlanAnswerFromContent, normalizeRestoredInterleavedContent, sanitizePlanAssistantMessage } from './contentInterleave'
 import { ApiError, parseBffPayload } from './apiError'
 
 const API_BASE = () => resolveApiBase()
@@ -117,7 +118,9 @@ function mapDetail(raw: Record<string, unknown>): ConversationDetail {
       executionPreference: isExecutionPreference(m.executionPreference) ? m.executionPreference : undefined,
     }
     if (msg.role === 'assistant') {
+      sanitizePlanAssistantMessage(msg)
       hydratePlanAnswerFromContent(msg)
+      normalizeRestoredInterleavedContent(msg as ChatMessage)
     }
     return msg
   })

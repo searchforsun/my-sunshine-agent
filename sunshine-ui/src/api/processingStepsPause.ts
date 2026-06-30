@@ -1,4 +1,19 @@
 import type { ProcessingStep, StepMetadata } from './processingSteps'
+import { isHitlSummaryAwaiting } from './hitlSteps'
+import { isRecoveryAwaiting, stepHasHitlAwaiting } from './recoverySteps'
+
+/** 续跑 SSE 重放：HITL/Recovery 节点勿被 pending 回退为「等待中」 */
+export function shouldIgnoreResumeNodeStepReplay(steps: ProcessingStep[], incoming: ProcessingStep): boolean {
+  if (!incoming.id.startsWith('node-')) return false
+  const existing = steps.find(s => s.id === incoming.id)
+  if (!existing) return false
+  const hadAwaiting = stepHasHitlAwaiting(existing)
+    || isHitlSummaryAwaiting(existing)
+    || isRecoveryAwaiting(existing)
+  if (!hadAwaiting) return false
+  return incoming.lifecycle === 'pending'
+    && (existing.lifecycle === 'running' || existing.lifecycle === 'paused')
+}
 
 /** 续跑 SSE 重放：已完成的 intent/plan 不应再被 pending/running 覆盖 */
 export function shouldIgnoreResumeStepReplay(steps: ProcessingStep[], incoming: ProcessingStep): boolean {
@@ -91,6 +106,22 @@ function toPendingResumeStep(step: ProcessingStep): ProcessingStep {
   }
 }
 
+/** HITL / Recovery 暂停续跑：恢复 running 并保留 metadata，供后端 checkpoint re-await */
+function reactivateAwaitingPausedStep(step: ProcessingStep): ProcessingStep {
+  const recovery = isRecoveryAwaiting(step)
+  const defaultActive = recovery ? '发生错误' : '等待用户确认执行写操作'
+  const active = step.summary?.active?.includes('暂停')
+    ? defaultActive
+    : (step.summary?.active?.trim() || defaultActive)
+  return {
+    ...step,
+    lifecycle: 'running',
+    summary: { ...step.summary, active, after: undefined },
+    endedAt: undefined,
+    durationMs: undefined,
+  }
+}
+
 function reactivatePausedStepIfNeeded(step: ProcessingStep): ProcessingStep {
   let next = step
   if (step.subSteps?.length) {
@@ -99,6 +130,9 @@ function reactivatePausedStepIfNeeded(step: ProcessingStep): ProcessingStep {
   }
   const lc = next.lifecycle
   if (lc !== 'paused') return next
+  if (stepHasHitlAwaiting(next) || isHitlSummaryAwaiting(next) || isRecoveryAwaiting(next)) {
+    return reactivateAwaitingPausedStep(next)
+  }
   if (next.id.startsWith('node-')) return toPendingResumeStep(next)
   const phase = next.phase ?? ''
   if (phase === 'think' || phase === 'agent' || phase === 'generate'
@@ -108,7 +142,23 @@ function reactivatePausedStepIfNeeded(step: ProcessingStep): ProcessingStep {
   return next
 }
 
-/** 续跑开始：paused 节点重置为 pending（等待中），清除暂停前 HITL/Recovery 态 */
+/** Plan workflow 节点 HITL 暂停续跑（与 ReAct reactivatePausedReactHitlSteps 对称） */
+export function reactivatePausedPlanHitlNodes(steps: ProcessingStep[] | undefined): ProcessingStep[] {
+  if (!steps?.length) return steps ?? []
+  return steps.map(step => {
+    if (!step.id.startsWith('node-') || step.lifecycle !== 'paused') return step
+    if (!stepHasHitlAwaiting(step) && !isHitlSummaryAwaiting(step)) return step
+    return reactivateAwaitingPausedStep(step)
+  })
+}
+
+/** ReAct 续跑：仅保留意图识别步 */
+export function retainIntentStepsOnly(steps: ProcessingStep[] | undefined): ProcessingStep[] {
+  if (!steps?.length) return []
+  return steps.filter(s => s.id === 'intent' || s.phase === 'intent')
+}
+
+/** 续跑开始：普通 paused 节点重置 pending；HITL/Recovery awaiting 保留 metadata 并恢复 running */
 export function reactivatePausedStepsForResume(steps: ProcessingStep[] | undefined): ProcessingStep[] {
   if (!steps?.length) return steps ?? []
   return steps.map(reactivatePausedStepIfNeeded)
@@ -127,6 +177,9 @@ export function reactivateOtherPausedWorkflowNodes(
     if (!step.id.startsWith('node-') || step.id === activeNodeStepId) return step
     const lc = step.lifecycle
     if (lc !== 'paused') return step
+    if (stepHasHitlAwaiting(step) || isHitlSummaryAwaiting(step) || isRecoveryAwaiting(step)) {
+      return step
+    }
     return toPendingResumeStep(step)
   })
 }

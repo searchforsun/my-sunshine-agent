@@ -22,7 +22,8 @@ public record ExecutionStreamContext(
         String persistedPlanId,
         WorkflowHitlScope.Binding workflowHitl,
         ResumeInteractionHint resumeInteraction,
-        boolean workflowHitlPreApproved) {
+        boolean workflowHitlPreApproved,
+        boolean reactRestart) {
     public ExecutionStreamContext(
             String conversationId,
             String assistantMsgId,
@@ -36,21 +37,44 @@ public record ExecutionStreamContext(
             ExecutionPlan plan) {
         this(conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning, legacyIntent,
-                userId, tenantId, plan, null, null, null, false);
+                userId, tenantId, plan, null, null, null, false, false);
+    }
+
+    public ExecutionStreamContext(
+            String conversationId,
+            String assistantMsgId,
+            String userContent,
+            MemoryContext memory,
+            String existingContent,
+            String existingReasoning,
+            String legacyIntent,
+            String userId,
+            String tenantId,
+            ExecutionPlan plan,
+            String persistedPlanId,
+            WorkflowHitlScope.Binding workflowHitl,
+            ResumeInteractionHint resumeInteraction,
+            boolean workflowHitlPreApproved) {
+        this(conversationId, assistantMsgId, userContent, memory,
+                existingContent, existingReasoning, legacyIntent,
+                userId, tenantId, plan, persistedPlanId, workflowHitl, resumeInteraction,
+                workflowHitlPreApproved, false);
     }
 
     public ExecutionStreamContext withPlan(ExecutionPlan newPlan) {
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning, legacyIntent,
-                userId, tenantId, newPlan, persistedPlanId, workflowHitl, resumeInteraction, workflowHitlPreApproved);
+                userId, tenantId, newPlan, persistedPlanId, workflowHitl, resumeInteraction,
+                workflowHitlPreApproved, reactRestart);
     }
 
     public ExecutionStreamContext withPersistedPlanId(String planId) {
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning, legacyIntent,
-                userId, tenantId, plan, planId, workflowHitl, resumeInteraction, workflowHitlPreApproved);
+                userId, tenantId, plan, planId, workflowHitl, resumeInteraction,
+                workflowHitlPreApproved, reactRestart);
     }
 
     /** Workflow tool 节点 HITL — 跨线程随 streamCtx 传递，勿用 ThreadLocal */
@@ -58,14 +82,16 @@ public record ExecutionStreamContext(
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning, legacyIntent,
-                userId, tenantId, plan, persistedPlanId, binding, resumeInteraction, workflowHitlPreApproved);
+                userId, tenantId, plan, persistedPlanId, binding, resumeInteraction,
+                workflowHitlPreApproved, reactRestart);
     }
 
     public ExecutionStreamContext withResumeInteraction(ResumeInteractionHint hint) {
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning, legacyIntent,
-                userId, tenantId, plan, persistedPlanId, workflowHitl, hint, workflowHitlPreApproved);
+                userId, tenantId, plan, persistedPlanId, workflowHitl, hint,
+                workflowHitlPreApproved, reactRestart);
     }
 
     /** HITL 续跑 re-await 已确认，跳过 ToolNodeHandler 二次确认 */
@@ -73,6 +99,6 @@ public record ExecutionStreamContext(
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning, legacyIntent,
-                userId, tenantId, plan, persistedPlanId, workflowHitl, null, true);
+                userId, tenantId, plan, persistedPlanId, workflowHitl, null, true, reactRestart);
     }
 }

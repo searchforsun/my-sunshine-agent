@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
 import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, ref } from 'vue'
 import { useTheme } from '../composables/useTheme'
@@ -88,6 +88,54 @@ function handleSwitchConversation(id: string) {
   })()
 }
 
+function conversationMenuOptions(id: string): DropdownOption[] {
+  return [
+    { label: '重命名', key: `rename:${id}` },
+    { type: 'divider', key: `div:${id}` },
+    { label: '删除', key: `delete:${id}`, props: { class: 'history-dropdown-delete' } },
+  ]
+}
+
+function handleConversationMenu(key: string) {
+  const sep = key.indexOf(':')
+  if (sep < 0) return
+  const action = key.slice(0, sep)
+  const id = key.slice(sep + 1)
+  if (action === 'rename') handleRenameConversation(id)
+  else if (action === 'delete') handleDeleteConversation(id)
+}
+
+function handleRenameConversation(id: string) {
+  const conv = chatStore.conversations.find(c => c.id === id)
+  const inputValue = ref(conv?.title ?? '')
+  dialog.create({
+    class: 'sunshine-dialog',
+    showIcon: false,
+    title: '重命名对话',
+    content: () => h(NInput, {
+      value: inputValue.value,
+      maxlength: 64,
+      placeholder: '输入对话标题',
+      autofocus: true,
+      onUpdateValue: (v: string) => { inputValue.value = v },
+    }),
+    positiveText: '保存',
+    negativeText: '取消',
+    onPositiveClick: () => submitRename(id, inputValue.value.trim()),
+  })
+}
+
+async function submitRename(id: string, title: string): Promise<boolean> {
+  if (!title) return false
+  try {
+    await chatStore.rename(id, title)
+    return true
+  } catch (e) {
+    console.error('[MainLayout] 重命名失败', e)
+    return false
+  }
+}
+
 function handleDeleteConversation(id: string) {
   const conv = chatStore.conversations.find(c => c.id === id)
   const title = conv?.title || '该对话'
@@ -152,16 +200,23 @@ onMounted(() => {
             @click="handleSwitchConversation(conv.id)"
           >
             <span class="history-item-title">{{ conv.title }}</span>
-            <button
-              class="history-item-delete"
-              @click.stop="handleDeleteConversation(conv.id)"
-              title="删除对话"
+            <NDropdown
+              trigger="click"
+              size="small"
+              placement="bottom-end"
+              :options="conversationMenuOptions(conv.id)"
+              @select="handleConversationMenu"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+              <button
+                type="button"
+                class="history-item-more"
+                title="更多"
+                aria-label="更多"
+                @click.stop
+              >
+                <EllipsisHorizontal width="16" height="16" />
+              </button>
+            </NDropdown>
           </div>
         </div>
         <div class="history-empty" v-else>
@@ -505,10 +560,10 @@ onMounted(() => {
   line-height: var(--sun-line);
 }
 
-.history-item-delete {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
+.history-item-more {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   border: none;
   background: transparent;
   color: var(--sun-text-muted);
@@ -518,14 +573,18 @@ onMounted(() => {
   justify-content: center;
   flex-shrink: 0;
   opacity: 0;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
 }
 
-.history-item:hover .history-item-delete { opacity: 0.45; }
-.history-item-delete:hover {
+.history-item:hover .history-item-more,
+.history-item.active .history-item-more {
+  opacity: 0.55;
+}
+
+.history-item-more:hover {
   opacity: 1 !important;
-  color: var(--sun-red);
-  background: rgba(248, 113, 113, 0.12);
+  color: var(--sun-text);
+  background: var(--sun-row-hover);
 }
 
 .history-empty {

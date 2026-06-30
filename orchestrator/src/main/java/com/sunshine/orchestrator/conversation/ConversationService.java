@@ -77,12 +77,35 @@ public class ConversationService {
         return messageRepo.findByConversationIdOrderBySeqAsc(conversationId);
     }
 
+    private static final String DEFAULT_TITLE = "新对话";
+    private static final int AUTO_TITLE_MAX_LEN = 28;
+
     @Transactional
     public ChatConversationEntity updateTitle(String id, String userId, String tenantId, String title) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
         conv.setTitle(title);
         conv.setUpdatedAt(Instant.now());
         return conversationRepo.save(conv);
+    }
+
+    /** 首条 user 消息后立即从正文推导标题（仍为默认「新对话」时），避免流式过程中 loadDetail 回退 */
+    @Transactional
+    public ChatConversationEntity autoTitleIfDefault(String id, String userId, String tenantId, String userContent) {
+        if (userContent == null || userContent.isBlank()) {
+            return getOwned(id, userId, tenantId);
+        }
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        if (!DEFAULT_TITLE.equals(conv.getTitle())) {
+            return conv;
+        }
+        return updateTitle(id, userId, tenantId, deriveAutoTitle(userContent));
+    }
+
+    public static String deriveAutoTitle(String userContent) {
+        String trimmed = userContent.strip();
+        return trimmed.length() > AUTO_TITLE_MAX_LEN
+                ? trimmed.substring(0, AUTO_TITLE_MAX_LEN)
+                : trimmed;
     }
 
     /** 记录本会话最近一次用户指定的 executionPreference（auto 也落库便于恢复） */
@@ -152,6 +175,24 @@ public class ConversationService {
             return msg;
         }
         return updateMessageContent(messageId, content, MessageStatus.STREAMING);
+    }
+
+    /** HITL/Recovery 待确认：续跑阻塞期间增量落库 steps，避免刷新仍见暂停快照 */
+    @Transactional
+    public ChatMessageEntity updateMessageStepsIfStreaming(String messageId, String stepsJson) {
+        if (stepsJson == null || stepsJson.isBlank()) {
+            return messageRepo.findById(messageId).orElse(null);
+        }
+        ChatMessageEntity msg = messageRepo.findById(messageId)
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
+        if (!MessageStatus.STREAMING.equals(msg.getStatus())) {
+            return msg;
+        }
+        msg.setSteps(stepsJson);
+        msg.setUpdatedAt(Instant.now());
+        ChatMessageEntity saved = messageRepo.save(msg);
+        touchConversation(msg.getConversationId());
+        return saved;
     }
 
     @Transactional
@@ -239,6 +280,24 @@ public class ConversationService {
     public void commitResumeStart(String messageId, String resumeContent) {
         incrementResumeCount(messageId);
         updateMessageContent(messageId, resumeContent != null ? resumeContent : "", MessageStatus.STREAMING);
+    }
+
+    /** ReAct/Plan 续跑重置：同步清空或覆盖 reasoning / steps / contentBlocks */
+    @Transactional
+    public void commitResumeStart(
+            String messageId,
+            String resumeContent,
+            String resumeReasoning,
+            String stepsJson,
+            String contentBlocksJson) {
+        incrementResumeCount(messageId);
+        updateMessage(
+                messageId,
+                resumeContent != null ? resumeContent : "",
+                resumeReasoning,
+                MessageStatus.STREAMING,
+                stepsJson,
+                contentBlocksJson);
     }
 
     /** cancel 时 job 已不在内存：强制将 streaming 消息标为 interrupted */

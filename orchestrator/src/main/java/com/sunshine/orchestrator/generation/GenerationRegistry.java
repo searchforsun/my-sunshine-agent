@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.WorkflowNodeRecoveryService;
@@ -65,6 +66,8 @@ public class GenerationRegistry {
             releaseBlockingWaits(job.getMessageId());
             workflowPauseService.requestPause(job.getMessageId());
             job.cancel();
+            StepEventBridge.unbindGenerationFlush(job.getMessageId());
+            StepEventBridge.bumpStreamEpoch(job.getMessageId());
             remove(generationId);
         }
     }

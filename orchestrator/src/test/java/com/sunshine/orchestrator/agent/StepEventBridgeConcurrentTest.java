@@ -83,6 +83,26 @@ class StepEventBridgeConcurrentTest {
     }
 
     @Test
+    void inactiveMainBridge_blocksEmitAndDrain() {
+        String assistantId = "msg-main";
+        String staleBridge = "main-stale";
+        String activeBridge = "main-active";
+        ConcurrentLinkedQueue<StreamToken> staleQueue = new ConcurrentLinkedQueue<>();
+        bind(staleBridge, staleQueue);
+        StepEventBridge.bindHitlBridge(staleBridge, assistantId, true);
+        ConcurrentLinkedQueue<StreamToken> activeQueue = new ConcurrentLinkedQueue<>();
+        bind(activeBridge, activeQueue);
+        StepEventBridge.bindHitlBridge(activeBridge, assistantId, true);
+        StepEventBridge.registerMainRun(assistantId, activeBridge);
+
+        StepEventBridge.emit(staleBridge, session -> session.beginToolStep("tool-x", "tool"));
+        assertThat(staleQueue.poll()).isNull();
+
+        StepEventBridge.emit(activeBridge, session -> session.beginToolStep("tool-y", "tool"));
+        assertThat(lastStepId(drain(activeQueue))).startsWith("tool-y");
+    }
+
+    @Test
     void resolveHitlBridgeId_prefersToolUseBindingWhenMultipleSessions() {
         bind("msg-a", new ConcurrentLinkedQueue<>());
         bind("msg-b", new ConcurrentLinkedQueue<>());
@@ -102,6 +122,24 @@ class StepEventBridgeConcurrentTest {
         StepEventBridge.bindHitl("msg-b", true);
 
         assertThat(StepEventBridge.resolveHitlBridgeId()).isEqualTo("msg-b");
+    }
+
+    @Test
+    void generationFlush_staleEpochDoesNotRouteAfterBump() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        StepEventBridge.bind("msg-stale", session, new ConcurrentLinkedQueue<>());
+        boundIds.add("msg-stale");
+        List<StreamToken> flushed = new ArrayList<>();
+        StepEventBridge.bindGenerationFlush("msg-stale", flushed::add);
+
+        session.beginReasoningRound();
+        StepEventBridge.emitReasoningChunk("msg-stale", "旧推理");
+        assertThat(flushed).hasSize(1);
+
+        flushed.clear();
+        StepEventBridge.bumpStreamEpoch("msg-stale");
+        StepEventBridge.emitReasoningChunk("msg-stale", "不应刷入");
+        assertThat(flushed).isEmpty();
     }
 
     @Test

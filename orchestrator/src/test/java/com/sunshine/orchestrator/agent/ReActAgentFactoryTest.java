@@ -84,7 +84,7 @@ class ReActAgentFactoryTest {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.SUB, "run-1", null, MemoryContext.empty(), "q", List.of(),
                 "u1", "default", null, null, List.of("list_finance_messages"), null, 4,
-                TimelineBinding.SUB_COMPRESSED);
+                TimelineBinding.SUB_COMPRESSED, false);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
     }
 
@@ -109,6 +109,7 @@ class ReActAgentFactoryTest {
                 tools,
                 overlay,
                 0,
-                TimelineBinding.SUB_COMPRESSED);
+                TimelineBinding.SUB_COMPRESSED,
+                false);
     }
 }

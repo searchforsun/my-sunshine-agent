@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +55,7 @@ class HitlConfirmationServiceTest {
         properties = new AgentHitlProperties();
         properties.setEnabled(true);
         properties.setTimeoutSec(5);
+        lenient().when(generationJob.getGenerationId()).thenReturn("gen-test");
         service = new HitlConfirmationService(
                 properties,
                 toolCatalogService,

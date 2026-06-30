@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.processing.ContentBlockAccumulator;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
@@ -62,6 +63,7 @@ public class GenerationJob {
     private final java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>();
     private final ContentBlockAccumulator contentBlockAccumulator = new ContentBlockAccumulator();
     private ThinkStepMapper thinkMapper;
+    private volatile long boundStreamEpoch = Long.MIN_VALUE;
 
     GenerationJob(String generationId, String messageId, String conversationId,
             String userId, String tenantId, String intent, String userQuery,
@@ -88,6 +90,11 @@ public class GenerationJob {
         this.executionPlanStore = executionPlanStore;
         this.pauseProperties = pauseProperties != null ? pauseProperties : new AgentPauseProperties();
         this.flushLock = flushLock;
+    }
+
+    /** 与 StepEventBridge.STREAM_EPOCH 对齐，防止已取消 job 的 onChunk 写入新 Redis 流 */
+    public void bindStreamEpoch(long epoch) {
+        this.boundStreamEpoch = epoch;
     }
 
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
@@ -225,7 +232,7 @@ public class GenerationJob {
 
     /** HITL 等旁路事件 — 写入 Redis 流，不进入消息正文缓冲 */
     public void emitOutbound(String wireJson) {
-        if (wireJson == null || wireJson.isBlank() || finished.get()) {
+        if (wireJson == null || wireJson.isBlank() || finished.get() || !isStreamEpochValid()) {
             return;
         }
         long nextSeq = seq.incrementAndGet();
@@ -234,7 +241,7 @@ public class GenerationJob {
 
     /** Hook 队列中的 step / step_delta 即时刷入 Redis（HITL 阻塞前须先下发 think / tool 步骤） */
     public void emitStreamToken(StreamToken token) {
-        if (token == null || finished.get()) {
+        if (token == null || finished.get() || !isStreamEpochValid()) {
             return;
         }
         if (token.isStep()) {
@@ -263,6 +270,9 @@ public class GenerationJob {
 
     private void emitMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
+        if (!isStreamEpochValid()) {
+            return;
+        }
         int maxChars = properties.maxChunkChars();
         if (maxChars <= 0) {
             emitSingleMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
@@ -279,6 +289,7 @@ public class GenerationJob {
         long nextSeq = seq.incrementAndGet();
         if (token.isStep()) {
             ProcessingStepMerger.upsert(stepsBuffer, token.step());
+            maybeFlushStepsForAwaitingInteraction();
             streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
             return;
         }
@@ -463,6 +474,15 @@ public class GenerationJob {
         return ProcessingStepMerger.toPersistJson(stepsBuffer);
     }
 
+    /** 续跑 HITL 阻塞前将 awaiting 步落库，刷新后 DAG/抽屉与 SSE 一致 */
+    private void maybeFlushStepsForAwaitingInteraction() {
+        boolean awaiting = stepsBuffer.stream().anyMatch(ProcessingStepMerger::isAwaitingInteractionStep);
+        if (!awaiting) {
+            return;
+        }
+        flushScheduler.flushStepsPartial(messageId, stepsJson());
+    }
+
     private void emitFinishSteps() {
         emitFinishSteps(false);
     }
@@ -477,6 +497,11 @@ public class GenerationJob {
             emitMappedChunk(token, mysqlBuffer != null ? mysqlBuffer : new StringBuilder(),
                     directPartialFlush(), lastFlush);
         }
+    }
+
+    private boolean isStreamEpochValid() {
+        return boundStreamEpoch >= 0
+                && StepEventBridge.isStreamEpochValid(messageId, boundStreamEpoch);
     }
 
     private Consumer<String> guardFlush(Consumer<String> flushPartial) {

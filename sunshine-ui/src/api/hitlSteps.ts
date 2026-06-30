@@ -31,11 +31,12 @@ function isHitlResolved(step: ProcessingStep): boolean {
 
 /** 后端常先发 summary.active，metadata.hitl 与 confirmation 可能晚到 */
 export function isHitlSummaryAwaiting(step: ProcessingStep): boolean {
-  if (!isHitlToolStep(step)) return false
+  if (!isHitlCarrierStep(step)) return false
   if (isHitlResolved(step)) return false
   if (resolveHitlStatus(step) === 'awaiting') return true
   const active = step.summary?.active?.trim() ?? ''
-  return active.includes('等待用户确认')
+  const detail = step.detail?.trim() ?? ''
+  return active.includes('等待用户确认') || detail.includes('等待用户确认')
 }
 
 export function isHitlAwaiting(step: ProcessingStep): boolean {
@@ -44,6 +45,16 @@ export function isHitlAwaiting(step: ProcessingStep): boolean {
 
 export function isToolStepId(stepId: string): boolean {
   return stepId.startsWith('tool-') || stepId.startsWith('tool@')
+}
+
+/** Plan workflow 业务 node 步（含 tool 写操作 HITL，id 为 node-{id}） */
+export function isPlanWorkflowBizNode(step: ProcessingStep): boolean {
+  return step.id.startsWith('node-') && step.id !== 'node-answer'
+}
+
+/** 可承载 HITL 的步骤：ReAct tool 步或 Plan workflow 业务 node */
+export function isHitlCarrierStep(step: ProcessingStep): boolean {
+  return isHitlToolStep(step) || isPlanWorkflowBizNode(step)
 }
 
 /** ReAct 主 timeline 工具步（id 或 phase 任一命中） */
@@ -74,8 +85,27 @@ function toolIdFromStepId(stepId: string): string | undefined {
   return toolId || undefined
 }
 
+function buildPendingFromPlanNode(step: ProcessingStep): HitlConfirmationPayload | undefined {
+  if (!isPlanWorkflowBizNode(step)) return undefined
+  const awaiting = isHitlAwaiting(step) || isHitlSummaryAwaiting(step)
+  if (!awaiting) return undefined
+  const token = resolveHitlToken(step) ?? ''
+  const toolDisplayName = step.metadata?.hitlToolDisplayName?.trim()
+    || step.label?.trim()
+    || '写操作工具'
+  return {
+    confirmationToken: token,
+    toolId: toolDisplayName,
+    toolDisplayName,
+    paramsSummary: step.metadata?.hitlParamsSummary?.trim() ?? '',
+    expiresAt: step.metadata?.hitlExpiresAt ?? 0,
+  }
+}
+
 /** 从工具步 metadata / summary 推导 pending confirmation（不依赖 type:confirmation 事件） */
 export function buildPendingFromStep(step: ProcessingStep): HitlConfirmationPayload | undefined {
+  const fromPlan = buildPendingFromPlanNode(step)
+  if (fromPlan) return fromPlan
   const toolId = toolIdFromStepId(step.id)
   if (!toolId) return undefined
   const awaiting = isHitlAwaiting(step) || isHitlSummaryAwaiting(step)
@@ -98,7 +128,12 @@ export function syncPendingHitlFromSteps(
 ): HitlConfirmationPayload | undefined {
   if (!steps?.length) return undefined
   for (let i = steps.length - 1; i >= 0; i--) {
-    const pending = buildPendingFromStep(steps[i])
+    const step = steps[i]
+    if (isPlanWorkflowBizNode(step)) {
+      const pending = buildPendingFromPlanNode(step)
+      if (pending) return pending
+    }
+    const pending = buildPendingFromStep(step)
     if (pending) return pending
   }
   for (let i = steps.length - 1; i >= 0; i--) {
@@ -144,6 +179,9 @@ export function hasHitlPanel(step: ProcessingStep): boolean {
 /** 时间线中是否存在待用户操作的 HITL 步（ReAct 主 timeline 或 agent 节点 subSteps） */
 export function stepsHaveAwaitingHitl(steps: ProcessingStep[] | undefined): boolean {
   if (!steps?.length) return false
+  if (steps.some(s => isPlanWorkflowBizNode(s) && (isHitlAwaiting(s) || isHitlSummaryAwaiting(s)))) {
+    return true
+  }
   if (steps.some(s => isToolStepId(s.id) && (isHitlAwaiting(s) || isHitlSummaryAwaiting(s)))) {
     return true
   }
@@ -163,6 +201,11 @@ export function resolveHitlUiKey(
   if (!steps?.length) return ''
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
+    if (isPlanWorkflowBizNode(s)) {
+      const token = resolveHitlToken(s)
+      if (token && (isHitlAwaiting(s) || hasHitlPanel(s))) return token
+      if (isHitlSummaryAwaiting(s)) return s.id
+    }
     if (isToolStepId(s.id)) {
       const token = resolveHitlToken(s)
       if (token && (isHitlAwaiting(s) || hasHitlPanel(s))) return token
@@ -189,6 +232,11 @@ export function hitlConfirmationForStep(
 ): HitlConfirmationPayload | undefined {
   if (!payload?.toolId?.trim()) return undefined
   if (isHitlAwaiting(step)) return undefined
+  if (isPlanWorkflowBizNode(step)) {
+    if (isHitlResolved(step)) return undefined
+    if (!isHitlSummaryAwaiting(step) && !hasHitlPanel(step)) return undefined
+    return payload
+  }
   const prefix = toolStepIdPrefix(payload.toolId.trim())
   if (!isToolStepId(step.id) || !step.id.startsWith(prefix)) return undefined
   return payload
@@ -294,6 +342,13 @@ export function mergeHitlIntoRunningToolStep(
   payload: HitlConfirmationPayload,
 ): ProcessingStep[] {
   const hitlPatch = buildHitlPatch(payload)
+  const planIdx = findHitlTargetPlanNodeIndex(steps, true)
+  if (planIdx >= 0) {
+    const prev = steps[planIdx]
+    const next = [...steps]
+    next[planIdx] = { ...prev, metadata: { ...prev.metadata, ...hitlPatch } }
+    return next
+  }
   const topIdx = findHitlTargetToolStepIndex(steps, payload.toolId, true)
   if (topIdx >= 0 && isToolStepId(steps[topIdx].id)) {
     const prev = steps[topIdx]
@@ -335,6 +390,33 @@ function stripHitlMetadata(meta?: ProcessingStep['metadata']): ProcessingStep['m
   if (!meta) return meta
   const { hitlStatus, hitlToken, hitlToolDisplayName, hitlParamsSummary, hitlExpiresAt, ...rest } = meta
   return Object.keys(rest).length > 0 ? rest : undefined
+}
+
+/** attachMode：仅匹配 running/paused 且待确认的 Plan 业务 node */
+function findHitlTargetPlanNodeIndex(
+  steps: ProcessingStep[],
+  attachMode = false,
+): number {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const s = steps[i]
+    if (!isPlanWorkflowBizNode(s)) continue
+    if (attachMode) {
+      const lc = s.lifecycle
+      if (lc !== 'running' && lc !== 'paused' && lc !== 'pending') continue
+    }
+    if (isHitlResolved(s)) continue
+    if (isHitlAwaiting(s) || isHitlSummaryAwaiting(s) || hasHitlPanel(s)) return i
+    if (attachMode && s.lifecycle === 'running') return i
+  }
+  if (attachMode) return -1
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const s = steps[i]
+    if (!isPlanWorkflowBizNode(s)) continue
+    if (isHitlResolved(s)) continue
+    if (s.lifecycle === 'done' || s.lifecycle === 'skipped') continue
+    return i
+  }
+  return -1
 }
 
 /** attachMode：仅匹配 running 工具步，避免 confirmation 早到误挂前序节点 */

@@ -1,4 +1,5 @@
 import type { ChatMessage } from './chat'
+import { normalizeRestoredInterleavedContent } from './contentInterleave'
 import { ApiError, friendlyErrorMessage } from './apiError'
 
 let pageUnloading = false
@@ -88,8 +89,12 @@ export function splitContentAndStreamError(
 }
 
 export function resolveAssistantDisplayContent(
-  msg: Pick<ChatMessage, 'content' | 'streamError' | 'status'>,
+  msg: Pick<ChatMessage, 'content' | 'streamError' | 'status' | 'steps'>,
 ): string {
+  if (msg.steps?.some(s => s.phase === 'plan')) {
+    const fromStep = msg.steps.find(s => s.id === 'node-answer')?.result?.trim()
+    if (fromStep) return fromStep
+  }
   return splitContentAndStreamError(msg).content
 }
 
@@ -166,6 +171,7 @@ export function sanitizeRestoredMessages(msgs: ChatMessage[]): ChatMessage[] {
     if (m.status === 'failed' || isLikelyStreamFailureContent(m.content)) {
       hydrateStreamError(m)
     }
+    normalizeRestoredInterleavedContent(m)
   }
   return msgs
 }

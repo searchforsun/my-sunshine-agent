@@ -608,6 +608,16 @@ public final class ProcessingStepMerger {
         }
     }
 
+    /** ReAct 暂停续跑：仅保留意图识别步，从规划推理重新开始 */
+    public static List<ProcessingStep> retainIntentStepsOnly(List<ProcessingStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return List.of();
+        }
+        return steps.stream()
+                .filter(s -> s != null && "intent".equals(s.id()))
+                .toList();
+    }
+
     /** ReAct 写工具 HITL 待确认步（暂停续跑须先 re-await，勿走 simple-llm 续写） */
     public static ProcessingStep findReactAwaitingHitlStep(List<ProcessingStep> steps) {
         if (steps == null || steps.isEmpty()) {

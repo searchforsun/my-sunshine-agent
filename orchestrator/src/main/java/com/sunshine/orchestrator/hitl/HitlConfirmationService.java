@@ -53,6 +53,8 @@ public class HitlConfirmationService {
     private final ObjectMapper objectMapper;
 
     private final ConcurrentHashMap<String, HitlPendingWaiter> waiters = new ConcurrentHashMap<>();
+    /** messageId → 续跑重规划代数；await 期间代数变化则中止刷 SSE */
+    private final ConcurrentHashMap<String, Long> hitlEpochByMessage = new ConcurrentHashMap<>();
 
     /** 阻塞等待用户确认；超时或拒绝返回 false */
     public boolean awaitConfirmation(String timelineBridgeId, String toolId, Map<String, String> params) {
@@ -77,31 +79,48 @@ public class HitlConfirmationService {
             String generationMessageId,
             String toolId,
             Map<String, String> params) {
+        if (!isActiveTimelineBridge(timelineBridgeId, generationMessageId)) {
+            throw new HitlWaitInterruptedException();
+        }
+        String boundGenerationId = resolveBoundGenerationId(generationMessageId);
+        if (boundGenerationId == null) {
+            throw new HitlWaitInterruptedException();
+        }
+        long epoch = currentHitlEpoch(generationMessageId);
+        ensureHitlEpoch(generationMessageId, epoch);
         String displayName = toolCatalogService.displayName(toolId);
-        flushHookTimeline(timelineBridgeId);
-        progressBridgeToolStep(timelineBridgeId, HitlLabels.pending(displayName));
-        progressBridgeToolStep(timelineBridgeId, HitlLabels.awaiting());
+        flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
+        ensureHitlEpoch(generationMessageId, epoch);
+        progressBridgeToolStep(timelineBridgeId, HitlLabels.pending(displayName),
+                generationMessageId, boundGenerationId, epoch);
+        progressBridgeToolStep(timelineBridgeId, HitlLabels.awaiting(),
+                generationMessageId, boundGenerationId, epoch);
 
         String token = UUID.randomUUID().toString();
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         waiters.put(token, new HitlPendingWaiter(generationMessageId, toolId, future));
         long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
         storeToken(token, generationMessageId, toolId, expiresAt);
+        ensureHitlEpoch(generationMessageId, epoch);
         StepEventBridge.emit(timelineBridgeId, session -> session.attachHitlPending(
                 token, displayName, summarizeParams(params), expiresAt));
-        flushHookTimeline(timelineBridgeId);
-        emitConfirmation(generationMessageId, toolId, params, token, expiresAt);
+        flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
+        emitConfirmation(generationMessageId, toolId, params, token, expiresAt, epoch, boundGenerationId);
         try {
             boolean approved = future.get(properties.getTimeoutSec(), TimeUnit.SECONDS);
+            ensureHitlEpoch(generationMessageId, epoch);
+            ensureGenerationBound(generationMessageId, boundGenerationId);
             log.info("[HITL] token={} tool={} approved={}", token, toolId, approved);
             if (approved) {
-                progressBridgeToolStep(timelineBridgeId, HitlLabels.approved(displayName));
+                progressBridgeToolStep(timelineBridgeId, HitlLabels.approved(displayName),
+                        generationMessageId, boundGenerationId, epoch);
             } else {
-                progressBridgeToolStep(timelineBridgeId, HitlLabels.denied());
+                progressBridgeToolStep(timelineBridgeId, HitlLabels.denied(),
+                        generationMessageId, boundGenerationId, epoch);
             }
             String hitlStatus = approved ? HitlStepMeta.STATUS_APPROVED : HitlStepMeta.STATUS_DENIED;
             StepEventBridge.emit(timelineBridgeId, session -> session.resolveHitlPending(hitlStatus));
-            flushHookTimeline(timelineBridgeId);
+            flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
             return approved;
         } catch (java.util.concurrent.CancellationException e) {
             log.info("[HITL] token={} tool={} 等待被中断（暂停/断连）", token, toolId);
@@ -110,9 +129,10 @@ public class HitlConfirmationService {
             log.warn("[HITL] token={} tool={} 确认超时", token, toolId);
             waiters.remove(token);
             redis.delete(redisKey(token));
-            progressBridgeToolStep(timelineBridgeId, HitlLabels.denied());
+            progressBridgeToolStep(timelineBridgeId, HitlLabels.denied(),
+                    generationMessageId, boundGenerationId, epoch);
             StepEventBridge.emit(timelineBridgeId, session -> session.resolveHitlPending(HitlStepMeta.STATUS_DENIED));
-            flushHookTimeline(timelineBridgeId);
+            flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
             return false;
         } catch (Exception e) {
             if (isWaitInterrupted(e)) {
@@ -122,7 +142,8 @@ public class HitlConfirmationService {
             log.warn("[HITL] token={} tool={} 等待异常: {}", token, toolId, e.getMessage());
             waiters.remove(token);
             redis.delete(redisKey(token));
-            progressBridgeToolStep(timelineBridgeId, HitlLabels.denied());
+            progressBridgeToolStep(timelineBridgeId, HitlLabels.denied(),
+                    generationMessageId, boundGenerationId, epoch);
             return false;
         } finally {
             waiters.remove(token);
@@ -351,9 +372,76 @@ public class HitlConfirmationService {
         return toolCatalogService.isWriteTool(toolId);
     }
 
+    private void progressBridgeToolStep(
+            String timelineBridgeId,
+            String activeSummary,
+            String generationMessageId,
+            String boundGenerationId,
+            long epoch) {
+        if (!isActiveTimelineBridge(timelineBridgeId, generationMessageId)) {
+            return;
+        }
+        ensureHitlEpoch(generationMessageId, epoch);
+        if (!isGenerationBound(generationMessageId, boundGenerationId)) {
+            return;
+        }
+        StepEventBridge.emit(timelineBridgeId, session -> session.progressCurrentToolStep(activeSummary));
+        flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
+    }
+
     private void progressBridgeToolStep(String timelineBridgeId, String activeSummary) {
         StepEventBridge.emit(timelineBridgeId, session -> session.progressCurrentToolStep(activeSummary));
         flushHookTimeline(timelineBridgeId);
+    }
+
+    private String resolveBoundGenerationId(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return null;
+        }
+        return generationRegistry.findByMessageId(messageId.strip())
+                .map(GenerationJob::getGenerationId)
+                .orElse(null);
+    }
+
+    private void ensureGenerationBound(String messageId, String boundGenerationId) {
+        if (!isGenerationBound(messageId, boundGenerationId)) {
+            throw new HitlWaitInterruptedException();
+        }
+    }
+
+    private boolean isGenerationBound(String messageId, String boundGenerationId) {
+        if (!StringUtils.hasText(messageId) || !StringUtils.hasText(boundGenerationId)) {
+            return false;
+        }
+        return generationRegistry.findByMessageId(messageId.strip())
+                .map(job -> boundGenerationId.equals(job.getGenerationId()))
+                .orElse(false);
+    }
+
+    private long currentHitlEpoch(String messageId) {
+        return hitlEpochByMessage.getOrDefault(messageId.strip(), 0L);
+    }
+
+    private void ensureHitlEpoch(String messageId, long epoch) {
+        if (!StringUtils.hasText(messageId)) {
+            throw new HitlWaitInterruptedException();
+        }
+        if (currentHitlEpoch(messageId) != epoch) {
+            throw new HitlWaitInterruptedException();
+        }
+    }
+
+    /** 暂停/续跑后旧 HITL 线程不得再向新 generation 刷 step */
+    private boolean isActiveGeneration(String generationMessageId) {
+        if (!StringUtils.hasText(generationMessageId)) {
+            return false;
+        }
+        return generationRegistry.findByMessageId(generationMessageId.strip()).isPresent();
+    }
+
+    /** MAIN ReAct 续跑后旧 run bridge 不得再 emit / flush */
+    private boolean isActiveTimelineBridge(String timelineBridgeId, String generationMessageId) {
+        return StepEventBridge.isHookBridgeActive(timelineBridgeId);
     }
 
     public String rejectionMessage() {
@@ -367,6 +455,16 @@ public class HitlConfirmationService {
     /** 将 Hook 队列中尚未下发的 step 事件刷入 SSE */
     public void flushTimeline(String messageId) {
         flushHookTimeline(messageId);
+    }
+
+    /** ReAct 续跑重规划：作废进行中的 HITL await，避免旧线程向新 generation 刷 tool/confirmation */
+    public void invalidateForMessageRestart(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return;
+        }
+        String target = messageId.strip();
+        hitlEpochByMessage.merge(target, 0L, (k, v) -> v + 1);
+        cancelWaitersForMessage(target);
     }
 
     /** 用户暂停 generation：唤醒阻塞中的 HITL 等待，使 cancel 能完成并释放 message 锁 */
@@ -423,9 +521,29 @@ public class HitlConfirmationService {
         if (generationMessageId == null) {
             generationMessageId = timelineBridgeId;
         }
+        String boundGenerationId = resolveBoundGenerationId(generationMessageId);
+        if (boundGenerationId == null) {
+            return;
+        }
+        flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
+    }
+
+    private void flushHookTimeline(String timelineBridgeId, String messageId, String boundGenerationId) {
+        if (!isActiveTimelineBridge(timelineBridgeId, messageId)) {
+            return;
+        }
+        if (!isGenerationBound(messageId, boundGenerationId)) {
+            return;
+        }
+        String generationMessageId = StepEventBridge.hitlAssistantMessageId(timelineBridgeId);
+        if (generationMessageId == null) {
+            generationMessageId = timelineBridgeId;
+        }
         String genId = generationMessageId;
-        generationRegistry.findByMessageId(genId).ifPresent(job ->
-                StepEventBridge.drainHookQueueToGeneration(timelineBridgeId, job::emitStreamToken));
+        generationRegistry.findByMessageId(genId)
+                .filter(job -> boundGenerationId.equals(job.getGenerationId()))
+                .ifPresent(job -> StepEventBridge.drainHookQueueToGeneration(
+                        timelineBridgeId, job::emitStreamToken));
     }
 
     private void emitConfirmation(
@@ -434,9 +552,39 @@ public class HitlConfirmationService {
             Map<String, String> params,
             String token,
             long expiresAt) {
+        emitConfirmation(messageId, toolId, params, token, expiresAt, -1L, null);
+    }
+
+    private void emitConfirmation(
+            String messageId,
+            String toolId,
+            Map<String, String> params,
+            String token,
+            long expiresAt,
+            long epoch,
+            String boundGenerationId) {
+        if (epoch >= 0) {
+            ensureHitlEpoch(messageId, epoch);
+        }
+        if (boundGenerationId != null && !isGenerationBound(messageId, boundGenerationId)) {
+            throw new HitlWaitInterruptedException();
+        }
+        if (boundGenerationId == null && !isActiveGeneration(messageId)) {
+            throw new HitlWaitInterruptedException();
+        }
         String displayName = toolCatalogService.displayName(toolId);
         String paramsSummary = summarizeParams(params);
         String wire = flushScheduler.metaConfirmation(toolId, displayName, paramsSummary, token, expiresAt);
+        if (boundGenerationId != null) {
+            generationRegistry.findByMessageId(messageId)
+                    .filter(job -> boundGenerationId.equals(job.getGenerationId()))
+                    .ifPresentOrElse(
+                            job -> job.emitOutbound(wire),
+                            () -> {
+                                throw new HitlWaitInterruptedException();
+                            });
+            return;
+        }
         generationRegistry.findByMessageId(messageId).ifPresentOrElse(
                 job -> job.emitOutbound(wire),
                 () -> log.warn("[HITL] 无活跃 generation messageId={}，确认事件未下发", messageId));

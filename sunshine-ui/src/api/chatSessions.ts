@@ -28,17 +28,26 @@ import {
   reapplyPendingHitl,
   relocateAgentNodeHitl,
   applySyncedPendingHitl,
-  reactivatePausedReactHitlSteps,
 } from './hitlSteps'
-import { applyRecoveryDecision as applyRecoveryDecisionToSteps, stepHasHitlAwaiting } from './recoverySteps'
+import { applyRecoveryDecision as applyRecoveryDecisionToSteps } from './recoverySteps'
 import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId } from './processingSteps'
 import {
   pauseRunningWorkflowNodes,
   shouldIgnoreResumeStepReplay,
+  shouldIgnoreResumeNodeStepReplay,
   reactivatePausedStepsForResume,
+  reactivatePausedPlanHitlNodes,
   reactivateOtherPausedWorkflowNodes,
+  retainIntentStepsOnly,
 } from './processingStepsPause'
-import { appendInterleavedContent, appendSegmentContent, appendStepSegmentContent, beginContentSegment, beginStepContentSegment, endContentSegment, endStepContentSegment, maybeReanchorContentBlocksToTail } from './contentInterleave'
+import { isReactAssistantMessage, resolveResumeMode } from './resumeMode'
+import {
+  applyReactRestartSseGate,
+  createReactRestartGate,
+  shouldDropReactRestartSse,
+  shouldDropReactRestartStream,
+} from './reactRestartResume'
+import { appendInterleavedContent, appendSegmentContent, appendStepSegmentContent, beginContentSegment, beginStepContentSegment, endContentSegment, endStepContentSegment, maybeReanchorContentBlocksToTail, stripPlanDrawerLeakFromMessage, syncPlanAnswerContentFromStep } from './contentInterleave'
 import type { ProcessingStep } from './processingSteps'
 import type { ExecutionPreference } from './executionModes'
 
@@ -212,7 +221,7 @@ export function useChatSessions(
     s: SessionState,
     response: Response,
     thisRequestId: number,
-    options: { resume?: boolean; onMeta?: (meta: SseMeta) => void } = {},
+    options: { resume?: boolean; reactRestart?: boolean; resumeAtMs?: number; onMeta?: (meta: SseMeta) => void } = {},
   ): Promise<void> {
     const reader = response.body?.getReader()
     if (!reader) throw new ApiError('服务响应异常，请稍后重试', { kind: 'parse' })
@@ -220,6 +229,9 @@ export function useChatSessions(
     const decoder = new TextDecoder()
     let buf = ''
     let streamConversationId = s.id
+    let reactRestartGate = options.reactRestart
+      ? createReactRestartGate(options.resumeAtMs ?? Date.now())
+      : null
 
     while (true) {
       const { done, value } = await reader.read()
@@ -308,6 +320,11 @@ export function useChatSessions(
 
         if (parsed.kind === 'reasoning') {
           if (eventSeq !== null) updateLastSeq(eventSeq)
+          if (options.reactRestart && reactRestartGate
+              && shouldDropReactRestartStream(reactRestartGate, { kind: 'reasoning' })) {
+            onProgress?.(s.id)
+            continue
+          }
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
             const runningId = findRunningStepId(lastMsg.steps ?? [])
@@ -334,12 +351,27 @@ export function useChatSessions(
           if (eventSeq !== null) updateLastSeq(eventSeq)
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
+            if (options.reactRestart && reactRestartGate) {
+              const gateEvent = { kind: 'step' as const, step: parsed.step }
+              if (shouldDropReactRestartSse(reactRestartGate, gateEvent)) {
+                onProgress?.(s.id)
+                continue
+              }
+              reactRestartGate = applyReactRestartSseGate(reactRestartGate, gateEvent)
+            }
             if (options.resume && shouldIgnoreResumeStepReplay(lastMsg.steps ?? [], parsed.step)) {
+              onProgress?.(s.id)
+              continue
+            }
+            if (options.resume && shouldIgnoreResumeNodeStepReplay(lastMsg.steps ?? [], parsed.step)) {
               onProgress?.(s.id)
               continue
             }
             lastMsg.steps = upsertStep(lastMsg.steps ?? [], parsed.step)
             maybeReanchorContentBlocksToTail(lastMsg.steps, lastMsg.contentBlocks)
+            if (parsed.step.id === 'node-answer' && parsed.step.result?.trim()) {
+              syncPlanAnswerContentFromStep(lastMsg)
+            }
             if (options.resume && parsed.step.id.startsWith('node-')) {
               const lc = parsed.step.lifecycle
               if (lc === 'pending' || lc === 'running') {
@@ -352,6 +384,7 @@ export function useChatSessions(
             const synced = applySyncedPendingHitl(lastMsg.steps, lastMsg.pendingHitlConfirmation)
             lastMsg.steps = synced.steps
             lastMsg.pendingHitlConfirmation = synced.pending
+            stripPlanDrawerLeakFromMessage(lastMsg)
             bumpAssistantMessage(s)
           }
           onProgress?.(s.id)
@@ -360,6 +393,14 @@ export function useChatSessions(
 
         if (parsed.kind === 'step_delta') {
           if (eventSeq !== null) updateLastSeq(eventSeq)
+          if (options.reactRestart && reactRestartGate
+              && shouldDropReactRestartStream(reactRestartGate, {
+                kind: 'step_delta',
+                stepId: parsed.delta.stepId,
+              })) {
+            onProgress?.(s.id)
+            continue
+          }
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
             let delta = parsed.delta
@@ -370,6 +411,9 @@ export function useChatSessions(
                 }
               }
             lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
+            if (delta.stepId === 'node-answer' && (delta.channel === 'result' || delta.channel === 'output')) {
+              syncPlanAnswerContentFromStep(lastMsg)
+            }
             // ReAct think / workflow node-*：reasoning 仅在 steps 内展示
             const isThinkStep = delta.stepId === 'think' || delta.stepId.startsWith('think-')
             const isNodeStep = isWorkflowNodeStepId(delta.stepId)
@@ -388,6 +432,11 @@ export function useChatSessions(
           if (eventSeq !== null) updateLastSeq(eventSeq)
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
+            if (options.reactRestart && reactRestartGate
+                && shouldDropReactRestartSse(reactRestartGate, { kind: 'confirmation' })) {
+              onProgress?.(s.id)
+              continue
+            }
             const prevSteps = lastMsg.steps ?? []
             lastMsg.pendingHitlConfirmation = parsed.confirmation
             const merged = mergeHitlIntoRunningToolStep(prevSteps, parsed.confirmation)
@@ -397,6 +446,7 @@ export function useChatSessions(
             const synced = applySyncedPendingHitl(lastMsg.steps, lastMsg.pendingHitlConfirmation)
             lastMsg.steps = synced.steps
             lastMsg.pendingHitlConfirmation = synced.pending
+            stripPlanDrawerLeakFromMessage(lastMsg)
             bumpAssistantMessage(s)
           }
           onProgress?.(s.id)
@@ -442,6 +492,11 @@ export function useChatSessions(
 
         if (parsed.kind === 'chunk') {
           if (eventSeq !== null) updateLastSeq(eventSeq)
+          if (options.reactRestart && reactRestartGate
+              && shouldDropReactRestartStream(reactRestartGate, { kind: 'content' })) {
+            onProgress?.(s.id)
+            continue
+          }
           const lastMsg = s.messages[s.messages.length - 1]
           if (lastMsg?.role === 'assistant') {
             if (parsed.nodeStepId) {
@@ -458,6 +513,7 @@ export function useChatSessions(
             if (!lastMsg.status || lastMsg.status === 'interrupted') {
               lastMsg.status = 'streaming'
             }
+            stripPlanDrawerLeakFromMessage(lastMsg)
             bumpAssistantMessage(s)
           }
           onChunk?.(s.id, parsed.text)
@@ -563,7 +619,7 @@ export function useChatSessions(
         s.loading = false
         const last = s.messages[s.messages.length - 1]
         const aborted = s.abort?.signal.aborted ?? false
-        if (last?.role === 'assistant' && last.status === 'streaming' && !aborted) {
+        if (last?.role === 'assistant' && last.status === 'streaming' && !aborted && !isPageUnloading()) {
           hydrateStreamError(last)
           last.status = last.streamError ? 'failed' : 'completed'
         }
@@ -602,19 +658,26 @@ export function useChatSessions(
     const planWorkflowResume = target.steps?.some(
       step => step.id.startsWith('node-') && step.lifecycle === 'paused',
     )
-    const reactHitlResume = target.steps?.some(stepHasHitlAwaiting) ?? false
-    if (planWorkflowResume || reactHitlResume) {
+    const reactRestart = !planWorkflowResume
+      && resolveResumeMode(target) === 'regenerate'
+      && isReactAssistantMessage(target)
+    if (planWorkflowResume) {
       target.content = ''
       target.reasoning = ''
       target.contentBlocks = undefined
-    }
-    if (target.steps?.length) {
-      if (reactHitlResume) {
-        target.steps = reactivatePausedReactHitlSteps(target.steps)
-      } else if (planWorkflowResume) {
+      if (target.steps?.length) {
+        target.steps = reactivatePausedPlanHitlNodes(target.steps)
         target.steps = reactivatePausedStepsForResume(target.steps)
       }
+    } else if (reactRestart) {
+      target.content = ''
+      target.reasoning = ''
+      target.contentBlocks = undefined
+      target.pendingHitlConfirmation = undefined
+      target.steps = retainIntentStepsOnly(target.steps)
     }
+    stripPlanDrawerLeakFromMessage(target)
+    if (reactRestart || planWorkflowResume) bumpAssistantMessage(s)
 
     s.loading = true
     target.status = 'streaming'
@@ -622,6 +685,7 @@ export function useChatSessions(
     const thisRequestId = ++s.requestId
     onProgress?.(conversationId)
 
+    const resumeAtMs = Date.now()
     try {
       await cancelActiveGenerationForSession(s)
       const response = await fetch(`${API_BASE()}/api/chat/stream`, {
@@ -634,7 +698,7 @@ export function useChatSessions(
       await throwIfHttpError(response)
       await throwIfNotEventStream(response)
 
-      await consumeSseStream(s, response, thisRequestId, { resume: true })
+      await consumeSseStream(s, response, thisRequestId, { resume: true, reactRestart, resumeAtMs })
     } catch (err: unknown) {
       applyStreamError(s.messages, err)
       if (!isAbortError(err) && !isPageUnloading() && target.status === 'streaming') {
@@ -749,6 +813,7 @@ export function useChatSessions(
       if (last.steps?.length) {
         last.steps = pauseRunningWorkflowNodes(last.steps)
       }
+      stripPlanDrawerLeakFromMessage(last)
       if (last.status === 'streaming' || !last.status) {
         last.status = 'interrupted'
       }

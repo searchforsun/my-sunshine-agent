@@ -37,6 +37,7 @@
   --sun-blue: #58a6ff;
   --sun-green: #3fb950;
   --sun-red: #f85149;
+  --sun-purple: #9333ea;
 
   /* Spacing */
   --gap-xs: 4px;
@@ -233,6 +234,7 @@ html.theme-switching *::after {
   --sun-blue: #0969da;
   --sun-green: #1a7f37;
   --sun-red: #cf222e;
+  --sun-purple: #7e22ce;
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -388,6 +390,14 @@ html.theme-switching *::after {
 
 .sunshine-dialog .n-dialog__action .n-button--error-type {
   --n-border: none !important;
+}
+
+.n-dropdown-menu .history-dropdown-delete {
+  color: var(--sun-red) !important;
+}
+
+.n-dropdown-menu .history-dropdown-delete:hover {
+  color: var(--sun-red) !important;
 }
 
 /* ── 折叠元信息面板（思考过程 / 处理过程） ── */

@@ -31,8 +31,17 @@ import {
   type ActiveGeneration,
 } from '../composables/useActiveGeneration'
 
-/** 挂载/切换会话 hydration 期间，跳过 currentId watch 避免切到空 session */
-let sessionHydrating = false
+/** 挂载/切换会话 hydration 期间，跳过 currentId watch 并抑制续跑按钮闪现 */
+const sessionHydrating = ref(true)
+
+function isPendingAutoReconnect(msg: ChatMessage, idx: number): boolean {
+  if (msg.role !== 'assistant' || idx !== messages.value.length - 1) return false
+  const active = loadActiveGeneration()
+  const cid = chatStore.currentId
+  if (!active || active.conversationId !== cid) return false
+  if (active.messageId && msg.id && active.messageId !== msg.id) return false
+  return true
+}
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
 import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
@@ -43,6 +52,8 @@ import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
 import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
 import {
   isContentFullyInterleaved,
+  isPlanDrawerLeakContent,
+  normalizeRestoredInterleavedContent,
   resolveStreamingContentText,
 } from '../api/contentInterleave'
 import { ensurePlanTimelineSteps, hasPlanTimeline } from '../api/planHydrate'
@@ -109,6 +120,7 @@ const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 
 function shouldShowBottomContent(msg: ChatMessage, idx: number): boolean {
   if (!msg.content?.trim()) return false
+  if (isPlanDrawerLeakContent(msg)) return false
   if (loading.value && idx === messages.value.length - 1 && isContentFullyInterleaved(msg)) {
     return false
   }
@@ -484,7 +496,9 @@ async function ensureStreamRenderer(retries = 5): Promise<void> {
   }
 }
 
-function canResume(msg: { role: string; status?: string; intent?: string }, idx: number): boolean {
+function canResume(msg: { role: string; status?: string; intent?: string; id?: string }, idx: number): boolean {
+  if (sessionHydrating.value) return false
+  if (isPendingAutoReconnect(msg as ChatMessage, idx)) return false
   return msg.role === 'assistant'
     && !loading.value
     && idx === messages.value.length - 1
@@ -568,27 +582,90 @@ function markAssistantInterrupted(convId: string, messageId?: string) {
   }
 }
 
-async function hydrateSessionFromStore(cid: string) {
-  await chatStore.loadDetail(cid)
+function pickLongerContent(a: string, b: string): string {
+  if (!b.trim()) return a
+  if (!a.trim()) return b
+  return b.length >= a.length ? b : a
+}
+
+function pickPreferredAssistantStatus(
+  api?: ChatMessage['status'],
+  local?: ChatMessage['status'],
+): ChatMessage['status'] | undefined {
+  const rank = (s?: ChatMessage['status']) => {
+    if (s === 'completed') return 4
+    if (s === 'streaming') return 3
+    if (s === 'interrupted') return 2
+    if (s === 'failed') return 1
+    return 0
+  }
+  if (rank(local) >= rank(api)) return local ?? api
+  return api ?? local
+}
+
+/** 将会话内存中更完整的 assistant 尾消息合并进 restored，避免 loadDetail 陈旧数据覆盖重连进度 */
+function mergeAssistantTail(restoredLast: ChatMessage, localLast: ChatMessage): void {
+  restoredLast.content = pickLongerContent(restoredLast.content ?? '', localLast.content ?? '')
+  const localReasoning = localLast.reasoning?.trim() ?? ''
+  const restoredReasoning = restoredLast.reasoning?.trim() ?? ''
+  if (localReasoning.length >= restoredReasoning.length) {
+    restoredLast.reasoning = localLast.reasoning
+  }
+  const localSteps = localLast.steps?.length ?? 0
+  const restoredSteps = restoredLast.steps?.length ?? 0
+  const localIntentOnly = localSteps === 1 && localLast.steps?.[0]?.id === 'intent'
+  const localHasHitl = !localIntentOnly && (
+    stepsHaveAwaitingHitl(localLast.steps)
+    || !!localLast.pendingHitlConfirmation
+  )
+  if (localIntentOnly || localSteps >= restoredSteps || localHasHitl) {
+    restoredLast.steps = localLast.steps
+  }
+  if (localIntentOnly) {
+    restoredLast.content = localLast.content ?? ''
+    restoredLast.reasoning = localLast.reasoning ?? ''
+    restoredLast.contentBlocks = localLast.contentBlocks
+    restoredLast.pendingHitlConfirmation = undefined
+  } else if (localLast.pendingHitlConfirmation && !localIntentOnly) {
+    restoredLast.pendingHitlConfirmation = localLast.pendingHitlConfirmation
+  }
+  if (localLast.contentBlocks?.length) {
+    const localJoined = localLast.contentBlocks.map(b => b.text).join('')
+    const restoredJoined = restoredLast.contentBlocks?.map(b => b.text).join('') ?? ''
+    if (localJoined.length >= restoredJoined.length) {
+      restoredLast.contentBlocks = localLast.contentBlocks
+    }
+  }
+  restoredLast.status = pickPreferredAssistantStatus(restoredLast.status, localLast.status)
+  if (localLast.streamError && !restoredLast.streamError) {
+    restoredLast.streamError = localLast.streamError
+  }
+  normalizeRestoredInterleavedContent(restoredLast)
+}
+
+function syncSessionToStore(cid: string) {
+  chatStore.syncMessages(cid, getMessages(cid))
+  const lastAssistant = [...getMessages(cid)].reverse().find(m => m.role === 'assistant')
+  if (lastAssistant?.content?.trim() && !loading.value) {
+    settledHtml.value = captureSettledAssistantHtml(resolveAssistantDisplayContent(lastAssistant))
+    sessionSettledHtml.set(cid, settledHtml.value)
+  } else if (!loading.value) {
+    settledHtml.value = sessionSettledHtml.get(cid) ?? ''
+  }
+}
+
+async function hydrateSessionFromStore(cid: string, opts?: { skipApiLoad?: boolean }) {
+  const skipApi = opts?.skipApiLoad ?? loading.value
+  if (!skipApi) {
+    await chatStore.loadDetail(cid)
+  }
   const restored = chatStore.conversations.find(c => c.id === cid)?.messages ?? []
   const local = getMessages(cid)
-  if (loading.value && local.length && restored.length) {
+  if (local.length && restored.length) {
     const localLast = local[local.length - 1]
     const restoredLast = restored[restored.length - 1]
     if (localLast?.role === 'assistant' && restoredLast?.role === 'assistant') {
-      const localSteps = localLast.steps?.length ?? 0
-      const restoredSteps = restoredLast.steps?.length ?? 0
-      const localHasHitl = stepsHaveAwaitingHitl(localLast.steps)
-        || !!localLast.pendingHitlConfirmation
-      if (localSteps >= restoredSteps || localHasHitl) {
-        restoredLast.steps = localLast.steps
-      }
-      if (localLast.pendingHitlConfirmation) {
-        restoredLast.pendingHitlConfirmation = localLast.pendingHitlConfirmation
-      }
-      if (localLast.contentBlocks?.length) {
-        restoredLast.contentBlocks = localLast.contentBlocks
-      }
+      mergeAssistantTail(restoredLast, localLast)
     }
   }
   if (!restored.length) {
@@ -596,6 +673,9 @@ async function hydrateSessionFromStore(cid: string) {
     return
   }
   setMessages(cid, [...restored])
+  for (const m of restored) {
+    if (m.role === 'assistant') normalizeRestoredInterleavedContent(m)
+  }
   migrateReasoningKeys()
   const lastAssistant = [...restored].reverse().find(m => m.role === 'assistant')
   if (lastAssistant?.content?.trim() && !loading.value) {
@@ -650,12 +730,26 @@ async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
     }
 
     if (status.status === 'RUNNING') {
+      const msgs = getMessages(cid)
+      const tail = active.messageId
+        ? msgs.find(m => m.id === active.messageId && m.role === 'assistant')
+        : msgs[msgs.length - 1]
+      if (tail?.role === 'assistant') {
+        normalizeRestoredInterleavedContent(tail)
+      }
+      let afterSeq = active.lastSeq
+      // 已 hydrate 完整穿插正文时，跳过重放历史 chunk，仅订阅 live 尾流
+      if (tail?.role === 'assistant' && isContentFullyInterleaved(tail)) {
+        afterSeq = Math.max(afterSeq, status.lastSeq ?? 0)
+      } else if (afterSeq <= 0 && (status.lastSeq ?? 0) > 0 && tail?.content?.trim()) {
+        afterSeq = status.lastSeq
+      }
       await nextTick()
-      const reconnectPromise = reconnectStream(active.generationId, active.lastSeq, cid)
+      const reconnectPromise = reconnectStream(active.generationId, afterSeq, cid)
       await nextTick()
       await ensureStreamRenderer()
       await reconnectPromise
-      await hydrateSessionFromStore(cid)
+      syncSessionToStore(cid)
     }
   } catch (e) {
     console.error('[ChatView] auto reconnect failed', e)
@@ -695,7 +789,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 onMounted(async () => {
   void loadSkillCatalog()
-  sessionHydrating = true
+  sessionHydrating.value = true
   try {
     await chatStore.init()
 
@@ -715,14 +809,15 @@ onMounted(async () => {
     await chatStore.switchTo(cid)
     applyConversationPreference(chatStore.current?.executionPreference)
     ensureActive(cid)
-    await hydrateSessionFromStore(cid)
+    const pendingReconnect = !!(active?.conversationId === cid)
+    await hydrateSessionFromStore(cid, { skipApiLoad: pendingReconnect })
 
     if (active && active.conversationId === cid) {
       await tryAutoReconnect(cid, active)
-      await hydrateSessionFromStore(cid)
+      syncSessionToStore(cid)
     }
   } finally {
-    sessionHydrating = false
+    sessionHydrating.value = false
   }
 
   inputRef.value?.focus()
@@ -751,7 +846,7 @@ onUpdated(() => {
 watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
 watch(() => chatStore.currentId, async (newId, oldId) => {
-  if (sessionHydrating || newId === oldId) return
+  if (sessionHydrating.value || newId === oldId) return
 
   closePlanDrawer()
   closePlanDagExpand()

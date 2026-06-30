@@ -13,6 +13,9 @@ import com.sunshine.orchestrator.memory.MemoryComposer;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.ExecutionPreference;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +40,7 @@ public class ChatStreamContextFactory {
     private final SkillBindingParser skillBindingParser;
     private final MemoryComposer memoryComposer;
     private final ExecutionPlanStore executionPlanStore;
+    private final ExecutionPlanParser executionPlanParser;
 
     @Autowired(required = false)
     private GenerationRegistry registry;
@@ -53,13 +57,14 @@ public class ChatStreamContextFactory {
                 .collect(Collectors.toList());
 
         ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
+        String userContent = desensitizeClient.scrub(msg.getContent());
         conversationService.appendMessage(conv.getId(), "user",
-                desensitizeClient.scrub(msg.getContent()), MessageStatus.COMPLETED, preference.wireValue());
+                userContent, MessageStatus.COMPLETED, preference.wireValue());
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "", MessageStatus.STREAMING);
+        conv = conversationService.autoTitleIfDefault(conv.getId(), userId, tenantId, userContent);
         conversationService.updateExecutionPreference(
                 conv.getId(), userId, tenantId, preference.wireValue());
-        String userContent = desensitizeClient.scrub(msg.getContent());
         String executionQuery = userContent;
         if (preference.isForced() && !preference.allowsSkillBinding()) {
             executionQuery = skillBindingParser.stripAtMention(userContent);
@@ -89,7 +94,8 @@ public class ChatStreamContextFactory {
                 tenantId,
                 preference,
                 msg.getWorkflowId(),
-                msg.getSkillId());
+                msg.getSkillId(),
+                false);
     }
 
     public ChatResumePreparation buildResumePreparation(ChatMessage msg, String userId, String tenantId) {
@@ -104,9 +110,28 @@ public class ChatStreamContextFactory {
         conversationService.validateResumeAllowed(assistant, userId, tenantId);
         List<ProcessingStep> existingSteps = ProcessingStepMerger.fromJson(assistant.getSteps());
         boolean planWorkflowResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
-        boolean reactHitlResume = ProcessingStepMerger.findReactAwaitingHitlStep(existingSteps) != null;
-        String resumeContent = (planWorkflowResume || reactHitlResume) ? "" : assistant.getContent();
-        String resumeReasoning = planWorkflowResume ? "" : (assistant.getReasoning() != null ? assistant.getReasoning() : "");
+        ExecutionPlan storedPlan = executionPlanParser.parseStoredIntent(
+                assistant.getIntent() != null ? assistant.getIntent() : "");
+        boolean reactRestartResume = !planWorkflowResume && storedPlan.mode() == ExecutionMode.REACT;
+
+        String resumeContent;
+        String resumeReasoning;
+        String stepsJson;
+        String contentBlocksJson = null;
+        if (reactRestartResume) {
+            resumeContent = "";
+            resumeReasoning = "";
+            stepsJson = ProcessingStepMerger.toJson(ProcessingStepMerger.retainIntentStepsOnly(existingSteps));
+            contentBlocksJson = "[]";
+        } else if (planWorkflowResume) {
+            resumeContent = "";
+            resumeReasoning = "";
+            stepsJson = assistant.getSteps();
+        } else {
+            resumeContent = assistant.getContent() != null ? assistant.getContent() : "";
+            resumeReasoning = assistant.getReasoning() != null ? assistant.getReasoning() : "";
+            stepsJson = assistant.getSteps();
+        }
 
         List<ChatMessageEntity> historyEntities = conversationService.loadHistoryForResume(
                 assistant.getConversationId(), assistant);
@@ -128,6 +153,8 @@ public class ChatStreamContextFactory {
 
         MemoryContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
                 userId, tenantId, assistant.getConversationId(), history, userContent));
+        // ReAct 续跑重规划：loadHistoryForResume 已在当前 assistant 前截断，并去掉同轮 user（作 query）；
+        // STM 仅含更早已完成轮次，不含本轮 tool/正文执行史；Agent 侧靠新 ReActAgent + stream epoch 隔离。
 
         return new ChatResumePreparation(
                 assistant.getId(),
@@ -137,7 +164,9 @@ public class ChatStreamContextFactory {
                 resumeContent,
                 resumeReasoning,
                 assistant.getIntent(),
-                assistant.getSteps(),
+                stepsJson,
+                contentBlocksJson,
+                reactRestartResume,
                 userId,
                 tenantId);
     }

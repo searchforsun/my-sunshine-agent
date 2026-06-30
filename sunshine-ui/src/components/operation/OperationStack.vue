@@ -3,7 +3,11 @@ import { computed, reactive } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import { resolvePlanIdFromStep } from '../../api/processingSteps'
 import { findHitlStep } from '../../api/recoverySteps'
-import { isToolStepId, resolveHitlUiKey, type HitlConfirmationPayload } from '../../api/hitlSteps'
+import {
+  isToolStepId,
+  resolveHitlUiKey,
+  type HitlConfirmationPayload,
+} from '../../api/hitlSteps'
 import type { ContentBlock } from '../../api/contentInterleave'
 import {
   contentRowsAfterStep,
@@ -15,7 +19,7 @@ import OperationCard from './OperationCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
-import { ensurePlanTimelineSteps } from '../../api/planHydrate'
+import { ensurePlanTimelineSteps, isPlanDagNodeStep } from '../../api/planHydrate'
 
 const props = withDefaults(defineProps<{
   steps: ProcessingStep[]
@@ -81,7 +85,7 @@ const displaySteps = computed(() => {
   void props.timelineRevision
   if (showPlanDag.value) {
     return effectiveSteps.value.filter(s => {
-      if (s.phase === 'node') return false
+      if (s.phase === 'node' || isPlanDagNodeStep(s)) return false
       if (isToolStepId(s.id)) return false
       if (s.id === 'think' || s.id.startsWith('think-')) return false
       return true
@@ -94,21 +98,6 @@ const displaySteps = computed(() => {
 const hitlRevision = computed(() =>
   resolveHitlUiKey(props.steps, props.pendingHitlConfirmation),
 )
-
-/** Plan DAG 滤掉 tool 步时，主 timeline 底部展示写工具 HITL（含已确认/已取消） */
-const filteredToolHitl = computed((): ProcessingStep | undefined => {
-  void props.timelineRevision
-  void hitlRevision.value
-  if (props.inlineHitl === false || !showPlanDag.value) return undefined
-  const displayed = new Set(displaySteps.value.map(s => s.id))
-  for (let i = props.steps.length - 1; i >= 0; i--) {
-    const step = props.steps[i]
-    if (!isToolStepId(step.id) || displayed.has(step.id)) continue
-    const found = findHitlStep(step, props.pendingHitlConfirmation)
-    if (found) return found
-  }
-  return undefined
-})
 
 function hitlStepKey(step: ProcessingStep): string {
   return step.metadata?.hitlToken
@@ -168,6 +157,7 @@ const orphanContent = computed(() => {
         :live="live"
         :execution-plan-id="executionPlanId"
         :user-query="userQuery"
+        :pending-hitl-confirmation="pendingHitlConfirmation"
       />
       <template v-else>
         <OperationCard
@@ -206,18 +196,6 @@ const orphanContent = computed(() => {
         </div>
       </div>
     </template>
-    <div v-if="filteredToolHitl" class="op-line-hitl operation-hitl-fallback">
-      <span class="op-gutter" aria-hidden="true" />
-      <div class="operation-hitl-body">
-        <p class="operation-hitl-title">写操作确认</p>
-        <HitlStepActions
-          :key="filteredToolHitl ? hitlStepKey(filteredToolHitl) : ''"
-          :step="filteredToolHitl"
-          :pending-confirmation="pendingHitlConfirmation"
-          @decided="(token, approved) => emit('hitlDecided', token, approved)"
-        />
-      </div>
-    </div>
   </div>
 </template>
 
@@ -273,20 +251,5 @@ const orphanContent = computed(() => {
 .op-line-hitl :deep(.collapsible-confirm) {
   --confirm-inset-left: 0;
   margin-left: 0;
-}
-
-.operation-hitl-fallback {
-  margin-top: 6px;
-}
-
-.operation-hitl-body {
-  min-width: 0;
-}
-
-.operation-hitl-title {
-  margin: 0 0 8px;
-  font-size: var(--sun-font-sm, 12px);
-  font-weight: 600;
-  color: var(--sun-text-secondary);
 }
 </style>

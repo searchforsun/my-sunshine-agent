@@ -44,6 +44,13 @@ class AgentRunRequestTest {
     }
 
     @Test
+    void resolveBridgeId_mainUsesRunIdPrefix() {
+        AgentRunRequest req = AgentRunRequest.main(
+                MemoryContext.empty(), "hello", "u1", "default", "msg-1");
+        assertThat(req.resolveBridgeId()).isEqualTo("main-" + req.runId());
+    }
+
+    @Test
     void resolveBridgeId_subWithAssistantMsgIdStillUsesSubPrefix() {
         AgentRunRequest req = AgentRunRequest.sub(
                 MemoryContext.empty(),
@@ -83,7 +90,7 @@ class AgentRunRequestTest {
     void compactConstructor_normalizesNullMemoryAndBlocks() {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.MAIN, "run-1", null, null, "q", null,
-                "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL);
+                "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL, false);
         assertThat(req.memory()).isEqualTo(MemoryContext.empty());
         assertThat(req.injectedBlocks()).isEmpty();
     }

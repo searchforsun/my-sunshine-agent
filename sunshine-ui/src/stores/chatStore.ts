@@ -12,6 +12,7 @@ import {
   createConversation,
   getConversation,
   deleteConversation,
+  updateConversationTitle,
   isValidConversationId,
 } from '../api/conversations'
 import { isConversationNotFoundError } from '../api/apiError'
@@ -24,7 +25,7 @@ import {
   removeCachedIndex,
   upsertCachedIndex,
 } from '../api/conversationCache'
-import { hydratePlanAnswerFromContent } from '../api/contentInterleave'
+import { hydratePlanAnswerFromContent, normalizeRestoredInterleavedContent, sanitizePlanAssistantMessage } from '../api/contentInterleave'
 import { ensurePlanTimelineSteps } from '../api/planHydrate'
 
 export interface Conversation {
@@ -37,6 +38,14 @@ export interface Conversation {
 }
 
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
+const DEFAULT_CONV_TITLE = '新对话'
+
+/** API 仍为默认标题时保留本地已推导标题，避免流式过程中 loadDetail / 侧栏点击回退 */
+function pickConversationTitle(apiTitle: string, localTitle?: string): string {
+  if (apiTitle && apiTitle !== DEFAULT_CONV_TITLE) return apiTitle
+  if (localTitle && localTitle !== DEFAULT_CONV_TITLE) return localTitle
+  return apiTitle || localTitle || DEFAULT_CONV_TITLE
+}
 
 function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
   return messages.map(m => {
@@ -53,7 +62,9 @@ function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
       executionPreference: m.executionPreference,
     }
     if (msg.role === 'assistant') {
+      sanitizePlanAssistantMessage(msg)
       hydratePlanAnswerFromContent(msg)
+      normalizeRestoredInterleavedContent(msg)
       if (!msg.steps?.length && msg.executionPlanId) {
         msg.steps = ensurePlanTimelineSteps(msg)
       }
@@ -92,17 +103,20 @@ export const useChatStore = defineStore('chat', () => {
 
   function mergeApiList(list: ConversationSummary[]): void {
     const prevById = new Map(conversations.value.map(c => [c.id, c]))
+    const cachedIndex = loadCachedIndex()
     const merged: Conversation[] = list.map(c => {
       const prev = prevById.get(c.id)
+      const cachedMeta = cachedIndex.find(m => m.id === c.id)
+      const title = pickConversationTitle(c.title, prev?.title ?? cachedMeta?.title)
       upsertCachedIndex({
         id: c.id,
-        title: c.title,
+        title,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
       })
       return {
         id: c.id,
-        title: c.title,
+        title,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
         messages: prev?.messages ?? [],
@@ -139,9 +153,10 @@ export const useChatStore = defineStore('chat', () => {
       try {
         const detail = await getConversation(savedId)
         const cached = loadCachedMessages(savedId)
+        const cachedMeta = loadCachedIndex().find(c => c.id === savedId)
         conversations.value.unshift({
           id: detail.id,
-          title: detail.title,
+          title: pickConversationTitle(detail.title, cachedMeta?.title),
           createdAt: detail.createdAt,
           updatedAt: detail.updatedAt,
           messages: sanitizeRestoredMessages(mergeRestoredMessages(mapApiMessages(detail.messages), cached)),
@@ -213,7 +228,7 @@ export const useChatStore = defineStore('chat', () => {
       const detail = await getConversation(id)
       const conv = conversations.value.find(c => c.id === id)
       if (conv) {
-        conv.title = detail.title
+        conv.title = pickConversationTitle(detail.title, conv.title)
         conv.executionPreference = detail.executionPreference
         const apiMsgs = mapApiMessages(detail.messages)
         const cached = loadCachedMessages(id)
@@ -320,6 +335,22 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
+  async function rename(id: string, title: string): Promise<void> {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    const conv = conversations.value.find(c => c.id === id)
+    if (!conv) return
+    await updateConversationTitle(id, trimmed)
+    conv.title = trimmed
+    conv.updatedAt = Date.now()
+    upsertCachedIndex({
+      id: conv.id,
+      title: conv.title,
+      createdAt: conv.createdAt,
+      updatedAt: conv.updatedAt,
+    })
+  }
+
   function updateExecutionPreferenceLocal(id: string, pref: ExecutionPreference) {
     const conv = conversations.value.find(c => c.id === id)
     if (conv) conv.executionPreference = pref
@@ -344,9 +375,10 @@ export const useChatStore = defineStore('chat', () => {
         const detail = await getConversation(id)
         const apiMsgs = mapApiMessages(detail.messages)
         const cached = loadCachedMessages(id)
+        const cachedMeta = loadCachedIndex().find(c => c.id === id)
         conversations.value.unshift({
           id: detail.id,
-          title: detail.title,
+          title: pickConversationTitle(detail.title, cachedMeta?.title),
           createdAt: detail.createdAt,
           updatedAt: detail.updatedAt,
           messages: sanitizeRestoredMessages(mergeRestoredMessages(apiMsgs, cached)),
@@ -424,7 +456,7 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     conversations, currentId, current, sortedConversations, initializing,
-    init, create, remove, switchTo, ensureConversation, recoverAfterStaleConversation,
+    init, create, remove, rename, switchTo, ensureConversation, recoverAfterStaleConversation,
     updateTitle: updateTitleLocal,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
     updateExecutionPreferenceLocal,

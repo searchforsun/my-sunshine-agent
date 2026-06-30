@@ -65,7 +65,8 @@ public class ReActAgentRuntime implements AgentRuntime {
                 query != null && query.length() > 60 ? query.substring(0, 60) + "..." : query);
 
         List<Msg> inputs = promptComposer.composeReactInputs(
-                PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks()));
+                PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks(),
+                        request.reactRestart()));
 
         StreamOptions options = StreamOptions.builder()
                 .incremental(true)
@@ -85,6 +86,9 @@ public class ReActAgentRuntime implements AgentRuntime {
         if (request.assistantMessageId() != null && !request.assistantMessageId().isBlank()) {
             StepEventBridge.bindHitlBridge(bridgeId, request.assistantMessageId(), true);
             StepEventBridge.setUserQuery(request.assistantMessageId(), query);
+            if (request.role() == AgentRole.MAIN) {
+                StepEventBridge.registerMainRun(request.assistantMessageId(), bridgeId);
+            }
         } else if (assistantMessageId != null) {
             StepEventBridge.setUserQuery(assistantMessageId, query);
         }
@@ -94,8 +98,16 @@ public class ReActAgentRuntime implements AgentRuntime {
         StringBuilder answerContent = new StringBuilder();
 
         ReActAgent agent = agentFactory.create(request);
+        final String epochMessageId = assistantMessageId != null && !assistantMessageId.isBlank()
+                ? assistantMessageId.strip() : null;
+        final long runEpoch = epochMessageId != null
+                ? StepEventBridge.currentStreamEpoch(epochMessageId) : -1L;
         return agent.stream(inputs, options)
                 .flatMap(event -> {
+                    if (epochMessageId != null && runEpoch >= 0
+                            && !StepEventBridge.isStreamEpochValid(epochMessageId, runEpoch)) {
+                        return Flux.empty();
+                    }
                     List<StreamToken> tokens = new ArrayList<>();
                     tokens.addAll(mapAgentEvent(event, session, answerContentStarted));
                     tokens.addAll(drainHookTokens(hookQueue));
@@ -112,7 +124,14 @@ public class ReActAgentRuntime implements AgentRuntime {
                             session, answerContentStarted, answerStreamFinished, request, answerContent.toString()));
                     return Flux.fromIterable(tail);
                 }))
-                .doFinally(sig -> StepEventBridge.clear(bridgeId))
+                .doFinally(sig -> {
+                    if (request.role() == AgentRole.MAIN
+                            && request.assistantMessageId() != null
+                            && !request.assistantMessageId().isBlank()) {
+                        StepEventBridge.unregisterMainRun(request.assistantMessageId(), bridgeId);
+                    }
+                    StepEventBridge.clear(bridgeId);
+                })
                 .doOnComplete(() -> log.info("[AgentRuntime] role={} runId={} 完成", request.role(), request.runId()))
                 .doOnError(e -> log.error("[AgentRuntime] role={} runId={} 异常: {}",
                         request.role(), request.runId(), e.getMessage(), e));

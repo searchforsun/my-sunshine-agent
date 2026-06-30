@@ -194,4 +194,38 @@ class ProcessingStepMergerTest {
     void appendReasoning_concatenatesIncrements() {
         assertThat(ProcessingStepMerger.appendReasoning("第一步", "完成。")).isEqualTo("第一步完成。");
     }
+
+    @Test
+    @DisplayName("retainIntentStepsOnly：仅保留 intent 步")
+    void retainIntentStepsOnly_keepsIntentOnly() {
+        List<ProcessingStep> steps = List.of(
+                intentLike("intent"),
+                intentLike("think"),
+                intentLike("tool-x@1"));
+
+        List<ProcessingStep> kept = ProcessingStepMerger.retainIntentStepsOnly(steps);
+
+        assertThat(kept).hasSize(1);
+        assertThat(kept.get(0).id()).isEqualTo("intent");
+    }
+
+    private static ProcessingStep intentLike(String id) {
+        return new ProcessingStep(
+                id,
+                "intent".equals(id) ? "intent" : "tool",
+                "done",
+                new StepSummary(null, null, "x"),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                id,
+                null,
+                null,
+                null);
+    }
 }

@@ -20,7 +20,8 @@ public record AgentRunRequest(
         List<String> toolWhitelist,
         String systemOverlay,
         int maxIters,
-        TimelineBinding timeline
+        TimelineBinding timeline,
+        boolean reactRestart
 ) {
     public AgentRunRequest {
         memory = memory != null ? memory : MemoryContext.empty();
@@ -28,15 +29,12 @@ public record AgentRunRequest(
         toolWhitelist = toolWhitelist != null ? List.copyOf(toolWhitelist) : null;
     }
 
-    /** MAIN 绑定 assistantMessageId；SUB 始终用 sub-{runId} 独立 bridge（SSE 经 bindHitlBridge 映射） */
+    /** MAIN 每 run 独立 main-{runId}；SUB 用 sub-{runId}（SSE 经 bindHitlBridge 映射 assistantMessageId） */
     public String resolveBridgeId() {
         if (role == AgentRole.SUB) {
             return "sub-" + runId;
         }
-        if (assistantMessageId != null && !assistantMessageId.isBlank()) {
-            return assistantMessageId;
-        }
-        return "sub-" + runId;
+        return "main-" + runId;
     }
 
     /** 顶层 ReAct — 绑定 assistantMessageId，全量 Timeline */
@@ -62,7 +60,35 @@ public record AgentRunRequest(
                 null,
                 null,
                 0,
-                TimelineBinding.MAIN_FULL);
+                TimelineBinding.MAIN_FULL,
+                false);
+    }
+
+    public static AgentRunRequest main(
+            MemoryContext memory,
+            String query,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            List<String> injectedBlocks,
+            String skillId,
+            boolean reactRestart) {
+        return new AgentRunRequest(
+                AgentRole.MAIN,
+                UUID.randomUUID().toString(),
+                null,
+                memory,
+                query,
+                injectedBlocks,
+                userId,
+                tenantId,
+                assistantMessageId,
+                skillId,
+                null,
+                null,
+                0,
+                TimelineBinding.MAIN_FULL,
+                reactRestart);
     }
 
     public static AgentRunRequest main(
@@ -72,12 +98,12 @@ public record AgentRunRequest(
             String tenantId,
             String assistantMessageId,
             List<String> injectedBlocks) {
-        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, null);
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, null, false);
     }
 
     public static AgentRunRequest main(
             MemoryContext memory, String query, String userId, String tenantId, String assistantMessageId) {
-        return main(memory, query, userId, tenantId, assistantMessageId, List.of());
+        return main(memory, query, userId, tenantId, assistantMessageId, List.of(), null, false);
     }
 
     /** Workflow 子 Agent — 不绑定 assistantMessageId，压缩 Timeline */
@@ -116,7 +142,8 @@ public record AgentRunRequest(
                 toolWhitelist,
                 systemOverlay,
                 maxIters,
-                TimelineBinding.SUB_COMPRESSED);
+                TimelineBinding.SUB_COMPRESSED,
+                false);
     }
 
     /** @deprecated 使用带 assistantMessageId 的重载 */
@@ -154,6 +181,7 @@ public record AgentRunRequest(
                 null,
                 null,
                 1,
-                TimelineBinding.PLANNER_ONLY);
+                TimelineBinding.PLANNER_ONLY,
+                false);
     }
 }

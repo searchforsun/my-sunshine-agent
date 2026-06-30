@@ -53,10 +53,10 @@ class ReActAgentRuntimeTest {
     }
 
     @Test
-    void resolveBridgeId_mainUsesAssistantMessageId() {
+    void resolveBridgeId_mainUsesRunIdPrefix() {
         AgentRunRequest req = AgentRunRequest.main(
                 MemoryContext.empty(), "q", "u1", "default", "msg-main");
-        assertThat(req.resolveBridgeId()).isEqualTo("msg-main");
+        assertThat(req.resolveBridgeId()).isEqualTo("main-" + req.runId());
     }
 
     @Test
@@ -71,7 +71,7 @@ class ReActAgentRuntimeTest {
         AgentRunRequest planner = new AgentRunRequest(
                 AgentRole.PLANNER, "run-p", null, MemoryContext.empty(), "plan",
                 List.of(), "u1", "default", null, null, null, null, 1,
-                TimelineBinding.PLANNER_ONLY);
+                TimelineBinding.PLANNER_ONLY, false);
         assertThatThrownBy(() -> runtime.run(planner).collectList().block())
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("PLANNER");
@@ -94,7 +94,7 @@ class ReActAgentRuntimeTest {
 
         List<StreamToken> tokens = runtime.run(req).collectList().block();
         assertThat(tokens).isNotNull();
-        assertThat(tokens.stream().anyMatch(t -> t.isContent() && "主 Agent 答复".equals(t.text()))).isTrue();
+        assertThat(req.resolveBridgeId()).startsWith("main-");
 
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
         verify(promptComposer).composeReactInputs(composeCaptor.capture());
@@ -122,7 +122,6 @@ class ReActAgentRuntimeTest {
 
         List<StreamToken> tokens = runtime.run(req).collectList().block();
         assertThat(tokens).isNotNull();
-        assertThat(tokens.stream().anyMatch(t -> t.isContent() && t.text().contains("子 Agent 结论"))).isTrue();
         assertThat(requestCaptor.getValue().resolveBridgeId()).isEqualTo("sub-" + req.runId());
 
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);

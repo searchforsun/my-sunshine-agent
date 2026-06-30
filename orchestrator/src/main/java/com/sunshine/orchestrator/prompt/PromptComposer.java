@@ -68,6 +68,7 @@ public class PromptComposer {
             addReactSystem(inputs, prompts.systemPromptOrEmpty());
         }
         addReactSystem(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
+        addReactSystem(inputs, resolveReactRestartOverlay(request));
         addReactSystem(inputs, resolveHitlOverlay(request.mode()));
         addReactSystem(inputs, resolveSkillOverlay(request.skillId()));
         appendReactMemoryLayers(inputs, ctx);
@@ -162,6 +163,14 @@ public class PromptComposer {
             return "";
         }
         String text = hitlProperties.getAgentPrompt();
+        return StringUtils.hasText(text) ? text.strip() : "";
+    }
+
+    private String resolveReactRestartOverlay(PromptComposeRequest request) {
+        if (!request.reactRestart() || overlayProperties.getModeOverlays() == null) {
+            return "";
+        }
+        String text = overlayProperties.getModeOverlays().get("react-restart");
         return StringUtils.hasText(text) ? text.strip() : "";
     }
 

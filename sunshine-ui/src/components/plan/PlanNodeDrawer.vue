@@ -2,7 +2,8 @@
 import { computed, inject, nextTick, ref, watch, type ComputedRef } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import type { HitlConfirmationPayload } from '../../api/hitlSteps'
-import { findHitlStep, isRecoveryAwaiting, isRecoverySkipped } from '../../api/recoverySteps'
+import { findHitlStep, isRecoveryAwaiting, isRecoverySkipped, stepHasHitlAwaiting } from '../../api/recoverySteps'
+import { isHitlSummaryAwaiting } from '../../api/hitlSteps'
 import HitlStepActions from '../operation/HitlStepActions.vue'
 import {
   formatDuration,
@@ -57,6 +58,10 @@ const displayStatus = computed((): DagNodeStatus => {
   const stepLc = step.value ? stepLifecycle(step.value) : undefined
   const nodeStatus = node.value?.status
   if (stepLc === 'paused' || nodeStatus === 'paused') return 'paused'
+  if (step.value && isRecoveryAwaiting(step.value)) return 'error'
+  if (step.value && (stepHasHitlAwaiting(step.value) || isHitlSummaryAwaiting(step.value))) {
+    return 'awaiting_confirm'
+  }
   if (stepLc === 'terminated' || nodeStatus === 'terminated') return 'terminated'
   if (stepLc === 'skipped' || nodeStatus === 'skipped' || (step.value != null && isRecoverySkipped(step.value))) return 'skipped'
   if (stepLc === 'error' || nodeStatus === 'error') return 'error'
@@ -586,7 +591,7 @@ watch(
 .meta-status.is-paused { color: #ca8a04; }
 .meta-status.is-terminated { color: var(--sun-text-muted); }
 .meta-status.is-done { color: var(--sun-green, #3fb950); }
-.meta-status.is-awaiting_confirm { color: #d97706; }
+.meta-status.is-awaiting_confirm { color: var(--sun-purple, #9333ea); }
 .meta-status.is-skipped { color: #0f766e; }
 .meta-status.is-error { color: var(--sun-red, #f85149); }
 

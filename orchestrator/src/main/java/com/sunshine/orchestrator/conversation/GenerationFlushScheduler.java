@@ -58,6 +58,23 @@ public class GenerationFlushScheduler {
                 );
     }
 
+    /** HITL/Recovery 待确认步 upsert 后增量落库 steps */
+    public void flushStepsPartial(String messageId, String stepsJson) {
+        Mono.fromRunnable(() -> conversationService.updateMessageStepsIfStreaming(messageId, stepsJson))
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        null,
+                        e -> {
+                            if (e instanceof BizException biz
+                                    && biz.getErrorCode() == OrchestratorErrorCode.MESSAGE_NOT_FOUND) {
+                                log.debug("[Flush] steps partial 跳过 msgId={}: 消息已不存在", messageId);
+                                return;
+                            }
+                            log.warn("[Flush] steps partial 写库失败 msgId={}: {}", messageId, e.getMessage());
+                        }
+                );
+    }
+
     public void commitFinal(String messageId, String content, String status) {
         commitFinal(messageId, content, null, status);
     }

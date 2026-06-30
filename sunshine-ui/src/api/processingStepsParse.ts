@@ -255,7 +255,10 @@ function parseSubSteps(raw: unknown): ProcessingStep[] | undefined {
 
 export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | null {
   if (typeof raw.id !== 'string') return null
-  const phase = (typeof raw.phase === 'string' ? raw.phase : 'generate') as StepPhase
+  const id = raw.id
+  const phase = (typeof raw.phase === 'string'
+    ? raw.phase
+    : (id.startsWith('node-') ? 'node' : 'generate')) as StepPhase
   const lifecycle = (
     typeof raw.lifecycle === 'string' ? raw.lifecycle : 'running'
   ) as StepLifecycle

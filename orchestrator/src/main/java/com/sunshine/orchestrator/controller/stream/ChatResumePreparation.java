@@ -13,6 +13,8 @@ public record ChatResumePreparation(
         String resumeReasoning,
         String intent,
         String stepsJson,
+        String contentBlocksJson,
+        boolean reactRestart,
         String userId,
         String tenantId) {
 
@@ -32,6 +34,7 @@ public record ChatResumePreparation(
                 tenantId,
                 ExecutionPreference.AUTO,
                 null,
-                null);
+                null,
+                reactRestart);
     }
 }

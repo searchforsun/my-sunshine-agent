@@ -15,7 +15,8 @@ public record PromptComposeRequest(
         String skillId,
         String nodePrompt,
         List<String> injectedUserContexts,
-        String partialAssistant) {
+        String partialAssistant,
+        boolean reactRestart) {
 
     public PromptComposeRequest {
         injectedUserContexts = injectedUserContexts != null ? List.copyOf(injectedUserContexts) : List.of();
@@ -23,30 +24,36 @@ public record PromptComposeRequest(
 
     public static PromptComposeRequest forSimpleLlm(MemoryContext memory, String userMessage) {
         return new PromptComposeRequest(
-                PromptMode.SIMPLE_LLM, memory, userMessage, null, null, null, List.of(), null);
+                PromptMode.SIMPLE_LLM, memory, userMessage, null, null, null, List.of(), null, false);
     }
 
     public static PromptComposeRequest forSimpleLlmContinue(
             MemoryContext memory, String userMessage, String partialAssistant) {
         return new PromptComposeRequest(
-                PromptMode.SIMPLE_LLM, memory, userMessage, null, null, null, List.of(), partialAssistant);
+                PromptMode.SIMPLE_LLM, memory, userMessage, null, null, null, List.of(), partialAssistant, false);
     }
 
     public static PromptComposeRequest forReact(
             MemoryContext memory, String userMessage, List<String> injectedUserContexts) {
-        return forReact(memory, userMessage, null, injectedUserContexts);
+        return forReact(memory, userMessage, null, injectedUserContexts, false);
     }
 
     public static PromptComposeRequest forReact(
             MemoryContext memory, String userMessage, String skillId, List<String> injectedUserContexts) {
+        return forReact(memory, userMessage, skillId, injectedUserContexts, false);
+    }
+
+    public static PromptComposeRequest forReact(
+            MemoryContext memory, String userMessage, String skillId,
+            List<String> injectedUserContexts, boolean reactRestart) {
         return new PromptComposeRequest(
-                PromptMode.REACT, memory, userMessage, null, skillId, null, injectedUserContexts, null);
+                PromptMode.REACT, memory, userMessage, null, skillId, null, injectedUserContexts, null, reactRestart);
     }
 
     /** workflow llm 节点 — nodePrompt 为 TemplateResolver 渲染后的第 6 层 */
     public static PromptComposeRequest forWorkflowLlm(
             String workflowId, MemoryContext memory, String userMessage, String nodePrompt) {
         return new PromptComposeRequest(
-                PromptMode.WORKFLOW, memory, userMessage, workflowId, null, nodePrompt, List.of(), null);
+                PromptMode.WORKFLOW, memory, userMessage, workflowId, null, nodePrompt, List.of(), null, false);
     }
 }

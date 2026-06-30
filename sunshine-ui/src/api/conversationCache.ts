@@ -2,6 +2,8 @@
  * 会话消息 localStorage 缓存 — 后端不可用或 reasoning 未落库时的恢复来源
  */
 import type { ChatMessage } from './chat'
+import type { ContentBlock } from './contentInterleave'
+import { joinedContentBlocks, normalizeRestoredInterleavedContent } from './contentInterleave'
 import { stepsHaveAwaitingHitl } from './hitlSteps'
 
 const INDEX_KEY = 'sunshine-conv-index'
@@ -69,6 +71,33 @@ function pickLongerContent(a: string, b: string): string {
   return b.length >= a.length ? b : a
 }
 
+function pickContentBlocks(
+  api?: ContentBlock[],
+  cached?: ContentBlock[],
+): ContentBlock[] | undefined {
+  if (!api?.length) return cached
+  if (!cached?.length) return api
+  const apiLen = joinedContentBlocks(api).length
+  const cachedLen = joinedContentBlocks(cached).length
+  return cachedLen > apiLen ? cached : api
+}
+
+/** 合并时优先保留更「新」的 assistant 终态（避免 API 陈旧 interrupted 覆盖本地 completed/streaming） */
+function pickPreferredStatus(
+  api?: ChatMessage['status'],
+  cached?: ChatMessage['status'],
+): ChatMessage['status'] | undefined {
+  const rank = (s?: ChatMessage['status']) => {
+    if (s === 'completed') return 4
+    if (s === 'streaming') return 3
+    if (s === 'interrupted') return 2
+    if (s === 'failed') return 1
+    return 0
+  }
+  if (rank(cached) >= rank(api)) return cached ?? api
+  return api ?? cached
+}
+
 /** API 与本地缓存合并：取更长正文，保留 reasoning */
 export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] | null): ChatMessage[] {
   if (!cached?.length) return api
@@ -85,17 +114,22 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       continue
     }
     const cachedHasHitl = stepsHaveAwaitingHitl(c.steps) || !!c.pendingHitlConfirmation
-    merged.push({
+    const mergedMsg: ChatMessage = {
       ...a,
       content: pickLongerContent(a.content, c.content),
       reasoning: a.reasoning?.trim() ? a.reasoning : c.reasoning,
       steps: cachedHasHitl
         ? c.steps
         : (a.steps?.length ? a.steps : c.steps),
-      status: a.status ?? c.status,
+      contentBlocks: pickContentBlocks(a.contentBlocks, c.contentBlocks),
+      status: pickPreferredStatus(a.status, c.status),
       executionPreference: a.executionPreference ?? c.executionPreference,
       pendingHitlConfirmation: a.pendingHitlConfirmation ?? c.pendingHitlConfirmation,
-    })
+    }
+    if (mergedMsg.role === 'assistant') {
+      normalizeRestoredInterleavedContent(mergedMsg)
+    }
+    merged.push(mergedMsg)
     if (a.id) byId.delete(a.id)
   }
 
