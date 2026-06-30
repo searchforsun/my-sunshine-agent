@@ -146,21 +146,6 @@ public record AgentRunRequest(
                 false);
     }
 
-    /** @deprecated 使用带 assistantMessageId 的重载 */
-    public static AgentRunRequest sub(
-            MemoryContext memory,
-            String query,
-            List<String> injectedBlocks,
-            String userId,
-            String tenantId,
-            String skillId,
-            List<String> toolWhitelist,
-            String systemOverlay,
-            int maxIters) {
-        return sub(memory, query, injectedBlocks, userId, tenantId, null,
-                skillId, toolWhitelist, systemOverlay, maxIters);
-    }
-
     /** Planner — 仅 plan 步 Timeline */
     public static AgentRunRequest planner(
             String query,

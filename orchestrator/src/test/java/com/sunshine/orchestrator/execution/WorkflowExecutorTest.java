@@ -10,6 +10,8 @@ import com.sunshine.orchestrator.execution.handler.RagNodeHandler;
 import com.sunshine.orchestrator.execution.handler.StartNodeHandler;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.execution.workflow.WorkflowNodeFinalizer;
+import com.sunshine.orchestrator.execution.workflow.WorkflowNodeRunner;
 import com.sunshine.orchestrator.execution.workflow.WorkflowStaticPlanRunner;
 import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
 import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
@@ -148,12 +150,14 @@ class WorkflowExecutorTest {
 
         WorkflowStaticPlanRunner staticPlanRunner = new WorkflowStaticPlanRunner(
                 loader, executionPlanStore, planExecutionAuditService, displayNameEnricher, planRunFinalizer);
+        WorkflowNodeFinalizer nodeFinalizer = new WorkflowNodeFinalizer(
+                executionPlanStore, planExecutionAuditService, groundingChecker, groundingProperties,
+                workflowPauseService, generationRegistry);
+        WorkflowNodeRunner nodeRunner = new WorkflowNodeRunner(
+                registry, retryPolicyResolver, nodeRetryExecutor, upstreamOutputResolver,
+                hitlConfirmationService, workflowNodeRecoveryService, nodeFinalizer);
         executor = new WorkflowExecutor(
-                staticPlanRunner, registry, executionPlanStore, labelService,
-                retryPolicyResolver, nodeRetryExecutor, upstreamOutputResolver,
-                planExecutionAuditService,
-                groundingChecker, groundingProperties, workflowNodeRecoveryService,
-                hitlConfirmationService, workflowPauseService, generationRegistry);
+                staticPlanRunner, nodeRunner, executionPlanStore, labelService, workflowPauseService);
     }
 
     @Test

@@ -1,4 +1,4 @@
-/** SSE / REST steps JSON 解析与 V1 迁移 */
+/** SSE / REST steps JSON 解析 */
 import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
@@ -263,12 +263,13 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
     typeof raw.lifecycle === 'string' ? raw.lifecycle : 'running'
   ) as StepLifecycle
   const label = typeof raw.label === 'string' ? raw.label : undefined
-  if (!label && !raw.summary) return null
-  const step: ProcessingStep = {
+  const summary = parseSummary(raw.summary)
+  if (!summary) return null
+  return {
     id: raw.id,
     phase,
     lifecycle,
-    summary: parseSummary(raw.summary),
+    summary,
     startedAt: typeof raw.startedAt === 'number' ? raw.startedAt : undefined,
     endedAt: typeof raw.endedAt === 'number' ? raw.endedAt : undefined,
     durationMs: typeof raw.durationMs === 'number' ? raw.durationMs : undefined,
@@ -281,22 +282,5 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
     metadata: parseMetadata(raw.metadata),
     subSteps: parseSubSteps(raw.subSteps),
     contentBlocks: parseContentBlocks(raw.contentBlocks),
-  }
-  return migrateV1Step(step)
-}
-
-export function migrateV1Step(step: ProcessingStep): ProcessingStep {
-  if (step.summary) return step
-  const lifecycle = step.lifecycle ?? 'running'
-  const label = step.label ?? step.id
-  return {
-    ...step,
-    lifecycle,
-    label,
-    summary: {
-      before: lifecycle === 'pending' ? label : undefined,
-      active: lifecycle === 'running' ? label : undefined,
-      after: lifecycle === 'done' ? (step.detail ?? label) : undefined,
-    },
   }
 }

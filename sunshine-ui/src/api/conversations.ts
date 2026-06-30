@@ -4,7 +4,7 @@ import type { ExecutionPreference } from './executionModes'
 import { isExecutionPreference } from './executionModes'
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
-import { migrateV1Step, normalizeStep, parseContentBlocks } from './processingSteps'
+import { normalizeStep, parseContentBlocks } from './processingSteps'
 import type { ContentBlock } from './contentInterleave'
 import { hydratePlanAnswerFromContent, normalizeRestoredInterleavedContent, sanitizePlanAssistantMessage } from './contentInterleave'
 import { ApiError, parseBffPayload } from './apiError'
@@ -72,8 +72,7 @@ function parseSteps(raw: unknown): ProcessingStep[] | undefined {
       const arr = JSON.parse(raw) as unknown[]
       return arr
         .map(item => normalizeStep(item as Record<string, unknown>))
-        .filter(Boolean)
-        .map(s => migrateV1Step(s!)) as ProcessingStep[]
+        .filter(Boolean) as ProcessingStep[]
     } catch {
       return undefined
     }
@@ -81,8 +80,7 @@ function parseSteps(raw: unknown): ProcessingStep[] | undefined {
   if (Array.isArray(raw)) {
     const steps = raw
       .map(item => normalizeStep(item as Record<string, unknown>))
-      .filter(Boolean)
-      .map(s => migrateV1Step(s!)) as ProcessingStep[]
+      .filter(Boolean) as ProcessingStep[]
     return steps.length ? steps : undefined
   }
   return undefined

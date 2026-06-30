@@ -75,6 +75,7 @@ class AgentRunRequestTest {
                 java.util.List.of("ctx"),
                 "u1",
                 "default",
+                null,
                 "finance-analysis",
                 java.util.List.of("list_finance_messages"),
                 "仅内部分析",

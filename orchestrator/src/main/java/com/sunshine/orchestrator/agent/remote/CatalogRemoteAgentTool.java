@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.agent.remote;
 
 import com.sunshine.orchestrator.agent.StepEventBridge;
-import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
 import com.sunshine.orchestrator.client.ToolManagerClient;

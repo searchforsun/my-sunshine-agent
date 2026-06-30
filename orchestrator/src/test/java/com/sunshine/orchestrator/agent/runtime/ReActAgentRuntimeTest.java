@@ -146,7 +146,7 @@ class ReActAgentRuntimeTest {
                 new ChatTurn("user", "历史")));
         AgentRunRequest req = AgentRunRequest.sub(
                 fullMemory, "子任务", List.of("上游"), "u1", "default",
-                "finance-analysis", List.of("list_finance_messages"), "overlay", 4);
+                null, "finance-analysis", List.of("list_finance_messages"), "overlay", 4);
 
         runtime.run(req).collectList().block();
 

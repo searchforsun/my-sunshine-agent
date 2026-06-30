@@ -10,8 +10,15 @@ import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
 import { mergeStepMetadata } from './processingStepsParse'
 import { resolveStepDurationMs } from './processingStepsDisplay'
+import { sortSteps, isWorkflowNodeStepId, isThinkStepId } from './processingStepsNormalize'
 
-export { normalizeStep, migrateV1Step, parseContentBlocks } from './processingStepsParse'
+export { normalizeStep, parseContentBlocks } from './processingStepsParse'
+export {
+  sortSteps,
+  normalizeTimelineSteps,
+  isWorkflowNodeStepId,
+  STEP_ORDER,
+} from './processingStepsNormalize'
 export type { RewriteDetailView } from './processingStepsDisplay'
 export {
   formatStepLabel,
@@ -148,8 +155,6 @@ export interface ProcessingStep {
 }
 
 
-
-export const STEP_ORDER: StepPhase[] = ['intent', 'skill', 'plan', 'node', 'rag', 'tool', 'agent', 'think', 'generate']
 
 function mergeSummary(
   prev?: StepSummary,
@@ -341,15 +346,6 @@ function concatText(existing: string | undefined, chunk: string): string {
 
 const REASONING_STEP_PRIORITY = ['agent', 'think', 'generate', 'rag', 'intent'] as const
 
-function isThinkStepId(id: string): boolean {
-  return id === 'think' || id.startsWith('think-')
-}
-
-/** plan-workflow / 静态 workflow 的节点级 reasoning，不走 ReAct think 步骤 */
-export function isWorkflowNodeStepId(id: string | undefined): boolean {
-  return !!id && id.startsWith('node-')
-}
-
 export function findRunningStepId(steps: ProcessingStep[]): string | undefined {
 
   for (const id of REASONING_STEP_PRIORITY) {
@@ -373,73 +369,6 @@ export function findRunningStepId(steps: ProcessingStep[]): string | undefined {
 
 }
 
-
-
-/** 将 message / generate 上的 reasoning 归并到独立 think 步骤（历史数据兼容） */
-
-export function normalizeTimelineSteps(
-
-  steps: ProcessingStep[],
-
-  reasoning?: string,
-
-): ProcessingStep[] {
-
-  if (steps.length === 0) return steps
-
-  let result = [...steps]
-
-  const hasThink = result.some(s => isThinkStepId(s.id))
-
-  const agentHasReasoning = result.some(s => s.id === 'agent' && !!s.reasoning?.trim())
-
-  const workflowPath = result.some(s => s.phase === 'plan' || isWorkflowNodeStepId(s.id))
-
-  // Agent / workflow：思考挂在 agent 或 node-*；勿再用 message.reasoning 合成 ReAct think
-  if (hasThink || agentHasReasoning || workflowPath) {
-
-    return sortSteps(result)
-
-  }
-
-  const genIdx = result.findIndex(s => s.id === 'generate')
-
-  const gen = genIdx >= 0 ? result[genIdx] : undefined
-
-  const orphanedReasoning = gen?.reasoning?.trim() || reasoning?.trim()
-
-  if (!hasThink && orphanedReasoning) {
-
-    const thinkStep: ProcessingStep = {
-
-      id: 'think',
-
-      phase: 'think',
-
-      lifecycle: 'done',
-
-      reasoning: orphanedReasoning,
-
-    }
-
-    if (gen && gen.reasoning) {
-
-      const { reasoning: _removed, ...genWithoutReasoning } = gen
-
-      result[genIdx] = genWithoutReasoning
-
-    }
-
-    result = [...result, thinkStep]
-
-  }
-
-  return sortSteps(result)
-
-}
-
-
-
 function longerText(a?: string, b?: string): string | undefined {
 
   if (!a) return b
@@ -453,36 +382,6 @@ function longerText(a?: string, b?: string): string | undefined {
   return a + b
 
 }
-
-
-
-export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {
-
-  return [...steps].sort((a, b) => {
-
-    const aStart = a.startedAt ?? a.ts ?? 0
-
-    const bStart = b.startedAt ?? b.ts ?? 0
-
-    if (aStart !== bStart) return aStart - bStart
-
-    const ai = STEP_ORDER.indexOf(a.phase)
-
-    const bi = STEP_ORDER.indexOf(b.phase)
-
-    const aOrder = ai >= 0 ? ai : STEP_ORDER.length
-
-    const bOrder = bi >= 0 ? bi : STEP_ORDER.length
-
-    if (aOrder !== bOrder) return aOrder - bOrder
-
-    return a.id.localeCompare(b.id)
-
-  })
-
-}
-
-
 
 export function hasActiveStep(steps: ProcessingStep[] | undefined): boolean {
 

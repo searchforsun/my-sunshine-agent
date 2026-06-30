@@ -29,7 +29,11 @@
 |----|------|:------:|------|------|:----:|------|
 | TD-009 | 代码债 | P1 | orchestrator + sunshine-ui | `ProcessingStep.status` 双写 + 前端 `lifecycle ?? status` fallback | done | 2026-06-29：SSE/落库停写 status；前端仅 lifecycle |
 | TD-010 | 代码债 | P2 | skill-manager | `GET /catalog` 与 `/catalog/index` 重复 | done | 2026-06-29：删 `/catalog` |
-| TD-011 | 代码债 | P2 | orchestrator + sunshine-ui | 上帝类：`WorkflowExecutor`(913) / `ChatController`(822) / `processingSteps.ts` | in-progress | 阶段1–2 ✅；阶段3 C2 `ChatStreamContextFactory` ✅ |
+| TD-011 | 代码债 | P2 | orchestrator + sunshine-ui | 上帝类拆分 | done | 2026-06-30：WorkflowExecutor 853→163；`WorkflowNodeRunner`/`WorkflowNodeFinalizer`；processingSteps 模块化 ✅ |
+| TD-017 | 代码债 | P1 | sunshine-ui | `migrateV1Step` 历史步骤兼容 | done | 2026-06-30：normalizeStep 要求 summary；已清会话 |
+| TD-019 | 代码债 | P2 | orchestrator | `ChatController` SSE 组装上帝方法 | done | 2026-06-30：626→335 行；提取 `ChatStreamExecutor` |
+| TD-014 | 代码债 | P3 | orchestrator | `ChatController` / `CatalogRemoteAgentTool` 重复 import | done | 2026-06-30 |
+| TD-015 | 代码债 | P1 | orchestrator | `AgentRunRequest.sub()` 无 assistantMessageId deprecated 重载 | done | 2026-06-30 |
 | TD-012 | 代码债 | P1 | sunshine-ui | `chat.ts` 孤儿 `useChat()` | done | 2026-06-29：仅保留 `ChatMessage` 类型 |
 | TD-013 | 代码债 | P2 | orchestrator | `WorkflowNodeLabels.isVisibleNode` 零引用 | done | 2026-06-29 |
 | DOC-001 | 文档债 | P2 | docs/ | CLAUDE + README 规则重复 | done | 2026-06-29：入口 ≤200 行；命令去重；链 ADR |
@@ -56,3 +60,9 @@
 | TD-013 | 2026-06-29 | 删 `WorkflowNodeLabels.isVisibleNode` |
 | DOC-001 | 2026-06-29 | CLAUDE/README 去重；入口 ≤200 行；命令链 README |
 | ADR-001 | 2026-06-29 | 锁定文档 vs 删兼容：ADR-001；回写 D3 catalog API |
+| TD-014 | 2026-06-30 | 删 ChatController / CatalogRemoteAgentTool 重复 import |
+| TD-015 | 2026-06-30 | 删 AgentRunRequest.sub 无 assistantMessageId deprecated 重载 |
+| TD-016 | 2026-06-30 | 迁 sortSteps / normalizeTimelineSteps → processingStepsNormalize.ts |
+| TD-017 | 2026-06-30 | 删 migrateV1Step；REST 解析要求 summary |
+| TD-019 | 2026-06-30 | 提取 ChatStreamExecutor；ChatController 626→335 行 |
+| TD-020 | 2026-06-30 | 拆分 WorkflowExecutor → WorkflowNodeRunner + WorkflowNodeFinalizer（853→163 行） |
