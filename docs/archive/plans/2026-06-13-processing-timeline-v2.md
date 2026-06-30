@@ -10,7 +10,7 @@
 
 **Tech Stack:** Java 21 / Spring Boot 3.2 Orchestrator, AgentScope Hook, Redis Generation stream, Vue 3 + TypeScript, Playwright E2E
 
-**Spec:** `docs/superpowers/specs/2026-06-13-processing-timeline-v2-design.md`
+**Spec:** `docs/archive/specs/2026-06-13-processing-timeline-v2-design.md`
 
 ---
 

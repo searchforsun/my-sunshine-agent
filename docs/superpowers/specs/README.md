@@ -34,8 +34,8 @@
 | `2026-06-07-phase1-gap-closure-design.md` | 阶段一 §1.7 |
 | `2026-06-11-phase1.5-conversation-mvp-design.md` | 阶段一 §1.5–1.6 |
 | `2026-06-17-agent-memory-design.md` | 阶段二 §2.17；阶段三 §3.2 |
-| `2026-06-13-processing-timeline-design.md` | 阶段二 §2.18 |
-| `2026-06-13-processing-timeline-v2-design.md` | 阶段二 §2.18 |
+| `2026-06-13-processing-timeline-design.md` | 阶段二 §2.18 → [archive/specs/](../../archive/specs/) |
+| `2026-06-13-processing-timeline-v2-design.md` | 阶段二 §2.18 → [archive/specs/](../../archive/specs/) |
 | `2026-06-18-workflow-orchestration-design.md` | 阶段二 §2.9 |
 | `2026-06-20-phase2-closure-design.md` | 阶段二 §2.10–2.16 |
 | `2026-06-19-locked-architecture-decisions.md` | 阶段三 §3.9–3.11 |

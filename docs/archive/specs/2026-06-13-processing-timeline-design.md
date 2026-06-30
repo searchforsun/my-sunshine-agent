@@ -1,8 +1,8 @@
 # 后端处理事件 — 前端展示方案
 
-> **Superseded（2026-06-29）**：前端渲染见 `OperationStack.vue` / `OperationCard.vue`；勿再引用 `ProcessingTimeline.vue`。
+> **Superseded（2026-06-30）**：已归档至 `docs/archive/specs/`。UI 见 `OperationStack.vue`。
 
-> **⚠️ 已并入** [phase2-benchmark-design.md](./phase2-benchmark-design.md) **§2.18**（演进至 V2）。下文为历史详设。
+> **⚠️ 已并入** [phase2-benchmark-design.md](../../superpowers/specs/phase2-benchmark-design.md) **§2.18**（演进至 V2）。下文为历史详设。
 
 > 日期：2026-06-13 | 状态：待评审  
 > 前置：阶段 1.5 会话 MVP + 阶段 1.6 Generation 重连已落地  

@@ -11,33 +11,25 @@
 | 严重度 | P0 安全/一致性 · P1 冗余/无扩展点 · P2 可读/文档失真 · P3 风格 |
 | 状态 | `open` / `in-progress` / `done` / `wontfix` |
 
-每双周消化 ≤3 条 P1；P0 立即排期。**文档债**与代码债同等优先级（冗长/重复的 SSOT 会助长不可维护性）。
-
-## 类型说明
-
-| 类型 | 示例 |
-|------|------|
-| 代码债 | 双入口、Deprecated 未删、重复 error map |
-| 文档债 | CLAUDE 与 spec 重复、锁定决策与代码不符、进度夸大 |
-| ADR 待办 | 需正式记录「为何打破旧文档约定」 |
+每双周消化 ≤3 条 P1；P0 立即排期。**文档债**与代码债同等优先级。
 
 ---
 
-## Backlog
+## Backlog（open）
 
 | ID | 类型 | 严重度 | 模块 | 描述 | 状态 | 备注 |
 |----|------|:------:|------|------|:----:|------|
-| TD-009 | 代码债 | P1 | orchestrator + sunshine-ui | `ProcessingStep.status` 双写 + 前端 `lifecycle ?? status` fallback | done | 2026-06-29：SSE/落库停写 status；前端仅 lifecycle |
-| TD-010 | 代码债 | P2 | skill-manager | `GET /catalog` 与 `/catalog/index` 重复 | done | 2026-06-29：删 `/catalog` |
-| TD-011 | 代码债 | P2 | orchestrator + sunshine-ui | 上帝类拆分 | done | 2026-06-30：WorkflowExecutor 853→163；`WorkflowNodeRunner`/`WorkflowNodeFinalizer`；processingSteps 模块化 ✅ |
-| TD-017 | 代码债 | P1 | sunshine-ui | `migrateV1Step` 历史步骤兼容 | done | 2026-06-30：normalizeStep 要求 summary；已清会话 |
-| TD-019 | 代码债 | P2 | orchestrator | `ChatController` SSE 组装上帝方法 | done | 2026-06-30：626→335 行；提取 `ChatStreamExecutor` |
-| TD-014 | 代码债 | P3 | orchestrator | `ChatController` / `CatalogRemoteAgentTool` 重复 import | done | 2026-06-30 |
-| TD-015 | 代码债 | P1 | orchestrator | `AgentRunRequest.sub()` 无 assistantMessageId deprecated 重载 | done | 2026-06-30 |
-| TD-012 | 代码债 | P1 | sunshine-ui | `chat.ts` 孤儿 `useChat()` | done | 2026-06-29：仅保留 `ChatMessage` 类型 |
-| TD-013 | 代码债 | P2 | orchestrator | `WorkflowNodeLabels.isVisibleNode` 零引用 | done | 2026-06-29 |
-| DOC-001 | 文档债 | P2 | docs/ | CLAUDE + README 规则重复 | done | 2026-06-29：入口 ≤200 行；命令去重；链 ADR |
-| DOC-002 | 文档债 | P2 | docs/superpowers/specs/ | timeline spec 仍引用已删 `ProcessingTimeline.vue` | done | 2026-06-29 supersede 头 |
+| TD-021 | 代码债 | P1 | sunshine-ui | `normalizeTimelineSteps` 用 `msg.reasoning` 合成 think | open | P9 清库后可删 |
+| TD-022 | 代码债 | P2 | orchestrator + sunshine-ui | `ProcessingStep.label` wire 双写；展示应仅 `summary` | open | 后端仍写 label |
+| TD-023 | 代码债 | P2 | sunshine-ui | `ChatView.vue` 上帝组件（~1694 行） | open | 拆 composables |
+| TD-024 | 代码债 | P2 | orchestrator | `ProcessingTimelineSession`（~701 行） | open | 按 phase 拆分 |
+| TD-025 | 代码债 | P2 | orchestrator | `ExecutionPlanParser.legacyPlan` 旧 intent 映射 | open | 清库后可删 |
+| TD-026 | 代码债 | P2 | sunshine-ui | `contentInterleave` legacy segment | open | 确认全走 content_start/end |
+| TD-027 | 代码债 | P3 | sunshine-ui | `ChatView` `_idx_` reasoning 展开态迁移 | open | 清 localStorage 后可删 |
+| TD-028 | 代码债 | P3 | orchestrator | `PlanWorkflowExecutor`（~416 行） | open | 可选拆分 |
+| DOC-010 | 文档债 | P3 | requirements/in-progress/ | Phase1/2 历史 REQ 未归档 | open | 移 `requirements/done/` |
+
+**阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 
 ---
 
@@ -45,24 +37,31 @@
 
 | ID | 完成日期 | 摘要 |
 |----|----------|------|
-| TD-001 | 2026-06-28 | 删 `LlmNodeHandler` + test（YAML 已全 `answer`） |
+| TD-001 | 2026-06-28 | 删 `LlmNodeHandler` + test |
 | TD-002 | 2026-06-28 | 删 `AgentStepSummarizer` + test |
 | TD-003 | 2026-06-28 | 删 `completeReasoningRound` / `openThinkParallel` |
-| TD-004 | 2026-06-28 | 删 `IntentRouter.classify` / `toLegacyIntentLabel` + test |
-| TD-005 | 2026-06-28 | 删 `SkillCatalogClient.fetchCatalog` / `SkillCatalogService.allEntries` |
-| TD-006 | 2026-06-28 | 删孤儿 `ProcessingTimeline.vue`（518 行） |
+| TD-004 | 2026-06-28 | 删 `IntentRouter.classify` / `toLegacyIntentLabel` |
+| TD-005 | 2026-06-28 | 删 `SkillCatalogClient.fetchCatalog` 等 |
+| TD-006 | 2026-06-28 | 删孤儿 `ProcessingTimeline.vue` |
 | TD-007 | 2026-06-28 | 删 `resolveStepExpandText` |
-| TD-008 | 2026-06-28 | 删 `useUserId.ts` 垫片；`ChatView` 直引 `authStore` |
-| TD-009 | 2026-06-29 | SSE/落库停写 step `status`；前端仅 `lifecycle` |
-| TD-009-R4 | 2026-06-29 | `ProcessingStep` record 移除 `status` 字段；merger/构造全收敛 lifecycle |
-| TD-010 | 2026-06-29 | 删 skill-manager `GET /api/skills/catalog`；显式 410 + `/catalog/index` SSOT |
+| TD-008 | 2026-06-28 | 删 `useUserId.ts` 垫片 |
+| TD-009 | 2026-06-29 | SSE/落库停写 step `status` |
+| TD-009-R4 | 2026-06-29 | `ProcessingStep` 移除 `status` 字段 |
+| TD-010 | 2026-06-29 | 删 skill-manager 重复 `/catalog` |
+| TD-011 | 2026-06-30 | 上帝类拆分（Chat/Workflow/processingSteps） |
 | TD-012 | 2026-06-29 | 删 `chat.ts` 孤儿 `useChat()` |
 | TD-013 | 2026-06-29 | 删 `WorkflowNodeLabels.isVisibleNode` |
-| DOC-001 | 2026-06-29 | CLAUDE/README 去重；入口 ≤200 行；命令链 README |
-| ADR-001 | 2026-06-29 | 锁定文档 vs 删兼容：ADR-001；回写 D3 catalog API |
-| TD-014 | 2026-06-30 | 删 ChatController / CatalogRemoteAgentTool 重复 import |
-| TD-015 | 2026-06-30 | 删 AgentRunRequest.sub 无 assistantMessageId deprecated 重载 |
-| TD-016 | 2026-06-30 | 迁 sortSteps / normalizeTimelineSteps → processingStepsNormalize.ts |
-| TD-017 | 2026-06-30 | 删 migrateV1Step；REST 解析要求 summary |
-| TD-019 | 2026-06-30 | 提取 ChatStreamExecutor；ChatController 626→335 行 |
-| TD-020 | 2026-06-30 | 拆分 WorkflowExecutor → WorkflowNodeRunner + WorkflowNodeFinalizer（853→163 行） |
+| TD-014 | 2026-06-30 | 删重复 import |
+| TD-015 | 2026-06-30 | 删 `AgentRunRequest.sub` deprecated 重载 |
+| TD-016 | 2026-06-30 | `processingStepsNormalize.ts` |
+| TD-017 | 2026-06-30 | 删 `migrateV1Step` |
+| TD-019 | 2026-06-30 | 提取 `ChatStreamExecutor` |
+| TD-020 | 2026-06-30 | 拆分 `WorkflowNodeRunner` / `WorkflowNodeFinalizer` |
+| DOC-001 | 2026-06-29 | CLAUDE/README 去重 |
+| DOC-002 | 2026-06-29 | timeline spec supersede |
+| DOC-003 | 2026-06-30 | phase3 §4 与 §0/§6 对齐 |
+| DOC-004 | 2026-06-30 | phase3 实施计划加 supersede |
+| DOC-005 | 2026-06-30 | 覆盖度审计加 supersede + 结论更新 |
+| DOC-006 | 2026-06-30 | multi-agent plan/design 进度更新 |
+| DOC-007 | 2026-06-30 | timeline spec 移 `docs/archive/` |
+| ADR-001 | 2026-06-29 | 锁定文档 vs 删兼容 |

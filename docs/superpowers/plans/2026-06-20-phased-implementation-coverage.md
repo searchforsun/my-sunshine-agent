@@ -1,8 +1,10 @@
 # 分阶段实施计划 — 覆盖度审计
 
-> **日期**：2026-06-27（更新：主线代码审计）  
+> **Superseded（2026-06-30）**：阶段三已交付。**Live/检查门以** [phase3-production-hardening-design.md](../specs/phase3-production-hardening-design.md) **§6 为准**；下表「缺口 ⬜」列多为历史审计快照，已过时。
+
+> **日期**：2026-06-30（更新：阶段三 closure）  
 > **方法**：对照各阶段 SSOT（`specs/phaseN-*.md`）与 `plans/*.md`，按 writing-plans 标准检查（文件路径、测试命令、逐步 checkbox、无 TBD）。  
-> **结论摘要**：阶段一/二 **已交付**；阶段三 **主线代码 ✅**（3.4/3.8/3.9/3.10/3.11/3.12/3.6 API）；**live 检查门 + 3.9.5/3.13/3.14 待关**；阶段四 **仅 spec，无 plans**。
+> **结论摘要**：阶段一/二/三 **已交付**（3.4 v6 相对 vector +15% 轨 WARN）；阶段四 **仅 spec，无 plans**。
 
 ---
 
@@ -46,7 +48,7 @@
 | 2.9.1–2.9.6 Workflow | ✅ | ✅ | **A** | [2026-06-18-workflow-orchestration.md](./2026-06-18-workflow-orchestration.md) |
 | 2.10–2.16 收尾 | ✅ | ✅ | **A** | [2026-06-20-phase2-closure.md](./2026-06-20-phase2-closure.md) |
 | 2.17 记忆 | ✅ | ⚠️ | **B** | 设计在 [agent-memory-design](../specs/2026-06-17-agent-memory-design.md)；无独立 plan |
-| 2.18 Timeline V2 | ✅ | ✅ | **A** | [2026-06-13-processing-timeline-v2.md](./2026-06-13-processing-timeline-v2.md) |
+| 2.18 Timeline V2 | ✅ | ✅ | **A** | [archive/plans/2026-06-13-processing-timeline-v2.md](../../archive/plans/2026-06-13-processing-timeline-v2.md) |
 
 **检查门：** SSOT §5 共 10+ 条，2.12 `rag_eval --gate` 已 PASS。
 

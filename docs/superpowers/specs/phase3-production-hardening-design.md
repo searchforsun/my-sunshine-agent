@@ -1,13 +1,13 @@
 # 阶段三：生产加固 — 技术设计（SSOT）
 
 > **周期**：8 周（兼职 1–2 天/周；检查门严格全过）  
-> **状态**：🟢 **检查门基本通过**（2026-06-27 末：live 脚本全绿；v6 相对 vector +15% 轨仍 WARN）  
+> **状态**：🟢 **检查门基本通过**（2026-06-30：live 脚本全绿；v6 相对 vector +15% 轨仍 WARN）  
 > **前置**：[阶段二](./phase2-benchmark-design.md) 收尾完成；golden-set v5 基线全 PASS  
 > **主轴**：RAG 双轨评测 + **PLAN_WORKFLOW** + 多租户 / HITL / 全链路可观测
 
 ---
 
-## 0. 实施进度总览（2026-06-27）
+## 0. 实施进度总览（2026-06-30）
 
 | 任务卡 | 摘要 | 代码 | Live/检查门 | 计划文档 |
 |--------|------|:----:|:-----------:|----------|
@@ -90,7 +90,9 @@
 
 ## 4. 任务详设
 
-### 3.2 多租户隔离（代码 **部分 ✅**，检查门 ⬜）
+> **验收状态以 §0 / §6 为准**；本节保留设计细节与实现备注，勿按文中历史 ⬜ 重复排期。
+
+### 3.2 多租户隔离（**✅** 代码 + live）
 
 - Milvus / ES：`tenant_id` 字段 + 检索 expr / term 过滤（**非** Milvus Partition API）
 - 入库/检索强制 `x-tenant-id`（Gateway JWT 注入 → BFF → orchestrator → rag-service）
@@ -99,9 +101,9 @@
 
 **`x-tenant-id` 传播链（已实现）：** Gateway `TenantIdResolver`（登录用户 JWT `tenantId`；未登录 `anonymous`）→ BFF `OrchestratorClient` 透传 → orchestrator 各 Controller → `RagClient` header + body。
 
-**缺口**：~~跨租户 `@SpringBootTest`~~ ✅；~~`scripts/verify_tenant_live.py` live~~ ✅（`RagClient` 解包 `R.data.results`）。
+**验收**：`scripts/verify_tenant_live.py --live` ✅；`verify_tenant_qps_live.py` ✅。
 
-### 3.3 Human-in-the-Loop（代码 **✅**，live ⬜）
+### 3.3 Human-in-the-Loop（**✅** 代码 + live）
 
 - Catalog `sideEffect: read | write`（`ApproveOaTaskToolHandler` 写工具种子 `approve_oa_task`）
 - `HitlConfirmationService`（Redis token + 阻塞等待）→ SSE `type:confirmation`（非独立 `PreToolCallHook` 类）
@@ -110,7 +112,7 @@
 
 **SSE 确认事件：** `{ "type":"confirmation", "toolId", "paramsSummary", "confirmationToken", "expiresAt" }`；`confirm-tool` body：`{ "token", "approved": true|false }`；超时/拒绝 → 步骤 `SKIP`。
 
-**关联 3.9.5**：HITL 停止后续跑恢复同一交互（`pendingInteraction`）⬜，见 §3.9.5。
+**关联 3.9.5**：HITL 停止后续跑恢复同一交互（`pendingInteraction`）**✅**，见 §3.9.5。
 
 ### 3.4 RAG 检索增强
 
@@ -135,29 +137,31 @@
 
 **3.4.1 含**：扩展 golden-set → v6。
 
-### 3.5 可观测（部分 ✅）
+### 3.5 可观测（**✅** live）
 
 | 子项 | 状态 |
 |------|:----:|
 | Micrometer `rag_search_*` / `rag_empty_total` / `rag_rerank_duration_seconds` | ✅ |
 | `docs/grafana/rag-dashboard.json` + `rag-alerts.yml` | ✅ |
-| 远程 Grafana 6 面板有数据 | ⬜ 可选；本地 [grafana/README.md](../../grafana/README.md) 方案 B |
-| 4 条 Prometheus 告警可触发 | ⬜ |
-| Sentinel Dashboard 租户 QPS | ⬜ |
+| Grafana RAG 专区有数据 | ✅（`verify_grafana_rag_live`） |
+| 4 条 Prometheus 告警规则 | ✅（JSON 已编写；远程触发演练可选） |
+| Sentinel Dashboard 租户 QPS | ✅（`verify_sentinel_dashboard` + `verify_tenant_qps_live`） |
 
-### 3.6 审计扩展（API **✅**，live ⬜）
+### 3.6 审计扩展（**✅** API + live）
 
 - `tool.call`：`ToolAuditService` → RocketMQ / MySQL / ES；`GET /api/audit/tool-calls`
 - `sub_agent_run`：`SubAgentAuditService`；`GET /api/audit/sub-runs`
 - `plan.*`：`PlanExecutionAuditService`（created/validated/completed/failed/node.attempt 等）
 - 汇总：`AuditController` + `GET /api/audit/recent`
 
-### 3.7 Grounding（代码 **✅**，集成测试 ⬜）
+**验收**：`scripts/verify_audit_live.py` ✅。
+
+### 3.7 Grounding（**✅** 代码 + 集成测试）
 
 - `AnswerGroundingChecker`：企业数据表述须有 tool/rag 支撑
-- 已接入：`ReActAgentRuntime`、`WorkflowExecutor` answer 节点、`AgentNodeHandler`（子 Agent output）
+- 已接入：`ReActAgentRuntime`、`WorkflowNodeFinalizer` answer 节点、`AgentNodeHandler`（子 Agent output）
 - Nacos：`agent.grounding.*`；单测：`AnswerGroundingCheckerTest`、`AgentNodeHandlerTest`
-- **缺口**：`ReactExecutor` / workflow answer 路径集成测试；检查门「子 Agent 不污染主 reasoning」
+- **验收**：`scripts/verify_grounding.py` ✅；`verify_subagent_timeline.py`（子 Agent 不污染主 reasoning）✅
 
 ### 3.8 提示词改写
 
@@ -167,7 +171,7 @@
 | **3.8.1** | `QueryRewriteService`：`rag` / `intent` / `empty-recall`；`agent.rewrite.*` **默认开启** | ✅ |
 | **3.8.2** | `PromptComposer`：base → mode → skill → memory → scope（抽离 `SunshineAgent.buildInputs` / `MemoryMessageBuilder`） | **✅** |
 | **3.8.2b** | `skill-overlay` 层（3.11 后走 SkillCatalog） | **✅** |
-| **3.8.3** | workflow `llm` 节点 prompt 走 Composer 第 6 层 `node-prompt`（`LlmNodeHandler`） | **✅** |
+| **3.8.3** | workflow `answer` 节点 prompt 走 Composer（`AnswerNodeHandler`） | **✅** |
 | **3.8.4** | QueryRewrite 可观测（**非检查门**）：Timeline `detail` 改写前后 query；审计 `rewriteApplied` / `rewriteLatencyMs` | **✅** |
 | **3.8.5** | QueryRewrite 评测（**非检查门**）：golden-set `raw_query` vs `rewritten_query` 对比报告 | **✅** |
 | **3.8.6** | `rag` 可选 HyDE：**首次 0 命中 fallback**（非首检前覆盖 rag 改写 query；**非检查门**） | **✅** |
@@ -221,7 +225,7 @@
 | **3.9.5.3** | 续跑按钮分态（有 checkpoint →「继续执行」；无 →「重新生成」）；awaiting 优先于 paused | **✅** |
 | **3.9.5.4** | ReAct stop 后 think/tool 步骤终态；wfCtx 空拒绝 Plan 检查点续跑 | **✅** |
 
-**验收**：`python3 scripts/verify_pause_resume_consistency.py`（单测 ✅）；`--live` HITL/Recovery 场景 ⬜。
+**验收**：`python3 scripts/verify_pause_resume_consistency.py --live` ✅。
 
 ### 3.10 多 Agent 运行时（**✅**）
 
@@ -231,7 +235,7 @@
 | **3.10.2** | `ReActAgentFactory` overlay + 工具白名单 | **✅** |
 | **3.10.3** | `AgentNodeHandler`：`skillId` / `tools` / `maxIters` / `systemOverlay` | **✅** |
 | **3.10.4** | `PlannerAgentRuntime` + `WorkflowPlanner` | **✅** |
-| **3.10.5** | 多 agent 节点（`WorkflowExecutor` / Nacos 双 agent 示例） | **✅**（live ⬜） |
+| **3.10.5** | 多 agent 节点（`WorkflowNodeRunner` / Nacos 双 agent 示例） | **✅**（`verify_subagent_timeline` ✅） |
 | **3.10.6** | `sub_agent_run` 审计事件 | **✅** |
 | **3.10.7** | 上下文隔离：无 STM/LTM、skill→Composer、不写主 reasoning | **✅** |
 
@@ -249,7 +253,7 @@
 | **3.11.3** | 种子 skill | ✅ |
 | **3.11.4** | orchestrator `SkillCatalogService` 缓存 | ✅ |
 | **3.11.6** | Catalog index / detail 拆分 | ✅ |
-| **3.11.7** | `@` + 强提示绑定 + 六种触发 | **✅**（Live ⬜） |
+| **3.11.7** | `@` + 强提示绑定 + 六种触发 | **✅**（`verify_skill_5b_live` ✅） |
 
 - 模块 **:8225**；MySQL + MinIO/本地存储
 - 详设 API 表见 [locked D3](./2026-06-19-locked-architecture-decisions.md#d3-skills-服务端管理--前端运营页)

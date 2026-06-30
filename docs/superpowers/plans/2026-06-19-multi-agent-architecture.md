@@ -9,7 +9,7 @@
 
 **Goal:** L1 增强（skill 子集）→ L3 主轴（PLAN_WORKFLOW + 多子 Agent）。
 
-**实现状态（2026-06-27）：** **3.10.1–3.10.7 ✅** · **3.11.1–3.11.7 ✅** · **3.12 ✅** · **Skill 六种触发 ✅**（Live ⬜）· **3.9.1–3.9.4 + 3.9.1g 用户确认 ✅** · **静态 workflow → Plan DAG ✅** · **3.8.7 ✅** · **3.6 审计三链路 ✅** · **3.3 HITL 代码 ✅**（live ⬜）。下一迭代：**3.9.5** / **3.2 live** / **3.7 集成测试** / **3.5 部署** / **3.14**。
+**实现状态（2026-06-30）：** 阶段三 **检查门基本通过**（live 脚本全绿；v6 +15% 轨 WARN）。3.9–3.12 / 3.10 AgentRuntime / skill-manager / `/skills` / HITL / 多租户 / 暂停续跑均已验收。下一迭代：**阶段四按需项**（见 [phase4-platformization-design.md](../specs/phase4-platformization-design.md)）。
 
 ---
 

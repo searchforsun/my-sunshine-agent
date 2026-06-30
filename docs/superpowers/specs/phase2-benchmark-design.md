@@ -86,7 +86,7 @@ IntentRouter → ExecutionDispatcher
 - 步骤含 `label`（来自 Catalog / Nacos `agent.timeline.*`）
 - 前端：`OperationStack` / `OperationCard`；禁止本地步骤话术 Map
 
-详设历史稿：`2026-06-13-processing-timeline-v2-design.md`
+详设历史稿：`docs/archive/specs/2026-06-13-processing-timeline-v2-design.md`
 
 ---
 

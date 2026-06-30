@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段三 **检查门基本通过**（live 脚本全绿；v6 相对 vector +15% 仍 WARN）— 3.4 RAG、3.8、3.9 PLAN_WORKFLOW、3.10 AgentRuntime、3.11 skill-manager、**3.12 `/skills` live ✅**、3.6 审计、3.2/3.3/3.5/3.7 live ✅、3.9.5、3.13/3.14 ✅；阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md` 与 `docs/superpowers/specs/phase3-production-hardening-design.md` §6。
+**进度**：阶段三 **检查门基本通过**（2026-06-30；live 全绿；v6 +15% 仍 WARN）— 阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md` 与 `docs/tech-debt-register.md`。
 
 ## 常用命令
 

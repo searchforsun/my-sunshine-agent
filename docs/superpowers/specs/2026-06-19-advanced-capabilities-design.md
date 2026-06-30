@@ -111,8 +111,8 @@ L4 Prompt Ops        — 版本/A-B/评测门禁（阶段四 prompt 后台）
 | 编号 | 任务 | 模块 | 阶段 |
 |------|------|------|------|
 | P1 | `QueryRewriteService` 三场景 | orchestrator | 阶段三 | **✅ 已落地** |
-| P2 | `PromptComposer` 抽离 `SunshineAgent.buildInputs` | orchestrator | 阶段三 | ⬜ 见 plan Task 3.8.2 |
-| P3 | workflow `llm` 节点 prompt 走 Composer | orchestrator | 阶段三 | ⬜ 见 plan Task 3.8.3 |
+| P2 | `PromptComposer` 抽离 `SunshineAgent.buildInputs` | orchestrator | 阶段三 | **✅ 3.8.2** |
+| P3 | workflow `answer` 节点 prompt 走 Composer | orchestrator | 阶段三 | **✅ 3.8.3** |
 | P4 | `empty-recall` 二次改写检索 | orchestrator | 阶段三 | **✅ 已落地** |
 | P5 | STM 工具结果 `ContextCompressor`（摘要已命中条目） | orchestrator | 阶段三末 |
 | P6 | prompt-manager 版本化 + 发布流 | prompt-manager | 阶段四 4.4 |

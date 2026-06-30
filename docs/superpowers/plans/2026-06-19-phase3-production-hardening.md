@@ -1,5 +1,7 @@
 # 阶段三：生产加固 — 实施计划
 
+> **Superseded（2026-06-30）**：阶段三检查门已通过（v6 +15% 轨 WARN 除外）。**进度与验收以** [phase3-production-hardening-design.md](../specs/phase3-production-hardening-design.md) **§0/§6 为准**；下文 Task checkbox 仅作历史实施记录，勿再执行。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 按 Task 逐步执行。  
 > **覆盖度审计：** [2026-06-20-phased-implementation-coverage.md](./2026-06-20-phased-implementation-coverage.md)
 

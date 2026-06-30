@@ -90,8 +90,8 @@ flowchart TB
 |:----:|------|------|:----:|
 | **L0** | 单 ReAct | 顶层 react，单 Agent 自由调工具 | ✅ |
 | **L1** | 静态 Workflow + 单子 Agent 节点 | `finance-smart`：tool → agent → llm | ✅ |
-| **L2** | 主 Coordinator + 多子 Agent（串行） | 主 Agent 按步骤委派不同 skill 子 Agent | ⬜ 阶段三 |
-| **L3** | Planner + 动态 DAG + 多 agent 节点 | Planner 产出 Plan，引擎调度多个子 Agent | ⬜ 阶段三 |
+| **L2** | 主 Coordinator + 多子 Agent（串行） | 主 Agent 按步骤委派不同 skill 子 Agent | ✅ 阶段三（Plan workflow agent 节点） |
+| **L3** | Planner + 动态 DAG + 多 agent 节点 | Planner 产出 Plan，引擎调度多个子 Agent | ✅ 阶段三（PLAN_WORKFLOW） |
 | **L4** | 并行子 Agent + **`PEER_COLLAB` 第五模式**（受控 MsgHub） | 多子并行汇总；对等协商 / 交叉验证 | ⬜ 阶段四 · [peer-collab spec](./2026-06-24-peer-collab-routing-design.md) · **D10** |
 
 **推荐路径**：L1（已有）→ **L3**（动态 DAG + Skills，性价比最高）→ L2（顶层 Coordinator react）→ L4（按需）。
