@@ -20,7 +20,6 @@
 | ID | 类型 | 严重度 | 模块 | 描述 | 状态 | 备注 |
 |----|------|:------:|------|------|:----:|------|
 | TD-023 | 代码债 | P2 | sunshine-ui | `ChatView.vue` 上帝组件（~1694 行） | open | 拆 composables |
-| TD-024 | 代码债 | P2 | orchestrator | `ProcessingTimelineSession`（~701 行） | open | 按 phase 拆分 |
 | TD-028 | 代码债 | P3 | orchestrator | `PlanWorkflowExecutor`（~416 行） | open | 可选拆分 |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
@@ -56,6 +55,7 @@
 | TD-026 | 2026-06-30 | 统一 `appendInterleavedContent` tail 锚点 |
 | TD-027 | 2026-06-30 | 删 `migrateReasoningKeys` / `_idx_` |
 | TD-022 | 2026-06-30 | summary 主行不再 fallback label；`running()` 停双写 active |
+| TD-024 | 2026-06-30 | 拆分 `TimelineSession*`（Session ~280 行） |
 | DOC-010 | 2026-06-30 | Phase1/2 REQ 移 `requirements/done/` |
 | DOC-001 | 2026-06-29 | CLAUDE/README 去重 |
 | DOC-002 | 2026-06-29 | timeline spec supersede |
