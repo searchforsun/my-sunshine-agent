@@ -1,4 +1,5 @@
 import type { ProcessingStep } from './processingSteps'
+import { formatStepLabel } from './processingStepsDisplay'
 
 export type HitlDecision = 'approved' | 'denied'
 
@@ -91,7 +92,7 @@ function buildPendingFromPlanNode(step: ProcessingStep): HitlConfirmationPayload
   if (!awaiting) return undefined
   const token = resolveHitlToken(step) ?? ''
   const toolDisplayName = step.metadata?.hitlToolDisplayName?.trim()
-    || step.label?.trim()
+    || formatStepLabel(step)
     || '写操作工具'
   return {
     confirmationToken: token,
@@ -115,7 +116,7 @@ export function buildPendingFromStep(step: ProcessingStep): HitlConfirmationPayl
     confirmationToken: token,
     toolId,
     toolDisplayName: step.metadata?.hitlToolDisplayName?.trim()
-      || step.label?.replace(/^调用工具\s*/, '').trim()
+      || formatStepLabel(step).replace(/^调用工具\s*/, '').trim()
       || toolId,
     paramsSummary: step.metadata?.hitlParamsSummary?.trim() ?? '',
     expiresAt: step.metadata?.hitlExpiresAt ?? 0,
@@ -258,7 +259,7 @@ export function resolveStepForHitlDisplay(
 
 export function resolveHitlToolName(step: ProcessingStep): string {
   return step.metadata?.hitlToolDisplayName?.trim()
-    || step.label?.trim()
+    || formatStepLabel(step)
     || '写操作工具'
 }
 

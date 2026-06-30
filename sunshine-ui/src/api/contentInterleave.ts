@@ -5,6 +5,7 @@
  */
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
+import { formatStepLabel } from './processingStepsDisplay'
 
 function mergeStreamChunk(existing: string, chunk: string): string {
   const maxOverlap = Math.min(existing.length, chunk.length, 64)
@@ -217,7 +218,7 @@ export function isPlanNodeLeakText(text: string, steps: ProcessingStep[]): boole
   if (!content || !isPlanWorkflowSteps(steps)) return false
   for (const step of steps) {
     if (!step.id.startsWith('node-') || step.id === 'node-answer') continue
-    const label = step.label?.trim() || step.id.slice('node-'.length)
+    const label = formatStepLabel(step)
     const active = step.summary?.active?.trim()
     const after = step.summary?.after?.trim()
     const detail = step.detail?.trim()
@@ -263,7 +264,7 @@ export function stripPlanDrawerLeakFromMessage(
   let content = msg.content.trim()
   for (const step of msg.steps) {
     if (!step.id.startsWith('node-') || step.id === 'node-answer') continue
-    const label = step.label?.trim() || step.id.slice('node-'.length)
+    const label = formatStepLabel(step)
     const active = step.summary?.active?.trim()
     if (!active?.includes('等待用户确认')) continue
     const leak = `${label} ${active}`

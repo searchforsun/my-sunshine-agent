@@ -139,8 +139,7 @@ export interface ProcessingStep {
 
   ts?: number
 
-  /** @deprecated V1 兼容，展示以 summary 为准 */
-
+  /** 步骤展示名（wire SSOT）；主行摘要以 summary 为准 */
   label?: string
 
   metadata?: StepMetadata
@@ -282,17 +281,10 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
   }
 
   const base: ProcessingStep = idx >= 0 ? { ...steps[idx] } : {
-
     id: delta.stepId,
-
     phase: delta.stepId as StepPhase,
-
     lifecycle: 'running',
-
-    label: delta.stepId,
-
     summary: { active: delta.stepId },
-
   }
 
   switch (delta.channel) {

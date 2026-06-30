@@ -100,7 +100,7 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
   const title = formatStepLabel(step)
   let header = ''
   if (lifecycle === 'running') {
-    header = step.summary?.active?.trim() || step.label?.trim() || ''
+    header = step.summary?.active?.trim() || ''
   } else if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
     header = step.summary?.after?.trim()
       || formatStepMetadata(step)
@@ -111,7 +111,7 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
       header = stripPlanMetaText(header)
     }
   } else {
-    header = step.summary?.before?.trim() || step.label?.trim() || ''
+    header = step.summary?.before?.trim() || ''
   }
   if (!header || header === title) {
     return ''
@@ -227,8 +227,8 @@ export function summarizeSteps(steps: ProcessingStep[]): string {
     .filter(s => s.lifecycle === 'done')
     .map(s => {
       if (s.summary?.after) return s.summary.after
-      const label = s.label ?? s.id
-      return s.detail ? `${label} · ${s.detail}` : label
+      const title = formatStepLabel(s)
+      return s.detail ? `${title} · ${s.detail}` : title
     })
     .filter(Boolean)
   const total = totalDuration(steps)

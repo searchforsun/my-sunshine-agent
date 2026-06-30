@@ -40,7 +40,7 @@ public record ProcessingStep(
                 id,
                 phase,
                 "running",
-                new StepSummary(null, label, null),
+                null,
                 ts,
                 null,
                 null,

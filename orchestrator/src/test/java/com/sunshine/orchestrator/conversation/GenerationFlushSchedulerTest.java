@@ -45,6 +45,7 @@ class GenerationFlushSchedulerTest {
         assertThat(summary.get("active").asText()).isEqualTo("正在分析用户输入");
         assertThat(summary.has("before")).isFalse();
         assertThat(summary.has("after")).isFalse();
+        assertThat(node.get("label").asText()).isEqualTo("识别意图");
         assertThat(node.has("status")).isFalse();
         assertThat(node.get("lifecycle").asText()).isEqualTo("running");
     }

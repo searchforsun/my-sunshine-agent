@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
+import { formatStepLabel } from '../../api/processingStepsDisplay'
 import { isRecoveryAwaiting, resolveRecoveryError } from '../../api/recoverySteps'
 import { confirmWorkflowNodeRecovery } from '../../api/workflowRecovery'
 import CollapsibleConfirmPanel from '../operation/CollapsibleConfirmPanel.vue'
@@ -28,7 +29,7 @@ const summaryLine = computed(() => {
   if (localAction.value === 'retry') return '节点失败：已选择重试'
   if (localAction.value === 'skip') return '节点失败：已跳过并继续'
   if (localAction.value === 'terminate') return '节点失败：已终止流程'
-  const label = props.step.label?.trim() || props.step.id
+  const label = formatStepLabel(props.step)
   return awaiting.value ? `节点失败：${label} · 等待处理` : `节点失败：${label}`
 })
 
