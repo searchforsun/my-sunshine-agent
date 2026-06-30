@@ -10,7 +10,7 @@ import java.util.Iterator;
 import java.util.Map;
 
 /**
- * 解析 Intent LLM 输出的 JSON；失败或旧版裸字符串时 fallback 或 legacy 映射
+ * 解析 Intent LLM 输出的 JSON；失败或非 JSON 裸字符串时 fallback
  */
 @Slf4j
 @Component
@@ -39,7 +39,7 @@ public class ExecutionPlanParser {
         }
     }
 
-    /** 解析 DB 中已存的 intent 标签（含新 intentLabel 与旧 simple/knowledge/finance） */
+    /** 解析 DB 中已存的 intentLabel（simple-llm / react / plan-workflow / workflow:{id}） */
     public ExecutionPlan parseStoredIntent(String stored) {
         if (stored.startsWith("workflow:")) {
             String workflowId = stored.substring("workflow:".length());
@@ -54,17 +54,7 @@ public class ExecutionPlanParser {
         if ("plan-workflow".equalsIgnoreCase(stored)) {
             return new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "stored");
         }
-        return legacyPlan(stored);
-    }
-
-    private static ExecutionPlan legacyPlan(String raw) {
-        return switch (raw.toLowerCase()) {
-            case "simple" -> new ExecutionPlan(ExecutionMode.SIMPLE_LLM, null, Map.of(), "legacy");
-            case "knowledge" -> new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "legacy");
-            case "finance" -> new ExecutionPlan(
-                    ExecutionMode.WORKFLOW, "finance-list", Map.of("status", "pending"), "legacy");
-            default -> ExecutionPlan.reactFallback("legacy:" + raw);
-        };
+        return ExecutionPlan.reactFallback("unknown stored intent: " + stored);
     }
 
     private static Map<String, String> parseParams(JsonNode paramsNode) {

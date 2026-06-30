@@ -58,7 +58,7 @@ import {
 } from '../api/contentInterleave'
 import { ensurePlanTimelineSteps, hasPlanTimeline } from '../api/planHydrate'
 import {
-  normalizeTimelineSteps,
+  sortSteps,
   hasActiveStep,
   type ProcessingStep,
 } from '../api/processingSteps'
@@ -144,7 +144,7 @@ const reasoningExpanded = reactive(new Map<string, boolean>())
 const reasoningUserToggled = reactive(new Set<string>())
 
 function reasoningKey(msg: ChatMessage, idx: number): string {
-  return msg.id ?? `_idx_${idx}`
+  return msg.id ?? String(idx)
 }
 
 function clearReasoningUiState(): void {
@@ -182,7 +182,7 @@ function resolveTimelineContext(msg: ChatMessage): {
   if (!baseSteps.length) return { steps: [], pending: undefined }
   const synced = applySyncedPendingHitl(baseSteps, msg.pendingHitlConfirmation)
   return {
-    steps: normalizeTimelineSteps(synced.steps, msg.reasoning),
+    steps: sortSteps(synced.steps),
     pending: synced.pending,
   }
 }
@@ -218,20 +218,6 @@ function isTimelineLive(msg: ChatMessage, idx: number): boolean {
   return loading.value
     && idx === messages.value.length - 1
     && hasActiveStep(resolveTimelineSteps(msg, idx))
-}
-
-function migrateReasoningKeys(): void {
-  messages.value.forEach((msg, idx) => {
-    if (!msg.id) return
-    const legacyKey = `_idx_${idx}`
-    if (!reasoningUserToggled.has(legacyKey) && !reasoningExpanded.has(legacyKey)) return
-    reasoningUserToggled.add(msg.id)
-    reasoningUserToggled.delete(legacyKey)
-    if (reasoningExpanded.has(legacyKey)) {
-      reasoningExpanded.set(msg.id, reasoningExpanded.get(legacyKey)!)
-      reasoningExpanded.delete(legacyKey)
-    }
-  })
 }
 
 /** 首 token 尚未到达时显示等待点（已有正文时不遮挡） */
@@ -676,7 +662,6 @@ async function hydrateSessionFromStore(cid: string, opts?: { skipApiLoad?: boole
   for (const m of restored) {
     if (m.role === 'assistant') normalizeRestoredInterleavedContent(m)
   }
-  migrateReasoningKeys()
   const lastAssistant = [...restored].reverse().find(m => m.role === 'assistant')
   if (lastAssistant?.content?.trim() && !loading.value) {
     settledHtml.value = captureSettledAssistantHtml(resolveAssistantDisplayContent(lastAssistant))
@@ -894,11 +879,6 @@ watch(
     return (last.content?.length ?? 0) + (last.reasoning?.length ?? 0)
   },
   async () => { await nextTick(); scrollToBottom(forceChatScroll.value) },
-)
-
-watch(
-  () => messages.value.map(m => m.id ?? '').join('\0'),
-  () => migrateReasoningKeys(),
 )
 
 function captureSettledAssistantHtml(content: string): string {

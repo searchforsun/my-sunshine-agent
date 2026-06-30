@@ -300,7 +300,7 @@ class ConversationIntegrationTest {
         conversationService.appendMessage(conv.getId(), "user", "hello", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "partial", MessageStatus.INTERRUPTED);
-        conversationService.updateMessageIntent(assistant.getId(), "simple");
+        conversationService.updateMessageIntent(assistant.getId(), "simple-llm");
 
         streamResume(ALICE, conv.getId(), assistant.getId());
 
@@ -318,7 +318,7 @@ class ConversationIntegrationTest {
         conversationService.appendMessage(conv.getId(), "user", "查制度", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "half answer", MessageStatus.INTERRUPTED);
-        conversationService.updateMessageIntent(assistant.getId(), "knowledge");
+        conversationService.updateMessageIntent(assistant.getId(), "workflow:knowledge-qa");
 
         streamResume(ALICE, conv.getId(), assistant.getId());
 
@@ -342,7 +342,7 @@ class ConversationIntegrationTest {
         conversationService.appendMessage(conv.getId(), "user", "hi", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "part", MessageStatus.INTERRUPTED);
-        conversationService.updateMessageIntent(assistant.getId(), "simple");
+        conversationService.updateMessageIntent(assistant.getId(), "simple-llm");
 
         ChatMessage resume = new ChatMessage();
         resume.setConversationId(conv.getId());

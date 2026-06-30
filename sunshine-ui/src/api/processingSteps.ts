@@ -15,7 +15,6 @@ import { sortSteps, isWorkflowNodeStepId, isThinkStepId } from './processingStep
 export { normalizeStep, parseContentBlocks } from './processingStepsParse'
 export {
   sortSteps,
-  normalizeTimelineSteps,
   isWorkflowNodeStepId,
   STEP_ORDER,
 } from './processingStepsNormalize'

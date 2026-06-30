@@ -19,13 +19,9 @@
 
 | ID | 类型 | 严重度 | 模块 | 描述 | 状态 | 备注 |
 |----|------|:------:|------|------|:----:|------|
-| TD-021 | 代码债 | P1 | sunshine-ui | `normalizeTimelineSteps` 用 `msg.reasoning` 合成 think | open | P9 清库后可删 |
 | TD-022 | 代码债 | P2 | orchestrator + sunshine-ui | `ProcessingStep.label` wire 双写；展示应仅 `summary` | open | 后端仍写 label |
 | TD-023 | 代码债 | P2 | sunshine-ui | `ChatView.vue` 上帝组件（~1694 行） | open | 拆 composables |
 | TD-024 | 代码债 | P2 | orchestrator | `ProcessingTimelineSession`（~701 行） | open | 按 phase 拆分 |
-| TD-025 | 代码债 | P2 | orchestrator | `ExecutionPlanParser.legacyPlan` 旧 intent 映射 | open | 清库后可删 |
-| TD-026 | 代码债 | P2 | sunshine-ui | `contentInterleave` legacy segment | open | 确认全走 content_start/end |
-| TD-027 | 代码债 | P3 | sunshine-ui | `ChatView` `_idx_` reasoning 展开态迁移 | open | 清 localStorage 后可删 |
 | TD-028 | 代码债 | P3 | orchestrator | `PlanWorkflowExecutor`（~416 行） | open | 可选拆分 |
 | DOC-010 | 文档债 | P3 | requirements/in-progress/ | Phase1/2 历史 REQ 未归档 | open | 移 `requirements/done/` |
 
@@ -57,6 +53,10 @@
 | TD-017 | 2026-06-30 | 删 `migrateV1Step` |
 | TD-019 | 2026-06-30 | 提取 `ChatStreamExecutor` |
 | TD-020 | 2026-06-30 | 拆分 `WorkflowNodeRunner` / `WorkflowNodeFinalizer` |
+| TD-021 | 2026-06-30 | 删 `normalizeTimelineSteps` 合成 think |
+| TD-025 | 2026-06-30 | 删 `ExecutionPlanParser.legacyPlan` |
+| TD-026 | 2026-06-30 | 统一 `appendInterleavedContent` tail 锚点 |
+| TD-027 | 2026-06-30 | 删 `migrateReasoningKeys` / `_idx_` |
 | DOC-001 | 2026-06-29 | CLAUDE/README 去重 |
 | DOC-002 | 2026-06-29 | timeline spec supersede |
 | DOC-003 | 2026-06-30 | phase3 §4 与 §0/§6 对齐 |

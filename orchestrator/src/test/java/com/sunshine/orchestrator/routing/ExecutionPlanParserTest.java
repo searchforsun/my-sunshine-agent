@@ -33,18 +33,9 @@ class ExecutionPlanParserTest {
     }
 
     @Test
-    void legacySimpleMapsToSimpleLlm() {
+    void unknownStoredIntentFallsBackToReact() {
         ExecutionPlan plan = parser.parse("simple");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
-        assertThat(plan.intentLabel()).isEqualTo("simple-llm");
-    }
-
-    @Test
-    void legacyFinanceMapsToFinanceListWorkflow() {
-        ExecutionPlan plan = parser.parse("finance");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
-        assertThat(plan.workflowId()).isEqualTo("finance-list");
-        assertThat(plan.params()).containsEntry("status", "pending");
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
     }
 
     @Test

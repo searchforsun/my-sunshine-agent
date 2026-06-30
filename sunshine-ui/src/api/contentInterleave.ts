@@ -134,9 +134,7 @@ export function endStepContentSegment(_step: ProcessingStep, _segmentId: string)
 }
 
 /**
- * plain content：
- * - 带 afterStepId：simple-llm legacy
- * - 无 afterStepId：Plan answer 自动锚定末步（含 node-answer，渲染回退到 plan）
+ * plain content：锚定 afterStepId 或自动解析末步（Plan answer 含 node-answer）
  */
 export function appendInterleavedContent(
   msg: ChatMessage,
@@ -152,19 +150,7 @@ export function appendInterleavedContent(
   if (!steps?.length) return
   if (!msg.contentBlocks) msg.contentBlocks = []
   const blocks = msg.contentBlocks
-
-  if (afterStepId) {
-    const legacyId = `legacy:${afterStepId}`
-    const existing = findBlock(blocks, legacyId)
-    if (existing) {
-      existing.text = resume ? mergeStreamChunk(existing.text, chunk) : existing.text + chunk
-    } else {
-      blocks.push({ segmentId: legacyId, afterStepId, text: chunk })
-    }
-    return
-  }
-
-  const anchor = resolveContentAnchorStepId(steps)
+  const anchor = afterStepId || resolveContentAnchorStepId(steps)
   if (!anchor) return
   const tailId = `tail:${anchor}`
   const last = blocks[blocks.length - 1]
