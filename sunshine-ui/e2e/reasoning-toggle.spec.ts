@@ -1,14 +1,13 @@
 import { test, expect } from '@playwright/test'
+import { ensureE2eLogin, fillComposer, waitForStreamComplete } from './helpers'
 
 test.describe('思考过程折叠', () => {
   test('输出完成后首次点击即可展开/折叠', async ({ page }) => {
+    await ensureE2eLogin(page)
     await page.goto('/chat')
-
-    const input = page.getByPlaceholder('发消息，Enter 发送')
-    await input.fill('写一句关于快速排序的简介')
-    await input.press('Enter')
-
-    await expect(page.locator('.composer-box--streaming')).toHaveCount(0, { timeout: 120_000 })
+    await fillComposer(page, '写一句关于快速排序的简介')
+    await page.keyboard.press('Enter')
+    await waitForStreamComplete(page)
 
     const panel = page.locator('.assistant-body').last().locator('.reasoning-panel')
     test.skip(await panel.count() === 0, '当前模型未返回 reasoning，跳过')

@@ -63,4 +63,5 @@ _当前无 open 代码债。_
 | DOC-005 | 2026-06-30 | 覆盖度审计加 supersede + 结论更新 |
 | DOC-006 | 2026-06-30 | multi-agent plan/design 进度更新 |
 | DOC-007 | 2026-06-30 | timeline spec 移 `docs/archive/` |
+| DOC-011 | 2026-07-01 | E2E 对齐 OperationStack V2；`mock-server` 补 auth；`e2e/helpers.ts` |
 | ADR-001 | 2026-06-29 | 锁定文档 vs 删兼容 |

@@ -26,6 +26,20 @@ const conversations = new Map()
  */
 const generations = new Map()
 
+/** E2E mock 鉴权（与 Gateway R<T> 对齐） */
+const authUsersByName = new Map()
+const authUsersByToken = new Map()
+
+function apiOk(data) {
+  return { code: 200, msg: 'success', data }
+}
+
+function parseBearer(req) {
+  const auth = req.headers.authorization || ''
+  const m = String(auth).match(/^Bearer\s+(.+)$/i)
+  return m?.[1]?.trim()
+}
+
 function nowIso() {
   return new Date().toISOString()
 }
@@ -35,6 +49,10 @@ function newId() {
 }
 
 function getUserId(req) {
+  const token = parseBearer(req)
+  if (token && authUsersByToken.has(token)) {
+    return authUsersByToken.get(token).userId
+  }
   return req.headers['x-user-id'] || 'anonymous'
 }
 
@@ -489,6 +507,70 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url === '/health') {
     return json(res, 200, { status: 'UP', service: 'mock-server' })
+  }
+
+  // ── Auth（E2E mock） ──
+  if (req.method === 'POST' && url === '/api/auth/register') {
+    const body = JSON.parse(await readBody(req) || '{}')
+    const username = String(body.username || '').trim()
+    if (!username || authUsersByName.has(username)) {
+      return json(res, 400, { code: 400, msg: 'username invalid', data: null })
+    }
+    const userId = newId()
+    const user = {
+      userId,
+      username,
+      nickname: String(body.nickname || username).trim(),
+      tenantId: 'default',
+      password: String(body.password || ''),
+    }
+    authUsersByName.set(username, user)
+    return json(res, 200, apiOk({
+      userId: user.userId,
+      username: user.username,
+      nickname: user.nickname,
+      tenantId: user.tenantId,
+    }))
+  }
+
+  if (req.method === 'POST' && url === '/api/auth/login') {
+    const body = JSON.parse(await readBody(req) || '{}')
+    const username = String(body.username || '').trim()
+    const user = authUsersByName.get(username)
+    if (!user || user.password !== String(body.password || '')) {
+      return json(res, 401, { code: 401, msg: 'invalid credentials', data: null })
+    }
+    const token = `mock-${newId()}`
+    user.token = token
+    authUsersByToken.set(token, user)
+    return json(res, 200, apiOk({
+      userId: user.userId,
+      username: user.username,
+      nickname: user.nickname,
+      tenantId: user.tenantId,
+      token,
+      tokenName: 'Authorization',
+    }))
+  }
+
+  if (req.method === 'GET' && url === '/api/auth/me') {
+    const token = parseBearer(req)
+    const user = token ? authUsersByToken.get(token) : null
+    if (!user) {
+      return json(res, 401, { code: 401, msg: 'unauthorized', data: null })
+    }
+    return json(res, 200, apiOk({
+      userId: user.userId,
+      username: user.username,
+      nickname: user.nickname,
+      tenantId: user.tenantId,
+    }))
+  }
+
+  if (req.method === 'POST' && url === '/api/auth/logout') {
+    const token = parseBearer(req)
+    if (token) authUsersByToken.delete(token)
+    return json(res, 200, apiOk(null))
   }
 
   // ── 会话 CRUD ──
