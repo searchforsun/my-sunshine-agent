@@ -1,47 +1,20 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, onUnmounted, onUpdated, computed, reactive, provide } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onUnmounted, onUpdated, provide, shallowRef } from 'vue'
 import { useChatSessions } from '../api/chatSessions'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
 import 'katex/dist/katex.min.css'
-import { StreamMarkdownRenderer } from '../utils/stream-markdown'
-import { normalizeStreamingMarkdown } from '../utils/stream-markdown/normalizeStreamingMarkdown'
-import { enhanceStaticMarkdown, reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 import '../utils/stream-markdown/styles.css'
-import hljs from 'highlight.js/lib/core'
-import bash from 'highlight.js/lib/languages/bash'
-import cpp from 'highlight.js/lib/languages/cpp'
-import java from 'highlight.js/lib/languages/java'
-import javascript from 'highlight.js/lib/languages/javascript'
-import json from 'highlight.js/lib/languages/json'
-import python from 'highlight.js/lib/languages/python'
-import rust from 'highlight.js/lib/languages/rust'
-import sql from 'highlight.js/lib/languages/sql'
-import typescript from 'highlight.js/lib/languages/typescript'
-import xml from 'highlight.js/lib/languages/xml'
-import yaml from 'highlight.js/lib/languages/yaml'
+import { registerHljsLanguages } from '../utils/markdown/registerHljsLanguages'
+import { useChatTimelineView } from '../composables/useChatTimelineView'
+import { useChatScroll } from '../composables/useChatScroll'
+import { useChatSkillMention } from '../composables/useChatSkillMention'
+import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
+import { useChatSessionHydration } from '../composables/useChatSessionHydration'
 import { useChatStore } from '../stores/chatStore'
 import { isValidConversationId } from '../api/conversations'
-import { resolveApiBase } from '../api/config'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
-import { apiHeaders } from '../stores/authStore'
-import {
-  loadActiveGeneration,
-  clearActiveGeneration,
-  type ActiveGeneration,
-} from '../composables/useActiveGeneration'
-
-/** 挂载/切换会话 hydration 期间，跳过 currentId watch 并抑制续跑按钮闪现 */
-const sessionHydrating = ref(true)
-
-function isPendingAutoReconnect(msg: ChatMessage, idx: number): boolean {
-  if (msg.role !== 'assistant' || idx !== messages.value.length - 1) return false
-  const active = loadActiveGeneration()
-  const cid = chatStore.currentId
-  if (!active || active.conversationId !== cid) return false
-  if (active.messageId && msg.id && active.messageId !== msg.id) return false
-  return true
-}
+import { loadActiveGeneration } from '../composables/useActiveGeneration'
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
 import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
@@ -53,60 +26,24 @@ import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/s
 import {
   isContentFullyInterleaved,
   isPlanDrawerLeakContent,
-  normalizeRestoredInterleavedContent,
   resolveStreamingContentText,
 } from '../api/contentInterleave'
-import { ensurePlanTimelineSteps, hasPlanTimeline } from '../api/planHydrate'
-import {
-  sortSteps,
-  hasActiveStep,
-  type ProcessingStep,
-} from '../api/processingSteps'
-import {
-  resolveAgentNodeStepForDrawer,
-  applySyncedPendingHitl,
-  resolveHitlUiKey,
-  stepsHaveAwaitingHitl,
-} from '../api/hitlSteps'
-import {
-  listSkillCatalogIndex,
-  type SkillCatalogIndexEntry,
-} from '../api/skills'
+import { resolveAgentNodeStepForDrawer } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
-import { allowsSkillMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
+import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 
-hljs.registerLanguage('bash', bash)
-hljs.registerLanguage('shell', bash)
-hljs.registerLanguage('cpp', cpp)
-hljs.registerLanguage('c', cpp)
-hljs.registerLanguage('java', java)
-hljs.registerLanguage('javascript', javascript)
-hljs.registerLanguage('js', javascript)
-hljs.registerLanguage('json', json)
-hljs.registerLanguage('python', python)
-hljs.registerLanguage('rust', rust)
-hljs.registerLanguage('sql', sql)
-hljs.registerLanguage('typescript', typescript)
-hljs.registerLanguage('ts', typescript)
-hljs.registerLanguage('html', xml)
-hljs.registerLanguage('xml', xml)
-hljs.registerLanguage('yaml', yaml)
-hljs.registerLanguage('mermaid', () => ({ contains: [] }))
-
+const sessionHydrating = ref(true)
+const hljs = registerHljsLanguages()
 const md = createMarkdownIt(hljs)
-
-let streamRenderer: StreamMarkdownRenderer | null = null
-const settledHtml = ref('')
-const sessionSettledHtml = new Map<string, string>()
-const streamingMdRef = ref<HTMLElement | null>(null)
 const chatBodyRef = ref<HTMLElement | null>(null)
-
-function setStreamingMdRef(el: unknown) {
-  streamingMdRef.value = el instanceof HTMLElement ? el : null
+const streamMdBridge = shallowRef<ReturnType<typeof useChatStreamMarkdown> | null>(null)
+const hydrationBridge = {
+  flushPersist: (_sessionId?: string | null) => {},
+  schedulePersist: (_sessionId: string) => {},
 }
 
 const chatStore = useChatStore()
@@ -115,126 +52,12 @@ const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible, toggleSidebar } = useSidebar()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
 const { state: planDagExpandState, isAnyExpanded: planDagExpanded, close: closePlanDagExpand, handleSelect: handlePlanDagExpandSelect } = usePlanDagExpand()
-
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
-
-function shouldShowBottomContent(msg: ChatMessage, idx: number): boolean {
-  if (!msg.content?.trim()) return false
-  if (isPlanDrawerLeakContent(msg)) return false
-  if (loading.value && idx === messages.value.length - 1 && isContentFullyInterleaved(msg)) {
-    return false
-  }
-  if (!loading.value && isContentFullyInterleaved(msg)) return false
-  return true
-}
-
-function isInterleavedStreaming(msg: ChatMessage, idx: number): boolean {
-  return loading.value
-    && idx === messages.value.length - 1
-    && isContentFullyInterleaved(msg)
-}
-/** 流式回复是否已有正文（用于切换等待动画 → 渲染区） */
-const streamingHasContent = computed(() => {
-  if (!loading.value) return false
-  const last = messages.value[messages.value.length - 1]
-  return last?.role === 'assistant' && !!resolveStreamingContentText(last).trim()
-})
-
-const reasoningExpanded = reactive(new Map<string, boolean>())
-const reasoningUserToggled = reactive(new Set<string>())
-
-function reasoningKey(msg: ChatMessage, idx: number): string {
-  return msg.id ?? String(idx)
-}
-
-function clearReasoningUiState(): void {
-  reasoningExpanded.clear()
-  reasoningUserToggled.clear()
-}
-
-function isReasoningExpanded(msg: ChatMessage, idx: number): boolean {
-  if (!msg?.reasoning?.trim()) return false
-  const key = reasoningKey(msg, idx)
-  if (reasoningUserToggled.has(key)) return reasoningExpanded.get(key) ?? false
-  if (loading.value && idx === messages.value.length - 1 && !msg.content?.trim()) return true
-  return false
-}
-
-function isReasoningLive(msg: ChatMessage, idx: number): boolean {
-  return loading.value
-    && idx === messages.value.length - 1
-    && !!msg?.reasoning?.trim()
-    && !msg.content?.trim()
-}
-
-function toggleReasoning(msg: ChatMessage, idx: number): void {
-  const key = reasoningKey(msg, idx)
-  const currentlyExpanded = isReasoningExpanded(msg, idx)
-  reasoningUserToggled.add(key)
-  reasoningExpanded.set(key, !currentlyExpanded)
-}
-
-function resolveTimelineContext(msg: ChatMessage): {
-  steps: ProcessingStep[]
-  pending: ChatMessage['pendingHitlConfirmation']
-} {
-  const baseSteps = ensurePlanTimelineSteps(msg)
-  if (!baseSteps.length) return { steps: [], pending: undefined }
-  const synced = applySyncedPendingHitl(baseSteps, msg.pendingHitlConfirmation)
-  return {
-    steps: sortSteps(synced.steps),
-    pending: synced.pending,
-  }
-}
-
-function resolveTimelineSteps(msg: ChatMessage, _idx?: number): ProcessingStep[] {
-  return resolveTimelineContext(msg).steps
-}
-
-function resolveUserQuery(idx: number): string {
-  for (let i = idx - 1; i >= 0; i--) {
-    const m = messages.value[i]
-    if (m?.role === 'user') {
-      const text = m.content?.trim()
-      if (text) return text
-    }
-  }
-  return ''
-}
-
-function showTimeline(msg: ChatMessage, idx: number): boolean {
-  if (hasPlanTimeline(msg)) return true
-  const steps = resolveTimelineSteps(msg, idx)
-  return steps.length > 0
-}
-
-function operationStackKey(msg: ChatMessage, idx: number): string {
-  const ctx = resolveTimelineContext(msg)
-  const hitl = resolveHitlUiKey(ctx.steps, ctx.pending)
-  return `${msg.id ?? idx}-${hitl}`
-}
-
-function isTimelineLive(msg: ChatMessage, idx: number): boolean {
-  return loading.value
-    && idx === messages.value.length - 1
-    && hasActiveStep(resolveTimelineSteps(msg, idx))
-}
-
-/** 首 token 尚未到达时显示等待点（已有正文时不遮挡） */
-const showStreamWaiting = computed(() => {
-  if (!loading.value) return false
-  const last = messages.value[messages.value.length - 1]
-  if (last?.role !== 'assistant') return true
-  if (last.content?.trim()) return false
-  if (last.reasoning?.trim()) return false
-  const idx = messages.value.length - 1
-  if (hasActiveStep(resolveTimelineSteps(last, idx))) return false
-  return true
-})
+const currentConversationId = computed(() => chatStore.currentId)
 
 const {
   messages, streamRevision, loading, send, resume, reconnectStream, stop,
-  switchTo, ensureActive, getMessages, setMessages, migrateSession, destroySession,
+  ensureActive, getMessages, setMessages, migrateSession, destroySession,
   applyHitlDecision,
   applyRecoveryDecision,
 } = useChatSessions(
@@ -243,23 +66,20 @@ const {
     if (cid !== chatStore.currentId && sid !== chatStore.currentId) return
     const last = messages.value[messages.value.length - 1]
     if (last?.role !== 'assistant') return
-    // 穿插 timeline 正文由 OperationStack + StaticMarkdown 随 contentBlocks 增量渲染
     if (isContentFullyInterleaved(last)) return
-    const apply = () => streamRenderer?.syncFromContent(resolveStreamingContentText(last))
-    if (!streamRenderer) {
-      void ensureStreamRenderer().then(apply)
-      return
-    }
-    apply()
+    const bridge = streamMdBridge.value
+    if (!bridge) return
+    const apply = () => bridge.syncStreamFromContent(resolveStreamingContentText(last))
+    void bridge.ensureStreamRenderer().then(apply)
   },
   (id: string) => {
     const cid = chatStore.currentId ?? id
-    flushPersist(cid)
+    hydrationBridge.flushPersist(cid)
     chatStore.syncMessages(cid, getMessages(cid))
   },
   (id: string) => {
     const cid = chatStore.currentId ?? id
-    schedulePersist(cid)
+    hydrationBridge.schedulePersist(cid)
     chatStore.syncMessages(cid, getMessages(cid))
   },
   (sid: string, convId: string) => {
@@ -272,6 +92,96 @@ const {
   () => chatStore.recoverAfterStaleConversation(),
 )
 
+const {
+  scrollRef,
+  chatScrollPinned,
+  forceChatScroll,
+  onChatScroll,
+  scrollToBottom,
+  pinScrollForHitl,
+} = useChatScroll(loading)
+
+const {
+  resolveTimelineContext,
+  resolveUserQuery,
+  showTimeline,
+  operationStackKey,
+  isTimelineLive,
+  showStreamWaiting,
+} = useChatTimelineView(messages, loading)
+
+const markdown = useChatStreamMarkdown(
+  md,
+  messages,
+  loading,
+  currentConversationId,
+  scrollToBottom,
+  forceChatScroll,
+)
+streamMdBridge.value = markdown
+const {
+  settledHtml,
+  sessionSettledHtml,
+  setStreamingMdRef,
+  renderAssistantHtml,
+  enhanceAllStaticMarkdown,
+  ensureStreamRenderer,
+  clearStreamRenderer,
+  cacheSettledHtmlForConversation,
+  captureSettledAssistantHtml,
+} = markdown
+
+const {
+  schedulePersist,
+  flushPersist,
+  hydrateSessionFromStore,
+  tryAutoReconnect,
+  syncSessionToStore,
+  flushAllOnPageHide,
+} = useChatSessionHydration({
+  chatStore,
+  loading,
+  getMessages,
+  setMessages,
+  reconnectStream,
+  captureSettledAssistantHtml,
+  resolveAssistantDisplayContent,
+  settledHtml,
+  sessionSettledHtml,
+  ensureStreamRenderer,
+  scrollToBottom,
+  enhanceAllStaticMarkdown,
+})
+hydrationBridge.flushPersist = flushPersist
+hydrationBridge.schedulePersist = schedulePersist
+
+function shouldShowBottomContent(msg: ChatMessage, idx: number): boolean {
+  if (!msg.content?.trim()) return false
+  if (isPlanDrawerLeakContent(msg)) return false
+  if (loading.value && idx === messages.value.length - 1 && isContentFullyInterleaved(msg)) return false
+  if (!loading.value && isContentFullyInterleaved(msg)) return false
+  return true
+}
+
+function isInterleavedStreaming(msg: ChatMessage, idx: number): boolean {
+  return loading.value && idx === messages.value.length - 1 && isContentFullyInterleaved(msg)
+}
+
+const streamingHasContent = computed(() => {
+  if (!loading.value) return false
+  const last = messages.value[messages.value.length - 1]
+  return last?.role === 'assistant' && !!resolveStreamingContentText(last).trim()
+})
+
+function isPendingAutoReconnect(msg: ChatMessage, idx: number): boolean {
+  if (msg.role !== 'assistant' || idx !== messages.value.length - 1) return false
+  const active = loadActiveGeneration()
+  const cid = chatStore.currentId
+  if (!active || active.conversationId !== cid) return false
+  if (active.messageId && msg.id && active.messageId !== msg.id) return false
+  return true
+}
+
 const latestAssistantMessage = computed(() => {
   const msgs = messages.value
   for (let i = msgs.length - 1; i >= 0; i--) {
@@ -279,6 +189,12 @@ const latestAssistantMessage = computed(() => {
   }
   return undefined
 })
+
+function handleHitlDecision(token: string, approved: boolean) {
+  applyHitlDecision(token, approved)
+  pinScrollForHitl()
+  void nextTick(() => scrollToBottom(true))
+}
 
 provide('applyHitlDecision', handleHitlDecision)
 provide('applyRecoveryDecision', applyRecoveryDecision)
@@ -292,8 +208,20 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
 )
 
 const inputText = ref('')
+const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
+const {
+  inputRef,
+  skillCatalog,
+  showSkillSuggest,
+  skillSuggestIndex,
+  filteredSkills,
+  skillMentionAllowed,
+  inputPlaceholder,
+  applySkillSuggest,
+  loadSkillCatalog,
+  handleSkillKeydown,
+} = useChatSkillMention(inputText, preference, loading)
 
-/** 空会话快捷提示 — 对齐当前路由/工具/Skill 能力 */
 const EMPTY_HINTS = [
   { label: '制度检索', prompt: '检索知识库：公司的差旅报销制度有哪些要点？' },
   { label: '报销分析', prompt: '查询待审批报销单，并对金额与事由做合规分析' },
@@ -306,100 +234,8 @@ function applyEmptyHint(prompt: string) {
   void handleSend()
 }
 
-const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
-const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
-const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
-const showSkillSuggest = ref(false)
-const skillSuggestIndex = ref(0)
-const skillMentionStart = ref(-1)
-const skillQuery = ref('')
-
-const skillMentionAllowed = computed(() => allowsSkillMention(preference.value))
-const inputPlaceholder = computed(() =>
-  skillMentionAllowed.value
-    ? '发消息，Enter 发送；输入 @ 指定 Skill'
-    : '发消息，Enter 发送',
-)
-
-const filteredSkills = computed(() => {
-  const q = skillQuery.value.trim().toLowerCase()
-  return skillCatalog.value
-    .filter(s => s.enabled && (
-      !q
-      || s.id.toLowerCase().includes(q)
-      || s.displayName.toLowerCase().includes(q)
-    ))
-    .slice(0, 8)
-})
-
-function refreshSkillMention(text: string) {
-  if (!skillMentionAllowed.value) {
-    showSkillSuggest.value = false
-    return
-  }
-  const match = text.match(/@([\w\u4e00-\u9fff-]*)$/)
-  if (!match || match.index == null) {
-    showSkillSuggest.value = false
-    return
-  }
-  skillMentionStart.value = match.index
-  skillQuery.value = match[1]
-  showSkillSuggest.value = skillCatalog.value.some(s => s.enabled)
-  skillSuggestIndex.value = 0
-}
-
-watch(inputText, refreshSkillMention)
-watch(skillMentionAllowed, (allowed) => {
-  if (!allowed) showSkillSuggest.value = false
-})
-
-function applySkillSuggest(skill: SkillCatalogIndexEntry) {
-  if (skillMentionStart.value < 0) return
-  const prefix = inputText.value.slice(0, skillMentionStart.value)
-  inputText.value = `${prefix}@${skill.id} `
-  showSkillSuggest.value = false
-  nextTick(() => inputRef.value?.focus())
-}
-
-async function loadSkillCatalog() {
-  try {
-    skillCatalog.value = await listSkillCatalogIndex()
-  } catch (e) {
-    console.warn('[ChatView] skill catalog load failed', e)
-  }
-}
-const scrollRef = ref<HTMLElement | null>(null)
-/** 流式生成时是否跟随滚到底（用户手动上滑后暂停） */
-const chatScrollPinned = ref(true)
-/** HITL 等用户确认后续跑：强制贴底直到本轮 loading 结束 */
-const forceChatScroll = ref(false)
 const copiedIndex = ref<number | null>(null)
 let copyResetTimer: ReturnType<typeof setTimeout> | null = null
-const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
-function schedulePersist(sessionId: string) {
-  const prev = persistTimers.get(sessionId)
-  if (prev) clearTimeout(prev)
-  persistTimers.set(sessionId, setTimeout(() => {
-    persistTimers.delete(sessionId)
-    chatStore.syncMessages(sessionId, getMessages(sessionId))
-  }, 400))
-}
-
-function flushPersist(sessionId?: string | null) {
-  if (sessionId) {
-    const t = persistTimers.get(sessionId)
-    if (t) clearTimeout(t)
-    persistTimers.delete(sessionId)
-    chatStore.syncMessages(sessionId, getMessages(sessionId))
-    return
-  }
-  for (const [id, t] of persistTimers) {
-    clearTimeout(t)
-    chatStore.syncMessages(id, getMessages(id))
-  }
-  persistTimers.clear()
-}
 
 function canCopyAssistant(msg: { role: string; content: string }, idx: number): boolean {
   return msg.role === 'assistant'
@@ -426,62 +262,6 @@ async function copyAssistantMessage(text: string, idx: number) {
   copyResetTimer = setTimeout(() => { copiedIndex.value = null }, 2000)
 }
 
-function isNearChatBottom(el: HTMLElement, threshold = 96): boolean {
-  return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
-}
-
-function onChatScroll() {
-  const el = scrollRef.value
-  if (!el || !loading.value) return
-  chatScrollPinned.value = isNearChatBottom(el)
-}
-
-function scrollToBottom(force = false) {
-  const el = scrollRef.value
-  if (!el) return
-  const shouldScroll = force || forceChatScroll.value || chatScrollPinned.value
-  if (!shouldScroll) return
-  const apply = () => {
-    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
-  }
-  apply()
-  requestAnimationFrame(apply)
-}
-
-function handleHitlDecision(token: string, approved: boolean) {
-  applyHitlDecision(token, approved)
-  chatScrollPinned.value = true
-  forceChatScroll.value = true
-  void nextTick(() => scrollToBottom(true))
-}
-
-function renderMarkdown(text: string): string {
-  if (!text) return ''
-  const normalized = normalizeStreamingMarkdown(text)
-  try { return md.render(normalized) } catch { return normalized.replace(/</g, '&lt;').replace(/>/g, '&gt;') }
-}
-
-async function ensureStreamRenderer(retries = 5): Promise<void> {
-  for (let i = 0; i < retries; i++) {
-    await nextTick()
-    if (streamingMdRef.value) break
-  }
-  const container = streamingMdRef.value
-  if (!container) return
-
-  streamRenderer?.clear()
-  streamRenderer = new StreamMarkdownRenderer(container, {
-    debounceMs: 16,
-    renderMarkdown: (text: string) => {
-      try { return md.render(normalizeStreamingMarkdown(text)) } catch { return text }
-    },
-  })
-  const last = messages.value[messages.value.length - 1]
-  if (last?.role === 'assistant' && resolveStreamingContentText(last)) {
-    streamRenderer.syncFromContent(resolveStreamingContentText(last))
-  }
-}
-
 function canResume(msg: { role: string; status?: string; intent?: string; id?: string }, idx: number): boolean {
   if (sessionHydrating.value) return false
   if (isPendingAutoReconnect(msg as ChatMessage, idx)) return false
@@ -495,22 +275,15 @@ function canResume(msg: { role: string; status?: string; intent?: string; id?: s
 async function handleSend() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
-
   try {
     const convId = await chatStore.ensureCurrent()
     ensureActive(convId)
-
-    if (messages.value.length === 0) {
-      chatStore.updateTitle(convId, text)
-    }
-
+    if (messages.value.length === 0) chatStore.updateTitle(convId, text)
     inputText.value = ''
     settledHtml.value = ''
     sessionSettledHtml.delete(convId)
-    streamRenderer?.clear()
-    streamRenderer = null
+    clearStreamRenderer()
     chatScrollPinned.value = true
-
     await nextTick()
     const binding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
     const sendPromise = send(text, convId, {
@@ -533,243 +306,20 @@ async function handleResume() {
   const last = messages.value[messages.value.length - 1]
   const convId = chatStore.currentId
   if (!last?.id || !convId || loading.value) return
-
   settledHtml.value = ''
   sessionSettledHtml.delete(convId)
   await nextTick()
   const resumeMode = resolveResumeMode(last)
   const resumePromise = resume(convId, last.id)
   await nextTick()
-  if (resumeMode === 'regenerate') {
-    await ensureStreamRenderer()
-  }
+  if (resumeMode === 'regenerate') await ensureStreamRenderer()
   await resumePromise
   await nextTick()
   scrollToBottom()
 }
 
-function markAssistantFailed(convId: string, messageId?: string) {
-  const msgs = getMessages(convId)
-  const target = messageId
-    ? msgs.find(m => m.id === messageId && m.role === 'assistant')
-    : msgs[msgs.length - 1]
-  if (target?.role === 'assistant' && target.status !== 'completed') {
-    target.status = 'failed'
-  }
-}
-
-function markAssistantInterrupted(convId: string, messageId?: string) {
-  const msgs = getMessages(convId)
-  const target = messageId
-    ? msgs.find(m => m.id === messageId && m.role === 'assistant')
-    : msgs[msgs.length - 1]
-  if (target?.role === 'assistant' && target.status !== 'completed') {
-    target.status = 'interrupted'
-  }
-}
-
-function pickLongerContent(a: string, b: string): string {
-  if (!b.trim()) return a
-  if (!a.trim()) return b
-  return b.length >= a.length ? b : a
-}
-
-function pickPreferredAssistantStatus(
-  api?: ChatMessage['status'],
-  local?: ChatMessage['status'],
-): ChatMessage['status'] | undefined {
-  const rank = (s?: ChatMessage['status']) => {
-    if (s === 'completed') return 4
-    if (s === 'streaming') return 3
-    if (s === 'interrupted') return 2
-    if (s === 'failed') return 1
-    return 0
-  }
-  if (rank(local) >= rank(api)) return local ?? api
-  return api ?? local
-}
-
-/** 将会话内存中更完整的 assistant 尾消息合并进 restored，避免 loadDetail 陈旧数据覆盖重连进度 */
-function mergeAssistantTail(restoredLast: ChatMessage, localLast: ChatMessage): void {
-  restoredLast.content = pickLongerContent(restoredLast.content ?? '', localLast.content ?? '')
-  const localReasoning = localLast.reasoning?.trim() ?? ''
-  const restoredReasoning = restoredLast.reasoning?.trim() ?? ''
-  if (localReasoning.length >= restoredReasoning.length) {
-    restoredLast.reasoning = localLast.reasoning
-  }
-  const localSteps = localLast.steps?.length ?? 0
-  const restoredSteps = restoredLast.steps?.length ?? 0
-  const localIntentOnly = localSteps === 1 && localLast.steps?.[0]?.id === 'intent'
-  const localHasHitl = !localIntentOnly && (
-    stepsHaveAwaitingHitl(localLast.steps)
-    || !!localLast.pendingHitlConfirmation
-  )
-  if (localIntentOnly || localSteps >= restoredSteps || localHasHitl) {
-    restoredLast.steps = localLast.steps
-  }
-  if (localIntentOnly) {
-    restoredLast.content = localLast.content ?? ''
-    restoredLast.reasoning = localLast.reasoning ?? ''
-    restoredLast.contentBlocks = localLast.contentBlocks
-    restoredLast.pendingHitlConfirmation = undefined
-  } else if (localLast.pendingHitlConfirmation && !localIntentOnly) {
-    restoredLast.pendingHitlConfirmation = localLast.pendingHitlConfirmation
-  }
-  if (localLast.contentBlocks?.length) {
-    const localJoined = localLast.contentBlocks.map(b => b.text).join('')
-    const restoredJoined = restoredLast.contentBlocks?.map(b => b.text).join('') ?? ''
-    if (localJoined.length >= restoredJoined.length) {
-      restoredLast.contentBlocks = localLast.contentBlocks
-    }
-  }
-  restoredLast.status = pickPreferredAssistantStatus(restoredLast.status, localLast.status)
-  if (localLast.streamError && !restoredLast.streamError) {
-    restoredLast.streamError = localLast.streamError
-  }
-  normalizeRestoredInterleavedContent(restoredLast)
-}
-
-function syncSessionToStore(cid: string) {
-  chatStore.syncMessages(cid, getMessages(cid))
-  const lastAssistant = [...getMessages(cid)].reverse().find(m => m.role === 'assistant')
-  if (lastAssistant?.content?.trim() && !loading.value) {
-    settledHtml.value = captureSettledAssistantHtml(resolveAssistantDisplayContent(lastAssistant))
-    sessionSettledHtml.set(cid, settledHtml.value)
-  } else if (!loading.value) {
-    settledHtml.value = sessionSettledHtml.get(cid) ?? ''
-  }
-}
-
-async function hydrateSessionFromStore(cid: string, opts?: { skipApiLoad?: boolean }) {
-  const skipApi = opts?.skipApiLoad ?? loading.value
-  if (!skipApi) {
-    await chatStore.loadDetail(cid)
-  }
-  const restored = chatStore.conversations.find(c => c.id === cid)?.messages ?? []
-  const local = getMessages(cid)
-  if (local.length && restored.length) {
-    const localLast = local[local.length - 1]
-    const restoredLast = restored[restored.length - 1]
-    if (localLast?.role === 'assistant' && restoredLast?.role === 'assistant') {
-      mergeAssistantTail(restoredLast, localLast)
-    }
-  }
-  if (!restored.length) {
-    settledHtml.value = ''
-    return
-  }
-  setMessages(cid, [...restored])
-  for (const m of restored) {
-    if (m.role === 'assistant') normalizeRestoredInterleavedContent(m)
-  }
-  const lastAssistant = [...restored].reverse().find(m => m.role === 'assistant')
-  if (lastAssistant?.content?.trim() && !loading.value) {
-    settledHtml.value = captureSettledAssistantHtml(resolveAssistantDisplayContent(lastAssistant))
-    sessionSettledHtml.set(cid, settledHtml.value)
-  } else if (!loading.value) {
-    settledHtml.value = sessionSettledHtml.get(cid) ?? ''
-  }
-  await nextTick()
-  enhanceAllStaticMarkdown()
-  scrollToBottom()
-}
-
-async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
-  try {
-    const resp = await fetch(`${resolveApiBase()}/api/generations/${active.generationId}`, {
-      headers: apiHeaders(),
-    })
-
-    if (resp.status === 410 || resp.status === 404) {
-      clearActiveGeneration()
-      markAssistantInterrupted(cid, active.messageId)
-      await hydrateSessionFromStore(cid)
-      return
-    }
-
-    if (!resp.ok) {
-      await hydrateSessionFromStore(cid)
-      return
-    }
-
-    const status = await resp.json() as { status: string; lastSeq: number }
-
-    if (status.status === 'INTERRUPTED') {
-      clearActiveGeneration()
-      markAssistantInterrupted(cid, active.messageId)
-      await hydrateSessionFromStore(cid)
-      return
-    }
-
-    if (status.status === 'FAILED') {
-      clearActiveGeneration()
-      markAssistantFailed(cid, active.messageId)
-      await hydrateSessionFromStore(cid)
-      return
-    }
-
-    if (status.status === 'COMPLETED') {
-      clearActiveGeneration()
-      await hydrateSessionFromStore(cid)
-      return
-    }
-
-    if (status.status === 'RUNNING') {
-      const msgs = getMessages(cid)
-      const tail = active.messageId
-        ? msgs.find(m => m.id === active.messageId && m.role === 'assistant')
-        : msgs[msgs.length - 1]
-      if (tail?.role === 'assistant') {
-        normalizeRestoredInterleavedContent(tail)
-      }
-      let afterSeq = active.lastSeq
-      // 已 hydrate 完整穿插正文时，跳过重放历史 chunk，仅订阅 live 尾流
-      if (tail?.role === 'assistant' && isContentFullyInterleaved(tail)) {
-        afterSeq = Math.max(afterSeq, status.lastSeq ?? 0)
-      } else if (afterSeq <= 0 && (status.lastSeq ?? 0) > 0 && tail?.content?.trim()) {
-        afterSeq = status.lastSeq
-      }
-      await nextTick()
-      const reconnectPromise = reconnectStream(active.generationId, afterSeq, cid)
-      await nextTick()
-      await ensureStreamRenderer()
-      await reconnectPromise
-      syncSessionToStore(cid)
-    }
-  } catch (e) {
-    console.error('[ChatView] auto reconnect failed', e)
-    clearActiveGeneration()
-    await hydrateSessionFromStore(cid)
-  }
-}
-
 function handleKeydown(e: KeyboardEvent) {
-  if (showSkillSuggest.value && filteredSkills.value.length > 0) {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      skillSuggestIndex.value = (skillSuggestIndex.value + 1) % filteredSkills.value.length
-      return
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      skillSuggestIndex.value = (skillSuggestIndex.value - 1 + filteredSkills.value.length)
-        % filteredSkills.value.length
-      return
-    }
-    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-      e.preventDefault()
-      applySkillSuggest(filteredSkills.value[skillSuggestIndex.value])
-      return
-    }
-    if (e.key === 'Escape') {
-      showSkillSuggest.value = false
-      return
-    }
-  }
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    handleSend()
-  }
+  handleSkillKeydown(e, () => { void handleSend() })
 }
 
 onMounted(async () => {
@@ -777,7 +327,6 @@ onMounted(async () => {
   sessionHydrating.value = true
   try {
     await chatStore.init()
-
     const active = loadActiveGeneration()
     let cid: string
     if (active?.conversationId) {
@@ -790,13 +339,11 @@ onMounted(async () => {
     } else {
       cid = await chatStore.ensureCurrent()
     }
-
     await chatStore.switchTo(cid)
     applyConversationPreference(chatStore.current?.executionPreference)
     ensureActive(cid)
     const pendingReconnect = !!(active?.conversationId === cid)
     await hydrateSessionFromStore(cid, { skipApiLoad: pendingReconnect })
-
     if (active && active.conversationId === cid) {
       await tryAutoReconnect(cid, active)
       syncSessionToStore(cid)
@@ -804,61 +351,37 @@ onMounted(async () => {
   } finally {
     sessionHydrating.value = false
   }
-
   inputRef.value?.focus()
-  window.addEventListener('pagehide', onPageHide)
+  window.addEventListener('pagehide', flushAllOnPageHide)
 })
 
-function onPageHide() {
-  flushPersist()
-  for (const conv of chatStore.conversations) {
-    const msgs = getMessages(conv.id)
-    if (msgs.length) chatStore.syncMessages(conv.id, msgs)
-  }
-}
-
 onUnmounted(() => {
-  window.removeEventListener('pagehide', onPageHide)
+  window.removeEventListener('pagehide', flushAllOnPageHide)
   registerChatBody(null)
 })
 
 watch(chatBodyRef, (el) => registerChatBody(el), { immediate: true })
-
-onUpdated(() => {
-  nextTick(() => enhanceAllStaticMarkdown())
-})
-
+onUpdated(() => { nextTick(() => enhanceAllStaticMarkdown()) })
 watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
 watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
-
   closePlanDrawer()
   closePlanDagExpand()
-
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
-    if (settledHtml.value) sessionSettledHtml.set(oldId, settledHtml.value)
+    cacheSettledHtmlForConversation(oldId)
     if (!chatStore.conversations.some(c => c.id === oldId)) {
       destroySession(oldId)
       sessionSettledHtml.delete(oldId)
     }
   }
-
-  clearReasoningUiState()
-  streamRenderer?.clear()
-  streamRenderer = null
+  clearStreamRenderer()
   settledHtml.value = ''
-
   if (!isValidConversationId(newId)) return
-
   ensureActive(newId)
   applyConversationPreference(chatStore.current?.executionPreference)
-  // 流式进行中勿 loadDetail 覆盖内存 timeline（HITL metadata / pendingHitlConfirmation）
-  if (!loading.value) {
-    await hydrateSessionFromStore(newId)
-  }
-
+  if (!loading.value) await hydrateSessionFromStore(newId)
   await nextTick()
   if (loading.value) void ensureStreamRenderer()
 }, { flush: 'post' })
@@ -880,50 +403,7 @@ watch(
   },
   async () => { await nextTick(); scrollToBottom(forceChatScroll.value) },
 )
-
-function captureSettledAssistantHtml(content: string): string {
-  return renderMarkdown(content)
-}
-
-function renderAssistantHtml(msg: ChatMessage, idx: number): string {
-  if (idx === messages.value.length - 1 && settledHtml.value && !loading.value) {
-    return settledHtml.value
-  }
-  return renderMarkdown(resolveAssistantDisplayContent(msg))
-}
-
-function enhanceAllStaticMarkdown(): void {
-  document.querySelectorAll('.msg-md:not(.streaming)').forEach(el => {
-    if (el instanceof HTMLElement) enhanceStaticMarkdown(el)
-  })
-}
-
-watch(() => loading.value, async (val) => {
-  if (val) {
-    await nextTick()
-    await ensureStreamRenderer()
-    return
-  }
-  if (forceChatScroll.value) {
-    forceChatScroll.value = false
-    await nextTick()
-    scrollToBottom(true)
-  }
-  if (streamRenderer) {
-    streamRenderer.finish()
-    const last = messages.value[messages.value.length - 1]
-    if (last?.role === 'assistant' && last.content) {
-      settledHtml.value = captureSettledAssistantHtml(resolveAssistantDisplayContent(last))
-      if (chatStore.currentId) sessionSettledHtml.set(chatStore.currentId, settledHtml.value)
-    } else {
-      settledHtml.value = ''
-    }
-    streamRenderer = null
-    nextTick(() => enhanceAllStaticMarkdown())
-  }
-}, { flush: 'sync' })
 </script>
-
 <template>
   <div class="chat-page">
     <!-- 全宽会话头（豆包式） -->
