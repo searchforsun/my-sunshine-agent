@@ -44,10 +44,15 @@
 
 ### 4.1 RAG 平台化
 
-> **详设**：[2026-06-27-rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md)（**不新增微服务**，管理 API 内聚 rag-service :8400）
+> **详设**：[2026-06-27-rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md)（**不新增微服务**，管理 API 内聚 rag-service :8400）  
+> **Pipeline 边界**：[ADR-002-rag-pipeline-in-rag-service.md](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) — 改写 + hybrid + rerank + fallback 内聚 rag-service；orchestrator 只调干净检索 API
 
 | 子任务 | 内容 |
 |--------|------|
+| **4.0.1** | `KnowledgeRetrievalPipeline` + 扩展 `POST /api/rag/search`（`trace` / 一次 RPC） |
+| **4.0.2** | `QueryRewritePipeline` + `rag.rewrite.*` 迁入 `sunshine-rag.yaml` |
+| **4.0.3** | orchestrator 瘦身为 `RagClient`；Timeline 读 response trace |
+| **4.0.4** | `rag_eval.py` / CI 对齐 pipeline |
 | **4.1.1** | 知识库 `namespace`：`tenant/kbId/docId`（dept 预留） |
 | **4.1.2** | 文档版本：新 v 入库自动失效旧 chunk |
 | **4.1.3** | `scripts/rag_reindex.py` 全量重建 + 进度 |
@@ -57,7 +62,7 @@
 | **4.1.7** | 策略 A/B：Nacos `rag.experiments` |
 | **4.1.8** | 评测周报 Cron |
 
-**检查门**：UI 上传 5 分钟内可检索；v2 入库后 v1 不可检；周报自动生成；调试页可见各阶段分数。
+**检查门**：pipeline 切换后 v5 eval 全绿；UI 上传 5 分钟内可检索；v2 入库后 v1 不可检；周报自动生成；调试页可见 rewrite+vector/rerank 各阶段分数。
 
 ### 4.2 文档 OCR 入库（L1）
 

@@ -3,7 +3,6 @@ package com.sunshine.orchestrator.execution.handler;
 import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
 import com.sunshine.orchestrator.client.RagDetailFormatter;
-import com.sunshine.orchestrator.config.RagSearchProperties;
 import com.sunshine.orchestrator.rag.KnowledgeRetrievalService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeHandler;
@@ -20,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * RAG 检索节点
+ * RAG 检索节点 — 节点 params.topK 可覆盖；未配置时走 rag-service Nacos default-top-k。
  */
 @Slf4j
 @Component
@@ -28,7 +27,6 @@ import java.util.Map;
 public class RagNodeHandler implements NodeHandler {
 
     private final KnowledgeRetrievalService knowledgeRetrievalService;
-    private final RagSearchProperties ragSearchProperties;
 
     @Override
     public String type() {
@@ -41,7 +39,7 @@ public class RagNodeHandler implements NodeHandler {
         if (query.isBlank()) {
             query = streamCtx.userContent();
         }
-        int topK = parseTopK(spec.params().get("topK"), ragSearchProperties.getDefaultTopK());
+        Integer topK = parseTopK(spec.params().get("topK"));
         String finalQuery = query;
 
         return knowledgeRetrievalService.searchMono(
@@ -66,14 +64,14 @@ public class RagNodeHandler implements NodeHandler {
                 });
     }
 
-    private static int parseTopK(String raw, int defaultTopK) {
+    private static Integer parseTopK(String raw) {
         if (raw == null || raw.isBlank()) {
-            return defaultTopK;
+            return null;
         }
         try {
             return Integer.parseInt(raw.trim());
         } catch (NumberFormatException e) {
-            return defaultTopK;
+            return null;
         }
     }
 }

@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 将 `/knowledge` 升级为阶段四一站式知识库运营工作台（4.1 + 4.2 做全），管理 API 全部内聚 `rag-service :8400`，含多 kb、参数 publish、debug 瀑布、评测闭环、OCR 入库、Chat kb 选择器。
+**Goal:** 将 `/knowledge` 升级为阶段四一站式知识库运营工作台（**4.0 pipeline 前置** + 4.1 + 4.2 做全），管理 API 全部内聚 `rag-service :8400`，含多 kb、参数 publish、debug 瀑布、评测闭环、OCR 入库、Chat kb 选择器。
 
-**Architecture:** rag-service 新增 MySQL `sunshine_rag`（catalog/config/eval/badcase）+ Milvus/ES schema 扩展 `kb_id/version/status`；tenant 默认参数经 Nacos Open API publish；kb 覆盖存 MySQL 由 `EffectiveConfigService` 合并；前端 `KnowledgeView` 重构为 Skills 式工作台。
+**Architecture:** [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) — `KnowledgeRetrievalPipeline` 内聚改写+检索+rerank+HyDE+empty-recall；orchestrator 只调 `RagClient.searchKnowledge()`。rag-service 新增 MySQL `sunshine_rag` + Milvus/ES schema 扩展；tenant 检索+改写参数经 Nacos Open API publish；前端 `KnowledgeView` 重构为 Skills 式工作台。
 
 **Tech Stack:** JDK 21 · Spring Boot 3.2 · JPA + Flyway · Milvus · ES · Redis · Vue3/Naive UI · DashScope OCR · Nacos Open API · llm-gateway
 
-**设计 SSOT:** [2026-06-27-rag-knowledge-studio-design.md](../specs/2026-06-27-rag-knowledge-studio-design.md)
+**设计 SSOT:** [2026-06-27-rag-knowledge-studio-design.md](../specs/2026-06-27-rag-knowledge-studio-design.md) · [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
 
 **非目标:** 新建 rag-manager 微服务 · Chat `#kb` · 4.3 L2 全量 · RBAC 细分
 
@@ -18,6 +18,7 @@
 
 | 区域 | 创建 | 修改 | 测试 |
 |------|------|------|------|
+| **Pipeline（4.0）** | `pipeline/KnowledgeRetrievalPipeline.java`、`pipeline/QueryRewritePipeline.java`、`client/LlmGatewayClient.java` | `RetrievalController.java`、`docs/nacos/sunshine-rag.yaml`（`rag.rewrite.*`） | `KnowledgeRetrievalPipelineTest.java` |
 | **Infra** | `rag-service/.../db/migration/V1__rag_schema.sql` | `rag-service/pom.xml`、`docs/nacos/sunshine-rag.yaml` | — |
 | **Entity/Repo** | `entity/*.java`、`repository/*.java` | — | `KnowledgeBaseRepositoryTest.java` |
 | **Catalog** | `admin/KbAdminController.java`、`catalog/*Service.java` | `MilvusService.java`、`ElasticsearchIndexService.java` | `KbAdminControllerTest.java`、`TenantIsolationIntegrationTest.java` |
@@ -25,15 +26,16 @@
 | **Debug** | `admin/debug/RetrievalDebugService.java` | `RetrievalService.java`、`HybridRetrievalService.java` | `RetrievalDebugServiceTest.java` |
 | **Eval** | `admin/eval/*` | — | `EvaluateServiceTest.java` |
 | **Ingest** | `admin/ingest/*`、`parser/DocxParser.java`、`ocr/DashScopeOcrService.java` | `IngestionController.java` | `IngestJobStateMachineTest.java` |
-| **Orchestrator** | — | `RagClient.java`、`KnowledgeRetrievalService.java`、Chat DTO | `KnowledgeRetrievalServiceTest.java` |
+| **Orchestrator** | — | `RagClient.java`（扩展 trace）；**删除** `KnowledgeRetrievalService` RAG 编排；Timeline trace 透传；Chat DTO | `RagClientTest.java` |
 | **Frontend** | `sunshine-ui/src/api/ragAdmin.ts`、`components/knowledge/*` | `KnowledgeView.vue`、`ChatView.vue` | `npx vue-tsc -b` |
-| **Ops** | `scripts/rag_reindex.py`、`scripts/verify_rag_studio.py` | `scripts/rag_eval.py` | 手测 + CI smoke |
+| **Ops** | `scripts/rag_reindex.py`、`scripts/verify_rag_studio.py` | `scripts/rag_eval.py`（去掉 Python 改写，只调 pipeline） | 手测 + CI smoke |
 
 ---
 
 ## 迭代排期
 
 ```
+迭代 0（P0 Pipeline） T0 → T0b → T0c → T0d   检索链路内聚 rag-service + orchestrator 瘦身
 迭代 1（P0 底座）     T1 → T2 → T3              MySQL + admin 鉴权 + Milvus/ES schema
 迭代 2（P0 Catalog）   T4 → T5 → T6              kb/doc/version API + 检索 kb 过滤
 迭代 3（P0 Debug+UI）  T7 → T8 → T9              debug 瀑布 + 工作台壳 + 文档/调试 Tab
@@ -43,6 +45,106 @@
 迭代 7（P1 Chat）      T19 → T20                kb 选择器 + orchestrator kbId
 迭代 8（P2 收尾）      T21 → T22                A/B + 周报 Cron + reindex + 全量验收
 ```
+
+---
+
+## Task T0: KnowledgeRetrievalPipeline + 扩展 `/api/rag/search`
+
+- [x]
+
+**Files:**
+- Create: `rag-service/src/main/java/com/sunshine/rag/pipeline/KnowledgeRetrievalPipeline.java`
+- Create: `rag-service/src/main/java/com/sunshine/rag/pipeline/RetrievalTrace.java`
+- Modify: `rag-service/src/main/java/com/sunshine/rag/controller/RetrievalController.java`
+- Create: `rag-service/src/test/java/com/sunshine/rag/pipeline/KnowledgeRetrievalPipelineTest.java`
+
+**Step 1:** Pipeline 编排（port `orchestrator/.../KnowledgeRetrievalService` 逻辑）：
+
+```
+rag改写 → RetrievalService.search → [0命中] HyDE → search → [仍0] empty-recall → merge
+```
+
+**Step 2:** 扩展 `POST /api/rag/search` request/response（spec §2.1）：`options.rewrite`、`options.includeTrace`、`kbId`（可选）、response `effectiveQuery` + `trace`。
+
+**Step 3:** 单测 mock `RetrievalService` + rewrite：0 命中触发 hyde；hyde 仍 0 触发 empty-recall merge。
+
+```bash
+mvn test -pl rag-service -Dtest=KnowledgeRetrievalPipelineTest
+```
+
+Expected: PASS
+
+---
+
+## Task T0b: QueryRewritePipeline + Nacos 迁移
+
+- [x]
+
+**Files:**
+- Create: `rag-service/src/main/java/com/sunshine/rag/pipeline/QueryRewritePipeline.java`
+- Create: `rag-service/src/main/java/com/sunshine/rag/config/RagRewriteProperties.java`
+- Create: `rag-service/src/main/java/com/sunshine/rag/client/LlmGatewayClient.java`
+- Modify: `docs/nacos/sunshine-rag.yaml`（新增 `rag.rewrite.rag/hyde/empty-recall`，自 orchestrator 复制 prompt）
+- Modify: `docs/nacos/sunshine-orchestrator.yaml`（旧键注释 `@deprecated`，迁移完成后删除）
+
+**Step 1:** Port `QueryRewriteService` 中 **rag / hyde / empty-recall** 三类（不含 intent/planner）。
+
+**Step 2:** `RagRewriteProperties` 绑定 `rag.rewrite.*`；timeline 文案键 `rag.rewrite.timeline.*`。
+
+**Step 3:**
+
+```bash
+python scripts/sync_nacos.py --data-id sunshine-rag.yaml
+mvn test -pl rag-service -Dtest=QueryRewritePipelineTest
+```
+
+Expected: PASS
+
+---
+
+## Task T0c: orchestrator 瘦身为 RagClient
+
+- [x]
+
+**Files:**
+- Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/client/RagClient.java`
+- Delete or deprecate: `orchestrator/.../rag/KnowledgeRetrievalService.java`
+- Modify: `orchestrator/.../agent/RagTool.java`、`execution/handler/RagNodeHandler.java`
+- Modify: `orchestrator/.../processing/TimelineSessionCompletions.java`（从 response trace 组装 RAG rewrite detail）
+- Delete: orchestrator `QueryRewriteService` 中 rag/hyde/empty-recall 方法（保留 intent/planner）
+
+**Step 1:** `RagClient.searchKnowledge(query, topK, tenantId, kbId, includeTrace)` → 单次 `POST /api/rag/search`。
+
+**Step 2:** 删除 orchestrator 内多轮 `ragClient.search` 编排；`RagTool` / `RagNodeHandler` 改调新方法。
+
+**Step 3:** Timeline：`trace.stages` 中 rewrite/hyde/empty-recall → step metadata（替代 `QueryRewriteTrace` RAG 场景）。
+
+```bash
+mvn test -pl orchestrator -Dtest=RagClientTest,RagNodeHandlerTest
+python scripts/phase2_agent_demo.py --suite react
+```
+
+Expected: PASS；live knowledge-qa workflow 仍绿
+
+---
+
+## Task T0d: rag_eval.py / CI 对齐 pipeline
+
+- [x]
+
+**Files:**
+- Modify: `scripts/rag_eval.py`（删除 `load_rag_rewrite_cfg` / Python 改写；只 POST rag-service）
+- Modify: `.github/workflows/rag-eval.yml`（如需要）
+
+**Step 1:** eval 脚本不再读 `sunshine-orchestrator.yaml` 做改写；默认 `options.rewrite=true`。
+
+**Step 2:** 对比迁移前后 v5 Recall@5 偏差 < 0.01：
+
+```bash
+python scripts/rag_eval.py --suite v5 --strategy hybrid+rerank --ci --fail-if-recall5-below 0.98
+```
+
+Expected: PASS（与迁移前 baseline 对齐）
 
 ---
 
@@ -305,16 +407,16 @@ Expected: PASS
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/debug/RetrievalDebugService.java`
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/debug/RetrievalDebugController.java`
-- Create: `rag-service/src/main/java/com/sunshine/rag/admin/debug/RagRewriteClient.java`（调 llm-gateway，逻辑移植 `scripts/rag_eval.py` 的 `rewrite_rag_query` / `hyde`）
+- Modify: `rag-service/src/main/java/com/sunshine/rag/pipeline/KnowledgeRetrievalPipeline.java`（暴露 debug 中间态）
 - Create: `rag-service/src/test/java/com/sunshine/rag/admin/debug/RetrievalDebugServiceTest.java`
 
-**Step 1:** 重构 `RetrievalService`：抽取 package-private 方法返回中间态：
+**Step 1:** `RetrievalDebugService` **委托** `KnowledgeRetrievalPipeline`（强制 `includeTrace=true`），不 duplicate 改写逻辑。
 
 ```java
-Mono<DebugSearchResult> debugSearch(String query, int topK, EffectiveRagConfig cfg, String tenantId, String kbId);
+Mono<RetrievalTrace> debugSearch(String query, int topK, EffectiveRagConfig cfg, String tenantId, String kbId);
 ```
 
-各 stage 收集 `List<RetrievalCandidate>` 不截断到 topK 前。
+各 stage 由 pipeline 收集，不截断 candidate 内容。
 
 **Step 2:** `POST /api/rag/admin/search/debug` 响应：
 
@@ -331,7 +433,7 @@ Mono<DebugSearchResult> debugSearch(String query, int topK, EffectiveRagConfig c
 }
 ```
 
-`includeRewrite=true` 时在 stages 前插入 `rewrite`（读 Nacos orchestrator 提示词或 draft snapshot）。
+`includeRewrite=true` 时等价 `options.rewrite=true`（默认）；rewrite stages 来自 pipeline 内部。
 
 **Step 3:** 单测 mock vector/bm25 返回固定候选，断言 stage 顺序与 source 字段。
 
@@ -493,7 +595,7 @@ Expected: PASS
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/eval/GoldenSetLoader.java`
 - Create: `rag-service/src/test/java/com/sunshine/rag/admin/eval/EvaluateServiceTest.java`
 
-**Step 1:** 移植 `scripts/rag_eval.py` 核心：
+**Step 1:** 移植 `scripts/rag_eval.py` 核心到 **`KnowledgeRetrievalPipeline`**（非 duplicate 改写）：
 
 - `recall_at_k`、`mrr`
 - rewrite / hyde / pipeline 路径
@@ -623,20 +725,19 @@ Expected: PASS
 - Modify: `sunshine-ui/src/views/ChatView.vue`
 - Create: `sunshine-ui/src/components/chat/KbSelector.vue`
 - Modify: `sunshine-ui/src/stores/chatSessions.ts`（或等价 session store，存 `kbId`）
-- Modify: `orchestrator/.../client/RagClient.java`
-- Modify: `orchestrator/.../rag/KnowledgeRetrievalService.java`
+- Modify: `orchestrator/.../client/RagClient.java`（T0c 已扩展 `kbId` + `includeTrace`）
 - Modify: Chat 请求 DTO（`ChatCompletionRequest` 或等价）增加 `kbId`
 
 **Step 1:** `KbSelector.vue`：挂载时 `listKbs(tenantId)`；默认选中 `is_default` kb；变更写入 session。
 
 **Step 2:** Chat SSE 请求 body 增加 `kbId`。
 
-**Step 3:** `RagClient.search(query, topK, strategy, tenantId, kbId)`；body 传 `kbId`。
+**Step 3:** `RagClient.searchKnowledge(..., kbId, includeTrace=true)`；orchestrator **不再**本地编排改写。
 
 **Step 4:**
 
 ```bash
-mvn test -pl orchestrator -Dtest=KnowledgeRetrievalServiceTest
+mvn test -pl orchestrator -Dtest=RagClientTest
 cd sunshine-ui && npx vue-tsc -b
 ```
 
@@ -650,7 +751,7 @@ Expected: PASS
 
 **Files:**
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/client/RagKbClient.java`（或 RagClient 扩展 `GET /api/rag/admin/kbs` 轻量 public 端点）
-- Modify: `orchestrator/.../rag/KnowledgeRetrievalService.java`
+- Modify: `orchestrator/.../agent/RagTool.java`、`execution/handler/RagNodeHandler.java`
 
 **Step 1:** 若请求无 `kbId`：调 rag-service 解析 tenant 默认 kb（可缓存 60s）；fallback `default`。
 
@@ -719,7 +820,8 @@ Expected: 全绿
 
 | Spec 章节 | Task |
 |-----------|------|
-| §0 需求决策 10 项 | 全 plan |
+| §0 需求决策 11 项 | 全 plan |
+| §2.1 干净检索 API / ADR-002 | T0–T0d |
 | §3 页面 6 Tab | T8–T9、T12、T14、T18 |
 | §5 数据模型 | T1、T3 |
 | §6.1 catalog API | T4–T5 |
@@ -738,7 +840,7 @@ Expected: 全绿
 
 **Plan complete and saved to `docs/superpowers/plans/2026-06-27-rag-knowledge-studio.md`. Two execution options:**
 
-1. **Subagent-Driven（推荐）** — 每 Task 派生子 agent，Task 间人工 review，迭代快  
-2. **Inline Execution** — 本会话按 T1→T22 批量执行，迭代边界设 checkpoint  
+1. **Subagent-Driven（推荐）** — 每 Task 派生子 agent；**迭代 0（T0–T0d）必须先于工作台 UI**
+2. **Inline Execution** — 本会话按 T0→T22 批量执行；**T0d eval 全绿** 为迭代 1 checkpoint
 
 **Which approach?**

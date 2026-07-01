@@ -5,33 +5,52 @@ import org.springframework.util.StringUtils;
 
 /**
  * 单次 Query 改写结果 — 供 Timeline detail 与审计 payload 复用。
+ * RAG 场景 {@code scenarioLabel} 由 rag-service trace 透传；intent/planner 由 orchestrator Nacos 解析。
  */
 public record QueryRewriteOutcome(
         String scenario,
         String originalQuery,
         String rewrittenQuery,
         boolean applied,
-        long latencyMs) {
+        long latencyMs,
+        String scenarioLabel) {
+
+    public QueryRewriteOutcome(String scenario, String originalQuery, String rewrittenQuery, boolean applied, long latencyMs) {
+        this(scenario, originalQuery, rewrittenQuery, applied, latencyMs, null);
+    }
 
     public static QueryRewriteOutcome skipped(String scenario, String query, long latencyMs) {
+        return skipped(scenario, query, latencyMs, null);
+    }
+
+    public static QueryRewriteOutcome skipped(String scenario, String query, long latencyMs, String scenarioLabel) {
         String q = query != null ? query.strip() : "";
-        return new QueryRewriteOutcome(scenario, q, q, false, latencyMs);
+        return new QueryRewriteOutcome(scenario, q, q, false, latencyMs, scenarioLabel);
     }
 
     public static QueryRewriteOutcome of(String scenario, String original, String rewritten, long latencyMs) {
+        return of(scenario, original, rewritten, latencyMs, null);
+    }
+
+    public static QueryRewriteOutcome of(String scenario, String original, String rewritten, long latencyMs, String scenarioLabel) {
         String from = original != null ? original.strip() : "";
         String to = StringUtils.hasText(rewritten) ? rewritten.strip() : from;
         boolean applied = StringUtils.hasText(to) && !to.equals(from);
-        return new QueryRewriteOutcome(scenario, from, applied ? to : from, applied, latencyMs);
+        return new QueryRewriteOutcome(scenario, from, applied ? to : from, applied, latencyMs, scenarioLabel);
     }
 
     public static QueryRewriteOutcome emptyRecall(String original, java.util.List<String> alternatives, long latencyMs) {
+        return emptyRecall(original, alternatives, latencyMs, null);
+    }
+
+    public static QueryRewriteOutcome emptyRecall(
+            String original, java.util.List<String> alternatives, long latencyMs, String scenarioLabel) {
         String from = original != null ? original.strip() : "";
         if (alternatives == null || alternatives.isEmpty()) {
-            return skipped("empty-recall", from, latencyMs);
+            return skipped("empty-recall", from, latencyMs, scenarioLabel);
         }
         String to = String.join("；", alternatives);
-        return new QueryRewriteOutcome("empty-recall", from, to, true, latencyMs);
+        return new QueryRewriteOutcome("empty-recall", from, to, true, latencyMs, scenarioLabel);
     }
 
     public String effectiveQuery() {
@@ -50,14 +69,14 @@ public record QueryRewriteOutcome(
     }
 
     private String emptyRecallTimelineDetail() {
-        String scenarioLabel = RewriteTimelineLabels.labelFor(scenario);
+        String label = resolveScenarioLabel();
         if (applied) {
             return rewriteTimelineDetail("优化后", rewrittenQuery);
         }
         String body = "未能生成新的检索词"
                 + "\n" + formatLatency(latencyMs);
-        if (StringUtils.hasText(scenarioLabel)) {
-            return scenarioLabel + "\n" + body;
+        if (StringUtils.hasText(label)) {
+            return label + "\n" + body;
         }
         return body;
     }
@@ -66,11 +85,19 @@ public record QueryRewriteOutcome(
         String body = "原问题：" + clip(originalQuery)
                 + "\n" + targetLabel + "：" + clip(targetText)
                 + "\n" + formatLatency(latencyMs);
-        String scenarioLabel = RewriteTimelineLabels.labelFor(scenario);
-        if (StringUtils.hasText(scenarioLabel)) {
-            return scenarioLabel + "\n" + body;
+        String label = resolveScenarioLabel();
+        if (StringUtils.hasText(label)) {
+            return label + "\n" + body;
         }
         return body;
+    }
+
+    /** trace 透传优先；intent/planner 仍走 orchestrator Nacos */
+    public String resolveScenarioLabel() {
+        if (StringUtils.hasText(scenarioLabel)) {
+            return scenarioLabel.strip();
+        }
+        return RewriteTimelineLabels.labelFor(scenario);
     }
 
     private static String clip(String text) {

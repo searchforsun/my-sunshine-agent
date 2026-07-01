@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.processing;
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import org.springframework.util.StringUtils;
 
-/** Query 改写时间线展开区场景说明 — 配置见 Nacos agent.rewrite.timeline */
+/** Query 改写时间线展开区场景说明 — orchestrator 仅 intent/planner；RAG 见 rag-service trace */
 public final class RewriteTimelineLabels {
 
     private static volatile AgentRewriteProperties rewriteProperties;

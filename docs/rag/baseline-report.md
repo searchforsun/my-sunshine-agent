@@ -198,7 +198,9 @@ python scripts/rag_eval.py --report-md --gate
 
 ### Query 改写（3.8.1 / 3.4.7 — 2026-06-21，HyDE 链 2026-06-25）
 
-**RAG 检索链**（`KnowledgeRetrievalService`）：
+> **阶段四 4.0 迁移（[ADR-002](../architecture/ADR-002-rag-pipeline-in-rag-service.md)）**：下述 RAG 检索链将从 orchestrator 迁入 `rag-service` `KnowledgeRetrievalPipeline`；本节描述为**阶段三已验收实现**，迁移后 eval/Chat 同源。
+
+**RAG 检索链**（当前代码：`KnowledgeRetrievalService` → 目标：`rag-service` pipeline）：
 
 ```
 rag 改写 → 首次检索 →（0 命中）HyDE fallback →（仍 0）empty-recall 二次检索 merge

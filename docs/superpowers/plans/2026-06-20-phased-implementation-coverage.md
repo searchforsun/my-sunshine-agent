@@ -132,16 +132,18 @@
 
 ## 阶段四：平台化
 
-**SSOT：** [phase4-platformization-design.md](../specs/phase4-platformization-design.md)  
-**Plan：** ❌ 无
+**SSOT：** [phase4-platformization-design.md](../specs/phase4-platformization-design.md) · [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)  
+**Plan：** [2026-06-27-rag-knowledge-studio.md](./2026-06-27-rag-knowledge-studio.md)（4.0 pipeline + 4.1–4.2 工作台，T0–T22）
 
 | 任务 | SSOT | Plan | 等级 |
 |------|:----:|:----:|:----:|
-| 4.1–4.12 全部 | ✅ 子任务表（**4.8** MCP 动态引入 + `/mcp` 前端已详设） | ❌ | **C** |
+| **4.0** pipeline | ✅ ADR-002 + studio §2.1 | ✅ T0–T0d | **A** |
+| **4.1–4.2** RAG 工作台 | ✅ studio design | ✅ T1–T22 | **A** |
+| 4.3–4.12 其余 | ✅ 子任务表 | ❌ | **C** |
 
-**检查门：** SSOT §5 按子项列出；无执行 plan。
+**检查门：** SSOT §5 按子项列出；4.0 T0d eval 全绿为工作台前置。
 
-**建议：** 触发 4.1 或 4.2 时再写 `2026-06-XX-phase4-rag-platform.md` 等**按子项** plans，勿一次写 12 项。
+**建议：** 4.1/4.2 按 [rag-knowledge-studio.md](./2026-06-27-rag-knowledge-studio.md) 执行；其余子项触发时再写 plan。
 
 ---
 

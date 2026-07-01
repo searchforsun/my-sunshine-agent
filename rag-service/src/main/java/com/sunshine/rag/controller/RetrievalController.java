@@ -2,7 +2,10 @@ package com.sunshine.rag.controller;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.result.R;
+import com.sunshine.rag.config.RagSearchProperties;
 import com.sunshine.rag.exception.RagErrorCode;
+import com.sunshine.rag.pipeline.KnowledgeRetrievalPipeline;
+import com.sunshine.rag.pipeline.PipelineSearchRequest;
 import com.sunshine.rag.service.RetrievalService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,16 +20,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 检索控制器
- */
+/** 检索控制器 — 经 KnowledgeRetrievalPipeline 提供干净检索 API */
 @Slf4j
 @RestController
 @RequestMapping("/api/rag")
 @RequiredArgsConstructor
 public class RetrievalController {
-
-    private final RetrievalService retrievalService;
+    private final KnowledgeRetrievalPipeline knowledgeRetrievalPipeline;
+    private final RagSearchProperties searchProperties;
 
     @PostMapping("/search")
     public Mono<R<Map<String, Object>>> search(
@@ -38,16 +39,20 @@ public class RetrievalController {
         }
         int topK = body.containsKey("topK")
                 ? ((Number) body.get("topK")).intValue()
-                : 5;
+                : searchProperties.getDefaultTopK();
         String tid = resolveTenantId(body.get("tenantId"), tenantId);
-
-        return retrievalService.search(query, topK, (String) body.get("strategy"), tid)
-                .map(fragments -> R.ok(Map.of(
-                        "query", query,
-                        "results", (Object) fragments.stream()
-                                .map(RetrievalController::toResultMap)
-                                .toList()
-                )));
+        String kbId = body.get("kbId") != null ? String.valueOf(body.get("kbId")) : "default";
+        String strategy = (String) body.get("strategy");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> options = body.get("options") instanceof Map<?, ?> opt
+                ? (Map<String, Object>) opt
+                : null;
+        Boolean rewrite = options != null && options.get("rewrite") instanceof Boolean b ? b : null;
+        Boolean includeTrace = options != null && options.get("includeTrace") instanceof Boolean b ? b : null;
+        PipelineSearchRequest request = PipelineSearchRequest.of(
+                query, topK, tid, kbId, strategy, rewrite, includeTrace);
+        return knowledgeRetrievalPipeline.search(request)
+                .map(result -> R.ok(result.toResponseMap()));
     }
 
     private static Map<String, Object> toResultMap(RetrievalService.DocFragment fragment) {

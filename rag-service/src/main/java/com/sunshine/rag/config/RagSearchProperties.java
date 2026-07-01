@@ -22,6 +22,9 @@ public class RagSearchProperties {
     /** Nacos 默认策略；请求体 strategy 可覆盖 */
     private String strategy = "vector";
 
+    /** 请求体未传 topK 时的默认值 */
+    private int defaultTopK = 3;
+
     /** RRF 常数 k（典型 60） */
     private int rrfK = 60;
 

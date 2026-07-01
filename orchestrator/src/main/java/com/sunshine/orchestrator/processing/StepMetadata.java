@@ -243,7 +243,7 @@ public record StepMetadata(
         if (outcome == null || !outcome.applied()) {
             return null;
         }
-        String scenarioLabel = RewriteTimelineLabels.labelFor(outcome.scenario());
+        String scenarioLabel = outcome.resolveScenarioLabel();
         return new StepMetadata(
                 null,
                 null,

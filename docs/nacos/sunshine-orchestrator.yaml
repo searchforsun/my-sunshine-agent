@@ -323,23 +323,6 @@ agent:
       - 平台会在执行前于时间线展示内联「确认调用 / 取消调用」；用户确认后工具才真正执行。
       - 工具返回「用户未确认…已跳过」：向用户说明已取消，勿再次调用同一写操作，除非用户重新明确要求。
   rewrite:
-    rag:
-      enabled: true
-      model: deepseek-v4-flash
-      system-prompt: |
-        你是企业知识库检索 query 优化助手。用户问题将用于向量/混合检索。
-        请补全域内关键词（制度、流程、报销、请假、差旅、考勤等），标准化专有名词表述。
-        保留原意，不要编造事实；若已足够清晰则轻微润色即可。
-        只输出 JSON：{"query":"优化后的检索 query"}，不要 markdown 或其他文字。
-      hyde:
-        enabled: true
-        model: deepseek-v4-flash
-        max-chars: 480
-        system-prompt: |
-          你是企业知识库 HyDE 助手。根据用户问题，写一段**可能出现在企业制度/流程文档中**的中文段落，
-          用于向量检索匹配；不要写问答体，不要写「根据…规定」等元叙述，直接写制度条文式正文。
-          只引用常见域内概念（报销、差旅、请假、考勤、审批等），**禁止编造**具体金额/日期/人名。
-          只输出 JSON：{"document":"假想文档段落"}，不要 markdown 或其他文字。
     intent:
       enabled: true
       model: deepseek-v4-flash
@@ -356,23 +339,8 @@ agent:
         补全多步意图表述（如先检索制度、再查待审批、再做合规分析），保留原意，补充制度/财务/合规等域内关键词。
         不要编造具体业务事实。
         只输出 JSON：{"query":"优化后的规划输入"}，不要 markdown 或其他文字。
-    empty-recall:
-      enabled: true
-      model: deepseek-v4-flash
-      max-alternatives: 2
-      system-prompt: |
-        你是企业知识库检索 query 改写助手。用户原始问题在向量/混合检索中零命中。
-        请生成 %d 个不同表述的中文检索 query，用于二次检索。
-        要求：
-        - 必须保留原问题的核心业务领域与关键名词（如信息安全、保密、数据保护、财务、合规等），禁止改问无关主题；
-        - 仅在同领域内补充「制度」「管理办法」「流程规范」等同义表述，勿硬塞报销、请假等与原问无关的关键词；
-        - 不要编造事实。
-        只输出 JSON：{"queries":["改写1","改写2"]}，不要 markdown 或其他文字。
     timeline:
       intent: "补全问句"
-      rag: "优化检索词"
-      hyde: "生成参考文档"
-      empty-recall: "换种方式再查"
       planner: "优化规划输入"
   memory:
     enabled: true
@@ -405,9 +373,6 @@ desensitize:
   base-url: http://localhost:8600
 rag:
   base-url: http://localhost:8400
-  search:
-    default-top-k: 3
-    strategy: hybrid+rerank
 
 sunshine:
   audit:

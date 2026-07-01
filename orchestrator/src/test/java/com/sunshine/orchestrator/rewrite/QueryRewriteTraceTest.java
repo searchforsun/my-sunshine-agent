@@ -19,12 +19,12 @@ class QueryRewriteTraceTest {
         AgentRewriteProperties props = new AgentRewriteProperties();
         AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
         timeline.setIntent("补全问句");
-        timeline.setRag("优化检索词");
         props.setTimeline(timeline);
         RewriteTimelineLabels.bind(props);
         QueryRewriteTrace.bind("m1");
         QueryRewriteTrace.record("m1", QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 12L));
-        QueryRewriteTrace.record("m1", QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 8L));
+        QueryRewriteTrace.record("m1",
+                QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 8L, "优化检索词"));
 
         assertThat(QueryRewriteTrace.intentOutcome("m1")).isPresent();
         assertThat(QueryRewriteTrace.combinedTimelineDetail("m1"))

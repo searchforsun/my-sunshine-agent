@@ -279,7 +279,6 @@ class ProcessingTimelineSessionTest {
         AgentRewriteProperties props = new AgentRewriteProperties();
         AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
         timeline.setIntent("补全问句");
-        timeline.setRag("优化检索词");
         props.setTimeline(timeline);
         RewriteTimelineLabels.bind(props);
         ProcessingTimelineSession session = new ProcessingTimelineSession();
@@ -291,7 +290,7 @@ class ProcessingTimelineSessionTest {
         session.pending("node-rag", "node");
         session.start("node-rag", "node");
         QueryRewriteTrace.record("msg-2",
-                QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 9L));
+                QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 9L, "优化检索词"));
 
         session.completeAt("node-rag", "命中 2 条，来源：公司差旅费报销管理办法", "命中 2 条，来源：公司差旅费报销管理办法",
                 System.currentTimeMillis());
@@ -313,12 +312,6 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeToolStep_doubleRag_scopesRewriteDetailPerInvocation() {
-        AgentRewriteProperties props = new AgentRewriteProperties();
-        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setRag("优化检索词");
-        timeline.setHyde("生成参考文档");
-        props.setTimeline(timeline);
-        RewriteTimelineLabels.bind(props);
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("报销合规");
         session.bindTraceMessageId("msg-multi");
@@ -326,14 +319,14 @@ class ProcessingTimelineSessionTest {
 
         String rag1 = session.beginToolStep("rag", "rag");
         QueryRewriteTrace.record("msg-multi",
-                QueryRewriteOutcome.of("rag", "q1", "rewrite-q1", 10L));
+                QueryRewriteOutcome.of("rag", "q1", "rewrite-q1", 10L, "优化检索词"));
         QueryRewriteTrace.record("msg-multi",
-                QueryRewriteOutcome.of("hyde", "q1", "hyde-doc-1", 20L));
+                QueryRewriteOutcome.of("hyde", "q1", "hyde-doc-1", 20L, "生成参考文档"));
         session.completeToolStep("命中 1 条");
 
         String rag2 = session.beginToolStep("rag", "rag");
         QueryRewriteTrace.record("msg-multi",
-                QueryRewriteOutcome.of("rag", "q2", "rewrite-q2", 11L));
+                QueryRewriteOutcome.of("rag", "q2", "rewrite-q2", 11L, "优化检索词"));
         session.completeToolStep("命中 2 条");
 
         ProcessingStep first = session.snapshot().stream()
@@ -348,7 +341,6 @@ class ProcessingTimelineSessionTest {
         assertThat(second.detail()).doesNotContain("rewrite-q1", "hyde-doc-1", "命中 2 条");
 
         QueryRewriteTrace.clear("msg-multi");
-        RewriteTimelineLabels.bind(null);
     }
 
     @Test

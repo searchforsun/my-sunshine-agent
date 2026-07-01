@@ -68,7 +68,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanDagGraph`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
 | **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
-| Query 改写 | `agent.rewrite.{rag,intent,empty-recall}`（**默认开启**，flash）→ `QueryRewriteService` + `KnowledgeRetrievalService` + `ExecutionPlanRouter`；RAG 链：**rag 改写 → 首次检索 →（0 命中）HyDE fallback → empty-recall** |
+| Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
 | **意图路由** | **Policy Chain**：L0 Skill → L1 `agent.routing.structural` → L2 `agent.routing.rules` → L3 `agent.intent`；验收见 `docs/routing/routing-golden-set.md` |
 | **Chat 执行模式** | 底栏 `executionPreference`（五模式）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 |
 | **Workflow 模板（4.13）** | `workflow-manager` + `/workflows` + Chat `#` 补全；Nacos 内置 + DB 合并 `CompositeWorkflowCatalog`；见 `2026-06-25-workflow-studio-design.md` |
@@ -86,7 +86,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 **Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `AnswerNodeHandler`；SUB 的 `skillId` 走 skill overlay 层；ReAct 工具策略见 Nacos `agent.prompt.mode-overlays.react`。
 
-**Query 改写（3.8.1 ✅）**：`rag` | `intent`（`<8` 字）| `empty-recall`；HyDE 为 **首次 0 命中 fallback**（`agent.rewrite.rag.hyde.enabled`）；日志 `[QueryRewrite]`。
+**Query 改写（3.8.1 ✅ → 4.0 迁移）**：检索侧 `rag.rewrite.{rag,hyde,empty-recall}` 迁入 `sunshine-rag.yaml` + pipeline；orchestrator 保留 `intent`（`<8` 字）| `planner`；HyDE 为 **首次 0 命中 fallback**；Timeline RAG 步骤读 response `trace`。
 
 **RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）；向量锚点门禁见 `RetrievalService`。
 

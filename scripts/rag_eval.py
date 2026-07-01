@@ -39,19 +39,13 @@ DEFAULT_RAG_REWRITE_PROMPT = """\
 只输出 JSON：{"query":"优化后的检索 query"}，不要 markdown 或其他文字。
 """
 
-DEFAULT_HYDE_PROMPT = """\
-你是企业知识库 HyDE 助手。根据用户问题，写一段**可能出现在企业制度/流程文档中**的中文段落，
-用于向量检索匹配；不要写问答体，不要写「根据…规定」等元叙述，直接写制度条文式正文。
-只引用常见域内概念（报销、差旅、请假、考勤、审批等），**禁止编造**具体金额/日期/人名。
-只输出 JSON：{"document":"假想文档段落"}，不要 markdown 或其他文字。
-"""
 
-
-def load_rag_rewrite_cfg(orchestrator_yaml: Path) -> dict:
-    if not orchestrator_yaml.is_file():
+def load_rag_rewrite_cfg(rag_yaml: Path) -> dict:
+    """读取 rag.rewrite.rag（ADR-002：SSOT 在 sunshine-rag.yaml）。"""
+    if not rag_yaml.is_file():
         return {"enabled": False}
-    data = yaml.safe_load(orchestrator_yaml.read_text(encoding="utf-8")) or {}
-    rag = ((data.get("agent") or {}).get("rewrite") or {}).get("rag") or {}
+    data = yaml.safe_load(rag_yaml.read_text(encoding="utf-8")) or {}
+    rag = ((data.get("rag") or {}).get("rewrite") or {}).get("rag") or {}
     if not rag.get("system-prompt") and not rag.get("systemPrompt"):
         rag = {**rag, "system-prompt": DEFAULT_RAG_REWRITE_PROMPT}
     return rag
@@ -106,109 +100,32 @@ def parse_rewrite_query(raw: str, original_query: str) -> str:
     return ""
 
 
-def rewrite_rag_query(
-    llm_url: str,
-    api_key: str,
-    model: str,
-    system_prompt: str,
-    original_query: str,
-) -> tuple[str, bool, float]:
-    t0 = time.perf_counter()
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    resp = requests.post(
-        f"{llm_url.rstrip('/')}/v1/chat/completions",
-        headers=headers,
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt.strip()},
-                {"role": "user", "content": f"用户问题：{original_query.strip()}"},
-            ],
-            "stream": False,
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
-    ms = (time.perf_counter() - t0) * 1000
-    choices = resp.json().get("choices") or []
-    content = ""
-    if choices:
-        content = (choices[0].get("message") or {}).get("content") or ""
-    rewritten = parse_rewrite_query(content, original_query)
-    if not rewritten:
-        return original_query.strip(), False, ms
-    applied = rewritten != original_query.strip()
-    return rewritten, applied, ms
-
-
-def hyde_rag_document(
-    llm_url: str,
-    api_key: str,
-    model: str,
-    system_prompt: str,
-    original_query: str,
-    max_chars: int,
-) -> tuple[str, bool, float]:
-    t0 = time.perf_counter()
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    resp = requests.post(
-        f"{llm_url.rstrip('/')}/v1/chat/completions",
-        headers=headers,
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt.strip()},
-                {"role": "user", "content": f"用户问题：{original_query.strip()}"},
-            ],
-            "stream": False,
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
-    ms = (time.perf_counter() - t0) * 1000
-    choices = resp.json().get("choices") or []
-    content = ""
-    if choices:
-        content = (choices[0].get("message") or {}).get("content") or ""
-    document = parse_hyde_document(content, max_chars)
-    if not document or document == original_query.strip():
-        return original_query.strip(), False, ms
-    return document, True, ms
+def _stage_by_name(stages: list, name: str) -> dict:
+    for s in stages:
+        if isinstance(s, dict) and s.get("name") == name:
+            return s
+    return {}
 
 
 def build_rewrite_report(
     queries: list[dict],
     id2name: dict[str, str],
     rag_url: str,
-    llm_url: str,
-    llm_api_key: str,
     rewrite_cfg: dict,
     strategy: str | None,
     top_k: int,
     min_score: float,
     tenant_id: str = "default",
 ) -> dict:
+    """对比 raw（rewrite=false）与 pipeline（rewrite=true，含 HyDE/empty-recall）。"""
     if not rewrite_cfg.get("enabled", True):
         return {
             "enabled": False,
-            "message": "agent.rewrite.rag.enabled=false",
+            "message": "rag.rewrite.rag.enabled=false",
             "rows": [],
         }
-    system_prompt = (
-        rewrite_cfg.get("system-prompt")
-        or rewrite_cfg.get("systemPrompt")
-        or DEFAULT_RAG_REWRITE_PROMPT
-    )
-    model = rewrite_cfg.get("model") or "deepseek-v4-flash"
     hyde_cfg = rewrite_cfg.get("hyde") or {}
     hyde_enabled = bool(hyde_cfg.get("enabled", False))
-    hyde_model = hyde_cfg.get("model") or model
-    hyde_max_chars = int(hyde_cfg.get("max-chars") or hyde_cfg.get("maxChars") or 480)
-    hyde_prompt = (
-        hyde_cfg.get("system-prompt")
-        or hyde_cfg.get("systemPrompt")
-        or DEFAULT_HYDE_PROMPT
-    )
     rows: list[dict] = []
     raw_recalls: list[float] = []
     rewritten_recalls: list[float] = []
@@ -219,8 +136,12 @@ def build_rewrite_report(
     for q in queries:
         raw_query = q["query"]
         try:
-            rewritten, applied, rewrite_ms = rewrite_rag_query(
-                llm_url, llm_api_key, model, system_prompt, raw_query
+            raw_hits, raw_ms = search(
+                rag_url, raw_query, top_k, strategy, tenant_id, rewrite=False
+            )
+            pipe_hits, pipe_ms, meta = search(
+                rag_url, raw_query, top_k, strategy, tenant_id,
+                rewrite=True, return_meta=True,
             )
         except requests.RequestException as exc:
             rows.append({
@@ -233,6 +154,13 @@ def build_rewrite_report(
                 "error": str(exc),
             })
             continue
+        trace = meta.get("trace") or {}
+        stages = trace.get("stages") or []
+        rag_stage = _stage_by_name(stages, "rag")
+        hyde_stage = _stage_by_name(stages, "hyde")
+        rewritten = meta.get("effectiveQuery") or rag_stage.get("to") or raw_query
+        applied = bool(rag_stage.get("applied"))
+        rewrite_ms = float(rag_stage.get("latencyMs") or 0)
         latencies.append(rewrite_ms)
         row: dict = {
             "id": q["id"],
@@ -241,35 +169,21 @@ def build_rewrite_report(
             "rewritten_query": rewritten,
             "applied": applied,
             "rewrite_latency_ms": round(rewrite_ms, 1),
+            "pipeline_latency_ms": round(pipe_ms, 1),
         }
-        hyde_doc = ""
-        hyde_applied = False
-        pipeline_query = rewritten
+        hyde_doc = hyde_stage.get("to") or ""
+        hyde_applied = bool(hyde_stage.get("applied"))
         if hyde_enabled:
-            try:
-                hyde_doc, hyde_applied, hyde_ms = hyde_rag_document(
-                    llm_url,
-                    llm_api_key,
-                    hyde_model,
-                    hyde_prompt,
-                    raw_query,
-                    hyde_max_chars,
-                )
-                hyde_latencies.append(hyde_ms)
-                row["hyde_document"] = hyde_doc
-                row["hyde_applied"] = hyde_applied
-                row["hyde_latency_ms"] = round(hyde_ms, 1)
-                if hyde_applied:
-                    pipeline_query = hyde_doc
-            except requests.RequestException as exc:
-                row["hyde_error"] = str(exc)
-        row["pipeline_query"] = pipeline_query
+            row["hyde_document"] = hyde_doc
+            row["hyde_applied"] = hyde_applied
+            row["hyde_latency_ms"] = round(float(hyde_stage.get("latencyMs") or 0), 1)
+            if hyde_applied:
+                hyde_latencies.append(float(hyde_stage.get("latencyMs") or 0))
+        row["pipeline_query"] = rewritten
         relevant = {id2name[d] for d in q.get("relevant_docs") or [] if d in id2name}
         if relevant:
-            raw_hits, _ = search(rag_url, raw_query, top_k, strategy, tenant_id)
-            rew_hits, _ = search(rag_url, rewritten, top_k, strategy, tenant_id)
             raw_filtered = [h for h in raw_hits if h.get("score", 0) >= min_score]
-            rew_filtered = [h for h in rew_hits if h.get("score", 0) >= min_score]
+            rew_filtered = [h for h in pipe_hits if h.get("score", 0) >= min_score]
             raw_r5 = recall_at_k(raw_filtered, relevant, 5, min_score)
             rew_r5 = recall_at_k(rew_filtered, relevant, 5, min_score)
             row["recall_at_5_raw"] = raw_r5
@@ -277,25 +191,25 @@ def build_rewrite_report(
             row["recall_at_5_delta"] = round(rew_r5 - raw_r5, 4)
             raw_recalls.append(raw_r5)
             rewritten_recalls.append(rew_r5)
-            if hyde_enabled and hyde_applied:
-                hyde_hits, _ = search(rag_url, hyde_doc, top_k, strategy, tenant_id)
+            if hyde_enabled and hyde_applied and hyde_doc:
+                hyde_hits, _ = search(rag_url, hyde_doc, top_k, strategy, tenant_id, rewrite=False)
                 hyde_filtered = [h for h in hyde_hits if h.get("score", 0) >= min_score]
                 hyde_r5 = recall_at_k(hyde_filtered, relevant, 5, min_score)
                 row["recall_at_5_hyde"] = hyde_r5
                 row["recall_at_5_hyde_delta"] = round(hyde_r5 - raw_r5, 4)
                 hyde_recalls.append(hyde_r5)
-            if pipeline_query != raw_query:
-                pipe_hits, _ = search(rag_url, pipeline_query, top_k, strategy, tenant_id)
-                pipe_filtered = [h for h in pipe_hits if h.get("score", 0) >= min_score]
-                pipe_r5 = recall_at_k(pipe_filtered, relevant, 5, min_score)
+            if pipe_hits:
+                pipe_r5 = recall_at_k(rew_filtered, relevant, 5, min_score)
                 row["recall_at_5_pipeline"] = pipe_r5
                 row["recall_at_5_pipeline_delta"] = round(pipe_r5 - raw_r5, 4)
                 pipeline_recalls.append(pipe_r5)
         rows.append(row)
     applied_count = sum(1 for r in rows if r.get("applied"))
+    model = rewrite_cfg.get("model") or "deepseek-v4-flash"
     summary = {
         "enabled": True,
         "model": model,
+        "source": "rag-service pipeline (ADR-002)",
         "hyde_enabled": hyde_enabled,
         "query_count": len(rows),
         "applied_count": applied_count,
@@ -309,7 +223,6 @@ def build_rewrite_report(
     }
     if hyde_enabled:
         hyde_applied_count = sum(1 for r in rows if r.get("hyde_applied"))
-        summary["hyde_model"] = hyde_model
         summary["hyde_applied_count"] = hyde_applied_count
         summary["hyde_applied_rate"] = round(hyde_applied_count / len(rows), 4) if rows else 0.0
         if hyde_latencies:
@@ -437,21 +350,34 @@ def search(
     top_k: int,
     strategy: str | None = None,
     tenant_id: str = "default",
-) -> tuple[list[dict], float]:
+    rewrite: bool = True,
+    return_meta: bool = False,
+) -> tuple[list[dict], float] | tuple[list[dict], float, dict]:
     t0 = time.perf_counter()
-    body: dict = {"query": query, "topK": top_k}
+    body: dict = {
+        "query": query,
+        "topK": top_k,
+        "options": {"rewrite": rewrite},
+    }
+    if return_meta:
+        body["options"]["includeTrace"] = True
     if strategy:
         body["strategy"] = strategy
     resp = requests.post(
         f"{rag_url.rstrip('/')}/api/rag/search",
         json=body,
         headers={"x-tenant-id": tenant_id.strip() or "default"},
-        timeout=60,
+        timeout=120,
     )
     resp.raise_for_status()
     ms = (time.perf_counter() - t0) * 1000
     data = unwrap_r(resp.json(), context="rag search") or {}
     results = data.get("results") or []
+    if return_meta:
+        return results, ms, {
+            "effectiveQuery": data.get("effectiveQuery"),
+            "trace": data.get("trace"),
+        }
     return results, ms
 
 
@@ -763,7 +689,7 @@ def main() -> int:
     parser.add_argument(
         "--rewrite-report",
         action="store_true",
-        help="输出 raw_query vs rewritten_query 对比（调用 LLM Gateway rag 改写 + 可选 Recall 对比）",
+        help="输出 raw vs pipeline 改写对比（经 rag-service pipeline，ADR-002）",
     )
     parser.add_argument(
         "--rewrite-only",
@@ -771,19 +697,9 @@ def main() -> int:
         help="仅跑改写对比报告（跳过常规 RAG 指标评测）",
     )
     parser.add_argument(
-        "--llm-url",
-        default=os.environ.get("LLM_URL", "http://localhost:8300"),
-        help="LLM Gateway 基址（改写调用）",
-    )
-    parser.add_argument(
-        "--llm-api-key",
-        default=os.environ.get("LLM_API_KEY", ""),
-        help="LLM Gateway API Key（可选）",
-    )
-    parser.add_argument(
-        "--orchestrator-yaml",
-        default=str(ROOT / "docs/nacos/sunshine-orchestrator.yaml"),
-        help="读取 agent.rewrite.rag 配置的 SSOT 副本",
+        "--rag-yaml",
+        default=str(ROOT / "docs/nacos/sunshine-rag.yaml"),
+        help="读取 rag.rewrite.* 配置的 SSOT 副本",
     )
     args = parser.parse_args()
     if args.ci:
@@ -808,13 +724,12 @@ def main() -> int:
 
     rewrite_report: dict | None = None
     if args.rewrite_report or args.rewrite_only:
-        rewrite_cfg = load_rag_rewrite_cfg(Path(args.orchestrator_yaml))
+        rag_yaml = Path(args.rag_yaml)
+        rewrite_cfg = load_rag_rewrite_cfg(rag_yaml)
         rewrite_report = build_rewrite_report(
             queries,
             id2name,
             args.rag_url,
-            args.llm_url,
-            args.llm_api_key,
             rewrite_cfg,
             strategy,
             max(top_ks),

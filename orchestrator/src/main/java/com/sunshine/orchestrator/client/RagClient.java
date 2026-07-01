@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.client;
 
+import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,8 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * RAG Service HTTP 客户端
- * 调用 RAG Service 的 /api/rag/search 进行向量检索
+ * RAG Service HTTP 客户端 — 调用 rag-service pipeline（ADR-002）。
  */
 @Slf4j
 @Component
@@ -36,50 +36,67 @@ public class RagClient {
         log.info("[RagClient] 初始化完成: baseUrl={}", baseUrl);
     }
 
-    /**
-     * 检索知识库
-     *
-     * @param query 查询文本
-     * @param topK  返回结果数量
-     * @return 文档片段列表（含文档名称）
-     */
     public Mono<List<RagHit>> search(String query, int topK) {
-        return search(query, topK, null, "default");
+        return searchKnowledge(query, topK, "default", "default", null, false).map(RagSearchResult::hits);
     }
 
     public Mono<List<RagHit>> search(String query, int topK, String strategy) {
-        return search(query, topK, strategy, "default");
+        return searchKnowledge(query, topK, "default", "default", strategy, false).map(RagSearchResult::hits);
     }
 
-    @SuppressWarnings("unchecked")
     public Mono<List<RagHit>> search(String query, int topK, String strategy, String tenantId) {
+        return searchKnowledge(query, topK, tenantId, "default", strategy, false).map(RagSearchResult::hits);
+    }
+
+    /** 干净检索 API：topK 为 null 时由 rag-service Nacos default-top-k 决定 */
+    public Mono<RagSearchResult> searchKnowledge(
+            String query, Integer topK, String tenantId, String kbId, String strategy, boolean includeTrace) {
         String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
+        String kid = kbId != null && !kbId.isBlank() ? kbId.strip() : "default";
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("query", query);
-        body.put("topK", topK);
+        if (topK != null) {
+            body.put("topK", topK);
+        }
         body.put("tenantId", tid);
+        body.put("kbId", kid);
         if (strategy != null && !strategy.isBlank()) {
             body.put("strategy", strategy);
         }
-
+        if (includeTrace) {
+            body.put("options", Map.of("rewrite", true, "includeTrace", true));
+        }
         return webClient.post()
                 .uri("/api/rag/search")
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("x-tenant-id", tid)
                 .bodyValue(body)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {
-                })
-                .map(response -> parseSearchResults(response, query))
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                .map(response -> parseSearchResponse(response, query))
                 .doOnError(e -> log.error("[RagClient] 检索失败: {}", e.getMessage()));
     }
 
     @SuppressWarnings("unchecked")
-    static List<RagHit> parseSearchResults(Map<String, Object> response, String query) {
-        Object payload = response.get("data") instanceof Map<?, ?> dataMap
-                ? dataMap
-                : response;
-        List<?> rawList = payload instanceof Map<?, ?> map ? (List<?>) map.get("results") : null;
+    static RagSearchResult parseSearchResponse(Map<String, Object> response, String query) {
+        Object payload = response.get("data") instanceof Map<?, ?> dataMap ? dataMap : response;
+        if (!(payload instanceof Map<?, ?> map)) {
+            return new RagSearchResult(List.of(), query, List.of());
+        }
+        String effectiveQuery = map.get("effectiveQuery") != null
+                ? map.get("effectiveQuery").toString()
+                : query;
+        List<?> rawList = (List<?>) map.get("results");
+        List<RagHit> hits = parseHitList(rawList, query);
+        List<QueryRewriteOutcome> traceOutcomes = parseTraceOutcomes(map.get("trace"));
+        log.info("[RagClient] 检索完成: query='{}', 命中 {} 条",
+                query != null && query.length() > 30 ? query.substring(0, 30) + "..." : query,
+                hits.size());
+        return new RagSearchResult(hits, effectiveQuery, traceOutcomes);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<RagHit> parseHitList(List<?> rawList, String query) {
         if (rawList == null || rawList.isEmpty()) {
             return List.of();
         }
@@ -91,10 +108,41 @@ public class RagClient {
                 results.add(new RagHit("未知文档", item.toString(), 0f));
             }
         }
-        log.info("[RagClient] 检索完成: query='{}', 命中 {} 条",
-                query != null && query.length() > 30 ? query.substring(0, 30) + "..." : query,
-                results.size());
         return results;
+    }
+
+    @SuppressWarnings("unchecked")
+    static List<QueryRewriteOutcome> parseTraceOutcomes(Object traceObj) {
+        if (!(traceObj instanceof Map<?, ?> trace)) {
+            return List.of();
+        }
+        Object stagesObj = trace.get("stages");
+        if (!(stagesObj instanceof List<?> stages)) {
+            return List.of();
+        }
+        List<QueryRewriteOutcome> outcomes = new ArrayList<>();
+        for (Object stageObj : stages) {
+            if (!(stageObj instanceof Map<?, ?> stage)) {
+                continue;
+            }
+            String name = stage.get("name") != null ? stage.get("name").toString() : "";
+            if (!List.of("rag", "hyde", "empty-recall").contains(name)) {
+                continue;
+            }
+            long latencyMs = stage.get("latencyMs") instanceof Number n ? n.longValue() : 0L;
+            String from = stage.get("from") != null ? stage.get("from").toString() : "";
+            String to = stage.get("to") != null ? stage.get("to").toString() : from;
+            boolean applied = stage.get("applied") instanceof Boolean b ? b : false;
+            String scenarioLabel = stage.get("scenarioLabel") != null ? stage.get("scenarioLabel").toString() : null;
+            if ("empty-recall".equals(name) && applied && to.contains("；")) {
+                outcomes.add(QueryRewriteOutcome.emptyRecall(from, List.of(to.split("；")), latencyMs, scenarioLabel));
+            } else if (applied) {
+                outcomes.add(QueryRewriteOutcome.of(name, from, to, latencyMs, scenarioLabel));
+            } else {
+                outcomes.add(QueryRewriteOutcome.skipped(name, from, latencyMs, scenarioLabel));
+            }
+        }
+        return outcomes;
     }
 
     @SuppressWarnings("unchecked")
@@ -110,5 +158,11 @@ public class RagClient {
     }
 
     public record RagHit(String docName, String content, float score) {
+    }
+
+    public record RagSearchResult(
+            List<RagHit> hits,
+            String effectiveQuery,
+            List<QueryRewriteOutcome> traceOutcomes) {
     }
 }

@@ -5,5 +5,6 @@
 | ADR | 标题 | 状态 | 日期 |
 |-----|------|:----:|------|
 | [ADR-001](./ADR-001-delete-legacy-compat.md) | 删除遗留兼容层优先于「锁定文档」中的实现保留 | Accepted | 2026-06-29 |
+| [ADR-002](./ADR-002-rag-pipeline-in-rag-service.md) | RAG 检索链路（改写 + hybrid + rerank + fallback）内聚 rag-service | Accepted | 2026-07-01 |
 
 **与「锁定决策」关系**：[locked-architecture-decisions.md](../superpowers/specs/2026-06-19-locked-architecture-decisions.md) 约束 **D1–D11 产品/边界**；若与 ADR 冲突，以 ADR + 代码为准，并回写锁定文档 API 表。

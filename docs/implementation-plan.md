@@ -269,7 +269,7 @@ my-sunshine-agent/
 
 | 任务卡 | 触发条件 | 说明 |
 |--------|----------|------|
-| **4.1** RAG 平台化 | 语料运营需求 | 多知识库、调试页、Badcase、A/B、周报 |
+| **4.1** RAG 平台化 | 语料运营需求 | **4.0** pipeline 内聚 + 多知识库、调试页、Badcase、A/B、周报 · [ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md) |
 | **4.2** OCR 入库 L1 | PDF/扫描件/发票 | DashScope OCR → 文本 chunk |
 | **4.3** 文档理解 L2 | L1 稳定 | 版面/表格/quarantine |
 | **4.4** 多模态对话 L3 | 聊天发图 | Vision + `/chat` 附件 |

@@ -1,8 +1,8 @@
 # RAG 知识库工作台设计（SSOT）
 
-> **状态**：⬜ 阶段四 4.1 + 4.2 待实施  
+> **状态**：⬜ 阶段四 4.0 + 4.1 + 4.2 待实施  
 > **路由**：`/knowledge` · **后端**：rag-service :8400（**不新增微服务**）· **前端**：直连 Gateway :8000 或 `VITE_RAG_API_BASE`  
-> **关联**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.1–4.2 · [skills-management-ui-design.md](./skills-management-ui-design.md)（UI 范式）· `docs/rag/golden-set.yaml` · `scripts/rag_eval.py`
+> **关联**：[ADR-002-rag-pipeline-in-rag-service.md](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) · [phase4-platformization-design.md](./phase4-platformization-design.md) §4.1–4.2 · [skills-management-ui-design.md](./skills-management-ui-design.md)（UI 范式）· `docs/rag/golden-set.yaml` · `scripts/rag_eval.py`
 
 ---
 
@@ -20,6 +20,7 @@
 | 8 | Chat 绑库 | 底栏 **会话级 kb 下拉**（B）；本阶段不做 `#kb` 语法 |
 | 9 | 权限 | **暂不 RBAC**（C）；`X-Admin-Token` + Gateway JWT |
 | 10 | Nacos 发布 | **Nacos Open API** 直接 patch（方案 1） |
+| 11 | **检索 pipeline 边界** | **改写 + hybrid + rerank + HyDE + empty-recall 全部内聚 rag-service**；orchestrator 只调干净检索 API（[ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)） |
 
 ---
 
@@ -31,7 +32,7 @@
 
 - 多格式文档入库（含 PDF/图片 OCR）
 - 多知识库 namespace + 文档版本
-- 动态参数（rag 检索/rerank + orchestrator 改写 prompt + chunk）草稿→评测→发布
+- 动态参数（rag 检索/rerank/**改写 prompt** + chunk）草稿→评测→发布
 - 检索 debug 瀑布 + golden-set 批量评测 + LLM 优化建议
 - Badcase 回流、A/B 对比、评测周报
 - Chat 底栏 kb 选择器，会话级绑定默认库
@@ -57,13 +58,16 @@ flowchart TB
     end
 
     subgraph rag-service :8400
+        PIPE[KnowledgeRetrievalPipeline]
+        RW[QueryRewritePipeline]
+        RET[RetrievalService]
         ADMIN[admin API]
         CAT[catalog MySQL]
         ING[ingest + OCR]
         CFG[config draft/publish]
         DBG[search/debug]
         EVL[evaluate + suggest]
-        RET[RetrievalService]
+        PIPE --> RW --> RET
     end
 
     subgraph 存储
@@ -76,35 +80,88 @@ flowchart TB
     subgraph 外部
         NC[Nacos Open API]
         LLM[llm-gateway 改写/HyDE]
-        DS[DashScope OCR]
+        DS[DashScope OCR + rerank]
         DES[desensitize :8600]
     end
 
     subgraph Chat 链路
-        ORCH[orchestrator KnowledgeRetrievalService]
+        ORCH[orchestrator RagClient]
     end
 
     KV --> ADMIN
     CV --> ORCH
-    ORCH --> RET
+    ORCH -->|"POST /api/rag/search\n一次调用"| PIPE
     ADMIN --> CAT & ING & CFG & DBG & EVL
+    DBG & EVL --> PIPE
     CAT --> MY
     ING --> MV & ES & DES
     CFG --> MY
     CFG -->|tenant 默认 publish| NC
-    DBG & EVL --> RET
     RET --> MV & ES
-    EVL --> LLM
+    RW & EVL --> LLM
     ING --> DS
-    NC -->|RefreshScope| ORCH & RET
+    NC -->|RefreshScope| PIPE
 ```
 
 | 原则 | 说明 |
 |------|------|
-| **执行引擎不变** | 检索仍走 `RetrievalService`；Chat 改写链仍在 orchestrator |
-| **Nacos SSOT** | tenant 级默认参数运行时以 Nacos 为准；UI publish 写 Nacos |
+| **Pipeline SSOT** | 完整链路 `rag改写→检索→HyDE→empty-recall` 在 `KnowledgeRetrievalPipeline`；Chat/评测/debug **同源** |
+| **orchestrator 薄调用** | `RagTool` / `RagNodeHandler` 只调 `RagClient.searchKnowledge()`，**禁止**本地 RAG 改写编排 |
+| **Nacos SSOT** | tenant 级检索+改写参数均在 `sunshine-rag.yaml`；UI publish 写 Nacos |
 | **kb 覆盖** | 存 MySQL；检索/debug/评测按 `tenantId + kbId` 合并 effective config |
+| **orchestrator 保留改写** | 仅 `intent` / `planner`（路由与规划，非检索） |
 | **禁止** | 前端硬编码 RAG 参数默认值 Map；禁止对模型输出做截断兜底 |
+
+---
+
+## 2.1 干净检索 API（ADR-002）
+
+**主入口**：`POST /api/rag/search`（演进现有接口）
+
+**Request**：
+
+```json
+{
+  "query": "年假可以请几天",
+  "topK": 3,
+  "tenantId": "default",
+  "kbId": "policy",
+  "strategy": "hybrid+rerank",
+  "options": {
+    "rewrite": true,
+    "includeTrace": true
+  }
+}
+```
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `options.rewrite` | `true` | `false` 跳过 rag/hyde/empty-recall（admin 对比用） |
+| `options.includeTrace` | `false` | Chat/workflow 传 `true`，Timeline 展示检索过程 |
+
+**Response**：
+
+```json
+{
+  "query": "年假可以请几天",
+  "effectiveQuery": "年假 请假 制度 天数",
+  "results": [{ "docName": "考勤制度", "content": "...", "score": 0.82 }],
+  "trace": {
+    "searchCount": 1,
+    "stages": [
+      { "name": "rewrite", "applied": true, "from": "...", "to": "...", "latencyMs": 95 },
+      { "name": "vector", "candidates": [], "latencyMs": 12 },
+      { "name": "rerank", "candidates": [], "latencyMs": 88 },
+      { "name": "hyde", "applied": false },
+      { "name": "empty-recall", "applied": false }
+    ]
+  }
+}
+```
+
+**orchestrator 契约**：`RagClient` 解析 `results` + 可选 `trace`；`ProcessingTimelineSession` 从 `trace.stages` 组装 RAG 步骤 detail（替代本地 `QueryRewriteTrace` 记录 RAG 场景）。
+
+**Admin debug**：`POST /api/rag/admin/search/debug` 强制 pipeline + `includeTrace=true`，stages 含 vector/bm25/rrf/rerank 候选瀑布。
 
 ---
 
@@ -294,19 +351,20 @@ OCR：**DashScope**；PDF 优先文本层，失败 OCR（锁定 4.2）。
 | PUT | `/api/rag/admin/kbs/{kbId}/config/override` | kb 级覆盖 |
 | DELETE | `/api/rag/admin/kbs/{kbId}/config/override/{field}` | 恢复继承 |
 
-**scope 枚举**：
+**scope 枚举**（全部 publish 至 `sunshine-rag.yaml`，见 [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)）：
 
 | scope | Nacos dataId | 字段 |
 |-------|--------------|------|
 | `rag-search` | sunshine-rag.yaml | `rag.search.*` |
 | `rag-rerank` | sunshine-rag.yaml | `rag.rerank.*` |
 | `rag-chunk` | sunshine-rag.yaml | `rag.chunk.*`（新增） |
-| `rewrite-rag` | sunshine-orchestrator.yaml | `agent.rewrite.rag` |
-| `rewrite-hyde` | sunshine-orchestrator.yaml | `agent.rewrite.rag.hyde` |
-| `rewrite-empty-recall` | sunshine-orchestrator.yaml | `agent.rewrite.empty-recall` |
-| `orchestrator-rag-search` | sunshine-orchestrator.yaml | `rag.search.default-top-k/strategy` |
+| `rewrite-rag` | sunshine-rag.yaml | `rag.rewrite.rag`（自 orchestrator 迁入） |
+| `rewrite-hyde` | sunshine-rag.yaml | `rag.rewrite.hyde` |
+| `rewrite-empty-recall` | sunshine-rag.yaml | `rag.rewrite.empty-recall` |
 
-kb 覆盖字段子集存 MySQL `kb_config_override.override_json`；**改写 prompt 仅 tenant 级** publish Nacos（kb 覆盖不含 rewrite prompt，避免 orchestrator 无法 per-kb 热加载复杂度）。
+**仍留 orchestrator**（非检索域）：`agent.rewrite.intent`、`agent.rewrite.planner` → `sunshine-orchestrator.yaml`。
+
+kb 覆盖字段子集存 MySQL `kb_config_override.override_json`；**改写 prompt 仅 tenant 级** publish Nacos（kb 覆盖不含 rewrite prompt）。
 
 ### 6.4 Nacos 发布（方案 1）
 
@@ -348,9 +406,9 @@ Request:
 }
 ```
 
-Response stages：`rewrite` | `hyde` | `vector` | `bm25` | `rrf` | `rerank` | `filter` | `final`；每 stage 含 `candidates[]`（`docName`, `content`, `score`, `source`）与 `latencyMs`。
+Response stages：`rewrite` | `hyde` | `vector` | `bm25` | `rrf` | `rerank` | `filter` | `empty-recall` | `final`；每 stage 含 `candidates[]`（`docName`, `content`, `score`, `source`）与 `latencyMs`。
 
-`includeRewrite=true` 时 rag-service 调 llm-gateway（逻辑对齐 `scripts/rag_eval.py` + orchestrator 提示词）。
+与 `POST /api/rag/search` 共用 **`KnowledgeRetrievalPipeline`** 实现；`includeRewrite=false` 时跳过 rewrite/hyde/empty-recall stages。
 
 ### 6.6 评测与建议
 
@@ -362,7 +420,7 @@ Response stages：`rewrite` | `hyde` | `vector` | `bm25` | `rrf` | `rerank` | `f
 | POST | `/api/rag/admin/eval/suggest` | 低分样本 → LLM 优化建议 |
 | POST | `/api/rag/admin/eval/ab` | A/B：current vs draft config |
 
-**指标**：Recall@5、MRR、rewrite Δ、HyDE Δ、pipeline Δ（与 `rag_eval.py` 一致）。
+**指标**：Recall@5、MRR、rewrite Δ、HyDE Δ、pipeline Δ（与 pipeline 全链路一致；`rag_eval.py` 只调 rag-service，不再读 orchestrator yaml 做改写）。
 
 **默认 suite**：`docs/rag/golden-set.yaml` v6；支持上传 custom suite。
 
@@ -386,17 +444,22 @@ Response stages：`rewrite` | `hyde` | `vector` | `bm25` | `rrf` | `rerank` | `f
 | **作用域** | 会话级；切换后后续轮次生效 |
 | **默认** | 未选 → tenant `is_default=true` 的 kb |
 | **请求** | Chat 请求体新增 `kbId`；BFF/Gateway 透传 orchestrator |
-| **orchestrator** | `KnowledgeRetrievalService` / `RagClient.search` 增加 `kbId` 参数 |
-| **参数** | rag-service 按 kbId 合并 effective config |
+| **orchestrator** | `RagClient.searchKnowledge(query, topK, tenantId, kbId)` **单次调用** rag-service；删除 `KnowledgeRetrievalService` RAG 编排 |
+| **Timeline** | 请求 `options.includeTrace=true`；从 response `trace` 写入 RAG 步骤 metadata/detail |
+| **参数** | rag-service 按 kbId 合并 effective config（含 strategy / rewrite） |
 
 Workflow/Plan RAG 节点 `params.kbId` 可选；未填继承会话 kbId 或 tenant 默认库。
 
 ---
 
-## 8. 任务拆分（对齐 phase4 §4.1–4.2）
+## 8. 任务拆分（对齐 phase4 §4.0–4.2）
 
 | 编号 | 任务 | 模块 |
 |------|------|------|
+| **4.0.1** | `KnowledgeRetrievalPipeline` + 扩展 `POST /api/rag/search`（trace） | rag-service |
+| **4.0.2** | `QueryRewritePipeline`（port orchestrator rag/hyde/empty-recall）+ `rag.rewrite.*` Nacos | rag-service |
+| **4.0.3** | orchestrator `RagClient` 切换 + 删除 RAG 编排 + trace 透传 Timeline | orchestrator |
+| **4.0.4** | `rag_eval.py` / CI 对齐 pipeline；orchestrator yaml 改写键 `@deprecated` | scripts + nacos |
 | **4.1.0** | rag-service + MySQL + Flyway + admin 包结构 | infra |
 | **4.1.1** | kb namespace API + Milvus/ES kb_id | catalog |
 | **4.1.2** | 文档版本 + superseded 过滤 | catalog |
@@ -415,7 +478,7 @@ Workflow/Plan RAG 节点 `params.kbId` 可选；未填继承会话 kbId 或 tena
 | **4.2.4** | docx 解析 | ingest |
 | **4.2.5** | ocr golden-set + rag_eval 扩展 | eval |
 
-**建议实施顺序**：4.1.0 → 4.1.1/4.1.2 → 4.1.5 → 4.1.9 → 4.1.10（文档+调试+参数 UI）→ 4.1.4/4.1.6 → 4.2.x → 4.1.11 → 4.1.7/4.1.8
+**建议实施顺序**：**4.0.1–4.0.4** → 4.1.0 → 4.1.1/4.1.2 → 4.1.5 → 4.1.9 → 4.1.10（文档+调试+参数 UI）→ 4.1.4/4.1.6 → 4.2.x → 4.1.11 → 4.1.7/4.1.8
 
 ---
 
@@ -437,9 +500,9 @@ Workflow/Plan RAG 节点 `params.kbId` 可选；未填继承会话 kbId 或 tena
 
 | 类型 | 内容 |
 |------|------|
-| 单元 | `NacosPublishService` patch；effective config 合并；ingest 状态机 |
-| 集成 | kb 隔离；version superseded；debug stages |
-| 脚本 | `rag_eval.py` 与 `EvaluateService` 结果对齐（同 suite 偏差 < 0.01） |
+| 单元 | `NacosPublishService` patch；effective config 合并；ingest 状态机；`KnowledgeRetrievalPipeline` fallback |
+| 集成 | kb 隔离；version superseded；debug stages；pipeline trace 与 orchestrator Timeline 对齐 |
+| 脚本 | `rag_eval.py` 与 `EvaluateService` 结果对齐（同 suite 偏差 < 0.01）；**不再**在脚本内 duplicate 改写 |
 | 前端 | `npx vue-tsc -b`；入库/debug/参数 Tab 手测 |
 | Live | golden-set v5 `--ci --fail-if-recall5-below 0.98` 作为 publish smoke 门槛 |
 
@@ -447,7 +510,8 @@ Workflow/Plan RAG 节点 `params.kbId` 可选；未填继承会话 kbId 或 tena
 
 ## 11. 相关文档
 
-- [phase4-platformization-design.md](./phase4-platformization-design.md) §4.1–4.2
+- [ADR-002-rag-pipeline-in-rag-service.md](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
+- [phase4-platformization-design.md](./phase4-platformization-design.md) §4.0–4.2
 - [2026-06-21-multimodal-ocr-design.md](./2026-06-21-multimodal-ocr-design.md) §L1
 - [skills-management-ui-design.md](./skills-management-ui-design.md)
 - `docs/nacos/sunshine-rag.yaml`、`docs/nacos/sunshine-orchestrator.yaml`
