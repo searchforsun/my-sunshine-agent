@@ -150,7 +150,7 @@ Expected: PASS（与迁移前 baseline 对齐）
 
 ## Task T1: rag-service MySQL + Flyway
 
-- [ ]
+- [x]
 
 **Files:**
 - Modify: `rag-service/pom.xml`
@@ -204,7 +204,7 @@ spring:
 **Step 5:** 本地建库并编译：
 
 ```bash
-mysql -h ecs4c16g -uroot -proot123 -e "CREATE DATABASE IF NOT EXISTS sunshine_rag;"
+# MySQL SSOT：docker/mysql/init/01-init-databases.sql + 09-sunshine-rag.sql
 mvn compile -pl rag-service -am
 python scripts/sync_nacos.py --data-id sunshine-rag.yaml
 ```
@@ -215,7 +215,7 @@ Expected: BUILD SUCCESS；Flyway V1 applied
 
 ## Task T2: Admin 鉴权与包结构
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/AdminTokenFilter.java`
@@ -261,7 +261,7 @@ Expected: PASS（扩展现有 rebuild 测试覆盖 401）
 
 ## Task T3: Milvus / ES schema 演进
 
-- [ ]
+- [x]
 
 **Files:**
 - Modify: `rag-service/src/main/java/com/sunshine/rag/service/MilvusService.java`
@@ -304,7 +304,7 @@ Expected: PASS；集成测试覆盖两 kb 隔离
 
 ## Task T4: 知识库 CRUD API
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/catalog/KnowledgeBaseService.java`
@@ -333,7 +333,7 @@ Expected: BUILD SUCCESS
 
 ## Task T5: 文档与版本 API
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/catalog/DocumentCatalogService.java`
@@ -362,7 +362,7 @@ Expected: PASS
 
 ## Task T6: EffectiveConfigService + 检索 kbId
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/config/EffectiveConfigService.java`
@@ -402,7 +402,7 @@ Expected: PASS
 
 ## Task T7: 检索 debug 瀑布 API
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/debug/RetrievalDebugService.java`
@@ -447,7 +447,7 @@ Expected: PASS
 
 ## Task T8: 前端 API 层 + 工作台壳
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `sunshine-ui/src/api/ragAdmin.ts`
@@ -489,7 +489,7 @@ Expected: 无 TS 错误
 
 ## Task T9: 文档 Tab + 检索调试 Tab
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `sunshine-ui/src/components/knowledge/KbDocPanel.vue`

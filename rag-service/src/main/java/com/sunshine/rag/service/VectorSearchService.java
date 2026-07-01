@@ -27,15 +27,25 @@ public class VectorSearchService {
 
     public Mono<List<RetrievalCandidate>> search(
             String query, int topK, boolean applyMinScoreFilter, String tenantId) {
+        return search(query, topK, applyMinScoreFilter, tenantId, "default");
+    }
+
+    public Mono<List<RetrievalCandidate>> search(
+            String query, int topK, boolean applyMinScoreFilter, String tenantId, String kbId) {
+        return search(query, topK, applyMinScoreFilter, tenantId, kbId, searchProperties.getMinScore());
+    }
+
+    public Mono<List<RetrievalCandidate>> search(
+            String query, int topK, boolean applyMinScoreFilter, String tenantId, String kbId, float minScore) {
         return embeddingService.embed(query)
                 .map(vector -> {
-                    List<MilvusService.SearchHit> raw = milvusService.search(vector, topK, tenantId);
+                    List<MilvusService.SearchHit> raw = milvusService.search(vector, topK, tenantId, kbId);
                     List<MilvusService.SearchHit> hits = applyMinScoreFilter
-                            ? SearchScoreFilter.apply(raw, searchProperties.getMinScore())
+                            ? SearchScoreFilter.apply(raw, minScore)
                             : raw;
                     if (applyMinScoreFilter && raw.size() != hits.size()) {
                         log.info("[RAG] 向量相似度过滤: minScore={}, raw={}, effective={}",
-                                searchProperties.getMinScore(), raw.size(), hits.size());
+                                minScore, raw.size(), hits.size());
                     }
                     return hits.stream()
                             .map(hit -> new RetrievalCandidate(

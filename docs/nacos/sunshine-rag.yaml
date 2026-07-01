@@ -13,6 +13,17 @@ spring:
       host: ecs4c16g
       port: 6379
       password: redis123
+  datasource:
+    url: jdbc:mysql://ecs4c16g:3306/sunshine_rag?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    username: root
+    password: root123
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 milvus:
   host: ecs4c16g
@@ -51,6 +62,8 @@ rag:
     timeout-seconds: 30
     min-score: 0.25
     min-relevance: 0.25
+  chunk:
+    max-size: 1200
   llm:
     base-url: http://127.0.0.1:8300/v1
     api-key: ${LLM_GATEWAY_API_KEY:}

@@ -64,6 +64,8 @@
 
   /* Message row hover */
   --sun-row-hover: rgba(255, 255, 255, 0.06);
+  --sun-metric-bg: rgba(255, 255, 255, 0.04);
+  --sun-metric-text: var(--sun-text-muted);
 
   /* Composer */
   --composer-shadow: 0 0 0 1px var(--sun-border);
@@ -243,6 +245,8 @@ html.theme-switching *::after {
 
   --sun-sidebar-bg: var(--sun-black);
   --sun-row-hover: rgba(0, 0, 0, 0.04);
+  --sun-metric-bg: rgba(0, 0, 0, 0.03);
+  --sun-metric-text: var(--sun-text-muted);
 
   --composer-shadow: 0 0 0 1px var(--sun-border);
   --composer-shadow-focus: 0 0 0 1px var(--sun-border-light);

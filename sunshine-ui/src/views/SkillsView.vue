@@ -36,6 +36,7 @@ import {
   DownloadOutline,
   EllipsisHorizontal,
 } from '@vicons/ionicons5'
+import SidebarToggle from '../components/SidebarToggle.vue'
 import {
   createSkill,
   deleteSkill,
@@ -1169,7 +1170,10 @@ onBeforeUnmount(() => {
       @change="onFolderPicked"
     />
     <header class="page-header">
-      <h2>Skills 管理</h2>
+      <div class="page-header-main">
+        <SidebarToggle />
+        <h2>Skills 管理</h2>
+      </div>
       <NSpace :size="8">
         <NButton round secondary @click="showCreate = true">
           <template #icon><NIcon :component="AddOutline" /></template>
@@ -1525,7 +1529,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .skills-root {
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   padding: 20px 24px;
@@ -1540,6 +1544,14 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 16px;
   flex-shrink: 0;
+  min-height: 36px;
+}
+
+.page-header-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .page-header h2 {
@@ -1547,6 +1559,7 @@ onBeforeUnmount(() => {
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.4px;
+  line-height: 36px;
   color: var(--sun-text);
 }
 

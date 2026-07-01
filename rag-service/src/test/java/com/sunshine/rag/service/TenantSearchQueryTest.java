@@ -10,14 +10,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TenantSearchQueryTest {
 
     @Test
-    void bm25QueryIncludesTenantFilter() {
-        Map<String, Object> body = Bm25SearchService.buildSearchBody("报销上限", 5, "tenant-a");
+    void bm25QueryIncludesTenantAndKbFilter() {
+        Map<String, Object> body = Bm25SearchService.buildSearchBody("报销上限", 5, "tenant-a", "kb-hr");
         @SuppressWarnings("unchecked")
         Map<String, Object> bool = (Map<String, Object>) ((Map<String, Object>) body.get("query")).get("bool");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> must = (List<Map<String, Object>>) bool.get("must");
-        assertThat(must).hasSize(2);
+        assertThat(must).hasSize(4);
         assertThat(must.get(1)).isEqualTo(Map.of("term", Map.of("tenant_id", "tenant-a")));
+        assertThat(must.get(2)).isEqualTo(Map.of("term", Map.of("kb_id", "kb-hr")));
+        assertThat(must.get(3)).isEqualTo(Map.of("term", Map.of("status", "active")));
     }
 
     @Test

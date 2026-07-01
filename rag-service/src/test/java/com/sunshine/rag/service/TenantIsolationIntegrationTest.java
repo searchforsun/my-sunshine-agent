@@ -1,5 +1,6 @@
 package com.sunshine.rag.service;
 
+import com.sunshine.rag.config.RagChunkProperties;
 import com.sunshine.rag.config.RagRerankProperties;
 import com.sunshine.rag.config.RagSearchProperties;
 import com.sunshine.rag.config.RagWebClientFactory;
@@ -20,6 +21,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -58,18 +60,18 @@ class TenantIsolationIntegrationTest {
                 new RagSearchMetrics(new SimpleMeterRegistry()), new RagWebClientFactory());
         retrievalService = new RetrievalService(
                 vectorSearchService, bm25SearchService, hybrid, rerank, searchProps, rerankProps,
-                new RagSearchMetrics(new SimpleMeterRegistry()));
+                new RagChunkProperties(), new RagSearchMetrics(new SimpleMeterRegistry()));
         stubTenantAwareSearch();
     }
 
     private void stubTenantAwareSearch() {
-        when(vectorSearchService.search(eq(QUERY), anyInt(), anyBoolean(), eq("tenant-a")))
+        when(vectorSearchService.search(eq(QUERY), anyInt(), anyBoolean(), eq("tenant-a"), any(), anyFloat()))
                 .thenReturn(Mono.just(List.of(TENANT_A_HIT)));
-        when(vectorSearchService.search(eq(QUERY), anyInt(), anyBoolean(), eq("tenant-b")))
+        when(vectorSearchService.search(eq(QUERY), anyInt(), anyBoolean(), eq("tenant-b"), any(), anyFloat()))
                 .thenReturn(Mono.just(List.of()));
-        when(bm25SearchService.search(eq(QUERY), anyInt(), eq("tenant-a")))
+        when(bm25SearchService.search(eq(QUERY), anyInt(), eq("tenant-a"), any()))
                 .thenReturn(Mono.just(List.of(TENANT_A_BM25)));
-        when(bm25SearchService.search(eq(QUERY), anyInt(), eq("tenant-b")))
+        when(bm25SearchService.search(eq(QUERY), anyInt(), eq("tenant-b"), any()))
                 .thenReturn(Mono.just(List.of()));
         when(bm25SearchService.isEnabled()).thenReturn(true);
     }
@@ -97,11 +99,29 @@ class TenantIsolationIntegrationTest {
 
     @Test
     void defaultTenantUsesDefaultId() {
-        when(vectorSearchService.search(eq(QUERY), anyInt(), anyBoolean(), eq("default")))
+        when(vectorSearchService.search(eq(QUERY), anyInt(), anyBoolean(), eq("default"), any(), anyFloat()))
                 .thenReturn(Mono.just(List.of()));
-        when(bm25SearchService.search(eq(QUERY), anyInt(), eq("default")))
+        when(bm25SearchService.search(eq(QUERY), anyInt(), eq("default"), any()))
                 .thenReturn(Mono.just(List.of()));
         List<RetrievalService.DocFragment> hits = retrievalService.search(QUERY, 5, "vector").block();
         assertThat(hits).isEmpty();
+    }
+
+    @Test
+    void kbBGetsZeroHitsWhenOnlyKbAHasCorpus() {
+        when(vectorSearchService.search(eq(QUERY), anyInt(), anyBoolean(), eq("default"), eq("kb-a"), anyFloat()))
+                .thenReturn(Mono.just(List.of(TENANT_A_HIT)));
+        when(vectorSearchService.search(eq(QUERY), anyInt(), anyBoolean(), eq("default"), eq("kb-b"), anyFloat()))
+                .thenReturn(Mono.just(List.of()));
+        when(bm25SearchService.search(eq(QUERY), anyInt(), eq("default"), eq("kb-a")))
+                .thenReturn(Mono.just(List.of(TENANT_A_BM25)));
+        when(bm25SearchService.search(eq(QUERY), anyInt(), eq("default"), eq("kb-b")))
+                .thenReturn(Mono.just(List.of()));
+        List<RetrievalService.DocFragment> kbA = retrievalService
+                .search(QUERY, 5, "vector", "default", "kb-a").block();
+        List<RetrievalService.DocFragment> kbB = retrievalService
+                .search(QUERY, 5, "vector", "default", "kb-b").block();
+        assertThat(kbA).isNotEmpty();
+        assertThat(kbB).isEmpty();
     }
 }

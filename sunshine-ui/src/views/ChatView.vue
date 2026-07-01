@@ -32,6 +32,7 @@ import { resolveAgentNodeStepForDrawer } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
+import SidebarToggle from '../components/SidebarToggle.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
@@ -49,7 +50,7 @@ const hydrationBridge = {
 const chatStore = useChatStore()
 const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
-const { sidebarVisible, toggleSidebar } = useSidebar()
+const { sidebarVisible } = useSidebar()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
 const { state: planDagExpandState, isAnyExpanded: planDagExpanded, close: closePlanDagExpand, handleSelect: handlePlanDagExpandSelect } = usePlanDagExpand()
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
@@ -408,23 +409,7 @@ watch(
   <div class="chat-page">
     <!-- 全宽会话头（豆包式） -->
     <header class="chat-header">
-      <button
-        type="button"
-        class="sidebar-toggle"
-        :title="sidebarVisible ? '隐藏侧栏' : '显示侧栏'"
-        @click="toggleSidebar"
-      >
-        <svg v-if="sidebarVisible" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <line x1="9" y1="3" x2="9" y2="21" />
-          <polyline points="14 8 11 12 14 16" />
-        </svg>
-        <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <line x1="9" y1="3" x2="9" y2="21" />
-          <polyline points="10 8 13 12 10 16" />
-        </svg>
-      </button>
+      <SidebarToggle />
       <div class="header-inner">
         <h1 class="header-title">{{ sessionTitle }}</h1>
         <span v-if="loading" class="header-status">
@@ -689,26 +674,6 @@ watch(
   align-items: center;
   padding: 0 12px 0 8px;
   gap: 4px;
-}
-
-.sidebar-toggle {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--sun-text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-
-.sidebar-toggle:hover {
-  background: var(--sun-surface-hover);
-  color: var(--sun-text);
 }
 
 .header-theme-btn {

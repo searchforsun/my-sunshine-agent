@@ -101,6 +101,10 @@ spring:
           uri: lb://sunshine-auth
           predicates:
             - Path=/api/auth/**
+        - id: sunshine-rag-api
+          uri: lb://sunshine-rag
+          predicates:
+            - Path=/api/rag/**
         - id: sunshine-bff-api
           uri: lb://sunshine-bff
           predicates:

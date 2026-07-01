@@ -8,11 +8,16 @@ import { useSidebar } from '../composables/useSidebar'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
 import BrandMark from '../components/BrandMark.vue'
+import SidebarToggle from '../components/SidebarToggle.vue'
 import UserSettingsModal from '../components/UserSettingsModal.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+
+const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills'])
+const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
+const hideSidebarFab = computed(() => contentFill.value)
 
 function renderIcon(icon: Component) {
   return () => h(icon)
@@ -38,7 +43,7 @@ const activeKey = computed(() => {
   return (route.name as string) || 'chat'
 })
 const { theme, toggle: toggleTheme } = useTheme()
-const { sidebarVisible, toggleSidebar } = useSidebar()
+const { sidebarVisible } = useSidebar()
 const isDark = computed(() => theme.value === 'dark')
 const chatStore = useChatStore()
 const dialog = useDialog()
@@ -251,20 +256,8 @@ onMounted(() => {
     <UserSettingsModal v-model:show="showSettings" />
 
     <!-- Content -->
-    <NLayoutContent class="content-area" :class="{ 'content-area--chat': route.name === 'chat' }">
-      <button
-        v-if="!sidebarVisible && route.name !== 'chat'"
-        type="button"
-        class="sidebar-expand-fab"
-        title="显示侧栏"
-        @click="toggleSidebar"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <line x1="9" y1="3" x2="9" y2="21" />
-          <polyline points="10 8 13 12 10 16" />
-        </svg>
-      </button>
+    <NLayoutContent class="content-area" :class="{ 'content-area--fill': contentFill }">
+      <SidebarToggle v-if="!sidebarVisible && !hideSidebarFab" variant="fab" />
       <router-view />
     </NLayoutContent>
   </NLayout>
@@ -335,30 +328,6 @@ onMounted(() => {
 .brand-ai {
   font-weight: 400;
   color: var(--sun-text-muted);
-}
-
-.sidebar-expand-fab {
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  z-index: 100;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--sun-border);
-  border-radius: 10px;
-  background: var(--sun-black);
-  color: var(--sun-text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color 0.15s, color 0.15s;
-  box-shadow: var(--shadow-card);
-}
-
-.sidebar-expand-fab:hover {
-  border-color: var(--sun-border-light);
-  color: var(--sun-text);
 }
 
 /* --- Nav --- */
@@ -608,14 +577,14 @@ onMounted(() => {
   min-height: 0;
 }
 
-.content-area--chat {
+.content-area--fill {
   overflow: hidden;
   display: flex;
   flex-direction: column;
   height: 100vh;
 }
 
-.content-area--chat :deep(> *) {
+.content-area--fill :deep(> *) {
   flex: 1;
   min-height: 0;
 }

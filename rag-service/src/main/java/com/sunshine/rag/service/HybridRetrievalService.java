@@ -20,7 +20,10 @@ public class HybridRetrievalService {
     private final RagSearchProperties searchProperties;
 
     public List<RetrievalCandidate> fuse(List<List<RetrievalCandidate>> rankedLists, int limit) {
-        int rrfK = searchProperties.getRrfK();
+        return fuse(rankedLists, limit, searchProperties.getRrfK());
+    }
+
+    public List<RetrievalCandidate> fuse(List<List<RetrievalCandidate>> rankedLists, int limit, int rrfK) {
         Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, RetrievalCandidate> candidates = new LinkedHashMap<>();
         for (List<RetrievalCandidate> list : rankedLists) {

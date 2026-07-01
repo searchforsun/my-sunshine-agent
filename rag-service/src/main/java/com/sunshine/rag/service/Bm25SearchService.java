@@ -48,15 +48,20 @@ public class Bm25SearchService {
     }
 
     public Mono<List<RetrievalCandidate>> search(String query, int topK, String tenantId) {
+        return search(query, topK, tenantId, "default");
+    }
+
+    public Mono<List<RetrievalCandidate>> search(String query, int topK, String tenantId, String kbId) {
         if (!isEnabled() || query == null || query.isBlank()) {
             return Mono.just(List.of());
         }
-        return Mono.fromCallable(() -> searchBlocking(query, topK, tenantId))
+        return Mono.fromCallable(() -> searchBlocking(query, topK, tenantId, kbId))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private List<RetrievalCandidate> searchBlocking(String query, int topK, String tenantId) throws Exception {
-        Map<String, Object> body = buildSearchBody(query, topK, tenantId);
+    private List<RetrievalCandidate> searchBlocking(
+            String query, int topK, String tenantId, String kbId) throws Exception {
+        Map<String, Object> body = buildSearchBody(query, topK, tenantId, kbId);
         String json = webClient.post()
                 .uri("/{index}/_search", properties.getIndex())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -67,9 +72,14 @@ public class Bm25SearchService {
         return parseHits(json);
     }
 
-    /** 供单测校验 tenant 过滤 DSL */
+    /** 供单测校验 tenant/kb 过滤 DSL */
     static Map<String, Object> buildSearchBody(String query, int topK, String tenantId) {
+        return buildSearchBody(query, topK, tenantId, "default");
+    }
+
+    static Map<String, Object> buildSearchBody(String query, int topK, String tenantId, String kbId) {
         String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
+        String kid = kbId != null && !kbId.isBlank() ? kbId.strip() : "default";
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("size", topK);
         body.put("query", Map.of(
@@ -79,7 +89,9 @@ public class Bm25SearchService {
                                         "query", query,
                                         "fields", List.of("content^2", "doc_name"),
                                         "type", "best_fields")),
-                                Map.of("term", Map.of("tenant_id", tid))))));
+                                Map.of("term", Map.of("tenant_id", tid)),
+                                Map.of("term", Map.of("kb_id", kid)),
+                                Map.of("term", Map.of("status", "active"))))));
         return body;
     }
 
