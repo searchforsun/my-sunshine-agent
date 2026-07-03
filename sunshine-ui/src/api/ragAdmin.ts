@@ -860,7 +860,7 @@ export async function listEvalJobs(tenantId: TenantId, kbId: string, limit = 20)
 
 export async function suggestEvalFix(
   tenantId: TenantId,
-  body: { reportId: number; kbId?: string },
+  body: { reportId: number; kbId?: string; regenerate?: boolean },
 ): Promise<EvalSuggestResult> {
   const res = await fetch(`${ragApiBase()}/api/rag/admin/eval/suggest`, {
     method: 'POST',

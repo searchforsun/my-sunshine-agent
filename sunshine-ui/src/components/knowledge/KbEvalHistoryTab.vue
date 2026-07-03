@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { NButton, NEmpty, NIcon, NProgress, NSelect, NTag, NText } from 'naive-ui'
+import { NButton, NEmpty, NIcon, NProgress, NSelect, NTag, NText, useMessage } from 'naive-ui'
 import { RefreshOutline } from '@vicons/ionicons5'
 import {
   applyConfigSuggestions,
@@ -49,6 +49,7 @@ const emit = defineEmits<{
 }>()
 
 const wb = useKbWorkbenchContext()
+const message = useMessage()
 const loading = ref(false)
 const refreshing = ref(false)
 const historyLayoutRef = ref<HTMLElement | null>(null)
@@ -66,6 +67,7 @@ const loadingReport = ref(false)
 const suggestResult = ref<EvalSuggestResult | null>(null)
 const suggesting = ref(false)
 const applying = ref(false)
+const suggestError = ref('')
 const info = ref('')
 
 const historyScope = ref<'all' | 'current'>('all')
@@ -267,6 +269,7 @@ async function selectJob(jobId: number) {
   selectedConfigVersionId.value = null
   report.value = null
   suggestResult.value = null
+  suggestError.value = ''
   info.value = ''
   loadingReport.value = true
   try {
@@ -297,21 +300,38 @@ function closeReport() {
   selectedConfigVersionId.value = null
   report.value = null
   suggestResult.value = null
+  suggestError.value = ''
   info.value = ''
   loadingReport.value = false
 }
 
-async function handleSuggest() {
-  if (!props.kbId || !report.value) return
+async function handleSuggest(regenerate = false) {
+  if (!props.kbId) {
+    suggestError.value = '未选择知识库，无法生成建议'
+    return
+  }
+  if (!report.value?.reportId) {
+    suggestError.value = '报告未加载完成'
+    return
+  }
+  if (suggesting.value) return
   suggesting.value = true
-  info.value = ''
+  suggestError.value = ''
+  error.value = ''
+  if (regenerate) {
+    suggestResult.value = null
+  }
   try {
     suggestResult.value = await suggestEvalFix(props.tenantId, {
       reportId: report.value.reportId,
       kbId: props.kbId,
+      regenerate,
     })
+    if (regenerate) {
+      message.success('已重新生成优化建议')
+    }
   } catch (e) {
-    error.value = friendlyErrorMessage(e, '生成建议失败')
+    suggestError.value = friendlyErrorMessage(e, '生成建议失败')
   } finally {
     suggesting.value = false
   }
@@ -498,8 +518,9 @@ defineExpose({ reload, selectJob, runningForApplied })
           :suite-display-name="suiteLabel(jobs.find((j) => j.jobId === selectedJobId)?.suiteKey ?? '')"
           :suggest-result="suggestResult"
           :suggesting="suggesting"
+          :suggest-error="suggestError"
           :applying="applying"
-          @suggest="handleSuggest"
+          @suggest="(regenerate) => void handleSuggest(regenerate)"
           @apply-suggestions="handleApplySuggestions"
         />
       </KbEvalReportDrawer>

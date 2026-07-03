@@ -18,17 +18,19 @@ const props = defineProps<{
   configVersionId?: number | null
   suggestResult?: EvalSuggestResult | null
   suggesting?: boolean
+  suggestError?: string
   applying?: boolean
   /** 是否为该配置版本最新一条评测失败记录（控制生成/应用建议按钮） */
   allowSuggestActions?: boolean
 }>()
 
 const emit = defineEmits<{
-  suggest: []
+  suggest: [regenerate?: boolean]
   applySuggestions: []
 }>()
 
 const resultView = ref<'overview' | 'failed' | 'suggest'>('overview')
+const regenerating = ref(false)
 
 const failedSamples = computed(() => props.report.failedSamples ?? [])
 
@@ -66,6 +68,18 @@ watch(
     }
   },
   { immediate: true },
+)
+
+function handleSuggestClick() {
+  regenerating.value = !!props.suggestResult
+  emit('suggest', regenerating.value)
+}
+
+watch(
+  () => props.suggesting,
+  (active) => {
+    if (!active) regenerating.value = false
+  },
 )
 
 function recallAt(k: string): string {
@@ -216,7 +230,14 @@ function sampleActual(row: Record<string, unknown>): string {
       </template>
       <template v-else>
         <NSpace v-if="showSuggestActions" align="center" wrap>
-          <NButton size="small" round secondary :loading="suggesting" @click="emit('suggest')">
+          <NButton
+            size="small"
+            round
+            secondary
+            :loading="suggesting"
+            :disabled="suggesting || applying"
+            @click="handleSuggestClick"
+          >
             {{ suggestResult ? '重新生成' : '生成优化建议' }}
           </NButton>
           <NButton
@@ -231,15 +252,16 @@ function sampleActual(row: Record<string, unknown>): string {
           </NButton>
         </NSpace>
         <NText v-if="showSuggestActions && applicableSuggestions.length && applyTargetHint" depth="3" class="apply-hint">{{ applyTargetHint }}</NText>
+        <NText v-if="suggestError" type="error" class="apply-hint">{{ suggestError }}</NText>
         <NText v-if="suggestActionsBlockedHint" depth="3" class="apply-hint">{{ suggestActionsBlockedHint }}</NText>
-        <div v-if="suggesting && !suggestResult" class="suggest-loading">
-          <NText depth="3">正在分析失败样本并生成优化建议…</NText>
+        <div v-if="suggesting" class="suggest-loading">
+          <NText depth="3">{{ regenerating ? '正在重新生成优化建议…' : '正在分析失败样本并生成优化建议…' }}</NText>
         </div>
-        <section v-if="suggestResult?.diagnosis" class="suggest-section">
+        <section v-if="!suggesting && suggestResult?.diagnosis" class="suggest-section">
           <h4 class="section-title">诊断</h4>
           <p class="diagnosis">{{ suggestResult.diagnosis }}</p>
         </section>
-        <section v-if="textSuggestions.length" class="suggest-section">
+        <section v-if="!suggesting && textSuggestions.length" class="suggest-section">
           <h4 class="section-title">文本优化</h4>
           <p class="section-desc">以下建议需人工审核后修改 Prompt 或评测集条目</p>
           <ul class="text-suggest-list">
@@ -262,7 +284,7 @@ function sampleActual(row: Record<string, unknown>): string {
             </li>
           </ul>
         </section>
-        <section v-if="configSuggestions.length" class="suggest-section">
+        <section v-if="!suggesting && configSuggestions.length" class="suggest-section">
           <h4 class="section-title">参数配置优化</h4>
           <ul class="config-suggest-list">
             <li v-for="(item, idx) in configSuggestions" :key="idx">

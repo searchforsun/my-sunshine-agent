@@ -60,6 +60,9 @@ public class SuggestService {
         Map<String, Object> kbSummary = buildKbSummary(tid, kbId);
         Map<String, Object> evalContext = EvalSuggestContextBuilder.build(report, objectMapper);
         String userPrompt = buildUserPrompt(report, job, configSnapshot, kbSummary, evalContext);
+        if (Boolean.TRUE.equals(request.regenerate())) {
+            userPrompt = userPrompt + "\n\n请重新分析并生成优化建议（勿重复引用此前已给出的建议文本）。";
+        }
         String systemPrompt = evalProperties.getSuggest().getSystemPrompt();
         if (systemPrompt == null || systemPrompt.isBlank()) {
             throw new IllegalStateException("rag.eval.suggest.system-prompt 未配置，请检查 Nacos sunshine-rag.yaml");
@@ -68,6 +71,9 @@ public class SuggestService {
                 evalProperties.getSuggest().getModel(),
                 systemPrompt,
                 userPrompt);
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalStateException("模型未返回有效内容，请稍后重试");
+        }
         EvalSuggestResult parsed = parseSuggestResponse(raw, configSnapshot);
         @SuppressWarnings("unchecked")
         List<String> failureModes = evalContext.get("failureModes") instanceof List<?> list
