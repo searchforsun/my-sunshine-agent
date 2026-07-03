@@ -2,8 +2,10 @@ package com.sunshine.rag.admin.debug;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.rag.admin.config.EffectiveConfigService;
+import com.sunshine.rag.admin.config.ConfigResolveMode;
+import com.sunshine.rag.admin.config.EffectiveConfigResolver;
 import com.sunshine.rag.admin.config.EffectiveRagConfig;
+import com.sunshine.rag.admin.config.ResolvedKbConfig;
 import com.sunshine.rag.config.RagSearchProperties;
 import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.pipeline.KnowledgeRetrievalPipeline;
@@ -19,7 +21,7 @@ import java.util.Map;
 public class RetrievalDebugService {
 
     private final KnowledgeRetrievalPipeline knowledgeRetrievalPipeline;
-    private final EffectiveConfigService effectiveConfigService;
+    private final EffectiveConfigResolver effectiveConfigResolver;
     private final RagSearchProperties searchProperties;
     private final ObjectMapper objectMapper;
 
@@ -35,20 +37,25 @@ public class RetrievalDebugService {
                 : searchProperties.getDefaultTopK();
         String strategy = body.get("strategy") != null ? String.valueOf(body.get("strategy")) : null;
         boolean includeRewrite = body.get("includeRewrite") instanceof Boolean b ? b : true;
+        ConfigResolveMode mode = ConfigResolveMode.parse(
+                body.get("configMode") != null ? String.valueOf(body.get("configMode")) : "published");
+        Long versionId = body.get("configVersionId") instanceof Number number ? number.longValue() : null;
         @SuppressWarnings("unchecked")
         Map<String, Object> overrides = body.get("overrides") instanceof Map<?, ?> map
                 ? (Map<String, Object>) map
                 : null;
-        EffectiveRagConfig config = applyOverrides(effectiveConfigService.resolve(tid, kbId), overrides);
+        ResolvedKbConfig resolved = effectiveConfigResolver.resolve(tid, kbId, mode, versionId);
+        if (overrides != null && !overrides.isEmpty()) {
+            EffectiveRagConfig patched = applyOverrides(resolved.retrieval(), overrides);
+            resolved = new ResolvedKbConfig(
+                    patched, resolved.rewrite(), resolved.defaultTopK(), resolved.chunkMaxSize());
+        }
         PipelineSearchRequest request = PipelineSearchRequest.of(
                 query, topK, tid, kbId, strategy, includeRewrite, true);
-        return knowledgeRetrievalPipeline.debugSearch(request, config);
+        return knowledgeRetrievalPipeline.debugSearch(request, resolved);
     }
 
     private EffectiveRagConfig applyOverrides(EffectiveRagConfig base, Map<String, Object> overrides) {
-        if (overrides == null || overrides.isEmpty()) {
-            return base;
-        }
         try {
             EffectiveRagConfig patch = objectMapper.convertValue(overrides, EffectiveRagConfig.class);
             return base.merge(patch);

@@ -48,4 +48,4 @@ python scripts/rag_eval.py
 python scripts/phase2_agent_demo.py --suite all
 ```
 
-详见 [docs/rag/README.md](./rag/README.md)。
+详见 `docker/mysql/init/`（09/10/11/15）与 `scripts/rag_*.py`。

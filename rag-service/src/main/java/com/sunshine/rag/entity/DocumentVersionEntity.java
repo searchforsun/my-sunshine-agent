@@ -25,12 +25,14 @@ public class DocumentVersionEntity {
     private String kbId;
     @Column(name = "doc_id", nullable = false, length = 128)
     private String docId;
-    @Column(nullable = false)
-    private int version;
+    @Column(nullable = false, length = 14)
+    private String version;
     @Column(nullable = false, length = 16)
     private String status = "draft";
     @Column(name = "parsed_markdown", columnDefinition = "MEDIUMTEXT")
     private String parsedMarkdown;
+    @Column(name = "storage_path", length = 512)
+    private String storagePath;
     @Column(name = "chunk_count", nullable = false)
     private int chunkCount;
     @Column(name = "ingest_job_id")

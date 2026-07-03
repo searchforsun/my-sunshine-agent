@@ -107,10 +107,10 @@ SSE 默认经 Gateway `:8000`（`sunshine-ui` 环境变量 `VITE_BFF_STREAM_BASE
 # Agent 四模式（react / workflow / plan-workflow 等）
 python scripts/phase2_agent_demo.py --suite all
 
-# RAG 双轨门禁（v5 回归）
+# RAG 评测（需先 MySQL 种子 + ingest）
 python scripts/rag_reset.py
 python scripts/rag_ingest_bulk.py
-python scripts/rag_eval.py --suite v5 --strategy hybrid+rerank --ci --fail-if-recall5-below 0.98
+python scripts/rag_eval.py --suite-key sunshine-regression --strategy hybrid+rerank --ci
 
 # Orchestrator 关键单测
 mvn test -pl orchestrator -Dtest=ExecutionPlanRouterTest,RoutingGoldenSetTest,WorkflowExecutorTest,ReactExecutorTest

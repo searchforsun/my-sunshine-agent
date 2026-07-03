@@ -17,5 +17,5 @@ public interface DocumentVersionRepository extends JpaRepository<DocumentVersion
             String tenantId, String kbId, String docId, String status);
 
     Optional<DocumentVersionEntity> findByTenantIdAndKbIdAndDocIdAndVersion(
-            String tenantId, String kbId, String docId, int version);
+            String tenantId, String kbId, String docId, String version);
 }

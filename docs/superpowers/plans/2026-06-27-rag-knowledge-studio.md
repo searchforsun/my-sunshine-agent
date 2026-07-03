@@ -2,15 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 将 `/knowledge` 升级为阶段四一站式知识库运营工作台（**4.0 pipeline 前置** + 4.1 + 4.2 做全），管理 API 全部内聚 `rag-service :8400`，含多 kb、参数 publish、debug 瀑布、评测闭环、OCR 入库、Chat kb 选择器。
+**Goal:** 将 `/knowledge` 升级为阶段四一站式知识库运营工作台（**4.0 pipeline 前置** + 4.1 核心 + 4.2 待做），管理 API 全部内聚 `rag-service :8400`，含多 kb、**配置版本化**、debug 瀑布、评测闭环（suite + Suggest）、OCR 入库（未做）、Chat kb 选择器（未做）。
 
-**Architecture:** [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) — `KnowledgeRetrievalPipeline` 内聚改写+检索+rerank+HyDE+empty-recall；orchestrator 只调 `RagClient.searchKnowledge()`。rag-service 新增 MySQL `sunshine_rag` + Milvus/ES schema 扩展；tenant 检索+改写参数经 Nacos Open API publish；前端 `KnowledgeView` 重构为 Skills 式工作台。
+**文档索引：** [docs/rag/README.md](../../rag/README.md) · **未实现：** [backlog.md](../../rag/backlog.md)
 
-**Tech Stack:** JDK 21 · Spring Boot 3.2 · JPA + Flyway · Milvus · ES · Redis · Vue3/Naive UI · DashScope OCR · Nacos Open API · llm-gateway
+**Architecture:** [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) — `KnowledgeRetrievalPipeline` 内聚改写+检索+rerank+HyDE+empty-recall；orchestrator 只调 `RagClient.searchKnowledge()`。业务配置 SSOT：**MySQL `rag_config_version` + MinIO**（评测脚本/报告）；**线上仅 published**；Nacos 仅基础设施。前端 `KbWorkbenchContext` 统一 `(tenant, kb)` 上下文。
 
-**设计 SSOT:** [2026-06-27-rag-knowledge-studio-design.md](../specs/2026-06-27-rag-knowledge-studio-design.md) · [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
+**Tech Stack:** JDK 21 · Spring Boot 3.2 · JPA + Flyway · Milvus · ES · Redis · **MinIO** · Vue3/Naive UI · DashScope OCR · llm-gateway
 
-**非目标:** 新建 rag-manager 微服务 · Chat `#kb` · 4.3 L2 全量 · RBAC 细分
+**设计 SSOT:** [2026-06-27-rag-knowledge-studio-design.md](../specs/2026-06-27-rag-knowledge-studio-design.md) · **[V2 扩展](./2026-07-01-rag-studio-v2-design.md)**（2026-07-01 Brainstorming 定稿）· [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
+
+**非目标:** 新建 rag-manager 微服务 · Chat `#kb` · 4.3 L2 全量 · RBAC 细分 · **Nacos 承载租户业务参数**（已废弃）
 
 ---
 
@@ -22,9 +24,10 @@
 | **Infra** | `rag-service/.../db/migration/V1__rag_schema.sql` | `rag-service/pom.xml`、`docs/nacos/sunshine-rag.yaml` | — |
 | **Entity/Repo** | `entity/*.java`、`repository/*.java` | — | `KnowledgeBaseRepositoryTest.java` |
 | **Catalog** | `admin/KbAdminController.java`、`catalog/*Service.java` | `MilvusService.java`、`ElasticsearchIndexService.java` | `KbAdminControllerTest.java`、`TenantIsolationIntegrationTest.java` |
-| **Config** | `config/RagChunkProperties.java`、`admin/config/*` | `MarkdownParser.java`、`RagSearchProperties.java` | `EffectiveConfigServiceTest.java`、`NacosPublishServiceTest.java` |
+| **Config** | `admin/config/ConfigVersionService.java`、`EffectiveConfigResolver.java` | `NacosPublishService`（过渡期）、`MarkdownParser.java` | `ConfigVersionServiceTest.java` |
 | **Debug** | `admin/debug/RetrievalDebugService.java` | `RetrievalService.java`、`HybridRetrievalService.java` | `RetrievalDebugServiceTest.java` |
-| **Eval** | `admin/eval/*` | — | `EvaluateServiceTest.java` |
+| **Eval** | `admin/eval/EvalSuiteService.java`、`SuggestService.java` | `GoldenSetLoader`（改读 DB）、`EvalReportWriter` | `EvaluateServiceTest.java` |
+| **Storage** | `storage/MinioStorageService.java` | `docs/nacos/sunshine-rag.yaml`（`rag.storage.*`） | — |
 | **Ingest** | `admin/ingest/*`、`parser/DocxParser.java`、`ocr/DashScopeOcrService.java` | `IngestionController.java` | `IngestJobStateMachineTest.java` |
 | **Orchestrator** | — | `RagClient.java`（扩展 trace）；**删除** `KnowledgeRetrievalService` RAG 编排；Timeline trace 透传；Chat DTO | `RagClientTest.java` |
 | **Frontend** | `sunshine-ui/src/api/ragAdmin.ts`、`components/knowledge/*` | `KnowledgeView.vue`、`ChatView.vue` | `npx vue-tsc -b` |
@@ -39,12 +42,18 @@
 迭代 1（P0 底座）     T1 → T2 → T3              MySQL + admin 鉴权 + Milvus/ES schema
 迭代 2（P0 Catalog）   T4 → T5 → T6              kb/doc/version API + 检索 kb 过滤
 迭代 3（P0 Debug+UI）  T7 → T8 → T9              debug 瀑布 + 工作台壳 + 文档/调试 Tab
-迭代 4（P0 Config）    T10 → T11 → T12          参数 schema/draft + Nacos publish + 硬门禁
+迭代 4（P0 Config）    T10 → T11 → T12          参数 schema/draft + Nacos publish + 硬门禁（**过渡期**）
 迭代 5（P0 Eval）      T13 → T14 → T15          EvaluateService + Badcase + 评测 Tab
 迭代 6（P1 Ingest）    T16 → T17 → T18          多格式 + OCR + quarantine + 入库 Tab
 迭代 7（P1 Chat）      T19 → T20                kb 选择器 + orchestrator kbId
-迭代 8（P2 收尾）      T21 → T22                A/B + 周报 Cron + reindex + 全量验收
+迭代 8（P2 收尾）      T21 → T22                reindex + 全量验收
+迭代 9（P0 上下文）    T23                      KbWorkbenchContext 四 Tab 统一重载
+迭代 10（P0 配置版本） T24 → T25                ConfigVersion + DB 运行时（取代 Nacos 业务 publish）
+迭代 11（P0 评测平台） T26 → T27                EvalSuite MinIO + Suggest + 评测 UI 增强
+迭代 12（P1 迁移收尾） T28                      golden-set/报告迁库 + CI 改 API + 迁移脚本
 ```
+
+> **2026-07-01 收敛路径**：迭代 9 → 10 → 11 → 12；T11–T12 在 T25 完成后标记 deprecated。
 
 ---
 
@@ -506,7 +515,7 @@ Expected: 无 TS 错误
 
 ## Task T10: 参数 schema + 草稿 API
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/config/RagConfigSchemaService.java`
@@ -534,7 +543,7 @@ Expected: PASS
 
 ## Task T11: NacosPublishService
 
-- [ ]
+- [x] **过渡期**；T25 后废弃业务 publish，仅保留可选 dev 导出
 
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/config/NacosPublishService.java`
@@ -562,7 +571,7 @@ Expected: PASS
 
 ## Task T12: 发布硬门禁 + 参数 Tab UI
 
-- [ ]
+- [x] **过渡期 UI**（per-scope 发布）；T24 改为统一版本发布 UI
 
 **Files:**
 - Modify: `rag-service/src/main/java/com/sunshine/rag/admin/config/KbConfigAdminController.java`
@@ -579,7 +588,7 @@ Expected: PASS
 5. 失败 → HTTP 422 + failedSamples + 调 suggest（T15）
 ```
 
-**Step 2:** `KbConfigPanel`：切换「租户默认 / 当前 kb」；表单绑定 schema；「保存草稿」「发布」；发布失败展示门禁原因。
+**Step 2:** `KbConfigPanel`：全 scope 平铺；「保存草稿」；~~per-scope「发布」~~ → **T24** 改为顶栏统一发布 + 版本历史。
 
 **Step 3:** 手测：故意改高 min-score → publish 被拒 → 恢复 → publish 成功。
 
@@ -587,7 +596,7 @@ Expected: PASS
 
 ## Task T13: EvaluateService 全量
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `rag-service/src/main/java/com/sunshine/rag/admin/eval/EvaluateService.java`（扩展）
@@ -624,34 +633,33 @@ Expected: 两者均 PASS（live 环境）
 
 ## Task T14: Badcase + 评测 Tab UI
 
-- [ ]
+- [x] **评测 Tab**（Badcase 已收敛为评测集条目，无独立 Tab）
 
 **Files:**
-- Create: `rag-service/src/main/java/com/sunshine/rag/admin/eval/BadcaseAdminController.java`
-- Create: `sunshine-ui/src/components/knowledge/KbEvalPanel.vue`
-- Create: `sunshine-ui/src/components/knowledge/KbBadcasePanel.vue`
+- Create: `sunshine-ui/src/components/knowledge/KbEvalPanel.vue` 等
+- ~~Create: `KbBadcasePanel.vue`~~ 已删除
 
-**Step 1:** Badcase CRUD + `POST export-golden` 输出 YAML（格式对齐 `golden-set.yaml` queries 段）。
+**Step 1:** ~~Badcase CRUD~~ → 评测集条目 API + `KbEvalSuiteTab`
 
-**Step 2:** `KbEvalPanel`：选择 suite、kb、跑评测、进度条、报告表格（Recall@5/MRR/Δ）、历史列表。
+**Step 2:** `KbEvalPanel`：运行 / 脚本 Tab；记录内嵌 + 抽屉
 
-**Step 3:** `KbBadcasePanel`：从 debug 失败样本「加入 Badcase」；标注 relevant docIds。
+**Step 3:** `KbDebugPanel`「加入评测集」
 
 ---
 
-## Task T15: 优化建议 + A/B
+## Task T15: 优化建议（Suggest）
 
-- [ ]
+- [x]
 
 **Files:**
-- Create: `rag-service/src/main/java/com/sunshine/rag/admin/eval/SuggestService.java`
-- Modify: `rag-service/src/main/java/com/sunshine/rag/admin/eval/EvalAdminController.java`
+- Create: `rag-service/.../admin/eval/SuggestService.java` ✅
+- Modify: `EvalAdminController.java`、`KbEvalHistoryTab.vue`、`KbEvalResultView.vue` ✅
 
-**Step 1:** `POST /api/rag/admin/eval/suggest`：输入低分样本 + config snapshot → llm-gateway flash → 结构化 JSON suggestions。
+**Step 1:** `POST /eval/suggest` ✅
 
-**Step 2:** `POST /api/rag/admin/eval/ab`：并行跑 current vs draft config，返回并排 metrics。
+**Step 2:** 一键应用：**仅 eval_failed** → draft ✅
 
-**Step 3:** UI「应用为草稿」按钮：将 suggestion.target 写入对应 scope draft。
+> ~~A/B 对比 `POST /eval/ab`~~ — **不做**（见 [backlog](../../rag/backlog.md)）
 
 ---
 
@@ -761,20 +769,19 @@ Expected: PASS
 
 ---
 
-## Task T21: 评测周报 Cron + rag_reindex
+## Task T21: rag_reindex
 
 - [ ]
 
 **Files:**
-- Create: `rag-service/src/main/java/com/sunshine/rag/admin/eval/EvalWeeklyScheduler.java`
 - Create: `scripts/rag_reindex.py`
 - Modify: `scripts/rag_eval.py`（`--kb-id` 可选）
 
-**Step 1:** `@Scheduled(cron = "0 0 2 * * MON")` 跑全 tenant 默认 kb v5 suite；报告落盘 + `eval_report` 索引。
+**Step 1:** `rag_reindex.py`：按 kb 全量 re-embed；进度 stdout；对接 `POST /api/rag/admin/rebuild` 仅灾难恢复。
 
-**Step 2:** `rag_reindex.py`：按 kb 全量 re-embed；进度 stdout；对接 `POST /api/rag/admin/rebuild` 仅灾难恢复。
+> ~~评测周报 Cron / `EvalWeeklyScheduler`~~ — **不做**
 
-**Step 3:**
+**Step 2:**
 
 ```bash
 python scripts/rag_reindex.py --kb-id default --dry-run
@@ -786,7 +793,7 @@ Expected: 输出待重建 chunk 数
 
 ## Task T22: 全量验收脚本 + 文档
 
-- [ ]
+- [x]
 
 **Files:**
 - Create: `scripts/verify_rag_studio.py`
@@ -816,6 +823,129 @@ Expected: 全绿
 
 ---
 
+## Task T23: KbWorkbenchContext 四 Tab 统一重载
+
+- [x]
+
+**Files:**
+- Create: `sunshine-ui/src/composables/useKbWorkbenchContext.ts`
+- Modify: `sunshine-ui/src/views/KnowledgeView.vue`
+- Modify: `sunshine-ui/src/components/knowledge/KbLayout.vue`
+- Modify: `KbDocPanel.vue`、`KbDebugPanel.vue`、`KbConfigPanel.vue`、`KbEvalPanel.vue`
+
+**Step 1:** `KnowledgeView` 维护 `{ tenantId, kbId, revision }`；`provide` 至子组件。
+
+**Step 2:** 租户变 → 重置 kb → `loadKbs` → `revision++`；kb 变 → 清 doc 选中 → `revision++`。
+
+**Step 3:** 四 Tab `watch(revision)` + `AbortController`；API 均带 `tenantId + kbId`。
+
+**Step 4:** 手测：切换租户/kb 后文档/参数/评测数据不串库。
+
+---
+
+## Task T24: ConfigVersionService + Flyway V2
+
+- [x]
+
+**Files:**
+- Create: `rag-service/src/main/resources/db/migration/V2__config_version.sql`
+- Create: `rag-service/.../entity/RagConfigBundleEntity.java`、`RagConfigVersionEntity.java`
+- Create: `rag-service/.../admin/config/ConfigVersionService.java`
+- Create: `rag-service/.../admin/config/KbConfigVersionController.java`
+- Modify: `KbConfigAdminController.java`（标记 deprecated 端点）
+- Create: `ConfigVersionServiceTest.java`
+
+**Step 1:** 表 `rag_config_bundle`（与 `knowledge_base` 1:1，**无租户 merge**）、`rag_config_version`（见 V2 spec §4.1）。
+
+**Step 2:** API：`PUT draft`（全包）、`POST publish`（整包 smoke）、`GET versions`、`POST activate`（**切换亦过 smoke**）。
+
+**Step 3:** 新建 kb 时从 `docs/rag/defaults/config-seed.json` seed v1；一次性迁移现网 Nacos → 各 kb v1。
+
+**Step 4:**
+
+```bash
+mvn test -pl rag-service -Dtest=ConfigVersionServiceTest
+```
+
+Expected: PASS
+
+---
+
+## Task T25: EffectiveConfigResolver DB 运行时
+
+- [x]
+
+**Files:**
+- Create: `rag-service/.../admin/config/EffectiveConfigResolver.java`
+- Modify: `KnowledgeRetrievalPipeline.java`、`QueryRewritePipeline.java`、`MarkdownParser.java`
+- Modify: `RetrievalDebugService.java`、`EvaluateService.java`
+- Deprecate: `NacosPublishService` 业务 publish 路径
+
+**Step 1:** `resolve(tenantId, kbId, mode)`：`PRODUCTION` 仅 `active_published_version`；admin 支持 `DRAFT` / `VERSION(id)`。
+
+**Step 2:** `/api/rag/search` 强制 `PRODUCTION`；debug/eval 接受 `configMode`。
+
+**Step 3:** 发布后 Caffeine/Redis 缓存失效；单测覆盖 **kb 间配置隔离**（改 A 不影响 B）。
+
+**Step 4:** Live：publish 后 Chat 检索行为变化；debug `configMode=draft` 与 published 可对比。
+
+---
+
+## Task T26: EvalSuite + MinIO
+
+- [x]
+
+**Files:**
+- Create: `rag-service/.../storage/MinioStorageService.java`
+- Create: `rag-service/.../admin/eval/EvalSuiteService.java`、`EvalSuiteAdminController.java`
+- Create: `db/migration/V3__eval_suite.sql`
+- Modify: `GoldenSetLoader.java`（读 `eval_suite` 表）
+- Modify: `EvalReportWriter.java`（写 MinIO 非本地 `docs/rag/reports/`）
+- Modify: `docs/nacos/sunshine-rag.yaml`（`rag.storage.endpoint/bucket`）
+
+**Step 1:** `eval_suite` CRUD + 声明式 YAML/JSON（含 **hooks**）+ **Python** 上传 → MinIO。
+
+**Step 2:** `PythonEvalRunner`：subprocess 受限，仅调内部 eval API；禁 socket/写盘。
+
+**Step 3:** 启动导入 `golden-set.yaml` → `suite_key=golden-v5`。
+
+---
+
+## Task T27: Suggest + 评测 UI 增强
+
+- [x]
+
+**Files:**
+- Create: `rag-service/.../admin/eval/SuggestService.java`
+- Modify: `EvalAdminController.java`、`KbEvalPanel.vue`
+- Modify: `sunshine-ui/src/api/ragAdmin.ts`
+- Modify: `docs/nacos/sunshine-rag.yaml`（`rag.eval.suggest.system-prompt`）
+
+**Step 1:** `POST /eval/suggest`：reportId + config 上下文 + kb 概要 → 结构化 JSON。
+
+**Step 2:** `KbEvalPanel`：suite 管理、历史列表、指标卡片、失败样本、Suggest、「**一键应用草稿**」。
+
+**Step 3:** `eval_report.suggestions_json` 持久化；与 T24 draft API / `apply-suggestions` 联动。
+
+---
+
+## Task T28: CI 迁移 + 验收更新
+
+- [x]
+
+**Files:**
+- Modify: `scripts/rag_eval.py`（调 `POST /api/rag/admin/eval/run`）
+- Modify: `scripts/verify_rag_studio.py`
+- Modify: `docs/superpowers/specs/2026-06-27-rag-knowledge-studio-design.md`（状态）
+
+**Step 1:** 配置种子走 `docker/mysql/init/16-sunshine-rag-config-seed.sql`（~~`migrate_nacos_config_to_db.py`~~ 不做）
+
+**Step 2:** CI smoke 走 admin eval API，不再读本地 golden-set 文件。
+
+**Step 3:** `verify_rag_studio.py` 增加：版本切换、draft debug、suite 上传、线上 published 隔离检查。
+
+---
+
 ## Spec 覆盖自检
 
 | Spec 章节 | Task |
@@ -826,13 +956,14 @@ Expected: 全绿
 | §5 数据模型 | T1、T3 |
 | §6.1 catalog API | T4–T5 |
 | §6.2 ingest | T16–T18 |
-| §6.3 config | T6、T10–T12 |
-| §6.4 Nacos publish | T11–T12 |
-| §6.5 debug | T7、T9 |
-| §6.6 eval | T12–T15、T21 |
+| §6.3 config | T6、T10–T12、**T24–T25** |
+| §6.4 publish | T11–T12（过渡）、**T24–T25** |
+| §6.5 debug | T7、T9、**T25**（configMode） |
+| §6.6 eval | T12–T15、T21、**T26–T28** |
 | §6.7 badcase | T14 |
+| §12 演进 | **T23–T28** |
 | §7 Chat kb | T19–T20 |
-| §9 检查门 | T22 |
+| §9 检查门 | T22、**T28** |
 
 ---
 
@@ -840,7 +971,7 @@ Expected: 全绿
 
 **Plan complete and saved to `docs/superpowers/plans/2026-06-27-rag-knowledge-studio.md`. Two execution options:**
 
-1. **Subagent-Driven（推荐）** — 每 Task 派生子 agent；**迭代 0（T0–T0d）必须先于工作台 UI**
-2. **Inline Execution** — 本会话按 T0→T22 批量执行；**T0d eval 全绿** 为迭代 1 checkpoint
+1. **Subagent-Driven（推荐）** — 每 Task 派生子 agent；**迭代 9–10（T23–T25）为当前收敛优先级**
+2. **Inline Execution** — 本会话按 Task 批量执行；**T25 完成** 为配置版本 checkpoint
 
 **Which approach?**

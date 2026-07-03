@@ -44,7 +44,7 @@
 
 ### 4.1 RAG 平台化
 
-> **详设**：[2026-06-27-rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md)（**不新增微服务**，管理 API 内聚 rag-service :8400）  
+> **详设**：[docs/rag/README.md](../../rag/README.md) · [2026-06-27-rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md) · **缺口** [backlog.md](../../rag/backlog.md)  
 > **Pipeline 边界**：[ADR-002-rag-pipeline-in-rag-service.md](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) — 改写 + hybrid + rerank + fallback 内聚 rag-service；orchestrator 只调干净检索 API
 
 | 子任务 | 内容 |
@@ -59,10 +59,10 @@
 | **4.1.4** | Admin API：`POST /api/kb/{kbId}/evaluate` |
 | **4.1.5** | 前端检索调试页（vector/bm25/rerank 分数瀑布） |
 | **4.1.6** | Badcase：`POST /api/rag/feedback` → 回流 golden-set |
-| **4.1.7** | 策略 A/B：Nacos `rag.experiments` |
-| **4.1.8** | 评测周报 Cron |
+| **4.1.7** | ~~策略 A/B~~ | **不做** |
+| **4.1.8** | ~~评测周报 Cron~~ | **不做** |
 
-**检查门**：pipeline 切换后 v5 eval 全绿；UI 上传 5 分钟内可检索；v2 入库后 v1 不可检；周报自动生成；调试页可见 rewrite+vector/rerank 各阶段分数。
+**检查门**：pipeline 切换后 v5 eval 全绿；UI 上传 5 分钟内可检索；v2 入库后 v1 不可检；调试页可见 rewrite+vector/rerank 各阶段分数。
 
 ### 4.2 文档 OCR 入库（L1）
 
@@ -212,7 +212,7 @@
 
 | 子项 | 核心检查 |
 |------|----------|
-| 4.1 | 运营自助上传 + 调试页 + 周报 |
+| 4.1 | 运营自助上传 + 调试页 + 评测闭环 |
 | 4.2–4.3 | PDF/发票 OCR 入库可检索 + ocr eval |
 | 4.4 | 聊天发图识图 + Grounding |
 | 4.5 | Docker 沙箱执行 + 审计 |

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { NEmpty, NIcon, NInput, NSpin, NText } from 'naive-ui'
-import { DocumentTextOutline, SearchOutline } from '@vicons/ionicons5'
+import { NButton, NEmpty, NIcon, NInput, NSpin, NText } from 'naive-ui'
+import { AddOutline, DocumentTextOutline, SearchOutline } from '@vicons/ionicons5'
 import type { KbDocument } from '../../api/ragAdmin'
+import { formatDocumentVersionKey } from '../../utils/formatSkillVersionTime'
 import MetricBadge from './MetricBadge.vue'
 
 const props = defineProps<{
@@ -14,6 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'select-doc': [docId: string]
+  'create-doc': []
 }>()
 
 const docSearch = ref('')
@@ -34,6 +36,16 @@ const filteredDocs = computed(() => {
     <header class="pane-head">
       <span class="pane-title">文档列表</span>
       <MetricBadge :value="String(filteredDocs.length)" />
+      <NButton
+        size="tiny"
+        quaternary
+        class="create-btn"
+        :disabled="!kbId"
+        @click="emit('create-doc')"
+      >
+        <template #icon><NIcon :component="AddOutline" :size="14" /></template>
+        新建
+      </NButton>
     </header>
     <div class="pane-search">
       <NInput
@@ -69,7 +81,7 @@ const filteredDocs = computed(() => {
             <span class="list-item-title">{{ doc.displayName }}</span>
           </div>
           <NText depth="3" class="list-item-sub">
-            v{{ doc.activeVersion || '—' }} · {{ doc.chunkCount }} chunks
+            {{ doc.activeVersion ? formatDocumentVersionKey(doc.activeVersion) : '—' }} · {{ doc.chunkCount }} chunks
           </NText>
         </button>
       </div>
@@ -96,6 +108,8 @@ const filteredDocs = computed(() => {
   padding: 12px 14px 0;
   flex-shrink: 0;
 }
+
+.create-btn { margin-left: auto; }
 
 .pane-title {
   font-size: 13px;

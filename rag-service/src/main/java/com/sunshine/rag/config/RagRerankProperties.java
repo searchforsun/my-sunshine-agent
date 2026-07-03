@@ -13,7 +13,7 @@ public class RagRerankProperties {
     private String apiKey = "";
     private String baseUrl =
             "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank";
-    private String model = "gte-rerank";
+    private String model = "gte-rerank-v2";
     private int inputSize = 20;
     private int timeoutSeconds = 30;
     /** Rerank relevance 下限（与向量 min-score 量纲不同） */

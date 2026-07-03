@@ -1,6 +1,8 @@
 package com.sunshine.rag.service;
 
-import com.sunshine.rag.config.RagChunkProperties;
+import com.sunshine.rag.admin.config.ConfigBundlePayload;
+import com.sunshine.rag.admin.config.ConfigBundleTestFixtures;
+import com.sunshine.rag.admin.config.EffectiveConfigResolver;
 import com.sunshine.rag.config.RagRerankProperties;
 import com.sunshine.rag.config.RagSearchProperties;
 import com.sunshine.rag.config.RagWebClientFactory;
@@ -43,6 +45,8 @@ class TenantIsolationIntegrationTest {
     private VectorSearchService vectorSearchService;
     @Mock
     private Bm25SearchService bm25SearchService;
+    @Mock
+    private EffectiveConfigResolver effectiveConfigResolver;
 
     private RetrievalService retrievalService;
 
@@ -58,9 +62,11 @@ class TenantIsolationIntegrationTest {
         RerankService rerank = new RerankService(
                 rerankProps, new com.fasterxml.jackson.databind.ObjectMapper(),
                 new RagSearchMetrics(new SimpleMeterRegistry()), new RagWebClientFactory());
+        when(effectiveConfigResolver.resolve(any(), any()))
+                .thenReturn(ConfigBundlePayload.toResolvedKbConfig(ConfigBundleTestFixtures.fullPayload()));
         retrievalService = new RetrievalService(
-                vectorSearchService, bm25SearchService, hybrid, rerank, searchProps, rerankProps,
-                new RagChunkProperties(), new RagSearchMetrics(new SimpleMeterRegistry()));
+                vectorSearchService, bm25SearchService, hybrid, rerank, effectiveConfigResolver,
+                searchProps, rerankProps, new RagSearchMetrics(new SimpleMeterRegistry()));
         stubTenantAwareSearch();
     }
 

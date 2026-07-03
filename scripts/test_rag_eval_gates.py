@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -28,53 +27,22 @@ def sample_report(recall5: float = 1.0, mrr: float = 0.95, p95: float = 400.0) -
 
 class RagEvalGatesTest(unittest.TestCase):
     def test_check_gates_pass(self):
-        gates = {"recall_at_5_min": 0.98, "mrr_min": 0.92, "empty_rate_negative_min": 0.95}
+        gates = {
+            "recallAt5Min": 0.98,
+            "mrrMin": 0.92,
+            "emptyRateNegativeMin": 0.95,
+        }
         self.assertEqual(rag_eval.check_gates(sample_report(), gates), [])
 
     def test_check_gates_recall5_fail(self):
-        gates = {"recall_at_5_min": 0.98}
+        gates = {"recallAt5Min": 0.98}
         fails = rag_eval.check_gates(sample_report(recall5=0.9), gates)
-        self.assertTrue(any("recall@5" in f for f in fails))
+        self.assertTrue(any("Recall@5" in f for f in fails))
 
-    def test_cli_recall5_threshold(self):
-        fails = rag_eval.check_cli_thresholds(sample_report(recall5=0.97), 0.98, None)
-        self.assertEqual(len(fails), 1)
-
-    def test_v6_improvement_pass(self):
-        hybrid = sample_report(recall5=1.0, mrr=0.98)
-        vector = sample_report(recall5=0.95, mrr=0.89)
-        phase3 = {
-            "recall_at_5_improvement_vs_vector_min": 0.15,
-            "mrr_improvement_vs_vector_min": 0.1,
-            "latency_p95_ms_max_hybrid_rerank": 800,
-        }
-        self.assertEqual(rag_eval.check_v6_improvement(hybrid, vector, phase3), [])
-
-    def test_v6_improvement_mrr_fail(self):
-        hybrid = sample_report(recall5=1.0, mrr=0.90)
-        vector = sample_report(recall5=0.95, mrr=0.89)
-        phase3 = {"mrr_improvement_vs_vector_min": 0.1, "latency_p95_ms_max_hybrid_rerank": 800}
-        fails = rag_eval.check_v6_improvement(hybrid, vector, phase3)
-        self.assertTrue(any("mrr improvement" in f for f in fails))
-
-    def test_parse_rewrite_query_json(self):
-        q = rag_eval.parse_rewrite_query('{"query":"公司差旅费报销管理办法"}', "报差旅")
-        self.assertEqual(q, "公司差旅费报销管理办法")
-
-    def test_parse_rewrite_query_skips_same_as_original(self):
-        q = rag_eval.parse_rewrite_query('{"query":"报差旅"}', "报差旅")
-        self.assertEqual(q, "")
-
-    def test_parse_hyde_document_json(self):
-        doc = rag_eval.parse_hyde_document(
-            '{"document":"员工出差须提交审批单并保留发票。"}',
-            480,
-        )
-        self.assertIn("出差", doc)
-
-    def test_extract_json_blob(self):
-        blob = rag_eval.extract_json_blob('说明 {"query":"x"} 尾部')
-        self.assertEqual(json.loads(blob)["query"], "x")
+    def test_check_gates_p95_fail(self):
+        gates = {"latencyP95MsMax": 500}
+        fails = rag_eval.check_gates(sample_report(p95=900.0), gates)
+        self.assertTrue(any("P95" in f for f in fails))
 
 
 if __name__ == "__main__":

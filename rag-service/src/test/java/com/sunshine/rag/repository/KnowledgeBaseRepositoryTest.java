@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.username=root",
         "spring.datasource.password=root123",
         "spring.jpa.hibernate.ddl-auto=validate",
-        "spring.flyway.enabled=true"
+        "spring.flyway.enabled=false"
 })
 class KnowledgeBaseRepositoryTest {
 
@@ -26,7 +26,7 @@ class KnowledgeBaseRepositoryTest {
     private KnowledgeBaseRepository repository;
 
     @Test
-    void flywaySeedDefaultKbExists() {
+    void dockerInitSeedDefaultKbExists() {
         Optional<KnowledgeBaseEntity> kb = repository.findByTenantIdAndKbId("default", "default");
         assertThat(kb).isPresent();
         assertThat(kb.get().isDefault()).isTrue();

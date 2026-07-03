@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +40,8 @@ public class ElasticsearchIndexService {
     }
 
     public void indexChunk(String chunkId, String docName, String content, int chunkIndex, String tenantId) {
-        indexChunk(chunkId, docName, content, chunkIndex, tenantId, "default", docName, 1, "active", "markdown");
+        indexChunk(chunkId, docName, content, chunkIndex, tenantId, "default", docName,
+                com.sunshine.rag.util.DocumentVersionTime.now(), "active", "markdown");
     }
 
     public void indexChunk(
@@ -50,7 +52,7 @@ public class ElasticsearchIndexService {
             String tenantId,
             String kbId,
             String docId,
-            int version,
+            String version,
             String status,
             String sourceType) {
         if (!isEnabled()) {
@@ -64,7 +66,7 @@ public class ElasticsearchIndexService {
         doc.put("tenant_id", tenantId != null ? tenantId : "default");
         doc.put("kb_id", kbId != null ? kbId : "default");
         doc.put("doc_id", docId != null ? docId : docName);
-        doc.put("version", version);
+        doc.put("version", com.sunshine.rag.util.DocumentVersionTime.toMilvusCode(version));
         doc.put("status", status != null ? status : "active");
         doc.put("source_type", sourceType != null ? sourceType : "markdown");
         try {
@@ -80,7 +82,7 @@ public class ElasticsearchIndexService {
         }
     }
 
-    public void deleteByDocVersion(String tenantId, String kbId, String docId, int version) {
+    public void deleteByDocVersion(String tenantId, String kbId, String docId, String version) {
         if (!isEnabled()) {
             return;
         }
@@ -93,7 +95,7 @@ public class ElasticsearchIndexService {
                                         Map.of("term", Map.of("tenant_id", tid)),
                                         Map.of("term", Map.of("kb_id", kid)),
                                         Map.of("term", Map.of("doc_id", docId)),
-                                        Map.of("term", Map.of("version", version))))));
+                                        Map.of("term", Map.of("version", com.sunshine.rag.util.DocumentVersionTime.toMilvusCode(version)))))));
         try {
             webClient.post()
                     .uri("/{index}/_delete_by_query", properties.getIndex())
@@ -124,6 +126,63 @@ public class ElasticsearchIndexService {
         log.warn("[RAG-ES] index rebuilt: {}", properties.getIndex());
     }
 
+    /** 按文档版本查询 chunk（管理预览） */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> queryChunksByDocVersion(
+            String tenantId, String kbId, String docId, String version) {
+        if (!isEnabled()) {
+            return List.of();
+        }
+        String tid = tenantId != null ? tenantId : "default";
+        String kid = kbId != null ? kbId : "default";
+        Map<String, Object> body = Map.of(
+                "query", Map.of(
+                        "bool", Map.of(
+                                "must", List.of(
+                                        Map.of("term", Map.of("tenant_id", tid)),
+                                        Map.of("term", Map.of("kb_id", kid)),
+                                        Map.of("term", Map.of("doc_id", docId)),
+                                        Map.of("term", Map.of("version", com.sunshine.rag.util.DocumentVersionTime.toMilvusCode(version)))))),
+                "sort", List.of(Map.of("chunk_index", Map.of("order", "asc"))),
+                "size", 500);
+        try {
+            Map<String, Object> response = webClient.post()
+                    .uri("/{index}/_search", properties.getIndex())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block(Duration.ofSeconds(15));
+            if (response == null) {
+                return List.of();
+            }
+            Object hitsObj = response.get("hits");
+            if (!(hitsObj instanceof Map<?, ?> hits)) {
+                return List.of();
+            }
+            Object hitListObj = hits.get("hits");
+            if (!(hitListObj instanceof List<?> hitList)) {
+                return List.of();
+            }
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Object item : hitList) {
+                if (!(item instanceof Map<?, ?> hit)) {
+                    continue;
+                }
+                Object sourceObj = hit.get("_source");
+                if (sourceObj instanceof Map<?, ?> source) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    source.forEach((k, v) -> row.put(String.valueOf(k), v));
+                    result.add(row);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            log.warn("[RAG-ES] query chunks failed doc={} v={}: {}", docId, version, e.getMessage());
+            return List.of();
+        }
+    }
+
     private void ensureIndex() {
         if (!isEnabled()) {
             return;
@@ -138,7 +197,7 @@ public class ElasticsearchIndexService {
         propertiesMap.put("tenant_id", Map.of("type", "keyword"));
         propertiesMap.put("kb_id", Map.of("type", "keyword"));
         propertiesMap.put("doc_id", Map.of("type", "keyword"));
-        propertiesMap.put("version", Map.of("type", "integer"));
+        propertiesMap.put("version", Map.of("type", "long"));
         propertiesMap.put("status", Map.of("type", "keyword"));
         propertiesMap.put("source_type", Map.of("type", "keyword"));
         propertiesMap.put("section_path", Map.of("type", "keyword"));

@@ -10,7 +10,7 @@ public record ChunkInsertRequest(
         String tenantId,
         String kbId,
         String docId,
-        int version,
+        String version,
         int chunkIndex,
         String status,
         String sourceType) {
@@ -21,6 +21,6 @@ public record ChunkInsertRequest(
         String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         return new ChunkInsertRequest(
                 docName, content, embedding, tid,
-                "default", docName, 1, chunkIndex, "active", "markdown");
+                "default", docName, com.sunshine.rag.util.DocumentVersionTime.now(), chunkIndex, "active", "markdown");
     }
 }

@@ -1,5 +1,6 @@
 package com.sunshine.rag.parser;
 
+import com.sunshine.rag.config.RagChunkProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,9 @@ class MarkdownParserTest {
 
     @BeforeEach
     void setUp() {
-        parser = new MarkdownParser();
+        RagChunkProperties chunk = new RagChunkProperties();
+        chunk.setMaxSize(1200);
+        parser = new MarkdownParser(chunk);
     }
 
     @Test
@@ -114,6 +117,18 @@ class MarkdownParserTest {
                 chunk.contains("```markdown")
                         && chunk.contains("### 请假申请单")
                         && chunk.contains("- **姓名**："));
+    }
+
+    @Test
+    @DisplayName("分段大小跟随 RagChunkProperties")
+    void respectsConfiguredMaxChunkSize() {
+        RagChunkProperties chunk = new RagChunkProperties();
+        chunk.setMaxSize(80);
+        MarkdownParser smallParser = new MarkdownParser(chunk);
+        String markdown = "第一段内容。".repeat(20);
+        List<String> chunks = smallParser.parse(markdown);
+        assertThat(chunks.size()).isGreaterThan(1);
+        assertThat(chunks).allMatch(chunkText -> chunkText.length() <= 80);
     }
 
     private static String readSample(String resourceName) throws IOException {

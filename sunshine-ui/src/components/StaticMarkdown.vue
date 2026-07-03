@@ -2,8 +2,9 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import 'katex/dist/katex.min.css'
 import '../utils/stream-markdown/styles.css'
+import { theme } from '../composables/useTheme'
 import { renderStaticMarkdown } from '../utils/markdown/renderStaticMarkdown'
-import { enhanceStaticMarkdown } from '../utils/stream-markdown/StaticEnhancer'
+import { enhanceStaticMarkdown, reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 
 const props = withDefaults(defineProps<{
   source: string
@@ -11,9 +12,12 @@ const props = withDefaults(defineProps<{
   compact?: boolean
   /** 展开区最大高度，超出内部滚动 */
   scrollable?: boolean
+  /** Skills 文件预览同款样式（msg-md skill-md-preview） */
+  skillPreview?: boolean
 }>(), {
   compact: false,
   scrollable: false,
+  skillPreview: false,
 })
 
 const rootRef = ref<HTMLElement | null>(null)
@@ -26,6 +30,10 @@ async function enhanceDom() {
 }
 
 watch(html, () => { void enhanceDom() }, { flush: 'post' })
+watch(theme, async () => {
+  await nextTick()
+  reRenderStaticMermaids()
+})
 onMounted(() => { void enhanceDom() })
 </script>
 
@@ -33,8 +41,13 @@ onMounted(() => { void enhanceDom() })
   <div
     v-if="html"
     ref="rootRef"
-    class="msg-md static-md"
-    :class="{ 'static-md-compact': compact, 'static-md-scroll': scrollable }"
+    class="msg-md"
+    :class="{
+      'static-md': !skillPreview,
+      'skill-md-preview': skillPreview,
+      'static-md-compact': compact,
+      'static-md-scroll': scrollable,
+    }"
     v-html="html"
   />
 </template>

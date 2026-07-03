@@ -1,6 +1,7 @@
 package com.sunshine.skill.service;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.util.VersionTimestampDedup;
 import com.sunshine.skill.dto.SkillFileContent;
 import com.sunshine.skill.dto.SkillFileEntry;
 import com.sunshine.skill.exception.SkillErrorCode;
@@ -27,6 +28,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -92,7 +94,7 @@ public class SkillFileService {
         if (StringUtils.hasText(maintainer)) {
             ver.setMaintainer(maintainer.strip());
         }
-        ver.setCreatedAt(java.time.Instant.now());
+        ver.setCreatedAt(uniqueCreatedAt(skillId, ver.getId()));
         versionRepository.save(ver);
         definitionRepository.save(def);
         catalogRegistry.refresh();
@@ -169,6 +171,15 @@ public class SkillFileService {
             return "unknown";
         }
         return DOWNLOAD_TIME_FORMAT.format(createdAt);
+    }
+
+    private Instant uniqueCreatedAt(String skillId, Long excludeVersionId) {
+        List<Instant> existing = versionRepository.findBySkillIdOrderByVersionDesc(skillId).stream()
+                .filter(v -> excludeVersionId == null || !Objects.equals(v.getId(), excludeVersionId))
+                .map(SkillVersionEntity::getCreatedAt)
+                .filter(Objects::nonNull)
+                .toList();
+        return VersionTimestampDedup.uniqueInstant(Instant.now(), existing);
     }
 
     private SkillVersionEntity requireVersion(String skillId, int version) {

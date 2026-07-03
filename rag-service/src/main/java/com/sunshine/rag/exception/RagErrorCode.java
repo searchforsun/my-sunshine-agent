@@ -15,7 +15,16 @@ public enum RagErrorCode implements ErrorCode {
     KB_NOT_FOUND(404, "rag_kb_not_found", "知识库不存在"),
     KB_ALREADY_EXISTS(409, "rag_kb_already_exists", "知识库 ID 已存在"),
     DOC_NOT_FOUND(404, "rag_doc_not_found", "文档不存在"),
-    VERSION_NOT_FOUND(404, "rag_version_not_found", "文档版本不存在");
+    DOC_ALREADY_EXISTS(409, "rag_doc_already_exists", "文档 ID 已存在"),
+    DOC_ID_DISPLAY_NAME_REQUIRED(400, "rag_doc_id_display_name_required", "文档 ID 与显示名称不能为空"),
+    DRAFT_ALREADY_EXISTS(409, "rag_draft_already_exists", "已有内容草稿，请先发布或删除草稿"),
+    FILE_TYPE_NOT_SUPPORTED(400, "rag_file_type_not_supported", "仅支持 Markdown（.md）文件"),
+    VERSION_NOT_EDITABLE(400, "rag_version_not_editable", "仅草稿版本可编辑"),
+    VERSION_NO_CONTENT(400, "rag_version_no_content", "版本尚无内容，请先上传或编写"),
+    SOURCE_CONTENT_MISSING(404, "rag_source_content_missing", "版本原文不存在"),
+    VERSION_NOT_FOUND(404, "rag_version_not_found", "文档版本不存在"),
+    CONFIG_BUNDLE_NOT_FOUND(404, "rag_config_bundle_not_found", "知识库配置 bundle 不存在，请先执行初始化 SQL"),
+    CONFIG_PAYLOAD_INVALID(400, "rag_config_payload_invalid", "配置 payload 不完整或结构无效");
 
     private final int code;
     private final String key;

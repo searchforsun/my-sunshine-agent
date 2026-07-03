@@ -20,7 +20,7 @@ public class RagSearchProperties {
     private float minScore = 0.48f;
 
     /** Nacos 默认策略；请求体 strategy 可覆盖 */
-    private String strategy = "vector";
+    private String strategy = "hybrid+rerank";
 
     /** 请求体未传 topK 时的默认值 */
     private int defaultTopK = 3;

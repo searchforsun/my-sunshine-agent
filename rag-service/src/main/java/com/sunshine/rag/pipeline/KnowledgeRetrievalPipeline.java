@@ -1,7 +1,9 @@
 package com.sunshine.rag.pipeline;
 
-import com.sunshine.rag.admin.config.EffectiveConfigService;
+import com.sunshine.rag.admin.config.EffectiveConfigResolver;
 import com.sunshine.rag.admin.config.EffectiveRagConfig;
+import com.sunshine.rag.admin.config.ResolvedKbConfig;
+import com.sunshine.rag.admin.config.RewriteSettings;
 import com.sunshine.rag.admin.debug.RetrievalDebugResult;
 import com.sunshine.rag.admin.debug.RetrievalDebugStage;
 import com.sunshine.rag.config.RagRewriteProperties;
@@ -30,15 +32,30 @@ public class KnowledgeRetrievalPipeline {
     private final RetrievalService retrievalService;
     private final QueryRewritePipeline queryRewritePipeline;
     private final RagRewriteProperties rewriteProperties;
-    private final EffectiveConfigService effectiveConfigService;
+    private final EffectiveConfigResolver effectiveConfigResolver;
 
     public Mono<PipelineSearchResult> search(PipelineSearchRequest request) {
+        ResolvedKbConfig resolved = effectiveConfigResolver.resolve(request.tenantId(), request.kbId());
+        return searchWithResolved(request, resolved);
+    }
+
+    /** smoke eval：仅覆盖检索参数，rewrite 仍用该 kb PRODUCTION */
+    public Mono<PipelineSearchResult> searchWithConfig(PipelineSearchRequest request, EffectiveRagConfig config) {
+        ResolvedKbConfig production = effectiveConfigResolver.resolve(request.tenantId(), request.kbId());
+        ResolvedKbConfig resolved = new ResolvedKbConfig(
+                config, production.rewrite(), production.defaultTopK(), production.chunkMaxSize());
+        return searchWithResolved(request, resolved);
+    }
+
+    public Mono<PipelineSearchResult> searchWithResolved(PipelineSearchRequest request, ResolvedKbConfig resolved) {
         if (request.query().isBlank()) {
             return Mono.just(emptyResult(request, request.query()));
         }
         RetrievalTrace trace = request.includeTrace() ? new RetrievalTrace() : null;
-        return resolveInitialSearchQuery(request, trace)
-                .flatMap(searchQuery -> executeRetrieval(request, searchQuery, trace)
+        RewriteSettings rewrite = resolved.rewrite();
+        EffectiveRagConfig config = resolved.retrieval();
+        return resolveInitialSearchQuery(request, trace, rewrite)
+                .flatMap(searchQuery -> executeRetrieval(request, searchQuery, trace, config)
                         .flatMap(first -> {
                             if (!first.isEmpty()) {
                                 return Mono.just(buildResult(request, searchQuery, first, trace));
@@ -46,23 +63,24 @@ public class KnowledgeRetrievalPipeline {
                             if (!request.rewrite()) {
                                 return Mono.just(buildResult(request, searchQuery, first, trace));
                             }
-                            return tryHydeFallback(request, trace)
+                            return tryHydeFallback(request, trace, config, rewrite)
                                     .flatMap(hits -> {
                                         if (!hits.isEmpty()) {
                                             return Mono.just(buildResult(request, searchQuery, hits, trace));
                                         }
-                                        return retryWithEmptyRecall(request, trace);
+                                        return retryWithEmptyRecall(request, trace, config, rewrite);
                                     });
                         }));
     }
 
-    /** 调试瀑布：改写 stages + 检索 stages + final */
-    public Mono<RetrievalDebugResult> debugSearch(PipelineSearchRequest request, EffectiveRagConfig config) {
+    public Mono<RetrievalDebugResult> debugSearch(PipelineSearchRequest request, ResolvedKbConfig resolved) {
         if (request.query().isBlank()) {
             return Mono.just(RetrievalDebugResult.empty());
         }
         List<RetrievalDebugStage> stages = new ArrayList<>();
-        return resolveInitialSearchQueryDebug(request, stages)
+        RewriteSettings rewrite = resolved.rewrite();
+        EffectiveRagConfig config = resolved.retrieval();
+        return resolveInitialSearchQueryDebug(request, stages, rewrite)
                 .flatMap(searchQuery -> executeRetrievalDebug(request, searchQuery, config, stages)
                         .flatMap(first -> {
                             if (!first.finalResults().isEmpty()) {
@@ -71,22 +89,30 @@ public class KnowledgeRetrievalPipeline {
                             if (!request.rewrite()) {
                                 return Mono.just(first);
                             }
-                            return tryHydeFallbackDebug(request, config, stages)
+                            return tryHydeFallbackDebug(request, config, stages, rewrite)
                                     .flatMap(hydeResult -> {
                                         if (!hydeResult.finalResults().isEmpty()) {
                                             return Mono.just(hydeResult);
                                         }
-                                        return retryWithEmptyRecallDebug(request, config, stages);
+                                        return retryWithEmptyRecallDebug(request, config, stages, rewrite);
                                     });
                         }));
     }
 
-    private Mono<String> resolveInitialSearchQuery(PipelineSearchRequest request, RetrievalTrace trace) {
-        if (!request.rewrite() || !queryRewritePipeline.isRagEnabled()) {
+    /** @deprecated 使用 {@link #debugSearch(PipelineSearchRequest, ResolvedKbConfig)} */
+    public Mono<RetrievalDebugResult> debugSearch(PipelineSearchRequest request, EffectiveRagConfig config) {
+        ResolvedKbConfig production = effectiveConfigResolver.resolve(request.tenantId(), request.kbId());
+        return debugSearch(request, new ResolvedKbConfig(
+                config, production.rewrite(), production.defaultTopK(), production.chunkMaxSize()));
+    }
+
+    private Mono<String> resolveInitialSearchQuery(
+            PipelineSearchRequest request, RetrievalTrace trace, RewriteSettings rewrite) {
+        if (!request.rewrite() || !queryRewritePipeline.isRagEnabled(rewrite)) {
             return Mono.just(request.query());
         }
         return Mono.fromCallable(() -> {
-                    QueryRewriteOutcome outcome = queryRewritePipeline.rewriteForRag(request.query());
+                    QueryRewriteOutcome outcome = queryRewritePipeline.rewriteForRag(request.query(), rewrite);
                     if (trace != null) {
                         trace.addStage(toTraceStage(outcome));
                     }
@@ -96,12 +122,12 @@ public class KnowledgeRetrievalPipeline {
     }
 
     private Mono<String> resolveInitialSearchQueryDebug(
-            PipelineSearchRequest request, List<RetrievalDebugStage> stages) {
-        if (!request.rewrite() || !queryRewritePipeline.isRagEnabled()) {
+            PipelineSearchRequest request, List<RetrievalDebugStage> stages, RewriteSettings rewrite) {
+        if (!request.rewrite() || !queryRewritePipeline.isRagEnabled(rewrite)) {
             return Mono.just(request.query());
         }
         return Mono.fromCallable(() -> {
-                    QueryRewriteOutcome outcome = queryRewritePipeline.rewriteForRag(request.query());
+                    QueryRewriteOutcome outcome = queryRewritePipeline.rewriteForRag(request.query(), rewrite);
                     stages.add(toDebugRewriteStage(outcome));
                     return outcome.effectiveQuery();
                 })
@@ -109,11 +135,10 @@ public class KnowledgeRetrievalPipeline {
     }
 
     private Mono<List<RetrievalService.DocFragment>> executeRetrieval(
-            PipelineSearchRequest request, String searchQuery, RetrievalTrace trace) {
+            PipelineSearchRequest request, String searchQuery, RetrievalTrace trace, EffectiveRagConfig config) {
         if (trace != null) {
             trace.incrementSearchCount();
         }
-        var config = effectiveConfigService.resolve(request.tenantId(), request.kbId());
         return retrievalService.search(
                 searchQuery, request.topK(), request.strategy(), request.tenantId(), request.kbId(), config);
     }
@@ -137,11 +162,14 @@ public class KnowledgeRetrievalPipeline {
     }
 
     private Mono<List<RetrievalService.DocFragment>> tryHydeFallback(
-            PipelineSearchRequest request, RetrievalTrace trace) {
-        if (!queryRewritePipeline.isHydeEnabled()) {
-            return retryWithEmptyRecallFragments(request, trace, List.of());
+            PipelineSearchRequest request,
+            RetrievalTrace trace,
+            EffectiveRagConfig config,
+            RewriteSettings rewrite) {
+        if (!queryRewritePipeline.isHydeEnabled(rewrite)) {
+            return retryWithEmptyRecallFragments(request, trace, List.of(), config, rewrite);
         }
-        return Mono.fromCallable(() -> queryRewritePipeline.hydeForRag(request.query()))
+        return Mono.fromCallable(() -> queryRewritePipeline.hydeForRag(request.query(), rewrite))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(hyde -> {
                     if (trace != null) {
@@ -149,31 +177,34 @@ public class KnowledgeRetrievalPipeline {
                     }
                     String hydeDoc = hyde.applied() ? hyde.rewrittenQuery() : null;
                     if (hydeDoc == null || hydeDoc.isBlank()) {
-                        return retryWithEmptyRecallFragments(request, trace, List.of());
+                        return retryWithEmptyRecallFragments(request, trace, List.of(), config, rewrite);
                     }
                     log.info("[KnowledgeRetrieval] HyDE fallback 检索");
-                    return executeRetrieval(request, hydeDoc, trace)
+                    return executeRetrieval(request, hydeDoc, trace, config)
                             .flatMap(hydeHits -> {
                                 if (!hydeHits.isEmpty()) {
                                     return Mono.just(hydeHits);
                                 }
-                                return retryWithEmptyRecallFragments(request, trace, List.of());
+                                return retryWithEmptyRecallFragments(request, trace, List.of(), config, rewrite);
                             });
                 });
     }
 
     private Mono<RetrievalDebugResult> tryHydeFallbackDebug(
-            PipelineSearchRequest request, EffectiveRagConfig config, List<RetrievalDebugStage> stages) {
-        if (!queryRewritePipeline.isHydeEnabled()) {
-            return retryWithEmptyRecallDebug(request, config, stages);
+            PipelineSearchRequest request,
+            EffectiveRagConfig config,
+            List<RetrievalDebugStage> stages,
+            RewriteSettings rewrite) {
+        if (!queryRewritePipeline.isHydeEnabled(rewrite)) {
+            return retryWithEmptyRecallDebug(request, config, stages, rewrite);
         }
-        return Mono.fromCallable(() -> queryRewritePipeline.hydeForRag(request.query()))
+        return Mono.fromCallable(() -> queryRewritePipeline.hydeForRag(request.query(), rewrite))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(hyde -> {
                     stages.add(toDebugRewriteStage(hyde));
                     String hydeDoc = hyde.applied() ? hyde.rewrittenQuery() : null;
                     if (hydeDoc == null || hydeDoc.isBlank()) {
-                        return retryWithEmptyRecallDebug(request, config, stages);
+                        return retryWithEmptyRecallDebug(request, config, stages, rewrite);
                     }
                     log.info("[KnowledgeRetrieval] HyDE fallback 检索");
                     return executeRetrievalDebug(request, hydeDoc, config, stages);
@@ -181,17 +212,23 @@ public class KnowledgeRetrievalPipeline {
     }
 
     private Mono<PipelineSearchResult> retryWithEmptyRecall(
-            PipelineSearchRequest request, RetrievalTrace trace) {
-        return retryWithEmptyRecallFragments(request, trace, List.of())
+            PipelineSearchRequest request,
+            RetrievalTrace trace,
+            EffectiveRagConfig config,
+            RewriteSettings rewrite) {
+        return retryWithEmptyRecallFragments(request, trace, List.of(), config, rewrite)
                 .map(hits -> buildResult(request, resolveEffectiveFromTrace(trace, request.query()), hits, trace));
     }
 
     private Mono<RetrievalDebugResult> retryWithEmptyRecallDebug(
-            PipelineSearchRequest request, EffectiveRagConfig config, List<RetrievalDebugStage> stages) {
-        if (!queryRewritePipeline.isEmptyRecallEnabled()) {
+            PipelineSearchRequest request,
+            EffectiveRagConfig config,
+            List<RetrievalDebugStage> stages,
+            RewriteSettings rewrite) {
+        if (!queryRewritePipeline.isEmptyRecallEnabled(rewrite)) {
             return Mono.just(new RetrievalDebugResult(List.copyOf(stages), List.of()));
         }
-        return Mono.fromCallable(() -> queryRewritePipeline.rewriteEmptyRecall(request.query()))
+        return Mono.fromCallable(() -> queryRewritePipeline.rewriteEmptyRecall(request.query(), rewrite))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(result -> {
                     stages.add(toDebugRewriteStage(result.outcome()));
@@ -208,11 +245,15 @@ public class KnowledgeRetrievalPipeline {
     }
 
     private Mono<List<RetrievalService.DocFragment>> retryWithEmptyRecallFragments(
-            PipelineSearchRequest request, RetrievalTrace trace, List<RetrievalService.DocFragment> emptyFirst) {
-        if (!queryRewritePipeline.isEmptyRecallEnabled()) {
+            PipelineSearchRequest request,
+            RetrievalTrace trace,
+            List<RetrievalService.DocFragment> emptyFirst,
+            EffectiveRagConfig config,
+            RewriteSettings rewrite) {
+        if (!queryRewritePipeline.isEmptyRecallEnabled(rewrite)) {
             return Mono.just(emptyFirst);
         }
-        return Mono.fromCallable(() -> queryRewritePipeline.rewriteEmptyRecall(request.query()))
+        return Mono.fromCallable(() -> queryRewritePipeline.rewriteEmptyRecall(request.query(), rewrite))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(result -> {
                     if (trace != null) {
@@ -224,7 +265,7 @@ public class KnowledgeRetrievalPipeline {
                     }
                     log.info("[KnowledgeRetrieval] empty-recall 二次检索: alts={}", alternatives);
                     return Flux.fromIterable(alternatives)
-                            .flatMap(alt -> executeRetrieval(request, alt, trace))
+                            .flatMap(alt -> executeRetrieval(request, alt, trace, config))
                             .collectList()
                             .map(batchLists -> mergeFragments(batchLists, request.topK()));
                 });

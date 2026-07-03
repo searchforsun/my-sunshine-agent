@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { NTabPane, NTabs } from 'naive-ui'
 import SidebarToggle from '../SidebarToggle.vue'
 import TenantSelector from './TenantSelector.vue'
@@ -6,8 +8,16 @@ import KbSelector from './KbSelector.vue'
 import KbDocList from './KbDocList.vue'
 import KbDocPanel from './KbDocPanel.vue'
 import KbDebugPanel from './KbDebugPanel.vue'
+import KbConfigPanel from './KbConfigPanel.vue'
+import KbEvalPanel from './KbEvalPanel.vue'
+import KbAppliedConfigSelector from './KbAppliedConfigSelector.vue'
 import type { KbDocument, KnowledgeBase } from '../../api/ragAdmin'
 import type { TenantId } from '../../api/tenants'
+import { useKbWorkbenchContext } from '../../composables/useKbWorkbenchContext'
+import {
+  useKbWorkbenchRouteState,
+  type KbWorkbenchTab,
+} from '../../composables/useKbWorkbenchRouteState'
 
 defineProps<{
   tenantId: TenantId
@@ -19,12 +29,32 @@ defineProps<{
   loadingDocs: boolean
 }>()
 
+const { revision } = useKbWorkbenchContext()
+const route = useRoute()
+const routeState = useKbWorkbenchRouteState()
+const activeTab = ref<KbWorkbenchTab>(routeState.readTab())
+
+watch(activeTab, (tab) => {
+  routeState.syncQuery({ tab })
+})
+
+watch(
+  () => route.query.tab,
+  () => {
+    const tab = routeState.readTab()
+    if (activeTab.value !== tab) activeTab.value = tab
+  },
+)
+
 const emit = defineEmits<{
   'update:tenantId': [value: TenantId]
   'update:selectedKbId': [value: string]
   'select-doc': [docId: string]
   createKb: []
+  createDoc: []
   docIngested: []
+  refreshDocuments: []
+  docDeleted: []
 }>()
 </script>
 
@@ -50,11 +80,17 @@ const emit = defineEmits<{
           @update:model-value="emit('update:selectedKbId', $event)"
           @create="emit('createKb')"
         />
+        <template v-if="selectedKbId">
+          <span class="context-sep" aria-hidden="true" />
+          <span class="context-label">应用配置</span>
+          <KbAppliedConfigSelector :tenant-id="tenantId" :kb-id="selectedKbId" />
+        </template>
       </div>
     </header>
 
     <main class="workbench-panel">
       <NTabs
+        v-model:value="activeTab"
         type="line"
         :animated="false"
         pane-wrapper-class="kb-tab-pane-wrapper"
@@ -68,17 +104,34 @@ const emit = defineEmits<{
               :selected-doc-id="selectedDocId"
               :loading="loadingDocs"
               @select-doc="emit('select-doc', $event)"
+              @create-doc="emit('createDoc')"
             />
             <KbDocPanel
+              :key="`doc-${revision}`"
               :tenant-id="tenantId"
               :kb-id="selectedKbId"
               :doc-id="selectedDocId"
-              @ingested="emit('docIngested')"
+              @refreshed="emit('refreshDocuments')"
+              @deleted="emit('docDeleted')"
             />
           </div>
         </NTabPane>
         <NTabPane name="debug" tab="检索调试" display-directive="show">
-          <KbDebugPanel :tenant-id="tenantId" :kb-id="selectedKbId" />
+          <KbDebugPanel :key="`debug-${revision}`" :tenant-id="tenantId" :kb-id="selectedKbId" />
+        </NTabPane>
+        <NTabPane name="config" tab="参数配置" display-directive="show">
+          <KbConfigPanel :key="`config-${revision}`" :tenant-id="tenantId" :kb-id="selectedKbId" />
+        </NTabPane>
+        <NTabPane name="eval" tab="评测" display-directive="show">
+          <KbEvalPanel
+            :key="`eval-${revision}`"
+            :tenant-id="tenantId"
+            :kb-id="selectedKbId"
+            :kb-display-name="kbs.find((k) => k.kbId === selectedKbId)?.displayName"
+            :documents="documents"
+            :loading-docs="loadingDocs"
+            @refresh-documents="emit('refreshDocuments')"
+          />
         </NTabPane>
       </NTabs>
     </main>

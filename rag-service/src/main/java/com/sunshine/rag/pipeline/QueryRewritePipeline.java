@@ -2,6 +2,7 @@ package com.sunshine.rag.pipeline;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.rag.admin.config.RewriteSettings;
 import com.sunshine.rag.client.LlmGatewayClient;
 import com.sunshine.rag.config.RagRewriteProperties;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,85 @@ public class QueryRewritePipeline {
     private final RagRewriteProperties rewriteProperties;
     private final LlmGatewayClient llmGatewayClient;
     private final ObjectMapper objectMapper;
+
+    /** 使用 kb 级 rewrite 配置（EffectiveConfigResolver SSOT） */
+    public boolean isRagEnabled(RewriteSettings settings) {
+        return settings != null && settings.rag().enabled()
+                && org.springframework.util.StringUtils.hasText(settings.rag().systemPrompt());
+    }
+
+    public boolean isHydeEnabled(RewriteSettings settings) {
+        if (settings == null) {
+            return false;
+        }
+        RewriteSettings.RewriteHydeSettings hyde = settings.rag().hyde();
+        return hyde != null && hyde.enabled()
+                && org.springframework.util.StringUtils.hasText(hyde.systemPrompt());
+    }
+
+    public boolean isEmptyRecallEnabled(RewriteSettings settings) {
+        return settings != null && settings.emptyRecall().enabled()
+                && org.springframework.util.StringUtils.hasText(settings.emptyRecall().systemPrompt());
+    }
+
+    public QueryRewriteOutcome rewriteForRag(String originalQuery, RewriteSettings settings) {
+        long start = System.nanoTime();
+        RewriteSettings.RewriteRagSettings cfg = settings.rag();
+        if (!isRagEnabled(settings) || !StringUtils.hasText(originalQuery)) {
+            return QueryRewriteOutcome.skipped("rag", originalQuery, elapsedMs(start));
+        }
+        String user = "用户问题：" + originalQuery.strip();
+        String raw = llmGatewayClient.complete(cfg.model(), cfg.systemPrompt(), user);
+        String rewritten = parseSingleQuery(raw, originalQuery);
+        if (!StringUtils.hasText(rewritten)) {
+            return QueryRewriteOutcome.skipped("rag", originalQuery, elapsedMs(start));
+        }
+        QueryRewriteOutcome outcome = QueryRewriteOutcome.of("rag", originalQuery, rewritten, elapsedMs(start));
+        if (outcome.applied()) {
+            log.info("[QueryRewrite] rag: in='{}' out='{}'", abbreviate(originalQuery), abbreviate(outcome.rewrittenQuery()));
+        }
+        return outcome;
+    }
+
+    public QueryRewriteOutcome hydeForRag(String originalQuery, RewriteSettings settings) {
+        long start = System.nanoTime();
+        RewriteSettings.RewriteRagSettings ragCfg = settings.rag();
+        RewriteSettings.RewriteHydeSettings hydeCfg = ragCfg.hyde();
+        if (!isHydeEnabled(settings) || !StringUtils.hasText(originalQuery)) {
+            return QueryRewriteOutcome.skipped("hyde", originalQuery, elapsedMs(start));
+        }
+        String model = StringUtils.hasText(hydeCfg.model()) ? hydeCfg.model() : ragCfg.model();
+        String user = "用户问题：" + originalQuery.strip();
+        String raw = llmGatewayClient.complete(model, hydeCfg.systemPrompt(), user);
+        String document = parseHydeDocument(raw, hydeCfg.maxChars());
+        if (!StringUtils.hasText(document)) {
+            return QueryRewriteOutcome.skipped("hyde", originalQuery, elapsedMs(start));
+        }
+        QueryRewriteOutcome outcome = QueryRewriteOutcome.of("hyde", originalQuery, document, elapsedMs(start));
+        if (outcome.applied()) {
+            log.info("[QueryRewrite] hyde: in='{}' docLen={}", abbreviate(originalQuery), outcome.rewrittenQuery().length());
+        }
+        return outcome;
+    }
+
+    public EmptyRecallRewrite rewriteEmptyRecall(String originalQuery, RewriteSettings settings) {
+        long start = System.nanoTime();
+        RewriteSettings.RewriteEmptyRecallSettings cfg = settings.emptyRecall();
+        if (!isEmptyRecallEnabled(settings) || !StringUtils.hasText(originalQuery)) {
+            QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped("empty-recall", originalQuery, elapsedMs(start));
+            return new EmptyRecallRewrite(List.of(), skipped);
+        }
+        int n = Math.max(1, Math.min(cfg.maxAlternatives(), 3));
+        String system = cfg.systemPrompt().formatted(n);
+        String user = "原始问题：" + originalQuery.strip();
+        String raw = llmGatewayClient.complete(cfg.model(), system, user);
+        List<String> queries = parseQueries(raw, originalQuery, n);
+        QueryRewriteOutcome outcome = QueryRewriteOutcome.emptyRecall(originalQuery, queries, elapsedMs(start));
+        if (outcome.applied()) {
+            log.info("[QueryRewrite] empty-recall: in='{}' alts={}", abbreviate(originalQuery), queries);
+        }
+        return new EmptyRecallRewrite(queries, outcome);
+    }
 
     public boolean isRagEnabled() {
         return rewriteProperties.getRag().isEnabled();

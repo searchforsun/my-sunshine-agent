@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import glob
+import json
 import os
 import platform
 import shutil
@@ -304,3 +305,32 @@ Object.keys(localStorage)
   .forEach(k => localStorage.removeItem(k));
 console.log('Sunshine local session cache cleared');
 """.strip()
+
+# --- eval_suite SSOT：MySQL eval_suite + eval_suite_item（经 Admin API 读取）---
+
+DEFAULT_EVAL_SUITE_KEY = "sunshine-regression"
+
+
+def rag_admin_headers(tenant_id: str, token: str) -> dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "x-tenant-id": tenant_id.strip() or "default",
+        "X-Admin-Token": token,
+    }
+
+
+def fetch_eval_suite_detail(rag_url: str, tenant_id: str, token: str, suite_key: str) -> dict:
+    import requests
+
+    base = rag_url.rstrip("/")
+    resp = requests.get(
+        f"{base}/api/rag/admin/eval/suites/{suite_key.strip()}",
+        headers=rag_admin_headers(tenant_id, token),
+        timeout=120,
+    )
+    resp.raise_for_status()
+    data = unwrap_r(resp.json(), context=f"eval suite {suite_key}")
+    if not isinstance(data, dict):
+        raise RuntimeError(f"eval suite {suite_key} 响应无效")
+    return data
+

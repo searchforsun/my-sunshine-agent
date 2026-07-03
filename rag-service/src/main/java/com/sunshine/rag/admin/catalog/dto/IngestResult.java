@@ -4,6 +4,6 @@ package com.sunshine.rag.admin.catalog.dto;
 public record IngestResult(
         String docId,
         String docName,
-        int version,
+        String version,
         int chunks) {
 }

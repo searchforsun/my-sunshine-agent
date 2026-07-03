@@ -2,6 +2,11 @@
 # sunshine-rag — Nacos 配置
 # Data ID: sunshine-rag.yaml
 # Group:   DEFAULT_GROUP
+#
+# 基础设施 SSOT：连接、密钥、Rerank API、存储、LLM 网关等。
+# 检索/改写/分段业务参数 SSOT：MySQL rag_config_version（见 docker/mysql/init/16-sunshine-rag-config-seed.sql）。
+# 评测调参建议 Prompt SSOT：rag.eval.suggest（SuggestService）。
+# 修改后：python scripts/sync_nacos.py → 重启 rag-service
 # ============================================================
 
 server:
@@ -21,9 +26,6 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
 
 milvus:
   host: ecs4c16g
@@ -44,64 +46,54 @@ rag:
     enabled: true
     url: http://ecs4c16g:9200
     index: sunshine_rag_chunks
-  search:
-    # IP 相似度下限（归一化向量下近似 cosine）；报销 vs 请假文档通常 < 0.48
-    min-score: 0.48
-    # 请求体未传 topK 时的默认值（orchestrator / eval 均依赖此 SSOT）
-    default-top-k: 3
-    # 默认策略：vector | hybrid | hybrid+rerank（请求体 strategy 可覆盖）
-    strategy: hybrid+rerank
-    rrf-k: 60
-    hybrid-pool-size: 20
   rerank:
     enabled: true
-    # 复用 embedding.api-key；也可单独配置 rag.rerank.api-key
     model: gte-rerank-v2
     base-url: https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
     input-size: 20
     timeout-seconds: 30
-    min-score: 0.25
-    min-relevance: 0.25
-  chunk:
-    max-size: 1200
+  eval:
+    suggest:
+      model: deepseek-v4-flash
+      system-prompt: |
+        你是企业 RAG 检索调优专家。输入含 gateFailures、failureModes、metrics、tuningHints、
+        positiveMiss（正例未命中期望文档）、negativeFalsePositive（负例误召回）与 configRuntimeNotes。
+        须先按 failureModes 区分主因，再给出建议；诊断必须解释「哪条门禁失败」与「对应 badcase 类型」。
+        只输出 JSON，不要 markdown：
+        {
+          "diagnosis": "一段中文诊断",
+          "suggestions": [
+            {"path":"search.minScore","proposed":0.52,"reason":"..."}
+          ],
+          "textSuggestions": [
+            {"target":"rewrite.rag.systemPrompt","kind":"prompt","proposed":"完整替换后的 Prompt","reason":"..."}
+          ]
+        }
+        ## 失败模式与对策（必须遵守）
+        - NEGATIVE_EMPTY_RATE_LOW：离题 query 被误召回 → 提高 search.minScore 或 rerank.minScore；禁止降低阈值；rewrite 慎改
+        - POSITIVE_EMPTY_RATE_HIGH：正例零命中 → 适度降低 search.minScore，或修 rewrite 避免改偏
+        - POSITIVE_RECALL_MISS / RECALL_AT_*_LOW：命中错误制度/交叉文档 → 优先 textSuggestions 改 rewrite.rag/hyde，绑定目标制度名
+        - 禁止建议 rerank.minRelevance（bundle 未接入运行时，见 configRuntimeNotes）
+        ## 输出约束
+        suggestions.path 仅限：search.minScore / search.hybridPoolSize / search.rrfK / rerank.minScore / chunk.maxSize
+        textSuggestions.kind 取 prompt / eval_query；Prompt 类须给出完整替换文本
+        禁止无关参数；每条建议须引用具体 badcase 或 gateFailures 条目
+  nacos:
+    server-addr: http://ecs4c16g:8848/nacos
+    username: nacos
+    password: nacos
+    group: DEFAULT_GROUP
+  storage:
+    type: minio
+    minio:
+      endpoint: http://ecs4c16g:9000
+      access-key: minioadmin
+      secret-key: minioadmin123
+      bucket: sunshine-rag
   llm:
     base-url: http://127.0.0.1:8300/v1
     api-key: ${LLM_GATEWAY_API_KEY:}
     default-model: deepseek-v4-flash
-  rewrite:
-    rag:
-      enabled: true
-      model: deepseek-v4-flash
-      system-prompt: |
-        你是企业知识库检索 query 优化助手。用户问题将用于向量/混合检索。
-        请补全域内关键词（制度、流程、报销、请假、差旅、考勤等），标准化专有名词表述。
-        保留原意，不要编造事实；若已足够清晰则轻微润色即可。
-        只输出 JSON：{"query":"优化后的检索 query"}，不要 markdown 或其他文字。
-      hyde:
-        enabled: true
-        model: deepseek-v4-flash
-        max-chars: 480
-        system-prompt: |
-          你是企业知识库 HyDE 助手。根据用户问题，写一段**可能出现在企业制度/流程文档中**的中文段落，
-          用于向量检索匹配；不要写问答体，不要写「根据…规定」等元叙述，直接写制度条文式正文。
-          只引用常见域内概念（报销、差旅、请假、考勤、审批等），**禁止编造**具体金额/日期/人名。
-          只输出 JSON：{"document":"假想文档段落"}，不要 markdown 或其他文字。
-    empty-recall:
-      enabled: true
-      model: deepseek-v4-flash
-      max-alternatives: 2
-      system-prompt: |
-        你是企业知识库检索 query 改写助手。用户原始问题在向量/混合检索中零命中。
-        请生成 %d 个不同表述的中文检索 query，用于二次检索。
-        要求：
-        - 必须保留原问题的核心业务领域与关键名词（如信息安全、保密、数据保护、财务、合规等），禁止改问无关主题；
-        - 仅在同领域内补充「制度」「管理办法」「流程规范」等同义表述，勿硬塞报销、请假等与原问无关的关键词；
-        - 不要编造事实。
-        只输出 JSON：{"queries":["改写1","改写2"]}，不要 markdown 或其他文字。
-    timeline:
-      rag: "优化检索词"
-      hyde: "生成参考文档"
-      empty-recall: "换种方式再查"
 
 management:
   endpoints:

@@ -13,7 +13,9 @@ on:
       - rag-service/**
       - scripts/rag_eval.py
       - scripts/test_rag_eval_gates.py
-      - docs/rag/golden-set.yaml
+      - docker/mysql/init/11-sunshine-rag-eval-suite-seed.sql
+      - docker/mysql/init/15-sunshine-rag-document-seed.sql
+      - scripts/verify_rag_studio.py
 
 jobs:
   gate-logic:
@@ -56,43 +58,33 @@ jobs:
           curl -sf "${{ steps.rag.outputs.url }}/api/rag/search" \
             -H 'Content-Type: application/json' \
             -d '{"query":"ping","topK":1}' >/dev/null
-      - name: v5 hybrid+rerank regression gate
+      - name: sunshine-regression hybrid+rerank gate
         env:
           RAG_URL: ${{ steps.rag.outputs.url }}
+          RAG_ADMIN_TOKEN: ${{ secrets.RAG_ADMIN_TOKEN }}
         run: |
           python scripts/rag_eval.py \
-            --suite v5 \
+            --suite-key sunshine-regression \
             --strategy hybrid+rerank \
             --ci \
-            --fail-if-recall5-below 0.98 \
-            --tag ci-v5
-      - name: v6 vector baseline
+            --tag ci-regression
+      - name: sunshine-adversarial hybrid+rerank gate
         env:
           RAG_URL: ${{ steps.rag.outputs.url }}
+          RAG_ADMIN_TOKEN: ${{ secrets.RAG_ADMIN_TOKEN }}
         run: |
           python scripts/rag_eval.py \
-            --suite v6 \
-            --strategy vector \
-            --tag ci-v6-vector
-      - name: v6 hybrid+rerank improvement gate
-        env:
-          RAG_URL: ${{ steps.rag.outputs.url }}
-        run: |
-          VECTOR_JSON=$(ls -t docs/rag/reports/baseline-*-ci-v6-vector.json | head -1)
-          python scripts/rag_eval.py \
-            --suite v6 \
+            --suite-key sunshine-adversarial \
             --strategy hybrid+rerank \
             --ci \
-            --fail-if-recall5-below 0.98 \
-            --compare-vector-json "$VECTOR_JSON" \
-            --tag ci-v6
+            --tag ci-adversarial
       - name: Upload regression artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rag-regression-${{ github.run_id }}
           path: |
-            docs/rag/reports/baseline-*-ci-*.json
-            docs/rag/reports/rag-eval-report-*-ci-*.md
-            docs/rag/regression-*.md
+            reports/rag/eval-reports/baseline-*-ci-*.json
+            reports/rag/eval-reports/rag-eval-report-*-ci-*.md
+            reports/rag/regression-*.md
           if-no-files-found: ignore

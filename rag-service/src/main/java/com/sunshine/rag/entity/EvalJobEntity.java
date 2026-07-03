@@ -25,12 +25,24 @@ public class EvalJobEntity {
     private String kbId = "default";
     @Column(nullable = false, length = 32)
     private String suite;
+    @Column(name = "suite_id")
+    private Long suiteId;
     @Column(name = "config_snapshot_json", columnDefinition = "JSON")
     private String configSnapshotJson;
+    @Column(name = "config_version_id")
+    private Long configVersionId;
+    @Column(name = "config_mode", length = 16)
+    private String configMode;
     @Column(nullable = false, length = 16)
     private String status = "pending";
+    @Column(name = "total_items")
+    private Integer totalItems;
+    @Column(name = "processed_items", nullable = false)
+    private int processedItems;
     @Column(name = "report_id")
     private Long reportId;
+    @Column(name = "report_object_key", length = 512)
+    private String reportObjectKey;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
     @Column(name = "finished_at")

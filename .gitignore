@@ -35,7 +35,9 @@ logs/
 *.env.local
 application-local.yml
 
-# ===== Remember =====
+# ===== RAG 本地评测报告（CLI / dev 导出）=====
+reports/rag/
+
 .remember/tmp/
 
 !skywalking-agent.jar

@@ -5,6 +5,6 @@ public record DocumentSummary(
         String docId,
         String displayName,
         String sourceType,
-        int activeVersion,
+        String activeVersion,
         int chunkCount) {
 }

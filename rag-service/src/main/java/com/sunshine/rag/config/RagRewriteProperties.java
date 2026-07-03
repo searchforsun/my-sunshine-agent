@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
-/** RAG 检索链路 Query 改写（rag / hyde / empty-recall）— SSOT: sunshine-rag.yaml */
+/** RAG 检索链路 Query 改写；业务 prompt SSOT 为 kb DB bundle，此处仅 timeline 等运维项 */
 @Data
 @Component
 @RefreshScope
@@ -13,7 +13,15 @@ import org.springframework.stereotype.Component;
 public class RagRewriteProperties {
     private Rag rag = new Rag();
     private EmptyRecall emptyRecall = new EmptyRecall();
-    private Timeline timeline = new Timeline();
+    private Timeline timeline = defaultTimeline();
+
+    private static Timeline defaultTimeline() {
+        Timeline t = new Timeline();
+        t.setRag("优化检索词");
+        t.setHyde("生成参考文档");
+        t.setEmptyRecall("换种方式再查");
+        return t;
+    }
 
     @Data
     public static class Rag {

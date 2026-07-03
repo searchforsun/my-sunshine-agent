@@ -1,5 +1,7 @@
 package com.sunshine.rag.parser;
 
+import com.sunshine.rag.config.RagChunkProperties;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -15,22 +17,30 @@ import java.util.regex.Pattern;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class MarkdownParser {
 
-    private static final int MAX_CHUNK_SIZE = 1200;
+    private final RagChunkProperties chunkProperties;
     private static final Pattern HEADER = Pattern.compile("^(#{1,6})\\s+(.+)$");
     private static final Pattern SENTENCE_END = Pattern.compile("[。！？.!?\\n]");
 
+    private int maxChunkSize() {
+        return chunkProperties.getMaxSize() > 0 ? chunkProperties.getMaxSize() : 1200;
+    }
+
     public List<String> parse(String markdown) {
+        return parse(markdown, maxChunkSize());
+    }
+
+    public List<String> parse(String markdown, int maxChunkSize) {
         if (markdown == null || markdown.isBlank()) {
             return List.of();
         }
         markdown = markdown.replace("\r\n", "\n").replace('\r', '\n');
-
+        int limit = maxChunkSize > 0 ? maxChunkSize : maxChunkSize();
         List<Block> blocks = tokenize(markdown);
-        List<String> chunks = packIntoChunks(blocks);
-
-        log.info("[RAG] Markdown 分段: {} chars → {} chunks", markdown.length(), chunks.size());
+        List<String> chunks = packIntoChunks(blocks, limit);
+        log.info("[RAG] Markdown 分段: {} chars → {} chunks (maxSize={})", markdown.length(), chunks.size(), limit);
         return chunks;
     }
 
@@ -88,6 +98,10 @@ public class MarkdownParser {
     }
 
     private List<String> packIntoChunks(List<Block> blocks) {
+        return packIntoChunks(blocks, maxChunkSize());
+    }
+
+    private List<String> packIntoChunks(List<Block> blocks, int maxChunkSize) {
         Deque<HeaderEntry> headerStack = new ArrayDeque<>();
         List<String> chunks = new ArrayList<>();
         StringBuilder current = new StringBuilder();
@@ -104,11 +118,11 @@ public class MarkdownParser {
             }
 
             List<String> pieces = block instanceof ParagraphBlock
-                    ? splitLargeText(block.text(), MAX_CHUNK_SIZE)
+                    ? splitLargeText(block.text(), maxChunkSize)
                     : List.of(block.text());
 
             for (String piece : pieces) {
-                if (!current.isEmpty() && current.length() + piece.length() + 2 > MAX_CHUNK_SIZE) {
+                if (!current.isEmpty() && current.length() + piece.length() + 2 > maxChunkSize) {
                     chunks.add(finalizeChunk(current, headerStack));
                     current = new StringBuilder();
                 }

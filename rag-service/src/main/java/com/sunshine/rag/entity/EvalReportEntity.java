@@ -26,12 +26,20 @@ public class EvalReportEntity {
     private Double mrr;
     @Column(name = "delta_json", columnDefinition = "JSON")
     private String deltaJson;
+    @Column(name = "summary_json", columnDefinition = "JSON")
+    private String summaryJson;
+    @Column(name = "failed_samples_json", columnDefinition = "JSON")
+    private String failedSamplesJson;
+    @Column(name = "suggestions_json", columnDefinition = "JSON")
+    private String suggestionsJson;
     @Column(name = "baseline_recall_at_5")
     private Double baselineRecallAt5;
     @Column(name = "passed_gate")
     private Boolean passedGate;
     @Column(name = "report_md_path", length = 512)
     private String reportMdPath;
+    @Column(name = "report_object_key", length = 512)
+    private String reportObjectKey;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 }

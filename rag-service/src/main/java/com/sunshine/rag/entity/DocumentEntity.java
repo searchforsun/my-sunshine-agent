@@ -29,6 +29,8 @@ public class DocumentEntity {
     private String displayName;
     @Column(name = "source_type", nullable = false, length = 32)
     private String sourceType = "markdown";
+    @Column(name = "active_version", length = 14)
+    private String activeVersion;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
     @Column(name = "updated_at", nullable = false)

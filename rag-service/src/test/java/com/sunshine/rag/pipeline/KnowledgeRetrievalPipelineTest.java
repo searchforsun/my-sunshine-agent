@@ -1,12 +1,12 @@
 package com.sunshine.rag.pipeline;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sunshine.rag.admin.config.EffectiveConfigService;
+import com.sunshine.rag.admin.config.ConfigBundlePayload;
+import com.sunshine.rag.admin.config.ConfigBundleTestFixtures;
+import com.sunshine.rag.admin.config.EffectiveConfigResolver;
 import com.sunshine.rag.admin.config.EffectiveRagConfig;
-import com.sunshine.rag.config.RagChunkProperties;
+import com.sunshine.rag.admin.config.ResolvedKbConfig;
+import com.sunshine.rag.admin.config.RewriteSettings;
 import com.sunshine.rag.config.RagRewriteProperties;
-import com.sunshine.rag.config.RagRerankProperties;
-import com.sunshine.rag.config.RagSearchProperties;
 import com.sunshine.rag.service.RetrievalService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,12 +18,11 @@ import org.mockito.quality.Strictness;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,10 +35,11 @@ class KnowledgeRetrievalPipelineTest {
     @Mock
     private QueryRewritePipeline queryRewritePipeline;
     @Mock
-    private EffectiveConfigService effectiveConfigService;
+    private EffectiveConfigResolver effectiveConfigResolver;
 
     private KnowledgeRetrievalPipeline pipeline;
     private EffectiveRagConfig effectiveConfig;
+    private ResolvedKbConfig resolvedConfig;
 
     @BeforeEach
     void setUp() {
@@ -49,13 +49,12 @@ class KnowledgeRetrievalPipelineTest {
         timeline.setHyde("生成参考文档");
         timeline.setEmptyRecall("换种方式再查");
         props.setTimeline(timeline);
-        RagSearchProperties search = new RagSearchProperties();
-        RagRerankProperties rerank = new RagRerankProperties();
-        RagChunkProperties chunk = new RagChunkProperties();
-        effectiveConfig = EffectiveRagConfig.fromNacos(search, rerank, chunk);
-        when(effectiveConfigService.resolve(anyString(), anyString())).thenReturn(effectiveConfig);
+        Map<String, Object> payload = ConfigBundleTestFixtures.fullPayload();
+        resolvedConfig = ConfigBundlePayload.toResolvedKbConfig(payload);
+        effectiveConfig = resolvedConfig.retrieval();
+        when(effectiveConfigResolver.resolve(anyString(), anyString())).thenReturn(resolvedConfig);
         pipeline = new KnowledgeRetrievalPipeline(
-                retrievalService, queryRewritePipeline, props, effectiveConfigService);
+                retrievalService, queryRewritePipeline, props, effectiveConfigResolver);
     }
 
     private static PipelineSearchRequest req(String query) {
@@ -65,18 +64,18 @@ class KnowledgeRetrievalPipelineTest {
     @Test
     void searchReturnsFirstHitsWithoutEmptyRecall() {
         List<RetrievalService.DocFragment> hits = List.of(new RetrievalService.DocFragment("A", "c", 0.9f));
-        when(queryRewritePipeline.isRagEnabled()).thenReturn(false);
+        when(queryRewritePipeline.isRagEnabled(any(RewriteSettings.class))).thenReturn(false);
         when(retrievalService.search("q", 3, "hybrid+rerank", "default", "default", effectiveConfig)).thenReturn(Mono.just(hits));
         PipelineSearchResult result = pipeline.search(req("q")).block();
         assertThat(result).isNotNull();
         assertThat(result.results()).isEqualTo(hits);
-        verify(queryRewritePipeline, never()).rewriteEmptyRecall(anyString());
+        verify(queryRewritePipeline, never()).rewriteEmptyRecall(anyString(), any());
     }
 
     @Test
     void searchAppliesRagRewriteBeforeRetrieval() {
-        when(queryRewritePipeline.isRagEnabled()).thenReturn(true);
-        when(queryRewritePipeline.rewriteForRag("口语问"))
+        when(queryRewritePipeline.isRagEnabled(any(RewriteSettings.class))).thenReturn(true);
+        when(queryRewritePipeline.rewriteForRag("口语问", resolvedConfig.rewrite()))
                 .thenReturn(QueryRewriteOutcome.of("rag", "口语问", "公司报销管理制度 差旅报销", 1L));
         when(retrievalService.search("公司报销管理制度 差旅报销", 3, "hybrid+rerank", "default", "default", effectiveConfig))
                 .thenReturn(Mono.just(List.of(new RetrievalService.DocFragment("公司报销管理制度", "content", 0.8f))));
@@ -88,12 +87,12 @@ class KnowledgeRetrievalPipelineTest {
 
     @Test
     void searchRetriesWhenEmptyAndRewriteEnabled() {
-        when(queryRewritePipeline.isRagEnabled()).thenReturn(false);
-        when(queryRewritePipeline.isHydeEnabled()).thenReturn(false);
+        when(queryRewritePipeline.isRagEnabled(any(RewriteSettings.class))).thenReturn(false);
+        when(queryRewritePipeline.isHydeEnabled(any(RewriteSettings.class))).thenReturn(false);
         when(retrievalService.search("口语问", 3, "hybrid+rerank", "default", "default", effectiveConfig))
                 .thenReturn(Mono.just(List.of()));
-        when(queryRewritePipeline.isEmptyRecallEnabled()).thenReturn(true);
-        when(queryRewritePipeline.rewriteEmptyRecall("口语问"))
+        when(queryRewritePipeline.isEmptyRecallEnabled(any(RewriteSettings.class))).thenReturn(true);
+        when(queryRewritePipeline.rewriteEmptyRecall("口语问", resolvedConfig.rewrite()))
                 .thenReturn(new QueryRewritePipeline.EmptyRecallRewrite(
                         List.of("公司报销管理制度 差旅报销"),
                         QueryRewriteOutcome.emptyRecall("口语问", List.of("公司报销管理制度 差旅报销"), 1L)));
@@ -117,44 +116,44 @@ class KnowledgeRetrievalPipelineTest {
 
     @Test
     void searchUsesHydeAsFallbackAfterFirstSearchEmpty() {
-        when(queryRewritePipeline.isRagEnabled()).thenReturn(true);
-        when(queryRewritePipeline.isHydeEnabled()).thenReturn(true);
-        when(queryRewritePipeline.rewriteForRag("报差旅"))
+        when(queryRewritePipeline.isRagEnabled(any(RewriteSettings.class))).thenReturn(true);
+        when(queryRewritePipeline.isHydeEnabled(any(RewriteSettings.class))).thenReturn(true);
+        when(queryRewritePipeline.rewriteForRag("报差旅", resolvedConfig.rewrite()))
                 .thenReturn(QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 1L));
         when(retrievalService.search("公司差旅费报销管理办法", 3, "hybrid+rerank", "default", "default", effectiveConfig))
                 .thenReturn(Mono.just(List.of()));
-        when(queryRewritePipeline.hydeForRag("报差旅"))
+        when(queryRewritePipeline.hydeForRag("报差旅", resolvedConfig.rewrite()))
                 .thenReturn(QueryRewriteOutcome.of("hyde", "报差旅", "员工出差应提交差旅审批单并附发票", 2L));
         when(retrievalService.search("员工出差应提交差旅审批单并附发票", 3, "hybrid+rerank", "default", "default", effectiveConfig))
                 .thenReturn(Mono.just(List.of(new RetrievalService.DocFragment("公司差旅费报销管理办法", "content", 0.8f))));
         PipelineSearchResult result = pipeline.search(req("报差旅")).block();
         assertThat(result).isNotNull();
         assertThat(result.results()).hasSize(1);
-        verify(queryRewritePipeline).hydeForRag("报差旅");
+        verify(queryRewritePipeline).hydeForRag("报差旅", resolvedConfig.rewrite());
     }
 
     @Test
     void searchSkipsHydeWhenFirstSearchHits() {
-        when(queryRewritePipeline.isRagEnabled()).thenReturn(true);
-        when(queryRewritePipeline.rewriteForRag("报差旅"))
+        when(queryRewritePipeline.isRagEnabled(any(RewriteSettings.class))).thenReturn(true);
+        when(queryRewritePipeline.rewriteForRag("报差旅", resolvedConfig.rewrite()))
                 .thenReturn(QueryRewriteOutcome.of("rag", "报差旅", "公司差旅费报销管理办法", 1L));
         when(retrievalService.search("公司差旅费报销管理办法", 3, "hybrid+rerank", "default", "default", effectiveConfig))
                 .thenReturn(Mono.just(List.of(new RetrievalService.DocFragment("公司差旅费报销管理办法", "content", 0.8f))));
         PipelineSearchResult result = pipeline.search(req("报差旅")).block();
         assertThat(result).isNotNull();
         assertThat(result.results()).hasSize(1);
-        verify(queryRewritePipeline, never()).hydeForRag(anyString());
+        verify(queryRewritePipeline, never()).hydeForRag(anyString(), any());
     }
 
     @Test
     void searchIncludesTraceWhenRequested() {
-        when(queryRewritePipeline.isRagEnabled()).thenReturn(true);
-        when(queryRewritePipeline.rewriteForRag("q"))
+        when(queryRewritePipeline.isRagEnabled(any(RewriteSettings.class))).thenReturn(true);
+        when(queryRewritePipeline.rewriteForRag("q", resolvedConfig.rewrite()))
                 .thenReturn(QueryRewriteOutcome.of("rag", "q", "优化q", 5L));
         when(retrievalService.search("优化q", 3, "hybrid+rerank", "default", "default", effectiveConfig))
                 .thenReturn(Mono.just(List.of()));
-        when(queryRewritePipeline.isHydeEnabled()).thenReturn(false);
-        when(queryRewritePipeline.isEmptyRecallEnabled()).thenReturn(false);
+        when(queryRewritePipeline.isHydeEnabled(any(RewriteSettings.class))).thenReturn(false);
+        when(queryRewritePipeline.isEmptyRecallEnabled(any(RewriteSettings.class))).thenReturn(false);
         PipelineSearchRequest traced = PipelineSearchRequest.of("q", 3, "default", "default", "hybrid+rerank", true, true);
         PipelineSearchResult result = pipeline.search(traced).block();
         assertThat(result).isNotNull();

@@ -2,6 +2,7 @@ package com.sunshine.skill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.util.VersionTimestampDedup;
 import com.sunshine.skill.dto.SkillCatalogEntry;
 import com.sunshine.skill.dto.SkillCatalogIndexEntry;
 import com.sunshine.skill.dto.SkillCreateRequest;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 @Slf4j
@@ -86,6 +88,7 @@ public class SkillAdminService {
         version.setReferencesJson("[]");
         version.setScriptsJson("[]");
         version.setStatus("draft");
+        version.setCreatedAt(uniqueCreatedAt(id, null));
         versionRepository.save(version);
         catalogRegistry.refresh();
         return toCatalogEntry(def).orElseThrow();
@@ -139,7 +142,7 @@ public class SkillAdminService {
         version.setStoragePath(storagePath);
         version.setStatus("draft");
         version.setMaintainer(operator);
-        version.setCreatedAt(Instant.now());
+        version.setCreatedAt(uniqueCreatedAt(skillId, version.getId()));
         versionRepository.save(version);
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
@@ -190,7 +193,7 @@ public class SkillAdminService {
         target.setStoragePath(storagePath);
         target.setStatus("draft");
         target.setMaintainer(resolveMaintainer(maintainer));
-        target.setCreatedAt(Instant.now());
+        target.setCreatedAt(uniqueCreatedAt(skillId, target.getId()));
         versionRepository.save(target);
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
@@ -295,6 +298,15 @@ public class SkillAdminService {
 
     private static boolean isEmptyDraft(SkillVersionEntity ver) {
         return "draft".equals(ver.getStatus()) && !StringUtils.hasText(ver.getStoragePath());
+    }
+
+    private Instant uniqueCreatedAt(String skillId, Long excludeVersionId) {
+        List<Instant> existing = versionRepository.findBySkillIdOrderByVersionDesc(skillId).stream()
+                .filter(v -> excludeVersionId == null || !Objects.equals(v.getId(), excludeVersionId))
+                .map(SkillVersionEntity::getCreatedAt)
+                .filter(Objects::nonNull)
+                .toList();
+        return VersionTimestampDedup.uniqueInstant(Instant.now(), existing);
     }
 
     private Optional<SkillVersionEntity> findDraftVersion(String skillId) {

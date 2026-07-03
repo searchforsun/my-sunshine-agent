@@ -7,5 +7,6 @@ public record DocumentDetail(
         String docId,
         String displayName,
         String sourceType,
+        String activeVersion,
         List<DocumentVersionSummary> versions) {
 }

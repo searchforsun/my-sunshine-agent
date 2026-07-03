@@ -2,7 +2,7 @@ package com.sunshine.rag.controller;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.result.R;
-import com.sunshine.rag.config.RagSearchProperties;
+import com.sunshine.rag.admin.config.EffectiveConfigResolver;
 import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.pipeline.KnowledgeRetrievalPipeline;
 import com.sunshine.rag.pipeline.PipelineSearchRequest;
@@ -27,7 +27,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RetrievalController {
     private final KnowledgeRetrievalPipeline knowledgeRetrievalPipeline;
-    private final RagSearchProperties searchProperties;
+    private final EffectiveConfigResolver effectiveConfigResolver;
 
     @PostMapping("/search")
     public Mono<R<Map<String, Object>>> search(
@@ -37,11 +37,11 @@ public class RetrievalController {
         if (query == null || query.isBlank()) {
             throw new BizException(RagErrorCode.QUERY_EMPTY);
         }
-        int topK = body.containsKey("topK")
-                ? ((Number) body.get("topK")).intValue()
-                : searchProperties.getDefaultTopK();
         String tid = resolveTenantId(body.get("tenantId"), tenantId);
         String kbId = body.get("kbId") != null ? String.valueOf(body.get("kbId")) : "default";
+        int topK = body.containsKey("topK")
+                ? ((Number) body.get("topK")).intValue()
+                : effectiveConfigResolver.resolve(tid, kbId).defaultTopK();
         String strategy = (String) body.get("strategy");
         @SuppressWarnings("unchecked")
         Map<String, Object> options = body.get("options") instanceof Map<?, ?> opt

@@ -2,8 +2,10 @@ package com.sunshine.rag.admin.catalog.dto;
 
 /** 文档版本摘要 */
 public record DocumentVersionSummary(
-        int version,
+        String version,
         String status,
         int chunkCount,
-        String publishedAt) {
+        boolean hasContent,
+        String publishedAt,
+        String createdAt) {
 }

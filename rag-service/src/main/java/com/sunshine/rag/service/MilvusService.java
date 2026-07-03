@@ -1,6 +1,7 @@
 package com.sunshine.rag.service;
 
 import com.sunshine.rag.model.ChunkInsertRequest;
+import com.sunshine.rag.util.DocumentVersionTime;
 import io.milvus.client.MilvusServiceClient;
 import io.milvus.common.clientenum.ConsistencyLevelEnum;
 import io.milvus.grpc.DataType;
@@ -77,7 +78,14 @@ public class MilvusService {
         Set<String> names = wrapper.getFields().stream()
                 .map(f -> f.getName())
                 .collect(java.util.stream.Collectors.toSet());
-        return V2_FIELDS.stream().allMatch(names::contains);
+        if (!V2_FIELDS.stream().allMatch(names::contains)) {
+            return false;
+        }
+        return wrapper.getFields().stream()
+                .filter(f -> "version".equals(f.getName()))
+                .findFirst()
+                .map(f -> f.getDataType() == DataType.Int64)
+                .orElse(false);
     }
 
     private void dropCollection() {
@@ -103,7 +111,7 @@ public class MilvusService {
                 .addFieldType(varchar("tenant_id", 32))
                 .addFieldType(varchar("kb_id", 64))
                 .addFieldType(varchar("doc_id", 128))
-                .addFieldType(intField("version"))
+                .addFieldType(int64Field("version"))
                 .addFieldType(intField("chunk_index"))
                 .addFieldType(varchar("status", 16))
                 .addFieldType(varchar("source_type", 32))
@@ -137,6 +145,13 @@ public class MilvusService {
                 .build();
     }
 
+    private static FieldType int64Field(String name) {
+        return FieldType.newBuilder()
+                .withName(name)
+                .withDataType(DataType.Int64)
+                .build();
+    }
+
     private static FieldType intField(String name) {
         return FieldType.newBuilder()
                 .withName(name)
@@ -161,7 +176,7 @@ public class MilvusService {
         fields.add(new InsertParam.Field("tenant_id", List.of(req.tenantId())));
         fields.add(new InsertParam.Field("kb_id", List.of(req.kbId())));
         fields.add(new InsertParam.Field("doc_id", List.of(req.docId())));
-        fields.add(new InsertParam.Field("version", List.of(req.version())));
+        fields.add(new InsertParam.Field("version", List.of(DocumentVersionTime.toMilvusCode(req.version()))));
         fields.add(new InsertParam.Field("chunk_index", List.of(req.chunkIndex())));
         fields.add(new InsertParam.Field("status", List.of(req.status())));
         fields.add(new InsertParam.Field("source_type", List.of(req.sourceType())));
@@ -230,7 +245,7 @@ public class MilvusService {
     }
 
     /** 删除指定文档版本的全部 chunk（superseded 或重入库前） */
-    public void deleteByDocVersion(String tenantId, String kbId, String docId, int version) {
+    public void deleteByDocVersion(String tenantId, String kbId, String docId, String version) {
         String expr = docVersionExpr(tenantId, kbId, docId, version);
         client.delete(DeleteParam.newBuilder()
                 .withCollectionName(COLLECTION)
@@ -239,7 +254,7 @@ public class MilvusService {
         log.info("[RAG] 删除 chunk: tenant={}, kb={}, doc={}, v={}", tenantId, kbId, docId, version);
     }
 
-    public List<ChunkPreview> queryChunks(String tenantId, String kbId, String docId, int version) {
+    public List<ChunkPreview> queryChunks(String tenantId, String kbId, String docId, String version) {
         String expr = docVersionExpr(tenantId, kbId, docId, version);
         R<io.milvus.grpc.QueryResults> response = client.query(QueryParam.newBuilder()
                 .withCollectionName(COLLECTION)
@@ -264,13 +279,14 @@ public class MilvusService {
         return previews;
     }
 
-    private static String docVersionExpr(String tenantId, String kbId, String docId, int version) {
+    private static String docVersionExpr(String tenantId, String kbId, String docId, String version) {
         String tid = normalizeId(tenantId, "default");
         String kid = normalizeId(kbId, "default");
         String did = escape(normalizeId(docId, docId));
+        long code = DocumentVersionTime.toMilvusCode(version);
         return String.format(
                 "tenant_id == \"%s\" && kb_id == \"%s\" && doc_id == \"%s\" && version == %d",
-                escape(tid), escape(kid), did, version);
+                escape(tid), escape(kid), did, code);
     }
 
     /** Admin：drop + recreate collection（清库重建） */

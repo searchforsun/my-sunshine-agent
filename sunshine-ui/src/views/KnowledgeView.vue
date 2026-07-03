@@ -10,17 +10,24 @@ import {
 } from 'naive-ui'
 import KbLayout from '../components/knowledge/KbLayout.vue'
 import {
+  createDocument,
   createKb,
   listDocuments,
   listKbs,
   type KbDocument,
   type KnowledgeBase,
 } from '../api/ragAdmin'
+import {
+  createKbWorkbenchContext,
+  provideKbWorkbenchContext,
+} from '../composables/useKbWorkbenchContext'
+import { useKbWorkbenchRouteState } from '../composables/useKbWorkbenchRouteState'
 import { useTenantPreference } from '../composables/useTenantPreference'
 import { friendlyErrorMessage } from '../api/apiError'
 
 const { tenantId, setTenantId } = useTenantPreference()
 const message = useMessage()
+const routeState = useKbWorkbenchRouteState()
 
 const kbs = ref<KnowledgeBase[]>([])
 const documents = ref<KbDocument[]>([])
@@ -29,19 +36,35 @@ const selectedDocId = ref<string | null>(null)
 const loadingKbs = ref(false)
 const loadingDocs = ref(false)
 
+const workbench = createKbWorkbenchContext(tenantId, selectedKbId)
+provideKbWorkbenchContext(workbench)
+
 const showCreateKb = ref(false)
 const createForm = ref({ kbId: '', displayName: '', description: '' })
 const creating = ref(false)
+
+const showCreateDoc = ref(false)
+const createDocForm = ref({ docId: '', displayName: '' })
+const creatingDoc = ref(false)
+
+let bootstrapping = false
+let tenantSyncing = false
 
 async function loadKbs() {
   loadingKbs.value = true
   try {
     kbs.value = await listKbs(tenantId.value)
-    if (!selectedKbId.value && kbs.value.length > 0) {
+    const fromQuery = routeState.readKbId()
+    if (fromQuery && kbs.value.some((kb) => kb.kbId === fromQuery)) {
+      selectedKbId.value = fromQuery
+    } else if (!selectedKbId.value && kbs.value.length > 0) {
       const def = kbs.value.find((kb) => kb.isDefault) ?? kbs.value[0]
       selectedKbId.value = def.kbId
     } else if (selectedKbId.value && !kbs.value.some((kb) => kb.kbId === selectedKbId.value)) {
       selectedKbId.value = kbs.value[0]?.kbId ?? null
+    }
+    if (!bootstrapping) {
+      routeState.syncQuery({ kb: selectedKbId.value })
     }
   } catch (e) {
     message.error(friendlyErrorMessage(e, '加载知识库失败'))
@@ -59,8 +82,14 @@ async function loadDocuments() {
   loadingDocs.value = true
   try {
     documents.value = await listDocuments(tenantId.value, selectedKbId.value)
-    if (selectedDocId.value && !documents.value.some((d) => d.docId === selectedDocId.value)) {
+    const fromQuery = bootstrapping ? routeState.readDocId() : null
+    if (fromQuery && documents.value.some((d) => d.docId === fromQuery)) {
+      selectedDocId.value = fromQuery
+    } else if (selectedDocId.value && !documents.value.some((d) => d.docId === selectedDocId.value)) {
       selectedDocId.value = documents.value[0]?.docId ?? null
+    }
+    if (!bootstrapping) {
+      routeState.syncQuery({ doc: selectedDocId.value })
     }
   } catch (e) {
     message.error(friendlyErrorMessage(e, '加载文档失败'))
@@ -70,18 +99,25 @@ async function loadDocuments() {
   }
 }
 
+async function handleDocDeleted() {
+  selectedDocId.value = null
+  routeState.syncQuery({ doc: null })
+  await loadDocuments()
+}
+
 async function refreshAll() {
   await loadKbs()
   await loadDocuments()
 }
 
 function selectKb(kbId: string) {
+  if (selectedKbId.value === kbId) return
   selectedKbId.value = kbId
-  selectedDocId.value = null
 }
 
 function selectDoc(docId: string) {
   selectedDocId.value = docId
+  routeState.syncQuery({ doc: docId })
 }
 
 async function handleCreateKb() {
@@ -105,18 +141,62 @@ async function handleCreateKb() {
   }
 }
 
-watch(tenantId, () => {
+async function handleCreateDoc() {
+  if (!selectedKbId.value || !createDocForm.value.docId.trim() || !createDocForm.value.displayName.trim()) return
+  creatingDoc.value = true
+  const newDocId = createDocForm.value.docId.trim()
+  try {
+    await createDocument(
+      tenantId.value,
+      selectedKbId.value,
+      newDocId,
+      createDocForm.value.displayName.trim(),
+    )
+    showCreateDoc.value = false
+    createDocForm.value = { docId: '', displayName: '' }
+    message.success('文档已创建，请上传 Markdown 或在线编写')
+    await loadDocuments()
+    selectedDocId.value = newDocId
+    routeState.syncQuery({ doc: newDocId })
+    workbench.bumpRevision()
+  } catch (e) {
+    message.error(friendlyErrorMessage(e, '创建失败'))
+  } finally {
+    creatingDoc.value = false
+  }
+}
+
+watch(tenantId, async () => {
+  tenantSyncing = true
+  bootstrapping = true
   selectedKbId.value = null
   selectedDocId.value = null
-  void refreshAll()
+  documents.value = []
+  routeState.syncQuery({ kb: null, doc: null })
+  await loadKbs()
+  await loadDocuments()
+  tenantSyncing = false
+  bootstrapping = false
+  routeState.syncQuery({ kb: selectedKbId.value, doc: selectedDocId.value })
+  workbench.bumpRevision()
 })
 
-watch(selectedKbId, () => {
-  void loadDocuments()
+watch(selectedKbId, async (kbId, prev) => {
+  if (tenantSyncing || bootstrapping) return
+  if (kbId === prev) return
+  selectedDocId.value = null
+  routeState.syncQuery({ kb: kbId, doc: null })
+  await loadDocuments()
+  workbench.bumpRevision()
 })
 
-onMounted(() => {
-  void refreshAll()
+onMounted(async () => {
+  bootstrapping = true
+  await loadKbs()
+  await loadDocuments()
+  bootstrapping = false
+  routeState.syncQuery({ kb: selectedKbId.value, doc: selectedDocId.value })
+  workbench.bumpRevision()
 })
 </script>
 
@@ -133,11 +213,14 @@ onMounted(() => {
     @update:selected-kb-id="selectKb"
     @select-doc="selectDoc"
     @create-kb="showCreateKb = true"
+    @create-doc="showCreateDoc = true"
     @doc-ingested="refreshAll"
+    @refresh-documents="loadDocuments"
+    @doc-deleted="handleDocDeleted"
   />
 
-  <NModal v-model:show="showCreateKb" preset="card" title="新建知识库" style="max-width: 420px">
-    <NForm label-placement="top">
+  <NModal v-model:show="showCreateKb" preset="dialog" title="新建知识库" class="sunshine-dialog">
+    <NForm label-placement="left" label-width="90">
       <NFormItem label="知识库 ID" required>
         <NInput v-model:value="createForm.kbId" placeholder="如 finance" />
       </NFormItem>
@@ -148,9 +231,24 @@ onMounted(() => {
         <NInput v-model:value="createForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" />
       </NFormItem>
     </NForm>
-    <template #footer>
-      <NButton round secondary @click="showCreateKb = false">取消</NButton>
-      <NButton type="primary" class="action-btn" round :loading="creating" @click="handleCreateKb">创建</NButton>
+    <template #action>
+      <NButton @click="showCreateKb = false">取消</NButton>
+      <NButton type="primary" class="action-btn" :loading="creating" @click="handleCreateKb">创建</NButton>
+    </template>
+  </NModal>
+
+  <NModal v-model:show="showCreateDoc" preset="dialog" title="新建文档" class="sunshine-dialog">
+    <NForm label-placement="left" label-width="90">
+      <NFormItem label="文档 ID" required>
+        <NInput v-model:value="createDocForm.docId" placeholder="如 attendance-policy" />
+      </NFormItem>
+      <NFormItem label="显示名称" required>
+        <NInput v-model:value="createDocForm.displayName" placeholder="如 考勤与加班管理规定" />
+      </NFormItem>
+    </NForm>
+    <template #action>
+      <NButton @click="showCreateDoc = false">取消</NButton>
+      <NButton type="primary" class="action-btn" :loading="creatingDoc" @click="handleCreateDoc">创建</NButton>
     </template>
   </NModal>
 </template>

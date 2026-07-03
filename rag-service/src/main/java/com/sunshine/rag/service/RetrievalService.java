@@ -1,9 +1,9 @@
 package com.sunshine.rag.service;
 
+import com.sunshine.rag.admin.config.EffectiveConfigResolver;
 import com.sunshine.rag.admin.config.EffectiveRagConfig;
 import com.sunshine.rag.admin.debug.RetrievalDebugResult;
 import com.sunshine.rag.admin.debug.RetrievalDebugStage;
-import com.sunshine.rag.config.RagChunkProperties;
 import com.sunshine.rag.config.RagRerankProperties;
 import com.sunshine.rag.config.RagSearchProperties;
 import com.sunshine.rag.metrics.RagSearchMetrics;
@@ -29,9 +29,9 @@ public class RetrievalService {
     private final Bm25SearchService bm25SearchService;
     private final HybridRetrievalService hybridRetrievalService;
     private final RerankService rerankService;
+    private final EffectiveConfigResolver effectiveConfigResolver;
     private final RagSearchProperties searchProperties;
     private final RagRerankProperties rerankProperties;
-    private final RagChunkProperties chunkProperties;
     private final RagSearchMetrics searchMetrics;
 
     public Mono<List<DocFragment>> search(String query, int topK, String strategyOverride) {
@@ -44,8 +44,8 @@ public class RetrievalService {
 
     public Mono<List<DocFragment>> search(
             String query, int topK, String strategyOverride, String tenantId, String kbId) {
-        return search(query, topK, strategyOverride, tenantId, kbId,
-                EffectiveRagConfig.fromNacos(searchProperties, rerankProperties, chunkProperties));
+        return Mono.fromCallable(() -> effectiveConfigResolver.resolve(tenantId, kbId).retrieval())
+                .flatMap(config -> search(query, topK, strategyOverride, tenantId, kbId, config));
     }
 
     public Mono<List<DocFragment>> search(

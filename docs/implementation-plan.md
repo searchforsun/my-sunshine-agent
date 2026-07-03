@@ -269,7 +269,7 @@ my-sunshine-agent/
 
 | 任务卡 | 触发条件 | 说明 |
 |--------|----------|------|
-| **4.1** RAG 平台化 | 语料运营需求 | **4.0** pipeline 内聚 + 多知识库、调试页、Badcase、A/B、周报 · [ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md) |
+| **4.1** RAG 平台化 | 语料运营需求 | **4.0** pipeline + 多知识库、配置版本化 / 评测 / Suggest · [RAG 索引](./rag/README.md) · [backlog](./rag/backlog.md) · [ADR-002](./architecture/ADR-002-rag-pipeline-in-rag-service.md) |
 | **4.2** OCR 入库 L1 | PDF/扫描件/发票 | DashScope OCR → 文本 chunk |
 | **4.3** 文档理解 L2 | L1 稳定 | 版面/表格/quarantine |
 | **4.4** 多模态对话 L3 | 聊天发图 | Vision + `/chat` 附件 |
@@ -291,7 +291,7 @@ my-sunshine-agent/
 |------|------|------|
 | AI 对话 | `/chat` | SSE 流式；底栏 **执行路径**选择器（五模式）；workflow **模板**用 `#id`（4.13）非底栏下拉；**静态 / Plan workflow** 均展示 `PlanWorkflowPanel` + `PlanNodeDrawer` |
 | **Plan 详情** | **`/plans/:planId`** | Planner JSON、节点 trace、状态机 |
-| 知识库 | `/knowledge` | Markdown 文档上传入库 + 向量检索测试；**阶段四** 扩展 PDF/图片 OCR 入库 |
+| 知识库 | `/knowledge` | 知识库工作台（文档/检索调试/参数/评测）；**配置版本化** + suite 管理 · [docs/rag/README.md](./rag/README.md) |
 | **Skills** | **`/skills`** | Skill 列表/上传/版本/预览/元数据；**版本 diff** → `/skills/:skillId/diff`（见 [skills-management-ui-design.md](./superpowers/specs/skills-management-ui-design.md)） |
 | **MCP 工具** | **`/mcp`** | **阶段四 4.8**：MCP Server 动态注册、探测、启停、工具预览 |
 | **工作流** | **`/workflows`** | **阶段四 4.13**：Workflow Studio 可视化编辑、JSON 导入、发布；导入包 **`docs/workflow/`** |
