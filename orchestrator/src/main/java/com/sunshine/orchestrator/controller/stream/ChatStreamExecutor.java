@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.controller.stream;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
@@ -84,7 +85,7 @@ public class ChatStreamExecutor {
                 resume && !planWorkflowResumeOnResume && !reactRestartOnResume
                         ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
-                ProcessingStepMerger.fromJson(ctx.existingStepsJson()));
+                ProcessingStepSerde.fromJson(ctx.existingStepsJson()));
         QueryRewriteTrace.bind(ctx.assistantMsgId());
         ThinkStepMapper thinkMapper = new ThinkStepMapper(stepsBuffer, ctx.userContent(), executionMode);
         var appender = flushScheduler.createChunkAppender(buffer, ctx.assistantMsgId(), flushIntervalMs);
@@ -127,7 +128,7 @@ public class ChatStreamExecutor {
                                 buffer.toString(),
                                 reasoningBuffer.toString(),
                                 MessageStatus.COMPLETED,
-                                ProcessingStepMerger.toJson(stepsBuffer));
+                                ProcessingStepSerde.toJson(stepsBuffer));
                         maybeUpdateTitle(ctx);
                         memoryLifecycleService.onAssistantCompleted(
                                 ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), MessageStatus.COMPLETED);
@@ -152,7 +153,7 @@ public class ChatStreamExecutor {
                                             buffer.toString(),
                                             reasoningBuffer.toString(),
                                             MessageStatus.FAILED,
-                                            ProcessingStepMerger.toJson(stepsBuffer)))
+                                            ProcessingStepSerde.toJson(stepsBuffer)))
                             .subscribeOn(Schedulers.boundedElastic())
                             .subscribe();
                     return Flux.just(
@@ -166,7 +167,7 @@ public class ChatStreamExecutor {
                                         buffer.toString(),
                                         reasoningBuffer.toString(),
                                         MessageStatus.INTERRUPTED,
-                                        ProcessingStepMerger.toJson(stepsBuffer)))
+                                        ProcessingStepSerde.toJson(stepsBuffer)))
                         .subscribeOn(Schedulers.boundedElastic())
                         .subscribe())
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成 conv={}", ctx.conversationId()))

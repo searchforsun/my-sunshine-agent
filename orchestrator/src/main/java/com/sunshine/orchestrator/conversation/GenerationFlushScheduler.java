@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
-import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.processing.StepSummary;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import lombok.RequiredArgsConstructor;
@@ -131,9 +131,9 @@ public class GenerationFlushScheduler {
                 map.put("lifecycle", step.lifecycle());
             }
             // 前端只需当前阶段一行摘要，不必同时下发 before/active/after
-            StepSummary phaseSummary = ProcessingStepMerger.currentPhaseSummary(step);
+            StepSummary phaseSummary = ProcessingStepSerde.currentPhaseSummary(step);
             if (phaseSummary != null) {
-                java.util.Map<String, Object> summary = ProcessingStepMerger.summaryToMap(phaseSummary);
+                java.util.Map<String, Object> summary = ProcessingStepSerde.summaryToMap(phaseSummary);
                 if (!summary.isEmpty()) {
                     map.put("summary", summary);
                 }
@@ -160,12 +160,12 @@ public class GenerationFlushScheduler {
                 map.put("result", step.result());
             }
             if (step.metadata() != null && !step.metadata().isEmpty()) {
-                map.put("metadata", ProcessingStepMerger.metadataToMap(step.metadata()));
+                map.put("metadata", ProcessingStepSerde.metadataToMap(step.metadata()));
             }
             if (step.subSteps() != null && !step.subSteps().isEmpty()) {
                 java.util.List<java.util.Map<String, Object>> nested = new java.util.ArrayList<>();
                 for (ProcessingStep sub : step.subSteps()) {
-                    nested.add(ProcessingStepMerger.stepToMap(sub));
+                    nested.add(ProcessingStepSerde.stepToMap(sub));
                 }
                 map.put("subSteps", nested);
             }

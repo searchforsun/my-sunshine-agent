@@ -1,7 +1,9 @@
 package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.processing.ContentBlockAccumulator;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
@@ -177,14 +179,14 @@ public class GenerationJob {
     private WorkflowCheckpoint buildWorkflowPauseCheckpoint(
             com.sunshine.orchestrator.plan.ExecutionPlanEntity entity) {
         PendingInteraction pending = pauseProperties.isResumeInteractionEnabled()
-                ? ProcessingStepMerger.findPendingInteraction(stepsBuffer) : null;
+                ? ProcessingStepLifecycleOps.findPendingInteraction(stepsBuffer) : null;
         if (pending != null) {
             String ctxJson = resolveWfCtxJson(pending.nodeId());
             return new WorkflowCheckpoint(pending.nodeId(), ctxJson, PausePhase.EXECUTING, pending);
         }
         String nodeId = workflowPauseService.getCurrentNodeId(messageId);
         if (!org.springframework.util.StringUtils.hasText(nodeId)) {
-            nodeId = ProcessingStepMerger.findLastRunningWorkflowNodeId(stepsBuffer);
+            nodeId = ProcessingStepLifecycleOps.findLastRunningWorkflowNodeId(stepsBuffer);
         }
         if (org.springframework.util.StringUtils.hasText(nodeId)) {
             return new WorkflowCheckpoint(nodeId, resolveWfCtxJson(nodeId), PausePhase.EXECUTING, null);
@@ -213,13 +215,13 @@ public class GenerationJob {
 
     private void emitPausedWorkflowSteps() {
         String nodeId = workflowPauseService.getCurrentNodeId(messageId);
-        PendingInteraction pending = ProcessingStepMerger.findPendingInteraction(stepsBuffer);
+        PendingInteraction pending = ProcessingStepLifecycleOps.findPendingInteraction(stepsBuffer);
         String skipNodeId = pending != null ? pending.nodeId() : null;
-        if (ProcessingStepMerger.hasRunningWorkflowNode(stepsBuffer)
+        if (ProcessingStepLifecycleOps.hasRunningWorkflowNode(stepsBuffer)
                 || org.springframework.util.StringUtils.hasText(nodeId)) {
-            ProcessingStepMerger.pauseRunningWorkflowNodes(stepsBuffer, nodeId, skipNodeId);
+            ProcessingStepLifecycleOps.pauseRunningWorkflowNodes(stepsBuffer, nodeId, skipNodeId);
         }
-        ProcessingStepMerger.pauseRunningReactSteps(stepsBuffer);
+        ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
         StringBuilder mysqlBuffer = mysqlBufferRef;
         AtomicLong lastFlush = new AtomicLong(0);
         for (ProcessingStep step : stepsBuffer) {
@@ -471,12 +473,12 @@ public class GenerationJob {
     }
 
     private String stepsJson() {
-        return ProcessingStepMerger.toPersistJson(stepsBuffer);
+        return ProcessingStepSerde.toPersistJson(stepsBuffer);
     }
 
     /** 续跑 HITL 阻塞前将 awaiting 步落库，刷新后 DAG/抽屉与 SSE 一致 */
     private void maybeFlushStepsForAwaitingInteraction() {
-        boolean awaiting = stepsBuffer.stream().anyMatch(ProcessingStepMerger::isAwaitingInteractionStep);
+        boolean awaiting = stepsBuffer.stream().anyMatch(ProcessingStepLifecycleOps::isAwaitingInteractionStep);
         if (!awaiting) {
             return;
         }

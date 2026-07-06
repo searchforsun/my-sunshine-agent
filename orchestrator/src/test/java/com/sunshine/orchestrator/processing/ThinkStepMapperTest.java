@@ -5,6 +5,8 @@ import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.StepSummary;
 import com.sunshine.orchestrator.routing.ExecutionMode;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -14,6 +16,16 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ThinkStepMapperTest {
+
+    @BeforeEach
+    void bindTimelineLabels() {
+        TimelineLabelTestSupport.bindDefaults();
+    }
+
+    @AfterEach
+    void unbindTimelineLabels() {
+        TimelineLabelTestSupport.unbind();
+    }
 
     @Test
     void reasoningOpensThinkStepBeforeGenerate() {

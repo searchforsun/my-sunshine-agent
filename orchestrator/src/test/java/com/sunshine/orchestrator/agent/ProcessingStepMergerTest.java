@@ -32,7 +32,7 @@ class ProcessingStepMergerTest {
                 null
         );
 
-        StepSummary phase = ProcessingStepMerger.currentPhaseSummary(step);
+        StepSummary phase = ProcessingStepSerde.currentPhaseSummary(step);
 
         assertThat(phase.before()).isNull();
         assertThat(phase.active()).isNull();
@@ -61,7 +61,7 @@ class ProcessingStepMergerTest {
                 null
         );
 
-        StepSummary phase = ProcessingStepMerger.currentPhaseSummary(step);
+        StepSummary phase = ProcessingStepSerde.currentPhaseSummary(step);
 
         assertThat(phase.before()).isNull();
         assertThat(phase.active()).isEqualTo("正在推演");
@@ -90,7 +90,7 @@ class ProcessingStepMergerTest {
                 null
         );
 
-        StepSummary phase = ProcessingStepMerger.currentPhaseSummary(step);
+        StepSummary phase = ProcessingStepSerde.currentPhaseSummary(step);
 
         assertThat(phase).isNull();
     }
@@ -134,7 +134,7 @@ class ProcessingStepMergerTest {
                 null
         );
 
-        String json = ProcessingStepMerger.toPersistJson(List.of(done, think));
+        String json = ProcessingStepSerde.toPersistJson(List.of(done, think));
 
         assertThat(json).contains("\"after\":\"after\"");
         assertThat(json).doesNotContain("\"before\":\"before\"");
@@ -172,7 +172,7 @@ class ProcessingStepMergerTest {
                 null,
                 null
         );
-        String json = ProcessingStepMerger.toPersistJson(List.of(intent));
+        String json = ProcessingStepSerde.toPersistJson(List.of(intent));
         assertThat(json).contains("\"routingReason\":\"user:forced-react\"");
     }
 
@@ -185,7 +185,7 @@ class ProcessingStepMergerTest {
         ProcessingStepMerger.applyDelta(steps, "node-answer", "result", "。");
         assertThat(steps).hasSize(1);
         assertThat(steps.get(0).result()).isEqualTo("您好，当前无待办。。");
-        String json = ProcessingStepMerger.toPersistJson(steps);
+        String json = ProcessingStepSerde.toPersistJson(steps);
         assertThat(json).contains("您好，当前无待办。");
     }
 
@@ -203,7 +203,7 @@ class ProcessingStepMergerTest {
                 intentLike("think"),
                 intentLike("tool-x@1"));
 
-        List<ProcessingStep> kept = ProcessingStepMerger.retainIntentStepsOnly(steps);
+        List<ProcessingStep> kept = ProcessingStepLifecycleOps.retainIntentStepsOnly(steps);
 
         assertThat(kept).hasSize(1);
         assertThat(kept.get(0).id()).isEqualTo("intent");

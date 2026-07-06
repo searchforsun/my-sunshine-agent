@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
@@ -68,7 +68,7 @@ public final class ReactResumeContextSupport {
     }
 
     private static void appendToolBlock(List<String> blocks, ProcessingStep step) {
-        if (ProcessingStepMerger.isAwaitingInteractionStep(step)) {
+        if (ProcessingStepLifecycleOps.isAwaitingInteractionStep(step)) {
             appendAwaitingHitlBlock(blocks, step);
             return;
         }

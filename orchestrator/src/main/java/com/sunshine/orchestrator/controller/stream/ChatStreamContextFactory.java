@@ -1,7 +1,8 @@
 package com.sunshine.orchestrator.controller.stream;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
+import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.conversation.ConversationService;
@@ -127,7 +128,7 @@ public class ChatStreamContextFactory {
         conversationService.validateResumeAllowed(assistant, userId, tenantId);
         ChatConversationEntity conv = conversationService.getOwned(assistant.getConversationId(), userId, tenantId);
         String kbId = resolveSessionKbId(msg.getKbId(), conv.getKbId(), tenantId);
-        List<ProcessingStep> existingSteps = ProcessingStepMerger.fromJson(assistant.getSteps());
+        List<ProcessingStep> existingSteps = ProcessingStepSerde.fromJson(assistant.getSteps());
         boolean planWorkflowResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
         ExecutionPlan storedPlan = executionPlanParser.parseStoredIntent(
                 assistant.getIntent() != null ? assistant.getIntent() : "");
@@ -140,7 +141,7 @@ public class ChatStreamContextFactory {
         if (reactRestartResume) {
             resumeContent = "";
             resumeReasoning = "";
-            stepsJson = ProcessingStepMerger.toJson(ProcessingStepMerger.retainIntentStepsOnly(existingSteps));
+            stepsJson = ProcessingStepSerde.toJson(ProcessingStepLifecycleOps.retainIntentStepsOnly(existingSteps));
             contentBlocksJson = "[]";
         } else if (planWorkflowResume) {
             resumeContent = "";

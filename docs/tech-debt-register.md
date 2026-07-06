@@ -41,6 +41,7 @@ _当前无 open 代码债。_
 | TD-043 | 2026-07-06 | 删 llm-gateway `/chat/completions/stream`；`LlmGatewayClient` 统一 `/chat/completions` + `stream:true` |
 | TD-037 | 2026-07-06 | 删 `StepLabels` 与 Nacos 重复的 before/active/after switch；`SkillLoadLabels` 未 bind 抛异常 |
 | TD-044 | 2026-07-06 | 删 `RagClient.parseSearchResponse` flat body 兼容 |
+| TD-038 | 2026-07-06 | 拆分 `ProcessingStepMerger` → `ProcessingStepSerde` + `ProcessingStepLifecycleOps`（253 行） |
 | TD-045 | 2026-07-06 | 补 `docker/minio/init/entrypoint-wrapper.sh`（MinIO compose 启动依赖） |
 | TD-046 | 2026-07-06 | Flyway V14 react_pause + V15 conversation_kb_id 迁移对齐 |
 | DOC-012 | 2026-07-06 | `backlog.md` 与代码对齐 legacy API 删除 |

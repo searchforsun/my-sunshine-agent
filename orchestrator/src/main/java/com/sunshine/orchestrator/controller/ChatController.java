@@ -7,7 +7,9 @@ import com.sunshine.orchestrator.controller.stream.ChatStreamContext;
 import com.sunshine.orchestrator.controller.stream.ChatStreamContextFactory;
 import com.sunshine.orchestrator.controller.stream.ChatStreamExecutor;
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
@@ -153,12 +155,12 @@ public class ChatController {
                 && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
         boolean reactRestartResume = resume && !planWorkflowResume && streamExecutor.isReactStoredIntent(ctx.intent());
         java.util.List<ProcessingStep> initialSteps = resume
-                ? new java.util.ArrayList<>(ProcessingStepMerger.fromJson(ctx.existingStepsJson()))
+                ? new java.util.ArrayList<>(ProcessingStepSerde.fromJson(ctx.existingStepsJson()))
                 : java.util.List.of();
         if (reactRestartResume) {
             initialSteps.clear();
-            initialSteps.addAll(ProcessingStepMerger.retainIntentStepsOnly(
-                    ProcessingStepMerger.fromJson(ctx.existingStepsJson())));
+            initialSteps.addAll(ProcessingStepLifecycleOps.retainIntentStepsOnly(
+                    ProcessingStepSerde.fromJson(ctx.existingStepsJson())));
         }
         String initialContent = resume && !planWorkflowResume && !reactRestartResume
                 ? ctx.existingContent() : "";
