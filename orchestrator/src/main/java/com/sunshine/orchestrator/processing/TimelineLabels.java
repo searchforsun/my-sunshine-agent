@@ -15,33 +15,17 @@ public final class TimelineLabels {
     }
 
     public static String before(String stepId, String clippedQuery) {
-        if (service != null) {
-            return service.stepBefore(stepId, clippedQuery);
-        }
-        return fallbackBefore(stepId, clippedQuery);
+        return requireService().stepBefore(stepId, clippedQuery);
     }
 
     public static String active(String stepId, String clippedQuery) {
-        if (service != null) {
-            return service.stepActive(stepId, clippedQuery);
-        }
-        return fallbackActive(stepId, clippedQuery);
+        return requireService().stepActive(stepId, clippedQuery);
     }
 
-    private static String fallbackBefore(String stepId, String q) {
-        if ("intent".equals(stepId)) {
-            return "阅读" + q;
+    private static IntentLabelService requireService() {
+        if (service == null) {
+            throw new IllegalStateException("IntentLabelService 未 bind");
         }
-        return StepLabels.beforeFor(stepId);
-    }
-
-    private static String fallbackActive(String stepId, String q) {
-        if ("intent".equals(stepId)) {
-            return "正在分析" + q + "，匹配最佳处理方式";
-        }
-        if ("rag".equals(stepId)) {
-            return "正在匹配与" + q + "最相关的文档片段";
-        }
-        return StepLabels.activeFor(stepId);
+        return service;
     }
 }

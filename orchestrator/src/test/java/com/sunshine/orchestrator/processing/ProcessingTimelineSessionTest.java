@@ -10,6 +10,8 @@ import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -22,6 +24,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProcessingTimelineSessionTest {
+
+    @BeforeEach
+    void bindTimelineLabels() {
+        TimelineLabelTestSupport.bindDefaults();
+    }
+
+    @AfterEach
+    void unbindTimelineLabels() {
+        TimelineLabelTestSupport.unbind();
+    }
 
     @Test
     void emitsOnPendingStartComplete() {

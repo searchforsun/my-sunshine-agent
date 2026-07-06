@@ -334,7 +334,7 @@ public class ExecutionPlanStore {
             }
         }
         entity.setPauseCheckpoint(codec.checkpointToJson(
-                new WorkflowCheckpoint(resumeNodeId != null ? resumeNodeId : "", wfJson)));
+                new WorkflowCheckpoint(resumeNodeId != null ? resumeNodeId : "", wfJson, PausePhase.EXECUTING, null)));
         repository.save(entity);
     }
 

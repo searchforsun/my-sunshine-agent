@@ -33,6 +33,9 @@ _当前无 open 代码债。_
 | TD-032 | 2026-07-06 | 删 `MilvusService` deprecated insert + `legacyMarkdown` |
 | TD-033 | 2026-07-06 | 拆分 `DocumentCatalogService` → `DocumentChunkIndexer` + `DocumentVersionOps` |
 | TD-034 | 2026-07-06 | 删 `KnowledgeRetrievalService` → `RagSearch` + 直调 `RagClient`；删 `RagClient` 旧 overload |
+| TD-035 | 2026-07-06 | 删 `WorkflowCheckpoint` 2-arg 构造，调用方显式 `PausePhase` |
+| TD-036 | 2026-07-06 | 删 `IntentLabels`/`TimelineLabels` 硬编码 fallback |
+| TD-039 | 2026-07-06 | 删 `scripts/_tmp_planner_system.txt` |
 | DOC-012 | 2026-07-06 | `backlog.md` 与代码对齐 legacy API 删除 |
 | TD-001 | 2026-06-28 | 删 `LlmNodeHandler` + test |
 | TD-002 | 2026-06-28 | 删 `AgentStepSummarizer` + test |

@@ -134,7 +134,7 @@ public class WorkflowExecutor {
             ExecutionStreamContext streamCtx) {
         String planId = streamCtx.persistedPlanId();
         String ctxJson = workflowPauseService.getCommittedContextJson(streamCtx.assistantMsgId());
-        WorkflowCheckpoint checkpoint = new WorkflowCheckpoint(resumeNodeId, ctxJson);
+        WorkflowCheckpoint checkpoint = new WorkflowCheckpoint(resumeNodeId, ctxJson, PausePhase.EXECUTING, null);
         Mono.fromRunnable(() -> executionPlanStore.markPaused(planId, checkpoint))
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();

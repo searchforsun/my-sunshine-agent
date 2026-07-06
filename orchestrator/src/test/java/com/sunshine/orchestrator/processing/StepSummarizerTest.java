@@ -1,36 +1,45 @@
 package com.sunshine.orchestrator.processing;
 
+import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class StepSummarizerTest {
 
+    @BeforeEach
+    void bindTimelineLabels() {
+        TimelineLabelTestSupport.bindDefaults();
+    }
+
+    @AfterEach
+    void unbindTimelineLabels() {
+        TimelineLabelTestSupport.unbind();
+    }
+
     @Test
     void intentAfter_knowledge_mentionsQuery() {
-        AgentPromptProperties agentProps = new AgentPromptProperties();
         WorkflowProperties workflowProps = new WorkflowProperties();
         WorkflowProperties.CatalogEntry entry = new WorkflowProperties.CatalogEntry();
         entry.setId("knowledge-qa");
         entry.setDisplayName("知识库问答");
         workflowProps.setCatalog(List.of(entry));
-        workflowProps.setDefinitions(new java.util.LinkedHashMap<>());
+        workflowProps.setDefinitions(new LinkedHashMap<>());
         IntentLabels.bind(new IntentLabelService(
-                agentProps, workflowProps, new WorkflowNodeLabelService(
-                        workflowProps, Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class))));
-        try {
-            String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
-            assertThat(after).contains("公司考勤制度");
-            assertThat(after).contains("知识库问答");
-        } finally {
-            IntentLabels.bind(null);
-        }
+                new AgentPromptProperties(), workflowProps,
+                new WorkflowNodeLabelService(workflowProps, Mockito.mock(ToolCatalogService.class))));
+        String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
+        assertThat(after).contains("公司考勤制度");
+        assertThat(after).contains("知识库问答");
     }
 
     @Test
@@ -104,7 +113,6 @@ class StepSummarizerTest {
         String clipped = StepSummarizer.clipQuery(query);
         assertThat(clipped).startsWith("「@finance-analysis");
         assertThat(clipped).contains("…");
-        // 旧 18 字符仅 "@finance-analysis "；按显示宽度应保留更多英文
         assertThat(StepSummarizer.clipByDisplayBudget(query, 36).length()).isGreaterThan(18);
     }
 }

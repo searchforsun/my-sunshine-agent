@@ -39,8 +39,8 @@ class PlanJsonCodecCheckpointTest {
     }
 
     @Test
-    void compactConstructorDefaultsExecuting() {
-        WorkflowCheckpoint cp = new WorkflowCheckpoint("n1", "{}");
+    void explicitExecutingPhaseDefaultsPendingNull() {
+        WorkflowCheckpoint cp = new WorkflowCheckpoint("n1", "{}", PausePhase.EXECUTING, null);
         assertThat(cp.pausePhase()).isEqualTo(PausePhase.EXECUTING);
         assertThat(cp.pendingInteraction()).isNull();
     }

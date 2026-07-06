@@ -16,6 +16,8 @@ import com.sunshine.orchestrator.plan.PlanRunFinalizer;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.processing.TimelineLabelTestSupport;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +41,16 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class PlanWorkflowExecutorTest {
+
+    @BeforeEach
+    void bindTimelineLabels() {
+        TimelineLabelTestSupport.bindDefaults();
+    }
+
+    @AfterEach
+    void unbindTimelineLabels() {
+        TimelineLabelTestSupport.unbind();
+    }
 
     @Mock
     private WorkflowPlanner workflowPlanner;
