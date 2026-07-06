@@ -6,6 +6,8 @@ public record DocumentVersionSummary(
         String status,
         int chunkCount,
         boolean hasContent,
+        boolean needsQuarantineConfirm,
+        Long ingestJobId,
         String publishedAt,
         String createdAt) {
 }

@@ -5,7 +5,9 @@ import com.sunshine.rag.admin.catalog.dto.ChunkPreviewDto;
 import com.sunshine.rag.admin.catalog.dto.CreateDocumentRequest;
 import com.sunshine.rag.admin.catalog.dto.DocumentContentView;
 import com.sunshine.rag.admin.catalog.dto.DocumentDetail;
+import com.sunshine.rag.admin.catalog.dto.DocumentParseJobStatus;
 import com.sunshine.rag.admin.catalog.dto.DocumentSummary;
+import com.sunshine.rag.admin.catalog.dto.DocumentUploadResponse;
 import com.sunshine.rag.admin.catalog.dto.IngestResult;
 import com.sunshine.rag.admin.catalog.dto.IngestTextRequest;
 import com.sunshine.rag.admin.catalog.dto.SaveDocumentContentRequest;
@@ -33,6 +35,7 @@ import java.util.List;
 public class KbDocumentAdminController {
 
     private final DocumentCatalogService documentCatalogService;
+    private final DocumentParseJobService documentParseJobService;
 
     @GetMapping("/documents")
     public R<List<DocumentSummary>> listDocuments(
@@ -95,12 +98,31 @@ public class KbDocumentAdminController {
     }
 
     @PostMapping(value = "/documents/{docId}/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public R<DocumentContentView> uploadMarkdown(
+    public R<DocumentUploadResponse> uploadDocument(
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
             @PathVariable String kbId,
             @PathVariable String docId,
             @RequestParam("file") MultipartFile file) {
-        return R.ok(documentCatalogService.uploadMarkdown(tenantId, kbId, docId, file));
+        return R.ok(documentParseJobService.upload(tenantId, kbId, docId, file));
+    }
+
+    @GetMapping("/documents/{docId}/parse-jobs/{jobId}")
+    public R<DocumentParseJobStatus> getParseJob(
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @PathVariable String kbId,
+            @PathVariable String docId,
+            @PathVariable long jobId) {
+        return R.ok(documentParseJobService.getJob(tenantId, kbId, jobId));
+    }
+
+    @PostMapping("/documents/{docId}/parse-jobs/{jobId}/confirm")
+    public R<Void> confirmParseJob(
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @PathVariable String kbId,
+            @PathVariable String docId,
+            @PathVariable long jobId) {
+        documentParseJobService.confirmJob(tenantId, kbId, jobId);
+        return R.ok(null);
     }
 
     @PostMapping("/documents/{docId}/publish")

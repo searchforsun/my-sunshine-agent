@@ -48,6 +48,24 @@ public class RagClient {
         return searchKnowledge(query, topK, tenantId, "default", strategy, false).map(RagSearchResult::hits);
     }
 
+    public Mono<String> fetchDefaultKbId(String tenantId) {
+        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
+        return webClient.get()
+                .uri("/api/rag/admin/kbs/default")
+                .header("x-tenant-id", tid)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                .map(response -> {
+                    Object data = response.get("data");
+                    if (data instanceof Map<?, ?> map && map.get("kbId") != null) {
+                        return map.get("kbId").toString();
+                    }
+                    return "default";
+                })
+                .doOnError(e -> log.warn("[RagClient] 默认 kb 解析失败: {}", e.getMessage()))
+                .onErrorReturn("default");
+    }
+
     /** 干净检索 API：topK 为 null 时由 rag-service Nacos default-top-k 决定 */
     public Mono<RagSearchResult> searchKnowledge(
             String query, Integer topK, String tenantId, String kbId, String strategy, boolean includeTrace) {

@@ -58,6 +58,8 @@ export interface SendOptions {
   workflowId?: string | null
   /** 前端解析到的 catalog skill，后端 L0 优先绑定 */
   skillId?: string
+  /** 会话绑定的知识库 id */
+  kbId?: string | null
 }
 
 export interface SessionState {
@@ -571,6 +573,9 @@ export function useChatSessions(
       }
       if (options?.skillId) {
         body.skillId = options.skillId
+      }
+      if (options?.kbId) {
+        body.kbId = options.kbId
       }
 
       const response = await fetch(`${API_BASE()}/api/chat/stream`, {

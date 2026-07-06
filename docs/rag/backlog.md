@@ -1,7 +1,88 @@
-# RAG 未实现功能清单
+# RAG Backlog
 
-> **基准**：2026-07-03 代码库 + [README.md](./README.md)  
-> **说明**：仅列**当前方案仍有效**且**代码未落地**的项。
+> **基准**：2026-07-06 代码库 + [README.md](./README.md)  
+> **检查门**：**4.1 / 4.2 L1 已于 2026-07-06 通过**（G6 v6 +15% 记 WARN，不阻塞结案）  
+> **说明**：下文「剩余」仅列**不阻塞检查门**的后续项；估时 1 人日 ≈ 1 名熟练开发全职 1 天。
+
+---
+
+## 检查门结论（2026-07-06）
+
+| 范围 | 结论 | 依据 |
+|------|------|------|
+| **4.1 知识库工作台** | **通过** | G1–G5 ✅；G6 ⚠️ WARN（阶段三遗留，不挡关项） |
+| **4.2 OCR / 多格式入库 L1** | **通过** | I1–I9 ✅；I10 `.doc` 与独立入库 Tab 明确不做 |
+
+**Live 验收**：`python3 scripts/verify_rag_studio.py --skip-eval` 全绿（日志 `/tmp/verify_rag_studio_2026-07-06-full.log`）。
+
+**运维补充（2026-07-06）**：`EvalJobRecoveryRunner` — 服务重启后自动恢复 `pending`/`running` 评测任务。
+
+---
+
+## 4.1 / 4.2 检查项明细
+
+### 4.1 知识库工作台
+
+| # | 检查项 | 状态 | 验收方式 |
+|---|--------|:----:|----------|
+| G1 | `/knowledge` 四 Tab 可用（文档/调试/配置/评测） | ✅ | 手动 + `verify_rag_studio.py` |
+| G2 | 多 kb + 每 kb 配置版本链 draft→评测→active | ✅ | 配置 Tab 走通 publish |
+| G3 | Chat 底栏 kb 选择器 + 会话 `kbId` 透传检索 | ✅ | Chat 选库 → RAG 命中对应库 |
+| G4 | 评测运行 + 报告抽屉 + Suggest + eval_failed→draft | ✅ | 评测 Tab 跑标准回归集 |
+| G5 | Nacos 业务参数 publish 已废弃 | ✅ | 无 `NacosPublishService`；配置走 MySQL |
+| G6 | v6 相对 vector Recall@5 **+15%** | ⚠️ WARN | `rag_eval.py` 双轨报告 |
+
+**4.1 结论**：**检查门通过**（G6 单列 WARN，建议后续「调参冲刺」）。
+
+### 4.2 OCR / 多格式入库 L1
+
+| # | 检查项 | 状态 | 验收方式 |
+|---|--------|:----:|----------|
+| I1 | PDF DashScope OCR + 异步解析 + 进度 | ✅ | 上传 PDF → 轮询 → 预览 |
+| I2 | Word `.docx` 段落解析 + 异步 + 发布 | ✅ | 纯段落 docx 端到端 |
+| I3 | 手动「发布生效」入库 Milvus/ES | ✅ | 草稿 ≠ active chunk |
+| I4 | 与 MD 相同 `chunkMaxSize` 语义分块 | ✅ | 发布日志 + chunk 预览 |
+| I5 | 无「第 N 页」等无业务标记 | ✅ | 重新上传发布后 chunk 无页码 |
+| I6 | Word **表格**正文抽取 | ✅ | POI `XWPFTable` → Markdown 表格 |
+| I7 | 入库前脱敏（desensitize :8600） | ✅ | `publishVersion` / `ingestText` 发布前 `DesensitizeClient` |
+| I8 | quarantine 低置信度 + 人工确认 | ✅ | `preview` / `quarantine` 状态 + 文档 Tab「确认解析内容」 |
+| I9 | ingest 状态机（spec §6.2 子集） | ✅ | `queued→parsing→preview|quarantine→active`（无独立入库 Tab） |
+| I10 | 旧版 `.doc` | ⬜ 不做 | 仅 `.docx` |
+| — | **独立入库 Tab `KbIngestPanel`** | ❌ 不做 | 用户确认；合并在文档 Tab |
+
+**4.2 结论**：**检查门通过**（I10 / 独立入库 Tab 为范围外，不纳入关项）。
+
+---
+
+## 后续项（不阻塞 4.1/4.2 结案）
+
+### 质量 / 文档（可选）
+
+| 优先级 | 任务 | 估时 | 状态 |
+|:------:|------|:----:|:----:|
+| P1 | v6 +15% 调参冲刺 | 2–4d | ⬜ WARN 入账 |
+| P2 | 已发布 PDF/Word 迁移指引 | 0.5d | ⬜ |
+
+### 4.2 已关（归档）
+
+| 优先级 | 任务 | 估时 | 状态 |
+|:------:|------|:----:|:----:|
+| P0 | live 验收留档 | 0.5d | ✅ 2026-07-06 |
+| P0 | 删除 deprecated 上传 API | 0.5d | ✅ |
+| P0 | Word 表格抽取 | 1.5d | ✅ |
+| P1 | 发布前脱敏 | 1d | ✅ |
+| P1 | OCR quarantine + 确认 | 2–3d | ✅ |
+| P2 | ingest 状态机 | 2d | ✅ |
+| P3 | 独立入库 Tab | 1d | ❌ 不做 |
+
+### 工程化（按需）
+
+| 优先级 | 任务 | 估时 | 状态 |
+|:------:|------|:----:|------|
+| P2 | `rag_reindex.py` 增强（进度、按 doc 重 embed） | 1d | 脚本已存在，可增强 |
+| P3 | `KnowledgeRetrievalService` 内联删层直调 `RagClient` | 0.5d | 已是薄封装，低收益 |
+| — | `DefaultKbResolver` 默认库 | ✅ | 已实现 |
+| — | Chat `kbId` 全链路 | ✅ | 已实现 |
 
 ---
 
@@ -9,95 +90,59 @@
 
 | 项 | 处置 |
 |----|------|
-| 评测顶层三分栏（独立「评测记录」Tab） | **定稿**：2 Tab（运行 \| 脚本）+ 记录内嵌运行页 + 右侧抽屉 |
-| `migrate_nacos_config_to_db.py` | **定稿**：配置种子走 `docker/mysql/init/16-sunshine-rag-config-seed.sql` + `config-seed.json` |
-| 策略 A/B 对比 `POST /eval/ab` | **不做** |
-| 评测周报 Cron | **不做**（按需手动 / CI `rag_eval.py`） |
-| MinIO 内置评测集正文 | **定稿**：标准集 SSOT 为 MySQL `eval_suite_item`（`10/11-sunshine-rag-eval-suite*.sql`）；MinIO 仅 Python suite 与报告 |
-| Badcase 独立表、per-scope Nacos publish、tenant 配置 merge | 早期方案，已废弃 |
+| 评测顶层三分栏（独立「评测记录」Tab） | 2 Tab + 记录内嵌 + 抽屉 |
+| `migrate_nacos_config_to_db.py` | 种子走 `16-sunshine-rag-config-seed.sql` |
+| 策略 A/B `POST /eval/ab`、评测周报 Cron | 不做 |
+| per-scope Nacos publish、Badcase 独立表 | 已废弃 |
+| Chat `#kb` 语法、本阶段 RBAC | 刻意不做 |
 
 ---
 
-## P0 — 4.1 工作台闭环
+## 已实现（2026-07-06，以代码为准）
 
-| # | 功能 | 当前状态 | 建议落点 |
-|---|------|----------|----------|
-| 1 | **Chat 会话级 kb 选择器** | `KbSelector` 仅在 `/knowledge`；Chat 无 `kbId` 透传 | `ChatView` + session store + orchestrator Chat DTO |
-| 2 | **Nacos 业务 publish 彻底移除** | `NacosPublishService` / `ConfigPublishService` / 旧 per-scope API 仍在 | 删 deprecated 端点 + 代码清理 |
+**Pipeline / 工作台（T0–T28）**
 
----
+- `KnowledgeRetrievalPipeline` + ADR-002；`EffectiveConfigResolver` + V3 生命周期
+- 四 Tab + `KbWorkbenchContext`；配置 schema / draft / publish 门禁
+- `EvaluateService` + `EvalJobRecoveryRunner`（评测中断恢复）
+- `scripts/rag_eval.py`、`verify_rag_studio.py`、`rag_reindex.py`、`rag_ingest_bulk.py`
 
-## P1 — 质量与指标（非新功能）
+**Chat 绑库**
 
-| # | 项 | 说明 |
-|---|-----|------|
-| 3 | **v6 相对 vector +15% 门禁** | 阶段三检查门 WARN；通过调参 / 扩评测集解决，非独立开发项 |
+- `ChatView` 底栏 `KbSelector`（模式左、知识库右）
+- `useKbPreference` + 会话 `kbId` 持久化
+- orchestrator `ChatStreamContextFactory` + `DefaultKbResolver` + `RagClient.searchKnowledge`
 
----
+**文档入库（4.2 子集）**
 
-## P2 — 入库与 OCR（4.2）
+- `DocumentParseJobService` 异步 PDF/Word；`DashScopeOcrService`、`DocxDocumentParser`
+- 手动发布 → `markdownParser` + Milvus/ES；MinIO 草稿存储
+- 前端 `KbDocPanel` 轮询进度、发布生效、chunk 预览
+- 新建 kb 自动 `provisionBundleForNewKb`（`config-seed.json` → v1 active）
 
-| # | 功能 | 当前状态 | 建议落点 |
-|---|------|----------|----------|
-| 4 | **多格式 ingest 状态机** | 仅有 `IngestJobEntity`；现 `ingest/text` | `IngestJobService` + 状态转移 |
-| 5 | **docx / PDF / DashScope OCR** | 无 parser/ocr 包 | `DocxParser`、`DashScopeOcrService` |
-| 6 | **入库 Tab UI** | 无 `KbIngestPanel` | 文档 Tab 扩展或第五 Tab |
-| 7 | **入库前脱敏** | 未接 desensitize :8600 | confirm 前 RPC |
-| 8 | **quarantine 低置信度队列** | 未实现 | OCR 阈值分流 |
+**验收留档（2026-07-06）**
 
----
-
-## P3 — 运维与工程化
-
-| # | 功能 | 当前状态 | 建议落点 |
-|---|------|----------|----------|
-| 9 | **`scripts/rag_reindex.py`** | 不存在 | 按 kb 全量 re-embed + 进度 |
-| 10 | **orchestrator ReAct 统一 RagClient** | `RagTool` 仍调 `KnowledgeRetrievalService` | 对齐 ADR-002 |
-| 11 | **tenant 默认 kb 解析** | Chat 未传 kbId 时固定 `default` | orchestrator / rag-service 查 `is_default` |
+```bash
+python3 scripts/verify_rag_studio.py --skip-eval   # 单测 + Live 全绿
+# 日志：/tmp/verify_rag_studio_2026-07-06-full.log
+```
 
 ---
 
-## P4 — 阶段四远期（非 4.1）
+## 历史实施顺序（已执行完毕）
+
+```
+4.1 收尾  live 验收 + 删 deprecated API  ✅
+4.2 L1    表格 / 脱敏 / quarantine / 状态机  ✅
+可选      v6 调参 / reindex / 迁移说明      ⬜
+```
+
+---
+
+## P4 — 阶段四远期（非 4.1/4.2）
 
 | # | 功能 | 状态 |
 |---|------|:----:|
-| 12 | 文档理解 L2 | ⬜ |
+| 12 | 文档理解 L2（版面/quarantine 全量） | ⬜ |
 | 13 | 多模态 L3（Vision） | ⬜ |
-| 14 | Chat `#kb` | 刻意不做 |
-| 15 | RBAC 细分 | 刻意不做 |
-
----
-
-## 已实现（以代码为准）
-
-**Pipeline / 工作台**
-
-- T0–T0d Pipeline 内聚；T1–T9 四 Tab；T23 `KbWorkbenchContext`
-- T24–T25 配置版本 + `EffectiveConfigResolver`；V3 生命周期
-- T26–T27 EvalSuite（MySQL 种子）、Suggest、Python runner
-- T28：`verify_rag_studio.py`、`rag_eval.py` 调 admin API
-
-**评测 UI（定稿布局）**
-
-- 顶层 **运行评测 \| 评测脚本** 两 Tab
-- 运行页内嵌评测记录 + 右侧可拖拽报告抽屉
-- 结果视图：概览 / 失败样本 / 调参建议；中文参数标签；**eval_failed** 才可一键应用 → **draft**
-- 检索调试「加入评测集」；配置「编辑草稿」拉最新
-
-**存储 SSOT**
-
-- 业务配置：`docker/mysql/init/` + `config-seed.json`
-- 内置评测集：`eval_suite` + `eval_suite_item`（MySQL）
-- 评测报告 / Python suite：MinIO
-
----
-
-## 建议实施顺序
-
-```
-P0-1 Chat kb 选择器  →  P0-2 清理 Nacos publish 遗留
-        ↓
-P2-4~8 OCR 入库链（4.2）
-        ↓
-P3-9 reindex  →  P3-10 orchestrator 统一 RagClient
-```
+| 14 | RBAC 细分 | 刻意不做 |

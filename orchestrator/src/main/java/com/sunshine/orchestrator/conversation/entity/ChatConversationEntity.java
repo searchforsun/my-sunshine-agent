@@ -37,4 +37,8 @@ public class ChatConversationEntity {
     /** 本会话最近一次发送时用户选择的 executionPreference */
     @Column(name = "execution_preference", length = 32)
     private String executionPreference;
+
+    /** 本会话绑定的知识库 id */
+    @Column(name = "kb_id", length = 64)
+    private String kbId;
 }

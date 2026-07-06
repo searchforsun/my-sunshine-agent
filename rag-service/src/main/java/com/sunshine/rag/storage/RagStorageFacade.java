@@ -112,6 +112,36 @@ public class RagStorageFacade {
         localStorage.deleteIfExists(localStorage.documentFile(tenantId, kbId, docId, version));
     }
 
+    public String parseSourceObjectKey(String tenantId, String kbId, String docId, long jobId, String fileName) {
+        if (useMinio()) {
+            return minioStorage.getObject().parseSourceObjectKey(tenantId, kbId, docId, jobId, fileName);
+        }
+        return localStorage.parseSourceFile(tenantId, kbId, docId, jobId, fileName).toString();
+    }
+
+    public void putParseSource(String objectKey, byte[] bytes, String contentType) {
+        if (useMinio()) {
+            minioStorage.getObject().putBytes(objectKey, bytes, contentType);
+            return;
+        }
+        localStorage.putBytes(java.nio.file.Path.of(objectKey), bytes);
+    }
+
+    public byte[] readParseSource(String objectKey) {
+        if (useMinio()) {
+            return minioStorage.getObject().readBytes(objectKey);
+        }
+        return localStorage.readBytes(java.nio.file.Path.of(objectKey));
+    }
+
+    public void deleteParseSource(String objectKey) {
+        if (useMinio()) {
+            minioStorage.getObject().removeObject(objectKey);
+            return;
+        }
+        localStorage.deleteIfExists(java.nio.file.Path.of(objectKey));
+    }
+
     private boolean useMinio() {
         return storageProperties.isMinio() && minioStorage.getIfAvailable() != null;
     }

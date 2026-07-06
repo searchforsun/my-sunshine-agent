@@ -16,6 +16,7 @@ export interface ConversationSummary {
   createdAt: number
   updatedAt: number
   executionPreference?: ExecutionPreference
+  kbId?: string | null
 }
 
 export interface ConversationMessage {
@@ -62,6 +63,7 @@ function mapSummary(raw: Record<string, unknown>): ConversationSummary {
     createdAt: toTimestamp(raw.createdAt as string | undefined),
     updatedAt: toTimestamp(raw.updatedAt as string | undefined),
     executionPreference: isExecutionPreference(pref) ? pref : undefined,
+    kbId: typeof raw.kbId === 'string' ? raw.kbId : null,
   }
 }
 

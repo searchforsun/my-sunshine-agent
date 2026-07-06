@@ -11,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 
 import javax.net.ssl.SSLException;
+import java.time.Duration;
 
 /** 构建 DashScope WebClient；dev 可开 insecure-ssl 绕过本机 JDK 信任链缺失。 */
 @Slf4j
@@ -21,18 +22,29 @@ public class RagWebClientFactory {
     private boolean insecureSsl;
 
     public WebClient create(String baseUrl) {
+        return create(baseUrl, null);
+    }
+
+    public WebClient create(String baseUrl, Duration responseTimeout) {
         WebClient.Builder builder = WebClient.builder().baseUrl(baseUrl);
         if (insecureSsl) {
             try {
                 SslContext sslContext = SslContextBuilder.forClient()
                         .trustManager(InsecureTrustManagerFactory.INSTANCE)
                         .build();
-                HttpClient httpClient = HttpClient.create().secure(spec -> spec.sslContext(sslContext));
+                HttpClient httpClient = HttpClient.create();
+                if (responseTimeout != null && !responseTimeout.isZero() && !responseTimeout.isNegative()) {
+                    httpClient = httpClient.responseTimeout(responseTimeout);
+                }
+                httpClient = httpClient.secure(spec -> spec.sslContext(sslContext));
                 builder.clientConnector(new ReactorClientHttpConnector(httpClient));
                 log.warn("[RAG] insecure-ssl=true，仅用于本地开发");
             } catch (SSLException e) {
                 throw new IllegalStateException("Failed to build insecure SSL WebClient", e);
             }
+        } else if (responseTimeout != null && !responseTimeout.isZero() && !responseTimeout.isNegative()) {
+            HttpClient httpClient = HttpClient.create().responseTimeout(responseTimeout);
+            builder.clientConnector(new ReactorClientHttpConnector(httpClient));
         }
         return builder.build();
     }

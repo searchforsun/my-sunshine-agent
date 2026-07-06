@@ -33,7 +33,7 @@ public class RagTool {
 
         try {
             var results = knowledgeRetrievalService.search(
-                    query, resolveTenantId(), StepEventBridge.activeMessageId());
+                    query, resolveKbId(), resolveTenantId(), StepEventBridge.activeMessageId());
             return RagContextFormatter.formatToolResult(results);
         } catch (Exception e) {
             log.warn("[RagTool] 知识库检索失败: {}", e.getMessage());
@@ -42,14 +42,26 @@ public class RagTool {
     }
 
     private static String resolveTenantId() {
-        String messageId = StepEventBridge.activeMessageId();
-        if (messageId == null) {
-            return "default";
-        }
-        StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(messageId);
+        StepEventBridge.ToolAuditContext ctx = auditContext();
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             return "default";
         }
         return ctx.tenantId().strip();
+    }
+
+    private static String resolveKbId() {
+        StepEventBridge.ToolAuditContext ctx = auditContext();
+        if (ctx == null || ctx.kbId() == null || ctx.kbId().isBlank()) {
+            return null;
+        }
+        return ctx.kbId().strip();
+    }
+
+    private static StepEventBridge.ToolAuditContext auditContext() {
+        String messageId = StepEventBridge.activeMessageId();
+        if (messageId == null) {
+            return null;
+        }
+        return StepEventBridge.toolAuditContext(messageId);
     }
 }

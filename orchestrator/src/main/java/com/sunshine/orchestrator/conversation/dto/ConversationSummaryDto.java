@@ -15,6 +15,7 @@ public class ConversationSummaryDto {
     private Instant createdAt;
     private Instant updatedAt;
     private String executionPreference;
+    private String kbId;
 
     public static ConversationSummaryDto from(ChatConversationEntity conv) {
         return ConversationSummaryDto.builder()
@@ -23,6 +24,7 @@ public class ConversationSummaryDto {
                 .createdAt(conv.getCreatedAt())
                 .updatedAt(conv.getUpdatedAt())
                 .executionPreference(conv.getExecutionPreference())
+                .kbId(conv.getKbId())
                 .build();
     }
 }

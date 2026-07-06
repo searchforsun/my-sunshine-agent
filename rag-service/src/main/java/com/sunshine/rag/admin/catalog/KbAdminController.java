@@ -28,6 +28,16 @@ public class KbAdminController {
         return R.ok(knowledgeBaseService.listByTenant(tenantId));
     }
 
+    @GetMapping("/default")
+    public R<KbSummary> getDefault(
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        String kbId = knowledgeBaseService.getDefaultKbId(tenantId);
+        return R.ok(knowledgeBaseService.listByTenant(tenantId).stream()
+                .filter(kb -> kb.kbId().equals(kbId))
+                .findFirst()
+                .orElseGet(() -> new KbSummary(kbId, kbId, null, true, "active")));
+    }
+
     @PostMapping
     public R<KbSummary> create(
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,

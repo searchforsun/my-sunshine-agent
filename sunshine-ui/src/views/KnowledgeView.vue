@@ -6,6 +6,7 @@ import {
   NFormItem,
   NInput,
   NModal,
+  NSelect,
   useMessage,
 } from 'naive-ui'
 import KbLayout from '../components/knowledge/KbLayout.vue'
@@ -24,6 +25,7 @@ import {
 import { useKbWorkbenchRouteState } from '../composables/useKbWorkbenchRouteState'
 import { useTenantPreference } from '../composables/useTenantPreference'
 import { friendlyErrorMessage } from '../api/apiError'
+import { DOC_SOURCE_TYPE_OPTIONS, resolveDocSourceType, type DocSourceType } from '../utils/docSourceTypes'
 
 const { tenantId, setTenantId } = useTenantPreference()
 const message = useMessage()
@@ -44,8 +46,17 @@ const createForm = ref({ kbId: '', displayName: '', description: '' })
 const creating = ref(false)
 
 const showCreateDoc = ref(false)
-const createDocForm = ref({ docId: '', displayName: '' })
+const createDocForm = ref<{ docId: string; displayName: string; sourceType: DocSourceType }>({
+  docId: '',
+  displayName: '',
+  sourceType: 'markdown',
+})
 const creatingDoc = ref(false)
+
+const docSourceTypeOptions = DOC_SOURCE_TYPE_OPTIONS.map((o) => ({
+  label: o.label,
+  value: o.value,
+}))
 
 let bootstrapping = false
 let tenantSyncing = false
@@ -145,16 +156,19 @@ async function handleCreateDoc() {
   if (!selectedKbId.value || !createDocForm.value.docId.trim() || !createDocForm.value.displayName.trim()) return
   creatingDoc.value = true
   const newDocId = createDocForm.value.docId.trim()
+  const sourceType = createDocForm.value.sourceType
+  const typeLabel = resolveDocSourceType(sourceType).label
   try {
     await createDocument(
       tenantId.value,
       selectedKbId.value,
       newDocId,
       createDocForm.value.displayName.trim(),
+      sourceType,
     )
     showCreateDoc.value = false
-    createDocForm.value = { docId: '', displayName: '' }
-    message.success('文档已创建，请上传 Markdown 或在线编写')
+    createDocForm.value = { docId: '', displayName: '', sourceType: 'markdown' }
+    message.success(`文档已创建（${typeLabel}），请上传文件或编写内容`)
     await loadDocuments()
     selectedDocId.value = newDocId
     routeState.syncQuery({ doc: newDocId })
@@ -244,6 +258,13 @@ onMounted(async () => {
       </NFormItem>
       <NFormItem label="显示名称" required>
         <NInput v-model:value="createDocForm.displayName" placeholder="如 考勤与加班管理规定" />
+      </NFormItem>
+      <NFormItem label="文档类型" required>
+        <NSelect
+          v-model:value="createDocForm.sourceType"
+          :options="docSourceTypeOptions"
+          placeholder="选择原始内容类型"
+        />
       </NFormItem>
     </NForm>
     <template #action>

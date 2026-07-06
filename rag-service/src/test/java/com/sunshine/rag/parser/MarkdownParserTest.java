@@ -120,6 +120,35 @@ class MarkdownParserTest {
     }
 
     @Test
+    @DisplayName("多段正文在 maxSize 内合并为一块")
+    void mergesMultipleParagraphsWithinLimit() {
+        String markdown = """
+                短内容A
+
+                短内容B
+                """;
+        List<String> chunks = parser.parse(markdown);
+        assertThat(chunks).hasSize(1);
+        assertThat(chunks.getFirst()).contains("短内容A").contains("短内容B");
+    }
+
+    @Test
+    @DisplayName("二级标题仍会按章节边界分块")
+    void h2StillSplitsChunks() {
+        String markdown = """
+                ## 第一章
+
+                内容A
+
+                ## 第二章
+
+                内容B
+                """;
+        List<String> chunks = parser.parse(markdown);
+        assertThat(chunks).hasSizeGreaterThanOrEqualTo(2);
+    }
+
+    @Test
     @DisplayName("分段大小跟随 RagChunkProperties")
     void respectsConfiguredMaxChunkSize() {
         RagChunkProperties chunk = new RagChunkProperties();

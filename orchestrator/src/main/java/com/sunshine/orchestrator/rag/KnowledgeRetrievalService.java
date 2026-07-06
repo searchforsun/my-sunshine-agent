@@ -18,53 +18,64 @@ import java.util.List;
 public class KnowledgeRetrievalService {
 
     private final RagClient ragClient;
+    private final DefaultKbResolver defaultKbResolver;
 
     public List<RagClient.RagHit> search(String query) {
-        return search(query, "default", null);
+        return search(query, null, "default", null);
     }
 
     public List<RagClient.RagHit> search(String query, String traceMessageId) {
-        return search(query, "default", traceMessageId);
+        return search(query, null, "default", traceMessageId);
     }
 
-    public List<RagClient.RagHit> search(String query, String tenantId, String traceMessageId) {
-        return searchMono(query, null, tenantId, traceMessageId).blockOptional().orElse(List.of());
+    public List<RagClient.RagHit> search(String query, String kbId, String tenantId, String traceMessageId) {
+        return searchMono(query, null, kbId, tenantId, traceMessageId).blockOptional().orElse(List.of());
     }
 
     public List<RagClient.RagHit> search(String query, int topK) {
-        return search(query, topK, "default", null);
+        return search(query, topK, null, "default", null);
     }
 
     public List<RagClient.RagHit> search(String query, int topK, String traceMessageId) {
-        return search(query, topK, "default", traceMessageId);
+        return search(query, topK, null, "default", traceMessageId);
     }
 
     public List<RagClient.RagHit> search(String query, int topK, String tenantId, String traceMessageId) {
-        return searchMono(query, topK, tenantId, traceMessageId).blockOptional().orElse(List.of());
+        return search(query, topK, null, tenantId, traceMessageId);
+    }
+
+    public List<RagClient.RagHit> search(String query, int topK, String kbId, String tenantId, String traceMessageId) {
+        return searchMono(query, topK, kbId, tenantId, traceMessageId).blockOptional().orElse(List.of());
     }
 
     public Mono<List<RagClient.RagHit>> searchMono(String query) {
-        return searchMono(query, null, "default", null);
+        return searchMono(query, null, null, "default", null);
     }
 
     public Mono<List<RagClient.RagHit>> searchMono(String query, String traceMessageId) {
-        return searchMono(query, null, "default", traceMessageId);
+        return searchMono(query, null, null, "default", traceMessageId);
     }
 
     public Mono<List<RagClient.RagHit>> searchMono(String query, int topK) {
-        return searchMono(query, topK, "default", null);
+        return searchMono(query, topK, null, "default", null);
     }
 
     public Mono<List<RagClient.RagHit>> searchMono(String query, Integer topK, String traceMessageId) {
-        return searchMono(query, topK, "default", traceMessageId);
+        return searchMono(query, topK, null, "default", traceMessageId);
     }
 
     public Mono<List<RagClient.RagHit>> searchMono(String query, Integer topK, String tenantId, String traceMessageId) {
+        return searchMono(query, topK, null, tenantId, traceMessageId);
+    }
+
+    public Mono<List<RagClient.RagHit>> searchMono(
+            String query, Integer topK, String kbId, String tenantId, String traceMessageId) {
         String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         boolean includeTrace = traceMessageId != null && !traceMessageId.isBlank();
-        return ragClient.searchKnowledge(query, topK, tid, "default", null, includeTrace)
-                .doOnNext(result -> recordTrace(traceMessageId, result))
-                .map(RagClient.RagSearchResult::hits);
+        return defaultKbResolver.resolve(tid, kbId)
+                .flatMap(resolvedKb -> ragClient.searchKnowledge(query, topK, tid, resolvedKb, null, includeTrace)
+                        .doOnNext(result -> recordTrace(traceMessageId, result))
+                        .map(RagClient.RagSearchResult::hits));
     }
 
     private static void recordTrace(String traceMessageId, RagClient.RagSearchResult result) {

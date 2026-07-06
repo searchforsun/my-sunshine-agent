@@ -105,39 +105,6 @@ public class EvaluateService {
         this.configVersionServiceProvider = configVersionServiceProvider;
     }
 
-    public SmokeEvalResult smokeEval(String tenantId, String kbId, String scope, Map<String, Object> draftPayload) {
-        ConfigScope configScope = ConfigScope.require(scope);
-        EffectiveRagConfig base = effectiveConfigResolver.resolve(tenantId, kbId).retrieval();
-        EffectiveRagConfig config = ConfigDraftMerger.merge(base, configScope, draftPayload);
-        Map<String, String> id2name = goldenSetLoader.docIdToDisplayName(tenantId, kbId);
-        List<GoldenSetLoader.GoldenQuery> queries = goldenSetLoader.smokeQueries(tenantId);
-        double baseline = resolveBaselineRecallAt5();
-        List<Double> recalls = new ArrayList<>();
-        List<FailedEvalSample> failedSamples = new ArrayList<>();
-        for (GoldenSetLoader.GoldenQuery item : queries) {
-            Set<String> relevant = resolveRelevantNames(item, id2name);
-            if (relevant.isEmpty()) {
-                continue;
-            }
-            List<RetrievalService.DocFragment> hits = searchHits(
-                    item.query(), 5, tenantId, kbId, null, true, config);
-            double recall = EvalMetrics.recallAtK(hits, relevant, 5, config.minScore());
-            recalls.add(recall);
-            if (recall < 1.0) {
-                failedSamples.add(new FailedEvalSample(
-                        item.id(),
-                        item.query(),
-                        List.copyOf(relevant),
-                        hits.stream().map(RetrievalService.DocFragment::docName).limit(5).toList()));
-            }
-        }
-        double recallAt5 = average(recalls);
-        boolean passedGate = recallAt5 >= baseline;
-        log.info("[RAG] smoke eval scope={} recall@5={} baseline={} passed={}",
-                scope, recallAt5, baseline, passedGate);
-        return new SmokeEvalResult(recallAt5, baseline, passedGate, failedSamples);
-    }
-
     /** 整包 draft payload smoke（ConfigVersionService publish/activate 用） */
     public SmokeEvalResult smokeEvalBundle(String tenantId, String kbId, Map<String, Object> bundlePayload) {
         ResolvedKbConfig resolved = effectiveConfigResolver.resolvePayload(tenantId, kbId, bundlePayload);
@@ -365,6 +332,11 @@ public class EvaluateService {
                 .orElseThrow(() -> new IllegalArgumentException("eval job 不存在: " + jobId));
         if (!"pending".equals(job.getStatus()) && !"running".equals(job.getStatus())) {
             return;
+        }
+        if ("running".equals(job.getStatus()) && job.getProcessedItems() > 0) {
+            log.warn("[RAG] eval job {} 中断恢复，从 0 重新跑（已处理 {}/{}）",
+                    jobId, job.getProcessedItems(), job.getTotalItems());
+            job.setProcessedItems(0);
         }
         job.setStatus("running");
         evalJobRepository.save(job);

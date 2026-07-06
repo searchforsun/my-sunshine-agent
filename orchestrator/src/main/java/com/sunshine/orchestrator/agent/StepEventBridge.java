@@ -83,7 +83,8 @@ public final class StepEventBridge {
             String messageId,
             String userId,
             String tenantId,
-            String planId) {
+            String planId,
+            String kbId) {
     }
 
     private StepEventBridge() {

@@ -20,16 +20,19 @@ import static org.mockito.Mockito.when;
 class KnowledgeRetrievalServiceTest {
     @Mock
     private RagClient ragClient;
+    @Mock
+    private DefaultKbResolver defaultKbResolver;
 
     private KnowledgeRetrievalService service;
 
     @BeforeEach
     void setUp() {
-        service = new KnowledgeRetrievalService(ragClient);
+        service = new KnowledgeRetrievalService(ragClient, defaultKbResolver);
     }
 
     @Test
     void searchReturnsHitsFromPipeline() {
+        when(defaultKbResolver.resolve(eq("default"), isNull())).thenReturn(Mono.just("default"));
         List<RagClient.RagHit> hits = List.of(new RagClient.RagHit("A", "c", 0.9f));
         when(ragClient.searchKnowledge("q", null, "default", "default", null, false))
                 .thenReturn(Mono.just(new RagClient.RagSearchResult(hits, "q", List.of())));
@@ -38,14 +41,16 @@ class KnowledgeRetrievalServiceTest {
 
     @Test
     void searchPassesTenantAndTraceFlag() {
-        when(ragClient.searchKnowledge("q", null, "tenant-a", "default", null, true))
+        when(defaultKbResolver.resolve("tenant-a", null)).thenReturn(Mono.just("finance"));
+        when(ragClient.searchKnowledge("q", null, "tenant-a", "finance", null, true))
                 .thenReturn(Mono.just(new RagClient.RagSearchResult(List.of(), "q", List.of())));
-        service.search("q", "tenant-a", "msg-1");
-        verify(ragClient).searchKnowledge("q", null, "tenant-a", "default", null, true);
+        service.search("q", null, "tenant-a", "msg-1");
+        verify(ragClient).searchKnowledge("q", null, "tenant-a", "finance", null, true);
     }
 
     @Test
     void searchMonoPassesExplicitTopKOverride() {
+        when(defaultKbResolver.resolve(eq("default"), isNull())).thenReturn(Mono.just("default"));
         when(ragClient.searchKnowledge(eq("q"), eq(5), eq("default"), eq("default"), isNull(), eq(false)))
                 .thenReturn(Mono.just(new RagClient.RagSearchResult(List.of(), "q", List.of())));
         service.searchMono("q", 5).block();

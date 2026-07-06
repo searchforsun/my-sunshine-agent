@@ -66,6 +66,39 @@ def api_json(
     return body
 
 
+def ensure_config_draft(base: str, tenant: str, token: str, kb_id: str) -> dict:
+    """新建 kb 仅 seed v1 active；验收前 fork 出可编辑草稿。"""
+    headers = admin_headers(tenant, token)
+    resp = requests.get(f"{base}/api/rag/admin/kbs/{kb_id}/config/draft", headers=headers, timeout=60)
+    if resp.status_code == 200:
+        return unwrap_r(resp.json(), context="config draft") or {}
+    if resp.status_code != 409:
+        raise CheckFailure(f"GET config/draft -> HTTP {resp.status_code}: {resp.text[:300]}")
+    versions = api_json(
+        "GET",
+        f"{base}/api/rag/admin/kbs/{kb_id}/config/versions",
+        tenant_id=tenant,
+        token=token,
+    )
+    active = [v for v in (versions or []) if isinstance(v, dict) and v.get("active")]
+    if not active:
+        raise CheckFailure("无 active 配置版本，无法 fork 草稿")
+    version_id = active[0].get("id")
+    api_json(
+        "POST",
+        f"{base}/api/rag/admin/kbs/{kb_id}/config/versions/{version_id}/fork",
+        tenant_id=tenant,
+        token=token,
+    )
+    draft = api_json(
+        "GET",
+        f"{base}/api/rag/admin/kbs/{kb_id}/config/draft",
+        tenant_id=tenant,
+        token=token,
+    )
+    return draft or {}
+
+
 def run_unit_tests() -> None:
     test_arg = ",".join(UNIT_TESTS)
     cmd = [
@@ -129,7 +162,7 @@ def check_create_ingest_search(base: str, tenant: str, token: str, kb_id: str) -
 
 def check_version_supersede(base: str, tenant: str, token: str, kb_id: str) -> None:
     doc_id = "supersede-doc"
-    api_json(
+    v1_resp = api_json(
         "POST",
         f"{base}/api/rag/admin/kbs/{kb_id}/ingest/text",
         tenant_id=tenant,
@@ -137,7 +170,10 @@ def check_version_supersede(base: str, tenant: str, token: str, kb_id: str) -> N
         timeout=180,
         json={"content": "版本一内容 UNIQUE_V1_TOKEN", "docId": doc_id, "docName": doc_id, "displayName": "v1"},
     )
-    v1 = api_json(
+    v1_no = (v1_resp or {}).get("version")
+    if not v1_no:
+        raise CheckFailure("首次 ingest 未返回 version")
+    v2_resp = api_json(
         "POST",
         f"{base}/api/rag/admin/kbs/{kb_id}/ingest/text",
         tenant_id=tenant,
@@ -145,18 +181,19 @@ def check_version_supersede(base: str, tenant: str, token: str, kb_id: str) -> N
         timeout=180,
         json={"content": "版本二内容 UNIQUE_V2_TOKEN", "docId": doc_id, "docName": doc_id, "displayName": "v2"},
     )
-    v2_no = (v1 or {}).get("version")
+    v2_no = (v2_resp or {}).get("version")
     if not v2_no:
-        raise CheckFailure("ingest 未返回 version")
+        raise CheckFailure("二次 ingest 未返回 version")
+    time.sleep(3)
     api_json(
         "DELETE",
-        f"{base}/api/rag/admin/kbs/{kb_id}/documents/{doc_id}/versions/1",
+        f"{base}/api/rag/admin/kbs/{kb_id}/documents/{doc_id}/versions/{v1_no}",
         tenant_id=tenant,
         token=token,
     )
     chunks = api_json(
         "GET",
-        f"{base}/api/rag/admin/kbs/{kb_id}/documents/{doc_id}/chunks?version=1",
+        f"{base}/api/rag/admin/kbs/{kb_id}/documents/{doc_id}/chunks?version={v1_no}",
         tenant_id=tenant,
         token=token,
     )
@@ -164,16 +201,22 @@ def check_version_supersede(base: str, tenant: str, token: str, kb_id: str) -> N
         active = [c for c in chunks if (c.get("status") or "").lower() == "active"]
         if active:
             raise CheckFailure("v1 chunk 仍为 active，supersede 失败")
-    resp = requests.post(
-        f"{base}/api/rag/search",
-        headers={"Content-Type": "application/json", "x-tenant-id": tenant},
-        json={"query": "UNIQUE_V1_TOKEN", "topK": 3, "kbId": kb_id},
-        timeout=60,
-    )
-    resp.raise_for_status()
-    v1_hits = unwrap_r(resp.json(), context="search v1").get("results") or []
-    if v1_hits:
-        raise CheckFailure("v1 被 supersede 后仍可检索到 UNIQUE_V1_TOKEN")
+    leaked: list[dict] = []
+    for _ in range(30):
+        resp = requests.post(
+            f"{base}/api/rag/search",
+            headers={"Content-Type": "application/json", "x-tenant-id": tenant},
+            json={"query": "UNIQUE_V1_TOKEN", "topK": 3, "kbId": kb_id},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        v1_hits = unwrap_r(resp.json(), context="search v1").get("results") or []
+        leaked = [h for h in v1_hits if "UNIQUE_V1_TOKEN" in (h.get("content") or "")]
+        if not leaked:
+            break
+        time.sleep(1)
+    else:
+        raise CheckFailure("v1 被 supersede 后仍可检索到 UNIQUE_V1_TOKEN 正文")
     print(f"[OK] v2 supersede v1（active version={v2_no}）")
 
 
@@ -193,12 +236,7 @@ def check_debug_stages(base: str, tenant: str, token: str, kb_id: str) -> None:
 
 
 def check_publish_gate(base: str, tenant: str, token: str, kb_id: str) -> None:
-    draft = api_json(
-        "GET",
-        f"{base}/api/rag/admin/kbs/{kb_id}/config/draft",
-        tenant_id=tenant,
-        token=token,
-    )
+    draft = ensure_config_draft(base, tenant, token, kb_id)
     payload = dict((draft or {}).get("payload") or {})
     search = dict(payload.get("search") or {})
     search["minScore"] = 0.99
@@ -215,12 +253,22 @@ def check_publish_gate(base: str, tenant: str, token: str, kb_id: str) -> None:
         headers=admin_headers(tenant, token),
         timeout=300,
     )
-    if resp.status_code != 422:
-        raise CheckFailure(f"publish 门禁应返回 422，实际 {resp.status_code}: {resp.text[:300]}")
-    body = resp.json()
-    if body.get("code") != 422:
-        raise CheckFailure(f"publish 门禁 code 应为 422: {body}")
-    print("[OK] publish 门禁拒绝低分 draft（422）")
+    if resp.status_code != 200:
+        raise CheckFailure(f"publish 提交应返回 200，实际 {resp.status_code}: {resp.text[:300]}")
+    submitted = unwrap_r(resp.json(), context="publish")
+    if (submitted or {}).get("status") != "pending_eval":
+        raise CheckFailure(f"publish 应进入 pending_eval: {json.dumps(submitted, ensure_ascii=False)[:200]}")
+    version_id = (submitted or {}).get("versionId")
+    if not version_id:
+        raise CheckFailure(f"publish 未返回 versionId: {submitted}")
+    act = requests.post(
+        f"{base}/api/rag/admin/kbs/{kb_id}/config/versions/{version_id}/activate",
+        headers=admin_headers(tenant, token),
+        timeout=60,
+    )
+    if act.status_code == 200 and act.json().get("code") == 200:
+        raise CheckFailure("未评测通过的配置不应 activate 成功")
+    print(f"[OK] publish 待评测 + activate 门禁（versionId={version_id}）")
 
 
 def check_published_isolation(base: str, tenant: str, token: str, kb_id: str) -> None:
@@ -244,6 +292,7 @@ def check_published_isolation(base: str, tenant: str, token: str, kb_id: str) ->
     before = unwrap_r(resp.json(), context="search before").get("results") or []
     if not before:
         raise CheckFailure("published 检索基线无命中")
+    ensure_config_draft(base, tenant, token, kb_id)
     draft = api_json(
         "GET",
         f"{base}/api/rag/admin/kbs/{kb_id}/config/draft",
@@ -308,6 +357,7 @@ def check_config_versions(base: str, tenant: str, token: str, kb_id: str) -> Non
 
 
 def check_draft_debug_mode(base: str, tenant: str, token: str, kb_id: str) -> None:
+    ensure_config_draft(base, tenant, token, kb_id)
     pub = api_json(
         "POST",
         f"{base}/api/rag/admin/search/debug",
@@ -428,10 +478,10 @@ def run_live_checks(base: str, tenant: str, token: str, *, skip_eval: bool) -> N
     check_create_ingest_search(base, tenant, token, kb_id)
     check_version_supersede(base, tenant, token, kb_id)
     check_debug_stages(base, tenant, token, kb_id)
-    check_publish_gate(base, tenant, token, kb_id)
     check_published_isolation(base, tenant, token, kb_id)
     check_config_versions(base, tenant, token, kb_id)
     check_draft_debug_mode(base, tenant, token, kb_id)
+    check_publish_gate(base, tenant, token, kb_id)
     check_suite_upload(base, tenant, token)
     if not skip_eval:
         check_eval_smoke(base, tenant, token, kb_id)

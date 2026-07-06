@@ -9,6 +9,7 @@ import {
   NIcon,
   NInput,
   NModal,
+  NProgress,
   NSelect,
   NSpace,
   NSpin,
@@ -33,13 +34,17 @@ import {
   publishDocument,
   saveDocumentContent,
   updateDocument,
-  uploadDocumentMarkdown,
+  uploadDocumentFile,
+  getDocumentParseJob,
+  confirmDocumentParseJob,
   type ChunkPreview,
   type DocumentDetail,
+  type DocumentParseJobStatus,
 } from '../../api/ragAdmin'
 import type { TenantId } from '../../api/tenants'
 import { friendlyErrorMessage } from '../../api/apiError'
 import { formatDocumentVersionKey } from '../../utils/formatSkillVersionTime'
+import { DOC_PARSING_PLACEHOLDER, isDocPlaceholder, resolveDocSourceType } from '../../utils/docSourceTypes'
 import { useKbWorkbenchContext, useKbPanelLoad } from '../../composables/useKbWorkbenchContext'
 import StaticMarkdown from '../StaticMarkdown.vue'
 
@@ -69,7 +74,9 @@ const sourceContent = ref('')
 const loadingSource = ref(false)
 const savingSource = ref(false)
 const uploading = ref(false)
+const parseProgress = ref<{ pct: number; page: number | null; total: number | null; status: string } | null>(null)
 const publishing = ref(false)
+const confirmingQuarantine = ref(false)
 const forking = ref(false)
 const renaming = ref(false)
 const deleting = ref(false)
@@ -85,6 +92,48 @@ const sourceEditing = ref(true)
 let suppressVersionWatch = false
 
 const isDraftWritable = computed(() => docPhase.value === 'draft' || docPhase.value === 'setup')
+
+const sourceTypeOption = computed(() => resolveDocSourceType(detail.value?.sourceType))
+
+const canInlineEdit = computed(() => sourceTypeOption.value.inlineEditable)
+
+const uploadAccept = computed(() => sourceTypeOption.value.accept)
+
+const isParsing = computed(() =>
+  parseProgress.value != null
+  || sourceContent.value.trim() === DOC_PARSING_PLACEHOLDER,
+)
+
+const hasSourcePreview = computed(() => {
+  const text = sourceContent.value.trim()
+  if (!text || text === DOC_PARSING_PLACEHOLDER) return false
+  return !isDocPlaceholder(sourceContent.value, sourceTypeOption.value)
+})
+
+const canPublishDraft = computed(() =>
+  isDraftWritable.value
+  && hasSourcePreview.value
+  && !isParsing.value
+  && !needsQuarantineConfirm.value,
+)
+
+const needsQuarantineConfirm = computed(
+  () => selectedVersionMeta.value?.needsQuarantineConfirm === true,
+)
+
+const quarantineJobId = computed(
+  () => selectedVersionMeta.value?.ingestJobId ?? null,
+)
+
+const parseProgressText = computed(() => {
+  if (!parseProgress.value) return '解析中…'
+  const { page, total, pct, status } = parseProgress.value
+  if (status === 'queued') return '排队中…'
+  if (page != null && total != null && total > 0) {
+    return `解析中 ${page}/${total} 页（${Math.round(pct)}%）`
+  }
+  return `解析中（${Math.round(pct)}%）`
+})
 
 const selectedVersionMeta = computed(() =>
   detail.value?.versions.find((v) => v.version === selectedVersion.value) ?? null,
@@ -110,6 +159,17 @@ const versionOptions = computed(() =>
 )
 
 const activeChunks = computed(() => (viewTab.value === 'es' ? esChunks.value : milvusChunks.value))
+
+const chunkEmptyHint = computed(() => {
+  const ver = selectedVersionMeta.value
+  if (ver?.status === 'draft') {
+    return '草稿未发布，请点击「发布生效」写入 Milvus/ES'
+  }
+  if (viewTab.value === 'es') {
+    return 'ES 中无 chunk（可能 ES 未启用或索引失败）'
+  }
+  return 'Milvus 中无 chunk'
+})
 
 const moreOptions = computed((): DropdownOption[] => {
   const items: DropdownOption[] = [
@@ -236,12 +296,16 @@ function resetPanelState() {
 }
 
 function applySourceEditingDefault() {
+  if (!canInlineEdit.value) {
+    sourceEditing.value = false
+    return
+  }
   if (docPhase.value === 'setup') {
     sourceEditing.value = true
     return
   }
   if (docPhase.value === 'draft') {
-    sourceEditing.value = !sourceContent.value.trim()
+    sourceEditing.value = isDocPlaceholder(sourceContent.value, sourceTypeOption.value)
   }
 }
 
@@ -297,31 +361,87 @@ function pickFile() {
   fileInputRef.value?.click()
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function pollParseJob(jobId: number, version: string) {
+  while (true) {
+    const st: DocumentParseJobStatus = await getDocumentParseJob(
+      props.tenantId,
+      props.kbId!,
+      props.docId!,
+      jobId,
+    )
+    parseProgress.value = {
+      pct: st.progressPct ?? 0,
+      page: st.progressPage,
+      total: st.totalPages,
+      status: st.status,
+    }
+    if (st.status === 'done' || st.status === 'preview' || st.status === 'quarantine') {
+      parseProgress.value = null
+      await reloadAll(version)
+      if (st.needsConfirm) {
+        message.warning('解析置信度偏低，请确认内容后再发布')
+      } else {
+        message.success('解析完成，请确认内容后点击「发布生效」')
+      }
+      emit('refreshed')
+      return
+    }
+    if (st.status === 'failed') {
+      throw new Error(st.errorMsg ?? '解析失败')
+    }
+    await sleep(1200)
+  }
+}
+
 async function handleFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file || !props.kbId || !props.docId) return
-  if (!file.name.toLowerCase().endsWith('.md')) {
-    message.error('仅支持 Markdown（.md）文件')
+  const opt = sourceTypeOption.value
+  const lower = file.name.toLowerCase()
+  const extensions = opt.accept.split(',').map((e) => e.trim().toLowerCase())
+  const extOk = extensions.some((ext) => lower.endsWith(ext.startsWith('.') ? ext : `.${ext}`))
+  if (!extOk) {
+    message.error(`当前文档类型「${opt.label}」仅支持：${opt.uploadHint}`)
     return
   }
   uploading.value = true
+  parseProgress.value = null
+  const isAsyncType = opt.value === 'pdf' || opt.value === 'docx'
+  const loadingMsg = isAsyncType ? '文件已上传，正在解析…' : '上传中…'
+  const msgReactive = message.loading(loadingMsg, { duration: 0 })
   try {
-    const view = await uploadDocumentMarkdown(props.tenantId, props.kbId, props.docId, file)
-    message.success(`已上传为草稿 ${formatDocumentVersionKey(view.version)}`)
-    emit('refreshed')
-    await reloadOnDocChange()
-    selectedVersion.value = view.version
+    const result = await uploadDocumentFile(props.tenantId, props.kbId, props.docId, file)
+    msgReactive.destroy()
+    if (!result.async) {
+      message.success(`已上传为草稿 ${formatDocumentVersionKey(result.version)}`)
+      emit('refreshed')
+      await reloadOnDocChange()
+      selectedVersion.value = result.version
+      return
+    }
+    parseProgress.value = { pct: result.progressPct ?? 0, page: null, total: null, status: result.status }
+    selectedVersion.value = result.version
+    sourceContent.value = DOC_PARSING_PLACEHOLDER
+    await pollParseJob(result.jobId!, result.version)
   } catch (e) {
+    msgReactive.destroy()
+    parseProgress.value = null
     message.error(friendlyErrorMessage(e, '上传失败'))
+    await reloadOnDocChange()
   } finally {
     uploading.value = false
   }
 }
 
 async function handleSaveSource() {
-  if (!props.kbId || !props.docId || selectedVersion.value == null || !sourceContent.value.trim()) return
+  if (!props.kbId || !props.docId || selectedVersion.value == null) return
+  if (isDocPlaceholder(sourceContent.value, sourceTypeOption.value)) return
   savingSource.value = true
   try {
     await saveDocumentContent(
@@ -339,6 +459,26 @@ async function handleSaveSource() {
     message.error(friendlyErrorMessage(e, '保存失败'))
   } finally {
     savingSource.value = false
+  }
+}
+
+async function handleConfirmQuarantine() {
+  if (!props.kbId || !props.docId || quarantineJobId.value == null) return
+  confirmingQuarantine.value = true
+  try {
+    await confirmDocumentParseJob(
+      props.tenantId,
+      props.kbId,
+      props.docId,
+      quarantineJobId.value,
+    )
+    message.success('已确认解析内容，可以发布')
+    emit('refreshed')
+    await loadDetail(panelLoad.beginLoad())
+  } catch (e) {
+    message.error(friendlyErrorMessage(e, '确认失败'))
+  } finally {
+    confirmingQuarantine.value = false
   }
 }
 
@@ -443,7 +583,7 @@ async function handleDelete() {
     <input
       ref="fileInputRef"
       type="file"
-      accept=".md,text/markdown"
+      :accept="uploadAccept"
       class="hidden-file"
       @change="handleFileChange"
     />
@@ -455,7 +595,7 @@ async function handleDelete() {
         <header class="detail-head">
           <div class="detail-title-block">
             <h3>{{ detail.displayName }}</h3>
-            <NText depth="3">{{ detail.docId }}</NText>
+            <NText depth="3">{{ detail.docId }} · {{ sourceTypeOption.label }}</NText>
           </div>
           <NSpace align="center" :size="8" class="detail-actions">
             <NSelect
@@ -499,12 +639,12 @@ async function handleDelete() {
         <div v-if="viewTab === 'source'" class="source-pane">
           <NSpin :show="loadingSource" class="source-spin">
             <template v-if="isDraftWritable">
-              <template v-if="sourceEditing">
+              <template v-if="canInlineEdit && sourceEditing">
                 <div class="source-body">
                   <NInput
                     v-model:value="sourceContent"
                     type="textarea"
-                    placeholder="请上传 Markdown 文件（.md）或直接编写内容…"
+                    :placeholder="sourceTypeOption.placeholder"
                     :autosize="{ minRows: 12, maxRows: 24 }"
                     class="kb-input source-editor"
                   />
@@ -516,21 +656,22 @@ async function handleDelete() {
                     size="small"
                     class="action-btn"
                     :loading="savingSource"
-                    :disabled="!sourceContent.trim()"
+                    :disabled="isDocPlaceholder(sourceContent, sourceTypeOption)"
                     @click="handleSaveSource"
                   >
                     保存草稿
                   </NButton>
                 </div>
               </template>
-              <template v-else>
+              <template v-else-if="canInlineEdit && !sourceEditing">
                 <div class="source-body">
-                  <div v-if="!sourceContent.trim()" class="empty-wrap">
+                  <div v-if="isDocPlaceholder(sourceContent, sourceTypeOption)" class="empty-wrap">
                     <NEmpty size="small" description="草稿暂无内容" />
                   </div>
-                  <div v-else class="preview-scroll">
+                  <div v-else-if="sourceTypeOption.markdownPreview" class="preview-scroll">
                     <StaticMarkdown :source="sourceContent" skill-preview />
                   </div>
+                  <pre v-else class="plain-preview">{{ sourceContent }}</pre>
                 </div>
                 <div class="source-footer">
                   <NButton size="small" @click="sourceEditing = true">编辑草稿</NButton>
@@ -539,10 +680,67 @@ async function handleDelete() {
                     size="small"
                     class="action-btn"
                     :loading="publishing"
-                    :disabled="!sourceContent.trim()"
+                    :disabled="isDocPlaceholder(sourceContent, sourceTypeOption)"
                     @click="handlePublish"
                   >
                     发布生效
+                  </NButton>
+                </div>
+              </template>
+              <template v-else>
+                <div class="source-body" :class="{ 'upload-only': !hasSourcePreview }">
+                  <template v-if="isParsing">
+                    <div class="parse-progress-wrap">
+                      <NProgress
+                        type="line"
+                        :percentage="parseProgress?.pct ?? 0"
+                        :show-indicator="true"
+                        processing
+                      />
+                      <p class="parse-progress-text">{{ parseProgressText }}</p>
+                    </div>
+                  </template>
+                  <template v-else-if="hasSourcePreview">
+                    <div v-if="sourceTypeOption.markdownPreview" class="preview-scroll">
+                      <StaticMarkdown :source="sourceContent" skill-preview />
+                    </div>
+                    <pre v-else class="plain-preview">{{ sourceContent }}</pre>
+                  </template>
+                  <NEmpty v-else size="small" :description="sourceTypeOption.placeholder" />
+                </div>
+                <div class="source-footer">
+                  <p v-if="needsQuarantineConfirm" class="quarantine-hint">
+                    解析置信度偏低，请先确认内容再发布。
+                  </p>
+                  <NButton
+                    v-if="needsQuarantineConfirm"
+                    type="primary"
+                    size="small"
+                    class="action-btn"
+                    :loading="confirmingQuarantine"
+                    @click="handleConfirmQuarantine"
+                  >
+                    确认解析内容
+                  </NButton>
+                  <NButton
+                    type="primary"
+                    size="small"
+                    class="action-btn"
+                    :loading="publishing"
+                    :disabled="!canPublishDraft"
+                    @click="handlePublish"
+                  >
+                    发布生效
+                  </NButton>
+                  <NButton
+                    size="small"
+                    :type="hasSourcePreview ? 'default' : 'primary'"
+                    :class="{ 'action-btn': !hasSourcePreview }"
+                    :loading="uploading"
+                    :disabled="isParsing"
+                    @click="pickFile"
+                  >
+                    {{ hasSourcePreview ? '重新上传' : `上传 ${sourceTypeOption.label}` }}
                   </NButton>
                 </div>
               </template>
@@ -552,9 +750,10 @@ async function handleDelete() {
                 <div v-if="!sourceContent.trim()" class="empty-wrap">
                   <NEmpty size="small" description="该版本无原文" />
                 </div>
-                <div v-else class="preview-scroll">
+                <div v-else-if="sourceTypeOption.markdownPreview" class="preview-scroll">
                   <StaticMarkdown :source="sourceContent" skill-preview />
                 </div>
+                <pre v-else class="plain-preview">{{ sourceContent }}</pre>
               </div>
             </template>
           </NSpin>
@@ -562,7 +761,7 @@ async function handleDelete() {
 
         <NSpin v-else :show="loadingChunks" class="chunk-spin">
           <div v-if="activeChunks.length === 0 && !loadingChunks" class="empty-wrap">
-            <NEmpty size="small" :description="viewTab === 'es' ? 'ES 中无 chunk（可能未发布或 ES 未启用）' : 'Milvus 中无 chunk'" />
+            <NEmpty size="small" :description="chunkEmptyHint" />
           </div>
           <div v-else class="chunk-scroll">
             <article v-for="chunk in activeChunks" :key="chunk.chunkIndex" class="chunk-card">
@@ -681,7 +880,46 @@ async function handleDelete() {
   min-height: 100%;
   padding: 12px 14px;
 }
-.source-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; flex-shrink: 0; }
+.source-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; flex-shrink: 0; flex-wrap: wrap; }
+.quarantine-hint { width: 100%; margin: 0 0 4px; font-size: var(--sun-font-sm, 12px); color: var(--sun-text-secondary); text-align: right; }
+.plain-preview {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  font-size: var(--sun-font-base, 14px);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--sun-text);
+  background: transparent;
+  border: none;
+}
+.upload-only {
+  min-height: 200px;
+  justify-content: center;
+  align-items: center;
+}
+.parse-progress-wrap {
+  width: min(360px, 88%);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.parse-progress-wrap :deep(.n-progress) {
+  width: 100%;
+}
+.parse-progress-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sun-text-secondary);
+  text-align: center;
+  width: 100%;
+}
 .preview-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; }
 .source-body .empty-wrap { min-height: 160px; padding: 24px 0; }
 .chunk-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }

@@ -3,6 +3,7 @@ package com.sunshine.rag.admin.catalog;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.rag.admin.catalog.dto.CreateKbRequest;
 import com.sunshine.rag.admin.catalog.dto.KbSummary;
+import com.sunshine.rag.admin.config.ConfigVersionService;
 import com.sunshine.rag.entity.KnowledgeBaseEntity;
 import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.repository.KnowledgeBaseRepository;
@@ -19,6 +20,7 @@ import java.util.List;
 public class KnowledgeBaseService {
 
     private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final ConfigVersionService configVersionService;
 
     public List<KbSummary> listByTenant(String tenantId) {
         String tid = normalizeTenant(tenantId);
@@ -43,7 +45,9 @@ public class KnowledgeBaseService {
         entity.setStatus("active");
         entity.setCreatedAt(Instant.now());
         entity.setUpdatedAt(Instant.now());
-        return toSummary(knowledgeBaseRepository.save(entity));
+        KbSummary summary = toSummary(knowledgeBaseRepository.save(entity));
+        configVersionService.provisionBundleForNewKb(tid, kbId);
+        return summary;
     }
 
     @Transactional
@@ -67,6 +71,21 @@ public class KnowledgeBaseService {
     public KnowledgeBaseEntity requireKb(String tenantId, String kbId) {
         return knowledgeBaseRepository.findByTenantIdAndKbId(normalizeTenant(tenantId), requireKbId(kbId))
                 .orElseThrow(() -> new BizException(RagErrorCode.KB_NOT_FOUND));
+    }
+
+    /** 租户默认知识库 id；无标记时 fallback default */
+    public String getDefaultKbId(String tenantId) {
+        return knowledgeBaseRepository.findByTenantIdAndIsDefaultTrue(normalizeTenant(tenantId))
+                .map(KnowledgeBaseEntity::getKbId)
+                .orElse("default");
+    }
+
+    /** 请求 kbId 优先，否则租户默认 */
+    public String resolveKbId(String tenantId, String requestedKbId) {
+        if (StringUtils.hasText(requestedKbId)) {
+            return requestedKbId.strip();
+        }
+        return getDefaultKbId(tenantId);
     }
 
     private KbSummary toSummary(KnowledgeBaseEntity entity) {

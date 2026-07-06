@@ -20,5 +20,6 @@ public record ChatStreamContext(
         ExecutionPreference executionPreference,
         String forcedWorkflowId,
         String clientSkillId,
+        String kbId,
         boolean reactRestart) {
 }

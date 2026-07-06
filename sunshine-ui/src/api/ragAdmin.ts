@@ -49,6 +49,8 @@ export interface DocumentVersion {
   status: string
   chunkCount: number
   hasContent: boolean
+  needsQuarantineConfirm?: boolean
+  ingestJobId?: number | null
   publishedAt: string | null
   createdAt: string | null
 }
@@ -65,6 +67,30 @@ export interface DocumentContentView {
   version: string
   content: string
   storagePath: string | null
+}
+
+export interface DocumentUploadResponse {
+  async: boolean
+  jobId: number | null
+  version: string
+  status: string
+  progressPct: number | null
+  content: string | null
+  storagePath: string | null
+}
+
+export interface DocumentParseJobStatus {
+  jobId: number
+  docId: string
+  version: string
+  status: string
+  progressPct: number | null
+  progressPage: number | null
+  totalPages: number | null
+  confidence: number | null
+  needsConfirm: boolean | null
+  errorMsg: string | null
+  updatedAt: string
 }
 
 export interface ChunkPreview {
@@ -137,11 +163,12 @@ export async function createDocument(
   kbId: string,
   docId: string,
   displayName: string,
+  sourceType: string = 'markdown',
 ): Promise<DocumentDetail> {
   const res = await fetch(`${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/documents`, {
     method: 'POST',
     headers: adminHeaders(tenantId),
-    body: JSON.stringify({ docId, displayName }),
+    body: JSON.stringify({ docId, displayName, sourceType }),
   })
   return parseApiResponse<DocumentDetail>(res)
 }
@@ -234,12 +261,12 @@ export async function saveDocumentContent(
   return parseApiResponse<DocumentContentView>(res)
 }
 
-export async function uploadDocumentMarkdown(
+export async function uploadDocumentFile(
   tenantId: TenantId,
   kbId: string,
   docId: string,
   file: File,
-): Promise<DocumentContentView> {
+): Promise<DocumentUploadResponse> {
   const form = new FormData()
   form.append('file', file)
   const headers = adminHeaders(tenantId)
@@ -248,8 +275,37 @@ export async function uploadDocumentMarkdown(
     `${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}/upload`,
     { method: 'POST', headers, body: form },
   )
-  return parseApiResponse<DocumentContentView>(res)
+  return parseApiResponse<DocumentUploadResponse>(res)
 }
+
+export async function getDocumentParseJob(
+  tenantId: TenantId,
+  kbId: string,
+  docId: string,
+  jobId: number,
+): Promise<DocumentParseJobStatus> {
+  const res = await fetch(
+    `${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}/parse-jobs/${jobId}`,
+    { headers: adminHeaders(tenantId) },
+  )
+  return parseApiResponse<DocumentParseJobStatus>(res)
+}
+
+export async function confirmDocumentParseJob(
+  tenantId: TenantId,
+  kbId: string,
+  docId: string,
+  jobId: number,
+): Promise<void> {
+  const res = await fetch(
+    `${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}/parse-jobs/${jobId}/confirm`,
+    { method: 'POST', headers: adminHeaders(tenantId) },
+  )
+  await parseApiResponse<null>(res, { allowEmptyData: true })
+}
+
+/** @deprecated 使用 uploadDocumentFile */
+export const uploadDocumentMarkdown = uploadDocumentFile
 
 export async function publishDocument(
   tenantId: TenantId,
@@ -338,16 +394,6 @@ export interface ConfigSchemaResponse {
   effective: EffectiveRagConfig
 }
 
-export interface ConfigDraftSummary {
-  id: number
-  scope: string
-  payload: Record<string, unknown>
-  status: string
-  createdBy: string | null
-  createdAt: string
-  publishedAt: string | null
-}
-
 export interface FailedEvalSample {
   queryId: string
   query: string
@@ -359,12 +405,6 @@ export interface PublishGateFailure {
   recallAt5: number
   baselineRecallAt5: number
   failedSamples: FailedEvalSample[]
-}
-
-export interface PublishDraftResult {
-  nacos: { scope: string; dataId: string; group: string; workspaceExported: boolean }
-  eval: { recallAt5: number; baselineRecallAt5: number; passedGate: boolean; failedSamples: FailedEvalSample[] }
-  reportId: number
 }
 
 export interface ConfigBundleDraftView {
@@ -674,65 +714,6 @@ export async function applyConfigSuggestions(
     },
   )
   return parseApiResponse<Record<string, unknown>>(res)
-}
-
-/** @deprecated 使用 fetchKbConfigSchema */
-export async function fetchConfigSchema(
-  tenantId: TenantId,
-  kbId?: string | null,
-): Promise<ConfigSchemaResponse> {
-  const qs = kbId ? `?kbId=${encodeURIComponent(kbId)}` : ''
-  const res = await fetch(`${ragApiBase()}/api/rag/admin/config/schema${qs}`, {
-    headers: adminHeaders(tenantId),
-  })
-  return parseApiResponse<ConfigSchemaResponse>(res)
-}
-
-export async function fetchConfigDraft(
-  tenantId: TenantId,
-  scope: string,
-): Promise<ConfigDraftSummary | null> {
-  const res = await fetch(`${ragApiBase()}/api/rag/admin/config/drafts/${encodeURIComponent(scope)}`, {
-    headers: adminHeaders(tenantId),
-  })
-  return parseApiResponse<ConfigDraftSummary | null>(res)
-}
-
-export async function saveConfigDraft(
-  tenantId: TenantId,
-  scope: string,
-  payload: Record<string, unknown>,
-): Promise<ConfigDraftSummary> {
-  const res = await fetch(`${ragApiBase()}/api/rag/admin/config/drafts/${encodeURIComponent(scope)}`, {
-    method: 'PUT',
-    headers: adminHeaders(tenantId),
-    body: JSON.stringify(payload),
-  })
-  return parseApiResponse<ConfigDraftSummary>(res)
-}
-
-export async function publishConfigDraft(
-  tenantId: TenantId,
-  scope: string,
-  kbId: string,
-): Promise<PublishDraftResult> {
-  const res = await fetch(
-    `${ragApiBase()}/api/rag/admin/config/drafts/${encodeURIComponent(scope)}/publish?kbId=${encodeURIComponent(kbId)}`,
-    { method: 'POST', headers: adminHeaders(tenantId) },
-  )
-  const raw = (await res.json()) as { code: number; msg: string; data?: PublishDraftResult | PublishGateFailure }
-  if (raw.code === 422 && raw.data) {
-    throw new PublishGateError(raw.data as PublishGateFailure, raw.msg)
-  }
-  if (!res.ok || raw.code !== 200) {
-    const { ApiError: Err, resolveApiMessage } = await import('./apiError')
-    throw new Err(resolveApiMessage(raw.code, raw.msg, '发布失败'), {
-      kind: 'biz',
-      code: raw.code,
-      httpStatus: res.status,
-    })
-  }
-  return raw.data as PublishDraftResult
 }
 
 export async function putKbConfigOverride(

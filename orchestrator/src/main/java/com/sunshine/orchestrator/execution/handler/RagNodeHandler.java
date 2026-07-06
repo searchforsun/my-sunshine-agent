@@ -40,10 +40,15 @@ public class RagNodeHandler implements NodeHandler {
             query = streamCtx.userContent();
         }
         Integer topK = parseTopK(spec.params().get("topK"));
+        String kbId = spec.params().get("kbId");
+        if (kbId == null || kbId.isBlank()) {
+            kbId = streamCtx.kbId();
+        }
         String finalQuery = query;
+        String finalKbId = kbId;
 
         return knowledgeRetrievalService.searchMono(
-                        finalQuery, topK, streamCtx.tenantId(), streamCtx.assistantMsgId())
+                        finalQuery, topK, finalKbId, streamCtx.tenantId(), streamCtx.assistantMsgId())
                 .map(hits -> {
                     List<RagClient.RagHit> results = hits != null ? hits : List.of();
                     String output = RagContextFormatter.formatAgentContext(results);

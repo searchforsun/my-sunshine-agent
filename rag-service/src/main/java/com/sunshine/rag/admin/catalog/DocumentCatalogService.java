@@ -16,9 +16,12 @@ import com.sunshine.rag.entity.DocumentEntity;
 import com.sunshine.rag.entity.DocumentVersionEntity;
 import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.model.ChunkInsertRequest;
+import com.sunshine.rag.client.DesensitizeClient;
+import com.sunshine.rag.admin.catalog.parser.DocumentFileParser;
 import com.sunshine.rag.parser.MarkdownParser;
 import com.sunshine.rag.repository.DocumentRepository;
 import com.sunshine.rag.repository.DocumentVersionRepository;
+import com.sunshine.rag.repository.IngestJobRepository;
 import com.sunshine.rag.service.ElasticsearchIndexService;
 import com.sunshine.rag.service.EmbeddingService;
 import com.sunshine.rag.service.MilvusService;
@@ -26,6 +29,8 @@ import com.sunshine.rag.storage.RagStorageFacade;
 import com.sunshine.rag.util.DocumentVersionTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -33,8 +38,6 @@ import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -47,17 +50,23 @@ import java.util.Optional;
 public class DocumentCatalogService {
 
     private static final String DEFAULT_DOC_NAME = "未命名文档";
-    private static final String PLACEHOLDER_MARKDOWN = "请上传 Markdown 文件（.md）或直接编写内容。";
 
     private final KnowledgeBaseService knowledgeBaseService;
     private final EffectiveConfigResolver effectiveConfigResolver;
     private final DocumentRepository documentRepository;
     private final DocumentVersionRepository documentVersionRepository;
+    private final IngestJobRepository ingestJobRepository;
     private final MarkdownParser markdownParser;
+    private final DocumentFileParser documentFileParser;
     private final EmbeddingService embeddingService;
     private final MilvusService milvusService;
     private final ElasticsearchIndexService elasticsearchIndexService;
     private final RagStorageFacade ragStorageFacade;
+    private final DesensitizeClient desensitizeClient;
+
+    @Lazy
+    @Autowired
+    DocumentCatalogService self;
 
     public List<DocumentSummary> listDocuments(String tenantId, String kbId) {
         knowledgeBaseService.requireKb(tenantId, kbId);
@@ -99,10 +108,11 @@ public class DocumentCatalogService {
         if (documentRepository.findByTenantIdAndKbIdAndDocId(tid, kid, docId).isPresent()) {
             throw new BizException(RagErrorCode.DOC_ALREADY_EXISTS);
         }
-        DocumentEntity document = createDocument(tid, kid, docId, request.displayName().strip());
+        DocumentSourceType sourceType = DocumentSourceType.require(request.sourceType());
+        DocumentEntity document = createDocument(tid, kid, docId, request.displayName().strip(), sourceType);
         DocumentVersionEntity draft = newVersionEntity(tid, kid, docId, newVersionKey(tid, kid, docId));
         draft.setStatus("draft");
-        draft.setParsedMarkdown(PLACEHOLDER_MARKDOWN);
+        draft.setParsedMarkdown(sourceType.placeholder());
         documentVersionRepository.save(draft);
         log.info("[RAG] document created: tenant={}, kb={}, doc={}", tid, kid, docId);
         return toDetail(document);
@@ -176,16 +186,54 @@ public class DocumentCatalogService {
             throw new BizException(RagErrorCode.CONTENT_EMPTY);
         }
         DocumentEntity doc = requireDocument(tenantId, kbId, docId);
+        DocumentSourceType sourceType = DocumentSourceType.require(doc.getSourceType());
+        if (!sourceType.inlineEditable()) {
+            throw new BizException(RagErrorCode.VERSION_NOT_EDITABLE);
+        }
         DocumentVersionEntity ver = requireDraftVersion(doc, version);
         persistDraftContent(doc, ver, request.content());
         return new DocumentContentView(version, request.content(), ver.getStoragePath());
     }
 
-    @Transactional
-    public DocumentContentView uploadMarkdown(
+    public DocumentContentView uploadDocumentFileSync(
             String tenantId, String kbId, String docId, MultipartFile file) {
-        validateMarkdownFile(file);
-        String content = readUploadContent(file);
+        if (file == null || file.isEmpty()) {
+            throw new BizException(RagErrorCode.CONTENT_EMPTY);
+        }
+        DocumentEntity doc = requireDocument(tenantId, kbId, docId);
+        DocumentSourceType sourceType = DocumentSourceType.require(doc.getSourceType());
+        String content = documentFileParser.parse(sourceType, file);
+        return self.persistUploadedContent(tenantId, kbId, docId, content);
+    }
+
+    @Transactional
+    public String prepareAsyncUploadDraft(
+            String tenantId, String kbId, String docId, Long jobId, String placeholder) {
+        DocumentEntity doc = requireDocument(tenantId, kbId, docId);
+        DocumentVersionEntity target = resolveUploadTarget(doc);
+        target.setIngestJobId(jobId);
+        target.setParsedMarkdown(placeholder);
+        documentVersionRepository.save(target);
+        doc.setUpdatedAt(Instant.now());
+        documentRepository.save(doc);
+        return target.getVersion();
+    }
+
+    @Transactional
+    public void finishAsyncUpload(
+            String tenantId, String kbId, String docId, String version, String content) {
+        DocumentEntity doc = requireDocument(tenantId, kbId, docId);
+        DocumentVersionEntity ver = requireVersion(doc, version);
+        persistDraftContent(doc, ver, content);
+    }
+
+    public DocumentEntity requireDocumentPublic(String tenantId, String kbId, String docId) {
+        return requireDocument(tenantId, kbId, docId);
+    }
+
+    @Transactional
+    public DocumentContentView persistUploadedContent(
+            String tenantId, String kbId, String docId, String content) {
         DocumentEntity doc = requireDocument(tenantId, kbId, docId);
         DocumentVersionEntity target = resolveUploadTarget(doc);
         persistDraftContent(doc, target, content);
@@ -195,12 +243,15 @@ public class DocumentCatalogService {
     @Transactional
     public Mono<IngestResult> publishVersion(String tenantId, String kbId, String docId, String version) {
         DocumentEntity doc = requireDocument(tenantId, kbId, docId);
+        DocumentSourceType sourceType = DocumentSourceType.require(doc.getSourceType());
         DocumentVersionEntity ver = requireVersion(doc, version);
         if (!"draft".equals(ver.getStatus())) {
             throw new BizException(RagErrorCode.VERSION_NOT_EDITABLE);
         }
-        String content = readVersionContent(doc, ver);
-        if (!StringUtils.hasText(content) || PLACEHOLDER_MARKDOWN.equals(content.strip())) {
+        ensureParseFinished(ver);
+        ensureQuarantineConfirmed(ver);
+        String content = desensitizeClient.scrubForPublish(readVersionContent(doc, ver));
+        if (!StringUtils.hasText(content) || sourceType.isPlaceholder(content)) {
             throw new BizException(RagErrorCode.VERSION_NO_CONTENT);
         }
         String docName = doc.getDisplayName();
@@ -217,6 +268,7 @@ public class DocumentCatalogService {
         doc.setActiveVersion(version);
         doc.setUpdatedAt(Instant.now());
         documentRepository.save(doc);
+        markIngestJobActive(ver);
         log.info("[RAG] document published: tenant={}, kb={}, doc={}, v={}, chunks={}",
                 tid, kid, docId, version, chunks.size());
         return embedAndIndex(tid, kid, docId, docName, version, chunks)
@@ -227,14 +279,14 @@ public class DocumentCatalogService {
     public DocumentDetail forkVersion(String tenantId, String kbId, String docId, String sourceVersion) {
         DocumentEntity doc = requireDocument(tenantId, kbId, docId);
         DocumentVersionEntity source = requireVersion(doc, sourceVersion);
-        if (!hasVersionContent(source)) {
+        if (!hasVersionContent(doc, source)) {
             throw new BizException(RagErrorCode.SOURCE_CONTENT_MISSING);
         }
         Optional<DocumentVersionEntity> draft = findContentDraft(doc);
         DocumentVersionEntity target;
         String targetVersion;
         if (draft.isPresent()) {
-            if (isEmptyDraft(draft.get())) {
+            if (isEmptyDraft(draft.get(), doc)) {
                 target = draft.get();
                 targetVersion = target.getVersion();
                 purgeVersionStorage(doc, target);
@@ -262,7 +314,7 @@ public class DocumentCatalogService {
         knowledgeBaseService.requireKb(tenantId, kbId);
         String tid = KnowledgeBaseService.normalizeTenant(tenantId);
         String kid = KnowledgeBaseService.requireKbId(kbId);
-        String content = request.content();
+        String content = desensitizeClient.scrubForPublish(request.content());
         String docName = resolveDocName(request);
         String docId = resolveDocId(request, docName);
         String displayName = StringUtils.hasText(request.displayName()) ? request.displayName().strip() : docName;
@@ -372,7 +424,7 @@ public class DocumentCatalogService {
         Optional<DocumentVersionEntity> draft = findDraftVersion(doc);
         if (draft.isPresent()) {
             DocumentVersionEntity existing = draft.get();
-            if (isEmptyDraft(existing)) {
+            if (isEmptyDraft(existing, doc)) {
                 return existing;
             }
             if (latest.isPresent() && existing.getVersion().equals(latest.get().getVersion())) {
@@ -437,7 +489,9 @@ public class DocumentCatalogService {
                         v.getVersion(),
                         v.getStatus(),
                         v.getChunkCount(),
-                        hasVersionContent(v),
+                        hasVersionContent(doc, v),
+                        needsQuarantineConfirm(v),
+                        quarantineJobId(v),
                         v.getPublishedAt() != null ? v.getPublishedAt().toString() : null,
                         v.getCreatedAt() != null ? v.getCreatedAt().toString() : null))
                 .toList();
@@ -445,16 +499,21 @@ public class DocumentCatalogService {
                 doc.getDocId(), doc.getDisplayName(), doc.getSourceType(), doc.getActiveVersion(), versions);
     }
 
-    private DocumentEntity createDocument(String tenantId, String kbId, String docId, String displayName) {
+    private DocumentEntity createDocument(
+            String tenantId, String kbId, String docId, String displayName, DocumentSourceType sourceType) {
         DocumentEntity entity = new DocumentEntity();
         entity.setTenantId(tenantId);
         entity.setKbId(kbId);
         entity.setDocId(docId);
         entity.setDisplayName(displayName);
-        entity.setSourceType("markdown");
+        entity.setSourceType(sourceType.wire());
         entity.setCreatedAt(Instant.now());
         entity.setUpdatedAt(Instant.now());
         return documentRepository.save(entity);
+    }
+
+    private DocumentEntity createDocument(String tenantId, String kbId, String docId, String displayName) {
+        return createDocument(tenantId, kbId, docId, displayName, DocumentSourceType.MARKDOWN);
     }
 
     private DocumentVersionEntity newVersionEntity(String tenantId, String kbId, String docId, String version) {
@@ -476,6 +535,58 @@ public class DocumentCatalogService {
                 .map(DocumentVersionEntity::getVersion)
                 .toList();
         return DocumentVersionTime.uniqueKey(existing);
+    }
+
+    private void ensureParseFinished(DocumentVersionEntity ver) {
+        if (ver.getIngestJobId() == null) {
+            return;
+        }
+        ingestJobRepository.findById(ver.getIngestJobId()).ifPresent(job -> {
+            if ("failed".equals(job.getStatus())) {
+                throw new BizException(RagErrorCode.INGEST_PARSE_FAILED);
+            }
+            if ("parsing".equals(job.getStatus()) || "queued".equals(job.getStatus())) {
+                throw new BizException(RagErrorCode.DOCUMENT_PARSE_IN_PROGRESS);
+            }
+        });
+    }
+
+    private void ensureQuarantineConfirmed(DocumentVersionEntity ver) {
+        if (ver.getIngestJobId() == null) {
+            return;
+        }
+        ingestJobRepository.findById(ver.getIngestJobId()).ifPresent(job -> {
+            if ("quarantine".equals(job.getStatus()) && !job.isAutoPass()) {
+                throw new BizException(RagErrorCode.INGEST_QUARANTINE_PENDING);
+            }
+        });
+    }
+
+    private boolean needsQuarantineConfirm(DocumentVersionEntity ver) {
+        if (ver.getIngestJobId() == null) {
+            return false;
+        }
+        return ingestJobRepository.findById(ver.getIngestJobId())
+                .map(job -> "quarantine".equals(job.getStatus()) && !job.isAutoPass())
+                .orElse(false);
+    }
+
+    private Long quarantineJobId(DocumentVersionEntity ver) {
+        if (!needsQuarantineConfirm(ver)) {
+            return null;
+        }
+        return ver.getIngestJobId();
+    }
+
+    private void markIngestJobActive(DocumentVersionEntity ver) {
+        if (ver.getIngestJobId() == null) {
+            return;
+        }
+        ingestJobRepository.findById(ver.getIngestJobId()).ifPresent(job -> {
+            job.setStatus("active");
+            job.setUpdatedAt(Instant.now());
+            ingestJobRepository.save(job);
+        });
     }
 
     private DocumentEntity requireDocument(String tenantId, String kbId, String docId) {
@@ -511,19 +622,31 @@ public class DocumentCatalogService {
     }
 
     private Optional<DocumentVersionEntity> findContentDraft(DocumentEntity doc) {
-        return findDraftVersion(doc).filter(this::hasVersionContent);
+        return findDraftVersion(doc).filter(v -> hasVersionContent(doc, v));
     }
 
-    private boolean isEmptyDraft(DocumentVersionEntity ver) {
-        return !hasVersionContent(ver);
+    private boolean isEmptyDraft(DocumentVersionEntity ver, DocumentEntity doc) {
+        return !hasVersionContent(doc, ver);
     }
 
-    private boolean hasVersionContent(DocumentVersionEntity ver) {
+    private boolean hasVersionContent(DocumentEntity doc, DocumentVersionEntity ver) {
+        DocumentSourceType sourceType = DocumentSourceType.require(doc.getSourceType());
         if (StringUtils.hasText(ver.getStoragePath())) {
             return true;
         }
         return StringUtils.hasText(ver.getParsedMarkdown())
-                && !PLACEHOLDER_MARKDOWN.equals(ver.getParsedMarkdown().strip());
+                && !sourceType.isPlaceholder(ver.getParsedMarkdown().strip())
+                && !DocumentParseJobService.PARSING_PLACEHOLDER.equals(ver.getParsedMarkdown().strip());
+    }
+
+    private boolean hasVersionContent(DocumentVersionEntity ver) {
+        return StringUtils.hasText(ver.getStoragePath())
+                || (StringUtils.hasText(ver.getParsedMarkdown())
+                && !DocumentSourceType.MARKDOWN.isPlaceholder(ver.getParsedMarkdown().strip())
+                && !DocumentSourceType.TEXT.isPlaceholder(ver.getParsedMarkdown().strip())
+                && !DocumentSourceType.PDF.isPlaceholder(ver.getParsedMarkdown().strip())
+                && !DocumentSourceType.DOCX.isPlaceholder(ver.getParsedMarkdown().strip())
+                && !DocumentParseJobService.PARSING_PLACEHOLDER.equals(ver.getParsedMarkdown().strip()));
     }
 
     private String resolveVersion(DocumentEntity doc, String version) {
@@ -538,24 +661,6 @@ public class DocumentCatalogService {
                         doc.getTenantId(), doc.getKbId(), doc.getDocId(), "active")
                 .map(DocumentVersionEntity::getVersion)
                 .orElseThrow(() -> new BizException(RagErrorCode.VERSION_NOT_FOUND));
-    }
-
-    private static void validateMarkdownFile(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new BizException(RagErrorCode.CONTENT_EMPTY);
-        }
-        String name = file.getOriginalFilename() != null ? file.getOriginalFilename().strip() : "";
-        if (!name.toLowerCase().endsWith(".md")) {
-            throw new BizException(RagErrorCode.FILE_TYPE_NOT_SUPPORTED);
-        }
-    }
-
-    private static String readUploadContent(MultipartFile file) {
-        try {
-            return new String(file.getBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new BizException(RagErrorCode.CONTENT_EMPTY);
-        }
     }
 
     private static String resolveDocName(IngestTextRequest request) {

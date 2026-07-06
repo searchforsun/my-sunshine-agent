@@ -10,4 +10,6 @@ public interface EvalJobRepository extends JpaRepository<EvalJobEntity, Long> {
     List<EvalJobEntity> findByTenantIdAndKbIdOrderByCreatedAtDesc(String tenantId, String kbId);
 
     List<EvalJobEntity> findByTenantIdAndKbIdAndStatusIn(String tenantId, String kbId, List<String> statuses);
+
+    List<EvalJobEntity> findByStatusInOrderByCreatedAtAsc(List<String> statuses);
 }

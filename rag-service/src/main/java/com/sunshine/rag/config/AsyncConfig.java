@@ -21,4 +21,15 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean(name = "parseTaskExecutor")
+    Executor parseTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(16);
+        executor.setThreadNamePrefix("rag-parse-");
+        executor.initialize();
+        return executor;
+    }
 }

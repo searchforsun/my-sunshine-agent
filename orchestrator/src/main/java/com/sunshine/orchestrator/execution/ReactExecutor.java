@@ -52,7 +52,8 @@ public class ReactExecutor {
                     ctx.assistantMsgId(),
                     ctx.userId(),
                     ctx.tenantId(),
-                    ctx.persistedPlanId()));
+                    ctx.persistedPlanId(),
+                    ctx.kbId()));
         }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),

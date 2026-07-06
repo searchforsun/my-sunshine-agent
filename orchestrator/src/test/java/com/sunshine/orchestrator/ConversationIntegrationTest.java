@@ -140,6 +140,7 @@ class ConversationIntegrationTest {
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
         when(ragClient.search(anyString(), anyInt(), any(), any()))
                 .thenReturn(Mono.just(List.of(new RagClient.RagHit("制度", "年假5天", 0.9f))));
+        when(ragClient.fetchDefaultKbId(anyString())).thenReturn(Mono.just("default"));
     }
 
     @Test
@@ -329,7 +330,7 @@ class ConversationIntegrationTest {
         assertThat(last.getStatus()).isEqualTo(MessageStatus.COMPLETED);
         verify(llmGateway, never()).streamContinue(any(MemoryContext.class), anyString(), anyString());
         verify(llmGateway, atLeastOnce()).streamComposed(any(PromptComposeRequest.class));
-        verify(ragClient, atLeastOnce()).search(anyString(), anyInt(), any(), any());
+        verify(ragClient, atLeastOnce()).searchKnowledge(anyString(), any(), anyString(), anyString(), any(), eq(true));
     }
 
     @Test

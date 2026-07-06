@@ -117,6 +117,15 @@ public class ConversationService {
         conversationRepo.save(conv);
     }
 
+    /** 记录本会话绑定的知识库 id */
+    @Transactional
+    public void updateKbId(String id, String userId, String tenantId, String kbId) {
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        conv.setKbId(kbId);
+        conv.setUpdatedAt(Instant.now());
+        conversationRepo.save(conv);
+    }
+
     @Transactional
     public void delete(String id, String userId, String tenantId) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);

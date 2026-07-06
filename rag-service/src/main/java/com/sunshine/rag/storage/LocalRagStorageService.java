@@ -39,6 +39,32 @@ public class LocalRagStorageService {
                 .resolve("content.md");
     }
 
+    public Path parseSourceFile(String tenantId, String kbId, String docId, long jobId, String fileName) {
+        return baseDir().resolve("parse-sources")
+                .resolve(normalize(tenantId))
+                .resolve(normalize(kbId))
+                .resolve(normalize(docId))
+                .resolve(String.valueOf(jobId))
+                .resolve(fileName);
+    }
+
+    public void putBytes(Path path, byte[] bytes) {
+        try {
+            Files.createDirectories(path.getParent());
+            Files.write(path, bytes);
+        } catch (IOException e) {
+            throw new IllegalStateException("本地写入失败 " + path + ": " + e.getMessage(), e);
+        }
+    }
+
+    public byte[] readBytes(Path path) {
+        try {
+            return Files.readAllBytes(path);
+        } catch (IOException e) {
+            throw new IllegalStateException("本地读取失败 " + path + ": " + e.getMessage(), e);
+        }
+    }
+
     public void putText(Path path, String content) {
         try {
             Files.createDirectories(path.getParent());

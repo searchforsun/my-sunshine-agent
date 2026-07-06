@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.memory.MemoryComposer;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
@@ -41,6 +42,7 @@ public class ChatStreamContextFactory {
     private final MemoryComposer memoryComposer;
     private final ExecutionPlanStore executionPlanStore;
     private final ExecutionPlanParser executionPlanParser;
+    private final DefaultKbResolver defaultKbResolver;
 
     @Autowired(required = false)
     private GenerationRegistry registry;
@@ -65,6 +67,10 @@ public class ChatStreamContextFactory {
         conv = conversationService.autoTitleIfDefault(conv.getId(), userId, tenantId, userContent);
         conversationService.updateExecutionPreference(
                 conv.getId(), userId, tenantId, preference.wireValue());
+        String kbId = resolveSessionKbId(msg.getKbId(), conv.getKbId(), tenantId);
+        if (StringUtils.hasText(msg.getKbId()) || !StringUtils.hasText(conv.getKbId())) {
+            conversationService.updateKbId(conv.getId(), userId, tenantId, kbId);
+        }
         String executionQuery = userContent;
         if (preference.isForced() && !preference.allowsSkillBinding()) {
             executionQuery = skillBindingParser.stripAtMention(userContent);
@@ -95,7 +101,18 @@ public class ChatStreamContextFactory {
                 preference,
                 msg.getWorkflowId(),
                 msg.getSkillId(),
+                kbId,
                 false);
+    }
+
+    private String resolveSessionKbId(String requestKbId, String storedKbId, String tenantId) {
+        if (StringUtils.hasText(requestKbId)) {
+            return requestKbId.strip();
+        }
+        if (StringUtils.hasText(storedKbId)) {
+            return storedKbId.strip();
+        }
+        return defaultKbResolver.resolveBlocking(tenantId, null);
     }
 
     public ChatResumePreparation buildResumePreparation(ChatMessage msg, String userId, String tenantId) {
@@ -108,6 +125,8 @@ public class ChatStreamContextFactory {
         }
         final String assistantId = assistant.getId();
         conversationService.validateResumeAllowed(assistant, userId, tenantId);
+        ChatConversationEntity conv = conversationService.getOwned(assistant.getConversationId(), userId, tenantId);
+        String kbId = resolveSessionKbId(msg.getKbId(), conv.getKbId(), tenantId);
         List<ProcessingStep> existingSteps = ProcessingStepMerger.fromJson(assistant.getSteps());
         boolean planWorkflowResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
         ExecutionPlan storedPlan = executionPlanParser.parseStoredIntent(
@@ -168,7 +187,8 @@ public class ChatStreamContextFactory {
                 contentBlocksJson,
                 reactRestartResume,
                 userId,
-                tenantId);
+                tenantId,
+                kbId);
     }
 
     private ChatConversationEntity resolveConversation(String conversationId, String userId, String tenantId) {

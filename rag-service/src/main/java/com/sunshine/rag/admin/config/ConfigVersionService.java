@@ -26,6 +26,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,6 +47,30 @@ public class ConfigVersionService {
     private final EvalReportRepository evalReportRepository;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
+
+    /** 新建 kb 时从 classpath config-seed.json 初始化 bundle + v1 active（幂等） */
+    @Transactional
+    public void provisionBundleForNewKb(String tenantId, String kbId) {
+        String tid = KnowledgeBaseService.normalizeTenant(tenantId);
+        String kid = KnowledgeBaseService.requireKbId(kbId);
+        if (bundleRepository.findByTenantIdAndKbId(tid, kid).isPresent()) {
+            return;
+        }
+        Map<String, Object> payload = loadDefaultSeedPayload();
+        RagConfigBundleEntity bundle = new RagConfigBundleEntity();
+        bundle.setTenantId(tid);
+        bundle.setKbId(kid);
+        bundle.setCreatedAt(Instant.now());
+        bundle.setUpdatedAt(Instant.now());
+        bundleRepository.save(bundle);
+        RagConfigVersionEntity v1 = newVersion(bundle, 1, ConfigVersionStatus.ACTIVE, payload, "kb-create-seed");
+        v1.setPublishedAt(uniqueInstant(bundle.getId(), Instant.now()));
+        versionRepository.save(v1);
+        bundle.setActivePublishedVersionId(v1.getId());
+        bundle.setDraftVersionId(null);
+        touchBundle(bundle);
+        log.info("[RAG] config bundle provisioned tenant={} kb={}", tid, kid);
+    }
 
     @Transactional
     public RagConfigBundleEntity requireBundle(String tenantId, String kbId) {
@@ -497,5 +522,16 @@ public class ConfigVersionService {
     private void requireKb(String tenantId, String kbId) {
         knowledgeBaseRepository.findByTenantIdAndKbId(tenantId, kbId)
                 .orElseThrow(() -> new BizException(RagErrorCode.KB_NOT_FOUND));
+    }
+
+    private Map<String, Object> loadDefaultSeedPayload() {
+        try (InputStream in = getClass().getResourceAsStream("/rag/defaults/config-seed.json")) {
+            if (in == null) {
+                throw new IllegalStateException("config-seed.json 缺失");
+            }
+            return objectMapper.readValue(in, MAP_TYPE);
+        } catch (Exception e) {
+            throw new IllegalStateException("加载 config-seed.json 失败: " + e.getMessage(), e);
+        }
     }
 }

@@ -5,6 +5,7 @@ import com.sunshine.rag.admin.catalog.dto.IngestTextRequest;
 import com.sunshine.rag.entity.DocumentEntity;
 import com.sunshine.rag.entity.DocumentVersionEntity;
 import com.sunshine.rag.entity.KnowledgeBaseEntity;
+import com.sunshine.rag.admin.catalog.parser.DocumentFileParser;
 import com.sunshine.rag.parser.MarkdownParser;
 import com.sunshine.rag.repository.DocumentRepository;
 import com.sunshine.rag.repository.DocumentVersionRepository;
@@ -54,6 +55,8 @@ class DocumentCatalogServiceTest {
     @Mock
     private MarkdownParser markdownParser;
     @Mock
+    private DocumentFileParser documentFileParser;
+    @Mock
     private EmbeddingService embeddingService;
     @Mock
     private MilvusService milvusService;
@@ -61,6 +64,10 @@ class DocumentCatalogServiceTest {
     private ElasticsearchIndexService elasticsearchIndexService;
     @Mock
     private com.sunshine.rag.storage.RagStorageFacade ragStorageFacade;
+    @Mock
+    private com.sunshine.rag.repository.IngestJobRepository ingestJobRepository;
+    @Mock
+    private com.sunshine.rag.client.DesensitizeClient desensitizeClient;
 
     private DocumentCatalogService service;
 
@@ -71,20 +78,25 @@ class DocumentCatalogServiceTest {
                 effectiveConfigResolver,
                 documentRepository,
                 documentVersionRepository,
+                ingestJobRepository,
                 markdownParser,
+                documentFileParser,
                 embeddingService,
                 milvusService,
                 elasticsearchIndexService,
-                ragStorageFacade);
+                ragStorageFacade,
+                desensitizeClient);
         KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
         kb.setTenantId("default");
         kb.setKbId("default");
         when(knowledgeBaseService.requireKb(anyString(), anyString())).thenReturn(kb);
+        when(desensitizeClient.scrubForPublish(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(effectiveConfigResolver.resolve(anyString(), anyString()))
                 .thenReturn(com.sunshine.rag.admin.config.ConfigBundlePayload.toResolvedKbConfig(
                         com.sunshine.rag.admin.config.ConfigBundleTestFixtures.fullPayload()));
         when(ragStorageFacade.documentContentRef(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn("minio://bucket/key");
+        service.self = service;
     }
 
     @Test

@@ -25,12 +25,24 @@ public class IngestJobEntity {
     private String kbId;
     @Column(name = "doc_id", length = 128)
     private String docId;
+    @Column(name = "target_version", length = 14)
+    private String targetVersion;
     @Column(name = "file_name", length = 512)
     private String fileName;
     @Column(name = "mime_type", length = 128)
     private String mimeType;
+    @Column(name = "source_type", length = 16)
+    private String sourceType;
     @Column(nullable = false, length = 24)
-    private String status = "parsing";
+    private String status = "queued";
+    @Column(name = "progress_pct")
+    private Double progressPct;
+    @Column(name = "progress_page")
+    private Integer progressPage;
+    @Column(name = "total_pages")
+    private Integer totalPages;
+    @Column(name = "source_object_key", length = 512)
+    private String sourceObjectKey;
     private Double confidence;
     @Column(name = "parsed_markdown", columnDefinition = "MEDIUMTEXT")
     private String parsedMarkdown;

@@ -8,7 +8,15 @@ const props = defineProps<{
   kbs: KnowledgeBase[]
   modelValue: string | null
   loading?: boolean
+  /** Chat 底栏隐藏「新建知识库」 */
+  showCreate?: boolean
+  /** compact：Chat 底栏；block：知识库页顶栏 */
+  variant?: 'compact' | 'block'
 }>()
+
+const showCreateButton = computed(() => props.showCreate !== false)
+const variant = computed(() => props.variant ?? 'compact')
+const popoverPlacement = computed(() => (variant.value === 'block' ? 'bottom-start' : 'top-start'))
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -44,12 +52,12 @@ function onShowUpdate(next: boolean) {
 </script>
 
 <template>
-  <div class="kb-dropdown-root">
+  <div class="kb-dropdown-root" :class="`variant-${variant}`">
     <NPopover
       :show="showMenu"
       trigger="click"
       content-class="kb-selector-popover"
-      placement="bottom-end"
+      :placement="popoverPlacement"
       :width="304"
       :disabled="loading"
       raw
@@ -100,8 +108,13 @@ function onShowUpdate(next: boolean) {
             />
           </span>
         </button>
-        <div class="kb-menu-divider" />
-        <button type="button" class="kb-menu-item kb-menu-item--action" @click="handleCreate">
+        <div v-if="showCreateButton" class="kb-menu-divider" />
+        <button
+          v-if="showCreateButton"
+          type="button"
+          class="kb-menu-item kb-menu-item--action"
+          @click="handleCreate"
+        >
           <NIcon class="kb-menu-icon" :component="AddOutline" :size="18" />
           <span class="kb-menu-title">新建知识库</span>
         </button>

@@ -16,7 +16,8 @@ public record ChatResumePreparation(
         String contentBlocksJson,
         boolean reactRestart,
         String userId,
-        String tenantId) {
+        String tenantId,
+        String kbId) {
 
     public ChatStreamContext toStreamContext() {
         return new ChatStreamContext(
@@ -35,6 +36,7 @@ public record ChatResumePreparation(
                 ExecutionPreference.AUTO,
                 null,
                 null,
+                kbId,
                 reactRestart);
     }
 }

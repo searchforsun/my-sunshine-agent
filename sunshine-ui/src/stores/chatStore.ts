@@ -35,6 +35,7 @@ export interface Conversation {
   updatedAt: number
   messages: ChatMessage[]
   executionPreference?: ExecutionPreference
+  kbId?: string | null
 }
 
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
@@ -121,6 +122,7 @@ export const useChatStore = defineStore('chat', () => {
         updatedAt: c.updatedAt,
         messages: prev?.messages ?? [],
         executionPreference: c.executionPreference ?? prev?.executionPreference,
+        kbId: c.kbId ?? prev?.kbId ?? null,
       }
     })
     conversations.value = merged.filter(c => isValidConversationId(c.id))
@@ -161,6 +163,7 @@ export const useChatStore = defineStore('chat', () => {
           updatedAt: detail.updatedAt,
           messages: sanitizeRestoredMessages(mergeRestoredMessages(mapApiMessages(detail.messages), cached)),
           executionPreference: detail.executionPreference,
+          kbId: detail.kbId ?? null,
         })
         currentId.value = savedId
         persistCurrentId()
@@ -230,6 +233,7 @@ export const useChatStore = defineStore('chat', () => {
       if (conv) {
         conv.title = pickConversationTitle(detail.title, conv.title)
         conv.executionPreference = detail.executionPreference
+        conv.kbId = detail.kbId ?? null
         const apiMsgs = mapApiMessages(detail.messages)
         const cached = loadCachedMessages(id)
         conv.messages = sanitizeRestoredMessages(mergeRestoredMessages(apiMsgs, cached))
@@ -274,6 +278,7 @@ export const useChatStore = defineStore('chat', () => {
         updatedAt: created.updatedAt,
         messages: [],
         executionPreference: created.executionPreference,
+        kbId: created.kbId ?? null,
       }
       conversations.value.unshift(conv)
       currentId.value = conv.id
@@ -356,6 +361,11 @@ export const useChatStore = defineStore('chat', () => {
     if (conv) conv.executionPreference = pref
   }
 
+  function updateKbIdLocal(id: string, kb: string | null) {
+    const conv = conversations.value.find(c => c.id === id)
+    if (conv) conv.kbId = kb
+  }
+
   function syncMessages(id: string, msgs: ChatMessage[]) {
     const conv = conversations.value.find(c => c.id === id)
     if (!conv) return
@@ -383,6 +393,7 @@ export const useChatStore = defineStore('chat', () => {
           updatedAt: detail.updatedAt,
           messages: sanitizeRestoredMessages(mergeRestoredMessages(apiMsgs, cached)),
           executionPreference: detail.executionPreference,
+          kbId: detail.kbId ?? null,
         })
       } catch (e) {
         const cached = loadCachedMessages(id)
@@ -460,5 +471,6 @@ export const useChatStore = defineStore('chat', () => {
     updateTitle: updateTitleLocal,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
     updateExecutionPreferenceLocal,
+    updateKbIdLocal,
   }
 })

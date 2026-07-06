@@ -30,10 +30,14 @@ import {
 } from '../api/contentInterleave'
 import { resolveAgentNodeStepForDrawer } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
+import KbSelector from '../components/knowledge/KbSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { useKbPreference } from '../composables/useKbPreference'
+import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
+import { useAuthStore } from '../stores/authStore'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 
@@ -210,6 +214,32 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
 
 const inputText = ref('')
 const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
+const { kbId, setKbId, applyConversationKb } = useKbPreference()
+const authStore = useAuthStore()
+const chatKbs = ref<KnowledgeBase[]>([])
+const loadingChatKbs = ref(false)
+
+async function loadChatKbs() {
+  loadingChatKbs.value = true
+  try {
+    const tenantId = authStore.tenantId ?? 'default'
+    chatKbs.value = await listKbs(tenantId)
+    if (!kbId.value) {
+      const def = chatKbs.value.find((k) => k.isDefault) ?? chatKbs.value[0]
+      if (def) setKbId(def.kbId)
+    }
+  } catch (e) {
+    console.warn('[ChatView] 加载知识库列表失败', e)
+  } finally {
+    loadingChatKbs.value = false
+  }
+}
+
+function onKbChange(next: string) {
+  setKbId(next)
+  const convId = chatStore.currentId
+  if (convId) chatStore.updateKbIdLocal(convId, next)
+}
 const {
   inputRef,
   skillCatalog,
@@ -290,8 +320,10 @@ async function handleSend() {
     const sendPromise = send(text, convId, {
       executionPreference: preference.value,
       skillId: binding.skillId,
+      kbId: kbId.value,
     })
     chatStore.updateExecutionPreferenceLocal(convId, preference.value)
+    if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
     await nextTick()
     await ensureStreamRenderer()
     await sendPromise
@@ -342,6 +374,8 @@ onMounted(async () => {
     }
     await chatStore.switchTo(cid)
     applyConversationPreference(chatStore.current?.executionPreference)
+    applyConversationKb(chatStore.current?.kbId)
+    void loadChatKbs()
     ensureActive(cid)
     const pendingReconnect = !!(active?.conversationId === cid)
     await hydrateSessionFromStore(cid, { skipApiLoad: pendingReconnect })
@@ -382,6 +416,7 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   if (!isValidConversationId(newId)) return
   ensureActive(newId)
   applyConversationPreference(chatStore.current?.executionPreference)
+  applyConversationKb(chatStore.current?.kbId)
   if (!loading.value) await hydrateSessionFromStore(newId)
   await nextTick()
   if (loading.value) void ensureStreamRenderer()
@@ -591,11 +626,20 @@ watch(
               @keydown="handleKeydown"
             />
             <div class="composer-toolbar">
-              <ExecutionModeSelector
-                :model-value="preference"
-                :disabled="loading"
-                @update:model-value="setPreference"
-              />
+              <div class="composer-toolbar-left">
+                <ExecutionModeSelector
+                  :model-value="preference"
+                  :disabled="loading"
+                  @update:model-value="setPreference"
+                />
+                <KbSelector
+                  :kbs="chatKbs"
+                  :model-value="kbId"
+                  :loading="loadingChatKbs"
+                  :show-create="false"
+                  @update:model-value="onKbChange"
+                />
+              </div>
               <button
                 v-if="loading"
                 type="button"
@@ -991,6 +1035,13 @@ watch(
   gap: 8px;
   padding-top: 4px;
   min-height: 34px;
+}
+
+.composer-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .skill-suggest {

@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { NButton, NEmpty, NIcon, NInput, NSpin, NText } from 'naive-ui'
 import { AddOutline, DocumentTextOutline, SearchOutline } from '@vicons/ionicons5'
-import type { KbDocument } from '../../api/ragAdmin'
+import { resolveDocSourceType } from '../../utils/docSourceTypes'
 import { formatDocumentVersionKey } from '../../utils/formatSkillVersionTime'
 import MetricBadge from './MetricBadge.vue'
 
@@ -81,6 +81,7 @@ const filteredDocs = computed(() => {
             <span class="list-item-title">{{ doc.displayName }}</span>
           </div>
           <NText depth="3" class="list-item-sub">
+            {{ resolveDocSourceType(doc.sourceType).label }} ·
             {{ doc.activeVersion ? formatDocumentVersionKey(doc.activeVersion) : '—' }} · {{ doc.chunkCount }} chunks
           </NText>
         </button>

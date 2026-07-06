@@ -268,6 +268,7 @@ public class ChatStreamExecutor {
                 ctx.intent(),
                 ctx.userId(),
                 ctx.tenantId(),
+                ctx.kbId(),
                 plan,
                 null,
                 null,

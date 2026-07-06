@@ -52,6 +52,11 @@ public class MinioStorageService {
                 + normalize(docId) + "/" + version + "/content.md";
     }
 
+    public String parseSourceObjectKey(String tenantId, String kbId, String docId, long jobId, String fileName) {
+        return "rag-parse/" + normalize(tenantId) + "/" + normalize(kbId) + "/"
+                + normalize(docId) + "/" + jobId + "/" + fileName;
+    }
+
     public void putText(String objectKey, String content) {
         putBytes(objectKey, content.getBytes(StandardCharsets.UTF_8), "text/plain; charset=utf-8");
     }
@@ -70,9 +75,13 @@ public class MinioStorageService {
     }
 
     public String readText(String objectKey) {
+        return new String(readBytes(objectKey), StandardCharsets.UTF_8);
+    }
+
+    public byte[] readBytes(String objectKey) {
         try (InputStream stream = minioClient.getObject(
                 GetObjectArgs.builder().bucket(bucket()).object(objectKey).build())) {
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            return stream.readAllBytes();
         } catch (Exception e) {
             throw new IllegalStateException("MinIO 读取失败 " + objectKey + ": " + e.getMessage(), e);
         }

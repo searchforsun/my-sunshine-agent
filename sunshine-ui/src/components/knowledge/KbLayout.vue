@@ -77,6 +77,7 @@ const emit = defineEmits<{
           :kbs="kbs"
           :model-value="selectedKbId"
           :loading="loadingKbs"
+          variant="block"
           @update:model-value="emit('update:selectedKbId', $event)"
           @create="emit('createKb')"
         />
