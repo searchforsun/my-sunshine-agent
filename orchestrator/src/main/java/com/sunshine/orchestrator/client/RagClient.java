@@ -36,18 +36,6 @@ public class RagClient {
         log.info("[RagClient] 初始化完成: baseUrl={}", baseUrl);
     }
 
-    public Mono<List<RagHit>> search(String query, int topK) {
-        return searchKnowledge(query, topK, "default", "default", null, false).map(RagSearchResult::hits);
-    }
-
-    public Mono<List<RagHit>> search(String query, int topK, String strategy) {
-        return searchKnowledge(query, topK, "default", "default", strategy, false).map(RagSearchResult::hits);
-    }
-
-    public Mono<List<RagHit>> search(String query, int topK, String strategy, String tenantId) {
-        return searchKnowledge(query, topK, tenantId, "default", strategy, false).map(RagSearchResult::hits);
-    }
-
     public Mono<String> fetchDefaultKbId(String tenantId) {
         String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         return webClient.get()

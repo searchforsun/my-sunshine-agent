@@ -2,7 +2,9 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.RagContextFormatter;
-import com.sunshine.orchestrator.rag.KnowledgeRetrievalService;
+import com.sunshine.orchestrator.client.RagClient;
+import com.sunshine.orchestrator.rag.DefaultKbResolver;
+import com.sunshine.orchestrator.rag.RagSearch;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +19,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RagTool {
 
-    private final KnowledgeRetrievalService knowledgeRetrievalService;
+    private final RagClient ragClient;
+    private final DefaultKbResolver defaultKbResolver;
 
     @Tool(name = "search_knowledge",
             description = "搜索企业知识库获取相关文档。当用户询问专业知识、公司政策、"
@@ -32,8 +35,14 @@ public class RagTool {
                         : query);
 
         try {
-            var results = knowledgeRetrievalService.search(
-                    query, resolveKbId(), resolveTenantId(), StepEventBridge.activeMessageId());
+            var results = RagSearch.searchBlocking(
+                    ragClient,
+                    defaultKbResolver,
+                    query,
+                    null,
+                    resolveKbId(),
+                    resolveTenantId(),
+                    StepEventBridge.activeMessageId());
             return RagContextFormatter.formatToolResult(results);
         } catch (Exception e) {
             log.warn("[RagTool] 知识库检索失败: {}", e.getMessage());

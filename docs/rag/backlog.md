@@ -80,7 +80,7 @@
 | 优先级 | 任务 | 估时 | 状态 |
 |:------:|------|:----:|------|
 | P2 | `rag_reindex.py` 增强（进度、按 doc 重 embed） | 1d | 脚本已存在，可增强 |
-| P3 | `KnowledgeRetrievalService` 内联删层直调 `RagClient` | 0.5d | 已是薄封装，低收益 |
+| P3 | `KnowledgeRetrievalService` 内联删层直调 `RagClient` | 0.5d | ✅ 2026-07-06 |
 | — | `DefaultKbResolver` 默认库 | ✅ | 已实现 |
 | — | Chat `kbId` 全链路 | ✅ | 已实现 |
 

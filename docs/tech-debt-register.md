@@ -31,6 +31,8 @@ _当前无 open 代码债。_
 | TD-030 | 2026-07-06 | 删 `EffectiveConfigService`，内联 `EffectiveConfigResolver` |
 | TD-031 | 2026-07-06 | 删 `KbConfigOverride*` 全栈 + 前端 orphan API |
 | TD-032 | 2026-07-06 | 删 `MilvusService` deprecated insert + `legacyMarkdown` |
+| TD-033 | 2026-07-06 | 拆分 `DocumentCatalogService` → `DocumentChunkIndexer` + `DocumentVersionOps` |
+| TD-034 | 2026-07-06 | 删 `KnowledgeRetrievalService` → `RagSearch` + 直调 `RagClient`；删 `RagClient` 旧 overload |
 | DOC-012 | 2026-07-06 | `backlog.md` 与代码对齐 legacy API 删除 |
 | TD-001 | 2026-06-28 | 删 `LlmNodeHandler` + test |
 | TD-002 | 2026-06-28 | 删 `AgentStepSummarizer` + test |

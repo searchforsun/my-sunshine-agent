@@ -3,7 +3,8 @@ package com.sunshine.orchestrator.execution.handler;
 import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
 import com.sunshine.orchestrator.client.RagDetailFormatter;
-import com.sunshine.orchestrator.rag.KnowledgeRetrievalService;
+import com.sunshine.orchestrator.rag.DefaultKbResolver;
+import com.sunshine.orchestrator.rag.RagSearch;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
@@ -26,7 +27,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RagNodeHandler implements NodeHandler {
 
-    private final KnowledgeRetrievalService knowledgeRetrievalService;
+    private final RagClient ragClient;
+    private final DefaultKbResolver defaultKbResolver;
 
     @Override
     public String type() {
@@ -47,8 +49,14 @@ public class RagNodeHandler implements NodeHandler {
         String finalQuery = query;
         String finalKbId = kbId;
 
-        return knowledgeRetrievalService.searchMono(
-                        finalQuery, topK, finalKbId, streamCtx.tenantId(), streamCtx.assistantMsgId())
+        return RagSearch.searchMono(
+                        ragClient,
+                        defaultKbResolver,
+                        finalQuery,
+                        topK,
+                        finalKbId,
+                        streamCtx.tenantId(),
+                        streamCtx.assistantMsgId())
                 .map(hits -> {
                     List<RagClient.RagHit> results = hits != null ? hits : List.of();
                     String output = RagContextFormatter.formatAgentContext(results);

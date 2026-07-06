@@ -138,8 +138,6 @@ class ConversationIntegrationTest {
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
         when(llmGateway.streamComposed(any(PromptComposeRequest.class)))
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
-        when(ragClient.search(anyString(), anyInt(), any(), any()))
-                .thenReturn(Mono.just(List.of(new RagClient.RagHit("制度", "年假5天", 0.9f))));
         when(ragClient.fetchDefaultKbId(anyString())).thenReturn(Mono.just("default"));
     }
 

@@ -17,34 +17,32 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class KnowledgeRetrievalServiceTest {
+class RagSearchTest {
     @Mock
     private RagClient ragClient;
     @Mock
     private DefaultKbResolver defaultKbResolver;
 
-    private KnowledgeRetrievalService service;
-
     @BeforeEach
     void setUp() {
-        service = new KnowledgeRetrievalService(ragClient, defaultKbResolver);
     }
 
     @Test
-    void searchReturnsHitsFromPipeline() {
+    void searchBlockingReturnsHitsFromPipeline() {
         when(defaultKbResolver.resolve(eq("default"), isNull())).thenReturn(Mono.just("default"));
         List<RagClient.RagHit> hits = List.of(new RagClient.RagHit("A", "c", 0.9f));
         when(ragClient.searchKnowledge("q", null, "default", "default", null, false))
                 .thenReturn(Mono.just(new RagClient.RagSearchResult(hits, "q", List.of())));
-        assertThat(service.search("q")).isEqualTo(hits);
+        assertThat(RagSearch.searchBlocking(ragClient, defaultKbResolver, "q", null, null, "default", null))
+                .isEqualTo(hits);
     }
 
     @Test
-    void searchPassesTenantAndTraceFlag() {
+    void searchBlockingPassesTenantAndTraceFlag() {
         when(defaultKbResolver.resolve("tenant-a", null)).thenReturn(Mono.just("finance"));
         when(ragClient.searchKnowledge("q", null, "tenant-a", "finance", null, true))
                 .thenReturn(Mono.just(new RagClient.RagSearchResult(List.of(), "q", List.of())));
-        service.search("q", null, "tenant-a", "msg-1");
+        RagSearch.searchBlocking(ragClient, defaultKbResolver, "q", null, null, "tenant-a", "msg-1");
         verify(ragClient).searchKnowledge("q", null, "tenant-a", "finance", null, true);
     }
 
@@ -53,7 +51,7 @@ class KnowledgeRetrievalServiceTest {
         when(defaultKbResolver.resolve(eq("default"), isNull())).thenReturn(Mono.just("default"));
         when(ragClient.searchKnowledge(eq("q"), eq(5), eq("default"), eq("default"), isNull(), eq(false)))
                 .thenReturn(Mono.just(new RagClient.RagSearchResult(List.of(), "q", List.of())));
-        service.searchMono("q", 5).block();
+        RagSearch.searchMono(ragClient, defaultKbResolver, "q", 5, null, "default", null).block();
         verify(ragClient).searchKnowledge("q", 5, "default", "default", null, false);
     }
 }

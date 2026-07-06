@@ -162,3 +162,4 @@ Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876
 - `start.py` 可带 SkyWalking agent（需先 `download_skywalking_agent.py`）。
 - 改 orchestrator 时间线 / workflow 后：编译 → 重启 → Agent 跑 live/e2e 留记录（见 `/tech-debt-refactor` §7）；**改前须 §1.3 功能识别并获确认**。
 - 项目中禁止硬编码提示词等，统一在nacos管理
+- 初始化sql要写在`docker/mysql/init`下,禁止放在项目`resources`下
