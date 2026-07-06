@@ -17,7 +17,7 @@ public class RagConfigSchemaService {
     private static final List<String> SEARCH_STRATEGIES = List.of("vector", "hybrid", "hybrid+rerank");
 
     private final ConfigVersionService configVersionService;
-    private final EffectiveConfigService effectiveConfigService;
+    private final EffectiveConfigResolver effectiveConfigResolver;
 
     public ConfigSchemaResponse getSchema(String tenantId, String kbId) {
         String kid = kbId != null && !kbId.isBlank() ? kbId : "default";
@@ -31,7 +31,7 @@ public class RagConfigSchemaService {
                     scope.nacosPath(),
                     fieldsFor(scope, payload)));
         }
-        EffectiveRagConfig effective = effectiveConfigService.resolve(tenantId, kid);
+        EffectiveRagConfig effective = effectiveConfigResolver.resolve(tenantId, kid).retrieval();
         return new ConfigSchemaResponse(scopes, effective);
     }
 

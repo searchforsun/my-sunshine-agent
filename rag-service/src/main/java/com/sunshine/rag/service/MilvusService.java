@@ -165,11 +165,6 @@ public class MilvusService {
                 .build());
     }
 
-    /** @deprecated 使用 {@link #insert(ChunkInsertRequest)} */
-    public void insert(String docName, String content, List<Float> embedding, String tenantId) {
-        insert(ChunkInsertRequest.legacyMarkdown(docName, content, embedding, tenantId, 0));
-    }
-
     public void insert(ChunkInsertRequest req) {
         List<InsertParam.Field> fields = new ArrayList<>();
         fields.add(new InsertParam.Field("doc_name", List.of(req.docName())));

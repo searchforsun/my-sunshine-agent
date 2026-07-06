@@ -14,13 +14,4 @@ public record ChunkInsertRequest(
         int chunkIndex,
         String status,
         String sourceType) {
-
-    /** 兼容旧 IngestionController：kb=default, docId=docName, v1, active, markdown */
-    public static ChunkInsertRequest legacyMarkdown(
-            String docName, String content, List<Float> embedding, String tenantId, int chunkIndex) {
-        String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
-        return new ChunkInsertRequest(
-                docName, content, embedding, tid,
-                "default", docName, com.sunshine.rag.util.DocumentVersionTime.now(), chunkIndex, "active", "markdown");
-    }
 }

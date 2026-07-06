@@ -716,19 +716,6 @@ export async function applyConfigSuggestions(
   return parseApiResponse<Record<string, unknown>>(res)
 }
 
-export async function putKbConfigOverride(
-  tenantId: TenantId,
-  kbId: string,
-  patch: Record<string, unknown>,
-): Promise<EffectiveRagConfig> {
-  const res = await fetch(`${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/config/override`, {
-    method: 'PUT',
-    headers: adminHeaders(tenantId),
-    body: JSON.stringify(patch),
-  })
-  return parseApiResponse<EffectiveRagConfig>(res)
-}
-
 export interface EvalJobStatus {
   jobId: number
   tenantId: string

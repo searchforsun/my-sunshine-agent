@@ -347,17 +347,6 @@ public class DocumentCatalogService {
                 .thenReturn(new IngestResult(docId, docName, newVersion, chunks.size()));
     }
 
-    /** 兼容 POST /api/rag/documents */
-    public Mono<Map<String, Object>> ingestLegacy(String tenantId, Map<String, String> body) {
-        IngestTextRequest request = new IngestTextRequest(
-                body.get("content"),
-                firstNonBlank(body.get("docId"), body.get("doc_id")),
-                body.get("docName") != null ? body.get("docName") : body.get("title"),
-                body.get("displayName") != null ? body.get("displayName") : body.get("docName"));
-        return ingestText(tenantId, "default", request)
-                .map(r -> Map.<String, Object>of("docName", r.docName(), "chunks", r.chunks()));
-    }
-
     @Transactional
     public void supersedeVersion(String tenantId, String kbId, String docId, String version) {
         DocumentEntity doc = requireDocument(tenantId, kbId, docId);

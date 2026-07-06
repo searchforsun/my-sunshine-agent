@@ -25,7 +25,6 @@ class RagConfigSchemaServiceTest {
     private EffectiveConfigResolver effectiveConfigResolver;
 
     private RagConfigSchemaService schemaService;
-    private EffectiveConfigService effectiveConfigService;
 
     @BeforeEach
     void setUp() {
@@ -34,8 +33,7 @@ class RagConfigSchemaServiceTest {
                 .thenReturn(payload);
         when(effectiveConfigResolver.resolve(any(), any()))
                 .thenReturn(ConfigBundlePayload.toResolvedKbConfig(payload));
-        effectiveConfigService = new EffectiveConfigService(effectiveConfigResolver);
-        schemaService = new RagConfigSchemaService(configVersionService, effectiveConfigService);
+        schemaService = new RagConfigSchemaService(configVersionService, effectiveConfigResolver);
     }
 
     @Test
