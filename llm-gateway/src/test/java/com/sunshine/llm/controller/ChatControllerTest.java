@@ -75,21 +75,4 @@ class ChatControllerTest {
         verify(router, never()).stream(any());
     }
 
-    @Test
-    void legacyStreamEndpoint_stillWorks() {
-        when(router.stream(any())).thenReturn(Flux.just(
-                ServerSentEvent.builder("chunk").build()));
-
-        webTestClient.post()
-                .uri("/v1/chat/completions/stream")
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.TEXT_EVENT_STREAM)
-                .bodyValue("""
-                        {"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hi"}]}
-                        """)
-                .exchange()
-                .expectStatus().isOk();
-
-        verify(router).stream(any());
-    }
 }

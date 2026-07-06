@@ -304,9 +304,6 @@ export async function confirmDocumentParseJob(
   await parseApiResponse<null>(res, { allowEmptyData: true })
 }
 
-/** @deprecated 使用 uploadDocumentFile */
-export const uploadDocumentMarkdown = uploadDocumentFile
-
 export async function publishDocument(
   tenantId: TenantId,
   kbId: string,

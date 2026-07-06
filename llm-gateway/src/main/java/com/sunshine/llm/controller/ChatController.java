@@ -46,13 +46,6 @@ public class ChatController {
         return chatCompletion(request);
     }
 
-    /** 历史端点 — orchestrator {@link com.sunshine.orchestrator.client.LlmGatewayClient} 直连 */
-    @PostMapping(value = "/chat/completions/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> streamLegacy(@RequestBody ChatCompletionRequest request) {
-        log.info("[LLM-GW] 流式(legacy /stream): model={}", request.getModel());
-        return streamCompletion(request);
-    }
-
     private Mono<ChatCompletionResponse> chatCompletion(ChatCompletionRequest request) {
         log.info("[LLM-GW] 非流式: model={}", request.getModel());
         return cache.get(request)

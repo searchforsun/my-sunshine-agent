@@ -37,7 +37,7 @@ import SidebarToggle from '../components/SidebarToggle.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { useKbPreference } from '../composables/useKbPreference'
 import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
-import { useAuthStore } from '../stores/authStore'
+import { useTenantPreference } from '../composables/useTenantPreference'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 
@@ -215,15 +215,14 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
 const inputText = ref('')
 const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
 const { kbId, setKbId, applyConversationKb } = useKbPreference()
-const authStore = useAuthStore()
+const { tenantId } = useTenantPreference()
 const chatKbs = ref<KnowledgeBase[]>([])
 const loadingChatKbs = ref(false)
 
 async function loadChatKbs() {
   loadingChatKbs.value = true
   try {
-    const tenantId = authStore.tenantId ?? 'default'
-    chatKbs.value = await listKbs(tenantId)
+    chatKbs.value = await listKbs(tenantId.value)
     if (!kbId.value) {
       const def = chatKbs.value.find((k) => k.isDefault) ?? chatKbs.value[0]
       if (def) setKbId(def.kbId)

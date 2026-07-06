@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { NButton, NEmpty, NIcon, NInput, NSpin, NText } from 'naive-ui'
 import { AddOutline, DocumentTextOutline, SearchOutline } from '@vicons/ionicons5'
+import type { KbDocument } from '../../api/ragAdmin'
 import { resolveDocSourceType } from '../../utils/docSourceTypes'
 import { formatDocumentVersionKey } from '../../utils/formatSkillVersionTime'
 import MetricBadge from './MetricBadge.vue'

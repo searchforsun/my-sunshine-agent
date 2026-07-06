@@ -36,6 +36,13 @@ _当前无 open 代码债。_
 | TD-035 | 2026-07-06 | 删 `WorkflowCheckpoint` 2-arg 构造，调用方显式 `PausePhase` |
 | TD-036 | 2026-07-06 | 删 `IntentLabels`/`TimelineLabels` 硬编码 fallback |
 | TD-039 | 2026-07-06 | 删 `scripts/_tmp_planner_system.txt` |
+| TD-041 | 2026-07-06 | 删 `sunshine-ui/src/api/knowledge.ts` orphan 兼容包装 |
+| TD-042 | 2026-07-06 | 删 `ragAdmin.uploadDocumentMarkdown` deprecated alias |
+| TD-043 | 2026-07-06 | 删 llm-gateway `/chat/completions/stream`；`LlmGatewayClient` 统一 `/chat/completions` + `stream:true` |
+| TD-037 | 2026-07-06 | 删 `StepLabels` 与 Nacos 重复的 before/active/after switch；`SkillLoadLabels` 未 bind 抛异常 |
+| TD-044 | 2026-07-06 | 删 `RagClient.parseSearchResponse` flat body 兼容 |
+| TD-045 | 2026-07-06 | 补 `docker/minio/init/entrypoint-wrapper.sh`（MinIO compose 启动依赖） |
+| TD-046 | 2026-07-06 | Flyway V14 react_pause + V15 conversation_kb_id 迁移对齐 |
 | DOC-012 | 2026-07-06 | `backlog.md` 与代码对齐 legacy API 删除 |
 | TD-001 | 2026-06-28 | 删 `LlmNodeHandler` + test |
 | TD-002 | 2026-06-28 | 删 `AgentStepSummarizer` + test |

@@ -427,10 +427,12 @@ class ProcessingTimelineSessionTest {
         List<ProcessingStep> emitted = new ArrayList<>();
         session.onStepChanged(emitted::add);
 
+        session.bindUserQuery("测试问题");
+        String active = TimelineLabels.active("intent", StepSummarizer.clipQuery("测试问题"));
         session.start("intent", "intent");
         session.start("intent", "intent");
-        session.progress("intent", "正在匹配处理方式");
-        session.progress("intent", "正在匹配处理方式");
+        session.progress("intent", active);
+        session.progress("intent", active);
 
         assertEquals(1, emitted.size());
         assertEquals("running", emitted.get(0).lifecycle());

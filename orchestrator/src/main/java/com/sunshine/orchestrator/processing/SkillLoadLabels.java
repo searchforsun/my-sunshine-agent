@@ -13,17 +13,24 @@ public final class SkillLoadLabels {
     }
 
     public static String before() {
-        return service != null ? service.beforeLine() : "准备加载 Skill";
+        return requireService().beforeLine();
     }
 
     public static String active() {
-        return service != null ? service.activeLine() : "正在加载 Skill 指令";
+        return requireService().activeLine();
     }
 
     public static String after(String skillId) {
         if (skillId == null || skillId.isBlank()) {
             return "";
         }
-        return service != null ? service.afterLine(skillId.strip()) : "@" + skillId.strip();
+        return requireService().afterLine(skillId.strip());
+    }
+
+    private static SkillLoadLabelService requireService() {
+        if (service == null) {
+            throw new IllegalStateException("SkillLoadLabelService 未 bind");
+        }
+        return service;
     }
 }

@@ -25,15 +25,6 @@ class RagClientResponseTest {
     }
 
     @Test
-    void parseSearchResponse_acceptsLegacyFlatBody() {
-        Map<String, Object> body = Map.of(
-                "results", List.of(
-                        Map.of("docName", "报销制度", "content", "c", "score", 0.5)
-                ));
-        assertThat(RagClient.parseSearchResponse(body, "q").hits()).hasSize(1);
-    }
-
-    @Test
     void parseSearchResponse_emptyWhenNoResults() {
         assertThat(RagClient.parseSearchResponse(Map.of("code", 200, "data", Map.of()), "q").hits()).isEmpty();
     }

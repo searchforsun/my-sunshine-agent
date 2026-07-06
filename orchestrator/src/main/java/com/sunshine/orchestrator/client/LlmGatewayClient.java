@@ -211,7 +211,7 @@ public class LlmGatewayClient {
 
         return webClient.post()
 
-                .uri("/chat/completions/stream")
+                .uri("/chat/completions")
 
                 .header("Authorization", "Bearer " + apiKey)
 

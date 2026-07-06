@@ -85,7 +85,7 @@ public class RagClient {
 
     @SuppressWarnings("unchecked")
     static RagSearchResult parseSearchResponse(Map<String, Object> response, String query) {
-        Object payload = response.get("data") instanceof Map<?, ?> dataMap ? dataMap : response;
+        Object payload = response.get("data");
         if (!(payload instanceof Map<?, ?> map)) {
             return new RagSearchResult(List.of(), query, List.of());
         }
