@@ -1,14 +1,15 @@
 <script setup lang="ts">
+import { inject } from 'vue'
 import { NDropdown, NEmpty, NIcon, NInput, NSpin, NSwitch, NTag } from 'naive-ui'
 import { EllipsisHorizontal, SearchOutline } from '@vicons/ionicons5'
-import type { SkillsPageApi } from '../../composables/useSkillsPage'
+import { SKILLS_PAGE_KEY, type SkillsPageApi } from '../../composables/useSkillsPage'
 import {
   isSkillSwitchDisabled,
   listCardActiveVersionLine,
   listCardMaintainer,
 } from '../../utils/skills/skillsVersionUtils'
 
-defineProps<{ page: SkillsPageApi }>()
+const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
 </script>
 
 <template>

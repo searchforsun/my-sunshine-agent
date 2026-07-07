@@ -1,3 +1,5 @@
+-- sunshine-auth（auth-center :8100）
+USE sunshine_auth;
 CREATE TABLE sys_user (
     id            VARCHAR(64)  NOT NULL PRIMARY KEY COMMENT 'UUID',
     username      VARCHAR(32)  NOT NULL COMMENT '登录名',
@@ -6,5 +8,7 @@ CREATE TABLE sys_user (
     status        TINYINT      NOT NULL DEFAULT 1 COMMENT '1=正常 0=禁用',
     created_at    DATETIME(3)  NOT NULL,
     updated_at    DATETIME(3)  NOT NULL,
-    UNIQUE KEY uk_username (username)
+    UNIQUE KEY uk_username (username),
+    tenant_id     VARCHAR(32)  NOT NULL DEFAULT 'default' COMMENT '租户标识',
+    INDEX idx_sys_user_tenant (tenant_id)
 );

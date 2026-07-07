@@ -1,4 +1,4 @@
--- Sunshine 业务库：sunshine_chat
+-- sunshine-orchestrator（orchestrator :8200 · 库 sunshine_chat）
 USE sunshine_chat;
 
 -- V1__chat_schema.sql
@@ -138,37 +138,48 @@ ALTER TABLE chat_message
 ALTER TABLE execution_plan
     ADD COLUMN pause_checkpoint MEDIUMTEXT NULL COMMENT '暂停续跑 JSON：resumeNodeId + wfCtx' AFTER execution_trace;
 
+-- V12__execution_plan_approval_rounds.sql
+ALTER TABLE execution_plan
+    ADD COLUMN approval_rounds MEDIUMTEXT NULL COMMENT 'Plan 用户确认轮次 JSON' AFTER planner_attempts;
+
 -- V13__message_content_blocks.sql
 ALTER TABLE chat_message
     ADD COLUMN content_blocks MEDIUMTEXT NULL COMMENT 'ReAct 正文分段 JSON' AFTER steps;
 
--- Flyway 基线（与 classpath db/migration 校验一致，避免服务启动重复建表）
-USE sunshine_chat;
-CREATE TABLE IF NOT EXISTS flyway_schema_history (
-    installed_rank INT NOT NULL,
-    version VARCHAR(50),
-    description VARCHAR(200) NOT NULL,
-    type VARCHAR(20) NOT NULL,
-    script VARCHAR(1000) NOT NULL,
-    checksum INT,
-    installed_by VARCHAR(100) NOT NULL,
-    installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    execution_time INT NOT NULL,
-    success TINYINT(1) NOT NULL,
-    PRIMARY KEY (installed_rank),
-    INDEX flyway_schema_history_s_idx (success)
+-- V14__message_react_pause_checkpoint.sql
+ALTER TABLE chat_message
+    ADD COLUMN react_pause_checkpoint MEDIUMTEXT NULL COMMENT 'ReAct 暂停续跑 JSON';
+
+-- V15__conversation_kb_id.sql
+ALTER TABLE chat_conversation
+    ADD COLUMN kb_id VARCHAR(64) NULL COMMENT '会话绑定的知识库 id';
+
+-- V16__react_task_board.sql
+CREATE TABLE react_task_board (
+    id              VARCHAR(64)  NOT NULL PRIMARY KEY,
+    message_id      VARCHAR(64)  NOT NULL,
+    conversation_id VARCHAR(64)  NOT NULL,
+    tenant_id       VARCHAR(64)  NOT NULL DEFAULT 'default',
+    user_id         VARCHAR(64)  NOT NULL,
+    revision        INT          NOT NULL,
+    items_json      JSON         NOT NULL,
+    created_at      DATETIME(3)  NOT NULL,
+    updated_at      DATETIME(3)  NOT NULL,
+    UNIQUE KEY uk_react_task_board_msg (message_id),
+    INDEX idx_react_task_board_conv (conversation_id, updated_at)
 );
-DELETE FROM flyway_schema_history;
-INSERT INTO flyway_schema_history VALUES (1, '1', 'chat schema', 'SQL', 'V1__chat_schema.sql', -12532465, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (2, '2', 'add message reasoning', 'SQL', 'V2__add_message_reasoning.sql', -1624359590, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (3, '3', 'add message steps', 'SQL', 'V3__add_message_steps.sql', -273411881, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (4, '4', 'chat audit log', 'SQL', 'V4__chat_audit_log.sql', 1426551964, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (5, '5', 'memory schema', 'SQL', 'V5__memory_schema.sql', 604968421, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (6, '6', 'execution plan', 'SQL', 'V6__execution_plan.sql', -442101636, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (7, '7', 'execution plan table', 'SQL', 'V7__execution_plan_table.sql', -1080577868, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (8, '8', 'execution plan retry', 'SQL', 'V8__execution_plan_retry.sql', 765852937, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (9, '9', 'conversation execution preference', 'SQL', 'V9__conversation_execution_preference.sql', -726680187, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (10, '10', 'message execution preference', 'SQL', 'V10__message_execution_preference.sql', -1848876767, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (11, '11', 'execution plan pause checkpoint', 'SQL', 'V11__execution_plan_pause_checkpoint.sql', -1181160291, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (12, '12', 'execution plan approval rounds', 'SQL', 'V12__execution_plan_approval_rounds.sql', 0, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (13, '13', 'message content blocks', 'SQL', 'V13__message_content_blocks.sql', 0, 'docker-init', NOW(), 0, 1);
+
+-- V17__peer_run.sql
+CREATE TABLE peer_run (
+    id              VARCHAR(64)  NOT NULL PRIMARY KEY,
+    message_id      VARCHAR(64)  NOT NULL,
+    conversation_id VARCHAR(64)  NOT NULL,
+    tenant_id       VARCHAR(64)  NOT NULL DEFAULT 'default',
+    user_id         VARCHAR(64)  NOT NULL,
+    template_id     VARCHAR(128) NOT NULL,
+    transcript_json JSON         NOT NULL,
+    created_at      DATETIME(3)  NOT NULL,
+    updated_at      DATETIME(3)  NOT NULL,
+    UNIQUE KEY uk_peer_run_msg (message_id),
+    INDEX idx_peer_run_conv (conversation_id, updated_at)
+);

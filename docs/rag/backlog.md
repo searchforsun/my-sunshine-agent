@@ -91,7 +91,7 @@
 | 项 | 处置 |
 |----|------|
 | 评测顶层三分栏（独立「评测记录」Tab） | 2 Tab + 记录内嵌 + 抽屉 |
-| `migrate_nacos_config_to_db.py` | 种子走 `16-sunshine-rag-config-seed.sql` |
+| `migrate_nacos_config_to_db.py` | 种子走 `14-sunshine-rag-service.sql` |
 | 策略 A/B `POST /eval/ab`、评测周报 Cron | 不做 |
 | per-scope Nacos publish、Badcase 独立表 | 已废弃 |
 | Chat `#kb` 语法、本阶段 RBAC | 刻意不做 |

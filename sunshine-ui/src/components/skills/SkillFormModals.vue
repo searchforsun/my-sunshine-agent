@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { inject } from 'vue'
 import { NButton, NForm, NFormItem, NInput, NModal } from 'naive-ui'
-import type { SkillsPageApi } from '../../composables/useSkillsPage'
+import { SKILLS_PAGE_KEY, type SkillsPageApi } from '../../composables/useSkillsPage'
 
-defineProps<{ page: SkillsPageApi }>()
+const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
 </script>
 
 <template>

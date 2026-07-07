@@ -1,4 +1,4 @@
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { NIcon, useMessage, type DropdownOption } from 'naive-ui'
 import {
@@ -49,7 +49,9 @@ import {
 } from '../utils/skills/skillsVersionUtils'
 import { useSkillFilePreview } from '../composables/useSkillFilePreview'
 
-export function useSkillsPage() {
+export const SKILLS_PAGE_KEY = Symbol('skillsPage')
+
+export function useSkillsPage(): SkillsPageApi {
   const message = useMessage()
   const router = useRouter()
   const skills = ref<SkillEntry[]>([])
@@ -103,6 +105,10 @@ export function useSkillsPage() {
 
   const folderInputRef = ref<HTMLInputElement | null>(null)
 
+  function bindFolderInputRef(el: HTMLInputElement | null) {
+    folderInputRef.value = el
+  }
+
   const selectedSkill = computed(() => skills.value.find(s => s.id === selectedId.value) ?? null)
 
   /** Skill 生命周期阶段 — 驱动主操作与引导文案 */
@@ -146,7 +152,7 @@ export function useSkillsPage() {
     message,
   })
   const {
-    mdPreviewRef,
+    bindPreviewScrollRef,
     copyPreviewDone,
     savingFile,
     fileEditMode,
@@ -285,9 +291,10 @@ export function useSkillsPage() {
   /** 仅阻止「未发布时开启」；已开启时须允许关闭 */
 
   const filteredSkills = computed(() => {
+    const base = skills.value.filter((s): s is SkillEntry => !!s?.id)
     const q = skillSearch.value.trim().toLowerCase()
-    if (!q) return skills.value
-    return skills.value.filter(
+    if (!q) return base
+    return base.filter(
       s =>
         s.id.toLowerCase().includes(q)
         || s.displayName.toLowerCase().includes(q)
@@ -855,7 +862,8 @@ export function useSkillsPage() {
   onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', onBeforeUnload)
   })
-  return {
+  // reactive 包装：子组件 prop 内嵌 Ref/ComputedRef 可自动解包，避免 v-for 迭代 Ref 对象
+  return reactive({
     message,
     router,
     skills,
@@ -890,6 +898,7 @@ export function useSkillsPage() {
     folderPickPending,
     uploadOverlayText,
     layoutBusyText,
+    bindFolderInputRef,
     folderInputRef,
     selectedSkill,
     activeVersionNum,
@@ -926,7 +935,7 @@ export function useSkillsPage() {
     previewImageSrc,
     previewCodeLangClass,
     showPreviewCopy,
-    mdPreviewRef,
+    bindPreviewScrollRef,
     copyPreviewDone,
     refreshPage,
     selectSkill,
@@ -953,7 +962,7 @@ export function useSkillsPage() {
     versionStatusTagType,
     formatSkillVersionTime,
     formatFileSize,
-  }
+  }) as unknown as SkillsPageApi
 }
 
 /** 子组件 prop 用：模板侧按解包后的 Ref/ComputedRef 访问 */

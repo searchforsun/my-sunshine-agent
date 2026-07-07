@@ -1,4 +1,4 @@
--- Sunshine 业务库：sunshine_skill
+-- sunshine-skill-manager（skill-manager :8225）
 USE sunshine_skill;
 
 -- V1__skill_schema.sql
@@ -62,26 +62,3 @@ DELETE FROM skill_version WHERE skill_id IN (
 DELETE FROM skill_definition WHERE id IN (
     'finance-analysis', 'policy-review', 'compliance-check', 'finance-report', 'knowledge-brief'
 );
-
--- Flyway 基线（与 classpath db/migration 校验一致，避免服务启动重复建表）
-USE sunshine_skill;
-CREATE TABLE IF NOT EXISTS flyway_schema_history (
-    installed_rank INT NOT NULL,
-    version VARCHAR(50),
-    description VARCHAR(200) NOT NULL,
-    type VARCHAR(20) NOT NULL,
-    script VARCHAR(1000) NOT NULL,
-    checksum INT,
-    installed_by VARCHAR(100) NOT NULL,
-    installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    execution_time INT NOT NULL,
-    success TINYINT(1) NOT NULL,
-    PRIMARY KEY (installed_rank),
-    INDEX flyway_schema_history_s_idx (success)
-);
-DELETE FROM flyway_schema_history;
-INSERT INTO flyway_schema_history VALUES (1, '1', 'skill schema', 'SQL', 'V1__skill_schema.sql', 659903771, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (2, '2', 'seed skills', 'SQL', 'V2__seed_skills.sql', 2090618454, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (3, '3', 'skill standard fields', 'SQL', 'V3__skill_standard_fields.sql', 1107919894, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (4, '4', 'skill version maintainer', 'SQL', 'V4__skill_version_maintainer.sql', -1672759055, 'docker-init', NOW(), 0, 1);
-INSERT INTO flyway_schema_history VALUES (5, '5', 'remove seed skills', 'SQL', 'V5__remove_seed_skills.sql', 1789836275, 'docker-init', NOW(), 0, 1);

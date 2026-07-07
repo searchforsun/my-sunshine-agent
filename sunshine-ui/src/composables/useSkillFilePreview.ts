@@ -37,6 +37,11 @@ export interface SkillFilePreviewDeps {
 
 export function useSkillFilePreview(deps: SkillFilePreviewDeps) {
   const mdPreviewRef = ref<HTMLElement | null>(null)
+  const previewScrollRef = ref<HTMLElement | null>(null)
+
+  function bindPreviewScrollRef(el: HTMLElement | null) {
+    previewScrollRef.value = el
+  }
   const copyPreviewDone = ref(false)
   const savingFile = ref(false)
   const fileEditMode = ref(false)
@@ -235,8 +240,11 @@ export function useSkillFilePreview(deps: SkillFilePreviewDeps) {
   }
 
   function refreshPreviewEnhancements() {
-    const el = mdPreviewRef.value
-    if (!el) return
+    const root = previewScrollRef.value
+    if (!root?.isConnected) return
+    const el = root.querySelector<HTMLElement>('.skill-md-preview')
+    if (!el?.isConnected) return
+    mdPreviewRef.value = el
     enhanceStaticMarkdown(el)
     reRenderStaticMermaids()
   }
@@ -281,7 +289,7 @@ export function useSkillFilePreview(deps: SkillFilePreviewDeps) {
   }
 
   return {
-    mdPreviewRef,
+    bindPreviewScrollRef,
     copyPreviewDone,
     savingFile,
     fileEditMode,

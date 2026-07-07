@@ -17,8 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.url=jdbc:mysql://ecs4c16g:3306/sunshine_rag?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8",
         "spring.datasource.username=root",
         "spring.datasource.password=root123",
-        "spring.jpa.hibernate.ddl-auto=validate",
-        "spring.flyway.enabled=false"
+        "spring.jpa.hibernate.ddl-auto=validate"
 })
 class KnowledgeBaseRepositoryTest {
 

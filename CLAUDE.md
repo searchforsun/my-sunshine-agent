@@ -37,8 +37,6 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
 | `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（E1 路由 + peer-collab 步） |
 
-目录内遗留 `.ps1`/`.sh` 为历史包装，**勿再维护**；新脚本一律 Python。
-
 ## 请求链路与模块
 
 架构图、端口、项目结构、中间件与**编译/启动/验收命令** SSOT 见 [README.md](./README.md)（§架构概览 · §项目结构 · §快速开始 · §服务器中间件）。
@@ -150,4 +148,4 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 - `start.py` 可带 SkyWalking agent（需先 `download_skywalking_agent.py`）。
 - 改 orchestrator 时间线 / workflow 后：编译 → 重启 → Agent 跑 live/e2e 留记录（见 `/tech-debt-refactor` §7）；**改前须 §1.3 功能识别并获确认**。
 - 项目中禁止硬编码提示词等，统一在nacos管理
-- 初始化sql要写在`docker/mysql/init`下,禁止放在项目`resources`下
+- **禁止 Flyway**；库表初始化/变更 SQL SSOT 在 `docker/mysql/init/`（`01` 建库 + `02–05` 中间件 + `10` auth / `11` orchestrator / `12` skill-manager / `13` workflow-manager / `14` rag-service，**一项目一文件**），**禁止**放在各模块 `resources/db/migration`

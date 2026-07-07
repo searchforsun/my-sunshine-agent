@@ -55,13 +55,13 @@ RAG 能力横跨**阶段三（生产加固）**与**阶段四（平台化）**�
 
 ### 3.3 配置版本（T24–T25 ✅）
 
-- `rag_config_bundle` + `rag_config_version`（docker/mysql/init `09-sunshine-rag.sql`）
+- `rag_config_bundle` + `rag_config_version`（`docker/mysql/init/14-sunshine-rag-service.sql`）
 - 状态机：draft → pending_eval → evaluating → eval_passed / eval_failed → active
 - `POST .../apply-suggestions`：**仅 eval_failed** 可应用 → 写入 payload 并 **转为 draft**
 
 ### 3.4 评测平台（T26–T27 ✅，部分 T28）
 
-- `eval_suite` + `eval_suite_item`（内置 3 集，MySQL 种子 `10/11-sunshine-rag-eval-suite*.sql`）
+- `eval_suite` + `eval_suite_item`（内置 3 集，见 `14-sunshine-rag-service.sql`）
 - `EvaluateService` 异步 job、门禁、`SuggestService`（文本 + 参数建议分离）
 - 报告写 MinIO（`EvalReportWriter` + `RagStorageFacade`）
 - `PythonEvalRunner`（subprocess 受限）
@@ -94,8 +94,7 @@ RAG 能力横跨**阶段三（生产加固）**与**阶段四（平台化）**�
 | 类型 | 位置 |
 |------|------|
 | 业务参数默认值 | `rag-service/src/main/resources/rag/defaults/config-seed.json` |
-| DB 表结构 + 种子 | `docker/mysql/init/09-sunshine-rag.sql`、`16-sunshine-rag-config-seed.sql` |
-| 评测集条目 | `docker/mysql/init/11-sunshine-rag-eval-suite-seed.sql` |
+| DB 表结构 + 种子 | `docker/mysql/init/14-sunshine-rag-service.sql` |
 | 基础设施 | `docs/nacos/sunshine-rag.yaml`（端口、存储、`rag.eval.suggest.system-prompt`） |
 | 评测 suggest prompt | 同上 + sync 后重启 rag-service |
 

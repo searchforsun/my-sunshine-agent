@@ -1,3 +1,6 @@
+-- sunshine-workflow-manager（workflow-manager :8230）
+USE sunshine_workflow;
+
 CREATE TABLE workflow_definition (
     tenant_id       VARCHAR(64) NOT NULL DEFAULT 'default',
     id              VARCHAR(64) NOT NULL,

@@ -1,21 +1,22 @@
 <script setup lang="ts">
+import { provide } from 'vue'
 import { NButton, NCard, NEmpty, NIcon, NSpace, NSpin } from 'naive-ui'
 import { AddOutline, RefreshOutline } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import SkillsListPanel from '../components/skills/SkillsListPanel.vue'
 import SkillDetailPanel from '../components/skills/SkillDetailPanel.vue'
 import SkillFormModals from '../components/skills/SkillFormModals.vue'
-import { useSkillsPage, type SkillsPageApi } from '../composables/useSkillsPage'
+import { SKILLS_PAGE_KEY, useSkillsPage } from '../composables/useSkillsPage'
 
-const page = useSkillsPage()
-const skillsPage = page as unknown as SkillsPageApi
+const skillsPage = useSkillsPage()
+provide(SKILLS_PAGE_KEY, skillsPage)
 </script>
 
 <template>
   <div class="skills-root">
     <input
       id="skill-folder-picker"
-      :ref="(el) => { skillsPage.folderInputRef = el as HTMLInputElement | null }"
+      :ref="skillsPage.bindFolderInputRef"
       type="file"
       webkitdirectory
       directory
@@ -41,8 +42,8 @@ const skillsPage = page as unknown as SkillsPageApi
     </header>
 
     <div class="skills-layout">
-      <SkillsListPanel :page="skillsPage" />
-      <SkillDetailPanel v-if="skillsPage.selectedSkill" :page="skillsPage" />
+      <SkillsListPanel />
+      <SkillDetailPanel v-if="skillsPage.selectedSkill" :key="skillsPage.selectedId ?? ''" />
       <NCard v-else class="detail-empty" size="small">
         <NSpin :show="skillsPage.loading">
           <NEmpty />
@@ -50,7 +51,7 @@ const skillsPage = page as unknown as SkillsPageApi
       </NCard>
     </div>
 
-    <SkillFormModals :page="skillsPage" />
+    <SkillFormModals />
   </div>
 </template>
 

@@ -60,7 +60,7 @@ def main() -> int:
     kb_id = args.kb_id.strip() or "default"
     documents = list_kb_documents(args.rag_url, args.tenant_id, args.admin_token, kb_id)
     if not documents:
-        print("[FAIL] 知识库无 document 元数据，请先执行 MySQL 15-sunshine-rag-document-seed.sql", file=sys.stderr)
+        print("[FAIL] 知识库无 document 元数据，请先执行 MySQL init/14-sunshine-rag-service.sql", file=sys.stderr)
         return 1
 
     base = args.rag_url.rstrip("/")

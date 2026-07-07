@@ -24,7 +24,6 @@ import com.sunshine.rag.repository.RagConfigVersionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -49,7 +48,6 @@ public class EvaluateService {
     private final RagConfigVersionRepository configVersionRepository;
     private final EvalReportWriter evalReportWriter;
     private final ObjectMapper objectMapper;
-    @Lazy
     private final EvalAsyncRunner evalAsyncRunner;
     private final ObjectProvider<ConfigVersionService> configVersionServiceProvider;
     private final EvalSmokeRunner smokeRunner;

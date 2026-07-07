@@ -3,7 +3,7 @@ package com.sunshine.rag.admin.config;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** 测试用完整配置 payload（结构须与 docker/mysql/init/16-sunshine-rag-config-seed.sql 一致） */
+/** 测试用完整配置 payload（结构须与 docker/mysql/init/14-sunshine-rag-service.sql 一致） */
 public final class ConfigBundleTestFixtures {
 
     private ConfigBundleTestFixtures() {

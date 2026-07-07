@@ -4,7 +4,7 @@
 # Group:   DEFAULT_GROUP
 #
 # 基础设施 SSOT：连接、密钥、Rerank API、存储、LLM 网关等。
-# 检索/改写/分段业务参数 SSOT：MySQL rag_config_version（见 docker/mysql/init/16-sunshine-rag-config-seed.sql）。
+# 检索/改写/分段业务参数 SSOT：MySQL rag_config_version（见 docker/mysql/init/14-sunshine-rag-service.sql）。
 # 评测调参建议 Prompt SSOT：rag.eval.suggest（SuggestService）。
 # 修改后：python scripts/sync_nacos.py → 重启 rag-service
 # ============================================================

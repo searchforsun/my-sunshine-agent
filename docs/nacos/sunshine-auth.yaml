@@ -3,8 +3,7 @@
 # Data ID: sunshine-auth.yaml
 # Group:   DEFAULT_GROUP
 #
-# 首次部署前请在 MySQL 执行:
-#   CREATE DATABASE sunshine_auth;
+# 表结构 SSOT：docker/mysql/init/10-sunshine-auth.sql（禁止 Flyway）
 # jwt-secret-key 生产环境请替换为强随机值，勿使用 dev 默认值
 # ============================================================
 
@@ -21,9 +20,6 @@ spring:
       ddl-auto: validate
     open-in-view: false
     show-sql: false
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
   data:
     redis:
       host: ecs4c16g

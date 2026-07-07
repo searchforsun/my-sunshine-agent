@@ -1,8 +1,4 @@
-# ============================================================
-# sunshine-orchestrator — Nacos 配置
-# Data ID: sunshine-orchestrator.yaml
-# Group:   DEFAULT_GROUP
-# ============================================================
+# 表结构 SSOT：docker/mysql/init/11-sunshine-orchestrator.sql（禁止 Flyway）
 
 server:
   port: 8200
@@ -17,9 +13,6 @@ spring:
       ddl-auto: validate
     open-in-view: false
     show-sql: false
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
   data:
     redis:
       host: ecs4c16g

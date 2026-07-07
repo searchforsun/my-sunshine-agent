@@ -13,8 +13,7 @@ on:
       - rag-service/**
       - scripts/rag_eval.py
       - scripts/test_rag_eval_gates.py
-      - docker/mysql/init/11-sunshine-rag-eval-suite-seed.sql
-      - docker/mysql/init/15-sunshine-rag-document-seed.sql
+      - docker/mysql/init/14-sunshine-rag-service.sql
       - scripts/verify_rag_studio.py
 
 jobs:

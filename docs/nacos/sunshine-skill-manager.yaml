@@ -2,7 +2,7 @@
 # sunshine-skill-manager — Nacos 配置
 # Data ID: sunshine-skill-manager.yaml
 # Group:   DEFAULT_GROUP
-# 首次部署：MySQL CREATE DATABASE sunshine_skill;
+# 表结构 SSOT：docker/mysql/init/12-sunshine-skill-manager.sql（禁止 Flyway）
 # Skill 包文件存储：MinIO ecs4c16g:9000 / bucket sunshine-skills
 # ============================================================
 
@@ -19,9 +19,6 @@ spring:
       ddl-auto: validate
     open-in-view: false
     show-sql: false
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
 
 skill:
   storage:

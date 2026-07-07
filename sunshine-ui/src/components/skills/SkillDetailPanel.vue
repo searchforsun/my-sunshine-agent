@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { inject } from 'vue'
 import {
   NButton,
   NDropdown,
@@ -21,9 +22,9 @@ import {
 } from '@vicons/ionicons5'
 import { formatFileSize } from '../../utils/buildFileTree'
 import { versionStatusLabel } from '../../utils/skills/skillsVersionUtils'
-import type { SkillsPageApi } from '../../composables/useSkillsPage'
+import { SKILLS_PAGE_KEY, type SkillsPageApi } from '../../composables/useSkillsPage'
 
-defineProps<{ page: SkillsPageApi }>()
+const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
 </script>
 
 <template>
@@ -161,7 +162,7 @@ defineProps<{ page: SkillsPageApi }>()
                 <NIcon :component="page.copyPreviewDone ? CheckmarkOutline : CopyOutline" :size="14" />
               </button>
             </div>
-            <div class="preview-scroll">
+            <div :ref="page.bindPreviewScrollRef" class="preview-scroll">
               <div v-if="page.fileLoading" class="preview-loading-pane">
                 <NSpin size="small" />
               </div>
@@ -184,7 +185,6 @@ defineProps<{ page: SkillsPageApi }>()
               </div>
               <div
                 v-else-if="page.previewHtml"
-                :ref="(el) => { page.mdPreviewRef = el as HTMLElement | null }"
                 :key="`${page.selectedId}-${page.selectedVersion}-${page.selectedFilePath}`"
                 class="msg-md skill-md-preview"
                 v-html="page.previewHtml"
