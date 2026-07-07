@@ -7,13 +7,16 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ThinkingBlock;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@ExtendWith(TimelineLabelJUnitExtension.class)
 class ReasoningChunkSupportTest {
 
     @AfterEach

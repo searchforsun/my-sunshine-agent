@@ -2,12 +2,8 @@ package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
-import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.agent.StepEventBridge;
-import com.sunshine.orchestrator.processing.ContentBlockAccumulator;
-import com.sunshine.orchestrator.processing.ThinkStepMapper;
-import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.util.StreamErrorMessages;
@@ -17,13 +13,14 @@ import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
-import com.sunshine.orchestrator.plan.PausePhase;
 import com.sunshine.orchestrator.plan.PendingInteraction;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
-import com.sunshine.orchestrator.execution.WorkflowContextCodec;
 import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.processing.ContentBlockAccumulator;
+import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.StringUtils;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -65,6 +62,7 @@ public class GenerationJob {
     private final java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>();
     private final ContentBlockAccumulator contentBlockAccumulator = new ContentBlockAccumulator();
     private ThinkStepMapper thinkMapper;
+    private GenerationJobChunkEmitter chunkEmitter;
     private volatile long boundStreamEpoch = Long.MIN_VALUE;
 
     GenerationJob(String generationId, String messageId, String conversationId,
@@ -123,15 +121,14 @@ public class GenerationJob {
             stepsBuffer.addAll(initialSteps);
         }
         this.thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery, executionMode);
+        this.chunkEmitter = newChunkEmitter();
         streamService.updateStatus(generationId, GenerationStatus.RUNNING);
         Consumer<String> guardedFlush = guardFlush(flushPartial);
-
         AtomicLong lastFlush = new AtomicLong(0);
-
         llmSubscription = llmFlux
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
-                        chunk -> onChunk(chunk, mysqlBuffer, guardedFlush, lastFlush),
+                        chunk -> chunkEmitter.onChunk(chunk, mysqlBuffer, guardedFlush, lastFlush),
                         error -> finishOnce(() -> handleError(error, onError)),
                         () -> finishOnce(() -> handleComplete(onComplete))
                 );
@@ -157,7 +154,6 @@ public class GenerationJob {
         workflowPauseService.requestPause(messageId);
         finishOnce(() -> {
             cancelOrphanTimer();
-            // 须在 dispose 之前落库：dispose 触发 WorkflowExecutor.doFinally → clearRun，会丢失 wfCtx
             persistWorkflowPauseIfNeeded();
             emitFinishSteps(true);
             emitPausedWorkflowSteps();
@@ -165,71 +161,6 @@ public class GenerationJob {
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
             persistFinal(MessageStatus.INTERRUPTED, () -> { });
         });
-    }
-
-    private void persistWorkflowPauseIfNeeded() {
-        executionPlanStore.findByMessageId(messageId)
-                .filter(executionPlanStore::isPausableForWorkflowStop)
-                .ifPresent(entity -> {
-                    WorkflowCheckpoint checkpoint = buildWorkflowPauseCheckpoint(entity);
-                    executionPlanStore.markPaused(entity.getId(), checkpoint);
-                });
-    }
-
-    private WorkflowCheckpoint buildWorkflowPauseCheckpoint(
-            com.sunshine.orchestrator.plan.ExecutionPlanEntity entity) {
-        PendingInteraction pending = pauseProperties.isResumeInteractionEnabled()
-                ? ProcessingStepLifecycleOps.findPendingInteraction(stepsBuffer) : null;
-        if (pending != null) {
-            String ctxJson = resolveWfCtxJson(pending.nodeId());
-            return new WorkflowCheckpoint(pending.nodeId(), ctxJson, PausePhase.EXECUTING, pending);
-        }
-        String nodeId = workflowPauseService.getCurrentNodeId(messageId);
-        if (!org.springframework.util.StringUtils.hasText(nodeId)) {
-            nodeId = ProcessingStepLifecycleOps.findLastRunningWorkflowNodeId(stepsBuffer);
-        }
-        if (org.springframework.util.StringUtils.hasText(nodeId)) {
-            return new WorkflowCheckpoint(nodeId, resolveWfCtxJson(nodeId), PausePhase.EXECUTING, null);
-        }
-        PausePhase pausePhase = PausePhase.PLANNING;
-        String resumeNodeId = executionPlanStore.inferPlanningResumeNodeId(entity);
-        return new WorkflowCheckpoint(resumeNodeId, "{}", pausePhase, null);
-    }
-
-    private String resolveWfCtxJson(String nodeId) {
-        String ctxJson = workflowPauseService.getCommittedContextJson(messageId);
-        if (!WorkflowContextCodec.hasNodes(ctxJson)) {
-            ctxJson = executionPlanStore.findByMessageId(messageId)
-                    .filter(e -> org.springframework.util.StringUtils.hasText(e.getPauseCheckpoint()))
-                    .map(executionPlanStore::loadCheckpoint)
-                    .filter(cp -> WorkflowContextCodec.hasNodes(cp.wfCtxJson()))
-                    .map(WorkflowCheckpoint::wfCtxJson)
-                    .orElse(ctxJson);
-        }
-        if (!WorkflowContextCodec.hasNodes(ctxJson)) {
-            log.warn("[GenerationJob] 暂停检查点 wfCtx 为空 msg={} node={}，续跑可能丢失上游",
-                    messageId, nodeId);
-        }
-        return ctxJson;
-    }
-
-    private void emitPausedWorkflowSteps() {
-        String nodeId = workflowPauseService.getCurrentNodeId(messageId);
-        PendingInteraction pending = ProcessingStepLifecycleOps.findPendingInteraction(stepsBuffer);
-        String skipNodeId = pending != null ? pending.nodeId() : null;
-        if (ProcessingStepLifecycleOps.hasRunningWorkflowNode(stepsBuffer)
-                || org.springframework.util.StringUtils.hasText(nodeId)) {
-            ProcessingStepLifecycleOps.pauseRunningWorkflowNodes(stepsBuffer, nodeId, skipNodeId);
-        }
-        ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
-        StringBuilder mysqlBuffer = mysqlBufferRef;
-        AtomicLong lastFlush = new AtomicLong(0);
-        for (ProcessingStep step : stepsBuffer) {
-            if ("paused".equals(step.lifecycle())) {
-                emitMappedChunk(StreamToken.step(step), mysqlBuffer != null ? mysqlBuffer : new StringBuilder(),
-                        directPartialFlush(), lastFlush);
-            }
-        }
     }
 
     /** HITL 等旁路事件 — 写入 Redis 流，不进入消息正文缓冲 */
@@ -246,112 +177,47 @@ public class GenerationJob {
         if (token == null || finished.get() || !isStreamEpochValid()) {
             return;
         }
-        if (token.isStep()) {
-            thinkMapper.syncExternalStep(token.step());
-        }
-        emitMappedChunk(token, new StringBuilder(), s -> { }, new java.util.concurrent.atomic.AtomicLong(0));
+        ensureChunkEmitter().emitStreamToken(token);
     }
 
-    private void onChunk(StreamToken token, StringBuilder mysqlBuffer,
-            Consumer<String> flushPartial, AtomicLong lastFlush) {
-        if (token.isStep() || token.isStepDelta() || token.isContentStart() || token.isContentEnd()) {
-            if (token.isStep()) {
-                thinkMapper.syncExternalStep(token.step());
+    private GenerationJobChunkEmitter ensureChunkEmitter() {
+        if (chunkEmitter == null) {
+            if (thinkMapper == null) {
+                thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery,
+                        new AtomicReference<>(ExecutionMode.REACT));
             }
-            emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
-            return;
+            chunkEmitter = newChunkEmitter();
         }
-        if (token.isContent() && token.segmentId() != null) {
-            emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
-            return;
-        }
-        for (StreamToken mapped : thinkMapper.map(token)) {
-            emitMappedChunk(mapped, mysqlBuffer, flushPartial, lastFlush);
-        }
+        return chunkEmitter;
     }
 
-    private void emitMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
-            Consumer<String> flushPartial, AtomicLong lastFlush) {
-        if (!isStreamEpochValid()) {
-            return;
-        }
-        int maxChars = properties.maxChunkChars();
-        if (maxChars <= 0) {
-            emitSingleMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
-            return;
-        }
-        for (StreamToken piece : StreamChunkSplitter.splitToken(token, maxChars)) {
-            emitSingleMappedChunk(piece, mysqlBuffer, flushPartial, lastFlush);
-        }
+    private void persistWorkflowPauseIfNeeded() {
+        executionPlanStore.findByMessageId(messageId)
+                .filter(executionPlanStore::isPausableForWorkflowStop)
+                .ifPresent(entity -> {
+                    WorkflowCheckpoint checkpoint = GenerationJobCheckpointSupport.buildPauseCheckpoint(
+                            messageId, stepsBuffer, workflowPauseService, executionPlanStore, pauseProperties, entity);
+                    executionPlanStore.markPaused(entity.getId(), checkpoint);
+                });
     }
 
-    /** 单帧写入 Redis / MySQL 缓冲（Hook 与主 Flux 共用，大段在此层之前已切分） */
-    private void emitSingleMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
-            Consumer<String> flushPartial, AtomicLong lastFlush) {
-        long nextSeq = seq.incrementAndGet();
-        if (token.isStep()) {
-            ProcessingStepMerger.upsert(stepsBuffer, token.step());
-            maybeFlushStepsForAwaitingInteraction();
-            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
-            return;
+    private void emitPausedWorkflowSteps() {
+        String nodeId = workflowPauseService.getCurrentNodeId(messageId);
+        PendingInteraction pending = ProcessingStepLifecycleOps.findPendingInteraction(stepsBuffer);
+        String skipNodeId = pending != null ? pending.nodeId() : null;
+        if (ProcessingStepLifecycleOps.hasRunningWorkflowNode(stepsBuffer)
+                || StringUtils.hasText(nodeId)) {
+            ProcessingStepLifecycleOps.pauseRunningWorkflowNodes(stepsBuffer, nodeId, skipNodeId);
         }
-        if (token.isStepDelta()) {
-            ProcessingStepMerger.applyDelta(
-                    stepsBuffer, token.stepId(), token.channel(), token.text());
-            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStepDelta(
-                    token.stepId(), token.channel(), token.text()));
-            if ("reasoning".equals(token.channel()) && reasoningBufferRef != null
-                    && (token.stepId() == null || !token.stepId().startsWith("node-"))) {
-                reasoningBufferRef.append(token.text());
+        ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
+        StringBuilder mysqlBuffer = mysqlBufferRef;
+        Consumer<String> flushPartial = directPartialFlush();
+        if (chunkEmitter != null) {
+            for (ProcessingStep step : stepsBuffer) {
+                if ("paused".equals(step.lifecycle())) {
+                    chunkEmitter.emitPausedStep(StreamToken.step(step), mysqlBuffer, flushPartial);
+                }
             }
-            return;
-        }
-        if (token.isContentStart()) {
-            contentBlockAccumulator.onContentStart(token);
-            streamService.appendChunk(generationId, nextSeq,
-                    flushScheduler.metaContentStart(
-                            token.segmentId(), token.afterStepId(), token.scopeNodeStepId()));
-            return;
-        }
-        if (token.isContentEnd()) {
-            contentBlockAccumulator.onContentEnd(token);
-            streamService.appendChunk(generationId, nextSeq,
-                    flushScheduler.metaContentEnd(token.segmentId(), token.scopeNodeStepId()));
-            return;
-        }
-        String wire = token.isContent()
-                ? (token.segmentId() != null
-                ? flushScheduler.metaContentInSegment(
-                        token.segmentId(), token.text(), token.scopeNodeStepId())
-                : flushScheduler.metaContent(token.text(), token.afterStepId()))
-                : flushScheduler.metaReasoning(token.text());
-        streamService.appendChunk(generationId, nextSeq, wire);
-        if (token.isReasoning()) {
-            if (reasoningBufferRef != null) {
-                reasoningBufferRef.append(token.text());
-            }
-            return;
-        }
-        if (token.isContent() && token.segmentId() != null) {
-            contentBlockAccumulator.onContent(token);
-        }
-        // 子 Agent 分段正文仅落 steps.contentBlocks，勿混入 message.content（避免污染 answer 节点）
-        if (org.springframework.util.StringUtils.hasText(token.scopeNodeStepId())) {
-            long now = System.currentTimeMillis();
-            if (now - lastFlush.get() >= properties.flushIntervalMs()) {
-                lastFlush.set(now);
-                flushPartial.accept(mysqlBuffer.toString());
-            }
-            return;
-        }
-        if (token.isContent() && token.text() != null) {
-            mysqlBuffer.append(token.text());
-        }
-
-        long now = System.currentTimeMillis();
-        if (now - lastFlush.get() >= properties.flushIntervalMs()) {
-            lastFlush.set(now);
-            flushPartial.accept(mysqlBuffer.toString());
         }
     }
 
@@ -476,29 +342,32 @@ public class GenerationJob {
         return ProcessingStepSerde.toPersistJson(stepsBuffer);
     }
 
-    /** 续跑 HITL 阻塞前将 awaiting 步落库，刷新后 DAG/抽屉与 SSE 一致 */
-    private void maybeFlushStepsForAwaitingInteraction() {
-        boolean awaiting = stepsBuffer.stream().anyMatch(ProcessingStepLifecycleOps::isAwaitingInteractionStep);
-        if (!awaiting) {
-            return;
-        }
-        flushScheduler.flushStepsPartial(messageId, stepsJson());
-    }
-
     private void emitFinishSteps() {
         emitFinishSteps(false);
     }
 
     private void emitFinishSteps(boolean streamFailed) {
-        if (thinkMapper == null) {
+        if (chunkEmitter == null) {
             return;
         }
         StringBuilder mysqlBuffer = mysqlBufferRef;
-        AtomicLong lastFlush = new AtomicLong(0);
-        for (StreamToken token : thinkMapper.finish(streamFailed)) {
-            emitMappedChunk(token, mysqlBuffer != null ? mysqlBuffer : new StringBuilder(),
-                    directPartialFlush(), lastFlush);
-        }
+        chunkEmitter.emitFinishSteps(streamFailed, mysqlBuffer, directPartialFlush());
+    }
+
+    private GenerationJobChunkEmitter newChunkEmitter() {
+        return new GenerationJobChunkEmitter(
+                generationId,
+                messageId,
+                seq,
+                finished,
+                boundStreamEpoch,
+                stepsBuffer,
+                thinkMapper,
+                contentBlockAccumulator,
+                reasoningBufferRef,
+                streamService,
+                flushScheduler,
+                properties);
     }
 
     private boolean isStreamEpochValid() {

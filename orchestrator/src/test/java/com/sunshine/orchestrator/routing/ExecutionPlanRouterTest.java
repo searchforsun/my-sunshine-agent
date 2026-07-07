@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
 import com.sunshine.orchestrator.routing.policy.GoldenRuleRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.PeerStructuralRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.StructuralRoutingPolicy;
@@ -52,10 +53,12 @@ class ExecutionPlanRouterTest {
     void setUp() {
         RoutingRuleProperties routingProps = structuralFixture();
         StructuralPlanMatcher structuralMatcher = new StructuralPlanMatcher(routingProps);
+        PeerPatternMatcher peerMatcher = new PeerPatternMatcher(routingProps);
         var chain = new RoutingPolicyChain(List.of(
                 new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
                 new StructuralRoutingPolicy(structuralMatcher),
-                new GoldenRuleRoutingPolicy(ruleBasedRouter, structuralMatcher),
+                new PeerStructuralRoutingPolicy(peerMatcher, structuralMatcher),
+                new GoldenRuleRoutingPolicy(ruleBasedRouter, structuralMatcher, peerMatcher),
                 new LlmClassifierRoutingPolicy(intentRouter, queryRewriteService)));
         router = new ExecutionPlanRouter(chain, new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(

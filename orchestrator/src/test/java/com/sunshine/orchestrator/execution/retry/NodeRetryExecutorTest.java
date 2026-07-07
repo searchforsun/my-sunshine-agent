@@ -1,13 +1,16 @@
 package com.sunshine.orchestrator.execution.retry;
 
 import com.sunshine.orchestrator.execution.NodeResult;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import reactor.core.publisher.Mono;
 
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@ExtendWith(TimelineLabelJUnitExtension.class)
 class NodeRetryExecutorTest {
 
     private final NodeRetryExecutor executor = new NodeRetryExecutor(new ExecutionErrorClassifier());

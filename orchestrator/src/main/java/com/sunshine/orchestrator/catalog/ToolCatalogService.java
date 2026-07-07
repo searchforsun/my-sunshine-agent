@@ -85,7 +85,7 @@ public class ToolCatalogService {
     }
 
     public ToolSummarizeOutputResponse summarizeOutputDetail(String toolName, String text) {
-        ToolSummarizeOutputResponse response = toolManagerClient.summarizeOutput(toolName, text);
+        ToolSummarizeOutputResponse response = toolManagerClient.summarizeOutputMono(toolName, text).block();
         if (response == null) {
             return new ToolSummarizeOutputResponse("", true, true);
         }
@@ -93,7 +93,7 @@ public class ToolCatalogService {
     }
 
     public ToolSummarizeOutputResponse summarizeByKind(String outputSummaryKind, String text) {
-        ToolSummarizeOutputResponse response = toolManagerClient.summarizeByKind(outputSummaryKind, text);
+        ToolSummarizeOutputResponse response = toolManagerClient.summarizeByKindMono(outputSummaryKind, text).block();
         if (response == null) {
             return new ToolSummarizeOutputResponse("", true, true);
         }

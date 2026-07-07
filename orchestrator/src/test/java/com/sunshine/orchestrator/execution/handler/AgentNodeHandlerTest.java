@@ -15,6 +15,7 @@ import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,7 +37,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, TimelineLabelJUnitExtension.class})
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AgentNodeHandlerTest {
 
@@ -69,7 +70,7 @@ class AgentNodeHandlerTest {
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "待审批是否合规", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
 
         NodeSpec spec = new NodeSpec("analyze", "agent",
@@ -105,7 +106,7 @@ class AgentNodeHandlerTest {
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "q", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
 
         NodeSpec spec = new NodeSpec("analyze", "agent", Map.of(
@@ -137,7 +138,7 @@ class AgentNodeHandlerTest {
                 new ChatTurn("user", "上一轮"), new ChatTurn("assistant", "上一轮答")));
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "q", fullMemory,
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
         NodeSpec spec = new NodeSpec("analyze", "agent", Map.of("query", "子任务", "context", "ctx"));
 
@@ -163,7 +164,7 @@ class AgentNodeHandlerTest {
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "q", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
         var result = handler.run(spec, ctx, streamCtx).block();
 
@@ -185,7 +186,7 @@ class AgentNodeHandlerTest {
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "q", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
         handler.run(spec, ctx, streamCtx).block();
 
@@ -205,7 +206,7 @@ class AgentNodeHandlerTest {
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "报销上限", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
 
         NodeSpec spec = new NodeSpec("analyze", "agent", Map.of("query", "报销上限"));

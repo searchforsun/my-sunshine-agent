@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
@@ -7,6 +8,8 @@ import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,11 +32,12 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(SpringExtension.class)
+@ExtendWith({SpringExtension.class, TimelineLabelJUnitExtension.class})
 @ContextConfiguration(classes = EmbeddedRedisTestConfig.class)
 @EnableConfigurationProperties(GenerationProperties.class)
 class GenerationJobStepDeltaTest {
@@ -89,16 +93,27 @@ class GenerationJobStepDeltaTest {
         executionPlanStore = mock(ExecutionPlanStore.class);
     }
 
+    @AfterEach
+    void tearDownBridge() {
+        StepEventBridge.clear(MESSAGE_ID);
+    }
+
+    private GenerationJob newJob(String generationId) {
+        GenerationJob job = new GenerationJob(
+                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
+                streamService, properties, flushScheduler, null,
+                workflowPauseService, executionPlanStore, new AgentPauseProperties(), null);
+        job.bindStreamEpoch(StepEventBridge.bumpStreamEpoch(MESSAGE_ID));
+        return job;
+    }
+
     @Test
     @DisplayName("step_delta 写入 Redis 并在 commitFinal 时 steps JSON 含 reasoning")
     void stepDelta_persistsReasoningInSteps() throws Exception {
         String generationId = streamService.createGeneration(
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
 
-        GenerationJob job = new GenerationJob(
-                generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler, null,
-                workflowPauseService, executionPlanStore, new AgentPauseProperties(), null);
+        GenerationJob job = newJob(generationId);
 
         StringBuilder buffer = new StringBuilder();
         CountDownLatch done = new CountDownLatch(1);
@@ -126,7 +141,7 @@ class GenerationJobStepDeltaTest {
         ArgumentCaptor<String> reasoningCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture());
+                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
         assertThat(reasoningCaptor.getValue()).isEqualTo("思考过程");
         assertThat(stepsCaptor.getValue()).contains("think").contains("思考过程");
     }

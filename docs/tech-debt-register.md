@@ -17,7 +17,19 @@
 
 ## Backlog（open）
 
-_当前无 open 代码债。_
+> 2026-07-07 扫描：`@Deprecated` / 上帝类 / 文档重复。全仓 Java `@Deprecated` 注解已为 0；无 TODO/FIXME。**代码债与文档债 Backlog 均已空**。
+
+### 代码债
+
+| ID | 严重度 | 状态 | 位置 | 摘要 |
+|----|--------|------|------|------|
+| _（空）_ | — | — | — | Backlog 已空 |
+
+### 文档债
+
+| ID | 严重度 | 状态 | 位置 | 摘要 |
+|----|--------|------|------|------|
+| _（空）_ | — | — | — | Backlog 已空 |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 
@@ -25,44 +37,12 @@ _当前无 open 代码债。_
 
 ## 已完成（归档）
 
+> 组内按 ID 升序排列。
+
+### 代码债（TD）
+
 | ID | 完成日期 | 摘要 |
 |----|----------|------|
-| TD-029 | 2026-07-06 | 删 `IngestionController` + `ingestLegacy` |
-| TD-030 | 2026-07-06 | 删 `EffectiveConfigService`，内联 `EffectiveConfigResolver` |
-| TD-031 | 2026-07-06 | 删 `KbConfigOverride*` 全栈 + 前端 orphan API |
-| TD-032 | 2026-07-06 | 删 `MilvusService` deprecated insert + `legacyMarkdown` |
-| TD-033 | 2026-07-06 | 拆分 `DocumentCatalogService` → `DocumentChunkIndexer` + `DocumentVersionOps` |
-| TD-034 | 2026-07-06 | 删 `KnowledgeRetrievalService` → `RagSearch` + 直调 `RagClient`；删 `RagClient` 旧 overload |
-| TD-035 | 2026-07-06 | 删 `WorkflowCheckpoint` 2-arg 构造，调用方显式 `PausePhase` |
-| TD-036 | 2026-07-06 | 删 `IntentLabels`/`TimelineLabels` 硬编码 fallback |
-| TD-039 | 2026-07-06 | 删 `scripts/_tmp_planner_system.txt` |
-| TD-041 | 2026-07-06 | 删 `sunshine-ui/src/api/knowledge.ts` orphan 兼容包装 |
-| TD-042 | 2026-07-06 | 删 `ragAdmin.uploadDocumentMarkdown` deprecated alias |
-| TD-043 | 2026-07-06 | 删 llm-gateway `/chat/completions/stream`；`LlmGatewayClient` 统一 `/chat/completions` + `stream:true` |
-| TD-037 | 2026-07-06 | 删 `StepLabels` 与 Nacos 重复的 before/active/after switch；`SkillLoadLabels` 未 bind 抛异常 |
-| TD-044 | 2026-07-06 | 删 `RagClient.parseSearchResponse` flat body 兼容 |
-| TD-038 | 2026-07-06 | 拆分 `ProcessingStepMerger` → `ProcessingStepSerde` + `ProcessingStepLifecycleOps`（253 行） |
-| TD-047 | 2026-07-06 | `StepLabels.labelFor` 标准步标题收敛 Nacos `agent.timeline.*.label` + `TimelineStepLabels` |
-| TD-048 | 2026-07-06 | 删 `evalConstants.normalizeEvalSuiteConfig` 嵌套 eval/productionGates 兼容 |
-| TD-049 | 2026-07-06 | `ThinkStepIds.displayLabel` 收敛 Nacos `agent.timeline.steps.think` + `ThinkStepLabels` |
-| TD-050 | 2026-07-06 | think before/active/after 收敛 Nacos `agent.timeline.steps.think`（含 follow-up / simple-llm modes） |
-| TD-051 | 2026-07-07 | `PlanApprovalLabels` 收敛 Nacos `agent.timeline.plan-approval` + `PlanApprovalLabelService` |
-| TD-052 | 2026-07-07 | tool/node 步骤 label/before/active/after 收敛 Nacos `agent.timeline.steps.tool|node` |
-| TD-053 | 2026-07-07 | 删 `HitlLabels` 静态 fallback；`HitlLabelService` 统一读 Nacos 模板 |
-| TD-054 | 2026-07-07 | `StepSummarizer` agent/rag/plan/generate/skill 摘要收敛 Nacos + `SummaryStepLabelService` |
-| TD-055 | 2026-07-07 | 新增 `TimelineStepId` 字符串枚举；processing/execution/audit 主路径停写标准步 id 字面量 |
-| TD-056 | 2026-07-07 | 新增 `QueryRewriteScenario` 枚举；rewrite/RagClient 停写场景 id 字面量 |
-| TD-057 | 2026-07-07 | Workflow 节点 type 展示名收敛 Nacos `agent.timeline.workflow-node-types`；删 `WorkflowNodeLabels` 静态 fallback |
-| TD-058 | 2026-07-07 | `WorkflowNodeType` 全面替代 execution/plan 域 type 字面量比较 |
-| TD-059 | 2026-07-07 | `AgentNodeDetailSummarizer` 摘要模板收敛 Nacos `agent.timeline.workflow-agent` + `AgentNodeDetailLabelService` |
-| TD-060 | 2026-07-07 | Workflow 节点完成态摘要收敛 Nacos `agent.timeline.workflow-node-completion` + `WorkflowNodeCompletionLabelService` |
-| TD-061 | 2026-07-07 | `WorkflowNodeLabelService.typeLabel` 改用 `WorkflowNodeType.of()` 解析（config 层保留 guarded switch 默认值） |
-| TD-062 | 2026-07-07 | 工具结果摘要收敛 Nacos `agent.timeline.tool-result` + `ToolOutputSummaryKind` / `ToolResultLabelService` |
-| TD-063 | 2026-07-07 | `RagNodeHandler`/`ProcessingStepHook`/`SummaryStepLabelService` 零命中判定收敛 `ToolResultLabels` |
-| TD-064 | 2026-07-07 | 工具摘要/模板 SSOT 迁至 tool-manager（`summarize-output`/`summarize-rag-hits` + Nacos `tool.timeline.result`）；orchestrator 删 `ToolResultSummarizer`/`ToolResultLabels` 等本地实现，经 `ToolCatalogService` 调 API |
-| TD-045 | 2026-07-06 | 补 `docker/minio/init/entrypoint-wrapper.sh`（MinIO compose 启动依赖） |
-| TD-046 | 2026-07-06 | Flyway V14 react_pause + V15 conversation_kb_id 迁移对齐 |
-| DOC-012 | 2026-07-06 | `backlog.md` 与代码对齐 legacy API 删除 |
 | TD-001 | 2026-06-28 | 删 `LlmNodeHandler` + test |
 | TD-002 | 2026-06-28 | 删 `AgentStepSummarizer` + test |
 | TD-003 | 2026-06-28 | 删 `completeReasoningRound` / `openThinkParallel` |
@@ -84,14 +64,63 @@ _当前无 open 代码债。_
 | TD-019 | 2026-06-30 | 提取 `ChatStreamExecutor` |
 | TD-020 | 2026-06-30 | 拆分 `WorkflowNodeRunner` / `WorkflowNodeFinalizer` |
 | TD-021 | 2026-06-30 | 删 `normalizeTimelineSteps` 合成 think |
+| TD-022 | 2026-06-30 | summary 主行不再 fallback label；`running()` 停双写 active |
+| TD-023 | 2026-06-30 | `ChatView` 拆 5 composables（1694→1155 行） |
+| TD-024 | 2026-06-30 | 拆分 `TimelineSession*`（Session ~280 行） |
 | TD-025 | 2026-06-30 | 删 `ExecutionPlanParser.legacyPlan` |
 | TD-026 | 2026-06-30 | 统一 `appendInterleavedContent` tail 锚点 |
 | TD-027 | 2026-06-30 | 删 `migrateReasoningKeys` / `_idx_` |
-| TD-022 | 2026-06-30 | summary 主行不再 fallback label；`running()` 停双写 active |
-| TD-024 | 2026-06-30 | 拆分 `TimelineSession*`（Session ~280 行） |
 | TD-028 | 2026-06-30 | 拆分 `PlanWorkflowPlanningRunner` / `ResumeRunner` |
-| TD-023 | 2026-06-30 | `ChatView` 拆 5 composables（1694→1155 行） |
-| DOC-010 | 2026-06-30 | Phase1/2 REQ 移 `requirements/done/` |
+| TD-029 | 2026-07-06 | 删 `IngestionController` + `ingestLegacy` |
+| TD-030 | 2026-07-06 | 删 `EffectiveConfigService`，内联 `EffectiveConfigResolver` |
+| TD-031 | 2026-07-06 | 删 `KbConfigOverride*` 全栈 + 前端 orphan API |
+| TD-032 | 2026-07-06 | 删 `MilvusService` deprecated insert + `legacyMarkdown` |
+| TD-033 | 2026-07-06 | 拆分 `DocumentCatalogService` → `DocumentChunkIndexer` + `DocumentVersionOps` |
+| TD-034 | 2026-07-06 | 删 `KnowledgeRetrievalService` → `RagSearch` + 直调 `RagClient`；删 `RagClient` 旧 overload |
+| TD-035 | 2026-07-06 | 删 `WorkflowCheckpoint` 2-arg 构造，调用方显式 `PausePhase` |
+| TD-036 | 2026-07-06 | 删 `IntentLabels`/`TimelineLabels` 硬编码 fallback |
+| TD-037 | 2026-07-06 | 删 `StepLabels` 与 Nacos 重复的 before/active/after switch；`SkillLoadLabels` 未 bind 抛异常 |
+| TD-038 | 2026-07-06 | 拆分 `ProcessingStepMerger` → `ProcessingStepSerde` + `ProcessingStepLifecycleOps`（253 行） |
+| TD-039 | 2026-07-06 | 删 `scripts/_tmp_planner_system.txt` |
+| TD-041 | 2026-07-06 | 删 `sunshine-ui/src/api/knowledge.ts` orphan 兼容包装 |
+| TD-042 | 2026-07-06 | 删 `ragAdmin.uploadDocumentMarkdown` deprecated alias |
+| TD-043 | 2026-07-06 | 删 llm-gateway `/chat/completions/stream`；`LlmGatewayClient` 统一 `/chat/completions` + `stream:true` |
+| TD-044 | 2026-07-06 | 删 `RagClient.parseSearchResponse` flat body 兼容 |
+| TD-045 | 2026-07-06 | 补 `docker/minio/init/entrypoint-wrapper.sh`（MinIO compose 启动依赖） |
+| TD-046 | 2026-07-06 | Flyway V14 react_pause + V15 conversation_kb_id 迁移对齐 |
+| TD-047 | 2026-07-06 | `StepLabels.labelFor` 标准步标题收敛 Nacos `agent.timeline.*.label` + `TimelineStepLabels` |
+| TD-048 | 2026-07-06 | 删 `evalConstants.normalizeEvalSuiteConfig` 嵌套 eval/productionGates 兼容 |
+| TD-049 | 2026-07-06 | `ThinkStepIds.displayLabel` 收敛 Nacos `agent.timeline.steps.think` + `ThinkStepLabels` |
+| TD-050 | 2026-07-06 | think before/active/after 收敛 Nacos `agent.timeline.steps.think`（含 follow-up / simple-llm modes） |
+| TD-051 | 2026-07-07 | `PlanApprovalLabels` 收敛 Nacos `agent.timeline.plan-approval` + `PlanApprovalLabelService` |
+| TD-052 | 2026-07-07 | tool/node 步骤 label/before/active/after 收敛 Nacos `agent.timeline.steps`（tool、node） |
+| TD-053 | 2026-07-07 | 删 `HitlLabels` 静态 fallback；`HitlLabelService` 统一读 Nacos 模板 |
+| TD-054 | 2026-07-07 | `StepSummarizer` agent/rag/plan/generate/skill 摘要收敛 Nacos + `SummaryStepLabelService` |
+| TD-055 | 2026-07-07 | 新增 `TimelineStepId` 字符串枚举；processing/execution/audit 主路径停写标准步 id 字面量 |
+| TD-056 | 2026-07-07 | 新增 `QueryRewriteScenario` 枚举；rewrite/RagClient 停写场景 id 字面量 |
+| TD-057 | 2026-07-07 | Workflow 节点 type 展示名收敛 Nacos `agent.timeline.workflow-node-types`；删 `WorkflowNodeLabels` 静态 fallback |
+| TD-058 | 2026-07-07 | `WorkflowNodeType` 全面替代 execution/plan 域 type 字面量比较 |
+| TD-059 | 2026-07-07 | `AgentNodeDetailSummarizer` 摘要模板收敛 Nacos `agent.timeline.workflow-agent` + `AgentNodeDetailLabelService` |
+| TD-060 | 2026-07-07 | Workflow 节点完成态摘要收敛 Nacos `agent.timeline.workflow-node-completion` + `WorkflowNodeCompletionLabelService` |
+| TD-061 | 2026-07-07 | `WorkflowNodeLabelService.typeLabel` 改用 `WorkflowNodeType.of()` 解析（config 层保留 guarded switch 默认值） |
+| TD-062 | 2026-07-07 | 工具结果摘要收敛 Nacos `agent.timeline.tool-result` + `ToolOutputSummaryKind` / `ToolResultLabelService` |
+| TD-063 | 2026-07-07 | `RagNodeHandler`/`ProcessingStepHook`/`SummaryStepLabelService` 零命中判定收敛 `ToolResultLabels` |
+| TD-064 | 2026-07-07 | 工具摘要/模板 SSOT 迁至 tool-manager（`summarize-output`/`summarize-rag-hits` + Nacos `tool.timeline.result`）；orchestrator 删 `ToolResultSummarizer`/`ToolResultLabels` 等本地实现，经 `ToolCatalogService` 调 API |
+| TD-065 | 2026-07-07 | orchestrator 单测基建：`TimelineLabelJUnitExtension` 统一 bind 时间线模板；`GenerationJob*` 补 `bindStreamEpoch`；`commitFinal` 6 参断言对齐；删 orphan `RagDetailFormatter` |
+| TD-066 | 2026-07-07 | 删 `KnowledgeRetrievalPipeline.debugSearch(EffectiveRagConfig)`；删 `ExecutionStreamContext.legacyIntent` 死字段 |
+| TD-067 | 2026-07-07 | `StepEventBridge` 静态 Map → `StepEventBridgeRegistry` Spring 单例；静态门面委托 + `clearAll`/`resetRegistry` 可测 |
+| TD-068 | 2026-07-07 | 拆分 `IntentLabelService`（790→~190）→ `ThinkStepLabelService` + `TimelineStepLabelService` + `TimelineLabelTemplates`；静态门面各绑专属 Service |
+| TD-069 | 2026-07-07 | 拆分 `HitlConfirmationService`（656→~280）→ `HitlTokenRegistry` + `HitlTimelineBridge` + `HitlParamSupport`；`waitForDecision` 收敛四路径 await |
+| TD-070 | 2026-07-07 | `SkillsView` 拆分：`useSkillsPage` + `useSkillFilePreview` + `skillsVersionUtils`；模板拆 `SkillsListPanel` / `SkillDetailPanel` / `SkillFormModals`；视图 2142→143 行；`npm run build` 通过 |
+| TD-071 | 2026-07-07 | `ToolManagerClient` 全路径 Mono API（`invokeMono`/`summarizeOutputMono`/`summarizeByKindMono`）；客户端零 `.block()`；同步调用方在 boundedElastic 或 `ToolCatalogService` 边界 block |
+| TD-072 | 2026-07-07 | 拆分 `StepMetadata`→`RagStepMetadataParser`+`StepMetadataAssembler`（482→116）；`AgentNodeHandler`→`RequestAssembler`/`AuditSupport`/`ResultBuilder`（538→128）；`GenerationJob`→`ChunkEmitter`+`CheckpointSupport`（528→384）；465 测试全绿 |
+| TD-073 | 2026-07-07 | rag `EvaluateService`→`EvalFullRunOrchestrator`/`EvalSmokeRunner`/`EvalReportPersister`/`EvalRetrievalProbe`（746→328）；`ConfigVersionService`→`ConfigVersionStore`/`EvalLifecycle`/`PublishOps`（537→227）；rag-service 测试全绿 |
+| TD-074 | 2026-07-07 | 前端域拆分：`ragAdmin/`（client/kbDocuments/kbConfig/eval + barrel）；`chatSessions`→`chatSessionRegistry`/`chatSessionMutations`/`chatSessionSseConsumer`（909→459）；`KbConfigPanel`→`useKbConfigPanel`（1049→513）；`npm run build` 通过 |
+
+### 文档债（DOC）
+
+| ID | 完成日期 | 摘要 |
+|----|----------|------|
 | DOC-001 | 2026-06-29 | CLAUDE/README 去重 |
 | DOC-002 | 2026-06-29 | timeline spec supersede |
 | DOC-003 | 2026-06-30 | phase3 §4 与 §0/§6 对齐 |
@@ -99,5 +128,18 @@ _当前无 open 代码债。_
 | DOC-005 | 2026-06-30 | 覆盖度审计加 supersede + 结论更新 |
 | DOC-006 | 2026-06-30 | multi-agent plan/design 进度更新 |
 | DOC-007 | 2026-06-30 | timeline spec 移 `docs/archive/` |
+| DOC-010 | 2026-06-30 | Phase1/2 REQ 移 `requirements/done/` |
 | DOC-011 | 2026-07-01 | E2E 对齐 OperationStack V2；`mock-server` 补 auth；`e2e/helpers.ts` |
+| DOC-012 | 2026-07-06 | `backlog.md` 与代码对齐 legacy API 删除 |
+| DOC-013 | 2026-07-07 | CLAUDE 索引化：架构/端口/中间件链 README；运维 SSOT 留 README |
+| DOC-014 | 2026-07-07 | `implementation-plan` 已完成阶段压缩为 SSOT 索引；保留阶段三检查门 + 阶段四缺口 |
+| DOC-015 | 2026-07-07 | `rag/backlog.md` 标 supersede（排期走 plan + rag/README）；留 4.1/4.2 检查门留档 |
+| DOC-016 | 2026-07-07 | 路由 Nacos 规则块从 phase2-closure plan/design 移除；SSOT 链 `routing-golden-set.md` |
+| DOC-017 | 2026-07-07 | CLAUDE 进度段更新 TD-064～074、代码债 Backlog 已空 |
+| DOC-018 | 2026-07-07 | TaskBoard spec：`tasks` 步文案改 Nacos timeline + `TimelineStepLabelService`（非本地 displayName Map） |
+
+### 架构决策（ADR）
+
+| ID | 完成日期 | 摘要 |
+|----|----------|------|
 | ADR-001 | 2026-06-29 | 锁定文档 vs 删兼容 |

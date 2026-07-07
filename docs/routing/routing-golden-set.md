@@ -1,7 +1,7 @@
 # 路由 Golden-Set（验收提示词）
 
-> **SSOT**：人工/UI 验收 + `RoutingGoldenSetTest` 单测对照  
-> **配置**：`docs/nacos/sunshine-orchestrator.yaml` → `agent.routing.structural` / `agent.routing.rules` / `agent.execution.plan-workflow`  
+> **配置 SSOT**：`docs/nacos/sunshine-orchestrator.yaml` → `agent.routing.*`  
+> **验收 SSOT（本文）**：人工/UI 验收 + `RoutingGoldenSetTest` 单测对照；其他文档**只链引用、勿复制 YAML 规则块**  
 > **代码**：`ExecutionPlanRouter` → `RoutingPolicyChain`（L0→L3）  
 > **重试/降级详设**：[plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md)
 
@@ -279,7 +279,7 @@ Live：`python scripts/verify_execution_preference.py`
 
 ## F. ReAct TaskBoard（阶段四 · 4.7.5）
 
-> **状态**：⬜ 阶段四 4.7.5 实施后启用  
+> **状态**：✅ 4.7.5 单测 + F1 Live（2026-07-07）；F-N1 需 plan-workflow 长链路（`TASKBOARD_TIMEOUT_SEC≥300`）  
 > **详设**：[react-taskboard-design.md](../superpowers/specs/2026-06-24-react-taskboard-design.md) · **锁定 D11** · 配置键 `agent.execution.react.taskboard.*`
 
 **前置**：`agent.execution.react.taskboard.enabled=true`；Nacos 已同步并重启 orchestrator。
@@ -317,7 +317,9 @@ Live：`python scripts/verify_execution_preference.py`
 ### 单测（阶段四）
 
 ```bash
-mvn test -pl orchestrator -Dtest=ReactTaskBoardTest,ManageTasksToolTest,RoutingGoldenSetTest
+mvn test -pl orchestrator -Dtest=ReactTaskBoardTest,ManageTasksToolTest,ReactTaskBoardRoutingTest,ProcessingStepSerdeTest
+python scripts/verify_react_taskboard_live.py   # 前置 taskboard.enabled=true
+python scripts/phase2_agent_demo.py --suite react-taskboard
 ```
 
 ---
@@ -345,7 +347,7 @@ mvn test -pl orchestrator -Dtest=ReactTaskBoardTest,ManageTasksToolTest,RoutingG
 
 ## E. PEER_COLLAB（阶段四 · 第五顶层模式）
 
-> **状态**：⬜ 阶段四 4.7.3 实施后启用  
+> **状态**：✅ 4.7.3 后端 + 单测 + Live；**4.7.4** `PeerCollabPanel` 展开 audit transcript（BFF `/api/audit/peer-run/{messageId}`）  
 > **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · **锁定 D10** · 配置键 `agent.routing.peer.*` / `agent.peer.templates`
 
 **预期 intent after**：「…将由多专家协作交叉验证」（`agent.timeline.intent.modes.peer-collab`）
@@ -377,5 +379,6 @@ peer-collab → …（压缩摘要，无 MsgHub 多轮 raw 对话）
 ### 单测（阶段四）
 
 ```bash
-mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest#peerCollab*
+mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest#peerCollab*,PeerCollaborationRoutingTest,ExecutionDispatcherTest
+python3 scripts/verify_peer_collab_live.py
 ```

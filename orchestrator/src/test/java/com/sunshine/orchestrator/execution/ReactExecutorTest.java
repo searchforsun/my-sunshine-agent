@@ -39,7 +39,7 @@ class ReactExecutorTest {
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "@finance-analysis 是否合规", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.REACT, null,
                         Map.of(
                                 SkillBindingOutcome.PARAM_SKILL, "finance-analysis",
@@ -61,7 +61,7 @@ class ReactExecutorTest {
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "查财务待审批", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"));
 
         List<StreamToken> tokens = reactExecutor.execute(ctx).collectList().block();

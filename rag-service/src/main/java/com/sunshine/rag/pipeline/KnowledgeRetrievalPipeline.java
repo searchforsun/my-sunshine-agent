@@ -99,13 +99,6 @@ public class KnowledgeRetrievalPipeline {
                         }));
     }
 
-    /** @deprecated 使用 {@link #debugSearch(PipelineSearchRequest, ResolvedKbConfig)} */
-    public Mono<RetrievalDebugResult> debugSearch(PipelineSearchRequest request, EffectiveRagConfig config) {
-        ResolvedKbConfig production = effectiveConfigResolver.resolve(request.tenantId(), request.kbId());
-        return debugSearch(request, new ResolvedKbConfig(
-                config, production.rewrite(), production.defaultTopK(), production.chunkMaxSize()));
-    }
-
     private Mono<String> resolveInitialSearchQuery(
             PipelineSearchRequest request, RetrievalTrace trace, RewriteSettings rewrite) {
         if (!request.rewrite() || !queryRewritePipeline.isRagEnabled(rewrite)) {

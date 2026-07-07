@@ -4,14 +4,17 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+@ExtendWith(TimelineLabelJUnitExtension.class)
 class WorkflowNodeTimelineTest {
 
     @Test

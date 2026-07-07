@@ -86,7 +86,7 @@ flowchart TB
 
 - `manage_tasks` 为 **orchestrator 内置元工具**，类似 `RagTool`；**不**进 tool-manager Catalog。
 - `DynamicToolkitFactory` 在 `agent.execution.react.taskboard.enabled=true` 时 **自动注册**，**不**占用 Nacos `react.tools` 白名单槽位。
-- displayName / timelinePhase 由 orchestrator 本地常量 + Nacos `agent.timeline.steps.tasks` 提供。
+- 步骤 label / before-active-after 由 Nacos `agent.timeline.steps.tasks` + `TimelineStepLabelService` 提供（与 ReAct 标准步一致；**非** orchestrator 硬编码 displayName Map）。
 
 ### 3.2 数据模型
 

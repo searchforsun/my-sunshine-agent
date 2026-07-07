@@ -67,6 +67,12 @@ spring:
             - Path=/health/skill-manager
           filters:
             - RewritePath=/health/skill-manager, /health
+        - id: health-workflow-manager
+          uri: lb://sunshine-workflow-manager
+          predicates:
+            - Path=/health/workflow-manager
+          filters:
+            - RewritePath=/health/workflow-manager, /health
         - id: health-llm-gateway
           uri: lb://sunshine-llm-gateway
           predicates:

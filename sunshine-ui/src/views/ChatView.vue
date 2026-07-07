@@ -531,6 +531,7 @@ watch(
                 :live="isTimelineLive(msg, idx)"
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
+                :message-id="msg.id"
                 :pending-hitl-confirmation="resolveTimelineContext(msg).pending"
                 @hitl-decided="handleHitlDecision"
               />

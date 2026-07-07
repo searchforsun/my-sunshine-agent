@@ -27,6 +27,7 @@ public record ExecutionPlan(
             case WORKFLOW -> "workflow:" + (workflowId != null ? workflowId : "unknown");
             case REACT -> "react";
             case PLAN_WORKFLOW -> "plan-workflow";
+            case PEER_COLLAB -> "peer-collab";
         };
     }
 }

@@ -23,6 +23,8 @@ class DynamicToolkitFactoryTest {
     @Mock
     private RagTool ragTool;
     @Mock
+    private ManageTasksTool manageTasksTool;
+    @Mock
     private GenericRemoteToolFactory remoteToolFactory;
     @Mock
     private ToolCatalogService toolCatalogService;
@@ -32,6 +34,19 @@ class DynamicToolkitFactoryTest {
     private AgentExecutionProperties.React reactProps;
     @InjectMocks
     private DynamicToolkitFactory factory;
+
+    @Test
+    void build_withTaskboardEnabled_registersManageTasks() {
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getTools()).thenReturn(List.of());
+        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard() {{
+            setEnabled(true);
+        }});
+
+        var toolkit = factory.build();
+
+        assertThat(toolkit.getToolNames()).contains(ManageTasksTool.NAME);
+    }
 
     @Test
     void build_succeedsWhenMissingCatalogTool() {

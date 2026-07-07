@@ -30,6 +30,21 @@ public class AgentExecutionProperties {
                 "summarize_finance_by_status",
                 "list_oa_tasks"));
         private int maxIters = 5;
+        private Taskboard taskboard = new Taskboard();
+
+        @Data
+        public static class Taskboard {
+            private boolean enabled = false;
+            private int maxItems = 12;
+            private int maxInProgress = 1;
+            private boolean seedFromInjectedSummary = true;
+            private Audit audit = new Audit();
+
+            @Data
+            public static class Audit {
+                private double sampleRate = 1.0;
+            }
+        }
     }
 
     @Data

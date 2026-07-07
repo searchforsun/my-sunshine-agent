@@ -16,6 +16,8 @@ import {
   resolveLastContentBlockIndex,
 } from '../../api/contentInterleave'
 import OperationCard from './OperationCard.vue'
+import TaskBoardPanel from './TaskBoardPanel.vue'
+import PeerCollabPanel from './PeerCollabPanel.vue'
 import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
@@ -35,6 +37,8 @@ const props = withDefaults(defineProps<{
   embedHitl?: boolean
   /** 步骤行下方 HitlStepActions（ReAct 主 timeline / 抽屉 subSteps）；仅 Plan 抽屉纯 tool 单行等特殊场景传 false */
   inlineHitl?: boolean
+  /** assistant 消息 id — peer-collab 展开 transcript 审计 */
+  messageId?: string
   pendingHitlConfirmation?: HitlConfirmationPayload
 }>(), {
   embedHitl: true,
@@ -86,6 +90,8 @@ const displaySteps = computed(() => {
   if (showPlanDag.value) {
     return effectiveSteps.value.filter(s => {
       if (s.phase === 'node' || isPlanDagNodeStep(s)) return false
+      if (s.phase === 'tasks') return false
+      if (s.phase === 'peer-collab') return false
       if (isToolStepId(s.id)) return false
       if (s.id === 'think' || s.id.startsWith('think-')) return false
       return true
@@ -158,6 +164,17 @@ const orphanContent = computed(() => {
         :execution-plan-id="executionPlanId"
         :user-query="userQuery"
         :pending-hitl-confirmation="pendingHitlConfirmation"
+      />
+      <TaskBoardPanel
+        v-else-if="step.phase === 'tasks'"
+        :step="step"
+        :live="live && lifecycleOf(step) === 'running'"
+      />
+      <PeerCollabPanel
+        v-else-if="step.phase === 'peer-collab'"
+        :step="step"
+        :message-id="messageId"
+        :live="live && lifecycleOf(step) === 'running'"
       />
       <template v-else>
         <OperationCard

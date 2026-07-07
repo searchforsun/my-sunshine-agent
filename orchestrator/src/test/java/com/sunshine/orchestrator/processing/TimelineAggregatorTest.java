@@ -2,10 +2,12 @@ package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@ExtendWith(TimelineLabelJUnitExtension.class)
 class TimelineAggregatorTest {
 
     @Test

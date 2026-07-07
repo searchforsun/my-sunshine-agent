@@ -170,7 +170,7 @@ class PlanWorkflowExecutorResumeTest {
     private static ExecutionStreamContext context() {
         return new ExecutionStreamContext(
                 "c1", "msg-1", "query", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
     }
 }

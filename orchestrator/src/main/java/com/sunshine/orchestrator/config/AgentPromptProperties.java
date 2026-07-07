@@ -90,6 +90,13 @@ public class AgentPromptProperties {
             plan.setActive("正在编排业务节点顺序");
             plan.setAfter("执行计划已生成");
             map.put("plan", plan);
+            var tasks = new StepTimeline();
+            tasks.setLabel("任务清单");
+            tasks.setBefore("规划任务步骤");
+            tasks.setActive("正在执行：{activeTask}");
+            tasks.setAfter("任务清单已更新");
+            tasks.setAllDone("全部任务已完成");
+            map.put("tasks", tasks);
             var generate = new StepTimeline();
             generate.setLabel("生成回答");
             generate.setBefore("为{query}撰写回复");
@@ -202,6 +209,8 @@ public class AgentPromptProperties {
         private String afterFollowUpFallback;
         /** 按执行模式覆盖（如 simple-llm） */
         private java.util.LinkedHashMap<String, StepModeTimeline> modes;
+        /** TaskBoard 全部完成 after */
+        private String allDone;
     }
 
     @Getter

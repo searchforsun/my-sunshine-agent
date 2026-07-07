@@ -1245,24 +1245,7 @@ public class ExecutionPlanRouter {
 
 `ChatController`：`intentRouter.classifyPlan` → `executionPlanRouter.route`。
 
-Nacos `agent.routing.rules` 示例：
-
-```yaml
-agent:
-  routing:
-    rules:
-      - id: rule-finance-list-pending
-        priority: 10
-        match: any
-        patterns:
-          - "有哪些待审批"
-          - "待审批.*报销"
-        plan:
-          mode: workflow
-          workflowId: finance-list
-          params:
-            status: pending
-```
+Nacos `agent.routing.rules` 配置与验收用例 SSOT 见 [routing-golden-set.md](../../routing/routing-golden-set.md)；生产 YAML 见 `docs/nacos/sunshine-orchestrator.yaml`（勿在 plan 内复制规则块）。
 
 - [ ] **Step 4: Run tests**
 

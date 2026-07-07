@@ -101,7 +101,7 @@ public class CatalogRemoteAgentTool implements AgentTool {
             throw new HitlWaitInterruptedException();
         }
         log.info("[CatalogRemoteAgentTool] {} params={}", entry.id(), invokeParams);
-        String result = toolManagerClient.invoke(entry.id(), invokeParams);
+        String result = toolManagerClient.invokeMono(entry.id(), invokeParams).block();
         auditIfBound(entry.id(), invokeParams, result, "ok");
         return ToolResultBlock.of(
                 toolUseId,

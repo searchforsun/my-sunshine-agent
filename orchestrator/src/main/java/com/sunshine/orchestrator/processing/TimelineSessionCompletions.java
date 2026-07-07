@@ -77,6 +77,24 @@ final class TimelineSessionCompletions {
         }
     }
 
+    void updateTaskBoard(String stepId, String phase, String activeSummary, StepMetadata metadata) {
+        long ts = System.currentTimeMillis();
+        if (!emitter.hasStep(stepId)) {
+            emitter.apply(stepId, phase, EventKind.PENDING, TaskBoardStepLabels.before(), null);
+            startAt(stepId, phase, ts);
+        }
+        emitter.applyAt(stepId, phase, EventKind.PROGRESS, activeSummary, null, metadata, ts);
+    }
+
+    void completeTaskBoard(String after, StepMetadata metadata) {
+        long ts = System.currentTimeMillis();
+        String stepId = TimelineStepId.TASKS.id();
+        emitter.applyAt(stepId, TimelineStepId.TASKS.phase(), EventKind.COMPLETE, after, null, metadata, ts);
+        if (TimelineStepId.TASKS.matches(state.activeStepId)) {
+            state.activeStepId = null;
+        }
+    }
+
     void completeAt(String stepId, String detail, long endedAt) {
         completeAt(stepId, detail, detail, endedAt);
     }
@@ -129,7 +147,8 @@ final class TimelineSessionCompletions {
         if (state.activeStepId == null) {
             return;
         }
-        if (ThinkStepIds.isThinkStep(state.activeStepId) || TimelineStepId.GENERATE.matches(state.activeStepId)) {
+        if (ThinkStepIds.isThinkStep(state.activeStepId) || TimelineStepId.GENERATE.matches(state.activeStepId)
+                || TimelineStepId.TASKS.matches(state.activeStepId)) {
             return;
         }
         state.aggregator.get(state.activeStepId).ifPresent(step -> {

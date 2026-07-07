@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段三 **检查门通过**（2026-07-01；live + e2e 全绿；`docs/tech-debt-register.md` Backlog **已空**；v6 +15% 仍 WARN）— 阶段四 **4.7.3 PEER_COLLAB** / **4.7.5 TaskBoard** ⬜；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 **检查门通过** — 阶段四 **4.7.3/4.7.4/4.7.5 ✅** · **4.13.1** workflow-manager :8230 + Flyway 表 ✅；**4.13.2+** Catalog/API/Studio ⬜；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -17,7 +17,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `start.py` | 按依赖顺序启动全链路 |
 | `clear_session_cache.py` | 清会话 + 可选重启 |
 | `download_skywalking_agent.py` | 下载 SkyWalking Agent |
-| `phase2_agent_demo.py` | Phase 2.4 ReAct 验收；`--suite all\|react\|workflow` |
+| `phase2_agent_demo.py` | Phase 2.4 ReAct 验收；`--suite all\|react\|workflow\|react-taskboard` |
 | `verify_execution_preference.py` | Chat 底栏 `executionPreference` 强制路由 §J Live 验收 |
 | `rag_reset.py` | RAG Milvus 清库重建 |
 | `rag_ingest_bulk.py` | 按 document 表 + `docs/knowledge/*.md` 批量入库 |
@@ -34,28 +34,16 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_grounding.py` | **3.7** Grounding 单测 |
 | `verify_subagent_timeline.py` | **3.10** workflow agent subSteps |
 | `verify_pause_resume_consistency.py` | **3.9.5** 暂停/续跑（`--live`） |
+| `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
+| `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（E1 路由 + peer-collab 步） |
 
 目录内遗留 `.ps1`/`.sh` 为历史包装，**勿再维护**；新脚本一律 Python。
 
 ## 请求链路与模块
 
-```
-Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
-  ├─ simple-llm / workflow(DAG) / react(ReActAgent)
-  ├─ llm-gateway :8300  rag :8400  tool-manager :8210 → finance :8710
-  └─ desensitize :8600
-```
+架构图、端口、项目结构、中间件与**编译/启动/验收命令** SSOT 见 [README.md](./README.md)（§架构概览 · §项目结构 · §快速开始 · §服务器中间件）。
 
-| 模块 | 端口 | 职责 |
-|------|:----:|------|
-| gateway / bff / auth-center | 8000/8001/8100 | 路由、SSE 透传、JWT |
-| orchestrator | 8200 | 三模式 + Timeline + GenerationJob + `AgentRuntime` |
-| tool-manager | 8210 | `ToolRegistry` + `/api/tools/catalog` |
-| llm-gateway / rag-service | 8300/8400 | 模型路由 / Milvus |
-
-各服务 `application.yml` 仅 Nacos 入口；业务配置 SSOT 在 `docs/nacos/`。
-
-**SSE 链路**：`ChatController` → `ExecutionDispatcher` → `StreamToken` → `GenerationJob`（Redis 缓冲 + seq）→ BFF/Gateway 透传 → 前端 `parseSsePayload`。步骤事件 `type:step` / `type:step_delta` 由 `GenerationFlushScheduler.metaStep` 序列化。
+Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `ExecutionDispatcher` → `StreamToken` → `GenerationJob`（Redis 缓冲 + seq）→ BFF/Gateway 透传 → 前端 `parseSsePayload`。步骤事件 `type:step` / `type:step_delta` 由 `GenerationFlushScheduler.metaStep` 序列化。各服务 `application.yml` 仅 Nacos 入口；业务配置 SSOT 在 `docs/nacos/`。
 
 ## 架构与扩展（要点）
 
@@ -127,7 +115,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 
 ## 中间件（ecs4c16g）
 
-Nacos 8848 | MySQL 3306 root/root123 | Redis 6379 | Milvus 19530 | RocketMQ 9876 | ES 9200 | SkyWalking 11800/8084
+端口与凭据见 [README.md](./README.md) §服务器中间件（ecs4c16g）。
 
 ## 版本与前端
 

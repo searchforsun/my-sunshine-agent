@@ -18,6 +18,7 @@ import java.util.Map;
 public class RoutingRuleProperties {
 
     private Structural structural = new Structural();
+    private Peer peer = new Peer();
     private List<Rule> rules = new ArrayList<>();
 
     @Data
@@ -46,6 +47,23 @@ public class RoutingRuleProperties {
             groups.put("finance", List.of("待审批", "报销", "财务", "付款", "单据"));
             groups.put("analysis", List.of("合规", "分析", "审查", "对比", "评估", "结论"));
             return groups;
+        }
+    }
+
+    @Data
+    public static class Peer {
+        private boolean enabled = true;
+        private String defaultTemplateId = "compliance-cross-review";
+        private List<String> structuralPatterns = defaultPeerPatterns();
+
+        private static List<String> defaultPeerPatterns() {
+            return new ArrayList<>(List.of(
+                    "互相验证",
+                    "交叉审查",
+                    "多专家讨论",
+                    "分别分析并质疑",
+                    "两个角度.*审查",
+                    "专家.*分别.*审查"));
         }
     }
 

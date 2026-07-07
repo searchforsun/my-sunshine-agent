@@ -33,7 +33,6 @@ public class PlannerAgentRuntime implements AgentRuntime {
                 request.memory(),
                 null,
                 null,
-                null,
                 request.userId(),
                 request.tenantId(),
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, java.util.Map.of(), "planner"));

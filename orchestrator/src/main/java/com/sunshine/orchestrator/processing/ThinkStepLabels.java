@@ -5,12 +5,12 @@ import com.sunshine.orchestrator.routing.ExecutionMode;
 /** think / think-N 步骤标题（配置见 Nacos agent.timeline.steps.think） */
 public final class ThinkStepLabels {
 
-    private static volatile IntentLabelService service;
+    private static volatile ThinkStepLabelService service;
 
     private ThinkStepLabels() {
     }
 
-    public static void bind(IntentLabelService labelService) {
+    public static void bind(ThinkStepLabelService labelService) {
         service = labelService;
     }
 
@@ -30,9 +30,9 @@ public final class ThinkStepLabels {
         return requireService().thinkStepAfter(stepId, mode, clippedQuery, toolDisplayName);
     }
 
-    private static IntentLabelService requireService() {
+    private static ThinkStepLabelService requireService() {
         if (service == null) {
-            throw new IllegalStateException("IntentLabelService 未 bind");
+            throw new IllegalStateException("ThinkStepLabelService 未 bind");
         }
         return service;
     }

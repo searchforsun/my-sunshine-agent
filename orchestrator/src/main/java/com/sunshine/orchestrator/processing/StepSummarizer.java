@@ -97,6 +97,7 @@ public final class StepSummarizer {
             case AGENT -> SummaryStepLabels.agentBefore(q);
             case PLAN -> TimelineLabels.before(TimelineStepId.PLAN.id(), q);
             case GENERATE -> TimelineLabels.before(TimelineStepId.GENERATE.id(), q);
+            case TASKS -> TaskBoardStepLabels.before();
             default -> StepLabels.beforeFor(stepId);
         };
     }
@@ -131,6 +132,7 @@ public final class StepSummarizer {
             case AGENT -> SummaryStepLabels.agentActive(q);
             case PLAN -> TimelineLabels.active(TimelineStepId.PLAN.id(), q);
             case GENERATE -> TimelineLabels.active(TimelineStepId.GENERATE.id(), q);
+            case TASKS -> TaskBoardStepLabels.active("");
             default -> StepLabels.activeFor(stepId);
         };
     }
@@ -169,6 +171,7 @@ public final class StepSummarizer {
             case AGENT -> SummaryStepLabels.agentAfter(userQuery, detail);
             case PLAN -> TimelineLabels.after(TimelineStepId.PLAN.id(), q, detail);
             case GENERATE -> TimelineLabels.after(TimelineStepId.GENERATE.id(), q, detail);
+            case TASKS -> detail != null && !detail.isBlank() ? detail : TaskBoardStepLabels.after();
             default -> StepLabels.afterTemplate(stepId, detail);
         };
     }

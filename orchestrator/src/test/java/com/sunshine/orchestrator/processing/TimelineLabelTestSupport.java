@@ -41,19 +41,22 @@ public final class TimelineLabelTestSupport {
         WorkflowNodeLabels.bind(workflowLabels);
         WorkflowNodeCompletionLabels.bind(new WorkflowNodeCompletionLabelService(agentProps));
         StepLabels.bind(toolCatalog);
-        IntentLabelService labelService = new IntentLabelService(
-                agentProps,
-                workflowProps,
-                workflowLabels);
         SkillLoadLabels.bind(new SkillLoadLabelService(skillCatalog, agentProps));
         PlanApprovalLabels.bind(new PlanApprovalLabelService(agentProps));
         ToolNodeLabels.bind(new ToolNodeLabelService(agentProps, toolCatalog));
         HitlLabels.bind(new HitlLabelService(agentProps));
         SummaryStepLabels.bind(new SummaryStepLabelService(agentProps, toolCatalog));
-        IntentLabels.bind(labelService);
-        TimelineLabels.bind(labelService);
-        TimelineStepLabels.bind(labelService);
-        ThinkStepLabels.bind(labelService);
+        TaskBoardStepLabels.bind(new TaskBoardStepLabelService(agentProps));
+        TimelineStepLabelService timelineStepLabelService = new TimelineStepLabelService(agentProps);
+        ThinkStepLabelService thinkStepLabelService = new ThinkStepLabelService(agentProps);
+        IntentLabelService intentLabelService = new IntentLabelService(
+                agentProps,
+                workflowProps,
+                workflowLabels);
+        IntentLabels.bind(intentLabelService);
+        TimelineLabels.bind(timelineStepLabelService);
+        TimelineStepLabels.bind(timelineStepLabelService);
+        ThinkStepLabels.bind(thinkStepLabelService);
         return toolCatalog;
     }
 
@@ -116,6 +119,7 @@ public final class TimelineLabelTestSupport {
         ToolNodeLabels.bind(null);
         HitlLabels.bind(null);
         SummaryStepLabels.bind(null);
+        TaskBoardStepLabels.bind(null);
         WorkflowNodeLabels.bind(null);
         WorkflowNodeCompletionLabels.bind(null);
         StepLabels.bind(null);

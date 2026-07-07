@@ -293,6 +293,7 @@ public final class ThinkStepMapper {
             generateOpened = true;
         }
         if (TimelineStepId.PLAN.matches(step.id())
+                || TimelineStepId.PEER_COLLAB.matches(step.id())
                 || TimelineStepId.isNodeStep(step.id())) {
             workflowMode = true;
             generateOpened = true;

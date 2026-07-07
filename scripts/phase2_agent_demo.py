@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Phase 2 Live 验收 — react / workflow / all 套件。
+"""Phase 2 Live 验收 — react / workflow / react-taskboard / all 套件。
 
 用法:
   python scripts/phase2_agent_demo.py --suite all
   python scripts/phase2_agent_demo.py --suite react
   python scripts/phase2_agent_demo.py --suite workflow
+  python scripts/phase2_agent_demo.py --suite react-taskboard
   python scripts/phase2_agent_demo.py --suite all --skip-rag-prep
+
+react-taskboard 前置: agent.execution.react.taskboard.enabled=true（sync_nacos + 重启 orchestrator）
+也可单独跑: python scripts/verify_react_taskboard_live.py
 
 环境变量: GATEWAY_URL, FINANCE_URL, RAG_URL, PHASE2_AGENT_TIMEOUT_SEC
 """
@@ -57,13 +61,14 @@ def shutil_which(name: str) -> str | None:
     return shutil.which(name)
 
 
-def chat_sse(token: str, conv_id: str, query: str) -> str:
+def chat_sse(token: str, conv_id: str, query: str, **extra) -> str:
     curl = shutil_which("curl")
     if not curl:
         raise RuntimeError("curl not found (required for SSE sampling)")
-    payload = json.dumps({"content": query, "conversationId": conv_id}, ensure_ascii=False)
+    payload = {"content": query, "conversationId": conv_id, **extra}
+    payload_json = json.dumps(payload, ensure_ascii=False)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as f:
-        f.write(payload)
+        f.write(payload_json)
         tmp = f.name
     try:
         proc = subprocess.run(
@@ -82,6 +87,83 @@ def chat_sse(token: str, conv_id: str, query: str) -> str:
         return raw
     finally:
         os.unlink(tmp)
+
+
+def parse_assistant_steps(raw) -> list[dict]:
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+def collect_sse_steps(raw: str) -> list[dict]:
+    steps: list[dict] = []
+    for line in raw.splitlines():
+        line = line.rstrip("\r")
+        if not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if not payload:
+            continue
+        try:
+            obj = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("type") == "step":
+            steps.append(obj)
+    return steps
+
+
+def merge_steps(sse_raw: str, assistant: dict) -> list[dict]:
+    sse_steps = collect_sse_steps(sse_raw)
+    persisted = parse_assistant_steps(assistant.get("steps"))
+    if len(persisted) >= len(sse_steps):
+        return persisted
+    by_id: dict[str, dict] = {}
+    for step in sse_steps + persisted:
+        sid = str(step.get("id") or "")
+        if sid:
+            by_id[sid] = step
+    return list(by_id.values())
+
+
+def latest_step(steps: list[dict], step_id: str) -> dict | None:
+    matched = [s for s in steps if str(s.get("id")) == step_id]
+    return matched[-1] if matched else None
+
+
+def tasks_item_count(step: dict | None) -> int:
+    if not step:
+        return 0
+    tasks = (step.get("metadata") or {}).get("tasks") or []
+    return len(tasks) if isinstance(tasks, list) else 0
+
+
+def run_react_taskboard(token: str, conv_id: str) -> dict:
+    query = "帮我查待审批报销，并对有风险的单据逐条说明原因"
+    print(f"\n[react-taskboard] SSE chat preference=react query={query}")
+    sse_raw = chat_sse(token, conv_id, query, executionPreference="react")
+    assistant = wait_assistant_completed(token, conv_id, 120)
+    steps = merge_steps(sse_raw, assistant)
+    tasks = latest_step(steps, "tasks")
+    plan = latest_step(steps, "plan")
+    item_count = tasks_item_count(tasks)
+    has_plan_dag = plan is not None and "planId=" in str(plan.get("detail") or "")
+    tool_hit = "list_finance_messages" in sse_raw or any(
+        str(s.get("id", "")).startswith("tool-") for s in steps)
+    ok = item_count >= 2 and not has_plan_dag
+    return {
+        "pass": ok,
+        "tasks_items": item_count,
+        "has_plan_dag": has_plan_dag,
+        "tool_hit": tool_hit,
+        "step_count": len(steps),
+    }
 
 
 def parse_sse(raw: str) -> dict:
@@ -211,7 +293,7 @@ def run_workflow_chat(token: str, conv_id: str, query: str, label: str, *, expec
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--suite", choices=["all", "react", "workflow"], default="all")
+    p.add_argument("--suite", choices=["all", "react", "workflow", "react-taskboard"], default="all")
     p.add_argument("--skip-rag-prep", action="store_true")
     return p.parse_args()
 
@@ -244,6 +326,10 @@ def main() -> int:
         conv4 = conversation_id(auth_json("POST", "/api/conversations", None, token))
         report["steps"]["wf-finance-smart"] = run_workflow_chat(
             token, conv4, "待审批报销是否合规", "wf-finance-smart", expect_agent=True)
+
+    if args.suite == "react-taskboard":
+        conv_tb = conversation_id(auth_json("POST", "/api/conversations", None, token))
+        report["steps"]["react-taskboard"] = run_react_taskboard(token, conv_tb)
 
     failed = [k for k, v in report["steps"].items() if not v.get("pass")]
     print("\n=== Report ===")

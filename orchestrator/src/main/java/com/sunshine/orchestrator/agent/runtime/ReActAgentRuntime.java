@@ -3,7 +3,9 @@ package com.sunshine.orchestrator.agent.runtime;
 import com.sunshine.orchestrator.agent.AgentScopeEventMapper;
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
 import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
+import com.sunshine.orchestrator.taskboard.ReactTaskBoardService;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
 import com.sunshine.orchestrator.grounding.GroundingVerdict;
@@ -38,6 +40,8 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final PromptComposer promptComposer;
     private final AnswerGroundingChecker groundingChecker;
     private final AgentGroundingProperties groundingProperties;
+    private final ReactTaskBoardService taskBoardService;
+    private final AgentExecutionProperties executionProperties;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
@@ -156,7 +160,18 @@ public class ReActAgentRuntime implements AgentRuntime {
         return ProcessingTimelineSupport.run(session, () -> {
             session.closeContentSegment();
             session.completeThinkIfRunning();
+            if (isTaskboardEnabled(request)) {
+                taskBoardService.finalizeTimeline(session, request.assistantMessageId());
+            }
         });
+    }
+
+    private boolean isTaskboardEnabled(AgentRunRequest request) {
+        if (request.role() != AgentRole.MAIN) {
+            return false;
+        }
+        AgentExecutionProperties.React react = executionProperties.getReact();
+        return react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled();
     }
 
     private GroundingVerdict validateMainGrounding(

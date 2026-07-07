@@ -224,7 +224,7 @@ userQuery → RuleBasedRouter → 命中则 ExecutionPlan + ruleId
            └─ 未命中 → IntentRouter (flash LLM)
 ```
 
-**Nacos** `agent.routing.rules`：见 `golden-set-schema` 同类文档；支持 `priority`、`match: any|all`、简单正则。
+**Nacos** `agent.routing.structural` / `agent.routing.rules`：配置 SSOT 见 `docs/nacos/sunshine-orchestrator.yaml`；**验收提示词与变更指引**见 [routing-golden-set.md](../../routing/routing-golden-set.md)（勿在 design 内重复规则 YAML）。
 
 **文件**：
 

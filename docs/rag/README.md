@@ -1,8 +1,8 @@
 # RAG 四阶段文档索引（SSOT）
 
-> **最后更新**：2026-07-03（backlog 精简）  
+> **最后更新**：2026-07-07  
 > **代码入口**：`rag-service :8400` · 前端 `/knowledge` · Chat 经 orchestrator `RagClient`  
-> **未实现清单**：[backlog.md](./backlog.md)
+> **4.1/4.2 检查门留档**：[backlog.md](./backlog.md)（非 live 排期 SSOT）
 
 ---
 
@@ -14,7 +14,7 @@ RAG 能力横跨**阶段三（生产加固）**与**阶段四（平台化）**�
 |:----:|:----:|----------|------|:----:|
 | **三** | 8 周 | hybrid+rerank、HyDE、empty-recall、双轨评测门禁、Grafana 可观测 | [phase3-production-hardening-design.md](../superpowers/specs/phase3-production-hardening-design.md) §3.4 | ✅ 检查门通过（v6 +15% 轨 WARN） |
 | **四 · 4.0** | 前置 | 检索 pipeline 内聚 rag-service；orchestrator 瘦身 | [ADR-002](../architecture/ADR-002-rag-pipeline-in-rag-service.md) | ✅ |
-| **四 · 4.1** | 按需 | `/knowledge` 工作台：多 kb、配置版本、debug、评测、Suggest | 本目录 §2 | 🟡 核心已落地，见 [backlog](./backlog.md) |
+| **四 · 4.1** | 按需 | `/knowledge` 工作台：多 kb、配置版本、debug、评测、Suggest | 本目录 §2 | ✅ 检查门通过（2026-07-06；G6 WARN 见 backlog 留档） |
 | **四 · 4.2–4.4** | 按需 | OCR 入库 L1、文档理解 L2、多模态 L3 | [phase4-platformization-design.md](../superpowers/specs/phase4-platformization-design.md) §4.2–4.4 | ⬜ 未启动 |
 
 总排期摘要：[implementation-plan.md](../implementation-plan.md)

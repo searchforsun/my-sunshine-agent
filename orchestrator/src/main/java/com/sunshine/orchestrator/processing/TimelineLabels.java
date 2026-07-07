@@ -1,16 +1,16 @@
 package com.sunshine.orchestrator.processing;
 
 /**
- * 时间线步骤 before / active 文案静态入口（配置见 Nacos agent.timeline）
+ * 时间线步骤 before / active / after 文案静态入口（配置见 Nacos agent.timeline）
  */
 public final class TimelineLabels {
 
-    private static volatile IntentLabelService service;
+    private static volatile TimelineStepLabelService service;
 
     private TimelineLabels() {
     }
 
-    public static void bind(IntentLabelService labelService) {
+    public static void bind(TimelineStepLabelService labelService) {
         service = labelService;
     }
 
@@ -26,9 +26,9 @@ public final class TimelineLabels {
         return requireService().stepAfter(stepId, clippedQuery, detail);
     }
 
-    private static IntentLabelService requireService() {
+    private static TimelineStepLabelService requireService() {
         if (service == null) {
-            throw new IllegalStateException("IntentLabelService 未 bind");
+            throw new IllegalStateException("TimelineStepLabelService 未 bind");
         }
         return service;
     }

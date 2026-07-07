@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.generation;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
@@ -9,6 +10,8 @@ import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.memory.MemoryLifecycleService;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,7 +40,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(SpringExtension.class)
+@ExtendWith({SpringExtension.class, TimelineLabelJUnitExtension.class})
 @ContextConfiguration(classes = EmbeddedRedisTestConfig.class)
 @EnableConfigurationProperties(GenerationProperties.class)
 class GenerationJobTest {
@@ -102,11 +105,18 @@ class GenerationJobTest {
         executionPlanStore = mock(ExecutionPlanStore.class);
     }
 
+    @AfterEach
+    void tearDownBridge() {
+        StepEventBridge.clear(MESSAGE_ID);
+    }
+
     private GenerationJob newJob(String generationId) {
-        return new GenerationJob(
+        GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
                 streamService, properties, flushScheduler, null,
                 workflowPauseService, executionPlanStore, new AgentPauseProperties(), null);
+        job.bindStreamEpoch(StepEventBridge.bumpStreamEpoch(MESSAGE_ID));
+        return job;
     }
 
     @Test

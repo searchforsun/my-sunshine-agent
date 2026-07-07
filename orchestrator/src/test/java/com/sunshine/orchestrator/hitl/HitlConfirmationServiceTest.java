@@ -1,22 +1,14 @@
 package com.sunshine.orchestrator.hitl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
-import com.sunshine.orchestrator.processing.StepLabels;
-import com.sunshine.orchestrator.processing.TimelineLabelTestSupport;
-import com.sunshine.orchestrator.processing.ToolNodeLabelService;
-import com.sunshine.orchestrator.processing.ToolNodeLabels;
-import com.sunshine.orchestrator.generation.GenerationJob;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -50,7 +42,7 @@ class HitlConfirmationServiceTest {
     @Mock
     private ValueOperations<String, String> valueOps;
     @Mock
-    private GenerationJob generationJob;
+    private com.sunshine.orchestrator.generation.GenerationJob generationJob;
 
     private AgentHitlProperties properties;
     private HitlConfirmationService service;
@@ -61,24 +53,23 @@ class HitlConfirmationServiceTest {
         properties.setEnabled(true);
         properties.setTimeoutSec(5);
         lenient().when(generationJob.getGenerationId()).thenReturn("gen-test");
-        service = new HitlConfirmationService(
-                properties,
-                toolCatalogService,
-                generationRegistry,
-                flushScheduler,
-                redis,
-                new ObjectMapper());
-        TimelineLabelTestSupport.bindDefaults();
-        ToolNodeLabels.bind(new ToolNodeLabelService(new AgentPromptProperties(), toolCatalogService));
-        StepLabels.bind(toolCatalogService);
-        StepEventBridge.bindHitl("msg-1", true);
+        HitlTokenRegistry tokenRegistry = new HitlTokenRegistry(properties, redis, new ObjectMapper());
+        HitlTimelineBridge timelineBridge = new HitlTimelineBridge(
+                generationRegistry, flushScheduler, toolCatalogService);
+        service = new HitlConfirmationService(properties, toolCatalogService, tokenRegistry, timelineBridge);
+        com.sunshine.orchestrator.processing.TimelineLabelTestSupport.bindDefaults();
+        com.sunshine.orchestrator.processing.ToolNodeLabels.bind(
+                new com.sunshine.orchestrator.processing.ToolNodeLabelService(
+                        new com.sunshine.orchestrator.config.AgentPromptProperties(), toolCatalogService));
+        com.sunshine.orchestrator.processing.StepLabels.bind(toolCatalogService);
+        com.sunshine.orchestrator.agent.StepEventBridge.bindHitl("msg-1", true);
     }
 
     @AfterEach
     void tearDown() {
-        StepLabels.bind(null);
-        TimelineLabelTestSupport.unbind();
-        StepEventBridge.clear("msg-1");
+        com.sunshine.orchestrator.processing.StepLabels.bind(null);
+        com.sunshine.orchestrator.processing.TimelineLabelTestSupport.unbind();
+        com.sunshine.orchestrator.agent.StepEventBridge.clear("msg-1");
     }
 
     @Test
@@ -200,7 +191,7 @@ class HitlConfirmationServiceTest {
                 () -> service.awaitConfirmation("msg-1", "approve_oa_task", Map.of("taskId", longReason)));
 
         Thread.sleep(200);
-        ArgumentCaptor<String> summaryCaptor = ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<String> summaryCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).metaConfirmation(
                 anyString(), anyString(), summaryCaptor.capture(), anyString(), anyLong());
         assertThat(summaryCaptor.getValue()).startsWith("taskId=");
@@ -212,7 +203,7 @@ class HitlConfirmationServiceTest {
     }
 
     private String extractToken() {
-        ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).metaConfirmation(
                 anyString(), anyString(), anyString(), captor.capture(), anyLong());
         return captor.getValue();

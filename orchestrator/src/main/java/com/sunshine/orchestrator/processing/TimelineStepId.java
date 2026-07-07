@@ -16,7 +16,9 @@ public enum TimelineStepId {
     SKILL("skill"),
     AGENT("agent"),
     TOOL("tool"),
-    NODE("node");
+    NODE("node"),
+    TASKS("tasks"),
+    PEER_COLLAB("peer-collab");
 
     private final String id;
 

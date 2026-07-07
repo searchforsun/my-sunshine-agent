@@ -184,7 +184,7 @@ class WorkflowExecutorTest {
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "m1", "请假制度是什么", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "查制度"));
 
         List<StreamToken> tokens = executor.execute(ctx).collectList().block();
@@ -205,7 +205,7 @@ class WorkflowExecutorTest {
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "m1", "test", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "unknown", Map.of(), "test"));
 
         List<StreamToken> tokens = executor.execute(ctx).collectList().block();

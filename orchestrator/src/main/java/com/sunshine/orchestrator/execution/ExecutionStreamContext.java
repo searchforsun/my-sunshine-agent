@@ -15,7 +15,6 @@ public record ExecutionStreamContext(
         MemoryContext memory,
         String existingContent,
         String existingReasoning,
-        String legacyIntent,
         String userId,
         String tenantId,
         String kbId,
@@ -32,12 +31,11 @@ public record ExecutionStreamContext(
             MemoryContext memory,
             String existingContent,
             String existingReasoning,
-            String legacyIntent,
             String userId,
             String tenantId,
             ExecutionPlan plan) {
         this(conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning, legacyIntent,
+                existingContent, existingReasoning,
                 userId, tenantId, null, plan, null, null, null, false, false);
     }
 
@@ -48,7 +46,6 @@ public record ExecutionStreamContext(
             MemoryContext memory,
             String existingContent,
             String existingReasoning,
-            String legacyIntent,
             String userId,
             String tenantId,
             ExecutionPlan plan,
@@ -57,7 +54,7 @@ public record ExecutionStreamContext(
             ResumeInteractionHint resumeInteraction,
             boolean workflowHitlPreApproved) {
         this(conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning, legacyIntent,
+                existingContent, existingReasoning,
                 userId, tenantId, null, plan, persistedPlanId, workflowHitl, resumeInteraction,
                 workflowHitlPreApproved, false);
     }
@@ -65,7 +62,7 @@ public record ExecutionStreamContext(
     public ExecutionStreamContext withPlan(ExecutionPlan newPlan) {
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning, legacyIntent,
+                existingContent, existingReasoning,
                 userId, tenantId, kbId, newPlan, persistedPlanId, workflowHitl, resumeInteraction,
                 workflowHitlPreApproved, reactRestart);
     }
@@ -73,7 +70,7 @@ public record ExecutionStreamContext(
     public ExecutionStreamContext withPersistedPlanId(String planId) {
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning, legacyIntent,
+                existingContent, existingReasoning,
                 userId, tenantId, kbId, plan, planId, workflowHitl, resumeInteraction,
                 workflowHitlPreApproved, reactRestart);
     }
@@ -82,7 +79,7 @@ public record ExecutionStreamContext(
     public ExecutionStreamContext withWorkflowHitl(WorkflowHitlScope.Binding binding) {
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning, legacyIntent,
+                existingContent, existingReasoning,
                 userId, tenantId, kbId, plan, persistedPlanId, binding, resumeInteraction,
                 workflowHitlPreApproved, reactRestart);
     }
@@ -90,7 +87,7 @@ public record ExecutionStreamContext(
     public ExecutionStreamContext withResumeInteraction(ResumeInteractionHint hint) {
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning, legacyIntent,
+                existingContent, existingReasoning,
                 userId, tenantId, kbId, plan, persistedPlanId, workflowHitl, hint,
                 workflowHitlPreApproved, reactRestart);
     }
@@ -99,7 +96,7 @@ public record ExecutionStreamContext(
     public ExecutionStreamContext withHitlPreApproved() {
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning, legacyIntent,
+                existingContent, existingReasoning,
                 userId, tenantId, kbId, plan, persistedPlanId, workflowHitl, null, true, reactRestart);
     }
 }

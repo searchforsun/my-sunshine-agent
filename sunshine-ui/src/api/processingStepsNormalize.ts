@@ -2,7 +2,7 @@
 import type { ProcessingStep, StepPhase } from './processingSteps'
 
 export const STEP_ORDER: StepPhase[] = [
-  'intent', 'skill', 'plan', 'node', 'rag', 'tool', 'agent', 'think', 'generate',
+  'intent', 'skill', 'plan', 'tasks', 'node', 'rag', 'tool', 'agent', 'think', 'generate',
 ]
 
 function isThinkStepId(id: string): boolean {

@@ -1,9 +1,12 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,7 +22,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, TimelineLabelJUnitExtension.class})
 class GenerationRegistryTest {
 
     @Mock
@@ -41,12 +44,24 @@ class GenerationRegistryTest {
         registry = new GenerationRegistry(workflowPauseService);
     }
 
+    @AfterEach
+    void tearDown() {
+        StepEventBridge.clear("msg-1");
+        StepEventBridge.clear("msg-2");
+        StepEventBridge.clear("msg-3");
+        StepEventBridge.clear("msg-a");
+        StepEventBridge.clear("msg-b");
+        StepEventBridge.clear("msg-stale");
+    }
+
     private GenerationJob newJob(String generationId, String messageId) {
-        return new GenerationJob(
+        GenerationJob job = new GenerationJob(
                 generationId, messageId, "conv-1", "alice", "default", "chat", "hello",
                 streamService, properties, flushScheduler, null,
                 workflowPauseService, mock(com.sunshine.orchestrator.plan.ExecutionPlanStore.class),
                 new AgentPauseProperties(), null);
+        job.bindStreamEpoch(StepEventBridge.bumpStreamEpoch(messageId));
+        return job;
     }
 
     @Test
@@ -74,7 +89,7 @@ class GenerationRegistryTest {
         assertThat(registry.tryLockMessage("msg-2", "gen-3")).isTrue();
         // persistFinal 在 boundedElastic 异步落库，须等待 commitFinal
         verify(flushScheduler, timeout(5000))
-                .commitFinal("msg-2", "", "", MessageStatus.INTERRUPTED, null);
+                .commitFinal("msg-2", "", "", MessageStatus.INTERRUPTED, null, null);
     }
 
     @Test
@@ -105,9 +120,9 @@ class GenerationRegistryTest {
         assertThat(registry.get("gen-a")).isEmpty();
         assertThat(registry.get("gen-b")).isEmpty();
         verify(flushScheduler, timeout(5000))
-                .commitFinal(eq("msg-a"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
+                .commitFinal(eq("msg-a"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull());
         verify(flushScheduler, timeout(5000))
-                .commitFinal(eq("msg-b"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull());
+                .commitFinal(eq("msg-b"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull());
     }
 
     @Test

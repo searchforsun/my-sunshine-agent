@@ -48,14 +48,25 @@ class ConfigVersionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ConfigVersionService(
+        ObjectMapper objectMapper = new ObjectMapper();
+        ConfigVersionStore store = new ConfigVersionStore(
+                bundleRepository, versionRepository, knowledgeBaseRepository, objectMapper);
+        ConfigVersionEvalLifecycle evalLifecycle = new ConfigVersionEvalLifecycle(versionRepository, store);
+        ConfigVersionPublishOps publishOps = new ConfigVersionPublishOps(
                 bundleRepository,
                 versionRepository,
-                knowledgeBaseRepository,
                 evalJobRepository,
                 evalReportRepository,
-                new ObjectMapper(),
+                store,
+                evalLifecycle,
                 eventPublisher);
+        service = new ConfigVersionService(
+                versionRepository,
+                evalJobRepository,
+                evalReportRepository,
+                store,
+                evalLifecycle,
+                publishOps);
     }
 
     @Test

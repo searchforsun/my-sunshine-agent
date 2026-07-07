@@ -114,10 +114,15 @@ class EvaluateServiceFullTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<com.sunshine.rag.admin.config.ConfigVersionService> configVersionProvider =
                 mock(ObjectProvider.class);
+        EvalRetrievalProbe retrievalProbe = new EvalRetrievalProbe(pipeline);
+        EvalReportPersister reportPersister = new EvalReportPersister(
+                evalReportRepository, props, new ObjectMapper());
+        EvalFullRunOrchestrator fullRunOrchestrator = new EvalFullRunOrchestrator(
+                effectiveConfigResolver, goldenSetLoader, retrievalProbe, evalJobRepository);
+        EvalSmokeRunner smokeRunner = new EvalSmokeRunner(
+                effectiveConfigResolver, goldenSetLoader, retrievalProbe, reportPersister);
         evaluateService = new EvaluateService(
-                pipeline,
                 effectiveConfigResolver,
-                goldenSetLoader,
                 evalSuiteService,
                 pythonEvalRunner,
                 evalReportRepository,
@@ -125,10 +130,12 @@ class EvaluateServiceFullTest {
                 evalSuiteRepository,
                 configVersionRepository,
                 evalReportWriter,
-                props,
                 new ObjectMapper(),
                 evalAsyncRunner,
-                configVersionProvider);
+                configVersionProvider,
+                smokeRunner,
+                fullRunOrchestrator,
+                reportPersister);
     }
 
     @Test

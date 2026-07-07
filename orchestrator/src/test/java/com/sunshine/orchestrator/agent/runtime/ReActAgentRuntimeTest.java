@@ -1,8 +1,10 @@
 package com.sunshine.orchestrator.agent.runtime;
 
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
+import com.sunshine.orchestrator.taskboard.ReactTaskBoardService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
@@ -42,6 +44,8 @@ class ReActAgentRuntimeTest {
     private ReActAgent reactAgent;
     @Mock
     private AnswerGroundingChecker groundingChecker;
+    @Mock
+    private ReactTaskBoardService taskBoardService;
 
     private ReActAgentRuntime runtime;
 
@@ -49,7 +53,10 @@ class ReActAgentRuntimeTest {
     void setUp() {
         AgentGroundingProperties groundingProperties = new AgentGroundingProperties();
         groundingProperties.setEnabled(false);
-        runtime = new ReActAgentRuntime(agentFactory, promptComposer, groundingChecker, groundingProperties);
+        AgentExecutionProperties executionProperties = new AgentExecutionProperties();
+        runtime = new ReActAgentRuntime(
+                agentFactory, promptComposer, groundingChecker, groundingProperties,
+                taskBoardService, executionProperties);
     }
 
     @Test

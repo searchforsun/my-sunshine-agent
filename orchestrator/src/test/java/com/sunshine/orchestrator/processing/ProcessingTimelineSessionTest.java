@@ -10,6 +10,7 @@ import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -441,6 +442,44 @@ class ProcessingTimelineSessionTest {
 
         assertEquals(1, emitted.size());
         assertEquals("running", emitted.get(0).lifecycle());
+    }
+
+    @Test
+    void updateTaskBoard_emitsTasksStepWithMetadata() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        List<TaskBoardItemView> items = List.of(
+                new TaskBoardItemView("t1", "检索制度", "completed"),
+                new TaskBoardItemView("t2", "查询待审批", "in_progress"));
+        StepMetadata metadata = StepMetadata.withTasks(items, 2, "1/2 已完成");
+        session.updateTaskBoard(TimelineStepId.TASKS.id(), TimelineStepId.TASKS.phase(),
+                TaskBoardStepLabels.active("查询待审批"), metadata);
+
+        ProcessingStep tasks = session.snapshot().stream()
+                .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).findFirst().orElseThrow();
+        assertThat(tasks.phase()).isEqualTo("tasks");
+        assertThat(tasks.label()).isEqualTo("任务清单");
+        assertThat(tasks.lifecycle()).isEqualTo("running");
+        assertThat(tasks.summary().active()).contains("查询待审批");
+        assertThat(tasks.metadata().tasks()).hasSize(2);
+        assertThat(tasks.metadata().taskRevision()).isEqualTo(2);
+        assertThat(tasks.metadata().taskProgress()).isEqualTo("1/2 已完成");
+    }
+
+    @Test
+    void completeTaskBoard_marksStepDone() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        List<TaskBoardItemView> items = List.of(
+                new TaskBoardItemView("t1", "检索制度", "completed"),
+                new TaskBoardItemView("t2", "汇总结论", "completed"));
+        StepMetadata metadata = StepMetadata.withTasks(items, 3, "2/2 已完成");
+        session.updateTaskBoard(TimelineStepId.TASKS.id(), TimelineStepId.TASKS.phase(),
+                TaskBoardStepLabels.active(""), metadata);
+        session.completeTaskBoard(TaskBoardStepLabels.allDone(), metadata);
+
+        ProcessingStep tasks = session.snapshot().stream()
+                .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).findFirst().orElseThrow();
+        assertThat(tasks.lifecycle()).isEqualTo("done");
+        assertThat(tasks.summary().after()).isEqualTo("全部任务已完成");
     }
 
     @Test

@@ -27,6 +27,8 @@ class IntentLabelServiceTest {
     private ToolCatalogService toolCatalogService;
 
     private IntentLabelService intentLabelService;
+    private TimelineStepLabelService timelineStepLabelService;
+    private ThinkStepLabelService thinkStepLabelService;
 
     @BeforeEach
     void setUp() {
@@ -35,11 +37,13 @@ class IntentLabelServiceTest {
         WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
                 workflowProps, toolCatalogService, agentProps);
         WorkflowNodeLabels.bind(workflowLabels);
+        timelineStepLabelService = new TimelineStepLabelService(agentProps);
+        thinkStepLabelService = new ThinkStepLabelService(agentProps);
         intentLabelService = new IntentLabelService(agentProps, workflowProps, workflowLabels);
         IntentLabels.bind(intentLabelService);
-        TimelineLabels.bind(intentLabelService);
-        TimelineStepLabels.bind(intentLabelService);
-        ThinkStepLabels.bind(intentLabelService);
+        TimelineLabels.bind(timelineStepLabelService);
+        TimelineStepLabels.bind(timelineStepLabelService);
+        ThinkStepLabels.bind(thinkStepLabelService);
     }
 
     @AfterEach
@@ -53,29 +57,29 @@ class IntentLabelServiceTest {
 
     @Test
     void stepLabel_readsFromTimelineConfig() {
-        assertThat(intentLabelService.stepLabel("intent")).isEqualTo("识别意图");
-        assertThat(intentLabelService.stepLabel("plan")).isEqualTo("执行计划");
-        assertThat(intentLabelService.stepLabel("think")).isEqualTo("规划推理");
+        assertThat(timelineStepLabelService.stepLabel("intent")).isEqualTo("识别意图");
+        assertThat(timelineStepLabelService.stepLabel("plan")).isEqualTo("执行计划");
+        assertThat(timelineStepLabelService.stepLabel("think")).isEqualTo("规划推理");
     }
 
     @Test
     void thinkStepLabel_readsModeAndIteration() {
-        assertThat(intentLabelService.thinkStepLabel("think", ExecutionMode.REACT)).isEqualTo("规划推理");
-        assertThat(intentLabelService.thinkStepLabel("think-2", ExecutionMode.REACT)).isEqualTo("综合分析");
-        assertThat(intentLabelService.thinkStepLabel("think", ExecutionMode.SIMPLE_LLM)).isEqualTo("构思回答");
-        assertThat(intentLabelService.thinkStepLabel("think-2", ExecutionMode.SIMPLE_LLM)).isEqualTo("整理作答");
+        assertThat(thinkStepLabelService.thinkStepLabel("think", ExecutionMode.REACT)).isEqualTo("规划推理");
+        assertThat(thinkStepLabelService.thinkStepLabel("think-2", ExecutionMode.REACT)).isEqualTo("综合分析");
+        assertThat(thinkStepLabelService.thinkStepLabel("think", ExecutionMode.SIMPLE_LLM)).isEqualTo("构思回答");
+        assertThat(thinkStepLabelService.thinkStepLabel("think-2", ExecutionMode.SIMPLE_LLM)).isEqualTo("整理作答");
     }
 
     @Test
     void thinkStepSummary_readsFromTimelineConfig() {
         String q = StepSummarizer.clipQuery("报销制度");
-        assertThat(intentLabelService.thinkStepBefore("think", ExecutionMode.REACT, q, null))
+        assertThat(thinkStepLabelService.thinkStepBefore("think", ExecutionMode.REACT, q, null))
                 .isEqualTo("规划如何回答「报销制度」");
-        assertThat(intentLabelService.thinkStepActive("think", ExecutionMode.SIMPLE_LLM, q, null))
+        assertThat(thinkStepLabelService.thinkStepActive("think", ExecutionMode.SIMPLE_LLM, q, null))
                 .isEqualTo("正在构思针对「报销制度」的作答思路");
-        assertThat(intentLabelService.thinkStepAfter("think-2", ExecutionMode.REACT, q, "统计财务消息"))
+        assertThat(thinkStepLabelService.thinkStepAfter("think-2", ExecutionMode.REACT, q, "统计财务消息"))
                 .isEqualTo("已完成「统计财务消息」的工具结果综合分析");
-        assertThat(intentLabelService.thinkStepBefore("think", ExecutionMode.REACT, "", null))
+        assertThat(thinkStepLabelService.thinkStepBefore("think", ExecutionMode.REACT, "", null))
                 .isEqualTo("规划工具与作答路径");
     }
 

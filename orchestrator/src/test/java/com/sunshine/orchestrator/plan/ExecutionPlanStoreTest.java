@@ -47,7 +47,7 @@ class ExecutionPlanStoreTest {
     void createDraft_persistsAndLinksMessage() {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "conv-1", "msg-1", "query", MemoryContext.empty(),
-                null, null, null, "u1", "default",
+                null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
         PlanJson planJson = new PlanJson(null, "跨领域", List.of(
                 new PlanNode("n1", "llm", Map.of()),

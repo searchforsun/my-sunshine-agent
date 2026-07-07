@@ -192,6 +192,12 @@ export function shouldShiftSummaryOnExpand(step: ProcessingStep): boolean {
 }
 
 export function hasExpandableContent(step: ProcessingStep): boolean {
+  if (step.phase === 'tasks' && (step.metadata?.tasks?.length ?? 0) > 0) {
+    return false
+  }
+  if (step.phase === 'peer-collab' || step.id === 'peer-collab') {
+    return false
+  }
   if (isWorkflowAnswerStep(step)) {
     return shouldShiftSummaryOnExpand(step)
       || !!formatRewriteMetadata(step)

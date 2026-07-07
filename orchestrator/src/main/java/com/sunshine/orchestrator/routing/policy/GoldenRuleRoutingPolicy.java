@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.routing.policy;
 
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.PeerPatternMatcher;
 import com.sunshine.orchestrator.routing.RuleBasedRouter;
 import com.sunshine.orchestrator.routing.StructuralPlanMatcher;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ public class GoldenRuleRoutingPolicy implements RoutingPolicy {
 
     private final RuleBasedRouter ruleBasedRouter;
     private final StructuralPlanMatcher structuralPlanMatcher;
+    private final PeerPatternMatcher peerPatternMatcher;
 
     @Override
     public int order() {
@@ -24,7 +26,8 @@ public class GoldenRuleRoutingPolicy implements RoutingPolicy {
 
     @Override
     public Mono<Optional<ExecutionPlan>> tryRoute(RoutingContext ctx) {
-        if (structuralPlanMatcher.looksLikeMultiStepPlan(ctx.userMessage())) {
+        if (structuralPlanMatcher.looksLikeMultiStepPlan(ctx.userMessage())
+                || peerPatternMatcher.looksLikePeerCollab(ctx.userMessage())) {
             return Mono.just(Optional.empty());
         }
         return Mono.just(ruleBasedRouter.match(ctx.userMessage()));

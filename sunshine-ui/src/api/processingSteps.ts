@@ -49,6 +49,13 @@ export {
 } from './processingStepsPlan'
 export type { PlanStepDetailView } from './processingStepsPlan'
 
+/** ReAct TaskBoard 清单项（SSE metadata.tasks） */
+export interface TaskBoardItemView {
+  id: string
+  content: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+}
+
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
 export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'
@@ -106,6 +113,10 @@ export interface StepMetadata {
     rounds?: PlanApprovalRoundView[]
     planGraph?: PlanGraph
   }
+  /** ReAct TaskBoard */
+  tasks?: TaskBoardItemView[]
+  taskRevision?: number
+  taskProgress?: string
 }
 
 

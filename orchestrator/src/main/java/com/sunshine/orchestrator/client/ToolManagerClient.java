@@ -31,7 +31,7 @@ public class ToolManagerClient {
         log.info("[ToolManagerClient] baseUrl={}", baseUrl);
     }
 
-    public String invoke(String name, Map<String, String> params) {
+    public Mono<String> invokeMono(String name, Map<String, String> params) {
         Map<String, Object> body = Map.of(
                 "name", name,
                 "params", params != null ? params : Map.of());
@@ -45,15 +45,14 @@ public class ToolManagerClient {
                 .onErrorResume(e -> {
                     log.warn("[ToolManagerClient] invoke {} failed: {}", name, e.getMessage());
                     return Mono.just(INVOKE_FAILURE_PREFIX + " " + e.getMessage());
-                })
-                .block();
+                });
     }
 
     public static boolean isInvokeFailureResult(String result) {
         return result != null && result.startsWith(INVOKE_FAILURE_PREFIX);
     }
 
-    public ToolSummarizeOutputResponse summarizeOutput(String toolName, String text) {
+    public Mono<ToolSummarizeOutputResponse> summarizeOutputMono(String toolName, String text) {
         Map<String, Object> body = Map.of(
                 "toolName", toolName != null ? toolName : "",
                 "text", text != null ? text : "");
@@ -63,11 +62,10 @@ public class ToolManagerClient {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<R<ToolSummarizeOutputResponse>>() {})
-                .map(R::getData)
-                .block();
+                .map(R::getData);
     }
 
-    public ToolSummarizeOutputResponse summarizeByKind(String outputSummaryKind, String text) {
+    public Mono<ToolSummarizeOutputResponse> summarizeByKindMono(String outputSummaryKind, String text) {
         Map<String, Object> body = Map.of(
                 "outputSummaryKind", outputSummaryKind != null ? outputSummaryKind : "",
                 "text", text != null ? text : "");
@@ -77,12 +75,7 @@ public class ToolManagerClient {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<R<ToolSummarizeOutputResponse>>() {})
-                .map(R::getData)
-                .block();
-    }
-
-    public ToolSummarizeOutputResponse summarizeRagHits(List<RagClient.RagHit> hits) {
-        return summarizeRagHitsMono(hits).block();
+                .map(R::getData);
     }
 
     public Mono<ToolSummarizeOutputResponse> summarizeRagHitsMono(List<RagClient.RagHit> hits) {

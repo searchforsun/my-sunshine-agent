@@ -22,6 +22,7 @@ import java.util.Set;
 public class DynamicToolkitFactory {
 
     private final RagTool ragTool;
+    private final ManageTasksTool manageTasksTool;
     private final GenericRemoteToolFactory remoteToolFactory;
     private final ToolCatalogService toolCatalogService;
     private final AgentExecutionProperties executionProperties;
@@ -52,6 +53,10 @@ public class DynamicToolkitFactory {
             if (toolName == null || toolName.isBlank()) {
                 continue;
             }
+            if (toolName.equals(ManageTasksTool.NAME)) {
+                log.warn("[Orchestrator] manage_tasks 为内置元工具，勿放入 react.tools 白名单");
+                continue;
+            }
             if (toolCatalogService.isRagTool(toolName)) {
                 tk.registerTool(ragTool);
                 registered.add(toolName);
@@ -63,6 +68,12 @@ public class DynamicToolkitFactory {
                 }
                 registered.add(toolName);
             }, () -> missing.add(toolName));
+        }
+
+        AgentExecutionProperties.React react = executionProperties.getReact();
+        if (react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled()) {
+            tk.registerTool(manageTasksTool);
+            registered.add(ManageTasksTool.NAME);
         }
 
         if (!missing.isEmpty()) {

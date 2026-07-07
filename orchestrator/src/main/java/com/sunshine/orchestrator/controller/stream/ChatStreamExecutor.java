@@ -267,7 +267,6 @@ public class ChatStreamExecutor {
                 ctx.memory(),
                 ctx.existingContent(),
                 ctx.existingReasoning(),
-                ctx.intent(),
                 ctx.userId(),
                 ctx.tenantId(),
                 ctx.kbId(),

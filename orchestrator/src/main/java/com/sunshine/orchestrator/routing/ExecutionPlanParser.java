@@ -54,6 +54,9 @@ public class ExecutionPlanParser {
         if ("plan-workflow".equalsIgnoreCase(stored)) {
             return new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "stored");
         }
+        if ("peer-collab".equalsIgnoreCase(stored)) {
+            return new ExecutionPlan(ExecutionMode.PEER_COLLAB, null, Map.of(), "stored");
+        }
         return ExecutionPlan.reactFallback("unknown stored intent: " + stored);
     }
 

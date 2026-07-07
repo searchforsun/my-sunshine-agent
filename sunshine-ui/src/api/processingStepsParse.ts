@@ -8,6 +8,7 @@ import type {
   StepMetadata,
   StepPhase,
   StepSummary,
+  TaskBoardItemView,
 } from './processingSteps'
 
 function parseSummary(raw: unknown): StepSummary | undefined {
@@ -18,6 +19,25 @@ function parseSummary(raw: unknown): StepSummary | undefined {
   const after = typeof obj.after === 'string' ? obj.after : undefined
   if (!before && !active && !after) return undefined
   return { before, active, after }
+}
+
+function parseTaskBoardItems(raw: unknown): StepMetadata['tasks'] {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const items = raw
+    .map(item => {
+      if (!item || typeof item !== 'object') return null
+      const o = item as Record<string, unknown>
+      const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : ''
+      const content = typeof o.content === 'string' && o.content.trim() ? o.content.trim() : ''
+      const status = typeof o.status === 'string' ? o.status.trim() : ''
+      if (!id || !content || !status) return null
+      if (status !== 'pending' && status !== 'in_progress' && status !== 'completed' && status !== 'cancelled') {
+        return null
+      }
+      return { id, content, status } as TaskBoardItemView
+    })
+    .filter((item): item is NonNullable<typeof item> => !!item)
+  return items.length > 0 ? items : undefined
 }
 
 function parseNodeAttempts(raw: unknown): StepMetadata['nodeAttempts'] {
@@ -143,6 +163,11 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
         planGraph: planApprovalPlanGraph,
       }
     : undefined
+  const tasks = parseTaskBoardItems(obj.tasks)
+  const taskRevision = typeof obj.taskRevision === 'number' ? obj.taskRevision : undefined
+  const taskProgress = typeof obj.taskProgress === 'string' && obj.taskProgress.trim()
+    ? obj.taskProgress.trim()
+    : undefined
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -156,6 +181,9 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !recoveryStatus
     && !nodeAttempts?.length
     && !planApproval
+    && !tasks?.length
+    && taskRevision == null
+    && !taskProgress
   ) {
     return undefined
   }
@@ -184,6 +212,9 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     recoveryExpiresAt,
     nodeAttempts,
     planApproval,
+    tasks,
+    taskRevision,
+    taskProgress,
   }
 }
 
@@ -227,6 +258,13 @@ export function mergeStepMetadata(
         ? incoming.planApproval.planGraph
         : prev.planApproval?.planGraph,
     }
+  }
+  const prevRevision = prev.taskRevision ?? 0
+  const incomingRevision = incoming.taskRevision ?? 0
+  if (incoming.tasks?.length && incomingRevision >= prevRevision) {
+    merged.tasks = incoming.tasks
+    merged.taskRevision = incoming.taskRevision
+    merged.taskProgress = incoming.taskProgress ?? merged.taskProgress
   }
   return merged
 }

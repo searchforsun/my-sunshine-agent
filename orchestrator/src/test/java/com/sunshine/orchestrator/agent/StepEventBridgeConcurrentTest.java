@@ -3,8 +3,10 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.execution.agent.SubAgentTimelineBridge;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +15,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** 验证多并发 ReAct 会话时 Hook 事件按 bridgeId 精确路由，互不串线 */
+@ExtendWith(TimelineLabelJUnitExtension.class)
 class StepEventBridgeConcurrentTest {
 
     private final List<String> boundIds = new ArrayList<>();

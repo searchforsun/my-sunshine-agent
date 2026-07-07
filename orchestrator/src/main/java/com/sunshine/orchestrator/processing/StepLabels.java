@@ -32,7 +32,7 @@ public final class StepLabels {
             return stepId;
         }
         return switch (standard.get()) {
-            case INTENT, SKILL, PLAN, THINK, GENERATE -> TimelineStepLabels.label(stepId);
+            case INTENT, SKILL, PLAN, THINK, GENERATE, TASKS -> TimelineStepLabels.label(stepId);
             case RAG -> catalogService != null
                     ? catalogService.displayName("search_knowledge")
                     : TimelineStepLabels.label(TimelineStepId.RAG.id());
@@ -40,7 +40,7 @@ public final class StepLabels {
         };
     }
 
-    /** think / tool / node 步骤 fallback；intent/plan/rag/generate/skill 见 Nacos {@link IntentLabelService} */
+    /** think / tool / node 步骤 fallback；intent/plan/rag/generate/skill 见 Nacos {@link TimelineStepLabelService} */
     public static String beforeFor(String stepId) {
         if (ThinkStepIds.isThinkStep(stepId)) {
             return ThinkStepLabels.before(stepId, ExecutionMode.REACT, "", null);

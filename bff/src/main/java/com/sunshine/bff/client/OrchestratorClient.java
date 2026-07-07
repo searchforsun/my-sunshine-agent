@@ -213,6 +213,16 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
     }
 
+    public Mono<Map<String, Object>> getPeerRun(String messageId, String userId, String tenantId) {
+        return webClient.get()
+                .uri("/api/audit/peer-run/{messageId}", messageId)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     private Mono<? extends Throwable> toStatusException(
             org.springframework.web.reactive.function.client.ClientResponse response) {
         return response.bodyToMono(String.class)

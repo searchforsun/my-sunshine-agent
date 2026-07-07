@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.processing.ContentBlock;
 import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -287,6 +288,23 @@ public final class ProcessingStepSerde {
             if (!approval.isEmpty()) {
                 map.put("planApproval", approval);
             }
+        }
+        if (metadata.tasks() != null && !metadata.tasks().isEmpty()) {
+            List<Map<String, Object>> tasks = new ArrayList<>();
+            for (TaskBoardItemView item : metadata.tasks()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id", item.id());
+                row.put("content", item.content());
+                row.put("status", item.status());
+                tasks.add(row);
+            }
+            map.put("tasks", tasks);
+        }
+        if (metadata.taskRevision() != null) {
+            map.put("taskRevision", metadata.taskRevision());
+        }
+        if (hasText(metadata.taskProgress())) {
+            map.put("taskProgress", metadata.taskProgress());
         }
         return map;
     }

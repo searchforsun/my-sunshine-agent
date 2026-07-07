@@ -195,6 +195,14 @@ public final class ProcessingTimelineSession {
         completions.completeSkillLoad(skillId);
     }
 
+    public void updateTaskBoard(String stepId, String phase, String activeSummary, StepMetadata metadata) {
+        completions.updateTaskBoard(stepId, phase, activeSummary, metadata);
+    }
+
+    public void completeTaskBoard(String after, StepMetadata metadata) {
+        completions.completeTaskBoard(after, metadata);
+    }
+
     public void completeAt(String stepId, String detail, long endedAt) {
         completions.completeAt(stepId, detail, endedAt);
     }

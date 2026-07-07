@@ -6,9 +6,13 @@ import com.sunshine.orchestrator.agent.IntentRouter;
 
 import com.sunshine.orchestrator.config.RoutingRuleProperties;
 
+import com.sunshine.orchestrator.peer.PeerCollaborationParams;
+
 import com.sunshine.orchestrator.routing.policy.GoldenRuleRoutingPolicy;
 
 import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
+
+import com.sunshine.orchestrator.routing.policy.PeerStructuralRoutingPolicy;
 
 import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
 
@@ -120,13 +124,17 @@ class RoutingGoldenSetTest {
 
         StructuralPlanMatcher structuralMatcher = new StructuralPlanMatcher(routingProps);
 
+        PeerPatternMatcher peerMatcher = new PeerPatternMatcher(routingProps);
+
         var chain = new RoutingPolicyChain(List.of(
 
                 new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
 
                 new StructuralRoutingPolicy(structuralMatcher),
 
-                new GoldenRuleRoutingPolicy(ruleRouter, structuralMatcher),
+                new PeerStructuralRoutingPolicy(peerMatcher, structuralMatcher),
+
+                new GoldenRuleRoutingPolicy(ruleRouter, structuralMatcher, peerMatcher),
 
                 new LlmClassifierRoutingPolicy(intentRouter, queryRewriteService)));
 
@@ -432,6 +440,28 @@ class RoutingGoldenSetTest {
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
         assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
         assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
+    }
+
+    @ParameterizedTest(name = "peerCollab E1: {0}")
+    @ValueSource(strings = {
+            "请制度专家和财务专家分别审查这笔报销是否合规，并互相验证",
+            "从合规和财务两个角度交叉审查上述制度条款"
+    })
+    void peerCollabE1(String query) {
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
+        assertThat(plan.params()).containsEntry(PeerCollaborationParams.TEMPLATE_ID, "compliance-cross-review");
+        assertThat(plan.reason()).isEqualTo("structural:peer-collab");
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void peerCollabE2_pipelineStillPlanWorkflow() {
+        String query = "先检索报销制度，再查待审批列表，并对结果做合规分析";
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        assertThat(plan.reason()).isEqualTo("structural:multi-step-plan");
+        verify(intentRouter, never()).classifyPlan(anyString());
     }
 
     private ExecutionPlan forcedRoute(ExecutionPreference preference, String query, String workflowId) {

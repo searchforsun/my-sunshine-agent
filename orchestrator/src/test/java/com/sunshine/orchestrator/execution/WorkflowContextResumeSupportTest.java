@@ -22,8 +22,7 @@ class WorkflowContextResumeSupportTest {
                 List.of(new NodeSpec("t1", "tool", Map.of("tool", "list_oa_tasks"), "查待办")),
                 List.of("t1"));
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c", "m", "查待办", MemoryContext.empty(), "", "", null,
-                "u", "t",
+                "c", "m", "查待办", MemoryContext.empty(), "", "", "u", "t",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "r"))
                 .withPersistedPlanId("plan-1");
 
