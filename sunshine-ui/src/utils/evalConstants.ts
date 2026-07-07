@@ -100,29 +100,19 @@ function extractGates(source: Record<string, unknown> | undefined): EvalSuiteGat
   return gates
 }
 
-/** 将 API/存量 config 归一为扁平结构（兼容 eval.productionGates 等遗留字段） */
+/** 将 API config_json 归一为扁平结构 */
 export function normalizeEvalSuiteConfig(
   raw: Record<string, unknown> | null | undefined,
 ): EvalSuiteConfig {
   const src = raw ?? {}
-  const evalBlock =
-    src.eval && typeof src.eval === 'object' && !Array.isArray(src.eval)
-      ? (src.eval as Record<string, unknown>)
-      : {}
-  const topK = asTopK(src.topK ?? evalBlock.topK)
-  const minScore = asNumber(src.minScore) ?? asNumber(evalBlock.minScore) ?? DEFAULT_EVAL_MIN_SCORE
+  const topK = asTopK(src.topK)
+  const minScore = asNumber(src.minScore) ?? DEFAULT_EVAL_MIN_SCORE
   const gatesFromRoot = extractGates(
     src.gates && typeof src.gates === 'object' && !Array.isArray(src.gates)
       ? (src.gates as Record<string, unknown>)
       : undefined,
   )
-  const legacyGates = evalBlock.productionGates ?? evalBlock.gates
-  const gatesFromLegacy = extractGates(
-    legacyGates && typeof legacyGates === 'object' && !Array.isArray(legacyGates)
-      ? (legacyGates as Record<string, unknown>)
-      : undefined,
-  )
-  return { topK, minScore, gates: { ...DEFAULT_EVAL_GATES, ...gatesFromLegacy, ...gatesFromRoot } }
+  return { topK, minScore, gates: { ...DEFAULT_EVAL_GATES, ...gatesFromRoot } }
 }
 
 export function defaultEvalSuiteConfig(): EvalSuiteConfig {

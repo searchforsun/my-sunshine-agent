@@ -54,7 +54,7 @@ public class QueryRewriteService {
         AgentRewriteProperties.Planner cfg = rewriteProperties.plannerOrDefault();
         if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery) || !StringUtils.hasText(cfg.getSystemPrompt())) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
-                    "planner", originalQuery, elapsedMs(start));
+                    QueryRewriteScenario.PLANNER.id(), originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
@@ -63,11 +63,11 @@ public class QueryRewriteService {
         String rewritten = parseSingleQuery(raw, originalQuery);
         if (!StringUtils.hasText(rewritten)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
-                    "planner", originalQuery, elapsedMs(start));
+                    QueryRewriteScenario.PLANNER.id(), originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
-        QueryRewriteOutcome outcome = QueryRewriteOutcome.of("planner", originalQuery, rewritten, elapsedMs(start));
+        QueryRewriteOutcome outcome = QueryRewriteOutcome.of(QueryRewriteScenario.PLANNER.id(), originalQuery, rewritten, elapsedMs(start));
         if (outcome.applied()) {
             log.info("[QueryRewrite] planner: in='{}' out='{}'",
                     abbreviate(originalQuery), abbreviate(outcome.rewrittenQuery()));
@@ -80,14 +80,14 @@ public class QueryRewriteService {
         long start = System.nanoTime();
         if (!shouldRewriteIntent(originalQuery)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
-                    "intent", originalQuery, elapsedMs(start));
+                    QueryRewriteScenario.INTENT.id(), originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
         AgentRewriteProperties.Intent cfg = rewriteProperties.getIntent();
         if (!StringUtils.hasText(cfg.getSystemPrompt())) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
-                    "intent", originalQuery, elapsedMs(start));
+                    QueryRewriteScenario.INTENT.id(), originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
@@ -96,11 +96,11 @@ public class QueryRewriteService {
         String rewritten = parseSingleQuery(raw, originalQuery);
         if (!StringUtils.hasText(rewritten)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
-                    "intent", originalQuery, elapsedMs(start));
+                    QueryRewriteScenario.INTENT.id(), originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
-        QueryRewriteOutcome outcome = QueryRewriteOutcome.of("intent", originalQuery, rewritten, elapsedMs(start));
+        QueryRewriteOutcome outcome = QueryRewriteOutcome.of(QueryRewriteScenario.INTENT.id(), originalQuery, rewritten, elapsedMs(start));
         if (outcome.applied()) {
             log.info("[QueryRewrite] intent: in='{}' out='{}' ctx={}",
                     abbreviate(originalQuery), abbreviate(outcome.rewrittenQuery()),

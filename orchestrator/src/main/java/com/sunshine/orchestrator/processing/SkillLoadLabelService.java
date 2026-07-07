@@ -49,7 +49,7 @@ public class SkillLoadLabelService {
         if (steps == null) {
             return new AgentPromptProperties.StepTimeline();
         }
-        AgentPromptProperties.StepTimeline skill = steps.get("skill");
+        AgentPromptProperties.StepTimeline skill = steps.get(TimelineStepId.SKILL.id());
         return skill != null ? skill : new AgentPromptProperties.StepTimeline();
     }
 

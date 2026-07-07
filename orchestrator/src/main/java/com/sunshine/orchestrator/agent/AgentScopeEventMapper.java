@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.processing.StepLabels;
 import io.agentscope.core.agent.Event;
 import io.agentscope.core.agent.EventType;
 import io.agentscope.core.message.Msg;
@@ -94,7 +95,7 @@ public final class AgentScopeEventMapper {
     }
 
     static String summarizeHits(ToolResultBlock block) {
-        return ToolResultSummarizer.summarize("search_knowledge", extractToolResultText(block));
+        return StepLabels.summarizeOutput("search_knowledge", extractToolResultText(block));
     }
 
     private static String extractToolResultText(ToolResultBlock block) {

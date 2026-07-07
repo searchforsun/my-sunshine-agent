@@ -21,37 +21,40 @@ public class HitlLabelService {
     }
 
     public String pending(String toolDisplayName) {
-        return apply(template().getPending(), toolDisplayName);
+        return replaceTool(template().getPending(), toolDisplayName, defaults().getPending());
     }
 
     public String awaiting() {
-        String t = template().getAwaiting();
-        return StringUtils.hasText(t) ? t : "等待用户确认执行写操作";
+        return textOrDefault(template().getAwaiting(), defaults().getAwaiting());
     }
 
     public String approved(String toolDisplayName) {
-        return apply(template().getApproved(), toolDisplayName);
+        return replaceTool(template().getApproved(), toolDisplayName, defaults().getApproved());
     }
 
     public String denied() {
-        String t = template().getDenied();
-        return StringUtils.hasText(t) ? t : "用户取消调用";
+        return textOrDefault(template().getDenied(), defaults().getDenied());
     }
 
     public String skippedAfter() {
-        String t = template().getSkippedAfter();
-        return StringUtils.hasText(t) ? t : "用户取消调用，已跳过";
+        return textOrDefault(template().getSkippedAfter(), defaults().getSkippedAfter());
     }
 
     private AgentPromptProperties.HitlTimeline template() {
         AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getHitl() != null ? timeline.getHitl() : new AgentPromptProperties.HitlTimeline();
+        return timeline.getHitl() != null ? timeline.getHitl() : defaults();
     }
 
-    private static String apply(String template, String toolDisplayName) {
-        if (!StringUtils.hasText(template)) {
-            return "将调用工具 " + toolDisplayName;
-        }
-        return template.replace("{toolDisplayName}", toolDisplayName != null ? toolDisplayName : "");
+    private static AgentPromptProperties.HitlTimeline defaults() {
+        return new AgentPromptProperties.HitlTimeline();
+    }
+
+    private static String textOrDefault(String value, String fallback) {
+        return StringUtils.hasText(value) ? value.strip() : fallback;
+    }
+
+    private static String replaceTool(String template, String toolDisplayName, String fallbackTemplate) {
+        String resolved = textOrDefault(template, fallbackTemplate);
+        return resolved.replace("{toolDisplayName}", toolDisplayName != null ? toolDisplayName : "");
     }
 }

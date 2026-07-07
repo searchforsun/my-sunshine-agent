@@ -1,24 +1,37 @@
 package com.sunshine.orchestrator.processing;
 
-/** Plan 用户确认时间线文案 */
+/** Plan 用户确认时间线文案静态入口（配置见 Nacos agent.timeline.plan-approval） */
 public final class PlanApprovalLabels {
+
+    private static volatile PlanApprovalLabelService service;
 
     private PlanApprovalLabels() {
     }
 
+    public static void bind(PlanApprovalLabelService labelService) {
+        service = labelService;
+    }
+
     public static String awaiting() {
-        return "等待确认执行计划";
+        return requireService().awaiting();
     }
 
     public static String approved() {
-        return "已确认执行计划";
+        return requireService().approved();
     }
 
     public static String regenerating() {
-        return "正在根据修改意见重新规划…";
+        return requireService().regenerating();
     }
 
     public static String timedOut() {
-        return "确认超时，将改由自主智能体继续";
+        return requireService().timedOut();
+    }
+
+    private static PlanApprovalLabelService requireService() {
+        if (service == null) {
+            throw new IllegalStateException("PlanApprovalLabelService 未 bind");
+        }
+        return service;
     }
 }

@@ -11,6 +11,7 @@ import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.hitl.WorkflowHitlScope;
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -35,7 +36,7 @@ public class ToolNodeHandler implements NodeHandler {
 
     @Override
     public String type() {
-        return "tool";
+        return WorkflowNodeType.TOOL.id();
     }
 
     @Override

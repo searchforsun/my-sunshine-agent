@@ -1,10 +1,32 @@
 package com.sunshine.orchestrator.execution.agent;
 
+import com.sunshine.orchestrator.config.AgentPromptProperties;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AgentNodeDetailSummarizerTest {
+
+    @BeforeEach
+    void bindLabels() {
+        AgentNodeDetailSummarizer.bind(new AgentNodeDetailLabelService(new AgentPromptProperties()));
+    }
+
+    @AfterEach
+    void unbindLabels() {
+        AgentNodeDetailSummarizer.bind(null);
+    }
+
+    @Test
+    void requiresBoundService() {
+        AgentNodeDetailSummarizer.bind(null);
+        assertThatThrownBy(() -> AgentNodeDetailSummarizer.summarize(null, 0))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("AgentNodeDetailLabelService");
+    }
 
     @Test
     void summarize_withAnswer_usesFirstMeaningfulLine() {

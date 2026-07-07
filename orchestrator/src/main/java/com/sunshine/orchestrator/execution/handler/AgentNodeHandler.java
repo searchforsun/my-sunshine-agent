@@ -25,6 +25,8 @@ import com.sunshine.orchestrator.execution.WorkflowContext;
 
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
+
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
 
 import com.sunshine.orchestrator.execution.agent.AgentNodeDetailSummarizer;
@@ -93,7 +95,7 @@ public class AgentNodeHandler implements StreamingNodeHandler {
 
     public String type() {
 
-        return "agent";
+        return WorkflowNodeType.AGENT.id();
 
     }
 

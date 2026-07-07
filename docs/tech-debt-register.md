@@ -42,6 +42,24 @@ _当前无 open 代码债。_
 | TD-037 | 2026-07-06 | 删 `StepLabels` 与 Nacos 重复的 before/active/after switch；`SkillLoadLabels` 未 bind 抛异常 |
 | TD-044 | 2026-07-06 | 删 `RagClient.parseSearchResponse` flat body 兼容 |
 | TD-038 | 2026-07-06 | 拆分 `ProcessingStepMerger` → `ProcessingStepSerde` + `ProcessingStepLifecycleOps`（253 行） |
+| TD-047 | 2026-07-06 | `StepLabels.labelFor` 标准步标题收敛 Nacos `agent.timeline.*.label` + `TimelineStepLabels` |
+| TD-048 | 2026-07-06 | 删 `evalConstants.normalizeEvalSuiteConfig` 嵌套 eval/productionGates 兼容 |
+| TD-049 | 2026-07-06 | `ThinkStepIds.displayLabel` 收敛 Nacos `agent.timeline.steps.think` + `ThinkStepLabels` |
+| TD-050 | 2026-07-06 | think before/active/after 收敛 Nacos `agent.timeline.steps.think`（含 follow-up / simple-llm modes） |
+| TD-051 | 2026-07-07 | `PlanApprovalLabels` 收敛 Nacos `agent.timeline.plan-approval` + `PlanApprovalLabelService` |
+| TD-052 | 2026-07-07 | tool/node 步骤 label/before/active/after 收敛 Nacos `agent.timeline.steps.tool|node` |
+| TD-053 | 2026-07-07 | 删 `HitlLabels` 静态 fallback；`HitlLabelService` 统一读 Nacos 模板 |
+| TD-054 | 2026-07-07 | `StepSummarizer` agent/rag/plan/generate/skill 摘要收敛 Nacos + `SummaryStepLabelService` |
+| TD-055 | 2026-07-07 | 新增 `TimelineStepId` 字符串枚举；processing/execution/audit 主路径停写标准步 id 字面量 |
+| TD-056 | 2026-07-07 | 新增 `QueryRewriteScenario` 枚举；rewrite/RagClient 停写场景 id 字面量 |
+| TD-057 | 2026-07-07 | Workflow 节点 type 展示名收敛 Nacos `agent.timeline.workflow-node-types`；删 `WorkflowNodeLabels` 静态 fallback |
+| TD-058 | 2026-07-07 | `WorkflowNodeType` 全面替代 execution/plan 域 type 字面量比较 |
+| TD-059 | 2026-07-07 | `AgentNodeDetailSummarizer` 摘要模板收敛 Nacos `agent.timeline.workflow-agent` + `AgentNodeDetailLabelService` |
+| TD-060 | 2026-07-07 | Workflow 节点完成态摘要收敛 Nacos `agent.timeline.workflow-node-completion` + `WorkflowNodeCompletionLabelService` |
+| TD-061 | 2026-07-07 | `WorkflowNodeLabelService.typeLabel` 改用 `WorkflowNodeType.of()` 解析（config 层保留 guarded switch 默认值） |
+| TD-062 | 2026-07-07 | 工具结果摘要收敛 Nacos `agent.timeline.tool-result` + `ToolOutputSummaryKind` / `ToolResultLabelService` |
+| TD-063 | 2026-07-07 | `RagNodeHandler`/`ProcessingStepHook`/`SummaryStepLabelService` 零命中判定收敛 `ToolResultLabels` |
+| TD-064 | 2026-07-07 | 工具摘要/模板 SSOT 迁至 tool-manager（`summarize-output`/`summarize-rag-hits` + Nacos `tool.timeline.result`）；orchestrator 删 `ToolResultSummarizer`/`ToolResultLabels` 等本地实现，经 `ToolCatalogService` 调 API |
 | TD-045 | 2026-07-06 | 补 `docker/minio/init/entrypoint-wrapper.sh`（MinIO compose 启动依赖） |
 | TD-046 | 2026-07-06 | Flyway V14 react_pause + V15 conversation_kb_id 迁移对齐 |
 | DOC-012 | 2026-07-06 | `backlog.md` 与代码对齐 legacy API 删除 |

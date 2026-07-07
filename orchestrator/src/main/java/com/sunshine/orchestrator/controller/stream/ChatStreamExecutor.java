@@ -18,6 +18,7 @@ import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -201,8 +202,8 @@ public class ChatStreamExecutor {
         session.bindTraceMessageId(ctx.assistantMsgId());
         List<ProcessingStep> stepEmissions = new ArrayList<>();
         session.onStepChanged(stepEmissions::add);
-        session.pending("intent", "intent");
-        session.start("intent", "intent");
+        session.pending(TimelineStepId.INTENT.id(), TimelineStepId.INTENT.phase());
+        session.start(TimelineStepId.INTENT.id(), TimelineStepId.INTENT.phase());
         List<StreamToken> intentStartTokens = drainStepTokens(stepEmissions);
 
         return prepareChunkFlux(Flux.concat(

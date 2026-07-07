@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.agent.ToolResultSummarizer;
+import com.sunshine.orchestrator.rewrite.QueryRewriteScenario;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 
 /** intent / plan / skill / RAG 等阶段完成逻辑 */
@@ -29,8 +29,8 @@ final class TimelineSessionCompletions {
         StepMetadata metadata = StepMetadata.mergeRouting(
                 StepMetadata.fromRewrite(intentRewrite), plan);
         String detail = intentRewrite != null ? intentRewrite.timelineDetail() : null;
-        emitter.applyAt("intent", null, EventKind.COMPLETE, after, detail, metadata, System.currentTimeMillis());
-        if ("intent".equals(state.activeStepId)) {
+        emitter.applyAt(TimelineStepId.INTENT.id(), null, EventKind.COMPLETE, after, detail, metadata, System.currentTimeMillis());
+        if (TimelineStepId.INTENT.matches(state.activeStepId)) {
             state.activeStepId = null;
         }
     }
@@ -39,25 +39,26 @@ final class TimelineSessionCompletions {
         com.sunshine.orchestrator.rewrite.QueryRewriteOutcome plannerRewrite =
                 com.sunshine.orchestrator.rewrite.QueryRewriteTrace.plannerOutcome(state.traceMessageId).orElse(null);
         StepMetadata metadata = StepMetadata.fromRewrite(plannerRewrite);
-        emitter.applyAt("plan", null, EventKind.COMPLETE, after, detail, metadata, endedAt);
-        if ("plan".equals(state.activeStepId)) {
+        emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.COMPLETE, after, detail, metadata, endedAt);
+        if (TimelineStepId.PLAN.matches(state.activeStepId)) {
             state.activeStepId = null;
         }
     }
 
     void beginPlanAwaitingApproval(String detail, StepMetadata metadata) {
         long ts = System.currentTimeMillis();
-        emitter.apply("plan", "plan", EventKind.PENDING, summaries.resolveBefore("plan"), null);
-        startAt("plan", "plan", ts);
-        emitter.applyAt("plan", null, EventKind.PROGRESS, PlanApprovalLabels.awaiting(), detail, metadata, ts);
-        state.activeStepId = "plan";
+        emitter.apply(TimelineStepId.PLAN.id(), TimelineStepId.PLAN.phase(), EventKind.PENDING,
+                summaries.resolveBefore(TimelineStepId.PLAN.id()), null);
+        startAt(TimelineStepId.PLAN.id(), TimelineStepId.PLAN.phase(), ts);
+        emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.PROGRESS, PlanApprovalLabels.awaiting(), detail, metadata, ts);
+        state.activeStepId = TimelineStepId.PLAN.id();
     }
 
     void updatePlanApproval(StepMetadata metadata, String activeSummary) {
         String summary = activeSummary != null && !activeSummary.isBlank()
                 ? activeSummary
                 : PlanApprovalLabels.awaiting();
-        emitter.applyAt("plan", null, EventKind.PROGRESS, summary, null, metadata, System.currentTimeMillis());
+        emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.PROGRESS, summary, null, metadata, System.currentTimeMillis());
     }
 
     void completeSkillLoad(String skillId) {
@@ -65,12 +66,13 @@ final class TimelineSessionCompletions {
             return;
         }
         long ts = System.currentTimeMillis();
-        emitter.apply("skill", "skill", EventKind.PENDING, summaries.resolveBefore("skill"), null);
-        startAt("skill", "skill", ts);
+        emitter.apply(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), EventKind.PENDING,
+                summaries.resolveBefore(TimelineStepId.SKILL.id()), null);
+        startAt(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), ts);
         String after = SkillLoadLabels.after(skillId.strip());
         StepMetadata metadata = StepMetadata.fromSkillLoad(skillId.strip());
-        emitter.applyAt("skill", "skill", EventKind.COMPLETE, after, null, metadata, ts);
-        if ("skill".equals(state.activeStepId)) {
+        emitter.applyAt(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), EventKind.COMPLETE, after, null, metadata, ts);
+        if (TimelineStepId.SKILL.matches(state.activeStepId)) {
             state.activeStepId = null;
         }
     }
@@ -84,7 +86,7 @@ final class TimelineSessionCompletions {
         if (summaryLine != null && (ToolStepIds.isRagStep(stepId) || TimelineSessionSummaries.isWorkflowRagNode(stepId))) {
             String ragInput = summaryLine;
             if (ToolStepIds.isRagStep(stepId) && containsRawRagBody(summaryLine)) {
-                ragInput = ToolResultSummarizer.summarize("search_knowledge", summaryLine);
+                ragInput = StepLabels.summarizeOutput("search_knowledge", summaryLine);
             }
             metadata = StepMetadata.fromRagToolOutput(summaryLine, ragInput);
         }
@@ -127,7 +129,7 @@ final class TimelineSessionCompletions {
         if (state.activeStepId == null) {
             return;
         }
-        if (ThinkStepIds.isThinkStep(state.activeStepId) || "generate".equals(state.activeStepId)) {
+        if (ThinkStepIds.isThinkStep(state.activeStepId) || TimelineStepId.GENERATE.matches(state.activeStepId)) {
             return;
         }
         state.aggregator.get(state.activeStepId).ifPresent(step -> {
@@ -152,13 +154,16 @@ final class TimelineSessionCompletions {
             return metadata;
         }
         com.sunshine.orchestrator.rewrite.QueryRewriteOutcome ragRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(state.traceMessageId, "rag", fromIndex)
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(
+                        state.traceMessageId, QueryRewriteScenario.RAG.id(), fromIndex)
                         .orElse(null);
         com.sunshine.orchestrator.rewrite.QueryRewriteOutcome hydeRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(state.traceMessageId, "hyde", fromIndex)
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(
+                        state.traceMessageId, QueryRewriteScenario.HYDE.id(), fromIndex)
                         .orElse(null);
         com.sunshine.orchestrator.rewrite.QueryRewriteOutcome emptyRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(state.traceMessageId, "empty-recall", fromIndex)
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(
+                        state.traceMessageId, QueryRewriteScenario.EMPTY_RECALL.id(), fromIndex)
                         .orElse(null);
         StepMetadata merged = StepMetadata.mergeRewrite(metadata, ragRewrite);
         merged = StepMetadata.mergeRewrite(merged, hydeRewrite);

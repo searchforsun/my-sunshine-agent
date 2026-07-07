@@ -2,7 +2,8 @@ package com.sunshine.orchestrator.execution.handler;
 
 import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
-import com.sunshine.orchestrator.client.RagDetailFormatter;
+import com.sunshine.orchestrator.client.ToolManagerClient;
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.rag.RagSearch;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
@@ -29,10 +30,11 @@ public class RagNodeHandler implements NodeHandler {
 
     private final RagClient ragClient;
     private final DefaultKbResolver defaultKbResolver;
+    private final ToolManagerClient toolManagerClient;
 
     @Override
     public String type() {
-        return "rag";
+        return WorkflowNodeType.RAG.id();
     }
 
     @Override
@@ -57,24 +59,30 @@ public class RagNodeHandler implements NodeHandler {
                         finalKbId,
                         streamCtx.tenantId(),
                         streamCtx.assistantMsgId())
-                .map(hits -> {
+                .flatMap(hits -> {
                     List<RagClient.RagHit> results = hits != null ? hits : List.of();
-                    String output = RagContextFormatter.formatAgentContext(results);
-                    String detail = RagDetailFormatter.formatDetail(results);
-                    Map<String, String> outputs = new LinkedHashMap<>();
-                    outputs.put("output", output);
-                    outputs.put("hitCount", String.valueOf(results.size()));
-                    outputs.put("detail", detail);
-                    return NodeResult.ok(outputs);
+                    return toolManagerClient.summarizeRagHitsMono(results)
+                            .map(detailResp -> buildOkResult(results, detailResp != null ? detailResp.summary() : ""));
                 })
                 .onErrorResume(e -> {
                     log.warn("[RagNodeHandler] 检索失败: {}", e.getMessage());
-                    Map<String, String> outputs = new LinkedHashMap<>();
-                    outputs.put("output", RagContextFormatter.formatAgentContext(List.of()));
-                    outputs.put("hitCount", "0");
-                    outputs.put("detail", "命中 0 条");
-                    return Mono.just(NodeResult.ok(outputs));
+                    return toolManagerClient.summarizeRagHitsMono(List.of())
+                            .map(detailResp -> {
+                                Map<String, String> outputs = new LinkedHashMap<>();
+                                outputs.put("output", RagContextFormatter.formatAgentContext(List.of()));
+                                outputs.put("hitCount", "0");
+                                outputs.put("detail", detailResp != null ? detailResp.summary() : "命中 0 条");
+                                return NodeResult.ok(outputs);
+                            });
                 });
+    }
+
+    private static NodeResult buildOkResult(List<RagClient.RagHit> results, String detail) {
+        Map<String, String> outputs = new LinkedHashMap<>();
+        outputs.put("output", RagContextFormatter.formatAgentContext(results));
+        outputs.put("hitCount", String.valueOf(results.size()));
+        outputs.put("detail", detail);
+        return NodeResult.ok(outputs);
     }
 
     private static Integer parseTopK(String raw) {

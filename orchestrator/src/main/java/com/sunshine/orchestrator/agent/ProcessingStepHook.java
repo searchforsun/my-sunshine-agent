@@ -69,7 +69,7 @@ public class ProcessingStepHook implements Hook {
             StepEventBridge.unbindToolUseBridge(post.getToolUse().getId());
             String detail = summarizeToolResult(toolName, post.getToolResult());
             StepEventBridge.emit(bridgeId, session -> {
-                session.completeToolStep(detail != null ? detail : "命中 0 条");
+                session.completeToolStep(detail != null ? detail : toolCatalogService.summarizeOutput(toolName, ""));
                 session.recordToolCompleted(toolCatalogService.displayName(toolName));
                 session.noteToolCallDone();
             });

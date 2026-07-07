@@ -32,6 +32,14 @@ public class ToolRegistry {
         return handler.invoke(params);
     }
 
+    public String outputSummaryKind(String name) {
+        ToolHandler handler = handlers.get(name);
+        if (handler == null) {
+            return "truncate";
+        }
+        return handler.outputSummaryKind();
+    }
+
     /** 供 orchestrator 拉取工具元数据 */
     public List<ToolCatalogEntry> listCatalog() {
         return handlers.values().stream()

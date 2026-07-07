@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -50,5 +51,52 @@ public class ToolManagerClient {
 
     public static boolean isInvokeFailureResult(String result) {
         return result != null && result.startsWith(INVOKE_FAILURE_PREFIX);
+    }
+
+    public ToolSummarizeOutputResponse summarizeOutput(String toolName, String text) {
+        Map<String, Object> body = Map.of(
+                "toolName", toolName != null ? toolName : "",
+                "text", text != null ? text : "");
+        return webClient.post()
+                .uri("/api/tools/summarize-output")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<R<ToolSummarizeOutputResponse>>() {})
+                .map(R::getData)
+                .block();
+    }
+
+    public ToolSummarizeOutputResponse summarizeByKind(String outputSummaryKind, String text) {
+        Map<String, Object> body = Map.of(
+                "outputSummaryKind", outputSummaryKind != null ? outputSummaryKind : "",
+                "text", text != null ? text : "");
+        return webClient.post()
+                .uri("/api/tools/summarize-output")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<R<ToolSummarizeOutputResponse>>() {})
+                .map(R::getData)
+                .block();
+    }
+
+    public ToolSummarizeOutputResponse summarizeRagHits(List<RagClient.RagHit> hits) {
+        return summarizeRagHitsMono(hits).block();
+    }
+
+    public Mono<ToolSummarizeOutputResponse> summarizeRagHitsMono(List<RagClient.RagHit> hits) {
+        List<Map<String, String>> hitDtos = hits == null ? List.of() : hits.stream()
+                .map(h -> Map.of(
+                        "docName", h.docName() != null ? h.docName() : "",
+                        "content", h.content() != null ? h.content() : ""))
+                .toList();
+        return webClient.post()
+                .uri("/api/tools/summarize-rag-hits")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("hits", hitDtos))
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<R<ToolSummarizeOutputResponse>>() {})
+                .map(R::getData);
     }
 }

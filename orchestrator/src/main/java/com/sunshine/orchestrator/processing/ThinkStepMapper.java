@@ -15,8 +15,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class ThinkStepMapper {
 
-    private static final String GENERATE = "generate";
-
     private final List<ProcessingStep> stepsBuffer;
     private final String userQuery;
     private final AtomicReference<ExecutionMode> executionMode;
@@ -89,10 +87,10 @@ public final class ThinkStepMapper {
         if (mode() == ExecutionMode.REACT) {
             return out;
         }
-        if (!streamFailed && !workflowMode && !generateOpened && !hasStep(GENERATE)) {
+        if (!streamFailed && !workflowMode && !generateOpened && !hasStep(TimelineStepId.GENERATE.id())) {
             out.addAll(openGenerate());
         }
-        if (!streamFailed && !workflowMode && generateOpened && isRunning(GENERATE)) {
+        if (!streamFailed && !workflowMode && generateOpened && isRunning(TimelineStepId.GENERATE.id())) {
             out.add(stepToken(completeGenerateStep()));
         }
         return out;
@@ -172,7 +170,7 @@ public final class ThinkStepMapper {
             if (!ThinkStepIds.isThinkStep(step.id())) {
                 continue;
             }
-            if ("think".equals(step.id())) {
+            if (TimelineStepId.THINK.matches(step.id())) {
                 max = Math.max(max, 1);
             } else if (step.id().startsWith("think-")) {
                 try {
@@ -208,7 +206,7 @@ public final class ThinkStepMapper {
     }
 
     private List<StreamToken> openGenerate() {
-        if (generateOpened || hasStep(GENERATE)) {
+        if (generateOpened || hasStep(TimelineStepId.GENERATE.id())) {
             return List.of();
         }
         generateOpened = true;
@@ -225,7 +223,7 @@ public final class ThinkStepMapper {
                 summarizeActive(stepId),
                 null);
         return new ProcessingStep(
-                stepId, "think", "running", summary,
+                stepId, TimelineStepId.THINK.phase(), "running", summary,
                 ts, null, null, null,
                 null, null, null,
                 ts, label, null, null, null);
@@ -243,7 +241,7 @@ public final class ThinkStepMapper {
                 after));
         // reasoning 已由 step_delta 流式下发，终态 step 勿重复携带全文
         return new ProcessingStep(
-                stepId, "think", "done", summary,
+                stepId, TimelineStepId.THINK.phase(), "done", summary,
                 startedAt, ts, ts - startedAt, null,
                 null,
                 prev != null ? prev.output() : null,
@@ -253,13 +251,13 @@ public final class ThinkStepMapper {
 
     private ProcessingStep runningGenerateStep() {
         long ts = System.currentTimeMillis();
-        String label = StepLabels.labelFor(GENERATE);
+        String label = StepLabels.labelFor(TimelineStepId.GENERATE.id());
         StepSummary summary = new StepSummary(
-                summarizeBefore(GENERATE),
-                summarizeActive(GENERATE),
+                summarizeBefore(TimelineStepId.GENERATE.id()),
+                summarizeActive(TimelineStepId.GENERATE.id()),
                 null);
         return new ProcessingStep(
-                GENERATE, GENERATE, "running", summary,
+                TimelineStepId.GENERATE.id(), TimelineStepId.GENERATE.id(), "running", summary,
                 ts, null, null, null,
                 null, null, null,
                 ts, label, null, null, null);
@@ -267,16 +265,16 @@ public final class ThinkStepMapper {
 
     private ProcessingStep completeGenerateStep() {
         long ts = System.currentTimeMillis();
-        ProcessingStep prev = findStep(GENERATE);
+        ProcessingStep prev = findStep(TimelineStepId.GENERATE.id());
         long startedAt = prev != null && prev.startedAt() != null ? prev.startedAt() : ts;
-        String label = StepLabels.labelFor(GENERATE);
-        String after = summarizeAfter(GENERATE);
+        String label = StepLabels.labelFor(TimelineStepId.GENERATE.id());
+        String after = summarizeAfter(TimelineStepId.GENERATE.id());
         StepSummary summary = mergeSummary(prev, new StepSummary(
-                summarizeBefore(GENERATE),
-                summarizeActive(GENERATE),
+                summarizeBefore(TimelineStepId.GENERATE.id()),
+                summarizeActive(TimelineStepId.GENERATE.id()),
                 after));
         return new ProcessingStep(
-                GENERATE, GENERATE, "done", summary,
+                TimelineStepId.GENERATE.id(), TimelineStepId.GENERATE.id(), "done", summary,
                 startedAt, ts, ts - startedAt, null,
                 prev != null ? prev.reasoning() : null,
                 prev != null ? prev.output() : null,
@@ -291,11 +289,11 @@ public final class ThinkStepMapper {
         if (ThinkStepIds.isThinkStep(step.id())) {
             activeThinkId = step.id();
         }
-        if (GENERATE.equals(step.id())) {
+        if (TimelineStepId.GENERATE.id().equals(step.id())) {
             generateOpened = true;
         }
-        if ("plan".equals(step.id())
-                || (step.id() != null && step.id().startsWith("node-"))) {
+        if (TimelineStepId.PLAN.matches(step.id())
+                || TimelineStepId.isNodeStep(step.id())) {
             workflowMode = true;
             generateOpened = true;
         }

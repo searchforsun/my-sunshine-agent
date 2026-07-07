@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -22,7 +23,7 @@ public class StartNodeHandler implements NodeHandler {
 
     @Override
     public String type() {
-        return "start";
+        return WorkflowNodeType.START.id();
     }
 
     @Override

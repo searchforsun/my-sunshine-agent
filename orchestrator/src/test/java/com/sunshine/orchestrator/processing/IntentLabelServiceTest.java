@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
+import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.AfterEach;
@@ -31,16 +32,51 @@ class IntentLabelServiceTest {
     void setUp() {
         AgentPromptProperties agentProps = new AgentPromptProperties();
         WorkflowProperties workflowProps = buildWorkflowProps();
-        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(workflowProps, toolCatalogService);
+        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
+                workflowProps, toolCatalogService, agentProps);
+        WorkflowNodeLabels.bind(workflowLabels);
         intentLabelService = new IntentLabelService(agentProps, workflowProps, workflowLabels);
         IntentLabels.bind(intentLabelService);
         TimelineLabels.bind(intentLabelService);
+        TimelineStepLabels.bind(intentLabelService);
+        ThinkStepLabels.bind(intentLabelService);
     }
 
     @AfterEach
     void tearDown() {
         IntentLabels.bind(null);
         TimelineLabels.bind(null);
+        TimelineStepLabels.bind(null);
+        ThinkStepLabels.bind(null);
+        WorkflowNodeLabels.bind(null);
+    }
+
+    @Test
+    void stepLabel_readsFromTimelineConfig() {
+        assertThat(intentLabelService.stepLabel("intent")).isEqualTo("识别意图");
+        assertThat(intentLabelService.stepLabel("plan")).isEqualTo("执行计划");
+        assertThat(intentLabelService.stepLabel("think")).isEqualTo("规划推理");
+    }
+
+    @Test
+    void thinkStepLabel_readsModeAndIteration() {
+        assertThat(intentLabelService.thinkStepLabel("think", ExecutionMode.REACT)).isEqualTo("规划推理");
+        assertThat(intentLabelService.thinkStepLabel("think-2", ExecutionMode.REACT)).isEqualTo("综合分析");
+        assertThat(intentLabelService.thinkStepLabel("think", ExecutionMode.SIMPLE_LLM)).isEqualTo("构思回答");
+        assertThat(intentLabelService.thinkStepLabel("think-2", ExecutionMode.SIMPLE_LLM)).isEqualTo("整理作答");
+    }
+
+    @Test
+    void thinkStepSummary_readsFromTimelineConfig() {
+        String q = StepSummarizer.clipQuery("报销制度");
+        assertThat(intentLabelService.thinkStepBefore("think", ExecutionMode.REACT, q, null))
+                .isEqualTo("规划如何回答「报销制度」");
+        assertThat(intentLabelService.thinkStepActive("think", ExecutionMode.SIMPLE_LLM, q, null))
+                .isEqualTo("正在构思针对「报销制度」的作答思路");
+        assertThat(intentLabelService.thinkStepAfter("think-2", ExecutionMode.REACT, q, "统计财务消息"))
+                .isEqualTo("已完成「统计财务消息」的工具结果综合分析");
+        assertThat(intentLabelService.thinkStepBefore("think", ExecutionMode.REACT, "", null))
+                .isEqualTo("规划工具与作答路径");
     }
 
     @Test

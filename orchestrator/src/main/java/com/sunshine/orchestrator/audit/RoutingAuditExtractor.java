@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.audit;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,7 +35,7 @@ public final class RoutingAuditExtractor {
             List<Map<String, Object>> steps = MAPPER.readValue(stepsJson, new TypeReference<>() {
             });
             for (Map<String, Object> step : steps) {
-                if (!"intent".equals(step.get("id"))) {
+                if (!TimelineStepId.INTENT.matches(asString(step.get("id")))) {
                     continue;
                 }
                 Object metadataObj = step.get("metadata");

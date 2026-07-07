@@ -78,7 +78,7 @@ Browser → Gateway :8000 [JWT] → BFF :8001 → Orchestrator :8200
 | 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
 | 新 Agent 能力 / 子 Agent 配置 | `agent/runtime/` — 扩展 `AgentRunRequest` + `ReActAgentFactory`；workflow agent 节点 params 见 `sunshine-workflows.yaml` |
 
-**Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` → orchestrator `ToolCatalogService` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels` / `ToolResultSummarizer`。
+**Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。
 
 **Agent 运行时（3.10.1–3.10.7 ✅）**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `MemoryContext.forSubAgent()`（无 STM/LTM）+ `skillId`→`PromptComposer`；skill overlay 优先 **skill-manager Catalog**（3.11 ✅），Nacos `agent.prompt.skill-overlays` 兜底。
 

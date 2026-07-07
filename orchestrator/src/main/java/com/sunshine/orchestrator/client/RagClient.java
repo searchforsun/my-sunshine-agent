@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.client;
 
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
+import com.sunshine.orchestrator.rewrite.QueryRewriteScenario;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -132,7 +133,7 @@ public class RagClient {
                 continue;
             }
             String name = stage.get("name") != null ? stage.get("name").toString() : "";
-            if (!List.of("rag", "hyde", "empty-recall").contains(name)) {
+            if (!QueryRewriteScenario.isRagRelated(name)) {
                 continue;
             }
             long latencyMs = stage.get("latencyMs") instanceof Number n ? n.longValue() : 0L;
@@ -140,7 +141,7 @@ public class RagClient {
             String to = stage.get("to") != null ? stage.get("to").toString() : from;
             boolean applied = stage.get("applied") instanceof Boolean b ? b : false;
             String scenarioLabel = stage.get("scenarioLabel") != null ? stage.get("scenarioLabel").toString() : null;
-            if ("empty-recall".equals(name) && applied && to.contains("；")) {
+            if (QueryRewriteScenario.EMPTY_RECALL.matches(name) && applied && to.contains("；")) {
                 outcomes.add(QueryRewriteOutcome.emptyRecall(from, List.of(to.split("；")), latencyMs, scenarioLabel));
             } else if (applied) {
                 outcomes.add(QueryRewriteOutcome.of(name, from, to, latencyMs, scenarioLabel));

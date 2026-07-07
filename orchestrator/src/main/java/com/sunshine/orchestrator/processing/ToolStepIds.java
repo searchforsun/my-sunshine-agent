@@ -24,7 +24,7 @@ public final class ToolStepIds {
     }
 
     public static boolean isRagStep(String stepId) {
-        return "rag".equals(stripInvokeSuffix(stepId));
+        return TimelineStepId.RAG.id().equals(stripInvokeSuffix(stepId));
     }
 
     /** 带调用时刻的唯一步骤 id */
@@ -77,7 +77,7 @@ public final class ToolStepIds {
     /** 解析 catalog 工具 id（{@code rag} → {@code search_knowledge}） */
     public static String catalogToolName(String stepId) {
         String base = stripInvokeSuffix(stepId);
-        if ("rag".equals(base)) {
+        if (TimelineStepId.RAG.id().equals(base)) {
             return "search_knowledge";
         }
         if (base != null && base.startsWith("tool-")) {

@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.config;
 
+import com.sunshine.orchestrator.rewrite.QueryRewriteScenario;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -44,8 +45,8 @@ public class AgentRewriteProperties {
                 return "";
             }
             return switch (scenario) {
-                case "intent" -> intent;
-                case "planner" -> planner;
+                case String s when QueryRewriteScenario.INTENT.matches(s) -> intent;
+                case String s when QueryRewriteScenario.PLANNER.matches(s) -> planner;
                 default -> "";
             };
         }

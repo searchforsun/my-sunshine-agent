@@ -10,10 +10,10 @@ final class TimelineSessionSummaries {
     }
 
     String resolveBefore(String stepId) {
-        if (stepId != null && stepId.startsWith("node-")) {
+        if (TimelineStepId.isNodeStep(stepId)) {
             String name = state.stepDisplayNames.get(stepId);
             if (name != null && !name.isBlank()) {
-                return "准备" + name;
+                return ToolNodeLabels.nodeBefore(stepId, null, name);
             }
         }
         return state.userQuery != null
@@ -22,10 +22,10 @@ final class TimelineSessionSummaries {
     }
 
     String resolveActive(String stepId) {
-        if (stepId != null && stepId.startsWith("node-")) {
+        if (TimelineStepId.isNodeStep(stepId)) {
             String name = state.stepDisplayNames.get(stepId);
             if (name != null && !name.isBlank()) {
-                return "正在" + name;
+                return ToolNodeLabels.nodeActive(stepId, name);
             }
         }
         return state.userQuery != null
@@ -44,6 +44,6 @@ final class TimelineSessionSummaries {
     }
 
     static boolean isWorkflowRagNode(String stepId) {
-        return stepId != null && stepId.startsWith("node-rag");
+        return stepId != null && stepId.startsWith(TimelineStepId.NODE.id() + "-rag");
     }
 }

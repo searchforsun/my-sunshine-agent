@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
+import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionMode;
@@ -374,11 +375,15 @@ class ProcessingTimelineSessionTest {
 
         ExecutionPlan plan = new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test");
+        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
+                buildWorkflowPropsForIntent(),
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class),
+                new AgentPromptProperties());
+        WorkflowNodeLabels.bind(workflowLabels);
         IntentLabels.bind(new IntentLabelService(
                 new AgentPromptProperties(),
                 buildWorkflowPropsForIntent(),
-                new WorkflowNodeLabelService(buildWorkflowPropsForIntent(),
-                        org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class))));
+                workflowLabels));
         try {
             session.completeIntent(plan);
             ProcessingStep intent = session.snapshot().stream()
@@ -444,6 +449,7 @@ class ProcessingTimelineSessionTest {
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class);
         org.mockito.Mockito.when(catalogService.displayName("summarize_finance_by_status"))
                 .thenReturn("统计财务消息");
+        ToolNodeLabels.bind(new ToolNodeLabelService(new AgentPromptProperties(), catalogService));
         StepLabels.bind(catalogService);
         try {
             ProcessingTimelineSession session = new ProcessingTimelineSession();
@@ -465,6 +471,7 @@ class ProcessingTimelineSessionTest {
             assertThat(toolSteps.get(0).label()).isEqualTo("调用工具 统计财务消息");
         } finally {
             StepLabels.bind(null);
+            ToolNodeLabels.bind(null);
         }
     }
 }

@@ -22,6 +22,10 @@ public final class TimelineLabels {
         return requireService().stepActive(stepId, clippedQuery);
     }
 
+    public static String after(String stepId, String clippedQuery, String detail) {
+        return requireService().stepAfter(stepId, clippedQuery, detail);
+    }
+
     private static IntentLabelService requireService() {
         if (service == null) {
             throw new IllegalStateException("IntentLabelService 未 bind");

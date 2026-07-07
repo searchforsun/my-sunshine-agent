@@ -1,7 +1,8 @@
 package com.sunshine.orchestrator.catalog;
 
-import com.sunshine.orchestrator.agent.ToolResultSummarizer;
 import com.sunshine.orchestrator.client.ToolCatalogClient;
+import com.sunshine.orchestrator.client.ToolManagerClient;
+import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
 import com.sunshine.orchestrator.processing.StepLabels;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -13,34 +14,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * 缓存 tool-manager catalog，并合并本地 RagTool 元数据
- */
+/** 缓存 tool-manager catalog；工具输出摘要委托 tool-manager API */
 @Slf4j
 @Service
 @RefreshScope
 public class ToolCatalogService {
 
-    private static final ToolCatalogEntry LOCAL_RAG = new ToolCatalogEntry(
-            "search_knowledge",
-            "检索知识库",
-            "搜索企业知识库获取相关文档。当用户询问专业知识、公司政策、技术规范、操作手册等问题时优先调用。",
-            "local",
-            "rag",
-            "hit-count",
-            Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "query", Map.of(
-                                    "type", "string",
-                                    "description", "自然语言查询文本，将用于向量检索匹配相关文档片段"))),
-            "read");
-
     private final ToolCatalogClient catalogClient;
+    private final ToolManagerClient toolManagerClient;
     private volatile Map<String, ToolCatalogEntry> entries = Map.of();
 
-    public ToolCatalogService(ToolCatalogClient catalogClient) {
+    public ToolCatalogService(ToolCatalogClient catalogClient, ToolManagerClient toolManagerClient) {
         this.catalogClient = catalogClient;
+        this.toolManagerClient = toolManagerClient;
     }
 
     @PostConstruct
@@ -54,7 +40,6 @@ public class ToolCatalogService {
         for (ToolCatalogEntry entry : catalogClient.fetchCatalog()) {
             merged.put(entry.id(), entry);
         }
-        merged.put(LOCAL_RAG.id(), LOCAL_RAG);
         this.entries = Map.copyOf(merged);
         log.info("[ToolCatalogService] catalog loaded: {}", String.join(", ", entries.keySet()));
     }
@@ -78,13 +63,6 @@ public class ToolCatalogService {
         return "rag".equals(timelinePhase(toolId));
     }
 
-    public boolean useHitCountSummary(String toolId) {
-        return find(toolId)
-                .map(ToolCatalogEntry::outputSummaryKind)
-                .map("hit-count"::equals)
-                .orElse(false);
-    }
-
     public List<ToolCatalogEntry> allEntries() {
         return List.copyOf(entries.values());
     }
@@ -103,10 +81,22 @@ public class ToolCatalogService {
     }
 
     public String summarizeOutput(String toolName, String text) {
-        String kind = find(toolName).map(ToolCatalogEntry::outputSummaryKind).orElse(null);
-        if (kind != null) {
-            return ToolResultSummarizer.summarizeByKind(kind, text);
+        return summarizeOutputDetail(toolName, text).summary();
+    }
+
+    public ToolSummarizeOutputResponse summarizeOutputDetail(String toolName, String text) {
+        ToolSummarizeOutputResponse response = toolManagerClient.summarizeOutput(toolName, text);
+        if (response == null) {
+            return new ToolSummarizeOutputResponse("", true, true);
         }
-        return ToolResultSummarizer.summarize(toolName, text);
+        return response;
+    }
+
+    public ToolSummarizeOutputResponse summarizeByKind(String outputSummaryKind, String text) {
+        ToolSummarizeOutputResponse response = toolManagerClient.summarizeByKind(outputSummaryKind, text);
+        if (response == null) {
+            return new ToolSummarizeOutputResponse("", true, true);
+        }
+        return response;
     }
 }

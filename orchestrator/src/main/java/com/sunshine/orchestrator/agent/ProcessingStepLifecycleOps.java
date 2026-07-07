@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.NodeRecoveryMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import com.sunshine.orchestrator.plan.PendingInteraction;
 
 import java.util.ArrayList;
@@ -75,7 +76,8 @@ public final class ProcessingStepLifecycleOps {
             if (isAwaitingInteractionStep(step)) {
                 continue;
             }
-            if ("think".equals(phase) || "agent".equals(phase) || "generate".equals(phase)
+            if (TimelineStepId.THINK.matches(phase) || TimelineStepId.AGENT.matches(phase)
+                    || TimelineStepId.GENERATE.matches(phase)
                     || phase.startsWith("think") || phase.startsWith("tool")) {
                 steps.set(i, toPaused(step));
             }
@@ -88,7 +90,7 @@ public final class ProcessingStepLifecycleOps {
             return List.of();
         }
         return steps.stream()
-                .filter(s -> s != null && "intent".equals(s.id()))
+                .filter(s -> s != null && TimelineStepId.INTENT.matches(s.id()))
                 .toList();
     }
 

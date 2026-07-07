@@ -59,20 +59,278 @@ public class IntentLabelService {
 
 
     @PostConstruct
-
     void init() {
-
         IntentLabels.bind(this);
-
         TimelineLabels.bind(this);
-
+        TimelineStepLabels.bind(this);
+        ThinkStepLabels.bind(this);
     }
 
+    /** think / think-N 标题，按执行模式与轮次解析 */
+    public String thinkStepLabel(String stepId, ExecutionMode mode) {
+        ExecutionMode resolved = mode != null ? mode : ExecutionMode.REACT;
+        boolean first = ThinkStepIds.iterationOf(stepId) <= 1;
+        AgentPromptProperties.StepTimeline think = stepTemplate(TimelineStepId.THINK.id());
+        if (think == null) {
+            return null;
+        }
+        String modeKey = modeConfigKey(resolved);
+        AgentPromptProperties.StepModeTimeline modeTimeline = think.getModes() != null
+                ? think.getModes().get(modeKey) : null;
+        if (modeTimeline != null) {
+            String modeLabel = first ? modeTimeline.getLabel() : modeTimeline.getLabelFollowUp();
+            if (StringUtils.hasText(modeLabel)) {
+                return modeLabel.strip();
+            }
+        }
+        String label = first ? think.getLabel() : think.getLabelFollowUp();
+        return StringUtils.hasText(label) ? label.strip() : null;
+    }
 
+    /** think / think-N 步骤 before，占位符 {query} {toolDisplayName} */
+    public String thinkStepBefore(String stepId, ExecutionMode mode, String clippedQuery, String toolDisplayName) {
+        return applyThinkTemplate(stepId, mode, clippedQuery, toolDisplayName, ThinkPhase.BEFORE);
+    }
+
+    /** think / think-N 步骤 active */
+    public String thinkStepActive(String stepId, ExecutionMode mode, String clippedQuery, String toolDisplayName) {
+        return applyThinkTemplate(stepId, mode, clippedQuery, toolDisplayName, ThinkPhase.ACTIVE);
+    }
+
+    /** think / think-N 步骤 after（detail 非空时由调用方优先使用） */
+    public String thinkStepAfter(String stepId, ExecutionMode mode, String clippedQuery, String toolDisplayName) {
+        return applyThinkTemplate(stepId, mode, clippedQuery, toolDisplayName, ThinkPhase.AFTER);
+    }
+
+    private String applyThinkTemplate(String stepId, ExecutionMode mode, String clippedQuery,
+            String toolDisplayName, ThinkPhase phase) {
+        ExecutionMode resolved = mode != null ? mode : ExecutionMode.REACT;
+        AgentPromptProperties.StepTimeline root = stepTemplate(TimelineStepId.THINK.id());
+        if (root == null) {
+            return null;
+        }
+        boolean first = ThinkStepIds.iterationOf(stepId) <= 1;
+        boolean hasQuery = StringUtils.hasText(clippedQuery);
+        boolean hasTool = StringUtils.hasText(toolDisplayName);
+        AgentPromptProperties.StepModeTimeline modeTimeline = resolveModeTimeline(root, resolved);
+        String template = pickThinkTemplate(root, modeTimeline, first, hasQuery, hasTool, phase);
+        if (!StringUtils.hasText(template)) {
+            return null;
+        }
+        String query = hasQuery ? clippedQuery.strip() : "";
+        return applyTemplate(template.strip(), thinkVars(query, toolDisplayName));
+    }
+
+    private static AgentPromptProperties.StepModeTimeline resolveModeTimeline(
+            AgentPromptProperties.StepTimeline root, ExecutionMode mode) {
+        if (root.getModes() == null) {
+            return null;
+        }
+        return root.getModes().get(modeConfigKey(mode));
+    }
+
+    private static String pickThinkTemplate(AgentPromptProperties.StepTimeline root,
+            AgentPromptProperties.StepModeTimeline modeTimeline,
+            boolean first, boolean hasQuery, boolean hasTool, ThinkPhase phase) {
+        if (modeTimeline != null) {
+            if (first) {
+                String modeTemplate = phase.modeField(modeTimeline, true);
+                if (StringUtils.hasText(modeTemplate)) {
+                    return modeTemplate;
+                }
+            } else {
+                String modeFollowUp = phase.modeFollowUpField(modeTimeline);
+                if (StringUtils.hasText(modeFollowUp)) {
+                    return modeFollowUp;
+                }
+            }
+        }
+        if (first) {
+            if (hasQuery) {
+                return coalesce(phase.rootField(root, true));
+            }
+            return coalesce(phase.rootFallbackField(root));
+        }
+        if (hasTool) {
+            return coalesce(phase.rootFollowUpField(root));
+        }
+        if (hasQuery) {
+            return coalesce(phase.rootFollowUpNoToolField(root));
+        }
+        return coalesce(phase.rootFollowUpFallbackField(root));
+    }
+
+    private static Map<String, String> thinkVars(String clippedQuery, String toolDisplayName) {
+        Map<String, String> map = new HashMap<>();
+        map.put("query", clippedQuery != null ? clippedQuery : "");
+        map.put("toolDisplayName", bracketTool(toolDisplayName));
+        return map;
+    }
+
+    private static String bracketTool(String displayName) {
+        if (!StringUtils.hasText(displayName)) {
+            return "";
+        }
+        return "「" + displayName.strip() + "」";
+    }
+
+    private static String coalesce(String value) {
+        return StringUtils.hasText(value) ? value.strip() : null;
+    }
+
+    private enum ThinkPhase {
+        BEFORE {
+            @Override
+            String modeField(AgentPromptProperties.StepModeTimeline mode, boolean first) {
+                return mode.getBefore();
+            }
+
+            @Override
+            String modeFollowUpField(AgentPromptProperties.StepModeTimeline mode) {
+                return mode.getBeforeFollowUp();
+            }
+
+            @Override
+            String rootField(AgentPromptProperties.StepTimeline root, boolean first) {
+                return root.getBefore();
+            }
+
+            @Override
+            String rootFallbackField(AgentPromptProperties.StepTimeline root) {
+                return root.getBeforeFallback();
+            }
+
+            @Override
+            String rootFollowUpField(AgentPromptProperties.StepTimeline root) {
+                return root.getBeforeFollowUp();
+            }
+
+            @Override
+            String rootFollowUpNoToolField(AgentPromptProperties.StepTimeline root) {
+                return root.getBeforeFollowUpNoTool();
+            }
+
+            @Override
+            String rootFollowUpFallbackField(AgentPromptProperties.StepTimeline root) {
+                return root.getBeforeFollowUpFallback();
+            }
+        },
+        ACTIVE {
+            @Override
+            String modeField(AgentPromptProperties.StepModeTimeline mode, boolean first) {
+                return mode.getActive();
+            }
+
+            @Override
+            String modeFollowUpField(AgentPromptProperties.StepModeTimeline mode) {
+                return mode.getActiveFollowUp();
+            }
+
+            @Override
+            String rootField(AgentPromptProperties.StepTimeline root, boolean first) {
+                return root.getActive();
+            }
+
+            @Override
+            String rootFallbackField(AgentPromptProperties.StepTimeline root) {
+                return root.getActiveFallback();
+            }
+
+            @Override
+            String rootFollowUpField(AgentPromptProperties.StepTimeline root) {
+                return root.getActiveFollowUp();
+            }
+
+            @Override
+            String rootFollowUpNoToolField(AgentPromptProperties.StepTimeline root) {
+                return root.getActiveFollowUpNoTool();
+            }
+
+            @Override
+            String rootFollowUpFallbackField(AgentPromptProperties.StepTimeline root) {
+                return root.getActiveFollowUpFallback();
+            }
+        },
+        AFTER {
+            @Override
+            String modeField(AgentPromptProperties.StepModeTimeline mode, boolean first) {
+                return mode.getAfter();
+            }
+
+            @Override
+            String modeFollowUpField(AgentPromptProperties.StepModeTimeline mode) {
+                return mode.getAfterFollowUp();
+            }
+
+            @Override
+            String rootField(AgentPromptProperties.StepTimeline root, boolean first) {
+                return root.getAfter();
+            }
+
+            @Override
+            String rootFallbackField(AgentPromptProperties.StepTimeline root) {
+                return root.getAfterFallback();
+            }
+
+            @Override
+            String rootFollowUpField(AgentPromptProperties.StepTimeline root) {
+                return root.getAfterFollowUp();
+            }
+
+            @Override
+            String rootFollowUpNoToolField(AgentPromptProperties.StepTimeline root) {
+                return root.getAfterFollowUpNoTool();
+            }
+
+            @Override
+            String rootFollowUpFallbackField(AgentPromptProperties.StepTimeline root) {
+                return root.getAfterFollowUpFallback();
+            }
+        };
+
+        abstract String modeField(AgentPromptProperties.StepModeTimeline mode, boolean first);
+
+        abstract String modeFollowUpField(AgentPromptProperties.StepModeTimeline mode);
+
+        abstract String rootField(AgentPromptProperties.StepTimeline root, boolean first);
+
+        abstract String rootFallbackField(AgentPromptProperties.StepTimeline root);
+
+        abstract String rootFollowUpField(AgentPromptProperties.StepTimeline root);
+
+        abstract String rootFollowUpNoToolField(AgentPromptProperties.StepTimeline root);
+
+        abstract String rootFollowUpFallbackField(AgentPromptProperties.StepTimeline root);
+    }
+
+    private static String modeConfigKey(ExecutionMode mode) {
+        return switch (mode) {
+            case SIMPLE_LLM -> "simple-llm";
+            case WORKFLOW -> "workflow";
+            case PLAN_WORKFLOW -> "plan-workflow";
+            default -> "react";
+        };
+    }
+
+    /** 标准步骤标题（intent / plan / rag 等），SSOT 见 Nacos agent.timeline */
+    public String stepLabel(String stepId) {
+        if (TimelineStepId.INTENT.matches(stepId)) {
+            return textOrDefault(agentPromptProperties.intentTimelineOrDefault().getLabel(), "识别意图");
+        }
+        AgentPromptProperties.StepTimeline step = stepTemplate(stepId);
+        if (step != null && StringUtils.hasText(step.getLabel())) {
+            return step.getLabel().strip();
+        }
+        return null;
+    }
+
+    private static String textOrDefault(String value, String fallback) {
+        return StringUtils.hasText(value) ? value.strip() : fallback;
+    }
 
     public String stepBefore(String stepId, String clippedQuery) {
 
-        if ("intent".equals(stepId)) {
+        if (TimelineStepId.INTENT.matches(stepId)) {
 
             return applyTemplate(
 
@@ -98,7 +356,7 @@ public class IntentLabelService {
 
     public String stepActive(String stepId, String clippedQuery) {
 
-        if ("intent".equals(stepId)) {
+        if (TimelineStepId.INTENT.matches(stepId)) {
 
             return applyTemplate(
 
@@ -118,6 +376,30 @@ public class IntentLabelService {
 
         return StepLabels.activeFor(stepId);
 
+    }
+
+    /** plan / generate / skill 等步骤 after 模板，占位符 {query} */
+    public String stepAfter(String stepId, String clippedQuery, String detail) {
+        if (TimelineStepId.PLAN.matches(stepId)) {
+            if (StringUtils.hasText(detail)) {
+                return detail.strip();
+            }
+            AgentPromptProperties.StepTimeline step = stepTemplate(TimelineStepId.PLAN.id());
+            return textOrDefault(step != null ? step.getAfter() : null, "执行计划已生成");
+        }
+        if (TimelineStepId.GENERATE.matches(stepId)) {
+            AgentPromptProperties.StepTimeline step = stepTemplate(TimelineStepId.GENERATE.id());
+            String template = textOrDefault(step != null ? step.getAfter() : null, "已完成对{query}的回复");
+            return applyTemplate(template, vars(clippedQuery, null, null, null));
+        }
+        if (TimelineStepId.SKILL.matches(stepId)) {
+            if (StringUtils.hasText(detail)) {
+                return detail.strip();
+            }
+            AgentPromptProperties.StepTimeline step = stepTemplate(TimelineStepId.SKILL.id());
+            return textOrDefault(step != null ? step.getAfterFallback() : null, "Skill 已加载");
+        }
+        return null;
     }
 
 

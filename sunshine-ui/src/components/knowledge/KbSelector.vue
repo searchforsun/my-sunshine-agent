@@ -4,17 +4,20 @@ import { NIcon, NPopover } from 'naive-ui'
 import { AddOutline, CheckmarkOutline, ChevronDownOutline, LibraryOutline } from '@vicons/ionicons5'
 import type { KnowledgeBase } from '../../api/ragAdmin'
 
-const props = defineProps<{
-  kbs: KnowledgeBase[]
-  modelValue: string | null
-  loading?: boolean
-  /** Chat 底栏隐藏「新建知识库」 */
-  showCreate?: boolean
-  /** compact：Chat 底栏；block：知识库页顶栏 */
-  variant?: 'compact' | 'block'
-}>()
+const props = withDefaults(
+  defineProps<{
+    kbs: KnowledgeBase[]
+    modelValue: string | null
+    loading?: boolean
+    /** Chat 底栏传 false 隐藏「新建知识库」；知识库页默认展示 */
+    showCreate?: boolean
+    /** compact：Chat 底栏；block：知识库页顶栏 */
+    variant?: 'compact' | 'block'
+  }>(),
+  { showCreate: true },
+)
 
-const showCreateButton = computed(() => props.showCreate !== false)
+const showCreateButton = computed(() => props.showCreate)
 const variant = computed(() => props.variant ?? 'compact')
 const popoverPlacement = computed(() => (variant.value === 'block' ? 'bottom-start' : 'top-start'))
 

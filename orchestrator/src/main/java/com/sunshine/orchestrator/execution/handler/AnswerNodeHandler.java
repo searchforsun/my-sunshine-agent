@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.StreamingNodeHandler;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,7 +31,7 @@ public class AnswerNodeHandler implements StreamingNodeHandler {
 
     @Override
     public String type() {
-        return "answer";
+        return WorkflowNodeType.ANSWER.id();
     }
 
     @Override

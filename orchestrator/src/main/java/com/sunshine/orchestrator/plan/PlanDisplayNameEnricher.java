@@ -3,7 +3,9 @@ package com.sunshine.orchestrator.plan;
 import com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -18,6 +20,7 @@ public class PlanDisplayNameEnricher {
 
     private final ToolCatalogService toolCatalogService;
     private final SkillCatalogService skillCatalogService;
+    private final WorkflowNodeLabelService workflowNodeLabelService;
 
     public PlanJson enrich(PlanJson plan) {
         List<PlanNode> nodes = new ArrayList<>();
@@ -37,28 +40,26 @@ public class PlanDisplayNameEnricher {
 
     private String resolveDisplayName(PlanNode node) {
         String type = node.type() != null ? node.type() : "";
-        return switch (type) {
-            case "rag" -> "检索知识库";
-            case "llm" -> "综合分析";
-            case "answer" -> "生成回答";
-            case "tool" -> {
-                String tool = node.params().get("tool");
-                if (StringUtils.hasText(tool)) {
-                    yield toolCatalogService.displayName(tool.strip());
-                }
-                yield "调用工具";
+        if (WorkflowNodeType.TOOL.matches(type)) {
+            String tool = node.params().get("tool");
+            if (StringUtils.hasText(tool)) {
+                return toolCatalogService.displayName(tool.strip());
             }
-            case "agent" -> {
-                String skill = node.params().get("skill");
-                if (StringUtils.hasText(skill)) {
-                    yield skillCatalogService.findIndex(skill.strip())
-                            .map(SkillCatalogIndexEntry::displayName)
-                            .filter(StringUtils::hasText)
-                            .orElse("子 Agent 分析");
-                }
-                yield "智能体分析";
+            return workflowNodeLabelService.typeLabel(type);
+        }
+        if (WorkflowNodeType.AGENT.matches(type)) {
+            String skill = node.params().get("skill");
+            if (StringUtils.hasText(skill)) {
+                return skillCatalogService.findIndex(skill.strip())
+                        .map(SkillCatalogIndexEntry::displayName)
+                        .filter(StringUtils::hasText)
+                        .orElse(workflowNodeLabelService.subAgentDefaultLabel());
             }
-            default -> WorkflowNodeLabels.displayName(node.id(), node.type());
-        };
+            return workflowNodeLabelService.typeLabel(type);
+        }
+        if (WorkflowNodeType.of(type).isPresent()) {
+            return workflowNodeLabelService.typeLabel(type);
+        }
+        return WorkflowNodeLabels.displayName(node.id(), node.type());
     }
 }

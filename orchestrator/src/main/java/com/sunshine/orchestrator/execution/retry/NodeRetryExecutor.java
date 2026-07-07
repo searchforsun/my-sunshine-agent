@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution.retry;
 
 import com.sunshine.orchestrator.execution.NodeResult;
+import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -61,14 +62,14 @@ public class NodeRetryExecutor {
                     long endedAt = System.currentTimeMillis();
                     if (result.success()) {
                         attempts.add(new PlanNodeAttemptRecord(
-                                attemptNo, "completed", null, "完成", startedAt, endedAt));
+                                attemptNo, "completed", null, WorkflowNodeCompletionLabels.attemptComplete(), startedAt, endedAt));
                         return Mono.just(new AttemptOutcome(result, List.copyOf(attempts)));
                     }
-                    String err = result.safeOutputs().getOrDefault("error", "节点执行失败");
+                    String err = result.safeOutputs().getOrDefault("error", WorkflowNodeCompletionLabels.nodeFailed());
                     ExecutionErrorClass errorClass = errorClassifier.classifyMessage(err);
                     boolean retryable = errorClassifier.isRetryable(errorClass, policy.retryOnErrorClass());
                     attempts.add(new PlanNodeAttemptRecord(
-                            attemptNo, "failed", errorClass.name(), "失败: " + err, startedAt, endedAt));
+                            attemptNo, "failed", errorClass.name(), WorkflowNodeCompletionLabels.attemptFailed(err), startedAt, endedAt));
                     notifyAttemptsUpdated(onAttemptsUpdated, attempts);
                     if (retryable && attemptNo < policy.maxAttempts()) {
                         long delay = policy.backoffForAttempt(attemptNo + 1);

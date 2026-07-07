@@ -28,8 +28,8 @@ final class TimelineSessionThinkFlow {
         }
         state.thinkIteration++;
         state.currentThinkId = ThinkStepIds.forIteration(state.thinkIteration);
-        lifecycle.pending(state.currentThinkId, "think");
-        lifecycle.start(state.currentThinkId, "think");
+        lifecycle.pending(state.currentThinkId, TimelineStepId.THINK.phase());
+        lifecycle.start(state.currentThinkId, TimelineStepId.THINK.phase());
         return state.currentThinkId;
     }
 

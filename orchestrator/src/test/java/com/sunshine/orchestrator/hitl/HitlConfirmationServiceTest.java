@@ -4,7 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
+import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
+import com.sunshine.orchestrator.processing.StepLabels;
+import com.sunshine.orchestrator.processing.TimelineLabelTestSupport;
+import com.sunshine.orchestrator.processing.ToolNodeLabelService;
+import com.sunshine.orchestrator.processing.ToolNodeLabels;
 import com.sunshine.orchestrator.generation.GenerationJob;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -63,11 +68,16 @@ class HitlConfirmationServiceTest {
                 flushScheduler,
                 redis,
                 new ObjectMapper());
+        TimelineLabelTestSupport.bindDefaults();
+        ToolNodeLabels.bind(new ToolNodeLabelService(new AgentPromptProperties(), toolCatalogService));
+        StepLabels.bind(toolCatalogService);
         StepEventBridge.bindHitl("msg-1", true);
     }
 
     @AfterEach
     void tearDown() {
+        StepLabels.bind(null);
+        TimelineLabelTestSupport.unbind();
         StepEventBridge.clear("msg-1");
     }
 

@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.WorkflowProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,13 +49,22 @@ class WorkflowNodeLabelsTest {
         def.setNodes(List.of(startNode, toolNode, answerNode));
         props.setDefinitions(new LinkedHashMap<>(Map.of("finance-list", def)));
 
-        labelService = new WorkflowNodeLabelService(props, toolCatalogService);
+        labelService = new WorkflowNodeLabelService(props, toolCatalogService, new AgentPromptProperties());
         WorkflowNodeLabels.bind(labelService);
     }
 
     @AfterEach
     void tearDown() {
         WorkflowNodeLabels.bind(null);
+    }
+
+    @Test
+    void requiresBoundService() {
+        WorkflowNodeLabels.bind(null);
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> WorkflowNodeLabels.displayName("rag", "rag"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("WorkflowNodeLabelService");
     }
 
     @Test

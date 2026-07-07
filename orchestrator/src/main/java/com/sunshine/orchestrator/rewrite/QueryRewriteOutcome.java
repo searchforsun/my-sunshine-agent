@@ -47,10 +47,10 @@ public record QueryRewriteOutcome(
             String original, java.util.List<String> alternatives, long latencyMs, String scenarioLabel) {
         String from = original != null ? original.strip() : "";
         if (alternatives == null || alternatives.isEmpty()) {
-            return skipped("empty-recall", from, latencyMs, scenarioLabel);
+            return skipped(QueryRewriteScenario.EMPTY_RECALL.id(), from, latencyMs, scenarioLabel);
         }
         String to = String.join("；", alternatives);
-        return new QueryRewriteOutcome("empty-recall", from, to, true, latencyMs, scenarioLabel);
+        return new QueryRewriteOutcome(QueryRewriteScenario.EMPTY_RECALL.id(), from, to, true, latencyMs, scenarioLabel);
     }
 
     public String effectiveQuery() {
@@ -59,13 +59,13 @@ public record QueryRewriteOutcome(
 
     /** Timeline 展开区：场景时机说明 + 改写前后 query + 耗时；empty-recall 未生效时也展示 */
     public String timelineDetail() {
-        if ("empty-recall".equals(scenario)) {
+        if (QueryRewriteScenario.EMPTY_RECALL.matches(scenario)) {
             return emptyRecallTimelineDetail();
         }
         if (!applied) {
             return null;
         }
-        return rewriteTimelineDetail("hyde".equals(scenario) ? "参考文档" : "优化后", rewrittenQuery);
+        return rewriteTimelineDetail(QueryRewriteScenario.HYDE.matches(scenario) ? "参考文档" : "优化后", rewrittenQuery);
     }
 
     private String emptyRecallTimelineDetail() {

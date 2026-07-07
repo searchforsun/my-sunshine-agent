@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
+import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,9 +35,11 @@ class StepSummarizerTest {
         entry.setDisplayName("知识库问答");
         workflowProps.setCatalog(List.of(entry));
         workflowProps.setDefinitions(new LinkedHashMap<>());
+        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
+                workflowProps, Mockito.mock(ToolCatalogService.class), new AgentPromptProperties());
+        WorkflowNodeLabels.bind(workflowLabels);
         IntentLabels.bind(new IntentLabelService(
-                new AgentPromptProperties(), workflowProps,
-                new WorkflowNodeLabelService(workflowProps, Mockito.mock(ToolCatalogService.class))));
+                new AgentPromptProperties(), workflowProps, workflowLabels));
         String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
         assertThat(after).contains("公司考勤制度");
         assertThat(after).contains("知识库问答");

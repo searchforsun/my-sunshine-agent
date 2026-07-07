@@ -11,8 +11,10 @@ import com.sunshine.orchestrator.execution.TemplateResolver;
 import com.sunshine.orchestrator.execution.UpstreamOutputResolver;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowDefinition;
+import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
 import com.sunshine.orchestrator.execution.retry.NodeRetryExecutor;
 import com.sunshine.orchestrator.execution.retry.NodeRetryPolicy;
@@ -104,7 +106,7 @@ public class WorkflowNodeRunner {
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
         NodeRetryPolicy retryPolicy = retryPolicyResolver.resolve(rawSpec, planWorkflow);
-        if ("hitl".equals(pending.kind()) && "tool".equals(rawSpec.type())) {
+        if ("hitl".equals(pending.kind()) && WorkflowNodeType.TOOL.matches(rawSpec.type())) {
             WorkflowHitlScope.Binding hitl = new WorkflowHitlScope.Binding(
                     session, WorkflowNodeTimeline.stepId(nodeId), streamCtx.assistantMsgId());
             return Mono.fromCallable(() -> hitlConfirmationService.resumeAwaitingFromCheckpoint(
@@ -274,7 +276,7 @@ public class WorkflowNodeRunner {
             ExecutionStreamContext streamCtx,
             ProcessingTimelineSession session,
             String nodeId) {
-        boolean toolNode = "tool".equals(resolved.type());
+        boolean toolNode = WorkflowNodeType.TOOL.matches(resolved.type());
         if (!toolNode) {
             return handler.run(resolved, wfCtx, streamCtx);
         }
@@ -327,13 +329,13 @@ public class WorkflowNodeRunner {
                     long attemptEnded = System.currentTimeMillis();
                     if (result.success()) {
                         attempts.add(new NodeRetryExecutor.PlanNodeAttemptRecord(
-                                attemptNo, "completed", null, "完成", attemptStarted, attemptEnded));
+                                attemptNo, "completed", null, WorkflowNodeCompletionLabels.attemptComplete(), attemptStarted, attemptEnded));
                         return nodeFinalizer.finalizeNode(session, nodeId, rawSpec, result, wfCtx, streamCtx,
                                 tracksNodeStep, startedAt, retryPolicy, attempts, runSession);
                     }
-                    String err = result.safeOutputs().getOrDefault("error", "节点执行失败");
+                    String err = result.safeOutputs().getOrDefault("error", WorkflowNodeCompletionLabels.nodeFailed());
                     attempts.add(new NodeRetryExecutor.PlanNodeAttemptRecord(
-                            attemptNo, "failed", null, "失败: " + err, attemptStarted, attemptEnded));
+                            attemptNo, "failed", null, WorkflowNodeCompletionLabels.attemptFailed(err), attemptStarted, attemptEnded));
                     nodeFinalizer.publishNodeAttemptsProgress(session, nodeId, rawSpec, streamCtx, tracksNodeStep,
                             startedAt, retryPolicy, attempts);
                     if (attemptNo < retryPolicy.maxAttempts() && isStreamRetryable(err, retryPolicy)) {

@@ -131,6 +131,7 @@ agent:
 
   timeline:
     intent:
+      label: 识别意图
       before: "阅读{query}"
       active: "正在分析{query}，匹配最佳处理方式"
       default-after: "已完成对{query}的意图判断"
@@ -153,25 +154,114 @@ agent:
           forced-after: "{query}将按您指定的「工作流」模式处理"
           # detail 仅路由解析用；时间线不下发 expandable detail
     steps:
+      intent:
+        label: 识别意图
       plan:
+        label: 执行计划
         before: 规划执行路径
         active: 正在编排业务节点顺序
+        after: 执行计划已生成
+      think:
+        label: 规划推理
+        label-follow-up: 综合分析
+        before: "规划如何回答{query}"
+        active: "正在规划{query}的工具调用方案"
+        after: "已完成{query}的工具调用规划"
+        before-fallback: "规划工具与作答路径"
+        active-fallback: "正在规划工具调用方案"
+        after-fallback: "工具调用方案已拟定"
+        before-follow-up: "准备结合{toolDisplayName}结果继续分析"
+        active-follow-up: "正在综合分析{toolDisplayName}返回结果"
+        after-follow-up: "已完成{toolDisplayName}的工具结果综合分析"
+        before-follow-up-no-tool: "准备结合工具结果分析{query}"
+        active-follow-up-no-tool: "正在结合工具返回结果分析{query}"
+        after-follow-up-no-tool: "工具结果综合分析已完成"
+        before-follow-up-fallback: "准备结合工具结果分析"
+        active-follow-up-fallback: "正在综合分析工具结果"
+        after-follow-up-fallback: "工具结果分析完成"
+        modes:
+          simple-llm:
+            label: 构思回答
+            label-follow-up: 整理作答
+            before: "构思如何回答{query}"
+            active: "正在构思针对{query}的作答思路"
+            after: "已完成针对{query}的作答构思"
+            before-follow-up: "准备整理作答要点"
+            active-follow-up: "正在整理作答要点"
+            after-follow-up: "作答要点整理完成"
+      tool:
+        label: "调用工具 {displayName}"
+        before: "准备{displayName}"
+        active: "正在{displayName}"
+        after: "{displayName}完成"
+      node:
+        before: "准备{displayName}"
+        active: "正在{displayName}"
+        after: "{displayName}完成"
+        before-with-query: "准备处理{query}的「{displayName}」环节"
       generate:
+        label: 生成回答
         before: "为{query}撰写回复"
         active: "正在撰写并输出针对{query}的回复"
+        after: "已完成对{query}的回复"
       rag:
+        label: 检索知识库
         before: "在企业知识库中查找与{query}相关的资料"
         active: "正在匹配与{query}最相关的文档片段"
       skill:
+        label: 加载技能
         before: "准备加载 Skill"
         active: "正在加载 Skill 指令"
         after: "@{skillId} {skillDisplayName}"
+        after-fallback: "Skill 已加载"
     hitl:
       pending: "将调用工具 {toolDisplayName}"
       awaiting: "等待用户确认执行写操作"
       approved: "用户已确认，正在调用 {toolDisplayName}"
       denied: "用户取消调用"
       skipped-after: "用户取消调用，已跳过"
+    plan-approval:
+      awaiting: "等待确认执行计划"
+      approved: "已确认执行计划"
+      regenerating: "正在根据修改意见重新规划…"
+      timed-out: "确认超时，将改由自主智能体继续"
+    agent:
+      before: "理解{query}，规划作答思路"
+      active: "结合上下文分析{query}"
+      progress: "深入分析{query}的背景与上下文"
+      after-no-context: "完成问题分析，开始生成回复"
+      after-outline: "已梳理{query}的作答要点"
+      after-zero-hits: "知识库暂无{query}的匹配内容，将结合通用知识作答"
+      after-with-hits: "已从 {hitCount} 条文档中提取与{query}相关的关键信息"
+      after-default: "已完成对{query}的分析，开始生成回复"
+    rag-after:
+      hits-with-sources: "找到 {hitCount} 条参考片段，来源：{sources}"
+      hits-with-query: "找到 {hitCount} 条与{query}相关的参考文档"
+      zero-hits: "未找到与{query}直接相关的制度或文档"
+      generic-done: "已完成针对{query}的知识库检索"
+    workflow-node-types:
+      rag: 检索知识库
+      llm: 综合分析
+      agent: 智能体分析
+      answer: 生成回答
+      tool: 调用工具
+      unknown-workflow: 未知工作流
+      unknown-node: 节点
+      sub-agent-default: 子 Agent 分析
+    workflow-agent:
+      after-with-tools: "已完成 {toolCallCount} 次工具调用的综合分析"
+      after-done: 智能体分析完成
+      skill-loaded-prefix: "已加载技能：{skillLabel}"
+    workflow-node-completion:
+      complete: "{displayName}完成"
+      hit-count: "命中 {hitCount} 条"
+      skipped: "已跳过"
+      skipped-with-reason: "已跳过：{reason}"
+      retry-success: "（第 {attemptCount} 次尝试成功）"
+      retry-failed-suffix: "（已重试 {attemptCount} 次）"
+      node-failed: "节点执行失败"
+      attempt-complete: "完成"
+      attempt-failed: "失败: {error}"
 
   execution:
     default-mode: react

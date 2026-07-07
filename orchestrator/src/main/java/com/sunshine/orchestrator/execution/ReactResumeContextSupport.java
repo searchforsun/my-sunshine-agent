@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import com.sunshine.orchestrator.processing.ToolStepIds;
 import org.springframework.util.StringUtils;
 
@@ -42,15 +43,15 @@ public final class ReactResumeContextSupport {
     }
 
     private static boolean isSkippedPhase(String phase) {
-        return "intent".equals(phase)
-                || "plan".equals(phase)
-                || "generate".equals(phase)
-                || "skill".equals(phase)
+        return TimelineStepId.INTENT.matches(phase)
+                || TimelineStepId.PLAN.matches(phase)
+                || TimelineStepId.GENERATE.matches(phase)
+                || TimelineStepId.SKILL.matches(phase)
                 || phase.startsWith("skill");
     }
 
     private static boolean isThinkPhase(String phase) {
-        return "think".equals(phase) || "agent".equals(phase) || phase.startsWith("think");
+        return TimelineStepId.THINK.matches(phase) || TimelineStepId.AGENT.matches(phase) || phase.startsWith("think");
     }
 
     private static void appendThinkBlock(List<String> blocks, ProcessingStep step) {

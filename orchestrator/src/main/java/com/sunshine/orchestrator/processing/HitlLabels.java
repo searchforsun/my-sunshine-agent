@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.processing;
 
-/** HITL 时间线文案静态入口 */
+/** HITL 时间线文案静态入口（配置见 Nacos agent.timeline.hitl） */
 public final class HitlLabels {
 
     private static volatile HitlLabelService service;
@@ -13,22 +13,29 @@ public final class HitlLabels {
     }
 
     public static String pending(String toolDisplayName) {
-        return service != null ? service.pending(toolDisplayName) : "将调用工具 " + toolDisplayName;
+        return requireService().pending(toolDisplayName);
     }
 
     public static String awaiting() {
-        return service != null ? service.awaiting() : "等待用户确认执行写操作";
+        return requireService().awaiting();
     }
 
     public static String approved(String toolDisplayName) {
-        return service != null ? service.approved(toolDisplayName) : "用户已确认，正在调用 " + toolDisplayName;
+        return requireService().approved(toolDisplayName);
     }
 
     public static String denied() {
-        return service != null ? service.denied() : "用户取消调用";
+        return requireService().denied();
     }
 
     public static String skippedAfter() {
-        return service != null ? service.skippedAfter() : "用户取消调用，已跳过";
+        return requireService().skippedAfter();
+    }
+
+    private static HitlLabelService requireService() {
+        if (service == null) {
+            throw new IllegalStateException("HitlLabelService 未 bind");
+        }
+        return service;
     }
 }

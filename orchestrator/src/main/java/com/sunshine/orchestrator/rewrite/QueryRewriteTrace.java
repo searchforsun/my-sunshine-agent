@@ -5,7 +5,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -15,8 +14,6 @@ import java.util.stream.Collectors;
 public final class QueryRewriteTrace {
 
     private static final Map<String, List<QueryRewriteOutcome>> TRACES = new ConcurrentHashMap<>();
-    /** RAG 步骤展开区仅展示检索相关改写，意图改写已在 intent 步展示 */
-    private static final Set<String> RAG_SCENARIOS = Set.of("rag", "hyde", "empty-recall");
 
     private QueryRewriteTrace() {
     }
@@ -78,11 +75,11 @@ public final class QueryRewriteTrace {
     }
 
     public static Optional<QueryRewriteOutcome> intentOutcome(String messageId) {
-        return latest(messageId, "intent");
+        return latest(messageId, QueryRewriteScenario.INTENT.id());
     }
 
     public static Optional<QueryRewriteOutcome> plannerOutcome(String messageId) {
-        return latest(messageId, "planner");
+        return latest(messageId, QueryRewriteScenario.PLANNER.id());
     }
 
     public static String combinedTimelineDetail(String messageId) {
@@ -104,7 +101,7 @@ public final class QueryRewriteTrace {
             return joinTimelineDetails(List.of());
         }
         List<QueryRewriteOutcome> ragOnly = all.subList(fromIndex, all.size()).stream()
-                .filter(o -> RAG_SCENARIOS.contains(o.scenario()))
+                .filter(o -> QueryRewriteScenario.isRagRelated(o.scenario()))
                 .collect(Collectors.toList());
         return joinTimelineDetails(ragOnly);
     }

@@ -3,21 +3,33 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.processing.TimelineLabelTestSupport;
 import io.agentscope.core.agent.Event;
 import io.agentscope.core.agent.EventType;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AgentScopeEventMapperTest {
+
+    @BeforeEach
+    void setUp() {
+        TimelineLabelTestSupport.bindDefaults();
+    }
+
+    @AfterEach
+    void tearDown() {
+        TimelineLabelTestSupport.unbind();
+    }
 
     @Test
     void reasoningEvent_thinkingOnly_isIgnored() {

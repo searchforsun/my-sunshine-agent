@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.plan;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -14,8 +15,8 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class PlanValidator {
 
-    private static final Set<String> PLANNER_TYPES = Set.of("rag", "tool", "agent");
-    private static final Set<String> EXEC_TYPES = Set.of("rag", "tool", "agent", "answer");
+    private static final Set<String> PLANNER_TYPES = WorkflowNodeType.plannerTypeIds();
+    private static final Set<String> EXEC_TYPES = WorkflowNodeType.execTypeIds();
 
     private final SkillCatalogService skillCatalogService;
     private final ToolCatalogService toolCatalogService;

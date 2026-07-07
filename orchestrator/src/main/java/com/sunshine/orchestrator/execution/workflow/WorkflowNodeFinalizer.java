@@ -6,8 +6,10 @@ import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
+import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
+import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import com.sunshine.orchestrator.execution.retry.NodeRetryExecutor;
 import com.sunshine.orchestrator.execution.retry.NodeRetryPolicy;
 import com.sunshine.orchestrator.execution.retry.OnFailureAction;
@@ -66,7 +68,7 @@ public class WorkflowNodeFinalizer {
         int attemptCount = attemptRecords != null ? attemptRecords.size() : 1;
         List<PlanNodeAttempt> attempts = toPlanAttempts(attemptRecords);
         if (!result.success()) {
-            String err = result.safeOutputs().getOrDefault("error", "节点执行失败");
+            String err = result.safeOutputs().getOrDefault("error", WorkflowNodeCompletionLabels.nodeFailed());
             String summary = formatFailureSummary(err, attemptCount);
             runSession.noteNodeFailure(nodeId);
             wfCtx.putNodeFailure(nodeId, err, attemptCount);
@@ -80,7 +82,7 @@ public class WorkflowNodeFinalizer {
             return Flux.empty();
         }
         Map<String, String> outs = result.safeOutputs();
-        if ("answer".equals(rawSpec.type())) {
+        if (WorkflowNodeType.ANSWER.matches(rawSpec.type())) {
             GroundingVerdict grounding = validateAnswerGrounding(outs, wfCtx);
             if (grounding != null && !grounding.passed()) {
                 String err = grounding.reason();
@@ -107,9 +109,11 @@ public class WorkflowNodeFinalizer {
         String summaryLine = resolveNodeDetail(rawSpec, outs);
         if (userSkipped) {
             String err = outs.getOrDefault("detail", outs.getOrDefault("output", summaryLine));
-            summaryLine = StringUtils.hasText(err) ? "已跳过：" + err.strip() : "已跳过";
+            summaryLine = StringUtils.hasText(err)
+                    ? WorkflowNodeCompletionLabels.skippedWithReason(err.strip())
+                    : WorkflowNodeCompletionLabels.skipped();
         } else if (attemptCount > 1) {
-            summaryLine = summaryLine + "（第 " + attemptCount + " 次尝试成功）";
+            summaryLine = summaryLine + WorkflowNodeCompletionLabels.retrySuccess(attemptCount);
         }
         String expandDetail = resolveExpandDetail(
                 rawSpec, outs, summaryLine, streamCtx.assistantMsgId());
@@ -117,7 +121,7 @@ public class WorkflowNodeFinalizer {
                 summaryLine, expandDetail, startedAt, endedAt, attemptCount, retryPolicy.onFailure(), attempts);
         if (tracksNodeStep && isStreamingOutputNode(rawSpec.type())) {
             // answer 已在流式阶段 step_delta(result)+content 下发；llm 仍 finalize 补全
-            if ("llm".equals(rawSpec.type())) {
+            if (WorkflowNodeType.LLM.matches(rawSpec.type())) {
                 String answer = outs.getOrDefault("answer", outs.get("output"));
                 if (StringUtils.hasText(answer)) {
                     session.appendDelta(WorkflowNodeTimeline.stepId(nodeId), "result", answer.strip());
@@ -135,12 +139,12 @@ public class WorkflowNodeFinalizer {
     }
 
     public static NodeResult buildSkippedNodeResult(NodeSpec spec, String err) {
-        String message = StringUtils.hasText(err) ? err.strip() : "节点执行失败";
+        String message = StringUtils.hasText(err) ? err.strip() : WorkflowNodeCompletionLabels.nodeFailed();
         Map<String, String> outputs = new LinkedHashMap<>();
         outputs.put("output", message);
         outputs.put("detail", message);
         outputs.put("skipped", "true");
-        if ("tool".equals(spec.type())) {
+        if (WorkflowNodeType.TOOL.matches(spec.type())) {
             String tool = spec.params().getOrDefault("tool", "");
             if (StringUtils.hasText(tool)) {
                 outputs.put("tool", tool.strip());
@@ -231,9 +235,9 @@ public class WorkflowNodeFinalizer {
     }
 
     private static String formatFailureSummary(String err, int attemptCount) {
-        String base = "失败: " + err;
+        String base = WorkflowNodeCompletionLabels.attemptFailed(err);
         if (attemptCount > 1) {
-            return base + "（已重试 " + attemptCount + " 次）";
+            return base + WorkflowNodeCompletionLabels.retryFailedSuffix(attemptCount);
         }
         return base;
     }
@@ -250,8 +254,8 @@ public class WorkflowNodeFinalizer {
     }
 
     private static String resolveNodeDetail(NodeSpec spec, Map<String, String> outputs) {
-        if ("llm".equals(spec.type()) || "answer".equals(spec.type())) {
-            return nodeDisplayName(spec) + "完成";
+        if (WorkflowNodeType.LLM.matches(spec.type()) || WorkflowNodeType.ANSWER.matches(spec.type())) {
+            return WorkflowNodeCompletionLabels.nodeComplete(nodeDisplayName(spec));
         }
         String detail = outputs.get("detail");
         if (detail != null && !detail.isBlank()) {
@@ -259,15 +263,15 @@ public class WorkflowNodeFinalizer {
         }
         String hitCount = outputs.get("hitCount");
         if (hitCount != null && !hitCount.isBlank()) {
-            return "命中 " + hitCount + " 条";
+            return WorkflowNodeCompletionLabels.hitCount(hitCount);
         }
-        if ("agent".equals(spec.type())) {
+        if (WorkflowNodeType.AGENT.matches(spec.type())) {
             String summary = outputs.get("detail");
             if (summary != null && !summary.isBlank()) {
                 return summary;
             }
         }
-        return nodeDisplayName(spec) + "完成";
+        return WorkflowNodeCompletionLabels.nodeComplete(nodeDisplayName(spec));
     }
 
     private static String nodeDisplayName(NodeSpec spec) {
@@ -279,13 +283,13 @@ public class WorkflowNodeFinalizer {
 
     private static String resolveExpandDetail(
             NodeSpec spec, Map<String, String> outputs, String summaryLine, String traceMessageId) {
-        if ("rag".equals(spec.type())) {
+        if (WorkflowNodeType.RAG.matches(spec.type())) {
             String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedRagTimelineDetail(traceMessageId);
             if (rewriteDetail != null && !rewriteDetail.isBlank()) {
                 return rewriteDetail;
             }
         }
-        if ("agent".equals(spec.type())) {
+        if (WorkflowNodeType.AGENT.matches(spec.type())) {
             String expand = outputs.get("expandDetail");
             if (expand != null && !expand.isBlank()) {
                 return expand.strip();
@@ -296,14 +300,14 @@ public class WorkflowNodeFinalizer {
             }
             return summaryLine;
         }
-        if ("llm".equals(spec.type())) {
+        if (WorkflowNodeType.LLM.matches(spec.type())) {
             String reasoning = outputs.get("reasoning");
             if (reasoning != null && !reasoning.isBlank()) {
                 return reasoning.strip();
             }
             return null;
         }
-        if ("answer".equals(spec.type())) {
+        if (WorkflowNodeType.ANSWER.matches(spec.type())) {
             String detail = outputs.get("detail");
             if (detail != null && !detail.isBlank()) {
                 String answer = outputs.getOrDefault("answer", outputs.get("output"));
@@ -317,7 +321,7 @@ public class WorkflowNodeFinalizer {
     }
 
     private static boolean isStreamingOutputNode(String type) {
-        return "answer".equals(type) || "llm".equals(type);
+        return WorkflowNodeType.isStreamingOutput(type);
     }
 
     private void emitStreamTokens(String messageId, List<StreamToken> tokens) {

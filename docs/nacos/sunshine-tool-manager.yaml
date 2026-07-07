@@ -13,6 +13,25 @@ finance:
 oa:
   base-url: http://localhost:8700
 
+tool:
+  timeline:
+    result:
+      hit-count:
+        zero: "命中 0 条"
+        with-count: "命中 {hitCount} 条"
+        with-sources: "命中 {hitCount} 条，来源：{sources}"
+      finance-list:
+        zero: "0 条财务消息"
+        with-count: "{count} 条财务消息"
+      finance-summary:
+        zero: "无汇总数据"
+        with-data: "{status} {count} 条，合计 ¥{amount}"
+      oa-tasks:
+        zero: "0 条 OA 待办"
+        with-count: "{count} 条 OA 待办"
+      default-empty: "无结果"
+      truncate-max-chars: 80
+
 logging:
   level:
     com.sunshine: debug
