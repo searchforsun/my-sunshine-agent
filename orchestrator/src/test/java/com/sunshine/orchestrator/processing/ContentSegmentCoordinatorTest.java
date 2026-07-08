@@ -105,6 +105,19 @@ class ContentSegmentCoordinatorTest {
     }
 
     @Test
+    void ingestStreamingContentDelta_preservesWhitespaceOnlyDelta() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("合规分析");
+        session.beginReasoningRound();
+        session.endReasoningRound();
+        ProcessingTimelineSupport.run(session, () -> session.ingestStreamingContentDelta("|"));
+        List<StreamToken> out = ProcessingTimelineSupport.run(session, () ->
+                session.ingestStreamingContentDelta("\n"));
+        assertThat(out.stream().filter(t -> t.isContent() && t.segmentId() != null).map(StreamToken::text).toList())
+                .contains("\n");
+    }
+
+    @Test
     void ingestStreamingContentDelta_emitsFullTransitionAfterThinkDone() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");

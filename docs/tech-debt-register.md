@@ -17,7 +17,7 @@
 
 ## Backlog（open）
 
-> 2026-07-07 扫描：`@Deprecated` / 上帝类 / 文档重复。全仓 Java `@Deprecated` 注解已为 0；无 TODO/FIXME。**代码债与文档债 Backlog 均已空**。
+> 2026-07-08 扫描：TD-075 已修复；代码债 Backlog 已空。
 
 ### 代码债
 
@@ -116,6 +116,7 @@
 | TD-072 | 2026-07-07 | 拆分 `StepMetadata`→`RagStepMetadataParser`+`StepMetadataAssembler`（482→116）；`AgentNodeHandler`→`RequestAssembler`/`AuditSupport`/`ResultBuilder`（538→128）；`GenerationJob`→`ChunkEmitter`+`CheckpointSupport`（528→384）；465 测试全绿 |
 | TD-073 | 2026-07-07 | rag `EvaluateService`→`EvalFullRunOrchestrator`/`EvalSmokeRunner`/`EvalReportPersister`/`EvalRetrievalProbe`（746→328）；`ConfigVersionService`→`ConfigVersionStore`/`EvalLifecycle`/`PublishOps`（537→227）；rag-service 测试全绿 |
 | TD-074 | 2026-07-07 | 前端域拆分：`ragAdmin/`（client/kbDocuments/kbConfig/eval + barrel）；`chatSessions`→`chatSessionRegistry`/`chatSessionMutations`/`chatSessionSseConsumer`（909→459）；`KbConfigPanel`→`useKbConfigPanel`（1049→513）；`npm run build` 通过 |
+| TD-075 | 2026-07-08 | expert 发言流式：`step_delta(result)` 不切分 + 空白 token 勿用 `hasText` 过滤（根因非 Markdown normalizer） |
 
 ### 文档债（DOC）
 

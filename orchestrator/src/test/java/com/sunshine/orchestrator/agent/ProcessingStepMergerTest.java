@@ -180,6 +180,34 @@ class ProcessingStepMergerTest {
     }
 
     @Test
+    @DisplayName("applyDelta result 保留仅含换行/空格的 token")
+    void applyDelta_resultPreservesWhitespaceOnlyChunks() {
+        List<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.applyDelta(steps, "expert-policy-s1", "result", "##");
+        ProcessingStepMerger.applyDelta(steps, "expert-policy-s1", "result", " ");
+        ProcessingStepMerger.applyDelta(steps, "expert-policy-s1", "result", "一、\n\n");
+        ProcessingStepMerger.applyDelta(steps, "expert-policy-s1", "result", "正文");
+        assertThat(steps.get(0).result()).isEqualTo("## 一、\n\n正文");
+    }
+
+    @Test
+    @DisplayName("mergeSteps done 态 result 覆盖 delta 累积")
+    void mergeSteps_doneResultReplacesStreamedAccumulation() {
+        ProcessingStep running = new ProcessingStep(
+                "expert-x-s1", "expert", "running", null,
+                1L, null, null, null, null, null, "部分流式",
+                1L, "专家", null, null, null);
+        ProcessingStep done = new ProcessingStep(
+                "expert-x-s1", "expert", "done", null,
+                1L, 2L, 1L, null, null, null, "完整终稿",
+                2L, "专家", null, null, null);
+        List<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.upsert(steps, running);
+        ProcessingStepMerger.upsert(steps, done);
+        assertThat(steps.get(0).result()).isEqualTo("完整终稿");
+    }
+
+    @Test
     @DisplayName("applyDelta result 通道增量拼接并落库")
     void applyDelta_resultChannelConcatenates() {
         java.util.List<ProcessingStep> steps = new java.util.ArrayList<>();

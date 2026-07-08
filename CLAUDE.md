@@ -85,7 +85,9 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | **静态 Workflow** | `intent → plan → …`（DAG） | `WorkflowExecutor`：`StaticPlanAdapter` + `PlanTimeline`（`planId=`）→ `executeDynamicDefinition`；**无**逐步 `OperationCard` |
 | **Plan-Workflow** | `intent → plan → …`（DAG） | `PlanWorkflowExecutor` + Planner JSON；**成功路径无 `think`/`generate`**；与静态 workflow **共用** `PlanWorkflowPanel` / `PlanNodeDrawer` |
 | **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent 内部 think/tool **不上主时间线**；`AgentNodeDetailSummarizer` 供主行 after + 展开 detail |
-| **Workflow / Plan answer 节点** | 主时间线 `node-{id}` 一步 | `WorkflowLlmStreamSupport`：reasoning → `step_delta(node-*, reasoning)`；content → 消息正文 + `step.result`；主行 after = **displayName+「完成」**（非模型正文） |
+| **Workflow / Plan answer 节点** | 主时间线 `node-answer` + `step_delta(result)` | 仅 `step_delta(result)` SSOT（勿双写 content）；空白 token 勿 `hasText`/`isBlank` 过滤 |
+| **Plan/Workflow agent 节点** | 子 Timeline + `contentBlocks` | ReAct 正文经 `ingestStreamingContentDelta` → 分段 SSE；**禁止** `isBlank` 丢弃空白 delta |
+| **Expert 发言（peer-collab）** | `expert-{id}-s{seq}` + `step_delta(result)` | `ExpertHubEngine` 阶段2 Gateway 流式；**禁止** `hasText`/`trim` 丢弃 token（`" "`、`"\n"` 须原样 append 并下发 SSE）；`StreamChunkSplitter` 对 `step_delta(result)` **不切分**；勿加后端 Markdown 修补/normalizer |
 
 **reasoning 落点（勿双写）**
 

@@ -39,7 +39,7 @@ public final class ContentBlockAccumulator {
             openBySegmentId.put(token.segmentId(), block);
             target(token.scopeNodeStepId()).add(block);
         }
-        if (StringUtils.hasText(token.text())) {
+        if (token.text() != null && !token.text().isEmpty()) {
             block.text.append(token.text());
         }
     }

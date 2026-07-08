@@ -114,6 +114,33 @@ def parse_sse_steps(raw: str) -> list[dict]:
     return steps
 
 
+def parse_sse_step_deltas(raw: str) -> list[dict]:
+    deltas: list[dict] = []
+    for line in raw.splitlines():
+        line = line.rstrip("\r")
+        if not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if not payload:
+            continue
+        try:
+            obj = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("type") == "step_delta":
+            deltas.append(obj)
+    return deltas
+
+
+def expert_speak_result_deltas(raw: str) -> list[dict]:
+    return [
+        d for d in parse_sse_step_deltas(raw)
+        if str(d.get("stepId", "")).startswith("expert-")
+        and d.get("stepId") != "expert-convene"
+        and d.get("channel") == "result"
+    ]
+
+
 def parse_assistant_steps(raw) -> list[dict]:
     if isinstance(raw, list):
         return raw
@@ -199,15 +226,28 @@ def run_k_l1(token: str, conv_id: str) -> dict:
     step_ids = [str(s.get("id")) for s in steps]
     print(f"  steps={step_ids}")
     speaks = expert_speak_steps(steps)
+    speak_deltas = expert_speak_result_deltas(sse_raw_holder[0])
+    speak_results = [str(s.get("result") or "") for s in speaks if s.get("lifecycle") == "done"]
+    min_result_len = min((len(r) for r in speak_results), default=0)
+    print(f"  expert_speak_deltas={len(speak_deltas)}")
+    print(f"  expert_speak_min_result_len={min_result_len}")
     ok = (
         any(s.get("id") == "expert-convene" for s in steps)
         and len(speaks) >= 2
+        and len(speak_deltas) >= 2
+        and min_result_len >= 200
         and not any(s.get("id") == "plan" for s in steps)
         and not any(s.get("id") == "generate" for s in steps)
         and not any(str(s.get("id", "")).startswith("think") for s in steps)
         and not any(s.get("id") == "peer-collab" for s in steps)
     )
-    return {"pass": ok, "step_ids": step_ids, "speak_count": len(speaks), "message_id": assistant.get("id")}
+    return {
+        "pass": ok,
+        "step_ids": step_ids,
+        "speak_count": len(speaks),
+        "speak_delta_count": len(speak_deltas),
+        "message_id": assistant.get("id"),
+    }
 
 
 def run_k_l2(token: str, conv_id: str) -> dict:

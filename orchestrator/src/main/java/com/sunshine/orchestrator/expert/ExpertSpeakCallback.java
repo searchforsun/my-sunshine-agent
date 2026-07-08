@@ -4,7 +4,7 @@ package com.sunshine.orchestrator.expert;
 public interface ExpertSpeakCallback {
     void onSpeak(ExpertTranscriptEntry entry, String lifecycle, boolean responding);
 
-    /** 专家终态正文一次性写入 expert 步 result（ReAct 工具 acting 阶段无法 token 流式） */
+    /** 专家发言正文增量 token — 阶段2 Gateway 直链写入 expert 步 result */
     default void onSpeakDelta(ExpertTranscriptEntry entry, String text) {
     }
 

@@ -14,6 +14,8 @@ public class WorkflowStreamCollector {
         }
         if (token.isContent() && token.text() != null) {
             content.append(token.text());
+        } else if (token.isStepDelta() && "result".equals(token.channel()) && token.text() != null) {
+            content.append(token.text());
         } else if (token.isStepDelta() && "reasoning".equals(token.channel()) && token.text() != null) {
             reasoning.append(token.text());
         } else if (token.isReasoning() && token.text() != null) {

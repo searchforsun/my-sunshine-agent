@@ -61,6 +61,26 @@ class StreamChunkSplitterTest {
         assertThat(out.get(1).isContentEnd()).isTrue();
     }
 
+    @Test
+    @DisplayName("step_delta result 不切分 — 保留 Markdown 结构（TD-075）")
+    void stepDeltaResult_notSplit() {
+        String table = "| 审查维度 | 制度依据 |\n|----------|----------|\n| **关联出差审批单 | 不合规 |";
+        List<StreamToken> out = collect(
+                StreamToken.stepDelta("expert-policy-expert-s1", StreamChunkSplitter.STEP_DELTA_RESULT, table),
+                32);
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).text()).isEqualTo(table);
+    }
+
+    @Test
+    @DisplayName("step_delta reasoning 仍可切分")
+    void stepDeltaReasoning_stillSplit() {
+        String text = "思考过程".repeat(20);
+        List<StreamToken> out = collect(StreamToken.stepDelta("think", "reasoning", text), 8);
+        assertThat(out.size()).isGreaterThan(1);
+        assertThat(out.stream().map(StreamToken::text).reduce("", String::concat)).isEqualTo(text);
+    }
+
     private static List<StreamToken> collect(StreamToken token, int maxChars) {
         List<StreamToken> out = new ArrayList<>();
         StreamChunkSplitter.split(reactor.core.publisher.Flux.just(token), maxChars).subscribe(out::add);

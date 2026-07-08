@@ -336,7 +336,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 | Plan 重试/降级/Replan | `agent.execution.plan-workflow` · 见 [plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md) |
 | Skill `@` / 强提示 / 5B | `agent.skill.hint-patterns`；L0 多步→`plannerMode=skill-driven` |
 | Skill 自动发现阈值 | `SkillDiscoveryService`（catalog description bigram 打分） |
-| 第五模式 peer 模板 / 句式（阶段四） | `agent.peer.templates` / `agent.routing.peer.structural-patterns` · 见 [peer-collab spec](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) |
+| 第五模式 peer 句式（阶段四） | `agent.routing.peer.structural-patterns` · Expert Catalog 取代 `peer.templates` · 见 [peer-collab spec](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation spec](../superpowers/specs/2026-07-07-expert-consultation-design.md) |
 | ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.timeline.steps.tasks` / `mode-overlays.react` · 见 [taskboard spec](../superpowers/specs/2026-06-24-react-taskboard-design.md) |
 | Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) |
 | Workflow 模板 / `#` 绑定 | `workflow-manager` catalog + L0 `#` · **非**底栏二级下拉 · 见 [workflow-studio spec](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3 |
@@ -347,8 +347,8 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 
 ## E. PEER_COLLAB（阶段四 · 第五顶层模式）
 
-> **状态**：✅ 4.7.3 后端 + 单测 + Live；**4.7.4** `PeerCollabPanel` 展开 audit transcript（BFF `/api/audit/peer-run/{messageId}`）  
-> **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · **锁定 D10** · 配置键 `agent.routing.peer.*` / `agent.peer.templates`
+> **状态**：✅ L1 路由单测 + Live；Timeline 与 **§K** 统一（`expert-convene` + `expert-*`，无 `peer-collab` / `generate`）  
+> **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md) · 配置键 `agent.routing.peer.*`
 
 **预期 intent after**：「…将由多专家协作交叉验证」（`agent.timeline.intent.modes.peer-collab`）
 
@@ -365,22 +365,26 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 |--------|--------|------|
 | 先检索报销制度，再查待审批列表，并对结果做合规分析 | plan-workflow | 结构化流水线，非对等协商 |
 
-### E3. Timeline（成功路径）
+### E3. Timeline（成功路径 · 与 §K 一致）
 
 ```
-识别意图 → 将由多专家协作交叉验证
-peer-collab → …（压缩摘要，无 MsgHub 多轮 raw 对话）
-生成回答 → …
+识别意图 → 将由多专家协作…
+expert-convene → 已召集：…
+expert-{id}-s1 → 专家发言（step_delta 流式 result）
+…
+（消息正文区 Synthesizer 流式结论 — 无 generate 步）
 ```
 
-- transcript 仅 audit / Plan 类详情页可查，**不上**主 SSE 逐步卡片
-- 失败降级：intent 步或 peer 步说明改走 plan-workflow / react
+- 历史消息可能仍含 `phase=peer-collab` 单步；新请求 **不出现** `peer-collab` / `generate`
+- transcript 落 `peer_run` 审计；主 Timeline 逐步展示专家发言
+- 失败降级：intent 步说明改走 plan-workflow / react
 
 ### 单测（阶段四）
 
 ```bash
 mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest#peerCollab*,PeerCollaborationRoutingTest,ExecutionDispatcherTest
-python3 scripts/verify_peer_collab_live.py
+python3 scripts/verify_peer_collab_live.py   # E1 等 expert-convene
+python3 scripts/verify_expert_consultation_live.py   # §K `$` 与逐步 expert 步
 ```
 
 ---
@@ -392,7 +396,7 @@ python3 scripts/verify_peer_collab_live.py
 
 | # | 提示词 / 条件 | 预期 |
 |---|--------------|------|
-| K1 | `$policy-expert $finance-expert 是否合规` | `PEER_COLLAB`；`expert-convene` + ≥2 `expert-*` 步；**无** `plan` / `generate` / `peer-collab` |
+| K1 | `$policy-expert $finance-expert 是否合规` | `PEER_COLLAB`；`expert-convene` + ≥2 `expert-*` 步；≥2 条 expert `step_delta(result)`；**无** `plan` / `generate` / `peer-collab` |
 | K2 | `#finance-smart $policy-expert 是否合规` | `WORKFLOW` finance-smart；**压过** `$` |
 | K3 | `$policy-expert @finance-analysis 是否合规` | **仅 `$`** → `PEER_COLLAB` |
 | K4 | `executionPreference=peer-collab` + 合规问句 | `PEER_COLLAB`；Coordinator 召集；**无** finance-smart DAG |

@@ -145,8 +145,8 @@ export function appendInterleavedContent(
 ): void {
   if (!chunk) return
   const steps = msg.steps
-  // Plan answer 正文走 node-answer.result（step_delta），chunk 会破坏表格换行
-  if (steps?.some(s => s.phase === 'plan')) return
+  // answer / plan 正文 SSOT：node-answer.result（step_delta）；plain content 会破坏表格换行
+  if (steps?.some(s => s.phase === 'plan' || s.id === 'node-answer')) return
   appendMessageContent(msg, chunk, resume)
   if (!steps?.length) return
   if (!msg.contentBlocks) msg.contentBlocks = []
@@ -188,13 +188,12 @@ export function resolvePlanAnswerText(
   return msg.content?.trim() ?? ''
 }
 
-/** node-answer.result 落步后，同步主时间线 contentBlocks / message.content */
+/** node-answer.result 落步后，同步主时间线 contentBlocks / message.content（plan + 静态 workflow 共用） */
 export function syncPlanAnswerContentFromStep(
   msg: Pick<ChatMessage, 'content' | 'steps' | 'contentBlocks'>,
 ): void {
-  if (!msg.steps?.some(s => s.phase === 'plan')) return
-  const fromStep = msg.steps.find(s => s.id === 'node-answer')?.result?.trim()
-  if (!fromStep) return
+  const fromStep = msg.steps?.find(s => s.id === 'node-answer')?.result
+  if (fromStep == null || fromStep === '') return
   msg.content = fromStep
   msg.contentBlocks = [{
     segmentId: 'tail:node-answer',

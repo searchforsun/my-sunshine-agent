@@ -10,8 +10,8 @@ import io.agentscope.core.hook.PreActingEvent;
 import reactor.core.publisher.Mono;
 
 /**
- * 专家 Hub 专用 Hook — 工具调用期间刷新 expert 步 active；
- * 正文在 {@link ExpertHubEngine} {@code agent.call()} 完成后一次性下发。
+ * 专家 Hub 专用 Hook — 阶段1 工具调用期间刷新 expert 步 active；
+ * 阶段2 正文由 {@link ExpertHubEngine} 经 {@link ExpertSpeakStreamer} Gateway 直链流式下发。
  */
 public final class ExpertSpeakHook implements Hook {
 

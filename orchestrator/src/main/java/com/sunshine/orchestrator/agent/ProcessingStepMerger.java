@@ -119,6 +119,14 @@ public final class ProcessingStepMerger {
         );
     }
 
+    /** done 态 step 的 result 为全量终稿，覆盖流式 delta 累积 */
+    private static String mergeResult(ProcessingStep existing, ProcessingStep incoming) {
+        if (isDone(incoming) && incoming.result() != null && !incoming.result().isEmpty()) {
+            return incoming.result();
+        }
+        return longer(existing.result(), incoming.result());
+    }
+
     private static String longer(String a, String b) {
         if (a == null || a.isEmpty()) {
             return b;
@@ -147,7 +155,7 @@ public final class ProcessingStepMerger {
                 incoming.detail() != null ? incoming.detail() : existing.detail(),
                 mergeReasoning(existing, incoming),
                 longer(existing.output(), incoming.output()),
-                longer(existing.result(), incoming.result()),
+                mergeResult(existing, incoming),
                 Math.max(existing.ts(), incoming.ts()),
                 incoming.label() != null ? incoming.label() : existing.label(),
                 incoming.metadata() != null ? mergeMetadata(existing.metadata(), incoming.metadata()) : existing.metadata(),

@@ -88,7 +88,7 @@ agent:
       - simple-llm：简单对话、通识百科、写作润色、代码讲解等，单轮直答、不需企业知识库/业务系统
       - workflow：匹配下方目录中某一模板，workflowId 填对应 id，params 填本次参数（如 status: pending）
       - plan-workflow：跨多领域/多步骤协作（如「先检索制度，再查待审批，再合规分析」），无固定 workflow 模板；含「先…再…」「分步」「并对…分析」等多步表述时选此项
-      - peer-collab：需多角色对等协作、交叉验证、互相质疑（如「制度与财务专家分别审查并互相验证」）；params.templateId 可填 compliance-cross-review；勿与「先…再…」流水线 plan 混淆
+      - peer-collab：需多角色对等协作、交叉验证、互相质疑（如「制度与财务专家分别审查并互相验证」）；由 Expert Catalog + Coordinator 召集；勿与「先…再…」流水线 plan 混淆
       - react：审批/提交/确认/继续等操作指令，无匹配模板、需多工具组合、或不确定
       - 拿不准时用 react
   
@@ -415,6 +415,21 @@ agent:
 
   peer:
     max-rounds: 3
+    gather-instruction: |
+      你当前处于多专家协作的工具检索阶段。请调用必要工具收集事实与数据，并在最终回复中仅输出结构化的检索摘要（要点列表），勿撰写面向用户的完整发言稿。后续引擎将根据摘要生成正式发言。
+    speak-prompt: |
+      你是 {expertName}，正在参与多专家讨论。
+
+      用户问题：
+      {userQuery}
+
+      讨论上下文：
+      {transcript}
+
+      工具与检索材料：
+      {gatheredContext}
+
+      请以 {expertName} 身份向讨论组发表专业观点（Markdown），仅依据上述材料，勿编造。
     synthesis-prompt: |
       用户问题：{userQuery}
 

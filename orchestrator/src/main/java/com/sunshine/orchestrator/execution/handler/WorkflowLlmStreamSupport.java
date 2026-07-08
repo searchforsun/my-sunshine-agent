@@ -75,19 +75,19 @@ final class WorkflowLlmStreamSupport {
                 return Flux.empty();
             }
             String text = token.text();
-            if (!StringUtils.hasText(text)) {
+            if (text == null || text.isEmpty()) {
                 return Flux.empty();
             }
             return Flux.just(StreamToken.stepDelta(stepId, "reasoning", text));
         }
         if (token.isContent()) {
             String text = token.text();
-            if (!StringUtils.hasText(text)) {
+            if (text == null || text.isEmpty()) {
                 return Flux.empty();
             }
             if (terminalAnswer) {
-                // 终态 answer：正文进消息 + node.result 流式，不落 reasoning
-                return Flux.just(token, StreamToken.stepDelta(stepId, "result", text));
+                // 终态 answer：仅 step_delta(result)，勿双写 content（32 字切分 + 双通道易乱码）
+                return Flux.just(StreamToken.stepDelta(stepId, "result", text));
             }
             return Flux.just(token);
         }

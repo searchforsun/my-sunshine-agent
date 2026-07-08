@@ -180,6 +180,16 @@ flowchart TB
 2. `ConsultationSynthesizer` 流式写 `message.content`  
 3. Timeline **结束于最后一条专家步**；用户阅读区看到汇总正文（与专家步并列，非额外「撰写回复」步）
 
+### 8.4 专家发言两阶段（展示层流式）
+
+| 阶段 | 引擎 | Timeline |
+|------|------|----------|
+| **1 工具检索** | Sub-Agent `ReAct call().block()`；`ExpertSpeakHook` 刷 expert 步 active | 仅 active 文案（如「查财务…」） |
+| **2 正式发言** | `ExpertSpeakStreamer` → `LlmGatewayClient.streamComposed`（与 Synthesizer 同通路） | `step_delta(result)` 逐 token |
+
+- Nacos：`agent.peer.gather-instruction`（阶段1）、`agent.peer.speak-prompt`（阶段2模板）
+- **禁止**在 ReAct Hook / `agent.stream()` 上承载专家步 token 流（acting 空窗 + 线程安全已证伪）
+
 ---
 
 ## 9. Timeline V2
@@ -274,12 +284,13 @@ agent:
 
 ## 13. 检查门
 
-- [ ] L0：`#` > `$` > `@`
-- [ ] `$A $B` → ≥2 个 `expert-*` 步，**无** `plan`，**无** `generate` 步
-- [ ] Timeline **无**「第 N 轮」文案；同一专家多次发言仅重复 `displayName` + 不同展开内容
-- [ ] 未 `$` 仲裁专家时仍能完成多专家协作并得到正文（Synthesizer）
-- [ ] `peer_run` 与专家步内容一致
-- [ ] `/experts` CRUD + `$` 补全
+- [x] L0：`#` > `$` > `@`
+- [x] `$A $B` → ≥2 个 `expert-*` 步，**无** `plan`，**无** `generate` 步
+- [x] Timeline **无**「第 N 轮」文案；同一专家多次发言仅重复 `displayName` + 不同展开内容
+- [x] 未 `$` 仲裁专家时仍能完成多专家协作并得到正文（Synthesizer）
+- [x] `peer_run` 与专家步内容一致
+- [x] `/experts` CRUD + `$` 补全
+- [x] 专家步内正文：`gather` + `streamDirectly` 两阶段流式（§8.4）
 
 ---
 
@@ -288,4 +299,4 @@ agent:
 | 文档 | 关联 |
 |------|------|
 | [peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) | 第五模式基线（本设计 supersede 仲裁与 Timeline §） |
-| [routing-golden-set.md](../../routing/routing-golden-set.md) | 待增 §K |
+| [routing-golden-set.md](../../routing/routing-golden-set.md) | §K Expert `$`；§E L1 句式 peer |

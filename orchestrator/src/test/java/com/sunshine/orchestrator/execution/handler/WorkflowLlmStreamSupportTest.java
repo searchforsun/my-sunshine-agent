@@ -11,6 +11,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WorkflowLlmStreamSupportTest {
 
     @Test
+    void terminalAnswer_preservesWhitespaceOnlyContent() {
+        List<StreamToken> ws = WorkflowLlmStreamSupport.mapStreamToken(
+                StreamToken.content("\n"), "node-answer", true).collectList().block();
+        assertThat(ws).hasSize(1);
+        assertThat(ws.get(0).isStepDelta()).isTrue();
+        assertThat(ws.get(0).text()).isEqualTo("\n");
+    }
+
+    @Test
     void terminalAnswer_dropsReasoningTokens() {
         List<StreamToken> reasoning = WorkflowLlmStreamSupport.mapStreamToken(
                 StreamToken.reasoning("meta 分析"), "node-answer", true).collectList().block();
@@ -18,11 +27,10 @@ class WorkflowLlmStreamSupportTest {
 
         List<StreamToken> content = WorkflowLlmStreamSupport.mapStreamToken(
                 StreamToken.content("正文"), "node-answer", true).collectList().block();
-        assertThat(content).hasSize(2);
-        assertThat(content.get(0).isContent()).isTrue();
-        assertThat(content.get(1).isStepDelta()).isTrue();
-        assertThat(content.get(1).channel()).isEqualTo("result");
-        assertThat(content.get(1).stepId()).isEqualTo("node-answer");
+        assertThat(content).hasSize(1);
+        assertThat(content.get(0).isStepDelta()).isTrue();
+        assertThat(content.get(0).channel()).isEqualTo("result");
+        assertThat(content.get(0).stepId()).isEqualTo("node-answer");
     }
 
     @Test

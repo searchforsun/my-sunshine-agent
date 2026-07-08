@@ -56,4 +56,12 @@ public record PromptComposeRequest(
         return new PromptComposeRequest(
                 PromptMode.WORKFLOW, memory, userMessage, workflowId, null, nodePrompt, List.of(), null, false);
     }
+
+    /** 专家 Hub 发言阶段2 — nodePrompt 承载 Expert.systemPrompt */
+    public static PromptComposeRequest forExpertSpeak(
+            MemoryContext memory, String userMessage, String skillId, String expertSystemPrompt) {
+        return new PromptComposeRequest(
+                PromptMode.SIMPLE_LLM, memory, userMessage, null, skillId, expertSystemPrompt,
+                List.of(), null, false);
+    }
 }

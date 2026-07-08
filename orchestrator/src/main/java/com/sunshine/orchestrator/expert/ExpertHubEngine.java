@@ -7,7 +7,9 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
 import com.sunshine.orchestrator.catalog.ExpertCatalogEntry;
 import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.peer.PeerMsgSupport;
+import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import io.agentscope.core.ReActAgent;
@@ -30,8 +32,8 @@ import java.util.UUID;
 
 /**
  * 对等专家 MsgHub — 无仲裁角色，按 Hub 轮次发言。
- * <p>专家 Sub-Agent 经 {@link ExpertSpeakHook} 在工具调用期间刷新 expert 步 active；
- * 正文在整轮 {@link ReActAgent#call} 完成后一次性写入 Timeline（ReAct 工具 acting 阶段无 REASONING 流）。
+ * <p>两阶段：阶段1 {@link ReActAgent#call} 工具检索（{@link ExpertSpeakHook} 刷 active）；
+ * 阶段2 {@link ExpertSpeakStreamer} Gateway 直链 token 流写入 expert 步 {@code step_delta(result)}；空白 token 须保留（勿用 hasText 过滤）。
  */
 @Slf4j
 @Component
@@ -39,6 +41,8 @@ import java.util.UUID;
 public class ExpertHubEngine {
     private final ExpertPeerAgentFactory expertPeerAgentFactory;
     private final PromptComposer promptComposer;
+    private final ExpertSpeakStreamer expertSpeakStreamer;
+    private final PeerSynthesisProperties peerProperties;
 
     public ExpertHubResult run(
             List<ExpertCatalogEntry> roster,
@@ -111,7 +115,7 @@ public class ExpertHubEngine {
         return new ExpertHubResult(runId, transcript);
     }
 
-    /** 整轮 ReAct（含工具）同步执行；工具期间 Hook 刷新 active，终态正文一次性下发 */
+    /** 阶段1 ReAct 工具检索 + 阶段2 Gateway 流式发言 */
     private String invokeAgent(
             String hubRunId,
             ReActAgent agent,
@@ -121,12 +125,16 @@ public class ExpertHubEngine {
             ExpertTranscriptEntry pendingEntry,
             String assistantMessageId,
             ExpertSpeakCallback callback) {
+        List<String> gatherContexts = new ArrayList<>(contextBlocks);
+        if (StringUtils.hasText(peerProperties.getGatherInstruction())) {
+            gatherContexts.add(peerProperties.getGatherInstruction().strip());
+        }
         List<Msg> inputs = promptComposer.composeReactInputs(
                 PromptComposeRequest.forReact(
                         MemoryContext.forSubAgent(),
                         userQuery,
                         expert.primarySkillId(),
-                        contextBlocks,
+                        gatherContexts,
                         false));
         String bridgeId = "sub-" + hubRunId + "-" + expert.id();
         if (StringUtils.hasText(assistantMessageId)) {
@@ -137,21 +145,52 @@ public class ExpertHubEngine {
                 maybeNotifyToolProgress(token.step(), pendingEntry, callback);
             }
         });
+        String gatheredContext = "";
         try {
             Msg result = agent.call(inputs).block();
-            String text = PeerMsgSupport.extractText(result);
-            if (StringUtils.hasText(text) && callback != null) {
-                callback.onSpeakDelta(pendingEntry, text);
-            }
-            if (StringUtils.hasText(text)) {
-                log.info("[ExpertHubEngine] expert={} 发言完成 {} 字", expert.id(), text.length());
-            }
-            return text != null ? text : "";
+            gatheredContext = PeerMsgSupport.extractText(result);
         } catch (Exception e) {
-            log.warn("[ExpertHubEngine] call failed expert={}: {}", expert.id(), e.getMessage());
+            log.warn("[ExpertHubEngine] gather failed expert={}: {}", expert.id(), e.getMessage());
+            StepEventBridge.clear(bridgeId);
             return "";
         } finally {
             StepEventBridge.clear(bridgeId);
+        }
+        if (callback != null) {
+            callback.onSpeakActive(pendingEntry, ExpertStepLabels.expertActive(expert.displayName()) + "…");
+        }
+        StringBuilder speakText = new StringBuilder();
+        try {
+            expertSpeakStreamer.streamSpeak(expert, userQuery, contextBlocks, gatheredContext)
+                    .doOnNext(token -> appendSpeakToken(token, pendingEntry, callback, speakText))
+                    .blockLast();
+        } catch (Exception e) {
+            log.warn("[ExpertHubEngine] speak stream failed expert={}: {}", expert.id(), e.getMessage());
+            return speakText.toString();
+        }
+        String text = speakText.toString();
+        if (StringUtils.hasText(text)) {
+            log.info("[ExpertHubEngine] expert={} 发言完成 {} 字", expert.id(), text.length());
+        }
+        return text;
+    }
+
+    /** 空白 token（仅 \\n / 空格）须下发，hasText 会误丢弃导致 Markdown 结构断裂 */
+    private static void appendSpeakToken(
+            StreamToken token,
+            ExpertTranscriptEntry pendingEntry,
+            ExpertSpeakCallback callback,
+            StringBuilder speakText) {
+        if (token == null || !token.isContent()) {
+            return;
+        }
+        String piece = token.text();
+        if (piece == null || piece.isEmpty()) {
+            return;
+        }
+        speakText.append(piece);
+        if (callback != null) {
+            callback.onSpeakDelta(pendingEntry, piece);
         }
     }
 

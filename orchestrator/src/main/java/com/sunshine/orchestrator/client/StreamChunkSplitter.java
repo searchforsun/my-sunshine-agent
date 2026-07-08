@@ -8,8 +8,12 @@ import java.util.List;
 /**
  * 将超大 content/reasoning token 切分为较小片段，保证前端始终有流式体验。
  * ReAct 分段契约（content_start / segmentId / content_end）原样透传。
+ * <p>{@code step_delta(result)} 不切分 — Markdown 表格/加粗须保持 token 边界完整（TD-075）。
  */
 public final class StreamChunkSplitter {
+
+    /** step_delta 通道：result 为展示正文，禁止 max-chunk 二次切分 */
+    public static final String STEP_DELTA_RESULT = "result";
 
     private StreamChunkSplitter() {
     }
@@ -72,6 +76,9 @@ public final class StreamChunkSplitter {
     }
 
     private static List<StreamToken> splitStepDelta(StreamToken token, int maxChars) {
+        if (STEP_DELTA_RESULT.equals(token.channel())) {
+            return token.text() == null || token.text().isEmpty() ? List.of() : List.of(token);
+        }
         String text = token.text();
         if (text == null || text.isEmpty()) {
             return List.of();

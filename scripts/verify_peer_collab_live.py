@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PEER_COLLAB Live 验收 — routing-golden-set §E。
+"""PEER_COLLAB Live 验收 — routing-golden-set §E（L1 句式路由 + Timeline 形态）。
 
 用法:
   python3 scripts/verify_peer_collab_live.py
@@ -7,7 +7,12 @@
 
 前置:
   - docs/nacos/sunshine-orchestrator.yaml 已 sync + orchestrator 已重启
-  - LLM / skill 链路可用（E1 会触发 MsgHub 多轮，默认仅验路由 + peer-collab 步出现）
+  - expert-manager :8235 已启动（E1 走 Expert Catalog + Coordinator）
+  - LLM / skill 链路可用
+
+说明:
+  §E 验 L1 句式 → PEER_COLLAB 路由；Timeline 与 §K 一致（expert-convene + expert-*，无 peer-collab / generate）。
+  逐步 expert 步与 `$` 绑定细节见 verify_expert_consultation_live.py §K。
 
 环境变量: GATEWAY_URL, PEER_COLLAB_TIMEOUT_SEC, ORCHESTRATOR_URL
 """
@@ -120,10 +125,17 @@ def parse_assistant_steps(raw) -> list[dict]:
     return []
 
 
-def wait_for_peer_step(token: str, conv_id: str, max_wait: int, sse_steps: list[dict]) -> tuple[dict, list[dict]]:
+def is_peer_collab_timeline(steps: list[dict]) -> bool:
+    """4.7.3 演进：expert-convene；历史消息可能仍为 peer-collab。"""
+    if any(str(s.get("id")) == "expert-convene" for s in steps):
+        return True
+    return any(str(s.get("id")) == "peer-collab" for s in steps)
+
+
+def wait_for_peer_timeline(token: str, conv_id: str, max_wait: int, sse_steps: list[dict]) -> tuple[dict, list[dict]]:
     deadline = time.time() + max_wait
     while time.time() < deadline:
-        if any(str(s.get("id")) == "peer-collab" for s in sse_steps):
+        if is_peer_collab_timeline(sse_steps):
             detail = auth_json("GET", f"/api/conversations/{conv_id}", None, token)
             messages = detail.get("messages") or detail.get("data", {}).get("messages") or []
             assistants = [m for m in messages if m.get("role") == "assistant"]
@@ -137,12 +149,12 @@ def wait_for_peer_step(token: str, conv_id: str, max_wait: int, sse_steps: list[
             continue
         assistant = assistants[-1]
         steps = parse_assistant_steps(assistant.get("steps"))
-        if any(str(s.get("id")) == "peer-collab" for s in steps):
+        if is_peer_collab_timeline(steps):
             return assistant, steps
         if assistant.get("status") == "completed":
             return assistant, steps
         time.sleep(2)
-    raise RuntimeError(f"peer-collab step not observed within {max_wait}s")
+    raise RuntimeError(f"expert-convene / peer-collab step not observed within {max_wait}s")
 
 
 def latest_step(steps: list[dict], step_id: str) -> dict | None:
@@ -183,24 +195,28 @@ def run_e1(token: str, conv_id: str, query: str) -> dict:
             sse_done.set()
 
     threading.Thread(target=collect, daemon=True).start()
-    assistant, _persisted = wait_for_peer_step(token, conv_id, TIMEOUT_SEC, sse_steps)
+    assistant, _persisted = wait_for_peer_timeline(token, conv_id, TIMEOUT_SEC, sse_steps)
     sse_done.wait(timeout=5)
     steps = merge_steps("\n".join(json.dumps(s) for s in sse_steps), assistant)
     step_ids = [str(s.get("id")) for s in steps]
     print(f"  steps={step_ids}")
 
     intent = latest_step(steps, "intent")
-    peer = latest_step(steps, "peer-collab")
+    convene = latest_step(steps, "expert-convene")
+    legacy_peer = latest_step(steps, "peer-collab")
     intent_after = summary_after(intent)
-    has_peer = peer is not None
+    has_timeline = convene is not None or legacy_peer is not None
     intent_ok = "多专家" in intent_after or "协作" in intent_after
     no_plan = latest_step(steps, "plan") is None
-    ok = has_peer and intent_ok and no_plan
+    no_generate = latest_step(steps, "generate") is None
+    ok = has_timeline and intent_ok and no_plan and no_generate
     return {
         "pass": ok,
-        "has_peer_collab": has_peer,
+        "has_expert_convene": convene is not None,
+        "has_peer_collab_legacy": legacy_peer is not None,
         "intent_after": intent_after,
         "no_plan": no_plan,
+        "no_generate": no_generate,
         "step_ids": step_ids,
         "message_id": assistant.get("id"),
     }
@@ -213,9 +229,14 @@ def run_e2_negative(token: str, conv_id: str) -> dict:
     step_ids = [str(s.get("id")) for s in steps]
     print(f"  sse_steps={step_ids}")
     has_plan = any(str(s.get("id")) == "plan" for s in steps)
-    has_peer = any(str(s.get("id")) == "peer-collab" for s in steps)
-    ok = has_plan and not has_peer
-    return {"pass": ok, "has_plan": has_plan, "has_peer_collab": has_peer, "step_ids": step_ids}
+    has_peer_timeline = is_peer_collab_timeline(steps)
+    ok = has_plan and not has_peer_timeline
+    return {
+        "pass": ok,
+        "has_plan": has_plan,
+        "has_peer_timeline": has_peer_timeline,
+        "step_ids": step_ids,
+    }
 
 
 def check_peer_audit_api(message_id: str | None) -> dict:

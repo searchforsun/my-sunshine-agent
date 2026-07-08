@@ -54,7 +54,8 @@ final class TimelineSessionThinkFlow {
     }
 
     void ingestStreamingContentDelta(String delta, java.util.function.Consumer<com.sunshine.orchestrator.client.StreamToken> sink) {
-        if (delta == null || delta.isBlank()) {
+        // 勿用 isBlank：Gateway 常单独下发 " " / "\n"，丢弃会破坏 Markdown 表格/换行
+        if (delta == null || delta.isEmpty()) {
             return;
         }
         completeThinkIfRunning();
