@@ -50,7 +50,8 @@ public final class ContentSegmentCoordinator {
      *   <li>增量帧（{@code incremental=true} 的 ReasoningChunk）：每帧纯正文片段，直接 append</li>
      * </ul>
      */
-    static String resolveDelta(String baseline, String incoming) {
+    /** 累积/增量 REASONING 帧 → 相对 baseline 的正文增量 */
+    public static String resolveDelta(String baseline, String incoming) {
         if (incoming == null || incoming.isEmpty()) {
             return "";
         }

@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.peer.PeerTemplateCatalog;
+import com.sunshine.orchestrator.expert.ExpertCollaborationPlanSanitizer;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
@@ -25,7 +25,7 @@ public class IntentRouter {
 
     private final AgentPromptProperties prompts;
     private final WorkflowCatalog workflowCatalog;
-    private final PeerTemplateCatalog peerTemplateCatalog;
+    private final ExpertCollaborationPlanSanitizer expertCollaborationPlanSanitizer;
     private final ExecutionPlanParser planParser;
 
     @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
@@ -76,7 +76,7 @@ public class IntentRouter {
                 .defaultIfEmpty("")
                 .map(planParser::parse)
                 .map(workflowCatalog::sanitize)
-                .map(peerTemplateCatalog::sanitize)
+                .map(expertCollaborationPlanSanitizer::sanitize)
                 .doOnNext(plan -> log.info("[IntentRouter] 计划: mode={}, workflowId={}, reason={}",
                         plan.mode(), plan.workflowId(), plan.reason()));
     }

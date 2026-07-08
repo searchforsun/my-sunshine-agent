@@ -222,8 +222,19 @@ agent:
       peer-collab:
         label: 多专家协作
         before: 准备多专家协作
-        active: "正在执行：{displayName}"
-        after: "已完成 {roleCount} 位专家、{roundCount} 轮交叉验证"
+        active: 正在召集专家
+        after: 将由多专家协作处理
+      expert-convene:
+        label: 多专家协作
+        before: 正在匹配协作专家
+        active: 正在召集专家
+        after: "已召集：{expertNames}"
+      expert:
+        label: "{displayName}"
+        before: "准备听取{displayName}意见"
+        active: "{displayName}正在分析"
+        active-responding: "{displayName}正在回应其他专家观点"
+        after: "{displayName}已完成发言"
     hitl:
       pending: "将调用工具 {toolDisplayName}"
       awaiting: "等待用户确认执行写操作"
@@ -404,17 +415,18 @@ agent:
 
   peer:
     max-rounds: 3
-    templates:
-      compliance-cross-review:
-        displayName: 合规交叉审查
-        roles:
-          - skillId: policy-review
-            displayName: 制度专家
-          - skillId: finance-analysis
-            displayName: 财务专家
-          - skillId: compliance-check
-            displayName: 仲裁汇总
-            moderator: true
+    synthesis-prompt: |
+      用户问题：{userQuery}
+
+      上游数据：
+      {transcript}
+
+      请严格针对上述「用户问题」作答：仅依据上游数据回答用户所问。
+
+  expert:
+    coordinator-prompt: |
+      你是多专家协作召集助手。根据用户问题，从候选专家目录中选择 2~4 位最相关的专家。
+      只输出 JSON：{"expertIds":["id1","id2"],"reason":"一句话说明"}，不要 markdown。
 
   max-iters: 5
   model:
@@ -499,6 +511,8 @@ tool-manager:
   base-url: http://localhost:8210
 skill-manager:
   base-url: http://localhost:8225
+expert-manager:
+  base-url: http://localhost:8235
 desensitize:
   enabled: true
   base-url: http://localhost:8600

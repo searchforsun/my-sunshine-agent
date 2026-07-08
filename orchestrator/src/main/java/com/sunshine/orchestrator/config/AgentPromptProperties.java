@@ -187,6 +187,8 @@ public class AgentPromptProperties {
         private String labelFollowUp;
         private String before;
         private String active;
+        /** 专家再次发言且 Hub 内已有其他专家 */
+        private String activeResponding;
         /** skill / think 等步骤完成态主行模板 */
         private String after;
         /** workflow node 有用户问句时的 before 模板 */

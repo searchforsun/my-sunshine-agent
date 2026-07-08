@@ -143,7 +143,10 @@ const filteredDocs = computed(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 8px 8px;
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .search-input {
@@ -160,21 +163,22 @@ const filteredDocs = computed(() => {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 10px 12px;
-  border: 1px solid transparent;
+  padding: 12px 14px;
+  border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
-  background: transparent;
+  background: var(--sun-black);
+  color: var(--sun-text);
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s ease;
 }
 
 .list-item:hover {
-  border-color: var(--sun-border);
+  border-color: var(--sun-border-light);
 }
 
 .list-item.active {
-  border-color: var(--sun-border-light);
-  box-shadow: inset 0 0 0 1px var(--sun-border-light);
+  font-weight: 600;
+  border-color: var(--sun-text);
 }
 
 .list-item-top {

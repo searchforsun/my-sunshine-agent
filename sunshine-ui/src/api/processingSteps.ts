@@ -293,7 +293,7 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
 
   const base: ProcessingStep = idx >= 0 ? { ...steps[idx] } : {
     id: delta.stepId,
-    phase: delta.stepId as StepPhase,
+    phase: delta.stepId.startsWith('expert-') ? 'expert' : (delta.stepId as StepPhase),
     lifecycle: 'running',
     summary: { active: delta.stepId },
   }

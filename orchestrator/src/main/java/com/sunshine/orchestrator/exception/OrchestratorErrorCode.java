@@ -22,7 +22,10 @@ public enum OrchestratorErrorCode implements ErrorCode {
     EXECUTION_PLAN_STATE_INVALID(409, "orch_execution_plan_state_invalid", "执行计划状态异常"),
     EXECUTION_PLAN_PERSIST_INCOMPLETE(500, "orch_execution_plan_persist_incomplete", "执行计划数据不完整"),
     WORKFLOW_TEMPLATE_NOT_FOUND(400, "orch_workflow_template_not_found", "未匹配到可用的工作流模板"),
-    SKILL_NOT_FOUND(400, "orch_skill_not_found", "未找到指定的 Skill，请检查列表后重试");
+    WORKFLOW_NOT_FOUND(400, "orch_workflow_not_found", "未找到指定的工作流，请检查 /workflows"),
+    SKILL_NOT_FOUND(400, "orch_skill_not_found", "未找到指定的 Skill，请检查列表后重试"),
+    EXPERT_NOT_FOUND(400, "orch_expert_not_found", "未找到指定的专家，请检查 /experts 后重试"),
+    EXPERT_ROSTER_TOO_SMALL(400, "orch_expert_roster_too_small", "多专家协作至少需要 2 位专家，请使用 $ 指定");
 
     private final int code;
     private final String key;

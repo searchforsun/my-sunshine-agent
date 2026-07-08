@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.peer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.audit.AuditEvent;
 import com.sunshine.orchestrator.audit.AuditPublisher;
+import com.sunshine.orchestrator.expert.ExpertTranscriptEntry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,7 +20,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PeerRunAuditService {
-
     private final PeerRunRepository repository;
     private final AuditPublisher auditPublisher;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -28,12 +29,14 @@ public class PeerRunAuditService {
             String messageId,
             String userId,
             String tenantId,
-            PeerRoundEngine.PeerRunResult result) {
-        if (messageId == null || messageId.isBlank() || result == null) {
+            String runId,
+            String rosterKey,
+            List<ExpertTranscriptEntry> transcript) {
+        if (messageId == null || messageId.isBlank() || transcript == null) {
             return;
         }
         try {
-            String json = objectMapper.writeValueAsString(result.transcript());
+            String json = objectMapper.writeValueAsString(transcript);
             PeerRunEntity entity = repository.findByMessageId(messageId).orElseGet(() -> {
                 PeerRunEntity created = new PeerRunEntity();
                 created.setId(UUID.randomUUID().toString());
@@ -44,11 +47,11 @@ public class PeerRunAuditService {
             entity.setConversationId(conversationId);
             entity.setUserId(userId);
             entity.setTenantId(tenantId != null ? tenantId : "default");
-            entity.setTemplateId(result.template().id());
+            entity.setTemplateId(rosterKey != null ? rosterKey : "");
             entity.setTranscriptJson(json);
             entity.setUpdatedAt(Instant.now());
             repository.save(entity);
-            publishEvent(conversationId, messageId, userId, tenantId, result);
+            publishEvent(conversationId, messageId, userId, tenantId, runId, rosterKey, transcript.size());
         } catch (Exception e) {
             log.warn("[PeerRunAudit] 落库失败 msg={}: {}", messageId, e.getMessage());
         }
@@ -71,12 +74,14 @@ public class PeerRunAuditService {
             String messageId,
             String userId,
             String tenantId,
-            PeerRoundEngine.PeerRunResult result) {
+            String runId,
+            String rosterKey,
+            int entryCount) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("peerRunId", result.runId());
-            payload.put("templateId", result.template().id());
-            payload.put("entryCount", result.transcript().size());
+            payload.put("peerRunId", runId);
+            payload.put("rosterKey", rosterKey);
+            payload.put("entryCount", entryCount);
             String payloadJson = objectMapper.writeValueAsString(payload);
             auditPublisher.publish(new AuditEvent(
                     UUID.randomUUID().toString().replace("-", ""),

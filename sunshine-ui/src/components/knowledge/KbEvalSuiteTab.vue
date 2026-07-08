@@ -715,7 +715,7 @@ defineExpose({ loadSuites, suites })
 .suite-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .suite-card { padding: 12px; border: 1px solid var(--sun-border); border-radius: var(--radius-md); cursor: pointer; display: flex; flex-direction: column; gap: 4px; background: var(--sun-black); }
 .suite-card:hover { border-color: var(--sun-border-light); }
-.suite-card.active { border-color: var(--sun-border-light); outline: 1px solid color-mix(in srgb, var(--sun-text-muted) 45%, transparent); outline-offset: -2px; }
+.suite-card.active { font-weight: 600; border-color: var(--sun-text); }
 .suite-title { font-size: 14px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .suite-meta { font-size: 11px; }
 .detail-panel { display: flex; flex-direction: column; padding: 16px; min-height: 0; }

@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.routing.policy;
 
-import com.sunshine.orchestrator.peer.PeerCollaborationParams;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.PeerPatternMatcher;
@@ -36,7 +35,7 @@ public class PeerStructuralRoutingPolicy implements RoutingPolicy {
         return Mono.just(Optional.of(new ExecutionPlan(
                 ExecutionMode.PEER_COLLAB,
                 null,
-                Map.of(PeerCollaborationParams.TEMPLATE_ID, peerPatternMatcher.defaultTemplateId()),
+                Map.of(),
                 "structural:peer-collab")));
     }
 }

@@ -30,6 +30,7 @@ const SERVICE_DEFS: Omit<ServiceStatus, 'status'>[] = [
   { name: 'Tool Manager', port: 8210, description: '业务工具注册与 Catalog', gatewayPath: '/health/tool-manager', expectedService: 'sunshine-tool-manager' },
   { name: 'Skill Manager', port: 8225, description: 'Skill 包管理与 Catalog', gatewayPath: '/health/skill-manager', expectedService: 'sunshine-skill-manager' },
   { name: 'Workflow Manager', port: 8230, description: 'Workflow Studio DB / Catalog（4.13）', gatewayPath: '/health/workflow-manager', expectedService: 'sunshine-workflow-manager' },
+  { name: 'Expert Manager', port: 8235, description: '多专家协作 Catalog / Admin', gatewayPath: '/health/expert-manager', expectedService: 'sunshine-expert-manager' },
   { name: 'LLM Gateway', port: 8300, description: '多厂商大模型路由', gatewayPath: '/health/llm-gateway', expectedService: 'sunshine-llm-gateway' },
   { name: 'RAG Service', port: 8400, description: 'Milvus 向量检索', gatewayPath: '/health/rag', expectedService: 'sunshine-rag' },
   { name: 'Prompt Manager', port: 8500, description: '提示词模板管理', gatewayPath: '/health/prompt', expectedService: 'sunshine-prompt' },

@@ -95,12 +95,28 @@ export function isWorkflowAnswerStep(step: ProcessingStep): boolean {
   return step.id === 'node-answer'
 }
 
+function resolveExpertSpeakPreview(step: ProcessingStep): string {
+  const result = step.result?.trim()
+  if (!result) return ''
+  const line = extractFirstProseLine(result)
+  if (line) return line
+  return truncateStepPreview(result.replace(/\s+/g, ' '))
+}
+
 export function resolveStepSummaryFull(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
   const title = formatStepLabel(step)
+  if (step.phase === 'expert') {
+    const preview = resolveExpertSpeakPreview(step)
+    if (preview) return preview
+  }
   let header = ''
   if (lifecycle === 'running') {
-    header = step.summary?.active?.trim() || ''
+    if (step.phase === 'expert') {
+      const preview = resolveExpertSpeakPreview(step)
+      if (preview) header = preview
+    }
+    if (!header) header = step.summary?.active?.trim() || ''
   } else if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
     header = step.summary?.after?.trim()
       || formatStepMetadata(step)
@@ -163,6 +179,9 @@ export function resolveStepExpandBody(step: ProcessingStep): string {
   if (isWorkflowAnswerStep(step)) {
     return ''
   }
+  if (step.phase === 'expert') {
+    return step.result?.trim() || ''
+  }
   const summary = resolveStepExpandSummary(step)
   const detail = step.detail?.trim()
   if (detail && detail !== summary) return detail
@@ -197,6 +216,9 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
   }
   if (step.phase === 'peer-collab' || step.id === 'peer-collab') {
     return false
+  }
+  if (step.phase === 'expert' || step.phase === 'expert-convene') {
+    return !!step.result?.trim() || shouldShiftSummaryOnExpand(step)
   }
   if (isWorkflowAnswerStep(step)) {
     return shouldShiftSummaryOnExpand(step)

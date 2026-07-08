@@ -6,6 +6,7 @@ export type ExecutionPreference =
   | 'react'
   | 'workflow'
   | 'plan-workflow'
+  | 'peer-collab'
 
 export interface ExecutionModeOption {
   value: ExecutionPreference
@@ -13,6 +14,7 @@ export interface ExecutionModeOption {
   shortLabel: string
   description: string
   allowsSkillMention: boolean
+  allowsExpertMention: boolean
 }
 
 export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
@@ -22,6 +24,7 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '自动',
     description: '根据提问意图自动选择执行方式',
     allowsSkillMention: true,
+    allowsExpertMention: true,
   },
   {
     value: 'simple-llm',
@@ -29,6 +32,7 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '简单',
     description: '单轮直答，不走企业知识库与工具',
     allowsSkillMention: false,
+    allowsExpertMention: false,
   },
   {
     value: 'react',
@@ -36,6 +40,7 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '推理',
     description: 'ReAct 多工具自主分析',
     allowsSkillMention: true,
+    allowsExpertMention: false,
   },
   {
     value: 'workflow',
@@ -43,6 +48,7 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '流程',
     description: '按预置 workflow 模板执行',
     allowsSkillMention: false,
+    allowsExpertMention: false,
   },
   {
     value: 'plan-workflow',
@@ -50,6 +56,15 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '规划',
     description: 'Planner 动态编排多步 DAG',
     allowsSkillMention: true,
+    allowsExpertMention: false,
+  },
+  {
+    value: 'peer-collab',
+    label: '多专家协作',
+    shortLabel: '协作',
+    description: '多位 Expert 对等讨论后引擎汇总作答',
+    allowsSkillMention: false,
+    allowsExpertMention: true,
   },
 ]
 
@@ -61,6 +76,10 @@ export function allowsSkillMention(preference: ExecutionPreference): boolean {
   return findExecutionModeOption(preference).allowsSkillMention
 }
 
+export function allowsExpertMention(preference: ExecutionPreference): boolean {
+  return findExecutionModeOption(preference).allowsExpertMention
+}
+
 export const EXECUTION_PREFERENCE_STORAGE_KEY = 'sunshine-execution-preference'
 
 export function isExecutionPreference(raw: unknown): raw is ExecutionPreference {
@@ -69,4 +88,5 @@ export function isExecutionPreference(raw: unknown): raw is ExecutionPreference 
     || raw === 'react'
     || raw === 'workflow'
     || raw === 'plan-workflow'
+    || raw === 'peer-collab'
 }

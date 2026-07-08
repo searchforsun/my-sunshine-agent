@@ -30,21 +30,21 @@ class ExecutionDispatcherTest {
     @Mock
     private PlanWorkflowExecutor planWorkflowExecutor;
     @Mock
-    private PeerCollaborationExecutor peerCollaborationExecutor;
+    private ExpertConsultationExecutor expertConsultationExecutor;
     @InjectMocks
     private ExecutionDispatcher dispatcher;
 
     @Test
-    void dispatchesPeerCollabToPeerExecutor() {
+    void dispatchesPeerCollabToExpertExecutor() {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "m1", "q", MemoryContext.empty(), "", "", "u", "t",
                 new ExecutionPlan(ExecutionMode.PEER_COLLAB, null, java.util.Map.of(), "test"));
-        when(peerCollaborationExecutor.execute(any())).thenReturn(Flux.just(StreamToken.content("ok")));
+        when(expertConsultationExecutor.execute(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         List<StreamToken> tokens = dispatcher.execute(ctx).collectList().block();
         assertThat(tokens).hasSize(1);
         assertThat(tokens.get(0).text()).isEqualTo("ok");
 
-        verify(peerCollaborationExecutor).execute(ctx);
+        verify(expertConsultationExecutor).execute(ctx);
     }
 }

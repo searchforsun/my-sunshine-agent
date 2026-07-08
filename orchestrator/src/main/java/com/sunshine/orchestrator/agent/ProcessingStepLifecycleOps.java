@@ -84,6 +84,26 @@ public final class ProcessingStepLifecycleOps {
         }
     }
 
+    /** 多专家协作停止：expert / expert-convene running 步标 paused */
+    public static void pauseRunningExpertSteps(List<ProcessingStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < steps.size(); i++) {
+            ProcessingStep step = steps.get(i);
+            if (step == null || step.id() == null) {
+                continue;
+            }
+            String phase = step.phase();
+            if (!isRunning(step)) {
+                continue;
+            }
+            if ("expert".equals(phase) || "expert-convene".equals(phase) || step.id().startsWith("expert-")) {
+                steps.set(i, toPaused(step));
+            }
+        }
+    }
+
     /** ReAct 暂停续跑：仅保留意图识别步，从规划推理重新开始 */
     public static List<ProcessingStep> retainIntentStepsOnly(List<ProcessingStep> steps) {
         if (steps == null || steps.isEmpty()) {

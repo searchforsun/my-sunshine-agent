@@ -54,7 +54,7 @@ public class ReActAgentFactory {
                 .build();
     }
 
-    String composeSystemPrompt(AgentRunRequest request) {
+    public String composeSystemPrompt(AgentRunRequest request) {
         String base = prompts.systemPromptOrEmpty();
         String overlay = request.systemOverlay();
         if (!StringUtils.hasText(overlay)) {

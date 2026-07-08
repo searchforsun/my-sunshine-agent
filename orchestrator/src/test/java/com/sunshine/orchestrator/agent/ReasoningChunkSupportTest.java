@@ -21,7 +21,7 @@ class ReasoningChunkSupportTest {
 
     @AfterEach
     void tearDown() {
-        StepEventBridge.clear("msg-1");
+        StepEventBridge.resetRegistry();
     }
 
     @Test
@@ -109,5 +109,34 @@ class ReasoningChunkSupportTest {
         StepEventBridge.emitReasoningChunk("msg-1", "不应出现");
 
         assertThat(queue.poll()).isNull();
+    }
+
+    @Test
+    void expertSpeakSink_bypassesThinkAnchorForContent() {
+        java.util.List<StreamToken> captured = new java.util.ArrayList<>();
+        StepEventBridge.bindExpertSpeakSink("sub-run-policy", captured::add);
+
+        StepEventBridge.emitExpertSpeakDelta("sub-run-policy", "制");
+        StepEventBridge.emitExpertSpeakDelta("sub-run-policy", "度");
+
+        assertThat(captured).hasSize(2);
+        assertThat(captured.stream().filter(StreamToken::isContent).map(StreamToken::text).toList())
+                .containsExactly("制", "度");
+    }
+
+    @Test
+    void expertSpeakSink_routesToolStepsOnly() {
+        java.util.List<StreamToken> captured = new java.util.ArrayList<>();
+        StepEventBridge.bindExpertSpeakSink("sub-run-tool", captured::add);
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
+        StepEventBridge.bind("sub-run-tool", session, queue);
+
+        StepEventBridge.emit("sub-run-tool", s -> s.beginToolStep("tool-list_finance_messages", "tool"));
+
+        assertThat(captured).hasSize(2);
+        assertThat(captured).allMatch(StreamToken::isStep);
+        assertThat(captured.get(0).step().phase()).isEqualTo("tool");
+        assertThat(queue).isEmpty();
     }
 }

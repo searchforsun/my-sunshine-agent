@@ -92,6 +92,7 @@ const displaySteps = computed(() => {
       if (s.phase === 'node' || isPlanDagNodeStep(s)) return false
       if (s.phase === 'tasks') return false
       if (s.phase === 'peer-collab') return false
+      if (s.phase === 'expert-convene') return false
       if (isToolStepId(s.id)) return false
       if (s.id === 'think' || s.id.startsWith('think-')) return false
       return true

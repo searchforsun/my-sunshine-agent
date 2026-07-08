@@ -29,6 +29,11 @@ public final class ReasoningChunkSupport {
         return extractTextBlockOnly(event.getIncrementalChunk());
     }
 
+    /** agent.stream REASONING 帧中的 TextBlock 增量 */
+    public static String extractContentText(Msg msg) {
+        return extractTextBlockOnly(msg);
+    }
+
     public static String extractIncrementalText(Msg chunk) {
         return extractThinkingOnly(chunk);
     }

@@ -17,7 +17,7 @@ public class ExecutionDispatcher {
     private final WorkflowExecutor workflowExecutor;
     private final ReactExecutor reactExecutor;
     private final PlanWorkflowExecutor planWorkflowExecutor;
-    private final PeerCollaborationExecutor peerCollaborationExecutor;
+    private final ExpertConsultationExecutor expertConsultationExecutor;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         ExecutionMode mode = ctx.plan() != null ? ctx.plan().mode() : ExecutionMode.REACT;
@@ -26,7 +26,7 @@ public class ExecutionDispatcher {
             case WORKFLOW -> workflowExecutor.execute(ctx);
             case REACT -> reactExecutor.execute(ctx);
             case PLAN_WORKFLOW -> planWorkflowExecutor.execute(ctx);
-            case PEER_COLLAB -> peerCollaborationExecutor.execute(ctx);
+            case PEER_COLLAB -> expertConsultationExecutor.execute(ctx);
         };
     }
 }

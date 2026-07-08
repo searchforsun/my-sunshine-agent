@@ -41,6 +41,12 @@ const router = createRouter({
           meta: { title: 'Skills' },
         },
         {
+          path: 'experts',
+          name: 'experts',
+          component: () => import('../views/ExpertsView.vue'),
+          meta: { title: '专家' },
+        },
+        {
           path: 'skills/:skillId/diff',
           name: 'skill-diff',
           component: () => import('../views/SkillVersionDiffView.vue'),

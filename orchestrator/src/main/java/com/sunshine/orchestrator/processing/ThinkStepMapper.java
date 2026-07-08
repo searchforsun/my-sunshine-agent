@@ -120,6 +120,10 @@ public final class ThinkStepMapper {
         if (text == null || text.isEmpty()) {
             return List.of();
         }
+        // 多专家会诊汇总走 message.content，勿再开 think
+        if (workflowMode && mode() == ExecutionMode.PEER_COLLAB) {
+            return List.of();
+        }
         String thinkId = resolveThinkIdForReasoning();
         List<StreamToken> out = new ArrayList<>(openThinkIfNeeded(thinkId));
         out.add(StreamToken.stepDelta(thinkId, "reasoning", text));
@@ -294,7 +298,9 @@ public final class ThinkStepMapper {
         }
         if (TimelineStepId.PLAN.matches(step.id())
                 || TimelineStepId.PEER_COLLAB.matches(step.id())
-                || TimelineStepId.isNodeStep(step.id())) {
+                || TimelineStepId.isNodeStep(step.id())
+                || "expert-convene".equals(step.id())
+                || (step.id() != null && step.id().startsWith("expert-"))) {
             workflowMode = true;
             generateOpened = true;
         }

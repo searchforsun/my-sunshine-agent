@@ -247,6 +247,9 @@ export async function consumeChatSseStream(
             }
           }
           lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
+          if (delta.stepId.startsWith('expert-')) {
+            bumpAssistantMessage(s)
+          }
           if (delta.stepId === 'node-answer' && (delta.channel === 'result' || delta.channel === 'output')) {
             syncPlanAnswerContentFromStep(lastMsg)
           }

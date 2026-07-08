@@ -185,6 +185,26 @@ class ThinkStepMapperTest {
     }
 
     @Test
+    void expertConsultationSynthesisDoesNotOpenThinkOrGenerate() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(
+                doneStep("intent"),
+                doneStep("expert-convene"),
+                doneStep("expert-policy-expert-s1"),
+                doneStep("expert-finance-expert-s1")));
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.PEER_COLLAB);
+        ThinkStepMapper mapper = new ThinkStepMapper(steps, "这笔报销是否合规", mode);
+
+        List<StreamToken> mapped = mapper.map(StreamToken.reasoning("汇总各专家观点"));
+        applyMapped(mapper, steps, StreamToken.content("最终结论"));
+
+        assertThat(mapped).isEmpty();
+        assertThat(steps.stream().noneMatch(s -> ThinkStepIds.isThinkStep(s.id()))).isTrue();
+        assertThat(steps.stream().noneMatch(s -> "generate".equals(s.id()))).isTrue();
+        assertThat(mapper.finish().stream().noneMatch(t -> t.isStep()
+                && ("generate".equals(t.step().id()) || ThinkStepIds.isThinkStep(t.step().id())))).isTrue();
+    }
+
+    @Test
     void stepDeltaWithNodeId_passesThroughToWorkflowNode() {
         List<ProcessingStep> steps = new ArrayList<>();
         steps.add(runningStep("node-n4"));

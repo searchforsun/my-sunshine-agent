@@ -10,7 +10,12 @@ import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.PeerStructuralRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
+import com.sunshine.orchestrator.catalog.ExpertCatalogService;
+import com.sunshine.orchestrator.expert.ExpertBindingParser;
+import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.StructuralRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
+import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import com.sunshine.orchestrator.skill.SkillBindingSource;
@@ -46,6 +51,10 @@ class ExecutionPlanRouterTest {
     private QueryRewriteService queryRewriteService;
     @Mock
     private SkillCatalogService skillCatalogService;
+    @Mock
+    private WorkflowCatalog workflowCatalog;
+    @Mock
+    private ExpertCatalogService expertCatalogService;
 
     private ExecutionPlanRouter router;
 
@@ -54,7 +63,11 @@ class ExecutionPlanRouterTest {
         RoutingRuleProperties routingProps = structuralFixture();
         StructuralPlanMatcher structuralMatcher = new StructuralPlanMatcher(routingProps);
         PeerPatternMatcher peerMatcher = new PeerPatternMatcher(routingProps);
+        WorkflowBindingParser workflowBindingParser = new WorkflowBindingParser(workflowCatalog);
+        ExpertBindingParser expertBindingParser = new ExpertBindingParser(expertCatalogService);
         var chain = new RoutingPolicyChain(List.of(
+                new WorkflowBindingRoutingPolicy(workflowBindingParser),
+                new ExpertBindingRoutingPolicy(expertBindingParser),
                 new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
                 new StructuralRoutingPolicy(structuralMatcher),
                 new PeerStructuralRoutingPolicy(peerMatcher, structuralMatcher),

@@ -2,11 +2,14 @@ import { apiHeaders } from '../stores/authStore'
 import { resolveApiBase } from './config'
 import { parseApiResponse } from './apiError'
 
-/** MsgHub 单条发言（与 orchestrator PeerTranscriptEntry 对齐） */
+/** MsgHub 单条发言审计 */
 export interface PeerTranscriptEntry {
-  round: number
-  roleName: string
+  round?: number
+  roleName?: string
   skillId?: string
+  expertId?: string
+  displayName?: string
+  speakSeq?: number
   content: string
 }
 
@@ -22,13 +25,12 @@ export function parsePeerTranscript(json: string | undefined | null): PeerTransc
   try {
     const parsed = JSON.parse(json) as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(
-      (row): row is PeerTranscriptEntry =>
-        typeof row === 'object'
-        && row != null
-        && typeof (row as PeerTranscriptEntry).roleName === 'string'
-        && typeof (row as PeerTranscriptEntry).content === 'string',
-    )
+    return parsed.filter((row): row is PeerTranscriptEntry => {
+      if (typeof row !== 'object' || row == null) return false
+      const entry = row as PeerTranscriptEntry
+      return typeof entry.content === 'string'
+        && (typeof entry.roleName === 'string' || typeof entry.displayName === 'string')
+    })
   } catch {
     return []
   }

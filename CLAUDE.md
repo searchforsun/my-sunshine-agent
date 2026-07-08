@@ -35,7 +35,8 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_subagent_timeline.py` | **3.10** workflow agent subSteps |
 | `verify_pause_resume_consistency.py` | **3.9.5** 暂停/续跑（`--live`） |
 | `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
-| `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（E1 路由 + peer-collab 步） |
+| `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（L1 句式路由） |
+| `verify_expert_consultation_live.py` | **4.7.3 演进** 多专家协作 §K Live（`$` 绑定 + expert 步 + Synthesizer） |
 
 ## 请求链路与模块
 
@@ -136,7 +137,9 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 文件树选中 | active 背景 transparent + 文字加粗 |
 | 代码/Mermaid | `--smd-block-bg` = 正文色；hljs/Mermaid 主题走 `useTheme` / `mermaidConfig`（`theme: 'base'`）；复制用 `stream-markdown/clipboard.ts` |
 
-**已对齐**：Chat、Plan 组件、Skills / Knowledge / Status 页、MainLayout 侧栏。
+**已对齐**：Chat、Plan 组件、Skills / **Experts** / Knowledge / Status 页、MainLayout 侧栏。
+
+**Experts `/experts`**：与 Skills 同构（左列表 + 右详情）；`--sun-black` 底 + 边框分区，输入/下拉用 `sun-field` 覆写 Naive 灰底；新建弹窗仅 ID+展示名，启用开关在左卡（必填保存后）。
 
 ## 其他
 

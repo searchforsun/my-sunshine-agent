@@ -19,6 +19,7 @@
         <module>tool-manager</module>
         <module>skill-manager</module>
         <module>workflow-manager</module>
+        <module>expert-manager</module>
         <module>llm-gateway</module>
         <module>rag-service</module>
         <module>prompt-manager</module>

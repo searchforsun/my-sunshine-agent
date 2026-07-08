@@ -8,6 +8,7 @@ import { registerHljsLanguages } from '../utils/markdown/registerHljsLanguages'
 import { useChatTimelineView } from '../composables/useChatTimelineView'
 import { useChatScroll } from '../composables/useChatScroll'
 import { useChatSkillMention } from '../composables/useChatSkillMention'
+import { useChatExpertMention } from '../composables/useChatExpertMention'
 import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
 import { useChatSessionHydration } from '../composables/useChatSessionHydration'
 import { useChatStore } from '../stores/chatStore'
@@ -38,6 +39,7 @@ import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { useKbPreference } from '../composables/useKbPreference'
 import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
 import { useTenantPreference } from '../composables/useTenantPreference'
+import { allowsExpertMention, allowsSkillMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 
@@ -246,11 +248,26 @@ const {
   skillSuggestIndex,
   filteredSkills,
   skillMentionAllowed,
-  inputPlaceholder,
   applySkillSuggest,
   loadSkillCatalog,
   handleSkillKeydown,
 } = useChatSkillMention(inputText, preference, loading)
+
+const {
+  showExpertSuggest,
+  expertSuggestIndex,
+  filteredExperts,
+  applyExpertSuggest,
+  loadExpertCatalog,
+  handleExpertKeydown,
+} = useChatExpertMention(inputText, preference, loading)
+
+const composerPlaceholder = computed(() => {
+  const parts = ['发消息，Enter 发送']
+  if (allowsSkillMention(preference.value)) parts.push('输入 @ 指定 Skill')
+  if (allowsExpertMention(preference.value)) parts.push('输入 $ 指定专家')
+  return parts.join('；')
+})
 
 const EMPTY_HINTS = [
   { label: '制度检索', prompt: '检索知识库：公司的差旅报销制度有哪些要点？' },
@@ -351,11 +368,13 @@ async function handleResume() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (handleExpertKeydown(e)) return
   handleSkillKeydown(e, () => { void handleSend() })
 }
 
 onMounted(async () => {
   void loadSkillCatalog()
+  void loadExpertCatalog()
   sessionHydrating.value = true
   try {
     await chatStore.init()
@@ -600,7 +619,18 @@ watch(
           class="composer-box composer-box--input"
           :class="{ 'composer-box--busy': loading }"
         >
-          <ul v-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
+          <ul v-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">
+            <li
+              v-for="(expert, idx) in filteredExperts"
+              :key="expert.id"
+              :class="{ 'is-highlighted': idx === expertSuggestIndex }"
+              @mousedown.prevent="applyExpertSuggest(expert)"
+            >
+              <span class="skill-suggest-id">${{ expert.id }}</span>
+              <span class="skill-suggest-name">{{ expert.displayName }}</span>
+            </li>
+          </ul>
+          <ul v-else-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
             <li
               v-for="(skill, idx) in filteredSkills"
               :key="skill.id"
@@ -622,7 +652,7 @@ watch(
               v-model="inputText"
               :allows-skill-mention="skillMentionAllowed"
               :catalog="skillCatalog"
-              :placeholder="inputPlaceholder"
+              :placeholder="composerPlaceholder"
               @keydown="handleKeydown"
             />
             <div class="composer-toolbar">

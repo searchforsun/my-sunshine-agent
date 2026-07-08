@@ -1,19 +1,23 @@
 package com.sunshine.orchestrator.routing;
 
+import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.catalog.ExpertCatalogService;
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.RoutingRuleProperties;
-import com.sunshine.orchestrator.peer.PeerCollaborationParams;
+import com.sunshine.orchestrator.expert.ExpertBindingParser;
+import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.GoldenRuleRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.PeerStructuralRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.StructuralRoutingPolicy;
-import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
-import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import com.sunshine.orchestrator.skill.SkillDiscoveryService;
+import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,7 +25,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Map;
@@ -45,6 +48,10 @@ class PeerCollaborationRoutingTest {
     private QueryRewriteService queryRewriteService;
     @Mock
     private SkillCatalogService skillCatalogService;
+    @Mock
+    private WorkflowCatalog workflowCatalog;
+    @Mock
+    private ExpertCatalogService expertCatalogService;
 
     private ExecutionPlanRouter router;
 
@@ -54,7 +61,11 @@ class PeerCollaborationRoutingTest {
         StructuralPlanMatcher structuralMatcher = new StructuralPlanMatcher(routingProps);
         PeerPatternMatcher peerMatcher = new PeerPatternMatcher(routingProps);
         RuleBasedRouter ruleRouter = new RuleBasedRouter(routingProps);
+        WorkflowBindingParser workflowBindingParser = new WorkflowBindingParser(workflowCatalog);
+        ExpertBindingParser expertBindingParser = new ExpertBindingParser(expertCatalogService);
         var chain = new RoutingPolicyChain(List.of(
+                new WorkflowBindingRoutingPolicy(workflowBindingParser),
+                new ExpertBindingRoutingPolicy(expertBindingParser),
                 new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
                 new StructuralRoutingPolicy(structuralMatcher),
                 new PeerStructuralRoutingPolicy(peerMatcher, structuralMatcher),
@@ -74,7 +85,7 @@ class PeerCollaborationRoutingTest {
         String query = "请制度专家和财务专家分别审查这笔报销是否合规，并互相验证";
         ExecutionPlan plan = router.route(query).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.params()).containsEntry(PeerCollaborationParams.TEMPLATE_ID, "compliance-cross-review");
+        assertThat(plan.params()).isEmpty();
         verify(intentRouter, never()).classifyPlan(anyString());
     }
 

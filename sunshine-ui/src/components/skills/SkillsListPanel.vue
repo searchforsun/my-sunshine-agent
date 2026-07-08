@@ -156,7 +156,7 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
   background: var(--sun-black);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.15s ease;
 }
 
 .skill-card-hit {
@@ -197,9 +197,8 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
 }
 
 .skill-card.active {
-  border-color: var(--sun-border-light);
-  outline: 1px solid color-mix(in srgb, var(--sun-text-muted) 45%, transparent);
-  outline-offset: -2px;
+  font-weight: 600;
+  border-color: var(--sun-text);
 }
 
 .skill-card.disabled {

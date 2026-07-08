@@ -28,7 +28,7 @@ import {
   reactivatePausedPlanHitlNodes,
   retainIntentStepsOnly,
 } from './processingStepsPause'
-import { isReactAssistantMessage, resolveResumeMode } from './resumeMode'
+import { isExecutionRestartMessage, isReactAssistantMessage, resolveResumeMode } from './resumeMode'
 import { stripPlanDrawerLeakFromMessage } from './contentInterleave'
 import {
   getOrCreateSession,
@@ -215,9 +215,10 @@ export function useChatSessions(
     const planWorkflowResume = target.steps?.some(
       step => step.id.startsWith('node-') && step.lifecycle === 'paused',
     )
-    const reactRestart = !planWorkflowResume
+    const executionRestart = !planWorkflowResume
       && resolveResumeMode(target) === 'regenerate'
-      && isReactAssistantMessage(target)
+      && isExecutionRestartMessage(target)
+    const reactRestart = executionRestart && isReactAssistantMessage(target)
     if (planWorkflowResume) {
       target.content = ''
       target.reasoning = ''
@@ -226,7 +227,7 @@ export function useChatSessions(
         target.steps = reactivatePausedPlanHitlNodes(target.steps)
         target.steps = reactivatePausedStepsForResume(target.steps)
       }
-    } else if (reactRestart) {
+    } else if (executionRestart) {
       target.content = ''
       target.reasoning = ''
       target.contentBlocks = undefined
@@ -234,7 +235,7 @@ export function useChatSessions(
       target.steps = retainIntentStepsOnly(target.steps)
     }
     stripPlanDrawerLeakFromMessage(target)
-    if (reactRestart || planWorkflowResume) bumpAssistantMessage(s)
+    if (executionRestart || planWorkflowResume) bumpAssistantMessage(s)
 
     s.loading = true
     target.status = 'streaming'

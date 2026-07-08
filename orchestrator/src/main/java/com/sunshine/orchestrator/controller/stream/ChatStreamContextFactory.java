@@ -132,7 +132,9 @@ public class ChatStreamContextFactory {
         boolean planWorkflowResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
         ExecutionPlan storedPlan = executionPlanParser.parseStoredIntent(
                 assistant.getIntent() != null ? assistant.getIntent() : "");
-        boolean reactRestartResume = !planWorkflowResume && storedPlan.mode() == ExecutionMode.REACT;
+        boolean reactRestartResume = !planWorkflowResume
+                && (storedPlan.mode() == ExecutionMode.REACT
+                || storedPlan.mode() == ExecutionMode.PEER_COLLAB);
 
         String resumeContent;
         String resumeReasoning;

@@ -2,11 +2,19 @@ package com.sunshine.orchestrator.routing;
 
 
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 
 import com.sunshine.orchestrator.config.RoutingRuleProperties;
 
-import com.sunshine.orchestrator.peer.PeerCollaborationParams;
+import com.sunshine.orchestrator.catalog.ExpertCatalogIndexEntry;
+import com.sunshine.orchestrator.catalog.ExpertCatalogService;
+import com.sunshine.orchestrator.expert.ExpertBindingParser;
+import com.sunshine.orchestrator.expert.ExpertCollaborationParams;
+import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
+import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
 
 import com.sunshine.orchestrator.routing.policy.GoldenRuleRoutingPolicy;
 
@@ -57,8 +65,8 @@ import reactor.core.publisher.Mono;
 
 
 import java.util.List;
-
 import java.util.Map;
+import java.util.Optional;
 
 
 
@@ -108,6 +116,14 @@ class RoutingGoldenSetTest {
 
     private SkillCatalogService skillCatalogService;
 
+    @Mock
+
+    private WorkflowCatalog workflowCatalog;
+
+    @Mock
+
+    private ExpertCatalogService expertCatalogService;
+
 
 
     private ExecutionPlanRouter router;
@@ -126,7 +142,14 @@ class RoutingGoldenSetTest {
 
         PeerPatternMatcher peerMatcher = new PeerPatternMatcher(routingProps);
 
+        WorkflowBindingParser workflowBindingParser = new WorkflowBindingParser(workflowCatalog);
+        ExpertBindingParser expertBindingParser = new ExpertBindingParser(expertCatalogService);
+
         var chain = new RoutingPolicyChain(List.of(
+
+                new WorkflowBindingRoutingPolicy(workflowBindingParser),
+
+                new ExpertBindingRoutingPolicy(expertBindingParser),
 
                 new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
 
@@ -419,6 +442,15 @@ class RoutingGoldenSetTest {
     }
 
     @Test
+    void forcedJ7_peerCollab() {
+        ExecutionPlan plan = forcedRoute(
+                ExecutionPreference.PEER_COLLAB, "待审批是否合规", null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
+        assertThat(plan.reason()).isEqualTo("user:forced-peer-collab");
+        assertThat(plan.params()).isEmpty();
+    }
+
+    @Test
     void forcedJ5_workflow_ignoresAtSkill() {
         String query = "@policy-review 年假可以请几天";
         when(intentRouter.classifyPlan("年假可以请几天")).thenReturn(Mono.just(new ExecutionPlan(
@@ -450,7 +482,7 @@ class RoutingGoldenSetTest {
     void peerCollabE1(String query) {
         ExecutionPlan plan = router.route(query).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.params()).containsEntry(PeerCollaborationParams.TEMPLATE_ID, "compliance-cross-review");
+        assertThat(plan.params()).isEmpty();
         assertThat(plan.reason()).isEqualTo("structural:peer-collab");
         verify(intentRouter, never()).classifyPlan(anyString());
     }
@@ -462,6 +494,86 @@ class RoutingGoldenSetTest {
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
         assertThat(plan.reason()).isEqualTo("structural:multi-step-plan");
         verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    // --- §K Expert `$` 绑定（routing-golden-set.md） ---
+
+    @Test
+    void expertK1_dollarMentionPeerCollab() {
+        stubDefaultExperts();
+        String query = "$policy-expert $finance-expert 是否合规";
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
+        assertThat(plan.reason()).isEqualTo("expert:$mention");
+        assertThat(plan.params().get(ExpertCollaborationParams.EXPERT_IDS))
+                .isEqualTo("policy-expert,finance-expert");
+        assertThat(plan.params().get(ExpertCollaborationParams.EFFECTIVE_QUERY)).isEqualTo("是否合规");
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void expertK2_hashWorkflowOverridesDollar() {
+        stubDefaultExperts();
+        when(workflowCatalog.isKnownWorkflow("finance-smart")).thenReturn(true);
+        String query = "#finance-smart $policy-expert 是否合规";
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("finance-smart");
+        assertThat(plan.params()).doesNotContainKey(ExpertCollaborationParams.EXPERT_IDS);
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void expertK3_dollarOverridesAtSkill() {
+        stubDefaultExperts();
+        String query = "$policy-expert @finance-analysis 是否合规";
+        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.bound(
+                "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION));
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
+        assertThat(plan.params().get(ExpertCollaborationParams.EXPERT_IDS)).isEqualTo("policy-expert");
+        assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_SKILL);
+    }
+
+    @Test
+    void expertK4_forcedPeerCollab() {
+        ExecutionPlan plan = forcedRoute(
+                ExecutionPreference.PEER_COLLAB, "待审批报销是否合规", null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
+        assertThat(plan.workflowId()).isNull();
+        assertThat(plan.params()).isEmpty();
+    }
+
+    @Test
+    void expertK5_unknownExpertNotFound() {
+        when(expertCatalogService.findIndex(anyString())).thenReturn(Optional.empty());
+        when(expertCatalogService.indexEntries()).thenReturn(List.of());
+        assertThatThrownBy(() -> router.route("$not-exists 是否合规").block())
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(OrchestratorErrorCode.EXPERT_NOT_FOUND);
+    }
+
+    @Test
+    void expertK6_dollarWinsWhenAtComesFirst() {
+        stubDefaultExperts();
+        String query = "@finance-analysis $policy-expert";
+        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.bound(
+                "finance-analysis", "", SkillBindingSource.AT_MENTION));
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
+        assertThat(plan.params().get(ExpertCollaborationParams.EXPERT_IDS)).isEqualTo("policy-expert");
+        assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_SKILL);
+    }
+
+    private void stubDefaultExperts() {
+        ExpertCatalogIndexEntry policy = new ExpertCatalogIndexEntry(
+                "policy-expert", "制度专家", "制度解读", true);
+        ExpertCatalogIndexEntry finance = new ExpertCatalogIndexEntry(
+                "finance-expert", "财务专家", "财务合规", true);
+        when(expertCatalogService.findIndex("policy-expert")).thenReturn(Optional.of(policy));
+        when(expertCatalogService.findIndex("finance-expert")).thenReturn(Optional.of(finance));
+        when(expertCatalogService.indexEntries()).thenReturn(List.of(policy, finance));
     }
 
     private ExecutionPlan forcedRoute(ExecutionPreference preference, String query, String workflowId) {

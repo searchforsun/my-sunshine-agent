@@ -13,6 +13,8 @@ auth-center:
   base-url: http://localhost:8100
 skill-manager:
   base-url: http://localhost:8225
+expert-manager:
+  base-url: http://localhost:8235
 tool-manager:
   base-url: http://localhost:8210
 

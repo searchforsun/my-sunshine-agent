@@ -382,3 +382,36 @@ peer-collab → …（压缩摘要，无 MsgHub 多轮 raw 对话）
 mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest#peerCollab*,PeerCollaborationRoutingTest,ExecutionDispatcherTest
 python3 scripts/verify_peer_collab_live.py
 ```
+
+---
+
+## K. Expert `$` 绑定与多专家协作 Timeline（阶段四 4.7.3 演进）
+
+> **详设**：[expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md)  
+> **与 §E 区分**：§E 为 L1 句式 peer；§K 为 **Expert Catalog + `$` L0 + 逐步 expert 步 + Synthesizer**
+
+| # | 提示词 / 条件 | 预期 |
+|---|--------------|------|
+| K1 | `$policy-expert $finance-expert 是否合规` | `PEER_COLLAB`；`expert-convene` + ≥2 `expert-*` 步；**无** `plan` / `generate` / `peer-collab` |
+| K2 | `#finance-smart $policy-expert 是否合规` | `WORKFLOW` finance-smart；**压过** `$` |
+| K3 | `$policy-expert @finance-analysis 是否合规` | **仅 `$`** → `PEER_COLLAB` |
+| K4 | `executionPreference=peer-collab` + 合规问句 | `PEER_COLLAB`；Coordinator 召集；**无** finance-smart DAG |
+| K5 | 未知 `$not-exists` | HTTP 400 expert not found |
+| K6 | `@finance-analysis $policy-expert` | **仅 `$`**（`$` 优先于 `@`） |
+
+**Timeline 成功路径**：
+
+```
+识别意图 → 多专家协作
+expert-convene → 已召集：制度专家、财务专家
+expert-policy-expert-s1 → 制度专家发言
+expert-finance-expert-s1 → 财务专家发言
+（消息正文区 Synthesizer 流式结论 — 无 generate 步）
+```
+
+### 单测 + Live
+
+```bash
+mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest#expertK*
+python3 scripts/verify_expert_consultation_live.py
+```

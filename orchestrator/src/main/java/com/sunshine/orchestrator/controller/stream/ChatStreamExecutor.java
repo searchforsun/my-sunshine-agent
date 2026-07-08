@@ -256,7 +256,8 @@ public class ChatStreamExecutor {
         if (intent == null || intent.isBlank()) {
             return true;
         }
-        return executionPlanParser.parseStoredIntent(intent).mode() == ExecutionMode.REACT;
+        ExecutionMode mode = executionPlanParser.parseStoredIntent(intent).mode();
+        return mode == ExecutionMode.REACT || mode == ExecutionMode.PEER_COLLAB;
     }
 
     private static ExecutionStreamContext toExecutionContext(ChatStreamContext ctx, ExecutionPlan plan) {

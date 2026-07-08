@@ -44,6 +44,7 @@
 | `skills-management-ui-design.md` | 阶段三 **§3.12** `/skills` 管理页 UI/API SSOT |
 | `2026-06-21-multimodal-ocr-design.md` | 阶段四 §4.2–4.3 |
 | `2026-06-24-peer-collab-routing-design.md` | 阶段四 §4.7.3 · 第五顶层模式 `PEER_COLLAB` |
+| `2026-07-07-expert-consultation-design.md` | 阶段四 **§4.7.3 演进** · Expert Catalog + `$` 多专家协作 + Hub 自由轮次 + 逐步 Timeline |
 | `2026-06-24-react-taskboard-design.md` | 阶段四 §4.7.5 · ReAct TaskBoard 软规划 · **D11** |
 | `2026-06-25-phase4-agent-capabilities-boundaries.md` | 阶段四 §4.7 · P0 接入边界（MsgHub / Parallel / TaskBoard） |
 | `2026-06-25-workflow-studio-design.md` | 阶段四 **§4.13** · Workflow Studio + `docs/workflow` 导入包 · **workflow catalog / Chat `#` SSOT** |

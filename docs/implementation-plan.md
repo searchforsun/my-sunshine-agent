@@ -86,7 +86,7 @@
 | **4.4** 多模态对话 L3 | 聊天发图 | Vision + `/chat` 附件 |
 | **4.5** Skills 沙箱 | 代码执行 | Docker `SandboxExecutor` |
 | **4.6** 动态 DAG 增强 | Plan 不够用 | if-else、并行、Replan、ContextCompressor |
-| **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 / ReAct 软规划 | **第五模式 `PEER_COLLAB`**、Coordinator、并行子 Agent、MsgHub、子 Timeline · [peer-collab spec](./superpowers/specs/2026-06-24-peer-collab-routing-design.md)；**4.7.5 ReAct TaskBoard** · [taskboard spec](./superpowers/specs/2026-06-24-react-taskboard-design.md)；**P0 接入边界** · [agent-capabilities-boundaries](./superpowers/specs/2026-06-25-phase4-agent-capabilities-boundaries.md) |
+| **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 / ReAct 软规划 | **第五模式 `PEER_COLLAB`**、Coordinator、MsgHub、子 Timeline · [peer-collab spec](./superpowers/specs/2026-06-24-peer-collab-routing-design.md)（L1 句式 §E）；**4.7.3 演进** Expert Catalog + `$` L0 + Hub + Synthesizer · [expert-consultation spec](./superpowers/specs/2026-07-07-expert-consultation-design.md) **✅**（`expert-manager` :8235、`/experts`、`verify_expert_consultation_live` §K）；**4.7.5 ReAct TaskBoard** · [taskboard spec](./superpowers/specs/2026-06-24-react-taskboard-design.md)；**P0 接入边界** · [agent-capabilities-boundaries](./superpowers/specs/2026-06-25-phase4-agent-capabilities-boundaries.md) |
 | **4.13** Workflow Studio | 静态 workflow 运维 / 业务自助编排 | Dify 式 **`/workflows`** + DB PlanJson + `docs/workflow` 导入包 · **Chat `#` + catalog SSOT**（与底栏 executionPreference 正交）· [workflow-studio spec](./superpowers/specs/2026-06-25-workflow-studio-design.md) |
 | **4.8** MCP 动态引入 + 前端管理 | 异构系统接入 | tool-manager 动态注册 MCP Server + `/mcp` 管理页 + Catalog `kind=mcp` |
 | **4.9** K8s | 流量/HA | Helm + HPA + GitOps |
@@ -104,6 +104,7 @@
 | **Plan 详情** | **`/plans/:planId`** | Planner JSON、节点 trace、状态机 |
 | 知识库 | `/knowledge` | 知识库工作台（文档/检索调试/参数/评测）；**配置版本化** + suite 管理 · [docs/rag/README.md](./rag/README.md) |
 | **Skills** | **`/skills`** | Skill 列表/上传/版本/预览/元数据；**版本 diff** → `/skills/:skillId/diff`（见 [skills-management-ui-design.md](./superpowers/specs/skills-management-ui-design.md)） |
+| **Experts** | **`/experts`** | **阶段四 4.7.3 演进**：Expert CRUD、Catalog 种子、Chat `$` 补全 · [expert-consultation spec](./superpowers/specs/2026-07-07-expert-consultation-design.md) |
 | **MCP 工具** | **`/mcp`** | **阶段四 4.8**：MCP Server 动态注册、探测、启停、工具预览 |
 | **工作流** | **`/workflows`** | **阶段四 4.13**：Workflow Studio 可视化编辑、JSON 导入、发布；导入包 **`docs/workflow/`** |
 | 系统状态 | `/status` | 11 微服务 + 12 中间件状态矩阵 |

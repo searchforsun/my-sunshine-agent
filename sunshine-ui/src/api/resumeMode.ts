@@ -36,11 +36,28 @@ export function resumeButtonLabel(msg: ChatMessage): string {
   return '重新生成'
 }
 
-/** ReAct 助手消息（非 Plan/Workflow 静态流） */
+/** 多专家协作助手消息 */
+export function isPeerCollabAssistantMessage(msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
+  const intent = (msg.intent ?? '').toLowerCase()
+  if (intent === 'peer-collab') return true
+  return msg.steps?.some(s =>
+    s.id === 'expert-convene'
+    || s.phase === 'expert-convene'
+    || s.phase === 'expert'
+    || (s.id?.startsWith('expert-') ?? false)) ?? false
+}
+
+/** ReAct 助手消息（非 Plan/Workflow / 多专家协作） */
 export function isReactAssistantMessage(msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
+  if (isPeerCollabAssistantMessage(msg)) return false
   if (msg.steps?.some(s => s.phase === 'plan' || s.id.startsWith('node-'))) return false
   const intent = (msg.intent ?? '').toLowerCase()
   if (intent.startsWith('workflow:') || intent === 'plan-workflow' || intent === 'simple-llm') return false
   if (intent === 'knowledge' || intent === 'finance' || intent === 'simple') return false
   return true
+}
+
+/** 续跑时清空步骤并从意图步重跑（ReAct 或多专家协作） */
+export function isExecutionRestartMessage(msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
+  return isReactAssistantMessage(msg) || isPeerCollabAssistantMessage(msg)
 }

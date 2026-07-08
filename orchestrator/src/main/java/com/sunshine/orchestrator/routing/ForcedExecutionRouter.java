@@ -23,6 +23,7 @@ public class ForcedExecutionRouter {
     private static final String REASON_REACT = "user:forced-react";
     private static final String REASON_PLAN = "user:forced-plan-workflow";
     private static final String REASON_WORKFLOW = "user:forced-workflow";
+    private static final String REASON_PEER = "user:forced-peer-collab";
 
     private final SkillBindingRoutingPolicy skillBindingRoutingPolicy;
     private final RuleBasedRouter ruleBasedRouter;
@@ -40,6 +41,11 @@ public class ForcedExecutionRouter {
             case PLAN_WORKFLOW -> skillOrFallback(ctx, new ExecutionPlan(
                     ExecutionMode.PLAN_WORKFLOW, null, Map.of(), REASON_PLAN));
             case WORKFLOW -> resolveWorkflow(ctx.userMessage(), workflowId);
+            case PEER_COLLAB -> Mono.just(new ExecutionPlan(
+                    ExecutionMode.PEER_COLLAB,
+                    null,
+                    Map.of(),
+                    REASON_PEER));
             default -> Mono.error(new IllegalStateException("unsupported preference: " + preference));
         };
     }

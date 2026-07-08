@@ -5,6 +5,7 @@ import {
   FlashOutline,
   GitNetworkOutline,
   LayersOutline,
+  PeopleOutline,
 } from '@vicons/ionicons5'
 import type { ExecutionPreference } from './executionModes'
 
@@ -15,6 +16,7 @@ export const EXECUTION_MODE_ICONS: Record<ExecutionPreference, Component> = {
   react: BulbOutline,
   workflow: LayersOutline,
   'plan-workflow': GitNetworkOutline,
+  'peer-collab': PeopleOutline,
 }
 
 export function executionModeIcon(value: ExecutionPreference): Component {

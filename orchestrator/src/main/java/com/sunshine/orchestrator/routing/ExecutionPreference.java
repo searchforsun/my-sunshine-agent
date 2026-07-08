@@ -6,7 +6,8 @@ public enum ExecutionPreference {
     SIMPLE_LLM,
     REACT,
     WORKFLOW,
-    PLAN_WORKFLOW;
+    PLAN_WORKFLOW,
+    PEER_COLLAB;
 
     public static ExecutionPreference from(String raw) {
         if (raw == null || raw.isBlank() || "auto".equalsIgnoreCase(raw.strip())) {
@@ -17,6 +18,7 @@ public enum ExecutionPreference {
             case "react", "agent" -> REACT;
             case "workflow", "pipeline" -> WORKFLOW;
             case "plan-workflow", "plan", "plan_workflow" -> PLAN_WORKFLOW;
+            case "peer-collab", "peer", "peer_collab" -> PEER_COLLAB;
             default -> AUTO;
         };
     }
@@ -38,6 +40,7 @@ public enum ExecutionPreference {
             case REACT -> "react";
             case WORKFLOW -> "workflow";
             case PLAN_WORKFLOW -> "plan-workflow";
+            case PEER_COLLAB -> "peer-collab";
         };
     }
 }

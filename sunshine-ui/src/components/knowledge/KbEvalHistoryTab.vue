@@ -682,8 +682,8 @@ defineExpose({ reload, selectJob, runningForApplied })
   cursor: pointer;
 }
 .history-row.active {
-  box-shadow: inset 0 0 0 1px var(--sun-border-light);
-  border-color: var(--sun-border-light);
+  font-weight: 600;
+  border-color: var(--sun-text);
 }
 .history-row:hover {
   border-color: var(--sun-border-light);
