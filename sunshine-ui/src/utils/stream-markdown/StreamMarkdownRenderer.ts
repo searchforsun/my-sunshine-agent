@@ -6,7 +6,6 @@ import { MarkdownStateMachine } from './MarkdownStateMachine'
 import { MermaidRenderer } from './MermaidRenderer'
 import { registerGlobalHandlers, createMermaidToolButtons } from './globalHandlers'
 import { createToolButton } from './toolIcons'
-import { smoothRender } from './smoothMarkdown'
 import { normalizeStreamingMarkdown } from './normalizeStreamingMarkdown'
 import { streamSafeMarkdownRender } from './streamSafeMarkdown'
 import { isPartialListMarker } from './listMarkers'
@@ -247,14 +246,15 @@ export class StreamMarkdownRenderer {
     }
   }
 
-  /** 段落文本：用 smoothRender 渲染，替换段落专属元素（不影响 lastBlockEl） */
+  /** 段落文本：流式用 smoothRender；终态直接 markdown-it 全量渲染，避免未闭合 ** 被挪到段末 */
   private renderParagraph(): void {
     if (!this.config.renderMarkdown) return
     const text = this.paraBuf.trim()
     if (!text || isPartialListMarker(text)) return
+    const renderMd = this.config.renderMarkdown
     const html = this.isStreaming
-      ? streamSafeMarkdownRender(text, this.config.renderMarkdown, this.syncedContent)
-      : smoothRender(text, this.config.renderMarkdown)
+      ? streamSafeMarkdownRender(text, renderMd, this.syncedContent)
+      : renderMd(text)
     if (!this.paraEl) {
       this.paraEl = document.createElement('div')
       this.paraEl.className = CP('markdown-block')
@@ -306,7 +306,7 @@ export class StreamMarkdownRenderer {
 
     const previewHtml = this.isStreaming
       ? streamSafeMarkdownRender(pending, renderMd!, this.syncedContent)
-      : smoothRender(pending, renderMd!)
+      : renderMd!(pending)
     if (previewHtml) parts.push(previewHtml)
 
     if (parts.length === 0) return
@@ -487,6 +487,9 @@ export class StreamMarkdownRenderer {
     this.finalizeOpenCodeBlock()
     if (streaming) this.flushPendingParagraph()
     if (streaming) this.finalizeStreamedBlocksExceptLast()
+    if (!streaming && this.container instanceof HTMLElement) {
+      this.stripFadeTails(this.container)
+    }
     this.scheduleMermaidPolling()
   }
 

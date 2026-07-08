@@ -347,7 +347,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 
 ## E. PEER_COLLAB（阶段四 · 第五顶层模式）
 
-> **状态**：✅ L1 路由单测 + Live；Timeline 与 **§K** 统一（`expert-convene` + `expert-*`，无 `peer-collab` / `generate`）  
+> **状态**：✅ L1 路由单测 + Live（2026-07-08）；Timeline 与 **§K** 统一（`expert-convene` + `expert-*` + Synthesizer 正文，无 `peer-collab` / `generate`）  
 > **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md) · 配置键 `agent.routing.peer.*`
 
 **预期 intent after**：「…将由多专家协作交叉验证」（`agent.timeline.intent.modes.peer-collab`）
@@ -389,10 +389,10 @@ python3 scripts/verify_expert_consultation_live.py   # §K `$` 与逐步 expert 
 
 ---
 
-## K. Expert `$` 绑定与多专家协作 Timeline（阶段四 4.7.3 演进）
+## K. Expert `$` 绑定与多专家协作 Timeline（阶段四 4.7 · ✅ 完整）
 
-> **详设**：[expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md)  
-> **与 §E 区分**：§E 为 L1 句式 peer；§K 为 **Expert Catalog + `$` L0 + 逐步 expert 步 + Synthesizer**
+> **状态**：✅ 单测 + Live（2026-07-08）— Catalog/`$`/Hub 反应式轮次/Synthesizer 全链路  
+> **详设**：[expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md)
 
 | # | 提示词 / 条件 | 预期 |
 |---|--------------|------|

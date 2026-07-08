@@ -1,5 +1,7 @@
 # 多专家协作（Expert Consultation）Implementation Plan
 
+> **状态**：✅ **已完成**（2026-07-08）— 含 Hub 反应式轮次（min/max、continue、反应式选人）、4 专家种子、Synthesizer 流式 `**` 修复（TD-076）。检查门见设计文档 §13。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 peer-collab 从 Nacos 固定 `peer.templates` + 压缩 Timeline + 仲裁 ReAct，演进为 **expert-manager Catalog** 驱动的对等 MsgHub 协作；L0 `$` 绑定、`ConsultationSynthesizer` 终态汇总、按发言逐步 Timeline。

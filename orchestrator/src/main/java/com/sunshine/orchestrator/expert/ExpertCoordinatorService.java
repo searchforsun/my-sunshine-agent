@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.catalog.ExpertCatalogService;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.ExpertCoordinatorProperties;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
+import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,11 +27,14 @@ public class ExpertCoordinatorService {
     private final ExpertCatalogService expertCatalogService;
     private final LlmGatewayClient llmGatewayClient;
     private final ExpertCoordinatorProperties properties;
+    private final ExpertRoundCoordinatorService roundCoordinator;
+    private final PeerSynthesisProperties peerProperties;
 
     public ExpertRoster resolve(List<String> explicitIds, String query) {
         List<String> normalized = normalizeExplicit(explicitIds);
         if (!normalized.isEmpty()) {
-            return new ExpertRoster(normalized, null);
+            int sessionMax = roundCoordinator.assessSessionMaxRounds(query, normalized);
+            return new ExpertRoster(normalized, null, sessionMax);
         }
         return selectByLlm(query);
     }
@@ -86,11 +90,23 @@ public class ExpertCoordinatorService {
                 roster = roster.subList(0, 4);
             }
             String reason = node.has("reason") ? node.get("reason").asText("") : "";
-            return new ExpertRoster(roster, StringUtils.hasText(reason) ? reason.strip() : null);
+            int parsedMax = ExpertSessionRounds.parseMaxRoundsNode(node);
+            Integer sessionMax = parsedMax > 0
+                    ? roundCoordinator.resolveSessionMaxRounds(
+                            parsedMax, peerProperties.getMinRounds(), peerProperties.getMaxRounds())
+                    : null;
+            return new ExpertRoster(
+                    roster,
+                    StringUtils.hasText(reason) ? reason.strip() : null,
+                    sessionMax);
         } catch (Exception e) {
             log.warn("[ExpertCoordinator] parse failed, fallback first two: {}", e.getMessage());
             List<String> fallback = candidates.stream().limit(2).map(ExpertCatalogIndexEntry::id).toList();
-            return new ExpertRoster(fallback, "已按目录默认召集专家");
+            return new ExpertRoster(
+                    fallback,
+                    "已按目录默认召集专家",
+                    roundCoordinator.resolveSessionMaxRounds(
+                            2, peerProperties.getMinRounds(), peerProperties.getMaxRounds()));
         }
     }
 }

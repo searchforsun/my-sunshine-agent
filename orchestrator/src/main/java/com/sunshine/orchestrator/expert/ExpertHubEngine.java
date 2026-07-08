@@ -31,9 +31,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 对等专家 MsgHub — 无仲裁角色，按 Hub 轮次发言。
- * <p>两阶段：阶段1 {@link ReActAgent#call} 工具检索（{@link ExpertSpeakHook} 刷 active）；
- * 阶段2 {@link ExpertSpeakStreamer} Gateway 直链 token 流写入 expert 步 {@code step_delta(result)}；空白 token 须保留（勿用 hasText 过滤）。
+ * 对等专家 MsgHub — 反应式轮次：首轮全员发言，后续轮仅异议/补材料专家；每轮结束可提前收敛。
  */
 @Slf4j
 @Component
@@ -43,38 +41,44 @@ public class ExpertHubEngine {
     private final PromptComposer promptComposer;
     private final ExpertSpeakStreamer expertSpeakStreamer;
     private final PeerSynthesisProperties peerProperties;
+    private final ExpertRoundCoordinatorService roundCoordinator;
 
     public ExpertHubResult run(
             List<ExpertCatalogEntry> roster,
             String userQuery,
-            int maxRounds,
+            int sessionMaxRounds,
             String assistantMessageId,
             ExpertSpeakCallback callback) {
         if (roster == null || roster.size() < 2) {
             throw new IllegalStateException("expert roster must have at least 2 members");
         }
+        int minRounds = Math.max(1, peerProperties.getMinRounds());
+        int effectiveMax = ExpertSessionRounds.clampSessionMax(
+                sessionMaxRounds, minRounds, peerProperties.getMaxRounds());
         String runId = UUID.randomUUID().toString();
         List<ExpertTranscriptEntry> transcript = new ArrayList<>();
         Map<String, Integer> speakSeq = new HashMap<>();
-        Map<ReActAgent, ExpertCatalogEntry> agentExpert = new LinkedHashMap<>();
-        List<ReActAgent> peers = new ArrayList<>();
+        Map<String, ReActAgent> agentByExpertId = new LinkedHashMap<>();
         for (ExpertCatalogEntry expert : roster) {
-            ReActAgent agent = createAgent(runId, expert);
-            peers.add(agent);
-            agentExpert.put(agent, expert);
+            agentByExpertId.put(expert.id(), createAgent(runId, expert));
         }
         List<String> contextBlocks = new ArrayList<>();
         contextBlocks.add("用户问题：\n" + userQuery);
         boolean othersSpoke = false;
         try (MsgHub hub = MsgHub.builder()
                 .name("expert-" + runId)
-                .participants(peers.stream().map(AgentBase.class::cast).toList())
+                .participants(agentByExpertId.values().stream().map(AgentBase.class::cast).toList())
                 .enableAutoBroadcast(true)
                 .build()) {
             hub.enter().block();
-            for (int round = 0; round < maxRounds; round++) {
-                for (ReActAgent peer : peers) {
-                    ExpertCatalogEntry expert = agentExpert.get(peer);
+            for (int round = 1; round <= effectiveMax; round++) {
+                List<ExpertCatalogEntry> speakers = resolveSpeakers(roster, userQuery, transcript, round);
+                if (speakers.isEmpty()) {
+                    log.info("[ExpertHubEngine] round {} 无发言人，提前结束 runId={}", round, runId);
+                    break;
+                }
+                for (ExpertCatalogEntry expert : speakers) {
+                    ReActAgent peer = agentByExpertId.get(expert.id());
                     int seq = speakSeq.getOrDefault(expert.id(), 0) + 1;
                     boolean responding = othersSpoke && seq > 1;
                     ExpertTranscriptEntry pending = new ExpertTranscriptEntry(
@@ -106,6 +110,13 @@ public class ExpertHubEngine {
                         callback.onSpeak(entry, "done", responding);
                     }
                 }
+                if (round >= minRounds && round < effectiveMax) {
+                    ExpertContinueDecision decision = roundCoordinator.evaluateContinue(userQuery, transcript, round);
+                    if (!decision.shouldContinue()) {
+                        log.info("[ExpertHubEngine] round {} 收敛：{} runId={}", round, decision.reason(), runId);
+                        break;
+                    }
+                }
             }
             hub.exit().block();
         } catch (Exception e) {
@@ -113,6 +124,21 @@ public class ExpertHubEngine {
             throw e;
         }
         return new ExpertHubResult(runId, transcript);
+    }
+
+    private List<ExpertCatalogEntry> resolveSpeakers(
+            List<ExpertCatalogEntry> roster,
+            String userQuery,
+            List<ExpertTranscriptEntry> transcript,
+            int round) {
+        if (round <= 1) {
+            return roster;
+        }
+        List<String> ids = roundCoordinator.selectReactiveSpeakers(userQuery, roster, transcript, round);
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return roster.stream().filter(e -> ids.contains(e.id())).toList();
     }
 
     /** 阶段1 ReAct 工具检索 + 阶段2 Gateway 流式发言 */

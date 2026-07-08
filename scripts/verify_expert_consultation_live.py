@@ -8,7 +8,7 @@
 前置:
   - expert-manager :8235 + orchestrator :8200 已启动
   - docs/nacos 已 sync
-  - MySQL sunshine_expert 种子专家 policy-expert / finance-expert
+  - MySQL sunshine_expert 种子专家 policy / finance / compliance / legal
 
 环境变量: GATEWAY_URL, EXPERT_CONSULT_TIMEOUT_SEC, ORCHESTRATOR_URL, EXPERT_MANAGER_URL
 """

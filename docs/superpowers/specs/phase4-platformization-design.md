@@ -26,7 +26,7 @@
 | **4.4** | 多模态对话 L3：Vision + `/chat` 附件 | 拍图问一问 | 中 |
 | **4.5** | Skills Docker 沙箱 | 代码执行 skill | 中 |
 | **4.6** | 动态 DAG 增强：if-else、并行 fan-out、Replan | 静态 workflow 不够 | 中 |
-| **4.7** | 多 Agent 增强：**第五顶层模式 `PEER_COLLAB`**、Coordinator、并行子 Agent、MsgHub、子 Timeline、**ReAct TaskBoard** | 复杂协作 / 交叉验证 / ReAct 软规划 | 中 |
+| **4.7** | 多 Agent 增强：**第五顶层模式 `PEER_COLLAB` ✅**、Coordinator、MsgHub 反应式轮次、Synthesizer、**ReAct TaskBoard ✅** | 复杂协作 / 交叉验证 / ReAct 软规划 | 中 |
 | **4.8** | MCP 动态引入 + 前端管理：tool-manager 注册 MCP Server + `/mcp` 管理页 | 非 HTTP 遗留系统 / 异构工具接入 | 中 |
 | **4.9** | K8s：Helm + HPA + Nacos GitOps | 流量/HA | 中 |
 | **4.10** | Seata 分布式事务 + HITL 串联 | 跨服务写操作 | 低 |
@@ -119,15 +119,15 @@
 
 ### 4.7 多 Agent 增强
 
-| 子任务 | 内容 |
-|--------|------|
-| **4.7.1** | M8 `DelegateSkillTool`（主 Coordinator react 委派） |
-| **4.7.2** | M10 并行子 Agent fan-out/join |
-| **4.7.3** | M11 MsgHub Peer（maxRounds≤3，transcript 审计） |
-| **4.7.4** | M9 前端子 Agent 详情展开 UI |
-| **4.7.5** | **ReAct TaskBoard**（`manage_tasks` 元工具 + `tasks` Timeline + 审计） · [详设](./2026-06-24-react-taskboard-design.md) · **D11** |
+| 子任务 | 内容 | 状态 |
+|--------|------|:----:|
+| **4.7.1** | M8 `DelegateSkillTool`（主 Coordinator react 委派） | ⬜ |
+| **4.7.2** | M10 并行子 Agent fan-out/join | ⬜ |
+| **4.7.3** | **多专家协作**：`PEER_COLLAB` L1 §E + Expert Catalog `$` §K + `expert-manager` + Hub 反应式轮次 + Synthesizer | **✅** |
+| **4.7.4** | M9 前端子 Agent 详情展开 UI | ⬜ |
+| **4.7.5** | **ReAct TaskBoard**（`manage_tasks` 元工具 + `tasks` Timeline + 审计） · [详设](./2026-06-24-react-taskboard-design.md) · **D11** | **✅** |
 
-**4.7.5 摘要**：不新增顶层 mode；`react` 内软规划 Todo，对齐 Claude Code 体验；与 `plan-workflow` / `peer-collab` 互斥展示。
+**4.7.3 摘要（✅）**：第五顶层模式 `peer-collab`；`ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue、反应式选人）+ `ConsultationSynthesizer`；详设 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) · Live `verify_peer_collab_live` + `verify_expert_consultation_live`。
 
 ### 4.8 MCP 动态引入 + 前端管理
 

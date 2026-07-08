@@ -1,8 +1,8 @@
 # 多专家协作（Expert Consultation / peer-collab）— 技术设计
 
 > **阶段**：四 · **任务卡**：4.7.3 演进（替代 Nacos `peer.templates` 固定 roster）  
-> **状态**：✅ 实施完成（expert-manager :8235 + `/experts` + Chat `$` + §K Live）  
-> **日期**：2026-07-07（rev.2）  
+> **状态**：✅ **完整交付**（2026-07-08）— `expert-manager` :8235 · `/experts` · Chat `$` · Hub 反应式轮次（min/max + continue + 反应式选人）· Synthesizer 流式正文 · §E/§K Live  
+> **日期**：2026-07-07（rev.3 · 轮次协调 + 4 专家种子 + Synthesizer `**` 流式修复）  
 > **前置**：[peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) · [phase4-agent-capabilities-boundaries.md](./2026-06-25-phase4-agent-capabilities-boundaries.md) · [skills-management-ui-design.md](./skills-management-ui-design.md)  
 > **关联**：`skill-manager`（Skill 能力包）· `AgentScope MsgHub`（Hub 自由轮次）
 
@@ -138,14 +138,16 @@ flowchart TB
 
 `expert_id` + `skill_id`（0~N）
 
-### 6.3 种子
+### 6.3 种子（4 名）
 
 | id | display_name |
 |----|--------------|
 | `policy-expert` | 制度专家 |
 | `finance-expert` | 财务专家 |
+| `compliance-expert` | 合规专家 |
+| `legal-expert` | 法务专家 |
 
-（**不**再种子「合规仲裁」；汇总由 Synthesizer 负责。）
+（**不**再种子「合规仲裁」；汇总由 Synthesizer 负责。SQL：`docker/mysql/init/15-sunshine-expert-manager.sql`）
 
 ---
 
@@ -167,12 +169,16 @@ flowchart TB
 2. **无 `$`**：Coordinator 选 2~4 人 + `reason`（**不**自动追加仲裁）
 3. **Hub 人数**：≥2（少于 2 降级单 Expert ReAct 或提示用户多选）
 
-### 8.2 MsgHub 自由轮次
+### 8.2 MsgHub 反应式轮次
 
 - **Participants** = roster **全员**（全部对等，无仲裁位）
-- `maxRounds`：Nacos `agent.peer.max-rounds`（默认 3）— 指 Hub **全局**轮次上限，**不对用户展示「第 N 轮」**
-- 每轮：由 Hub 反应式决定发言顺序（读历史后 `broadcast`）；每发言一次 → 一条 Timeline `expert-*` 步
-- 结束：达到 `maxRounds` 或 Hub 空闲退出
+- **轮次上下限**：Nacos `agent.peer.min-rounds`（默认 1）、`agent.peer.max-rounds`（默认 3）；**不对用户展示「第 N 轮」**
+- **sessionMaxRounds**：显式 `$` 时由 `ExpertCoordinatorService` 的 `complexity-prompt` 评估；未 `$` 时 Coordinator `coordinator-prompt` 输出 `maxRounds`
+- **第 1 轮**：roster 全员依次发言（gather + speak 两阶段，§8.4）
+- **第 2 轮起**：`ExpertRoundCoordinatorService.selectReactiveSpeakers` 按 `round-speakers-prompt` 仅选有异议/需补充者；空数组则提前结束
+- **每轮结束**：`evaluateContinue`（`round-continue-prompt`）判断是否继续；未达 `min-rounds` 时强制继续
+- 每发言一次 → 一条 Timeline `expert-*` 步
+- 结束：达 `sessionMaxRounds`、continue=false、或反应式选人为空
 
 ### 8.3 终态
 
@@ -243,6 +249,16 @@ agent:
 
 **移除**：`active-moderator` / `after-moderator` / `generate` 相关协作文案。
 
+**轮次协调**（Nacos `agent.peer`，不对用户展示轮次）：
+
+| 键 | 用途 |
+|----|------|
+| `min-rounds` / `max-rounds` | Hub 全局轮次下限/上限 |
+| `round-continue-prompt` | 每轮结束是否继续 |
+| `round-speakers-prompt` | 第 2 轮起反应式选人 |
+| `coordinator-prompt` / `complexity-prompt` | Coordinator 选人 + `maxRounds` 估计 |
+| `synthesis-prompt` | Hub 后终态答复（流式 `message.content`） |
+
 ### 9.4 前端
 
 - `ExpertStepPanel`：主行 `label` + `summary`；展开 `step.result`
@@ -256,9 +272,11 @@ agent:
 | 组件 | 说明 |
 |------|------|
 | `ExpertBindingRoutingPolicy` | L0 `$`，order 在 `#` 后、`@` 前 |
-| `ExpertCoordinatorService` | 选人 + openingExpert |
+| `ExpertCoordinatorService` | 选人 + `sessionMaxRounds`（coordinator / complexity prompt） |
+| `ExpertRoundCoordinatorService` | 轮次 continue 判断 + 第 2 轮起反应式选人 |
+| `ExpertHubEngine` | MsgHub 多轮调度 + 专家发言两阶段 |
 | `ExpertConsultationExecutor` | Hub + Timeline 步 + 调 Synthesizer |
-| `ConsultationSynthesizer` | transcript → 流式正文 |
+| `ConsultationSynthesizer` | transcript → 流式正文（经 `StreamDeltaNormalizer`，闭合 Markdown 标记勿丢） |
 | `GET /api/experts/catalog` | Chat `$` 补全 |
 
 ---
@@ -290,7 +308,9 @@ agent:
 - [x] 未 `$` 仲裁专家时仍能完成多专家协作并得到正文（Synthesizer）
 - [x] `peer_run` 与专家步内容一致
 - [x] `/experts` CRUD + `$` 补全
-- [x] 专家步内正文：`gather` + `streamDirectly` 两阶段流式（§8.4）
+- [x] 专家步内正文：`gather` + `streamComposed` 两阶段流式（§8.4）
+- [x] Hub `min-rounds` / `max-rounds` + 每轮 continue + 第 2 轮起反应式选人
+- [x] Synthesizer 流式 Markdown 闭合 `**` 不丢（`StreamDeltaNormalizer` TD-076）
 
 ---
 

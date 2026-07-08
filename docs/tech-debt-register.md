@@ -17,7 +17,7 @@
 
 ## Backlog（open）
 
-> 2026-07-08 扫描：TD-075 已修复；代码债 Backlog 已空。
+> 2026-07-08 扫描：TD-075/076 已修复；代码债 Backlog 已空。
 
 ### 代码债
 
@@ -117,6 +117,7 @@
 | TD-073 | 2026-07-07 | rag `EvaluateService`→`EvalFullRunOrchestrator`/`EvalSmokeRunner`/`EvalReportPersister`/`EvalRetrievalProbe`（746→328）；`ConfigVersionService`→`ConfigVersionStore`/`EvalLifecycle`/`PublishOps`（537→227）；rag-service 测试全绿 |
 | TD-074 | 2026-07-07 | 前端域拆分：`ragAdmin/`（client/kbDocuments/kbConfig/eval + barrel）；`chatSessions`→`chatSessionRegistry`/`chatSessionMutations`/`chatSessionSseConsumer`（909→459）；`KbConfigPanel`→`useKbConfigPanel`（1049→513）；`npm run build` 通过 |
 | TD-075 | 2026-07-08 | expert 发言流式：`step_delta(result)` 不切分 + 空白 token 勿用 `hasText` 过滤（根因非 Markdown normalizer） |
+| TD-076 | 2026-07-08 | Synthesizer 流式：`StreamDeltaNormalizer` 闭合 `**` 勿按 `prev.startsWith(incoming)` 丢弃（OpenAI 增量 delta） |
 
 ### 文档债（DOC）
 
@@ -138,6 +139,7 @@
 | DOC-016 | 2026-07-07 | 路由 Nacos 规则块从 phase2-closure plan/design 移除；SSOT 链 `routing-golden-set.md` |
 | DOC-017 | 2026-07-07 | CLAUDE 进度段更新 TD-064～074、代码债 Backlog 已空 |
 | DOC-018 | 2026-07-07 | TaskBoard spec：`tasks` 步文案改 Nacos timeline + `TimelineStepLabelService`（非本地 displayName Map） |
+| DOC-019 | 2026-07-08 | 多专家协作（4.7.3）文档闭环：CLAUDE/README/implementation-plan/expert-consultation/peer-collab/routing-golden-set/phase4 标 ✅ |
 
 ### 架构决策（ADR）
 

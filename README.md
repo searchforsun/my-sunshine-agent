@@ -12,17 +12,18 @@ Gateway (:8000, JWT + Sentinel) ──▶ BFF (:8001, SSE) ──▶ Orchestrato
                                                           │
                     ┌─────────────────────────────────────┼─────────────────────┐
                     │                                     │                     │
-              simple-llm / workflow(DAG) / react / plan-workflow                  │
+              simple-llm / workflow / react / plan-workflow / peer-collab       │
                     │                                     │                     │
                     ▼                                     ▼                     ▼
             LLM Gateway (:8300)                    RAG (:8400)           tool-manager (:8210)
             DeepSeek / Qwen                        Milvus + ES           skill-manager (:8225)
+                                                                               expert-manager (:8235)
                     │                                     │
                Auth Center (:8100)                  finance / oa 模拟服务
                Sa-Token JWT
 ```
 
-**执行模式**（IntentRouter → ExecutionDispatcher）：`simple-llm` · 静态 `workflow` · `react` · 动态 `plan-workflow`（Planner DAG + Plan 抽屉 UI）。阶段四规划第五模式 `peer-collab`。
+**执行模式**（IntentRouter → ExecutionDispatcher）：`simple-llm` · 静态 `workflow` · `react` · 动态 `plan-workflow`（Planner DAG + Plan 抽屉 UI）· **`peer-collab`**（多专家协作：Expert Catalog + MsgHub + Synthesizer，见 [expert-consultation spec](docs/superpowers/specs/2026-07-07-expert-consultation-design.md)）。
 
 ## 技术栈
 
@@ -46,9 +47,10 @@ my-sunshine-agent/
 ├── gateway/         :8000      # Spring Cloud Gateway + Sentinel
 ├── bff/             :8001      # WebFlux + SSE 流式转发
 ├── auth-center/     :8100      # Sa-Token 认证中心
-├── orchestrator/    :8200      # 四模式编排 + Timeline + AgentRuntime
+├── orchestrator/    :8200      # 五模式编排 + Timeline + AgentRuntime
 ├── tool-manager/    :8210      # 业务 API → Agent Tool（Catalog 驱动）
 ├── skill-manager/   :8225      # Skills 上传 / 版本 / Catalog
+├── expert-manager/  :8235      # Expert CRUD / Catalog（多专家协作）
 ├── llm-gateway/     :8300      # LLM 网关（多厂商路由 / 缓存 / 熔断）
 ├── rag-service/     :8400      # RAG 检索（Milvus + Hybrid + Rerank）
 ├── prompt-manager/  :8500      # 提示词管理
@@ -104,8 +106,12 @@ SSE 默认经 Gateway `:8000`（`sunshine-ui` 环境变量 `VITE_BFF_STREAM_BASE
 ### 5. 验收
 
 ```bash
-# Agent 四模式（react / workflow / plan-workflow 等）
+# Agent 五模式（react / workflow / plan-workflow / peer-collab 等）
 python scripts/phase2_agent_demo.py --suite all
+
+# 多专家协作 Live（§E L1 句式 + §K `$` 绑定）
+python scripts/verify_peer_collab_live.py
+python scripts/verify_expert_consultation_live.py
 
 # RAG 评测（需先 MySQL 种子 + ingest）
 python scripts/rag_reset.py
@@ -133,6 +139,7 @@ mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest
 | `/plans/:planId` | Plan 详情与节点 trace |
 | `/knowledge` | 知识库入库与检索测试 |
 | `/skills` | Skill 管理；版本 diff → `/skills/:skillId/diff` |
+| `/experts` | Expert 管理（多专家协作 Catalog）；Chat `$` 补全 |
 | `/status` | 服务与中间件状态 |
 
 ## 服务器中间件（ecs4c16g）

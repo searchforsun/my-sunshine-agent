@@ -83,6 +83,28 @@ class StreamDeltaNormalizerTest {
     }
 
     @Test
+    @DisplayName("增量式 delta：闭合 ** 不与文首 opening 混淆丢弃")
+    void incremental_closingBoldMarkersNotDropped() {
+        List<StreamToken> out = collect(
+                StreamToken.content("- "),
+                StreamToken.content("**"),
+                StreamToken.content("立即"),
+                StreamToken.content("退回"),
+                StreamToken.content("，"),
+                StreamToken.content("不予"),
+                StreamToken.content("进入"),
+                StreamToken.content("审批"),
+                StreamToken.content("流程"),
+                StreamToken.content("**"),
+                StreamToken.content("；")
+        );
+        assertThat(out).extracting(StreamToken::text)
+                .containsExactly("- ", "**", "立即", "退回", "，", "不予", "进入", "审批", "流程", "**", "；");
+        assertThat(out.stream().map(StreamToken::text).reduce("", String::concat))
+                .isEqualTo("- **立即退回，不予进入审批流程**；");
+    }
+
+    @Test
     @DisplayName("content 生命周期 token 原样透传")
     void contentLifecycle_passesThrough() {
         List<StreamToken> out = collect(

@@ -56,7 +56,10 @@ public final class StreamDeltaNormalizer {
         });
     }
 
-    /** 单调前缀续写：incoming 必须以 prev 为前缀，否则视为独立增量块 */
+    /**
+     * 单调前缀续写：累积帧 incoming 必须以 prev 为前缀；否则视为 Gateway 增量 token 直接 append。
+     * 增量流下闭合 Markdown 标记（如 **）可能与文首 opening 相同，不可按累积回退丢弃。
+     */
     static String prefixDelta(AtomicReference<String> lastFull, String incoming) {
         if (incoming == null || incoming.isEmpty()) {
             return "";
@@ -75,7 +78,11 @@ public final class StreamDeltaNormalizer {
             return delta;
         }
         if (prev.startsWith(incoming)) {
-            return "";
+            // 长前缀复读 = 累积帧回退；短 token（闭合 ** 等）须放行
+            int replayThreshold = Math.max(4, prev.length() / 2);
+            if (incoming.length() >= replayThreshold) {
+                return "";
+            }
         }
         lastFull.set(prev + incoming);
         return incoming;

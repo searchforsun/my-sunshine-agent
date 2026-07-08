@@ -1,7 +1,7 @@
 # 第五顶层模式：Peer 协作路由（PEER_COLLAB）
 
 > **阶段**：四 · **任务卡**：4.7.3（及 4.7.3a–d）  
-> **状态**：⬜ 按需（阶段三检查门通过后启动）  
+> **状态**：✅ **已交付**（2026-07-08）— L1 路由 §E + 第五模式 `PEER_COLLAB`；**执行/Timeline 以 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) 为准**（Expert Catalog 取代 `peer.templates`、无仲裁 Agent、Synthesizer 汇总）  
 > **锁定决策**：[2026-06-19-locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) **D10**  
 > **平台 SSOT**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.7  
 > **多 Agent 详设**：[2026-06-19-multi-agent-architecture-design.md](./2026-06-19-multi-agent-architecture-design.md) §5.4（模式 D / L4）  
@@ -20,7 +20,7 @@
 | `WORKFLOW` | `workflow` | 二 | 静态 DAG |
 | `REACT` | `react` | 二 | 单 Agent ReAct |
 | `PLAN_WORKFLOW` | `plan-workflow` | 三 | Planner 动态 DAG + Orchestrator-Worker |
-| **`PEER_COLLAB`** | **`peer-collab`** | **四** | **受控 MsgHub 有限轮对话 + 仲裁汇总** |
+| **`PEER_COLLAB`** | **`peer-collab`** | **四** | **Expert Catalog + MsgHub 反应式轮次 + Synthesizer 汇总**（详见 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md)） |
 
 **非默认路径**：与 D9 编排器-Worker 主轴并存；**不替代** `plan-workflow`。结构化「验证链」（A → Reviewer → answer）仍走 L3 DAG。
 

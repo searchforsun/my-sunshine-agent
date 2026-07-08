@@ -9,11 +9,11 @@ import com.sunshine.orchestrator.expert.ExpertCollaborationParams;
 import com.sunshine.orchestrator.expert.ExpertCoordinatorService;
 import com.sunshine.orchestrator.expert.ExpertHubEngine;
 import com.sunshine.orchestrator.expert.ExpertRoster;
+import com.sunshine.orchestrator.expert.ExpertRoundCoordinatorService;
 import com.sunshine.orchestrator.expert.ExpertSpeakCallback;
 import com.sunshine.orchestrator.expert.ExpertTimelineSupport;
 import com.sunshine.orchestrator.expert.ExpertTranscriptEntry;
 import com.sunshine.orchestrator.peer.PeerRunAuditService;
-import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import lombok.RequiredArgsConstructor;
@@ -44,10 +44,10 @@ public class ExpertConsultationExecutor {
 
     private final ExpertCatalogService expertCatalogService;
     private final ExpertCoordinatorService coordinatorService;
+    private final ExpertRoundCoordinatorService roundCoordinatorService;
     private final ExpertHubEngine expertHubEngine;
     private final ConsultationSynthesizer consultationSynthesizer;
     private final PeerRunAuditService peerRunAuditService;
-    private final PeerSynthesisProperties peerProperties;
     private final ReactExecutor reactExecutor;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
@@ -73,6 +73,7 @@ public class ExpertConsultationExecutor {
             }
         };
         try {
+            log.info("[ExpertConsultation] start conv={} msg={}", ctx.conversationId(), ctx.assistantMsgId());
             if (StringUtils.hasText(ctx.assistantMsgId())) {
                 StepEventBridge.bindToolAudit(ctx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
                         ctx.conversationId(),
@@ -87,6 +88,7 @@ public class ExpertConsultationExecutor {
             String query = resolveQuery(ctx);
             List<String> explicitIds = parseExpertIds(ctx.plan().params());
             ExpertRoster roster = coordinatorService.resolve(explicitIds, query);
+            log.info("[ExpertConsultation] roster={} sessionMax={}", roster.expertIds(), roster.sessionMaxRounds());
             List<ExpertCatalogEntry> experts = new ArrayList<>();
             for (String id : roster.expertIds()) {
                 experts.add(expertCatalogService.find(id)
@@ -124,10 +126,15 @@ public class ExpertConsultationExecutor {
                     emit.accept(ExpertTimelineSupport.speakActive(entry, activeText, responding, started));
                 }
             };
+            int sessionMax = roster.sessionMaxRounds() != null
+                    ? roster.sessionMaxRounds()
+                    : roundCoordinatorService.assessSessionMaxRounds(query, roster.expertIds());
+            log.info("[ExpertConsultation] roster={} sessionMaxRounds={}",
+                    roster.expertIds(), sessionMax);
             ExpertHubEngine.ExpertHubResult hubResult = expertHubEngine.run(
                     experts,
                     query,
-                    peerProperties.getMaxRounds(),
+                    sessionMax,
                     ctx.assistantMsgId(),
                     callback);
             peerRunAuditService.persistFinal(

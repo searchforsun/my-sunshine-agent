@@ -2,7 +2,7 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
-**进度**：阶段三 **检查门通过** — 阶段四 **4.7.3/4.7.4/4.7.5 ✅** · **4.13.1** workflow-manager :8230 + Flyway 表 ✅；**4.13.2+** Catalog/API/Studio ⬜；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 **检查门通过** — 阶段四 **4.7 多专家协作 ✅**（`PEER_COLLAB` L1 §E + Expert Catalog `$` §K + Hub 反应式轮次 + Synthesizer + `/experts`）· **4.7.5 ReAct TaskBoard ✅** · **4.13.1** workflow-manager :8230 ✅；**4.13.2+** Catalog/API/Studio ⬜；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -64,6 +64,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 步骤 before/active/after | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
 | 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
 | 新 Agent 能力 / 子 Agent 配置 | `agent/runtime/` — 扩展 `AgentRunRequest` + `ReActAgentFactory`；workflow agent 节点 params 见 `sunshine-workflows.yaml` |
+| **多专家协作（peer-collab）** | `expert-manager` 种子/CRUD → Nacos `agent.expert.*` / `agent.peer.*` → `ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue 判断、第 2 轮起反应式选人）→ `ConsultationSynthesizer`；详设 `docs/superpowers/specs/2026-07-07-expert-consultation-design.md` |
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。
 
@@ -87,7 +88,8 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent 内部 think/tool **不上主时间线**；`AgentNodeDetailSummarizer` 供主行 after + 展开 detail |
 | **Workflow / Plan answer 节点** | 主时间线 `node-answer` + `step_delta(result)` | 仅 `step_delta(result)` SSOT（勿双写 content）；空白 token 勿 `hasText`/`isBlank` 过滤 |
 | **Plan/Workflow agent 节点** | 子 Timeline + `contentBlocks` | ReAct 正文经 `ingestStreamingContentDelta` → 分段 SSE；**禁止** `isBlank` 丢弃空白 delta |
-| **Expert 发言（peer-collab）** | `expert-{id}-s{seq}` + `step_delta(result)` | `ExpertHubEngine` 阶段2 Gateway 流式；**禁止** `hasText`/`trim` 丢弃 token（`" "`、`"\n"` 须原样 append 并下发 SSE）；`StreamChunkSplitter` 对 `step_delta(result)` **不切分**；勿加后端 Markdown 修补/normalizer |
+| **Expert 发言（peer-collab）** | `expert-convene` → `expert-{id}-s{seq}` + `step_delta(result)` | Hub 阶段2 `ExpertSpeakStreamer` Gateway 流式；**禁止** `hasText`/`trim` 丢弃 token；`step_delta(result)` **不切分**（TD-075） |
+| **Synthesizer 终态正文** | Hub 后 `message.content` 流式 | `ConsultationSynthesizer` → `LlmGatewayClient` → `StreamDeltaNormalizer`（闭合 `**` 等短 token 勿按前缀回退丢弃，TD-076）；**无** `generate` Timeline 步 |
 
 **reasoning 落点（勿双写）**
 
