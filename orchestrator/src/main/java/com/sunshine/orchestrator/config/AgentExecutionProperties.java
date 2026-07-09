@@ -29,6 +29,7 @@ public class AgentExecutionProperties {
                 "get_finance_message_detail",
                 "summarize_finance_by_status",
                 "list_oa_tasks"));
+        /** ReAct 最大 think→tool 循环轮数（SSOT：Nacos agent.execution.react.max-iters） */
         private int maxIters = 5;
         private Taskboard taskboard = new Taskboard();
 

@@ -35,7 +35,9 @@ agent:
     model: deepseek-v4-flash
     classifier-prompt: |
       Reply with one word: simple, knowledge, or finance.
-  max-iters: 2
+  execution:
+    react:
+      max-iters: 2
   history:
     max-messages: 20
   generation:

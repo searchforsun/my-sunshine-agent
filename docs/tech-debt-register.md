@@ -140,6 +140,8 @@
 | DOC-017 | 2026-07-07 | CLAUDE 进度段更新 TD-064～074、代码债 Backlog 已空 |
 | DOC-018 | 2026-07-07 | TaskBoard spec：`tasks` 步文案改 Nacos timeline + `TimelineStepLabelService`（非本地 displayName Map） |
 | DOC-019 | 2026-07-08 | 多专家协作（4.7.3）文档闭环：CLAUDE/README/implementation-plan/expert-consultation/peer-collab/routing-golden-set/phase4 标 ✅ |
+| DOC-020 | 2026-07-09 | TaskBoard 文档：Timeline `think→tasks→tool`、Hook 锚定 think、prompt/Hook 职责分离、merge content 去重、`max-iters` SSOT |
+| DOC-021 | 2026-07-09 | ReAct Hook：无业务 tool 间隔的连续 think 合并；终态避免多个「综合分析」行 |
 
 ### 架构决策（ADR）
 

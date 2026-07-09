@@ -58,6 +58,7 @@ public final class ProcessingTimelineSession {
     public void recordToolCompleted(String displayName) {
         if (displayName != null && !displayName.isBlank()) {
             state.lastCompletedToolDisplayName = displayName.strip();
+            state.toolCompletedSinceLastThink = true;
         }
     }
 

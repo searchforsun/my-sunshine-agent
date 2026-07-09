@@ -114,11 +114,28 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
-    void contentAnchorAfterStepId_returnsLastDoneThink() {
+    void beginReasoningRound_reusesThinkWhenNoToolSinceLastThink() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");
         session.beginReasoningRound();
         session.endReasoningRound();
+        session.beginReasoningRound();
+        session.endReasoningRound();
+        session.beginReasoningRound();
+        session.endReasoningRound();
+
+        assertThat(session.snapshot().stream().filter(s -> ThinkStepIds.isThinkStep(s.id())).count())
+                .isEqualTo(1);
+        assertThat(session.contentAnchorAfterStepId()).isEqualTo("think");
+    }
+
+    @Test
+    void contentAnchorAfterStepId_returnsLastDoneThinkAfterTool() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("查待办");
+        session.beginReasoningRound();
+        session.endReasoningRound();
+        session.recordToolCompleted("统计财务消息");
         session.beginReasoningRound();
         session.endReasoningRound();
 
@@ -463,6 +480,32 @@ class ProcessingTimelineSessionTest {
         assertThat(tasks.metadata().tasks()).hasSize(2);
         assertThat(tasks.metadata().taskRevision()).isEqualTo(2);
         assertThat(tasks.metadata().taskProgress()).isEqualTo("1/2 已完成");
+    }
+
+    @Test
+    void updateTaskBoard_anchorsAfterThinkEvenWhenManageTasksLate() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.beginReasoningRound();
+        session.endReasoningRound();
+        ProcessingStep think = session.snapshot().stream()
+                .filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
+        long thinkEnd = think.endedAt() != null ? think.endedAt() : think.startedAt();
+
+        session.beginToolStep("tool-list_finance_messages", "tool");
+        session.completeToolStep("命中 3 条");
+
+        StepMetadata metadata = StepMetadata.withTasks(
+                List.of(new TaskBoardItemView("t1", "查询待审批", "in_progress")),
+                1, "0/1 已完成");
+        session.updateTaskBoard(TimelineStepId.TASKS.id(), TimelineStepId.TASKS.phase(),
+                TaskBoardStepLabels.active("查询待审批"), metadata);
+
+        ProcessingStep tasks = session.snapshot().stream()
+                .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).findFirst().orElseThrow();
+        assertThat(tasks.startedAt()).isLessThanOrEqualTo(session.snapshot().stream()
+                .filter(s -> s.id().startsWith("tool-list_finance"))
+                .findFirst().orElseThrow().startedAt());
+        assertThat(tasks.startedAt()).isGreaterThanOrEqualTo(thinkEnd);
     }
 
     @Test

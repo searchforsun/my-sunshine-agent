@@ -178,18 +178,20 @@ if (node.type().equals("parallel-fork")) {
 | 层 | 实现 |
 |----|------|
 | AgentScope | `@Tool manage_tasks` 注册到 `DynamicToolkitFactory`（**不占** react.tools 白名单槽位） |
-| 存储 | Redis `taskboard:{conversationId}:{assistantMsgId}` |
-| Timeline | `TaskBoardTimelineSupport` 发 `tasks` 步；Hook **跳过** `manage_tasks` 的常规 tool 步 |
-| AgentRuntime | MAIN 路径不变；`ReActAgentFactory` 条件注册 Tool |
+| 存储 | Redis `react:taskboard:{assistantMsgId}` |
+| Timeline | `TaskBoardTimelineSupport` 发 **唯一** `tasks` 步；Hook **跳过** `manage_tasks` 的常规 tool 步 |
+| 锚点 | `PostReasoning` → `lastCompletedThink*`；首次 `updateTaskBoard` → `tasks.startedAt = think.endedAt + 1` |
+| 引擎 | `ReactTaskBoardService`：merge / content 去重 / 单 in_progress |
+| Prompt | `mode-overlays.react`：**仅**是否建板、何时更新 status；**不写** tool 调用顺序 |
+| AgentRuntime | MAIN 终态 `finalizeTimeline`；`ReActAgentFactory` 读 `agent.execution.react.max-iters` |
 
 ```java
-@Tool(name = "manage_tasks", description = "创建或更新当前会话任务列表…")
+@Tool(name = "manage_tasks", description = "维护当前会话的任务清单…")
 public String manageTasks(
-        @ToolParam(name = "action") String action,  // merge | replace
-        @ToolParam(name = "tasks") String tasksJson) {
-    taskBoardService.apply(conversationId, assistantMsgId, action, tasksJson);
-    taskBoardTimeline.emitTasksStep(...);
-    return "ok";
+        @ToolParam(name = "merge") boolean merge,
+        @ToolParam(name = "items") String itemsJson) {
+    // ReactTaskBoardService.apply → TaskBoardTimelineSupport.applyUpdate
+    return "{\"ok\":true,\"revision\":…}";
 }
 ```
 
@@ -197,11 +199,13 @@ public String manageTasks(
 
 ```java
 if (event instanceof PreActingEvent pre) {
-    if ("manage_tasks".equals(pre.getToolUse().getName())) {
-        return Mono.just(event); // 跳过常规 tool 步
+    if (ManageTasksTool.NAME.equals(pre.getToolUse().getName())) {
+        return Mono.just(event); // 跳过常规 tool 步；tasks 步由 ManageTasksTool 刷新
     }
     // …现有 tool 步逻辑
 }
+// PostReasoning → endReasoningRound：记录 lastCompletedThinkId / endedAt
+// TimelineSessionCompletions.updateTaskBoard：首建锚定 think
 ```
 
 ### 4.4 模式互斥

@@ -1,13 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ProcessingStep, TaskBoardItemView } from '../../api/processingSteps'
-import {
-  formatDuration,
-  formatStepLabel,
-  resolveStepDurationMs,
-  resolveStepHeaderText,
-  stepLifecycle,
-} from '../../api/processingSteps'
+import { stepLifecycle } from '../../api/processingSteps'
 
 const props = withDefaults(defineProps<{
   step: ProcessingStep
@@ -18,18 +12,16 @@ const props = withDefaults(defineProps<{
 
 const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
-const label = computed(() => formatStepLabel(props.step))
-const headerText = computed(() => resolveStepHeaderText(props.step))
 const tasks = computed(() => props.step.metadata?.tasks ?? [])
-const taskProgress = computed(() => props.step.metadata?.taskProgress?.trim() || '')
 
-const durationText = computed(() => {
-  if (lifecycle.value !== 'done') return ''
-  const ms = resolveStepDurationMs(props.step)
-  return ms != null ? formatDuration(ms) : ''
+const progressLabel = computed(() => {
+  const progress = props.step.metadata?.taskProgress?.trim()
+  if (progress) return progress
+  const items = tasks.value
+  if (!items.length) return ''
+  const done = items.filter(t => t.status === 'completed').length
+  return `${done} / ${items.length} 已完成`
 })
-
-const showShimmer = computed(() => isRunning.value && props.live)
 
 function itemClass(item: TaskBoardItemView): Record<string, boolean> {
   return {
@@ -40,66 +32,62 @@ function itemClass(item: TaskBoardItemView): Record<string, boolean> {
   }
 }
 
-function checkboxClass(item: TaskBoardItemView): Record<string, boolean> {
+function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   return {
-    'is-checked': item.status === 'completed',
-    'is-cancelled': item.status === 'cancelled',
+    'is-done': item.status === 'completed',
     'is-active': item.status === 'in_progress',
+    'is-cancelled': item.status === 'cancelled',
+    'is-pending': item.status === 'pending',
   }
 }
 </script>
 
 <template>
   <div
-    class="taskboard-line"
+    v-if="tasks.length"
+    class="taskboard-wrap"
     :class="{ 'is-running': isRunning && live }"
   >
-    <div class="taskboard-header">
-      <span class="op-gutter" aria-hidden="true" />
-      <span class="taskboard-main">
-        <span class="taskboard-label" :class="{ 'op-shimmer': showShimmer }">{{ label }}</span>
-        <span v-if="headerText" class="taskboard-summary" :class="{ 'op-shimmer': showShimmer }">
-          {{ headerText }}<span v-if="isRunning && live" class="op-pulse">…</span>
-        </span>
-        <span v-else-if="taskProgress" class="taskboard-progress">{{ taskProgress }}</span>
-      </span>
-      <span v-if="durationText" class="taskboard-dur">{{ durationText }}</span>
+    <span class="op-gutter" aria-hidden="true" />
+    <div class="taskboard-card">
+      <div class="taskboard-card-head">
+        <svg class="taskboard-icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 4.5h12M2 8h8M2 11.5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+          <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
+          <circle cx="12.5" cy="11.5" r="1.1" fill="currentColor" />
+        </svg>
+        <span class="taskboard-progress">{{ progressLabel }}</span>
+      </div>
+      <ul class="taskboard-list" role="list">
+        <li
+          v-for="item in tasks"
+          :key="item.id"
+          class="taskboard-item"
+          :class="itemClass(item)"
+        >
+          <span class="taskboard-marker" :class="markerClass(item)" aria-hidden="true">
+            <svg v-if="item.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
+              <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <svg v-else-if="item.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
+              <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+          <span class="taskboard-content">{{ item.content }}</span>
+        </li>
+      </ul>
     </div>
-
-    <ul v-if="tasks.length" class="taskboard-list" role="list">
-      <li
-        v-for="item in tasks"
-        :key="item.id"
-        class="taskboard-item"
-        :class="itemClass(item)"
-      >
-        <span
-          class="taskboard-checkbox"
-          :class="checkboxClass(item)"
-          aria-hidden="true"
-        />
-        <span class="taskboard-content">{{ item.content }}</span>
-      </li>
-    </ul>
   </div>
 </template>
 
 <style scoped>
-.taskboard-line {
+.taskboard-wrap {
   --op-gutter: 12px;
-  --op-font: var(--sun-font-md);
-  --op-font-sm: var(--sun-font-sm);
-  font-size: var(--op-font);
-  line-height: 1.5;
-  color: var(--sun-text-muted);
-  padding: 1px 0 6px;
-}
-
-.taskboard-header {
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr) auto;
+  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
   column-gap: 4px;
   align-items: start;
+  padding: 2px 0 10px;
 }
 
 .op-gutter {
@@ -107,192 +95,111 @@ function checkboxClass(item: TaskBoardItemView): Record<string, boolean> {
   flex-shrink: 0;
 }
 
-.taskboard-main {
+.taskboard-card {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--sun-border);
+  border-radius: 10px;
+  background: var(--sun-black);
+}
+
+.taskboard-card-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 6px;
-  min-width: 0;
-}
-
-.taskboard-label {
-  flex-shrink: 0;
-  color: var(--sun-text-secondary);
-  font-weight: 450;
-}
-
-.taskboard-line.is-running .taskboard-label:not(.op-shimmer) {
-  color: var(--sun-text);
-}
-
-.taskboard-summary,
-.taskboard-progress {
-  flex: 1 1 0;
-  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
   color: var(--sun-text-muted);
-  opacity: 0.92;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: var(--sun-font-sm);
+  line-height: 1.35;
+}
+
+.taskboard-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.72;
 }
 
 .taskboard-progress {
-  font-size: var(--op-font-sm);
-  opacity: 0.75;
-}
-
-.taskboard-dur {
-  flex-shrink: 0;
-  padding-left: 10px;
-  padding-top: 1px;
-  font-size: var(--op-font-sm);
-  color: var(--sun-text-muted);
-  opacity: 0.65;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .taskboard-list {
   list-style: none;
-  margin: 6px 0 0 calc(var(--op-gutter) + 4px);
-  padding: 8px 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 8px;
-  background: var(--sun-black);
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   max-height: min(36vh, 280px);
   overflow-y: auto;
 }
 
 .taskboard-item {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  column-gap: 8px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 10px;
   align-items: start;
-  padding: 4px 2px;
-  border-radius: 4px;
-  color: var(--sun-text-secondary);
 }
 
-.taskboard-item.is-in-progress {
-  color: var(--sun-text);
-  background: color-mix(in srgb, var(--sun-border) 35%, transparent);
-  border: 1px solid var(--sun-border);
-  padding: 3px 5px;
-}
-
-.taskboard-item.is-completed .taskboard-content {
-  color: var(--sun-text-muted);
-  opacity: 0.82;
-}
-
-.taskboard-item.is-cancelled .taskboard-content {
-  color: var(--sun-text-muted);
-  opacity: 0.55;
-  text-decoration: line-through;
-}
-
-.taskboard-checkbox {
-  width: 14px;
-  height: 14px;
-  margin-top: 3px;
-  border: 1.5px solid var(--sun-border);
-  border-radius: 3px;
+.taskboard-marker {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
   box-sizing: border-box;
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-.taskboard-checkbox.is-checked {
-  border-color: color-mix(in srgb, var(--sun-text-muted) 70%, transparent);
-  background: color-mix(in srgb, var(--sun-text-muted) 18%, transparent);
+.taskboard-marker.is-pending {
+  border: 1.5px dashed color-mix(in srgb, var(--sun-text-muted) 55%, transparent);
 }
 
-.taskboard-checkbox.is-checked::after {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 1px;
-  width: 5px;
-  height: 8px;
-  border: solid var(--sun-text-muted);
-  border-width: 0 1.5px 1.5px 0;
-  transform: rotate(45deg);
+.taskboard-marker.is-active {
+  border: 1.5px solid var(--sun-text-secondary);
 }
 
-.taskboard-checkbox.is-active {
-  border-color: var(--sun-text-secondary);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sun-text-secondary) 40%, transparent);
+.taskboard-marker.is-done {
+  border: 1.5px solid color-mix(in srgb, var(--sun-text-muted) 65%, transparent);
+  background: color-mix(in srgb, var(--sun-text-muted) 12%, transparent);
 }
 
-.taskboard-checkbox.is-active::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 -3px;
-  border-radius: 50%;
-  background: var(--sun-text-secondary);
-  animation: taskboard-pulse 1.2s ease-in-out infinite;
+.taskboard-marker.is-cancelled {
+  border: 1.5px dashed color-mix(in srgb, var(--sun-text-muted) 35%, transparent);
+  opacity: 0.55;
 }
 
-.taskboard-checkbox.is-cancelled {
-  opacity: 0.45;
+.marker-icon {
+  width: 11px;
+  height: 11px;
 }
 
 .taskboard-content {
   font-size: var(--sun-font-base);
   line-height: 1.45;
   word-break: break-word;
+  color: var(--sun-text-muted);
 }
 
-.op-shimmer {
-  --op-shimmer-base: var(--sun-text-muted);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 32%, white);
-  display: inline-block;
-  max-width: 100%;
-  background-image: linear-gradient(
-    90deg,
-    var(--op-shimmer-base) 0%,
-    var(--op-shimmer-base) 36%,
-    var(--op-shimmer-peak) 50%,
-    var(--op-shimmer-base) 64%,
-    var(--op-shimmer-base) 100%
-  );
-  background-size: 220% 100%;
-  background-repeat: no-repeat;
-  background-position: 100% center;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: op-text-shimmer 2.6s linear infinite;
+.taskboard-item.is-in-progress .taskboard-content {
+  color: var(--sun-text);
 }
 
-.taskboard-label.op-shimmer {
-  --op-shimmer-base: var(--sun-text);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text) 22%, white);
+.taskboard-item.is-completed .taskboard-content {
+  color: var(--sun-text-muted);
+  opacity: 0.72;
+  text-decoration: line-through;
 }
 
-.op-pulse {
-  animation: op-pulse 1.2s ease-in-out infinite;
+.taskboard-item.is-cancelled .taskboard-content {
+  opacity: 0.5;
+  text-decoration: line-through;
 }
 
-@keyframes op-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-@keyframes op-text-shimmer {
-  0% { background-position: 100% center; }
-  100% { background-position: 0% center; }
-}
-
-@keyframes taskboard-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(0.85); }
+.taskboard-wrap.is-running .taskboard-item.is-in-progress .taskboard-marker.is-active {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sun-text-secondary) 18%, transparent);
 }
 </style>

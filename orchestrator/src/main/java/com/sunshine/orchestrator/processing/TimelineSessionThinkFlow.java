@@ -43,6 +43,21 @@ final class TimelineSessionThinkFlow {
 
     void beginReasoningRound(Runnable closeContentSegment) {
         closeContentSegment.run();
+        if (state.toolCompletedSinceLastThink) {
+            state.toolCompletedSinceLastThink = false;
+            if (isThinkRunning()) {
+                completeThinkIfRunning();
+            }
+            openNextThink();
+            return;
+        }
+        // 无业务 tool 间隔的连续 reasoning（如终态前空转多轮）复用同一 think，避免堆叠「综合分析」
+        if (state.lastCompletedThinkId != null && !emitter.isStepRunning(state.lastCompletedThinkId)) {
+            state.currentThinkId = state.lastCompletedThinkId;
+            lifecycle.pending(state.currentThinkId, TimelineStepId.THINK.phase());
+            lifecycle.start(state.currentThinkId, TimelineStepId.THINK.phase());
+            return;
+        }
         if (isThinkRunning()) {
             completeThinkIfRunning();
         }
@@ -50,7 +65,32 @@ final class TimelineSessionThinkFlow {
     }
 
     void endReasoningRound() {
-        completeThinkIfRunning();
+        long endedAt = System.currentTimeMillis();
+        String thinkId = resolveRunningThinkId();
+        if (thinkId == null) {
+            return;
+        }
+        state.lastCompletedThinkId = thinkId;
+        if (emitter.isStepRunning(thinkId)) {
+            lifecycle.completeAt(thinkId, null, endedAt);
+            state.lastCompletedThinkEndedAt = endedAt;
+            return;
+        }
+        state.lastCompletedThinkEndedAt = state.aggregator.get(thinkId)
+                .map(ProcessingStep::endedAt)
+                .filter(ts -> ts > 0)
+                .orElse(endedAt);
+    }
+
+    private String resolveRunningThinkId() {
+        if (state.currentThinkId != null && emitter.isStepRunning(state.currentThinkId)) {
+            return state.currentThinkId;
+        }
+        return emitter.snapshot().stream()
+                .filter(s -> ThinkStepIds.isThinkStep(s.id()) && emitter.isStepRunning(s.id()))
+                .map(ProcessingStep::id)
+                .findFirst()
+                .orElse(state.currentThinkId);
     }
 
     void ingestStreamingContentDelta(String delta, java.util.function.Consumer<com.sunshine.orchestrator.client.StreamToken> sink) {

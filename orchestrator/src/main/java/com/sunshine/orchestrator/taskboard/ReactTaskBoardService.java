@@ -210,6 +210,11 @@ public class ReactTaskBoardService {
                 map.put(update.id(), update);
                 continue;
             }
+            String matchedId = findIdByContent(map, update.content());
+            if (matchedId != null) {
+                map.put(matchedId, new TaskBoardItemView(matchedId, update.content(), update.status()));
+                continue;
+            }
             if (map.size() >= maxItems) {
                 break;
             }
@@ -217,6 +222,19 @@ public class ReactTaskBoardService {
             map.put(id, new TaskBoardItemView(id, update.content(), update.status()));
         }
         return List.copyOf(map.values());
+    }
+
+    private static String findIdByContent(Map<String, TaskBoardItemView> map, String content) {
+        if (!StringUtils.hasText(content)) {
+            return null;
+        }
+        String normalized = content.strip();
+        for (TaskBoardItemView item : map.values()) {
+            if (normalized.equals(item.content())) {
+                return item.id();
+            }
+        }
+        return null;
     }
 
     private static int nextTaskId(Map<String, TaskBoardItemView> map) {

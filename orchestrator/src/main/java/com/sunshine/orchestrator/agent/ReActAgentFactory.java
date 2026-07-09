@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.model.OpenAIChatModel;
@@ -19,12 +20,10 @@ import org.springframework.util.StringUtils;
 public class ReActAgentFactory {
 
     private final AgentPromptProperties prompts;
+    private final AgentExecutionProperties executionProperties;
     private final Toolkit toolkit;
     private final DynamicToolkitFactory dynamicToolkitFactory;
     private final ProcessingStepHookFactory stepHookFactory;
-
-    @Value("${agent.max-iters:5}")
-    private int maxIters;
 
     @Value("${agent.model.name:deepseek-v4-pro}")
     private String modelName;
@@ -77,7 +76,7 @@ public class ReActAgentFactory {
     }
 
     int resolveMaxIters(AgentRunRequest request) {
-        return request.maxIters() > 0 ? request.maxIters() : maxIters;
+        return request.maxIters() > 0 ? request.maxIters() : executionProperties.getReact().getMaxIters();
     }
 
     private static String resolveAgentName(AgentRunRequest request) {

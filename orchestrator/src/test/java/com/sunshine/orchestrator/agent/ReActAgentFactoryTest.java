@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import io.agentscope.core.tool.Toolkit;
@@ -39,8 +40,9 @@ class ReActAgentFactoryTest {
 
     @BeforeEach
     void setUp() {
-        factory = new ReActAgentFactory(prompts, globalToolkit, dynamicToolkitFactory, stepHookFactory);
-        ReflectionTestUtils.setField(factory, "maxIters", 5);
+        AgentExecutionProperties executionProperties = new AgentExecutionProperties();
+        executionProperties.getReact().setMaxIters(5);
+        factory = new ReActAgentFactory(prompts, executionProperties, globalToolkit, dynamicToolkitFactory, stepHookFactory);
         ReflectionTestUtils.setField(factory, "modelName", "deepseek-v4-pro");
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");
         ReflectionTestUtils.setField(factory, "apiKey", "test-key");

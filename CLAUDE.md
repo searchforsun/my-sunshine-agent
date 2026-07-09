@@ -2,6 +2,12 @@
 
 Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Alibaba + Vue3/Naive UI）。
 
+## 编码要义（最高优先级）
+
+1. **两三轮仍不能解决 → 停补丁，查本质**：同一 bug 改 2–3 轮仍反复或出新症状，必须质疑**架构**、**时间线方案**与 **Nacos 提示词**的合理性；禁止继续打补丁式修改。
+2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑（确需兼容须写明原因并评审通过）。
+3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改提示词或架构，不在前后端打补丁。
+
 **进度**：阶段三 **检查门通过** — 阶段四 **4.7 多专家协作 ✅**（`PEER_COLLAB` L1 §E + Expert Catalog `$` §K + Hub 反应式轮次 + Synthesizer + `/experts`）· **4.7.5 ReAct TaskBoard ✅** · **4.13.1** workflow-manager :8230 ✅；**4.13.2+** Catalog/API/Studio ⬜；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
@@ -65,6 +71,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
 | 新 Agent 能力 / 子 Agent 配置 | `agent/runtime/` — 扩展 `AgentRunRequest` + `ReActAgentFactory`；workflow agent 节点 params 见 `sunshine-workflows.yaml` |
 | **多专家协作（peer-collab）** | `expert-manager` 种子/CRUD → Nacos `agent.expert.*` / `agent.peer.*` → `ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue 判断、第 2 轮起反应式选人）→ `ConsultationSynthesizer`；详设 `docs/superpowers/specs/2026-07-07-expert-consultation-design.md` |
+| **ReAct TaskBoard（4.7.5）** | `manage_tasks` 元工具 + 唯一 `tasks` 步；Hook 跳过 manage_tasks tool 行、首建锚定 think；prompt 仅建板/status；merge 引擎去重；详设 `docs/superpowers/specs/2026-06-24-react-taskboard-design.md` |
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。
 
@@ -82,7 +89,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 
 | 模式 | 步骤形态 | 说明 |
 |------|----------|------|
-| **ReAct** | `intent → think → tool → think-2 → generate` | `ReactExecutor` → `AgentRuntime`；reasoning 走 `step_delta(think*)`；Hook 经 `StepEventBridge` 绑定 assistantMsgId |
+| **ReAct** | `intent → think → tasks? → tool → think-2 → generate` | TaskBoard 开启时出现 `tasks`（锚定在 think 后）；**无业务 tool 间隔**的连续 reasoning 合并为同一 think（Hook），避免终态堆叠多个「综合分析」 |
 | **静态 Workflow** | `intent → plan → …`（DAG） | `WorkflowExecutor`：`StaticPlanAdapter` + `PlanTimeline`（`planId=`）→ `executeDynamicDefinition`；**无**逐步 `OperationCard` |
 | **Plan-Workflow** | `intent → plan → …`（DAG） | `PlanWorkflowExecutor` + Planner JSON；**成功路径无 `think`/`generate`**；与静态 workflow **共用** `PlanWorkflowPanel` / `PlanNodeDrawer` |
 | **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent 内部 think/tool **不上主时间线**；`AgentNodeDetailSummarizer` 供主行 after + 展开 detail |
@@ -148,8 +155,6 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 ## 其他
 
 - 架构决策（ADR）：[docs/architecture/README.md](./docs/architecture/README.md)
-- 禁止对模型输出内容做冗余的截断和摘要，模型返回什么就输出什么，不对就改提示词
-- 禁止冗余的兜底和兼容逻辑，直接在架构和提示词方面优化，合理兼容兜底逻辑要给出原因，并评审通过
 - 代码加适量中文注释；**禁止**在业务代码中插入多余空行。
 - 禁止保存临时脚本；运维统一 **Python**（`scripts/*.py`）。
 - `start.py` 可带 SkyWalking agent（需先 `download_skywalking_agent.py`）。

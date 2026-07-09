@@ -290,7 +290,7 @@ Live：`python scripts/verify_execution_preference.py`
 
 | # | 提示词 | 预期 mode | 预期 UI |
 |---|--------|-----------|---------|
-| F1 | 帮我查待审批报销，并对有风险的单据逐条说明原因 | react | `tasks` ≥2 项 → tool* → generate |
+| F1 | 帮我查待审批报销，并对有风险的单据逐条说明原因 | react | think → `tasks` ≥2 项 → tool* → generate |
 | F2 | 用财务工具汇总各状态数量，并解释异常偏多的状态 | react | `tasks` 含汇总+解释 |
 | F3 | 搜知识库看差旅标准，再帮我看看有没有超标的风险点 | react（若 L1 未命中） | `tasks` + rag/tool 链 |
 
@@ -307,12 +307,14 @@ Live：`python scripts/verify_execution_preference.py`
 
 ```
 识别意图 → …将由自主智能体分析并作答
-任务清单 → 正在执行：{activeTask}   （metadata.tasks[]）
 规划推理 → think*
-工具调用 → tool-*
+任务清单 → metadata.tasks[]（锚定在刚结束的 think 之后；Hook 写入 startedAt）
+工具调用 → tool-*（manage_tasks 不上 tool 行）
 …
 撰写回复 → generate
 ```
+
+**职责**：prompt 只管是否建板 / 更新 status；think 锚点与 merge 去重见 [taskboard spec §3.3](../superpowers/specs/2026-06-24-react-taskboard-design.md)。
 
 ### 单测（阶段四）
 
@@ -337,7 +339,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 | Skill `@` / 强提示 / 5B | `agent.skill.hint-patterns`；L0 多步→`plannerMode=skill-driven` |
 | Skill 自动发现阈值 | `SkillDiscoveryService`（catalog description bigram 打分） |
 | 第五模式 peer 句式（阶段四） | `agent.routing.peer.structural-patterns` · Expert Catalog 取代 `peer.templates` · 见 [peer-collab spec](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation spec](../superpowers/specs/2026-07-07-expert-consultation-design.md) |
-| ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.timeline.steps.tasks` / `mode-overlays.react` · 见 [taskboard spec](../superpowers/specs/2026-06-24-react-taskboard-design.md) |
+| ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.execution.react.max-iters` / `agent.timeline.steps.tasks` / `mode-overlays.react`（仅建板与 status 语义）· 详设 [taskboard spec](../superpowers/specs/2026-06-24-react-taskboard-design.md) |
 | Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) |
 | Workflow 模板 / `#` 绑定 | `workflow-manager` catalog + L0 `#` · **非**底栏二级下拉 · 见 [workflow-studio spec](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3 |
 

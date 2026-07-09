@@ -80,10 +80,29 @@ final class TimelineSessionCompletions {
     void updateTaskBoard(String stepId, String phase, String activeSummary, StepMetadata metadata) {
         long ts = System.currentTimeMillis();
         if (!emitter.hasStep(stepId)) {
+            long anchorStart = taskBoardAnchorStart(ts);
             emitter.apply(stepId, phase, EventKind.PENDING, TaskBoardStepLabels.before(), null);
-            startAt(stepId, phase, ts);
+            startAt(stepId, phase, anchorStart);
         }
         emitter.applyAt(stepId, phase, EventKind.PROGRESS, activeSummary, null, metadata, ts);
+    }
+
+    /** tasks 步首建锚定在刚结束的 think 之后，不随 manage_tasks 实际调用时刻漂移 */
+    private long taskBoardAnchorStart(long fallback) {
+        if (state.lastCompletedThinkEndedAt <= 0) {
+            return fallback;
+        }
+        long anchor = state.lastCompletedThinkEndedAt + 1;
+        long minToolAfterThink = emitter.snapshot().stream()
+                .filter(s -> ToolStepIds.isToolStep(s.id()))
+                .map(ProcessingStep::startedAt)
+                .filter(started -> started != null && started >= state.lastCompletedThinkEndedAt)
+                .min(Long::compare)
+                .orElse(Long.MAX_VALUE);
+        if (minToolAfterThink != Long.MAX_VALUE && anchor >= minToolAfterThink) {
+            anchor = Math.max(state.lastCompletedThinkEndedAt, minToolAfterThink - 1);
+        }
+        return anchor;
     }
 
     void completeTaskBoard(String after, StepMetadata metadata) {

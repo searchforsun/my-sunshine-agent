@@ -177,7 +177,7 @@ class AgentScopeEventMapperTest {
                 session, answerContentStarted);
 
         assertThat(answerContentStarted).isTrue();
-        assertThat(tokens.stream().filter(t -> t.isStep() && "think-2".equals(t.step().id())
+        assertThat(tokens.stream().filter(t -> t.isStep() && "think".equals(t.step().id())
                 && "done".equals(t.step().lifecycle()))).hasSize(1);
         assertThat(tokens.stream().filter(t -> t.isContent() && t.segmentId() != null).map(StreamToken::text).toList())
                 .containsExactly("第二轮正文");

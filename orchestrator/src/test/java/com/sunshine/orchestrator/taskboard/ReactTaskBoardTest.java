@@ -111,6 +111,34 @@ class ReactTaskBoardTest {
     }
 
     @Test
+    void apply_merge_matchesByContentWhenIdMissing() {
+        ReactTaskBoardState existing = new ReactTaskBoardState(
+                "board-1", "msg-1", 1, 1000L,
+                List.of(
+                        new TaskBoardItemView("t1", "查询待审批报销单据", "in_progress"),
+                        new TaskBoardItemView("t2", "查询公司报销制度与合规要求", "pending"),
+                        new TaskBoardItemView("t3", "逐笔分析报销合规性", "pending"),
+                        new TaskBoardItemView("t4", "给出能否提交审批的结论与建议", "pending")));
+        when(store.load("msg-1")).thenReturn(Optional.of(existing));
+
+        ReactTaskBoardApplyResult result = service.apply(
+                "msg-1",
+                true,
+                List.of(
+                        new TaskBoardItemInput(null, "查询待审批报销单据", "completed"),
+                        new TaskBoardItemInput(null, "查询公司报销制度与合规要求", "completed"),
+                        new TaskBoardItemInput(null, "逐笔分析报销合规性", "completed"),
+                        new TaskBoardItemInput(null, "给出能否提交审批的结论与建议", "completed")),
+                List.of());
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.items()).hasSize(4);
+        assertThat(result.items()).extracting(TaskBoardItemView::status)
+                .containsExactly("completed", "completed", "completed", "completed");
+        assertThat(result.summary()).isEqualTo("4/4 已完成");
+    }
+
+    @Test
     void progressSummary_countsCompletedOnly() {
         List<TaskBoardItemView> items = List.of(
                 new TaskBoardItemView("t1", "a", "completed"),

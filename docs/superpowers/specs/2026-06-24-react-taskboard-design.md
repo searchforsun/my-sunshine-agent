@@ -1,7 +1,7 @@
 # ReAct TaskBoard（软规划 Todo）
 
 > **阶段**：四 · **任务卡**：4.7.5（及 4.7.5a–e）  
-> **状态**：⬜ 按需（阶段三检查门通过后启动；可与 4.7.1 并行）  
+> **状态**：✅ 4.7.5 已实现（Hook 锚定 think、merge content 去重、prompt/Hook 职责分离）  
 > **锁定决策**：[2026-06-19-locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) **D11**  
 > **平台 SSOT**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.7  
 > **路由验收**：[routing-golden-set.md](../../routing/routing-golden-set.md) §F（阶段四启用）  
@@ -19,7 +19,7 @@
 | 规划产物 | Plan JSON + DAG 校验 + `execution_plan` 落库 | 轻量 checklist；**无 DAG 校验** |
 | 修订 | Replan（校验反馈） | 模型随时 `manage_tasks` 增删改状态 |
 | 工具约束 | 节点 type/tool 白名单 | 仍走 react 工具白名单；todo **不绑定**具体 tool |
-| Timeline | `plan` + `node-*` | **`tasks` 单步**（清单摘要）+ 现有 `think*` / `tool*` |
+| Timeline | `plan` + `node-*` | **`think*` + `tasks` 单步** + `tool*` |
 | 审计 | `execution_plan` + node trace | `react_task_board` 快照 + tool 审计 |
 | 适用 | 跨域结构化流水线 | 开放探索、单域多步、路径不确定、编码式 Agent |
 
@@ -43,7 +43,7 @@ flowchart TB
     RE --> TB{taskboard.enabled?}
     TB -->|是| MT[manage_tasks 元工具]
     TB -->|否| RC[纯 think/tool 链路]
-    MT --> TL[Timeline: tasks + think* + tool* + generate]
+    MT --> TL[Timeline: think* + tasks + tool* + generate]
     RC --> TL2[Timeline: think* + tool* + generate]
     PW --> PL[Timeline: plan + node-*]
 ```
@@ -165,12 +165,27 @@ Agent 可见 schema（OpenAI function 风格）：
 **引擎规则**：
 
 1. 同一时刻 **最多 1 条** `in_progress`；若模型提交多条，引擎保留首条 in_progress，其余降为 `pending`。
-2. `merge=true`：按 `id` 更新；未知 `id` 且 `content` 非空则追加。
+2. `merge=true`：按 `id` 更新；无 `id` 时按 `content` 精确匹配已有项（防重复追加）；仍未知则追加。
 3. `merge=false`：整板替换；`revision` 仍单调递增。
 4. 返回工具结果 JSON（供模型读）：`{ "ok": true, "revision": 4, "summary": "2/3 已完成" }`。
 5. **不上** tool 时间线独立一步（与 `manage_tasks` 元操作语义一致）；Timeline 只更新 **`tasks` 聚合步**。
 
-Hook 集成：`PreActing` / `PostActing` 对 `manage_tasks` **跳过**常规 tool 步，改由 `TaskBoardTimelineSupport` 发射 `tasks` 步。
+**Hook 集成**（`ProcessingStepHook` + `TimelineSessionCompletions`）：
+
+| 事件 | 行为 |
+|------|------|
+| `PreActing` / `PostActing` | 对 `manage_tasks` **跳过**常规 tool 步 |
+| `PostReasoning` | 记录 `lastCompletedThinkId` / `lastCompletedThinkEndedAt` |
+| 首次 `updateTaskBoard` | `tasks.startedAt = think.endedAt + 1`，锚定在**刚结束的规划推理**之后（不随 `manage_tasks` 实际调用时刻漂移） |
+| 后续 `updateTaskBoard` | 仅刷新 `metadata.tasks` / revision，**不改** `startedAt` |
+
+**提示词 vs Hook 职责**（**禁止**在 prompt 写调用顺序）：
+
+| 层 | 负责 |
+|----|------|
+| **Nacos `mode-overlays.react`** | 是否建板（多步问题）；何时更新 status（语义引导） |
+| **Hook + Timeline + `ReactTaskBoardService`** | `tasks` 聚合步；think 锚点；跳过 manage_tasks tool 行；merge / 去重 / in_progress 门禁 |
+| **ReAct 模型** | 是否发起 `manage_tasks`、清单内容与 status（引擎不强制每轮 acting 必先 manage_tasks） |
 
 ---
 
@@ -181,14 +196,14 @@ Hook 集成：`PreActing` / `PostActing` 对 `manage_tasks` **跳过**常规 too
 ReAct 成功路径（TaskBoard 开启）：
 
 ```
-intent → tasks → think → tool-* → think-2 → … → generate
+intent → think → tasks → tool-* → think-2 → … → generate
 ```
 
 | 步 id | phase | 说明 |
 |-------|-------|------|
-| `tasks` | `tasks` | **唯一**任务清单步；每次 `manage_tasks` 全量刷新 `metadata.tasks` |
-| `think` / `think-{n}` | `think` | 不变；reasoning 仍走 step_delta |
-| `tool-*` | `tool` | 不变 |
+| `think` / `think-{n}` | `think` | 规划推理 / 工具后综合分析；**无业务 tool 间隔**的连续 reasoning 由 Hook **复用**同一 think，避免终态堆叠多个「综合分析」 |
+| `tasks` | `tasks` | **唯一**任务清单步；每次 `manage_tasks` 全量刷新 `metadata.tasks`；**首建**锚定在刚结束的 `think` 之后 |
+| `tool-*` | `tool` | 业务工具；`manage_tasks` **不**产生 tool 步 |
 | `generate` | `generate` | 不变 |
 
 **门控**：
@@ -243,12 +258,13 @@ SSE `type:step` 示例：
 | 项 | 约定 |
 |----|------|
 | 组件 | `TaskBoardPanel.vue`，由 `OperationStack` 在 `phase===tasks` 时渲染 |
-| 展示 | Checkbox 风格只读列表；`in_progress` 高亮；**不**允许用户拖拽改序 |
-| 文案 | 用 SSE `step.label` + `summary.*`；**禁止**前端 `TASK_STATUS_LABELS` 硬编码 |
-| 排序 | 按 `items` 数组顺序；completed 不自动沉底（保持模型意图） |
+| 展示 | 只读 checklist；`in_progress` 高亮；**不**允许用户拖拽改序 |
+| 文案 | 用 SSE `step.label` + `summary.*`；**禁止**前端状态文案 Map |
+| 排序 | 步骤按 SSE `startedAt`；`tasks` 锚点由 **后端 Hook** 写入，**禁止**前端 sort hack |
+| items 顺序 | 按 `metadata.tasks` 数组顺序；completed 不自动沉底 |
 | Plan 共存 | 有 `planId` 时只展示 `PlanWorkflowPanel`；**不**渲染 TaskBoard |
 
-`processingSteps.ts`：`STEP_ORDER` 在 `intent` 之后插入 `tasks`（在 `plan` 之后、`think` 之前）。
+`processingSteps.ts`：`STEP_ORDER` 含 `tasks`（tie-break：`think` 与 `tasks` 以 `startedAt` 为准）。
 
 ---
 
@@ -298,7 +314,7 @@ agent:
         - 超时/不可用：改参或换工具再试一次，禁止相同参数连调。
         - 参数校验失败：按报错补参后再调。
         - 0 条或无数据：改写 query 再试一次，仍无效则收束作答。
-        - 【TaskBoard】当用户问题隐含 2 步及以上（查、比、汇总、多工具）时，先调用 manage_tasks 列出任务再执行；每完成一步将对应项标为 completed，下一步标 in_progress；路径变化时可增删任务。
+        - 【TaskBoard】用户问题隐含 2 步及以上（查、比、汇总、多工具）时调用 `manage_tasks` 建板；执行过程中用 `manage_tasks` 更新各任务 status（completed / in_progress / pending）。
   timeline:
     intent:
       modes:
@@ -314,7 +330,7 @@ agent:
   execution:
     react:
       tools: [search_knowledge, list_finance_messages, ...]
-      max-iters: 5
+      max-iters: 20   # SSOT：ReActAgentFactory 读 agent.execution.react.max-iters
       taskboard:
         enabled: true
         max-items: 12
@@ -344,7 +360,7 @@ agent:
 | 编号 | 内容 | 产出 |
 |------|------|------|
 | **4.7.5a** | `ManageTasksTool` + `ReactTaskBoardService` + Redis store | orchestrator + 单测 |
-| **4.7.5b** | `DynamicToolkitFactory` 条件注册 + `TaskBoardTimelineSupport` + Hook 跳过 tool 步 | Timeline SSE + `ProcessingTimelineSessionTest` |
+| **4.7.5b** | `DynamicToolkitFactory` 条件注册 + `TaskBoardTimelineSupport` + Hook 跳过 tool 步 + think 锚点 | Timeline SSE + `ProcessingTimelineSessionTest` |
 | **4.7.5c** | Flyway `react_task_board` + `ReactTaskBoardAuditService` + `GET /api/audit/taskboard/{messageId}` | 审计可查 |
 | **4.7.5d** | 前端 `TaskBoardPanel` + `processingSteps.ts` STEP_ORDER | sunshine-ui |
 | **4.7.5e** | Nacos overlay + golden-set §F + `ReactTaskBoardTest` / demo 脚本扩展 | 验收 |
@@ -378,7 +394,7 @@ agent:
 ### 9.4 单测
 
 ```bash
-mvn test -pl orchestrator -Dtest=ReactTaskBoardTest,ManageTasksToolTest,ProcessingTimelineSessionTest,RoutingGoldenSetTest
+mvn test -pl orchestrator -Dtest=ReactTaskBoardTest,ManageTasksToolTest,ProcessingTimelineSessionTest#updateTaskBoard_anchorsAfterThinkEvenWhenManageTasksLate,RoutingGoldenSetTest
 ```
 
 ### 9.5 演示脚本（可选）
@@ -395,8 +411,9 @@ mvn test -pl orchestrator -Dtest=ReactTaskBoardTest,ManageTasksToolTest,Processi
 | 与 Plan 边界 | 成功 plan-workflow **禁止**出现 `tasks`；TaskBoard **禁止** DAG 字段 |
 | 与 Peer 边界 | `peer-collab` **禁止** TaskBoard |
 | 元工具 | `manage_tasks` orchestrator 内置，**不**进 tool-manager Catalog |
-| Timeline | 单步 `tasks` 聚合更新；**禁止**每次 manage_tasks 单独 tool 步 |
-| 提示词 | TaskBoard 行为 **仅** Nacos `mode-overlays.react` + tool description |
+| Timeline | 单步 `tasks` 聚合更新；**禁止**每次 manage_tasks 单独 tool 步；**首建**锚定刚结束的 `think`（Hook，非 prompt / 前端 sort） |
+| 提示词 | **仅**是否建板、何时更新 status（`mode-overlays.react`）；**禁止**写 think/tool/manage_tasks 先后顺序 |
+| 引擎 merge | `merge=true` 无 `id` 时按 `content` 匹配更新（`ReactTaskBoardService`） |
 | 降级 | plan → react 可文本摘要预填；**禁止** Planner JSON 自动转 DAG todo |
 
 完整条目见 [locked-architecture-decisions.md §D11](./2026-06-19-locked-architecture-decisions.md#d11-react-taskboard软规划阶段四)。
@@ -408,7 +425,9 @@ mvn test -pl orchestrator -Dtest=ReactTaskBoardTest,ManageTasksToolTest,Processi
 | 风险 | 缓解 |
 |------|------|
 | 与 plan-workflow UI 混淆 | `planId=` 门控互斥；文案区分「执行计划 DAG」vs「任务清单」 |
-| 模型不写 todo | Nacos overlay 强引导；评测 iter 次数 / 完成率 |
+| 模型先调业务 tool 再 manage_tasks | Hook 首建锚定 `think.endedAt`；Timeline 仍展示在规划推理下方 |
+| 终态连续多轮 reasoning 无 tool | Hook 复用同一 `think` 步，避免堆叠多个「综合分析」 |
+| merge 未带 id 导致重复项 | 引擎 `content` 匹配合并；revision 幂等 |
 | todo 过多占 context | `max-items` + 工具返回截断提示 |
 | 双规划（think 写计划 + tasks） | 允许；`tasks` 为 SSOT 进度，think 为推理过程 |
 | max-iters 内做不完 | 终态 board 持久化；下轮会话 **不**自动续板（除非 STM 引用了上轮摘要） |

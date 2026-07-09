@@ -22,9 +22,6 @@ public class ExpertPeerAgentFactory {
     private final ToolCatalogService toolCatalogService;
     private final ReActAgentFactory reactAgentFactory;
 
-    @Value("${agent.max-iters:5}")
-    private int maxIters;
-
     @Value("${agent.model.name:deepseek-v4-pro}")
     private String modelName;
 
@@ -62,6 +59,6 @@ public class ExpertPeerAgentFactory {
     }
 
     private int resolveMaxIters(AgentRunRequest request) {
-        return request.maxIters() > 0 ? request.maxIters() : maxIters;
+        return reactAgentFactory.resolveMaxIters(request);
     }
 }

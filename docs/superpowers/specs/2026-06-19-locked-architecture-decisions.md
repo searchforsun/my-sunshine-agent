@@ -335,8 +335,11 @@ public enum ExecutionMode {
 - **禁止**将 TaskBoard 做成 mini-DAG（无 `edges` / 节点 type / 工具绑定）；跨域结构化流水线仍走 **D1 `PLAN_WORKFLOW`**。
 - 元工具 **`manage_tasks`** 由 orchestrator 内置注册（类 `RagTool`）；**不**进入 tool-manager Catalog；**不**占用 Nacos `react.tools` 白名单槽位。
 - Timeline：**唯一** `tasks` 步聚合清单；`manage_tasks` **不**单独产生 tool 步；与 `plan` + `node-*` **互斥**（`planId=` 门控）。
+- **展示锚点**：`PostReasoning` 记录 think 结束时刻；**首次** `updateTaskBoard` 将 `tasks.startedAt` 锚定在对应 `think` 之后（Hook / Timeline，**非** prompt 顺序约束、**非**前端 sort hack）。
 - **`peer-collab`（D10）** 成功路径 **禁止** TaskBoard。
-- 行为引导 **仅** Nacos `agent.prompt.mode-overlays.react` + tool schema；plan 降级 ReAct 时 **禁止** 将 Planner JSON 自动转为 DAG todo。
+- **提示词**（`mode-overlays.react`）：**仅**是否建板、何时更新 status；**禁止**写 think → manage_tasks → tool 调用顺序（ReAct 工具顺序由模型决定，Timeline 展示由 Hook 修正）。
+- **引擎**（`ReactTaskBoardService`）：`merge=true` 无 `id` 时按 `content` 匹配合并，防重复项。
+- plan 降级 ReAct 时 **禁止** 将 Planner JSON 自动转为 DAG todo。
 
 详设 SSOT：[2026-06-24-react-taskboard-design.md](./2026-06-24-react-taskboard-design.md) · 验收 [routing-golden-set.md](../../routing/routing-golden-set.md) §F。
 
