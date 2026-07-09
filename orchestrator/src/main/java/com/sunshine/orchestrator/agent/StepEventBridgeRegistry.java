@@ -30,6 +30,7 @@ public class StepEventBridgeRegistry {
     private final Map<String, String> hitlAssistantByBridge = new ConcurrentHashMap<>();
     private final Map<String, String> mainRunByMessage = new ConcurrentHashMap<>();
     private final Map<String, String> toolUseBridge = new ConcurrentHashMap<>();
+    private final Map<String, String> toolUseStep = new ConcurrentHashMap<>();
     private final Map<String, String> hitlPreapproved = new ConcurrentHashMap<>();
     private final Map<String, Function<StreamToken, List<StreamToken>>> tokenWrappers = new ConcurrentHashMap<>();
     private final Map<String, FlushBinding> generationFlush = new ConcurrentHashMap<>();
@@ -57,6 +58,7 @@ public class StepEventBridgeRegistry {
         hitlAssistantByBridge.clear();
         mainRunByMessage.clear();
         toolUseBridge.clear();
+        toolUseStep.clear();
         hitlPreapproved.clear();
         tokenWrappers.clear();
         generationFlush.clear();
@@ -242,7 +244,21 @@ public class StepEventBridgeRegistry {
     public void unbindToolUseBridge(String toolUseId) {
         if (toolUseId != null && !toolUseId.isBlank()) {
             toolUseBridge.remove(toolUseId.strip());
+            toolUseStep.remove(toolUseId.strip());
         }
+    }
+
+    public void bindToolUseStep(String toolUseId, String stepId) {
+        if (toolUseId != null && !toolUseId.isBlank() && stepId != null && !stepId.isBlank()) {
+            toolUseStep.put(toolUseId.strip(), stepId.strip());
+        }
+    }
+
+    public String stepIdForToolUse(String toolUseId) {
+        if (toolUseId == null || toolUseId.isBlank()) {
+            return null;
+        }
+        return toolUseStep.get(toolUseId.strip());
     }
 
     public String bridgeIdForToolUse(String toolUseId) {

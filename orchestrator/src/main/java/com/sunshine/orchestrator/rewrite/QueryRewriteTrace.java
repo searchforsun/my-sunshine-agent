@@ -14,6 +14,11 @@ import java.util.stream.Collectors;
 public final class QueryRewriteTrace {
 
     private static final Map<String, List<QueryRewriteOutcome>> TRACES = new ConcurrentHashMap<>();
+    /** RAG 步骤 id → 本次 search_knowledge RPC 在 trace 中的 [start, end) 切片 */
+    private static final Map<String, RagSpan> RAG_SPANS_BY_STEP = new ConcurrentHashMap<>();
+
+    public record RagSpan(int startIndex, int endIndex) {
+    }
 
     private QueryRewriteTrace() {
     }
@@ -93,21 +98,64 @@ public final class QueryRewriteTrace {
 
     /** 仅拼接自 {@code fromIndex} 起新增的 RAG 相关改写（多次 search_knowledge 互不叠加） */
     public static String combinedRagTimelineDetailSince(String messageId, int fromIndex) {
+        return combinedRagTimelineDetailBetween(messageId, fromIndex, size(messageId));
+    }
+
+    /** 拼接 trace 中 {@code [fromIndex, toIndex)} 区间的 RAG 相关改写 */
+    public static String combinedRagTimelineDetailBetween(String messageId, int fromIndex, int toIndex) {
         List<QueryRewriteOutcome> all = all(messageId);
         if (fromIndex < 0) {
             fromIndex = 0;
         }
-        if (fromIndex >= all.size()) {
+        if (toIndex > all.size()) {
+            toIndex = all.size();
+        }
+        if (fromIndex >= toIndex) {
             return joinTimelineDetails(List.of());
         }
-        List<QueryRewriteOutcome> ragOnly = all.subList(fromIndex, all.size()).stream()
+        List<QueryRewriteOutcome> ragOnly = all.subList(fromIndex, toIndex).stream()
                 .filter(o -> QueryRewriteScenario.isRagRelated(o.scenario()))
                 .collect(Collectors.toList());
         return joinTimelineDetails(ragOnly);
     }
 
+    /** search_knowledge RPC 入口 — 记录 trace 起点（并行调用各自独立切片） */
+    public static void beginRagSpan(String stepId, String messageId) {
+        if (stepId == null || stepId.isBlank() || messageId == null || messageId.isBlank()) {
+            return;
+        }
+        int start = size(messageId);
+        RAG_SPANS_BY_STEP.put(stepId.strip(), new RagSpan(start, start));
+    }
+
+    /** search_knowledge RPC 出口 — 闭合 trace 终点 */
+    public static void endRagSpan(String stepId, String messageId) {
+        if (stepId == null || stepId.isBlank() || messageId == null || messageId.isBlank()) {
+            return;
+        }
+        String key = stepId.strip();
+        RagSpan span = RAG_SPANS_BY_STEP.get(key);
+        if (span == null) {
+            return;
+        }
+        RAG_SPANS_BY_STEP.put(key, new RagSpan(span.startIndex(), size(messageId)));
+    }
+
+    public static java.util.Optional<RagSpan> ragSpan(String stepId) {
+        if (stepId == null || stepId.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.ofNullable(RAG_SPANS_BY_STEP.get(stepId.strip()));
+    }
+
     /** 自 {@code fromIndex} 起最后一次指定场景的改写 */
     public static Optional<QueryRewriteOutcome> latestSince(String messageId, String scenario, int fromIndex) {
+        return latestBetween(messageId, scenario, fromIndex, size(messageId));
+    }
+
+    /** {@code [fromIndex, toIndex)} 区间内最后一次指定场景的改写 */
+    public static Optional<QueryRewriteOutcome> latestBetween(
+            String messageId, String scenario, int fromIndex, int toIndex) {
         if (messageId == null || scenario == null) {
             return Optional.empty();
         }
@@ -118,7 +166,8 @@ public final class QueryRewriteTrace {
         QueryRewriteOutcome found = null;
         synchronized (list) {
             int start = Math.max(0, fromIndex);
-            for (int i = start; i < list.size(); i++) {
+            int end = Math.min(toIndex, list.size());
+            for (int i = start; i < end; i++) {
                 QueryRewriteOutcome outcome = list.get(i);
                 if (scenario.equals(outcome.scenario())) {
                     found = outcome;
@@ -149,6 +198,13 @@ public final class QueryRewriteTrace {
     public static void clear(String messageId) {
         if (messageId != null) {
             TRACES.remove(messageId);
+        }
+    }
+
+    /** 移除单步 RAG span（completeAt 后） */
+    public static void clearRagSpan(String stepId) {
+        if (stepId != null && !stepId.isBlank()) {
+            RAG_SPANS_BY_STEP.remove(stepId.strip());
         }
     }
 

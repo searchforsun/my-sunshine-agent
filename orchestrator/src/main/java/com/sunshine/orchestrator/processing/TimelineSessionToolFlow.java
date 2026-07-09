@@ -36,6 +36,18 @@ final class TimelineSessionToolFlow {
         state.currentToolStepId = null;
     }
 
+    void completeToolStepForToolUse(String toolUseId, String detail) {
+        String stepId = com.sunshine.orchestrator.agent.StepEventBridge.stepIdForToolUse(toolUseId);
+        if (stepId == null) {
+            completeToolStep(detail);
+            return;
+        }
+        lifecycle.completeAt(stepId, detail, System.currentTimeMillis());
+        if (stepId.equals(state.currentToolStepId)) {
+            state.currentToolStepId = null;
+        }
+    }
+
     void skipCurrentToolStep(String afterSummary) {
         if (state.currentToolStepId == null) {
             return;

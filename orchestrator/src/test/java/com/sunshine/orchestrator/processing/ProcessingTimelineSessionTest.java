@@ -376,6 +376,48 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void completeToolStep_parallelRagSpan_eachStepGetsOwnRewrite() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindTraceMessageId("msg-par2");
+        QueryRewriteTrace.bind("msg-par2");
+
+        String rag1 = session.beginToolStep("rag", "rag");
+        String rag2 = session.beginToolStep("rag", "rag");
+        String rag3 = session.beginToolStep("rag", "rag");
+
+        QueryRewriteTrace.beginRagSpan(rag1, "msg-par2");
+        QueryRewriteTrace.record("msg-par2",
+                QueryRewriteOutcome.of("rag", "q1", "rewrite-q1", 10L, "优化检索词"));
+        QueryRewriteTrace.endRagSpan(rag1, "msg-par2");
+
+        QueryRewriteTrace.beginRagSpan(rag2, "msg-par2");
+        QueryRewriteTrace.record("msg-par2",
+                QueryRewriteOutcome.of("rag", "q2", "rewrite-q2", 11L, "优化检索词"));
+        QueryRewriteTrace.endRagSpan(rag2, "msg-par2");
+
+        QueryRewriteTrace.beginRagSpan(rag3, "msg-par2");
+        QueryRewriteTrace.record("msg-par2",
+                QueryRewriteOutcome.of("rag", "q3", "rewrite-q3", 12L, "优化检索词"));
+        QueryRewriteTrace.endRagSpan(rag3, "msg-par2");
+
+        session.completeAt(rag1, "命中 1 条", System.currentTimeMillis());
+        session.completeAt(rag2, "命中 2 条", System.currentTimeMillis());
+        session.completeAt(rag3, "命中 3 条", System.currentTimeMillis());
+
+        ProcessingStep first = session.snapshot().stream()
+                .filter(s -> rag1.equals(s.id())).findFirst().orElseThrow();
+        ProcessingStep second = session.snapshot().stream()
+                .filter(s -> rag2.equals(s.id())).findFirst().orElseThrow();
+        ProcessingStep third = session.snapshot().stream()
+                .filter(s -> rag3.equals(s.id())).findFirst().orElseThrow();
+        assertThat(first.detail()).contains("rewrite-q1").doesNotContain("rewrite-q2", "rewrite-q3");
+        assertThat(second.detail()).contains("rewrite-q2").doesNotContain("rewrite-q1", "rewrite-q3");
+        assertThat(third.detail()).contains("rewrite-q3").doesNotContain("rewrite-q1", "rewrite-q2");
+
+        QueryRewriteTrace.clear("msg-par2");
+    }
+
+    @Test
     void beginToolStep_producesDistinctIdsWithinSameMillisecond() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         java.util.Set<String> ids = new java.util.LinkedHashSet<>();

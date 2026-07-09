@@ -75,25 +75,31 @@ public class ProcessingStepHook implements Hook {
             StepEventBridge.bindToolUseBridge(toolUseId, bridgeId);
             String baseStepId = toolCatalogService.timelineStepId(toolName);
             String phase = toolCatalogService.timelinePhase(toolName);
+            final String[] stepHolder = new String[1];
             StepEventBridge.emit(bridgeId, session -> {
                 session.noteToolCallPending();
-                session.beginToolStep(baseStepId, phase);
+                stepHolder[0] = session.beginToolStep(baseStepId, phase);
             });
+            if (stepHolder[0] != null) {
+                StepEventBridge.bindToolUseStep(toolUseId, stepHolder[0]);
+            }
             return Mono.just(event);
         }
 
         if (event instanceof PostActingEvent post) {
             String toolName = post.getToolUse().getName();
-            StepEventBridge.unbindToolUseBridge(post.getToolUse().getId());
+            String toolUseId = post.getToolUse().getId();
             if (ManageTasksTool.NAME.equals(toolName)) {
+                StepEventBridge.unbindToolUseBridge(toolUseId);
                 return Mono.just(event);
             }
             String detail = summarizeToolResult(toolName, post.getToolResult());
             StepEventBridge.emit(bridgeId, session -> {
-                session.completeToolStep(detail != null ? detail : toolCatalogService.summarizeOutput(toolName, ""));
+                session.completeToolStepForToolUse(toolUseId, detail != null ? detail : toolCatalogService.summarizeOutput(toolName, ""));
                 session.recordToolCompleted(toolCatalogService.displayName(toolName));
                 session.noteToolCallDone();
             });
+            StepEventBridge.unbindToolUseBridge(toolUseId);
             return Mono.just(event);
         }
 

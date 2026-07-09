@@ -70,6 +70,10 @@ public final class ProcessingTimelineSession {
         tools.completeToolStep(detail);
     }
 
+    public void completeToolStepForToolUse(String toolUseId, String detail) {
+        tools.completeToolStepForToolUse(toolUseId, detail);
+    }
+
     public void skipCurrentToolStep(String afterSummary) {
         tools.skipCurrentToolStep(afterSummary);
     }

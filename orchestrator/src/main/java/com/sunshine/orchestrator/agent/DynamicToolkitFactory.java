@@ -58,7 +58,7 @@ public class DynamicToolkitFactory {
                 continue;
             }
             if (toolCatalogService.isRagTool(toolName)) {
-                tk.registerTool(ragTool);
+                tk.registerAgentTool(ragTool);
                 registered.add(toolName);
                 continue;
             }

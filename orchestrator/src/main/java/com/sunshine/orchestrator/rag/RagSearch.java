@@ -20,12 +20,32 @@ public final class RagSearch {
             String kbId,
             String tenantId,
             String traceMessageId) {
+        return searchMono(ragClient, kbResolver, query, topK, kbId, tenantId, traceMessageId, null);
+    }
+
+    public static Mono<List<RagClient.RagHit>> searchMono(
+            RagClient ragClient,
+            DefaultKbResolver kbResolver,
+            String query,
+            Integer topK,
+            String kbId,
+            String tenantId,
+            String traceMessageId,
+            String ragStepId) {
+        if (ragStepId != null && traceMessageId != null) {
+            QueryRewriteTrace.beginRagSpan(ragStepId, traceMessageId);
+        }
         String tid = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         boolean includeTrace = traceMessageId != null && !traceMessageId.isBlank();
         return kbResolver.resolve(tid, kbId)
                 .flatMap(resolvedKb -> ragClient.searchKnowledge(query, topK, tid, resolvedKb, null, includeTrace)
                         .doOnNext(result -> recordTrace(traceMessageId, result))
-                        .map(RagClient.RagSearchResult::hits));
+                        .map(RagClient.RagSearchResult::hits))
+                .doFinally(signal -> {
+                    if (ragStepId != null && traceMessageId != null) {
+                        QueryRewriteTrace.endRagSpan(ragStepId, traceMessageId);
+                    }
+                });
     }
 
     public static List<RagClient.RagHit> searchBlocking(
@@ -36,7 +56,19 @@ public final class RagSearch {
             String kbId,
             String tenantId,
             String traceMessageId) {
-        return searchMono(ragClient, kbResolver, query, topK, kbId, tenantId, traceMessageId)
+        return searchBlocking(ragClient, kbResolver, query, topK, kbId, tenantId, traceMessageId, null);
+    }
+
+    public static List<RagClient.RagHit> searchBlocking(
+            RagClient ragClient,
+            DefaultKbResolver kbResolver,
+            String query,
+            Integer topK,
+            String kbId,
+            String tenantId,
+            String traceMessageId,
+            String ragStepId) {
+        return searchMono(ragClient, kbResolver, query, topK, kbId, tenantId, traceMessageId, ragStepId)
                 .blockOptional()
                 .orElse(List.of());
     }

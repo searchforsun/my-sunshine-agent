@@ -1,7 +1,9 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteScenario;
+import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 
 /** intent / plan / skill / RAG 等阶段完成逻辑 */
@@ -129,12 +131,24 @@ final class TimelineSessionCompletions {
         }
         String after = summaries.resolveAfter(stepId, summaryLine, metadata);
         Integer baseline = state.ragRewriteBaselineByStep.remove(stepId);
-        int rewriteFromIndex = baseline != null ? baseline : 0;
-        String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace
-                .combinedRagTimelineDetailSince(state.traceMessageId, rewriteFromIndex);
+        int rewriteFromIndex;
+        int rewriteToIndex;
+        java.util.Optional<QueryRewriteTrace.RagSpan> ragSpan = QueryRewriteTrace.ragSpan(stepId);
+        if (ragSpan.isPresent()) {
+            rewriteFromIndex = ragSpan.get().startIndex();
+            rewriteToIndex = ragSpan.get().endIndex();
+            QueryRewriteTrace.clearRagSpan(stepId);
+        } else {
+            rewriteFromIndex = baseline != null ? baseline : 0;
+            rewriteToIndex = state.traceMessageId != null
+                    ? QueryRewriteTrace.size(state.traceMessageId)
+                    : rewriteFromIndex;
+        }
+        String rewriteDetail = QueryRewriteTrace
+                .combinedRagTimelineDetailBetween(state.traceMessageId, rewriteFromIndex, rewriteToIndex);
         String storedDetail;
         if (ToolStepIds.isRagStep(stepId) || TimelineSessionSummaries.isWorkflowRagNode(stepId)) {
-            metadata = mergeRagRewriteMetadataSince(metadata, rewriteFromIndex);
+            metadata = mergeRagRewriteMetadataBetween(metadata, rewriteFromIndex, rewriteToIndex);
             storedDetail = resolveRagStoredDetail(stepId, summaryLine, rewriteDetail);
             if (rewriteDetail != null && !rewriteDetail.isBlank()) {
                 metadata = StepMetadata.withRagExpandLayout(metadata);
@@ -183,29 +197,37 @@ final class TimelineSessionCompletions {
         }
         if (ToolStepIds.isRagStep(stepId) || TimelineSessionSummaries.isWorkflowRagNode(stepId)) {
             state.ragRewriteBaselineByStep.put(stepId,
-                    com.sunshine.orchestrator.rewrite.QueryRewriteTrace.size(state.traceMessageId));
+                    QueryRewriteTrace.size(state.traceMessageId));
         }
+    }
+
+    private StepMetadata mergeRagRewriteMetadataBetween(StepMetadata metadata, int fromIndex, int toIndex) {
+        if (state.traceMessageId == null) {
+            return metadata;
+        }
+        QueryRewriteOutcome ragRewrite =
+                QueryRewriteTrace.latestBetween(
+                        state.traceMessageId, QueryRewriteScenario.RAG.id(), fromIndex, toIndex)
+                        .orElse(null);
+        QueryRewriteOutcome hydeRewrite =
+                QueryRewriteTrace.latestBetween(
+                        state.traceMessageId, QueryRewriteScenario.HYDE.id(), fromIndex, toIndex)
+                        .orElse(null);
+        QueryRewriteOutcome emptyRewrite =
+                QueryRewriteTrace.latestBetween(
+                        state.traceMessageId, QueryRewriteScenario.EMPTY_RECALL.id(), fromIndex, toIndex)
+                        .orElse(null);
+        StepMetadata merged = StepMetadata.mergeRewrite(metadata, ragRewrite);
+        merged = StepMetadata.mergeRewrite(merged, hydeRewrite);
+        return StepMetadata.mergeRewrite(merged, emptyRewrite);
     }
 
     private StepMetadata mergeRagRewriteMetadataSince(StepMetadata metadata, int fromIndex) {
         if (state.traceMessageId == null) {
             return metadata;
         }
-        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome ragRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(
-                        state.traceMessageId, QueryRewriteScenario.RAG.id(), fromIndex)
-                        .orElse(null);
-        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome hydeRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(
-                        state.traceMessageId, QueryRewriteScenario.HYDE.id(), fromIndex)
-                        .orElse(null);
-        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome emptyRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.latestSince(
-                        state.traceMessageId, QueryRewriteScenario.EMPTY_RECALL.id(), fromIndex)
-                        .orElse(null);
-        StepMetadata merged = StepMetadata.mergeRewrite(metadata, ragRewrite);
-        merged = StepMetadata.mergeRewrite(merged, hydeRewrite);
-        return StepMetadata.mergeRewrite(merged, emptyRewrite);
+        int toIndex = QueryRewriteTrace.size(state.traceMessageId);
+        return mergeRagRewriteMetadataBetween(metadata, fromIndex, toIndex);
     }
 
     private static boolean containsRawRagBody(String detail) {

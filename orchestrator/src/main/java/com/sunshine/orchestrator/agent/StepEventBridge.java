@@ -147,6 +147,14 @@ public final class StepEventBridge {
         registry.bindToolUseBridge(toolUseId, bridgeId);
     }
 
+    public static void bindToolUseStep(String toolUseId, String stepId) {
+        registry.bindToolUseStep(toolUseId, stepId);
+    }
+
+    public static String stepIdForToolUse(String toolUseId) {
+        return registry.stepIdForToolUse(toolUseId);
+    }
+
     public static void unbindToolUseBridge(String toolUseId) {
         registry.unbindToolUseBridge(toolUseId);
     }
