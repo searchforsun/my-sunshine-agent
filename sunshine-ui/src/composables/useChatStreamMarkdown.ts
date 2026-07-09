@@ -100,11 +100,6 @@ export function useChatStreamMarkdown(
       await ensureStreamRenderer()
       return
     }
-    if (forceChatScroll.value) {
-      forceChatScroll.value = false
-      await nextTick()
-      scrollToBottom(true)
-    }
     if (streamRenderer) {
       streamRenderer.finish()
       const last = messages.value[messages.value.length - 1]
@@ -118,6 +113,11 @@ export function useChatStreamMarkdown(
       }
       streamRenderer = null
       nextTick(() => enhanceAllStaticMarkdown())
+    }
+    if (forceChatScroll.value) {
+      forceChatScroll.value = false
+      await nextTick()
+      scrollToBottom(true)
     }
   }, { flush: 'sync' })
 

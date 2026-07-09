@@ -30,6 +30,7 @@ import {
 } from './processingStepsPause'
 import { isExecutionRestartMessage, isReactAssistantMessage, resolveResumeMode } from './resumeMode'
 import { normalizeRestoredInterleavedContent, stripPlanDrawerLeakFromMessage } from './contentInterleave'
+import { notifyCompletedIfNeeded } from './conversationAttentionNotify'
 import {
   getOrCreateSession,
   getSessionRegistry,
@@ -182,6 +183,7 @@ export function useChatSessions(
         }
         if (last?.role === 'assistant' && last.status === 'completed') {
           normalizeRestoredInterleavedContent(last)
+          notifyCompletedIfNeeded(sessionId, last)
           clearActiveGenerationIfMatch(sessionId)
           s.generationId = undefined
         }
@@ -266,12 +268,13 @@ export function useChatSessions(
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
-        const streamDone = (target.status as ChatMessage['status']) === 'completed'
-        if (target.status === 'streaming') {
+        const endStatus = target.status as ChatMessage['status']
+        if (endStatus === 'streaming') {
           hydrateStreamError(target)
           target.status = target.streamError ? 'failed' : 'interrupted'
-        }
-        if (streamDone) {
+        } else if (endStatus === 'completed') {
+          normalizeRestoredInterleavedContent(target)
+          notifyCompletedIfNeeded(conversationId, target)
           clearActiveGenerationIfMatch(conversationId)
           s.generationId = undefined
         }
@@ -337,6 +340,8 @@ export function useChatSessions(
         s.loading = false
         if (target.status === 'streaming') target.status = 'completed'
         if (target.status === 'completed') {
+          normalizeRestoredInterleavedContent(target)
+          notifyCompletedIfNeeded(conversationId, target)
           clearActiveGenerationIfMatch(conversationId)
           s.generationId = undefined
         }

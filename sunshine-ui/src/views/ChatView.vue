@@ -42,6 +42,9 @@ import { useTenantPreference } from '../composables/useTenantPreference'
 import { allowsExpertMention, allowsSkillMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
+import { useConversationAttention } from '../composables/useConversationAttention'
+import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
+import { useChatViewport } from '../composables/useChatViewport'
 
 const sessionHydrating = ref(true)
 const hljs = registerHljsLanguages()
@@ -63,14 +66,24 @@ const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 const currentConversationId = computed(() => chatStore.currentId)
 
 const {
+  clearAttention,
+  consumeScrollRequest,
+} = useConversationAttention()
+const { resolveIndicator } = useConversationSidebarIndicator()
+const {
+  setChatRouteActive,
+  setActiveConversation,
+  setScrollPinned,
+} = useChatViewport()
+
+const {
   messages, streamRevision, loading, send, resume, reconnectStream, stop,
   ensureActive, getMessages, setMessages, migrateSession, destroySession,
   applyHitlDecision,
   applyRecoveryDecision,
 } = useChatSessions(
   (sid: string, _chunk: string) => {
-    const cid = chatStore.currentId ?? sid
-    if (cid !== chatStore.currentId && sid !== chatStore.currentId) return
+    if (sid !== chatStore.currentId) return
     const last = messages.value[messages.value.length - 1]
     if (last?.role !== 'assistant') return
     if (isContentFullyInterleaved(last)) return
@@ -80,14 +93,14 @@ const {
     void bridge.ensureStreamRenderer().then(apply)
   },
   (id: string) => {
-    const cid = chatStore.currentId ?? id
-    hydrationBridge.flushPersist(cid)
-    chatStore.syncMessages(cid, getMessages(cid))
+    hydrationBridge.flushPersist(id)
+    chatStore.syncMessages(id, getMessages(id))
   },
-  (id: string) => {
-    const cid = chatStore.currentId ?? id
-    hydrationBridge.schedulePersist(cid)
-    chatStore.syncMessages(cid, getMessages(cid))
+  (sessionId: string) => {
+    chatStore.syncMessages(sessionId, getMessages(sessionId))
+    if (sessionId === chatStore.currentId) {
+      hydrationBridge.schedulePersist(sessionId)
+    }
   },
   (sid: string, convId: string) => {
     if (convId !== sid) migrateSession(sid, convId)
@@ -105,8 +118,41 @@ const {
   forceChatScroll,
   onChatScroll,
   scrollToBottom,
-  pinScrollForHitl,
+  syncScrollPinned,
 } = useChatScroll(loading)
+
+watch(chatScrollPinned, pinned => {
+  setScrollPinned(pinned)
+  const cid = chatStore.currentId
+  if (pinned && cid) clearAttention(cid)
+})
+
+const attentionBubble = computed(() => {
+  const cid = chatStore.currentId
+  if (!cid || chatScrollPinned.value) return null
+  void streamRevision.value
+  const ind = resolveIndicator(cid, chatStore.current?.messages)
+  if (ind !== 'hitl_pending' && ind !== 'completed') return null
+  return ind === 'hitl_pending'
+    ? { kind: ind, text: '待确认' }
+    : { kind: ind, text: '新回复' }
+})
+
+function handleAttentionBubbleClick(): void {
+  const cid = chatStore.currentId
+  if (!cid) return
+  chatScrollPinned.value = true
+  setScrollPinned(true)
+  scrollToBottom(true)
+  clearAttention(cid)
+}
+
+function scrollToBottomIfRequested(convId: string): void {
+  if (!consumeScrollRequest(convId)) return
+  chatScrollPinned.value = true
+  setScrollPinned(true)
+  void nextTick(() => scrollToBottom(true))
+}
 
 const {
   resolveTimelineContext,
@@ -195,8 +241,6 @@ const latestAssistantMessage = computed(() => {
 
 function handleHitlDecision(token: string, approved: boolean) {
   applyHitlDecision(token, approved)
-  pinScrollForHitl()
-  void nextTick(() => scrollToBottom(true))
 }
 
 provide('applyHitlDecision', handleHitlDecision)
@@ -326,7 +370,6 @@ async function handleSend() {
     settledHtml.value = ''
     sessionSettledHtml.delete(convId)
     clearStreamRenderer()
-    chatScrollPinned.value = true
     await nextTick()
     const binding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
     const sendPromise = send(text, convId, {
@@ -340,7 +383,7 @@ async function handleSend() {
     await ensureStreamRenderer()
     await sendPromise
     await nextTick()
-    scrollToBottom(true)
+    scrollToBottom(false)
   } catch (e) {
     console.error('[ChatView] 发送失败', e)
     inputText.value = text
@@ -360,7 +403,7 @@ async function handleResume() {
   if (resumeMode === 'regenerate') await ensureStreamRenderer()
   await resumePromise
   await nextTick()
-  scrollToBottom()
+  scrollToBottom(false)
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -369,6 +412,7 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  setChatRouteActive(true)
   void loadSkillCatalog()
   void loadExpertCatalog()
   sessionHydrating.value = true
@@ -400,11 +444,15 @@ onMounted(async () => {
   } finally {
     sessionHydrating.value = false
   }
+  setActiveConversation(chatStore.currentId)
+  scrollToBottomIfRequested(chatStore.currentId ?? '')
   inputRef.value?.focus()
   window.addEventListener('pagehide', flushAllOnPageHide)
 })
 
 onUnmounted(() => {
+  setChatRouteActive(false)
+  setActiveConversation(null)
   window.removeEventListener('pagehide', flushAllOnPageHide)
   registerChatBody(null)
 })
@@ -415,6 +463,7 @@ watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
 watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
+  setActiveConversation(newId)
   closePlanDrawer()
   closePlanDagExpand()
   if (oldId) {
@@ -434,6 +483,7 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   if (!loading.value) await hydrateSessionFromStore(newId)
   await nextTick()
   if (loading.value) void ensureStreamRenderer()
+  if (newId) scrollToBottomIfRequested(newId)
 }, { flush: 'post' })
 
 watch(
@@ -441,7 +491,8 @@ watch(
   async () => {
     if (!loading.value) return
     await nextTick()
-    scrollToBottom(forceChatScroll.value)
+    scrollToBottom(false)
+    syncScrollPinned()
   },
 )
 
@@ -451,7 +502,12 @@ watch(
     if (last?.role !== 'assistant') return 0
     return (last.content?.length ?? 0) + (last.reasoning?.length ?? 0)
   },
-  async () => { await nextTick(); scrollToBottom(forceChatScroll.value) },
+  async () => {
+    if (!loading.value) return
+    await nextTick()
+    scrollToBottom(false)
+    syncScrollPinned()
+  },
 )
 </script>
 <template>
@@ -611,6 +667,18 @@ watch(
     <!-- 悬浮输入区 -->
     <footer v-show="!planDagExpanded" class="chat-composer">
       <div class="composer-inner">
+        <button
+          v-if="attentionBubble"
+          type="button"
+          class="chat-attention-bubble"
+          :class="`is-${attentionBubble.kind}`"
+          @click="handleAttentionBubbleClick"
+        >
+          <span>{{ attentionBubble.text }}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
         <div
           class="composer-box composer-box--input"
           :class="{ 'composer-box--busy': loading }"
@@ -713,6 +781,41 @@ watch(
   min-width: 0;
   display: flex;
   flex-direction: row;
+  position: relative;
+}
+
+.chat-attention-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  margin-bottom: 8px;
+  max-width: 100%;
+  padding: 5px 12px;
+  border: 1px solid var(--sun-border);
+  border-radius: 999px;
+  background: var(--sun-black);
+  color: var(--sun-text-secondary);
+  font-size: var(--sun-font-sm);
+  line-height: 1.35;
+  cursor: pointer;
+  box-shadow: var(--composer-shadow);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.chat-attention-bubble:hover {
+  border-color: var(--sun-border-light);
+  color: var(--sun-text);
+}
+
+.chat-attention-bubble.is-hitl_pending {
+  border-color: color-mix(in srgb, var(--sun-amber) 45%, var(--sun-border));
+  color: color-mix(in srgb, var(--sun-amber-light) 65%, var(--sun-text-secondary));
+}
+
+.chat-attention-bubble.is-completed {
+  border-color: color-mix(in srgb, #ef4444 40%, var(--sun-border));
+  color: color-mix(in srgb, #f87171 75%, var(--sun-text-secondary));
 }
 
 .chat-main {
@@ -994,6 +1097,9 @@ watch(
 
 .composer-inner {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   max-width: 720px;
   margin: 0 auto;
   padding-bottom: 18px;

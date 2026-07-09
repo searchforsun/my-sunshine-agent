@@ -10,10 +10,14 @@ export function useChatScroll(loading: Ref<boolean>) {
     return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
   }
 
-  function onChatScroll() {
+  function syncScrollPinned(): void {
     const el = scrollRef.value
-    if (!el || !loading.value) return
+    if (!el) return
     chatScrollPinned.value = isNearChatBottom(el)
+  }
+
+  function onChatScroll() {
+    syncScrollPinned()
   }
 
   function scrollToBottom(force = false) {
@@ -40,5 +44,7 @@ export function useChatScroll(loading: Ref<boolean>) {
     onChatScroll,
     scrollToBottom,
     pinScrollForHitl,
+    syncScrollPinned,
+    isNearChatBottom,
   }
 }

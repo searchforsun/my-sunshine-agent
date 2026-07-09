@@ -37,6 +37,7 @@ import {
   syncPlanAnswerContentFromStep,
   normalizeRestoredInterleavedContent,
 } from './contentInterleave'
+import { notifyCompletedIfNeeded, notifyHitlIfNeeded } from './conversationAttentionNotify'
 import { appendChunk, getOrCreateSession, type SessionState } from './chatSessionRegistry'
 import {
   bumpAssistantMessage,
@@ -128,6 +129,7 @@ export async function consumeChatSseStream(
             last.status = 'completed'
             last.pendingHitlConfirmation = undefined
             normalizeRestoredInterleavedContent(last)
+            notifyCompletedIfNeeded(streamConversationId ?? s.id, last)
           }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'interrupted') {
@@ -223,6 +225,7 @@ export async function consumeChatSseStream(
           lastMsg.steps = synced.steps
           lastMsg.pendingHitlConfirmation = synced.pending
           stripPlanDrawerLeakFromMessage(lastMsg)
+          notifyHitlIfNeeded(streamConversationId ?? s.id, lastMsg)
           bumpAssistantMessage(s)
         }
         hooks.onProgress?.(s.id)
@@ -287,6 +290,7 @@ export async function consumeChatSseStream(
           lastMsg.steps = synced.steps
           lastMsg.pendingHitlConfirmation = synced.pending
           stripPlanDrawerLeakFromMessage(lastMsg)
+          notifyHitlIfNeeded(streamConversationId ?? s.id, lastMsg)
           bumpAssistantMessage(s)
         }
         hooks.onProgress?.(s.id)

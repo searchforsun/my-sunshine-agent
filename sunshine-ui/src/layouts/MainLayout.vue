@@ -7,13 +7,57 @@ import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
+import { useConversationAttention } from '../composables/useConversationAttention'
+import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
 import BrandMark from '../components/BrandMark.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import UserSettingsModal from '../components/UserSettingsModal.vue'
+import ConversationSidebarList from '../components/ConversationSidebarList.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const chatStore = useChatStore()
+const {
+  attentionByConv,
+  getAttention,
+  clearAttention,
+  requestScrollToBottom,
+  pickAttentionConversation,
+} = useConversationAttention()
+const {
+  resolveIndicator,
+  navMenuIndicator,
+  pickPendingConversation,
+  pickStreamingConversation,
+} = useConversationSidebarIndicator()
+
+const menuOptions = computed((): MenuOption[] => {
+  void attentionByConv.size
+  void chatStore.conversations.map(c => c.messages?.length ?? 0)
+  const navInd = navMenuIndicator(chatStore.conversations)
+  return [
+  {
+    label: () => h('span', { class: 'nav-menu-label' }, [
+      'AI 对话',
+      navInd === 'streaming'
+        ? h('span', { class: 'nav-streaming-dot', 'aria-hidden': 'true', title: '有对话正在生成' })
+        : navInd
+          ? h('span', {
+            class: ['nav-attention-dot', `is-${navInd}`],
+            'aria-hidden': 'true',
+            title: navInd === 'hitl_pending' ? '有待确认项' : '回答已完成',
+          })
+          : null,
+    ]),
+    key: 'chat',
+    icon: renderIcon(ChatbubblesOutline),
+  },
+  { label: '知识库',  key: 'knowledge', icon: renderIcon(BookOutline) },
+  { label: 'Skills', key: 'skills', icon: renderIcon(LayersOutline) },
+  { label: '专家', key: 'experts', icon: renderIcon(PeopleOutline) },
+  { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
+]})
 
 const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'experts'])
 const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
@@ -27,15 +71,24 @@ function renderDropdownIcon(icon: Component) {
   return () => h(NIcon, { size: 16 }, { default: () => h(icon) })
 }
 
-const menuOptions: MenuOption[] = [
-  { label: 'AI 对话', key: 'chat', icon: renderIcon(ChatbubblesOutline) },
-  { label: '知识库',  key: 'knowledge', icon: renderIcon(BookOutline) },
-  { label: 'Skills', key: 'skills', icon: renderIcon(LayersOutline) },
-  { label: '专家', key: 'experts', icon: renderIcon(PeopleOutline) },
-  { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
-]
-
 function handleMenuClick(key: string) {
+  if (key === 'chat') {
+    void (async () => {
+      const targetId = pickAttentionConversation()
+        ?? pickPendingConversation(chatStore.conversations)
+        ?? pickStreamingConversation(chatStore.conversations)
+        ?? chatStore.currentId
+      if (targetId) {
+        if (getAttention(targetId) || resolveIndicator(targetId, chatStore.conversations.find(c => c.id === targetId)?.messages) === 'hitl_pending') {
+          requestScrollToBottom(targetId)
+          clearAttention(targetId)
+        }
+        await chatStore.switchTo(targetId)
+      }
+      if (route.name !== 'chat') router.push('/chat')
+    })()
+    return
+  }
   router.push(`/${key}`)
 }
 
@@ -46,7 +99,6 @@ const activeKey = computed(() => {
 const { theme, toggle: toggleTheme } = useTheme()
 const { sidebarVisible } = useSidebar()
 const isDark = computed(() => theme.value === 'dark')
-const chatStore = useChatStore()
 const dialog = useDialog()
 
 const displayNickname = computed(() => authStore.user?.nickname || '用户')
@@ -89,6 +141,10 @@ function handleNewChat() {
 
 function handleSwitchConversation(id: string) {
   void (async () => {
+    if (getAttention(id)) {
+      requestScrollToBottom(id)
+      clearAttention(id)
+    }
     await chatStore.switchTo(id)
     if (route.name !== 'chat') router.push('/chat')
   })()
@@ -197,37 +253,11 @@ onMounted(() => {
           </svg>
           新对话
         </button>
-        <div class="history-list" v-if="chatStore.sortedConversations.length > 0">
-          <div
-            v-for="conv in chatStore.sortedConversations"
-            :key="conv.id"
-            class="history-item"
-            :class="{ active: conv.id === chatStore.currentId }"
-            @click="handleSwitchConversation(conv.id)"
-          >
-            <span class="history-item-title">{{ conv.title }}</span>
-            <NDropdown
-              trigger="click"
-              size="small"
-              placement="bottom-end"
-              :options="conversationMenuOptions(conv.id)"
-              @select="handleConversationMenu"
-            >
-              <button
-                type="button"
-                class="history-item-more"
-                title="更多"
-                aria-label="更多"
-                @click.stop
-              >
-                <EllipsisHorizontal width="16" height="16" />
-              </button>
-            </NDropdown>
-          </div>
-        </div>
-        <div class="history-empty" v-else>
-          <span class="history-empty-text">暂无对话</span>
-        </div>
+        <ConversationSidebarList
+          :menu-options="conversationMenuOptions"
+          @switch="handleSwitchConversation"
+          @menu="handleConversationMenu"
+        />
       </div>
       <div v-else class="sidebar-spacer" aria-hidden="true" />
 
@@ -487,87 +517,42 @@ onMounted(() => {
   background: var(--sun-row-hover);
 }
 
-.history-list {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px solid var(--sun-border);
-}
-
-.history-item {
-  display: flex;
+.nav-menu-label {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+}
+
+.nav-attention-dot {
   flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
 }
 
-.history-item:hover { background: var(--sun-row-hover); }
-.history-item.active {
-  background: var(--sun-row-hover);
-}
-.history-item.active .history-item-title {
-  color: var(--sun-text);
-  font-weight: 500;
+.nav-attention-dot.is-hitl_pending {
+  background: var(--sun-amber);
+  box-shadow: 0 0 0 2px var(--sun-amber-glow);
 }
 
-.history-item-title {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--sun-font-base);
-  font-weight: 400;
-  color: var(--sun-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: var(--sun-line);
+.nav-attention-dot.is-completed {
+  background: #ef4444;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #ef4444 22%, transparent);
 }
 
-.history-item-more {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--sun-text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.nav-streaming-dot {
   flex-shrink: 0;
-  opacity: 0;
-  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sun-text-secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sun-text-muted) 20%, transparent);
+  animation: sidebar-stream-pulse 1.2s ease-in-out infinite;
 }
 
-.history-item:hover .history-item-more,
-.history-item.active .history-item-more {
-  opacity: 0.55;
-}
-
-.history-item-more:hover {
-  opacity: 1 !important;
-  color: var(--sun-text);
-  background: var(--sun-row-hover);
-}
-
-.history-empty {
-  margin-top: 4px;
-  padding: 20px 8px 4px;
-  text-align: center;
-  flex-shrink: 0;
-  border-top: 1px solid var(--sun-border);
-}
-
-.history-empty-text {
-  font-size: var(--sun-font-sm);
-  color: var(--sun-text-muted);
+@keyframes sidebar-stream-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1); }
 }
 
 /* --- Content --- */

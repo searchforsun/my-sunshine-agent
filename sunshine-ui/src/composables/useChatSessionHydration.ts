@@ -196,7 +196,7 @@ export function useChatSessionHydration(options: {
     }
     await nextTick()
     enhanceAllStaticMarkdown()
-    scrollToBottom()
+    scrollToBottom(false)
   }
 
   async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
