@@ -326,6 +326,17 @@ export function normalizeRestoredInterleavedContent(msg: ChatMessage): void {
   }
 }
 
+/** 是否展示 assistant 底部 msg-md（timeline 已穿插全文时隐藏，避免重复） */
+export function shouldShowAssistantBottomContent(
+  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
+): boolean {
+  if (msg.role !== 'assistant') return false
+  if (!msg.content?.trim()) return false
+  if (isPlanDrawerLeakContent(msg)) return false
+  if (isContentFullyInterleaved(msg)) return false
+  return true
+}
+
 /** 正文是否已全部挂到 timeline（可隐藏底部重复 msg-md） */
 export function isContentFullyInterleaved(msg: ChatMessage): boolean {
   if (isPlanDrawerLeakContent(msg)) return true

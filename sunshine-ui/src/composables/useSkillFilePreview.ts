@@ -39,8 +39,8 @@ export function useSkillFilePreview(deps: SkillFilePreviewDeps) {
   const mdPreviewRef = ref<HTMLElement | null>(null)
   const previewScrollRef = ref<HTMLElement | null>(null)
 
-  function bindPreviewScrollRef(el: HTMLElement | null) {
-    previewScrollRef.value = el
+  function bindPreviewScrollRef(el: unknown) {
+    previewScrollRef.value = el instanceof HTMLElement ? el : null
   }
   const copyPreviewDone = ref(false)
   const savingFile = ref(false)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ProcessingStep, TaskBoardItemView } from '../../api/processingSteps'
 import { stepLifecycle } from '../../api/processingSteps'
 
@@ -10,18 +10,35 @@ const props = withDefaults(defineProps<{
   live: false,
 })
 
+const expanded = ref(true)
+const userToggled = ref(false)
+
 const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
 const tasks = computed(() => props.step.metadata?.tasks ?? [])
 
+const doneCount = computed(() =>
+  tasks.value.filter(t => t.status === 'completed').length,
+)
+
+/** 卡片头：对齐参考图 "1 of 4 Done" */
 const progressLabel = computed(() => {
   const progress = props.step.metadata?.taskProgress?.trim()
   if (progress) return progress
-  const items = tasks.value
-  if (!items.length) return ''
-  const done = items.filter(t => t.status === 'completed').length
-  return `${done} / ${items.length} 已完成`
+  const total = tasks.value.length
+  if (!total) return ''
+  return `${doneCount.value} of ${total} Done`
 })
+
+watch(isRunning, running => {
+  if (userToggled.value) return
+  expanded.value = running
+})
+
+function toggleExpand(): void {
+  userToggled.value = true
+  expanded.value = !expanded.value
+}
 
 function itemClass(item: TaskBoardItemView): Record<string, boolean> {
   return {
@@ -46,19 +63,49 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   <div
     v-if="tasks.length"
     class="taskboard-wrap"
-    :class="{ 'is-running': isRunning && live }"
+    :class="{
+      'is-expanded': expanded,
+      'is-collapsed': !expanded,
+      'is-running': isRunning && live,
+    }"
   >
-    <span class="op-gutter" aria-hidden="true" />
-    <div class="taskboard-card">
-      <div class="taskboard-card-head">
-        <svg class="taskboard-icon" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M2 4.5h12M2 8h8M2 11.5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-          <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
-          <circle cx="12.5" cy="11.5" r="1.1" fill="currentColor" />
+    <div class="taskboard-row">
+      <button
+        type="button"
+        class="op-gutter taskboard-gutter"
+        :aria-expanded="expanded"
+        aria-label="展开或收起任务清单"
+        @click="toggleExpand"
+      >
+        <svg
+          class="taskboard-chevron"
+          width="9"
+          height="9"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <polyline points="9 18 15 12 9 6" />
         </svg>
-        <span class="taskboard-progress">{{ progressLabel }}</span>
-      </div>
-      <ul class="taskboard-list" role="list">
+      </button>
+      <div class="taskboard-card">
+        <button
+          type="button"
+          class="taskboard-card-head"
+          :aria-expanded="expanded"
+          @click="toggleExpand"
+        >
+          <svg class="taskboard-list-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2 4.5h12M2 8h8M2 11.5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+            <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
+            <circle cx="12.5" cy="11.5" r="1.1" fill="currentColor" />
+          </svg>
+          <span class="taskboard-progress">{{ progressLabel }}</span>
+        </button>
+        <ul v-show="expanded" class="taskboard-list" role="list">
         <li
           v-for="item in tasks"
           :key="item.id"
@@ -76,6 +123,7 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
           <span class="taskboard-content">{{ item.content }}</span>
         </li>
       </ul>
+      </div>
     </div>
   </div>
 </template>
@@ -83,37 +131,97 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 <style scoped>
 .taskboard-wrap {
   --op-gutter: 12px;
+  --panel-radius: var(--radius-sm, 6px);
+  margin: 6px 0;
+}
+
+.taskboard-row {
   display: grid;
   grid-template-columns: var(--op-gutter) minmax(0, 1fr);
   column-gap: 4px;
   align-items: start;
-  padding: 2px 0 10px;
+}
+
+.taskboard-wrap.is-collapsed .taskboard-row {
+  align-items: center;
+}
+
+.taskboard-gutter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: var(--op-gutter);
+  height: 100%;
+  padding: 4px 0 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.taskboard-wrap.is-collapsed .taskboard-gutter {
+  align-items: center;
+  align-self: stretch;
+  padding-top: 0;
+}
+
+.taskboard-gutter:hover .taskboard-chevron {
+  opacity: 0.75;
 }
 
 .op-gutter {
-  width: var(--op-gutter);
   flex-shrink: 0;
 }
 
 .taskboard-card {
   min-width: 0;
-  padding: 10px 12px;
   border: 1px solid var(--sun-border);
-  border-radius: 10px;
+  border-radius: var(--panel-radius);
   background: var(--sun-black);
 }
 
 .taskboard-card-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
   color: var(--sun-text-muted);
   font-size: var(--sun-font-sm);
   line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
 }
 
-.taskboard-icon {
+.taskboard-wrap.is-collapsed .taskboard-card-head {
+  padding: 6px 10px;
+  min-height: 28px;
+}
+
+.taskboard-wrap.is-expanded .taskboard-card-head {
+  padding-bottom: 6px;
+}
+
+.taskboard-card-head:hover .taskboard-progress {
+  color: var(--sun-text-secondary);
+}
+
+.taskboard-chevron {
+  flex-shrink: 0;
+  color: var(--sun-text-muted);
+  opacity: 0.45;
+  transition: transform 0.15s ease;
+}
+
+.taskboard-wrap.is-expanded .taskboard-chevron {
+  transform: rotate(90deg);
+}
+
+.taskboard-list-icon {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
@@ -122,29 +230,30 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 
 .taskboard-progress {
   font-variant-numeric: tabular-nums;
+  color: var(--sun-text-muted);
 }
 
 .taskboard-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 10px 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   max-height: min(36vh, 280px);
   overflow-y: auto;
 }
 
 .taskboard-item {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  column-gap: 10px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: 8px;
   align-items: start;
 }
 
 .taskboard-marker {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   margin-top: 2px;
   border-radius: 50%;
   box-sizing: border-box;
@@ -155,7 +264,7 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 }
 
 .taskboard-marker.is-pending {
-  border: 1.5px dashed color-mix(in srgb, var(--sun-text-muted) 55%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--sun-text-muted) 50%, transparent);
 }
 
 .taskboard-marker.is-active {
@@ -163,8 +272,8 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 }
 
 .taskboard-marker.is-done {
-  border: 1.5px solid color-mix(in srgb, var(--sun-text-muted) 65%, transparent);
-  background: color-mix(in srgb, var(--sun-text-muted) 12%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--sun-text-muted) 60%, transparent);
+  background: color-mix(in srgb, var(--sun-text-muted) 10%, transparent);
 }
 
 .taskboard-marker.is-cancelled {
@@ -173,12 +282,12 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 }
 
 .marker-icon {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
 }
 
 .taskboard-content {
-  font-size: var(--sun-font-base);
+  font-size: var(--sun-font-sm);
   line-height: 1.45;
   word-break: break-word;
   color: var(--sun-text-muted);
@@ -200,6 +309,6 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 }
 
 .taskboard-wrap.is-running .taskboard-item.is-in-progress .taskboard-marker.is-active {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sun-text-secondary) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sun-text-secondary) 16%, transparent);
 }
 </style>

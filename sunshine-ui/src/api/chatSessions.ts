@@ -29,7 +29,7 @@ import {
   retainIntentStepsOnly,
 } from './processingStepsPause'
 import { isExecutionRestartMessage, isReactAssistantMessage, resolveResumeMode } from './resumeMode'
-import { stripPlanDrawerLeakFromMessage } from './contentInterleave'
+import { normalizeRestoredInterleavedContent, stripPlanDrawerLeakFromMessage } from './contentInterleave'
 import {
   getOrCreateSession,
   getSessionRegistry,
@@ -181,6 +181,7 @@ export function useChatSessions(
           last.status = last.streamError ? 'failed' : 'completed'
         }
         if (last?.role === 'assistant' && last.status === 'completed') {
+          normalizeRestoredInterleavedContent(last)
           clearActiveGenerationIfMatch(sessionId)
           s.generationId = undefined
         }

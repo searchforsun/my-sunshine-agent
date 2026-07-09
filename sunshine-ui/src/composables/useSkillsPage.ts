@@ -51,7 +51,7 @@ import { useSkillFilePreview } from '../composables/useSkillFilePreview'
 
 export const SKILLS_PAGE_KEY = Symbol('skillsPage')
 
-export function useSkillsPage(): SkillsPageApi {
+export function useSkillsPage() {
   const message = useMessage()
   const router = useRouter()
   const skills = ref<SkillEntry[]>([])
@@ -105,8 +105,8 @@ export function useSkillsPage(): SkillsPageApi {
 
   const folderInputRef = ref<HTMLInputElement | null>(null)
 
-  function bindFolderInputRef(el: HTMLInputElement | null) {
-    folderInputRef.value = el
+  function bindFolderInputRef(el: unknown) {
+    folderInputRef.value = el instanceof HTMLInputElement ? el : null
   }
 
   const selectedSkill = computed(() => skills.value.find(s => s.id === selectedId.value) ?? null)
@@ -962,7 +962,7 @@ export function useSkillsPage(): SkillsPageApi {
     versionStatusTagType,
     formatSkillVersionTime,
     formatFileSize,
-  }) as unknown as SkillsPageApi
+  })
 }
 
 /** 子组件 prop 用：模板侧按解包后的 Ref/ComputedRef 访问 */

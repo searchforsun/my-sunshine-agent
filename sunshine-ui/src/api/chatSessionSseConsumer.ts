@@ -35,6 +35,7 @@ import {
   maybeReanchorContentBlocksToTail,
   stripPlanDrawerLeakFromMessage,
   syncPlanAnswerContentFromStep,
+  normalizeRestoredInterleavedContent,
 } from './contentInterleave'
 import { appendChunk, getOrCreateSession, type SessionState } from './chatSessionRegistry'
 import {
@@ -126,6 +127,7 @@ export async function consumeChatSseStream(
           if (last?.role === 'assistant') {
             last.status = 'completed'
             last.pendingHitlConfirmation = undefined
+            normalizeRestoredInterleavedContent(last)
           }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'interrupted') {

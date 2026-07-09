@@ -26,8 +26,8 @@ import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
 import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
 import {
   isContentFullyInterleaved,
-  isPlanDrawerLeakContent,
   resolveStreamingContentText,
+  shouldShowAssistantBottomContent,
 } from '../api/contentInterleave'
 import { resolveAgentNodeStepForDrawer } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
@@ -162,12 +162,8 @@ const {
 hydrationBridge.flushPersist = flushPersist
 hydrationBridge.schedulePersist = schedulePersist
 
-function shouldShowBottomContent(msg: ChatMessage, idx: number): boolean {
-  if (!msg.content?.trim()) return false
-  if (isPlanDrawerLeakContent(msg)) return false
-  if (loading.value && idx === messages.value.length - 1 && isContentFullyInterleaved(msg)) return false
-  if (!loading.value && isContentFullyInterleaved(msg)) return false
-  return true
+function shouldShowBottomContent(msg: ChatMessage, _idx: number): boolean {
+  return shouldShowAssistantBottomContent(msg)
 }
 
 function isInterleavedStreaming(msg: ChatMessage, idx: number): boolean {

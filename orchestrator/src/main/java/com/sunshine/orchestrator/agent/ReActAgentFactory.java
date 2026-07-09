@@ -75,7 +75,7 @@ public class ReActAgentFactory {
         return toolkit;
     }
 
-    int resolveMaxIters(AgentRunRequest request) {
+    public int resolveMaxIters(AgentRunRequest request) {
         return request.maxIters() > 0 ? request.maxIters() : executionProperties.getReact().getMaxIters();
     }
 

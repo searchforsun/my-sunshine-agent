@@ -30,7 +30,9 @@ watch(
   },
 )
 
-const chevron = computed(() => collapsed.value ? '▸' : '▾')
+function toggle(): void {
+  collapsed.value = !collapsed.value
+}
 
 /** 折叠态：标题与概要合并为一行（与 HITL / Recovery 确认框一致） */
 const collapsedLine = computed(() => {
@@ -52,20 +54,42 @@ const collapsedLine = computed(() => {
   >
     <button
       type="button"
-      class="collapse-header"
+      class="confirm-gutter"
       :aria-expanded="!collapsed"
-      @click="collapsed = !collapsed"
+      aria-label="展开或收起"
+      @click="toggle"
     >
-      <span class="collapse-chevron" aria-hidden="true">{{ chevron }}</span>
-      <span v-if="collapsed" class="collapse-line">{{ collapsedLine }}</span>
-      <span v-else class="collapse-summary">{{ summary }}</span>
+      <svg
+        class="confirm-chevron"
+        width="9"
+        height="9"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <polyline points="9 18 15 12 9 6" />
+      </svg>
     </button>
-    <div v-show="!collapsed" class="collapse-expand">
-      <div class="collapse-body">
-        <slot />
-      </div>
-      <div v-if="$slots.footer && !resolved" class="collapse-footer">
-        <slot name="footer" />
+    <div class="confirm-card">
+      <button
+        type="button"
+        class="collapse-header"
+        :aria-expanded="!collapsed"
+        @click="toggle"
+      >
+        <span v-if="collapsed" class="collapse-line">{{ collapsedLine }}</span>
+        <span v-else class="collapse-summary">{{ summary }}</span>
+      </button>
+      <div v-show="!collapsed" class="collapse-expand">
+        <div class="collapse-body">
+          <slot />
+        </div>
+        <div v-if="$slots.footer && !resolved" class="collapse-footer">
+          <slot name="footer" />
+        </div>
       </div>
     </div>
   </div>
@@ -73,13 +97,57 @@ const collapsedLine = computed(() => {
 
 <style scoped>
 .collapsible-confirm {
+  --op-gutter: 12px;
+  --confirm-chevron-offset: calc(var(--op-gutter) + 4px);
+  position: relative;
   margin: 6px 0;
   margin-left: var(--confirm-inset-left, 0);
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-sm, 6px);
   font-size: var(--sun-font-sm, 12px);
   color: var(--sun-text-muted);
+}
+
+.confirm-gutter {
+  position: absolute;
+  left: calc(-1 * var(--confirm-chevron-offset));
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: var(--op-gutter);
+  height: 100%;
+  padding-top: 4px;
+  margin: 0;
+  border: none;
   background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.collapsible-confirm.is-collapsed .confirm-gutter {
+  align-items: center;
+  padding-top: 0;
+}
+
+.confirm-gutter:hover .confirm-chevron {
+  opacity: 0.75;
+}
+
+.confirm-chevron {
+  flex-shrink: 0;
+  color: var(--sun-text-muted);
+  opacity: 0.5;
+  transition: transform 0.15s ease;
+}
+
+.collapsible-confirm.is-expanded .confirm-chevron {
+  transform: rotate(90deg);
+}
+
+.confirm-card {
+  min-width: 0;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--sun-black);
 }
 
 .collapse-line,
@@ -115,19 +183,6 @@ const collapsedLine = computed(() => {
 
 .collapsible-confirm.is-expanded .collapse-header {
   padding-bottom: 6px;
-  align-items: flex-start;
-}
-
-.collapse-chevron {
-  flex-shrink: 0;
-  width: 12px;
-  color: var(--sun-text-muted);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.collapsible-confirm.is-expanded .collapse-chevron {
-  margin-top: 2px;
 }
 
 .collapse-expand {
@@ -139,7 +194,7 @@ const collapsedLine = computed(() => {
 .collapse-body {
   flex: 1;
   min-height: 0;
-  padding: 0 12px 10px 28px;
+  padding: 0 12px 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -150,6 +205,6 @@ const collapsedLine = computed(() => {
 
 .collapse-footer {
   flex-shrink: 0;
-  padding: 4px 10px 10px 28px;
+  padding: 4px 10px 10px;
 }
 </style>
