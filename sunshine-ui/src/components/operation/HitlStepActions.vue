@@ -10,6 +10,7 @@ import {
   resolveHitlToken,
   resolveHitlToolName,
   parseHitlParamsSummary,
+  formatHitlParamsSummary,
   resolveStepForHitlDisplay,
   isHitlToolStep,
   type HitlConfirmationPayload,
@@ -87,7 +88,11 @@ const summaryLine = computed(() => {
   return '写操作确认 · 等待确认'
 })
 
-const collapsedDetail = computed(() => toolName.value)
+const collapsedDetail = computed(() => {
+  const params = formatHitlParamsSummary(displayStep.value.metadata?.hitlParamsSummary, 48)
+  if (params) return `${toolName.value} · ${params}`
+  return toolName.value
+})
 
 async function submit(approved: boolean): Promise<void> {
   const token = effectiveToken.value

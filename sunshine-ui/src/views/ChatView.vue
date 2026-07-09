@@ -29,7 +29,7 @@ import {
   resolveStreamingContentText,
   shouldShowAssistantBottomContent,
 } from '../api/contentInterleave'
-import { resolveAgentNodeStepForDrawer } from '../api/hitlSteps'
+import { resolveAgentNodeStepForDrawer, getPendingHitlConfirmations } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
 import KbSelector from '../components/knowledge/KbSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
@@ -245,12 +245,13 @@ function handleHitlDecision(token: string, approved: boolean) {
 
 provide('applyHitlDecision', handleHitlDecision)
 provide('applyRecoveryDecision', applyRecoveryDecision)
-provide('pendingHitlConfirmation', computed(() => latestAssistantMessage.value?.pendingHitlConfirmation))
+provide('pendingHitlConfirmations', computed(() => getPendingHitlConfirmations(latestAssistantMessage.value)))
+provide('pendingHitlConfirmation', computed(() => getPendingHitlConfirmations(latestAssistantMessage.value)[0]))
 provide('planDrawerLiveNodeStep', (nodeId: string) =>
   resolveAgentNodeStepForDrawer(
     latestAssistantMessage.value?.steps,
     nodeId,
-    latestAssistantMessage.value?.pendingHitlConfirmation,
+    getPendingHitlConfirmations(latestAssistantMessage.value),
   ),
 )
 
@@ -603,7 +604,7 @@ watch(
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
                 :message-id="msg.id"
-                :pending-hitl-confirmation="resolveTimelineContext(msg).pending"
+                :pending-hitl-confirmations="resolveTimelineContext(msg).pending"
                 @hitl-decided="handleHitlDecision"
               />
               <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">

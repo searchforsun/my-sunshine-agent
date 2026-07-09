@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import io.agentscope.core.hook.Hook;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -11,8 +13,10 @@ import org.springframework.stereotype.Component;
 public class ProcessingStepHookFactory {
 
     private final ToolCatalogService toolCatalogService;
+    private final AgentExecutionProperties executionProperties;
+    private final TaskBoardTimelineSupport taskBoardTimelineSupport;
 
     public Hook forBridge(String bridgeId) {
-        return new ProcessingStepHook(bridgeId, toolCatalogService);
+        return new ProcessingStepHook(bridgeId, toolCatalogService, executionProperties, taskBoardTimelineSupport);
     }
 }

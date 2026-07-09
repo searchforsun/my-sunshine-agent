@@ -4,7 +4,7 @@
 import type { ChatMessage } from './chat'
 import type { ContentBlock } from './contentInterleave'
 import { joinedContentBlocks, normalizeRestoredInterleavedContent } from './contentInterleave'
-import { stepsHaveAwaitingHitl } from './hitlSteps'
+import { stepsHaveAwaitingHitl, getPendingHitlConfirmations } from './hitlSteps'
 
 const INDEX_KEY = 'sunshine-conv-index'
 const messagesKey = (id: string) => `sunshine-conv-msgs:${id}`
@@ -113,7 +113,10 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       merged.push(a)
       continue
     }
-    const cachedHasHitl = stepsHaveAwaitingHitl(c.steps) || !!c.pendingHitlConfirmation
+    const cachedHasHitl = stepsHaveAwaitingHitl(c.steps) || getPendingHitlConfirmations(c).length > 0
+    const mergedPending = getPendingHitlConfirmations(a).length
+      ? getPendingHitlConfirmations(a)
+      : getPendingHitlConfirmations(c)
     const mergedMsg: ChatMessage = {
       ...a,
       content: pickLongerContent(a.content, c.content),
@@ -124,7 +127,8 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       contentBlocks: pickContentBlocks(a.contentBlocks, c.contentBlocks),
       status: pickPreferredStatus(a.status, c.status),
       executionPreference: a.executionPreference ?? c.executionPreference,
-      pendingHitlConfirmation: a.pendingHitlConfirmation ?? c.pendingHitlConfirmation,
+      pendingHitlConfirmations: mergedPending.length ? mergedPending : undefined,
+      pendingHitlConfirmation: undefined,
     }
     if (mergedMsg.role === 'assistant') {
       normalizeRestoredInterleavedContent(mergedMsg)

@@ -36,6 +36,78 @@ class ReactTaskBoardTest {
     }
 
     @Test
+    void apply_rejectsCompletedOnInitialBoard() {
+        when(store.load("msg-1")).thenReturn(Optional.empty());
+
+        ReactTaskBoardApplyResult result = service.apply(
+                "msg-1",
+                false,
+                List.of(new TaskBoardItemInput(null, "审批 1004", "completed")),
+                List.of());
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.error()).contains("pending");
+    }
+
+    @Test
+    void apply_merge_updatesStatusOnly() {
+        ReactTaskBoardState existing = new ReactTaskBoardState(
+                "board-1", "msg-1", 1, 1000L,
+                List.of(
+                        new TaskBoardItemView("t1", "查询待办", "in_progress"),
+                        new TaskBoardItemView("t2", "分析合规", "pending")));
+        when(store.load("msg-1")).thenReturn(Optional.of(existing));
+
+        ReactTaskBoardApplyResult result = service.apply(
+                "msg-1",
+                true,
+                List.of(
+                        new TaskBoardItemInput("t1", "查询待办", "completed"),
+                        new TaskBoardItemInput("t2", "分析合规", "in_progress")),
+                List.of());
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.revision()).isEqualTo(2);
+        assertThat(result.summary()).isEqualTo("1/2 已完成");
+        assertThat(result.items()).extracting(TaskBoardItemView::status)
+                .containsExactly("completed", "in_progress");
+    }
+
+    @Test
+    void apply_merge_rejectsNewItems() {
+        ReactTaskBoardState existing = new ReactTaskBoardState(
+                "board-1", "msg-1", 1, 1000L,
+                List.of(new TaskBoardItemView("t1", "弄清现状", "pending")));
+        when(store.load("msg-1")).thenReturn(Optional.of(existing));
+
+        ReactTaskBoardApplyResult result = service.apply(
+                "msg-1",
+                true,
+                List.of(new TaskBoardItemInput(null, "新增步骤", "pending")),
+                List.of());
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.error()).contains("增删");
+    }
+
+    @Test
+    void apply_rejectsReplaceWhenBoardExists() {
+        ReactTaskBoardState existing = new ReactTaskBoardState(
+                "board-1", "msg-1", 1, 1000L,
+                List.of(new TaskBoardItemView("t1", "弄清现状", "pending")));
+        when(store.load("msg-1")).thenReturn(Optional.of(existing));
+
+        ReactTaskBoardApplyResult result = service.apply(
+                "msg-1",
+                false,
+                List.of(new TaskBoardItemInput(null, "新清单", "pending")),
+                List.of());
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.error()).contains("merge=true");
+    }
+
+    @Test
     void apply_replace_createsBoardWithRevisionOne() {
         when(store.load("msg-1")).thenReturn(Optional.empty());
 
@@ -57,28 +129,6 @@ class ReactTaskBoardTest {
         ArgumentCaptor<ReactTaskBoardState> captor = ArgumentCaptor.forClass(ReactTaskBoardState.class);
         verify(store).save(captor.capture());
         assertThat(captor.getValue().assistantMsgId()).isEqualTo("msg-1");
-    }
-
-    @Test
-    void apply_merge_updatesExistingItem() {
-        ReactTaskBoardState existing = new ReactTaskBoardState(
-                "board-1", "msg-1", 2, 1000L,
-                List.of(
-                        new TaskBoardItemView("t1", "检索制度", "in_progress"),
-                        new TaskBoardItemView("t2", "汇总结论", "pending")));
-        when(store.load("msg-1")).thenReturn(Optional.of(existing));
-
-        ReactTaskBoardApplyResult result = service.apply(
-                "msg-1",
-                true,
-                List.of(new TaskBoardItemInput("t1", "检索制度", "completed")),
-                List.of());
-
-        assertThat(result.ok()).isTrue();
-        assertThat(result.revision()).isEqualTo(3);
-        assertThat(result.summary()).isEqualTo("1/2 已完成");
-        assertThat(result.items().get(0).status()).isEqualTo("completed");
-        assertThat(result.items().get(1).content()).isEqualTo("汇总结论");
     }
 
     @Test
@@ -108,34 +158,6 @@ class ReactTaskBoardTest {
         assertThat(result.ok()).isTrue();
         assertThat(result.items()).extracting(TaskBoardItemView::status)
                 .containsExactly("in_progress", "pending");
-    }
-
-    @Test
-    void apply_merge_matchesByContentWhenIdMissing() {
-        ReactTaskBoardState existing = new ReactTaskBoardState(
-                "board-1", "msg-1", 1, 1000L,
-                List.of(
-                        new TaskBoardItemView("t1", "查询待审批报销单据", "in_progress"),
-                        new TaskBoardItemView("t2", "查询公司报销制度与合规要求", "pending"),
-                        new TaskBoardItemView("t3", "逐笔分析报销合规性", "pending"),
-                        new TaskBoardItemView("t4", "给出能否提交审批的结论与建议", "pending")));
-        when(store.load("msg-1")).thenReturn(Optional.of(existing));
-
-        ReactTaskBoardApplyResult result = service.apply(
-                "msg-1",
-                true,
-                List.of(
-                        new TaskBoardItemInput(null, "查询待审批报销单据", "completed"),
-                        new TaskBoardItemInput(null, "查询公司报销制度与合规要求", "completed"),
-                        new TaskBoardItemInput(null, "逐笔分析报销合规性", "completed"),
-                        new TaskBoardItemInput(null, "给出能否提交审批的结论与建议", "completed")),
-                List.of());
-
-        assertThat(result.ok()).isTrue();
-        assertThat(result.items()).hasSize(4);
-        assertThat(result.items()).extracting(TaskBoardItemView::status)
-                .containsExactly("completed", "completed", "completed", "completed");
-        assertThat(result.summary()).isEqualTo("4/4 已完成");
     }
 
     @Test

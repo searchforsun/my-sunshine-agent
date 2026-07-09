@@ -2,20 +2,20 @@ import { computed, type ComputedRef, type Ref } from 'vue'
 import type { ChatMessage } from '../api/chat'
 import { ensurePlanTimelineSteps, hasPlanTimeline } from '../api/planHydrate'
 import { sortSteps, hasActiveStep, type ProcessingStep } from '../api/processingSteps'
-import { applySyncedPendingHitl, resolveHitlUiKey } from '../api/hitlSteps'
+import { applySyncedPendingHitl, resolveHitlUiKey, getPendingHitlConfirmations, type HitlConfirmationPayload } from '../api/hitlSteps'
 
 /** Chat 消息区时间线：steps 解析与 OperationStack 绑定 */
 export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<boolean>) {
   function resolveTimelineContext(msg: ChatMessage): {
     steps: ProcessingStep[]
-    pending: ChatMessage['pendingHitlConfirmation']
+    pending: HitlConfirmationPayload[]
   } {
     const baseSteps = ensurePlanTimelineSteps(msg)
-    if (!baseSteps.length) return { steps: [], pending: undefined }
-    const synced = applySyncedPendingHitl(baseSteps, msg.pendingHitlConfirmation)
+    if (!baseSteps.length) return { steps: [], pending: [] }
+    const synced = applySyncedPendingHitl(baseSteps, getPendingHitlConfirmations(msg))
     return {
       steps: sortSteps(synced.steps),
-      pending: synced.pending,
+      pending: synced.pending ?? [],
     }
   }
 

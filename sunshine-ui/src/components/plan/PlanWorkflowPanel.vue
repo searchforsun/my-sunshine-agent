@@ -29,7 +29,7 @@ const props = defineProps<{
   live?: boolean
   executionPlanId?: string
   userQuery?: string
-  pendingHitlConfirmation?: HitlConfirmationPayload
+  pendingHitlConfirmation?: HitlConfirmationPayload | HitlConfirmationPayload[]
 }>()
 
 const { open: openDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()

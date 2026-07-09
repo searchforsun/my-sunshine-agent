@@ -32,6 +32,7 @@ public class HitlConfirmationService {
     private final ToolCatalogService toolCatalogService;
     private final HitlTokenRegistry tokenRegistry;
     private final HitlTimelineBridge timelineBridge;
+    private final HitlWriteToolSerialGate writeToolSerialGate;
 
     public boolean awaitConfirmation(String timelineBridgeId, String toolId, Map<String, String> params) {
         String generationMessageId = StepEventBridge.hitlAssistantMessageId(timelineBridgeId);
@@ -54,6 +55,17 @@ public class HitlConfirmationService {
             throw new HitlWaitInterruptedException();
         }
         long epoch = timelineBridge.currentHitlEpoch(generationMessageId);
+        return writeToolSerialGate.callExclusive(boundGenerationId, () ->
+                awaitConfirmationLocked(timelineBridgeId, generationMessageId, boundGenerationId, epoch, toolId, params));
+    }
+
+    private boolean awaitConfirmationLocked(
+            String timelineBridgeId,
+            String generationMessageId,
+            String boundGenerationId,
+            long epoch,
+            String toolId,
+            Map<String, String> params) {
         timelineBridge.ensureHitlEpoch(generationMessageId, epoch);
         String displayName = toolCatalogService.displayName(toolId);
         timelineBridge.flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);

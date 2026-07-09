@@ -25,16 +25,18 @@ export function stepHasHitlAwaiting(step?: ProcessingStep): boolean {
 /** 节点或 subSteps 内承载 HITL 面板的步骤（含 pending / summary 等待态） */
 export function findHitlStep(
   step?: ProcessingStep,
-  pending?: HitlConfirmationPayload,
+  pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
+  allSteps?: ProcessingStep[],
 ): ProcessingStep | undefined {
   if (!step) return undefined
+  const roots = allSteps ?? [step]
   for (const sub of step.subSteps ?? []) {
-    if (hasHitlPanel(sub) || isHitlSummaryAwaiting(sub) || hitlConfirmationForStep(sub, pending)) {
-      return resolveStepForHitlDisplay(sub, pending)
+    if (hasHitlPanel(sub) || isHitlSummaryAwaiting(sub) || hitlConfirmationForStep(sub, pending, roots)) {
+      return resolveStepForHitlDisplay(sub, pending, roots)
     }
   }
-  if (hasHitlPanel(step) || isHitlSummaryAwaiting(step) || hitlConfirmationForStep(step, pending)) {
-    return resolveStepForHitlDisplay(step, pending)
+  if (hasHitlPanel(step) || isHitlSummaryAwaiting(step) || hitlConfirmationForStep(step, pending, roots)) {
+    return resolveStepForHitlDisplay(step, pending, roots)
   }
   return undefined
 }

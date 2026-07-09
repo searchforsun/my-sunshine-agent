@@ -7,7 +7,7 @@ import {
   type PlanNodeTrace,
 } from '../api/executionPlans'
 import { resolveStepDurationMs, stepLifecycle, type ProcessingStep } from '../api/processingSteps'
-import { isHitlSummaryAwaiting, relocateAgentNodeHitl, reapplyPendingHitl, type HitlConfirmationPayload } from '../api/hitlSteps'
+import { isHitlSummaryAwaiting, relocateAgentNodeHitl, normalizePendingHitlList, reapplyPendingHitlList, type HitlConfirmationPayload } from '../api/hitlSteps'
 import { isRecoveryAwaiting, isRecoverySkipped, isRecoveryTerminated, stepHasHitlAwaiting } from '../api/recoverySteps'
 
 export type DagNodeStatus = 'pending' | 'running' | 'done' | 'error' | 'awaiting_confirm' | 'paused' | 'terminated' | 'skipped'
@@ -165,15 +165,16 @@ export function buildDagNodes(
   traces?: PlanNodeTrace[],
   skillCatalog: SkillCatalogIndexEntry[] = [],
   planStep?: ProcessingStep,
-  pendingHitl?: HitlConfirmationPayload,
+  pendingHitl?: HitlConfirmationPayload | HitlConfirmationPayload[],
 ): DagNodeView[] {
   if (!graph?.nodes?.length) return []
   const stepByNodeId = new Map<string, ProcessingStep>()
   for (const s of nodeSteps) {
     if (!s.id.startsWith('node-')) continue
     let step = relocateAgentNodeHitl(s)
-    if (pendingHitl) {
-      const merged = reapplyPendingHitl([step], pendingHitl)
+    const pendingList = normalizePendingHitlList(pendingHitl)
+    if (pendingList.length) {
+      const merged = reapplyPendingHitlList([step], pendingList)
       step = merged[0] ?? step
     }
     stepByNodeId.set(s.id.slice('node-'.length), step)

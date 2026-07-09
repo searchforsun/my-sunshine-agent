@@ -15,7 +15,9 @@ export interface ChatMessage {
   steps?: ProcessingStep[]
   /** ReAct：正文按步骤锚点分段，与 OperationStack 穿插展示 */
   contentBlocks?: ContentBlock[]
-  /** SSE confirmation 先于 tool 步骤到达时的暂存（合并成功后清除） */
+  /** SSE confirmation 先于 tool 步骤到达时的暂存（按 token 多条） */
+  pendingHitlConfirmations?: HitlConfirmationPayload[]
+  /** @deprecated 使用 pendingHitlConfirmations */
   pendingHitlConfirmation?: HitlConfirmationPayload
   status?: 'streaming' | 'interrupted' | 'failed' | 'completed'
   /** 流式失败时的用户可见错误（与正文分离展示） */

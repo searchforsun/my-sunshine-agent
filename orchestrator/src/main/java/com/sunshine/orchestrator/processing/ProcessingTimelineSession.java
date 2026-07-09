@@ -248,6 +248,11 @@ public final class ProcessingTimelineSession {
         think.endReasoningRound();
     }
 
+    /** 最近一轮已结束的 think 步 id（TaskBoard 首建锚点） */
+    public String lastCompletedThinkId() {
+        return state.lastCompletedThinkId;
+    }
+
     public void ingestStreamingContentDelta(String delta) {
         think.ingestStreamingContentDelta(delta, this::enqueueAuxiliary);
     }

@@ -56,7 +56,8 @@ class HitlConfirmationServiceTest {
         HitlTokenRegistry tokenRegistry = new HitlTokenRegistry(properties, redis, new ObjectMapper());
         HitlTimelineBridge timelineBridge = new HitlTimelineBridge(
                 generationRegistry, flushScheduler, toolCatalogService);
-        service = new HitlConfirmationService(properties, toolCatalogService, tokenRegistry, timelineBridge);
+        service = new HitlConfirmationService(
+                properties, toolCatalogService, tokenRegistry, timelineBridge, new HitlWriteToolSerialGate());
         com.sunshine.orchestrator.processing.TimelineLabelTestSupport.bindDefaults();
         com.sunshine.orchestrator.processing.ToolNodeLabels.bind(
                 new com.sunshine.orchestrator.processing.ToolNodeLabelService(

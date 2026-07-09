@@ -1,7 +1,9 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import io.agentscope.core.hook.Hook;
 import io.agentscope.core.hook.HookEvent;
 import io.agentscope.core.hook.PostActingEvent;
@@ -25,10 +27,18 @@ public class ProcessingStepHook implements Hook {
 
     private final String bridgeId;
     private final ToolCatalogService toolCatalogService;
+    private final AgentExecutionProperties executionProperties;
+    private final TaskBoardTimelineSupport taskBoardTimelineSupport;
 
-    ProcessingStepHook(String bridgeId, ToolCatalogService toolCatalogService) {
+    ProcessingStepHook(
+            String bridgeId,
+            ToolCatalogService toolCatalogService,
+            AgentExecutionProperties executionProperties,
+            TaskBoardTimelineSupport taskBoardTimelineSupport) {
         this.bridgeId = bridgeId;
         this.toolCatalogService = toolCatalogService;
+        this.executionProperties = executionProperties;
+        this.taskBoardTimelineSupport = taskBoardTimelineSupport;
     }
 
     @Override
@@ -39,7 +49,12 @@ public class ProcessingStepHook implements Hook {
         }
 
         if (event instanceof PostReasoningEvent post) {
-            StepEventBridge.emit(bridgeId, ProcessingTimelineSession::endReasoningRound);
+            StepEventBridge.emit(bridgeId, session -> {
+                session.endReasoningRound();
+                if (isTaskBoardEnabled()) {
+                    taskBoardTimelineSupport.ensurePlaceholderAfterFirstThink(session);
+                }
+            });
             return Mono.just(event);
         }
 
@@ -83,6 +98,11 @@ public class ProcessingStepHook implements Hook {
         }
 
         return Mono.just(event);
+    }
+
+    private boolean isTaskBoardEnabled() {
+        AgentExecutionProperties.React react = executionProperties.getReact();
+        return react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled();
     }
 
     private String summarizeToolResult(String toolName, ToolResultBlock result) {

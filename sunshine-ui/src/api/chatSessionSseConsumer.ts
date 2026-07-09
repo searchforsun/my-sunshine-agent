@@ -11,6 +11,9 @@ import {
   mergeHitlIntoRunningToolStep,
   relocateAgentNodeHitl,
   applySyncedPendingHitl,
+  getPendingHitlConfirmations,
+  setPendingHitlConfirmations,
+  upsertPendingHitlConfirmationList,
 } from './hitlSteps'
 import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId } from './processingSteps'
 import {
@@ -127,7 +130,7 @@ export async function consumeChatSseStream(
           const last = s.messages[s.messages.length - 1]
           if (last?.role === 'assistant') {
             last.status = 'completed'
-            last.pendingHitlConfirmation = undefined
+            setPendingHitlConfirmations(last, undefined)
             normalizeRestoredInterleavedContent(last)
             notifyCompletedIfNeeded(streamConversationId ?? s.id, last)
           }
@@ -221,9 +224,9 @@ export async function consumeChatSseStream(
           lastMsg.steps = lastMsg.steps.map(st =>
             st.id.startsWith('node-') ? relocateAgentNodeHitl(st) : st,
           )
-          const synced = applySyncedPendingHitl(lastMsg.steps, lastMsg.pendingHitlConfirmation)
+          const synced = applySyncedPendingHitl(lastMsg.steps, getPendingHitlConfirmations(lastMsg))
           lastMsg.steps = synced.steps
-          lastMsg.pendingHitlConfirmation = synced.pending
+          setPendingHitlConfirmations(lastMsg, synced.pending)
           stripPlanDrawerLeakFromMessage(lastMsg)
           notifyHitlIfNeeded(streamConversationId ?? s.id, lastMsg)
           bumpAssistantMessage(s)
@@ -281,14 +284,18 @@ export async function consumeChatSseStream(
             continue
           }
           const prevSteps = lastMsg.steps ?? []
-          lastMsg.pendingHitlConfirmation = parsed.confirmation
+          const pendingList = upsertPendingHitlConfirmationList(
+            getPendingHitlConfirmations(lastMsg),
+            parsed.confirmation,
+          )
+          setPendingHitlConfirmations(lastMsg, pendingList)
           const merged = mergeHitlIntoRunningToolStep(prevSteps, parsed.confirmation)
           lastMsg.steps = (merged !== prevSteps ? merged : prevSteps).map(st =>
             st.id.startsWith('node-') ? relocateAgentNodeHitl(st) : st,
           )
-          const synced = applySyncedPendingHitl(lastMsg.steps, lastMsg.pendingHitlConfirmation)
+          const synced = applySyncedPendingHitl(lastMsg.steps, getPendingHitlConfirmations(lastMsg))
           lastMsg.steps = synced.steps
-          lastMsg.pendingHitlConfirmation = synced.pending
+          setPendingHitlConfirmations(lastMsg, synced.pending)
           stripPlanDrawerLeakFromMessage(lastMsg)
           notifyHitlIfNeeded(streamConversationId ?? s.id, lastMsg)
           bumpAssistantMessage(s)

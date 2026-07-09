@@ -70,14 +70,35 @@ public class ReactTaskBoardService {
         }
         enforceSingleInProgress(normalized);
         ReactTaskBoardState current = store.load(assistantMsgId).orElse(null);
-        List<TaskBoardItemView> merged = merge
-                ? mergeItems(current != null ? current.items() : List.of(), normalized, maxItems)
-                : assignIds(normalized);
+        List<TaskBoardItemView> merged;
+        int revision;
+        String boardId;
+        if (current == null) {
+            if (merge) {
+                return ReactTaskBoardApplyResult.failure("首次建板请使用 merge=false");
+            }
+            String initialError = validateInitialBoard(normalized);
+            if (initialError != null) {
+                return ReactTaskBoardApplyResult.failure(initialError);
+            }
+            merged = assignIds(normalized);
+            revision = 1;
+            boardId = UUID.randomUUID().toString();
+        } else {
+            if (!merge) {
+                return ReactTaskBoardApplyResult.failure("清单结构已在规划阶段确定，请使用 merge=true 仅更新 status");
+            }
+            merged = mergeItems(current.items(), normalized, maxItems);
+            String stableError = validateStructureStable(current.items(), merged);
+            if (stableError != null) {
+                return ReactTaskBoardApplyResult.failure(stableError);
+            }
+            revision = current.revision() + 1;
+            boardId = current.boardId();
+        }
         if (merged.size() > maxItems) {
             return ReactTaskBoardApplyResult.failure("任务数量超过上限 " + maxItems);
         }
-        int revision = current != null ? current.revision() + 1 : 1;
-        String boardId = current != null ? current.boardId() : UUID.randomUUID().toString();
         ReactTaskBoardState next = new ReactTaskBoardState(
                 boardId,
                 assistantMsgId.strip(),
@@ -140,6 +161,35 @@ public class ReactTaskBoardService {
                 .map(TaskBoardItemView::content)
                 .findFirst()
                 .orElse("");
+    }
+
+    private static String validateInitialBoard(List<TaskBoardItemView> items) {
+        for (TaskBoardItemView item : items) {
+            if ("completed".equals(item.status()) || "cancelled".equals(item.status())) {
+                return "建板时任务须为 pending 或 in_progress，禁止直接 completed/cancelled";
+            }
+        }
+        return null;
+    }
+
+    private static String validateStructureStable(List<TaskBoardItemView> before, List<TaskBoardItemView> after) {
+        if (before.size() != after.size()) {
+            return "执行中仅可更新 status，禁止增删任务条目";
+        }
+        Map<String, TaskBoardItemView> afterById = new LinkedHashMap<>();
+        for (TaskBoardItemView item : after) {
+            afterById.put(item.id(), item);
+        }
+        for (TaskBoardItemView prev : before) {
+            TaskBoardItemView next = afterById.get(prev.id());
+            if (next == null) {
+                return "执行中仅可更新 status，禁止增删任务条目";
+            }
+            if (!prev.content().equals(next.content())) {
+                return "执行中禁止修改任务 content，仅可更新 status";
+            }
+        }
+        return null;
     }
 
     private int maxItems() {
@@ -207,12 +257,12 @@ public class ReactTaskBoardService {
         int nextId = nextTaskId(map);
         for (TaskBoardItemView update : updates) {
             if (StringUtils.hasText(update.id()) && map.containsKey(update.id())) {
-                map.put(update.id(), update);
+                map.put(update.id(), TaskBoardContentMatch.mergeInto(map.get(update.id()), update));
                 continue;
             }
-            String matchedId = findIdByContent(map, update.content());
+            String matchedId = TaskBoardContentMatch.findMatchingId(map, update);
             if (matchedId != null) {
-                map.put(matchedId, new TaskBoardItemView(matchedId, update.content(), update.status()));
+                map.put(matchedId, TaskBoardContentMatch.mergeInto(map.get(matchedId), update));
                 continue;
             }
             if (map.size() >= maxItems) {
@@ -221,20 +271,7 @@ public class ReactTaskBoardService {
             String id = StringUtils.hasText(update.id()) ? update.id().strip() : "t" + nextId++;
             map.put(id, new TaskBoardItemView(id, update.content(), update.status()));
         }
-        return List.copyOf(map.values());
-    }
-
-    private static String findIdByContent(Map<String, TaskBoardItemView> map, String content) {
-        if (!StringUtils.hasText(content)) {
-            return null;
-        }
-        String normalized = content.strip();
-        for (TaskBoardItemView item : map.values()) {
-            if (normalized.equals(item.content())) {
-                return item.id();
-            }
-        }
-        return null;
+        return TaskBoardContentMatch.dedupeBySemanticKey(List.copyOf(map.values()));
     }
 
     private static int nextTaskId(Map<String, TaskBoardItemView> map) {

@@ -1,8 +1,9 @@
 package com.sunshine.orchestrator.taskboard;
 
-import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.TaskBoardStepLabels;
+import com.sunshine.orchestrator.processing.ThinkStepIds;
 import com.sunshine.orchestrator.processing.TimelineStepId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,20 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class TaskBoardTimelineSupport {
+
+    /** 首轮规划推理结束后立即占位，manage_tasks 到达后再填充 metadata */
+    public void ensurePlaceholderAfterFirstThink(ProcessingTimelineSession session) {
+        if (session == null || session.hasStep(TimelineStepId.TASKS.id())) {
+            return;
+        }
+        String thinkId = session.lastCompletedThinkId();
+        if (!ThinkStepIds.forIteration(1).equals(thinkId)) {
+            return;
+        }
+        String stepId = TimelineStepId.TASKS.id();
+        String phase = TimelineStepId.TASKS.phase();
+        session.updateTaskBoard(stepId, phase, TaskBoardStepLabels.before(), null);
+    }
 
     public void applyUpdate(
             ProcessingTimelineSession session,

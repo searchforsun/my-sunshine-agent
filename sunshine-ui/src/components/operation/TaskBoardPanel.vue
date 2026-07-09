@@ -15,7 +15,15 @@ const userToggled = ref(false)
 
 const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
+const isPending = computed(() => lifecycle.value === 'pending')
 const tasks = computed(() => props.step.metadata?.tasks ?? [])
+/** 已收到 manage_tasks 落库后的真实清单（占位步无 revision/items） */
+const hasRealTasks = computed(() =>
+  tasks.value.length > 0 && (props.step.metadata?.taskRevision ?? 0) >= 1,
+)
+const showPanel = computed(() =>
+  hasRealTasks.value || isRunning.value || isPending.value,
+)
 
 const doneCount = computed(() =>
   tasks.value.filter(t => t.status === 'completed').length,
@@ -23,10 +31,13 @@ const doneCount = computed(() =>
 
 /** 卡片头：对齐参考图 "1 of 4 Done" */
 const progressLabel = computed(() => {
+  if (!hasRealTasks.value) {
+    return props.step.summary?.before?.trim() || '规划任务清单'
+  }
   const progress = props.step.metadata?.taskProgress?.trim()
   if (progress) return progress
   const total = tasks.value.length
-  if (!total) return ''
+  if (!total) return '规划任务清单'
   return `${doneCount.value} of ${total} Done`
 })
 
@@ -61,7 +72,7 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 
 <template>
   <div
-    v-if="tasks.length"
+    v-if="showPanel"
     class="taskboard-wrap"
     :class="{
       'is-expanded': expanded,
@@ -105,7 +116,7 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
           </svg>
           <span class="taskboard-progress">{{ progressLabel }}</span>
         </button>
-        <ul v-show="expanded" class="taskboard-list" role="list">
+        <ul v-show="expanded && hasRealTasks" class="taskboard-list" role="list">
         <li
           v-for="item in tasks"
           :key="item.id"

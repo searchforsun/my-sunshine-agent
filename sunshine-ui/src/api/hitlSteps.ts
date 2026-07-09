@@ -12,6 +12,51 @@ export interface HitlConfirmationPayload {
   expiresAt: number
 }
 
+export function normalizePendingHitlList(
+  pending?: HitlConfirmationPayload | HitlConfirmationPayload[] | null,
+): HitlConfirmationPayload[] {
+  if (!pending) return []
+  return Array.isArray(pending) ? pending : [pending]
+}
+
+export function getPendingHitlConfirmations(
+  msg?: { pendingHitlConfirmation?: HitlConfirmationPayload; pendingHitlConfirmations?: HitlConfirmationPayload[] } | null,
+): HitlConfirmationPayload[] {
+  if (!msg) return []
+  if (msg.pendingHitlConfirmations?.length) return msg.pendingHitlConfirmations.map(p => ({ ...p }))
+  if (msg.pendingHitlConfirmation) return [{ ...msg.pendingHitlConfirmation }]
+  return []
+}
+
+export function setPendingHitlConfirmations(
+  msg: { pendingHitlConfirmation?: HitlConfirmationPayload; pendingHitlConfirmations?: HitlConfirmationPayload[] },
+  list: HitlConfirmationPayload[] | undefined,
+): void {
+  msg.pendingHitlConfirmations = list?.length ? list.map(p => ({ ...p })) : undefined
+  msg.pendingHitlConfirmation = undefined
+}
+
+export function upsertPendingHitlConfirmationList(
+  list: HitlConfirmationPayload[],
+  item: HitlConfirmationPayload,
+): HitlConfirmationPayload[] {
+  const token = item.confirmationToken?.trim()
+  if (!token) return list
+  const next = [...list]
+  const idx = next.findIndex(p => p.confirmationToken?.trim() === token)
+  if (idx >= 0) next[idx] = { ...next[idx], ...item }
+  else next.push({ ...item })
+  return next
+}
+
+export function removePendingHitlConfirmationList(
+  list: HitlConfirmationPayload[],
+  token: string,
+): HitlConfirmationPayload[] {
+  const t = token.trim()
+  return list.filter(p => p.confirmationToken?.trim() !== t)
+}
+
 export function resolveHitlToken(step: ProcessingStep): string | null {
   const token = step.metadata?.hitlToken
   return typeof token === 'string' && token.trim() ? token.trim() : null
@@ -123,53 +168,138 @@ export function buildPendingFromStep(step: ProcessingStep): HitlConfirmationPayl
   }
 }
 
-/** step upsert 后扫描主 timeline 工具步与 agent 节点 subSteps，同步 pending */
+function toolStepPrefixFromId(stepId: string): string {
+  const at = stepId.indexOf('@')
+  return at > 0 ? stepId.slice(0, at) : stepId
+}
+
+function walkAllSteps(steps: ProcessingStep[], visit: (step: ProcessingStep) => void): void {
+  for (const step of steps) {
+    visit(step)
+    if (step.subSteps?.length) walkAllSteps(step.subSteps, visit)
+  }
+}
+
+function collectBoundHitlTokens(steps: ProcessingStep[]): Set<string> {
+  const bound = new Set<string>()
+  walkAllSteps(steps, step => {
+    const token = resolveHitlToken(step)?.trim()
+    if (token) bound.add(token)
+  })
+  return bound
+}
+
+/** 按时间线顺序收集仍待 metadata/token 的 HITL 承载步 */
+export function collectAwaitingHitlCarriers(steps: ProcessingStep[]): ProcessingStep[] {
+  const out: ProcessingStep[] = []
+  walkAllSteps(steps, step => {
+    if (!isHitlCarrierStep(step)) return
+    if (isHitlResolved(step)) return
+    if (resolveHitlToken(step)) return
+    if (isHitlAwaiting(step) || isHitlSummaryAwaiting(step) || hasHitlPanel(step)) {
+      out.push(step)
+    }
+  })
+  return out
+}
+
+/** 为单步解析对应 pending（按 token 或同工具未绑定顺序匹配） */
+export function resolvePendingHitlForStep(
+  step: ProcessingStep,
+  pendingList: HitlConfirmationPayload[],
+  allSteps: ProcessingStep[],
+): HitlConfirmationPayload | undefined {
+  if (!pendingList.length) return undefined
+  const stepToken = resolveHitlToken(step)?.trim()
+  if (stepToken) {
+    return pendingList.find(p => p.confirmationToken?.trim() === stepToken)
+  }
+  if (isHitlResolved(step)) return undefined
+  if (!isHitlSummaryAwaiting(step) && !isHitlAwaiting(step) && !hasHitlPanel(step)) {
+    return undefined
+  }
+  const bound = collectBoundHitlTokens(allSteps)
+  const orphans = pendingList.filter(p => {
+    const token = p.confirmationToken?.trim()
+    if (!token || bound.has(token)) return false
+    if (isToolStepId(step.id)) {
+      return step.id.startsWith(toolStepIdPrefix(p.toolId.trim()))
+    }
+    if (isPlanWorkflowBizNode(step)) {
+      return p.toolId.trim() === (step.metadata?.hitlToolDisplayName?.trim() || formatStepLabel(step))
+    }
+    return false
+  })
+  if (!orphans.length) return undefined
+  const awaitingPeers = collectAwaitingHitlCarriers(allSteps).filter(peer => {
+    if (isToolStepId(step.id) && isToolStepId(peer.id)) {
+      return toolStepPrefixFromId(peer.id) === toolStepPrefixFromId(step.id)
+    }
+    return peer.id === step.id
+  })
+  const idx = awaitingPeers.findIndex(peer => peer.id === step.id)
+  return idx >= 0 ? orphans[idx] : orphans[0]
+}
+
+/** 从 steps metadata 同步全部 awaiting pending */
+export function syncPendingHitlListFromSteps(steps: ProcessingStep[] | undefined): HitlConfirmationPayload[] {
+  if (!steps?.length) return []
+  const out: HitlConfirmationPayload[] = []
+  const seen = new Set<string>()
+  walkAllSteps(steps, step => {
+    if (isHitlResolved(step)) return
+    const pending = buildPendingFromStep(step) ?? buildPendingFromPlanNode(step)
+    const token = pending?.confirmationToken?.trim()
+    if (!pending || !token || seen.has(token)) return
+    seen.add(token)
+    out.push(pending)
+  })
+  return out
+}
+
+/** step upsert 后扫描主 timeline 工具步与 agent 节点 subSteps，同步 pending（兼容旧 API） */
 export function syncPendingHitlFromSteps(
   steps: ProcessingStep[] | undefined,
 ): HitlConfirmationPayload | undefined {
-  if (!steps?.length) return undefined
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const step = steps[i]
-    if (isPlanWorkflowBizNode(step)) {
-      const pending = buildPendingFromPlanNode(step)
-      if (pending) return pending
-    }
-    const pending = buildPendingFromStep(step)
-    if (pending) return pending
-  }
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const node = steps[i]
-    if (!node.id.startsWith('node-') || !node.subSteps?.length) continue
-    for (let j = node.subSteps.length - 1; j >= 0; j--) {
-      const pending = buildPendingFromStep(node.subSteps[j])
-      if (pending) return pending
-    }
-  }
-  return undefined
+  const list = syncPendingHitlListFromSteps(steps)
+  return list.length ? list[list.length - 1] : undefined
 }
 
-function mergePendingPayload(
-  synced: HitlConfirmationPayload,
-  prev?: HitlConfirmationPayload,
-): HitlConfirmationPayload {
-  return {
-    ...synced,
-    confirmationToken: synced.confirmationToken || prev?.confirmationToken || '',
-    toolDisplayName: synced.toolDisplayName || prev?.toolDisplayName || synced.toolId,
-    paramsSummary: synced.paramsSummary || prev?.paramsSummary || '',
-    expiresAt: synced.expiresAt || prev?.expiresAt || 0,
+function mergePendingLists(
+  fromSteps: HitlConfirmationPayload[],
+  prev: HitlConfirmationPayload[],
+): HitlConfirmationPayload[] {
+  let merged = [...fromSteps]
+  for (const item of prev) {
+    merged = upsertPendingHitlConfirmationList(merged, item)
   }
+  return merged
 }
 
 /** step upsert / confirmation 后统一同步 pending 并合并到 tool 步 */
 export function applySyncedPendingHitl(
   steps: ProcessingStep[],
-  prev?: HitlConfirmationPayload,
-): { steps: ProcessingStep[]; pending?: HitlConfirmationPayload } {
-  const synced = syncPendingHitlFromSteps(steps)
-  if (!synced) return { steps, pending: undefined }
-  const pending = mergePendingPayload(synced, prev)
-  return { steps: reapplyPendingHitl(steps, pending), pending }
+  prev?: HitlConfirmationPayload | HitlConfirmationPayload[],
+): { steps: ProcessingStep[]; pending?: HitlConfirmationPayload[] } {
+  const prevList = normalizePendingHitlList(prev)
+  let nextSteps = reapplyPendingHitlList(steps, prevList)
+  const fromSteps = syncPendingHitlListFromSteps(nextSteps)
+  const merged = mergePendingLists(fromSteps, prevList)
+  const orphans = merged.filter(p => {
+    const token = p.confirmationToken?.trim()
+    if (!token) return false
+    return !collectBoundHitlTokens(nextSteps).has(token)
+  })
+  if (orphans.length) {
+    nextSteps = reapplyPendingHitlList(nextSteps, orphans)
+  }
+  const pending = syncPendingHitlListFromSteps(nextSteps)
+  const stillOrphans = orphans.filter(p => {
+    const token = p.confirmationToken?.trim()
+    return token && !collectBoundHitlTokens(nextSteps).has(token)
+  })
+  const finalPending = mergePendingLists(pending, stillOrphans)
+  return { steps: nextSteps, pending: finalPending.length ? finalPending : undefined }
 }
 
 export function hasHitlPanel(step: ProcessingStep): boolean {
@@ -196,32 +326,23 @@ export function stepsHaveAwaitingHitl(steps: ProcessingStep[] | undefined): bool
 /** timeline :key — token 出现/变化时强制重绘确认框 */
 export function resolveHitlUiKey(
   steps: ProcessingStep[] | undefined,
-  pending?: HitlConfirmationPayload,
+  pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
 ): string {
-  if (pending?.confirmationToken?.trim()) return pending.confirmationToken.trim()
+  const tokens = new Set<string>()
+  for (const p of syncPendingHitlListFromSteps(steps)) {
+    const t = p.confirmationToken?.trim()
+    if (t) tokens.add(t)
+  }
+  for (const p of normalizePendingHitlList(pending)) {
+    const t = p.confirmationToken?.trim()
+    if (t) tokens.add(t)
+  }
+  if (tokens.size) return [...tokens].join('|')
   if (!steps?.length) return ''
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (isPlanWorkflowBizNode(s)) {
-      const token = resolveHitlToken(s)
-      if (token && (isHitlAwaiting(s) || hasHitlPanel(s))) return token
-      if (isHitlSummaryAwaiting(s)) return s.id
-    }
-    if (isToolStepId(s.id)) {
-      const token = resolveHitlToken(s)
-      if (token && (isHitlAwaiting(s) || hasHitlPanel(s))) return token
-      if (isHitlSummaryAwaiting(s)) return s.id
-    }
-  }
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const node = steps[i]
-    if (!node.id.startsWith('node-') || !node.subSteps?.length) continue
-    for (let j = node.subSteps.length - 1; j >= 0; j--) {
-      const s = node.subSteps[j]
-      const token = resolveHitlToken(s)
-      if (token && (isHitlAwaiting(s) || hasHitlPanel(s))) return token
-      if (isHitlSummaryAwaiting(s)) return s.id
-    }
+    if (isPlanWorkflowBizNode(s) && isHitlSummaryAwaiting(s)) return s.id
+    if (isToolStepId(s.id) && isHitlSummaryAwaiting(s)) return s.id
   }
   return ''
 }
@@ -229,27 +350,24 @@ export function resolveHitlUiKey(
 /** 为工具步匹配尚未落入 metadata 的 pending confirmation */
 export function hitlConfirmationForStep(
   step: ProcessingStep,
-  payload: HitlConfirmationPayload | undefined,
+  payload: HitlConfirmationPayload | HitlConfirmationPayload[] | undefined,
+  allSteps?: ProcessingStep[],
 ): HitlConfirmationPayload | undefined {
-  if (!payload?.toolId?.trim()) return undefined
-  if (isHitlAwaiting(step)) return undefined
-  if (isPlanWorkflowBizNode(step)) {
-    if (isHitlResolved(step)) return undefined
-    if (!isHitlSummaryAwaiting(step) && !hasHitlPanel(step)) return undefined
-    return payload
-  }
-  const prefix = toolStepIdPrefix(payload.toolId.trim())
-  if (!isToolStepId(step.id) || !step.id.startsWith(prefix)) return undefined
-  return payload
+  const list = normalizePendingHitlList(payload)
+  if (!list.length) return undefined
+  const roots = allSteps ?? [step]
+  return resolvePendingHitlForStep(step, list, roots)
 }
 
 /** 合并 pending confirmation，供面板展示（metadata 未落步时） */
 export function resolveStepForHitlDisplay(
   step: ProcessingStep,
-  pending?: HitlConfirmationPayload,
+  pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
+  allSteps?: ProcessingStep[],
 ): ProcessingStep {
   if (hasHitlPanel(step)) return step
-  const match = hitlConfirmationForStep(step, pending)
+  const roots = allSteps ?? [step]
+  const match = resolvePendingHitlForStep(step, normalizePendingHitlList(pending), roots)
   if (!match) return step
   return {
     ...step,
@@ -297,18 +415,38 @@ function isRunningStep(step: ProcessingStep): boolean {
   return step.lifecycle === 'running'
 }
 
+/** 按 token / pending 载荷定位应写入决策的工具步（同工具多次调用） */
+export function resolveHitlTargetStepIndex(
+  steps: ProcessingStep[],
+  token: string,
+  pendingList: HitlConfirmationPayload[] = [],
+): number {
+  const trimmed = token.trim()
+  if (!trimmed) return -1
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (resolveHitlToken(steps[i]) === trimmed) return i
+  }
+  const payload = pendingList.find(p => p.confirmationToken?.trim() === trimmed)
+  if (!payload) return -1
+  let idx = findHitlTargetToolStepIndex(steps, payload, false)
+  if (idx < 0) idx = findHitlTargetToolStepIndex(steps, payload, true)
+  return idx
+}
+
 /** 乐观更新：用户点击确认/取消后立即反映到 tool 步 metadata */
 export function applyHitlDecision(
   steps: ProcessingStep[],
   token: string,
   approved: boolean,
+  pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
 ): ProcessingStep[] {
-  const topNext = applyHitlDecisionInList(steps, token, approved)
+  const pendingList = normalizePendingHitlList(pending)
+  const topNext = applyHitlDecisionInList(steps, token, approved, pendingList)
   if (topNext !== steps) return topNext
   let changed = false
   const next = steps.map(step => {
     if (!step.id.startsWith('node-') || !step.subSteps?.length) return step
-    const subNext = applyHitlDecisionInList(step.subSteps, token, approved)
+    const subNext = applyHitlDecisionInList(step.subSteps, token, approved, pendingList)
     if (subNext === step.subSteps) return step
     changed = true
     return { ...step, subSteps: subNext }
@@ -320,11 +458,13 @@ function applyHitlDecisionInList(
   steps: ProcessingStep[],
   token: string,
   approved: boolean,
+  pendingList: HitlConfirmationPayload[],
 ): ProcessingStep[] {
-  const idx = steps.findIndex(s => resolveHitlToken(s) === token)
+  const idx = resolveHitlTargetStepIndex(steps, token, pendingList)
   if (idx < 0) return steps
   const prev = steps[idx]
   const status: HitlDecision = approved ? 'approved' : 'denied'
+  const payload = pendingList.find(p => p.confirmationToken?.trim() === token.trim())
   const next = [...steps]
   next[idx] = {
     ...prev,
@@ -332,6 +472,9 @@ function applyHitlDecisionInList(
       ...prev.metadata,
       hitlStatus: status,
       hitlToken: undefined,
+      hitlToolDisplayName: prev.metadata?.hitlToolDisplayName ?? payload?.toolDisplayName,
+      hitlParamsSummary: prev.metadata?.hitlParamsSummary ?? payload?.paramsSummary,
+      hitlExpiresAt: prev.metadata?.hitlExpiresAt ?? payload?.expiresAt,
     },
   }
   return next
@@ -350,7 +493,7 @@ export function mergeHitlIntoRunningToolStep(
     next[planIdx] = { ...prev, metadata: { ...prev.metadata, ...hitlPatch } }
     return next
   }
-  const topIdx = findHitlTargetToolStepIndex(steps, payload.toolId, true)
+  const topIdx = findHitlTargetToolStepIndex(steps, payload, true)
   if (topIdx >= 0 && isToolStepId(steps[topIdx].id)) {
     const prev = steps[topIdx]
     const next = [...steps]
@@ -362,7 +505,7 @@ export function mergeHitlIntoRunningToolStep(
     if (!node.id.startsWith('node-') || !node.subSteps?.length) continue
     // 仅挂到当前 running 的 workflow 节点，避免 HITL 落到已完成的前序子 Agent
     if (!isRunningStep(node)) continue
-    const subIdx = findHitlTargetToolStepIndex(node.subSteps, payload.toolId, true)
+    const subIdx = findHitlTargetToolStepIndex(node.subSteps, payload, true)
     if (subIdx < 0) continue
     const subPrev = node.subSteps[subIdx]
     const subSteps = [...node.subSteps]
@@ -378,13 +521,25 @@ export function mergeHitlIntoRunningToolStep(
 }
 
 /** 每次 step upsert 后重试：confirmation 可能早于 tool 步骤到达 */
+export function reapplyPendingHitlList(
+  steps: ProcessingStep[],
+  payloads: HitlConfirmationPayload[],
+): ProcessingStep[] {
+  let next = steps
+  for (const payload of payloads) {
+    if (!payload?.toolId?.trim()) continue
+    next = mergeHitlIntoRunningToolStep(next, payload)
+    next = next.map(s => (s.id.startsWith('node-') ? relocateAgentNodeHitl(s) : s))
+  }
+  return next
+}
+
 export function reapplyPendingHitl(
   steps: ProcessingStep[],
   payload: HitlConfirmationPayload | undefined,
 ): ProcessingStep[] {
   if (!payload?.toolId?.trim()) return steps
-  const merged = mergeHitlIntoRunningToolStep(steps, payload)
-  return merged.map(s => (s.id.startsWith('node-') ? relocateAgentNodeHitl(s) : s))
+  return reapplyPendingHitlList(steps, [payload])
 }
 
 function stripHitlMetadata(meta?: ProcessingStep['metadata']): ProcessingStep['metadata'] | undefined {
@@ -420,28 +575,56 @@ function findHitlTargetPlanNodeIndex(
   return -1
 }
 
-/** attachMode：仅匹配 running 工具步，避免 confirmation 早到误挂前序节点 */
+/** attachMode：优先 running/paused 且无 token 的工具步，避免同工具多次确认串步 */
 function findHitlTargetToolStepIndex(
   steps: ProcessingStep[],
-  toolId?: string,
+  payload: HitlConfirmationPayload,
   attachMode = false,
 ): number {
-  const prefix = toolId?.trim() ? toolStepIdPrefix(toolId.trim()) : null
+  const toolId = payload.toolId?.trim()
+  const token = payload.confirmationToken?.trim()
+  const prefix = toolId ? toolStepIdPrefix(toolId) : null
+  const matchesTool = (s: ProcessingStep) => {
+    if (!isToolStepId(s.id)) return false
+    if (prefix && !s.id.startsWith(prefix)) return false
+    return true
+  }
+  if (token) {
+    for (let i = steps.length - 1; i >= 0; i--) {
+      const s = steps[i]
+      if (matchesTool(s) && resolveHitlToken(s) === token) return i
+    }
+  }
+  if (attachMode) {
+    for (let i = steps.length - 1; i >= 0; i--) {
+      const s = steps[i]
+      if (!matchesTool(s)) continue
+      const lc = s.lifecycle
+      if (lc !== 'running' && lc !== 'paused') continue
+      if (resolveHitlToken(s)) continue
+      return i
+    }
+    return -1
+  }
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (!isToolStepId(s.id)) continue
-    if (prefix && !s.id.startsWith(prefix)) continue
+    if (!matchesTool(s)) continue
     if (isRunningStep(s)) return i
   }
-  if (attachMode) return -1
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (!isToolStepId(s.id)) continue
-    if (prefix && !s.id.startsWith(prefix)) continue
+    if (!matchesTool(s)) continue
     if (isHitlResolved(s)) continue
     if (s.lifecycle === 'done' || s.lifecycle === 'skipped') continue
     return i
   }
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (matchesTool(steps[i])) return i
+  }
+  return -1
+}
+
+function findAnyHitlToolStepIndex(steps: ProcessingStep[]): number {
   for (let i = steps.length - 1; i >= 0; i--) {
     if (isToolStepId(steps[i].id)) return i
   }
@@ -452,13 +635,14 @@ function findHitlTargetToolStepIndex(
 export function resolveAgentNodeStepForDrawer(
   steps: ProcessingStep[] | undefined,
   nodeId: string,
-  pending?: HitlConfirmationPayload,
+  pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
 ): ProcessingStep | undefined {
   const raw = steps?.find(s => s.id === `node-${nodeId}`)
   if (!raw) return undefined
   let node = relocateAgentNodeHitl(raw)
-  if (pending) {
-    const merged = reapplyPendingHitl([node], pending)
+  const list = normalizePendingHitlList(pending)
+  if (list.length) {
+    const merged = reapplyPendingHitlList([node], list)
     node = merged[0] ?? node
   }
   return node
@@ -467,12 +651,13 @@ export function resolveAgentNodeStepForDrawer(
 /** 子 Agent 执行过程：保证 HITL metadata 落在 tool 子步，供 Plan 抽屉确认框 */
 export function resolveAgentSubStepsForDisplay(
   parent: ProcessingStep | undefined,
-  pending?: HitlConfirmationPayload,
+  pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
 ): ProcessingStep[] {
   if (!parent?.subSteps?.length) return []
   let node = relocateAgentNodeHitl(parent)
-  if (pending) {
-    const merged = reapplyPendingHitl([node], pending)
+  const list = normalizePendingHitlList(pending)
+  if (list.length) {
+    const merged = reapplyPendingHitlList([node], list)
     node = merged[0] ?? node
   }
   return node.subSteps ?? []
@@ -486,7 +671,7 @@ export function relocateAgentNodeHitl(step: ProcessingStep): ProcessingStep {
   if (step.subSteps.some(s => resolveHitlStatus(s) === status)) {
     return { ...step, metadata: stripHitlMetadata(step.metadata) }
   }
-  const subIdx = findHitlTargetToolStepIndex(step.subSteps)
+  const subIdx = findAnyHitlToolStepIndex(step.subSteps)
   if (subIdx < 0) return step
   const hitlPatch = {
     hitlStatus: step.metadata?.hitlStatus,

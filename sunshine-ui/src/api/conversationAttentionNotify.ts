@@ -1,5 +1,5 @@
 import type { ChatMessage } from './chat'
-import { stepsHaveAwaitingHitl } from './hitlSteps'
+import { stepsHaveAwaitingHitl, getPendingHitlConfirmations } from './hitlSteps'
 import { isPlanApprovalAwaiting } from './planApprovalSteps'
 import { useConversationAttention, type ConversationAttentionKind } from '../composables/useConversationAttention'
 import { useChatViewport } from '../composables/useChatViewport'
@@ -7,7 +7,7 @@ import { useChatViewport } from '../composables/useChatViewport'
 /** 是否存在需用户操作的确认项（HITL / 执行计划确认等） */
 export function messageHasPendingConfirmation(msg: ChatMessage | undefined): boolean {
   if (!msg || msg.role !== 'assistant') return false
-  if (stepsHaveAwaitingHitl(msg.steps) || !!msg.pendingHitlConfirmation) return true
+  if (stepsHaveAwaitingHitl(msg.steps) || getPendingHitlConfirmations(msg).length > 0) return true
   return msg.steps?.some(step => isPlanApprovalAwaiting(step)) ?? false
 }
 

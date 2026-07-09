@@ -2,10 +2,17 @@
 import { computed, reactive } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import { resolvePlanIdFromStep } from '../../api/processingSteps'
-import { findHitlStep } from '../../api/recoverySteps'
 import {
   isToolStepId,
   resolveHitlUiKey,
+  isHitlCarrierStep,
+  hasHitlPanel,
+  isHitlAwaiting,
+  isHitlSummaryAwaiting,
+  resolvePendingHitlForStep,
+  resolveStepForHitlDisplay,
+  normalizePendingHitlList,
+  resolveHitlToken,
   type HitlConfirmationPayload,
 } from '../../api/hitlSteps'
 import type { ContentBlock } from '../../api/contentInterleave'
@@ -39,7 +46,8 @@ const props = withDefaults(defineProps<{
   inlineHitl?: boolean
   /** assistant 消息 id — peer-collab 展开 transcript 审计 */
   messageId?: string
-  pendingHitlConfirmation?: HitlConfirmationPayload
+  pendingHitlConfirmation?: HitlConfirmationPayload | HitlConfirmationPayload[]
+  pendingHitlConfirmations?: HitlConfirmationPayload[]
 }>(), {
   embedHitl: true,
   inlineHitl: true,
@@ -102,28 +110,36 @@ const displaySteps = computed(() => {
   return props.steps.filter(s => !isHiddenReactTimelineStep(s))
 })
 
-const hitlRevision = computed(() =>
-  resolveHitlUiKey(props.steps, props.pendingHitlConfirmation),
+const pendingList = computed(() =>
+  normalizePendingHitlList(props.pendingHitlConfirmations ?? props.pendingHitlConfirmation),
 )
 
-function hitlStepKey(step: ProcessingStep): string {
-  return step.metadata?.hitlToken
-    ?? step.metadata?.hitlStatus
-    ?? step.id
+const hitlRevision = computed(() =>
+  resolveHitlUiKey(props.steps, pendingList.value),
+)
+
+function pendingForStep(step: ProcessingStep): HitlConfirmationPayload | undefined {
+  return resolvePendingHitlForStep(step, pendingList.value, props.steps)
 }
 
-/** ReAct / 抽屉 subSteps：步骤 id → HITL 步骤（待确认 + 已决态） */
-const inlineHitlByStepId = computed(() => {
-  void props.timelineRevision
-  void hitlRevision.value
-  const map = new Map<string, ProcessingStep>()
-  if (props.inlineHitl === false || showPlanDag.value) return map
-  for (const step of displaySteps.value) {
-    const found = findHitlStep(step, props.pendingHitlConfirmation)
-    if (found) map.set(step.id, found)
-  }
-  return map
-})
+function hitlStepKey(step: ProcessingStep): string {
+  const token = resolveHitlToken(step) ?? pendingForStep(step)?.confirmationToken
+  return `${step.id}-${token ?? step.metadata?.hitlStatus ?? 'open'}`
+}
+
+function shouldShowInlineHitl(step: ProcessingStep): boolean {
+  if (props.inlineHitl === false || showPlanDag.value) return false
+  if (!isHitlCarrierStep(step)) return false
+  const pending = resolvePendingHitlForStep(step, pendingList.value, props.steps)
+  return hasHitlPanel(step)
+    || isHitlAwaiting(step)
+    || isHitlSummaryAwaiting(step)
+    || !!pending
+}
+
+function inlineHitlStep(step: ProcessingStep): ProcessingStep {
+  return resolveStepForHitlDisplay(step, pendingList.value, props.steps)
+}
 
 const contentRowOpts = computed(() => ({
   live: props.streamLive,
@@ -164,7 +180,7 @@ const orphanContent = computed(() => {
         :live="live"
         :execution-plan-id="executionPlanId"
         :user-query="userQuery"
-        :pending-hitl-confirmation="pendingHitlConfirmation"
+        :pending-hitl-confirmation="pendingList"
       />
       <TaskBoardPanel
         v-else-if="step.phase === 'tasks'"
@@ -186,12 +202,12 @@ const orphanContent = computed(() => {
           :embed-hitl="false"
           @toggle="toggleCard(step)"
         />
-        <div v-if="inlineHitlByStepId.get(step.id)" class="op-line-hitl">
+        <div v-if="shouldShowInlineHitl(step)" class="op-line-hitl">
           <span class="op-gutter" aria-hidden="true" />
           <HitlStepActions
-            :key="hitlStepKey(inlineHitlByStepId.get(step.id)!)"
-            :step="inlineHitlByStepId.get(step.id)!"
-            :pending-confirmation="pendingHitlConfirmation"
+            :key="hitlStepKey(inlineHitlStep(step))"
+            :step="inlineHitlStep(step)"
+            :pending-confirmation="pendingForStep(step)"
             @decided="(token, approved) => emit('hitlDecided', token, approved)"
           />
         </div>
@@ -232,6 +248,11 @@ const orphanContent = computed(() => {
   grid-template-columns: var(--op-gutter) minmax(0, 1fr);
   column-gap: 4px;
   align-items: start;
+  margin-top: 6px;
+}
+
+.op-line-hitl + .op-line-hitl {
+  margin-top: 10px;
 }
 
 .op-line-hitl .op-gutter {

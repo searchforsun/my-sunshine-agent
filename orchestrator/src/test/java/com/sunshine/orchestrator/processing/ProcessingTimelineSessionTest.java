@@ -11,6 +11,7 @@ import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
+import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -459,6 +460,43 @@ class ProcessingTimelineSessionTest {
 
         assertEquals(1, emitted.size());
         assertEquals("running", emitted.get(0).lifecycle());
+    }
+
+    @Test
+    void ensurePlaceholderAfterFirstThink_emitsTasksStepImmediately() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.beginReasoningRound();
+        session.endReasoningRound();
+
+        TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
+        support.ensurePlaceholderAfterFirstThink(session);
+
+        ProcessingStep tasks = session.snapshot().stream()
+                .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).findFirst().orElseThrow();
+        assertThat(tasks.phase()).isEqualTo("tasks");
+        assertThat(tasks.lifecycle()).isIn("pending", "running");
+        ProcessingStep think = session.snapshot().stream()
+                .filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
+        assertThat(tasks.startedAt()).isGreaterThan(think.endedAt() != null ? think.endedAt() : 0L);
+    }
+
+    @Test
+    void ensurePlaceholderAfterFirstThink_skipsAfterSecondThink() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.beginReasoningRound();
+        session.endReasoningRound();
+        TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
+        support.ensurePlaceholderAfterFirstThink(session);
+
+        session.beginToolStep("tool-list_finance_messages", "tool");
+        session.completeToolStep("3 条");
+        session.beginReasoningRound();
+        session.endReasoningRound();
+        support.ensurePlaceholderAfterFirstThink(session);
+
+        long tasksCount = session.snapshot().stream()
+                .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).count();
+        assertThat(tasksCount).isEqualTo(1);
     }
 
     @Test

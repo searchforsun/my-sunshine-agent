@@ -6,7 +6,7 @@ import {
   isContentFullyInterleaved,
   normalizeRestoredInterleavedContent,
 } from '../api/contentInterleave'
-import { stepsHaveAwaitingHitl } from '../api/hitlSteps'
+import { stepsHaveAwaitingHitl, getPendingHitlConfirmations } from '../api/hitlSteps'
 import {
   clearActiveGeneration,
   type ActiveGeneration,
@@ -107,7 +107,7 @@ export function useChatSessionHydration(options: {
     const localIntentOnly = localSteps === 1 && localLast.steps?.[0]?.id === 'intent'
     const localHasHitl = !localIntentOnly && (
       stepsHaveAwaitingHitl(localLast.steps)
-      || !!localLast.pendingHitlConfirmation
+      || getPendingHitlConfirmations(localLast).length > 0
     )
     if (localIntentOnly || localSteps >= restoredSteps || localHasHitl) {
       restoredLast.steps = localLast.steps
@@ -116,9 +116,11 @@ export function useChatSessionHydration(options: {
       restoredLast.content = localLast.content ?? ''
       restoredLast.reasoning = localLast.reasoning ?? ''
       restoredLast.contentBlocks = localLast.contentBlocks
+      restoredLast.pendingHitlConfirmations = undefined
       restoredLast.pendingHitlConfirmation = undefined
-    } else if (localLast.pendingHitlConfirmation && !localIntentOnly) {
-      restoredLast.pendingHitlConfirmation = localLast.pendingHitlConfirmation
+    } else if (getPendingHitlConfirmations(localLast).length && !localIntentOnly) {
+      restoredLast.pendingHitlConfirmations = getPendingHitlConfirmations(localLast)
+      restoredLast.pendingHitlConfirmation = undefined
     }
     if (localLast.contentBlocks?.length) {
       const localJoined = localLast.contentBlocks.map(b => b.text).join('')

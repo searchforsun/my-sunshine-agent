@@ -20,6 +20,9 @@ import { isConversationNotFoundError, throwIfHttpError, throwIfNotEventStream } 
 import {
   applyHitlDecision as applyHitlDecisionToSteps,
   reapplyPendingHitl,
+  getPendingHitlConfirmations,
+  setPendingHitlConfirmations,
+  removePendingHitlConfirmationList,
 } from './hitlSteps'
 import { applyRecoveryDecision as applyRecoveryDecisionToSteps } from './recoverySteps'
 import {
@@ -234,7 +237,7 @@ export function useChatSessions(
       target.content = ''
       target.reasoning = ''
       target.contentBlocks = undefined
-      target.pendingHitlConfirmation = undefined
+      setPendingHitlConfirmations(target, undefined)
       target.steps = retainIntentStepsOnly(target.steps)
     }
     stripPlanDrawerLeakFromMessage(target)
@@ -429,12 +432,16 @@ export function useChatSessions(
     for (let i = s.messages.length - 1; i >= 0; i--) {
       const msg = s.messages[i]
       if (msg.role !== 'assistant' || !msg.steps?.length) continue
-      const next = applyHitlDecisionToSteps(msg.steps, token, approved)
+      const next = applyHitlDecisionToSteps(
+        msg.steps,
+        token,
+        approved,
+        getPendingHitlConfirmations(msg),
+      )
       if (next !== msg.steps) {
         msg.steps = next
-        if (msg.pendingHitlConfirmation?.confirmationToken === token) {
-          msg.pendingHitlConfirmation = undefined
-        }
+        const remaining = removePendingHitlConfirmationList(getPendingHitlConfirmations(msg), token)
+        setPendingHitlConfirmations(msg, remaining.length ? remaining : undefined)
         bumpAssistantMessage(s)
         onProgress?.(s.id)
         return

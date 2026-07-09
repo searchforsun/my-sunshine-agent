@@ -45,9 +45,8 @@ export function bumpAssistantMessage(session: SessionState): void {
       ...last,
       steps: last.steps?.length ? cloneStepsForReactive(last.steps) : last.steps,
       contentBlocks: last.contentBlocks?.map(b => ({ ...b })),
-      pendingHitlConfirmation: last.pendingHitlConfirmation
-        ? { ...last.pendingHitlConfirmation }
-        : last.pendingHitlConfirmation,
+      pendingHitlConfirmations: last.pendingHitlConfirmations?.map(p => ({ ...p })),
+      pendingHitlConfirmation: undefined,
     },
   ]
 }
