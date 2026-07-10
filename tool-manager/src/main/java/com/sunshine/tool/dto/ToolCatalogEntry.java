@@ -13,6 +13,9 @@ public record ToolCatalogEntry(
         String timelinePhase,
         String outputSummaryKind,
         Map<String, Object> parameters,
-        String sideEffect
+        String sideEffect,
+        boolean requireConfirmation,
+        boolean idValid,
+        String idError
 ) {
 }

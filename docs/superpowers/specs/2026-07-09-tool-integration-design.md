@@ -1,7 +1,8 @@
 # 工具集成（SDK + MCP）— 技术设计
 
 > **阶段**：四 · **任务卡**：4.8 演进（MCP 动态引入 + SDK 业务解耦）  
-> **状态**：📋 设计定稿（待实现）  
+> **状态**：✅ Phase 1 检查门通过（2026-07-10）  
+> **实施计划**：[2026-07-09-tool-integration.md](../plans/2026-07-09-tool-integration.md)
 > **日期**：2026-07-09  
 > **前置**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.8 · [locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) D3 · [react-taskboard-design.md](./2026-06-24-react-taskboard-design.md)  
 > **对称参照**：skill-manager（:8225 + `/skills`）— tool-manager 扩 Catalog + Admin API + `/tools` 管理页
@@ -31,7 +32,8 @@
 | D2 | **SDK 模块**位于 `common/sunshine-tool-sdk`（与 `sunshine-common` 并列） |
 | D3 | **去除** tool-manager 对 finance-service / oa-service 的直接 HTTP 依赖；删除全部写死 `*ToolHandler` |
 | D4 | **Demo 应用** = 现有 `finance-service`（`sunshine-finance`）+ `oa-service`（`sunshine-oa`），各自实现 SDK 工具 |
-| D5 | **工具 ID 向后兼容**：迁移后 LLM function name 保持不变（如 `list_finance_messages`），避免 workflow / skill / golden-set 大面积改动 |
+| D5 | **Catalog 工具 ID**：SDK `sdk__{appId}__{externalName}`、MCP `mcp__{serverId}__{externalName}`（SSOT：`common/.../ToolIds.java`）；`@SunshineTool.id` 仍为应用内短名（invoke 路径） |
+| D12 | **LLM 与 Catalog 同 ID**：ReAct 注册给模型的 function name = Catalog `tool_definition.id`；**禁止**点号 ID 与编码转换层 |
 | D6 | **Schema 策略**：SDK 注册时锁定（`schema_hash`）；MCP probe 时动态刷新（同 Cursor） |
 | D7 | **工具集模型 C+D**：全局 enabled 池 + `global_react_default` + 租户 `tenant_react_default` 覆盖 |
 | D8 | **描述类字段**可在 `/tools` 管理页动态编辑；SDK/MCP schema 本体不可在 UI 篡改 |
@@ -301,9 +303,13 @@ CREATE TABLE tool_definition (
     timeline_phase      VARCHAR(16) NOT NULL DEFAULT 'tool',
     output_summary_kind VARCHAR(32) NOT NULL DEFAULT 'truncate',
     side_effect         VARCHAR(16) NOT NULL DEFAULT 'read',
+    require_confirmation TINYINT(1) NOT NULL DEFAULT 0,
+    confirmation_edited TINYINT(1) NOT NULL DEFAULT 0,
     tenant_id           VARCHAR(32) NOT NULL DEFAULT 'default',
     enabled             TINYINT(1) NOT NULL DEFAULT 0,
     metadata_edited     TINYINT(1) NOT NULL DEFAULT 0,
+    id_valid            TINYINT(1) NOT NULL DEFAULT 1,
+    id_error            VARCHAR(512),
     discovered_at       TIMESTAMP NULL,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_source_tool (source, source_ref, external_name)
@@ -316,13 +322,15 @@ CREATE TABLE tool_definition (
 - `parameters`：始终来自 `schema_json`（SDK 仅 hash 变时更新；MCP probe 全量刷新）
 - `schema_json`：UI **只读**
 
-**Tool ID 命名（D5）**：
+**Tool ID 命名（D5 / D12）**：
 
 | 来源 | `tool_definition.id` | 说明 |
 |------|---------------------|------|
-| SDK Demo | 与 `@SunshineTool.id` 相同（如 `list_finance_messages`） | 向后兼容 workflow / skill |
-| MCP | `mcp.{serverId}.{externalName}` | 避免跨 Server 冲突 |
-| Platform（Phase 2） | `platform.{name}` | — |
+| SDK Demo | `sdk__{appId}__{externalName}`（如 `sdk__sunshine-finance__list_finance_messages`） | `ToolIds.sdk()` 生成；与 MCP 对称 |
+| MCP | `mcp__{serverId}__{externalName}` | `ToolIds.mcp()` 生成；避免跨 Server 冲突 |
+| Platform（Phase 2） | `platform__{name}` | — |
+
+**校验**：`id_valid` / `id_error`；Pull/sync 时 ID 与规范不一致则删旧记录并按规范重建（**无**旧 ID 迁移兼容层）。允许字符集：`^[a-zA-Z0-9_-]+$`（禁止 `.`）。
 
 ### 6.4 tool_set / tool_set_member
 
@@ -344,9 +352,23 @@ CREATE TABLE tool_set_member (
 );
 ```
 
+### 6.5 execution_mode_policy
+
+```sql
+CREATE TABLE execution_mode_policy (
+    id              VARCHAR(64) PRIMARY KEY,
+    mode_key        VARCHAR(32) NOT NULL,
+    tenant_id       VARCHAR(32),
+    policy_json     JSON NOT NULL,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_mode_tenant (mode_key, tenant_id)
+);
+```
+
 **种子数据**（Phase 1 迁移）：
 
-- `tool_set`：`global_react_default` 含现有 5 个 SDK 工具 + 后续 MCP 工具由管理员配置
+- `tool_set`：`global_react_default`（5 个 SDK 工具）、`global_plan_workflow_critical`（2 个关键读工具）
+- `execution_mode_policy`：`global-plan-workflow-policy`（Plan/Workflow 重试/降级默认）
 - `sdk_application` 种子：`sunshine-finance`、`sunshine-oa`（首次 Pull 前 offline）
 
 ---
@@ -399,8 +421,8 @@ tool:
 |------|------|
 | 连接 | `McpClientPool`：stdio 子进程 / SSE HTTP |
 | Schema | probe + 定时 refresh；**动态覆盖** DB |
-| Tool ID | `mcp.{serverId}.{externalName}`（见 §6.3） |
-| 写工具 HITL | MCP annotation / 管理页标记 `sideEffect=write` |
+| Tool ID | `mcp__{serverId}__{externalName}`（见 §6.3） |
+| 写工具 HITL | 发现时 `sideEffect=write` 可设默认；**运行时门禁**以管理页 `require_confirmation=1` 为准（`confirmation_edited` 防覆盖） |
 | 导入 | `POST /api/admin/mcp/servers/import` 解析 mcp.json |
 | 导出 | `GET /api/admin/mcp/servers/export` Cursor 兼容 |
 
@@ -420,7 +442,11 @@ InvokeRouter:
   6. 审计 + 返回统一 R
 ```
 
-orchestrator 仍经 `CatalogRemoteAgentTool` → `ToolManagerClient.invoke`；扩展 `GenericRemoteToolFactory` 支持 `kind=mcp`。
+**ReAct 路径**：orchestrator `CatalogRemoteAgentTool.getName()` = Catalog ID → LLM `tool_call.function.name` 同 ID → `ToolManagerClient.invoke`。
+
+**Workflow / Plan 路径**：`ToolNodeHandler` 读节点 `params.tool`（Catalog ID）→ 直调 `ToolManagerClient.invokeMono`；**不经** LLM `tool_call`（answer/llm 节点 `tools=0`）。
+
+扩展 `GenericRemoteToolFactory` 支持 `kind=mcp`。
 
 ---
 
@@ -443,6 +469,13 @@ toolkit  = react + orchestratorSpecialTools(taskboard?, rag?)
 | Skill ReAct | `skill_version.tools_json` ∩ pool |
 | Workflow agent 节点 | `params.tools` ∩ pool |
 | Plan-Workflow | Planner `{{tool-catalog}}` = pool；Validator 校验 id ∈ catalog |
+| Plan/Workflow 关键工具 | `global_plan_workflow_critical`（可租户覆盖）；与 ReAct 默认集独立配置 |
+
+**Plan/Workflow 执行策略**（`execution_mode_policy`，mode_key=`plan_workflow`）：
+
+- SSOT：MySQL `execution_mode_policy`；管理页 **Planner Workflow** Tab 编辑
+- orchestrator `ExecutionModePolicyClient` → `NodeRetryPolicyResolver`（替代 Nacos 节点级 retry 配置）
+- 种子见 `16-sunshine-tool-manager.sql`（`criticalOnFailure`、`byType.tool` 等）
 
 ---
 
@@ -468,7 +501,7 @@ toolkit  = react + orchestratorSpecialTools(taskboard?, rag?)
 | SDK 应用 | 应用列表、在线状态、同步按钮、下属工具启停与描述编辑 |
 | MCP 服务 | Server CRUD、probe、导入/导出 mcp.json、工具列表 |
 | 平台工具 | Phase 2 灰显 |
-| 工具集配置 | 全局 / 租户 ReAct 默认集勾选 |
+| 工具集配置 | 子 Tab：**ReAct**（全局/租户默认集）· **Planner Workflow**（关键工具集 + 执行策略 JSON） |
 
 **BFF 透传**（新增）：
 
@@ -481,8 +514,12 @@ GET        /api/admin/mcp/servers/export
 POST       /api/admin/mcp/servers/{id}/probe
 PATCH      /api/admin/tools/{toolId}
 GET/PUT    /api/admin/tools/sets/react-default?tenantId=
+GET/PUT    /api/admin/tools/sets/plan-workflow-critical?tenantId=
+GET/PUT    /api/admin/tools/modes/plan-workflow?tenantId=
 GET        /api/tools/catalog?tenantId=&enabledOnly=
 ```
+
+工具列表「非法 ID」列：仅 `idValid=false` 时展示（规范校验失败），与 enabled 无关。
 
 ---
 
@@ -505,7 +542,9 @@ GET        /api/tools/catalog?tenantId=&enabledOnly=
 - `source`: `sdk` | `mcp` | `platform`
 - `source_ref`: `sunshine-finance` | mcp server id
 
-`approve_oa_task` 迁移后仍 `sideEffect=write`，HITL Live 验收保持有效。
+**HITL 门禁 SSOT**：`tool_definition.require_confirmation`（管理页可改，设 `confirmation_edited=1`）；SDK/MCP 发现可写入初始值，但 **不以** PATCH `sideEffect` 作为确认依据。`approve_oa_task` 种子 `require_confirmation=1`，Live G8 仍有效。
+
+**可观测**：llm-gateway `LlmIoTracer` 在流式/非流式完成日志输出 `toolCalls=`（ReAct 路径可见 Catalog ID；Workflow 直调路径无 LLM tool_call）。
 
 ---
 
@@ -544,7 +583,7 @@ GET        /api/tools/catalog?tenantId=&enabledOnly=
 | G6 | 工具集 | 配 global + tenant default → ReAct 仅加载交集 |
 | G7 | 动态生效 | disable 工具 → 下次请求不可用，无需重启 |
 | G8 | HITL | `approve_oa_task` 仍弹确认 |
-| G9 | 兼容 | workflow `finance-list` / skill `tools_json` 旧 id 仍有效 |
+| G9 | Catalog ID 一致 | workflow `finance-list` / skill `tools_json` 使用 `sdk__*` Catalog ID（如 `sdk__sunshine-finance__list_finance_messages`） |
 | G10 | 特殊工具 | `manage_tasks` / `search_knowledge` 正常，不进 DB |
 
 ---
@@ -571,7 +610,7 @@ GET        /api/tools/catalog?tenantId=&enabledOnly=
 | 文档 | 关系 |
 |------|------|
 | phase4 §4.8 | MCP 部分由本设计承接；UI 合并为 `/tools` MCP Tab |
-| CLAUDE.md「新工具」 | 改为：SDK 实现 → Nacos 注册 → `/tools` 启用 → 加入工具集 |
+| CLAUDE.md「新工具」 | SDK 实现 → Nacos 注册 → `/tools` 启用 → 加入工具集；Workflow 用 Catalog ID `sdk__*` |
 | implementation-plan.md | 新增 4.8.x 子任务指向本 spec |
 
 ---

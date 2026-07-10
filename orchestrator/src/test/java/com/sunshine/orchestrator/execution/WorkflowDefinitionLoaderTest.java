@@ -13,15 +13,15 @@ class WorkflowDefinitionLoaderTest {
     @Test
     void isIndexedListMap_detectsSpringYamlListBinding() {
         Map<String, Object> map = new LinkedHashMap<>();
-        map.put("0", "list_finance_messages");
+        map.put("0", "sdk__sunshine-finance__list_finance_messages");
         assertThat(WorkflowDefinitionLoader.isIndexedListMap(map)).isTrue();
         assertThat(WorkflowDefinitionLoader.indexedListValues(map))
-                .containsExactly("list_finance_messages");
+                .containsExactly("sdk__sunshine-finance__list_finance_messages");
     }
 
     @Test
     void isIndexedListMap_rejectsArbitraryMap() {
-        Map<String, Object> map = Map.of("tool", "list_finance_messages");
+        Map<String, Object> map = Map.of("tool", "sdk__sunshine-finance__list_finance_messages");
         assertThat(WorkflowDefinitionLoader.isIndexedListMap(map)).isFalse();
     }
 }

@@ -139,6 +139,11 @@ class ConversationIntegrationTest {
         when(llmGateway.streamComposed(any(PromptComposeRequest.class)))
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
         when(ragClient.fetchDefaultKbId(anyString())).thenReturn(Mono.just("default"));
+        when(ragClient.searchKnowledge(anyString(), any(), anyString(), anyString(), any(), any(Boolean.class)))
+                .thenReturn(Mono.just(new RagClient.RagSearchResult(
+                        List.of(new RagClient.RagHit("policy.md", "制度摘要", 0.9f)),
+                        "查制度",
+                        List.of())));
     }
 
     @Test
@@ -324,7 +329,8 @@ class ConversationIntegrationTest {
         ConversationDetailDto.MessageDto last = awaitMessageStatus(
                 ALICE, conv.getId(), assistant.getId(), MessageStatus.COMPLETED, 50);
 
-        assertThat(last.getContent()).contains("half answer").contains("continued");
+        assertThat(last.getContent()).contains("half answer");
+        assertThat(last.getSteps()).contains("continued");
         assertThat(last.getStatus()).isEqualTo(MessageStatus.COMPLETED);
         verify(llmGateway, never()).streamContinue(any(MemoryContext.class), anyString(), anyString());
         verify(llmGateway, atLeastOnce()).streamComposed(any(PromptComposeRequest.class));

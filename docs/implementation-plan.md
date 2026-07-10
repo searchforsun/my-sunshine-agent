@@ -88,7 +88,7 @@
 | **4.6** 动态 DAG 增强 | Plan 不够用 | if-else、并行、Replan、ContextCompressor |
 | **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 / ReAct 软规划 | **✅ 多专家协作完整**（2026-07-08）：**第五模式 `PEER_COLLAB`** L1 §E + **`$` L0** §K · `expert-manager` :8235 + `/experts` · `ExpertCoordinatorService`（选人 + `maxRounds`）· `ExpertHubEngine`（`min-rounds`/`max-rounds`、每轮 continue 判断、第 2 轮起反应式选人）· `ConsultationSynthesizer` · 种子 4 专家（policy/finance/compliance/legal）· Live：`verify_peer_collab_live` + `verify_expert_consultation_live` · 详设 [expert-consultation spec](./superpowers/specs/2026-07-07-expert-consultation-design.md) · 路由基线 [peer-collab spec](./superpowers/specs/2026-06-24-peer-collab-routing-design.md)；**4.7.5 ReAct TaskBoard** ✅ · [taskboard spec](./superpowers/specs/2026-06-24-react-taskboard-design.md)；**4.7.1/4.7.2/4.7.4** 仍按需 |
 | **4.13** Workflow Studio | 静态 workflow 运维 / 业务自助编排 | Dify 式 **`/workflows`** + DB PlanJson + `docs/workflow` 导入包 · **Chat `#` + catalog SSOT**（与底栏 executionPreference 正交）· [workflow-studio spec](./superpowers/specs/2026-06-25-workflow-studio-design.md) |
-| **4.8** MCP 动态引入 + 前端管理 | 异构系统接入 | tool-manager 动态注册 MCP Server + `/mcp` 管理页 + Catalog `kind=mcp` |
+| **4.8** 工具集成（SDK + MCP） | 异构系统 / 业务解耦 | **✅ 检查门通过**：MySQL Catalog + `sunshine-tool-sdk` + MCP 动态接入 + `/tools` 管理页 · 详设 [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) · 计划 [tool-integration plan](./superpowers/plans/2026-07-09-tool-integration.md) · Live：`verify_tool_integration_live.py --suite all` |
 | **4.9** K8s | 流量/HA | Helm + HPA + GitOps |
 | **4.10** Seata | 跨服务写 | 与 HITL 串联 |
 | **4.11** Prompt 后台 | 非研发维护提示词 | 版本/审核/回滚 |
@@ -105,11 +105,34 @@
 | 知识库 | `/knowledge` | 知识库工作台（文档/检索调试/参数/评测）；**配置版本化** + suite 管理 · [docs/rag/README.md](./rag/README.md) |
 | **Skills** | **`/skills`** | Skill 列表/上传/版本/预览/元数据；**版本 diff** → `/skills/:skillId/diff`（见 [skills-management-ui-design.md](./superpowers/specs/skills-management-ui-design.md)） |
 | **Experts** | **`/experts`** | **✅ 阶段四 4.7**：Expert CRUD、Catalog 种子（4 专家）、Chat `$` 补全、`ExpertStepPanel` · [expert-consultation spec](./superpowers/specs/2026-07-07-expert-consultation-design.md) |
-| **MCP 工具** | **`/mcp`** | **阶段四 4.8**：MCP Server 动态注册、探测、启停、工具预览 |
+| **工具集成** | **`/tools`** | **阶段四 4.8 ✅**：SDK 应用 / MCP Server / 工具集（ReAct + Planner Workflow）/ Plan 执行策略 · [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) |
 | **工作流** | **`/workflows`** | **阶段四 4.13**：Workflow Studio 可视化编辑、JSON 导入、发布；导入包 **`docs/workflow/`** |
 | 系统状态 | `/status` | 12 微服务 + 12 中间件状态矩阵 |
 
 > **阶段四 OCR/多模态**：见 `superpowers/specs/phase4-platformization-design.md` §4.2–4.4  
-> **阶段四 MCP**：见同文档 §4.8（动态注册 + `/mcp` 管理页；阶段三非目标）
+> **阶段四 4.8 工具集成**：见 [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) · Live `scripts/verify_tool_integration_live.py`
+
+#### 4.8 工具集成（SDK + MCP）
+
+> 详设：[2026-07-09-tool-integration-design.md](./superpowers/specs/2026-07-09-tool-integration-design.md) · 实施计划：[2026-07-09-tool-integration.md](./superpowers/plans/2026-07-09-tool-integration.md)
+
+| 子任务 | 内容 | 状态 |
+|--------|------|:----:|
+| **4.8.1** | `common/sunshine-tool-sdk` + finance/oa SDK Demo | **✅** |
+| **4.8.2** | MySQL `sunshine_tool` + DB Catalog + 删旧 Handler | **✅** |
+| **4.8.3** | SdkDiscoveryPuller + InvokeRouter(sdk) | **✅** |
+| **4.8.4** | McpClientPool + probe + import/export | **✅** |
+| **4.8.5** | Admin API + 工具集 + Redis catalog-changed | **✅** |
+| **4.8.6** | orchestrator ToolSetResolver + kind=mcp | **✅** |
+| **4.8.7** | BFF 透传 + sunshine-ui `/tools` | **✅** |
+| **4.8.8** | Live 检查门 `verify_tool_integration_live.py` | **✅** |
+| **4.8.9** | Catalog Tool ID 规范（`ToolIds`：`sdk__*` / `mcp__*`；LLM function name 同 ID，无转换层） | **✅** |
+| **4.8.10** | HITL：`require_confirmation` + `confirmation_edited`（DB 唯一依据；`sideEffect` 只读来自发现） | **✅** |
+| **4.8.11** | Plan/Workflow：`execution_mode_policy` 表 + `/tools` 策略编辑；orchestrator `NodeRetryPolicyResolver` 读 DB | **✅** |
+| **4.8.12** | 工具集双 Tab（ReAct 默认集 + Planner Workflow 关键工具集）；llm-gateway `LlmIoTracer` 输出 `toolCalls=` | **✅** |
+
+**检查门**：`python3 scripts/verify_tool_integration_live.py --suite all`（G1–G10；MCP 无 npx 时 G4/G5 SKIP）
+
+**调用路径**：静态/Plan Workflow 的 `tool` 节点经 `ToolNodeHandler` 直调 `tool-manager`（不经 LLM `tool_call`）；ReAct 经 LLM `tool_call` → `CatalogRemoteAgentTool` → invoke。Workflow YAML / skill `tools_json` 须使用 Catalog ID（`sdk__*`）。
 
 **技术栈与版本基线、服务器中间件**：见 [README.md](../README.md) §技术栈 · §服务器中间件（ecs4c16g）。

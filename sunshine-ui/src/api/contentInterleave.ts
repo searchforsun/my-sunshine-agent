@@ -97,9 +97,9 @@ export function appendSegmentContent(
   resume: boolean,
 ): void {
   if (!chunk || !segmentId) return
-  appendMessageContent(msg, chunk, resume)
   const block = findBlock(msg.contentBlocks, segmentId)
   if (!block) return
+  appendMessageContent(msg, chunk, resume)
   block.text = resume ? mergeStreamChunk(block.text, chunk) : block.text + chunk
 }
 
@@ -304,18 +304,22 @@ export function normalizeRestoredInterleavedContent(msg: ChatMessage): void {
   }
   if (!msg.contentBlocks?.length) return
   stripPlanDrawerLeakFromMessage(msg)
-  const joined = msg.steps?.some(s => s.phase === 'plan')
+  const joinedRaw = msg.steps?.some(s => s.phase === 'plan')
     ? joinedPlanAnswerBlocks(msg.contentBlocks)
     : joinedContentBlocks(msg.contentBlocks)
+  const joined = joinedRaw.trim()
   if (!joined) return
-  const content = msg.content ?? ''
-  if (content === joined) return
+  const content = (msg.content ?? '').trim()
+  if (content === joined) {
+    msg.content = joined
+    return
+  }
   if (content === joined + joined) {
     msg.content = joined
     return
   }
   if (joined.length > 0 && content.endsWith(joined) && content.length > joined.length) {
-    const head = content.slice(0, content.length - joined.length)
+    const head = content.slice(0, content.length - joined.length).trim()
     if (head === joined || head.endsWith(joined)) {
       msg.content = joined
       return
@@ -349,8 +353,8 @@ export function isContentFullyInterleaved(msg: ChatMessage): boolean {
     return content === answerText || content.includes(answerText)
   }
   if (!msg.contentBlocks?.length) return false
-  const joined = joinedContentBlocks(msg.contentBlocks)
-  if (!joined.trim()) return false
+  const joined = joinedContentBlocks(msg.contentBlocks).trim()
+  if (!joined) return false
   const content = (msg.content ?? '').trim()
   if (!content) return true
   if (joined === content) return true

@@ -15,7 +15,7 @@ class GroundingEvidenceSupportTest {
     void fromWorkflowDetectsRagAndToolNodes() {
         WorkflowContext ctx = new WorkflowContext();
         ctx.putNode("rag", Map.of("output", "制度摘要", "hitCount", "2"));
-        ctx.putNode("tool", Map.of("output", "[]", "tool", "list_finance_messages"));
+        ctx.putNode("tool", Map.of("output", "[]", "tool", "sdk__sunshine-finance__list_finance_messages"));
 
         var evidence = GroundingEvidenceSupport.fromWorkflow(ctx);
         assertThat(evidence.hasToolOrRag()).isTrue();
@@ -33,7 +33,7 @@ class GroundingEvidenceSupportTest {
 
     @Test
     void fromTimelineDetectsCompletedToolStep() {
-        ProcessingStep toolStep = ProcessingStep.done("tool-list_finance_messages", "tool", "财务查询", "3 条");
+        ProcessingStep toolStep = ProcessingStep.done("tool-sdk__sunshine-finance__list_finance_messages", "tool", "财务查询", "3 条");
         var evidence = GroundingEvidenceSupport.fromTimeline(List.of(toolStep), null);
         assertThat(evidence.hasToolOrRag()).isTrue();
     }

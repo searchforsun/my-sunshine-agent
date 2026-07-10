@@ -1,58 +1,29 @@
 package com.sunshine.tool.registry;
 
-import com.sunshine.common.core.exception.BizException;
-import com.sunshine.tool.dto.ToolCatalogEntry;
-import com.sunshine.tool.exception.ToolErrorCode;
-import com.sunshine.tool.tool.ToolHandler;
+import com.sunshine.tool.invoke.InvokeRouter;
+import com.sunshine.tool.repo.ToolDefinitionRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
- * 工具名 → ToolHandler 自动注册表，替代 switch 硬编码
+ * 工具调用与摘要策略入口 — Catalog 由 DbToolCatalogService 提供
  */
 @Component
+@RequiredArgsConstructor
 public class ToolRegistry {
 
-    private final Map<String, ToolHandler> handlers;
+    private final InvokeRouter invokeRouter;
+    private final ToolDefinitionRepository toolDefinitionRepository;
 
-    public ToolRegistry(List<ToolHandler> handlerList) {
-        this.handlers = handlerList.stream()
-                .collect(Collectors.toMap(ToolHandler::name, Function.identity(), (a, b) -> a));
-    }
-
-    public String invoke(String name, Map<String, String> params) {
-        ToolHandler handler = handlers.get(name);
-        if (handler == null) {
-            throw new BizException(ToolErrorCode.UNKNOWN_TOOL);
-        }
-        return handler.invoke(params);
+    public String invoke(String name, Map<String, String> params, String tenantId) {
+        return invokeRouter.invoke(name, params, tenantId);
     }
 
     public String outputSummaryKind(String name) {
-        ToolHandler handler = handlers.get(name);
-        if (handler == null) {
-            return "truncate";
-        }
-        return handler.outputSummaryKind();
-    }
-
-    /** 供 orchestrator 拉取工具元数据 */
-    public List<ToolCatalogEntry> listCatalog() {
-        return handlers.values().stream()
-                .map(h -> new ToolCatalogEntry(
-                        h.name(),
-                        h.displayName(),
-                        h.description(),
-                        h.kind(),
-                        h.timelinePhase(),
-                        h.outputSummaryKind(),
-                        h.parametersSchema(),
-                        h.sideEffect()))
-                .sorted((a, b) -> a.id().compareTo(b.id()))
-                .toList();
+        return toolDefinitionRepository.findById(name)
+                .map(com.sunshine.tool.entity.ToolDefinitionEntity::getOutputSummaryKind)
+                .orElse("truncate");
     }
 }

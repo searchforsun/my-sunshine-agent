@@ -18,7 +18,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,8 +25,6 @@ class ReActAgentFactoryTest {
 
     @Mock
     private AgentPromptProperties prompts;
-    @Mock
-    private Toolkit globalToolkit;
     @Mock
     private DynamicToolkitFactory dynamicToolkitFactory;
     @Mock
@@ -42,7 +39,7 @@ class ReActAgentFactoryTest {
     void setUp() {
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
         executionProperties.getReact().setMaxIters(5);
-        factory = new ReActAgentFactory(prompts, executionProperties, globalToolkit, dynamicToolkitFactory, stepHookFactory);
+        factory = new ReActAgentFactory(prompts, executionProperties, dynamicToolkitFactory, stepHookFactory);
         ReflectionTestUtils.setField(factory, "modelName", "deepseek-v4-pro");
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");
         ReflectionTestUtils.setField(factory, "apiKey", "test-key");
@@ -51,7 +48,7 @@ class ReActAgentFactoryTest {
     @Test
     void composeSystemPrompt_appendsOverlayWhenPresent() {
         when(prompts.systemPromptOrEmpty()).thenReturn("base system");
-        AgentRunRequest req = subRequest(null, List.of("list_finance_messages"), "仅输出合规结论");
+        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), "仅输出合规结论");
         assertThat(factory.composeSystemPrompt(req))
                 .isEqualTo("base system\n\n仅输出合规结论");
     }
@@ -59,40 +56,42 @@ class ReActAgentFactoryTest {
     @Test
     void composeSystemPrompt_skipsOverlayWhenBlank() {
         when(prompts.systemPromptOrEmpty()).thenReturn("base system");
-        AgentRunRequest req = subRequest(null, List.of("list_finance_messages"), "  ");
+        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), "  ");
         assertThat(factory.composeSystemPrompt(req)).isEqualTo("base system");
     }
 
     @Test
     void resolveToolkit_subUsesExplicitWhitelist() {
-        AgentRunRequest req = subRequest(null, List.of("list_finance_messages"), null);
-        when(dynamicToolkitFactory.build(List.of("list_finance_messages"))).thenReturn(subToolkit);
+        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), null);
+        when(dynamicToolkitFactory.build(List.of("sdk__sunshine-finance__list_finance_messages"), "default"))
+                .thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).build(List.of("list_finance_messages"));
+        verify(dynamicToolkitFactory).build(List.of("sdk__sunshine-finance__list_finance_messages"), "default");
     }
 
     @Test
-    void resolveToolkit_mainUsesGlobalToolkit() {
+    void resolveToolkit_mainBuildsFreshToolkitFromTenantToolSet() {
         AgentRunRequest req = AgentRunRequest.main(
                 MemoryContext.empty(), "q", "u1", "default", "msg-main");
+        when(dynamicToolkitFactory.build("default")).thenReturn(subToolkit);
 
-        assertThat(factory.resolveToolkit(req)).isSameAs(globalToolkit);
-        verifyNoInteractions(dynamicToolkitFactory);
+        assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
+        verify(dynamicToolkitFactory).build("default");
     }
 
     @Test
     void resolveMaxIters_prefersRequestValue() {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.SUB, "run-1", null, MemoryContext.empty(), "q", List.of(),
-                "u1", "default", null, null, List.of("list_finance_messages"), null, 4,
+                "u1", "default", null, null, List.of("sdk__sunshine-finance__list_finance_messages"), null, 4,
                 TimelineBinding.SUB_COMPRESSED, false);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
     }
 
     @Test
     void resolveMaxIters_fallsBackToDefault() {
-        AgentRunRequest req = subRequest(null, List.of("list_finance_messages"), null);
+        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(5);
     }
 

@@ -27,7 +27,7 @@
 | **4.5** | Skills Docker 沙箱 | 代码执行 skill | 中 |
 | **4.6** | 动态 DAG 增强：if-else、并行 fan-out、Replan | 静态 workflow 不够 | 中 |
 | **4.7** | 多 Agent 增强：**第五顶层模式 `PEER_COLLAB` ✅**、Coordinator、MsgHub 反应式轮次、Synthesizer、**ReAct TaskBoard ✅** | 复杂协作 / 交叉验证 / ReAct 软规划 | 中 |
-| **4.8** | MCP 动态引入 + 前端管理：tool-manager 注册 MCP Server + `/mcp` 管理页 | 非 HTTP 遗留系统 / 异构工具接入 | 中 |
+| **4.8** | 工具集成（SDK + MCP）：MySQL Catalog + `/tools` 管理页 | 业务解耦 / 异构工具接入 | 中 · [详设](./2026-07-09-tool-integration-design.md) |
 | **4.9** | K8s：Helm + HPA + Nacos GitOps | 流量/HA | 中 |
 | **4.10** | Seata 分布式事务 + HITL 串联 | 跨服务写操作 | 低 |
 | **4.11** | Prompt 运营后台：版本/审核/回滚 | 提示词 >10 + 非研发维护 | 中 |
@@ -129,30 +129,35 @@
 
 **4.7.3 摘要（✅）**：第五顶层模式 `peer-collab`；`ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue、反应式选人）+ `ConsultationSynthesizer`；详设 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) · Live `verify_peer_collab_live` + `verify_expert_consultation_live`。
 
-### 4.8 MCP 动态引入 + 前端管理
+### 4.8 工具集成（SDK + MCP）
 
+> **演进 SSOT**：[2026-07-09-tool-integration-design.md](./2026-07-09-tool-integration-design.md) · 实施计划：[2026-07-09-tool-integration.md](../plans/2026-07-09-tool-integration.md)  
 > **阶段归属**：阶段三 **非目标**（见 [phase3](./phase3-production-hardening-design.md) §1）；**前置** 阶段三 3.11 skill-manager + 3.12 `/skills` Catalog 管理模式、3.3 HITL `sideEffect`、3.6 tool 审计。  
-> **对称参照**：与 skill-manager（:8225 + `/skills`）同模式 — **tool-manager 扩 Catalog**，前端新增 **`/mcp`** 管理页，orchestrator 经 `ToolCatalogService` 拉取，**禁止**前端维护 MCP 工具 Map。
+> **对称参照**：与 skill-manager（:8225 + `/skills`）同模式 — **tool-manager 扩 MySQL Catalog + Admin API**，前端 **`/tools`** 管理页（SDK / MCP / 工具集 Tab），orchestrator 经 `ToolSetResolver` + `ToolCatalogService` 拉取，**禁止**前端维护工具 Map。
+
+**本设计承接原 §4.8 MCP 目标并扩展 SDK 业务解耦**；原独立 `/mcp` 路由合并为 `/tools` MCP Tab。
 
 | 子任务 | 内容 |
 |--------|------|
-| **4.8.1** | `mcp_server` 表 + 动态注册 API（`POST /api/mcp/servers`）：name、transport（`stdio` \| `sse`）、command/args 或 endpoint、env、启停 |
-| **4.8.2** | `McpClient` 连接池：启动/健康检查/断线重连；`tools/list` 定时刷新 |
-| **4.8.3** | `McpToolAdapter implements ToolHandler` → Catalog `kind=mcp`；`displayName` / `timelinePhase` / `sideEffect` 与 HTTP 工具一致 |
-| **4.8.4** | `GET /api/tools/catalog` 合并 MCP 工具；`DynamicToolkitFactory` + react 白名单校验（复用 2.15） |
-| **4.8.5** | 前端 **`/mcp`**：Server 列表、新增连接（stdio 命令 / SSE URL）、**探测**（`tools/list` 预览）、启用/禁用、工具明细 |
-| **4.8.6** | MCP 写工具走 **3.3 HITL**；调用审计写入 **3.6** `sunshine-tool-audit`（`source=mcp`） |
-| **4.8.7** | Workflow `tool` 节点可选 `kind=mcp` 工具（Nacos `params.tool` 白名单） |
+| **4.8.1** | `sunshine-tool-sdk` + finance/oa Demo；`sdk_application` / `tool_definition` MySQL Catalog |
+| **4.8.2** | SdkDiscoveryPuller（Nacos Pull）+ InvokeRouter(sdk)；去除 tool-manager 对 finance/oa HTTP 桥接 |
+| **4.8.3** | MCP：`mcp_server` 表 + import/probe + `McpClientPool`；Catalog `kind=mcp`，Tool ID `mcp__{serverId}__{name}` |
+| **4.8.4** | 工具集 `global_react_default` + `global_plan_workflow_critical` + 租户覆盖；弃用 Nacos `react.tools` 白名单 |
+| **4.8.5** | 前端 **`/tools`**：SDK 应用同步、MCP Server CRUD/探测、工具启停与描述编辑、工具集（ReAct + Planner Workflow）与 Plan 执行策略 |
+| **4.8.6** | MCP/SDK 写工具走 **3.3 HITL**；调用审计 **3.6**（`source=sdk\|mcp`） |
+| **4.8.7** | Live：`scripts/verify_tool_integration_live.py`（G1–G10） |
+
+**Phase 1 增量（✅ 2026-07-10）**：Catalog ID `sdk__*` / `mcp__*`（`ToolIds`，无 LLM 转换层）；HITL `require_confirmation`；`execution_mode_policy`；llm-gateway `toolCalls` 日志。详设 [tool-integration-design §6.3 / §9 / §14](./2026-07-09-tool-integration-design.md)。
 
 **动态引入流程**：
 
 ```
-运维/研发 → /mcp 注册 Server → tool-manager 持久化 + McpClient 连接
-         → tools/list 发现 → 写入 Catalog（kind=mcp）
-         → orchestrator ToolCatalogService 拉取 → ReAct / Workflow 可调用
+业务 App + SDK → Nacos 注册 → tool-manager Pull catalog → MySQL
+运维 → /tools 注册 MCP Server → probe tools/list → Catalog（kind=mcp）
+管理页启停 / 工具集 → Redis tool-catalog-changed → orchestrator 热刷新
 ```
 
-**检查门**：UI 注册 1 个 MCP Server（stdio 或 sse）→ 探测可见工具列表 → 启用后 ReAct 白名单可调用；写工具弹出 HITL 确认；审计可查 `source=mcp`。
+**检查门**：`verify_tool_integration_live.py --suite all` — SDK 2 应用 5 工具、ReAct invoke、MCP probe、工具集、HITL、动态 disable；**✅ 已通过**（2026-07-10）。详见 [tool-integration-design §16](./2026-07-09-tool-integration-design.md#16-检查门)。
 
 ### 4.9 K8s 生产部署
 
@@ -216,7 +221,7 @@
 | 4.2–4.3 | PDF/发票 OCR 入库可检索 + ocr eval |
 | 4.4 | 聊天发图识图 + Grounding |
 | 4.5 | Docker 沙箱执行 + 审计 |
-| 4.8 | `/mcp` 动态注册 + 探测 + ReAct 可调用 + HITL/审计 |
+| 4.8 | `/tools` SDK+MCP + probe + 工具集 + Live G1–G10 · **✅** |
 | 4.9 | 3 副本 orchestrator 滚动无中断 |
 
 ---

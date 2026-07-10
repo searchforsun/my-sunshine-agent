@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import io.agentscope.core.tool.Toolkit;
 import lombok.RequiredArgsConstructor;
@@ -14,33 +15,41 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 按 Nacos react 工具白名单 + catalog 动态组装 Toolkit
+ * 按 MySQL ToolSet + Catalog 启用池动态组装 Toolkit
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DynamicToolkitFactory {
 
+    private static final String DEFAULT_TENANT = "default";
+
     private final RagTool ragTool;
     private final ManageTasksTool manageTasksTool;
     private final GenericRemoteToolFactory remoteToolFactory;
     private final ToolCatalogService toolCatalogService;
+    private final ToolSetResolver toolSetResolver;
     private final AgentExecutionProperties executionProperties;
 
-    /** 主 Agent：Nacos react 全局白名单 */
+    /** 主 Agent：租户 ReAct 默认工具集 */
     public Toolkit build() {
-        List<String> whitelist = executionProperties.getReact() != null
-                ? executionProperties.getReact().getTools()
-                : List.of();
-        return buildFromWhitelist(whitelist);
+        return build(DEFAULT_TENANT);
     }
 
-    /** 子 Agent：仅注册节点/skill 指定的工具子集 */
+    public Toolkit build(String tenantId) {
+        return buildFromWhitelist(toolSetResolver.resolveReactTools(tenantId));
+    }
+
+    /** 子 Agent：显式白名单与启用池求交 */
     public Toolkit build(List<String> toolWhitelist) {
+        return build(toolWhitelist, DEFAULT_TENANT);
+    }
+
+    public Toolkit build(List<String> toolWhitelist, String tenantId) {
         if (toolWhitelist == null || toolWhitelist.isEmpty()) {
-            return build();
+            return build(tenantId);
         }
-        return buildFromWhitelist(toolWhitelist);
+        return buildFromWhitelist(toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId));
     }
 
     private Toolkit buildFromWhitelist(List<String> whitelist) {
@@ -54,7 +63,7 @@ public class DynamicToolkitFactory {
                 continue;
             }
             if (toolName.equals(ManageTasksTool.NAME)) {
-                log.warn("[Orchestrator] manage_tasks 为内置元工具，勿放入 react.tools 白名单");
+                log.warn("[Orchestrator] manage_tasks 为内置元工具，勿放入 ReAct 工具集");
                 continue;
             }
             if (toolCatalogService.isRagTool(toolName)) {
@@ -77,7 +86,7 @@ public class DynamicToolkitFactory {
         }
 
         if (!missing.isEmpty()) {
-            log.error("[Orchestrator] react 白名单工具未在 Catalog 注册: {}", missing);
+            log.error("[Orchestrator] ReAct 工具集条目未在 Catalog 注册: {}", missing);
         }
 
         log.info("[Orchestrator] DynamicToolkit 已注册工具: {}", String.join(", ", registered));

@@ -30,11 +30,11 @@ class ToolAuditServiceTest {
         when(desensitizeClient.scrub(anyString())).thenAnswer(inv -> inv.getArgument(0));
         service.toolCall(
                 "c1", "m1", "u1", "default", "plan-1", "n2",
-                "list_finance_messages", Map.of("status", "pending"), "共 3 条", "ok");
+                "sdk__sunshine-finance__list_finance_messages", Map.of("status", "pending"), "共 3 条", "ok");
         ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
         verify(auditPublisher).publish(captor.capture());
         assertThat(captor.getValue().eventType()).isEqualTo("tool.call");
-        assertThat(captor.getValue().payloadJson()).contains("\"toolId\":\"list_finance_messages\"");
+        assertThat(captor.getValue().payloadJson()).contains("\"toolId\":\"sdk__sunshine-finance__list_finance_messages\"");
         assertThat(captor.getValue().payloadJson()).contains("\"planId\":\"plan-1\"");
     }
 }

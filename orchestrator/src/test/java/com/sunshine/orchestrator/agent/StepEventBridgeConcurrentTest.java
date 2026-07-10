@@ -74,7 +74,7 @@ class StepEventBridgeConcurrentTest {
         SubAgentTimelineBridge bridge = new SubAgentTimelineBridge("approve", "审批任务");
         StepEventBridge.bindTokenWrapper(bridgeId, bridge::wrap);
 
-        StepEventBridge.emit(bridgeId, session -> session.beginToolStep("tool-approve_oa_task", "tool"));
+        StepEventBridge.emit(bridgeId, session -> session.beginToolStep("tool-sdk__sunshine-oa__approve_oa_task", "tool"));
 
         List<StreamToken> out = new ArrayList<>();
         StepEventBridge.drainHookQueueToGeneration(bridgeId, out::add);
@@ -82,7 +82,7 @@ class StepEventBridgeConcurrentTest {
         assertThat(out).isNotEmpty();
         assertThat(out).allMatch(t -> t.isStep() && "node-approve".equals(t.step().id()));
         assertThat(out.get(out.size() - 1).step().subSteps()).isNotEmpty();
-        assertThat(out.get(out.size() - 1).step().subSteps().get(0).id()).startsWith("tool-approve_oa_task");
+        assertThat(out.get(out.size() - 1).step().subSteps().get(0).id()).startsWith("tool-sdk__sunshine-oa__approve_oa_task");
     }
 
     @Test

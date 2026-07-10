@@ -29,12 +29,34 @@ export function useChatScroll(loading: Ref<boolean>) {
       el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
     }
     apply()
-    requestAnimationFrame(apply)
+    requestAnimationFrame(() => {
+      apply()
+      requestAnimationFrame(apply)
+    })
+  }
+
+  /** 用户主动发消息 / 续跑：恢复贴底，流式阶段跟随新内容 */
+  function pinScrollForSend() {
+    chatScrollPinned.value = true
   }
 
   function pinScrollForHitl() {
     chatScrollPinned.value = true
     forceChatScroll.value = true
+  }
+
+  /** 悬浮输入区拦截滚轮时，转发给消息滚动区 */
+  function forwardWheelToChatScroll(e: WheelEvent) {
+    const el = scrollRef.value
+    if (!el || el.scrollHeight <= el.clientHeight) return
+    const target = e.target
+    if (target instanceof Element && target.closest('.skill-suggest')) return
+    el.scrollTop = Math.min(
+      el.scrollHeight - el.clientHeight,
+      Math.max(0, el.scrollTop + e.deltaY),
+    )
+    syncScrollPinned()
+    e.preventDefault()
   }
 
   return {
@@ -43,7 +65,9 @@ export function useChatScroll(loading: Ref<boolean>) {
     forceChatScroll,
     onChatScroll,
     scrollToBottom,
+    pinScrollForSend,
     pinScrollForHitl,
+    forwardWheelToChatScroll,
     syncScrollPinned,
     isNearChatBottom,
   }

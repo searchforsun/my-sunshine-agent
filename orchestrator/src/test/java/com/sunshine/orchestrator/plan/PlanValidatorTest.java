@@ -36,9 +36,9 @@ class PlanValidatorTest {
 
     @Test
     void acceptsValidPlan() {
-        when(toolCatalogService.find("list_finance_messages"))
+        when(toolCatalogService.find("sdk__sunshine-finance__list_finance_messages"))
                 .thenReturn(Optional.of(new ToolCatalogEntry(
-                        "list_finance_messages", "财务列表", "", "remote", "finance", "count", Map.of(), "read")));
+                        "sdk__sunshine-finance__list_finance_messages", "财务列表", "", "remote", "finance", "count", Map.of(), "read", false)));
         when(skillCatalogService.findIndex("compliance-check"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
                         "compliance-check", "合规审查", "desc", 1, true)));
@@ -70,9 +70,9 @@ class PlanValidatorTest {
 
     @Test
     void acceptsMultiAgentPlanWithTwoAgents() {
-        when(toolCatalogService.find("list_finance_messages"))
+        when(toolCatalogService.find("sdk__sunshine-finance__list_finance_messages"))
                 .thenReturn(Optional.of(new ToolCatalogEntry(
-                        "list_finance_messages", "财务列表", "", "remote", "finance", "count", Map.of(), "read")));
+                        "sdk__sunshine-finance__list_finance_messages", "财务列表", "", "remote", "finance", "count", Map.of(), "read", false)));
         when(skillCatalogService.findIndex("policy-review"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
                         "policy-review", "制度审查", "desc", 1, true)));
@@ -93,7 +93,7 @@ class PlanValidatorTest {
                 List.of(
                         new PlanNode("n1", "rag", Map.of("topK", "3"), "检索差旅报销制度"),
                         new PlanNode("n2", "tool",
-                                Map.of("tool", "list_finance_messages", "status", "pending"),
+                                Map.of("tool", "sdk__sunshine-finance__list_finance_messages", "status", "pending"),
                                 "查询待审批报销单"),
                         new PlanNode("n3", "agent",
                                 Map.of("skill", "policy-review", "context", "{{n1.output}}",
@@ -114,7 +114,7 @@ class PlanValidatorTest {
     private static PlanJson samplePlan() {
         return new PlanJson("p", "r",
                 List.of(
-                        new PlanNode("n1", "tool", Map.of("tool", "list_finance_messages"),
+                        new PlanNode("n1", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"),
                                 "查询待审批"),
                         new PlanNode("n2", "agent",
                                 Map.of("skill", "compliance-check", "context", "{{n1.output}}",

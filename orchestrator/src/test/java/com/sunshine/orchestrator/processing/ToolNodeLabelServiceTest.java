@@ -30,11 +30,11 @@ class ToolNodeLabelServiceTest {
 
     @Test
     void toolTemplates_useCatalogDisplayName() {
-        when(catalogService.displayName("list_oa_tasks")).thenReturn("查询 OA 待办");
-        assertThat(ToolNodeLabels.toolLabel("tool-list_oa_tasks")).isEqualTo("调用工具 查询 OA 待办");
-        assertThat(ToolNodeLabels.toolBefore("tool-list_oa_tasks")).isEqualTo("准备查询 OA 待办");
-        assertThat(ToolNodeLabels.toolActive("tool-list_oa_tasks")).isEqualTo("正在查询 OA 待办");
-        assertThat(ToolNodeLabels.toolAfter("tool-list_oa_tasks", null)).isEqualTo("查询 OA 待办完成");
+        when(catalogService.displayName("sdk__sunshine-oa__list_oa_tasks")).thenReturn("查询 OA 待办");
+        assertThat(ToolNodeLabels.toolLabel("tool-sdk__sunshine-oa__list_oa_tasks")).isEqualTo("调用工具 查询 OA 待办");
+        assertThat(ToolNodeLabels.toolBefore("tool-sdk__sunshine-oa__list_oa_tasks")).isEqualTo("准备查询 OA 待办");
+        assertThat(ToolNodeLabels.toolActive("tool-sdk__sunshine-oa__list_oa_tasks")).isEqualTo("正在查询 OA 待办");
+        assertThat(ToolNodeLabels.toolAfter("tool-sdk__sunshine-oa__list_oa_tasks", null)).isEqualTo("查询 OA 待办完成");
     }
 
     @Test

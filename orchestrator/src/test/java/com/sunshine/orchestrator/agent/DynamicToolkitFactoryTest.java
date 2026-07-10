@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.agent.remote.CatalogRemoteAgentTool;
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +30,8 @@ class DynamicToolkitFactoryTest {
     @Mock
     private ToolCatalogService toolCatalogService;
     @Mock
+    private ToolSetResolver toolSetResolver;
+    @Mock
     private AgentExecutionProperties executionProperties;
     @Mock
     private AgentExecutionProperties.React reactProps;
@@ -37,8 +40,8 @@ class DynamicToolkitFactoryTest {
 
     @Test
     void build_withTaskboardEnabled_registersManageTasks() {
+        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTools()).thenReturn(List.of());
         when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard() {{
             setEnabled(true);
         }});
@@ -50,10 +53,11 @@ class DynamicToolkitFactoryTest {
 
     @Test
     void build_succeedsWhenMissingCatalogTool() {
-        when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTools()).thenReturn(List.of("ghost_tool"));
+        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of("ghost_tool"));
         when(toolCatalogService.isRagTool("ghost_tool")).thenReturn(false);
         when(remoteToolFactory.create("ghost_tool")).thenReturn(Optional.empty());
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
 
         factory.build();
     }
@@ -61,7 +65,7 @@ class DynamicToolkitFactoryTest {
     @Test
     void build_withExplicitWhitelist_registersOnlyListedTools() {
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", java.util.Map.of(), "read");
+                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", java.util.Map.of(), "read", false);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
         com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
@@ -69,13 +73,61 @@ class DynamicToolkitFactoryTest {
         com.sunshine.orchestrator.hitl.HitlConfirmationService hitlService =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.hitl.HitlConfirmationService.class);
 
-        when(toolCatalogService.isRagTool("list_finance_messages")).thenReturn(false);
-        when(remoteToolFactory.create("list_finance_messages"))
+        when(toolSetResolver.intersectEnabledPool(List.of("sdk__sunshine-finance__list_finance_messages"), "default"))
+                .thenReturn(List.of("sdk__sunshine-finance__list_finance_messages"));
+        when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_finance_messages")).thenReturn(false);
+        when(remoteToolFactory.create("sdk__sunshine-finance__list_finance_messages"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         financeEntry, toolManagerClient, toolAuditService, hitlService)));
 
-        var toolkit = factory.build(List.of("list_finance_messages"));
+        var toolkit = factory.build(List.of("sdk__sunshine-finance__list_finance_messages"));
 
-        assertThat(toolkit.getToolNames()).containsExactly("list_finance_messages");
+        assertThat(toolkit.getToolNames()).containsExactly("sdk__sunshine-finance__list_finance_messages");
+    }
+
+    @Test
+    void build_withMcpKindTool_registersRemoteAgentTool() {
+        ToolCatalogEntry mcpEntry = new ToolCatalogEntry(
+                "mcp_search", "MCP 搜索", "desc", "mcp", "tool", "generic", java.util.Map.of(), "read", false);
+        com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
+        com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.audit.ToolAuditService.class);
+        com.sunshine.orchestrator.hitl.HitlConfirmationService hitlService =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.hitl.HitlConfirmationService.class);
+
+        when(toolSetResolver.intersectEnabledPool(List.of("mcp_search"), "default"))
+                .thenReturn(List.of("mcp_search"));
+        when(toolCatalogService.isRagTool("mcp_search")).thenReturn(false);
+        when(remoteToolFactory.create("mcp_search"))
+                .thenReturn(Optional.of(new CatalogRemoteAgentTool(
+                        mcpEntry, toolManagerClient, toolAuditService, hitlService)));
+
+        var toolkit = factory.build(List.of("mcp_search"));
+
+        assertThat(toolkit.getToolNames()).containsExactly("mcp_search");
+    }
+
+    @Test
+    void build_withExplicitWhitelist_filtersOutDisabledTools() {
+        when(toolSetResolver.intersectEnabledPool(List.of("ghost_tool", "sdk__sunshine-finance__list_finance_messages"), "default"))
+                .thenReturn(List.of("sdk__sunshine-finance__list_finance_messages"));
+        ToolCatalogEntry financeEntry = new ToolCatalogEntry(
+                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", java.util.Map.of(), "read", false);
+        com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
+        com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.audit.ToolAuditService.class);
+        com.sunshine.orchestrator.hitl.HitlConfirmationService hitlService =
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.hitl.HitlConfirmationService.class);
+
+        when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_finance_messages")).thenReturn(false);
+        when(remoteToolFactory.create("sdk__sunshine-finance__list_finance_messages"))
+                .thenReturn(Optional.of(new CatalogRemoteAgentTool(
+                        financeEntry, toolManagerClient, toolAuditService, hitlService)));
+
+        var toolkit = factory.build(List.of("ghost_tool", "sdk__sunshine-finance__list_finance_messages"));
+
+        assertThat(toolkit.getToolNames()).containsExactly("sdk__sunshine-finance__list_finance_messages");
     }
 }

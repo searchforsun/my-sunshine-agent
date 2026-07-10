@@ -9,8 +9,14 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
- * 记录 LLM 网关入站请求与出站流式分片，便于确认上游是否返回 reasoning_content。
+ * 记录 LLM 网关入站请求与出站流式分片，便于确认上游是否返回 reasoning_content / tool_calls。
  */
 @Slf4j
 @Component
@@ -127,6 +133,7 @@ public class LlmIoTracer {
         private int contentChars;
         private String reasoningPreview = "";
         private String contentPreview = "";
+        private final Map<Integer, StringBuilder> toolNames = new LinkedHashMap<>();
 
         StreamAccumulator(String model) {
             this.model = model;
@@ -156,27 +163,52 @@ public class LlmIoTracer {
                             model, preview(fields.content));
                 }
             }
+            for (ToolCallFragment fragment : fields.toolCallFragments()) {
+                if (fragment.nameDelta() != null && !fragment.nameDelta().isEmpty()) {
+                    toolNames.computeIfAbsent(fragment.index(), idx -> new StringBuilder())
+                            .append(fragment.nameDelta());
+                }
+                if (log.isDebugEnabled() && fragment.nameDelta() != null && !fragment.nameDelta().isEmpty()) {
+                    log.debug("[LLM-IO] chunk model={} channel=tool_call index={} nameFragment={}",
+                            model, fragment.index(), preview(fragment.nameDelta()));
+                }
+            }
         }
 
         void logSummary() {
             boolean hasReasoning = reasoningChars > 0;
+            String toolCallsSummary = formatToolCallsSummary();
             log.info(
                     "[LLM-IO] stream done model={} reasoningChunks={} contentChunks={} "
                             + "reasoningChars={} contentChars={} hasReasoning={} "
-                            + "reasoningPreview={} contentPreview={}",
+                            + "toolCalls={} reasoningPreview={} contentPreview={}",
                     model,
                     reasoningChunks,
                     contentChunks,
                     reasoningChars,
                     contentChars,
                     hasReasoning,
+                    toolCallsSummary,
                     hasReasoning ? reasoningPreview : "-",
                     contentChars > 0 ? contentPreview : "-");
         }
+
+        private String formatToolCallsSummary() {
+            if (toolNames.isEmpty()) {
+                return "-";
+            }
+            return toolNames.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .map(entry -> entry.getValue().toString())
+                    .collect(Collectors.joining(", "));
+        }
     }
 
-    record DeltaFields(String reasoning, String content) {
-        static final DeltaFields EMPTY = new DeltaFields("", "");
+    record ToolCallFragment(int index, String id, String nameDelta, String argumentsDelta) {
+    }
+
+    record DeltaFields(String reasoning, String content, List<ToolCallFragment> toolCallFragments) {
+        static final DeltaFields EMPTY = new DeltaFields("", "", List.of());
 
         static DeltaFields from(JsonNode node) {
             String reasoning = firstNonBlank(
@@ -184,7 +216,29 @@ public class LlmIoTracer {
                     text(node, "reasoning"),
                     text(node, "thinking"));
             String content = text(node, "content");
-            return new DeltaFields(reasoning, content);
+            return new DeltaFields(reasoning, content, parseToolCallFragments(node.get("tool_calls")));
+        }
+
+        private static List<ToolCallFragment> parseToolCallFragments(JsonNode toolCalls) {
+            if (toolCalls == null || !toolCalls.isArray() || toolCalls.isEmpty()) {
+                return List.of();
+            }
+            List<ToolCallFragment> fragments = new ArrayList<>();
+            for (JsonNode toolCall : toolCalls) {
+                if (toolCall == null || !toolCall.isObject()) {
+                    continue;
+                }
+                int index = toolCall.has("index") ? toolCall.get("index").asInt(0) : 0;
+                String id = text(toolCall, "id");
+                JsonNode function = toolCall.get("function");
+                String nameDelta = function != null ? text(function, "name") : "";
+                String argumentsDelta = function != null ? text(function, "arguments") : "";
+                if (id.isEmpty() && nameDelta.isEmpty() && argumentsDelta.isEmpty()) {
+                    continue;
+                }
+                fragments.add(new ToolCallFragment(index, id, nameDelta, argumentsDelta));
+            }
+            return fragments;
         }
 
         boolean hasReasoning() {

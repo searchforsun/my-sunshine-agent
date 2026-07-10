@@ -21,7 +21,6 @@ public class ReActAgentFactory {
 
     private final AgentPromptProperties prompts;
     private final AgentExecutionProperties executionProperties;
-    private final Toolkit toolkit;
     private final DynamicToolkitFactory dynamicToolkitFactory;
     private final ProcessingStepHookFactory stepHookFactory;
 
@@ -70,9 +69,9 @@ public class ReActAgentFactory {
         if (request.role() == AgentRole.SUB
                 && request.toolWhitelist() != null
                 && !request.toolWhitelist().isEmpty()) {
-            return dynamicToolkitFactory.build(request.toolWhitelist());
+            return dynamicToolkitFactory.build(request.toolWhitelist(), request.tenantId());
         }
-        return toolkit;
+        return dynamicToolkitFactory.build(request.tenantId());
     }
 
     public int resolveMaxIters(AgentRunRequest request) {

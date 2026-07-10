@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
-import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline, PeopleOutline } from '@vicons/ionicons5'
+import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline, PeopleOutline, ConstructOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, ref } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
@@ -55,11 +55,12 @@ const menuOptions = computed((): MenuOption[] => {
   },
   { label: '知识库',  key: 'knowledge', icon: renderIcon(BookOutline) },
   { label: 'Skills', key: 'skills', icon: renderIcon(LayersOutline) },
+  { label: '工具', key: 'tools', icon: renderIcon(ConstructOutline) },
   { label: '专家', key: 'experts', icon: renderIcon(PeopleOutline) },
   { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
 ]})
 
-const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'experts'])
+const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'tools', 'experts'])
 const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
 const hideSidebarFab = computed(() => contentFill.value)
 

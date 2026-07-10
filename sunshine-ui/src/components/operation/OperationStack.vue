@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
-import { resolvePlanIdFromStep } from '../../api/processingSteps'
+import { hasRealTaskBoardItems, resolvePlanIdFromStep } from '../../api/processingSteps'
 import {
   isToolStepId,
   resolveHitlUiKey,
@@ -106,8 +106,12 @@ const displaySteps = computed(() => {
       return true
     })
   }
-  // ReAct：正文已 inline 穿插，不再展示「生成回答」步骤行
-  return props.steps.filter(s => !isHiddenReactTimelineStep(s))
+  // ReAct：正文已 inline 穿插，不再展示「生成回答」步骤行；无 items 的 tasks 占位步不展示
+  return props.steps.filter(s => {
+    if (isHiddenReactTimelineStep(s)) return false
+    if (s.phase === 'tasks' && !hasRealTaskBoardItems(s)) return false
+    return true
+  })
 })
 
 const pendingList = computed(() =>

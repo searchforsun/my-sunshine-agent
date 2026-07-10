@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑（确需兼容须写明原因并评审通过）。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改提示词或架构，不在前后端打补丁。
 
-**进度**：阶段三 **检查门通过** — 阶段四 **4.7 多专家协作 ✅**（`PEER_COLLAB` L1 §E + Expert Catalog `$` §K + Hub 反应式轮次 + Synthesizer + `/experts`）· **4.7.5 ReAct TaskBoard ✅** · **4.13.1** workflow-manager :8230 ✅；**4.13.2+** Catalog/API/Studio ⬜；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 **检查门通过** — 阶段四 **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.8 工具集成 ✅**（SDK + MCP Catalog + `/tools` + Live G1–G10）· **4.13.1** workflow-manager :8230 ✅；**4.13.2+** Catalog/API/Studio ⬜；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -43,6 +43,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
 | `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（L1 句式路由） |
 | `verify_expert_consultation_live.py` | **4.7.3 演进** 多专家协作 §K Live（`$` 绑定 + expert 步 + Synthesizer） |
+| `verify_tool_integration_live.py` | **4.8** SDK+MCP 工具集成 Live（`--suite sdk\|mcp\|toolset\|hitl\|all`） |
 
 ## 请求链路与模块
 
@@ -56,10 +57,10 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 
 | 要扩展 | 改哪里 |
 |--------|--------|
-| 新工具 | `tool-manager` 新增 `ToolHandler`（含 displayName / timelinePhase / outputSummaryKind）→ Nacos `agent.execution.react.tools` 或 workflow 节点 `params.tool` → sync + 重启 tool-manager、orchestrator |
+| 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册（metadata `sunshine.tool-app=true`）→ `/tools` 启用 → 加入 ReAct 工具集；Workflow 节点 `params.tool` 填 **Catalog ID**（`sdk__{app}__{name}`）；**禁止** tool-manager 新增编译期 `ToolHandler` |
 | 新 Workflow | **当前**：`docs/nacos/sunshine-workflows.yaml` catalog + definitions → sync → 重启 orchestrator；**4.13**：`/workflows` + `workflow-manager` DB 发布（同 ID 覆盖 Nacos） |
 | **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanDagGraph`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
-| **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
+| **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；重试策略 SSOT **`execution_mode_policy`**（tool-manager DB，`/tools` Planner Workflow Tab）；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
 | **意图路由** | **Policy Chain**：L0 Skill → L1 `agent.routing.structural` → L2 `agent.routing.rules` → L3 `agent.intent`；验收见 `docs/routing/routing-golden-set.md` |
@@ -73,7 +74,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | **多专家协作（peer-collab）** | `expert-manager` 种子/CRUD → Nacos `agent.expert.*` / `agent.peer.*` → `ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue 判断、第 2 轮起反应式选人）→ `ConsultationSynthesizer`；详设 `docs/superpowers/specs/2026-07-07-expert-consultation-design.md` |
 | **ReAct TaskBoard（4.7.5）** | `manage_tasks` 元工具 + 唯一 `tasks` 步；Hook 跳过 manage_tasks tool 行、首建锚定 think；prompt 仅建板/status；merge 引擎去重；详设 `docs/superpowers/specs/2026-06-24-react-taskboard-design.md` |
 
-**Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。
+**Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。Catalog ID SSOT：`ToolIds`（`sdk__*` / `mcp__*`）；ReAct LLM `tool_call.name` 与 Catalog 同 ID；静态 Workflow `tool` 节点直调 invoke（不经 LLM）。HITL 读 DB `require_confirmation`。ReAct 验收可查 llm-gateway 日志 `toolCalls=`。
 
 **Agent 运行时（3.10.1–3.10.7 ✅）**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `MemoryContext.forSubAgent()`（无 STM/LTM）+ `skillId`→`PromptComposer`；skill overlay 优先 **skill-manager Catalog**（3.11 ✅），Nacos `agent.prompt.skill-overlays` 兜底。
 

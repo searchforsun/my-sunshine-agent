@@ -135,7 +135,7 @@ class ThinkStepMapperTest {
     void reactContent_doesNotOpenGenerateAndPreservesAnchor() {
         List<ProcessingStep> steps = new ArrayList<>(List.of(
                 doneStep("think"),
-                doneStep("tool-list_oa_tasks@1")));
+                doneStep("tool-sdk__sunshine-oa__list_oa_tasks@1")));
         AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "查待办", mode);
 

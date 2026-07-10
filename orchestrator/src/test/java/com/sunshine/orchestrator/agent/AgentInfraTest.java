@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.agent.remote.CatalogRemoteAgentTool;
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import io.agentscope.core.tool.Toolkit;
@@ -24,11 +25,10 @@ import static org.mockito.Mockito.when;
 class AgentInfraTest {
 
     @Test
-    void toolkit_beanMethodUsesDynamicToolkitFactory() throws Exception {
-        Method toolkitMethod = AgentConfig.class.getDeclaredMethod(
-                "toolkit", DynamicToolkitFactory.class);
-        assertThat(toolkitMethod.isAnnotationPresent(org.springframework.context.annotation.Bean.class)).isTrue();
-        assertThat(Modifier.isPublic(toolkitMethod.getModifiers())).isTrue();
+    void reactAgentFactory_resolveToolkitUsesDynamicFactory() throws Exception {
+        Method resolveToolkit = ReActAgentFactory.class.getDeclaredMethod(
+                "resolveToolkit", com.sunshine.orchestrator.agent.runtime.AgentRunRequest.class);
+        assertThat(Modifier.isPrivate(resolveToolkit.getModifiers())).isFalse();
     }
 
     @Test
@@ -36,26 +36,29 @@ class AgentInfraTest {
         RagTool ragTool = Mockito.mock(RagTool.class);
         GenericRemoteToolFactory remoteToolFactory = Mockito.mock(GenericRemoteToolFactory.class);
         ToolCatalogService toolCatalogService = Mockito.mock(ToolCatalogService.class);
+        ToolSetResolver toolSetResolver = Mockito.mock(ToolSetResolver.class);
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
-        executionProperties.getReact().setTools(
-                List.of("search_knowledge", "list_finance_messages", "list_oa_tasks"));
+
+        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of(
+                "search_knowledge", "sdk__sunshine-finance__list_finance_messages", "sdk__sunshine-oa__list_oa_tasks"));
 
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", Map.of(), "read");
+                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", Map.of(), "read", false);
         ToolCatalogEntry oaEntry = new ToolCatalogEntry(
-                "list_oa_tasks", "查询 OA 待办", "desc", "remote", "tool", "oa-tasks", Map.of(), "read");
+                "sdk__sunshine-oa__list_oa_tasks", "查询 OA 待办", "desc", "remote", "tool", "oa-tasks", Map.of(), "read", false);
         ToolManagerClient toolManagerClient = Mockito.mock(ToolManagerClient.class);
         ToolAuditService toolAuditService = Mockito.mock(ToolAuditService.class);
         com.sunshine.orchestrator.hitl.HitlConfirmationService hitlService =
                 Mockito.mock(com.sunshine.orchestrator.hitl.HitlConfirmationService.class);
 
         when(toolCatalogService.isRagTool("search_knowledge")).thenReturn(true);
-        when(toolCatalogService.isRagTool("list_finance_messages")).thenReturn(false);
-        when(toolCatalogService.isRagTool("list_oa_tasks")).thenReturn(false);
-        when(remoteToolFactory.create("list_finance_messages"))
+        when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_finance_messages")).thenReturn(false);
+        when(toolCatalogService.isRagTool("sdk__sunshine-oa__list_oa_tasks")).thenReturn(false);
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(remoteToolFactory.create("sdk__sunshine-finance__list_finance_messages"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         financeEntry, toolManagerClient, toolAuditService, hitlService)));
-        when(remoteToolFactory.create("list_oa_tasks"))
+        when(remoteToolFactory.create("sdk__sunshine-oa__list_oa_tasks"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         oaEntry, toolManagerClient, toolAuditService, hitlService)));
 
@@ -64,11 +67,14 @@ class AgentInfraTest {
                 Mockito.mock(ManageTasksTool.class),
                 remoteToolFactory,
                 toolCatalogService,
+                toolSetResolver,
                 executionProperties);
         Toolkit toolkit = factory.build();
 
         assertThat(toolkit).isNotNull();
-        assertThat(toolkit.getToolNames()).contains("list_finance_messages", "list_oa_tasks");
+        assertThat(toolkit.getToolNames()).contains(
+                "sdk__sunshine-finance__list_finance_messages",
+                "sdk__sunshine-oa__list_oa_tasks");
     }
 
     @Test

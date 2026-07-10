@@ -75,21 +75,21 @@ class HitlConfirmationServiceTest {
 
     @Test
     void shouldConfirmForBridge_whenHitlEnabledForBridge() {
-        when(toolCatalogService.isWriteTool("approve_oa_task")).thenReturn(true);
-        assertThat(service.shouldConfirmForBridge("approve_oa_task", "msg-1")).isTrue();
-        assertThat(service.shouldConfirmForBridge("approve_oa_task", null)).isFalse();
+        when(toolCatalogService.requiresConfirmation("sdk__sunshine-oa__approve_oa_task")).thenReturn(true);
+        assertThat(service.shouldConfirmForBridge("sdk__sunshine-oa__approve_oa_task", "msg-1")).isTrue();
+        assertThat(service.shouldConfirmForBridge("sdk__sunshine-oa__approve_oa_task", null)).isFalse();
     }
 
     @Test
     void confirm_resolvesAwait() throws Exception {
-        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(toolCatalogService.displayName("sdk__sunshine-oa__approve_oa_task")).thenReturn("审批 OA 待办");
         when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
         when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
                 .thenReturn("{\"type\":\"confirmation\"}");
         when(redis.opsForValue()).thenReturn(valueOps);
 
         CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
-                () -> service.awaitConfirmation("msg-1", "approve_oa_task", Map.of("taskId", "T1001")));
+                () -> service.awaitConfirmation("msg-1", "sdk__sunshine-oa__approve_oa_task", Map.of("taskId", "T1001")));
 
         Thread.sleep(200);
         assertThat(service.confirm(extractToken(), true)).isTrue();
@@ -99,7 +99,7 @@ class HitlConfirmationServiceTest {
 
     @Test
     void resumeAwaitingFromCheckpoint_reRegistersToken() throws Exception {
-        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(toolCatalogService.displayName("sdk__sunshine-oa__approve_oa_task")).thenReturn("审批 OA 待办");
         when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
         when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
                 .thenReturn("{\"type\":\"confirmation\"}");
@@ -110,10 +110,10 @@ class HitlConfirmationServiceTest {
         WorkflowHitlScope.Binding hitl = new WorkflowHitlScope.Binding(
                 session, "node-approve", "msg-1");
         com.sunshine.orchestrator.plan.PendingInteraction pending = new com.sunshine.orchestrator.plan.PendingInteraction(
-                "hitl", "approve", null, "approve_oa_task", "taskId=T1001", null);
+                "hitl", "approve", null, "sdk__sunshine-oa__approve_oa_task", "taskId=T1001", null);
 
         CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
-                () -> service.resumeAwaitingFromCheckpoint(hitl, "msg-1", pending, "approve_oa_task"));
+                () -> service.resumeAwaitingFromCheckpoint(hitl, "msg-1", pending, "sdk__sunshine-oa__approve_oa_task"));
 
         Thread.sleep(200);
         assertThat(service.confirm(extractToken(), true)).isTrue();
@@ -122,7 +122,7 @@ class HitlConfirmationServiceTest {
 
     @Test
     void resumeReactAwaiting_reRegistersTokenViaGenerationJob() throws Exception {
-        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(toolCatalogService.displayName("sdk__sunshine-oa__approve_oa_task")).thenReturn("审批 OA 待办");
         when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
         when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
                 .thenReturn("{\"type\":\"confirmation\"}");
@@ -144,7 +144,7 @@ class HitlConfirmationServiceTest {
         com.sunshine.orchestrator.processing.StepMetadata meta = com.sunshine.orchestrator.processing.StepMetadata.withHitl(
                 null, hitl);
         return new com.sunshine.orchestrator.agent.ProcessingStep(
-                "tool-approve_oa_task@1",
+                "tool-sdk__sunshine-oa__approve_oa_task@1",
                 "tool",
                 "paused",
                 new com.sunshine.orchestrator.processing.StepSummary(null, "已暂停", "已暂停"),
@@ -164,14 +164,14 @@ class HitlConfirmationServiceTest {
 
     @Test
     void cancelWaitersForMessage_interruptsWithoutUserDeny() throws Exception {
-        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(toolCatalogService.displayName("sdk__sunshine-oa__approve_oa_task")).thenReturn("审批 OA 待办");
         when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
         when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
                 .thenReturn("{\"type\":\"confirmation\"}");
         when(redis.opsForValue()).thenReturn(valueOps);
 
         CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
-                () -> service.awaitConfirmation("msg-1", "approve_oa_task", Map.of("taskId", "T1001")));
+                () -> service.awaitConfirmation("msg-1", "sdk__sunshine-oa__approve_oa_task", Map.of("taskId", "T1001")));
 
         Thread.sleep(200);
         service.cancelWaitersForMessage("msg-1");
@@ -181,7 +181,7 @@ class HitlConfirmationServiceTest {
 
     @Test
     void awaitConfirmation_truncatesLongParamValuesInSummary() throws Exception {
-        when(toolCatalogService.displayName("approve_oa_task")).thenReturn("审批 OA 待办");
+        when(toolCatalogService.displayName("sdk__sunshine-oa__approve_oa_task")).thenReturn("审批 OA 待办");
         when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
         when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
                 .thenReturn("{\"type\":\"confirmation\"}");
@@ -189,7 +189,7 @@ class HitlConfirmationServiceTest {
 
         String longReason = "x".repeat(150);
         CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
-                () -> service.awaitConfirmation("msg-1", "approve_oa_task", Map.of("taskId", longReason)));
+                () -> service.awaitConfirmation("msg-1", "sdk__sunshine-oa__approve_oa_task", Map.of("taskId", longReason)));
 
         Thread.sleep(200);
         org.mockito.ArgumentCaptor<String> summaryCaptor = org.mockito.ArgumentCaptor.forClass(String.class);

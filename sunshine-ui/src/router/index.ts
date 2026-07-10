@@ -41,6 +41,12 @@ const router = createRouter({
           meta: { title: 'Skills' },
         },
         {
+          path: 'tools',
+          name: 'tools',
+          component: () => import('../views/ToolsView.vue'),
+          meta: { title: '工具' },
+        },
+        {
           path: 'experts',
           name: 'experts',
           component: () => import('../views/ExpertsView.vue'),

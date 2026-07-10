@@ -111,7 +111,7 @@ class ReactResumeContextSupportTest {
                 "token", "审批 OA 待办", "taskId=T1001", System.currentTimeMillis() + 60_000);
         StepMetadata meta = StepMetadata.withHitl(null, hitl);
         return new ProcessingStep(
-                "tool-approve_oa_task@200",
+                "tool-sdk__sunshine-oa__approve_oa_task@200",
                 "tool",
                 "paused",
                 new StepSummary(null, "已暂停", "已暂停"),

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { ProcessingStep, TaskBoardItemView } from '../../api/processingSteps'
-import { stepLifecycle } from '../../api/processingSteps'
+import { hasRealTaskBoardItems, stepLifecycle } from '../../api/processingSteps'
 
 const props = withDefaults(defineProps<{
   step: ProcessingStep
@@ -17,13 +17,8 @@ const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
 const isPending = computed(() => lifecycle.value === 'pending')
 const tasks = computed(() => props.step.metadata?.tasks ?? [])
-/** 已收到 manage_tasks 落库后的真实清单（占位步无 revision/items） */
-const hasRealTasks = computed(() =>
-  tasks.value.length > 0 && (props.step.metadata?.taskRevision ?? 0) >= 1,
-)
-const showPanel = computed(() =>
-  hasRealTasks.value || isRunning.value || isPending.value,
-)
+const hasRealTasks = computed(() => hasRealTaskBoardItems(props.step))
+const showPanel = computed(() => hasRealTasks.value)
 
 const doneCount = computed(() =>
   tasks.value.filter(t => t.status === 'completed').length,

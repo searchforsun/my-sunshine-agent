@@ -113,7 +113,7 @@ class AgentNodeHandlerTest {
                 "query", "待审批是否合规",
                 "context", "财务列表 JSON",
                 "skill", "finance-analysis",
-                "tools", "list_finance_messages,search_knowledge",
+                "tools", "sdk__sunshine-finance__list_finance_messages,search_knowledge",
                 "maxIters", "4",
                 "systemOverlay", "仅输出内部分析结论"));
 
@@ -123,7 +123,7 @@ class AgentNodeHandlerTest {
         verify(agentRuntime).run(captor.capture());
         AgentRunRequest req = captor.getValue();
         assertThat(req.skillId()).isEqualTo("finance-analysis");
-        assertThat(req.toolWhitelist()).containsExactly("list_finance_messages", "search_knowledge");
+        assertThat(req.toolWhitelist()).containsExactly("sdk__sunshine-finance__list_finance_messages", "search_knowledge");
         assertThat(req.systemOverlay()).isEqualTo("仅输出内部分析结论");
         assertThat(req.maxIters()).isEqualTo(4);
         assertThat(req.memory()).isEqualTo(MemoryContext.forSubAgent());
@@ -219,14 +219,14 @@ class AgentNodeHandlerTest {
 
     @Test
     void parseToolList_splitsBracketYamlList() {
-        assertThat(AgentNodeHandler.parseToolList("[list_finance_messages]"))
-                .containsExactly("list_finance_messages");
+        assertThat(AgentNodeHandler.parseToolList("[sdk__sunshine-finance__list_finance_messages]"))
+                .containsExactly("sdk__sunshine-finance__list_finance_messages");
     }
 
     @Test
     void parseToolList_splitsCommaSeparatedNames() {
-        assertThat(AgentNodeHandler.parseToolList("list_finance_messages, search_knowledge"))
-                .containsExactly("list_finance_messages", "search_knowledge");
+        assertThat(AgentNodeHandler.parseToolList("sdk__sunshine-finance__list_finance_messages, search_knowledge"))
+                .containsExactly("sdk__sunshine-finance__list_finance_messages", "search_knowledge");
         assertThat(AgentNodeHandler.parseToolList("  ")).isNull();
     }
 

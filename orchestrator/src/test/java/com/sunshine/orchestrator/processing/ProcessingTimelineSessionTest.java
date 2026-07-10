@@ -106,8 +106,8 @@ class ProcessingTimelineSessionTest {
         session.bindUserQuery("查待办");
         session.pending("generate", "generate");
         session.startAt("generate", "generate", 1000L);
-        session.pending("tool-list_oa_tasks@1", "tool");
-        session.startAt("tool-list_oa_tasks@1", "tool", 1001L);
+        session.pending("tool-sdk__sunshine-oa__list_oa_tasks@1", "tool");
+        session.startAt("tool-sdk__sunshine-oa__list_oa_tasks@1", "tool", 1001L);
 
         ProcessingStep generate = session.snapshot().stream()
                 .filter(s -> "generate".equals(s.id())).findFirst().orElseThrow();
@@ -530,7 +530,7 @@ class ProcessingTimelineSessionTest {
         TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
         support.ensurePlaceholderAfterFirstThink(session);
 
-        session.beginToolStep("tool-list_finance_messages", "tool");
+        session.beginToolStep("tool-sdk__sunshine-finance__list_finance_messages", "tool");
         session.completeToolStep("3 条");
         session.beginReasoningRound();
         session.endReasoningRound();
@@ -571,7 +571,7 @@ class ProcessingTimelineSessionTest {
                 .filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
         long thinkEnd = think.endedAt() != null ? think.endedAt() : think.startedAt();
 
-        session.beginToolStep("tool-list_finance_messages", "tool");
+        session.beginToolStep("tool-sdk__sunshine-finance__list_finance_messages", "tool");
         session.completeToolStep("命中 3 条");
 
         StepMetadata metadata = StepMetadata.withTasks(
@@ -583,7 +583,7 @@ class ProcessingTimelineSessionTest {
         ProcessingStep tasks = session.snapshot().stream()
                 .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).findFirst().orElseThrow();
         assertThat(tasks.startedAt()).isLessThanOrEqualTo(session.snapshot().stream()
-                .filter(s -> s.id().startsWith("tool-list_finance"))
+                .filter(s -> s.id().startsWith("tool-sdk__sunshine-finance__list_finance"))
                 .findFirst().orElseThrow().startedAt());
         assertThat(tasks.startedAt()).isGreaterThanOrEqualTo(thinkEnd);
     }
@@ -606,16 +606,32 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void dismissEmptyPlaceholder_completesTasksStepWithoutMetadata() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.beginReasoningRound();
+        session.endReasoningRound();
+        TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
+        support.ensurePlaceholderAfterFirstThink(session);
+
+        support.dismissEmptyPlaceholder(session);
+
+        ProcessingStep tasks = session.snapshot().stream()
+                .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).findFirst().orElseThrow();
+        assertThat(tasks.lifecycle()).isEqualTo("done");
+        assertThat(tasks.metadata()).isNull();
+    }
+
+    @Test
     void repeatedToolInvocation_createsSeparateStepsWithTimestampId() throws InterruptedException {
         com.sunshine.orchestrator.catalog.ToolCatalogService catalogService =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class);
-        org.mockito.Mockito.when(catalogService.displayName("summarize_finance_by_status"))
+        org.mockito.Mockito.when(catalogService.displayName("sdk__sunshine-finance__summarize_finance_by_status"))
                 .thenReturn("统计财务消息");
         ToolNodeLabels.bind(new ToolNodeLabelService(new AgentPromptProperties(), catalogService));
         StepLabels.bind(catalogService);
         try {
             ProcessingTimelineSession session = new ProcessingTimelineSession();
-            String base = "tool-summarize_finance_by_status";
+            String base = "tool-sdk__sunshine-finance__summarize_finance_by_status";
 
             session.beginToolStep(base, "tool");
             session.completeToolStep("pending 3 条，合计 ¥124140.5");

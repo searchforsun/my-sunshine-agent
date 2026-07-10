@@ -89,53 +89,53 @@ const emit = defineEmits<{
       </div>
     </header>
 
-    <main class="workbench-panel">
-      <NTabs
-        v-model:value="activeTab"
-        type="line"
-        :animated="false"
-        pane-wrapper-class="kb-tab-pane-wrapper"
-        class="workbench-tabs"
-      >
-        <NTabPane name="docs" tab="文档管理" display-directive="show">
-          <div class="docs-workspace">
-            <KbDocList
-              :kb-id="selectedKbId"
-              :documents="documents"
-              :selected-doc-id="selectedDocId"
-              :loading="loadingDocs"
-              @select-doc="emit('select-doc', $event)"
-              @create-doc="emit('createDoc')"
-            />
-            <KbDocPanel
-              :key="`doc-${revision}`"
-              :tenant-id="tenantId"
-              :kb-id="selectedKbId"
-              :doc-id="selectedDocId"
-              @refreshed="emit('refreshDocuments')"
-              @deleted="emit('docDeleted')"
-            />
-          </div>
-        </NTabPane>
-        <NTabPane name="debug" tab="检索调试" display-directive="show">
-          <KbDebugPanel :key="`debug-${revision}`" :tenant-id="tenantId" :kb-id="selectedKbId" />
-        </NTabPane>
-        <NTabPane name="config" tab="参数配置" display-directive="show">
-          <KbConfigPanel :key="`config-${revision}`" :tenant-id="tenantId" :kb-id="selectedKbId" />
-        </NTabPane>
-        <NTabPane name="eval" tab="评测" display-directive="show">
-          <KbEvalPanel
-            :key="`eval-${revision}`"
-            :tenant-id="tenantId"
-            :kb-id="selectedKbId"
-            :kb-display-name="kbs.find((k) => k.kbId === selectedKbId)?.displayName"
-            :documents="documents"
-            :loading-docs="loadingDocs"
-            @refresh-documents="emit('refreshDocuments')"
-          />
-        </NTabPane>
-      </NTabs>
-    </main>
+    <NTabs
+      v-model:value="activeTab"
+      type="line"
+      :animated="false"
+      class="workbench-tabs"
+    >
+      <NTabPane name="docs" tab="文档管理" />
+      <NTabPane name="debug" tab="检索调试" />
+      <NTabPane name="config" tab="参数配置" />
+      <NTabPane name="eval" tab="评测" />
+    </NTabs>
+
+    <div v-if="activeTab === 'docs'" class="workbench-body docs-workspace">
+      <KbDocList
+        :kb-id="selectedKbId"
+        :documents="documents"
+        :selected-doc-id="selectedDocId"
+        :loading="loadingDocs"
+        @select-doc="emit('select-doc', $event)"
+        @create-doc="emit('createDoc')"
+      />
+      <KbDocPanel
+        :key="`doc-${revision}`"
+        :tenant-id="tenantId"
+        :kb-id="selectedKbId"
+        :doc-id="selectedDocId"
+        @refreshed="emit('refreshDocuments')"
+        @deleted="emit('docDeleted')"
+      />
+    </div>
+    <div v-else-if="activeTab === 'debug'" class="workbench-body">
+      <KbDebugPanel :key="`debug-${revision}`" :tenant-id="tenantId" :kb-id="selectedKbId" />
+    </div>
+    <div v-else-if="activeTab === 'config'" class="workbench-body">
+      <KbConfigPanel :key="`config-${revision}`" :tenant-id="tenantId" :kb-id="selectedKbId" />
+    </div>
+    <div v-else-if="activeTab === 'eval'" class="workbench-body">
+      <KbEvalPanel
+        :key="`eval-${revision}`"
+        :tenant-id="tenantId"
+        :kb-id="selectedKbId"
+        :kb-display-name="kbs.find((k) => k.kbId === selectedKbId)?.displayName"
+        :documents="documents"
+        :loading-docs="loadingDocs"
+        @refresh-documents="emit('refreshDocuments')"
+      />
+    </div>
   </div>
 </template>
 
@@ -196,65 +196,30 @@ const emit = defineEmits<{
   color: var(--sun-text);
 }
 
-.workbench-panel {
-  flex: 1;
-  min-height: 0;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-lg);
-  background: var(--sun-black);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
 .workbench-tabs {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.workbench-tabs :deep(.n-tabs) {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+  flex-shrink: 0;
 }
 
 .workbench-tabs :deep(.n-tabs-nav) {
-  flex-shrink: 0;
-  padding: 0 16px;
-  background: transparent;
+  padding: 0 2px;
 }
 
-.workbench-tabs :deep(.kb-tab-pane-wrapper) {
-  flex: 1;
-  min-height: 0 !important;
-  height: auto !important;
-  max-height: none !important;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+.workbench-tabs :deep(.n-tabs-pane-wrapper) {
+  display: none !important;
 }
 
-.workbench-tabs :deep(.n-tab-pane) {
+.workbench-body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: 16px;
 }
 
 .docs-workspace {
-  flex: 1;
-  min-height: 0;
   display: grid;
   grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
-  gap: 12px;
-  overflow: hidden;
+  gap: 16px;
 }
 
 @media (max-width: 960px) {

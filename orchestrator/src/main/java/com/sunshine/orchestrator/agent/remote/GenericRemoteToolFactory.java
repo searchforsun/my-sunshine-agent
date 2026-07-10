@@ -24,7 +24,7 @@ public class GenericRemoteToolFactory {
 
     public Optional<CatalogRemoteAgentTool> create(String toolName) {
         return toolCatalogService.find(toolName)
-                .filter(entry -> "remote".equals(entry.kind()))
+                .filter(entry -> "remote".equals(entry.kind()) || "mcp".equals(entry.kind()))
                 .map(entry -> new CatalogRemoteAgentTool(
                         entry, toolManagerClient, toolAuditService, hitlConfirmationService));
     }

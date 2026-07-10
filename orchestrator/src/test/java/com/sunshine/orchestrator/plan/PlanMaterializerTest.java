@@ -50,7 +50,7 @@ class PlanMaterializerTest {
         PlanJson plan = new PlanJson("dyn-multi", "制度+财务+合规",
                 List.of(
                         new PlanNode("n1", "rag", Map.of("topK", "3"), "检索制度"),
-                        new PlanNode("n2", "tool", Map.of("tool", "list_finance_messages"), "查待审批"),
+                        new PlanNode("n2", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"), "查待审批"),
                         new PlanNode("n3", "agent",
                                 Map.of("skill", "policy-review", "context", "{{n1.output}}", "query", "解读制度"),
                                 "制度解读"),

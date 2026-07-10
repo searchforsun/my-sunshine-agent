@@ -46,7 +46,7 @@ class ToolNodeHandlerTest {
 
     @Test
     void invokesToolAndWritesOutput() {
-        when(toolManagerClient.invokeMono(eq("list_finance_messages"), eq(Map.of("status", "pending"))))
+        when(toolManagerClient.invokeMono(eq("sdk__sunshine-finance__list_finance_messages"), eq(Map.of("status", "pending"))))
                 .thenReturn(Mono.just("{\"items\":[]}"));
 
         WorkflowContext ctx = new WorkflowContext();
@@ -56,13 +56,13 @@ class ToolNodeHandlerTest {
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-list", Map.of("status", "pending"), "test"));
 
         NodeSpec spec = new NodeSpec("finance-list", "tool",
-                Map.of("tool", "list_finance_messages", "status", "pending"));
+                Map.of("tool", "sdk__sunshine-finance__list_finance_messages", "status", "pending"));
 
         var result = handler.run(spec, ctx, streamCtx).block();
         assertThat(result).isNotNull();
         assertThat(result.success()).isTrue();
         assertThat(result.safeOutputs().get("output")).contains("items");
-        assertThat(result.safeOutputs().get("tool")).isEqualTo("list_finance_messages");
+        assertThat(result.safeOutputs().get("tool")).isEqualTo("sdk__sunshine-finance__list_finance_messages");
     }
 
     @Test
@@ -74,25 +74,25 @@ class ToolNodeHandlerTest {
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, "dynamic", Map.of(), "test"))
                 .withWorkflowHitl(hitl);
-        when(hitlConfirmationService.shouldConfirmWorkflow(eq("approve_oa_task"), eq(hitl))).thenReturn(true);
-        when(hitlConfirmationService.awaitWorkflowConfirmation(eq(hitl), eq("m1"), eq("approve_oa_task"), any()))
+        when(hitlConfirmationService.shouldConfirmWorkflow(eq("sdk__sunshine-oa__approve_oa_task"), eq(hitl))).thenReturn(true);
+        when(hitlConfirmationService.awaitWorkflowConfirmation(eq(hitl), eq("m1"), eq("sdk__sunshine-oa__approve_oa_task"), any()))
                 .thenReturn(true);
-        when(toolManagerClient.invokeMono(eq("approve_oa_task"), eq(Map.of("taskId", "T1002"))))
+        when(toolManagerClient.invokeMono(eq("sdk__sunshine-oa__approve_oa_task"), eq(Map.of("taskId", "T1002"))))
                 .thenReturn(Mono.just("已审批待办 T1002"));
 
         NodeSpec spec = new NodeSpec("approve", "tool",
-                Map.of("tool", "approve_oa_task", "taskId", "T1002"));
+                Map.of("tool", "sdk__sunshine-oa__approve_oa_task", "taskId", "T1002"));
 
         var result = handler.run(spec, new WorkflowContext(), streamCtx).block();
         assertThat(result).isNotNull();
         assertThat(result.success()).isTrue();
         assertThat(result.safeOutputs().get("output")).contains("T1002");
-        verify(hitlConfirmationService).awaitWorkflowConfirmation(eq(hitl), eq("m1"), eq("approve_oa_task"), any());
+        verify(hitlConfirmationService).awaitWorkflowConfirmation(eq(hitl), eq("m1"), eq("sdk__sunshine-oa__approve_oa_task"), any());
     }
 
     @Test
     void softInvokeFailureMarksNodeFailed() {
-        when(toolManagerClient.invokeMono(eq("list_oa_tasks"), eq(Map.of())))
+        when(toolManagerClient.invokeMono(eq("sdk__sunshine-oa__list_oa_tasks"), eq(Map.of())))
                 .thenReturn(Mono.just("工具调用失败: Connection refused: getsockopt: localhost/127.0.0.1:8210"));
 
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
@@ -100,7 +100,7 @@ class ToolNodeHandlerTest {
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, "dynamic", Map.of(), "test"));
 
-        NodeSpec spec = new NodeSpec("list", "tool", Map.of("tool", "list_oa_tasks"));
+        NodeSpec spec = new NodeSpec("list", "tool", Map.of("tool", "sdk__sunshine-oa__list_oa_tasks"));
 
         var result = handler.run(spec, new WorkflowContext(), streamCtx).block();
         assertThat(result).isNotNull();

@@ -59,4 +59,12 @@ public class TaskBoardTimelineSupport {
                 : null;
         session.completeTaskBoard(after, metadata);
     }
+
+    /** 未调用 manage_tasks 时收起占位步，避免 tasks 永驻 running */
+    public void dismissEmptyPlaceholder(ProcessingTimelineSession session) {
+        if (session == null || !session.hasStep(TimelineStepId.TASKS.id())) {
+            return;
+        }
+        session.completeTaskBoard(null, null);
+    }
 }

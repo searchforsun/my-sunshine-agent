@@ -12,6 +12,7 @@
 
     <modules>
         <module>common/sunshine-common</module>
+        <module>common/sunshine-tool-sdk</module>
         <module>gateway</module>
         <module>bff</module>
         <module>auth-center</module>
@@ -117,6 +118,11 @@
                 <groupId>com.github.xiaoymin</groupId>
                 <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
                 <version>${knife4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.sunshine</groupId>
+                <artifactId>sunshine-tool-sdk</artifactId>
+                <version>${project.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

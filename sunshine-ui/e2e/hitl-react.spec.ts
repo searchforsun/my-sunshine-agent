@@ -49,7 +49,7 @@ test.describe('ReAct HITL 工具确认 UI', () => {
     await expect(page.getByRole('heading', { name: '有什么可以帮你的？' })).toBeVisible({ timeout: 15_000 })
 
     await selectReactMode(page)
-    await fillComposer(page, '请调用 approve_oa_task 工具审批 OA 待办 taskId=T1001，不要查询其它工具。')
+    await fillComposer(page, '请调用 sdk__sunshine-oa__approve_oa_task 工具审批 OA 待办 taskId=T1001，不要查询其它工具。')
     await page.keyboard.press('Enter')
 
     const lines = page.locator('.operation-lines').last()

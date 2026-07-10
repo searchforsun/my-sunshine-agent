@@ -146,8 +146,10 @@ public class SkillsController {
     }
 
     @GetMapping("/api/tools/catalog")
-    public Mono<Map<String, Object>> toolCatalog() {
-        return toolManagerClient.catalog();
+    public Mono<Map<String, Object>> toolCatalog(
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(defaultValue = "false") boolean enabledOnly) {
+        return toolManagerClient.catalog(tenantId, enabledOnly);
     }
 
     @GetMapping("/api/skills/catalog/index")

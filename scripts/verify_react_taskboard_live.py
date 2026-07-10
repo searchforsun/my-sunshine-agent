@@ -31,6 +31,7 @@ except ImportError:
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
 FINANCE_URL = os.environ.get("FINANCE_URL", "http://ecs4c16g:8710").rstrip("/")
+FIN_LIST = "sdk__sunshine-finance__list_finance_messages"
 TIMEOUT_SEC = int(os.environ.get("TASKBOARD_TIMEOUT_SEC", "180"))
 F1_QUERY = "帮我查待审批报销，并对有风险的单据逐条说明原因"
 FN1_QUERY = "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论"
@@ -221,7 +222,7 @@ def run_f1(token: str, conv_id: str, query: str) -> dict:
         "planId=" in str(plan.get("detail") or "")
         or bool((plan.get("metadata") or {}).get("planApproval"))
     )
-    tool_hit = "list_finance_messages" in raw or any(str(s.get("id", "")).startswith("tool-") for s in steps)
+    tool_hit = FIN_LIST in raw or any(str(s.get("id", "")).startswith("tool-") for s in steps)
 
     ok = item_count >= 2 and not has_plan_dag
     if not ok and item_count == 0:

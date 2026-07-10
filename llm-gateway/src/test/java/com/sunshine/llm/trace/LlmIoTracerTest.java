@@ -41,6 +41,35 @@ class LlmIoTracerTest {
     }
 
     @Test
+    void parseDelta_detectsToolCallNameFragment() {
+        String raw = """
+                {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_abc","function":{"name":"sdk__sunshine-finance__list_finance_messages","arguments":""}}]}}]}
+                """;
+
+        LlmIoTracer.DeltaFields fields = tracer.parseDelta(raw);
+
+        assertThat(fields.toolCallFragments()).hasSize(1);
+        assertThat(fields.toolCallFragments().get(0).index()).isZero();
+        assertThat(fields.toolCallFragments().get(0).id()).isEqualTo("call_abc");
+        assertThat(fields.toolCallFragments().get(0).nameDelta())
+                .isEqualTo("sdk__sunshine-finance__list_finance_messages");
+    }
+
+    @Test
+    void parseDelta_mergesSplitToolCallNameAcrossChunks() {
+        LlmIoTracer.DeltaFields first = tracer.parseDelta("""
+                {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"sdk__sunshine-"}}]}}]}
+                """);
+        LlmIoTracer.DeltaFields second = tracer.parseDelta("""
+                {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"finance__list_finance_messages"}}]}}]}
+                """);
+
+        String merged = first.toolCallFragments().get(0).nameDelta()
+                + second.toolCallFragments().get(0).nameDelta();
+        assertThat(merged).isEqualTo("sdk__sunshine-finance__list_finance_messages");
+    }
+
+    @Test
     void lastUserPreview_usesLatestUserMessage() {
         ChatCompletionRequest request = new ChatCompletionRequest();
         request.setMessages(java.util.List.of(

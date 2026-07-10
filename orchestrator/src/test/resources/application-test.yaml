@@ -96,3 +96,7 @@ logging:
   level:
     com.sunshine: warn
     org.springframework: warn
+
+orchestrator:
+  catalog:
+    refresh-enabled: false

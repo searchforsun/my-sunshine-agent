@@ -8,15 +8,15 @@ class ToolStepIdsTest {
 
     @Test
     void forInvocation_appendsEpochMs() {
-        assertThat(ToolStepIds.forInvocation("tool-summarize_finance_by_status", 1_718_750_000_123L))
-                .isEqualTo("tool-summarize_finance_by_status@1718750000123");
+        assertThat(ToolStepIds.forInvocation("tool-sdk__sunshine-finance__summarize_finance_by_status", 1_718_750_000_123L))
+                .isEqualTo("tool-sdk__sunshine-finance__summarize_finance_by_status@1718750000123");
     }
 
     @Test
     void catalogToolName_parsesTimestampSuffix() {
         assertThat(ToolStepIds.catalogToolName("rag@1718750000123")).isEqualTo("search_knowledge");
-        assertThat(ToolStepIds.catalogToolName("tool-list_finance_messages@99"))
-                .isEqualTo("list_finance_messages");
+        assertThat(ToolStepIds.catalogToolName("tool-sdk__sunshine-finance__list_finance_messages@99"))
+                .isEqualTo("sdk__sunshine-finance__list_finance_messages");
     }
 
     @Test

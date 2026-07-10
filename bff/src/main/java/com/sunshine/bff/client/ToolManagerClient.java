@@ -25,9 +25,17 @@ public class ToolManagerClient {
         log.info("[BFF] ToolManager 客户端: baseUrl={}", baseUrl);
     }
 
-    public Mono<Map<String, Object>> catalog() {
+    public Mono<Map<String, Object>> catalog(String tenantId, boolean enabledOnly) {
         return webClient.get()
-                .uri("/api/tools/catalog")
+                .uri(uri -> {
+                    var builder = uri.path("/api/tools/catalog")
+                            .queryParam("enabledOnly", enabledOnly);
+                    if (tenantId != null && !tenantId.isBlank()) {
+                        builder.queryParam("tenantId", tenantId);
+                    }
+                    return builder.build();
+                })
+                .header("x-tenant-id", tenantId != null && !tenantId.isBlank() ? tenantId : "default")
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }

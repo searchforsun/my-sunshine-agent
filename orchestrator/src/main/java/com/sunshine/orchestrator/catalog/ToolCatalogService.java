@@ -13,6 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /** 缓存 tool-manager catalog；工具输出摘要委托 tool-manager API */
 @Slf4j
@@ -20,9 +22,12 @@ import java.util.Optional;
 @RefreshScope
 public class ToolCatalogService {
 
+    private static final String DEFAULT_TENANT = "default";
+
     private final ToolCatalogClient catalogClient;
     private final ToolManagerClient toolManagerClient;
     private volatile Map<String, ToolCatalogEntry> entries = Map.of();
+    private volatile Set<String> defaultEnabledIds = Set.of();
 
     public ToolCatalogService(ToolCatalogClient catalogClient, ToolManagerClient toolManagerClient) {
         this.catalogClient = catalogClient;
@@ -37,11 +42,26 @@ public class ToolCatalogService {
 
     public synchronized void refresh() {
         Map<String, ToolCatalogEntry> merged = new LinkedHashMap<>();
-        for (ToolCatalogEntry entry : catalogClient.fetchCatalog()) {
+        for (ToolCatalogEntry entry : catalogClient.fetchCatalog(DEFAULT_TENANT, false)) {
             merged.put(entry.id(), entry);
         }
         this.entries = Map.copyOf(merged);
-        log.info("[ToolCatalogService] catalog loaded: {}", String.join(", ", entries.keySet()));
+        this.defaultEnabledIds = catalogClient.fetchCatalog(DEFAULT_TENANT, true).stream()
+                .map(ToolCatalogEntry::id)
+                .collect(Collectors.toUnmodifiableSet());
+        log.info("[ToolCatalogService] catalog loaded: {} (enabled={})",
+                String.join(", ", entries.keySet()), String.join(", ", defaultEnabledIds));
+    }
+
+    /** 租户可见且启用的工具 id 池（ToolSet 白名单求交用） */
+    public Set<String> enabledIds(String tenantId) {
+        String effectiveTenant = tenantId == null || tenantId.isBlank() ? DEFAULT_TENANT : tenantId.strip();
+        if (DEFAULT_TENANT.equals(effectiveTenant)) {
+            return defaultEnabledIds;
+        }
+        return catalogClient.fetchCatalog(effectiveTenant, true).stream()
+                .map(ToolCatalogEntry::id)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public Optional<ToolCatalogEntry> find(String toolId) {
@@ -68,11 +88,11 @@ public class ToolCatalogService {
     }
 
     public boolean isRemoteTool(String toolId) {
-        return find(toolId).map(e -> "remote".equals(e.kind())).orElse(false);
+        return find(toolId).map(e -> "remote".equals(e.kind()) || "mcp".equals(e.kind())).orElse(false);
     }
 
-    public boolean isWriteTool(String toolId) {
-        return find(toolId).map(ToolCatalogEntry::isWrite).orElse(false);
+    public boolean requiresConfirmation(String toolId) {
+        return find(toolId).map(ToolCatalogEntry::requireConfirmation).orElse(false);
     }
 
     /** rag 工具用固定 stepId，其余为 tool-{name} */

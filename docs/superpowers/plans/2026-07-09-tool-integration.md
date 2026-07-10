@@ -1,5 +1,22 @@
 # 工具集成（SDK + MCP）Implementation Plan
 
+> **状态**：✅ Phase 1 完成（检查门 G1–G10，2026-07-10）。下文 Task 清单保留作实施记录；增量见 spec §6.3（Tool ID）、§10（Plan 策略）、§14（HITL）。
+
+## Phase 1 交付摘要（相对初版计划的增量）
+
+| 项 | 最终形态 |
+|----|----------|
+| Catalog Tool ID | `sdk__{app}__{name}` / `mcp__{server}__{name}`（`ToolIds.java`）；LLM function name 同 ID |
+| 工具集 | `global_react_default` + `global_plan_workflow_critical`；`/tools` 子 Tab ReAct / Planner Workflow |
+| Plan 执行策略 | `execution_mode_policy` 表 + Admin API；orchestrator 读 DB，非 Nacos 节点配置 |
+| HITL | `require_confirmation` + `confirmation_edited`；不以 PATCH `sideEffect` 为门禁 |
+| ID 校验 | `id_valid` / `id_error`；规范不一致时删旧重建（无旧 ID 迁移） |
+| 调用路径 | ReAct：LLM `tool_call`；Workflow `tool` 节点：`ToolNodeHandler` 直调 |
+| 可观测 | llm-gateway `LlmIoTracer` 日志字段 `toolCalls=` |
+| 种子 tool_id | 见 `docker/mysql/init/16-sunshine-tool-manager.sql`（如 `sdk__sunshine-finance__list_finance_messages`） |
+
+---
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 用 MySQL Catalog + SDK（Nacos Pull）+ MCP 动态接入替换 tool-manager 编译期 Handler 与 Nacos react 白名单；finance-service / oa-service 作为 SDK Demo；提供 `/tools` 管理页与 Live 检查门。
@@ -141,15 +158,18 @@ INSERT INTO sdk_application (id, nacos_service, display_name, tenant_id, status)
 ('sunshine-oa', 'sunshine-oa', 'OA Demo 应用', 'default', 'offline');
 
 INSERT INTO tool_set (id, set_type, tenant_id, display_name) VALUES
-('global-react-default', 'global_react_default', NULL, '平台 ReAct 默认工具集');
+('global-react-default', 'global_react_default', NULL, '平台 ReAct 默认工具集'),
+('global-plan-workflow-critical', 'global_plan_workflow_critical', NULL, '平台 Plan/Workflow 关键工具集');
 
 INSERT INTO tool_set_member (set_id, tool_id, sort_order) VALUES
-('global-react-default', 'list_finance_messages', 0),
-('global-react-default', 'get_finance_message_detail', 1),
-('global-react-default', 'summarize_finance_by_status', 2),
-('global-react-default', 'list_oa_tasks', 3),
-('global-react-default', 'approve_oa_task', 4);
+('global-react-default', 'sdk__sunshine-finance__list_finance_messages', 0),
+('global-react-default', 'sdk__sunshine-finance__get_finance_message_detail', 1),
+('global-react-default', 'sdk__sunshine-finance__summarize_finance_by_status', 2),
+('global-react-default', 'sdk__sunshine-oa__list_oa_tasks', 3),
+('global-react-default', 'sdk__sunshine-oa__approve_oa_task', 4);
 ```
+
+> 完整种子（含 `execution_mode_policy`）以 `docker/mysql/init/16-sunshine-tool-manager.sql` 为准。
 
 - [ ] **Step 3: 应用 SQL**
 
@@ -830,7 +850,7 @@ git commit -m "feat(tool-manager): add MCP JSON-RPC stdio/sse transport"
 - [ ] **Step 2: `McpSyncService.probe(serverId)`**
 
 - 连接 MCP → `tools/list`
-- upsert `tool_definition`：`id=mcp.{serverId}.{name}`、`kind=mcp`、`source=mcp`
+- upsert `tool_definition`：`id=mcp__{serverId}__{name}`（`ToolIds.mcp()`）、`kind=mcp`、`source=mcp`
 - MCP schema **始终刷新**；`metadata_edited=1` 仍保留 displayName/description
 - 更新 `probe_status` / `probe_error`
 

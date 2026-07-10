@@ -15,7 +15,7 @@ class StaticPlanAdapterTest {
     void convertsStaticDefinitionToPlanJson() {
         WorkflowDefinition def = WorkflowDefinition.from("finance-list", List.of(
                 new NodeSpec("start", "start", Map.of()),
-                new NodeSpec("finance-list", "tool", Map.of("tool", "list_finance_messages"), "查询待审批"),
+                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"), "查询待审批"),
                 new NodeSpec("answer", "answer", Map.of("prompt", "p"), "生成回答")
         ), List.of("start", "finance-list", "answer"));
 

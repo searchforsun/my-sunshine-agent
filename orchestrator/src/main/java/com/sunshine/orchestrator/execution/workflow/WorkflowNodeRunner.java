@@ -80,7 +80,7 @@ public class WorkflowNodeRunner {
         }
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
-        NodeRetryPolicy retryPolicy = retryPolicyResolver.resolve(rawSpec, planWorkflow);
+        NodeRetryPolicy retryPolicy = retryPolicyResolver.resolve(rawSpec, planWorkflow, streamCtx.tenantId());
         List<StreamToken> startTokens = tracksNodeStep
                 ? WorkflowNodeTimeline.start(session, nodeId, rawSpec.type(), rawSpec.displayName())
                 : List.of();
@@ -105,7 +105,7 @@ public class WorkflowNodeRunner {
             PendingInteraction pending) {
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
-        NodeRetryPolicy retryPolicy = retryPolicyResolver.resolve(rawSpec, planWorkflow);
+        NodeRetryPolicy retryPolicy = retryPolicyResolver.resolve(rawSpec, planWorkflow, streamCtx.tenantId());
         if ("hitl".equals(pending.kind()) && WorkflowNodeType.TOOL.matches(rawSpec.type())) {
             WorkflowHitlScope.Binding hitl = new WorkflowHitlScope.Binding(
                     session, WorkflowNodeTimeline.stepId(nodeId), streamCtx.assistantMsgId());

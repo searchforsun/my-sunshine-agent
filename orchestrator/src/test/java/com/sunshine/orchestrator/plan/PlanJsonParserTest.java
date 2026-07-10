@@ -17,7 +17,7 @@ class PlanJsonParserTest {
                   "reason": "制度+财务+合规",
                   "nodes": [
                     {"id":"n1","type":"rag","params":{"topK":"3"}},
-                    {"id":"n2","type":"tool","params":{"tool":"list_finance_messages","status":"pending"}},
+                    {"id":"n2","type":"tool","params":{"tool":"sdk__sunshine-finance__list_finance_messages","status":"pending"}},
                     {"id":"n3","type":"agent","params":{"skill":"compliance-check","query":"对比合规性","context":"{{n2.output}}"}}
                   ],
                   "edges": [

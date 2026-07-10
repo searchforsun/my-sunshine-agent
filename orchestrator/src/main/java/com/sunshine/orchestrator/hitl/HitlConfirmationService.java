@@ -256,14 +256,14 @@ public class HitlConfirmationService {
         if (!properties.isEnabled() || !StepEventBridge.hitlEnabledForBridge(bridgeId)) {
             return false;
         }
-        return toolCatalogService.isWriteTool(toolId);
+        return toolCatalogService.requiresConfirmation(toolId);
     }
 
     public boolean shouldConfirmWorkflow(String toolId, WorkflowHitlScope.Binding binding) {
         if (!properties.isEnabled() || binding == null) {
             return false;
         }
-        return toolCatalogService.isWriteTool(toolId);
+        return toolCatalogService.requiresConfirmation(toolId);
     }
 
     public String rejectionMessage() {

@@ -53,9 +53,9 @@ public class ExpertPeerAgentFactory {
         if (request.role() == AgentRole.SUB
                 && request.toolWhitelist() != null
                 && !request.toolWhitelist().isEmpty()) {
-            return dynamicToolkitFactory.build(request.toolWhitelist());
+            return dynamicToolkitFactory.build(request.toolWhitelist(), request.tenantId());
         }
-        return dynamicToolkitFactory.build();
+        return dynamicToolkitFactory.build(request.tenantId());
     }
 
     private int resolveMaxIters(AgentRunRequest request) {

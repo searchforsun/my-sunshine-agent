@@ -17,10 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = com.sunshine.tool.controller.ToolInvokeController.class)
-@Import({com.sunshine.tool.service.ToolInvokeService.class,
-        com.sunshine.tool.registry.ToolRegistry.class,
-        com.sunshine.tool.tool.FinanceToolHandler.class,
-        GlobalExceptionHandler.class})
+@Import({com.sunshine.tool.service.ToolInvokeService.class, GlobalExceptionHandler.class})
 @ActiveProfiles("test")
 class ToolInvokeControllerTest {
 
@@ -28,15 +25,16 @@ class ToolInvokeControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private com.sunshine.tool.tool.FinanceTool financeTool;
+    private com.sunshine.tool.invoke.InvokeRouter invokeRouter;
 
     @Test
     void invokeFinanceTool() throws Exception {
-        when(financeTool.listFinanceMessages(eq("pending"))).thenReturn("2 条待审批");
+        when(invokeRouter.invoke(eq("sdk__sunshine-finance__list_finance_messages"), eq(java.util.Map.of("status", "pending")), eq("default")))
+                .thenReturn("2 条待审批");
 
         mockMvc.perform(post("/api/tools/invoke")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"list_finance_messages\",\"params\":{\"status\":\"pending\"}}"))
+                        .content("{\"name\":\"sdk__sunshine-finance__list_finance_messages\",\"params\":{\"status\":\"pending\"}}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value("2 条待审批"));

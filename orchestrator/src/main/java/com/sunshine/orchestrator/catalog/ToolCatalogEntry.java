@@ -1,10 +1,12 @@
 package com.sunshine.orchestrator.catalog;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.Map;
 
 /**
  * 工具目录条目 — 合并 tool-manager catalog 与本地 RagTool 元数据
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ToolCatalogEntry(
         String id,
         String displayName,
@@ -13,9 +15,7 @@ public record ToolCatalogEntry(
         String timelinePhase,
         String outputSummaryKind,
         Map<String, Object> parameters,
-        String sideEffect
+        String sideEffect,
+        boolean requireConfirmation
 ) {
-    public boolean isWrite() {
-        return "write".equalsIgnoreCase(sideEffect);
-    }
 }

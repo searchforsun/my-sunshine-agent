@@ -11,6 +11,14 @@ spring:
         username: nacos
         password: nacos
         group: SUNSHINE_V2
+        metadata:
+          sunshine.tool-app: "true"
+          sunshine.tool-app-id: "sunshine-oa"
+
+sunshine:
+  tools:
+    enabled: true
+    app-id: sunshine-oa
 
 logging:
   level:

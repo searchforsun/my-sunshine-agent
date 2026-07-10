@@ -33,6 +33,7 @@ except ImportError:
 from sunshine_lib import unwrap_r
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
+FIN_LIST = "sdk__sunshine-finance__list_finance_messages"
 FINANCE_URL = os.environ.get("FINANCE_URL", "http://ecs4c16g:8710").rstrip("/")
 RAG_URL = os.environ.get("RAG_URL", "http://ecs4c16g:8400").rstrip("/")
 TIMEOUT_SEC = int(os.environ.get("PHASE2_AGENT_TIMEOUT_SEC", "120"))
@@ -154,7 +155,7 @@ def run_react_taskboard(token: str, conv_id: str) -> dict:
     plan = latest_step(steps, "plan")
     item_count = tasks_item_count(tasks)
     has_plan_dag = plan is not None and "planId=" in str(plan.get("detail") or "")
-    tool_hit = "list_finance_messages" in sse_raw or any(
+    tool_hit = FIN_LIST in sse_raw or any(
         str(s.get("id", "")).startswith("tool-") for s in steps)
     ok = item_count >= 2 and not has_plan_dag
     return {
@@ -260,7 +261,7 @@ def run_react_finance(token: str, conv_id: str) -> dict:
     sse = parse_sse(sse_raw)
     assistant = wait_assistant_completed(token, conv_id, 30)
     steps_json = json.dumps(assistant.get("steps") or "")
-    tool_invoked = ("list_finance_messages" in sse_raw) or ("list_finance_messages" in steps_json)
+    tool_invoked = (FIN_LIST in sse_raw) or (FIN_LIST in steps_json)
     content = str(assistant.get("content") or "") or sse["content"]
     finance_hit = any(x in content for x in ("1001", "1002", "1004", "待审批", "报销"))
     ok = sse["step_count"] >= 2 and (tool_invoked or finance_hit)
@@ -322,7 +323,7 @@ def main() -> int:
         conv3 = conversation_id(auth_json("POST", "/api/conversations", None, token))
         report["steps"]["wf-finance-list"] = run_workflow_chat(
             token, conv3, "有哪些待审批报销", "wf-finance-list",
-            expect_tool="list_finance_messages", expect_finance_data=True)
+            expect_tool=FIN_LIST, expect_finance_data=True)
         conv4 = conversation_id(auth_json("POST", "/api/conversations", None, token))
         report["steps"]["wf-finance-smart"] = run_workflow_chat(
             token, conv4, "待审批报销是否合规", "wf-finance-smart", expect_agent=True)

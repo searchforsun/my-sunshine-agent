@@ -116,7 +116,7 @@ class WorkflowExecutorTest {
 
     @BeforeEach
     void setUp() {
-        when(retryPolicyResolver.resolve(any(), any(Boolean.class)))
+        when(retryPolicyResolver.resolve(any(), any(Boolean.class), any()))
                 .thenReturn(com.sunshine.orchestrator.execution.retry.NodeRetryPolicy.noRetry(
                         com.sunshine.orchestrator.execution.retry.OnFailureAction.CONTINUE));
         when(nodeRetryExecutor.runWithRetry(any(), any(), any()))

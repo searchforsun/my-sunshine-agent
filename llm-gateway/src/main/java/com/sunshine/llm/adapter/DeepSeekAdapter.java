@@ -53,7 +53,7 @@ public class DeepSeekAdapter implements LlmAdapter {
                 .bodyToMono(ChatCompletionResponse.class)
                 .doOnNext(r -> log.info("[DeepSeek] tokens={}",
                         r.getUsage() != null ? r.getUsage().getTotalTokens() : "?"))
-                .doOnError(e -> log.error("[DeepSeek] 调用失败", e));
+                .doOnError(e -> log.error("[DeepSeek] 调用失败: {}", errorDetail(e), e));
     }
 
     @Override
@@ -74,7 +74,7 @@ public class DeepSeekAdapter implements LlmAdapter {
                         .id(UUID.randomUUID().toString().substring(0, 8))
                         .data(chunk)
                         .build())
-                .doOnError(e -> log.error("[DeepSeek] 流式调用失败", e));
+                .doOnError(e -> log.error("[DeepSeek] 流式调用失败: {}", errorDetail(e), e));
     }
 
     // ========== private ==========
@@ -89,5 +89,15 @@ public class DeepSeekAdapter implements LlmAdapter {
 
     private Object toRequestBody(ChatCompletionRequest request, boolean stream) {
         return requestBodyFactory.build(request, stream);
+    }
+
+    private static String errorDetail(Throwable e) {
+        if (e instanceof org.springframework.web.reactive.function.client.WebClientResponseException wce) {
+            String body = wce.getResponseBodyAsString();
+            if (body != null && !body.isBlank()) {
+                return body;
+            }
+        }
+        return e.getMessage();
     }
 }

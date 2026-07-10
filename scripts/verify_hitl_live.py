@@ -18,6 +18,7 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 TIMEOUT_SEC = int(os.environ.get("PHASE2_AGENT_TIMEOUT_SEC", "120"))
 UNIT_TESTS = ("HitlConfirmationServiceTest", "ToolNodeHandlerTest")
+OA_APPROVE = "sdk__sunshine-oa__approve_oa_task"
 
 
 def run_unit_tests() -> None:
@@ -110,12 +111,12 @@ def assert_write_tool_in_catalog(gw: str, token: str) -> None:
     resp = requests.get("http://127.0.0.1:8210/api/tools/catalog", timeout=30)
     resp.raise_for_status()
     entries = resp.json().get("data") or []
-    hit = next((e for e in entries if e.get("id") == "approve_oa_task"), None)
+    hit = next((e for e in entries if e.get("id") == OA_APPROVE), None)
     if not hit:
-        raise AssertionError("catalog 缺少 approve_oa_task")
+        raise AssertionError(f"catalog 缺少 {OA_APPROVE}")
     if hit.get("sideEffect") != "write":
-        raise AssertionError(f"approve_oa_task sideEffect={hit.get('sideEffect')!r}，期望 write")
-    print(f"[OK] catalog approve_oa_task sideEffect=write displayName={hit.get('displayName')}")
+        raise AssertionError(f"{OA_APPROVE} sideEffect={hit.get('sideEffect')!r}，期望 write")
+    print(f"[OK] catalog {OA_APPROVE} sideEffect=write displayName={hit.get('displayName')}")
 
 
 class SseCollector:
@@ -226,7 +227,7 @@ def create_conversation(gw: str, token: str) -> str:
 
 
 def find_tool_steps(steps: list[dict]) -> list[dict]:
-    return [s for s in steps if str(s.get("id", "")).startswith("tool-approve_oa_task")]
+    return [s for s in steps if str(s.get("id", "")).startswith(f"tool-{OA_APPROVE}")]
 
 
 def main() -> int:
@@ -259,7 +260,7 @@ def main() -> int:
     token = register_and_login(gw)
     assert_write_tool_in_catalog(gw, token)
 
-    query = "请调用 approve_oa_task 工具审批 OA 待办 taskId=T1001，不要查询其它工具。"
+    query = f"请调用 {OA_APPROVE} 工具审批 OA 待办 taskId=T1001，不要查询其它工具。"
 
     # 场景 1：拒绝
     conv_deny = create_conversation(gw, token)

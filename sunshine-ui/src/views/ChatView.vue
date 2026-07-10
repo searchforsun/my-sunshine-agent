@@ -118,6 +118,8 @@ const {
   forceChatScroll,
   onChatScroll,
   scrollToBottom,
+  pinScrollForSend,
+  forwardWheelToChatScroll,
   syncScrollPinned,
 } = useChatScroll(loading)
 
@@ -367,6 +369,9 @@ async function handleSend() {
     const convId = await chatStore.ensureCurrent()
     ensureActive(convId)
     if (messages.value.length === 0) chatStore.updateTitle(convId, text)
+    pinScrollForSend()
+    setScrollPinned(true)
+    clearAttention(convId)
     inputText.value = ''
     settledHtml.value = ''
     sessionSettledHtml.delete(convId)
@@ -381,10 +386,11 @@ async function handleSend() {
     chatStore.updateExecutionPreferenceLocal(convId, preference.value)
     if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
     await nextTick()
+    scrollToBottom(true)
     await ensureStreamRenderer()
     await sendPromise
     await nextTick()
-    scrollToBottom(false)
+    scrollToBottom(true)
   } catch (e) {
     console.error('[ChatView] 发送失败', e)
     inputText.value = text
@@ -395,16 +401,20 @@ async function handleResume() {
   const last = messages.value[messages.value.length - 1]
   const convId = chatStore.currentId
   if (!last?.id || !convId || loading.value) return
+  pinScrollForSend()
+  setScrollPinned(true)
+  if (convId) clearAttention(convId)
   settledHtml.value = ''
   sessionSettledHtml.delete(convId)
   await nextTick()
   const resumeMode = resolveResumeMode(last)
   const resumePromise = resume(convId, last.id)
   await nextTick()
+  scrollToBottom(true)
   if (resumeMode === 'regenerate') await ensureStreamRenderer()
   await resumePromise
   await nextTick()
-  scrollToBottom(false)
+  scrollToBottom(true)
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -666,7 +676,7 @@ watch(
     />
 
     <!-- 悬浮输入区 -->
-    <footer v-show="!planDagExpanded" class="chat-composer">
+    <footer v-show="!planDagExpanded" class="chat-composer" @wheel="forwardWheelToChatScroll">
       <div class="composer-inner">
         <button
           v-if="attentionBubble"

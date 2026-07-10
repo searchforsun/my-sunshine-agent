@@ -1,69 +1,84 @@
 package com.sunshine.orchestrator.execution.retry;
 
-import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.common.tool.PlanWorkflowExecutionPolicy;
+import com.sunshine.orchestrator.catalog.PlanWorkflowPolicyResolver;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
-/** 从 Nacos + 节点 params 解析重试策略 */
+/** 从工具集 + 模式策略 DB + 节点 params 解析重试策略 */
 @Component
 public class NodeRetryPolicyResolver {
 
-    private final AgentExecutionProperties executionProperties;
+    private final PlanWorkflowPolicyResolver planWorkflowPolicyResolver;
+    private final ToolSetResolver toolSetResolver;
 
-    public NodeRetryPolicyResolver(AgentExecutionProperties executionProperties) {
-        this.executionProperties = executionProperties;
+    public NodeRetryPolicyResolver(
+            PlanWorkflowPolicyResolver planWorkflowPolicyResolver,
+            ToolSetResolver toolSetResolver) {
+        this.planWorkflowPolicyResolver = planWorkflowPolicyResolver;
+        this.toolSetResolver = toolSetResolver;
     }
 
-    public NodeRetryPolicy resolve(NodeSpec spec, boolean planWorkflow) {
+    public NodeRetryPolicy resolve(NodeSpec spec, boolean planWorkflow, String tenantId) {
         if (!planWorkflow) {
             return NodeRetryPolicy.noRetry(OnFailureAction.CONTINUE);
         }
-        AgentExecutionProperties.PlanWorkflow.Node nodeCfg =
-                executionProperties.getPlanWorkflow().getNode();
-        AgentExecutionProperties.PlanWorkflow.NodeDefaults defaults = nodeCfg.getDefaults();
+        PlanWorkflowExecutionPolicy policy = planWorkflowPolicyResolver.resolve(tenantId);
+        PlanWorkflowExecutionPolicy.NodeDefaults defaults = policy.defaults() != null
+                ? policy.defaults()
+                : PlanWorkflowExecutionPolicy.platformDefault().defaults();
         String type = spec.type() != null ? spec.type() : "";
-        AgentExecutionProperties.PlanWorkflow.NodeTypeOverride typeOverride =
-                nodeCfg.getByType().get(type);
+        PlanWorkflowExecutionPolicy.NodeTypeOverride typeOverride =
+                policy.byType() != null ? policy.byType().get(type) : null;
         int maxAttempts = firstPositive(
                 paramInt(spec, "retry.maxAttempts"),
-                typeOverride != null ? typeOverride.getMaxAttempts() : 0,
-                defaults.getMaxAttempts(),
+                typeOverride != null && typeOverride.maxAttempts() != null ? typeOverride.maxAttempts() : 0,
+                defaults.maxAttempts(),
                 1);
         long backoffMs = firstPositiveLong(
                 paramLong(spec, "retry.backoffMs"),
-                defaults.getBackoffMs(),
+                defaults.backoffMs(),
                 0L);
-        double multiplier = defaults.getBackoffMultiplier() > 0
-                ? defaults.getBackoffMultiplier() : 2.0;
-        OnFailureAction onFailure = resolveOnFailure(spec, type, nodeCfg, defaults);
-        Set<String> retryOn = new HashSet<>(defaults.getRetryOnErrorClass());
+        double multiplier = defaults.backoffMultiplier() > 0
+                ? defaults.backoffMultiplier() : 2.0;
+        OnFailureAction onFailure = resolveOnFailure(spec, type, policy, defaults, tenantId);
+        Set<String> retryOn = new HashSet<>(defaults.retryOnErrorClass() != null
+                ? defaults.retryOnErrorClass()
+                : PlanWorkflowExecutionPolicy.platformDefault().defaults().retryOnErrorClass());
         return new NodeRetryPolicy(maxAttempts, backoffMs, multiplier, onFailure, retryOn);
     }
 
     private OnFailureAction resolveOnFailure(
             NodeSpec spec,
             String type,
-            AgentExecutionProperties.PlanWorkflow.Node nodeCfg,
-            AgentExecutionProperties.PlanWorkflow.NodeDefaults defaults) {
+            PlanWorkflowExecutionPolicy policy,
+            PlanWorkflowExecutionPolicy.NodeDefaults defaults,
+            String tenantId) {
         String param = spec.params() != null ? spec.params().get("retry.onFailure") : null;
         if (StringUtils.hasText(param)) {
             return OnFailureAction.fromConfig(param);
         }
         String tool = spec.params() != null ? spec.params().get("tool") : null;
-        if (StringUtils.hasText(tool) && nodeCfg.getCriticalTools().contains(tool.strip())) {
-            return OnFailureAction.fromConfig(nodeCfg.getCriticalOnFailure());
+        if (StringUtils.hasText(tool)) {
+            Set<String> criticalTools = new HashSet<>(toolSetResolver.resolvePlanWorkflowCriticalTools(tenantId));
+            if (criticalTools.contains(tool.strip())) {
+                String criticalOnFailure = policy.criticalOnFailure() != null
+                        ? policy.criticalOnFailure()
+                        : PlanWorkflowExecutionPolicy.platformDefault().criticalOnFailure();
+                return OnFailureAction.fromConfig(criticalOnFailure);
+            }
         }
-        AgentExecutionProperties.PlanWorkflow.NodeTypeOverride typeOverride =
-                nodeCfg.getByType().get(type);
-        if (typeOverride != null && StringUtils.hasText(typeOverride.getOnFailure())) {
-            return OnFailureAction.fromConfig(typeOverride.getOnFailure());
+        PlanWorkflowExecutionPolicy.NodeTypeOverride typeOverride =
+                policy.byType() != null ? policy.byType().get(type) : null;
+        if (typeOverride != null && StringUtils.hasText(typeOverride.onFailure())) {
+            return OnFailureAction.fromConfig(typeOverride.onFailure());
         }
-        return OnFailureAction.fromConfig(defaults.getOnFailure());
+        return OnFailureAction.fromConfig(defaults.onFailure());
     }
 
     private static int firstPositive(int... values) {

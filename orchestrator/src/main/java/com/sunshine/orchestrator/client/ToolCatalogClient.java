@@ -26,21 +26,28 @@ public class ToolCatalogClient {
         webClient = WebClient.builder().baseUrl(baseUrl).build();
     }
 
-    public List<ToolCatalogEntry> fetchCatalog() {
+    public List<ToolCatalogEntry> fetchCatalog(String tenantId, boolean enabledOnly) {
+        String effectiveTenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
         try {
             List<ToolCatalogEntry> entries = webClient.get()
-                    .uri("/api/tools/catalog")
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/tools/catalog")
+                            .queryParam("enabledOnly", enabledOnly)
+                            .build())
+                    .header("x-tenant-id", effectiveTenant)
                     .retrieve()
                     .bodyToMono(new ParameterizedTypeReference<R<List<ToolCatalogEntry>>>() {})
                     .map(R::getData)
                     .onErrorResume(e -> {
-                        log.warn("[ToolCatalogClient] fetch catalog failed: {}", e.getMessage());
+                        log.warn("[ToolCatalogClient] fetch catalog failed tenant={} enabledOnly={}: {}",
+                                effectiveTenant, enabledOnly, e.getMessage());
                         return Mono.just(List.of());
                     })
                     .block();
             return entries != null ? entries : List.of();
         } catch (Exception e) {
-            log.warn("[ToolCatalogClient] fetch catalog error: {}", e.getMessage());
+            log.warn("[ToolCatalogClient] fetch catalog error tenant={} enabledOnly={}: {}",
+                    effectiveTenant, enabledOnly, e.getMessage());
             return List.of();
         }
     }

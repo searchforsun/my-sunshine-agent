@@ -30,12 +30,12 @@ class PlanJsonCodecCheckpointTest {
     @Test
     void pendingInteractionRoundTrip() {
         PendingInteraction pending = new PendingInteraction(
-                "hitl", "approve_oa", null, "approve_oa_task", "taskId=1", null);
+                "hitl", "approve_oa", null, "sdk__sunshine-oa__approve_oa_task", "taskId=1", null);
         WorkflowCheckpoint cp = new WorkflowCheckpoint("approve_oa", "{}", PausePhase.EXECUTING, pending);
         WorkflowCheckpoint roundTrip = codec.checkpointFromJson(codec.checkpointToJson(cp));
         assertThat(roundTrip.pendingInteraction()).isNotNull();
         assertThat(roundTrip.pendingInteraction().kind()).isEqualTo("hitl");
-        assertThat(roundTrip.pendingInteraction().hitlToolId()).isEqualTo("approve_oa_task");
+        assertThat(roundTrip.pendingInteraction().hitlToolId()).isEqualTo("sdk__sunshine-oa__approve_oa_task");
     }
 
     @Test

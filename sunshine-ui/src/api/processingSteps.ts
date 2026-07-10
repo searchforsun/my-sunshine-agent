@@ -56,6 +56,12 @@ export interface TaskBoardItemView {
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
 }
 
+/** 已收到 manage_tasks 落库后的真实清单（占位步无 revision/items） */
+export function hasRealTaskBoardItems(step: ProcessingStep): boolean {
+  const tasks = step.metadata?.tasks ?? []
+  return tasks.length > 0 && (step.metadata?.taskRevision ?? 0) >= 1
+}
+
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
 export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'

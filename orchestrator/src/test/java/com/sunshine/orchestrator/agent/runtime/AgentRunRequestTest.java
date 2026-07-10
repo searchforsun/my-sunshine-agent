@@ -60,7 +60,7 @@ class AgentRunRequestTest {
                 "default",
                 "msg-main",
                 null,
-                java.util.List.of("approve_oa_task"),
+                java.util.List.of("sdk__sunshine-oa__approve_oa_task"),
                 null,
                 0);
         assertThat(req.assistantMessageId()).isEqualTo("msg-main");
@@ -77,12 +77,12 @@ class AgentRunRequestTest {
                 "default",
                 null,
                 "finance-analysis",
-                java.util.List.of("list_finance_messages"),
+                java.util.List.of("sdk__sunshine-finance__list_finance_messages"),
                 "仅内部分析",
                 4);
         assertThat(req.role()).isEqualTo(AgentRole.SUB);
         assertThat(req.skillId()).isEqualTo("finance-analysis");
-        assertThat(req.toolWhitelist()).containsExactly("list_finance_messages");
+        assertThat(req.toolWhitelist()).containsExactly("sdk__sunshine-finance__list_finance_messages");
         assertThat(req.systemOverlay()).isEqualTo("仅内部分析");
         assertThat(req.maxIters()).isEqualTo(4);
     }

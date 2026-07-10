@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.taskboard;
 
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class ReactTaskBoardTest {
@@ -168,5 +171,36 @@ class ReactTaskBoardTest {
                 new TaskBoardItemView("t3", "c", "pending"));
         assertThat(ReactTaskBoardService.progressSummary(items)).isEqualTo("1/3 已完成");
         assertThat(ReactTaskBoardService.allTerminal(items)).isFalse();
+    }
+
+    @Test
+    void finalizeTimeline_dismissesEmptyPlaceholderWhenNoBoard() {
+        ProcessingTimelineSession session = org.mockito.Mockito.mock(ProcessingTimelineSession.class);
+        when(session.hasStep(TimelineStepId.TASKS.id())).thenReturn(true);
+        when(store.load("msg-empty")).thenReturn(Optional.empty());
+
+        service.finalizeTimeline(session, "msg-empty");
+
+        verify(timelineSupport).dismissEmptyPlaceholder(session);
+        verify(timelineSupport, never()).completeOnRunEnd(any(), any(), any(Integer.class), any());
+    }
+
+    @Test
+    void finalizeTimeline_completesWhenBoardExists() {
+        ProcessingTimelineSession session = org.mockito.Mockito.mock(ProcessingTimelineSession.class);
+        when(session.hasStep(TimelineStepId.TASKS.id())).thenReturn(true);
+        ReactTaskBoardState board = new ReactTaskBoardState(
+                "b1",
+                "msg-1",
+                1,
+                System.currentTimeMillis(),
+                List.of(new TaskBoardItemView("t1", "检索", "completed")));
+        when(store.load("msg-1")).thenReturn(Optional.of(board));
+
+        service.finalizeTimeline(session, "msg-1");
+
+        verify(timelineSupport).completeOnRunEnd(
+                session, board.items(), board.revision(), "1/1 已完成");
+        verify(timelineSupport, never()).dismissEmptyPlaceholder(any());
     }
 }

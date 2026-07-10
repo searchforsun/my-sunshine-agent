@@ -19,7 +19,7 @@ class WorkflowContextResumeSupportTest {
         wfCtx.putNode("start", Map.of("userQuery", "q"));
         WorkflowDefinition def = WorkflowDefinition.from(
                 "p1",
-                List.of(new NodeSpec("t1", "tool", Map.of("tool", "list_oa_tasks"), "查待办")),
+                List.of(new NodeSpec("t1", "tool", Map.of("tool", "sdk__sunshine-oa__list_oa_tasks"), "查待办")),
                 List.of("t1"));
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c", "m", "查待办", MemoryContext.empty(), "", "", "u", "t",

@@ -125,10 +125,15 @@ public class ReactTaskBoardService {
         if (!session.hasStep(TimelineStepId.TASKS.id())) {
             return;
         }
-        store.load(assistantMsgId).ifPresent(board -> {
-            auditService.persistFinal(board);
-            timelineSupport.completeOnRunEnd(session, board.items(), board.revision(), progressSummary(board.items()));
-        });
+        Optional<ReactTaskBoardState> board = store.load(assistantMsgId);
+        if (board.isPresent()) {
+            ReactTaskBoardState state = board.get();
+            auditService.persistFinal(state);
+            timelineSupport.completeOnRunEnd(
+                    session, state.items(), state.revision(), progressSummary(state.items()));
+        } else {
+            timelineSupport.dismissEmptyPlaceholder(session);
+        }
     }
 
     /** 供单测 / 无 Redis 场景直接写板 */

@@ -113,12 +113,12 @@ agent:
       - 节点参数键名 **params**；tool 节点 params.tool 来自下方 tool 目录
       - **选型**：制度/政策/知识库检索 → **rag**
       - **agent**：仅在上游已有 {{n*.output}} 时做分析/审查；params.context **必填非空**（如 "{{n1.output}}"），params.query 写子任务
-      - tool 节点写齐业务参数（如 list_finance_messages 带 status: pending）
+      - tool 节点写齐业务参数（如 sdk__sunshine-finance__list_finance_messages 带 status: pending）
       - edges 单链 start → … → **末节点**（勿连 answer）
       - 节点数 ≤ 8；每节点填 displayName（中文）
 
       示例（制度+待审批+双 agent 合规链，单行 JSON，**无 answer 节点**）：
-      {"planId":null,"reason":"制度检索、待审批查询、制度解读与合规分析","nodes":[{"id":"n1","type":"rag","displayName":"检索差旅报销制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查询待审批报销单","params":{"tool":"list_finance_messages","status":"pending"}},{"id":"n3","type":"agent","displayName":"制度解读","params":{"skill":"policy-review","context":"{{n1.output}}","query":"归纳差旅报销制度要点"}},{"id":"n4","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\n{{n2.output}}\\n{{n3.output}}","query":"对每条单据做合规审查并归纳风险"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"},{"from":"n3","to":"n4"}]}
+      {"planId":null,"reason":"制度检索、待审批查询、制度解读与合规分析","nodes":[{"id":"n1","type":"rag","displayName":"检索差旅报销制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查询待审批报销单","params":{"tool":"sdk__sunshine-finance__list_finance_messages","status":"pending"}},{"id":"n3","type":"agent","displayName":"制度解读","params":{"skill":"policy-review","context":"{{n1.output}}","query":"归纳差旅报销制度要点"}},{"id":"n4","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\n{{n2.output}}\\n{{n3.output}}","query":"对每条单据做合规审查并归纳风险"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"},{"from":"n3","to":"n4"}]}
 
       ## Skill 目录
       {{skill-catalog}}
@@ -289,7 +289,6 @@ agent:
   execution:
     default-mode: react
     react:
-      tools: [search_knowledge, list_finance_messages, get_finance_message_detail, summarize_finance_by_status, list_oa_tasks, approve_oa_task]
       max-iters: 20
       taskboard:
         enabled: true
@@ -307,25 +306,6 @@ agent:
       planner:
         max-attempts: 2
         backoff-ms: 800
-      node:
-        defaults:
-          max-attempts: 2
-          backoff-ms: 500
-          backoff-multiplier: 2.0
-          on-failure: continue
-          retry-on-error-class: [TIMEOUT, SERVICE_UNAVAILABLE, CIRCUIT_OPEN]
-        critical-tools: [list_finance_messages, get_finance_message_detail]
-        critical-on-failure: fail_fast
-        by-type:
-          rag:
-            max-attempts: 1
-          tool:
-            max-attempts: 2
-          agent:
-            max-attempts: 1
-          answer:
-            max-attempts: 2
-            on-failure: fail_fast
       answer:
         upstream-failure-line: "（{{displayName}} 执行失败：{{error}}，已尝试 {{attemptCount}} 次）"
       fallback-react:

@@ -22,6 +22,7 @@ public class OpenAiRequestBodyFactory {
         Map<String, Object> body = objectMapper.convertValue(
                 request, new TypeReference<LinkedHashMap<String, Object>>() {});
         body.put("stream", stream);
+        body.remove("skip_cache");
         return body;
     }
 }

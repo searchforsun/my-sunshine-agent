@@ -14,7 +14,7 @@ class PlanNormalizerTest {
         PlanJson raw = new PlanJson("p1", "r",
                 List.of(
                         new PlanNode("n1", "rag", Map.of()),
-                        new PlanNode("n2", "tool", Map.of("tool", "list_finance_messages"))),
+                        new PlanNode("n2", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"))),
                 List.of());
         PlanJson normalized = PlanNormalizer.normalize(raw);
         assertThat(normalized.edges()).hasSize(3);
