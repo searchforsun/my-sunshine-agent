@@ -2,7 +2,7 @@ package com.sunshine.orchestrator.agent.remote;
 
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
-import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
+import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;

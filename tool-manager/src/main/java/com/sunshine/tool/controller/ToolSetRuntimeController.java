@@ -3,7 +3,7 @@ package com.sunshine.tool.controller;
 import com.sunshine.common.core.result.R;
 import com.sunshine.tool.admin.ToolSetKind;
 import com.sunshine.tool.admin.ToolSetMemberService;
-import com.sunshine.tool.admin.dto.ToolSetToolIdsResponse;
+import com.sunshine.common.tool.admin.ToolSetToolIdsResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

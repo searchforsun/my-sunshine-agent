@@ -1,8 +1,8 @@
 package com.sunshine.tool.admin;
 
-import com.sunshine.tool.admin.dto.ToolSetMemberAddItem;
-import com.sunshine.tool.admin.dto.ToolSetMemberAddRequest;
-import com.sunshine.tool.admin.dto.ToolSetMemberRemoveRequest;
+import com.sunshine.common.tool.admin.ToolSetMemberAddItem;
+import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
+import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.tool.entity.ToolDefinitionEntity;
 import com.sunshine.tool.entity.ToolSetEntity;
 import com.sunshine.tool.entity.ToolSetMemberEntity;

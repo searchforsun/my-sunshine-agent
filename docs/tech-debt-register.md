@@ -21,10 +21,9 @@
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| TD-080 | P2 | open | `sunshine-ui` tools 域 | `useToolsPage` 858 行仍偏大，可再拆 MCP 配置逻辑 |
-| TD-088–090 | P2 | open | BFF/orchestrator DTO | BFF Map 透传改 DTO；`ToolCatalogEntry` 分叉统一 |
+| _（空）_ | — | — | — | Backlog 已空 |
 
-**2026-07-11 本轮已消化**：TD-077/078/081/083/084/085/087（工具集语义）；**TD-091/092/093**（legacy API、description 校验、死 CSS）；**TD-082/086/080/094**（sourceRef Catalog、Client 合并、ToolsView 拆分、孤儿 API）。
+**2026-07-11 本轮已消化**：TD-077/078/081/083/084/085/087（工具集语义）；**TD-091/092/093**（legacy API、description 校验、死 CSS）；**TD-082/086/080/094**（sourceRef Catalog、Client 合并、ToolsView 拆分、孤儿 API）；**TD-088**（`ToolCatalogEntry` SSOT + BFF catalog 类型化）；**TD-089–090**（Admin DTO 迁至 `sunshine-common`、BFF 全量类型化）；**TD-080**（抽 `useMcpServerActions`，`useToolsPage` 369 行）。
 
 ### 文档债
 
@@ -131,7 +130,10 @@
 | TD-093 | 2026-07-11 | 删 `ToolsView` 孤儿 `.tool-pool-*` / `.plan-policy-*` CSS |
 | TD-082 | 2026-07-11 | Catalog DTO 增 `source`/`sourceRef`；前端 `filterCatalogBySource` 替代 id 前缀 |
 | TD-086 | 2026-07-11 | 合并 `ToolCatalogClient`+`ToolSetClient` → `ToolManagerClient` |
-| TD-080 | 2026-07-11 | `ToolsView` 拆 `useToolsPage`+`SdkToolsPanel`/`McpToolsPanel`/`ToolFormModals`（138 行） |
+| TD-080 | 2026-07-11 | `ToolsView` 拆 `useToolsPage`+面板/弹窗；再抽 `useMcpServerActions`（369 行） |
+| TD-088 | 2026-07-11 | `ToolCatalogEntry` 迁至 `sunshine-common` SSOT；BFF `/api/tools/catalog` 类型化 |
+| TD-089 | 2026-07-11 | Admin DTO（SDK/MCP/工具集）迁至 `sunshine-common`；tool-manager 删本地 `dto/` |
+| TD-090 | 2026-07-11 | BFF `ToolsAdminController`/`ToolManagerAdminClient` 全量 `Mono<R<T>>` 类型化 |
 | TD-094 | 2026-07-11 | 删 `loadToolEnabledMap` / `ToolSetConfig` 孤儿 API |
 
 ### 文档债（DOC）

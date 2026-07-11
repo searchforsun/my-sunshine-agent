@@ -1,11 +1,10 @@
-package com.sunshine.orchestrator.catalog;
+package com.sunshine.common.tool;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.Map;
 
-/**
- * 工具目录条目 — 合并 tool-manager catalog 与本地 RagTool 元数据
- */
+/** 工具目录条目 SSOT — tool-manager / orchestrator / BFF 共用 */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ToolCatalogEntry(
         String id,
@@ -18,6 +17,8 @@ public record ToolCatalogEntry(
         String timelineSummaryExtract,
         Map<String, Object> parameters,
         String sideEffect,
-        boolean requireConfirmation
-) {
+        boolean requireConfirmation,
+        boolean enabled,
+        boolean idValid,
+        String idError) {
 }

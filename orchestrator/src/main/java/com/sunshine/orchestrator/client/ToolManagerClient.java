@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.client;
 
 import com.sunshine.common.core.result.R;
-import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
+import com.sunshine.common.tool.ToolCatalogEntry;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

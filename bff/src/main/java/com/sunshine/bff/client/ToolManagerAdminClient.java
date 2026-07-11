@@ -1,5 +1,19 @@
 package com.sunshine.bff.client;
 
+import com.sunshine.common.core.result.R;
+import com.sunshine.common.tool.ToolCatalogEntry;
+import com.sunshine.common.tool.admin.McpServerPatchRequest;
+import com.sunshine.common.tool.admin.McpServerView;
+import com.sunshine.common.tool.admin.SdkApplicationView;
+import com.sunshine.common.tool.admin.ToolDefinitionView;
+import com.sunshine.common.tool.admin.ToolPatchRequest;
+import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
+import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
+import com.sunshine.common.tool.admin.ToolSetMemberCriticalPatchRequest;
+import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
+import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
+import com.sunshine.common.tool.admin.ToolSetPickerResponse;
+import com.sunshine.common.web.RemoteErrorMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,10 +24,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
-import com.sunshine.common.web.RemoteErrorMapper;
 import reactor.core.publisher.Mono;
 
-import java.util.Map;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -33,40 +46,40 @@ public class ToolManagerAdminClient {
         log.info("[BFF] ToolManager Admin 客户端: baseUrl={}", baseUrl);
     }
 
-    public Mono<Map<String, Object>> listSdkApplications() {
-        return get("/api/admin/tools/sdk-applications");
+    public Mono<R<List<SdkApplicationView>>> listSdkApplications() {
+        return get("/api/admin/tools/sdk-applications", new ParameterizedTypeReference<>() {});
     }
 
-    public Mono<Map<String, Object>> syncSdkApplication(String id) {
+    public Mono<R<Void>> syncSdkApplication(String id) {
         return webClient.post()
                 .uri("/api/admin/tools/sdk-applications/{id}/sync", id)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
     }
 
-    public Mono<Map<String, Object>> listMcpServers() {
-        return get("/api/admin/mcp/servers");
+    public Mono<R<List<McpServerView>>> listMcpServers() {
+        return get("/api/admin/mcp/servers", new ParameterizedTypeReference<>() {});
     }
 
-    public Mono<Map<String, Object>> createMcpServer(Map<String, Object> body) {
+    public Mono<R<McpServerView>> createMcpServer(McpServerView body) {
         return webClient.post()
                 .uri("/api/admin/mcp/servers")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<McpServerView>>() {});
     }
 
-    public Mono<Map<String, Object>> importMcpServers(String rawJson) {
+    public Mono<R<List<McpServerView>>> importMcpServers(String rawJson) {
         return webClient.post()
                 .uri("/api/admin/mcp/servers/import")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(rawJson)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<List<McpServerView>>>() {});
     }
 
     public Mono<String> exportMcpServers() {
@@ -78,43 +91,43 @@ public class ToolManagerAdminClient {
                 .bodyToMono(String.class);
     }
 
-    public Mono<Map<String, Object>> probeMcpServer(String id) {
+    public Mono<R<Void>> probeMcpServer(String id) {
         return webClient.post()
                 .uri("/api/admin/mcp/servers/{id}/probe", id)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
     }
 
-    public Mono<Map<String, Object>> patchMcpServer(String id, Map<String, Object> body) {
+    public Mono<R<McpServerView>> patchMcpServer(String id, McpServerPatchRequest body) {
         return webClient.patch()
                 .uri("/api/admin/mcp/servers/{id}", id)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<McpServerView>>() {});
     }
 
-    public Mono<Map<String, Object>> deleteMcpServer(String id) {
+    public Mono<R<Void>> deleteMcpServer(String id) {
         return webClient.delete()
                 .uri("/api/admin/mcp/servers/{id}", id)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
     }
 
-    public Mono<Map<String, Object>> patchTool(String toolId, Map<String, Object> body) {
+    public Mono<R<ToolDefinitionView>> patchTool(String toolId, ToolPatchRequest body) {
         return webClient.patch()
                 .uri("/api/admin/tools/{toolId}", toolId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<ToolDefinitionView>>() {});
     }
 
-    public Mono<Map<String, Object>> pageToolSetMembers(
+    public Mono<R<ToolSetMembersPageResponse>> pageToolSetMembers(
             String kind, String tenantId, int page, int size, String q) {
         return webClient.get()
                 .uri(uri -> {
@@ -131,10 +144,10 @@ public class ToolManagerAdminClient {
                 })
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<ToolSetMembersPageResponse>>() {});
     }
 
-    public Mono<Map<String, Object>> toolSetPicker(String kind, String tenantId, String q) {
+    public Mono<R<ToolSetPickerResponse>> toolSetPicker(String kind, String tenantId, String q) {
         return webClient.get()
                 .uri(uri -> {
                     var builder = uri.path("/api/admin/tools/sets/" + kind + "/picker");
@@ -148,10 +161,11 @@ public class ToolManagerAdminClient {
                 })
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<ToolSetPickerResponse>>() {});
     }
 
-    public Mono<Map<String, Object>> addToolSetMembers(String kind, String tenantId, Map<String, Object> body) {
+    public Mono<R<ToolSetMemberAddResult>> addToolSetMembers(
+            String kind, String tenantId, ToolSetMemberAddRequest body) {
         return webClient.post()
                 .uri(uri -> {
                     var builder = uri.path("/api/admin/tools/sets/" + kind + "/members:add");
@@ -164,10 +178,11 @@ public class ToolManagerAdminClient {
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<ToolSetMemberAddResult>>() {});
     }
 
-    public Mono<Map<String, Object>> removeToolSetMembers(String kind, String tenantId, Map<String, Object> body) {
+    public Mono<R<Void>> removeToolSetMembers(
+            String kind, String tenantId, ToolSetMemberRemoveRequest body) {
         return webClient.post()
                 .uri(uri -> {
                     var builder = uri.path("/api/admin/tools/sets/" + kind + "/members:remove");
@@ -180,11 +195,11 @@ public class ToolManagerAdminClient {
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
     }
 
-    public Mono<Map<String, Object>> patchPlanWorkflowMemberCritical(
-            String tenantId, String toolId, Map<String, Object> body) {
+    public Mono<R<Void>> patchPlanWorkflowMemberCritical(
+            String tenantId, String toolId, ToolSetMemberCriticalPatchRequest body) {
         return webClient.patch()
                 .uri(uri -> {
                     var builder = uri.path("/api/admin/tools/sets/plan-workflow/members/" + toolId);
@@ -197,10 +212,10 @@ public class ToolManagerAdminClient {
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
     }
 
-    public Mono<Map<String, Object>> catalog(String tenantId, boolean enabledOnly) {
+    public Mono<R<List<ToolCatalogEntry>>> catalog(String tenantId, boolean enabledOnly) {
         return webClient.get()
                 .uri(uri -> {
                     var builder = uri.path("/api/tools/catalog")
@@ -213,15 +228,15 @@ public class ToolManagerAdminClient {
                 .header("x-tenant-id", StringUtils.hasText(tenantId) ? tenantId : "default")
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<List<ToolCatalogEntry>>>() {});
     }
 
-    private Mono<Map<String, Object>> get(String path) {
+    private <T> Mono<R<T>> get(String path, ParameterizedTypeReference<R<T>> type) {
         return webClient.get()
                 .uri(path)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .bodyToMono(type);
     }
 
     private Mono<? extends Throwable> toBizError(ClientResponse response) {

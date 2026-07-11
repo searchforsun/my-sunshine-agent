@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.catalog;
 
+import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.agent.RagTool;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;

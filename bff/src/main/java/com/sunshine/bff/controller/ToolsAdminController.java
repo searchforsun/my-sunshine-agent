@@ -1,5 +1,18 @@
 package com.sunshine.bff.controller;
 
+import com.sunshine.common.core.result.R;
+import com.sunshine.common.tool.ToolCatalogEntry;
+import com.sunshine.common.tool.admin.McpServerPatchRequest;
+import com.sunshine.common.tool.admin.McpServerView;
+import com.sunshine.common.tool.admin.SdkApplicationView;
+import com.sunshine.common.tool.admin.ToolDefinitionView;
+import com.sunshine.common.tool.admin.ToolPatchRequest;
+import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
+import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
+import com.sunshine.common.tool.admin.ToolSetMemberCriticalPatchRequest;
+import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
+import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
+import com.sunshine.common.tool.admin.ToolSetPickerResponse;
 import com.sunshine.bff.client.ToolManagerAdminClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -14,7 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
-import java.util.Map;
+import java.util.List;
 
 /** BFF 透传 tool-manager Admin API */
 @RestController
@@ -24,34 +37,34 @@ public class ToolsAdminController {
     private final ToolManagerAdminClient toolManagerAdminClient;
 
     @GetMapping("/api/tools/catalog")
-    public Mono<Map<String, Object>> toolCatalog(
+    public Mono<R<List<ToolCatalogEntry>>> toolCatalog(
             @RequestParam(required = false) String tenantId,
             @RequestParam(defaultValue = "false") boolean enabledOnly) {
         return toolManagerAdminClient.catalog(tenantId, enabledOnly);
     }
 
     @GetMapping("/api/admin/tools/sdk-applications")
-    public Mono<Map<String, Object>> listSdkApplications() {
+    public Mono<R<List<SdkApplicationView>>> listSdkApplications() {
         return toolManagerAdminClient.listSdkApplications();
     }
 
     @PostMapping("/api/admin/tools/sdk-applications/{id}/sync")
-    public Mono<Map<String, Object>> syncSdkApplication(@PathVariable String id) {
+    public Mono<R<Void>> syncSdkApplication(@PathVariable String id) {
         return toolManagerAdminClient.syncSdkApplication(id);
     }
 
     @GetMapping("/api/admin/mcp/servers")
-    public Mono<Map<String, Object>> listMcpServers() {
+    public Mono<R<List<McpServerView>>> listMcpServers() {
         return toolManagerAdminClient.listMcpServers();
     }
 
     @PostMapping("/api/admin/mcp/servers")
-    public Mono<Map<String, Object>> createMcpServer(@RequestBody Map<String, Object> body) {
+    public Mono<R<McpServerView>> createMcpServer(@RequestBody McpServerView body) {
         return toolManagerAdminClient.createMcpServer(body);
     }
 
     @PostMapping(value = "/api/admin/mcp/servers/import", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, Object>> importMcpServers(@RequestBody String rawJson) {
+    public Mono<R<List<McpServerView>>> importMcpServers(@RequestBody String rawJson) {
         return toolManagerAdminClient.importMcpServers(rawJson);
     }
 
@@ -64,31 +77,31 @@ public class ToolsAdminController {
     }
 
     @PostMapping("/api/admin/mcp/servers/{id}/probe")
-    public Mono<Map<String, Object>> probeMcpServer(@PathVariable String id) {
+    public Mono<R<Void>> probeMcpServer(@PathVariable String id) {
         return toolManagerAdminClient.probeMcpServer(id);
     }
 
     @PatchMapping("/api/admin/mcp/servers/{id}")
-    public Mono<Map<String, Object>> patchMcpServer(
+    public Mono<R<McpServerView>> patchMcpServer(
             @PathVariable String id,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody McpServerPatchRequest body) {
         return toolManagerAdminClient.patchMcpServer(id, body);
     }
 
     @DeleteMapping("/api/admin/mcp/servers/{id}")
-    public Mono<Map<String, Object>> deleteMcpServer(@PathVariable String id) {
+    public Mono<R<Void>> deleteMcpServer(@PathVariable String id) {
         return toolManagerAdminClient.deleteMcpServer(id);
     }
 
     @PatchMapping("/api/admin/tools/{toolId}")
-    public Mono<Map<String, Object>> patchTool(
+    public Mono<R<ToolDefinitionView>> patchTool(
             @PathVariable String toolId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody ToolPatchRequest body) {
         return toolManagerAdminClient.patchTool(toolId, body);
     }
 
     @GetMapping("/api/admin/tools/sets/{kind}/members")
-    public Mono<Map<String, Object>> pageToolSetMembers(
+    public Mono<R<ToolSetMembersPageResponse>> pageToolSetMembers(
             @PathVariable String kind,
             @RequestParam(required = false) String tenantId,
             @RequestParam(defaultValue = "1") int page,
@@ -98,7 +111,7 @@ public class ToolsAdminController {
     }
 
     @GetMapping("/api/admin/tools/sets/{kind}/picker")
-    public Mono<Map<String, Object>> toolSetPicker(
+    public Mono<R<ToolSetPickerResponse>> toolSetPicker(
             @PathVariable String kind,
             @RequestParam(required = false) String tenantId,
             @RequestParam(required = false) String q) {
@@ -106,26 +119,26 @@ public class ToolsAdminController {
     }
 
     @PostMapping("/api/admin/tools/sets/{kind}/members:add")
-    public Mono<Map<String, Object>> addToolSetMembers(
+    public Mono<R<ToolSetMemberAddResult>> addToolSetMembers(
             @PathVariable String kind,
             @RequestParam(required = false) String tenantId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody ToolSetMemberAddRequest body) {
         return toolManagerAdminClient.addToolSetMembers(kind, tenantId, body);
     }
 
     @PostMapping("/api/admin/tools/sets/{kind}/members:remove")
-    public Mono<Map<String, Object>> removeToolSetMembers(
+    public Mono<R<Void>> removeToolSetMembers(
             @PathVariable String kind,
             @RequestParam(required = false) String tenantId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody ToolSetMemberRemoveRequest body) {
         return toolManagerAdminClient.removeToolSetMembers(kind, tenantId, body);
     }
 
     @PatchMapping("/api/admin/tools/sets/plan-workflow/members/{toolId}")
-    public Mono<Map<String, Object>> patchPlanWorkflowMemberCritical(
+    public Mono<R<Void>> patchPlanWorkflowMemberCritical(
             @PathVariable String toolId,
             @RequestParam(required = false) String tenantId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody ToolSetMemberCriticalPatchRequest body) {
         return toolManagerAdminClient.patchPlanWorkflowMemberCritical(tenantId, toolId, body);
     }
 }

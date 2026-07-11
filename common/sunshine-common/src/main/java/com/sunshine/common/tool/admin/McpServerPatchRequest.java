@@ -1,4 +1,4 @@
-package com.sunshine.tool.admin.dto;
+package com.sunshine.common.tool.admin;
 
 /** MCP 服务部分更新 */
 public record McpServerPatchRequest(
@@ -8,6 +8,5 @@ public record McpServerPatchRequest(
         String argsJson,
         String endpoint,
         String envJson,
-        Boolean enabled
-) {
+        Boolean enabled) {
 }

@@ -1,6 +1,6 @@
 package com.sunshine.tool.service;
 
-import com.sunshine.tool.dto.ToolCatalogEntry;
+import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.tool.entity.ToolDefinitionEntity;
 import com.sunshine.tool.repo.ToolDefinitionRepository;
 import lombok.RequiredArgsConstructor;

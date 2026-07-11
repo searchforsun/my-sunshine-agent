@@ -1,7 +1,7 @@
 package com.sunshine.tool.controller;
 
 import com.sunshine.common.core.result.R;
-import com.sunshine.tool.dto.ToolCatalogEntry;
+import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.tool.service.DbToolCatalogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;

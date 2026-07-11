@@ -1,6 +1,4 @@
-package com.sunshine.tool.admin.dto;
-
-import java.util.List;
+package com.sunshine.common.tool.admin;
 
 public record ToolSetMemberItemResponse(
         String toolId,
@@ -11,6 +9,5 @@ public record ToolSetMemberItemResponse(
         String sourceLabel,
         String sideEffect,
         boolean critical,
-        int sortOrder
-) {
+        int sortOrder) {
 }

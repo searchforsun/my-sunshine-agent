@@ -2,7 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.remote.CatalogRemoteAgentTool;
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
-import com.sunshine.orchestrator.catalog.ToolCatalogEntry;
+import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -79,7 +79,7 @@ class DynamicToolkitFactoryTest {
     @Test
     void build_withExplicitWhitelist_registersOnlyListedTools() {
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, java.util.Map.of(), "read", false);
+                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, java.util.Map.of(), "read", false, true, true, null);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
         com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
@@ -104,7 +104,7 @@ class DynamicToolkitFactoryTest {
     @Test
     void build_withMcpKindTool_registersRemoteAgentTool() {
         ToolCatalogEntry mcpEntry = new ToolCatalogEntry(
-                "mcp_search", "MCP 搜索", "desc", "mcp", "mcp", "demo-server", "", null, java.util.Map.of(), "read", false);
+                "mcp_search", "MCP 搜索", "desc", "mcp", "mcp", "demo-server", "", null, java.util.Map.of(), "read", false, true, true, null);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
         com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
@@ -131,7 +131,7 @@ class DynamicToolkitFactoryTest {
                 .thenReturn(List.of("sdk__sunshine-finance__list_finance_messages"));
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, java.util.Map.of(), "read", false);
+                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, java.util.Map.of(), "read", false, true, true, null);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
         com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =

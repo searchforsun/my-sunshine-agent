@@ -1,7 +1,7 @@
 package com.sunshine.tool.admin;
 
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.tool.admin.dto.ToolPatchRequest;
+import com.sunshine.common.tool.admin.ToolPatchRequest;
 import com.sunshine.tool.entity.ToolDefinitionEntity;
 import com.sunshine.tool.mcp.McpSyncService;
 import com.sunshine.tool.repo.ToolDefinitionRepository;

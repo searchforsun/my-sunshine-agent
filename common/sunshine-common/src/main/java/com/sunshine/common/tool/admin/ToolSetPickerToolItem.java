@@ -1,8 +1,7 @@
-package com.sunshine.tool.admin.dto;
+package com.sunshine.common.tool.admin;
 
 public record ToolSetPickerToolItem(
         String toolId,
         String displayName,
-        String sideEffect
-) {
+        String sideEffect) {
 }
