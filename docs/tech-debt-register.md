@@ -21,12 +21,10 @@
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| TD-080 | P2 | open | `sunshine-ui/src/views/ToolsView.vue` | 仍 ~2400 行，应对标 `SkillsView` 拆 composables + 面板组件 |
-| TD-082 | P2 | open | tool-manager Catalog DTO | 加 `sourceRef`，前端停 `id` 前缀解析 |
-| TD-086 | P2 | open | orchestrator Client | 4 路 WebClient 收敛为单一 `ToolManagerClient` |
+| TD-080 | P2 | open | `sunshine-ui` tools 域 | `useToolsPage` 858 行仍偏大，可再拆 MCP 配置逻辑 |
 | TD-088–090 | P2 | open | BFF/orchestrator DTO | BFF Map 透传改 DTO；`ToolCatalogEntry` 分叉统一 |
 
-**2026-07-11 本轮已消化**：TD-077/078/081/083/084/085（工具集语义、Catalog `enabled`、BFF Client 去重、路由归位）。
+**2026-07-11 本轮已消化**：TD-077/078/081/083/084/085/087（工具集语义）；**TD-091/092/093**（legacy API、description 校验、死 CSS）；**TD-082/086/080/094**（sourceRef Catalog、Client 合并、ToolsView 拆分、孤儿 API）。
 
 ### 文档债
 
@@ -128,6 +126,13 @@
 | TD-084 | 2026-07-11 | 删 BFF 孤儿 `ToolManagerClient`；catalog 仅经 `ToolManagerAdminClient` |
 | TD-085 | 2026-07-11 | `/api/tools/catalog` 从 `SkillsController` 迁至 `ToolsAdminController` |
 | TD-087 | 2026-07-11 | 工具集成员制：空集默认、`members`/`picker` API、`critical` 合并进 plan-workflow 成员；前端 `ToolsetTabPanel` + 分页 + 添加弹窗 |
+| TD-091 | 2026-07-11 | 删 legacy `GET/PUT .../sets/{react-default\|plan-workflow}` + `ToolSetAdminService` 整表替换 |
+| TD-092 | 2026-07-11 | `patchTool` description `trim()` 非空校验 + `TOOL_DESCRIPTION_REQUIRED` |
+| TD-093 | 2026-07-11 | 删 `ToolsView` 孤儿 `.tool-pool-*` / `.plan-policy-*` CSS |
+| TD-082 | 2026-07-11 | Catalog DTO 增 `source`/`sourceRef`；前端 `filterCatalogBySource` 替代 id 前缀 |
+| TD-086 | 2026-07-11 | 合并 `ToolCatalogClient`+`ToolSetClient` → `ToolManagerClient` |
+| TD-080 | 2026-07-11 | `ToolsView` 拆 `useToolsPage`+`SdkToolsPanel`/`McpToolsPanel`/`ToolFormModals`（138 行） |
+| TD-094 | 2026-07-11 | 删 `loadToolEnabledMap` / `ToolSetConfig` 孤儿 API |
 
 ### 文档债（DOC）
 

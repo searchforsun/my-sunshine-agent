@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.catalog;
 
 import com.sunshine.orchestrator.agent.RagTool;
-import com.sunshine.orchestrator.client.ToolCatalogClient;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
 import com.sunshine.orchestrator.processing.StepLabels;
@@ -25,13 +24,11 @@ public class ToolCatalogService {
 
     private static final String DEFAULT_TENANT = "default";
 
-    private final ToolCatalogClient catalogClient;
     private final ToolManagerClient toolManagerClient;
     private volatile Map<String, ToolCatalogEntry> entries = Map.of();
     private volatile Set<String> defaultEnabledIds = Set.of();
 
-    public ToolCatalogService(ToolCatalogClient catalogClient, ToolManagerClient toolManagerClient) {
-        this.catalogClient = catalogClient;
+    public ToolCatalogService(ToolManagerClient toolManagerClient) {
         this.toolManagerClient = toolManagerClient;
     }
 
@@ -43,11 +40,11 @@ public class ToolCatalogService {
 
     public synchronized void refresh() {
         Map<String, ToolCatalogEntry> merged = new LinkedHashMap<>();
-        for (ToolCatalogEntry entry : catalogClient.fetchCatalog(DEFAULT_TENANT, false)) {
+        for (ToolCatalogEntry entry : toolManagerClient.fetchCatalog(DEFAULT_TENANT, false)) {
             merged.put(entry.id(), entry);
         }
         this.entries = Map.copyOf(merged);
-        this.defaultEnabledIds = catalogClient.fetchCatalog(DEFAULT_TENANT, true).stream()
+        this.defaultEnabledIds = toolManagerClient.fetchCatalog(DEFAULT_TENANT, true).stream()
                 .map(ToolCatalogEntry::id)
                 .collect(Collectors.toUnmodifiableSet());
         log.info("[ToolCatalogService] catalog loaded: {} (enabled={})",
@@ -60,7 +57,7 @@ public class ToolCatalogService {
         if (DEFAULT_TENANT.equals(effectiveTenant)) {
             return defaultEnabledIds;
         }
-        return catalogClient.fetchCatalog(effectiveTenant, true).stream()
+        return toolManagerClient.fetchCatalog(effectiveTenant, true).stream()
                 .map(ToolCatalogEntry::id)
                 .collect(Collectors.toUnmodifiableSet());
     }

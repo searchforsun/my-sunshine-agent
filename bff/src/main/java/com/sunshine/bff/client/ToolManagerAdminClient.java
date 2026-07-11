@@ -114,66 +114,6 @@ public class ToolManagerAdminClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> getReactDefaultToolSet(String tenantId) {
-        return webClient.get()
-                .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/react-default");
-                    if (StringUtils.hasText(tenantId)) {
-                        builder.queryParam("tenantId", tenantId);
-                    }
-                    return builder.build();
-                })
-                .retrieve()
-                .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
-    }
-
-    public Mono<Map<String, Object>> putReactDefaultToolSet(String tenantId, Map<String, Object> body) {
-        return webClient.put()
-                .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/react-default");
-                    if (StringUtils.hasText(tenantId)) {
-                        builder.queryParam("tenantId", tenantId);
-                    }
-                    return builder.build();
-                })
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .retrieve()
-                .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
-    }
-
-    public Mono<Map<String, Object>> getPlanWorkflowToolSet(String tenantId) {
-        return webClient.get()
-                .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/plan-workflow");
-                    if (StringUtils.hasText(tenantId)) {
-                        builder.queryParam("tenantId", tenantId);
-                    }
-                    return builder.build();
-                })
-                .retrieve()
-                .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
-    }
-
-    public Mono<Map<String, Object>> putPlanWorkflowToolSet(String tenantId, Map<String, Object> body) {
-        return webClient.put()
-                .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/plan-workflow");
-                    if (StringUtils.hasText(tenantId)) {
-                        builder.queryParam("tenantId", tenantId);
-                    }
-                    return builder.build();
-                })
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .retrieve()
-                .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
-    }
-
     public Mono<Map<String, Object>> pageToolSetMembers(
             String kind, String tenantId, int page, int size, String q) {
         return webClient.get()

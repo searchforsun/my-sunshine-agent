@@ -22,7 +22,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-@Import({ToolSetMemberService.class, ToolSetAdminService.class})
+@Import(ToolSetMemberService.class)
 @ActiveProfiles("test")
 class ToolSetMemberServiceTest {
 

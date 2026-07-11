@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.catalog;
 
-import com.sunshine.orchestrator.client.ToolSetClient;
+import com.sunshine.orchestrator.client.ToolManagerClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -17,7 +17,7 @@ import static org.mockito.Mockito.when;
 class ToolSetResolverTest {
 
     @Mock
-    private ToolSetClient toolSetClient;
+    private ToolManagerClient toolManagerClient;
     @Mock
     private ToolCatalogService toolCatalogService;
     @InjectMocks
@@ -25,7 +25,7 @@ class ToolSetResolverTest {
 
     @Test
     void resolveReactTools_intersectsSetWithEnabledPool() {
-        when(toolSetClient.fetchReactDefault("default")).thenReturn(List.of("A", "B", "D"));
+        when(toolManagerClient.fetchReactDefault("default")).thenReturn(List.of("A", "B", "D"));
         when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("A", "B", "C"));
 
         assertThat(resolver.resolveReactTools("default")).containsExactly("A", "B");
@@ -42,7 +42,7 @@ class ToolSetResolverTest {
 
     @Test
     void resolvePlanWorkflowTools_intersectsSetWithEnabledPool() {
-        when(toolSetClient.fetchPlanWorkflow("default")).thenReturn(List.of("A", "B", "D"));
+        when(toolManagerClient.fetchPlanWorkflow("default")).thenReturn(List.of("A", "B", "D"));
         when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("A", "B", "C"));
 
         assertThat(resolver.resolvePlanWorkflowTools("default")).containsExactly("A", "B");
@@ -50,7 +50,7 @@ class ToolSetResolverTest {
 
     @Test
     void resolvePlanWorkflowCriticalTools_intersectsSetWithEnabledPool() {
-        when(toolSetClient.fetchPlanWorkflowCritical("default")).thenReturn(List.of("A", "B", "D"));
+        when(toolManagerClient.fetchPlanWorkflowCritical("default")).thenReturn(List.of("A", "B", "D"));
         when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("A", "B", "C"));
 
         assertThat(resolver.resolvePlanWorkflowCriticalTools("default")).containsExactly("A", "B");

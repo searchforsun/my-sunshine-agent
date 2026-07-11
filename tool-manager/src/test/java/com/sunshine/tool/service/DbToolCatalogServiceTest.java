@@ -49,6 +49,8 @@ class DbToolCatalogServiceTest {
         assertThat(entry.parameters()).containsKey("type");
         assertThat(entry.displayName()).isEqualTo("查询待审批财务消息");
         assertThat(entry.kind()).isEqualTo("remote");
+        assertThat(entry.source()).isEqualTo("sdk");
+        assertThat(entry.sourceRef()).isEqualTo("sunshine-finance");
         assertThat(entry.enabled()).isTrue();
     }
 

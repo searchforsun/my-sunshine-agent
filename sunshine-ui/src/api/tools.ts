@@ -43,6 +43,8 @@ export interface ToolCatalogEntry {
   displayName: string
   description: string
   kind: string
+  source: string
+  sourceRef: string
   timelineSummaryTemplate?: string
   timelineSummaryExtract?: string | null
   parameters: Record<string, unknown>
@@ -71,10 +73,6 @@ export interface ToolDefinition {
   metadataEdited: boolean
   discoveredAt: string | null
   updatedAt: string
-}
-
-export interface ToolSetConfig {
-  toolIds: string[]
 }
 
 export interface ToolPatchBody {
@@ -108,10 +106,13 @@ export interface McpServerPatchBody {
   enabled?: boolean
 }
 
-/** 按 SDK 应用 ID 前缀过滤 Catalog 工具（id 形如 sdk__{appId}__{name}） */
-export function filterSdkTools(catalog: ToolCatalogEntry[], appId: string): ToolCatalogEntry[] {
-  const prefix = `sdk__${appId}__`
-  return catalog.filter(t => t.id.startsWith(prefix))
+/** 按来源过滤 Catalog 工具（SSOT：source + sourceRef，非 id 前缀） */
+export function filterCatalogBySource(
+  catalog: ToolCatalogEntry[],
+  source: string,
+  sourceRef: string,
+): ToolCatalogEntry[] {
+  return catalog.filter(t => t.source === source && t.sourceRef === sourceRef)
 }
 
 export async function listSdkApplications(): Promise<SdkApplication[]> {
@@ -324,17 +325,6 @@ export async function listToolCatalog(
   return parseApiResponse<ToolCatalogEntry[]>(res)
 }
 
-export function filterMcpTools(catalog: ToolCatalogEntry[], serverId: string): ToolCatalogEntry[] {
-  const prefix = `mcp__${serverId}__`
-  return catalog.filter(t => t.id.startsWith(prefix))
-}
-
 export function buildToolEnabledMap(catalog: ToolCatalogEntry[]): Map<string, boolean> {
   return new Map(catalog.map(t => [t.id, t.enabled]))
-}
-
-/** @deprecated 请用单次 listToolCatalog + buildToolEnabledMap */
-export async function loadToolEnabledMap(tenantId?: TenantId): Promise<Map<string, boolean>> {
-  const all = await listToolCatalog(tenantId, false)
-  return buildToolEnabledMap(all)
 }

@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 public enum ToolErrorCode implements ErrorCode {
 
     TOOL_NAME_REQUIRED(400, "tool_name_required", "工具名称不能为空"),
+    TOOL_DESCRIPTION_REQUIRED(400, "tool_description_required", "工具描述不能为空"),
     UNKNOWN_TOOL(404, "tool_unknown", "未知工具"),
     TOOL_DISABLED(403, "tool_disabled", "工具未启用"),
     UNSUPPORTED_SOURCE(400, "tool_unsupported_source", "暂不支持该工具来源"),

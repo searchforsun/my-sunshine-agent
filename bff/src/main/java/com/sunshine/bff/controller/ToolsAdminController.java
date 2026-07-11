@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -86,32 +85,6 @@ public class ToolsAdminController {
             @PathVariable String toolId,
             @RequestBody Map<String, Object> body) {
         return toolManagerAdminClient.patchTool(toolId, body);
-    }
-
-    @GetMapping("/api/admin/tools/sets/react-default")
-    public Mono<Map<String, Object>> getReactDefaultToolSet(
-            @RequestParam(required = false) String tenantId) {
-        return toolManagerAdminClient.getReactDefaultToolSet(tenantId);
-    }
-
-    @PutMapping("/api/admin/tools/sets/react-default")
-    public Mono<Map<String, Object>> putReactDefaultToolSet(
-            @RequestParam(required = false) String tenantId,
-            @RequestBody Map<String, Object> body) {
-        return toolManagerAdminClient.putReactDefaultToolSet(tenantId, body);
-    }
-
-    @GetMapping("/api/admin/tools/sets/plan-workflow")
-    public Mono<Map<String, Object>> getPlanWorkflowToolSet(
-            @RequestParam(required = false) String tenantId) {
-        return toolManagerAdminClient.getPlanWorkflowToolSet(tenantId);
-    }
-
-    @PutMapping("/api/admin/tools/sets/plan-workflow")
-    public Mono<Map<String, Object>> putPlanWorkflowToolSet(
-            @RequestParam(required = false) String tenantId,
-            @RequestBody Map<String, Object> body) {
-        return toolManagerAdminClient.putPlanWorkflowToolSet(tenantId, body);
     }
 
     @GetMapping("/api/admin/tools/sets/{kind}/members")

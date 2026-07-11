@@ -33,6 +33,8 @@ public class DbToolCatalogService {
                 entity.getDisplayName(),
                 entity.getDescription() != null ? entity.getDescription() : "",
                 entity.getKind(),
+                entity.getSource(),
+                entity.getSourceRef(),
                 entity.getTimelineSummaryTemplate(),
                 entity.getTimelineSummaryExtract(),
                 parameters,
