@@ -11,10 +11,12 @@ public record ToolCatalogEntry(
         String description,
         String kind,
         String timelinePhase,
-        String outputSummaryKind,
+        String timelineSummaryTemplate,
+        String timelineSummaryExtract,
         Map<String, Object> parameters,
         String sideEffect,
         boolean requireConfirmation,
+        boolean enabled,
         boolean idValid,
         String idError
 ) {

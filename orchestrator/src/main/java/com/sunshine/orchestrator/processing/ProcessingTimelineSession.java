@@ -66,12 +66,20 @@ public final class ProcessingTimelineSession {
         return tools.beginToolStep(baseStepId, phase);
     }
 
-    public void completeToolStep(String detail) {
-        tools.completeToolStep(detail);
+    public void completeToolStep(String summaryLine) {
+        tools.completeToolStep(summaryLine);
     }
 
-    public void completeToolStepForToolUse(String toolUseId, String detail) {
-        tools.completeToolStepForToolUse(toolUseId, detail);
+    public void completeToolStep(String summaryLine, String expandDetail) {
+        tools.completeToolStep(summaryLine, expandDetail);
+    }
+
+    public void completeToolStepForToolUse(String toolUseId, String summaryLine) {
+        tools.completeToolStepForToolUse(toolUseId, summaryLine);
+    }
+
+    public void completeToolStepForToolUse(String toolUseId, String summaryLine, String expandDetail) {
+        tools.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail);
     }
 
     public void skipCurrentToolStep(String afterSummary) {

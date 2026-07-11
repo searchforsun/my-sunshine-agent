@@ -43,7 +43,7 @@ mvn test -pl orchestrator -Dtest=StructuralPlanMatcherTest,RoutingGoldenSetTest,
 意图步之后应出现 **「执行计划」** + **Plan DAG**（`PlanWorkflowPanel`），而非 ReAct 的「规划推理」或逐步 `node-*` 卡片：
 
 - **动态 Plan（L1/L3）**：Planner 产出 JSON → `PlanWorkflowExecutor`
-- **静态 Workflow（L2）**：Nacos 定义经 `StaticPlanAdapter` 物化为 Plan → `WorkflowExecutor`；plan 步 `detail` 含 **`planId=`**（与动态 Plan 同门控）
+- **静态 Workflow（L2）**：DB 定义经 `StaticPlanAdapter` 物化为 Plan → `WorkflowExecutor`；plan 步 `detail` 含 **`planId=`**（与动态 Plan 同门控）
 - **不应**在成功路径出现：`规划推理` / `think` / 自主 ReAct 工具链（除非 Planner 失败降级，见下）
 - **`think` 仅属 ReAct**：answer 的 reasoning 在 `node-*` 步骤与 Plan 抽屉「综合分析」，**不得**再合成顶层 `think` 行
 
@@ -197,7 +197,7 @@ python3 scripts/verify_skills_ui_live.py
 | # | 提示词 | 预期 |
 |---|--------|------|
 | I1 | `#knowledge-qa 年假可以请几天` | `WORKFLOW` workflowId=knowledge-qa；`reason=workflow:#mention`；Plan DAG |
-| I2 | `#knowledge-qa 报销流程是什么` | `WORKFLOW` workflowId=knowledge-qa（Nacos 内置，DB 未覆盖时） |
+| I2 | `#knowledge-qa 报销流程是什么` | `WORKFLOW` workflowId=knowledge-qa（DB init 种子） |
 | I3 | `#finance-smart 待审批报销是否合规` | `WORKFLOW` workflowId=finance-smart；**压过** L2 规则 / L3 自动选型 |
 | I4 | `#not-exists 测试` | HTTP 400；文案指向 `/workflows` |
 | I5 | `@knowledge-qa 测试` | **不得**当 workflow；按 Skill 解析 → 未知 Skill 400 或 none |

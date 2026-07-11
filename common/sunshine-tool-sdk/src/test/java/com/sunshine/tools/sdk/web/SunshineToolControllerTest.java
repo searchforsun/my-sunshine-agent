@@ -40,7 +40,7 @@ class SunshineToolControllerTest {
                 id = "list_finance_messages",
                 displayName = "查询待审批财务消息",
                 description = "按状态筛选",
-                outputSummaryKind = "finance-list")
+                timelineSummaryTemplate = "{count} 条财务消息")
         public String list(@ToolParam(value = "status", description = "pending|approved|all") String status) {
             return "ok-" + status;
         }

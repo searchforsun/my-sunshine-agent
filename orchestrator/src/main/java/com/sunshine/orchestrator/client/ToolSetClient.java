@@ -26,35 +26,41 @@ public class ToolSetClient {
     }
 
     public List<String> fetchReactDefault(String tenantId) {
-        return fetchToolSet("/api/admin/tools/sets/react-default", tenantId, "react-default");
+        return fetchToolIds("react-default", tenantId).toolIds();
+    }
+
+    public List<String> fetchPlanWorkflow(String tenantId) {
+        return fetchToolIds("plan-workflow", tenantId).toolIds();
     }
 
     public List<String> fetchPlanWorkflowCritical(String tenantId) {
-        return fetchToolSet("/api/admin/tools/sets/plan-workflow-critical", tenantId, "plan-workflow-critical");
+        return fetchToolIds("plan-workflow", tenantId).criticalToolIds();
     }
 
-    private List<String> fetchToolSet(String path, String tenantId, String label) {
+    private ToolSetToolIdsResponse fetchToolIds(String kind, String tenantId) {
         try {
-            ToolSetResponse response = webClient.get()
+            ToolSetToolIdsResponse response = webClient.get()
                     .uri(uriBuilder -> uriBuilder
-                            .path(path)
+                            .path("/api/tools/sets/" + kind + "/tool-ids")
                             .queryParam("tenantId", tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default")
                             .build())
                     .retrieve()
-                    .bodyToMono(new ParameterizedTypeReference<R<ToolSetResponse>>() {})
+                    .bodyToMono(new ParameterizedTypeReference<R<ToolSetToolIdsResponse>>() {})
                     .map(R::getData)
                     .onErrorResume(e -> {
-                        log.warn("[ToolSetClient] fetch {} failed tenant={}: {}", label, tenantId, e.getMessage());
+                        log.warn("[ToolSetClient] fetch {} tool-ids failed tenant={}: {}", kind, tenantId, e.getMessage());
                         return Mono.empty();
                     })
                     .block();
-            if (response == null || response.toolIds() == null) {
-                return List.of();
+            if (response == null) {
+                return new ToolSetToolIdsResponse(List.of(), List.of());
             }
-            return List.copyOf(response.toolIds());
+            List<String> toolIds = response.toolIds() != null ? List.copyOf(response.toolIds()) : List.of();
+            List<String> critical = response.criticalToolIds() != null ? List.copyOf(response.criticalToolIds()) : List.of();
+            return new ToolSetToolIdsResponse(toolIds, critical);
         } catch (Exception e) {
-            log.warn("[ToolSetClient] fetch {} error tenant={}: {}", label, tenantId, e.getMessage());
-            return List.of();
+            log.warn("[ToolSetClient] fetch {} tool-ids error tenant={}: {}", kind, tenantId, e.getMessage());
+            return new ToolSetToolIdsResponse(List.of(), List.of());
         }
     }
 }

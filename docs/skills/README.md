@@ -19,4 +19,4 @@
 | `finance-report/` | 财务报告类示例 |
 | `knowledge-brief/` | 知识摘要类示例 |
 
-Workflow 节点通过 `skillId` 引用已在平台发布并启用的 Skill，见 Nacos `sunshine-workflows.yaml`。
+Workflow 节点通过 `skillId` 引用已在平台发布并启用的 Skill；workflow 图定义在 **workflow-manager DB**（`/workflows` Studio），见 [workflow-studio-design](../superpowers/specs/2026-06-25-workflow-studio-design.md)。

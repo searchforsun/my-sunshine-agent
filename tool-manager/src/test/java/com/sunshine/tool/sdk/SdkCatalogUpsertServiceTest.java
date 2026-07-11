@@ -73,7 +73,8 @@ class SdkCatalogUpsertServiceTest {
                         "desc",
                         "read",
                         "tool",
-                        "truncate",
+                        "",
+                        null,
                         Map.of("type", "object"))));
         upsertService.upsert("sunshine-finance", "sunshine-finance", catalog);
 
@@ -122,7 +123,8 @@ class SdkCatalogUpsertServiceTest {
                         "按状态筛选",
                         "read",
                         "tool",
-                        "finance-list",
+                        "{count} 条财务消息",
+                        "{\"count\":\"regex:共\\\\s*(\\\\d+)\\\\s*条\"}",
                         Map.of(
                                 "type", "object",
                                 "properties", Map.of("status", Map.of("type", "string"))))));

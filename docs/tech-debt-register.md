@@ -17,13 +17,16 @@
 
 ## Backlog（open）
 
-> 2026-07-08 扫描：TD-075/076 已修复；代码债 Backlog 已空。
-
 ### 代码债
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| _（空）_ | — | — | — | Backlog 已空 |
+| TD-080 | P2 | open | `sunshine-ui/src/views/ToolsView.vue` | 仍 ~2400 行，应对标 `SkillsView` 拆 composables + 面板组件 |
+| TD-082 | P2 | open | tool-manager Catalog DTO | 加 `sourceRef`，前端停 `id` 前缀解析 |
+| TD-086 | P2 | open | orchestrator Client | 4 路 WebClient 收敛为单一 `ToolManagerClient` |
+| TD-088–090 | P2 | open | BFF/orchestrator DTO | BFF Map 透传改 DTO；`ToolCatalogEntry` 分叉统一 |
+
+**2026-07-11 本轮已消化**：TD-077/078/081/083/084/085（工具集语义、Catalog `enabled`、BFF Client 去重、路由归位）。
 
 ### 文档债
 
@@ -118,6 +121,13 @@
 | TD-074 | 2026-07-07 | 前端域拆分：`ragAdmin/`（client/kbDocuments/kbConfig/eval + barrel）；`chatSessions`→`chatSessionRegistry`/`chatSessionMutations`/`chatSessionSseConsumer`（909→459）；`KbConfigPanel`→`useKbConfigPanel`（1049→513）；`npm run build` 通过 |
 | TD-075 | 2026-07-08 | expert 发言流式：`step_delta(result)` 不切分 + 空白 token 勿用 `hasText` 过滤（根因非 Markdown normalizer） |
 | TD-076 | 2026-07-08 | Synthesizer 流式：`StreamDeltaNormalizer` 闭合 `**` 勿按 `prev.startsWith(incoming)` 丢弃（OpenAI 增量 delta） |
+| TD-077 | 2026-07-11 | 工具集 Tab：ReAct/Planner 启用与 SDK/MCP 池分离；新增 `plan-workflow` 工具集；运行时 `set ∩ pool` |
+| TD-078 | 2026-07-11 | 删 `ToolsView.defaultPlanWorkflowPolicy` 硬编码；策略以 API/DB 为准 |
+| TD-081 | 2026-07-11 | 工具集 Tab 模板抽 `ToolPoolGroupSection.vue`；SDK/MCP 双段重复 markup 去重 |
+| TD-083 | 2026-07-11 | Catalog DTO 增 `enabled`；`refreshCatalog` 单次 fetch + `buildToolEnabledMap` |
+| TD-084 | 2026-07-11 | 删 BFF 孤儿 `ToolManagerClient`；catalog 仅经 `ToolManagerAdminClient` |
+| TD-085 | 2026-07-11 | `/api/tools/catalog` 从 `SkillsController` 迁至 `ToolsAdminController` |
+| TD-087 | 2026-07-11 | 工具集成员制：空集默认、`members`/`picker` API、`critical` 合并进 plan-workflow 成员；前端 `ToolsetTabPanel` + 分页 + 添加弹窗 |
 
 ### 文档债（DOC）
 

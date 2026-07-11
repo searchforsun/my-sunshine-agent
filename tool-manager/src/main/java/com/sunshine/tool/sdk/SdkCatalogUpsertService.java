@@ -120,7 +120,8 @@ public class SdkCatalogUpsertService {
         }
 
         entity.setTimelinePhase(StringUtils.hasText(tool.timelinePhase()) ? tool.timelinePhase() : "tool");
-        entity.setOutputSummaryKind(StringUtils.hasText(tool.outputSummaryKind()) ? tool.outputSummaryKind() : "truncate");
+        entity.setTimelineSummaryTemplate(tool.timelineSummaryTemplate() != null ? tool.timelineSummaryTemplate() : "");
+        entity.setTimelineSummaryExtract(tool.timelineSummaryExtract());
         entity.setSideEffect(StringUtils.hasText(tool.sideEffect()) ? tool.sideEffect() : "read");
         if (!entity.isConfirmationEdited()) {
             entity.setRequireConfirmation(ToolConfirmationDefaults.fromSideEffect(entity.getSideEffect()));

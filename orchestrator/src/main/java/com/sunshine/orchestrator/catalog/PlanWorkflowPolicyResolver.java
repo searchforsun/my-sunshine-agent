@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.catalog;
 
 import com.sunshine.common.tool.PlanWorkflowExecutionPolicy;
-import com.sunshine.orchestrator.client.ExecutionModePolicyClient;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -9,13 +9,13 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PlanWorkflowPolicyResolver {
 
-    private final ExecutionModePolicyClient executionModePolicyClient;
+    private final AgentExecutionProperties agentExecutionProperties;
 
     public PlanWorkflowExecutionPolicy resolve(String tenantId) {
-        return executionModePolicyClient.fetchPlanWorkflow(normalizeTenant(tenantId));
-    }
-
-    private static String normalizeTenant(String tenantId) {
-        return tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
+        AgentExecutionProperties.PlanWorkflow plan = agentExecutionProperties.getPlanWorkflow();
+        if (plan == null || plan.getNodeRetry() == null) {
+            return PlanWorkflowExecutionPolicy.platformDefault();
+        }
+        return plan.getNodeRetry().toPolicy();
     }
 }

@@ -28,21 +28,29 @@ final class TimelineSessionToolFlow {
         return stepId;
     }
 
-    void completeToolStep(String detail) {
+    void completeToolStep(String summaryLine) {
+        completeToolStep(summaryLine, null);
+    }
+
+    void completeToolStep(String summaryLine, String expandDetail) {
         if (state.currentToolStepId == null) {
             return;
         }
-        lifecycle.completeAt(state.currentToolStepId, detail, System.currentTimeMillis());
+        lifecycle.completeAt(state.currentToolStepId, summaryLine, expandDetail, System.currentTimeMillis());
         state.currentToolStepId = null;
     }
 
-    void completeToolStepForToolUse(String toolUseId, String detail) {
+    void completeToolStepForToolUse(String toolUseId, String summaryLine) {
+        completeToolStepForToolUse(toolUseId, summaryLine, null);
+    }
+
+    void completeToolStepForToolUse(String toolUseId, String summaryLine, String expandDetail) {
         String stepId = com.sunshine.orchestrator.agent.StepEventBridge.stepIdForToolUse(toolUseId);
         if (stepId == null) {
-            completeToolStep(detail);
+            completeToolStep(summaryLine, expandDetail);
             return;
         }
-        lifecycle.completeAt(stepId, detail, System.currentTimeMillis());
+        lifecycle.completeAt(stepId, summaryLine, expandDetail, System.currentTimeMillis());
         if (stepId.equals(state.currentToolStepId)) {
             state.currentToolStepId = null;
         }

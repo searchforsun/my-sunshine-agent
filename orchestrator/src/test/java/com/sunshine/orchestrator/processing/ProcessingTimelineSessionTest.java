@@ -644,8 +644,10 @@ class ProcessingTimelineSessionTest {
                     .toList();
             assertThat(toolSteps).hasSize(2);
             assertThat(toolSteps.get(0).id()).isNotEqualTo(toolSteps.get(1).id());
-            assertThat(toolSteps.get(0).detail()).contains("pending").doesNotContain("·");
-            assertThat(toolSteps.get(1).detail()).contains("approved").doesNotContain("·");
+            assertThat(toolSteps.get(0).summary().after()).contains("pending").doesNotContain("·");
+            assertThat(toolSteps.get(1).summary().after()).contains("approved").doesNotContain("·");
+            assertThat(toolSteps.get(0).detail()).isNull();
+            assertThat(toolSteps.get(1).detail()).isNull();
             assertThat(toolSteps.get(0).label()).isEqualTo("调用工具 统计财务消息");
         } finally {
             StepLabels.bind(null);

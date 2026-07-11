@@ -2,7 +2,7 @@ package com.sunshine.orchestrator.execution.handler;
 
 import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
-import com.sunshine.orchestrator.client.ToolManagerClient;
+import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.rag.RagSearch;
@@ -30,7 +30,6 @@ public class RagNodeHandler implements NodeHandler {
 
     private final RagClient ragClient;
     private final DefaultKbResolver defaultKbResolver;
-    private final ToolManagerClient toolManagerClient;
 
     @Override
     public String type() {
@@ -61,27 +60,27 @@ public class RagNodeHandler implements NodeHandler {
                         streamCtx.assistantMsgId())
                 .flatMap(hits -> {
                     List<RagClient.RagHit> results = hits != null ? hits : List.of();
-                    return toolManagerClient.summarizeRagHitsMono(results)
-                            .map(detailResp -> buildOkResult(results, detailResp != null ? detailResp.summary() : ""));
+                    return Mono.just(buildOkResult(results));
                 })
                 .onErrorResume(e -> {
                     log.warn("[RagNodeHandler] 检索失败: {}", e.getMessage());
-                    return toolManagerClient.summarizeRagHitsMono(List.of())
-                            .map(detailResp -> {
-                                Map<String, String> outputs = new LinkedHashMap<>();
-                                outputs.put("output", RagContextFormatter.formatAgentContext(List.of()));
-                                outputs.put("hitCount", "0");
-                                outputs.put("detail", detailResp != null ? detailResp.summary() : "命中 0 条");
-                                return NodeResult.ok(outputs);
-                            });
+                    return Mono.just(buildEmptyResult());
                 });
     }
 
-    private static NodeResult buildOkResult(List<RagClient.RagHit> results, String detail) {
+    private static NodeResult buildEmptyResult() {
+        Map<String, String> outputs = new LinkedHashMap<>();
+        outputs.put("output", RagContextFormatter.formatAgentContext(List.of()));
+        outputs.put("hitCount", "0");
+        outputs.put("detail", WorkflowNodeCompletionLabels.hitCount("0"));
+        return NodeResult.ok(outputs);
+    }
+
+    private static NodeResult buildOkResult(List<RagClient.RagHit> results) {
         Map<String, String> outputs = new LinkedHashMap<>();
         outputs.put("output", RagContextFormatter.formatAgentContext(results));
         outputs.put("hitCount", String.valueOf(results.size()));
-        outputs.put("detail", detail);
+        outputs.put("detail", WorkflowNodeCompletionLabels.hitCount(String.valueOf(results.size())));
         return NodeResult.ok(outputs);
     }
 

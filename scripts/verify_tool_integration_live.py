@@ -379,24 +379,28 @@ def run_g4_g5_mcp(headers: dict) -> dict:
 
 
 def run_g6_g7_toolset(headers: dict) -> dict:
-    print("\n[G6] react-default 工具集")
+    print("\n[G6] react-default 工具集 members API")
     subset = [FIN_LIST, OA_LIST]
-    put_resp = admin_json(
-        "PUT",
-        "/api/admin/tools/sets/react-default",
+    add_resp = admin_json(
+        "POST",
+        "/api/admin/tools/sets/react-default/members:add",
         headers,
-        json={"toolIds": subset},
+        json={"items": [{"toolId": tid} for tid in subset]},
     )
-    got_ids = (put_resp or {}).get("toolIds") if isinstance(put_resp, dict) else None
-    if got_ids != subset:
-        raise AssertionError(f"PUT react-default 期望 {subset}, 实际 {got_ids}")
-    get_resp = admin_json("GET", "/api/admin/tools/sets/react-default", headers)
-    read_ids = (get_resp or {}).get("toolIds") if isinstance(get_resp, dict) else None
-    if read_ids != subset:
-        raise AssertionError(f"GET react-default 期望 {subset}, 实际 {read_ids}")
-    print(f"[OK] G6: react-default={subset}")
+    added = (add_resp or {}).get("added") if isinstance(add_resp, dict) else None
+    if added != subset:
+        raise AssertionError(f"members:add 期望 added={subset}, 实际 {added}")
+    page_resp = admin_json(
+        "GET",
+        "/api/admin/tools/sets/react-default/members?page=1&size=50",
+        headers,
+    )
+    total = (page_resp or {}).get("total") if isinstance(page_resp, dict) else None
+    if total != len(subset):
+        raise AssertionError(f"members 列表 total 期望 {len(subset)}, 实际 {total}")
+    print(f"[OK] G6: react-default members={subset}")
 
-    print("\n[G7] disable 工具动态生效")
+    print("\n[G7] disable 工具动态生效（成员保留、运行时排除）")
     enable_sdk_tools(headers)
     before = {e.get("id") for e in catalog_entries(enabled_only=True, headers=headers)}
     if FIN_LIST not in before:
@@ -406,8 +410,17 @@ def run_g6_g7_toolset(headers: dict) -> dict:
     after = {e.get("id") for e in catalog_entries(enabled_only=True, headers=headers)}
     if FIN_LIST in after:
         raise AssertionError(f"disable 后 enabledOnly catalog 仍含 {FIN_LIST}")
+    page_after = admin_json(
+        "GET",
+        "/api/admin/tools/sets/react-default/members?page=1&size=50",
+        headers,
+    )
+    items = (page_after or {}).get("items") if isinstance(page_after, dict) else []
+    fin_row = next((i for i in items if i.get("toolId") == FIN_LIST), None)
+    if not fin_row or fin_row.get("enabled") is not False:
+        raise AssertionError("disable 后成员仍在集内但 enabled 应为 false")
     patch_tool(FIN_LIST, {"enabled": True}, headers)
-    print("[OK] G7: disable 后 enabledOnly catalog 已排除")
+    print("[OK] G7: disable 后 enabledOnly catalog 已排除，成员仍保留")
     return {"pass": True, "react_default": subset}
 
 

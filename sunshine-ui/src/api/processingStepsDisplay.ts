@@ -154,6 +154,19 @@ function extractFirstProseLine(text: string): string {
   return ''
 }
 
+/** 展开区 lead：保留换行，供 StaticMarkdown 渲染（主行预览仍用 resolveStepHeaderText 单行截断） */
+export function resolveStepExpandLead(step: ProcessingStep): string {
+  const lifecycle = stepLifecycle(step)
+  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+    let text = step.summary?.after?.trim() || resolveStepSummaryFull(step)
+    if (step.phase === 'plan' && text) {
+      text = stripPlanMetaText(text)
+    }
+    return text
+  }
+  return resolveStepSummaryFull(step)
+}
+
 export function resolveStepExpandSummary(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
   let oneLine = ''
@@ -175,21 +188,39 @@ export function resolveStepExpandSummary(step: ProcessingStep): string {
   return oneLine
 }
 
-export function resolveStepExpandBody(step: ProcessingStep): string {
+/** 展开区内层正文（detail / rewrite / result），与 summary.after 分列 */
+export function resolveStepExpandInner(step: ProcessingStep): string {
   if (isWorkflowAnswerStep(step)) {
     return ''
   }
   if (step.phase === 'expert') {
     return step.result?.trim() || ''
   }
-  const summary = resolveStepExpandSummary(step)
   const detail = step.detail?.trim()
-  if (detail && detail !== summary) return detail
+  if (detail) return detail
   const rewrite = formatRewriteMetadata(step)
-  if (rewrite && rewrite !== summary) return rewrite
-  const result = step.result?.trim()
-  if (result && result !== summary && result !== detail) return result
-  return ''
+  if (rewrite) return rewrite
+  // 工具步无 detail 即无展开正文；result 常为历史 after 副本，勿当作 inner
+  if (step.phase === 'tool' || step.id.startsWith('tool-') || step.id.startsWith('rag')) {
+    return ''
+  }
+  return step.result?.trim() || ''
+}
+
+/**
+ * 展开区两块互斥：有 inner 只展示 inner，否则展示 after 摘要。
+ * 折叠主行仍用 summary.after 预览（resolveStepHeaderText）。
+ */
+export function resolveStepExpandPanels(step: ProcessingStep): { lead: string; body: string } {
+  const inner = resolveStepExpandInner(step)
+  if (inner) {
+    return { lead: '', body: inner }
+  }
+  return { lead: resolveStepExpandLead(step), body: '' }
+}
+
+export function resolveStepExpandBody(step: ProcessingStep): string {
+  return resolveStepExpandPanels(step).body
 }
 
 export function parseLoadedSkillLabel(text?: string): string | undefined {
@@ -204,10 +235,18 @@ export function stripLoadedSkillPrefix(text?: string): string {
   return text.replace(/^已加载技能：[^\n]+\n\n?/, '').trim()
 }
 
+/** 主行摘要是否被截断（带 …），展开后可看全文 */
+export function isStepSummaryTruncated(step: ProcessingStep): boolean {
+  const header = resolveStepHeaderText(step)
+  if (!header) return false
+  if (header.endsWith('…')) return true
+  const full = resolveStepSummaryFull(step).replace(/\s+/g, ' ').trim()
+  return !!full && full.length > STEP_HEADER_PREVIEW_MAX
+}
+
 export function shouldShiftSummaryOnExpand(step: ProcessingStep): boolean {
-  const summary = resolveStepExpandSummary(step)
-  if (!summary) return false
-  return summary !== resolveStepHeaderText(step) || summary.length > STEP_HEADER_PREVIEW_MAX
+  if (resolveStepExpandInner(step)) return true
+  return isStepSummaryTruncated(step)
 }
 
 export function hasExpandableContent(step: ProcessingStep): boolean {
@@ -217,17 +256,13 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
   if (step.phase === 'peer-collab' || step.id === 'peer-collab') {
     return false
   }
-  if (step.phase === 'expert' || step.phase === 'expert-convene') {
-    return !!step.result?.trim() || shouldShiftSummaryOnExpand(step)
-  }
+  if (resolveStepExpandInner(step)) return true
+  if (isStepSummaryTruncated(step)) return true
   if (isWorkflowAnswerStep(step)) {
-    return shouldShiftSummaryOnExpand(step)
-      || !!formatRewriteMetadata(step)
+    return !!formatRewriteMetadata(step)
       || !!step.reasoning?.trim()
       || !!step.output?.trim()
   }
-  if (shouldShiftSummaryOnExpand(step)) return true
-  if (resolveStepExpandBody(step)) return true
   if (formatRewriteMetadata(step)) return true
   if (step.reasoning?.trim()) return true
   if (step.output?.trim()) return true

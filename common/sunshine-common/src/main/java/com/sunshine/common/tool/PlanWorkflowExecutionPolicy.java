@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import java.util.Map;
 
-/** Plan-Workflow 模式默认执行策略（SSOT：tool-manager execution_mode_policy） */
+/** Plan-Workflow 模式默认执行策略（SSOT：Nacos agent.execution.plan-workflow.node-retry） */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PlanWorkflowExecutionPolicy(
         NodeDefaults defaults,

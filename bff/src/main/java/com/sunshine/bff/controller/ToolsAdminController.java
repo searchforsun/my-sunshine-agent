@@ -24,6 +24,13 @@ public class ToolsAdminController {
 
     private final ToolManagerAdminClient toolManagerAdminClient;
 
+    @GetMapping("/api/tools/catalog")
+    public Mono<Map<String, Object>> toolCatalog(
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(defaultValue = "false") boolean enabledOnly) {
+        return toolManagerAdminClient.catalog(tenantId, enabledOnly);
+    }
+
     @GetMapping("/api/admin/tools/sdk-applications")
     public Mono<Map<String, Object>> listSdkApplications() {
         return toolManagerAdminClient.listSdkApplications();
@@ -94,29 +101,58 @@ public class ToolsAdminController {
         return toolManagerAdminClient.putReactDefaultToolSet(tenantId, body);
     }
 
-    @GetMapping("/api/admin/tools/sets/plan-workflow-critical")
-    public Mono<Map<String, Object>> getPlanWorkflowCriticalToolSet(
+    @GetMapping("/api/admin/tools/sets/plan-workflow")
+    public Mono<Map<String, Object>> getPlanWorkflowToolSet(
             @RequestParam(required = false) String tenantId) {
-        return toolManagerAdminClient.getPlanWorkflowCriticalToolSet(tenantId);
+        return toolManagerAdminClient.getPlanWorkflowToolSet(tenantId);
     }
 
-    @PutMapping("/api/admin/tools/sets/plan-workflow-critical")
-    public Mono<Map<String, Object>> putPlanWorkflowCriticalToolSet(
+    @PutMapping("/api/admin/tools/sets/plan-workflow")
+    public Mono<Map<String, Object>> putPlanWorkflowToolSet(
             @RequestParam(required = false) String tenantId,
             @RequestBody Map<String, Object> body) {
-        return toolManagerAdminClient.putPlanWorkflowCriticalToolSet(tenantId, body);
+        return toolManagerAdminClient.putPlanWorkflowToolSet(tenantId, body);
     }
 
-    @GetMapping("/api/admin/tools/modes/plan-workflow")
-    public Mono<Map<String, Object>> getPlanWorkflowModePolicy(
-            @RequestParam(required = false) String tenantId) {
-        return toolManagerAdminClient.getPlanWorkflowModePolicy(tenantId);
+    @GetMapping("/api/admin/tools/sets/{kind}/members")
+    public Mono<Map<String, Object>> pageToolSetMembers(
+            @PathVariable String kind,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String q) {
+        return toolManagerAdminClient.pageToolSetMembers(kind, tenantId, page, size, q);
     }
 
-    @PutMapping("/api/admin/tools/modes/plan-workflow")
-    public Mono<Map<String, Object>> putPlanWorkflowModePolicy(
+    @GetMapping("/api/admin/tools/sets/{kind}/picker")
+    public Mono<Map<String, Object>> toolSetPicker(
+            @PathVariable String kind,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(required = false) String q) {
+        return toolManagerAdminClient.toolSetPicker(kind, tenantId, q);
+    }
+
+    @PostMapping("/api/admin/tools/sets/{kind}/members:add")
+    public Mono<Map<String, Object>> addToolSetMembers(
+            @PathVariable String kind,
             @RequestParam(required = false) String tenantId,
             @RequestBody Map<String, Object> body) {
-        return toolManagerAdminClient.putPlanWorkflowModePolicy(tenantId, body);
+        return toolManagerAdminClient.addToolSetMembers(kind, tenantId, body);
+    }
+
+    @PostMapping("/api/admin/tools/sets/{kind}/members:remove")
+    public Mono<Map<String, Object>> removeToolSetMembers(
+            @PathVariable String kind,
+            @RequestParam(required = false) String tenantId,
+            @RequestBody Map<String, Object> body) {
+        return toolManagerAdminClient.removeToolSetMembers(kind, tenantId, body);
+    }
+
+    @PatchMapping("/api/admin/tools/sets/plan-workflow/members/{toolId}")
+    public Mono<Map<String, Object>> patchPlanWorkflowMemberCritical(
+            @PathVariable String toolId,
+            @RequestParam(required = false) String tenantId,
+            @RequestBody Map<String, Object> body) {
+        return toolManagerAdminClient.patchPlanWorkflowMemberCritical(tenantId, toolId, body);
     }
 }

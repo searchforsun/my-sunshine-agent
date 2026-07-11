@@ -30,7 +30,7 @@ public class ManageTasksTool {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Tool(name = NAME,
-            description = "任务清单：规划阶段 merge=false 建板一次；执行中 merge=true 仅更新已有条目 status（带 id）。")
+            description = "任务清单（仅三步及以上任务）：merge=false 建板一次；merge=true 仅按 id 更新 status。")
     public String manageTasks(
             @ToolParam(name = "merge", description = "false=首次建板；true=按 id 仅更新已有条目 status")
             boolean merge,

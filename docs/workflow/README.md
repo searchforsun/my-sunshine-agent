@@ -1,6 +1,8 @@
-# Workflow 导入包（PlanJson）
+# Workflow 定义模板（PlanJson）
 
-由 `docs/nacos/sunshine-workflows.yaml` 导出的 **Workflow Studio 可导入 JSON**，与 DB `workflow_version.plan_json` + Catalog 元数据同构。
+与 DB `workflow_version.plan_json` + `workflow_definition` Catalog 元数据**同构**的 JSON 模板，供 **MySQL init 种子编写**、Studio 批量导入、环境迁移参考。
+
+> **运行时 SSOT**：`workflow-manager` DB（**非** Nacos、**非**本目录文件）。
 
 ## 文件
 
@@ -12,18 +14,19 @@
 | `finance-summary.json` | 财务汇总统计 |
 | `manifest.json` | 批量导入清单 |
 
-## 导入方式（阶段四 4.13 实现后）
+## 初始化（新环境）
 
-- Studio UI：**导入 JSON** → 校验 `PlanValidator` → 存草稿 → 发布
-- API：`POST /api/workflows/import`（multipart 或 JSON body）
-- **无 Flyway 种子**；新环境由运维/研发按需导入，或保留 Nacos 内置 workflow 运行
+1. MySQL 执行 `docker/mysql/init/13-sunshine-workflow-manager.sql`（含 4 条 **published v1** 种子）
+2. 启动 `workflow-manager` :8230
+3. orchestrator 经 `WorkflowManagerClient` 读 DB — **无需** Nacos workflow、**无需**手工导入
 
-## 与 Nacos 关系
+## Studio / 迁移
 
-- 运行时默认仍走 Nacos `sunshine-workflows.yaml`（GitOps SSOT）
-- 导入 DB 且 `enabled=true` 发布后，**同 ID 覆盖** Nacos（见 workflow-studio-design §9）
-- 本目录 JSON 仅作 **迁移 / 模板 / Studio 初始内容**，不自动写入 DB
+- Studio UI：**导入 JSON** → `PlanValidator` → 草稿 → 发布
+- API：`POST /api/workflows/import`
+- 工具 ID 须为 Catalog 格式：`sdk__sunshine-finance__*` / `mcp__*`
 
 ## 维护
 
-YAML 变更后请同步更新本目录 JSON（后续可提供 `scripts/export_workflows_json.py`）。
+- 修改标杆 workflow：优先在 `/workflows` Studio 发布，或同步更新本目录 JSON + init SQL
+- 详设：[workflow-studio-design.md](../superpowers/specs/2026-06-25-workflow-studio-design.md)

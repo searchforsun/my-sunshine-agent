@@ -11,8 +11,7 @@ import {
   resolvePlanStepDetail,
   resolveRewriteDetail,
   resolveStepDurationMs,
-  resolveStepExpandBody,
-  resolveStepExpandSummary,
+  resolveStepExpandPanels,
   stepLifecycle,
   stripLoadedSkillPrefix,
 } from '../../api/processingSteps'
@@ -94,12 +93,8 @@ const durationText = computed(() => {
   return ms != null ? formatDuration(ms) : ''
 })
 
-const summary = computed(() => {
-  if (step.value) {
-    return resolveStepExpandSummary(step.value) || ''
-  }
-  return node.value?.summary ?? ''
-})
+const expandPanels = computed(() => (step.value ? resolveStepExpandPanels(step.value) : { lead: '', body: '' }))
+const summary = computed(() => expandPanels.value.lead || node.value?.summary || '')
 
 const analysisContent = computed(() => {
   const t = node.value?.type
@@ -122,7 +117,7 @@ const body = computed(() => {
   if (t === 'answer') {
     return finalOutput.value
   }
-  if (step.value) return resolveStepExpandBody(step.value)
+  if (step.value) return expandPanels.value.body
   return node.value?.detail?.trim() ?? ''
 })
 const bodyDisplay = computed(() => stripLoadedSkillPrefix(body.value))
@@ -144,6 +139,8 @@ const showAnalysisSection = computed(() =>
 const showSummary = computed(() => {
   // agent 子 Timeline 已在「执行过程」展示，勿重复执行摘要
   if (node.value?.type === 'start' || node.value?.type === 'answer' || node.value?.type === 'llm' || node.value?.type === 'agent') return false
+  const bodyText = bodyDisplay.value
+  if (bodyText) return false
   return !!summary.value.trim()
 })
 const rewriteDetail = computed(() => (step.value ? resolveRewriteDetail(step.value) : undefined))
@@ -163,7 +160,7 @@ const showStartPlan = computed(() => {
 const showBodySection = computed(() => {
   if (node.value?.type === 'start') return false
   if (node.value?.type === 'agent' && (step.value?.contentBlocks?.length ?? 0) > 0) return false
-  return !!bodyDisplay.value && bodyDisplay.value !== summary.value
+  return !!bodyDisplay.value
 })
 const showReasoningSection = computed(() =>
   node.value?.type !== 'llm'

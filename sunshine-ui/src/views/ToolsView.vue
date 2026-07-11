@@ -36,7 +36,7 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
-import TenantSelector from '../components/knowledge/TenantSelector.vue'
+import ToolsetTabPanel from '../components/tools/ToolsetTabPanel.vue'
 import {
   createMcpServer,
   deleteMcpServer,
@@ -47,21 +47,15 @@ import {
   listMcpServers,
   listSdkApplications,
   listToolCatalog,
-  loadToolEnabledMap,
+  buildToolEnabledMap,
   patchTool,
   probeMcpServer,
-  getPlanWorkflowCriticalToolSet,
-  getPlanWorkflowModePolicy,
-  putPlanWorkflowCriticalToolSet,
-  putPlanWorkflowModePolicy,
-  putReactDefaultToolSet,
   syncSdkApplication,
   updateMcpServer,
   type McpServer,
   type McpServerPatchBody,
   type SdkApplication,
   type ToolCatalogEntry,
-  type PlanWorkflowExecutionPolicy,
 } from '../api/tools'
 import type { TenantId } from '../api/tenants'
 import { formatSkillVersionTime } from '../utils/formatSkillVersionTime'
@@ -118,46 +112,6 @@ const mcpJsonExample = `{
   }
 }`
 
-const toolsetTenant = ref<TenantId>('default')
-const toolsetSubTab = ref<'react' | 'plan-workflow'>('react')
-const toolsetFilterQuery = ref('')
-const criticalToolIds = ref<Set<string>>(new Set())
-
-const ON_FAILURE_OPTIONS: SelectOption[] = [
-  { label: '继续 (continue)', value: 'continue' },
-  { label: '快速失败 (fail_fast)', value: 'fail_fast' },
-  { label: '跳过 (skip)', value: 'skip' },
-  { label: '降级 ReAct (fallback_react)', value: 'fallback_react' },
-]
-
-function defaultPlanWorkflowPolicy(): PlanWorkflowExecutionPolicy {
-  return {
-    criticalOnFailure: 'fail_fast',
-    defaults: {
-      maxAttempts: 2,
-      backoffMs: 500,
-      backoffMultiplier: 2.0,
-      onFailure: 'continue',
-      retryOnErrorClass: ['TIMEOUT', 'SERVICE_UNAVAILABLE', 'CIRCUIT_OPEN'],
-    },
-    byType: {
-      rag: { maxAttempts: 1 },
-      tool: { maxAttempts: 2 },
-      agent: { maxAttempts: 1 },
-      answer: { maxAttempts: 2, onFailure: 'fail_fast' },
-    },
-  }
-}
-
-const planWorkflowPolicy = ref<PlanWorkflowExecutionPolicy>(defaultPlanWorkflowPolicy())
-const planPolicySaving = ref(false)
-
-interface ToolGroup {
-  id: string
-  title: string
-  tools: ToolCatalogEntry[]
-}
-
 const mcpCreateDraft = ref({
   id: '',
   displayName: '',
@@ -205,30 +159,6 @@ const enabledToolCount = computed(() =>
   catalog.value.filter(t => enabledMap.value.get(t.id) === true).length,
 )
 
-const sdkToolGroups = computed((): ToolGroup[] =>
-  sdkApps.value
-    .map(app => ({
-      id: app.id,
-      title: app.displayName || app.id,
-      tools: filterSdkTools(catalog.value, app.id),
-    }))
-    .filter(g => g.tools.length > 0),
-)
-
-const mcpToolGroups = computed((): ToolGroup[] =>
-  mcpServers.value
-    .map(server => ({
-      id: server.id,
-      title: server.displayName || server.id,
-      tools: filterMcpTools(catalog.value, server.id),
-    }))
-    .filter(g => g.tools.length > 0),
-)
-
-const hasToolsetContent = computed(() =>
-  sdkToolGroups.value.length > 0 || mcpToolGroups.value.length > 0,
-)
-
 function sideEffectLabel(sideEffect: string): string {
   return sideEffect === 'write' ? '写' : '读'
 }
@@ -246,69 +176,9 @@ async function handleToggleConfirmation(tool: ToolCatalogEntry, requireConfirmat
   } catch (e) {
     message.error('更新人工确认失败')
     console.error(e)
-    await refreshCatalog(toolsetTenant.value)
+    await refreshCatalog()
   }
 }
-
-async function savePlanWorkflowPolicy() {
-  planPolicySaving.value = true
-  try {
-    const tenant = toolsetTenant.value === 'default' ? undefined : toolsetTenant.value
-    planWorkflowPolicy.value = mergePlanWorkflowPolicy(
-      await putPlanWorkflowModePolicy(planWorkflowPolicy.value, tenant),
-    )
-    message.success('Planner Workflow 执行策略已保存')
-  } catch (e) {
-    message.error('保存执行策略失败')
-    console.error(e)
-  } finally {
-    planPolicySaving.value = false
-  }
-}
-
-function mergePlanWorkflowPolicy(policy: PlanWorkflowExecutionPolicy): PlanWorkflowExecutionPolicy {
-  const base = defaultPlanWorkflowPolicy()
-  return {
-    criticalOnFailure: policy.criticalOnFailure ?? base.criticalOnFailure,
-    defaults: { ...base.defaults, ...policy.defaults },
-    byType: {
-      ...base.byType,
-      ...policy.byType,
-      tool: { ...base.byType.tool, ...policy.byType?.tool },
-      answer: { ...base.byType.answer, ...policy.byType?.answer },
-    },
-  }
-}
-
-function normalizeFilterText(text: string): string {
-  return text.trim().toLowerCase()
-}
-
-function toolMatchesFilter(tool: ToolCatalogEntry, query: string): boolean {
-  const haystack = normalizeFilterText(`${tool.displayName} ${tool.id} ${tool.description ?? ''}`)
-  return haystack.includes(query)
-}
-
-function groupTitleMatchesFilter(title: string, query: string): boolean {
-  return normalizeFilterText(title).includes(query)
-}
-
-function filterToolGroups(groups: ToolGroup[]): ToolGroup[] {
-  const query = normalizeFilterText(toolsetFilterQuery.value)
-  if (!query) return groups
-  return groups.flatMap((group) => {
-    if (groupTitleMatchesFilter(group.title, query)) return [group]
-    const tools = group.tools.filter(tool => toolMatchesFilter(tool, query))
-    return tools.length > 0 ? [{ ...group, tools }] : []
-  })
-}
-
-const filteredSdkToolGroups = computed(() => filterToolGroups(sdkToolGroups.value))
-const filteredMcpToolGroups = computed(() => filterToolGroups(mcpToolGroups.value))
-
-const hasFilteredToolsetContent = computed(() =>
-  filteredSdkToolGroups.value.length > 0 || filteredMcpToolGroups.value.length > 0,
-)
 
 const canCreateMcpForm = computed(() =>
   mcpCreateDraft.value.id.trim().length > 0
@@ -555,47 +425,9 @@ function hEditBtn(row: ToolCatalogEntry) {
 }
 
 async function refreshCatalog(tenantId: TenantId = 'default') {
-  const [all, map] = await Promise.all([
-    listToolCatalog(tenantId, false),
-    loadToolEnabledMap(tenantId),
-  ])
+  const all = await listToolCatalog(tenantId, false)
   catalog.value = all
-  enabledMap.value = map
-}
-
-async function syncReactDefaultToolSet() {
-  const enabledIds = catalog.value
-    .filter(t => enabledMap.value.get(t.id) === true)
-    .map(t => t.id)
-  const tenant = toolsetTenant.value === 'default' ? undefined : toolsetTenant.value
-  await putReactDefaultToolSet(enabledIds, tenant)
-}
-
-async function syncPlanWorkflowCriticalToolSet() {
-  const enabledIds = [...criticalToolIds.value]
-    .filter(id => enabledMap.value.get(id) === true)
-  const tenant = toolsetTenant.value === 'default' ? undefined : toolsetTenant.value
-  const saved = await putPlanWorkflowCriticalToolSet(enabledIds, tenant)
-  criticalToolIds.value = new Set(saved.toolIds)
-}
-
-function isCriticalTool(toolId: string): boolean {
-  return criticalToolIds.value.has(toolId)
-}
-
-async function handleToggleCritical(tool: ToolCatalogEntry, checked: boolean) {
-  const next = new Set(criticalToolIds.value)
-  if (checked) next.add(tool.id)
-  else next.delete(tool.id)
-  criticalToolIds.value = next
-  try {
-    await syncPlanWorkflowCriticalToolSet()
-    message.success(checked ? '已设为关键工具' : '已取消关键工具')
-  } catch (e) {
-    message.error('保存关键工具配置失败')
-    console.error(e)
-    await refreshToolset()
-  }
+  enabledMap.value = buildToolEnabledMap(all)
 }
 
 async function refreshSdk() {
@@ -651,34 +483,9 @@ async function refreshMcp() {
   }
 }
 
-async function refreshToolset() {
-  loading.value = true
-  try {
-    const tenant = toolsetTenant.value
-    const tenantParam = tenant === 'default' ? undefined : tenant
-    const [apps, servers, criticalSet, policy] = await Promise.all([
-      listSdkApplications(),
-      listMcpServers(),
-      getPlanWorkflowCriticalToolSet(tenantParam),
-      getPlanWorkflowModePolicy(tenantParam),
-      refreshCatalog(tenant),
-    ])
-    sdkApps.value = apps
-    mcpServers.value = servers
-    criticalToolIds.value = new Set(criticalSet.toolIds)
-    planWorkflowPolicy.value = mergePlanWorkflowPolicy(policy)
-  } catch (e) {
-    message.error('加载工具集失败')
-    console.error(e)
-  } finally {
-    loading.value = false
-  }
-}
-
 async function refreshCurrentTab() {
   if (activeTab.value === 'sdk') await refreshSdk()
   else if (activeTab.value === 'mcp') await refreshMcp()
-  else if (activeTab.value === 'toolset') await refreshToolset()
 }
 
 async function handleSyncSdk() {
@@ -700,24 +507,13 @@ async function handleToggleTool(tool: ToolCatalogEntry, enabled: boolean) {
   try {
     await patchTool(tool.id, { enabled })
     enabledMap.value.set(tool.id, enabled)
-    if (!enabled && criticalToolIds.value.has(tool.id)) {
-      const next = new Set(criticalToolIds.value)
-      next.delete(tool.id)
-      criticalToolIds.value = next
-      await syncPlanWorkflowCriticalToolSet()
-    }
-    if (activeTab.value === 'toolset' && toolsetSubTab.value === 'react') {
-      await syncReactDefaultToolSet()
-    }
+    const row = catalog.value.find(t => t.id === tool.id)
+    if (row) row.enabled = enabled
     message.success(enabled ? '已启用' : '已停用')
   } catch (e) {
     message.error('切换启用状态失败')
     console.error(e)
-    if (activeTab.value === 'toolset') {
-      await refreshToolset()
-    } else {
-      await refreshCatalog()
-    }
+    await refreshCatalog()
   }
 }
 
@@ -927,10 +723,6 @@ watch(selectedMcpId, (id) => {
   mcpPanelTab.value = 'config'
   mcpDetailMode.value = 'form'
   syncMcpDetailDraft()
-})
-
-watch(toolsetTenant, () => {
-  void refreshToolset()
 })
 
 onMounted(() => {
@@ -1326,203 +1118,7 @@ onMounted(() => {
 
     <!-- Toolset Tab -->
     <div v-else-if="activeTab === 'toolset'" class="tools-layout toolset-layout">
-      <main class="detail-panel full-width">
-        <NTabs v-model:value="toolsetSubTab" type="line" animated class="toolset-subtabs">
-          <NTabPane name="react" tab="ReAct" />
-          <NTabPane name="plan-workflow" tab="Planner Workflow" />
-        </NTabs>
-        <div class="detail-toolbar toolset-toolbar">
-          <div class="detail-toolbar-text">
-            <h3 class="detail-heading">工具集</h3>
-          </div>
-          <NInput
-            v-model:value="toolsetFilterQuery"
-            size="small"
-            clearable
-            class="toolset-search sun-field"
-            placeholder="搜索工具、ID 或 SDK/MCP 名称…"
-          >
-            <template #prefix>
-              <NIcon :component="SearchOutline" :size="14" />
-            </template>
-          </NInput>
-          <NSpace :size="8" align="center" class="toolset-toolbar-actions">
-            <TenantSelector v-model="toolsetTenant" variant="compact" />
-            <NTag :bordered="false" size="small" round>
-              {{ enabledToolCount }} / {{ catalog.length }} 已启用
-            </NTag>
-          </NSpace>
-        </div>
-        <NSpin :show="loading" class="toolset-spin">
-          <div class="detail-scroll toolset-scroll">
-            <section v-if="toolsetSubTab === 'plan-workflow'" class="plan-policy-panel">
-              <header class="plan-policy-head">
-                <h4 class="form-section-title">模式默认执行策略</h4>
-                <NButton
-                  size="small"
-                  secondary
-                  round
-                  :loading="planPolicySaving"
-                  @click="savePlanWorkflowPolicy"
-                >
-                  保存策略
-                </NButton>
-              </header>
-              <div class="plan-policy-grid">
-                <div class="plan-policy-field">
-                  <span class="plan-policy-label">关键工具失败</span>
-                  <NSelect
-                    v-model:value="planWorkflowPolicy.criticalOnFailure"
-                    size="small"
-                    class="plan-policy-control"
-                    :options="ON_FAILURE_OPTIONS"
-                  />
-                </div>
-                <div class="plan-policy-field">
-                  <span class="plan-policy-label">tool 节点重试</span>
-                  <NInputNumber
-                    v-model:value="planWorkflowPolicy.byType.tool.maxAttempts"
-                    size="small"
-                    class="plan-policy-control"
-                    :min="1"
-                    :max="10"
-                    :show-button="false"
-                  />
-                </div>
-                <div class="plan-policy-field">
-                  <span class="plan-policy-label">tool 节点失败</span>
-                  <NSelect
-                    v-model:value="planWorkflowPolicy.byType.tool.onFailure"
-                    size="small"
-                    class="plan-policy-control"
-                    clearable
-                    placeholder="继承默认"
-                    :options="ON_FAILURE_OPTIONS"
-                  />
-                </div>
-                <div class="plan-policy-field">
-                  <span class="plan-policy-label">默认 on-failure</span>
-                  <NSelect
-                    v-model:value="planWorkflowPolicy.defaults.onFailure"
-                    size="small"
-                    class="plan-policy-control"
-                    :options="ON_FAILURE_OPTIONS"
-                  />
-                </div>
-                <div class="plan-policy-field">
-                  <span class="plan-policy-label">默认重试次数</span>
-                  <NInputNumber
-                    v-model:value="planWorkflowPolicy.defaults.maxAttempts"
-                    size="small"
-                    class="plan-policy-control"
-                    :min="1"
-                    :max="10"
-                    :show-button="false"
-                  />
-                </div>
-              </div>
-            </section>
-            <template v-if="hasFilteredToolsetContent">
-              <section v-for="group in filteredSdkToolGroups" :key="'sdk-' + group.id" class="form-section">
-                <header class="form-section-head">
-                  <h4 class="form-section-title">SDK · {{ group.title }}</h4>
-                  <NTag :bordered="false" size="tiny" round>{{ group.tools.length }}</NTag>
-                </header>
-                <div class="tool-pool-list">
-                  <div v-for="tool in group.tools" :key="tool.id" class="tool-pool-row">
-                    <div class="tool-pool-main">
-                      <div class="tool-pool-name-row">
-                        <span class="tool-pool-name">{{ tool.displayName }}</span>
-                        <NTag :bordered="false" size="tiny" :type="sideEffectTagType(tool.sideEffect)">
-                          {{ sideEffectLabel(tool.sideEffect) }}
-                        </NTag>
-                      </div>
-                      <div class="tool-pool-id">{{ tool.id }}</div>
-                      <div v-if="tool.description" class="tool-pool-desc">{{ tool.description }}</div>
-                    </div>
-                    <div class="tool-pool-actions">
-                      <NTag
-                        v-if="tool.requireConfirmation"
-                        :bordered="false"
-                        size="tiny"
-                        round
-                      >
-                        需确认
-                      </NTag>
-                      <div v-if="toolsetSubTab === 'plan-workflow'" class="tool-pool-toggle">
-                        <span class="tool-pool-toggle-label">关键</span>
-                        <NSwitch
-                          size="small"
-                          :value="isCriticalTool(tool.id)"
-                          :disabled="!(enabledMap.get(tool.id) ?? false)"
-                          @update:value="(v: boolean) => handleToggleCritical(tool, v)"
-                        />
-                      </div>
-                      <div class="tool-pool-toggle">
-                        <span class="tool-pool-toggle-label">启用</span>
-                        <NSwitch
-                          size="small"
-                          :value="enabledMap.get(tool.id) ?? false"
-                          @update:value="(v: boolean) => handleToggleTool(tool, v)"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-              <section v-for="group in filteredMcpToolGroups" :key="'mcp-' + group.id" class="form-section">
-                <header class="form-section-head">
-                  <h4 class="form-section-title">MCP · {{ group.title }}</h4>
-                  <NTag :bordered="false" size="tiny" round>{{ group.tools.length }}</NTag>
-                </header>
-                <div class="tool-pool-list">
-                  <div v-for="tool in group.tools" :key="tool.id" class="tool-pool-row">
-                    <div class="tool-pool-main">
-                      <div class="tool-pool-name-row">
-                        <span class="tool-pool-name">{{ tool.displayName }}</span>
-                        <NTag :bordered="false" size="tiny" :type="sideEffectTagType(tool.sideEffect)">
-                          {{ sideEffectLabel(tool.sideEffect) }}
-                        </NTag>
-                      </div>
-                      <div class="tool-pool-id">{{ tool.id }}</div>
-                      <div v-if="tool.description" class="tool-pool-desc">{{ tool.description }}</div>
-                    </div>
-                    <div class="tool-pool-actions">
-                      <NTag
-                        v-if="tool.requireConfirmation"
-                        :bordered="false"
-                        size="tiny"
-                        round
-                      >
-                        需确认
-                      </NTag>
-                      <div v-if="toolsetSubTab === 'plan-workflow'" class="tool-pool-toggle">
-                        <span class="tool-pool-toggle-label">关键</span>
-                        <NSwitch
-                          size="small"
-                          :value="isCriticalTool(tool.id)"
-                          :disabled="!(enabledMap.get(tool.id) ?? false)"
-                          @update:value="(v: boolean) => handleToggleCritical(tool, v)"
-                        />
-                      </div>
-                      <div class="tool-pool-toggle">
-                        <span class="tool-pool-toggle-label">启用</span>
-                        <NSwitch
-                          size="small"
-                          :value="enabledMap.get(tool.id) ?? false"
-                          @update:value="(v: boolean) => handleToggleTool(tool, v)"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </template>
-            <NEmpty v-else-if="hasToolsetContent" size="small" description="无匹配工具" />
-            <NEmpty v-else size="small" description="暂无工具，请先在 SDK / MCP 中同步或探测" />
-          </div>
-        </NSpin>
-      </main>
+      <ToolsetTabPanel />
     </div>
 
     <!-- Edit description modal -->
@@ -2221,6 +1817,16 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.toolset-inherit-hint {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md, 10px);
+  color: var(--sun-text-secondary);
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 1.5;
 }
 
 .toolset-scroll {

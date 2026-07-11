@@ -41,6 +41,7 @@ agent:
 
     ## 工具
     - 涉及企业数据、制度或业务状态时，仅引用工具/知识库返回的字段与文本，勿编造。
+    - **企业知识库检索**（制度、政策、流程、规范等）**必须**调用内置工具 `search_knowledge`；**禁止**用其他名称含 search 的 MCP/SDK 工具代替。
     - **写操作工具**：用户已明确要求时直接发起 tool call；平台在时间线弹出确认，勿在 content 用文字代劳确认。
 
     ## 其他
@@ -50,6 +51,7 @@ agent:
     mode-overlays:
       simple-llm: ""
       react: |
+        - 企业制度/政策/知识库检索 → **必须**调用 `search_knowledge`（勿用 demo-memory 等其它 search 工具）。
         - 外部数据先调匹配工具，可多轮串联不同工具。
         - 超时/不可用：改参或换工具再试一次，禁止相同参数连调。
         - 参数校验失败：按报错补参后再调。
@@ -60,7 +62,9 @@ agent:
         - **中间正文（过渡）**：仍需调 tool 时，content 仅输出 **1–2 句**进展/下一步过渡语，再发起 tool call；禁止表格、分节、合规长文、**结论**、**汇总**、对用户问题的**完整作答**。
         - **终态正文（唯一完整答复）**：仅在最后一轮、确认不再调用任何 tool 后，在 content **一次性完整回答**用户全部子问题（查询结果、合规分析、能否提交审批、建议等）；此前各轮勿提前给出结论或终局答案。
         - 分析过程写 reasoning；完整答复与结论只出现在最后一轮 content，勿提前写入中间轮 content。
-        - 【TaskBoard】若用户目标**显然需多步**才能完成：规划推理结束、尚未调用 tool 前，**一次** `manage_tasks`（merge=false）列出 2–5 条方向性里程碑；执行中可用 `merge=true` **仅更新已有条目 status**（须带 id），禁止增删条目或改 content。
+        - 【TaskBoard·建板门槛】仅当完成用户问题需 **三步及以上** 独立步骤时才调用 `manage_tasks`；判断依据为用户问题是否含三个及以上须分别完成的子目标（非同一 tool 可一次搞定）；**两步及以内可答** → **禁止**建板。
+        - 【TaskBoard·建板时机】满足门槛时：首轮规划推理结束、**尚未调用任何业务 tool 前**，**必须**调用一次 `manage_tasks`（merge=false）；items 列出各方向性里程碑，首条 status=in_progress，其余 pending。
+        - 【TaskBoard·执行中】仅用 merge=true **按 id 更新 status**（completed/in_progress/pending）；**禁止**增删条目、改 content、merge=false 二次建板。
       react-restart: |
         ## 重新生成（续跑重规划）
         - 用户已停止上一轮执行并要求从头规划；**勿引用**上一轮已中断、已取消或已跳过的工具调用与返回。
@@ -319,6 +323,27 @@ agent:
         user-modification-template: |
           用户对当前执行计划的修改意见：{{hint}}
           请据此重新输出一行 Plan JSON。仍须遵守：仅 rag/tool/agent；勿含 start/answer；edges 末节点勿连 answer。
+      node-retry:
+        critical-on-failure: fail_fast
+        defaults:
+          max-attempts: 2
+          backoff-ms: 500
+          backoff-multiplier: 2.0
+          on-failure: continue
+          retry-on-error-class:
+            - TIMEOUT
+            - SERVICE_UNAVAILABLE
+            - CIRCUIT_OPEN
+        by-type:
+          rag:
+            max-attempts: 1
+          tool:
+            max-attempts: 2
+          agent:
+            max-attempts: 1
+          answer:
+            max-attempts: 2
+            on-failure: fail_fast
 
   skill:
     # P1 强提示句式 — 须含命名组 skill；P0 @ 由 SkillBindingParser 硬编码

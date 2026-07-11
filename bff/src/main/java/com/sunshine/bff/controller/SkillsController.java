@@ -1,7 +1,6 @@
 package com.sunshine.bff.controller;
 
 import com.sunshine.bff.client.SkillManagerClient;
-import com.sunshine.bff.client.ToolManagerClient;
 import com.sunshine.bff.service.SkillMaintainerEnricher;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.exception.CommonErrorCode;
@@ -30,7 +29,6 @@ import java.util.Map;
 public class SkillsController {
 
     private final SkillManagerClient skillManagerClient;
-    private final ToolManagerClient toolManagerClient;
     private final SkillMaintainerEnricher maintainerEnricher;
 
     @GetMapping("/api/skills")
@@ -143,13 +141,6 @@ public class SkillsController {
             @PathVariable String id,
             @PathVariable int version) {
         return skillManagerClient.downloadPackage(id, version);
-    }
-
-    @GetMapping("/api/tools/catalog")
-    public Mono<Map<String, Object>> toolCatalog(
-            @RequestParam(required = false) String tenantId,
-            @RequestParam(defaultValue = "false") boolean enabledOnly) {
-        return toolManagerClient.catalog(tenantId, enabledOnly);
     }
 
     @GetMapping("/api/skills/catalog/index")

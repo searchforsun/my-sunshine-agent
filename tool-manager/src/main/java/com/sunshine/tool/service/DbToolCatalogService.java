@@ -34,10 +34,12 @@ public class DbToolCatalogService {
                 entity.getDescription() != null ? entity.getDescription() : "",
                 entity.getKind(),
                 entity.getTimelinePhase(),
-                entity.getOutputSummaryKind(),
+                entity.getTimelineSummaryTemplate(),
+                entity.getTimelineSummaryExtract(),
                 parameters,
                 entity.getSideEffect(),
                 entity.isRequireConfirmation(),
+                entity.isEnabled(),
                 entity.isIdValid(),
                 entity.getIdError());
     }

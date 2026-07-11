@@ -24,46 +24,33 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ToolSetAdminService {
 
-    private static final ToolSetKind REACT_DEFAULT = new ToolSetKind(
-            "global_react_default",
-            "tenant_react_default",
-            "global-react-default",
-            "租户 ReAct 默认工具集",
-            "tenant-%s-react-default");
-    private static final ToolSetKind PLAN_WORKFLOW_CRITICAL = new ToolSetKind(
-            "global_plan_workflow_critical",
-            "tenant_plan_workflow_critical",
-            "global-plan-workflow-critical",
-            "租户 Plan/Workflow 关键工具集",
-            "tenant-%s-plan-workflow-critical");
-
     private final ToolSetRepository toolSetRepository;
     private final ToolSetMemberRepository toolSetMemberRepository;
     @Autowired(required = false)
     private ToolCatalogChangePublisher catalogChangePublisher;
 
     public ToolSetResponse getReactDefault(String tenantId) {
-        return getToolSet(REACT_DEFAULT, tenantId);
+        return getToolSet(ToolSetKind.REACT_DEFAULT, tenantId);
     }
 
     @Transactional
     public ToolSetResponse putReactDefault(String tenantId, ToolSetUpdateRequest request) {
-        return putToolSet(REACT_DEFAULT, tenantId, request);
+        return putToolSet(ToolSetKind.REACT_DEFAULT, tenantId, request);
     }
 
-    public ToolSetResponse getPlanWorkflowCritical(String tenantId) {
-        return getToolSet(PLAN_WORKFLOW_CRITICAL, tenantId);
+    public ToolSetResponse getPlanWorkflow(String tenantId) {
+        return getToolSet(ToolSetKind.PLAN_WORKFLOW, tenantId);
     }
 
     @Transactional
-    public ToolSetResponse putPlanWorkflowCritical(String tenantId, ToolSetUpdateRequest request) {
-        return putToolSet(PLAN_WORKFLOW_CRITICAL, tenantId, request);
+    public ToolSetResponse putPlanWorkflow(String tenantId, ToolSetUpdateRequest request) {
+        return putToolSet(ToolSetKind.PLAN_WORKFLOW, tenantId, request);
     }
 
     private ToolSetResponse getToolSet(ToolSetKind kind, String tenantId) {
-        ToolSetEntity set = resolveSet(kind, tenantId)
-                .orElseThrow(() -> new BizException(ToolErrorCode.TOOL_SET_NOT_FOUND));
-        return new ToolSetResponse(listToolIds(set.getId()));
+        return new ToolSetResponse(findSet(kind, tenantId)
+                .map(set -> listToolIds(set.getId()))
+                .orElse(List.of()));
     }
 
     private ToolSetResponse putToolSet(ToolSetKind kind, String tenantId, ToolSetUpdateRequest request) {
@@ -83,6 +70,7 @@ public class ToolSetAdminService {
             member.setSetId(set.getId());
             member.setToolId(normalized);
             member.setSortOrder(order++);
+            member.setCritical(false);
             toolSetMemberRepository.save(member);
         }
         set.setUpdatedAt(Instant.now());
@@ -91,15 +79,15 @@ public class ToolSetAdminService {
         return new ToolSetResponse(toolIds);
     }
 
-    private Optional<ToolSetEntity> resolveSet(ToolSetKind kind, String tenantId) {
-        if (StringUtils.hasText(tenantId) && !"default".equalsIgnoreCase(tenantId.strip())) {
-            Optional<ToolSetEntity> tenantSet = toolSetRepository.findBySetTypeAndTenantId(
-                    kind.tenantType(), tenantId.strip());
-            if (tenantSet.isPresent()) {
-                return tenantSet;
-            }
+    private Optional<ToolSetEntity> findSet(ToolSetKind kind, String tenantId) {
+        if (isTenantScoped(tenantId)) {
+            return toolSetRepository.findBySetTypeAndTenantId(kind.tenantType(), tenantId.strip());
         }
         return toolSetRepository.findBySetTypeAndTenantId(kind.globalType(), null);
+    }
+
+    private static boolean isTenantScoped(String tenantId) {
+        return StringUtils.hasText(tenantId) && !"default".equalsIgnoreCase(tenantId.strip());
     }
 
     private ToolSetEntity resolveOrCreateSet(ToolSetKind kind, String tenantId) {
@@ -131,13 +119,5 @@ public class ToolSetAdminService {
         if (catalogChangePublisher != null) {
             catalogChangePublisher.publish(tenantId);
         }
-    }
-
-    private record ToolSetKind(
-            String globalType,
-            String tenantType,
-            String globalSetId,
-            String tenantDisplayName,
-            String tenantSetIdPattern) {
     }
 }

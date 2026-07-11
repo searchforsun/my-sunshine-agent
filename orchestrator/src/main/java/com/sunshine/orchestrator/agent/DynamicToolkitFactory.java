@@ -15,7 +15,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 按 MySQL ToolSet + Catalog 启用池动态组装 Toolkit
+ * 按 MySQL ToolSet + Catalog 启用池动态组装 Toolkit。
+ * 非 simple-llm 的 ReAct 路径均硬编码注入 {@link RagTool}（企业知识库检索），与工具集成员无关。
  */
 @Slf4j
 @Component
@@ -58,6 +59,9 @@ public class DynamicToolkitFactory {
         Set<String> registeredRemote = new HashSet<>();
         List<String> missing = new ArrayList<>();
 
+        tk.registerAgentTool(ragTool);
+        registered.add(RagTool.NAME);
+
         for (String toolName : whitelist) {
             if (toolName == null || toolName.isBlank()) {
                 continue;
@@ -66,9 +70,11 @@ public class DynamicToolkitFactory {
                 log.warn("[Orchestrator] manage_tasks 为内置元工具，勿放入 ReAct 工具集");
                 continue;
             }
+            if (toolName.equals(RagTool.NAME)) {
+                continue;
+            }
             if (toolCatalogService.isRagTool(toolName)) {
-                tk.registerAgentTool(ragTool);
-                registered.add(toolName);
+                log.warn("[Orchestrator] 非内置 RAG 工具 {} 已忽略，请使用 {}", toolName, RagTool.NAME);
                 continue;
             }
             remoteToolFactory.create(toolName).ifPresentOrElse(agentTool -> {

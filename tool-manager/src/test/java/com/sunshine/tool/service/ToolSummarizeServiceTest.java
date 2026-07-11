@@ -1,21 +1,16 @@
 package com.sunshine.tool.service;
 
 import com.sunshine.tool.config.ToolTimelineProperties;
-import com.sunshine.tool.dto.RagHitDto;
 import com.sunshine.tool.dto.ToolSummarizeOutputRequest;
 import com.sunshine.tool.entity.ToolDefinitionEntity;
-import com.sunshine.tool.invoke.InvokeRouter;
-import com.sunshine.tool.registry.ToolRegistry;
 import com.sunshine.tool.repo.ToolDefinitionRepository;
-import com.sunshine.tool.summary.RagHitSummarizer;
-import com.sunshine.tool.summary.ToolOutputSummarizer;
 import com.sunshine.tool.summary.ToolResultLabelService;
+import com.sunshine.tool.summary.ToolTimelineSummaryEngine;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,44 +20,45 @@ import static org.mockito.Mockito.when;
 class ToolSummarizeServiceTest {
 
     @Mock
-    private InvokeRouter invokeRouter;
-    @Mock
     private ToolDefinitionRepository toolDefinitionRepository;
 
     private ToolSummarizeService newService() {
-        ToolRegistry registry = new ToolRegistry(invokeRouter, toolDefinitionRepository);
         ToolResultLabelService labels = new ToolResultLabelService(new ToolTimelineProperties());
-        ToolOutputSummarizer summarizer = new ToolOutputSummarizer(labels, new RagHitSummarizer(labels));
-        return new ToolSummarizeService(registry, summarizer, labels);
+        return new ToolSummarizeService(
+                toolDefinitionRepository,
+                new ToolTimelineSummaryEngine(),
+                labels);
     }
 
     @Test
-    void summarizeOutput_resolvesKindFromCatalog() {
+    void summarizeOutput_noTemplate_marksEmpty() {
         ToolDefinitionEntity entity = new ToolDefinitionEntity();
-        entity.setId("sdk__sunshine-finance__list_finance_messages");
-        entity.setOutputSummaryKind("finance-list");
-        when(toolDefinitionRepository.findById("sdk__sunshine-finance__list_finance_messages")).thenReturn(Optional.of(entity));
+        entity.setId("mcp__demo-remote__search_docs");
+        entity.setTimelineSummaryTemplate("");
+        when(toolDefinitionRepository.findById("mcp__demo-remote__search_docs")).thenReturn(Optional.of(entity));
 
         ToolSummarizeService service = newService();
         var response = service.summarizeOutput(new ToolSummarizeOutputRequest(
-                "sdk__sunshine-finance__list_finance_messages", null, "共 2 条"));
-        assertThat(response.summary()).isEqualTo("2 条财务消息");
-        assertThat(response.zeroHit()).isFalse();
+                "mcp__demo-remote__search_docs", "raw"));
+        assertThat(response.summary()).isEmpty();
+        assertThat(response.empty()).isTrue();
     }
 
     @Test
-    void summarizeRagHits_empty() {
-        ToolSummarizeService service = newService();
-        var response = service.summarizeRagHits(List.of());
-        assertThat(response.summary()).isEqualTo("命中 0 条");
-        assertThat(response.zeroHit()).isTrue();
-    }
+    void summarizeOutput_withTemplate_resolvesSummary() {
+        ToolDefinitionEntity entity = new ToolDefinitionEntity();
+        entity.setId("sdk__sunshine-finance__summarize_finance_by_status");
+        entity.setTimelineSummaryTemplate("{status} {count} 条，合计 ¥{amount}");
+        entity.setTimelineSummaryExtract(
+                "{\"status\":\"regex:status=([^|\\\\s]+)\",\"count\":\"regex:count=(\\\\d+)\",\"amount\":\"regex:totalAmount=([\\\\d.]+)\"}");
+        when(toolDefinitionRepository.findById("sdk__sunshine-finance__summarize_finance_by_status"))
+                .thenReturn(Optional.of(entity));
 
-    @Test
-    void summarizeRagHits_withDocs() {
         ToolSummarizeService service = newService();
-        var response = service.summarizeRagHits(List.of(new RagHitDto("制度 A", "content")));
-        assertThat(response.summary()).contains("制度 A");
-        assertThat(response.zeroHit()).isFalse();
+        var response = service.summarizeOutput(new ToolSummarizeOutputRequest(
+                "sdk__sunshine-finance__summarize_finance_by_status",
+                "- status=pending | count=3 | totalAmount=124140.50"));
+        assertThat(response.summary()).isEqualTo("pending 3 条，合计 ¥124140.50");
+        assertThat(response.empty()).isFalse();
     }
 }

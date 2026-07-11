@@ -2,7 +2,11 @@
 # sunshine-workflows — Nacos 配置
 # Data ID: sunshine-workflows.yaml
 # Group:   DEFAULT_GROUP
-# Workflow 目录 + DAG 图定义（简化 Dify）
+#
+# ⚠️ 已废弃（2026-07-11）：Workflow 定义迁至 workflow-manager DB。
+#    运行时 SSOT：docker/mysql/init/13-sunshine-workflow-manager.sql 种子
+#    + /workflows Studio。本文件仅作迁移参考，勿再 sync_nacos。
+#    详设：docs/superpowers/specs/2026-06-25-workflow-studio-design.md
 # ============================================================
 
 workflow:

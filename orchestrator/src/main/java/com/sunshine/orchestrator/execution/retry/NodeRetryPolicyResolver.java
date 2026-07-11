@@ -10,7 +10,7 @@ import org.springframework.util.StringUtils;
 import java.util.HashSet;
 import java.util.Set;
 
-/** 从工具集 + 模式策略 DB + 节点 params 解析重试策略 */
+/** 从工具集 + Nacos 模式策略 + 节点 params 解析重试策略 */
 @Component
 public class NodeRetryPolicyResolver {
 

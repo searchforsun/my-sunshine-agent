@@ -50,6 +50,7 @@ public class ToolNodeLabelService {
     }
 
     public String toolAfter(String stepId, String detail) {
+        // detail 仅来自 summarize-output 的结构化摘要；truncate 为 null 时走 Nacos 模板
         if (detail != null && !detail.isBlank()) {
             return detail;
         }

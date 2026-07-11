@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.catalog;
 
+import com.sunshine.orchestrator.agent.RagTool;
 import com.sunshine.orchestrator.client.ToolCatalogClient;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
@@ -72,15 +73,24 @@ public class ToolCatalogService {
     }
 
     public String displayName(String toolId) {
+        if (RagTool.NAME.equals(toolId)) {
+            return "检索知识库";
+        }
         return find(toolId).map(ToolCatalogEntry::displayName).orElse(toolId);
     }
 
     public String timelinePhase(String toolId) {
+        if (RagTool.NAME.equals(toolId)) {
+            return "rag";
+        }
         return find(toolId).map(ToolCatalogEntry::timelinePhase).orElse("tool");
     }
 
     public boolean isRagTool(String toolId) {
-        return "rag".equals(timelinePhase(toolId));
+        if (RagTool.NAME.equals(toolId)) {
+            return true;
+        }
+        return find(toolId).map(e -> "rag".equals(e.timelinePhase())).orElse(false);
     }
 
     public List<ToolCatalogEntry> allEntries() {
@@ -104,16 +114,21 @@ public class ToolCatalogService {
         return summarizeOutputDetail(toolName, text).summary();
     }
 
-    public ToolSummarizeOutputResponse summarizeOutputDetail(String toolName, String text) {
-        ToolSummarizeOutputResponse response = toolManagerClient.summarizeOutputMono(toolName, text).block();
-        if (response == null) {
-            return new ToolSummarizeOutputResponse("", true, true);
+    /**
+     * 时间线用户可见一步摘要：仅当 catalog 配置了 timelineSummaryTemplate 且解析非空时返回；
+     * 未配置则 null，由 Nacos agent.timeline.steps.tool 模板承接 after/detail。
+     */
+    public String timelineSummary(String toolName, String text) {
+        ToolSummarizeOutputResponse response = summarizeOutputDetail(toolName, text);
+        if (response.empty()) {
+            return null;
         }
-        return response;
+        String summary = response.summary();
+        return summary != null && !summary.isBlank() ? summary : null;
     }
 
-    public ToolSummarizeOutputResponse summarizeByKind(String outputSummaryKind, String text) {
-        ToolSummarizeOutputResponse response = toolManagerClient.summarizeByKindMono(outputSummaryKind, text).block();
+    public ToolSummarizeOutputResponse summarizeOutputDetail(String toolName, String text) {
+        ToolSummarizeOutputResponse response = toolManagerClient.summarizeOutputMono(toolName, text).block();
         if (response == null) {
             return new ToolSummarizeOutputResponse("", true, true);
         }

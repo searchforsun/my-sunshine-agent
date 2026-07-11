@@ -25,6 +25,7 @@ import com.sunshine.orchestrator.plan.PlanNodeTrace;
 import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -317,7 +318,11 @@ public class WorkflowNodeFinalizer {
             }
             return null;
         }
-        return summaryLine;
+        if (WorkflowNodeType.TOOL.matches(spec.type())) {
+            String output = outputs.get("output");
+            return ToolExpandDetailSupport.resolveExpandDetail(summaryLine, output);
+        }
+        return null;
     }
 
     private static boolean isStreamingOutputNode(String type) {

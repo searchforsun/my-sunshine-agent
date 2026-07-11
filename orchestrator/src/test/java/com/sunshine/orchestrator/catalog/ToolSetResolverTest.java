@@ -41,6 +41,14 @@ class ToolSetResolverTest {
     }
 
     @Test
+    void resolvePlanWorkflowTools_intersectsSetWithEnabledPool() {
+        when(toolSetClient.fetchPlanWorkflow("default")).thenReturn(List.of("A", "B", "D"));
+        when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("A", "B", "C"));
+
+        assertThat(resolver.resolvePlanWorkflowTools("default")).containsExactly("A", "B");
+    }
+
+    @Test
     void resolvePlanWorkflowCriticalTools_intersectsSetWithEnabledPool() {
         when(toolSetClient.fetchPlanWorkflowCritical("default")).thenReturn(List.of("A", "B", "D"));
         when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("A", "B", "C"));

@@ -38,7 +38,7 @@ class PlanValidatorTest {
     void acceptsValidPlan() {
         when(toolCatalogService.find("sdk__sunshine-finance__list_finance_messages"))
                 .thenReturn(Optional.of(new ToolCatalogEntry(
-                        "sdk__sunshine-finance__list_finance_messages", "财务列表", "", "remote", "finance", "count", Map.of(), "read", false)));
+                        "sdk__sunshine-finance__list_finance_messages", "财务列表", "", "remote", "finance", "", null, Map.of(), "read", false)));
         when(skillCatalogService.findIndex("compliance-check"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
                         "compliance-check", "合规审查", "desc", 1, true)));
@@ -72,7 +72,7 @@ class PlanValidatorTest {
     void acceptsMultiAgentPlanWithTwoAgents() {
         when(toolCatalogService.find("sdk__sunshine-finance__list_finance_messages"))
                 .thenReturn(Optional.of(new ToolCatalogEntry(
-                        "sdk__sunshine-finance__list_finance_messages", "财务列表", "", "remote", "finance", "count", Map.of(), "read", false)));
+                        "sdk__sunshine-finance__list_finance_messages", "财务列表", "", "remote", "finance", "", null, Map.of(), "read", false)));
         when(skillCatalogService.findIndex("policy-review"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
                         "policy-review", "制度审查", "desc", 1, true)));

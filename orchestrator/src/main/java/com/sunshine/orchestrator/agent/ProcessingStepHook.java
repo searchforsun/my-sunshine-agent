@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import io.agentscope.core.hook.Hook;
 import io.agentscope.core.hook.HookEvent;
@@ -93,9 +94,19 @@ public class ProcessingStepHook implements Hook {
                 StepEventBridge.unbindToolUseBridge(toolUseId);
                 return Mono.just(event);
             }
-            String detail = summarizeToolResult(toolName, post.getToolResult());
+            String rawText = extractToolResultText(post.getToolResult());
+            final String summaryLine;
+            final String expandDetail;
+            if (toolCatalogService.isRagTool(toolName)) {
+                // search_knowledge 无 catalog 摘要模板；metadata/after 须从工具原始命中正文解析
+                summaryLine = rawText;
+                expandDetail = ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
+            } else {
+                summaryLine = toolCatalogService.timelineSummary(toolName, rawText);
+                expandDetail = ToolExpandDetailSupport.resolveExpandDetail(summaryLine, rawText);
+            }
             StepEventBridge.emit(bridgeId, session -> {
-                session.completeToolStepForToolUse(toolUseId, detail != null ? detail : toolCatalogService.summarizeOutput(toolName, ""));
+                session.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail);
                 session.recordToolCompleted(toolCatalogService.displayName(toolName));
                 session.noteToolCallDone();
             });
@@ -111,15 +122,14 @@ public class ProcessingStepHook implements Hook {
         return react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled();
     }
 
-    private String summarizeToolResult(String toolName, ToolResultBlock result) {
+    private String extractToolResultText(ToolResultBlock result) {
         if (result == null || result.getOutput() == null) {
-            return toolCatalogService.summarizeOutput(toolName, "");
+            return "";
         }
-        String text = result.getOutput().stream()
+        return result.getOutput().stream()
                 .filter(block -> block instanceof TextBlock)
                 .map(block -> ((TextBlock) block).getText())
                 .findFirst()
                 .orElse("");
-        return toolCatalogService.summarizeOutput(toolName, text);
     }
 }

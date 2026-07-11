@@ -7,8 +7,7 @@ import {
   formatStepLabel,
   stepLifecycle,
   resolveStepHeaderText,
-  resolveStepExpandSummary,
-  resolveStepExpandBody,
+  resolveStepExpandPanels,
   shouldShiftSummaryOnExpand,
   hasExpandableContent,
   resolvePlanIdFromStep,
@@ -66,8 +65,9 @@ const showHeaderPreview = computed(
   () => !!headerText.value && (!props.expanded || !shiftSummary.value),
 )
 
-const expandSummary = computed(() => resolveStepExpandSummary(props.step))
-const expandBody = computed(() => resolveStepExpandBody(props.step))
+const expandPanels = computed(() => resolveStepExpandPanels(props.step))
+const expandSummary = computed(() => expandPanels.value.lead)
+const expandBody = computed(() => expandPanels.value.body)
 
 const canExpand = computed(() => hasExpandableContent(props.step))
 

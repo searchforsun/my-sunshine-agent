@@ -10,7 +10,7 @@
 | `sunshine-auth.yaml` | Auth Center |
 | `sunshine-bff.yaml` | BFF |
 | `sunshine-orchestrator.yaml` | Orchestrator |
-| `sunshine-workflows.yaml` | Orchestrator Workflow 目录与 DAG |
+| ~~`sunshine-workflows.yaml`~~ | **已废弃**（2026-07-11）→ workflow-manager DB，见 [workflow-studio-design](../superpowers/specs/2026-06-25-workflow-studio-design.md) |
 | `sunshine-llm-gateway.yaml` | LLM Gateway |
 | `sunshine-rag.yaml` | RAG Service |
 | `sunshine-finance.yaml` | Finance Service |

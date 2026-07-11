@@ -33,20 +33,7 @@ tool:
     invoke-timeout-seconds: 60
   timeline:
     result:
-      hit-count:
-        zero: "命中 0 条"
-        with-count: "命中 {hitCount} 条"
-        with-sources: "命中 {hitCount} 条，来源：{sources}"
-      finance-list:
-        zero: "0 条财务消息"
-        with-count: "{count} 条财务消息"
-      finance-summary:
-        zero: "无汇总数据"
-        with-data: "{status} {count} 条，合计 ¥{amount}"
-      oa-tasks:
-        zero: "0 条 OA 待办"
-        with-count: "{count} 条 OA 待办"
-      default-empty: "无结果"
+      # 仅平台级：{output} 内置占位符首行截断上限；业务摘要模板在工具 @SunshineTool / Catalog
       truncate-max-chars: 80
 
 logging:

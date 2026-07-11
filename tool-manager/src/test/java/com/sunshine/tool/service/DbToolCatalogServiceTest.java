@@ -49,6 +49,17 @@ class DbToolCatalogServiceTest {
         assertThat(entry.parameters()).containsKey("type");
         assertThat(entry.displayName()).isEqualTo("查询待审批财务消息");
         assertThat(entry.kind()).isEqualTo("remote");
+        assertThat(entry.enabled()).isTrue();
+    }
+
+    @Test
+    void listCatalog_includesDisabledWhenNotFiltered() {
+        saveTool("sdk__sunshine-oa__list_oa_tasks", "default", false);
+        var entry = dbToolCatalogService.listCatalog("default", false).stream()
+                .filter(e -> e.id().equals("sdk__sunshine-oa__list_oa_tasks"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(entry.enabled()).isFalse();
     }
 
     private void saveTool(String id, String tenantId, boolean enabled) {

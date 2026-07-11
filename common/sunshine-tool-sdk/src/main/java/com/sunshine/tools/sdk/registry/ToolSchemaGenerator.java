@@ -40,7 +40,8 @@ public final class ToolSchemaGenerator {
                 annotation.description(),
                 annotation.sideEffect(),
                 annotation.timelinePhase(),
-                annotation.outputSummaryKind(),
+                annotation.timelineSummaryTemplate(),
+                annotation.timelineSummaryExtract(),
                 buildParametersSchema(method),
                 method,
                 targetBean);

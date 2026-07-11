@@ -49,8 +49,11 @@ public class ToolDefinitionEntity {
     @Column(name = "timeline_phase", nullable = false, length = 16)
     private String timelinePhase = "tool";
 
-    @Column(name = "output_summary_kind", nullable = false, length = 32)
-    private String outputSummaryKind = "truncate";
+    @Column(name = "timeline_summary_template", nullable = false, length = 512)
+    private String timelineSummaryTemplate = "";
+
+    @Column(name = "timeline_summary_extract", columnDefinition = "TEXT")
+    private String timelineSummaryExtract;
 
     @Column(name = "side_effect", nullable = false, length = 16)
     private String sideEffect = "read";

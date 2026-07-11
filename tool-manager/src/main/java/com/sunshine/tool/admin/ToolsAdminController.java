@@ -2,9 +2,14 @@ package com.sunshine.tool.admin;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.result.R;
-import com.sunshine.common.tool.PlanWorkflowExecutionPolicy;
 import com.sunshine.tool.admin.dto.McpServerPatchRequest;
 import com.sunshine.tool.admin.dto.ToolPatchRequest;
+import com.sunshine.tool.admin.dto.ToolSetMemberAddRequest;
+import com.sunshine.tool.admin.dto.ToolSetMemberAddResult;
+import com.sunshine.tool.admin.dto.ToolSetMemberCriticalPatchRequest;
+import com.sunshine.tool.admin.dto.ToolSetMemberRemoveRequest;
+import com.sunshine.tool.admin.dto.ToolSetMembersPageResponse;
+import com.sunshine.tool.admin.dto.ToolSetPickerResponse;
 import com.sunshine.tool.admin.dto.ToolSetResponse;
 import com.sunshine.tool.admin.dto.ToolSetUpdateRequest;
 import com.sunshine.tool.entity.McpServerEntity;
@@ -45,7 +50,7 @@ public class ToolsAdminController {
     private final McpSyncService mcpSyncService;
     private final ToolDefinitionRepository toolDefinitionRepository;
     private final ToolSetAdminService toolSetAdminService;
-    private final ExecutionModePolicyAdminService executionModePolicyAdminService;
+    private final ToolSetMemberService toolSetMemberService;
     @Autowired(required = false)
     private ToolCatalogChangePublisher catalogChangePublisher;
 
@@ -138,29 +143,60 @@ public class ToolsAdminController {
         return R.ok(toolSetAdminService.putReactDefault(tenantId, request));
     }
 
-    @GetMapping("/tools/sets/plan-workflow-critical")
-    public R<ToolSetResponse> getPlanWorkflowCritical(@RequestParam(required = false) String tenantId) {
-        return R.ok(toolSetAdminService.getPlanWorkflowCritical(tenantId));
+    @GetMapping("/tools/sets/plan-workflow")
+    public R<ToolSetResponse> getPlanWorkflow(@RequestParam(required = false) String tenantId) {
+        return R.ok(toolSetAdminService.getPlanWorkflow(tenantId));
     }
 
-    @PutMapping("/tools/sets/plan-workflow-critical")
-    public R<ToolSetResponse> putPlanWorkflowCritical(
+    @PutMapping("/tools/sets/plan-workflow")
+    public R<ToolSetResponse> putPlanWorkflow(
             @RequestParam(required = false) String tenantId,
             @RequestBody ToolSetUpdateRequest request) {
-        return R.ok(toolSetAdminService.putPlanWorkflowCritical(tenantId, request));
+        return R.ok(toolSetAdminService.putPlanWorkflow(tenantId, request));
     }
 
-    @GetMapping("/tools/modes/plan-workflow")
-    public R<PlanWorkflowExecutionPolicy> getPlanWorkflowMode(
-            @RequestParam(required = false) String tenantId) {
-        return R.ok(executionModePolicyAdminService.getPlanWorkflow(tenantId));
-    }
-
-    @PutMapping("/tools/modes/plan-workflow")
-    public R<PlanWorkflowExecutionPolicy> putPlanWorkflowMode(
+    @GetMapping("/tools/sets/{kind}/members")
+    public R<ToolSetMembersPageResponse> pageToolSetMembers(
+            @PathVariable String kind,
             @RequestParam(required = false) String tenantId,
-            @RequestBody PlanWorkflowExecutionPolicy request) {
-        return R.ok(executionModePolicyAdminService.putPlanWorkflow(tenantId, request));
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String q) {
+        return R.ok(toolSetMemberService.pageMembers(ToolSetKind.fromPath(kind), tenantId, page, size, q));
+    }
+
+    @GetMapping("/tools/sets/{kind}/picker")
+    public R<ToolSetPickerResponse> toolSetPicker(
+            @PathVariable String kind,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(required = false) String q) {
+        return R.ok(toolSetMemberService.picker(ToolSetKind.fromPath(kind), tenantId, q));
+    }
+
+    @PostMapping("/tools/sets/{kind}/members:add")
+    public R<ToolSetMemberAddResult> addToolSetMembers(
+            @PathVariable String kind,
+            @RequestParam(required = false) String tenantId,
+            @RequestBody ToolSetMemberAddRequest request) {
+        return R.ok(toolSetMemberService.addMembers(ToolSetKind.fromPath(kind), tenantId, request));
+    }
+
+    @PostMapping("/tools/sets/{kind}/members:remove")
+    public R<Void> removeToolSetMembers(
+            @PathVariable String kind,
+            @RequestParam(required = false) String tenantId,
+            @RequestBody ToolSetMemberRemoveRequest request) {
+        toolSetMemberService.removeMembers(ToolSetKind.fromPath(kind), tenantId, request);
+        return R.ok();
+    }
+
+    @PatchMapping("/tools/sets/plan-workflow/members/{toolId}")
+    public R<Void> patchPlanWorkflowMemberCritical(
+            @PathVariable String toolId,
+            @RequestParam(required = false) String tenantId,
+            @RequestBody ToolSetMemberCriticalPatchRequest request) {
+        toolSetMemberService.patchCritical(tenantId, toolId, request);
+        return R.ok();
     }
 
     private void publish(String tenantId) {

@@ -43,7 +43,8 @@ CREATE TABLE tool_definition (
     schema_hash         VARCHAR(64),
     kind                VARCHAR(16) NOT NULL,
     timeline_phase      VARCHAR(16) NOT NULL DEFAULT 'tool',
-    output_summary_kind VARCHAR(32) NOT NULL DEFAULT 'truncate',
+    timeline_summary_template VARCHAR(512) NOT NULL DEFAULT '',
+    timeline_summary_extract TEXT,
     side_effect         VARCHAR(16) NOT NULL DEFAULT 'read',
     require_confirmation TINYINT(1) NOT NULL DEFAULT 0,
     confirmation_edited TINYINT(1) NOT NULL DEFAULT 0,
@@ -70,6 +71,7 @@ CREATE TABLE tool_set_member (
     set_id          VARCHAR(64) NOT NULL,
     tool_id         VARCHAR(128) NOT NULL,
     sort_order      INT NOT NULL DEFAULT 0,
+    critical        TINYINT(1) NOT NULL DEFAULT 0 COMMENT '仅 plan-workflow 集有效；1=Planner 关键工具',
     PRIMARY KEY (set_id, tool_id)
 );
 
@@ -87,17 +89,8 @@ INSERT INTO sdk_application (id, nacos_service, display_name, tenant_id, status)
 ('sunshine-oa', 'sunshine-oa', 'OA Demo 应用', 'default', 'offline');
 
 INSERT INTO tool_set (id, set_type, tenant_id, display_name) VALUES
-('global-react-default', 'global_react_default', NULL, '平台 ReAct 默认工具集'),
-('global-plan-workflow-critical', 'global_plan_workflow_critical', NULL, '平台 Plan/Workflow 关键工具集');
-
-INSERT INTO tool_set_member (set_id, tool_id, sort_order) VALUES
-('global-react-default', 'sdk__sunshine-finance__list_finance_messages', 0),
-('global-react-default', 'sdk__sunshine-finance__get_finance_message_detail', 1),
-('global-react-default', 'sdk__sunshine-finance__summarize_finance_by_status', 2),
-('global-react-default', 'sdk__sunshine-oa__list_oa_tasks', 3),
-('global-react-default', 'sdk__sunshine-oa__approve_oa_task', 4),
-('global-plan-workflow-critical', 'sdk__sunshine-finance__list_finance_messages', 0),
-('global-plan-workflow-critical', 'sdk__sunshine-finance__get_finance_message_detail', 1);
+('global-react-default', 'global_react_default', NULL, '平台 ReAct 工具集'),
+('global-plan-workflow', 'global_plan_workflow', NULL, '平台 Plan-Workflow 工具集');
 
 INSERT INTO execution_mode_policy (id, mode_key, tenant_id, policy_json) VALUES
 ('global-plan-workflow-policy', 'plan_workflow', NULL, JSON_OBJECT(

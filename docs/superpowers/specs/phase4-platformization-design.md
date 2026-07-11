@@ -187,16 +187,20 @@
 
 | 子任务 | 内容 |
 |--------|------|
-| **4.13.1** | `workflow-manager` :8230 + Flyway（**无 workflow 种子**） |
-| **4.13.1b** | `docs/workflow/*.json` 与 Nacos YAML 同步维护 |
-| **4.13.2** | Admin / Catalog API + `PlanValidator` 发布校验 |
-| **4.13.3** | orchestrator `CompositeWorkflowDefinitionLoader` + Catalog 合并 |
+| **4.13.1** | `workflow-manager` :8230 + 表结构 | **✅** |
+| **4.13.1b** | **MySQL init 种子**（4 标杆 published v1） | `docker/mysql/init/13-sunshine-workflow-manager.sql` |
+| **4.13.2** | Admin / Catalog / Published API + `PlanValidator` 发布校验 |
+| **4.13.2b** | orchestrator 移除 Nacos workflow + `WorkflowManagerClient` |
+| **4.13.3** | `WorkflowCatalogService` + **`WorkflowBindingParser/Policy`（L0 `#`）** |
+| **4.13.3b** | DB workflow 节点重试策略对齐 `NodeRetryPolicyResolver` |
 | **4.13.4** | BFF/Gateway 透传 |
-| **4.13.5** | 前端 **`/workflows`** DAG 编辑器 MVP |
-| **4.13.6** | **`WorkflowBindingParser/Policy`（L0 `#`）** + golden-set §I |
-| **4.13.7** | 并行节点编辑（依赖 **4.7.2**） |
+| **4.13.5** | 前端 **`/workflows`** 线性 DAG 编辑器 MVP + Chat `#` |
+| **4.13.6** | golden-set §I + `verify_workflow_studio_live.py` |
+| **4.13.7** | 并行/条件/循环节点编辑（依赖 **4.7.2** / **4.6.1** / loop） |
 
-**检查门**：Studio 导入 `docs/workflow/knowledge-qa.json` 并发布 → `#knowledge-qa` 命中 DB；未导入时仍走 Nacos；`@` / `#` 互不混用。
+**修订（2026-07-11）**：Workflow **DB 唯一 SSOT**；废弃 Nacos `sunshine-workflows.yaml` 与 `Composite*` 合并逻辑。详设 [workflow-studio-design.md](./2026-06-25-workflow-studio-design.md) · 计划 [2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md)
+
+**检查门**：MySQL init 后 `#knowledge-qa` 命中 DB；orchestrator 无 Nacos workflow 依赖；`@` / `#` 互不混用。
 
 **P0 多 Agent 接入边界**（MsgHub / Parallel / TaskBoard）：[2026-06-25-phase4-agent-capabilities-boundaries.md](./2026-06-25-phase4-agent-capabilities-boundaries.md)
 

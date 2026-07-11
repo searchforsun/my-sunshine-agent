@@ -18,7 +18,8 @@ class ToolSchemaGeneratorTest {
                 id = "list_finance_messages",
                 displayName = "查询待审批财务消息",
                 description = "按状态筛选",
-                outputSummaryKind = "finance-list")
+                timelineSummaryTemplate = "{count} 条财务消息",
+                timelineSummaryExtract = "{\"count\":\"regex:共\\\\s*(\\\\d+)\\\\s*条\"}")
         public String list(@ToolParam(value = "status", description = "pending|approved|all") String status) {
             return "ok";
         }
@@ -30,7 +31,7 @@ class ToolSchemaGeneratorTest {
         assertThat(tools).hasSize(1);
         RegisteredToolMethod t = tools.get(0);
         assertThat(t.id()).isEqualTo("list_finance_messages");
-        assertThat(t.outputSummaryKind()).isEqualTo("finance-list");
+        assertThat(t.timelineSummaryTemplate()).isEqualTo("{count} 条财务消息");
         Map<String, Object> schema = t.parametersSchema();
         assertThat(schema.get("type")).isEqualTo("object");
         @SuppressWarnings("unchecked")

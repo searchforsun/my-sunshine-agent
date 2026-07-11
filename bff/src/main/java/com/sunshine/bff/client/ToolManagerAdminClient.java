@@ -144,10 +144,10 @@ public class ToolManagerAdminClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> getPlanWorkflowCriticalToolSet(String tenantId) {
+    public Mono<Map<String, Object>> getPlanWorkflowToolSet(String tenantId) {
         return webClient.get()
                 .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/plan-workflow-critical");
+                    var builder = uri.path("/api/admin/tools/sets/plan-workflow");
                     if (StringUtils.hasText(tenantId)) {
                         builder.queryParam("tenantId", tenantId);
                     }
@@ -158,10 +158,10 @@ public class ToolManagerAdminClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> putPlanWorkflowCriticalToolSet(String tenantId, Map<String, Object> body) {
+    public Mono<Map<String, Object>> putPlanWorkflowToolSet(String tenantId, Map<String, Object> body) {
         return webClient.put()
                 .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/plan-workflow-critical");
+                    var builder = uri.path("/api/admin/tools/sets/plan-workflow");
                     if (StringUtils.hasText(tenantId)) {
                         builder.queryParam("tenantId", tenantId);
                     }
@@ -174,12 +174,18 @@ public class ToolManagerAdminClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> getPlanWorkflowModePolicy(String tenantId) {
+    public Mono<Map<String, Object>> pageToolSetMembers(
+            String kind, String tenantId, int page, int size, String q) {
         return webClient.get()
                 .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/modes/plan-workflow");
+                    var builder = uri.path("/api/admin/tools/sets/" + kind + "/members")
+                            .queryParam("page", page)
+                            .queryParam("size", size);
                     if (StringUtils.hasText(tenantId)) {
                         builder.queryParam("tenantId", tenantId);
+                    }
+                    if (StringUtils.hasText(q)) {
+                        builder.queryParam("q", q);
                     }
                     return builder.build();
                 })
@@ -188,10 +194,60 @@ public class ToolManagerAdminClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> putPlanWorkflowModePolicy(String tenantId, Map<String, Object> body) {
-        return webClient.put()
+    public Mono<Map<String, Object>> toolSetPicker(String kind, String tenantId, String q) {
+        return webClient.get()
                 .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/modes/plan-workflow");
+                    var builder = uri.path("/api/admin/tools/sets/" + kind + "/picker");
+                    if (StringUtils.hasText(tenantId)) {
+                        builder.queryParam("tenantId", tenantId);
+                    }
+                    if (StringUtils.hasText(q)) {
+                        builder.queryParam("q", q);
+                    }
+                    return builder.build();
+                })
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> addToolSetMembers(String kind, String tenantId, Map<String, Object> body) {
+        return webClient.post()
+                .uri(uri -> {
+                    var builder = uri.path("/api/admin/tools/sets/" + kind + "/members:add");
+                    if (StringUtils.hasText(tenantId)) {
+                        builder.queryParam("tenantId", tenantId);
+                    }
+                    return builder.build();
+                })
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> removeToolSetMembers(String kind, String tenantId, Map<String, Object> body) {
+        return webClient.post()
+                .uri(uri -> {
+                    var builder = uri.path("/api/admin/tools/sets/" + kind + "/members:remove");
+                    if (StringUtils.hasText(tenantId)) {
+                        builder.queryParam("tenantId", tenantId);
+                    }
+                    return builder.build();
+                })
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> patchPlanWorkflowMemberCritical(
+            String tenantId, String toolId, Map<String, Object> body) {
+        return webClient.patch()
+                .uri(uri -> {
+                    var builder = uri.path("/api/admin/tools/sets/plan-workflow/members/" + toolId);
                     if (StringUtils.hasText(tenantId)) {
                         builder.queryParam("tenantId", tenantId);
                     }

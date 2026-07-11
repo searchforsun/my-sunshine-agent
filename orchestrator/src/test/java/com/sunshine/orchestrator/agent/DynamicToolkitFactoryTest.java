@@ -39,8 +39,9 @@ class DynamicToolkitFactoryTest {
     private DynamicToolkitFactory factory;
 
     @Test
-    void build_withTaskboardEnabled_registersManageTasks() {
+    void build_withTaskboardEnabled_registersManageTasksAndSearchKnowledge() {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard() {{
             setEnabled(true);
@@ -48,12 +49,25 @@ class DynamicToolkitFactoryTest {
 
         var toolkit = factory.build();
 
-        assertThat(toolkit.getToolNames()).contains(ManageTasksTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(RagTool.NAME, ManageTasksTool.NAME);
+    }
+
+    @Test
+    void build_alwaysRegistersSearchKnowledge_evenWithEmptyWhitelist() {
+        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
+
+        var toolkit = factory.build();
+
+        assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
     }
 
     @Test
     void build_succeedsWhenMissingCatalogTool() {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of("ghost_tool"));
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(toolCatalogService.isRagTool("ghost_tool")).thenReturn(false);
         when(remoteToolFactory.create("ghost_tool")).thenReturn(Optional.empty());
         when(executionProperties.getReact()).thenReturn(reactProps);
@@ -65,7 +79,7 @@ class DynamicToolkitFactoryTest {
     @Test
     void build_withExplicitWhitelist_registersOnlyListedTools() {
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", java.util.Map.of(), "read", false);
+                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "", null, java.util.Map.of(), "read", false);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
         com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
@@ -75,6 +89,7 @@ class DynamicToolkitFactoryTest {
 
         when(toolSetResolver.intersectEnabledPool(List.of("sdk__sunshine-finance__list_finance_messages"), "default"))
                 .thenReturn(List.of("sdk__sunshine-finance__list_finance_messages"));
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_finance_messages")).thenReturn(false);
         when(remoteToolFactory.create("sdk__sunshine-finance__list_finance_messages"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
@@ -82,13 +97,14 @@ class DynamicToolkitFactoryTest {
 
         var toolkit = factory.build(List.of("sdk__sunshine-finance__list_finance_messages"));
 
-        assertThat(toolkit.getToolNames()).containsExactly("sdk__sunshine-finance__list_finance_messages");
+        assertThat(toolkit.getToolNames()).containsExactly(
+                RagTool.NAME, "sdk__sunshine-finance__list_finance_messages");
     }
 
     @Test
     void build_withMcpKindTool_registersRemoteAgentTool() {
         ToolCatalogEntry mcpEntry = new ToolCatalogEntry(
-                "mcp_search", "MCP 搜索", "desc", "mcp", "tool", "generic", java.util.Map.of(), "read", false);
+                "mcp_search", "MCP 搜索", "desc", "mcp", "tool", "", null, java.util.Map.of(), "read", false);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
         com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
@@ -98,6 +114,7 @@ class DynamicToolkitFactoryTest {
 
         when(toolSetResolver.intersectEnabledPool(List.of("mcp_search"), "default"))
                 .thenReturn(List.of("mcp_search"));
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(toolCatalogService.isRagTool("mcp_search")).thenReturn(false);
         when(remoteToolFactory.create("mcp_search"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
@@ -105,15 +122,16 @@ class DynamicToolkitFactoryTest {
 
         var toolkit = factory.build(List.of("mcp_search"));
 
-        assertThat(toolkit.getToolNames()).containsExactly("mcp_search");
+        assertThat(toolkit.getToolNames()).containsExactly(RagTool.NAME, "mcp_search");
     }
 
     @Test
     void build_withExplicitWhitelist_filtersOutDisabledTools() {
         when(toolSetResolver.intersectEnabledPool(List.of("ghost_tool", "sdk__sunshine-finance__list_finance_messages"), "default"))
                 .thenReturn(List.of("sdk__sunshine-finance__list_finance_messages"));
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "finance-list", java.util.Map.of(), "read", false);
+                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "", null, java.util.Map.of(), "read", false);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
         com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
@@ -128,6 +146,7 @@ class DynamicToolkitFactoryTest {
 
         var toolkit = factory.build(List.of("ghost_tool", "sdk__sunshine-finance__list_finance_messages"));
 
-        assertThat(toolkit.getToolNames()).containsExactly("sdk__sunshine-finance__list_finance_messages");
+        assertThat(toolkit.getToolNames()).containsExactly(
+                RagTool.NAME, "sdk__sunshine-finance__list_finance_messages");
     }
 }

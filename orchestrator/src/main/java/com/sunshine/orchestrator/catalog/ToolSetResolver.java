@@ -22,6 +22,14 @@ public class ToolSetResolver {
         return setIds.stream().filter(pool::contains).toList();
     }
 
+    /** Plan-Workflow 可用工具（与启用池求交） */
+    public List<String> resolvePlanWorkflowTools(String tenantId) {
+        String effectiveTenant = normalizeTenant(tenantId);
+        List<String> setIds = toolSetClient.fetchPlanWorkflow(effectiveTenant);
+        Set<String> pool = toolCatalogService.enabledIds(effectiveTenant);
+        return setIds.stream().filter(pool::contains).toList();
+    }
+
     /** Plan/Workflow 关键工具（失败时 fail_fast），与启用池求交 */
     public List<String> resolvePlanWorkflowCriticalTools(String tenantId) {
         String effectiveTenant = normalizeTenant(tenantId);

@@ -135,9 +135,6 @@ public class ToolNodeHandler implements NodeHandler {
     }
 
     private String summarizeToolOutput(String tool, String text) {
-        if (text == null || text.isBlank()) {
-            return "未返回数据";
-        }
-        return toolCatalogService.summarizeOutput(tool, text);
+        return toolCatalogService.timelineSummary(tool, text);
     }
 }
