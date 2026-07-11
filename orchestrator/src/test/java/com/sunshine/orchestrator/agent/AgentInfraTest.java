@@ -43,9 +43,9 @@ class AgentInfraTest {
                 "search_knowledge", "sdk__sunshine-finance__list_finance_messages", "sdk__sunshine-oa__list_oa_tasks"));
 
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "tool", "", null, Map.of(), "read", false);
+                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "", null, Map.of(), "read", false);
         ToolCatalogEntry oaEntry = new ToolCatalogEntry(
-                "sdk__sunshine-oa__list_oa_tasks", "查询 OA 待办", "desc", "remote", "tool", "", null, Map.of(), "read", false);
+                "sdk__sunshine-oa__list_oa_tasks", "查询 OA 待办", "desc", "remote", "", null, Map.of(), "read", false);
         ToolManagerClient toolManagerClient = Mockito.mock(ToolManagerClient.class);
         ToolAuditService toolAuditService = Mockito.mock(ToolAuditService.class);
         com.sunshine.orchestrator.hitl.HitlConfirmationService hitlService =

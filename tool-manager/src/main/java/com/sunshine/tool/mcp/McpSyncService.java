@@ -126,9 +126,10 @@ public class McpSyncService {
 
         entity.setSchemaJson(schema);
         entity.setSchemaHash(newHash);
-        entity.setTimelinePhase("tool");
-        entity.setTimelineSummaryTemplate("");
-        entity.setTimelineSummaryExtract(null);
+        if (!entity.isMetadataEdited()) {
+            entity.setTimelineSummaryTemplate("");
+            entity.setTimelineSummaryExtract(null);
+        }
         entity.setSideEffect("read");
         if (!entity.isConfirmationEdited()) {
             entity.setRequireConfirmation(ToolConfirmationDefaults.fromSideEffect(entity.getSideEffect()));

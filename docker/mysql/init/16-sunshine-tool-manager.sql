@@ -42,7 +42,6 @@ CREATE TABLE tool_definition (
     schema_json         JSON NOT NULL,
     schema_hash         VARCHAR(64),
     kind                VARCHAR(16) NOT NULL,
-    timeline_phase      VARCHAR(16) NOT NULL DEFAULT 'tool',
     timeline_summary_template VARCHAR(512) NOT NULL DEFAULT '',
     timeline_summary_extract TEXT,
     side_effect         VARCHAR(16) NOT NULL DEFAULT 'read',

@@ -4,5 +4,7 @@ public record ToolPatchRequest(
         Boolean enabled,
         String displayName,
         String description,
-        Boolean requireConfirmation) {
+        Boolean requireConfirmation,
+        String timelineSummaryTemplate,
+        String timelineSummaryExtract) {
 }

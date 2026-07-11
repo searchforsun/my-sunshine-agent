@@ -14,7 +14,6 @@ public record SdkToolCatalogResponse(
             String displayName,
             String description,
             String sideEffect,
-            String timelinePhase,
             String timelineSummaryTemplate,
             String timelineSummaryExtract,
             Map<String, Object> parameters) {

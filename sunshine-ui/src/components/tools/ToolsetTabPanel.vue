@@ -55,7 +55,7 @@ const tenantParam = computed(() =>
   toolsetTenant.value === 'default' ? undefined : toolsetTenant.value,
 )
 
-const tableScrollX = computed(() => (subTab.value === 'plan-workflow' ? 880 : 800))
+const tableScrollX = computed(() => (subTab.value === 'plan-workflow' ? 920 : 840))
 
 function renderCellText(text: string) {
   return h('span', { class: 'toolset-cell-text' }, text)

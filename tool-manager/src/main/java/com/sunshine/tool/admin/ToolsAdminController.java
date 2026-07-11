@@ -125,6 +125,15 @@ public class ToolsAdminController {
             tool.setRequireConfirmation(request.requireConfirmation());
             tool.setConfirmationEdited(true);
         }
+        if (request.timelineSummaryTemplate() != null) {
+            tool.setTimelineSummaryTemplate(request.timelineSummaryTemplate());
+            tool.setMetadataEdited(true);
+        }
+        if (request.timelineSummaryExtract() != null) {
+            tool.setTimelineSummaryExtract(
+                    request.timelineSummaryExtract().isBlank() ? null : request.timelineSummaryExtract());
+            tool.setMetadataEdited(true);
+        }
         tool.setUpdatedAt(Instant.now());
         ToolDefinitionEntity saved = toolDefinitionRepository.save(tool);
         publish(tool.getTenantId());

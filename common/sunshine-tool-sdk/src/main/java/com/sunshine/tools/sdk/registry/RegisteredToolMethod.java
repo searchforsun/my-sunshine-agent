@@ -8,7 +8,6 @@ public record RegisteredToolMethod(
         String displayName,
         String description,
         String sideEffect,
-        String timelinePhase,
         String timelineSummaryTemplate,
         String timelineSummaryExtract,
         Map<String, Object> parametersSchema,

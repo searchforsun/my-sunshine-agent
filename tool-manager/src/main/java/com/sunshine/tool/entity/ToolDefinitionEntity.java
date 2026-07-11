@@ -46,9 +46,6 @@ public class ToolDefinitionEntity {
     @Column(nullable = false, length = 16)
     private String kind;
 
-    @Column(name = "timeline_phase", nullable = false, length = 16)
-    private String timelinePhase = "tool";
-
     @Column(name = "timeline_summary_template", nullable = false, length = 512)
     private String timelineSummaryTemplate = "";
 

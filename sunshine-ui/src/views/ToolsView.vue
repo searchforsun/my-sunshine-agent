@@ -18,10 +18,13 @@ import {
   NTabPane,
   NTabs,
   NTag,
+  NTooltip,
   NDataTable,
   useMessage,
   type DataTableColumns,
   type DropdownOption,
+  type FormInst,
+  type FormRules,
   type SelectOption,
 } from 'naive-ui'
 import {
@@ -60,6 +63,10 @@ import {
 import type { TenantId } from '../api/tenants'
 import { formatSkillVersionTime } from '../utils/formatSkillVersionTime'
 import { useToolsRouteState, type ToolsTab } from '../composables/useToolsRouteState'
+import {
+  formatTimelineExtractHint,
+  formatTimelineTemplateLabel,
+} from '../utils/toolTimelineDisplay'
 
 type TabKey = ToolsTab
 
@@ -89,7 +96,24 @@ const schemaViewTool = ref<ToolCatalogEntry | null>(null)
 const mcpImportInputRef = ref<HTMLInputElement | null>(null)
 const mcpCreateMode = ref<'form' | 'json'>('form')
 const editingTool = ref<ToolCatalogEntry | null>(null)
-const editDescription = ref('')
+const toolConfigFormRef = ref<FormInst | null>(null)
+const toolConfigModel = ref({
+  description: '',
+  timelineSummaryTemplate: '',
+  timelineSummaryExtract: '',
+})
+
+const toolConfigRules: FormRules = {
+  description: [
+    {
+      validator: (_rule, value: string) => {
+        if (!(value ?? '').trim()) return new Error('请填写工具描述')
+        return true
+      },
+      trigger: ['blur', 'input'],
+    },
+  ],
+}
 
 const transportOptions: SelectOption[] = [
   { label: 'stdio（本地进程）', value: 'stdio' },
@@ -346,6 +370,19 @@ function handleMcpMoreSelect(key: string | number) {
   else if (key === 'export') void handleExportMcp()
 }
 
+function renderTimelineTemplate(row: ToolCatalogEntry) {
+  const label = formatTimelineTemplateLabel(row.timelineSummaryTemplate)
+  const extract = formatTimelineExtractHint(row.timelineSummaryExtract)
+  return h('div', { class: 'tool-timeline-cell' }, [
+    extract
+      ? h(NTooltip, { trigger: 'hover', placement: 'top-start' }, {
+          trigger: () => h('span', { class: 'tool-timeline-template' }, label),
+          default: () => h('pre', { class: 'tool-timeline-extract-tip' }, extract),
+        })
+      : h('span', { class: 'tool-timeline-template' }, label),
+  ])
+}
+
 const toolColumns: DataTableColumns<ToolCatalogEntry> = [
   { title: '工具 ID', key: 'id', ellipsis: { tooltip: true } },
   { title: '展示名', key: 'displayName', ellipsis: { tooltip: true } },
@@ -358,6 +395,12 @@ const toolColumns: DataTableColumns<ToolCatalogEntry> = [
       bordered: false,
       type: sideEffectTagType(row.sideEffect),
     }, { default: () => sideEffectLabel(row.sideEffect) }),
+  },
+  {
+    title: '时间线摘要',
+    key: 'timelineSummaryTemplate',
+    minWidth: 220,
+    render: (row) => renderTimelineTemplate(row),
   },
   {
     title: '人工确认',
@@ -387,7 +430,7 @@ const toolColumns: DataTableColumns<ToolCatalogEntry> = [
   {
     title: '操作',
     key: 'actions',
-    width: 140,
+    width: 148,
     render: (row) => h(NSpace, { size: 4, align: 'center' }, {
       default: () => [hSchemaBtn(row), hEditBtn(row)],
     }),
@@ -420,7 +463,7 @@ function hEditBtn(row: ToolCatalogEntry) {
     onClick: () => openToolEdit(row),
   }, {
     icon: () => h(NIcon, { component: CreateOutline, size: 14 }),
-    default: () => '描述',
+    default: () => '配置',
   })
 }
 
@@ -524,20 +567,36 @@ function openToolSchema(tool: ToolCatalogEntry) {
 
 function openToolEdit(tool: ToolCatalogEntry) {
   editingTool.value = tool
-  editDescription.value = tool.description ?? ''
+  toolConfigModel.value = {
+    description: tool.description ?? '',
+    timelineSummaryTemplate: tool.timelineSummaryTemplate ?? '',
+    timelineSummaryExtract: tool.timelineSummaryExtract ?? '',
+  }
   showToolEditModal.value = true
 }
 
-async function handleSaveDescription() {
+async function handleSaveToolConfig() {
   if (!editingTool.value) return
+  try {
+    await toolConfigFormRef.value?.validate()
+  } catch {
+    return
+  }
   saving.value = true
   try {
-    await patchTool(editingTool.value.id, { description: editDescription.value })
-    message.success('描述已更新')
+    const description = toolConfigModel.value.description.trim()
+    const template = toolConfigModel.value.timelineSummaryTemplate.trim()
+    const extract = toolConfigModel.value.timelineSummaryExtract.trim()
+    await patchTool(editingTool.value.id, {
+      description,
+      timelineSummaryTemplate: template,
+      timelineSummaryExtract: extract,
+    })
+    message.success('工具配置已更新')
     showToolEditModal.value = false
     await refreshCatalog()
   } catch (e) {
-    message.error('保存描述失败')
+    message.error('保存工具配置失败')
     console.error(e)
   } finally {
     saving.value = false
@@ -1121,11 +1180,11 @@ onMounted(() => {
       <ToolsetTabPanel />
     </div>
 
-    <!-- Edit description modal -->
+    <!-- Edit tool config modal -->
     <NModal
       v-model:show="showToolEditModal"
       preset="dialog"
-      title="编辑工具描述"
+      title="编辑工具配置"
       class="sunshine-dialog tool-desc-dialog"
       style="width: 720px; max-width: 94vw;"
     >
@@ -1133,16 +1192,43 @@ onMounted(() => {
         <div class="tool-desc-name">{{ editingTool?.displayName }}</div>
         <div class="tool-desc-id">{{ editingTool?.id }}</div>
       </div>
-      <NInput
-        v-model:value="editDescription"
-        class="tool-desc-input sun-field"
-        type="textarea"
-        :autosize="{ minRows: 10, maxRows: 20 }"
-        placeholder="工具描述（可覆盖 SDK/MCP 默认值）"
-      />
+      <NForm
+        ref="toolConfigFormRef"
+        :model="toolConfigModel"
+        :rules="toolConfigRules"
+        class="modal-form tool-config-form"
+        label-placement="top"
+        :show-feedback="true"
+      >
+        <NFormItem label="描述" path="description" required>
+          <NInput
+            v-model:value="toolConfigModel.description"
+            class="sun-field tool-desc-input"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 8 }"
+            placeholder="工具用途说明，供 Agent 选择工具时参考"
+          />
+        </NFormItem>
+        <NFormItem label="时间线摘要模板" path="timelineSummaryTemplate">
+          <NInput
+            v-model:value="toolConfigModel.timelineSummaryTemplate"
+            class="sun-field"
+            placeholder="如 {count} 条财务消息；留空则使用默认"
+          />
+        </NFormItem>
+        <NFormItem label="摘要占位符提取（JSON）" path="timelineSummaryExtract">
+          <NInput
+            v-model:value="toolConfigModel.timelineSummaryExtract"
+            class="sun-field"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 8 }"
+            placeholder='如 {"count":"regex:共\\s*(\\d+)\\s*条"}'
+          />
+        </NFormItem>
+      </NForm>
       <template #action>
         <NButton @click="showToolEditModal = false">取消</NButton>
-        <NButton type="primary" class="action-btn" :loading="saving" @click="handleSaveDescription">保存</NButton>
+        <NButton type="primary" class="action-btn" :loading="saving" @click="handleSaveToolConfig">保存</NButton>
       </template>
     </NModal>
 
@@ -1981,6 +2067,39 @@ onMounted(() => {
   --n-color-pressed: var(--sun-accent-hover) !important;
   --n-text-color: var(--btn-primary-text) !important;
   --n-border: none !important;
+}
+
+.tool-timeline-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-timeline-template {
+  display: block;
+  font-family: inherit;
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: pre-wrap;
+  color: var(--sun-text);
+  background: transparent;
+  padding: 0;
+}
+
+.tool-timeline-extract-tip {
+  margin: 0;
+  max-width: 420px;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-config-form :deep(.n-form-item) {
+  margin-bottom: 12px;
 }
 
 @media (max-width: 960px) {

@@ -136,6 +136,19 @@ class ToolSetMemberServiceTest {
                 .containsExactly("sdk__sunshine-finance__list_finance_messages");
     }
 
+    @Test
+    void pageMembers_returnsMemberBasics() {
+        toolSetMemberService.addMembers(
+                ToolSetKind.REACT_DEFAULT,
+                null,
+                new ToolSetMemberAddRequest(List.of(
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_finance_messages", false))));
+        var item = toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, null, 1, 20, null)
+                .items().getFirst();
+        assertThat(item.toolId()).isEqualTo("sdk__sunshine-finance__list_finance_messages");
+        assertThat(item.sourceLabel()).contains("SDK");
+    }
+
     private void saveTool(String id, boolean enabled) {
         ToolDefinitionEntity entity = new ToolDefinitionEntity();
         entity.setId(id);
@@ -146,6 +159,8 @@ class ToolSetMemberServiceTest {
         entity.setSchemaJson(Map.of("type", "object", "properties", Map.of()));
         entity.setSchemaHash("h");
         entity.setKind("remote");
+        entity.setTimelineSummaryTemplate("{count} 条财务消息");
+        entity.setTimelineSummaryExtract("{\"count\":\"regex:共\\\\s*(\\\\d+)\\\\s*条\"}");
         entity.setTenantId("default");
         entity.setEnabled(enabled);
         toolDefinitionRepository.save(entity);

@@ -80,17 +80,11 @@ public class ToolCatalogService {
     }
 
     public String timelinePhase(String toolId) {
-        if (RagTool.NAME.equals(toolId)) {
-            return "rag";
-        }
-        return find(toolId).map(ToolCatalogEntry::timelinePhase).orElse("tool");
+        return isRagTool(toolId) ? "rag" : "tool";
     }
 
     public boolean isRagTool(String toolId) {
-        if (RagTool.NAME.equals(toolId)) {
-            return true;
-        }
-        return find(toolId).map(e -> "rag".equals(e.timelinePhase())).orElse(false);
+        return RagTool.NAME.equals(toolId);
     }
 
     public List<ToolCatalogEntry> allEntries() {

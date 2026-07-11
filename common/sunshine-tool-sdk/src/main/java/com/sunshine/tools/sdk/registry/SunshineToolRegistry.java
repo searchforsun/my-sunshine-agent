@@ -56,7 +56,6 @@ public class SunshineToolRegistry implements SmartInitializingSingleton {
                     tool.displayName(),
                     tool.description(),
                     tool.sideEffect(),
-                    tool.timelinePhase(),
                     tool.timelineSummaryTemplate(),
                     tool.timelineSummaryExtract(),
                     tool.parametersSchema()));

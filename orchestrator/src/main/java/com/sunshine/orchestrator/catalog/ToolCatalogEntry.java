@@ -12,7 +12,6 @@ public record ToolCatalogEntry(
         String displayName,
         String description,
         String kind,
-        String timelinePhase,
         String timelineSummaryTemplate,
         String timelineSummaryExtract,
         Map<String, Object> parameters,

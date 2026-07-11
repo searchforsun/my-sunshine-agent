@@ -12,10 +12,9 @@ public @interface SunshineTool {
     String displayName();
     String description() default "";
     String sideEffect() default "read";
-    String timelinePhase() default "tool";
 
     /**
-     * 时间线一步摘要模板，占位符 {@code {var}}。未配置则仅展示 orchestrator Nacos steps.tool 默认 after。
+     * 时间线一步摘要模板，占位符 {@code {var}}。未配置则使用平台默认 after 文案。
      * 示例：{@code "{status} {count} 条，合计 ¥{amount}"}、{@code "{output}"}（首行原文）
      */
     String timelineSummaryTemplate() default "";

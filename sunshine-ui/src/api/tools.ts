@@ -43,7 +43,6 @@ export interface ToolCatalogEntry {
   displayName: string
   description: string
   kind: string
-  timelinePhase: string
   timelineSummaryTemplate?: string
   timelineSummaryExtract?: string | null
   parameters: Record<string, unknown>
@@ -64,7 +63,6 @@ export interface ToolDefinition {
   schemaJson: Record<string, unknown>
   schemaHash: string | null
   kind: string
-  timelinePhase: string
   timelineSummaryTemplate?: string
   timelineSummaryExtract?: string | null
   sideEffect: string
@@ -84,6 +82,8 @@ export interface ToolPatchBody {
   displayName?: string
   description?: string
   requireConfirmation?: boolean
+  timelineSummaryTemplate?: string
+  timelineSummaryExtract?: string | null
 }
 
 export interface McpServerCreateBody {
