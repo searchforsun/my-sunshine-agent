@@ -63,11 +63,20 @@ class ReActAgentFactoryTest {
     @Test
     void resolveToolkit_subUsesExplicitWhitelist() {
         AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), null);
-        when(dynamicToolkitFactory.build(List.of("sdk__sunshine-finance__list_finance_messages"), "default"))
+        when(dynamicToolkitFactory.buildForSubAgent(List.of("sdk__sunshine-finance__list_finance_messages"), "default"))
                 .thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).build(List.of("sdk__sunshine-finance__list_finance_messages"), "default");
+        verify(dynamicToolkitFactory).buildForSubAgent(List.of("sdk__sunshine-finance__list_finance_messages"), "default");
+    }
+
+    @Test
+    void resolveToolkit_subWithoutExtraToolsUsesSubAgentToolkit() {
+        AgentRunRequest req = subRequest("compliance-check", null, null);
+        when(dynamicToolkitFactory.buildForSubAgent(null, "default")).thenReturn(subToolkit);
+
+        assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
+        verify(dynamicToolkitFactory).buildForSubAgent(null, "default");
     }
 
     @Test

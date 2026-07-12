@@ -15,10 +15,12 @@ public class ToolCatalogRedisConfig {
     @Bean
     RedisMessageListenerContainer toolCatalogRedisListenerContainer(
             RedisConnectionFactory connectionFactory,
-            ToolCatalogRefreshListener listener) {
+            ToolCatalogRefreshListener toolListener,
+            WorkflowCatalogRefreshListener workflowListener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        container.addMessageListener(listener, new ChannelTopic("tool-catalog-changed"));
+        container.addMessageListener(toolListener, new ChannelTopic("tool-catalog-changed"));
+        container.addMessageListener(workflowListener, new ChannelTopic("workflow-catalog-changed"));
         return container;
     }
 }

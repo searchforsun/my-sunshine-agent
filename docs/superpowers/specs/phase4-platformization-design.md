@@ -188,7 +188,7 @@
 | 子任务 | 内容 |
 |--------|------|
 | **4.13.1** | `workflow-manager` :8230 + 表结构 | **✅** |
-| **4.13.1b** | **MySQL init 种子**（4 标杆 published v1） | `docker/mysql/init/13-sunshine-workflow-manager.sql` |
+| **4.13.1b** | **MySQL init 种子**（5 标杆 published v1，含 `knowledge-dual`） | `docker/mysql/init/13-sunshine-workflow-manager.sql` · [docs/workflow/README.md](../../workflow/README.md) |
 | **4.13.2** | Admin / Catalog / Published API + `PlanValidator` 发布校验 |
 | **4.13.2b** | orchestrator 移除 Nacos workflow + `WorkflowManagerClient` |
 | **4.13.3** | `WorkflowCatalogService` + **`WorkflowBindingParser/Policy`（L0 `#`）** |

@@ -237,6 +237,11 @@ public class ChatStreamExecutor {
                                     executionDispatcher.execute(toExecutionContext(ctx, plan))
                             ));
                         })
+                        .onErrorResume(e -> {
+                            session.fail(TimelineStepId.INTENT.id(), StreamErrorMessages.resolve(e));
+                            List<StreamToken> failTokens = drainStepTokens(stepEmissions);
+                            return Flux.concat(Flux.fromIterable(failTokens), Flux.error(e));
+                        })
         ));
     }
 

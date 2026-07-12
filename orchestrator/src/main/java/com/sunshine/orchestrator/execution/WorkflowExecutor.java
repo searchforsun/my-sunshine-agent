@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.execution.workflow.WorkflowNodeRunner;
 import com.sunshine.orchestrator.execution.workflow.WorkflowStaticPlanRunner;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PausePhase;
+import com.sunshine.orchestrator.plan.PlanExecutionSchedule;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
@@ -18,11 +19,12 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Workflow DAG 线性执行引擎 */
+/** Workflow DAG 执行引擎（串行 + 并行 fan-out/join） */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -57,7 +59,7 @@ public class WorkflowExecutor {
             workflowPauseService.bindRun(streamCtx.assistantMsgId(), streamCtx.persistedPlanId());
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
         }
-        return executeNodeOrder(def.linearOrder(), session, def, wfCtx, streamCtx, runSession, planWorkflow)
+        return executeSchedule(def, session, def.executionSteps(), wfCtx, streamCtx, runSession, planWorkflow)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doFinally(signal -> {
                     labelService.clearRuntimeNodeLabels();
@@ -91,13 +93,8 @@ public class WorkflowExecutor {
             workflowPauseService.bindRun(streamCtx.assistantMsgId(), streamCtx.persistedPlanId());
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
         }
-        List<String> order = def.linearOrder();
-        int startIdx = order.indexOf(checkpoint.resumeNodeId());
-        if (startIdx < 0) {
-            startIdx = 0;
-        }
-        List<String> remaining = order.subList(startIdx, order.size());
-        return executeNodeOrder(remaining, session, def, wfCtx, streamCtx, runSession, planWorkflow)
+        List<PlanExecutionSchedule.Step> steps = resolveResumeSteps(def, checkpoint.resumeNodeId(), wfCtx);
+        return executeSchedule(def, session, steps, wfCtx, streamCtx, runSession, planWorkflow)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doFinally(signal -> {
                     labelService.clearRuntimeNodeLabels();
@@ -105,6 +102,125 @@ public class WorkflowExecutor {
                         workflowPauseService.clearRun(streamCtx.assistantMsgId());
                     }
                 });
+    }
+
+    private Flux<StreamToken> executeSchedule(
+            WorkflowDefinition def,
+            ProcessingTimelineSession session,
+            List<PlanExecutionSchedule.Step> steps,
+            WorkflowContext wfCtx,
+            ExecutionStreamContext streamCtx,
+            WorkflowRunSession runSession,
+            boolean planWorkflow) {
+        if (steps == null || steps.isEmpty()) {
+            return executeNodeOrder(def.linearOrder(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+        }
+        return Flux.fromIterable(steps)
+                .concatMap(step -> executeStep(step, session, def, wfCtx, streamCtx, runSession, planWorkflow));
+    }
+
+    private Flux<StreamToken> executeStep(
+            PlanExecutionSchedule.Step step,
+            ProcessingTimelineSession session,
+            WorkflowDefinition def,
+            WorkflowContext wfCtx,
+            ExecutionStreamContext streamCtx,
+            WorkflowRunSession runSession,
+            boolean planWorkflow) {
+        if (step instanceof PlanExecutionSchedule.Single single) {
+            return executeOneNode(single.nodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+        }
+        if (step instanceof PlanExecutionSchedule.Parallel parallel) {
+            List<String> pending = parallel.branchNodeIds().stream()
+                    .filter(id -> !isNodeCompleted(wfCtx, id))
+                    .toList();
+            Flux<StreamToken> branches = pending.isEmpty()
+                    ? Flux.empty()
+                    : Flux.merge(pending.stream()
+                            .map(id -> executeOneNode(id, session, def, wfCtx, streamCtx, runSession, planWorkflow))
+                            .toList());
+            if (isNodeCompleted(wfCtx, parallel.joinNodeId())) {
+                return branches;
+            }
+            return branches.concatWith(executeOneNode(
+                    parallel.joinNodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow));
+        }
+        return Flux.empty();
+    }
+
+    private Flux<StreamToken> executeOneNode(
+            String nodeId,
+            ProcessingTimelineSession session,
+            WorkflowDefinition def,
+            WorkflowContext wfCtx,
+            ExecutionStreamContext streamCtx,
+            WorkflowRunSession runSession,
+            boolean planWorkflow) {
+        if (planWorkflow && workflowPauseService.consumePauseRequested(streamCtx.assistantMsgId())) {
+            return pauseBeforeNode(session, def, nodeId, wfCtx, streamCtx);
+        }
+        workflowPauseService.setCurrentNode(streamCtx.assistantMsgId(), nodeId);
+        return nodeRunner.executeNode(session, def, nodeId, wfCtx, streamCtx, runSession, planWorkflow);
+    }
+
+    private List<PlanExecutionSchedule.Step> resolveResumeSteps(
+            WorkflowDefinition def,
+            String resumeNodeId,
+            WorkflowContext wfCtx) {
+        List<PlanExecutionSchedule.Step> steps = def.executionSteps();
+        if (steps == null || steps.isEmpty() || !StringUtils.hasText(resumeNodeId)) {
+            List<String> order = def.linearOrder();
+            int startIdx = order.indexOf(resumeNodeId);
+            if (startIdx < 0) {
+                startIdx = 0;
+            }
+            return order.subList(startIdx, order.size()).stream()
+                    .map(PlanExecutionSchedule.Single::new)
+                    .map(PlanExecutionSchedule.Step.class::cast)
+                    .toList();
+        }
+        List<PlanExecutionSchedule.Step> remaining = new ArrayList<>();
+        boolean found = false;
+        for (PlanExecutionSchedule.Step step : steps) {
+            if (!found) {
+                if (stepContains(step, resumeNodeId)) {
+                    found = true;
+                    remaining.add(step);
+                }
+                continue;
+            }
+            remaining.add(step);
+        }
+        if (!found) {
+            return steps;
+        }
+        if (remaining.size() == 1 && remaining.get(0) instanceof PlanExecutionSchedule.Parallel parallel
+                && parallel.branchNodeIds().contains(resumeNodeId)
+                && !parallel.joinNodeId().equals(resumeNodeId)) {
+            return remaining;
+        }
+        return remaining;
+    }
+
+    private static boolean stepContains(PlanExecutionSchedule.Step step, String nodeId) {
+        if (step instanceof PlanExecutionSchedule.Single single) {
+            return single.nodeId().equals(nodeId);
+        }
+        if (step instanceof PlanExecutionSchedule.Parallel parallel) {
+            return parallel.branchNodeIds().contains(nodeId) || parallel.joinNodeId().equals(nodeId);
+        }
+        return false;
+    }
+
+    private static boolean isNodeCompleted(WorkflowContext wfCtx, String nodeId) {
+        Map<String, String> node = wfCtx.node(nodeId);
+        if (node == null || node.isEmpty()) {
+            return false;
+        }
+        if (StringUtils.hasText(node.get("output")) || StringUtils.hasText(node.get("answer"))) {
+            return true;
+        }
+        return "joined".equals(node.get("status"));
     }
 
     private Flux<StreamToken> executeNodeOrder(
@@ -116,14 +232,8 @@ public class WorkflowExecutor {
             WorkflowRunSession runSession,
             boolean planWorkflow) {
         return Flux.fromIterable(nodeOrder)
-                .concatMap(nodeId -> {
-                    if (planWorkflow && workflowPauseService.consumePauseRequested(streamCtx.assistantMsgId())) {
-                        return pauseBeforeNode(session, def, nodeId, wfCtx, streamCtx);
-                    }
-                    workflowPauseService.setCurrentNode(streamCtx.assistantMsgId(), nodeId);
-                    return nodeRunner.executeNode(
-                            session, def, nodeId, wfCtx, streamCtx, runSession, planWorkflow);
-                });
+                .concatMap(nodeId -> executeOneNode(
+                        nodeId, session, def, wfCtx, streamCtx, runSession, planWorkflow));
     }
 
     private Flux<StreamToken> pauseBeforeNode(

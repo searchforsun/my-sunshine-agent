@@ -154,10 +154,7 @@ agent:
           detail: 多专家协作
           after: "{query}将由多专家协作交叉验证"
           forced-after: "{query}将按您指定的「多专家协作」模式处理"
-        workflow:
-          after: "{query}将按「{displayName}」流程处理"
-          forced-after: "{query}将按您指定的「工作流」模式处理"
-          # detail 仅路由解析用；时间线不下发 expandable detail
+        # workflow 意图 after/forced-after：代码默认 AgentPromptProperties.IntentTimeline.defaultModes()
     steps:
       intent:
         label: 识别意图
@@ -266,30 +263,6 @@ agent:
       hits-with-query: "找到 {hitCount} 条与{query}相关的参考文档"
       zero-hits: "未找到与{query}直接相关的制度或文档"
       generic-done: "已完成针对{query}的知识库检索"
-    workflow-node-types:
-      rag: 检索知识库
-      llm: 综合分析
-      agent: 智能体分析
-      answer: 生成回答
-      tool: 调用工具
-      unknown-workflow: 未知工作流
-      unknown-node: 节点
-      sub-agent-default: 子 Agent 分析
-    workflow-agent:
-      after-with-tools: "已完成 {toolCallCount} 次工具调用的综合分析"
-      after-done: 智能体分析完成
-      skill-loaded-prefix: "已加载技能：{skillLabel}"
-    workflow-node-completion:
-      complete: "{displayName}完成"
-      hit-count: "命中 {hitCount} 条"
-      skipped: "已跳过"
-      skipped-with-reason: "已跳过：{reason}"
-      retry-success: "（第 {attemptCount} 次尝试成功）"
-      retry-failed-suffix: "（已重试 {attemptCount} 次）"
-      node-failed: "节点执行失败"
-      attempt-complete: "完成"
-      attempt-failed: "失败: {error}"
-
   execution:
     default-mode: react
     react:
@@ -323,28 +296,6 @@ agent:
         user-modification-template: |
           用户对当前执行计划的修改意见：{{hint}}
           请据此重新输出一行 Plan JSON。仍须遵守：仅 rag/tool/agent；勿含 start/answer；edges 末节点勿连 answer。
-      node-retry:
-        critical-on-failure: fail_fast
-        defaults:
-          max-attempts: 2
-          backoff-ms: 500
-          backoff-multiplier: 2.0
-          on-failure: continue
-          retry-on-error-class:
-            - TIMEOUT
-            - SERVICE_UNAVAILABLE
-            - CIRCUIT_OPEN
-        by-type:
-          rag:
-            max-attempts: 1
-          tool:
-            max-attempts: 2
-          agent:
-            max-attempts: 1
-          answer:
-            max-attempts: 2
-            on-failure: fail_fast
-
   skill:
     # P1 强提示句式 — 须含命名组 skill；P0 @ 由 SkillBindingParser 硬编码
     hint-patterns:
@@ -550,6 +501,8 @@ skill-manager:
   base-url: http://localhost:8225
 expert-manager:
   base-url: http://localhost:8235
+workflow-manager:
+  base-url: http://localhost:8230
 desensitize:
   enabled: true
   base-url: http://localhost:8600

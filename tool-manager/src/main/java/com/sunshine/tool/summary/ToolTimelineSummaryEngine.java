@@ -35,6 +35,15 @@ public class ToolTimelineSummaryEngine {
         return applyTemplate(template.strip(), vars);
     }
 
+    /** 按 extract JSON 从工具原始输出解析命名字段（Workflow 下游 {{node.parsed.xxx}}） */
+    public Map<String, String> extractBindings(String extractJson, String rawText) {
+        String text = rawText != null ? rawText : "";
+        Map<String, String> bindings = parseBindings(extractJson);
+        Map<String, String> vars = new LinkedHashMap<>();
+        bindings.forEach((name, expr) -> vars.put(name, eval(expr, text)));
+        return vars;
+    }
+
     private Map<String, String> parseBindings(String extractJson) {
         if (!StringUtils.hasText(extractJson)) {
             return Map.of();

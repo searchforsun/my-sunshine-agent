@@ -25,7 +25,6 @@ DEFAULT_DATA_IDS = [
     "sunshine-auth.yaml",
     "sunshine-bff.yaml",
     "sunshine-orchestrator.yaml",
-    "sunshine-workflows.yaml",
     "sunshine-llm-gateway.yaml",
     "sunshine-rag.yaml",
     "sunshine-finance.yaml",

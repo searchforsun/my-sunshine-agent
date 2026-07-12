@@ -66,11 +66,12 @@ async function handleSave() {
   >
     <NForm label-placement="top" :show-require-mark="false">
       <NFormItem label="用户名">
-        <NInput :value="auth.user?.username" disabled />
+        <NInput class="sun-field" :value="auth.user?.username" disabled />
       </NFormItem>
       <NFormItem label="昵称">
         <NInput
           v-model:value="nickname"
+          class="sun-field"
           placeholder="展示在侧栏的名称"
           maxlength="64"
           :disabled="saving"

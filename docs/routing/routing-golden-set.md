@@ -192,12 +192,14 @@ python3 scripts/verify_skills_ui_live.py
 ## I. Workflow `#` 绑定（L0，阶段四 4.13）
 
 > **详设**：[workflow-studio-design.md](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3  
-> **与 §E 区分**：**`#` 仅 Workflow** · **`@` 仅 Skill**；首字符互斥，均优先于 L1/L2/L3。
+> **与 §E 区分**：**`#` 仅 Workflow** · **`@` 仅 Skill**；首字符互斥，均优先于 L1/L2/L3。  
+> **数据源**：workflow-manager DB init 种子 **5 条**（`docs/workflow/README.md`）。
 
 | # | 提示词 | 预期 |
 |---|--------|------|
 | I1 | `#knowledge-qa 年假可以请几天` | `WORKFLOW` workflowId=knowledge-qa；`reason=workflow:#mention`；Plan DAG |
 | I2 | `#knowledge-qa 报销流程是什么` | `WORKFLOW` workflowId=knowledge-qa（DB init 种子） |
+| I2b | `#knowledge-dual 年假和报销制度一起查` | `WORKFLOW` workflowId=knowledge-dual；并行双 RAG + join DAG |
 | I3 | `#finance-smart 待审批报销是否合规` | `WORKFLOW` workflowId=finance-smart；**压过** L2 规则 / L3 自动选型 |
 | I4 | `#not-exists 测试` | HTTP 400；文案指向 `/workflows` |
 | I5 | `@knowledge-qa 测试` | **不得**当 workflow；按 Skill 解析 → 未知 Skill 400 或 none |

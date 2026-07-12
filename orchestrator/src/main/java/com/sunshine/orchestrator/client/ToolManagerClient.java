@@ -134,4 +134,17 @@ public class ToolManagerClient {
                 .bodyToMono(new ParameterizedTypeReference<R<ToolSummarizeOutputResponse>>() {})
                 .map(R::getData);
     }
+
+    public Mono<Map<String, String>> extractBindingsMono(String extractJson, String text) {
+        Map<String, Object> body = Map.of(
+                "extractJson", extractJson != null ? extractJson : "",
+                "text", text != null ? text : "");
+        return webClient.post()
+                .uri("/api/tools/extract-bindings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<R<Map<String, String>>>() {})
+                .map(R::getData);
+    }
 }

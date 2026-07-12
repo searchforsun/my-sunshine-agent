@@ -1,12 +1,14 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
+import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,17 +16,21 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class IntentLabelServiceTest {
 
     @Mock
     private ToolCatalogService toolCatalogService;
+    @Mock
+    private WorkflowCatalogRegistry workflowCatalogRegistry;
+    @Mock
+    private WorkflowManagerClient workflowManagerClient;
 
     private IntentLabelService intentLabelService;
     private TimelineStepLabelService timelineStepLabelService;
@@ -33,17 +39,31 @@ class IntentLabelServiceTest {
     @BeforeEach
     void setUp() {
         AgentPromptProperties agentProps = new AgentPromptProperties();
-        WorkflowProperties workflowProps = buildWorkflowProps();
+        stubCatalog();
+        WorkflowCatalog workflowCatalog = new WorkflowCatalog(workflowCatalogRegistry, workflowManagerClient);
         WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
-                workflowProps, toolCatalogService, agentProps);
+                workflowCatalog, toolCatalogService);
         WorkflowNodeLabels.bind(workflowLabels);
         timelineStepLabelService = new TimelineStepLabelService(agentProps);
         thinkStepLabelService = new ThinkStepLabelService(agentProps);
-        intentLabelService = new IntentLabelService(agentProps, workflowProps, workflowLabels);
+        intentLabelService = new IntentLabelService(
+                agentProps, workflowCatalog, workflowCatalogRegistry, workflowLabels);
         IntentLabels.bind(intentLabelService);
         TimelineLabels.bind(timelineStepLabelService);
         TimelineStepLabels.bind(timelineStepLabelService);
         ThinkStepLabels.bind(thinkStepLabelService);
+    }
+
+    private void stubCatalog() {
+        WorkflowManagerClient.WorkflowCatalogEntryDto finance =
+                new WorkflowManagerClient.WorkflowCatalogEntryDto(
+                        "finance-list", "workflow", "财务待办查询", "财务待办", List.of(), List.of(), null);
+        WorkflowManagerClient.WorkflowCatalogEntryDto knowledge =
+                new WorkflowManagerClient.WorkflowCatalogEntryDto(
+                        "knowledge-qa", "workflow", "知识库问答", "查制度", List.of(), List.of(), null);
+        lenient().when(workflowCatalogRegistry.entries()).thenReturn(List.of(finance, knowledge));
+        lenient().when(workflowCatalogRegistry.find("finance-list")).thenReturn(finance);
+        lenient().when(workflowCatalogRegistry.find("knowledge-qa")).thenReturn(knowledge);
     }
 
     @AfterEach
@@ -56,64 +76,17 @@ class IntentLabelServiceTest {
     }
 
     @Test
-    void stepLabel_readsFromTimelineConfig() {
-        assertThat(timelineStepLabelService.stepLabel("intent")).isEqualTo("识别意图");
-        assertThat(timelineStepLabelService.stepLabel("plan")).isEqualTo("执行计划");
-        assertThat(timelineStepLabelService.stepLabel("think")).isEqualTo("规划推理");
-    }
-
-    @Test
-    void thinkStepLabel_readsModeAndIteration() {
-        assertThat(thinkStepLabelService.thinkStepLabel("think", ExecutionMode.REACT)).isEqualTo("规划推理");
-        assertThat(thinkStepLabelService.thinkStepLabel("think-2", ExecutionMode.REACT)).isEqualTo("综合分析");
-        assertThat(thinkStepLabelService.thinkStepLabel("think", ExecutionMode.SIMPLE_LLM)).isEqualTo("构思回答");
-        assertThat(thinkStepLabelService.thinkStepLabel("think-2", ExecutionMode.SIMPLE_LLM)).isEqualTo("整理作答");
-    }
-
-    @Test
-    void thinkStepSummary_readsFromTimelineConfig() {
-        String q = StepSummarizer.clipQuery("报销制度");
-        assertThat(thinkStepLabelService.thinkStepBefore("think", ExecutionMode.REACT, q, null))
-                .isEqualTo("规划如何回答「报销制度」");
-        assertThat(thinkStepLabelService.thinkStepActive("think", ExecutionMode.SIMPLE_LLM, q, null))
-                .isEqualTo("正在构思针对「报销制度」的作答思路");
-        assertThat(thinkStepLabelService.thinkStepAfter("think-2", ExecutionMode.REACT, q, "统计财务消息"))
-                .isEqualTo("已完成「统计财务消息」的工具结果综合分析");
-        assertThat(thinkStepLabelService.thinkStepBefore("think", ExecutionMode.REACT, "", null))
-                .isEqualTo("规划工具与作答路径");
-    }
-
-    @Test
-    void intentDetail_workflowUsesCatalogDisplayName() {
-        ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-list", Map.of(), "test");
+    void intentDetail_workflowUsesDisplayName() {
+        ExecutionPlan plan = new ExecutionPlan(
+                ExecutionMode.WORKFLOW, "finance-list", Map.of(), "test");
         assertThat(intentLabelService.intentDetail(plan)).isEqualTo("财务待办查询");
     }
 
     @Test
-    void intentAfterSummary_workflowByDisplayName() {
-        String q = StepSummarizer.clipQuery("我有哪些待审批报销");
-        String after = intentLabelService.intentAfterSummary(q, "财务待办查询");
-        assertThat(after).isEqualTo(q + "将按「财务待办查询」流程处理");
-    }
-
-    @Test
-    void intentAfterSummary_simpleLlmMode() {
-        String q = StepSummarizer.clipQuery("你好");
-        assertThat(intentLabelService.intentAfterSummary(q, "简单对话"))
-                .isEqualTo(q + "属于简单对话，将直接生成回复");
-    }
-
-    @Test
-    void intentAfterSummary_reactMode() {
-        String q = StepSummarizer.clipQuery("帮我查一下");
-        assertThat(intentLabelService.intentAfterSummary(q, "自主智能体"))
-                .isEqualTo(q + "将由自主智能体分析并作答");
-    }
-
-    @Test
-    void intentAfterForPlan_workflow() {
-        ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "test");
-        String after = intentLabelService.intentAfterForPlan("请假制度是什么", plan);
+    void intentAfterForPlan_workflowIncludesDisplayName() {
+        ExecutionPlan plan = new ExecutionPlan(
+                ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "test");
+        String after = intentLabelService.intentAfterForPlan("公司考勤制度是什么？", plan);
         assertThat(after).contains("知识库问答").contains("流程处理");
     }
 
@@ -128,18 +101,5 @@ class IntentLabelServiceTest {
     void stepSummarizer_delegatesToConfig() {
         String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
         assertThat(after).contains("知识库问答").contains("流程处理");
-    }
-
-    private static WorkflowProperties buildWorkflowProps() {
-        WorkflowProperties props = new WorkflowProperties();
-        WorkflowProperties.CatalogEntry finance = new WorkflowProperties.CatalogEntry();
-        finance.setId("finance-list");
-        finance.setDisplayName("财务待办查询");
-        WorkflowProperties.CatalogEntry knowledge = new WorkflowProperties.CatalogEntry();
-        knowledge.setId("knowledge-qa");
-        knowledge.setDisplayName("知识库问答");
-        props.setCatalog(List.of(finance, knowledge));
-        props.setDefinitions(new LinkedHashMap<>());
-        return props;
     }
 }

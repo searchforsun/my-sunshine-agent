@@ -8,5 +8,5 @@ import java.util.List;
 
 public interface WorkflowDefinitionRepository extends JpaRepository<WorkflowDefinitionEntity, WorkflowDefinitionId> {
 
-    List<WorkflowDefinitionEntity> findByPkTenantIdOrderByUpdatedAtDesc(String tenantId);
+    List<WorkflowDefinitionEntity> findByPkTenantIdOrderByCreatedAtAscPkIdAsc(String tenantId);
 }

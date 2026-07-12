@@ -14,6 +14,7 @@ import com.sunshine.orchestrator.execution.WorkflowContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 
 import java.util.LinkedHashMap;
@@ -21,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * RAG 检索节点 — 节点 params.topK 可覆盖；未配置时走 rag-service Nacos default-top-k。
+ * RAG 检索节点 — params.query / context 与 agent 同契约；topK、kbId 可覆盖默认值。
  */
 @Slf4j
 @Component
@@ -38,16 +39,21 @@ public class RagNodeHandler implements NodeHandler {
 
     @Override
     public Mono<NodeResult> run(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
-        String query = ctx.resolvePath("start.userQuery");
-        if (query.isBlank()) {
+        Map<String, String> params = spec.params() != null ? spec.params() : Map.of();
+        String query = params.getOrDefault("query", "");
+        if (!StringUtils.hasText(query)) {
+            query = ctx.resolvePath("start.userQuery");
+        }
+        if (!StringUtils.hasText(query)) {
             query = streamCtx.userContent();
         }
-        Integer topK = parseTopK(spec.params().get("topK"));
-        String kbId = spec.params().get("kbId");
+        String searchQuery = buildSearchQuery(query, params.get("context"));
+        Integer topK = parseTopK(params.get("topK"));
+        String kbId = params.get("kbId");
         if (kbId == null || kbId.isBlank()) {
             kbId = streamCtx.kbId();
         }
-        String finalQuery = query;
+        String finalQuery = searchQuery;
         String finalKbId = kbId;
 
         return RagSearch.searchMono(
@@ -66,6 +72,19 @@ public class RagNodeHandler implements NodeHandler {
                     log.warn("[RagNodeHandler] 检索失败: {}", e.getMessage());
                     return Mono.just(buildEmptyResult());
                 });
+    }
+
+    /** query 为主检索问句；context 非空时追加到检索文本（与 agent 注入语义一致） */
+    static String buildSearchQuery(String query, String context) {
+        String q = query != null ? query.strip() : "";
+        String c = context != null ? context.strip() : "";
+        if (!StringUtils.hasText(c)) {
+            return q;
+        }
+        if (!StringUtils.hasText(q)) {
+            return c;
+        }
+        return q + "\n\n" + c;
     }
 
     private static NodeResult buildEmptyResult() {

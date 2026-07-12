@@ -70,6 +70,7 @@ public class AgentNodeHandler implements StreamingNodeHandler {
         }
         AgentRunRequest request = AgentNodeRequestAssembler.build(spec, ctx, streamCtx);
         agentCollector.bindAuditContext(spec, streamCtx, request);
+        bindSubAgentToolAudit(spec, streamCtx);
         StepEventBridge.bindTokenWrapper(request.resolveBridgeId(), agentCollector::ingest);
         return agentRuntime.run(request)
                 .concatMap(token -> Flux.fromIterable(agentCollector.ingest(token)))
@@ -124,5 +125,29 @@ public class AgentNodeHandler implements StreamingNodeHandler {
             return spec.displayName().strip();
         }
         return WorkflowNodeLabels.displayName(spec.id(), spec.type());
+    }
+
+    private static void bindSubAgentToolAudit(NodeSpec spec, ExecutionStreamContext streamCtx) {
+        if (!StringUtils.hasText(streamCtx.assistantMsgId())) {
+            return;
+        }
+        String kbId = resolveAgentKbId(spec, streamCtx);
+        StepEventBridge.bindToolAudit(streamCtx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
+                streamCtx.conversationId(),
+                streamCtx.assistantMsgId(),
+                streamCtx.userId(),
+                streamCtx.tenantId(),
+                streamCtx.persistedPlanId(),
+                kbId));
+    }
+
+    private static String resolveAgentKbId(NodeSpec spec, ExecutionStreamContext streamCtx) {
+        if (spec.params() != null) {
+            String kbId = spec.params().get("kbId");
+            if (StringUtils.hasText(kbId)) {
+                return kbId.strip();
+            }
+        }
+        return streamCtx.kbId();
     }
 }

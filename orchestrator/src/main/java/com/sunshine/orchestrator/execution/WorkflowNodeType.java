@@ -10,7 +10,8 @@ public enum WorkflowNodeType {
     LLM("llm"),
     AGENT("agent"),
     ANSWER("answer"),
-    TOOL("tool");
+    TOOL("tool"),
+    JOIN("join");
 
     private final String id;
 
@@ -38,9 +39,9 @@ public enum WorkflowNodeType {
         return Optional.empty();
     }
 
-    /** plan 摘要链：排除 start、answer */
+    /** plan 摘要链：排除 start、answer、join */
     public static boolean isPlanChainNode(String type) {
-        return type != null && !START.matches(type) && !ANSWER.matches(type);
+        return type != null && !START.matches(type) && !ANSWER.matches(type) && !JOIN.matches(type);
     }
 
     /** DAG node-{id} 步骤生命周期：含 answer，排除 start */
@@ -58,6 +59,6 @@ public enum WorkflowNodeType {
     }
 
     public static java.util.Set<String> execTypeIds() {
-        return java.util.Set.of(RAG.id, TOOL.id, AGENT.id, ANSWER.id);
+        return java.util.Set.of(RAG.id, TOOL.id, AGENT.id, ANSWER.id, JOIN.id);
     }
 }

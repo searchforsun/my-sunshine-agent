@@ -17,6 +17,8 @@ expert-manager:
   base-url: http://localhost:8235
 tool-manager:
   base-url: http://localhost:8210
+workflow-manager:
+  base-url: http://localhost:8230
 
 logging:
   level:

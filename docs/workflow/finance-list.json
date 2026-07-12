@@ -5,13 +5,17 @@
   "description": "仅列出待审批/已审批财务消息（报销单、付款单等），不做合规分析",
   "mode": "workflow",
   "enabled": true,
-  "source": "import",
+  "source": "seed",
   "catalog": {
     "examples": [
       "有哪些待审批报销",
       "查询待审批的报销和付款消息"
     ],
-    "nodeSummary": ["start", "tool", "answer"]
+    "nodeSummary": [
+      "start",
+      "tool",
+      "answer"
+    ]
   },
   "plan": {
     "planId": null,
@@ -24,12 +28,15 @@
         "params": {}
       },
       {
-        "id": "finance-list",
+        "id": "tool-f7a3b2c1",
         "type": "tool",
         "displayName": "查询待审批财务消息",
         "params": {
-          "tool": "list_finance_messages",
-          "status": "{{plan.params.status}}"
+          "tool": "sdk__sunshine-finance__list_finance_messages",
+          "status": "{{plan.params.status}}",
+          "retry.maxAttempts": "2",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "continue"
         }
       },
       {
@@ -37,13 +44,16 @@
         "type": "answer",
         "displayName": "生成回答",
         "params": {
-          "prompt": "根据财务工具查询结果回答用户问题。\n\n约束：\n- 禁止向用户暴露英文流程/工具内部名（如 finance-list、list_finance_messages）。\n- 若「数据」中非空（有条目、条数>0、含 id/金额/标题等），必须逐条列出，不得回答「没有数据」。\n- 仅当数据明确为空数组或条数为 0 时，才可说明当前无待审批记录。\n- 不要编造单据；不要省略工具返回的字段。\n\n数据：\n{{finance-list.output}}"
+          "prompt": "根据财务工具查询结果回答用户问题。\n\n约束：\n- 禁止向用户暴露英文流程/工具内部名（如 finance-list、list_finance_messages）。\n- 若「数据」中非空（有条目、条数>0、含 id/金额/标题等），必须逐条列出，不得回答「没有数据」。\n- 仅当数据明确为空数组或条数为 0 时，才可说明当前无待审批记录。\n- 不要编造单据；不要省略工具返回的字段。\n\n数据：\n{{tool-f7a3b2c1.output}}",
+          "retry.maxAttempts": "2",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "fail_fast"
         }
       }
     ],
     "edges": [
-      { "from": "start", "to": "finance-list" },
-      { "from": "finance-list", "to": "answer" }
+      { "from": "start", "to": "tool-f7a3b2c1" },
+      { "from": "tool-f7a3b2c1", "to": "answer" }
     ]
   }
 }

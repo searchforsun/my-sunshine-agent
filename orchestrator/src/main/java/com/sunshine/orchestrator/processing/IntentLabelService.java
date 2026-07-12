@@ -1,10 +1,12 @@
 package com.sunshine.orchestrator.processing;
 
+import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.WorkflowCatalog;
+import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -23,7 +25,8 @@ import java.util.Map;
 public class IntentLabelService {
 
     private final AgentPromptProperties agentPromptProperties;
-    private final WorkflowProperties workflowProperties;
+    private final WorkflowCatalog workflowCatalog;
+    private final WorkflowCatalogRegistry workflowCatalogRegistry;
     private final WorkflowNodeLabelService workflowNodeLabelService;
 
     @PostConstruct
@@ -50,13 +53,11 @@ public class IntentLabelService {
             return TimelineLabelTemplates.applyTemplate(cfg.getDefaultAfter(),
                     TimelineLabelTemplates.vars(clippedQuery, detail, null, null));
         }
-        WorkflowProperties.CatalogEntry catalogEntry = findCatalogByDetail(detail);
+        WorkflowManagerClient.WorkflowCatalogEntryDto catalogEntry = findCatalogByDetail(detail);
         if (catalogEntry != null) {
-            String template = StringUtils.hasText(catalogEntry.getIntentAfter())
-                    ? catalogEntry.getIntentAfter()
-                    : modeAfter(modeConfig(ExecutionMode.WORKFLOW), "{query}将按「{displayName}」流程处理");
+            String template = modeAfter(modeConfig(ExecutionMode.WORKFLOW), "{query}将按「{displayName}」流程处理");
             return TimelineLabelTemplates.applyTemplate(template, TimelineLabelTemplates.vars(
-                    clippedQuery, detail, catalogEntry.getId(), displayNameOf(catalogEntry)));
+                    clippedQuery, detail, catalogEntry.id(), displayNameOf(catalogEntry)));
         }
         AgentPromptProperties.ModeIntent mode = findModeByDetail(detail);
         if (mode != null && StringUtils.hasText(mode.getAfter())) {
@@ -90,12 +91,10 @@ public class IntentLabelService {
                     modeAfter(modeConfig(ExecutionMode.PEER_COLLAB), "{query}将由多专家协作交叉验证"),
                     TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
             case WORKFLOW -> {
-                WorkflowProperties.CatalogEntry entry = findCatalogById(plan.workflowId());
+                WorkflowManagerClient.WorkflowCatalogEntryDto entry = workflowCatalog.findEntry(plan.workflowId());
                 String displayName = entry != null ? displayNameOf(entry)
                         : workflowNodeLabelService.workflowDisplayName(plan.workflowId());
-                String template = entry != null && StringUtils.hasText(entry.getIntentAfter())
-                        ? entry.getIntentAfter()
-                        : modeAfter(modeConfig(ExecutionMode.WORKFLOW), "{query}将按「{displayName}」流程处理");
+                String template = workflowIntentAfterTemplate(entry);
                 yield TimelineLabelTemplates.applyTemplate(template,
                         TimelineLabelTemplates.vars(q, displayName, plan.workflowId(), displayName));
             }
@@ -112,28 +111,20 @@ public class IntentLabelService {
         return found != null ? found : new AgentPromptProperties.ModeIntent();
     }
 
-    private WorkflowProperties.CatalogEntry findCatalogByDetail(String detail) {
-        if (workflowProperties.getCatalog() == null) {
+    private WorkflowManagerClient.WorkflowCatalogEntryDto findCatalogByDetail(String detail) {
+        if (!StringUtils.hasText(detail)) {
             return null;
         }
-        for (WorkflowProperties.CatalogEntry entry : workflowProperties.getCatalog()) {
-            if (detail.equals(entry.getId()) || detail.equals(displayNameOf(entry))) {
+        for (WorkflowManagerClient.WorkflowCatalogEntryDto entry : workflowCatalogRegistry.entries()) {
+            if (detail.equals(entry.id()) || detail.equals(displayNameOf(entry))) {
                 return entry;
             }
         }
         return null;
     }
 
-    private WorkflowProperties.CatalogEntry findCatalogById(String workflowId) {
-        if (!StringUtils.hasText(workflowId) || workflowProperties.getCatalog() == null) {
-            return null;
-        }
-        for (WorkflowProperties.CatalogEntry entry : workflowProperties.getCatalog()) {
-            if (workflowId.equals(entry.getId())) {
-                return entry;
-            }
-        }
-        return null;
+    private WorkflowManagerClient.WorkflowCatalogEntryDto findCatalogById(String workflowId) {
+        return workflowCatalog.findEntry(workflowId);
     }
 
     private AgentPromptProperties.ModeIntent findModeByDetail(String detail) {
@@ -149,21 +140,21 @@ public class IntentLabelService {
         return null;
     }
 
-    private static String displayNameOf(WorkflowProperties.CatalogEntry entry) {
-        if (StringUtils.hasText(entry.getDisplayName())) {
-            return entry.getDisplayName();
+    private static String displayNameOf(WorkflowManagerClient.WorkflowCatalogEntryDto entry) {
+        if (StringUtils.hasText(entry.displayName())) {
+            return entry.displayName();
         }
-        if (StringUtils.hasText(entry.getDesc())) {
-            return entry.getDesc();
+        if (StringUtils.hasText(entry.description())) {
+            return entry.description();
         }
-        return entry.getId();
+        return entry.id();
     }
 
     private String forcedIntentAfterForPlan(String q, ExecutionPlan plan) {
         AgentPromptProperties.ModeIntent mode = modeConfig(plan.mode());
         String template = modeForcedAfter(mode, plan.mode());
         if (plan.mode() == ExecutionMode.WORKFLOW) {
-            WorkflowProperties.CatalogEntry entry = findCatalogById(plan.workflowId());
+            WorkflowManagerClient.WorkflowCatalogEntryDto entry = findCatalogById(plan.workflowId());
             String displayName = entry != null ? displayNameOf(entry)
                     : workflowNodeLabelService.workflowDisplayName(plan.workflowId());
             return TimelineLabelTemplates.applyTemplate(template,
@@ -192,5 +183,12 @@ public class IntentLabelService {
 
     private static String modeAfter(AgentPromptProperties.ModeIntent mode, String fallback) {
         return StringUtils.hasText(mode.getAfter()) ? mode.getAfter() : fallback;
+    }
+
+    private String workflowIntentAfterTemplate(WorkflowManagerClient.WorkflowCatalogEntryDto entry) {
+        if (entry != null && StringUtils.hasText(entry.intentAfter())) {
+            return entry.intentAfter().strip();
+        }
+        return modeAfter(modeConfig(ExecutionMode.WORKFLOW), "{query}将按「{displayName}」流程处理");
     }
 }

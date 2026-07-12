@@ -26,6 +26,13 @@ class ToolTimelineSummaryEngineTest {
     }
 
     @Test
+    void extractBindings_parsesNamedFields() {
+        String extract = "{\"count\":\"regex:共\\\\s*(\\\\d+)\\\\s*条\"}";
+        String raw = "共 3 条 OA 待办：\n- [2001] 请假";
+        assertThat(engine.extractBindings(extract, raw)).containsEntry("count", "3");
+    }
+
+    @Test
     void outputBuiltin_firstLine() {
         assertThat(engine.resolve("{output}", null, "已审批待办 1004（模拟写操作）", 80))
                 .isEqualTo("已审批待办 1004（模拟写操作）");

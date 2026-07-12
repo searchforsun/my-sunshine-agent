@@ -5,13 +5,18 @@
   "description": "待审批是否合规、制度与待办单据对比分析（含 Agent 推理）",
   "mode": "workflow",
   "enabled": true,
-  "source": "import",
+  "source": "seed",
   "catalog": {
     "examples": [
       "待审批报销是否合规",
       "对比制度与待办"
     ],
-    "nodeSummary": ["start", "tool", "agent", "answer"]
+    "nodeSummary": [
+      "start",
+      "tool",
+      "agent",
+      "answer"
+    ]
   },
   "plan": {
     "planId": null,
@@ -24,25 +29,31 @@
         "params": {}
       },
       {
-        "id": "finance-list",
+        "id": "tool-d4e8f901",
         "type": "tool",
         "displayName": "查询待审批财务消息",
         "params": {
-          "tool": "list_finance_messages",
-          "status": "{{plan.params.status}}"
+          "tool": "sdk__sunshine-finance__list_finance_messages",
+          "status": "{{plan.params.status}}",
+          "retry.maxAttempts": "2",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "continue"
         }
       },
       {
-        "id": "analyze",
+        "id": "agent-b2c6d803",
         "type": "agent",
         "displayName": "智能体分析",
         "params": {
           "query": "{{start.userQuery}}",
-          "context": "{{finance-list.output}}",
+          "context": "{{tool-d4e8f901.output}}",
           "skill": "finance-analysis",
-          "tools": "list_finance_messages",
+          "tools": "sdk__sunshine-finance__list_finance_messages",
           "maxIters": "4",
-          "systemOverlay": "本节点仅输出内部分析结论，不面向用户；禁止调用白名单外工具"
+          "systemOverlay": "本节点仅输出内部分析结论，不面向用户；禁止调用白名单外工具",
+          "retry.maxAttempts": "1",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "continue"
         }
       },
       {
@@ -50,14 +61,17 @@
         "type": "answer",
         "displayName": "生成回答",
         "params": {
-          "prompt": "根据 Agent 分析结果生成用户可见回答。\n\n约束：禁止向用户暴露英文流程/工具内部名（如 finance-smart、finance-list）。\n\n分析：\n{{analyze.answer}}"
+          "prompt": "根据 Agent 分析结果生成用户可见回答。\n\n约束：禁止向用户暴露英文流程/工具内部名（如 finance-smart、finance-list）。\n\n分析：\n{{agent-b2c6d803.answer}}",
+          "retry.maxAttempts": "2",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "fail_fast"
         }
       }
     ],
     "edges": [
-      { "from": "start", "to": "finance-list" },
-      { "from": "finance-list", "to": "analyze" },
-      { "from": "analyze", "to": "answer" }
+      { "from": "start", "to": "tool-d4e8f901" },
+      { "from": "tool-d4e8f901", "to": "agent-b2c6d803" },
+      { "from": "agent-b2c6d803", "to": "answer" }
     ]
   }
 }

@@ -2,7 +2,9 @@ package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.WorkflowProperties;
+import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
+import com.sunshine.orchestrator.client.WorkflowManagerClient;
+import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import org.junit.jupiter.api.AfterEach;
@@ -29,17 +31,19 @@ class StepSummarizerTest {
 
     @Test
     void intentAfter_knowledge_mentionsQuery() {
-        WorkflowProperties workflowProps = new WorkflowProperties();
-        WorkflowProperties.CatalogEntry entry = new WorkflowProperties.CatalogEntry();
-        entry.setId("knowledge-qa");
-        entry.setDisplayName("知识库问答");
-        workflowProps.setCatalog(List.of(entry));
-        workflowProps.setDefinitions(new LinkedHashMap<>());
+        WorkflowCatalogRegistry registry = org.mockito.Mockito.mock(WorkflowCatalogRegistry.class);
+        WorkflowManagerClient client = org.mockito.Mockito.mock(WorkflowManagerClient.class);
+        WorkflowManagerClient.WorkflowCatalogEntryDto entry =
+                new WorkflowManagerClient.WorkflowCatalogEntryDto(
+                        "knowledge-qa", "workflow", "知识库问答", "查制度", List.of(), List.of(), null);
+        org.mockito.Mockito.when(registry.entries()).thenReturn(List.of(entry));
+        org.mockito.Mockito.when(registry.find("knowledge-qa")).thenReturn(entry);
+        WorkflowCatalog workflowCatalog = new WorkflowCatalog(registry, client);
         WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
-                workflowProps, Mockito.mock(ToolCatalogService.class), new AgentPromptProperties());
+                workflowCatalog, Mockito.mock(ToolCatalogService.class));
         WorkflowNodeLabels.bind(workflowLabels);
         IntentLabels.bind(new IntentLabelService(
-                new AgentPromptProperties(), workflowProps, workflowLabels));
+                new AgentPromptProperties(), workflowCatalog, registry, workflowLabels));
         String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
         assertThat(after).contains("公司考勤制度");
         assertThat(after).contains("知识库问答");

@@ -1,19 +1,13 @@
 package com.sunshine.orchestrator.execution.agent;
 
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.execution.WorkflowTimelineLabels;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
-import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-/** Workflow agent 节点时间线摘要模板 — SSOT：Nacos agent.timeline.workflow-agent */
+/** Workflow agent 节点时间线摘要模板 */
 @Service
-@RefreshScope
-@RequiredArgsConstructor
 public class AgentNodeDetailLabelService {
-
-    private final AgentPromptProperties agentPromptProperties;
 
     @PostConstruct
     void init() {
@@ -21,30 +15,19 @@ public class AgentNodeDetailLabelService {
     }
 
     public String afterWithTools(int toolCallCount) {
-        return applyTemplate(timeline().getAfterWithTools(), "{toolCallCount}", String.valueOf(toolCallCount));
+        return WorkflowTimelineLabels.apply(
+                WorkflowTimelineLabels.AGENT_AFTER_WITH_TOOLS, "{toolCallCount}", String.valueOf(toolCallCount));
     }
 
     public String afterDone() {
-        String value = timeline().getAfterDone();
-        return StringUtils.hasText(value) ? value.strip() : "智能体分析完成";
+        return WorkflowTimelineLabels.AGENT_AFTER_DONE;
     }
 
     public String skillLoadedLine(String skillLabel) {
         if (!StringUtils.hasText(skillLabel)) {
             return "";
         }
-        return applyTemplate(timeline().getSkillLoadedPrefix(), "{skillLabel}", skillLabel.strip());
-    }
-
-    private AgentPromptProperties.WorkflowAgentTimeline timeline() {
-        AgentPromptProperties.WorkflowAgentTimeline cfg = agentPromptProperties.timelineOrDefault().getWorkflowAgent();
-        return cfg != null ? cfg : new AgentPromptProperties.WorkflowAgentTimeline();
-    }
-
-    private static String applyTemplate(String template, String placeholder, String value) {
-        if (!StringUtils.hasText(template)) {
-            return "";
-        }
-        return template.strip().replace(placeholder, value != null ? value : "");
+        return WorkflowTimelineLabels.apply(
+                WorkflowTimelineLabels.AGENT_SKILL_LOADED_PREFIX, "{skillLabel}", skillLabel.strip());
     }
 }

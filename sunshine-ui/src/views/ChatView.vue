@@ -9,6 +9,7 @@ import { useChatTimelineView } from '../composables/useChatTimelineView'
 import { useChatScroll } from '../composables/useChatScroll'
 import { useChatSkillMention } from '../composables/useChatSkillMention'
 import { useChatExpertMention } from '../composables/useChatExpertMention'
+import { useChatWorkflowMention } from '../composables/useChatWorkflowMention'
 import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
 import { useChatSessionHydration } from '../composables/useChatSessionHydration'
 import { useChatStore } from '../stores/chatStore'
@@ -39,8 +40,9 @@ import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { useKbPreference } from '../composables/useKbPreference'
 import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
 import { useTenantPreference } from '../composables/useTenantPreference'
-import { allowsExpertMention, allowsSkillMention } from '../api/executionModes'
+import { allowsExpertMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
+import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
 import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
@@ -300,14 +302,28 @@ const {
   showExpertSuggest,
   expertSuggestIndex,
   filteredExperts,
+  expertCatalog,
+  expertMentionAllowed,
   applyExpertSuggest,
   loadExpertCatalog,
   handleExpertKeydown,
 } = useChatExpertMention(inputText, preference, loading)
 
+const {
+  showWorkflowSuggest,
+  workflowSuggestIndex,
+  filteredWorkflows,
+  workflowCatalog,
+  workflowMentionAllowed,
+  applyWorkflowSuggest,
+  loadWorkflowCatalog,
+  handleWorkflowKeydown,
+} = useChatWorkflowMention(inputText, preference, loading)
+
 const composerPlaceholder = computed(() => {
   const parts = ['发消息，Enter 发送']
   if (allowsSkillMention(preference.value)) parts.push('输入 @ 指定 Skill')
+  if (allowsWorkflowMention(preference.value)) parts.push('输入 # 指定工作流')
   if (allowsExpertMention(preference.value)) parts.push('输入 $ 指定专家')
   return parts.join('；')
 })
@@ -377,10 +393,12 @@ async function handleSend() {
     sessionSettledHtml.delete(convId)
     clearStreamRenderer()
     await nextTick()
-    const binding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
+    const skillBinding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
+    const workflowBinding = resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value)
     const sendPromise = send(text, convId, {
       executionPreference: preference.value,
-      skillId: binding.skillId,
+      skillId: skillBinding.skillId,
+      workflowId: workflowBinding.workflowId,
       kbId: kbId.value,
     })
     chatStore.updateExecutionPreferenceLocal(convId, preference.value)
@@ -418,6 +436,7 @@ async function handleResume() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (handleWorkflowKeydown(e)) return
   if (handleExpertKeydown(e)) return
   handleSkillKeydown(e, () => { void handleSend() })
 }
@@ -426,6 +445,7 @@ onMounted(async () => {
   setChatRouteActive(true)
   void loadSkillCatalog()
   void loadExpertCatalog()
+  void loadWorkflowCatalog()
   sessionHydrating.value = true
   try {
     await chatStore.init()
@@ -597,6 +617,8 @@ watch(
               <UserMessageContent
                 :content="msg.content"
                 :catalog="skillCatalog"
+                :expert-catalog="expertCatalog"
+                :workflow-catalog="workflowCatalog"
                 :execution-preference="msg.executionPreference"
               />
             </div>
@@ -694,14 +716,25 @@ watch(
           class="composer-box composer-box--input"
           :class="{ 'composer-box--busy': loading }"
         >
-          <ul v-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">
+          <ul v-if="showWorkflowSuggest && filteredWorkflows.length && !loading" class="skill-suggest">
+            <li
+              v-for="(wf, idx) in filteredWorkflows"
+              :key="wf.id"
+              :class="{ 'is-highlighted': idx === workflowSuggestIndex }"
+              @mousedown.prevent="applyWorkflowSuggest(wf)"
+            >
+              <span class="skill-suggest-id is-workflow">#{{ wf.id }}</span>
+              <span class="skill-suggest-name">{{ wf.displayName }}</span>
+            </li>
+          </ul>
+          <ul v-else-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">
             <li
               v-for="(expert, idx) in filteredExperts"
               :key="expert.id"
               :class="{ 'is-highlighted': idx === expertSuggestIndex }"
               @mousedown.prevent="applyExpertSuggest(expert)"
             >
-              <span class="skill-suggest-id">${{ expert.id }}</span>
+              <span class="skill-suggest-id is-expert">${{ expert.id }}</span>
               <span class="skill-suggest-name">{{ expert.displayName }}</span>
             </li>
           </ul>
@@ -712,7 +745,7 @@ watch(
               :class="{ 'is-highlighted': idx === skillSuggestIndex }"
               @mousedown.prevent="applySkillSuggest(skill)"
             >
-              <span class="skill-suggest-id">@{{ skill.id }}</span>
+              <span class="skill-suggest-id is-skill">@{{ skill.id }}</span>
               <span class="skill-suggest-name">{{ skill.displayName }}</span>
             </li>
           </ul>
@@ -726,7 +759,11 @@ watch(
               ref="inputRef"
               v-model="inputText"
               :allows-skill-mention="skillMentionAllowed"
+              :allows-expert-mention="expertMentionAllowed"
+              :allows-workflow-mention="workflowMentionAllowed"
               :catalog="skillCatalog"
+              :expert-catalog="expertCatalog"
+              :workflow-catalog="workflowCatalog"
               :placeholder="composerPlaceholder"
               @keydown="handleKeydown"
             />
@@ -1223,11 +1260,22 @@ watch(
 .skill-suggest-id {
   font-family: var(--sun-font-mono);
   font-size: var(--sun-font-base);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
-  color: var(--sun-text);
   flex-shrink: 0;
+}
+
+.skill-suggest-id.is-skill {
+  color: var(--mention-skill-prefix);
+}
+
+.skill-suggest-id.is-expert {
+  color: var(--mention-expert-prefix);
+}
+
+.skill-suggest-id.is-workflow {
+  color: var(--mention-workflow-prefix);
 }
 
 .skill-suggest-name {

@@ -761,6 +761,7 @@ onUnmounted(() => {
   --n-color-focus: var(--sun-black) !important;
   --n-color-disabled: var(--sun-black) !important;
   --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
   --n-placeholder-color: var(--sun-text-muted) !important;
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;

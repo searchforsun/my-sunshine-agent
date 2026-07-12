@@ -1,11 +1,12 @@
 # ============================================================
-# sunshine-workflows — Nacos 配置
+# sunshine-workflows — Nacos 配置（已废弃，仅作历史参考）
 # Data ID: sunshine-workflows.yaml
 # Group:   DEFAULT_GROUP
 #
 # ⚠️ 已废弃（2026-07-11）：Workflow 定义迁至 workflow-manager DB。
 #    运行时 SSOT：docker/mysql/init/13-sunshine-workflow-manager.sql 种子
-#    + /workflows Studio。本文件仅作迁移参考，勿再 sync_nacos。
+#    文档模板：docs/workflow/*.json（与 init SQL 同构，见 docs/workflow/README.md）
+#    + /workflows Studio。本文件勿再 sync_nacos。
 #    详设：docs/superpowers/specs/2026-06-25-workflow-studio-design.md
 # ============================================================
 

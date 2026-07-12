@@ -117,6 +117,7 @@ export function formatPlanNodeType(type: string): string {
     tool: '工具调用',
     llm: '综合分析',
     agent: '子 Agent',
+    join: '汇总',
     answer: '汇总输出',
     start: '开始',
   }

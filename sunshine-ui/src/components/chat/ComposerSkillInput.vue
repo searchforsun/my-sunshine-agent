@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { SkillCatalogIndexEntry } from '../../api/skills'
+import type { ExpertCatalogIndexEntry } from '../../api/experts'
+import type { WorkflowCatalogEntry } from '../../api/workflows'
 import {
   displaySegments,
   editorNeedsChipSync,
@@ -9,12 +11,17 @@ import {
   renderEditorSegments,
   setCaretPlainOffset,
   shouldRenderChips,
+  type ComposerMentionContext,
 } from '../../utils/skillMentionEditor'
 
 const props = defineProps<{
   modelValue: string
   allowsSkillMention: boolean
+  allowsExpertMention?: boolean
+  allowsWorkflowMention?: boolean
   catalog: SkillCatalogIndexEntry[]
+  expertCatalog?: ExpertCatalogIndexEntry[]
+  workflowCatalog?: WorkflowCatalogEntry[]
   placeholder?: string
 }>()
 
@@ -28,7 +35,24 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const syncing = ref(false)
 const isComposing = ref(false)
 
-const useChipEditor = computed(() => props.allowsSkillMention)
+const mentionContext = computed<ComposerMentionContext>(() => ({
+  catalogs: {
+    skills: props.catalog,
+    experts: props.expertCatalog ?? [],
+    workflows: props.workflowCatalog ?? [],
+  },
+  allows: {
+    skill: props.allowsSkillMention,
+    expert: props.allowsExpertMention ?? false,
+    workflow: props.allowsWorkflowMention ?? false,
+  },
+}))
+
+const useChipEditor = computed(() =>
+  mentionContext.value.allows.skill
+  || mentionContext.value.allows.expert
+  || mentionContext.value.allows.workflow,
+)
 
 function resizeTextarea(el: HTMLTextAreaElement) {
   el.style.height = 'auto'
@@ -45,7 +69,7 @@ function syncChipEditor(plain: string, caret?: number) {
   if (!el) return
   syncing.value = true
   const offset = caret ?? getCaretPlainOffset(el)
-  const segments = displaySegments(plain, true, props.catalog)
+  const segments = displaySegments(plain, mentionContext.value)
   renderEditorSegments(el, segments)
   setCaretPlainOffset(el, offset)
   resizeEditor(el)
@@ -87,10 +111,10 @@ watch(useChipEditor, () => {
 })
 
 watch(
-  () => props.catalog,
+  mentionContext,
   () => {
     if (!useChipEditor.value || syncing.value) return
-    if (shouldRenderChips(props.modelValue, true, props.catalog)) {
+    if (shouldRenderChips(props.modelValue, mentionContext.value)) {
       syncChipEditor(props.modelValue)
     }
   },
@@ -109,7 +133,7 @@ function onEditorInput() {
     resizeEditor(el)
     return
   }
-  if (editorNeedsChipSync(el, plain, true, props.catalog)) {
+  if (editorNeedsChipSync(el, plain, mentionContext.value)) {
     syncChipEditor(plain, caret)
   } else {
     resizeEditor(el)
@@ -122,7 +146,7 @@ function onCompositionEnd() {
   const el = editorRef.value
   const plain = plainTextFromEditor(el)
   const caret = getCaretPlainOffset(el)
-  if (editorNeedsChipSync(el, plain, true, props.catalog)) {
+  if (editorNeedsChipSync(el, plain, mentionContext.value)) {
     syncChipEditor(plain, caret)
   } else {
     resizeEditor(el)

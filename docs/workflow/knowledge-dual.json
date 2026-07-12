@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "workflowId": "knowledge-dual",
+  "displayName": "双路知识检索",
+  "description": "制度与财务知识库并行检索后汇总回答（4.7.2 join 标杆）",
+  "mode": "workflow",
+  "enabled": true,
+  "source": "seed",
+  "catalog": {
+    "examples": [
+      "年假和报销制度一起查",
+      "制度与财务规定对比"
+    ],
+    "nodeSummary": [
+      "start",
+      "rag",
+      "join",
+      "answer"
+    ]
+  },
+  "plan": {
+    "planId": null,
+    "reason": "4.7.2 并行双 RAG 标杆",
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "displayName": "开始",
+        "params": {}
+      },
+      {
+        "id": "rag-a1b2c3d4",
+        "type": "rag",
+        "displayName": "制度检索",
+        "params": {
+          "query": "{{start.userQuery}}",
+          "topK": "3",
+          "retry.maxAttempts": "1",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "continue"
+        }
+      },
+      {
+        "id": "rag-e5f6a7b8",
+        "type": "rag",
+        "displayName": "财务检索",
+        "params": {
+          "query": "{{start.userQuery}}",
+          "topK": "3",
+          "retry.maxAttempts": "1",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "continue"
+        }
+      },
+      {
+        "id": "join-c9d0e1f2",
+        "type": "join",
+        "displayName": "汇总",
+        "params": {
+          "retry.maxAttempts": "2",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "continue"
+        }
+      },
+      {
+        "id": "answer",
+        "type": "answer",
+        "displayName": "生成回答",
+        "params": {
+          "prompt": "你是企业知识助手。综合下方「制度检索」与「财务检索」结果回答，不得编造。\n\n若两路均为空，回复：企业知识库中暂无相关规定。\n禁止暴露 knowledge-dual 等内部名称。\n\n制度检索：\n{{rag-a1b2c3d4.output}}\n\n财务检索：\n{{rag-e5f6a7b8.output}}",
+          "retry.maxAttempts": "2",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "fail_fast"
+        }
+      }
+    ],
+    "edges": [
+      { "from": "start", "to": "rag-a1b2c3d4" },
+      { "from": "start", "to": "rag-e5f6a7b8" },
+      { "from": "rag-a1b2c3d4", "to": "join-c9d0e1f2" },
+      { "from": "rag-e5f6a7b8", "to": "join-c9d0e1f2" },
+      { "from": "join-c9d0e1f2", "to": "answer" }
+    ]
+  }
+}

@@ -15,11 +15,13 @@ import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 工具调用节点 — 委托 tool-manager，params 统一透传；写工具走 HITL（streamCtx.workflowHitl）
@@ -28,6 +30,9 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class ToolNodeHandler implements NodeHandler {
+
+    private static final Set<String> RESERVED_INVOKE_KEYS = Set.of(
+            "tool", "output.mode", "output.extract");
 
     private final ToolManagerClient toolManagerClient;
     private final ToolCatalogService toolCatalogService;
@@ -44,7 +49,7 @@ public class ToolNodeHandler implements NodeHandler {
         String tool = spec.params().getOrDefault("tool", "");
         Map<String, String> invokeParams = new LinkedHashMap<>();
         spec.params().forEach((k, v) -> {
-            if (!"tool".equals(k)) {
+            if (!RESERVED_INVOKE_KEYS.contains(k)) {
                 invokeParams.put(k, v);
             }
         });
@@ -59,7 +64,12 @@ public class ToolNodeHandler implements NodeHandler {
                     Map<String, String> outputs = new LinkedHashMap<>();
                     outputs.put("output", text);
                     outputs.put("tool", tool);
-                    outputs.put("detail", summarizeToolOutput(tool, text));
+                    String summary = summarizeToolOutput(tool, text);
+                    if (StringUtils.hasText(summary)) {
+                        outputs.put("summary", summary.strip());
+                    }
+                    outputs.put("detail", summary);
+                    appendParsedOutputs(outputs, spec.params(), text);
                     return NodeResult.ok(outputs);
                 })
                 .doOnSuccess(result -> auditToolCall(spec, streamCtx, tool, invokeParams, result))
@@ -136,5 +146,23 @@ public class ToolNodeHandler implements NodeHandler {
 
     private String summarizeToolOutput(String tool, String text) {
         return toolCatalogService.timelineSummary(tool, text);
+    }
+
+    private void appendParsedOutputs(Map<String, String> outputs, Map<String, String> params, String text) {
+        if (params == null || !"extract".equals(params.get("output.mode"))) {
+            return;
+        }
+        String extractJson = params.get("output.extract");
+        if (!StringUtils.hasText(extractJson)) {
+            return;
+        }
+        Map<String, String> parsed = toolManagerClient.extractBindingsMono(extractJson, text)
+                .blockOptional()
+                .orElse(Map.of());
+        parsed.forEach((key, value) -> {
+            if (StringUtils.hasText(key) && value != null) {
+                outputs.put("parsed." + key.strip(), value);
+            }
+        });
     }
 }

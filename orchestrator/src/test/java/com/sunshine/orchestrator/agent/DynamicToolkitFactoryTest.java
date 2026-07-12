@@ -77,7 +77,16 @@ class DynamicToolkitFactoryTest {
     }
 
     @Test
-    void build_withExplicitWhitelist_registersOnlyListedTools() {
+    void buildForSubAgent_withoutExtraTools_registersSearchKnowledgeOnly() {
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+
+        var toolkit = factory.buildForSubAgent(null, "default");
+
+        assertThat(toolkit.getToolNames()).containsExactly(RagTool.NAME);
+    }
+
+    @Test
+    void buildForSubAgent_withExplicitWhitelist_includesRagAndListedTools() {
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
                 "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, java.util.Map.of(), "read", false, true, true, null);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
@@ -95,14 +104,14 @@ class DynamicToolkitFactoryTest {
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         financeEntry, toolManagerClient, toolAuditService, hitlService)));
 
-        var toolkit = factory.build(List.of("sdk__sunshine-finance__list_finance_messages"));
+        var toolkit = factory.buildForSubAgent(List.of("sdk__sunshine-finance__list_finance_messages"), "default");
 
         assertThat(toolkit.getToolNames()).containsExactly(
                 RagTool.NAME, "sdk__sunshine-finance__list_finance_messages");
     }
 
     @Test
-    void build_withMcpKindTool_registersRemoteAgentTool() {
+    void build_withExplicitWhitelist_registersOnlyListedTools() {
         ToolCatalogEntry mcpEntry = new ToolCatalogEntry(
                 "mcp_search", "MCP 搜索", "desc", "mcp", "mcp", "demo-server", "", null, java.util.Map.of(), "read", false, true, true, null);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =

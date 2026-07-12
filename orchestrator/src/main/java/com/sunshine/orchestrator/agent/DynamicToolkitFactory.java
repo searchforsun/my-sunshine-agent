@@ -16,7 +16,7 @@ import java.util.Set;
 
 /**
  * 按 MySQL ToolSet + Catalog 启用池动态组装 Toolkit。
- * 非 simple-llm 的 ReAct 路径均硬编码注入 {@link RagTool}（企业知识库检索），与工具集成员无关。
+ * 非 simple-llm 的 ReAct 路径均硬编码注入 {@link RagTool}；Workflow 子 Agent 亦始终含 RAG，另可加节点 tools 白名单。
  */
 @Slf4j
 @Component
@@ -50,17 +50,35 @@ public class DynamicToolkitFactory {
         if (toolWhitelist == null || toolWhitelist.isEmpty()) {
             return build(tenantId);
         }
-        return buildFromWhitelist(toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId));
+        return buildFromWhitelist(toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId), ToolkitScope.MAIN);
+    }
+
+    /** Workflow 子 Agent：始终含 search_knowledge；可选 tools 白名单追加业务工具（不含 manage_tasks） */
+    public Toolkit buildForSubAgent(List<String> toolWhitelist, String tenantId) {
+        List<String> whitelist = toolWhitelist == null || toolWhitelist.isEmpty()
+                ? List.of()
+                : toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId);
+        return buildFromWhitelist(whitelist, ToolkitScope.SUB);
+    }
+
+    private enum ToolkitScope {
+        MAIN, SUB
     }
 
     private Toolkit buildFromWhitelist(List<String> whitelist) {
+        return buildFromWhitelist(whitelist, ToolkitScope.MAIN);
+    }
+
+    private Toolkit buildFromWhitelist(List<String> whitelist, ToolkitScope scope) {
         Toolkit tk = new Toolkit();
         List<String> registered = new ArrayList<>();
         Set<String> registeredRemote = new HashSet<>();
         List<String> missing = new ArrayList<>();
 
-        tk.registerAgentTool(ragTool);
-        registered.add(RagTool.NAME);
+        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {
+            tk.registerAgentTool(ragTool);
+            registered.add(RagTool.NAME);
+        }
 
         for (String toolName : whitelist) {
             if (toolName == null || toolName.isBlank()) {
@@ -85,10 +103,12 @@ public class DynamicToolkitFactory {
             }, () -> missing.add(toolName));
         }
 
-        AgentExecutionProperties.React react = executionProperties.getReact();
-        if (react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled()) {
-            tk.registerTool(manageTasksTool);
-            registered.add(ManageTasksTool.NAME);
+        if (scope == ToolkitScope.MAIN) {
+            AgentExecutionProperties.React react = executionProperties.getReact();
+            if (react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled()) {
+                tk.registerTool(manageTasksTool);
+                registered.add(ManageTasksTool.NAME);
+            }
         }
 
         if (!missing.isEmpty()) {

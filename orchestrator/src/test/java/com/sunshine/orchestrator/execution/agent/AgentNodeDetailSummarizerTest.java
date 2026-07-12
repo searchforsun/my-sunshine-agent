@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.execution.agent;
 
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.execution.agent.AgentNodeDetailLabelService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,7 +12,7 @@ class AgentNodeDetailSummarizerTest {
 
     @BeforeEach
     void bindLabels() {
-        AgentNodeDetailSummarizer.bind(new AgentNodeDetailLabelService(new AgentPromptProperties()));
+        AgentNodeDetailSummarizer.bind(new AgentNodeDetailLabelService());
     }
 
     @AfterEach

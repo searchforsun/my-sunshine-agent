@@ -5,13 +5,17 @@
   "description": "统计各状态财务消息条数与金额",
   "mode": "workflow",
   "enabled": true,
-  "source": "import",
+  "source": "seed",
   "catalog": {
     "examples": [
       "待审批有多少条",
       "pending 财务总额"
     ],
-    "nodeSummary": ["start", "tool", "answer"]
+    "nodeSummary": [
+      "start",
+      "tool",
+      "answer"
+    ]
   },
   "plan": {
     "planId": null,
@@ -24,12 +28,15 @@
         "params": {}
       },
       {
-        "id": "finance-summary",
+        "id": "tool-a9c1e502",
         "type": "tool",
         "displayName": "统计财务消息",
         "params": {
-          "tool": "summarize_finance_by_status",
-          "status": "{{plan.params.status}}"
+          "tool": "sdk__sunshine-finance__summarize_finance_by_status",
+          "status": "{{plan.params.status}}",
+          "retry.maxAttempts": "2",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "continue"
         }
       },
       {
@@ -37,13 +44,16 @@
         "type": "answer",
         "displayName": "生成回答",
         "params": {
-          "prompt": "根据财务汇总工具结果回答用户。\n\n约束：禁止向用户暴露英文流程/工具内部名。\n\n汇总：\n{{finance-summary.output}}"
+          "prompt": "根据财务汇总工具结果回答用户。\n\n约束：禁止向用户暴露英文流程/工具内部名。\n\n汇总：\n{{tool-a9c1e502.output}}",
+          "retry.maxAttempts": "2",
+          "retry.backoffMs": "500",
+          "retry.onFailure": "fail_fast"
         }
       }
     ],
     "edges": [
-      { "from": "start", "to": "finance-summary" },
-      { "from": "finance-summary", "to": "answer" }
+      { "from": "start", "to": "tool-a9c1e502" },
+      { "from": "tool-a9c1e502", "to": "answer" }
     ]
   }
 }

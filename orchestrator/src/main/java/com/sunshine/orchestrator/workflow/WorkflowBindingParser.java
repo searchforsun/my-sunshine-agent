@@ -31,4 +31,32 @@ public class WorkflowBindingParser {
         }
         return WorkflowBindingOutcome.bound(token.strip(), rest);
     }
+
+    /**
+     * L0 绑定：优先 Chat 请求体 workflowId（# chip 已解析），再回落正文 #mention。
+     */
+    public WorkflowBindingOutcome resolve(String userMessage, String clientWorkflowId) {
+        if (StringUtils.hasText(clientWorkflowId)) {
+            String workflowId = clientWorkflowId.strip();
+            if (!workflowCatalog.isKnownWorkflow(workflowId)) {
+                return WorkflowBindingOutcome.unknown(workflowId);
+            }
+            WorkflowBindingOutcome parsed = parse(userMessage);
+            String effectiveQuery = parsed.bound() && workflowId.equals(parsed.workflowId())
+                    ? parsed.effectiveQuery()
+                    : effectiveQueryAfterMention(userMessage, workflowId);
+            return WorkflowBindingOutcome.bound(workflowId, effectiveQuery);
+        }
+        return parse(userMessage);
+    }
+
+    private static String effectiveQueryAfterMention(String userMessage, String workflowId) {
+        String trimmed = userMessage != null ? userMessage.strip() : "";
+        String prefix = "#" + workflowId;
+        if (trimmed.regionMatches(true, 0, prefix, 0, prefix.length())) {
+            String rest = trimmed.substring(prefix.length()).strip();
+            return StringUtils.hasText(rest) ? rest : "请处理";
+        }
+        return StringUtils.hasText(trimmed) ? trimmed : "请处理";
+    }
 }

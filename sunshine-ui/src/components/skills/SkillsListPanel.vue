@@ -115,7 +115,9 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
 .search-input {
   --n-color: var(--sun-black) !important;
   --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
   --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
   --n-placeholder-color: var(--sun-text-muted) !important;
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;

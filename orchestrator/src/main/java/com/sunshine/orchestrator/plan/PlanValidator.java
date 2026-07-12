@@ -87,6 +87,10 @@ public class PlanValidator {
         if (!hasAnswer) {
             return "Plan 须包含引擎固定 answer 节点";
         }
+        String parallelErr = PlanExecutionSchedule.validateParallelTopology(plan);
+        if (parallelErr != null) {
+            return parallelErr;
+        }
         return null;
     }
 

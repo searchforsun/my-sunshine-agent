@@ -42,6 +42,10 @@ class PlanMaterializerTest {
         WorkflowDefinition def = materializer.materialize(plan);
         assertThat(def.id()).isEqualTo("dyn-1");
         assertThat(def.linearOrder()).containsExactly("n1", "n2", "n3");
+        assertThat(def.executionSteps()).containsExactly(
+                new PlanExecutionSchedule.Single("n1"),
+                new PlanExecutionSchedule.Single("n2"),
+                new PlanExecutionSchedule.Single("n3"));
         assertThat(def.node("n1").type()).isEqualTo("rag");
     }
 

@@ -1,14 +1,16 @@
 package com.sunshine.orchestrator.processing;
 
-import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.WorkflowProperties;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
+import com.sunshine.orchestrator.routing.WorkflowCatalog;
+import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import org.mockito.Mockito;
 
 import java.util.LinkedHashMap;
@@ -32,14 +34,16 @@ public final class TimelineLabelTestSupport {
 
     public static ToolCatalogService bindDefaults() {
         AgentPromptProperties agentProps = new AgentPromptProperties();
-        WorkflowProperties workflowProps = new WorkflowProperties();
-        workflowProps.setDefinitions(new LinkedHashMap<>());
         SkillCatalogService skillCatalog = Mockito.mock(SkillCatalogService.class);
         ToolCatalogService toolCatalog = Mockito.mock(ToolCatalogService.class);
+        WorkflowCatalogRegistry catalogRegistry = Mockito.mock(WorkflowCatalogRegistry.class);
+        WorkflowManagerClient workflowManagerClient = Mockito.mock(WorkflowManagerClient.class);
+        WorkflowCatalog workflowCatalog = new WorkflowCatalog(catalogRegistry, workflowManagerClient);
         stubDefaultSummarize(toolCatalog);
-        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(workflowProps, toolCatalog, agentProps);
+        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
+                workflowCatalog, toolCatalog);
         WorkflowNodeLabels.bind(workflowLabels);
-        WorkflowNodeCompletionLabels.bind(new WorkflowNodeCompletionLabelService(agentProps));
+        WorkflowNodeCompletionLabels.bind(new WorkflowNodeCompletionLabelService());
         StepLabels.bind(toolCatalog);
         SkillLoadLabels.bind(new SkillLoadLabelService(skillCatalog, agentProps));
         PlanApprovalLabels.bind(new PlanApprovalLabelService(agentProps));
@@ -51,7 +55,8 @@ public final class TimelineLabelTestSupport {
         ThinkStepLabelService thinkStepLabelService = new ThinkStepLabelService(agentProps);
         IntentLabelService intentLabelService = new IntentLabelService(
                 agentProps,
-                workflowProps,
+                workflowCatalog,
+                catalogRegistry,
                 workflowLabels);
         IntentLabels.bind(intentLabelService);
         TimelineLabels.bind(timelineStepLabelService);

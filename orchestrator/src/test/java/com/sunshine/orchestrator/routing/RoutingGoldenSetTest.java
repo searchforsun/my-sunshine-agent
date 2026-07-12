@@ -496,6 +496,70 @@ class RoutingGoldenSetTest {
         verify(intentRouter, never()).classifyPlan(anyString());
     }
 
+    // --- §I Workflow `#` 绑定（routing-golden-set.md） ---
+
+    @Test
+    void workflowI1_hashKnowledgeQa() {
+        when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
+        ExecutionPlan plan = router.route("#knowledge-qa 年假可以请几天").block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
+        assertThat(plan.reason()).isEqualTo("workflow:#mention");
+        assertThat(plan.params().get("effectiveQuery")).isEqualTo("年假可以请几天");
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void workflowI2_hashKnowledgeQaReimbursement() {
+        when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
+        ExecutionPlan plan = router.route("#knowledge-qa 报销流程是什么").block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
+        assertThat(plan.reason()).isEqualTo("workflow:#mention");
+    }
+
+    @Test
+    void workflowI3_hashFinanceSmartOverridesRules() {
+        when(workflowCatalog.isKnownWorkflow("finance-smart")).thenReturn(true);
+        ExecutionPlan plan = router.route("#finance-smart 待审批报销是否合规").block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("finance-smart");
+        assertThat(plan.reason()).isEqualTo("workflow:#mention");
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void workflowI4_unknownWorkflowNotFound() {
+        when(workflowCatalog.isKnownWorkflow("not-exists")).thenReturn(false);
+        assertThatThrownBy(() -> router.route("#not-exists 测试").block())
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(OrchestratorErrorCode.WORKFLOW_NOT_FOUND);
+    }
+
+    @Test
+    void workflowI6_clientWorkflowIdBindsWithoutLlm() {
+        when(workflowCatalog.isKnownWorkflow("security-analyze")).thenReturn(true);
+        ExecutionPlan plan = router.route(new RoutingContext(
+                "请继续分析", null, ExecutionPreference.AUTO, "security-analyze", null)).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("security-analyze");
+        assertThat(plan.reason()).isEqualTo("workflow:client");
+        assertThat(plan.params().get("effectiveQuery")).isEqualTo("请继续分析");
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void workflowI5_atKnowledgeQaNotWorkflow() {
+        String query = "@knowledge-qa 测试";
+        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
+        when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(new ExecutionPlan(
+                ExecutionMode.REACT, null, Map.of(), "llm")));
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.workflowId()).isNull();
+        assertThat(plan.mode()).isNotEqualTo(ExecutionMode.WORKFLOW);
+    }
+
     // --- §K Expert `$` 绑定（routing-golden-set.md） ---
 
     @Test

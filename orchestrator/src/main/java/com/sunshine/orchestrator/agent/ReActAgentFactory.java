@@ -8,6 +8,7 @@ import io.agentscope.core.ReActAgent;
 import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -15,6 +16,7 @@ import org.springframework.util.StringUtils;
 /**
  * 每次对话创建独立 ReActAgent，避免单例残留 pending tool call / 并发冲突。
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ReActAgentFactory {
@@ -35,6 +37,10 @@ public class ReActAgentFactory {
 
     public ReActAgent create(AgentRunRequest request) {
         String bridgeId = request.resolveBridgeId();
+        Toolkit toolkit = resolveToolkit(request);
+        int maxIters = resolveMaxIters(request);
+        log.info("[ReActAgentFactory] role={} skill={} tools={} maxIters={}",
+                request.role(), request.skillId(), toolkit.getToolNames(), maxIters);
         OpenAIChatModel model = OpenAIChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(modelName)
@@ -46,9 +52,9 @@ public class ReActAgentFactory {
                 .name(resolveAgentName(request))
                 .sysPrompt(composeSystemPrompt(request))
                 .model(model)
-                .toolkit(resolveToolkit(request))
+                .toolkit(toolkit)
                 .hook(stepHookFactory.forBridge(bridgeId))
-                .maxIters(resolveMaxIters(request))
+                .maxIters(maxIters)
                 .build();
     }
 
@@ -66,10 +72,8 @@ public class ReActAgentFactory {
     }
 
     Toolkit resolveToolkit(AgentRunRequest request) {
-        if (request.role() == AgentRole.SUB
-                && request.toolWhitelist() != null
-                && !request.toolWhitelist().isEmpty()) {
-            return dynamicToolkitFactory.build(request.toolWhitelist(), request.tenantId());
+        if (request.role() == AgentRole.SUB) {
+            return dynamicToolkitFactory.buildForSubAgent(request.toolWhitelist(), request.tenantId());
         }
         return dynamicToolkitFactory.build(request.tenantId());
     }

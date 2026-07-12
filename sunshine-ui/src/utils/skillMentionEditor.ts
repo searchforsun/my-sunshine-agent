@@ -1,5 +1,23 @@
 import type { SkillCatalogIndexEntry } from '../api/skills'
-import { segmentSkillMentions, type SkillMentionSegment } from './skillMention'
+import type { ExpertCatalogIndexEntry } from '../api/experts'
+import type { WorkflowCatalogEntry } from '../api/workflows'
+import {
+  type ChatMentionAllows,
+  type ChatMentionCatalogs,
+  type ChatMentionKind,
+  type ChatMentionSegment,
+  mentionPlainToken,
+  segmentChatMentions,
+} from './chatMention'
+
+export interface ComposerMentionContext {
+  catalogs: ChatMentionCatalogs
+  allows: ChatMentionAllows
+}
+
+function chipDataset(kind: ChatMentionKind, token: string): Record<string, string> {
+  return { mentionKind: kind, mentionId: token }
+}
 
 export function plainTextFromEditor(root: HTMLElement): string {
   let out = ''
@@ -15,8 +33,9 @@ function plainTextFromNode(node: Node): string {
   }
   if (node.nodeType !== Node.ELEMENT_NODE) return ''
   const el = node as HTMLElement
-  const skillId = el.dataset.skillId
-  if (skillId) return `@${skillId}`
+  const kind = el.dataset.mentionKind as ChatMentionKind | undefined
+  const mentionId = el.dataset.mentionId
+  if (kind && mentionId) return mentionPlainToken(kind, mentionId)
   let out = ''
   for (const child of Array.from(node.childNodes)) {
     out += plainTextFromNode(child)
@@ -65,8 +84,10 @@ export function setCaretPlainOffset(root: HTMLElement, offset: number): void {
     }
     if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as HTMLElement
-      if (el.dataset.skillId) {
-        const len = `@${el.dataset.skillId}`.length
+      const kind = el.dataset.mentionKind as ChatMentionKind | undefined
+      const mentionId = el.dataset.mentionId
+      if (kind && mentionId) {
+        const len = mentionPlainToken(kind, mentionId).length
         if (pos + len >= target) {
           if (target <= pos) {
             range.setStartBefore(el)
@@ -94,25 +115,27 @@ export function setCaretPlainOffset(root: HTMLElement, offset: number): void {
   sel.addRange(range)
 }
 
-function createSkillChipElement(token: string): HTMLSpanElement {
+function createMentionChipElement(kind: ChatMentionKind, token: string): HTMLSpanElement {
   const chip = document.createElement('span')
-  chip.className = 'skill-mention-chip'
+  chip.className = `mention-chip mention-chip--${kind}`
   chip.contentEditable = 'false'
-  chip.dataset.skillId = token
-  const at = document.createElement('span')
-  at.className = 'skill-mention-chip__at'
-  at.textContent = '@'
+  Object.entries(chipDataset(kind, token)).forEach(([k, v]) => {
+    chip.dataset[k] = v
+  })
+  const prefix = document.createElement('span')
+  prefix.className = 'mention-chip__prefix'
+  prefix.textContent = kind === 'skill' ? '@' : kind === 'expert' ? '$' : '#'
   const label = document.createElement('span')
-  label.className = 'skill-mention-chip__label'
+  label.className = 'mention-chip__label'
   label.textContent = token
-  chip.append(at, label)
+  chip.append(prefix, label)
   return chip
 }
 
-export function renderEditorSegments(root: HTMLElement, segments: SkillMentionSegment[]): void {
+export function renderEditorSegments(root: HTMLElement, segments: ChatMentionSegment[]): void {
   root.replaceChildren()
-  const hasSkill = segments.some(s => s.type === 'skill')
-  if (!hasSkill) {
+  const hasChip = segments.some(s => s.type !== 'text')
+  if (!hasChip) {
     const text = segments[0]?.type === 'text' ? segments[0].value : ''
     if (text) root.appendChild(document.createTextNode(text))
     return
@@ -120,53 +143,67 @@ export function renderEditorSegments(root: HTMLElement, segments: SkillMentionSe
   for (const seg of segments) {
     if (seg.type === 'text') {
       if (seg.value) root.appendChild(document.createTextNode(seg.value))
+    } else if (seg.type === 'skill') {
+      root.appendChild(createMentionChipElement('skill', seg.token))
+    } else if (seg.type === 'expert') {
+      root.appendChild(createMentionChipElement('expert', seg.token))
     } else {
-      root.appendChild(createSkillChipElement(seg.token))
+      root.appendChild(createMentionChipElement('workflow', seg.token))
     }
   }
 }
 
 export function displaySegments(
   plain: string,
-  allowsSkillMention: boolean,
-  catalog: SkillCatalogIndexEntry[],
-): SkillMentionSegment[] {
-  if (!allowsSkillMention) return [{ type: 'text', value: plain }]
-  return segmentSkillMentions(plain, catalog)
+  ctx: ComposerMentionContext,
+): ChatMentionSegment[] {
+  const anyAllowed = ctx.allows.skill || ctx.allows.expert || ctx.allows.workflow
+  if (!anyAllowed) return [{ type: 'text', value: plain }]
+  return segmentChatMentions(plain, ctx.catalogs, ctx.allows)
 }
 
 export function shouldRenderChips(
   plain: string,
-  allowsSkillMention: boolean,
-  catalog: SkillCatalogIndexEntry[],
+  ctx: ComposerMentionContext,
 ): boolean {
-  if (!allowsSkillMention || !plain) return false
-  return segmentSkillMentions(plain, catalog).some(s => s.type === 'skill')
+  const anyAllowed = ctx.allows.skill || ctx.allows.expert || ctx.allows.workflow
+  if (!anyAllowed || !plain) return false
+  return segmentChatMentions(plain, ctx.catalogs, ctx.allows).some(s => s.type !== 'text')
 }
 
-/** DOM 已与 plain 中 skill 段对齐时不再整棵重建，避免打断 IME 中文输入 */
 export function editorNeedsChipSync(
   root: HTMLElement,
   plain: string,
-  allowsSkillMention: boolean,
-  catalog: SkillCatalogIndexEntry[],
+  ctx: ComposerMentionContext,
 ): boolean {
-  const domChips = Array.from(root.querySelectorAll<HTMLElement>('[data-skill-id]'))
-  if (!allowsSkillMention) {
+  const domChips = Array.from(root.querySelectorAll<HTMLElement>('[data-mention-kind][data-mention-id]'))
+  const anyAllowed = ctx.allows.skill || ctx.allows.expert || ctx.allows.workflow
+  if (!anyAllowed) {
     return domChips.length > 0
   }
-  const segments = displaySegments(plain, true, catalog)
-  const expectedSkills = segments.filter((s): s is Extract<SkillMentionSegment, { type: 'skill' }> => s.type === 'skill')
-  if (expectedSkills.length === 0) {
+  const segments = displaySegments(plain, ctx)
+  const expected = segments.filter((s): s is Exclude<ChatMentionSegment, { type: 'text' }> => s.type !== 'text')
+  if (expected.length === 0) {
     return domChips.length > 0
   }
-  if (domChips.length !== expectedSkills.length) {
+  if (domChips.length !== expected.length) {
     return true
   }
-  const domIds = domChips.map(el => el.dataset.skillId ?? '')
-  const expectedIds = expectedSkills.map(s => s.token)
-  if (domIds.some((id, i) => id !== expectedIds[i])) {
+  const domPairs = domChips.map(el => `${el.dataset.mentionKind}:${el.dataset.mentionId ?? ''}`)
+  const expectedPairs = expected.map(s => `${s.type}:${s.token}`)
+  if (domPairs.some((pair, i) => pair !== expectedPairs[i])) {
     return true
   }
   return plainTextFromEditor(root) !== plain
+}
+
+/** @deprecated 兼容旧调用 */
+export type { ChatMentionSegment as SkillMentionSegment }
+
+export function defaultMentionCatalogs(
+  skills: SkillCatalogIndexEntry[] = [],
+  experts: ExpertCatalogIndexEntry[] = [],
+  workflows: WorkflowCatalogEntry[] = [],
+): ChatMentionCatalogs {
+  return { skills, experts, workflows }
 }

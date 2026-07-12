@@ -2,7 +2,7 @@
 
 > **日期**：2026-07-11  
 > **详设 SSOT**：[2026-06-25-workflow-studio-design.md](../specs/2026-06-25-workflow-studio-design.md)  
-> **决策**：Workflow **完全 DB 单轨**；废弃 Nacos `sunshine-workflows.yaml` 与一切兼容逻辑；标杆 4 条由 **MySQL init 种子** 初始化
+> **决策**：Workflow **完全 DB 单轨**；废弃 Nacos `sunshine-workflows.yaml` 与一切兼容逻辑；标杆 **5 条**由 **MySQL init 种子** 初始化（含 `knowledge-dual`）
 
 ---
 
@@ -21,8 +21,10 @@
 ### Task 1.1 MySQL init 种子
 
 - Modify: `docker/mysql/init/13-sunshine-workflow-manager.sql`
-- 插入 4 条 `workflow_definition` + `workflow_version`（`status=published`，`enabled=1`）
-- 内容来源：`docs/workflow/*.json`；工具 ID 修正为 `sdk__sunshine-finance__*`
+- 插入 **5 条** `workflow_definition` + `workflow_version`（`status=published`，`enabled=1`，`source=seed`）
+- 内容来源：`docs/workflow/*.json`（见 `manifest.json`）；工具 ID 为 `sdk__sunshine-finance__*`
+- 节点 id=`{type}-{8位hex}`；rag 须含 `params.query`（`{{start.userQuery}}`）
+- **维护**：改 JSON 后同步 init SQL + 已部署 DB，见 [docs/workflow/README.md](../../workflow/README.md)
 
 ### Task 1.2 workflow-manager API
 
@@ -70,8 +72,8 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest
 ### Task 2.2 DAG 编辑器 MVP
 
 - 依赖: `@vue-flow/core`
-- 线性节点：start / rag / tool / agent / answer
-- 节点面板：Catalog 下拉（tools/skills）、prompt 编辑、retry 高级项
+- 线性节点：start / rag / tool / agent / answer（join 见 `knowledge-dual` 种子）
+- 节点面板：分组配置（输入/检索/输出/执行策略）；Catalog 下拉（tools/skills/kb）；tool schema 入参；tool `output.mode/extract`
 - 预览：复用 `PlanDagGraph` 样式
 
 ### Task 2.3 Chat `#` 补全
@@ -107,7 +109,9 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest
 
 ## 检查门汇总
 
-- [ ] init SQL 后 4 标杆 `#` 可命中
+- [ ] init SQL 后 **5** 标杆 `#` 可命中（含 `#knowledge-dual`）
+- [ ] 种子 rag 节点含 `params.query`；`WorkflowPlanValidatorTest` PASS
+- [ ] `docs/workflow/*.json` 与 `13-sunshine-workflow-manager.sql` 同构
 - [ ] 无 Nacos workflow 时 orchestrator 正常启动
 - [ ] Studio CRUD + 发布 + 缓存失效
 - [ ] `routing-golden-set` §B–D、§I PASS
