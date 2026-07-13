@@ -11,6 +11,8 @@ export const FALLBACK_NODE_DEFAULTS: WorkflowNodeDefaultsResponse = {
     agent: { maxAttempts: 1, backoffMs: 500, onFailure: 'continue' },
     answer: { maxAttempts: 2, backoffMs: 500, onFailure: 'fail_fast' },
     join: { maxAttempts: 2, backoffMs: 500, onFailure: 'continue' },
+    'parallel-gateway': { maxAttempts: 1, backoffMs: 500, onFailure: 'continue' },
+    'exclusive-gateway': { maxAttempts: 1, backoffMs: 500, onFailure: 'continue' },
     llm: { maxAttempts: 2, backoffMs: 500, onFailure: 'continue' },
   },
   catalog: { intentAfter: '{query}将按「{displayName}」流程处理' },

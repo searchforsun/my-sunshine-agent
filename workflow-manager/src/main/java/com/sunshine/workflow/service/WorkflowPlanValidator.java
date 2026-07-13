@@ -21,8 +21,12 @@ import java.util.regex.Pattern;
 @Component
 public class WorkflowPlanValidator {
 
-    private static final Set<String> EXEC_TYPES = Set.of("start", "rag", "tool", "agent", "answer", "llm", "join");
-    private static final Set<String> BUSINESS_TYPES = Set.of("rag", "tool", "agent", "llm", "join");
+    private static final Set<String> EXEC_TYPES = Set.of(
+            "start", "rag", "tool", "agent", "answer", "llm", "join",
+            "parallel-gateway", "exclusive-gateway");
+    private static final Set<String> BUSINESS_TYPES = Set.of("rag", "tool", "agent", "llm");
+    /** 无业务输出的路由节点（不可作为 {{node.output}} 引用源） */
+    private static final Set<String> ROUTING_ONLY_TYPES = Set.of("parallel-gateway", "exclusive-gateway");
     private static final Set<String> OUTPUT_TYPES = Set.of("rag", "tool", "join", "llm", "agent");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z0-9_.-]+)}}");
 
@@ -275,6 +279,26 @@ public class WorkflowPlanValidator {
                 return "join 节点 " + joinId + " 出度须为 1";
             }
         }
+        List<String> pgIds = types.entrySet().stream()
+                .filter(e -> "parallel-gateway".equals(e.getValue()))
+                .map(Map.Entry::getKey)
+                .toList();
+        for (String pgId : pgIds) {
+            List<String> succs = outgoing.getOrDefault(pgId, List.of());
+            if (succs.size() < 2) {
+                return "parallel-gateway 节点 " + pgId + " 出度须 ≥ 2";
+            }
+        }
+        List<String> xgIds = types.entrySet().stream()
+                .filter(e -> "exclusive-gateway".equals(e.getValue()))
+                .map(Map.Entry::getKey)
+                .toList();
+        for (String xgId : xgIds) {
+            List<String> succs = outgoing.getOrDefault(xgId, List.of());
+            if (succs.size() < 2) {
+                return "exclusive-gateway 节点 " + xgId + " 出度须 ≥ 2";
+            }
+        }
         return null;
     }
 
@@ -349,6 +373,11 @@ public class WorkflowPlanValidator {
             if ("answer".equals(producerType)) {
                 result.add(dataFlowIssue(consumerId, consumerType, path,
                         "answer 节点输出不应作为上游引用"));
+                continue;
+            }
+            if (ROUTING_ONLY_TYPES.contains(producerType)) {
+                result.add(dataFlowIssue(consumerId, consumerType, path,
+                        "网关节点「" + producerId + "」无业务输出，请勿引用占位符"));
                 continue;
             }
             if (!isValidField(producerType, field)) {

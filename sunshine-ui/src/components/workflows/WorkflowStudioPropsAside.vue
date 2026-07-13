@@ -123,6 +123,15 @@ const joinTopology = computed(() => {
   return { ...degree, okIn, okOut }
 })
 
+const gatewayTopology = computed(() => {
+  const node = page.selectedNode
+  if (!node || !page.plan) return null
+  if (node.type !== 'parallel-gateway' && node.type !== 'exclusive-gateway') return null
+  const degree = countNodeDegree(page.plan, node.id)
+  const okOut = degree.out >= 2
+  return { ...degree, okOut }
+})
+
 const defaultIntentAfter = computed(() => defaultCatalogIntentAfter(page.nodeDefaults))
 
 const catalogIntentAfterDisplay = computed({
@@ -590,7 +599,27 @@ function expand() {
                         出边 {{ joinTopology.out }} 条{{ joinTopology.okOut ? '' : '（须 = 1）' }}
                       </span>
                     </p>
-                    <p class="join-topology-hint">分叉节点（出边 ≥ 2）经各分支汇入本节点后，再连至 answer。</p>
+                    <p class="join-topology-hint">多条并行路线在此汇合，再进入后续步骤。</p>
+                  </WorkflowNodeConfigSection>
+                </template>
+                <template v-else-if="page.selectedNode.type === 'parallel-gateway'">
+                  <WorkflowNodeConfigSection title="并行分叉" :help="workflowNodeFieldHelp('parallelGatewayTopology')">
+                    <p v-if="gatewayTopology" class="join-topology-lines">
+                      <span :class="{ 'join-ok': gatewayTopology.okOut, 'join-warn': !gatewayTopology.okOut }">
+                        出边 {{ gatewayTopology.out }} 条{{ gatewayTopology.okOut ? '' : '（须 ≥ 2）' }}
+                      </span>
+                    </p>
+                    <p class="join-topology-hint">将流程拆成多条可同时执行的路线，每条路线后接具体步骤。</p>
+                  </WorkflowNodeConfigSection>
+                </template>
+                <template v-else-if="page.selectedNode.type === 'exclusive-gateway'">
+                  <WorkflowNodeConfigSection title="条件分支" :help="workflowNodeFieldHelp('exclusiveGatewayTopology')">
+                    <p v-if="gatewayTopology" class="join-topology-lines">
+                      <span :class="{ 'join-ok': gatewayTopology.okOut, 'join-warn': !gatewayTopology.okOut }">
+                        出边 {{ gatewayTopology.out }} 条{{ gatewayTopology.okOut ? '' : '（须 ≥ 2）' }}
+                      </span>
+                    </p>
+                    <p class="join-topology-hint">按条件选择其中一条路继续，同一时刻只会走一条分支。</p>
                   </WorkflowNodeConfigSection>
                 </template>
                 <WorkflowNodeConfigSection

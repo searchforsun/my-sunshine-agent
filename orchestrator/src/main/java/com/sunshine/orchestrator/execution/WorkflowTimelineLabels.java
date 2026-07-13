@@ -17,7 +17,9 @@ public final class WorkflowTimelineLabels {
     public static final String TYPE_AGENT = "智能体分析";
     public static final String TYPE_ANSWER = "生成回答";
     public static final String TYPE_TOOL = "调用工具";
-    public static final String TYPE_JOIN = "汇总";
+    public static final String TYPE_JOIN = "并行汇总";
+    public static final String TYPE_PARALLEL_GATEWAY = "并行分叉";
+    public static final String TYPE_EXCLUSIVE_GATEWAY = "条件分支";
 
     public static final String AGENT_AFTER_WITH_TOOLS = "已完成 {toolCallCount} 次工具调用的综合分析";
     public static final String AGENT_AFTER_DONE = "智能体分析完成";
@@ -44,6 +46,8 @@ public final class WorkflowTimelineLabels {
             case "answer" -> TYPE_ANSWER;
             case "tool" -> TYPE_TOOL;
             case "join" -> TYPE_JOIN;
+            case "parallel-gateway" -> TYPE_PARALLEL_GATEWAY;
+            case "exclusive-gateway" -> TYPE_EXCLUSIVE_GATEWAY;
             default -> type;
         };
     }

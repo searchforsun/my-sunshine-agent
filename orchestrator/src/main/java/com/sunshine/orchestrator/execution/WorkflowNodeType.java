@@ -11,7 +11,9 @@ public enum WorkflowNodeType {
     AGENT("agent"),
     ANSWER("answer"),
     TOOL("tool"),
-    JOIN("join");
+    JOIN("join"),
+    PARALLEL_GATEWAY("parallel-gateway"),
+    EXCLUSIVE_GATEWAY("exclusive-gateway");
 
     private final String id;
 
@@ -39,9 +41,10 @@ public enum WorkflowNodeType {
         return Optional.empty();
     }
 
-    /** plan 摘要链：排除 start、answer、join */
+    /** plan 摘要链：排除 start、answer、join 与 BPMN 网关 */
     public static boolean isPlanChainNode(String type) {
-        return type != null && !START.matches(type) && !ANSWER.matches(type) && !JOIN.matches(type);
+        return type != null && !START.matches(type) && !ANSWER.matches(type) && !JOIN.matches(type)
+                && !PARALLEL_GATEWAY.matches(type) && !EXCLUSIVE_GATEWAY.matches(type);
     }
 
     /** DAG node-{id} 步骤生命周期：含 answer，排除 start */
@@ -59,6 +62,7 @@ public enum WorkflowNodeType {
     }
 
     public static java.util.Set<String> execTypeIds() {
-        return java.util.Set.of(RAG.id, TOOL.id, AGENT.id, ANSWER.id, JOIN.id);
+        return java.util.Set.of(RAG.id, TOOL.id, AGENT.id, ANSWER.id, JOIN.id,
+                PARALLEL_GATEWAY.id, EXCLUSIVE_GATEWAY.id);
     }
 }

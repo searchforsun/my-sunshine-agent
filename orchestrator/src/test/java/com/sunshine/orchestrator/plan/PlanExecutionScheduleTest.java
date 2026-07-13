@@ -56,6 +56,38 @@ class PlanExecutionScheduleTest {
                 .contains("入度须 ≥ 2");
     }
 
+    @Test
+    void buildsParallelScheduleWithExplicitParallelGateway() {
+        PlanJson plan = dualRagWithParallelGateway();
+        assertThat(PlanExecutionSchedule.validateParallelTopology(plan)).isNull();
+
+        List<PlanExecutionSchedule.Step> steps = PlanExecutionSchedule.build(plan);
+        assertThat(steps).hasSize(3);
+        assertThat(steps.get(0)).isEqualTo(new PlanExecutionSchedule.Single("pg-1"));
+        assertThat(steps.get(1)).isInstanceOf(PlanExecutionSchedule.Parallel.class);
+        PlanExecutionSchedule.Parallel parallel = (PlanExecutionSchedule.Parallel) steps.get(1);
+        assertThat(parallel.branchNodeIds()).containsExactly("rag-policy", "rag-finance");
+        assertThat(parallel.joinNodeId()).isEqualTo("join-1");
+        assertThat(steps.get(2)).isEqualTo(new PlanExecutionSchedule.Single("answer"));
+    }
+
+    private static PlanJson dualRagWithParallelGateway() {
+        return new PlanJson("dual-rag-pg", "BPMN 并行网关",
+                List.of(
+                        new PlanNode("pg-1", "parallel-gateway", Map.of(), "并行分叉"),
+                        new PlanNode("rag-policy", "rag", Map.of("topK", "3"), "制度检索"),
+                        new PlanNode("rag-finance", "rag", Map.of("topK", "3"), "财务检索"),
+                        new PlanNode("join-1", "join", Map.of(), "并行汇总"),
+                        new PlanNode("answer", "answer", Map.of(), "生成回答")),
+                List.of(
+                        new PlanEdge("start", "pg-1"),
+                        new PlanEdge("pg-1", "rag-policy"),
+                        new PlanEdge("pg-1", "rag-finance"),
+                        new PlanEdge("rag-policy", "join-1"),
+                        new PlanEdge("rag-finance", "join-1"),
+                        new PlanEdge("join-1", "answer")));
+    }
+
     private static PlanJson dualRagParallelPlan() {
         return new PlanJson("dual-rag", "制度+财务并行检索",
                 List.of(

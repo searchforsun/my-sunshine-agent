@@ -12,6 +12,7 @@ import {
 import { WORKFLOWS_PAGE_KEY, type WorkflowsPageApi } from '../../composables/useWorkflowsPage'
 import { addPlanGraphNode } from '../../utils/workflowDagLayout'
 import type { WorkflowBusinessNodeType } from '../../utils/workflowPlan'
+import type { WorkflowGatewayType } from '../../utils/workflowGateway'
 
 defineProps<{
   readOnly?: boolean
@@ -21,14 +22,19 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
 
 const showParallelBranch = computed(() => page.canEditPlan && page.isParallelWorkflow)
 
-const paletteItems: { label: string; type: WorkflowBusinessNodeType | 'join' }[] = [
+const businessPalette: { label: string; type: WorkflowBusinessNodeType }[] = [
   { label: 'RAG', type: 'rag' },
   { label: 'Tool', type: 'tool' },
   { label: 'Agent', type: 'agent' },
-  { label: 'Join', type: 'join' },
 ]
 
-function addNode(type: WorkflowBusinessNodeType | 'join') {
+const gatewayPalette: { label: string; type: WorkflowGatewayType }[] = [
+  { label: '并行分叉', type: 'parallel-gateway' },
+  { label: '并行汇总', type: 'join' },
+  { label: '条件分支', type: 'exclusive-gateway' },
+]
+
+function addNode(type: WorkflowBusinessNodeType | WorkflowGatewayType) {
   if (!page.plan || !page.canEditPlan) return
   const cx = 280 + Math.random() * 80
   const cy = 120 + Math.random() * 60
@@ -40,7 +46,7 @@ function addNode(type: WorkflowBusinessNodeType | 'join') {
   <div class="studio-canvas-toolbar">
     <div v-if="!readOnly" class="toolbar-group toolbar-palette">
       <NButton
-        v-for="item in paletteItems"
+        v-for="item in businessPalette"
         :key="item.type"
         size="tiny"
         round
@@ -50,17 +56,29 @@ function addNode(type: WorkflowBusinessNodeType | 'join') {
         <template #icon><NIcon :component="AddOutline" :size="12" /></template>
         {{ item.label }}
       </NButton>
+      <span class="toolbar-divider" aria-hidden="true" />
+      <NButton
+        v-for="item in gatewayPalette"
+        :key="item.type"
+        size="tiny"
+        round
+        secondary
+        @click="addNode(item.type)"
+      >
+        <template #icon><NIcon :component="GitBranchOutline" :size="12" /></template>
+        {{ item.label }}
+      </NButton>
       <span v-if="showParallelBranch" class="toolbar-divider" aria-hidden="true" />
       <NButton
         v-if="showParallelBranch"
         size="tiny"
         round
         secondary
-        title="在 Join 上追加一条 RAG 并行分支"
+        title="在并行分叉后追加一条 RAG 分支"
         @click="page.addParallelBranch()"
       >
-        <template #icon><NIcon :component="GitBranchOutline" :size="12" /></template>
-        并行分支
+        <template #icon><NIcon :component="AddOutline" :size="12" /></template>
+        RAG 分支
       </NButton>
     </div>
 

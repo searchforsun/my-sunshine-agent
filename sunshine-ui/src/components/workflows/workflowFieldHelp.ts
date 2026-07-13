@@ -30,7 +30,9 @@ const NODE_HELP: Record<string, string> = {
   agentTools: '在内置 search_knowledge 之外追加的业务工具（多选）。留空则仅 RAG + 注入 context。',
   maxIters: 'ReAct 最大推理-行动轮次（1–12）。每轮可含一次工具调用；轮次用尽会中止分析。',
   systemOverlay: '追加到子 Agent system 的节点级说明，用于约束分析范围与输出格式。',
-  joinTopology: 'join 汇总并行分支：入度须 ≥ 2（多路汇入），出度须 = 1（连至 answer）。分叉由上游节点多条出边表示，无需单独 fork 节点。',
+  joinTopology: '至少两条路线汇入、一条路线流出。分叉请用「并行分叉」，不要在普通步骤上直接拉出多条线。',
+  parallelGatewayTopology: '至少分出两条可同时进行的路线；各分支完成后应汇入「并行汇总」。',
+  exclusiveGatewayTopology: '至少分出两条互斥路线，运行时只会走其中一条。',
 }
 
 const RETRY_HELP: Record<string, string> = {

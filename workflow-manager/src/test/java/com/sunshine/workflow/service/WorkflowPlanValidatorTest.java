@@ -131,6 +131,79 @@ class WorkflowPlanValidatorTest {
         assertThat(result.isValid()).isTrue();
     }
 
+    @Test
+    void validParallelDualRagWithGateway() {
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("planId", null);
+        plan.put("reason", "dual");
+        plan.put("nodes", List.of(
+                startNode(),
+                gatewayNode("pg-a1b2c3d4", "parallel-gateway", "并行分叉"),
+                ragNode("rag-a1b2c3d4", "制度检索"),
+                ragNode("rag-e5f6a7b8", "财务检索"),
+                gatewayNode("join-c9d0e1f2", "join", "并行汇总"),
+                answerNode("制度：{{rag-a1b2c3d4.output}}\n财务：{{rag-e5f6a7b8.output}}")));
+        plan.put("edges", List.of(
+                edge("start", "pg-a1b2c3d4"),
+                edge("pg-a1b2c3d4", "rag-a1b2c3d4"),
+                edge("pg-a1b2c3d4", "rag-e5f6a7b8"),
+                edge("rag-a1b2c3d4", "join-c9d0e1f2"),
+                edge("rag-e5f6a7b8", "join-c9d0e1f2"),
+                edge("join-c9d0e1f2", "answer")));
+        WorkflowPlanValidationResult result = validator.validateDetailed(plan);
+        assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void rejectsReferenceToParallelGatewayOutput() {
+        Map<String, Object> params = new LinkedHashMap<>(Map.of(
+                "topK", "3",
+                "query", "{{start.userQuery}}",
+                "context", "{{pg-a1b2c3d4.output}}",
+                "retry.maxAttempts", "1",
+                "retry.backoffMs", "500",
+                "retry.onFailure", "continue"));
+        Map<String, Object> rag = Map.of(
+                "id", "rag-a1b2c3d4",
+                "type", "rag",
+                "displayName", "制度检索",
+                "params", params);
+        WorkflowPlanValidationResult result = validator.validateDetailed(linearPlan(
+                gatewayNode("pg-a1b2c3d4", "parallel-gateway", "并行分叉"),
+                rag,
+                answerNode("{{rag-a1b2c3d4.output}}")));
+        assertThat(result.isValid()).isFalse();
+        assertThat(result.issues()).anyMatch(s -> s.contains("pg-a1b2c3d4") && s.contains("网关"));
+    }
+
+    private static Map<String, Object> ragNode(String id, String displayName) {
+        Map<String, Object> params = new LinkedHashMap<>(Map.of(
+                "topK", "3",
+                "query", "{{start.userQuery}}",
+                "retry.maxAttempts", "1",
+                "retry.backoffMs", "500",
+                "retry.onFailure", "continue"));
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("id", id);
+        node.put("type", "rag");
+        node.put("displayName", displayName);
+        node.put("params", params);
+        return node;
+    }
+
+    private static Map<String, Object> gatewayNode(String id, String type, String displayName) {
+        Map<String, Object> params = new LinkedHashMap<>(Map.of(
+                "retry.maxAttempts", "1",
+                "retry.backoffMs", "500",
+                "retry.onFailure", "continue"));
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("id", id);
+        node.put("type", type);
+        node.put("displayName", displayName);
+        node.put("params", params);
+        return node;
+    }
+
     private static Map<String, Object> linearPlan(Map<String, Object>... businessAndAnswer) {
         List<Map<String, Object>> nodes = new java.util.ArrayList<>();
         nodes.add(startNode());

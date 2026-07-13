@@ -1,4 +1,5 @@
 import type { WorkflowPlan } from '../api/workflows'
+import { isExclusiveGateway, isParallelForkGateway, isParallelMergeGateway } from './workflowGateway'
 
 export type ConnectionEval = { ok: true } | { ok: false; reason: string }
 
@@ -92,9 +93,11 @@ export function countNodeDegree(plan: WorkflowPlan, nodeId: string): { in: numbe
   }
 }
 
-/** 识别 join 的公共分叉点（与 orchestrator PlanExecutionSchedule 同构） */
+/** 识别 join 的并行分叉点（优先 BPMN parallel-gateway） */
 export function findJoinForkPoint(plan: WorkflowPlan, joinId: string): string | null {
   const edges = plan.edges ?? []
+  const nodes = plan.nodes ?? []
+  const typeById = new Map(nodes.map(n => [n.id, n.type]))
   const incoming = buildIncoming(edges)
   const preds = incoming.get(joinId) ?? []
   if (preds.length === 0) return null
@@ -104,7 +107,10 @@ export function findJoinForkPoint(plan: WorkflowPlan, joinId: string): string | 
     candidates = new Set([...candidates].filter(id => next.has(id)))
   }
   if (candidates.size === 0) return null
-  return [...candidates].sort()[0]
+  const sorted = [...candidates].sort()
+  const pg = sorted.find(id => isParallelForkGateway(typeById.get(id)))
+  if (pg) return pg
+  return sorted[0] ?? null
 }
 
 /** 从校验文案提取相关节点 id，供画布高亮 */
@@ -132,14 +138,26 @@ export function validatePlanTopologyLocally(plan: WorkflowPlan): string[] {
   const incoming = buildIncoming(edges)
   const outgoing = buildAdjacency(edges)
   for (const [id, type] of types) {
-    if (type === 'join') {
+    if (isParallelMergeGateway(type)) {
       const preds = incoming.get(id) ?? []
       if (preds.length < 2) {
-        issues.push(`汇总节点「${id}」入度须 ≥ 2（并行分支汇入）`)
+        issues.push(`并行汇总「${id}」入度须 ≥ 2（多路汇入）`)
       }
       const succs = outgoing.get(id) ?? []
       if (succs.length !== 1) {
-        issues.push(`汇总节点「${id}」出度须为 1`)
+        issues.push(`并行汇总「${id}」出度须为 1`)
+      }
+    }
+    if (isParallelForkGateway(type)) {
+      const succs = outgoing.get(id) ?? []
+      if (succs.length < 2) {
+        issues.push(`并行分叉「${id}」出度须 ≥ 2（至少两条并行分支）`)
+      }
+    }
+    if (isExclusiveGateway(type)) {
+      const succs = outgoing.get(id) ?? []
+      if (succs.length < 2) {
+        issues.push(`条件分支「${id}」出度须 ≥ 2（至少两条互斥分支）`)
       }
     }
   }

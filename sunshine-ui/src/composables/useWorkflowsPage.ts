@@ -43,6 +43,7 @@ import {
   insertBusinessNode,
   isParallelPlan,
   normalizeWorkflowPlan,
+  reconcilePlanDataFlow,
   removeBusinessNode,
   resolveInsertIndexAfterSelection,
   updateBusinessNode,
@@ -373,7 +374,9 @@ function useWorkflowsPageImpl() {
 
   function applyEditable(data: WorkflowEditable) {
     const wfId = data.workflowId
-    const normalized = applyPlanDefaults(normalizeWorkflowPlan(data.plan, wfId), nodeDefaults.value)
+    const normalized = reconcilePlanDataFlow(
+      applyPlanDefaults(normalizeWorkflowPlan(data.plan, wfId), nodeDefaults.value),
+    )
     plan.value = normalized
     editStatus.value = data.status
     editVersion.value = data.version

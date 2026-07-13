@@ -51,7 +51,7 @@ public final class PlanExecutionSchedule {
             if (afterJoin.size() != 1) {
                 return "join 节点 " + joinId + " 出度须为 1";
             }
-            String forkId = findFanOutFork(preds, in);
+            String forkId = findFanOutFork(preds, in, nodes);
             if (!StringUtils.hasText(forkId)) {
                 return "join 节点 " + joinId + " 缺少公共 fan-out 分叉点";
             }
@@ -103,6 +103,22 @@ public final class PlanExecutionSchedule {
                 break;
             }
             if (nexts.size() > 1) {
+                PlanNode cursorNode = nodes.get(cursor);
+                if (cursorNode != null && "exclusive-gateway".equals(cursorNode.type())) {
+                    String picked = nexts.stream().sorted().findFirst().orElse(null);
+                    if (!StringUtils.hasText(picked)) {
+                        break;
+                    }
+                    if (!"start".equals(picked)) {
+                        steps.add(new Single(picked));
+                    }
+                    cursor = picked;
+                    PlanNode pickedNode = nodes.get(picked);
+                    if (pickedNode != null && "answer".equals(pickedNode.type())) {
+                        break;
+                    }
+                    continue;
+                }
                 String joinId = findConvergingJoin(nexts, out, nodes);
                 if (!StringUtils.hasText(joinId)) {
                     return List.of();
@@ -188,7 +204,10 @@ public final class PlanExecutionSchedule {
         return singlePathJoin(nexts.get(0), out, nodes, visiting);
     }
 
-    private static String findFanOutFork(List<String> joinPreds, Map<String, List<String>> inAdj) {
+    private static String findFanOutFork(
+            List<String> joinPreds,
+            Map<String, List<String>> inAdj,
+            Map<String, PlanNode> nodes) {
         Set<String> candidates = new HashSet<>(inAdj.getOrDefault(joinPreds.get(0), List.of()));
         for (int i = 1; i < joinPreds.size(); i++) {
             candidates.retainAll(inAdj.getOrDefault(joinPreds.get(i), List.of()));
@@ -196,7 +215,13 @@ public final class PlanExecutionSchedule {
         if (candidates.isEmpty()) {
             return null;
         }
-        return candidates.stream().sorted().findFirst().orElse(null);
+        return candidates.stream().sorted()
+                .filter(id -> {
+                    PlanNode node = nodes.get(id);
+                    return node != null && "parallel-gateway".equals(node.type());
+                })
+                .findFirst()
+                .orElseGet(() -> candidates.stream().sorted().findFirst().orElse(null));
     }
 
     private static boolean reachableFromFork(

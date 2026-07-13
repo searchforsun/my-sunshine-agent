@@ -26,7 +26,10 @@ import {
   WF_FLOW_NODE_TYPE,
   isProtectedWorkflowNode,
   evaluateConnection,
+  flowEdgeFingerprint,
+  flowEdgesFromPlan,
   mergeFlowIntoPlan,
+  planEdgeFingerprint,
   planToFlowElements,
   resolveNodePositions,
   type WorkflowFlowNodeData,
@@ -55,6 +58,9 @@ const nodeTypes = { [WF_FLOW_NODE_TYPE]: markRaw(WorkflowFlowNode) } as import('
 const defaultEdgeOptions = {
   type: 'smoothstep',
   style: { stroke: '#737373', strokeWidth: 2 },
+  selectable: true,
+  focusable: true,
+  interactionWidth: 20,
 }
 
 const nodes = ref<Node<WorkflowFlowNodeData>[]>([])
@@ -70,8 +76,9 @@ let resizeFitTimer: ReturnType<typeof setTimeout> | null = null
 
 const planGraphKey = computed(() => JSON.stringify({
   nodes: (props.plan.nodes ?? []).map(n => ({ id: n.id, type: n.type, displayName: n.displayName })),
-  edges: props.plan.edges ?? [],
 }))
+
+const planEdgesKey = computed(() => planEdgeFingerprint(props.plan))
 
 const layoutKey = computed(() => JSON.stringify(props.plan.layout ?? {}))
 
@@ -95,6 +102,18 @@ async function hydrateFromPlan() {
   })
 }
 
+/** 将画布边与 plan.edges 对齐（Delete / Undo / Redo / 外部载入） */
+function syncEdgesFromPlan() {
+  if (!canvasReady.value) return
+  const next = flowEdgesFromPlan(props.plan)
+  if (flowEdgeFingerprint(edges.value) === flowEdgeFingerprint(next)) return
+  hydrating = true
+  edges.value = next
+  void nextTick(() => {
+    hydrating = false
+  })
+}
+
 function patchNodePresentation() {
   if (nodes.value.length === 0) return
   const selectedId = props.selectedNodeId
@@ -107,6 +126,18 @@ function patchNodePresentation() {
     data.readOnly = readOnly
     data.hasValidationIssue = issueIds?.has(node.id) ?? false
   }
+}
+
+function syncNodesFromPlan() {
+  if (pushingToPlan.value || hydrating || !canvasReady.value || nodes.value.length === 0) return
+  const { nodes: n } = planToFlowElements(
+    props.plan,
+    props.selectedNodeId,
+    props.readOnly,
+    props.issueNodeIds,
+  )
+  nodes.value = n
+  patchNodePresentation()
 }
 
 function syncLayoutFromPlan() {
@@ -158,16 +189,29 @@ function emitFromFlow() {
   pushPlan(mergeFlowIntoPlan(props.plan, nodes.value, edges.value))
 }
 
-function syncExternalPlan() {
+function syncExternalPlan(forceFull = false) {
   if (pushingToPlan.value) return
-  void hydrateFromPlan()
+  if (forceFull || !canvasReady.value || nodes.value.length === 0) {
+    void hydrateFromPlan()
+    return
+  }
+  syncNodesFromPlan()
+  syncEdgesFromPlan()
 }
 
 watch(
   () => [props.fitViewKey, planGraphKey.value] as const,
-  () => syncExternalPlan(),
+  ([fitKey], prev) => {
+    const fitChanged = !prev || fitKey !== prev[0]
+    syncExternalPlan(fitChanged)
+  },
   { immediate: true },
 )
+
+watch(planEdgesKey, () => {
+  if (pushingToPlan.value) return
+  syncEdgesFromPlan()
+})
 
 watch(layoutKey, () => syncLayoutFromPlan())
 
@@ -225,15 +269,23 @@ function onNodesChange(changes: NodeChange[]) {
 
 function onEdgesChange(changes: EdgeChange[]) {
   if (hydrating) return
-  // Vue Flow mount 时会 emit reset/add，与外部 hydrate 冲突导致边被清空
-  if (!changes.some(c => c.type === 'remove')) return
-  edges.value = applyEdgeChanges(changes, edges.value as import('@vue-flow/core').GraphEdge[])
-  if (props.readOnly || pushingToPlan.value) return
-  emitFromFlow()
+  const removes = changes.filter((c): c is EdgeChange & { type: 'remove' } => c.type === 'remove')
+  // 受控边：select / remove 均须 applyEdgeChanges，否则无选中态且 Delete 后画布与 plan 脱节
+  edges.value = applyEdgeChanges(changes, edges.value as import('@vue-flow/core').GraphEdge[]) as Edge[]
+  if (removes.length > 0 && !props.readOnly && !pushingToPlan.value) {
+    pushPlan(mergeFlowIntoPlan(props.plan, nodes.value, edges.value))
+  }
+}
+
+/** Vue Flow 在 setEdges 时也会调用 isValidConnection；已有边须放行，否则会被 createGraphEdges 全部丢弃 */
+function isExistingFlowEdge(source: string, target: string): boolean {
+  if (edges.value.some(e => e.source === source && e.target === target)) return true
+  return (props.plan.edges ?? []).some(e => e.from === source && e.to === target)
 }
 
 function checkValidConnection(connection: Connection) {
   if (!connection.source || !connection.target) return false
+  if (isExistingFlowEdge(connection.source, connection.target)) return true
   const result = evaluateConnection(connection, props.plan)
   pendingInvalidReason = result.ok ? null : result.reason
   return result.ok
@@ -252,16 +304,20 @@ function onConnect(connection: Connection) {
   if (!result.ok) return
   const id = `${connection.source}->${connection.target}`
   if (edges.value.some(e => e.id === id)) return
-  edges.value = [
+  const nextEdges: Edge[] = [
     ...edges.value,
     {
       id,
       source: connection.source!,
       target: connection.target!,
       type: 'smoothstep',
+      selectable: true,
+      focusable: true,
+      interactionWidth: 20,
     },
   ]
-  emitFromFlow()
+  edges.value = nextEdges
+  pushPlan(mergeFlowIntoPlan(props.plan, nodes.value, nextEdges))
 }
 
 function onNodeClick(payload: { node: Node }) {
@@ -283,10 +339,12 @@ function onPaneClick() {
         v-model:edges="edges"
         :node-types="nodeTypes"
         :default-edge-options="defaultEdgeOptions"
+        :apply-default="false"
         :fit-view-on-init="true"
         :nodes-draggable="!readOnly"
         :nodes-connectable="!readOnly"
         :elements-selectable="true"
+        :edges-focusable="true"
         :delete-key-code="readOnly ? null : ['Backspace', 'Delete']"
         :is-valid-connection="checkValidConnection"
         :min-zoom="0.25"
@@ -308,7 +366,7 @@ function onPaneClick() {
       </div>
     </div>
     <p v-if="!readOnly && !fullscreen" class="wf-dag-hint">
-      拖拽移动 · 圆点连线 · Delete 删除业务节点 · 开始/结束不可删 · 非法连线会提示原因
+      拖拽移动 · 圆点连线 · Delete 删除连线或业务节点 · 开始/结束不可删 · 非法连线会提示原因
     </p>
   </div>
 </template>
@@ -341,8 +399,10 @@ function onPaneClick() {
   stroke-width: 2;
 }
 
-.wf-dag-canvas :deep(.vue-flow__edge.selected .vue-flow__edge-path) {
-  stroke: var(--sun-blue, #58a6ff);
+.wf-dag-canvas :deep(.vue-flow__edge.selected .vue-flow__edge-path),
+.wf-dag-canvas :deep(.vue-flow__edge.selected path) {
+  stroke: var(--sun-blue, #58a6ff) !important;
+  stroke-width: 2.5;
 }
 
 .wf-dag-canvas :deep(.vue-flow) {

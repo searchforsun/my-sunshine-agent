@@ -104,6 +104,8 @@ public class WorkflowNodeLabelService {
             case ANSWER -> WorkflowTimelineLabels.TYPE_ANSWER;
             case TOOL -> WorkflowTimelineLabels.TYPE_TOOL;
             case JOIN -> WorkflowTimelineLabels.TYPE_JOIN;
+            case PARALLEL_GATEWAY -> WorkflowTimelineLabels.TYPE_PARALLEL_GATEWAY;
+            case EXCLUSIVE_GATEWAY -> WorkflowTimelineLabels.TYPE_EXCLUSIVE_GATEWAY;
             default -> type.id();
         };
         return StringUtils.hasText(raw) ? raw.strip() : type.id();

@@ -3,6 +3,7 @@ import { formatPlanNodeType } from '../api/executionPlans'
 import type { WorkflowPlan, WorkflowPlanNode, WorkflowNodeDefaultsResponse } from '../api/workflows'
 import { buildRetryParams, readRetryMaxAttempts, resolveNodeDefaults } from './workflowNodeParams'
 import { fullDagOrder, type DagNodeView } from './planGraph'
+import { isGatewayType } from './workflowGateway'
 
 export const WORKFLOW_NODE_TYPES = ['rag', 'tool', 'agent'] as const
 export type WorkflowBusinessNodeType = (typeof WORKFLOW_NODE_TYPES)[number]
@@ -79,7 +80,51 @@ export function normalizeWorkflowPlan(
 }
 
 export function businessNodeOrder(plan: WorkflowPlan): WorkflowPlanNode[] {
-  return (plan.nodes ?? []).filter(n => n.type !== 'start' && n.type !== 'answer')
+  return (plan.nodes ?? []).filter(n =>
+    n.type !== 'start'
+    && n.type !== 'answer'
+    && !isRoutingNodeType(n.type),
+  )
+}
+
+/** 路由节点（网关 / join）不参与业务数据链 */
+export function isRoutingNodeType(type: string | undefined): boolean {
+  return !!type && (isGatewayType(type) || type === 'join')
+}
+
+function buildAncestorIds(plan: WorkflowPlan, nodeId: string): Set<string> {
+  const incoming = new Map<string, string[]>()
+  for (const e of plan.edges ?? []) {
+    incoming.set(e.to, [...(incoming.get(e.to) ?? []), e.from])
+  }
+  const anc = new Set<string>()
+  const queue = [...(incoming.get(nodeId) ?? [])]
+  while (queue.length > 0) {
+    const pred = queue.shift()!
+    if (!anc.add(pred)) continue
+    queue.push(...(incoming.get(pred) ?? []))
+  }
+  return anc
+}
+
+/** 沿 DAG 回溯最近的单一业务前驱（跳过网关 / join） */
+function findDataPredecessor(plan: WorkflowPlan, nodeId: string): WorkflowPlanNode | null {
+  const edges = plan.edges ?? []
+  const nodes = plan.nodes ?? []
+  const typeById = new Map(nodes.map(n => [n.id, n.type]))
+  const nodeById = new Map(nodes.map(n => [n.id, n]))
+  let preds = edges.filter(e => e.to === nodeId).map(e => e.from)
+  while (preds.length === 1) {
+    const pid = preds[0]
+    const ptype = typeById.get(pid)
+    if (!ptype || ptype === 'start') return null
+    if (isRoutingNodeType(ptype)) {
+      preds = edges.filter(e => e.to === pid).map(e => e.from)
+      continue
+    }
+    return nodeById.get(pid) ?? null
+  }
+  return null
 }
 
 /** 发布前校验：至少一个业务节点，否则无法执行 */
@@ -108,7 +153,13 @@ export function buildDefaultAnswerPrompt(business: WorkflowPlanNode[]): string {
 
 const SPECIAL_REFS = new Set(['plan.upstream', 'start.userQuery'])
 
-function isBrokenUpstreamRef(ref: string | undefined, nodeIds: Set<string>): boolean {
+function isBrokenUpstreamRef(
+  ref: string | undefined,
+  nodeIds: Set<string>,
+  typeById?: Map<string, string>,
+  consumerId?: string,
+  ancestorIds?: Set<string>,
+): boolean {
   if (!ref?.trim()) return true
   const matches = [...ref.matchAll(/\{\{([a-zA-Z0-9_.-]+)}}/g)]
   if (matches.length === 0) return false
@@ -119,6 +170,9 @@ function isBrokenUpstreamRef(ref: string | undefined, nodeIds: Set<string>): boo
     if (dot < 0) return true
     const nodeId = path.slice(0, dot)
     if (!nodeIds.has(nodeId)) return true
+    const producerType = typeById?.get(nodeId)
+    if (isRoutingNodeType(producerType)) return true
+    if (nodeId !== 'start' && ancestorIds && !ancestorIds.has(nodeId)) return true
   }
   return false
 }
@@ -130,12 +184,13 @@ export function reconcilePlanDataFlow(
 ): WorkflowPlan {
   const business = businessNodeOrder(plan)
   const nodeIds = new Set((plan.nodes ?? []).map(n => n.id))
+  const typeById = new Map((plan.nodes ?? []).map(n => [n.id, n.type]))
   const nodes = (plan.nodes ?? []).map(n => {
     if (n.type === 'agent' || n.type === 'rag') {
-      const idx = business.findIndex(b => b.id === n.id)
-      const prev = idx > 0 ? business[idx - 1] : null
+      const anc = buildAncestorIds(plan, n.id)
+      const prev = findDataPredecessor(plan, n.id)
       const context = n.params?.context
-      const nextContext = isBrokenUpstreamRef(String(context ?? ''), nodeIds)
+      const nextContext = isBrokenUpstreamRef(String(context ?? ''), nodeIds, typeById, n.id, anc)
         ? (prev ? upstreamOutputRef(prev) : '{{plan.upstream}}')
         : context
       const defaults = defaultParamsForType(n.type)
@@ -151,7 +206,8 @@ export function reconcilePlanDataFlow(
     }
     if (n.type === 'answer') {
       const prompt = n.params?.prompt
-      const nextPrompt = options?.refreshAnswer || isBrokenUpstreamRef(String(prompt ?? ''), nodeIds)
+      const anc = buildAncestorIds(plan, n.id)
+      const nextPrompt = options?.refreshAnswer || isBrokenUpstreamRef(String(prompt ?? ''), nodeIds, typeById, n.id, anc)
         ? buildDefaultAnswerPrompt(business)
         : prompt
       return { ...n, params: { ...n.params, prompt: nextPrompt } }
@@ -478,6 +534,7 @@ export function buildParallelDualRagPlan(
     ...buildRetryParams('rag', resolved),
   }
   const joinParams = buildRetryParams('join', resolved)
+  const pgParams = buildRetryParams('parallel-gateway', resolved)
   const answerParams = {
     prompt: answerPrompt,
     ...buildRetryParams('answer', resolved),
@@ -487,6 +544,12 @@ export function buildParallelDualRagPlan(
     reason: `并行双检索工作流 ${workflowId}`,
     nodes: [
       defaultStartNode(),
+      {
+        id: 'pg-a1b2c3d4',
+        type: 'parallel-gateway',
+        displayName: '并行分叉',
+        params: pgParams,
+      },
       {
         id: 'rag-a1b2c3d4',
         type: 'rag',
@@ -502,7 +565,7 @@ export function buildParallelDualRagPlan(
       {
         id: 'join-c9d0e1f2',
         type: 'join',
-        displayName: '汇总',
+        displayName: '并行汇总',
         params: joinParams,
       },
       {
@@ -513,8 +576,9 @@ export function buildParallelDualRagPlan(
       },
     ],
     edges: [
-      { from: 'start', to: 'rag-a1b2c3d4' },
-      { from: 'start', to: 'rag-e5f6a7b8' },
+      { from: 'start', to: 'pg-a1b2c3d4' },
+      { from: 'pg-a1b2c3d4', to: 'rag-a1b2c3d4' },
+      { from: 'pg-a1b2c3d4', to: 'rag-e5f6a7b8' },
       { from: 'rag-a1b2c3d4', to: 'join-c9d0e1f2' },
       { from: 'rag-e5f6a7b8', to: 'join-c9d0e1f2' },
       { from: 'join-c9d0e1f2', to: 'answer' },
