@@ -3,45 +3,29 @@ import { computed, inject, ref, watch } from 'vue'
 import {
   NButton,
   NDropdown,
-  NForm,
-  NFormItem,
   NIcon,
-  NInput,
-  NInputNumber,
   NSelect,
   NSpin,
   NTag,
 } from 'naive-ui'
-import { AddOutline, EllipsisHorizontal, TrashOutline } from '@vicons/ionicons5'
-import PlanDagGraph from '../plan/PlanDagGraph.vue'
-import ConfigFieldHelp from '../knowledge/ConfigFieldHelp.vue'
-import WorkflowNodeExecutionPolicy from './WorkflowNodeExecutionPolicy.vue'
-import WorkflowNodeConfigSection from './WorkflowNodeConfigSection.vue'
-import WorkflowNodeIoSection from './WorkflowNodeIoSection.vue'
-import { workflowFlowFieldHelp, workflowNodeFieldHelp } from './workflowFieldHelp'
+import { EllipsisHorizontal } from '@vicons/ionicons5'
+import WorkflowDagEditor from './WorkflowDagEditor.vue'
+import WorkflowStudioCanvasToolbar from './WorkflowStudioCanvasToolbar.vue'
+import WorkflowStudioExpandLayer from './WorkflowStudioExpandLayer.vue'
+import WorkflowStudioPropsColumn from './WorkflowStudioPropsColumn.vue'
+import WorkflowTemplateModal from './WorkflowTemplateModal.vue'
 import { WORKFLOWS_PAGE_KEY, type WorkflowsPageApi } from '../../composables/useWorkflowsPage'
-import {
-  defaultCatalogIntentAfter,
-  formatAgentToolsParam,
-  mergeToolExtraParams,
-  parseAgentToolsParam,
-  patchKbIdFromSelect,
-  patchNodeParams,
-  ragKbIdEmptyLabel,
-  readAgentMaxIters,
-  readRagTopK,
-  resolveKbSelectValue,
-  SESSION_KB_VALUE,
-  toolExtraParamsLines,
-} from '../../utils/workflowNodeParams'
-import {
-  parseToolSchemaFields,
-  readToolParamValue,
-  type ToolOutputMode,
-} from '../../utils/workflowNodeIo'
-import { FLOW_CONFIG_SELECTION, type WorkflowBusinessNodeType } from '../../utils/workflowPlan'
+import { FLOW_CONFIG_SELECTION } from '../../utils/workflowPlan'
 
 const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
+
+const studioExpanded = ref(false)
+const propsPanelOpen = ref(false)
+
+const canvasFitViewKey = computed(() => {
+  if (page.selectedId == null || page.editVersion == null) return null
+  return `${page.selectedId}:${page.editVersion}`
+})
 
 const validationAlertExpanded = ref(true)
 
@@ -65,170 +49,17 @@ function toggleValidationAlert(): void {
   validationAlertExpanded.value = !validationAlertExpanded.value
 }
 
-const nodeTypeOptions = [
-  { label: '知识检索 (rag)', value: 'rag' },
-  { label: '工具 (tool)', value: 'tool' },
-  { label: '智能体 (agent)', value: 'agent' },
-]
-
-const toolSelectOptions = computed(() =>
-  page.toolOptions.map(t => ({
-    label: `${t.displayName || t.id} (${t.id})`,
-    value: t.id,
-  })),
-)
-
-const skillSelectOptions = computed(() =>
-  page.skillOptions.map(s => ({
-    label: `${s.displayName} (${s.id})`,
-    value: s.id,
-  })),
-)
-
-const selectedToolCatalog = computed(() => {
-  const toolId = String(page.selectedNode?.params?.tool ?? '').trim()
-  if (!toolId) return null
-  return page.toolOptions.find(t => t.id === toolId) ?? null
-})
-
-const selectedToolSchemaFields = computed(() => parseToolSchemaFields(selectedToolCatalog.value))
-
-const kbSelectOptions = computed(() => {
-  const sessionLabel = ragKbIdEmptyLabel(page.nodeDefaults)
-  const options = [{ label: sessionLabel, value: SESSION_KB_VALUE }]
-  for (const kb of page.kbOptions) {
-    const suffix = kb.isDefault ? '（默认）' : ''
-    options.push({
-      label: `${kb.displayName}${suffix}`,
-      value: kb.kbId,
-    })
-  }
-  return options
-})
-
-const answerNode = computed(() =>
-  page.plan?.nodes.find(n => n.type === 'answer') ?? null,
-)
-
-const isAnswerSelected = computed(() => page.selectedNode?.type === 'answer')
-
-const propsSectionTitle = computed(() => {
-  if (page.isFlowConfigSelected) return '流程配置'
-  if (isAnswerSelected.value) return '终态配置'
-  return '节点属性'
-})
-
 const readOnly = computed(() => !page.canEditPlan)
 
-const defaultIntentAfter = computed(() => defaultCatalogIntentAfter(page.nodeDefaults))
-
-const catalogIntentAfterDisplay = computed({
-  get: () => page.catalogIntentAfter.trim() || defaultIntentAfter.value,
-  set: (val: string) => {
-    const trimmed = val.trim()
-    page.catalogIntentAfter = trimmed === defaultIntentAfter.value ? '' : val
-  },
-})
-
-function updateCatalogIntentAfter(val: string) {
-  if (readOnly.value) return
-  catalogIntentAfterDisplay.value = val
-}
-
-function updateRagKbId(val: string) {
-  if (readOnly.value || !page.selectedNode) return
-  updateNodeParams(patchNodeParams(page.selectedNode.params, {
-    kbId: patchKbIdFromSelect(val),
-  }))
-}
-
-function updateAgentKbId(val: string) {
-  if (readOnly.value || !page.selectedNode) return
-  updateNodeParams(patchNodeParams(page.selectedNode.params, {
-    kbId: patchKbIdFromSelect(val),
-  }))
-}
-
-function onAddNode(type: WorkflowBusinessNodeType) {
-  page.addNode(type)
-}
-
-function updatePlanReason(val: string) {
-  if (!page.plan || readOnly.value) return
-  page.plan = { ...page.plan, reason: val }
-}
-
-function updateAnswerPrompt(val: string) {
-  if (!page.plan || readOnly.value) return
-  const nodes = page.plan.nodes.map(n =>
-    n.type === 'answer' ? { ...n, params: { ...n.params, prompt: val } } : n,
-  )
-  page.plan = { ...page.plan, nodes }
-}
-
-function updateNodeParams(params: Record<string, unknown>) {
-  if (readOnly.value) return
-  const node = page.selectedNode
-  if (!node) return
-  page.updateSelectedNode({ params })
-}
-
-function updateNodeParam(key: string, val: string | number) {
-  if (readOnly.value) return
-  const node = page.selectedNode
-  if (!node) return
-  page.updateSelectedNode({
-    params: { ...node.params, [key]: val },
-  })
-}
-
-function updateAnswerParams(params: Record<string, unknown>) {
-  if (!page.plan || readOnly.value || !answerNode.value) return
-  const nodes = page.plan.nodes.map(n =>
-    n.type === 'answer' ? { ...n, params } : n,
-  )
-  page.plan = { ...page.plan, nodes }
-}
-
-function updateToolExtraParams(text: string) {
-  if (readOnly.value || !page.selectedNode) return
-  updateNodeParams(mergeToolExtraParams(page.selectedNode.params, text))
-}
-
-function updateToolSchemaParam(name: string, val: string) {
-  if (readOnly.value || !page.selectedNode) return
-  updateNodeParam(name, val)
-}
-
-function updateToolOutputMode(mode: ToolOutputMode) {
-  if (readOnly.value || !page.selectedNode) return
-  updateNodeParams(patchNodeParams(page.selectedNode.params, {
-    'output.mode': mode === 'full' ? null : mode,
-  }))
-}
-
-function updateToolOutputExtract(json: string) {
-  if (readOnly.value || !page.selectedNode) return
-  updateNodeParams(patchNodeParams(page.selectedNode.params, {
-    'output.extract': json.trim() ? json : null,
-  }))
-}
-
-function onToolSelect(toolId: string) {
-  if (readOnly.value || !page.selectedNode) return
-  updateNodeParam('tool', toolId ?? '')
+function onSelectNode(nodeId: string | null) {
+  page.selectedNodeId = nodeId ?? FLOW_CONFIG_SELECTION
+  propsPanelOpen.value = true
 }
 </script>
 
+
 <template>
   <section v-if="page.selectedWorkflow && page.plan" class="detail-panel">
-    <input
-      :ref="page.bindImportInputRef"
-      type="file"
-      accept="application/json,.json"
-      class="hidden-import"
-      @change="page.handleImportFile"
-    >
     <header class="detail-toolbar">
       <div class="detail-title-block">
         <h3>{{ page.selectedWorkflow.displayName }}</h3>
@@ -257,55 +88,76 @@ function onToolSelect(toolId: string) {
             :menu-props="{ class: 'version-select-menu' }"
             @update:value="v => { page.selectedVersion = v as number }"
           />
+          <NButton
+            v-if="page.canCompareVersions"
+            size="small"
+            round
+            secondary
+            title="对比当前版本与上一版本"
+            @click="page.openVersionDiff()"
+          >
+            对比
+          </NButton>
         </div>
-        <NButton
-          v-if="page.canEditPlan"
-          size="small"
-          round
-          secondary
-          :loading="page.validating"
-          @click="void page.validatePlan()"
-        >
-          验证 DAG
-        </NButton>
-        <NButton
-          v-if="page.showSaveDraftButton"
-          size="small"
-          round
-          secondary
-          :loading="page.saving"
-          @click="void page.saveDraft()"
-        >
-          保存草稿
-        </NButton>
-        <NButton
-          v-if="page.showPublishButton"
-          size="small"
-          round
-          type="primary"
-          class="action-btn"
-          :loading="page.publishing"
-          @click="void page.publish()"
-        >
-          {{ page.workflowPhase === 'history' ? '设为此生效版' : '发布' }}
-        </NButton>
-        <NDropdown
-          trigger="click"
-          size="small"
-          :options="page.moreMenuOptions"
-          @select="(key) => page.handleMoreMenuSelect(String(key))"
-        >
+        <div class="publish-row">
+          <NButton
+            v-if="page.canTryInChat"
+            size="small"
+            round
+            secondary
+            title="在 Chat 中试用已发布工作流"
+            @click="page.openInChat()"
+          >
+            在 Chat 试用
+          </NButton>
           <NButton
             size="small"
-            quaternary
-            class="more-menu-btn"
-            title="版本操作"
-            aria-label="版本操作"
-            :loading="page.saving || page.publishing"
+            round
+            secondary
+            title="全屏画布"
+            @click="studioExpanded = true"
           >
-            <template #icon><NIcon :component="EllipsisHorizontal" :size="16" /></template>
+            全屏画布
           </NButton>
-        </NDropdown>
+          <NButton
+            v-if="page.showSaveDraftButton"
+            size="small"
+            round
+            secondary
+            :loading="page.saving"
+            @click="void page.saveDraft()"
+          >
+            保存草稿
+          </NButton>
+          <NButton
+            v-if="page.showPublishButton"
+            size="small"
+            round
+            type="primary"
+            class="action-btn"
+            :loading="page.publishing"
+            @click="void page.publish()"
+          >
+            {{ page.workflowPhase === 'history' ? '设为此生效版' : '发布' }}
+          </NButton>
+          <NDropdown
+            trigger="click"
+            size="small"
+            :options="page.moreMenuOptions"
+            @select="(key) => page.handleMoreMenuSelect(String(key))"
+          >
+            <NButton
+              size="small"
+              quaternary
+              class="more-menu-btn"
+              title="版本操作"
+              aria-label="版本操作"
+              :loading="page.saving || page.publishing"
+            >
+              <template #icon><NIcon :component="EllipsisHorizontal" :size="16" /></template>
+            </NButton>
+          </NDropdown>
+        </div>
       </div>
     </header>
 
@@ -342,427 +194,39 @@ function onToolSelect(toolId: string) {
       </ul>
     </div>
 
+
+    <WorkflowTemplateModal />
+
+    <WorkflowStudioExpandLayer
+      v-if="page.plan && page.selectedWorkflow"
+      v-model:show="studioExpanded"
+      v-model:props-open="propsPanelOpen"
+      :title="page.selectedWorkflow.displayName"
+      :plan="page.plan"
+      :read-only="readOnly"
+      :selected-node-id="page.selectedNodeId"
+      :issue-node-ids="page.validationHighlightNodeIds"
+      :fit-view-key="canvasFitViewKey"
+      @update:plan="page.replacePlan"
+      @select="onSelectNode"
+    />
+
     <NSpin :show="page.detailLoading" class="detail-spin">
-      <div class="detail-body">
-        <div class="preview-block">
-          <div class="block-title">流程预览</div>
-          <PlanDagGraph
-            :nodes="page.previewNodes"
-            :selected-id="page.isFlowConfigSelected ? undefined : page.selectedNodeId ?? undefined"
-            fluid
-            @select="n => { if (n.id !== 'start') page.selectedNodeId = n.id }"
+      <div v-if="page.plan" class="studio-body">
+        <div class="studio-canvas">
+          <WorkflowStudioCanvasToolbar :read-only="readOnly" />
+          <WorkflowDagEditor
+            :plan="page.plan"
+            :read-only="readOnly"
+            :selected-node-id="page.selectedNodeId"
+            :issue-node-ids="page.validationHighlightNodeIds"
+            :fit-view-key="canvasFitViewKey"
+            :props-panel-open="propsPanelOpen"
+            @update:plan="page.replacePlan"
+            @select="onSelectNode"
           />
         </div>
-
-        <div class="editor-grid">
-          <div class="nodes-block">
-            <div class="block-head">
-              <span class="block-title">节点链（线性）</span>
-              <div v-if="!readOnly" class="node-add-btns">
-                <NButton
-                  v-for="opt in nodeTypeOptions"
-                  :key="opt.value"
-                  size="tiny"
-                  round
-                  secondary
-                  @click="onAddNode(opt.value as WorkflowBusinessNodeType)"
-                >
-                  <template #icon><NIcon :component="AddOutline" :size="12" /></template>
-                  {{ opt.label }}
-                </NButton>
-              </div>
-            </div>
-            <div class="node-list">
-              <button
-                type="button"
-                class="node-chip node-chip-flow"
-                :class="{ active: page.isFlowConfigSelected }"
-                @click="page.selectedNodeId = FLOW_CONFIG_SELECTION"
-              >
-                <span class="node-chip-type">flow</span>
-                <span class="node-chip-label">流程配置</span>
-              </button>
-              <button
-                v-for="node in page.businessNodes"
-                :key="node.id"
-                type="button"
-                class="node-chip"
-                :class="{ active: node.id === page.selectedNodeId }"
-                @click="page.selectedNodeId = node.id"
-              >
-                <span class="node-chip-type">{{ node.type }}</span>
-                <span class="node-chip-label">{{ node.displayName || node.id }}</span>
-                <button
-                  v-if="!readOnly"
-                  type="button"
-                  class="node-chip-del"
-                  title="删除节点"
-                  @click.stop="page.removeNode(node.id)"
-                >
-                  <NIcon :component="TrashOutline" :size="12" />
-                </button>
-              </button>
-              <p v-if="!page.businessNodes.length" class="node-empty">点击上方按钮添加业务节点</p>
-              <button
-                v-if="answerNode"
-                type="button"
-                class="node-chip node-chip-terminal"
-                :class="{ active: page.selectedNodeId === answerNode.id }"
-                @click="page.selectedNodeId = answerNode.id"
-              >
-                <span class="node-chip-type">answer</span>
-                <span class="node-chip-label">{{ answerNode.displayName || '生成回答' }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="props-block">
-            <div class="block-title">{{ propsSectionTitle }}</div>
-            <template v-if="page.isFlowConfigSelected">
-              <NForm label-placement="top" size="small" class="props-form">
-                <NFormItem>
-                  <template #label>
-                    <span class="field-label-row">展示名<ConfigFieldHelp :text="workflowFlowFieldHelp('displayName')" /></span>
-                  </template>
-                  <NInput
-                    v-model:value="page.definitionDisplayName"
-                    class="sun-field"
-                    :disabled="readOnly"
-                  />
-                </NFormItem>
-                <NFormItem>
-                  <template #label>
-                    <span class="field-label-row">描述<ConfigFieldHelp :text="workflowFlowFieldHelp('description')" /></span>
-                  </template>
-                  <NInput
-                    v-model:value="page.definitionDescription"
-                    class="sun-field"
-                    type="textarea"
-                    :disabled="readOnly"
-                    :autosize="{ minRows: 2, maxRows: 5 }"
-                  />
-                </NFormItem>
-                <NFormItem>
-                  <template #label>
-                    <span class="field-label-row">规划说明<ConfigFieldHelp :text="workflowFlowFieldHelp('planReason')" /></span>
-                  </template>
-                  <NInput
-                    class="sun-field"
-                    type="textarea"
-                    :disabled="readOnly"
-                    :autosize="{ minRows: 2, maxRows: 4 }"
-                    :value="page.plan.reason"
-                    @update:value="updatePlanReason"
-                  />
-                </NFormItem>
-                <NFormItem>
-                  <template #label>
-                    <span class="field-label-row">路由示例<ConfigFieldHelp :text="workflowFlowFieldHelp('catalogExamples')" /></span>
-                  </template>
-                  <NInput
-                    v-model:value="page.catalogExamples"
-                    class="sun-field"
-                    type="textarea"
-                    :disabled="readOnly"
-                    :autosize="{ minRows: 3, maxRows: 8 }"
-                  />
-                </NFormItem>
-                <NFormItem>
-                  <template #label>
-                    <span class="field-label-row">意图终态文案<ConfigFieldHelp :text="workflowFlowFieldHelp('catalogIntentAfter')" /></span>
-                  </template>
-                  <NInput
-                    class="sun-field"
-                    type="textarea"
-                    :disabled="readOnly"
-                    :autosize="{ minRows: 2, maxRows: 4 }"
-                    :value="catalogIntentAfterDisplay"
-                    @update:value="updateCatalogIntentAfter"
-                  />
-                </NFormItem>
-              </NForm>
-            </template>
-            <template v-else-if="isAnswerSelected && answerNode">
-              <NForm label-placement="top" size="small" class="props-form">
-                <NFormItem>
-                  <template #label>
-                    <span class="field-label-row">终态 prompt<ConfigFieldHelp :text="workflowFlowFieldHelp('answerPrompt')" /></span>
-                  </template>
-                  <NInput
-                    class="sun-field"
-                    type="textarea"
-                    :disabled="readOnly"
-                    :autosize="{ minRows: 6, maxRows: 16 }"
-                    :value="String(answerNode.params?.prompt ?? '')"
-                    @update:value="updateAnswerPrompt"
-                  />
-                </NFormItem>
-                <WorkflowNodeExecutionPolicy
-                  node-type="answer"
-                  :params="answerNode.params"
-                  :read-only="readOnly"
-                  :node-defaults="page.nodeDefaults"
-                  @update:params="updateAnswerParams"
-                />
-              </NForm>
-            </template>
-            <template v-else-if="page.selectedNode">
-              <NForm label-placement="top" size="small" class="props-form node-props-form">
-                <WorkflowNodeConfigSection title="基本信息">
-                  <NFormItem>
-                    <template #label>
-                      <span class="field-label-row">节点 ID<ConfigFieldHelp :text="workflowNodeFieldHelp('nodeId')" /></span>
-                    </template>
-                    <NInput class="sun-field" :value="page.selectedNode.id" disabled />
-                  </NFormItem>
-                  <NFormItem>
-                    <template #label>
-                      <span class="field-label-row">展示名<ConfigFieldHelp :text="workflowNodeFieldHelp('displayName')" /></span>
-                    </template>
-                    <NInput
-                      class="sun-field"
-                      :value="page.selectedNode.displayName ?? ''"
-                      :disabled="readOnly"
-                      @update:value="v => page.updateSelectedNode({ displayName: v })"
-                    />
-                  </NFormItem>
-                </WorkflowNodeConfigSection>
-                <template v-if="page.selectedNode.type === 'rag'">
-                  <WorkflowNodeConfigSection title="输入" :help="workflowNodeFieldHelp('nodeInputs')">
-                    <NFormItem>
-                      <template #label>
-                        <span class="wf-param-label"><code class="wf-param-name">query</code></span>
-                      </template>
-                      <NInput
-                        class="sun-field wf-mono-field"
-                        type="textarea"
-                        :disabled="readOnly"
-                        :autosize="{ minRows: 2, maxRows: 4 }"
-                        :value="String(page.selectedNode.params?.query ?? '')"
-                        @update:value="v => updateNodeParam('query', v)"
-                      />
-                    </NFormItem>
-                    <NFormItem>
-                      <template #label>
-                        <span class="wf-param-label"><code class="wf-param-name">context</code></span>
-                      </template>
-                      <NInput
-                        class="sun-field wf-mono-field"
-                        type="textarea"
-                        :disabled="readOnly"
-                        :autosize="{ minRows: 2, maxRows: 4 }"
-                        :value="String(page.selectedNode.params?.context ?? '')"
-                        @update:value="v => updateNodeParam('context', v)"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
-                  <WorkflowNodeConfigSection title="检索配置">
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">topK<ConfigFieldHelp :text="workflowNodeFieldHelp('topK')" /></span>
-                      </template>
-                      <NInputNumber
-                        class="sun-field"
-                        :disabled="readOnly"
-                        :value="readRagTopK(page.selectedNode.params, page.nodeDefaults)"
-                        :min="1"
-                        :max="20"
-                        @update:value="v => updateNodeParam('topK', String(v ?? readRagTopK(page.selectedNode!.params, page.nodeDefaults)))"
-                      />
-                    </NFormItem>
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">知识库<ConfigFieldHelp :text="workflowNodeFieldHelp('kbId')" /></span>
-                      </template>
-                      <NSelect
-                        class="sun-field"
-                        filterable
-                        :disabled="readOnly"
-                        :value="resolveKbSelectValue(page.selectedNode.params)"
-                        :options="kbSelectOptions"
-                        @update:value="updateRagKbId"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
-                  <WorkflowNodeIoSection :node="page.selectedNode" :read-only="readOnly" />
-                </template>
-                <template v-else-if="page.selectedNode.type === 'tool'">
-                  <WorkflowNodeConfigSection title="工具">
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">Catalog 工具<ConfigFieldHelp :text="workflowNodeFieldHelp('tool')" /></span>
-                      </template>
-                      <NSelect
-                        class="sun-field"
-                        filterable
-                        :disabled="readOnly"
-                        :value="String(page.selectedNode.params?.tool ?? '')"
-                        :options="toolSelectOptions"
-                        @update:value="onToolSelect"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
-                  <WorkflowNodeConfigSection title="入参" :help="workflowNodeFieldHelp('nodeInputs')">
-                    <template v-if="selectedToolSchemaFields.length">
-                      <NFormItem v-for="field in selectedToolSchemaFields" :key="field.name">
-                        <template #label>
-                          <span class="wf-param-label">
-                            <code class="wf-param-name">{{ field.name }}</code>
-                            <span v-if="field.required" class="required-mark">*</span>
-                          </span>
-                        </template>
-                        <div class="wf-param-field">
-                          <p v-if="field.description" class="wf-param-hint">{{ field.description }}</p>
-                          <NInput
-                            class="sun-field wf-mono-field"
-                            :disabled="readOnly"
-                            placeholder="如 pending 或 {{start.userQuery}}"
-                            :value="readToolParamValue(page.selectedNode.params, field.name)"
-                            @update:value="v => updateToolSchemaParam(field.name, v)"
-                          />
-                        </div>
-                      </NFormItem>
-                    </template>
-                    <NFormItem v-else>
-                      <template #label>
-                        <span class="field-label-row">工具入参<ConfigFieldHelp :text="workflowNodeFieldHelp('toolExtra')" /></span>
-                      </template>
-                      <NInput
-                        class="sun-field wf-mono-field"
-                        type="textarea"
-                        :disabled="readOnly"
-                        :autosize="{ minRows: 3, maxRows: 8 }"
-                        :value="toolExtraParamsLines(page.selectedNode.params)"
-                        @update:value="updateToolExtraParams"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
-                  <WorkflowNodeIoSection
-                    :node="page.selectedNode"
-                    :read-only="readOnly"
-                    :tool-catalog="selectedToolCatalog"
-                    @update:output-mode="updateToolOutputMode"
-                    @update:output-extract="updateToolOutputExtract"
-                  />
-                </template>
-                <template v-else-if="page.selectedNode.type === 'agent'">
-                  <WorkflowNodeConfigSection title="技能绑定">
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">Skill<ConfigFieldHelp :text="workflowNodeFieldHelp('skill')" /></span>
-                      </template>
-                      <NSelect
-                        class="sun-field"
-                        filterable
-                        :disabled="readOnly"
-                        :value="String(page.selectedNode.params?.skill ?? '')"
-                        :options="skillSelectOptions"
-                        @update:value="v => updateNodeParam('skill', v ?? '')"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
-                  <WorkflowNodeConfigSection title="输入" :help="workflowNodeFieldHelp('nodeInputs')">
-                    <NFormItem>
-                      <template #label>
-                        <span class="wf-param-label"><code class="wf-param-name">query</code></span>
-                      </template>
-                      <NInput
-                        class="sun-field wf-mono-field"
-                        type="textarea"
-                        :disabled="readOnly"
-                        :autosize="{ minRows: 2, maxRows: 4 }"
-                        :value="String(page.selectedNode.params?.query ?? '')"
-                        @update:value="v => updateNodeParam('query', v)"
-                      />
-                    </NFormItem>
-                    <NFormItem>
-                      <template #label>
-                        <span class="wf-param-label"><code class="wf-param-name">context</code></span>
-                      </template>
-                      <NInput
-                        class="sun-field wf-mono-field"
-                        type="textarea"
-                        :disabled="readOnly"
-                        :autosize="{ minRows: 2, maxRows: 4 }"
-                        :value="String(page.selectedNode.params?.context ?? '')"
-                        @update:value="v => updateNodeParam('context', v)"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
-                  <WorkflowNodeConfigSection title="运行配置">
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">知识库<ConfigFieldHelp :text="workflowNodeFieldHelp('agentKbId')" /></span>
-                      </template>
-                      <NSelect
-                        class="sun-field"
-                        filterable
-                        :disabled="readOnly"
-                        :value="resolveKbSelectValue(page.selectedNode.params)"
-                        :options="kbSelectOptions"
-                        @update:value="updateAgentKbId"
-                      />
-                    </NFormItem>
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">附加 tools<ConfigFieldHelp :text="workflowNodeFieldHelp('agentTools')" /></span>
-                      </template>
-                      <NSelect
-                        class="sun-field"
-                        multiple
-                        filterable
-                        :disabled="readOnly"
-                        :value="parseAgentToolsParam(page.selectedNode.params?.tools)"
-                        :options="toolSelectOptions"
-                        @update:value="v => updateNodeParam('tools', formatAgentToolsParam(v))"
-                      />
-                    </NFormItem>
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">maxIters<ConfigFieldHelp :text="workflowNodeFieldHelp('maxIters')" /></span>
-                      </template>
-                      <NInputNumber
-                        class="sun-field"
-                        :disabled="readOnly"
-                        :value="readAgentMaxIters(page.selectedNode.params, page.nodeDefaults)"
-                        :min="1"
-                        :max="12"
-                        @update:value="v => updateNodeParam('maxIters', String(v ?? readAgentMaxIters(page.selectedNode!.params, page.nodeDefaults)))"
-                      />
-                    </NFormItem>
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">systemOverlay<ConfigFieldHelp :text="workflowNodeFieldHelp('systemOverlay')" /></span>
-                      </template>
-                      <NInput
-                        class="sun-field wf-mono-field"
-                        type="textarea"
-                        :disabled="readOnly"
-                        :autosize="{ minRows: 2, maxRows: 4 }"
-                        :value="String(page.selectedNode.params?.systemOverlay ?? '')"
-                        @update:value="v => updateNodeParam('systemOverlay', v)"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
-                  <WorkflowNodeIoSection :node="page.selectedNode" :read-only="readOnly" />
-                </template>
-                <WorkflowNodeConfigSection
-                  v-if="page.selectedNode.type !== 'start'"
-                  title="执行策略"
-                >
-                  <WorkflowNodeExecutionPolicy
-                    :node-type="page.selectedNode.type"
-                    :params="page.selectedNode.params"
-                    :read-only="readOnly"
-                    :node-defaults="page.nodeDefaults"
-                    @update:params="updateNodeParams"
-                  />
-                </WorkflowNodeConfigSection>
-              </NForm>
-            </template>
-            <p v-else class="props-empty">选择左侧节点以编辑</p>
-          </div>
-        </div>
+        <WorkflowStudioPropsColumn v-model:open="propsPanelOpen" :show-expand-btn="false" />
       </div>
     </NSpin>
   </section>
@@ -875,10 +339,17 @@ function onToolSelect(toolId: string) {
 .detail-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
   flex-wrap: wrap;
   flex-shrink: 0;
   margin-left: auto;
+}
+
+.publish-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .version-row {
@@ -918,10 +389,6 @@ function onToolSelect(toolId: string) {
   padding: 0;
 }
 
-.hidden-import {
-  display: none;
-}
-
 .detail-spin {
   flex: 1;
   min-height: 0;
@@ -936,14 +403,25 @@ function onToolSelect(toolId: string) {
   flex-direction: column;
 }
 
-.detail-body {
+.studio-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding: 14px 16px 20px;
+  overflow: hidden;
+  display: flex;
+  position: relative;
+}
+
+.studio-body :deep(.studio-props-splitter) {
+  flex-shrink: 0;
+}
+
+.studio-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  padding: 10px 12px 12px;
 }
 
 .preview-block,

@@ -4,7 +4,7 @@ const FLOW_HELP: Record<string, string> = {
   displayName: '工作流在路由目录、Chat # 补全与意图步骤中展示的中文名称。',
   description: '写入路由 Catalog，供 L3 意图分类理解本流程适用场景。',
   planReason: '当前版本规划说明，持久化到 plan.reason，便于 Studio 与审计辨识版本用途。',
-  catalogExamples: '每行一条用户问法示例，用于 L2/L3 路由命中与 Chat # 补全。',
+  catalogExamples: '每行一条用户问法示例，用于 L2/L3 路由命中与 Chat # 补全。Chat 中输入 #{workflowId} 可强制绑定本流程（如 #finance-list）。',
   catalogIntentAfter: '意图步骤完成后的摘要模板。占位符：{query} 用户问句、{displayName} 流程名、{workflowId} 流程 ID。',
   answerPrompt: '终态 answer 节点发给 LLM 的 prompt。可用 {{节点-id.output}} / {{节点-id.answer}} 引用上游结果。',
 }
@@ -30,6 +30,7 @@ const NODE_HELP: Record<string, string> = {
   agentTools: '在内置 search_knowledge 之外追加的业务工具（多选）。留空则仅 RAG + 注入 context。',
   maxIters: 'ReAct 最大推理-行动轮次（1–12）。每轮可含一次工具调用；轮次用尽会中止分析。',
   systemOverlay: '追加到子 Agent system 的节点级说明，用于约束分析范围与输出格式。',
+  joinTopology: 'join 汇总并行分支：入度须 ≥ 2（多路汇入），出度须 = 1（连至 answer）。分叉由上游节点多条出边表示，无需单独 fork 节点。',
 }
 
 const RETRY_HELP: Record<string, string> = {

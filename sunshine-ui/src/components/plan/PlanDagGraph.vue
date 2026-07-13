@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { formatDuration } from '../../api/processingSteps'
 import PlanNodeIcon from './PlanNodeIcon.vue'
 import type { DagNodeView } from '../../utils/planGraph'
+import { resolveRetryBadgeCount } from '../../utils/planGraph'
 
 const props = defineProps<{
   nodes: DagNodeView[]
@@ -97,6 +98,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
             <PlanNodeIcon :type="node.type" :size="iconSize" />
           </span>
           <span class="node-label">{{ node.label }}</span>
+          <span v-if="resolveRetryBadgeCount(node)" class="node-retry-badge">×{{ resolveRetryBadgeCount(node) }}</span>
           <span v-if="node.status === 'awaiting_confirm'" class="node-dur node-dur-awaiting">待确认</span>
           <span v-else-if="node.status === 'paused'" class="node-dur node-dur-paused">暂停</span>
           <span v-else-if="node.status === 'terminated'" class="node-dur node-dur-terminated">已终止</span>
@@ -312,6 +314,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 }
 
 .plan-dag-node {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -594,6 +597,18 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.node-retry-badge {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sun-text-muted);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .node-dur {

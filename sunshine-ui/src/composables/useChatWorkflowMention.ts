@@ -21,13 +21,22 @@ export function useChatWorkflowMention(
   const filteredWorkflows = computed(() => {
     const q = workflowQuery.value.trim().toLowerCase()
     return workflowCatalog.value
-      .filter(w =>
-        !q
-        || w.id.toLowerCase().includes(q)
-        || w.displayName.toLowerCase().includes(q),
-      )
+      .filter(w => {
+        if (!q) return true
+        return (
+          w.id.toLowerCase().includes(q)
+          || w.displayName.toLowerCase().includes(q)
+          || w.description?.toLowerCase().includes(q)
+          || w.examples?.some(ex => ex.toLowerCase().includes(q))
+        )
+      })
       .slice(0, 8)
   })
+
+  function formatWorkflowNodes(entry: WorkflowCatalogEntry): string {
+    const chain = entry.nodes?.filter(n => n !== 'start').join(' → ')
+    return chain || ''
+  }
 
   function refreshWorkflowMention(text: string) {
     if (!workflowMentionAllowed.value) {
@@ -100,6 +109,7 @@ export function useChatWorkflowMention(
     workflowSuggestIndex,
     filteredWorkflows,
     workflowMentionAllowed,
+    formatWorkflowNodes,
     applyWorkflowSuggest,
     loadWorkflowCatalog,
     handleWorkflowKeydown,

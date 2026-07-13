@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, onMounted, onUnmounted, onUpdated, provide, shallowRef } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useChatSessions } from '../api/chatSessions'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
 import 'katex/dist/katex.min.css'
@@ -59,6 +60,8 @@ const hydrationBridge = {
 }
 
 const chatStore = useChatStore()
+const route = useRoute()
+const router = useRouter()
 const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible } = useSidebar()
@@ -315,6 +318,7 @@ const {
   filteredWorkflows,
   workflowCatalog,
   workflowMentionAllowed,
+  formatWorkflowNodes,
   applyWorkflowSuggest,
   loadWorkflowCatalog,
   handleWorkflowKeydown,
@@ -330,8 +334,8 @@ const composerPlaceholder = computed(() => {
 
 const EMPTY_HINTS = [
   { label: '制度检索', prompt: '检索知识库：公司的差旅报销制度有哪些要点？' },
-  { label: '报销分析', prompt: '查询待审批报销单，并对金额与事由做合规分析' },
-  { label: '动态规划', prompt: '先检索报销制度，再查待审批单据，最后给出合规结论' },
+  { label: '知识库问答', prompt: '#knowledge-qa 年假可以请几天' },
+  { label: '报销分析', prompt: '#finance-smart 待审批报销是否合规' },
   { label: 'Skill 合规', prompt: '@compliance-check 对照制度审查一笔差旅报销是否合规' },
 ] as const
 
@@ -441,6 +445,23 @@ function handleKeydown(e: KeyboardEvent) {
   handleSkillKeydown(e, () => { void handleSend() })
 }
 
+function applyChatDeepLink() {
+  const wf = typeof route.query.workflow === 'string' ? route.query.workflow.trim() : ''
+  const prompt = typeof route.query.prompt === 'string' ? route.query.prompt : ''
+  if (wf) {
+    setPreference('workflow')
+    inputText.value = prompt.trim() ? prompt : `#${wf} `
+  } else if (prompt.trim()) {
+    inputText.value = prompt
+  }
+  if (wf || prompt) {
+    const nextQuery = { ...route.query }
+    delete nextQuery.workflow
+    delete nextQuery.prompt
+    void router.replace({ query: nextQuery })
+  }
+}
+
 onMounted(async () => {
   setChatRouteActive(true)
   void loadSkillCatalog()
@@ -477,6 +498,7 @@ onMounted(async () => {
   }
   setActiveConversation(chatStore.currentId)
   scrollToBottomIfRequested(chatStore.currentId ?? '')
+  applyChatDeepLink()
   inputRef.value?.focus()
   window.addEventListener('pagehide', flushAllOnPageHide)
 })
@@ -723,8 +745,12 @@ watch(
               :class="{ 'is-highlighted': idx === workflowSuggestIndex }"
               @mousedown.prevent="applyWorkflowSuggest(wf)"
             >
-              <span class="skill-suggest-id is-workflow">#{{ wf.id }}</span>
-              <span class="skill-suggest-name">{{ wf.displayName }}</span>
+              <div class="skill-suggest-main">
+                <span class="skill-suggest-id is-workflow">#{{ wf.id }}</span>
+                <span class="skill-suggest-name">{{ wf.displayName }}</span>
+              </div>
+              <p v-if="wf.description" class="skill-suggest-desc">{{ wf.description }}</p>
+              <p v-if="formatWorkflowNodes(wf)" class="skill-suggest-meta">{{ formatWorkflowNodes(wf) }}</p>
             </li>
           </ul>
           <ul v-else-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">
@@ -1243,13 +1269,34 @@ watch(
 
 .skill-suggest li {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
   padding: 7px 8px;
   border-radius: calc(var(--radius-lg) - 2px);
   cursor: pointer;
   font-size: var(--sun-font-base);
   transition: background 0.15s;
+}
+
+.skill-suggest-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.skill-suggest-desc,
+.skill-suggest-meta {
+  margin: 0;
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+  line-height: 1.4;
+  padding-left: 2px;
+}
+
+.skill-suggest-meta {
+  font-family: var(--sun-font-mono);
+  font-size: 11px;
 }
 
 .skill-suggest li:hover,

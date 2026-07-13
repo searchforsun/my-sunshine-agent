@@ -1,10 +1,10 @@
 # 阶段四 · Workflow Studio（可视化工作流维护）
 
 > **阶段**：四 · **任务卡**：**4.13**  
-> **状态**：⬜ 进行中（4.13.1 ✅ 表结构；4.13.2+ 待实施）  
+> **状态**：✅ MVP 检查门通过（4.13.1–4.13.6 Live）；**4.13.7** 高级图编辑按需  
 > **触发**：业务方需 Dify 式自助编排；**废弃 Nacos workflow 双轨**  
 > **修订（2026-07-11）**：Workflow **完全 DB 单轨** — 去掉 Nacos `sunshine-workflows.yaml` 与一切兼容/回退逻辑；标杆 workflow 由 **MySQL init 种子** 初始化  
-> **修订（2026-07-12）**：种子扩至 **5 条**（含 `knowledge-dual`）；节点 id=`{type}-{8位hex}`；rag/agent **必填** `params.query`；`docs/workflow/` 与 init SQL 同构维护  
+> **修订（2026-07-12）**：种子扩至 **5 条**（含 `knowledge-dual`）；节点 id=`{type}-{8位hex}`；rag/agent **必填** `params.query`；标杆 SSOT 为 init SQL  
 > **平台 SSOT**：[phase4-platformization-design.md](./phase4-platformization-design.md)  
 > **实施计划**：[2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md)  
 > **对称参照**：[skills-management-ui-design.md](./skills-management-ui-design.md)（skill-manager + `/skills`）  
@@ -20,7 +20,6 @@
 |------|------|----------|
 | **MySQL init 种子** | 平台标杆 workflow（**5 条**：knowledge-qa、knowledge-dual、finance-*） | `docker/mysql/init/13-sunshine-workflow-manager.sql` |
 | **DB Workflow Studio** | 租户/业务自助 workflow | `/workflows` 管理页 CRUD + 发布 |
-| **`docs/workflow/*.json`** | 种子/迁移 **文档模板**（非运行时） | 与 init SQL 同构；运维可用 `POST /api/workflows/import` |
 
 **核心原则**：
 
@@ -160,7 +159,7 @@ DB 存 **可执行完整 Plan**（含 `start` + 业务节点 + `answer`）。Stu
 
 ### 4.4 MySQL init 种子（标杆 5 条）
 
-`docker/mysql/init/13-sunshine-workflow-manager.sql` 追加 **published v1**（内容同 `docs/workflow/*.json`，工具 ID 须为 Catalog 格式）：
+`docker/mysql/init/13-sunshine-workflow-manager.sql` 写入 **published v1**（工具 ID 须为 Catalog 格式）：
 
 | workflowId | displayName |
 |------------|-------------|
@@ -176,22 +175,11 @@ DB 存 **可执行完整 Plan**（含 `start` + 业务节点 + `answer`）。Stu
 
 ---
 
-## 5. `docs/workflow/*.json`（文档 / 迁移模板）
+## 5. 迁移与导入
 
-> **非运行时 SSOT**。供 init SQL 编写参考、Studio 批量导入、环境迁移。
+标杆 workflow **不**再维护独立 JSON 文件；新环境仅依赖 init SQL。跨环境迁移可用 Studio **`POST /api/workflows/import`** 或导出已发布版本的 `GET /api/workflows/{id}/versions/{version}/export`。
 
-```
-docs/workflow/
-├── README.md
-├── manifest.json
-├── knowledge-qa.json
-├── knowledge-dual.json
-├── finance-list.json
-├── finance-smart.json
-└── finance-summary.json
-```
-
-单文件 Schema（`schemaVersion: 1`）不变；`source` 种子模板为 `seed`。维护时 **JSON ↔ init SQL ↔ 已部署 DB** 三处同构，流程见 [docs/workflow/README.md](../../workflow/README.md) §维护与同步。
+维护约定见 [docs/workflow/README.md](../../workflow/README.md)。
 
 ---
 
@@ -270,7 +258,7 @@ Studio **禁止**编辑引擎尚未实现的节点类型。
 | 编号 | 内容 | 产出 |
 |------|------|------|
 | **4.13.1** | 表结构 | workflow-manager ✅ |
-| **4.13.1b** | **MySQL init 种子**（5 标杆 published v1） | `13-sunshine-workflow-manager.sql` + `docs/workflow/*.json` |
+| **4.13.1b** | **MySQL init 种子**（5 标杆 published v1） | `13-sunshine-workflow-manager.sql` |
 | **4.13.2** | Admin / Catalog / Published API + PlanValidator | workflow-manager |
 | **4.13.2b** | orchestrator 移除 Nacos workflow + `WorkflowManagerClient` | orchestrator |
 | **4.13.3** | `WorkflowCatalogService` + **`WorkflowBindingParser/Policy`** | orchestrator |

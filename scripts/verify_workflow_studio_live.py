@@ -13,7 +13,7 @@
   RAG_URL                hash 套件 RAG 预检，默认 http://127.0.0.1:8400
 
 前置:
-  - MySQL init 已执行（13-sunshine-workflow-manager.sql 含 4 标杆种子）
+  - MySQL init 已执行（13-sunshine-workflow-manager.sql 含 5 标杆种子）
   - workflow-manager :8230、gateway :8000、orchestrator :8200 已启动
 """
 from __future__ import annotations
@@ -276,14 +276,23 @@ def suite_studio() -> str:
         "reason": f"Live studio {wf_id}",
         "nodes": [
             {"id": "start", "type": "start", "displayName": "开始", "params": {}},
-            {"id": "rag", "type": "rag", "displayName": "知识检索", "params": {"topK": "2"}},
+            {"id": "rag-a1b2c3d4", "type": "rag", "displayName": "知识检索", "params": {
+                "query": "{{start.userQuery}}",
+                "topK": "2",
+                "retry.maxAttempts": "1",
+                "retry.backoffMs": "500",
+                "retry.onFailure": "continue",
+            }},
             {"id": "answer", "type": "answer", "displayName": "生成回答", "params": {
-                "prompt": "根据检索结果回答。\n\n{{rag.output}}",
+                "prompt": "根据检索结果回答。\n\n{{rag-a1b2c3d4.output}}",
+                "retry.maxAttempts": "2",
+                "retry.backoffMs": "500",
+                "retry.onFailure": "fail_fast",
             }},
         ],
         "edges": [
-            {"from": "start", "to": "rag"},
-            {"from": "rag", "to": "answer"},
+            {"from": "start", "to": "rag-a1b2c3d4"},
+            {"from": "rag-a1b2c3d4", "to": "answer"},
         ],
     }
     catalog_meta = {"examples": [f"{wf_id} 测试"], "nodeSummary": ["start", "rag", "answer"]}

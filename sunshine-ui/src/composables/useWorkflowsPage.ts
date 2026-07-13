@@ -1,5 +1,5 @@
-import { computed, nextTick, reactive, ref, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue'
-import { onBeforeRouteLeave, useRoute } from 'vue-router'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useMessage, type DropdownOption } from 'naive-ui'
 import {
   createWorkflow,
@@ -31,17 +31,24 @@ import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
 import { useTenantPreference } from './useTenantPreference'
 import {
   buildCatalogMeta,
+  buildLinearRagQaPlan,
+  buildLinearToolAgentPlan,
+  buildFinanceListPlan,
+  buildFinanceSummaryPlan,
+  buildParallelDualRagPlan,
   buildPreviewDagNodes,
   businessNodeOrder,
   collectBusinessNodeValidationIssues,
   FLOW_CONFIG_SELECTION,
   insertBusinessNode,
+  isParallelPlan,
   normalizeWorkflowPlan,
   removeBusinessNode,
   resolveInsertIndexAfterSelection,
   updateBusinessNode,
   type WorkflowBusinessNodeType,
 } from '../utils/workflowPlan'
+import type { WorkflowTemplateId } from '../utils/workflowTemplates'
 import {
   type WorkflowPhase,
   isWorkflowSwitchDisabled,
@@ -50,13 +57,19 @@ import {
   versionStatusLabel,
   versionStatusTagType,
 } from '../utils/workflows/workflowsVersionUtils'
-import type { DagNodeView } from '../utils/planGraph'
+import {
+  autoLayoutPlan,
+  addParallelBranchPlan,
+  removePlanGraphNode,
+} from '../utils/workflowDagLayout'
+import { useWorkflowEditHistory } from './useWorkflowEditHistory'
 import { useWorkflowsRouteState } from './useWorkflowsRouteState'
 import {
   applyPlanDefaults,
   collectRetryValidationIssues,
   resolveNodeDefaults,
 } from '../utils/workflowNodeParams'
+import { validatePlanTopologyLocally, extractValidationIssueNodeIds } from '../utils/workflowPlanValidation'
 
 export const WORKFLOWS_PAGE_KEY: InjectionKey<WorkflowsPageApi> = Symbol('workflowsPage')
 
@@ -81,6 +94,7 @@ export function useWorkflowsPage(): WorkflowsPageApi {
 function useWorkflowsPageImpl() {
   const message = useMessage()
   const route = useRoute()
+  const router = useRouter()
   const { tenantId } = useTenantPreference()
   const { readWorkflowId, syncWorkflowId } = useWorkflowsRouteState()
   const loading = ref(false)
@@ -111,7 +125,15 @@ function useWorkflowsPageImpl() {
   const showEdit = ref(false)
   const showDeleteConfirm = ref(false)
   const showDeleteVersionConfirm = ref(false)
+  const showTemplateModal = ref(false)
+  const showImportModal = ref(false)
+  const importPreviewLoading = ref(false)
+  const importPreviewBody = ref<Record<string, unknown> | null>(null)
+  const importPreviewIssues = ref<string[]>([])
+  const importMode = ref<'overwrite' | 'new'>('overwrite')
+  const importDraft = ref({ id: '', displayName: '', description: '' })
   const createDraft = ref({ id: '', displayName: '', description: '' })
+  const createSeedPackage = ref<{ plan: WorkflowPlan; catalog: Record<string, unknown> } | null>(null)
   const editForm = ref({ displayName: '', description: '' })
   const editTarget = ref<WorkflowEntry | null>(null)
   const deleteTarget = ref<WorkflowEntry | null>(null)
@@ -174,6 +196,24 @@ function useWorkflowsPageImpl() {
     plan.value ? buildPreviewDagNodes(plan.value) : [],
   )
 
+  const isParallelWorkflow = computed(() =>
+    plan.value ? isParallelPlan(plan.value) : false,
+  )
+
+  const validationHighlightNodeIds = computed(() =>
+    extractValidationIssueNodeIds(validationIssues.value),
+  )
+
+  const canTryInChat = computed(() =>
+    !!selectedWorkflow.value?.enabled && !!selectedId.value,
+  )
+
+  const canCompareVersions = computed(() => versions.value.length >= 2 && !!selectedId.value)
+
+  const canApplyParallelTemplate = computed(() =>
+    canEditPlan.value && plan.value != null && !isParallelWorkflow.value,
+  )
+
   const canEditPlan = computed(() => workflowPhase.value === 'draft' || workflowPhase.value === 'setup')
 
   const isDirty = computed(() => {
@@ -206,8 +246,35 @@ function useWorkflowsPageImpl() {
     && !createIdInvalid.value,
   )
 
+  const isDuplicateCreate = computed(() => createSeedPackage.value != null)
+
+  const importIdTrimmed = computed(() => importDraft.value.id.trim())
+  const importNameTrimmed = computed(() => importDraft.value.displayName.trim())
+  const importDescTrimmed = computed(() => importDraft.value.description.trim())
+  const importIdDuplicate = computed(() =>
+    importMode.value === 'new'
+    && importIdTrimmed.value.length > 0
+    && workflows.value.some(w => w.id === importIdTrimmed.value),
+  )
+  const importIdInvalid = computed(() =>
+    importMode.value === 'new'
+    && importIdTrimmed.value.length > 0
+    && !WORKFLOW_ID_PATTERN.test(importIdTrimmed.value),
+  )
+  const canConfirmImport = computed(() => {
+    if (importPreviewIssues.value.length > 0) return false
+    if (!importPreviewBody.value?.plan) return false
+    if (importMode.value === 'overwrite') return selectedId.value != null
+    return importIdTrimmed.value.length > 0
+      && importNameTrimmed.value.length > 0
+      && importDescTrimmed.value.length > 0
+      && !importIdDuplicate.value
+      && !importIdInvalid.value
+  })
+
   const cardMenuOptions: DropdownOption[] = [
     { label: '修改', key: 'edit' },
+    { label: '导出 JSON', key: 'export' },
     { label: '删除', key: 'delete' },
   ]
 
@@ -217,11 +284,18 @@ function useWorkflowsPageImpl() {
       const hasDraft = versions.value.some(v => v.status === 'draft')
       if (!hasDraft) {
         opts.push({ label: '复制为草稿', key: 'fork' })
-        opts.push({ label: '导入 JSON', key: 'import' })
       }
+    }
+    if (canEditPlan.value || workflowPhase.value === 'live' || workflowPhase.value === 'history') {
+      opts.push({ label: '导入 JSON', key: 'import' })
     }
     if (selectedVersion.value != null) {
       opts.push({ label: '导出 JSON', key: 'export' })
+      opts.push({ label: '复制 JSON', key: 'copy-export' })
+      opts.push({ label: '另存为新工作流', key: 'duplicate' })
+    }
+    if (canCompareVersions.value && selectedVersion.value != null) {
+      opts.push({ label: '版本对比', key: 'diff' })
     }
     if (versions.value.length > 1 && selectedVersion.value != null) {
       opts.push({ label: '删除此版本', key: 'delete-version' })
@@ -241,8 +315,40 @@ function useWorkflowsPageImpl() {
         displayName: definitionDisplayName.value.trim(),
         description: definitionDescription.value.trim(),
       },
+      selectedNodeId: selectedNodeId.value,
     })
   }
+
+  function parseSnapshot(raw: string) {
+    const data = JSON.parse(raw) as {
+      plan: WorkflowPlan
+      catalog: { examples?: string[]; intentAfter?: string }
+      definition: { displayName: string; description: string }
+      selectedNodeId?: string | null
+    }
+    return {
+      plan: structuredClone(data.plan),
+      catalogExamples: Array.isArray(data.catalog?.examples)
+        ? data.catalog.examples.join('\n')
+        : '',
+      catalogIntentAfter: typeof data.catalog?.intentAfter === 'string' ? data.catalog.intentAfter : '',
+      definitionDisplayName: data.definition.displayName,
+      definitionDescription: data.definition.description,
+      selectedNodeId: data.selectedNodeId ?? FLOW_CONFIG_SELECTION,
+    }
+  }
+
+  const editHistory = useWorkflowEditHistory({
+    canEditPlan,
+    plan,
+    catalogExamples,
+    catalogIntentAfter,
+    definitionDisplayName,
+    definitionDescription,
+    selectedNodeId,
+    serializeSnapshot: snapshot,
+    parseSnapshot,
+  })
 
   function syncDefinitionForm(wfId: string) {
     const wf = workflows.value.find(w => w.id === wfId)
@@ -284,6 +390,7 @@ function useWorkflowsPageImpl() {
     savedSnapshot.value = snapshot()
     validationIssues.value = []
     selectedNodeId.value = FLOW_CONFIG_SELECTION
+    editHistory.resetHistory()
   }
 
   async function loadCatalogOptions() {
@@ -322,6 +429,7 @@ function useWorkflowsPageImpl() {
   function collectPublishValidationIssues(): string[] {
     if (!plan.value) return []
     return [
+      ...validatePlanTopologyLocally(plan.value),
       ...collectBusinessNodeValidationIssues(plan.value),
       ...collectRetryValidationIssues(plan.value, null, true),
     ]
@@ -465,26 +573,276 @@ function useWorkflowsPageImpl() {
     }
   })
 
+  function applyWorkflowTemplatePlan(
+    buildPlan: (workflowId: string, defaults: ReturnType<typeof resolveNodeDefaults>) => WorkflowPlan,
+    successMessage: string,
+  ) {
+    if (!plan.value || !selectedId.value || !canEditPlan.value) return
+    editHistory.wrapEditableMutation(() => {
+      const defaults = resolveNodeDefaults(nodeDefaults.value)
+      plan.value = autoLayoutPlan(
+        applyPlanDefaults(buildPlan(selectedId.value!, defaults), defaults),
+      )
+      selectedNodeId.value = FLOW_CONFIG_SELECTION
+      validationIssues.value = []
+    })
+    message.info(successMessage)
+  }
+
+  function addParallelBranch() {
+    if (!plan.value || !canEditPlan.value) return
+    const result = addParallelBranchPlan(plan.value, nodeDefaults.value)
+    if (!result.ok) {
+      message.warning(result.reason)
+      return
+    }
+    editHistory.wrapEditableMutation(() => {
+      plan.value = result.plan
+      selectedNodeId.value = result.nodeId
+    })
+    message.success('已添加并行 RAG 分支')
+  }
+
+  function openInChat() {
+    const id = selectedId.value
+    if (!id) return
+    if (!selectedWorkflow.value?.enabled) {
+      message.warning('请先在列表中启用该工作流')
+      return
+    }
+    void router.push({ name: 'chat', query: { workflow: id } })
+  }
+
+  function openVersionDiff() {
+    const id = selectedId.value
+    const current = selectedVersion.value
+    if (!id || current == null || versions.value.length < 2) return
+    const sorted = [...versions.value].sort((a, b) => a.version - b.version)
+    const idx = sorted.findIndex(v => v.version === current)
+    const from = idx > 0 ? sorted[idx - 1].version : sorted[0].version
+    const to = current
+    void router.push({
+      name: 'workflow-diff',
+      params: { workflowId: id },
+      query: { from: String(from), to: String(to) },
+    })
+  }
+
+  function resolveImportTargetId(): string | null {
+    if (importMode.value === 'overwrite') return selectedId.value
+    return importIdTrimmed.value || null
+  }
+
+  function extractImportMeta(body: Record<string, unknown>) {
+    const id = typeof body.workflowId === 'string' ? body.workflowId.trim() : ''
+    const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : id
+    const description = typeof body.description === 'string' ? body.description.trim() : ''
+    return { id, displayName, description }
+  }
+
+  function suggestImportWorkflowId(baseId?: string): string {
+    const base = (baseId?.trim() || 'imported-flow').replace(/[^\w\u4e00-\u9fff-]/g, '-')
+    if (!workflows.value.some(w => w.id === base)) return base
+    for (let i = 2; i < 100; i += 1) {
+      const candidate = `${base}-${i}`
+      if (!workflows.value.some(w => w.id === candidate)) return candidate
+    }
+    return `${base}-${Date.now()}`
+  }
+
+  function inferImportMode(body: Record<string, unknown>): 'overwrite' | 'new' {
+    const meta = extractImportMeta(body)
+    if (!selectedId.value) return 'new'
+    if (meta.id && meta.id !== selectedId.value) return 'new'
+    return 'overwrite'
+  }
+
+  async function validateImportPlanBody(body: Record<string, unknown>, targetId: string) {
+    const planRaw = body.plan
+    if (!planRaw || typeof planRaw !== 'object') {
+      importPreviewIssues.value = ['缺少 plan 字段']
+      return
+    }
+    const normalized = normalizeWorkflowPlan(
+      planRaw as WorkflowPlan,
+      targetId,
+      nodeDefaults.value ?? undefined,
+    )
+    const localIssues = [
+      ...validatePlanTopologyLocally(normalized),
+      ...collectBusinessNodeValidationIssues(normalized),
+      ...collectRetryValidationIssues(normalized, null, true),
+    ]
+    if (localIssues.length > 0) {
+      importPreviewIssues.value = localIssues
+      return
+    }
+    const remote = await validateWorkflowPlan(normalized)
+    importPreviewIssues.value = remote.issues ?? []
+  }
+
+  async function refreshImportValidation() {
+    const body = importPreviewBody.value
+    const targetId = resolveImportTargetId()
+    if (!body) return
+    if (!targetId) {
+      importPreviewIssues.value = importMode.value === 'new' ? ['请填写 Workflow ID'] : ['请先选择工作流']
+      return
+    }
+    importPreviewLoading.value = true
+    try {
+      await validateImportPlanBody(body, targetId)
+    } catch (e) {
+      importPreviewIssues.value = [friendlyErrorMessage(e, '校验失败')]
+    } finally {
+      importPreviewLoading.value = false
+    }
+  }
+
+  async function prepareImportPreview(body: Record<string, unknown>) {
+    importPreviewBody.value = body
+    importPreviewIssues.value = []
+    const meta = extractImportMeta(body)
+    importMode.value = inferImportMode(body)
+    importDraft.value = {
+      id: meta.id || suggestImportWorkflowId(),
+      displayName: meta.displayName || meta.id || '导入工作流',
+      description: meta.description || '从 JSON 包导入',
+    }
+    showImportModal.value = true
+    await refreshImportValidation()
+  }
+
+  function closeImportModal() {
+    showImportModal.value = false
+    importPreviewBody.value = null
+    importPreviewIssues.value = []
+    importDraft.value = { id: '', displayName: '', description: '' }
+    importMode.value = 'overwrite'
+  }
+
+  async function confirmImportPreview() {
+    if (!importPreviewBody.value || !canConfirmImport.value) return
+    const targetId = resolveImportTargetId()
+    if (!targetId) return
+    importPreviewLoading.value = true
+    try {
+      const body: Record<string, unknown> = {
+        ...importPreviewBody.value,
+        workflowId: targetId,
+        displayName: importMode.value === 'new'
+          ? importNameTrimmed.value
+          : (importPreviewBody.value.displayName ?? definitionDisplayName.value),
+        description: importMode.value === 'new'
+          ? importDescTrimmed.value
+          : (importPreviewBody.value.description ?? definitionDescription.value),
+      }
+      await importWorkflowPackage(body)
+      closeImportModal()
+      await refreshPage()
+      await selectWorkflow(targetId)
+      message.success(importMode.value === 'new' ? '已导入为新工作流' : '已导入为草稿')
+    } catch (e) {
+      message.error(friendlyErrorMessage(e, '导入失败'))
+    } finally {
+      importPreviewLoading.value = false
+    }
+  }
+
+  function setImportMode(mode: 'overwrite' | 'new') {
+    if (importMode.value === mode) return
+    importMode.value = mode
+    void refreshImportValidation()
+  }
+
+  function applyParallelDualRagTemplate() {
+    if (!plan.value || !selectedId.value || !canEditPlan.value) return
+    if (isParallelWorkflow.value) {
+      message.warning('当前已是并行 DAG，无需重复应用')
+      return
+    }
+    applyWorkflowTemplatePlan(
+      buildParallelDualRagPlan,
+      '已应用并行双检索模板（start → 双 RAG → join → answer）',
+    )
+  }
+
+  function applyWorkflowTemplate(templateId: WorkflowTemplateId) {
+    switch (templateId) {
+      case 'linear-rag-qa':
+        applyWorkflowTemplatePlan(
+          buildLinearRagQaPlan,
+          '已应用知识库问答模板（start → RAG → answer）',
+        )
+        break
+      case 'linear-tool-agent':
+        applyWorkflowTemplatePlan(
+          buildLinearToolAgentPlan,
+          '已应用工具 + Agent 模板（start → Tool → Agent → answer）',
+        )
+        break
+      case 'parallel-dual-rag':
+        applyParallelDualRagTemplate()
+        break
+      case 'finance-list':
+        applyWorkflowTemplatePlan(
+          buildFinanceListPlan,
+          '已应用财务待办查询模板（start → Tool → answer）',
+        )
+        break
+      case 'finance-summary':
+        applyWorkflowTemplatePlan(
+          buildFinanceSummaryPlan,
+          '已应用财务汇总统计模板（start → Tool → answer）',
+        )
+        break
+      default:
+        message.warning('未知模板')
+    }
+  }
+
   function addNode(type: WorkflowBusinessNodeType) {
     if (!plan.value || !selectedId.value || !canEditPlan.value) return
-    const defaults = resolveNodeDefaults(nodeDefaults.value)
-    const insertAt = resolveInsertIndexAfterSelection(plan.value, selectedNodeId.value)
-    plan.value = insertBusinessNode(plan.value, type, defaults, insertAt)
-    const added = businessNodeOrder(plan.value)[insertAt]
-    if (added) selectedNodeId.value = added.id
+    editHistory.wrapEditableMutation(() => {
+      const defaults = resolveNodeDefaults(nodeDefaults.value)
+      const insertAt = resolveInsertIndexAfterSelection(plan.value!, selectedNodeId.value)
+      plan.value = insertBusinessNode(plan.value!, type, defaults, insertAt)
+      const added = businessNodeOrder(plan.value!)[insertAt]
+      if (added) selectedNodeId.value = added.id
+    })
   }
 
   function removeNode(nodeId: string) {
     if (!plan.value || !canEditPlan.value) return
-    plan.value = removeBusinessNode(plan.value, nodeId)
-    if (selectedNodeId.value === nodeId) {
-      selectedNodeId.value = businessNodeOrder(plan.value)[0]?.id ?? null
-    }
+    const next = removePlanGraphNode(plan.value, nodeId)
+    if (!next) return
+    editHistory.wrapEditableMutation(() => {
+      plan.value = next
+      if (selectedNodeId.value === nodeId) {
+        selectedNodeId.value = businessNodeOrder(plan.value!)[0]?.id ?? FLOW_CONFIG_SELECTION
+      }
+    })
+  }
+
+  function replacePlan(next: WorkflowPlan) {
+    if (!canEditPlan.value) return
+    editHistory.wrapEditableMutation(() => {
+      plan.value = next
+    })
+  }
+
+  function autoLayoutCurrentPlan() {
+    if (!plan.value || !canEditPlan.value) return
+    editHistory.wrapEditableMutation(() => {
+      plan.value = autoLayoutPlan(plan.value!)
+    })
   }
 
   function updateSelectedNode(patch: Partial<import('../api/workflows').WorkflowPlanNode>) {
     if (!plan.value || !selectedNodeId.value || !canEditPlan.value) return
-    plan.value = updateBusinessNode(plan.value, selectedNodeId.value, patch)
+    editHistory.wrapEditableMutation(() => {
+      plan.value = updateBusinessNode(plan.value!, selectedNodeId.value!, patch)
+    })
   }
 
   async function validatePlan() {
@@ -682,20 +1040,45 @@ function useWorkflowsPageImpl() {
     }
   }
 
+  function downloadWorkflowJson(body: Record<string, unknown>, filename: string) {
+    const blob = new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function exportWorkflowJson(wfId: string, version: number, mode: 'download' | 'copy' = 'download') {
+    const body = await exportWorkflowVersion(wfId, version)
+    const text = JSON.stringify(body, null, 2)
+    if (mode === 'copy') {
+      const { copyText } = await import('../utils/stream-markdown/clipboard')
+      const ok = await copyText(text)
+      if (!ok) throw new Error('复制失败')
+      message.success('JSON 已复制到剪贴板')
+      return
+    }
+    downloadWorkflowJson(body, `${wfId}-v${version}.json`)
+    message.success('已导出')
+  }
+
   async function exportJson() {
     if (!selectedId.value || selectedVersion.value == null) return
     try {
-      const body = await exportWorkflowVersion(selectedId.value, selectedVersion.value)
-      const blob = new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${selectedId.value}-v${selectedVersion.value}.json`
-      a.click()
-      URL.revokeObjectURL(url)
-      message.success('已导出')
+      await exportWorkflowJson(selectedId.value, selectedVersion.value, 'download')
     } catch (e) {
       message.error(friendlyErrorMessage(e, '导出失败'))
+    }
+  }
+
+  async function copyExportJson() {
+    if (!selectedId.value || selectedVersion.value == null) return
+    try {
+      await exportWorkflowJson(selectedId.value, selectedVersion.value, 'copy')
+    } catch (e) {
+      message.error(friendlyErrorMessage(e, '复制失败'))
     }
   }
 
@@ -707,24 +1090,28 @@ function useWorkflowsPageImpl() {
     const input = ev.target as HTMLInputElement
     const file = input.files?.[0]
     input.value = ''
-    if (!file || !selectedId.value) return
+    if (!file) return
     try {
       const text = await file.text()
       const body = JSON.parse(text) as Record<string, unknown>
-      body.workflowId = selectedId.value
-      await importWorkflowPackage(body)
-      await loadVersions(selectedId.value)
-      const data = await getWorkflowEditable(selectedId.value)
-      applyEditable(data)
-      message.success('已导入为草稿')
+      await prepareImportPreview(body)
     } catch (e) {
-      message.error(friendlyErrorMessage(e, '导入失败'))
+      message.error(friendlyErrorMessage(e, 'JSON 解析失败'))
     }
   }
 
   function handleCardMenuSelect(wf: WorkflowEntry, key: string) {
     if (key === 'edit') openEdit(wf)
     if (key === 'delete') openDelete(wf)
+    if (key === 'export') {
+      if (wf.activeVersion <= 0) {
+        message.warning('该工作流尚无已发布版本')
+        return
+      }
+      void exportWorkflowJson(wf.id, wf.activeVersion, 'download').catch(e => {
+        message.error(friendlyErrorMessage(e, '导出失败'))
+      })
+    }
   }
 
   function handleMoreMenuSelect(key: string) {
@@ -733,26 +1120,80 @@ function useWorkflowsPageImpl() {
       case 'fork': void forkToDraft(); break
       case 'import': triggerImport(); break
       case 'export': void exportJson(); break
+      case 'copy-export': void copyExportJson(); break
+      case 'duplicate': openDuplicateAsNew(); break
+      case 'diff': openVersionDiff(); break
       case 'delete-version': showDeleteVersionConfirm.value = true; break
     }
   }
 
   async function confirmCreate() {
     if (!canConfirmCreate.value) return
+    const seed = createSeedPackage.value
     try {
+      const newId = createDraft.value.id.trim()
       const entry = await createWorkflow(
-        createDraft.value.id.trim(),
+        newId,
         createDraft.value.displayName.trim(),
         createDraft.value.description.trim(),
       )
-      showCreate.value = false
-      createDraft.value = { id: '', displayName: '', description: '' }
+      if (seed) {
+        const normalized = applyPlanDefaults(
+          normalizeWorkflowPlan(seed.plan, newId, nodeDefaults.value ?? undefined),
+          nodeDefaults.value ?? undefined,
+        )
+        await saveWorkflowDraft(newId, normalized, seed.catalog)
+      }
+      closeCreateModal()
       await refreshPage()
       await selectWorkflow(entry.id)
-      message.success('工作流已创建')
+      message.success(seed ? '新工作流已创建并写入当前 Plan' : '工作流已创建')
     } catch (e) {
       message.error(friendlyErrorMessage(e, '创建工作流失败'))
     }
+  }
+
+  function suggestDuplicateWorkflowId(baseId: string): string {
+    const first = `${baseId}-copy`
+    if (!workflows.value.some(w => w.id === first)) return first
+    for (let i = 2; i < 100; i += 1) {
+      const candidate = `${baseId}-copy${i}`
+      if (!workflows.value.some(w => w.id === candidate)) return candidate
+    }
+    return `${baseId}-copy-${Date.now()}`
+  }
+
+  function openDuplicateAsNew() {
+    if (!plan.value || !selectedId.value) return
+    const id = selectedId.value
+    createDraft.value = {
+      id: suggestDuplicateWorkflowId(id),
+      displayName: `${definitionDisplayName.value.trim() || id} 副本`,
+      description: definitionDescription.value.trim(),
+    }
+    const examples = catalogExamples.value.split('\n').map(s => s.trim()).filter(Boolean)
+    createSeedPackage.value = {
+      plan: structuredClone(plan.value),
+      catalog: buildCatalogMeta(plan.value, examples, catalogIntentAfter.value),
+    }
+    showCreate.value = true
+  }
+
+  function closeCreateModal() {
+    showCreate.value = false
+    createDraft.value = { id: '', displayName: '', description: '' }
+    createSeedPackage.value = null
+  }
+
+  function openCreateModal() {
+    createDraft.value = { id: '', displayName: '', description: '' }
+    createSeedPackage.value = null
+    showCreate.value = true
+  }
+
+  function openTemplateModal() {
+    if (!canEditPlan.value) return
+    showTemplateModal.value = true
   }
 
   function bindImportInputRef(el: unknown) {
@@ -784,9 +1225,37 @@ function useWorkflowsPageImpl() {
     if (!defaults || !plan.value || !canEditPlan.value) return
     const next = applyPlanDefaults(plan.value, defaults)
     if (JSON.stringify(next) !== JSON.stringify(plan.value)) {
-      plan.value = next
+      editHistory.wrapEditableMutation(() => {
+        plan.value = next
+      })
     }
   })
+
+  function isTextInputFocused(): boolean {
+    const el = document.activeElement
+    if (!el) return false
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return true
+    return (el as HTMLElement).isContentEditable
+  }
+
+  function handleUndoRedoKeydown(e: KeyboardEvent) {
+    if (!canEditPlan.value || !plan.value) return
+    if (!(e.ctrlKey || e.metaKey)) return
+    if (isTextInputFocused()) return
+    const key = e.key.toLowerCase()
+    if (key === 'z' && !e.shiftKey) {
+      e.preventDefault()
+      editHistory.undo()
+      return
+    }
+    if (key === 'y' || (key === 'z' && e.shiftKey)) {
+      e.preventDefault()
+      editHistory.redo()
+    }
+  }
+
+  onMounted(() => window.addEventListener('keydown', handleUndoRedoKeydown))
+  onUnmounted(() => window.removeEventListener('keydown', handleUndoRedoKeydown))
 
   const catalogReady = loadCatalogOptions()
 
@@ -802,6 +1271,9 @@ function useWorkflowsPageImpl() {
     publishing,
     validating,
     validationIssues,
+    validationHighlightNodeIds,
+    canTryInChat,
+    canCompareVersions,
     workflows,
     versions,
     workflowSearch,
@@ -821,12 +1293,18 @@ function useWorkflowsPageImpl() {
     selectedNode,
     businessNodes,
     previewNodes,
+    isParallelWorkflow,
+    canApplyParallelTemplate,
     toolOptions,
     skillOptions,
     kbOptions,
     nodeDefaults,
     isDirty,
     canEditPlan,
+    canUndo: editHistory.canUndo,
+    canRedo: editHistory.canRedo,
+    undo: editHistory.undo,
+    redo: editHistory.redo,
     showSaveDraftButton,
     showPublishButton,
     workflowPhase,
@@ -839,7 +1317,16 @@ function useWorkflowsPageImpl() {
     showEdit,
     showDeleteConfirm,
     showDeleteVersionConfirm,
+    showTemplateModal,
+    showImportModal,
+    importPreviewLoading,
+    importPreviewBody,
+    importPreviewIssues,
+    importMode,
+    importDraft,
+    canConfirmImport,
     createDraft,
+    isDuplicateCreate,
     editForm,
     canConfirmCreate,
     cardMenuOptions,
@@ -847,7 +1334,20 @@ function useWorkflowsPageImpl() {
     refreshPage,
     selectWorkflow,
     addNode,
+    applyParallelDualRagTemplate,
+    applyWorkflowTemplate,
+    addParallelBranch,
+    openInChat,
+    openVersionDiff,
+    confirmImportPreview,
+    closeImportModal,
+    setImportMode,
+    refreshImportValidation,
+    exportWorkflowJson,
+    openTemplateModal,
     removeNode,
+    replacePlan,
+    autoLayoutCurrentPlan,
     updateSelectedNode,
     validatePlan,
     saveDraft,
@@ -856,10 +1356,14 @@ function useWorkflowsPageImpl() {
     confirmEdit,
     confirmDelete,
     confirmDeleteVersion,
+    openCreateModal,
+    closeCreateModal,
+    openDuplicateAsNew,
     toggleEnabled,
     handleCardMenuSelect,
     handleMoreMenuSelect,
     bindImportInputRef,
     handleImportFile,
+    triggerImport,
   })
 }

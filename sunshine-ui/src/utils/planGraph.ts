@@ -19,6 +19,8 @@ export interface DagNodeView {
   status: DagNodeStatus
   durationMs?: number
   attemptCount?: number
+  /** 配置的最大重试次数（Studio 预览）；运行时以 attemptCount 优先 */
+  retryMaxAttempts?: number
   attempts?: PlanNodeAttempt[]
   summary?: string
   detail?: string
@@ -147,6 +149,19 @@ function resolveSkillLabel(skillId: string | undefined, catalog: SkillCatalogInd
   return hit?.displayName?.trim() || id
 }
 
+function parseRetryMaxAttempts(params?: Record<string, string>): number | undefined {
+  const raw = params?.['retry.maxAttempts']
+  if (raw == null || String(raw).trim() === '') return undefined
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 1 ? n : undefined
+}
+
+export function resolveRetryBadgeCount(node: DagNodeView): number | null {
+  if (node.attemptCount != null && node.attemptCount > 1) return node.attemptCount
+  if (node.retryMaxAttempts != null && node.retryMaxAttempts > 1) return node.retryMaxAttempts
+  return null
+}
+
 function resolveNodeAttempts(
   step?: ProcessingStep,
   trace?: PlanNodeTrace,
@@ -212,6 +227,7 @@ export function buildDagNodes(
         : undefined)
     const skillId = node.type === 'agent' ? node.params?.skill?.trim() : undefined
     const attempts = resolveNodeAttempts(step, trace)
+    const retryMaxAttempts = parseRetryMaxAttempts(node.params)
     return [{
       id: node.id,
       type: node.type,
@@ -219,6 +235,7 @@ export function buildDagNodes(
       status,
       durationMs,
       attemptCount: trace?.attemptCount ?? attempts?.length,
+      retryMaxAttempts,
       attempts,
       summary: (stepSummary(step) ?? trace?.summary?.trim()) || undefined,
       detail: step?.detail?.trim() || step?.result?.trim() || trace?.detail?.trim() || undefined,

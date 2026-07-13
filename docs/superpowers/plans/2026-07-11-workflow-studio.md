@@ -22,9 +22,9 @@
 
 - Modify: `docker/mysql/init/13-sunshine-workflow-manager.sql`
 - 插入 **5 条** `workflow_definition` + `workflow_version`（`status=published`，`enabled=1`，`source=seed`）
-- 内容来源：`docs/workflow/*.json`（见 `manifest.json`）；工具 ID 为 `sdk__sunshine-finance__*`
+- 直接在 `docker/mysql/init/13-sunshine-workflow-manager.sql` 维护；工具 ID 为 `sdk__sunshine-finance__*`
 - 节点 id=`{type}-{8位hex}`；rag 须含 `params.query`（`{{start.userQuery}}`）
-- **维护**：改 JSON 后同步 init SQL + 已部署 DB，见 [docs/workflow/README.md](../../workflow/README.md)
+- **维护**：改 init SQL + 已部署 DB UPDATE，见 [docs/workflow/README.md](../../workflow/README.md)
 
 ### Task 1.2 workflow-manager API
 
@@ -99,7 +99,7 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest
 
 | 项 | 动作 |
 |----|------|
-| `docs/nacos/sunshine-workflows.yaml` | 归档或删除 |
+| `docs/nacos/sunshine-workflows.yaml` | **已删除**（2026-07-13） |
 | `WorkflowProperties.java` | 删除 |
 | `CompositeWorkflowDefinitionLoader` | 不实现 |
 | `CompositeWorkflowCatalog` | 不实现 |
@@ -109,10 +109,10 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest
 
 ## 检查门汇总
 
-- [ ] init SQL 后 **5** 标杆 `#` 可命中（含 `#knowledge-dual`）
-- [ ] 种子 rag 节点含 `params.query`；`WorkflowPlanValidatorTest` PASS
-- [ ] `docs/workflow/*.json` 与 `13-sunshine-workflow-manager.sql` 同构
-- [ ] 无 Nacos workflow 时 orchestrator 正常启动
-- [ ] Studio CRUD + 发布 + 缓存失效
-- [ ] `routing-golden-set` §B–D、§I PASS
-- [ ] 节点重试角标 `×N`（DB workflow）
+- [x] init SQL 后 **5** 标杆 `#` 可命中（含 `#knowledge-dual`）— `verify_workflow_studio_live.py --suite all`
+- [x] 种子 rag 节点含 `params.query`；`WorkflowPlanValidatorTest` PASS
+- [x] 标杆 workflow 种子 SSOT 为 `13-sunshine-workflow-manager.sql`（无独立 JSON）
+- [x] 无 Nacos workflow 时 orchestrator 正常启动
+- [x] Studio CRUD + 发布 + 缓存失效 — `--suite studio` + orchestrator catalog 刷新
+- [x] `routing-golden-set` §I PASS — `RoutingGoldenSetTest` + Live hash/parallel
+- [x] 节点重试角标 `×N`（DB workflow）— `PlanDagGraph` + Studio 预览

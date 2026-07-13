@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { provide } from 'vue'
 import { NButton, NCard, NEmpty, NIcon, NSpace, NSpin } from 'naive-ui'
-import { AddOutline, RefreshOutline } from '@vicons/ionicons5'
+import { AddOutline, CloudUploadOutline, RefreshOutline } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import WorkflowsListPanel from '../components/workflows/WorkflowsListPanel.vue'
 import WorkflowDetailPanel from '../components/workflows/WorkflowDetailPanel.vue'
 import WorkflowFormModals from '../components/workflows/WorkflowFormModals.vue'
+import WorkflowImportModal from '../components/workflows/WorkflowImportModal.vue'
 import { WORKFLOWS_PAGE_KEY, useWorkflowsPage } from '../composables/useWorkflowsPage'
 
 const workflowsPage = useWorkflowsPage()
@@ -14,15 +15,26 @@ provide(WORKFLOWS_PAGE_KEY, workflowsPage)
 
 <template>
   <div class="workflows-root">
+    <input
+      :ref="workflowsPage.bindImportInputRef"
+      type="file"
+      accept="application/json,.json"
+      class="hidden-import"
+      @change="workflowsPage.handleImportFile"
+    >
     <header class="page-header">
       <div class="page-header-main">
         <SidebarToggle />
         <h2>工作流</h2>
       </div>
       <NSpace :size="8">
-        <NButton round secondary @click="workflowsPage.showCreate = true">
+        <NButton round secondary @click="workflowsPage.openCreateModal()">
           <template #icon><NIcon :component="AddOutline" /></template>
           新建
+        </NButton>
+        <NButton round secondary @click="workflowsPage.triggerImport()">
+          <template #icon><NIcon :component="CloudUploadOutline" /></template>
+          导入
         </NButton>
         <NButton round type="primary" class="action-btn" :loading="workflowsPage.loading" @click="void workflowsPage.refreshPage()">
           <template #icon><NIcon :component="RefreshOutline" /></template>
@@ -42,6 +54,7 @@ provide(WORKFLOWS_PAGE_KEY, workflowsPage)
     </div>
 
     <WorkflowFormModals />
+    <WorkflowImportModal />
   </div>
 </template>
 
@@ -54,6 +67,10 @@ provide(WORKFLOWS_PAGE_KEY, workflowsPage)
   gap: 12px;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.hidden-import {
+  display: none;
 }
 
 .page-header {

@@ -32,7 +32,7 @@
 | **4.10** | Seata 分布式事务 + HITL 串联 | 跨服务写操作 | 低 |
 | **4.11** | Prompt 运营后台：版本/审核/回滚 | 提示词 >10 + 非研发维护 | 中 |
 | **4.12** | Serverless 冷启动 | 调用量波动大 | 低 |
-| **4.13** | **Workflow Studio**：Dify 式可视化维护 + DB PlanJson + `docs/workflow` 导入包 | 静态 workflow 运维 / 业务自助编排 | **中** |
+| **4.13** | **Workflow Studio**：Dify 式可视化维护 + DB PlanJson + MySQL init 种子 | 静态 workflow 运维 / 业务自助编排 | **中** |
 
 **三/四交界（已落地）**：Chat 底栏 **执行路径选择器** P0 ✅（`executionPreference` + `ForcedExecutionRouter`）；**workflow 模板 catalog / `#` 绑定** 归属 **4.13**，见 [chat-execution-mode-selector-design.md](./2026-06-25-chat-execution-mode-selector-design.md) §1.1、[workflow-studio-design.md](./2026-06-25-workflow-studio-design.md) §3.4。
 
@@ -188,15 +188,15 @@
 | 子任务 | 内容 |
 |--------|------|
 | **4.13.1** | `workflow-manager` :8230 + 表结构 | **✅** |
-| **4.13.1b** | **MySQL init 种子**（5 标杆 published v1，含 `knowledge-dual`） | `docker/mysql/init/13-sunshine-workflow-manager.sql` · [docs/workflow/README.md](../../workflow/README.md) |
-| **4.13.2** | Admin / Catalog / Published API + `PlanValidator` 发布校验 |
-| **4.13.2b** | orchestrator 移除 Nacos workflow + `WorkflowManagerClient` |
-| **4.13.3** | `WorkflowCatalogService` + **`WorkflowBindingParser/Policy`（L0 `#`）** |
-| **4.13.3b** | DB workflow 节点重试策略对齐 `NodeRetryPolicyResolver` |
-| **4.13.4** | BFF/Gateway 透传 |
-| **4.13.5** | 前端 **`/workflows`** 线性 DAG 编辑器 MVP + Chat `#` |
-| **4.13.6** | golden-set §I + `verify_workflow_studio_live.py` |
-| **4.13.7** | 并行/条件/循环节点编辑（依赖 **4.7.2** / **4.6.1** / loop） |
+| **4.13.1b** | **MySQL init 种子**（5 标杆 published v1，含 `knowledge-dual`） | **✅** |
+| **4.13.2** | Admin / Catalog / Published API + `PlanValidator` 发布校验 | **✅** |
+| **4.13.2b** | orchestrator 移除 Nacos workflow + `WorkflowManagerClient` | **✅** |
+| **4.13.3** | `WorkflowCatalogService` + **`WorkflowBindingParser/Policy`（L0 `#`）** | **✅** |
+| **4.13.3b** | DB workflow 节点重试策略对齐 `NodeRetryPolicyResolver` | **✅** |
+| **4.13.4** | BFF/Gateway 透传 | **✅** |
+| **4.13.5** | 前端 **`/workflows`** 线性 DAG 编辑器 MVP + Chat `#` | **✅** |
+| **4.13.6** | golden-set §I + `verify_workflow_studio_live.py` | **✅** |
+| **4.13.7** | 并行/条件/循环节点编辑（依赖 **4.7.2** / **4.6.1** / loop） | ⬜ |
 
 **修订（2026-07-11）**：Workflow **DB 唯一 SSOT**；废弃 Nacos `sunshine-workflows.yaml` 与 `Composite*` 合并逻辑。详设 [workflow-studio-design.md](./2026-06-25-workflow-studio-design.md) · 计划 [2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md)
 

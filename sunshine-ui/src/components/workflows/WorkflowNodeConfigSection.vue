@@ -21,7 +21,7 @@ defineProps<{
 
 <style scoped>
 .wf-sec {
-  padding: 14px 14px 16px;
+  padding: 12px 14px 14px;
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
   background: var(--sun-black);
@@ -30,9 +30,9 @@ defineProps<{
   display: flex;
   align-items: center;
   gap: 4px;
-  padding-bottom: 10px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--sun-border);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--sun-border) 65%, transparent);
 }
 .wf-sec-title {
   font-size: 13px;
@@ -43,7 +43,7 @@ defineProps<{
 .wf-sec-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 .wf-sec-body :deep(.n-form-item) {
   margin-bottom: 0;

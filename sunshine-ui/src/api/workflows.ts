@@ -48,6 +48,8 @@ export interface WorkflowPlan {
   reason: string
   nodes: WorkflowPlanNode[]
   edges: { from: string; to: string }[]
+  /** Studio 画布节点坐标（可选，不影响执行） */
+  layout?: Record<string, { x: number; y: number }>
 }
 
 export interface WorkflowNodeRetryDefaults {

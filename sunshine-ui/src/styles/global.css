@@ -11,6 +11,7 @@
   --sun-surface-hover: #383838;
   --sun-border: #424242;
   --sun-border-light: #525252;
+  --sun-dag-dot: color-mix(in srgb, var(--sun-border) 55%, transparent);
   --sun-text: #ececec;
   --sun-text-secondary: #b4b4b4;
   --sun-text-muted: #8e8e8e;
@@ -218,6 +219,7 @@ html.theme-switching *::after {
   --sun-surface-hover: #ececec;
   --sun-border: #e5e5e5;
   --sun-border-light: #d4d4d4;
+  --sun-dag-dot: color-mix(in srgb, var(--sun-border) 55%, transparent);
   --sun-text: #0d0d0d;
   --sun-text-secondary: #525252;
   --sun-text-muted: #737373;

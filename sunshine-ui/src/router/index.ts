@@ -53,6 +53,12 @@ const router = createRouter({
           meta: { title: '专家' },
         },
         {
+          path: 'workflows/:workflowId/diff',
+          name: 'workflow-diff',
+          component: () => import('../views/WorkflowVersionDiffView.vue'),
+          meta: { title: '工作流版本对比' },
+        },
+        {
           path: 'workflows/:workflowId?',
           name: 'workflows',
           component: () => import('../views/WorkflowsView.vue'),

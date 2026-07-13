@@ -3,7 +3,7 @@
 # Data ID: sunshine-workflow-manager.yaml
 # Group:   DEFAULT_GROUP
 # 表结构 SSOT：docker/mysql/init/13-sunshine-workflow-manager.sql（禁止 Flyway）
-# 标杆 PlanJson 模板：docs/workflow/*.json（5 条种子，与 init SQL 同构）
+# 标杆 PlanJson 种子 SSOT：docker/mysql/init/13-sunshine-workflow-manager.sql（5 条 published v1）
 # PlanValidator：rag/agent 节点 params.query 必填（种子默认 {{start.userQuery}}）
 # ============================================================
 

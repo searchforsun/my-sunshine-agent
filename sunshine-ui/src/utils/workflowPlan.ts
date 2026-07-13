@@ -1,7 +1,7 @@
 import type { PlanGraph, PlanGraphNode } from '../api/executionPlans'
 import { formatPlanNodeType } from '../api/executionPlans'
 import type { WorkflowPlan, WorkflowPlanNode, WorkflowNodeDefaultsResponse } from '../api/workflows'
-import { buildRetryParams } from './workflowNodeParams'
+import { buildRetryParams, readRetryMaxAttempts, resolveNodeDefaults } from './workflowNodeParams'
 import { fullDagOrder, type DagNodeView } from './planGraph'
 
 export const WORKFLOW_NODE_TYPES = ['rag', 'tool', 'agent'] as const
@@ -66,11 +66,15 @@ export function normalizeWorkflowPlan(
   }
   const business = nodes.filter(n => n.type !== 'start' && n.type !== 'answer')
   const normalized: WorkflowPlanNode[] = [start, ...business, answer]
+  const edges = (plan.edges?.length ?? 0) > 0
+    ? [...plan.edges]
+    : rebuildLinearEdges(normalized)
   return {
     planId: plan.planId ?? null,
     reason: plan.reason?.trim() || `工作流 ${workflowId}`,
     nodes: normalized,
-    edges: rebuildLinearEdges(normalized),
+    edges,
+    layout: plan.layout ? { ...plan.layout } : undefined,
   }
 }
 
@@ -276,13 +280,208 @@ export function updateBusinessNode(
   patch: Partial<WorkflowPlanNode>,
 ): WorkflowPlan {
   const nodes = (plan.nodes ?? []).map(n => (n.id === nodeId ? { ...n, ...patch, id: nodeId } : n))
-  return { ...plan, nodes, edges: rebuildLinearEdges(nodes) }
+  return { ...plan, nodes }
 }
 
-export function buildParallelDualRagPlan(workflowId: string): WorkflowPlan {
+export function buildLinearRagQaPlan(
+  workflowId: string,
+  nodeDefaults?: WorkflowNodeDefaultsResponse,
+): WorkflowPlan {
+  const resolved = resolveNodeDefaults(nodeDefaults)
+  const ragParams = {
+    query: '{{start.userQuery}}',
+    topK: '3',
+    ...buildRetryParams('rag', resolved),
+  }
+  const answerPrompt =
+    '你是企业制度问答助手。仅根据下方「检索结果」回答，不得编造公司制度。\n\n'
+    + '检索结果：\n{{rag-c5d7e903.output}}'
+  return {
+    planId: null,
+    reason: `知识库问答工作流 ${workflowId}`,
+    nodes: [
+      defaultStartNode(),
+      {
+        id: 'rag-c5d7e903',
+        type: 'rag',
+        displayName: '知识检索',
+        params: ragParams,
+      },
+      {
+        id: 'answer',
+        type: 'answer',
+        displayName: '生成回答',
+        params: {
+          prompt: answerPrompt,
+          ...buildRetryParams('answer', resolved),
+        },
+      },
+    ],
+    edges: [
+      { from: 'start', to: 'rag-c5d7e903' },
+      { from: 'rag-c5d7e903', to: 'answer' },
+    ],
+  }
+}
+
+export function buildLinearToolAgentPlan(
+  workflowId: string,
+  nodeDefaults?: WorkflowNodeDefaultsResponse,
+): WorkflowPlan {
+  const resolved = resolveNodeDefaults(nodeDefaults)
+  const toolParams = {
+    tool: 'sdk__sunshine-finance__list_finance_messages',
+    status: '{{plan.params.status}}',
+    ...buildRetryParams('tool', resolved),
+  }
+  const agentParams = {
+    query: '{{start.userQuery}}',
+    context: '{{tool-d4e8f901.output}}',
+    skill: 'finance-analysis',
+    tools: 'sdk__sunshine-finance__list_finance_messages',
+    maxIters: '4',
+    systemOverlay: '本节点仅输出内部分析结论，不面向用户',
+    ...buildRetryParams('agent', resolved),
+  }
+  const answerPrompt =
+    '根据 Agent 分析结果生成用户可见回答。\n\n分析：\n{{agent-b2c6d803.answer}}'
+  return {
+    planId: null,
+    reason: `工具 + Agent 分析工作流 ${workflowId}`,
+    nodes: [
+      defaultStartNode(),
+      {
+        id: 'tool-d4e8f901',
+        type: 'tool',
+        displayName: '查询待审批财务消息',
+        params: toolParams,
+      },
+      {
+        id: 'agent-b2c6d803',
+        type: 'agent',
+        displayName: '智能体分析',
+        params: agentParams,
+      },
+      {
+        id: 'answer',
+        type: 'answer',
+        displayName: '生成回答',
+        params: {
+          prompt: answerPrompt,
+          ...buildRetryParams('answer', resolved),
+        },
+      },
+    ],
+    edges: [
+      { from: 'start', to: 'tool-d4e8f901' },
+      { from: 'tool-d4e8f901', to: 'agent-b2c6d803' },
+      { from: 'agent-b2c6d803', to: 'answer' },
+    ],
+  }
+}
+
+export function buildFinanceListPlan(
+  workflowId: string,
+  nodeDefaults?: WorkflowNodeDefaultsResponse,
+): WorkflowPlan {
+  const resolved = resolveNodeDefaults(nodeDefaults)
+  const toolParams = {
+    tool: 'sdk__sunshine-finance__list_finance_messages',
+    status: '{{plan.params.status}}',
+    ...buildRetryParams('tool', resolved),
+  }
+  const answerPrompt =
+    '根据财务工具查询结果回答用户问题。\n\n'
+    + '约束：禁止向用户暴露英文流程/工具内部名。\n\n'
+    + '数据：\n{{tool-f7a3b2c1.output}}'
+  return {
+    planId: null,
+    reason: `财务待办查询工作流 ${workflowId}`,
+    nodes: [
+      defaultStartNode(),
+      {
+        id: 'tool-f7a3b2c1',
+        type: 'tool',
+        displayName: '查询待审批财务消息',
+        params: toolParams,
+      },
+      {
+        id: 'answer',
+        type: 'answer',
+        displayName: '生成回答',
+        params: {
+          prompt: answerPrompt,
+          ...buildRetryParams('answer', resolved),
+        },
+      },
+    ],
+    edges: [
+      { from: 'start', to: 'tool-f7a3b2c1' },
+      { from: 'tool-f7a3b2c1', to: 'answer' },
+    ],
+  }
+}
+
+export function buildFinanceSummaryPlan(
+  workflowId: string,
+  nodeDefaults?: WorkflowNodeDefaultsResponse,
+): WorkflowPlan {
+  const resolved = resolveNodeDefaults(nodeDefaults)
+  const toolParams = {
+    tool: 'sdk__sunshine-finance__summarize_finance_by_status',
+    status: '{{plan.params.status}}',
+    ...buildRetryParams('tool', resolved),
+  }
+  const answerPrompt =
+    '根据财务汇总工具结果回答用户。\n\n'
+    + '约束：禁止向用户暴露英文流程/工具内部名。\n\n'
+    + '汇总：\n{{tool-a9c1e502.output}}'
+  return {
+    planId: null,
+    reason: `财务汇总统计工作流 ${workflowId}`,
+    nodes: [
+      defaultStartNode(),
+      {
+        id: 'tool-a9c1e502',
+        type: 'tool',
+        displayName: '统计财务消息',
+        params: toolParams,
+      },
+      {
+        id: 'answer',
+        type: 'answer',
+        displayName: '生成回答',
+        params: {
+          prompt: answerPrompt,
+          ...buildRetryParams('answer', resolved),
+        },
+      },
+    ],
+    edges: [
+      { from: 'start', to: 'tool-a9c1e502' },
+      { from: 'tool-a9c1e502', to: 'answer' },
+    ],
+  }
+}
+
+export function buildParallelDualRagPlan(
+  workflowId: string,
+  nodeDefaults?: WorkflowNodeDefaultsResponse,
+): WorkflowPlan {
+  const resolved = resolveNodeDefaults(nodeDefaults)
   const answerPrompt =
     '你是企业知识助手。综合下方「制度检索」与「财务检索」结果回答，不得编造。\n\n'
     + '制度检索：\n{{rag-a1b2c3d4.output}}\n\n财务检索：\n{{rag-e5f6a7b8.output}}'
+  const ragParams = {
+    query: '{{start.userQuery}}',
+    topK: '3',
+    ...buildRetryParams('rag', resolved),
+  }
+  const joinParams = buildRetryParams('join', resolved)
+  const answerParams = {
+    prompt: answerPrompt,
+    ...buildRetryParams('answer', resolved),
+  }
   return {
     planId: null,
     reason: `并行双检索工作流 ${workflowId}`,
@@ -292,25 +491,25 @@ export function buildParallelDualRagPlan(workflowId: string): WorkflowPlan {
         id: 'rag-a1b2c3d4',
         type: 'rag',
         displayName: '制度检索',
-        params: { topK: '3' },
+        params: ragParams,
       },
       {
         id: 'rag-e5f6a7b8',
         type: 'rag',
         displayName: '财务检索',
-        params: { topK: '3' },
+        params: { ...ragParams },
       },
       {
         id: 'join-c9d0e1f2',
         type: 'join',
         displayName: '汇总',
-        params: {},
+        params: joinParams,
       },
       {
         id: 'answer',
         type: 'answer',
         displayName: '生成回答',
-        params: { prompt: answerPrompt },
+        params: answerParams,
       },
     ],
     edges: [
@@ -359,11 +558,14 @@ export function buildPreviewDagNodes(plan: WorkflowPlan): DagNodeView[] {
     }
     const node = byId.get(id)
     if (!node) return []
+    const params = node.params as Record<string, unknown> | undefined
+    const retryMax = readRetryMaxAttempts(params, node.type)
     return [{
       id: node.id,
       type: node.type,
       label: node.displayName?.trim() || formatPlanNodeType(node.type),
       status: 'pending' as const,
+      retryMaxAttempts: retryMax > 1 ? retryMax : undefined,
     }]
   })
 }

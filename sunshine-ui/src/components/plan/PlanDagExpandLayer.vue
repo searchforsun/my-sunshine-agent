@@ -337,7 +337,7 @@ onUnmounted(() => {
   touch-action: none;
   background-color: var(--sun-black);
   background-image:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--sun-border) 55%, transparent) 1px, transparent 0);
+    radial-gradient(circle at 1px 1px, var(--sun-dag-dot) 1px, transparent 0);
   background-size: 16px 16px;
   contain: paint;
 }

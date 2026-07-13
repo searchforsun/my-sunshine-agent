@@ -79,6 +79,17 @@ const kind = computed(() => {
       <circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" />
     </template>
 
+    <!-- join：并行汇总 -->
+    <template v-else-if="kind === 'join'">
+      <path
+        d="M3.5 5.5h9M3.5 10.5h9M8 5.5v5"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+      />
+      <circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none" />
+    </template>
+
     <!-- answer：汇总输出 -->
     <template v-else-if="kind === 'answer'">
       <path
@@ -141,5 +152,9 @@ const kind = computed(() => {
 
 .is-llm {
   color: color-mix(in srgb, var(--sun-text-secondary) 82%, var(--sun-text));
+}
+
+.is-join {
+  color: color-mix(in srgb, var(--sun-text-secondary) 80%, var(--sun-blue, #58a6ff));
 }
 </style>

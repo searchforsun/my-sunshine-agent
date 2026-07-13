@@ -10,11 +10,14 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
   <NModal
     v-model:show="page.showCreate"
     preset="card"
-    title="新建工作流"
+    :title="page.isDuplicateCreate ? '另存为新工作流' : '新建工作流'"
     :style="{ width: '420px' }"
     :bordered="false"
     class="sun-modal"
   >
+    <p v-if="page.isDuplicateCreate" class="create-hint">
+      将复制当前版本的 Plan 与流程配置到新工作流，创建后可在 Studio 继续编辑。
+    </p>
     <NForm label-placement="top" size="small">
       <NFormItem label="Workflow ID" required>
         <NInput
@@ -38,7 +41,7 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
     </NForm>
     <template #footer>
       <NSpace justify="end">
-        <NButton round @click="page.showCreate = false">取消</NButton>
+        <NButton round @click="page.closeCreateModal()">取消</NButton>
         <NButton
           round
           type="primary"
@@ -46,7 +49,7 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
           :disabled="!page.canConfirmCreate"
           @click="void page.confirmCreate()"
         >
-          创建
+          {{ page.isDuplicateCreate ? '另存' : '创建' }}
         </NButton>
       </NSpace>
     </template>
@@ -116,3 +119,12 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
     </template>
   </NModal>
 </template>
+
+<style scoped>
+.create-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--sun-text-muted);
+}
+</style>

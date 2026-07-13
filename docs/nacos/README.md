@@ -10,7 +10,7 @@
 | `sunshine-auth.yaml` | Auth Center |
 | `sunshine-bff.yaml` | BFF |
 | `sunshine-orchestrator.yaml` | Orchestrator |
-| ~~`sunshine-workflows.yaml`~~ | **已废弃**（2026-07-11）→ workflow-manager DB + [docs/workflow/](../workflow/README.md) 种子模板 |
+| ~~`sunshine-workflows.yaml`~~ | **已删除**；标杆见 `13-sunshine-workflow-manager.sql` |
 | `sunshine-llm-gateway.yaml` | LLM Gateway |
 | `sunshine-rag.yaml` | RAG Service |
 | `sunshine-finance.yaml` | Finance Service |
