@@ -6,6 +6,8 @@ import com.sunshine.orchestrator.rewrite.QueryRewriteScenario;
 import com.sunshine.orchestrator.rewrite.QueryRewriteTrace;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 
+import java.util.List;
+
 /** intent / plan / skill / RAG 等阶段完成逻辑 */
 final class TimelineSessionCompletions {
 
@@ -131,24 +133,25 @@ final class TimelineSessionCompletions {
         }
         String after = summaries.resolveAfter(stepId, summaryLine, metadata);
         Integer baseline = state.ragRewriteBaselineByStep.remove(stepId);
-        int rewriteFromIndex;
-        int rewriteToIndex;
-        java.util.Optional<QueryRewriteTrace.RagSpan> ragSpan = QueryRewriteTrace.ragSpan(stepId);
-        if (ragSpan.isPresent()) {
-            rewriteFromIndex = ragSpan.get().startIndex();
-            rewriteToIndex = ragSpan.get().endIndex();
-            QueryRewriteTrace.clearRagSpan(stepId);
-        } else {
-            rewriteFromIndex = baseline != null ? baseline : 0;
-            rewriteToIndex = state.traceMessageId != null
-                    ? QueryRewriteTrace.size(state.traceMessageId)
-                    : rewriteFromIndex;
+        java.util.Optional<QueryRewriteTrace.RagSpan> ragSpanOpt = QueryRewriteTrace.ragSpan(stepId);
+        int rewriteFromIndex = ragSpanOpt.map(QueryRewriteTrace.RagSpan::startIndex)
+                .orElse(baseline != null ? baseline : 0);
+        int rewriteToIndex = ragSpanOpt.map(QueryRewriteTrace.RagSpan::endIndex)
+                .orElse(state.traceMessageId != null
+                        ? QueryRewriteTrace.size(state.traceMessageId)
+                        : rewriteFromIndex);
+        String rewriteDetail = QueryRewriteTrace.combinedRagTimelineDetailForStep(state.traceMessageId, stepId);
+        if (rewriteDetail == null || rewriteDetail.isBlank()) {
+            rewriteDetail = QueryRewriteTrace
+                    .combinedRagTimelineDetailBetween(state.traceMessageId, rewriteFromIndex, rewriteToIndex);
         }
-        String rewriteDetail = QueryRewriteTrace
-                .combinedRagTimelineDetailBetween(state.traceMessageId, rewriteFromIndex, rewriteToIndex);
+        QueryRewriteTrace.clearRagSpan(stepId);
         String storedDetail;
         if (ToolStepIds.isRagStep(stepId) || TimelineSessionSummaries.isWorkflowRagNode(stepId)) {
-            metadata = mergeRagRewriteMetadataBetween(metadata, rewriteFromIndex, rewriteToIndex);
+            metadata = mergeRagRewriteMetadataForStep(metadata, stepId);
+            if (!hasRewriteMetadata(metadata)) {
+                metadata = mergeRagRewriteMetadataBetween(metadata, rewriteFromIndex, rewriteToIndex);
+            }
             storedDetail = resolveRagStoredDetail(stepId, summaryLine, rewriteDetail);
             if (rewriteDetail != null && !rewriteDetail.isBlank()) {
                 metadata = StepMetadata.withRagExpandLayout(metadata);
@@ -199,6 +202,25 @@ final class TimelineSessionCompletions {
             state.ragRewriteBaselineByStep.put(stepId,
                     QueryRewriteTrace.size(state.traceMessageId));
         }
+    }
+
+    private StepMetadata mergeRagRewriteMetadataForStep(StepMetadata metadata, String stepId) {
+        if (state.traceMessageId == null || stepId == null) {
+            return metadata;
+        }
+        List<QueryRewriteOutcome> outcomes = QueryRewriteTrace.outcomesForStep(state.traceMessageId, stepId);
+        if (outcomes.isEmpty()) {
+            return metadata;
+        }
+        StepMetadata merged = metadata;
+        for (QueryRewriteOutcome outcome : outcomes) {
+            merged = StepMetadata.mergeRewrite(merged, outcome);
+        }
+        return merged;
+    }
+
+    private static boolean hasRewriteMetadata(StepMetadata metadata) {
+        return metadata != null && Boolean.TRUE.equals(metadata.rewriteApplied());
     }
 
     private StepMetadata mergeRagRewriteMetadataBetween(StepMetadata metadata, int fromIndex, int toIndex) {

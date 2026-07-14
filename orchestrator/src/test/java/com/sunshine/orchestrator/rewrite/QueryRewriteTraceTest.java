@@ -12,6 +12,7 @@ class QueryRewriteTraceTest {
     @AfterEach
     void tearDown() {
         QueryRewriteTrace.clear("m1");
+        QueryRewriteTrace.clear("m-par");
     }
 
     @Test
@@ -46,5 +47,27 @@ class QueryRewriteTraceTest {
         assertThat(summary.rewriteApplied()).isTrue();
         assertThat(summary.rewriteLatencyMs()).isEqualTo(20L);
         RewriteTimelineLabels.bind(null);
+    }
+
+    @Test
+    void parallelRagStep_outcomesIsolatedByStepId() {
+        QueryRewriteTrace.bind("m-par");
+        String stepA = "node-rag-a";
+        String stepB = "node-rag-b";
+        QueryRewriteOutcome rewriteA = QueryRewriteOutcome.of(
+                "rag", "q", "rewrite-a", 10L, "优化检索词");
+        QueryRewriteOutcome rewriteB = QueryRewriteOutcome.of(
+                "rag", "q", "rewrite-b", 11L, "优化检索词");
+        QueryRewriteTrace.recordForRagStep("m-par", stepA, rewriteA);
+        QueryRewriteTrace.recordForRagStep("m-par", stepB, rewriteB);
+
+        assertThat(QueryRewriteTrace.combinedRagTimelineDetailForStep("m-par", stepA))
+                .contains("rewrite-a")
+                .doesNotContain("rewrite-b");
+        assertThat(QueryRewriteTrace.combinedRagTimelineDetailForStep("m-par", stepB))
+                .contains("rewrite-b")
+                .doesNotContain("rewrite-a");
+
+        QueryRewriteTrace.clear("m-par");
     }
 }

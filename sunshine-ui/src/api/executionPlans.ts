@@ -41,6 +41,8 @@ export interface PlanGraph {
   reason?: string
   nodes?: PlanGraphNode[]
   edges?: PlanGraphEdge[]
+  /** Studio 画布坐标快照（BPMN DI 等价） */
+  layout?: Record<string, { x: number; y: number }>
 }
 
 export interface ExecutionPlanDetail {
@@ -120,7 +122,7 @@ export function formatPlanNodeType(type: string): string {
     join: '并行汇总',
     'parallel-gateway': '并行分叉',
     'exclusive-gateway': '条件分支',
-    answer: '汇总输出',
+    answer: '回答',
     start: '开始',
   }
   return map[type] ?? type

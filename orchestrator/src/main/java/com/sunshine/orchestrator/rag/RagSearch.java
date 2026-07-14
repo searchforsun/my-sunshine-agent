@@ -39,7 +39,7 @@ public final class RagSearch {
         boolean includeTrace = traceMessageId != null && !traceMessageId.isBlank();
         return kbResolver.resolve(tid, kbId)
                 .flatMap(resolvedKb -> ragClient.searchKnowledge(query, topK, tid, resolvedKb, null, includeTrace)
-                        .doOnNext(result -> recordTrace(traceMessageId, result))
+                        .doOnNext(result -> recordTrace(traceMessageId, ragStepId, result))
                         .map(RagClient.RagSearchResult::hits))
                 .doFinally(signal -> {
                     if (ragStepId != null && traceMessageId != null) {
@@ -73,12 +73,15 @@ public final class RagSearch {
                 .orElse(List.of());
     }
 
-    private static void recordTrace(String traceMessageId, RagClient.RagSearchResult result) {
+    private static void recordTrace(String traceMessageId, String ragStepId, RagClient.RagSearchResult result) {
         if (traceMessageId == null || traceMessageId.isBlank() || result.traceOutcomes() == null) {
             return;
         }
         for (var outcome : result.traceOutcomes()) {
             QueryRewriteTrace.record(traceMessageId, outcome);
+            if (ragStepId != null && !ragStepId.isBlank()) {
+                QueryRewriteTrace.recordForRagStep(traceMessageId, ragStepId, outcome);
+            }
         }
     }
 }

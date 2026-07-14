@@ -9,6 +9,7 @@ import {
 import { resolveStepDurationMs, stepLifecycle, type ProcessingStep } from '../api/processingSteps'
 import { isHitlSummaryAwaiting, relocateAgentNodeHitl, normalizePendingHitlList, reapplyPendingHitlList, type HitlConfirmationPayload } from '../api/hitlSteps'
 import { isRecoveryAwaiting, isRecoverySkipped, isRecoveryTerminated, stepHasHitlAwaiting } from '../api/recoverySteps'
+import { isGatewayType } from './workflowGateway'
 
 export type DagNodeStatus = 'pending' | 'running' | 'done' | 'error' | 'awaiting_confirm' | 'paused' | 'terminated' | 'skipped'
 
@@ -75,6 +76,7 @@ export function fullDagOrder(graph: PlanGraph): string[] {
 }
 
 function nodeLabel(node: PlanGraphNode): string {
+  if (node.type === 'answer') return formatPlanNodeType('answer')
   if (node.displayName?.trim()) return node.displayName.trim()
   return formatPlanNodeType(node.type)
 }
@@ -134,6 +136,93 @@ function mapStepStatus(step?: ProcessingStep): DagNodeStatus {
   return 'pending'
 }
 
+/** 合并 SSE 步与 execution_trace，刷新后 trace 可补全 node 终态 */
+function statusRank(status: DagNodeStatus): number {
+  switch (status) {
+    case 'done': return 50
+    case 'error': return 45
+    case 'terminated': return 44
+    case 'skipped': return 43
+    case 'awaiting_confirm': return 40
+    case 'paused': return 35
+    case 'running': return 30
+    case 'pending': return 0
+    default: return 0
+  }
+}
+
+function resolveNodeStatus(step?: ProcessingStep, trace?: PlanNodeTrace): DagNodeStatus {
+  const fromStep = step ? mapStepStatus(step) : undefined
+  const fromTrace = trace ? mapTraceStatus(trace.status) : undefined
+  if (!fromStep) return fromTrace ?? 'pending'
+  if (!fromTrace) return fromStep
+  return statusRank(fromStep) >= statusRank(fromTrace) ? fromStep : fromTrace
+}
+
+function isTerminalStatus(status: DagNodeStatus): boolean {
+  return status === 'done'
+    || status === 'error'
+    || status === 'skipped'
+    || status === 'terminated'
+}
+
+/** start 无独立 timeline 步：任一后继节点或 plan 步已推进即视为已通过 */
+function resolveStartStatus(
+  order: string[],
+  byId: Map<string, PlanGraphNode>,
+  stepByNodeId: Map<string, ProcessingStep>,
+  traceByNodeId: Map<string, PlanNodeTrace>,
+  planStep?: ProcessingStep,
+): DagNodeStatus {
+  const planLc = planStep ? stepLifecycle(planStep) : undefined
+  if (planLc === 'running' || planLc === 'done' || planLc === 'error' || planLc === 'skipped') {
+    return 'done'
+  }
+  for (const id of order) {
+    if (id === 'start') continue
+    const node = byId.get(id)
+    if (!node) continue
+    const st = resolveNodeStatus(stepByNodeId.get(node.id), traceByNodeId.get(node.id))
+    if (st !== 'pending') return 'done'
+  }
+  return 'pending'
+}
+
+/**
+ * join / parallel-gateway 等不落 SSE 步；live 期也不刷 execution_trace。
+ * 用邻居业务节点状态推断，避免等下游跑完才变绿。
+ */
+function resolveRoutingNodeStatus(
+  node: PlanGraphNode,
+  graph: PlanGraph,
+  byId: Map<string, PlanGraphNode>,
+  stepByNodeId: Map<string, ProcessingStep>,
+  traceByNodeId: Map<string, PlanNodeTrace>,
+  order: string[],
+  planStep: ProcessingStep | undefined,
+  base: DagNodeStatus,
+): DagNodeStatus {
+  if (base !== 'pending') return base
+  const edges = graph.edges ?? []
+  const preds = edges.filter(e => e.to === node.id).map(e => e.from)
+  const succs = edges.filter(e => e.from === node.id).map(e => e.to)
+  const statusOf = (id: string): DagNodeStatus => {
+    if (id === 'start') {
+      return resolveStartStatus(order, byId, stepByNodeId, traceByNodeId, planStep)
+    }
+    return resolveNodeStatus(stepByNodeId.get(id), traceByNodeId.get(id))
+  }
+  for (const id of succs) {
+    if (statusOf(id) !== 'pending') return 'done'
+  }
+  if (node.type === 'join') {
+    const predStatuses = preds.map(statusOf)
+    if (predStatuses.length > 0 && predStatuses.every(isTerminalStatus)) return 'done'
+    if (predStatuses.some(s => s !== 'pending')) return 'running'
+  }
+  return 'pending'
+}
+
 function stepSummary(step?: ProcessingStep): string | undefined {
   if (!step) return undefined
   return step.summary?.after?.trim()
@@ -158,7 +247,6 @@ function parseRetryMaxAttempts(params?: Record<string, string>): number | undefi
 
 export function resolveRetryBadgeCount(node: DagNodeView): number | null {
   if (node.attemptCount != null && node.attemptCount > 1) return node.attemptCount
-  if (node.retryMaxAttempts != null && node.retryMaxAttempts > 1) return node.retryMaxAttempts
   return null
 }
 
@@ -202,29 +290,32 @@ export function buildDagNodes(
   const order = fullDagOrder(graph)
   return order.flatMap(id => {
     if (id === 'start') {
-      const firstBiz = order.find(x => x !== 'start' && byId.has(x))
-      const firstStep = firstBiz ? stepByNodeId.get(firstBiz) : undefined
-      const status = firstStep ? mapStepStatus(firstStep) : 'pending'
-      const durationMs = planStep ? resolveStepDurationMs(planStep) : undefined
       return [{
         id: 'start',
         type: 'start',
         label: '开始',
-        status: (status === 'pending' ? 'pending' : 'done') as DagNodeStatus,
-        durationMs,
+        status: resolveStartStatus(order, byId, stepByNodeId, traceByNodeId, planStep),
       }]
     }
     const node = byId.get(id)
     if (!node) return []
     const step = stepByNodeId.get(node.id)
     const trace = traceByNodeId.get(node.id)
-    const status = step ? mapStepStatus(step) : mapTraceStatus(trace?.status ?? 'pending')
+    const baseStatus = resolveNodeStatus(step, trace)
+    const isRoutingNode = isGatewayType(node.type)
+    const status = isRoutingNode
+      ? resolveRoutingNodeStatus(
+        node, graph, byId, stepByNodeId, traceByNodeId, order, planStep, baseStatus,
+      )
+      : baseStatus
     const recoveryAwaiting = isRecoveryAwaiting(step)
-    const durationMs = step
-      ? resolveStepDurationMs(step)
-      : (trace?.startedAt != null && trace?.endedAt != null
-        ? trace.endedAt - trace.startedAt
-        : undefined)
+    const durationMs = isRoutingNode
+      ? undefined
+      : (step
+        ? resolveStepDurationMs(step)
+        : (trace?.startedAt != null && trace?.endedAt != null
+          ? trace.endedAt - trace.startedAt
+          : undefined))
     const skillId = node.type === 'agent' ? node.params?.skill?.trim() : undefined
     const attempts = resolveNodeAttempts(step, trace)
     const retryMaxAttempts = parseRetryMaxAttempts(node.params)

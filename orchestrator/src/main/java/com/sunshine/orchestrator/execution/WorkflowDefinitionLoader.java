@@ -19,7 +19,10 @@ public class WorkflowDefinitionLoader {
     private final PlanJsonParser planJsonParser;
     private final PlanMaterializer planMaterializer;
 
-    public Optional<WorkflowDefinition> load(String workflowId) {
+    public record WorkflowLoadBundle(WorkflowDefinition definition, PlanJson sourcePlan) {
+    }
+
+    public Optional<WorkflowLoadBundle> loadBundle(String workflowId) {
         if (!StringUtils.hasText(workflowId)) {
             return Optional.empty();
         }
@@ -27,7 +30,12 @@ public class WorkflowDefinitionLoader {
                 .map(published -> {
                     String raw = workflowManagerClient.planToJson(published.plan());
                     PlanJson plan = planJsonParser.parse(raw);
-                    return planMaterializer.materializeStored(plan, workflowId.strip());
+                    WorkflowDefinition def = planMaterializer.materializeStored(plan, workflowId.strip());
+                    return new WorkflowLoadBundle(def, plan);
                 });
+    }
+
+    public Optional<WorkflowDefinition> load(String workflowId) {
+        return loadBundle(workflowId).map(WorkflowLoadBundle::definition);
     }
 }

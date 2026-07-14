@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@vue-flow/core'
 import { Position } from '@vue-flow/core'
+import { formatPlanNodeType } from '../api/executionPlans'
 import type { WorkflowPlan, WorkflowPlanNode, WorkflowNodeDefaultsResponse } from '../api/workflows'
 import {
   defaultDisplayName,
@@ -22,11 +23,35 @@ export { evaluateConnection, isValidConnection } from './workflowPlanValidation'
 
 export const WF_FLOW_NODE_TYPE = 'workflowNode'
 
+/**
+ * fitView / [] / 切换工作流：节点至多 1× 设计尺寸，少量节点不再被放大。
+ * +/- 仍受 VueFlow maxZoom（如 1.75）约束，可手动放大。
+ */
+export const WF_FIT_VIEW_MAX_ZOOM = 1
+export const WF_FIT_VIEW_OPTS = {
+  padding: 0.22,
+  duration: 0,
+  maxZoom: WF_FIT_VIEW_MAX_ZOOM,
+} as const
+
 /** 流程锚点节点，画布不可删除 */
 export const PROTECTED_WORKFLOW_NODE_IDS = new Set(['start', 'answer'])
 
 export function isProtectedWorkflowNode(node: Pick<WorkflowPlanNode, 'id' | 'type'>): boolean {
   return node.type === 'start' || node.type === 'answer' || PROTECTED_WORKFLOW_NODE_IDS.has(node.id)
+}
+
+function flowNodeLabel(node: WorkflowPlanNode): string {
+  if (node.type === 'answer') return formatPlanNodeType('answer')
+  return node.displayName?.trim() || node.id
+}
+
+export type WorkflowFlowExecOverlay = {
+  status?: 'pending' | 'running' | 'done' | 'error' | 'awaiting_confirm' | 'paused' | 'terminated' | 'skipped'
+  durationMs?: number
+  retryBadge?: number | null
+  live?: boolean
+  recoveryAwaiting?: boolean
 }
 
 export type WorkflowFlowNodeData = {
@@ -35,15 +60,19 @@ export type WorkflowFlowNodeData = {
   selected?: boolean
   readOnly?: boolean
   hasValidationIssue?: boolean
+  /** Chat 执行态角标（Studio 画布无此字段） */
+  exec?: WorkflowFlowExecOverlay
 }
 
 const X_GAP = 220
 const Y_GAP = 88
 const ORIGIN_X = 48
 const ORIGIN_Y = 72
-/** 与 WorkflowFlowNode 业务节点 min-width / min-height 对齐，布局按中心点计算 */
+/** 与 WorkflowFlowNode 尺寸对齐，布局按中心点计算 */
 const BUSINESS_NODE_WIDTH = 148
 const BUSINESS_NODE_HEIGHT = 56
+const ANCHOR_NODE_WIDTH = 56
+const ANCHOR_NODE_HEIGHT = 56
 const GATEWAY_NODE_WIDTH = 40
 const GATEWAY_NODE_HEIGHT = 40
 /** 主干连线共用的 handle 中心 Y */
@@ -52,6 +81,9 @@ const SPINE_HANDLE_Y = ORIGIN_Y + BUSINESS_NODE_HEIGHT / 2
 function nodeSize(nodeType: string | undefined): { w: number; h: number } {
   if (nodeType && isGatewayType(nodeType)) {
     return { w: GATEWAY_NODE_WIDTH, h: GATEWAY_NODE_HEIGHT }
+  }
+  if (nodeType === 'start' || nodeType === 'answer') {
+    return { w: ANCHOR_NODE_WIDTH, h: ANCHOR_NODE_HEIGHT }
   }
   return { w: BUSINESS_NODE_WIDTH, h: BUSINESS_NODE_HEIGHT }
 }
@@ -171,15 +203,7 @@ export function computeAutoLayout(plan: WorkflowPlan): Record<string, { x: numbe
 }
 
 export function resolveNodePositions(plan: WorkflowPlan): Record<string, { x: number; y: number }> {
-  const auto = computeAutoLayout(plan)
-  const saved = plan.layout ?? {}
-  const positions = { ...auto }
-  for (const [id, pos] of Object.entries(saved)) {
-    if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
-      positions[id] = { x: pos.x, y: pos.y }
-    }
-  }
-  return positions
+  return { ...(plan.layout ?? {}) }
 }
 
 function edgePairsFingerprint(pairs: { from: string; to: string }[]): string {
@@ -239,7 +263,7 @@ export function planToFlowElements(
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
       data: {
-        label: n.displayName?.trim() || n.id,
+        label: flowNodeLabel(n),
         nodeType: n.type,
         selected: selectedId === n.id,
         readOnly: !!readOnly,
@@ -369,9 +393,4 @@ export function addParallelBranchPlan(
     plan: reconcilePlanDataFlow({ ...withNode, edges }),
     nodeId: added.id,
   }
-}
-
-export function stripPlanLayout(plan: WorkflowPlan): WorkflowPlan {
-  const { layout: _layout, ...rest } = plan as WorkflowPlan & { layout?: unknown }
-  return rest
 }

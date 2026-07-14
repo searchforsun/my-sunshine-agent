@@ -31,7 +31,7 @@ public final class PlanNormalizer {
         List<PlanNode> nodes = new ArrayList<>(businessNodes);
         nodes.add(new PlanNode(ANSWER_NODE_ID, "answer", Map.of(), null));
         edges.add(new PlanEdge(tailId, ANSWER_NODE_ID));
-        return new PlanJson(raw.planId(), raw.reason(), List.copyOf(nodes), List.copyOf(edges));
+        return new PlanJson(raw.planId(), raw.reason(), List.copyOf(nodes), List.copyOf(edges), raw.layout());
     }
 
     private static String resolveTail(List<PlanNode> businessNodes, List<PlanEdge> edges) {

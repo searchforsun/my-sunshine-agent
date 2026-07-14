@@ -50,7 +50,7 @@ public class PlanAnswerPromptAssembler {
                 nodes.add(node);
             }
         }
-        return new PlanJson(plan.planId(), plan.reason(), nodes, plan.edges());
+        return new PlanJson(plan.planId(), plan.reason(), nodes, plan.edges(), plan.layout());
     }
 
     private String buildPrompt(PlanJson plan, List<String> upstreamIds) {

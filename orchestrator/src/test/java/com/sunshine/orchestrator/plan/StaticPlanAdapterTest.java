@@ -29,4 +29,43 @@ class StaticPlanAdapterTest {
                 new PlanEdge("finance-list", "answer"));
         assertThat(PlanTimeline.planChainSummary(plan)).isEqualTo("查询待审批");
     }
+
+    @Test
+    void fromStoredPlanPreservesParallelEdgesAndLayout() {
+        PlanJson stored = new PlanJson("wf", "并行双检索",
+                List.of(
+                        new PlanNode("start", "start", Map.of(), "开始"),
+                        new PlanNode("pg-a1", "parallel-gateway", Map.of(), "并行分叉"),
+                        new PlanNode("rag-a", "rag", Map.of(), "制度检索"),
+                        new PlanNode("rag-b", "rag", Map.of(), "财务检索"),
+                        new PlanNode("join-c", "join", Map.of(), "并行汇总"),
+                        new PlanNode("answer", "answer", Map.of(), "生成回答")
+                ),
+                List.of(
+                        new PlanEdge("start", "pg-a1"),
+                        new PlanEdge("pg-a1", "rag-a"),
+                        new PlanEdge("pg-a1", "rag-b"),
+                        new PlanEdge("rag-a", "join-c"),
+                        new PlanEdge("rag-b", "join-c"),
+                        new PlanEdge("join-c", "answer")
+                ),
+                Map.of(
+                        "pg-a1", new PlanLayoutPoint(322, 80),
+                        "rag-a", new PlanLayoutPoint(430, 28)
+                ));
+
+        PlanJson snapshot = StaticPlanAdapter.fromStoredPlan(stored, "路由命中");
+
+        assertThat(snapshot.planId()).isNull();
+        assertThat(snapshot.reason()).isEqualTo("路由命中");
+        assertThat(snapshot.edges()).containsExactlyInAnyOrder(
+                new PlanEdge("start", "pg-a1"),
+                new PlanEdge("pg-a1", "rag-a"),
+                new PlanEdge("pg-a1", "rag-b"),
+                new PlanEdge("rag-a", "join-c"),
+                new PlanEdge("rag-b", "join-c"),
+                new PlanEdge("join-c", "answer"));
+        assertThat(snapshot.layout()).containsEntry("pg-a1", new PlanLayoutPoint(322, 80));
+        assertThat(snapshot.layout()).containsEntry("rag-a", new PlanLayoutPoint(430, 28));
+    }
 }

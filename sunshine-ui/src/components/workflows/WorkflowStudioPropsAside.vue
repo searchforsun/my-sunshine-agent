@@ -91,7 +91,7 @@ const propsSectionTitle = computed(() => {
 const headerTitle = computed(() => {
   if (page.isFlowConfigSelected) return page.selectedWorkflow?.displayName || '流程配置'
   if (isAnswerSelected.value) {
-    return answerNode.value?.displayName?.trim() || '生成回答'
+    return answerNode.value?.displayName?.trim() || '回答'
   }
   const node = page.selectedNode
   if (!node) return propsSectionTitle.value

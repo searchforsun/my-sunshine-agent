@@ -24,6 +24,7 @@ import WorkflowFlowNode from './WorkflowFlowNode.vue'
 import type { WorkflowPlan } from '../../api/workflows'
 import {
   WF_FLOW_NODE_TYPE,
+  WF_FIT_VIEW_OPTS,
   isProtectedWorkflowNode,
   evaluateConnection,
   flowEdgeFingerprint,
@@ -66,9 +67,13 @@ const defaultEdgeOptions = {
 const nodes = ref<Node<WorkflowFlowNodeData>[]>([])
 const edges = ref<Edge[]>([])
 const canvasReady = ref(false)
+/** 首次 fitView 完成前隐藏节点，避免左上角闪一下再居中 */
+const viewportSettled = ref(false)
 const canvasRef = ref<HTMLElement | null>(null)
 const pushingToPlan = ref(false)
 let hydrating = false
+/** 下一次 fitView 为 hydrate/切流后的首帧，需结束后再露出画布 */
+let pendingRevealAfterFit = false
 let flowStore: VueFlowStore | null = null
 let pendingInvalidReason: string | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -85,6 +90,8 @@ const layoutKey = computed(() => JSON.stringify(props.plan.layout ?? {}))
 async function hydrateFromPlan() {
   hydrating = true
   canvasReady.value = false
+  viewportSettled.value = false
+  pendingRevealAfterFit = true
   const { nodes: n, edges: e } = planToFlowElements(
     props.plan,
     props.selectedNodeId,
@@ -119,13 +126,25 @@ function patchNodePresentation() {
   const selectedId = props.selectedNodeId
   const readOnly = !!props.readOnly
   const issueIds = props.issueNodeIds
-  for (const node of nodes.value) {
+  nodes.value = nodes.value.map(node => {
     const data = node.data
-    if (!data) continue
-    data.selected = selectedId === node.id
-    data.readOnly = readOnly
-    data.hasValidationIssue = issueIds?.has(node.id) ?? false
-  }
+    const nodeType = data?.nodeType ?? ''
+    const nextData = data
+      ? {
+          ...data,
+          selected: selectedId === node.id,
+          readOnly,
+          hasValidationIssue: issueIds?.has(node.id) ?? false,
+        }
+      : data
+    return {
+      ...node,
+      draggable: !readOnly && nodeType !== 'start',
+      connectable: !readOnly,
+      deletable: !readOnly && !isProtectedWorkflowNode({ id: node.id, type: nodeType }),
+      data: nextData,
+    }
+  })
 }
 
 function syncNodesFromPlan() {
@@ -159,7 +178,13 @@ function fitViewSoon(delayMs = 0) {
   void nextTick(() => {
     const run = () => {
       requestAnimationFrame(() => {
-        void flowStore?.fitView({ padding: 0.22, duration: 0 })
+        const reveal = pendingRevealAfterFit
+        void Promise.resolve(flowStore?.fitView({ ...WF_FIT_VIEW_OPTS })).finally(() => {
+          if (reveal) {
+            pendingRevealAfterFit = false
+            viewportSettled.value = true
+          }
+        })
       })
     }
     if (delayMs > 0) setTimeout(run, delayMs)
@@ -331,7 +356,11 @@ function onPaneClick() {
 
 <template>
   <div class="wf-dag-editor" :class="{ 'is-fullscreen': fullscreen }">
-    <div ref="canvasRef" class="wf-dag-canvas">
+    <div
+      ref="canvasRef"
+      class="wf-dag-canvas"
+      :class="{ 'is-pending-fit': canvasReady && !viewportSettled }"
+    >
       <VueFlow
         v-if="canvasReady"
         :key="fitViewKey ?? 'wf-canvas'"
@@ -340,7 +369,7 @@ function onPaneClick() {
         :node-types="nodeTypes"
         :default-edge-options="defaultEdgeOptions"
         :apply-default="false"
-        :fit-view-on-init="true"
+        :fit-view-on-init="false"
         :nodes-draggable="!readOnly"
         :nodes-connectable="!readOnly"
         :elements-selectable="true"
@@ -358,7 +387,11 @@ function onPaneClick() {
         @pane-click="onPaneClick"
       >
         <Background :gap="16" :size="2" pattern-color="var(--sun-dag-dot, var(--sun-border-light))" />
-        <Controls :show-interactive="false" position="bottom-right" />
+        <Controls
+          :show-interactive="false"
+          position="bottom-right"
+          :fit-view-params="{ ...WF_FIT_VIEW_OPTS }"
+        />
       </VueFlow>
       <div v-else class="wf-dag-empty">
         <p v-if="nodes.length === 0">画布无节点</p>
@@ -391,6 +424,11 @@ function onPaneClick() {
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--sun-black);
+}
+
+.wf-dag-canvas.is-pending-fit :deep(.vue-flow__viewport) {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .wf-dag-canvas :deep(.vue-flow__edge-path),

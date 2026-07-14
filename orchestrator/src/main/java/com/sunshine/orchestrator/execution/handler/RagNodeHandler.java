@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.execution.handler;
 import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
+import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
 import com.sunshine.orchestrator.execution.WorkflowNodeType;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.rag.RagSearch;
@@ -55,6 +56,7 @@ public class RagNodeHandler implements NodeHandler {
         }
         String finalQuery = searchQuery;
         String finalKbId = kbId;
+        String ragStepId = WorkflowNodeTimeline.stepId(spec.id());
 
         return RagSearch.searchMono(
                         ragClient,
@@ -63,7 +65,8 @@ public class RagNodeHandler implements NodeHandler {
                         topK,
                         finalKbId,
                         streamCtx.tenantId(),
-                        streamCtx.assistantMsgId())
+                        streamCtx.assistantMsgId(),
+                        ragStepId)
                 .flatMap(hits -> {
                     List<RagClient.RagHit> results = hits != null ? hits : List.of();
                     return Mono.just(buildOkResult(results));

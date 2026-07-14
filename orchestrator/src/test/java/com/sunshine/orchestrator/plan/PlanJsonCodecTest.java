@@ -23,6 +23,17 @@ class PlanJsonCodecTest {
     }
 
     @Test
+    void serializesLayoutWhenPresent() {
+        PlanJson plan = new PlanJson("p1", "reason",
+                List.of(new PlanNode("pg", "parallel-gateway", Map.of())),
+                List.of(new PlanEdge("start", "pg")),
+                Map.of("pg", new PlanLayoutPoint(100, 80)));
+        String json = codec.toJson(plan);
+        assertThat(json).contains("\"layout\"");
+        assertThat(json).contains("\"x\":100");
+    }
+
+    @Test
     void traceRoundTrip() {
         List<PlanNodeTrace> traces = List.of(
                 new PlanNodeTrace("n1", "llm", "completed", "ok", null, 100L, 200L));

@@ -47,9 +47,10 @@ public enum WorkflowNodeType {
                 && !PARALLEL_GATEWAY.matches(type) && !EXCLUSIVE_GATEWAY.matches(type);
     }
 
-    /** DAG node-{id} 步骤生命周期：含 answer，排除 start */
+    /** DAG node-{id} 步骤：含 answer 等业务节点；路由网关/join 仅执行不落主时间线步 */
     public static boolean tracksNodeStep(String type) {
-        return type != null && !START.matches(type);
+        return type != null && !START.matches(type) && !JOIN.matches(type)
+                && !PARALLEL_GATEWAY.matches(type) && !EXCLUSIVE_GATEWAY.matches(type);
     }
 
     /** answer / llm 节点流式输出正文 */

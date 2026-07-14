@@ -16,7 +16,10 @@ class WorkflowNodeTypeTest {
     @Test
     void tracksNodeStep() {
         assertThat(WorkflowNodeType.tracksNodeStep("answer")).isTrue();
+        assertThat(WorkflowNodeType.tracksNodeStep("rag")).isTrue();
         assertThat(WorkflowNodeType.tracksNodeStep("start")).isFalse();
+        assertThat(WorkflowNodeType.tracksNodeStep("join")).isFalse();
+        assertThat(WorkflowNodeType.tracksNodeStep("parallel-gateway")).isFalse();
     }
 
     @Test

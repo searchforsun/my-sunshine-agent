@@ -13,9 +13,9 @@ import {
 } from '../api/workflows'
 import { friendlyErrorMessage } from '../api/apiError'
 import { copyText } from '../utils/stream-markdown/clipboard'
-import { autoLayoutPlan } from '../utils/workflowDagLayout'
 import {
   diffWorkflowPlanJson,
+  formatLayoutPoint,
   hasWorkflowPlanDiff,
   summarizeWorkflowPlanDiff,
   toWorkflowSplitDiffRows,
@@ -90,12 +90,8 @@ const splitRows = computed(() => toWorkflowSplitDiffRows(diffLines.value))
 
 const hasDiff = computed(() => summary.value != null && hasWorkflowPlanDiff(summary.value))
 
-const fromPlanLayout = computed(() =>
-  fromPlan.value ? autoLayoutPlan(fromPlan.value) : null,
-)
-const toPlanLayout = computed(() =>
-  toPlan.value ? autoLayoutPlan(toPlan.value) : null,
-)
+const fromPlanLayout = computed(() => fromPlan.value)
+const toPlanLayout = computed(() => toPlan.value)
 
 const diffHighlightNodeIds = computed(() => {
   if (!summary.value) return new Set<string>()
@@ -103,6 +99,7 @@ const diffHighlightNodeIds = computed(() => {
   for (const id of summary.value.addedNodes) ids.add(id)
   for (const id of summary.value.removedNodes) ids.add(id)
   for (const item of summary.value.changedNodes) ids.add(item.id)
+  for (const item of summary.value.changedLayout) ids.add(item.id)
   return ids
 })
 
@@ -331,13 +328,16 @@ watch([fromVersion, toVersion], () => {
       <div v-if="summary" class="wf-diff-body">
         <section v-if="contentTab === 'summary'" class="wf-diff-summary">
           <h3 class="block-title">变更摘要</h3>
-          <p v-if="!hasDiff" class="wf-diff-empty-line">两版本 Plan 无差异（不含 layout）</p>
+          <p v-if="!hasDiff" class="wf-diff-empty-line">两版本 Plan 无差异</p>
           <ul v-else class="wf-diff-summary-list">
             <li v-if="summary.reasonChanged">规划说明 reason 已变更</li>
             <li v-if="summary.addedNodes.length">新增节点：{{ summary.addedNodes.join('、') }}</li>
             <li v-if="summary.removedNodes.length">删除节点：{{ summary.removedNodes.join('、') }}</li>
             <li v-for="item in summary.changedNodes" :key="item.id">
               修改节点 {{ item.label }}（{{ item.id }}）：{{ item.fields.join('、') }}
+            </li>
+            <li v-for="item in summary.changedLayout" :key="`layout-${item.id}`">
+              节点位置 {{ item.label }}（{{ item.id }}）：{{ formatLayoutPoint(item.from) }} → {{ formatLayoutPoint(item.to) }}
             </li>
             <li v-if="summary.addedEdges.length">新增连线：{{ summary.addedEdges.join('；') }}</li>
             <li v-if="summary.removedEdges.length">删除连线：{{ summary.removedEdges.join('；') }}</li>

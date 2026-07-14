@@ -1,10 +1,12 @@
 import { computed, reactive } from 'vue'
+import type { PlanGraph } from '../api/executionPlans'
 import type { DagNodeView } from '../utils/planGraph'
 
 export interface PlanDagExpandPayload {
   planId: string
   title: string
   userQuery?: string
+  graph: PlanGraph
   nodes: DagNodeView[]
   selectedId?: string
   live?: boolean
@@ -15,6 +17,7 @@ const state = reactive({
   activePlanId: null as string | null,
   title: '',
   userQuery: '',
+  graph: null as PlanGraph | null,
   nodes: [] as DagNodeView[],
   selectedId: undefined as string | undefined,
   live: false,
@@ -28,6 +31,7 @@ export function usePlanDagExpand() {
     state.activePlanId = payload.planId
     state.title = payload.title
     state.userQuery = payload.userQuery?.trim() ?? ''
+    state.graph = payload.graph
     state.nodes = payload.nodes
     state.selectedId = payload.selectedId
     state.live = !!payload.live
@@ -39,6 +43,7 @@ export function usePlanDagExpand() {
     if (!state.activePlanId) return
     if (payload.title != null) state.title = payload.title
     if (payload.userQuery != null) state.userQuery = payload.userQuery.trim()
+    if (payload.graph != null) state.graph = payload.graph
     if (payload.nodes != null) state.nodes = payload.nodes
     if (payload.selectedId !== undefined) state.selectedId = payload.selectedId
     if (payload.live != null) state.live = payload.live
@@ -49,6 +54,7 @@ export function usePlanDagExpand() {
     state.activePlanId = null
     state.title = ''
     state.userQuery = ''
+    state.graph = null
     state.nodes = []
     state.selectedId = undefined
     state.live = false

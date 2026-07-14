@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,10 +41,11 @@ public class PlanJsonParser {
         String reason = text(root, "reason");
         List<PlanNode> nodes = parseNodes(root.get("nodes"));
         List<PlanEdge> edges = parseEdges(root.get("edges"));
+        Map<String, PlanLayoutPoint> layout = parseLayout(root.get("layout"));
         if (nodes.isEmpty()) {
             throw new PlanParseException("Plan 缺少 nodes");
         }
-        return new PlanJson(planId, reason, nodes, edges);
+        return new PlanJson(planId, reason, nodes, edges, layout);
     }
 
     private static List<PlanNode> parseNodes(JsonNode nodesNode) {
@@ -65,6 +67,28 @@ public class PlanJsonParser {
             nodes.add(new PlanNode(id, type, params, displayName));
         }
         return List.copyOf(nodes);
+    }
+
+    private static Map<String, PlanLayoutPoint> parseLayout(JsonNode layoutNode) {
+        Map<String, PlanLayoutPoint> layout = new LinkedHashMap<>();
+        if (layoutNode == null || !layoutNode.isObject()) {
+            return layout;
+        }
+        Iterator<Map.Entry<String, JsonNode>> it = layoutNode.fields();
+        while (it.hasNext()) {
+            Map.Entry<String, JsonNode> e = it.next();
+            JsonNode pos = e.getValue();
+            if (pos == null || !pos.isObject()) {
+                continue;
+            }
+            JsonNode xNode = pos.get("x");
+            JsonNode yNode = pos.get("y");
+            if (xNode == null || yNode == null || !xNode.isNumber() || !yNode.isNumber()) {
+                continue;
+            }
+            layout.put(e.getKey(), new PlanLayoutPoint(xNode.asDouble(), yNode.asDouble()));
+        }
+        return layout;
     }
 
     private static List<PlanEdge> parseEdges(JsonNode edgesNode) {

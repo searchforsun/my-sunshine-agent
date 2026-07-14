@@ -27,7 +27,7 @@ public class PlanDisplayNameEnricher {
         for (PlanNode node : plan.nodes()) {
             nodes.add(enrichNode(node));
         }
-        return new PlanJson(plan.planId(), plan.reason(), List.copyOf(nodes), plan.edges());
+        return new PlanJson(plan.planId(), plan.reason(), List.copyOf(nodes), plan.edges(), plan.layout());
     }
 
     private PlanNode enrichNode(PlanNode node) {

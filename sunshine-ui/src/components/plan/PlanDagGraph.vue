@@ -277,12 +277,16 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 }
 
 .plan-dag.has-zoom .plan-dag-node.is-terminal {
-  width: calc(84px * var(--z));
+  width: calc(56px * var(--z));
+  height: calc(56px * var(--z));
 }
 
 .plan-dag.has-zoom.is-fluid .plan-dag-node.is-terminal {
-  width: auto;
-  min-width: calc(84px * var(--z));
+  width: calc(56px * var(--z));
+  min-width: calc(56px * var(--z));
+  height: calc(56px * var(--z));
+  min-height: calc(56px * var(--z));
+  padding: calc(6px * var(--z)) calc(4px * var(--z));
 }
 
 .plan-dag.has-zoom .node-icon {
@@ -424,7 +428,9 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 }
 
 .plan-dag-node.is-terminal {
-  width: 84px;
+  width: 56px;
+  height: 56px;
+  padding: 6px 4px;
 }
 
 .plan-dag.is-fluid .plan-dag-node {
@@ -437,8 +443,11 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 }
 
 .plan-dag.is-fluid .plan-dag-node.is-terminal {
-  width: auto;
-  min-width: 84px;
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+  min-height: 56px;
+  padding: 6px 4px;
 }
 
 .plan-dag.is-fluid .node-label {
@@ -448,7 +457,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 }
 
 .plan-dag-node.is-terminal:not(.is-done):not(.is-running):not(.is-error) {
-  opacity: 0.88;
+  opacity: 1;
 }
 
 .plan-dag-node.is-terminal.is-done .node-label {
@@ -459,11 +468,15 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   border-color: color-mix(in srgb, #f87171 45%, var(--sun-border));
 }
 
-/* 待执行：冷灰虚线，与已终止暖色实线区分 */
+/* 待执行：冷灰虚线；开始/回答始终实线 */
 .plan-dag-node.is-pending {
   border-style: dashed;
   border-color: color-mix(in srgb, #d4d4d8 80%, var(--sun-border));
   background: color-mix(in srgb, var(--sun-bg) 97%, #e4e4e7);
+}
+
+.plan-dag-node.is-terminal.is-pending {
+  border-style: solid;
 }
 
 .plan-dag-node.is-pending .node-icon,

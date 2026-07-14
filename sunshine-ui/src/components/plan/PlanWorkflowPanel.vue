@@ -15,7 +15,7 @@ import { relocateAgentNodeHitl, type HitlConfirmationPayload } from '../../api/h
 import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
-import PlanDagGraph from './PlanDagGraph.vue'
+import PlanExecutionCanvas from './PlanExecutionCanvas.vue'
 import PlanApprovalActions from './PlanApprovalActions.vue'
 import {
   isPlanApprovalAwaiting,
@@ -182,11 +182,13 @@ const graphSource = computed(() => frozenGraph.value ?? inlineApprovalGraph.valu
 
 const nodeSteps = computed(() => listPlanDagNodeSteps(props.allSteps))
 
+const nodeTraces = computed(() => planDetail.value?.nodes ?? [])
+
 const dagNodes = computed(() =>
   buildDagNodes(
     graphSource.value,
     nodeSteps.value,
-    props.live ? undefined : planDetail.value?.nodes,
+    nodeTraces.value.length ? nodeTraces.value : undefined,
     skillCatalog.value,
     props.planStep,
     props.pendingHitlConfirmation,
@@ -221,11 +223,13 @@ function onSelectNode(node: DagNodeView) {
 
 function onExpandDag() {
   const id = planId.value
-  if (!id) return
+  const graph = graphSource.value
+  if (!id || !graph?.nodes?.length) return
   openExpand({
     planId: id,
     title: label.value,
     userQuery: props.userQuery,
+    graph,
     nodes: dagNodes.value,
     selectedId: selectedId.value,
     live: props.live,
@@ -235,10 +239,12 @@ function onExpandDag() {
 
 function syncExpandLayer() {
   const id = planId.value
-  if (!id || !isExpanded(id)) return
+  const graph = graphSource.value
+  if (!id || !graph || !isExpanded(id)) return
   updateExpand({
     title: label.value,
     userQuery: props.userQuery,
+    graph,
     nodes: dagNodes.value,
     selectedId: selectedId.value,
     live: props.live,
@@ -250,7 +256,7 @@ async function loadPlan() {
   const id = planId.value
   if (!id || id.startsWith('approval:')) return
   const hasGraph = graphPlanId.value === id && !!frozenGraph.value
-  // 流式执行期图结构只拉一次，避免 answer 阶段重复请求导致拓扑闪动
+  // 流式执行期拓扑只拉一次；终态/刷新须拉 execution_trace 恢复节点着色
   if (props.live && hasGraph) return
 
   const firstLoad = !hasGraph
@@ -258,12 +264,14 @@ async function loadPlan() {
   try {
     const detail = await getExecutionPlan(id)
     planDetail.value = detail
-    if (detail.validatedPlan?.nodes?.length) {
-      frozenGraph.value = detail.validatedPlan
-      graphPlanId.value = id
-    } else if (detail.plan?.nodes?.length) {
-      frozenGraph.value = detail.plan
-      graphPlanId.value = id
+    if (!hasGraph) {
+      if (detail.validatedPlan?.nodes?.length) {
+        frozenGraph.value = detail.validatedPlan
+        graphPlanId.value = id
+      } else if (detail.plan?.nodes?.length) {
+        frozenGraph.value = detail.plan
+        graphPlanId.value = id
+      }
     }
   } catch {
     if (!planDetail.value) planDetail.value = null
@@ -314,6 +322,18 @@ watch(planId, (id, prev) => {
   resetGraphForPlan(id)
   void loadPlan()
 })
+watch(
+  () => props.live,
+  (live, prevLive) => {
+    if (prevLive && !live && planId.value) void loadPlan()
+  },
+)
+watch(
+  () => props.executionPlanId,
+  (id, prev) => {
+    if (id && id !== prev && planId.value) void loadPlan()
+  },
+)
 watch(dagNodes, (nodes) => {
   syncDrawerSelection(nodes)
   syncExpandLayer()
@@ -332,9 +352,10 @@ watch(isRegenerating, () => syncExpandLayer())
       </span>
       <span v-if="durationText" class="op-dur">{{ durationText }}</span>
     </div>
-    <PlanDagGraph
-      v-if="dagNodes.length && !isExpanded(planId)"
-      :nodes="dagNodes"
+    <PlanExecutionCanvas
+      v-if="graphSource && dagNodes.length && !isExpanded(planId)"
+      :graph="graphSource"
+      :dag-nodes="dagNodes"
       :selected-id="selectedId"
       :live="live"
       :loading-label="isRegenerating ? '重新生成中…' : undefined"

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import PlanNodeIcon from '../plan/PlanNodeIcon.vue'
+import { formatDuration } from '../../api/processingSteps'
 import { isGatewayType } from '../../utils/workflowGateway'
 import type { WorkflowFlowNodeData } from '../../utils/workflowDagLayout'
 
@@ -16,6 +17,52 @@ const isAnswer = computed(() => nodeType.value === 'answer')
 const isGateway = computed(() => isGatewayType(nodeType.value))
 const showTarget = computed(() => !isStart.value)
 const showSource = computed(() => !isAnswer.value)
+const exec = computed(() => props.data.exec)
+
+const execStatusText = computed(() => {
+  const st = exec.value
+  if (!st?.status) return ''
+  if (st.status === 'awaiting_confirm') return '待确认'
+  if (st.status === 'paused') return '暂停'
+  if (st.status === 'terminated') return '已终止'
+  if (st.status === 'skipped') return '已跳过'
+  if (st.status === 'pending' && nodeType.value !== 'start') return '等待中'
+  if (st.status === 'error' && st.live && st.recoveryAwaiting) return '发生错误'
+  if (st.durationMs != null) return formatDuration(st.durationMs)
+  if (st.live && st.status === 'running') return '进行中'
+  return ''
+})
+
+/** 执行态节点：与 PlanDagGraph 同套状态色（边框 + 浅底） */
+const execVisualClasses = computed(() => {
+  const st = exec.value
+  if (!st?.status) return {}
+  const live = !!st.live
+  const status = st.status
+  const out: Record<string, boolean> = { 'has-exec-state': true }
+  if (status === 'running') {
+    out['is-running'] = true
+    if (live) out['is-live'] = true
+  } else if (status === 'done') {
+    out['is-done'] = true
+  } else if (status === 'error') {
+    out['is-error'] = true
+    if (live && st.recoveryAwaiting) out['is-live-recovery'] = true
+  } else if (status === 'pending') {
+    out['is-pending'] = true
+  } else if (status === 'skipped') {
+    out['is-skipped'] = true
+  } else if (status === 'terminated') {
+    out['is-terminated'] = true
+  } else if (status === 'awaiting_confirm') {
+    out['is-awaiting-confirm'] = true
+    if (live) out['is-awaiting-breathe'] = true
+  } else if (status === 'paused') {
+    out['is-paused'] = true
+    if (live) out['is-paused-breathe'] = true
+  }
+  return out
+})
 </script>
 
 <template>
@@ -28,6 +75,7 @@ const showSource = computed(() => !isAnswer.value)
       class="wf-flow-node"
       :class="[
         `is-${nodeType}`,
+        execVisualClasses,
         {
           'is-selected': selected || data.selected,
           'is-readonly': data.readOnly,
@@ -47,7 +95,13 @@ const showSource = computed(() => !isAnswer.value)
           <PlanNodeIcon :type="nodeType" :size="16" />
         </span>
         <span class="wf-flow-label">{{ data.label }}</span>
+        <span
+          v-if="execStatusText"
+          class="wf-flow-exec-status"
+          :class="exec?.status ? `is-${exec.status}` : undefined"
+        >{{ execStatusText }}</span>
       </div>
+      <span v-if="exec?.retryBadge" class="wf-flow-retry-badge">×{{ exec.retryBadge }}</span>
       <Handle
         v-if="showSource"
         type="source"
@@ -62,6 +116,7 @@ const showSource = computed(() => !isAnswer.value)
         class="wf-gateway-shell"
         :class="[
           `is-${nodeType}`,
+          execVisualClasses,
           {
             'is-selected': selected || data.selected,
             'is-readonly': data.readOnly,
@@ -90,6 +145,12 @@ const showSource = computed(() => !isAnswer.value)
         />
       </div>
       <span class="wf-gateway-caption">{{ data.label }}</span>
+      <span
+        v-if="execStatusText"
+        class="wf-gateway-exec-status"
+        :class="exec?.status ? `is-${exec.status}` : undefined"
+      >{{ execStatusText }}</span>
+      <span v-if="exec?.retryBadge" class="wf-flow-retry-badge wf-gateway-retry-badge">×{{ exec.retryBadge }}</span>
     </template>
   </div>
 </template>
@@ -114,8 +175,8 @@ const showSource = computed(() => !isAnswer.value)
   box-sizing: border-box;
   min-width: 148px;
   max-width: 168px;
-  height: 56px;
   min-height: 56px;
+  height: 56px;
   padding: 10px 14px 10px 12px;
   border: 1px solid var(--sun-border);
   border-radius: 8px;
@@ -141,10 +202,23 @@ const showSource = computed(() => !isAnswer.value)
   cursor: pointer;
 }
 
+/* 开始/回答：紧凑方卡 + 四边等宽实线（非业务节点长条） */
 .wf-flow-node.is-start,
 .wf-flow-node.is-answer {
-  border-style: dashed;
-  opacity: 0.92;
+  box-sizing: border-box;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  min-height: 56px;
+  height: 56px;
+  padding: 6px 4px;
+  border-style: solid;
+  opacity: 1;
+}
+
+.wf-flow-node.is-start .wf-flow-label,
+.wf-flow-node.is-answer .wf-flow-label {
+  max-width: 48px;
 }
 
 .wf-flow-node.has-issue {
@@ -255,6 +329,62 @@ const showSource = computed(() => !isAnswer.value)
   pointer-events: none;
 }
 
+.wf-flow-exec-status,
+.wf-gateway-exec-status {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 88px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--sun-text-muted);
+  white-space: nowrap;
+  text-align: center;
+  pointer-events: none;
+}
+
+.wf-gateway-exec-status {
+  top: 58px;
+  width: 72px;
+}
+
+.wf-flow-exec-status.is-running,
+.wf-gateway-exec-status.is-running {
+  color: var(--sun-blue, #58a6ff);
+}
+
+.wf-flow-exec-status.is-error,
+.wf-gateway-exec-status.is-error {
+  color: var(--sun-amber, #c9a227);
+}
+
+.wf-flow-exec-status.is-awaiting_confirm,
+.wf-gateway-exec-status.is-awaiting_confirm {
+  color: var(--sun-amber, #c9a227);
+}
+
+.wf-flow-retry-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  border: 1px solid var(--sun-border);
+  background: var(--sun-black);
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--sun-text-muted);
+  pointer-events: none;
+}
+
+.wf-gateway-retry-badge {
+  top: -2px;
+  right: -10px;
+}
+
 .wf-flow-handle {
   width: 8px;
   height: 8px;
@@ -270,13 +400,237 @@ const showSource = computed(() => !isAnswer.value)
 .wf-flow-handle:hover {
   border-color: var(--sun-blue, #58a6ff);
 }
+
+/* —— 执行态：与 PlanDagGraph 对齐的状态色（2px 边框 + 同色系浅底） —— */
+.wf-flow-node.has-exec-state,
+.wf-gateway-shell.has-exec-state .wf-gateway-diamond {
+  border-width: 2px;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
+}
+
+.wf-flow-node.has-exec-state.is-running,
+.wf-flow-node.has-exec-state.is-live,
+.wf-gateway-shell.has-exec-state.is-running .wf-gateway-diamond,
+.wf-gateway-shell.has-exec-state.is-live .wf-gateway-diamond {
+  border-color: var(--sun-blue, #58a6ff);
+  background: color-mix(in srgb, var(--sun-blue, #58a6ff) 12%, var(--sun-black));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 35%, transparent);
+}
+
+.wf-flow-node.has-exec-state.is-live {
+  animation: wf-exec-breathe 2.2s ease-in-out infinite;
+}
+
+.wf-gateway-shell.has-exec-state.is-live .wf-gateway-diamond {
+  animation: wf-exec-breathe 2.2s ease-in-out infinite;
+}
+
+.wf-flow-node.has-exec-state.is-done,
+.wf-gateway-shell.has-exec-state.is-done .wf-gateway-diamond {
+  border-color: color-mix(in srgb, #4ade80 55%, var(--sun-border));
+  background: color-mix(in srgb, #4ade80 10%, var(--sun-black));
+}
+
+.wf-flow-node.has-exec-state.is-error,
+.wf-gateway-shell.has-exec-state.is-error .wf-gateway-diamond {
+  border-color: color-mix(in srgb, #f87171 55%, var(--sun-border));
+  background: color-mix(in srgb, #f87171 10%, var(--sun-black));
+}
+
+.wf-flow-node.has-exec-state.is-error.is-live-recovery,
+.wf-gateway-shell.has-exec-state.is-error.is-live-recovery .wf-gateway-diamond {
+  border-color: color-mix(in srgb, #f87171 58%, var(--sun-border));
+  background: color-mix(in srgb, #f87171 12%, var(--sun-black));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #f87171 28%, transparent);
+  animation: wf-exec-breathe-error 2.2s ease-in-out infinite;
+}
+
+.wf-flow-node.has-exec-state.is-pending,
+.wf-gateway-shell.has-exec-state.is-pending .wf-gateway-diamond {
+  border-style: dashed;
+  border-color: color-mix(in srgb, #d4d4d8 80%, var(--sun-border));
+  background: color-mix(in srgb, #e4e4e7 8%, var(--sun-black));
+}
+
+.wf-flow-node.is-start.has-exec-state,
+.wf-flow-node.is-answer.has-exec-state {
+  border-style: solid;
+  border-width: 2px;
+}
+
+.wf-flow-node.has-exec-state.is-skipped,
+.wf-gateway-shell.has-exec-state.is-skipped .wf-gateway-diamond {
+  border-color: color-mix(in srgb, #14b8a6 52%, var(--sun-border));
+  background: color-mix(in srgb, #14b8a6 10%, var(--sun-black));
+}
+
+.wf-flow-node.has-exec-state.is-terminated,
+.wf-gateway-shell.has-exec-state.is-terminated .wf-gateway-diamond {
+  border-color: color-mix(in srgb, #be123c 48%, var(--sun-border));
+  background: color-mix(in srgb, #be123c 9%, var(--sun-black));
+}
+
+.wf-flow-node.has-exec-state.is-awaiting-confirm,
+.wf-gateway-shell.has-exec-state.is-awaiting-confirm .wf-gateway-diamond {
+  border-color: color-mix(in srgb, #a855f7 58%, var(--sun-border));
+  background: color-mix(in srgb, #a855f7 10%, var(--sun-black));
+}
+
+.wf-flow-node.has-exec-state.is-awaiting-breathe,
+.wf-gateway-shell.has-exec-state.is-awaiting-breathe .wf-gateway-diamond {
+  box-shadow: 0 0 0 1px color-mix(in srgb, #a855f7 28%, transparent);
+  animation: wf-exec-breathe-awaiting 2.2s ease-in-out infinite;
+}
+
+.wf-flow-node.has-exec-state.is-paused,
+.wf-gateway-shell.has-exec-state.is-paused .wf-gateway-diamond {
+  border-color: color-mix(in srgb, #fbbf24 58%, var(--sun-border));
+  background: color-mix(in srgb, #fbbf24 10%, var(--sun-black));
+}
+
+.wf-flow-node.has-exec-state.is-paused-breathe,
+.wf-gateway-shell.has-exec-state.is-paused-breathe .wf-gateway-diamond {
+  box-shadow: 0 0 0 1px color-mix(in srgb, #fbbf24 28%, transparent);
+  animation: wf-exec-breathe-paused 2.2s ease-in-out infinite;
+}
+
+.wf-flow-node.has-exec-state.is-running .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-running .wf-flow-label,
+.wf-flow-node.has-exec-state.is-live .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-live .wf-flow-label {
+  color: var(--sun-blue, #58a6ff);
+}
+
+.wf-flow-node.has-exec-state.is-pending .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-pending .wf-flow-label {
+  color: #a1a1aa;
+}
+
+.wf-flow-node.has-exec-state.is-skipped .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-skipped .wf-flow-label {
+  color: #0f766e;
+}
+
+.wf-flow-node.has-exec-state.is-terminated .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-terminated .wf-flow-label {
+  color: #9f1239;
+}
+
+.wf-flow-node.has-exec-state.is-awaiting-confirm .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-awaiting-confirm .wf-flow-label,
+.wf-flow-node.has-exec-state.is-awaiting-breathe .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-awaiting-breathe .wf-flow-label {
+  color: #9333ea;
+}
+
+.wf-flow-node.has-exec-state.is-paused .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-paused .wf-flow-label,
+.wf-flow-node.has-exec-state.is-paused-breathe .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-paused-breathe .wf-flow-label {
+  color: #d97706;
+}
+
+.wf-flow-node.has-exec-state.is-error.is-live-recovery .wf-flow-icon,
+.wf-flow-node.has-exec-state.is-error.is-live-recovery .wf-flow-label {
+  color: #f87171;
+}
+
+.wf-gateway-shell.has-exec-state.is-running .wf-gateway-symbol,
+.wf-gateway-shell.has-exec-state.is-live .wf-gateway-symbol {
+  color: var(--sun-blue, #58a6ff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-flow-node.has-exec-state.is-live,
+  .wf-flow-node.has-exec-state.is-awaiting-breathe,
+  .wf-flow-node.has-exec-state.is-paused-breathe,
+  .wf-flow-node.has-exec-state.is-error.is-live-recovery,
+  .wf-gateway-shell.has-exec-state.is-live .wf-gateway-diamond,
+  .wf-gateway-shell.has-exec-state.is-awaiting-breathe .wf-gateway-diamond,
+  .wf-gateway-shell.has-exec-state.is-paused-breathe .wf-gateway-diamond,
+  .wf-gateway-shell.has-exec-state.is-error.is-live-recovery .wf-gateway-diamond {
+    animation: none;
+  }
+}
+
+@keyframes wf-exec-breathe {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--sun-blue, #58a6ff) 72%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 28%, transparent);
+  }
+  50% {
+    border-color: var(--sun-blue, #58a6ff);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 52%, transparent),
+      0 0 10px color-mix(in srgb, var(--sun-blue, #58a6ff) 22%, transparent);
+  }
+}
+
+@keyframes wf-exec-breathe-awaiting {
+  0%, 100% {
+    border-color: color-mix(in srgb, #a855f7 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #a855f7 22%, transparent);
+  }
+  50% {
+    border-color: #a855f7;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, #a855f7 42%, transparent),
+      0 0 10px color-mix(in srgb, #a855f7 18%, transparent);
+  }
+}
+
+@keyframes wf-exec-breathe-paused {
+  0%, 100% {
+    border-color: color-mix(in srgb, #fbbf24 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #fbbf24 22%, transparent);
+  }
+  50% {
+    border-color: #fbbf24;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, #fbbf24 42%, transparent),
+      0 0 10px color-mix(in srgb, #fbbf24 18%, transparent);
+  }
+}
+
+@keyframes wf-exec-breathe-error {
+  0%, 100% {
+    border-color: color-mix(in srgb, #f87171 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #f87171 22%, transparent);
+  }
+  50% {
+    border-color: #f87171;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, #f87171 42%, transparent),
+      0 0 10px color-mix(in srgb, #f87171 18%, transparent);
+  }
+}
 </style>
 
 <style>
-.vue-flow__node.selected .wf-flow-node,
-.vue-flow__node.selected .wf-gateway-shell.is-selected .wf-gateway-diamond,
-.vue-flow__node.selected .wf-gateway-diamond {
+.vue-flow__node.selected .wf-flow-node:not(.has-exec-state),
+.vue-flow__node.selected .wf-gateway-shell:not(.has-exec-state) .wf-gateway-diamond,
+.vue-flow__node.selected .wf-gateway-shell:not(.has-exec-state).is-selected .wf-gateway-diamond {
   border-color: var(--sun-border-light);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--sun-text-muted) 35%, transparent);
+}
+
+.vue-flow__node.selected .wf-flow-node.has-exec-state.is-selected,
+.vue-flow__node.selected .wf-flow-node.has-exec-state.is-running,
+.vue-flow__node.selected .wf-flow-node.has-exec-state.is-live {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--sun-blue, #58a6ff) 40%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--sun-blue, #58a6ff) 35%, transparent);
+}
+
+.vue-flow__node.selected .wf-flow-node.has-exec-state.is-done {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #4ade80 50%, transparent);
+}
+
+.vue-flow__node.selected .wf-flow-node.has-exec-state.is-error {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #f87171 50%, transparent);
+}
+
+.vue-flow__node.selected .wf-flow-node.has-exec-state.is-skipped {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #14b8a6 50%, transparent);
 }
 </style>

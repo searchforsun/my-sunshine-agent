@@ -21,7 +21,7 @@ export function defaultAnswerNode(nodeDefaults?: WorkflowNodeDefaultsResponse): 
   return {
     id: 'answer',
     type: 'answer',
-    displayName: '生成回答',
+    displayName: '回答',
     params,
   }
 }
@@ -366,7 +366,7 @@ export function buildLinearRagQaPlan(
       {
         id: 'answer',
         type: 'answer',
-        displayName: '生成回答',
+        displayName: '回答',
         params: {
           prompt: answerPrompt,
           ...buildRetryParams('answer', resolved),
@@ -421,7 +421,7 @@ export function buildLinearToolAgentPlan(
       {
         id: 'answer',
         type: 'answer',
-        displayName: '生成回答',
+        displayName: '回答',
         params: {
           prompt: answerPrompt,
           ...buildRetryParams('answer', resolved),
@@ -464,7 +464,7 @@ export function buildFinanceListPlan(
       {
         id: 'answer',
         type: 'answer',
-        displayName: '生成回答',
+        displayName: '回答',
         params: {
           prompt: answerPrompt,
           ...buildRetryParams('answer', resolved),
@@ -506,7 +506,7 @@ export function buildFinanceSummaryPlan(
       {
         id: 'answer',
         type: 'answer',
-        displayName: '生成回答',
+        displayName: '回答',
         params: {
           prompt: answerPrompt,
           ...buildRetryParams('answer', resolved),
@@ -571,7 +571,7 @@ export function buildParallelDualRagPlan(
       {
         id: 'answer',
         type: 'answer',
-        displayName: '生成回答',
+        displayName: '回答',
         params: answerParams,
       },
     ],

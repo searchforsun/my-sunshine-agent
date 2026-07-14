@@ -5,6 +5,23 @@ import type { ChatMessage } from './chat'
 import type { ContentBlock } from './contentInterleave'
 import { joinedContentBlocks, normalizeRestoredInterleavedContent } from './contentInterleave'
 import { stepsHaveAwaitingHitl, getPendingHitlConfirmations } from './hitlSteps'
+import type { ProcessingStep } from './processingSteps'
+
+function countPlanNodeSteps(steps?: ProcessingStep[]): number {
+  return steps?.filter(s => s.id.startsWith('node-')).length ?? 0
+}
+
+/** API 与缓存 steps 取更完整的一份（避免刷新后 node-* 步丢失） */
+function pickRicherSteps(api?: ProcessingStep[], cached?: ProcessingStep[], forceCached?: boolean): ProcessingStep[] | undefined {
+  if (forceCached) return cached
+  if (!api?.length) return cached
+  if (!cached?.length) return api
+  const apiNodes = countPlanNodeSteps(api)
+  const cachedNodes = countPlanNodeSteps(cached)
+  if (cachedNodes > apiNodes) return cached
+  if (apiNodes > cachedNodes) return api
+  return (api.length >= cached.length) ? api : cached
+}
 
 const INDEX_KEY = 'sunshine-conv-index'
 const messagesKey = (id: string) => `sunshine-conv-msgs:${id}`
@@ -121,11 +138,10 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       ...a,
       content: pickLongerContent(a.content, c.content),
       reasoning: a.reasoning?.trim() ? a.reasoning : c.reasoning,
-      steps: cachedHasHitl
-        ? c.steps
-        : (a.steps?.length ? a.steps : c.steps),
+      steps: pickRicherSteps(a.steps, c.steps, cachedHasHitl),
       contentBlocks: pickContentBlocks(a.contentBlocks, c.contentBlocks),
       status: pickPreferredStatus(a.status, c.status),
+      executionPlanId: a.executionPlanId ?? c.executionPlanId,
       executionPreference: a.executionPreference ?? c.executionPreference,
       pendingHitlConfirmations: mergedPending.length ? mergedPending : undefined,
       pendingHitlConfirmation: undefined,

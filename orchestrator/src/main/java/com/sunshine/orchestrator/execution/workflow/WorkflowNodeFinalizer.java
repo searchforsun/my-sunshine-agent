@@ -285,7 +285,9 @@ public class WorkflowNodeFinalizer {
     private static String resolveExpandDetail(
             NodeSpec spec, Map<String, String> outputs, String summaryLine, String traceMessageId) {
         if (WorkflowNodeType.RAG.matches(spec.type())) {
-            String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedRagTimelineDetail(traceMessageId);
+            String stepId = WorkflowNodeTimeline.stepId(spec.id());
+            String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace
+                    .combinedRagTimelineDetailForStep(traceMessageId, stepId);
             if (rewriteDetail != null && !rewriteDetail.isBlank()) {
                 return rewriteDetail;
             }

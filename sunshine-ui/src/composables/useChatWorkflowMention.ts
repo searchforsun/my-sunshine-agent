@@ -33,11 +33,6 @@ export function useChatWorkflowMention(
       .slice(0, 8)
   })
 
-  function formatWorkflowNodes(entry: WorkflowCatalogEntry): string {
-    const chain = entry.nodes?.filter(n => n !== 'start').join(' → ')
-    return chain || ''
-  }
-
   function refreshWorkflowMention(text: string) {
     if (!workflowMentionAllowed.value) {
       showWorkflowSuggest.value = false
@@ -109,7 +104,6 @@ export function useChatWorkflowMention(
     workflowSuggestIndex,
     filteredWorkflows,
     workflowMentionAllowed,
-    formatWorkflowNodes,
     applyWorkflowSuggest,
     loadWorkflowCatalog,
     handleWorkflowKeydown,

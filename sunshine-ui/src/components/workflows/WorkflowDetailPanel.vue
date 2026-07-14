@@ -519,7 +519,6 @@ function onSelectNode(nodeId: string | null) {
 }
 
 .node-chip-flow {
-  border-style: dashed;
   margin-bottom: 4px;
 }
 
@@ -614,7 +613,6 @@ function onSelectNode(nodeId: string | null) {
 
 .node-chip-terminal {
   margin-top: 4px;
-  border-style: dashed;
 }
 
 .props-form {

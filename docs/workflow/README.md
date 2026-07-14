@@ -25,6 +25,7 @@
 | Tool | Catalog ID（`sdk__*` / `mcp__*`） |
 | 执行策略 | 各业务节点显式 `retry.maxAttempts` / `retry.backoffMs` / `retry.onFailure` |
 | 下游引用 | `{{node-id.output}}` · `{{node-id.answer}}`（agent） |
+| 画布坐标 | **必填** 顶层 `layout`：`{ "node-id": { "x": number, "y": number } }`（与 Studio 自动布局一致） |
 
 ## 初始化（新环境）
 

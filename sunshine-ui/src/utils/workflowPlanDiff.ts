@@ -1,5 +1,11 @@
 import type { WorkflowPlan, WorkflowPlanNode } from '../api/workflows'
-import { stripPlanLayout } from './workflowDagLayout'
+
+export type WorkflowLayoutChange = {
+  id: string
+  label: string
+  from: { x: number; y: number } | null
+  to: { x: number; y: number } | null
+}
 
 export type WorkflowPlanDiffSummary = {
   addedNodes: string[]
@@ -8,6 +14,7 @@ export type WorkflowPlanDiffSummary = {
   addedEdges: string[]
   removedEdges: string[]
   reasonChanged: boolean
+  changedLayout: WorkflowLayoutChange[]
 }
 
 export type WorkflowJsonDiffLine = {
@@ -26,6 +33,10 @@ function edgeKey(e: { from: string; to: string }): string {
   return `${e.from}->${e.to}`
 }
 
+function roundCoord(v: number): number {
+  return Math.round(v * 10) / 10
+}
+
 function nodeSnapshot(n: WorkflowPlanNode): WorkflowPlanNode {
   return {
     id: n.id,
@@ -33,6 +44,39 @@ function nodeSnapshot(n: WorkflowPlanNode): WorkflowPlanNode {
     displayName: n.displayName ?? '',
     params: n.params ?? {},
   }
+}
+
+function nodeLabelById(plan: WorkflowPlan): Map<string, string> {
+  return new Map((plan.nodes ?? []).map(n => [n.id, n.displayName?.trim() || n.id]))
+}
+
+function layoutPointEqual(
+  a: { x: number; y: number } | null | undefined,
+  b: { x: number; y: number } | null | undefined,
+): boolean {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return Math.abs(a.x - b.x) <= 0.5 && Math.abs(a.y - b.y) <= 0.5
+}
+
+function diffLayout(from: WorkflowPlan, to: WorkflowPlan): WorkflowLayoutChange[] {
+  const fromL = from.layout ?? {}
+  const toL = to.layout ?? {}
+  const labelById = new Map([...nodeLabelById(from), ...nodeLabelById(to)])
+  const ids = new Set([...Object.keys(fromL), ...Object.keys(toL)])
+  const changes: WorkflowLayoutChange[] = []
+  for (const id of [...ids].sort()) {
+    const a = fromL[id] ?? null
+    const b = toL[id] ?? null
+    if (layoutPointEqual(a, b)) continue
+    changes.push({
+      id,
+      label: labelById.get(id) ?? id,
+      from: a ? { x: roundCoord(a.x), y: roundCoord(a.y) } : null,
+      to: b ? { x: roundCoord(b.x), y: roundCoord(b.y) } : null,
+    })
+  }
+  return changes
 }
 
 function diffNodeFields(from: WorkflowPlanNode, to: WorkflowPlanNode): string[] {
@@ -43,7 +87,7 @@ function diffNodeFields(from: WorkflowPlanNode, to: WorkflowPlanNode): string[] 
   return fields
 }
 
-/** 结构化 Plan 差异摘要（忽略 layout 坐标） */
+/** 结构化 Plan 差异摘要（含 layout 坐标） */
 export function summarizeWorkflowPlanDiff(from: WorkflowPlan, to: WorkflowPlan): WorkflowPlanDiffSummary {
   const fromNodes = new Map((from.nodes ?? []).map(n => [n.id, n]))
   const toNodes = new Map((to.nodes ?? []).map(n => [n.id, n]))
@@ -77,7 +121,13 @@ export function summarizeWorkflowPlanDiff(from: WorkflowPlan, to: WorkflowPlan):
     addedEdges: addedEdges.sort(),
     removedEdges: removedEdges.sort(),
     reasonChanged: (from.reason ?? '') !== (to.reason ?? ''),
+    changedLayout: diffLayout(from, to),
   }
+}
+
+export function formatLayoutPoint(point: { x: number; y: number } | null): string {
+  if (!point) return '—'
+  return `(${point.x}, ${point.y})`
 }
 
 export function hasWorkflowPlanDiff(summary: WorkflowPlanDiffSummary): boolean {
@@ -87,14 +137,31 @@ export function hasWorkflowPlanDiff(summary: WorkflowPlanDiffSummary): boolean {
     || summary.addedEdges.length > 0
     || summary.removedEdges.length > 0
     || summary.reasonChanged
+    || summary.changedLayout.length > 0
+}
+
+function normalizeLayoutForDiff(
+  layout?: Record<string, { x: number; y: number }>,
+): Record<string, { x: number; y: number }> | undefined {
+  if (!layout || Object.keys(layout).length === 0) return undefined
+  const out: Record<string, { x: number; y: number }> = {}
+  for (const id of Object.keys(layout).sort()) {
+    const p = layout[id]
+    out[id] = { x: roundCoord(p.x), y: roundCoord(p.y) }
+  }
+  return out
 }
 
 function normalizePlanForJsonDiff(plan: WorkflowPlan): WorkflowPlan {
-  const stripped = stripPlanLayout(plan)
-  return {
-    ...stripped,
-    nodes: (stripped.nodes ?? []).map(n => nodeSnapshot(n)),
+  const layout = normalizeLayoutForDiff(plan.layout)
+  const base: WorkflowPlan = {
+    planId: plan.planId ?? null,
+    reason: plan.reason ?? '',
+    nodes: (plan.nodes ?? []).map(n => nodeSnapshot(n)),
+    edges: [...(plan.edges ?? [])],
   }
+  if (layout) base.layout = layout
+  return base
 }
 
 function diffLineArrays(oldLines: string[], newLines: string[]): WorkflowJsonDiffLine[] {

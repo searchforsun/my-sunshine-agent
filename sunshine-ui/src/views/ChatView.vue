@@ -318,7 +318,6 @@ const {
   filteredWorkflows,
   workflowCatalog,
   workflowMentionAllowed,
-  formatWorkflowNodes,
   applyWorkflowSuggest,
   loadWorkflowCatalog,
   handleWorkflowKeydown,
@@ -708,7 +707,8 @@ watch(
     </div>
 
     <PlanDagExpandLayer
-      v-if="planDagExpanded"
+      v-if="planDagExpanded && planDagExpandState.graph"
+      :graph="planDagExpandState.graph"
       :nodes="planDagExpandState.nodes"
       :selected-id="planDagExpandState.selectedId"
       :live="planDagExpandState.live"
@@ -750,7 +750,6 @@ watch(
                 <span class="skill-suggest-name">{{ wf.displayName }}</span>
               </div>
               <p v-if="wf.description" class="skill-suggest-desc">{{ wf.description }}</p>
-              <p v-if="formatWorkflowNodes(wf)" class="skill-suggest-meta">{{ formatWorkflowNodes(wf) }}</p>
             </li>
           </ul>
           <ul v-else-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">

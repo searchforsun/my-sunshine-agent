@@ -25,6 +25,13 @@ public class PlanJsonCodec {
             root.put("edges", plan.edges().stream()
                     .map(e -> Map.<String, String>of("from", e.from(), "to", e.to()))
                     .toList());
+            if (!plan.layout().isEmpty()) {
+                Map<String, Object> layout = new LinkedHashMap<>();
+                for (Map.Entry<String, PlanLayoutPoint> e : plan.layout().entrySet()) {
+                    layout.put(e.getKey(), Map.of("x", e.getValue().x(), "y", e.getValue().y()));
+                }
+                root.put("layout", layout);
+            }
             return objectMapper.writeValueAsString(root);
         } catch (Exception e) {
             throw new PlanParseException("Plan JSON 序列化失败: " + e.getMessage());
