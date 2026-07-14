@@ -1,7 +1,7 @@
 import type { Edge, Node } from '@vue-flow/core'
 import { Position } from '@vue-flow/core'
 import { formatPlanNodeType } from '../api/executionPlans'
-import type { WorkflowPlan, WorkflowPlanNode, WorkflowNodeDefaultsResponse } from '../api/workflows'
+import type { WorkflowPlan, WorkflowPlanNode, WorkflowPlanEdge, WorkflowNodeDefaultsResponse } from '../api/workflows'
 import {
   defaultDisplayName,
   defaultParamsForType,
@@ -206,8 +206,10 @@ export function resolveNodePositions(plan: WorkflowPlan): Record<string, { x: nu
   return { ...(plan.layout ?? {}) }
 }
 
-function edgePairsFingerprint(pairs: { from: string; to: string }[]): string {
-  return JSON.stringify(pairs.map(p => `${p.from}->${p.to}`).sort())
+function edgePairsFingerprint(pairs: { from: string; to: string; default?: boolean; condition?: { left?: string; op?: string; right?: string } }[]): string {
+  return JSON.stringify(pairs.map(p =>
+    `${p.from}->${p.to}|${p.default ? 'd' : ''}|${p.condition?.op ?? ''}:${p.condition?.left ?? ''}:${p.condition?.right ?? ''}`,
+  ).sort())
 }
 
 export function planEdgeFingerprint(plan: WorkflowPlan): string {
@@ -219,7 +221,7 @@ export function flowEdgeFingerprint(flowEdges: Edge[]): string {
 }
 
 function buildFlowEdges(
-  planEdges: { from: string; to: string }[],
+  planEdges: WorkflowPlanEdge[],
   plan?: WorkflowPlan,
   positions?: Record<string, { x: number; y: number }>,
 ): Edge[] {
@@ -286,7 +288,14 @@ export function mergeFlowIntoPlan(plan: WorkflowPlan, flowNodes: Node[], flowEdg
   for (const n of flowNodes) {
     layout[n.id] = { x: n.position.x, y: n.position.y }
   }
-  const edges = flowEdges.map(e => ({ from: e.source, to: e.target }))
+  const prevByKey = new Map((plan.edges ?? []).map(e => [`${e.from}->${e.to}`, e]))
+  const edges: WorkflowPlanEdge[] = flowEdges.map(e => {
+    const prev = prevByKey.get(`${e.source}->${e.target}`)
+    const next: WorkflowPlanEdge = { from: e.source, to: e.target }
+    if (prev?.default) next.default = true
+    if (prev?.condition) next.condition = { ...prev.condition }
+    return next
+  })
   return reconcilePlanDataFlow({ ...plan, nodes, edges, layout })
 }
 

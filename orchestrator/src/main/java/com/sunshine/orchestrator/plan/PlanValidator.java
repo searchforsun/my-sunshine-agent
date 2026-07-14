@@ -91,6 +91,10 @@ public class PlanValidator {
         if (parallelErr != null) {
             return parallelErr;
         }
+        String exclusiveErr = PlanExecutionSchedule.validateExclusiveTopology(plan);
+        if (exclusiveErr != null) {
+            return exclusiveErr;
+        }
         return null;
     }
 

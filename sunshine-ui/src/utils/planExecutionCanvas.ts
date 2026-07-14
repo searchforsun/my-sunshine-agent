@@ -18,7 +18,12 @@ export function planGraphToWorkflowPlan(graph: PlanGraph): WorkflowPlan {
       displayName: n.displayName,
       params: n.params,
     })),
-    edges: (graph.edges ?? []).map(e => ({ from: e.from, to: e.to })),
+    edges: (graph.edges ?? []).map(e => ({
+      from: e.from,
+      to: e.to,
+      ...(e.default ? { default: true } : {}),
+      ...(e.condition ? { condition: { ...e.condition } } : {}),
+    })),
     layout: graph.layout ? { ...graph.layout } : undefined,
   }
 }

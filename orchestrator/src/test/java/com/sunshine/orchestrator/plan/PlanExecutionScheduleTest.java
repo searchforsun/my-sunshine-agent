@@ -71,6 +71,57 @@ class PlanExecutionScheduleTest {
         assertThat(steps.get(2)).isEqualTo(new PlanExecutionSchedule.Single("answer"));
     }
 
+    @Test
+    void buildsExclusiveScheduleWithEdgeConditions() {
+        PlanJson plan = exclusivePlan();
+        assertThat(PlanExecutionSchedule.validateExclusiveTopology(plan)).isNull();
+        List<PlanExecutionSchedule.Step> steps = PlanExecutionSchedule.build(plan);
+        assertThat(steps).hasSize(3);
+        assertThat(steps.get(0)).isEqualTo(new PlanExecutionSchedule.Single("xg-1"));
+        assertThat(steps.get(1)).isInstanceOf(PlanExecutionSchedule.Exclusive.class);
+        PlanExecutionSchedule.Exclusive exclusive = (PlanExecutionSchedule.Exclusive) steps.get(1);
+        assertThat(exclusive.gatewayNodeId()).isEqualTo("xg-1");
+        assertThat(exclusive.arms()).hasSize(2);
+        assertThat(exclusive.arms().get(0).targetNodeId()).isEqualTo("rag-hit");
+        assertThat(exclusive.arms().get(0).isDefault()).isFalse();
+        assertThat(exclusive.arms().get(1).isDefault()).isTrue();
+        assertThat(steps.get(2)).isEqualTo(new PlanExecutionSchedule.Single("answer"));
+    }
+
+    @Test
+    void rejectsExclusiveWithoutDefault() {
+        PlanJson plan = new PlanJson("bad-xg", "test",
+                List.of(
+                        new PlanNode("xg-1", "exclusive-gateway", Map.of()),
+                        new PlanNode("a", "rag", Map.of()),
+                        new PlanNode("b", "rag", Map.of()),
+                        new PlanNode("answer", "answer", Map.of())),
+                List.of(
+                        new PlanEdge("start", "xg-1"),
+                        new PlanEdge("xg-1", "a", new PlanEdgeCondition("{{a.output}}", "not_empty", ""), false),
+                        new PlanEdge("xg-1", "b", new PlanEdgeCondition("{{a.output}}", "empty", ""), false),
+                        new PlanEdge("a", "answer"),
+                        new PlanEdge("b", "answer")));
+        assertThat(PlanExecutionSchedule.validateExclusiveTopology(plan))
+                .contains("须恰好 1 条 default");
+    }
+
+    private static PlanJson exclusivePlan() {
+        return new PlanJson("exclusive", "条件分支",
+                List.of(
+                        new PlanNode("xg-1", "exclusive-gateway", Map.of(), "条件分支"),
+                        new PlanNode("rag-hit", "rag", Map.of("topK", "3"), "命中检索"),
+                        new PlanNode("rag-miss", "rag", Map.of("topK", "3"), "兜底检索"),
+                        new PlanNode("answer", "answer", Map.of(), "回答")),
+                List.of(
+                        new PlanEdge("start", "xg-1"),
+                        new PlanEdge("xg-1", "rag-hit",
+                                new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销"), false),
+                        new PlanEdge("xg-1", "rag-miss", null, true),
+                        new PlanEdge("rag-hit", "answer"),
+                        new PlanEdge("rag-miss", "answer")));
+    }
+
     private static PlanJson dualRagWithParallelGateway() {
         return new PlanJson("dual-rag-pg", "BPMN 并行网关",
                 List.of(

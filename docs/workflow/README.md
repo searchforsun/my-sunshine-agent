@@ -1,6 +1,6 @@
 # Workflow 标杆种子（MySQL init）
 
-平台 **5 条标杆 workflow** 的唯一静态 SSOT：`docker/mysql/init/13-sunshine-workflow-manager.sql`。
+平台 **6 条标杆 workflow** 的唯一静态 SSOT：`docker/mysql/init/13-sunshine-workflow-manager.sql`。
 
 > **运行时 SSOT**：`workflow-manager` DB（Studio 发布 / CRUD）。init SQL 仅用于**新环境初始化**；已部署库改标杆须 UPDATE `workflow_version` + `redis-cli PUBLISH workflow-catalog-changed default`。
 
@@ -10,6 +10,7 @@
 |------------|-------------|------|
 | `knowledge-qa` | 知识库问答 | 单路 RAG 问答 |
 | `knowledge-dual` | 双路知识检索 | 并行双 RAG + join（4.7.2 标杆） |
+| `knowledge-branch` | 条件分支知识检索 | exclusive-gateway 边条件（含「报销」→ 财务 RAG，否则人事 RAG；4.13.7） |
 | `finance-list` | 财务待办查询 | tool → answer |
 | `finance-smart` | 财务智能分析 | tool + agent → answer |
 | `finance-summary` | 财务汇总统计 | tool → answer |
@@ -18,7 +19,7 @@
 
 | 项 | 约定 |
 |----|------|
-| 条数 | **5** 条，`source=seed`，`active_version=1`，`status=published`，`enabled=1` |
+| 条数 | **6** 条，`source=seed`，`active_version=1`，`status=published`，`enabled=1` |
 | 节点 ID | 业务节点 `{type}-{8位hex}`；`start` / `answer` 固定 |
 | RAG | **必填** `params.query`（默认 `{{start.userQuery}}`） |
 | Agent | **必填** `params.query`；有上游时 **必填** `params.context` |

@@ -32,7 +32,7 @@ const NODE_HELP: Record<string, string> = {
   systemOverlay: '追加到子 Agent system 的节点级说明，用于约束分析范围与输出格式。',
   joinTopology: '至少两条路线汇入、一条路线流出。分叉请用「并行分叉」，不要在普通步骤上直接拉出多条线。',
   parallelGatewayTopology: '至少分出两条可同时进行的路线；各分支完成后应汇入「并行汇总」。',
-  exclusiveGatewayTopology: '至少分出两条互斥路线，运行时只会走其中一条。',
+  exclusiveGatewayTopology: '至少分出两条互斥路线；配置出边条件，并指定恰好一条默认分支。左值随上游自动填入。运行时按顺序求值，命中即走，否则走默认。',
 }
 
 const RETRY_HELP: Record<string, string> = {

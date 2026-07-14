@@ -34,6 +34,20 @@ class PlanJsonCodecTest {
     }
 
     @Test
+    void serializesExclusiveEdgeCondition() {
+        PlanJson plan = new PlanJson("p1", "xg",
+                List.of(new PlanNode("xg", "exclusive-gateway", Map.of())),
+                List.of(
+                        new PlanEdge("start", "xg"),
+                        new PlanEdge("xg", "a", new PlanEdgeCondition("{{q}}", "contains", "报销"), false),
+                        new PlanEdge("xg", "b", null, true)));
+        String json = codec.toJson(plan);
+        assertThat(json).contains("\"op\":\"contains\"");
+        assertThat(json).contains("\"default\":true");
+        assertThat(json).contains("\"right\":\"报销\"");
+    }
+
+    @Test
     void traceRoundTrip() {
         List<PlanNodeTrace> traces = List.of(
                 new PlanNodeTrace("n1", "llm", "completed", "ok", null, 100L, 200L));

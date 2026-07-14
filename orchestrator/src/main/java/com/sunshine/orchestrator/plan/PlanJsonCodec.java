@@ -22,9 +22,7 @@ public class PlanJsonCodec {
             root.put("planId", plan.planId());
             root.put("reason", plan.reason());
             root.put("nodes", plan.nodes().stream().map(this::nodeMap).toList());
-            root.put("edges", plan.edges().stream()
-                    .map(e -> Map.<String, String>of("from", e.from(), "to", e.to()))
-                    .toList());
+            root.put("edges", plan.edges().stream().map(this::edgeMap).toList());
             if (!plan.layout().isEmpty()) {
                 Map<String, Object> layout = new LinkedHashMap<>();
                 for (Map.Entry<String, PlanLayoutPoint> e : plan.layout().entrySet()) {
@@ -202,6 +200,25 @@ public class PlanJsonCodec {
         }
         if (!node.params().isEmpty()) {
             map.put("params", node.params());
+        }
+        return map;
+    }
+
+    private Map<String, Object> edgeMap(PlanEdge edge) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("from", edge.from());
+        map.put("to", edge.to());
+        if (edge.isDefault()) {
+            map.put("default", true);
+        }
+        if (edge.condition() != null) {
+            Map<String, Object> cond = new LinkedHashMap<>();
+            cond.put("left", edge.condition().left());
+            cond.put("op", edge.condition().op());
+            if (!edge.condition().right().isBlank()) {
+                cond.put("right", edge.condition().right());
+            }
+            map.put("condition", cond);
         }
         return map;
     }

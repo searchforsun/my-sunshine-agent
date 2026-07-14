@@ -1,4 +1,5 @@
 import { computed, reactive, ref, watch } from 'vue'
+import type { PlanGraph } from '../api/executionPlans'
 import type { ProcessingStep } from '../api/processingSteps'
 import type { DagNodeView } from '../utils/planGraph'
 
@@ -7,6 +8,8 @@ export interface PlanNodeDrawerPayload {
   userQuery?: string
   node: DagNodeView
   step?: ProcessingStep
+  /** 执行 Plan 拓扑（条件分支出边等抽屉展示用） */
+  graph?: PlanGraph
 }
 
 /** 抽屉默认/最窄宽度（与历史行为一致） */
@@ -21,6 +24,7 @@ const state = reactive({
   userQuery: '',
   node: null as DagNodeView | null,
   step: undefined as ProcessingStep | undefined,
+  graph: null as PlanGraph | null,
 })
 
 const savedWidth = ref(loadSavedWidth())
@@ -112,6 +116,7 @@ export function usePlanNodeDrawer() {
     state.userQuery = payload.userQuery?.trim() ?? ''
     state.node = payload.node
     state.step = payload.step
+    state.graph = payload.graph ?? null
     state.open = true
   }
 
@@ -121,6 +126,7 @@ export function usePlanNodeDrawer() {
     state.userQuery = ''
     state.node = null
     state.step = undefined
+    state.graph = null
   }
 
   function isActivePlan(planId: string | undefined) {

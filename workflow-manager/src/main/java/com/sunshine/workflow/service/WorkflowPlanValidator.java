@@ -124,6 +124,10 @@ public class WorkflowPlanValidator {
             if (parallelErr != null) {
                 result.add(parallelErr);
             }
+            String exclusiveErr = validateExclusiveEdgeConditions(types, edges);
+            if (exclusiveErr != null) {
+                result.add(exclusiveErr);
+            }
             Map<String, Set<String>> ancestors = buildAncestors(types.keySet(), incoming);
             validateDataFlow(result, nodeById, types, ancestors);
             return result;
@@ -300,6 +304,68 @@ public class WorkflowPlanValidator {
             }
         }
         return null;
+    }
+
+    private static String validateExclusiveEdgeConditions(
+            Map<String, String> types,
+            JsonNode edges) {
+        Map<String, Integer> defaultCount = new HashMap<>();
+        Map<String, Integer> outCount = new HashMap<>();
+        for (JsonNode edge : edges) {
+            String from = text(edge, "from");
+            String to = text(edge, "to");
+            if (!StringUtils.hasText(from) || !StringUtils.hasText(to)) {
+                continue;
+            }
+            boolean isDefault = edge.has("default") && edge.get("default").asBoolean(false);
+            JsonNode condition = edge.get("condition");
+            boolean hasCond = condition != null && condition.isObject()
+                    && StringUtils.hasText(text(condition, "op"));
+            if (!isDefault && !hasCond) {
+                if ("exclusive-gateway".equals(types.get(from))) {
+                    // 允许先画拓扑后补条件；发布前须完整。此处仅统计。
+                }
+            }
+            if (isDefault || hasCond) {
+                if (!"exclusive-gateway".equals(types.get(from))) {
+                    return "边 " + from + "→" + to + " 的 condition/default 仅允许 exclusive-gateway 出边";
+                }
+            }
+            if ("exclusive-gateway".equals(types.get(from))) {
+                outCount.merge(from, 1, Integer::sum);
+                if (isDefault) {
+                    defaultCount.merge(from, 1, Integer::sum);
+                } else if (!hasCompleteCondition(condition)) {
+                    return "exclusive-gateway 出边 " + from + "→" + to + " 须配置 condition 或标记 default";
+                }
+            }
+        }
+        for (Map.Entry<String, Integer> e : outCount.entrySet()) {
+            if (e.getValue() < 2) {
+                continue;
+            }
+            int defaults = defaultCount.getOrDefault(e.getKey(), 0);
+            if (defaults != 1) {
+                return "exclusive-gateway 节点 " + e.getKey() + " 须恰好 1 条 default 出边";
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasCompleteCondition(JsonNode condition) {
+        if (condition == null || !condition.isObject()) {
+            return false;
+        }
+        String op = text(condition, "op");
+        String left = text(condition, "left");
+        if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
+            return false;
+        }
+        String normalized = op.strip().toLowerCase();
+        if ("empty".equals(normalized) || "not_empty".equals(normalized)) {
+            return true;
+        }
+        return "contains".equals(normalized) || "eq".equals(normalized);
     }
 
     private static Map<String, Set<String>> buildAncestors(

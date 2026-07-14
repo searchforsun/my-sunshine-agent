@@ -99,11 +99,30 @@ public class PlanJsonParser {
         for (JsonNode edge : edgesNode) {
             String from = text(edge, "from");
             String to = text(edge, "to");
-            if (from != null && to != null) {
-                edges.add(new PlanEdge(from, to));
+            if (from == null || to == null) {
+                continue;
             }
+            boolean isDefault = edge.has("default") && edge.get("default").asBoolean(false);
+            PlanEdgeCondition condition = parseCondition(edge.get("condition"));
+            edges.add(new PlanEdge(from, to, condition, isDefault));
         }
         return List.copyOf(edges);
+    }
+
+    private static PlanEdgeCondition parseCondition(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        String left = text(node, "left");
+        String op = text(node, "op");
+        String right = text(node, "right");
+        if ((left == null || left.isBlank()) && (op == null || op.isBlank()) && (right == null || right.isBlank())) {
+            return null;
+        }
+        return new PlanEdgeCondition(
+                left != null ? left : "",
+                op != null ? op : "",
+                right != null ? right : "");
     }
 
     private static Map<String, String> parseParams(JsonNode paramsNode) {

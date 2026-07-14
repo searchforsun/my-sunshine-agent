@@ -43,11 +43,24 @@ export interface WorkflowPlanNode {
   params?: Record<string, unknown>
 }
 
+export interface WorkflowPlanEdgeCondition {
+  left: string
+  op: 'empty' | 'not_empty' | 'contains' | 'eq' | string
+  right?: string
+}
+
+export interface WorkflowPlanEdge {
+  from: string
+  to: string
+  condition?: WorkflowPlanEdgeCondition
+  default?: boolean
+}
+
 export interface WorkflowPlan {
   planId: string | null
   reason: string
   nodes: WorkflowPlanNode[]
-  edges: { from: string; to: string }[]
+  edges: WorkflowPlanEdge[]
   /** Studio 画布节点坐标（可选；执行展示与 Studio 对齐） */
   layout?: Record<string, { x: number; y: number }>
 }

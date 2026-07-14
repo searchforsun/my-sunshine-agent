@@ -159,6 +159,26 @@ export function validatePlanTopologyLocally(plan: WorkflowPlan): string[] {
       if (succs.length < 2) {
         issues.push(`条件分支「${id}」出度须 ≥ 2（至少两条互斥分支）`)
       }
+      const outEdges = edges.filter(e => e.from === id)
+      const defaults = outEdges.filter(e => e.default)
+      if (outEdges.length >= 2 && defaults.length !== 1) {
+        issues.push(`条件分支「${id}」须恰好 1 条默认出边`)
+      }
+      for (const e of outEdges) {
+        if (e.default) continue
+        const op = e.condition?.op?.trim()
+        const left = e.condition?.left?.trim()
+        if (!op || !left) {
+          issues.push(`条件分支出边 ${e.from}→${e.to} 须配置条件或标为默认`)
+        }
+      }
+    }
+  }
+  for (const e of edges) {
+    if (!e.default && !e.condition) continue
+    const fromType = nodes.find(n => n.id === e.from)?.type
+    if (!isExclusiveGateway(fromType)) {
+      issues.push(`边 ${e.from}→${e.to} 的条件/默认仅允许条件分支出边`)
     }
   }
   if (hasCycle(edges)) {

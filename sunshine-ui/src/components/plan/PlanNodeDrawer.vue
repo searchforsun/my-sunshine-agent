@@ -23,6 +23,7 @@ import StaticMarkdown from '../StaticMarkdown.vue'
 import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
+import { resolveExclusiveBranches } from '../../utils/exclusiveBranchDisplay'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
 const applyHitlDecision = inject<(token: string, approved: boolean) => void>('applyHitlDecision', () => {})
@@ -157,6 +158,13 @@ const showStartPlan = computed(() => {
   const plan = startPlan.value
   return !!(plan.planId || plan.chainSteps.length || plan.replanCount)
 })
+
+const exclusiveBranches = computed(() => {
+  if (node.value?.type !== 'exclusive-gateway') return []
+  return resolveExclusiveBranches(state.graph, node.value.id)
+})
+const showExclusiveBranches = computed(() => exclusiveBranches.value.length > 0)
+
 const showBodySection = computed(() => {
   if (node.value?.type === 'start') return false
   if (node.value?.type === 'agent' && (step.value?.contentBlocks?.length ?? 0) > 0) return false
@@ -306,6 +314,21 @@ watch(
       </p>
     </header>
     <div ref="bodyRef" class="drawer-body" @scroll="onDrawerBodyScroll">
+      <section v-if="showExclusiveBranches" class="drawer-section">
+        <h4>分支条件</h4>
+        <ul class="exclusive-branch-list">
+          <li
+            v-for="b in exclusiveBranches"
+            :key="`${b.toId}-${b.isDefault ? 'd' : 'c'}`"
+            class="exclusive-branch-item"
+          >
+            <span class="exclusive-branch-target">{{ b.toLabel }}</span>
+            <span class="exclusive-branch-cond" :class="{ 'is-default': b.isDefault }">
+              {{ b.conditionText }}
+            </span>
+          </li>
+        </ul>
+      </section>
       <div v-if="displayAttempts?.length" class="drawer-section">
         <h4>执行记录（{{ displayAttemptCount }} 次）</h4>
         <ul class="attempt-list">
@@ -624,6 +647,41 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.exclusive-branch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exclusive-branch-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  background: transparent;
+}
+
+.exclusive-branch-target {
+  font-size: var(--sun-font-base);
+  font-weight: 600;
+  color: var(--sun-text);
+}
+
+.exclusive-branch-cond {
+  font-size: var(--sun-font-sm, 12px);
+  color: var(--sun-text-secondary);
+  word-break: break-word;
+}
+
+.exclusive-branch-cond.is-default {
+  color: var(--sun-text);
 }
 
 .attempt-item {

@@ -34,6 +34,12 @@ export interface PlanGraphNode {
 export interface PlanGraphEdge {
   from: string
   to: string
+  condition?: {
+    left: string
+    op: string
+    right?: string
+  }
+  default?: boolean
 }
 
 export interface PlanGraph {

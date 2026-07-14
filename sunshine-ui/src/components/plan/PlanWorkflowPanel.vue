@@ -110,7 +110,7 @@ function maybeAutoOpenDrawer(nodes: DagNodeView[]) {
   const target = nodes.find(nodeNeedsDrawerAttention)
   if (!target) return
   if (isActivePlan(id) && drawerState.node?.id === target.id) return
-  openDrawer({ planId: id, userQuery: props.userQuery, node: target, step: stepForNode(target.id) })
+  openDrawer({ planId: id, userQuery: props.userQuery, node: target, step: stepForNode(target.id), graph: graphSource.value })
 }
 
 const planDetail = ref<ExecutionPlanDetail | null>(null)
@@ -218,7 +218,13 @@ function stepForNode(nodeId: string): ProcessingStep | undefined {
 function onSelectNode(node: DagNodeView) {
   const id = planId.value
   if (!id) return
-  openDrawer({ planId: id, userQuery: props.userQuery, node, step: stepForNode(node.id) })
+  openDrawer({
+    planId: id,
+    userQuery: props.userQuery,
+    node,
+    step: stepForNode(node.id),
+    graph: graphSource.value,
+  })
 }
 
 function onExpandDag() {

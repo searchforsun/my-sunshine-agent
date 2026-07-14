@@ -2,6 +2,7 @@ import type { WorkflowPlan, WorkflowNodeDefaultsResponse } from '../api/workflow
 import { autoLayoutPlan } from './workflowDagLayout'
 import { applyPlanDefaults } from './workflowNodeParams'
 import {
+  buildExclusiveBranchRagPlan,
   buildFinanceListPlan,
   buildFinanceSummaryPlan,
   buildLinearRagQaPlan,
@@ -13,6 +14,7 @@ export type WorkflowTemplateId =
   | 'linear-rag-qa'
   | 'linear-tool-agent'
   | 'parallel-dual-rag'
+  | 'exclusive-branch-rag'
   | 'finance-list'
   | 'finance-summary'
 
@@ -54,6 +56,11 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplateDefinition[] = [
     summary: '两路 RAG 并行检索后 join 汇总回答',
     disabledReason: ctx => (ctx.isParallel ? '当前已是并行 DAG，无需重复应用' : undefined),
   },
+  {
+    id: 'exclusive-branch-rag',
+    name: '条件分支检索',
+    summary: 'exclusive-gateway：含「报销」走财务 RAG，否则默认人事 RAG',
+  },
 ]
 
 export function getWorkflowTemplate(id: WorkflowTemplateId): WorkflowTemplateDefinition | undefined {
@@ -82,6 +89,9 @@ export function buildWorkflowTemplatePreviewPlan(
       break
     case 'parallel-dual-rag':
       plan = autoLayoutPlan(buildParallelDualRagPlan(previewId, resolved))
+      break
+    case 'exclusive-branch-rag':
+      plan = autoLayoutPlan(buildExclusiveBranchRagPlan(previewId, resolved))
       break
     default:
       throw new Error(`Unknown workflow template: ${id}`)

@@ -140,6 +140,30 @@ export function upstreamOutputRef(node: WorkflowPlanNode): string {
   return `{{${node.id}.output}}`
 }
 
+/**
+ * 条件分支出边左值：沿入边回溯最近业务前驱的 output/answer；
+ * 无业务前驱（直连 start 或仅路由）时用 {{start.userQuery}}。
+ */
+export function exclusiveGatewayConditionLeft(plan: WorkflowPlan, gatewayId: string): string {
+  const edges = plan.edges ?? []
+  const nodes = plan.nodes ?? []
+  const typeById = new Map(nodes.map(n => [n.id, n.type]))
+  const nodeById = new Map(nodes.map(n => [n.id, n]))
+  let preds = edges.filter(e => e.to === gatewayId).map(e => e.from)
+  while (preds.length === 1) {
+    const pid = preds[0]
+    const ptype = typeById.get(pid)
+    if (!ptype || ptype === 'start') return '{{start.userQuery}}'
+    if (isRoutingNodeType(ptype)) {
+      preds = edges.filter(e => e.to === pid).map(e => e.from)
+      continue
+    }
+    const node = nodeById.get(pid)
+    return node ? upstreamOutputRef(node) : '{{start.userQuery}}'
+  }
+  return '{{start.userQuery}}'
+}
+
 export function buildDefaultAnswerPrompt(business: WorkflowPlanNode[]): string {
   if (business.length === 0) {
     return '请根据用户问题回答。\n\n用户问题：{{start.userQuery}}'
@@ -214,7 +238,16 @@ export function reconcilePlanDataFlow(
     }
     return n
   })
-  return { ...plan, nodes }
+  const edges = (plan.edges ?? []).map(e => {
+    if (typeById.get(e.from) !== 'exclusive-gateway' || e.default) return e
+    const left = exclusiveGatewayConditionLeft(plan, e.from)
+    if (e.condition) {
+      if (e.condition.left === left) return e
+      return { ...e, condition: { ...e.condition, left } }
+    }
+    return { ...e, condition: { left, op: 'contains', right: '' } }
+  })
+  return { ...plan, nodes, edges }
 }
 
 export function defaultParamsForType(type: WorkflowBusinessNodeType): Record<string, unknown> {
@@ -582,6 +615,72 @@ export function buildParallelDualRagPlan(
       { from: 'rag-a1b2c3d4', to: 'join-c9d0e1f2' },
       { from: 'rag-e5f6a7b8', to: 'join-c9d0e1f2' },
       { from: 'join-c9d0e1f2', to: 'answer' },
+    ],
+  }
+}
+
+/** 4.13.7 exclusive-gateway：含「报销」走财务 RAG，否则默认人事 RAG */
+export function buildExclusiveBranchRagPlan(
+  workflowId: string,
+  nodeDefaults?: WorkflowNodeDefaultsResponse,
+): WorkflowPlan {
+  const resolved = resolveNodeDefaults(nodeDefaults)
+  const answerPrompt =
+    '你是企业制度助手。根据下方检索结果回答，不得编造。\n\n'
+    + '若检索为空，回复：企业知识库中暂无相关规定。\n'
+    + '禁止暴露 knowledge-branch 等内部名称。\n\n'
+    + '财务制度检索：\n{{rag-f1a2b3c4.output}}\n\n'
+    + '人事制度检索：\n{{rag-d5e6f7a8.output}}'
+  const ragParams = {
+    query: '{{start.userQuery}}',
+    topK: '3',
+    ...buildRetryParams('rag', resolved),
+  }
+  const xgParams = buildRetryParams('exclusive-gateway', resolved)
+  const answerParams = {
+    prompt: answerPrompt,
+    ...buildRetryParams('answer', resolved),
+  }
+  return {
+    planId: null,
+    reason: `条件分支知识检索工作流 ${workflowId}`,
+    nodes: [
+      defaultStartNode(),
+      {
+        id: 'xg-b1c2d3e4',
+        type: 'exclusive-gateway',
+        displayName: '条件分支',
+        params: xgParams,
+      },
+      {
+        id: 'rag-f1a2b3c4',
+        type: 'rag',
+        displayName: '财务制度检索',
+        params: ragParams,
+      },
+      {
+        id: 'rag-d5e6f7a8',
+        type: 'rag',
+        displayName: '人事制度检索',
+        params: { ...ragParams },
+      },
+      {
+        id: 'answer',
+        type: 'answer',
+        displayName: '回答',
+        params: answerParams,
+      },
+    ],
+    edges: [
+      { from: 'start', to: 'xg-b1c2d3e4' },
+      {
+        from: 'xg-b1c2d3e4',
+        to: 'rag-f1a2b3c4',
+        condition: { left: '{{start.userQuery}}', op: 'contains', right: '报销' },
+      },
+      { from: 'xg-b1c2d3e4', to: 'rag-d5e6f7a8', default: true },
+      { from: 'rag-f1a2b3c4', to: 'answer' },
+      { from: 'rag-d5e6f7a8', to: 'answer' },
     ],
   }
 }

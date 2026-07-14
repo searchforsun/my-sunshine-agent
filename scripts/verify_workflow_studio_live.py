@@ -13,7 +13,7 @@
   RAG_URL                hash 套件 RAG 预检，默认 http://127.0.0.1:8400
 
 前置:
-  - MySQL init 已执行（13-sunshine-workflow-manager.sql 含 5 标杆种子）
+  - MySQL init 已执行（13-sunshine-workflow-manager.sql 含 6 标杆种子）
   - workflow-manager :8230、gateway :8000、orchestrator :8200 已启动
 """
 from __future__ import annotations
@@ -36,7 +36,14 @@ WM_URL = os.environ.get("WORKFLOW_MANAGER_URL", "http://127.0.0.1:8230").rstrip(
 RAG_URL = os.environ.get("RAG_URL", "http://127.0.0.1:8400").rstrip("/")
 HASH_TIMEOUT_SEC = int(os.environ.get("WORKFLOW_HASH_TIMEOUT_SEC", "120"))
 
-SEED_IDS = {"knowledge-qa", "finance-list", "finance-smart", "finance-summary", "knowledge-dual"}
+SEED_IDS = {
+    "knowledge-qa",
+    "finance-list",
+    "finance-smart",
+    "finance-summary",
+    "knowledge-dual",
+    "knowledge-branch",
+}
 
 
 def wm_json(path: str) -> list | dict:
@@ -399,11 +406,52 @@ def suite_parallel() -> None:
     )
 
 
+def suite_exclusive() -> None:
+    print("[exclusive] 4.13.7 exclusive-gateway 边条件 Live")
+    preflight_rag()
+    token_hdr = auth_headers()
+    token = token_hdr["Authorization"].removeprefix("Bearer ").strip()
+
+    # 条件命中：含「报销」→ 财务 RAG
+    conv1 = conversation_id(auth_json("POST", "/api/conversations", None, token))
+    q1 = "#knowledge-branch 报销需要哪些材料"
+    print(f"  query={q1}")
+    chat_sse(token, conv1, q1, executionPreference="auto")
+    a1 = wait_assistant(token, conv1, HASH_TIMEOUT_SEC)
+    if not workflow_hit(a1, "knowledge-branch"):
+        raise RuntimeError(
+            f"exclusive 条件路由失败 workflowId={a1.get('workflowId')} intent={a1.get('intent')}",
+        )
+    s1 = json.dumps(a1.get("steps") or [], ensure_ascii=False)
+    if "node-rag-f1a2b3c4" not in s1:
+        raise RuntimeError(f"条件分支未走财务 RAG: steps={s1[:800]}")
+    if "node-rag-d5e6f7a8" in s1:
+        raise RuntimeError("条件命中时不应执行默认人事 RAG")
+    print("  [OK] 含「报销」→ node-rag-f1a2b3c4")
+
+    # 默认分支：无「报销」→ 人事 RAG
+    conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
+    q2 = "#knowledge-branch 请假制度是什么"
+    print(f"  query={q2}")
+    chat_sse(token, conv2, q2, executionPreference="auto")
+    a2 = wait_assistant(token, conv2, HASH_TIMEOUT_SEC)
+    if not workflow_hit(a2, "knowledge-branch"):
+        raise RuntimeError(
+            f"exclusive 默认路由失败 workflowId={a2.get('workflowId')} intent={a2.get('intent')}",
+        )
+    s2 = json.dumps(a2.get("steps") or [], ensure_ascii=False)
+    if "node-rag-d5e6f7a8" not in s2:
+        raise RuntimeError(f"默认分支未走人事 RAG: steps={s2[:800]}")
+    if "node-rag-f1a2b3c4" in s2:
+        raise RuntimeError("默认分支不应执行财务 RAG")
+    print("  [OK] 无「报销」→ node-rag-d5e6f7a8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Workflow Studio Live 验收")
     parser.add_argument(
         "--suite",
-        choices=["catalog", "bff", "studio", "hash", "parallel", "all"],
+        choices=["catalog", "bff", "studio", "hash", "parallel", "exclusive", "all"],
         default="catalog",
     )
     args = parser.parse_args()
@@ -419,6 +467,8 @@ def main() -> int:
             suite_hash(studio_id)
         if args.suite in ("parallel", "all"):
             suite_parallel()
+        if args.suite in ("exclusive", "all"):
+            suite_exclusive()
     except requests.RequestException as e:
         print(f"[FAIL] 请求失败: {e}", file=sys.stderr)
         return 1

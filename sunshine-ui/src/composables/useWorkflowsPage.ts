@@ -36,6 +36,7 @@ import {
   buildFinanceListPlan,
   buildFinanceSummaryPlan,
   buildParallelDualRagPlan,
+  buildExclusiveBranchRagPlan,
   buildPreviewDagNodes,
   businessNodeOrder,
   collectBusinessNodeValidationIssues,
@@ -441,7 +442,8 @@ function useWorkflowsPageImpl() {
   async function persistDraft(): Promise<void> {
     if (!plan.value || !selectedId.value) return
     const wfId = selectedId.value
-    const normalized = normalizeWorkflowPlan(plan.value, wfId)
+    const normalized = reconcilePlanDataFlow(normalizeWorkflowPlan(plan.value, wfId))
+    plan.value = normalized
     const examples = catalogExamples.value.split('\n').map(s => s.trim()).filter(Boolean)
     const catalog = buildCatalogMeta(normalized, examples, catalogIntentAfter.value)
     await persistDefinitionIfDirty()
@@ -455,7 +457,8 @@ function useWorkflowsPageImpl() {
     const localIssues = collectPublishValidationIssues()
     if (localIssues.length > 0) return localIssues
     if (!plan.value || !selectedId.value) return []
-    const normalized = normalizeWorkflowPlan(plan.value, selectedId.value)
+    const normalized = reconcilePlanDataFlow(normalizeWorkflowPlan(plan.value, selectedId.value))
+    plan.value = normalized
     const result = await validateWorkflowPlan(normalized)
     return result.issues ?? []
   }
@@ -786,6 +789,12 @@ function useWorkflowsPageImpl() {
         break
       case 'parallel-dual-rag':
         applyParallelDualRagTemplate()
+        break
+      case 'exclusive-branch-rag':
+        applyWorkflowTemplatePlan(
+          buildExclusiveBranchRagPlan,
+          '已应用条件分支检索模板（start → exclusive → RAG → answer）',
+        )
         break
       case 'finance-list':
         applyWorkflowTemplatePlan(

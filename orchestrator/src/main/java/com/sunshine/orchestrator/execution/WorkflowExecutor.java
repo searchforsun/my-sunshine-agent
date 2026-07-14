@@ -145,7 +145,50 @@ public class WorkflowExecutor {
             return branches.concatWith(executeOneNode(
                     parallel.joinNodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow));
         }
+        if (step instanceof PlanExecutionSchedule.Exclusive exclusive) {
+            return executeExclusive(exclusive, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+        }
         return Flux.empty();
+    }
+
+    private Flux<StreamToken> executeExclusive(
+            PlanExecutionSchedule.Exclusive exclusive,
+            ProcessingTimelineSession session,
+            WorkflowDefinition def,
+            WorkflowContext wfCtx,
+            ExecutionStreamContext streamCtx,
+            WorkflowRunSession runSession,
+            boolean planWorkflow) {
+        Flux<StreamToken> gateway = isNodeCompleted(wfCtx, exclusive.gatewayNodeId())
+                ? Flux.empty()
+                : executeOneNode(exclusive.gatewayNodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+        return gateway.concatWith(Flux.defer(() -> {
+            PlanExecutionSchedule.ExclusiveArm picked = pickExclusiveArm(exclusive.arms(), wfCtx);
+            if (picked == null) {
+                return Flux.error(new IllegalStateException(
+                        "条件分支 " + exclusive.gatewayNodeId() + " 无命中条件且无 default 出边"));
+            }
+            List<String> pending = picked.pathNodeIds().stream()
+                    .filter(id -> !isNodeCompleted(wfCtx, id))
+                    .toList();
+            return executeNodeOrder(pending, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+        }));
+    }
+
+    private static PlanExecutionSchedule.ExclusiveArm pickExclusiveArm(
+            List<PlanExecutionSchedule.ExclusiveArm> arms,
+            WorkflowContext wfCtx) {
+        PlanExecutionSchedule.ExclusiveArm fallback = null;
+        for (PlanExecutionSchedule.ExclusiveArm arm : arms) {
+            if (arm.isDefault()) {
+                fallback = arm;
+                continue;
+            }
+            if (EdgeConditionEvaluator.matches(arm.condition(), wfCtx)) {
+                return arm;
+            }
+        }
+        return fallback;
     }
 
     private Flux<StreamToken> executeOneNode(
@@ -209,6 +252,13 @@ public class WorkflowExecutor {
         if (step instanceof PlanExecutionSchedule.Parallel parallel) {
             return parallel.branchNodeIds().contains(nodeId) || parallel.joinNodeId().equals(nodeId);
         }
+        if (step instanceof PlanExecutionSchedule.Exclusive exclusive) {
+            if (exclusive.gatewayNodeId().equals(nodeId)) {
+                return true;
+            }
+            return exclusive.arms().stream().anyMatch(arm ->
+                    arm.targetNodeId().equals(nodeId) || arm.pathNodeIds().contains(nodeId));
+        }
         return false;
     }
 
@@ -220,7 +270,8 @@ public class WorkflowExecutor {
         if (StringUtils.hasText(node.get("output")) || StringUtils.hasText(node.get("answer"))) {
             return true;
         }
-        return "joined".equals(node.get("status"));
+        String status = node.get("status");
+        return "joined".equals(status) || "routed".equals(status) || "forked".equals(status);
     }
 
     private Flux<StreamToken> executeNodeOrder(

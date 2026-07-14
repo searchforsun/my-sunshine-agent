@@ -329,6 +329,10 @@ function onConnect(connection: Connection) {
   if (!result.ok) return
   const id = `${connection.source}->${connection.target}`
   if (edges.value.some(e => e.id === id)) return
+  const sourceType = props.plan.nodes?.find(n => n.id === connection.source)?.type
+  const isExclusiveOut = sourceType === 'exclusive-gateway'
+  const assignDefault = isExclusiveOut
+    && !(props.plan.edges ?? []).some(e => e.from === connection.source && e.default)
   const nextEdges: Edge[] = [
     ...edges.value,
     {
@@ -342,7 +346,18 @@ function onConnect(connection: Connection) {
     },
   ]
   edges.value = nextEdges
-  pushPlan(mergeFlowIntoPlan(props.plan, nodes.value, nextEdges))
+  let nextPlan = mergeFlowIntoPlan(props.plan, nodes.value, nextEdges)
+  if (assignDefault) {
+    nextPlan = {
+      ...nextPlan,
+      edges: (nextPlan.edges ?? []).map(e =>
+        e.from === connection.source && e.to === connection.target
+          ? { ...e, default: true }
+          : e,
+      ),
+    }
+  }
+  pushPlan(nextPlan)
 }
 
 function onNodeClick(payload: { node: Node }) {
