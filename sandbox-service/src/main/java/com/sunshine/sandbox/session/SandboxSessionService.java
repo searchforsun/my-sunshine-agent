@@ -1,9 +1,12 @@
 package com.sunshine.sandbox.session;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.exception.FixedErrorCode;
 import com.sunshine.sandbox.api.CreateSessionRequest;
 import com.sunshine.sandbox.api.SandboxPolicyDto;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
+import com.sunshine.sandbox.exception.SandboxErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -83,7 +86,7 @@ public class SandboxSessionService {
     public void close(String sessionId) {
         SandboxSession session = store.remove(sessionId);
         if (session == null) {
-            throw new IllegalArgumentException("session not found: " + sessionId);
+            throw new BizException(SandboxErrorCode.SESSION_NOT_FOUND);
         }
         try {
             dockerCli.removeForce(session.containerName());
@@ -96,7 +99,7 @@ public class SandboxSessionService {
 
     private static void rejectNetworkAllow(List<String> networkAllow) {
         if (networkAllow != null && !networkAllow.isEmpty()) {
-            throw new IllegalArgumentException("网络白名单将在 T7 启用");
+            throw new BizException(SandboxErrorCode.NETWORK_ALLOW_NOT_SUPPORTED);
         }
     }
 
@@ -137,11 +140,11 @@ public class SandboxSessionService {
         for (Map.Entry<String, String> e : skillFiles.entrySet()) {
             String key = requireSafeRelative(e.getKey(), "skill");
             if (!key.startsWith("scripts/") && !key.startsWith("references/")) {
-                throw new IllegalArgumentException("skill file key must be under scripts/ or references/: " + key);
+                throw new BizException(SandboxErrorCode.SKILL_FILE_PATH_INVALID);
             }
             Path target = hostSkill.resolve(key).normalize();
             if (!target.startsWith(hostSkill)) {
-                throw new IllegalArgumentException("skill file path escapes jail: " + key);
+                throw badPath("skill file path escapes jail: " + key);
             }
             Files.createDirectories(target.getParent());
             Files.writeString(target, e.getValue() != null ? e.getValue() : "", StandardCharsets.UTF_8);
@@ -156,7 +159,7 @@ public class SandboxSessionService {
             String key = requireSafeRelative(e.getKey(), "workspace");
             Path target = hostWorkspace.resolve(key).normalize();
             if (!target.startsWith(hostWorkspace)) {
-                throw new IllegalArgumentException("workspace file path escapes jail: " + key);
+                throw badPath("workspace file path escapes jail: " + key);
             }
             Files.createDirectories(target.getParent());
             Files.writeString(target, e.getValue() != null ? e.getValue() : "", StandardCharsets.UTF_8);
@@ -165,13 +168,20 @@ public class SandboxSessionService {
 
     private static String requireSafeRelative(String key, String label) {
         if (key == null || key.isBlank()) {
-            throw new IllegalArgumentException(label + " file key required");
+            throw badPath(label + " file key required");
         }
         String normalized = key.replace('\\', '/');
         if (normalized.startsWith("/") || normalized.contains("..")) {
-            throw new IllegalArgumentException(label + " file key invalid: " + key);
+            throw badPath(label + " file key invalid: " + key);
         }
         return normalized;
+    }
+
+    private static BizException badPath(String detail) {
+        return new BizException(new FixedErrorCode(
+                SandboxErrorCode.FILE_PATH_INVALID.getCode(),
+                SandboxErrorCode.FILE_PATH_INVALID.getKey(),
+                detail));
     }
 
     private void preparePermissions(Path hostSkill, Path hostWorkspace) {

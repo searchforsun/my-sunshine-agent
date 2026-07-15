@@ -1,10 +1,12 @@
 package com.sunshine.sandbox.session;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.sandbox.api.CreateSessionRequest;
 import com.sunshine.sandbox.api.SandboxPolicyDto;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.ExecResult;
+import com.sunshine.sandbox.exception.SandboxErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -79,16 +81,18 @@ class SandboxSessionServiceTest {
                 new SandboxPolicyDto(null, null, null, null, null, List.of("pypi.org"), null),
                 Map.of(), Map.of());
         assertThatThrownBy(() -> service.create(req))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("T7");
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(SandboxErrorCode.NETWORK_ALLOW_NOT_SUPPORTED);
         assertThat(docker.lastRunArgs).isNull();
     }
 
     @Test
     void closeMissingSessionThrows() {
         assertThatThrownBy(() -> service.close("missing"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("session not found");
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(SandboxErrorCode.SESSION_NOT_FOUND);
     }
 
     @Test
@@ -99,8 +103,9 @@ class SandboxSessionServiceTest {
                 Map.of("SKILL.md", "x"),
                 Map.of());
         assertThatThrownBy(() -> service.create(req))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("scripts/");
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(SandboxErrorCode.SKILL_FILE_PATH_INVALID);
     }
 
     /** Fake：记录 run/remove，不调真实 Docker */
