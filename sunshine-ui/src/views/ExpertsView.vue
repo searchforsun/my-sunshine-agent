@@ -147,6 +147,8 @@ const isFormDirty = computed(() => {
     || editForm.value.systemPrompt !== expert.systemPrompt
     || JSON.stringify([...editForm.value.skillIds].sort())
       !== JSON.stringify([...(expert.skillIds ?? [])].sort())
+    || JSON.stringify([...editForm.value.toolIds].sort())
+      !== JSON.stringify([...parseExpertToolIds(expert.toolsJson)].sort())
 })
 
 function isExpertComplete(expert: ExpertEntry): boolean {
