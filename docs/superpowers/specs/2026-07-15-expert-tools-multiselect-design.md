@@ -1,6 +1,6 @@
 # 专家工具多选设计
 
-> **状态**：设计已确认，待实现  
+> **状态**：✅ 已落地（2026-07-15）  
 > **日期**：2026-07-15  
 > **前置**：[2026-07-07-expert-consultation-design.md](./2026-07-07-expert-consultation-design.md)（MVP 工具只读「全部工具」）  
 > **关联**：`/experts` · `expert_definition.tools_json` · `DynamicToolkitFactory.buildForSubAgent`
