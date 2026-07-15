@@ -52,7 +52,7 @@ public class ExpertPeerAgentFactory {
         List<String> whitelist = request.toolWhitelist() != null
                 ? request.toolWhitelist()
                 : List.of();
-        return dynamicToolkitFactory.buildForSubAgent(whitelist, request.tenantId());
+        return dynamicToolkitFactory.buildForSubAgent(whitelist, request.tenantId(), request.skillId());
     }
 
     private int resolveMaxIters(AgentRunRequest request) {

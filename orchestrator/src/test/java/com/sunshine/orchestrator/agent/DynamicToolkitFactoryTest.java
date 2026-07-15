@@ -3,9 +3,14 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.agent.remote.CatalogRemoteAgentTool;
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.common.tool.ToolCatalogEntry;
+import com.sunshine.orchestrator.catalog.SkillCatalogEntry;
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.sandbox.SandboxAgentTools;
+import com.sunshine.orchestrator.sandbox.SandboxIds;
+import io.agentscope.core.tool.AgentTool;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -16,6 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +41,10 @@ class DynamicToolkitFactoryTest {
     private AgentExecutionProperties executionProperties;
     @Mock
     private AgentExecutionProperties.React reactProps;
+    @Mock
+    private SkillCatalogService skillCatalogService;
+    @Mock
+    private SandboxAgentTools sandboxAgentTools;
     @InjectMocks
     private DynamicToolkitFactory factory;
 
@@ -50,6 +60,7 @@ class DynamicToolkitFactoryTest {
         var toolkit = factory.build();
 
         assertThat(toolkit.getToolNames()).contains(RagTool.NAME, ManageTasksTool.NAME);
+        assertThat(toolkit.getToolNames()).noneMatch(n -> n.startsWith("sandbox__"));
     }
 
     @Test
@@ -157,5 +168,61 @@ class DynamicToolkitFactoryTest {
 
         assertThat(toolkit.getToolNames()).containsExactly(
                 RagTool.NAME, "sdk__sunshine-finance__list_finance_messages");
+    }
+
+    @Test
+    void build_sandboxNone_doesNotRegisterSandboxTools() {
+        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
+        when(skillCatalogService.find("plain-skill")).thenReturn(Optional.of(
+                new SkillCatalogEntry("plain-skill", "Plain", "d", "overlay", 1, true, "none", null)));
+
+        var toolkit = factory.build("default", "plain-skill");
+
+        assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
+        assertThat(toolkit.getToolNames()).noneMatch(n -> n.startsWith("sandbox__"));
+    }
+
+    @Test
+    void build_sandboxDocker_registersSixSandboxTools() {
+        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
+        when(skillCatalogService.find("coding-skill")).thenReturn(Optional.of(
+                new SkillCatalogEntry("coding-skill", "Coding", "d", "overlay", 1, true, "docker", null)));
+        List<AgentTool> sandboxTools = stubSandboxTools();
+        when(sandboxAgentTools.all()).thenReturn(sandboxTools);
+
+        var toolkit = factory.build("default", "coding-skill");
+
+        assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
+        assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
+    }
+
+    @Test
+    void buildForSubAgent_sandboxDocker_registersSixSandboxTools() {
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(skillCatalogService.find("coding-skill")).thenReturn(Optional.of(
+                new SkillCatalogEntry("coding-skill", "Coding", "d", "overlay", 1, true, "docker", null)));
+        List<AgentTool> sandboxTools = stubSandboxTools();
+        when(sandboxAgentTools.all()).thenReturn(sandboxTools);
+
+        var toolkit = factory.buildForSubAgent(null, "default", "coding-skill");
+
+        assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
+        assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
+    }
+
+    private static List<AgentTool> stubSandboxTools() {
+        List<AgentTool> tools = new java.util.ArrayList<>();
+        for (String id : SandboxIds.ALL) {
+            AgentTool t = mock(AgentTool.class);
+            when(t.getName()).thenReturn(id);
+            tools.add(t);
+        }
+        return tools;
     }
 }

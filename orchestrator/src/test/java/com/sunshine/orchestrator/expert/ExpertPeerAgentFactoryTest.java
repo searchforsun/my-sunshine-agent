@@ -42,14 +42,14 @@ class ExpertPeerAgentFactoryTest {
         ReflectionTestUtils.setField(factory, "apiKey", "k");
         when(reactAgentFactory.composeSystemPrompt(org.mockito.ArgumentMatchers.any())).thenReturn("sys");
         when(reactAgentFactory.resolveMaxIters(org.mockito.ArgumentMatchers.any())).thenReturn(2);
-        when(dynamicToolkitFactory.buildForSubAgent(anyList(), isNull())).thenReturn(new Toolkit());
+        when(dynamicToolkitFactory.buildForSubAgent(anyList(), isNull(), isNull())).thenReturn(new Toolkit());
     }
 
     @Test
     void emptyWhitelist_usesBuildForSubAgent_notFullBuild() {
         AgentRunRequest req = subWithTools(List.of());
         factory.create(req);
-        verify(dynamicToolkitFactory).buildForSubAgent(eq(List.of()), isNull());
+        verify(dynamicToolkitFactory).buildForSubAgent(eq(List.of()), isNull(), isNull());
         verify(dynamicToolkitFactory, never()).build(anyString());
     }
 
@@ -57,7 +57,7 @@ class ExpertPeerAgentFactoryTest {
     void concreteWhitelist_usesBuildForSubAgent() {
         AgentRunRequest req = subWithTools(List.of("sdk__a__t1"));
         factory.create(req);
-        verify(dynamicToolkitFactory).buildForSubAgent(eq(List.of("sdk__a__t1")), isNull());
+        verify(dynamicToolkitFactory).buildForSubAgent(eq(List.of("sdk__a__t1")), isNull(), isNull());
     }
 
     private static AgentRunRequest subWithTools(List<String> tools) {

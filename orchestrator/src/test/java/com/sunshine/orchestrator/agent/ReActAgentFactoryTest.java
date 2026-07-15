@@ -63,30 +63,32 @@ class ReActAgentFactoryTest {
     @Test
     void resolveToolkit_subUsesExplicitWhitelist() {
         AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), null);
-        when(dynamicToolkitFactory.buildForSubAgent(List.of("sdk__sunshine-finance__list_finance_messages"), "default"))
+        when(dynamicToolkitFactory.buildForSubAgent(
+                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null))
                 .thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).buildForSubAgent(List.of("sdk__sunshine-finance__list_finance_messages"), "default");
+        verify(dynamicToolkitFactory).buildForSubAgent(
+                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null);
     }
 
     @Test
     void resolveToolkit_subWithoutExtraToolsUsesSubAgentToolkit() {
         AgentRunRequest req = subRequest("compliance-check", null, null);
-        when(dynamicToolkitFactory.buildForSubAgent(null, "default")).thenReturn(subToolkit);
+        when(dynamicToolkitFactory.buildForSubAgent(null, "default", "compliance-check")).thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).buildForSubAgent(null, "default");
+        verify(dynamicToolkitFactory).buildForSubAgent(null, "default", "compliance-check");
     }
 
     @Test
     void resolveToolkit_mainBuildsFreshToolkitFromTenantToolSet() {
         AgentRunRequest req = AgentRunRequest.main(
                 MemoryContext.empty(), "q", "u1", "default", "msg-main");
-        when(dynamicToolkitFactory.build("default")).thenReturn(subToolkit);
+        when(dynamicToolkitFactory.build("default", null)).thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).build("default");
+        verify(dynamicToolkitFactory).build("default", null);
     }
 
     @Test
