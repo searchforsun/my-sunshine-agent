@@ -27,12 +27,25 @@ public class DockerCli {
         return out == null ? "" : out.trim();
     }
 
-    public ExecResult exec(String containerId, List<String> cmd, Duration timeout) {
+    /**
+     * {@code docker exec -w {workingDir} {containerId} ...cmd}；超时 destroyForcibly，
+     * 返回 {@code exitCode=-1} 且 stdout 含 {@code timeout}（供工具面软失败）。
+     */
+    public ExecResult exec(String containerId, String workingDir, List<String> cmd, Duration timeout) {
         List<String> args = new ArrayList<>();
         args.add("exec");
+        args.add("-w");
+        args.add(workingDir);
         args.add(containerId);
         args.addAll(cmd);
-        return runCapture(args, timeout);
+        try {
+            return runCapture(args, timeout);
+        } catch (IllegalStateException e) {
+            if (e.getMessage() != null && e.getMessage().contains("timed out")) {
+                return new ExecResult(-1, "timeout", "");
+            }
+            throw e;
+        }
     }
 
     public void removeForce(String containerIdOrName) {

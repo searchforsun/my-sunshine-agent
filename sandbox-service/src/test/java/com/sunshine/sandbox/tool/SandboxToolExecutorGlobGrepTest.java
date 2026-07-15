@@ -3,6 +3,9 @@ package com.sunshine.sandbox.tool;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.sandbox.api.SandboxPolicyDto;
 import com.sunshine.sandbox.api.ToolInvokeResponse;
+import com.sunshine.sandbox.config.SandboxProperties;
+import com.sunshine.sandbox.docker.DockerCli;
+import com.sunshine.sandbox.docker.ExecResult;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +37,8 @@ class SandboxToolExecutorGlobGrepTest {
     @BeforeEach
     void setUp() throws Exception {
         SandboxSessionStore store = new SandboxSessionStore();
-        executor = new SandboxToolExecutor(store);
+        SandboxProperties props = new SandboxProperties();
+        executor = new SandboxToolExecutor(store, new StubDockerCli(props), props);
         sessionId = "sess-glob-001";
         Path hostRoot = tempRoot.resolve(sessionId);
         Path hostSkill = hostRoot.resolve("skill");
@@ -114,5 +119,16 @@ class SandboxToolExecutorGlobGrepTest {
         String first = lines.get(0);
         assertThat(first).isEqualTo("/workspace/many.txt:1:" + longExcerpt + " 1");
         assertThat(first).doesNotContain("…");
+    }
+
+    static final class StubDockerCli extends DockerCli {
+        StubDockerCli(SandboxProperties properties) {
+            super(properties);
+        }
+
+        @Override
+        public ExecResult exec(String containerId, String workingDir, List<String> cmd, Duration timeout) {
+            return new ExecResult(0, "", "");
+        }
     }
 }

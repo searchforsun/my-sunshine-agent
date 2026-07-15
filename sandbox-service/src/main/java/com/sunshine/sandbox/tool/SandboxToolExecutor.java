@@ -3,7 +3,11 @@ package com.sunshine.sandbox.tool;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.exception.FixedErrorCode;
 import com.sunshine.sandbox.api.ToolInvokeResponse;
+import com.sunshine.sandbox.config.SandboxProperties;
+import com.sunshine.sandbox.docker.DockerCli;
+import com.sunshine.sandbox.docker.ExecResult;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
+import com.sunshine.sandbox.jail.PathJail;
 import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +19,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,6 +37,8 @@ public class SandboxToolExecutor {
     static final int MAX_GREP_HITS = 200;
 
     private final SandboxSessionStore store;
+    private final DockerCli dockerCli;
+    private final SandboxProperties properties;
 
     public ToolInvokeResponse invoke(String sessionId, String name, Map<String, Object> body) {
         SandboxSession session = store.get(sessionId)
@@ -43,13 +50,53 @@ public class SandboxToolExecutor {
             case SandboxToolNames.EDIT -> edit(session, args);
             case SandboxToolNames.GLOB -> glob(session, args);
             case SandboxToolNames.GREP -> grep(session, args);
-            case SandboxToolNames.EXEC ->
-                    throw new BizException(new FixedErrorCode(
-                            SandboxErrorCode.TOOL_NOT_IMPLEMENTED.getCode(),
-                            SandboxErrorCode.TOOL_NOT_IMPLEMENTED.getKey(),
-                            name + " not implemented yet"));
+            case SandboxToolNames.EXEC -> exec(session, args);
             case null, default -> throw new BizException(SandboxErrorCode.TOOL_UNKNOWN);
         };
+    }
+
+    private ToolInvokeResponse exec(SandboxSession session, Map<String, Object> args) {
+        String command = requireString(args, "command");
+        Path cwd;
+        try {
+            cwd = PathJail.resolveCwd(optionalString(args, "cwd"));
+        } catch (IllegalArgumentException e) {
+            throw badPath(e.getMessage());
+        }
+        int timeoutSec = resolveTimeoutSec(session, asInteger(args.get("timeout_sec")));
+        ExecResult result = dockerCli.exec(
+                session.containerName(),
+                cwd.toString(),
+                List.of("sh", "-lc", command),
+                Duration.ofSeconds(timeoutSec));
+        String output = combineOutput(result.stdout(), result.stderr());
+        if (result.exitCode() == -1 && output.toLowerCase().contains("timeout")) {
+            return new ToolInvokeResponse(false, output, -1, Map.of());
+        }
+        return new ToolInvokeResponse(result.exitCode() == 0, output, result.exitCode(), Map.of());
+    }
+
+    private int resolveTimeoutSec(SandboxSession session, Integer override) {
+        if (override != null && override > 0) {
+            return override;
+        }
+        Integer policySec = session.policy() != null ? session.policy().timeoutSec() : null;
+        if (policySec != null && policySec > 0) {
+            return policySec;
+        }
+        return properties.getDocker().getDefaultTimeoutSec();
+    }
+
+    private static String combineOutput(String stdout, String stderr) {
+        String out = stdout != null ? stdout : "";
+        String err = stderr != null ? stderr : "";
+        if (err.isEmpty()) {
+            return out;
+        }
+        if (out.isEmpty()) {
+            return err;
+        }
+        return out + err;
     }
 
     private ToolInvokeResponse read(SandboxSession session, Map<String, Object> args) {

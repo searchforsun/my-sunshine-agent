@@ -3,6 +3,9 @@ package com.sunshine.sandbox.tool;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.sandbox.api.SandboxPolicyDto;
 import com.sunshine.sandbox.api.ToolInvokeResponse;
+import com.sunshine.sandbox.config.SandboxProperties;
+import com.sunshine.sandbox.docker.DockerCli;
+import com.sunshine.sandbox.docker.ExecResult;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -32,7 +36,8 @@ class SandboxToolExecutorTest {
     @BeforeEach
     void setUp() throws Exception {
         store = new SandboxSessionStore();
-        executor = new SandboxToolExecutor(store);
+        SandboxProperties props = new SandboxProperties();
+        executor = new SandboxToolExecutor(store, new StubDockerCli(props), props);
         sessionId = "sess-tool-001";
         Path hostRoot = tempRoot.resolve(sessionId);
         hostSkill = hostRoot.resolve("skill");
@@ -144,11 +149,18 @@ class SandboxToolExecutorTest {
 
         assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.EXEC, Map.of()))
                 .isInstanceOf(BizException.class)
-                .satisfies(e -> {
-                    BizException be = (BizException) e;
-                    assertThat(be.getErrorCode().getKey())
-                            .isEqualTo(SandboxErrorCode.TOOL_NOT_IMPLEMENTED.getKey());
-                    assertThat(be.getMessage()).contains("not implemented yet");
-                });
+                .extracting(e -> ((BizException) e).getErrorCode().getKey())
+                .isEqualTo(SandboxErrorCode.FILE_PATH_INVALID.getKey());
+    }
+
+    static final class StubDockerCli extends DockerCli {
+        StubDockerCli(SandboxProperties properties) {
+            super(properties);
+        }
+
+        @Override
+        public ExecResult exec(String containerId, String workingDir, List<String> cmd, Duration timeout) {
+            return new ExecResult(0, "", "");
+        }
     }
 }

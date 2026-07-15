@@ -180,7 +180,7 @@ class SandboxSessionServiceTest {
         }
 
         @Override
-        public ExecResult exec(String containerId, List<String> cmd, Duration timeout) {
+        public ExecResult exec(String containerId, String workingDir, List<String> cmd, Duration timeout) {
             return new ExecResult(0, "", "");
         }
 
