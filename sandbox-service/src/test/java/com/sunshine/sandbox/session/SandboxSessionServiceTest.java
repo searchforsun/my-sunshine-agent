@@ -5,6 +5,7 @@ import com.sunshine.sandbox.api.CreateSessionRequest;
 import com.sunshine.sandbox.api.SandboxPolicyDto;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
+import com.sunshine.sandbox.docker.EgressProxyManager;
 import com.sunshine.sandbox.docker.ExecResult;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,11 +33,10 @@ class SandboxSessionServiceTest {
 
     @BeforeEach
     void setUp() {
-        SandboxProperties props = new SandboxProperties();
-        props.getDocker().setHostDataRoot(tempRoot.toString());
+        SandboxProperties props = newProps();
         docker = new FakeDockerCli(props);
         store = new SandboxSessionStore();
-        service = new SandboxSessionService(docker, store, props);
+        service = new SandboxSessionService(docker, store, props, new EgressProxyManager(docker, props));
     }
 
     @Test
@@ -63,28 +63,52 @@ class SandboxSessionServiceTest {
                 "run", "-d", "--network", "none", "--read-only",
                 "--user", "10001:10001", "--cap-drop", "ALL",
                 "sunshine-sandbox-python:3.11-slim", "sleep", "infinity");
+        assertThat(docker.lastRunArgs).noneMatch(a -> a.startsWith("HTTP_PROXY="));
         assertThat(docker.lastRunArgs).anyMatch(a -> a.endsWith(":/skill:ro"));
         assertThat(docker.lastRunArgs).anyMatch(a -> a.endsWith(":/workspace"));
         assertThat(store.get(sessionId)).isPresent();
 
         service.close(sessionId);
 
-        assertThat(docker.removed).containsExactly(docker.lastContainerId);
+        assertThat(docker.removed).contains(docker.lastSandboxContainerId);
         assertThat(store.get(sessionId)).isEmpty();
         assertThat(tempRoot.resolve(sessionId)).doesNotExist();
     }
 
     @Test
-    void rejectsNonEmptyNetworkAllow() {
+    void createWithNetworkAllowUsesSandboxNetAndProxyEnv() {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicyDto(null, null, null, null, null, List.of("pypi.org"), null),
+                new SandboxPolicyDto(null, null, null, null, null,
+                        List.of("pypi.org", "files.pythonhosted.org"), null),
                 Map.of(), Map.of());
-        assertThatThrownBy(() -> service.create(req))
-                .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getErrorCode())
-                .isEqualTo(SandboxErrorCode.NETWORK_ALLOW_NOT_SUPPORTED);
-        assertThat(docker.lastRunArgs).isNull();
+
+        String sessionId = service.create(req);
+
+        assertThat(sessionId).isNotBlank();
+        assertThat(docker.ensuredNetworks).contains(EgressProxyManager.NETWORK_NAME);
+        assertThat(docker.lastRunArgs).contains(EgressProxyManager.NETWORK_NAME);
+        assertThat(docker.lastRunArgs).contains(
+                "HTTP_PROXY=http://" + EgressProxyManager.CONTAINER_NAME + ":8888");
+        assertThat(docker.lastRunArgs).contains(
+                "HTTPS_PROXY=http://" + EgressProxyManager.CONTAINER_NAME + ":8888");
+        assertThat(docker.lastRunArgs).contains("NO_PROXY=localhost,127.0.0.1");
+        assertThat(docker.lastRunArgs).doesNotContain("none");
+        assertThat(docker.runInvocations).anySatisfy(args ->
+                assertThat(args).contains(EgressProxyManager.CONTAINER_NAME)
+                        .anyMatch(a -> a.startsWith("ALLOW=")));
+    }
+
+    @Test
+    void emptyNetworkAllowStillUsesNone() {
+        CreateSessionRequest req = new CreateSessionRequest(
+                "u1", "t1", "demo", "r1",
+                new SandboxPolicyDto(null, null, null, null, null, List.of(), null),
+                Map.of(), Map.of());
+        service.create(req);
+        assertThat(docker.lastRunArgs).containsSequence("--network", "none");
+        assertThat(docker.lastRunArgs).noneMatch(a -> a.startsWith("HTTP_PROXY="));
+        assertThat(docker.ensuredNetworks).isEmpty();
     }
 
     @Test
@@ -123,10 +147,9 @@ class SandboxSessionServiceTest {
 
     @Test
     void rejectsBlankImageWhenNoDefault() {
-        SandboxProperties props = new SandboxProperties();
-        props.getDocker().setHostDataRoot(tempRoot.toString());
+        SandboxProperties props = newProps();
         props.getDocker().setDefaultImage("");
-        service = new SandboxSessionService(docker, store, props);
+        service = new SandboxSessionService(docker, store, props, new EgressProxyManager(docker, props));
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
                 new SandboxPolicyDto(null, "  ", null, null, null, List.of(), null),
@@ -145,7 +168,8 @@ class SandboxSessionServiceTest {
                 throw new IllegalStateException("store down");
             }
         };
-        service = new SandboxSessionService(docker, failingStore, newProps());
+        SandboxProperties props = newProps();
+        service = new SandboxSessionService(docker, failingStore, props, new EgressProxyManager(docker, props));
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
                 new SandboxPolicyDto("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
@@ -154,7 +178,7 @@ class SandboxSessionServiceTest {
         assertThatThrownBy(() -> service.create(req))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("store down");
-        assertThat(docker.removed).containsExactly(docker.lastContainerId);
+        assertThat(docker.removed).contains(docker.lastSandboxContainerId);
     }
 
     private SandboxProperties newProps() {
@@ -163,11 +187,14 @@ class SandboxSessionServiceTest {
         return props;
     }
 
-    /** Fake：记录 run/remove，不调真实 Docker */
+    /** Fake：记录 run/remove/network，不调真实 Docker */
     static final class FakeDockerCli extends DockerCli {
         List<String> lastRunArgs;
-        String lastContainerId = "fake-cid-001";
+        String lastSandboxContainerId = "fake-cid-001";
         final List<String> removed = new ArrayList<>();
+        final List<String> ensuredNetworks = new ArrayList<>();
+        final List<List<String>> runInvocations = new ArrayList<>();
+        final List<String> running = new ArrayList<>();
 
         FakeDockerCli(SandboxProperties properties) {
             super(properties);
@@ -175,8 +202,17 @@ class SandboxSessionServiceTest {
 
         @Override
         public String runDetached(List<String> args) {
+            runInvocations.add(List.copyOf(args));
             lastRunArgs = List.copyOf(args);
-            return lastContainerId;
+            int nameIdx = args.indexOf("--name");
+            if (nameIdx >= 0 && nameIdx + 1 < args.size()) {
+                String name = args.get(nameIdx + 1);
+                running.add(name);
+                if (EgressProxyManager.CONTAINER_NAME.equals(name)) {
+                    return "egress-cid";
+                }
+            }
+            return lastSandboxContainerId;
         }
 
         @Override
@@ -187,11 +223,17 @@ class SandboxSessionServiceTest {
         @Override
         public void removeForce(String containerIdOrName) {
             removed.add(containerIdOrName);
+            running.remove(containerIdOrName);
         }
 
         @Override
         public boolean isRunning(String containerIdOrName) {
-            return !removed.contains(containerIdOrName);
+            return running.contains(containerIdOrName);
+        }
+
+        @Override
+        public void ensureNetwork(String networkName) {
+            ensuredNetworks.add(networkName);
         }
     }
 }

@@ -59,6 +59,31 @@ public class DockerCli {
         return "true".equalsIgnoreCase(r.stdout().trim());
     }
 
+    /** 网络已存在则跳过；否则 {@code docker network create}。 */
+    public void ensureNetwork(String networkName) {
+        ExecResult inspect = runCapture(List.of("network", "inspect", networkName), Duration.ofSeconds(30));
+        if (inspect.exitCode() == 0) {
+            return;
+        }
+        run(List.of("network", "create", networkName), Duration.ofSeconds(30));
+    }
+
+    /**
+     * 容器已在跑则复用并返回 name；否则 {@code rm -f} 后按 args 启动。
+     * args 须为完整 {@code run -d --name ...} 子命令列表。
+     */
+    public String runOrReuse(String name, List<String> runArgs) {
+        if (isRunning(name)) {
+            return name;
+        }
+        try {
+            removeForce(name);
+        } catch (RuntimeException e) {
+            log.debug("runOrReuse remove before start {}: {}", name, e.getMessage());
+        }
+        return runDetached(runArgs);
+    }
+
     private String run(List<String> args, Duration timeout) {
         ExecResult r = runCapture(args, timeout);
         if (r.exitCode() != 0) {

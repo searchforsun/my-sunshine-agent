@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 public class SandboxProperties {
 
     private Docker docker = new Docker();
+    private Egress egress = new Egress();
 
     @Data
     public static class Docker {
@@ -19,5 +20,11 @@ public class SandboxProperties {
         private int defaultMemoryMb = 256;
         private String defaultCpus = "0.5";
         private int defaultTimeoutSec = 30;
+    }
+
+    @Data
+    public static class Egress {
+        private String proxyImage = "sunshine-sandbox-egress:1.0";
+        private int proxyPort = 8888;
     }
 }

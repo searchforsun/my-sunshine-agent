@@ -6,6 +6,7 @@ import com.sunshine.sandbox.api.CreateSessionRequest;
 import com.sunshine.sandbox.api.SandboxPolicyDto;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
+import com.sunshine.sandbox.docker.EgressProxyManager;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,11 +42,12 @@ public class SandboxSessionService {
     private final DockerCli dockerCli;
     private final SandboxSessionStore store;
     private final SandboxProperties properties;
+    private final EgressProxyManager egressProxyManager;
 
     public String create(CreateSessionRequest req) {
         SandboxPolicyDto policy = req.policy() != null ? req.policy()
                 : new SandboxPolicyDto(null, null, null, null, null, null, null);
-        rejectNetworkAllow(policy.networkAllow());
+        List<String> networkAllow = policy.networkAllow() != null ? policy.networkAllow() : List.of();
         String sessionId = UUID.randomUUID().toString().replace("-", "");
         Path hostRoot = Path.of(properties.getDocker().getHostDataRoot(), sessionId);
         Path hostSkill = hostRoot.resolve("skill");
@@ -67,7 +69,8 @@ public class SandboxSessionService {
                 ? String.valueOf(policy.cpus())
                 : properties.getDocker().getDefaultCpus();
         String containerName = "sunshine-sb-" + sessionId.substring(0, Math.min(12, sessionId.length()));
-        List<String> args = buildRunArgs(containerName, image, memoryMb, cpus, hostSkill, hostWorkspace);
+        List<String> args = buildRunArgs(
+                containerName, image, memoryMb, cpus, hostSkill, hostWorkspace, networkAllow);
         String storedId = null;
         boolean dockerStarted = false;
         try {
@@ -80,7 +83,7 @@ public class SandboxSessionService {
                     policy.timeoutSec() != null ? policy.timeoutSec() : properties.getDocker().getDefaultTimeoutSec(),
                     memoryMb,
                     Double.valueOf(cpus),
-                    policy.networkAllow() != null ? policy.networkAllow() : List.of(),
+                    networkAllow,
                     policy.execReadonlyAllow());
             store.put(new SandboxSession(sessionId, storedId, hostRoot, resolved));
             log.info("sandbox session created id={} container={}", sessionId, storedId);
@@ -124,21 +127,35 @@ public class SandboxSessionService {
         log.info("sandbox session closed id={}", sessionId);
     }
 
-    private static void rejectNetworkAllow(List<String> networkAllow) {
-        if (networkAllow != null && !networkAllow.isEmpty()) {
-            throw new BizException(SandboxErrorCode.NETWORK_ALLOW_NOT_SUPPORTED);
-        }
-    }
-
     private List<String> buildRunArgs(
-            String containerName, String image, int memoryMb, String cpus, Path hostSkill, Path hostWorkspace) {
+            String containerName,
+            String image,
+            int memoryMb,
+            String cpus,
+            Path hostSkill,
+            Path hostWorkspace,
+            List<String> networkAllow) {
         List<String> args = new ArrayList<>();
         args.add("run");
         args.add("-d");
         args.add("--name");
         args.add(containerName);
-        args.add("--network");
-        args.add("none");
+        boolean withNet = networkAllow != null && !networkAllow.isEmpty();
+        if (withNet) {
+            egressProxyManager.ensureRunning(networkAllow);
+            args.add("--network");
+            args.add(EgressProxyManager.NETWORK_NAME);
+            String proxy = egressProxyManager.proxyUrl();
+            args.add("-e");
+            args.add("HTTP_PROXY=" + proxy);
+            args.add("-e");
+            args.add("HTTPS_PROXY=" + proxy);
+            args.add("-e");
+            args.add("NO_PROXY=localhost,127.0.0.1");
+        } else {
+            args.add("--network");
+            args.add("none");
+        }
         args.add("--read-only");
         args.add("--tmpfs");
         args.add("/tmp");
