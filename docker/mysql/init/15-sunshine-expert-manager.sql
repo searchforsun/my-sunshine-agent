@@ -8,7 +8,7 @@ CREATE TABLE expert_definition (
     system_prompt   MEDIUMTEXT NOT NULL,
     enabled         TINYINT(1) NOT NULL DEFAULT 1,
     tags_json       VARCHAR(512) NOT NULL DEFAULT '[]',
-    tools_json      VARCHAR(512) NOT NULL DEFAULT '["*"]',
+    tools_json      VARCHAR(512) NOT NULL DEFAULT '[]',
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
