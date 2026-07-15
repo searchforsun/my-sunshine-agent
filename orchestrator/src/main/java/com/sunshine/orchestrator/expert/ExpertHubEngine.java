@@ -268,7 +268,7 @@ public class ExpertHubEngine {
     List<String> resolveToolWhitelist(ExpertCatalogEntry expert) {
         List<String> parsed = ExpertToolsJson.parse(expert != null ? expert.toolsJson() : null);
         if (ExpertToolsJson.isStarAll(parsed)) {
-            return toolSetResolver.resolveReactTools(null);
+            return toolSetResolver.resolveAllEnabledTools(null);
         }
         return parsed;
     }

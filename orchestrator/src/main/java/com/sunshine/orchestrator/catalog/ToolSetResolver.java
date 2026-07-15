@@ -38,6 +38,11 @@ public class ToolSetResolver {
         return setIds.stream().filter(pool::contains).toList();
     }
 
+    /** 租户启用 Catalog 全量（专家 tools_json=["*"] 过渡语义） */
+    public List<String> resolveAllEnabledTools(String tenantId) {
+        return List.copyOf(toolCatalogService.enabledIds(normalizeTenant(tenantId)));
+    }
+
     /** 显式白名单与启用池求交（子 Agent / 节点 tools） */
     public List<String> intersectEnabledPool(List<String> toolIds, String tenantId) {
         if (toolIds == null || toolIds.isEmpty()) {

@@ -27,8 +27,8 @@ class ExpertHubEngineCreateAgentTest {
     @InjectMocks ExpertHubEngine engine;
 
     @Test
-    void star_expandsToReactPool() {
-        when(toolSetResolver.resolveReactTools(isNull())).thenReturn(List.of("sdk__a__t1", "sdk__a__t2"));
+    void star_expandsToEnabledPool() {
+        when(toolSetResolver.resolveAllEnabledTools(isNull())).thenReturn(List.of("sdk__a__t1", "sdk__a__t2"));
         ExpertCatalogEntry e = entry("[\"*\"]");
         assertThat(engine.resolveToolWhitelist(e)).containsExactly("sdk__a__t1", "sdk__a__t2");
     }

@@ -130,7 +130,7 @@ flowchart TB
 | `description` | Catalog 摘要，供 Coordinator |
 | `enabled` | 可召集 |
 | `tags` | 可选域标签 |
-| `tools_json` | MVP 默认 `["*"]` |
+| `tools_json` | Catalog ID 数组；默认 `[]`（历史 `["*"]` 运行时按启用池全量过渡） |
 
 **移除** `moderator_capable`：专家无角色类型之分。
 

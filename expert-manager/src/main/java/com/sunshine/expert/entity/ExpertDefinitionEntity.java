@@ -28,7 +28,7 @@ public class ExpertDefinitionEntity {
     @Column(name = "tags_json", length = 512, nullable = false)
     private String tagsJson = "[]";
     @Column(name = "tools_json", length = 512, nullable = false)
-    private String toolsJson = "[\"*\"]";
+    private String toolsJson = "[]";
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
