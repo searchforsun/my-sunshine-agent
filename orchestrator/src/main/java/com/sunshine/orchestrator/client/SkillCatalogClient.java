@@ -12,6 +12,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -68,4 +69,33 @@ public class SkillCatalogClient {
             return Optional.empty();
         }
     }
+
+    /** 启用 Skill 的 scripts/ + references/ 文本材料（沙箱挂载） */
+    public Map<String, String> fetchMaterial(String skillId) {
+        if (skillId == null || skillId.isBlank()) {
+            return Map.of();
+        }
+        try {
+            SkillMaterialPayload payload = webClient.get()
+                    .uri("/api/skills/{id}/material", skillId.strip())
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<R<SkillMaterialPayload>>() {})
+                    .map(R::getData)
+                    .onErrorResume(e -> {
+                        log.warn("[SkillCatalogClient] fetch material failed id={}: {}", skillId, e.getMessage());
+                        return Mono.empty();
+                    })
+                    .block();
+            if (payload == null || payload.files() == null) {
+                return Map.of();
+            }
+            return Map.copyOf(payload.files());
+        } catch (Exception e) {
+            log.warn("[SkillCatalogClient] fetch material error id={}: {}", skillId, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /** 对齐 skill-manager SkillMaterialResponse */
+    public record SkillMaterialPayload(Map<String, String> files) {}
 }
