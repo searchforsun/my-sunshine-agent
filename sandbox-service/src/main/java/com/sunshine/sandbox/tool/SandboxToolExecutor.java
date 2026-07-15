@@ -8,6 +8,7 @@ import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.ExecResult;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import com.sunshine.sandbox.jail.PathJail;
+import com.sunshine.sandbox.metrics.SandboxMetrics;
 import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
 import lombok.RequiredArgsConstructor;
@@ -39,8 +40,33 @@ public class SandboxToolExecutor {
     private final SandboxSessionStore store;
     private final DockerCli dockerCli;
     private final SandboxProperties properties;
+    private final SandboxMetrics metrics;
+
+    /** 单测可传 null metrics */
+    SandboxToolExecutor(SandboxSessionStore store, DockerCli dockerCli, SandboxProperties properties) {
+        this(store, dockerCli, properties, null);
+    }
 
     public ToolInvokeResponse invoke(String sessionId, String name, Map<String, Object> body) {
+        long startNanos = System.nanoTime();
+        String tool = name != null ? name : "unknown";
+        try {
+            ToolInvokeResponse response = doInvoke(sessionId, name, body);
+            recordMetrics(tool, response != null && response.ok(), startNanos);
+            return response;
+        } catch (RuntimeException e) {
+            recordMetrics(tool, false, startNanos);
+            throw e;
+        }
+    }
+
+    private void recordMetrics(String tool, boolean ok, long startNanos) {
+        if (metrics != null) {
+            metrics.recordToolInvoke(tool, ok, startNanos);
+        }
+    }
+
+    private ToolInvokeResponse doInvoke(String sessionId, String name, Map<String, Object> body) {
         SandboxSession session = store.get(sessionId)
                 .orElseThrow(() -> new BizException(SandboxErrorCode.SESSION_NOT_FOUND));
         Map<String, Object> args = body != null ? body : Map.of();

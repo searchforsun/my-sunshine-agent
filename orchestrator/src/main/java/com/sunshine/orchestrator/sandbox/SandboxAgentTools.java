@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.sandbox;
 
 import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.client.SandboxClient;
 import com.sunshine.orchestrator.client.sandbox.ToolInvokeResponse;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
@@ -16,22 +17,30 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 沙箱六工具 AgentTool 提供者 — 不进 tool-manager Catalog；T12 注入 {@link #all()}。
- * 审计接入见 T14（此处跳过 ToolAuditService）。
+ * 审计经 {@link ToolAuditService}；content/new_string/old_string 仅存 sha256，不落全文。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class SandboxAgentTools {
 
+    private static final Set<String> DIGEST_PARAM_KEYS = Set.of("content", "new_string", "old_string");
+
     private final SandboxClient sandboxClient;
     private final HitlConfirmationService hitlConfirmationService;
+    private final ToolAuditService toolAuditService;
 
     private List<AgentTool> tools = List.of();
 
@@ -114,7 +123,7 @@ public class SandboxAgentTools {
                                         bridgeId, generationMessageId, name, hitlParams)
                                 : hitlConfirmationService.awaitConfirmation(bridgeId, name, hitlParams);
                         if (!approved) {
-                            return denyResult(toolUseId, bridgeId, generationMessageId);
+                            return denyResult(toolUseId, bridgeId, generationMessageId, body);
                         }
                     } catch (HitlWaitInterruptedException interrupted) {
                         log.info("[SandboxAgentTool] {} HITL 等待被中断（暂停/续跑）", name);
@@ -127,14 +136,19 @@ public class SandboxAgentTools {
             }
             String sessionId = SandboxSessionHolder.requireSessionId();
             log.info("[SandboxAgentTool] {} session={} params={}", name, sessionId, body.keySet());
+            long startMs = System.currentTimeMillis();
             try {
                 ToolInvokeResponse resp = sandboxClient.invoke(sessionId, SandboxIds.rpcName(name), body);
-                // ToolAuditService — T14
                 String output = resp != null && resp.output() != null ? resp.output() : "";
+                boolean ok = resp != null && resp.ok();
+                Map<String, String> auditParams = auditParams(body, sessionId, resp, System.currentTimeMillis() - startMs);
+                auditIfBound(name, auditParams, output, ok ? "ok" : "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(output).build());
             } catch (Exception e) {
                 log.warn("[SandboxAgentTool] {} 调用失败: {}", name, e.getMessage());
                 String err = "沙箱工具调用失败：" + e.getMessage();
+                Map<String, String> auditParams = auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
+                auditIfBound(name, auditParams, err, "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(err).build());
             }
         }
@@ -148,7 +162,8 @@ public class SandboxAgentTools {
             return SandboxHitlPolicy.requiresConfirmation(name, body);
         }
 
-        private ToolResultBlock denyResult(String toolUseId, String bridgeId, String generationMessageId) {
+        private ToolResultBlock denyResult(
+                String toolUseId, String bridgeId, String generationMessageId, Map<String, Object> body) {
             if (bridgeId != null) {
                 StepEventBridge.emit(bridgeId, session -> session.skipCurrentToolStep(
                         hitlConfirmationService.skippedAfterSummary()));
@@ -156,8 +171,74 @@ public class SandboxAgentTools {
                 hitlConfirmationService.flushTimeline(flushId);
             }
             String rejection = hitlConfirmationService.rejectionMessage();
-            // ToolAuditService — T14
+            String sessionId = null;
+            try {
+                SandboxSessionHolder.Binding binding = SandboxSessionHolder.current();
+                if (binding != null) {
+                    sessionId = binding.sessionId();
+                }
+            } catch (Exception ignored) {
+                // deny 路径不强依赖 session
+            }
+            auditIfBound(name, auditParams(body, sessionId, null, null), rejection, "skipped");
             return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(rejection).build());
+        }
+    }
+
+    private void auditIfBound(String toolId, Map<String, String> params, String output, String status) {
+        String messageId = StepEventBridge.activeMessageId();
+        StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(messageId);
+        if (ctx == null || toolAuditService == null) {
+            return;
+        }
+        String summary = output != null && output.length() > 240 ? output.substring(0, 240) + "..." : output;
+        toolAuditService.toolCall(
+                ctx.conversationId(),
+                ctx.messageId(),
+                ctx.userId(),
+                ctx.tenantId(),
+                ctx.planId(),
+                null,
+                toolId,
+                params,
+                summary != null ? summary : "",
+                status);
+    }
+
+    /**
+     * 审计 params：敏感正文字段替换为 sha256 hex；附带 sessionId / exitCode / durationMs。
+     */
+    static Map<String, String> auditParams(
+            Map<String, Object> body, String sessionId, ToolInvokeResponse resp, Long durationMs) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (sessionId != null && !sessionId.isBlank()) {
+            out.put("sessionId", sessionId);
+        }
+        if (body != null) {
+            body.forEach((k, v) -> {
+                if (k == null) {
+                    return;
+                }
+                String raw = v != null ? String.valueOf(v) : "";
+                out.put(k, DIGEST_PARAM_KEYS.contains(k) ? sha256Hex(raw) : raw);
+            });
+        }
+        if (resp != null && resp.exitCode() != null) {
+            out.put("exitCode", String.valueOf(resp.exitCode()));
+        }
+        if (durationMs != null) {
+            out.put("durationMs", String.valueOf(durationMs));
+        }
+        return out;
+    }
+
+    static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest((value != null ? value : "").getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 
