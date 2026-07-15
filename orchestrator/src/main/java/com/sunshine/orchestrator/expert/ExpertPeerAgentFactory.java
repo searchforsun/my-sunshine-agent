@@ -2,7 +2,6 @@ package com.sunshine.orchestrator.expert;
 
 import com.sunshine.orchestrator.agent.DynamicToolkitFactory;
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
-import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import io.agentscope.core.ReActAgent;
@@ -11,7 +10,7 @@ import io.agentscope.core.tool.Toolkit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
+import java.util.List;
 
 /** MsgHub 专家 Agent — 专用 {@link ExpertSpeakHook}，不复用主 ReAct Timeline Hook */
 @Component
@@ -50,12 +49,10 @@ public class ExpertPeerAgentFactory {
     }
 
     private Toolkit resolveToolkit(AgentRunRequest request) {
-        if (request.role() == AgentRole.SUB
-                && request.toolWhitelist() != null
-                && !request.toolWhitelist().isEmpty()) {
-            return dynamicToolkitFactory.build(request.toolWhitelist(), request.tenantId());
-        }
-        return dynamicToolkitFactory.build(request.tenantId());
+        List<String> whitelist = request.toolWhitelist() != null
+                ? request.toolWhitelist()
+                : List.of();
+        return dynamicToolkitFactory.buildForSubAgent(whitelist, request.tenantId());
     }
 
     private int resolveMaxIters(AgentRunRequest request) {
