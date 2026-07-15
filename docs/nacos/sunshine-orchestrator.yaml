@@ -52,6 +52,7 @@ agent:
       simple-llm: ""
       react: |
         - 企业制度/政策/知识库检索 → **必须**调用 `search_knowledge`（勿用 demo-memory 等其它 search 工具）。
+        - 若可用 sandbox__* 工具：读写与搜索优先 sandbox__read/write/edit/glob/grep，避免用 sandbox__exec 代替。
         - 外部数据先调匹配工具，可多轮串联不同工具。
         - 超时/不可用：改参或换工具再试一次，禁止相同参数连调。
         - 参数校验失败：按报错补参后再调。
