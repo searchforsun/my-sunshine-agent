@@ -5,6 +5,8 @@ import com.sunshine.orchestrator.agent.RagTool;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
 import com.sunshine.orchestrator.processing.StepLabels;
+import com.sunshine.orchestrator.sandbox.SandboxHitlPolicy;
+import com.sunshine.orchestrator.sandbox.SandboxIds;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -74,7 +76,15 @@ public class ToolCatalogService {
         if (RagTool.NAME.equals(toolId)) {
             return "检索知识库";
         }
-        return find(toolId).map(ToolCatalogEntry::displayName).orElse(toolId);
+        return switch (toolId) {
+            case SandboxIds.READ -> "读文件";
+            case SandboxIds.WRITE -> "写文件";
+            case SandboxIds.EDIT -> "编辑文件";
+            case SandboxIds.GLOB -> "查找文件";
+            case SandboxIds.GREP -> "搜索内容";
+            case SandboxIds.EXEC -> "执行命令";
+            default -> find(toolId).map(ToolCatalogEntry::displayName).orElse(toolId);
+        };
     }
 
     public String timelinePhase(String toolId) {
@@ -94,6 +104,10 @@ public class ToolCatalogService {
     }
 
     public boolean requiresConfirmation(String toolId) {
+        if (toolId != null && SandboxIds.ALL.contains(toolId)) {
+            // exec 依赖参数，Catalog 层对 EXEC 返回 true；具体白名单在工具内再判
+            return SandboxHitlPolicy.catalogDefault(toolId);
+        }
         return find(toolId).map(ToolCatalogEntry::requireConfirmation).orElse(false);
     }
 

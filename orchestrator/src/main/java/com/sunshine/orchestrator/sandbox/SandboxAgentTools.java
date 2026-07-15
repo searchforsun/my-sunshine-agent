@@ -1,0 +1,242 @@
+package com.sunshine.orchestrator.sandbox;
+
+import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.client.SandboxClient;
+import com.sunshine.orchestrator.client.sandbox.ToolInvokeResponse;
+import com.sunshine.orchestrator.hitl.HitlConfirmationService;
+import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.tool.AgentTool;
+import io.agentscope.core.tool.ToolCallParam;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 沙箱六工具 AgentTool 提供者 — 不进 tool-manager Catalog；T12 注入 {@link #all()}。
+ * 审计接入见 T14（此处跳过 ToolAuditService）。
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class SandboxAgentTools {
+
+    private final SandboxClient sandboxClient;
+    private final HitlConfirmationService hitlConfirmationService;
+
+    private List<AgentTool> tools = List.of();
+
+    @PostConstruct
+    void init() {
+        tools = List.of(
+                tool(SandboxIds.READ, "读取沙箱内文本文件（/skill 或 /workspace）", readSchema()),
+                tool(SandboxIds.WRITE, "创建或覆盖写入工作区文件（仅 /workspace）", writeSchema()),
+                tool(SandboxIds.EDIT, "精确替换工作区文件中的字符串（仅 /workspace）", editSchema()),
+                tool(SandboxIds.GLOB, "在沙箱 jail 内按 glob 查找文件路径", globSchema()),
+                tool(SandboxIds.GREP, "在沙箱 jail 内搜索文件内容", grepSchema()),
+                tool(SandboxIds.EXEC, "在沙箱会话容器内执行 shell 命令", execSchema()));
+    }
+
+    public List<AgentTool> all() {
+        return tools;
+    }
+
+    private AgentTool tool(String name, String description, Map<String, Object> parameters) {
+        return new SandboxAgentTool(name, description, parameters);
+    }
+
+    private final class SandboxAgentTool implements AgentTool {
+
+        private final String name;
+        private final String description;
+        private final Map<String, Object> parameters;
+
+        SandboxAgentTool(String name, String description, Map<String, Object> parameters) {
+            this.name = name;
+            this.description = description;
+            this.parameters = parameters;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getDescription() {
+            return description;
+        }
+
+        @Override
+        public Map<String, Object> getParameters() {
+            return parameters;
+        }
+
+        @Override
+        public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+            return Mono.fromCallable(() -> execute(param))
+                    .subscribeOn(Schedulers.boundedElastic());
+        }
+
+        private ToolResultBlock execute(ToolCallParam param) {
+            String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
+            Map<String, Object> body = extractBody(param);
+            Map<String, String> hitlParams = toStringMap(body);
+            String bridgeId = StepEventBridge.bridgeIdForToolUse(toolUseId);
+            if (bridgeId == null) {
+                bridgeId = StepEventBridge.resolveHitlBridgeId();
+            }
+            String generationMessageId = bridgeId != null ? StepEventBridge.hitlAssistantMessageId(bridgeId) : null;
+            long toolEpoch = generationMessageId != null
+                    ? StepEventBridge.currentStreamEpoch(generationMessageId) : -1L;
+            if (isStaleToolRun(generationMessageId, toolEpoch)) {
+                throw new HitlWaitInterruptedException();
+            }
+            if (shouldAwaitHitl(bridgeId, body)) {
+                String preApproveMsgId = generationMessageId != null
+                        ? generationMessageId : StepEventBridge.activeMessageId();
+                if (preApproveMsgId != null
+                        && StepEventBridge.consumeHitlPreApproval(preApproveMsgId, name, hitlParams)) {
+                    log.info("[SandboxAgentTool] {} 续跑 re-await 已确认，跳过二次 HITL", name);
+                } else {
+                    try {
+                        boolean approved = generationMessageId != null
+                                ? hitlConfirmationService.awaitConfirmation(
+                                        bridgeId, generationMessageId, name, hitlParams)
+                                : hitlConfirmationService.awaitConfirmation(bridgeId, name, hitlParams);
+                        if (!approved) {
+                            return denyResult(toolUseId, bridgeId, generationMessageId);
+                        }
+                    } catch (HitlWaitInterruptedException interrupted) {
+                        log.info("[SandboxAgentTool] {} HITL 等待被中断（暂停/续跑）", name);
+                        throw interrupted;
+                    }
+                }
+            }
+            if (isStaleToolRun(generationMessageId, toolEpoch)) {
+                throw new HitlWaitInterruptedException();
+            }
+            String sessionId = SandboxSessionHolder.requireSessionId();
+            log.info("[SandboxAgentTool] {} session={} params={}", name, sessionId, body.keySet());
+            try {
+                ToolInvokeResponse resp = sandboxClient.invoke(sessionId, SandboxIds.rpcName(name), body);
+                // ToolAuditService — T14
+                String output = resp != null && resp.output() != null ? resp.output() : "";
+                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(output).build());
+            } catch (Exception e) {
+                log.warn("[SandboxAgentTool] {} 调用失败: {}", name, e.getMessage());
+                String err = "沙箱工具调用失败：" + e.getMessage();
+                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(err).build());
+            }
+        }
+
+        private boolean shouldAwaitHitl(String bridgeId, Map<String, Object> body) {
+            if (hitlConfirmationService == null
+                    || !hitlConfirmationService.shouldConfirmForBridge(name, bridgeId)) {
+                return false;
+            }
+            // EXEC：只读白名单命中则跳过 awaitConfirmation
+            return SandboxHitlPolicy.requiresConfirmation(name, body);
+        }
+
+        private ToolResultBlock denyResult(String toolUseId, String bridgeId, String generationMessageId) {
+            if (bridgeId != null) {
+                StepEventBridge.emit(bridgeId, session -> session.skipCurrentToolStep(
+                        hitlConfirmationService.skippedAfterSummary()));
+                String flushId = generationMessageId != null ? generationMessageId : bridgeId;
+                hitlConfirmationService.flushTimeline(flushId);
+            }
+            String rejection = hitlConfirmationService.rejectionMessage();
+            // ToolAuditService — T14
+            return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(rejection).build());
+        }
+    }
+
+    private static boolean isStaleToolRun(String generationMessageId, long toolEpoch) {
+        return generationMessageId != null && toolEpoch >= 0
+                && !StepEventBridge.isStreamEpochValid(generationMessageId, toolEpoch);
+    }
+
+    private static Map<String, Object> extractBody(ToolCallParam param) {
+        Map<String, Object> input = param.getInput();
+        if (input == null || input.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        input.forEach((k, v) -> {
+            if (k != null && v != null) {
+                body.put(k, v);
+            }
+        });
+        return body;
+    }
+
+    private static Map<String, String> toStringMap(Map<String, Object> body) {
+        Map<String, String> out = new LinkedHashMap<>();
+        body.forEach((k, v) -> out.put(k, v != null ? String.valueOf(v) : ""));
+        return out;
+    }
+
+    private static Map<String, Object> readSchema() {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("path", Map.of("type", "string", "description", "文件路径（/skill 或 /workspace 下）"));
+        props.put("offset", Map.of("type", "integer", "description", "起始行（可选）"));
+        props.put("limit", Map.of("type", "integer", "description", "读取行数上限（可选）"));
+        return schema(props, List.of("path"));
+    }
+
+    private static Map<String, Object> writeSchema() {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("path", Map.of("type", "string", "description", "写入路径（仅 /workspace）"));
+        props.put("content", Map.of("type", "string", "description", "文件全文内容"));
+        return schema(props, List.of("path", "content"));
+    }
+
+    private static Map<String, Object> editSchema() {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("path", Map.of("type", "string", "description", "编辑路径（仅 /workspace）"));
+        props.put("old_string", Map.of("type", "string", "description", "待替换的精确原文"));
+        props.put("new_string", Map.of("type", "string", "description", "替换后的文本"));
+        return schema(props, List.of("path", "old_string", "new_string"));
+    }
+
+    private static Map<String, Object> globSchema() {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("pattern", Map.of("type", "string", "description", "glob 模式，如 **/*.py"));
+        props.put("path", Map.of("type", "string", "description", "搜索根路径（可选，默认 jail 根）"));
+        return schema(props, List.of("pattern"));
+    }
+
+    private static Map<String, Object> grepSchema() {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("pattern", Map.of("type", "string", "description", "搜索正则或文本模式"));
+        props.put("path", Map.of("type", "string", "description", "搜索路径（可选）"));
+        props.put("glob", Map.of("type", "string", "description", "文件名 glob 过滤（可选）"));
+        return schema(props, List.of("pattern"));
+    }
+
+    private static Map<String, Object> execSchema() {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("command", Map.of("type", "string", "description", "要执行的 shell 命令"));
+        props.put("cwd", Map.of("type", "string", "description", "工作目录（可选，默认 /workspace）"));
+        props.put("timeout_sec", Map.of("type", "integer", "description", "超时秒数（可选，默认 30）"));
+        return schema(props, List.of("command"));
+    }
+
+    private static Map<String, Object> schema(Map<String, Object> properties, List<String> required) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", new ArrayList<>(required));
+        return schema;
+    }
+}
