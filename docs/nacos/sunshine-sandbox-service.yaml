@@ -1,3 +1,10 @@
+# ============================================================
+# sunshine-sandbox-service — Nacos 配置
+# Data ID: sunshine-sandbox-service.yaml
+# Group:   DEFAULT_GROUP
+# 同步：python scripts/sync_nacos.py
+# ============================================================
+
 server:
   port: 8226
 

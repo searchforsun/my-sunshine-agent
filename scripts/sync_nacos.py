@@ -30,6 +30,7 @@ DEFAULT_DATA_IDS = [
     "sunshine-finance.yaml",
     "sunshine-tool-manager.yaml",
     "sunshine-skill-manager.yaml",
+    "sunshine-sandbox-service.yaml",
     "sunshine-workflow-manager.yaml",
     "sunshine-expert-manager.yaml",
     "sunshine-desensitize.yaml",
