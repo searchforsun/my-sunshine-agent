@@ -26,8 +26,10 @@ import {
   publishSkillVersion,
   setSkillEnabled,
   updateSkill,
+  updateSkillVersionSandbox,
   uploadSkillPackage,
   zipFolderFiles,
+  type SandboxPolicy,
   type SkillEntry,
   type SkillFileContent,
   type SkillVersion,
@@ -50,6 +52,30 @@ import {
 import { useSkillFilePreview } from '../composables/useSkillFilePreview'
 
 export const SKILLS_PAGE_KEY = Symbol('skillsPage')
+
+const SANDBOX_OPTIONS = [
+  { label: 'none', value: 'none' },
+  { label: 'docker', value: 'docker' },
+]
+
+const DEFAULT_SANDBOX_POLICY_JSON = `{
+  "runtime": "docker",
+  "image": "sunshine-sandbox-python:3.11-slim",
+  "timeoutSec": 30,
+  "memoryMb": 256,
+  "cpus": 0.5,
+  "networkAllow": [],
+  "execReadonlyAllow": ["ls *", "pwd", "python -m pytest *"]
+}`
+
+function formatSandboxPolicyJson(raw: string | null | undefined): string {
+  if (!raw?.trim()) return ''
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
+  }
+}
 
 export function useSkillsPage() {
   const message = useMessage()
@@ -87,8 +113,13 @@ export function useSkillsPage() {
   /** 取消切换文件时回滚 selectedFilePath，避免重复触发 confirm */
   let suppressFilePathWatch = false
 
+  const sandboxDraft = ref('none')
+  const sandboxPolicyDraft = ref('')
+  const savingSandbox = ref(false)
+  let suppressSandboxSync = false
+
   const isDetailBusy = computed(() => detailLoading.value || uploading.value || downloading.value)
-  const isActionBusy = computed(() => uploading.value || downloading.value || forking.value)
+  const isActionBusy = computed(() => uploading.value || downloading.value || forking.value || savingSandbox.value)
 
   const folderPickPending = ref(false)
 
@@ -327,6 +358,89 @@ export function useSkillsPage() {
     const status = selectedVersionStatus.value
     return status ? versionStatusTagType(status) : 'default'
   })
+
+  const showSandboxPanel = computed(
+    () => selectedVersionEntry.value != null && !!selectedVersionEntry.value.storagePath,
+  )
+
+  const sandboxDirty = computed(() => {
+    const ver = selectedVersionEntry.value
+    if (!ver) return false
+    const savedSandbox = ver.sandbox === 'docker' ? 'docker' : 'none'
+    const savedPolicy = formatSandboxPolicyJson(ver.sandboxPolicyJson)
+    if (sandboxDraft.value !== savedSandbox) return true
+    if (sandboxDraft.value === 'none') return false
+    return sandboxPolicyDraft.value.trim() !== savedPolicy.trim()
+  })
+
+  function syncSandboxDraftFromVersion(ver: SkillVersion | null) {
+    if (suppressSandboxSync) return
+    if (!ver) {
+      sandboxDraft.value = 'none'
+      sandboxPolicyDraft.value = ''
+      return
+    }
+    sandboxDraft.value = ver.sandbox === 'docker' ? 'docker' : 'none'
+    sandboxPolicyDraft.value = formatSandboxPolicyJson(ver.sandboxPolicyJson)
+  }
+
+  function onSandboxTypeChange(value: string) {
+    sandboxDraft.value = value === 'docker' ? 'docker' : 'none'
+    if (sandboxDraft.value === 'docker' && !sandboxPolicyDraft.value.trim()) {
+      sandboxPolicyDraft.value = DEFAULT_SANDBOX_POLICY_JSON
+    }
+  }
+
+  async function handleSaveSandbox() {
+    const skillId = selectedId.value
+    const version = selectedVersion.value
+    if (!skillId || version == null) return
+    let policy: SandboxPolicy | null = null
+    if (sandboxDraft.value === 'docker') {
+      const raw = sandboxPolicyDraft.value.trim()
+      if (raw) {
+        try {
+          policy = JSON.parse(raw) as SandboxPolicy
+        } catch {
+          message.error('sandbox_policy 不是合法 JSON')
+          return
+        }
+      }
+    }
+    savingSandbox.value = true
+    try {
+      const updated = await updateSkillVersionSandbox(
+        skillId,
+        version,
+        sandboxDraft.value,
+        policy,
+      )
+      skills.value = skills.value.map(s => (s.id === skillId ? { ...s, ...updated } : s))
+      const policyJson =
+        sandboxDraft.value === 'docker' ? (policy ? JSON.stringify(policy) : null) : null
+      versions.value = versions.value.map(v =>
+        v.version === version
+          ? { ...v, sandbox: sandboxDraft.value, sandboxPolicyJson: policyJson }
+          : v,
+      )
+      suppressSandboxSync = true
+      syncSandboxDraftFromVersion(selectedVersionEntry.value)
+      await nextTick()
+      suppressSandboxSync = false
+      message.success('沙箱配置已保存')
+    } catch (e: unknown) {
+      message.error(friendlyErrorMessage(e, '保存沙箱配置失败'))
+    } finally {
+      savingSandbox.value = false
+    }
+  }
+
+  function handleTryRunSandbox() {
+    const skillId = selectedId.value
+    if (!skillId) return
+    const prompt = `@${skillId} 请用沙箱工具：读取 /skill 下脚本，在 /workspace 写 test.txt，再 ls`
+    void router.push({ name: 'chat', query: { prompt } })
+  }
 
   /** 版本下拉已确认切换的目标（用于保存失败时回滚 v-model） */
   const committedVersion = ref<number | null>(null)
@@ -854,6 +968,10 @@ export function useSkillsPage() {
     if (nodes.length) expandedKeys.value = collectDirKeys(nodes)
   })
 
+  watch(selectedVersionEntry, (ver) => {
+    syncSandboxDraftFromVersion(ver)
+  }, { immediate: true })
+
   onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload)
     void refreshPage()
@@ -922,6 +1040,15 @@ export function useSkillsPage() {
     detailMaintainerText,
     selectedVersionStatus,
     detailVersionTagType,
+    showSandboxPanel,
+    sandboxDraft,
+    sandboxPolicyDraft,
+    sandboxDirty,
+    savingSandbox,
+    SANDBOX_OPTIONS,
+    onSandboxTypeChange,
+    handleSaveSandbox,
+    handleTryRunSandbox,
     savingFile,
     fileEditMode,
     fileEditDraft,

@@ -80,7 +80,14 @@ function hydrateStructure() {
 
 function refreshOverlay() {
   if (!nodes.value.length) return
-  nodes.value = applyExecOverlay(nodes.value, props.dagNodes, props.live, props.selectedId)
+  // 经 unknown 打断 Vue Flow Node 泛型在 vue-tsc 下的过深实例化
+  const next = applyExecOverlay(
+    nodes.value as unknown as Node<WorkflowFlowNodeData>[],
+    props.dagNodes,
+    props.live,
+    props.selectedId,
+  )
+  nodes.value = next as unknown as Node<WorkflowFlowNodeData>[]
 }
 
 function dagNodesOverlayKey(): string {
