@@ -108,6 +108,61 @@ class SandboxSessionServiceTest {
                 .isEqualTo(SandboxErrorCode.SKILL_FILE_PATH_INVALID);
     }
 
+    @Test
+    void rejectsInvalidImage() {
+        CreateSessionRequest req = new CreateSessionRequest(
+                "u1", "t1", "demo", "r1",
+                new SandboxPolicyDto(null, "-evil", null, null, null, List.of(), null),
+                Map.of(), Map.of());
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(SandboxErrorCode.IMAGE_INVALID);
+        assertThat(docker.lastRunArgs).isNull();
+    }
+
+    @Test
+    void rejectsBlankImageWhenNoDefault() {
+        SandboxProperties props = new SandboxProperties();
+        props.getDocker().setHostDataRoot(tempRoot.toString());
+        props.getDocker().setDefaultImage("");
+        service = new SandboxSessionService(docker, store, props);
+        CreateSessionRequest req = new CreateSessionRequest(
+                "u1", "t1", "demo", "r1",
+                new SandboxPolicyDto(null, "  ", null, null, null, List.of(), null),
+                Map.of(), Map.of());
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(SandboxErrorCode.IMAGE_INVALID);
+    }
+
+    @Test
+    void removesContainerWhenStoreFailsAfterDockerRun() {
+        SandboxSessionStore failingStore = new SandboxSessionStore() {
+            @Override
+            public void put(SandboxSession session) {
+                throw new IllegalStateException("store down");
+            }
+        };
+        service = new SandboxSessionService(docker, failingStore, newProps());
+        CreateSessionRequest req = new CreateSessionRequest(
+                "u1", "t1", "demo", "r1",
+                new SandboxPolicyDto("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
+                        List.of(), List.of()),
+                Map.of(), Map.of());
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("store down");
+        assertThat(docker.removed).containsExactly(docker.lastContainerId);
+    }
+
+    private SandboxProperties newProps() {
+        SandboxProperties props = new SandboxProperties();
+        props.getDocker().setHostDataRoot(tempRoot.toString());
+        return props;
+    }
+
     /** Fake：记录 run/remove，不调真实 Docker */
     static final class FakeDockerCli extends DockerCli {
         List<String> lastRunArgs;

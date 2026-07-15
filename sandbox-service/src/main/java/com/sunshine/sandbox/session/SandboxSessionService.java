@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -33,6 +34,9 @@ import java.util.UUID;
 public class SandboxSessionService {
 
     private static final int SANDBOX_UID = 10001;
+    /** registry/name:tag 或 name@sha256:...；禁止空格与 shell 元字符 */
+    private static final Pattern SAFE_IMAGE = Pattern.compile(
+            "^[a-zA-Z0-9][a-zA-Z0-9._\\-/]*(:[a-zA-Z0-9._\\-]+)?(@sha256:[a-fA-F0-9]{64})?$");
 
     private final DockerCli dockerCli;
     private final SandboxSessionStore store;
@@ -57,15 +61,19 @@ public class SandboxSessionService {
             throw new IllegalStateException("failed to prepare session dirs: " + sessionId, e);
         }
         String image = firstNonBlank(policy.image(), properties.getDocker().getDefaultImage());
+        validateImage(image);
         int memoryMb = policy.memoryMb() != null ? policy.memoryMb() : properties.getDocker().getDefaultMemoryMb();
         String cpus = policy.cpus() != null
                 ? String.valueOf(policy.cpus())
                 : properties.getDocker().getDefaultCpus();
         String containerName = "sunshine-sb-" + sessionId.substring(0, Math.min(12, sessionId.length()));
         List<String> args = buildRunArgs(containerName, image, memoryMb, cpus, hostSkill, hostWorkspace);
+        String storedId = null;
+        boolean dockerStarted = false;
         try {
             String containerId = dockerCli.runDetached(args);
-            String storedId = containerId != null && !containerId.isBlank() ? containerId.trim() : containerName;
+            dockerStarted = true;
+            storedId = containerId != null && !containerId.isBlank() ? containerId.trim() : containerName;
             SandboxPolicyDto resolved = new SandboxPolicyDto(
                     policy.runtime() != null ? policy.runtime() : "docker",
                     image,
@@ -78,8 +86,27 @@ public class SandboxSessionService {
             log.info("sandbox session created id={} container={}", sessionId, storedId);
             return sessionId;
         } catch (RuntimeException e) {
+            if (dockerStarted) {
+                String toRemove = storedId != null ? storedId : containerName;
+                try {
+                    dockerCli.removeForce(toRemove);
+                } catch (RuntimeException rmEx) {
+                    log.warn("docker remove after create failure failed for {}: {}", toRemove, rmEx.getMessage());
+                }
+            }
             deleteTreeQuietly(hostRoot);
             throw e;
+        }
+    }
+
+    /** 拒绝空镜像、以 `-` 开头（CLI 注入）及非法字符的 image ref */
+    static void validateImage(String image) {
+        if (image == null || image.isBlank()) {
+            throw new BizException(SandboxErrorCode.IMAGE_INVALID);
+        }
+        String trimmed = image.trim();
+        if (trimmed.startsWith("-") || !SAFE_IMAGE.matcher(trimmed).matches()) {
+            throw new BizException(SandboxErrorCode.IMAGE_INVALID);
         }
     }
 
