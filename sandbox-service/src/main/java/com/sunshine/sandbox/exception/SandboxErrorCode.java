@@ -16,7 +16,8 @@ public enum SandboxErrorCode implements ErrorCode {
     TOOL_UNKNOWN(400, "sandbox_tool_unknown", "未知工具"),
     TOOL_NOT_IMPLEMENTED(400, "sandbox_tool_not_implemented", "工具尚未实现"),
     EDIT_NOT_UNIQUE(400, "sandbox_edit_not_unique", "old_string not unique"),
-    EDIT_NOT_FOUND(400, "sandbox_edit_not_found", "old_string not found");
+    EDIT_NOT_FOUND(400, "sandbox_edit_not_found", "old_string not found"),
+    PATTERN_INVALID(400, "sandbox_pattern_invalid", "正则无效");
 
     private final int code;
     private final String key;

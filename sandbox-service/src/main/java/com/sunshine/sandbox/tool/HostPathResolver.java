@@ -32,4 +32,26 @@ public final class HostPathResolver {
         }
         throw new IllegalArgumentException("path escapes jail: " + containerPath);
     }
+
+    /** host bind 路径 → 容器内 `/skill` 或 `/workspace` 风格路径 */
+    public static String toContainer(SandboxSession session, Path host) {
+        Path abs = host.toAbsolutePath().normalize();
+        Path hostSkill = session.hostRoot().resolve("skill").toAbsolutePath().normalize();
+        Path hostWorkspace = session.hostRoot().resolve("workspace").toAbsolutePath().normalize();
+        if (abs.startsWith(hostSkill)) {
+            Path rel = hostSkill.relativize(abs);
+            if (rel.toString().isEmpty()) {
+                return PathJail.SKILL.toString();
+            }
+            return PathJail.SKILL.resolve(rel).toString().replace('\\', '/');
+        }
+        if (abs.startsWith(hostWorkspace)) {
+            Path rel = hostWorkspace.relativize(abs);
+            if (rel.toString().isEmpty()) {
+                return PathJail.WORKSPACE.toString();
+            }
+            return PathJail.WORKSPACE.resolve(rel).toString().replace('\\', '/');
+        }
+        throw new IllegalArgumentException("path escapes jail: " + host);
+    }
 }

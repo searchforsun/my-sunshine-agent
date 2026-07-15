@@ -11,17 +11,25 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
 public class SandboxToolExecutor {
 
     static final int DEFAULT_MAX_CHARS = 200_000;
+    static final int MAX_GREP_HITS = 200;
 
     private final SandboxSessionStore store;
 
@@ -33,7 +41,9 @@ public class SandboxToolExecutor {
             case SandboxToolNames.READ -> read(session, args);
             case SandboxToolNames.WRITE -> write(session, args);
             case SandboxToolNames.EDIT -> edit(session, args);
-            case SandboxToolNames.GLOB, SandboxToolNames.GREP, SandboxToolNames.EXEC ->
+            case SandboxToolNames.GLOB -> glob(session, args);
+            case SandboxToolNames.GREP -> grep(session, args);
+            case SandboxToolNames.EXEC ->
                     throw new BizException(new FixedErrorCode(
                             SandboxErrorCode.TOOL_NOT_IMPLEMENTED.getCode(),
                             SandboxErrorCode.TOOL_NOT_IMPLEMENTED.getKey(),
@@ -107,6 +117,142 @@ public class SandboxToolExecutor {
         }
     }
 
+    private ToolInvokeResponse glob(SandboxSession session, Map<String, Object> args) {
+        String pattern = requireString(args, "pattern");
+        PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
+        List<String> hits = new ArrayList<>();
+        for (SearchRoot root : resolveSearchRoots(session, optionalString(args, "path"))) {
+            collectGlobHits(session, root, matcher, hits);
+        }
+        Collections.sort(hits);
+        return new ToolInvokeResponse(true, String.join("\n", hits), null, Map.of());
+    }
+
+    private ToolInvokeResponse grep(SandboxSession session, Map<String, Object> args) {
+        String patternStr = requireString(args, "pattern");
+        Pattern regex;
+        try {
+            regex = Pattern.compile(patternStr);
+        } catch (PatternSyntaxException e) {
+            throw new BizException(SandboxErrorCode.PATTERN_INVALID);
+        }
+        PathMatcher fileGlob = null;
+        String globFilter = optionalString(args, "glob");
+        if (globFilter != null) {
+            fileGlob = FileSystems.getDefault().getPathMatcher("glob:" + globFilter);
+        }
+        List<String> hits = new ArrayList<>();
+        boolean hitLimit = false;
+        for (SearchRoot root : resolveSearchRoots(session, optionalString(args, "path"))) {
+            hitLimit = collectGrepHits(session, root, regex, fileGlob, hits);
+            if (hitLimit) {
+                break;
+            }
+        }
+        Map<String, Object> meta = hitLimit ? Map.of("hitLimit", true) : Map.of();
+        return new ToolInvokeResponse(true, String.join("\n", hits), null, meta);
+    }
+
+    private static void collectGlobHits(
+            SandboxSession session, SearchRoot root, PathMatcher matcher, List<String> hits) {
+        if (!Files.exists(root.host())) {
+            return;
+        }
+        if (Files.isRegularFile(root.host())) {
+            Path rel = root.walkBase().relativize(root.host());
+            if (matcher.matches(rel) || matcher.matches(root.host().getFileName())) {
+                hits.add(HostPathResolver.toContainer(session, root.host()));
+            }
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(root.host())) {
+            walk.filter(Files::isRegularFile).forEach(p -> {
+                Path rel = root.walkBase().relativize(p);
+                if (matcher.matches(rel) || matcher.matches(p.getFileName())) {
+                    hits.add(HostPathResolver.toContainer(session, p));
+                }
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("glob failed", e);
+        }
+    }
+
+    /** @return true if hit limit reached */
+    private static boolean collectGrepHits(
+            SandboxSession session,
+            SearchRoot root,
+            Pattern regex,
+            PathMatcher fileGlob,
+            List<String> hits) {
+        if (!Files.exists(root.host())) {
+            return false;
+        }
+        if (Files.isRegularFile(root.host())) {
+            return grepFile(session, root.host(), root.walkBase(), regex, fileGlob, hits);
+        }
+        try (Stream<Path> walk = Files.walk(root.host())) {
+            List<Path> files = walk.filter(Files::isRegularFile).sorted().toList();
+            for (Path p : files) {
+                if (grepFile(session, p, root.walkBase(), regex, fileGlob, hits)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (IOException e) {
+            throw new IllegalStateException("grep failed", e);
+        }
+    }
+
+    private static boolean grepFile(
+            SandboxSession session,
+            Path hostFile,
+            Path walkBase,
+            Pattern regex,
+            PathMatcher fileGlob,
+            List<String> hits) {
+        if (fileGlob != null) {
+            Path rel = walkBase.relativize(hostFile);
+            if (!fileGlob.matches(rel) && !fileGlob.matches(hostFile.getFileName())) {
+                return false;
+            }
+        }
+        String containerPath = HostPathResolver.toContainer(session, hostFile);
+        try {
+            List<String> lines = Files.readAllLines(hostFile, StandardCharsets.UTF_8);
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                if (regex.matcher(line).find()) {
+                    hits.add(containerPath + ":" + (i + 1) + ":" + line);
+                    if (hits.size() >= MAX_GREP_HITS) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        } catch (IOException e) {
+            throw new IllegalStateException("grep failed: " + containerPath, e);
+        }
+    }
+
+    /**
+     * path 缺省：同时搜 /skill 与 /workspace；否则解析为 jail 内单根（文件或目录）。
+     */
+    private static List<SearchRoot> resolveSearchRoots(SandboxSession session, String pathOpt) {
+        if (pathOpt == null) {
+            Path skill = session.hostRoot().resolve("skill").toAbsolutePath().normalize();
+            Path workspace = session.hostRoot().resolve("workspace").toAbsolutePath().normalize();
+            return List.of(new SearchRoot(skill, skill), new SearchRoot(workspace, workspace));
+        }
+        Path host = toHostSafe(session, pathOpt, false);
+        Path walkBase = host;
+        if (Files.isRegularFile(host) && host.getParent() != null) {
+            walkBase = host.getParent();
+        }
+        return List.of(new SearchRoot(host, walkBase));
+    }
+
+    private record SearchRoot(Path host, Path walkBase) {}
+
     private static Path toHostSafe(SandboxSession session, String containerPath, boolean forWrite) {
         try {
             return HostPathResolver.toHost(session, containerPath, forWrite);
@@ -126,6 +272,14 @@ public class SandboxToolExecutor {
         Object v = args.get(key);
         if (v == null || String.valueOf(v).isBlank()) {
             throw badPath(key + " required");
+        }
+        return String.valueOf(v);
+    }
+
+    private static String optionalString(Map<String, Object> args, String key) {
+        Object v = args.get(key);
+        if (v == null || String.valueOf(v).isBlank()) {
+            return null;
         }
         return String.valueOf(v);
     }

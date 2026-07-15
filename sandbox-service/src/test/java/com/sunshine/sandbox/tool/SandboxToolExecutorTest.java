@@ -142,7 +142,7 @@ class SandboxToolExecutorTest {
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(SandboxErrorCode.TOOL_UNKNOWN);
 
-        assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.GLOB, Map.of()))
+        assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.EXEC, Map.of()))
                 .isInstanceOf(BizException.class)
                 .satisfies(e -> {
                     BizException be = (BizException) e;
