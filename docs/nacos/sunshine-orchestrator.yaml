@@ -503,6 +503,8 @@ expert-manager:
   base-url: http://localhost:8235
 workflow-manager:
   base-url: http://localhost:8230
+sandbox-service:
+  base-url: http://localhost:8226
 desensitize:
   enabled: true
   base-url: http://localhost:8600
