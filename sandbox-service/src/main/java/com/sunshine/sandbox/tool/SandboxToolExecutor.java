@@ -42,11 +42,6 @@ public class SandboxToolExecutor {
     private final SandboxProperties properties;
     private final SandboxMetrics metrics;
 
-    /** 单测可传 null metrics */
-    SandboxToolExecutor(SandboxSessionStore store, DockerCli dockerCli, SandboxProperties properties) {
-        this(store, dockerCli, properties, null);
-    }
-
     public ToolInvokeResponse invoke(String sessionId, String name, Map<String, Object> body) {
         long startNanos = System.nanoTime();
         String tool = name != null ? name : "unknown";

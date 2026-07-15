@@ -41,7 +41,7 @@ class SandboxExecTest {
         props = new SandboxProperties();
         props.getDocker().setDefaultTimeoutSec(30);
         docker = new FakeDockerCli(props);
-        executor = new SandboxToolExecutor(store, docker, props);
+        executor = new SandboxToolExecutor(store, docker, props, null);
         sessionId = "sess-exec-001";
         Path hostRoot = tempRoot.resolve(sessionId);
         Path hostSkill = hostRoot.resolve("skill");

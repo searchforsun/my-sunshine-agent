@@ -1,8 +1,7 @@
 # 阶段四 · 4.5 Skills Docker 沙箱（Coding Agent 工具面）
 
 > **阶段**：四 · **任务卡**：**4.5**  
-> **状态**：已确认 · [实施计划](../plans/2026-07-15-skills-docker-sandbox.md)  
- 
+> **状态**：实施中 / 验收中 · [实施计划](../plans/2026-07-15-skills-docker-sandbox.md)  
 > **日期**：2026-07-15  
 > **前置锁定**：D4 Docker 沙箱（[locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) §D4）  
 > **相关**：skill-manager `/skills` · 3.3 HITL · 4.8 特殊工具不进 Catalog（同 `search_knowledge` / `manage_tasks`）  

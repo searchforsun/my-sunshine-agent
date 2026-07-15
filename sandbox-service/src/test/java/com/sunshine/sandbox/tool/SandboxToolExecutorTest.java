@@ -37,7 +37,7 @@ class SandboxToolExecutorTest {
     void setUp() throws Exception {
         store = new SandboxSessionStore();
         SandboxProperties props = new SandboxProperties();
-        executor = new SandboxToolExecutor(store, new StubDockerCli(props), props);
+        executor = new SandboxToolExecutor(store, new StubDockerCli(props), props, null);
         sessionId = "sess-tool-001";
         Path hostRoot = tempRoot.resolve(sessionId);
         hostSkill = hostRoot.resolve("skill");

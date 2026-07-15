@@ -43,6 +43,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
 | `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（L1 句式路由） |
 | `verify_expert_consultation_live.py` | **4.7.3 演进** 多专家协作 §K Live（`$` 绑定 + expert 步 + Synthesizer） |
+| `verify_sandbox_live.py` | **4.5** Skills Docker 沙箱 Live（`--suite direct\|chat\|all`；G1–G9） |
 | `verify_tool_integration_live.py` | **4.8** SDK+MCP 工具集成 Live（`--suite sdk\|mcp\|toolset\|hitl\|all`） |
 | `verify_workflow_studio_live.py` | **4.13** Studio Catalog/`#`/`parallel`/`exclusive` Live |
 | `verify_exclusive_gateway_live.py` | **4.13.7** exclusive-gateway 边条件（`#knowledge-branch`） |

@@ -38,7 +38,7 @@ class SandboxToolExecutorGlobGrepTest {
     void setUp() throws Exception {
         SandboxSessionStore store = new SandboxSessionStore();
         SandboxProperties props = new SandboxProperties();
-        executor = new SandboxToolExecutor(store, new StubDockerCli(props), props);
+        executor = new SandboxToolExecutor(store, new StubDockerCli(props), props, null);
         sessionId = "sess-glob-001";
         Path hostRoot = tempRoot.resolve(sessionId);
         Path hostSkill = hostRoot.resolve("skill");
