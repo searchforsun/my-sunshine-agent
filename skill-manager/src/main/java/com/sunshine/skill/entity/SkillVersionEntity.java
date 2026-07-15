@@ -42,6 +42,10 @@ public class SkillVersionEntity {
     @Column(name = "sandbox", nullable = false)
     private String sandbox = "none";
 
+    /** sandbox_policy JSON；sandbox=docker 时可空（运行时用默认） */
+    @Column(name = "sandbox_policy_json", columnDefinition = "json")
+    private String sandboxPolicyJson;
+
     @Column(name = "references_json", nullable = false)
     private String referencesJson = "[]";
 

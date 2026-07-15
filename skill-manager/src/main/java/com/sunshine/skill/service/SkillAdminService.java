@@ -3,10 +3,13 @@ package com.sunshine.skill.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.util.VersionTimestampDedup;
+import com.sunshine.skill.dto.SandboxPolicy;
+import com.sunshine.skill.dto.SandboxPolicyCodec;
 import com.sunshine.skill.dto.SkillCatalogEntry;
 import com.sunshine.skill.dto.SkillCatalogIndexEntry;
 import com.sunshine.skill.dto.SkillCreateRequest;
 import com.sunshine.skill.dto.SkillUpdateRequest;
+import com.sunshine.skill.dto.SkillVersionSandboxRequest;
 import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.entity.SkillDefinitionEntity;
 import com.sunshine.skill.entity.SkillVersionEntity;
@@ -84,7 +87,7 @@ public class SkillAdminService {
         version.setToolsJson("[]");
         version.setMaxIters(4);
         version.setSideEffect("read");
-        version.setSandbox("none");
+        applySandboxFields(version, request.sandbox(), request.sandboxPolicy());
         version.setReferencesJson("[]");
         version.setScriptsJson("[]");
         version.setStatus("draft");
@@ -92,6 +95,19 @@ public class SkillAdminService {
         versionRepository.save(version);
         catalogRegistry.refresh();
         return toCatalogEntry(def).orElseThrow();
+    }
+
+    @Transactional
+    public SkillCatalogEntry updateVersionSandbox(String skillId, int version, SkillVersionSandboxRequest request) {
+        requireDefinition(skillId);
+        SkillVersionEntity ver = versionRepository.findBySkillIdAndVersion(skillId, version)
+                .orElseThrow(() -> new BizException(SkillErrorCode.VERSION_NOT_FOUND));
+        applySandboxFields(ver, request.sandbox(), request.sandboxPolicy());
+        versionRepository.save(ver);
+        catalogRegistry.refresh();
+        log.info("[SkillManager] updated sandbox skill={} version={} sandbox={}",
+                skillId, version, ver.getSandbox());
+        return toCatalogEntry(requireDefinition(skillId)).orElseThrow();
     }
 
     @Transactional
@@ -188,6 +204,7 @@ public class SkillAdminService {
         target.setMaxIters(source.getMaxIters());
         target.setSideEffect(source.getSideEffect());
         target.setSandbox(source.getSandbox());
+        target.setSandboxPolicyJson(source.getSandboxPolicyJson());
         target.setReferencesJson(source.getReferencesJson());
         target.setScriptsJson(source.getScriptsJson());
         target.setStoragePath(storagePath);
@@ -378,7 +395,20 @@ public class SkillAdminService {
                         def.isEnabled(),
                         ver.getCreatedAt(),
                         ver.getMaintainer(),
-                        isPublishedVersion(ver)));
+                        isPublishedVersion(ver),
+                        ver.getSandbox() != null ? ver.getSandbox() : "none",
+                        SandboxPolicyCodec.parseOrNull(ver.getSandboxPolicyJson())));
+    }
+
+    /** 写入 sandbox + policy；policy 可为 null（docker 时运行时用默认）；非法取值 → BizException */
+    static void applySandboxFields(SkillVersionEntity version, String sandbox, SandboxPolicy policy) {
+        String value = StringUtils.hasText(sandbox) ? sandbox.strip()
+                : (StringUtils.hasText(version.getSandbox()) ? version.getSandbox() : "none");
+        if (!"none".equalsIgnoreCase(value) && !"docker".equalsIgnoreCase(value)) {
+            throw new BizException(SkillErrorCode.SANDBOX_VALUE_INVALID);
+        }
+        version.setSandbox(value.toLowerCase());
+        version.setSandboxPolicyJson(SandboxPolicyCodec.write(policy));
     }
 
     private static boolean isPublishedVersion(SkillVersionEntity ver) {

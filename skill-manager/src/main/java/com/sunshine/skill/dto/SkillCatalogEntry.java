@@ -12,6 +12,8 @@ public record SkillCatalogEntry(
         boolean enabled,
         Instant activeVersionCreatedAt,
         String activeVersionMaintainer,
-        boolean activeVersionPublished
+        boolean activeVersionPublished,
+        String sandbox,
+        SandboxPolicy sandboxPolicy
 ) {
 }

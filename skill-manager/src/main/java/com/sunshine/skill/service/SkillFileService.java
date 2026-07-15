@@ -27,7 +27,9 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Service
@@ -58,6 +60,49 @@ public class SkillFileService {
             throw new BizException(SkillErrorCode.FILE_NOT_FOUND);
         }
         return content;
+    }
+
+    /**
+     * 启用 Skill 的 active 版本材料：仅 scripts/ 与 references/ 下文本文件。
+     * 供 sandbox-service / orchestrator 挂载 /skill。
+     */
+    public Map<String, String> loadMaterial(String skillId) {
+        SkillDefinitionEntity def = definitionRepository.findById(skillId)
+                .orElseThrow(() -> new BizException(SkillErrorCode.SKILL_NOT_FOUND));
+        if (!def.isEnabled()) {
+            throw new BizException(SkillErrorCode.SKILL_NOT_ENABLED);
+        }
+        SkillVersionEntity ver = requireVersion(skillId, def.getActiveVersion());
+        if (!"published".equals(ver.getStatus()) || !StringUtils.hasText(ver.getStoragePath())) {
+            throw new BizException(SkillErrorCode.SKILL_NOT_ENABLED);
+        }
+        List<SkillFileEntry> entries = skillStorageService.listFiles(
+                skillId, ver.getVersion(), ver.getStoragePath());
+        Map<String, String> files = new LinkedHashMap<>();
+        for (SkillFileEntry entry : entries) {
+            if (entry.directory() || !isMaterialTextPath(entry.path())) {
+                continue;
+            }
+            SkillFileContent content = skillStorageService.readFile(
+                    skillId, ver.getVersion(), ver.getStoragePath(), entry.path());
+            if (content == null || content.binary()) {
+                continue;
+            }
+            files.put(entry.path(), content.content());
+        }
+        return Map.copyOf(files);
+    }
+
+    /** scripts/ 或 references/ 下的文本文件路径 */
+    static boolean isMaterialTextPath(String path) {
+        if (!StringUtils.hasText(path) || path.endsWith("/")) {
+            return false;
+        }
+        String normalized = path.strip().replace('\\', '/');
+        if (!normalized.startsWith("scripts/") && !normalized.startsWith("references/")) {
+            return false;
+        }
+        return SkillFileCodec.isTextFile(normalized);
     }
 
     /** 在线编辑 — 仅草稿版本、文本文件；SKILL.md 会同步 overlay 与 definition.description */

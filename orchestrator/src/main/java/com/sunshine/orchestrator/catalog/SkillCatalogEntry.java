@@ -7,6 +7,8 @@ public record SkillCatalogEntry(
         String description,
         String systemOverlay,
         int version,
-        boolean enabled
+        boolean enabled,
+        String sandbox,
+        SandboxPolicy sandboxPolicy
 ) {
 }

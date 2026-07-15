@@ -41,7 +41,7 @@ class SkillCatalogServiceTest {
         when(catalogClient.fetchCatalogIndex()).thenReturn(List.of(
                 new SkillCatalogIndexEntry("finance-analysis", "财务合规分析", "d", 1, true)));
         when(catalogClient.fetchSkillDetail("finance-analysis")).thenReturn(Optional.of(
-                new SkillCatalogEntry("finance-analysis", "财务合规分析", "d", "overlay text", 1, true)));
+                new SkillCatalogEntry("finance-analysis", "财务合规分析", "d", "overlay text", 1, true, "none", null)));
         service.refresh();
         assertThat(service.find("finance-analysis")).isPresent();
         assertThat(service.overlayOrEmpty("finance-analysis")).isEqualTo("overlay text");

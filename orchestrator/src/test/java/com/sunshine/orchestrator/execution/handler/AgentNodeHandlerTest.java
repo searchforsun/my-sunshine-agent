@@ -153,7 +153,7 @@ class AgentNodeHandlerTest {
     @Test
     void run_expandDetailPrefixesLoadedSkill() {
         when(skillCatalogService.find("finance-analysis")).thenReturn(Optional.of(
-                new SkillCatalogEntry("finance-analysis", "财务合规分析", "d", "overlay", 2, true)));
+                new SkillCatalogEntry("finance-analysis", "财务合规分析", "d", "overlay", 2, true, "none", null)));
         when(agentRuntime.run(any(AgentRunRequest.class)))
                 .thenReturn(Flux.just(StreamToken.content("无法判断的合规要素")));
 

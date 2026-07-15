@@ -4,6 +4,7 @@ import com.sunshine.skill.dto.SkillCatalogEntry;
 import com.sunshine.skill.dto.SkillCatalogIndexEntry;
 import com.sunshine.skill.entity.SkillDefinitionEntity;
 import com.sunshine.skill.entity.SkillVersionEntity;
+import com.sunshine.skill.dto.SandboxPolicyCodec;
 import com.sunshine.skill.repo.SkillDefinitionRepository;
 import com.sunshine.skill.repo.SkillVersionRepository;
 import jakarta.annotation.PostConstruct;
@@ -67,6 +68,8 @@ public class SkillCatalogRegistry {
                 def.isEnabled(),
                 ver.getCreatedAt(),
                 ver.getMaintainer(),
-                true);
+                true,
+                ver.getSandbox() != null ? ver.getSandbox() : "none",
+                SandboxPolicyCodec.parseOrNull(ver.getSandboxPolicyJson()));
     }
 }
