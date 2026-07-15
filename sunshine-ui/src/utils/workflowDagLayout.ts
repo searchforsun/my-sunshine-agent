@@ -1,13 +1,11 @@
+/** Studio 画布编辑：增删改节点 / 自动布局 / merge。只读投影见 workflowFlowProjection。 */
 import type { Edge, Node } from '@vue-flow/core'
-import { Position } from '@vue-flow/core'
-import { formatPlanNodeType } from '../api/executionPlans'
 import type { WorkflowPlan, WorkflowPlanNode, WorkflowPlanEdge, WorkflowNodeDefaultsResponse } from '../api/workflows'
 import {
   defaultDisplayName,
   defaultParamsForType,
   nextBusinessNodeId,
   reconcilePlanDataFlow,
-  rebuildLinearEdges,
   type WorkflowBusinessNodeType,
 } from './workflowPlan'
 import { buildRetryParams, resolveNodeDefaults } from './workflowNodeParams'
@@ -19,98 +17,50 @@ import {
   type WorkflowGatewayType,
 } from './workflowGateway'
 import { findJoinForkPoint } from './workflowPlanValidation'
+import {
+  BUSINESS_NODE_WIDTH,
+  ORIGIN_X,
+  ORIGIN_Y,
+  SPINE_HANDLE_Y,
+  Y_GAP,
+  measureLoopSize,
+  nodeCenterX,
+  nodeCenterY,
+  nodeSize as metricsNodeSize,
+  positionFromCenter as metricsPositionFromCenter,
+  type WorkflowLayoutPos,
+} from './workflowDagLayoutMetrics'
+import {
+  addLoopBodyNode,
+  addLoopContainer,
+  layoutLoopBody,
+  resolveLoopParentForAdd,
+} from './workflowLoopLayout'
+import {
+  isProtectedWorkflowNode,
+  resolveNodePositions,
+} from './workflowFlowProjection'
 
 export { evaluateConnection, isValidConnection } from './workflowPlanValidation'
+export type { WorkflowLayoutPos } from './workflowDagLayoutMetrics'
+export { orderLoopBody, resolveLoopParentForAdd } from './workflowLoopLayout'
+export {
+  WF_FLOW_NODE_TYPE,
+  WF_FIT_VIEW_MAX_ZOOM,
+  WF_FIT_VIEW_OPTS,
+  PROTECTED_WORKFLOW_NODE_IDS,
+  isProtectedWorkflowNode,
+  planToFlowElements,
+  resolveNodePositions,
+  planEdgeFingerprint,
+  flowEdgeFingerprint,
+  flowEdgesFromPlan,
+  type WorkflowFlowExecOverlay,
+  type WorkflowFlowNodeData,
+} from './workflowFlowProjection'
 
-export const WF_FLOW_NODE_TYPE = 'workflowNode'
-
-/**
- * fitView / [] / 切换工作流：节点至多 1× 设计尺寸，少量节点不再被放大。
- * +/- 仍受 VueFlow maxZoom（如 1.75）约束，可手动放大。
- */
-export const WF_FIT_VIEW_MAX_ZOOM = 1
-export const WF_FIT_VIEW_OPTS = {
-  padding: 0.22,
-  duration: 0,
-  maxZoom: WF_FIT_VIEW_MAX_ZOOM,
-} as const
-
-/** 流程锚点节点，画布不可删除 */
-export const PROTECTED_WORKFLOW_NODE_IDS = new Set(['start', 'answer'])
-
-export function isProtectedWorkflowNode(node: Pick<WorkflowPlanNode, 'id' | 'type'>): boolean {
-  return node.type === 'start' || node.type === 'answer' || PROTECTED_WORKFLOW_NODE_IDS.has(node.id)
-}
-
-function flowNodeLabel(node: WorkflowPlanNode): string {
-  if (node.type === 'answer') return formatPlanNodeType('answer')
-  return node.displayName?.trim() || node.id
-}
-
-export type WorkflowFlowExecOverlay = {
-  status?: 'pending' | 'running' | 'done' | 'error' | 'awaiting_confirm' | 'paused' | 'terminated' | 'skipped'
-  durationMs?: number
-  retryBadge?: number | null
-  live?: boolean
-  recoveryAwaiting?: boolean
-}
-
-export type WorkflowFlowNodeData = {
-  label: string
-  nodeType: string
-  selected?: boolean
-  readOnly?: boolean
-  hasValidationIssue?: boolean
-  /** Chat 执行态角标（Studio 画布无此字段） */
-  exec?: WorkflowFlowExecOverlay
-}
-
-const Y_GAP = 88
-const ORIGIN_X = 48
-const ORIGIN_Y = 72
-/** 与 WorkflowFlowNode 尺寸对齐，布局按中心点计算 */
-const BUSINESS_NODE_WIDTH = 148
-const BUSINESS_NODE_HEIGHT = 56
-const ANCHOR_NODE_WIDTH = 56
-const ANCHOR_NODE_HEIGHT = 56
-const GATEWAY_NODE_WIDTH = 40
-const GATEWAY_NODE_HEIGHT = 40
-const LOOP_MIN_WIDTH = 280
-const LOOP_MIN_HEIGHT = 160
-const LOOP_PAD_X = 24
-const LOOP_PAD_TOP = 52
-const LOOP_PAD_BOTTOM = 24
-const LOOP_INNER_GAP = 40
-/** 主干连线共用的 handle 中心 Y */
-const SPINE_HANDLE_Y = ORIGIN_Y + BUSINESS_NODE_HEIGHT / 2
-
-export type WorkflowLayoutPos = { x: number; y: number; width?: number; height?: number }
-
-function nodeSize(
-  nodeType: string | undefined,
-  layoutPos?: Pick<WorkflowLayoutPos, 'width' | 'height'> | null,
-): { w: number; h: number } {
-  if (nodeType && isGatewayType(nodeType)) {
-    return { w: GATEWAY_NODE_WIDTH, h: GATEWAY_NODE_HEIGHT }
-  }
-  if (nodeType === 'loop') {
-    return {
-      w: layoutPos?.width && layoutPos.width > 0 ? layoutPos.width : LOOP_MIN_WIDTH,
-      h: layoutPos?.height && layoutPos.height > 0 ? layoutPos.height : LOOP_MIN_HEIGHT,
-    }
-  }
-  if (nodeType === 'start' || nodeType === 'answer') {
-    return { w: ANCHOR_NODE_WIDTH, h: ANCHOR_NODE_HEIGHT }
-  }
-  return { w: BUSINESS_NODE_WIDTH, h: BUSINESS_NODE_HEIGHT }
-}
-
-function nodeCenterX(pos: WorkflowLayoutPos, nodeType: string | undefined): number {
-  return pos.x + nodeSize(nodeType, pos).w / 2
-}
-
-function nodeCenterY(pos: WorkflowLayoutPos, nodeType: string | undefined): number {
-  return pos.y + nodeSize(nodeType, pos).h / 2
+function nodeSize(nodeType: string | undefined, layoutPos?: Pick<WorkflowLayoutPos, 'width' | 'height'> | null) {
+  return metricsNodeSize(nodeType, layoutPos, isGatewayType)
 }
 
 function positionFromCenter(
@@ -119,8 +69,7 @@ function positionFromCenter(
   nodeType: string | undefined,
   layoutPos?: Pick<WorkflowLayoutPos, 'width' | 'height'> | null,
 ): WorkflowLayoutPos {
-  const { w, h } = nodeSize(nodeType, layoutPos)
-  return { x: centerX - w / 2, y: centerY - h / 2, width: layoutPos?.width, height: layoutPos?.height }
+  return metricsPositionFromCenter(centerX, centerY, nodeType, layoutPos, isGatewayType)
 }
 
 function handleCenterY(
@@ -130,85 +79,13 @@ function handleCenterY(
 ): number {
   const pos = positions[nodeId]
   if (!pos) return SPINE_HANDLE_Y
-  return nodeCenterY(pos, typeById.get(nodeId))
+  return nodeCenterY(pos, typeById.get(nodeId), isGatewayType)
 }
 
 function distributeCentersAroundSpine(count: number): number[] {
   if (count <= 0) return []
   if (count === 1) return [SPINE_HANDLE_Y]
   return Array.from({ length: count }, (_, i) => SPINE_HANDLE_Y - ((count - 1) * Y_GAP) / 2 + i * Y_GAP)
-}
-
-function edgePathType(
-  from: string,
-  to: string,
-  positions: Record<string, WorkflowLayoutPos>,
-  typeById: Map<string, string>,
-): 'straight' | 'smoothstep' {
-  const dy = Math.abs(handleCenterY(from, positions, typeById) - handleCenterY(to, positions, typeById))
-  return dy < 1 ? 'straight' : 'smoothstep'
-}
-
-/** 框内 body 线性顺序（与引擎 loopBodyOrder 一致） */
-export function orderLoopBody(plan: WorkflowPlan, loopId: string): string[] {
-  const bodyIds = (plan.nodes ?? []).filter(n => n.parentId === loopId).map(n => n.id)
-  if (bodyIds.length === 0) return []
-  const bodySet = new Set(bodyIds)
-  const outs = new Map<string, string[]>()
-  const indeg = new Map<string, number>()
-  for (const id of bodyIds) {
-    outs.set(id, [])
-    indeg.set(id, 0)
-  }
-  for (const e of plan.edges ?? []) {
-    if (!bodySet.has(e.from) || !bodySet.has(e.to)) continue
-    outs.get(e.from)!.push(e.to)
-    indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1)
-  }
-  const roots = bodyIds.filter(id => (indeg.get(id) ?? 0) === 0)
-  let cur = roots.length === 1 ? roots[0] : bodyIds[0]
-  const order: string[] = []
-  const seen = new Set<string>()
-  while (cur && !seen.has(cur)) {
-    seen.add(cur)
-    order.push(cur)
-    const nexts = outs.get(cur) ?? []
-    cur = nexts[0]
-  }
-  for (const id of bodyIds) {
-    if (!seen.has(id)) order.push(id)
-  }
-  return order
-}
-
-function measureLoopSize(bodyCount: number): { width: number; height: number } {
-  if (bodyCount <= 0) {
-    return { width: LOOP_MIN_WIDTH, height: LOOP_MIN_HEIGHT }
-  }
-  const innerStep = BUSINESS_NODE_WIDTH + LOOP_INNER_GAP
-  const width = Math.max(
-    LOOP_MIN_WIDTH,
-    LOOP_PAD_X + (bodyCount - 1) * innerStep + BUSINESS_NODE_WIDTH + LOOP_PAD_X,
-  )
-  const height = Math.max(LOOP_MIN_HEIGHT, LOOP_PAD_TOP + BUSINESS_NODE_HEIGHT + LOOP_PAD_BOTTOM)
-  return { width, height }
-}
-
-function layoutLoopBody(
-  plan: WorkflowPlan,
-  loopId: string,
-  loopPos: WorkflowLayoutPos,
-): Record<string, WorkflowLayoutPos> {
-  const order = orderLoopBody(plan, loopId)
-  const innerStep = BUSINESS_NODE_WIDTH + LOOP_INNER_GAP
-  const out: Record<string, WorkflowLayoutPos> = {}
-  order.forEach((id, i) => {
-    out[id] = {
-      x: loopPos.x + LOOP_PAD_X + i * innerStep,
-      y: loopPos.y + LOOP_PAD_TOP,
-    }
-  })
-  return out
 }
 
 /** 按拓扑分层自动布局：外图仅含无 parentId 节点；loop 框内单独线性布局并撑开尺寸 */
@@ -291,7 +168,7 @@ export function computeAutoLayout(plan: WorkflowPlan): Record<string, WorkflowLa
     if (branches.length < 2) continue
     const join = outerNodes.find(j => j.type === 'join' && findJoinForkPoint(plan, j.id) === pg.id)
     const branchCenterX = join
-      ? (nodeCenterX(positions[pg.id], pg.type) + nodeCenterX(positions[join.id], join.type)) / 2
+      ? (nodeCenterX(positions[pg.id], pg.type, isGatewayType) + nodeCenterX(positions[join.id], join.type, isGatewayType)) / 2
       : layerCenterX(layers.get(branches[0]) ?? 0)
     const centers = distributeCentersAroundSpine(branches.length)
     branches.forEach((id, i) => {
@@ -322,7 +199,7 @@ export function computeAutoLayout(plan: WorkflowPlan): Record<string, WorkflowLa
     const size = measureLoopSize(bodyCount)
     const centered = positionFromCenter(
       layerCenterX(layer),
-      nodeCenterY(positions[loop.id] ?? { x: ORIGIN_X, y: ORIGIN_Y }, 'loop'),
+      nodeCenterY(positions[loop.id] ?? { x: ORIGIN_X, y: ORIGIN_Y }, 'loop', isGatewayType),
       'loop',
       size,
     )
@@ -330,117 +207,6 @@ export function computeAutoLayout(plan: WorkflowPlan): Record<string, WorkflowLa
     Object.assign(positions, layoutLoopBody(plan, loop.id, positions[loop.id]))
   }
   return positions
-}
-
-export function resolveNodePositions(plan: WorkflowPlan): Record<string, WorkflowLayoutPos> {
-  return { ...(plan.layout ?? {}) }
-}
-
-function edgePairsFingerprint(pairs: { from: string; to: string; default?: boolean; condition?: { left?: string; op?: string; right?: string } }[]): string {
-  return JSON.stringify(pairs.map(p =>
-    `${p.from}->${p.to}|${p.default ? 'd' : ''}|${p.condition?.op ?? ''}:${p.condition?.left ?? ''}:${p.condition?.right ?? ''}`,
-  ).sort())
-}
-
-export function planEdgeFingerprint(plan: WorkflowPlan): string {
-  return edgePairsFingerprint(plan.edges ?? [])
-}
-
-export function flowEdgeFingerprint(flowEdges: Edge[]): string {
-  return edgePairsFingerprint(flowEdges.map(e => ({ from: e.source, to: e.target })))
-}
-
-function buildFlowEdges(
-  planEdges: WorkflowPlanEdge[],
-  plan?: WorkflowPlan,
-  positions?: Record<string, WorkflowLayoutPos>,
-): Edge[] {
-  const typeById = new Map((plan?.nodes ?? []).map(n => [n.id, n.type]))
-  const layout = positions ?? (plan ? resolveNodePositions(plan) : null)
-  return planEdges.map(e => ({
-    id: `${e.from}->${e.to}`,
-    source: e.from,
-    target: e.to,
-    type: layout ? edgePathType(e.from, e.to, layout, typeById) : 'smoothstep',
-    selectable: true,
-    focusable: true,
-    interactionWidth: 20,
-  }))
-}
-
-/** 从 plan.edges 生成 Vue Flow 边列表（画布 SSOT 对齐用） */
-export function flowEdgesFromPlan(plan: WorkflowPlan): Edge[] {
-  const planEdges = (plan.edges ?? []).length > 0
-    ? (plan.edges ?? [])
-    : rebuildLinearEdges(plan.nodes ?? [])
-  return buildFlowEdges(planEdges, plan)
-}
-
-function flowNodeDimensions(n: WorkflowPlanNode, pos: WorkflowLayoutPos): { width?: number; height?: number; style?: Record<string, string> } {
-  if (!isLoopType(n.type)) return {}
-  const { w, h } = nodeSize(n.type, pos)
-  return {
-    width: w,
-    height: h,
-    style: { width: `${w}px`, height: `${h}px` },
-  }
-}
-
-export function planToFlowElements(
-  plan: WorkflowPlan,
-  selectedId?: string | null,
-  readOnly?: boolean,
-  issueNodeIds?: Set<string>,
-): { nodes: Node<WorkflowFlowNodeData>[]; edges: Edge[] } {
-  const positions = resolveNodePositions(plan)
-  const planEdges = (plan.edges ?? []).length > 0
-    ? (plan.edges ?? [])
-    : rebuildLinearEdges(plan.nodes ?? [])
-  const nodes: Node<WorkflowFlowNodeData>[] = (plan.nodes ?? []).map(n => {
-    const abs = positions[n.id] ?? { x: ORIGIN_X, y: ORIGIN_Y }
-    let position = { x: abs.x, y: abs.y }
-    if (n.parentId) {
-      const parentAbs = positions[n.parentId] ?? { x: ORIGIN_X, y: ORIGIN_Y }
-      position = {
-        x: Math.max(LOOP_PAD_X, abs.x - parentAbs.x),
-        y: Math.max(LOOP_PAD_TOP, abs.y - parentAbs.y),
-      }
-    }
-    const dims = flowNodeDimensions(n, abs)
-    const flowNode: Node<WorkflowFlowNodeData> = {
-      id: n.id,
-      type: WF_FLOW_NODE_TYPE,
-      position,
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-      data: {
-        label: flowNodeLabel(n),
-        nodeType: n.type,
-        selected: selectedId === n.id,
-        readOnly: !!readOnly,
-        hasValidationIssue: issueNodeIds?.has(n.id) ?? false,
-      },
-      draggable: !readOnly && n.type !== 'start',
-      connectable: !readOnly,
-      selectable: true,
-      deletable: !readOnly && !isProtectedWorkflowNode(n),
-      ...dims,
-    }
-    if (n.parentId) {
-      flowNode.parentNode = n.parentId
-      flowNode.extent = 'parent'
-      flowNode.expandParent = true
-    }
-    return flowNode
-  })
-  // 父节点须先于子节点，便于 Vue Flow 挂载
-  nodes.sort((a, b) => {
-    const ap = a.parentNode ? 1 : 0
-    const bp = b.parentNode ? 1 : 0
-    return ap - bp
-  })
-  const edges = buildFlowEdges(planEdges, plan, positions)
-  return { nodes, edges }
 }
 
 function readFlowNodeSize(n: Node): { width?: number; height?: number } {
@@ -527,22 +293,6 @@ export function addPlanGraphNode(
   return addOuterPlanGraphNode(plan, type, position, resolved)
 }
 
-/** 选中 loop 或其框内节点时，新业务节点应归入该容器 */
-export function resolveLoopParentForAdd(
-  plan: WorkflowPlan,
-  selectedNodeId?: string | null,
-): string | null {
-  if (!selectedNodeId) return null
-  const node = (plan.nodes ?? []).find(n => n.id === selectedNodeId)
-  if (!node) return null
-  if (isLoopType(node.type)) return node.id
-  if (node.parentId) {
-    const parent = (plan.nodes ?? []).find(n => n.id === node.parentId)
-    if (parent && isLoopType(parent.type)) return parent.id
-  }
-  return null
-}
-
 function addOuterPlanGraphNode(
   plan: WorkflowPlan,
   type: WorkflowBusinessNodeType | WorkflowGatewayType,
@@ -574,117 +324,6 @@ function addOuterPlanGraphNode(
   }
   const nodes = [...(plan.nodes ?? []), node]
   const layout = { ...(plan.layout ?? {}), [id]: position }
-  return reconcilePlanDataFlow({ ...plan, nodes, layout })
-}
-
-function addLoopBodyNode(
-  plan: WorkflowPlan,
-  type: WorkflowBusinessNodeType,
-  loopId: string,
-  selectedNodeId: string | null,
-  resolved: ReturnType<typeof resolveNodeDefaults>,
-): WorkflowPlan {
-  const id = nextBusinessNodeId(plan, type)
-  const params: Record<string, unknown> = {
-    ...defaultParamsForType(type),
-    ...buildRetryParams(type, resolved),
-  }
-  if (type === 'rag' || type === 'agent') {
-    params.query = '{{start.userQuery}}'
-    params.context = '{{plan.upstream}}'
-  }
-  const node: WorkflowPlanNode = {
-    id,
-    type,
-    displayName: defaultDisplayName(type),
-    parentId: loopId,
-    params,
-  }
-  const nodes = [...(plan.nodes ?? []), node]
-  const afterId = resolveLoopBodyInsertAfter(plan, loopId, selectedNodeId)
-  const edges = [...(plan.edges ?? [])]
-  if (afterId) {
-    edges.push({ from: afterId, to: id })
-  }
-  const draft = reconcilePlanDataFlow({ ...plan, nodes, edges, layout: { ...(plan.layout ?? {}) } })
-  // 框内追加后按当前 loop 原点重排 body + 撑开尺寸（不重排外图）
-  const positions = resolveNodePositions(draft)
-  const loopPos = positions[loopId] ?? { x: ORIGIN_X, y: ORIGIN_Y }
-  const bodyLayout = layoutLoopBody(draft, loopId, loopPos)
-  const size = measureLoopSize(orderLoopBody(draft, loopId).length)
-  const layout: Record<string, WorkflowLayoutPos> = {
-    ...positions,
-    ...bodyLayout,
-    [loopId]: { ...loopPos, width: size.width, height: size.height },
-  }
-  return reconcilePlanDataFlow({ ...draft, layout })
-}
-
-/** 在框内线性链尾（或选中的框内节点后）插入 */
-function resolveLoopBodyInsertAfter(
-  plan: WorkflowPlan,
-  loopId: string,
-  selectedNodeId: string | null,
-): string | null {
-  const bodyIds = new Set(
-    (plan.nodes ?? []).filter(n => n.parentId === loopId).map(n => n.id),
-  )
-  if (bodyIds.size === 0) return null
-  if (selectedNodeId && bodyIds.has(selectedNodeId)) return selectedNodeId
-  const outs = new Map<string, string[]>()
-  for (const id of bodyIds) outs.set(id, [])
-  for (const e of plan.edges ?? []) {
-    if (bodyIds.has(e.from) && bodyIds.has(e.to)) {
-      outs.get(e.from)!.push(e.to)
-    }
-  }
-  const tails = [...bodyIds].filter(id => (outs.get(id) ?? []).length === 0)
-  return tails[0] ?? [...bodyIds][0] ?? null
-}
-
-function addLoopContainer(
-  plan: WorkflowPlan,
-  position: { x: number; y: number },
-  resolved: ReturnType<typeof resolveNodeDefaults>,
-): WorkflowPlan {
-  const used = new Set((plan.nodes ?? []).map(n => n.id))
-  let id = `loop-${Math.random().toString(16).slice(2, 10)}`
-  while (used.has(id)) {
-    id = `loop-${Math.random().toString(16).slice(2, 10)}`
-  }
-  const bodyId = nextBusinessNodeId(plan, 'rag')
-  const loopNode: WorkflowPlanNode = {
-    id,
-    type: 'loop',
-    displayName: '循环',
-    params: {
-      ...buildRetryParams('loop', resolved),
-      'condition.left': '{{start.userQuery}}',
-      'condition.op': 'contains',
-      'condition.right': '',
-      maxIterations: '3',
-      onMaxIterations: 'fail_fast',
-    },
-  }
-  const bodyNode: WorkflowPlanNode = {
-    id: bodyId,
-    type: 'rag',
-    displayName: defaultDisplayName('rag'),
-    parentId: id,
-    params: {
-      ...defaultParamsForType('rag'),
-      ...buildRetryParams('rag', resolved),
-      query: '{{start.userQuery}}',
-      context: '{{plan.upstream}}',
-    },
-  }
-  const nodes = [...(plan.nodes ?? []), loopNode, bodyNode]
-  const size = measureLoopSize(1)
-  const layout = {
-    ...(plan.layout ?? {}),
-    [id]: { ...position, width: size.width, height: size.height },
-    [bodyId]: { x: position.x + LOOP_PAD_X, y: position.y + LOOP_PAD_TOP },
-  }
   return reconcilePlanDataFlow({ ...plan, nodes, layout })
 }
 
@@ -734,13 +373,16 @@ export function addParallelBranchPlan(
   if (!forkId) {
     return { ok: false, reason: '无法识别并行分叉点，请检查 Join 上游连线' }
   }
+  if (!nodeDefaults) {
+    return { ok: false, reason: '节点默认策略未加载，请刷新页面后重试' }
+  }
   const positions = resolveNodePositions(plan)
   const typeById = new Map((plan.nodes ?? []).map(n => [n.id, n.type]))
   const branchIds = (plan.edges ?? []).filter(e => e.from === forkId).map(e => e.to)
   const branchCenters = branchIds.map(id => handleCenterY(id, positions, typeById))
   const newCenter = (branchCenters.length ? Math.max(...branchCenters) : SPINE_HANDLE_Y) + Y_GAP
-  const branchCenterX = (nodeCenterX(positions[forkId], typeById.get(forkId))
-    + nodeCenterX(positions[joinNode.id], joinNode.type)) / 2
+  const branchCenterX = (nodeCenterX(positions[forkId], typeById.get(forkId), isGatewayType)
+    + nodeCenterX(positions[joinNode.id], joinNode.type, isGatewayType)) / 2
   const { x, y } = positionFromCenter(branchCenterX, newCenter, 'rag')
   const withNode = addPlanGraphNode(plan, 'rag', { x, y }, nodeDefaults)
   const added = (withNode.nodes ?? []).find(

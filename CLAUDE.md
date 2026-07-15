@@ -62,7 +62,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 |--------|--------|
 | 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册（metadata `sunshine.tool-app=true`）→ `/tools` 启用 → 加入 ReAct 工具集；Workflow 节点 `params.tool` 填 **Catalog ID**（`sdk__{app}__{name}`）；**禁止** tool-manager 新增编译期 `ToolHandler` |
 | 新 Workflow | **4.13**：`/workflows` + `workflow-manager` DB（**唯一 SSOT**，废弃 Nacos workflow）；MySQL init 种子 **7 标杆**（`13-sunshine-workflow-manager.sql`，含 `knowledge-branch` / `knowledge-loop`）；orchestrator `WorkflowManagerClient` |
-| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanDagGraph`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
+| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanExecutionCanvas`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
 | **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；重试策略 SSOT **`execution_mode_policy`**（tool-manager DB，`/tools` Planner Workflow Tab）；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
@@ -114,7 +114,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 
 **Timeline V2 约定**：步骤含 `lifecycle` + `summary.{before,active,after}`；SSE 仅下发当前阶段一行。终态 COMPLETE/FAIL/SKIP **必须下发**。
 
-**前端**：`OperationStack` / `PlanDagGraph` / `PlanNodeDrawer` / `PlanApprovalActions`；时间线主行用 `step.label` + `resolveStepHeaderText`；**Plan 用户确认**折叠框与 HITL/Recovery 同组件；重新生成 **仅图区** loading、确认行「正在重新生成」、放大钮右上角且重生成中隐藏；DAG pending **等待中**；**勿**维护本地步骤话术 Map；**勿**对模型输出做截断/去重兜底（不对改 Nacos 提示词）。
+**前端**：`OperationStack` / `PlanExecutionCanvas` / `PlanNodeDrawer` / `PlanApprovalActions`；时间线主行用 `step.label` + `resolveStepHeaderText`；**Plan 用户确认**折叠框与 HITL/Recovery 同组件；重新生成 **仅图区** loading、确认行「正在重新生成」、放大钮右上角且重生成中隐藏；DAG pending **等待中**；**勿**维护本地步骤话术 Map；**勿**对模型输出做截断/去重兜底（不对改 Nacos 提示词）。
 
 ## 关键约定
 
@@ -149,7 +149,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 页面、卡片、composer、输入框 | `--sun-black` 底 + `1px var(--sun-border)`；focus 无 shadow |
 | 块头栏、Plan 确认框、预览顶栏 | `transparent` 底，保边框 |
 | 下拉选中 | 对号 **18px**、无灰底；compact 宽 **304px**、说明不换行（见 `ExecutionModeSelector` / `TenantSelector`） |
-| 卡片/DAG 选中 | 内描边或 ring，hover 仅改边框（见 `SkillsView` / `PlanDagGraph`） |
+| 卡片/DAG 选中 | 内描边或 ring，hover 仅改边框（见 `SkillsView` / `PlanExecutionCanvas`） |
 | 文件树选中 | active 背景 transparent + 文字加粗 |
 | 代码/Mermaid | `--smd-block-bg` = 正文色；hljs/Mermaid 主题走 `useTheme` / `mermaidConfig`（`theme: 'base'`）；复制用 `stream-markdown/clipboard.ts` |
 

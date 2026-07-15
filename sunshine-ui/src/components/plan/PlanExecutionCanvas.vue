@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * Chat / Plan 执行态只读 DAG：与 Studio 共用 layout + 节点组件，叠加 SSE 状态。
+ * Chat / Plan 执行态只读 DAG：与 Studio 共用 workflowFlowProjection + WorkflowFlowNode，叠加 SSE 状态。
+ * 禁止引入 workflowDagLayout 编辑 API（merge/add/autoLayout）或 WorkflowDagEditor。
  */
 import { markRaw, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { VueFlow, type Node, type VueFlowStore } from '@vue-flow/core'
@@ -11,7 +12,7 @@ import WorkflowFlowNode from '../workflows/WorkflowFlowNode.vue'
 import type { PlanGraph } from '../../api/executionPlans'
 import type { DagNodeView } from '../../utils/planGraph'
 import { buildExecutionFlowElements, applyExecOverlay } from '../../utils/planExecutionCanvas'
-import { WF_FLOW_NODE_TYPE, WF_FIT_VIEW_OPTS, type WorkflowFlowNodeData } from '../../utils/workflowDagLayout'
+import { WF_FLOW_NODE_TYPE, WF_FIT_VIEW_OPTS, type WorkflowFlowNodeData } from '../../utils/workflowFlowProjection'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 
 const props = defineProps<{

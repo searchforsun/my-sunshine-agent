@@ -64,10 +64,12 @@ flowchart TB
 | 现有组件 | Studio 中的角色 |
 |----------|----------------|
 | `PlanJson` / `PlanNode` / `PlanEdge` | DB 存储 schema |
-| `PlanValidator.validate()` | 发布前校验 |
+| **`WorkflowPlanValidator`（workflow-manager）** | Studio 发布 / 导入预检 SSOT |
+| `PlanValidator`（orchestrator） | **仅** Plan-workflow Planner 输出校验（与 Studio 发布无关） |
 | `PlanMaterializer.materialize()` | 执行时 PlanJson → `WorkflowDefinition` |
 | `StaticPlanAdapter.from()` | 执行实例落库 `execution_plan` |
-| `PlanDagGraph.vue` | 只读预览 + **编辑态缩略图** |
+| `PlanExecutionCanvas.vue` | Chat / Plan 只读执行图（`workflowFlowProjection` + `WorkflowFlowNode`） |
+| `WorkflowDagEditor.vue` | Studio 可编辑画布 |
 | `PlanWorkflowPanel.vue` | Chat 内 DAG 展示（不变） |
 
 ### 2.2 废弃组件（4.13 移除）
@@ -193,7 +195,7 @@ DB 存 **可执行完整 Plan**（含 `start` + 业务节点 + `answer`）。Stu
 
 ### 6.1 workflow-manager (:8230)
 
-CRUD · 发布 · 可选 import · `GET /api/workflows/catalog` · `GET /api/workflows/{id}/published` · PlanValidator 预检。
+CRUD · 发布 · 可选 import · `GET /api/workflows/catalog` · `GET /api/workflows/{id}/published` · **`WorkflowPlanValidator` 预检**。
 
 发布时 Redis `workflow-catalog-changed`（对称 `tool-catalog-changed`）。
 
@@ -202,8 +204,9 @@ CRUD · 发布 · 可选 import · `GET /api/workflows/catalog` · `GET /api/wor
 - **`WorkflowManagerClient`**：HTTP 拉 catalog + published PlanJson → `PlanMaterializer` → `WorkflowDefinition`
 - **`WorkflowCatalogService`**：缓存 catalog；供 `#` 解析、L3 `{{workflow-catalog}}`、`WorkflowCatalog.sanitize`
 - **`WorkflowBindingParser` + `WorkflowBindingRoutingPolicy`**：L0 `#`
-- **移除** `WorkflowProperties`、`WorkflowDefinitionLoader`（Nacos 版）
-- **`NodeRetryPolicyResolver`**：DB workflow 启用与 plan-workflow 相同的节点 `retry.*` + `execution_mode_policy`（去掉 `planWorkflow=false` 时 `noRetry` 硬编码）
+- **`WorkflowDefinitionLoader`**：读 workflow-manager published（**非** Nacos；类名保留）
+- **节点 type SSOT**：`com.sunshine.common.workflow.WorkflowNodeType`
+- **`NodeRetryPolicyResolver`**：DB workflow 启用与 plan-workflow 相同的节点 `retry.*` + `execution_mode_policy`
 
 执行路径不变：`WORKFLOW` → `WorkflowExecutor` → `StaticPlanAdapter` → `execution_plan` 落库。
 
@@ -216,14 +219,14 @@ CRUD · 发布 · 可选 import · `GET /api/workflows/catalog` · `GET /api/wor
 | GET | `/api/workflows` | Studio 列表 |
 | POST | `/api/workflows` | 新建 |
 | PUT | `/api/workflows/{id}/draft` | 保存草稿 |
-| POST | `/api/workflows/{id}/publish` | PlanValidator → published |
+| POST | `/api/workflows/{id}/publish` | **WorkflowPlanValidator** → published |
 | POST | `/api/workflows/import` | JSON 导入（运维迁移，非必需） |
 
 ---
 
 ## 7. 前端 Workflow Studio（`/workflows`）
 
-类 Dify / 对称 `/skills`：左列表 + 中画布（`@vue-flow/core` 拖拽）+ 右节点属性面板。视觉与 Chat `PlanDagGraph` / `PlanNodeDrawer` 对齐（`--sun-black` + 边框分区）。
+类 Dify / 对称 `/skills`：左列表 + 中画布（`@vue-flow/core` 拖拽）+ 右节点属性面板。视觉与 Chat `PlanExecutionCanvas` / `PlanNodeDrawer` 对齐（`--sun-black` + 边框分区）。
 
 ### 7.1 MVP 节点类型（线性 DAG）
 

@@ -23,6 +23,14 @@
 |----|--------|------|------|------|
 | _（空）_ | — | — | — | Backlog 已空 |
 
+**2026-07-15 续轮 3 已消化**：TD-104（抽 `workflowFlowProjection`；Chat 仅依赖投影；删孤儿 `PlanDagGraph` / `buildPreviewDagNodes`）。
+
+**2026-07-15 续轮 2 已消化**：TD-100（`WorkflowAdminSupport` + `WorkflowPackageService`；`workflowDagLayoutMetrics` / `workflowLoopLayout`；`workflowFlowNodeVisual` + PropsAside exclusive）。
+
+**2026-07-15 续轮已消化**：TD-098（删 FE `FALLBACK_NODE_DEFAULTS` + orch 误导性 code fallback 日志）；TD-100 部分（`WorkflowExclusiveEdgesSection`）；TD-102（历史 orchestration 文档 SUPERSEDED）。
+
+**2026-07-15 Workflow Studio 本轮已消化**：TD-095（`useWorkflowsPage` → import/lifecycle）；TD-096（本地零延迟 + 服务端发布权威契约澄清）；TD-097（`WorkflowNodeType` → `sunshine-common`）；TD-099（删 `WorkflowPlanValidator.validate` 兼容门面）；TD-101（详设 PlanValidator/Loader 文案对齐）；TD-103（过时 sunshine-workflows 注释随枚举迁移消除）。
+
 **2026-07-11 本轮已消化**：TD-077/078/081/083/084/085/087（工具集语义）；**TD-091/092/093**（legacy API、description 校验、死 CSS）；**TD-082/086/080/094**（sourceRef Catalog、Client 合并、ToolsView 拆分、孤儿 API）；**TD-088**（`ToolCatalogEntry` SSOT + BFF catalog 类型化）；**TD-089–090**（Admin DTO 迁至 `sunshine-common`、BFF 全量类型化）；**TD-080**（抽 `useMcpServerActions`，`useToolsPage` 369 行）。
 
 ### 文档债
@@ -135,6 +143,16 @@
 | TD-089 | 2026-07-11 | Admin DTO（SDK/MCP/工具集）迁至 `sunshine-common`；tool-manager 删本地 `dto/` |
 | TD-090 | 2026-07-11 | BFF `ToolsAdminController`/`ToolManagerAdminClient` 全量 `Mono<R<T>>` 类型化 |
 | TD-094 | 2026-07-11 | 删 `loadToolEnabledMap` / `ToolSetConfig` 孤儿 API |
+| TD-095 | 2026-07-15 | 拆 `useWorkflowsPage` → import + lifecycle（1381→913） |
+| TD-096 | 2026-07-15 | Studio 校验：本地零延迟 + 服务端 WorkflowPlanValidator 权威 |
+| TD-097 | 2026-07-15 | `WorkflowNodeType` SSOT 迁 sunshine-common |
+| TD-099 | 2026-07-15 | 删 `WorkflowPlanValidator.validate()` 兼容门面 |
+| TD-101 | 2026-07-15 | 详设对齐发布校验器 / DB Loader |
+| TD-103 | 2026-07-15 | 随枚举迁移消除 sunshine-workflows 过时注释 |
+| TD-098 | 2026-07-15 | 删 FE 节点默认静默兜底；orch fetch 失败保留上一份策略 |
+| TD-100 | 2026-07-15 | Studio 大文件拆分：Admin Package/Support；layout metrics/loop；FlowNode visual；ExclusiveEdges |
+| TD-102 | 2026-07-15 | 历史 orchestration 文档加 SUPERSEDED（Nacos workflow） |
+| TD-104 | 2026-07-15 | Chat/Studio 画布边界：`workflowFlowProjection` 只读投影；删孤儿 PlanDagGraph / previewNodes |
 
 ### 文档债（DOC）
 

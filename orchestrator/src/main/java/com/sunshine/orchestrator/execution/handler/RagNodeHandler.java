@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.client.RagContextFormatter;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
-import com.sunshine.orchestrator.execution.WorkflowNodeType;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.rag.RagSearch;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;

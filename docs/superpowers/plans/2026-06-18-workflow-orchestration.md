@@ -1,10 +1,12 @@
 # Workflow 编排架构 Implementation Plan
 
+> **⚠️ SUPERSEDED（2026-07-15）**：实施结果与现行 SSOT 见 [2026-07-11-workflow-studio.md](./2026-07-11-workflow-studio.md) / [docs/workflow/README.md](../../workflow/README.md)。下文 `sunshine-workflows.yaml` **已废弃**，勿再执行。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 orchestrator 从硬编码 intent 分支重构为 `simple-llm | workflow | react` 三模式执行架构，引入简化 Dify Workflow 引擎与 Agent 子节点，实现高扩展与清晰分层。
 
-**Architecture:** L1 `IntentRouter` + `WorkflowCatalog` 输出 `ExecutionPlan` JSON；L2 `ExecutionDispatcher` 分发至三个 Executor；workflow 模式由 `WorkflowExecutor` 线性执行 `NodeHandler` 链；Agent 节点包装现有 `SunshineAgent` 为 `f(input)→output` 子函数。配置 SSOT 在 `docs/nacos/sunshine-workflows.yaml`。
+**Architecture:** L1 `IntentRouter` + `WorkflowCatalog` 输出 `ExecutionPlan` JSON；L2 `ExecutionDispatcher` 分发至三个 Executor；workflow 模式由 `WorkflowExecutor` 线性执行 `NodeHandler` 链；Agent 节点包装现有 `SunshineAgent` 为 `f(input)→output` 子函数。配置 SSOT 在 `docs/nacos/sunshine-workflows.yaml`（**历史**；现为 workflow-manager DB）。
 
 **Tech Stack:** JDK 21, Spring Boot 3.2.9, AgentScope-Java 1.0.7 ReActAgent, WebFlux SSE, Nacos YAML, Flyway, JUnit5 + Mockito + AssertJ
 

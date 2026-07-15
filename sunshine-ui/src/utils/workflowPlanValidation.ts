@@ -148,7 +148,7 @@ export function extractValidationIssueNodeIds(issues: string[]): Set<string> {
   return ids
 }
 
-/** Studio 画布内快速拓扑提示（发布仍以服务端 PlanValidator 为准） */
+/** Studio 画布零延迟拓扑提示（连线/并行/exclusive/loop）；发布权威为服务端 WorkflowPlanValidator */
 export function validatePlanTopologyLocally(plan: WorkflowPlan): string[] {
   const issues: string[] = []
   const nodes = plan.nodes ?? []

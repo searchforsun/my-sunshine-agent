@@ -12,7 +12,6 @@ import {
   readRetryBackoffMs,
   readRetryMaxAttempts,
   readRetryOnFailure,
-  resolveNodeDefaults,
 } from '../../utils/workflowNodeParams'
 import { workflowRetryFieldHelp } from './workflowFieldHelp'
 
@@ -31,12 +30,12 @@ function emitPatch(patch: Record<string, string | number | null | undefined>) {
   emit('update:params', patchNodeParams(props.params, patch))
 }
 
-/** 展示用默认值未写入 params 时，选中节点即物化到 plan */
+/** 展示用默认值未写入 params 时，选中节点即物化到 plan（须已加载 node-defaults） */
 onMounted(() => {
-  if (props.readOnly || hasRetryParams(props.params)) return
+  if (props.readOnly || hasRetryParams(props.params) || !props.nodeDefaults) return
   emit('update:params', {
     ...(props.params ?? {}),
-    ...buildRetryParams(props.nodeType, resolveNodeDefaults(props.nodeDefaults)),
+    ...buildRetryParams(props.nodeType, props.nodeDefaults),
   })
 })
 </script>

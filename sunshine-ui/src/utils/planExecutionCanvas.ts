@@ -6,8 +6,9 @@ import { resolveRetryBadgeCount } from './planGraph'
 import {
   planToFlowElements,
   type WorkflowFlowNodeData,
-} from './workflowDagLayout'
+} from './workflowFlowProjection'
 
+/** Chat 执行态只读投影：PlanGraph → Vue Flow；勿从 workflowDagLayout 引入编辑 API。 */
 export function planGraphToWorkflowPlan(graph: PlanGraph): WorkflowPlan {
   return {
     planId: graph.planId ?? null,

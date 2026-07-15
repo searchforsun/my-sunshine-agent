@@ -2,6 +2,7 @@ package com.sunshine.workflow.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -17,31 +18,22 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** PlanJson 结构 + DAG 拓扑 + 节点间数据流校验 */
+/** PlanJson 结构 + DAG 拓扑 + 节点间数据流校验（Studio 发布 SSOT） */
 @Component
 public class WorkflowPlanValidator {
 
-    private static final Set<String> EXEC_TYPES = Set.of(
-            "start", "rag", "tool", "agent", "answer", "llm", "join",
-            "parallel-gateway", "exclusive-gateway", "loop");
-    private static final Set<String> BUSINESS_TYPES = Set.of("rag", "tool", "agent", "llm");
-    /** 无业务输出的路由节点（不可作为 {{node.output}} 引用源） */
-    private static final Set<String> ROUTING_ONLY_TYPES = Set.of("parallel-gateway", "exclusive-gateway");
-    private static final Set<String> LOOP_BODY_TYPES = Set.of("rag", "tool", "agent");
+    private static final Set<String> STUDIO_TYPES = WorkflowNodeType.studioTypeIds();
+    private static final Set<String> BUSINESS_TYPES = WorkflowNodeType.businessTypeIds();
+    private static final Set<String> ROUTING_ONLY_TYPES = WorkflowNodeType.routingOnlyTypeIds();
+    private static final Set<String> LOOP_BODY_TYPES = WorkflowNodeType.loopBodyTypeIds();
+    private static final Set<String> OUTPUT_TYPES = WorkflowNodeType.outputTypeIds();
     private static final Set<String> ON_MAX_ITERATIONS = Set.of("fail_fast", "exit", "fallback_react");
-    private static final Set<String> OUTPUT_TYPES = Set.of("rag", "tool", "join", "llm", "agent", "loop");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z0-9_.-]+)}}");
 
     private final ObjectMapper objectMapper;
 
     public WorkflowPlanValidator(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-    }
-
-    /** 兼容旧调用：返回首条错误或 null */
-    public String validate(Map<String, Object> plan) {
-        WorkflowPlanValidationResult result = validateDetailed(plan);
-        return result.firstIssue();
     }
 
     public WorkflowPlanValidationResult validateDetailed(Map<String, Object> plan) {
@@ -74,7 +66,7 @@ public class WorkflowPlanValidator {
                 }
                 nodeById.put(id, node);
                 types.put(id, type);
-                if (!EXEC_TYPES.contains(type)) {
+                if (!STUDIO_TYPES.contains(type)) {
                     result.add("非法节点类型: " + type + "（节点 " + id + "）");
                 }
                 if ("start".equals(type)) {

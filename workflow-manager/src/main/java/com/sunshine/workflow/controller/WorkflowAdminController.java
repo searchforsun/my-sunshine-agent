@@ -15,6 +15,7 @@ import com.sunshine.workflow.dto.WorkflowUpdateRequest;
 import com.sunshine.workflow.dto.WorkflowVersionItem;
 import com.sunshine.workflow.service.WorkflowAdminService;
 import com.sunshine.workflow.service.WorkflowNodeDefaultsService;
+import com.sunshine.workflow.service.WorkflowPackageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,6 +37,7 @@ import java.util.Map;
 public class WorkflowAdminController {
 
     private final WorkflowAdminService adminService;
+    private final WorkflowPackageService packageService;
     private final WorkflowNodeDefaultsService nodeDefaultsService;
 
     @GetMapping("/node-defaults")
@@ -89,7 +91,7 @@ public class WorkflowAdminController {
             @PathVariable String id,
             @PathVariable int version,
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId) {
-        return R.ok(adminService.exportPackage(id, tenantId, version));
+        return R.ok(packageService.exportPackage(id, tenantId, version));
     }
 
     @PostMapping
@@ -142,14 +144,14 @@ public class WorkflowAdminController {
             @PathVariable String id,
             @PathVariable int version,
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId) {
-        return R.ok(adminService.forkVersion(id, tenantId, version));
+        return R.ok(packageService.forkVersion(id, tenantId, version));
     }
 
     @PostMapping("/import")
     public R<WorkflowListItem> importPackage(
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @RequestBody Map<String, Object> body) {
-        return R.ok(adminService.importPackage(tenantId, body));
+        return R.ok(packageService.importPackage(tenantId, body));
     }
 
     @DeleteMapping("/{id}")

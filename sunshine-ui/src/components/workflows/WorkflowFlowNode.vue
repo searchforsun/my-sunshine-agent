@@ -4,9 +4,9 @@ import { Handle, Position } from '@vue-flow/core'
 import { NodeResizer } from '@vue-flow/node-resizer'
 import '@vue-flow/node-resizer/dist/style.css'
 import PlanNodeIcon from '../plan/PlanNodeIcon.vue'
-import { formatDuration } from '../../api/processingSteps'
 import { isGatewayType, isLoopType } from '../../utils/workflowGateway'
-import type { WorkflowFlowNodeData } from '../../utils/workflowDagLayout'
+import type { WorkflowFlowNodeData } from '../../utils/workflowFlowProjection'
+import { resolveExecStatusText, resolveExecVisualClasses } from '../../utils/workflowFlowNodeVisual'
 
 const props = defineProps<{
   data: WorkflowFlowNodeData
@@ -25,50 +25,8 @@ const showLoopResizer = computed(
   () => isLoop.value && (props.selected || props.data.selected) && !props.data.readOnly,
 )
 
-const execStatusText = computed(() => {
-  const st = exec.value
-  if (!st?.status) return ''
-  if (st.status === 'awaiting_confirm') return '待确认'
-  if (st.status === 'paused') return '暂停'
-  if (st.status === 'terminated') return '已终止'
-  if (st.status === 'skipped') return '已跳过'
-  if (st.status === 'pending' && nodeType.value !== 'start') return '等待中'
-  if (st.status === 'error' && st.live && st.recoveryAwaiting) return '发生错误'
-  if (st.durationMs != null) return formatDuration(st.durationMs)
-  if (st.live && st.status === 'running') return '进行中'
-  return ''
-})
-
-/** 执行态节点：与 PlanDagGraph 同套状态色（边框 + 浅底） */
-const execVisualClasses = computed(() => {
-  const st = exec.value
-  if (!st?.status) return {}
-  const live = !!st.live
-  const status = st.status
-  const out: Record<string, boolean> = { 'has-exec-state': true }
-  if (status === 'running') {
-    out['is-running'] = true
-    if (live) out['is-live'] = true
-  } else if (status === 'done') {
-    out['is-done'] = true
-  } else if (status === 'error') {
-    out['is-error'] = true
-    if (live && st.recoveryAwaiting) out['is-live-recovery'] = true
-  } else if (status === 'pending') {
-    out['is-pending'] = true
-  } else if (status === 'skipped') {
-    out['is-skipped'] = true
-  } else if (status === 'terminated') {
-    out['is-terminated'] = true
-  } else if (status === 'awaiting_confirm') {
-    out['is-awaiting-confirm'] = true
-    if (live) out['is-awaiting-breathe'] = true
-  } else if (status === 'paused') {
-    out['is-paused'] = true
-    if (live) out['is-paused-breathe'] = true
-  }
-  return out
-})
+const execStatusText = computed(() => resolveExecStatusText(exec.value, nodeType.value))
+const execVisualClasses = computed(() => resolveExecVisualClasses(exec.value))
 </script>
 
 <template>
@@ -481,7 +439,7 @@ const execVisualClasses = computed(() => {
   border-color: var(--sun-blue, #58a6ff);
 }
 
-/* —— 执行态：与 PlanDagGraph 对齐的状态色（2px 边框 + 同色系浅底） —— */
+/* —— 执行态：与 PlanExecutionCanvas 对齐的状态色（2px 边框 + 同色系浅底） —— */
 .wf-flow-node.has-exec-state,
 .wf-gateway-shell.has-exec-state .wf-gateway-diamond {
   border-width: 2px;

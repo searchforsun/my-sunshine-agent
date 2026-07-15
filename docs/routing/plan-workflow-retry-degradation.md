@@ -134,7 +134,7 @@
 | API | `POST /api/chat/confirm-plan`（`approve` / `regenerate` + 可选 `hint`） |
 | SSE | `metadata.planApproval`（`token`、`rounds`、`planGraph`）；`summary.active` 重新规划文案 |
 | 前端 | `PlanApprovalActions` + `CollapsibleConfirmPanel`；多轮折叠历史 |
-| 重新生成 UX | 仅 `PlanDagGraph` loading；确认行「正在重新生成」；放大钮隐藏 |
+| 重新生成 UX | 仅 `PlanExecutionCanvas` loading；确认行「正在重新生成」；放大钮隐藏 |
 | DAG 文案 | 业务 pending → **等待中**；开始抽屉不跟 plan 步「执行中」 |
 
 ### 8.1 用户确认（Live）

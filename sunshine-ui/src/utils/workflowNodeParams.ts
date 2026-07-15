@@ -1,32 +1,15 @@
-/** 节点 params 执行策略读写 — SSOT 默认值来自 workflow-manager Nacos */
+/** 节点 params 执行策略读写 — SSOT 默认值来自 workflow-manager `/node-defaults`（禁止本地镜像兜底） */
 
 import type { WorkflowNodeDefaultsResponse, WorkflowPlan } from '../api/workflows'
 
-/** API 不可用时的客户端兜底（与 sunshine-workflow-manager.yaml 对齐） */
-export const FALLBACK_NODE_DEFAULTS: WorkflowNodeDefaultsResponse = {
-  defaults: { maxAttempts: 2, backoffMs: 500, onFailure: 'continue' },
-  byType: {
-    rag: { maxAttempts: 1, backoffMs: 500, onFailure: 'continue' },
-    tool: { maxAttempts: 2, backoffMs: 500, onFailure: 'continue' },
-    agent: { maxAttempts: 1, backoffMs: 500, onFailure: 'continue' },
-    answer: { maxAttempts: 2, backoffMs: 500, onFailure: 'fail_fast' },
-    join: { maxAttempts: 2, backoffMs: 500, onFailure: 'continue' },
-    'parallel-gateway': { maxAttempts: 1, backoffMs: 500, onFailure: 'continue' },
-    'exclusive-gateway': { maxAttempts: 1, backoffMs: 500, onFailure: 'continue' },
-    loop: { maxAttempts: 1, backoffMs: 500, onFailure: 'fail_fast' },
-    llm: { maxAttempts: 2, backoffMs: 500, onFailure: 'continue' },
-  },
-  catalog: { intentAfter: '{query}将按「{displayName}」流程处理' },
-  nodeParams: {
-    rag: { topK: 3, kbIdEmptyLabel: '（会话默认）' },
-    agent: { maxIters: 8, kbIdEmptyLabel: '（会话默认）' },
-  },
-}
-
+/** 必须已从服务端加载；未加载时抛错，禁止静默第二份默认值 */
 export function resolveNodeDefaults(
   defaults: WorkflowNodeDefaultsResponse | null | undefined,
 ): WorkflowNodeDefaultsResponse {
-  return defaults ?? FALLBACK_NODE_DEFAULTS
+  if (!defaults) {
+    throw new Error('节点默认策略未加载，请刷新页面后重试')
+  }
+  return defaults
 }
 
 export const RETRY_PARAM_KEYS = {
@@ -94,13 +77,13 @@ export function ensurePlanRetryDefaults(
   return { ...plan, nodes }
 }
 
-/** 补齐执行策略与节点参数默认值（加载/校验/保存前统一调用） */
+/** 补齐执行策略与节点参数默认值；defaults 未加载时原样返回（不静默兜底） */
 export function applyPlanDefaults(
   plan: WorkflowPlan,
   defaults?: WorkflowNodeDefaultsResponse | null,
 ): WorkflowPlan {
-  const resolved = resolveNodeDefaults(defaults)
-  return ensurePlanNodeParamDefaults(ensurePlanRetryDefaults(plan, resolved), resolved)
+  if (!defaults) return plan
+  return ensurePlanNodeParamDefaults(ensurePlanRetryDefaults(plan, defaults), defaults)
 }
 
 export function ensurePlanNodeParamDefaults(

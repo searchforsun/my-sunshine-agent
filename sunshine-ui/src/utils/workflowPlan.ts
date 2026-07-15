@@ -1,10 +1,8 @@
-import type { PlanGraph, PlanGraphNode } from '../api/executionPlans'
-import { formatPlanNodeType } from '../api/executionPlans'
 import type { WorkflowPlan, WorkflowPlanNode, WorkflowNodeDefaultsResponse } from '../api/workflows'
-import { buildRetryParams, readRetryMaxAttempts, resolveNodeDefaults } from './workflowNodeParams'
-import { fullDagOrder, type DagNodeView } from './planGraph'
+import { buildRetryParams, resolveNodeDefaults } from './workflowNodeParams'
 import { isGatewayType } from './workflowGateway'
 
+/** Studio 可添加的业务节点 type — 与 sunshine-common WorkflowNodeType.plannerTypeIds / loopBodyTypeIds 对齐 */
 export const WORKFLOW_NODE_TYPES = ['rag', 'tool', 'agent'] as const
 export type WorkflowBusinessNodeType = (typeof WORKFLOW_NODE_TYPES)[number]
 
@@ -733,34 +731,4 @@ export function buildCatalogMeta(
   const intent = intentAfter?.trim()
   if (intent) meta.intentAfter = intent
   return meta
-}
-
-export function buildPreviewDagNodes(plan: WorkflowPlan): DagNodeView[] {
-  const graph: PlanGraph = {
-    nodes: plan.nodes as PlanGraphNode[],
-    edges: plan.edges,
-  }
-  const order = fullDagOrder(graph)
-  const byId = new Map((plan.nodes ?? []).map(n => [n.id, n]))
-  return order.flatMap(id => {
-    if (id === 'start') {
-      return [{
-        id: 'start',
-        type: 'start',
-        label: '开始',
-        status: 'pending' as const,
-      }]
-    }
-    const node = byId.get(id)
-    if (!node) return []
-    const params = node.params as Record<string, unknown> | undefined
-    const retryMax = readRetryMaxAttempts(params, node.type)
-    return [{
-      id: node.id,
-      type: node.type,
-      label: node.displayName?.trim() || formatPlanNodeType(node.type),
-      status: 'pending' as const,
-      retryMaxAttempts: retryMax > 1 ? retryMax : undefined,
-    }]
-  })
 }

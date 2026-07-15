@@ -10,12 +10,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 缓存 workflow-manager 节点执行默认策略（Nacos sunshine-workflow-manager.yaml） */
+/** 缓存 workflow-manager 节点执行默认策略（Nacos sunshine-workflow-manager.yaml via HTTP） */
 @Slf4j
 @Component
 public class WorkflowNodeDefaultsRegistry {
 
+    /** 冷启动占位；首次 refresh 成功后以服务端为准，失败时保留上一份（禁止反复静默回 platformDefault） */
     private volatile PlanWorkflowExecutionPolicy policy = PlanWorkflowExecutionPolicy.platformDefault();
+    private volatile boolean loadedFromServer;
 
     private final WorkflowManagerClient workflowManagerClient;
 
@@ -32,14 +34,21 @@ public class WorkflowNodeDefaultsRegistry {
         return policy;
     }
 
+    public boolean loadedFromServer() {
+        return loadedFromServer;
+    }
+
     public void refresh() {
         try {
             WorkflowManagerClient.WorkflowNodeDefaultsDto dto = workflowManagerClient.fetchNodeDefaults();
             if (dto != null) {
                 policy = toPolicy(dto);
+                loadedFromServer = true;
+            } else if (!loadedFromServer) {
+                log.warn("[WorkflowNodeDefaultsRegistry] fetch returned null; keeping cold-start policy");
             }
         } catch (Exception e) {
-            log.warn("[WorkflowNodeDefaultsRegistry] fetch failed, using code fallback: {}", e.getMessage());
+            log.warn("[WorkflowNodeDefaultsRegistry] fetch failed, keeping previous policy: {}", e.getMessage());
         }
     }
 

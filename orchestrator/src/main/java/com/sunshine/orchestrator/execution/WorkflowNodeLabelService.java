@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.common.workflow.WorkflowNodeType;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import jakarta.annotation.PostConstruct;
