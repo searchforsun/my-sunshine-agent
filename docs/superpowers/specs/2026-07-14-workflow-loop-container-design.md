@@ -1,6 +1,6 @@
 # Workflow Loop 容器节点设计
 
-> **状态**：已确认 · 引擎 + Studio + 种子 `knowledge-loop` + Live `--suite loop`  
+> **状态**：✅ **已落地收口** · 引擎 + Studio + 种子 `knowledge-loop` + Live `--suite loop`  
 > **日期**：2026-07-14  
 > **依赖**：4.13 Studio · exclusive-gateway 边条件算子 · Vue Flow 画布
 > **计划**：`docs/superpowers/plans/2026-07-14-workflow-loop-container.md`
@@ -94,9 +94,15 @@ Timeline：主时间线 **一个** `node-{loopId}` 步；body 内节点作为该
 - Chat 抽屉：展示继续条件摘要、`maxIterations`、`onMaxIterations`、实际迭代次数（若有）
 - 自动布局：外图只排无 `parentId` 节点（连线只挂 loop 框）；框内 body 按线性链横排；loop `width/height` 随内容撑开；可选 NodeResizer 手动调框
 
-## 非目标（v1）
+## 非目标（明确不做）
 
-for-each、预检测 while（0 轮）、框内 parallel/exclusive/嵌套 loop、多出边汇合、画布边条件标签
+以下能力**不在当前形态范围内，不再排期**：
+
+- for-each
+- 预检测 while（允许 0 轮）
+- 框内 parallel / exclusive / 嵌套 loop
+- 多出边汇合
+- 画布边条件标签
 
 ## 验收
 
@@ -115,3 +121,4 @@ for-each、预检测 while（0 轮）、框内 parallel/exclusive/嵌套 loop、
 | 2026-07-14 | 未进循环：种子条件改为 not_empty；Chat DAG 保留 parentId + layout 宽高 |
 | 2026-07-14 | 语义改为 do-while + **继续条件**；首轮必进 |
 | 2026-07-14 | Agent Hook 直刷 Generation 时经 `LoopBodyFlushFold` 折叠，避免主时间线泄漏 `node-agent` |
+| 2026-07-15 | **收口**：当前 do-while + 线性 body 形态为终态；§非目标明确不做 |

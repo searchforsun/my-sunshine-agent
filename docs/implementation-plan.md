@@ -87,12 +87,12 @@
 | **4.5** Skills 沙箱 | 代码执行 | Docker `SandboxExecutor` |
 | **4.6** 动态 DAG 增强 | Plan 不够用 | if-else、并行、Replan、ContextCompressor |
 | **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 / ReAct 软规划 | **✅ 多专家协作完整**（2026-07-08）：**第五模式 `PEER_COLLAB`** L1 §E + **`$` L0** §K · `expert-manager` :8235 + `/experts` · `ExpertCoordinatorService`（选人 + `maxRounds`）· `ExpertHubEngine`（`min-rounds`/`max-rounds`、每轮 continue 判断、第 2 轮起反应式选人）· `ConsultationSynthesizer` · 种子 4 专家（policy/finance/compliance/legal）· Live：`verify_peer_collab_live` + `verify_expert_consultation_live` · 详设 [expert-consultation spec](./superpowers/specs/2026-07-07-expert-consultation-design.md) · 路由基线 [peer-collab spec](./superpowers/specs/2026-06-24-peer-collab-routing-design.md)；**4.7.5 ReAct TaskBoard** ✅ · [taskboard spec](./superpowers/specs/2026-06-24-react-taskboard-design.md)；**4.7.1/4.7.2/4.7.4** 仍按需 |
-| **4.13** Workflow Studio | 业务自助编排 | **MVP ✅**（DB SSOT + `/workflows` + Chat `#` + Live 检查门）；**4.13.7** exclusive-gateway 边条件 ✅ · loop 容器 ✅ · [workflow-studio spec](./superpowers/specs/2026-06-25-workflow-studio-design.md) · [loop 设计](./superpowers/specs/2026-07-14-workflow-loop-container-design.md) · [实施计划](./superpowers/plans/2026-07-11-workflow-studio.md) |
+| **4.13** Workflow Studio | 业务自助编排 | **✅ 当前形态收口**（MVP 4.13.1–4.13.6 + **4.13.7** 并行/条件分支/循环）；**v1 非目标不做**（for-each、预检测 while、框内嵌套网关/loop、多出边汇合、画布边条件标签）· [workflow-studio spec](./superpowers/specs/2026-06-25-workflow-studio-design.md) · [loop 设计](./superpowers/specs/2026-07-14-workflow-loop-container-design.md) · [实施计划](./superpowers/plans/2026-07-11-workflow-studio.md) |
 | **4.8** 工具集成（SDK + MCP） | 异构系统 / 业务解耦 | **✅ 检查门通过**：MySQL Catalog + `sunshine-tool-sdk` + MCP 动态接入 + `/tools` 管理页 · 详设 [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) · 计划 [tool-integration plan](./superpowers/plans/2026-07-09-tool-integration.md) · Live：`verify_tool_integration_live.py --suite all` |
-| **4.9** K8s | 流量/HA | Helm + HPA + GitOps |
-| **4.10** Seata | 跨服务写 | 与 HITL 串联 |
+| **4.9** K8s | — | **明确不做**（维持脚本/现有部署） |
+| **4.10** Seata | — | **明确不做**（跨服务写靠 HITL + 幂等） |
 | **4.11** Prompt 后台 | 非研发维护提示词 | 版本/审核/回滚 |
-| **4.12** Serverless | 调用波动 | 无状态服务缩容 |
+| **4.12** Serverless | — | **明确不做**（常驻实例） |
 
 ---
 
@@ -106,7 +106,7 @@
 | **Skills** | **`/skills`** | Skill 列表/上传/版本/预览/元数据；**版本 diff** → `/skills/:skillId/diff`（见 [skills-management-ui-design.md](./superpowers/specs/skills-management-ui-design.md)） |
 | **Experts** | **`/experts`** | **✅ 阶段四 4.7**：Expert CRUD、Catalog 种子（4 专家）、Chat `$` 补全、`ExpertStepPanel` · [expert-consultation spec](./superpowers/specs/2026-07-07-expert-consultation-design.md) |
 | **工具集成** | **`/tools`** | **阶段四 4.8 ✅**：SDK 应用 / MCP Server / 工具集（ReAct + Planner Workflow）/ Plan 执行策略 · [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) |
-| **工作流** | **`/workflows`** | **阶段四 4.13 ✅ MVP**：Workflow Studio 可视化编辑、发布；Live `verify_workflow_studio_live --suite all` |
+| **工作流** | **`/workflows`** | **阶段四 4.13 ✅ 收口**：Studio 可视化编辑/发布；并行 · exclusive 边条件 · loop；Live `verify_workflow_studio_live` / `verify_exclusive_gateway_live` / `verify_loop_live` |
 | 系统状态 | `/status` | 12 微服务 + 12 中间件状态矩阵 |
 
 > **阶段四 OCR/多模态**：见 `superpowers/specs/phase4-platformization-design.md` §4.2–4.4  

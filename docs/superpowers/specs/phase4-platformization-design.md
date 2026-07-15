@@ -28,15 +28,17 @@
 | **4.6** | 动态 DAG 增强：if-else、并行 fan-out、Replan | 静态 workflow 不够 | 中 |
 | **4.7** | 多 Agent 增强：**第五顶层模式 `PEER_COLLAB` ✅**、Coordinator、MsgHub 反应式轮次、Synthesizer、**ReAct TaskBoard ✅** | 复杂协作 / 交叉验证 / ReAct 软规划 | 中 |
 | **4.8** | 工具集成（SDK + MCP）：MySQL Catalog + `/tools` 管理页 | 业务解耦 / 异构工具接入 | 中 · [详设](./2026-07-09-tool-integration-design.md) |
-| **4.9** | K8s：Helm + HPA + Nacos GitOps | 流量/HA | 中 |
-| **4.10** | Seata 分布式事务 + HITL 串联 | 跨服务写操作 | 低 |
+| **4.9** | K8s：Helm + HPA + Nacos GitOps | — | **明确不做** |
+| **4.10** | Seata 分布式事务 + HITL 串联 | — | **明确不做** |
 | **4.11** | Prompt 运营后台：版本/审核/回滚 | 提示词 >10 + 非研发维护 | 中 |
-| **4.12** | Serverless 冷启动 | 调用量波动大 | 低 |
-| **4.13** | **Workflow Studio**：Dify 式可视化维护 + DB PlanJson + MySQL init 种子 | 静态 workflow 运维 / 业务自助编排 | **中** |
+| **4.12** | Serverless 冷启动 | — | **明确不做** |
+| **4.13** | **Workflow Studio**：Dify 式可视化维护 + DB PlanJson + MySQL init 种子 | 静态 workflow 运维 / 业务自助编排 | **✅ 收口** |
 
 **三/四交界（已落地）**：Chat 底栏 **执行路径选择器** P0 ✅（`executionPreference` + `ForcedExecutionRouter`）；**workflow 模板 catalog / `#` 绑定** 归属 **4.13**，见 [chat-execution-mode-selector-design.md](./2026-06-25-chat-execution-mode-selector-design.md) §1.1、[workflow-studio-design.md](./2026-06-25-workflow-studio-design.md) §3.4。
 
-**建议顺序**：4.1 → 4.2 → **4.13** → 4.8 → 4.11 → 4.4 → 4.9 → 4.10 → 4.12
+**建议顺序**：4.1 → 4.2 → **4.13** → 4.8 → 4.11 → 4.4（**不含** 4.9 / 4.10 / 4.12）
+
+**修订（2026-07-15）**：**4.9 K8s / 4.10 Seata / 4.12 Serverless 明确不做**（维持现有单机/脚本运维；跨服务写继续靠 HITL + 业务幂等，不引入 Seata）。
 
 ---
 
@@ -159,26 +161,25 @@
 
 **检查门**：`verify_tool_integration_live.py --suite all` — SDK 2 应用 5 工具、ReAct invoke、MCP probe、工具集、HITL、动态 disable；**✅ 已通过**（2026-07-10）。详见 [tool-integration-design §16](./2026-07-09-tool-integration-design.md#16-检查门)。
 
-### 4.9 K8s 生产部署
+### 4.9 K8s 生产部署 — **明确不做**
 
-| 子任务 | 内容 |
-|--------|------|
-| **4.9.1** | Helm：gateway / bff / orchestrator / rag / llm-gateway |
-| **4.9.2** | HPA + 滚动更新零中断 SSE（配合阶段三 3.14 Job 锁） |
-| **4.9.3** | Milvus/ES 有状态集评估 |
-| **4.9.4** | Nacos GitOps |
+> 2026-07-15 决策：不排期 Helm / HPA / GitOps；继续现有 `scripts/start.py` + 中间件部署形态。
 
-### 4.10 Seata 分布式事务
+| 子任务 | 内容 | 状态 |
+|--------|------|:----:|
+| **4.9.1–4.9.4** | Helm / HPA / 有状态集 / Nacos GitOps | **不做** |
 
-- 写工具 `transactional: true`；TCC/SAGA 模板；与 **3.3 HITL** 确认后开启
+### 4.10 Seata 分布式事务 — **明确不做**
+
+> 2026-07-15 决策：不引入 Seata TCC/SAGA；跨服务写继续依赖 **3.3 HITL** + 业务侧幂等/补偿。
 
 ### 4.11 Prompt 运营后台
 
 - `prompt_version` 表；草稿→审核→发布 Nacos；与 **4.1.7** 实验联动 rag_eval
 
-### 4.12 Serverless
+### 4.12 Serverless — **明确不做**
 
-- 仅无状态服务（rag、llm-gateway 适配器）缩容；orchestrator + Redis 保持热实例
+> 2026-07-15 决策：不做无状态服务 Serverless 缩容；保持常驻实例。
 
 ### 4.13 Workflow Studio（可视化工作流维护）
 
@@ -188,7 +189,7 @@
 | 子任务 | 内容 |
 |--------|------|
 | **4.13.1** | `workflow-manager` :8230 + 表结构 | **✅** |
-| **4.13.1b** | **MySQL init 种子**（5 标杆 published v1，含 `knowledge-dual`） | **✅** |
+| **4.13.1b** | **MySQL init 种子**（现 **7** 标杆 published v1，含 `knowledge-dual` / `knowledge-branch` / `knowledge-loop`） | **✅** |
 | **4.13.2** | Admin / Catalog / Published API + `PlanValidator` 发布校验 | **✅** |
 | **4.13.2b** | orchestrator 移除 Nacos workflow + `WorkflowManagerClient` | **✅** |
 | **4.13.3** | `WorkflowCatalogService` + **`WorkflowBindingParser/Policy`（L0 `#`）** | **✅** |
@@ -196,9 +197,11 @@
 | **4.13.4** | BFF/Gateway 透传 | **✅** |
 | **4.13.5** | 前端 **`/workflows`** 线性 DAG 编辑器 MVP + Chat `#` | **✅** |
 | **4.13.6** | golden-set §I + `verify_workflow_studio_live.py` | **✅** |
-| **4.13.7** | 并行/条件/循环节点编辑（依赖 **4.7.2** / **4.6.1** / loop） | ⬜ |
+| **4.13.7** | 并行 / exclusive 边条件 / loop 容器（引擎 + Studio） | **✅** |
 
 **修订（2026-07-11）**：Workflow **DB 唯一 SSOT**；废弃 Nacos `sunshine-workflows.yaml` 与 `Composite*` 合并逻辑。详设 [workflow-studio-design.md](./2026-06-25-workflow-studio-design.md) · 计划 [2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md)
+
+**修订（2026-07-15）**：**4.13 当前形态收口**；v1 非目标（for-each、预检测 while、框内嵌套网关/loop、多出边汇合、画布边条件标签等）**明确不做**。
 
 **检查门**：MySQL init 后 `#knowledge-qa` 命中 DB；orchestrator 无 Nacos workflow 依赖；`@` / `#` 互不混用。
 
@@ -226,7 +229,7 @@
 | 4.4 | 聊天发图识图 + Grounding |
 | 4.5 | Docker 沙箱执行 + 审计 |
 | 4.8 | `/tools` SDK+MCP + probe + 工具集 + Live G1–G10 · **✅** |
-| 4.9 | 3 副本 orchestrator 滚动无中断 |
+| 4.9 / 4.10 / 4.12 | **明确不做**（无对应检查门） |
 
 ---
 

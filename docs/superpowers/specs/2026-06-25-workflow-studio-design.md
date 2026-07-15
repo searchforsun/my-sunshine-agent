@@ -1,10 +1,12 @@
 # 阶段四 · Workflow Studio（可视化工作流维护）
 
 > **阶段**：四 · **任务卡**：**4.13**  
-> **状态**：✅ MVP 检查门通过（4.13.1–4.13.6 Live）；**4.13.7** 高级图编辑按需  
+> **状态**：✅ **当前形态收口**（4.13.1–4.13.7 Live）；**v1 非目标明确不做**  
 > **触发**：业务方需 Dify 式自助编排；**废弃 Nacos workflow 双轨**  
 > **修订（2026-07-11）**：Workflow **完全 DB 单轨** — 去掉 Nacos `sunshine-workflows.yaml` 与一切兼容/回退逻辑；标杆 workflow 由 **MySQL init 种子** 初始化  
 > **修订（2026-07-12）**：种子扩至 **5 条**（含 `knowledge-dual`）；节点 id=`{type}-{8位hex}`；rag/agent **必填** `params.query`；标杆 SSOT 为 init SQL  
+> **修订（2026-07-14）**：种子扩至 **7 条**（+ `knowledge-branch` / `knowledge-loop`）；**4.13.7** exclusive 边条件 + loop 容器落地  
+> **修订（2026-07-15）**：**收口当前形态**；for-each / 预检测 while / 框内嵌套网关·loop / 多出边汇合 / 画布边条件标签等 **不做**  
 > **平台 SSOT**：[phase4-platformization-design.md](./phase4-platformization-design.md)  
 > **实施计划**：[2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md)  
 > **对称参照**：[skills-management-ui-design.md](./skills-management-ui-design.md)（skill-manager + `/skills`）  
@@ -18,7 +20,7 @@
 
 | 来源 | 用途 | 变更方式 |
 |------|------|----------|
-| **MySQL init 种子** | 平台标杆 workflow（**5 条**：knowledge-qa、knowledge-dual、finance-*） | `docker/mysql/init/13-sunshine-workflow-manager.sql` |
+| **MySQL init 种子** | 平台标杆 workflow（**7 条**：knowledge-*、finance-*） | `docker/mysql/init/13-sunshine-workflow-manager.sql` |
 | **DB Workflow Studio** | 租户/业务自助 workflow | `/workflows` 管理页 CRUD + 发布 |
 
 **核心原则**：
@@ -37,7 +39,7 @@
 ```mermaid
 flowchart TB
     subgraph init [初始化]
-        SEED["docker/mysql/init/13<br/>5 标杆 workflow published v1"]
+        SEED["docker/mysql/init/13<br/>7 标杆 workflow published v1"]
     end
     subgraph admin [Workflow Studio]
         UI["/workflows 可视化编辑"]
@@ -91,7 +93,7 @@ flowchart TB
 | 前缀 | 绑定对象 | 执行 mode | 状态 |
 |------|----------|-----------|:----:|
 | **`@skillId`** | Skill（skill-manager Catalog） | `REACT` / `PLAN_WORKFLOW` | ✅ |
-| **`#workflowId`** | Workflow（workflow-manager DB catalog） | **`WORKFLOW`** | ⬜ 4.13 |
+| **`#workflowId`** | Workflow（workflow-manager DB catalog） | **`WORKFLOW`** | ✅ |
 
 **禁止**：
 
@@ -120,7 +122,7 @@ flowchart TB
 
 ### 3.4 前端 Chat（对称 `@` 补全）
 
-| 能力 | Skill（✅） | Workflow（⬜ 4.13.5） |
+| 能力 | Skill（✅） | Workflow（✅） |
 |------|------------|----------------------|
 | 触发字符 | `@` | `#` |
 | 下拉 API | `GET /api/skills/catalog` | `GET /api/workflows/catalog` |
@@ -157,7 +159,7 @@ DB 存 **可执行完整 Plan**（含 `start` + 业务节点 + `answer`）。Stu
 
 **变量引用 SSOT**：`{{start.userQuery}}` · `{{plan.params.*}}` · `{{node-id.output}}` · `{{node-id.answer}}` · `{{node-id.summary}}` · `{{node-id.parsed.*}}`（tool 提取）
 
-### 4.4 MySQL init 种子（标杆 5 条）
+### 4.4 MySQL init 种子（标杆 7 条）
 
 `docker/mysql/init/13-sunshine-workflow-manager.sql` 写入 **published v1**（工具 ID 须为 Catalog 格式）：
 
@@ -165,6 +167,8 @@ DB 存 **可执行完整 Plan**（含 `start` + 业务节点 + `answer`）。Stu
 |------------|-------------|
 | `knowledge-qa` | 知识库问答 |
 | `knowledge-dual` | 双路知识检索（并行 RAG + join） |
+| `knowledge-branch` | 条件分支知识检索（exclusive 边条件） |
+| `knowledge-loop` | 条件循环知识检索（do-while + parentId body） |
 | `finance-list` | 财务待办查询 |
 | `finance-smart` | 财务智能分析 |
 | `finance-summary` | 财务汇总统计 |
@@ -172,6 +176,8 @@ DB 存 **可执行完整 Plan**（含 `start` + 业务节点 + `answer`）。Stu
 - `enabled=1`，`active_version=1`，`source=seed`
 - rag 节点须含 `params.query`（`{{start.userQuery}}`）
 - **禁止**各模块 Flyway 灌入；**禁止**启动时静默写 DB
+
+完整约定见 [docs/workflow/README.md](../../workflow/README.md)。
 
 ---
 
@@ -233,15 +239,15 @@ CRUD · 发布 · 可选 import · `GET /api/workflows/catalog` · `GET /api/wor
 | **tool** | 基本信息 → 工具 → 入参（catalog schema）→ 输出（含 output.mode/extract）→ 执行策略 |
 | **agent** | 基本信息 → 技能绑定 → 输入 → 运行配置 → 输出 → 执行策略 |
 
-### 7.2 高级图（引擎先行，Studio 后开）
+### 7.2 高级图（4.13.7 ✅ 当前形态）
 
-| 节点 type | 依赖任务卡 | 约束 |
-|-----------|------------|------|
-| `parallel-fork` + `join` | **4.7.2** | 单层 fan-out → N 并行 → 单 join |
-| `if-else` | **4.6.1** | 结构化条件算子（`empty`/`not_empty`/`contains`/`eq`） |
-| `loop` | **4.6 扩展** | `maxIterations` 硬顶（默认 3，Nacos 可配，硬顶 5）；受控回边，禁止任意环 |
+| 节点 type | 状态 | 约束 |
+|-----------|:----:|------|
+| `parallel-gateway` + `join` | ✅ | 单层 fan-out → N 并行 → 单 join（种子 `knowledge-dual`） |
+| `exclusive-gateway` | ✅ | 出边条件算子 `empty`/`not_empty`/`contains`/`eq` + 恰一条 default（种子 `knowledge-branch`） |
+| `loop` | ✅ | do-while 继续条件；body 线性 rag/tool/agent + `parentId`；`maxIterations` 硬顶 1–5（种子 `knowledge-loop`） |
 
-Studio **禁止**编辑引擎尚未实现的节点类型。
+**当前形态即终态**：不再扩展 v1 非目标能力（见 §11）。
 
 ---
 
@@ -258,43 +264,52 @@ Studio **禁止**编辑引擎尚未实现的节点类型。
 | 编号 | 内容 | 产出 |
 |------|------|------|
 | **4.13.1** | 表结构 | workflow-manager ✅ |
-| **4.13.1b** | **MySQL init 种子**（5 标杆 published v1） | `13-sunshine-workflow-manager.sql` |
-| **4.13.2** | Admin / Catalog / Published API + PlanValidator | workflow-manager |
-| **4.13.2b** | orchestrator 移除 Nacos workflow + `WorkflowManagerClient` | orchestrator |
-| **4.13.3** | `WorkflowCatalogService` + **`WorkflowBindingParser/Policy`** | orchestrator |
-| **4.13.3b** | DB workflow 节点重试策略对齐 | orchestrator `NodeRetryPolicyResolver` |
-| **4.13.4** | BFF/Gateway 透传 | bff |
-| **4.13.5** | `/workflows` 线性编辑器 + Chat `#` 补全 | sunshine-ui |
-| **4.13.6** | golden-set **§I** + live 验收 | test + `verify_workflow_studio_live.py` |
-| **4.13.7** | 并行/条件/循环节点编辑（依赖 4.7.2 / 4.6.1 / loop） | UI + 引擎 |
+| **4.13.1b** | **MySQL init 种子**（现 **7** 标杆 published v1） | `13-sunshine-workflow-manager.sql` ✅ |
+| **4.13.2** | Admin / Catalog / Published API + PlanValidator | workflow-manager ✅ |
+| **4.13.2b** | orchestrator 移除 Nacos workflow + `WorkflowManagerClient` | orchestrator ✅ |
+| **4.13.3** | `WorkflowCatalogService` + **`WorkflowBindingParser/Policy`** | orchestrator ✅ |
+| **4.13.3b** | DB workflow 节点重试策略对齐 | orchestrator ✅ |
+| **4.13.4** | BFF/Gateway 透传 | bff ✅ |
+| **4.13.5** | `/workflows` 线性编辑器 + Chat `#` 补全 | sunshine-ui ✅ |
+| **4.13.6** | golden-set **§I** + live 验收 | ✅ |
+| **4.13.7** | 并行 / exclusive 边条件 / loop 容器 | ✅ 收口 |
 
 ---
 
 ## 10. 检查门
 
-- [ ] 新环境仅 MySQL init，**不**配置 Nacos workflow，`#knowledge-qa 年假…` 命中 DB
-- [ ] orchestrator **无** `sunshine-workflows.yaml` 依赖；`sync_nacos.py` 已移除该项
-- [ ] `@finance-analysis …` 行为不变（Skill L0 不受影响）
-- [ ] `#unknown-flow` → 400，文案指向 `/workflows`
-- [ ] Chat `#` / `@` 下拉互不干扰
-- [ ] Studio 发布新版本 → 60s 内 `#` 命中新定义
-- [ ] 节点 `retry.maxAttempts=2` 执行后 DAG 角标 `×2`
-- [ ] `routing-golden-set` §B–D、§I 全 PASS（数据源为 DB）
+- [x] 新环境仅 MySQL init，**不**配置 Nacos workflow，`#knowledge-qa 年假…` 命中 DB
+- [x] orchestrator **无** `sunshine-workflows.yaml` 依赖；`sync_nacos.py` 已移除该项
+- [x] `@finance-analysis …` 行为不变（Skill L0 不受影响）
+- [x] `#unknown-flow` → 400，文案指向 `/workflows`
+- [x] Chat `#` / `@` 下拉互不干扰
+- [x] Studio 发布新版本 → Catalog 刷新后 `#` 命中新定义
+- [x] 节点 `retry.maxAttempts=2` 执行后 DAG 角标 `×2`
+- [x] `routing-golden-set` §B–D、§I 全 PASS（数据源为 DB）
+- [x] exclusive / loop Live（`verify_exclusive_gateway_live` / `verify_loop_live`）
 
 ---
 
-## 11. 非目标
+## 11. 非目标（明确不做）
 
 - Nacos workflow 双轨 / DB 覆盖 Nacos / enabled=false 回退 Nacos
 - `@` 触发 workflow / `#` 触发 skill
 - Dify 外部运行时
-- Studio 画出引擎未实现的 parallel / if-else / loop 节点（须引擎先行）
+- **超出当前形态的图能力**（与 loop/exclusive 设计一致）：
+  - for-each
+  - 预检测 while（允许 0 轮）
+  - loop 框内再嵌套 parallel / exclusive / loop
+  - loop 多出边汇合
+  - 画布边条件标签（条件仅侧栏 + Chat 抽屉）
+  - 复合 AND/OR、数值比较、独立 `if-else` 节点类型（条件分支用 exclusive-gateway）
 
 ---
 
 ## 12. 相关文档
 
 - [2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md) — 实施计划
+- [2026-07-14-exclusive-gateway-edge-condition-design.md](./2026-07-14-exclusive-gateway-edge-condition-design.md) — 条件分支
+- [2026-07-14-workflow-loop-container-design.md](./2026-07-14-workflow-loop-container-design.md) — loop 容器
 - [routing-golden-set.md](../../routing/routing-golden-set.md) §I
 - [workflow/README.md](../../workflow/README.md)
 - [plan-workflow-retry-degradation.md](../../routing/plan-workflow-retry-degradation.md)

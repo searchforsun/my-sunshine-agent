@@ -37,7 +37,7 @@
 | **可观测性** | SkyWalking 9.7.0 + Prometheus + Grafana | — | 全链路追踪、指标、日志关联 |
 | **配置/注册中心** | Nacos | 2.3.1 | 服务发现与动态配置管理 |
 | **向量数据库** | Milvus | 2.6.16 | 开源向量检索，支撑知识库 |
-| **分布式事务** | Seata（按需） | 1.7.1 | AT/TCC/SAGA/XA |
+| **分布式事务** | — | — | **明确不做** Seata；写路径靠 HITL + 业务幂等 |
 
 #### 2026 年对话模型 API 价格参考（每百万 Token）
 
@@ -146,7 +146,7 @@ AI 核心
 | **阶段一** | 8周 | LLM Gateway + ReActAgent + RAG + 全链路追踪 | 私有知识库问答原型 |
 | **阶段二** | 8周 | Sa-Token 认证 + 业务工具封装 + 脱敏 + 审计 | 财务智能助手端到端 |
 | **阶段三** | 6周 | 多 Agent 协作 + 多租户 + HITL + 监控告警 | 生产级高可用平台 |
-| **阶段四** | 按需 | MCP 协议 + K8s + Seata + Serverless | 平台化能力 |
+| **阶段四** | 按需 | MCP/工具集成 + Workflow Studio + Prompt 后台等；**不做** K8s / Seata / Serverless | 平台化能力 |
 
 ---
 

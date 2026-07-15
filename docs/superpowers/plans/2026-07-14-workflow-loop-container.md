@@ -83,13 +83,14 @@
 - Modify: `PlanNodeIcon.vue`, `executionPlans.ts`, `PlanNodeDrawer.vue` (optional loop summary)
 - Modify: `CLAUDE.md`, `docs/implementation-plan.md`, spec status → 已确认/实施中
 
-- [ ] Icon + type label「循环」
-- [ ] Mark 4.13.7 loop ✅ when Live or unit gates pass
+- [x] Icon + type label「循环」
+- [x] Mark 4.13.7 loop ✅ when Live or unit gates pass
 
 ### Task 7: Verification
 
-- [ ] `mvn -pl orchestrator,workflow-manager -am test` for touched tests
-- [ ] Manual or Live smoke if services up
+- [x] `mvn -pl orchestrator,workflow-manager -am test` for touched tests
+- [x] Manual or Live smoke if services up
+- [x] **2026-07-15**：当前形态收口；v1 非目标不做（见 loop / Studio 详设）
 
 **Commits:** only when user requests.
 

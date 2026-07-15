@@ -3,6 +3,8 @@
 平台 **7 条标杆 workflow** 的唯一静态 SSOT：`docker/mysql/init/13-sunshine-workflow-manager.sql`。
 
 > **运行时 SSOT**：`workflow-manager` DB（Studio 发布 / CRUD）。init SQL 仅用于**新环境初始化**；已部署库改标杆须 UPDATE `workflow_version` + `redis-cli PUBLISH workflow-catalog-changed default`。
+>
+> **4.13 状态**：当前形态（线性 + 并行 + exclusive + loop）**已收口**；v1 非目标不做 — 见 [workflow-studio 详设 §11](../superpowers/specs/2026-06-25-workflow-studio-design.md)。
 
 ## 标杆清单
 
