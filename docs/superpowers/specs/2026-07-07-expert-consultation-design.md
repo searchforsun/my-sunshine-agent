@@ -140,12 +140,12 @@ flowchart TB
 
 ### 6.3 种子（4 名）
 
-| id | display_name |
-|----|--------------|
-| `policy-expert` | 制度专家 |
-| `finance-expert` | 财务专家 |
-| `compliance-expert` | 合规专家 |
-| `legal-expert` | 法务专家 |
+| id | display_name | tools_json（业务；RAG 始终注入） |
+|----|--------------|----------------------------------|
+| `policy-expert` | 制度专家 | `[]` |
+| `finance-expert` | 财务专家 | `list` / `get_detail` / `summarize`（finance） |
+| `compliance-expert` | 合规专家 | `list` / `get_detail`（finance） |
+| `legal-expert` | 法务专家 | `[]` |
 
 （**不**再种子「合规仲裁」；汇总由 Synthesizer 负责。SQL：`docker/mysql/init/15-sunshine-expert-manager.sql`）
 

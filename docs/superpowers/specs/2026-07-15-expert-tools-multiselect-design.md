@@ -41,8 +41,8 @@
 ### 3.3 种子 / 默认
 
 - `ExpertAdminService.create`：`toolsJson` 改为 `"[]"`（不再 `"[\"*\"]"`）
-- `15-sunshine-expert-manager.sql`：列 DEFAULT 与新建种子改为 `'[]'`（仅影响新环境；已有库不强制 UPDATE）
-- 已有行若为 `["*"]`：不强制 SQL 迁移；依赖 UI 首次保存或运行时过渡解析
+- `15-sunshine-expert-manager.sql`：列 DEFAULT `'[]'`；四种子按职责写明 `tools_json`（财务 3 工具、合规 2 工具、制度/法务 `[]`）
+- 已有行若为 `["*"]` 或空：不强制 SQL 迁移；依赖 UI 保存或按下方 UPDATE 对齐
 
 ## 4. UI（`/experts`）
 
