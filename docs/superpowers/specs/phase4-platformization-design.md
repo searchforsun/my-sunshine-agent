@@ -102,13 +102,18 @@
 
 ### 4.5 Skills Docker 沙箱
 
+> **详设 SSOT**：[2026-07-15-skills-docker-sandbox-design.md](./2026-07-15-skills-docker-sandbox-design.md) · [实施计划](../plans/2026-07-15-skills-docker-sandbox.md)  
+> **形态**：Coding Agent 工作区（六工具 `sandbox__*`）+ 独立 `sandbox-service`(:8226) + 会话长容器；工具 **不进** tool-manager Catalog。
+
 | 子任务 | 内容 |
 |--------|------|
-| **4.5.1** | `SandboxExecutor` + `sunshine-sandbox-python:3.11-slim` |
-| **4.5.2** | 沙箱审计 + Grafana 指标 |
-| **4.5.3** | `/skills` 试跑子 Agent（调试） |
+| **4.5.1** | `sandbox-service` 骨架 + Docker Session + `sunshine-sandbox-python:3.11-slim` |
+| **4.5.2** | 六工具执行器 + 路径 jail + 网络白名单 |
+| **4.5.3** | orchestrator `SandboxClient` + 工具注入 + HITL |
+| **4.5.4** | Skill `sandbox_policy` / `/skills` 试跑 |
+| **4.5.5** | 审计 + Grafana + Live 检查门 |
 
-锁定：`network=none`，`read_only_rootfs`（原 locked D4）。
+锁定：默认 `network=none` + `read_only_rootfs`（可写仅 `/workspace` volume）；`network_allow` 非空时经 egress 白名单代理（修订 D4，见详设）。
 
 ### 4.6 动态 DAG 增强
 
@@ -227,7 +232,7 @@
 | 4.1 | 运营自助上传 + 调试页 + 评测闭环 |
 | 4.2–4.3 | PDF/发票 OCR 入库可检索 + ocr eval |
 | 4.4 | 聊天发图识图 + Grounding |
-| 4.5 | Docker 沙箱执行 + 审计 |
+| 4.5 | Docker 沙箱六工具 + jail/HITL/审计 · 详设 G1–G9 |
 | 4.8 | `/tools` SDK+MCP + probe + 工具集 + Live G1–G10 · **✅** |
 | 4.9 / 4.10 / 4.12 | **明确不做**（无对应检查门） |
 

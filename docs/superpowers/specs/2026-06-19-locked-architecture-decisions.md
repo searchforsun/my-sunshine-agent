@@ -205,15 +205,16 @@ skill-manager
 ### 决策
 
 - 沙箱运行时 **采用 Docker**，不采用 E2B/Modal 等托管沙箱作为首实现。
-- 镜像：内置 `sunshine-sandbox-python:3.11-slim`（pandas、regex，无网络）。
+- 镜像：内置 `sunshine-sandbox-python:3.11-slim`（pandas、regex；默认无网）。
+- **演进（2026-07-15）**：4.5 落地为 **Coding Agent 工作区**（六工具面）+ **独立 `sandbox-service`(:8226)** + **会话级长容器**；详设 [skills-docker-sandbox-design.md](./2026-07-15-skills-docker-sandbox-design.md)。默认仍 `network=none`；Skill `network_allow` 非空时可经 egress 白名单代理开网。
 
 ### 组件
 
 ```
-skill-manager 或 sandbox-service (:8226)
-└── SandboxExecutor
-    ├── DockerClient（docker-java 或 ProcessBuilder docker run）
-    ├── 容器池（warm 0~N，默认每次 fresh --rm）
+sandbox-service (:8226)          # 4.5 选定：独立服务（非 skill-manager 内嵌）
+└── Session + Docker 长容器
+    ├── Volumes：/skill（只读）+ /workspace（可写）
+    ├── 工具：read/write/edit/glob/grep/exec
     └── 策略来自 skill.sandbox_policy
 ```
 
@@ -226,8 +227,8 @@ sandbox_policy:
   timeout_sec: 30
   memory_mb: 256
   cpus: 0.5
-  network: none
-  read_only_rootfs: true
+  network_allow: []          # 空 = network=none；非空 = egress 白名单
+  read_only_rootfs: true     # 可写仅 /workspace volume + tmpfs
   cap_drop: [ALL]
 ```
 
