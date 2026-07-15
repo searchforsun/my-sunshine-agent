@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
-import { NButton, NIcon } from 'naive-ui'
+import { computed, inject, unref } from 'vue'
+import { NButton, NIcon, useMessage } from 'naive-ui'
 import {
   AddOutline,
   ArrowRedoOutline,
@@ -10,15 +10,16 @@ import {
   RefreshOutline,
 } from '@vicons/ionicons5'
 import { WORKFLOWS_PAGE_KEY, type WorkflowsPageApi } from '../../composables/useWorkflowsPage'
-import { addPlanGraphNode } from '../../utils/workflowDagLayout'
+import { addPlanGraphNode, resolveLoopParentForAdd } from '../../utils/workflowDagLayout'
 import type { WorkflowBusinessNodeType } from '../../utils/workflowPlan'
-import type { WorkflowGatewayType } from '../../utils/workflowGateway'
+import { isGatewayType, type WorkflowGatewayType } from '../../utils/workflowGateway'
 
 defineProps<{
   readOnly?: boolean
 }>()
 
 const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
+const message = useMessage()
 
 const showParallelBranch = computed(() => page.canEditPlan && page.isParallelWorkflow)
 
@@ -28,17 +29,38 @@ const businessPalette: { label: string; type: WorkflowBusinessNodeType }[] = [
   { label: 'Agent', type: 'agent' },
 ]
 
-const gatewayPalette: { label: string; type: WorkflowGatewayType }[] = [
+const gatewayPalette: { label: string; type: WorkflowGatewayType | 'loop' }[] = [
   { label: '并行分叉', type: 'parallel-gateway' },
   { label: '并行汇总', type: 'join' },
   { label: '条件分支', type: 'exclusive-gateway' },
+  { label: '循环', type: 'loop' },
 ]
 
-function addNode(type: WorkflowBusinessNodeType | WorkflowGatewayType) {
+function addNode(type: WorkflowBusinessNodeType | WorkflowGatewayType | 'loop') {
   if (!page.plan || !page.canEditPlan) return
+  const parentLoopId = resolveLoopParentForAdd(page.plan, unref(page.selectedNodeId as never))
+  if (parentLoopId && (type === 'loop' || isGatewayType(type))) {
+    message.warning('循环框内仅可添加 RAG / Tool / Agent')
+    return
+  }
+  const prevIds = new Set((page.plan.nodes ?? []).map(n => n.id))
   const cx = 280 + Math.random() * 80
   const cy = 120 + Math.random() * 60
-  page.replacePlan(addPlanGraphNode(page.plan, type, { x: cx, y: cy }))
+  const next = addPlanGraphNode(
+    page.plan,
+    type,
+    { x: cx, y: cy },
+    page.nodeDefaults,
+    { selectedNodeId: unref(page.selectedNodeId as never) },
+  )
+  page.replacePlan(next)
+  if (type === 'loop') {
+    const loop = (next.nodes ?? []).find(n => !prevIds.has(n.id) && n.type === 'loop')
+    if (loop) page.selectedNodeId = loop.id
+    return
+  }
+  const added = (next.nodes ?? []).find(n => !prevIds.has(n.id) && n.type === type)
+  if (added) page.selectedNodeId = added.id
 }
 </script>
 

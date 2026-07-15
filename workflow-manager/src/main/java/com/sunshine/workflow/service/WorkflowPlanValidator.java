@@ -23,11 +23,13 @@ public class WorkflowPlanValidator {
 
     private static final Set<String> EXEC_TYPES = Set.of(
             "start", "rag", "tool", "agent", "answer", "llm", "join",
-            "parallel-gateway", "exclusive-gateway");
+            "parallel-gateway", "exclusive-gateway", "loop");
     private static final Set<String> BUSINESS_TYPES = Set.of("rag", "tool", "agent", "llm");
     /** 无业务输出的路由节点（不可作为 {{node.output}} 引用源） */
     private static final Set<String> ROUTING_ONLY_TYPES = Set.of("parallel-gateway", "exclusive-gateway");
-    private static final Set<String> OUTPUT_TYPES = Set.of("rag", "tool", "join", "llm", "agent");
+    private static final Set<String> LOOP_BODY_TYPES = Set.of("rag", "tool", "agent");
+    private static final Set<String> ON_MAX_ITERATIONS = Set.of("fail_fast", "exit", "fallback_react");
+    private static final Set<String> OUTPUT_TYPES = Set.of("rag", "tool", "join", "llm", "agent", "loop");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z0-9_.-]+)}}");
 
     private final ObjectMapper objectMapper;
@@ -119,7 +121,7 @@ public class WorkflowPlanValidator {
                 outgoing.computeIfAbsent(from, k -> new ArrayList<>()).add(to);
                 incoming.computeIfAbsent(to, k -> new ArrayList<>()).add(from);
             }
-            validateReachability(result, types, outgoing, incoming);
+            validateReachability(result, nodeById, types, outgoing, incoming);
             String parallelErr = validateParallelTopology(types, outgoing, incoming);
             if (parallelErr != null) {
                 result.add(parallelErr);
@@ -127,6 +129,10 @@ public class WorkflowPlanValidator {
             String exclusiveErr = validateExclusiveEdgeConditions(types, edges);
             if (exclusiveErr != null) {
                 result.add(exclusiveErr);
+            }
+            String loopErr = validateLoopTopology(nodeById, types, edges);
+            if (loopErr != null) {
+                result.add(loopErr);
             }
             Map<String, Set<String>> ancestors = buildAncestors(types.keySet(), incoming);
             validateDataFlow(result, nodeById, types, ancestors);
@@ -216,11 +222,18 @@ public class WorkflowPlanValidator {
 
     private static void validateReachability(
             WorkflowPlanValidationResult result,
+            Map<String, JsonNode> nodeById,
             Map<String, String> types,
             Map<String, List<String>> outgoing,
             Map<String, List<String>> incoming) {
         if (!types.containsKey("start")) {
             return;
+        }
+        Set<String> bodyIds = new HashSet<>();
+        for (Map.Entry<String, JsonNode> e : nodeById.entrySet()) {
+            if (StringUtils.hasText(text(e.getValue(), "parentId"))) {
+                bodyIds.add(e.getKey());
+            }
         }
         Set<String> reachable = new HashSet<>();
         Deque<String> queue = new ArrayDeque<>();
@@ -229,9 +242,19 @@ public class WorkflowPlanValidator {
         while (!queue.isEmpty()) {
             String current = queue.poll();
             for (String next : outgoing.getOrDefault(current, List.of())) {
+                if (bodyIds.contains(next)) {
+                    continue;
+                }
                 if (reachable.add(next)) {
                     queue.add(next);
                 }
+            }
+        }
+        // loop 可达 ⇒ 其框内 body 视为可达（外图不直接连 body）
+        for (String bodyId : bodyIds) {
+            String parentId = text(nodeById.get(bodyId), "parentId");
+            if (reachable.contains(parentId)) {
+                reachable.add(bodyId);
             }
         }
         for (String id : types.keySet()) {
@@ -253,7 +276,7 @@ public class WorkflowPlanValidator {
         }
         for (Map.Entry<String, String> entry : types.entrySet()) {
             String id = entry.getKey();
-            if ("start".equals(id) || "answer".equals(id)) {
+            if ("start".equals(id) || "answer".equals(id) || bodyIds.contains(id)) {
                 continue;
             }
             if (outgoing.getOrDefault(id, List.of()).isEmpty()) {
@@ -366,6 +389,174 @@ public class WorkflowPlanValidator {
             return true;
         }
         return "contains".equals(normalized) || "eq".equals(normalized);
+    }
+
+    private static String validateLoopTopology(
+            Map<String, JsonNode> nodeById,
+            Map<String, String> types,
+            JsonNode edges) {
+        Map<String, String> parentOf = new HashMap<>();
+        for (Map.Entry<String, JsonNode> e : nodeById.entrySet()) {
+            String parentId = text(e.getValue(), "parentId");
+            if (!StringUtils.hasText(parentId)) {
+                continue;
+            }
+            parentOf.put(e.getKey(), parentId);
+            String parentType = types.get(parentId);
+            if (parentType == null) {
+                return "节点 " + e.getKey() + " 的 parentId 不存在: " + parentId;
+            }
+            if (!"loop".equals(parentType)) {
+                return "节点 " + e.getKey() + " 的 parentId 须指向 loop 容器";
+            }
+            String type = types.get(e.getKey());
+            if (!LOOP_BODY_TYPES.contains(type)) {
+                return "loop 框内节点 " + e.getKey() + " 类型须为 rag/tool/agent";
+            }
+            if ("loop".equals(type)) {
+                return "禁止嵌套 loop: " + e.getKey();
+            }
+        }
+        for (JsonNode edge : edges) {
+            String from = text(edge, "from");
+            String to = text(edge, "to");
+            if (!StringUtils.hasText(from) || !StringUtils.hasText(to)) {
+                continue;
+            }
+            String pf = parentOf.get(from);
+            String pt = parentOf.get(to);
+            boolean fromBody = StringUtils.hasText(pf);
+            boolean toBody = StringUtils.hasText(pt);
+            if (fromBody != toBody) {
+                return "禁止跨框边 " + from + "→" + to;
+            }
+            if (fromBody && toBody && !pf.equals(pt)) {
+                return "禁止跨不同 loop 的边 " + from + "→" + to;
+            }
+        }
+        for (Map.Entry<String, String> e : types.entrySet()) {
+            if (!"loop".equals(e.getValue())) {
+                continue;
+            }
+            String loopId = e.getKey();
+            if (parentOf.containsKey(loopId)) {
+                return "禁止嵌套 loop: " + loopId;
+            }
+            List<String> bodyIds = parentOf.entrySet().stream()
+                    .filter(p -> loopId.equals(p.getValue()))
+                    .map(Map.Entry::getKey)
+                    .toList();
+            if (bodyIds.isEmpty()) {
+                return "loop 节点 " + loopId + " 须包含至少一个 body 节点";
+            }
+            String bodyErr = validateLinearBodyChain(bodyIds, edges);
+            if (bodyErr != null) {
+                return bodyErr;
+            }
+            int outerOut = 0;
+            int outerIn = 0;
+            for (JsonNode edge : edges) {
+                String from = text(edge, "from");
+                String to = text(edge, "to");
+                if (loopId.equals(from) && !parentOf.containsKey(to)) {
+                    outerOut++;
+                }
+                if (loopId.equals(to) && !parentOf.containsKey(from)) {
+                    outerIn++;
+                }
+            }
+            if (outerOut != 1) {
+                return "loop 节点 " + loopId + " 外图出度须为 1";
+            }
+            if (outerIn < 1) {
+                return "loop 节点 " + loopId + " 外图入度须 ≥ 1";
+            }
+            String paramErr = validateLoopParams(nodeById.get(loopId), loopId);
+            if (paramErr != null) {
+                return paramErr;
+            }
+        }
+        return null;
+    }
+
+    private static String validateLinearBodyChain(List<String> bodyIds, JsonNode edges) {
+        Set<String> bodySet = new HashSet<>(bodyIds);
+        Map<String, List<String>> out = new HashMap<>();
+        Map<String, Integer> indeg = new HashMap<>();
+        for (String id : bodyIds) {
+            indeg.put(id, 0);
+            out.put(id, new ArrayList<>());
+        }
+        for (JsonNode edge : edges) {
+            String from = text(edge, "from");
+            String to = text(edge, "to");
+            if (!bodySet.contains(from) || !bodySet.contains(to)) {
+                continue;
+            }
+            out.get(from).add(to);
+            indeg.merge(to, 1, Integer::sum);
+        }
+        List<String> roots = bodyIds.stream().filter(id -> indeg.getOrDefault(id, 0) == 0).toList();
+        if (roots.size() != 1) {
+            return "loop body 须为单链（恰好一个入度为 0 的入口）";
+        }
+        String cur = roots.get(0);
+        Set<String> seen = new HashSet<>();
+        while (cur != null) {
+            if (!seen.add(cur)) {
+                return "loop body 存在环";
+            }
+            List<String> nexts = out.getOrDefault(cur, List.of());
+            if (nexts.size() > 1) {
+                return "loop body 须为单链（节点 " + cur + " 出度 > 1）";
+            }
+            cur = nexts.isEmpty() ? null : nexts.get(0);
+        }
+        if (seen.size() != bodyIds.size()) {
+            return "loop body 须连通为单链";
+        }
+        return null;
+    }
+
+    private static String validateLoopParams(JsonNode node, String loopId) {
+        if (node == null) {
+            return "loop 节点 " + loopId + " 缺失";
+        }
+        String maxRaw = paramText(node, "maxIterations");
+        if (!StringUtils.hasText(maxRaw)) {
+            maxRaw = "3";
+        }
+        int max;
+        try {
+            max = Integer.parseInt(maxRaw.strip());
+        } catch (NumberFormatException e) {
+            return "loop 节点 " + loopId + " 的 maxIterations 须为整数";
+        }
+        if (max < 1 || max > 5) {
+            return "loop 节点 " + loopId + " 的 maxIterations 须在 1–5";
+        }
+        String onMax = paramText(node, "onMaxIterations");
+        if (!StringUtils.hasText(onMax)) {
+            onMax = "fail_fast";
+        }
+        if (!ON_MAX_ITERATIONS.contains(onMax.strip().toLowerCase())) {
+            return "loop 节点 " + loopId + " 的 onMaxIterations 非法: " + onMax;
+        }
+        String op = paramText(node, "condition.op");
+        String left = paramText(node, "condition.left");
+        if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
+            return "loop 节点 " + loopId + " 须配置 condition.op 与 condition.left";
+        }
+        String normalized = op.strip().toLowerCase();
+        if (!"empty".equals(normalized) && !"not_empty".equals(normalized)
+                && !"contains".equals(normalized) && !"eq".equals(normalized)) {
+            return "loop 节点 " + loopId + " 的 condition.op 非法: " + op;
+        }
+        if (("contains".equals(normalized) || "eq".equals(normalized))
+                && !StringUtils.hasText(paramText(node, "condition.right"))) {
+            return "loop 节点 " + loopId + " 的 condition.right 不能为空";
+        }
+        return null;
     }
 
     private static Map<String, Set<String>> buildAncestors(

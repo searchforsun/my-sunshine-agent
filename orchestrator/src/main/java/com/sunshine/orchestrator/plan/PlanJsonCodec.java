@@ -26,7 +26,17 @@ public class PlanJsonCodec {
             if (!plan.layout().isEmpty()) {
                 Map<String, Object> layout = new LinkedHashMap<>();
                 for (Map.Entry<String, PlanLayoutPoint> e : plan.layout().entrySet()) {
-                    layout.put(e.getKey(), Map.of("x", e.getValue().x(), "y", e.getValue().y()));
+                    PlanLayoutPoint p = e.getValue();
+                    Map<String, Object> pt = new LinkedHashMap<>();
+                    pt.put("x", p.x());
+                    pt.put("y", p.y());
+                    if (p.width() != null && p.width() > 0) {
+                        pt.put("width", p.width());
+                    }
+                    if (p.height() != null && p.height() > 0) {
+                        pt.put("height", p.height());
+                    }
+                    layout.put(e.getKey(), pt);
                 }
                 root.put("layout", layout);
             }
@@ -197,6 +207,9 @@ public class PlanJsonCodec {
         map.put("type", node.type());
         if (node.displayName() != null) {
             map.put("displayName", node.displayName());
+        }
+        if (node.hasParent()) {
+            map.put("parentId", node.parentId());
         }
         if (!node.params().isEmpty()) {
             map.put("params", node.params());

@@ -631,13 +631,13 @@ function findAnyHitlToolStepIndex(steps: ProcessingStep[]): number {
   return -1
 }
 
-/** 抽屉 / DAG：从全量 steps 取 agent 节点并归位 HITL */
+/** 抽屉 / DAG：从全量 steps 取 agent 节点并归位 HITL（含 loop.subSteps 的 i{n}-node-*） */
 export function resolveAgentNodeStepForDrawer(
   steps: ProcessingStep[] | undefined,
   nodeId: string,
   pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
 ): ProcessingStep | undefined {
-  const raw = steps?.find(s => s.id === `node-${nodeId}`)
+  const raw = findAgentNodeStep(steps, nodeId)
   if (!raw) return undefined
   let node = relocateAgentNodeHitl(raw)
   const list = normalizePendingHitlList(pending)
@@ -646,6 +646,29 @@ export function resolveAgentNodeStepForDrawer(
     node = merged[0] ?? node
   }
   return node
+}
+
+function findAgentNodeStep(
+  steps: ProcessingStep[] | undefined,
+  nodeId: string,
+): ProcessingStep | undefined {
+  const top = steps?.find(s => s.id === `node-${nodeId}`)
+  if (top) return top
+  const suffix = `node-${nodeId}`
+  let best: ProcessingStep | undefined
+  let bestRound = -1
+  for (const parent of steps ?? []) {
+    for (const sub of parent.subSteps ?? []) {
+      const m = /^i(\d+)-(.*)$/.exec(sub.id ?? '')
+      if (!m || m[2] !== suffix) continue
+      const round = Number(m[1])
+      if (round >= bestRound) {
+        bestRound = round
+        best = sub
+      }
+    }
+  }
+  return best
 }
 
 /** 子 Agent 执行过程：保证 HITL metadata 落在 tool 子步，供 Plan 抽屉确认框 */
@@ -663,9 +686,9 @@ export function resolveAgentSubStepsForDisplay(
   return node.subSteps ?? []
 }
 
-/** agent 节点误挂 HITL 时归位到 subSteps 内 tool 步 */
+/** agent 节点误挂 HITL 时归位到 subSteps 内 tool 步（含 loop 内 i{n}-node-*） */
 export function relocateAgentNodeHitl(step: ProcessingStep): ProcessingStep {
-  if (!step.id.startsWith('node-') || !step.subSteps?.length) return step
+  if (!isAgentOrLoopBodyNodeId(step.id) || !step.subSteps?.length) return step
   const status = resolveHitlStatus(step)
   if (!status) return step
   if (step.subSteps.some(s => resolveHitlStatus(s) === status)) {
@@ -686,6 +709,10 @@ export function relocateAgentNodeHitl(step: ProcessingStep): ProcessingStep {
     metadata: { ...subSteps[subIdx].metadata, ...hitlPatch },
   }
   return { ...step, subSteps, metadata: stripHitlMetadata(step.metadata) }
+}
+
+function isAgentOrLoopBodyNodeId(id: string): boolean {
+  return id.startsWith('node-') || /^i\d+-node-/.test(id)
 }
 
 /** ReAct HITL 续跑：paused 工具步恢复 running，保留 metadata 供后端 re-await */

@@ -83,7 +83,8 @@ export function businessNodeOrder(plan: WorkflowPlan): WorkflowPlanNode[] {
   return (plan.nodes ?? []).filter(n =>
     n.type !== 'start'
     && n.type !== 'answer'
-    && !isRoutingNodeType(n.type),
+    && !isRoutingNodeType(n.type)
+    && !n.parentId,
   )
 }
 
@@ -141,15 +142,23 @@ export function upstreamOutputRef(node: WorkflowPlanNode): string {
 }
 
 /**
- * 条件分支出边左值：沿入边回溯最近业务前驱的 output/answer；
+ * 条件分支出边 / loop 容器左值：沿入边回溯最近业务前驱的 output/answer；
  * 无业务前驱（直连 start 或仅路由）时用 {{start.userQuery}}。
  */
 export function exclusiveGatewayConditionLeft(plan: WorkflowPlan, gatewayId: string): string {
+  return resolveConditionLeftFromUpstream(plan, gatewayId)
+}
+
+export function loopConditionLeft(plan: WorkflowPlan, loopId: string): string {
+  return resolveConditionLeftFromUpstream(plan, loopId)
+}
+
+function resolveConditionLeftFromUpstream(plan: WorkflowPlan, nodeId: string): string {
   const edges = plan.edges ?? []
   const nodes = plan.nodes ?? []
   const typeById = new Map(nodes.map(n => [n.id, n.type]))
   const nodeById = new Map(nodes.map(n => [n.id, n]))
-  let preds = edges.filter(e => e.to === gatewayId).map(e => e.from)
+  let preds = edges.filter(e => e.to === nodeId).map(e => e.from)
   while (preds.length === 1) {
     const pid = preds[0]
     const ptype = typeById.get(pid)
@@ -247,7 +256,30 @@ export function reconcilePlanDataFlow(
     }
     return { ...e, condition: { left, op: 'contains', right: '' } }
   })
-  return { ...plan, nodes, edges }
+  const nodesWithLoop = nodes.map(n => {
+    if (n.type !== 'loop') return n
+    const left = loopConditionLeft({ ...plan, nodes, edges }, n.id)
+    const params = { ...(n.params ?? {}) }
+    const curLeft = String(params['condition.left'] ?? '')
+    if (curLeft === left
+      && params['condition.op']
+      && params['maxIterations']
+      && params['onMaxIterations']) {
+      return n
+    }
+    return {
+      ...n,
+      params: {
+        ...params,
+        'condition.left': left,
+        'condition.op': params['condition.op'] || 'contains',
+        'condition.right': params['condition.right'] ?? '',
+        maxIterations: params['maxIterations'] ?? '3',
+        onMaxIterations: params['onMaxIterations'] ?? 'fail_fast',
+      },
+    }
+  })
+  return { ...plan, nodes: nodesWithLoop, edges }
 }
 
 export function defaultParamsForType(type: WorkflowBusinessNodeType): Record<string, unknown> {

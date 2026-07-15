@@ -68,6 +68,13 @@ final class GenerationJobChunkEmitter {
 
     void onChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
+        for (StreamToken t : applyLoopBodyFold(token)) {
+            onChunkUnfolded(t, mysqlBuffer, flushPartial, lastFlush);
+        }
+    }
+
+    private void onChunkUnfolded(StreamToken token, StringBuilder mysqlBuffer,
+            Consumer<String> flushPartial, AtomicLong lastFlush) {
         if (token.isStep() || token.isStepDelta() || token.isContentStart() || token.isContentEnd()) {
             if (token.isStep()) {
                 thinkMapper.syncExternalStep(token.step());
@@ -88,10 +95,24 @@ final class GenerationJobChunkEmitter {
         if (token == null || finished.get() || !isStreamEpochValid()) {
             return;
         }
-        if (token.isStep()) {
-            thinkMapper.syncExternalStep(token.step());
+        for (StreamToken t : applyLoopBodyFold(token)) {
+            if (t.isStep()) {
+                thinkMapper.syncExternalStep(t.step());
+            }
+            emitMappedChunk(t, new StringBuilder(), s -> { }, new AtomicLong(0));
         }
-        emitMappedChunk(token, new StringBuilder(), s -> { }, new AtomicLong(0));
+    }
+
+    private List<StreamToken> applyLoopBodyFold(StreamToken token) {
+        if (token == null) {
+            return List.of();
+        }
+        var fold = StepEventBridge.loopBodyFold(messageId);
+        if (fold == null) {
+            return List.of(token);
+        }
+        List<StreamToken> out = fold.apply(token);
+        return out != null ? out : List.of();
     }
 
     void emitPausedStep(StreamToken token, StringBuilder mysqlBuffer, Consumer<String> flushPartial) {

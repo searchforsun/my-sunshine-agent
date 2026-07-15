@@ -202,16 +202,20 @@ function mergeSubSteps(
   for (const step of incoming) {
     const existing = byId.get(step.id)
     if (existing) {
+      const lifecycle = step.lifecycle ?? existing.lifecycle
       byId.set(step.id, {
         ...existing,
         ...step,
-        summary: mergeSummary(existing.summary, step.summary, step.lifecycle ?? existing.lifecycle),
+        summary: mergeSummary(existing.summary, step.summary, lifecycle),
         reasoning: longerText(existing.reasoning, step.reasoning),
         output: longerText(existing.output, step.output),
-        result: step.result ?? existing.result,
+        result: longerText(existing.result, step.result),
         detail: step.detail ?? existing.detail,
-        metadata: mergeStepMetadata(existing.metadata, step.metadata, step.lifecycle ?? existing.lifecycle),
-        lifecycle: step.lifecycle ?? existing.lifecycle,
+        metadata: mergeStepMetadata(existing.metadata, step.metadata, lifecycle),
+        lifecycle,
+        // loop 内 agent：递归保留 think/tool 与流式 contentBlocks
+        subSteps: mergeSubSteps(existing.subSteps, step.subSteps),
+        contentBlocks: step.contentBlocks?.length ? step.contentBlocks : existing.contentBlocks,
       })
     } else {
       byId.set(step.id, step)

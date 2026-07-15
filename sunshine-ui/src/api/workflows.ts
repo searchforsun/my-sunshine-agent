@@ -41,6 +41,8 @@ export interface WorkflowPlanNode {
   type: string
   displayName?: string
   params?: Record<string, unknown>
+  /** loop 容器内 body 归属 */
+  parentId?: string
 }
 
 export interface WorkflowPlanEdgeCondition {
@@ -61,8 +63,8 @@ export interface WorkflowPlan {
   reason: string
   nodes: WorkflowPlanNode[]
   edges: WorkflowPlanEdge[]
-  /** Studio 画布节点坐标（可选；执行展示与 Studio 对齐） */
-  layout?: Record<string, { x: number; y: number }>
+  /** Studio 画布节点坐标；loop 可带 width/height */
+  layout?: Record<string, { x: number; y: number; width?: number; height?: number }>
 }
 
 export interface WorkflowNodeRetryDefaults {

@@ -11,13 +11,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Plan DAG → 执行调度（串行 + 并行 fan-out/join + 排他条件分支） */
+/** Plan DAG → 执行调度（串行 + 并行 fan-out/join + 排他条件分支 + loop 容器） */
 public final class PlanExecutionSchedule {
 
     private PlanExecutionSchedule() {
     }
 
-    public sealed interface Step permits Single, Parallel, Exclusive {
+    public sealed interface Step permits Single, Parallel, Exclusive, Loop {
     }
 
     public record Single(String nodeId) implements Step {
@@ -43,6 +43,13 @@ public final class PlanExecutionSchedule {
     public record Exclusive(String gatewayNodeId, List<ExclusiveArm> arms) implements Step {
         public Exclusive {
             arms = List.copyOf(arms);
+        }
+    }
+
+    /** loop 容器：do-while 继续条件；bodyNodeIds 为框内线性顺序 */
+    public record Loop(String loopNodeId, List<String> bodyNodeIds) implements Step {
+        public Loop {
+            bodyNodeIds = bodyNodeIds != null ? List.copyOf(bodyNodeIds) : List.of();
         }
     }
 
@@ -140,25 +147,253 @@ public final class PlanExecutionSchedule {
         return null;
     }
 
-    /** 构建执行调度；无 join/exclusive 时退化为线性 Single 链 */
+    private static final Set<String> ON_MAX_ITERATIONS = Set.of("fail_fast", "exit", "fallback_react");
+    private static final Set<String> LOOP_BODY_TYPES = Set.of("rag", "tool", "agent");
+
+    /** loop 容器拓扑校验；通过返回 null */
+    public static String validateLoopTopology(PlanJson plan) {
+        if (plan == null || plan.nodes().isEmpty()) {
+            return "nodes 为空";
+        }
+        Map<String, PlanNode> nodes = plan.nodesById();
+        Map<String, List<PlanEdge>> outEdges = outEdges(plan);
+        Map<String, List<PlanEdge>> inEdges = inEdges(plan);
+        for (PlanNode node : plan.nodes()) {
+            if (node.hasParent()) {
+                PlanNode parent = nodes.get(node.parentId());
+                if (parent == null) {
+                    return "节点 " + node.id() + " 的 parentId 不存在: " + node.parentId();
+                }
+                if (!"loop".equals(parent.type())) {
+                    return "节点 " + node.id() + " 的 parentId 须指向 loop 容器";
+                }
+                if (!LOOP_BODY_TYPES.contains(node.type())) {
+                    return "loop 框内节点 " + node.id() + " 类型须为 rag/tool/agent";
+                }
+                if ("loop".equals(node.type())) {
+                    return "禁止嵌套 loop: " + node.id();
+                }
+            }
+        }
+        for (PlanEdge edge : plan.edges()) {
+            PlanNode from = nodes.get(edge.from());
+            PlanNode to = nodes.get(edge.to());
+            boolean fromBody = from != null && from.hasParent();
+            boolean toBody = to != null && to.hasParent();
+            if (fromBody != toBody) {
+                return "禁止跨框边 " + edge.from() + "→" + edge.to();
+            }
+            if (fromBody && toBody && !from.parentId().equals(to.parentId())) {
+                return "禁止跨不同 loop 的边 " + edge.from() + "→" + edge.to();
+            }
+        }
+        for (PlanNode node : plan.nodes()) {
+            if (!"loop".equals(node.type())) {
+                continue;
+            }
+            if (node.hasParent()) {
+                return "禁止嵌套 loop: " + node.id();
+            }
+            List<String> bodyIds = plan.nodes().stream()
+                    .filter(n -> node.id().equals(n.parentId()))
+                    .map(PlanNode::id)
+                    .toList();
+            if (bodyIds.isEmpty()) {
+                return "loop 节点 " + node.id() + " 须包含至少一个 body 节点";
+            }
+            String bodyOrderErr = validateLinearBody(bodyIds, plan, nodes);
+            if (bodyOrderErr != null) {
+                return bodyOrderErr;
+            }
+            long outerOut = outEdges.getOrDefault(node.id(), List.of()).stream()
+                    .filter(e -> {
+                        PlanNode t = nodes.get(e.to());
+                        return t == null || !t.hasParent();
+                    })
+                    .count();
+            if (outerOut != 1) {
+                return "loop 节点 " + node.id() + " 外图出度须为 1";
+            }
+            long outerIn = inEdges.getOrDefault(node.id(), List.of()).stream()
+                    .filter(e -> {
+                        PlanNode f = nodes.get(e.from());
+                        return f == null || !f.hasParent();
+                    })
+                    .count();
+            if (outerIn < 1) {
+                return "loop 节点 " + node.id() + " 外图入度须 ≥ 1";
+            }
+            String condErr = validateLoopConditionParams(node);
+            if (condErr != null) {
+                return condErr;
+            }
+        }
+        return null;
+    }
+
+    private static String validateLoopConditionParams(PlanNode node) {
+        Map<String, String> p = node.params();
+        String maxRaw = p.getOrDefault("maxIterations", "3").strip();
+        int max;
+        try {
+            max = Integer.parseInt(maxRaw);
+        } catch (NumberFormatException e) {
+            return "loop 节点 " + node.id() + " 的 maxIterations 须为整数";
+        }
+        if (max < 1 || max > 5) {
+            return "loop 节点 " + node.id() + " 的 maxIterations 须在 1–5";
+        }
+        String onMax = p.getOrDefault("onMaxIterations", "fail_fast").strip().toLowerCase();
+        if (!ON_MAX_ITERATIONS.contains(onMax)) {
+            return "loop 节点 " + node.id() + " 的 onMaxIterations 非法: " + onMax;
+        }
+        String op = p.getOrDefault("condition.op", "").strip();
+        String left = p.getOrDefault("condition.left", "").strip();
+        if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
+            return "loop 节点 " + node.id() + " 须配置 condition.op 与 condition.left";
+        }
+        if (!"empty".equals(op) && !"not_empty".equals(op)
+                && !"contains".equals(op) && !"eq".equals(op)) {
+            return "loop 节点 " + node.id() + " 的 condition.op 非法: " + op;
+        }
+        if (("contains".equals(op) || "eq".equals(op))
+                && !StringUtils.hasText(p.getOrDefault("condition.right", "").strip())) {
+            return "loop 节点 " + node.id() + " 的 condition.right 不能为空";
+        }
+        return null;
+    }
+
+    private static String validateLinearBody(
+            List<String> bodyIds,
+            PlanJson plan,
+            Map<String, PlanNode> nodes) {
+        Set<String> bodySet = new HashSet<>(bodyIds);
+        Map<String, List<String>> out = new HashMap<>();
+        Map<String, Integer> indeg = new HashMap<>();
+        for (String id : bodyIds) {
+            indeg.put(id, 0);
+            out.put(id, new ArrayList<>());
+        }
+        for (PlanEdge edge : plan.edges()) {
+            if (!bodySet.contains(edge.from()) || !bodySet.contains(edge.to())) {
+                continue;
+            }
+            out.get(edge.from()).add(edge.to());
+            indeg.merge(edge.to(), 1, Integer::sum);
+        }
+        List<String> roots = bodyIds.stream().filter(id -> indeg.getOrDefault(id, 0) == 0).toList();
+        if (roots.size() != 1) {
+            return "loop body 须为单链（恰好一个入度为 0 的入口）";
+        }
+        String cur = roots.get(0);
+        Set<String> seen = new HashSet<>();
+        while (cur != null) {
+            if (!seen.add(cur)) {
+                return "loop body 存在环";
+            }
+            List<String> nexts = out.getOrDefault(cur, List.of());
+            if (nexts.size() > 1) {
+                return "loop body 须为单链（节点 " + cur + " 出度 > 1）";
+            }
+            cur = nexts.isEmpty() ? null : nexts.get(0);
+        }
+        if (seen.size() != bodyIds.size()) {
+            return "loop body 须连通为单链";
+        }
+        return null;
+    }
+
+    /** 框内 body 线性顺序；非法时返回空列表 */
+    public static List<String> loopBodyOrder(PlanJson plan, String loopId) {
+        List<String> bodyIds = plan.nodes().stream()
+                .filter(n -> loopId.equals(n.parentId()))
+                .map(PlanNode::id)
+                .toList();
+        if (bodyIds.isEmpty()) {
+            return List.of();
+        }
+        if (validateLinearBody(bodyIds, plan, plan.nodesById()) != null) {
+            return List.of();
+        }
+        Set<String> bodySet = new HashSet<>(bodyIds);
+        Map<String, List<String>> out = new HashMap<>();
+        Map<String, Integer> indeg = new HashMap<>();
+        for (String id : bodyIds) {
+            indeg.put(id, 0);
+            out.put(id, new ArrayList<>());
+        }
+        for (PlanEdge edge : plan.edges()) {
+            if (!bodySet.contains(edge.from()) || !bodySet.contains(edge.to())) {
+                continue;
+            }
+            out.get(edge.from()).add(edge.to());
+            indeg.merge(edge.to(), 1, Integer::sum);
+        }
+        String cur = bodyIds.stream().filter(id -> indeg.getOrDefault(id, 0) == 0).findFirst().orElse(null);
+        List<String> order = new ArrayList<>();
+        while (cur != null) {
+            order.add(cur);
+            List<String> nexts = out.getOrDefault(cur, List.of());
+            cur = nexts.isEmpty() ? null : nexts.get(0);
+        }
+        return List.copyOf(order);
+    }
+
+    public static PlanEdgeCondition loopCondition(PlanNode loopNode) {
+        if (loopNode == null) {
+            return null;
+        }
+        Map<String, String> p = loopNode.params();
+        return new PlanEdgeCondition(
+                p.getOrDefault("condition.left", ""),
+                p.getOrDefault("condition.op", ""),
+                p.getOrDefault("condition.right", ""));
+    }
+
+    public static int loopMaxIterations(PlanNode loopNode) {
+        if (loopNode == null) {
+            return 3;
+        }
+        try {
+            int n = Integer.parseInt(loopNode.params().getOrDefault("maxIterations", "3").strip());
+            return Math.max(1, Math.min(5, n));
+        } catch (NumberFormatException e) {
+            return 3;
+        }
+    }
+
+    public static String loopOnMaxIterations(PlanNode loopNode) {
+        if (loopNode == null) {
+            return "fail_fast";
+        }
+        String v = loopNode.params().getOrDefault("onMaxIterations", "fail_fast").strip().toLowerCase();
+        return ON_MAX_ITERATIONS.contains(v) ? v : "fail_fast";
+    }
+
+    /** 构建执行调度；无 join/exclusive/loop 时退化为线性 Single 链（排除 body） */
     public static List<Step> build(PlanJson plan) {
         if (plan == null || plan.nodes().isEmpty()) {
             return List.of();
         }
         boolean hasJoin = plan.nodes().stream().anyMatch(n -> "join".equals(n.type()));
         boolean hasExclusive = plan.nodes().stream().anyMatch(n -> "exclusive-gateway".equals(n.type()));
-        if (!hasJoin && !hasExclusive) {
+        boolean hasLoop = plan.nodes().stream().anyMatch(n -> "loop".equals(n.type()));
+        if (!hasJoin && !hasExclusive && !hasLoop) {
             return PlanLinearizer.linearOrder(plan).stream()
-                    .filter(id -> !"start".equals(id))
+                    .filter(id -> {
+                        PlanNode n = plan.nodesById().get(id);
+                        return n != null && !"start".equals(n.type()) && !n.hasParent();
+                    })
                     .<Step>map(Single::new)
                     .toList();
         }
         Map<String, PlanNode> nodes = plan.nodesById();
-        Map<String, List<String>> out = outAdj(plan);
-        Map<String, List<PlanEdge>> outEdges = outEdges(plan);
+        Map<String, List<String>> out = outAdjOuter(plan);
+        Map<String, List<PlanEdge>> outEdges = outEdgesOuter(plan);
         List<Step> steps = new ArrayList<>();
         String cursor = "start";
         Set<String> visitedExclusive = new HashSet<>();
+        Set<String> visitedLoop = new HashSet<>();
         while (true) {
             List<String> nexts = out.getOrDefault(cursor, List.of());
             if (nexts.isEmpty()) {
@@ -180,7 +415,7 @@ public final class PlanExecutionSchedule {
                         break;
                     }
                     if (!"start".equals(after)) {
-                        steps.add(new Single(after));
+                        steps.add(wrapOuterNode(after, plan, visitedLoop));
                     }
                     PlanNode afterNode = nodes.get(after);
                     if (afterNode != null && "answer".equals(afterNode.type())) {
@@ -200,7 +435,7 @@ public final class PlanExecutionSchedule {
                 }
                 String after = afterJoin.get(0);
                 if (!"start".equals(after)) {
-                    steps.add(new Single(after));
+                    steps.add(wrapOuterNode(after, plan, visitedLoop));
                 }
                 PlanNode afterNode = nodes.get(after);
                 if (afterNode != null && "answer".equals(afterNode.type())) {
@@ -211,7 +446,7 @@ public final class PlanExecutionSchedule {
             }
             String next = nexts.get(0);
             if (!"start".equals(next)) {
-                steps.add(new Single(next));
+                steps.add(wrapOuterNode(next, plan, visitedLoop));
             }
             cursor = next;
             PlanNode node = nodes.get(next);
@@ -220,6 +455,19 @@ public final class PlanExecutionSchedule {
             }
         }
         return List.copyOf(steps);
+    }
+
+    /** 若 next 为 loop 则产出 Loop 步，否则 Single */
+    private static Step wrapOuterNode(String nodeId, PlanJson plan, Set<String> visitedLoop) {
+        PlanNode node = plan.nodesById().get(nodeId);
+        if (node != null && "loop".equals(node.type())) {
+            if (!visitedLoop.add(nodeId)) {
+                return new Single(nodeId);
+            }
+            List<String> body = loopBodyOrder(plan, nodeId);
+            return new Loop(nodeId, body);
+        }
+        return new Single(nodeId);
     }
 
     public static List<String> flattenLinearOrder(List<Step> steps) {
@@ -235,6 +483,9 @@ public final class PlanExecutionSchedule {
                 for (ExclusiveArm arm : e.arms()) {
                     order.addAll(arm.pathNodeIds());
                 }
+            } else if (step instanceof Loop loop) {
+                order.add(loop.loopNodeId());
+                order.addAll(loop.bodyNodeIds());
             }
         }
         return List.copyOf(order);
@@ -485,12 +736,53 @@ public final class PlanExecutionSchedule {
         return adj;
     }
 
+    /** 外图邻接：排除 parentId body 相关边 */
+    private static Map<String, List<String>> outAdjOuter(PlanJson plan) {
+        Map<String, PlanNode> nodes = plan.nodesById();
+        Map<String, List<String>> adj = new HashMap<>();
+        for (PlanEdge edge : plan.edges()) {
+            if (!isOuterEdge(edge, nodes)) {
+                continue;
+            }
+            adj.computeIfAbsent(edge.from(), k -> new ArrayList<>()).add(edge.to());
+        }
+        return adj;
+    }
+
     private static Map<String, List<PlanEdge>> outEdges(PlanJson plan) {
         Map<String, List<PlanEdge>> adj = new HashMap<>();
         for (PlanEdge edge : plan.edges()) {
             adj.computeIfAbsent(edge.from(), k -> new ArrayList<>()).add(edge);
         }
         return adj;
+    }
+
+    private static Map<String, List<PlanEdge>> outEdgesOuter(PlanJson plan) {
+        Map<String, PlanNode> nodes = plan.nodesById();
+        Map<String, List<PlanEdge>> adj = new HashMap<>();
+        for (PlanEdge edge : plan.edges()) {
+            if (!isOuterEdge(edge, nodes)) {
+                continue;
+            }
+            adj.computeIfAbsent(edge.from(), k -> new ArrayList<>()).add(edge);
+        }
+        return adj;
+    }
+
+    private static Map<String, List<PlanEdge>> inEdges(PlanJson plan) {
+        Map<String, List<PlanEdge>> adj = new HashMap<>();
+        for (PlanEdge edge : plan.edges()) {
+            adj.computeIfAbsent(edge.to(), k -> new ArrayList<>()).add(edge);
+        }
+        return adj;
+    }
+
+    private static boolean isOuterEdge(PlanEdge edge, Map<String, PlanNode> nodes) {
+        PlanNode from = nodes.get(edge.from());
+        PlanNode to = nodes.get(edge.to());
+        boolean fromBody = from != null && from.hasParent();
+        boolean toBody = to != null && to.hasParent();
+        return !fromBody && !toBody;
     }
 
     private static Map<String, List<String>> inAdj(PlanJson plan) {

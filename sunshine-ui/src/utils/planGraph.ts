@@ -166,6 +166,90 @@ function isTerminalStatus(status: DagNodeStatus): boolean {
     || status === 'terminated'
 }
 
+/**
+ * exclusive-gateway 已路由后，未走的出边及仅经跳过边可达的节点标为 skipped，
+ * 避免终态仍显示「等待中」。
+ */
+function markUntakenExclusiveBranches(
+  graph: PlanGraph,
+  statusById: Map<string, DagNodeStatus>,
+): void {
+  const edges = graph.edges ?? []
+  const nodes = graph.nodes ?? []
+  for (const node of nodes) {
+    if (node.type !== 'exclusive-gateway') continue
+    const gw = statusById.get(node.id)
+    if (gw !== 'done' && gw !== 'running') continue
+    const succs = edges.filter(e => e.from === node.id).map(e => e.to)
+    const routed = gw === 'done' || succs.some(id => {
+      const st = statusById.get(id)
+      return st != null && st !== 'pending'
+    })
+    if (!routed) continue
+    for (const id of succs) {
+      if (statusById.get(id) === 'pending') {
+        statusById.set(id, 'skipped')
+      }
+    }
+  }
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const node of nodes) {
+      if (node.type === 'start' || node.type === 'answer') continue
+      if (statusById.get(node.id) !== 'pending') continue
+      const preds = edges.filter(e => e.to === node.id).map(e => e.from)
+      if (preds.length === 0) continue
+      if (preds.every(id => id !== 'start' && statusById.get(id) === 'skipped')) {
+        statusById.set(node.id, 'skipped')
+        changed = true
+      }
+    }
+  }
+}
+
+/** loop.subSteps id：i{n}-node-{bodyId} → 取最大轮次对应子步 */
+export function findLoopBodySubStep(
+  loopStep: ProcessingStep | undefined,
+  bodyNodeId: string,
+): ProcessingStep | undefined {
+  const subs = loopStep?.subSteps
+  if (!subs?.length) return undefined
+  const suffix = `node-${bodyNodeId}`
+  let best: ProcessingStep | undefined
+  let bestRound = -1
+  for (const sub of subs) {
+    const id = sub.id ?? ''
+    const m = /^i(\d+)-(.*)$/.exec(id)
+    if (!m || m[2] !== suffix) continue
+    const round = Number(m[1])
+    if (round >= bestRound) {
+      bestRound = round
+      best = sub
+    }
+  }
+  return best
+}
+
+/**
+ * DAG 节点 → Timeline 步：顶层 node-{id}；loop 框内读 parent.subSteps 的 i{n}-node-{id}。
+ */
+export function resolveDagNodeStep(
+  nodeId: string,
+  steps: ProcessingStep[] | undefined,
+  graph?: PlanGraph | null,
+  planStep?: ProcessingStep,
+): ProcessingStep | undefined {
+  if (nodeId === 'start') return planStep
+  const top = steps?.find(s => s.id === `node-${nodeId}`)
+  if (top) return relocateAgentNodeHitl(top)
+  const parentId = graph?.nodes?.find(n => n.id === nodeId)?.parentId
+  if (!parentId || !steps?.length) return undefined
+  const loopStep = steps.find(s => s.id === `node-${parentId}`)
+  const body = findLoopBodySubStep(loopStep, nodeId)
+  return body ? relocateAgentNodeHitl(body) : undefined
+}
+
 /** start 无独立 timeline 步：任一后继节点或 plan 步已推进即视为已通过 */
 function resolveStartStatus(
   order: string[],
@@ -288,13 +372,16 @@ export function buildDagNodes(
   }
   const byId = new Map(graph.nodes.filter(isDagNode).map(n => [n.id, n]))
   const order = fullDagOrder(graph)
-  return order.flatMap(id => {
+  const statusById = new Map<string, DagNodeStatus>()
+  const draft = order.flatMap(id => {
     if (id === 'start') {
+      const status = resolveStartStatus(order, byId, stepByNodeId, traceByNodeId, planStep)
+      statusById.set('start', status)
       return [{
         id: 'start',
         type: 'start',
         label: '开始',
-        status: resolveStartStatus(order, byId, stepByNodeId, traceByNodeId, planStep),
+        status,
       }]
     }
     const node = byId.get(id)
@@ -303,19 +390,36 @@ export function buildDagNodes(
     const trace = traceByNodeId.get(node.id)
     const baseStatus = resolveNodeStatus(step, trace)
     const isRoutingNode = isGatewayType(node.type)
-    const status = isRoutingNode
+    let status = isRoutingNode
       ? resolveRoutingNodeStatus(
         node, graph, byId, stepByNodeId, traceByNodeId, order, planStep, baseStatus,
       )
       : baseStatus
-    const recoveryAwaiting = isRecoveryAwaiting(step)
-    const durationMs = isRoutingNode
+    let durationMs = isRoutingNode
       ? undefined
       : (step
         ? resolveStepDurationMs(step)
         : (trace?.startedAt != null && trace?.endedAt != null
           ? trace.endedAt - trace.startedAt
           : undefined))
+    // loop 框内：状态/耗时读 parent.subSteps（i{n}-node-*）；无子步且父已终态才「已跳过」
+    if (status === 'pending' && node.parentId) {
+      const parentStep = stepByNodeId.get(node.parentId)
+      const bodySub = findLoopBodySubStep(parentStep, node.id)
+      if (bodySub) {
+        status = mapStepStatus(bodySub)
+        durationMs = resolveStepDurationMs(bodySub) ?? durationMs
+      } else {
+        const parentSt = resolveNodeStatus(parentStep, traceByNodeId.get(node.parentId))
+        if (parentSt === 'running' || parentSt === 'paused' || parentSt === 'awaiting_confirm') {
+          status = 'pending'
+        } else if (parentSt === 'done' || parentSt === 'error' || parentSt === 'skipped' || parentSt === 'terminated') {
+          status = 'skipped'
+        }
+      }
+    }
+    statusById.set(node.id, status)
+    const recoveryAwaiting = isRecoveryAwaiting(step)
     const skillId = node.type === 'agent' ? node.params?.skill?.trim() : undefined
     const attempts = resolveNodeAttempts(step, trace)
     const retryMaxAttempts = parseRetryMaxAttempts(node.params)
@@ -334,5 +438,10 @@ export function buildDagNodes(
       skillLabel: resolveSkillLabel(skillId, skillCatalog),
       recoveryAwaiting: recoveryAwaiting ? true : undefined,
     }]
+  })
+  markUntakenExclusiveBranches(graph, statusById)
+  return draft.map(node => {
+    const next = statusById.get(node.id)
+    return next != null && next !== node.status ? { ...node, status: next } : node
   })
 }

@@ -11,13 +11,23 @@ function formatCondition(edge: PlanGraphEdge): string {
   if (edge.default) return '默认分支'
   const c = edge.condition
   if (!c?.op) return '未配置条件'
-  const left = c.left?.trim() || '（左值）'
-  const right = c.right?.trim() ?? ''
-  if (c.op === 'empty') return `${left} 为空`
-  if (c.op === 'not_empty') return `${left} 非空`
-  if (c.op === 'contains') return `${left} 包含「${right}」`
-  if (c.op === 'eq') return `${left} 等于「${right}」`
-  return `${left} ${c.op} ${right}`.trim()
+  return formatConditionExpr(c.left, c.op, c.right)
+}
+
+/** 与 exclusive / loop 共用的条件文案（empty / not_empty / contains / eq） */
+export function formatConditionExpr(
+  left: string | undefined,
+  op: string | undefined,
+  right?: string | null,
+): string {
+  if (!op?.trim()) return '未配置条件'
+  const l = left?.trim() || '（左值）'
+  const r = right?.trim() ?? ''
+  if (op === 'empty') return `${l} 为空`
+  if (op === 'not_empty') return `${l} 非空`
+  if (op === 'contains') return `${l} 包含「${r}」`
+  if (op === 'eq') return `${l} 等于「${r}」`
+  return `${l} ${op} ${r}`.trim()
 }
 
 /** Chat 抽屉：条件分支出边配置（静态；不在画布边标签展示） */

@@ -108,6 +108,23 @@ const kind = computed(() => {
       <path d="M5.35 5.35l5.3 5.3M10.65 5.35l-5.3 5.3" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
     </template>
 
+    <!-- loop：循环容器 -->
+    <template v-else-if="kind === 'loop'">
+      <path
+        d="M8 2.5a5.5 5.5 0 1 1-3.9 1.6"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+      />
+      <path
+        d="M3.2 2.8v2.6h2.6"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </template>
+
     <!-- answer：汇总输出 -->
     <template v-else-if="kind === 'answer'">
       <path

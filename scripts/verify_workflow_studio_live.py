@@ -13,7 +13,7 @@
   RAG_URL                hash 套件 RAG 预检，默认 http://127.0.0.1:8400
 
 前置:
-  - MySQL init 已执行（13-sunshine-workflow-manager.sql 含 6 标杆种子）
+  - MySQL init 已执行（13-sunshine-workflow-manager.sql 含 7 标杆种子）
   - workflow-manager :8230、gateway :8000、orchestrator :8200 已启动
 """
 from __future__ import annotations
@@ -43,6 +43,7 @@ SEED_IDS = {
     "finance-summary",
     "knowledge-dual",
     "knowledge-branch",
+    "knowledge-loop",
 }
 
 
@@ -447,11 +448,92 @@ def suite_exclusive() -> None:
     print("  [OK] 无「报销」→ node-rag-d5e6f7a8")
 
 
+def _as_steps(assistant: dict) -> list[dict]:
+    steps = assistant.get("steps")
+    if isinstance(steps, str):
+        try:
+            steps = json.loads(steps) if steps.strip() else []
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(steps, list):
+        return []
+    return [s for s in steps if isinstance(s, dict)]
+
+
+def _top_step_ids(assistant: dict) -> list[str]:
+    return [str(s.get("id") or "") for s in _as_steps(assistant)]
+
+
+def _find_loop_step(assistant: dict) -> dict | None:
+    for s in _as_steps(assistant):
+        if str(s.get("id") or "").startswith("node-loop-"):
+            return s
+    return None
+
+
+def suite_loop() -> None:
+    print("[loop] 4.13.7 loop do-while + subSteps Live")
+    preflight_rag()
+    token_hdr = auth_headers()
+    token = token_hdr["Authorization"].removeprefix("Bearer ").strip()
+
+    # 无「继续」→ 首轮必进，仅 1 轮
+    conv1 = conversation_id(auth_json("POST", "/api/conversations", None, token))
+    q1 = "#knowledge-loop 分析年假和待办报销"
+    print(f"  query={q1}")
+    chat_sse(token, conv1, q1, executionPreference="auto")
+    a1 = wait_assistant(token, conv1, max(HASH_TIMEOUT_SEC, 180))
+    if not workflow_hit(a1, "knowledge-loop"):
+        raise RuntimeError(
+            f"loop 路由失败 workflowId={a1.get('workflowId')} intent={a1.get('intent')}",
+        )
+    top1 = _top_step_ids(a1)
+    if "node-loop-a1b2c3d4" not in top1:
+        raise RuntimeError(f"主时间线缺少 loop 步: {top1}")
+    for body_id in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-agent-a1g2e3n4"):
+        if body_id in top1:
+            raise RuntimeError(f"body 不应出现在主时间线: {body_id} in {top1}")
+    loop1 = _find_loop_step(a1)
+    if not loop1:
+        raise RuntimeError("未找到 node-loop-* 步骤")
+    after1 = ((loop1.get("summary") or {}).get("after") or "")
+    if "未进入循环体" in after1:
+        raise RuntimeError(f"do-while 应至少 1 轮: after={after1}")
+    sub1 = [str(s.get("id") or "") for s in (loop1.get("subSteps") or []) if isinstance(s, dict)]
+    for body in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-agent-a1g2e3n4"):
+        if f"i1-{body}" not in sub1:
+            raise RuntimeError(f"首轮缺少 {body}: {sub1}")
+        if f"i2-{body}" in sub1:
+            raise RuntimeError(f"无「继续」不应有第 2 轮: {sub1}")
+    print("  [OK] 无「继续」→ 首轮必进，仅 i1 body")
+
+    # 含「继续」→ 最多 2 轮
+    conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
+    q2 = "#knowledge-loop 继续分析年假和待办报销"
+    print(f"  query={q2}")
+    chat_sse(token, conv2, q2, executionPreference="auto")
+    a2 = wait_assistant(token, conv2, max(HASH_TIMEOUT_SEC, 180))
+    if not workflow_hit(a2, "knowledge-loop"):
+        raise RuntimeError(
+            f"loop 多轮路由失败 workflowId={a2.get('workflowId')} intent={a2.get('intent')}",
+        )
+    loop2 = _find_loop_step(a2)
+    if not loop2:
+        raise RuntimeError("多轮未找到 node-loop-* 步骤")
+    sub2 = [str(s.get("id") or "") for s in (loop2.get("subSteps") or []) if isinstance(s, dict)]
+    for round_prefix in ("i1-", "i2-"):
+        for body in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-agent-a1g2e3n4"):
+            expect = round_prefix + body
+            if expect not in sub2:
+                raise RuntimeError(f"缺少 subStep {expect}: {sub2}")
+    print("  [OK] 含「继续」→ i1/i2 rag+tool+agent")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Workflow Studio Live 验收")
     parser.add_argument(
         "--suite",
-        choices=["catalog", "bff", "studio", "hash", "parallel", "exclusive", "all"],
+        choices=["catalog", "bff", "studio", "hash", "parallel", "exclusive", "loop", "all"],
         default="catalog",
     )
     args = parser.parse_args()
@@ -469,6 +551,8 @@ def main() -> int:
             suite_parallel()
         if args.suite in ("exclusive", "all"):
             suite_exclusive()
+        if args.suite in ("loop", "all"):
+            suite_loop()
     except requests.RequestException as e:
         print(f"[FAIL] 请求失败: {e}", file=sys.stderr)
         return 1

@@ -1,5 +1,10 @@
 import type { WorkflowPlan } from '../api/workflows'
-import { isExclusiveGateway, isParallelForkGateway, isParallelMergeGateway } from './workflowGateway'
+import {
+  isExclusiveGateway,
+  isLoopType,
+  isParallelForkGateway,
+  isParallelMergeGateway,
+} from './workflowGateway'
 
 export type ConnectionEval = { ok: true } | { ok: false; reason: string }
 
@@ -61,6 +66,20 @@ export function evaluateConnection(
   }
   if (sourceNode.type === 'answer') {
     return { ok: false, reason: '结束节点不能作为连线的起点' }
+  }
+  const fromBody = !!sourceNode.parentId
+  const toBody = !!targetNode.parentId
+  if (fromBody !== toBody) {
+    return { ok: false, reason: '不能跨循环容器连线' }
+  }
+  if (fromBody && toBody && sourceNode.parentId !== targetNode.parentId) {
+    return { ok: false, reason: '不能跨不同循环容器连线' }
+  }
+  if (fromBody || toBody) {
+    const bodyTypeOk = (t: string) => ['rag', 'tool', 'agent'].includes(t)
+    if (!bodyTypeOk(sourceNode.type) || !bodyTypeOk(targetNode.type)) {
+      return { ok: false, reason: '循环框内仅允许 rag / tool / agent' }
+    }
   }
   if (targetNode.type === 'start') {
     return { ok: false, reason: '开始节点不能作为连线的终点' }
@@ -172,6 +191,46 @@ export function validatePlanTopologyLocally(plan: WorkflowPlan): string[] {
           issues.push(`条件分支出边 ${e.from}→${e.to} 须配置条件或标为默认`)
         }
       }
+    }
+    if (isLoopType(type)) {
+      const body = nodes.filter(n => n.parentId === id)
+      if (body.length === 0) {
+        issues.push(`循环「${id}」须包含至少一个框内节点`)
+      }
+      const succs = outgoing.get(id) ?? []
+      if (succs.length !== 1) {
+        issues.push(`循环「${id}」外图出度须为 1`)
+      }
+      const params = nodes.find(n => n.id === id)?.params ?? {}
+      const op = String(params['condition.op'] ?? '').trim()
+      const left = String(params['condition.left'] ?? '').trim()
+      if (!op || !left) {
+        issues.push(`循环「${id}」须配置条件算子与左值`)
+      }
+      const maxRaw = String(params['maxIterations'] ?? '3')
+      const max = Number(maxRaw)
+      if (!Number.isFinite(max) || max < 1 || max > 5) {
+        issues.push(`循环「${id}」的 maxIterations 须在 1–5`)
+      }
+    }
+  }
+  for (const n of nodes) {
+    if (!n.parentId) continue
+    const parent = nodes.find(p => p.id === n.parentId)
+    if (!parent || parent.type !== 'loop') {
+      issues.push(`节点「${n.id}」的 parentId 须指向 loop 容器`)
+    }
+    if (!['rag', 'tool', 'agent'].includes(n.type)) {
+      issues.push(`循环框内节点「${n.id}」类型须为 rag/tool/agent`)
+    }
+  }
+  for (const e of edges) {
+    const from = nodes.find(n => n.id === e.from)
+    const to = nodes.find(n => n.id === e.to)
+    const fromBody = !!from?.parentId
+    const toBody = !!to?.parentId
+    if (fromBody !== toBody) {
+      issues.push(`禁止跨框边 ${e.from}→${e.to}`)
     }
   }
   for (const e of edges) {

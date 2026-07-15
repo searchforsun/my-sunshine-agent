@@ -193,7 +193,7 @@ python3 scripts/verify_skills_ui_live.py
 
 > **详设**：[workflow-studio-design.md](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3  
 > **与 §E 区分**：**`#` 仅 Workflow** · **`@` 仅 Skill**；首字符互斥，均优先于 L1/L2/L3。  
-> **数据源**：workflow-manager DB init 种子 **6 条**（`docs/workflow/README.md`）。
+> **数据源**：workflow-manager DB init 种子 **7 条**（`docs/workflow/README.md`）。
 
 | # | 提示词 | 预期 |
 |---|--------|------|
@@ -202,6 +202,8 @@ python3 scripts/verify_skills_ui_live.py
 | I2b | `#knowledge-dual 年假和报销制度一起查` | `WORKFLOW` workflowId=knowledge-dual；并行双 RAG + join DAG |
 | I2c | `#knowledge-branch 报销需要哪些材料` | `WORKFLOW` workflowId=knowledge-branch；exclusive → 财务 RAG（含「报销」） |
 | I2d | `#knowledge-branch 请假制度是什么` | `WORKFLOW` workflowId=knowledge-branch；exclusive → 默认人事 RAG |
+| I2e | `#knowledge-loop 分析年假和待办报销` | `WORKFLOW` knowledge-loop；do-while 首轮必进（1 轮 subSteps） |
+| I2f | `#knowledge-loop 继续分析年假和待办报销` | `WORKFLOW` knowledge-loop；继续条件真 → 最多 2 轮 subSteps |
 | I3 | `#finance-smart 待审批报销是否合规` | `WORKFLOW` workflowId=finance-smart；**压过** L2 规则 / L3 自动选型 |
 | I4 | `#not-exists 测试` | HTTP 400；文案指向 `/workflows` |
 | I5 | `@knowledge-qa 测试` | **不得**当 workflow；按 Skill 解析 → 未知 Skill 400 或 none |

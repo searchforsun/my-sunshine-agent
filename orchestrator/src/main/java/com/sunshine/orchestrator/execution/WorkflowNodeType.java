@@ -13,7 +13,8 @@ public enum WorkflowNodeType {
     TOOL("tool"),
     JOIN("join"),
     PARALLEL_GATEWAY("parallel-gateway"),
-    EXCLUSIVE_GATEWAY("exclusive-gateway");
+    EXCLUSIVE_GATEWAY("exclusive-gateway"),
+    LOOP("loop");
 
     private final String id;
 
@@ -47,7 +48,7 @@ public enum WorkflowNodeType {
                 && !PARALLEL_GATEWAY.matches(type) && !EXCLUSIVE_GATEWAY.matches(type);
     }
 
-    /** DAG node-{id} 步骤：含 answer 等业务节点；路由网关/join 仅执行不落主时间线步 */
+    /** DAG node-{id} 步骤：含 answer / loop 等业务节点；路由网关/join 仅执行不落主时间线步 */
     public static boolean tracksNodeStep(String type) {
         return type != null && !START.matches(type) && !JOIN.matches(type)
                 && !PARALLEL_GATEWAY.matches(type) && !EXCLUSIVE_GATEWAY.matches(type);
@@ -64,6 +65,10 @@ public enum WorkflowNodeType {
 
     public static java.util.Set<String> execTypeIds() {
         return java.util.Set.of(RAG.id, TOOL.id, AGENT.id, ANSWER.id, JOIN.id,
-                PARALLEL_GATEWAY.id, EXCLUSIVE_GATEWAY.id);
+                PARALLEL_GATEWAY.id, EXCLUSIVE_GATEWAY.id, LOOP.id);
+    }
+
+    public static boolean isLoopBodyType(String type) {
+        return RAG.matches(type) || TOOL.matches(type) || AGENT.matches(type);
     }
 }

@@ -29,7 +29,7 @@ import {
   type ToolOutputMode,
 } from '../../utils/workflowNodeIo'
 import { countNodeDegree } from '../../utils/workflowPlanValidation'
-import { exclusiveGatewayConditionLeft } from '../../utils/workflowPlan'
+import { exclusiveGatewayConditionLeft, loopConditionLeft } from '../../utils/workflowPlan'
 
 defineProps<{
   open: boolean
@@ -163,6 +163,12 @@ const CONDITION_OP_OPTIONS = [
   { label: '非空 not_empty', value: 'not_empty' },
   { label: '包含 contains', value: 'contains' },
   { label: '等于 eq', value: 'eq' },
+]
+
+const ON_MAX_ITERATIONS_OPTIONS = [
+  { label: '失败终止 fail_fast', value: 'fail_fast' },
+  { label: '出框继续 exit', value: 'exit' },
+  { label: '降级 ReAct fallback_react', value: 'fallback_react' },
 ]
 
 function updateExclusiveEdge(
@@ -767,8 +773,57 @@ function expand() {
                     </div>
                   </WorkflowNodeConfigSection>
                 </template>
+                <template v-else-if="page.selectedNode.type === 'loop'">
+                  <WorkflowNodeConfigSection title="循环" :help="workflowNodeFieldHelp('loopTopology')">
+                    <NFormItem label="继续条件 · 左值（随上游自动填入）" :show-feedback="false">
+                      <NInput
+                        :value="loopConditionLeft(page.plan!, page.selectedNode.id)"
+                        disabled
+                        placeholder="{{start.userQuery}}"
+                      />
+                    </NFormItem>
+                    <NFormItem label="继续条件 · 算子" :show-feedback="false">
+                      <NSelect
+                        :value="String(page.selectedNode.params?.['condition.op'] || 'contains')"
+                        :options="CONDITION_OP_OPTIONS"
+                        :disabled="readOnly"
+                        @update:value="v => updateNodeParam('condition.op', String(v))"
+                      />
+                    </NFormItem>
+                    <NFormItem
+                      v-if="page.selectedNode.params?.['condition.op'] !== 'empty'
+                        && page.selectedNode.params?.['condition.op'] !== 'not_empty'"
+                      label="继续条件 · 右值"
+                      :show-feedback="false"
+                    >
+                      <NInput
+                        :value="String(page.selectedNode.params?.['condition.right'] ?? '')"
+                        :disabled="readOnly"
+                        placeholder="比较值"
+                        @update:value="v => updateNodeParam('condition.right', v)"
+                      />
+                    </NFormItem>
+                    <NFormItem label="最大轮次" :show-feedback="false">
+                      <NInputNumber
+                        :value="Number(page.selectedNode.params?.maxIterations ?? 3)"
+                        :min="1"
+                        :max="5"
+                        :disabled="readOnly"
+                        @update:value="v => updateNodeParam('maxIterations', String(v ?? 3))"
+                      />
+                    </NFormItem>
+                    <NFormItem label="超限策略" :show-feedback="false">
+                      <NSelect
+                        :value="String(page.selectedNode.params?.onMaxIterations || 'fail_fast')"
+                        :options="ON_MAX_ITERATIONS_OPTIONS"
+                        :disabled="readOnly"
+                        @update:value="v => updateNodeParam('onMaxIterations', String(v))"
+                      />
+                    </NFormItem>
+                  </WorkflowNodeConfigSection>
+                </template>
                 <WorkflowNodeConfigSection
-                  v-if="page.selectedNode.type !== 'start'"
+                  v-if="page.selectedNode.type !== 'start' && page.selectedNode.type !== 'loop'"
                   title="执行策略"
                 >
                   <WorkflowNodeExecutionPolicy

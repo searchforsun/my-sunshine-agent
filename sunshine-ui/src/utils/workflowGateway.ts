@@ -6,6 +6,10 @@ export function isGatewayType(type: string | undefined | null): type is Workflow
   return WORKFLOW_GATEWAY_TYPES.includes(type as WorkflowGatewayType)
 }
 
+export function isLoopType(type: string | undefined | null): boolean {
+  return type === 'loop'
+}
+
 export function isParallelForkGateway(type: string | undefined | null): boolean {
   return type === 'parallel-gateway'
 }

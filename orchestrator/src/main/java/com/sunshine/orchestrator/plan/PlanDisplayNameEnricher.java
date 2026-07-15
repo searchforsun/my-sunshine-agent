@@ -35,7 +35,7 @@ public class PlanDisplayNameEnricher {
             return node;
         }
         String name = resolveDisplayName(node);
-        return new PlanNode(node.id(), node.type(), node.params(), name);
+        return new PlanNode(node.id(), node.type(), node.params(), name, node.parentId());
     }
 
     private String resolveDisplayName(PlanNode node) {

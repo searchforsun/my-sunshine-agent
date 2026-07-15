@@ -64,7 +64,8 @@ public class PlanJsonParser {
                 params = parseParams(node.get("config"));
             }
             String displayName = text(node, "displayName");
-            nodes.add(new PlanNode(id, type, params, displayName));
+            String parentId = text(node, "parentId");
+            nodes.add(new PlanNode(id, type, params, displayName, parentId));
         }
         return List.copyOf(nodes);
     }
@@ -86,7 +87,17 @@ public class PlanJsonParser {
             if (xNode == null || yNode == null || !xNode.isNumber() || !yNode.isNumber()) {
                 continue;
             }
-            layout.put(e.getKey(), new PlanLayoutPoint(xNode.asDouble(), yNode.asDouble()));
+            Double width = null;
+            Double height = null;
+            JsonNode wNode = pos.get("width");
+            JsonNode hNode = pos.get("height");
+            if (wNode != null && wNode.isNumber() && wNode.asDouble() > 0) {
+                width = wNode.asDouble();
+            }
+            if (hNode != null && hNode.isNumber() && hNode.asDouble() > 0) {
+                height = hNode.asDouble();
+            }
+            layout.put(e.getKey(), new PlanLayoutPoint(xNode.asDouble(), yNode.asDouble(), width, height));
         }
         return layout;
     }

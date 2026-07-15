@@ -103,6 +103,19 @@ public final class StepEventBridge {
         registry.bindTokenWrapper(bridgeId, wrapper);
     }
 
+    /** loop 框内：Hook 直刷 Generation 前将 body 步折叠进 node-loop.subSteps */
+    public static void bindLoopBodyFold(String assistantMessageId, Function<StreamToken, List<StreamToken>> fold) {
+        registry.bindLoopBodyFold(assistantMessageId, fold);
+    }
+
+    public static void clearLoopBodyFold(String assistantMessageId) {
+        registry.clearLoopBodyFold(assistantMessageId);
+    }
+
+    public static Function<StreamToken, List<StreamToken>> loopBodyFold(String assistantMessageId) {
+        return registry.loopBodyFold(assistantMessageId);
+    }
+
     public static void bindExpertSpeakSink(String bridgeId, Consumer<StreamToken> sink) {
         registry.bindExpertSpeakSink(bridgeId, sink);
     }

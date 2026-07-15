@@ -70,7 +70,16 @@ function isCardExpanded(step: ProcessingStep): boolean {
   if (cardUserToggled.has(step.id)) {
     return cardExpanded.get(step.id) ?? false
   }
+  // loop 框内 agent：运行中默认展开，便于看流式 think/正文；结束后默认收起
+  if (hasNestedLoopBodyTimeline(step)) {
+    return lifecycleOf(step) === 'running'
+  }
   return false
+}
+
+function hasNestedLoopBodyTimeline(step: ProcessingStep): boolean {
+  return !!step.id?.startsWith('i')
+    && !!(step.subSteps?.length || step.contentBlocks?.length)
 }
 
 function toggleCard(step: ProcessingStep): void {
@@ -215,6 +224,21 @@ const orphanContent = computed(() => {
             @decided="(token, approved) => emit('hitlDecided', token, approved)"
           />
         </div>
+        <!-- loop 框内 agent：嵌套 think/正文随卡片展开收起 -->
+        <div
+          v-if="isCardExpanded(step) && hasNestedLoopBodyTimeline(step)"
+          class="op-nested-stack"
+        >
+          <OperationStack
+            :steps="step.subSteps ?? []"
+            :content-blocks="step.contentBlocks"
+            :stream-live="streamLive && lifecycleOf(step) === 'running'"
+            :live="live && lifecycleOf(step) === 'running'"
+            :embed-hitl="false"
+            :pending-hitl-confirmation="pendingList"
+            @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
+          />
+        </div>
       </template>
       <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanWorkflowPanel 之后渲染 -->
       <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
@@ -271,6 +295,12 @@ const orphanContent = computed(() => {
   column-gap: 4px;
   align-items: start;
   margin: 4px 0 8px;
+}
+
+.op-nested-stack {
+  margin: 2px 0 8px 16px;
+  padding-left: 8px;
+  border-left: 1px solid var(--sun-border);
 }
 
 .op-inline-content .op-gutter {

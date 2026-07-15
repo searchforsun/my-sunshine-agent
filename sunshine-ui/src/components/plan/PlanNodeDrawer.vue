@@ -24,6 +24,7 @@ import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { resolveExclusiveBranches } from '../../utils/exclusiveBranchDisplay'
+import { resolveLoopContinueRows } from '../../utils/loopContinueDisplay'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
 const applyHitlDecision = inject<(token: string, approved: boolean) => void>('applyHitlDecision', () => {})
@@ -165,6 +166,13 @@ const exclusiveBranches = computed(() => {
 })
 const showExclusiveBranches = computed(() => exclusiveBranches.value.length > 0)
 
+const loopContinueRows = computed(() => {
+  if (node.value?.type !== 'loop') return []
+  const graphNode = state.graph?.nodes?.find(n => n.id === node.value?.id)
+  return resolveLoopContinueRows(graphNode?.params, step.value)
+})
+const showLoopContinue = computed(() => loopContinueRows.value.length > 0)
+
 const showBodySection = computed(() => {
   if (node.value?.type === 'start') return false
   if (node.value?.type === 'agent' && (step.value?.contentBlocks?.length ?? 0) > 0) return false
@@ -204,7 +212,8 @@ const skillLineText = computed(() => {
 })
 
 const subSteps = computed(() => step.value?.subSteps ?? [])
-const showSubTimeline = computed(() => node.value?.type === 'agent' && subSteps.value.length > 0)
+const showSubTimeline = computed(() =>
+  (node.value?.type === 'agent' || node.value?.type === 'loop') && subSteps.value.length > 0)
 /** workflow tool 写操作：与普通 tool 抽屉一致，仅在执行摘要前插入用户确认块 */
 const hitlStep = computed(() => findHitlStep(step.value, pendingHitl.value))
 const showHitlSection = computed(() => node.value?.type === 'tool' && !!hitlStep.value)
@@ -326,6 +335,19 @@ watch(
             <span class="exclusive-branch-cond" :class="{ 'is-default': b.isDefault }">
               {{ b.conditionText }}
             </span>
+          </li>
+        </ul>
+      </section>
+      <section v-if="showLoopContinue" class="drawer-section">
+        <h4>继续条件</h4>
+        <ul class="exclusive-branch-list">
+          <li
+            v-for="row in loopContinueRows"
+            :key="row.key"
+            class="exclusive-branch-item"
+          >
+            <span class="exclusive-branch-target">{{ row.label }}</span>
+            <span class="exclusive-branch-cond">{{ row.value }}</span>
           </li>
         </ul>
       </section>
@@ -612,7 +634,7 @@ watch(
 .meta-status.is-terminated { color: var(--sun-text-muted); }
 .meta-status.is-done { color: var(--sun-green, #3fb950); }
 .meta-status.is-awaiting_confirm { color: var(--sun-purple, #9333ea); }
-.meta-status.is-skipped { color: #0f766e; }
+.meta-status.is-skipped { color: #64748b; }
 .meta-status.is-error { color: var(--sun-red, #f85149); }
 
 .meta-dur {

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import { NodeResizer } from '@vue-flow/node-resizer'
+import '@vue-flow/node-resizer/dist/style.css'
 import PlanNodeIcon from '../plan/PlanNodeIcon.vue'
 import { formatDuration } from '../../api/processingSteps'
-import { isGatewayType } from '../../utils/workflowGateway'
+import { isGatewayType, isLoopType } from '../../utils/workflowGateway'
 import type { WorkflowFlowNodeData } from '../../utils/workflowDagLayout'
 
 const props = defineProps<{
@@ -15,9 +17,13 @@ const nodeType = computed(() => props.data.nodeType)
 const isStart = computed(() => nodeType.value === 'start')
 const isAnswer = computed(() => nodeType.value === 'answer')
 const isGateway = computed(() => isGatewayType(nodeType.value))
+const isLoop = computed(() => isLoopType(nodeType.value))
 const showTarget = computed(() => !isStart.value)
 const showSource = computed(() => !isAnswer.value)
 const exec = computed(() => props.data.exec)
+const showLoopResizer = computed(
+  () => isLoop.value && (props.selected || props.data.selected) && !props.data.readOnly,
+)
 
 const execStatusText = computed(() => {
   const st = exec.value
@@ -68,10 +74,55 @@ const execVisualClasses = computed(() => {
 <template>
   <div
     class="wf-flow-node-wrap"
-    :class="{ 'is-gateway-wrap': isGateway }"
+    :class="{ 'is-gateway-wrap': isGateway, 'is-loop-wrap': isLoop }"
   >
     <div
-      v-if="!isGateway"
+      v-if="isLoop"
+      class="wf-loop-shell"
+      :class="[
+        execVisualClasses,
+        {
+          'is-selected': selected || data.selected,
+          'is-readonly': data.readOnly,
+          'has-issue': data.hasValidationIssue,
+        },
+      ]"
+    >
+      <NodeResizer
+        v-if="showLoopResizer"
+        :min-width="280"
+        :min-height="160"
+        color="var(--sun-text-muted)"
+      />
+      <Handle
+        v-if="showTarget"
+        type="target"
+        :position="Position.Left"
+        :connectable="!data.readOnly"
+        class="wf-flow-handle"
+      />
+      <div class="wf-loop-header">
+        <span class="wf-flow-icon" aria-hidden="true">
+          <PlanNodeIcon type="loop" :size="16" />
+        </span>
+        <span class="wf-flow-label">{{ data.label }}</span>
+        <span
+          v-if="execStatusText"
+          class="wf-flow-exec-status"
+          :class="exec?.status ? `is-${exec.status}` : undefined"
+        >{{ execStatusText }}</span>
+      </div>
+      <Handle
+        v-if="showSource"
+        type="source"
+        :position="Position.Right"
+        :connectable="!data.readOnly"
+        class="wf-flow-handle"
+      />
+    </div>
+
+    <div
+      v-else-if="!isGateway"
       class="wf-flow-node"
       :class="[
         `is-${nodeType}`,
@@ -168,6 +219,35 @@ const execVisualClasses = computed(() => {
   /* caption 不参与 Vue Flow 节点高度测量，避免主干连线垂直错位 */
   height: 40px;
   overflow: visible;
+}
+
+.wf-flow-node-wrap.is-loop-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+.wf-loop-shell {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 280px;
+  min-height: 160px;
+  border: 1px solid var(--sun-border);
+  border-radius: 10px;
+  background: transparent;
+  position: relative;
+  padding: 8px 10px;
+}
+
+.wf-loop-shell.is-selected {
+  border-color: var(--sun-text-secondary);
+}
+
+.wf-loop-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
 }
 
 .wf-flow-node {
@@ -460,8 +540,9 @@ const execVisualClasses = computed(() => {
 
 .wf-flow-node.has-exec-state.is-skipped,
 .wf-gateway-shell.has-exec-state.is-skipped .wf-gateway-diamond {
-  border-color: color-mix(in srgb, #14b8a6 52%, var(--sun-border));
-  background: color-mix(in srgb, #14b8a6 10%, var(--sun-black));
+  border-style: solid;
+  border-color: color-mix(in srgb, #64748b 58%, var(--sun-border));
+  background: color-mix(in srgb, #64748b 10%, var(--sun-black));
 }
 
 .wf-flow-node.has-exec-state.is-terminated,
@@ -508,7 +589,11 @@ const execVisualClasses = computed(() => {
 
 .wf-flow-node.has-exec-state.is-skipped .wf-flow-icon,
 .wf-flow-node.has-exec-state.is-skipped .wf-flow-label {
-  color: #0f766e;
+  color: #64748b;
+}
+
+.wf-gateway-shell.has-exec-state.is-skipped .wf-gateway-symbol {
+  color: #64748b;
 }
 
 .wf-flow-node.has-exec-state.is-terminated .wf-flow-icon,
@@ -631,6 +716,6 @@ const execVisualClasses = computed(() => {
 }
 
 .vue-flow__node.selected .wf-flow-node.has-exec-state.is-skipped {
-  box-shadow: 0 0 0 2px color-mix(in srgb, #14b8a6 50%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #64748b 50%, transparent);
 }
 </style>

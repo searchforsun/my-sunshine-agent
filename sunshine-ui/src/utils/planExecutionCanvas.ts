@@ -17,6 +17,7 @@ export function planGraphToWorkflowPlan(graph: PlanGraph): WorkflowPlan {
       type: n.type,
       displayName: n.displayName,
       params: n.params,
+      ...(n.parentId ? { parentId: n.parentId } : {}),
     })),
     edges: (graph.edges ?? []).map(e => ({
       from: e.from,

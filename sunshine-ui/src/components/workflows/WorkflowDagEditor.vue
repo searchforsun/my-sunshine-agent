@@ -32,7 +32,6 @@ import {
   mergeFlowIntoPlan,
   planEdgeFingerprint,
   planToFlowElements,
-  resolveNodePositions,
   type WorkflowFlowNodeData,
 } from '../../utils/workflowDagLayout'
 import { FLOW_CONFIG_SELECTION } from '../../utils/workflowPlan'
@@ -161,14 +160,35 @@ function syncNodesFromPlan() {
 
 function syncLayoutFromPlan() {
   if (pushingToPlan.value || hydrating || nodes.value.length === 0) return
-  const positions = resolveNodePositions(props.plan)
+  const { nodes: laid } = planToFlowElements(
+    props.plan,
+    props.selectedNodeId,
+    props.readOnly,
+    props.issueNodeIds,
+  )
+  const byId = new Map(laid.map(n => [n.id, n]))
   let moved = false
   nodes.value = nodes.value.map(node => {
-    const next = positions[node.id] ?? node.position
-    if (Math.abs(next.x - node.position.x) > 1 || Math.abs(next.y - node.position.y) > 1) {
+    const next = byId.get(node.id)
+    if (!next) return node
+    if (Math.abs(next.position.x - node.position.x) > 1 || Math.abs(next.position.y - node.position.y) > 1) {
       moved = true
     }
-    return { ...node, position: next }
+    const nw = next.width
+    const nh = next.height
+    const ow = node.width
+    const oh = node.height
+    if ((nw != null && nw !== ow) || (nh != null && nh !== oh)) moved = true
+    return {
+      ...node,
+      position: next.position,
+      style: next.style,
+      width: next.width,
+      height: next.height,
+      parentNode: next.parentNode,
+      extent: next.extent,
+      expandParent: next.expandParent,
+    }
   })
   if (moved) fitViewSoon()
 }
@@ -288,6 +308,8 @@ function onNodesChange(changes: NodeChange[]) {
   if (safeChanges.some(c => c.type === 'remove')) {
     emitFromFlow()
   } else if (safeChanges.some(c => c.type === 'position' && c.dragging === false)) {
+    emitFromFlow()
+  } else if (safeChanges.some(c => c.type === 'dimensions' && (c as { resizing?: boolean }).resizing === false)) {
     emitFromFlow()
   }
 }

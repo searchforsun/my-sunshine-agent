@@ -106,6 +106,13 @@ public class WorkflowNodeFinalizer {
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
             executionPlanStore.refreshCheckpointWfCtx(streamCtx.persistedPlanId(), wfCtx);
         }
+        // loop 壳：仅占位 running；迭代与终态由 WorkflowExecutor.loopCompleteToken 驱动
+        if (WorkflowNodeType.LOOP.matches(rawSpec.type())
+                && "looping".equalsIgnoreCase(outs.getOrDefault("status", ""))) {
+            List<StreamToken> looping = new ArrayList<>(result.timelineTokens());
+            looping.addAll(result.contentTokens());
+            return Flux.fromIterable(looping);
+        }
         boolean userSkipped = "true".equalsIgnoreCase(outs.get("skipped"));
         String summaryLine = resolveNodeDetail(rawSpec, outs);
         if (userSkipped) {

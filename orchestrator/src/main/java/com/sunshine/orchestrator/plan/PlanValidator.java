@@ -95,6 +95,10 @@ public class PlanValidator {
         if (exclusiveErr != null) {
             return exclusiveErr;
         }
+        String loopErr = PlanExecutionSchedule.validateLoopTopology(plan);
+        if (loopErr != null) {
+            return loopErr;
+        }
         return null;
     }
 

@@ -29,6 +29,8 @@ export interface PlanGraphNode {
   type: string
   displayName?: string
   params?: Record<string, string>
+  /** loop 框内 body 归属 */
+  parentId?: string
 }
 
 export interface PlanGraphEdge {
@@ -47,8 +49,8 @@ export interface PlanGraph {
   reason?: string
   nodes?: PlanGraphNode[]
   edges?: PlanGraphEdge[]
-  /** Studio 画布坐标快照（BPMN DI 等价） */
-  layout?: Record<string, { x: number; y: number }>
+  /** Studio 画布坐标快照（BPMN DI 等价；loop 可带 width/height） */
+  layout?: Record<string, { x: number; y: number; width?: number; height?: number }>
 }
 
 export interface ExecutionPlanDetail {
@@ -128,6 +130,7 @@ export function formatPlanNodeType(type: string): string {
     join: '并行汇总',
     'parallel-gateway': '并行分叉',
     'exclusive-gateway': '条件分支',
+    loop: '循环',
     answer: '回答',
     start: '开始',
   }

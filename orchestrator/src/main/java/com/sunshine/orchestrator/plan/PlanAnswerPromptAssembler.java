@@ -45,7 +45,7 @@ public class PlanAnswerPromptAssembler {
             if ("answer".equals(node.type()) && answerId.equals(node.id())) {
                 Map<String, String> params = new LinkedHashMap<>(node.params());
                 params.put("prompt", prompt);
-                nodes.add(new PlanNode(node.id(), node.type(), params, node.displayName()));
+                nodes.add(new PlanNode(node.id(), node.type(), params, node.displayName(), node.parentId()));
             } else {
                 nodes.add(node);
             }

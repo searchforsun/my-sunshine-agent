@@ -10,8 +10,8 @@ import {
 } from '../../api/processingSteps'
 import { getExecutionPlan, type ExecutionPlanDetail, type PlanGraph } from '../../api/executionPlans'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../../api/skills'
-import { buildDagNodes, type DagNodeView } from '../../utils/planGraph'
-import { relocateAgentNodeHitl, type HitlConfirmationPayload } from '../../api/hitlSteps'
+import { buildDagNodes, resolveDagNodeStep, type DagNodeView } from '../../utils/planGraph'
+import { type HitlConfirmationPayload } from '../../api/hitlSteps'
 import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
@@ -208,11 +208,7 @@ const selectedId = computed(() =>
 )
 
 function stepForNode(nodeId: string): ProcessingStep | undefined {
-  if (nodeId === 'start') {
-    return props.planStep
-  }
-  const step = props.allSteps.find(s => s.id === `node-${nodeId}`)
-  return step?.id.startsWith('node-') ? relocateAgentNodeHitl(step) : step
+  return resolveDagNodeStep(nodeId, props.allSteps, graphSource.value, props.planStep)
 }
 
 function onSelectNode(node: DagNodeView) {

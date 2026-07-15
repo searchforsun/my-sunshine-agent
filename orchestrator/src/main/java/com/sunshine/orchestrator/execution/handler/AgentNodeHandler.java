@@ -71,9 +71,28 @@ public class AgentNodeHandler implements StreamingNodeHandler {
         AgentRunRequest request = AgentNodeRequestAssembler.build(spec, ctx, streamCtx);
         agentCollector.bindAuditContext(spec, streamCtx, request);
         bindSubAgentToolAudit(spec, streamCtx);
-        StepEventBridge.bindTokenWrapper(request.resolveBridgeId(), agentCollector::ingest);
+        java.util.function.Function<StreamToken, List<StreamToken>> fold =
+                StepEventBridge.loopBodyFold(streamCtx.assistantMsgId());
+        java.util.function.Function<StreamToken, List<StreamToken>> wrap = token -> {
+            List<StreamToken> mid = agentCollector.ingest(token);
+            if (mid == null || mid.isEmpty()) {
+                return List.of();
+            }
+            if (fold == null) {
+                return mid;
+            }
+            java.util.ArrayList<StreamToken> out = new java.util.ArrayList<>();
+            for (StreamToken t : mid) {
+                List<StreamToken> folded = fold.apply(t);
+                if (folded != null) {
+                    out.addAll(folded);
+                }
+            }
+            return out;
+        };
+        StepEventBridge.bindTokenWrapper(request.resolveBridgeId(), wrap);
         return agentRuntime.run(request)
-                .concatMap(token -> Flux.fromIterable(agentCollector.ingest(token)))
+                .concatMap(token -> Flux.fromIterable(wrap.apply(token)))
                 .doOnError(e -> AgentNodeAuditSupport.auditFailure(
                         subAgentAuditService, spec, streamCtx, request, request.skillId(), e.getMessage()));
     }

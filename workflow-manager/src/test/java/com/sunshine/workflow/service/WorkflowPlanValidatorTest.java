@@ -176,6 +176,52 @@ class WorkflowPlanValidatorTest {
         assertThat(result.issues()).anyMatch(s -> s.contains("pg-a1b2c3d4") && s.contains("网关"));
     }
 
+    @Test
+    void validLoopWithRagToolAgentBody() {
+        Map<String, Object> loopParams = new LinkedHashMap<>(Map.of(
+                "condition.left", "{{start.userQuery}}",
+                "condition.op", "contains",
+                "condition.right", "继续",
+                "maxIterations", "2",
+                "onMaxIterations", "exit",
+                "retry.maxAttempts", "1",
+                "retry.backoffMs", "500",
+                "retry.onFailure", "fail_fast"));
+        Map<String, Object> loop = new LinkedHashMap<>();
+        loop.put("id", "loop-a1b2c3d4");
+        loop.put("type", "loop");
+        loop.put("displayName", "条件循环");
+        loop.put("params", loopParams);
+
+        Map<String, Object> rag = ragNode("rag-l1o2o3p4", "知识检索");
+        rag.put("parentId", "loop-a1b2c3d4");
+        Map<String, Object> tool = toolNode("tool-t1o2o3p4", "sdk__sunshine-finance__list_finance_messages");
+        tool.put("parentId", "loop-a1b2c3d4");
+        Map<String, Object> agent = new LinkedHashMap<>(agentNode(
+                "agent-a1g2e3n4",
+                "检索：{{rag-l1o2o3p4.output}}\n待办：{{tool-t1o2o3p4.output}}"));
+        agent.put("parentId", "loop-a1b2c3d4");
+
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("planId", null);
+        plan.put("reason", "loop-body");
+        plan.put("nodes", List.of(
+                startNode(),
+                loop,
+                rag,
+                tool,
+                agent,
+                answerNode("{{loop-a1b2c3d4.output}}")));
+        plan.put("edges", List.of(
+                edge("start", "loop-a1b2c3d4"),
+                edge("rag-l1o2o3p4", "tool-t1o2o3p4"),
+                edge("tool-t1o2o3p4", "agent-a1g2e3n4"),
+                edge("loop-a1b2c3d4", "answer")));
+        WorkflowPlanValidationResult result = validator.validateDetailed(plan);
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.isValid()).isTrue();
+    }
+
     private static Map<String, Object> ragNode(String id, String displayName) {
         Map<String, Object> params = new LinkedHashMap<>(Map.of(
                 "topK", "3",

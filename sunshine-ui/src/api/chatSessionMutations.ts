@@ -21,16 +21,25 @@ export function updateNodeStepContent(
   mutate: (step: ProcessingStep) => void,
 ): ProcessingStep[] {
   let changed = false
-  const next = steps.map(st => {
-    if (st.id !== nodeStepId) return st
-    const copy: ProcessingStep = {
-      ...st,
-      contentBlocks: st.contentBlocks?.map(b => ({ ...b })),
-    }
-    mutate(copy)
-    changed = true
-    return copy
-  })
+  const walk = (list: ProcessingStep[]): ProcessingStep[] =>
+    list.map(st => {
+      if (st.id === nodeStepId) {
+        const copy: ProcessingStep = {
+          ...st,
+          contentBlocks: st.contentBlocks?.map(b => ({ ...b })),
+          subSteps: st.subSteps?.map(sub => ({ ...sub })),
+        }
+        mutate(copy)
+        changed = true
+        return copy
+      }
+      if (!st.subSteps?.length) return st
+      const subs = walk(st.subSteps)
+      if (subs === st.subSteps) return st
+      changed = true
+      return { ...st, subSteps: subs }
+    })
+  const next = walk(steps)
   return changed ? next : steps
 }
 

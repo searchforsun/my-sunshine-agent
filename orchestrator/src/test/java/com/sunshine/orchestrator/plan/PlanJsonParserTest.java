@@ -85,4 +85,31 @@ class PlanJsonParserTest {
                 .orElseThrow();
         assertThat(def.isDefault()).isTrue();
     }
+
+    @Test
+    void parsesLoopParentId() {
+        String json = """
+                {
+                  "planId": "lp-1",
+                  "reason": "循环",
+                  "nodes": [
+                    {"id":"loop-1","type":"loop","params":{
+                      "condition.left":"{{start.userQuery}}","condition.op":"contains","condition.right":"继续",
+                      "maxIterations":"3","onMaxIterations":"exit",
+                      "retry.maxAttempts":"1","retry.backoffMs":"500","retry.onFailure":"fail_fast"
+                    }},
+                    {"id":"rag-b","type":"rag","parentId":"loop-1","params":{"query":"{{start.userQuery}}","topK":"3"}},
+                    {"id":"answer","type":"answer","params":{}}
+                  ],
+                  "edges": [
+                    {"from":"start","to":"loop-1"},
+                    {"from":"loop-1","to":"answer"}
+                  ]
+                }
+                """;
+        PlanJson plan = parser.parse(json);
+        assertThat(plan.nodesById().get("rag-b").parentId()).isEqualTo("loop-1");
+        assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).isNull();
+        assertThat(PlanExecutionSchedule.build(plan).get(0)).isInstanceOf(PlanExecutionSchedule.Loop.class);
+    }
 }

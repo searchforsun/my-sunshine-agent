@@ -106,6 +106,56 @@ class PlanExecutionScheduleTest {
                 .contains("须恰好 1 条 default");
     }
 
+    @Test
+    void buildsLoopScheduleAndValidates() {
+        PlanJson plan = loopPlan();
+        assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).isNull();
+        List<PlanExecutionSchedule.Step> steps = PlanExecutionSchedule.build(plan);
+        assertThat(steps).hasSize(2);
+        assertThat(steps.get(0)).isInstanceOf(PlanExecutionSchedule.Loop.class);
+        PlanExecutionSchedule.Loop loop = (PlanExecutionSchedule.Loop) steps.get(0);
+        assertThat(loop.loopNodeId()).isEqualTo("loop-1");
+        assertThat(loop.bodyNodeIds()).containsExactly("rag-body");
+        assertThat(steps.get(1)).isEqualTo(new PlanExecutionSchedule.Single("answer"));
+    }
+
+    @Test
+    void rejectsLoopWithoutBody() {
+        PlanJson plan = new PlanJson("bad-loop", "test",
+                List.of(
+                        new PlanNode("loop-1", "loop", Map.of(
+                                "condition.left", "{{start.userQuery}}",
+                                "condition.op", "contains",
+                                "condition.right", "x",
+                                "maxIterations", "3",
+                                "onMaxIterations", "fail_fast")),
+                        new PlanNode("answer", "answer", Map.of())),
+                List.of(
+                        new PlanEdge("start", "loop-1"),
+                        new PlanEdge("loop-1", "answer")));
+        assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).contains("至少一个 body");
+    }
+
+    private static PlanJson loopPlan() {
+        return new PlanJson("loop-ok", "test",
+                List.of(
+                        new PlanNode("loop-1", "loop", Map.of(
+                                "condition.left", "{{start.userQuery}}",
+                                "condition.op", "contains",
+                                "condition.right", "继续",
+                                "maxIterations", "3",
+                                "onMaxIterations", "exit",
+                                "retry.maxAttempts", "1",
+                                "retry.backoffMs", "500",
+                                "retry.onFailure", "fail_fast"), "循环", null),
+                        new PlanNode("rag-body", "rag", Map.of("query", "{{start.userQuery}}", "topK", "3"),
+                                "框内检索", "loop-1"),
+                        new PlanNode("answer", "answer", Map.of(), "回答", null)),
+                List.of(
+                        new PlanEdge("start", "loop-1"),
+                        new PlanEdge("loop-1", "answer")));
+    }
+
     private static PlanJson exclusivePlan() {
         return new PlanJson("exclusive", "条件分支",
                 List.of(

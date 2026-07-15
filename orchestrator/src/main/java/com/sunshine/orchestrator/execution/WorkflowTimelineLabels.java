@@ -20,6 +20,7 @@ public final class WorkflowTimelineLabels {
     public static final String TYPE_JOIN = "并行汇总";
     public static final String TYPE_PARALLEL_GATEWAY = "并行分叉";
     public static final String TYPE_EXCLUSIVE_GATEWAY = "条件分支";
+    public static final String TYPE_LOOP = "循环";
 
     public static final String AGENT_AFTER_WITH_TOOLS = "已完成 {toolCallCount} 次工具调用的综合分析";
     public static final String AGENT_AFTER_DONE = "智能体分析完成";
@@ -48,6 +49,7 @@ public final class WorkflowTimelineLabels {
             case "join" -> TYPE_JOIN;
             case "parallel-gateway" -> TYPE_PARALLEL_GATEWAY;
             case "exclusive-gateway" -> TYPE_EXCLUSIVE_GATEWAY;
+            case "loop" -> TYPE_LOOP;
             default -> type;
         };
     }

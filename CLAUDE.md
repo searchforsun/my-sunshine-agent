@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑（确需兼容须写明原因并评审通过）。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改提示词或架构，不在前后端打补丁。
 
-**进度**：阶段三 **检查门通过** — 阶段四 **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅**（Live + Vue Flow 拖拽画布）；**4.13.7** if-else（exclusive-gateway 边条件）✅ · loop ⬜；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 **检查门通过** — 阶段四 **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅**（Live + Vue Flow 拖拽画布）；**4.13.7** if-else（exclusive-gateway 边条件）✅ · loop 容器（do-while 继续条件 + parentId）✅；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -46,6 +46,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_tool_integration_live.py` | **4.8** SDK+MCP 工具集成 Live（`--suite sdk\|mcp\|toolset\|hitl\|all`） |
 | `verify_workflow_studio_live.py` | **4.13** Studio Catalog/`#`/`parallel`/`exclusive` Live |
 | `verify_exclusive_gateway_live.py` | **4.13.7** exclusive-gateway 边条件（`#knowledge-branch`） |
+| `verify_loop_live.py` | **4.13.7** loop do-while + subSteps（`#knowledge-loop`） |
 
 ## 请求链路与模块
 
@@ -60,7 +61,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 要扩展 | 改哪里 |
 |--------|--------|
 | 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册（metadata `sunshine.tool-app=true`）→ `/tools` 启用 → 加入 ReAct 工具集；Workflow 节点 `params.tool` 填 **Catalog ID**（`sdk__{app}__{name}`）；**禁止** tool-manager 新增编译期 `ToolHandler` |
-| 新 Workflow | **4.13**：`/workflows` + `workflow-manager` DB（**唯一 SSOT**，废弃 Nacos workflow）；MySQL init 种子 **6 标杆**（`13-sunshine-workflow-manager.sql`，含 `knowledge-branch`）；orchestrator `WorkflowManagerClient` |
+| 新 Workflow | **4.13**：`/workflows` + `workflow-manager` DB（**唯一 SSOT**，废弃 Nacos workflow）；MySQL init 种子 **7 标杆**（`13-sunshine-workflow-manager.sql`，含 `knowledge-branch` / `knowledge-loop`）；orchestrator `WorkflowManagerClient` |
 | **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanDagGraph`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
 | **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；重试策略 SSOT **`execution_mode_policy`**（tool-manager DB，`/tools` Planner Workflow Tab）；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
@@ -96,6 +97,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | **静态 Workflow** | `intent → plan → …`（DAG） | `WorkflowExecutor`：`StaticPlanAdapter` + `PlanTimeline`（`planId=`）→ `executeDynamicDefinition`；**无**逐步 `OperationCard` |
 | **Plan-Workflow** | `intent → plan → …`（DAG） | `PlanWorkflowExecutor` + Planner JSON；**成功路径无 `think`/`generate`**；与静态 workflow **共用** `PlanWorkflowPanel` / `PlanNodeDrawer` |
 | **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent 内部 think/tool **不上主时间线**；`AgentNodeDetailSummarizer` 供主行 after + 展开 detail |
+| **Workflow loop 容器** | 主时间线仅 `node-{loopId}` | body 多轮 → `subSteps`（id=`i{n}-node-…`）；**禁止** body 节点上主时间线 |
 | **Workflow / Plan answer 节点** | 主时间线 `node-answer` + `step_delta(result)` | 仅 `step_delta(result)` SSOT（勿双写 content）；空白 token 勿 `hasText`/`isBlank` 过滤 |
 | **Plan/Workflow agent 节点** | 子 Timeline + `contentBlocks` | ReAct 正文经 `ingestStreamingContentDelta` → 分段 SSE；**禁止** `isBlank` 丢弃空白 delta |
 | **Expert 发言（peer-collab）** | `expert-convene` → `expert-{id}-s{seq}` + `step_delta(result)` | Hub 阶段2 `ExpertSpeakStreamer` Gateway 流式；**禁止** `hasText`/`trim` 丢弃 token；`step_delta(result)` **不切分**（TD-075） |

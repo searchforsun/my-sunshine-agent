@@ -227,6 +227,24 @@ class ProcessingStepMergerTest {
     }
 
     @Test
+    @DisplayName("mergeSteps running 快照：reasoning 前缀合并，禁止全量二次 append")
+    void mergeSteps_runningReasoningSnapshot_usesPrefixMerge() {
+        List<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.upsert(steps, runningWithReasoning("think", "你"));
+        ProcessingStepMerger.upsert(steps, runningWithReasoning("think", "你好"));
+        ProcessingStepMerger.upsert(steps, runningWithReasoning("think", "你好，世界"));
+        assertThat(steps.get(0).reasoning()).isEqualTo("你好，世界");
+    }
+
+    private static ProcessingStep runningWithReasoning(String id, String reasoning) {
+        long ts = System.currentTimeMillis();
+        return new ProcessingStep(
+                id, "think", "running", null,
+                ts, null, null, null, reasoning, null, null,
+                ts, "思考", null, null, null);
+    }
+
+    @Test
     @DisplayName("retainIntentStepsOnly：仅保留 intent 步")
     void retainIntentStepsOnly_keepsIntentOnly() {
         List<ProcessingStep> steps = List.of(

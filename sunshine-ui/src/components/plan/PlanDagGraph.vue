@@ -372,7 +372,7 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
 }
 
 .plan-dag-node.is-selected.is-skipped {
-  box-shadow: 0 0 0 2px color-mix(in srgb, #14b8a6 50%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #64748b 50%, transparent);
 }
 
 .plan-dag-node.is-selected.is-error {
@@ -414,17 +414,17 @@ function onSelect(node: DagNodeView, e: MouseEvent) {
   border-color: color-mix(in srgb, #4ade80 35%, var(--sun-border));
 }
 
-/* 已跳过：青绿实线（降级完成，区别于正常绿与错误红） */
+/* 已跳过：石板蓝实线（未执行终态，区别于完成绿与待执行灰虚线） */
 .plan-dag-node.is-skipped {
   border-style: solid;
-  border-color: color-mix(in srgb, #14b8a6 42%, var(--sun-border));
-  background: color-mix(in srgb, #14b8a6 6%, var(--sun-bg));
+  border-color: color-mix(in srgb, #64748b 55%, var(--sun-border));
+  background: color-mix(in srgb, #64748b 8%, var(--sun-bg));
 }
 
 .plan-dag-node.is-skipped .node-icon,
 .plan-dag-node.is-skipped .node-label,
 .plan-dag-node.is-skipped .node-dur-skipped {
-  color: #0f766e;
+  color: #64748b;
 }
 
 .plan-dag-node.is-terminal {
