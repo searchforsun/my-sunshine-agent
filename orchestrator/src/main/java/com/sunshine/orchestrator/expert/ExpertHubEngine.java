@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
 import com.sunshine.orchestrator.catalog.ExpertCatalogEntry;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.peer.PeerMsgSupport;
@@ -38,6 +39,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ExpertHubEngine {
     private final ExpertPeerAgentFactory expertPeerAgentFactory;
+    private final ToolSetResolver toolSetResolver;
     private final PromptComposer promptComposer;
     private final ExpertSpeakStreamer expertSpeakStreamer;
     private final PeerSynthesisProperties peerProperties;
@@ -242,6 +244,7 @@ public class ExpertHubEngine {
     }
 
     private ReActAgent createAgent(String runId, ExpertCatalogEntry expert) {
+        List<String> toolIds = resolveToolWhitelist(expert);
         AgentRunRequest request = new AgentRunRequest(
                 AgentRole.SUB,
                 runId + "-" + expert.id(),
@@ -253,12 +256,21 @@ public class ExpertHubEngine {
                 null,
                 null,
                 expert.primarySkillId(),
-                null,
+                toolIds,
                 expert.systemPrompt(),
                 2,
                 TimelineBinding.SUB_COMPRESSED,
                 false);
         return expertPeerAgentFactory.create(request);
+    }
+
+    /** package-private for tests */
+    List<String> resolveToolWhitelist(ExpertCatalogEntry expert) {
+        List<String> parsed = ExpertToolsJson.parse(expert != null ? expert.toolsJson() : null);
+        if (ExpertToolsJson.isStarAll(parsed)) {
+            return toolSetResolver.resolveReactTools(null);
+        }
+        return parsed;
     }
 
     public record ExpertHubResult(String runId, List<ExpertTranscriptEntry> transcript) {
