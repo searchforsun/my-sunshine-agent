@@ -180,7 +180,7 @@ watch(
     preset="dialog"
     title="沙箱配置"
     class="sunshine-dialog sandbox-config-dialog"
-    style="width: min(720px, 94vw)"
+    style="width: 720px; max-width: 94vw;"
     @update:show="emit('update:show', $event)"
   >
     <NForm
@@ -312,5 +312,18 @@ watch(
   background: transparent;
   border: 1px solid var(--sun-border);
   color: var(--sun-text);
+}
+</style>
+
+<style>
+.sunshine-dialog.sandbox-config-dialog.n-dialog {
+  width: min(720px, 94vw);
+  max-width: min(720px, 94vw);
+  min-height: 320px;
+}
+
+.sunshine-dialog.sandbox-config-dialog .n-dialog__content {
+  white-space: normal;
+  min-height: 180px;
 }
 </style>
