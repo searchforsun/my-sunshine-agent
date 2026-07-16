@@ -61,7 +61,7 @@ const menuOptions = computed((): MenuOption[] => {
   { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
 ]})
 
-const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'experts', 'workflow-diff'])
+const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'experts', 'workflow-diff', 'skill-diff', 'skill-sandbox'])
 const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
 const hideSidebarFab = computed(() =>
   contentFill.value || route.name === 'skill-diff',
@@ -97,7 +97,7 @@ function handleMenuClick(key: string) {
 }
 
 const activeKey = computed(() => {
-  if (route.name === 'skill-diff') return 'skills'
+  if (route.name === 'skill-diff' || route.name === 'skill-sandbox') return 'skills'
   if (route.name === 'workflow-diff') return 'workflows'
   return (route.name as string) || 'chat'
 })

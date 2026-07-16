@@ -71,6 +71,12 @@ const router = createRouter({
           meta: { title: '版本对比' },
         },
         {
+          path: 'skills/:skillId/sandbox',
+          name: 'skill-sandbox',
+          component: () => import('../views/SkillSandboxConfigView.vue'),
+          meta: { title: '沙箱配置' },
+        },
+        {
           path: 'plans/:planId',
           name: 'plan-detail',
           component: () => import('../views/PlanDetailView.vue'),

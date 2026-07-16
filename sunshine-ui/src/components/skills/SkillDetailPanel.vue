@@ -70,6 +70,20 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
               @update:value="page.onVersionSelected"
             />
           </div>
+          <NButton
+            v-if="page.showSandboxConfigEntry"
+            size="small"
+            quaternary
+            class="sandbox-entry-btn"
+            title="沙箱配置"
+            :disabled="page.isActionBusy"
+            @click="page.openSandboxConfig"
+          >
+            沙箱
+            <span class="sandbox-badge" :data-on="page.sandboxEnabled ? '1' : '0'">
+              {{ page.sandboxEnabled ? 'docker' : 'none' }}
+            </span>
+          </NButton>
           <NDropdown
             trigger="click"
             size="small"
@@ -90,49 +104,6 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
             </NButton>
           </NDropdown>
         </div>
-      </div>
-
-      <div v-if="page.showSandboxPanel" class="sandbox-panel">
-        <div class="sandbox-row">
-          <span class="sandbox-label">沙箱</span>
-          <NSelect
-            :value="page.sandboxDraft"
-            :options="page.SANDBOX_OPTIONS"
-            size="small"
-            class="sandbox-select sun-field"
-            :disabled="page.isActionBusy"
-            :menu-props="{ class: 'version-select-menu' }"
-            @update:value="page.onSandboxTypeChange"
-          />
-          <NButton
-            size="small"
-            type="primary"
-            class="action-btn"
-            :loading="page.savingSandbox"
-            :disabled="!page.sandboxDirty || page.isActionBusy"
-            @click="page.handleSaveSandbox"
-          >
-            保存
-          </NButton>
-          <NButton
-            size="small"
-            quaternary
-            :disabled="page.isActionBusy"
-            title="跳转 Chat 试跑沙箱工具"
-            @click="page.handleTryRunSandbox"
-          >
-            试跑
-          </NButton>
-        </div>
-        <NInput
-          v-if="page.sandboxDraft === 'docker'"
-          v-model:value="page.sandboxPolicyDraft"
-          type="textarea"
-          class="sun-field sandbox-policy-input"
-          :autosize="{ minRows: 4, maxRows: 12 }"
-          :disabled="page.isActionBusy"
-          placeholder="sandbox_policy JSON（可选；空则用服务默认）"
-        />
       </div>
 
       <div v-show="!page.isDetailBusy" class="detail-content">
@@ -382,38 +353,25 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
   width: min(228px, 44vw);
 }
 
-.sandbox-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-shrink: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-  background: var(--sun-black);
-}
-
-.sandbox-row {
-  display: flex;
+.sandbox-entry-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.sandbox-label {
-  font-size: 13px;
-  color: var(--sun-text-secondary);
-  white-space: nowrap;
+.sandbox-badge {
+  font-size: 11px;
+  font-family: var(--sun-font-mono, ui-monospace, monospace);
+  color: var(--sun-text-muted);
+  border: 1px solid var(--sun-border);
+  border-radius: 4px;
+  padding: 0 5px;
+  line-height: 18px;
 }
 
-.sandbox-select {
-  width: 140px;
-}
-
-.sandbox-policy-input {
-  width: 100%;
-  font-family: var(--sun-font-mono, 'JetBrains Mono', monospace);
-  font-size: 12px;
+.sandbox-badge[data-on='1'] {
+  color: var(--sun-text);
+  border-color: var(--sun-border-light);
 }
 
 .version-select :deep(.n-base-selection) {
