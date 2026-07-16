@@ -2,6 +2,7 @@
 import { inject } from 'vue'
 import { NButton, NForm, NFormItem, NInput, NModal } from 'naive-ui'
 import { SKILLS_PAGE_KEY, type SkillsPageApi } from '../../composables/useSkillsPage'
+import SkillSandboxConfigModal from './SkillSandboxConfigModal.vue'
 
 const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
 </script>
@@ -76,6 +77,12 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
       <NButton type="error" :loading="page.deletingVersion" @click="page.handleDeleteVersionConfirm">删除该版本</NButton>
     </template>
   </NModal>
+  <SkillSandboxConfigModal
+    v-model:show="page.showSandboxConfig"
+    :skill-id="page.selectedId ?? ''"
+    :version="page.selectedVersion"
+    @saved="page.onSandboxConfigSaved"
+  />
 </template>
 
 <style scoped>

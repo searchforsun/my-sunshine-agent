@@ -70,20 +70,6 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
               @update:value="page.onVersionSelected"
             />
           </div>
-          <NButton
-            v-if="page.showSandboxConfigEntry"
-            size="small"
-            quaternary
-            class="sandbox-entry-btn"
-            title="沙箱配置"
-            :disabled="page.isActionBusy"
-            @click="page.openSandboxConfig"
-          >
-            沙箱
-            <span class="sandbox-badge" :data-on="page.sandboxEnabled ? '1' : '0'">
-              {{ page.sandboxEnabled ? 'docker' : 'none' }}
-            </span>
-          </NButton>
           <NDropdown
             trigger="click"
             size="small"
@@ -351,27 +337,6 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
 
 .version-select {
   width: min(228px, 44vw);
-}
-
-.sandbox-entry-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.sandbox-badge {
-  font-size: 11px;
-  font-family: var(--sun-font-mono, ui-monospace, monospace);
-  color: var(--sun-text-muted);
-  border: 1px solid var(--sun-border);
-  border-radius: 4px;
-  padding: 0 5px;
-  line-height: 18px;
-}
-
-.sandbox-badge[data-on='1'] {
-  color: var(--sun-text);
-  border-color: var(--sun-border-light);
 }
 
 .version-select :deep(.n-base-selection) {
