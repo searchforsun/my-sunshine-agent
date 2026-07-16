@@ -180,7 +180,7 @@ watch(
     preset="dialog"
     title="沙箱配置"
     class="sunshine-dialog sandbox-config-dialog"
-    style="width: min(520px, 94vw)"
+    style="width: min(720px, 94vw)"
     @update:show="emit('update:show', $event)"
   >
     <NForm
