@@ -24,12 +24,12 @@ public record StreamToken(
     public static final String KIND_STEP_DELTA = "step_delta";
     public static final String KIND_SANDBOX_SESSION = "sandbox_session";
 
-    /** simple-llm：无分段，正文落消息底部 */
+    /** 直连 Gateway / DIRECT：无分段，正文落消息底部 */
     public static StreamToken content(String text) {
         return content(text, null);
     }
 
-    /** @param afterStepId simple-llm 穿插锚点；ReAct 分段请用 {@link #contentInSegment} */
+    /** @param afterStepId 直连 Gateway / DIRECT 穿插锚点；ReAct 分段请用 {@link #contentInSegment} */
     public static StreamToken content(String text, String afterStepId) {
         return new StreamToken(KIND_CONTENT, text, null, afterStepId, null, null);
     }

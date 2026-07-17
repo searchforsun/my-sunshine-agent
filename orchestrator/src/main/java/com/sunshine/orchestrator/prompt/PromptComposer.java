@@ -33,7 +33,7 @@ public class PromptComposer {
     private final SkillCatalogService skillCatalogService;
     private final AgentHitlProperties hitlProperties;
 
-    /** simple-llm / workflow llm 直连 Gateway 的消息列表（含 base-system） */
+    /** 直连 Gateway / DIRECT 与 workflow llm 的消息列表（含 base-system） */
     public List<Map<String, Object>> composeGatewayMessages(PromptComposeRequest request) {
         List<Map<String, Object>> messages = new ArrayList<>();
         appendCommonGatewayLayers(messages, request, true);

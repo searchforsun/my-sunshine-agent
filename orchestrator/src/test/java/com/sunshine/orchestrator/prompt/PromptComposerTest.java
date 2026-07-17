@@ -62,7 +62,7 @@ class PromptComposerTest {
                 "content", MemoryMessageBuilder.formatCurrentUser("新问题", memoryProperties)));
 
         List<Map<String, Object>> actual = composer.composeGatewayMessages(
-                PromptComposeRequest.forSimpleLlm(memory, "新问题"));
+                PromptComposeRequest.forDirect(memory, "新问题"));
 
         assertThat(actual).isEqualTo(expected);
     }
@@ -89,14 +89,14 @@ class PromptComposerTest {
 
     @Test
     void composeGatewayMessages_appliesModeAndScopeOverlays() {
-        overlayProperties.setModeOverlays(new LinkedHashMap<>(Map.of("simple-llm", "mode-simple")));
+        overlayProperties.setModeOverlays(new LinkedHashMap<>(Map.of("direct", "mode-simple")));
         overlayProperties.setScopePrompt("scope-boundary");
 
         MemoryContext memory = new MemoryContext("", "", List.of(
                 new ChatTurn("user", "历史问")));
 
         List<Map<String, Object>> messages = composer.composeGatewayMessages(
-                PromptComposeRequest.forSimpleLlm(memory, "新问题"));
+                PromptComposeRequest.forDirect(memory, "新问题"));
 
         assertThat(messages.get(0)).containsEntry("content", "base-system");
         assertThat(messages.get(1)).containsEntry("content", "mode-simple");
@@ -107,7 +107,7 @@ class PromptComposerTest {
     @Test
     void composeGatewayMessages_continueAppendsPartialAssistant() {
         List<Map<String, Object>> messages = composer.composeGatewayMessages(
-                PromptComposeRequest.forSimpleLlmContinue(MemoryContext.empty(), "继续", "已生成一半"));
+                PromptComposeRequest.forDirectContinue(MemoryContext.empty(), "继续", "已生成一半"));
 
         assertThat(messages.get(messages.size() - 1))
                 .containsEntry("role", "assistant")

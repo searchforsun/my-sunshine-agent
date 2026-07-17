@@ -188,8 +188,8 @@ public class LlmGatewayClient {
     private List<Map<String, Object>> buildMessages(
             MemoryContext memory, String userMessage, String partialAssistant) {
         PromptComposeRequest request = partialAssistant != null && !partialAssistant.isEmpty()
-                ? PromptComposeRequest.forSimpleLlmContinue(memory, userMessage, partialAssistant)
-                : PromptComposeRequest.forSimpleLlm(memory, userMessage);
+                ? PromptComposeRequest.forDirectContinue(memory, userMessage, partialAssistant)
+                : PromptComposeRequest.forDirect(memory, userMessage);
         return promptComposer.composeGatewayMessages(request);
     }
 

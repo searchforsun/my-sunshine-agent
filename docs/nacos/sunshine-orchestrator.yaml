@@ -49,7 +49,7 @@ agent:
 
   prompt:
     mode-overlays:
-      simple-llm: ""
+      direct: ""
       react: |
         - 企业制度/政策/知识库检索 → **必须**调用 `search_knowledge`（勿用 demo-memory 等其它 search 工具）。
         - 沙箱 **sandbox__*** 与 `search_knowledge` 同级，MAIN / Workflow agent（SUB）**常驻**；读写 /workspace、glob/grep /skills 物料优先 sandbox__*；可写仅 /workspace

@@ -19,7 +19,7 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "agent.prompt")
 public class PromptOverlayProperties {
 
-    /** 模式叠加：simple-llm / react / workflow / workflow:{id} */
+    /** 模式叠加：direct（直连 Gateway） / react / workflow / workflow:{id} */
     private Map<String, String> modeOverlays = new LinkedHashMap<>();
 
     /** 技能叠加（3.11 前可空） */

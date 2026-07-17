@@ -22,15 +22,17 @@ public record PromptComposeRequest(
         injectedUserContexts = injectedUserContexts != null ? List.copyOf(injectedUserContexts) : List.of();
     }
 
-    public static PromptComposeRequest forSimpleLlm(MemoryContext memory, String userMessage) {
+    /** 直连 Gateway / DIRECT */
+    public static PromptComposeRequest forDirect(MemoryContext memory, String userMessage) {
         return new PromptComposeRequest(
-                PromptMode.SIMPLE_LLM, memory, userMessage, null, null, null, List.of(), null, false);
+                PromptMode.DIRECT, memory, userMessage, null, null, null, List.of(), null, false);
     }
 
-    public static PromptComposeRequest forSimpleLlmContinue(
+    /** 直连 Gateway / DIRECT 续写 */
+    public static PromptComposeRequest forDirectContinue(
             MemoryContext memory, String userMessage, String partialAssistant) {
         return new PromptComposeRequest(
-                PromptMode.SIMPLE_LLM, memory, userMessage, null, null, null, List.of(), partialAssistant, false);
+                PromptMode.DIRECT, memory, userMessage, null, null, null, List.of(), partialAssistant, false);
     }
 
     public static PromptComposeRequest forReact(
@@ -57,11 +59,11 @@ public record PromptComposeRequest(
                 PromptMode.WORKFLOW, memory, userMessage, workflowId, null, nodePrompt, List.of(), null, false);
     }
 
-    /** 专家 Hub 发言阶段2 — nodePrompt 承载 Expert.systemPrompt */
+    /** 专家 Hub 发言阶段2 — nodePrompt 承载 Expert.systemPrompt；直连 Gateway / DIRECT */
     public static PromptComposeRequest forExpertSpeak(
             MemoryContext memory, String userMessage, String skillId, String expertSystemPrompt) {
         return new PromptComposeRequest(
-                PromptMode.SIMPLE_LLM, memory, userMessage, null, skillId, expertSystemPrompt,
+                PromptMode.DIRECT, memory, userMessage, null, skillId, expertSystemPrompt,
                 List.of(), null, false);
     }
 }
