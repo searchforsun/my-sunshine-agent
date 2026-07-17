@@ -13,7 +13,6 @@ import reactor.core.publisher.Flux;
 @RequiredArgsConstructor
 public class ExecutionDispatcher {
 
-    private final SimpleLlmExecutor simpleLlmExecutor;
     private final WorkflowExecutor workflowExecutor;
     private final ReactExecutor reactExecutor;
     private final PlanWorkflowExecutor planWorkflowExecutor;
@@ -22,7 +21,6 @@ public class ExecutionDispatcher {
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         ExecutionMode mode = ctx.plan() != null ? ctx.plan().mode() : ExecutionMode.REACT;
         return switch (mode) {
-            case SIMPLE_LLM -> simpleLlmExecutor.execute(ctx);
             case WORKFLOW -> workflowExecutor.execute(ctx);
             case REACT -> reactExecutor.execute(ctx);
             case PLAN_WORKFLOW -> planWorkflowExecutor.execute(ctx);

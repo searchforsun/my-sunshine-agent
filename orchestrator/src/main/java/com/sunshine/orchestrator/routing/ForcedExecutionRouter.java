@@ -19,7 +19,6 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ForcedExecutionRouter {
 
-    private static final String REASON_SIMPLE = "user:forced-simple-llm";
     private static final String REASON_REACT = "user:forced-react";
     private static final String REASON_PLAN = "user:forced-plan-workflow";
     private static final String REASON_WORKFLOW = "user:forced-workflow";
@@ -34,8 +33,6 @@ public class ForcedExecutionRouter {
             return Mono.error(new IllegalStateException("ForcedExecutionRouter 仅处理非 auto preference"));
         }
         return switch (preference) {
-            case SIMPLE_LLM -> Mono.just(new ExecutionPlan(
-                    ExecutionMode.SIMPLE_LLM, null, Map.of(), REASON_SIMPLE));
             case REACT -> skillOrFallback(ctx, new ExecutionPlan(
                     ExecutionMode.REACT, null, Map.of(), REASON_REACT));
             case PLAN_WORKFLOW -> skillOrFallback(ctx, new ExecutionPlan(

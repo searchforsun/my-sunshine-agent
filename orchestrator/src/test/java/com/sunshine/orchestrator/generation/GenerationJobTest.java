@@ -137,7 +137,7 @@ class GenerationJobTest {
                 content -> { },
                 done::countDown,
                 errorRef::set,
-                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.SIMPLE_LLM)
+                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.REACT)
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
@@ -145,23 +145,22 @@ class GenerationJobTest {
         assertThat(buffer.toString()).isEqualTo("abc");
 
         List<StreamEvent> events = streamService.readFrom(generationId, 0, 10);
-        assertThat(events).hasSize(5);
-        assertThat(events.get(0).text()).isEqualTo("{\"type\":\"step\"}");
-        assertThat(events.get(1).text()).isEqualTo("{\"type\":\"content\",\"text\":\"a\"}");
-        assertThat(events.get(2).text()).isEqualTo("{\"type\":\"content\",\"text\":\"b\"}");
-        assertThat(events.get(3).text()).isEqualTo("{\"type\":\"content\",\"text\":\"c\"}");
-        assertThat(events.get(4).text()).isEqualTo("{\"type\":\"step\"}");
+        assertThat(events).hasSize(3);
+        assertThat(events.get(0).text()).isEqualTo("{\"type\":\"content\",\"text\":\"a\"}");
+        assertThat(events.get(1).text()).isEqualTo("{\"type\":\"content\",\"text\":\"b\"}");
+        assertThat(events.get(2).text()).isEqualTo("{\"type\":\"content\",\"text\":\"c\"}");
 
         GenerationMeta meta = streamService.getMeta(generationId).orElseThrow();
         assertThat(meta.status()).isEqualTo(GenerationStatus.COMPLETED);
-        assertThat(meta.lastSeq()).isEqualTo(5);
+        assertThat(meta.lastSeq()).isEqualTo(3);
 
         ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
                 eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
         assertThat(contentCaptor.getValue()).isEqualTo("abc");
-        assertThat(stepsCaptor.getValue()).contains("generate");
+        String stepsJson = stepsCaptor.getValue();
+        assertThat(stepsJson == null || !stepsJson.contains("generate")).isTrue();
     }
 
     @Test
@@ -258,7 +257,7 @@ class GenerationJobTest {
                 content -> { },
                 done::countDown,
                 error -> { },
-                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.SIMPLE_LLM)
+                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.REACT)
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
@@ -269,7 +268,7 @@ class GenerationJobTest {
         verify(flushScheduler).commitFinal(
                 eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
         assertThat(reasoningCaptor.getValue()).isEqualTo("think");
-        assertThat(stepsCaptor.getValue()).contains("think").contains("generate");
+        assertThat(stepsCaptor.getValue()).contains("think").doesNotContain("\"id\":\"generate\"");
     }
 
     @Test

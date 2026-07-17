@@ -36,10 +36,9 @@ public class IntentLabelService {
 
     public String intentDetail(ExecutionPlan plan) {
         if (plan == null) {
-            return modeDetail(modeConfig(ExecutionMode.SIMPLE_LLM), "简单对话");
+            return modeDetail(modeConfig(ExecutionMode.REACT), "自主智能体");
         }
         return switch (plan.mode()) {
-            case SIMPLE_LLM -> modeDetail(modeConfig(ExecutionMode.SIMPLE_LLM), "简单对话");
             case REACT -> modeDetail(modeConfig(ExecutionMode.REACT), "自主智能体");
             case PLAN_WORKFLOW -> modeDetail(modeConfig(ExecutionMode.PLAN_WORKFLOW), "动态规划");
             case PEER_COLLAB -> modeDetail(modeConfig(ExecutionMode.PEER_COLLAB), "多专家协作");
@@ -78,9 +77,6 @@ public class IntentLabelService {
             return forcedIntentAfterForPlan(q, plan);
         }
         return switch (plan.mode()) {
-            case SIMPLE_LLM -> TimelineLabelTemplates.applyTemplate(
-                    modeAfter(modeConfig(ExecutionMode.SIMPLE_LLM), "{query}属于简单对话，将直接生成回复"),
-                    TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
             case REACT -> TimelineLabelTemplates.applyTemplate(
                     modeAfter(modeConfig(ExecutionMode.REACT), "{query}将由自主智能体分析并作答"),
                     TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
@@ -169,7 +165,6 @@ public class IntentLabelService {
             return mode.getForcedAfter();
         }
         return switch (executionMode) {
-            case SIMPLE_LLM -> "{query}将按您指定的「简单对话」模式直接回复";
             case REACT -> "{query}将按您指定的「自主推理」模式处理";
             case WORKFLOW -> "{query}将按您指定的「工作流」模式处理";
             case PLAN_WORKFLOW -> "{query}将按您指定的「动态规划」模式处理";

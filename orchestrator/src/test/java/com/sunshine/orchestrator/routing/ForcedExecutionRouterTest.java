@@ -35,16 +35,6 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_simpleLlm() {
-        ExecutionPlan plan = router.resolve(
-                new RoutingContext("hello", null, ExecutionPreference.SIMPLE_LLM, null, null),
-                ExecutionPreference.SIMPLE_LLM, null).block();
-        assertThat(plan).isNotNull();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
-        assertThat(plan.reason()).isEqualTo("user:forced-simple-llm");
-    }
-
-    @Test
     void resolve_react_withSkillBinding() {
         ExecutionPlan skillPlan = new ExecutionPlan(
                 ExecutionMode.REACT, null, Map.of("skill", "finance-analysis"), "skill:@mention");

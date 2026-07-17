@@ -28,9 +28,9 @@ class ExecutionPlanParserTest {
     }
 
     @Test
-    void normalizesSimpleLlmAlias() {
+    void unknownMode_simpleLlmFallsToReact() {
         ExecutionPlan plan = parser.parse("{\"mode\":\"simple-llm\"}");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
     }
 
     @Test
@@ -47,9 +47,9 @@ class ExecutionPlanParserTest {
     }
 
     @Test
-    void parseStoredIntentSimpleLlm() {
+    void parseStoredIntent_unknownSimpleLlmFallsToReact() {
         ExecutionPlan plan = parser.parseStoredIntent("simple-llm");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
     }
 
     @Test

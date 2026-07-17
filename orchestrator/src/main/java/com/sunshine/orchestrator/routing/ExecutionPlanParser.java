@@ -42,14 +42,11 @@ public class ExecutionPlanParser {
         }
     }
 
-    /** 解析 DB 中已存的 intentLabel（simple-llm / react / plan-workflow / workflow:{id}） */
+    /** 解析 DB 中已存的 intentLabel（react / plan-workflow / peer-collab / workflow:{id}） */
     public ExecutionPlan parseStoredIntent(String stored) {
         if (stored.startsWith("workflow:")) {
             String workflowId = stored.substring("workflow:".length());
             return new ExecutionPlan(ExecutionMode.WORKFLOW, workflowId, Map.of(), "stored");
-        }
-        if ("simple-llm".equalsIgnoreCase(stored)) {
-            return new ExecutionPlan(ExecutionMode.SIMPLE_LLM, null, Map.of(), "stored");
         }
         if ("react".equalsIgnoreCase(stored)) {
             return ExecutionPlan.reactFallback("stored");

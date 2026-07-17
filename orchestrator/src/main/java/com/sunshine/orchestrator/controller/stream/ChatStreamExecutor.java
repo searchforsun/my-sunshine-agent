@@ -52,7 +52,6 @@ public class ChatStreamExecutor {
     private final ExecutionPlanStore executionPlanStore;
     private final PlanWorkflowExecutor planWorkflowExecutor;
     private final ExecutionPlanParser executionPlanParser;
-    private final com.sunshine.orchestrator.execution.SimpleLlmExecutor simpleLlmExecutor;
     private final ExecutionDispatcher executionDispatcher;
     private final ExecutionPlanRouter executionPlanRouter;
     private final ConversationService conversationService;
@@ -191,9 +190,6 @@ public class ChatStreamExecutor {
             executionMode.set(plan.mode());
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan);
             // ReAct 暂停续跑：仅保留 intent，从规划推理重新开始（见 ChatStreamContextFactory）
-            if (plan.mode() == ExecutionMode.SIMPLE_LLM && StringUtils.hasText(ctx.existingContent())) {
-                return prepareChunkFlux(simpleLlmExecutor.execute(execCtx));
-            }
             return prepareChunkFlux(executionDispatcher.execute(execCtx));
         }
 

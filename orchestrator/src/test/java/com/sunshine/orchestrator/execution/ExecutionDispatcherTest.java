@@ -22,8 +22,6 @@ import static org.mockito.Mockito.when;
 class ExecutionDispatcherTest {
 
     @Mock
-    private SimpleLlmExecutor simpleLlmExecutor;
-    @Mock
     private WorkflowExecutor workflowExecutor;
     @Mock
     private ReactExecutor reactExecutor;

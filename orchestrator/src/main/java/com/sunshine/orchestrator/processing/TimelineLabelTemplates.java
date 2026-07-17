@@ -14,7 +14,6 @@ final class TimelineLabelTemplates {
 
     static String modeConfigKey(ExecutionMode mode) {
         return switch (mode != null ? mode : ExecutionMode.REACT) {
-            case SIMPLE_LLM -> "simple-llm";
             case WORKFLOW -> "workflow";
             case PLAN_WORKFLOW -> "plan-workflow";
             case PEER_COLLAB -> "peer-collab";

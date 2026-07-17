@@ -414,13 +414,6 @@ class RoutingGoldenSetTest {
     // --- §J Chat executionPreference 强制路由（routing-golden-set.md） ---
 
     @Test
-    void forcedJ1_simpleLlm() {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.SIMPLE_LLM, "写一段快速排序", null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
-        assertThat(plan.reason()).isEqualTo("user:forced-simple-llm");
-    }
-
-    @Test
     void forcedJ2_react() {
         ExecutionPlan plan = forcedRoute(ExecutionPreference.REACT, "待审批是否合规", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);

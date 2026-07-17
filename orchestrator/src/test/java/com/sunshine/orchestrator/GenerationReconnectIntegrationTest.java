@@ -121,7 +121,7 @@ class GenerationReconnectIntegrationTest {
             redis.delete(keys);
         }
         when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(
-                new ExecutionPlan(ExecutionMode.SIMPLE_LLM, null, Map.of(), "test")));
+                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
         when(llmGateway.streamContinue(any(MemoryContext.class), anyString(), anyString()))
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
     }

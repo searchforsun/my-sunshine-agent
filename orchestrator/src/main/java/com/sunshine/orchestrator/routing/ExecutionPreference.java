@@ -3,7 +3,6 @@ package com.sunshine.orchestrator.routing;
 /** 用户指定的 Chat 执行偏好（auto = 走 Policy Chain） */
 public enum ExecutionPreference {
     AUTO,
-    SIMPLE_LLM,
     REACT,
     WORKFLOW,
     PLAN_WORKFLOW,
@@ -14,7 +13,6 @@ public enum ExecutionPreference {
             return AUTO;
         }
         return switch (raw.strip().toLowerCase().replace('_', '-')) {
-            case "simple", "simple-llm", "direct" -> SIMPLE_LLM;
             case "react", "agent" -> REACT;
             case "workflow", "pipeline" -> WORKFLOW;
             case "plan-workflow", "plan", "plan_workflow" -> PLAN_WORKFLOW;
@@ -36,7 +34,6 @@ public enum ExecutionPreference {
     public String wireValue() {
         return switch (this) {
             case AUTO -> "auto";
-            case SIMPLE_LLM -> "simple-llm";
             case REACT -> "react";
             case WORKFLOW -> "workflow";
             case PLAN_WORKFLOW -> "plan-workflow";

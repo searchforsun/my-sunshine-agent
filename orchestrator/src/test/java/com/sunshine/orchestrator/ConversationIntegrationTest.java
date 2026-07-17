@@ -128,7 +128,7 @@ class ConversationIntegrationTest {
             redis.delete(keys);
         }
         when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(
-                new ExecutionPlan(ExecutionMode.SIMPLE_LLM, null, Map.of(), "test")));
+                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
         when(llmGateway.streamWithMemory(any(MemoryContext.class), anyString()))
                 .thenAnswer(inv -> {
                     String userMsg = inv.getArgument(1);
@@ -304,7 +304,7 @@ class ConversationIntegrationTest {
         conversationService.appendMessage(conv.getId(), "user", "hello", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "partial", MessageStatus.INTERRUPTED);
-        conversationService.updateMessageIntent(assistant.getId(), "simple-llm");
+        conversationService.updateMessageIntent(assistant.getId(), "react");
 
         streamResume(ALICE, conv.getId(), assistant.getId());
 
@@ -347,7 +347,7 @@ class ConversationIntegrationTest {
         conversationService.appendMessage(conv.getId(), "user", "hi", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "part", MessageStatus.INTERRUPTED);
-        conversationService.updateMessageIntent(assistant.getId(), "simple-llm");
+        conversationService.updateMessageIntent(assistant.getId(), "react");
 
         ChatMessage resume = new ChatMessage();
         resume.setConversationId(conv.getId());
