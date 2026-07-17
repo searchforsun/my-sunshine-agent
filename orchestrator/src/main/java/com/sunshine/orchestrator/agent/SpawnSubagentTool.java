@@ -2,12 +2,12 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -28,14 +28,17 @@ public class SpawnSubagentTool {
     private final AgentRuntime agentRuntime;
     private final AgentExecutionProperties executionProperties;
     private final SpawnSubagentTimelineSupport timelineSupport;
+    private final ToolSetResolver toolSetResolver;
 
     public SpawnSubagentTool(
             @Lazy AgentRuntime agentRuntime,
             AgentExecutionProperties executionProperties,
-            SpawnSubagentTimelineSupport timelineSupport) {
+            SpawnSubagentTimelineSupport timelineSupport,
+            ToolSetResolver toolSetResolver) {
         this.agentRuntime = agentRuntime;
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
+        this.toolSetResolver = toolSetResolver;
     }
 
     @Tool(name = NAME,
@@ -74,6 +77,8 @@ public class SpawnSubagentTool {
         String displayLabel = StringUtils.hasText(label) ? label.strip() : SpawnSubagentLabels.label();
         int maxIters = subCfg.getMaxIters() > 0 ? subCfg.getMaxIters() : 8;
         long timeoutMs = subCfg.getTimeoutMs() > 0 ? subCfg.getTimeoutMs() : 180_000L;
+        // 与 MAIN 同 ReAct 工具集；SUB factory 不会注册 spawn_subagent / manage_tasks
+        List<String> sameToolsAsMain = toolSetResolver.resolveReactTools(audit.tenantId());
 
         AgentRunRequest request = AgentRunRequest.sub(
                 MemoryContext.forSubAgent(),
@@ -83,7 +88,7 @@ public class SpawnSubagentTool {
                 audit.tenantId(),
                 messageId,
                 null,
-                null,
+                sameToolsAsMain,
                 null,
                 maxIters,
                 audit.conversationId());

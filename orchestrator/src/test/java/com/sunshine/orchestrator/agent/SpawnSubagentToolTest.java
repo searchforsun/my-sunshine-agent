@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
@@ -13,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Flux;
 
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,13 +38,15 @@ class SpawnSubagentToolTest {
     private AgentExecutionProperties.React reactProps;
     @Mock
     private SpawnSubagentTimelineSupport timelineSupport;
+    @Mock
+    private ToolSetResolver toolSetResolver;
 
     private SpawnSubagentTool tool;
     private StepEventBridgeRegistry registry;
 
     @BeforeEach
     void setUp() {
-        tool = new SpawnSubagentTool(agentRuntime, executionProperties, timelineSupport);
+        tool = new SpawnSubagentTool(agentRuntime, executionProperties, timelineSupport, toolSetResolver);
         registry = new StepEventBridgeRegistry();
         StepEventBridge.bindRegistry(registry);
         AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
@@ -51,6 +55,7 @@ class SpawnSubagentToolTest {
         sub.setTimeoutMs(5_000L);
         lenient().when(executionProperties.getReact()).thenReturn(reactProps);
         lenient().when(reactProps.getSubagent()).thenReturn(sub);
+        lenient().when(toolSetResolver.resolveReactTools(any())).thenReturn(List.of("search_knowledge"));
     }
 
     @AfterEach
