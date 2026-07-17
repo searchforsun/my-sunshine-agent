@@ -1,53 +1,49 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { NCard, NTag, NGrid, NGridItem, NButton } from 'naive-ui'
+import { computed, ref, onMounted } from 'vue'
+import { NButton } from 'naive-ui'
 import { resolveHealthProbeUrl } from '../api/config'
+import StatusServiceNode from '../status/StatusServiceNode.vue'
+import {
+  INFRA_ITEMS,
+  SERVICE_DEFS,
+  buildServiceList,
+  countProbeable,
+  domainServices,
+  entryServices,
+  orchestratorServices,
+  platformRoots,
+  type ServiceDef,
+  type ServiceStatus,
+} from '../status/statusArchitecture'
 
 interface HealthPayload {
   status?: string
   service?: string
 }
 
-interface ServiceStatus {
-  name: string
-  /** 原服务端口，仅展示 */
-  port: number
-  status: 'online' | 'offline' | 'checking' | 'external'
-  description: string
-  latency?: number
-  /** Gateway 路由路径；无则表示未暴露经 Gateway，不可探测 */
-  gatewayPath?: string
-  /** 期望 JSON 中的 service 字段，用于防路由误配 */
-  expectedService?: string
-}
-
-/** 经 Gateway :8000 路由探测，不直连各微服务端口 */
-const SERVICE_DEFS: Omit<ServiceStatus, 'status'>[] = [
-  { name: 'Gateway', port: 8000, description: 'API 网关与路由', gatewayPath: '/health', expectedService: 'sunshine-gateway' },
-  { name: 'BFF', port: 8001, description: 'SSE 流式转发', gatewayPath: '/health/bff', expectedService: 'sunshine-bff' },
-  { name: 'Auth Center', port: 8100, description: 'Sa-Token 认证中心', gatewayPath: '/health/auth', expectedService: 'sunshine-auth' },
-  { name: 'Orchestrator', port: 8200, description: 'Agent 编排与 Workflow', gatewayPath: '/health/orchestrator', expectedService: 'sunshine-orchestrator' },
-  { name: 'Tool Manager', port: 8210, description: '业务工具注册与 Catalog', gatewayPath: '/health/tool-manager', expectedService: 'sunshine-tool-manager' },
-  { name: 'Skill Manager', port: 8225, description: 'Skill 包管理与 Catalog', gatewayPath: '/health/skill-manager', expectedService: 'sunshine-skill-manager' },
-  { name: 'Workflow Manager', port: 8230, description: 'Workflow Studio DB / Catalog（4.13）', gatewayPath: '/health/workflow-manager', expectedService: 'sunshine-workflow-manager' },
-  { name: 'Expert Manager', port: 8235, description: '多专家协作 Catalog / Admin', gatewayPath: '/health/expert-manager', expectedService: 'sunshine-expert-manager' },
-  { name: 'LLM Gateway', port: 8300, description: '多厂商大模型路由', gatewayPath: '/health/llm-gateway', expectedService: 'sunshine-llm-gateway' },
-  { name: 'RAG Service', port: 8400, description: 'Milvus 向量检索', gatewayPath: '/health/rag', expectedService: 'sunshine-rag' },
-  { name: 'Prompt Manager', port: 8500, description: '提示词模板管理', gatewayPath: '/health/prompt', expectedService: 'sunshine-prompt' },
-  { name: 'Desensitize', port: 8600, description: '数据脱敏引擎', gatewayPath: '/health/desensitize', expectedService: 'sunshine-desensitize' },
-  { name: 'Finance', port: 8710, description: '财务消息与审批 Mock', gatewayPath: '/health/finance', expectedService: 'sunshine-finance' },
-]
-
-function buildList(defs: Omit<ServiceStatus, 'status'>[]): ServiceStatus[] {
-  return defs.map((d) => ({
-    ...d,
-    status: d.gatewayPath ? 'checking' : 'external',
-  }))
-}
-
-const services = ref<ServiceStatus[]>(buildList(SERVICE_DEFS))
-
 const probeSubtitle = '经 Gateway :8000 /health/* 探测，校验 HTTP 200 且 JSON status=UP。'
+
+const services = ref<ServiceStatus[]>(buildServiceList(SERVICE_DEFS))
+
+function byName(name: string): ServiceStatus | undefined {
+  return services.value.find((s) => s.name === name)
+}
+
+function resolveLaneStatuses(pick: (defs: ServiceDef[]) => ServiceDef[]) {
+  return computed(() =>
+    pick(SERVICE_DEFS)
+      .map((d) => byName(d.name))
+      .filter((s): s is ServiceStatus => s != null),
+  )
+}
+
+const entry = resolveLaneStatuses(entryServices)
+const orch = resolveLaneStatuses(orchestratorServices)
+const platform = resolveLaneStatuses(platformRoots)
+const domain = resolveLaneStatuses(domainServices)
+const probeableTotal = countProbeable(SERVICE_DEFS)
+
+const infraLabel = computed(() => INFRA_ITEMS.join(' · '))
 
 function resolveProbeUrl(item: ServiceStatus): string | null {
   if (!item.gatewayPath) return null
@@ -102,28 +98,8 @@ async function refreshAll() {
   await checkServices()
 }
 
-function statusType(s: string) {
-  if (s === 'online') return 'success'
-  if (s === 'offline') return 'error'
-  if (s === 'external') return 'info'
-  return 'warning'
-}
-
-function statusLabel(s: string) {
-  if (s === 'online') return '在线'
-  if (s === 'offline') return '离线'
-  if (s === 'external') return '内网'
-  return '检测中...'
-}
-
-function endpoint(item: ServiceStatus) {
-  if (item.gatewayPath) {
-    return `:8000${item.gatewayPath}`
-  }
-  return `:${item.port}（内网）`
-}
-
-const onlineServices = () => services.value.filter(s => s.status === 'online').length
+const onlineServices = () =>
+  services.value.filter((s) => s.status === 'online' && !!s.gatewayPath).length
 
 onMounted(() => {
   refreshAll()
@@ -143,50 +119,72 @@ onMounted(() => {
         </NButton>
       </header>
 
-      <!-- Summary Stats -->
       <div class="stats-row">
         <div class="stat-card">
-          <span class="stat-val">{{ onlineServices() }}/{{ services.length }}</span>
+          <span class="stat-val">{{ onlineServices() }}/{{ probeableTotal }}</span>
           <span class="stat-label">微服务在线</span>
         </div>
       </div>
 
-      <!-- Microservices -->
-      <NCard title="微服务" size="medium" class="section-card">
-        <NGrid cols="3" x-gap="10" y-gap="10" responsive="screen">
-          <NGridItem v-for="svc in services" :key="svc.name">
-            <NCard size="small" :bordered="true" class="svc-card">
-              <div class="svc-top">
-                <span class="svc-name">{{ svc.name }}</span>
-                <NTag
-                  :type="statusType(svc.status)"
-                  :bordered="false"
-                  size="tiny"
-                  round
-                >
-                  <template #icon>
-                    <span
-                      class="pulse-dot"
-                      :class="svc.status"
-                      style="margin-right: 5px"
-                    />
-                  </template>
-                  {{ statusLabel(svc.status) }}
-                </NTag>
-              </div>
-              <div class="svc-body">
-                <p class="svc-desc">{{ svc.description }}</p>
-                <p class="svc-port">
-                  {{ endpoint(svc) }}
-                  <template v-if="svc.latency !== undefined && svc.status === 'online'">
-                    · {{ svc.latency }}ms
-                  </template>
-                </p>
-              </div>
-            </NCard>
-          </NGridItem>
-        </NGrid>
-      </NCard>
+      <section class="arch">
+        <div class="lane-label">L0 客户端</div>
+        <article class="node node--browser">
+          <div class="node-line">
+            <span class="node-name">Browser</span>
+            <span class="node-meta">sunshine-ui · :5173</span>
+          </div>
+        </article>
+
+        <div class="lane-arrow">↓</div>
+
+        <div class="lane-label">L1 入口</div>
+        <div class="lane-row">
+          <StatusServiceNode
+            v-for="svc in entry"
+            :key="svc.name"
+            :item="svc"
+          />
+        </div>
+
+        <div class="lane-arrow">↓</div>
+
+        <div class="lane-label">L2 编排核心</div>
+        <div class="lane-row lane-row--center">
+          <StatusServiceNode
+            v-for="svc in orch"
+            :key="svc.name"
+            :item="svc"
+            variant="core"
+          />
+        </div>
+
+        <div class="lane-arrow">↓</div>
+
+        <div class="lane-label">L3 平台能力</div>
+        <div class="platform-grid">
+          <StatusServiceNode
+            v-for="svc in platform"
+            :key="svc.name"
+            :item="svc"
+          />
+        </div>
+
+        <div class="lane-arrow">↓</div>
+
+        <div class="lane-label">L4 领域 / 接入</div>
+        <div class="lane-row">
+          <StatusServiceNode
+            v-for="svc in domain"
+            :key="svc.name"
+            :item="svc"
+          />
+        </div>
+
+        <div class="lane-arrow">↓</div>
+
+        <div class="lane-label">基础设施</div>
+        <div class="infra">{{ infraLabel }}</div>
+      </section>
     </div>
   </div>
 </template>
@@ -198,12 +196,11 @@ onMounted(() => {
 }
 
 .status-content {
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 24px;
 }
 
-/* --- Header --- */
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -223,7 +220,6 @@ onMounted(() => {
   margin: 2px 0 0;
 }
 
-/* --- Stats --- */
 .stats-row {
   display: flex;
   gap: 12px;
@@ -254,76 +250,95 @@ onMounted(() => {
   margin-top: 2px;
 }
 
-/* --- Section cards --- */
-.section-card {
-  margin-bottom: 20px;
-  border-radius: var(--radius-lg) !important;
-  border: 1px solid var(--sun-border) !important;
-  background: var(--sun-black) !important;
+.arch {
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  background: var(--sun-black);
 }
 
-.section-card :deep(.n-card-header) {
-  background: transparent;
-}
-
-/* --- Service cards --- */
-.svc-card {
-  border-radius: var(--radius-md) !important;
-  border-color: var(--sun-border) !important;
-  background: var(--sun-black) !important;
-  transition: border-color .2s;
-  height: 100%;
-}
-.svc-card:hover {
-  border-color: var(--sun-border-light) !important;
-}
-.svc-card :deep(.n-card__content) {
-  display: flex;
-  flex-direction: column;
-  min-height: 88px;
-}
-
-.svc-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.svc-name {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--sun-text);
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.svc-body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  margin-top: 8px;
-  gap: 8px;
-  min-height: 0;
-}
-
-.svc-desc {
-  font-size: 11.5px;
-  color: var(--sun-text-muted);
-  line-height: 1.45;
-  margin: 0;
-}
-
-.svc-port {
-  margin-top: auto;
-  margin-bottom: 0;
+.lane-label {
   font-size: 11px;
   color: var(--sun-text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.lane-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.lane-row--center {
+  justify-content: center;
+}
+
+.platform-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .platform-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .platform-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.node--browser {
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+  background: var(--sun-black);
+  padding: 8px 12px;
+  border-style: dashed;
+  text-align: center;
+}
+
+.node-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  row-gap: 4px;
+}
+
+.node-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sun-text);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.node-meta {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--sun-text-muted);
+  white-space: nowrap;
+}
+
+.lane-arrow {
+  text-align: center;
+  color: var(--sun-text-muted);
+  margin: 6px 0;
+  opacity: 0.5;
+}
+
+.infra {
+  border: 1px dashed var(--sun-border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  text-align: center;
+  color: var(--sun-text-muted);
+  font-size: 12px;
 }
 </style>

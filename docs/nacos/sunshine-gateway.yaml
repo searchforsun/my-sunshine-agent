@@ -109,6 +109,18 @@ spring:
             - Path=/health/finance
           filters:
             - RewritePath=/health/finance, /health
+        - id: health-sandbox
+          uri: lb://sunshine-sandbox-service
+          predicates:
+            - Path=/health/sandbox
+          filters:
+            - RewritePath=/health/sandbox, /health
+        - id: health-oa
+          uri: lb://sunshine-oa
+          predicates:
+            - Path=/health/oa
+          filters:
+            - RewritePath=/health/oa, /health
         - id: sunshine-auth-api
           uri: lb://sunshine-auth
           predicates:

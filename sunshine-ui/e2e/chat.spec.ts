@@ -8,7 +8,7 @@ test.describe('AI 对话页', () => {
 
     await expect(page.getByRole('heading', { name: '有什么可以帮你的？' })).toBeVisible()
     await expect(page.locator('.composer-input-area')).toBeVisible()
-    await expect(page.getByRole('button', { name: '新对话' })).toBeVisible()
+    await expect(page.locator('.nav-menu--chat').getByText('新对话')).toBeVisible()
   })
 
   test('快捷提示可触发对话', async ({ page }) => {

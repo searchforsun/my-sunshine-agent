@@ -20,6 +20,7 @@ SERVICES = [
     ("llm-gateway", "llm-gateway", "sunshine-llm-gateway", 8300),
     ("rag", "rag-service", "sunshine-rag", 8400),
     ("finance", "finance-service", "sunshine-finance", 8710),
+    ("oa", "oa-service", "sunshine-oa", 8700),
     ("tool-manager", "tool-manager", "sunshine-tool-manager", 8210),
     ("skill-manager", "skill-manager", "sunshine-skill-manager", 8225),
     ("sandbox-service", "sandbox-service", "sunshine-sandbox-service", 8226),

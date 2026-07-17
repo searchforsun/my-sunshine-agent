@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
-import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline, PeopleOutline, ConstructOutline, GitNetworkOutline } from '@vicons/ionicons5'
-import { h, type Component, computed, onMounted, ref } from 'vue'
+import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline, PeopleOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
+import { h, type Component, computed, onMounted, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { useChatStore } from '../stores/chatStore'
@@ -23,43 +23,58 @@ const {
   getAttention,
   clearAttention,
   requestScrollToBottom,
-  pickAttentionConversation,
 } = useConversationAttention()
 const {
-  resolveIndicator,
   navMenuIndicator,
-  pickPendingConversation,
-  pickStreamingConversation,
 } = useConversationSidebarIndicator()
 
-const menuOptions = computed((): MenuOption[] => {
+const PLATFORM_NAV_STORAGE_KEY = 'sunshine-sidebar-platform-nav'
+/** 「新对话」以下的平台入口：默认展开；状态记入 localStorage */
+const platformNavOpen = ref(localStorage.getItem(PLATFORM_NAV_STORAGE_KEY) !== '0')
+
+function togglePlatformNav() {
+  platformNavOpen.value = !platformNavOpen.value
+  localStorage.setItem(PLATFORM_NAV_STORAGE_KEY, platformNavOpen.value ? '1' : '0')
+}
+
+function setPlatformNavOpen(open: boolean) {
+  if (platformNavOpen.value === open) return
+  platformNavOpen.value = open
+  localStorage.setItem(PLATFORM_NAV_STORAGE_KEY, open ? '1' : '0')
+}
+
+const chatMenuOptions = computed((): MenuOption[] => {
   void attentionByConv.size
   void chatStore.conversations.map(c => c.messages?.length ?? 0)
   const navInd = navMenuIndicator(chatStore.conversations)
   return [
-  {
-    label: () => h('span', { class: 'nav-menu-label' }, [
-      'AI 对话',
-      navInd === 'streaming'
-        ? h('span', { class: 'nav-streaming-dot', 'aria-hidden': 'true', title: '有对话正在生成' })
-        : navInd
-          ? h('span', {
-            class: ['nav-attention-dot', `is-${navInd}`],
-            'aria-hidden': 'true',
-            title: navInd === 'hitl_pending' ? '有待确认项' : '回答已完成',
-          })
-          : null,
-    ]),
-    key: 'chat',
-    icon: renderIcon(ChatbubblesOutline),
-  },
-  { label: '知识库',  key: 'knowledge', icon: renderIcon(BookOutline) },
+    {
+      label: () => h('span', { class: 'nav-menu-label' }, [
+        '新对话',
+        navInd === 'streaming'
+          ? h('span', { class: 'nav-streaming-dot', 'aria-hidden': 'true', title: '有对话正在生成' })
+          : navInd
+            ? h('span', {
+              class: ['nav-attention-dot', `is-${navInd}`],
+              'aria-hidden': 'true',
+              title: navInd === 'hitl_pending' ? '有待确认项' : '回答已完成',
+            })
+            : null,
+      ]),
+      key: 'chat',
+      icon: renderIcon(ChatbubblesOutline),
+    },
+  ]
+})
+
+const platformMenuOptions: MenuOption[] = [
+  { label: '知识库', key: 'knowledge', icon: renderIcon(BookOutline) },
   { label: 'Skills', key: 'skills', icon: renderIcon(LayersOutline) },
   { label: '工作流', key: 'workflows', icon: renderIcon(GitNetworkOutline) },
   { label: '工具', key: 'tools', icon: renderIcon(ConstructOutline) },
   { label: '专家', key: 'experts', icon: renderIcon(PeopleOutline) },
   { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
-]})
+]
 
 const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'experts', 'workflow-diff', 'skill-diff'])
 const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
@@ -77,20 +92,7 @@ function renderDropdownIcon(icon: Component) {
 
 function handleMenuClick(key: string) {
   if (key === 'chat') {
-    void (async () => {
-      const targetId = pickAttentionConversation()
-        ?? pickPendingConversation(chatStore.conversations)
-        ?? pickStreamingConversation(chatStore.conversations)
-        ?? chatStore.currentId
-      if (targetId) {
-        if (getAttention(targetId) || resolveIndicator(targetId, chatStore.conversations.find(c => c.id === targetId)?.messages) === 'hitl_pending') {
-          requestScrollToBottom(targetId)
-          clearAttention(targetId)
-        }
-        await chatStore.switchTo(targetId)
-      }
-      if (route.name !== 'chat') router.push('/chat')
-    })()
+    handleNewChat()
     return
   }
   router.push(`/${key}`)
@@ -99,8 +101,18 @@ function handleMenuClick(key: string) {
 const activeKey = computed(() => {
   if (route.name === 'skill-diff') return 'skills'
   if (route.name === 'workflow-diff') return 'workflows'
-  return (route.name as string) || 'chat'
+  // 「新对话」是动作入口，不高亮；仅平台页高亮对应项
+  if (route.name === 'chat') return ''
+  return (route.name as string) || ''
 })
+
+/** 进入平台页时自动展开，避免当前路由藏在折叠区内 */
+watch(activeKey, (key) => {
+  if (key && key !== 'chat') {
+    setPlatformNavOpen(true)
+  }
+})
+
 const { theme, toggle: toggleTheme } = useTheme()
 const { sidebarVisible } = useSidebar()
 const isDark = computed(() => theme.value === 'dark')
@@ -134,6 +146,7 @@ function handleLogout() {
 }
 
 function handleNewChat() {
+  setPlatformNavOpen(false)
   void (async () => {
     try {
       await chatStore.create()
@@ -145,6 +158,7 @@ function handleNewChat() {
 }
 
 function handleSwitchConversation(id: string) {
+  setPlatformNavOpen(false)
   void (async () => {
     if (getAttention(id)) {
       requestScrollToBottom(id)
@@ -157,9 +171,14 @@ function handleSwitchConversation(id: string) {
 
 function conversationMenuOptions(id: string): DropdownOption[] {
   return [
-    { label: '重命名', key: `rename:${id}` },
+    { label: '重命名', key: `rename:${id}`, icon: renderDropdownIcon(CreateOutline) },
     { type: 'divider', key: `div:${id}` },
-    { label: '删除', key: `delete:${id}`, props: { class: 'history-dropdown-delete' } },
+    {
+      label: '删除',
+      key: `delete:${id}`,
+      props: { class: 'history-dropdown-delete' },
+      icon: renderDropdownIcon(TrashOutline),
+    },
   ]
 }
 
@@ -241,31 +260,51 @@ onMounted(() => {
         <span class="brand-name">Sunshine<span class="brand-ai"> AI</span></span>
       </div>
 
-      <!-- Nav -->
-      <NMenu
-        :value="activeKey"
-        :options="menuOptions"
-        @update:value="handleMenuClick"
-        class="nav-menu"
-      />
+      <!-- Nav：新对话固定；其下平台入口可折叠；历史列表常驻 -->
+      <div class="nav-block">
+        <NMenu
+          :value="activeKey"
+          :options="chatMenuOptions"
+          @update:value="handleMenuClick"
+          class="nav-menu nav-menu--chat"
+        />
+        <div class="nav-platform">
+          <button
+            type="button"
+            class="nav-collapse-toggle"
+            :aria-expanded="platformNavOpen"
+            :title="platformNavOpen ? '折叠平台入口' : '展开平台入口'"
+            @click="togglePlatformNav"
+          >
+            <NIcon
+              :component="ChevronDownOutline"
+              :size="14"
+              class="nav-collapse-chevron"
+              :class="{ 'is-collapsed': !platformNavOpen }"
+            />
+            <span class="nav-collapse-label">平台</span>
+            <span class="nav-collapse-hint">{{ platformNavOpen ? '收起' : '展开' }}</span>
+          </button>
+          <Transition name="nav-platform">
+            <div v-show="platformNavOpen" class="nav-platform-body">
+              <NMenu
+                :value="activeKey"
+                :options="platformMenuOptions"
+                @update:value="handleMenuClick"
+                class="nav-menu nav-menu--platform"
+              />
+            </div>
+          </Transition>
+        </div>
+      </div>
 
-      <!-- Chat History（豆包式侧栏） -->
-      <div class="chat-history" v-if="route.name === 'chat'">
-        <button class="new-chat-primary" @click="handleNewChat">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          新对话
-        </button>
+      <div class="chat-history">
         <ConversationSidebarList
           :menu-options="conversationMenuOptions"
           @switch="handleSwitchConversation"
           @menu="handleConversationMenu"
         />
       </div>
-      <div v-else class="sidebar-spacer" aria-hidden="true" />
-
       <!-- 用户区 -->
       <div class="sidebar-user">
         <div class="user-avatar" aria-hidden="true">{{ userInitial }}</div>
@@ -367,10 +406,106 @@ onMounted(() => {
 }
 
 /* --- Nav --- */
+.nav-block {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding-bottom: 4px;
+}
+
 .nav-menu {
   flex-shrink: 0;
-  margin-top: 4px;
   padding: 0 8px;
+}
+
+.nav-menu--chat :deep(.n-menu-item) {
+  height: 40px;
+}
+
+.nav-platform {
+  margin: 4px 0 0;
+  padding: 6px 8px 0;
+  border-top: 1px solid var(--sun-border);
+}
+
+.nav-collapse-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: var(--sun-font-sm);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-collapse-toggle:hover {
+  background: var(--sun-row-hover);
+  color: var(--sun-text-secondary);
+}
+
+.nav-collapse-toggle:hover .nav-collapse-hint {
+  opacity: 1;
+}
+
+.nav-collapse-label {
+  flex: 1;
+  text-align: left;
+  letter-spacing: 0.02em;
+}
+
+.nav-collapse-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sun-text-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.nav-collapse-chevron {
+  transition: transform 0.18s ease;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.nav-collapse-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.nav-platform-body {
+  overflow: hidden;
+}
+
+.nav-menu--platform {
+  margin-top: 2px;
+  padding: 0;
+}
+
+.nav-menu--platform :deep(.n-menu-item) {
+  height: 40px;
+}
+
+.nav-menu--platform :deep(.n-menu-item-content-header) {
+  font-size: var(--sun-font-base);
+}
+
+.nav-platform-enter-active,
+.nav-platform-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.nav-platform-enter-from,
+.nav-platform-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 .nav-menu :deep(.n-menu) {
@@ -382,7 +517,7 @@ onMounted(() => {
 
 .nav-menu :deep(.n-menu-item-content) {
   border-radius: var(--radius-sm);
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .nav-menu :deep(.n-menu-item-content--selected) {
@@ -482,44 +617,15 @@ onMounted(() => {
 }
 
 /* --- Chat History（豆包式） --- */
-.sidebar-spacer {
-  flex: 1;
-  min-height: 0;
-}
-
 .chat-history {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px 10px 8px;
-  margin-top: 4px;
+  padding: 8px 10px 8px;
+  margin-top: 2px;
   overflow: hidden;
   gap: 8px;
-}
-
-.new-chat-primary {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--sun-border);
-  border-radius: 10px;
-  background: transparent;
-  color: var(--sun-text);
-  font-size: var(--sun-font-base);
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
-
-.new-chat-primary:hover {
-  border-color: var(--sun-border-light);
-  background: var(--sun-row-hover);
 }
 
 .nav-menu-label {

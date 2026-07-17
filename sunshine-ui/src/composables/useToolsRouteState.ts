@@ -1,8 +1,8 @@
 import { useRoute, useRouter } from 'vue-router'
 
-export type ToolsTab = 'sdk' | 'mcp' | 'platform' | 'toolset'
+export type ToolsTab = 'sdk' | 'mcp' | 'toolset'
 
-const VALID_TABS = new Set<string>(['sdk', 'mcp', 'platform', 'toolset'])
+const VALID_TABS = new Set<string>(['sdk', 'mcp', 'toolset'])
 
 function queryString(value: unknown): string | null {
   if (typeof value !== 'string') return null

@@ -296,15 +296,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--sun-border);
+  border: none;
   border-radius: 6px;
-  background: var(--sun-black);
+  background: transparent;
   color: var(--sun-text-secondary);
   cursor: pointer;
 }
 
 .plan-exec-expand-btn:hover {
-  border-color: var(--sun-border-light);
+  background: var(--sun-row-hover);
   color: var(--sun-text);
 }
 

@@ -2,6 +2,7 @@
 import { NDropdown, type DropdownOption } from 'naive-ui'
 import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useChatStore } from '../stores/chatStore'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarGroups } from '../composables/useConversationSidebarGroups'
@@ -19,10 +20,16 @@ defineProps<{
   menuOptions: (id: string) => DropdownOption[]
 }>()
 
+const route = useRoute()
 const chatStore = useChatStore()
 const { resolveIndicator } = useConversationSidebarIndicator()
 const { attentionByConv } = useConversationAttention()
 const { groups, now } = useConversationSidebarGroups(computed(() => chatStore.conversations))
+
+/** 仅在对话页高亮当前会话；进入平台页后取消选中态 */
+function isActiveConv(id: string): boolean {
+  return route.name === 'chat' && id === chatStore.currentId
+}
 
 function indicator(conv: Conversation): SidebarConvIndicator | null {
   void attentionByConv.size
@@ -53,14 +60,14 @@ function handleMenu(key: string) {
         :key="conv.id"
         class="history-item"
         :class="{
-          active: conv.id === chatStore.currentId,
+          active: isActiveConv(conv.id),
           'is-hitl-pending': indicator(conv) === 'hitl_pending',
         }"
         @click="handleSwitch(conv.id)"
       >
         <ConversationStatusIcon
           :state="indicator(conv)"
-          :active="conv.id === chatStore.currentId"
+          :active="isActiveConv(conv.id)"
           :title="indicator(conv) === 'streaming' ? '正在生成' : indicator(conv) === 'hitl_pending' ? '待确认' : indicator(conv) === 'completed' ? '新回复' : undefined"
         />
         <span class="history-item-title">{{ conv.title }}</span>
@@ -106,9 +113,8 @@ function handleMenu(key: string) {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px solid var(--sun-border);
+  margin-top: 2px;
+  padding-top: 4px;
 }
 
 .history-group {
@@ -202,7 +208,6 @@ function handleMenu(key: string) {
   padding: 20px 8px 4px;
   text-align: center;
   flex-shrink: 0;
-  border-top: 1px solid var(--sun-border);
 }
 
 .history-empty-text {
