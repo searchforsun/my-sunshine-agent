@@ -74,7 +74,7 @@ const {
   open: openSandboxDrawer,
   close: closeSandboxDrawer,
   registerChatBody: registerSandboxChatBody,
-  compareMode: drawerCompareMode,
+  compareMode: drawerBothOpen,
 } = useSandboxWorkspaceDrawer()
 const sandboxWorkspaceActive = ref(false)
 
@@ -630,10 +630,9 @@ watch(
     <div
       ref="chatBodyRef"
       class="chat-body"
-      :class="{ 'chat-body--compare': drawerCompareMode }"
+      :class="{ 'chat-body--both-drawers': drawerBothOpen }"
     >
       <div
-        v-show="!drawerCompareMode"
         class="chat-main"
         :class="{ 'plan-dag-expanded': planDagExpanded }"
       >
@@ -915,12 +914,12 @@ watch(
   display: flex;
   flex-direction: row;
   position: relative;
+  overflow-x: auto;
 }
 
-/* 对照：节点 min 400 + 沙箱 min 520；不足时横向滚动 */
-.chat-body--compare {
-  min-width: 920px;
-  overflow-x: auto;
+/* 双开：三栏各 min 420 */
+.chat-body--both-drawers {
+  min-width: 1260px;
 }
 
 .chat-attention-bubble {
@@ -959,13 +958,20 @@ watch(
 
 .chat-main {
   flex: 1;
-  min-width: 0;
+  /* 与 CHAT_CONTENT_MIN_WIDTH 一致：底栏四控件单行 */
+  min-width: 420px;
   min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
   /* 滚动区底部留白，避免最后一条回复贴住悬浮输入框 */
   --chat-composer-gap: 152px;
+}
+
+/* 放大 DAG 时抬高层叠，避免被右侧抽屉 z-index 挡住命中 */
+.chat-main.plan-dag-expanded {
+  z-index: 200;
+  isolation: isolate;
 }
 
 .chat-main.plan-dag-expanded .chat-scroll {
@@ -1303,6 +1309,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 8px;
   padding-top: 4px;
   min-height: 34px;
@@ -1311,6 +1318,8 @@ watch(
 .composer-toolbar-left {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
   gap: 8px;
   min-width: 0;
 }
@@ -1318,6 +1327,7 @@ watch(
 .composer-workspace-btn {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 5px;
   height: 30px;
   padding: 0 10px;

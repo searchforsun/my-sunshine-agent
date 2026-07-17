@@ -1,5 +1,12 @@
 import { computed, reactive, ref, watch } from 'vue'
-import { PLAN_COMPARE_MIN, usePlanNodeDrawer } from './usePlanNodeDrawer'
+import {
+  CHAT_CONTENT_MIN_WIDTH,
+  DRAWER_MIN_WIDTH as PLAN_DRAWER_MIN,
+  PANE_MIN_WIDTH,
+  splitRightDrawerBudget,
+  usePlanNodeDrawer,
+} from './usePlanNodeDrawer'
+import { setSandboxDrawerLayout } from './sandboxDrawerBridge'
 
 export interface SandboxWorkspaceDrawerPayload {
   conversationId: string
@@ -7,18 +14,30 @@ export interface SandboxWorkspaceDrawerPayload {
   focusPath?: string
 }
 
-export const DRAWER_MIN_WIDTH = 520
-export const CHAT_CONTENT_MIN_WIDTH = 868
+/** 与 Chat / 节点抽屉统一 */
+export const DRAWER_MIN_WIDTH = PANE_MIN_WIDTH
+/** 首次打开偏好宽（可拖窄到 PANE_MIN） */
+export const DRAWER_DEFAULT_WIDTH = 520
+export { CHAT_CONTENT_MIN_WIDTH, PANE_MIN_WIDTH }
 export const TREE_MIN_WIDTH = 160
 export const TREE_MAX_WIDTH = 360
 export const TREE_DEFAULT_WIDTH = 220
 /** 预览区最小宽度；缩窄抽屉时树宽不超过 drawer - PREVIEW_MIN */
 export const PREVIEW_MIN_WIDTH = 240
 
-/** 纯函数：单抽屉预留 Chat；对照模式预留节点区 min */
-export function resolveSandboxDrawerMaxWidth(bodyW: number, compare: boolean): number {
+/**
+ * 单开：预留 Chat；双开：预留 Chat + 当前节点抽屉宽。
+ */
+export function resolveSandboxDrawerMaxWidth(
+  bodyW: number,
+  bothOpen: boolean,
+  planWidth = PLAN_DRAWER_MIN,
+): number {
   if (bodyW <= 0) return DRAWER_MIN_WIDTH
-  if (compare) return Math.max(DRAWER_MIN_WIDTH, bodyW - PLAN_COMPARE_MIN)
+  if (bothOpen) {
+    const plan = Math.max(planWidth, PLAN_DRAWER_MIN)
+    return Math.max(DRAWER_MIN_WIDTH, bodyW - CHAT_CONTENT_MIN_WIDTH - plan)
+  }
   return Math.max(DRAWER_MIN_WIDTH, bodyW - CHAT_CONTENT_MIN_WIDTH)
 }
 
@@ -40,11 +59,11 @@ let bodyObserver: ResizeObserver | null = null
 function loadSavedWidth(): number {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return DRAWER_MIN_WIDTH
+    if (!raw) return DRAWER_DEFAULT_WIDTH
     const n = Number(raw)
     if (Number.isFinite(n) && n >= DRAWER_MIN_WIDTH) return n
   } catch { /* ignore */ }
-  return DRAWER_MIN_WIDTH
+  return DRAWER_DEFAULT_WIDTH
 }
 
 function loadSavedTreeWidth(): number {
@@ -72,12 +91,17 @@ function persistTreeWidth(w: number) {
 export function useSandboxWorkspaceDrawer() {
   const planDrawer = usePlanNodeDrawer()
 
+  /** 节点 + 沙箱同时开（三栏：Chat | 节点 | 沙箱） */
   const compareMode = computed(
     () => state.open && planDrawer.state.open && !!planDrawer.state.node,
   )
 
   const drawerMaxWidth = computed(() =>
-    resolveSandboxDrawerMaxWidth(chatBodyWidth.value, compareMode.value),
+    resolveSandboxDrawerMaxWidth(
+      chatBodyWidth.value,
+      compareMode.value,
+      planDrawer.drawerWidth.value,
+    ),
   )
 
   const drawerWidth = computed(() => {
@@ -85,7 +109,14 @@ export function useSandboxWorkspaceDrawer() {
     return Math.min(Math.max(savedWidth.value, DRAWER_MIN_WIDTH), max)
   })
 
-  const canResizeDrawer = computed(() => drawerMaxWidth.value > DRAWER_MIN_WIDTH)
+  const canResizeDrawer = computed(() => {
+    // 双开：只要节点+沙箱总宽 > 两倍 min，就可以拖分界（不依赖 sandbox 是否已顶到「相对 Chat 的 max」）
+    if (compareMode.value) {
+      const budget = planDrawer.drawerWidth.value + drawerWidth.value
+      return budget > PLAN_DRAWER_MIN + DRAWER_MIN_WIDTH
+    }
+    return drawerMaxWidth.value > DRAWER_MIN_WIDTH
+  })
 
   const treeWidthMax = computed(() =>
     Math.max(TREE_MIN_WIDTH, Math.min(TREE_MAX_WIDTH, drawerWidth.value - PREVIEW_MIN_WIDTH)),
@@ -105,6 +136,12 @@ export function useSandboxWorkspaceDrawer() {
     if (savedTreeWidth.value > max) savedTreeWidth.value = max
   })
 
+  watch(
+    [() => state.open, drawerWidth],
+    () => setSandboxDrawerLayout(state.open, drawerWidth.value),
+    { immediate: true },
+  )
+
   function registerChatBody(el: HTMLElement | null) {
     bodyObserver?.disconnect()
     bodyObserver = null
@@ -120,17 +157,39 @@ export function useSandboxWorkspaceDrawer() {
   }
 
   function onResizePointerDown(e: PointerEvent) {
-    if (!chatBodyEl || !canResizeDrawer.value) return
+    if (!chatBodyEl) return
+    const both = compareMode.value
+    if (!both && !canResizeDrawer.value) return
+    if (both) {
+      const budget = planDrawer.drawerWidth.value + drawerWidth.value
+      if (budget <= PLAN_DRAWER_MIN + DRAWER_MIN_WIDTH) return
+    }
     e.preventDefault()
     const handle = e.currentTarget as HTMLElement
     handle.setPointerCapture(e.pointerId)
     document.body.classList.add('sandbox-drawer-resizing')
+    const rightBudget = both
+      ? planDrawer.drawerWidth.value + drawerWidth.value
+      : 0
 
     const onMove = (ev: PointerEvent) => {
       if (!chatBodyEl) return
       const rect = chatBodyEl.getBoundingClientRect()
+      const fromRight = rect.right - ev.clientX
+      if (both) {
+        // 只动节点↔沙箱分界，Chat 宽度不变
+        const { plan, sandbox } = splitRightDrawerBudget(
+          rightBudget,
+          fromRight,
+          PLAN_DRAWER_MIN,
+          DRAWER_MIN_WIDTH,
+        )
+        savedWidth.value = sandbox
+        planDrawer.setWidth(plan)
+        return
+      }
       const next = Math.min(
-        Math.max(rect.right - ev.clientX, DRAWER_MIN_WIDTH),
+        Math.max(fromRight, DRAWER_MIN_WIDTH),
         drawerMaxWidth.value,
       )
       savedWidth.value = next
@@ -143,6 +202,7 @@ export function useSandboxWorkspaceDrawer() {
       handle.removeEventListener('pointerup', onUp)
       handle.removeEventListener('pointercancel', onUp)
       persistWidth(drawerWidth.value)
+      if (both) planDrawer.persistCurrentWidth()
     }
 
     handle.addEventListener('pointermove', onMove)

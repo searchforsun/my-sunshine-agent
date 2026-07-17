@@ -145,7 +145,7 @@ function onShowUpdate(next: boolean) {
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
   flex-shrink: 0;
-  max-width: 220px;
+  max-width: 140px;
   transition: border-color 0.15s, color 0.15s;
 }
 

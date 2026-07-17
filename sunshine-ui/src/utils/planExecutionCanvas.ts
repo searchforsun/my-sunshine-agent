@@ -73,6 +73,7 @@ export function applyExecOverlay(
       : undefined
     return {
       ...node,
+      class: 'nopan',
       data: {
         ...data,
         selected: selectedId === node.id,

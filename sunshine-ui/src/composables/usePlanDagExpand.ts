@@ -67,10 +67,17 @@ export function usePlanDagExpand() {
   }
 
   function handleSelect(node: DagNodeView) {
+    state.selectedId = node.id
     selectHandler?.(node)
+  }
+
+  /** 放大态下每次 sync 重新绑定，避免 handler 丢失后点击无响应 */
+  function bindSelect(onSelect: (node: DagNodeView) => void) {
+    if (!state.activePlanId) return
+    selectHandler = onSelect
   }
 
   const isAnyExpanded = computed(() => !!state.activePlanId)
 
-  return { state, open, update, close, isExpanded, handleSelect, isAnyExpanded }
+  return { state, open, update, close, isExpanded, handleSelect, bindSelect, isAnyExpanded }
 }

@@ -38,7 +38,7 @@
 | exec | `SandboxExecGuard` 硬拒破坏性命令；只读白名单免 HITL |
 | HITL 默认 | write/edit 确认；危险 exec 确认；读类免确认 |
 | 工作区跳过 | 会话 `writeHitlMode`：`never` / `always` / `smart`；**用户默认**见账号设置（auth） |
-| 工作区抽屉 | 多 tab 预览；与 Plan 节点抽屉**对照模式**（同时开时隐藏 Chat）；树可独立调宽；激活 tab 自动滚入可视区；代码不换行+横向滚动；**.md 美化/原始切换**；树节点拖入 Composer 为路径芯片 |
+| 工作区抽屉 | 多 tab 预览；与 Plan 节点抽屉**可同时开**（`Chat \| 节点 \| 沙箱`，保留执行计划/DAG）；树可独立调宽；激活 tab 自动滚入可视区；代码不换行+横向滚动；**.md 美化/原始切换**；树节点拖入 Composer 为路径芯片 |
 | 时间线主行 | 标签「调用工具 xxx」+ 摘要目标（无前导 ·）；glob 为 `{pattern} · /skills`；grep 仅 pattern |
 | HITL 确认框 | 不展示 content/old_string/new_string/command 正文（进展开） |
 | edit 展开 | 行级 unified diff（同屏 `-`/`+`/` `，兼容旧 `<<< old`） |

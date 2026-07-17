@@ -22,24 +22,11 @@ import PlanNodeIcon from './PlanNodeIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
-import { usePlanNodeDrawer, PLAN_COMPARE_MIN } from '../../composables/usePlanNodeDrawer'
-import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
+import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { resolveExclusiveBranches } from '../../utils/exclusiveBranchDisplay'
 import { resolveLoopContinueRows } from '../../utils/loopContinueDisplay'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
-const { state: sandboxState } = useSandboxWorkspaceDrawer()
-const compareMode = computed(() => state.open && !!state.node && sandboxState.open)
-const drawerStyle = computed(() => {
-  if (compareMode.value) {
-    return {
-      flex: '1 1 auto',
-      minWidth: `${PLAN_COMPARE_MIN}px`,
-      width: 'auto',
-    }
-  }
-  return { width: `${drawerWidth.value}px` }
-})
 const applyHitlDecision = inject<(token: string, approved: boolean) => void>('applyHitlDecision', () => {})
 const applyRecoveryDecision = inject<(token: string, action: 'retry' | 'terminate' | 'skip') => void>('applyRecoveryDecision', () => {})
 const resolveLiveNodeStep = inject<(nodeId: string) => ProcessingStep | undefined>('planDrawerLiveNodeStep', () => undefined)
@@ -291,13 +278,12 @@ watch(
   <aside
     v-if="state.open && node"
     class="plan-drawer"
-    :class="{ 'plan-drawer--compare': compareMode }"
     role="complementary"
     aria-label="节点详情"
-    :style="drawerStyle"
+    :style="{ width: `${drawerWidth}px` }"
   >
     <div
-      v-if="canResizeDrawer && !compareMode"
+      v-if="canResizeDrawer"
       class="drawer-resize-handle"
       role="separator"
       aria-orientation="vertical"
@@ -474,13 +460,6 @@ watch(
   border-left: 1px solid var(--sun-border);
   background: var(--sun-bg);
   box-shadow: -8px 0 24px color-mix(in srgb, black 8%, transparent);
-}
-
-/* 对照模式：占原 Chat 主区，分界由沙箱左侧 handle 调节 */
-.plan-drawer--compare {
-  flex-shrink: 1;
-  border-left: none;
-  box-shadow: none;
 }
 
 .drawer-resize-handle {

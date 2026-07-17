@@ -33,7 +33,7 @@ const props = defineProps<{
 }>()
 
 const { open: openDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()
-const { open: openExpand, close: closeExpand, isExpanded, update: updateExpand, state: expandState } = usePlanDagExpand()
+const { open: openExpand, close: closeExpand, isExpanded, update: updateExpand, bindSelect, state: expandState } = usePlanDagExpand()
 
 function subStepsSignature(steps?: ProcessingStep[]): string {
   if (!steps?.length) return ''
@@ -110,6 +110,8 @@ function maybeAutoOpenDrawer(nodes: DagNodeView[]) {
   const target = nodes.find(nodeNeedsDrawerAttention)
   if (!target) return
   if (isActivePlan(id) && drawerState.node?.id === target.id) return
+  // 用户已打开抽屉并手动点了其他节点时，不要抢回（三开时 sync 更频繁）
+  if (isActivePlan(id) && drawerState.node && drawerState.node.id !== target.id) return
   openDrawer({ planId: id, userQuery: props.userQuery, node: target, step: stepForNode(target.id), graph: graphSource.value })
 }
 
@@ -252,6 +254,7 @@ function syncExpandLayer() {
     live: props.live,
     loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
   })
+  bindSelect(onSelectNode)
 }
 
 async function loadPlan() {
