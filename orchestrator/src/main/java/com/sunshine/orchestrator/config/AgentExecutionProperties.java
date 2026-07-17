@@ -21,6 +21,8 @@ public class AgentExecutionProperties {
         /** ReAct 最大 think→tool 循环轮数（SSOT：Nacos agent.execution.react.max-iters） */
         private int maxIters = 5;
         private Taskboard taskboard = new Taskboard();
+        /** 4.7.6 spawn_subagent — SSOT：Nacos agent.execution.react.subagent */
+        private Subagent subagent = new Subagent();
 
         @Data
         public static class Taskboard {
@@ -34,6 +36,13 @@ public class AgentExecutionProperties {
             public static class Audit {
                 private double sampleRate = 1.0;
             }
+        }
+
+        @Data
+        public static class Subagent {
+            private boolean enabled = true;
+            private int maxIters = 8;
+            private long timeoutMs = 180_000L;
         }
     }
 

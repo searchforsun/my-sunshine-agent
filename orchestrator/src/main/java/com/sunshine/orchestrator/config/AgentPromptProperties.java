@@ -93,6 +93,13 @@ public class AgentPromptProperties {
             tasks.setAfter("任务清单已更新");
             tasks.setAllDone("全部任务已完成");
             map.put("tasks", tasks);
+            var subagent = new StepTimeline();
+            subagent.setLabel("子任务");
+            subagent.setBefore("准备委派子任务");
+            subagent.setActive("正在执行：{label}");
+            subagent.setAfter("子任务已完成");
+            subagent.setAfterFail("子任务失败");
+            map.put("subagent", subagent);
             var generate = new StepTimeline();
             generate.setLabel("生成回答");
             generate.setBefore("为{query}撰写回复");
@@ -197,6 +204,8 @@ public class AgentPromptProperties {
         private java.util.LinkedHashMap<String, StepModeTimeline> modes;
         /** TaskBoard 全部完成 after */
         private String allDone;
+        /** spawn_subagent 失败 after */
+        private String afterFail;
     }
 
     @Getter

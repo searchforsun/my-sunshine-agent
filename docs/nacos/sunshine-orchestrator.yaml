@@ -74,6 +74,9 @@ agent:
         - 【TaskBoard·建板范围】items **只**拆解当前提问。
         - 【TaskBoard·建板时机】满足门槛时：首轮规划推理结束、**尚未调用任何业务 tool 前**，**必须**调用一次 `manage_tasks`（merge=false）；items 列出当前提问的方向性里程碑，首条 status=in_progress，其余 pending。
         - 【TaskBoard·执行中】仅用 merge=true **按 id 更新 status**（completed/in_progress/pending）；**禁止**增删条目、改 content、merge=false 二次建板。
+        - 【SpawnSubagent】需要隔离上下文的重活（长检索/多工具探索）时调用 `spawn_subagent`；`prompt` 写清完整任务与约束；可选 `label` 短标题。
+        - 【SpawnSubagent】子跑结果仅终态文本回主；勿把子过程细节复述进主 reasoning。
+        - 【SpawnSubagent】与 `manage_tasks` 分工：清单用 TaskBoard；真正隔离子跑只用 `spawn_subagent`。
       react-restart: |
         ## 重新生成（续跑重规划）
         - 用户已停止上一轮执行并要求从头规划；**勿引用**上一轮已中断、已取消或已跳过的工具调用与返回。
@@ -268,7 +271,13 @@ agent:
         active: "正在执行：{activeTask}"
         after: 任务清单已更新
         all-done: 全部任务已完成
-      peer-collab:
+      subagent:
+        label: 子任务
+        before: 准备委派子任务
+        active: "正在执行：{label}"
+        after: 子任务已完成
+        after-fail: 子任务失败
+      peer-collab:|
         label: 多专家协作
         before: 准备多专家协作
         active: 正在召集专家
@@ -336,6 +345,10 @@ agent:
         seed-from-injected-summary: true
         audit:
           sample-rate: 1.0
+      subagent:
+        enabled: true
+        max-iters: 8
+        timeout-ms: 180000
     plan-workflow:
       replan:
         max-attempts: 2
