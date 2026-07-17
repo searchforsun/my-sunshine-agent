@@ -71,7 +71,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
 | **意图路由** | **Policy Chain**：L0 Skill → L1 `agent.routing.structural` → L2 `agent.routing.rules` → L3 `agent.intent`；验收见 `docs/routing/routing-golden-set.md` |
-| **Chat 执行模式** | 底栏 `executionPreference`（五模式）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 |
+| **Chat 执行模式** | 底栏 `executionPreference`（`auto` + `react` / `workflow` / `plan-workflow` / `peer-collab`）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 · [remove-simple-llm](docs/superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md) |
 | **Workflow 模板（4.13）** | `workflow-manager` DB + `/workflows` + Chat `#` 补全；标杆维护见 `docs/workflow/README.md`；详设 `2026-06-25-workflow-studio-design.md` · `2026-07-11-workflow-studio.md` |
 | Workflow 节点中文名 | PlanJson `displayName`（runtime bind）+ tool catalog → `WorkflowNodeLabelService` → SSE `step.label` |
 | 意图步骤文案 | Nacos `agent.timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
@@ -125,7 +125,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 1. OpenAIChatModel 对接 Gateway `/v1/chat/completions`。
 2. Gateway 鉴权注入 `x-user-id`；BFF/Orchestrator 只读，客户端不得自填。
 3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync_nacos.py` → 重启（无 `application-dev.yaml`）。
-4. 四模式（阶段四增第五）：`IntentRouter` → `ExecutionDispatcher`（`simple-llm` / `workflow` / `react` / `plan-workflow`；阶段四 **`peer-collab`** 见 D10 + `2026-06-24-peer-collab-routing-design.md`）；workflow 图在 **workflow-manager DB**（4.13）。
+4. 执行模式：`IntentRouter` → `ExecutionDispatcher`（`workflow` / `react` / `plan-workflow` / `peer-collab`；见 D10 + `2026-06-24-peer-collab-routing-design.md`；`simple-llm` 已移除见 `2026-07-17-remove-simple-llm-mode-design.md`）；workflow 图在 **workflow-manager DB**（4.13）。
 5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板（见 Nacos `agent.system-prompt`）。
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。

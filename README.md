@@ -12,7 +12,7 @@ Gateway (:8000, JWT + Sentinel) ──▶ BFF (:8001, SSE) ──▶ Orchestrato
                                                           │
                     ┌─────────────────────────────────────┼─────────────────────┐
                     │                                     │                     │
-              simple-llm / workflow / react / plan-workflow / peer-collab       │
+              workflow / react / plan-workflow / peer-collab                    │
                     │                                     │                     │
                     ▼                                     ▼                     ▼
             LLM Gateway (:8300)                    RAG (:8400)           tool-manager (:8210)
@@ -23,7 +23,7 @@ Gateway (:8000, JWT + Sentinel) ──▶ BFF (:8001, SSE) ──▶ Orchestrato
                Sa-Token JWT
 ```
 
-**执行模式**（IntentRouter → ExecutionDispatcher）：`simple-llm` · 静态 `workflow` · `react` · 动态 `plan-workflow`（Planner DAG + Plan 抽屉 UI）· **`peer-collab`**（多专家协作：Expert Catalog + MsgHub + Synthesizer，见 [expert-consultation spec](docs/superpowers/specs/2026-07-07-expert-consultation-design.md)）。
+**执行模式**（IntentRouter → ExecutionDispatcher）：静态 `workflow` · `react` · 动态 `plan-workflow`（Planner DAG + Plan 抽屉 UI）· **`peer-collab`**（多专家协作：Expert Catalog + MsgHub + Synthesizer，见 [expert-consultation spec](docs/superpowers/specs/2026-07-07-expert-consultation-design.md)）。Chat 底栏另含 `auto`（自动路由）；`simple-llm` 已移除，见 [remove-simple-llm](docs/superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md)。
 
 ## 技术栈
 
@@ -47,7 +47,7 @@ my-sunshine-agent/
 ├── gateway/         :8000      # Spring Cloud Gateway + Sentinel
 ├── bff/             :8001      # WebFlux + SSE 流式转发
 ├── auth-center/     :8100      # Sa-Token 认证中心
-├── orchestrator/    :8200      # 五模式编排 + Timeline + AgentRuntime
+├── orchestrator/    :8200      # 四模式编排（workflow/react/plan-workflow/peer-collab）+ Timeline + AgentRuntime
 ├── tool-manager/    :8210      # 业务 API → Agent Tool（Catalog 驱动）
 ├── skill-manager/   :8225      # Skills 上传 / 版本 / Catalog
 ├── expert-manager/  :8235      # Expert CRUD / Catalog（多专家协作）
@@ -106,7 +106,7 @@ SSE 默认经 Gateway `:8000`（`sunshine-ui` 环境变量 `VITE_BFF_STREAM_BASE
 ### 5. 验收
 
 ```bash
-# Agent 五模式（react / workflow / plan-workflow / peer-collab 等）
+# Agent 执行模式（react / workflow / plan-workflow / peer-collab）
 python scripts/phase2_agent_demo.py --suite all
 
 # 多专家协作 Live（§E L1 句式 + §K `$` 绑定）

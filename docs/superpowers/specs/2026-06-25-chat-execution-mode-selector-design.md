@@ -13,7 +13,7 @@
 | UI 选项 | `executionPreference` | 后端 `ExecutionMode` | 路由行为 |
 |---------|----------------------|----------------------|----------|
 | **自动** | `auto`（默认） | 由链决定 | L0 Skill → L1 Structural → L2 GoldenRule → L3 LLM |
-| **简单对话** | `simple-llm` | `SIMPLE_LLM` | 强制直答，跳过意图链 |
+| **简单对话** | `simple-llm` | `SIMPLE_LLM` | ⚠️ **已废止**（2026-07-17）— 见 [remove-simple-llm-mode-design.md](./2026-07-17-remove-simple-llm-mode-design.md)；闲聊/通识统一 ReAct |
 | **自主推理** | `react` | `REACT` | 强制 ReAct；仍允许 L0 `@skill` |
 | **工作流** | `workflow` | `WORKFLOW` | 强制静态 workflow；**禁用 `@skill`** |
 | **动态规划** | `plan-workflow` | `PLAN_WORKFLOW` | 强制 Planner DAG；仍允许 L0 `@skill` |

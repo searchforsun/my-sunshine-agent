@@ -220,18 +220,17 @@ python3 scripts/verify_skills_ui_live.py
 
 ## J. Chat `executionPreference` 强制路由（P0 ✅）
 
-> **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md)  
-> **请求**：SSE 发送体 `executionPreference`（`auto` \| `simple-llm` \| `react` \| `workflow` \| `plan-workflow`）  
+> **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) · [remove-simple-llm](../superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md)  
+> **请求**：SSE 发送体 `executionPreference`（`auto` \| `react` \| `workflow` \| `plan-workflow` \| `peer-collab`）  
 > **边界**：本节约 **执行路径**；**指定 workflow 模板**用正文 `#id`（4.13 §I），**不在底栏做 catalog 下拉**。
 
 | # | preference | 提示词 | 预期 mode | @skill |
 |---|------------|--------|-----------|--------|
-| J1 | `simple-llm` | 写一段快速排序 | `SIMPLE_LLM`；`reason=user:forced-simple-llm` | ❌ |
-| J2 | `react` | 待审批是否合规 | `REACT`；`reason=user:forced-react` | ✅ |
-| J3 | `workflow` | 年假可以请几天 | `WORKFLOW` knowledge-qa | ❌ |
-| J4 | `plan-workflow` | 先查制度再查待审批 | `PLAN_WORKFLOW`；`reason=user:forced-plan-workflow` | ✅ |
-| J5 | `workflow` | `@policy-review 年假可以请几天` | `WORKFLOW` knowledge-qa；**忽略** @skill（strip 正文） | ❌ |
-| J6 | `plan-workflow` | `@finance-analysis 是否合规` | `PLAN_WORKFLOW` + `params.skillId=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
+| J1 | `react` | 待审批是否合规 | `REACT`；`reason=user:forced-react` | ✅ |
+| J2 | `workflow` | 年假可以请几天 | `WORKFLOW` knowledge-qa | ❌ |
+| J3 | `plan-workflow` | 先查制度再查待审批 | `PLAN_WORKFLOW`；`reason=user:forced-plan-workflow` | ✅ |
+| J4 | `workflow` | `@policy-review 年假可以请几天` | `WORKFLOW` knowledge-qa；**忽略** @skill（strip 正文） | ❌ |
+| J5 | `plan-workflow` | `@finance-analysis 是否合规` | `PLAN_WORKFLOW` + `params.skillId=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
 
 单测：`ForcedExecutionRouterTest` · `ExecutionPlanRouterTest` · `RoutingGoldenSetTest#forcedJ*`
 
@@ -247,7 +246,7 @@ Live：`python scripts/verify_execution_preference.py`
 
 | # | 提示词 | 预期（典型） |
 |---|--------|--------------|
-| F1 | 随便聊聊 | `REACT` 或 `SIMPLE_LLM`；**无** skill 绑定 |
+| F1 | 随便聊聊 | `REACT`；**无** skill 绑定 |
 | F2 | 年假可以请几天 | `WORKFLOW` knowledge-qa（LLM 选 catalog） |
 | F3 | 待审批 | 短句 → intent 改写后分类（见 timeline detail） |
 | F4 | 帮我做一笔报销的合规分析 | L3→`REACT` + skillId=finance-analysis |

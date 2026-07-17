@@ -1,6 +1,6 @@
 # 移除「简单对话」执行模式（simple-llm）
 
-> **状态**：设计已确认，待实现  
+> **状态**：✅ 已实现  
 > **日期**：2026-07-17  
 > **关联**：[2026-06-25-chat-execution-mode-selector-design.md](./2026-06-25-chat-execution-mode-selector-design.md)（底栏选择器；本变更废止其中 simple-llm 行）  
 > **触发**：企业场景不再适合无工具单轮直答；底栏「简单对话」需完全去掉，不做兼容

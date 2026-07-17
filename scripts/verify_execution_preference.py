@@ -196,12 +196,11 @@ def main() -> int:
     print(f"=== executionPreference Live §J ===\nGateway={GATEWAY_URL}")
     token, _ = setup_auth()
     cases = [
-        ("J1", "simple-llm", "写一段快速排序", {"expect_reason": "user:forced-simple-llm"}),
-        ("J2", "react", "待审批是否合规", {"expect_reason": "user:forced-react"}),
-        ("J3", "workflow", "年假可以请几天", {"expect_reason": "user:forced-workflow"}),
-        ("J4", "plan-workflow", "先查制度再查待审批", {"expect_reason": "user:forced-plan-workflow"}),
-        ("J5", "workflow", "@policy-review 年假可以请几天", {"expect_reason": "user:forced-workflow"}),
-        ("J6", "plan-workflow", "@finance-analysis 是否合规",
+        ("J1", "react", "待审批是否合规", {"expect_reason": "user:forced-react"}),
+        ("J2", "workflow", "年假可以请几天", {"expect_reason": "user:forced-workflow"}),
+        ("J3", "plan-workflow", "先查制度再查待审批", {"expect_reason": "user:forced-plan-workflow"}),
+        ("J4", "workflow", "@policy-review 年假可以请几天", {"expect_reason": "user:forced-workflow"}),
+        ("J5", "plan-workflow", "@finance-analysis 是否合规",
          {"expect_reason": "user:forced-plan-workflow", "expect_skill": "finance-analysis"}),
     ]
     report = {"steps": {}}

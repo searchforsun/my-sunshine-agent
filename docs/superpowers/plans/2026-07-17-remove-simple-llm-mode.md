@@ -1,6 +1,6 @@
 # 移除 simple-llm 执行模式 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 彻底删除 Chat「简单对话 / `simple-llm`」执行模式与强制 preference；意图闲聊类统一 ReAct；内部直连 Gateway 的 `PromptMode.SIMPLE_LLM` 重命名为 `DIRECT`；上线清会话缓存，不做兼容。
 
@@ -42,8 +42,8 @@
 - Modify: `ForcedExecutionRouter.java`
 - Modify: `ForcedExecutionRouterTest.java`, `ExecutionPlanParserTest.java`, `RoutingGoldenSetTest.java`
 
-- [ ] **Step 1:** 改测试 — 删除 `ForcedExecutionRouterTest.resolve_simpleLlm`；删除 `RoutingGoldenSetTest.forcedJ1_simpleLlm`
-- [ ] **Step 2:** `ExecutionPlanParserTest`：将 `normalizesSimpleLlmAlias` / `parseStoredIntentSimpleLlm` 改为断言 `simple-llm` → **REACT**（`ExecutionMode.from` default 或 `reactFallback`），例如：
+- [x] **Step 1:** 改测试 — 删除 `ForcedExecutionRouterTest.resolve_simpleLlm`；删除 `RoutingGoldenSetTest.forcedJ1_simpleLlm`
+- [x] **Step 2:** `ExecutionPlanParserTest`：将 `normalizesSimpleLlmAlias` / `parseStoredIntentSimpleLlm` 改为断言 `simple-llm` → **REACT**（`ExecutionMode.from` default 或 `reactFallback`），例如：
 
 ```java
 @Test
@@ -59,7 +59,7 @@ void parseStoredIntent_unknownSimpleLlmFallsToReact() {
 }
 ```
 
-- [ ] **Step 3:** 实现枚举删除：
+- [x] **Step 3:** 实现枚举删除：
 
 ```java
 // ExecutionMode — 仅 WORKFLOW, REACT, PLAN_WORKFLOW, PEER_COLLAB
@@ -78,15 +78,15 @@ public static ExecutionMode from(String raw) {
 // ExecutionPreference — 无 SIMPLE_LLM；from 无 simple 分支；default → AUTO
 ```
 
-- [ ] **Step 4:** `ForcedExecutionRouter` 删 `REASON_SIMPLE` 与 `case SIMPLE_LLM`；`ExecutionPlan.intentLabel` 删 SIMPLE_LLM；`ExecutionPlanParser` 删 `if ("simple-llm"...)`；`RuleBasedRouter` 删 simple 映射（若规则 YAML 仍写 simple-llm，落入 default 处理或改为 react——以代码 switch 为准）
-- [ ] **Step 5:** 跑测：
+- [x] **Step 4:** `ForcedExecutionRouter` 删 `REASON_SIMPLE` 与 `case SIMPLE_LLM`；`ExecutionPlan.intentLabel` 删 SIMPLE_LLM；`ExecutionPlanParser` 删 `if ("simple-llm"...)`；`RuleBasedRouter` 删 simple 映射（若规则 YAML 仍写 simple-llm，落入 default 处理或改为 react——以代码 switch 为准）
+- [x] **Step 5:** 跑测：
 
 ```bash
 ./mvnw -pl orchestrator -am test -Dtest=ForcedExecutionRouterTest,ExecutionPlanParserTest,RoutingGoldenSetTest
 ```
 
 Expected: PASS  
-- [ ] **Step 6:** Commit `refactor(orchestrator): remove ExecutionMode.SIMPLE_LLM from routing`
+- [x] **Step 6:** Commit `refactor(orchestrator): remove ExecutionMode.SIMPLE_LLM from routing`
 
 ---
 
@@ -98,7 +98,7 @@ Expected: PASS
 - Modify: `ChatStreamExecutor.java`（去掉 `simpleLlmExecutor` 字段与 `plan.mode() == SIMPLE_LLM && existingContent` 分支，续跑统一 `executionDispatcher.execute`）
 - Modify: 其它引用 `SIMPLE_LLM` 的测试改为 `REACT`：`GenerationJobTest`, `ThinkStepMapperTest`, `StepMetadataTest`, `GenerationReconnectIntegrationTest`, `ConversationIntegrationTest`（`updateMessageIntent(..., "simple-llm")` → `"react"`）
 
-- [ ] **Step 1:** `ExecutionDispatcher` 变为：
+- [x] **Step 1:** `ExecutionDispatcher` 变为：
 
 ```java
 return switch (mode) {
@@ -109,16 +109,16 @@ return switch (mode) {
 };
 ```
 
-- [ ] **Step 2:** 删除 `SimpleLlmExecutor.java`；修 `ChatStreamExecutor` 续跑
-- [ ] **Step 3:** 批量替换测试中的 `ExecutionMode.SIMPLE_LLM` → `REACT`（或删仅验证 simple 文案的断言）
-- [ ] **Step 4:**
+- [x] **Step 2:** 删除 `SimpleLlmExecutor.java`；修 `ChatStreamExecutor` 续跑
+- [x] **Step 3:** 批量替换测试中的 `ExecutionMode.SIMPLE_LLM` → `REACT`（或删仅验证 simple 文案的断言）
+- [x] **Step 4:**
 
 ```bash
 ./mvnw -pl orchestrator -am test -Dtest=ExecutionDispatcherTest,GenerationJobTest,ThinkStepMapperTest,StepMetadataTest
 ```
 
 Expected: PASS  
-- [ ] **Step 5:** Commit `refactor(orchestrator): delete SimpleLlmExecutor`
+- [x] **Step 5:** Commit `refactor(orchestrator): delete SimpleLlmExecutor`
 
 ---
 
@@ -132,16 +132,16 @@ Expected: PASS
 - Modify: `docs/nacos/sunshine-orchestrator.yaml`：`mode-overlays.simple-llm` → `mode-overlays.direct`
 - 注释：`PromptComposer` / `StreamDeltaNormalizer` / `StreamToken` / `DynamicToolkitFactory` 中 simple-llm 措辞改为「直连 Gateway / DIRECT」
 
-- [ ] **Step 1:** 改 `PromptComposerTest` 使用 `forDirect` / overlay key `direct`
-- [ ] **Step 2:** 实现重命名（IDE rename 或手工）
-- [ ] **Step 3:**
+- [x] **Step 1:** 改 `PromptComposerTest` 使用 `forDirect` / overlay key `direct`
+- [x] **Step 2:** 实现重命名（IDE rename 或手工）
+- [x] **Step 3:**
 
 ```bash
 ./mvnw -pl orchestrator -am test -Dtest=PromptComposerTest
 ```
 
 Expected: PASS  
-- [ ] **Step 4:** Commit `refactor(orchestrator): rename PromptMode.SIMPLE_LLM to DIRECT`
+- [x] **Step 4:** Commit `refactor(orchestrator): rename PromptMode.SIMPLE_LLM to DIRECT`
 
 ---
 
@@ -167,10 +167,10 @@ Expected: PASS
 - 拿不准时用 react
 ```
 
-- [ ] **Step 1:** 改 YAML + Java 默认与 `IntentLabelService`
-- [ ] **Step 2:** `python scripts/sync_nacos.py`（实现机可访问 Nacos 时）
-- [ ] **Step 3:** 相关单测若有 Intent 文案断言则更新
-- [ ] **Step 4:** Commit `chore(nacos): drop simple-llm from intent and timeline`
+- [x] **Step 1:** 改 YAML + Java 默认与 `IntentLabelService`
+- [x] **Step 2:** `python scripts/sync_nacos.py`（实现机可访问 Nacos 时）
+- [x] **Step 3:** 相关单测若有 Intent 文案断言则更新
+- [x] **Step 4:** Commit `chore(nacos): drop simple-llm from intent and timeline`
 
 ---
 
@@ -184,10 +184,10 @@ Expected: PASS
 - Modify: `sunshine-ui/e2e/processing-timeline.spec.ts` — 勿断言「简单对话」；改为自动路由下出现 ReAct 时间线特征（如「自主智能体」或 think/tool）
 - Modify: `sunshine-ui/mock-server.mjs` — 删简单对话分支
 
-- [ ] **Step 1:** 改 `executionModes.ts` 使 options 剩 5 项（auto+4）
-- [ ] **Step 2:** 其余文件同步
-- [ ] **Step 3:** `cd sunshine-ui && npx vue-tsc --noEmit`（或项目惯用检查）
-- [ ] **Step 4:** Commit `feat(ui): remove 简单对话 from execution mode selector`
+- [x] **Step 1:** 改 `executionModes.ts` 使 options 剩 5 项（auto+4）
+- [x] **Step 2:** 其余文件同步
+- [x] **Step 3:** `cd sunshine-ui && npx vue-tsc --noEmit`（或项目惯用检查）
+- [x] **Step 4:** Commit `feat(ui): remove 简单对话 from execution mode selector`
 
 ---
 
@@ -200,9 +200,9 @@ Expected: PASS
 - Modify: `docs/superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md` — §1 表「简单对话」行加 **废止** 注记并链到新 spec
 - Modify: design spec 状态 → 实现中/已完成（收尾时）
 
-- [ ] **Step 1:** 改脚本与文档
-- [ ] **Step 2:** 编译重启 orchestrator（若尚未）：按 README 惯用命令
-- [ ] **Step 3:** 清库：
+- [x] **Step 1:** 改脚本与文档
+- [x] **Step 2:** 编译重启 orchestrator（若尚未）：按 README 惯用命令
+- [x] **Step 3:** 清库：
 
 ```bash
 python scripts/clear_session_cache.py --force --restart-orchestrator
@@ -210,7 +210,7 @@ python scripts/clear_session_cache.py --force --restart-orchestrator
 
 并执行脚本打印的浏览器 localStorage 清理（含 `sunshine-execution-preference`）
 
-- [ ] **Step 4:** Live：
+- [x] **Step 4:** Live：
 
 ```bash
 python scripts/verify_execution_preference.py
@@ -219,7 +219,7 @@ python scripts/verify_execution_preference.py
 Expected: `[PASS] executionPreference §J`（无 J1）
 
 - [ ] **Step 5:** 手工：Chat 底栏无「简单对话」；自动发「写一段快速排序」走 ReAct（有 think/tool 或自主智能体 intent，而非「简单对话」）
-- [ ] **Step 6:** Commit `docs: update routing golden-set and CLAUDE after removing simple-llm`；spec 标 ✅
+- [x] **Step 6:** Commit `docs: update routing golden-set and CLAUDE after removing simple-llm`；spec 标 ✅
 
 ---
 
