@@ -82,6 +82,11 @@ public final class ProcessingTimelineSession {
         tools.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail);
     }
 
+    public void completeToolStepForToolUse(
+            String toolUseId, String summaryLine, String expandDetail, StepMetadata metadata) {
+        tools.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail, metadata);
+    }
+
     public void skipCurrentToolStep(String afterSummary) {
         tools.skipCurrentToolStep(afterSummary);
     }

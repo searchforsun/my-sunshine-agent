@@ -1,3 +1,5 @@
+> **ARCHIVED**（2026-07-17 · DOC-022）— 实现已完成；日常 SSOT 见 [`docs/sandbox/README.md`](../../../sandbox/README.md)。勿按本文继续改代码。
+
 # 沙箱容器双层生命周期 Implementation Plan
 
 > **For agentic workers:** Use executing-plans / TDD. Steps use checkbox syntax.
@@ -6,7 +8,7 @@
 
 **Architecture:** sandbox-service stop/start；orchestrator Redis dual ZSET（expiry/purge）；Reaper 分 stop/destroy；ensure 对 stopped 调 start。
 
-**Spec:** [2026-07-17-sandbox-container-lifecycle-design.md](../specs/2026-07-17-sandbox-container-lifecycle-design.md)
+**Spec:** [2026-07-17-sandbox-container-lifecycle-design.md](../../specs/2026-07-17-sandbox-container-lifecycle-design.md)
 
 ---
 

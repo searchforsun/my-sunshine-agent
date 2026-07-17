@@ -4,6 +4,7 @@ import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.agent.RagTool;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.processing.StepLabels;
 import com.sunshine.orchestrator.sandbox.SandboxHitlPolicy;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
@@ -28,11 +29,13 @@ public class ToolCatalogService {
     private static final String DEFAULT_TENANT = "default";
 
     private final ToolManagerClient toolManagerClient;
+    private final AgentSandboxProperties sandboxProperties;
     private volatile Map<String, ToolCatalogEntry> entries = Map.of();
     private volatile Set<String> defaultEnabledIds = Set.of();
 
-    public ToolCatalogService(ToolManagerClient toolManagerClient) {
+    public ToolCatalogService(ToolManagerClient toolManagerClient, AgentSandboxProperties sandboxProperties) {
         this.toolManagerClient = toolManagerClient;
+        this.sandboxProperties = sandboxProperties;
     }
 
     @PostConstruct
@@ -76,15 +79,10 @@ public class ToolCatalogService {
         if (RagTool.NAME.equals(toolId)) {
             return "检索知识库";
         }
-        return switch (toolId) {
-            case SandboxIds.READ -> "读文件";
-            case SandboxIds.WRITE -> "写文件";
-            case SandboxIds.EDIT -> "编辑文件";
-            case SandboxIds.GLOB -> "查找文件";
-            case SandboxIds.GREP -> "搜索内容";
-            case SandboxIds.EXEC -> "执行命令";
-            default -> find(toolId).map(ToolCatalogEntry::displayName).orElse(toolId);
-        };
+        if (sandboxProperties.isSandboxTool(toolId)) {
+            return sandboxProperties.displayName(toolId);
+        }
+        return find(toolId).map(ToolCatalogEntry::displayName).orElse(toolId);
     }
 
     public String timelinePhase(String toolId) {

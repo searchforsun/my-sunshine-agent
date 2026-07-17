@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 当前 Agent run 的沙箱会话绑定 — 按 bridgeId 索引（跨线程）。
  * <p>禁止 ThreadLocal：工具 {@code callAsync} 经 {@code boundedElastic} 调度，
- * 与 {@link SandboxSessionLifecycle#openIfNeeded} 不在同一线程。
+ * 与 {@link SandboxSessionLifecycle#prepareRun} / {@code ensureBound} 不在同一线程。
  */
 public final class SandboxSessionHolder {
 

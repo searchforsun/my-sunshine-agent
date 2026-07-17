@@ -42,7 +42,11 @@ final class TimelineSessionLifecycle {
     }
 
     void completeAt(String stepId, String summaryLine, String expandDetail, long endedAt) {
-        completions.completeAt(stepId, summaryLine, expandDetail, endedAt);
+        completions.completeAt(stepId, summaryLine, expandDetail, null, endedAt);
+    }
+
+    void completeAt(String stepId, String summaryLine, String expandDetail, StepMetadata metadata, long endedAt) {
+        completions.completeAt(stepId, summaryLine, expandDetail, metadata, endedAt);
     }
 
     void fail(String stepId, String detail) {

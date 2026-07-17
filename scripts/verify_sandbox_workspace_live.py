@@ -9,7 +9,7 @@
   W2  @sandbox-coding-demo 写 /workspace/test.txt 后收到 sandbox_session
   W3  GET workspace 列表含 test.txt；content 含标记
   W4  同会话第二次提问后仍可 list（会话复用，文件仍在）
-  W5  无沙箱对话 status 仍 inactive / list 404
+  W5  无 Agent 沙箱工具步的对话：status inactive；list 懒开箱成功且 entries 为空
 
 环境变量:
   GATEWAY_URL（默认 http://ecs4c16g:8000）
@@ -353,26 +353,18 @@ def main() -> int:
     except Exception as exc:
         add("W4", "FAIL", str(exc))
 
-    # W5 无沙箱对话
+    # W5 无 Agent 沙箱工具步：list 懒 ensure，空目录
     try:
         conv2 = create_conversation(gw, headers)
-        active2 = workspace_status(gw, headers, conv2)
-        listed_ok = False
-        try:
-            workspace_list(gw, headers, conv2)
-            listed_ok = True
-        except FileNotFoundError:
-            listed_ok = False
-        except Exception as exc:
-            # 业务 404 包装
-            if "SANDBOX" in str(exc).upper() or "404" in str(exc) or "工作区" in str(exc):
-                listed_ok = False
-            else:
-                raise
-        if active2 or listed_ok:
-            add("W5", "FAIL", f"无沙箱对话 active={active2} listed={listed_ok}")
+        active_before = workspace_status(gw, headers, conv2)
+        listing = workspace_list(gw, headers, conv2)
+        names = entry_names(listing)
+        if active_before:
+            add("W5", "FAIL", f"新对话不应 active: conv={conv2}")
+        elif names:
+            add("W5", "FAIL", f"无工具步对话 list 应为空: {names}")
         else:
-            add("W5", "PASS", "无沙箱对话无工作区")
+            add("W5", "PASS", "status inactive；list 成功 entries=[]")
     except Exception as exc:
         add("W5", "FAIL", str(exc))
 

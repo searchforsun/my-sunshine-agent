@@ -257,20 +257,19 @@ public class AgentPromptProperties {
     }
 
     /**
-     * 沙箱六工具时间线 — 占位符 {displayName} {path} {fileName} {displayPath} {pattern} {command} {cwd}。
+     * 沙箱六工具时间线 — 占位符 {displayName} {path} {fileName} {headerPath} {displayPath} {pattern} {command} {cwd}。
      */
     @Getter
     @Setter
     public static class SandboxTimeline {
 
         private String afterFallback = "";
-        private String readAfter = "{path}";
-        private String writeAfter = "{path}";
-        private String editAfter = "{path}";
+        private String readAfter = "{headerPath}";
+        private String writeAfter = "{headerPath}";
+        private String editAfter = "{headerPath}";
         private String globAfter = "{pattern}";
         private String globAfterWithPath = "{pattern} · {path}";
         private String grepAfter = "{pattern}";
-        private String grepAfterWithPath = "{pattern} · {path}";
         private String execAfter = "{command}";
         private String readActive = "正在读取 {path}";
         private String writeActive = "正在写入 {path}";

@@ -119,7 +119,8 @@ class SandboxSessionLifecycleTest {
         when(skillCatalogClient.fetchMaterial("coding-b")).thenReturn(Map.of("scripts/b.py", "print(2)"));
         when(conversationSandboxStore.find("default", "conv-x")).thenReturn(Optional.of(
                 new ConversationSandboxBinding(
-                        "sess-reuse", List.of("coding-a"), "u1", "default", "conv-x")));
+                        "sess-reuse", List.of("coding-a"), "u1", "default", "conv-x",
+                        ConversationSandboxBinding.STATE_RUNNING, null)));
         when(sandboxClient.sessionAlive("sess-reuse")).thenReturn(true);
         when(sandboxClient.sessionRunning("sess-reuse")).thenReturn(true);
 

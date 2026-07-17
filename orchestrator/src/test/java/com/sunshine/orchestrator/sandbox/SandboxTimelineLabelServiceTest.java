@@ -18,13 +18,22 @@ class SandboxTimelineLabelServiceTest {
     }
 
     @Test
-    void after_readWriteEdit_includePath() {
+    void after_readWriteEdit_useHeaderPath() {
         assertThat(labels.after(SandboxIds.READ, "读文件", Map.of("path", "/skills/demo/scripts/hello.py")))
-                .isEqualTo("/skills/demo/scripts/hello.py");
+                .isEqualTo("hello.py");
         assertThat(labels.after(SandboxIds.WRITE, "写文件", Map.of("path", "/workspace/test.txt")))
-                .isEqualTo("/workspace/test.txt");
+                .isEqualTo("test.txt");
         assertThat(labels.after(SandboxIds.EDIT, "编辑文件", Map.of("path", "/workspace/a.py")))
-                .isEqualTo("/workspace/a.py");
+                .isEqualTo("a.py");
+    }
+
+    @Test
+    void after_glob_infersSearchRootFromResults() {
+        String raw = "/skills/sandbox-coding-demo/SKILL.md\n/skills/sandbox-coding-demo/scripts/hello.py\n";
+        Map<String, Object> enriched = SandboxStepContext.enrichInput(
+                SandboxIds.GLOB, Map.of("pattern", "**/*"), raw);
+        assertThat(labels.after(SandboxIds.GLOB, "查找文件", enriched))
+                .isEqualTo("**/* · /skills");
     }
 
     @Test
@@ -69,6 +78,16 @@ class SandboxTimelineLabelServiceTest {
                 .isEqualTo("正在读取 /skills/demo/a.py");
         assertThat(labels.active(SandboxIds.EXEC, "执行命令", Map.of("command", "pwd")))
                 .isEqualTo("正在执行 pwd");
+    }
+
+    @Test
+    void headerPath_and_inferSearchRoot() {
+        assertThat(SandboxTimelineLabelService.headerPath("/skills/demo/scripts/hello.py"))
+                .isEqualTo("hello.py");
+        assertThat(SandboxTimelineLabelService.headerPath("/skills"))
+                .isEqualTo("/skills");
+        assertThat(SandboxTimelineLabelService.inferSearchRootFromPaths(
+                "/skills/a.md\n/skills/b.py\n")).isEqualTo("/skills");
     }
 
     @Test

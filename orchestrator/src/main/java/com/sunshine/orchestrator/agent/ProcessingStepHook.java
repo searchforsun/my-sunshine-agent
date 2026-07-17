@@ -4,8 +4,10 @@ import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.hitl.HitlParamSupport;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
+import com.sunshine.orchestrator.sandbox.SandboxStepContext;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import io.agentscope.core.hook.Hook;
@@ -119,9 +121,11 @@ public class ProcessingStepHook implements Hook {
                 expandDetail = ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
             } else if (sandboxTimelineLabels.isSandboxTool(toolName)) {
                 Map<String, Object> input = toolInput(post.getToolUse());
-                summaryLine = sandboxTimelineLabels.after(
-                        toolName, toolCatalogService.displayName(toolName), input);
                 String raw = rawText != null ? rawText.strip() : "";
+                Map<String, Object> enriched = SandboxStepContext.enrichInput(toolName, input, raw);
+                summaryLine = sandboxTimelineLabels.after(
+                        toolName, toolCatalogService.displayName(toolName), enriched);
+                StepMetadata sandboxMeta = SandboxStepContext.metadata(toolName, enriched, summaryLine);
                 // 写/编辑：展开入参正文；exec 完整 command 在 after，detail 仅工具输出
                 if (SandboxIds.WRITE.equals(toolName) || SandboxIds.EDIT.equals(toolName)) {
                     String bodyExpand = HitlParamSupport.expandBodyFromParams(toStringParams(input));
@@ -131,6 +135,14 @@ public class ProcessingStepHook implements Hook {
                 } else {
                     expandDetail = !raw.isEmpty() ? raw : null;
                 }
+                final StepMetadata meta = sandboxMeta;
+                StepEventBridge.emit(bridgeId, session -> {
+                    session.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail, meta);
+                    session.recordToolCompleted(toolCatalogService.displayName(toolName));
+                    session.noteToolCallDone();
+                });
+                StepEventBridge.unbindToolUseBridge(toolUseId);
+                return Mono.just(event);
             } else {
                 summaryLine = toolCatalogService.timelineSummary(toolName, rawText);
                 expandDetail = ToolExpandDetailSupport.resolveExpandDetail(summaryLine, rawText);

@@ -50,14 +50,14 @@ export function extractSandboxExecCommand(step: {
   return undefined
 }
 
-/** 从沙箱工具 after 文案解析 /workspace 或 /skills 路径 */
+/** 从沙箱工具 after 文案解析 /workspace 或 /skills 路径（legacy；优先 metadata.sandboxPath） */
 export function extractSandboxWorkspacePath(summary?: string): string | undefined {
   if (!summary?.trim()) return undefined
   const m = summary.match(/(\/(?:workspace|skills)\/[^\s，,）)]+)/)
   return m?.[1]
 }
 
-/** 路径末段文件名（主行展示用） */
+/** 路径末段文件名 */
 export function sandboxBasename(path: string): string {
   const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
   const i = normalized.lastIndexOf('/')
@@ -73,56 +73,7 @@ export function sandboxDisplayPath(path: string): string {
   return sandboxBasename(normalized) || normalized
 }
 
-/** 文件路径 → 文件名；目录/jail 根保留绝对路径（glob 搜索根） */
-function formatSandboxPathForHeader(path: string): string {
-  const norm = path.replace(/\\/g, '/').replace(/\/+$/, '')
-  if (norm === '/skills' || norm === '/workspace') return norm
-  const base = sandboxBasename(norm)
-  // 无扩展名视为目录搜索根，保留绝对路径
-  if (!/\.[^./]+$/.test(base)) return norm
-  return base
-}
-
-/**
- * 沙箱主行展示：去掉与标签重复的工具名及前导 ·；旧括号搜索根 → · /path；文件路径 → 文件名。
- */
-export function formatSandboxHeaderSummary(text: string): string {
-  if (!text?.trim()) return ''
-  let s = text.trim()
-  // 标签已有「调用工具 xxx」，剥掉摘要里重复的工具名（含旧「完成」）
-  s = s.replace(/^(读文件|写文件|编辑文件|查找文件|搜索内容|执行命令)(?:完成)?\s*/u, '')
-  // 去掉前导 ·（标签与摘要之间由 UI 空格分隔）
-  s = s.replace(/^[·•]\s*/, '')
-  // （根 /skills...）/（/skills...）→ · /skills...
-  s = s.replace(/（根\s*(\/(?:skills|workspace)(?:\/[^）]*)?)）/g, ' · $1')
-  s = s.replace(/（(\/(?:skills|workspace)(?:\/[^）]*)?)）/g, ' · $1')
-  // 行首或 · 后的容器路径：文件 → 文件名；目录/jail → 保留绝对路径
-  s = s.replace(
-    /(^|[·•]\s*)(\/(?:workspace|skills)(?:\/[^\s，,（）)]*)?)/g,
-    (_m, pre: string, p: string) => {
-      const fmt = formatSandboxPathForHeader(p)
-      if (!pre || pre === '') return fmt
-      return `· ${fmt}`
-    },
-  )
-  // 行首若因括号转换留下 ·，再剥一次
-  s = s.replace(/^[·•]\s*/, '')
-  return s.replace(/\s{2,}/g, ' ').replace(/\s+·\s+/g, ' · ').replace(/\s+$/g, '').trim()
-}
-
-/** 去掉主行末尾搜索根（· /skills… 或旧括号） */
-export function stripSandboxSearchRootSuffix(text: string): string {
-  if (!text?.trim()) return ''
-  return text
-    .replace(/[·•]\s*\/(?:workspace|skills)(?:\/[^\s·•]*)?\s*$/g, '')
-    .replace(/（(?:根\s*)?\/(?:workspace|skills)(?:\/[^）]*)?）/g, '')
-    .replace(/（[^）]+）\s*$/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/\s+·\s+/g, ' · ')
-    .trim()
-}
-
-/** 解析 glob 搜索根：末尾 · /skills… 或旧 （/skills…） */
+/** 解析 glob 搜索根：末尾 · /skills… */
 export function extractSandboxSearchRoot(summary?: string): string | undefined {
   if (!summary?.trim()) return undefined
   const dot = summary.match(/[·•]\s*(\/(?:workspace|skills)(?:\/[^\s·•]*)?)\s*$/)
@@ -151,11 +102,14 @@ export function sandboxPathRelativeToRoot(fullPath: string, searchRoot?: string)
   return sandboxDisplayPath(full)
 }
 
-/** 点击工作区聚焦：优先 after/active 完整路径，否则取 detail 首条路径行 */
+/** 点击工作区聚焦：metadata.sandboxPath 优先，其次 after/active/detail */
 export function resolveSandboxFocusPath(step: {
   summary?: { after?: string; active?: string }
   detail?: string
+  metadata?: { sandboxPath?: string }
 }): string | undefined {
+  const fromMeta = step.metadata?.sandboxPath?.trim()
+  if (fromMeta) return fromMeta
   const fromAfter = extractSandboxWorkspacePath(step.summary?.after)
   if (fromAfter) return fromAfter
   const fromActive = extractSandboxWorkspacePath(step.summary?.active)
@@ -332,25 +286,7 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
 export function resolveStepHeaderText(step: ProcessingStep): string {
   const full = resolveStepSummaryFull(step)
   const oneLine = full.replace(/\s+/g, ' ').trim()
-  if (!isSandboxToolStep(step)) {
-    return truncateStepPreview(oneLine)
-  }
-  let display = formatSandboxHeaderSummary(oneLine)
-  const toolId = catalogToolIdFromStepId(step.id)
-  if (toolId === 'sandbox__grep') {
-    display = stripSandboxSearchRootSuffix(display)
-  }
-  // glob：缺搜索根时用结果路径推断 jail，保证主行能与列表拼绝对路径（grep 不夹）
-  if (toolId === 'sandbox__glob'
-    && !extractSandboxSearchRoot(display)
-    && step.detail?.trim()) {
-    const paths = parseSandboxPathList(step.detail).map(e => e.path)
-    const root = inferSandboxSearchRoot(paths)
-    if (root) {
-      display = `${display} · ${root}`
-    }
-  }
-  return truncateStepPreview(display)
+  return truncateStepPreview(oneLine)
 }
 
 function extractFirstProseLine(text: string): string {

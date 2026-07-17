@@ -129,13 +129,6 @@ public class SandboxSessionLifecycle {
         }
     }
 
-    /** @deprecated 方案 B：改用 {@link #prepareRun}；保留空实现以免遗漏调用方 */
-    @Deprecated
-    public Optional<String> openIfNeeded(AgentRunRequest req) {
-        prepareRun(req);
-        return Optional.empty();
-    }
-
     /** 删除对话或 Reaper：关闭容器并清 Redis */
     public void destroyConversationSession(String tenantId, String conversationId) {
         if (!StringUtils.hasText(conversationId)) {
@@ -186,7 +179,8 @@ public class SandboxSessionLifecycle {
             loaded = List.of(skillId.strip());
         }
         conversationSandboxStore.save(new ConversationSandboxBinding(
-                sid, loaded, userId, tid, conv));
+                sid, loaded, userId, tid, conv,
+                ConversationSandboxBinding.STATE_RUNNING, null));
         return new EnsureResult(sid, loaded);
     }
 

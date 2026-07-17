@@ -45,7 +45,6 @@ export {
   extractSandboxWorkspacePath,
   extractSandboxSearchRoot,
   inferSandboxSearchRoot,
-  formatSandboxHeaderSummary,
   resolveSandboxFocusPath,
   parseSandboxPathList,
   isSandboxPathListOutput,
@@ -137,6 +136,10 @@ export interface StepMetadata {
   tasks?: TaskBoardItemView[]
   taskRevision?: number
   taskProgress?: string
+  /** 沙箱 read/write/edit 完整容器路径 */
+  sandboxPath?: string
+  /** 沙箱 glob 搜索根 */
+  sandboxSearchRoot?: string
 }
 
 

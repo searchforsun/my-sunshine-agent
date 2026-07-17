@@ -3,7 +3,6 @@ import type { ProcessingStep } from './processingSteps'
 import {
   extractSandboxExecCommand,
   extractSandboxSearchRoot,
-  formatSandboxHeaderSummary,
   inferSandboxSearchRoot,
   isSandboxExecStep,
   isSandboxToolStep,
@@ -19,7 +18,8 @@ function sandboxStep(partial: Partial<ProcessingStep> & { id: string }): Process
     phase: 'tool',
     lifecycle: 'done',
     label: '调用工具 读文件',
-    summary: { after: '/skills/demo/scripts/hello.py' },
+    summary: { after: 'hello.py' },
+    metadata: { sandboxPath: '/skills/demo/scripts/hello.py' },
     detail: 'print("hi")\n',
     ...partial,
   }
@@ -32,22 +32,18 @@ describe('sandbox tool timeline display', () => {
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sdk__finance__list@1' }))).toBe(false)
   })
 
-  it('header shows only target; strips redundant tool name and leading dot', () => {
+  it('header shows backend summary as-is; focus uses metadata.sandboxPath', () => {
     const step = sandboxStep({ id: 'tool-sandbox__read@1' })
     expect(resolveStepHeaderText(step)).toBe('hello.py')
     expect(resolveSandboxFocusPath(step)).toBe('/skills/demo/scripts/hello.py')
     expect(shouldShiftSummaryOnExpand(step)).toBe(false)
-    expect(formatSandboxHeaderSummary('搜索内容 · hello')).toBe('hello')
-    expect(formatSandboxHeaderSummary('· hello')).toBe('hello')
-    expect(formatSandboxHeaderSummary('查找文件完成 · **/*（根 /skills）')).toBe('**/* · /skills')
-    expect(formatSandboxHeaderSummary('**/* · /skills/demo')).toBe('**/* · /skills/demo')
-    expect(extractSandboxSearchRoot('**/* · /skills')).toBe('/skills')
     const longCmd =
       'python3 -c "import csv; total=0.0; ' + 'x'.repeat(80) + '"'
     const exec = sandboxStep({
       id: 'tool-sandbox__exec@2',
       label: '调用工具 执行命令',
       summary: { after: longCmd },
+      metadata: {},
       detail: 'ok',
     })
     const header = resolveStepHeaderText(exec)
@@ -74,21 +70,24 @@ describe('sandbox tool timeline display', () => {
     expect(inferSandboxSearchRoot(entries.map(e => e.path))).toBe('/skills')
   })
 
-  it('infers search root on glob header when after omits path', () => {
+  it('glob header trusts backend after with search root', () => {
     const step = sandboxStep({
       id: 'tool-sandbox__glob@1',
       label: '调用工具 查找文件',
-      summary: { after: '**/*' },
+      summary: { after: '**/* · /skills' },
+      metadata: { sandboxSearchRoot: '/skills' },
       detail: '/skills/sandbox-coding-demo/SKILL.md\n/skills/sandbox-coding-demo/scripts/hello.py\n',
     })
     expect(resolveStepHeaderText(step)).toBe('**/* · /skills')
+    expect(extractSandboxSearchRoot(step.summary?.after)).toBe('/skills')
   })
 
-  it('strips search root on grep header only', () => {
+  it('grep header trusts backend pattern-only after', () => {
     const grep = sandboxStep({
       id: 'tool-sandbox__grep@1',
       label: '调用工具 搜索内容',
-      summary: { after: 'hello · /skills/sandbox-coding-demo' },
+      summary: { after: 'hello' },
+      metadata: {},
       detail: 'sandbox-coding-demo/scripts/hello.py:8: print("hello")\n',
     })
     expect(resolveStepHeaderText(grep)).toBe('hello')
@@ -104,6 +103,7 @@ describe('sandbox tool timeline display', () => {
       id: 'tool-sandbox__exec@1',
       label: '调用工具 执行命令',
       summary: { after: 'ls -la /skills' },
+      metadata: {},
       detail: 'total 0\ndrwxr-xr-x 1 root root 0 Jul 16 03:32 .\n',
     })
     expect(isSandboxExecStep(step)).toBe(true)

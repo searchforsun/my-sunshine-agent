@@ -91,6 +91,7 @@ public class SandboxTimelineLabelService {
         String path = str(input, "path");
         map.put("path", clip(path));
         map.put("fileName", clip(fileName(path)));
+        map.put("headerPath", clip(headerPath(path)));
         map.put("displayPath", clip(displayPath(path)));
         map.put("pattern", clip(str(input, "pattern")));
         // command 保留全文：主行由前端单行省略，展开区展示完整命令
@@ -116,6 +117,68 @@ public class SandboxTimelineLabelService {
         return slash >= 0 && slash < normalized.length() - 1
                 ? normalized.substring(slash + 1)
                 : normalized;
+    }
+
+    /** 主行展示：文件 → 文件名；目录/jail 根 → 保留绝对路径 */
+    static String headerPath(String path) {
+        if (!hasText(path)) {
+            return "";
+        }
+        String norm = path.strip().replace('\\', '/').replaceAll("/+$", "");
+        if ("/skills".equals(norm) || "/workspace".equals(norm)) {
+            return norm;
+        }
+        String base = fileName(norm);
+        if (!base.matches(".*\\.[^./]+$")) {
+            return norm;
+        }
+        return base;
+    }
+
+    /** glob 结果路径推断搜索根（工具未传 path 时） */
+    static String inferSearchRootFromPaths(String raw) {
+        if (!hasText(raw)) {
+            return "";
+        }
+        String[] lines = raw.split("\n");
+        boolean anySkills = false;
+        boolean anyWorkspace = false;
+        boolean nonSkills = false;
+        boolean nonWorkspace = false;
+        for (String line : lines) {
+            String t = line != null ? line.strip() : "";
+            if (!t.startsWith("/skills") && !t.startsWith("/workspace")) {
+                continue;
+            }
+            if (t.equals("/skills") || t.startsWith("/skills/")) {
+                anySkills = true;
+            } else {
+                nonSkills = true;
+            }
+            if (t.equals("/workspace") || t.startsWith("/workspace/")) {
+                anyWorkspace = true;
+            } else {
+                nonWorkspace = true;
+            }
+        }
+        if (anySkills && !nonSkills) {
+            return "/skills";
+        }
+        if (anyWorkspace && !nonWorkspace) {
+            return "/workspace";
+        }
+        return "";
+    }
+
+    /** 从 glob after 文案解析 · /skills… 搜索根 */
+    static String extractSearchRootFromAfter(String afterSummary) {
+        if (!hasText(afterSummary)) {
+            return "";
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("[·•]\\s*(/(?:workspace|skills)(?:/[^\\s·•]*)?)\\s*$")
+                .matcher(afterSummary.strip());
+        return m.find() ? m.group(1) : "";
     }
 
     /** 去掉 /skills|/workspace 前缀的相对路径；裸 jail 根返回空 */

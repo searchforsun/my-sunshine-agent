@@ -168,6 +168,12 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const taskProgress = typeof obj.taskProgress === 'string' && obj.taskProgress.trim()
     ? obj.taskProgress.trim()
     : undefined
+  const sandboxPath = typeof obj.sandboxPath === 'string' && obj.sandboxPath.trim()
+    ? obj.sandboxPath.trim()
+    : undefined
+  const sandboxSearchRoot = typeof obj.sandboxSearchRoot === 'string' && obj.sandboxSearchRoot.trim()
+    ? obj.sandboxSearchRoot.trim()
+    : undefined
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -184,6 +190,8 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !tasks?.length
     && taskRevision == null
     && !taskProgress
+    && !sandboxPath
+    && !sandboxSearchRoot
   ) {
     return undefined
   }
@@ -215,6 +223,8 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     tasks,
     taskRevision,
     taskProgress,
+    sandboxPath,
+    sandboxSearchRoot,
   }
 }
 

@@ -1,3 +1,5 @@
+> **ARCHIVED**（2026-07-17 · DOC-022）— 实现已完成；日常 SSOT 见 [`docs/sandbox/README.md`](../../../sandbox/README.md)。勿按本文继续改代码。
+
 # Skills Docker 沙箱（4.5）Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -8,9 +10,9 @@
 
 **Tech Stack:** JDK 21 · Spring Boot 3.2 · ProcessBuilder/`docker` CLI · WebClient · Micrometer · Vue3（`/skills` 试跑最小入口）· Python Live
 
-**设计 SSOT:** [2026-07-15-skills-docker-sandbox-design.md](../specs/2026-07-15-skills-docker-sandbox-design.md)
+**设计 SSOT:** [2026-07-15-skills-docker-sandbox-design.md](../../specs/2026-07-15-skills-docker-sandbox-design.md)
 
-> **演进（2026-07-16 · 方案 B · 待实现）**：[conversation-sandbox-permanent-tools-design.md](../specs/2026-07-16-conversation-sandbox-permanent-tools-design.md)  
+> **演进（2026-07-16 · 方案 B · 待实现）**：[conversation-sandbox-permanent-tools-design.md](../../specs/2026-07-16-conversation-sandbox-permanent-tools-design.md)  
 > 下文若写「`skill.sandbox` 门控注入 / run 开始 `openIfNeeded`」，以方案 B 为准：**MAIN 常驻六工具** + **首次 `sandbox__*` 懒 create**。实现前代码仍可能为初版行为。
 
 **前置:** Docker daemon 可用；镜像可构建；Nacos/`sync_nacos.py`；skill-manager 已有 `sandbox` 列。

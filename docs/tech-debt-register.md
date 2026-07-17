@@ -21,7 +21,19 @@
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| _（空）_ | — | — | — | Backlog 已空 |
+| TD-109 | P2 | done | `SandboxWorkspaceDrawer.vue` 1031 行 | 拆 tree/tabs/preview |
+
+**2026-07-17 TD-109 已消化**：`useSandboxFileTree` + `useSandboxPreviewTabs` + `SandboxFileTreePane` + `SandboxPreviewPane`；`SandboxWorkspaceDrawer` 1031→~230 行。
+| TD-110 | P1 | open | Policy/DTO 多模块拷贝 | 抽 shared / codegen |
+| TD-111 | P2 | done | `ToolCatalogService` 沙箱中文名 + AgentTools schema | 迁 Nacos `agent.sandbox.tools` |
+
+**2026-07-17 TD-111 已消化**：`agent.sandbox.tools` 承载 displayName/description/schema；`ToolCatalogService` + `SandboxAgentTools` 读 `AgentSandboxProperties`。
+
+**2026-07-17 TD-112 已消化**：抽 `useSandboxToolExpand` + `SandboxToolExpandPanel`；`OperationCard` 801→465 行。
+
+**2026-07-17 沙箱债 TD-106 已消化**：后端 `headerPath` + glob 结果推断搜索根 + `metadata.sandboxPath/sandboxSearchRoot`；前端主行只截断 `summary.after`。
+
+**2026-07-17 沙箱债本轮已消化**：TD-105（删 `openIfNeeded` + bridge 废弃 no-op）；TD-107（删未接线 `grepAfterWithPath`）；TD-108（删旧 `<<< old` 解析 + Binding 5 字段构造）；DOC-022（5 份 sandbox plan → `plans/archive/`）。
 
 **2026-07-15 续轮 3 已消化**：TD-104（抽 `workflowFlowProjection`；Chat 仅依赖投影；删孤儿 `PlanDagGraph` / `buildPreviewDagNodes`）。
 
@@ -153,6 +165,11 @@
 | TD-100 | 2026-07-15 | Studio 大文件拆分：Admin Package/Support；layout metrics/loop；FlowNode visual；ExclusiveEdges |
 | TD-102 | 2026-07-15 | 历史 orchestration 文档加 SUPERSEDED（Nacos workflow） |
 | TD-104 | 2026-07-15 | Chat/Studio 画布边界：`workflowFlowProjection` 只读投影；删孤儿 PlanDagGraph / previewNodes |
+| TD-105 | 2026-07-17 | 删 `SandboxSessionLifecycle.openIfNeeded`；bridge 废弃 no-op / 未用 getter |
+| TD-107 | 2026-07-17 | 删未接线 `grepAfterWithPath`（Properties + Nacos） |
+| TD-108 | 2026-07-17 | 删 edit 旧 `<<< old` 解析；Binding 5 字段兼容构造 |
+| TD-106 | 2026-07-17 | 沙箱时间线 SSOT：后端 headerPath/glob 推断 + metadata；前端停二次加工 |
+| TD-112 | 2026-07-17 | 抽 `useSandboxToolExpand` + `SandboxToolExpandPanel`；OperationCard 瘦身 |
 
 ### 文档债（DOC）
 
@@ -177,6 +194,7 @@
 | DOC-019 | 2026-07-08 | 多专家协作（4.7.3）文档闭环：CLAUDE/README/implementation-plan/expert-consultation/peer-collab/routing-golden-set/phase4 标 ✅ |
 | DOC-020 | 2026-07-09 | TaskBoard 文档：Timeline `think→tasks→tool`、Hook 锚定 think、prompt/Hook 职责分离、merge content 去重、`max-iters` SSOT |
 | DOC-021 | 2026-07-09 | ReAct Hook：无业务 tool 间隔的连续 think 合并；终态避免多个「综合分析」行 |
+| DOC-022 | 2026-07-17 | 5 份已完成 sandbox plan → `docs/superpowers/plans/archive/`（ARCHIVED 头 + 链修复） |
 
 ### 架构决策（ADR）
 

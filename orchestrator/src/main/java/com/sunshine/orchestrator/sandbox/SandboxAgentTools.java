@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.client.SandboxClient;
 import com.sunshine.orchestrator.client.sandbox.ToolInvokeResponse;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import io.agentscope.core.message.TextBlock;
@@ -13,6 +14,7 @@ import io.agentscope.core.tool.ToolCallParam;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
@@ -34,6 +36,7 @@ import java.util.Set;
  */
 @Slf4j
 @Component
+@RefreshScope
 @RequiredArgsConstructor
 public class SandboxAgentTools {
 
@@ -43,18 +46,22 @@ public class SandboxAgentTools {
     private final HitlConfirmationService hitlConfirmationService;
     private final ToolAuditService toolAuditService;
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
+    private final AgentSandboxProperties sandboxProperties;
 
     private List<AgentTool> tools = List.of();
 
     @PostConstruct
     void init() {
-        tools = List.of(
-                tool(SandboxIds.READ, "读取沙箱内文本文件（/skills/{skillId}/... 或 /workspace；勿对目录调用）", readSchema()),
-                tool(SandboxIds.WRITE, "仅新建工作区文件（仅 /workspace；已存在则失败，请改用 edit 或换路径）", writeSchema()),
-                tool(SandboxIds.EDIT, "精确替换已有工作区文件中的唯一子串（仅 /workspace）", editSchema()),
-                tool(SandboxIds.GLOB, "在沙箱 jail 内按 glob 查找文件路径（优先收窄 path/pattern）", globSchema()),
-                tool(SandboxIds.GREP, "在沙箱 jail 内按正则搜索文件内容（须提供 pattern）", grepSchema()),
-                tool(SandboxIds.EXEC, "在沙箱容器内执行 shell（破坏性命令会被拒绝；只读命令通常免 HITL）", execSchema()));
+        List<AgentTool> built = new ArrayList<>();
+        for (String toolId : SandboxIds.ALL) {
+            AgentSandboxProperties.ToolDef def = sandboxProperties.resolveTool(toolId);
+            if (def == null) {
+                log.warn("[SandboxAgentTools] 缺少工具定义: {}", toolId);
+                continue;
+            }
+            built.add(tool(toolId, def.getDescription(), SandboxToolSchemas.toParameters(def)));
+        }
+        tools = List.copyOf(built);
     }
 
     public List<AgentTool> all() {
@@ -282,65 +289,5 @@ public class SandboxAgentTools {
         Map<String, String> out = new LinkedHashMap<>();
         body.forEach((k, v) -> out.put(k, v != null ? String.valueOf(v) : ""));
         return out;
-    }
-
-    private static Map<String, Object> readSchema() {
-        Map<String, Object> props = new LinkedHashMap<>();
-        props.put("path", Map.of("type", "string",
-                "description", "文件路径（须 /skills/{skillId}/... 或 /workspace/...；禁止旧路径 /skill）"));
-        props.put("offset", Map.of("type", "integer", "description", "起始行（可选）"));
-        props.put("limit", Map.of("type", "integer", "description", "读取行数上限（可选）"));
-        return schema(props, List.of("path"));
-    }
-
-    private static Map<String, Object> writeSchema() {
-        Map<String, Object> props = new LinkedHashMap<>();
-        props.put("path", Map.of("type", "string",
-                "description", "写入路径（仅 /workspace）；仅允许新建，禁止覆盖已有文件"));
-        props.put("content", Map.of("type", "string", "description", "新建文件全文内容"));
-        return schema(props, List.of("path", "content"));
-    }
-
-    private static Map<String, Object> editSchema() {
-        Map<String, Object> props = new LinkedHashMap<>();
-        props.put("path", Map.of("type", "string", "description", "已有文件路径（仅 /workspace）"));
-        props.put("old_string", Map.of("type", "string", "description", "待替换的精确原文（须在文件中唯一出现）"));
-        props.put("new_string", Map.of("type", "string", "description", "替换后的文本"));
-        return schema(props, List.of("path", "old_string", "new_string"));
-    }
-
-    private static Map<String, Object> globSchema() {
-        Map<String, Object> props = new LinkedHashMap<>();
-        props.put("pattern", Map.of("type", "string", "description", "glob 模式，如 **/*.py；尽量收窄"));
-        props.put("path", Map.of("type", "string",
-                "description", "搜索根（可选）：须为 /skills/{skillId}/... 或 /workspace；禁止 /skill；缺省搜全部 jail"));
-        return schema(props, List.of("pattern"));
-    }
-
-    private static Map<String, Object> grepSchema() {
-        Map<String, Object> props = new LinkedHashMap<>();
-        props.put("pattern", Map.of("type", "string", "description", "搜索正则（必填）；避免空模式"));
-        props.put("path", Map.of("type", "string",
-                "description", "搜索路径（可选）：须为 /skills/{skillId}/... 或 /workspace；禁止 /skill"));
-        props.put("glob", Map.of("type", "string", "description", "文件名 glob 过滤（可选）"));
-        return schema(props, List.of("pattern"));
-    }
-
-    private static Map<String, Object> execSchema() {
-        Map<String, Object> props = new LinkedHashMap<>();
-        props.put("command", Map.of("type", "string",
-                "description", "shell 命令；禁止 rm -rf /、管道下载执行、mkfs 等破坏性操作"));
-        props.put("cwd", Map.of("type", "string",
-                "description", "工作目录（可选，默认 /workspace；须在 /skills/{skillId}/... 或 /workspace）"));
-        props.put("timeout_sec", Map.of("type", "integer", "description", "超时秒数（可选，默认 30）"));
-        return schema(props, List.of("command"));
-    }
-
-    private static Map<String, Object> schema(Map<String, Object> properties, List<String> required) {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", "object");
-        schema.put("properties", properties);
-        schema.put("required", new ArrayList<>(required));
-        return schema;
     }
 }

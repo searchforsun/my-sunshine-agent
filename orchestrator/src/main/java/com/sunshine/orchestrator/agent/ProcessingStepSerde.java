@@ -306,6 +306,12 @@ public final class ProcessingStepSerde {
         if (hasText(metadata.taskProgress())) {
             map.put("taskProgress", metadata.taskProgress());
         }
+        if (hasText(metadata.sandboxPath())) {
+            map.put("sandboxPath", metadata.sandboxPath());
+        }
+        if (hasText(metadata.sandboxSearchRoot())) {
+            map.put("sandboxSearchRoot", metadata.sandboxSearchRoot());
+        }
         return map;
     }
 

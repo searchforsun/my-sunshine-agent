@@ -13,21 +13,3 @@ export function setSandboxDrawerLayout(open: boolean, width: number) {
   sandboxDrawerLayout.open = open
   sandboxDrawerLayout.width = width
 }
-
-export function isSandboxDrawerOpen() {
-  return sandboxDrawerLayout.open
-}
-
-export function getSandboxDrawerWidth() {
-  return sandboxDrawerLayout.width
-}
-
-/** @deprecated 对照不再互关 */
-export function setSandboxWorkspaceCloser(_fn: (() => void) | null) {
-  /* no-op */
-}
-
-/** @deprecated */
-export function closeSandboxWorkspaceDrawerIfOpen() {
-  /* no-op */
-}

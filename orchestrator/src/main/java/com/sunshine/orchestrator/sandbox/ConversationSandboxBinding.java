@@ -26,16 +26,6 @@ public record ConversationSandboxBinding(
         }
     }
 
-    /** 兼容旧 5 字段构造 / 测试 */
-    public ConversationSandboxBinding(
-            String sessionId,
-            List<String> loadedSkillIds,
-            String userId,
-            String tenantId,
-            String conversationId) {
-        this(sessionId, loadedSkillIds, userId, tenantId, conversationId, STATE_RUNNING, null);
-    }
-
     public boolean hasSkill(String skillId) {
         return skillId != null && loadedSkillIds.contains(skillId);
     }

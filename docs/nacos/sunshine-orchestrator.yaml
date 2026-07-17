@@ -263,13 +263,12 @@ agent:
     # 沙箱工具时间线：after 不含 displayName（标签已有「调用工具 xxx」），只写 · 后目标
     sandbox:
       after-fallback: ""
-      read-after: "{path}"
-      write-after: "{path}"
-      edit-after: "{path}"
+      read-after: "{headerPath}"
+      write-after: "{headerPath}"
+      edit-after: "{headerPath}"
       glob-after: "{pattern}"
       glob-after-with-path: "{pattern} · {path}"
       grep-after: "{pattern}"
-      grep-after-with-path: "{pattern} · {path}"
       exec-after: "{command}"
       read-active: "正在读取 {path}"
       write-active: "正在写入 {path}"
@@ -355,6 +354,95 @@ agent:
         - "ls *"
         - "pwd"
         - "python -m pytest *"
+    # 六工具 displayName / description / JSON Schema — TD-111 SSOT
+    tools:
+      sandbox__read:
+        display-name: 读文件
+        description: 读取沙箱内文本文件（/skills/{skillId}/... 或 /workspace；勿对目录调用）
+        properties:
+          path:
+            type: string
+            description: 文件路径（须 /skills/{skillId}/... 或 /workspace/...；禁止旧路径 /skill）
+          offset:
+            type: integer
+            description: 起始行（可选）
+          limit:
+            type: integer
+            description: 读取行数上限（可选）
+        required:
+          - path
+      sandbox__write:
+        display-name: 写文件
+        description: 仅新建工作区文件（仅 /workspace；已存在则失败，请改用 edit 或换路径）
+        properties:
+          path:
+            type: string
+            description: 写入路径（仅 /workspace）；仅允许新建，禁止覆盖已有文件
+          content:
+            type: string
+            description: 新建文件全文内容
+        required:
+          - path
+          - content
+      sandbox__edit:
+        display-name: 编辑文件
+        description: 精确替换已有工作区文件中的唯一子串（仅 /workspace）
+        properties:
+          path:
+            type: string
+            description: 已有文件路径（仅 /workspace）
+          old_string:
+            type: string
+            description: 待替换的精确原文（须在文件中唯一出现）
+          new_string:
+            type: string
+            description: 替换后的文本
+        required:
+          - path
+          - old_string
+          - new_string
+      sandbox__glob:
+        display-name: 查找文件
+        description: 在沙箱 jail 内按 glob 查找文件路径（优先收窄 path/pattern）
+        properties:
+          pattern:
+            type: string
+            description: glob 模式，如 **/*.py；尽量收窄
+          path:
+            type: string
+            description: 搜索根（可选）：须为 /skills/{skillId}/... 或 /workspace；禁止 /skill；缺省搜全部 jail
+        required:
+          - pattern
+      sandbox__grep:
+        display-name: 搜索内容
+        description: 在沙箱 jail 内按正则搜索文件内容（须提供 pattern）
+        properties:
+          pattern:
+            type: string
+            description: 搜索正则（必填）；避免空模式
+          path:
+            type: string
+            description: 搜索路径（可选）：须为 /skills/{skillId}/... 或 /workspace；禁止 /skill
+          glob:
+            type: string
+            description: 文件名 glob 过滤（可选）
+        required:
+          - pattern
+      sandbox__exec:
+        display-name: 执行命令
+        description: 在沙箱容器内执行 shell（破坏性命令会被拒绝；只读命令通常免 HITL）
+        properties:
+          command:
+            type: string
+            description: shell 命令；禁止 rm -rf /、管道下载执行、mkfs 等破坏性操作
+          cwd:
+            type: string
+            description: 工作目录（可选，默认 /workspace；须在 /skills/{skillId}/... 或 /workspace）
+          timeout_sec:
+            type: integer
+            description: 超时秒数（可选，默认 30）
+        required:
+          - command
 
   routing:
     # L1 结构守卫 — SSOT 验收提示词见 docs/routing/routing-golden-set.md

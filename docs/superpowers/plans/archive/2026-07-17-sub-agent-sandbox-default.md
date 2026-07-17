@@ -1,3 +1,5 @@
+> **ARCHIVED**（2026-07-17 · DOC-022）— 实现已完成；日常 SSOT 见 [`docs/sandbox/README.md`](../../../sandbox/README.md)。勿按本文继续改代码。
+
 # SUB 默认沙箱 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -8,7 +10,7 @@
 
 **Tech Stack:** Java / Spring / AgentScope Toolkit / JUnit5 / Nacos YAML
 
-**Spec:** [2026-07-17-sub-agent-sandbox-default-design.md](../specs/2026-07-17-sub-agent-sandbox-default-design.md)
+**Spec:** [2026-07-17-sub-agent-sandbox-default-design.md](../../specs/2026-07-17-sub-agent-sandbox-default-design.md)
 
 ---
 

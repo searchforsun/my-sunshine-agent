@@ -123,13 +123,18 @@ final class TimelineSessionCompletions {
     }
 
     void completeAt(String stepId, String summaryLine, String expandDetail, long endedAt) {
-        StepMetadata metadata = null;
+        completeAt(stepId, summaryLine, expandDetail, null, endedAt);
+    }
+
+    void completeAt(String stepId, String summaryLine, String expandDetail, StepMetadata extraMetadata, long endedAt) {
+        StepMetadata metadata = extraMetadata;
         if (summaryLine != null && (ToolStepIds.isRagStep(stepId) || TimelineSessionSummaries.isWorkflowRagNode(stepId))) {
             String ragInput = summaryLine;
             if (ToolStepIds.isRagStep(stepId) && containsRawRagBody(summaryLine)) {
                 ragInput = StepLabels.summarizeOutput("search_knowledge", summaryLine);
             }
-            metadata = StepMetadata.fromRagToolOutput(summaryLine, ragInput);
+            StepMetadata ragMeta = StepMetadata.fromRagToolOutput(summaryLine, ragInput);
+            metadata = StepMetadata.merge(metadata, ragMeta);
         }
         String after = summaries.resolveAfter(stepId, summaryLine, metadata);
         Integer baseline = state.ragRewriteBaselineByStep.remove(stepId);

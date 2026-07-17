@@ -60,18 +60,10 @@ export function summarizeDiffCounts(lines: SandboxDiffLine[]): { add: number; de
   return { add, del }
 }
 
-/** 解析 expand detail：旧 <<< old / >>> new，或已是 +/- 文本 */
+/** 解析 expand detail：仅认 +/-/空格 前缀的 unified 文本（后端 HitlParamSupport 产出） */
 export function parseSandboxEditDiff(raw: string): SandboxDiffLine[] | null {
   if (!raw?.trim()) return null
   const trimmed = raw.replace(/^\uFEFF/, '')
-  const oldMarker = trimmed.match(/^<<<\s*old\s*\n/i)
-  if (oldMarker) {
-    const rest = trimmed.slice(oldMarker[0].length)
-    const split = rest.split(/\n>>> ?new\s*\n/i)
-    const oldPart = (split[0] ?? '').replace(/\n$/, '')
-    const newPart = split[1] ?? ''
-    return lineUnifiedDiff(oldPart, newPart)
-  }
   const lines = trimmed.split('\n')
   const prefixed = lines.filter(l => /^[+\- ]/.test(l))
   if (prefixed.length >= 1 && prefixed.length === lines.length) {

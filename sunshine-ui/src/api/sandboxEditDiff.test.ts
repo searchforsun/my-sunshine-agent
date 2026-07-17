@@ -13,13 +13,9 @@ describe('sandboxEditDiff', () => {
     expect(formatDiffLinesAsText(lines)).toBe(' a\n-b\n+x\n c')
   })
 
-  it('parses legacy <<< old / >>> new into unified', () => {
+  it('rejects non-unified legacy markers', () => {
     const raw = '<<< old\nid,amount\n1,150.50\n\n>>> new\nid,amount\n1,999.00'
-    const lines = parseSandboxEditDiff(raw)
-    expect(lines).not.toBeNull()
-    expect(lines!.some(l => l.kind === 'del' && l.text.includes('150.50'))).toBe(true)
-    expect(lines!.some(l => l.kind === 'add' && l.text.includes('999.00'))).toBe(true)
-    expect(lines!.some(l => l.kind === 'ctx' && l.text === 'id,amount')).toBe(true)
+    expect(parseSandboxEditDiff(raw)).toBeNull()
   })
 
   it('parses already-prefixed +- text', () => {
