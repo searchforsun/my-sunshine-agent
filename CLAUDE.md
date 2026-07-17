@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑（确需兼容须写明原因并评审通过）。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改提示词或架构，不在前后端打补丁。
 
-**进度**：阶段三 **检查门通过** — 阶段四 **4.6 动态 DAG ✅** · **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅ 收口** · **4.5 沙箱方案 B ✅**（工作区抽屉 / `writeHitlMode` / 时间线路径，索引 `docs/sandbox/README.md`）；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 **检查门通过** — 阶段四 **4.6 动态 DAG ✅** · **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅**（Live：`verify_spawn_subagent_live`）· **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅ 收口** · **4.5 沙箱方案 B ✅**（工作区抽屉 / `writeHitlMode` / 时间线路径，索引 `docs/sandbox/README.md`）；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -41,6 +41,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_subagent_timeline.py` | **3.10** workflow agent subSteps |
 | `verify_pause_resume_consistency.py` | **3.9.5** 暂停/续跑（`--live`） |
 | `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
+| `verify_spawn_subagent_live.py` | **4.7.6** ReAct `spawn_subagent` Live（S1 hard + S4 soft；S5 单测） |
 | `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（L1 句式路由） |
 | `verify_expert_consultation_live.py` | **4.7.3 演进** 多专家协作 §K Live（`$` 绑定 + expert 步 + Synthesizer） |
 | `verify_sandbox_live.py` | **4.5** Skills Docker 沙箱 Live（`--suite direct\|chat\|all`；G1–G12，含 `#sandbox-agent` S4） |
@@ -81,6 +82,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 新 Agent 能力 / 子 Agent 配置 | `agent/runtime/` — 扩展 `AgentRunRequest` + `ReActAgentFactory`；workflow agent 节点 params 见 DB PlanJson / Studio |
 | **多专家协作（peer-collab）** | `expert-manager` 种子/CRUD → Nacos `agent.expert.*` / `agent.peer.*` → `ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue 判断、第 2 轮起反应式选人）→ `ConsultationSynthesizer`；详设 `docs/superpowers/specs/2026-07-07-expert-consultation-design.md` |
 | **ReAct TaskBoard（4.7.5）** | `manage_tasks` 元工具 + 唯一 `tasks` 步；Hook 跳过 manage_tasks tool 行、首建锚定 think；prompt 仅建板/status；merge 引擎去重；详设 `docs/superpowers/specs/2026-06-24-react-taskboard-design.md` |
+| **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；`AgentRuntime.run(SUB)` 上下文隔离；主卡 `subagent-*` + 抽屉 `spawnPrompt`/`subSteps`；详设 `docs/superpowers/specs/2026-07-18-react-spawn-subagent-design.md` · Live `verify_spawn_subagent_live.py` |
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。Catalog ID SSOT：`ToolIds`（`sdk__*` / `mcp__*`）；ReAct LLM `tool_call.name` 与 Catalog 同 ID；静态 Workflow `tool` 节点直调 invoke（不经 LLM）。HITL 读 DB `require_confirmation`。ReAct 验收可查 llm-gateway 日志 `toolCalls=`。
 
@@ -99,6 +101,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 模式 | 步骤形态 | 说明 |
 |------|----------|------|
 | **ReAct** | `intent → think → tasks? → tool → think-2 → generate` | TaskBoard 开启时出现 `tasks`（锚定在 think 后）；**无业务 tool 间隔**的连续 reasoning 合并为同一 think（Hook），避免终态堆叠多个「综合分析」 |
+| **ReAct spawn_subagent** | 主时间线 `subagent-{runId}`（`phase=subagent`） | 元工具委派；子 think/tool 仅在 `subSteps`；主卡一行摘要 + 抽屉（`spawnPrompt`）；详设 `2026-07-18-react-spawn-subagent-design.md` |
 | **静态 Workflow** | `intent → plan → …`（DAG） | `WorkflowExecutor`：`StaticPlanAdapter` + `PlanTimeline`（`planId=`）→ `executeDynamicDefinition`；**无**逐步 `OperationCard` |
 | **Plan-Workflow** | `intent → plan → …`（DAG） | `PlanWorkflowExecutor` + Planner JSON；**成功路径无 `think`/`generate`**；与静态 workflow **共用** `PlanWorkflowPanel` / `PlanNodeDrawer` |
 | **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent 内部 think/tool **不上主时间线**；`AgentNodeDetailSummarizer` 供主行 after + 展开 detail |

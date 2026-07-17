@@ -1,6 +1,7 @@
 # 4.7.6 ReAct Spawn Subagent（主 Agent 按需创建隔离子 Agent）
 
-> **状态**：设计已定稿，待实施  
+> **状态**：实施完成（检查门 S1 Live + S5 单测；S4 soft）  
+
 > **日期**：2026-07-18  
 > **编号**：阶段四 **4.7.6**（取代原 **4.7.1** `DelegateSkillTool` / Skill 委派语义）  
 > **相关**：`AgentRuntime` / `AgentRunRequest.sub` · [taskboard](./2026-06-24-react-taskboard-design.md) · [D9 编排器-Worker](./2026-06-19-locked-architecture-decisions.md#d9-子-agent--编排器-worker上下文由编排层传入) · Workflow agent 抽屉 HITL · 方案 B 对话级沙箱
@@ -170,10 +171,10 @@ Live：建议 `scripts/verify_spawn_subagent_live.py`（可与 `phase2_agent_dem
 
 ## 8. 文档与编号同步（实施时）
 
-- [ ] `phase4-platformization-design.md` §4.7：新增 **4.7.6**；标注 **4.7.1 废弃**、**4.7.4 不做**
-- [ ] `implementation-plan.md` 阶段四 4.7 行同步
-- [ ] `CLAUDE.md` 时间线表增补 ReAct `subagent-*` 一行（实施完成后）
-- [ ] 本目录 README / specs 索引按需挂链
+- [x] `phase4-platformization-design.md` §4.7：新增 **4.7.6**；标注 **4.7.1 废弃**、**4.7.4 不做**
+- [x] `implementation-plan.md` 阶段四 4.7 行同步
+- [x] `CLAUDE.md` 时间线表增补 ReAct `subagent-*` 一行（实施完成后）
+- [x] 本目录 README / specs 索引按需挂链
 
 ---
 
