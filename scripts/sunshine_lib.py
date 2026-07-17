@@ -298,7 +298,8 @@ BROWSER_LOCALSTORAGE_JS = """
 [
   'sunshine-conv-index',
   'sunshine-current-conversation-id',
-  'sunshine-active-generation'
+  'sunshine-active-generation',
+  'sunshine-execution-preference'
 ].forEach(k => localStorage.removeItem(k));
 Object.keys(localStorage)
   .filter(k => k.startsWith('sunshine-conv-msgs:'))
