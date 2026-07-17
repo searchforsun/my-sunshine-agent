@@ -39,7 +39,7 @@
 ```mermaid
 flowchart TB
     subgraph init [初始化]
-        SEED["docker/mysql/init/13<br/>7 标杆 workflow published v1"]
+        SEED["docker/mysql/init/13<br/>8 标杆 workflow published v1"]
     end
     subgraph admin [Workflow Studio]
         UI["/workflows 可视化编辑"]

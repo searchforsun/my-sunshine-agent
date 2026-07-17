@@ -2,7 +2,6 @@ import { computed, reactive, ref, watch } from 'vue'
 import type { PlanGraph } from '../api/executionPlans'
 import type { ProcessingStep } from '../api/processingSteps'
 import type { DagNodeView } from '../utils/planGraph'
-import { closeSandboxWorkspaceDrawerIfOpen } from './sandboxDrawerBridge'
 
 export interface PlanNodeDrawerPayload {
   planId: string
@@ -13,8 +12,9 @@ export interface PlanNodeDrawerPayload {
   graph?: PlanGraph
 }
 
-/** 抽屉默认/最窄宽度（与历史行为一致） */
+/** 抽屉默认/最窄宽度（与历史行为一致）；对照模式节点区 min */
 export const DRAWER_MIN_WIDTH = 400
+export const PLAN_COMPARE_MIN = DRAWER_MIN_WIDTH
 /** chat-inner max-width(820) + 左右 padding(24×2)，主区低于此宽度时正文列开始收窄 */
 export const CHAT_CONTENT_MIN_WIDTH = 868
 const STORAGE_KEY = 'sunshine-plan-drawer-width'
@@ -113,7 +113,6 @@ function onResizePointerDown(e: PointerEvent) {
 
 export function usePlanNodeDrawer() {
   function open(payload: PlanNodeDrawerPayload) {
-    closeSandboxWorkspaceDrawerIfOpen()
     state.activePlanId = payload.planId
     state.userQuery = payload.userQuery?.trim() ?? ''
     state.node = payload.node
@@ -141,6 +140,7 @@ export function usePlanNodeDrawer() {
     close,
     isActivePlan,
     drawerWidth,
+    drawerMaxWidth,
     canResizeDrawer,
     registerChatBody,
     onResizePointerDown,

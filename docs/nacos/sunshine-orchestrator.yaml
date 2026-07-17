@@ -52,7 +52,7 @@ agent:
       simple-llm: ""
       react: |
         - 企业制度/政策/知识库检索 → **必须**调用 `search_knowledge`（勿用 demo-memory 等其它 search 工具）。
-        - 沙箱 **sandbox__*** 与 `search_knowledge` 同级，主 ReAct **常驻**（方案 B）；读写 /workspace、glob/grep /skills 物料优先 sandbox__*；可写仅 /workspace
+        - 沙箱 **sandbox__*** 与 `search_knowledge` 同级，MAIN / Workflow agent（SUB）**常驻**；读写 /workspace、glob/grep /skills 物料优先 sandbox__*；可写仅 /workspace
         - **沙箱任务**：过渡语后**必须立刻**发起 sandbox__* tool call；**禁止**只输出过渡语即结束且无 tool call
         - 【沙箱·read】路径须在 `/skills/{id}/...` 或 `/workspace/...`；勿对目录调用（列目录用 glob）
         - 【沙箱·write】仅**新建** `/workspace` 文件；写前先 glob/read 确认路径不存在；已存在 → 改用 edit 或换路径（覆盖会被拒绝）
@@ -337,11 +337,13 @@ agent:
       - "请用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill"
 
   # 对话级 Docker 沙箱（4.5 workspace 抽屉）
-  # 方案 B：MAIN ReAct 常驻 sandbox__*；首次工具调用 / 抽屉 list 懒 create — docs/superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md
+  # MAIN/SUB 常驻 sandbox__*；首次工具调用 / 抽屉 list 懒 create — docs/superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md · SUB 默认见 2026-07-17-sub-agent-sandbox-default-design.md
   sandbox:
     conversation-ttl-sec: 1800
+    purge-ttl-sec: 604800
     workspace-content-max-chars: 200000
     reaper-interval-ms: 60000
+    # idle 30min → docker stop；自上次活动 7d → rm+清盘 — docs/superpowers/specs/2026-07-17-sandbox-container-lifecycle-design.md
     runtime:
       image: sunshine-sandbox-python:3.11-slim
       runtime-type: docker

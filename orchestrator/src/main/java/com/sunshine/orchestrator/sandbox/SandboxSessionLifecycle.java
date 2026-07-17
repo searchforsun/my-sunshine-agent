@@ -39,16 +39,16 @@ public class SandboxSessionLifecycle {
     private final ConcurrentHashMap<String, RunContext> runContexts = new ConcurrentHashMap<>();
 
     /**
-     * MAIN 开跑登记上下文（不创建 Docker）。SUB 忽略。
+     * MAIN / SUB 开跑登记上下文（不创建 Docker）。PLANNER 忽略。
      */
     public void prepareRun(AgentRunRequest req) {
-        if (req == null || req.role() != AgentRole.MAIN) {
+        if (req == null || (req.role() != AgentRole.MAIN && req.role() != AgentRole.SUB)) {
             return;
         }
         String bridgeId = req.resolveBridgeId();
         runContexts.put(bridgeId, RunContext.from(req));
-        log.debug("[SandboxSession] prepareRun bridge={} conv={} skill={}",
-                bridgeId, req.conversationId(), req.skillId());
+        log.debug("[SandboxSession] prepareRun bridge={} role={} conv={} skill={}",
+                bridgeId, req.role(), req.conversationId(), req.skillId());
     }
 
     /**
@@ -64,6 +64,10 @@ public class SandboxSessionLifecycle {
         SandboxSessionHolder.Binding existing = SandboxSessionHolder.get(bid);
         RunContext ctx = runContexts.get(bid);
         if (existing != null && StringUtils.hasText(existing.sessionId())) {
+            if (!sandboxClient.sessionRunning(existing.sessionId())
+                    && sandboxClient.sessionAlive(existing.sessionId())) {
+                sandboxClient.startSession(existing.sessionId());
+            }
             if (ctx != null && StringUtils.hasText(ctx.skillId())) {
                 maybeMountSkill(existing.sessionId(), ctx.tenantId(), ctx.conversationId(),
                         ctx.skillId(), ctx.userId());
@@ -165,6 +169,9 @@ public class SandboxSessionLifecycle {
         if (existing.isPresent()) {
             ConversationSandboxBinding b = existing.get();
             if (sandboxClient.sessionAlive(b.sessionId())) {
+                if (!sandboxClient.sessionRunning(b.sessionId())) {
+                    sandboxClient.startSession(b.sessionId());
+                }
                 conversationSandboxStore.touch(tid, conv);
                 List<String> loaded = maybeMountIntoBinding(b, skillId);
                 return new EnsureResult(b.sessionId(), loaded);
@@ -194,8 +201,7 @@ public class SandboxSessionLifecycle {
         }
         mountSkill(b.sessionId(), id);
         loaded.add(id);
-        conversationSandboxStore.save(new ConversationSandboxBinding(
-                b.sessionId(), loaded, b.userId(), b.tenantId(), b.conversationId()));
+        conversationSandboxStore.save(b.withSkills(loaded).withState(ConversationSandboxBinding.STATE_RUNNING));
         return List.copyOf(loaded);
     }
 

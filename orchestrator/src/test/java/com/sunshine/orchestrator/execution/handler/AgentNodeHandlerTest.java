@@ -96,6 +96,7 @@ class AgentNodeHandlerTest {
         assertThat(req.toolWhitelist()).isNull();
         assertThat(req.systemOverlay()).isNull();
         assertThat(req.maxIters()).isZero();
+        assertThat(req.conversationId()).isEqualTo("c1");
     }
 
     @Test

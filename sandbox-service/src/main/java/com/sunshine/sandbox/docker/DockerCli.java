@@ -52,6 +52,17 @@ public class DockerCli {
         run(List.of("rm", "-f", containerIdOrName), Duration.ofMinutes(1));
     }
 
+    public void stop(String containerIdOrName) {
+        run(List.of("stop", containerIdOrName), Duration.ofMinutes(2));
+    }
+
+    public void start(String containerIdOrName) {
+        if (isRunning(containerIdOrName)) {
+            return;
+        }
+        run(List.of("start", containerIdOrName), Duration.ofMinutes(2));
+    }
+
     public boolean isRunning(String containerIdOrName) {
         ExecResult r = runCapture(
                 List.of("inspect", "-f", "{{.State.Running}}", containerIdOrName),

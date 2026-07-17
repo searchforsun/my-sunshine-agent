@@ -17,8 +17,11 @@ import java.util.List;
 @ConfigurationProperties(prefix = "agent.sandbox")
 public class AgentSandboxProperties {
 
-    /** 对话级 workspace 空闲 TTL（秒），默认 30min；活动时续期 */
+    /** 对话级 workspace 空闲 TTL（秒），默认 30min；到期停机（docker stop），活动时续期 */
     private int conversationTtlSec = 1800;
+
+    /** 自上次活动起销毁 TTL（秒），默认 7 天；到期 docker rm + 清盘 */
+    private int purgeTtlSec = 604_800;
 
     /** 读文件内容最大字符数（超出截断） */
     private int workspaceContentMaxChars = 200_000;

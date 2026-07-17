@@ -13,7 +13,7 @@
   RAG_URL                hash 套件 RAG 预检，默认 http://127.0.0.1:8400
 
 前置:
-  - MySQL init 已执行（13-sunshine-workflow-manager.sql 含 7 标杆种子）
+  - MySQL init 已执行（13-sunshine-workflow-manager.sql 含 8 标杆种子）
   - workflow-manager :8230、gateway :8000、orchestrator :8200 已启动
 """
 from __future__ import annotations
@@ -44,6 +44,7 @@ SEED_IDS = {
     "knowledge-dual",
     "knowledge-branch",
     "knowledge-loop",
+    "sandbox-agent",
 }
 
 

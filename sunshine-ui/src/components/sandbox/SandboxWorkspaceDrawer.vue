@@ -38,7 +38,10 @@ const {
   close,
   drawerWidth,
   canResizeDrawer,
+  treeWidth,
+  canResizeTree,
   onResizePointerDown,
+  onTreeResizePointerDown,
 } = useSandboxWorkspaceDrawer()
 
 const { mode: writeHitlMode } = useWriteHitlMode(() => state.conversationId)
@@ -488,7 +491,7 @@ watch(
     </header>
 
     <div class="explorer">
-      <div class="file-tree-pane">
+      <div class="file-tree-pane" :style="{ width: `${treeWidth}px` }">
         <div class="tree-section-label">资源管理器</div>
         <div class="tree-scroll">
           <p v-if="treeLoading" class="pane-hint">加载中…</p>
@@ -512,6 +515,14 @@ watch(
           <p v-if="!treeLoading && !errorText && !treeData.length" class="pane-hint">暂无文件</p>
         </div>
       </div>
+      <div
+        v-if="canResizeTree"
+        class="tree-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整资源管理器宽度"
+        @pointerdown="onTreeResizePointerDown"
+      />
 
       <div class="file-preview-pane">
         <div v-if="openTabs.length" ref="tabbarRef" class="editor-tabbar">
@@ -695,9 +706,10 @@ watch(
 .explorer {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(160px, 38%) 1fr;
+  display: flex;
+  flex-direction: row;
   overflow: hidden;
+  position: relative;
 }
 
 .file-tree-pane,
@@ -710,7 +722,41 @@ watch(
 }
 
 .file-tree-pane {
+  flex-shrink: 0;
   border-right: 1px solid var(--sun-border);
+}
+
+.file-preview-pane {
+  flex: 1 1 auto;
+}
+
+.tree-resize-handle {
+  flex-shrink: 0;
+  width: 6px;
+  margin-left: -3px;
+  cursor: col-resize;
+  z-index: 2;
+  position: relative;
+}
+
+.tree-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+}
+
+.tree-resize-handle:hover::after,
+:global(body.sandbox-tree-resizing) .tree-resize-handle::after {
+  background: var(--sun-border);
+}
+
+:global(body.sandbox-tree-resizing) {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .tree-section-label {

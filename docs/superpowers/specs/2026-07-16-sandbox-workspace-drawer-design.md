@@ -22,7 +22,7 @@
 
 ## UI
 
-- `SandboxWorkspaceDrawer`：左树右预览；与 `PlanNodeDrawer` 互斥。
+- `SandboxWorkspaceDrawer`：左树右预览；与 `PlanNodeDrawer` 的布局共存见 [plan-sandbox-drawer-coexistence](./2026-07-17-plan-sandbox-drawer-coexistence-design.md)（对照模式隐藏 Chat；**不再**硬互斥关闭）。
 - 顶栏 **写操作确认** 三档（`WriteHitlModeSelector`）：`never` / `always` / `smart` — 见 [write-hitl-skip](./2026-07-16-sandbox-write-hitl-skip-design.md)；本会话可覆盖用户默认 — 见 [user-default-write-hitl](./2026-07-16-user-default-write-hitl-design.md)。
 - 换会话关闭抽屉；无绑定时可开抽屉（list 触发懒开箱或提示）。
 

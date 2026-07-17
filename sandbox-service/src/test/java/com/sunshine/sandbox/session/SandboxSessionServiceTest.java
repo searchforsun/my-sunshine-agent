@@ -72,6 +72,14 @@ class SandboxSessionServiceTest {
         assertThat(docker.lastRunArgs).anyMatch(a -> a.endsWith(":/workspace"));
         assertThat(store.get(sessionId)).isPresent();
 
+        service.stop(sessionId);
+        assertThat(docker.stopped).contains(docker.lastSandboxContainerId);
+        assertThat(store.get(sessionId)).isPresent();
+        assertThat(tempRoot.resolve(sessionId).resolve("workspace").resolve("note.txt")).exists();
+
+        service.start(sessionId);
+        assertThat(docker.isRunning(docker.lastSandboxContainerId)).isTrue();
+
         service.close(sessionId);
 
         assertThat(docker.removed).contains(docker.lastSandboxContainerId);
@@ -198,6 +206,7 @@ class SandboxSessionServiceTest {
         final List<String> ensuredNetworks = new ArrayList<>();
         final List<List<String>> runInvocations = new ArrayList<>();
         final List<String> running = new ArrayList<>();
+        final List<String> stopped = new ArrayList<>();
 
         FakeDockerCli(SandboxProperties properties) {
             super(properties);
@@ -227,6 +236,20 @@ class SandboxSessionServiceTest {
         public void removeForce(String containerIdOrName) {
             removed.add(containerIdOrName);
             running.remove(containerIdOrName);
+        }
+
+        @Override
+        public void stop(String containerIdOrName) {
+            running.remove(containerIdOrName);
+            stopped.add(containerIdOrName);
+        }
+
+        @Override
+        public void start(String containerIdOrName) {
+            if (!running.contains(containerIdOrName)) {
+                running.add(containerIdOrName);
+            }
+            stopped.remove(containerIdOrName);
         }
 
         @Override

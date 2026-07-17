@@ -114,7 +114,7 @@
 | **4.5.4** | Skill 元数据 / `/skills` 试跑 / 多 Skill 挂载 | ✅ |
 | **4.5.5** | 审计 + Grafana + Live G1–G9 / W1–W5 | ✅ |
 | **4.5.6** | 工作区抽屉（多 tab / md 切换 / 路径芯片）+ `writeHitlMode` + 时间线路径展示 | ✅ |
-| — | Live：`writeHitlMode` Chat 冒烟 | ⬜ |
+| — | Live：`writeHitlMode` Chat 冒烟 | ✅ |
 
 锁定：默认 `network=none` + `read_only_rootfs`（可写仅 `/workspace` volume）；`network_allow` 非空时经 egress 白名单代理（修订 D4，见详设）。
 

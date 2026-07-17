@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""4.5 Skills Docker 沙箱 Live 验收 — G1–G9。
+"""4.5 Skills Docker 沙箱 Live 验收 — G1–G12。
 
 用法:
   python3 scripts/verify_sandbox_live.py --suite direct
@@ -8,7 +8,7 @@
 
 子套件:
   direct  G2–G6、G8（容器回收）— 直连 SANDBOX_URL（默认 CI 套件）
-  chat    G1、G7、G9 — Gateway SSE；Gateway 不可达时 soft-skip
+  chat    G1、G7、G9–G12 — Gateway SSE；Gateway 不可达时 soft-skip
   all     两者
 
 环境变量:
@@ -443,6 +443,7 @@ def chat_sse(
     query: str,
     *,
     execution_preference: str = "react",
+    write_hitl_mode: str | None = None,
     auto_approve: bool = False,
     stop_on_confirmation: bool = False,
 ) -> SseCollector:
@@ -451,11 +452,13 @@ def chat_sse(
 
     def run() -> None:
         try:
-            body = {
+            body: dict[str, Any] = {
                 "content": query,
                 "conversationId": conv_id,
                 "executionPreference": execution_preference,
             }
+            if write_hitl_mode:
+                body["writeHitlMode"] = write_hitl_mode
             with requests.post(
                 f"{gw}/api/chat/stream",
                 headers=headers,
@@ -482,6 +485,9 @@ def chat_sse(
                                 timeout=30,
                             )
                             r.raise_for_status()
+                            # 可能多轮 HITL（write 后再 edit/exec）
+                            collector.confirmation = None
+                            confirm_called.clear()
         except Exception as e:
             collector.error = e
         finally:
@@ -492,6 +498,43 @@ def chat_sse(
     if collector.error and not collector.steps and not collector.confirmation:
         raise collector.error
     return collector
+
+
+def assert_write_skip_hitl(
+    gw: str,
+    headers: dict,
+    skill_id: str,
+    *,
+    mode: str,
+    marker: str,
+) -> str:
+    """writeHitlMode=always|smart：须出现 sandbox__write 且全程无 confirmation。"""
+    conv = create_conversation(gw, headers)
+    coll = chat_sse(
+        gw,
+        headers,
+        conv,
+        (
+            f"@{skill_id} 请用 sandbox__write 把字符串 {marker} 写入 "
+            f"/workspace/hitl-{mode}.txt，不要用 exec，完成后简短确认。"
+        ),
+        execution_preference="react",
+        write_hitl_mode=mode,
+        # 若误触发 HITL 则立刻停，避免挂死等确认
+        stop_on_confirmation=True,
+    )
+    ids = sandbox_tool_step_ids(coll.steps)
+    wrote = any("sandbox__write" in x or "sandbox__edit" in x for x in ids)
+    if coll.confirmation:
+        tool_id = coll.confirmation.get("toolId")
+        raise AssertionError(
+            f"mode={mode} 仍收到 confirmation toolId={tool_id} steps={ids[:8]}"
+        )
+    if not wrote:
+        raise AssertionError(
+            f"mode={mode} 未出现 sandbox__write/edit（无法断言免确认）steps={ids[:8]}"
+        )
+    return f"mode={mode} write/edit 无 confirmation steps={ids[:6]}"
 
 
 def ensure_sandbox_skill(gw: str, headers: dict) -> str:
@@ -592,13 +635,64 @@ def sandbox_tool_step_ids(steps: list[dict]) -> list[str]:
         sid = str(s.get("id") or "")
         if "sandbox__" in sid:
             ids.append(sid)
+        for sub in s.get("subSteps") or []:
+            if isinstance(sub, dict):
+                sub_id = str(sub.get("id") or "")
+                if "sandbox__" in sub_id:
+                    ids.append(sub_id)
     return ids
 
 
+def flatten_step_ids(steps: list[dict]) -> str:
+    """顶层 + subSteps id，便于断言 workflow agent 节点。"""
+    parts: list[str] = []
+    for s in steps:
+        parts.append(str(s.get("id") or ""))
+        for sub in s.get("subSteps") or []:
+            if isinstance(sub, dict):
+                parts.append(str(sub.get("id") or ""))
+    return " ".join(parts)
+
+
+def workspace_list_names(gw: str, headers: dict, conv_id: str) -> list[str]:
+    resp = requests.get(
+        f"{gw}/api/conversations/{conv_id}/sandbox/workspace",
+        headers=headers,
+        params={"path": "/workspace"},
+        timeout=30,
+    )
+    if resp.status_code == 404:
+        return []
+    resp.raise_for_status()
+    body = resp.json()
+    data = body.get("data") if isinstance(body, dict) and "data" in body else body
+    if not isinstance(data, dict):
+        return []
+    return [str(e.get("name") or "") for e in (data.get("entries") or [])]
+
+
+def catalog_has_workflow(gw: str, headers: dict, workflow_id: str) -> bool:
+    try:
+        resp = requests.get(f"{gw}/api/workflows/catalog", headers=headers, timeout=30)
+        if resp.status_code >= 400:
+            return False
+        body = resp.json()
+        data = body.get("data") if isinstance(body, dict) else body
+        items = data if isinstance(data, list) else (
+            (data or {}).get("items") or (data or {}).get("workflows") or []
+        )
+        if not isinstance(items, list):
+            return False
+        return any((x.get("id") or x.get("workflowId")) == workflow_id for x in items)
+    except (requests.RequestException, ValueError, TypeError):
+        return False
+
+
 def run_chat(gw: str, report: Report) -> None:
+    chat_gates = ("G1", "G7", "G9", "G10", "G11", "G12")
     if not url_reachable(gw):
         msg = f"Gateway 不可达: {gw} — soft-skip chat 套件"
-        for g in ("G1", "G7", "G9"):
+        for g in chat_gates:
             report.add(g, "SKIP", msg)
         return
 
@@ -606,7 +700,7 @@ def run_chat(gw: str, report: Report) -> None:
         headers = auth_headers(gw)
     except (requests.RequestException, RuntimeError) as exc:
         msg = f"auth 失败（soft-skip）: {exc}"
-        for g in ("G1", "G7", "G9"):
+        for g in chat_gates:
             report.add(g, "SKIP", msg)
         return
 
@@ -633,71 +727,133 @@ def run_chat(gw: str, report: Report) -> None:
         skill_id = ensure_sandbox_skill(gw, headers)
     except (requests.RequestException, RuntimeError) as exc:
         msg = f"无法预置 sandbox Skill: {exc}"
-        report.add("G7", "FAIL", msg)
-        report.add("G9", "FAIL", msg)
-        return
+        for g in ("G7", "G9", "G10", "G11"):
+            report.add(g, "FAIL", msg)
+        # G12 不依赖 skill，继续
+        skill_id = None
 
-    # G7: write / 非只读 exec 触发 HITL
-    try:
-        conv = create_conversation(gw, headers)
-        coll = chat_sse(
-            gw, headers, conv,
-            f"@{skill_id} 请用 sandbox__write 把字符串 hello-hitl 写入 /workspace/hitl.txt，不要用 exec",
-            execution_preference="react",
-            stop_on_confirmation=True,
-        )
-        conf = coll.confirmation
-        if not conf:
-            # 也可能是模型未调工具；仍记 FAIL
-            report.add(
-                "G7", "FAIL",
-                "未收到 SSE type:confirmation（需 HITL 开启且模型调用 write/edit/非只读 exec）",
+    if skill_id:
+        # G7: writeHitlMode 缺省(=never) — write 触发 HITL
+        try:
+            conv = create_conversation(gw, headers)
+            coll = chat_sse(
+                gw, headers, conv,
+                f"@{skill_id} 请用 sandbox__write 把字符串 hello-hitl 写入 /workspace/hitl.txt，不要用 exec",
+                execution_preference="react",
+                stop_on_confirmation=True,
             )
-        else:
-            tool_id = str(conf.get("toolId") or "")
-            if not tool_id.startswith("sandbox__"):
-                report.add("G7", "FAIL", f"confirmation toolId 非 sandbox: {tool_id}")
-            elif tool_id in ("sandbox__read", "sandbox__glob", "sandbox__grep"):
-                report.add("G7", "FAIL", f"读工具不应 HITL: {tool_id}")
+            conf = coll.confirmation
+            if not conf:
+                report.add(
+                    "G7", "FAIL",
+                    "未收到 SSE type:confirmation（需 HITL 开启且模型调用 write/edit/非只读 exec）",
+                )
             else:
-                report.add("G7", "PASS", f"HITL confirmation toolId={tool_id}")
-    except (AssertionError, RuntimeError, TimeoutError, requests.RequestException) as exc:
-        report.add("G7", "FAIL", str(exc))
+                tool_id = str(conf.get("toolId") or "")
+                if not tool_id.startswith("sandbox__"):
+                    report.add("G7", "FAIL", f"confirmation toolId 非 sandbox: {tool_id}")
+                elif tool_id in ("sandbox__read", "sandbox__glob", "sandbox__grep"):
+                    report.add("G7", "FAIL", f"读工具不应 HITL: {tool_id}")
+                else:
+                    report.add("G7", "PASS", f"HITL confirmation toolId={tool_id}")
+        except (AssertionError, RuntimeError, TimeoutError, requests.RequestException) as exc:
+            report.add("G7", "FAIL", str(exc))
 
-    # G9: read → edit → exec 最小闭环（自动 approve HITL）
+        # G9: read → edit → exec 最小闭环（自动 approve HITL）
+        try:
+            conv = create_conversation(gw, headers)
+            coll = chat_sse(
+                gw, headers, conv,
+                (
+                    f"@{skill_id} 严格按顺序只用沙箱工具："
+                    "1) sandbox__read 读取 /skills/sandbox-live/scripts/sample.py；"
+                    "2) sandbox__write 写 /workspace/demo.txt 内容为 OLD；"
+                    "3) sandbox__edit 把 OLD 换成 NEW；"
+                    "4) sandbox__exec 执行 cat /workspace/demo.txt；"
+                    "完成后简短确认。"
+                ),
+                execution_preference="react",
+                auto_approve=True,
+            )
+            ids = sandbox_tool_step_ids(coll.steps)
+            joined = " ".join(ids)
+            has_read = "sandbox__read" in joined
+            has_edit = "sandbox__edit" in joined or "sandbox__write" in joined
+            has_exec = "sandbox__exec" in joined
+            if has_read and has_edit and has_exec:
+                report.add("G9", "PASS", f"tool steps: {ids[:12]}")
+            else:
+                report.add(
+                    "G9", "FAIL",
+                    f"未形成 read→edit/write→exec 闭环（read={has_read} edit/write={has_edit} exec={has_exec}）steps={ids[:12]}",
+                )
+        except (AssertionError, RuntimeError, TimeoutError, requests.RequestException) as exc:
+            report.add("G9", "FAIL", str(exc))
+
+        # G10: writeHitlMode=always — write 免确认
+        try:
+            detail = assert_write_skip_hitl(
+                gw, headers, skill_id, mode="always", marker=f"skip-always-{uuid.uuid4().hex[:6]}"
+            )
+            report.add("G10", "PASS", detail)
+        except (AssertionError, RuntimeError, TimeoutError, requests.RequestException) as exc:
+            report.add("G10", "FAIL", str(exc))
+
+        # G11: writeHitlMode=smart — write 免确认（危险 exec 仍确认，本门仅覆盖 write）
+        try:
+            detail = assert_write_skip_hitl(
+                gw, headers, skill_id, mode="smart", marker=f"skip-smart-{uuid.uuid4().hex[:6]}"
+            )
+            report.add("G11", "PASS", detail)
+        except (AssertionError, RuntimeError, TimeoutError, requests.RequestException) as exc:
+            report.add("G11", "FAIL", str(exc))
+
+    # G12 / S4: #sandbox-agent SUB 写 /workspace，抽屉可见
     try:
-        conv = create_conversation(gw, headers)
-        coll = chat_sse(
-            gw, headers, conv,
-            (
-                f"@{skill_id} 严格按顺序只用沙箱工具："
-                "1) sandbox__read 读取 /skills/sandbox-live/scripts/sample.py；"
-                "2) sandbox__write 写 /workspace/demo.txt 内容为 OLD；"
-                "3) sandbox__edit 把 OLD 换成 NEW；"
-                "4) sandbox__exec 执行 cat /workspace/demo.txt；"
-                "完成后简短确认。"
-            ),
-            execution_preference="react",
-            auto_approve=True,
-        )
-        ids = sandbox_tool_step_ids(coll.steps)
-        joined = " ".join(ids)
-        has_read = "sandbox__read" in joined
-        has_edit = "sandbox__edit" in joined or "sandbox__write" in joined
-        has_exec = "sandbox__exec" in joined
-        if has_read and has_edit and has_exec:
-            report.add("G9", "PASS", f"tool steps: {ids[:12]}")
+        wf_id = "sandbox-agent"
+        if not catalog_has_workflow(gw, headers, wf_id):
+            report.add("G12", "SKIP", f"Catalog 无 {wf_id}（先执行 13-init / 入库种子）")
         else:
+            marker = f"s4-{uuid.uuid4().hex[:8]}"
+            fname = f"{marker}.txt"
+            conv = create_conversation(gw, headers)
+            coll = chat_sse(
+                gw,
+                headers,
+                conv,
+                (
+                    f"#{wf_id} 请在工作区新建 /workspace/{fname}，"
+                    f"内容仅为 {marker}，只用 sandbox__write，写完后简短确认。"
+                ),
+                execution_preference="auto",
+                write_hitl_mode="always",
+                auto_approve=True,
+            )
+            flat = flatten_step_ids(coll.steps)
+            tool_ids = sandbox_tool_step_ids(coll.steps)
+            has_agent_node = "node-agent-s4b0x7a1" in flat or "agent-s4b0x7a1" in flat
+            wrote = any("sandbox__write" in x or "sandbox__edit" in x for x in tool_ids)
+            if not has_agent_node:
+                raise AssertionError(f"未出现 sandbox-agent 节点步 flat={flat[:400]}")
+            if not wrote:
+                raise AssertionError(
+                    f"agent 节点未出现 sandbox__write/edit tool_ids={tool_ids[:8]} flat={flat[:400]}"
+                )
+            names = workspace_list_names(gw, headers, conv)
+            if fname not in names and marker not in " ".join(names):
+                raise AssertionError(
+                    f"抽屉 list 未见 {fname} names={names[:20]}（SUB 应复用对话容器）"
+                )
             report.add(
-                "G9", "FAIL",
-                f"未形成 read→edit/write→exec 闭环（read={has_read} edit/write={has_edit} exec={has_exec}）steps={ids[:12]}",
+                "G12", "PASS",
+                f"#{wf_id} write ok file={fname} tools={tool_ids[:4]} names={names[:8]}",
             )
     except (AssertionError, RuntimeError, TimeoutError, requests.RequestException) as exc:
-        report.add("G9", "FAIL", str(exc))
+        report.add("G12", "FAIL", str(exc))
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="4.5 Skills Docker 沙箱 Live G1–G9")
+    p = argparse.ArgumentParser(description="4.5 Skills Docker 沙箱 Live G1–G12")
     p.add_argument(
         "--suite",
         choices=["direct", "chat", "all"],
@@ -721,7 +877,7 @@ def main() -> int:
             print("\n--- suite: direct (G2–G6, G8) ---")
             run_direct(sandbox, report)
         if args.suite in ("chat", "all"):
-            print("\n--- suite: chat (G1, G7, G9) ---")
+            print("\n--- suite: chat (G1, G7, G9–G12) ---")
             run_chat(gateway, report)
     except Exception as exc:
         print(f"\n[FAIL] unexpected: {exc}", file=sys.stderr)

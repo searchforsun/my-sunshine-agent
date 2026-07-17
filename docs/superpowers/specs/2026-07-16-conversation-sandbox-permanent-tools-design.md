@@ -24,7 +24,7 @@
 | 会话绑定 | `conversationId` + Redis `sandbox:conv:{tenant}:{id}`；TTL 见 `agent.sandbox.conversation-ttl-sec` |
 | Skill 角色 | **仅** overlay + 可选懒挂载 `/skills/{skillId}/`；**不再**门控工具或开箱 |
 | 会话策略 | Nacos `agent.sandbox.runtime`（统一基座镜像）；**不**再因 Skill `sandbox=docker` 才允许沙箱 |
-| 子 Agent | 默认**不**注入六工具（白名单边界）；二期可按节点显式开启 |
+| 子 Agent | **默认注入**六工具（与 MAIN 对齐）；复用对话级容器 · [详设](./2026-07-17-sub-agent-sandbox-default-design.md) |
 | Skill Catalog `sandbox` 字段 | 保留作展示/种子/试跑元数据；**orchestrator 不读作开关** |
 
 ---
@@ -91,7 +91,7 @@ flowchart LR
 
 - 每条对话在进入 Chat 时预创建容器（选 B 而非 A）
 - 用 L2/L3 规则判断「要不要沙箱」
-- Workflow 子 Agent 默认沙箱
+- Workflow 子 Agent 独立容器 / 节点级 sandbox 开关（当前为默认注入 + 对话级复用）
 - 恢复 `/skill` 单数路径
 
 ---
@@ -103,7 +103,7 @@ flowchart LR
 | B1 | 新会话、`react`、无 skillId、写 workspace | Toolkit 含六工具；首次 write 后 Redis 有会话 | ✅ Live G1 |
 | B2 | 同会话第二轮读 | 复用容器 | ✅ W5 |
 | B3 | `@sandbox-coding-demo` | 懒挂载 `/skills/.../` | ✅ |
-| B4 | `simple-llm` / SUB | 无六工具 | ✅ |
+| B4 | `simple-llm` 无六工具；SUB **有**六工具（对话级复用） | ✅ 单测 |
 | B5 | TTL 到期 | Reaper 回收 | ✅ |
 
 ---

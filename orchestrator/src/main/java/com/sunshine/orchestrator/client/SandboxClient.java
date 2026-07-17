@@ -75,6 +75,56 @@ public class SandboxClient {
         }
     }
 
+    public boolean sessionRunning(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return false;
+        }
+        try {
+            Map<String, Boolean> data = webClient.get()
+                    .uri("/api/sandbox/sessions/{id}/alive", sessionId.strip())
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<R<Map<String, Boolean>>>() {})
+                    .map(R::getData)
+                    .block();
+            return data != null && Boolean.TRUE.equals(data.get("running"));
+        } catch (Exception e) {
+            log.debug("[SandboxClient] sessionRunning failed id={}: {}", sessionId, e.getMessage());
+            return false;
+        }
+    }
+
+    public void stopSession(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return;
+        }
+        try {
+            webClient.post()
+                    .uri("/api/sandbox/sessions/{id}/stop", sessionId.strip())
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<R<Void>>() {})
+                    .block();
+        } catch (Exception e) {
+            log.warn("[SandboxClient] stopSession failed id={}: {}", sessionId, e.getMessage());
+        }
+    }
+
+    public void startSession(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return;
+        }
+        try {
+            webClient.post()
+                    .uri("/api/sandbox/sessions/{id}/start", sessionId.strip())
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, this::toSandboxError)
+                    .bodyToMono(new ParameterizedTypeReference<R<Void>>() {})
+                    .block();
+        } catch (RuntimeException e) {
+            log.warn("[SandboxClient] startSession failed id={}: {}", sessionId, e.getMessage());
+            throw e;
+        }
+    }
+
     public FsNodeDto.FsListResponse listFs(String sessionId, String path) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder

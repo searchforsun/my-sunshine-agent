@@ -46,9 +46,23 @@ public class SandboxSessionController {
         return R.ok(null);
     }
 
+    @PostMapping("/{id}/stop")
+    public R<Void> stop(@PathVariable String id) {
+        sessions.stop(id);
+        return R.ok(null);
+    }
+
+    @PostMapping("/{id}/start")
+    public R<Void> start(@PathVariable String id) {
+        sessions.start(id);
+        return R.ok(null);
+    }
+
     @GetMapping("/{id}/alive")
     public R<Map<String, Boolean>> alive(@PathVariable String id) {
-        return R.ok(Map.of("alive", fs.alive(id)));
+        boolean present = fs.alive(id);
+        boolean running = present && sessions.isRunning(id);
+        return R.ok(Map.of("alive", present, "running", running));
     }
 
     @GetMapping("/{id}/fs")

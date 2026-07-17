@@ -43,7 +43,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
 | `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（L1 句式路由） |
 | `verify_expert_consultation_live.py` | **4.7.3 演进** 多专家协作 §K Live（`$` 绑定 + expert 步 + Synthesizer） |
-| `verify_sandbox_live.py` | **4.5** Skills Docker 沙箱 Live（`--suite direct\|chat\|all`；G1–G9） |
+| `verify_sandbox_live.py` | **4.5** Skills Docker 沙箱 Live（`--suite direct\|chat\|all`；G1–G12，含 `#sandbox-agent` S4） |
 | `verify_sandbox_workspace_live.py` | **4.5** 对话级 Workspace 抽屉（W1–W5：status/SSE/list/content/复用） |
 
 沙箱文档索引：[`docs/sandbox/README.md`](./docs/sandbox/README.md)。
@@ -65,7 +65,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 要扩展 | 改哪里 |
 |--------|--------|
 | 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册（metadata `sunshine.tool-app=true`）→ `/tools` 启用 → 加入 ReAct 工具集；Workflow 节点 `params.tool` 填 **Catalog ID**（`sdk__{app}__{name}`）；**禁止** tool-manager 新增编译期 `ToolHandler` |
-| 新 Workflow | **4.13**：`/workflows` + `workflow-manager` DB（**唯一 SSOT**，废弃 Nacos workflow）；MySQL init 种子 **7 标杆**（`13-sunshine-workflow-manager.sql`，含 `knowledge-branch` / `knowledge-loop`）；orchestrator `WorkflowManagerClient` |
+| 新 Workflow | **4.13**：`/workflows` + `workflow-manager` DB（**唯一 SSOT**，废弃 Nacos workflow）；MySQL init 种子 **8 标杆**（`13-sunshine-workflow-manager.sql`，含 `knowledge-branch` / `knowledge-loop` / `sandbox-agent`）；orchestrator `WorkflowManagerClient` |
 | **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanExecutionCanvas`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
 | **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；重试策略 SSOT **`execution_mode_policy`**（tool-manager DB，`/tools` Planner Workflow Tab）；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |

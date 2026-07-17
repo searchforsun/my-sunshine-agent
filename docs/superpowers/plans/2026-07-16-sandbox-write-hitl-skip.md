@@ -13,4 +13,4 @@
 | 3 | BFF 透传 | ✅ |
 | 4 | 前端会话态 + send + `WriteHitlModeSelector` | ✅ |
 | 5 | 编译重启 + 单测验收 | ✅ |
-| — | Live：`writeHitlMode` Chat 冒烟 | ⬜ 可选 |
+| — | Live：`writeHitlMode` Chat 冒烟 | ✅ |

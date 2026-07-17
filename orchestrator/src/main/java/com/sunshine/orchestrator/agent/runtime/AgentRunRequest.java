@@ -129,6 +129,24 @@ public record AgentRunRequest(
             List<String> toolWhitelist,
             String systemOverlay,
             int maxIters) {
+        return sub(
+                memory, query, injectedBlocks, userId, tenantId, assistantMessageId,
+                skillId, toolWhitelist, systemOverlay, maxIters, null);
+    }
+
+    /** Workflow 子 Agent — 含对话级沙箱复用键 */
+    public static AgentRunRequest sub(
+            MemoryContext memory,
+            String query,
+            List<String> injectedBlocks,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            String skillId,
+            List<String> toolWhitelist,
+            String systemOverlay,
+            int maxIters,
+            String conversationId) {
         return new AgentRunRequest(
                 AgentRole.SUB,
                 UUID.randomUUID().toString(),
@@ -145,7 +163,7 @@ public record AgentRunRequest(
                 maxIters,
                 TimelineBinding.SUB_COMPRESSED,
                 false,
-                null);
+                conversationId);
     }
 
     /** Planner — 仅 plan 步 Timeline */

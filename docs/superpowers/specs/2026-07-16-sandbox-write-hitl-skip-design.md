@@ -111,7 +111,7 @@
 |---|------|------|:----:|
 | A1–A7 | 见原矩阵（never/always/smart × write/exec） | 单测 `SandboxHitlPolicyTest` | ✅ |
 | UI | 工作区切换三档即时刷新 | reactive Map | ✅ |
-| Live | Chat 带 `writeHitlMode=always/smart` 冒烟 | **待补** `verify_sandbox_live` 或独立脚本 | ⬜ |
+| Live | Chat 带 `writeHitlMode=always/smart` 冒烟 | ✅ `verify_sandbox_live` G10/G11（对照 G7=never） |
 
 ---
 

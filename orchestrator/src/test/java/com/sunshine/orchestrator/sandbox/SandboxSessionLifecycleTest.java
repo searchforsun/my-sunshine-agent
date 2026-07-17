@@ -62,6 +62,23 @@ class SandboxSessionLifecycleTest {
     }
 
     @Test
+    void prepareRun_sub_registersContext_andEnsureBoundUsesConversation() {
+        when(sandboxClient.createSession(any())).thenReturn("sess-sub");
+        when(conversationSandboxStore.find(anyString(), anyString())).thenReturn(Optional.empty());
+
+        AgentRunRequest req = AgentRunRequest.sub(
+                MemoryContext.empty(), "q", List.of("ctx"), "u1", "default",
+                "msg-1", null, null, null, 0, "conv-sub");
+        lifecycle.prepareRun(req);
+        verify(sandboxClient, never()).createSession(any());
+
+        assertThat(lifecycle.ensureBound(req.resolveBridgeId())).isEqualTo("sess-sub");
+        verify(conversationSandboxStore).save(any());
+        lifecycle.closeQuietly(req);
+        verify(sandboxClient, never()).closeSession(anyString());
+    }
+
+    @Test
     void ensureBound_withoutSkill_createsEmptySession() {
         when(sandboxClient.createSession(any())).thenReturn("sess-1");
         when(conversationSandboxStore.find(anyString(), anyString())).thenReturn(Optional.empty());
@@ -104,6 +121,7 @@ class SandboxSessionLifecycleTest {
                 new ConversationSandboxBinding(
                         "sess-reuse", List.of("coding-a"), "u1", "default", "conv-x")));
         when(sandboxClient.sessionAlive("sess-reuse")).thenReturn(true);
+        when(sandboxClient.sessionRunning("sess-reuse")).thenReturn(true);
 
         AgentRunRequest req = AgentRunRequest.main(
                 MemoryContext.empty(), "q", "u1", "default", "msg-x", List.of(), "coding-b",
@@ -113,6 +131,26 @@ class SandboxSessionLifecycleTest {
         verify(sandboxClient, never()).createSession(any());
         verify(sandboxClient).mountSkill(eq("sess-reuse"), eq("coding-b"), any());
         verify(conversationSandboxStore).save(any());
+        lifecycle.closeQuietly(req);
+    }
+
+    @Test
+    void ensureBound_startsStoppedSession() {
+        when(conversationSandboxStore.find("default", "conv-stop")).thenReturn(Optional.of(
+                new ConversationSandboxBinding(
+                        "sess-stop", List.of(), "u1", "default", "conv-stop",
+                        ConversationSandboxBinding.STATE_STOPPED, 99L)));
+        when(sandboxClient.sessionAlive("sess-stop")).thenReturn(true);
+        when(sandboxClient.sessionRunning("sess-stop")).thenReturn(false);
+
+        AgentRunRequest req = AgentRunRequest.main(
+                MemoryContext.empty(), "q", "u1", "default", "msg-s", List.of(), null,
+                false, "conv-stop");
+        lifecycle.prepareRun(req);
+        assertThat(lifecycle.ensureBound(req.resolveBridgeId())).isEqualTo("sess-stop");
+        verify(sandboxClient).startSession("sess-stop");
+        verify(sandboxClient, never()).createSession(any());
+        verify(conversationSandboxStore).touch("default", "conv-stop");
         lifecycle.closeQuietly(req);
     }
 

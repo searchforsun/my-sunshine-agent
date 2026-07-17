@@ -1,6 +1,6 @@
 # Workflow 标杆种子（MySQL init）
 
-平台 **7 条标杆 workflow** 的唯一静态 SSOT：`docker/mysql/init/13-sunshine-workflow-manager.sql`。
+平台 **8 条标杆 workflow** 的唯一静态 SSOT：`docker/mysql/init/13-sunshine-workflow-manager.sql`。
 
 > **运行时 SSOT**：`workflow-manager` DB（Studio 发布 / CRUD）。init SQL 仅用于**新环境初始化**；已部署库改标杆须 UPDATE `workflow_version` + `redis-cli PUBLISH workflow-catalog-changed default`。
 >
@@ -17,12 +17,13 @@
 | `finance-list` | 财务待办查询 | tool → answer |
 | `finance-smart` | 财务智能分析 | tool + agent → answer |
 | `finance-summary` | 财务汇总统计 | tool → answer |
+| `sandbox-agent` | 沙箱子 Agent 写文件 | agent（默认 `sandbox__*`）→ answer（4.5 SUB 沙箱标杆） |
 
 ## 种子约定
 
 | 项 | 约定 |
 |----|------|
-| 条数 | **7** 条，`source=seed`，`active_version=1`，`status=published`，`enabled=1` |
+| 条数 | **8** 条，`source=seed`，`active_version=1`，`status=published`，`enabled=1` |
 | 节点 ID | 业务节点 `{type}-{8位hex}`；`start` / `answer` 固定 |
 | RAG | **必填** `params.query`（默认 `{{start.userQuery}}`） |
 | Agent | **必填** `params.query`；有上游时 **必填** `params.context` |

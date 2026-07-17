@@ -152,6 +152,38 @@ public class SandboxSessionService {
         log.info("sandbox session closed id={}", sessionId);
     }
 
+    /** 停机：保留会话元数据与宿主机目录，仅 docker stop */
+    public void stop(String sessionId) {
+        SandboxSession session = store.get(sessionId).orElseThrow(() ->
+                new BizException(SandboxErrorCode.SESSION_NOT_FOUND));
+        try {
+            dockerCli.stop(session.containerName());
+        } catch (RuntimeException e) {
+            log.warn("docker stop failed for session {}: {}", sessionId, e.getMessage());
+            throw e;
+        }
+        log.info("sandbox session stopped id={}", sessionId);
+    }
+
+    /** 开机：docker start；已 running 则 no-op */
+    public void start(String sessionId) {
+        SandboxSession session = store.get(sessionId).orElseThrow(() ->
+                new BizException(SandboxErrorCode.SESSION_NOT_FOUND));
+        try {
+            dockerCli.start(session.containerName());
+        } catch (RuntimeException e) {
+            log.warn("docker start failed for session {}: {}", sessionId, e.getMessage());
+            throw e;
+        }
+        log.info("sandbox session started id={}", sessionId);
+    }
+
+    public boolean isRunning(String sessionId) {
+        return store.get(sessionId)
+                .map(s -> dockerCli.isRunning(s.containerName()))
+                .orElse(false);
+    }
+
     private List<String> buildRunArgs(
             String containerName,
             String image,

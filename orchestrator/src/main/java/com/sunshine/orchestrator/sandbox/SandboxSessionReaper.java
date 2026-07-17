@@ -9,7 +9,9 @@ import org.springframework.util.StringUtils;
 import java.time.Instant;
 import java.util.Set;
 
-/** 关闭 Redis TTL 到期的对话级沙箱容器 */
+/**
+ * 双层回收：idle → docker stop；purge → docker rm + 清盘。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -19,12 +21,14 @@ public class SandboxSessionReaper {
     private final com.sunshine.orchestrator.client.SandboxClient sandboxClient;
 
     @Scheduled(fixedDelayString = "${agent.sandbox.reaper-interval-ms:60000}")
-    public void reapExpired() {
+    public void reap() {
         long now = Instant.now().toEpochMilli();
-        Set<String> members = store.pollExpiredMembers(now);
-        if (members.isEmpty()) {
-            return;
-        }
+        reapIdleStop(now);
+        reapPurgeDestroy(now);
+    }
+
+    void reapIdleStop(long nowEpochMs) {
+        Set<String> members = store.pollExpiredMembers(nowEpochMs);
         for (String member : members) {
             String[] parts = ConversationSandboxStore.splitMember(member);
             if (parts.length < 3) {
@@ -35,15 +39,40 @@ public class SandboxSessionReaper {
             String tenantId = parts[1];
             String conversationId = parts[2];
             try {
+                if (StringUtils.hasText(sessionId)) {
+                    sandboxClient.stopSession(sessionId);
+                }
+                store.markStopped(tenantId, conversationId);
+                log.info("[SandboxReaper] stopped idle session={} conv={}", sessionId, conversationId);
+            } catch (Exception e) {
+                log.warn("[SandboxReaper] stop failed member={}: {}", member, e.getMessage());
+            } finally {
+                store.removeExpiryMember(member);
+            }
+        }
+    }
+
+    void reapPurgeDestroy(long nowEpochMs) {
+        Set<String> members = store.pollPurgeMembers(nowEpochMs);
+        for (String member : members) {
+            String[] parts = ConversationSandboxStore.splitMember(member);
+            if (parts.length < 3) {
+                store.removePurgeMember(member);
+                continue;
+            }
+            String sessionId = parts[0];
+            String tenantId = parts[1];
+            String conversationId = parts[2];
+            try {
                 store.remove(tenantId, conversationId);
                 if (StringUtils.hasText(sessionId)) {
                     sandboxClient.closeSession(sessionId);
-                    log.info("[SandboxReaper] closed expired session={} conv={}", sessionId, conversationId);
                 }
+                log.info("[SandboxReaper] purged session={} conv={}", sessionId, conversationId);
             } catch (Exception e) {
-                log.warn("[SandboxReaper] failed member={}: {}", member, e.getMessage());
+                log.warn("[SandboxReaper] purge failed member={}: {}", member, e.getMessage());
             } finally {
-                store.removeExpiryMember(member);
+                store.removePurgeMember(member);
             }
         }
     }

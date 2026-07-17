@@ -134,13 +134,16 @@ class DynamicToolkitFactoryTest {
     }
 
     @Test
-    void buildForSubAgent_doesNotRegisterSandboxTools() {
+    void buildForSubAgent_registersSandbox_withoutManageTasks() {
+        List<AgentTool> sandboxTools = stubSandboxTools();
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(sandboxAgentTools.all()).thenReturn(sandboxTools);
 
         var toolkit = factory.buildForSubAgent(null, "default", "coding-skill");
 
         assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
-        assertThat(toolkit.getToolNames()).noneMatch(n -> n.startsWith("sandbox__"));
+        assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
+        assertThat(toolkit.getToolNames()).doesNotContain(ManageTasksTool.NAME);
     }
 
     private static List<AgentTool> stubSandboxTools() {

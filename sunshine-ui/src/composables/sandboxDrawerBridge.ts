@@ -1,10 +1,11 @@
-/** 避免 usePlanNodeDrawer ↔ useSandboxWorkspaceDrawer 循环依赖 */
-let sandboxCloser: (() => void) | null = null
-
-export function setSandboxWorkspaceCloser(fn: (() => void) | null) {
-  sandboxCloser = fn
+/**
+ * @deprecated 对照模式已取消抽屉硬互斥；保留空实现以免旧调用编译失败。
+ */
+export function setSandboxWorkspaceCloser(_fn: (() => void) | null) {
+  /* no-op */
 }
 
+/** @deprecated */
 export function closeSandboxWorkspaceDrawerIfOpen() {
-  sandboxCloser?.()
+  /* no-op */
 }

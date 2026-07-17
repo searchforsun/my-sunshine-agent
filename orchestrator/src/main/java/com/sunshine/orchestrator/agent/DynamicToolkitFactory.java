@@ -19,7 +19,7 @@ import java.util.Set;
 /**
  * 按 MySQL ToolSet + Catalog 启用池动态组装 Toolkit。
  * 非 simple-llm 的 ReAct 路径均硬编码注入 {@link RagTool}；Workflow 子 Agent 亦始终含 RAG，另可加节点 tools 白名单。
- * MAIN 始终注入沙箱六工具（方案 B，不进 Catalog）；SUB 默认不注入。
+ * MAIN / SUB 均注入沙箱六工具（方案 B + SUB 默认沙箱）；SUB 不注入 manage_tasks。
  */
 @Slf4j
 @Component
@@ -123,6 +123,8 @@ public class DynamicToolkitFactory {
                 tk.registerTool(manageTasksTool);
                 registered.add(ManageTasksTool.NAME);
             }
+        }
+        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {
             for (AgentTool t : sandboxAgentTools.all()) {
                 tk.registerAgentTool(t);
                 registered.add(t.getName());

@@ -74,6 +74,7 @@ const {
   open: openSandboxDrawer,
   close: closeSandboxDrawer,
   registerChatBody: registerSandboxChatBody,
+  compareMode: drawerCompareMode,
 } = useSandboxWorkspaceDrawer()
 const sandboxWorkspaceActive = ref(false)
 
@@ -626,8 +627,16 @@ watch(
       </button>
     </header>
 
-    <div ref="chatBodyRef" class="chat-body">
-      <div class="chat-main" :class="{ 'plan-dag-expanded': planDagExpanded }">
+    <div
+      ref="chatBodyRef"
+      class="chat-body"
+      :class="{ 'chat-body--compare': drawerCompareMode }"
+    >
+      <div
+        v-show="!drawerCompareMode"
+        class="chat-main"
+        :class="{ 'plan-dag-expanded': planDagExpanded }"
+      >
     <!-- 消息区 -->
     <div ref="scrollRef" class="chat-scroll" @scroll="onChatScroll">
       <div class="chat-inner">
@@ -906,6 +915,12 @@ watch(
   display: flex;
   flex-direction: row;
   position: relative;
+}
+
+/* 对照：节点 min 400 + 沙箱 min 520；不足时横向滚动 */
+.chat-body--compare {
+  min-width: 920px;
+  overflow-x: auto;
 }
 
 .chat-attention-bubble {
