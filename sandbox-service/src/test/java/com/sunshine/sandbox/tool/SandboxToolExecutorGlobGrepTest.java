@@ -1,8 +1,8 @@
 package com.sunshine.sandbox.tool;
 
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.sandbox.api.SandboxPolicyDto;
-import com.sunshine.sandbox.api.ToolInvokeResponse;
+import com.sunshine.common.sandbox.SandboxPolicy;
+import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.ExecResult;
@@ -53,7 +53,7 @@ class SandboxToolExecutorGlobGrepTest {
                 sessionId,
                 "fake-cid",
                 hostRoot,
-                new SandboxPolicyDto("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
+                new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
                         List.of(), List.of())));
     }
 

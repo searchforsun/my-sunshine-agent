@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.sandbox;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.client.SandboxClient;
-import com.sunshine.orchestrator.client.sandbox.ToolInvokeResponse;
+import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;

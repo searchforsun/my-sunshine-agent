@@ -1,4 +1,4 @@
-package com.sunshine.sandbox.api;
+package com.sunshine.common.sandbox;
 
 import java.util.Map;
 
@@ -7,6 +7,7 @@ public record CreateSessionRequest(
         String tenantId,
         String skillId,
         String runId,
-        SandboxPolicyDto policy,
+        SandboxPolicy policy,
         Map<String, String> skillFiles,
-        Map<String, String> workspaceFiles) {}
+        Map<String, String> workspaceFiles) {
+}

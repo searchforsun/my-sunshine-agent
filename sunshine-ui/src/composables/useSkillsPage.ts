@@ -9,7 +9,6 @@ import {
   RefreshOutline,
   SearchOutline,
   TrashOutline,
-  CopyOutline,
   CheckmarkOutline,
   DownloadOutline,
   EllipsisHorizontal,

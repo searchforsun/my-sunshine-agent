@@ -41,6 +41,8 @@ import {
   normalizeRestoredInterleavedContent,
 } from './contentInterleave'
 import { notifyCompletedIfNeeded, notifyHitlIfNeeded } from './conversationAttentionNotify'
+import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
+import { resolveSandboxWorkspaceRefreshScope } from './sandboxWorkspaceRefreshPolicy'
 import { appendChunk, getOrCreateSession, type SessionState } from './chatSessionRegistry'
 import {
   bumpAssistantMessage,
@@ -229,6 +231,10 @@ export async function consumeChatSseStream(
           setPendingHitlConfirmations(lastMsg, synced.pending)
           stripPlanDrawerLeakFromMessage(lastMsg)
           notifyHitlIfNeeded(streamConversationId ?? s.id, lastMsg)
+          const refreshScope = resolveSandboxWorkspaceRefreshScope(parsed.step)
+          if (refreshScope) {
+            requestSandboxWorkspaceRefresh(streamConversationId ?? s.id, refreshScope)
+          }
           bumpAssistantMessage(s)
         }
         hooks.onProgress?.(s.id)

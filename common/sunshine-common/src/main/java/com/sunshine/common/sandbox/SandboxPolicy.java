@@ -1,9 +1,9 @@
-package com.sunshine.orchestrator.client.sandbox;
+package com.sunshine.common.sandbox;
 
 import java.util.List;
 
-/** 与 sandbox-service SandboxPolicyDto 字段对齐 */
-public record SandboxPolicyDto(
+/** Skill / 会话沙箱策略 — orchestrator · skill-manager · sandbox-service SSOT */
+public record SandboxPolicy(
         String runtime,
         String image,
         Integer timeoutSec,

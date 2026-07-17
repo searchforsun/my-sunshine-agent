@@ -2,8 +2,8 @@ package com.sunshine.orchestrator.sandbox;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.client.SandboxClient;
-import com.sunshine.orchestrator.client.sandbox.FsContentDto;
-import com.sunshine.orchestrator.client.sandbox.FsNodeDto;
+import com.sunshine.common.sandbox.FsContentDto;
+import com.sunshine.common.sandbox.FsNodeDto;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;

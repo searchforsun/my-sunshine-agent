@@ -18,9 +18,9 @@ import {
   useMessage,
   type DropdownOption,
 } from 'naive-ui'
+import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
 import {
   CloudUploadOutline,
-  CopyOutline,
   CreateOutline,
   EllipsisHorizontal,
   TrashOutline,
@@ -183,7 +183,7 @@ const moreOptions = computed((): DropdownOption[] => {
     items.push({
       label: '复制为草稿',
       key: 'fork',
-      icon: () => h(NIcon, { component: CopyOutline, size: 14 }),
+      icon: () => h(CopyToggleIcon, { size: 14 }),
       disabled: forking.value,
     })
   }

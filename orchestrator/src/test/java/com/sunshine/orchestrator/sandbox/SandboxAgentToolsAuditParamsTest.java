@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.sandbox;
 
-import com.sunshine.orchestrator.client.sandbox.ToolInvokeResponse;
+import com.sunshine.common.sandbox.ToolInvokeResponse;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

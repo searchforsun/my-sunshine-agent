@@ -108,6 +108,41 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     }
   }
 
+  function findNode(nodes: TreeOption[], key: string): TreeOption | null {
+    for (const n of nodes) {
+      if (String(n.key) === key) return n
+      if (n.children?.length) {
+        const hit = findNode(n.children as TreeOption[], key)
+        if (hit) return hit
+      }
+    }
+    return null
+  }
+
+  /** 仅刷新指定根目录子树（保留另一根目录已加载内容） */
+  async function reloadBranch(rootPath: '/workspace' | '/skills') {
+    const conversationId = options.getConversationId()
+    if (!conversationId) return
+    if (!treeData.value.length) {
+      await loadRoots()
+      return
+    }
+    const root = findNode(treeData.value, rootPath)
+    if (!root) {
+      await loadRoots()
+      return
+    }
+    root.children = await fetchChildren(rootPath)
+    const expandedUnder = expandedKeys.value
+      .filter((k) => k.startsWith(`${rootPath}/`))
+      .sort((a, b) => a.length - b.length)
+    for (const dir of expandedUnder) {
+      const node = findNode(treeData.value, dir)
+      if (node) node.children = await fetchChildren(dir)
+    }
+    treeData.value = [...treeData.value]
+  }
+
   function treeNodeProps({ option }: { option: TreeOption }) {
     return {
       title: String((option as TreeOption & { path?: string }).path || option.key),
@@ -219,5 +254,6 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     onSelect,
     revealPath,
     resetTree,
+    reloadBranch,
   }
 }

@@ -2,6 +2,7 @@ package com.sunshine.skill.dto;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.skill.exception.SkillErrorCode;
 import org.springframework.util.StringUtils;
 

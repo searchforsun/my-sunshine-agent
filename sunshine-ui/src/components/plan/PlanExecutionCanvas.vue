@@ -47,6 +47,7 @@ const flowStore = ref<VueFlowStore | null>(null)
 const { state: drawerState, drawerWidth } = usePlanNodeDrawer()
 let resizeObserver: ResizeObserver | null = null
 let resizeFitTimer: ReturnType<typeof setTimeout> | null = null
+let lastFluidFitKey = ''
 
 function dagNodeById(id: string): DagNodeView | undefined {
   return props.dagNodes.find(n => n.id === id)
@@ -120,7 +121,7 @@ function scheduleFitViewOnResize() {
   resizeFitTimer = setTimeout(() => {
     resizeFitTimer = null
     fitViewSoon()
-  }, props.fluid ? 120 : 80)
+  }, props.fluid ? 220 : 80)
 }
 
 function bindResizeObserver(el: HTMLElement | null) {
@@ -158,12 +159,15 @@ watch(
   () => refreshOverlay(),
 )
 
-/** 节点抽屉开合/改宽会挤占左侧画布，需重新 fit */
+/** 节点抽屉开合/改宽会挤占左侧画布，需重新 fit（放大态节流，避免切换节点卡顿） */
 watch(
   () => [drawerState.open, drawerWidth.value, props.fluid] as const,
-  () => {
-    if (!props.fluid) return
-    fitViewSoon(140)
+  ([open, width, fluid]) => {
+    if (!fluid) return
+    const key = `${open}:${width}`
+    if (key === lastFluidFitKey) return
+    lastFluidFitKey = key
+    fitViewSoon(180)
   },
 )
 

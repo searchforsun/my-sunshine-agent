@@ -1,8 +1,8 @@
 package com.sunshine.sandbox.tool;
 
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.sandbox.api.SandboxPolicyDto;
-import com.sunshine.sandbox.api.ToolInvokeResponse;
+import com.sunshine.common.sandbox.SandboxPolicy;
+import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.ExecResult;
@@ -52,7 +52,7 @@ class SandboxExecTest {
                 sessionId,
                 "cid-exec-1",
                 hostRoot,
-                new SandboxPolicyDto("docker", "sunshine-sandbox-python:3.11-slim", 45, 256, 0.5,
+                new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 45, 256, 0.5,
                         List.of(), List.of())));
     }
 
@@ -99,7 +99,7 @@ class SandboxExecTest {
                 sid,
                 "cid-2",
                 hostRoot,
-                new SandboxPolicyDto("docker", "img", null, 256, 0.5, List.of(), List.of())));
+                new SandboxPolicy("docker", "img", null, 256, 0.5, List.of(), List.of())));
         docker.nextResult = new ExecResult(0, "", "");
         executor.invoke(sid, SandboxToolNames.EXEC, Map.of("command", "true"));
         assertThat(docker.invocations.get(0).timeout()).isEqualTo(Duration.ofSeconds(30));

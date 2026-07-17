@@ -11,6 +11,8 @@ import { useChatScroll } from '../composables/useChatScroll'
 import { useChatSkillMention } from '../composables/useChatSkillMention'
 import { useChatExpertMention } from '../composables/useChatExpertMention'
 import { useChatWorkflowMention } from '../composables/useChatWorkflowMention'
+import { useChatWorkspacePathMention } from '../composables/useChatWorkspacePathMention'
+import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
 import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
 import { useChatSessionHydration } from '../composables/useChatSessionHydration'
 import { useChatStore } from '../stores/chatStore'
@@ -18,6 +20,9 @@ import { isValidConversationId } from '../api/conversations'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { loadActiveGeneration } from '../composables/useActiveGeneration'
+import CopyToggleIcon from '../components/icons/CopyToggleIcon.vue'
+import { NIcon } from 'naive-ui'
+import { DocumentTextOutline, FolderOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
 import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
@@ -346,12 +351,21 @@ const {
   handleWorkflowKeydown,
 } = useChatWorkflowMention(inputText, preference, loading)
 
+const {
+  showPathSuggest,
+  pathSuggestIndex,
+  pathSuggestLoading,
+  filteredPaths,
+  applyPathSuggest,
+  handlePathKeydown,
+} = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef)
+
 const composerPlaceholder = computed(() => {
-  const parts = ['发消息，Enter 发送']
-  if (allowsSkillMention(preference.value)) parts.push('输入 @ 指定 Skill')
-  if (allowsWorkflowMention(preference.value)) parts.push('输入 # 指定工作流')
-  if (allowsExpertMention(preference.value)) parts.push('输入 $ 指定专家')
-  return parts.join('；')
+  const hints = ['/ 工作区']
+  if (allowsSkillMention(preference.value)) hints.push('@ Skill')
+  if (allowsWorkflowMention(preference.value)) hints.push('# 工作流')
+  if (allowsExpertMention(preference.value)) hints.push('$ 专家')
+  return `发消息，Enter 发送 · ${hints.join(' · ')}`
 })
 
 const EMPTY_HINTS = [
@@ -421,6 +435,9 @@ async function handleSend() {
     await nextTick()
     const skillBinding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
     const workflowBinding = resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value)
+    if (skillBinding.skillId) {
+      requestSandboxWorkspaceRefresh(convId, 'skills')
+    }
     const sendPromise = send(text, convId, {
       executionPreference: preference.value,
       skillId: skillBinding.skillId,
@@ -463,6 +480,7 @@ async function handleResume() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (handlePathKeydown(e)) return
   if (handleWorkflowKeydown(e)) return
   if (handleExpertKeydown(e)) return
   handleSkillKeydown(e, () => { void handleSend() })
@@ -726,13 +744,7 @@ watch(
                   :title="copiedIndex === idx ? '已复制' : '复制'"
                   @click="copyAssistantMessage(msg.content, idx)"
                 >
-                  <svg v-if="copiedIndex === idx" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
+                  <CopyToggleIcon :copied="copiedIndex === idx" />
                 </button>
               </div>
               <p
@@ -782,7 +794,28 @@ watch(
           class="composer-box composer-box--input"
           :class="{ 'composer-box--busy': loading }"
         >
-          <ul v-if="showWorkflowSuggest && filteredWorkflows.length && !loading" class="skill-suggest">
+          <ul v-if="showPathSuggest && !loading && (pathSuggestLoading || filteredPaths.length)" class="skill-suggest">
+            <li v-if="pathSuggestLoading" class="skill-suggest-loading">正在加载工作区…</li>
+            <template v-else>
+              <li
+                v-for="(entry, idx) in filteredPaths"
+                :key="entry.path"
+                class="path-suggest-item"
+                :class="{ 'is-highlighted': idx === pathSuggestIndex }"
+                @mousedown.prevent="applyPathSuggest(entry)"
+              >
+                <div class="skill-suggest-main">
+                  <NIcon
+                    :component="entry.isDir ? FolderOutline : DocumentTextOutline"
+                    :size="14"
+                    class="path-suggest-icon"
+                  />
+                  <span class="path-suggest-name">{{ entry.name }}</span>
+                </div>
+              </li>
+            </template>
+          </ul>
+          <ul v-else-if="showWorkflowSuggest && filteredWorkflows.length && !loading" class="skill-suggest">
             <li
               v-for="(wf, idx) in filteredWorkflows"
               :key="wf.id"
@@ -1441,6 +1474,38 @@ watch(
 
 .skill-suggest-id.is-workflow {
   color: var(--mention-workflow-prefix);
+}
+
+.skill-suggest-id.is-path {
+  color: var(--mention-path-prefix);
+}
+
+.skill-suggest li.path-suggest-item {
+  flex-direction: row;
+  align-items: center;
+}
+
+.path-suggest-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--mention-path-prefix);
+}
+
+.path-suggest-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-suggest-loading {
+  cursor: default;
+  color: var(--sun-text-muted);
+}
+
+.skill-suggest-loading:hover {
+  background: transparent;
 }
 
 .skill-suggest-name {

@@ -42,6 +42,7 @@ import {
 } from './chatSessionRegistry'
 import { bumpAssistantMessage } from './chatSessionMutations'
 import { consumeChatSseStream } from './chatSessionSseConsumer'
+import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
 
 export type { SendOptions, SessionState } from './chatSessionRegistry'
 export { appendChunk } from './chatSessionRegistry'
@@ -154,7 +155,10 @@ export function useChatSessions(
           }
           if (meta.type === 'sandbox_session' && meta.active !== false) {
             const cid = meta.conversationId || sessionId
-            if (cid) onSandboxSession?.(sessionId, cid)
+            if (cid) {
+              onSandboxSession?.(sessionId, cid)
+              requestSandboxWorkspaceRefresh(cid, 'skills')
+            }
           }
         },
       })

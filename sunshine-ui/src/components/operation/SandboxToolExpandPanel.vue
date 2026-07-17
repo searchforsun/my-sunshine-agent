@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { NIcon } from 'naive-ui'
-import { CheckmarkOutline, CopyOutline } from '@vicons/ionicons5'
+import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import { useSandboxToolExpand } from '../../composables/useSandboxToolExpand'
 
@@ -35,7 +34,7 @@ const {
       :title="sandboxCopyDone ? '已复制' : '复制'"
       @click.stop="copySandboxContent"
     >
-      <NIcon :component="sandboxCopyDone ? CheckmarkOutline : CopyOutline" :size="14" />
+      <CopyToggleIcon :copied="sandboxCopyDone" />
     </button>
     <template v-if="isSandboxExec">
       <pre v-if="execCommand" class="op-exec-cmd"><span class="op-exec-prompt">$</span><code v-if="execCommandHtml" class="hljs language-bash" v-html="execCommandHtml" /><span v-else class="op-exec-cmd-plain">{{ execCommand }}</span></pre>

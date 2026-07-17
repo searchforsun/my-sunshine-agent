@@ -1,8 +1,8 @@
 package com.sunshine.sandbox.session;
 
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.sandbox.api.CreateSessionRequest;
-import com.sunshine.sandbox.api.SandboxPolicyDto;
+import com.sunshine.common.sandbox.CreateSessionRequest;
+import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.EgressProxyManager;
@@ -43,7 +43,7 @@ class SandboxSessionServiceTest {
     void createEmptySkillsThenMountAndCloseRemovesContainer() throws Exception {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicyDto("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
+                new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
                         List.of(), List.of("ls *")),
                 Map.of(),
                 Map.of("note.txt", "hi"));
@@ -91,7 +91,7 @@ class SandboxSessionServiceTest {
     void createWithNetworkAllowUsesSandboxNetAndProxyEnv() {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicyDto(null, null, null, null, null,
+                new SandboxPolicy(null, null, null, null, null,
                         List.of("pypi.org", "files.pythonhosted.org"), null),
                 Map.of(), Map.of());
 
@@ -115,7 +115,7 @@ class SandboxSessionServiceTest {
     void emptyNetworkAllowStillUsesNone() {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicyDto(null, null, null, null, null, List.of(), null),
+                new SandboxPolicy(null, null, null, null, null, List.of(), null),
                 Map.of(), Map.of());
         service.create(req);
         assertThat(docker.lastRunArgs).containsSequence("--network", "none");
@@ -135,7 +135,7 @@ class SandboxSessionServiceTest {
     void rejectsSkillFileOutsideScriptsOrReferences() {
         String sessionId = service.create(new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicyDto(null, null, null, null, null, List.of(), null),
+                new SandboxPolicy(null, null, null, null, null, List.of(), null),
                 Map.of(), Map.of()));
         assertThatThrownBy(() -> service.mountSkill(sessionId, "demo", Map.of("bin/hack.sh", "x")))
                 .isInstanceOf(BizException.class)
@@ -147,7 +147,7 @@ class SandboxSessionServiceTest {
     void rejectsInvalidImage() {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicyDto(null, "-evil", null, null, null, List.of(), null),
+                new SandboxPolicy(null, "-evil", null, null, null, List.of(), null),
                 Map.of(), Map.of());
         assertThatThrownBy(() -> service.create(req))
                 .isInstanceOf(BizException.class)
@@ -163,7 +163,7 @@ class SandboxSessionServiceTest {
         service = new SandboxSessionService(docker, store, props, new EgressProxyManager(docker, props));
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicyDto(null, "  ", null, null, null, List.of(), null),
+                new SandboxPolicy(null, "  ", null, null, null, List.of(), null),
                 Map.of(), Map.of());
         assertThatThrownBy(() -> service.create(req))
                 .isInstanceOf(BizException.class)
@@ -183,7 +183,7 @@ class SandboxSessionServiceTest {
         service = new SandboxSessionService(docker, failingStore, props, new EgressProxyManager(docker, props));
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicyDto("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
+                new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
                         List.of(), List.of()),
                 Map.of(), Map.of());
         assertThatThrownBy(() -> service.create(req))

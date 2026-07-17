@@ -1,5 +1,7 @@
 package com.sunshine.skill.dto;
 
+import com.sunshine.common.sandbox.SandboxPolicy;
+
 import java.time.Instant;
 
 /** Skill 目录详情 — 含正文 overlay，供 runtime 按需加载 */

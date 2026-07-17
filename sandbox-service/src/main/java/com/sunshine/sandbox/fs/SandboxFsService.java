@@ -1,8 +1,8 @@
 package com.sunshine.sandbox.fs;
 
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.sandbox.api.FsContentDto;
-import com.sunshine.sandbox.api.FsNodeDto;
+import com.sunshine.common.sandbox.FsContentDto;
+import com.sunshine.common.sandbox.FsNodeDto;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import com.sunshine.sandbox.jail.PathJail;
 import com.sunshine.sandbox.session.SandboxSession;

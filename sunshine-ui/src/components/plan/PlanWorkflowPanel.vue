@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import {
   formatDuration,
@@ -14,7 +14,7 @@ import { buildDagNodes, resolveDagNodeStep, type DagNodeView } from '../../utils
 import { type HitlConfirmationPayload } from '../../api/hitlSteps'
 import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
-import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
+import { usePlanDagExpand, unregisterPlanDagSelectHandler, registerPlanDagSelectHandler } from '../../composables/usePlanDagExpand'
 import PlanExecutionCanvas from './PlanExecutionCanvas.vue'
 import PlanApprovalActions from './PlanApprovalActions.vue'
 import {
@@ -241,20 +241,47 @@ function onExpandDag() {
   }, onSelectNode)
 }
 
+function dagNodesSignature(nodes: DagNodeView[]): string {
+  return nodes.map(n => [
+    n.id,
+    n.status,
+    n.durationMs ?? '',
+    n.attemptCount ?? '',
+    n.summary ?? '',
+    n.recoveryAwaiting ? '1' : '0',
+    attemptsSignature(n),
+  ].join(':')).join('|')
+}
+
+const dagNodesSig = computed(() => dagNodesSignature(dagNodes.value))
+
+let lastExpandSyncSig = ''
+
 function syncExpandLayer() {
   const id = planId.value
   const graph = graphSource.value
   if (!id || !graph || !isExpanded(id)) return
-  updateExpand({
-    title: label.value,
-    userQuery: props.userQuery,
-    graph,
-    nodes: dagNodes.value,
-    selectedId: selectedId.value,
-    live: props.live,
-    loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
-  })
-  bindSelect(onSelectNode)
+  const syncSig = [
+    label.value,
+    selectedId.value ?? '',
+    dagNodesSig.value,
+    props.live ? '1' : '0',
+    isRegenerating.value ? '1' : '0',
+    props.userQuery ?? '',
+  ].join('\u0001')
+  if (syncSig !== lastExpandSyncSig) {
+    lastExpandSyncSig = syncSig
+    updateExpand({
+      title: label.value,
+      userQuery: props.userQuery,
+      graph,
+      nodes: dagNodes.value,
+      selectedId: selectedId.value,
+      live: props.live,
+      loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
+    })
+  }
+  bindSelect(id, onSelectNode)
 }
 
 async function loadPlan() {
@@ -301,6 +328,13 @@ function resetGraphForPlan(id: string | undefined) {
 onMounted(() => {
   void loadPlan()
   void listSkillCatalogIndex().then(list => { skillCatalog.value = list }).catch(() => {})
+  const id = planId.value
+  if (id) registerPlanDagSelectHandler(id, onSelectNode)
+})
+
+onUnmounted(() => {
+  const id = planId.value
+  if (id) unregisterPlanDagSelectHandler(id)
 })
 watch(approvalRoundsKey, (key, prev) => {
   if (key !== prev && planId.value) {
@@ -318,7 +352,10 @@ watch(
   },
 )
 watch(planId, (id, prev) => {
+  if (prev) unregisterPlanDagSelectHandler(prev)
+  if (id) registerPlanDagSelectHandler(id, onSelectNode)
   if (id === prev) return
+  lastExpandSyncSig = ''
   if (expandState.activePlanId && expandState.activePlanId === prev && id) {
     expandState.activePlanId = id
   } else if (expandState.activePlanId && expandState.activePlanId !== id) {
@@ -339,11 +376,23 @@ watch(
     if (id && id !== prev && planId.value) void loadPlan()
   },
 )
-watch(dagNodes, (nodes) => {
+watch(dagNodesSig, () => {
+  const nodes = dagNodes.value
   syncDrawerSelection(nodes)
   syncExpandLayer()
   maybeAutoOpenDrawer(nodes)
-}, { deep: true })
+})
+watch(
+  () => {
+    const nid = drawerState.node?.id
+    if (!nid || !isActivePlan(planId.value)) return ''
+    return stepContentSignature(stepForNode(nid))
+  },
+  () => syncDrawerSelection(dagNodes.value),
+)
+watch(() => expandState.activePlanId, (activeId) => {
+  if (!activeId || activeId !== planId.value) lastExpandSyncSig = ''
+})
 watch(selectedId, () => syncExpandLayer())
 watch(isRegenerating, () => syncExpandLayer())
 </script>

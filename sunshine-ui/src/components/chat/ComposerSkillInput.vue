@@ -58,6 +58,14 @@ const mentionContext = computed<ComposerMentionContext>(() => ({
   },
 }))
 
+const isEditorEmpty = computed(() => !props.modelValue.trim())
+
+function normalizeEmptyEditor(el: HTMLDivElement) {
+  if (!plainTextFromEditor(el).trim() && el.childNodes.length > 0) {
+    el.replaceChildren()
+  }
+}
+
 function resizeEditor(el: HTMLDivElement) {
   el.style.height = 'auto'
   el.style.height = `${el.scrollHeight}px`
@@ -110,6 +118,12 @@ function onEditorInput() {
   emit('update:modelValue', plain)
   syncing.value = false
   if (isComposing.value) {
+    normalizeEmptyEditor(el)
+    resizeEditor(el)
+    return
+  }
+  if (!plain.trim()) {
+    normalizeEmptyEditor(el)
     resizeEditor(el)
     return
   }
@@ -126,6 +140,11 @@ function onCompositionEnd() {
   const el = editorRef.value
   const plain = plainTextFromEditor(el)
   const caret = getCaretPlainOffset(el)
+  if (!plain.trim()) {
+    normalizeEmptyEditor(el)
+    resizeEditor(el)
+    return
+  }
   if (editorNeedsChipSync(el, plain, mentionContext.value)) {
     syncChipEditor(plain, caret)
   } else {
@@ -216,6 +235,7 @@ onMounted(() => {
     <div
       ref="editorRef"
       class="composer-editor"
+      :class="{ 'is-empty': isEditorEmpty }"
       contenteditable="true"
       role="textbox"
       aria-multiline="true"
@@ -266,9 +286,11 @@ onMounted(() => {
   display: block;
 }
 
-.composer-editor:empty::before {
+.composer-editor.is-empty::before {
   content: attr(data-placeholder);
   color: var(--sun-text-muted);
+  font-size: var(--sun-font-sm);
+  line-height: 1.4;
   pointer-events: none;
 }
 </style>

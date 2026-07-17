@@ -1,7 +1,7 @@
 package com.sunshine.skill.service;
 
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.skill.dto.SandboxPolicy;
+import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.exception.SkillErrorCode;
 import org.junit.jupiter.api.Test;

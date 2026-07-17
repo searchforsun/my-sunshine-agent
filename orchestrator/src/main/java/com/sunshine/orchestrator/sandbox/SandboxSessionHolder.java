@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.sandbox;
 
 import com.sunshine.orchestrator.agent.StepEventBridge;
-import com.sunshine.orchestrator.catalog.SandboxPolicy;
+import com.sunshine.common.sandbox.SandboxPolicy;
 
 import java.util.concurrent.ConcurrentHashMap;
 

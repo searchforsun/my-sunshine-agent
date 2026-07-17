@@ -19,13 +19,9 @@
 
 ### 代码债
 
-| ID | 严重度 | 状态 | 位置 | 摘要 |
-|----|--------|------|------|------|
-| TD-109 | P2 | done | `SandboxWorkspaceDrawer.vue` 1031 行 | 拆 tree/tabs/preview |
+_（Backlog 已空 — 2026-07-17 沙箱债 TD-110 已消化）_
 
-**2026-07-17 TD-109 已消化**：`useSandboxFileTree` + `useSandboxPreviewTabs` + `SandboxFileTreePane` + `SandboxPreviewPane`；`SandboxWorkspaceDrawer` 1031→~230 行。
-| TD-110 | P1 | open | Policy/DTO 多模块拷贝 | 抽 shared / codegen |
-| TD-111 | P2 | done | `ToolCatalogService` 沙箱中文名 + AgentTools schema | 迁 Nacos `agent.sandbox.tools` |
+**2026-07-17 TD-110 已消化**：沙箱 `SandboxPolicy` + 5 RPC DTO 迁至 `com.sunshine.common.sandbox`；删 orchestrator/skill-manager/sandbox-service 六处拷贝；`SandboxPolicyDto` 合并为 `SandboxPolicy`。
 
 **2026-07-17 TD-111 已消化**：`agent.sandbox.tools` 承载 displayName/description/schema；`ToolCatalogService` + `SandboxAgentTools` 读 `AgentSandboxProperties`。
 
@@ -169,7 +165,9 @@
 | TD-107 | 2026-07-17 | 删未接线 `grepAfterWithPath`（Properties + Nacos） |
 | TD-108 | 2026-07-17 | 删 edit 旧 `<<< old` 解析；Binding 5 字段兼容构造 |
 | TD-106 | 2026-07-17 | 沙箱时间线 SSOT：后端 headerPath/glob 推断 + metadata；前端停二次加工 |
-| TD-112 | 2026-07-17 | 抽 `useSandboxToolExpand` + `SandboxToolExpandPanel`；OperationCard 瘦身 |
+| TD-111 | 2026-07-17 | `agent.sandbox.tools` SSOT；删 ToolCatalogService 硬编码 + AgentTools schema |
+| TD-110 | 2026-07-17 | 沙箱 Policy/DTO SSOT：`com.sunshine.common.sandbox`；删 14 处模块内拷贝 |
+| TD-109 | 2026-07-17 | 抽 `useSandboxFileTree` + `useSandboxPreviewTabs` + 子组件；抽屉 1031→~254 行 |
 
 ### 文档债（DOC）
 

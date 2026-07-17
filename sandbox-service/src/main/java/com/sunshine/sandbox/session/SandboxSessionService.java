@@ -2,8 +2,8 @@ package com.sunshine.sandbox.session;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.exception.FixedErrorCode;
-import com.sunshine.sandbox.api.CreateSessionRequest;
-import com.sunshine.sandbox.api.SandboxPolicyDto;
+import com.sunshine.common.sandbox.CreateSessionRequest;
+import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.EgressProxyManager;
@@ -47,8 +47,8 @@ public class SandboxSessionService {
     private final EgressProxyManager egressProxyManager;
 
     public String create(CreateSessionRequest req) {
-        SandboxPolicyDto policy = req.policy() != null ? req.policy()
-                : new SandboxPolicyDto(null, null, null, null, null, null, null);
+        SandboxPolicy policy = req.policy() != null ? req.policy()
+                : new SandboxPolicy(null, null, null, null, null, null, null);
         List<String> networkAllow = policy.networkAllow() != null ? policy.networkAllow() : List.of();
         String sessionId = UUID.randomUUID().toString().replace("-", "");
         Path hostRoot = Path.of(properties.getDocker().getHostDataRoot(), sessionId);
@@ -79,7 +79,7 @@ public class SandboxSessionService {
             String containerId = dockerCli.runDetached(args);
             dockerStarted = true;
             storedId = containerId != null && !containerId.isBlank() ? containerId.trim() : containerName;
-            SandboxPolicyDto resolved = new SandboxPolicyDto(
+            SandboxPolicy resolved = new SandboxPolicy(
                     policy.runtime() != null ? policy.runtime() : "docker",
                     image,
                     policy.timeoutSec() != null ? policy.timeoutSec() : properties.getDocker().getDefaultTimeoutSec(),

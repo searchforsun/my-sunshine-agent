@@ -1,11 +1,11 @@
 package com.sunshine.orchestrator.client;
 
 import com.sunshine.common.core.result.R;
-import com.sunshine.orchestrator.client.sandbox.CreateSessionRequest;
-import com.sunshine.orchestrator.client.sandbox.CreateSessionResponse;
-import com.sunshine.orchestrator.client.sandbox.FsContentDto;
-import com.sunshine.orchestrator.client.sandbox.FsNodeDto;
-import com.sunshine.orchestrator.client.sandbox.ToolInvokeResponse;
+import com.sunshine.common.sandbox.CreateSessionRequest;
+import com.sunshine.common.sandbox.CreateSessionResponse;
+import com.sunshine.common.sandbox.FsContentDto;
+import com.sunshine.common.sandbox.FsNodeDto;
+import com.sunshine.common.sandbox.ToolInvokeResponse;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

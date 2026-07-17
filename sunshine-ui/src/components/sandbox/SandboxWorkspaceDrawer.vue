@@ -3,10 +3,12 @@ import { watch } from 'vue'
 import { NIcon } from 'naive-ui'
 import { RefreshOutline } from '@vicons/ionicons5'
 import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
+import { sandboxWorkspaceRefresh } from '../../composables/sandboxWorkspaceRefresh'
 import { useWriteHitlMode } from '../../composables/useWriteHitlMode'
 import { useSandboxFileTree } from '../../composables/useSandboxFileTree'
 import { useSandboxPreviewTabs } from '../../composables/useSandboxPreviewTabs'
 import WriteHitlModeSelector from './WriteHitlModeSelector.vue'
+import DrawerCollapseIcon from '../icons/DrawerCollapseIcon.vue'
 import SandboxFileTreePane from './SandboxFileTreePane.vue'
 import SandboxPreviewPane from './SandboxPreviewPane.vue'
 
@@ -37,6 +39,7 @@ const {
   onSelect,
   revealPath,
   resetTree,
+  reloadBranch,
 } = useSandboxFileTree({
   getConversationId: () => state.conversationId,
   onOpenFile: (path) => openFile(path),
@@ -64,6 +67,7 @@ const {
   resetPreview,
   resetTabsOnConversationChange,
   clearCache,
+  clearCacheUnder,
 } = useSandboxPreviewTabs({
   getConversationId: () => state.conversationId,
   selectedKeys,
@@ -78,6 +82,16 @@ async function refresh() {
   if (keepTabs.length) {
     openTabs.value = keepTabs.map((path) => ({ path }))
     if (keepActive) await previewOpenFile(keepActive)
+  }
+}
+
+async function refreshBranch(scope: 'workspace' | 'skills') {
+  const prefix = scope === 'workspace' ? '/workspace' : '/skills'
+  clearCacheUnder(prefix)
+  await reloadBranch(prefix)
+  const keepActive = selectedPath.value
+  if (keepActive?.startsWith(prefix)) {
+    await previewOpenFile(keepActive)
   }
 }
 
@@ -101,6 +115,15 @@ watch(
       await loadRoots()
       if (focus) await revealPath(focus)
     })()
+  },
+)
+
+watch(
+  () => sandboxWorkspaceRefresh.tick,
+  () => {
+    if (!state.open || !state.conversationId) return
+    if (sandboxWorkspaceRefresh.conversationId !== state.conversationId) return
+    void refreshBranch(sandboxWorkspaceRefresh.scope)
   },
 )
 </script>
@@ -130,7 +153,9 @@ watch(
           <button type="button" class="icon-btn" title="刷新" aria-label="刷新" @click="refresh">
             <NIcon :component="RefreshOutline" :size="15" />
           </button>
-          <button type="button" class="drawer-close" aria-label="关闭" @click="close">×</button>
+          <button type="button" class="drawer-close" title="收起" aria-label="收起" @click="close">
+            <DrawerCollapseIcon :size="16" />
+          </button>
         </div>
       </div>
     </header>
@@ -268,10 +293,11 @@ watch(
   border: none;
   background: transparent;
   color: var(--sun-text-muted);
-  font-size: 18px;
-  line-height: 1;
   cursor: pointer;
   padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .drawer-close:hover {

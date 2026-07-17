@@ -22,6 +22,7 @@
 | 路径 | 说明 |
 |------|------|
 | `docs/nacos/sunshine-orchestrator.yaml` → `agent.sandbox` / `agent.sandbox.tools` / `agent.timeline.sandbox` / `agent.hitl` | 运行时、工具 schema 与时间线文案 |
+| `com.sunshine.common.sandbox` | Policy + RPC DTO SSOT（orchestrator · skill-manager · sandbox-service） |
 | `docs/nacos/sunshine-sandbox-service.yaml` | Docker / 出网等 |
 | [sandbox-coding-demo howto](../skills/sandbox-coding-demo/references/sandbox-howto.md) | 路径约定与推荐工具 |
 | [docs/skills/README.md](../skills/README.md) | 示例入库与方案 B 关系 |

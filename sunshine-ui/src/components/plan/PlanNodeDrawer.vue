@@ -19,14 +19,17 @@ import { formatPlanNodeType } from '../../api/executionPlans'
 import type { DagNodeStatus } from '../../utils/planGraph'
 import type { PlanNodeAttempt } from '../../api/executionPlans'
 import PlanNodeIcon from './PlanNodeIcon.vue'
+import DrawerCollapseIcon from '../icons/DrawerCollapseIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
+import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
 import { resolveExclusiveBranches } from '../../utils/exclusiveBranchDisplay'
 import { resolveLoopContinueRows } from '../../utils/loopContinueDisplay'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
+const { isAnyExpanded: planDagExpanded } = usePlanDagExpand()
 const applyHitlDecision = inject<(token: string, approved: boolean) => void>('applyHitlDecision', () => {})
 const applyRecoveryDecision = inject<(token: string, action: 'retry' | 'terminate' | 'skip') => void>('applyRecoveryDecision', () => {})
 const resolveLiveNodeStep = inject<(nodeId: string) => ProcessingStep | undefined>('planDrawerLiveNodeStep', () => undefined)
@@ -278,6 +281,7 @@ watch(
   <aside
     v-if="state.open && node"
     class="plan-drawer"
+    :class="{ 'is-over-expand': planDagExpanded }"
     role="complementary"
     aria-label="节点详情"
     :style="{ width: `${drawerWidth}px` }"
@@ -298,7 +302,9 @@ watch(
           </span>
           <h3 class="drawer-title">{{ title }}</h3>
         </div>
-        <button type="button" class="drawer-close" aria-label="关闭" @click="close">×</button>
+        <button type="button" class="drawer-close" title="收起" aria-label="收起" @click="close">
+          <DrawerCollapseIcon :size="16" />
+        </button>
       </div>
 
       <p v-if="userQuery" class="drawer-meta-line" :title="`用户问题 ${userQuery}`">
@@ -462,6 +468,10 @@ watch(
   box-shadow: -8px 0 24px color-mix(in srgb, black 8%, transparent);
 }
 
+.plan-drawer.is-over-expand {
+  z-index: 210;
+}
+
 .drawer-resize-handle {
   position: absolute;
   left: -5px;
@@ -584,9 +594,10 @@ watch(
   border-radius: 6px;
   background: transparent;
   color: var(--sun-text-muted);
-  font-size: 20px;
-  line-height: 1;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .drawer-status-row {

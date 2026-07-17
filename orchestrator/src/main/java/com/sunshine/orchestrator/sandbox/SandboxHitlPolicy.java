@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.sandbox;
 
-import com.sunshine.orchestrator.catalog.SandboxPolicy;
+import com.sunshine.common.sandbox.SandboxPolicy;
 
 import java.util.List;
 import java.util.Map;

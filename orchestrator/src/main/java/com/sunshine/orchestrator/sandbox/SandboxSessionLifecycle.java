@@ -3,12 +3,11 @@ package com.sunshine.orchestrator.sandbox;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
-import com.sunshine.orchestrator.catalog.SandboxPolicy;
+import com.sunshine.common.sandbox.CreateSessionRequest;
+import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.orchestrator.client.SandboxClient;
 import com.sunshine.orchestrator.client.SkillCatalogClient;
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.client.sandbox.CreateSessionRequest;
-import com.sunshine.orchestrator.client.sandbox.SandboxPolicyDto;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -219,7 +218,7 @@ public class SandboxSessionLifecycle {
                 tenantId,
                 skillId,
                 runId,
-                toDto(policy),
+                policy,
                 Map.of(),
                 Map.of()));
     }
@@ -252,20 +251,6 @@ public class SandboxSessionLifecycle {
                 rt.getCpus(),
                 rt.getNetworkAllow() != null ? rt.getNetworkAllow() : List.of(),
                 rt.getExecReadonlyAllow() != null ? rt.getExecReadonlyAllow() : List.of());
-    }
-
-    private static SandboxPolicyDto toDto(SandboxPolicy policy) {
-        if (policy == null) {
-            return null;
-        }
-        return new SandboxPolicyDto(
-                policy.runtime(),
-                policy.image(),
-                policy.timeoutSec(),
-                policy.memoryMb(),
-                policy.cpus(),
-                policy.networkAllow(),
-                policy.execReadonlyAllow());
     }
 
     private record EnsureResult(String sessionId, List<String> loadedSkillIds) {}

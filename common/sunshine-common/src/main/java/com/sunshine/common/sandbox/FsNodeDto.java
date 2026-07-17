@@ -1,9 +1,10 @@
-package com.sunshine.sandbox.api;
+package com.sunshine.common.sandbox;
 
 import java.util.List;
 
 /** 目录列表节点（容器路径语义） */
 public record FsNodeDto(String name, String path, String type, Long size) {
+
     public static FsNodeDto dir(String name, String path) {
         return new FsNodeDto(name, path, "dir", null);
     }

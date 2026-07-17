@@ -24,7 +24,23 @@ const state = reactive({
   loadingLabel: undefined as string | undefined,
 })
 
-let selectHandler: ((node: DagNodeView) => void) | null = null
+/** 按 planId 注册，避免放大层与 PlanWorkflowPanel 闭包 handler 脱节 */
+const selectHandlers = new Map<string, (node: DagNodeView) => void>()
+
+export function registerPlanDagSelectHandler(
+  planId: string,
+  onSelect: (node: DagNodeView) => void,
+) {
+  const id = planId.trim()
+  if (!id) return
+  selectHandlers.set(id, onSelect)
+}
+
+export function unregisterPlanDagSelectHandler(planId: string) {
+  const id = planId.trim()
+  if (!id) return
+  selectHandlers.delete(id)
+}
 
 export function usePlanDagExpand() {
   function open(payload: PlanDagExpandPayload, onSelect: (node: DagNodeView) => void) {
@@ -36,7 +52,7 @@ export function usePlanDagExpand() {
     state.selectedId = payload.selectedId
     state.live = !!payload.live
     state.loadingLabel = payload.loadingLabel
-    selectHandler = onSelect
+    registerPlanDagSelectHandler(payload.planId, onSelect)
   }
 
   function update(payload: Partial<PlanDagExpandPayload>) {
@@ -59,7 +75,6 @@ export function usePlanDagExpand() {
     state.selectedId = undefined
     state.live = false
     state.loadingLabel = undefined
-    selectHandler = null
   }
 
   function isExpanded(planId: string | undefined) {
@@ -68,13 +83,15 @@ export function usePlanDagExpand() {
 
   function handleSelect(node: DagNodeView) {
     state.selectedId = node.id
-    selectHandler?.(node)
+    const pid = state.activePlanId
+    if (!pid) return
+    selectHandlers.get(pid)?.(node)
   }
 
-  /** 放大态下每次 sync 重新绑定，避免 handler 丢失后点击无响应 */
-  function bindSelect(onSelect: (node: DagNodeView) => void) {
-    if (!state.activePlanId) return
-    selectHandler = onSelect
+  /** 放大态 sync 时重绑当前 plan 的 handler */
+  function bindSelect(planId: string, onSelect: (node: DagNodeView) => void) {
+    if (!state.activePlanId || state.activePlanId !== planId) return
+    registerPlanDagSelectHandler(planId, onSelect)
   }
 
   const isAnyExpanded = computed(() => !!state.activePlanId)

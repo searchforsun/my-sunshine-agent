@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { NIcon } from 'naive-ui'
 import {
-  CheckmarkOutline,
   CloseOutline,
   CodeSlashOutline,
-  CopyOutline,
   DocumentTextOutline,
   EyeOutline,
 } from '@vicons/ionicons5'
+import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { tabFileName } from '../../composables/useSandboxPreviewTabs'
 
@@ -89,7 +88,7 @@ const tabbarRef = defineModel<HTMLElement | null>('tabbarRef', { default: null }
           :title="copyDone ? '已复制' : '复制'"
           @click="emit('copyPreview')"
         >
-          <NIcon :component="copyDone ? CheckmarkOutline : CopyOutline" :size="14" />
+              <CopyToggleIcon :copied="copyDone" />
         </button>
       </div>
     </div>

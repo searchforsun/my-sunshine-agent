@@ -3,7 +3,7 @@ package com.sunshine.skill.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.util.VersionTimestampDedup;
-import com.sunshine.skill.dto.SandboxPolicy;
+import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.skill.dto.SandboxPolicyCodec;
 import com.sunshine.skill.dto.SkillCatalogEntry;
 import com.sunshine.skill.dto.SkillCatalogIndexEntry;

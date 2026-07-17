@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { NIcon, NInput, NSelect, useMessage } from 'naive-ui'
-import { CheckmarkOutline, CopyOutline } from '@vicons/ionicons5'
+import { NInput, NSelect, useMessage } from 'naive-ui'
+import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
 import type { ToolCatalogEntry } from '../../api/tools'
 import type { WorkflowPlanNode } from '../../api/workflows'
 import WorkflowNodeConfigSection from './WorkflowNodeConfigSection.vue'
@@ -129,7 +129,7 @@ function applyPreset(value: string) {
           :title="copiedRef === item.ref ? '已复制' : '复制'"
           @click.stop="onCopyRef(item.ref)"
         >
-          <NIcon :component="copiedRef === item.ref ? CheckmarkOutline : CopyOutline" :size="14" />
+          <CopyToggleIcon :copied="copiedRef === item.ref" />
         </button>
       </div>
     </div>

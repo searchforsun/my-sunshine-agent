@@ -8,7 +8,7 @@ export interface SandboxPathDragPayload {
   isDir: boolean
 }
 
-const PATH_TOKEN_RE = /`(\/(?:workspace|skills)\/[^`\n]+)`/g
+const PATH_TOKEN_RE = /`(\/(?:workspace|skills)(?:\/[^`\n]*)?)`/g
 
 export function isSandboxContainerPath(path: string): boolean {
   return /^\/(?:workspace|skills)(?:\/|$)/.test(path.trim())
@@ -60,7 +60,7 @@ export function parseSandboxPathDrag(dataTransfer: DataTransfer | null): Sandbox
       isDir: !/\.[^./]+$/.test(plain),
     }
   }
-  const tick = plain?.match(/^`(\/(?:workspace|skills)\/[^`]+)`$/)
+  const tick = plain?.match(/^`(\/(?:workspace|skills)(?:\/[^`]*)?)`$/)
   if (tick?.[1]) {
     return {
       path: tick[1],

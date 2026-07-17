@@ -1,6 +1,6 @@
 package com.sunshine.sandbox.metrics;
 
-import com.sunshine.sandbox.api.SandboxPolicyDto;
+import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -24,7 +24,7 @@ class SandboxMetricsTest {
         assertThat(registry.get("sandbox.session.active").gauge().value()).isEqualTo(0.0);
         store.put(new SandboxSession(
                 "s1", "c1", temp,
-                new SandboxPolicyDto("docker", "img", 30, 256, 0.5, List.of(), List.of())));
+                new SandboxPolicy("docker", "img", 30, 256, 0.5, List.of(), List.of())));
         assertThat(registry.get("sandbox.session.active").gauge().value()).isEqualTo(1.0);
         store.remove("s1");
         assertThat(registry.get("sandbox.session.active").gauge().value()).isEqualTo(0.0);

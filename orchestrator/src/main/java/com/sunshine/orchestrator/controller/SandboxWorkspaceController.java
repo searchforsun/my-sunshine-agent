@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.controller;
 
-import com.sunshine.orchestrator.client.sandbox.FsContentDto;
-import com.sunshine.orchestrator.client.sandbox.FsNodeDto;
+import com.sunshine.common.sandbox.FsContentDto;
+import com.sunshine.common.sandbox.FsNodeDto;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
 import com.sunshine.orchestrator.sandbox.SandboxWorkspaceService;
 import lombok.RequiredArgsConstructor;

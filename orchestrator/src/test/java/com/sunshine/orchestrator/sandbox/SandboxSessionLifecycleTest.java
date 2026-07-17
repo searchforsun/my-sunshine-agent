@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.sandbox;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.client.SandboxClient;
 import com.sunshine.orchestrator.client.SkillCatalogClient;
-import com.sunshine.orchestrator.client.sandbox.CreateSessionRequest;
+import com.sunshine.common.sandbox.CreateSessionRequest;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import org.junit.jupiter.api.AfterEach;

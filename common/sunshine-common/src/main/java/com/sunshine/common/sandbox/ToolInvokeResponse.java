@@ -1,8 +1,7 @@
-package com.sunshine.orchestrator.client.sandbox;
+package com.sunshine.common.sandbox;
 
 import java.util.Map;
 
-/** 沙箱工具调用结果 — 对齐 sandbox-service ToolInvokeResponse */
 public record ToolInvokeResponse(
         boolean ok,
         String output,

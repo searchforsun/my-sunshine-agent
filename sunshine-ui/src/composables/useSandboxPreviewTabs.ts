@@ -224,6 +224,20 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     previewCache.value = {}
   }
 
+  function clearCacheUnder(pathPrefix: string) {
+    const prefix = pathPrefix.trim()
+    if (!prefix) return
+    const next = { ...previewCache.value }
+    let changed = false
+    for (const key of Object.keys(next)) {
+      if (key === prefix || key.startsWith(`${prefix}/`)) {
+        delete next[key]
+        changed = true
+      }
+    }
+    if (changed) previewCache.value = next
+  }
+
   return {
     selectedPath,
     openTabs,
@@ -247,5 +261,6 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     resetPreview,
     resetTabsOnConversationChange,
     clearCache,
+    clearCacheUnder,
   }
 }
