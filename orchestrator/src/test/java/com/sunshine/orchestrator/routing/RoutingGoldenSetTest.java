@@ -177,8 +177,8 @@ class RoutingGoldenSetTest {
             return msg;
         });
 
-        when(skillCatalogService.indexEntries()).thenReturn(List.of());
-
+        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
 
@@ -299,7 +299,8 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm");
 
-        when(intentRouter.classifyPlan("先帮我写一封邮件再总结一下")).thenReturn(Mono.just(llmPlan));
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(llmPlan));
 
         assertThat(router.route("先帮我写一封邮件再总结一下").block()).isEqualTo(llmPlan);
 
@@ -353,11 +354,13 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm:fallback");
 
-        when(intentRouter.classifyPlan("随便聊聊")).thenReturn(Mono.just(llmPlan));
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(llmPlan));
 
         assertThat(router.route("随便聊聊").block()).isEqualTo(llmPlan);
 
-        verify(intentRouter).classifyPlan("随便聊聊");
+        verify(intentRouter).classifyPlan(org.mockito.ArgumentMatchers.<RoutingContext>argThat(
+                ctx -> "随便聊聊".equals(ctx.userMessage())));
 
     }
 
@@ -380,17 +383,18 @@ class RoutingGoldenSetTest {
     @Test
     void autoDiscoverSkillAfterReactClassify() {
         String query = "帮我做一笔报销的合规分析";
-        when(skillCatalogService.indexEntries()).thenReturn(List.of(
-                new SkillCatalogIndexEntry("finance-analysis", "财务分析", "报销合规分析", 1, true)));
         when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
-        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm");
-        when(intentRouter.classifyPlan(query)).thenReturn(Mono.just(llmPlan));
+        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null,
+                Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis"), "llm matched skill");
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(llmPlan));
+        when(skillCatalogService.sanitizeSkillPlan(llmPlan)).thenReturn(llmPlan);
 
         ExecutionPlan plan = router.route(query).block();
 
         assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        assertThat(plan.reason()).isEqualTo("skill:auto-discovered");
+        assertThat(plan.reason()).isEqualTo("llm matched skill");
     }
 
     @Test
@@ -425,7 +429,8 @@ class RoutingGoldenSetTest {
 
     @Test
     void forcedJ3_workflow_knowledgeQa() {
-        when(intentRouter.classifyPlan("年假可以请几天")).thenReturn(Mono.just(new ExecutionPlan(
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
         ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, "年假可以请几天", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
@@ -453,7 +458,8 @@ class RoutingGoldenSetTest {
     @Test
     void forcedJ5_workflow_ignoresAtSkill() {
         String query = "@policy-review 年假可以请几天";
-        when(intentRouter.classifyPlan("年假可以请几天")).thenReturn(Mono.just(new ExecutionPlan(
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
         ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
@@ -553,7 +559,8 @@ class RoutingGoldenSetTest {
     void workflowI5_atKnowledgeQaNotWorkflow() {
         String query = "@knowledge-qa 测试";
         when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
-        when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(new ExecutionPlan(
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.REACT, null, Map.of(), "llm")));
         ExecutionPlan plan = router.route(query).block();
         assertThat(plan.workflowId()).isNull();

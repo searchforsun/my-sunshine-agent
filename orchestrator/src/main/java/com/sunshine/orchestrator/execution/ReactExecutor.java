@@ -57,7 +57,8 @@ public class ReactExecutor {
         }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
-                        injectedBlocks != null ? injectedBlocks : List.of(), skillId, ctx.reactRestart()));
+                        injectedBlocks != null ? injectedBlocks : List.of(), skillId, ctx.reactRestart(),
+                        ctx.conversationId()));
     }
 
     private static String blankToNull(String value) {

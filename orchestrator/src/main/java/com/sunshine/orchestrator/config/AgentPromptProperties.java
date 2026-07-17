@@ -75,6 +75,8 @@ public class AgentPromptProperties {
         private AgentTimeline agent = new AgentTimeline();
         /** RAG 步骤 after 摘要模板 */
         private RagAfterTimeline ragAfter = new RagAfterTimeline();
+        /** 沙箱工具时间线（path / pattern / command），SSOT：Nacos agent.timeline.sandbox */
+        private SandboxTimeline sandbox = new SandboxTimeline();
 
         private static java.util.LinkedHashMap<String, StepTimeline> defaultSteps() {
             var map = new java.util.LinkedHashMap<String, StepTimeline>();
@@ -252,6 +254,30 @@ public class AgentPromptProperties {
         private String approved = "用户已确认，正在调用 {toolDisplayName}";
         private String denied = "用户取消调用";
         private String skippedAfter = "用户取消调用，已跳过";
+    }
+
+    /**
+     * 沙箱六工具时间线 — 占位符 {displayName} {path} {fileName} {displayPath} {pattern} {command} {cwd}。
+     */
+    @Getter
+    @Setter
+    public static class SandboxTimeline {
+
+        private String afterFallback = "";
+        private String readAfter = "{path}";
+        private String writeAfter = "{path}";
+        private String editAfter = "{path}";
+        private String globAfter = "{pattern}";
+        private String globAfterWithPath = "{pattern} · {path}";
+        private String grepAfter = "{pattern}";
+        private String grepAfterWithPath = "{pattern} · {path}";
+        private String execAfter = "{command}";
+        private String readActive = "正在读取 {path}";
+        private String writeActive = "正在写入 {path}";
+        private String editActive = "正在修改 {path}";
+        private String globActive = "正在查找 {pattern}";
+        private String grepActive = "正在搜索 {pattern}";
+        private String execActive = "正在执行 {command}";
     }
 
     public Timeline timelineOrDefault() {

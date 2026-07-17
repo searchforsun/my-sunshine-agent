@@ -22,6 +22,7 @@ public record StreamToken(
     public static final String KIND_REASONING = "reasoning";
     public static final String KIND_STEP = "step";
     public static final String KIND_STEP_DELTA = "step_delta";
+    public static final String KIND_SANDBOX_SESSION = "sandbox_session";
 
     /** simple-llm：无分段，正文落消息底部 */
     public static StreamToken content(String text) {
@@ -55,6 +56,20 @@ public record StreamToken(
 
     public static StreamToken stepDelta(String stepId, String channel, String text) {
         return new StreamToken(KIND_STEP_DELTA, text, null, stepId, channel, null);
+    }
+
+    /** 对话级沙箱就绪 — text=conversationId，channel=当前 skillId（可选） */
+    public static StreamToken sandboxSession(String conversationId, String skillId) {
+        return new StreamToken(KIND_SANDBOX_SESSION, conversationId, null, null, skillId, null);
+    }
+
+    /** 对话级沙箱就绪 — stepId 承载 loadedSkillIds（逗号分隔） */
+    public static StreamToken sandboxSession(
+            String conversationId, String currentSkillId, java.util.List<String> loadedSkillIds) {
+        String loaded = loadedSkillIds == null || loadedSkillIds.isEmpty()
+                ? ""
+                : String.join(",", loadedSkillIds);
+        return new StreamToken(KIND_SANDBOX_SESSION, conversationId, null, loaded, currentSkillId, null);
     }
 
     public StreamToken withScopeNodeStepId(String nodeStepId) {
@@ -108,6 +123,10 @@ public record StreamToken(
 
     public boolean isStepDelta() {
         return KIND_STEP_DELTA.equals(kind);
+    }
+
+    public boolean isSandboxSession() {
+        return KIND_SANDBOX_SESSION.equals(kind);
     }
 
     public boolean isContentLifecycle() {

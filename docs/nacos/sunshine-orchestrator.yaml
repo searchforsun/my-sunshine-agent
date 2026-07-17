@@ -52,7 +52,14 @@ agent:
       simple-llm: ""
       react: |
         - 企业制度/政策/知识库检索 → **必须**调用 `search_knowledge`（勿用 demo-memory 等其它 search 工具）。
-        - 若可用 sandbox__* 工具：读写与搜索优先 sandbox__read/write/edit/glob/grep，避免用 sandbox__exec 代替。
+        - 沙箱 **sandbox__*** 与 `search_knowledge` 同级，主 ReAct **常驻**（方案 B）；读写 /workspace、glob/grep /skills 物料优先 sandbox__*；可写仅 /workspace
+        - **沙箱任务**：过渡语后**必须立刻**发起 sandbox__* tool call；**禁止**只输出过渡语即结束且无 tool call
+        - 【沙箱·read】路径须在 `/skills/{id}/...` 或 `/workspace/...`；勿对目录调用（列目录用 glob）
+        - 【沙箱·write】仅**新建** `/workspace` 文件；写前先 glob/read 确认路径不存在；已存在 → 改用 edit 或换路径（覆盖会被拒绝）
+        - 【沙箱·edit】仅改已有文件；`old_string` 须在文件中**唯一**精确匹配
+        - 【沙箱·glob】`pattern` 必填；尽量收窄 `path`/`pattern`，避免无必要的全 jail `**/*`
+        - 【沙箱·grep】`pattern` 必填；优先限定 `path`/`glob`
+        - 【沙箱·exec】优先只读命令；禁止 `rm -rf /`、管道下载执行、mkfs、嵌套 docker 等破坏性命令（平台会硬拒）
         - 外部数据先调匹配工具，可多轮串联不同工具。
         - 超时/不可用：改参或换工具再试一次，禁止相同参数连调。
         - 参数校验失败：按报错补参后再调。
@@ -63,8 +70,9 @@ agent:
         - **中间正文（过渡）**：仍需调 tool 时，content 仅输出 **1–2 句**进展/下一步过渡语，再发起 tool call；禁止表格、分节、合规长文、**结论**、**汇总**、对用户问题的**完整作答**。
         - **终态正文（唯一完整答复）**：仅在最后一轮、确认不再调用任何 tool 后，在 content **一次性完整回答**用户全部子问题（查询结果、合规分析、能否提交审批、建议等）；此前各轮勿提前给出结论或终局答案。
         - 分析过程写 reasoning；完整答复与结论只出现在最后一轮 content，勿提前写入中间轮 content。
-        - 【TaskBoard·建板门槛】仅当完成用户问题需 **三步及以上** 独立步骤时才调用 `manage_tasks`；判断依据为用户问题是否含三个及以上须分别完成的子目标（非同一 tool 可一次搞定）；**两步及以内可答** → **禁止**建板。
-        - 【TaskBoard·建板时机】满足门槛时：首轮规划推理结束、**尚未调用任何业务 tool 前**，**必须**调用一次 `manage_tasks`（merge=false）；items 列出各方向性里程碑，首条 status=in_progress，其余 pending。
+        - 【TaskBoard·建板门槛】仅当当前提问需 **三步及以上** 独立子目标时才调用 `manage_tasks`；**两步及以内** → **禁止**建板。
+        - 【TaskBoard·建板范围】items **只**拆解当前提问。
+        - 【TaskBoard·建板时机】满足门槛时：首轮规划推理结束、**尚未调用任何业务 tool 前**，**必须**调用一次 `manage_tasks`（merge=false）；items 列出当前提问的方向性里程碑，首条 status=in_progress，其余 pending。
         - 【TaskBoard·执行中】仅用 merge=true **按 id 更新 status**（completed/in_progress/pending）；**禁止**增删条目、改 content、merge=false 二次建板。
       react-restart: |
         ## 重新生成（续跑重规划）
@@ -85,22 +93,29 @@ agent:
   intent:
     model: deepseek-v4-flash
     classifier-prompt: |
-      你是路由分类器。根据用户问题，从下列 workflow 目录中选择执行方式。
+      你是路由分类器。根据用户问题、会话上下文与下方目录，选择执行方式及可选 Skill 绑定。
       只回复一行 JSON。
 
       输出格式：
-      {"mode":"simple-llm|workflow|react|plan-workflow|peer-collab","workflowId":null或目录中的id,"params":{},"reason":"一句话"}
+      {"mode":"simple-llm|workflow|react|plan-workflow|peer-collab","workflowId":null或目录中的id,"skillId":null或Skill目录中的id,"params":{},"reason":"一句话"}
 
       规则：
-      - simple-llm：简单对话、通识百科、写作润色、代码讲解等，单轮直答、不需企业知识库/业务系统
-      - workflow：匹配下方目录中某一模板，workflowId 填对应 id，params 填本次参数（如 status: pending）
+      - simple-llm：简单对话、通识百科、写作润色、纯概念讲解等，单轮直答、不需企业知识库/业务系统/沙箱工具
+      - workflow：匹配下方 Workflow 目录中某一模板，workflowId 填对应 id，params 填本次参数（如 status: pending）
       - plan-workflow：跨多领域/多步骤协作（如「先检索制度，再查待审批，再合规分析」），无固定 workflow 模板；含「先…再…」「分步」「并对…分析」等多步表述时选此项
       - peer-collab：需多角色对等协作、交叉验证、互相质疑（如「制度与财务专家分别审查并互相验证」）；由 Expert Catalog + Coordinator 召集；勿与「先…再…」流水线 plan 混淆
-      - react：审批/提交/确认/继续等操作指令，无匹配模板、需多工具组合、或不确定
-      - 拿不准时用 react
-  
+      - react：审批/提交/确认/继续等操作指令；需多工具组合；需在沙箱/workspace 读写或执行 Skill 脚本；或不确定
+      - skillId：当任务需 **Skill 指令 overlay** 或 **挂载 /skills/{id}/ 物料** 时填写（Catalog 内 id）；否则 null
+        · 分析/运行某 Skill 包内脚本、用户 @skill 或指代「这个 skill」→ 填对应 id
+        · 仅操作 /workspace（写文件、跑自写脚本）且不需 Skill 包 → **可不填** skillId
+        · sandbox=docker/none 为 Catalog 元数据，**不**决定是否可用沙箱工具
+      - 拿不准时用 react；skillId 不确定时填 null
+
       ## Workflow 目录
       {{workflow-catalog}}
+
+      ## Skill 目录
+      {{skill-catalog}}
 
   planner:
     model: deepseek-v4-flash
@@ -245,6 +260,23 @@ agent:
       approved: "用户已确认，正在调用 {toolDisplayName}"
       denied: "用户取消调用"
       skipped-after: "用户取消调用，已跳过"
+    # 沙箱工具时间线：after 不含 displayName（标签已有「调用工具 xxx」），只写 · 后目标
+    sandbox:
+      after-fallback: ""
+      read-after: "{path}"
+      write-after: "{path}"
+      edit-after: "{path}"
+      glob-after: "{pattern}"
+      glob-after-with-path: "{pattern} · {path}"
+      grep-after: "{pattern}"
+      grep-after-with-path: "{pattern} · {path}"
+      exec-after: "{command}"
+      read-active: "正在读取 {path}"
+      write-active: "正在写入 {path}"
+      edit-active: "正在修改 {path}"
+      glob-active: "正在查找 {pattern}"
+      grep-active: "正在搜索 {pattern}"
+      exec-active: "正在执行 {command}"
     plan-approval:
       awaiting: "等待确认执行计划"
       approved: "已确认执行计划"
@@ -303,6 +335,24 @@ agent:
       - "请使用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill"
       - "用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill\\s+处理"
       - "请用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill"
+
+  # 对话级 Docker 沙箱（4.5 workspace 抽屉）
+  # 方案 B：MAIN ReAct 常驻 sandbox__*；首次工具调用 / 抽屉 list 懒 create — docs/superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md
+  sandbox:
+    conversation-ttl-sec: 1800
+    workspace-content-max-chars: 200000
+    reaper-interval-ms: 60000
+    runtime:
+      image: sunshine-sandbox-python:3.11-slim
+      runtime-type: docker
+      timeout-sec: 30
+      memory-mb: 256
+      cpus: 0.5
+      network-allow: []
+      exec-readonly-allow:
+        - "ls *"
+        - "pwd"
+        - "python -m pytest *"
 
   routing:
     # L1 结构守卫 — SSOT 验收提示词见 docs/routing/routing-golden-set.md
@@ -477,14 +527,16 @@ agent:
   memory:
     enabled: true
     layer-prompt: |
-      记忆分层：LTM/MTM 为摘要，STM 为同会话历史轮次；**仅回答**最后一条【当前提问】标记的用户消息。
+      记忆分层：LTM/MTM 为摘要，STM 为同会话已结束轮次（仅供指代）。
+      **仅执行并回答**带「【当前提问 · 仅此作答】」标记的用户消息。
     current-user-marker: "【当前提问 · 仅此作答】"
     stm:
       redis-ttl-hours: 24
       max-messages: 12
       max-chars: 8000
       header: "[本会话近期对话 · STM]"
-      preamble: "以下为同会话已结束轮次，供指代参考，非本轮任务。"
+      preamble: |
+        以下为同会话已结束轮次，仅供指代与消歧（如「这个 skill」「上述脚本」）。
     mtm:
       enabled: true
       top-k: 3

@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.memory.mtm;
 
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
+import com.sunshine.orchestrator.conversation.MessageBodyText;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.memory.MemoryProperties;
 import lombok.RequiredArgsConstructor;
@@ -66,11 +67,12 @@ public class MtmSummarizeService {
             if (!"user".equals(m.getRole()) && !"assistant".equals(m.getRole())) {
                 continue;
             }
-            if (!StringUtils.hasText(m.getContent())) {
+            String body = MessageBodyText.resolve(m);
+            if (!StringUtils.hasText(body)) {
                 continue;
             }
             sb.append(m.getRole()).append(": ")
-                    .append(truncate(m.getContent().strip(), 800))
+                    .append(truncate(body.strip(), 800))
                     .append("\n");
         }
         return sb.toString().strip();

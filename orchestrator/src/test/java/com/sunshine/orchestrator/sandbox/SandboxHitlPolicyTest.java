@@ -11,7 +11,7 @@ class SandboxHitlPolicyTest {
 
     @AfterEach
     void tearDown() {
-        SandboxSessionHolder.unbind();
+        SandboxSessionHolder.clearAll();
     }
 
     @Test
@@ -38,5 +38,38 @@ class SandboxHitlPolicyTest {
         assertThat(SandboxHitlPolicy.isReadonlyExec("pwd", null)).isTrue();
         assertThat(SandboxHitlPolicy.isReadonlyExec("python -m pytest -q", null)).isTrue();
         assertThat(SandboxHitlPolicy.isReadonlyExec("rm -rf /", null)).isFalse();
+    }
+
+    @Test
+    void writeHitlMode_matrix() {
+        Map<String, Object> empty = Map.of();
+        Map<String, Object> danger = Map.of("command", "python3 -c 'print(1)'");
+        Map<String, Object> readonly = Map.of("command", "ls");
+
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.WRITE, empty, SandboxWriteHitlMode.NEVER)).isTrue();
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.WRITE, empty, SandboxWriteHitlMode.ALWAYS)).isFalse();
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.WRITE, empty, SandboxWriteHitlMode.SMART)).isFalse();
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.EDIT, empty, SandboxWriteHitlMode.SMART)).isFalse();
+
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.EXEC, danger, SandboxWriteHitlMode.NEVER)).isTrue();
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.EXEC, danger, SandboxWriteHitlMode.SMART)).isTrue();
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.EXEC, danger, SandboxWriteHitlMode.ALWAYS)).isFalse();
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.EXEC, readonly, SandboxWriteHitlMode.SMART)).isFalse();
+    }
+
+    @Test
+    void writeHitlMode_fromWire() {
+        assertThat(SandboxWriteHitlMode.from(null)).isEqualTo(SandboxWriteHitlMode.NEVER);
+        assertThat(SandboxWriteHitlMode.from("smart")).isEqualTo(SandboxWriteHitlMode.SMART);
+        assertThat(SandboxWriteHitlMode.from("ALWAYS")).isEqualTo(SandboxWriteHitlMode.ALWAYS);
+        assertThat(SandboxWriteHitlMode.from("bogus")).isEqualTo(SandboxWriteHitlMode.NEVER);
     }
 }

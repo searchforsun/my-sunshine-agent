@@ -5,7 +5,7 @@ from __future__ import annotations
 
 
 def main() -> int:
-    print("hello from /skill/scripts/hello.py")
+    print("hello from /skills/sandbox-coding-demo/scripts/hello.py")
     print("writable workspace is /workspace")
     return 0
 

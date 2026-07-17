@@ -95,7 +95,12 @@ public final class ProcessingTimelineSession {
     }
 
     public void attachHitlPending(String token, String toolDisplayName, String paramsSummary, long expiresAt) {
-        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt);
+        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, null);
+    }
+
+    public void attachHitlPending(
+            String token, String toolDisplayName, String paramsSummary, long expiresAt, String expandDetail) {
+        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
     }
 
     public void resolveHitlPending(String status) {
@@ -104,7 +109,17 @@ public final class ProcessingTimelineSession {
 
     public void attachHitlPendingOnStep(
             String stepId, String token, String toolDisplayName, String paramsSummary, long expiresAt) {
-        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt);
+        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, null);
+    }
+
+    public void attachHitlPendingOnStep(
+            String stepId,
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail) {
+        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
     }
 
     public void resolveHitlPendingOnStep(String stepId, String status) {

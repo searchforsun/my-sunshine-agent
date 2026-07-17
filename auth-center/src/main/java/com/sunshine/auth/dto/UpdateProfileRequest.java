@@ -16,4 +16,8 @@ public class UpdateProfileRequest {
     @Size(max = 32, message = "租户标识最长 32 字符")
     @Pattern(regexp = "^[a-zA-Z0-9_-]+$", message = "租户标识仅允许字母、数字、下划线、连字符")
     private String tenantId;
+
+    /** never|always|smart；缺省 / 非法由服务端回落 never */
+    @Size(max = 16, message = "写确认模式最长 16 字符")
+    private String defaultWriteHitlMode;
 }

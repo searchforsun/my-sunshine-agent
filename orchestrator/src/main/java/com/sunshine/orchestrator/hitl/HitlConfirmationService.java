@@ -77,8 +77,10 @@ public class HitlConfirmationService {
 
         HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(generationMessageId, toolId);
         timelineBridge.ensureHitlEpoch(generationMessageId, epoch);
+        String paramsSummary = HitlParamSupport.summarizeParams(params);
+        String expandBody = HitlParamSupport.expandBodyFromParams(params);
         StepEventBridge.emit(timelineBridgeId, session -> session.attachHitlPending(
-                reg.token(), displayName, HitlParamSupport.summarizeParams(params), reg.expiresAt()));
+                reg.token(), displayName, paramsSummary, reg.expiresAt(), expandBody));
         timelineBridge.flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
         timelineBridge.emitConfirmation(generationMessageId, toolId, params, reg.token(), reg.expiresAt(),
                 epoch, boundGenerationId);
@@ -123,8 +125,10 @@ public class HitlConfirmationService {
         timelineBridge.emitSessionStep(session, nodeStepId, s -> s.progress(nodeStepId, HitlLabels.awaiting()), genMsgId);
 
         HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(genMsgId, toolId);
+        String paramsSummary = HitlParamSupport.summarizeParams(params);
+        String expandBody = HitlParamSupport.expandBodyFromParams(params);
         timelineBridge.emitSessionStep(session, nodeStepId, s -> s.attachHitlPendingOnStep(
-                nodeStepId, reg.token(), displayName, HitlParamSupport.summarizeParams(params), reg.expiresAt()), genMsgId);
+                nodeStepId, reg.token(), displayName, paramsSummary, reg.expiresAt(), expandBody), genMsgId);
         timelineBridge.emitConfirmation(genMsgId, toolId, params, reg.token(), reg.expiresAt());
 
         return waitForDecision(reg, toolId, "HITL workflow", () -> {

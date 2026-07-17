@@ -301,6 +301,9 @@ public class ChatStreamExecutor {
     }
 
     private ServerSentEvent<String> tokenToSse(StreamToken token) {
+        if (token.isSandboxSession()) {
+            return sse(flushScheduler.metaSandboxSession(token.text(), token.channel(), token.stepId()));
+        }
         if (token.isStep()) {
             return sse(flushScheduler.metaStep(token.step()));
         }

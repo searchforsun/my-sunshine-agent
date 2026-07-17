@@ -53,6 +53,12 @@ const hasMentionChip = computed(() =>
         :token="seg.token"
         :display-name="seg.workflow.displayName"
       />
+      <MentionChip
+        v-else-if="seg.type === 'path'"
+        kind="path"
+        :token="seg.token"
+        :label="seg.label"
+      />
       <span v-else>{{ seg.value }}</span>
     </template>
   </span>

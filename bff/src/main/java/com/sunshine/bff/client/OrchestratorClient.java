@@ -141,6 +141,45 @@ public class OrchestratorClient {
                 .bodyToMono(Void.class);
     }
 
+    public Mono<Map<String, Object>> listSandboxWorkspace(
+            String conversationId, String path, String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/conversations/{id}/sandbox/workspace")
+                        .queryParam("path", path != null ? path : "/workspace")
+                        .build(conversationId))
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> readSandboxWorkspaceFile(
+            String conversationId, String path, String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/conversations/{id}/sandbox/workspace/content")
+                        .queryParam("path", path)
+                        .build(conversationId))
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> sandboxWorkspaceStatus(
+            String conversationId, String userId, String tenantId) {
+        return webClient.get()
+                .uri("/conversations/{id}/sandbox/workspace/status", conversationId)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Flux<ServerSentEvent<String>> reconnectStream(
             String generationId, long afterSeq, String userId, String tenantId) {
         return webClient.get()

@@ -4,13 +4,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public final class PathJail {
-    public static final Path SKILL = Paths.get("/skill").toAbsolutePath().normalize();
+    /** 多 Skill 只读根：/skills/{skillId}/... */
+    public static final Path SKILLS = Paths.get("/skills").toAbsolutePath().normalize();
     public static final Path WORKSPACE = Paths.get("/workspace").toAbsolutePath().normalize();
 
     private PathJail() {}
 
     public static Path resolveRead(String raw) {
-        return mustBeUnder(normalize(raw), SKILL, WORKSPACE);
+        return mustBeUnder(normalize(raw), SKILLS, WORKSPACE);
     }
 
     public static Path resolveWrite(String raw) {
@@ -21,15 +22,19 @@ public final class PathJail {
         if (raw == null || raw.isBlank()) {
             return WORKSPACE;
         }
-        return mustBeUnder(normalize(raw), SKILL, WORKSPACE);
+        return mustBeUnder(normalize(raw), SKILLS, WORKSPACE);
+    }
+
+    /** FS 浏览：允许 /workspace 与 /skills */
+    public static Path resolveBrowse(String raw) {
+        return mustBeUnder(normalize(raw), SKILLS, WORKSPACE);
     }
 
     private static Path normalize(String raw) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("path required");
         }
-        Path p = Paths.get(raw).toAbsolutePath().normalize();
-        return p;
+        return Paths.get(raw).toAbsolutePath().normalize();
     }
 
     private static Path mustBeUnder(Path p, Path... roots) {

@@ -381,7 +381,9 @@ export function resolveHitlToolName(step: ProcessingStep): string {
     || '写操作工具'
 }
 
-/** 解析 HITL 参数摘要为 key/value 对 */
+/** 解析 HITL 参数摘要为 key/value 对（确认框不展示正文类参数） */
+const HITL_BODY_PARAM_KEYS = new Set(['content', 'new_string', 'old_string', 'command'])
+
 export function parseHitlParamsSummary(raw?: string | null, maxValueLen = 120): { key: string; value: string }[] {
   if (!raw?.trim()) return []
   const pairs: { key: string; value: string }[] = []
@@ -390,7 +392,7 @@ export function parseHitlParamsSummary(raw?: string | null, maxValueLen = 120): 
     if (eq <= 0) continue
     const key = segment.slice(0, eq).trim()
     let val = segment.slice(eq + 1).trim()
-    if (!key) continue
+    if (!key || HITL_BODY_PARAM_KEYS.has(key)) continue
     if (val.length > maxValueLen) val = `${val.slice(0, maxValueLen)}…`
     pairs.push({ key, value: val })
   }

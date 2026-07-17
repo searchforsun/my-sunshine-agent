@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
-import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -11,7 +10,6 @@ import io.agentscope.core.tool.Toolkit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -21,7 +19,7 @@ import java.util.Set;
 /**
  * 按 MySQL ToolSet + Catalog 启用池动态组装 Toolkit。
  * 非 simple-llm 的 ReAct 路径均硬编码注入 {@link RagTool}；Workflow 子 Agent 亦始终含 RAG，另可加节点 tools 白名单。
- * Skill {@code sandbox != none} 时追加沙箱六工具（不进 Catalog）。
+ * MAIN 始终注入沙箱六工具（方案 B，不进 Catalog）；SUB 默认不注入。
  */
 @Slf4j
 @Component
@@ -36,7 +34,6 @@ public class DynamicToolkitFactory {
     private final ToolCatalogService toolCatalogService;
     private final ToolSetResolver toolSetResolver;
     private final AgentExecutionProperties executionProperties;
-    private final SkillCatalogService skillCatalogService;
     private final SandboxAgentTools sandboxAgentTools;
 
     /** 主 Agent：租户 ReAct 默认工具集 */
@@ -86,6 +83,7 @@ public class DynamicToolkitFactory {
     }
 
     private Toolkit buildFromWhitelist(List<String> whitelist, ToolkitScope scope, String skillId) {
+        // skillId 保留签名兼容；方案 B 不再门控沙箱工具
         Toolkit tk = new Toolkit();
         List<String> registered = new ArrayList<>();
         Set<String> registeredRemote = new HashSet<>();
@@ -125,9 +123,6 @@ public class DynamicToolkitFactory {
                 tk.registerTool(manageTasksTool);
                 registered.add(ManageTasksTool.NAME);
             }
-        }
-
-        if (shouldAttachSandbox(skillId)) {
             for (AgentTool t : sandboxAgentTools.all()) {
                 tk.registerAgentTool(t);
                 registered.add(t.getName());
@@ -140,15 +135,5 @@ public class DynamicToolkitFactory {
 
         log.info("[Orchestrator] DynamicToolkit 已注册工具: {}", String.join(", ", registered));
         return tk;
-    }
-
-    /** Skill 声明 sandbox 且不为 none 时注入六工具；无 skillId → 不注入 */
-    boolean shouldAttachSandbox(String skillId) {
-        if (!StringUtils.hasText(skillId)) {
-            return false;
-        }
-        return skillCatalogService.find(skillId.strip())
-                .map(e -> e.sandbox() != null && !"none".equalsIgnoreCase(e.sandbox().strip()))
-                .orElse(false);
     }
 }

@@ -20,9 +20,13 @@ import { useSidebar } from '../composables/useSidebar'
 import { loadActiveGeneration } from '../composables/useActiveGeneration'
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
+import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
 import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
+import { useSandboxWorkspaceDrawer } from '../composables/useSandboxWorkspaceDrawer'
+import { getWriteHitlMode } from '../composables/useWriteHitlMode'
 import { usePlanDagExpand } from '../composables/usePlanDagExpand'
+import { fetchSandboxWorkspaceStatus } from '../api/sandboxWorkspace'
 import type { ChatMessage } from '../api/chat'
 import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
 import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
@@ -66,6 +70,19 @@ const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible } = useSidebar()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
+const {
+  open: openSandboxDrawer,
+  close: closeSandboxDrawer,
+  registerChatBody: registerSandboxChatBody,
+} = useSandboxWorkspaceDrawer()
+const sandboxWorkspaceActive = ref(false)
+
+async function openWorkspaceDrawer() {
+  const id = currentConversationId.value
+  if (!id) return
+  openSandboxDrawer({ conversationId: id })
+  sandboxWorkspaceActive.value = true
+}
 const { state: planDagExpandState, isAnyExpanded: planDagExpanded, close: closePlanDagExpand, handleSelect: handlePlanDagExpandSelect } = usePlanDagExpand()
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 const currentConversationId = computed(() => chatStore.currentId)
@@ -115,6 +132,11 @@ const {
     }
   },
   () => chatStore.recoverAfterStaleConversation(),
+  (_sid: string, convId: string) => {
+    if (convId === chatStore.currentId || _sid === chatStore.currentId) {
+      sandboxWorkspaceActive.value = true
+    }
+  },
 )
 
 const {
@@ -403,6 +425,7 @@ async function handleSend() {
       skillId: skillBinding.skillId,
       workflowId: workflowBinding.workflowId,
       kbId: kbId.value,
+      writeHitlMode: getWriteHitlMode(convId),
     })
     chatStore.updateExecutionPreferenceLocal(convId, preference.value)
     if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
@@ -507,9 +530,13 @@ onUnmounted(() => {
   setActiveConversation(null)
   window.removeEventListener('pagehide', flushAllOnPageHide)
   registerChatBody(null)
+  registerSandboxChatBody(null)
 })
 
-watch(chatBodyRef, (el) => registerChatBody(el), { immediate: true })
+watch(chatBodyRef, (el) => {
+  registerChatBody(el)
+  registerSandboxChatBody(el)
+}, { immediate: true })
 onUpdated(() => { nextTick(() => enhanceAllStaticMarkdown()) })
 watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
@@ -517,7 +544,16 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
   setActiveConversation(newId)
   closePlanDrawer()
+  closeSandboxDrawer()
   closePlanDagExpand()
+  sandboxWorkspaceActive.value = false
+  if (newId) {
+    try {
+      sandboxWorkspaceActive.value = await fetchSandboxWorkspaceStatus(newId)
+    } catch {
+      sandboxWorkspaceActive.value = false
+    }
+  }
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
     cacheSettledHtmlForConversation(oldId)
@@ -806,6 +842,20 @@ watch(
                   :show-create="false"
                   @update:model-value="onKbChange"
                 />
+                <button
+                  type="button"
+                  class="composer-workspace-btn"
+                  :disabled="!currentConversationId"
+                  title="沙箱工作区"
+                  @click="openWorkspaceDrawer"
+                >
+                  <span class="composer-workspace-leading">
+                    <svg class="composer-workspace-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="composer-workspace-label">工作区</span>
+                  </span>
+                </button>
               </div>
               <button
                 v-if="loading"
@@ -834,6 +884,7 @@ watch(
     </footer>
       </div>
       <PlanNodeDrawer />
+      <SandboxWorkspaceDrawer />
     </div>
   </div>
 </template>
@@ -1247,6 +1298,49 @@ watch(
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.composer-workspace-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sun-text-secondary);
+  font-size: var(--sun-font-sm, 12px);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.composer-workspace-leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.composer-workspace-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.composer-workspace-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.composer-workspace-btn:hover:not(:disabled) {
+  border-color: var(--sun-border-light, #ccc);
+  color: var(--sun-text, #212121);
+}
+
+.composer-workspace-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .skill-suggest {

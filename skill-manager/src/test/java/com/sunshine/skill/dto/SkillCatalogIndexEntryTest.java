@@ -16,5 +16,6 @@ class SkillCatalogIndexEntryTest {
         assertThat(index.displayName()).isEqualTo("财务合规分析");
         assertThat(index.description()).isEqualTo("desc");
         assertThat(index.version()).isEqualTo(1);
+        assertThat(index.sandbox()).isEqualTo("none");
     }
 }

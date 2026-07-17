@@ -10,16 +10,22 @@ import {
 import { findSkillByToken } from './skillMention'
 import { findExpertByToken } from './expertMention'
 import { findWorkflowByToken } from './workflowMention'
+import {
+  collectSandboxPathMatches,
+  sandboxPathBasename,
+  sandboxPathPlainToken,
+} from './sandboxPathChip'
 
 const TOKEN_BOUNDARY = /[\s，。！？,.!?;；：:]/
 
-export type ChatMentionKind = 'skill' | 'expert' | 'workflow'
+export type ChatMentionKind = 'skill' | 'expert' | 'workflow' | 'path'
 
 export type ChatMentionSegment =
   | { type: 'text'; value: string }
   | { type: 'skill'; token: string; skill: SkillCatalogIndexEntry }
   | { type: 'expert'; token: string; expert: ExpertCatalogIndexEntry }
   | { type: 'workflow'; token: string; workflow: WorkflowCatalogEntry }
+  | { type: 'path'; token: string; label: string }
 
 export interface ChatMentionCatalogs {
   skills: SkillCatalogIndexEntry[]
@@ -38,16 +44,17 @@ interface RawMentionMatch {
   end: number
   kind: ChatMentionKind
   token: string
+  label?: string
 }
 
-const PREFIX_RE: { kind: ChatMentionKind; re: RegExp }[] = [
+const PREFIX_RE: { kind: Exclude<ChatMentionKind, 'path'>; re: RegExp }[] = [
   { kind: 'skill', re: /@([\w\u4e00-\u9fff-]+)/g },
   { kind: 'expert', re: /\$([\w\u4e00-\u9fff-]+)/g },
   { kind: 'workflow', re: /#([\w\u4e00-\u9fff-]+)/g },
 ]
 
 function resolveMention(
-  kind: ChatMentionKind,
+  kind: Exclude<ChatMentionKind, 'path'>,
   token: string,
   catalogs: ChatMentionCatalogs,
 ): ChatMentionSegment | null {
@@ -76,6 +83,15 @@ function collectMatches(content: string, allows: ChatMentionAllows): RawMentionM
       matches.push({ index: m.index, end: afterIdx, kind, token: m[1] })
     }
   }
+  for (const hit of collectSandboxPathMatches(content)) {
+    matches.push({
+      index: hit.index,
+      end: hit.end,
+      kind: 'path',
+      token: hit.path,
+      label: sandboxPathBasename(hit.path),
+    })
+  }
   return matches.sort((a, b) => a.index - b.index)
 }
 
@@ -90,6 +106,14 @@ export function segmentChatMentions(
   let lastIndex = 0
   for (const hit of raw) {
     if (hit.index < lastIndex) continue
+    if (hit.kind === 'path') {
+      if (hit.index > lastIndex) {
+        segments.push({ type: 'text', value: content.slice(lastIndex, hit.index) })
+      }
+      segments.push({ type: 'path', token: hit.token, label: hit.label || sandboxPathBasename(hit.token) })
+      lastIndex = hit.end
+      continue
+    }
     const resolved = resolveMention(hit.kind, hit.token, catalogs)
     if (!resolved) continue
     if (hit.index > lastIndex) {
@@ -134,9 +158,11 @@ export function mentionPrefix(kind: ChatMentionKind): string {
     case 'skill': return '@'
     case 'expert': return '$'
     case 'workflow': return '#'
+    case 'path': return ''
   }
 }
 
 export function mentionPlainToken(kind: ChatMentionKind, token: string): string {
+  if (kind === 'path') return sandboxPathPlainToken(token)
   return `${mentionPrefix(kind)}${token}`
 }

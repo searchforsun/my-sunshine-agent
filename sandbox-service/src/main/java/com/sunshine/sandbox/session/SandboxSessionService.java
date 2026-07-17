@@ -38,6 +38,8 @@ public class SandboxSessionService {
     /** registry/name:tag 或 name@sha256:...；禁止空格与 shell 元字符 */
     private static final Pattern SAFE_IMAGE = Pattern.compile(
             "^[a-zA-Z0-9][a-zA-Z0-9._\\-/]*(:[a-zA-Z0-9._\\-]+)?(@sha256:[a-fA-F0-9]{64})?$");
+    /** skillId：字母数字、点、下划线、短横线 */
+    private static final Pattern SAFE_SKILL_ID = Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9._\\-]{0,127}$");
 
     private final DockerCli dockerCli;
     private final SandboxSessionStore store;
@@ -50,14 +52,14 @@ public class SandboxSessionService {
         List<String> networkAllow = policy.networkAllow() != null ? policy.networkAllow() : List.of();
         String sessionId = UUID.randomUUID().toString().replace("-", "");
         Path hostRoot = Path.of(properties.getDocker().getHostDataRoot(), sessionId);
-        Path hostSkill = hostRoot.resolve("skill");
+        Path hostSkills = hostRoot.resolve("skills");
         Path hostWorkspace = hostRoot.resolve("workspace");
         try {
-            Files.createDirectories(hostSkill);
+            Files.createDirectories(hostSkills);
             Files.createDirectories(hostWorkspace);
-            writeSkillFiles(hostSkill, req.skillFiles());
+            // create 仅建空目录；Skill 物料走 mountSkill 懒挂载
             writeWorkspaceFiles(hostWorkspace, req.workspaceFiles());
-            preparePermissions(hostSkill, hostWorkspace);
+            preparePermissions(hostSkills, hostWorkspace);
         } catch (IOException e) {
             deleteTreeQuietly(hostRoot);
             throw new IllegalStateException("failed to prepare session dirs: " + sessionId, e);
@@ -70,7 +72,7 @@ public class SandboxSessionService {
                 : properties.getDocker().getDefaultCpus();
         String containerName = "sunshine-sb-" + sessionId.substring(0, Math.min(12, sessionId.length()));
         List<String> args = buildRunArgs(
-                containerName, image, memoryMb, cpus, hostSkill, hostWorkspace, networkAllow);
+                containerName, image, memoryMb, cpus, hostSkills, hostWorkspace, networkAllow);
         String storedId = null;
         boolean dockerStarted = false;
         try {
@@ -100,6 +102,29 @@ public class SandboxSessionService {
             deleteTreeQuietly(hostRoot);
             throw e;
         }
+    }
+
+    /** 懒挂载 Skill 物料到 /skills/{skillId}/（覆盖同 id） */
+    public void mountSkill(String sessionId, String skillId, Map<String, String> skillFiles) {
+        SandboxSession session = store.get(sessionId).orElseThrow(() ->
+                new BizException(SandboxErrorCode.SESSION_NOT_FOUND));
+        String id = requireSafeSkillId(skillId);
+        Path hostSkillRoot = session.hostRoot().resolve("skills").resolve(id).normalize();
+        Path hostSkills = session.hostRoot().resolve("skills").toAbsolutePath().normalize();
+        if (!hostSkillRoot.toAbsolutePath().normalize().startsWith(hostSkills)) {
+            throw new BizException(SandboxErrorCode.SKILL_ID_INVALID);
+        }
+        try {
+            if (Files.exists(hostSkillRoot)) {
+                deleteTreeQuietly(hostSkillRoot);
+            }
+            Files.createDirectories(hostSkillRoot);
+            writeSkillFiles(hostSkillRoot, skillFiles);
+            prepareSkillDirPerms(hostSkillRoot);
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to mount skill " + id + " on session " + sessionId, e);
+        }
+        log.info("sandbox skill mounted session={} skillId={}", sessionId, id);
     }
 
     /** 拒绝空镜像、以 `-` 开头（CLI 注入）及非法字符的 image ref */
@@ -132,7 +157,7 @@ public class SandboxSessionService {
             String image,
             int memoryMb,
             String cpus,
-            Path hostSkill,
+            Path hostSkills,
             Path hostWorkspace,
             List<String> networkAllow) {
         List<String> args = new ArrayList<>();
@@ -166,7 +191,7 @@ public class SandboxSessionService {
         args.add("--user");
         args.add(SANDBOX_UID + ":" + SANDBOX_UID);
         args.add("-v");
-        args.add(hostSkill.toAbsolutePath() + ":/skill:ro");
+        args.add(hostSkills.toAbsolutePath() + ":/skills:ro");
         args.add("-v");
         args.add(hostWorkspace.toAbsolutePath() + ":/workspace");
         args.add("--cap-drop");
@@ -177,17 +202,22 @@ public class SandboxSessionService {
         return args;
     }
 
-    private void writeSkillFiles(Path hostSkill, Map<String, String> skillFiles) throws IOException {
+    private void writeSkillFiles(Path hostSkillRoot, Map<String, String> skillFiles) throws IOException {
         if (skillFiles == null || skillFiles.isEmpty()) {
             return;
         }
         for (Map.Entry<String, String> e : skillFiles.entrySet()) {
             String key = requireSafeRelative(e.getKey(), "skill");
-            if (!key.startsWith("scripts/") && !key.startsWith("references/")) {
+            if (!key.startsWith("scripts/") && !key.startsWith("references/")
+                    && !"SKILL.md".equalsIgnoreCase(key)) {
                 throw new BizException(SandboxErrorCode.SKILL_FILE_PATH_INVALID);
             }
-            Path target = hostSkill.resolve(key).normalize();
-            if (!target.startsWith(hostSkill)) {
+            // 统一落盘为 SKILL.md，避免大小写不一致
+            if ("SKILL.md".equalsIgnoreCase(key)) {
+                key = "SKILL.md";
+            }
+            Path target = hostSkillRoot.resolve(key).normalize();
+            if (!target.startsWith(hostSkillRoot)) {
                 throw badPath("skill file path escapes jail: " + key);
             }
             Files.createDirectories(target.getParent());
@@ -210,6 +240,13 @@ public class SandboxSessionService {
         }
     }
 
+    private static String requireSafeSkillId(String skillId) {
+        if (skillId == null || skillId.isBlank() || !SAFE_SKILL_ID.matcher(skillId.strip()).matches()) {
+            throw new BizException(SandboxErrorCode.SKILL_ID_INVALID);
+        }
+        return skillId.strip();
+    }
+
     private static String requireSafeRelative(String key, String label) {
         if (key == null || key.isBlank()) {
             throw badPath(label + " file key required");
@@ -228,19 +265,30 @@ public class SandboxSessionService {
                 detail));
     }
 
-    private void preparePermissions(Path hostSkill, Path hostWorkspace) {
+    private void preparePermissions(Path hostSkills, Path hostWorkspace) {
         try {
             Set<PosixFilePermission> skillPerms = EnumSet.of(
                     PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE,
                     PosixFilePermission.GROUP_READ, PosixFilePermission.GROUP_EXECUTE,
                     PosixFilePermission.OTHERS_READ, PosixFilePermission.OTHERS_EXECUTE);
-            Files.setPosixFilePermissions(hostSkill, skillPerms);
-            // v1：chown 可能需 root；失败则 workspace 0777 便于容器 uid 写入
+            Files.setPosixFilePermissions(hostSkills, skillPerms);
             try {
                 Files.setPosixFilePermissions(hostWorkspace, PosixFilePermissions.fromString("rwxrwxrwx"));
             } catch (UnsupportedOperationException ignored) {
                 // non-posix FS in tests
             }
+        } catch (UnsupportedOperationException | IOException e) {
+            log.debug("posix permission skip: {}", e.getMessage());
+        }
+    }
+
+    private void prepareSkillDirPerms(Path hostSkillRoot) {
+        try {
+            Set<PosixFilePermission> skillPerms = EnumSet.of(
+                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE,
+                    PosixFilePermission.GROUP_READ, PosixFilePermission.GROUP_EXECUTE,
+                    PosixFilePermission.OTHERS_READ, PosixFilePermission.OTHERS_EXECUTE);
+            Files.setPosixFilePermissions(hostSkillRoot, skillPerms);
         } catch (UnsupportedOperationException | IOException e) {
             log.debug("posix permission skip: {}", e.getMessage());
         }

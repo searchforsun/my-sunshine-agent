@@ -11,7 +11,6 @@ import {
   TrashOutline,
   CopyOutline,
   CheckmarkOutline,
-  ConstructOutline,
   DownloadOutline,
   EllipsisHorizontal,
 } from '@vicons/ionicons5'
@@ -79,7 +78,6 @@ export function useSkillsPage() {
   const forking = ref(false)
   const showDeleteConfirm = ref(false)
   const showDeleteVersionConfirm = ref(false)
-  const showSandboxConfig = ref(false)
   const deleting = ref(false)
   const deletingVersion = ref(false)
   const deleteTargetSkill = ref<SkillEntry | null>(null)
@@ -90,7 +88,9 @@ export function useSkillsPage() {
   let suppressFilePathWatch = false
 
   const isDetailBusy = computed(() => detailLoading.value || uploading.value || downloading.value)
-  const isActionBusy = computed(() => uploading.value || downloading.value || forking.value)
+  const isActionBusy = computed(
+    () => uploading.value || downloading.value || forking.value,
+  )
 
   const folderPickPending = ref(false)
 
@@ -275,13 +275,6 @@ export function useSkillsPage() {
         icon: () => h(NIcon, { component: DocumentTextOutline, size: 14 }),
       })
     }
-    if (showSandboxConfigEntry.value) {
-      opts.push({
-        label: '沙箱配置',
-        key: 'sandbox-config',
-        icon: () => h(NIcon, { component: ConstructOutline, size: 14 }),
-      })
-    }
     if (showDeleteVersionButton.value) {
       if (opts.length > 0) {
         opts.push({ type: 'divider', key: 'divider-before-delete-version' })
@@ -336,25 +329,6 @@ export function useSkillsPage() {
     const status = selectedVersionStatus.value
     return status ? versionStatusTagType(status) : 'default'
   })
-
-  const showSandboxConfigEntry = computed(
-    () => selectedVersionEntry.value != null && !!selectedVersionEntry.value.storagePath,
-  )
-
-  function openSandboxConfig() {
-    if (!selectedId.value || selectedVersion.value == null) return
-    showSandboxConfig.value = true
-  }
-
-  async function onSandboxConfigSaved() {
-    const skillId = selectedId.value
-    if (!skillId) return
-    try {
-      versions.value = await listSkillVersions(skillId)
-    } catch {
-      /* 列表稍后刷新即可 */
-    }
-  }
 
   /** 版本下拉已确认切换的目标（用于保存失败时回滚 v-model） */
   const committedVersion = ref<number | null>(null)
@@ -589,7 +563,6 @@ export function useSkillsPage() {
     else if (key === 'upload') await triggerFolderPick()
     else if (key === 'download') handleDownload()
     else if (key === 'diff-active') await handleDiffWithActive()
-    else if (key === 'sandbox-config') openSandboxConfig()
     else if (key === 'delete-version') {
       if (!(await flushFileEditBeforeLeave())) return
       showDeleteVersionConfirm.value = true
@@ -918,7 +891,6 @@ export function useSkillsPage() {
     forking,
     showDeleteConfirm,
     showDeleteVersionConfirm,
-    showSandboxConfig,
     deleting,
     deletingVersion,
     deleteTargetSkill,
@@ -952,9 +924,6 @@ export function useSkillsPage() {
     detailMaintainerText,
     selectedVersionStatus,
     detailVersionTagType,
-    showSandboxConfigEntry,
-    openSandboxConfig,
-    onSandboxConfigSaved,
     savingFile,
     fileEditMode,
     fileEditDraft,

@@ -91,7 +91,7 @@ class AgentRunRequestTest {
     void compactConstructor_normalizesNullMemoryAndBlocks() {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.MAIN, "run-1", null, null, "q", null,
-                "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL, false);
+                "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL, false, null);
         assertThat(req.memory()).isEqualTo(MemoryContext.empty());
         assertThat(req.injectedBlocks()).isEmpty();
     }

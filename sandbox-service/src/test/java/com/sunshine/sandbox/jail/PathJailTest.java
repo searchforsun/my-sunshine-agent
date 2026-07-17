@@ -5,26 +5,29 @@ import static org.assertj.core.api.Assertions.*;
 
 class PathJailTest {
     @Test
-    void resolvesUnderSkillAndWorkspace() {
-        assertThat(PathJail.resolveRead("/skill/scripts/a.py").toString())
-                .isEqualTo("/skill/scripts/a.py");
+    void resolvesUnderSkillsAndWorkspace() {
+        assertThat(PathJail.resolveRead("/skills/demo/scripts/a.py").toString())
+                .isEqualTo("/skills/demo/scripts/a.py");
         assertThat(PathJail.resolveWrite("/workspace/out.txt").toString())
                 .isEqualTo("/workspace/out.txt");
     }
 
     @Test
-    void rejectsEscapeAndSkillWrite() {
-        assertThatThrownBy(() -> PathJail.resolveRead("/skill/../etc/passwd"))
+    void rejectsEscapeAndSkillsWrite() {
+        assertThatThrownBy(() -> PathJail.resolveRead("/skills/../etc/passwd"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> PathJail.resolveWrite("/skill/x.py"))
+        assertThatThrownBy(() -> PathJail.resolveWrite("/skills/demo/x.py"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> PathJail.resolveRead("/tmp/x"))
                 .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> PathJail.resolveRead("/skill/scripts/a.py"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("path escapes jail");
     }
 
     @Test
     void resolveCwdDefaultsWorkspace() {
         assertThat(PathJail.resolveCwd(null).toString()).isEqualTo("/workspace");
-        assertThat(PathJail.resolveCwd("/skill/scripts").toString()).isEqualTo("/skill/scripts");
+        assertThat(PathJail.resolveCwd("/skills/demo/scripts").toString()).isEqualTo("/skills/demo/scripts");
     }
 }

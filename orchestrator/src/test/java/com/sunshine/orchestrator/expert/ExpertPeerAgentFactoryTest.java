@@ -65,6 +65,6 @@ class ExpertPeerAgentFactoryTest {
                 AgentRole.SUB, "run-1", "parent",
                 MemoryContext.forSubAgent(), "", List.of(),
                 null, null, null, null, tools, "overlay", 2,
-                TimelineBinding.SUB_COMPRESSED, false);
+                TimelineBinding.SUB_COMPRESSED, false, null);
     }
 }

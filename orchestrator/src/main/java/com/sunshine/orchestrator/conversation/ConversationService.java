@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
+import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class ConversationService {
     private final ChatMessageRepository messageRepo;
     private final AuditService auditService;
     private final MessagePersistenceReconciler messagePersistenceReconciler;
+    private final SandboxSessionLifecycle sandboxSessionLifecycle;
 
     @Value("${agent.generation.orphan-timeout-sec:60}")
     private int orphanTimeoutSec;
@@ -129,6 +131,7 @@ public class ConversationService {
     @Transactional
     public void delete(String id, String userId, String tenantId) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        sandboxSessionLifecycle.destroyConversationSession(tenantId, id);
         messageRepo.deleteByConversationId(id);
         conversationRepo.delete(conv);
     }

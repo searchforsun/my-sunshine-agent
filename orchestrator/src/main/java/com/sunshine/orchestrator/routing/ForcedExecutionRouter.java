@@ -92,7 +92,7 @@ public class ForcedExecutionRouter {
             return Mono.just(new ExecutionPlan(
                     plan.mode(), plan.workflowId(), plan.params(), REASON_WORKFLOW, plan.ruleId()));
         }
-        return intentRouter.classifyPlan(userMessage)
+        return intentRouter.classifyPlan(new RoutingContext(userMessage, null))
                 .flatMap(plan -> {
                     if (plan.mode() == ExecutionMode.WORKFLOW && StringUtils.hasText(plan.workflowId())) {
                         return Mono.just(new ExecutionPlan(

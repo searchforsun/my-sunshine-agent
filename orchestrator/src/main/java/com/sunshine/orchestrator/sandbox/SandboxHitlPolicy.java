@@ -35,8 +35,34 @@ public final class SandboxHitlPolicy {
         return false;
     }
 
-    /** 含参数的确认判定（exec 读当前 session policy 白名单） */
+    /** 含参数的确认判定（exec 读当前 session policy 白名单）；mode 缺省等同 {@link SandboxWriteHitlMode#NEVER} */
     public static boolean requiresConfirmation(String toolId, Map<String, ?> params) {
+        return requiresConfirmation(toolId, params, SandboxWriteHitlMode.NEVER);
+    }
+
+    /**
+     * 写确认门闸 + Chat 工作区跳过模式。
+     * {@code always}：写相关全部免确认；{@code smart}：write/edit 免确认，exec 仍走只读白名单。
+     */
+    public static boolean requiresConfirmation(
+            String toolId, Map<String, ?> params, SandboxWriteHitlMode mode) {
+        SandboxWriteHitlMode m = mode != null ? mode : SandboxWriteHitlMode.NEVER;
+        if (m == SandboxWriteHitlMode.ALWAYS) {
+            return false;
+        }
+        boolean base = baseRequiresConfirmation(toolId, params);
+        if (m == SandboxWriteHitlMode.SMART) {
+            if (SandboxIds.WRITE.equals(toolId) || SandboxIds.EDIT.equals(toolId)) {
+                return false;
+            }
+            // exec：危险仍确认，只读已在 base=false
+            return base;
+        }
+        return base;
+    }
+
+    /** 不含跳过模式的基线判定 */
+    static boolean baseRequiresConfirmation(String toolId, Map<String, ?> params) {
         if (SandboxIds.READ.equals(toolId)
                 || SandboxIds.GLOB.equals(toolId)
                 || SandboxIds.GREP.equals(toolId)) {

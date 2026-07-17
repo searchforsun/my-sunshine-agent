@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.routing;
 
+import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,6 +61,17 @@ class ExecutionPlanParserTest {
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
         assertThat(plan.intentLabel()).isEqualTo("plan-workflow");
         assertThat(plan.reason()).isEqualTo("跨领域多步");
+    }
+
+    @Test
+    void parsesSkillIdTopLevel() {
+        String json = """
+                {"mode":"react","workflowId":null,"skillId":"sandbox-coding-demo","params":{},"reason":"沙箱脚本分析"}
+                """;
+        ExecutionPlan plan = parser.parse(json);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("sandbox-coding-demo");
+        assertThat(plan.reason()).isEqualTo("沙箱脚本分析");
     }
 
     @Test

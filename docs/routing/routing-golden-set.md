@@ -239,16 +239,20 @@ Live：`python scripts/verify_execution_preference.py`
 
 ---
 
-## F. LLM 兜底（L3）与 Skill 自动发现（流程 3）
+## F. LLM 兜底（L3）与 Skill 绑定（流程 3）
 
-规则与结构均未命中时走 `IntentRouter`（短句可能先 intent 改写）。`REACT` 产出后 **`SkillDiscoveryService`** 按 catalog 摘要匹配 skill（`reason=skill:auto-discovered`）。
+> **沙箱（方案 B）**：[conversation-sandbox-permanent-tools-design.md](../superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md) — 主 ReAct **始终**有 `sandbox__*`；`skillId` 仅影响 overlay/挂载，**非**沙箱前置条件。
+
+规则与结构均未命中时走 `IntentRouter`（短句可能先 intent 改写）。L3 一次输出 `mode` + 可选 `skillId`（须为 Skill Catalog 内 id）；后置 **`SkillDiscoveryService`** 仅做 catalog 校验（剥离未知 id）。
 
 | # | 提示词 | 预期（典型） |
 |---|--------|--------------|
 | F1 | 随便聊聊 | `REACT` 或 `SIMPLE_LLM`；**无** skill 绑定 |
 | F2 | 年假可以请几天 | `WORKFLOW` knowledge-qa（LLM 选 catalog） |
 | F3 | 待审批 | 短句 → intent 改写后分类（见 timeline detail） |
-| F4 | 帮我做一笔报销的合规分析 | L3→`REACT` + skill=finance-analysis（**流程 3** 自动发现） |
+| F4 | 帮我做一笔报销的合规分析 | L3→`REACT` + skillId=finance-analysis |
+| F5 | 看一下这个skills能做什么，分析一下脚本 | L3→`REACT`；**可选** skillId（挂载 `/skills/`）；`sandbox__*` **常驻**（方案 B，不依赖 skillId） |
+| F6 | 帮我创建一个csv文件，再使用脚本求和 | L3→`REACT`；须 `sandbox__write` + `exec`；有 `@skill` 时懒挂载脚本目录 |
 
 ---
 
@@ -262,7 +266,7 @@ Live：`python scripts/verify_execution_preference.py`
 | A1 + 去掉「先…再…」改为逗号串联 | 若 L1 未命中且含「查询待审批」 | 曾误路由 finance-list；L2 保险丝 + 配置 domain 组应避免 |
 | E4 `@finance-analysis 是否合规` | finance-smart | `REACT` + skill=finance-analysis |
 | E3 `@finance-analysis 先…再…` | 仅 REACT 单 Agent | `PLAN_WORKFLOW` 5B + Plan DAG |
-| F4 帮我做合规分析 | finance-smart / workflow | `REACT` + skill 自动发现（无 @） |
+| F4 帮我做合规分析 | finance-smart / workflow | `REACT` + L3 skillId=finance-analysis（无 @） |
 
 ---
 

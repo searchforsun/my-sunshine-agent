@@ -70,7 +70,7 @@ public class SkillCatalogClient {
         }
     }
 
-    /** 启用 Skill 的 scripts/ + references/ 文本材料（沙箱挂载） */
+    /** 启用 Skill 的 SKILL.md + scripts/ + references/ 文本材料（沙箱挂载） */
     public Map<String, String> fetchMaterial(String skillId) {
         if (skillId == null || skillId.isBlank()) {
             return Map.of();

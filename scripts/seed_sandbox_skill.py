@@ -34,7 +34,7 @@ DEFAULT_POLICY = {
     "memoryMb": 256,
     "cpus": 0.5,
     "networkAllow": [],
-    "execReadonlyAllow": ["ls *", "pwd", "python -m pytest *", "python /skill/scripts/*"],
+    "execReadonlyAllow": ["ls *", "pwd", "python -m pytest *", "python /skills/*/scripts/*"],
 }
 
 
@@ -107,7 +107,7 @@ def main() -> int:
             json={
                 "id": SKILL_ID,
                 "displayName": "沙箱编码演示",
-                "description": "4.5 Docker 沙箱 Coding Agent 示例（读 /skill、写 /workspace、exec）",
+                "description": "4.5 Docker 沙箱 Coding Agent 示例（读 /skills/{id}、写 /workspace、exec）",
                 "sandbox": "docker",
                 "sandboxPolicy": DEFAULT_POLICY,
             },
@@ -155,7 +155,7 @@ def main() -> int:
 
     print()
     print("试跑:")
-    print(f"  @{SKILL_ID} 请用沙箱工具：读取 /skill 下脚本，在 /workspace 写 test.txt，再 ls")
+    print(f"  @{SKILL_ID} 请用沙箱工具：读取 /skills/sandbox-coding-demo 下脚本，在 /workspace 写 test.txt，再 ls")
     print("或 UI: /skills → sandbox-coding-demo → 试跑")
     return 0
 

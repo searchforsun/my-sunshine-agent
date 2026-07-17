@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.conversation.ConversationService;
+import com.sunshine.orchestrator.conversation.MessageBodyText;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.memory.mtm.MtmSummarizeService;
@@ -57,8 +58,8 @@ public class MemoryLifecycleService {
         }
         List<ChatTurn> turns = messages.stream()
                 .filter(m -> "user".equals(m.getRole()) || "assistant".equals(m.getRole()))
-                .filter(m -> StringUtils.hasText(m.getContent()))
-                .map(m -> new ChatTurn(m.getRole(), m.getContent()))
+                .map(m -> new ChatTurn(m.getRole(), MessageBodyText.resolve(m)))
+                .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toList());
         if (turns.isEmpty()) {
             return;

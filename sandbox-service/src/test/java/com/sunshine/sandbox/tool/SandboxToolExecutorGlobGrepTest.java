@@ -41,7 +41,7 @@ class SandboxToolExecutorGlobGrepTest {
         executor = new SandboxToolExecutor(store, new StubDockerCli(props), props, null);
         sessionId = "sess-glob-001";
         Path hostRoot = tempRoot.resolve(sessionId);
-        Path hostSkill = hostRoot.resolve("skill");
+        Path hostSkill = hostRoot.resolve("skills").resolve("demo");
         hostWorkspace = hostRoot.resolve("workspace");
         Files.createDirectories(hostSkill.resolve("scripts"));
         Files.createDirectories(hostWorkspace.resolve("pkg"));
@@ -66,9 +66,9 @@ class SandboxToolExecutorGlobGrepTest {
                 .filter(s -> !s.isBlank())
                 .collect(Collectors.toList());
         assertThat(paths).containsExactlyInAnyOrder(
-                "/skill/scripts/hello.py",
+                "/skills/demo/scripts/hello.py",
                 "/workspace/pkg/app.py");
-        assertThat(paths).allMatch(p -> p.startsWith("/skill/") || p.startsWith("/workspace/"));
+        assertThat(paths).allMatch(p -> p.startsWith("/skills/") || p.startsWith("/workspace/"));
         assertThat(paths).noneMatch(p -> p.contains(tempRoot.toString()));
     }
 

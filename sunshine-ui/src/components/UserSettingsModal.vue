@@ -2,9 +2,13 @@
 import { ref, watch } from 'vue'
 import { NModal, NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 import { useAuthStore } from '../stores/authStore'
+import { useChatStore } from '../stores/chatStore'
 import ExecutionModeSelector from './chat/ExecutionModeSelector.vue'
+import WriteHitlModeSelector from './sandbox/WriteHitlModeSelector.vue'
 import TenantSelector from './knowledge/TenantSelector.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { useWriteHitlMode } from '../composables/useWriteHitlMode'
+import { isWriteHitlMode, type WriteHitlMode } from '../api/writeHitlModes'
 import { friendlyErrorMessage } from '../api/apiError'
 import type { TenantId } from '../api/tenants'
 
@@ -12,10 +16,15 @@ const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ 'update:show': [value: boolean] }>()
 
 const auth = useAuthStore()
+const chatStore = useChatStore()
 const message = useMessage()
 const { globalDefault, setGlobalDefault } = useExecutionPreference()
+const { globalDefault: writeHitlGlobal, setGlobalDefault: setWriteHitlGlobal } = useWriteHitlMode(
+  () => chatStore.currentId,
+)
 const nickname = ref('')
 const defaultMode = ref(globalDefault.value)
+const defaultWriteHitl = ref<WriteHitlMode>(writeHitlGlobal.value)
 const tenantId = ref<TenantId>('default')
 const saving = ref(false)
 
@@ -25,6 +34,8 @@ watch(
     if (open) {
       nickname.value = auth.user?.nickname ?? ''
       defaultMode.value = globalDefault.value
+      const fromAuth = auth.user?.defaultWriteHitlMode
+      defaultWriteHitl.value = isWriteHitlMode(fromAuth) ? fromAuth : writeHitlGlobal.value
       tenantId.value = auth.user?.tenantId ?? 'default'
     }
   },
@@ -42,8 +53,9 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    await auth.updateProfile(value, tenantId.value)
+    await auth.updateProfile(value, tenantId.value, defaultWriteHitl.value)
     setGlobalDefault(defaultMode.value)
+    setWriteHitlGlobal(defaultWriteHitl.value)
     message.success('资料已更新')
     close()
   } catch (e) {
@@ -98,6 +110,17 @@ async function handleSave() {
             @update:model-value="defaultMode = $event"
           />
           <p class="settings-hint">新建或无记忆会话时使用；已有会话恢复其最近一次选择。</p>
+        </div>
+      </NFormItem>
+      <NFormItem label="默认写操作确认">
+        <div class="execution-mode-field">
+          <WriteHitlModeSelector
+            variant="block"
+            :model-value="defaultWriteHitl"
+            :disabled="saving"
+            @update:model-value="defaultWriteHitl = $event"
+          />
+          <p class="settings-hint">新建或无记忆会话时使用；工作区可按会话临时覆盖，不回写此处默认。</p>
         </div>
       </NFormItem>
     </NForm>

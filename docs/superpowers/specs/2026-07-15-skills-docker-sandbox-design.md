@@ -1,11 +1,12 @@
 # 阶段四 · 4.5 Skills Docker 沙箱（Coding Agent 工具面）
 
 > **阶段**：四 · **任务卡**：**4.5**  
-> **状态**：实施中 / 验收中 · [实施计划](../plans/2026-07-15-skills-docker-sandbox.md)  
+> **状态**：✅ 方案 B 已落地（常驻工具+懒开箱）· 工作区/写确认/时间线展示见 [docs/sandbox/README.md](../../sandbox/README.md)  
 > **日期**：2026-07-15  
 > **前置锁定**：D4 Docker 沙箱（[locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) §D4）  
 > **相关**：skill-manager `/skills` · 3.3 HITL · 4.8 特殊工具不进 Catalog（同 `search_knowledge` / `manage_tasks`）  
-> **平台索引**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.5
+> **平台索引**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.5  
+> **演进 SSOT**：[conversation-sandbox-permanent-tools-design.md](./2026-07-16-conversation-sandbox-permanent-tools-design.md)
 
 ---
 
@@ -13,7 +14,9 @@
 
 为声明了沙箱的 Skill 提供 **Coding Agent 工作区能力**：在隔离 Docker 会话内，对挂载目录使用与 Claude Code / Cursor 同构的基础工具面，安全地读改文件并执行命令。
 
-**成功标准**：带 `sandbox` 的 Skill 在 ReAct / Workflow agent / `/skills` 试跑中可注入并使用六工具；无沙箱 Skill 不可见；越狱路径与默认出网被拒；写操作走 HITL；会话结束后容器回收且可审计。
+**成功标准（4.5 初版）**：带 `sandbox` 的 Skill 在 ReAct 中可注入并使用六工具；越狱路径与默认出网被拒；写操作走 HITL；会话结束后容器回收且可审计。
+
+**演进（2026-07-16 · 方案 B）**：主 ReAct **始终**注入六工具；容器**懒创建**（首次 `sandbox__*`）；Skill **不**再门控沙箱。详见 [2026-07-16-conversation-sandbox-permanent-tools-design.md](./2026-07-16-conversation-sandbox-permanent-tools-design.md)。
 
 ---
 
@@ -35,10 +38,13 @@
 
 ## 3. 架构
 
+> **方案 B（✅）**：MAIN ReAct **常驻**六工具 + 首次工具调用懒开箱。见 [permanent-tools 设计](./2026-07-16-conversation-sandbox-permanent-tools-design.md)。
+
 ```text
 Chat / Skill 试跑 / Workflow agent(skill)
   → orchestrator AgentRuntime
-      → 若 skill.sandbox != none：注入 6 个 sandbox__* 工具
+      → MAIN ReAct：始终注入 6 个 sandbox__* 工具（方案 B）
+      → 首次 sandbox__*：ensureConversationSession
       → SandboxClient
             → sandbox-service :8226
                  ├── Session create / tool / close
@@ -200,6 +206,20 @@ Live 脚本（计划阶段命名）：如 `scripts/verify_sandbox_live.py`。
 
 ---
 
+## 11. 演进：对话级常驻工具（方案 B）
+
+**SSOT**：[2026-07-16-conversation-sandbox-permanent-tools-design.md](./2026-07-16-conversation-sandbox-permanent-tools-design.md)
+
+| 原约束（§2–§3） | 方案 B |
+|----------------|--------|
+| 仅 `skill.sandbox != none` 注入六工具 | MAIN ReAct **始终**注入 |
+| `openIfNeeded` 在 run 开始 | **首次 `sandbox__*`** 时 `ensureSession` |
+| 无 Skill 则无沙箱 | 无 Skill 仍可用 `/workspace`；有 Skill 时懒挂载 `/skills/{id}/` |
+
+初版验收 G1「无 sandbox skill 不出现 sandbox__」在方案 B 后**作废**；以 permanent-tools 文档 §7 为准。
+
+---
+
 ## 12. 实现任务拆分（供 writing-plans）
 
 | 编号 | 内容 |
@@ -217,3 +237,5 @@ Live 脚本（计划阶段命名）：如 `scripts/verify_sandbox_live.py`。
 | 日期 | 说明 |
 |------|------|
 | 2026-07-15 | 初稿：Coding Agent 六工具面 + 独立 sandbox-service + 会话长容器；修订 D4 网络白名单 |
+| 2026-07-16 | 方案 B：常驻工具 + 懒开箱；Skill 不门控（见 permanent-tools 设计） |
+| 2026-07-16 | 工作区抽屉 / `writeHitlMode` / 时间线相对路径展示；索引 `docs/sandbox/README.md` |

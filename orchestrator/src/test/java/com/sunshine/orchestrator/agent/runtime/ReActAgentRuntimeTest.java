@@ -83,11 +83,11 @@ class ReActAgentRuntimeTest {
         AgentRunRequest planner = new AgentRunRequest(
                 AgentRole.PLANNER, "run-p", null, MemoryContext.empty(), "plan",
                 List.of(), "u1", "default", null, null, null, null, 1,
-                TimelineBinding.PLANNER_ONLY, false);
+                TimelineBinding.PLANNER_ONLY, false, null);
         assertThatThrownBy(() -> runtime.run(planner).collectList().block())
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("PLANNER");
-        verify(sandboxSessionLifecycle, never()).openIfNeeded(any());
+        verify(sandboxSessionLifecycle, never()).prepareRun(any());
     }
 
     @Test
@@ -114,8 +114,8 @@ class ReActAgentRuntimeTest {
         assertThat(composeCaptor.getValue().userMessage()).isEqualTo("用户问题");
         assertThat(composeCaptor.getValue().skillId()).isNull();
         verify(agentFactory).create(req);
-        verify(sandboxSessionLifecycle).openIfNeeded(req);
-        verify(sandboxSessionLifecycle).closeQuietly();
+        verify(sandboxSessionLifecycle).prepareRun(req);
+        verify(sandboxSessionLifecycle).closeQuietly(req);
     }
 
     @Test
@@ -143,8 +143,8 @@ class ReActAgentRuntimeTest {
         verify(promptComposer).composeReactInputs(composeCaptor.capture());
         assertThat(composeCaptor.getValue().memory().stmTurns()).isEmpty();
         assertThat(composeCaptor.getValue().injectedUserContexts()).containsExactly("制度上下文");
-        verify(sandboxSessionLifecycle).openIfNeeded(req);
-        verify(sandboxSessionLifecycle).closeQuietly();
+        verify(sandboxSessionLifecycle).prepareRun(req);
+        verify(sandboxSessionLifecycle).closeQuietly(req);
     }
 
     @Test
@@ -177,7 +177,7 @@ class ReActAgentRuntimeTest {
     }
 
     @Test
-    void run_sandboxSkill_opensAndClosesSessionOnce() {
+    void run_mainPreparesSandboxContextAndClosesOnce() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
         Msg resultMsg = Msg.builder()
                 .role(MsgRole.ASSISTANT)
@@ -192,8 +192,8 @@ class ReActAgentRuntimeTest {
 
         runtime.run(req).collectList().block();
 
-        verify(sandboxSessionLifecycle, times(1)).openIfNeeded(req);
-        verify(sandboxSessionLifecycle, times(1)).closeQuietly();
+        verify(sandboxSessionLifecycle, times(1)).prepareRun(req);
+        verify(sandboxSessionLifecycle, times(1)).closeQuietly(req);
     }
 
     @Test
@@ -208,7 +208,7 @@ class ReActAgentRuntimeTest {
         assertThatThrownBy(() -> runtime.run(req).collectList().block())
                 .hasMessageContaining("boom");
 
-        verify(sandboxSessionLifecycle).openIfNeeded(req);
-        verify(sandboxSessionLifecycle).closeQuietly();
+        verify(sandboxSessionLifecycle).prepareRun(req);
+        verify(sandboxSessionLifecycle).closeQuietly(req);
     }
 }

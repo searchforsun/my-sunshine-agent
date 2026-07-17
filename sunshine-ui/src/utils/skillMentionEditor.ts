@@ -7,8 +7,10 @@ import {
   type ChatMentionKind,
   type ChatMentionSegment,
   mentionPlainToken,
+  mentionPrefix,
   segmentChatMentions,
 } from './chatMention'
+import { sandboxPathBasename, isLikelySandboxDir } from './sandboxPathChip'
 
 export interface ComposerMentionContext {
   catalogs: ChatMentionCatalogs
@@ -18,6 +20,11 @@ export interface ComposerMentionContext {
 function chipDataset(kind: ChatMentionKind, token: string): Record<string, string> {
   return { mentionKind: kind, mentionId: token }
 }
+
+const FILE_ICON_SVG =
+  '<svg viewBox="0 0 512 512" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M428 224H288a48 48 0 0 1-48-48V36a4 4 0 0 0-4-4h-92a64 64 0 0 0-64 64v320a64 64 0 0 0 64 64h224a64 64 0 0 0 64-64V228a4 4 0 0 0-4-4Zm-92-180.1L411.9 176H336a8 8 0 0 1-8-8V43.9Z"/></svg>'
+const FOLDER_ICON_SVG =
+  '<svg viewBox="0 0 512 512" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M496 152a56 56 0 0 0-56-56H220.11a23.89 23.89 0 0 1-13.31-4L179 73.41A55.77 55.77 0 0 0 147.89 64H72a56 56 0 0 0-56 56v48a8 8 0 0 0 8 8h464a8 8 0 0 0 8-8ZM16 384a56 56 0 0 0 56 56h368a56 56 0 0 0 56-56V216a8 8 0 0 0-8-8H24a8 8 0 0 0-8 8Z"/></svg>'
 
 export function plainTextFromEditor(root: HTMLElement): string {
   let out = ''
@@ -115,20 +122,42 @@ export function setCaretPlainOffset(root: HTMLElement, offset: number): void {
   sel.addRange(range)
 }
 
-function createMentionChipElement(kind: ChatMentionKind, token: string): HTMLSpanElement {
+function createMentionChipElement(
+  kind: ChatMentionKind,
+  token: string,
+  labelText?: string,
+): HTMLSpanElement {
   const chip = document.createElement('span')
   chip.className = `mention-chip mention-chip--${kind}`
   chip.contentEditable = 'false'
   Object.entries(chipDataset(kind, token)).forEach(([k, v]) => {
     chip.dataset[k] = v
   })
-  const prefix = document.createElement('span')
-  prefix.className = 'mention-chip__prefix'
-  prefix.textContent = kind === 'skill' ? '@' : kind === 'expert' ? '$' : '#'
+  const display = kind === 'path'
+    ? (labelText || sandboxPathBasename(token))
+    : token
+  chip.title = kind === 'path' ? token : display
+  if (kind === 'path') {
+    const isDir = isLikelySandboxDir(token)
+    chip.dataset.pathIsDir = isDir ? '1' : '0'
+    chip.classList.add('mention-chip--clickable')
+    const icon = document.createElement('span')
+    icon.className = 'mention-chip__icon'
+    icon.innerHTML = isDir ? FOLDER_ICON_SVG : FILE_ICON_SVG
+    chip.appendChild(icon)
+  } else {
+    const prefixChar = mentionPrefix(kind)
+    if (prefixChar) {
+      const prefix = document.createElement('span')
+      prefix.className = 'mention-chip__prefix'
+      prefix.textContent = prefixChar
+      chip.appendChild(prefix)
+    }
+  }
   const label = document.createElement('span')
   label.className = 'mention-chip__label'
-  label.textContent = token
-  chip.append(prefix, label)
+  label.textContent = display
+  chip.appendChild(label)
   return chip
 }
 
@@ -147,8 +176,10 @@ export function renderEditorSegments(root: HTMLElement, segments: ChatMentionSeg
       root.appendChild(createMentionChipElement('skill', seg.token))
     } else if (seg.type === 'expert') {
       root.appendChild(createMentionChipElement('expert', seg.token))
-    } else {
+    } else if (seg.type === 'workflow') {
       root.appendChild(createMentionChipElement('workflow', seg.token))
+    } else if (seg.type === 'path') {
+      root.appendChild(createMentionChipElement('path', seg.token, seg.label))
     }
   }
 }
@@ -157,8 +188,6 @@ export function displaySegments(
   plain: string,
   ctx: ComposerMentionContext,
 ): ChatMentionSegment[] {
-  const anyAllowed = ctx.allows.skill || ctx.allows.expert || ctx.allows.workflow
-  if (!anyAllowed) return [{ type: 'text', value: plain }]
   return segmentChatMentions(plain, ctx.catalogs, ctx.allows)
 }
 
@@ -166,8 +195,7 @@ export function shouldRenderChips(
   plain: string,
   ctx: ComposerMentionContext,
 ): boolean {
-  const anyAllowed = ctx.allows.skill || ctx.allows.expert || ctx.allows.workflow
-  if (!anyAllowed || !plain) return false
+  if (!plain) return false
   return segmentChatMentions(plain, ctx.catalogs, ctx.allows).some(s => s.type !== 'text')
 }
 
@@ -177,10 +205,6 @@ export function editorNeedsChipSync(
   ctx: ComposerMentionContext,
 ): boolean {
   const domChips = Array.from(root.querySelectorAll<HTMLElement>('[data-mention-kind][data-mention-id]'))
-  const anyAllowed = ctx.allows.skill || ctx.allows.expert || ctx.allows.workflow
-  if (!anyAllowed) {
-    return domChips.length > 0
-  }
   const segments = displaySegments(plain, ctx)
   const expected = segments.filter((s): s is Exclude<ChatMentionSegment, { type: 'text' }> => s.type !== 'text')
   if (expected.length === 0) {
@@ -195,6 +219,19 @@ export function editorNeedsChipSync(
     return true
   }
   return plainTextFromEditor(root) !== plain
+}
+
+/** 在 caret 处插入纯文本（含 path token），并补两侧空格 */
+export function insertPlainAtOffset(plain: string, offset: number, insert: string): {
+  next: string
+  caret: number
+} {
+  const before = plain.slice(0, Math.max(0, offset))
+  const after = plain.slice(Math.max(0, offset))
+  const needBefore = before.length > 0 && !/\s$/.test(before)
+  const needAfter = after.length > 0 && !/^\s/.test(after)
+  const chunk = `${needBefore ? ' ' : ''}${insert}${needAfter ? ' ' : ''}`
+  return { next: before + chunk + after, caret: before.length + chunk.length }
 }
 
 /** @deprecated 兼容旧调用 */

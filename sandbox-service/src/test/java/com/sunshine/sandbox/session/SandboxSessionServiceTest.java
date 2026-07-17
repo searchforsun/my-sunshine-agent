@@ -40,23 +40,27 @@ class SandboxSessionServiceTest {
     }
 
     @Test
-    void createWritesFilesAndCloseRemovesContainer() throws Exception {
+    void createEmptySkillsThenMountAndCloseRemovesContainer() throws Exception {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
                 new SandboxPolicyDto("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
                         List.of(), List.of("ls *")),
-                Map.of("scripts/hello.py", "print(1)"),
+                Map.of(),
                 Map.of("note.txt", "hi"));
 
         String sessionId = service.create(req);
 
         assertThat(sessionId).isNotBlank();
-        Path skillFile = tempRoot.resolve(sessionId).resolve("skill").resolve("scripts/hello.py");
+        Path skillsDir = tempRoot.resolve(sessionId).resolve("skills");
         Path wsFile = tempRoot.resolve(sessionId).resolve("workspace").resolve("note.txt");
-        assertThat(skillFile).exists();
-        assertThat(Files.readString(skillFile)).isEqualTo("print(1)");
+        assertThat(skillsDir).isDirectory();
         assertThat(wsFile).exists();
         assertThat(Files.readString(wsFile)).isEqualTo("hi");
+
+        service.mountSkill(sessionId, "demo", Map.of("scripts/hello.py", "print(1)"));
+        Path skillFile = skillsDir.resolve("demo").resolve("scripts/hello.py");
+        assertThat(skillFile).exists();
+        assertThat(Files.readString(skillFile)).isEqualTo("print(1)");
 
         assertThat(docker.lastRunArgs).isNotNull();
         assertThat(docker.lastRunArgs).contains(
@@ -64,7 +68,7 @@ class SandboxSessionServiceTest {
                 "--user", "10001:10001", "--cap-drop", "ALL",
                 "sunshine-sandbox-python:3.11-slim", "sleep", "infinity");
         assertThat(docker.lastRunArgs).noneMatch(a -> a.startsWith("HTTP_PROXY="));
-        assertThat(docker.lastRunArgs).anyMatch(a -> a.endsWith(":/skill:ro"));
+        assertThat(docker.lastRunArgs).anyMatch(a -> a.endsWith(":/skills:ro"));
         assertThat(docker.lastRunArgs).anyMatch(a -> a.endsWith(":/workspace"));
         assertThat(store.get(sessionId)).isPresent();
 
@@ -121,12 +125,11 @@ class SandboxSessionServiceTest {
 
     @Test
     void rejectsSkillFileOutsideScriptsOrReferences() {
-        CreateSessionRequest req = new CreateSessionRequest(
+        String sessionId = service.create(new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
                 new SandboxPolicyDto(null, null, null, null, null, List.of(), null),
-                Map.of("SKILL.md", "x"),
-                Map.of());
-        assertThatThrownBy(() -> service.create(req))
+                Map.of(), Map.of()));
+        assertThatThrownBy(() -> service.mountSkill(sessionId, "demo", Map.of("bin/hack.sh", "x")))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(SandboxErrorCode.SKILL_FILE_PATH_INVALID);

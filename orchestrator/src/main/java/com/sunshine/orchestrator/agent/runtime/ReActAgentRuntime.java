@@ -70,7 +70,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                 request.skillId(),
                 query != null && query.length() > 60 ? query.substring(0, 60) + "..." : query);
 
-        sandboxSessionLifecycle.openIfNeeded(request);
+        sandboxSessionLifecycle.prepareRun(request);
         try {
             List<Msg> inputs = promptComposer.composeReactInputs(
                     PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks(),
@@ -110,6 +110,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                     ? assistantMessageId.strip() : null;
             final long runEpoch = epochMessageId != null
                     ? StepEventBridge.currentStreamEpoch(epochMessageId) : -1L;
+            // sandbox_session SSE：首次 ensureBound（工具调用）时经 StepEventBridge.offerStreamToken 下发
             return agent.stream(inputs, options)
                     .flatMap(event -> {
                         if (epochMessageId != null && runEpoch >= 0
@@ -133,7 +134,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                         return Flux.fromIterable(tail);
                     }))
                     .doFinally(sig -> {
-                        sandboxSessionLifecycle.closeQuietly();
+                        sandboxSessionLifecycle.closeQuietly(request);
                         if (request.role() == AgentRole.MAIN
                                 && request.assistantMessageId() != null
                                 && !request.assistantMessageId().isBlank()) {
@@ -145,7 +146,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                     .doOnError(e -> log.error("[AgentRuntime] role={} runId={} 异常: {}",
                             request.role(), request.runId(), e.getMessage(), e));
         } catch (RuntimeException e) {
-            sandboxSessionLifecycle.closeQuietly();
+            sandboxSessionLifecycle.closeQuietly(request);
             throw e;
         }
     }

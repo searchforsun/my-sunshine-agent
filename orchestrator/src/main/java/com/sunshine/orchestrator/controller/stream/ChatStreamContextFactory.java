@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.conversation.ConversationService;
+import com.sunshine.orchestrator.conversation.MessageBodyText;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
@@ -56,7 +57,8 @@ public class ChatStreamContextFactory {
         // 先加载历史再落库本轮 user/assistant，避免 history + userContent 重复注入 LLM
         List<ChatTurn> loadedHistory = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
                 .filter(m -> !MessageStatus.STREAMING.equals(m.getStatus()))
-                .map(m -> new ChatTurn(m.getRole(), m.getContent()))
+                .map(m -> new ChatTurn(m.getRole(), MessageBodyText.resolve(m)))
+                .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toList());
 
         ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
@@ -150,7 +152,7 @@ public class ChatStreamContextFactory {
             resumeReasoning = "";
             stepsJson = assistant.getSteps();
         } else {
-            resumeContent = assistant.getContent() != null ? assistant.getContent() : "";
+            resumeContent = MessageBodyText.resolve(assistant);
             resumeReasoning = assistant.getReasoning() != null ? assistant.getReasoning() : "";
             stepsJson = assistant.getSteps();
         }
@@ -160,12 +162,13 @@ public class ChatStreamContextFactory {
         String userContent = historyEntities.stream()
                 .filter(m -> "user".equals(m.getRole()))
                 .reduce((a, b) -> b)
-                .map(ChatMessageEntity::getContent)
+                .map(MessageBodyText::resolve)
                 .orElse("");
 
         List<ChatTurn> history = historyEntities.stream()
                 .filter(m -> !m.getId().equals(assistantId))
-                .map(m -> new ChatTurn(m.getRole(), m.getContent()))
+                .map(m -> new ChatTurn(m.getRole(), MessageBodyText.resolve(m)))
+                .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toCollection(ArrayList::new));
         if (!history.isEmpty()
                 && "user".equals(history.get(history.size() - 1).role())

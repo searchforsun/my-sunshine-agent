@@ -11,4 +11,6 @@ public class AuthUserVO {
     private String username;
     private String nickname;
     private String tenantId;
+    /** never|always|smart */
+    private String defaultWriteHitlMode;
 }

@@ -10,6 +10,9 @@
 
 **设计 SSOT:** [2026-07-15-skills-docker-sandbox-design.md](../specs/2026-07-15-skills-docker-sandbox-design.md)
 
+> **演进（2026-07-16 · 方案 B · 待实现）**：[conversation-sandbox-permanent-tools-design.md](../specs/2026-07-16-conversation-sandbox-permanent-tools-design.md)  
+> 下文若写「`skill.sandbox` 门控注入 / run 开始 `openIfNeeded`」，以方案 B 为准：**MAIN 常驻六工具** + **首次 `sandbox__*` 懒 create**。实现前代码仍可能为初版行为。
+
 **前置:** Docker daemon 可用；镜像可构建；Nacos/`sync_nacos.py`；skill-manager 已有 `sandbox` 列。
 
 ---

@@ -172,12 +172,13 @@ public class GenerationJob {
         streamService.appendChunk(generationId, nextSeq, wireJson);
     }
 
-    /** Hook 队列中的 step / step_delta 即时刷入 Redis（HITL 阻塞前须先下发 think / tool 步骤） */
+    /** Hook 队列中的 step / step_delta / 分段 content 即时刷入 Redis（HITL 阻塞前须先下发 think / tool 步骤） */
     public void emitStreamToken(StreamToken token) {
         if (token == null || finished.get() || !isStreamEpochValid()) {
             return;
         }
-        ensureChunkEmitter().emitStreamToken(token);
+        StringBuilder buf = mysqlBufferRef != null ? mysqlBufferRef : new StringBuilder();
+        ensureChunkEmitter().emitStreamToken(token, buf, directPartialFlush());
     }
 
     private GenerationJobChunkEmitter ensureChunkEmitter() {
@@ -280,11 +281,19 @@ public class GenerationJob {
 
     /** commitFinal 含脱敏 block 调用，须在 boundedElastic 执行，避免 reactor 线程 IllegalStateException */
     private void persistFinal(String status, Runnable afterPersist) {
-        String content = bufferContent();
+        String buffered = bufferContent();
         String reasoning = bufferReasoning();
         contentBlockAccumulator.mergeIntoSteps(stepsBuffer);
         String steps = stepsJson();
         String contentBlocks = contentBlockAccumulator.messageBlocksJson();
+        // ReAct 旁路 emitStreamToken 曾漏写 mysqlBuffer：用 content_blocks 回填，保证 STM SSOT
+        final String content;
+        if (!StringUtils.hasText(buffered)) {
+            String fromBlocks = contentBlockAccumulator.messageBlocksPlainText();
+            content = StringUtils.hasText(fromBlocks) ? fromBlocks : buffered;
+        } else {
+            content = buffered;
+        }
         Mono.fromRunnable(() -> {
                     try {
                         if (flushLock == null || flushLock.isHeldByThisInstance(generationId)) {

@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -32,6 +33,8 @@ public class StepEventBridgeRegistry {
     private final Map<String, String> toolUseBridge = new ConcurrentHashMap<>();
     private final Map<String, String> toolUseStep = new ConcurrentHashMap<>();
     private final Map<String, String> hitlPreapproved = new ConcurrentHashMap<>();
+    /** assistantMsgId → Chat 工作区写 HITL 跳过模式 */
+    private final Map<String, SandboxWriteHitlMode> writeHitlModes = new ConcurrentHashMap<>();
     private final Map<String, Function<StreamToken, List<StreamToken>>> tokenWrappers = new ConcurrentHashMap<>();
     /** assistantMsgId → loop body 折叠（Agent Hook 直刷 Generation 时用） */
     private final Map<String, Function<StreamToken, List<StreamToken>>> loopBodyFolds = new ConcurrentHashMap<>();
@@ -62,6 +65,7 @@ public class StepEventBridgeRegistry {
         toolUseBridge.clear();
         toolUseStep.clear();
         hitlPreapproved.clear();
+        writeHitlModes.clear();
         tokenWrappers.clear();
         loopBodyFolds.clear();
         generationFlush.clear();
@@ -247,6 +251,22 @@ public class StepEventBridgeRegistry {
         return expected.equals(hitlPreapproved.remove(messageId.strip()));
     }
 
+    public void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {
+        if (assistantMessageId == null || assistantMessageId.isBlank()) {
+            return;
+        }
+        writeHitlModes.put(assistantMessageId.strip(),
+                mode != null ? mode : SandboxWriteHitlMode.NEVER);
+    }
+
+    public SandboxWriteHitlMode writeHitlMode(String assistantMessageId) {
+        if (assistantMessageId == null || assistantMessageId.isBlank()) {
+            return SandboxWriteHitlMode.NEVER;
+        }
+        SandboxWriteHitlMode mode = writeHitlModes.get(assistantMessageId.strip());
+        return mode != null ? mode : SandboxWriteHitlMode.NEVER;
+    }
+
     private static String hitlPreApprovalKey(String toolId, Map<String, String> params) {
         if (params == null || params.isEmpty()) {
             return toolId;
@@ -392,6 +412,14 @@ public class StepEventBridgeRegistry {
         if (session != null) {
             emitHookTokens(messageId, session, action);
         }
+    }
+
+    public void offerStreamToken(String messageId, StreamToken token) {
+        if (messageId == null || messageId.isBlank() || token == null) {
+            return;
+        }
+        ConcurrentLinkedQueue<StreamToken> queue = hookTokenQueues.get(messageId);
+        routeHookToken(messageId, token, queue);
     }
 
     public void emitSingleton(Consumer<ProcessingTimelineSession> action) {

@@ -7,12 +7,20 @@ import {
   displaySegments,
   editorNeedsChipSync,
   getCaretPlainOffset,
+  insertPlainAtOffset,
   plainTextFromEditor,
   renderEditorSegments,
   setCaretPlainOffset,
   shouldRenderChips,
   type ComposerMentionContext,
 } from '../../utils/skillMentionEditor'
+import {
+  parseSandboxPathDrag,
+  sandboxPathPlainToken,
+  SANDBOX_PATH_MIME,
+} from '../../utils/sandboxPathChip'
+import { useChatStore } from '../../stores/chatStore'
+import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
 
 const props = defineProps<{
   modelValue: string
@@ -31,9 +39,11 @@ const emit = defineEmits<{
 }>()
 
 const editorRef = ref<HTMLDivElement | null>(null)
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const syncing = ref(false)
 const isComposing = ref(false)
+const pathDragOver = ref(false)
+const chatStore = useChatStore()
+const sandboxDrawer = useSandboxWorkspaceDrawer()
 
 const mentionContext = computed<ComposerMentionContext>(() => ({
   catalogs: {
@@ -47,17 +57,6 @@ const mentionContext = computed<ComposerMentionContext>(() => ({
     workflow: props.allowsWorkflowMention ?? false,
   },
 }))
-
-const useChipEditor = computed(() =>
-  mentionContext.value.allows.skill
-  || mentionContext.value.allows.expert
-  || mentionContext.value.allows.workflow,
-)
-
-function resizeTextarea(el: HTMLTextAreaElement) {
-  el.style.height = 'auto'
-  el.style.height = `${el.scrollHeight}px`
-}
 
 function resizeEditor(el: HTMLDivElement) {
   el.style.height = 'auto'
@@ -76,44 +75,25 @@ function syncChipEditor(plain: string, caret?: number) {
   syncing.value = false
 }
 
-function syncPlainInput(plain: string) {
-  const el = textareaRef.value
-  if (!el) return
-  syncing.value = true
-  if (el.value !== plain) el.value = plain
-  resizeTextarea(el)
-  syncing.value = false
-}
-
 function applyExternalValue(plain: string) {
-  if (useChipEditor.value) {
-    if (!editorRef.value) return
-    syncChipEditor(plain, plain.length)
-  } else if (textareaRef.value) {
-    syncPlainInput(plain)
-  }
+  if (!editorRef.value) return
+  syncChipEditor(plain, plain.length)
 }
 
 watch(
   () => props.modelValue,
   (val) => {
     if (syncing.value) return
-    const current = useChipEditor.value && editorRef.value
-      ? plainTextFromEditor(editorRef.value)
-      : textareaRef.value?.value ?? ''
+    const current = editorRef.value ? plainTextFromEditor(editorRef.value) : ''
     if (val === current) return
     applyExternalValue(val)
   },
 )
 
-watch(useChipEditor, () => {
-  nextTick(() => applyExternalValue(props.modelValue))
-})
-
 watch(
   mentionContext,
   () => {
-    if (!useChipEditor.value || syncing.value) return
+    if (syncing.value) return
     if (shouldRenderChips(props.modelValue, mentionContext.value)) {
       syncChipEditor(props.modelValue)
     }
@@ -153,17 +133,7 @@ function onCompositionEnd() {
   }
 }
 
-function onTextareaInput(e: Event) {
-  if (syncing.value) return
-  const val = (e.target as HTMLTextAreaElement).value
-  syncing.value = true
-  emit('update:modelValue', val)
-  syncing.value = false
-  resizeTextarea(e.target as HTMLTextAreaElement)
-}
-
 function onPaste(e: ClipboardEvent) {
-  if (!useChipEditor.value) return
   e.preventDefault()
   const text = e.clipboardData?.getData('text/plain') ?? ''
   document.execCommand('insertText', false, text)
@@ -173,16 +143,59 @@ function onEditorKeydown(e: KeyboardEvent) {
   emit('keydown', e)
 }
 
-function onTextareaKeydown(e: KeyboardEvent) {
-  emit('keydown', e)
+function isPathDragTypes(dt: DataTransfer | null): boolean {
+  if (!dt) return false
+  const types = Array.from(dt.types)
+  // Chromium 自定义 MIME 会出现在 types；兜底 text/plain（我们拖拽必写）
+  return types.includes(SANDBOX_PATH_MIME) || types.includes('text/plain')
+}
+
+function onDragOver(e: DragEvent) {
+  // dragover 阶段 getData 常为空，仅靠 MIME types
+  if (!isPathDragTypes(e.dataTransfer)) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  pathDragOver.value = true
+}
+
+function onDragLeave(e: DragEvent) {
+  const related = e.relatedTarget as Node | null
+  const root = e.currentTarget as HTMLElement
+  if (related && root.contains(related)) return
+  pathDragOver.value = false
+}
+
+function onDrop(e: DragEvent) {
+  pathDragOver.value = false
+  const payload = parseSandboxPathDrag(e.dataTransfer)
+  if (!payload) return
+  e.preventDefault()
+  const el = editorRef.value
+  if (!el) return
+  el.focus()
+  const plain = plainTextFromEditor(el)
+  const caret = getCaretPlainOffset(el)
+  const token = sandboxPathPlainToken(payload.path)
+  const { next, caret: nextCaret } = insertPlainAtOffset(plain, caret, token)
+  syncing.value = true
+  emit('update:modelValue', next)
+  syncing.value = false
+  nextTick(() => syncChipEditor(next, nextCaret))
+}
+
+function onEditorClick(e: MouseEvent) {
+  const el = (e.target as HTMLElement | null)?.closest?.('.mention-chip--path') as HTMLElement | null
+  if (!el) return
+  const path = el.dataset.mentionId?.trim()
+  const cid = chatStore.currentId
+  if (!path || !cid) return
+  e.preventDefault()
+  e.stopPropagation()
+  sandboxDrawer.open({ conversationId: cid, focusPath: path })
 }
 
 function focus() {
-  if (useChipEditor.value) {
-    editorRef.value?.focus()
-  } else {
-    textareaRef.value?.focus()
-  }
+  editorRef.value?.focus()
 }
 
 defineExpose({ focus })
@@ -193,9 +206,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="composer-skill-field">
+  <div
+    class="composer-skill-field"
+    :class="{ 'is-path-dragover': pathDragOver }"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <div
-      v-if="useChipEditor"
       ref="editorRef"
       class="composer-editor"
       contenteditable="true"
@@ -207,16 +225,7 @@ onMounted(() => {
       @compositionend="onCompositionEnd"
       @keydown="onEditorKeydown"
       @paste="onPaste"
-    />
-    <textarea
-      v-else
-      ref="textareaRef"
-      class="composer-textarea"
-      :value="modelValue"
-      :placeholder="placeholder"
-      rows="1"
-      @input="onTextareaInput"
-      @keydown="onTextareaKeydown"
+      @click="onEditorClick"
     />
   </div>
 </template>
@@ -226,9 +235,17 @@ onMounted(() => {
   display: flex;
   flex: 1;
   min-width: 0;
+  border-radius: 4px;
+  transition: box-shadow 0.12s ease, outline-color 0.12s ease;
 }
-.composer-editor,
-.composer-textarea {
+
+.composer-skill-field.is-path-dragover {
+  outline: 1px dashed var(--sun-border);
+  outline-offset: 2px;
+  box-shadow: inset 0 0 0 1px transparent;
+}
+
+.composer-editor {
   flex: 1;
   width: 100%;
   min-width: 0;
@@ -246,9 +263,6 @@ onMounted(() => {
   color: var(--sun-text);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.composer-editor {
   display: block;
 }
 
@@ -256,9 +270,5 @@ onMounted(() => {
   content: attr(data-placeholder);
   color: var(--sun-text-muted);
   pointer-events: none;
-}
-
-.composer-textarea::placeholder {
-  color: var(--sun-text-muted);
 }
 </style>

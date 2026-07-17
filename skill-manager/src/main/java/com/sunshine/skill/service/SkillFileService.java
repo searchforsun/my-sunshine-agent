@@ -63,8 +63,8 @@ public class SkillFileService {
     }
 
     /**
-     * 启用 Skill 的 active 版本材料：仅 scripts/ 与 references/ 下文本文件。
-     * 供 sandbox-service / orchestrator 挂载 /skill。
+     * 启用 Skill 的 active 版本材料：SKILL.md + scripts/ + references/ 下文本文件。
+     * 供 sandbox-service / orchestrator 挂载 /skills/{skillId}/。
      */
     public Map<String, String> loadMaterial(String skillId) {
         SkillDefinitionEntity def = definitionRepository.findById(skillId)
@@ -93,12 +93,15 @@ public class SkillFileService {
         return Map.copyOf(files);
     }
 
-    /** scripts/ 或 references/ 下的文本文件路径 */
+    /** 包根 SKILL.md，或 scripts/、references/ 下的文本文件 */
     static boolean isMaterialTextPath(String path) {
         if (!StringUtils.hasText(path) || path.endsWith("/")) {
             return false;
         }
         String normalized = path.strip().replace('\\', '/');
+        if (isSkillMdPath(normalized)) {
+            return "skill.md".equalsIgnoreCase(normalized);
+        }
         if (!normalized.startsWith("scripts/") && !normalized.startsWith("references/")) {
             return false;
         }

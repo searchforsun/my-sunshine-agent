@@ -39,6 +39,7 @@ public class PlanCatalogRenderer {
         return skillCatalogService.indexEntries().stream()
                 .filter(SkillCatalogIndexEntry::enabled)
                 .map(e -> "- **" + e.id() + "**: " + e.displayName()
+                        + " | sandbox=" + e.sandbox()
                         + (StringUtils.hasText(e.description()) ? " — " + e.description() : ""))
                 .collect(Collectors.joining("\n"));
     }

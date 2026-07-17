@@ -33,7 +33,7 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
     private Mono<ExecutionPlan> classifyWithOptionalIntentRewrite(RoutingContext ctx) {
         String userMessage = ctx.userMessage();
         if (!queryRewriteService.shouldRewriteIntent(userMessage)) {
-            return intentRouter.classifyPlan(userMessage);
+            return intentRouter.classifyPlan(ctx);
         }
         return Mono.fromCallable(() -> queryRewriteService.rewriteForIntent(
                         userMessage, ctx.traceMessageId(), ctx.memory()))
@@ -42,7 +42,13 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
                     String query = StringUtils.hasText(outcome.effectiveQuery())
                             ? outcome.effectiveQuery()
                             : userMessage;
-                    return intentRouter.classifyPlan(query);
+                    return intentRouter.classifyPlan(new RoutingContext(
+                            query,
+                            ctx.traceMessageId(),
+                            ctx.preference(),
+                            ctx.forcedWorkflowId(),
+                            ctx.clientSkillId(),
+                            ctx.memory()));
                 });
     }
 }

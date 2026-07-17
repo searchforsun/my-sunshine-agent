@@ -161,7 +161,9 @@ async function submit(approved: boolean): Promise<void> {
 .hitl-params dd {
   margin: 0;
   font-family: var(--sun-font-mono, 'JetBrains Mono', monospace);
-  word-break: break-all;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .hitl-actions {

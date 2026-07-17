@@ -17,7 +17,6 @@
   SKILL_MANAGER_URL / ORCHESTRATOR_URL
   SANDBOX_LIVE_TIMEOUT_SEC（默认 180）
   SANDBOX_SKILL_ID（chat 套件沙箱 Skill，默认 sandbox-coding-demo）
-  SANDBOX_NOSANDBOX_SKILL（G1 无沙箱 Skill，默认 finance-analysis）
 """
 from __future__ import annotations
 
@@ -47,7 +46,7 @@ SKILL_MANAGER_URL = os.environ.get("SKILL_MANAGER_URL", "http://ecs4c16g:8225").
 ORCH_URL = os.environ.get("ORCHESTRATOR_URL", "http://ecs4c16g:8200").rstrip("/")
 TIMEOUT_SEC = int(os.environ.get("SANDBOX_LIVE_TIMEOUT_SEC", "180"))
 SANDBOX_SKILL = os.environ.get("SANDBOX_SKILL_ID", "sandbox-coding-demo")
-NOSANDBOX_SKILL = os.environ.get("SANDBOX_NOSANDBOX_SKILL", "finance-analysis")
+NOSANDBOX_SKILL = os.environ.get("SANDBOX_NOSANDBOX_SKILL", "finance-analysis")  # legacy env; G1 已改为无 skill 正向用例
 SAMPLE_PY = "print('hello-sandbox')\nMARKER = 'sandbox-g4'\n"
 
 
@@ -134,7 +133,7 @@ def create_session(base: str, *, network_allow: list[str] | None = None) -> str:
             "networkAllow": network_allow if network_allow is not None else [],
             "execReadonlyAllow": ["ls *", "pwd"],
         },
-        "skillFiles": {"scripts/sample.py": SAMPLE_PY},
+        "skillFiles": {},
         "workspaceFiles": {},
     }
     resp = requests.post(f"{base}/api/sandbox/sessions", json=body, timeout=60)
@@ -146,6 +145,17 @@ def create_session(base: str, *, network_allow: list[str] | None = None) -> str:
         raise RuntimeError(f"create session empty id: {resp.text[:300]}")
     return str(sid)
 
+
+
+def mount_skill(base: str, session_id: str, skill_id: str, files: dict[str, str]) -> None:
+    resp = requests.put(
+        f"{base}/api/sandbox/sessions/{session_id}/skills/{skill_id}",
+        json=files,
+        timeout=60,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"mount skill HTTP {resp.status_code}: {resp.text[:300]}")
+    unwrap_data(resp.json(), context="mountSkill")
 
 def close_session(base: str, session_id: str) -> None:
     try:
@@ -226,22 +236,23 @@ def run_direct(base: str, report: Report) -> None:
     try:
         session_id = create_session(base)
         print(f"[INFO] session={session_id}")
+        mount_skill(base, session_id, "sandbox-live", {"scripts/sample.py": SAMPLE_PY})
 
         # G2: 可读 /skill；可写仅 /workspace
-        read = invoke_ok(base, session_id, "read", {"path": "/skill/scripts/sample.py"})
+        read = invoke_ok(base, session_id, "read", {"path": "/skills/sandbox-live/scripts/sample.py"})
         if "hello-sandbox" not in (read.get("output") or ""):
-            raise AssertionError("read /skill/scripts/sample.py missing marker")
+            raise AssertionError("read /skills/sandbox-live/scripts/sample.py missing marker")
         invoke_ok(base, session_id, "write", {"path": "/workspace/out.txt", "content": "g2-write\n"})
         reread = invoke_ok(base, session_id, "read", {"path": "/workspace/out.txt"})
         if "g2-write" not in (reread.get("output") or ""):
             raise AssertionError("workspace write/read mismatch")
         st, body = invoke(
             base, session_id, "write",
-            {"path": "/skill/scripts/hack.py", "content": "x"},
+            {"path": "/skills/sandbox-live/scripts/hack.py", "content": "x"},
         )
         if st < 400:
-            raise AssertionError(f"write /skill should 4xx, got {st}: {body}")
-        report.add("G2", "PASS", "read /skill + write /workspace; write /skill → 4xx")
+            raise AssertionError(f"write /skills should 4xx, got {st}: {body}")
+        report.add("G2", "PASS", "read /skills + write /workspace; write /skills → 4xx")
 
         # G3: edit 精确替换 + 路径越狱
         invoke_ok(base, session_id, "write", {"path": "/workspace/edit_me.txt", "content": "alpha beta gamma\n"})
@@ -254,7 +265,7 @@ def run_direct(base: str, report: Report) -> None:
             raise AssertionError(f"edit result unexpected: {edited.get('output')!r}")
         escape_paths = [
             "/workspace/../etc/passwd",
-            "/skill/../../../etc/passwd",
+            "/skills/../../../etc/passwd",
             "/etc/passwd",
         ]
         for p in escape_paths:
@@ -270,9 +281,9 @@ def run_direct(base: str, report: Report) -> None:
             line = line.strip()
             if not line:
                 continue
-            if not (line.startswith("/skill/") or line.startswith("/workspace/")):
+            if not (line.startswith("/skills/") or line.startswith("/workspace/")):
                 raise AssertionError(f"glob path outside jail: {line}")
-        if "/skill/scripts/sample.py" not in glob_out:
+        if "/skills/sandbox-live/scripts/sample.py" not in glob_out:
             raise AssertionError(f"glob missing sample.py: {glob_out!r}")
         grep_data = invoke_ok(base, session_id, "grep", {"pattern": "sandbox-g4"})
         grep_out = grep_data.get("output") or ""
@@ -281,7 +292,7 @@ def run_direct(base: str, report: Report) -> None:
         for line in grep_out.splitlines():
             path_part = line.split(":", 1)[0]
             if path_part and not (
-                path_part.startswith("/skill/") or path_part.startswith("/workspace/")
+                path_part.startswith("/skills/") or path_part.startswith("/workspace/")
             ):
                 raise AssertionError(f"grep path outside jail: {line}")
         report.add("G4", "PASS", "glob/grep paths stay in jail")
@@ -599,19 +610,21 @@ def run_chat(gw: str, report: Report) -> None:
             report.add(g, "SKIP", msg)
         return
 
-    # G1: 无 sandbox Skill 不应出现 sandbox__* 工具步
+    # G1: 方案 B — 无 skill 的 react 亦可调用 sandbox__*（写 workspace）
     try:
         conv = create_conversation(gw, headers)
         coll = chat_sse(
             gw, headers, conv,
-            f"@{NOSANDBOX_SKILL} 用一句话介绍你自己，不要调用任何工具",
+            "请用 sandbox__write 把 hello-scheme-b 写入 /workspace/scheme-b.txt，然后简短确认。"
+            "不要使用其他工具。",
             execution_preference="react",
+            auto_approve=True,
         )
         leaked = sandbox_tool_step_ids(coll.steps)
-        if leaked:
-            report.add("G1", "FAIL", f"无 sandbox skill 出现工具步: {leaked[:5]}")
+        if any("sandbox__write" in x or "sandbox__" in x for x in leaked):
+            report.add("G1", "PASS", f"无 skill 出现 sandbox__* 工具步: {leaked[:5]}")
         else:
-            report.add("G1", "PASS", f"@{NOSANDBOX_SKILL} 无 sandbox__* 工具步")
+            report.add("G1", "FAIL", f"无 skill 未出现 sandbox__* 工具步 steps={leaked[:8]}")
     except (AssertionError, RuntimeError, TimeoutError, requests.RequestException) as exc:
         report.add("G1", "FAIL", str(exc))
 
@@ -658,7 +671,7 @@ def run_chat(gw: str, report: Report) -> None:
             gw, headers, conv,
             (
                 f"@{skill_id} 严格按顺序只用沙箱工具："
-                "1) sandbox__read 读取 /skill/scripts/sample.py；"
+                "1) sandbox__read 读取 /skills/sandbox-live/scripts/sample.py；"
                 "2) sandbox__write 写 /workspace/demo.txt 内容为 OLD；"
                 "3) sandbox__edit 把 OLD 换成 NEW；"
                 "4) sandbox__exec 执行 cat /workspace/demo.txt；"

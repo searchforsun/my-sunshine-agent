@@ -260,7 +260,8 @@ public class ExpertHubEngine {
                 expert.systemPrompt(),
                 2,
                 TimelineBinding.SUB_COMPRESSED,
-                false);
+                false,
+                null);
         return expertPeerAgentFactory.create(request);
     }
 

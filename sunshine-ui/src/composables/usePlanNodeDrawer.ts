@@ -2,6 +2,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import type { PlanGraph } from '../api/executionPlans'
 import type { ProcessingStep } from '../api/processingSteps'
 import type { DagNodeView } from '../utils/planGraph'
+import { closeSandboxWorkspaceDrawerIfOpen } from './sandboxDrawerBridge'
 
 export interface PlanNodeDrawerPayload {
   planId: string
@@ -112,6 +113,7 @@ function onResizePointerDown(e: PointerEvent) {
 
 export function usePlanNodeDrawer() {
   function open(payload: PlanNodeDrawerPayload) {
+    closeSandboxWorkspaceDrawerIfOpen()
     state.activePlanId = payload.planId
     state.userQuery = payload.userQuery?.trim() ?? ''
     state.node = payload.node

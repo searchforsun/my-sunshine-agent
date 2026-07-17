@@ -78,6 +78,11 @@ public class SandboxToolExecutor {
 
     private ToolInvokeResponse exec(SandboxSession session, Map<String, Object> args) {
         String command = requireString(args, "command");
+        String blocked = SandboxExecGuard.denyReason(command);
+        if (blocked != null) {
+            throw detailError(SandboxErrorCode.EXEC_BLOCKED,
+                    "command blocked: " + blocked + "; command=" + clip(command, 120));
+        }
         Path cwd;
         try {
             cwd = PathJail.resolveCwd(optionalString(args, "cwd"));
@@ -123,6 +128,10 @@ public class SandboxToolExecutor {
     private ToolInvokeResponse read(SandboxSession session, Map<String, Object> args) {
         String path = requireString(args, "path");
         Path host = toHostSafe(session, path, false);
+        if (Files.isDirectory(host)) {
+            throw detailError(SandboxErrorCode.NOT_A_FILE,
+                    "path is a directory, not a file: " + path + "; use sandbox__glob to list");
+        }
         if (!Files.isRegularFile(host)) {
             throw badPath("file not found: " + path);
         }
@@ -148,6 +157,10 @@ public class SandboxToolExecutor {
         String path = requireString(args, "path");
         String content = args.get("content") != null ? String.valueOf(args.get("content")) : "";
         Path host = toHostSafe(session, path, true);
+        if (Files.exists(host)) {
+            throw detailError(SandboxErrorCode.WRITE_ALREADY_EXISTS,
+                    "file already exists: " + path + "; use sandbox__edit or choose another path");
+        }
         try {
             Path parent = host.getParent();
             if (parent != null) {
@@ -165,17 +178,23 @@ public class SandboxToolExecutor {
         String oldString = requireString(args, "old_string");
         String newString = args.get("new_string") != null ? String.valueOf(args.get("new_string")) : "";
         Path host = toHostSafe(session, path, true);
+        if (Files.isDirectory(host)) {
+            throw detailError(SandboxErrorCode.NOT_A_FILE,
+                    "path is a directory, not a file: " + path);
+        }
         if (!Files.isRegularFile(host)) {
-            throw badPath("file not found: " + path);
+            throw badPath("file not found: " + path + "; create with sandbox__write first");
         }
         try {
             String content = Files.readString(host, StandardCharsets.UTF_8);
             int count = countOccurrences(content, oldString);
             if (count == 0) {
-                throw new BizException(SandboxErrorCode.EDIT_NOT_FOUND);
+                throw detailError(SandboxErrorCode.EDIT_NOT_FOUND,
+                        "old_string not found in " + path);
             }
             if (count != 1) {
-                throw new BizException(SandboxErrorCode.EDIT_NOT_UNIQUE);
+                throw detailError(SandboxErrorCode.EDIT_NOT_UNIQUE,
+                        "old_string not unique in " + path + " (matches=" + count + ")");
             }
             String updated = content.replace(oldString, newString);
             Files.writeString(host, updated, StandardCharsets.UTF_8);
@@ -303,11 +322,11 @@ public class SandboxToolExecutor {
     }
 
     /**
-     * path 缺省：同时搜 /skill 与 /workspace；否则解析为 jail 内单根（文件或目录）。
+     * path 缺省：同时搜 /skills 与 /workspace；否则解析为 jail 内单根（文件或目录）。
      */
     private static List<SearchRoot> resolveSearchRoots(SandboxSession session, String pathOpt) {
         if (pathOpt == null) {
-            Path skill = session.hostRoot().resolve("skill").toAbsolutePath().normalize();
+            Path skill = session.hostRoot().resolve("skills").toAbsolutePath().normalize();
             Path workspace = session.hostRoot().resolve("workspace").toAbsolutePath().normalize();
             return List.of(new SearchRoot(skill, skill), new SearchRoot(workspace, workspace));
         }
@@ -330,10 +349,19 @@ public class SandboxToolExecutor {
     }
 
     private static BizException badPath(String detail) {
-        return new BizException(new FixedErrorCode(
-                SandboxErrorCode.FILE_PATH_INVALID.getCode(),
-                SandboxErrorCode.FILE_PATH_INVALID.getKey(),
-                detail));
+        return detailError(SandboxErrorCode.FILE_PATH_INVALID, detail);
+    }
+
+    private static BizException detailError(SandboxErrorCode code, String detail) {
+        return new BizException(new FixedErrorCode(code.getCode(), code.getKey(), detail));
+    }
+
+    private static String clip(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        String t = text.strip();
+        return t.length() <= max ? t : t.substring(0, max) + "…";
     }
 
     private static String requireString(Map<String, Object> args, String key) {

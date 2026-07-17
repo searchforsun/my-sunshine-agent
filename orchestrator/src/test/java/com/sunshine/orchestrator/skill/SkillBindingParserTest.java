@@ -25,9 +25,9 @@ class SkillBindingParserTest {
     private SkillBindingParser parser;
 
     private static final List<SkillCatalogIndexEntry> INDEX = List.of(
-            new SkillCatalogIndexEntry("finance-analysis", "财务分析", "报销合规分析", 1, true),
-            new SkillCatalogIndexEntry("policy-review", "制度审查", "制度对照", 1, true),
-            new SkillCatalogIndexEntry("disabled-skill", "已禁用", "不可用", 1, false));
+            new SkillCatalogIndexEntry("finance-analysis", "财务分析", "报销合规分析", 1, true, "none"),
+            new SkillCatalogIndexEntry("policy-review", "制度审查", "制度对照", 1, true, "none"),
+            new SkillCatalogIndexEntry("disabled-skill", "已禁用", "不可用", 1, false, "none"));
 
     @BeforeEach
     void setUp() {

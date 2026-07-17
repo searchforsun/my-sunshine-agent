@@ -3,7 +3,9 @@ package com.sunshine.orchestrator.routing;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -32,6 +34,7 @@ public class ExecutionPlanParser {
             String workflowId = text(node, "workflowId");
             String reason = text(node, "reason");
             Map<String, String> params = parseParams(node.get("params"));
+            mergeSkillId(node, params);
             return new ExecutionPlan(mode, workflowId, params, reason);
         } catch (Exception e) {
             log.warn("[ExecutionPlanParser] parse failed: {}", e.getMessage());
@@ -71,6 +74,16 @@ public class ExecutionPlanParser {
             params.put(e.getKey(), e.getValue().asText(""));
         }
         return params;
+    }
+
+    private static void mergeSkillId(JsonNode node, Map<String, String> params) {
+        String skillId = text(node, "skillId");
+        if (!StringUtils.hasText(skillId)) {
+            skillId = params.get(SkillBindingOutcome.PARAM_SKILL);
+        }
+        if (StringUtils.hasText(skillId)) {
+            params.put(SkillBindingOutcome.PARAM_SKILL, skillId.strip());
+        }
     }
 
     private static String text(JsonNode node, String field) {

@@ -149,12 +149,21 @@
   border: none;
   border-radius: 0;
   overflow-x: auto;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace);
   font-size: 13px;
   line-height: 1.6;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--sun-text);
+  tab-size: 4;
+}
+
+.skill-file-plain-pre code,
+.skill-file-plain-pre .hljs,
+.skill-file-plain-pre span {
+  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace) !important;
 }
 
 .skill-file-plain-pre code {
@@ -162,7 +171,6 @@
   padding: 0;
   border-radius: 0;
   font-size: inherit;
-  font-family: inherit;
   color: inherit;
 }
 

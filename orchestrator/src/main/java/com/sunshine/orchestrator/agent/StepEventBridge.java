@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
 
 import java.util.List;
 import java.util.Map;
@@ -156,6 +157,14 @@ public final class StepEventBridge {
         return registry.consumeHitlPreApproval(messageId, toolId, params);
     }
 
+    public static void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {
+        registry.bindWriteHitlMode(assistantMessageId, mode);
+    }
+
+    public static SandboxWriteHitlMode writeHitlMode(String assistantMessageId) {
+        return registry.writeHitlMode(assistantMessageId);
+    }
+
     public static void bindToolUseBridge(String toolUseId, String bridgeId) {
         registry.bindToolUseBridge(toolUseId, bridgeId);
     }
@@ -214,6 +223,11 @@ public final class StepEventBridge {
 
     public static void emit(String messageId, Consumer<ProcessingTimelineSession> action) {
         registry.emit(messageId, action);
+    }
+
+    /** Hook / 工具线程下发任意 StreamToken（如 sandbox_session） */
+    public static void offerStreamToken(String bridgeId, StreamToken token) {
+        registry.offerStreamToken(bridgeId, token);
     }
 
     public static void emitSingleton(Consumer<ProcessingTimelineSession> action) {

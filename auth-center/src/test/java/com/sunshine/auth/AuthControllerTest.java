@@ -138,6 +138,8 @@ class AuthControllerTest {
         user.setUsername("disabled1");
         user.setPasswordHash(new BCryptPasswordEncoder().encode(PASSWORD));
         user.setNickname("disabled1");
+        user.setTenantId("default");
+        user.setDefaultWriteHitlMode("never");
         user.setStatus((byte) 0);
         Instant now = Instant.now();
         user.setCreatedAt(now);
@@ -231,6 +233,58 @@ class AuthControllerTest {
         var user = userRepository.findByUsername("grace01");
         assertThat(user).isPresent();
         assertThat(user.get().getTenantId()).isEqualTo("tenant-b");
+    }
+
+    @Test
+    @DisplayName("profile 写 defaultWriteHitlMode=smart 后 me 可读到")
+    void updateProfile_changesDefaultWriteHitlMode() throws Exception {
+        registerUser("hitl01");
+        String token = loginAndGetToken("hitl01");
+
+        MvcResult profileResult = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"Hitl","tenantId":"default","defaultWriteHitlMode":"smart"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.defaultWriteHitlMode").value("smart"))
+                .andExpect(jsonPath("$.data.token").isNotEmpty())
+                .andReturn();
+
+        JsonNode profileBody = objectMapper.readTree(profileResult.getResponse().getContentAsString());
+        String newToken = profileBody.path("data").path("token").asText();
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultWriteHitlMode").value("smart"));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"hitl01","password":"password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultWriteHitlMode").value("smart"));
+
+        // 非法值回落 never
+        String token2 = loginAndGetToken("hitl01");
+        MvcResult bad = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token2)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"Hitl","tenantId":"default","defaultWriteHitlMode":"nope"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultWriteHitlMode").value("never"))
+                .andReturn();
+        String token3 = objectMapper.readTree(bad.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token3))
+                .andExpect(jsonPath("$.data.defaultWriteHitlMode").value("never"));
     }
 
     private void registerUser(String username) throws Exception {

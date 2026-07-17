@@ -30,11 +30,13 @@ public class ManageTasksTool {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Tool(name = NAME,
-            description = "任务清单（仅三步及以上任务）：merge=false 建板一次；merge=true 仅按 id 更新 status。")
+            description = "本轮任务清单：当前提问≥3 独立子目标时 merge=false 建板一次；"
+                    + "merge=true 仅按 id 更新 status。")
     public String manageTasks(
             @ToolParam(name = "merge", description = "false=首次建板；true=按 id 仅更新已有条目 status")
             boolean merge,
-            @ToolParam(name = "items", description = "任务项 JSON 数组，每项含 content、status，可选 id")
+            @ToolParam(name = "items",
+                    description = "当前提问的子目标 JSON 数组（content/status，可选 id）")
             String itemsJson) {
         String messageId = StepEventBridge.activeMessageId();
         if (!StringUtils.hasText(messageId)) {

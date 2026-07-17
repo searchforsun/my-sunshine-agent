@@ -40,7 +40,7 @@ class SandboxToolExecutorTest {
         executor = new SandboxToolExecutor(store, new StubDockerCli(props), props, null);
         sessionId = "sess-tool-001";
         Path hostRoot = tempRoot.resolve(sessionId);
-        hostSkill = hostRoot.resolve("skill");
+        hostSkill = hostRoot.resolve("skills").resolve("demo");
         hostWorkspace = hostRoot.resolve("workspace");
         Files.createDirectories(hostSkill.resolve("scripts"));
         Files.createDirectories(hostWorkspace);
@@ -68,8 +68,8 @@ class SandboxToolExecutorTest {
                 "old_string", "aaa",
                 "new_string", "XXX")))
                 .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getErrorCode())
-                .isEqualTo(SandboxErrorCode.EDIT_NOT_UNIQUE);
+                .satisfies(e -> assertThat(((BizException) e).getErrorCode().getKey())
+                        .isEqualTo(SandboxErrorCode.EDIT_NOT_UNIQUE.getKey()));
     }
 
     @Test
@@ -79,8 +79,47 @@ class SandboxToolExecutorTest {
                 "old_string", "zzz",
                 "new_string", "YYY")))
                 .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getErrorCode())
-                .isEqualTo(SandboxErrorCode.EDIT_NOT_FOUND);
+                .satisfies(e -> {
+                    BizException be = (BizException) e;
+                    assertThat(be.getErrorCode().getKey()).isEqualTo(SandboxErrorCode.EDIT_NOT_FOUND.getKey());
+                    assertThat(be.getMessage()).contains("old_string not found");
+                });
+    }
+
+    @Test
+    void writeRejectsExistingFile() {
+        assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.WRITE, Map.of(
+                "path", "/workspace/note.txt",
+                "content", "overwrite")))
+                .isInstanceOf(BizException.class)
+                .satisfies(e -> {
+                    BizException be = (BizException) e;
+                    assertThat(be.getErrorCode().getKey()).isEqualTo(SandboxErrorCode.WRITE_ALREADY_EXISTS.getKey());
+                    assertThat(be.getMessage()).contains("file already exists")
+                            .contains("sandbox__edit");
+                });
+        assertThat(hostWorkspace.resolve("note.txt")).hasContent("aaa\nbbb\naaa\n");
+    }
+
+    @Test
+    void readRejectsDirectory() {
+        assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.READ, Map.of(
+                "path", "/workspace")))
+                .isInstanceOf(BizException.class)
+                .satisfies(e -> assertThat(((BizException) e).getErrorCode().getKey())
+                        .isEqualTo(SandboxErrorCode.NOT_A_FILE.getKey()));
+    }
+
+    @Test
+    void execBlocksDangerousCommand() {
+        assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.EXEC, Map.of(
+                "command", "rm -rf /")))
+                .isInstanceOf(BizException.class)
+                .satisfies(e -> {
+                    BizException be = (BizException) e;
+                    assertThat(be.getErrorCode().getKey()).isEqualTo(SandboxErrorCode.EXEC_BLOCKED.getKey());
+                    assertThat(be.getMessage()).contains("command blocked");
+                });
     }
 
     @Test
@@ -97,7 +136,7 @@ class SandboxToolExecutorTest {
         assertThat(read.output()).isEqualTo("hello\nworld\n");
 
         ToolInvokeResponse skillRead = executor.invoke(sessionId, SandboxToolNames.READ, Map.of(
-                "path", "/skill/scripts/hello.py"));
+                "path", "/skills/demo/scripts/hello.py"));
         assertThat(skillRead.ok()).isTrue();
         assertThat(skillRead.output()).isEqualTo("print(1)\n");
     }
@@ -128,7 +167,7 @@ class SandboxToolExecutorTest {
     @Test
     void writeRejectedOutsideWorkspace() {
         assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.WRITE, Map.of(
-                "path", "/skill/scripts/x.py",
+                "path", "/skills/demo/scripts/x.py",
                 "content", "nope")))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode().getKey())
