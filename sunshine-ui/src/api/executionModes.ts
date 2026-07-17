@@ -2,7 +2,6 @@
 
 export type ExecutionPreference =
   | 'auto'
-  | 'simple-llm'
   | 'react'
   | 'workflow'
   | 'plan-workflow'
@@ -27,15 +26,6 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     allowsSkillMention: true,
     allowsExpertMention: true,
     allowsWorkflowMention: true,
-  },
-  {
-    value: 'simple-llm',
-    label: '简单对话',
-    shortLabel: '简单',
-    description: '单轮直答，不走企业知识库与工具',
-    allowsSkillMention: false,
-    allowsExpertMention: false,
-    allowsWorkflowMention: false,
   },
   {
     value: 'react',
@@ -95,7 +85,6 @@ export const EXECUTION_PREFERENCE_STORAGE_KEY = 'sunshine-execution-preference'
 
 export function isExecutionPreference(raw: unknown): raw is ExecutionPreference {
   return raw === 'auto'
-    || raw === 'simple-llm'
     || raw === 'react'
     || raw === 'workflow'
     || raw === 'plan-workflow'

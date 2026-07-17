@@ -52,8 +52,8 @@ export function isReactAssistantMessage(msg: Pick<ChatMessage, 'intent' | 'steps
   if (isPeerCollabAssistantMessage(msg)) return false
   if (msg.steps?.some(s => s.phase === 'plan' || s.id.startsWith('node-'))) return false
   const intent = (msg.intent ?? '').toLowerCase()
-  if (intent.startsWith('workflow:') || intent === 'plan-workflow' || intent === 'simple-llm') return false
-  if (intent === 'knowledge' || intent === 'finance' || intent === 'simple') return false
+  if (intent.startsWith('workflow:') || intent === 'plan-workflow') return false
+  if (intent === 'knowledge' || intent === 'finance') return false
   return true
 }
 

@@ -2,14 +2,14 @@ import { test, expect } from '@playwright/test'
 import { lastOperationStack, sendChatMessage, waitForStreamComplete } from './helpers'
 
 test.describe('处理过程时间线', () => {
-  test('simple 路径展示意图识别步骤', async ({ page }) => {
+  test('ReAct 路径展示意图识别步骤', async ({ page }) => {
     await sendChatMessage(page, '你好，简单聊聊')
 
     const timeline = lastOperationStack(page)
     await expect(timeline).toBeVisible({ timeout: 20_000 })
     await expect(timeline.locator('.op-label', { hasText: '识别意图' })).toBeVisible()
     await expect(timeline.getByText(/判定为/)).toBeVisible()
-    await expect(timeline.getByText('简单对话')).toBeVisible()
+    await expect(timeline.getByText('自主智能体')).toBeVisible()
     await expect(timeline.locator('.op-dur').first()).toBeVisible()
   })
 
@@ -38,7 +38,7 @@ test.describe('处理过程时间线', () => {
 
     await intentLine.locator('.op-line-row').click()
     await expect(intentLine.locator('.op-detail')).toBeVisible()
-    await expect(intentLine.locator('.op-detail')).toContainText('简单对话')
+    await expect(intentLine.locator('.op-detail')).toContainText('自主智能体')
 
     await intentLine.locator('.op-line-row').click()
     await expect(intentLine.locator('.op-detail')).toHaveCount(0)

@@ -23,7 +23,7 @@ export interface ContentBlock {
   text: string
 }
 
-/** simple-llm 仍展示 generate 步骤行；ReAct 不再下发 generate */
+/** ReAct 正文已 inline 穿插，隐藏 generate 步骤行（后端也不再下发） */
 export function isHiddenReactTimelineStep(step: ProcessingStep): boolean {
   return step.id === 'generate' || step.phase === 'generate'
 }
