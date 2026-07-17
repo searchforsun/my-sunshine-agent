@@ -135,11 +135,12 @@
 
 | 子任务 | 内容 | 状态 |
 |--------|------|:----:|
-| **4.7.1** | M8 `DelegateSkillTool`（主 Coordinator react 委派） | ⬜ |
-| **4.7.2** | M10 并行子 Agent fan-out/join | ⬜ |
+| **4.7.1** | M8 `DelegateSkillTool`（Skill 委派） | **废弃** → 由 **4.7.6** 取代 |
+| **4.7.2** | M10 并行子 Agent fan-out/join（Plan/Workflow） | ⬜ |
 | **4.7.3** | **多专家协作**：`PEER_COLLAB` L1 §E + Expert Catalog `$` §K + `expert-manager` + Hub 反应式轮次 + Synthesizer | **✅** |
-| **4.7.4** | M9 前端子 Agent 详情展开 UI | ⬜ |
+| **4.7.4** | M9 前端子 Agent 详情展开 UI | **不做**（Workflow agent 抽屉 / Peer 展开已覆盖） |
 | **4.7.5** | **ReAct TaskBoard**（`manage_tasks` 元工具 + `tasks` Timeline + 审计） · [详设](./2026-06-24-react-taskboard-design.md) · **D11** | **✅** |
+| **4.7.6** | **ReAct Spawn Subagent**（`spawn_subagent` 元工具；主动态 prompt；上下文隔离；卡片+抽屉） · [详设](./2026-07-18-react-spawn-subagent-design.md) | ⬜ |
 
 **4.7.3 摘要（✅）**：第五顶层模式 `peer-collab`；`ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue、反应式选人）+ `ConsultationSynthesizer`；详设 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) · Live `verify_peer_collab_live` + `verify_expert_consultation_live`。
 
