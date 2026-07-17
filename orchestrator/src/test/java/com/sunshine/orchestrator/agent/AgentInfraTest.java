@@ -65,6 +65,7 @@ class AgentInfraTest {
         DynamicToolkitFactory factory = new DynamicToolkitFactory(
                 ragTool,
                 Mockito.mock(ManageTasksTool.class),
+                Mockito.mock(SpawnSubagentTool.class),
                 remoteToolFactory,
                 toolCatalogService,
                 toolSetResolver,

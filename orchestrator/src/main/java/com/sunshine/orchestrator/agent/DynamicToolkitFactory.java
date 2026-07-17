@@ -19,7 +19,7 @@ import java.util.Set;
 /**
  * 按 MySQL ToolSet + Catalog 启用池动态组装 Toolkit。
  * ReAct 路径均硬编码注入 {@link RagTool}（直连 Gateway / DIRECT 不经本工厂）；Workflow 子 Agent 亦始终含 RAG，另可加节点 tools 白名单。
- * MAIN / SUB 均注入沙箱六工具（方案 B + SUB 默认沙箱）；SUB 不注入 manage_tasks。
+ * MAIN / SUB 均注入沙箱六工具（方案 B + SUB 默认沙箱）；SUB 不注入 manage_tasks / spawn_subagent。
  */
 @Slf4j
 @Component
@@ -30,6 +30,7 @@ public class DynamicToolkitFactory {
 
     private final RagTool ragTool;
     private final ManageTasksTool manageTasksTool;
+    private final SpawnSubagentTool spawnSubagentTool;
     private final GenericRemoteToolFactory remoteToolFactory;
     private final ToolCatalogService toolCatalogService;
     private final ToolSetResolver toolSetResolver;
@@ -66,7 +67,7 @@ public class DynamicToolkitFactory {
                 toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId), ToolkitScope.MAIN, skillId);
     }
 
-    /** Workflow 子 Agent：始终含 search_knowledge；可选 tools 白名单追加业务工具（不含 manage_tasks） */
+    /** Workflow 子 Agent：始终含 search_knowledge；可选 tools 白名单追加业务工具（不含 manage_tasks / spawn_subagent） */
     public Toolkit buildForSubAgent(List<String> toolWhitelist, String tenantId) {
         return buildForSubAgent(toolWhitelist, tenantId, null);
     }
@@ -102,6 +103,10 @@ public class DynamicToolkitFactory {
                 log.warn("[Orchestrator] manage_tasks 为内置元工具，勿放入 ReAct 工具集");
                 continue;
             }
+            if (toolName.equals(SpawnSubagentTool.NAME)) {
+                log.warn("[Orchestrator] spawn_subagent 为内置元工具，勿放入 ReAct 工具集");
+                continue;
+            }
             if (toolName.equals(RagTool.NAME)) {
                 continue;
             }
@@ -122,6 +127,10 @@ public class DynamicToolkitFactory {
             if (react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled()) {
                 tk.registerTool(manageTasksTool);
                 registered.add(ManageTasksTool.NAME);
+            }
+            if (react != null && react.getSubagent() != null && react.getSubagent().isEnabled()) {
+                tk.registerTool(spawnSubagentTool);
+                registered.add(SpawnSubagentTool.NAME);
             }
         }
         if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {

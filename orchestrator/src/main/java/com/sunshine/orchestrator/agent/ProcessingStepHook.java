@@ -82,7 +82,7 @@ public class ProcessingStepHook implements Hook {
 
         if (event instanceof PreActingEvent pre) {
             String toolName = pre.getToolUse().getName();
-            if (ManageTasksTool.NAME.equals(toolName)) {
+            if (ManageTasksTool.NAME.equals(toolName) || SpawnSubagentTool.NAME.equals(toolName)) {
                 return Mono.just(event);
             }
             String toolUseId = pre.getToolUse().getId();
@@ -108,7 +108,7 @@ public class ProcessingStepHook implements Hook {
         if (event instanceof PostActingEvent post) {
             String toolName = post.getToolUse().getName();
             String toolUseId = post.getToolUse().getId();
-            if (ManageTasksTool.NAME.equals(toolName)) {
+            if (ManageTasksTool.NAME.equals(toolName) || SpawnSubagentTool.NAME.equals(toolName)) {
                 StepEventBridge.unbindToolUseBridge(toolUseId);
                 return Mono.just(event);
             }
