@@ -97,14 +97,13 @@ agent:
       只回复一行 JSON。
 
       输出格式：
-      {"mode":"simple-llm|workflow|react|plan-workflow|peer-collab","workflowId":null或目录中的id,"skillId":null或Skill目录中的id,"params":{},"reason":"一句话"}
+      {"mode":"workflow|react|plan-workflow|peer-collab","workflowId":null或目录中的id,"skillId":null或Skill目录中的id,"params":{},"reason":"一句话"}
 
       规则：
-      - simple-llm：简单对话、通识百科、写作润色、纯概念讲解等，单轮直答、不需企业知识库/业务系统/沙箱工具
       - workflow：匹配下方 Workflow 目录中某一模板，workflowId 填对应 id，params 填本次参数（如 status: pending）
       - plan-workflow：跨多领域/多步骤协作（如「先检索制度，再查待审批，再合规分析」），无固定 workflow 模板；含「先…再…」「分步」「并对…分析」等多步表述时选此项
       - peer-collab：需多角色对等协作、交叉验证、互相质疑（如「制度与财务专家分别审查并互相验证」）；由 Expert Catalog + Coordinator 召集；勿与「先…再…」流水线 plan 混淆
-      - react：审批/提交/确认/继续等操作指令；需多工具组合；需在沙箱/workspace 读写或执行 Skill 脚本；或不确定
+      - react：通识闲聊/百科/写作润色/纯概念讲解；审批/提交/确认/继续等操作指令；需多工具组合；需在沙箱/workspace 读写或执行 Skill 脚本；拿不准时亦选此项
       - skillId：当任务需 **Skill 指令 overlay** 或 **挂载 /skills/{id}/ 物料** 时填写（Catalog 内 id）；否则 null
         · 分析/运行某 Skill 包内脚本、用户 @skill 或指代「这个 skill」→ 填对应 id
         · 仅操作 /workspace（写文件、跑自写脚本）且不需 Skill 包 → **可不填** skillId
@@ -154,10 +153,6 @@ agent:
       default-after: "已完成对{query}的意图判断"
       unmatched-after: "{query}将按「{detail}」处理"
       modes:
-        simple-llm:
-          detail: 简单对话
-          after: "{query}属于简单对话，将直接生成回复"
-          forced-after: "{query}将按您指定的「简单对话」模式直接回复"
         react:
           detail: 自主智能体
           after: "{query}将由自主智能体分析并作答"
@@ -197,16 +192,6 @@ agent:
         before-follow-up-fallback: "准备结合工具结果分析"
         active-follow-up-fallback: "正在综合分析工具结果"
         after-follow-up-fallback: "工具结果分析完成"
-        modes:
-          simple-llm:
-            label: 构思回答
-            label-follow-up: 整理作答
-            before: "构思如何回答{query}"
-            active: "正在构思针对{query}的作答思路"
-            after: "已完成针对{query}的作答构思"
-            before-follow-up: "准备整理作答要点"
-            active-follow-up: "正在整理作答要点"
-            after-follow-up: "作答要点整理完成"
       tool:
         label: "调用工具 {displayName}"
         before: "准备{displayName}"

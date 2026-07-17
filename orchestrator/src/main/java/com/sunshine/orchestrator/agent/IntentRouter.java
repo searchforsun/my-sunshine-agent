@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 意图识别 — 输出 ExecutionPlan（simple-llm / workflow / react + 可选 skillId）
+ * 意图识别 — 输出 ExecutionPlan（workflow / react / plan-workflow / peer-collab + 可选 skillId）
  */
 @Slf4j
 @Component

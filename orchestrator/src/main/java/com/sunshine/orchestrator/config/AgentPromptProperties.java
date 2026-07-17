@@ -129,18 +129,6 @@ public class AgentPromptProperties {
             think.setBeforeFollowUpFallback("准备结合工具结果分析");
             think.setActiveFollowUpFallback("正在综合分析工具结果");
             think.setAfterFollowUpFallback("工具结果分析完成");
-            var thinkModes = new java.util.LinkedHashMap<String, StepModeTimeline>();
-            var simpleLlm = new StepModeTimeline();
-            simpleLlm.setLabel("构思回答");
-            simpleLlm.setLabelFollowUp("整理作答");
-            simpleLlm.setBefore("构思如何回答{query}");
-            simpleLlm.setActive("正在构思针对{query}的作答思路");
-            simpleLlm.setAfter("已完成针对{query}的作答构思");
-            simpleLlm.setBeforeFollowUp("准备整理作答要点");
-            simpleLlm.setActiveFollowUp("正在整理作答要点");
-            simpleLlm.setAfterFollowUp("作答要点整理完成");
-            thinkModes.put("simple-llm", simpleLlm);
-            think.setModes(thinkModes);
             map.put("think", think);
             var tool = new StepTimeline();
             tool.setLabel("调用工具 {displayName}");
@@ -161,7 +149,7 @@ public class AgentPromptProperties {
     @Getter
     @Setter
     public static class StepModeTimeline {
-        /** 首轮 think 标题（如 simple-llm 的「构思回答」） */
+        /** 首轮 think 标题（按执行模式覆盖时） */
         private String label;
         /** 后续轮 think-N 标题 */
         private String labelFollowUp;
@@ -205,7 +193,7 @@ public class AgentPromptProperties {
         private String beforeFollowUpFallback;
         private String activeFollowUpFallback;
         private String afterFollowUpFallback;
-        /** 按执行模式覆盖（如 simple-llm） */
+        /** 按执行模式覆盖 */
         private java.util.LinkedHashMap<String, StepModeTimeline> modes;
         /** TaskBoard 全部完成 after */
         private String allDone;
@@ -297,10 +285,6 @@ public class AgentPromptProperties {
 
         private static java.util.LinkedHashMap<String, ModeIntent> defaultModes() {
             var map = new java.util.LinkedHashMap<String, ModeIntent>();
-            var simple = new ModeIntent();
-            simple.setDetail("简单对话");
-            simple.setAfter("{query}属于简单对话，将直接生成回复");
-            map.put("simple-llm", simple);
             var react = new ModeIntent();
             react.setDetail("自主智能体");
             react.setAfter("{query}将由自主智能体分析并作答");

@@ -12,7 +12,7 @@ public class ChatRequest {
     /** 续传目标 assistant 消息 id，与 content 互斥 */
     private String resumeMessageId;
 
-    /** auto | simple-llm | react | workflow | plan-workflow */
+    /** auto | react | workflow | plan-workflow | peer-collab */
     private String executionPreference;
 
     /** 强制 workflow 模式时可选指定 catalog id */
