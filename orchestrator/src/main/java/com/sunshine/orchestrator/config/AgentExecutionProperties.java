@@ -48,8 +48,15 @@ public class AgentExecutionProperties {
         public static class Replan {
             private int maxAttempts = 2;
             private String userFeedbackTemplate = """
-                    上次规划未通过校验：{{error}}
-                    请修正后重新输出一行 JSON。仍须遵守：仅 rag/tool/agent；勿含 start/answer；edges 末节点勿连 answer。""";
+                    【Plan 校验失败 — 请修正后重输出一行 JSON】
+
+                    {{error}}
+
+                    【契约回顾】
+                    - type 仅 rag/tool/agent/parallel-gateway/join/exclusive-gateway/loop；勿 start/answer
+                    - loop：body 用 parentId；外图仅 start→loop；禁止 loop↔body 连边
+                    - parallel：pg→多分支→join；exclusive：恰好 1 条 default 出边
+                    - 末节点勿连 answer；params 键名 params；每节点 displayName""";
         }
 
         @Data
@@ -78,7 +85,7 @@ public class AgentExecutionProperties {
             private String onTimeout = "fallback_react";
             private String userModificationTemplate = """
                     用户对当前执行计划的修改意见：{{hint}}
-                    请据此重新输出一行 Plan JSON。仍须遵守：仅 rag/tool/agent；勿含 start/answer；edges 末节点勿连 answer。""";
+                    请据此重新输出一行 Plan JSON。仍须遵守：rag/tool/agent/parallel-gateway/join/exclusive-gateway/loop；勿含 start/answer；edges 末节点勿连 answer。""";
         }
 
         private Approval approval = new Approval();

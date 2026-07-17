@@ -111,6 +111,12 @@
 }
 .smd-mermaid-chart svg { max-width: 100%; height: auto; background: transparent; }
 
+/* 全局 theme-switching 期间隐藏旧 SVG，等新主题 renderInto 完成后再显示 */
+html.theme-switching .smd-mermaid-chart,
+html.theme-switching .smd-mermaid-error {
+  visibility: hidden;
+}
+
 /* Mermaid 网页内全屏 — 100vw × 100vh 撑满视口 */
 .smd-mermaid-overlay {
   position: fixed;

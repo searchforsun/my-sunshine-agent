@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑（确需兼容须写明原因并评审通过）。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改提示词或架构，不在前后端打补丁。
 
-**进度**：阶段三 **检查门通过** — 阶段四 **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅ 收口** · **4.5 沙箱方案 B ✅**（工作区抽屉 / `writeHitlMode` / 时间线路径，索引 `docs/sandbox/README.md`）；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 **检查门通过** — 阶段四 **4.6 动态 DAG ✅** · **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅ 收口** · **4.5 沙箱方案 B ✅**（工作区抽屉 / `writeHitlMode` / 时间线路径，索引 `docs/sandbox/README.md`）；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -51,6 +51,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_workflow_studio_live.py` | **4.13** Studio Catalog/`#`/`parallel`/`exclusive` Live |
 | `verify_exclusive_gateway_live.py` | **4.13.7** exclusive-gateway 边条件（`#knowledge-branch`） |
 | `verify_loop_live.py` | **4.13.7** loop do-while + subSteps（`#knowledge-loop`） |
+| `verify_plan_dag_live.py` | **4.6** Plan-Workflow 动态 DAG（parallel/exclusive/loop Planner + 校验 + 布局） |
 
 ## 请求链路与模块
 

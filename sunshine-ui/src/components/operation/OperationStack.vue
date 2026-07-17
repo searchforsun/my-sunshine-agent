@@ -155,7 +155,7 @@ function inlineHitlStep(step: ProcessingStep): ProcessingStep {
 }
 
 const contentRowOpts = computed(() => ({
-  live: props.streamLive,
+  live: props.streamLive || props.live,
   lastBlockIndex: resolveLastContentBlockIndex(props.contentBlocks),
 }))
 
@@ -245,7 +245,7 @@ const orphanContent = computed(() => {
         <div class="op-inline-content">
           <span class="op-gutter" aria-hidden="true" />
           <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
-            <StaticMarkdown :source="crow.text" />
+            <StaticMarkdown :source="crow.text" :defer-mermaid="crow.streaming" />
           </div>
         </div>
       </template>
@@ -254,7 +254,7 @@ const orphanContent = computed(() => {
       <div class="op-inline-content">
         <span class="op-gutter" aria-hidden="true" />
         <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
-          <StaticMarkdown :source="row.text" />
+          <StaticMarkdown :source="row.text" :defer-mermaid="row.streaming" />
         </div>
       </div>
     </template>

@@ -105,18 +105,28 @@ export function computeAutoLayout(plan: WorkflowPlan): Record<string, WorkflowLa
     outgoing.set(e.from, [...(outgoing.get(e.from) ?? []), e.to])
   }
   const layers = new Map<string, number>()
+  const queue: string[] = []
   if (outerNodes.some(n => n.id === 'start')) {
-    const queue = ['start']
+    queue.push('start')
     layers.set('start', 0)
-    while (queue.length > 0) {
-      const cur = queue.shift()!
-      const layer = layers.get(cur) ?? 0
-      for (const next of outgoing.get(cur) ?? []) {
-        const prev = layers.get(next)
-        if (prev == null || prev < layer + 1) {
-          layers.set(next, layer + 1)
-          queue.push(next)
+  } else {
+    for (const e of edges) {
+      if (e.from === 'start' && byId.has(e.to) && !byId.get(e.to)!.parentId) {
+        if (!layers.has(e.to)) {
+          layers.set(e.to, 0)
+          queue.push(e.to)
         }
+      }
+    }
+  }
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    const layer = layers.get(cur) ?? 0
+    for (const next of outgoing.get(cur) ?? []) {
+      const prev = layers.get(next)
+      if (prev == null || prev < layer + 1) {
+        layers.set(next, layer + 1)
+        queue.push(next)
       }
     }
   }

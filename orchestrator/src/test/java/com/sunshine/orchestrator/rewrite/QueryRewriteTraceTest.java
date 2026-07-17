@@ -70,4 +70,31 @@ class QueryRewriteTraceTest {
 
         QueryRewriteTrace.clear("m-par");
     }
+
+    @Test
+    void beginRagSpan_clearsPriorOutcomesForSameStep_loopRoundsIsolated() {
+        QueryRewriteTrace.bind("m-loop");
+        String step = "node-rag-x";
+        QueryRewriteTrace.beginRagSpan(step, "m-loop");
+        QueryRewriteTrace.record("m-loop", QueryRewriteOutcome.of(
+                "rag", "q1", "rewrite-r1", 5L, "优化检索词"));
+        QueryRewriteTrace.recordForRagStep("m-loop", step, QueryRewriteOutcome.of(
+                "rag", "q1", "rewrite-r1", 5L, "优化检索词"));
+        QueryRewriteTrace.endRagSpan(step, "m-loop");
+        assertThat(QueryRewriteTrace.combinedRagTimelineDetailForStep("m-loop", step))
+                .contains("rewrite-r1");
+
+        QueryRewriteTrace.beginRagSpan(step, "m-loop");
+        QueryRewriteTrace.record("m-loop", QueryRewriteOutcome.of(
+                "rag", "q2", "rewrite-r2", 6L, "优化检索词"));
+        QueryRewriteTrace.recordForRagStep("m-loop", step, QueryRewriteOutcome.of(
+                "rag", "q2", "rewrite-r2", 6L, "优化检索词"));
+        QueryRewriteTrace.endRagSpan(step, "m-loop");
+
+        assertThat(QueryRewriteTrace.combinedRagTimelineDetailForStep("m-loop", step))
+                .contains("rewrite-r2")
+                .doesNotContain("rewrite-r1");
+
+        QueryRewriteTrace.clear("m-loop");
+    }
 }

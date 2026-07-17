@@ -25,7 +25,7 @@
 | **4.3** | 文档理解 L2：版面/表格 + quarantine | L1 稳定后 | 中 |
 | **4.4** | 多模态对话 L3：Vision + `/chat` 附件 | 拍图问一问 | 中 |
 | **4.5** | Skills Docker 沙箱 | 代码执行 skill | 中 |
-| **4.6** | 动态 DAG 增强：if-else、并行 fan-out、Replan | 静态 workflow 不够 | 中 |
+| **4.6** | 动态 DAG 增强：Planner parallel/exclusive/loop + 前端自动布局 | 静态 workflow 不够 | **✅** |
 | **4.7** | 多 Agent 增强：**第五顶层模式 `PEER_COLLAB` ✅**、Coordinator、MsgHub 反应式轮次、Synthesizer、**ReAct TaskBoard ✅** | 复杂协作 / 交叉验证 / ReAct 软规划 | 中 |
 | **4.8** | 工具集成（SDK + MCP）：MySQL Catalog + `/tools` 管理页 | 业务解耦 / 异构工具接入 | 中 · [详设](./2026-07-09-tool-integration-design.md) |
 | **4.9** | K8s：Helm + HPA + Nacos GitOps | — | **明确不做** |
@@ -120,12 +120,16 @@
 
 ### 4.6 动态 DAG 增强
 
-| 子任务 | 内容 |
-|--------|------|
-| **4.6.1** | `IfElseNodeHandler` |
-| **4.6.2** | `ParallelNodeHandler` fan-out/join |
-| **4.6.3** | Plan 缓存与 Replan |
-| **4.6.4** | P5 `ContextCompressor`（STM 工具结果摘要） |
+| 子任务 | 内容 | 状态 |
+|--------|------|:----:|
+| **4.6.1** | exclusive-gateway（替代 IfElseNodeHandler） | **✅** |
+| **4.6.2** | parallel-gateway + join fan-out/join | **✅** |
+| **4.6.3** | Plan 缓存与 Replan | **✅**（阶段三 3.9） |
+| **4.6.4** | P5 `ContextCompressor`（AgentScope `AutoContextMemory`） | **✅** · [详设](./2026-07-17-autocontext-memory-design.md) |
+| **4.6.5** | Planner 提示词 + 校验白名单 + Normalizer 多 sink | **✅** |
+| **4.6.6** | Chat `PlanExecutionCanvas` 无 layout 自动布局 | **✅** |
+
+**检查门**：`python3 scripts/verify_plan_dag_live.py` — PlanValidator/Normalizer/Schedule 单测全绿。
 
 ### 4.7 多 Agent 增强
 

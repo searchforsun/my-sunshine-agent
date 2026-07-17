@@ -102,11 +102,12 @@ public class WorkflowPlanner {
             }
             return query;
         }
+        String formatted = PlanValidationFeedback.formatForReplan(validationError);
         String template = executionProperties.getPlanWorkflow().getReplan().getUserFeedbackTemplate();
         if (!StringUtils.hasText(template)) {
-            return query + "\n\n上次规划未通过校验：" + validationError.strip();
+            return query + "\n\n" + formatted;
         }
-        return query + "\n\n" + template.replace("{{error}}", validationError.strip());
+        return query + "\n\n" + template.replace("{{error}}", formatted);
     }
 
     /** 流程 5B：Planner 读 Skill L2 正文语义生成 Plan JSON */
@@ -121,7 +122,7 @@ public class WorkflowPlanner {
                 %s
 
                 请基于 Skill 正文中的步骤说明，为上述用户问题输出一行 Plan JSON（5B Skill 驱动模式）。
-                节点 type 仅 rag | tool | agent；勿含 start/answer。
+                节点 type：rag | tool | agent | parallel-gateway | join | exclusive-gateway | loop；勿含 start/answer。
                 """.formatted(skillId, query, body);
     }
 

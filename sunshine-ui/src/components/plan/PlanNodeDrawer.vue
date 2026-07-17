@@ -27,6 +27,7 @@ import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
 import { resolveExclusiveBranches } from '../../utils/exclusiveBranchDisplay'
 import { resolveLoopContinueRows } from '../../utils/loopContinueDisplay'
+import { groupLoopBodySubStepsByRound } from '../../utils/loopBodyRoundGroups'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
 const { isAnyExpanded: planDagExpanded } = usePlanDagExpand()
@@ -187,7 +188,13 @@ const showReasoningSection = computed(() =>
   && !!step.value?.reasoning?.trim(),
 )
 const reasoning = computed(() => step.value?.reasoning?.trim() ?? '')
-const output = computed(() => step.value?.output?.trim() ?? '')
+/** 与「详细输出」同文时不重复展示「日志」（loop 终态常双写 result/output） */
+const output = computed(() => {
+  const raw = step.value?.output?.trim() ?? ''
+  if (!raw) return ''
+  if (raw === bodyDisplay.value) return ''
+  return raw
+})
 
 const loadedSkillId = computed(() => node.value?.skillId?.trim() || undefined)
 
@@ -217,6 +224,12 @@ const skillLineText = computed(() => {
 const subSteps = computed(() => step.value?.subSteps ?? [])
 const showSubTimeline = computed(() =>
   (node.value?.type === 'agent' || node.value?.type === 'loop') && subSteps.value.length > 0)
+/** loop：按 i{n}- 前缀分轮；agent：整段扁平 */
+const loopRoundGroups = computed(() => {
+  if (node.value?.type !== 'loop') return []
+  return groupLoopBodySubStepsByRound(subSteps.value)
+})
+const showLoopRoundTimeline = computed(() => loopRoundGroups.value.length > 0)
 /** workflow tool 写操作：与普通 tool 抽屉一致，仅在执行摘要前插入用户确认块 */
 const hitlStep = computed(() => findHitlStep(step.value, pendingHitl.value))
 const showHitlSection = computed(() => node.value?.type === 'tool' && !!hitlStep.value)
@@ -232,12 +245,14 @@ const displayAttempts = computed((): PlanNodeAttempt[] | undefined => {
 const displayAttemptCount = computed(() =>
   node.value?.attemptCount ?? displayAttempts.value?.length ?? 0,
 )
-/** agent 用 subSteps；其余节点不用 OperationStack 承载 HITL */
+/** agent 用 subSteps；loop 走分轮组，不在此扁平列表 */
 const drawerStackSteps = computed(() => {
-  if (showSubTimeline.value) return subSteps.value
+  if (node.value?.type === 'agent' && showSubTimeline.value) return subSteps.value
   return []
 })
-const showDrawerOperationStack = computed(() => drawerStackSteps.value.length > 0)
+const showDrawerOperationStack = computed(() =>
+  drawerStackSteps.value.length > 0 || showLoopRoundTimeline.value,
+)
 const showRecoverySection = computed(() => !!step.value && isRecoveryAwaiting(step.value))
 const subTimelineLive = computed(() => {
   const s = displayStatus.value
@@ -370,7 +385,25 @@ watch(
       <section v-if="showRecoverySection && step" class="drawer-section drawer-recovery">
         <PlanNodeRecoveryActions :step="step" @decided="applyRecoveryDecision" />
       </section>
-      <section v-if="showDrawerOperationStack" class="drawer-section drawer-sub-timeline">
+      <section v-if="showLoopRoundTimeline" class="drawer-section drawer-sub-timeline">
+        <h4>执行过程</h4>
+        <div
+          v-for="group in loopRoundGroups"
+          :key="`loop-round-${group.round}`"
+          class="loop-round-block"
+        >
+          <h5 v-if="group.round > 0" class="loop-round-title">第 {{ group.round }} 轮</h5>
+          <OperationStack
+            :steps="group.steps"
+            :stream-live="subTimelineLive"
+            :live="subTimelineLive"
+            :embed-hitl="false"
+            :pending-hitl-confirmation="pendingHitl"
+            @hitl-decided="applyHitlDecision"
+          />
+        </div>
+      </section>
+      <section v-else-if="showDrawerOperationStack" class="drawer-section drawer-sub-timeline">
         <h4 v-if="showSubTimeline">执行过程</h4>
         <OperationStack
           :steps="drawerStackSteps"
@@ -807,6 +840,19 @@ watch(
 .drawer-sub-timeline :deep(.operation-lines) {
   margin-left: 0;
   padding-bottom: 0;
+}
+
+.loop-round-block + .loop-round-block {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sun-border);
+}
+
+.loop-round-title {
+  margin: 0 0 8px;
+  font-size: var(--sun-font-sm);
+  font-weight: 600;
+  color: var(--sun-text);
 }
 
 .drawer-recovery :deep(.collapsible-confirm) {

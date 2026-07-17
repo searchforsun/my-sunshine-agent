@@ -10,7 +10,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.Set;
 
-/** Plan JSON 硬约束校验（Planner 纯业务节点 → Normalizer 拼接 answer） */
+/** Plan JSON 硬约束校验（Planner 业务 + BPMN 路由节点 → Normalizer 拼接 answer） */
 @Component
 @RequiredArgsConstructor
 public class PlanValidator {
@@ -28,14 +28,18 @@ public class PlanValidator {
             return "nodes 为空";
         }
         int maxNodes = agentPromptProperties.plannerOrDefault().getMaxNodes();
-        if (plan.nodes().size() > maxNodes) {
-            return "节点数超过上限 " + maxNodes;
+        long complexity = PlanNormalizer.countPlannerComplexityNodes(plan);
+        if (complexity > maxNodes) {
+            return "业务节点数超过上限 " + maxNodes;
+        }
+        if (plan.nodes().size() > maxNodes + 6) {
+            return "节点总数超过上限 " + (maxNodes + 6);
         }
         for (PlanNode node : plan.nodes()) {
             if (!PLANNER_TYPES.contains(node.type())) {
                 return "Planner 非法节点 type: " + node.type();
             }
-            String err = validateBusinessNode(node);
+            String err = validatePlannerNode(node);
             if (err != null) {
                 return err;
             }
@@ -49,6 +53,19 @@ public class PlanValidator {
                 return "Planner edges 勿指向 answer";
             }
         }
+        PlanJson preview = PlanNormalizer.normalize(plan);
+        String parallelErr = PlanExecutionSchedule.validateParallelTopology(preview);
+        if (parallelErr != null) {
+            return parallelErr;
+        }
+        String exclusiveErr = PlanExecutionSchedule.validateExclusiveTopology(preview);
+        if (exclusiveErr != null) {
+            return exclusiveErr;
+        }
+        String loopErr = PlanExecutionSchedule.validateLoopTopology(preview);
+        if (loopErr != null) {
+            return loopErr;
+        }
         return null;
     }
 
@@ -61,8 +78,8 @@ public class PlanValidator {
         long businessNodes = plan.nodes().stream()
                 .filter(n -> !"answer".equals(n.type()))
                 .count();
-        if (businessNodes > maxNodes) {
-            return "节点数超过上限 " + maxNodes;
+        if (businessNodes > maxNodes + 6) {
+            return "节点数超过上限 " + (maxNodes + 6);
         }
         boolean hasAnswer = false;
         for (PlanNode node : plan.nodes()) {
@@ -100,6 +117,22 @@ public class PlanValidator {
             return loopErr;
         }
         return null;
+    }
+
+    private String validatePlannerNode(PlanNode node) {
+        if (WorkflowNodeType.plannerBusinessTypeIds().contains(node.type())) {
+            return validateBusinessNode(node);
+        }
+        if ("parallel-gateway".equals(node.type()) || "join".equals(node.type())) {
+            return null;
+        }
+        if ("exclusive-gateway".equals(node.type())) {
+            return null;
+        }
+        if ("loop".equals(node.type())) {
+            return null;
+        }
+        return "Planner 非法节点 type: " + node.type();
     }
 
     private String validateBusinessNode(PlanNode node) {

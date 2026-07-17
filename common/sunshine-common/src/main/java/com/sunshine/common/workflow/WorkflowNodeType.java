@@ -63,8 +63,20 @@ public enum WorkflowNodeType {
     }
 
     /** Planner 允许产出的业务 type */
-    public static Set<String> plannerTypeIds() {
+    public static Set<String> plannerBusinessTypeIds() {
         return Set.of(RAG.id, TOOL.id, AGENT.id);
+    }
+
+    /** Planner 允许产出的路由 type（与 Studio BPMN 网关/loop 同构） */
+    public static Set<String> plannerRoutingTypeIds() {
+        return Set.of(JOIN.id, PARALLEL_GATEWAY.id, EXCLUSIVE_GATEWAY.id, LOOP.id);
+    }
+
+    /** Planner 允许产出的全部 type（业务 + 路由；start/answer 由引擎固定） */
+    public static Set<String> plannerTypeIds() {
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>(plannerBusinessTypeIds());
+        ids.addAll(plannerRoutingTypeIds());
+        return Set.copyOf(ids);
     }
 
     /** 业务节点（含遗留 llm） */

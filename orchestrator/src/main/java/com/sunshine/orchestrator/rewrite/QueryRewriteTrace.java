@@ -164,13 +164,26 @@ public final class QueryRewriteTrace {
         return joinTimelineDetails(ragOnly);
     }
 
-    /** search_knowledge RPC 入口 — 记录 trace 起点（并行调用各自独立切片） */
+    /** search_knowledge RPC 入口 — 记录 trace 起点；清空该步旧改写（loop 同节点多轮不叠加） */
     public static void beginRagSpan(String stepId, String messageId) {
         if (stepId == null || stepId.isBlank() || messageId == null || messageId.isBlank()) {
             return;
         }
+        String key = stepId.strip();
+        clearRagStepOutcomes(messageId, key);
         int start = size(messageId);
-        RAG_SPANS_BY_STEP.put(stepId.strip(), new RagSpan(start, start));
+        RAG_SPANS_BY_STEP.put(key, new RagSpan(start, start));
+    }
+
+    /** 清空单步 per-step 改写列表（每次 RAG 检索入口调用） */
+    public static void clearRagStepOutcomes(String messageId, String ragStepId) {
+        if (messageId == null || ragStepId == null || ragStepId.isBlank()) {
+            return;
+        }
+        Map<String, List<QueryRewriteOutcome>> byStep = OUTCOMES_BY_RAG_STEP.get(messageId);
+        if (byStep != null) {
+            byStep.remove(ragStepId.strip());
+        }
     }
 
     /** search_knowledge RPC 出口 — 闭合 trace 终点 */

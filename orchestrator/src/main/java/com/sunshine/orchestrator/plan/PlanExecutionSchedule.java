@@ -247,7 +247,7 @@ public final class PlanExecutionSchedule {
         if (!ON_MAX_ITERATIONS.contains(onMax)) {
             return "loop 节点 " + node.id() + " 的 onMaxIterations 非法: " + onMax;
         }
-        String op = p.getOrDefault("condition.op", "").strip();
+        String op = p.getOrDefault("condition.op", "").strip().toLowerCase();
         String left = p.getOrDefault("condition.left", "").strip();
         if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
             return "loop 节点 " + node.id() + " 须配置 condition.op 与 condition.left";

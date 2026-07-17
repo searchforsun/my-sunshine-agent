@@ -53,7 +53,6 @@ import { useTenantPreference } from '../composables/useTenantPreference'
 import { allowsExpertMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
-import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
 import { useChatViewport } from '../composables/useChatViewport'
@@ -557,8 +556,6 @@ watch(chatBodyRef, (el) => {
   registerSandboxChatBody(el)
 }, { immediate: true })
 onUpdated(() => { nextTick(() => enhanceAllStaticMarkdown()) })
-watch(theme, () => nextTick(() => reRenderStaticMermaids()))
-
 watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
   setActiveConversation(newId)

@@ -3,10 +3,22 @@ import type { PlanGraph } from '../api/executionPlans'
 import type { WorkflowPlan } from '../api/workflows'
 import type { DagNodeView } from './planGraph'
 import { resolveRetryBadgeCount } from './planGraph'
+import { computeAutoLayout } from './workflowDagLayout'
+import { defaultStartNode } from './workflowPlan'
 import {
   planToFlowElements,
   type WorkflowFlowNodeData,
 } from './workflowFlowProjection'
+
+/** Plan-Workflow 图仅有 from:"start" 边、无 start 节点时补齐，供布局分层 */
+function ensureStartNodeForExecution(plan: WorkflowPlan): WorkflowPlan {
+  const nodes = plan.nodes ?? []
+  const edges = plan.edges ?? []
+  const hasStartNode = nodes.some(n => n.id === 'start' || n.type === 'start')
+  const hasStartEdge = edges.some(e => e.from === 'start')
+  if (hasStartNode || !hasStartEdge) return plan
+  return { ...plan, nodes: [defaultStartNode(), ...nodes] }
+}
 
 /** Chat 执行态只读投影：PlanGraph → Vue Flow；勿从 workflowDagLayout 引入编辑 API。 */
 export function planGraphToWorkflowPlan(graph: PlanGraph): WorkflowPlan {
@@ -30,9 +42,14 @@ export function planGraphToWorkflowPlan(graph: PlanGraph): WorkflowPlan {
   }
 }
 
-/** 执行态直接使用 execution_plan 中的 layout（SSOT） */
+/** 执行态：有 layout 用 SSOT；无 layout 时 computeAutoLayout（Plan-Workflow 默认展示） */
 export function workflowPlanForExecution(graph: PlanGraph): WorkflowPlan {
-  return planGraphToWorkflowPlan(graph)
+  let plan = planGraphToWorkflowPlan(graph)
+  plan = ensureStartNodeForExecution(plan)
+  if (!plan.layout || Object.keys(plan.layout).length === 0) {
+    return { ...plan, layout: computeAutoLayout(plan) }
+  }
+  return plan
 }
 
 export function buildExecutionFlowElements(

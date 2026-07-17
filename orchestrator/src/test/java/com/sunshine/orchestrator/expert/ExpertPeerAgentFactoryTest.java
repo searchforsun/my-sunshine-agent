@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.memory.MemoryProperties;
 import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,8 @@ class ExpertPeerAgentFactoryTest {
 
     @BeforeEach
     void setUp() {
-        factory = new ExpertPeerAgentFactory(dynamicToolkitFactory, toolCatalogService, reactAgentFactory);
+        factory = new ExpertPeerAgentFactory(
+                dynamicToolkitFactory, toolCatalogService, reactAgentFactory, new MemoryProperties());
         ReflectionTestUtils.setField(factory, "modelName", "test-model");
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");
         ReflectionTestUtils.setField(factory, "apiKey", "k");

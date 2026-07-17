@@ -88,7 +88,11 @@ agent:
       上游数据：
       {{plan.upstream}}
 
-      请严格针对上述「用户问题」作答：仅依据上游数据回答用户所问。
+      请严格针对上述「用户问题」作答：
+      - 仅依据上游数据，用面向用户的中文 Markdown 直接回答
+      - 综合循环/检索/工具结果给出结论与依据；上游为空时说明暂无可用数据
+      - 禁止输出 tool_call、函数调用、JSON 协议、内部节点 id 或原始工具报文
+      - 禁止复述上游中的工具调用结构；若上游含此类内容，只提炼对用户有用的事实
 
   intent:
     model: deepseek-v4-flash
@@ -119,31 +123,72 @@ agent:
   planner:
     model: deepseek-v4-flash
     temperature: 0
-    max_tokens: 2048
+    max_tokens: 4096
     max_nodes: 8
     prompt: |
-      你是 Workflow Planner。根据用户问题与可用 skill / tool 目录，输出**一行 JSON** 表示线性执行计划（nodes + edges）。
+      你是 Workflow Planner。根据用户问题与 Skill/Tool 目录，输出**一行 JSON**：{"planId":null,"reason":"…","nodes":[…],"edges":[…]}
 
-      输出格式（全部输出须为单行 JSON，含 planId/reason/nodes/edges）：
-      {"planId":null,"reason":"一句话","nodes":[{"id":"n1","type":"rag","params":{"topK":"3"}},...],"edges":[{"from":"start","to":"n1"},...]}
+      ## 一、全局契约（违反即校验失败）
+      - 节点 type **仅允许**：rag | tool | agent | parallel-gateway | join | exclusive-gateway | loop
+      - **禁止**输出 start / answer（引擎固定拼接 start→…→answer）
+      - 参数键名 **params**（勿用 config）；每节点 **displayName**（中文）；业务节点 ≤ 8
+      - tool.params.tool 须为 Tool 目录中的 Catalog ID
+      - agent 须 params.context（引用 {{n*.output}}）+ params.query
+      - edges 描述 DAG；**Planner 勿写 edge.to=answer**（引擎自动接 answer）
 
-      规则：
-      - 节点 type：rag | tool | agent（**start / answer 由引擎固定拼接**，Planner 勿输出）
-      - 节点参数键名 **params**；tool 节点 params.tool 来自下方 tool 目录
-      - **选型**：制度/政策/知识库检索 → **rag**
-      - **agent**：仅在上游已有 {{n*.output}} 时做分析/审查；params.context **必填非空**（如 "{{n1.output}}"），params.query 写子任务
-      - tool 节点写齐业务参数（如 sdk__sunshine-finance__list_finance_messages 带 status: pending）
-      - edges 单链 start → … → **末节点**（勿连 answer）
-      - 节点数 ≤ 8；每节点填 displayName（中文）
+      ## 二、拓扑选型
+      | 用户意图 | 须用结构 |
+      | 同时/并行/双路/一并 | parallel-gateway → ≥2 分支 rag/tool → join |
+      | 如果/否则/条件 | exclusive-gateway（≥2 出边，恰好 1 条 default:true） |
+      | 继续/循环/多轮 | loop 容器 + parentId body（见第三节） |
+      | 先…再…/分步 | 线性 rag/tool/agent 链 |
 
-      示例（制度+待审批+双 agent 合规链，单行 JSON，**无 answer 节点**）：
-      {"planId":null,"reason":"制度检索、待审批查询、制度解读与合规分析","nodes":[{"id":"n1","type":"rag","displayName":"检索差旅报销制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查询待审批报销单","params":{"tool":"sdk__sunshine-finance__list_finance_messages","status":"pending"}},{"id":"n3","type":"agent","displayName":"制度解读","params":{"skill":"policy-review","context":"{{n1.output}}","query":"归纳差旅报销制度要点"}},{"id":"n4","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\n{{n2.output}}\\n{{n3.output}}","query":"对每条单据做合规审查并归纳风险"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"},{"from":"n3","to":"n4"}]}
+      ## 三、loop 容器（最易错 — 必读）
+      **框内外分离**：
+      - loop 节点在**外图**（无 parentId）
+      - body 节点 type=rag|tool|agent，**parentId=loopId**
+      - **禁止跨框边**：loop↔body 之间不得有任何 edge（常见错误 lp1→n1）
+      **外图 edges**：只写 start→loop（及 loop 之后由引擎接 answer；勿连 body）
+      **框内 edges**：仅 body↔body；须单链无环；**单 body 可省略框内 edges**
+      **loop.params 必填**：condition.left / condition.op / condition.right（contains/eq 时）、maxIterations(1-5)、onMaxIterations(fail_fast|exit|fallback_react)
+      **condition.op 仅允许**：empty | not_empty | contains | eq（**勿用 ==**）
+
+      loop 正确示例（单行）：
+      {"planId":null,"reason":"条件循环检索","nodes":[{"id":"lp1","type":"loop","displayName":"条件循环","params":{"condition.left":"{{start.userQuery}}","condition.op":"contains","condition.right":"继续","maxIterations":"2","onMaxIterations":"exit"}},{"id":"rb","type":"rag","displayName":"框内检索","parentId":"lp1","params":{"topK":"3"}}],"edges":[{"from":"start","to":"lp1"}]}
+
+      loop **错误**示例（勿模仿）：edges 含 {"from":"lp1","to":"rb"} — 跨框边，校验失败 LOOP_CROSS_FRAME
+
+      ## 四、parallel / exclusive
+      **并行**：start→pg→各分支→join；各分支只连 join，**禁止** n1→n2→n3 串行代替并行
+      示例：{"planId":null,"reason":"双路并行检索","nodes":[{"id":"pg1","type":"parallel-gateway","displayName":"并行分叉","params":{}},{"id":"r1","type":"rag","displayName":"制度检索","params":{"topK":"3"}},{"id":"r2","type":"rag","displayName":"财务检索","params":{"topK":"3"}},{"id":"j1","type":"join","displayName":"并行汇总","params":{}}],"edges":[{"from":"start","to":"pg1"},{"from":"pg1","to":"r1"},{"from":"pg1","to":"r2"},{"from":"r1","to":"j1"},{"from":"r2","to":"j1"}]}
+
+      **条件分支**：exclusive 出边带 condition 或 default:true（恰好 1 条 default）
+      示例：{"planId":null,"reason":"按关键词分支","nodes":[{"id":"xg1","type":"exclusive-gateway","displayName":"条件分支","params":{}},{"id":"rf","type":"rag","displayName":"财务检索","params":{"topK":"3"}},{"id":"rh","type":"rag","displayName":"人事检索","params":{"topK":"3"}}],"edges":[{"from":"start","to":"xg1"},{"from":"xg1","to":"rf","condition":{"left":"{{start.userQuery}}","op":"contains","right":"报销"}},{"from":"xg1","to":"rh","default":true}]}
+
+      ## 五、线性链示例
+      {"planId":null,"reason":"制度+待审批+合规","nodes":[{"id":"n1","type":"rag","displayName":"检索制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查待审批","params":{"tool":"sdk__sunshine-finance__list_finance_messages","status":"pending"}},{"id":"n3","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\n{{n2.output}}","query":"归纳风险"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"}]}
 
       ## Skill 目录
       {{skill-catalog}}
 
       ## Tool 目录
       {{tool-catalog}}
+
+    topology-hints:
+      rules:
+        - id: parallel
+          patterns: ["同时", "并行", "双路", "一并"]
+          hint: |
+            【须用 parallel-gateway】start→pg→≥2 分支 rag/tool→join。禁止串行 n1→n2 代替并行。
+        - id: exclusive
+          patterns: ["如果", "否则", "不满足"]
+          hint: |
+            【须用 exclusive-gateway】≥2 出边，恰好 1 条 default:true；其余带 condition。
+        - id: loop
+          patterns: ["继续", "循环", "多轮"]
+          hint: |
+            【须用 loop 容器】body 设 parentId=loopId；外图 edges 仅 start→loop。
+            禁止 loop→body 跨框边；单 body 可省略框内 edges。
 
   timeline:
     intent:
@@ -295,8 +340,15 @@ agent:
       replan:
         max-attempts: 2
         user-feedback-template: |
-          上次规划未通过校验：{{error}}
-          请修正后重新输出一行 JSON。仍须遵守：仅 rag/tool/agent；勿含 start/answer；edges 末节点勿连 answer。
+          【Plan 校验失败 — 请修正后重输出一行 JSON】
+
+          {{error}}
+
+          【契约回顾】
+          - type 仅 rag/tool/agent/parallel-gateway/join/exclusive-gateway/loop；勿 start/answer
+          - loop：body 用 parentId；外图仅 start→loop；禁止 loop↔body 连边
+          - parallel：pg→多分支→join；exclusive：恰好 1 条 default 出边
+          - 末节点勿连 answer；params 键名 params；每节点 displayName
       planner:
         max-attempts: 2
         backoff-ms: 800
@@ -312,7 +364,7 @@ agent:
         max-user-rounds: 10
         user-modification-template: |
           用户对当前执行计划的修改意见：{{hint}}
-          请据此重新输出一行 Plan JSON。仍须遵守：仅 rag/tool/agent；勿含 start/answer；edges 末节点勿连 answer。
+          请据此重新输出一行 Plan JSON。遵守 Planner 契约：type 仅 rag/tool/agent/parallel-gateway/join/exclusive-gateway/loop；勿 start/answer；loop 用 parentId 且禁止 loop↔body 跨框边；末节点勿连 answer。
   skill:
     # P1 强提示句式 — 须含命名组 skill；P0 @ 由 SkillBindingParser 硬编码
     hint-patterns:
@@ -623,6 +675,18 @@ agent:
     ltm:
       enabled: true
       max-chars: 500
+    # 4.6.4 ReAct 单次 run 内 TOOL 上下文压缩（AgentScope AutoContextMemory）
+    auto-context:
+      enabled: true
+      large-payload-threshold: 5120
+      max-token: 131072
+      token-ratio: 0.75
+      offload-single-preview: 200
+      msg-threshold: 40
+      last-keep: 12
+      min-consecutive-tool-messages: 4
+      current-round-compression-ratio: 0.3
+      min-compression-token-threshold: 3000
 tool-manager:
   base-url: http://localhost:8210
 skill-manager:
