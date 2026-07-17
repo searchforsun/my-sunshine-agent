@@ -75,6 +75,11 @@ export function hasRealTaskBoardItems(step: ProcessingStep): boolean {
   return tasks.length > 0 && (step.metadata?.taskRevision ?? 0) >= 1
 }
 
+/** ReAct spawn_subagent 主时间线卡片（phase 或 id 前缀） */
+export function isSubagentStep(step: { id?: string; phase?: string }): boolean {
+  return step.phase === 'subagent' || !!step.id?.startsWith('subagent-')
+}
+
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
 export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'

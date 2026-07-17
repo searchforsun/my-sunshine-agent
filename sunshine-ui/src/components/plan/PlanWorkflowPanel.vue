@@ -14,6 +14,7 @@ import { buildDagNodes, resolveDagNodeStep, type DagNodeView } from '../../utils
 import { type HitlConfirmationPayload } from '../../api/hitlSteps'
 import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
+import { useSubagentDrawer } from '../../composables/useSubagentDrawer'
 import { usePlanDagExpand, unregisterPlanDagSelectHandler, registerPlanDagSelectHandler } from '../../composables/usePlanDagExpand'
 import PlanExecutionCanvas from './PlanExecutionCanvas.vue'
 import PlanApprovalActions from './PlanApprovalActions.vue'
@@ -33,7 +34,13 @@ const props = defineProps<{
 }>()
 
 const { open: openDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()
+const { close: closeSubagentDrawer } = useSubagentDrawer()
 const { open: openExpand, close: closeExpand, isExpanded, update: updateExpand, bindSelect, state: expandState } = usePlanDagExpand()
+
+function openPlanNodeDrawer(...args: Parameters<typeof openDrawer>) {
+  closeSubagentDrawer()
+  openDrawer(...args)
+}
 
 function subStepsSignature(steps?: ProcessingStep[]): string {
   if (!steps?.length) return ''
@@ -112,7 +119,7 @@ function maybeAutoOpenDrawer(nodes: DagNodeView[]) {
   if (isActivePlan(id) && drawerState.node?.id === target.id) return
   // 用户已打开抽屉并手动点了其他节点时，不要抢回（三开时 sync 更频繁）
   if (isActivePlan(id) && drawerState.node && drawerState.node.id !== target.id) return
-  openDrawer({ planId: id, userQuery: props.userQuery, node: target, step: stepForNode(target.id), graph: graphSource.value })
+  openPlanNodeDrawer({ planId: id, userQuery: props.userQuery, node: target, step: stepForNode(target.id), graph: graphSource.value })
 }
 
 const planDetail = ref<ExecutionPlanDetail | null>(null)
@@ -216,7 +223,7 @@ function stepForNode(nodeId: string): ProcessingStep | undefined {
 function onSelectNode(node: DagNodeView) {
   const id = planId.value
   if (!id) return
-  openDrawer({
+  openPlanNodeDrawer({
     planId: id,
     userQuery: props.userQuery,
     node,

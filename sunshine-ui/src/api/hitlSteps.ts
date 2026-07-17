@@ -317,7 +317,10 @@ export function stepsHaveAwaitingHitl(steps: ProcessingStep[] | undefined): bool
     return true
   }
   for (const node of steps) {
-    if (!node.id.startsWith('node-') || !node.subSteps?.length) continue
+    if (!node.subSteps?.length) continue
+    if (!node.id.startsWith('node-') && !node.id.startsWith('subagent-') && node.phase !== 'subagent') {
+      continue
+    }
     if (node.subSteps.some(s => isHitlAwaiting(s) || isHitlSummaryAwaiting(s))) return true
   }
   return false

@@ -420,6 +420,9 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
   if (step.phase === 'peer-collab' || step.id === 'peer-collab') {
     return false
   }
+  if (step.phase === 'subagent' || step.id.startsWith('subagent-')) {
+    return false
+  }
   // loop 框内 agent：嵌套 think/正文可展开
   if (step.id.startsWith('i') && (step.subSteps?.length || step.contentBlocks?.length)) {
     return true

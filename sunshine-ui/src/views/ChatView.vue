@@ -25,9 +25,11 @@ import { NIcon } from 'naive-ui'
 import { DocumentTextOutline, FolderOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
+import SubagentDrawer from '../components/operation/SubagentDrawer.vue'
 import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
 import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
+import { useSubagentDrawer } from '../composables/useSubagentDrawer'
 import { useSandboxWorkspaceDrawer } from '../composables/useSandboxWorkspaceDrawer'
 import { getWriteHitlMode } from '../composables/useWriteHitlMode'
 import { usePlanDagExpand } from '../composables/usePlanDagExpand'
@@ -74,6 +76,7 @@ const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible } = useSidebar()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
+const { close: closeSubagentDrawer } = useSubagentDrawer()
 const {
   open: openSandboxDrawer,
   close: closeSandboxDrawer,
@@ -287,6 +290,9 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
     nodeId,
     getPendingHitlConfirmations(latestAssistantMessage.value),
   ),
+)
+provide('subagentDrawerLiveStep', (stepId: string) =>
+  latestAssistantMessage.value?.steps?.find(s => s.id === stepId),
 )
 
 const inputText = ref('')
@@ -560,6 +566,7 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
   setActiveConversation(newId)
   closePlanDrawer()
+  closeSubagentDrawer()
   closeSandboxDrawer()
   closePlanDagExpand()
   sandboxWorkspaceActive.value = false
@@ -922,6 +929,7 @@ watch(
     </footer>
       </div>
       <PlanNodeDrawer />
+      <SubagentDrawer />
       <SandboxWorkspaceDrawer />
     </div>
   </div>

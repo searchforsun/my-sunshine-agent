@@ -25,10 +25,12 @@ import {
 import OperationCard from './OperationCard.vue'
 import TaskBoardPanel from './TaskBoardPanel.vue'
 import PeerCollabPanel from './PeerCollabPanel.vue'
+import SubagentCard from './SubagentCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { ensurePlanTimelineSteps, isPlanDagNodeStep } from '../../api/planHydrate'
+import { isSubagentStep } from '../../api/processingSteps'
 
 const props = withDefaults(defineProps<{
   steps: ProcessingStep[]
@@ -110,6 +112,7 @@ const displaySteps = computed(() => {
       if (s.phase === 'tasks') return false
       if (s.phase === 'peer-collab') return false
       if (s.phase === 'expert-convene') return false
+      if (isSubagentStep(s)) return false
       if (isToolStepId(s.id)) return false
       if (s.id === 'think' || s.id.startsWith('think-')) return false
       return true
@@ -204,6 +207,11 @@ const orphanContent = computed(() => {
         v-else-if="step.phase === 'peer-collab'"
         :step="step"
         :message-id="messageId"
+        :live="live && lifecycleOf(step) === 'running'"
+      />
+      <SubagentCard
+        v-else-if="isSubagentStep(step)"
+        :step="step"
         :live="live && lifecycleOf(step) === 'running'"
       />
       <template v-else>
