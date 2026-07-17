@@ -312,6 +312,9 @@ public final class ProcessingStepSerde {
         if (hasText(metadata.sandboxSearchRoot())) {
             map.put("sandboxSearchRoot", metadata.sandboxSearchRoot());
         }
+        if (hasText(metadata.spawnPrompt())) {
+            map.put("spawnPrompt", metadata.spawnPrompt());
+        }
         return map;
     }
 

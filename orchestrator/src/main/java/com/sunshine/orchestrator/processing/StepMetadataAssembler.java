@@ -25,7 +25,26 @@ final class StepMetadataAssembler {
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null,
                 null, null, null,
-                textOrNull(sandboxPath), textOrNull(sandboxSearchRoot));
+                textOrNull(sandboxPath), textOrNull(sandboxSearchRoot), null);
+    }
+
+    static StepMetadata withSpawnPrompt(StepMetadata base, String prompt) {
+        String p = textOrNull(prompt);
+        if (p == null) {
+            return base;
+        }
+        if (base == null) {
+            return new StepMetadata(null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, p);
+        }
+        return new StepMetadata(
+                base.hitCount(), base.sources(), base.rewriteApplied(), base.rewriteLatencyMs(),
+                base.rewriteFrom(), base.rewriteTo(), base.rewriteScenario(), base.rewriteScenarioLabel(),
+                base.skillId(), base.plannerMode(), base.routingReason(), base.rewriteInDetail(),
+                base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
+                base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.sandboxPath(), base.sandboxSearchRoot(), p);
     }
 
     static StepMetadata fromRouting(ExecutionPlan plan) {
@@ -42,7 +61,7 @@ final class StepMetadataAssembler {
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
                 textOrNull(skill), textOrNull(mode), textOrNull(reason), null, null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     static StepMetadata fromSkillLoad(String skillId) {
@@ -52,7 +71,7 @@ final class StepMetadataAssembler {
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
                 skillId.strip(), null, null, null, null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -62,7 +81,7 @@ final class StepMetadataAssembler {
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null,
-                List.copyOf(tasks), revision, progress, null, null);
+                List.copyOf(tasks), revision, progress, null, null, null);
     }
 
     static StepMetadata mergeRouting(StepMetadata base, ExecutionPlan plan) {
@@ -85,7 +104,7 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, hitl, null, null, null,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), hitl, base.recovery(),
@@ -108,7 +127,7 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, List.copyOf(nodeAttempts), null,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), base.recovery(),
@@ -122,7 +141,7 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, recovery, null, null,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), recovery,
@@ -144,7 +163,7 @@ final class StepMetadataAssembler {
                 outcome.scenario(),
                 scenarioLabel.isBlank() ? null : scenarioLabel,
                 null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     static StepMetadata withPlanApproval(StepMetadata base, PlanApprovalMeta planApproval) {
@@ -154,7 +173,7 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null, planApproval,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), base.recovery(),
@@ -191,7 +210,8 @@ final class StepMetadataAssembler {
                 base.taskRevision(),
                 base.taskProgress(),
                 base.sandboxPath(),
-                base.sandboxSearchRoot());
+                base.sandboxSearchRoot(),
+                base.spawnPrompt());
     }
 
     static StepMetadata merge(StepMetadata base, StepMetadata overlay) {
@@ -224,7 +244,8 @@ final class StepMetadataAssembler {
                 overlay.taskRevision() != null ? overlay.taskRevision() : base.taskRevision(),
                 overlay.taskProgress() != null ? overlay.taskProgress() : base.taskProgress(),
                 overlay.sandboxPath() != null ? overlay.sandboxPath() : base.sandboxPath(),
-                overlay.sandboxSearchRoot() != null ? overlay.sandboxSearchRoot() : base.sandboxSearchRoot());
+                overlay.sandboxSearchRoot() != null ? overlay.sandboxSearchRoot() : base.sandboxSearchRoot(),
+                overlay.spawnPrompt() != null ? overlay.spawnPrompt() : base.spawnPrompt());
     }
 
     static StepMetadata withRewriteInDetail(StepMetadata base) {
@@ -240,7 +261,7 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, true, RAG_EXPAND_SECTION_TITLE, null, null, null, null,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 true, RAG_EXPAND_SECTION_TITLE, base.hitl(), base.recovery(),
@@ -283,7 +304,8 @@ final class StepMetadataAssembler {
                 taskRevision,
                 taskProgress,
                 base.sandboxPath(),
-                base.sandboxSearchRoot());
+                base.sandboxSearchRoot(),
+                base.spawnPrompt());
     }
 
     private static String textOrNull(String value) {

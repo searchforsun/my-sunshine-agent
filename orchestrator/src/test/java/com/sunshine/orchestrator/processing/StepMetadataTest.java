@@ -63,6 +63,13 @@ class StepMetadataTest {
     }
 
     @Test
+    void withSpawnPrompt_setsField() {
+        StepMetadata m = StepMetadata.withSpawnPrompt(null, "检索差旅制度并摘要");
+        assertThat(m.spawnPrompt()).isEqualTo("检索差旅制度并摘要");
+        assertThat(m.isEmpty()).isFalse();
+    }
+
+    @Test
     void isEmpty_falseWhenOnlyHitl() {
         StepMetadata metadata = StepMetadata.withHitl(
                 null, HitlStepMeta.awaiting("tok-1", "审批 OA 待办", "taskId=T1001", 1L));

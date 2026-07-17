@@ -40,7 +40,9 @@ public record StepMetadata(
         /** 沙箱 read/write/edit：容器内完整路径（主行 after 可能为 fileName） */
         String sandboxPath,
         /** 沙箱 glob：搜索根（主行 after 为 pattern · root） */
-        String sandboxSearchRoot
+        String sandboxSearchRoot,
+        /** ReAct spawn_subagent：传入子 Agent 的 prompt（抽屉展示） */
+        String spawnPrompt
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -111,6 +113,10 @@ public record StepMetadata(
         return StepMetadataAssembler.fromSandbox(sandboxPath, sandboxSearchRoot);
     }
 
+    public static StepMetadata withSpawnPrompt(StepMetadata base, String prompt) {
+        return StepMetadataAssembler.withSpawnPrompt(base, prompt);
+    }
+
     public String sourcesLabel() {
         if (sources == null || sources.isEmpty()) {
             return "";
@@ -133,6 +139,7 @@ public record StepMetadata(
                 && taskRevision == null
                 && !StringUtils.hasText(taskProgress)
                 && !StringUtils.hasText(sandboxPath)
-                && !StringUtils.hasText(sandboxSearchRoot);
+                && !StringUtils.hasText(sandboxSearchRoot)
+                && !StringUtils.hasText(spawnPrompt);
     }
 }

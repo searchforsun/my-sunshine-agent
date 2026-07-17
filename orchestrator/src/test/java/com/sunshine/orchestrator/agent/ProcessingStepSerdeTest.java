@@ -14,6 +14,13 @@ import static org.mockito.Mockito.mock;
 class ProcessingStepSerdeTest {
 
     @Test
+    void metadataToMap_includesSpawnPrompt() {
+        StepMetadata metadata = StepMetadata.withSpawnPrompt(null, "检索差旅制度并摘要");
+        Map<String, Object> map = ProcessingStepSerde.metadataToMap(metadata);
+        assertThat(map.get("spawnPrompt")).isEqualTo("检索差旅制度并摘要");
+    }
+
+    @Test
     void metadataToMap_includesTaskBoardFields() {
         StepMetadata metadata = StepMetadata.withTasks(
                 List.of(

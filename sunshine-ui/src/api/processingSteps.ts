@@ -140,6 +140,8 @@ export interface StepMetadata {
   sandboxPath?: string
   /** 沙箱 glob 搜索根 */
   sandboxSearchRoot?: string
+  /** ReAct spawn_subagent：传入子 Agent 的 prompt */
+  spawnPrompt?: string
 }
 
 
