@@ -12,9 +12,8 @@ import {
   NText,
   NTree,
 } from 'naive-ui'
+import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
 import {
-  CopyOutline,
-  CheckmarkOutline,
   CreateOutline,
   DocumentTextOutline,
   FolderOpenOutline,
@@ -159,7 +158,7 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
                 :title="page.copyPreviewDone ? '已复制' : '复制'"
                 @click="page.copyPreviewContent"
               >
-                <NIcon :component="page.copyPreviewDone ? CheckmarkOutline : CopyOutline" :size="14" />
+                <CopyToggleIcon :copied="page.copyPreviewDone" />
               </button>
             </div>
             <div :ref="page.bindPreviewScrollRef" class="preview-scroll">

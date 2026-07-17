@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MentionChip from './MentionChip.vue'
+
 defineProps<{
   token: string
   displayName?: string
@@ -6,7 +8,5 @@ defineProps<{
 </script>
 
 <template>
-  <span class="skill-mention-chip" :title="displayName || token">
-    <span class="skill-mention-chip__at">@</span><span class="skill-mention-chip__label">{{ token }}</span>
-  </span>
+  <MentionChip kind="skill" :token="token" :display-name="displayName" />
 </template>

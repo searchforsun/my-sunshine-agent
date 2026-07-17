@@ -3,7 +3,9 @@ package com.sunshine.orchestrator.processing;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
-import com.sunshine.orchestrator.config.WorkflowProperties;
+import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
+import com.sunshine.orchestrator.client.WorkflowManagerClient;
+import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
@@ -272,7 +274,7 @@ class ProcessingTimelineSessionTest {
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.SkillCatalogService.class);
         org.mockito.Mockito.when(catalog.findIndex("skill-demo")).thenReturn(java.util.Optional.of(
                 new com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry(
-                        "skill-demo", "测试技能", "desc", 1, true)));
+                        "skill-demo", "测试技能", "desc", 1, true, "none")));
         SkillLoadLabelService labelService = new SkillLoadLabelService(
                 catalog, new com.sunshine.orchestrator.config.AgentPromptProperties());
         labelService.init();
@@ -436,14 +438,22 @@ class ProcessingTimelineSessionTest {
 
         ExecutionPlan plan = new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test");
+        WorkflowCatalogRegistry registry = org.mockito.Mockito.mock(WorkflowCatalogRegistry.class);
+        WorkflowManagerClient client = org.mockito.Mockito.mock(WorkflowManagerClient.class);
+        WorkflowManagerClient.WorkflowCatalogEntryDto entry =
+                new WorkflowManagerClient.WorkflowCatalogEntryDto(
+                        "finance-smart", "workflow", "财务智能分析", "财务分析", List.of(), List.of(), null);
+        org.mockito.Mockito.when(registry.entries()).thenReturn(List.of(entry));
+        org.mockito.Mockito.when(registry.find("finance-smart")).thenReturn(entry);
+        WorkflowCatalog workflowCatalog = new WorkflowCatalog(registry, client);
         WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
-                buildWorkflowPropsForIntent(),
-                org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class),
-                new AgentPromptProperties());
+                workflowCatalog,
+                org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class));
         WorkflowNodeLabels.bind(workflowLabels);
         IntentLabels.bind(new IntentLabelService(
                 new AgentPromptProperties(),
-                buildWorkflowPropsForIntent(),
+                workflowCatalog,
+                registry,
                 workflowLabels));
         try {
             session.completeIntent(plan);
@@ -454,16 +464,6 @@ class ProcessingTimelineSessionTest {
         } finally {
             IntentLabels.bind(null);
         }
-    }
-
-    private static WorkflowProperties buildWorkflowPropsForIntent() {
-        WorkflowProperties props = new WorkflowProperties();
-        WorkflowProperties.CatalogEntry entry = new WorkflowProperties.CatalogEntry();
-        entry.setId("finance-smart");
-        entry.setDisplayName("财务智能分析");
-        props.setCatalog(List.of(entry));
-        props.setDefinitions(new LinkedHashMap<>());
-        return props;
     }
 
     @Test
@@ -644,8 +644,10 @@ class ProcessingTimelineSessionTest {
                     .toList();
             assertThat(toolSteps).hasSize(2);
             assertThat(toolSteps.get(0).id()).isNotEqualTo(toolSteps.get(1).id());
-            assertThat(toolSteps.get(0).detail()).contains("pending").doesNotContain("·");
-            assertThat(toolSteps.get(1).detail()).contains("approved").doesNotContain("·");
+            assertThat(toolSteps.get(0).summary().after()).contains("pending").doesNotContain("·");
+            assertThat(toolSteps.get(1).summary().after()).contains("approved").doesNotContain("·");
+            assertThat(toolSteps.get(0).detail()).isNull();
+            assertThat(toolSteps.get(1).detail()).isNull();
             assertThat(toolSteps.get(0).label()).isEqualTo("调用工具 统计财务消息");
         } finally {
             StepLabels.bind(null);

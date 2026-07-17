@@ -4,8 +4,11 @@ import { computed } from 'vue'
 const props = withDefaults(defineProps<{
   type: string
   size?: number
+  /** 画布菱形网关内仅渲染 + / ×，不再重复画外框 */
+  symbolOnly?: boolean
 }>(), {
   size: 14,
+  symbolOnly: false,
 })
 
 /** 归一化 planner / timeline 可能出现的 type 别名 */
@@ -79,6 +82,49 @@ const kind = computed(() => {
       <circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" />
     </template>
 
+    <!-- join / parallel-gateway：并行网关 -->
+    <template v-else-if="kind === 'join' || kind === 'parallel-gateway'">
+      <template v-if="!symbolOnly">
+        <path
+          d="M8 2.25L13.75 8L8 13.75L2.25 8L8 2.25Z"
+          stroke="currentColor"
+          stroke-width="1.25"
+          stroke-linejoin="round"
+        />
+      </template>
+      <path d="M8 5.25v5.5M5.25 8h5.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+    </template>
+
+    <!-- exclusive-gateway：排他网关 -->
+    <template v-else-if="kind === 'exclusive-gateway'">
+      <template v-if="!symbolOnly">
+        <path
+          d="M8 2.25L13.75 8L8 13.75L2.25 8L8 2.25Z"
+          stroke="currentColor"
+          stroke-width="1.25"
+          stroke-linejoin="round"
+        />
+      </template>
+      <path d="M5.35 5.35l5.3 5.3M10.65 5.35l-5.3 5.3" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+    </template>
+
+    <!-- loop：循环容器 -->
+    <template v-else-if="kind === 'loop'">
+      <path
+        d="M8 2.5a5.5 5.5 0 1 1-3.9 1.6"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+      />
+      <path
+        d="M3.2 2.8v2.6h2.6"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </template>
+
     <!-- answer：汇总输出 -->
     <template v-else-if="kind === 'answer'">
       <path
@@ -141,5 +187,14 @@ const kind = computed(() => {
 
 .is-llm {
   color: color-mix(in srgb, var(--sun-text-secondary) 82%, var(--sun-text));
+}
+
+.is-join,
+.is-parallel-gateway {
+  color: color-mix(in srgb, var(--sun-text-secondary) 80%, var(--sun-blue, #58a6ff));
+}
+
+.is-exclusive-gateway {
+  color: color-mix(in srgb, var(--sun-text-secondary) 78%, var(--sun-amber, #c9a227));
 }
 </style>

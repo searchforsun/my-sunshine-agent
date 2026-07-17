@@ -31,6 +31,9 @@ public class UserEntity {
     @Column(name = "tenant_id", nullable = false, length = 32)
     private String tenantId = "default";
 
+    @Column(name = "default_write_hitl_mode", nullable = false, length = 16)
+    private String defaultWriteHitlMode = "never";
+
     @Column(nullable = false, columnDefinition = "TINYINT")
     private Byte status = 1;
 

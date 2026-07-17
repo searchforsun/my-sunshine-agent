@@ -43,7 +43,7 @@ mvn test -pl orchestrator -Dtest=StructuralPlanMatcherTest,RoutingGoldenSetTest,
 意图步之后应出现 **「执行计划」** + **Plan DAG**（`PlanWorkflowPanel`），而非 ReAct 的「规划推理」或逐步 `node-*` 卡片：
 
 - **动态 Plan（L1/L3）**：Planner 产出 JSON → `PlanWorkflowExecutor`
-- **静态 Workflow（L2）**：Nacos 定义经 `StaticPlanAdapter` 物化为 Plan → `WorkflowExecutor`；plan 步 `detail` 含 **`planId=`**（与动态 Plan 同门控）
+- **静态 Workflow（L2）**：DB 定义经 `StaticPlanAdapter` 物化为 Plan → `WorkflowExecutor`；plan 步 `detail` 含 **`planId=`**（与动态 Plan 同门控）
 - **不应**在成功路径出现：`规划推理` / `think` / 自主 ReAct 工具链（除非 Planner 失败降级，见下）
 - **`think` 仅属 ReAct**：answer 的 reasoning 在 `node-*` 步骤与 Plan 抽屉「综合分析」，**不得**再合成顶层 `think` 行
 
@@ -192,12 +192,18 @@ python3 scripts/verify_skills_ui_live.py
 ## I. Workflow `#` 绑定（L0，阶段四 4.13）
 
 > **详设**：[workflow-studio-design.md](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3  
-> **与 §E 区分**：**`#` 仅 Workflow** · **`@` 仅 Skill**；首字符互斥，均优先于 L1/L2/L3。
+> **与 §E 区分**：**`#` 仅 Workflow** · **`@` 仅 Skill**；首字符互斥，均优先于 L1/L2/L3。  
+> **数据源**：workflow-manager DB init 种子 **7 条**（`docs/workflow/README.md`）。
 
 | # | 提示词 | 预期 |
 |---|--------|------|
 | I1 | `#knowledge-qa 年假可以请几天` | `WORKFLOW` workflowId=knowledge-qa；`reason=workflow:#mention`；Plan DAG |
-| I2 | `#knowledge-qa 报销流程是什么` | `WORKFLOW` workflowId=knowledge-qa（Nacos 内置，DB 未覆盖时） |
+| I2 | `#knowledge-qa 报销流程是什么` | `WORKFLOW` workflowId=knowledge-qa（DB init 种子） |
+| I2b | `#knowledge-dual 年假和报销制度一起查` | `WORKFLOW` workflowId=knowledge-dual；并行双 RAG + join DAG |
+| I2c | `#knowledge-branch 报销需要哪些材料` | `WORKFLOW` workflowId=knowledge-branch；exclusive → 财务 RAG（含「报销」） |
+| I2d | `#knowledge-branch 请假制度是什么` | `WORKFLOW` workflowId=knowledge-branch；exclusive → 默认人事 RAG |
+| I2e | `#knowledge-loop 分析年假和待办报销` | `WORKFLOW` knowledge-loop；do-while 首轮必进（1 轮 subSteps） |
+| I2f | `#knowledge-loop 继续分析年假和待办报销` | `WORKFLOW` knowledge-loop；继续条件真 → 最多 2 轮 subSteps |
 | I3 | `#finance-smart 待审批报销是否合规` | `WORKFLOW` workflowId=finance-smart；**压过** L2 规则 / L3 自动选型 |
 | I4 | `#not-exists 测试` | HTTP 400；文案指向 `/workflows` |
 | I5 | `@knowledge-qa 测试` | **不得**当 workflow；按 Skill 解析 → 未知 Skill 400 或 none |
@@ -233,16 +239,20 @@ Live：`python scripts/verify_execution_preference.py`
 
 ---
 
-## F. LLM 兜底（L3）与 Skill 自动发现（流程 3）
+## F. LLM 兜底（L3）与 Skill 绑定（流程 3）
 
-规则与结构均未命中时走 `IntentRouter`（短句可能先 intent 改写）。`REACT` 产出后 **`SkillDiscoveryService`** 按 catalog 摘要匹配 skill（`reason=skill:auto-discovered`）。
+> **沙箱（方案 B）**：[conversation-sandbox-permanent-tools-design.md](../superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md) — 主 ReAct **始终**有 `sandbox__*`；`skillId` 仅影响 overlay/挂载，**非**沙箱前置条件。
+
+规则与结构均未命中时走 `IntentRouter`（短句可能先 intent 改写）。L3 一次输出 `mode` + 可选 `skillId`（须为 Skill Catalog 内 id）；后置 **`SkillDiscoveryService`** 仅做 catalog 校验（剥离未知 id）。
 
 | # | 提示词 | 预期（典型） |
 |---|--------|--------------|
 | F1 | 随便聊聊 | `REACT` 或 `SIMPLE_LLM`；**无** skill 绑定 |
 | F2 | 年假可以请几天 | `WORKFLOW` knowledge-qa（LLM 选 catalog） |
 | F3 | 待审批 | 短句 → intent 改写后分类（见 timeline detail） |
-| F4 | 帮我做一笔报销的合规分析 | L3→`REACT` + skill=finance-analysis（**流程 3** 自动发现） |
+| F4 | 帮我做一笔报销的合规分析 | L3→`REACT` + skillId=finance-analysis |
+| F5 | 看一下这个skills能做什么，分析一下脚本 | L3→`REACT`；**可选** skillId（挂载 `/skills/`）；`sandbox__*` **常驻**（方案 B，不依赖 skillId） |
+| F6 | 帮我创建一个csv文件，再使用脚本求和 | L3→`REACT`；须 `sandbox__write` + `exec`；有 `@skill` 时懒挂载脚本目录 |
 
 ---
 
@@ -256,7 +266,7 @@ Live：`python scripts/verify_execution_preference.py`
 | A1 + 去掉「先…再…」改为逗号串联 | 若 L1 未命中且含「查询待审批」 | 曾误路由 finance-list；L2 保险丝 + 配置 domain 组应避免 |
 | E4 `@finance-analysis 是否合规` | finance-smart | `REACT` + skill=finance-analysis |
 | E3 `@finance-analysis 先…再…` | 仅 REACT 单 Agent | `PLAN_WORKFLOW` 5B + Plan DAG |
-| F4 帮我做合规分析 | finance-smart / workflow | `REACT` + skill 自动发现（无 @） |
+| F4 帮我做合规分析 | finance-smart / workflow | `REACT` + L3 skillId=finance-analysis（无 @） |
 
 ---
 

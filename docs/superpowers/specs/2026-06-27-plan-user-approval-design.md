@@ -3,7 +3,7 @@
 > **状态**：✅ 已实现（2026-06-27）  
 > **配置 SSOT**：`docs/nacos/sunshine-orchestrator.yaml` → `agent.execution.plan-workflow.approval`  
 > **后端**：`PlanApprovalService`、`PlanWorkflowExecutor.runUserApprovalLoop`  
-> **前端**：`PlanWorkflowPanel`、`PlanApprovalActions`、`PlanDagGraph`、`PlanNodeDrawer`  
+> **前端**：`PlanWorkflowPanel`、`PlanApprovalActions`、`PlanExecutionCanvas`、`PlanNodeDrawer`  
 > **关联**：[plan-workflow-retry-degradation.md](../../routing/plan-workflow-retry-degradation.md) §8
 
 ## 1. 行为概要
@@ -43,13 +43,13 @@ Planner 校验通过后、**节点执行前**，阻塞等待用户：
 
 规划完成、出现新一轮 `awaiting` 后，历史轮显示：`执行计划确认 · 已重新生成 · …链路…`
 
-## 4. 流程图区（`PlanDagGraph`）
+## 4. 流程图区（`PlanExecutionCanvas`）
 
 | 规则 | 实现 |
 |------|------|
-| 重新生成 loading | **仅** `plan-dag-scroll` 内遮罩 + 转圈「重新生成中…」；`plan-dag-track` `visibility:hidden`；**不改卡片背景色** |
+| 重新生成 loading | **仅** 图区遮罩 + 「重新生成中…」；**不改卡片背景色** |
 | 确认框 | 重新生成期间 **不** 额外 loading UI |
-| 放大按钮 | 卡片 **右上角**；`padding-right: 42px` 预留区，DAG **不可滚入** 按钮区 |
+| 放大按钮 | 卡片 **右上角**；DAG **不可滚入** 按钮区 |
 | 重新生成中 | **隐藏** 放大按钮（`:show-expand="!isRegenerating"`） |
 | 待执行文案 | 业务节点 pending：**等待中**（非「待执行」） |
 
@@ -74,7 +74,7 @@ Planner 校验通过后、**节点执行前**，阻塞等待用户：
 | 面板 | `sunshine-ui/src/components/plan/PlanWorkflowPanel.vue` |
 | 确认 | `sunshine-ui/src/components/plan/PlanApprovalActions.vue` |
 | 折叠框 | `sunshine-ui/src/components/operation/CollapsibleConfirmPanel.vue` |
-| DAG | `sunshine-ui/src/components/plan/PlanDagGraph.vue` |
+| DAG | `sunshine-ui/src/components/plan/PlanExecutionCanvas.vue` |
 | 抽屉 | `sunshine-ui/src/components/plan/PlanNodeDrawer.vue` |
 | 状态 | `sunshine-ui/src/api/planApprovalSteps.ts` |
 

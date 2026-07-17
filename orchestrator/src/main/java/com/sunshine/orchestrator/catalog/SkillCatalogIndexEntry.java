@@ -6,6 +6,12 @@ public record SkillCatalogIndexEntry(
         String displayName,
         String description,
         int version,
-        boolean enabled
+        boolean enabled,
+        String sandbox
 ) {
+    public SkillCatalogIndexEntry {
+        if (sandbox == null || sandbox.isBlank()) {
+            sandbox = "none";
+        }
+    }
 }

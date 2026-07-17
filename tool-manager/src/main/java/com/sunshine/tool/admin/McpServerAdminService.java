@@ -2,7 +2,7 @@ package com.sunshine.tool.admin;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.tool.admin.dto.McpServerPatchRequest;
+import com.sunshine.common.tool.admin.McpServerPatchRequest;
 import com.sunshine.tool.entity.McpServerEntity;
 import com.sunshine.tool.entity.ToolDefinitionEntity;
 import com.sunshine.tool.event.ToolCatalogChangePublisher;

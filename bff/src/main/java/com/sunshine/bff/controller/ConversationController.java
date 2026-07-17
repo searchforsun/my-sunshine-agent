@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
@@ -59,5 +60,31 @@ public class ConversationController {
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.deleteConversation(id, userId, tenantId);
+    }
+
+    @GetMapping("/api/conversations/{id}/sandbox/workspace")
+    public Mono<Map<String, Object>> listSandboxWorkspace(
+            @PathVariable String id,
+            @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.listSandboxWorkspace(id, path, userId, tenantId);
+    }
+
+    @GetMapping("/api/conversations/{id}/sandbox/workspace/content")
+    public Mono<Map<String, Object>> readSandboxWorkspace(
+            @PathVariable String id,
+            @RequestParam("path") String path,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.readSandboxWorkspaceFile(id, path, userId, tenantId);
+    }
+
+    @GetMapping("/api/conversations/{id}/sandbox/workspace/status")
+    public Mono<Map<String, Object>> sandboxWorkspaceStatus(
+            @PathVariable String id,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.sandboxWorkspaceStatus(id, userId, tenantId);
     }
 }

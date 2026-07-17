@@ -2,7 +2,13 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.hitl.HitlParamSupport;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.StepMetadata;
+import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
+import com.sunshine.orchestrator.sandbox.SandboxIds;
+import com.sunshine.orchestrator.sandbox.SandboxStepContext;
+import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import io.agentscope.core.hook.Hook;
 import io.agentscope.core.hook.HookEvent;
@@ -12,7 +18,12 @@ import io.agentscope.core.hook.PreActingEvent;
 import io.agentscope.core.hook.ReasoningChunkEvent;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.message.ToolUseBlock;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * AgentScope Hook — ReAct 轮次边界与 reasoning 增量（唯一触达源）
@@ -29,16 +40,19 @@ public class ProcessingStepHook implements Hook {
     private final ToolCatalogService toolCatalogService;
     private final AgentExecutionProperties executionProperties;
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
+    private final SandboxTimelineLabelService sandboxTimelineLabels;
 
     ProcessingStepHook(
             String bridgeId,
             ToolCatalogService toolCatalogService,
             AgentExecutionProperties executionProperties,
-            TaskBoardTimelineSupport taskBoardTimelineSupport) {
+            TaskBoardTimelineSupport taskBoardTimelineSupport,
+            SandboxTimelineLabelService sandboxTimelineLabels) {
         this.bridgeId = bridgeId;
         this.toolCatalogService = toolCatalogService;
         this.executionProperties = executionProperties;
         this.taskBoardTimelineSupport = taskBoardTimelineSupport;
+        this.sandboxTimelineLabels = sandboxTimelineLabels;
     }
 
     @Override
@@ -75,10 +89,15 @@ public class ProcessingStepHook implements Hook {
             StepEventBridge.bindToolUseBridge(toolUseId, bridgeId);
             String baseStepId = toolCatalogService.timelineStepId(toolName);
             String phase = toolCatalogService.timelinePhase(toolName);
+            Map<String, Object> input = toolInput(pre.getToolUse());
+            String sandboxActive = sandboxActiveSummary(toolName, input);
             final String[] stepHolder = new String[1];
             StepEventBridge.emit(bridgeId, session -> {
                 session.noteToolCallPending();
                 stepHolder[0] = session.beginToolStep(baseStepId, phase);
+                if (sandboxActive != null) {
+                    session.progressCurrentToolStep(sandboxActive);
+                }
             });
             if (stepHolder[0] != null) {
                 StepEventBridge.bindToolUseStep(toolUseId, stepHolder[0]);
@@ -93,9 +112,43 @@ public class ProcessingStepHook implements Hook {
                 StepEventBridge.unbindToolUseBridge(toolUseId);
                 return Mono.just(event);
             }
-            String detail = summarizeToolResult(toolName, post.getToolResult());
+            String rawText = extractToolResultText(post.getToolResult());
+            final String summaryLine;
+            final String expandDetail;
+            if (toolCatalogService.isRagTool(toolName)) {
+                // search_knowledge 无 catalog 摘要模板；metadata/after 须从工具原始命中正文解析
+                summaryLine = rawText;
+                expandDetail = ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
+            } else if (sandboxTimelineLabels.isSandboxTool(toolName)) {
+                Map<String, Object> input = toolInput(post.getToolUse());
+                String raw = rawText != null ? rawText.strip() : "";
+                Map<String, Object> enriched = SandboxStepContext.enrichInput(toolName, input, raw);
+                summaryLine = sandboxTimelineLabels.after(
+                        toolName, toolCatalogService.displayName(toolName), enriched);
+                StepMetadata sandboxMeta = SandboxStepContext.metadata(toolName, enriched, summaryLine);
+                // 写/编辑：展开入参正文；exec 完整 command 在 after，detail 仅工具输出
+                if (SandboxIds.WRITE.equals(toolName) || SandboxIds.EDIT.equals(toolName)) {
+                    String bodyExpand = HitlParamSupport.expandBodyFromParams(toStringParams(input));
+                    expandDetail = StringUtils.hasText(bodyExpand)
+                            ? bodyExpand
+                            : (!raw.isEmpty() ? raw : null);
+                } else {
+                    expandDetail = !raw.isEmpty() ? raw : null;
+                }
+                final StepMetadata meta = sandboxMeta;
+                StepEventBridge.emit(bridgeId, session -> {
+                    session.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail, meta);
+                    session.recordToolCompleted(toolCatalogService.displayName(toolName));
+                    session.noteToolCallDone();
+                });
+                StepEventBridge.unbindToolUseBridge(toolUseId);
+                return Mono.just(event);
+            } else {
+                summaryLine = toolCatalogService.timelineSummary(toolName, rawText);
+                expandDetail = ToolExpandDetailSupport.resolveExpandDetail(summaryLine, rawText);
+            }
             StepEventBridge.emit(bridgeId, session -> {
-                session.completeToolStepForToolUse(toolUseId, detail != null ? detail : toolCatalogService.summarizeOutput(toolName, ""));
+                session.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail);
                 session.recordToolCompleted(toolCatalogService.displayName(toolName));
                 session.noteToolCallDone();
             });
@@ -106,20 +159,47 @@ public class ProcessingStepHook implements Hook {
         return Mono.just(event);
     }
 
+    private String sandboxActiveSummary(String toolName, Map<String, Object> input) {
+        if (!sandboxTimelineLabels.isSandboxTool(toolName)) {
+            return null;
+        }
+        return sandboxTimelineLabels.active(toolName, toolCatalogService.displayName(toolName), input);
+    }
+
+    private static Map<String, Object> toolInput(ToolUseBlock toolUse) {
+        if (toolUse == null || toolUse.getInput() == null) {
+            return Map.of();
+        }
+        return toolUse.getInput();
+    }
+
+    private static Map<String, String> toStringParams(Map<String, Object> input) {
+        if (input == null || input.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : input.entrySet()) {
+            if (e.getKey() == null || e.getValue() == null) {
+                continue;
+            }
+            out.put(e.getKey(), String.valueOf(e.getValue()));
+        }
+        return out;
+    }
+
     private boolean isTaskBoardEnabled() {
         AgentExecutionProperties.React react = executionProperties.getReact();
         return react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled();
     }
 
-    private String summarizeToolResult(String toolName, ToolResultBlock result) {
+    private String extractToolResultText(ToolResultBlock result) {
         if (result == null || result.getOutput() == null) {
-            return toolCatalogService.summarizeOutput(toolName, "");
+            return "";
         }
-        String text = result.getOutput().stream()
+        return result.getOutput().stream()
                 .filter(block -> block instanceof TextBlock)
                 .map(block -> ((TextBlock) block).getText())
                 .findFirst()
                 .orElse("");
-        return toolCatalogService.summarizeOutput(toolName, text);
     }
 }

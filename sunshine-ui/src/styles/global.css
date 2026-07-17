@@ -11,6 +11,7 @@
   --sun-surface-hover: #383838;
   --sun-border: #424242;
   --sun-border-light: #525252;
+  --sun-dag-dot: color-mix(in srgb, var(--sun-border) 55%, transparent);
   --sun-text: #ececec;
   --sun-text-secondary: #b4b4b4;
   --sun-text-muted: #8e8e8e;
@@ -218,6 +219,7 @@ html.theme-switching *::after {
   --sun-surface-hover: #ececec;
   --sun-border: #e5e5e5;
   --sun-border-light: #d4d4d4;
+  --sun-dag-dot: color-mix(in srgb, var(--sun-border) 55%, transparent);
   --sun-text: #0d0d0d;
   --sun-text-secondary: #525252;
   --sun-text-muted: #737373;
@@ -396,6 +398,111 @@ html.theme-switching *::after {
   --n-border: none !important;
 }
 
+/* 表单字段：黑底禁用态（SSOT，对齐 Experts / Skills） */
+.sun-field.n-input,
+.sun-field.n-input-number,
+.search-input.n-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+  border-radius: var(--radius-md);
+}
+
+.sun-field.n-input-number .n-input,
+.n-input-number.sun-field .n-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+}
+
+.sun-field.n-input-number .n-input.n-input--disabled,
+.n-input-number.sun-field .n-input.n-input--disabled {
+  background-color: var(--sun-black) !important;
+}
+
+.sun-field.n-select .n-base-selection,
+.sun-field.n-base-selection {
+  --n-color: var(--sun-black) !important;
+  --n-color-active: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-arrow-color: var(--sun-text-secondary) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-active: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+  --n-box-shadow-hover: none !important;
+  --n-box-shadow-active: none !important;
+  --n-border-radius: var(--radius-md) !important;
+}
+
+.sun-field.n-select .n-base-selection-tags .n-tag {
+  --n-color: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  background: var(--sun-black) !important;
+}
+
+/* 卡片弹层（Workflow 等 preset=card） */
+.sun-modal .n-input,
+.sun-modal .n-input-number,
+.sun-modal .n-input-number .n-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+}
+
+.sun-modal .n-base-selection {
+  --n-color: var(--sun-black) !important;
+  --n-color-active: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-arrow-color: var(--sun-text-secondary) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-active: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+}
+
+.user-settings-modal .n-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+}
+
 /* 弹层挂 body，须全局选择器；与 KbConfigPanel field-control 同款 */
 .sunshine-dialog .n-base-selection {
   --n-color: var(--sun-black) !important;
@@ -544,15 +651,31 @@ html.theme-switching *::after {
   padding-right: 2px;
 }
 
-/* Chat @skill chip — 气泡与输入框共用 */
+/* Chat @ $ # mention chip — 气泡与输入框共用（低饱和区分色） */
+:root {
+  --mention-skill-bg: rgba(201, 162, 39, 0.11);
+  --mention-skill-border: rgba(201, 162, 39, 0.28);
+  --mention-skill-prefix: #a68b4b;
+  --mention-expert-bg: rgba(111, 175, 142, 0.11);
+  --mention-expert-border: rgba(111, 175, 142, 0.28);
+  --mention-expert-prefix: #6fa08a;
+  --mention-workflow-bg: rgba(107, 155, 210, 0.11);
+  --mention-workflow-border: rgba(107, 155, 210, 0.28);
+  --mention-workflow-prefix: #6b9bc8;
+  /* path：青绿，区别于 @/$/# */
+  --mention-path-bg: rgba(72, 158, 152, 0.12);
+  --mention-path-border: rgba(72, 158, 152, 0.34);
+  --mention-path-prefix: #3d8f8a;
+}
+
+.mention-chip,
 .skill-mention-chip {
   display: inline-flex;
   align-items: center;
-  max-width: min(100%, 240px);
+  max-width: min(100%, 260px);
   height: 24px;
   padding: 0 8px;
   border-radius: 5px;
-  background: transparent;
   border: 1px solid var(--sun-border);
   box-sizing: border-box;
   flex-shrink: 0;
@@ -561,15 +684,88 @@ html.theme-switching *::after {
   margin: 0 1px;
 }
 
+.mention-chip--skill,
+.skill-mention-chip {
+  background: var(--mention-skill-bg);
+  border-color: var(--mention-skill-border);
+}
+
+.mention-chip--expert {
+  background: var(--mention-expert-bg);
+  border-color: var(--mention-expert-border);
+}
+
+.mention-chip--workflow {
+  background: var(--mention-workflow-bg);
+  border-color: var(--mention-workflow-border);
+}
+
+.mention-chip--path {
+  background: var(--mention-path-bg);
+  border-color: var(--mention-path-border);
+  gap: 3px;
+  padding: 0 7px 0 6px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+button.mention-chip--path {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.mention-chip--path:hover {
+  border-color: var(--mention-path-prefix);
+  color: var(--sun-text);
+}
+
+.mention-chip__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  color: var(--mention-path-prefix);
+  line-height: 1;
+}
+
+.mention-chip__icon svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+.mention-chip--path .mention-chip__label {
+  color: var(--mention-path-prefix);
+  font-weight: 600;
+}
+
+.mention-chip__prefix,
 .skill-mention-chip__at {
-  color: var(--sun-text-muted);
   font-family: var(--sun-font-mono);
   font-size: var(--sun-font-base);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1;
   -webkit-font-smoothing: antialiased;
 }
 
+.mention-chip--skill .mention-chip__prefix,
+.skill-mention-chip__at {
+  color: var(--mention-skill-prefix);
+}
+
+.mention-chip--expert .mention-chip__prefix {
+  color: var(--mention-expert-prefix);
+}
+
+.mention-chip--workflow .mention-chip__prefix {
+  color: var(--mention-workflow-prefix);
+}
+
+.mention-chip__label,
 .skill-mention-chip__label {
   font-family: var(--sun-font-mono);
   font-size: var(--sun-font-base);
@@ -584,17 +780,32 @@ html.theme-switching *::after {
 }
 
 /* 输入框 contenteditable — chip 与正文同一行高/基线 */
+.composer-editor .mention-chip,
 .composer-editor .skill-mention-chip {
   display: inline;
   height: auto;
   max-width: none;
-  padding: 0 5px;
+  padding: 1px 6px;
   margin: 0 1px;
   line-height: inherit;
   vertical-align: baseline;
   border-radius: 4px;
 }
 
+.composer-editor .mention-chip--path {
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+
+.composer-editor .mention-chip__icon {
+  display: inline-flex;
+  vertical-align: -0.15em;
+  margin-right: 2px;
+}
+
+.composer-editor .mention-chip__prefix,
+.composer-editor .mention-chip__label,
 .composer-editor .skill-mention-chip__at,
 .composer-editor .skill-mention-chip__label {
   display: inline;
@@ -604,17 +815,54 @@ html.theme-switching *::after {
 }
 
 /* 已发送 user 气泡 — 与输入框一致，chip 与正文同行/同基线 */
+.user-message-content .mention-chip,
 .user-message-content .skill-mention-chip {
   display: inline;
   height: auto;
   max-width: none;
-  padding: 0 5px;
+  padding: 1px 6px;
   margin: 0 1px;
   line-height: inherit;
   vertical-align: baseline;
   border-radius: 4px;
 }
 
+.user-message-content .mention-chip--path {
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
+.user-message-content .mention-chip__icon {
+  display: inline-flex;
+  vertical-align: -0.15em;
+  margin-right: 2px;
+}
+
+/* 沙箱工具时间线展开：强制等宽（覆盖 scoped 无法命中的 v-html hljs 子节点） */
+.op-sandbox,
+.op-sandbox pre,
+.op-sandbox code,
+.op-sandbox .hljs,
+.op-sandbox span {
+  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace) !important;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+}
+
+/* 沙箱工作区文件预览：同上 */
+.preview-code,
+.preview-code code,
+.preview-code .hljs,
+.preview-code span {
+  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace) !important;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+}
+
+.user-message-content .mention-chip__prefix,
+.user-message-content .mention-chip__label,
 .user-message-content .skill-mention-chip__at,
 .user-message-content .skill-mention-chip__label {
   display: inline;

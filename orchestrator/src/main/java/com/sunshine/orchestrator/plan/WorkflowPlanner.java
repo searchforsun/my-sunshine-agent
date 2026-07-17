@@ -64,7 +64,7 @@ public class WorkflowPlanner {
 
     private Mono<PlanJson> plan(ExecutionStreamContext ctx, String validationError, int attemptNo) {
         String systemPrompt = catalogRenderer.renderIntoPrompt(
-                prompts.plannerOrDefault().promptOrEmpty());
+                prompts.plannerOrDefault().promptOrEmpty(), ctx.tenantId());
         if (!StringUtils.hasText(systemPrompt)) {
             return Mono.error(new PlanParseException("agent.planner.prompt 未配置"));
         }

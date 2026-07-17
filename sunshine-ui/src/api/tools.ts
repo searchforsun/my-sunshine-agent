@@ -43,11 +43,14 @@ export interface ToolCatalogEntry {
   displayName: string
   description: string
   kind: string
-  timelinePhase: string
-  outputSummaryKind: string
+  source: string
+  sourceRef: string
+  timelineSummaryTemplate?: string
+  timelineSummaryExtract?: string | null
   parameters: Record<string, unknown>
   sideEffect: string
   requireConfirmation: boolean
+  enabled: boolean
   idValid?: boolean
   idError?: string | null
 }
@@ -62,8 +65,8 @@ export interface ToolDefinition {
   schemaJson: Record<string, unknown>
   schemaHash: string | null
   kind: string
-  timelinePhase: string
-  outputSummaryKind: string
+  timelineSummaryTemplate?: string
+  timelineSummaryExtract?: string | null
   sideEffect: string
   tenantId: string
   enabled: boolean
@@ -72,34 +75,13 @@ export interface ToolDefinition {
   updatedAt: string
 }
 
-export interface ToolSetConfig {
-  toolIds: string[]
-}
-
 export interface ToolPatchBody {
   enabled?: boolean
   displayName?: string
   description?: string
   requireConfirmation?: boolean
-}
-
-export interface PlanWorkflowNodeDefaults {
-  maxAttempts: number
-  backoffMs: number
-  backoffMultiplier: number
-  onFailure: string
-  retryOnErrorClass: string[]
-}
-
-export interface PlanWorkflowNodeTypeOverride {
-  maxAttempts?: number | null
-  onFailure?: string | null
-}
-
-export interface PlanWorkflowExecutionPolicy {
-  criticalOnFailure: string
-  defaults: PlanWorkflowNodeDefaults
-  byType: Record<string, PlanWorkflowNodeTypeOverride>
+  timelineSummaryTemplate?: string
+  timelineSummaryExtract?: string | null
 }
 
 export interface McpServerCreateBody {
@@ -124,10 +106,13 @@ export interface McpServerPatchBody {
   enabled?: boolean
 }
 
-/** 按 SDK 应用 ID 前缀过滤 Catalog 工具（id 形如 sdk__{appId}__{name}） */
-export function filterSdkTools(catalog: ToolCatalogEntry[], appId: string): ToolCatalogEntry[] {
-  const prefix = `sdk__${appId}__`
-  return catalog.filter(t => t.id.startsWith(prefix))
+/** 按来源过滤 Catalog 工具（SSOT：source + sourceRef，非 id 前缀） */
+export function filterCatalogBySource(
+  catalog: ToolCatalogEntry[],
+  source: string,
+  sourceRef: string,
+): ToolCatalogEntry[] {
+  return catalog.filter(t => t.source === source && t.sourceRef === sourceRef)
 }
 
 export async function listSdkApplications(): Promise<SdkApplication[]> {
@@ -206,61 +191,126 @@ export async function patchTool(toolId: string, body: ToolPatchBody): Promise<To
   return parseApiResponse<ToolDefinition>(res)
 }
 
-export async function getReactDefaultToolSet(tenantId?: TenantId): Promise<ToolSetConfig> {
-  const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
-  const res = await fetch(apiUrl(`/api/admin/tools/sets/react-default${qs}`), { headers: apiHeaders() })
-  return parseApiResponse<ToolSetConfig>(res)
+export type ToolSetKindPath = 'react-default' | 'plan-workflow'
+
+export interface ToolSetMemberItem {
+  toolId: string
+  displayName: string
+  description: string
+  source: string
+  sourceRef: string
+  sourceLabel: string
+  sideEffect: string
+  critical: boolean
+  sortOrder: number
 }
 
-export async function putReactDefaultToolSet(
+export interface ToolSetMembersPage {
+  page: number
+  size: number
+  total: number
+  items: ToolSetMemberItem[]
+}
+
+export interface ToolSetPickerTool {
+  toolId: string
+  displayName: string
+  sideEffect: string
+}
+
+export interface ToolSetPickerGroup {
+  source: string
+  sourceRef: string
+  title: string
+  tools: ToolSetPickerTool[]
+}
+
+export interface ToolSetPickerResponse {
+  groups: ToolSetPickerGroup[]
+}
+
+export interface ToolSetMemberAddItem {
+  toolId: string
+  critical?: boolean
+}
+
+export interface ToolSetMemberAddResult {
+  added: string[]
+  skipped: string[]
+  rejected: { toolId: string; reason: string }[]
+}
+
+function toolSetTenantQs(tenantId?: TenantId): string {
+  return tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
+}
+
+export async function pageToolSetMembers(
+  kind: ToolSetKindPath,
+  tenantId?: TenantId,
+  page = 1,
+  size = 20,
+  q?: string,
+): Promise<ToolSetMembersPage> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (tenantId) params.set('tenantId', tenantId)
+  if (q?.trim()) params.set('q', q.trim())
+  const res = await fetch(apiUrl(`/api/admin/tools/sets/${kind}/members?${params}`), { headers: apiHeaders() })
+  return parseApiResponse<ToolSetMembersPage>(res)
+}
+
+export async function fetchToolSetPicker(
+  kind: ToolSetKindPath,
+  tenantId?: TenantId,
+  q?: string,
+): Promise<ToolSetPickerResponse> {
+  const params = new URLSearchParams()
+  if (tenantId) params.set('tenantId', tenantId)
+  if (q?.trim()) params.set('q', q.trim())
+  const qs = params.toString()
+  const res = await fetch(apiUrl(`/api/admin/tools/sets/${kind}/picker${qs ? `?${qs}` : ''}`), { headers: apiHeaders() })
+  return parseApiResponse<ToolSetPickerResponse>(res)
+}
+
+export async function addToolSetMembers(
+  kind: ToolSetKindPath,
+  items: ToolSetMemberAddItem[],
+  tenantId?: TenantId,
+): Promise<ToolSetMemberAddResult> {
+  const res = await fetch(apiUrl(`/api/admin/tools/sets/${kind}/members:add${toolSetTenantQs(tenantId)}`), {
+    method: 'POST',
+    headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  })
+  return parseApiResponse<ToolSetMemberAddResult>(res)
+}
+
+export async function removeToolSetMembers(
+  kind: ToolSetKindPath,
   toolIds: string[],
   tenantId?: TenantId,
-): Promise<ToolSetConfig> {
-  const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
-  const res = await fetch(apiUrl(`/api/admin/tools/sets/react-default${qs}`), {
-    method: 'PUT',
+): Promise<void> {
+  const res = await fetch(apiUrl(`/api/admin/tools/sets/${kind}/members:remove${toolSetTenantQs(tenantId)}`), {
+    method: 'POST',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ toolIds }),
   })
-  return parseApiResponse<ToolSetConfig>(res)
+  await parseApiResponse<void>(res, { allowEmptyData: true })
 }
 
-export async function getPlanWorkflowCriticalToolSet(tenantId?: TenantId): Promise<ToolSetConfig> {
-  const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
-  const res = await fetch(apiUrl(`/api/admin/tools/sets/plan-workflow-critical${qs}`), { headers: apiHeaders() })
-  return parseApiResponse<ToolSetConfig>(res)
-}
-
-export async function putPlanWorkflowCriticalToolSet(
-  toolIds: string[],
+export async function patchPlanWorkflowMemberCritical(
+  toolId: string,
+  critical: boolean,
   tenantId?: TenantId,
-): Promise<ToolSetConfig> {
-  const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
-  const res = await fetch(apiUrl(`/api/admin/tools/sets/plan-workflow-critical${qs}`), {
-    method: 'PUT',
-    headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ toolIds }),
-  })
-  return parseApiResponse<ToolSetConfig>(res)
-}
-
-export async function getPlanWorkflowModePolicy(tenantId?: TenantId): Promise<PlanWorkflowExecutionPolicy> {
-  const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
-  const res = await fetch(apiUrl(`/api/admin/tools/modes/plan-workflow${qs}`), { headers: apiHeaders() })
-  return parseApiResponse<PlanWorkflowExecutionPolicy>(res)
-}
-
-export async function putPlanWorkflowModePolicy(
-  policy: PlanWorkflowExecutionPolicy,
-  tenantId?: TenantId,
-): Promise<PlanWorkflowExecutionPolicy> {
-  const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
-  const res = await fetch(apiUrl(`/api/admin/tools/modes/plan-workflow${qs}`), {
-    method: 'PUT',
-    headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(policy),
-  })
-  return parseApiResponse<PlanWorkflowExecutionPolicy>(res)
+): Promise<void> {
+  const res = await fetch(
+    apiUrl(`/api/admin/tools/sets/plan-workflow/members/${encodeURIComponent(toolId)}${toolSetTenantQs(tenantId)}`),
+    {
+      method: 'PATCH',
+      headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ critical }),
+    },
+  )
+  await parseApiResponse<void>(res, { allowEmptyData: true })
 }
 
 export async function listToolCatalog(
@@ -275,20 +325,6 @@ export async function listToolCatalog(
   return parseApiResponse<ToolCatalogEntry[]>(res)
 }
 
-export function filterMcpTools(catalog: ToolCatalogEntry[], serverId: string): ToolCatalogEntry[] {
-  const prefix = `mcp__${serverId}__`
-  return catalog.filter(t => t.id.startsWith(prefix))
-}
-
-export async function loadToolEnabledMap(tenantId?: TenantId): Promise<Map<string, boolean>> {
-  const [all, enabled] = await Promise.all([
-    listToolCatalog(tenantId, false),
-    listToolCatalog(tenantId, true),
-  ])
-  const enabledSet = new Set(enabled.map(t => t.id))
-  const map = new Map<string, boolean>()
-  for (const tool of all) {
-    map.set(tool.id, enabledSet.has(tool.id))
-  }
-  return map
+export function buildToolEnabledMap(catalog: ToolCatalogEntry[]): Map<string, boolean> {
+  return new Map(catalog.map(t => [t.id, t.enabled]))
 }

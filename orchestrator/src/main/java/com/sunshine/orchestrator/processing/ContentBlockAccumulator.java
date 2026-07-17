@@ -72,6 +72,11 @@ public final class ContentBlockAccumulator {
         }
     }
 
+    /** 消息级分段正文纯文本（落库 content 回填） */
+    public String messageBlocksPlainText() {
+        return ContentBlocksJson.joinTexts(toImmutable(messageBlocks));
+    }
+
     private List<MutableBlock> target(String scopeNodeStepId) {
         if (StringUtils.hasText(scopeNodeStepId)) {
             return nodeBlocks.computeIfAbsent(scopeNodeStepId.strip(), k -> new ArrayList<>());

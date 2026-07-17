@@ -1,0 +1,31 @@
+# ============================================================
+# sunshine-sandbox-service — Nacos 配置
+# Data ID: sunshine-sandbox-service.yaml
+# Group:   DEFAULT_GROUP
+# 同步：python scripts/sync_nacos.py
+# ============================================================
+
+server:
+  port: 8226
+
+sandbox:
+  docker:
+    binary: docker
+    host-data-root: /var/lib/sunshine-sandbox
+    default-image: sunshine-sandbox-python:3.11-slim
+    default-memory-mb: 256
+    default-cpus: "0.5"
+    default-timeout-sec: 30
+  egress:
+    proxy-image: sunshine-sandbox-egress:1.0
+    proxy-port: 8888
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics
+
+logging:
+  level:
+    com.sunshine: debug

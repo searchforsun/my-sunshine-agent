@@ -52,14 +52,15 @@ public class WorkflowStaticPlanRunner {
             return Flux.just(StreamToken.content("内部错误：WorkflowExecutor 收到非 workflow 计划"));
         }
         String workflowId = plan.workflowId();
-        Optional<WorkflowDefinition> defOpt = loader.load(workflowId);
-        if (defOpt.isEmpty()) {
+        Optional<WorkflowDefinitionLoader.WorkflowLoadBundle> bundleOpt = loader.loadBundle(workflowId);
+        if (bundleOpt.isEmpty()) {
             log.error("[WorkflowStaticPlanRunner] 未找到 workflow 定义: {}", workflowId);
             return Flux.just(StreamToken.content(
                     "工作流「" + workflowId + "」未定义，请联系管理员。"));
         }
-        WorkflowDefinition def = defOpt.get();
-        PlanJson rawPlan = StaticPlanAdapter.from(def, plan.reason());
+        WorkflowDefinitionLoader.WorkflowLoadBundle bundle = bundleOpt.get();
+        WorkflowDefinition def = bundle.definition();
+        PlanJson rawPlan = StaticPlanAdapter.fromStoredPlan(bundle.sourcePlan(), plan.reason());
         return Mono.fromCallable(() -> executionPlanStore.createDraft(ctx, rawPlan))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnSuccess(planId -> planExecutionAuditService.created(

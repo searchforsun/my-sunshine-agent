@@ -19,6 +19,7 @@
         <module>orchestrator</module>
         <module>tool-manager</module>
         <module>skill-manager</module>
+        <module>sandbox-service</module>
         <module>workflow-manager</module>
         <module>expert-manager</module>
         <module>llm-gateway</module>

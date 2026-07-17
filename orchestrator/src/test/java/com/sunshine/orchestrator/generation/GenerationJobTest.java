@@ -183,6 +183,40 @@ class GenerationJobTest {
     }
 
     @Test
+    @DisplayName("emitStreamToken 分段正文写入 mysqlBuffer，commitFinal content 非空")
+    void emitStreamToken_appendsSegmentContentToMysqlBuffer() throws Exception {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+        GenerationJob job = newJob(generationId);
+        StringBuilder buffer = new StringBuilder();
+        CountDownLatch done = new CountDownLatch(1);
+        job.start(
+                Flux.create(sink -> {
+                    job.emitStreamToken(StreamToken.contentStart("content-1", "think"));
+                    job.emitStreamToken(StreamToken.contentInSegment("content-1", "第一段"));
+                    job.emitStreamToken(StreamToken.contentEnd("content-1"));
+                    job.emitStreamToken(StreamToken.contentStart("content-2", "think-2"));
+                    job.emitStreamToken(StreamToken.contentInSegment("content-2", "第二段"));
+                    job.emitStreamToken(StreamToken.contentEnd("content-2"));
+                    sink.complete();
+                }),
+                buffer,
+                content -> { },
+                done::countDown,
+                error -> { }
+        );
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(buffer.toString()).isEqualTo("第一段第二段");
+        ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> blocksCaptor = ArgumentCaptor.forClass(String.class);
+        verify(flushScheduler).commitFinal(
+                eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED),
+                org.mockito.ArgumentMatchers.any(), blocksCaptor.capture());
+        assertThat(contentCaptor.getValue()).isEqualTo("第一段第二段");
+        assertThat(blocksCaptor.getValue()).contains("第一段").contains("第二段");
+    }
+
+    @Test
     void start_refreshesMemoryAfterComplete() throws Exception {
         String generationId = streamService.createGeneration(
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);

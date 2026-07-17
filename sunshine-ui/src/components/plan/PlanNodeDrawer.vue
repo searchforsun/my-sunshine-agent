@@ -11,8 +11,7 @@ import {
   resolvePlanStepDetail,
   resolveRewriteDetail,
   resolveStepDurationMs,
-  resolveStepExpandBody,
-  resolveStepExpandSummary,
+  resolveStepExpandPanels,
   stepLifecycle,
   stripLoadedSkillPrefix,
 } from '../../api/processingSteps'
@@ -20,12 +19,17 @@ import { formatPlanNodeType } from '../../api/executionPlans'
 import type { DagNodeStatus } from '../../utils/planGraph'
 import type { PlanNodeAttempt } from '../../api/executionPlans'
 import PlanNodeIcon from './PlanNodeIcon.vue'
+import DrawerCollapseIcon from '../icons/DrawerCollapseIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
+import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
+import { resolveExclusiveBranches } from '../../utils/exclusiveBranchDisplay'
+import { resolveLoopContinueRows } from '../../utils/loopContinueDisplay'
 
 const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
+const { isAnyExpanded: planDagExpanded } = usePlanDagExpand()
 const applyHitlDecision = inject<(token: string, approved: boolean) => void>('applyHitlDecision', () => {})
 const applyRecoveryDecision = inject<(token: string, action: 'retry' | 'terminate' | 'skip') => void>('applyRecoveryDecision', () => {})
 const resolveLiveNodeStep = inject<(nodeId: string) => ProcessingStep | undefined>('planDrawerLiveNodeStep', () => undefined)
@@ -94,12 +98,8 @@ const durationText = computed(() => {
   return ms != null ? formatDuration(ms) : ''
 })
 
-const summary = computed(() => {
-  if (step.value) {
-    return resolveStepExpandSummary(step.value) || ''
-  }
-  return node.value?.summary ?? ''
-})
+const expandPanels = computed(() => (step.value ? resolveStepExpandPanels(step.value) : { lead: '', body: '' }))
+const summary = computed(() => expandPanels.value.lead || node.value?.summary || '')
 
 const analysisContent = computed(() => {
   const t = node.value?.type
@@ -122,7 +122,7 @@ const body = computed(() => {
   if (t === 'answer') {
     return finalOutput.value
   }
-  if (step.value) return resolveStepExpandBody(step.value)
+  if (step.value) return expandPanels.value.body
   return node.value?.detail?.trim() ?? ''
 })
 const bodyDisplay = computed(() => stripLoadedSkillPrefix(body.value))
@@ -144,6 +144,8 @@ const showAnalysisSection = computed(() =>
 const showSummary = computed(() => {
   // agent 子 Timeline 已在「执行过程」展示，勿重复执行摘要
   if (node.value?.type === 'start' || node.value?.type === 'answer' || node.value?.type === 'llm' || node.value?.type === 'agent') return false
+  const bodyText = bodyDisplay.value
+  if (bodyText) return false
   return !!summary.value.trim()
 })
 const rewriteDetail = computed(() => (step.value ? resolveRewriteDetail(step.value) : undefined))
@@ -160,10 +162,24 @@ const showStartPlan = computed(() => {
   const plan = startPlan.value
   return !!(plan.planId || plan.chainSteps.length || plan.replanCount)
 })
+
+const exclusiveBranches = computed(() => {
+  if (node.value?.type !== 'exclusive-gateway') return []
+  return resolveExclusiveBranches(state.graph, node.value.id)
+})
+const showExclusiveBranches = computed(() => exclusiveBranches.value.length > 0)
+
+const loopContinueRows = computed(() => {
+  if (node.value?.type !== 'loop') return []
+  const graphNode = state.graph?.nodes?.find(n => n.id === node.value?.id)
+  return resolveLoopContinueRows(graphNode?.params, step.value)
+})
+const showLoopContinue = computed(() => loopContinueRows.value.length > 0)
+
 const showBodySection = computed(() => {
   if (node.value?.type === 'start') return false
   if (node.value?.type === 'agent' && (step.value?.contentBlocks?.length ?? 0) > 0) return false
-  return !!bodyDisplay.value && bodyDisplay.value !== summary.value
+  return !!bodyDisplay.value
 })
 const showReasoningSection = computed(() =>
   node.value?.type !== 'llm'
@@ -199,7 +215,8 @@ const skillLineText = computed(() => {
 })
 
 const subSteps = computed(() => step.value?.subSteps ?? [])
-const showSubTimeline = computed(() => node.value?.type === 'agent' && subSteps.value.length > 0)
+const showSubTimeline = computed(() =>
+  (node.value?.type === 'agent' || node.value?.type === 'loop') && subSteps.value.length > 0)
 /** workflow tool 写操作：与普通 tool 抽屉一致，仅在执行摘要前插入用户确认块 */
 const hitlStep = computed(() => findHitlStep(step.value, pendingHitl.value))
 const showHitlSection = computed(() => node.value?.type === 'tool' && !!hitlStep.value)
@@ -264,6 +281,7 @@ watch(
   <aside
     v-if="state.open && node"
     class="plan-drawer"
+    :class="{ 'is-over-expand': planDagExpanded }"
     role="complementary"
     aria-label="节点详情"
     :style="{ width: `${drawerWidth}px` }"
@@ -284,7 +302,9 @@ watch(
           </span>
           <h3 class="drawer-title">{{ title }}</h3>
         </div>
-        <button type="button" class="drawer-close" aria-label="关闭" @click="close">×</button>
+        <button type="button" class="drawer-close" title="收起" aria-label="收起" @click="close">
+          <DrawerCollapseIcon :size="16" />
+        </button>
       </div>
 
       <p v-if="userQuery" class="drawer-meta-line" :title="`用户问题 ${userQuery}`">
@@ -309,6 +329,34 @@ watch(
       </p>
     </header>
     <div ref="bodyRef" class="drawer-body" @scroll="onDrawerBodyScroll">
+      <section v-if="showExclusiveBranches" class="drawer-section">
+        <h4>分支条件</h4>
+        <ul class="exclusive-branch-list">
+          <li
+            v-for="b in exclusiveBranches"
+            :key="`${b.toId}-${b.isDefault ? 'd' : 'c'}`"
+            class="exclusive-branch-item"
+          >
+            <span class="exclusive-branch-target">{{ b.toLabel }}</span>
+            <span class="exclusive-branch-cond" :class="{ 'is-default': b.isDefault }">
+              {{ b.conditionText }}
+            </span>
+          </li>
+        </ul>
+      </section>
+      <section v-if="showLoopContinue" class="drawer-section">
+        <h4>继续条件</h4>
+        <ul class="exclusive-branch-list">
+          <li
+            v-for="row in loopContinueRows"
+            :key="row.key"
+            class="exclusive-branch-item"
+          >
+            <span class="exclusive-branch-target">{{ row.label }}</span>
+            <span class="exclusive-branch-cond">{{ row.value }}</span>
+          </li>
+        </ul>
+      </section>
       <div v-if="displayAttempts?.length" class="drawer-section">
         <h4>执行记录（{{ displayAttemptCount }} 次）</h4>
         <ul class="attempt-list">
@@ -418,6 +466,10 @@ watch(
   border-left: 1px solid var(--sun-border);
   background: var(--sun-bg);
   box-shadow: -8px 0 24px color-mix(in srgb, black 8%, transparent);
+}
+
+.plan-drawer.is-over-expand {
+  z-index: 210;
 }
 
 .drawer-resize-handle {
@@ -542,9 +594,10 @@ watch(
   border-radius: 6px;
   background: transparent;
   color: var(--sun-text-muted);
-  font-size: 20px;
-  line-height: 1;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .drawer-status-row {
@@ -592,7 +645,7 @@ watch(
 .meta-status.is-terminated { color: var(--sun-text-muted); }
 .meta-status.is-done { color: var(--sun-green, #3fb950); }
 .meta-status.is-awaiting_confirm { color: var(--sun-purple, #9333ea); }
-.meta-status.is-skipped { color: #0f766e; }
+.meta-status.is-skipped { color: #64748b; }
 .meta-status.is-error { color: var(--sun-red, #f85149); }
 
 .meta-dur {
@@ -627,6 +680,41 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.exclusive-branch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exclusive-branch-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  background: transparent;
+}
+
+.exclusive-branch-target {
+  font-size: var(--sun-font-base);
+  font-weight: 600;
+  color: var(--sun-text);
+}
+
+.exclusive-branch-cond {
+  font-size: var(--sun-font-sm, 12px);
+  color: var(--sun-text-secondary);
+  word-break: break-word;
+}
+
+.exclusive-branch-cond.is-default {
+  color: var(--sun-text);
 }
 
 .attempt-item {

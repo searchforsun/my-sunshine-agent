@@ -72,7 +72,10 @@ public final class ProcessingStepMerger {
         return existing + chunk;
     }
 
-    /** done 态 step 的 reasoning 为全量；running 态 step_delta 仍为增量拼接 */
+    /**
+     * done 态 reasoning 为全量覆盖；running 态用前缀合并。
+     * SubAgent/Loop 折叠会反复 upsert「已累积全文」的 step 快照，禁止再按增量 append（否则指数膨胀打爆 SSE）。
+     */
     private static String mergeReasoning(ProcessingStep existing, ProcessingStep incoming) {
         if (incoming.reasoning() == null) {
             return existing.reasoning();
@@ -80,7 +83,7 @@ public final class ProcessingStepMerger {
         if (isDone(incoming)) {
             return incoming.reasoning();
         }
-        return appendReasoning(existing.reasoning(), incoming.reasoning());
+        return longer(existing.reasoning(), incoming.reasoning());
     }
 
     private static boolean isDone(ProcessingStep step) {
@@ -134,7 +137,13 @@ public final class ProcessingStepMerger {
         if (b == null || b.isEmpty()) {
             return a;
         }
-        return b.length() >= a.length() && b.startsWith(a) ? b : a + b;
+        if (b.startsWith(a)) {
+            return b;
+        }
+        if (a.startsWith(b)) {
+            return a;
+        }
+        return a + b;
     }
 
     private static ProcessingStep mergeSteps(ProcessingStep existing, ProcessingStep incoming) {
@@ -175,12 +184,49 @@ public final class ProcessingStepMerger {
         if (steps == null || stepId == null || blocks == null || blocks.isEmpty()) {
             return;
         }
+        if (setStepContentBlocksInList(steps, stepId, blocks)) {
+            return;
+        }
+    }
+
+    private static boolean setStepContentBlocksInList(
+            List<ProcessingStep> steps, String stepId, List<ContentBlock> blocks) {
         for (int i = 0; i < steps.size(); i++) {
-            if (stepId.equals(steps.get(i).id())) {
-                steps.set(i, copyWithContentBlocks(steps.get(i), blocks));
-                return;
+            ProcessingStep step = steps.get(i);
+            if (stepId.equals(step.id())) {
+                steps.set(i, copyWithContentBlocks(step, blocks));
+                return true;
+            }
+            List<ProcessingStep> subs = step.subSteps();
+            if (subs != null && !subs.isEmpty()) {
+                List<ProcessingStep> copy = new ArrayList<>(subs);
+                if (setStepContentBlocksInList(copy, stepId, blocks)) {
+                    steps.set(i, copyWithSubSteps(step, copy));
+                    return true;
+                }
             }
         }
+        return false;
+    }
+
+    private static ProcessingStep copyWithSubSteps(ProcessingStep step, List<ProcessingStep> subSteps) {
+        return new ProcessingStep(
+                step.id(),
+                step.phase(),
+                step.lifecycle(),
+                step.summary(),
+                step.startedAt(),
+                step.endedAt(),
+                step.durationMs(),
+                step.detail(),
+                step.reasoning(),
+                step.output(),
+                step.result(),
+                step.ts(),
+                step.label(),
+                step.metadata(),
+                step.contentBlocks(),
+                subSteps);
     }
 
     private static List<ProcessingStep> mergeSubSteps(

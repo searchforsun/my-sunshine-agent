@@ -14,7 +14,7 @@ import com.sunshine.orchestrator.execution.WorkflowDefinition;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
-import com.sunshine.orchestrator.execution.WorkflowNodeType;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
 import com.sunshine.orchestrator.execution.retry.NodeRetryExecutor;
 import com.sunshine.orchestrator.execution.retry.NodeRetryPolicy;

@@ -1,27 +1,17 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.common.workflow.WorkflowNodeType;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/** 编排侧仍依赖 common SSOT；完整断言见 sunshine-common WorkflowNodeTypeTest */
 class WorkflowNodeTypeTest {
 
     @Test
-    void isPlanChainNode() {
-        assertThat(WorkflowNodeType.isPlanChainNode("rag")).isTrue();
-        assertThat(WorkflowNodeType.isPlanChainNode("start")).isFalse();
-        assertThat(WorkflowNodeType.isPlanChainNode("answer")).isFalse();
-    }
-
-    @Test
-    void tracksNodeStep() {
-        assertThat(WorkflowNodeType.tracksNodeStep("answer")).isTrue();
-        assertThat(WorkflowNodeType.tracksNodeStep("start")).isFalse();
-    }
-
-    @Test
-    void isStreamingOutput() {
-        assertThat(WorkflowNodeType.isStreamingOutput("llm")).isTrue();
-        assertThat(WorkflowNodeType.isStreamingOutput("rag")).isFalse();
+    void orchConsumesCommonSsot() {
+        assertThat(WorkflowNodeType.RAG.id()).isEqualTo("rag");
+        assertThat(WorkflowNodeType.planExecTypeIds()).doesNotContain("start");
+        assertThat(WorkflowNodeType.studioTypeIds()).contains("start");
     }
 }

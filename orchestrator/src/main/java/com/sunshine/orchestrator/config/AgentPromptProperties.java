@@ -75,12 +75,8 @@ public class AgentPromptProperties {
         private AgentTimeline agent = new AgentTimeline();
         /** RAG 步骤 after 摘要模板 */
         private RagAfterTimeline ragAfter = new RagAfterTimeline();
-        /** Workflow / Plan 节点 type 默认展示名（无 displayName 时） */
-        private WorkflowNodeTypeTimeline workflowNodeTypes = new WorkflowNodeTypeTimeline();
-        /** Workflow agent 节点时间线摘要（无正文预览时的 after / 展开区技能前缀） */
-        private WorkflowAgentTimeline workflowAgent = new WorkflowAgentTimeline();
-        /** Workflow / Plan 节点完成态摘要（DAG 主行 after） */
-        private WorkflowNodeCompletionTimeline workflowNodeCompletion = new WorkflowNodeCompletionTimeline();
+        /** 沙箱工具时间线（path / pattern / command），SSOT：Nacos agent.timeline.sandbox */
+        private SandboxTimeline sandbox = new SandboxTimeline();
 
         private static java.util.LinkedHashMap<String, StepTimeline> defaultSteps() {
             var map = new java.util.LinkedHashMap<String, StepTimeline>();
@@ -241,62 +237,6 @@ public class AgentPromptProperties {
 
     @Getter
     @Setter
-    public static class WorkflowNodeCompletionTimeline {
-
-        private String complete = "{displayName}完成";
-        private String hitCount = "命中 {hitCount} 条";
-        private String skipped = "已跳过";
-        private String skippedWithReason = "已跳过：{reason}";
-        private String retrySuccess = "（第 {attemptCount} 次尝试成功）";
-        private String retryFailedSuffix = "（已重试 {attemptCount} 次）";
-        private String nodeFailed = "节点执行失败";
-        private String attemptComplete = "完成";
-        private String attemptFailed = "失败: {error}";
-    }
-
-    @Getter
-    @Setter
-    public static class WorkflowAgentTimeline {
-
-        private String afterWithTools = "已完成 {toolCallCount} 次工具调用的综合分析";
-        private String afterDone = "智能体分析完成";
-        private String skillLoadedPrefix = "已加载技能：{skillLabel}";
-    }
-
-    @Getter
-    @Setter
-    public static class WorkflowNodeTypeTimeline {
-
-        private String rag = "检索知识库";
-        private String llm = "综合分析";
-        private String agent = "智能体分析";
-        private String answer = "生成回答";
-        private String tool = "调用工具";
-        private String unknownWorkflow = "未知工作流";
-        private String unknownNode = "节点";
-        private String subAgentDefault = "子 Agent 分析";
-
-        public String labelFor(String type) {
-            if (type == null || type.isBlank()) {
-                return textOrEmpty(unknownNode, "节点");
-            }
-            return switch (type) {
-                case String s when "rag".equals(s) -> textOrEmpty(rag, type);
-                case String s when "llm".equals(s) -> textOrEmpty(llm, type);
-                case String s when "agent".equals(s) -> textOrEmpty(agent, type);
-                case String s when "answer".equals(s) -> textOrEmpty(answer, type);
-                case String s when "tool".equals(s) -> textOrEmpty(tool, type);
-                default -> type;
-            };
-        }
-
-        private static String textOrEmpty(String value, String fallback) {
-            return StringUtils.hasText(value) ? value.strip() : fallback;
-        }
-    }
-
-    @Getter
-    @Setter
     public static class PlanApprovalTimeline {
 
         private String awaiting = "等待确认执行计划";
@@ -314,6 +254,29 @@ public class AgentPromptProperties {
         private String approved = "用户已确认，正在调用 {toolDisplayName}";
         private String denied = "用户取消调用";
         private String skippedAfter = "用户取消调用，已跳过";
+    }
+
+    /**
+     * 沙箱六工具时间线 — 占位符 {displayName} {path} {fileName} {headerPath} {displayPath} {pattern} {command} {cwd}。
+     */
+    @Getter
+    @Setter
+    public static class SandboxTimeline {
+
+        private String afterFallback = "";
+        private String readAfter = "{headerPath}";
+        private String writeAfter = "{headerPath}";
+        private String editAfter = "{headerPath}";
+        private String globAfter = "{pattern}";
+        private String globAfterWithPath = "{pattern} · {path}";
+        private String grepAfter = "{pattern}";
+        private String execAfter = "{command}";
+        private String readActive = "正在读取 {path}";
+        private String writeActive = "正在写入 {path}";
+        private String editActive = "正在修改 {path}";
+        private String globActive = "正在查找 {pattern}";
+        private String grepActive = "正在搜索 {pattern}";
+        private String execActive = "正在执行 {command}";
     }
 
     public Timeline timelineOrDefault() {
@@ -344,6 +307,7 @@ public class AgentPromptProperties {
             map.put("react", react);
             var workflow = new ModeIntent();
             workflow.setAfter("{query}将按「{displayName}」流程处理");
+            workflow.setForcedAfter("{query}将按您指定的「工作流」模式处理");
             map.put("workflow", workflow);
             var planWorkflow = new ModeIntent();
             planWorkflow.setDetail("动态规划");

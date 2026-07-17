@@ -42,6 +42,7 @@ import {
 } from './chatSessionRegistry'
 import { bumpAssistantMessage } from './chatSessionMutations'
 import { consumeChatSseStream } from './chatSessionSseConsumer'
+import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
 
 export type { SendOptions, SessionState } from './chatSessionRegistry'
 export { appendChunk } from './chatSessionRegistry'
@@ -55,6 +56,7 @@ export function useChatSessions(
   onProgress?: (sessionId: string) => void,
   onConversationMeta?: (sessionId: string, convId: string) => void,
   onStaleConversation?: () => Promise<string | null>,
+  onSandboxSession?: (sessionId: string, conversationId: string) => void,
 ) {
   const activeId = ref<string | null>(null)
   const sseHooks = { onChunk, onProgress }
@@ -133,6 +135,9 @@ export function useChatSessions(
       if (options?.kbId) {
         body.kbId = options.kbId
       }
+      if (options?.writeHitlMode) {
+        body.writeHitlMode = options.writeHitlMode
+      }
 
       const response = await fetch(`${API_BASE()}/api/chat/stream`, {
         method: 'POST',
@@ -147,6 +152,13 @@ export function useChatSessions(
         onMeta: (meta) => {
           if (meta.type === 'conversation' && meta.id) {
             onConversationMeta?.(sessionId, meta.id)
+          }
+          if (meta.type === 'sandbox_session' && meta.active !== false) {
+            const cid = meta.conversationId || sessionId
+            if (cid) {
+              onSandboxSession?.(sessionId, cid)
+              requestSandboxWorkspaceRefresh(cid, 'skills')
+            }
           }
         },
       })

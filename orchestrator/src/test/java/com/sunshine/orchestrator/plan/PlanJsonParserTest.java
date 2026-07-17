@@ -48,4 +48,68 @@ class PlanJsonParserTest {
         assertThatThrownBy(() -> parser.parse("  "))
                 .isInstanceOf(PlanParseException.class);
     }
+
+    @Test
+    void parsesExclusiveEdgeConditionAndDefault() {
+        String json = """
+                {
+                  "planId": "xg-1",
+                  "reason": "条件分支",
+                  "nodes": [
+                    {"id":"xg-1","type":"exclusive-gateway","params":{}},
+                    {"id":"rag-a","type":"rag","params":{"topK":"3"}},
+                    {"id":"rag-b","type":"rag","params":{"topK":"3"}},
+                    {"id":"answer","type":"answer","params":{}}
+                  ],
+                  "edges": [
+                    {"from":"start","to":"xg-1"},
+                    {"from":"xg-1","to":"rag-a","condition":{"left":"{{start.userQuery}}","op":"contains","right":"报销"}},
+                    {"from":"xg-1","to":"rag-b","default":true},
+                    {"from":"rag-a","to":"answer"},
+                    {"from":"rag-b","to":"answer"}
+                  ]
+                }
+                """;
+        PlanJson plan = parser.parse(json);
+        assertThat(PlanExecutionSchedule.validateExclusiveTopology(plan)).isNull();
+        PlanEdge cond = plan.edges().stream()
+                .filter(e -> "rag-a".equals(e.to()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(cond.hasCondition()).isTrue();
+        assertThat(cond.condition().op()).isEqualTo("contains");
+        assertThat(cond.condition().right()).isEqualTo("报销");
+        PlanEdge def = plan.edges().stream()
+                .filter(e -> "rag-b".equals(e.to()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(def.isDefault()).isTrue();
+    }
+
+    @Test
+    void parsesLoopParentId() {
+        String json = """
+                {
+                  "planId": "lp-1",
+                  "reason": "循环",
+                  "nodes": [
+                    {"id":"loop-1","type":"loop","params":{
+                      "condition.left":"{{start.userQuery}}","condition.op":"contains","condition.right":"继续",
+                      "maxIterations":"3","onMaxIterations":"exit",
+                      "retry.maxAttempts":"1","retry.backoffMs":"500","retry.onFailure":"fail_fast"
+                    }},
+                    {"id":"rag-b","type":"rag","parentId":"loop-1","params":{"query":"{{start.userQuery}}","topK":"3"}},
+                    {"id":"answer","type":"answer","params":{}}
+                  ],
+                  "edges": [
+                    {"from":"start","to":"loop-1"},
+                    {"from":"loop-1","to":"answer"}
+                  ]
+                }
+                """;
+        PlanJson plan = parser.parse(json);
+        assertThat(plan.nodesById().get("rag-b").parentId()).isEqualTo("loop-1");
+        assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).isNull();
+        assertThat(PlanExecutionSchedule.build(plan).get(0)).isInstanceOf(PlanExecutionSchedule.Loop.class);
+    }
 }

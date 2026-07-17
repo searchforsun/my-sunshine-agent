@@ -430,7 +430,7 @@ mvn test -pl orchestrator -Dtest=ReactTaskBoardTest,ManageTasksToolTest,Processi
 | merge 未带 id 导致重复项 | 引擎 `content` 匹配合并；revision 幂等 |
 | todo 过多占 context | `max-items` + 工具返回截断提示 |
 | 双规划（think 写计划 + tasks） | 允许；`tasks` 为 SSOT 进度，think 为推理过程 |
-| max-iters 内做不完 | 终态 board 持久化；下轮会话 **不**自动续板（除非 STM 引用了上轮摘要） |
+| max-iters 内做不完 | 终态 board 持久化；**下轮新提问不**自动续板；STM 仅供指代，**禁止**把上轮步骤并入本轮 `manage_tasks` items |
 
 ---
 

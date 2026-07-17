@@ -1,31 +1,30 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.common.workflow.WorkflowNodeType;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.WorkflowProperties;
+import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 从 sunshine-workflows.yaml、tool catalog 与 Nacos agent.timeline.workflow-node-types 解析节点/工作流展示名
+ * 从 DB workflow catalog、tool catalog 与代码内置节点 type 默认名解析展示名
  */
 @Service
 @RefreshScope
 @RequiredArgsConstructor
 public class WorkflowNodeLabelService {
 
-    private final WorkflowProperties workflowProperties;
+    private final WorkflowCatalog workflowCatalog;
     private final ToolCatalogService toolCatalogService;
-    private final AgentPromptProperties agentPromptProperties;
 
     /** 动态 Plan 执行期节点展示名（nodeId → displayName） */
     private final ThreadLocal<java.util.Map<String, String>> runtimeNodeLabels = new ThreadLocal<>();
+    private final ThreadLocal<java.util.Map<String, String>> runtimeToolIds = new ThreadLocal<>();
 
     @PostConstruct
     void init() {
@@ -37,10 +36,17 @@ public class WorkflowNodeLabelService {
             return;
         }
         java.util.Map<String, String> labels = new java.util.LinkedHashMap<>();
+        java.util.Map<String, String> tools = new java.util.LinkedHashMap<>();
         for (var entry : def.nodesById().entrySet()) {
             NodeSpec spec = entry.getValue();
             if (spec == null) {
                 continue;
+            }
+            if (WorkflowNodeType.TOOL.matches(spec.type()) && spec.params() != null) {
+                String tool = spec.params().get("tool");
+                if (StringUtils.hasText(tool)) {
+                    tools.put(entry.getKey(), tool.strip());
+                }
             }
             if (StringUtils.hasText(spec.displayName())) {
                 labels.put(entry.getKey(), spec.displayName().strip());
@@ -49,25 +55,26 @@ public class WorkflowNodeLabelService {
             }
         }
         runtimeNodeLabels.set(labels);
+        runtimeToolIds.set(tools);
     }
 
     public void clearRuntimeNodeLabels() {
         runtimeNodeLabels.remove();
+        runtimeToolIds.remove();
     }
 
     public String workflowDisplayName(String workflowId) {
         if (!StringUtils.hasText(workflowId)) {
-            return nodeTypeTimeline().getUnknownWorkflow();
+            return WorkflowTimelineLabels.UNKNOWN_WORKFLOW;
         }
-        if (workflowProperties.getCatalog() == null) {
+        var entry = workflowCatalog.findEntry(workflowId);
+        if (entry == null) {
             return workflowId;
         }
-        return workflowProperties.getCatalog().stream()
-                .filter(e -> workflowId.equals(e.getId()))
-                .findFirst()
-                .map(e -> StringUtils.hasText(e.getDisplayName()) ? e.getDisplayName() : e.getDesc())
-                .filter(StringUtils::hasText)
-                .orElse(workflowId);
+        if (StringUtils.hasText(entry.displayName())) {
+            return entry.displayName().strip();
+        }
+        return StringUtils.hasText(entry.description()) ? entry.description().strip() : workflowId;
     }
 
     public String displayName(String nodeId, String nodeType) {
@@ -83,31 +90,30 @@ public class WorkflowNodeLabelService {
 
     public String typeLabel(String nodeType) {
         if (!StringUtils.hasText(nodeType)) {
-            return nodeTypeTimeline().getUnknownNode();
+            return WorkflowTimelineLabels.UNKNOWN_NODE;
         }
         return WorkflowNodeType.of(nodeType)
                 .map(this::labelForKnownType)
-                .orElseGet(() -> nodeTypeTimeline().labelFor(nodeType));
+                .orElseGet(() -> WorkflowTimelineLabels.typeLabel(nodeType));
     }
 
     private String labelForKnownType(WorkflowNodeType type) {
-        AgentPromptProperties.WorkflowNodeTypeTimeline timeline = nodeTypeTimeline();
         String raw = switch (type) {
-            case RAG -> timeline.getRag();
-            case LLM -> timeline.getLlm();
-            case AGENT -> timeline.getAgent();
-            case ANSWER -> timeline.getAnswer();
-            case TOOL -> timeline.getTool();
+            case RAG -> WorkflowTimelineLabels.TYPE_RAG;
+            case LLM -> WorkflowTimelineLabels.TYPE_LLM;
+            case AGENT -> WorkflowTimelineLabels.TYPE_AGENT;
+            case ANSWER -> WorkflowTimelineLabels.TYPE_ANSWER;
+            case TOOL -> WorkflowTimelineLabels.TYPE_TOOL;
+            case JOIN -> WorkflowTimelineLabels.TYPE_JOIN;
+            case PARALLEL_GATEWAY -> WorkflowTimelineLabels.TYPE_PARALLEL_GATEWAY;
+            case EXCLUSIVE_GATEWAY -> WorkflowTimelineLabels.TYPE_EXCLUSIVE_GATEWAY;
             default -> type.id();
         };
         return StringUtils.hasText(raw) ? raw.strip() : type.id();
     }
 
     public String subAgentDefaultLabel() {
-        AgentPromptProperties.WorkflowNodeTypeTimeline timeline = nodeTypeTimeline();
-        return StringUtils.hasText(timeline.getSubAgentDefault())
-                ? timeline.getSubAgentDefault().strip()
-                : typeLabel(WorkflowNodeType.AGENT.id());
+        return WorkflowTimelineLabels.SUB_AGENT_DEFAULT;
     }
 
     /** stepId 形如 node-llm，需解析节点 type 才能得到中文名（勿直接暴露 llm/agent 等内部类型） */
@@ -121,10 +127,6 @@ public class WorkflowNodeLabelService {
 
     private String displayNameWithoutRuntime(String nodeId, String nodeType) {
         String effectiveType = nodeType != null ? nodeType : resolveNodeType(nodeId);
-        String fromDefinition = resolveFromDefinitions(nodeId, effectiveType);
-        if (StringUtils.hasText(fromDefinition)) {
-            return fromDefinition;
-        }
         if (effectiveType == null) {
             return friendlyNameForKnownNodeId(nodeId);
         }
@@ -140,71 +142,28 @@ public class WorkflowNodeLabelService {
         if (!StringUtils.hasText(nodeId)) {
             return null;
         }
-        if (workflowProperties.getDefinitions() != null) {
-            for (WorkflowProperties.WorkflowDefinitionProps def : workflowProperties.getDefinitions().values()) {
-                if (def.getNodes() == null) {
-                    continue;
-                }
-                for (WorkflowProperties.NodeProps node : def.getNodes()) {
-                    if (nodeId.equals(node.getId()) && StringUtils.hasText(node.getType())) {
-                        return node.getType();
-                    }
-                }
-            }
+        java.util.Map<String, String> runtime = runtimeNodeLabels.get();
+        if (runtime != null && runtime.containsKey(nodeId)) {
+            return WorkflowNodeType.of(nodeId).map(WorkflowNodeType::id).orElse(null);
         }
         return WorkflowNodeType.of(nodeId).map(WorkflowNodeType::id).orElse(null);
     }
 
     private String friendlyNameForKnownNodeId(String nodeId) {
         if (!StringUtils.hasText(nodeId)) {
-            return nodeTypeTimeline().getUnknownNode();
+            return WorkflowTimelineLabels.UNKNOWN_NODE;
         }
         return WorkflowNodeType.of(nodeId)
                 .map(type -> typeLabel(type.id()))
                 .orElse(nodeId);
     }
 
-    private String resolveFromDefinitions(String nodeId, String nodeType) {
-        if (!StringUtils.hasText(nodeId) || workflowProperties.getDefinitions() == null) {
-            return null;
-        }
-        for (WorkflowProperties.WorkflowDefinitionProps def : workflowProperties.getDefinitions().values()) {
-            if (def.getNodes() == null) {
-                continue;
-            }
-            for (WorkflowProperties.NodeProps node : def.getNodes()) {
-                if (!nodeId.equals(node.getId())) {
-                    continue;
-                }
-                if (StringUtils.hasText(node.getDisplayName())) {
-                    return node.getDisplayName();
-                }
-                if (WorkflowNodeType.TOOL.matches(nodeType) || WorkflowNodeType.TOOL.matches(node.getType())) {
-                    Object tool = node.getParams() != null ? node.getParams().get("tool") : null;
-                    if (tool != null) {
-                        return toolCatalogService.displayName(String.valueOf(tool));
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
     private String resolveBoundTool(String nodeId) {
-        if (workflowProperties.getDefinitions() == null) {
-            return nodeId;
-        }
-        for (WorkflowProperties.WorkflowDefinitionProps def : workflowProperties.getDefinitions().values()) {
-            if (def.getNodes() == null) {
-                continue;
-            }
-            for (WorkflowProperties.NodeProps node : def.getNodes()) {
-                if (nodeId.equals(node.getId()) && node.getParams() != null) {
-                    Object tool = node.getParams().get("tool");
-                    if (tool != null) {
-                        return String.valueOf(tool);
-                    }
-                }
+        java.util.Map<String, String> tools = runtimeToolIds.get();
+        if (tools != null && StringUtils.hasText(nodeId)) {
+            String tool = tools.get(nodeId);
+            if (StringUtils.hasText(tool)) {
+                return tool;
             }
         }
         return nodeId;
@@ -223,9 +182,5 @@ public class WorkflowNodeLabelService {
         } finally {
             clearRuntimeNodeLabels();
         }
-    }
-
-    private AgentPromptProperties.WorkflowNodeTypeTimeline nodeTypeTimeline() {
-        return agentPromptProperties.timelineOrDefault().getWorkflowNodeTypes();
     }
 }

@@ -1,0 +1,50 @@
+import type { PlanGraph, PlanGraphEdge } from '../api/executionPlans'
+
+export type ExclusiveBranchView = {
+  toId: string
+  toLabel: string
+  isDefault: boolean
+  conditionText: string
+}
+
+function formatCondition(edge: PlanGraphEdge): string {
+  if (edge.default) return '默认分支'
+  const c = edge.condition
+  if (!c?.op) return '未配置条件'
+  return formatConditionExpr(c.left, c.op, c.right)
+}
+
+/** 与 exclusive / loop 共用的条件文案（empty / not_empty / contains / eq） */
+export function formatConditionExpr(
+  left: string | undefined,
+  op: string | undefined,
+  right?: string | null,
+): string {
+  if (!op?.trim()) return '未配置条件'
+  const l = left?.trim() || '（左值）'
+  const r = right?.trim() ?? ''
+  if (op === 'empty') return `${l} 为空`
+  if (op === 'not_empty') return `${l} 非空`
+  if (op === 'contains') return `${l} 包含「${r}」`
+  if (op === 'eq') return `${l} 等于「${r}」`
+  return `${l} ${op} ${r}`.trim()
+}
+
+/** Chat 抽屉：条件分支出边配置（静态；不在画布边标签展示） */
+export function resolveExclusiveBranches(
+  graph: PlanGraph | null | undefined,
+  gatewayId: string | undefined,
+): ExclusiveBranchView[] {
+  if (!graph?.edges?.length || !gatewayId) return []
+  const labelById = new Map(
+    (graph.nodes ?? []).map(n => [n.id, n.displayName?.trim() || n.id]),
+  )
+  return graph.edges
+    .filter(e => e.from === gatewayId)
+    .map(e => ({
+      toId: e.to,
+      toLabel: labelById.get(e.to) || e.to,
+      isDefault: !!e.default,
+      conditionText: formatCondition(e),
+    }))
+}

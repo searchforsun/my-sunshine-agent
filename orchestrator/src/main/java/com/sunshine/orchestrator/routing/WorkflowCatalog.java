@@ -1,27 +1,26 @@
 package com.sunshine.orchestrator.routing;
 
-import com.sunshine.orchestrator.config.WorkflowProperties;
+import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
+import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.stream.Collectors;
 
-/**
- * Workflow 目录 — 渲染进意图分类 prompt，并校验 workflowId
- */
+/** Workflow 目录 — 渲染进意图分类 prompt，并校验 workflowId（DB SSOT） */
 @Component
 @RequiredArgsConstructor
 public class WorkflowCatalog {
 
-    private final WorkflowProperties workflowProperties;
+    private final WorkflowCatalogRegistry catalogRegistry;
+    private final WorkflowManagerClient workflowManagerClient;
 
-    /** 渲染为 markdown，注入 classifier-prompt 的 {{workflow-catalog}} */
     public String renderForPrompt() {
-        if (workflowProperties.getCatalog() == null || workflowProperties.getCatalog().isEmpty()) {
+        if (catalogRegistry.entries().isEmpty()) {
             return "(无 workflow 目录配置)";
         }
-        return workflowProperties.getCatalog().stream()
+        return catalogRegistry.entries().stream()
                 .map(this::formatEntry)
                 .collect(Collectors.joining("\n"));
     }
@@ -34,11 +33,14 @@ public class WorkflowCatalog {
     }
 
     public boolean isKnownWorkflow(String workflowId) {
-        if (!StringUtils.hasText(workflowId) || workflowProperties.getCatalog() == null) {
+        if (!StringUtils.hasText(workflowId)) {
             return false;
         }
-        return workflowProperties.getCatalog().stream()
-                .anyMatch(e -> workflowId.equals(e.getId()));
+        String id = workflowId.strip();
+        if (catalogRegistry.find(id) != null) {
+            return true;
+        }
+        return workflowManagerClient.fetchPublished(id).isPresent();
     }
 
     /** 未知 workflowId 时降级 react */
@@ -50,16 +52,21 @@ public class WorkflowCatalog {
             return ExecutionPlan.reactFallback(
                     "unknown workflow: " + (plan.workflowId() != null ? plan.workflowId() : "null"));
         }
-        if (!workflowProperties.getDefinitions().containsKey(plan.workflowId())) {
+        if (workflowManagerClient.fetchPublished(plan.workflowId()).isEmpty()) {
             return ExecutionPlan.reactFallback("missing definition: " + plan.workflowId());
         }
         return plan;
     }
 
-    private String formatEntry(WorkflowProperties.CatalogEntry e) {
-        String nodes = e.getNodes() != null ? String.join(" → ", e.getNodes()) : "";
-        String examples = e.getExamples() != null ? String.join("；", e.getExamples()) : "";
-        return "- **" + e.getId() + "** (mode=" + e.getMode() + "): " + e.getDesc()
+    public WorkflowManagerClient.WorkflowCatalogEntryDto findEntry(String workflowId) {
+        return catalogRegistry.find(workflowId);
+    }
+
+    private String formatEntry(WorkflowManagerClient.WorkflowCatalogEntryDto e) {
+        String nodes = e.nodes() != null ? String.join(" → ", e.nodes()) : "";
+        String examples = e.examples() != null ? String.join("；", e.examples()) : "";
+        String desc = StringUtils.hasText(e.description()) ? e.description() : e.displayName();
+        return "- **" + e.id() + "** (mode=" + e.mode() + "): " + desc
                 + "\n  节点: " + nodes
                 + (StringUtils.hasText(examples) ? "\n  示例: " + examples : "");
     }

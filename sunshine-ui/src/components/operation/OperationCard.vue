@@ -7,16 +7,20 @@ import {
   formatStepLabel,
   stepLifecycle,
   resolveStepHeaderText,
-  resolveStepExpandSummary,
-  resolveStepExpandBody,
+  resolveStepExpandPanels,
   shouldShiftSummaryOnExpand,
   hasExpandableContent,
   resolvePlanIdFromStep,
+  resolveSandboxFocusPath,
 } from '../../api/processingSteps'
 import { useRouter } from 'vue-router'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { isToolStepId, type HitlConfirmationPayload } from '../../api/hitlSteps'
 import HitlStepActions from './HitlStepActions.vue'
+import SandboxToolExpandPanel from './SandboxToolExpandPanel.vue'
+import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
+import { useSandboxToolExpand } from '../../composables/useSandboxToolExpand'
+import { useChatStore } from '../../stores/chatStore'
 
 const props = withDefaults(defineProps<{
   step: ProcessingStep
@@ -35,11 +39,34 @@ const props = withDefaults(defineProps<{
 })
 
 const router = useRouter()
+const chatStore = useChatStore()
+const sandboxDrawer = useSandboxWorkspaceDrawer()
 
 const emit = defineEmits<{
   toggle: []
   hitlDecided: [token: string, approved: boolean]
 }>()
+
+function onRowActivate() {
+  if (isSandboxTool.value && chatStore.currentId) {
+    const focus = resolveSandboxFocusPath(props.step)
+    sandboxDrawer.open({
+      conversationId: chatStore.currentId,
+      focusPath: focus,
+    })
+  }
+  if (canExpand.value) {
+    emit('toggle')
+  }
+}
+
+function openSandboxPath(path: string) {
+  if (!chatStore.currentId || !path) return
+  sandboxDrawer.open({
+    conversationId: chatStore.currentId,
+    focusPath: path,
+  })
+}
 
 const showEmbeddedHitl = computed(() =>
   props.embedHitl !== false && isToolStepId(props.step.id),
@@ -62,14 +89,18 @@ const label = computed(() => formatStepLabel(props.step))
 /** 主行摘要：折叠时一行预览；展开且可下移时主行仅保留 label */
 const headerText = computed(() => resolveStepHeaderText(props.step))
 const shiftSummary = computed(() => shouldShiftSummaryOnExpand(props.step))
+const { isSandboxTool, editDiffSummary } = useSandboxToolExpand(() => props.step)
+
 const showHeaderPreview = computed(
   () => !!headerText.value && (!props.expanded || !shiftSummary.value),
 )
 
-const expandSummary = computed(() => resolveStepExpandSummary(props.step))
-const expandBody = computed(() => resolveStepExpandBody(props.step))
+const expandPanels = computed(() => resolveStepExpandPanels(props.step))
+const expandSummary = computed(() => expandPanels.value.lead)
+const expandBody = computed(() => expandPanels.value.body)
 
 const canExpand = computed(() => hasExpandableContent(props.step))
+const rowClickable = computed(() => canExpand.value || isSandboxTool.value)
 
 const planLinkId = computed(() => {
   if (props.step.phase !== 'plan') return undefined
@@ -109,7 +140,9 @@ watch(
   { immediate: true },
 )
 
-onUnmounted(clearElapsedTimer)
+onUnmounted(() => {
+  clearElapsedTimer()
+})
 
 const durationText = computed(() => {
   if (isDone.value) {
@@ -131,16 +164,16 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
     :class="{
       'is-expanded': expanded,
       'is-running': isRunning && live,
-      'is-clickable': canExpand,
+      'is-clickable': rowClickable,
     }"
   >
     <div
       class="op-line-row"
-      :role="canExpand ? 'button' : undefined"
-      :tabindex="canExpand ? 0 : -1"
-      @click="canExpand && emit('toggle')"
-      @keydown.enter.prevent="canExpand && emit('toggle')"
-      @keydown.space.prevent="canExpand && emit('toggle')"
+      :role="rowClickable ? 'button' : undefined"
+      :tabindex="rowClickable ? 0 : -1"
+      @click="onRowActivate"
+      @keydown.enter.prevent="onRowActivate"
+      @keydown.space.prevent="onRowActivate"
     >
       <span class="op-gutter" aria-hidden="true">
         <svg
@@ -162,8 +195,17 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
           class="op-label operation-card-title"
           :class="{ 'op-shimmer': showShimmer }"
         >{{ label }}</span>
-        <span v-if="showHeaderPreview" class="op-text" :class="{ 'op-shimmer': showShimmer }">
-          {{ headerText }}<span v-if="isRunning && live" class="op-pulse">…</span>
+        <span
+          v-if="showHeaderPreview"
+          class="op-text"
+          :class="{ 'op-shimmer': showShimmer }"
+        >
+          {{ headerText }}
+          <span v-if="editDiffSummary" class="op-diff-summary" aria-label="变更行数">
+            <span v-if="editDiffSummary.add" class="op-diff-stat is-add">+{{ editDiffSummary.add }}</span>
+            <span v-if="editDiffSummary.del" class="op-diff-stat is-del">-{{ editDiffSummary.del }}</span>
+          </span>
+          <span v-if="isRunning && live" class="op-pulse">…</span>
         </span>
       </span>
       <span v-if="durationText" class="op-dur">{{ durationText }}</span>
@@ -186,14 +228,21 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
     />
 
     <div v-if="expanded && canExpand" class="op-detail">
-      <div v-if="expandSummary && shiftSummary" class="op-detail-after">
-        <StaticMarkdown :source="expandSummary" compact />
-      </div>
-      <StaticMarkdown v-if="expandBody" :source="expandBody" compact />
-      <div v-if="step.reasoning?.trim()" class="op-detail-thinking">
-        <StaticMarkdown :source="step.reasoning" compact />
-      </div>
-      <StaticMarkdown v-if="step.output?.trim()" :source="step.output" compact />
+      <SandboxToolExpandPanel
+        v-if="isSandboxTool"
+        :step="step"
+        @open-path="openSandboxPath"
+      />
+      <template v-else>
+        <div v-if="expandSummary && shiftSummary" class="op-detail-after">
+          <StaticMarkdown :source="expandSummary" compact />
+        </div>
+        <StaticMarkdown v-if="expandBody" :source="expandBody" compact />
+        <div v-if="step.reasoning?.trim()" class="op-detail-thinking">
+          <StaticMarkdown :source="step.reasoning" compact />
+        </div>
+        <StaticMarkdown v-if="step.output?.trim()" :source="step.output" compact />
+      </template>
     </div>
   </div>
 </template>
@@ -358,6 +407,25 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 2px;
+}
+
+.op-diff-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 6px;
+  font-size: var(--sun-font-sm, 12px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.op-diff-stat.is-add {
+  color: #2a9a5c;
+}
+
+.op-diff-stat.is-del {
+  color: #c44;
 }
 
 .op-detail-after {

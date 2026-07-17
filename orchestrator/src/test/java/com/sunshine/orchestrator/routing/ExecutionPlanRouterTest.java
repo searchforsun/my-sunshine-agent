@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import com.sunshine.orchestrator.catalog.ExpertCatalogService;
 import com.sunshine.orchestrator.expert.ExpertBindingParser;
 import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.StructuralRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
 import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
@@ -81,6 +82,8 @@ class ExecutionPlanRouterTest {
         when(skillBindingParser.stripAtMention(org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(inv -> inv.getArgument(0));
         when(skillCatalogService.indexEntries()).thenReturn(List.of());
+        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
     @Test
@@ -147,10 +150,12 @@ class ExecutionPlanRouterTest {
         when(queryRewriteService.rewriteForIntent("待审批", null, null))
                 .thenReturn(QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销消息", 0));
         ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-list", Map.of(), "llm");
-        when(intentRouter.classifyPlan("查询待审批报销消息")).thenReturn(Mono.just(plan));
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(plan));
 
         assertThat(router.route("待审批").block()).isEqualTo(plan);
-        verify(intentRouter).classifyPlan("查询待审批报销消息");
+        verify(intentRouter).classifyPlan(org.mockito.ArgumentMatchers.<RoutingContext>argThat(
+                ctx -> "查询待审批报销消息".equals(ctx.userMessage())));
     }
 
     @Test
@@ -161,7 +166,8 @@ class ExecutionPlanRouterTest {
         when(ruleBasedRouter.match(query)).thenReturn(java.util.Optional.empty());
         when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
         ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm");
-        when(intentRouter.classifyPlan(query)).thenReturn(Mono.just(plan));
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(plan));
 
         assertThat(router.route(query).block()).isEqualTo(plan);
         verify(queryRewriteService, never()).rewriteForIntent(org.mockito.ArgumentMatchers.anyString());

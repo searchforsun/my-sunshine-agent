@@ -47,3 +47,5 @@ sunshine-ui/playwright-report/
 agent-workspace/
 
 __pycache__/
+
+.superpowers/

@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.catalog;
 
-import com.sunshine.orchestrator.client.ToolSetClient;
+import com.sunshine.orchestrator.client.ToolManagerClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -12,12 +12,20 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ToolSetResolver {
 
-    private final ToolSetClient toolSetClient;
+    private final ToolManagerClient toolManagerClient;
     private final ToolCatalogService toolCatalogService;
 
     public List<String> resolveReactTools(String tenantId) {
         String effectiveTenant = normalizeTenant(tenantId);
-        List<String> setIds = toolSetClient.fetchReactDefault(effectiveTenant);
+        List<String> setIds = toolManagerClient.fetchReactDefault(effectiveTenant);
+        Set<String> pool = toolCatalogService.enabledIds(effectiveTenant);
+        return setIds.stream().filter(pool::contains).toList();
+    }
+
+    /** Plan-Workflow 可用工具（与启用池求交） */
+    public List<String> resolvePlanWorkflowTools(String tenantId) {
+        String effectiveTenant = normalizeTenant(tenantId);
+        List<String> setIds = toolManagerClient.fetchPlanWorkflow(effectiveTenant);
         Set<String> pool = toolCatalogService.enabledIds(effectiveTenant);
         return setIds.stream().filter(pool::contains).toList();
     }
@@ -25,9 +33,14 @@ public class ToolSetResolver {
     /** Plan/Workflow 关键工具（失败时 fail_fast），与启用池求交 */
     public List<String> resolvePlanWorkflowCriticalTools(String tenantId) {
         String effectiveTenant = normalizeTenant(tenantId);
-        List<String> setIds = toolSetClient.fetchPlanWorkflowCritical(effectiveTenant);
+        List<String> setIds = toolManagerClient.fetchPlanWorkflowCritical(effectiveTenant);
         Set<String> pool = toolCatalogService.enabledIds(effectiveTenant);
         return setIds.stream().filter(pool::contains).toList();
+    }
+
+    /** 租户启用 Catalog 全量（专家 tools_json=["*"] 过渡语义） */
+    public List<String> resolveAllEnabledTools(String tenantId) {
+        return List.copyOf(toolCatalogService.enabledIds(normalizeTenant(tenantId)));
     }
 
     /** 显式白名单与启用池求交（子 Agent / 节点 tools） */

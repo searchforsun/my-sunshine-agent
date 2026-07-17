@@ -5,7 +5,7 @@ import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
-import com.sunshine.orchestrator.execution.WorkflowNodeType;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -27,7 +27,7 @@ public class PlanDisplayNameEnricher {
         for (PlanNode node : plan.nodes()) {
             nodes.add(enrichNode(node));
         }
-        return new PlanJson(plan.planId(), plan.reason(), List.copyOf(nodes), plan.edges());
+        return new PlanJson(plan.planId(), plan.reason(), List.copyOf(nodes), plan.edges(), plan.layout());
     }
 
     private PlanNode enrichNode(PlanNode node) {
@@ -35,7 +35,7 @@ public class PlanDisplayNameEnricher {
             return node;
         }
         String name = resolveDisplayName(node);
-        return new PlanNode(node.id(), node.type(), node.params(), name);
+        return new PlanNode(node.id(), node.type(), node.params(), name, node.parentId());
     }
 
     private String resolveDisplayName(PlanNode node) {

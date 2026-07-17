@@ -16,6 +16,9 @@ public final class QueryRewriteTrace {
     private static final Map<String, List<QueryRewriteOutcome>> TRACES = new ConcurrentHashMap<>();
     /** RAG 步骤 id → 本次 search_knowledge RPC 在 trace 中的 [start, end) 切片 */
     private static final Map<String, RagSpan> RAG_SPANS_BY_STEP = new ConcurrentHashMap<>();
+    /** 并行 RAG：按 ragStepId 隔离改写（避免全局 trace 索引竞态） */
+    private static final Map<String, Map<String, List<QueryRewriteOutcome>>> OUTCOMES_BY_RAG_STEP =
+            new ConcurrentHashMap<>();
 
     public record RagSpan(int startIndex, int endIndex) {
     }
@@ -36,6 +39,34 @@ public final class QueryRewriteTrace {
         List<QueryRewriteOutcome> list = TRACES.get(messageId);
         if (list != null) {
             list.add(outcome);
+        }
+    }
+
+    /** 并行 workflow / ReAct 工具步：改写按 ragStepId 独立落盘 */
+    public static void recordForRagStep(String messageId, String ragStepId, QueryRewriteOutcome outcome) {
+        if (messageId == null || messageId.isBlank() || ragStepId == null || ragStepId.isBlank() || outcome == null) {
+            return;
+        }
+        OUTCOMES_BY_RAG_STEP
+                .computeIfAbsent(messageId, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(ragStepId.strip(), k -> Collections.synchronizedList(new ArrayList<>()))
+                .add(outcome);
+    }
+
+    public static List<QueryRewriteOutcome> outcomesForStep(String messageId, String ragStepId) {
+        if (messageId == null || ragStepId == null || ragStepId.isBlank()) {
+            return List.of();
+        }
+        Map<String, List<QueryRewriteOutcome>> byStep = OUTCOMES_BY_RAG_STEP.get(messageId);
+        if (byStep == null) {
+            return List.of();
+        }
+        List<QueryRewriteOutcome> list = byStep.get(ragStepId.strip());
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        synchronized (list) {
+            return List.copyOf(list);
         }
     }
 
@@ -99,6 +130,20 @@ public final class QueryRewriteTrace {
     /** 仅拼接自 {@code fromIndex} 起新增的 RAG 相关改写（多次 search_knowledge 互不叠加） */
     public static String combinedRagTimelineDetailSince(String messageId, int fromIndex) {
         return combinedRagTimelineDetailBetween(messageId, fromIndex, size(messageId));
+    }
+
+    /** 按 ragStepId 取改写详情（并行安全；无 per-step 记录时回退 span 切片） */
+    public static String combinedRagTimelineDetailForStep(String messageId, String ragStepId) {
+        if (messageId == null || ragStepId == null || ragStepId.isBlank()) {
+            return null;
+        }
+        List<QueryRewriteOutcome> perStep = outcomesForStep(messageId, ragStepId);
+        if (!perStep.isEmpty()) {
+            return joinTimelineDetails(perStep);
+        }
+        return ragSpan(ragStepId)
+                .map(span -> combinedRagTimelineDetailBetween(messageId, span.startIndex(), span.endIndex()))
+                .orElse(null);
     }
 
     /** 拼接 trace 中 {@code [fromIndex, toIndex)} 区间的 RAG 相关改写 */
@@ -198,6 +243,7 @@ public final class QueryRewriteTrace {
     public static void clear(String messageId) {
         if (messageId != null) {
             TRACES.remove(messageId);
+            OUTCOMES_BY_RAG_STEP.remove(messageId);
         }
     }
 

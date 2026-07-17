@@ -10,6 +10,8 @@ export interface SendOptions {
   workflowId?: string | null
   skillId?: string
   kbId?: string | null
+  /** never | always | smart — 沙箱写 HITL 跳过 */
+  writeHitlMode?: 'never' | 'always' | 'smart'
 }
 
 export interface SessionState {

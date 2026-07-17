@@ -28,21 +28,38 @@ final class TimelineSessionToolFlow {
         return stepId;
     }
 
-    void completeToolStep(String detail) {
+    void completeToolStep(String summaryLine) {
+        completeToolStep(summaryLine, null);
+    }
+
+    void completeToolStep(String summaryLine, String expandDetail) {
+        completeToolStep(summaryLine, expandDetail, null);
+    }
+
+    void completeToolStep(String summaryLine, String expandDetail, StepMetadata metadata) {
         if (state.currentToolStepId == null) {
             return;
         }
-        lifecycle.completeAt(state.currentToolStepId, detail, System.currentTimeMillis());
+        lifecycle.completeAt(state.currentToolStepId, summaryLine, expandDetail, metadata, System.currentTimeMillis());
         state.currentToolStepId = null;
     }
 
-    void completeToolStepForToolUse(String toolUseId, String detail) {
+    void completeToolStepForToolUse(String toolUseId, String summaryLine) {
+        completeToolStepForToolUse(toolUseId, summaryLine, null);
+    }
+
+    void completeToolStepForToolUse(String toolUseId, String summaryLine, String expandDetail) {
+        completeToolStepForToolUse(toolUseId, summaryLine, expandDetail, null);
+    }
+
+    void completeToolStepForToolUse(
+            String toolUseId, String summaryLine, String expandDetail, StepMetadata metadata) {
         String stepId = com.sunshine.orchestrator.agent.StepEventBridge.stepIdForToolUse(toolUseId);
         if (stepId == null) {
-            completeToolStep(detail);
+            completeToolStep(summaryLine, expandDetail, metadata);
             return;
         }
-        lifecycle.completeAt(stepId, detail, System.currentTimeMillis());
+        lifecycle.completeAt(stepId, summaryLine, expandDetail, metadata, System.currentTimeMillis());
         if (stepId.equals(state.currentToolStepId)) {
             state.currentToolStepId = null;
         }
@@ -68,10 +85,16 @@ final class TimelineSessionToolFlow {
     }
 
     void attachHitlPending(String token, String toolDisplayName, String paramsSummary, long expiresAt) {
+        attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, null);
+    }
+
+    void attachHitlPending(
+            String token, String toolDisplayName, String paramsSummary, long expiresAt, String expandDetail) {
         if (state.currentToolStepId == null || token == null || token.isBlank()) {
             return;
         }
-        attachHitlPendingOnStep(state.currentToolStepId, token, toolDisplayName, paramsSummary, expiresAt);
+        attachHitlPendingOnStep(
+                state.currentToolStepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
     }
 
     void resolveHitlPending(String status) {
@@ -83,13 +106,23 @@ final class TimelineSessionToolFlow {
 
     void attachHitlPendingOnStep(
             String stepId, String token, String toolDisplayName, String paramsSummary, long expiresAt) {
+        attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, null);
+    }
+
+    void attachHitlPendingOnStep(
+            String stepId,
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail) {
         if (stepId == null || token == null || token.isBlank()) {
             return;
         }
         StepMetadata base = state.aggregator.get(stepId).map(com.sunshine.orchestrator.agent.ProcessingStep::metadata).orElse(null);
         StepMetadata meta = StepMetadata.withHitl(
                 base, HitlStepMeta.awaiting(token, toolDisplayName, paramsSummary, expiresAt));
-        emitter.applyAt(stepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
+        emitter.applyAt(stepId, null, EventKind.PROGRESS, null, expandDetail, meta, System.currentTimeMillis());
     }
 
     void resolveHitlPendingOnStep(String stepId, String status) {

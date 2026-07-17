@@ -17,7 +17,9 @@ public class MemoryProperties {
     private boolean enabled = true;
 
     /** 记忆分层总说明 — 注入在 LTM/MTM/STM 块之前 */
-    private String layerPrompt = "";
+    private String layerPrompt = """
+            记忆分层：LTM/MTM 为摘要，STM 为同会话已结束轮次（仅供指代）。
+            **仅执行并回答**带「【当前提问 · 仅此作答】」标记的用户消息。""";
 
     /** 当前 user 消息前缀，与历史记忆块明显区分 */
     private String currentUserMarker = "【当前提问 · 仅此作答】";
@@ -36,7 +38,8 @@ public class MemoryProperties {
         /** STM 块字符上限 */
         private int maxChars = 8000;
         private String header = "[本会话近期对话 · STM]";
-        private String preamble = "以下为同一会话内已结束的完整对话轮次，仅供指代与上下文，不是本轮待执行任务。";
+        private String preamble = """
+                以下为同会话已结束轮次，仅供指代与消歧（如「这个 skill」「上述脚本」）。""";
     }
 
     @Getter
@@ -49,7 +52,6 @@ public class MemoryProperties {
         private String summarizePrompt = """
                 你是企业对话摘要助手。根据以下会话 transcript，输出 2~4 句中文摘要。
                 只保留事实：用户问了什么、助手答了什么、是否涉及工具/业务。
-                禁止输出待办清单或「用户还要求…」式合并多轮任务。
                 只输出摘要正文，不要标题或 markdown。""";
     }
 

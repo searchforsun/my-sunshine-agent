@@ -17,13 +17,29 @@
 
 ## Backlog（open）
 
-> 2026-07-08 扫描：TD-075/076 已修复；代码债 Backlog 已空。
-
 ### 代码债
 
-| ID | 严重度 | 状态 | 位置 | 摘要 |
-|----|--------|------|------|------|
-| _（空）_ | — | — | — | Backlog 已空 |
+_（Backlog 已空 — 2026-07-17 沙箱债 TD-110 已消化）_
+
+**2026-07-17 TD-110 已消化**：沙箱 `SandboxPolicy` + 5 RPC DTO 迁至 `com.sunshine.common.sandbox`；删 orchestrator/skill-manager/sandbox-service 六处拷贝；`SandboxPolicyDto` 合并为 `SandboxPolicy`。
+
+**2026-07-17 TD-111 已消化**：`agent.sandbox.tools` 承载 displayName/description/schema；`ToolCatalogService` + `SandboxAgentTools` 读 `AgentSandboxProperties`。
+
+**2026-07-17 TD-112 已消化**：抽 `useSandboxToolExpand` + `SandboxToolExpandPanel`；`OperationCard` 801→465 行。
+
+**2026-07-17 沙箱债 TD-106 已消化**：后端 `headerPath` + glob 结果推断搜索根 + `metadata.sandboxPath/sandboxSearchRoot`；前端主行只截断 `summary.after`。
+
+**2026-07-17 沙箱债本轮已消化**：TD-105（删 `openIfNeeded` + bridge 废弃 no-op）；TD-107（删未接线 `grepAfterWithPath`）；TD-108（删旧 `<<< old` 解析 + Binding 5 字段构造）；DOC-022（5 份 sandbox plan → `plans/archive/`）。
+
+**2026-07-15 续轮 3 已消化**：TD-104（抽 `workflowFlowProjection`；Chat 仅依赖投影；删孤儿 `PlanDagGraph` / `buildPreviewDagNodes`）。
+
+**2026-07-15 续轮 2 已消化**：TD-100（`WorkflowAdminSupport` + `WorkflowPackageService`；`workflowDagLayoutMetrics` / `workflowLoopLayout`；`workflowFlowNodeVisual` + PropsAside exclusive）。
+
+**2026-07-15 续轮已消化**：TD-098（删 FE `FALLBACK_NODE_DEFAULTS` + orch 误导性 code fallback 日志）；TD-100 部分（`WorkflowExclusiveEdgesSection`）；TD-102（历史 orchestration 文档 SUPERSEDED）。
+
+**2026-07-15 Workflow Studio 本轮已消化**：TD-095（`useWorkflowsPage` → import/lifecycle）；TD-096（本地零延迟 + 服务端发布权威契约澄清）；TD-097（`WorkflowNodeType` → `sunshine-common`）；TD-099（删 `WorkflowPlanValidator.validate` 兼容门面）；TD-101（详设 PlanValidator/Loader 文案对齐）；TD-103（过时 sunshine-workflows 注释随枚举迁移消除）。
+
+**2026-07-11 本轮已消化**：TD-077/078/081/083/084/085/087（工具集语义）；**TD-091/092/093**（legacy API、description 校验、死 CSS）；**TD-082/086/080/094**（sourceRef Catalog、Client 合并、ToolsView 拆分、孤儿 API）；**TD-088**（`ToolCatalogEntry` SSOT + BFF catalog 类型化）；**TD-089–090**（Admin DTO 迁至 `sunshine-common`、BFF 全量类型化）；**TD-080**（抽 `useMcpServerActions`，`useToolsPage` 369 行）。
 
 ### 文档债
 
@@ -118,6 +134,40 @@
 | TD-074 | 2026-07-07 | 前端域拆分：`ragAdmin/`（client/kbDocuments/kbConfig/eval + barrel）；`chatSessions`→`chatSessionRegistry`/`chatSessionMutations`/`chatSessionSseConsumer`（909→459）；`KbConfigPanel`→`useKbConfigPanel`（1049→513）；`npm run build` 通过 |
 | TD-075 | 2026-07-08 | expert 发言流式：`step_delta(result)` 不切分 + 空白 token 勿用 `hasText` 过滤（根因非 Markdown normalizer） |
 | TD-076 | 2026-07-08 | Synthesizer 流式：`StreamDeltaNormalizer` 闭合 `**` 勿按 `prev.startsWith(incoming)` 丢弃（OpenAI 增量 delta） |
+| TD-077 | 2026-07-11 | 工具集 Tab：ReAct/Planner 启用与 SDK/MCP 池分离；新增 `plan-workflow` 工具集；运行时 `set ∩ pool` |
+| TD-078 | 2026-07-11 | 删 `ToolsView.defaultPlanWorkflowPolicy` 硬编码；策略以 API/DB 为准 |
+| TD-081 | 2026-07-11 | 工具集 Tab 模板抽 `ToolPoolGroupSection.vue`；SDK/MCP 双段重复 markup 去重 |
+| TD-083 | 2026-07-11 | Catalog DTO 增 `enabled`；`refreshCatalog` 单次 fetch + `buildToolEnabledMap` |
+| TD-084 | 2026-07-11 | 删 BFF 孤儿 `ToolManagerClient`；catalog 仅经 `ToolManagerAdminClient` |
+| TD-085 | 2026-07-11 | `/api/tools/catalog` 从 `SkillsController` 迁至 `ToolsAdminController` |
+| TD-087 | 2026-07-11 | 工具集成员制：空集默认、`members`/`picker` API、`critical` 合并进 plan-workflow 成员；前端 `ToolsetTabPanel` + 分页 + 添加弹窗 |
+| TD-091 | 2026-07-11 | 删 legacy `GET/PUT .../sets/{react-default\|plan-workflow}` + `ToolSetAdminService` 整表替换 |
+| TD-092 | 2026-07-11 | `patchTool` description `trim()` 非空校验 + `TOOL_DESCRIPTION_REQUIRED` |
+| TD-093 | 2026-07-11 | 删 `ToolsView` 孤儿 `.tool-pool-*` / `.plan-policy-*` CSS |
+| TD-082 | 2026-07-11 | Catalog DTO 增 `source`/`sourceRef`；前端 `filterCatalogBySource` 替代 id 前缀 |
+| TD-086 | 2026-07-11 | 合并 `ToolCatalogClient`+`ToolSetClient` → `ToolManagerClient` |
+| TD-080 | 2026-07-11 | `ToolsView` 拆 `useToolsPage`+面板/弹窗；再抽 `useMcpServerActions`（369 行） |
+| TD-088 | 2026-07-11 | `ToolCatalogEntry` 迁至 `sunshine-common` SSOT；BFF `/api/tools/catalog` 类型化 |
+| TD-089 | 2026-07-11 | Admin DTO（SDK/MCP/工具集）迁至 `sunshine-common`；tool-manager 删本地 `dto/` |
+| TD-090 | 2026-07-11 | BFF `ToolsAdminController`/`ToolManagerAdminClient` 全量 `Mono<R<T>>` 类型化 |
+| TD-094 | 2026-07-11 | 删 `loadToolEnabledMap` / `ToolSetConfig` 孤儿 API |
+| TD-095 | 2026-07-15 | 拆 `useWorkflowsPage` → import + lifecycle（1381→913） |
+| TD-096 | 2026-07-15 | Studio 校验：本地零延迟 + 服务端 WorkflowPlanValidator 权威 |
+| TD-097 | 2026-07-15 | `WorkflowNodeType` SSOT 迁 sunshine-common |
+| TD-099 | 2026-07-15 | 删 `WorkflowPlanValidator.validate()` 兼容门面 |
+| TD-101 | 2026-07-15 | 详设对齐发布校验器 / DB Loader |
+| TD-103 | 2026-07-15 | 随枚举迁移消除 sunshine-workflows 过时注释 |
+| TD-098 | 2026-07-15 | 删 FE 节点默认静默兜底；orch fetch 失败保留上一份策略 |
+| TD-100 | 2026-07-15 | Studio 大文件拆分：Admin Package/Support；layout metrics/loop；FlowNode visual；ExclusiveEdges |
+| TD-102 | 2026-07-15 | 历史 orchestration 文档加 SUPERSEDED（Nacos workflow） |
+| TD-104 | 2026-07-15 | Chat/Studio 画布边界：`workflowFlowProjection` 只读投影；删孤儿 PlanDagGraph / previewNodes |
+| TD-105 | 2026-07-17 | 删 `SandboxSessionLifecycle.openIfNeeded`；bridge 废弃 no-op / 未用 getter |
+| TD-107 | 2026-07-17 | 删未接线 `grepAfterWithPath`（Properties + Nacos） |
+| TD-108 | 2026-07-17 | 删 edit 旧 `<<< old` 解析；Binding 5 字段兼容构造 |
+| TD-106 | 2026-07-17 | 沙箱时间线 SSOT：后端 headerPath/glob 推断 + metadata；前端停二次加工 |
+| TD-111 | 2026-07-17 | `agent.sandbox.tools` SSOT；删 ToolCatalogService 硬编码 + AgentTools schema |
+| TD-110 | 2026-07-17 | 沙箱 Policy/DTO SSOT：`com.sunshine.common.sandbox`；删 14 处模块内拷贝 |
+| TD-109 | 2026-07-17 | 抽 `useSandboxFileTree` + `useSandboxPreviewTabs` + 子组件；抽屉 1031→~254 行 |
 
 ### 文档债（DOC）
 
@@ -142,6 +192,7 @@
 | DOC-019 | 2026-07-08 | 多专家协作（4.7.3）文档闭环：CLAUDE/README/implementation-plan/expert-consultation/peer-collab/routing-golden-set/phase4 标 ✅ |
 | DOC-020 | 2026-07-09 | TaskBoard 文档：Timeline `think→tasks→tool`、Hook 锚定 think、prompt/Hook 职责分离、merge content 去重、`max-iters` SSOT |
 | DOC-021 | 2026-07-09 | ReAct Hook：无业务 tool 间隔的连续 think 合并；终态避免多个「综合分析」行 |
+| DOC-022 | 2026-07-17 | 5 份已完成 sandbox plan → `docs/superpowers/plans/archive/`（ARCHIVED 头 + 链修复） |
 
 ### 架构决策（ADR）
 

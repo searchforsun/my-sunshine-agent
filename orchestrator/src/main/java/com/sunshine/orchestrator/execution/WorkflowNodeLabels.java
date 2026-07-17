@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.common.workflow.WorkflowNodeType;
+
 /** Workflow 节点与工作流的中文展示名（Timeline / 意图详情共用） */
 public final class WorkflowNodeLabels {
 

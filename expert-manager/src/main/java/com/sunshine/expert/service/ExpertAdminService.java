@@ -67,7 +67,7 @@ public class ExpertAdminService {
         def.setSystemPrompt(request.systemPrompt().strip());
         def.setEnabled(true);
         def.setTagsJson("[]");
-        def.setToolsJson("[\"*\"]");
+        def.setToolsJson(serializeToolIds(request.toolIds()));
         def.setCreatedAt(now);
         def.setUpdatedAt(now);
         definitionRepository.save(def);
@@ -88,6 +88,7 @@ public class ExpertAdminService {
         def.setDisplayName(request.displayName().strip());
         def.setDescription(request.description() != null ? request.description().strip() : "");
         def.setSystemPrompt(request.systemPrompt().strip());
+        def.setToolsJson(serializeToolIds(request.toolIds()));
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
         replaceSkillLinks(expertId, request.skillIds());
@@ -120,6 +121,22 @@ public class ExpertAdminService {
     private ExpertDefinitionEntity requireDefinition(String expertId) {
         return definitionRepository.findById(expertId.strip())
                 .orElseThrow(() -> new BizException(ExpertErrorCode.EXPERT_NOT_FOUND));
+    }
+
+    private String serializeToolIds(List<String> toolIds) {
+        try {
+            List<String> clean = new ArrayList<>();
+            if (toolIds != null) {
+                for (String id : toolIds) {
+                    if (StringUtils.hasText(id) && !"*".equals(id.strip())) {
+                        clean.add(id.strip());
+                    }
+                }
+            }
+            return MAPPER.writeValueAsString(clean);
+        } catch (Exception e) {
+            return "[]";
+        }
     }
 
     private void replaceSkillLinks(String expertId, List<String> skillIds) {

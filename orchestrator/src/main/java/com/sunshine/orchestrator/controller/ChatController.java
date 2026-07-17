@@ -108,6 +108,9 @@ public class ChatController {
 
         return ReactiveBlocking.call(() -> streamContextFactory.prepareNewMessage(msg, userId, tenantId))
                 .flatMapMany(ctx -> {
+                    StepEventBridge.bindWriteHitlMode(
+                            ctx.assistantMsgId(),
+                            com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode.from(msg.getWriteHitlMode()));
                     AtomicReference<ExecutionMode> executionMode = streamExecutor.initialExecutionMode(ctx);
                     Flux<StreamToken> chunkFlux = streamExecutor.resolveChunkFlux(ctx, executionMode, false);
                     if (jobFactory != null && streamService != null && registry != null) {
@@ -260,7 +263,7 @@ public class ChatController {
         return ReactiveBlocking.call(() -> streamContextFactory.buildResumePreparation(msg, userId, tenantId))
                 .flatMapMany(prep -> {
                     if (jobFactory != null && streamService != null && registry != null) {
-                        return startResumeWithRedis(prep);
+                        return startResumeWithRedis(prep, msg.getWriteHitlMode());
                     }
                     conversationService.commitResumeStart(
                             prep.assistantId(),
@@ -275,6 +278,9 @@ public class ChatController {
                         }
                     }
                     ChatStreamContext ctx = prep.toStreamContext();
+                    StepEventBridge.bindWriteHitlMode(
+                            ctx.assistantMsgId(),
+                            com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode.from(msg.getWriteHitlMode()));
                     AtomicReference<ExecutionMode> executionMode = streamExecutor.initialExecutionMode(ctx);
                     Flux<StreamToken> chunkFlux = streamExecutor.resolveChunkFlux(ctx, executionMode, true);
                     return streamExecutor.wrapStream(ctx, chunkFlux, true, executionMode);
@@ -282,7 +288,7 @@ public class ChatController {
     }
 
     /** 续跑：先占 message 锁再置 streaming，避免锁冲突后 DB 卡在 streaming 导致 409 */
-    private Flux<ServerSentEvent<String>> startResumeWithRedis(ChatResumePreparation prep) {
+    private Flux<ServerSentEvent<String>> startResumeWithRedis(ChatResumePreparation prep, String writeHitlMode) {
         String generationId = streamService.createGeneration(
                 prep.conversationId(), prep.assistantId(), prep.userId(), prep.tenantId(), prep.intent());
         return Mono.fromCallable(() -> {
@@ -315,6 +321,9 @@ public class ChatController {
                     return prep.toStreamContext();
                 })
                 .flatMapMany(ctx -> {
+                    StepEventBridge.bindWriteHitlMode(
+                            ctx.assistantMsgId(),
+                            com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode.from(writeHitlMode));
                     AtomicReference<ExecutionMode> executionMode = streamExecutor.initialExecutionMode(ctx);
                     Flux<StreamToken> chunkFlux = streamExecutor.resolveChunkFlux(ctx, executionMode, true);
                     return runRedisGeneration(ctx, executionMode, chunkFlux, generationId, true);

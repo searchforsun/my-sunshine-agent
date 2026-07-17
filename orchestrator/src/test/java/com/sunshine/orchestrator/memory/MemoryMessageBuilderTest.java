@@ -36,6 +36,15 @@ class MemoryMessageBuilderTest {
         MemoryProperties props = new MemoryProperties();
         String boundary = StmBoundaryFormatter.format(props);
         assertThat(boundary).contains("[本会话近期对话 · STM]");
-        assertThat(boundary).contains("完整对话轮次");
+        assertThat(boundary).contains("不是**本轮待办");
+        assertThat(boundary).contains("manage_tasks");
+    }
+
+    @Test
+    void formatCurrentUser_prefixesMarker() {
+        MemoryProperties props = new MemoryProperties();
+        assertThat(MemoryMessageBuilder.formatCurrentUser("创建 csv", props))
+                .startsWith("【当前提问 · 仅此作答】")
+                .contains("创建 csv");
     }
 }

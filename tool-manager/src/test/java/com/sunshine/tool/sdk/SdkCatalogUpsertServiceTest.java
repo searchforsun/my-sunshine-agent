@@ -72,8 +72,8 @@ class SdkCatalogUpsertServiceTest {
                         "非法工具",
                         "desc",
                         "read",
-                        "tool",
-                        "truncate",
+                        "",
+                        null,
                         Map.of("type", "object"))));
         upsertService.upsert("sunshine-finance", "sunshine-finance", catalog);
 
@@ -83,6 +83,26 @@ class SdkCatalogUpsertServiceTest {
         assertThat(tool.isIdValid()).isFalse();
         assertThat(tool.isEnabled()).isFalse();
         assertThat(tool.getIdError()).isNotBlank();
+    }
+
+    @Test
+    void upsert_metadataEdited_preservesTimelineFields() {
+        upsertService.upsert("sunshine-finance", "sunshine-finance", sampleCatalog("查询待审批财务消息"));
+
+        ToolDefinitionEntity entity = toolDefinitionRepository
+                .findBySourceAndSourceRefAndExternalName("sdk", "sunshine-finance", "list_finance_messages")
+                .orElseThrow();
+        entity.setTimelineSummaryTemplate("{output}");
+        entity.setTimelineSummaryExtract("{\"output\":\"line:0\"}");
+        entity.setMetadataEdited(true);
+        toolDefinitionRepository.save(entity);
+
+        upsertService.upsert("sunshine-finance", "sunshine-finance", sampleCatalog("SDK 新名称"));
+
+        ToolDefinitionEntity updated = toolDefinitionRepository
+                .findById("sdk__sunshine-finance__list_finance_messages").orElseThrow();
+        assertThat(updated.getTimelineSummaryTemplate()).isEqualTo("{output}");
+        assertThat(updated.getTimelineSummaryExtract()).isEqualTo("{\"output\":\"line:0\"}");
     }
 
     @Test
@@ -121,8 +141,8 @@ class SdkCatalogUpsertServiceTest {
                         displayName,
                         "按状态筛选",
                         "read",
-                        "tool",
-                        "finance-list",
+                        "{count} 条财务消息",
+                        "{\"count\":\"regex:共\\\\s*(\\\\d+)\\\\s*条\"}",
                         Map.of(
                                 "type", "object",
                                 "properties", Map.of("status", Map.of("type", "string"))))));

@@ -9,7 +9,6 @@ import {
   RefreshOutline,
   SearchOutline,
   TrashOutline,
-  CopyOutline,
   CheckmarkOutline,
   DownloadOutline,
   EllipsisHorizontal,
@@ -88,7 +87,9 @@ export function useSkillsPage() {
   let suppressFilePathWatch = false
 
   const isDetailBusy = computed(() => detailLoading.value || uploading.value || downloading.value)
-  const isActionBusy = computed(() => uploading.value || downloading.value || forking.value)
+  const isActionBusy = computed(
+    () => uploading.value || downloading.value || forking.value,
+  )
 
   const folderPickPending = ref(false)
 

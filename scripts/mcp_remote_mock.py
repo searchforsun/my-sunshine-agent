@@ -48,10 +48,7 @@ def build_response(body: dict) -> dict:
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": TOOLS}}
     if method == "tools/call":
-        params = body.get("params") or {}
-        name = params.get("name", "unknown")
-        arguments = params.get("arguments") or {}
-        text = json.dumps({"tool": name, "arguments": arguments, "result": "mock-ok"}, ensure_ascii=False)
+        text = "（Demo）已执行"
         return {
             "jsonrpc": "2.0",
             "id": req_id,

@@ -34,7 +34,9 @@ public enum SkillErrorCode implements ErrorCode {
     PACKAGE_DOWNLOAD_EMPTY(400, "skill_package_download_empty", "该版本无可下载文件"),
     PACKAGE_ZIP_FAILED(500, "skill_package_zip_failed", "打包下载失败"),
     UPLOAD_PAYLOAD_INVALID(400, "skill_upload_payload_invalid", "请上传 SKILL.md、zip 或文本内容"),
-    VERSION_DIFF_SAME(400, "skill_version_diff_same", "对比版本不能相同");
+    VERSION_DIFF_SAME(400, "skill_version_diff_same", "对比版本不能相同"),
+    SANDBOX_POLICY_INVALID(400, "skill_sandbox_policy_invalid", "sandbox_policy JSON 无效"),
+    SANDBOX_VALUE_INVALID(400, "skill_sandbox_value_invalid", "sandbox 仅支持 none 或 docker");
 
     private final int code;
     private final String key;

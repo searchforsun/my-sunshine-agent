@@ -105,6 +105,21 @@ class StreamTokenCoalescerTest {
         assertThat(out.get(0).afterStepId()).isEqualTo("think-2");
     }
 
+    @Test
+    @DisplayName("sandbox_session 原样透传，不并入 content")
+    void sandboxSessionPassesThrough() {
+        List<StreamToken> out = collect(
+                StreamToken.sandboxSession("conv-1", "sandbox-coding-demo"),
+                StreamToken.content("hi")
+        );
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0).isSandboxSession()).isTrue();
+        assertThat(out.get(0).text()).isEqualTo("conv-1");
+        assertThat(out.get(0).channel()).isEqualTo("sandbox-coding-demo");
+        assertThat(out.get(1).isContent()).isTrue();
+        assertThat(out.get(1).text()).isEqualTo("hi");
+    }
+
     private static List<StreamToken> collect(StreamToken... tokens) {
         List<StreamToken> out = new ArrayList<>();
         StreamTokenCoalescer.coalesce(reactor.core.publisher.Flux.fromArray(tokens)).subscribe(out::add);

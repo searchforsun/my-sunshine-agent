@@ -177,8 +177,8 @@ class RoutingGoldenSetTest {
             return msg;
         });
 
-        when(skillCatalogService.indexEntries()).thenReturn(List.of());
-
+        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
 
@@ -299,7 +299,8 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm");
 
-        when(intentRouter.classifyPlan("先帮我写一封邮件再总结一下")).thenReturn(Mono.just(llmPlan));
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(llmPlan));
 
         assertThat(router.route("先帮我写一封邮件再总结一下").block()).isEqualTo(llmPlan);
 
@@ -353,11 +354,13 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm:fallback");
 
-        when(intentRouter.classifyPlan("随便聊聊")).thenReturn(Mono.just(llmPlan));
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(llmPlan));
 
         assertThat(router.route("随便聊聊").block()).isEqualTo(llmPlan);
 
-        verify(intentRouter).classifyPlan("随便聊聊");
+        verify(intentRouter).classifyPlan(org.mockito.ArgumentMatchers.<RoutingContext>argThat(
+                ctx -> "随便聊聊".equals(ctx.userMessage())));
 
     }
 
@@ -380,17 +383,18 @@ class RoutingGoldenSetTest {
     @Test
     void autoDiscoverSkillAfterReactClassify() {
         String query = "帮我做一笔报销的合规分析";
-        when(skillCatalogService.indexEntries()).thenReturn(List.of(
-                new SkillCatalogIndexEntry("finance-analysis", "财务分析", "报销合规分析", 1, true)));
         when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
-        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm");
-        when(intentRouter.classifyPlan(query)).thenReturn(Mono.just(llmPlan));
+        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null,
+                Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis"), "llm matched skill");
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(llmPlan));
+        when(skillCatalogService.sanitizeSkillPlan(llmPlan)).thenReturn(llmPlan);
 
         ExecutionPlan plan = router.route(query).block();
 
         assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        assertThat(plan.reason()).isEqualTo("skill:auto-discovered");
+        assertThat(plan.reason()).isEqualTo("llm matched skill");
     }
 
     @Test
@@ -425,7 +429,8 @@ class RoutingGoldenSetTest {
 
     @Test
     void forcedJ3_workflow_knowledgeQa() {
-        when(intentRouter.classifyPlan("年假可以请几天")).thenReturn(Mono.just(new ExecutionPlan(
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
         ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, "年假可以请几天", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
@@ -453,7 +458,8 @@ class RoutingGoldenSetTest {
     @Test
     void forcedJ5_workflow_ignoresAtSkill() {
         String query = "@policy-review 年假可以请几天";
-        when(intentRouter.classifyPlan("年假可以请几天")).thenReturn(Mono.just(new ExecutionPlan(
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
         ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
@@ -494,6 +500,71 @@ class RoutingGoldenSetTest {
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
         assertThat(plan.reason()).isEqualTo("structural:multi-step-plan");
         verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    // --- §I Workflow `#` 绑定（routing-golden-set.md） ---
+
+    @Test
+    void workflowI1_hashKnowledgeQa() {
+        when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
+        ExecutionPlan plan = router.route("#knowledge-qa 年假可以请几天").block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
+        assertThat(plan.reason()).isEqualTo("workflow:#mention");
+        assertThat(plan.params().get("effectiveQuery")).isEqualTo("年假可以请几天");
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void workflowI2_hashKnowledgeQaReimbursement() {
+        when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
+        ExecutionPlan plan = router.route("#knowledge-qa 报销流程是什么").block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
+        assertThat(plan.reason()).isEqualTo("workflow:#mention");
+    }
+
+    @Test
+    void workflowI3_hashFinanceSmartOverridesRules() {
+        when(workflowCatalog.isKnownWorkflow("finance-smart")).thenReturn(true);
+        ExecutionPlan plan = router.route("#finance-smart 待审批报销是否合规").block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("finance-smart");
+        assertThat(plan.reason()).isEqualTo("workflow:#mention");
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void workflowI4_unknownWorkflowNotFound() {
+        when(workflowCatalog.isKnownWorkflow("not-exists")).thenReturn(false);
+        assertThatThrownBy(() -> router.route("#not-exists 测试").block())
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getErrorCode())
+                .isEqualTo(OrchestratorErrorCode.WORKFLOW_NOT_FOUND);
+    }
+
+    @Test
+    void workflowI6_clientWorkflowIdBindsWithoutLlm() {
+        when(workflowCatalog.isKnownWorkflow("security-analyze")).thenReturn(true);
+        ExecutionPlan plan = router.route(new RoutingContext(
+                "请继续分析", null, ExecutionPreference.AUTO, "security-analyze", null)).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("security-analyze");
+        assertThat(plan.reason()).isEqualTo("workflow:client");
+        assertThat(plan.params().get("effectiveQuery")).isEqualTo("请继续分析");
+        verify(intentRouter, never()).classifyPlan(anyString());
+    }
+
+    @Test
+    void workflowI5_atKnowledgeQaNotWorkflow() {
+        String query = "@knowledge-qa 测试";
+        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(
+                ExecutionMode.REACT, null, Map.of(), "llm")));
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.workflowId()).isNull();
+        assertThat(plan.mode()).isNotEqualTo(ExecutionMode.WORKFLOW);
     }
 
     // --- §K Expert `$` 绑定（routing-golden-set.md） ---

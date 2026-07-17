@@ -10,11 +10,17 @@ public record PlanJson(
         String planId,
         String reason,
         List<PlanNode> nodes,
-        List<PlanEdge> edges
+        List<PlanEdge> edges,
+        Map<String, PlanLayoutPoint> layout
 ) {
+    public PlanJson(String planId, String reason, List<PlanNode> nodes, List<PlanEdge> edges) {
+        this(planId, reason, nodes, edges, Map.of());
+    }
+
     public PlanJson {
         nodes = nodes != null ? List.copyOf(nodes) : List.of();
         edges = edges != null ? List.copyOf(edges) : List.of();
+        layout = layout != null ? Map.copyOf(layout) : Map.of();
     }
 
     public Map<String, PlanNode> nodesById() {

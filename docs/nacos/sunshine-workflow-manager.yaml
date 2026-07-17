@@ -3,6 +3,8 @@
 # Data ID: sunshine-workflow-manager.yaml
 # Group:   DEFAULT_GROUP
 # 表结构 SSOT：docker/mysql/init/13-sunshine-workflow-manager.sql（禁止 Flyway）
+# 标杆 PlanJson 种子 SSOT：docker/mysql/init/13-sunshine-workflow-manager.sql（5 条 published v1）
+# PlanValidator：rag/agent 节点 params.query 必填（种子默认 {{start.userQuery}}）
 # ============================================================
 
 server:
@@ -13,6 +15,11 @@ spring:
     url: jdbc:mysql://ecs4c16g:3306/sunshine_workflow?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
     username: root
     password: root123
+  data:
+    redis:
+      host: ecs4c16g
+      port: 6379
+      password: redis123
   jpa:
     hibernate:
       ddl-auto: validate
@@ -22,3 +29,40 @@ spring:
 logging:
   level:
     com.sunshine: debug
+
+# Workflow Studio — 节点执行策略默认值（前端拉取 / 校验 SSOT）
+workflow:
+  node-defaults:
+    defaults:
+      max-attempts: 2
+      backoff-ms: 500
+      backoff-multiplier: 2.0
+      on-failure: continue
+      retry-on-error-class:
+        - TIMEOUT
+        - SERVICE_UNAVAILABLE
+        - CIRCUIT_OPEN
+    critical-on-failure: fail_fast
+    by-type:
+      rag:
+        max-attempts: 1
+      tool:
+        max-attempts: 2
+      agent:
+        max-attempts: 1
+      answer:
+        max-attempts: 2
+        on-failure: fail_fast
+      join:
+        max-attempts: 2
+      llm:
+        max-attempts: 2
+  catalog-defaults:
+    intent-after: "{query}将按「{displayName}」流程处理"
+  node-param-defaults:
+    rag:
+      top-k: 3
+      kb-id-empty-label: "（会话默认）"
+    agent:
+      max-iters: 8
+      kb-id-empty-label: "（会话默认）"

@@ -12,6 +12,9 @@ export interface SseMeta {
   text?: string
   messageId?: string
   seq?: number
+  conversationId?: string
+  active?: boolean
+  skillId?: string
 }
 
 export type ParsedSsePayload =
@@ -45,6 +48,9 @@ function asMeta(obj: Record<string, unknown>): SseMeta {
     text: typeof obj.text === 'string' ? obj.text : undefined,
     messageId: typeof obj.messageId === 'string' ? obj.messageId : undefined,
     seq: typeof obj.seq === 'number' ? obj.seq : undefined,
+    conversationId: typeof obj.conversationId === 'string' ? obj.conversationId : undefined,
+    active: typeof obj.active === 'boolean' ? obj.active : undefined,
+    skillId: typeof obj.skillId === 'string' ? obj.skillId : undefined,
   }
 }
 
@@ -67,6 +73,9 @@ const handlers: Record<string, Handler> = {
     return { kind: 'meta', meta: asMeta(obj) }
   },
   generation(obj) {
+    return { kind: 'meta', meta: asMeta(obj) }
+  },
+  sandbox_session(obj) {
     return { kind: 'meta', meta: asMeta(obj) }
   },
   reasoning(obj) {

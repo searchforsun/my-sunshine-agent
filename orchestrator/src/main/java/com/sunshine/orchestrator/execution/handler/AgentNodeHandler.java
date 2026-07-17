@@ -12,7 +12,7 @@ import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.StreamingNodeHandler;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
-import com.sunshine.orchestrator.execution.WorkflowNodeType;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
 import com.sunshine.orchestrator.execution.agent.AgentStreamCollector;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
@@ -70,9 +70,29 @@ public class AgentNodeHandler implements StreamingNodeHandler {
         }
         AgentRunRequest request = AgentNodeRequestAssembler.build(spec, ctx, streamCtx);
         agentCollector.bindAuditContext(spec, streamCtx, request);
-        StepEventBridge.bindTokenWrapper(request.resolveBridgeId(), agentCollector::ingest);
+        bindSubAgentToolAudit(spec, streamCtx);
+        java.util.function.Function<StreamToken, List<StreamToken>> fold =
+                StepEventBridge.loopBodyFold(streamCtx.assistantMsgId());
+        java.util.function.Function<StreamToken, List<StreamToken>> wrap = token -> {
+            List<StreamToken> mid = agentCollector.ingest(token);
+            if (mid == null || mid.isEmpty()) {
+                return List.of();
+            }
+            if (fold == null) {
+                return mid;
+            }
+            java.util.ArrayList<StreamToken> out = new java.util.ArrayList<>();
+            for (StreamToken t : mid) {
+                List<StreamToken> folded = fold.apply(t);
+                if (folded != null) {
+                    out.addAll(folded);
+                }
+            }
+            return out;
+        };
+        StepEventBridge.bindTokenWrapper(request.resolveBridgeId(), wrap);
         return agentRuntime.run(request)
-                .concatMap(token -> Flux.fromIterable(agentCollector.ingest(token)))
+                .concatMap(token -> Flux.fromIterable(wrap.apply(token)))
                 .doOnError(e -> AgentNodeAuditSupport.auditFailure(
                         subAgentAuditService, spec, streamCtx, request, request.skillId(), e.getMessage()));
     }
@@ -124,5 +144,29 @@ public class AgentNodeHandler implements StreamingNodeHandler {
             return spec.displayName().strip();
         }
         return WorkflowNodeLabels.displayName(spec.id(), spec.type());
+    }
+
+    private static void bindSubAgentToolAudit(NodeSpec spec, ExecutionStreamContext streamCtx) {
+        if (!StringUtils.hasText(streamCtx.assistantMsgId())) {
+            return;
+        }
+        String kbId = resolveAgentKbId(spec, streamCtx);
+        StepEventBridge.bindToolAudit(streamCtx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
+                streamCtx.conversationId(),
+                streamCtx.assistantMsgId(),
+                streamCtx.userId(),
+                streamCtx.tenantId(),
+                streamCtx.persistedPlanId(),
+                kbId));
+    }
+
+    private static String resolveAgentKbId(NodeSpec spec, ExecutionStreamContext streamCtx) {
+        if (spec.params() != null) {
+            String kbId = spec.params().get("kbId");
+            if (StringUtils.hasText(kbId)) {
+                return kbId.strip();
+            }
+        }
+        return streamCtx.kbId();
     }
 }

@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.plan;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.execution.WorkflowNodeType;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -16,7 +16,7 @@ import java.util.Set;
 public class PlanValidator {
 
     private static final Set<String> PLANNER_TYPES = WorkflowNodeType.plannerTypeIds();
-    private static final Set<String> EXEC_TYPES = WorkflowNodeType.execTypeIds();
+    private static final Set<String> EXEC_TYPES = WorkflowNodeType.planExecTypeIds();
 
     private final SkillCatalogService skillCatalogService;
     private final ToolCatalogService toolCatalogService;
@@ -86,6 +86,18 @@ public class PlanValidator {
         }
         if (!hasAnswer) {
             return "Plan 须包含引擎固定 answer 节点";
+        }
+        String parallelErr = PlanExecutionSchedule.validateParallelTopology(plan);
+        if (parallelErr != null) {
+            return parallelErr;
+        }
+        String exclusiveErr = PlanExecutionSchedule.validateExclusiveTopology(plan);
+        if (exclusiveErr != null) {
+            return exclusiveErr;
+        }
+        String loopErr = PlanExecutionSchedule.validateLoopTopology(plan);
+        if (loopErr != null) {
+            return loopErr;
         }
         return null;
     }

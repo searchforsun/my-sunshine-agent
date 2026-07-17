@@ -9,7 +9,7 @@ import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
-import com.sunshine.orchestrator.execution.WorkflowNodeType;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import com.sunshine.orchestrator.execution.retry.NodeRetryExecutor;
 import com.sunshine.orchestrator.execution.retry.NodeRetryPolicy;
 import com.sunshine.orchestrator.execution.retry.OnFailureAction;
@@ -25,6 +25,7 @@ import com.sunshine.orchestrator.plan.PlanNodeTrace;
 import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -104,6 +105,13 @@ public class WorkflowNodeFinalizer {
         if (StringUtils.hasText(streamCtx.persistedPlanId())) {
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
             executionPlanStore.refreshCheckpointWfCtx(streamCtx.persistedPlanId(), wfCtx);
+        }
+        // loop 壳：仅占位 running；迭代与终态由 WorkflowExecutor.loopCompleteToken 驱动
+        if (WorkflowNodeType.LOOP.matches(rawSpec.type())
+                && "looping".equalsIgnoreCase(outs.getOrDefault("status", ""))) {
+            List<StreamToken> looping = new ArrayList<>(result.timelineTokens());
+            looping.addAll(result.contentTokens());
+            return Flux.fromIterable(looping);
         }
         boolean userSkipped = "true".equalsIgnoreCase(outs.get("skipped"));
         String summaryLine = resolveNodeDetail(rawSpec, outs);
@@ -284,7 +292,9 @@ public class WorkflowNodeFinalizer {
     private static String resolveExpandDetail(
             NodeSpec spec, Map<String, String> outputs, String summaryLine, String traceMessageId) {
         if (WorkflowNodeType.RAG.matches(spec.type())) {
-            String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace.combinedRagTimelineDetail(traceMessageId);
+            String stepId = WorkflowNodeTimeline.stepId(spec.id());
+            String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace
+                    .combinedRagTimelineDetailForStep(traceMessageId, stepId);
             if (rewriteDetail != null && !rewriteDetail.isBlank()) {
                 return rewriteDetail;
             }
@@ -317,7 +327,11 @@ public class WorkflowNodeFinalizer {
             }
             return null;
         }
-        return summaryLine;
+        if (WorkflowNodeType.TOOL.matches(spec.type())) {
+            String output = outputs.get("output");
+            return ToolExpandDetailSupport.resolveExpandDetail(summaryLine, output);
+        }
+        return null;
     }
 
     private static boolean isStreamingOutputNode(String type) {

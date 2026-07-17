@@ -10,6 +10,7 @@ import com.sunshine.auth.dto.UserBriefVO;
 import com.sunshine.auth.entity.UserEntity;
 import com.sunshine.auth.repo.UserRepository;
 import com.sunshine.auth.exception.AuthErrorCode;
+import com.sunshine.auth.support.WriteHitlModeSupport;
 import com.sunshine.common.core.exception.BizException;
 import cn.dev33.satoken.stp.SaLoginModel;
 import cn.dev33.satoken.stp.StpUtil;
@@ -47,6 +48,7 @@ public class UserService {
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setNickname(resolveNickname(request.getNickname(), request.getUsername()));
         user.setTenantId(resolveTenantId(request.getTenantId()));
+        user.setDefaultWriteHitlMode(WriteHitlModeSupport.NEVER);
         user.setStatus(STATUS_ACTIVE);
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
@@ -73,6 +75,7 @@ public class UserService {
                 .username(user.getUsername())
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
+                .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .build();
     }
 
@@ -94,6 +97,9 @@ public class UserService {
                 .orElseThrow(() -> new BizException(AuthErrorCode.USER_NOT_FOUND));
         user.setNickname(request.getNickname().trim());
         user.setTenantId(resolveTenantId(request.getTenantId()));
+        if (request.getDefaultWriteHitlMode() != null && !request.getDefaultWriteHitlMode().isBlank()) {
+            user.setDefaultWriteHitlMode(WriteHitlModeSupport.from(request.getDefaultWriteHitlMode()));
+        }
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
         String newToken = reissueToken(user);
@@ -161,6 +167,7 @@ public class UserService {
                 .username(user.getUsername())
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
+                .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .build();
     }
 
@@ -170,6 +177,7 @@ public class UserService {
                 .username(user.getUsername())
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
+                .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .token(token)
                 .build();
     }

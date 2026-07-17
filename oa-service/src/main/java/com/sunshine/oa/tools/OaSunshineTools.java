@@ -19,7 +19,8 @@ public class OaSunshineTools {
             id = "list_oa_tasks",
             displayName = "查询 OA 待办",
             description = "查询 OA 待办任务。用户问请假审批、合同会签、出差/用印等待办时使用。",
-            outputSummaryKind = "oa-tasks")
+            timelineSummaryTemplate = "{count} 条 OA 待办",
+            timelineSummaryExtract = "{\"count\":\"regex:共\\\\s*(\\\\d+)\\\\s*条\"}")
     public String listOaTasks(
             @ToolParam(value = "status", description = "pending | done | all", required = false) String status) {
         List<OaTaskVO> tasks = taskService.list(status != null ? status : "pending");
@@ -42,7 +43,8 @@ public class OaSunshineTools {
             id = "approve_oa_task",
             displayName = "审批 OA 待办",
             description = "审批指定 OA 待办任务（写操作）。用户明确要求通过/批准某条待办时直接调用本工具，参数 taskId 为待办编号；执行确认由平台时间线处理。",
-            sideEffect = "write")
+            sideEffect = "write",
+            timelineSummaryTemplate = "{output}")
     public String approveOaTask(
             @ToolParam(value = "taskId", description = "待办任务 ID，如 T1001", required = false) String taskId) {
         String id = taskId != null && !taskId.isBlank() ? taskId.trim() : "unknown";

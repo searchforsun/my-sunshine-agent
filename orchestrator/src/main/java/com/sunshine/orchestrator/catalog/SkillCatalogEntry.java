@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.catalog;
 
+import com.sunshine.common.sandbox.SandboxPolicy;
+
 /** Skill 目录详情 — 含正文 overlay */
 public record SkillCatalogEntry(
         String id,
@@ -7,6 +9,8 @@ public record SkillCatalogEntry(
         String description,
         String systemOverlay,
         int version,
-        boolean enabled
+        boolean enabled,
+        String sandbox,
+        SandboxPolicy sandboxPolicy
 ) {
 }

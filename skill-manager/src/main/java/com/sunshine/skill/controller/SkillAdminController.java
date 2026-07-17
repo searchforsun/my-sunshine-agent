@@ -13,6 +13,7 @@ import com.sunshine.skill.dto.SkillFileWriteRequest;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.service.SkillAdminService;
 import com.sunshine.skill.service.SkillFileService;
+import com.sunshine.skill.dto.SkillVersionSandboxRequest;
 import com.sunshine.skill.dto.SkillVersionDiffResponse;
 import com.sunshine.skill.service.SkillVersionDiffService;
 import com.sunshine.skill.skillmd.SkillPackage;
@@ -79,6 +80,14 @@ public class SkillAdminController {
     @GetMapping("/{id}/versions")
     public R<List<SkillVersionEntity>> versions(@PathVariable String id) {
         return R.ok(skillAdminService.listVersions(id));
+    }
+
+    @PutMapping("/{id}/versions/{version}/sandbox")
+    public R<SkillCatalogEntry> updateVersionSandbox(
+            @PathVariable String id,
+            @PathVariable int version,
+            @RequestBody SkillVersionSandboxRequest request) {
+        return R.ok(skillAdminService.updateVersionSandbox(id, version, request));
     }
 
     @PostMapping("/{id}/publish")

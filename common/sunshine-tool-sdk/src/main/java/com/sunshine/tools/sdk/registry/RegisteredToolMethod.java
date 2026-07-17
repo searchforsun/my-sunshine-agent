@@ -8,8 +8,8 @@ public record RegisteredToolMethod(
         String displayName,
         String description,
         String sideEffect,
-        String timelinePhase,
-        String outputSummaryKind,
+        String timelineSummaryTemplate,
+        String timelineSummaryExtract,
         Map<String, Object> parametersSchema,
         Method method,
         Object targetBean) {

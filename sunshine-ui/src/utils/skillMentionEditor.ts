@@ -1,5 +1,30 @@
 import type { SkillCatalogIndexEntry } from '../api/skills'
-import { segmentSkillMentions, type SkillMentionSegment } from './skillMention'
+import type { ExpertCatalogIndexEntry } from '../api/experts'
+import type { WorkflowCatalogEntry } from '../api/workflows'
+import {
+  type ChatMentionAllows,
+  type ChatMentionCatalogs,
+  type ChatMentionKind,
+  type ChatMentionSegment,
+  mentionPlainToken,
+  mentionPrefix,
+  segmentChatMentions,
+} from './chatMention'
+import { sandboxPathBasename, isLikelySandboxDir } from './sandboxPathChip'
+
+export interface ComposerMentionContext {
+  catalogs: ChatMentionCatalogs
+  allows: ChatMentionAllows
+}
+
+function chipDataset(kind: ChatMentionKind, token: string): Record<string, string> {
+  return { mentionKind: kind, mentionId: token }
+}
+
+const FILE_ICON_SVG =
+  '<svg viewBox="0 0 512 512" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M428 224H288a48 48 0 0 1-48-48V36a4 4 0 0 0-4-4h-92a64 64 0 0 0-64 64v320a64 64 0 0 0 64 64h224a64 64 0 0 0 64-64V228a4 4 0 0 0-4-4Zm-92-180.1L411.9 176H336a8 8 0 0 1-8-8V43.9Z"/></svg>'
+const FOLDER_ICON_SVG =
+  '<svg viewBox="0 0 512 512" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M496 152a56 56 0 0 0-56-56H220.11a23.89 23.89 0 0 1-13.31-4L179 73.41A55.77 55.77 0 0 0 147.89 64H72a56 56 0 0 0-56 56v48a8 8 0 0 0 8 8h464a8 8 0 0 0 8-8ZM16 384a56 56 0 0 0 56 56h368a56 56 0 0 0 56-56V216a8 8 0 0 0-8-8H24a8 8 0 0 0-8 8Z"/></svg>'
 
 export function plainTextFromEditor(root: HTMLElement): string {
   let out = ''
@@ -15,8 +40,9 @@ function plainTextFromNode(node: Node): string {
   }
   if (node.nodeType !== Node.ELEMENT_NODE) return ''
   const el = node as HTMLElement
-  const skillId = el.dataset.skillId
-  if (skillId) return `@${skillId}`
+  const kind = el.dataset.mentionKind as ChatMentionKind | undefined
+  const mentionId = el.dataset.mentionId
+  if (kind && mentionId) return mentionPlainToken(kind, mentionId)
   let out = ''
   for (const child of Array.from(node.childNodes)) {
     out += plainTextFromNode(child)
@@ -65,8 +91,10 @@ export function setCaretPlainOffset(root: HTMLElement, offset: number): void {
     }
     if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as HTMLElement
-      if (el.dataset.skillId) {
-        const len = `@${el.dataset.skillId}`.length
+      const kind = el.dataset.mentionKind as ChatMentionKind | undefined
+      const mentionId = el.dataset.mentionId
+      if (kind && mentionId) {
+        const len = mentionPlainToken(kind, mentionId).length
         if (pos + len >= target) {
           if (target <= pos) {
             range.setStartBefore(el)
@@ -94,25 +122,49 @@ export function setCaretPlainOffset(root: HTMLElement, offset: number): void {
   sel.addRange(range)
 }
 
-function createSkillChipElement(token: string): HTMLSpanElement {
+function createMentionChipElement(
+  kind: ChatMentionKind,
+  token: string,
+  labelText?: string,
+): HTMLSpanElement {
   const chip = document.createElement('span')
-  chip.className = 'skill-mention-chip'
+  chip.className = `mention-chip mention-chip--${kind}`
   chip.contentEditable = 'false'
-  chip.dataset.skillId = token
-  const at = document.createElement('span')
-  at.className = 'skill-mention-chip__at'
-  at.textContent = '@'
+  Object.entries(chipDataset(kind, token)).forEach(([k, v]) => {
+    chip.dataset[k] = v
+  })
+  const display = kind === 'path'
+    ? (labelText || sandboxPathBasename(token))
+    : token
+  chip.title = kind === 'path' ? token : display
+  if (kind === 'path') {
+    const isDir = isLikelySandboxDir(token)
+    chip.dataset.pathIsDir = isDir ? '1' : '0'
+    chip.classList.add('mention-chip--clickable')
+    const icon = document.createElement('span')
+    icon.className = 'mention-chip__icon'
+    icon.innerHTML = isDir ? FOLDER_ICON_SVG : FILE_ICON_SVG
+    chip.appendChild(icon)
+  } else {
+    const prefixChar = mentionPrefix(kind)
+    if (prefixChar) {
+      const prefix = document.createElement('span')
+      prefix.className = 'mention-chip__prefix'
+      prefix.textContent = prefixChar
+      chip.appendChild(prefix)
+    }
+  }
   const label = document.createElement('span')
-  label.className = 'skill-mention-chip__label'
-  label.textContent = token
-  chip.append(at, label)
+  label.className = 'mention-chip__label'
+  label.textContent = display
+  chip.appendChild(label)
   return chip
 }
 
-export function renderEditorSegments(root: HTMLElement, segments: SkillMentionSegment[]): void {
+export function renderEditorSegments(root: HTMLElement, segments: ChatMentionSegment[]): void {
   root.replaceChildren()
-  const hasSkill = segments.some(s => s.type === 'skill')
-  if (!hasSkill) {
+  const hasChip = segments.some(s => s.type !== 'text')
+  if (!hasChip) {
     const text = segments[0]?.type === 'text' ? segments[0].value : ''
     if (text) root.appendChild(document.createTextNode(text))
     return
@@ -120,53 +172,75 @@ export function renderEditorSegments(root: HTMLElement, segments: SkillMentionSe
   for (const seg of segments) {
     if (seg.type === 'text') {
       if (seg.value) root.appendChild(document.createTextNode(seg.value))
-    } else {
-      root.appendChild(createSkillChipElement(seg.token))
+    } else if (seg.type === 'skill') {
+      root.appendChild(createMentionChipElement('skill', seg.token))
+    } else if (seg.type === 'expert') {
+      root.appendChild(createMentionChipElement('expert', seg.token))
+    } else if (seg.type === 'workflow') {
+      root.appendChild(createMentionChipElement('workflow', seg.token))
+    } else if (seg.type === 'path') {
+      root.appendChild(createMentionChipElement('path', seg.token, seg.label))
     }
   }
 }
 
 export function displaySegments(
   plain: string,
-  allowsSkillMention: boolean,
-  catalog: SkillCatalogIndexEntry[],
-): SkillMentionSegment[] {
-  if (!allowsSkillMention) return [{ type: 'text', value: plain }]
-  return segmentSkillMentions(plain, catalog)
+  ctx: ComposerMentionContext,
+): ChatMentionSegment[] {
+  return segmentChatMentions(plain, ctx.catalogs, ctx.allows)
 }
 
 export function shouldRenderChips(
   plain: string,
-  allowsSkillMention: boolean,
-  catalog: SkillCatalogIndexEntry[],
+  ctx: ComposerMentionContext,
 ): boolean {
-  if (!allowsSkillMention || !plain) return false
-  return segmentSkillMentions(plain, catalog).some(s => s.type === 'skill')
+  if (!plain) return false
+  return segmentChatMentions(plain, ctx.catalogs, ctx.allows).some(s => s.type !== 'text')
 }
 
-/** DOM 已与 plain 中 skill 段对齐时不再整棵重建，避免打断 IME 中文输入 */
 export function editorNeedsChipSync(
   root: HTMLElement,
   plain: string,
-  allowsSkillMention: boolean,
-  catalog: SkillCatalogIndexEntry[],
+  ctx: ComposerMentionContext,
 ): boolean {
-  const domChips = Array.from(root.querySelectorAll<HTMLElement>('[data-skill-id]'))
-  if (!allowsSkillMention) {
+  const domChips = Array.from(root.querySelectorAll<HTMLElement>('[data-mention-kind][data-mention-id]'))
+  const segments = displaySegments(plain, ctx)
+  const expected = segments.filter((s): s is Exclude<ChatMentionSegment, { type: 'text' }> => s.type !== 'text')
+  if (expected.length === 0) {
     return domChips.length > 0
   }
-  const segments = displaySegments(plain, true, catalog)
-  const expectedSkills = segments.filter((s): s is Extract<SkillMentionSegment, { type: 'skill' }> => s.type === 'skill')
-  if (expectedSkills.length === 0) {
-    return domChips.length > 0
-  }
-  if (domChips.length !== expectedSkills.length) {
+  if (domChips.length !== expected.length) {
     return true
   }
-  const domIds = domChips.map(el => el.dataset.skillId ?? '')
-  const expectedIds = expectedSkills.map(s => s.token)
-  if (domIds.some((id, i) => id !== expectedIds[i])) {
+  const domPairs = domChips.map(el => `${el.dataset.mentionKind}:${el.dataset.mentionId ?? ''}`)
+  const expectedPairs = expected.map(s => `${s.type}:${s.token}`)
+  if (domPairs.some((pair, i) => pair !== expectedPairs[i])) {
     return true
   }
   return plainTextFromEditor(root) !== plain
+}
+
+/** 在 caret 处插入纯文本（含 path token），并补两侧空格 */
+export function insertPlainAtOffset(plain: string, offset: number, insert: string): {
+  next: string
+  caret: number
+} {
+  const before = plain.slice(0, Math.max(0, offset))
+  const after = plain.slice(Math.max(0, offset))
+  const needBefore = before.length > 0 && !/\s$/.test(before)
+  const needAfter = after.length > 0 && !/^\s/.test(after)
+  const chunk = `${needBefore ? ' ' : ''}${insert}${needAfter ? ' ' : ''}`
+  return { next: before + chunk + after, caret: before.length + chunk.length }
+}
+
+/** @deprecated 兼容旧调用 */
+export type { ChatMentionSegment as SkillMentionSegment }
+
+export function defaultMentionCatalogs(
+  skills: SkillCatalogIndexEntry[] = [],
+  experts: ExpertCatalogIndexEntry[] = [],
+  workflows: WorkflowCatalogEntry[] = [],
+): ChatMentionCatalogs {
+  return { skills, experts, workflows }
 }

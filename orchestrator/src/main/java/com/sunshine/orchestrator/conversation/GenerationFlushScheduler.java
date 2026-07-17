@@ -120,6 +120,31 @@ public class GenerationFlushScheduler {
         }
     }
 
+    /** 对话级沙箱 workspace 就绪 */
+    public String metaSandboxSession(String conversationId, String skillId, String loadedSkillIdsCsv) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "sandbox_session");
+            map.put("conversationId", conversationId != null ? conversationId : "");
+            map.put("active", true);
+            if (skillId != null && !skillId.isBlank()) {
+                map.put("skillId", skillId);
+            }
+            java.util.List<String> loaded = new java.util.ArrayList<>();
+            if (loadedSkillIdsCsv != null && !loadedSkillIdsCsv.isBlank()) {
+                for (String id : loadedSkillIdsCsv.split(",")) {
+                    if (id != null && !id.isBlank()) {
+                        loaded.add(id.strip());
+                    }
+                }
+            }
+            map.put("loadedSkillIds", loaded);
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"sandbox_session\",\"active\":true,\"loadedSkillIds\":[]}";
+        }
+    }
+
     /** 处理步骤 — 结构化 SSE，不写入消息正文 */
     public String metaStep(ProcessingStep step) {
         try {

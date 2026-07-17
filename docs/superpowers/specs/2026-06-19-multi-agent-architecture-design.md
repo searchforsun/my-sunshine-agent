@@ -20,7 +20,7 @@
 | **子 Agent（workflow 节点）** | 黑盒 `f(query, context)→output`，引擎机械推进下一节点 | `AgentNodeHandler` → `AgentRunRequest.sub(...)` → `AgentRuntime` |
 | **Bridge / Timeline 隔离** | SUB 独立 `sub-{runId}` bridge；主 SSE 仅 `node-{id}` | `AgentRunRequest.resolveBridgeId()` + `WorkflowExecutor` |
 | **工具白名单 + overlay** | SUB 按节点 `tools` 限制 Toolkit；`systemOverlay` 叠 sysPrompt | `ReActAgentFactory` + `DynamicToolkitFactory`（3.10.2 ✅） |
-| **节点 params** | `skill` / `tools` / `maxIters` / `systemOverlay` / `query` / `context` | `AgentNodeHandler` + `sunshine-workflows.yaml` `finance-smart`（3.10.3 ✅） |
+| **节点 params** | `skill` / `tools` / `maxIters` / `systemOverlay` / `query` / `context` | `AgentNodeHandler` + DB PlanJson `finance-smart` 种子（3.10.3 ✅） |
 | **记忆隔离 + skill overlay** | SUB 无 STM/LTM；`skillId` → `PromptComposer` Catalog overlay | `MemoryContext.forSubAgent()` + 3.10.7 ✅ |
 | **skill-manager Catalog** | 摘要/详情拆分；MinIO 存储 | `SkillCatalogController` `/catalog/index` + `/{id}/catalog`（3.11.6 ✅） |
 

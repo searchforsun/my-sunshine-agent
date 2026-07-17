@@ -66,12 +66,25 @@ public final class ProcessingTimelineSession {
         return tools.beginToolStep(baseStepId, phase);
     }
 
-    public void completeToolStep(String detail) {
-        tools.completeToolStep(detail);
+    public void completeToolStep(String summaryLine) {
+        tools.completeToolStep(summaryLine);
     }
 
-    public void completeToolStepForToolUse(String toolUseId, String detail) {
-        tools.completeToolStepForToolUse(toolUseId, detail);
+    public void completeToolStep(String summaryLine, String expandDetail) {
+        tools.completeToolStep(summaryLine, expandDetail);
+    }
+
+    public void completeToolStepForToolUse(String toolUseId, String summaryLine) {
+        tools.completeToolStepForToolUse(toolUseId, summaryLine);
+    }
+
+    public void completeToolStepForToolUse(String toolUseId, String summaryLine, String expandDetail) {
+        tools.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail);
+    }
+
+    public void completeToolStepForToolUse(
+            String toolUseId, String summaryLine, String expandDetail, StepMetadata metadata) {
+        tools.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail, metadata);
     }
 
     public void skipCurrentToolStep(String afterSummary) {
@@ -87,7 +100,12 @@ public final class ProcessingTimelineSession {
     }
 
     public void attachHitlPending(String token, String toolDisplayName, String paramsSummary, long expiresAt) {
-        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt);
+        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, null);
+    }
+
+    public void attachHitlPending(
+            String token, String toolDisplayName, String paramsSummary, long expiresAt, String expandDetail) {
+        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
     }
 
     public void resolveHitlPending(String status) {
@@ -96,7 +114,17 @@ public final class ProcessingTimelineSession {
 
     public void attachHitlPendingOnStep(
             String stepId, String token, String toolDisplayName, String paramsSummary, long expiresAt) {
-        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt);
+        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, null);
+    }
+
+    public void attachHitlPendingOnStep(
+            String stepId,
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail) {
+        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
     }
 
     public void resolveHitlPendingOnStep(String stepId, String status) {

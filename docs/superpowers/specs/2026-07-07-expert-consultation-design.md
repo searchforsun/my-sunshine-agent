@@ -130,7 +130,7 @@ flowchart TB
 | `description` | Catalog 摘要，供 Coordinator |
 | `enabled` | 可召集 |
 | `tags` | 可选域标签 |
-| `tools_json` | MVP 默认 `["*"]` |
+| `tools_json` | Catalog ID 数组；默认 `[]`（历史 `["*"]` 运行时按启用池全量过渡） |
 
 **移除** `moderator_capable`：专家无角色类型之分。
 
@@ -140,12 +140,12 @@ flowchart TB
 
 ### 6.3 种子（4 名）
 
-| id | display_name |
-|----|--------------|
-| `policy-expert` | 制度专家 |
-| `finance-expert` | 财务专家 |
-| `compliance-expert` | 合规专家 |
-| `legal-expert` | 法务专家 |
+| id | display_name | tools_json（业务；RAG 始终注入） |
+|----|--------------|----------------------------------|
+| `policy-expert` | 制度专家 | `[]` |
+| `finance-expert` | 财务专家 | `list` / `get_detail` / `summarize`（finance） |
+| `compliance-expert` | 合规专家 | `list` / `get_detail`（finance） |
+| `legal-expert` | 法务专家 | `[]` |
 
 （**不**再种子「合规仲裁」；汇总由 Synthesizer 负责。SQL：`docker/mysql/init/15-sunshine-expert-manager.sql`）
 
@@ -156,7 +156,7 @@ flowchart TB
 | 能力 | MVP |
 |------|-----|
 | CRUD、启停、关联 Skill | ✅ |
-| 工具 | 只读「全部工具」 |
+| 工具 | Catalog 多选 → `tools_json` |
 | ~~仲裁能力开关~~ | **不做** |
 
 ---

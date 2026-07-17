@@ -62,3 +62,8 @@ DELETE FROM skill_version WHERE skill_id IN (
 DELETE FROM skill_definition WHERE id IN (
     'finance-analysis', 'policy-review', 'compliance-check', 'finance-report', 'knowledge-brief'
 );
+
+-- V6__skill_sandbox_policy.sql（4.5 Docker 沙箱）
+-- 已有库手工执行同语句；列已存在时跳过即可
+ALTER TABLE skill_version
+    ADD COLUMN sandbox_policy_json JSON NULL COMMENT 'sandbox_policy' AFTER sandbox;

@@ -21,7 +21,9 @@ public record AgentRunRequest(
         String systemOverlay,
         int maxIters,
         TimelineBinding timeline,
-        boolean reactRestart
+        boolean reactRestart,
+        /** 对话级沙箱复用键；MAIN 必填方可跨 run 保留 workspace */
+        String conversationId
 ) {
     public AgentRunRequest {
         memory = memory != null ? memory : MemoryContext.empty();
@@ -46,22 +48,7 @@ public record AgentRunRequest(
             String assistantMessageId,
             List<String> injectedBlocks,
             String skillId) {
-        return new AgentRunRequest(
-                AgentRole.MAIN,
-                UUID.randomUUID().toString(),
-                null,
-                memory,
-                query,
-                injectedBlocks,
-                userId,
-                tenantId,
-                assistantMessageId,
-                skillId,
-                null,
-                null,
-                0,
-                TimelineBinding.MAIN_FULL,
-                false);
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, skillId, false, null);
     }
 
     public static AgentRunRequest main(
@@ -73,6 +60,19 @@ public record AgentRunRequest(
             List<String> injectedBlocks,
             String skillId,
             boolean reactRestart) {
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, skillId, reactRestart, null);
+    }
+
+    public static AgentRunRequest main(
+            MemoryContext memory,
+            String query,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            List<String> injectedBlocks,
+            String skillId,
+            boolean reactRestart,
+            String conversationId) {
         return new AgentRunRequest(
                 AgentRole.MAIN,
                 UUID.randomUUID().toString(),
@@ -88,7 +88,8 @@ public record AgentRunRequest(
                 null,
                 0,
                 TimelineBinding.MAIN_FULL,
-                reactRestart);
+                reactRestart,
+                conversationId);
     }
 
     public static AgentRunRequest main(
@@ -98,12 +99,12 @@ public record AgentRunRequest(
             String tenantId,
             String assistantMessageId,
             List<String> injectedBlocks) {
-        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, null, false);
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, null, false, null);
     }
 
     public static AgentRunRequest main(
             MemoryContext memory, String query, String userId, String tenantId, String assistantMessageId) {
-        return main(memory, query, userId, tenantId, assistantMessageId, List.of(), null, false);
+        return main(memory, query, userId, tenantId, assistantMessageId, List.of(), null, false, null);
     }
 
     /** Workflow 子 Agent — 不绑定 assistantMessageId，压缩 Timeline */
@@ -128,6 +129,24 @@ public record AgentRunRequest(
             List<String> toolWhitelist,
             String systemOverlay,
             int maxIters) {
+        return sub(
+                memory, query, injectedBlocks, userId, tenantId, assistantMessageId,
+                skillId, toolWhitelist, systemOverlay, maxIters, null);
+    }
+
+    /** Workflow 子 Agent — 含对话级沙箱复用键 */
+    public static AgentRunRequest sub(
+            MemoryContext memory,
+            String query,
+            List<String> injectedBlocks,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            String skillId,
+            List<String> toolWhitelist,
+            String systemOverlay,
+            int maxIters,
+            String conversationId) {
         return new AgentRunRequest(
                 AgentRole.SUB,
                 UUID.randomUUID().toString(),
@@ -143,7 +162,8 @@ public record AgentRunRequest(
                 systemOverlay,
                 maxIters,
                 TimelineBinding.SUB_COMPRESSED,
-                false);
+                false,
+                conversationId);
     }
 
     /** Planner — 仅 plan 步 Timeline */
@@ -167,6 +187,7 @@ public record AgentRunRequest(
                 null,
                 1,
                 TimelineBinding.PLANNER_ONLY,
-                false);
+                false,
+                null);
     }
 }

@@ -68,6 +68,17 @@ final class GenerationJobChunkEmitter {
 
     void onChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
+        for (StreamToken t : applyLoopBodyFold(token)) {
+            onChunkUnfolded(t, mysqlBuffer, flushPartial, lastFlush);
+        }
+    }
+
+    private void onChunkUnfolded(StreamToken token, StringBuilder mysqlBuffer,
+            Consumer<String> flushPartial, AtomicLong lastFlush) {
+        if (token.isSandboxSession()) {
+            emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
+            return;
+        }
         if (token.isStep() || token.isStepDelta() || token.isContentStart() || token.isContentEnd()) {
             if (token.isStep()) {
                 thinkMapper.syncExternalStep(token.step());
@@ -84,14 +95,35 @@ final class GenerationJobChunkEmitter {
         }
     }
 
-    void emitStreamToken(StreamToken token) {
+    /**
+     * HITL / ReAct 旁路 token。须写入与 {@link #onChunk} 同一 {@code mysqlBuffer}，
+     * 否则正文只进 content_blocks、content 为空，STM 会丢弃 assistant 轮次。
+     */
+    void emitStreamToken(StreamToken token, StringBuilder mysqlBuffer, Consumer<String> flushPartial) {
         if (token == null || finished.get() || !isStreamEpochValid()) {
             return;
         }
-        if (token.isStep()) {
-            thinkMapper.syncExternalStep(token.step());
+        StringBuilder buf = mysqlBuffer != null ? mysqlBuffer : new StringBuilder();
+        Consumer<String> flush = flushPartial != null ? flushPartial : s -> { };
+        AtomicLong lastFlush = new AtomicLong(0);
+        for (StreamToken t : applyLoopBodyFold(token)) {
+            if (t.isStep()) {
+                thinkMapper.syncExternalStep(t.step());
+            }
+            emitMappedChunk(t, buf, flush, lastFlush);
         }
-        emitMappedChunk(token, new StringBuilder(), s -> { }, new AtomicLong(0));
+    }
+
+    private List<StreamToken> applyLoopBodyFold(StreamToken token) {
+        if (token == null) {
+            return List.of();
+        }
+        var fold = StepEventBridge.loopBodyFold(messageId);
+        if (fold == null) {
+            return List.of(token);
+        }
+        List<StreamToken> out = fold.apply(token);
+        return out != null ? out : List.of();
     }
 
     void emitPausedStep(StreamToken token, StringBuilder mysqlBuffer, Consumer<String> flushPartial) {
@@ -136,6 +168,11 @@ final class GenerationJobChunkEmitter {
     private void emitSingleMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
         long nextSeq = seq.incrementAndGet();
+        if (token.isSandboxSession()) {
+            streamService.appendChunk(generationId, nextSeq,
+                    flushScheduler.metaSandboxSession(token.text(), token.channel(), token.stepId()));
+            return;
+        }
         if (token.isStep()) {
             ProcessingStepMerger.upsert(stepsBuffer, token.step());
             maybeFlushStepsForAwaitingInteraction();

@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.workflow.WorkflowBindingOutcome;
 import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -26,17 +27,20 @@ public class WorkflowBindingRoutingPolicy implements RoutingPolicy {
 
     @Override
     public Mono<Optional<ExecutionPlan>> tryRoute(RoutingContext ctx) {
-        WorkflowBindingOutcome binding = workflowBindingParser.parse(ctx.userMessage());
+        WorkflowBindingOutcome binding = workflowBindingParser.resolve(ctx.userMessage(), ctx.forcedWorkflowId());
         if (binding.unknown()) {
             return Mono.error(new BizException(OrchestratorErrorCode.WORKFLOW_NOT_FOUND));
         }
         if (!binding.bound()) {
             return Mono.just(Optional.empty());
         }
+        String reason = StringUtils.hasText(ctx.forcedWorkflowId())
+                ? "workflow:client"
+                : "workflow:#mention";
         return Mono.just(Optional.of(new ExecutionPlan(
                 ExecutionMode.WORKFLOW,
                 binding.workflowId(),
                 Map.of("effectiveQuery", binding.effectiveQuery()),
-                "workflow:#mention")));
+                reason)));
     }
 }

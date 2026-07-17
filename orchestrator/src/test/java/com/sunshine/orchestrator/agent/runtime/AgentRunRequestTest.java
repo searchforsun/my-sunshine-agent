@@ -85,13 +85,32 @@ class AgentRunRequestTest {
         assertThat(req.toolWhitelist()).containsExactly("sdk__sunshine-finance__list_finance_messages");
         assertThat(req.systemOverlay()).isEqualTo("仅内部分析");
         assertThat(req.maxIters()).isEqualTo(4);
+        assertThat(req.conversationId()).isNull();
+    }
+
+    @Test
+    void sub_withConversationId_reusesDialogueSandbox() {
+        AgentRunRequest req = AgentRunRequest.sub(
+                MemoryContext.empty(),
+                "analyze",
+                java.util.List.of("ctx"),
+                "u1",
+                "default",
+                "msg-1",
+                null,
+                null,
+                null,
+                0,
+                "conv-42");
+        assertThat(req.conversationId()).isEqualTo("conv-42");
+        assertThat(req.assistantMessageId()).isEqualTo("msg-1");
     }
 
     @Test
     void compactConstructor_normalizesNullMemoryAndBlocks() {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.MAIN, "run-1", null, null, "q", null,
-                "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL, false);
+                "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL, false, null);
         assertThat(req.memory()).isEqualTo(MemoryContext.empty());
         assertThat(req.injectedBlocks()).isEmpty();
     }

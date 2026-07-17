@@ -1,29 +1,54 @@
-# Workflow 导入包（PlanJson）
+# Workflow 标杆种子（MySQL init）
 
-由 `docs/nacos/sunshine-workflows.yaml` 导出的 **Workflow Studio 可导入 JSON**，与 DB `workflow_version.plan_json` + Catalog 元数据同构。
+平台 **8 条标杆 workflow** 的唯一静态 SSOT：`docker/mysql/init/13-sunshine-workflow-manager.sql`。
 
-## 文件
+> **运行时 SSOT**：`workflow-manager` DB（Studio 发布 / CRUD）。init SQL 仅用于**新环境初始化**；已部署库改标杆须 UPDATE `workflow_version` + `redis-cli PUBLISH workflow-catalog-changed default`。
+>
+> **4.13 状态**：当前形态（线性 + 并行 + exclusive + loop）**已收口**；v1 非目标不做 — 见 [workflow-studio 详设 §11](../superpowers/specs/2026-06-25-workflow-studio-design.md)。
 
-| 文件 | workflowId |
-|------|------------|
-| `knowledge-qa.json` | 知识库问答 |
-| `finance-list.json` | 财务待办查询 |
-| `finance-smart.json` | 财务智能分析 |
-| `finance-summary.json` | 财务汇总统计 |
-| `manifest.json` | 批量导入清单 |
+## 标杆清单
 
-## 导入方式（阶段四 4.13 实现后）
+| workflowId | displayName | 说明 |
+|------------|-------------|------|
+| `knowledge-qa` | 知识库问答 | 单路 RAG 问答 |
+| `knowledge-dual` | 双路知识检索 | 并行双 RAG + join（4.7.2 标杆） |
+| `knowledge-branch` | 条件分支知识检索 | exclusive-gateway 边条件（含「报销」→ 财务 RAG，否则人事 RAG；4.13.7） |
+| `knowledge-loop` | 条件循环知识检索 | do-while：首轮必进 rag→tool→agent；含「继续」再轮（最多 2，exit；4.13.7） |
+| `finance-list` | 财务待办查询 | tool → answer |
+| `finance-smart` | 财务智能分析 | tool + agent → answer |
+| `finance-summary` | 财务汇总统计 | tool → answer |
+| `sandbox-agent` | 沙箱子 Agent 写文件 | agent（默认 `sandbox__*`）→ answer（4.5 SUB 沙箱标杆） |
 
-- Studio UI：**导入 JSON** → 校验 `PlanValidator` → 存草稿 → 发布
-- API：`POST /api/workflows/import`（multipart 或 JSON body）
-- **无 Flyway 种子**；新环境由运维/研发按需导入，或保留 Nacos 内置 workflow 运行
+## 种子约定
 
-## 与 Nacos 关系
+| 项 | 约定 |
+|----|------|
+| 条数 | **8** 条，`source=seed`，`active_version=1`，`status=published`，`enabled=1` |
+| 节点 ID | 业务节点 `{type}-{8位hex}`；`start` / `answer` 固定 |
+| RAG | **必填** `params.query`（默认 `{{start.userQuery}}`） |
+| Agent | **必填** `params.query`；有上游时 **必填** `params.context` |
+| Tool | Catalog ID（`sdk__*` / `mcp__*`） |
+| 执行策略 | 各业务节点显式 `retry.maxAttempts` / `retry.backoffMs` / `retry.onFailure` |
+| 下游引用 | `{{node-id.output}}` · `{{node-id.answer}}`（agent）；loop 出框用 `{{loop-id.output}}` |
+| 画布坐标 | **必填** 顶层 `layout`：`{ "node-id": { "x": number, "y": number } }`（与 Studio 自动布局一致） |
 
-- 运行时默认仍走 Nacos `sunshine-workflows.yaml`（GitOps SSOT）
-- 导入 DB 且 `enabled=true` 发布后，**同 ID 覆盖** Nacos（见 workflow-studio-design §9）
-- 本目录 JSON 仅作 **迁移 / 模板 / Studio 初始内容**，不自动写入 DB
+## 初始化（新环境）
+
+1. MySQL 执行 `docker/mysql/init/13-sunshine-workflow-manager.sql`
+2. 启动 `workflow-manager` :8230
+3. orchestrator 经 `WorkflowManagerClient` 读 DB — **无需** Nacos workflow
 
 ## 维护
 
-YAML 变更后请同步更新本目录 JSON（后续可提供 `scripts/export_workflows_json.py`）。
+修改标杆 workflow 时：
+
+1. 编辑 **`docker/mysql/init/13-sunshine-workflow-manager.sql`** 中对应 `workflow_definition` / `workflow_version` INSERT
+2. 对已运行环境 UPDATE `sunshine_workflow.workflow_version`（init 不覆盖已有库）
+3. `redis-cli PUBLISH workflow-catalog-changed default` 刷新 orchestrator Catalog
+
+业务自助 workflow 经 **`/workflows` Studio** 或 `POST /api/workflows/import` 维护，不写入 init SQL。
+
+## 详设
+
+- [workflow-studio-design.md](../superpowers/specs/2026-06-25-workflow-studio-design.md)
+- [2026-07-11-workflow-studio.md](../superpowers/plans/2026-07-11-workflow-studio.md)

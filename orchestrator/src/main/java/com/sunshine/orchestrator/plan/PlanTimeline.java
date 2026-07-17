@@ -2,7 +2,7 @@ package com.sunshine.orchestrator.plan;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
-import com.sunshine.orchestrator.execution.WorkflowNodeType;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import org.springframework.util.StringUtils;

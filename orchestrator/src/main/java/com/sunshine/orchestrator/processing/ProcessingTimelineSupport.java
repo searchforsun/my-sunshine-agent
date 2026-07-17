@@ -13,23 +13,25 @@ public final class ProcessingTimelineSupport {
     }
 
     public static List<StreamToken> run(ProcessingTimelineSession session, Runnable action) {
-        List<ProcessingStep> emitted = new ArrayList<>();
-        Consumer<ProcessingStep> prev = session.currentListener();
-        session.onStepChanged(s -> {
-            emitted.add(s);
-            prev.accept(s);
-        });
-        try {
-            action.run();
-        } finally {
-            session.onStepChanged(prev);
+        synchronized (session) {
+            List<ProcessingStep> emitted = new ArrayList<>();
+            Consumer<ProcessingStep> prev = session.currentListener();
+            session.onStepChanged(s -> {
+                emitted.add(s);
+                prev.accept(s);
+            });
+            try {
+                action.run();
+            } finally {
+                session.onStepChanged(prev);
+            }
+            List<StreamToken> out = new ArrayList<>();
+            for (ProcessingStep step : emitted) {
+                out.add(StreamToken.step(step));
+            }
+            out.addAll(session.drainAuxiliaryTokens());
+            return out;
         }
-        List<StreamToken> out = new ArrayList<>();
-        for (ProcessingStep step : emitted) {
-            out.add(StreamToken.step(step));
-        }
-        out.addAll(session.drainAuxiliaryTokens());
-        return out;
     }
 
     public static ProcessingTimelineSession newSession() {

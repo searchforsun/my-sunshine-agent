@@ -119,8 +119,10 @@ public class SdkCatalogUpsertService {
             entity.setSchemaHash(newHash);
         }
 
-        entity.setTimelinePhase(StringUtils.hasText(tool.timelinePhase()) ? tool.timelinePhase() : "tool");
-        entity.setOutputSummaryKind(StringUtils.hasText(tool.outputSummaryKind()) ? tool.outputSummaryKind() : "truncate");
+        if (!entity.isMetadataEdited()) {
+            entity.setTimelineSummaryTemplate(tool.timelineSummaryTemplate() != null ? tool.timelineSummaryTemplate() : "");
+            entity.setTimelineSummaryExtract(tool.timelineSummaryExtract());
+        }
         entity.setSideEffect(StringUtils.hasText(tool.sideEffect()) ? tool.sideEffect() : "read");
         if (!entity.isConfirmationEdited()) {
             entity.setRequireConfirmation(ToolConfirmationDefaults.fromSideEffect(entity.getSideEffect()));

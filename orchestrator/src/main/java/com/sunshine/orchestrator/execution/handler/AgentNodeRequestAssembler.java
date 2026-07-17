@@ -34,7 +34,8 @@ final class AgentNodeRequestAssembler {
                 skillId,
                 tools,
                 blankToNull(params.get("systemOverlay")),
-                maxIters);
+                maxIters,
+                streamCtx.conversationId());
     }
 
     static List<String> parseInjectedBlocks(String context) {

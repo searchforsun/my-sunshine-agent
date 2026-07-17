@@ -34,6 +34,7 @@ import {
   type ExpertEntry,
 } from '../api/experts'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
+import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
 
 const PLACEHOLDER_PROMPT = '待补充系统提示词'
 const EXPERT_ID_PATTERN = /^[\w\u4e00-\u9fff-]+$/
@@ -46,6 +47,7 @@ const deleting = ref(false)
 const isEditing = ref(false)
 const experts = ref<ExpertEntry[]>([])
 const skillOptions = ref<SkillCatalogIndexEntry[]>([])
+const toolOptions = ref<ToolCatalogEntry[]>([])
 const selectedId = ref<string | null>(null)
 const showCreateModal = ref(false)
 const showDeleteConfirm = ref(false)
@@ -57,6 +59,7 @@ const editForm = ref({
   description: '',
   systemPrompt: '',
   skillIds: [] as string[],
+  toolIds: [] as string[],
 })
 
 const selectedExpert = computed(() =>
@@ -66,6 +69,34 @@ const selectedExpert = computed(() =>
 const skillSelectOptions = computed(() =>
   skillOptions.value.map(s => ({ label: `${s.displayName} (${s.id})`, value: s.id })),
 )
+
+const toolSelectOptions = computed(() =>
+  toolOptions.value
+    .filter(t => t.enabled)
+    .map(t => ({
+      label: `${t.displayName || t.id} (${t.id})`,
+      value: t.id,
+    })),
+)
+
+const enabledToolIds = computed(() =>
+  toolOptions.value.filter(t => t.enabled).map(t => t.id),
+)
+
+function parseExpertToolIds(toolsJson: string | undefined | null): string[] {
+  if (!toolsJson?.trim()) return []
+  try {
+    const parsed = JSON.parse(toolsJson) as unknown
+    if (!Array.isArray(parsed)) return []
+    const ids = parsed.map(x => String(x).trim()).filter(Boolean)
+    if (ids.length === 1 && ids[0] === '*') {
+      return [...enabledToolIds.value]
+    }
+    return ids.filter(id => id !== '*')
+  } catch {
+    return []
+  }
+}
 
 const createIdTrimmed = computed(() => createDraft.value.id.trim())
 const createNameTrimmed = computed(() => createDraft.value.displayName.trim())
@@ -116,6 +147,8 @@ const isFormDirty = computed(() => {
     || editForm.value.systemPrompt !== expert.systemPrompt
     || JSON.stringify([...editForm.value.skillIds].sort())
       !== JSON.stringify([...(expert.skillIds ?? [])].sort())
+    || JSON.stringify([...editForm.value.toolIds].sort())
+      !== JSON.stringify([...parseExpertToolIds(expert.toolsJson)].sort())
 })
 
 function isExpertComplete(expert: ExpertEntry): boolean {
@@ -130,18 +163,21 @@ function loadEditForm(expert: ExpertEntry) {
     description: expert.description ?? '',
     systemPrompt: expert.systemPrompt,
     skillIds: [...(expert.skillIds ?? [])],
+    toolIds: parseExpertToolIds(expert.toolsJson),
   }
 }
 
 async function refreshPage() {
   loading.value = true
   try {
-    const [list, skills] = await Promise.all([
+    const [list, skills, tools] = await Promise.all([
       listExperts(),
       listSkillCatalogIndex(),
+      listToolCatalog(),
     ])
     experts.value = list
     skillOptions.value = skills
+    toolOptions.value = tools
     if (selectedId.value && !list.some(e => e.id === selectedId.value)) {
       selectedId.value = null
       isEditing.value = false
@@ -233,6 +269,7 @@ async function handleSave() {
       editForm.value.systemPrompt.trim(),
       editForm.value.description.trim(),
       editForm.value.skillIds,
+      editForm.value.toolIds,
     )
     message.success('已保存')
     isEditing.value = false
@@ -467,10 +504,15 @@ onUnmounted(() => {
                   />
                 </NFormItem>
                 <NFormItem label="工具">
-                  <NInput
+                  <NSelect
+                    v-model:value="editForm.toolIds"
                     class="sun-field"
-                    value="全部工具（只读）"
-                    disabled
+                    multiple
+                    filterable
+                    :disabled="!isEditing"
+                    :options="toolSelectOptions"
+                    :menu-props="{ class: 'expert-select-menu' }"
+                    placeholder="可选 0~N 个工具"
                   />
                 </NFormItem>
               </div>
@@ -761,6 +803,7 @@ onUnmounted(() => {
   --n-color-focus: var(--sun-black) !important;
   --n-color-disabled: var(--sun-black) !important;
   --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
   --n-placeholder-color: var(--sun-text-muted) !important;
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;

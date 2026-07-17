@@ -1,8 +1,8 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.WorkflowProperties;
+import com.sunshine.orchestrator.client.WorkflowManagerClient;
+import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,16 +10,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class WorkflowNodeLabelsTest {
 
+    @Mock
+    private WorkflowCatalog workflowCatalog;
     @Mock
     private ToolCatalogService toolCatalogService;
 
@@ -27,29 +29,10 @@ class WorkflowNodeLabelsTest {
 
     @BeforeEach
     void setUp() {
-        WorkflowProperties props = new WorkflowProperties();
-        WorkflowProperties.CatalogEntry entry = new WorkflowProperties.CatalogEntry();
-        entry.setId("finance-list");
-        entry.setDisplayName("财务待办查询");
-        props.setCatalog(List.of(entry));
-
-        WorkflowProperties.WorkflowDefinitionProps def = new WorkflowProperties.WorkflowDefinitionProps();
-        WorkflowProperties.NodeProps toolNode = new WorkflowProperties.NodeProps();
-        toolNode.setId("finance-list");
-        toolNode.setType("tool");
-        toolNode.setDisplayName("查询待审批财务消息");
-        toolNode.setParams(Map.of("tool", "sdk__sunshine-finance__list_finance_messages"));
-        WorkflowProperties.NodeProps startNode = new WorkflowProperties.NodeProps();
-        startNode.setId("start");
-        startNode.setType("start");
-        WorkflowProperties.NodeProps answerNode = new WorkflowProperties.NodeProps();
-        answerNode.setId("answer");
-        answerNode.setType("answer");
-        answerNode.setDisplayName("生成回答");
-        def.setNodes(List.of(startNode, toolNode, answerNode));
-        props.setDefinitions(new LinkedHashMap<>(Map.of("finance-list", def)));
-
-        labelService = new WorkflowNodeLabelService(props, toolCatalogService, new AgentPromptProperties());
+        lenient().when(workflowCatalog.findEntry("finance-list")).thenReturn(
+                new WorkflowManagerClient.WorkflowCatalogEntryDto(
+                        "finance-list", "workflow", "财务待办查询", "财务待办", List.of(), List.of(), null));
+        labelService = new WorkflowNodeLabelService(workflowCatalog, toolCatalogService);
         WorkflowNodeLabels.bind(labelService);
     }
 
@@ -71,7 +54,8 @@ class WorkflowNodeLabelsTest {
     void planChainSkipsStartAndAnswer() {
         WorkflowDefinition def = WorkflowDefinition.from("finance-list", List.of(
                 new NodeSpec("start", "start", Map.of()),
-                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages")),
+                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"),
+                        "查询待审批财务消息"),
                 new NodeSpec("answer", "answer", Map.of(), "生成回答")
         ), List.of("start", "finance-list", "answer"));
 

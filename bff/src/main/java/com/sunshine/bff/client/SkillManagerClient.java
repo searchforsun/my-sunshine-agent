@@ -75,6 +75,16 @@ public class SkillManagerClient {
         return get("/api/skills/" + id + "/versions");
     }
 
+    public Mono<Map<String, Object>> updateVersionSandbox(String id, int version, Map<String, Object> body) {
+        return webClient.put()
+                .uri("/api/skills/{id}/versions/{version}/sandbox", id, version)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> diffVersions(String id, int from, int to, String path) {
         return webClient.get()
                 .uri(uri -> {

@@ -89,7 +89,8 @@ class ForcedExecutionRouterTest {
     @Test
     void resolve_workflow_fromIntentClassifier() {
         when(ruleBasedRouter.match("年假制度")).thenReturn(Optional.empty());
-        when(intentRouter.classifyPlan("年假制度")).thenReturn(Mono.just(new ExecutionPlan(
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
 
         ExecutionPlan plan = router.resolve(

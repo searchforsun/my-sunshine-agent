@@ -1,0 +1,534 @@
+<script setup lang="ts">
+/**
+ * Plan 为 SSOT；Vue Flow 仅在 hydrate 完成后挂载，避免 init 时 edges-change reset 清空连线。
+ */
+import { computed, markRaw, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useMessage } from 'naive-ui'
+import {
+  VueFlow,
+  applyEdgeChanges,
+  applyNodeChanges,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type Node,
+  type NodeChange,
+  type VueFlowStore,
+} from '@vue-flow/core'
+import { Background } from '@vue-flow/background'
+import { Controls } from '@vue-flow/controls'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
+import '@vue-flow/controls/dist/style.css'
+import WorkflowFlowNode from './WorkflowFlowNode.vue'
+import type { WorkflowPlan } from '../../api/workflows'
+import {
+  WF_FLOW_NODE_TYPE,
+  WF_FIT_VIEW_OPTS,
+  isProtectedWorkflowNode,
+  evaluateConnection,
+  flowEdgeFingerprint,
+  flowEdgesFromPlan,
+  mergeFlowIntoPlan,
+  planEdgeFingerprint,
+  planToFlowElements,
+  type WorkflowFlowNodeData,
+} from '../../utils/workflowDagLayout'
+import { FLOW_CONFIG_SELECTION } from '../../utils/workflowPlan'
+
+const props = defineProps<{
+  plan: WorkflowPlan
+  readOnly?: boolean
+  selectedNodeId?: string | null
+  fullscreen?: boolean
+  fitViewKey?: string | null
+  /** 右侧属性面板展开态，变化时重新居中画布 */
+  propsPanelOpen?: boolean
+  issueNodeIds?: Set<string>
+}>()
+
+const emit = defineEmits<{
+  'update:plan': [plan: WorkflowPlan]
+  select: [nodeId: string | null]
+}>()
+
+const message = useMessage()
+const nodeTypes = { [WF_FLOW_NODE_TYPE]: markRaw(WorkflowFlowNode) } as import('@vue-flow/core').NodeTypesObject
+
+const defaultEdgeOptions = {
+  type: 'smoothstep',
+  style: { stroke: '#737373', strokeWidth: 2 },
+  selectable: true,
+  focusable: true,
+  interactionWidth: 20,
+}
+
+const nodes = ref<Node<WorkflowFlowNodeData>[]>([])
+const edges = ref<Edge[]>([])
+const canvasReady = ref(false)
+/** 首次 fitView 完成前隐藏节点，避免左上角闪一下再居中 */
+const viewportSettled = ref(false)
+const canvasRef = ref<HTMLElement | null>(null)
+const pushingToPlan = ref(false)
+let hydrating = false
+/** 下一次 fitView 为 hydrate/切流后的首帧，需结束后再露出画布 */
+let pendingRevealAfterFit = false
+let flowStore: VueFlowStore | null = null
+let pendingInvalidReason: string | null = null
+let resizeObserver: ResizeObserver | null = null
+let resizeFitTimer: ReturnType<typeof setTimeout> | null = null
+
+const planGraphKey = computed(() => JSON.stringify({
+  nodes: (props.plan.nodes ?? []).map(n => ({ id: n.id, type: n.type, displayName: n.displayName })),
+}))
+
+const planEdgesKey = computed(() => planEdgeFingerprint(props.plan))
+
+const layoutKey = computed(() => JSON.stringify(props.plan.layout ?? {}))
+
+async function hydrateFromPlan() {
+  hydrating = true
+  canvasReady.value = false
+  viewportSettled.value = false
+  pendingRevealAfterFit = true
+  const { nodes: n, edges: e } = planToFlowElements(
+    props.plan,
+    props.selectedNodeId,
+    props.readOnly,
+    props.issueNodeIds,
+  )
+  nodes.value = n
+  edges.value = e
+  await nextTick()
+  canvasReady.value = n.length > 0
+  await nextTick()
+  requestAnimationFrame(() => {
+    hydrating = false
+    fitViewSoon()
+  })
+}
+
+/** 将画布边与 plan.edges 对齐（Delete / Undo / Redo / 外部载入） */
+function syncEdgesFromPlan() {
+  if (!canvasReady.value) return
+  const next = flowEdgesFromPlan(props.plan)
+  if (flowEdgeFingerprint(edges.value) === flowEdgeFingerprint(next)) return
+  hydrating = true
+  edges.value = next
+  void nextTick(() => {
+    hydrating = false
+  })
+}
+
+function patchNodePresentation() {
+  if (nodes.value.length === 0) return
+  const selectedId = props.selectedNodeId
+  const readOnly = !!props.readOnly
+  const issueIds = props.issueNodeIds
+  nodes.value = nodes.value.map(node => {
+    const data = node.data
+    const nodeType = data?.nodeType ?? ''
+    const nextData = data
+      ? {
+          ...data,
+          selected: selectedId === node.id,
+          readOnly,
+          hasValidationIssue: issueIds?.has(node.id) ?? false,
+        }
+      : data
+    return {
+      ...node,
+      draggable: !readOnly && nodeType !== 'start',
+      connectable: !readOnly,
+      deletable: !readOnly && !isProtectedWorkflowNode({ id: node.id, type: nodeType }),
+      data: nextData,
+    }
+  })
+}
+
+function syncNodesFromPlan() {
+  if (pushingToPlan.value || hydrating || !canvasReady.value || nodes.value.length === 0) return
+  const { nodes: n } = planToFlowElements(
+    props.plan,
+    props.selectedNodeId,
+    props.readOnly,
+    props.issueNodeIds,
+  )
+  nodes.value = n
+  patchNodePresentation()
+}
+
+function syncLayoutFromPlan() {
+  if (pushingToPlan.value || hydrating || nodes.value.length === 0) return
+  const { nodes: laid } = planToFlowElements(
+    props.plan,
+    props.selectedNodeId,
+    props.readOnly,
+    props.issueNodeIds,
+  )
+  const byId = new Map(laid.map(n => [n.id, n]))
+  let moved = false
+  nodes.value = nodes.value.map(node => {
+    const next = byId.get(node.id)
+    if (!next) return node
+    if (Math.abs(next.position.x - node.position.x) > 1 || Math.abs(next.position.y - node.position.y) > 1) {
+      moved = true
+    }
+    const nw = next.width
+    const nh = next.height
+    const ow = node.width
+    const oh = node.height
+    if ((nw != null && nw !== ow) || (nh != null && nh !== oh)) moved = true
+    return {
+      ...node,
+      position: next.position,
+      style: next.style,
+      width: next.width,
+      height: next.height,
+      parentNode: next.parentNode,
+      extent: next.extent,
+      expandParent: next.expandParent,
+    }
+  })
+  if (moved) fitViewSoon()
+}
+
+function fitViewSoon(delayMs = 0) {
+  if (!flowStore || !canvasReady.value) return
+  void nextTick(() => {
+    const run = () => {
+      requestAnimationFrame(() => {
+        const reveal = pendingRevealAfterFit
+        void Promise.resolve(flowStore?.fitView({ ...WF_FIT_VIEW_OPTS })).finally(() => {
+          if (reveal) {
+            pendingRevealAfterFit = false
+            viewportSettled.value = true
+          }
+        })
+      })
+    }
+    if (delayMs > 0) setTimeout(run, delayMs)
+    else run()
+  })
+}
+
+function scheduleFitViewOnResize() {
+  if (hydrating || !canvasReady.value) return
+  if (resizeFitTimer) clearTimeout(resizeFitTimer)
+  resizeFitTimer = setTimeout(() => {
+    resizeFitTimer = null
+    fitViewSoon()
+  }, props.fullscreen ? 160 : 120)
+}
+
+function pushPlan(next: WorkflowPlan) {
+  pushingToPlan.value = true
+  emit('update:plan', next)
+  void nextTick(() => {
+    pushingToPlan.value = false
+  })
+}
+
+function emitFromFlow() {
+  if (props.readOnly) return
+  pushPlan(mergeFlowIntoPlan(props.plan, nodes.value, edges.value))
+}
+
+function syncExternalPlan(forceFull = false) {
+  if (pushingToPlan.value) return
+  if (forceFull || !canvasReady.value || nodes.value.length === 0) {
+    void hydrateFromPlan()
+    return
+  }
+  syncNodesFromPlan()
+  syncEdgesFromPlan()
+}
+
+watch(
+  () => [props.fitViewKey, planGraphKey.value] as const,
+  ([fitKey], prev) => {
+    const fitChanged = !prev || fitKey !== prev[0]
+    syncExternalPlan(fitChanged)
+  },
+  { immediate: true },
+)
+
+watch(planEdgesKey, () => {
+  if (pushingToPlan.value) return
+  syncEdgesFromPlan()
+})
+
+watch(layoutKey, () => syncLayoutFromPlan())
+
+watch(
+  () => [props.selectedNodeId, props.readOnly, props.issueNodeIds] as const,
+  () => patchNodePresentation(),
+  { deep: true },
+)
+
+watch(
+  () => props.fullscreen,
+  (isFs) => {
+    if (isFs) fitViewSoon(200)
+  },
+)
+
+watch(
+  () => props.propsPanelOpen,
+  () => fitViewSoon(props.fullscreen ? 180 : 120),
+)
+
+function onFlowInit(store: VueFlowStore) {
+  flowStore = store
+  fitViewSoon(props.fullscreen ? 200 : 80)
+}
+
+onMounted(() => {
+  if (!canvasRef.value || typeof ResizeObserver === 'undefined') return
+  resizeObserver = new ResizeObserver(() => scheduleFitViewOnResize())
+  resizeObserver.observe(canvasRef.value)
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  if (resizeFitTimer) clearTimeout(resizeFitTimer)
+})
+
+function onNodesChange(changes: NodeChange[]) {
+  if (hydrating) return
+  const safeChanges = changes.filter(change => {
+    if (change.type !== 'remove') return true
+    const node = nodes.value.find(n => n.id === change.id)
+    if (!node) return true
+    return !isProtectedWorkflowNode({ id: node.id, type: node.data?.nodeType ?? '' })
+  })
+  nodes.value = applyNodeChanges(safeChanges, nodes.value as import('@vue-flow/core').GraphNode[]) as Node<WorkflowFlowNodeData>[]
+  if (props.readOnly) return
+  if (safeChanges.some(c => c.type === 'remove')) {
+    emitFromFlow()
+  } else if (safeChanges.some(c => c.type === 'position' && c.dragging === false)) {
+    emitFromFlow()
+  } else if (safeChanges.some(c => c.type === 'dimensions' && (c as { resizing?: boolean }).resizing === false)) {
+    emitFromFlow()
+  }
+}
+
+function onEdgesChange(changes: EdgeChange[]) {
+  if (hydrating) return
+  const removes = changes.filter((c): c is EdgeChange & { type: 'remove' } => c.type === 'remove')
+  // 受控边：select / remove 均须 applyEdgeChanges，否则无选中态且 Delete 后画布与 plan 脱节
+  edges.value = applyEdgeChanges(changes, edges.value as import('@vue-flow/core').GraphEdge[]) as Edge[]
+  if (removes.length > 0 && !props.readOnly && !pushingToPlan.value) {
+    pushPlan(mergeFlowIntoPlan(props.plan, nodes.value, edges.value))
+  }
+}
+
+/** Vue Flow 在 setEdges 时也会调用 isValidConnection；已有边须放行，否则会被 createGraphEdges 全部丢弃 */
+function isExistingFlowEdge(source: string, target: string): boolean {
+  if (edges.value.some(e => e.source === source && e.target === target)) return true
+  return (props.plan.edges ?? []).some(e => e.from === source && e.to === target)
+}
+
+function checkValidConnection(connection: Connection) {
+  if (!connection.source || !connection.target) return false
+  if (isExistingFlowEdge(connection.source, connection.target)) return true
+  const result = evaluateConnection(connection, props.plan)
+  pendingInvalidReason = result.ok ? null : result.reason
+  return result.ok
+}
+
+function onConnectEnd() {
+  if (props.readOnly || !pendingInvalidReason) return
+  message.warning(pendingInvalidReason)
+  pendingInvalidReason = null
+}
+
+function onConnect(connection: Connection) {
+  if (props.readOnly) return
+  pendingInvalidReason = null
+  const result = evaluateConnection(connection, props.plan)
+  if (!result.ok) return
+  const id = `${connection.source}->${connection.target}`
+  if (edges.value.some(e => e.id === id)) return
+  const sourceType = props.plan.nodes?.find(n => n.id === connection.source)?.type
+  const isExclusiveOut = sourceType === 'exclusive-gateway'
+  const assignDefault = isExclusiveOut
+    && !(props.plan.edges ?? []).some(e => e.from === connection.source && e.default)
+  const nextEdges: Edge[] = [
+    ...edges.value,
+    {
+      id,
+      source: connection.source!,
+      target: connection.target!,
+      type: 'smoothstep',
+      selectable: true,
+      focusable: true,
+      interactionWidth: 20,
+    },
+  ]
+  edges.value = nextEdges
+  let nextPlan = mergeFlowIntoPlan(props.plan, nodes.value, nextEdges)
+  if (assignDefault) {
+    nextPlan = {
+      ...nextPlan,
+      edges: (nextPlan.edges ?? []).map(e =>
+        e.from === connection.source && e.to === connection.target
+          ? { ...e, default: true }
+          : e,
+      ),
+    }
+  }
+  pushPlan(nextPlan)
+}
+
+function onNodeClick(payload: { node: Node }) {
+  emit('select', payload.node.id === 'start' ? FLOW_CONFIG_SELECTION : payload.node.id)
+}
+
+function onPaneClick() {
+  emit('select', FLOW_CONFIG_SELECTION)
+}
+</script>
+
+<template>
+  <div class="wf-dag-editor" :class="{ 'is-fullscreen': fullscreen }">
+    <div
+      ref="canvasRef"
+      class="wf-dag-canvas"
+      :class="{ 'is-pending-fit': canvasReady && !viewportSettled }"
+    >
+      <VueFlow
+        v-if="canvasReady"
+        :key="fitViewKey ?? 'wf-canvas'"
+        v-model:nodes="nodes"
+        v-model:edges="edges"
+        :node-types="nodeTypes"
+        :default-edge-options="defaultEdgeOptions"
+        :apply-default="false"
+        :fit-view-on-init="false"
+        :nodes-draggable="!readOnly"
+        :nodes-connectable="!readOnly"
+        :elements-selectable="true"
+        :edges-focusable="true"
+        :delete-key-code="readOnly ? null : ['Backspace', 'Delete']"
+        :is-valid-connection="checkValidConnection"
+        :min-zoom="0.25"
+        :max-zoom="1.75"
+        @init="onFlowInit"
+        @nodes-change="onNodesChange"
+        @edges-change="onEdgesChange"
+        @connect="onConnect"
+        @connect-end="onConnectEnd"
+        @node-click="onNodeClick"
+        @pane-click="onPaneClick"
+      >
+        <Background :gap="16" :size="2" pattern-color="var(--sun-dag-dot, var(--sun-border-light))" />
+        <Controls
+          :show-interactive="false"
+          position="bottom-right"
+          :fit-view-params="{ ...WF_FIT_VIEW_OPTS }"
+        />
+      </VueFlow>
+      <div v-else class="wf-dag-empty">
+        <p v-if="nodes.length === 0">画布无节点</p>
+        <p v-else class="wf-dag-empty-sub">加载画布…</p>
+      </div>
+    </div>
+    <p v-if="!readOnly && !fullscreen" class="wf-dag-hint">
+      拖拽移动 · 圆点连线 · Delete 删除连线或业务节点 · 开始/结束不可删 · 非法连线会提示原因
+    </p>
+  </div>
+</template>
+
+<style scoped>
+.wf-dag-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.wf-dag-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 280px;
+  min-width: 0;
+  height: 100%;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--sun-black);
+}
+
+.wf-dag-canvas.is-pending-fit :deep(.vue-flow__viewport) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wf-dag-canvas :deep(.vue-flow__edge-path),
+.wf-dag-canvas :deep(.vue-flow__connection-path) {
+  stroke: #737373;
+  stroke-width: 2;
+}
+
+.wf-dag-canvas :deep(.vue-flow__edge.selected .vue-flow__edge-path),
+.wf-dag-canvas :deep(.vue-flow__edge.selected path) {
+  stroke: var(--sun-blue, #58a6ff) !important;
+  stroke-width: 2.5;
+}
+
+.wf-dag-canvas :deep(.vue-flow) {
+  width: 100%;
+  height: 100%;
+}
+
+.wf-dag-canvas :deep(.vue-flow__background circle) {
+  fill: var(--sun-dag-dot);
+}
+
+.wf-dag-canvas :deep(.vue-flow__controls) {
+  border: 1px solid var(--sun-border);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.wf-dag-canvas :deep(.vue-flow__controls-button) {
+  background: var(--sun-black);
+  border-bottom: 1px solid var(--sun-border);
+  fill: var(--sun-text-secondary);
+}
+
+.wf-dag-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--sun-text-muted);
+  font-size: 13px;
+}
+
+.wf-dag-empty-sub {
+  margin: 0;
+  font-size: 12px;
+}
+
+.wf-dag-hint {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--sun-text-muted);
+  line-height: 1.4;
+}
+
+.is-fullscreen .wf-dag-canvas {
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+}
+</style>

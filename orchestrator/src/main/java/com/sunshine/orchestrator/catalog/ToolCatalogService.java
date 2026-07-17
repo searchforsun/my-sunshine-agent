@@ -1,9 +1,13 @@
 package com.sunshine.orchestrator.catalog;
 
-import com.sunshine.orchestrator.client.ToolCatalogClient;
+import com.sunshine.common.tool.ToolCatalogEntry;
+import com.sunshine.orchestrator.agent.RagTool;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.processing.StepLabels;
+import com.sunshine.orchestrator.sandbox.SandboxHitlPolicy;
+import com.sunshine.orchestrator.sandbox.SandboxIds;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -24,14 +28,14 @@ public class ToolCatalogService {
 
     private static final String DEFAULT_TENANT = "default";
 
-    private final ToolCatalogClient catalogClient;
     private final ToolManagerClient toolManagerClient;
+    private final AgentSandboxProperties sandboxProperties;
     private volatile Map<String, ToolCatalogEntry> entries = Map.of();
     private volatile Set<String> defaultEnabledIds = Set.of();
 
-    public ToolCatalogService(ToolCatalogClient catalogClient, ToolManagerClient toolManagerClient) {
-        this.catalogClient = catalogClient;
+    public ToolCatalogService(ToolManagerClient toolManagerClient, AgentSandboxProperties sandboxProperties) {
         this.toolManagerClient = toolManagerClient;
+        this.sandboxProperties = sandboxProperties;
     }
 
     @PostConstruct
@@ -42,11 +46,11 @@ public class ToolCatalogService {
 
     public synchronized void refresh() {
         Map<String, ToolCatalogEntry> merged = new LinkedHashMap<>();
-        for (ToolCatalogEntry entry : catalogClient.fetchCatalog(DEFAULT_TENANT, false)) {
+        for (ToolCatalogEntry entry : toolManagerClient.fetchCatalog(DEFAULT_TENANT, false)) {
             merged.put(entry.id(), entry);
         }
         this.entries = Map.copyOf(merged);
-        this.defaultEnabledIds = catalogClient.fetchCatalog(DEFAULT_TENANT, true).stream()
+        this.defaultEnabledIds = toolManagerClient.fetchCatalog(DEFAULT_TENANT, true).stream()
                 .map(ToolCatalogEntry::id)
                 .collect(Collectors.toUnmodifiableSet());
         log.info("[ToolCatalogService] catalog loaded: {} (enabled={})",
@@ -59,7 +63,7 @@ public class ToolCatalogService {
         if (DEFAULT_TENANT.equals(effectiveTenant)) {
             return defaultEnabledIds;
         }
-        return catalogClient.fetchCatalog(effectiveTenant, true).stream()
+        return toolManagerClient.fetchCatalog(effectiveTenant, true).stream()
                 .map(ToolCatalogEntry::id)
                 .collect(Collectors.toUnmodifiableSet());
     }
@@ -72,15 +76,21 @@ public class ToolCatalogService {
     }
 
     public String displayName(String toolId) {
+        if (RagTool.NAME.equals(toolId)) {
+            return "检索知识库";
+        }
+        if (sandboxProperties.isSandboxTool(toolId)) {
+            return sandboxProperties.displayName(toolId);
+        }
         return find(toolId).map(ToolCatalogEntry::displayName).orElse(toolId);
     }
 
     public String timelinePhase(String toolId) {
-        return find(toolId).map(ToolCatalogEntry::timelinePhase).orElse("tool");
+        return isRagTool(toolId) ? "rag" : "tool";
     }
 
     public boolean isRagTool(String toolId) {
-        return "rag".equals(timelinePhase(toolId));
+        return RagTool.NAME.equals(toolId);
     }
 
     public List<ToolCatalogEntry> allEntries() {
@@ -92,6 +102,10 @@ public class ToolCatalogService {
     }
 
     public boolean requiresConfirmation(String toolId) {
+        if (toolId != null && SandboxIds.ALL.contains(toolId)) {
+            // exec 依赖参数，Catalog 层对 EXEC 返回 true；具体白名单在工具内再判
+            return SandboxHitlPolicy.catalogDefault(toolId);
+        }
         return find(toolId).map(ToolCatalogEntry::requireConfirmation).orElse(false);
     }
 
@@ -104,16 +118,21 @@ public class ToolCatalogService {
         return summarizeOutputDetail(toolName, text).summary();
     }
 
-    public ToolSummarizeOutputResponse summarizeOutputDetail(String toolName, String text) {
-        ToolSummarizeOutputResponse response = toolManagerClient.summarizeOutputMono(toolName, text).block();
-        if (response == null) {
-            return new ToolSummarizeOutputResponse("", true, true);
+    /**
+     * 时间线用户可见一步摘要：仅当 catalog 配置了 timelineSummaryTemplate 且解析非空时返回；
+     * 未配置则 null，由 Nacos agent.timeline.steps.tool 模板承接 after/detail。
+     */
+    public String timelineSummary(String toolName, String text) {
+        ToolSummarizeOutputResponse response = summarizeOutputDetail(toolName, text);
+        if (response.empty()) {
+            return null;
         }
-        return response;
+        String summary = response.summary();
+        return summary != null && !summary.isBlank() ? summary : null;
     }
 
-    public ToolSummarizeOutputResponse summarizeByKind(String outputSummaryKind, String text) {
-        ToolSummarizeOutputResponse response = toolManagerClient.summarizeByKindMono(outputSummaryKind, text).block();
+    public ToolSummarizeOutputResponse summarizeOutputDetail(String toolName, String text) {
+        ToolSummarizeOutputResponse response = toolManagerClient.summarizeOutputMono(toolName, text).block();
         if (response == null) {
             return new ToolSummarizeOutputResponse("", true, true);
         }

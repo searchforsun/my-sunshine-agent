@@ -10,6 +10,7 @@ import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
+import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.Event;
 import io.agentscope.core.agent.EventType;
@@ -30,6 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -46,6 +49,8 @@ class ReActAgentRuntimeTest {
     private AnswerGroundingChecker groundingChecker;
     @Mock
     private ReactTaskBoardService taskBoardService;
+    @Mock
+    private SandboxSessionLifecycle sandboxSessionLifecycle;
 
     private ReActAgentRuntime runtime;
 
@@ -56,7 +61,7 @@ class ReActAgentRuntimeTest {
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
         runtime = new ReActAgentRuntime(
                 agentFactory, promptComposer, groundingChecker, groundingProperties,
-                taskBoardService, executionProperties);
+                taskBoardService, executionProperties, sandboxSessionLifecycle);
     }
 
     @Test
@@ -78,10 +83,11 @@ class ReActAgentRuntimeTest {
         AgentRunRequest planner = new AgentRunRequest(
                 AgentRole.PLANNER, "run-p", null, MemoryContext.empty(), "plan",
                 List.of(), "u1", "default", null, null, null, null, 1,
-                TimelineBinding.PLANNER_ONLY, false);
+                TimelineBinding.PLANNER_ONLY, false, null);
         assertThatThrownBy(() -> runtime.run(planner).collectList().block())
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("PLANNER");
+        verify(sandboxSessionLifecycle, never()).prepareRun(any());
     }
 
     @Test
@@ -108,6 +114,8 @@ class ReActAgentRuntimeTest {
         assertThat(composeCaptor.getValue().userMessage()).isEqualTo("用户问题");
         assertThat(composeCaptor.getValue().skillId()).isNull();
         verify(agentFactory).create(req);
+        verify(sandboxSessionLifecycle).prepareRun(req);
+        verify(sandboxSessionLifecycle).closeQuietly(req);
     }
 
     @Test
@@ -135,6 +143,8 @@ class ReActAgentRuntimeTest {
         verify(promptComposer).composeReactInputs(composeCaptor.capture());
         assertThat(composeCaptor.getValue().memory().stmTurns()).isEmpty();
         assertThat(composeCaptor.getValue().injectedUserContexts()).containsExactly("制度上下文");
+        verify(sandboxSessionLifecycle).prepareRun(req);
+        verify(sandboxSessionLifecycle).closeQuietly(req);
     }
 
     @Test
@@ -164,5 +174,41 @@ class ReActAgentRuntimeTest {
         assertThat(composed.memory().ltmSnippet()).isBlank();
         assertThat(composed.skillId()).isEqualTo("finance-analysis");
         assertThat(composed.injectedUserContexts()).containsExactly("上游");
+    }
+
+    @Test
+    void run_mainPreparesSandboxContextAndClosesOnce() {
+        when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
+        Msg resultMsg = Msg.builder()
+                .role(MsgRole.ASSISTANT)
+                .content(List.of(TextBlock.builder().text("done").build()))
+                .build();
+        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.just(
+                new Event(EventType.AGENT_RESULT, resultMsg, false)));
+        when(agentFactory.create(any())).thenReturn(reactAgent);
+
+        AgentRunRequest req = AgentRunRequest.main(
+                MemoryContext.empty(), "读文件", "u1", "default", "msg-s", List.of(), "coding-skill");
+
+        runtime.run(req).collectList().block();
+
+        verify(sandboxSessionLifecycle, times(1)).prepareRun(req);
+        verify(sandboxSessionLifecycle, times(1)).closeQuietly(req);
+    }
+
+    @Test
+    void run_errorStillClosesSandboxSession() {
+        when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
+        when(agentFactory.create(any())).thenReturn(reactAgent);
+        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.error(new RuntimeException("boom")));
+
+        AgentRunRequest req = AgentRunRequest.main(
+                MemoryContext.empty(), "q", "u1", "default", "msg-err", List.of(), "coding-skill");
+
+        assertThatThrownBy(() -> runtime.run(req).collectList().block())
+                .hasMessageContaining("boom");
+
+        verify(sandboxSessionLifecycle).prepareRun(req);
+        verify(sandboxSessionLifecycle).closeQuietly(req);
     }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import {
   formatDuration,
@@ -10,12 +10,12 @@ import {
 } from '../../api/processingSteps'
 import { getExecutionPlan, type ExecutionPlanDetail, type PlanGraph } from '../../api/executionPlans'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../../api/skills'
-import { buildDagNodes, type DagNodeView } from '../../utils/planGraph'
-import { relocateAgentNodeHitl, type HitlConfirmationPayload } from '../../api/hitlSteps'
+import { buildDagNodes, resolveDagNodeStep, type DagNodeView } from '../../utils/planGraph'
+import { type HitlConfirmationPayload } from '../../api/hitlSteps'
 import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
-import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
-import PlanDagGraph from './PlanDagGraph.vue'
+import { usePlanDagExpand, unregisterPlanDagSelectHandler, registerPlanDagSelectHandler } from '../../composables/usePlanDagExpand'
+import PlanExecutionCanvas from './PlanExecutionCanvas.vue'
 import PlanApprovalActions from './PlanApprovalActions.vue'
 import {
   isPlanApprovalAwaiting,
@@ -33,7 +33,7 @@ const props = defineProps<{
 }>()
 
 const { open: openDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()
-const { open: openExpand, close: closeExpand, isExpanded, update: updateExpand, state: expandState } = usePlanDagExpand()
+const { open: openExpand, close: closeExpand, isExpanded, update: updateExpand, bindSelect, state: expandState } = usePlanDagExpand()
 
 function subStepsSignature(steps?: ProcessingStep[]): string {
   if (!steps?.length) return ''
@@ -110,7 +110,9 @@ function maybeAutoOpenDrawer(nodes: DagNodeView[]) {
   const target = nodes.find(nodeNeedsDrawerAttention)
   if (!target) return
   if (isActivePlan(id) && drawerState.node?.id === target.id) return
-  openDrawer({ planId: id, userQuery: props.userQuery, node: target, step: stepForNode(target.id) })
+  // 用户已打开抽屉并手动点了其他节点时，不要抢回（三开时 sync 更频繁）
+  if (isActivePlan(id) && drawerState.node && drawerState.node.id !== target.id) return
+  openDrawer({ planId: id, userQuery: props.userQuery, node: target, step: stepForNode(target.id), graph: graphSource.value })
 }
 
 const planDetail = ref<ExecutionPlanDetail | null>(null)
@@ -182,11 +184,13 @@ const graphSource = computed(() => frozenGraph.value ?? inlineApprovalGraph.valu
 
 const nodeSteps = computed(() => listPlanDagNodeSteps(props.allSteps))
 
+const nodeTraces = computed(() => planDetail.value?.nodes ?? [])
+
 const dagNodes = computed(() =>
   buildDagNodes(
     graphSource.value,
     nodeSteps.value,
-    props.live ? undefined : planDetail.value?.nodes,
+    nodeTraces.value.length ? nodeTraces.value : undefined,
     skillCatalog.value,
     props.planStep,
     props.pendingHitlConfirmation,
@@ -206,26 +210,30 @@ const selectedId = computed(() =>
 )
 
 function stepForNode(nodeId: string): ProcessingStep | undefined {
-  if (nodeId === 'start') {
-    return props.planStep
-  }
-  const step = props.allSteps.find(s => s.id === `node-${nodeId}`)
-  return step?.id.startsWith('node-') ? relocateAgentNodeHitl(step) : step
+  return resolveDagNodeStep(nodeId, props.allSteps, graphSource.value, props.planStep)
 }
 
 function onSelectNode(node: DagNodeView) {
   const id = planId.value
   if (!id) return
-  openDrawer({ planId: id, userQuery: props.userQuery, node, step: stepForNode(node.id) })
+  openDrawer({
+    planId: id,
+    userQuery: props.userQuery,
+    node,
+    step: stepForNode(node.id),
+    graph: graphSource.value,
+  })
 }
 
 function onExpandDag() {
   const id = planId.value
-  if (!id) return
+  const graph = graphSource.value
+  if (!id || !graph?.nodes?.length) return
   openExpand({
     planId: id,
     title: label.value,
     userQuery: props.userQuery,
+    graph,
     nodes: dagNodes.value,
     selectedId: selectedId.value,
     live: props.live,
@@ -233,24 +241,54 @@ function onExpandDag() {
   }, onSelectNode)
 }
 
+function dagNodesSignature(nodes: DagNodeView[]): string {
+  return nodes.map(n => [
+    n.id,
+    n.status,
+    n.durationMs ?? '',
+    n.attemptCount ?? '',
+    n.summary ?? '',
+    n.recoveryAwaiting ? '1' : '0',
+    attemptsSignature(n),
+  ].join(':')).join('|')
+}
+
+const dagNodesSig = computed(() => dagNodesSignature(dagNodes.value))
+
+let lastExpandSyncSig = ''
+
 function syncExpandLayer() {
   const id = planId.value
-  if (!id || !isExpanded(id)) return
-  updateExpand({
-    title: label.value,
-    userQuery: props.userQuery,
-    nodes: dagNodes.value,
-    selectedId: selectedId.value,
-    live: props.live,
-    loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
-  })
+  const graph = graphSource.value
+  if (!id || !graph || !isExpanded(id)) return
+  const syncSig = [
+    label.value,
+    selectedId.value ?? '',
+    dagNodesSig.value,
+    props.live ? '1' : '0',
+    isRegenerating.value ? '1' : '0',
+    props.userQuery ?? '',
+  ].join('\u0001')
+  if (syncSig !== lastExpandSyncSig) {
+    lastExpandSyncSig = syncSig
+    updateExpand({
+      title: label.value,
+      userQuery: props.userQuery,
+      graph,
+      nodes: dagNodes.value,
+      selectedId: selectedId.value,
+      live: props.live,
+      loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
+    })
+  }
+  bindSelect(id, onSelectNode)
 }
 
 async function loadPlan() {
   const id = planId.value
   if (!id || id.startsWith('approval:')) return
   const hasGraph = graphPlanId.value === id && !!frozenGraph.value
-  // 流式执行期图结构只拉一次，避免 answer 阶段重复请求导致拓扑闪动
+  // 流式执行期拓扑只拉一次；终态/刷新须拉 execution_trace 恢复节点着色
   if (props.live && hasGraph) return
 
   const firstLoad = !hasGraph
@@ -258,12 +296,14 @@ async function loadPlan() {
   try {
     const detail = await getExecutionPlan(id)
     planDetail.value = detail
-    if (detail.validatedPlan?.nodes?.length) {
-      frozenGraph.value = detail.validatedPlan
-      graphPlanId.value = id
-    } else if (detail.plan?.nodes?.length) {
-      frozenGraph.value = detail.plan
-      graphPlanId.value = id
+    if (!hasGraph) {
+      if (detail.validatedPlan?.nodes?.length) {
+        frozenGraph.value = detail.validatedPlan
+        graphPlanId.value = id
+      } else if (detail.plan?.nodes?.length) {
+        frozenGraph.value = detail.plan
+        graphPlanId.value = id
+      }
     }
   } catch {
     if (!planDetail.value) planDetail.value = null
@@ -288,6 +328,13 @@ function resetGraphForPlan(id: string | undefined) {
 onMounted(() => {
   void loadPlan()
   void listSkillCatalogIndex().then(list => { skillCatalog.value = list }).catch(() => {})
+  const id = planId.value
+  if (id) registerPlanDagSelectHandler(id, onSelectNode)
+})
+
+onUnmounted(() => {
+  const id = planId.value
+  if (id) unregisterPlanDagSelectHandler(id)
 })
 watch(approvalRoundsKey, (key, prev) => {
   if (key !== prev && planId.value) {
@@ -305,7 +352,10 @@ watch(
   },
 )
 watch(planId, (id, prev) => {
+  if (prev) unregisterPlanDagSelectHandler(prev)
+  if (id) registerPlanDagSelectHandler(id, onSelectNode)
   if (id === prev) return
+  lastExpandSyncSig = ''
   if (expandState.activePlanId && expandState.activePlanId === prev && id) {
     expandState.activePlanId = id
   } else if (expandState.activePlanId && expandState.activePlanId !== id) {
@@ -314,11 +364,35 @@ watch(planId, (id, prev) => {
   resetGraphForPlan(id)
   void loadPlan()
 })
-watch(dagNodes, (nodes) => {
+watch(
+  () => props.live,
+  (live, prevLive) => {
+    if (prevLive && !live && planId.value) void loadPlan()
+  },
+)
+watch(
+  () => props.executionPlanId,
+  (id, prev) => {
+    if (id && id !== prev && planId.value) void loadPlan()
+  },
+)
+watch(dagNodesSig, () => {
+  const nodes = dagNodes.value
   syncDrawerSelection(nodes)
   syncExpandLayer()
   maybeAutoOpenDrawer(nodes)
-}, { deep: true })
+})
+watch(
+  () => {
+    const nid = drawerState.node?.id
+    if (!nid || !isActivePlan(planId.value)) return ''
+    return stepContentSignature(stepForNode(nid))
+  },
+  () => syncDrawerSelection(dagNodes.value),
+)
+watch(() => expandState.activePlanId, (activeId) => {
+  if (!activeId || activeId !== planId.value) lastExpandSyncSig = ''
+})
 watch(selectedId, () => syncExpandLayer())
 watch(isRegenerating, () => syncExpandLayer())
 </script>
@@ -332,9 +406,10 @@ watch(isRegenerating, () => syncExpandLayer())
       </span>
       <span v-if="durationText" class="op-dur">{{ durationText }}</span>
     </div>
-    <PlanDagGraph
-      v-if="dagNodes.length && !isExpanded(planId)"
-      :nodes="dagNodes"
+    <PlanExecutionCanvas
+      v-if="graphSource && dagNodes.length && !isExpanded(planId)"
+      :graph="graphSource"
+      :dag-nodes="dagNodes"
       :selected-id="selectedId"
       :live="live"
       :loading-label="isRegenerating ? '重新生成中…' : undefined"

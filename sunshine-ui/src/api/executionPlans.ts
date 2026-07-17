@@ -29,11 +29,19 @@ export interface PlanGraphNode {
   type: string
   displayName?: string
   params?: Record<string, string>
+  /** loop 框内 body 归属 */
+  parentId?: string
 }
 
 export interface PlanGraphEdge {
   from: string
   to: string
+  condition?: {
+    left: string
+    op: string
+    right?: string
+  }
+  default?: boolean
 }
 
 export interface PlanGraph {
@@ -41,6 +49,8 @@ export interface PlanGraph {
   reason?: string
   nodes?: PlanGraphNode[]
   edges?: PlanGraphEdge[]
+  /** Studio 画布坐标快照（BPMN DI 等价；loop 可带 width/height） */
+  layout?: Record<string, { x: number; y: number; width?: number; height?: number }>
 }
 
 export interface ExecutionPlanDetail {
@@ -117,7 +127,11 @@ export function formatPlanNodeType(type: string): string {
     tool: '工具调用',
     llm: '综合分析',
     agent: '子 Agent',
-    answer: '汇总输出',
+    join: '并行汇总',
+    'parallel-gateway': '并行分叉',
+    'exclusive-gateway': '条件分支',
+    loop: '循环',
+    answer: '回答',
     start: '开始',
   }
   return map[type] ?? type

@@ -237,6 +237,11 @@ public class ChatStreamExecutor {
                                     executionDispatcher.execute(toExecutionContext(ctx, plan))
                             ));
                         })
+                        .onErrorResume(e -> {
+                            session.fail(TimelineStepId.INTENT.id(), StreamErrorMessages.resolve(e));
+                            List<StreamToken> failTokens = drainStepTokens(stepEmissions);
+                            return Flux.concat(Flux.fromIterable(failTokens), Flux.error(e));
+                        })
         ));
     }
 
@@ -296,6 +301,9 @@ public class ChatStreamExecutor {
     }
 
     private ServerSentEvent<String> tokenToSse(StreamToken token) {
+        if (token.isSandboxSession()) {
+            return sse(flushScheduler.metaSandboxSession(token.text(), token.channel(), token.stepId()));
+        }
         if (token.isStep()) {
             return sse(flushScheduler.metaStep(token.step()));
         }

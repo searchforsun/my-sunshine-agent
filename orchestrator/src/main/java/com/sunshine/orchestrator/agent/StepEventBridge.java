@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
 
 import java.util.List;
 import java.util.Map;
@@ -103,6 +104,19 @@ public final class StepEventBridge {
         registry.bindTokenWrapper(bridgeId, wrapper);
     }
 
+    /** loop 框内：Hook 直刷 Generation 前将 body 步折叠进 node-loop.subSteps */
+    public static void bindLoopBodyFold(String assistantMessageId, Function<StreamToken, List<StreamToken>> fold) {
+        registry.bindLoopBodyFold(assistantMessageId, fold);
+    }
+
+    public static void clearLoopBodyFold(String assistantMessageId) {
+        registry.clearLoopBodyFold(assistantMessageId);
+    }
+
+    public static Function<StreamToken, List<StreamToken>> loopBodyFold(String assistantMessageId) {
+        return registry.loopBodyFold(assistantMessageId);
+    }
+
     public static void bindExpertSpeakSink(String bridgeId, Consumer<StreamToken> sink) {
         registry.bindExpertSpeakSink(bridgeId, sink);
     }
@@ -141,6 +155,14 @@ public final class StepEventBridge {
 
     public static boolean consumeHitlPreApproval(String messageId, String toolId, Map<String, String> params) {
         return registry.consumeHitlPreApproval(messageId, toolId, params);
+    }
+
+    public static void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {
+        registry.bindWriteHitlMode(assistantMessageId, mode);
+    }
+
+    public static SandboxWriteHitlMode writeHitlMode(String assistantMessageId) {
+        return registry.writeHitlMode(assistantMessageId);
     }
 
     public static void bindToolUseBridge(String toolUseId, String bridgeId) {
@@ -201,6 +223,11 @@ public final class StepEventBridge {
 
     public static void emit(String messageId, Consumer<ProcessingTimelineSession> action) {
         registry.emit(messageId, action);
+    }
+
+    /** Hook / 工具线程下发任意 StreamToken（如 sandbox_session） */
+    public static void offerStreamToken(String bridgeId, StreamToken token) {
+        registry.offerStreamToken(bridgeId, token);
     }
 
     public static void emitSingleton(Consumer<ProcessingTimelineSession> action) {

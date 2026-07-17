@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -32,7 +33,11 @@ public class StepEventBridgeRegistry {
     private final Map<String, String> toolUseBridge = new ConcurrentHashMap<>();
     private final Map<String, String> toolUseStep = new ConcurrentHashMap<>();
     private final Map<String, String> hitlPreapproved = new ConcurrentHashMap<>();
+    /** assistantMsgId → Chat 工作区写 HITL 跳过模式 */
+    private final Map<String, SandboxWriteHitlMode> writeHitlModes = new ConcurrentHashMap<>();
     private final Map<String, Function<StreamToken, List<StreamToken>>> tokenWrappers = new ConcurrentHashMap<>();
+    /** assistantMsgId → loop body 折叠（Agent Hook 直刷 Generation 时用） */
+    private final Map<String, Function<StreamToken, List<StreamToken>>> loopBodyFolds = new ConcurrentHashMap<>();
     private final Map<String, FlushBinding> generationFlush = new ConcurrentHashMap<>();
     private final Map<String, Long> streamEpoch = new ConcurrentHashMap<>();
     private final Map<String, Long> sessionStreamEpoch = new ConcurrentHashMap<>();
@@ -60,7 +65,9 @@ public class StepEventBridgeRegistry {
         toolUseBridge.clear();
         toolUseStep.clear();
         hitlPreapproved.clear();
+        writeHitlModes.clear();
         tokenWrappers.clear();
+        loopBodyFolds.clear();
         generationFlush.clear();
         streamEpoch.clear();
         sessionStreamEpoch.clear();
@@ -179,6 +186,25 @@ public class StepEventBridgeRegistry {
         }
     }
 
+    public void bindLoopBodyFold(String assistantMessageId, Function<StreamToken, List<StreamToken>> fold) {
+        if (assistantMessageId != null && !assistantMessageId.isBlank() && fold != null) {
+            loopBodyFolds.put(assistantMessageId.strip(), fold);
+        }
+    }
+
+    public void clearLoopBodyFold(String assistantMessageId) {
+        if (assistantMessageId != null && !assistantMessageId.isBlank()) {
+            loopBodyFolds.remove(assistantMessageId.strip());
+        }
+    }
+
+    public Function<StreamToken, List<StreamToken>> loopBodyFold(String assistantMessageId) {
+        if (assistantMessageId == null || assistantMessageId.isBlank()) {
+            return null;
+        }
+        return loopBodyFolds.get(assistantMessageId.strip());
+    }
+
     /** 专家发言专用：ReasoningChunk / 工具步等 Hook 产出即时消费，不依赖 ProcessingTimelineSession think 锚点 */
     public void bindExpertSpeakSink(String bridgeId, Consumer<StreamToken> sink) {
         if (bridgeId != null && sink != null) {
@@ -223,6 +249,22 @@ public class StepEventBridgeRegistry {
         }
         String expected = hitlPreApprovalKey(toolId.strip(), params);
         return expected.equals(hitlPreapproved.remove(messageId.strip()));
+    }
+
+    public void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {
+        if (assistantMessageId == null || assistantMessageId.isBlank()) {
+            return;
+        }
+        writeHitlModes.put(assistantMessageId.strip(),
+                mode != null ? mode : SandboxWriteHitlMode.NEVER);
+    }
+
+    public SandboxWriteHitlMode writeHitlMode(String assistantMessageId) {
+        if (assistantMessageId == null || assistantMessageId.isBlank()) {
+            return SandboxWriteHitlMode.NEVER;
+        }
+        SandboxWriteHitlMode mode = writeHitlModes.get(assistantMessageId.strip());
+        return mode != null ? mode : SandboxWriteHitlMode.NEVER;
     }
 
     private static String hitlPreApprovalKey(String toolId, Map<String, String> params) {
@@ -337,6 +379,7 @@ public class StepEventBridgeRegistry {
             hitlAssistantByBridge.remove(messageId);
             hitlPreapproved.remove(messageId);
             tokenWrappers.remove(messageId);
+            loopBodyFolds.remove(messageId);
             generationFlush.remove(messageId);
             sessionStreamEpoch.remove(messageId);
             expertSpeakSinks.remove(messageId);
@@ -369,6 +412,14 @@ public class StepEventBridgeRegistry {
         if (session != null) {
             emitHookTokens(messageId, session, action);
         }
+    }
+
+    public void offerStreamToken(String messageId, StreamToken token) {
+        if (messageId == null || messageId.isBlank() || token == null) {
+            return;
+        }
+        ConcurrentLinkedQueue<StreamToken> queue = hookTokenQueues.get(messageId);
+        routeHookToken(messageId, token, queue);
     }
 
     public void emitSingleton(Consumer<ProcessingTimelineSession> action) {
@@ -507,18 +558,38 @@ public class StepEventBridgeRegistry {
         if (binding != null && isHookFlushAllowed(messageId, flushKey, binding.epoch())) {
             Consumer<StreamToken> sink = binding.consumer();
             Function<StreamToken, List<StreamToken>> wrapper = tokenWrappers.get(messageId);
+            List<StreamToken> outgoing;
             if (wrapper != null) {
-                List<StreamToken> wrapped = wrapper.apply(token);
-                if (wrapped != null) {
-                    wrapped.forEach(sink);
-                }
+                outgoing = wrapper.apply(token);
             } else {
-                sink.accept(token);
+                outgoing = List.of(token);
             }
+            flushToGeneration(flushKey, sink, outgoing);
             return;
         }
         if (queue != null) {
             queue.offer(token);
+        }
+    }
+
+    private void flushToGeneration(
+            String flushKey,
+            Consumer<StreamToken> sink,
+            List<StreamToken> tokens) {
+        if (sink == null || tokens == null || tokens.isEmpty()) {
+            return;
+        }
+        Function<StreamToken, List<StreamToken>> fold =
+                flushKey != null ? loopBodyFolds.get(flushKey) : null;
+        for (StreamToken t : tokens) {
+            if (fold != null) {
+                List<StreamToken> folded = fold.apply(t);
+                if (folded != null) {
+                    folded.forEach(sink);
+                }
+            } else {
+                sink.accept(t);
+            }
         }
     }
 
@@ -571,14 +642,28 @@ public class StepEventBridgeRegistry {
         }
         StreamToken token;
         Function<StreamToken, List<StreamToken>> wrapper = tokenWrappers.get(messageId);
+        String flushKey = resolveFlushMessageId(messageId);
         while ((token = queue.poll()) != null) {
+            List<StreamToken> outgoing;
             if (wrapper != null) {
-                List<StreamToken> wrapped = wrapper.apply(token);
-                if (wrapped != null) {
-                    wrapped.forEach(tokenConsumer);
-                }
+                outgoing = wrapper.apply(token);
             } else {
-                tokenConsumer.accept(token);
+                outgoing = List.of(token);
+            }
+            if (outgoing == null || outgoing.isEmpty()) {
+                continue;
+            }
+            Function<StreamToken, List<StreamToken>> fold =
+                    flushKey != null ? loopBodyFolds.get(flushKey) : null;
+            for (StreamToken t : outgoing) {
+                if (fold != null) {
+                    List<StreamToken> folded = fold.apply(t);
+                    if (folded != null) {
+                        folded.forEach(tokenConsumer);
+                    }
+                } else {
+                    tokenConsumer.accept(t);
+                }
             }
         }
     }

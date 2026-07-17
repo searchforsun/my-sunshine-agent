@@ -25,7 +25,8 @@ public enum OrchestratorErrorCode implements ErrorCode {
     WORKFLOW_NOT_FOUND(400, "orch_workflow_not_found", "未找到指定的工作流，请检查 /workflows"),
     SKILL_NOT_FOUND(400, "orch_skill_not_found", "未找到指定的 Skill，请检查列表后重试"),
     EXPERT_NOT_FOUND(400, "orch_expert_not_found", "未找到指定的专家，请检查 /experts 后重试"),
-    EXPERT_ROSTER_TOO_SMALL(400, "orch_expert_roster_too_small", "多专家协作至少需要 2 位专家，请使用 $ 指定");
+    EXPERT_ROSTER_TOO_SMALL(400, "orch_expert_roster_too_small", "多专家协作至少需要 2 位专家，请使用 $ 指定"),
+    SANDBOX_WORKSPACE_NOT_FOUND(404, "orch_sandbox_workspace_not_found", "尚无沙箱工作区");
 
     private final int code;
     private final String key;

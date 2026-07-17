@@ -40,6 +40,7 @@ export async function createExpert(
   systemPrompt: string,
   description?: string,
   skillIds?: string[],
+  toolIds?: string[],
 ): Promise<ExpertEntry> {
   const res = await fetch(apiUrl('/api/experts'), {
     method: 'POST',
@@ -50,6 +51,7 @@ export async function createExpert(
       systemPrompt,
       description: description ?? '',
       skillIds: skillIds ?? [],
+      toolIds: toolIds ?? [],
     }),
   })
   return parseApiResponse<ExpertEntry>(res)
@@ -61,6 +63,7 @@ export async function updateExpert(
   systemPrompt: string,
   description?: string,
   skillIds?: string[],
+  toolIds?: string[],
 ): Promise<ExpertEntry> {
   const res = await fetch(apiUrl(`/api/experts/${encodeURIComponent(id)}`), {
     method: 'PUT',
@@ -70,6 +73,7 @@ export async function updateExpert(
       systemPrompt,
       description: description ?? '',
       skillIds: skillIds ?? [],
+      toolIds: toolIds ?? [],
     }),
   })
   return parseApiResponse<ExpertEntry>(res)

@@ -215,7 +215,7 @@ agent.timeline.intent.modes:
 | 项 | 原因 | 替代 |
 |----|------|------|
 | 底栏 workflow 子下拉 / 二级 catalog | 与 Studio Chat `#` suggest 重复 | 4.13.5 `GET /api/workflows/catalog` |
-| 前端维护 workflow 列表 Map | catalog SSOT 应在 workflow-manager | `CompositeWorkflowCatalog` |
+| 前端维护 workflow 列表 Map | catalog SSOT 应在 workflow-manager DB | `WorkflowCatalogService` |
 | 在 selector 项目实现 `#` L0 | 应一次性在 orchestrator 4.13.3 | `WorkflowBindingParser` + Policy |
 | Chat 内 workflow CRUD / 发布 | 管理面在 `/workflows` | Workflow Studio |
 | 以 `workflowId` 请求字段为主 UX | 用户路径应对称 `@` → `#` | Studio「在 Chat 试用」可预填 `#id`；API 字段保留供跳转 |

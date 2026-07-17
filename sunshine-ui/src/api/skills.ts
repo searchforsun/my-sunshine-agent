@@ -11,6 +11,16 @@ function uploadUrl(path: string): string {
   return `${resolveBffStreamBase()}${path}`
 }
 
+export interface SandboxPolicy {
+  runtime?: string | null
+  image?: string | null
+  timeoutSec?: number | null
+  memoryMb?: number | null
+  cpus?: number | null
+  networkAllow?: string[] | null
+  execReadonlyAllow?: string[] | null
+}
+
 export interface SkillEntry {
   id: string
   displayName: string
@@ -23,6 +33,9 @@ export interface SkillEntry {
   activeVersionMaintainerName?: string | null
   /** 当前 active 版本是否已发布 — 未发布草稿不可开启 Skill */
   activeVersionPublished?: boolean
+  /** none | docker */
+  sandbox?: string
+  sandboxPolicy?: SandboxPolicy | null
 }
 
 export interface SkillVersion {
@@ -34,6 +47,7 @@ export interface SkillVersion {
   maxIters: number
   sideEffect: string
   sandbox: string
+  sandboxPolicyJson?: string | null
   referencesJson: string
   scriptsJson: string
   storagePath: string | null
@@ -112,6 +126,24 @@ export async function listSkillVersions(id: string): Promise<SkillVersion[]> {
     headers: apiHeaders(),
   })
   return parseApiResponse<SkillVersion[]>(res)
+}
+
+/** 更新版本 sandbox / sandbox_policy（T9 UI 编辑器用） */
+export async function updateSkillVersionSandbox(
+  id: string,
+  version: number,
+  sandbox: string,
+  sandboxPolicy?: SandboxPolicy | null,
+): Promise<SkillEntry> {
+  const res = await fetch(
+    apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}/sandbox`),
+    {
+      method: 'PUT',
+      headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sandbox, sandboxPolicy: sandboxPolicy ?? null }),
+    },
+  )
+  return parseApiResponse<SkillEntry>(res)
 }
 
 export async function publishSkillVersion(id: string, version: number): Promise<SkillEntry> {

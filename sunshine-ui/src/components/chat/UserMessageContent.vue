@@ -1,33 +1,63 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import SkillMentionChip from './SkillMentionChip.vue'
+import MentionChip from './MentionChip.vue'
 import type { SkillCatalogIndexEntry } from '../../api/skills'
+import type { ExpertCatalogIndexEntry } from '../../api/experts'
+import type { WorkflowCatalogEntry } from '../../api/workflows'
 import type { ExecutionPreference } from '../../api/executionModes'
-import { segmentSkillMentionsForMessage } from '../../utils/skillMention'
+import { segmentChatMentionsForMessage } from '../../utils/chatMention'
 
 const props = defineProps<{
   content: string
   catalog: SkillCatalogIndexEntry[]
-  /** 该条 user 消息发送时的 executionPreference */
+  expertCatalog?: ExpertCatalogIndexEntry[]
+  workflowCatalog?: WorkflowCatalogEntry[]
   executionPreference?: ExecutionPreference
 }>()
 
 const segments = computed(() =>
-  segmentSkillMentionsForMessage(props.content, props.catalog, props.executionPreference),
+  segmentChatMentionsForMessage(
+    props.content,
+    {
+      skills: props.catalog,
+      experts: props.expertCatalog ?? [],
+      workflows: props.workflowCatalog ?? [],
+    },
+    props.executionPreference,
+  ),
 )
 
-const hasSkillChip = computed(() =>
-  segments.value.some(s => s.type === 'skill'),
+const hasMentionChip = computed(() =>
+  segments.value.some(s => s.type !== 'text'),
 )
 </script>
 
 <template>
-  <span v-if="hasSkillChip" class="user-message-content">
+  <span v-if="hasMentionChip" class="user-message-content">
     <template v-for="(seg, idx) in segments" :key="idx">
-      <SkillMentionChip
+      <MentionChip
         v-if="seg.type === 'skill'"
+        kind="skill"
         :token="seg.token"
         :display-name="seg.skill.displayName"
+      />
+      <MentionChip
+        v-else-if="seg.type === 'expert'"
+        kind="expert"
+        :token="seg.token"
+        :display-name="seg.expert.displayName"
+      />
+      <MentionChip
+        v-else-if="seg.type === 'workflow'"
+        kind="workflow"
+        :token="seg.token"
+        :display-name="seg.workflow.displayName"
+      />
+      <MentionChip
+        v-else-if="seg.type === 'path'"
+        kind="path"
+        :token="seg.token"
+        :label="seg.label"
       />
       <span v-else>{{ seg.value }}</span>
     </template>

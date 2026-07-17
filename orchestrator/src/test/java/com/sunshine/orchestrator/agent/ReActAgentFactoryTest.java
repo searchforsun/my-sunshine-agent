@@ -63,21 +63,32 @@ class ReActAgentFactoryTest {
     @Test
     void resolveToolkit_subUsesExplicitWhitelist() {
         AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), null);
-        when(dynamicToolkitFactory.build(List.of("sdk__sunshine-finance__list_finance_messages"), "default"))
+        when(dynamicToolkitFactory.buildForSubAgent(
+                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null))
                 .thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).build(List.of("sdk__sunshine-finance__list_finance_messages"), "default");
+        verify(dynamicToolkitFactory).buildForSubAgent(
+                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null);
+    }
+
+    @Test
+    void resolveToolkit_subWithoutExtraToolsUsesSubAgentToolkit() {
+        AgentRunRequest req = subRequest("compliance-check", null, null);
+        when(dynamicToolkitFactory.buildForSubAgent(null, "default", "compliance-check")).thenReturn(subToolkit);
+
+        assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
+        verify(dynamicToolkitFactory).buildForSubAgent(null, "default", "compliance-check");
     }
 
     @Test
     void resolveToolkit_mainBuildsFreshToolkitFromTenantToolSet() {
         AgentRunRequest req = AgentRunRequest.main(
                 MemoryContext.empty(), "q", "u1", "default", "msg-main");
-        when(dynamicToolkitFactory.build("default")).thenReturn(subToolkit);
+        when(dynamicToolkitFactory.build("default", null)).thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).build("default");
+        verify(dynamicToolkitFactory).build("default", null);
     }
 
     @Test
@@ -85,7 +96,7 @@ class ReActAgentFactoryTest {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.SUB, "run-1", null, MemoryContext.empty(), "q", List.of(),
                 "u1", "default", null, null, List.of("sdk__sunshine-finance__list_finance_messages"), null, 4,
-                TimelineBinding.SUB_COMPRESSED, false);
+                TimelineBinding.SUB_COMPRESSED, false, null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
     }
 
@@ -111,6 +122,7 @@ class ReActAgentFactoryTest {
                 overlay,
                 0,
                 TimelineBinding.SUB_COMPRESSED,
-                false);
+                false,
+                null);
     }
 }

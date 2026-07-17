@@ -23,4 +23,7 @@ public class ChatMessage {
 
     /** 会话绑定的知识库 id；空则 orchestrator 解析租户默认库 */
     private String kbId;
+
+    /** never | always | smart — 沙箱写操作 HITL 跳过；缺省 never */
+    private String writeHitlMode;
 }

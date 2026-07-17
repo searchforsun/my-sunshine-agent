@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,10 +41,11 @@ public class PlanJsonParser {
         String reason = text(root, "reason");
         List<PlanNode> nodes = parseNodes(root.get("nodes"));
         List<PlanEdge> edges = parseEdges(root.get("edges"));
+        Map<String, PlanLayoutPoint> layout = parseLayout(root.get("layout"));
         if (nodes.isEmpty()) {
             throw new PlanParseException("Plan 缺少 nodes");
         }
-        return new PlanJson(planId, reason, nodes, edges);
+        return new PlanJson(planId, reason, nodes, edges, layout);
     }
 
     private static List<PlanNode> parseNodes(JsonNode nodesNode) {
@@ -62,9 +64,42 @@ public class PlanJsonParser {
                 params = parseParams(node.get("config"));
             }
             String displayName = text(node, "displayName");
-            nodes.add(new PlanNode(id, type, params, displayName));
+            String parentId = text(node, "parentId");
+            nodes.add(new PlanNode(id, type, params, displayName, parentId));
         }
         return List.copyOf(nodes);
+    }
+
+    private static Map<String, PlanLayoutPoint> parseLayout(JsonNode layoutNode) {
+        Map<String, PlanLayoutPoint> layout = new LinkedHashMap<>();
+        if (layoutNode == null || !layoutNode.isObject()) {
+            return layout;
+        }
+        Iterator<Map.Entry<String, JsonNode>> it = layoutNode.fields();
+        while (it.hasNext()) {
+            Map.Entry<String, JsonNode> e = it.next();
+            JsonNode pos = e.getValue();
+            if (pos == null || !pos.isObject()) {
+                continue;
+            }
+            JsonNode xNode = pos.get("x");
+            JsonNode yNode = pos.get("y");
+            if (xNode == null || yNode == null || !xNode.isNumber() || !yNode.isNumber()) {
+                continue;
+            }
+            Double width = null;
+            Double height = null;
+            JsonNode wNode = pos.get("width");
+            JsonNode hNode = pos.get("height");
+            if (wNode != null && wNode.isNumber() && wNode.asDouble() > 0) {
+                width = wNode.asDouble();
+            }
+            if (hNode != null && hNode.isNumber() && hNode.asDouble() > 0) {
+                height = hNode.asDouble();
+            }
+            layout.put(e.getKey(), new PlanLayoutPoint(xNode.asDouble(), yNode.asDouble(), width, height));
+        }
+        return layout;
     }
 
     private static List<PlanEdge> parseEdges(JsonNode edgesNode) {
@@ -75,11 +110,30 @@ public class PlanJsonParser {
         for (JsonNode edge : edgesNode) {
             String from = text(edge, "from");
             String to = text(edge, "to");
-            if (from != null && to != null) {
-                edges.add(new PlanEdge(from, to));
+            if (from == null || to == null) {
+                continue;
             }
+            boolean isDefault = edge.has("default") && edge.get("default").asBoolean(false);
+            PlanEdgeCondition condition = parseCondition(edge.get("condition"));
+            edges.add(new PlanEdge(from, to, condition, isDefault));
         }
         return List.copyOf(edges);
+    }
+
+    private static PlanEdgeCondition parseCondition(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        String left = text(node, "left");
+        String op = text(node, "op");
+        String right = text(node, "right");
+        if ((left == null || left.isBlank()) && (op == null || op.isBlank()) && (right == null || right.isBlank())) {
+            return null;
+        }
+        return new PlanEdgeCondition(
+                left != null ? left : "",
+                op != null ? op : "",
+                right != null ? right : "");
     }
 
     private static Map<String, String> parseParams(JsonNode paramsNode) {

@@ -1,6 +1,6 @@
 package com.sunshine.tool.service;
 
-import com.sunshine.tool.dto.ToolCatalogEntry;
+import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.tool.entity.ToolDefinitionEntity;
 import com.sunshine.tool.repo.ToolDefinitionRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,11 +33,14 @@ public class DbToolCatalogService {
                 entity.getDisplayName(),
                 entity.getDescription() != null ? entity.getDescription() : "",
                 entity.getKind(),
-                entity.getTimelinePhase(),
-                entity.getOutputSummaryKind(),
+                entity.getSource(),
+                entity.getSourceRef(),
+                entity.getTimelineSummaryTemplate(),
+                entity.getTimelineSummaryExtract(),
                 parameters,
                 entity.getSideEffect(),
                 entity.isRequireConfirmation(),
+                entity.isEnabled(),
                 entity.isIdValid(),
                 entity.getIdError());
     }

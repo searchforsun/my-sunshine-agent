@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, onMounted, onUnmounted, onUpdated, provide, shallowRef } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useChatSessions } from '../api/chatSessions'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
 import 'katex/dist/katex.min.css'
@@ -9,6 +10,9 @@ import { useChatTimelineView } from '../composables/useChatTimelineView'
 import { useChatScroll } from '../composables/useChatScroll'
 import { useChatSkillMention } from '../composables/useChatSkillMention'
 import { useChatExpertMention } from '../composables/useChatExpertMention'
+import { useChatWorkflowMention } from '../composables/useChatWorkflowMention'
+import { useChatWorkspacePathMention } from '../composables/useChatWorkspacePathMention'
+import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
 import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
 import { useChatSessionHydration } from '../composables/useChatSessionHydration'
 import { useChatStore } from '../stores/chatStore'
@@ -16,11 +20,18 @@ import { isValidConversationId } from '../api/conversations'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { loadActiveGeneration } from '../composables/useActiveGeneration'
+import CopyToggleIcon from '../components/icons/CopyToggleIcon.vue'
+import { NIcon } from 'naive-ui'
+import { DocumentTextOutline, FolderOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
+import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
 import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
+import { useSandboxWorkspaceDrawer } from '../composables/useSandboxWorkspaceDrawer'
+import { getWriteHitlMode } from '../composables/useWriteHitlMode'
 import { usePlanDagExpand } from '../composables/usePlanDagExpand'
+import { fetchSandboxWorkspaceStatus } from '../api/sandboxWorkspace'
 import type { ChatMessage } from '../api/chat'
 import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
 import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
@@ -39,8 +50,9 @@ import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { useKbPreference } from '../composables/useKbPreference'
 import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
 import { useTenantPreference } from '../composables/useTenantPreference'
-import { allowsExpertMention, allowsSkillMention } from '../api/executionModes'
+import { allowsExpertMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
+import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
 import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
@@ -57,10 +69,26 @@ const hydrationBridge = {
 }
 
 const chatStore = useChatStore()
+const route = useRoute()
+const router = useRouter()
 const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible } = useSidebar()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
+const {
+  open: openSandboxDrawer,
+  close: closeSandboxDrawer,
+  registerChatBody: registerSandboxChatBody,
+  compareMode: drawerBothOpen,
+} = useSandboxWorkspaceDrawer()
+const sandboxWorkspaceActive = ref(false)
+
+async function openWorkspaceDrawer() {
+  const id = currentConversationId.value
+  if (!id) return
+  openSandboxDrawer({ conversationId: id })
+  sandboxWorkspaceActive.value = true
+}
 const { state: planDagExpandState, isAnyExpanded: planDagExpanded, close: closePlanDagExpand, handleSelect: handlePlanDagExpandSelect } = usePlanDagExpand()
 const sessionTitle = computed(() => chatStore.current?.title || '新对话')
 const currentConversationId = computed(() => chatStore.currentId)
@@ -110,6 +138,11 @@ const {
     }
   },
   () => chatStore.recoverAfterStaleConversation(),
+  (_sid: string, convId: string) => {
+    if (convId === chatStore.currentId || _sid === chatStore.currentId) {
+      sandboxWorkspaceActive.value = true
+    }
+  },
 )
 
 const {
@@ -300,22 +333,45 @@ const {
   showExpertSuggest,
   expertSuggestIndex,
   filteredExperts,
+  expertCatalog,
+  expertMentionAllowed,
   applyExpertSuggest,
   loadExpertCatalog,
   handleExpertKeydown,
 } = useChatExpertMention(inputText, preference, loading)
 
+const {
+  showWorkflowSuggest,
+  workflowSuggestIndex,
+  filteredWorkflows,
+  workflowCatalog,
+  workflowMentionAllowed,
+  applyWorkflowSuggest,
+  loadWorkflowCatalog,
+  handleWorkflowKeydown,
+} = useChatWorkflowMention(inputText, preference, loading)
+
+const {
+  showPathSuggest,
+  pathSuggestIndex,
+  pathSuggestLoading,
+  filteredPaths,
+  applyPathSuggest,
+  handlePathKeydown,
+} = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef)
+
 const composerPlaceholder = computed(() => {
-  const parts = ['发消息，Enter 发送']
-  if (allowsSkillMention(preference.value)) parts.push('输入 @ 指定 Skill')
-  if (allowsExpertMention(preference.value)) parts.push('输入 $ 指定专家')
-  return parts.join('；')
+  const hints = ['/ 工作区']
+  if (allowsSkillMention(preference.value)) hints.push('@ Skill')
+  if (allowsWorkflowMention(preference.value)) hints.push('# 工作流')
+  if (allowsExpertMention(preference.value)) hints.push('$ 专家')
+  return `发消息，Enter 发送 · ${hints.join(' · ')}`
 })
 
 const EMPTY_HINTS = [
   { label: '制度检索', prompt: '检索知识库：公司的差旅报销制度有哪些要点？' },
-  { label: '报销分析', prompt: '查询待审批报销单，并对金额与事由做合规分析' },
-  { label: '动态规划', prompt: '先检索报销制度，再查待审批单据，最后给出合规结论' },
+  { label: '知识库问答', prompt: '#knowledge-qa 年假可以请几天' },
+  { label: '报销分析', prompt: '#finance-smart 待审批报销是否合规' },
   { label: 'Skill 合规', prompt: '@compliance-check 对照制度审查一笔差旅报销是否合规' },
 ] as const
 
@@ -377,11 +433,17 @@ async function handleSend() {
     sessionSettledHtml.delete(convId)
     clearStreamRenderer()
     await nextTick()
-    const binding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
+    const skillBinding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
+    const workflowBinding = resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value)
+    if (skillBinding.skillId) {
+      requestSandboxWorkspaceRefresh(convId, 'skills')
+    }
     const sendPromise = send(text, convId, {
       executionPreference: preference.value,
-      skillId: binding.skillId,
+      skillId: skillBinding.skillId,
+      workflowId: workflowBinding.workflowId,
       kbId: kbId.value,
+      writeHitlMode: getWriteHitlMode(convId),
     })
     chatStore.updateExecutionPreferenceLocal(convId, preference.value)
     if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
@@ -418,14 +480,34 @@ async function handleResume() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (handlePathKeydown(e)) return
+  if (handleWorkflowKeydown(e)) return
   if (handleExpertKeydown(e)) return
   handleSkillKeydown(e, () => { void handleSend() })
+}
+
+function applyChatDeepLink() {
+  const wf = typeof route.query.workflow === 'string' ? route.query.workflow.trim() : ''
+  const prompt = typeof route.query.prompt === 'string' ? route.query.prompt : ''
+  if (wf) {
+    setPreference('workflow')
+    inputText.value = prompt.trim() ? prompt : `#${wf} `
+  } else if (prompt.trim()) {
+    inputText.value = prompt
+  }
+  if (wf || prompt) {
+    const nextQuery = { ...route.query }
+    delete nextQuery.workflow
+    delete nextQuery.prompt
+    void router.replace({ query: nextQuery })
+  }
 }
 
 onMounted(async () => {
   setChatRouteActive(true)
   void loadSkillCatalog()
   void loadExpertCatalog()
+  void loadWorkflowCatalog()
   sessionHydrating.value = true
   try {
     await chatStore.init()
@@ -457,6 +539,7 @@ onMounted(async () => {
   }
   setActiveConversation(chatStore.currentId)
   scrollToBottomIfRequested(chatStore.currentId ?? '')
+  applyChatDeepLink()
   inputRef.value?.focus()
   window.addEventListener('pagehide', flushAllOnPageHide)
 })
@@ -466,9 +549,13 @@ onUnmounted(() => {
   setActiveConversation(null)
   window.removeEventListener('pagehide', flushAllOnPageHide)
   registerChatBody(null)
+  registerSandboxChatBody(null)
 })
 
-watch(chatBodyRef, (el) => registerChatBody(el), { immediate: true })
+watch(chatBodyRef, (el) => {
+  registerChatBody(el)
+  registerSandboxChatBody(el)
+}, { immediate: true })
 onUpdated(() => { nextTick(() => enhanceAllStaticMarkdown()) })
 watch(theme, () => nextTick(() => reRenderStaticMermaids()))
 
@@ -476,7 +563,16 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
   setActiveConversation(newId)
   closePlanDrawer()
+  closeSandboxDrawer()
   closePlanDagExpand()
+  sandboxWorkspaceActive.value = false
+  if (newId) {
+    try {
+      sandboxWorkspaceActive.value = await fetchSandboxWorkspaceStatus(newId)
+    } catch {
+      sandboxWorkspaceActive.value = false
+    }
+  }
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
     cacheSettledHtmlForConversation(oldId)
@@ -549,8 +645,15 @@ watch(
       </button>
     </header>
 
-    <div ref="chatBodyRef" class="chat-body">
-      <div class="chat-main" :class="{ 'plan-dag-expanded': planDagExpanded }">
+    <div
+      ref="chatBodyRef"
+      class="chat-body"
+      :class="{ 'chat-body--both-drawers': drawerBothOpen }"
+    >
+      <div
+        class="chat-main"
+        :class="{ 'plan-dag-expanded': planDagExpanded }"
+      >
     <!-- 消息区 -->
     <div ref="scrollRef" class="chat-scroll" @scroll="onChatScroll">
       <div class="chat-inner">
@@ -597,6 +700,8 @@ watch(
               <UserMessageContent
                 :content="msg.content"
                 :catalog="skillCatalog"
+                :expert-catalog="expertCatalog"
+                :workflow-catalog="workflowCatalog"
                 :execution-preference="msg.executionPreference"
               />
             </div>
@@ -639,13 +744,7 @@ watch(
                   :title="copiedIndex === idx ? '已复制' : '复制'"
                   @click="copyAssistantMessage(msg.content, idx)"
                 >
-                  <svg v-if="copiedIndex === idx" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
+                  <CopyToggleIcon :copied="copiedIndex === idx" />
                 </button>
               </div>
               <p
@@ -664,7 +763,8 @@ watch(
     </div>
 
     <PlanDagExpandLayer
-      v-if="planDagExpanded"
+      v-if="planDagExpanded && planDagExpandState.graph"
+      :graph="planDagExpandState.graph"
       :nodes="planDagExpandState.nodes"
       :selected-id="planDagExpandState.selectedId"
       :live="planDagExpandState.live"
@@ -694,14 +794,49 @@ watch(
           class="composer-box composer-box--input"
           :class="{ 'composer-box--busy': loading }"
         >
-          <ul v-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">
+          <ul v-if="showPathSuggest && !loading && (pathSuggestLoading || filteredPaths.length)" class="skill-suggest">
+            <li v-if="pathSuggestLoading" class="skill-suggest-loading">正在加载工作区…</li>
+            <template v-else>
+              <li
+                v-for="(entry, idx) in filteredPaths"
+                :key="entry.path"
+                class="path-suggest-item"
+                :class="{ 'is-highlighted': idx === pathSuggestIndex }"
+                @mousedown.prevent="applyPathSuggest(entry)"
+              >
+                <div class="skill-suggest-main">
+                  <NIcon
+                    :component="entry.isDir ? FolderOutline : DocumentTextOutline"
+                    :size="14"
+                    class="path-suggest-icon"
+                  />
+                  <span class="path-suggest-name">{{ entry.name }}</span>
+                </div>
+              </li>
+            </template>
+          </ul>
+          <ul v-else-if="showWorkflowSuggest && filteredWorkflows.length && !loading" class="skill-suggest">
+            <li
+              v-for="(wf, idx) in filteredWorkflows"
+              :key="wf.id"
+              :class="{ 'is-highlighted': idx === workflowSuggestIndex }"
+              @mousedown.prevent="applyWorkflowSuggest(wf)"
+            >
+              <div class="skill-suggest-main">
+                <span class="skill-suggest-id is-workflow">#{{ wf.id }}</span>
+                <span class="skill-suggest-name">{{ wf.displayName }}</span>
+              </div>
+              <p v-if="wf.description" class="skill-suggest-desc">{{ wf.description }}</p>
+            </li>
+          </ul>
+          <ul v-else-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">
             <li
               v-for="(expert, idx) in filteredExperts"
               :key="expert.id"
               :class="{ 'is-highlighted': idx === expertSuggestIndex }"
               @mousedown.prevent="applyExpertSuggest(expert)"
             >
-              <span class="skill-suggest-id">${{ expert.id }}</span>
+              <span class="skill-suggest-id is-expert">${{ expert.id }}</span>
               <span class="skill-suggest-name">{{ expert.displayName }}</span>
             </li>
           </ul>
@@ -712,7 +847,7 @@ watch(
               :class="{ 'is-highlighted': idx === skillSuggestIndex }"
               @mousedown.prevent="applySkillSuggest(skill)"
             >
-              <span class="skill-suggest-id">@{{ skill.id }}</span>
+              <span class="skill-suggest-id is-skill">@{{ skill.id }}</span>
               <span class="skill-suggest-name">{{ skill.displayName }}</span>
             </li>
           </ul>
@@ -726,7 +861,11 @@ watch(
               ref="inputRef"
               v-model="inputText"
               :allows-skill-mention="skillMentionAllowed"
+              :allows-expert-mention="expertMentionAllowed"
+              :allows-workflow-mention="workflowMentionAllowed"
               :catalog="skillCatalog"
+              :expert-catalog="expertCatalog"
+              :workflow-catalog="workflowCatalog"
               :placeholder="composerPlaceholder"
               @keydown="handleKeydown"
             />
@@ -744,6 +883,20 @@ watch(
                   :show-create="false"
                   @update:model-value="onKbChange"
                 />
+                <button
+                  type="button"
+                  class="composer-workspace-btn"
+                  :disabled="!currentConversationId"
+                  title="沙箱工作区"
+                  @click="openWorkspaceDrawer"
+                >
+                  <span class="composer-workspace-leading">
+                    <svg class="composer-workspace-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="composer-workspace-label">工作区</span>
+                  </span>
+                </button>
               </div>
               <button
                 v-if="loading"
@@ -772,6 +925,7 @@ watch(
     </footer>
       </div>
       <PlanNodeDrawer />
+      <SandboxWorkspaceDrawer />
     </div>
   </div>
 </template>
@@ -793,6 +947,12 @@ watch(
   display: flex;
   flex-direction: row;
   position: relative;
+  overflow-x: auto;
+}
+
+/* 双开：三栏各 min 420 */
+.chat-body--both-drawers {
+  min-width: 1260px;
 }
 
 .chat-attention-bubble {
@@ -831,13 +991,20 @@ watch(
 
 .chat-main {
   flex: 1;
-  min-width: 0;
+  /* 与 CHAT_CONTENT_MIN_WIDTH 一致：底栏四控件单行 */
+  min-width: 420px;
   min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
   /* 滚动区底部留白，避免最后一条回复贴住悬浮输入框 */
   --chat-composer-gap: 152px;
+}
+
+/* 放大 DAG 时抬高层叠，避免被右侧抽屉 z-index 挡住命中 */
+.chat-main.plan-dag-expanded {
+  z-index: 200;
+  isolation: isolate;
 }
 
 .chat-main.plan-dag-expanded .chat-scroll {
@@ -1175,6 +1342,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 8px;
   padding-top: 4px;
   min-height: 34px;
@@ -1183,8 +1351,54 @@ watch(
 .composer-toolbar-left {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
   gap: 8px;
   min-width: 0;
+}
+
+.composer-workspace-btn {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sun-text-secondary);
+  font-size: var(--sun-font-sm, 12px);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.composer-workspace-leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.composer-workspace-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.composer-workspace-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.composer-workspace-btn:hover:not(:disabled) {
+  border-color: var(--sun-border-light, #ccc);
+  color: var(--sun-text, #212121);
+}
+
+.composer-workspace-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .skill-suggest {
@@ -1206,13 +1420,34 @@ watch(
 
 .skill-suggest li {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
   padding: 7px 8px;
   border-radius: calc(var(--radius-lg) - 2px);
   cursor: pointer;
   font-size: var(--sun-font-base);
   transition: background 0.15s;
+}
+
+.skill-suggest-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.skill-suggest-desc,
+.skill-suggest-meta {
+  margin: 0;
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+  line-height: 1.4;
+  padding-left: 2px;
+}
+
+.skill-suggest-meta {
+  font-family: var(--sun-font-mono);
+  font-size: 11px;
 }
 
 .skill-suggest li:hover,
@@ -1223,11 +1458,54 @@ watch(
 .skill-suggest-id {
   font-family: var(--sun-font-mono);
   font-size: var(--sun-font-base);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
-  color: var(--sun-text);
   flex-shrink: 0;
+}
+
+.skill-suggest-id.is-skill {
+  color: var(--mention-skill-prefix);
+}
+
+.skill-suggest-id.is-expert {
+  color: var(--mention-expert-prefix);
+}
+
+.skill-suggest-id.is-workflow {
+  color: var(--mention-workflow-prefix);
+}
+
+.skill-suggest-id.is-path {
+  color: var(--mention-path-prefix);
+}
+
+.skill-suggest li.path-suggest-item {
+  flex-direction: row;
+  align-items: center;
+}
+
+.path-suggest-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--mention-path-prefix);
+}
+
+.path-suggest-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-suggest-loading {
+  cursor: default;
+  color: var(--sun-text-muted);
+}
+
+.skill-suggest-loading:hover {
+  background: transparent;
 }
 
 .skill-suggest-name {

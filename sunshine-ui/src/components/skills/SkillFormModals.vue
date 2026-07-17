@@ -10,13 +10,13 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
   <NModal v-model:show="page.showCreate" preset="dialog" title="新建 Skill" class="sunshine-dialog">
     <NForm label-placement="left" label-width="90">
       <NFormItem label="ID" required>
-        <NInput v-model:value="page.createForm.id" placeholder="finance-analysis" />
+        <NInput v-model:value="page.createForm.id" class="sun-field" placeholder="finance-analysis" />
       </NFormItem>
       <NFormItem label="显示名" required>
-        <NInput v-model:value="page.createForm.displayName" placeholder="财务合规分析" />
+        <NInput v-model:value="page.createForm.displayName" class="sun-field" placeholder="财务合规分析" />
       </NFormItem>
       <NFormItem label="描述">
-        <NInput v-model:value="page.createForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="可选；上传 SKILL.md 后将以其 frontmatter description 为准" />
+        <NInput v-model:value="page.createForm.description" class="sun-field" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="可选；上传 SKILL.md 后将以其 frontmatter description 为准" />
       </NFormItem>
     </NForm>
     <template #action>
@@ -33,14 +33,15 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
   >
     <NForm label-placement="left" label-width="90">
       <NFormItem label="ID">
-        <NInput :value="page.editTargetSkill?.id ?? ''" disabled />
+        <NInput class="sun-field" :value="page.editTargetSkill?.id ?? ''" disabled />
       </NFormItem>
       <NFormItem label="显示名" required>
-        <NInput v-model:value="page.editForm.displayName" placeholder="财务合规分析" />
+        <NInput v-model:value="page.editForm.displayName" class="sun-field" placeholder="财务合规分析" />
       </NFormItem>
       <NFormItem label="描述">
         <NInput
           v-model:value="page.editForm.description"
+          class="sun-field"
           type="textarea"
           :autosize="{ minRows: 2, maxRows: 4 }"
           placeholder="可选"

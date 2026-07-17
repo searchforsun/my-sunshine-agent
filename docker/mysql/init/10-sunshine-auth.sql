@@ -10,5 +10,6 @@ CREATE TABLE sys_user (
     updated_at    DATETIME(3)  NOT NULL,
     UNIQUE KEY uk_username (username),
     tenant_id     VARCHAR(32)  NOT NULL DEFAULT 'default' COMMENT '租户标识',
+    default_write_hitl_mode VARCHAR(16) NOT NULL DEFAULT 'never' COMMENT 'never|always|smart 沙箱写 HITL 用户默认',
     INDEX idx_sys_user_tenant (tenant_id)
 );

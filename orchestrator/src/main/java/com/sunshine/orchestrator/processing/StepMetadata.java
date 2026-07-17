@@ -36,7 +36,11 @@ public record StepMetadata(
         /** ReAct TaskBoard 清单项 */
         List<TaskBoardItemView> tasks,
         Integer taskRevision,
-        String taskProgress
+        String taskProgress,
+        /** 沙箱 read/write/edit：容器内完整路径（主行 after 可能为 fileName） */
+        String sandboxPath,
+        /** 沙箱 glob：搜索根（主行 after 为 pattern · root） */
+        String sandboxSearchRoot
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -103,6 +107,10 @@ public record StepMetadata(
         return StepMetadataAssembler.withRagExpandLayout(base);
     }
 
+    public static StepMetadata fromSandbox(String sandboxPath, String sandboxSearchRoot) {
+        return StepMetadataAssembler.fromSandbox(sandboxPath, sandboxSearchRoot);
+    }
+
     public String sourcesLabel() {
         if (sources == null || sources.isEmpty()) {
             return "";
@@ -123,6 +131,8 @@ public record StepMetadata(
                 && planApproval == null
                 && (tasks == null || tasks.isEmpty())
                 && taskRevision == null
-                && !StringUtils.hasText(taskProgress);
+                && !StringUtils.hasText(taskProgress)
+                && !StringUtils.hasText(sandboxPath)
+                && !StringUtils.hasText(sandboxSearchRoot);
     }
 }

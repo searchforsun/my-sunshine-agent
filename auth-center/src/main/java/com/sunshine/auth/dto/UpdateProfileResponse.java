@@ -11,6 +11,8 @@ public class UpdateProfileResponse {
     private String username;
     private String nickname;
     private String tenantId;
+    /** never|always|smart */
+    private String defaultWriteHitlMode;
     /** 资料更新后重新签发的 JWT（extra 含 nickname / tenantId） */
     private String token;
 }

@@ -22,7 +22,7 @@ public final class StreamTokenCoalescer {
                     if (token.isContentLifecycle()) {
                         return flushContent(contentBuffer, bufferedAfterStepId).concatWith(Mono.just(token));
                     }
-                    if (token.isStep() || token.isStepDelta()) {
+                    if (token.isStep() || token.isStepDelta() || token.isSandboxSession()) {
                         return flushContent(contentBuffer, bufferedAfterStepId).concatWith(Mono.just(token));
                     }
                     if (token.isReasoning()) {

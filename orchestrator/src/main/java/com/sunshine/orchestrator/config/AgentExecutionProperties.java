@@ -4,11 +4,8 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /**
- * Agent 执行模式配置 — react 工具白名单、plan-workflow 重试降级（Nacos agent.execution）
+ * Agent 执行模式配置 — react / plan-workflow 运行时策略（Nacos agent.execution）
  */
 @Data
 @RefreshScope

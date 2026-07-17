@@ -33,6 +33,9 @@ public final class TimelineAggregator {
                 if (event.summary() != null) {
                     state.active = event.summary();
                 }
+                if (event.detail() != null) {
+                    state.detail = event.detail();
+                }
                 if (event.metadata() != null) {
                     state.metadata = event.metadata();
                 }

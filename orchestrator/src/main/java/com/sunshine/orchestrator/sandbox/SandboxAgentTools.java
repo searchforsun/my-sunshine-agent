@@ -1,0 +1,293 @@
+package com.sunshine.orchestrator.sandbox;
+
+import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.audit.ToolAuditService;
+import com.sunshine.orchestrator.client.SandboxClient;
+import com.sunshine.common.sandbox.ToolInvokeResponse;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
+import com.sunshine.orchestrator.hitl.HitlConfirmationService;
+import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.tool.AgentTool;
+import io.agentscope.core.tool.ToolCallParam;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * 沙箱六工具 AgentTool 提供者 — 不进 tool-manager Catalog；T12 注入 {@link #all()}。
+ * 审计经 {@link ToolAuditService}；content/new_string/old_string 仅存 sha256，不落全文。
+ */
+@Slf4j
+@Component
+@RefreshScope
+@RequiredArgsConstructor
+public class SandboxAgentTools {
+
+    private static final Set<String> DIGEST_PARAM_KEYS = Set.of("content", "new_string", "old_string");
+
+    private final SandboxClient sandboxClient;
+    private final HitlConfirmationService hitlConfirmationService;
+    private final ToolAuditService toolAuditService;
+    private final SandboxSessionLifecycle sandboxSessionLifecycle;
+    private final AgentSandboxProperties sandboxProperties;
+
+    private List<AgentTool> tools = List.of();
+
+    @PostConstruct
+    void init() {
+        List<AgentTool> built = new ArrayList<>();
+        for (String toolId : SandboxIds.ALL) {
+            AgentSandboxProperties.ToolDef def = sandboxProperties.resolveTool(toolId);
+            if (def == null) {
+                log.warn("[SandboxAgentTools] 缺少工具定义: {}", toolId);
+                continue;
+            }
+            built.add(tool(toolId, def.getDescription(), SandboxToolSchemas.toParameters(def)));
+        }
+        tools = List.copyOf(built);
+    }
+
+    public List<AgentTool> all() {
+        return tools;
+    }
+
+    private AgentTool tool(String name, String description, Map<String, Object> parameters) {
+        return new SandboxAgentTool(name, description, parameters);
+    }
+
+    private final class SandboxAgentTool implements AgentTool {
+
+        private final String name;
+        private final String description;
+        private final Map<String, Object> parameters;
+
+        SandboxAgentTool(String name, String description, Map<String, Object> parameters) {
+            this.name = name;
+            this.description = description;
+            this.parameters = parameters;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getDescription() {
+            return description;
+        }
+
+        @Override
+        public Map<String, Object> getParameters() {
+            return parameters;
+        }
+
+        @Override
+        public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+            return Mono.fromCallable(() -> execute(param))
+                    .subscribeOn(Schedulers.boundedElastic());
+        }
+
+        private ToolResultBlock execute(ToolCallParam param) {
+            String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
+            Map<String, Object> body = extractBody(param);
+            Map<String, String> hitlParams = toStringMap(body);
+            String bridgeId = StepEventBridge.bridgeIdForToolUse(toolUseId);
+            if (bridgeId == null) {
+                bridgeId = StepEventBridge.resolveHitlBridgeId();
+            }
+            String generationMessageId = bridgeId != null ? StepEventBridge.hitlAssistantMessageId(bridgeId) : null;
+            long toolEpoch = generationMessageId != null
+                    ? StepEventBridge.currentStreamEpoch(generationMessageId) : -1L;
+            if (isStaleToolRun(generationMessageId, toolEpoch)) {
+                throw new HitlWaitInterruptedException();
+            }
+            if (shouldAwaitHitl(bridgeId, body)) {
+                String preApproveMsgId = generationMessageId != null
+                        ? generationMessageId : StepEventBridge.activeMessageId();
+                if (preApproveMsgId != null
+                        && StepEventBridge.consumeHitlPreApproval(preApproveMsgId, name, hitlParams)) {
+                    log.info("[SandboxAgentTool] {} 续跑 re-await 已确认，跳过二次 HITL", name);
+                } else {
+                    try {
+                        boolean approved = generationMessageId != null
+                                ? hitlConfirmationService.awaitConfirmation(
+                                        bridgeId, generationMessageId, name, hitlParams)
+                                : hitlConfirmationService.awaitConfirmation(bridgeId, name, hitlParams);
+                        if (!approved) {
+                            return denyResult(toolUseId, bridgeId, generationMessageId, body);
+                        }
+                    } catch (HitlWaitInterruptedException interrupted) {
+                        log.info("[SandboxAgentTool] {} HITL 等待被中断（暂停/续跑）", name);
+                        throw interrupted;
+                    }
+                }
+            }
+            if (isStaleToolRun(generationMessageId, toolEpoch)) {
+                throw new HitlWaitInterruptedException();
+            }
+            try {
+                sandboxSessionLifecycle.ensureBound(bridgeId);
+            } catch (Exception e) {
+                String err = StringUtils.hasText(e.getMessage())
+                        ? e.getMessage() : "沙箱会话未就绪";
+                log.warn("[SandboxAgentTool] ensureBound 失败: {}", err);
+                auditIfBound(name, auditParams(body, null, null, null), err, "fail");
+                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(err).build());
+            }
+            String sessionId = SandboxSessionHolder.requireSessionId(bridgeId);
+            log.info("[SandboxAgentTool] {} session={} bridge={} params={}",
+                    name, sessionId, bridgeId, body.keySet());
+            long startMs = System.currentTimeMillis();
+            try {
+                ToolInvokeResponse resp = sandboxClient.invoke(sessionId, SandboxIds.rpcName(name), body);
+                String output = resp != null && resp.output() != null ? resp.output() : "";
+                boolean ok = resp != null && resp.ok();
+                Map<String, String> auditParams = auditParams(body, sessionId, resp, System.currentTimeMillis() - startMs);
+                auditIfBound(name, auditParams, output, ok ? "ok" : "fail");
+                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(output).build());
+            } catch (Exception e) {
+                log.warn("[SandboxAgentTool] {} 调用失败: {}", name, e.getMessage());
+                // 透传 sandbox 原始 msg（如 path escapes jail），供模型改参重试；不做路径兼容改写
+                String raw = e.getMessage();
+                String err = StringUtils.hasText(raw) ? raw : "沙箱工具调用失败";
+                Map<String, String> auditParams = auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
+                auditIfBound(name, auditParams, err, "fail");
+                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(err).build());
+            }
+        }
+
+        private boolean shouldAwaitHitl(String bridgeId, Map<String, Object> body) {
+            if (hitlConfirmationService == null
+                    || !hitlConfirmationService.shouldConfirmForBridge(name, bridgeId)) {
+                return false;
+            }
+            String msgId = bridgeId != null ? StepEventBridge.hitlAssistantMessageId(bridgeId) : null;
+            if (msgId == null) {
+                msgId = StepEventBridge.activeMessageId();
+            }
+            SandboxWriteHitlMode mode = StepEventBridge.writeHitlMode(msgId);
+            return SandboxHitlPolicy.requiresConfirmation(name, body, mode);
+        }
+
+        private ToolResultBlock denyResult(
+                String toolUseId, String bridgeId, String generationMessageId, Map<String, Object> body) {
+            if (bridgeId != null) {
+                StepEventBridge.emit(bridgeId, session -> session.skipCurrentToolStep(
+                        hitlConfirmationService.skippedAfterSummary()));
+                String flushId = generationMessageId != null ? generationMessageId : bridgeId;
+                hitlConfirmationService.flushTimeline(flushId);
+            }
+            String rejection = hitlConfirmationService.rejectionMessage();
+            String sessionId = null;
+            SandboxSessionHolder.Binding binding = SandboxSessionHolder.get(bridgeId);
+            if (binding == null) {
+                binding = SandboxSessionHolder.current();
+            }
+            if (binding != null) {
+                sessionId = binding.sessionId();
+            }
+            auditIfBound(name, auditParams(body, sessionId, null, null), rejection, "skipped");
+            return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(rejection).build());
+        }
+    }
+
+    private void auditIfBound(String toolId, Map<String, String> params, String output, String status) {
+        String messageId = StepEventBridge.activeMessageId();
+        StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(messageId);
+        if (ctx == null || toolAuditService == null) {
+            return;
+        }
+        String summary = output != null && output.length() > 240 ? output.substring(0, 240) + "..." : output;
+        toolAuditService.toolCall(
+                ctx.conversationId(),
+                ctx.messageId(),
+                ctx.userId(),
+                ctx.tenantId(),
+                ctx.planId(),
+                null,
+                toolId,
+                params,
+                summary != null ? summary : "",
+                status);
+    }
+
+    /**
+     * 审计 params：敏感正文字段替换为 sha256 hex；附带 sessionId / exitCode / durationMs。
+     */
+    static Map<String, String> auditParams(
+            Map<String, Object> body, String sessionId, ToolInvokeResponse resp, Long durationMs) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (sessionId != null && !sessionId.isBlank()) {
+            out.put("sessionId", sessionId);
+        }
+        if (body != null) {
+            body.forEach((k, v) -> {
+                if (k == null) {
+                    return;
+                }
+                String raw = v != null ? String.valueOf(v) : "";
+                out.put(k, DIGEST_PARAM_KEYS.contains(k) ? sha256Hex(raw) : raw);
+            });
+        }
+        if (resp != null && resp.exitCode() != null) {
+            out.put("exitCode", String.valueOf(resp.exitCode()));
+        }
+        if (durationMs != null) {
+            out.put("durationMs", String.valueOf(durationMs));
+        }
+        return out;
+    }
+
+    static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest((value != null ? value : "").getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    private static boolean isStaleToolRun(String generationMessageId, long toolEpoch) {
+        return generationMessageId != null && toolEpoch >= 0
+                && !StepEventBridge.isStreamEpochValid(generationMessageId, toolEpoch);
+    }
+
+    private static Map<String, Object> extractBody(ToolCallParam param) {
+        Map<String, Object> input = param.getInput();
+        if (input == null || input.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        input.forEach((k, v) -> {
+            if (k != null && v != null) {
+                body.put(k, v);
+            }
+        });
+        return body;
+    }
+
+    private static Map<String, String> toStringMap(Map<String, Object> body) {
+        Map<String, String> out = new LinkedHashMap<>();
+        body.forEach((k, v) -> out.put(k, v != null ? String.valueOf(v) : ""));
+        return out;
+    }
+}

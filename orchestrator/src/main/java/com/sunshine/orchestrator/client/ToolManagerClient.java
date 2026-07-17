@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.client;
 
 import com.sunshine.common.core.result.R;
+import com.sunshine.common.tool.ToolCatalogEntry;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,6 +30,75 @@ public class ToolManagerClient {
     void init() {
         webClient = WebClient.builder().baseUrl(baseUrl).build();
         log.info("[ToolManagerClient] baseUrl={}", baseUrl);
+    }
+
+    public List<ToolCatalogEntry> fetchCatalog(String tenantId, boolean enabledOnly) {
+        String effectiveTenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
+        try {
+            List<ToolCatalogEntry> entries = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/tools/catalog")
+                            .queryParam("enabledOnly", enabledOnly)
+                            .build())
+                    .header("x-tenant-id", effectiveTenant)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<R<List<ToolCatalogEntry>>>() {})
+                    .map(R::getData)
+                    .onErrorResume(e -> {
+                        log.warn("[ToolManagerClient] fetch catalog failed tenant={} enabledOnly={}: {}",
+                                effectiveTenant, enabledOnly, e.getMessage());
+                        return Mono.just(List.of());
+                    })
+                    .block();
+            return entries != null ? entries : List.of();
+        } catch (Exception e) {
+            log.warn("[ToolManagerClient] fetch catalog error tenant={} enabledOnly={}: {}",
+                    effectiveTenant, enabledOnly, e.getMessage());
+            return List.of();
+        }
+    }
+
+    public List<String> fetchReactDefault(String tenantId) {
+        return fetchToolSetToolIds("react-default", tenantId).toolIds();
+    }
+
+    public List<String> fetchPlanWorkflow(String tenantId) {
+        return fetchToolSetToolIds("plan-workflow", tenantId).toolIds();
+    }
+
+    public List<String> fetchPlanWorkflowCritical(String tenantId) {
+        return fetchToolSetToolIds("plan-workflow", tenantId).criticalToolIds();
+    }
+
+    public ToolSetToolIdsResponse fetchToolSetToolIds(String kind, String tenantId) {
+        String effectiveTenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
+        try {
+            ToolSetToolIdsResponse response = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/tools/sets/" + kind + "/tool-ids")
+                            .queryParam("tenantId", effectiveTenant)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<R<ToolSetToolIdsResponse>>() {})
+                    .map(R::getData)
+                    .onErrorResume(e -> {
+                        log.warn("[ToolManagerClient] fetch {} tool-ids failed tenant={}: {}",
+                                kind, effectiveTenant, e.getMessage());
+                        return Mono.empty();
+                    })
+                    .block();
+            if (response == null) {
+                return new ToolSetToolIdsResponse(List.of(), List.of());
+            }
+            List<String> toolIds = response.toolIds() != null ? List.copyOf(response.toolIds()) : List.of();
+            List<String> critical = response.criticalToolIds() != null
+                    ? List.copyOf(response.criticalToolIds())
+                    : List.of();
+            return new ToolSetToolIdsResponse(toolIds, critical);
+        } catch (Exception e) {
+            log.warn("[ToolManagerClient] fetch {} tool-ids error tenant={}: {}", kind, effectiveTenant, e.getMessage());
+            return new ToolSetToolIdsResponse(List.of(), List.of());
+        }
     }
 
     public Mono<String> invokeMono(String name, Map<String, String> params) {
@@ -65,31 +135,16 @@ public class ToolManagerClient {
                 .map(R::getData);
     }
 
-    public Mono<ToolSummarizeOutputResponse> summarizeByKindMono(String outputSummaryKind, String text) {
+    public Mono<Map<String, String>> extractBindingsMono(String extractJson, String text) {
         Map<String, Object> body = Map.of(
-                "outputSummaryKind", outputSummaryKind != null ? outputSummaryKind : "",
+                "extractJson", extractJson != null ? extractJson : "",
                 "text", text != null ? text : "");
         return webClient.post()
-                .uri("/api/tools/summarize-output")
+                .uri("/api/tools/extract-bindings")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<R<ToolSummarizeOutputResponse>>() {})
-                .map(R::getData);
-    }
-
-    public Mono<ToolSummarizeOutputResponse> summarizeRagHitsMono(List<RagClient.RagHit> hits) {
-        List<Map<String, String>> hitDtos = hits == null ? List.of() : hits.stream()
-                .map(h -> Map.of(
-                        "docName", h.docName() != null ? h.docName() : "",
-                        "content", h.content() != null ? h.content() : ""))
-                .toList();
-        return webClient.post()
-                .uri("/api/tools/summarize-rag-hits")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("hits", hitDtos))
-                .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<R<ToolSummarizeOutputResponse>>() {})
+                .bodyToMono(new ParameterizedTypeReference<R<Map<String, String>>>() {})
                 .map(R::getData);
     }
 }
