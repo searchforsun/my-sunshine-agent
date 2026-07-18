@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sandbox 工具行 · Hover 取消示意</title>
+  <style>
+    :root {
+      --sun-black: #0d1117;
+      --sun-border: #30363d;
+      --sun-text: #e6edf3;
+      --sun-text-secondary: #c9d1d9;
+      --sun-text-muted: #8b949e;
+      --sun-blue: #58a6ff;
+      --sun-red: #f85149;
+      --sun-font-md: 13px;
+      --sun-font-sm: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--sun-black);
+      color: var(--sun-text-muted);
+      font: 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+      padding: 32px 24px 48px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--sun-text);
+    }
+    .sub {
+      margin: 0 0 28px;
+      font-size: 13px;
+      color: var(--sun-text-muted);
+      max-width: 560px;
+    }
+    .panel {
+      border: 1px solid var(--sun-border);
+      border-radius: 8px;
+      padding: 16px 18px 20px;
+      max-width: 640px;
+      background: var(--sun-black);
+    }
+    .caption {
+      font-size: 12px;
+      color: var(--sun-text-muted);
+      margin: 0 0 10px;
+      letter-spacing: 0.02em;
+    }
+    .stack { display: flex; flex-direction: column; gap: 4px; }
+    .op-line {
+      font-size: var(--sun-font-md);
+      line-height: 1.5;
+      color: var(--sun-text-muted);
+    }
+    .op-line-row {
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr) 56px;
+      column-gap: 4px;
+      align-items: center;
+      width: 100%;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+    }
+    .op-line.is-cancellable:hover .op-line-row,
+    .op-line.is-demo-hover .op-line-row {
+      border-color: color-mix(in srgb, var(--sun-border) 70%, var(--sun-text-muted));
+    }
+    .op-gutter { width: 12px; }
+    .op-main {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: baseline;
+      gap: 0 6px;
+      min-width: 0;
+    }
+    .op-label {
+      flex-shrink: 0;
+      color: var(--sun-text-secondary);
+      font-weight: 450;
+    }
+    .op-line.is-running .op-label { color: var(--sun-text); }
+    .op-text {
+      flex: 1 1 0;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity: 0.92;
+    }
+    .op-pulse { animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .op-trailing {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 1.5em;
+      height: 1.5em; /* 与一行字高对齐 */
+    }
+    .op-dur {
+      font-size: var(--sun-font-sm);
+      color: var(--sun-text-muted);
+      opacity: 0.65;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      line-height: 1.5;
+    }
+    /* 与 Chat 底栏 composer-icon-btn.stop 同形：圆钮 + 圆角方块；高度压到工具行一行 */
+    .op-pause {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 1.45em;
+      height: 1.45em;
+      margin: 0;
+      padding: 0;
+      border: 1px solid var(--sun-border);
+      border-radius: 50%;
+      background: transparent;
+      color: var(--sun-text-secondary);
+      cursor: pointer;
+      line-height: 0;
+    }
+    .op-pause svg {
+      width: 0.78em;
+      height: 0.78em;
+      display: block;
+    }
+    .op-line.is-cancellable.is-running:hover .op-dur,
+    .op-line.is-demo-hover .op-dur { display: none; }
+    .op-line.is-cancellable.is-running:hover .op-pause,
+    .op-line.is-demo-hover .op-pause { display: inline-flex; }
+    .op-pause:hover {
+      color: var(--sun-red);
+      border-color: var(--sun-red);
+      background: rgba(248, 113, 113, 0.08);
+    }
+    .divider {
+      height: 1px;
+      background: var(--sun-border);
+      margin: 22px 0;
+      max-width: 640px;
+    }
+    .hint {
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--sun-text-muted);
+    }
+    .hint strong { color: var(--sun-text-secondary); font-weight: 500; }
+  </style>
+</head>
+<body>
+  <h1>工具行 Hover → 取消</h1>
+  <p class="sub">
+    仅 <code>sandbox__exec</code> / <code>grep</code> / <code>glob</code> 且 <strong>running</strong>：
+    默认显示耗时；悬停藏耗时、出与 Chat 底栏相同的<strong>圆角方块暂停</strong>图标（缩到一行高）。点击仍为真取消。
+  </p>
+
+  <div class="panel">
+    <p class="caption">默认（未悬停）— 显示计时</p>
+    <div class="stack">
+      <div class="op-line is-running is-cancellable">
+        <div class="op-line-row">
+          <span class="op-gutter"></span>
+          <span class="op-main">
+            <span class="op-label">调用工具 执行命令</span>
+            <span class="op-text">正在执行 npm install<span class="op-pulse">…</span></span>
+          </span>
+          <span class="op-trailing">
+            <span class="op-dur">12.4s</span>
+            <button type="button" class="op-pause" title="暂停" aria-label="暂停">
+              <!-- 与 ChatView composer 停止按钮同一 SVG -->
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <rect x="3" y="3" width="10" height="10" rx="1.5"/>
+              </svg>
+            </button>
+          </span>
+        </div>
+      </div>
+    </div>
+    <p class="hint">把鼠标移到上面这一行上看效果，或看下方固定 hover 态。</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="panel">
+    <p class="caption">悬停态 — Chat 同款方块图标，缩到一行高</p>
+    <div class="stack">
+      <div class="op-line is-running is-cancellable is-demo-hover">
+        <div class="op-line-row">
+          <span class="op-gutter"></span>
+          <span class="op-main">
+            <span class="op-label">调用工具 执行命令</span>
+            <span class="op-text">正在执行 npm install<span class="op-pulse">…</span></span>
+          </span>
+          <span class="op-trailing">
+            <span class="op-dur">12.4s</span>
+            <button type="button" class="op-pause" title="暂停" aria-label="暂停">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <rect x="3" y="3" width="10" height="10" rx="1.5"/>
+              </svg>
+            </button>
+          </span>
+        </div>
+      </div>
+      <div class="op-line">
+        <div class="op-line-row">
+          <span class="op-gutter"></span>
+          <span class="op-main">
+            <span class="op-label">调用工具 读取文件</span>
+            <span class="op-text">/workspace/pkg.json</span>
+          </span>
+          <span class="op-trailing">
+            <span class="op-dur">0.3s</span>
+          </span>
+        </div>
+      </div>
+    </div>
+    <p class="hint">
+      <strong>read/write/edit</strong> 无取消钮；取消后该步变为「已取消」类 paused 文案，主 Agent 继续。
+    </p>
+  </div>
+</body>
+</html>
