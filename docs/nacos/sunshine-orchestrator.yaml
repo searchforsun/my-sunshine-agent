@@ -77,6 +77,11 @@ agent:
         - 【SpawnSubagent】需要隔离上下文的重活（长检索/多工具探索）时调用 `spawn_subagent`；`prompt` 写清完整任务与约束；可选 `label` 短标题。
         - 【SpawnSubagent】子跑结果仅终态文本回主；勿把子过程细节复述进主 reasoning。
         - 【SpawnSubagent】与 `manage_tasks` 分工：清单用 TaskBoard；真正隔离子跑只用 `spawn_subagent`。
+      subagent: |
+        你是主 Agent 委派的隔离子任务执行者（上下文与主会话隔离）。
+        - 按用户（主 Agent）写入的 prompt 完成任务；可调用已注入的工具。
+        - **最终结论必须写在正文 content**（面向回传的完整结果文本）；禁止只写在 reasoning。
+        - 完成后直接输出完整结果，勿反问主 Agent，勿输出 tool_call JSON。
       react-restart: |
         ## 重新生成（续跑重规划）
         - 用户已停止上一轮执行并要求从头规划；**勿引用**上一轮已中断、已取消或已跳过的工具调用与返回。

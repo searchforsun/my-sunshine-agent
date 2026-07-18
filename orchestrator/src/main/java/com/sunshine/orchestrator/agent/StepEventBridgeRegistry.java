@@ -561,6 +561,15 @@ public class StepEventBridgeRegistry {
             List<StreamToken> outgoing;
             if (wrapper != null) {
                 outgoing = wrapper.apply(token);
+                // spawn_subagent：wrapper 只 fold 副作用且 return 空；必须把原 token 入队，
+                // 否则 content 既不 flush 也不进 Flux，工具结果恒为空。
+                // Workflow agent wrapper 返回非空 parent 步，仍只走 flush，避免双发。
+                if (messageId.startsWith("sub-") && (outgoing == null || outgoing.isEmpty())) {
+                    if (queue != null) {
+                        queue.offer(token);
+                    }
+                    return;
+                }
             } else {
                 outgoing = List.of(token);
             }

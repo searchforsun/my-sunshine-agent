@@ -162,6 +162,23 @@ class StepEventBridgeConcurrentTest {
     }
 
     @Test
+    void subEmptyWrapper_withAssistantFlush_stillQueuesContentForFlux() {
+        String assistantId = "msg-spawn-main";
+        String subBridge = "sub-spawn-run";
+        ConcurrentLinkedQueue<StreamToken> subQueue = new ConcurrentLinkedQueue<>();
+        bind(subBridge, subQueue);
+        StepEventBridge.bindHitlBridge(subBridge, assistantId, true);
+        StepEventBridge.bindTokenWrapper(subBridge, token -> List.of());
+        List<StreamToken> flushed = new ArrayList<>();
+        StepEventBridge.bindGenerationFlush(assistantId, flushed::add);
+
+        StepEventBridge.offerStreamToken(subBridge, StreamToken.content("子任务正文"));
+
+        assertThat(flushed).isEmpty();
+        assertThat(subQueue.poll()).matches(t -> t != null && t.isContent() && "子任务正文".equals(t.text()));
+    }
+
+    @Test
     void emitSingleton_stillSkippedWhenMultipleActive() {
         bind("singleton-1", new ConcurrentLinkedQueue<>());
         bind("singleton-2", new ConcurrentLinkedQueue<>());

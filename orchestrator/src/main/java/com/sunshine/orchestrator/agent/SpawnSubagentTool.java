@@ -5,8 +5,8 @@ import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
-import com.sunshine.orchestrator.processing.ContentBlock;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.extern.slf4j.Slf4j;
@@ -25,21 +25,26 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SpawnSubagentTool {
 
     public static final String NAME = "spawn_subagent";
+    /** Nacos agent.prompt.mode-overlays.subagent */
+    public static final String OVERLAY_KEY = "subagent";
 
     private final AgentRuntime agentRuntime;
     private final AgentExecutionProperties executionProperties;
     private final SpawnSubagentTimelineSupport timelineSupport;
     private final ToolSetResolver toolSetResolver;
+    private final PromptOverlayProperties overlayProperties;
 
     public SpawnSubagentTool(
             @Lazy AgentRuntime agentRuntime,
             AgentExecutionProperties executionProperties,
             SpawnSubagentTimelineSupport timelineSupport,
-            ToolSetResolver toolSetResolver) {
+            ToolSetResolver toolSetResolver,
+            PromptOverlayProperties overlayProperties) {
         this.agentRuntime = agentRuntime;
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
         this.toolSetResolver = toolSetResolver;
+        this.overlayProperties = overlayProperties;
     }
 
     @Tool(name = NAME,
@@ -78,8 +83,8 @@ public class SpawnSubagentTool {
         String displayLabel = StringUtils.hasText(label) ? label.strip() : SpawnSubagentLabels.label();
         int maxIters = subCfg.getMaxIters() > 0 ? subCfg.getMaxIters() : 8;
         long timeoutMs = subCfg.getTimeoutMs() > 0 ? subCfg.getTimeoutMs() : 180_000L;
-        // 与 MAIN 同 ReAct 工具集；SUB factory 不会注册 spawn_subagent / manage_tasks
         List<String> sameToolsAsMain = toolSetResolver.resolveReactTools(audit.tenantId());
+        String systemOverlay = resolveSubagentOverlay();
 
         AgentRunRequest request = AgentRunRequest.sub(
                 MemoryContext.forSubAgent(),
@@ -90,7 +95,7 @@ public class SpawnSubagentTool {
                 messageId,
                 null,
                 sameToolsAsMain,
-                null,
+                systemOverlay,
                 maxIters,
                 audit.conversationId());
         String runId = request.runId();
@@ -99,16 +104,14 @@ public class SpawnSubagentTool {
                 new SpawnSubagentTimelineBridge(runId, displayLabel, promptText);
 
         timelineSupport.begin(mainBridge, runId, displayLabel, promptText);
-        // 子 Hook 可能经 generationFlush 走 wrapper（epoch=0 时常见），若只 return 空则 content 丢失；
-        // 在 wrapper 内同步收集正文，并 fold 步骤；禁止把子 think/tool 原样刷进主时间线。
-        StringBuilder answer = new StringBuilder();
+        // wrapper 仅 fold 步骤到主卡；正文靠 Flux 收集（routeHookToken 对空 outgoing 会入队）
         StepEventBridge.bindTokenWrapper(subBridgeId, token -> {
-            appendAnswerContent(answer, token);
             foldStepToken(mainBridge, subTimeline, token);
             return List.of();
         });
         StepEventBridge.bindHitlBridge(subBridgeId, messageId, true);
 
+        StringBuilder answer = new StringBuilder();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         try {
             agentRuntime.run(request)
@@ -119,11 +122,11 @@ public class SpawnSubagentTool {
                 return failAndReturn(mainBridge, subTimeline, failure.get());
             }
             String result = answer.toString();
-            if (!StringUtils.hasText(result)) {
-                result = fallbackAnswerFromSubSteps(subTimeline);
-            }
             timelineSupport.complete(mainBridge, subTimeline, result);
-            return result != null ? result : "";
+            if (!StringUtils.hasText(result)) {
+                log.warn("[SpawnSubagentTool] 子 Agent 未产出正文 content runId={}", runId);
+            }
+            return result;
         } catch (Exception e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (isTimeout(cause) || isTimeout(e)) {
@@ -147,7 +150,7 @@ public class SpawnSubagentTool {
         foldStepToken(mainBridge, subTimeline, token);
     }
 
-    /** 收集子 Agent 面向主工具回传的正文（content / result delta）；reasoning 不计入 */
+    /** 仅收集正文 content / result delta；禁止用 reasoning / subSteps 兜底 */
     static void appendAnswerContent(StringBuilder answer, StreamToken token) {
         if (answer == null || token == null || token.text() == null || token.text().isEmpty()) {
             return;
@@ -161,33 +164,12 @@ public class SpawnSubagentTool {
         }
     }
 
-    /** Hook 正文已进 think contentBlocks 但未出 content token 时的兜底 */
-    static String fallbackAnswerFromSubSteps(SpawnSubagentTimelineBridge subTimeline) {
-        if (subTimeline == null || subTimeline.subSteps().isEmpty()) {
-            return "";
+    private String resolveSubagentOverlay() {
+        if (overlayProperties == null || overlayProperties.getModeOverlays() == null) {
+            return null;
         }
-        List<ProcessingStep> steps = subTimeline.subSteps();
-        for (int i = steps.size() - 1; i >= 0; i--) {
-            ProcessingStep step = steps.get(i);
-            if (step == null) {
-                continue;
-            }
-            if (StringUtils.hasText(step.result())) {
-                return step.result().strip();
-            }
-            if (step.contentBlocks() != null) {
-                StringBuilder sb = new StringBuilder();
-                for (ContentBlock block : step.contentBlocks()) {
-                    if (block != null && StringUtils.hasText(block.text())) {
-                        sb.append(block.text());
-                    }
-                }
-                if (!sb.isEmpty()) {
-                    return sb.toString();
-                }
-            }
-        }
-        return "";
+        String text = overlayProperties.getModeOverlays().get(OVERLAY_KEY);
+        return StringUtils.hasText(text) ? text.strip() : null;
     }
 
     private void foldStepToken(

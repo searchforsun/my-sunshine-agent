@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,13 +41,16 @@ class SpawnSubagentToolTest {
     private SpawnSubagentTimelineSupport timelineSupport;
     @Mock
     private ToolSetResolver toolSetResolver;
+    @Mock
+    private PromptOverlayProperties overlayProperties;
 
     private SpawnSubagentTool tool;
     private StepEventBridgeRegistry registry;
 
     @BeforeEach
     void setUp() {
-        tool = new SpawnSubagentTool(agentRuntime, executionProperties, timelineSupport, toolSetResolver);
+        tool = new SpawnSubagentTool(
+                agentRuntime, executionProperties, timelineSupport, toolSetResolver, overlayProperties);
         registry = new StepEventBridgeRegistry();
         StepEventBridge.bindRegistry(registry);
         AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
@@ -56,6 +60,7 @@ class SpawnSubagentToolTest {
         lenient().when(executionProperties.getReact()).thenReturn(reactProps);
         lenient().when(reactProps.getSubagent()).thenReturn(sub);
         lenient().when(toolSetResolver.resolveReactTools(any())).thenReturn(List.of("search_knowledge"));
+        lenient().when(overlayProperties.getModeOverlays()).thenReturn(java.util.Map.of());
     }
 
     @AfterEach
