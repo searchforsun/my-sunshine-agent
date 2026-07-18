@@ -25,6 +25,8 @@
 | TD-120 | P2 | open | `SpawnSubagentTimelineSupport` / Labels static / Workflow Bridge 近拷贝 | 薄门面与静态单例；可选合并 fold 原语 |
 | TD-121 | P2 | open | `PlanValidationFeedback` + `maxNodes+6` | 中文 regex→错误码；魔法上限宜进 Nacos / 结构化 Issue |
 
+**2026-07-18 续轮 R7–R9 已消化**：TD-122（沙箱 pause 单写：Controller + expandDetail；`cancelResult` 不再 pause）；TD-123（UI `sandbox__*` 前缀 + cancel 跟 lifecycle，删 `已取消`/`SANDBOX_TOOL_IDS` 门闩）；TD-124（spawn 取消禁 Hook fallback）；TD-125（register 强制 assistant messageId，禁 bridgeId 冒充）。
+
 **2026-07-18 本轮已消化（ef49f08..）**：TD-113（stepId cancel messageId 归属）；TD-114（sandbox cancel session 绑定）；TD-115（spawn 取消终态单写 B）；TD-116（沙箱 PostActing `consumeRecentlyCancelled`、禁中文门闩）；TD-117/118（UI `metadata.cancellable`、删 legacy SSE/`已暂停` synonym）；DOC-023/024（spawn Nacos 键 + cancel plan 对齐实现）。
 
 **2026-07-17 TD-110 已消化**：沙箱 `SandboxPolicy` + 5 RPC DTO 迁至 `com.sunshine.common.sandbox`；删 orchestrator/skill-manager/sandbox-service 六处拷贝；`SandboxPolicyDto` 合并为 `SandboxPolicy`。

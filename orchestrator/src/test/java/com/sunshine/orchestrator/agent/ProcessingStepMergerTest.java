@@ -265,7 +265,7 @@ class ProcessingStepMergerTest {
                 "subagent-r1",
                 "subagent",
                 "paused",
-                new StepSummary("委派子任务", null, "子任务已取消"),
+                new StepSummary("委派子任务", null, "已取消"),
                 1L,
                 2L,
                 1L,
@@ -300,7 +300,7 @@ class ProcessingStepMergerTest {
         ProcessingStepMerger.upsert(steps, lateRunning);
         assertThat(steps).hasSize(1);
         assertThat(steps.get(0).lifecycle()).isEqualTo("paused");
-        assertThat(steps.get(0).summary().after()).isEqualTo("子任务已取消");
+        assertThat(steps.get(0).summary().after()).isEqualTo("已取消");
     }
 
     @Test
@@ -310,7 +310,7 @@ class ProcessingStepMergerTest {
                 "subagent-r2",
                 "subagent",
                 "paused",
-                new StepSummary("委派子任务", null, "子任务已取消"),
+                new StepSummary("委派子任务", null, "已取消"),
                 1L,
                 2L,
                 1L,
@@ -344,7 +344,7 @@ class ProcessingStepMergerTest {
         ProcessingStepMerger.upsert(steps, cancelled);
         ProcessingStepMerger.upsert(steps, lateDone);
         assertThat(steps.get(0).lifecycle()).isEqualTo("paused");
-        assertThat(steps.get(0).summary().after()).isEqualTo("子任务已取消");
+        assertThat(steps.get(0).summary().after()).isEqualTo("已取消");
     }
 
     private static ProcessingStep intentLike(String id) {

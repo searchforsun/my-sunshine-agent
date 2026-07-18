@@ -59,10 +59,14 @@ public class SpawnRunRegistry {
         if (!StringUtils.hasText(runId)) {
             return;
         }
+        if (!StringUtils.hasText(messageId)) {
+            log.warn("[SpawnRunRegistry] register skip: blank messageId runId={}", runId);
+            return;
+        }
         String id = runId.strip();
         Handle handle = new Handle(
                 id,
-                messageId != null ? messageId.strip() : null,
+                messageId.strip(),
                 prompt,
                 mainBridgeId,
                 timelineBridge);
@@ -125,10 +129,10 @@ public class SpawnRunRegistry {
         String result = formatCancelResult(handle.prompt);
         if (bridge != null) {
             List<StreamToken> tokens = bridge.cancel(SpawnSubagentLabels.afterCancel(), result);
-            if (!flushCancelToGeneration(handle.messageId, tokens)
-                    && timelineSupport != null
-                    && StringUtils.hasText(handle.mainBridgeId)) {
-                timelineSupport.cancel(handle.mainBridgeId, bridge, result);
+            // 禁止回落 Hook 队列：MAIN 在 spawn tool.block 期间不 drain，会导致 UI 仍 running
+            if (!flushCancelToGeneration(handle.messageId, tokens)) {
+                log.warn("[SpawnRunRegistry] cancel SSE 未直达 GenerationJob runId={} messageId={}",
+                        id, handle.messageId);
             }
         }
         ReActAgent agent = handle.agentRef.get();

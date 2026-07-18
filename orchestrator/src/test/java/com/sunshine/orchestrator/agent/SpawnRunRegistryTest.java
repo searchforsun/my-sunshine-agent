@@ -53,4 +53,12 @@ class SpawnRunRegistryTest {
         assertThat(registry.get("run-3")).isNull();
         assertThat(registry.cancel("run-3")).isFalse();
     }
+
+    @Test
+    void register_blankMessageId_skipped() {
+        SpawnRunRegistry registry = SpawnRunRegistry.forTest();
+        SpawnSubagentTimelineBridge bridge = new SpawnSubagentTimelineBridge("run-x", "子任务", "p");
+        registry.register("run-x", null, "p", "main-bridge", bridge);
+        assertThat(registry.get("run-x")).isNull();
+    }
 }

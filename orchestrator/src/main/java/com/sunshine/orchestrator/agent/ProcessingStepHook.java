@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
+import com.sunshine.orchestrator.sandbox.SandboxCancelExpand;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
 import com.sunshine.orchestrator.sandbox.SandboxStepContext;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
@@ -111,13 +112,17 @@ public class ProcessingStepHook implements Hook {
             if (stepHolder[0] != null) {
                 StepEventBridge.bindToolUseStep(toolUseId, stepHolder[0]);
             }
-            // 出卡即登记：UI 可立即 cancel，无需等 execute 入口
+            // 出卡即登记：UI 可立即 cancel，无需等 execute 入口（messageId 必须为 assistant，禁止 bridgeId 冒充）
             if (cancellable) {
                 String messageId = StepEventBridge.hitlAssistantMessageId(bridgeId);
                 if (!StringUtils.hasText(messageId)) {
-                    messageId = bridgeId;
+                    messageId = StepEventBridge.activeMessageId();
                 }
-                cancellableToolRunRegistry.register(toolUseId, messageId, toolName, null, toolUseId);
+                if (StringUtils.hasText(messageId)) {
+                    String expandDetail = SandboxCancelExpand.detail(toolName, input);
+                    cancellableToolRunRegistry.register(
+                            toolUseId, messageId, toolName, null, toolUseId, expandDetail);
+                }
             }
             return Mono.just(event);
         }
@@ -146,7 +151,7 @@ public class ProcessingStepHook implements Hook {
             } else if (sandboxTimelineLabels.isSandboxTool(toolName)) {
                 Map<String, Object> input = toolInput(post.getToolUse());
                 String raw = rawText != null ? rawText.strip() : "";
-                // 用户单工具取消：Registry 标记 + SandboxAgentTools 已 pause，禁止再 complete 覆盖
+                // 用户单工具取消：Controller 已 pause 终态，禁止再 complete 覆盖
                 if (cancellableToolRunRegistry.consumeRecentlyCancelled(toolUseId)) {
                     StepEventBridge.emit(bridgeId, session -> {
                         session.recordToolCompleted(toolCatalogService.displayName(toolName));

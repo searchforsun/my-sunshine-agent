@@ -27,22 +27,23 @@ function sandboxStep(partial: Partial<ProcessingStep> & { id: string }): Process
 }
 
 describe('sandbox tool timeline display', () => {
-  it('detects sandbox__* tool step ids', () => {
+  it('detects sandbox__* tool step ids by prefix', () => {
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__read@123' }))).toBe(true)
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__exec@9' }))).toBe(true)
+    expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__future@1' }))).toBe(true)
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sdk__finance__list@1' }))).toBe(false)
   })
 
-  it('cancelled exec: header 已取消 + expand shows command', () => {
+  it('cancelled exec: header trusts after; expand command from detail (lifecycle, not 已取消 text)', () => {
     const step = sandboxStep({
       id: 'tool-sandbox__exec@9',
       label: '执行命令',
       lifecycle: 'paused',
-      summary: { before: '准备执行命令', active: '已取消', after: '已取消' },
+      summary: { before: '准备执行命令', active: '正在执行 sleep 120', after: '用户取消' },
       detail: 'sleep 120',
       metadata: { cancellable: true },
     })
-    expect(resolveStepHeaderText(step)).toBe('已取消')
+    expect(resolveStepHeaderText(step)).toBe('用户取消')
     expect(extractSandboxExecCommand(step)).toBe('sleep 120')
     expect(hasExpandableContent(step)).toBe(true)
     expect(resolveStepExpandInner(step)).toBe('')

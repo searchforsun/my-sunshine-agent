@@ -51,15 +51,36 @@ public class CancellableToolRunRegistry {
 
     public void register(
             String toolUseId, String messageId, String toolName, String sessionId, String invocationId) {
+        register(toolUseId, messageId, toolName, sessionId, invocationId, null);
+    }
+
+    /**
+     * @param expandDetail 取消时 Controller 写入展开区的快照（命令/pattern）；可后续 bindExpandDetail
+     */
+    public void register(
+            String toolUseId,
+            String messageId,
+            String toolName,
+            String sessionId,
+            String invocationId,
+            String expandDetail) {
         if (!StringUtils.hasText(toolUseId)) {
             return;
         }
+        if (!StringUtils.hasText(messageId)) {
+            log.warn("[CancellableTool] register skip: blank messageId toolUseId={}", toolUseId);
+            return;
+        }
         String id = toolUseId.strip();
+        String mid = messageId.strip();
         String stepId = StepEventBridge.stepIdForToolUse(id);
         Handle existing = byToolUseId.get(id);
         if (existing != null) {
             if (StringUtils.hasText(sessionId)) {
                 existing.sessionId = sessionId.strip();
+            }
+            if (StringUtils.hasText(expandDetail)) {
+                existing.expandDetail = expandDetail.strip();
             }
             if (StringUtils.hasText(stepId)) {
                 toolUseIdByStepId.put(stepId.strip(), id);
@@ -69,14 +90,14 @@ public class CancellableToolRunRegistry {
             }
             return;
         }
-        String mid = messageId != null ? messageId.strip() : null;
         Handle handle = new Handle(
                 id,
                 mid,
                 toolName,
                 sessionId,
                 invocationId != null ? invocationId.strip() : id,
-                stepId);
+                stepId,
+                expandDetail);
         byToolUseId.put(id, handle);
         if (StringUtils.hasText(stepId)) {
             toolUseIdByStepId.put(stepId.strip(), id);
@@ -84,6 +105,17 @@ public class CancellableToolRunRegistry {
         recentlyCancelled.remove(id);
         if (consumePendingCancel(id, stepId, mid)) {
             cancel(id);
+        }
+    }
+
+    /** execute 入口补全取消展开快照（PreActing 未带参时） */
+    public void bindExpandDetail(String toolUseId, String expandDetail) {
+        if (!StringUtils.hasText(toolUseId) || !StringUtils.hasText(expandDetail)) {
+            return;
+        }
+        Handle handle = byToolUseId.get(toolUseId.strip());
+        if (handle != null) {
+            handle.expandDetail = expandDetail.strip();
         }
     }
 
@@ -293,6 +325,7 @@ public class CancellableToolRunRegistry {
         private volatile String sessionId;
         private final String invocationId;
         private final String stepId;
+        private volatile String expandDetail;
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
         Handle(
@@ -301,13 +334,15 @@ public class CancellableToolRunRegistry {
                 String toolName,
                 String sessionId,
                 String invocationId,
-                String stepId) {
+                String stepId,
+                String expandDetail) {
             this.toolUseId = toolUseId;
             this.messageId = messageId;
             this.toolName = toolName;
             this.sessionId = sessionId;
             this.invocationId = invocationId;
             this.stepId = stepId;
+            this.expandDetail = StringUtils.hasText(expandDetail) ? expandDetail.strip() : null;
         }
 
         public String toolUseId() {
@@ -332,6 +367,10 @@ public class CancellableToolRunRegistry {
 
         public String stepId() {
             return stepId;
+        }
+
+        public String expandDetail() {
+            return expandDetail;
         }
 
         public boolean cancelled() {

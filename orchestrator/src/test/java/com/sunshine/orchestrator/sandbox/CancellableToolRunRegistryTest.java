@@ -70,4 +70,18 @@ class CancellableToolRunRegistryTest {
     void cancel_unknownWithoutPending_returnsFalse() {
         assertThat(registry.cancel("missing")).isFalse();
     }
+
+    @Test
+    void register_blankMessageId_skipped() {
+        registry.register("tu-blank", "  ", SandboxIds.EXEC, null, "tu-blank");
+        assertThat(registry.get("tu-blank")).isNull();
+    }
+
+    @Test
+    void register_storesExpandDetail_forControllerPause() {
+        registry.register("tu-e", "msg-1", SandboxIds.EXEC, null, "tu-e", "sleep 9");
+        assertThat(registry.get("tu-e").expandDetail()).isEqualTo("sleep 9");
+        registry.bindExpandDetail("tu-e", "sleep 99");
+        assertThat(registry.get("tu-e").expandDetail()).isEqualTo("sleep 99");
+    }
 }

@@ -265,6 +265,10 @@ public final class ProcessingTimelineSession {
         lifecycle.pause(stepId, detail);
     }
 
+    public void pause(String stepId, String afterSummary, String expandDetail) {
+        lifecycle.pause(stepId, afterSummary, expandDetail);
+    }
+
     public void terminate(String stepId, String detail) {
         lifecycle.terminate(stepId, detail);
     }

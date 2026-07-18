@@ -120,10 +120,16 @@ public class SandboxAgentTools {
             String invocationId = StringUtils.hasText(toolUseId) ? toolUseId.strip() : null;
             boolean trackCancel = cancellableToolRunRegistry.isCancellableTool(name)
                     && StringUtils.hasText(invocationId);
-            // PreActing 已 register；此处仅补登记（漏 register）并消费 pending cancel
+            // PreActing 已 register；此处补 expandDetail / 漏登记，并消费 pending cancel
             if (trackCancel) {
+                String expandDetail = SandboxCancelExpand.detail(name, body);
                 if (cancellableToolRunRegistry.get(invocationId) == null) {
-                    cancellableToolRunRegistry.register(invocationId, messageId, name, null, invocationId);
+                    if (StringUtils.hasText(messageId)) {
+                        cancellableToolRunRegistry.register(
+                                invocationId, messageId, name, null, invocationId, expandDetail);
+                    }
+                } else {
+                    cancellableToolRunRegistry.bindExpandDetail(invocationId, expandDetail);
                 }
                 if (cancellableToolRunRegistry.isCancelled(invocationId)) {
                     return cancelResult(toolUseId, name, body, messageId, null, System.currentTimeMillis());
@@ -254,14 +260,7 @@ public class SandboxAgentTools {
                     : "用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。";
             String text = tpl.replace("{params}", params)
                     .replace("{remaining}", String.valueOf(remaining));
-            String after = StringUtils.hasText(sandboxProperties.getCancelAfter())
-                    ? sandboxProperties.getCancelAfter().strip() : "已取消";
-            String expandDetail = cancelExpandDetail(toolName, body);
-            String bridge = StepEventBridge.bridgeIdForToolUse(toolUseId);
-            if (StringUtils.hasText(bridge)) {
-                StepEventBridge.emit(bridge, session ->
-                        session.pauseToolStepForToolUse(toolUseId, after, expandDetail));
-            }
+            // 时间线 paused 由 GenerationController.cancelTool 单写；此处只回 ToolResult
             Map<String, String> auditParams = auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
             auditIfBound(toolName, auditParams, text, "cancelled");
             log.info("[SandboxAgentTool] {} 用户取消 toolUseId={} remaining={}", toolName, toolUseId, remaining);
@@ -287,24 +286,6 @@ public class SandboxAgentTools {
                 cur = cur.getCause();
             }
             return false;
-        }
-
-        /** 取消展开：exec 命令 / grep·glob pattern，供时间线 `$` 面板 */
-        private static String cancelExpandDetail(String toolName, Map<String, Object> body) {
-            if (body == null || body.isEmpty()) {
-                return null;
-            }
-            if (SandboxIds.EXEC.equals(toolName)) {
-                Object cmd = body.get("command");
-                return cmd != null && StringUtils.hasText(String.valueOf(cmd))
-                        ? String.valueOf(cmd).strip() : null;
-            }
-            if (SandboxIds.GREP.equals(toolName) || SandboxIds.GLOB.equals(toolName)) {
-                Object pattern = body.get("pattern");
-                return pattern != null && StringUtils.hasText(String.valueOf(pattern))
-                        ? String.valueOf(pattern).strip() : null;
-            }
-            return null;
         }
 
         private static String summarizeParams(Map<String, Object> body) {

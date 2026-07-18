@@ -1,18 +1,6 @@
 /** 时间线步骤展示：摘要、展开区、耗时 */
 import type { ProcessingStep, StepLifecycle } from './processingSteps'
 
-/** 4.5 沙箱六工具 — 主行摘要常驻；展开由 OperationCard 嵌入高亮面板（无 code 边框） */
-export const SANDBOX_TOOL_IDS = [
-  'sandbox__read',
-  'sandbox__write',
-  'sandbox__edit',
-  'sandbox__glob',
-  'sandbox__grep',
-  'sandbox__exec',
-] as const
-
-export type SandboxToolId = (typeof SANDBOX_TOOL_IDS)[number]
-
 export function catalogToolIdFromStepId(stepId: string): string | undefined {
   if (!stepId?.startsWith('tool-')) return undefined
   const raw = stepId.slice('tool-'.length)
@@ -20,10 +8,10 @@ export function catalogToolIdFromStepId(stepId: string): string | undefined {
   return toolId || undefined
 }
 
+/** catalog id 前缀 sandbox__*（勿维护六工具硬编码名单） */
 export function isSandboxToolStep(step: { id: string; phase?: string }): boolean {
   const toolId = catalogToolIdFromStepId(step.id)
-  if (!toolId) return false
-  return (SANDBOX_TOOL_IDS as readonly string[]).includes(toolId)
+  return !!toolId?.startsWith('sandbox__')
 }
 
 export function isSandboxExecStep(step: { id: string }): boolean {
@@ -38,19 +26,19 @@ export function isCancellableSandboxTool(step: {
   return step.metadata?.cancellable === true
 }
 
-/** 取消终态 after；勿当作 exec 命令（仅信 after，不兼容旧「已暂停」同义词） */
-function isSandboxCancelAfter(text: string): boolean {
-  return text === '已取消'
+function isSandboxCancelLifecycle(lifecycle?: string): boolean {
+  return lifecycle === 'paused' || lifecycle === 'terminated'
 }
 
-/** 从 after/active/detail 解析 exec 命令（「cmd」/「正在执行 cmd」；取消后命令在 detail） */
+/** 从 after/active/detail 解析 exec 命令；取消终态只信 detail（勿按中文 after 门闩） */
 export function extractSandboxExecCommand(step: {
   lifecycle?: string
   summary?: { after?: string; active?: string }
   detail?: string
 }): string | undefined {
+  const cancelled = isSandboxCancelLifecycle(step.lifecycle)
   const after = step.summary?.after?.trim() || ''
-  if (after && !isSandboxCancelAfter(after)) {
+  if (after && !cancelled) {
     const afterMatch = after.match(/(?:完成\s*)?[·•]\s*(.+)$/s)
     if (afterMatch?.[1]?.trim()) return afterMatch[1].trim()
     const stripped = after
@@ -67,7 +55,7 @@ export function extractSandboxExecCommand(step: {
     const fromDetail = detail.match(/正在执行\s+(.+)$/s)
     if (fromDetail?.[1]?.trim()) return fromDetail[1].trim()
     // 取消时后端把 command 原样写入 detail（无 stdout）
-    if (step.lifecycle === 'paused' || step.lifecycle === 'terminated' || isSandboxCancelAfter(after)) {
+    if (cancelled) {
       return detail
     }
   }

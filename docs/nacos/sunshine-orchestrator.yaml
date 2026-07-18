@@ -287,7 +287,7 @@ agent:
         active: "正在执行：{label}"
         after: 子任务已完成
         after-fail: 子任务失败
-        after-cancel: 子任务已取消
+        after-cancel: 已取消
       peer-collab:
         label: 多专家协作
         before: 准备多专家协作

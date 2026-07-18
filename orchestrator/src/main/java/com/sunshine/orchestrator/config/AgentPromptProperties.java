@@ -99,7 +99,7 @@ public class AgentPromptProperties {
             subagent.setActive("正在执行：{label}");
             subagent.setAfter("子任务已完成");
             subagent.setAfterFail("子任务失败");
-            subagent.setAfterCancel("子任务已取消");
+            subagent.setAfterCancel("已取消");
             map.put("subagent", subagent);
             var generate = new StepTimeline();
             generate.setLabel("生成回答");

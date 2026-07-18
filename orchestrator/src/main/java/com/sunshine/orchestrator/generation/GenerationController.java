@@ -131,6 +131,7 @@ public class GenerationController {
             String messageId = meta.messageId();
             boolean ok;
             String resolvedId = ref;
+            String expandDetail = null;
             if (ref.startsWith("tool-")) {
                 CancellableToolRunRegistry.Handle handle = cancellableToolRunRegistry.getByStepId(ref);
                 if (handle != null) {
@@ -139,6 +140,7 @@ public class GenerationController {
                         throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
                     }
                     resolvedId = handle.toolUseId();
+                    expandDetail = handle.expandDetail();
                     ok = cancellableToolRunRegistry.cancel(handle.toolUseId());
                 } else {
                     ok = cancellableToolRunRegistry.markPendingCancelByStepId(ref, messageId);
@@ -150,20 +152,27 @@ public class GenerationController {
                             && !handle.messageId().equals(messageId)) {
                         throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
                     }
+                    expandDetail = handle.expandDetail();
                     ok = cancellableToolRunRegistry.cancel(ref);
                 } else {
                     ok = cancellableToolRunRegistry.markPendingCancel(ref, messageId);
                 }
             }
+            // 终态单写：挂在 main-* bridge（session 键），勿用 assistant messageId（会静默丢弃）
             if (ok) {
                 String after = StringUtils.hasText(sandboxProperties.getCancelAfter())
                         ? sandboxProperties.getCancelAfter().strip() : "已取消";
-                if (StringUtils.hasText(messageId)) {
+                final String detail = expandDetail;
+                String emitBridge = StepEventBridge.activeMainBridge(messageId);
+                if (!StringUtils.hasText(emitBridge)) {
+                    emitBridge = StepEventBridge.bridgeIdForToolUse(resolvedId);
+                }
+                if (StringUtils.hasText(emitBridge)) {
                     if (ref.startsWith("tool-")) {
-                        StepEventBridge.emit(messageId, session -> session.pause(ref, after));
+                        StepEventBridge.emit(emitBridge, session -> session.pause(ref, after, detail));
                     } else {
-                        StepEventBridge.emit(messageId, session ->
-                                session.pauseToolStepForToolUse(ref, after));
+                        StepEventBridge.emit(emitBridge, session ->
+                                session.pauseToolStepForToolUse(ref, after, detail));
                     }
                 }
             }

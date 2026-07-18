@@ -44,7 +44,11 @@ const isError = computed(() => lifecycle.value === 'error')
 const isPaused = computed(() => lifecycle.value === 'paused' || lifecycle.value === 'terminated')
 const awaitingConfirm = computed(() => stepHasHitlAwaiting(props.step))
 const label = computed(() => formatStepLabel(props.step) || '子任务')
-const headerText = computed(() => resolveStepHeaderText(props.step))
+const headerText = computed(() => {
+  // paused：after 已在 status 黄标展示，主行不再重复
+  if (isPaused.value) return ''
+  return resolveStepHeaderText(props.step)
+})
 const showShimmer = computed(() => isRunning.value && props.live && !awaitingConfirm.value)
 const canStop = computed(() => props.live && (isRunning.value || awaitingConfirm.value))
 
@@ -263,7 +267,7 @@ async function onStop(e: Event): Promise<void> {
 .subagent-status.is-awaiting_confirm { color: var(--sun-purple, #9333ea); }
 .subagent-status.is-done { color: var(--sun-green, #3fb950); }
 .subagent-status.is-error { color: var(--sun-red, #f85149); }
-.subagent-status.is-paused { color: var(--sun-text-muted); }
+.subagent-status.is-paused { color: #ca8a04; }
 
 .subagent-main {
   display: flex;
