@@ -108,7 +108,14 @@ public class ProcessingStepHook implements Hook {
         if (event instanceof PostActingEvent post) {
             String toolName = post.getToolUse().getName();
             String toolUseId = post.getToolUse().getId();
-            if (ManageTasksTool.NAME.equals(toolName) || SpawnSubagentTool.NAME.equals(toolName)) {
+            if (ManageTasksTool.NAME.equals(toolName)) {
+                StepEventBridge.unbindToolUseBridge(toolUseId);
+                return Mono.just(event);
+            }
+            // spawn_subagent 不上 tool-* 步，但须 recordToolCompleted，否则后续推理合并进首个 think
+            if (SpawnSubagentTool.NAME.equals(toolName)) {
+                StepEventBridge.emit(bridgeId, session ->
+                        session.recordToolCompleted(SpawnSubagentLabels.label()));
                 StepEventBridge.unbindToolUseBridge(toolUseId);
                 return Mono.just(event);
             }

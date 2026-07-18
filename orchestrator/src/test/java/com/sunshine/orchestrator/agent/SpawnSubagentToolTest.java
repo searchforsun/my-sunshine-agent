@@ -99,4 +99,13 @@ class SpawnSubagentToolTest {
         assertThat(runIdCaptor.getValue()).isNotBlank();
         verify(timelineSupport).complete(eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), eq("hello"));
     }
+
+    @Test
+    void appendAnswerContent_collectsContentAndResultDelta() {
+        StringBuilder sb = new StringBuilder();
+        SpawnSubagentTool.appendAnswerContent(sb, StreamToken.content("甲"));
+        SpawnSubagentTool.appendAnswerContent(sb, StreamToken.stepDelta("think", "reasoning", "勿计入"));
+        SpawnSubagentTool.appendAnswerContent(sb, StreamToken.stepDelta("think-2", "result", "乙"));
+        assertThat(sb.toString()).isEqualTo("甲乙");
+    }
 }

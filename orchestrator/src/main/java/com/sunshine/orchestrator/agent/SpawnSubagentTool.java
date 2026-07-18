@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.processing.ContentBlock;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.extern.slf4j.Slf4j;
@@ -98,13 +99,16 @@ public class SpawnSubagentTool {
                 new SpawnSubagentTimelineBridge(runId, displayLabel, promptText);
 
         timelineSupport.begin(mainBridge, runId, displayLabel, promptText);
+        // 子 Hook 可能经 generationFlush 走 wrapper（epoch=0 时常见），若只 return 空则 content 丢失；
+        // 在 wrapper 内同步收集正文，并 fold 步骤；禁止把子 think/tool 原样刷进主时间线。
+        StringBuilder answer = new StringBuilder();
         StepEventBridge.bindTokenWrapper(subBridgeId, token -> {
+            appendAnswerContent(answer, token);
             foldStepToken(mainBridge, subTimeline, token);
             return List.of();
         });
         StepEventBridge.bindHitlBridge(subBridgeId, messageId, true);
 
-        StringBuilder answer = new StringBuilder();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         try {
             agentRuntime.run(request)
@@ -115,8 +119,11 @@ public class SpawnSubagentTool {
                 return failAndReturn(mainBridge, subTimeline, failure.get());
             }
             String result = answer.toString();
+            if (!StringUtils.hasText(result)) {
+                result = fallbackAnswerFromSubSteps(subTimeline);
+            }
             timelineSupport.complete(mainBridge, subTimeline, result);
-            return result;
+            return result != null ? result : "";
         } catch (Exception e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (isTimeout(cause) || isTimeout(e)) {
@@ -136,11 +143,51 @@ public class SpawnSubagentTool {
         if (token == null) {
             return;
         }
-        if (token.isContent() && token.text() != null) {
+        appendAnswerContent(answer, token);
+        foldStepToken(mainBridge, subTimeline, token);
+    }
+
+    /** 收集子 Agent 面向主工具回传的正文（content / result delta）；reasoning 不计入 */
+    static void appendAnswerContent(StringBuilder answer, StreamToken token) {
+        if (answer == null || token == null || token.text() == null || token.text().isEmpty()) {
+            return;
+        }
+        if (token.isContent()) {
             answer.append(token.text());
             return;
         }
-        foldStepToken(mainBridge, subTimeline, token);
+        if (token.isStepDelta() && "result".equals(token.channel())) {
+            answer.append(token.text());
+        }
+    }
+
+    /** Hook 正文已进 think contentBlocks 但未出 content token 时的兜底 */
+    static String fallbackAnswerFromSubSteps(SpawnSubagentTimelineBridge subTimeline) {
+        if (subTimeline == null || subTimeline.subSteps().isEmpty()) {
+            return "";
+        }
+        List<ProcessingStep> steps = subTimeline.subSteps();
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep step = steps.get(i);
+            if (step == null) {
+                continue;
+            }
+            if (StringUtils.hasText(step.result())) {
+                return step.result().strip();
+            }
+            if (step.contentBlocks() != null) {
+                StringBuilder sb = new StringBuilder();
+                for (ContentBlock block : step.contentBlocks()) {
+                    if (block != null && StringUtils.hasText(block.text())) {
+                        sb.append(block.text());
+                    }
+                }
+                if (!sb.isEmpty()) {
+                    return sb.toString();
+                }
+            }
+        }
+        return "";
     }
 
     private void foldStepToken(
