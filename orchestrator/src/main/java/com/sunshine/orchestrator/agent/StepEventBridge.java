@@ -104,6 +104,13 @@ public final class StepEventBridge {
         registry.bindTokenWrapper(bridgeId, wrapper);
     }
 
+    public static void bindTokenWrapper(
+            String bridgeId,
+            Function<StreamToken, List<StreamToken>> wrapper,
+            TokenWrapperMode mode) {
+        registry.bindTokenWrapper(bridgeId, wrapper, mode);
+    }
+
     /** loop 框内：Hook 直刷 Generation 前将 body 步折叠进 node-loop.subSteps */
     public static void bindLoopBodyFold(String assistantMessageId, Function<StreamToken, List<StreamToken>> fold) {
         registry.bindLoopBodyFold(assistantMessageId, fold);

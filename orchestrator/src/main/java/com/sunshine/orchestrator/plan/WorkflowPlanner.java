@@ -48,8 +48,17 @@ public class WorkflowPlanner {
     }
 
     /** 带校验错误反馈的 Replan */
+    public Mono<PlanJson> replan(ExecutionStreamContext ctx, PlanValidationIssue validationIssue, int attemptNo) {
+        return plan(ctx, validationIssue, attemptNo);
+    }
+
+    /** @deprecated 请传 {@link PlanValidationIssue} */
+    @Deprecated
     public Mono<PlanJson> replan(ExecutionStreamContext ctx, String validationError, int attemptNo) {
-        return plan(ctx, validationError, attemptNo);
+        PlanValidationIssue issue = StringUtils.hasText(validationError)
+                ? PlanValidationIssue.of(PlanValidationCode.VALIDATION_FAILED, validationError)
+                : null;
+        return replan(ctx, issue, attemptNo);
     }
 
     /** 用户修改意见后重新规划 */
@@ -59,16 +68,30 @@ public class WorkflowPlanner {
         String feedback = StringUtils.hasText(template)
                 ? template.replace("{{hint}}", hint)
                 : "用户对当前执行计划的修改意见：" + hint;
-        return plan(ctx, feedback, roundNo);
+        return planWithUserFeedback(ctx, feedback, roundNo);
     }
 
-    private Mono<PlanJson> plan(ExecutionStreamContext ctx, String validationError, int attemptNo) {
+    private Mono<PlanJson> planWithUserFeedback(ExecutionStreamContext ctx, String userFeedback, int attemptNo) {
         String systemPrompt = catalogRenderer.renderIntoPrompt(
                 prompts.plannerOrDefault().promptOrEmpty(), ctx.tenantId());
         if (!StringUtils.hasText(systemPrompt)) {
             return Mono.error(new PlanParseException("agent.planner.prompt 未配置"));
         }
-        String userMessage = buildUserMessage(ctx, validationError);
+        String query = ctx.userContent() != null ? ctx.userContent() : "";
+        return submitPlanner(systemPrompt, query + "\n\n" + userFeedback, attemptNo);
+    }
+
+    private Mono<PlanJson> plan(ExecutionStreamContext ctx, PlanValidationIssue validationIssue, int attemptNo) {
+        String systemPrompt = catalogRenderer.renderIntoPrompt(
+                prompts.plannerOrDefault().promptOrEmpty(), ctx.tenantId());
+        if (!StringUtils.hasText(systemPrompt)) {
+            return Mono.error(new PlanParseException("agent.planner.prompt 未配置"));
+        }
+        String userMessage = buildUserMessage(ctx, validationIssue);
+        return submitPlanner(systemPrompt, userMessage, attemptNo);
+    }
+
+    private Mono<PlanJson> submitPlanner(String systemPrompt, String userMessage, int attemptNo) {
         AgentPromptProperties.Planner cfg = prompts.plannerOrDefault();
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", cfg.getModel());
@@ -88,13 +111,13 @@ public class WorkflowPlanner {
                                 sig.totalRetries() + 1, sig.failure().getMessage())));
     }
 
-    private String buildUserMessage(ExecutionStreamContext ctx, String validationError) {
+    private String buildUserMessage(ExecutionStreamContext ctx, PlanValidationIssue validationIssue) {
         String query = ctx.userContent() != null ? ctx.userContent() : "";
         Map<String, String> routeParams = ctx.plan() != null && ctx.plan().params() != null
                 ? ctx.plan().params() : Map.of();
         String plannerMode = routeParams.get(SkillBindingOutcome.PARAM_PLANNER_MODE);
         String skillId = routeParams.get(SkillBindingOutcome.PARAM_SKILL);
-        if (!StringUtils.hasText(validationError)) {
+        if (validationIssue == null) {
             QueryRewriteOutcome outcome = queryRewriteService.rewriteForPlanner(query, ctx.assistantMsgId());
             query = outcome.effectiveQuery();
             if (SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN.equals(plannerMode) && StringUtils.hasText(skillId)) {
@@ -102,7 +125,7 @@ public class WorkflowPlanner {
             }
             return query;
         }
-        String formatted = PlanValidationFeedback.formatForReplan(validationError);
+        String formatted = PlanValidationFeedback.formatForReplan(validationIssue);
         String template = executionProperties.getPlanWorkflow().getReplan().getUserFeedbackTemplate();
         if (!StringUtils.hasText(template)) {
             return query + "\n\n" + formatted;

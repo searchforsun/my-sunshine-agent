@@ -10,6 +10,8 @@ import com.sunshine.orchestrator.plan.PlanJson;
 import com.sunshine.orchestrator.plan.PlanDisplayNameEnricher;
 import com.sunshine.orchestrator.plan.PlanMaterializer;
 import com.sunshine.orchestrator.plan.PlanValidator;
+import com.sunshine.orchestrator.plan.PlanValidationCode;
+import com.sunshine.orchestrator.plan.PlanValidationIssue;
 import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
 import com.sunshine.orchestrator.plan.PlanJsonParser;
 import com.sunshine.orchestrator.plan.PlanRunFinalizer;
@@ -130,7 +132,8 @@ class PlanWorkflowExecutorTest {
         when(workflowPlanner.plan(ctx)).thenReturn(Mono.just(invalidPlan));
         when(planValidator.validatePlannerOutput(any(PlanJson.class))).thenReturn(null);
         when(displayNameEnricher.enrich(any(PlanJson.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(planValidator.validate(any(PlanJson.class))).thenReturn("未知工具: bad-tool");
+        when(planValidator.validate(any(PlanJson.class))).thenReturn(
+                PlanValidationIssue.of(PlanValidationCode.UNKNOWN_TOOL, "未知工具: bad-tool"));
         when(reactExecutor.execute(ctx)).thenReturn(Flux.just(StreamToken.content("react")));
 
         planWorkflowExecutor.execute(ctx).collectList().block();

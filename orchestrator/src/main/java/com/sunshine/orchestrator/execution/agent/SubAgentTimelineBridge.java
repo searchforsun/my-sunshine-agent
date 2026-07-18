@@ -1,12 +1,11 @@
 package com.sunshine.orchestrator.execution.agent;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.SubStepsFold;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
 import com.sunshine.orchestrator.processing.StepSummary;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /** 子 Agent 步骤 → 挂到 node-{id}.subSteps，主 Timeline 仍仅 node 一步 */
@@ -14,7 +13,7 @@ public final class SubAgentTimelineBridge {
 
     private final String nodeStepId;
     private final String nodeLabel;
-    private final List<ProcessingStep> subSteps = new ArrayList<>();
+    private final SubStepsFold subSteps = new SubStepsFold();
 
     public SubAgentTimelineBridge(String nodeId, String nodeLabel) {
         this.nodeStepId = WorkflowNodeTimeline.stepId(nodeId);
@@ -25,19 +24,14 @@ public final class SubAgentTimelineBridge {
         if (token == null) {
             return List.of();
         }
-        if (token.isStep() && token.step() != null) {
-            ProcessingStepMerger.upsert(subSteps, token.step());
-            return List.of(nodeStepUpdate());
-        }
-        if (token.isStepDelta()) {
-            ProcessingStepMerger.applyDelta(subSteps, token.stepId(), token.channel(), token.text());
+        if (subSteps.ingest(token)) {
             return List.of(nodeStepUpdate());
         }
         return List.of();
     }
 
     public List<ProcessingStep> subSteps() {
-        return List.copyOf(subSteps);
+        return subSteps.snapshot();
     }
 
     private StreamToken nodeStepUpdate() {
@@ -58,7 +52,7 @@ public final class SubAgentTimelineBridge {
                 nodeLabel,
                 null,
                 null,
-                List.copyOf(subSteps));
+                subSteps.snapshot());
         return StreamToken.step(node);
     }
 }

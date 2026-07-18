@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.processing.ContentSegmentCoordinator;
+import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.extern.slf4j.Slf4j;
@@ -109,12 +110,11 @@ public class SpawnSubagentTool {
 
         timelineSupport.begin(mainBridge, runId, displayLabel, promptText);
         spawnRunRegistry.register(runId, messageId, promptText, mainBridge, subTimeline);
-        // fold 只在 wrapper：Hook→routeHookToken 已 fold 后仍会把原 token 入队供 Flux；
-        // Flux 侧禁止再 fold，否则 step_delta(reasoning) 累计翻倍（「用户用户要求要求」）。
+        // PASS_THROUGH：wrapper 只 fold；原 token 入队供 Flux（禁止 Flux 再 fold，否则 reasoning 翻倍）
         StepEventBridge.bindTokenWrapper(subBridgeId, token -> {
             foldStepToken(mainBridge, subTimeline, token);
             return List.of();
-        });
+        }, TokenWrapperMode.PASS_THROUGH);
         StepEventBridge.bindHitlBridge(subBridgeId, messageId, true);
 
         StringBuilder answer = new StringBuilder();

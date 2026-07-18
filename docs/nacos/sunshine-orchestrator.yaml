@@ -138,6 +138,7 @@ agent:
     temperature: 0
     max_tokens: 4096
     max_nodes: 8
+    routing_node_buffer: 6
     prompt: |
       你是 Workflow Planner。根据用户问题与 Skill/Tool 目录，输出**一行 JSON**：{"planId":null,"reason":"…","nodes":[…],"edges":[…]}
 

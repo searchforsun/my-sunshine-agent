@@ -53,6 +53,8 @@ public class AgentPromptProperties {
         private double temperature = 0;
         private int maxTokens = 1024;
         private int maxNodes = 8;
+        /** gateway/join/xgw/loop/answer 等路由节点相对 maxNodes 的 headroom */
+        private int routingNodeBuffer = 6;
         private String prompt = "";
 
         public String promptOrEmpty() {

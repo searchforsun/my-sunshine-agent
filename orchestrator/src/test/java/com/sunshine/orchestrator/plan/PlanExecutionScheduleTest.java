@@ -52,7 +52,7 @@ class PlanExecutionScheduleTest {
                         new PlanEdge("start", "rag"),
                         new PlanEdge("rag", "join-1"),
                         new PlanEdge("join-1", "answer")));
-        assertThat(PlanExecutionSchedule.validateParallelTopology(plan))
+        assertThat(PlanExecutionSchedule.validateParallelTopology(plan).message())
                 .contains("入度须 ≥ 2");
     }
 
@@ -102,7 +102,7 @@ class PlanExecutionScheduleTest {
                         new PlanEdge("xg-1", "b", new PlanEdgeCondition("{{a.output}}", "empty", ""), false),
                         new PlanEdge("a", "answer"),
                         new PlanEdge("b", "answer")));
-        assertThat(PlanExecutionSchedule.validateExclusiveTopology(plan))
+        assertThat(PlanExecutionSchedule.validateExclusiveTopology(plan).message())
                 .contains("须恰好 1 条 default");
     }
 
@@ -133,7 +133,7 @@ class PlanExecutionScheduleTest {
                 List.of(
                         new PlanEdge("start", "loop-1"),
                         new PlanEdge("loop-1", "answer")));
-        assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).contains("至少一个 body");
+        assertThat(PlanExecutionSchedule.validateLoopTopology(plan).message()).contains("无框内 body");
     }
 
     private static PlanJson loopPlan() {

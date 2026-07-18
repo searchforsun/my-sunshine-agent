@@ -51,6 +51,7 @@ public final class TimelineLabelTestSupport {
         HitlLabels.bind(new HitlLabelService(agentProps));
         SummaryStepLabels.bind(new SummaryStepLabelService(agentProps, toolCatalog));
         TaskBoardStepLabels.bind(new TaskBoardStepLabelService(agentProps));
+        SpawnSubagentLabels.bind(new SpawnSubagentLabelService(agentProps));
         TimelineStepLabelService timelineStepLabelService = new TimelineStepLabelService(agentProps);
         ThinkStepLabelService thinkStepLabelService = new ThinkStepLabelService(agentProps);
         IntentLabelService intentLabelService = new IntentLabelService(
@@ -125,6 +126,7 @@ public final class TimelineLabelTestSupport {
         HitlLabels.bind(null);
         SummaryStepLabels.bind(null);
         TaskBoardStepLabels.bind(null);
+        SpawnSubagentLabels.bind(null);
         WorkflowNodeLabels.bind(null);
         WorkflowNodeCompletionLabels.bind(null);
         StepLabels.bind(null);

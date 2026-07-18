@@ -17,6 +17,8 @@ import com.sunshine.orchestrator.plan.PlanNormalizer;
 import com.sunshine.orchestrator.plan.PlanRunFinalizer;
 import com.sunshine.orchestrator.plan.PlanTimeline;
 import com.sunshine.orchestrator.plan.PlanValidator;
+import com.sunshine.orchestrator.plan.PlanValidationCode;
+import com.sunshine.orchestrator.plan.PlanValidationIssue;
 import com.sunshine.orchestrator.plan.PlanWorkflowPausedException;
 import com.sunshine.orchestrator.plan.PlannerAttempt;
 import com.sunshine.orchestrator.plan.WorkflowPlanner;
@@ -53,7 +55,7 @@ final class PlanWorkflowPlanningRunner {
             ExecutionStreamContext ctx,
             String persistedPlanId,
             int planAttempt,
-            String lastValidationError,
+            PlanValidationIssue lastValidationIssue,
             ProcessingTimelineSession session) {
         long startedAt = System.currentTimeMillis();
         List<StreamToken> prelude;
@@ -61,7 +63,7 @@ final class PlanWorkflowPlanningRunner {
             prelude = PlanTimeline.beginPlanning(session, startedAt);
         } else if (planAttempt > 1) {
             prelude = ProcessingTimelineSupport.run(session, () -> session.progress("plan",
-                    StringUtils.hasText(lastValidationError)
+                    lastValidationIssue != null
                             ? "校验未通过，正在重新规划"
                             : "正在重新规划"));
         } else {
@@ -69,7 +71,7 @@ final class PlanWorkflowPlanningRunner {
         }
         Mono<PlanJson> plannerMono = planAttempt == 1
                 ? workflowPlanner.plan(ctx)
-                : workflowPlanner.replan(ctx, lastValidationError, planAttempt);
+                : workflowPlanner.replan(ctx, lastValidationIssue, planAttempt);
         return Flux.concat(
                 Flux.fromIterable(prelude),
                 plannerMono
@@ -85,7 +87,9 @@ final class PlanWorkflowPlanningRunner {
                             int maxReplan = Math.max(1, executionProperties.getPlanWorkflow().getReplan().getMaxAttempts());
                             if (planAttempt < maxReplan) {
                                 log.warn("[PlanWorkflowExecutor] Planner 第 {} 次失败，将 Replan: {}", planAttempt, e.getMessage());
-                                return planAndExecute(ctx, persistedPlanId, planAttempt + 1, e.getMessage(), session);
+                                return planAndExecute(ctx, persistedPlanId, planAttempt + 1,
+                                        PlanValidationIssue.of(PlanValidationCode.VALIDATION_FAILED, e.getMessage()),
+                                        session);
                             }
                             return Mono.fromRunnable(() -> executionPlanStore.markRejected(persistedPlanId, e.getMessage()))
                                     .subscribeOn(Schedulers.boundedElastic())
@@ -108,14 +112,14 @@ final class PlanWorkflowPlanningRunner {
                 .flatMapMany(planId -> {
                     session.bindUserQuery(ctx.userContent());
                     session.bindTraceMessageId(ctx.assistantMsgId());
-                    String plannerError = planValidator.validatePlannerOutput(plannerJson);
-                    if (StringUtils.hasText(plannerError)) {
+                    PlanValidationIssue plannerError = planValidator.validatePlannerOutput(plannerJson);
+                    if (plannerError != null) {
                         return handleValidationFailure(ctx, planId, session, plannerError, planAttempt);
                     }
                     PlanJson normalized = PlanNormalizer.normalize(plannerJson);
                     PlanJson enriched = displayNameEnricher.enrich(normalized);
-                    String validationError = planValidator.validate(enriched);
-                    if (StringUtils.hasText(validationError)) {
+                    PlanValidationIssue validationError = planValidator.validate(enriched);
+                    if (validationError != null) {
                         return handleValidationFailure(ctx, planId, session, validationError, planAttempt);
                     }
                     if (planApprovalService.isEnabled()) {
@@ -177,14 +181,14 @@ final class PlanWorkflowPlanningRunner {
             if (current == null) {
                 throw new PlanApprovalRejectedException("重新规划未产出有效 Plan");
             }
-            String plannerError = planValidator.validatePlannerOutput(current);
-            if (StringUtils.hasText(plannerError)) {
-                throw new PlanApprovalRejectedException("重新规划未通过校验：" + plannerError);
+            PlanValidationIssue plannerError = planValidator.validatePlannerOutput(current);
+            if (plannerError != null) {
+                throw new PlanApprovalRejectedException("重新规划未通过校验：" + plannerError.message());
             }
             current = displayNameEnricher.enrich(PlanNormalizer.normalize(current));
-            String validationError = planValidator.validate(current);
-            if (StringUtils.hasText(validationError)) {
-                throw new PlanApprovalRejectedException("重新规划未通过校验：" + validationError);
+            PlanValidationIssue validationError = planValidator.validate(current);
+            if (validationError != null) {
+                throw new PlanApprovalRejectedException("重新规划未通过校验：" + validationError.message());
             }
             executionPlanStore.updatePlannerOutput(planId, current);
         }
@@ -210,20 +214,20 @@ final class PlanWorkflowPlanningRunner {
             ExecutionStreamContext ctx,
             String planId,
             ProcessingTimelineSession session,
-            String validationError,
+            PlanValidationIssue validationIssue,
             int planAttempt) {
-        log.warn("[PlanWorkflowExecutor] Plan 校验失败(attempt={}): {}", planAttempt, validationError);
-        recordPlannerAttempt(ctx, planId, planAttempt, "validate", "failed", validationError, System.currentTimeMillis());
+        log.warn("[PlanWorkflowExecutor] Plan 校验失败(attempt={}): {}", planAttempt, validationIssue.message());
+        recordPlannerAttempt(ctx, planId, planAttempt, "validate", "failed", validationIssue.message(), System.currentTimeMillis());
         int maxReplan = Math.max(1, executionProperties.getPlanWorkflow().getReplan().getMaxAttempts());
         if (planAttempt < maxReplan) {
-            return planAndExecute(ctx, planId, planAttempt + 1, validationError, session);
+            return planAndExecute(ctx, planId, planAttempt + 1, validationIssue, session);
         }
-        List<StreamToken> planTokens = PlanTimeline.planRejectedStep(session, validationError);
-        return Mono.fromRunnable(() -> executionPlanStore.markRejected(planId, validationError))
+        List<StreamToken> planTokens = PlanTimeline.planRejectedStep(session, validationIssue.message());
+        return Mono.fromRunnable(() -> executionPlanStore.markRejected(planId, validationIssue.message()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnSuccess(v -> planExecutionAuditService.failed(
                         ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
-                        planId, validationError))
+                        planId, validationIssue.message()))
                 .thenMany(Flux.concat(
                         Flux.fromIterable(planTokens),
                         reactExecutor.execute(ctx)));

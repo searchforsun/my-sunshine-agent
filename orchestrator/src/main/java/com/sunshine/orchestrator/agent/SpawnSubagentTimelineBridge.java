@@ -2,11 +2,11 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
+import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -16,7 +16,7 @@ public final class SpawnSubagentTimelineBridge {
     private final String parentStepId;
     private final String label;
     private final String spawnPrompt;
-    private final List<ProcessingStep> subSteps = new ArrayList<>();
+    private final SubStepsFold subSteps = new SubStepsFold();
     /** 用户取消后禁止再下发父卡 running，避免覆盖 paused */
     private final AtomicBoolean userCancelled = new AtomicBoolean(false);
 
@@ -60,11 +60,7 @@ public final class SpawnSubagentTimelineBridge {
         }
         if (userCancelled.get()) {
             // 仍折叠 subSteps 供抽屉历史，但不再刷新父卡为 running
-            if (token.isStep() && token.step() != null) {
-                ProcessingStepMerger.upsert(subSteps, token.step());
-            } else if (token.isStepDelta()) {
-                ProcessingStepMerger.applyDelta(subSteps, token.stepId(), token.channel(), token.text());
-            }
+            subSteps.ingest(token);
             return List.of();
         }
         // 与 Workflow AgentStreamCollector 同构：分段正文 → 父卡 contentBlocks（执行过程穿插）
@@ -74,12 +70,7 @@ public final class SpawnSubagentTimelineBridge {
         if (token.isContent() && StringUtils.hasText(token.text())) {
             return List.of(StreamToken.stepDelta(parentStepId, "result", token.text()));
         }
-        if (token.isStep() && token.step() != null) {
-            ProcessingStepMerger.upsert(subSteps, token.step());
-            return List.of(parentStepUpdate(runningLifecycle(), SpawnSubagentLabels.active(label), null, null));
-        }
-        if (token.isStepDelta()) {
-            ProcessingStepMerger.applyDelta(subSteps, token.stepId(), token.channel(), token.text());
+        if (subSteps.ingest(token)) {
             return List.of(parentStepUpdate(runningLifecycle(), SpawnSubagentLabels.active(label), null, null));
         }
         return List.of();
@@ -108,7 +99,7 @@ public final class SpawnSubagentTimelineBridge {
     }
 
     public List<ProcessingStep> subSteps() {
-        return List.copyOf(subSteps);
+        return subSteps.snapshot();
     }
 
     private String runningLifecycle() {
@@ -119,7 +110,7 @@ public final class SpawnSubagentTimelineBridge {
     }
 
     private boolean hasAwaitingHitl() {
-        for (ProcessingStep step : subSteps) {
+        for (ProcessingStep step : subSteps.view()) {
             if (step.metadata() != null
                     && step.metadata().hitl() != null
                     && HitlStepMeta.STATUS_AWAITING.equals(step.metadata().hitl().status())) {
@@ -159,7 +150,7 @@ public final class SpawnSubagentTimelineBridge {
                 label,
                 metadata,
                 null,
-                List.copyOf(subSteps));
+                subSteps.snapshot());
         return StreamToken.step(parent);
     }
 

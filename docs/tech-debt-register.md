@@ -21,9 +21,11 @@
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| TD-119 | P1 | open | `StepEventBridgeRegistry` spawn 空 wrapper + `sub-` 入队 | 与 Workflow 非空 wrapper 契约分裂；宜显式 TokenWrapperMode |
-| TD-120 | P2 | open | `SpawnSubagentTimelineSupport` / Labels static / Workflow Bridge 近拷贝 | 薄门面与静态单例；可选合并 fold 原语 |
-| TD-121 | P2 | open | `PlanValidationFeedback` + `maxNodes+6` | 中文 regex→错误码；魔法上限宜进 Nacos / 结构化 Issue |
+| （暂无 open） | — | — | — | 下一轮从侦察清单选入 |
+
+**2026-07-18 TD-120 已消化**：`SpawnSubagentLabelService` + `SpawnSubagentLabels` 门面（对齐 TaskBoard）；`SubStepsFold` 供 spawn/Workflow Bridge 共用。
+
+**2026-07-18 TD-119 已消化**：显式 `TokenWrapperMode`（`EMIT_OUTGOING` / `PASS_THROUGH`）；`routeHookToken` 与 `drainHookQueueToGeneration` 共用 `applyTokenWrapper`；spawn 绑 `PASS_THROUGH`，去掉 `sub-`+空列表启发式。
 
 **2026-07-18 续轮 R7–R9 已消化**：TD-122（沙箱 pause 单写：Controller + expandDetail；`cancelResult` 不再 pause）；TD-123（UI `sandbox__*` 前缀 + cancel 跟 lifecycle，删 `已取消`/`SANDBOX_TOOL_IDS` 门闩）；TD-124（spawn 取消禁 Hook fallback）；TD-125（register 强制 assistant messageId，禁 bridgeId 冒充）。
 

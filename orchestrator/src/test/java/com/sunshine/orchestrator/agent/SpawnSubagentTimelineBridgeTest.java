@@ -1,12 +1,16 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@ExtendWith(TimelineLabelJUnitExtension.class)
 class SpawnSubagentTimelineBridgeTest {
 
     @Test

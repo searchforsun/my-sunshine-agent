@@ -56,7 +56,7 @@ class PlanValidatorTest {
                         new PlanNode("n1", "rag", Map.of(), "检索"),
                         new PlanNode("n4", "answer", Map.of(), "生成回答")),
                 List.of(new PlanEdge("start", "n1"), new PlanEdge("n1", "n4")));
-        assertThat(validator.validatePlannerOutput(raw)).contains("Planner 非法节点 type: answer");
+        assertThat(validator.validatePlannerOutput(raw).message()).contains("Planner 非法节点 type: answer");
     }
 
     @Test
@@ -65,7 +65,7 @@ class PlanValidatorTest {
         PlanJson raw = new PlanJson("p", "r",
                 List.of(new PlanNode("n1", "tool", Map.of("tool", "unknown_tool"), "查工具")),
                 List.of(new PlanEdge("start", "n1")));
-        assertThat(validator.validatePlannerOutput(raw)).contains("未知工具");
+        assertThat(validator.validatePlannerOutput(raw).message()).contains("未知工具");
     }
 
     @Test

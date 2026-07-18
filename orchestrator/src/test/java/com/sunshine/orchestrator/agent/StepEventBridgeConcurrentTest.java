@@ -162,13 +162,13 @@ class StepEventBridgeConcurrentTest {
     }
 
     @Test
-    void subEmptyWrapper_withAssistantFlush_stillQueuesContentForFlux() {
+    void passThroughWrapper_withAssistantFlush_queuesContentForFlux() {
         String assistantId = "msg-spawn-main";
         String subBridge = "sub-spawn-run";
         ConcurrentLinkedQueue<StreamToken> subQueue = new ConcurrentLinkedQueue<>();
         bind(subBridge, subQueue);
         StepEventBridge.bindHitlBridge(subBridge, assistantId, true);
-        StepEventBridge.bindTokenWrapper(subBridge, token -> List.of());
+        StepEventBridge.bindTokenWrapper(subBridge, token -> List.of(), TokenWrapperMode.PASS_THROUGH);
         List<StreamToken> flushed = new ArrayList<>();
         StepEventBridge.bindGenerationFlush(assistantId, flushed::add);
 
@@ -176,6 +176,46 @@ class StepEventBridgeConcurrentTest {
 
         assertThat(flushed).isEmpty();
         assertThat(subQueue.poll()).matches(t -> t != null && t.isContent() && "子任务正文".equals(t.text()));
+    }
+
+    @Test
+    void drainHookQueue_passThrough_runsSideEffectButDoesNotEmit() {
+        String assistantId = "msg-spawn-drain";
+        String subBridge = "sub-spawn-drain";
+        ConcurrentLinkedQueue<StreamToken> subQueue = new ConcurrentLinkedQueue<>();
+        bind(subBridge, subQueue);
+        StepEventBridge.bindHitlBridge(subBridge, assistantId, true);
+        List<StreamToken> sideEffects = new ArrayList<>();
+        StepEventBridge.bindTokenWrapper(subBridge, token -> {
+            sideEffects.add(token);
+            return List.of();
+        }, TokenWrapperMode.PASS_THROUGH);
+        subQueue.offer(StreamToken.content("仅副作用"));
+
+        List<StreamToken> drained = new ArrayList<>();
+        StepEventBridge.drainHookQueueToGeneration(subBridge, drained::add);
+
+        assertThat(sideEffects).hasSize(1);
+        assertThat(sideEffects.get(0).text()).isEqualTo("仅副作用");
+        assertThat(drained).isEmpty();
+    }
+
+    @Test
+    void emptyEmitOutgoing_doesNotQueueWhenFlushAllowed() {
+        String assistantId = "msg-emit-empty";
+        String subBridge = "sub-emit-empty";
+        ConcurrentLinkedQueue<StreamToken> subQueue = new ConcurrentLinkedQueue<>();
+        bind(subBridge, subQueue);
+        StepEventBridge.bindHitlBridge(subBridge, assistantId, true);
+        // 缺省 EMIT_OUTGOING：空输出丢弃（不再靠 sub- 启发式入队）
+        StepEventBridge.bindTokenWrapper(subBridge, token -> List.of());
+        List<StreamToken> flushed = new ArrayList<>();
+        StepEventBridge.bindGenerationFlush(assistantId, flushed::add);
+
+        StepEventBridge.offerStreamToken(subBridge, StreamToken.content("应丢弃"));
+
+        assertThat(flushed).isEmpty();
+        assertThat(subQueue.poll()).isNull();
     }
 
     @Test

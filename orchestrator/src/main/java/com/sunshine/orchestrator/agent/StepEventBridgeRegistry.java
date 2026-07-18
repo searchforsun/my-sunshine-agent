@@ -36,6 +36,8 @@ public class StepEventBridgeRegistry {
     /** assistantMsgId → Chat 工作区写 HITL 跳过模式 */
     private final Map<String, SandboxWriteHitlMode> writeHitlModes = new ConcurrentHashMap<>();
     private final Map<String, Function<StreamToken, List<StreamToken>>> tokenWrappers = new ConcurrentHashMap<>();
+    /** 与 tokenWrappers 同键；缺省 {@link TokenWrapperMode#EMIT_OUTGOING} */
+    private final Map<String, TokenWrapperMode> tokenWrapperModes = new ConcurrentHashMap<>();
     /** assistantMsgId → loop body 折叠（Agent Hook 直刷 Generation 时用） */
     private final Map<String, Function<StreamToken, List<StreamToken>>> loopBodyFolds = new ConcurrentHashMap<>();
     private final Map<String, FlushBinding> generationFlush = new ConcurrentHashMap<>();
@@ -67,6 +69,7 @@ public class StepEventBridgeRegistry {
         hitlPreapproved.clear();
         writeHitlModes.clear();
         tokenWrappers.clear();
+        tokenWrapperModes.clear();
         loopBodyFolds.clear();
         generationFlush.clear();
         streamEpoch.clear();
@@ -181,9 +184,18 @@ public class StepEventBridgeRegistry {
     }
 
     public void bindTokenWrapper(String bridgeId, Function<StreamToken, List<StreamToken>> wrapper) {
-        if (bridgeId != null && wrapper != null) {
-            tokenWrappers.put(bridgeId, wrapper);
+        bindTokenWrapper(bridgeId, wrapper, TokenWrapperMode.EMIT_OUTGOING);
+    }
+
+    public void bindTokenWrapper(
+            String bridgeId,
+            Function<StreamToken, List<StreamToken>> wrapper,
+            TokenWrapperMode mode) {
+        if (bridgeId == null || wrapper == null) {
+            return;
         }
+        tokenWrappers.put(bridgeId, wrapper);
+        tokenWrapperModes.put(bridgeId, mode != null ? mode : TokenWrapperMode.EMIT_OUTGOING);
     }
 
     public void bindLoopBodyFold(String assistantMessageId, Function<StreamToken, List<StreamToken>> fold) {
@@ -379,6 +391,7 @@ public class StepEventBridgeRegistry {
             hitlAssistantByBridge.remove(messageId);
             hitlPreapproved.remove(messageId);
             tokenWrappers.remove(messageId);
+            tokenWrapperModes.remove(messageId);
             loopBodyFolds.remove(messageId);
             generationFlush.remove(messageId);
             sessionStreamEpoch.remove(messageId);
@@ -546,7 +559,7 @@ public class StepEventBridgeRegistry {
             }
             return;
         }
-        // 专家 Hub 等无 tokenWrapper 的 sub Agent：禁止 Hook 刷入主 assistant 时间线
+        // 无 wrapper 的 sub Agent（专家 Hub 等）：禁止 Hook 刷入主 assistant 时间线
         if (messageId.startsWith("sub-") && !tokenWrappers.containsKey(messageId)) {
             if (queue != null) {
                 queue.offer(token);
@@ -555,30 +568,45 @@ public class StepEventBridgeRegistry {
         }
         String flushKey = resolveFlushMessageId(messageId);
         FlushBinding binding = flushKey != null ? generationFlush.get(flushKey) : null;
-        if (binding != null && isHookFlushAllowed(messageId, flushKey, binding.epoch())) {
-            Consumer<StreamToken> sink = binding.consumer();
-            Function<StreamToken, List<StreamToken>> wrapper = tokenWrappers.get(messageId);
-            List<StreamToken> outgoing;
-            if (wrapper != null) {
-                outgoing = wrapper.apply(token);
-                // spawn_subagent：wrapper 只 fold 副作用且 return 空；必须把原 token 入队，
-                // 否则 content 既不 flush 也不进 Flux，工具结果恒为空。
-                // Workflow agent wrapper 返回非空 parent 步，仍只走 flush，避免双发。
-                if (messageId.startsWith("sub-") && (outgoing == null || outgoing.isEmpty())) {
-                    if (queue != null) {
-                        queue.offer(token);
-                    }
-                    return;
+        boolean canFlush = binding != null && isHookFlushAllowed(messageId, flushKey, binding.epoch());
+        WrapperOutcome outcome = applyTokenWrapper(messageId, token);
+        if (canFlush) {
+            if (outcome.mode() == TokenWrapperMode.PASS_THROUGH) {
+                // fold 副作用已执行；原 token 入队供 Flux，勿把空/父步刷进 Generation
+                if (queue != null) {
+                    queue.offer(token);
                 }
-            } else {
-                outgoing = List.of(token);
+                return;
             }
-            flushToGeneration(flushKey, sink, outgoing);
+            if (!outcome.outgoing().isEmpty()) {
+                flushToGeneration(flushKey, binding.consumer(), outcome.outgoing());
+                return;
+            }
+            // EMIT_OUTGOING + 空输出：丢弃
             return;
         }
         if (queue != null) {
             queue.offer(token);
         }
+    }
+
+    /**
+     * 执行 wrapper 副作用并解析输出；route / drain 共用，禁止再靠 sub- + 空列表猜测。
+     */
+    private WrapperOutcome applyTokenWrapper(String bridgeId, StreamToken token) {
+        Function<StreamToken, List<StreamToken>> wrapper = tokenWrappers.get(bridgeId);
+        if (wrapper == null) {
+            return new WrapperOutcome(TokenWrapperMode.EMIT_OUTGOING, List.of(token));
+        }
+        TokenWrapperMode mode = tokenWrapperModes.getOrDefault(bridgeId, TokenWrapperMode.EMIT_OUTGOING);
+        List<StreamToken> outgoing = wrapper.apply(token);
+        if (outgoing == null) {
+            outgoing = List.of();
+        }
+        return new WrapperOutcome(mode, outgoing);
+    }
+
+    private record WrapperOutcome(TokenWrapperMode mode, List<StreamToken> outgoing) {
     }
 
     private void flushToGeneration(
@@ -650,16 +678,15 @@ public class StepEventBridgeRegistry {
             return;
         }
         StreamToken token;
-        Function<StreamToken, List<StreamToken>> wrapper = tokenWrappers.get(messageId);
         String flushKey = resolveFlushMessageId(messageId);
         while ((token = queue.poll()) != null) {
-            List<StreamToken> outgoing;
-            if (wrapper != null) {
-                outgoing = wrapper.apply(token);
-            } else {
-                outgoing = List.of(token);
+            WrapperOutcome outcome = applyTokenWrapper(messageId, token);
+            // PASS_THROUGH：副作用（fold）已执行；原 token 仅 Flux 消费，不刷 Generation
+            if (outcome.mode() == TokenWrapperMode.PASS_THROUGH) {
+                continue;
             }
-            if (outgoing == null || outgoing.isEmpty()) {
+            List<StreamToken> outgoing = outcome.outgoing();
+            if (outgoing.isEmpty()) {
                 continue;
             }
             Function<StreamToken, List<StreamToken>> fold =
