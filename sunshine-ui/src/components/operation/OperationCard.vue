@@ -432,6 +432,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   opacity: 0.92;
 }
 
+.op-detail-after :deep(.static-md-compact.msg-md),
 .op-detail-after :deep(.static-md-compact) {
   color: var(--sun-text-muted);
 }
@@ -442,6 +443,8 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   gap: 2px;
 }
 
+/* 压过 markdown-content.css .msg-md { color: sun-text }，恢复思考区偏灰 */
+.op-detail :deep(.static-md-compact.msg-md),
 .op-detail :deep(.static-md-compact) {
   color: var(--sun-text-muted);
   opacity: 0.9;
