@@ -59,13 +59,9 @@ onMounted(() => { void enhanceDom() })
 </script>
 
 <template>
-  <div
-    class="static-md-shell"
-    :class="{
-      'static-md-compact': compact,
-      'static-md-scroll': scrollable,
-    }"
-  >
+  <!-- shell 仅承载流式 mermaid 占位；compact/scroll 必须落在 .msg-md 上，
+       否则 OperationCard 等 :deep(.static-md-compact) 灰色样式被 .msg-md { color: sun-text } 盖掉 -->
+  <div class="static-md-shell">
     <div
       v-if="html"
       ref="rootRef"
@@ -73,6 +69,8 @@ onMounted(() => { void enhanceDom() })
       :class="{
         'static-md': !skillPreview,
         'skill-md-preview': skillPreview,
+        'static-md-compact': compact,
+        'static-md-scroll': scrollable,
         streaming: deferMermaid,
       }"
       v-html="html"
