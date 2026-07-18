@@ -222,7 +222,7 @@ export function isPlanNodeLeakText(text: string, steps: ProcessingStep[]): boole
     const after = step.summary?.after?.trim()
     const detail = step.detail?.trim()
     if (active && (content === active || content === `${label} ${active}` || content.includes(active))) return true
-    if (after && after !== '已暂停' && (content === after || content === `${label} ${after}`)) return true
+    if (after && (content === after || content === `${label} ${after}`)) return true
     if (detail && content === detail) return true
   }
   return false

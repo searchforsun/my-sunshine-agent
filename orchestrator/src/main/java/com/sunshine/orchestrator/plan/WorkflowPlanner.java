@@ -52,15 +52,6 @@ public class WorkflowPlanner {
         return plan(ctx, validationIssue, attemptNo);
     }
 
-    /** @deprecated 请传 {@link PlanValidationIssue} */
-    @Deprecated
-    public Mono<PlanJson> replan(ExecutionStreamContext ctx, String validationError, int attemptNo) {
-        PlanValidationIssue issue = StringUtils.hasText(validationError)
-                ? PlanValidationIssue.of(PlanValidationCode.VALIDATION_FAILED, validationError)
-                : null;
-        return replan(ctx, issue, attemptNo);
-    }
-
     /** 用户修改意见后重新规划 */
     public Mono<PlanJson> replanWithUserHint(ExecutionStreamContext ctx, String userHint, int roundNo) {
         String template = executionProperties.getPlanWorkflow().getApproval().getUserModificationTemplate();

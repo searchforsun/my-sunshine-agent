@@ -21,17 +21,6 @@ public final class PlanValidationFeedback {
         return format(issue);
     }
 
-    /**
-     * @deprecated 仅保留非结构化调用兼容；新代码应传 {@link PlanValidationIssue}。
-     */
-    @Deprecated
-    public static String formatForReplan(String rawError) {
-        if (!StringUtils.hasText(rawError)) {
-            return formatForReplan((PlanValidationIssue) null);
-        }
-        return formatForReplan(PlanValidationIssue.of(PlanValidationCode.VALIDATION_FAILED, rawError.strip()));
-    }
-
     private static String format(PlanValidationIssue issue) {
         return """
                 【错误码】%s

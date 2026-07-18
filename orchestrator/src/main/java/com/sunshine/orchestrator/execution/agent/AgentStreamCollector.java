@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution.agent;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.SubAgentContentTokens;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeSpec;
@@ -9,6 +10,7 @@ import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /** 子 Agent 流式聚合：正文 + 子 Timeline 步骤 */
 public final class AgentStreamCollector extends WorkflowStreamCollector {
@@ -36,15 +38,12 @@ public final class AgentStreamCollector extends WorkflowStreamCollector {
         if (token.isReasoning()) {
             return List.of();
         }
-        if (token.isContentLifecycle() || (token.isContent() && token.segmentId() != null)) {
+        Optional<List<StreamToken>> routed = SubAgentContentTokens.route(token, nodeStepId);
+        if (routed.isPresent()) {
             if (token.isContent() && token.text() != null) {
                 content.append(token.text());
             }
-            return List.of(token.withScopeNodeStepId(nodeStepId));
-        }
-        if (token.isContent() && token.text() != null) {
-            content.append(token.text());
-            return List.of(StreamToken.stepDelta(nodeStepId, "result", token.text()));
+            return routed.get();
         }
         if (token.isStep() && token.step() != null && token.step().id() != null
                 && token.step().id().startsWith("tool-")) {

@@ -41,10 +41,9 @@ class PlanValidationFeedbackTest {
     }
 
     @Test
-    @SuppressWarnings("deprecation")
-    void deprecatedRawStringWrapsAsValidationFailed() {
-        String fb = PlanValidationFeedback.formatForReplan("自定义错误");
-        assertThat(fb).contains("VALIDATION_FAILED");
-        assertThat(fb).contains("自定义错误");
+    void nullIssueFallsBackToUnknown() {
+        String fb = PlanValidationFeedback.formatForReplan(null);
+        assertThat(fb).contains("UNKNOWN");
+        assertThat(fb).contains("未知校验错误");
     }
 }

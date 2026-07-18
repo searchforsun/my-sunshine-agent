@@ -63,12 +63,9 @@ public final class SpawnSubagentTimelineBridge {
             subSteps.ingest(token);
             return List.of();
         }
-        // 与 Workflow AgentStreamCollector 同构：分段正文 → 父卡 contentBlocks（执行过程穿插）
-        if (token.isContentLifecycle() || (token.isContent() && token.segmentId() != null)) {
-            return List.of(token.withScopeNodeStepId(parentStepId));
-        }
-        if (token.isContent() && StringUtils.hasText(token.text())) {
-            return List.of(StreamToken.stepDelta(parentStepId, "result", token.text()));
+        var routed = SubAgentContentTokens.route(token, parentStepId);
+        if (routed.isPresent()) {
+            return routed.get();
         }
         if (subSteps.ingest(token)) {
             return List.of(parentStepUpdate(runningLifecycle(), SpawnSubagentLabels.active(label), null, null));

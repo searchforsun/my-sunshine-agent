@@ -25,30 +25,25 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SpawnRunRegistry {
 
     private final ConcurrentHashMap<String, Handle> byRunId = new ConcurrentHashMap<>();
-    private final SpawnSubagentTimelineSupport timelineSupport;
     private final AgentExecutionProperties executionProperties;
     private final GenerationRegistry generationRegistry;
 
     @Autowired
     public SpawnRunRegistry(
-            SpawnSubagentTimelineSupport timelineSupport,
             AgentExecutionProperties executionProperties,
             @Lazy GenerationRegistry generationRegistry) {
-        this.timelineSupport = timelineSupport;
         this.executionProperties = executionProperties;
         this.generationRegistry = generationRegistry;
     }
 
     /** 单测无 Spring 时用 */
     public static SpawnRunRegistry forTest() {
-        return new SpawnRunRegistry(null, null, null);
+        return new SpawnRunRegistry(null, null);
     }
 
-    /** 单测：注入 timelineSupport / props */
-    public static SpawnRunRegistry forTest(
-            SpawnSubagentTimelineSupport timelineSupport,
-            AgentExecutionProperties executionProperties) {
-        return new SpawnRunRegistry(timelineSupport, executionProperties, null);
+    /** 单测：注入 props */
+    public static SpawnRunRegistry forTest(AgentExecutionProperties executionProperties) {
+        return new SpawnRunRegistry(executionProperties, null);
     }
 
     public void register(
@@ -142,6 +137,26 @@ public class SpawnRunRegistry {
         }
         log.info("[SpawnRunRegistry] cancel runId={} messageId={}", id, handle.messageId);
         return true;
+    }
+
+    /**
+     * interrupt 路径补终态：与 {@link #cancel} 同写 GenerationJob，不经 Hook。
+     * 调用方须确认尚未经 {@link #cancel}（bridge.userCancelled 仍为 false）。
+     */
+    public void flushCancelTerminal(String runId, SpawnSubagentTimelineBridge bridge, String result) {
+        if (bridge == null) {
+            return;
+        }
+        Handle handle = StringUtils.hasText(runId) ? byRunId.get(runId.strip()) : null;
+        if (handle != null) {
+            handle.cancelled.set(true);
+        }
+        List<StreamToken> tokens = bridge.cancel(SpawnSubagentLabels.afterCancel(), result);
+        String messageId = handle != null ? handle.messageId : null;
+        if (!flushCancelToGeneration(messageId, tokens)) {
+            log.warn("[SpawnRunRegistry] flushCancelTerminal miss job runId={} messageId={}",
+                    runId, messageId);
+        }
     }
 
     /** @return true 若已直写 GenerationJob */

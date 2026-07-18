@@ -125,11 +125,11 @@ public class SpawnSubagentTool {
                     .doOnError(failure::set)
                     .blockLast(Duration.ofMillis(timeoutMs));
             if (spawnRunRegistry.isCancelled(runId)) {
-                return cancelAndReturn(mainBridge, subTimeline, promptText);
+                return cancelAndReturn(runId, subTimeline, promptText);
             }
             if (failure.get() != null) {
                 if (isInterrupted(failure.get())) {
-                    return cancelAndReturn(mainBridge, subTimeline, promptText);
+                    return cancelAndReturn(runId, subTimeline, promptText);
                 }
                 return failAndReturn(mainBridge, subTimeline, failure.get());
             }
@@ -141,7 +141,7 @@ public class SpawnSubagentTool {
             return result;
         } catch (Exception e) {
             if (spawnRunRegistry.isCancelled(runId) || isInterrupted(e)) {
-                return cancelAndReturn(mainBridge, subTimeline, promptText);
+                return cancelAndReturn(runId, subTimeline, promptText);
             }
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (isTimeout(cause) || isTimeout(e)) {
@@ -197,14 +197,15 @@ public class SpawnSubagentTool {
     }
 
     /**
-     * Registry.cancel 已下发父卡 paused 时不再二次 emit；仅 interrupt 未走 Registry 时补终态。
+     * Registry.cancel 已下发父卡 paused 时不再二次 emit；
+     * interrupt 未走 Registry 时经 {@link SpawnRunRegistry#flushCancelTerminal} 直写 GenerationJob。
      */
     private String cancelAndReturn(
-            String mainBridge, SpawnSubagentTimelineBridge subTimeline, String prompt) {
+            String runId, SpawnSubagentTimelineBridge subTimeline, String prompt) {
         String result = spawnRunRegistry.formatCancelResult(prompt);
         log.info("[SpawnSubagentTool] 子任务已取消，回主 Agent 接手");
         if (subTimeline != null && !subTimeline.userCancelled()) {
-            timelineSupport.cancel(mainBridge, subTimeline, result);
+            spawnRunRegistry.flushCancelTerminal(runId, subTimeline, result);
         }
         return result;
     }

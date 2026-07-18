@@ -23,40 +23,11 @@
 |----|--------|------|------|------|
 | （暂无 open） | — | — | — | 下一轮从侦察清单选入 |
 
-**2026-07-18 TD-120 已消化**：`SpawnSubagentLabelService` + `SpawnSubagentLabels` 门面（对齐 TaskBoard）；`SubStepsFold` 供 spawn/Workflow Bridge 共用。
-
-**2026-07-18 TD-119 已消化**：显式 `TokenWrapperMode`（`EMIT_OUTGOING` / `PASS_THROUGH`）；`routeHookToken` 与 `drainHookQueueToGeneration` 共用 `applyTokenWrapper`；spawn 绑 `PASS_THROUGH`，去掉 `sub-`+空列表启发式。
-
-**2026-07-18 续轮 R7–R9 已消化**：TD-122（沙箱 pause 单写：Controller + expandDetail；`cancelResult` 不再 pause）；TD-123（UI `sandbox__*` 前缀 + cancel 跟 lifecycle，删 `已取消`/`SANDBOX_TOOL_IDS` 门闩）；TD-124（spawn 取消禁 Hook fallback）；TD-125（register 强制 assistant messageId，禁 bridgeId 冒充）。
-
-**2026-07-18 本轮已消化（ef49f08..）**：TD-113（stepId cancel messageId 归属）；TD-114（sandbox cancel session 绑定）；TD-115（spawn 取消终态单写 B）；TD-116（沙箱 PostActing `consumeRecentlyCancelled`、禁中文门闩）；TD-117/118（UI `metadata.cancellable`、删 legacy SSE/`已暂停` synonym）；DOC-023/024（spawn Nacos 键 + cancel plan 对齐实现）。
-
-**2026-07-17 TD-110 已消化**：沙箱 `SandboxPolicy` + 5 RPC DTO 迁至 `com.sunshine.common.sandbox`；删 orchestrator/skill-manager/sandbox-service 六处拷贝；`SandboxPolicyDto` 合并为 `SandboxPolicy`。
-
-**2026-07-17 TD-111 已消化**：`agent.sandbox.tools` 承载 displayName/description/schema；`ToolCatalogService` + `SandboxAgentTools` 读 `AgentSandboxProperties`。
-
-**2026-07-17 TD-112 已消化**：抽 `useSandboxToolExpand` + `SandboxToolExpandPanel`；`OperationCard` 801→465 行。
-
-**2026-07-17 沙箱债 TD-106 已消化**：后端 `headerPath` + glob 结果推断搜索根 + `metadata.sandboxPath/sandboxSearchRoot`；前端主行只截断 `summary.after`。
-
-**2026-07-17 沙箱债本轮已消化**：TD-105（删 `openIfNeeded` + bridge 废弃 no-op）；TD-107（删未接线 `grepAfterWithPath`）；TD-108（删旧 `<<< old` 解析 + Binding 5 字段构造）；DOC-022（5 份 sandbox plan → `plans/archive/`）。
-
-**2026-07-15 续轮 3 已消化**：TD-104（抽 `workflowFlowProjection`；Chat 仅依赖投影；删孤儿 `PlanDagGraph` / `buildPreviewDagNodes`）。
-
-**2026-07-15 续轮 2 已消化**：TD-100（`WorkflowAdminSupport` + `WorkflowPackageService`；`workflowDagLayoutMetrics` / `workflowLoopLayout`；`workflowFlowNodeVisual` + PropsAside exclusive）。
-
-**2026-07-15 续轮已消化**：TD-098（删 FE `FALLBACK_NODE_DEFAULTS` + orch 误导性 code fallback 日志）；TD-100 部分（`WorkflowExclusiveEdgesSection`）；TD-102（历史 orchestration 文档 SUPERSEDED）。
-
-**2026-07-15 Workflow Studio 本轮已消化**：TD-095（`useWorkflowsPage` → import/lifecycle）；TD-096（本地零延迟 + 服务端发布权威契约澄清）；TD-097（`WorkflowNodeType` → `sunshine-common`）；TD-099（删 `WorkflowPlanValidator.validate` 兼容门面）；TD-101（详设 PlanValidator/Loader 文案对齐）；TD-103（过时 sunshine-workflows 注释随枚举迁移消除）。
-
-**2026-07-11 本轮已消化**：TD-077/078/081/083/084/085/087（工具集语义）；**TD-091/092/093**（legacy API、description 校验、死 CSS）；**TD-082/086/080/094**（sourceRef Catalog、Client 合并、ToolsView 拆分、孤儿 API）；**TD-088**（`ToolCatalogEntry` SSOT + BFF catalog 类型化）；**TD-089–090**（Admin DTO 迁至 `sunshine-common`、BFF 全量类型化）；**TD-080**（抽 `useMcpServerActions`，`useToolsPage` 369 行）。
-
 ### 文档债
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| DOC-023 | P1 | done | spawn design §5 | 2026-07-18：Nacos 键改为 `agent.timeline.steps.subagent` + `agent.execution.react.subagent.*` |
-| DOC-024 | P1 | done | sandbox cancel plan | 2026-07-18：对齐 `SandboxInvocationRegistry` / `cancellable`；去掉幽灵 toolUseId/Budget 勾选 |
+| （暂无 open） | — | — | — | — |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 
@@ -179,6 +150,24 @@
 | TD-111 | 2026-07-17 | `agent.sandbox.tools` SSOT；删 ToolCatalogService 硬编码 + AgentTools schema |
 | TD-110 | 2026-07-17 | 沙箱 Policy/DTO SSOT：`com.sunshine.common.sandbox`；删 14 处模块内拷贝 |
 | TD-109 | 2026-07-17 | 抽 `useSandboxFileTree` + `useSandboxPreviewTabs` + 子组件；抽屉 1031→~254 行 |
+| TD-112 | 2026-07-17 | 抽 `useSandboxToolExpand` + `SandboxToolExpandPanel`；`OperationCard` 801→465 行 |
+| TD-113 | 2026-07-18 | stepId cancel 校验 messageId 归属 |
+| TD-114 | 2026-07-18 | sandbox cancel 绑定 session |
+| TD-115 | 2026-07-18 | spawn 取消终态单写（Registry → GenerationJob） |
+| TD-116 | 2026-07-18 | 沙箱 PostActing `consumeRecentlyCancelled`；禁中文门闩 |
+| TD-117 | 2026-07-18 | UI 可取消跟 `metadata.cancellable` |
+| TD-118 | 2026-07-18 | 删 sandbox cancel legacy SSE /「已暂停」同义词 |
+| TD-119 | 2026-07-18 | 显式 `TokenWrapperMode`；route/drain 共用 `applyTokenWrapper`；spawn `PASS_THROUGH` |
+| TD-120 | 2026-07-18 | `SpawnSubagentLabelService` + Labels 门面；`SubStepsFold` 供 spawn/Workflow 共用 |
+| TD-122 | 2026-07-18 | 沙箱 pause 单写：Controller + expandDetail；`cancelResult` 不再 pause |
+| TD-123 | 2026-07-18 | UI `sandbox__*` 前缀 + cancel 跟 lifecycle；删 `SANDBOX_TOOL_IDS` /「已取消」门闩 |
+| TD-124 | 2026-07-18 | spawn 取消禁 Hook fallback |
+| TD-125 | 2026-07-18 | register 强制 assistant messageId；禁 bridgeId 冒充 |
+| TD-126 | 2026-07-18 | 抽 `SubAgentContentTokens`；Collector/Bridge 共用 content 路由 |
+| TD-127 | 2026-07-18 | 删 `SpawnRunRegistry.timelineSupport` 死字段 |
+| TD-128 | 2026-07-18 | 删 `formatForReplan(String)` / `WorkflowPlanner.replan(String)` |
+| TD-129 | 2026-07-18 | FE 终态只信 SSE `after`；stop/interleave 禁「已取消」「已暂停」硬编码 |
+| TD-130 | 2026-07-18 | interrupt 补终态 `flushCancelTerminal` 直写 GenerationJob；删 Support Hook `cancel` |
 
 ### 文档债（DOC）
 
@@ -204,6 +193,8 @@
 | DOC-020 | 2026-07-09 | TaskBoard 文档：Timeline `think→tasks→tool`、Hook 锚定 think、prompt/Hook 职责分离、merge content 去重、`max-iters` SSOT |
 | DOC-021 | 2026-07-09 | ReAct Hook：无业务 tool 间隔的连续 think 合并；终态避免多个「综合分析」行 |
 | DOC-022 | 2026-07-17 | 5 份已完成 sandbox plan → `docs/superpowers/plans/archive/`（ARCHIVED 头 + 链修复） |
+| DOC-023 | 2026-07-18 | spawn design §5：Nacos 键改为 `agent.timeline.steps.subagent` + `agent.execution.react.subagent.*` |
+| DOC-024 | 2026-07-18 | sandbox cancel plan 对齐 `SandboxInvocationRegistry` / `cancellable`；去幽灵 toolUseId/Budget |
 
 ### 架构决策（ADR）
 

@@ -68,10 +68,11 @@ function toPausedStep(step: ProcessingStep): ProcessingStep {
   return {
     ...step,
     lifecycle: 'paused',
+    // 乐观：仅切 lifecycle；after 等 SSE（禁止硬编码「已暂停」）
     summary: {
-      ...step.summary,
-      active: '已暂停',
-      after: '已暂停',
+      before: step.summary?.before,
+      active: undefined,
+      after: step.summary?.after?.trim() || undefined,
     },
     endedAt: now,
     durationMs: step.startedAt != null ? now - step.startedAt : step.durationMs,

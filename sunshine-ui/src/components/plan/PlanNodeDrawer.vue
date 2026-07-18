@@ -86,12 +86,9 @@ const statusLabel = computed(() => {
     if (s === 'pending') return '等待中'
     return '已通过'
   }
-  // spawn：跟 SSE after；Plan HITL/续跑仍用「已暂停」
+  // 终态话术只信 SSE after（禁止硬编码「已取消」/「已暂停」）
   if (s === 'paused') {
-    if (isSpawnSubagent.value) {
-      return step.value?.summary?.after?.trim() || '已取消'
-    }
-    return '已暂停'
+    return step.value?.summary?.after?.trim() || ''
   }
   if (s === 'terminated') return '已终止'
   if (s === 'awaiting_confirm') return '待确认'
@@ -527,7 +524,7 @@ watch(
         <StaticMarkdown :source="output" compact />
       </section>
       <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showRecoverySection && !showSpawnPrompt && !output && !showSkillBlock && !displayAttempts?.length" class="drawer-empty">
-        {{ displayStatus === 'running' ? '节点执行中…' : displayStatus === 'paused' ? '节点已暂停' : '暂无详情' }}
+        {{ displayStatus === 'running' ? '节点执行中…' : '暂无详情' }}
       </p>
     </div>
   </aside>
