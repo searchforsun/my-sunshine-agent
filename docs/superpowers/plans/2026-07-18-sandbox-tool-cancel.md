@@ -22,13 +22,14 @@
 | `orchestrator/.../sandbox/CancellableToolRunRegistry.java` | toolUseId → 句柄；cancel；message 级预算 |
 | `orchestrator/.../sandbox/SandboxAgentTools.java` | register/budget/cancel 返回 |
 | `orchestrator/.../client/SandboxClient.java` | invoke 带 invocationId；cancelInvocation |
-| `sandbox-service/.../docker/DockerCli.java` | Process 登记 + cancel |
+| `sandbox-service/.../docker/SandboxInvocationRegistry.java` | Process/flag 句柄；cancel 校验 sessionId |
+| `sandbox-service/.../docker/DockerCli.java` | bindProcess + destroyForcibly |
 | `sandbox-service/.../api/SandboxSessionController.java` | cancel invocation API |
-| `sandbox-service/.../tool/SandboxToolExecutor.java` | 透传 invocationId |
-| `orchestrator/.../generation/GenerationController.java` | `POST .../tools/{toolUseId}/cancel` |
+| `sandbox-service/.../tool/SandboxToolExecutor.java` | 透传 invocationId + session |
+| `orchestrator/.../generation/GenerationController.java` | `POST .../tools/{toolRef}/cancel`（stepId 或 toolUseId） |
 | `bff/.../GenerationController.java` + `OrchestratorClient` | 透传 |
-| `orchestrator/.../processing/StepMetadata.java` (+ serde) | `toolUseId` |
-| `orchestrator/.../agent/ProcessingStepHook.java` | begin 时写入 metadata.toolUseId；cancel 终态 |
+| `orchestrator/.../processing/StepMetadata.java` (+ serde) | `cancellable`（UI 跟此字段） |
+| `orchestrator/.../agent/ProcessingStepHook.java` | begin 时 `markCurrentToolCancellable` + Registry.register |
 | `docs/nacos/sunshine-orchestrator.yaml` | cancellable-tools / cancel-result / budget / overlay |
 | `sunshine-ui/.../OperationCard.vue` | hover 暂停钮 |
 | `sunshine-ui/.../api/chatSessions.ts` + `ChatView.vue` | cancelCancellableTool |
@@ -43,11 +44,11 @@
 - Modify: `sandbox-service/src/main/java/com/sunshine/sandbox/docker/DockerCli.java`
 - Modify: `sandbox-service/src/main/java/com/sunshine/sandbox/tool/SandboxToolExecutor.java`（及 invoke 入口）
 - Modify: `sandbox-service/src/main/java/com/sunshine/sandbox/api/SandboxSessionController.java`
-- Test: `sandbox-service/src/test/.../DockerCliCancelTest.java`（或现有 DockerCli 测）
+- Test: `sandbox-service/src/test/.../SandboxInvocationRegistryTest.java`
 
-- [x] **Step 1: DockerCli 支持 invocationId**
+- [x] **Step 1: SandboxInvocationRegistry + DockerCli**
 
-`runCapture` / `exec` 增加可选 `invocationId`：`start` 后 `activeProcesses.put(id, p)`；结束/超时 `remove`；新增 `cancel(String invocationId)` → `destroyForcibly`。
+`runCapture` / `exec` 带 `sessionId`+`invocationId` → `bindProcess`；结束/超时 `unbind`；`cancel(sessionId, invocationId)` → `destroyForcibly`（跨 session 拒绝）。
 
 - [x] **Step 2: Controller**
 
@@ -67,8 +68,7 @@ POST /api/sandbox/sessions/{id}/invocations/{invocationId}/cancel
 ### Task 2: CancellableToolRunRegistry + 预算
 
 **Files:**
-- Create: `orchestrator/.../sandbox/CancellableToolRunRegistry.java`
-- Create: `orchestrator/.../sandbox/SandboxCancelBudget.java`（可内嵌 Registry）
+- Create: `orchestrator/.../sandbox/CancellableToolRunRegistry.java`（预算内嵌，无独立 SandboxCancelBudget）
 - Test: `orchestrator/.../sandbox/CancellableToolRunRegistryTest.java`
 - Modify: `docs/nacos/sunshine-orchestrator.yaml` + `AgentSandboxProperties`（或现有 sandbox props）
 
@@ -96,7 +96,7 @@ remaining(messageId)
 - Modify: `orchestrator/.../client/SandboxClient.java`
 - Modify: `orchestrator/.../sandbox/SandboxAgentTools.java`
 - Modify: timeline complete/pause 路径（`ProcessingTimelineSession` / Hook）
-- Test: `SandboxAgentToolsCancelTest.java`
+- Test:（覆盖于 `CancellableToolRunRegistryTest` + Live；无独立 `SandboxAgentToolsCancelTest`）
 
 - [x] **Step 1: Client**
 
@@ -105,11 +105,12 @@ remaining(messageId)
 
 - [x] **Step 2: Tool.execute**
 
-可取消工具：预算检查 → register → invoke → 若 cancelled 或异常含 interrupt/cancel：  
-emit 工具步 `lifecycle=paused` + after 文案 → return cancel-result（含参数摘要 + remaining）  
+PreActing register；execute 仅补登记/bindSession → invoke → 若 cancelled 或 `meta.cancelled`：  
+emit 工具步 `lifecycle=paused` + after/detail → return cancel-result  
+PostActing：`consumeRecentlyCancelled` 跳过 complete（禁中文 contains）  
 `finally` unregister
 
-- [x] **Step 3: 单测** mock client；cancel 后返回文案且不 fail 整轮
+- [x] **Step 3: 单测 / Live** Registry + `verify_sandbox_tool_cancel_live.py`
 
 - [x] **Step 4: Commit** `feat(orch): wire sandbox tool cancel into SandboxAgentTools`
 
@@ -123,11 +124,11 @@ emit 工具步 `lifecycle=paused` + after 文案 → return cancel-result（含�
 - Modify: `ProcessingStepHook` beginToolStep metadata
 - Modify: `StepMetadata` + frontend parse
 
-- [x] **Step 1:** `POST /generations/{id}/tools/{toolUseId}/cancel`（鉴权同 spawn cancel）
+- [x] **Step 1:** `POST /generations/{id}/tools/{toolRef}/cancel`（stepId 或 toolUseId；messageId 归属校验）
 
-- [x] **Step 2:** begin 时 `StepMetadata.toolUseId`；SSE 下发
+- [x] **Step 2:** begin 时 `StepMetadata.cancellable=true`；SSE 下发（UI 跟 metadata，勿硬编码名单）
 
-- [x] **Step 3:** Commit `feat: API cancel tool by toolUseId + metadata`
+- [x] **Step 3:** Commit `feat: API cancel tool by toolRef + metadata.cancellable`
 
 ---
 

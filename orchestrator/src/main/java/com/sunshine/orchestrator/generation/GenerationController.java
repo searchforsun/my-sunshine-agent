@@ -128,28 +128,41 @@ public class GenerationController {
                 throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
             }
             String ref = toolRef.strip();
+            String messageId = meta.messageId();
             boolean ok;
             String resolvedId = ref;
             if (ref.startsWith("tool-")) {
-                ok = cancellableToolRunRegistry.cancelByStepId(ref);
+                CancellableToolRunRegistry.Handle handle = cancellableToolRunRegistry.getByStepId(ref);
+                if (handle != null) {
+                    if (StringUtils.hasText(handle.messageId())
+                            && !handle.messageId().equals(messageId)) {
+                        throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
+                    }
+                    resolvedId = handle.toolUseId();
+                    ok = cancellableToolRunRegistry.cancel(handle.toolUseId());
+                } else {
+                    ok = cancellableToolRunRegistry.markPendingCancelByStepId(ref, messageId);
+                }
             } else {
                 CancellableToolRunRegistry.Handle handle = cancellableToolRunRegistry.get(ref);
-                if (handle != null
-                        && StringUtils.hasText(handle.messageId())
-                        && !handle.messageId().equals(meta.messageId())) {
-                    throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
+                if (handle != null) {
+                    if (StringUtils.hasText(handle.messageId())
+                            && !handle.messageId().equals(messageId)) {
+                        throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
+                    }
+                    ok = cancellableToolRunRegistry.cancel(ref);
+                } else {
+                    ok = cancellableToolRunRegistry.markPendingCancel(ref, messageId);
                 }
-                ok = cancellableToolRunRegistry.cancel(ref);
             }
             if (ok) {
                 String after = StringUtils.hasText(sandboxProperties.getCancelAfter())
                         ? sandboxProperties.getCancelAfter().strip() : "已取消";
-                String bridge = meta.messageId();
-                if (StringUtils.hasText(bridge)) {
+                if (StringUtils.hasText(messageId)) {
                     if (ref.startsWith("tool-")) {
-                        StepEventBridge.emit(bridge, session -> session.pause(ref, after));
+                        StepEventBridge.emit(messageId, session -> session.pause(ref, after));
                     } else {
-                        StepEventBridge.emit(bridge, session ->
+                        StepEventBridge.emit(messageId, session ->
                                 session.pauseToolStepForToolUse(ref, after));
                     }
                 }

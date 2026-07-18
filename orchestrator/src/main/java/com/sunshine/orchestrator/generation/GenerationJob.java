@@ -54,6 +54,11 @@ public class GenerationJob {
 
     private final AtomicLong seq = new AtomicLong(0);
     private final AtomicBoolean finished = new AtomicBoolean(false);
+    /**
+     * 串行化 {@code seq++ + XADD}。工具/spawn 可并行执行，但显式 Stream ID（{@code seq-0}）
+     * 要求写入单调递增；并发 XADD 会触发 Redis「equal or smaller than the target stream top item」。
+     */
+    private final Object streamAppendLock = new Object();
 
     private volatile Disposable llmSubscription;
     private volatile Disposable orphanTimer;
@@ -168,8 +173,10 @@ public class GenerationJob {
         if (wireJson == null || wireJson.isBlank() || finished.get() || !isStreamEpochValid()) {
             return;
         }
-        long nextSeq = seq.incrementAndGet();
-        streamService.appendChunk(generationId, nextSeq, wireJson);
+        synchronized (streamAppendLock) {
+            long nextSeq = seq.incrementAndGet();
+            streamService.appendChunk(generationId, nextSeq, wireJson);
+        }
     }
 
     /** Hook 队列中的 step / step_delta / 分段 content 即时刷入 Redis（HITL 阻塞前须先下发 think / tool 步骤） */
@@ -265,14 +272,16 @@ public class GenerationJob {
         emitFinishSteps(true);
         String errMsg = StreamErrorMessages.resolve(error);
         if (errMsg != null && !errMsg.isBlank()) {
-            long nextSeq = seq.incrementAndGet();
-            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaError(errMsg));
-            StringBuilder buf = mysqlBufferRef;
-            if (buf != null) {
-                if (buf.length() > 0) {
-                    buf.append("\n\n");
+            synchronized (streamAppendLock) {
+                long nextSeq = seq.incrementAndGet();
+                streamService.appendChunk(generationId, nextSeq, flushScheduler.metaError(errMsg));
+                StringBuilder buf = mysqlBufferRef;
+                if (buf != null) {
+                    if (buf.length() > 0) {
+                        buf.append("\n\n");
+                    }
+                    buf.append(errMsg);
                 }
-                buf.append(errMsg);
             }
         }
         streamService.updateStatus(generationId, GenerationStatus.FAILED);
@@ -369,6 +378,7 @@ public class GenerationJob {
                 generationId,
                 messageId,
                 seq,
+                streamAppendLock,
                 finished,
                 boundStreamEpoch,
                 stepsBuffer,

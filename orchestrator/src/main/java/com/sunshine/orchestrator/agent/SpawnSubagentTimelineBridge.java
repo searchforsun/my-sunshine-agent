@@ -87,6 +87,10 @@ public final class SpawnSubagentTimelineBridge {
 
     /** 终态：done / error + result；保留 spawnPrompt */
     public List<StreamToken> complete(String after, String result, boolean ok) {
+        // 用户已取消：禁止 done/error 覆盖 paused
+        if (userCancelled.get()) {
+            return List.of();
+        }
         String lifecycle = ok ? "done" : "error";
         String afterLine = StringUtils.hasText(after)
                 ? after.strip()

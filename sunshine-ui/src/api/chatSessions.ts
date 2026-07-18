@@ -234,7 +234,7 @@ export function useChatSessions(
       ? runId.trim().slice('subagent-'.length)
       : runId.trim()
     const stepId = `subagent-${id}`
-    // 乐观更新：cancel API 会立刻 SSE paused，此处避免晚到前仍显示运行中
+    // 乐观：仅切 lifecycle；after 等 SSE（禁止硬编码话术）
     for (const msg of s.messages) {
       if (!msg.steps?.length) continue
       const idx = msg.steps.findIndex(st => st.id === stepId)
@@ -246,7 +246,7 @@ export function useChatSessions(
         summary: {
           before: prev.summary?.before,
           active: undefined,
-          after: prev.summary?.after?.trim() || '子任务已取消',
+          after: prev.summary?.after?.trim() || undefined,
         },
         endedAt: prev.endedAt ?? Date.now(),
       }

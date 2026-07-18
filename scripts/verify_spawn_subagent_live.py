@@ -49,10 +49,10 @@ S1_QUERY = (
     "label=制度检索。主 Agent 只根据子任务返回作答。"
 )
 S4_QUERY = (
-    "请在同一轮并行调用两次 spawn_subagent："
-    "第一次 prompt=用 search_knowledge 检索差旅住宿标准并返回要点，label=住宿标准；"
-    "第二次 prompt=用 search_knowledge 检索差旅交通补贴标准并返回要点，label=交通补贴。"
-    "主 Agent 只根据两个子任务返回汇总作答，不要自己直接检索。"
+    "请在**同一轮、同一条 assistant 消息里并行发起两个** spawn_subagent tool call（禁止拆成两轮）："
+    "① prompt=用 search_knowledge 检索差旅住宿标准并返回要点，label=住宿标准；"
+    "② prompt=用 search_knowledge 检索差旅交通补贴标准并返回要点，label=交通补贴。"
+    "两个子任务互不依赖，必须并行。主 Agent 只根据两个子任务返回汇总作答，不要自己直接检索。"
 )
 # 子 Agent 内写文件 → 默认 writeHitlMode 触发 HITL（抽屉内确认）
 HITL_QUERY = (
@@ -313,12 +313,33 @@ def wait_assistant(token: str, conv_id: str, max_wait: int = 180) -> dict:
     raise RuntimeError(f"assistant not completed within {max_wait}s")
 
 
+def _lifecycle_rank(step: dict) -> int:
+    """合并时保留更强终态：cancel paused+after > done/error > running。"""
+    lc = str(step.get("lifecycle") or "")
+    after = ""
+    summary = step.get("summary") or {}
+    if isinstance(summary, dict):
+        after = str(summary.get("after") or "").strip()
+    if lc == "paused" and after:
+        return 3
+    if lc in ("done", "error", "skipped", "terminated"):
+        return 2
+    if lc == "paused":
+        return 1
+    if lc == "running":
+        return 0
+    return -1
+
+
 def merge_steps(sse_steps: list[dict], assistant: dict) -> list[dict]:
     persisted = parse_assistant_steps(assistant.get("steps"))
     by_id: dict[str, dict] = {}
     for s in sse_steps + persisted:
         sid = str(s.get("id") or "")
-        if sid:
+        if not sid:
+            continue
+        prev = by_id.get(sid)
+        if prev is None or _lifecycle_rank(s) >= _lifecycle_rank(prev):
             by_id[sid] = s
     if by_id:
         return list(by_id.values())

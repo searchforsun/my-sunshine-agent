@@ -148,6 +148,8 @@ export interface StepMetadata {
   sandboxSearchRoot?: string
   /** ReAct spawn_subagent：传入子 Agent 的 prompt */
   spawnPrompt?: string
+  /** 沙箱可单工具取消（后端 Nacos cancellable-tools） */
+  cancellable?: boolean
 }
 
 

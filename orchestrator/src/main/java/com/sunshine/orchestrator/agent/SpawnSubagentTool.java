@@ -196,20 +196,17 @@ public class SpawnSubagentTool {
         }
     }
 
+    /**
+     * Registry.cancel 已下发父卡 paused 时不再二次 emit；仅 interrupt 未走 Registry 时补终态。
+     */
     private String cancelAndReturn(
             String mainBridge, SpawnSubagentTimelineBridge subTimeline, String prompt) {
-        String result = formatCancelResult(prompt);
+        String result = spawnRunRegistry.formatCancelResult(prompt);
         log.info("[SpawnSubagentTool] 子任务已取消，回主 Agent 接手");
-        timelineSupport.cancel(mainBridge, subTimeline, result);
+        if (subTimeline != null && !subTimeline.userCancelled()) {
+            timelineSupport.cancel(mainBridge, subTimeline, result);
+        }
         return result;
-    }
-
-    private String formatCancelResult(String prompt) {
-        AgentExecutionProperties.React.Subagent sub = subagentConfig();
-        String tpl = sub != null && StringUtils.hasText(sub.getCancelResult())
-                ? sub.getCancelResult().strip()
-                : "用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：\n{prompt}";
-        return tpl.replace("{prompt}", prompt != null ? prompt : "");
     }
 
     private String failAndReturn(

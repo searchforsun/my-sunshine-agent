@@ -177,6 +177,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const spawnPrompt = typeof obj.spawnPrompt === 'string' && obj.spawnPrompt.trim()
     ? obj.spawnPrompt.trim()
     : undefined
+  const cancellable = obj.cancellable === true ? true : undefined
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -196,6 +197,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !sandboxPath
     && !sandboxSearchRoot
     && !spawnPrompt
+    && !cancellable
   ) {
     return undefined
   }
@@ -230,6 +232,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     sandboxPath,
     sandboxSearchRoot,
     spawnPrompt,
+    cancellable,
   }
 }
 

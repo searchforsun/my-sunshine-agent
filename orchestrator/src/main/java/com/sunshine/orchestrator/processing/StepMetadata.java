@@ -42,7 +42,9 @@ public record StepMetadata(
         /** 沙箱 glob：搜索根（主行 after 为 pattern · root） */
         String sandboxSearchRoot,
         /** ReAct spawn_subagent：传入子 Agent 的 prompt（抽屉展示） */
-        String spawnPrompt
+        String spawnPrompt,
+        /** 沙箱可单工具取消：UI 跟此字段，勿硬编码工具名单 */
+        Boolean cancellable
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -117,6 +119,10 @@ public record StepMetadata(
         return StepMetadataAssembler.withSpawnPrompt(base, prompt);
     }
 
+    public static StepMetadata withCancellable(StepMetadata base, boolean cancellable) {
+        return StepMetadataAssembler.withCancellable(base, cancellable);
+    }
+
     public String sourcesLabel() {
         if (sources == null || sources.isEmpty()) {
             return "";
@@ -140,6 +146,7 @@ public record StepMetadata(
                 && !StringUtils.hasText(taskProgress)
                 && !StringUtils.hasText(sandboxPath)
                 && !StringUtils.hasText(sandboxSearchRoot)
-                && !StringUtils.hasText(spawnPrompt);
+                && !StringUtils.hasText(spawnPrompt)
+                && (cancellable == null || !cancellable);
     }
 }

@@ -98,6 +98,18 @@ final class TimelineSessionToolFlow {
         lifecycle.progress(state.currentToolStepId, activeSummary);
     }
 
+    void markCurrentToolCancellable() {
+        if (state.currentToolStepId == null) {
+            return;
+        }
+        StepMetadata base = state.aggregator.get(state.currentToolStepId)
+                .map(com.sunshine.orchestrator.agent.ProcessingStep::metadata)
+                .orElse(null);
+        StepMetadata meta = StepMetadata.withCancellable(base, true);
+        emitter.applyAt(
+                state.currentToolStepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
+    }
+
     String currentToolStepId() {
         return state.currentToolStepId;
     }

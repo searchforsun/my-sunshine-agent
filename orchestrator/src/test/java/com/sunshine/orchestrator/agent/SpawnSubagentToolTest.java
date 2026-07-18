@@ -51,7 +51,7 @@ class SpawnSubagentToolTest {
 
     @BeforeEach
     void setUp() {
-        spawnRunRegistry = new SpawnRunRegistry();
+        spawnRunRegistry = SpawnRunRegistry.forTest(timelineSupport, executionProperties);
         tool = new SpawnSubagentTool(
                 agentRuntime, executionProperties, timelineSupport, toolSetResolver,
                 overlayProperties, spawnRunRegistry);
@@ -173,6 +173,7 @@ class SpawnSubagentToolTest {
         assertThat(out).contains("请检索制度并汇总");
         ArgumentCaptor<String> runIdCaptor = ArgumentCaptor.forClass(String.class);
         verify(timelineSupport).begin(eq(BRIDGE), runIdCaptor.capture(), eq("制度检索"), eq("请检索制度并汇总"));
+        // Registry.cancel 单写 paused；Tool 不再二次 emit
         verify(timelineSupport).cancel(eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), eq(out));
         verify(timelineSupport, never()).fail(any(), any(), any());
         verify(timelineSupport, never()).complete(any(), any(), any());

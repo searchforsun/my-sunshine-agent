@@ -96,18 +96,23 @@ public class ProcessingStepHook implements Hook {
             Map<String, Object> input = toolInput(pre.getToolUse());
             String sandboxActive = sandboxActiveSummary(toolName, input);
             final String[] stepHolder = new String[1];
+            boolean cancellable = cancellableToolRunRegistry.isCancellableTool(toolName)
+                    && StringUtils.hasText(toolUseId);
             StepEventBridge.emit(bridgeId, session -> {
                 session.noteToolCallPending();
                 stepHolder[0] = session.beginToolStep(baseStepId, phase);
                 if (sandboxActive != null) {
                     session.progressCurrentToolStep(sandboxActive);
                 }
+                if (cancellable) {
+                    session.markCurrentToolCancellable();
+                }
             });
             if (stepHolder[0] != null) {
                 StepEventBridge.bindToolUseStep(toolUseId, stepHolder[0]);
             }
             // 出卡即登记：UI 可立即 cancel，无需等 execute 入口
-            if (cancellableToolRunRegistry.isCancellableTool(toolName) && StringUtils.hasText(toolUseId)) {
+            if (cancellable) {
                 String messageId = StepEventBridge.hitlAssistantMessageId(bridgeId);
                 if (!StringUtils.hasText(messageId)) {
                     messageId = bridgeId;
@@ -141,9 +146,8 @@ public class ProcessingStepHook implements Hook {
             } else if (sandboxTimelineLabels.isSandboxTool(toolName)) {
                 Map<String, Object> input = toolInput(post.getToolUse());
                 String raw = rawText != null ? rawText.strip() : "";
-                // 用户单工具取消：SandboxAgentTools 已 pause 终态，禁止再 complete 覆盖
-                if (raw.contains("用户已取消该沙箱工具调用")
-                        || raw.contains("同族沙箱工具调用次数已用尽")) {
+                // 用户单工具取消：Registry 标记 + SandboxAgentTools 已 pause，禁止再 complete 覆盖
+                if (cancellableToolRunRegistry.consumeRecentlyCancelled(toolUseId)) {
                     StepEventBridge.emit(bridgeId, session -> {
                         session.recordToolCompleted(toolCatalogService.displayName(toolName));
                         session.noteToolCallDone();

@@ -28,9 +28,10 @@ public class CancellableToolRunRegistry {
     /** messageId → 取消后剩余可发起次数（未激活则无条目） */
     private final ConcurrentHashMap<String, AtomicInteger> followupBudget = new ConcurrentHashMap<>();
     private final Set<String> recentlyCancelled = ConcurrentHashMap.newKeySet();
-    /** PreActing 已出 running 卡、execute 尚未 register 时的提前取消 */
-    private final Set<String> pendingCancelStepIds = ConcurrentHashMap.newKeySet();
-    private final Set<String> pendingCancelToolUseIds = ConcurrentHashMap.newKeySet();
+    /** PreActing 已出卡、execute 尚未 register：stepId → messageId */
+    private final ConcurrentHashMap<String, String> pendingCancelStepIds = new ConcurrentHashMap<>();
+    /** toolUseId → messageId（裸 id 提前取消） */
+    private final ConcurrentHashMap<String, String> pendingCancelToolUseIds = new ConcurrentHashMap<>();
 
     public CancellableToolRunRegistry(SandboxClient sandboxClient, AgentSandboxProperties sandboxProperties) {
         this.sandboxClient = sandboxClient;
@@ -43,9 +44,7 @@ public class CancellableToolRunRegistry {
         }
         List<String> list = sandboxProperties.getCancellableTools();
         if (list == null || list.isEmpty()) {
-            return SandboxIds.EXEC.equals(toolName)
-                    || SandboxIds.GREP.equals(toolName)
-                    || SandboxIds.GLOB.equals(toolName);
+            return false;
         }
         return list.stream().anyMatch(toolName::equals);
     }
@@ -65,16 +64,15 @@ public class CancellableToolRunRegistry {
             if (StringUtils.hasText(stepId)) {
                 toolUseIdByStepId.put(stepId.strip(), id);
             }
-            boolean pending = pendingCancelToolUseIds.remove(id)
-                    || (StringUtils.hasText(stepId) && pendingCancelStepIds.remove(stepId.strip()));
-            if (pending || existing.cancelled.get()) {
+            if (existing.cancelled.get() || consumePendingCancel(id, stepId, existing.messageId)) {
                 cancel(id);
             }
             return;
         }
+        String mid = messageId != null ? messageId.strip() : null;
         Handle handle = new Handle(
                 id,
-                messageId != null ? messageId.strip() : null,
+                mid,
                 toolName,
                 sessionId,
                 invocationId != null ? invocationId.strip() : id,
@@ -84,11 +82,31 @@ public class CancellableToolRunRegistry {
             toolUseIdByStepId.put(stepId.strip(), id);
         }
         recentlyCancelled.remove(id);
-        boolean pending = pendingCancelToolUseIds.remove(id)
-                || (StringUtils.hasText(stepId) && pendingCancelStepIds.remove(stepId.strip()));
-        if (pending) {
+        if (consumePendingCancel(id, stepId, mid)) {
             cancel(id);
         }
+    }
+
+    /** pending 仅当 messageId 匹配（或任一侧未绑 message）时生效；错属则写回 pending */
+    private boolean consumePendingCancel(String toolUseId, String stepId, String messageId) {
+        String pendingByTool = pendingCancelToolUseIds.remove(toolUseId);
+        String sid = StringUtils.hasText(stepId) ? stepId.strip() : null;
+        String pendingByStep = sid != null ? pendingCancelStepIds.remove(sid) : null;
+        if (pendingByTool == null && pendingByStep == null) {
+            return false;
+        }
+        String pendingMsg = pendingByTool != null ? pendingByTool : pendingByStep;
+        if (!StringUtils.hasText(pendingMsg) || !StringUtils.hasText(messageId)
+                || pendingMsg.equals(messageId.strip())) {
+            return true;
+        }
+        if (pendingByTool != null) {
+            pendingCancelToolUseIds.put(toolUseId, pendingByTool);
+        }
+        if (pendingByStep != null && sid != null) {
+            pendingCancelStepIds.put(sid, pendingByStep);
+        }
+        return false;
     }
 
     /** ensureBound 之后补全 sessionId，便于 kill */
@@ -175,15 +193,15 @@ public class CancellableToolRunRegistry {
         return byToolUseId.get(toolUseId.strip());
     }
 
-    /** 按时间线 step.id（tool-*）反查 toolUseId 后取消 */
-    public boolean cancelByStepId(String stepId) {
+    /** 按时间线 step.id（tool-*）反查句柄 */
+    public Handle getByStepId(String stepId) {
         if (!StringUtils.hasText(stepId)) {
-            return false;
+            return null;
         }
         String sid = stepId.strip();
         String mapped = toolUseIdByStepId.get(sid);
         if (StringUtils.hasText(mapped)) {
-            return cancel(mapped);
+            return byToolUseId.get(mapped);
         }
         for (Handle handle : byToolUseId.values()) {
             String bound = handle.stepId();
@@ -191,18 +209,39 @@ public class CancellableToolRunRegistry {
                 bound = StepEventBridge.stepIdForToolUse(handle.toolUseId());
             }
             if (sid.equals(bound)) {
-                return cancel(handle.toolUseId());
+                return handle;
             }
         }
-        // 工具卡已 running、execute 尚未 register：记 pending，register 时立即 cancel
-        pendingCancelStepIds.add(sid);
-        log.info("[CancellableTool] cancelByStepId pending stepId={} inflight={}",
-                sid, byToolUseId.size());
+        return null;
+    }
+
+    /**
+     * 工具卡已 running、execute 尚未 register：记 pending（绑定 messageId），register 时立即 cancel。
+     */
+    public boolean markPendingCancelByStepId(String stepId, String messageId) {
+        if (!StringUtils.hasText(stepId) || !StringUtils.hasText(messageId)) {
+            return false;
+        }
+        String sid = stepId.strip();
+        pendingCancelStepIds.put(sid, messageId.strip());
+        log.info("[CancellableTool] cancelByStepId pending stepId={} messageId={} inflight={}",
+                sid, messageId, byToolUseId.size());
+        return true;
+    }
+
+    /** 裸 toolUseId 提前取消（绑定 messageId） */
+    public boolean markPendingCancel(String toolUseId, String messageId) {
+        if (!StringUtils.hasText(toolUseId) || !StringUtils.hasText(messageId)) {
+            return false;
+        }
+        String id = toolUseId.strip();
+        pendingCancelToolUseIds.put(id, messageId.strip());
+        log.info("[CancellableTool] cancel pending toolUseId={} messageId={}", id, messageId);
         return true;
     }
 
     /**
-     * 取消指定工具调用。成功返回 true。
+     * 取消指定工具调用。成功返回 true；未知 id 返回 false（须先 markPending）。
      * 不调用 GenerationRegistry.cancel / bumpStreamEpoch。
      */
     public boolean cancel(String toolUseId) {
@@ -212,9 +251,7 @@ public class CancellableToolRunRegistry {
         String id = toolUseId.strip();
         Handle handle = byToolUseId.get(id);
         if (handle == null) {
-            pendingCancelToolUseIds.add(id);
-            log.info("[CancellableTool] cancel pending toolUseId={}", id);
-            return true;
+            return false;
         }
         if (!handle.cancelled.compareAndSet(false, true)) {
             return true;

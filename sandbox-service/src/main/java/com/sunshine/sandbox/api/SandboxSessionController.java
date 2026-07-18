@@ -102,7 +102,7 @@ public class SandboxSessionController {
     public R<Map<String, Boolean>> cancelInvocation(
             @PathVariable String id,
             @PathVariable String invocationId) {
-        boolean cancelled = invocationRegistry.cancel(invocationId);
+        boolean cancelled = invocationRegistry.cancel(id, invocationId);
         return R.ok(Map.of("cancelled", cancelled));
     }
 }

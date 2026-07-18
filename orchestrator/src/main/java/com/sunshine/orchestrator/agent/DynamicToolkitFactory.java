@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.sandbox.SandboxAgentTools;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.Toolkit;
+import io.agentscope.core.tool.ToolkitConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -85,7 +86,8 @@ public class DynamicToolkitFactory {
 
     private Toolkit buildFromWhitelist(List<String> whitelist, ToolkitScope scope, String skillId) {
         // skillId 保留签名兼容；方案 B 不再门控沙箱工具
-        Toolkit tk = new Toolkit();
+        // 同轮无依赖 tool_call 并行执行（AgentScope 默认串行）；写操作仍由提示词约束分步串行
+        Toolkit tk = new Toolkit(ToolkitConfig.builder().parallel(true).build());
         List<String> registered = new ArrayList<>();
         Set<String> registeredRemote = new HashSet<>();
         List<String> missing = new ArrayList<>();

@@ -30,22 +30,17 @@ export function isSandboxExecStep(step: { id: string }): boolean {
   return catalogToolIdFromStepId(step.id) === 'sandbox__exec'
 }
 
-/** 可 hover 暂停取消：exec / grep / glob */
-const CANCELLABLE_SANDBOX_TOOL_IDS = [
-  'sandbox__exec',
-  'sandbox__grep',
-  'sandbox__glob',
-] as const
-
-export function isCancellableSandboxTool(step: { id: string }): boolean {
-  const toolId = catalogToolIdFromStepId(step.id)
-  if (!toolId) return false
-  return (CANCELLABLE_SANDBOX_TOOL_IDS as readonly string[]).includes(toolId)
+/** 可 hover 取消：跟 SSE metadata.cancellable（Nacos cancellable-tools） */
+export function isCancellableSandboxTool(step: {
+  id: string
+  metadata?: { cancellable?: boolean }
+}): boolean {
+  return step.metadata?.cancellable === true
 }
 
-/** 取消终态文案（主行 after）；勿当作 exec 命令 */
+/** 取消终态 after；勿当作 exec 命令（仅信 after，不兼容旧「已暂停」同义词） */
 function isSandboxCancelAfter(text: string): boolean {
-  return text === '已取消' || text === '已暂停'
+  return text === '已取消'
 }
 
 /** 从 after/active/detail 解析 exec 命令（「cmd」/「正在执行 cmd」；取消后命令在 detail） */
@@ -301,11 +296,8 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
     || lifecycle === 'paused'
     || lifecycle === 'terminated'
   ) {
-    // paused/terminated：用 after（如「已取消」）；兼容旧 SSE 只下发 active 的情况
+    // paused/terminated：只信 after（后端必下发）；勿回退 active
     header = step.summary?.after?.trim()
-      || ((lifecycle === 'paused' || lifecycle === 'terminated')
-        ? (step.summary?.active?.trim() || '')
-        : '')
       || formatStepMetadata(step)
       || (!isWorkflowAnswerStep(step) && step.result?.trim())
       || ''

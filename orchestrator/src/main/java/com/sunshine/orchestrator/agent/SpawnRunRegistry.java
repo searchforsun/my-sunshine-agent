@@ -1,11 +1,17 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.generation.GenerationJob;
+import com.sunshine.orchestrator.generation.GenerationRegistry;
 import io.agentscope.core.ReActAgent;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,17 +26,28 @@ public class SpawnRunRegistry {
     private final ConcurrentHashMap<String, Handle> byRunId = new ConcurrentHashMap<>();
     private final SpawnSubagentTimelineSupport timelineSupport;
     private final AgentExecutionProperties executionProperties;
+    private final GenerationRegistry generationRegistry;
 
+    @Autowired
     public SpawnRunRegistry(
             SpawnSubagentTimelineSupport timelineSupport,
-            AgentExecutionProperties executionProperties) {
+            AgentExecutionProperties executionProperties,
+            @Lazy GenerationRegistry generationRegistry) {
         this.timelineSupport = timelineSupport;
         this.executionProperties = executionProperties;
+        this.generationRegistry = generationRegistry;
     }
 
     /** 单测无 Spring 时用 */
-    public SpawnRunRegistry() {
-        this(null, null);
+    public static SpawnRunRegistry forTest() {
+        return new SpawnRunRegistry(null, null, null);
+    }
+
+    /** 单测：注入 timelineSupport / props */
+    public static SpawnRunRegistry forTest(
+            SpawnSubagentTimelineSupport timelineSupport,
+            AgentExecutionProperties executionProperties) {
+        return new SpawnRunRegistry(timelineSupport, executionProperties, null);
     }
 
     public void register(
@@ -85,7 +102,8 @@ public class SpawnRunRegistry {
 
     /**
      * 取消指定子任务。成功返回 true；未知 runId 返回 false。
-     * 立即下发父卡 paused SSE，不等待工具返回；不调用 GenerationRegistry.cancel / bumpStreamEpoch。
+     * 立即下发父卡 paused SSE（直写 GenerationJob，避免 Hook 队列在 tool.block 期间滞留）；
+     * 不调用 GenerationRegistry.cancel / bumpStreamEpoch。
      */
     public boolean cancel(String runId) {
         if (!StringUtils.hasText(runId)) {
@@ -104,11 +122,13 @@ public class SpawnRunRegistry {
         if (bridge != null) {
             bridge.markUserCancelled();
         }
-        if (timelineSupport != null && bridge != null && StringUtils.hasText(handle.mainBridgeId)) {
-            try {
-                timelineSupport.cancel(handle.mainBridgeId, bridge, formatCancelResult(handle.prompt));
-            } catch (Exception e) {
-                log.warn("[SpawnRunRegistry] cancel timeline failed runId={}: {}", id, e.getMessage());
+        String result = formatCancelResult(handle.prompt);
+        if (bridge != null) {
+            List<StreamToken> tokens = bridge.cancel(SpawnSubagentLabels.afterCancel(), result);
+            if (!flushCancelToGeneration(handle.messageId, tokens)
+                    && timelineSupport != null
+                    && StringUtils.hasText(handle.mainBridgeId)) {
+                timelineSupport.cancel(handle.mainBridgeId, bridge, result);
             }
         }
         ReActAgent agent = handle.agentRef.get();
@@ -119,6 +139,29 @@ public class SpawnRunRegistry {
         return true;
     }
 
+    /** @return true 若已直写 GenerationJob */
+    private boolean flushCancelToGeneration(String messageId, List<StreamToken> tokens) {
+        if (!StringUtils.hasText(messageId) || tokens == null || tokens.isEmpty()) {
+            log.warn("[SpawnRunRegistry] flushCancel skip: messageId/tokens empty");
+            return false;
+        }
+        if (generationRegistry == null) {
+            return false;
+        }
+        GenerationJob job = generationRegistry.findByMessageId(messageId.strip()).orElse(null);
+        if (job == null) {
+            log.warn("[SpawnRunRegistry] flushCancel miss job messageId={}", messageId);
+            return false;
+        }
+        for (StreamToken token : tokens) {
+            job.emitStreamToken(token);
+        }
+        log.info("[SpawnRunRegistry] flushCancel ok messageId={} tokens={} lifecycle={}",
+                messageId, tokens.size(),
+                tokens.get(0).step() != null ? tokens.get(0).step().lifecycle() : null);
+        return true;
+    }
+
     public void unregister(String runId) {
         if (!StringUtils.hasText(runId)) {
             return;
@@ -126,7 +169,8 @@ public class SpawnRunRegistry {
         byRunId.remove(runId.strip());
     }
 
-    private String formatCancelResult(String prompt) {
+    /** 与 SSE 父卡 result / tool result 同模板（SSOT） */
+    public String formatCancelResult(String prompt) {
         AgentExecutionProperties.React.Subagent sub = null;
         if (executionProperties != null && executionProperties.getReact() != null) {
             sub = executionProperties.getReact().getSubagent();

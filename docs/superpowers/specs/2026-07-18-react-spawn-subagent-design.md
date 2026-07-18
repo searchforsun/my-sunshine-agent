@@ -61,7 +61,7 @@
 | 参数 `label` | 可选；主时间线卡片展示名，缺省「子任务」 |
 | 注册 | 仅 MAIN；SUB / Workflow agent / Expert **不注册** |
 | 嵌套 | SUB 若出现委派调用 → **硬拒**（仅主→子一层） |
-| 并行 | 同轮多个 `spawn_subagent` → 并发 SUB；各自独立 runId / 上下文 / 卡片 |
+| 并行 | 同轮多个 `spawn_subagent` → 并发 SUB（`ToolkitConfig.parallel=true`）；各自独立 runId / 上下文 / 卡片；提示词要求互不依赖时勿拆多轮 |
 | 回传 | tool result = 子 **最终文本**（不对结果二次加工） |
 | 记忆 | 子不写回主 STM；主仅通过 tool result 看见产出 |
 | 失败 | 子失败/超时 → tool result 含错误信息；主可重试或改 prompt |
@@ -84,7 +84,7 @@
 - 每次成功发起的 `spawn_subagent` → **一张**卡片（id=`subagent-{runId}`，或 `phase=subagent`）。
 - 卡片仅显示：
   - **状态**：运行中 / 待确认 / 完成 / 失败 / **已取消**（`lifecycle=paused`，不可恢复）
-  - **一行**当前执行摘要（SSE `summary` 当前阶段；Nacos `agent.timeline.subagent`）
+  - **一行**当前执行摘要（SSE `summary` 当前阶段；Nacos `agent.timeline.steps.subagent`）
   - 运行中：圆形停止钮 → 单独取消该子任务（非整轮停止）
 - **禁止**：把子 think/tool 抬到主 ReAct 步骤栈；**禁止**主卡内联展开长文。
 
@@ -134,10 +134,12 @@
 | 键 | 用途 |
 |----|------|
 | `agent.prompt.mode-overlays.react`（增量） | 何时调用 `spawn_subagent`、如何写 `prompt`、勿把大段中间推理塞进主上下文 |
-| `agent.timeline.subagent` | `summary.{before,active,after}`（**一行**短摘要） |
-| `agent.subagent.enabled` | Feature flag；默认 true（或与上线节奏一致） |
-| `agent.subagent.max-iters` | 子跑 maxIters（可与现有 SUB 默认对齐） |
-| 可选 `agent.subagent.timeout-ms` | 单子超时 |
+| `agent.prompt.mode-overlays.subagent` | 子 Agent 须写正文 content（供 MAIN tool result） |
+| `agent.timeline.steps.subagent` | `summary.{before,active,after}`（**一行**短摘要） |
+| `agent.execution.react.subagent.enabled` | Feature flag |
+| `agent.execution.react.subagent.max-iters` | 子跑 maxIters |
+| `agent.execution.react.subagent.timeout-ms` | 单子超时 |
+| `agent.execution.react.subagent.cancel-result` | 取消后回 MAIN 的 tool result（`{prompt}`） |
 
 改 YAML 后：`python scripts/sync_nacos.py` → 重启 orchestrator。
 

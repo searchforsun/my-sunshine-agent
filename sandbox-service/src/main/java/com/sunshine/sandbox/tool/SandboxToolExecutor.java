@@ -111,6 +111,7 @@ public class SandboxToolExecutor {
                 cwd.toString(),
                 List.of("sh", "-lc", command),
                 Duration.ofSeconds(timeoutSec),
+                session.sessionId(),
                 invocationId);
         String output = combineOutput(result.stdout(), result.stderr());
         if (result.exitCode() == -1 && output.toLowerCase().contains("cancelled")) {
@@ -227,7 +228,7 @@ public class SandboxToolExecutor {
     private ToolInvokeResponse glob(
             SandboxSession session, Map<String, Object> args, String invocationId) {
         AtomicBoolean cancelled = invocationId != null
-                ? invocationRegistry.bindFlag(invocationId) : new AtomicBoolean(false);
+                ? invocationRegistry.bindFlag(session.sessionId(), invocationId) : new AtomicBoolean(false);
         String pattern = requireString(args, "pattern");
         PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
         List<String> hits = new ArrayList<>();
@@ -247,7 +248,7 @@ public class SandboxToolExecutor {
     private ToolInvokeResponse grep(
             SandboxSession session, Map<String, Object> args, String invocationId) {
         AtomicBoolean cancelled = invocationId != null
-                ? invocationRegistry.bindFlag(invocationId) : new AtomicBoolean(false);
+                ? invocationRegistry.bindFlag(session.sessionId(), invocationId) : new AtomicBoolean(false);
         String patternStr = requireString(args, "pattern");
         Pattern regex;
         try {

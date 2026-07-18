@@ -151,10 +151,10 @@ const {
   chatScrollPinned,
   forceChatScroll,
   onChatScroll,
+  onChatWheelCapture,
   scrollToBottom,
   pinScrollForSend,
   forwardWheelToChatScroll,
-  syncScrollPinned,
 } = useChatScroll(loading)
 
 watch(chatScrollPinned, pinned => {
@@ -600,7 +600,6 @@ watch(
     if (!loading.value) return
     await nextTick()
     scrollToBottom(false)
-    syncScrollPinned()
   },
 )
 
@@ -614,7 +613,6 @@ watch(
     if (!loading.value) return
     await nextTick()
     scrollToBottom(false)
-    syncScrollPinned()
   },
 )
 </script>
@@ -656,7 +654,12 @@ watch(
         :class="{ 'plan-dag-expanded': planDagExpanded }"
       >
     <!-- 消息区 -->
-    <div ref="scrollRef" class="chat-scroll" @scroll="onChatScroll">
+    <div
+      ref="scrollRef"
+      class="chat-scroll"
+      @scroll="onChatScroll"
+      @wheel.capture="onChatWheelCapture"
+    >
       <div class="chat-inner">
         <div v-if="chatStore.initializing && messages.length === 0" class="empty-state">
           <div class="empty-icon">

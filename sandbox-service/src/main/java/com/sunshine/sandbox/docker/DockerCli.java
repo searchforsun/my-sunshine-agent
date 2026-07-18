@@ -38,6 +38,16 @@ public class DockerCli {
 
     public ExecResult exec(
             String containerId, String workingDir, List<String> cmd, Duration timeout, String invocationId) {
+        return exec(containerId, workingDir, cmd, timeout, null, invocationId);
+    }
+
+    public ExecResult exec(
+            String containerId,
+            String workingDir,
+            List<String> cmd,
+            Duration timeout,
+            String sessionId,
+            String invocationId) {
         List<String> args = new ArrayList<>();
         args.add("exec");
         args.add("-w");
@@ -45,7 +55,7 @@ public class DockerCli {
         args.add(containerId);
         args.addAll(cmd);
         try {
-            return runCapture(args, timeout, invocationId);
+            return runCapture(args, timeout, sessionId, invocationId);
         } catch (IllegalStateException e) {
             String msg = e.getMessage();
             if (msg != null && msg.contains("timed out")) {
@@ -106,7 +116,7 @@ public class DockerCli {
     }
 
     private String run(List<String> args, Duration timeout) {
-        ExecResult r = runCapture(args, timeout, null);
+        ExecResult r = runCapture(args, timeout, null, null);
         if (r.exitCode() != 0) {
             throw new IllegalStateException(
                     "docker " + args.get(0) + " failed exit=" + r.exitCode() + " stderr=" + r.stderr());
@@ -115,10 +125,10 @@ public class DockerCli {
     }
 
     private ExecResult runCapture(List<String> args, Duration timeout) {
-        return runCapture(args, timeout, null);
+        return runCapture(args, timeout, null, null);
     }
 
-    private ExecResult runCapture(List<String> args, Duration timeout, String invocationId) {
+    private ExecResult runCapture(List<String> args, Duration timeout, String sessionId, String invocationId) {
         List<String> full = new ArrayList<>();
         full.add(properties.getDocker().getBinary());
         full.addAll(args);
@@ -129,7 +139,7 @@ public class DockerCli {
         try {
             Process p = pb.start();
             if (invId != null) {
-                invocationRegistry.bindProcess(invId, p);
+                invocationRegistry.bindProcess(sessionId, invId, p);
             }
             ByteArrayOutputStream stdoutBuf = new ByteArrayOutputStream();
             ByteArrayOutputStream stderrBuf = new ByteArrayOutputStream();

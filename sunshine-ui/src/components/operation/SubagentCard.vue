@@ -60,7 +60,7 @@ const statusKey = computed(() => {
 const statusLabel = computed(() => {
   switch (statusKey.value) {
     case 'awaiting_confirm': return '待确认'
-    case 'paused': return '已取消'
+    case 'paused': return props.step.summary?.after?.trim() || '已取消'
     case 'error': return '失败'
     case 'done': return '完成'
     case 'running': return '运行中'

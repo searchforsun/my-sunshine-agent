@@ -40,7 +40,7 @@ describe('sandbox tool timeline display', () => {
       lifecycle: 'paused',
       summary: { before: '准备执行命令', active: '已取消', after: '已取消' },
       detail: 'sleep 120',
-      metadata: {},
+      metadata: { cancellable: true },
     })
     expect(resolveStepHeaderText(step)).toBe('已取消')
     expect(extractSandboxExecCommand(step)).toBe('sleep 120')
@@ -48,16 +48,16 @@ describe('sandbox tool timeline display', () => {
     expect(resolveStepExpandInner(step)).toBe('')
   })
 
-  it('cancelled exec: legacy SSE only active still shows 已取消', () => {
+  it('paused without after: header empty (no legacy active fallback)', () => {
     const step = sandboxStep({
       id: 'tool-sandbox__exec@10',
       label: '调用工具 执行命令',
       lifecycle: 'paused',
       summary: { active: '已取消' },
       detail: 'sleep 120',
-      metadata: {},
+      metadata: { cancellable: true },
     })
-    expect(resolveStepHeaderText(step)).toBe('已取消')
+    expect(resolveStepHeaderText(step)).toBe('')
   })
 
   it('header shows backend summary as-is; focus uses metadata.sandboxPath', () => {

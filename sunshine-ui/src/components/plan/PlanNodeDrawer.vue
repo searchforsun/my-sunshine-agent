@@ -86,8 +86,13 @@ const statusLabel = computed(() => {
     if (s === 'pending') return '等待中'
     return '已通过'
   }
-  // spawn 取消不可恢复；Plan HITL/续跑仍用「已暂停」
-  if (s === 'paused') return isSpawnSubagent.value ? '已取消' : '已暂停'
+  // spawn：跟 SSE after；Plan HITL/续跑仍用「已暂停」
+  if (s === 'paused') {
+    if (isSpawnSubagent.value) {
+      return step.value?.summary?.after?.trim() || '已取消'
+    }
+    return '已暂停'
+  }
   if (s === 'terminated') return '已终止'
   if (s === 'awaiting_confirm') return '待确认'
   if (s === 'skipped') return '已跳过'

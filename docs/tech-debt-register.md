@@ -19,7 +19,13 @@
 
 ### 代码债
 
-_（Backlog 已空 — 2026-07-17 沙箱债 TD-110 已消化）_
+| ID | 严重度 | 状态 | 位置 | 摘要 |
+|----|--------|------|------|------|
+| TD-119 | P1 | open | `StepEventBridgeRegistry` spawn 空 wrapper + `sub-` 入队 | 与 Workflow 非空 wrapper 契约分裂；宜显式 TokenWrapperMode |
+| TD-120 | P2 | open | `SpawnSubagentTimelineSupport` / Labels static / Workflow Bridge 近拷贝 | 薄门面与静态单例；可选合并 fold 原语 |
+| TD-121 | P2 | open | `PlanValidationFeedback` + `maxNodes+6` | 中文 regex→错误码；魔法上限宜进 Nacos / 结构化 Issue |
+
+**2026-07-18 本轮已消化（ef49f08..）**：TD-113（stepId cancel messageId 归属）；TD-114（sandbox cancel session 绑定）；TD-115（spawn 取消终态单写 B）；TD-116（沙箱 PostActing `consumeRecentlyCancelled`、禁中文门闩）；TD-117/118（UI `metadata.cancellable`、删 legacy SSE/`已暂停` synonym）；DOC-023/024（spawn Nacos 键 + cancel plan 对齐实现）。
 
 **2026-07-17 TD-110 已消化**：沙箱 `SandboxPolicy` + 5 RPC DTO 迁至 `com.sunshine.common.sandbox`；删 orchestrator/skill-manager/sandbox-service 六处拷贝；`SandboxPolicyDto` 合并为 `SandboxPolicy`。
 
@@ -45,7 +51,8 @@ _（Backlog 已空 — 2026-07-17 沙箱债 TD-110 已消化）_
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| _（空）_ | — | — | — | Backlog 已空 |
+| DOC-023 | P1 | done | spawn design §5 | 2026-07-18：Nacos 键改为 `agent.timeline.steps.subagent` + `agent.execution.react.subagent.*` |
+| DOC-024 | P1 | done | sandbox cancel plan | 2026-07-18：对齐 `SandboxInvocationRegistry` / `cancellable`；去掉幽灵 toolUseId/Budget 勾选 |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 

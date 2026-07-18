@@ -53,4 +53,21 @@ class CancellableToolRunRegistryTest {
         assertThat(registry.tryConsumeFollowup("msg-x", SandboxIds.EXEC)).isTrue();
         assertThat(registry.tryConsumeFollowup("msg-x", SandboxIds.EXEC)).isTrue();
     }
+
+    @Test
+    void pendingCancel_scopedByMessageId() {
+        assertThat(registry.markPendingCancel("tu-p2", "msg-c")).isTrue();
+        registry.register("tu-p2", "msg-other", SandboxIds.EXEC, null, "tu-p2");
+        assertThat(registry.isCancelled("tu-p2")).isFalse();
+
+        assertThat(registry.markPendingCancel("tu-p4", "msg-d")).isTrue();
+        registry.register("tu-p4", "msg-d", SandboxIds.EXEC, null, "tu-p4");
+        assertThat(registry.isCancelled("tu-p4")).isTrue();
+        assertThat(registry.consumeRecentlyCancelled("tu-p4")).isTrue();
+    }
+
+    @Test
+    void cancel_unknownWithoutPending_returnsFalse() {
+        assertThat(registry.cancel("missing")).isFalse();
+    }
 }

@@ -120,9 +120,11 @@ public class SandboxAgentTools {
             String invocationId = StringUtils.hasText(toolUseId) ? toolUseId.strip() : null;
             boolean trackCancel = cancellableToolRunRegistry.isCancellableTool(name)
                     && StringUtils.hasText(invocationId);
-            // 入口即 register：覆盖 PreActing 已出卡、execute/HITL/ensureBound 尚未完成的竞态
+            // PreActing 已 register；此处仅补登记（漏 register）并消费 pending cancel
             if (trackCancel) {
-                cancellableToolRunRegistry.register(invocationId, messageId, name, null, invocationId);
+                if (cancellableToolRunRegistry.get(invocationId) == null) {
+                    cancellableToolRunRegistry.register(invocationId, messageId, name, null, invocationId);
+                }
                 if (cancellableToolRunRegistry.isCancelled(invocationId)) {
                     return cancelResult(toolUseId, name, body, messageId, null, System.currentTimeMillis());
                 }
@@ -267,21 +269,19 @@ public class SandboxAgentTools {
         }
 
         private static boolean isCancelledResponse(ToolInvokeResponse resp) {
-            if (resp == null) {
-                return false;
-            }
-            if (resp.meta() != null && Boolean.TRUE.equals(resp.meta().get("cancelled"))) {
-                return true;
-            }
-            String out = resp.output();
-            return out != null && out.toLowerCase().contains("cancelled");
+            return resp != null
+                    && resp.meta() != null
+                    && Boolean.TRUE.equals(resp.meta().get("cancelled"));
         }
 
         private static boolean isCancelException(Throwable e) {
             Throwable cur = e;
             while (cur != null) {
-                String msg = cur.getMessage();
-                if (msg != null && msg.toLowerCase().contains("cancel")) {
+                if (cur instanceof InterruptedException) {
+                    return true;
+                }
+                String name = cur.getClass().getSimpleName();
+                if (name.contains("Interrupt") || name.contains("Cancel")) {
                     return true;
                 }
                 cur = cur.getCause();

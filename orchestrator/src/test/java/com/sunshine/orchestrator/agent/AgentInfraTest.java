@@ -32,7 +32,7 @@ class AgentInfraTest {
     }
 
     @Test
-    void dynamicToolkit_registersWhitelistedTools() {
+    void dynamicToolkit_registersWhitelistedTools() throws Exception {
         RagTool ragTool = Mockito.mock(RagTool.class);
         GenericRemoteToolFactory remoteToolFactory = Mockito.mock(GenericRemoteToolFactory.class);
         ToolCatalogService toolCatalogService = Mockito.mock(ToolCatalogService.class);
@@ -74,6 +74,11 @@ class AgentInfraTest {
         Toolkit toolkit = factory.build();
 
         assertThat(toolkit).isNotNull();
+        // 同轮无依赖 tool_call 并行（ToolkitConfig.parallel=true）
+        var configField = Toolkit.class.getDeclaredField("config");
+        configField.setAccessible(true);
+        var toolkitConfig = (io.agentscope.core.tool.ToolkitConfig) configField.get(toolkit);
+        assertThat(toolkitConfig.isParallel()).isTrue();
         assertThat(toolkit.getToolNames()).contains(
                 RagTool.NAME,
                 "sdk__sunshine-finance__list_finance_messages",

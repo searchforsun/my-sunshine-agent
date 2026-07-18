@@ -317,6 +317,9 @@ public final class ProcessingStepSerde {
         if (hasText(metadata.spawnPrompt())) {
             map.put("spawnPrompt", metadata.spawnPrompt());
         }
+        if (Boolean.TRUE.equals(metadata.cancellable())) {
+            map.put("cancellable", true);
+        }
         return map;
     }
 

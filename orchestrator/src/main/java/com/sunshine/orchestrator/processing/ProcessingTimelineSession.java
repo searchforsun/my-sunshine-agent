@@ -103,6 +103,11 @@ public final class ProcessingTimelineSession {
         tools.progressCurrentToolStep(activeSummary);
     }
 
+    /** 可单工具取消：SSE metadata.cancellable，前端勿硬编码工具名单 */
+    public void markCurrentToolCancellable() {
+        tools.markCurrentToolCancellable();
+    }
+
     public String currentToolStepId() {
         return tools.currentToolStepId();
     }

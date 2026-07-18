@@ -25,6 +25,8 @@ final class GenerationJobChunkEmitter {
     private final String generationId;
     private final String messageId;
     private final AtomicLong seq;
+    /** 与 {@link GenerationJob} 共享：串行 seq++ + XADD（工具并行语义不变） */
+    private final Object streamAppendLock;
     private final AtomicBoolean finished;
     private final long boundStreamEpoch;
     private final List<ProcessingStep> stepsBuffer;
@@ -39,6 +41,7 @@ final class GenerationJobChunkEmitter {
             String generationId,
             String messageId,
             AtomicLong seq,
+            Object streamAppendLock,
             AtomicBoolean finished,
             long boundStreamEpoch,
             List<ProcessingStep> stepsBuffer,
@@ -51,6 +54,7 @@ final class GenerationJobChunkEmitter {
         this.generationId = generationId;
         this.messageId = messageId;
         this.seq = seq;
+        this.streamAppendLock = streamAppendLock;
         this.finished = finished;
         this.boundStreamEpoch = boundStreamEpoch;
         this.stepsBuffer = stepsBuffer;
@@ -167,66 +171,69 @@ final class GenerationJobChunkEmitter {
 
     private void emitSingleMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
-        long nextSeq = seq.incrementAndGet();
-        if (token.isSandboxSession()) {
-            streamService.appendChunk(generationId, nextSeq,
-                    flushScheduler.metaSandboxSession(token.text(), token.channel(), token.stepId()));
-            return;
-        }
-        if (token.isStep()) {
-            ProcessingStepMerger.upsert(stepsBuffer, token.step());
-            maybeFlushStepsForAwaitingInteraction();
-            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
-            return;
-        }
-        if (token.isStepDelta()) {
-            ProcessingStepMerger.applyDelta(
-                    stepsBuffer, token.stepId(), token.channel(), token.text());
-            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStepDelta(
-                    token.stepId(), token.channel(), token.text()));
-            if ("reasoning".equals(token.channel()) && reasoningBufferRef != null
-                    && (token.stepId() == null || !token.stepId().startsWith("node-"))) {
-                reasoningBufferRef.append(token.text());
+        // 与 GenerationJob.emitOutbound 同锁：分配 seq 与 XADD 原子有序，工具并行只等写流
+        synchronized (streamAppendLock) {
+            long nextSeq = seq.incrementAndGet();
+            if (token.isSandboxSession()) {
+                streamService.appendChunk(generationId, nextSeq,
+                        flushScheduler.metaSandboxSession(token.text(), token.channel(), token.stepId()));
+                return;
             }
-            return;
-        }
-        if (token.isContentStart()) {
-            contentBlockAccumulator.onContentStart(token);
-            streamService.appendChunk(generationId, nextSeq,
-                    flushScheduler.metaContentStart(
-                            token.segmentId(), token.afterStepId(), token.scopeNodeStepId()));
-            return;
-        }
-        if (token.isContentEnd()) {
-            contentBlockAccumulator.onContentEnd(token);
-            streamService.appendChunk(generationId, nextSeq,
-                    flushScheduler.metaContentEnd(token.segmentId(), token.scopeNodeStepId()));
-            return;
-        }
-        String wire = token.isContent()
-                ? (token.segmentId() != null
-                ? flushScheduler.metaContentInSegment(
-                        token.segmentId(), token.text(), token.scopeNodeStepId())
-                : flushScheduler.metaContent(token.text(), token.afterStepId()))
-                : flushScheduler.metaReasoning(token.text());
-        streamService.appendChunk(generationId, nextSeq, wire);
-        if (token.isReasoning()) {
-            if (reasoningBufferRef != null) {
-                reasoningBufferRef.append(token.text());
+            if (token.isStep()) {
+                ProcessingStepMerger.upsert(stepsBuffer, token.step());
+                maybeFlushStepsForAwaitingInteraction();
+                streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
+                return;
             }
-            return;
-        }
-        if (token.isContent() && token.segmentId() != null) {
-            contentBlockAccumulator.onContent(token);
-        }
-        if (StringUtils.hasText(token.scopeNodeStepId())) {
+            if (token.isStepDelta()) {
+                ProcessingStepMerger.applyDelta(
+                        stepsBuffer, token.stepId(), token.channel(), token.text());
+                streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStepDelta(
+                        token.stepId(), token.channel(), token.text()));
+                if ("reasoning".equals(token.channel()) && reasoningBufferRef != null
+                        && (token.stepId() == null || !token.stepId().startsWith("node-"))) {
+                    reasoningBufferRef.append(token.text());
+                }
+                return;
+            }
+            if (token.isContentStart()) {
+                contentBlockAccumulator.onContentStart(token);
+                streamService.appendChunk(generationId, nextSeq,
+                        flushScheduler.metaContentStart(
+                                token.segmentId(), token.afterStepId(), token.scopeNodeStepId()));
+                return;
+            }
+            if (token.isContentEnd()) {
+                contentBlockAccumulator.onContentEnd(token);
+                streamService.appendChunk(generationId, nextSeq,
+                        flushScheduler.metaContentEnd(token.segmentId(), token.scopeNodeStepId()));
+                return;
+            }
+            String wire = token.isContent()
+                    ? (token.segmentId() != null
+                    ? flushScheduler.metaContentInSegment(
+                            token.segmentId(), token.text(), token.scopeNodeStepId())
+                    : flushScheduler.metaContent(token.text(), token.afterStepId()))
+                    : flushScheduler.metaReasoning(token.text());
+            streamService.appendChunk(generationId, nextSeq, wire);
+            if (token.isReasoning()) {
+                if (reasoningBufferRef != null) {
+                    reasoningBufferRef.append(token.text());
+                }
+                return;
+            }
+            if (token.isContent() && token.segmentId() != null) {
+                contentBlockAccumulator.onContent(token);
+            }
+            if (StringUtils.hasText(token.scopeNodeStepId())) {
+                throttlePartialFlush(mysqlBuffer, flushPartial, lastFlush);
+                return;
+            }
+            if (token.isContent() && token.text() != null) {
+                mysqlBuffer.append(token.text());
+            }
             throttlePartialFlush(mysqlBuffer, flushPartial, lastFlush);
-            return;
         }
-        if (token.isContent() && token.text() != null) {
-            mysqlBuffer.append(token.text());
-        }
-        throttlePartialFlush(mysqlBuffer, flushPartial, lastFlush);
     }
 
     private void throttlePartialFlush(StringBuilder mysqlBuffer, Consumer<String> flushPartial, AtomicLong lastFlush) {

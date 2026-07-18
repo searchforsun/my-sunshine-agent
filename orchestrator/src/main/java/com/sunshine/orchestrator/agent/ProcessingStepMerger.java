@@ -90,6 +90,40 @@ public final class ProcessingStepMerger {
         return "done".equals(step.lifecycle());
     }
 
+    /**
+     * 终态（含用户取消 paused+after）不被后续 running/pending/done/error 覆盖。
+     * 与前端 resolveMergedLifecycle 对齐，避免 cancel 后 complete 竞态盖掉 paused。
+     */
+    private static String mergeLifecycle(ProcessingStep existing, ProcessingStep incoming) {
+        String next = incoming.lifecycle() != null ? incoming.lifecycle() : existing.lifecycle();
+        if (isCancelTerminal(existing)
+                && ("running".equals(next) || "pending".equals(next)
+                || "done".equals(next) || "error".equals(next))) {
+            return existing.lifecycle();
+        }
+        if (isHardTerminal(existing)
+                && ("running".equals(next) || "pending".equals(next))) {
+            return existing.lifecycle();
+        }
+        return next;
+    }
+
+    private static boolean isHardTerminal(ProcessingStep step) {
+        if (step == null || step.lifecycle() == null) {
+            return false;
+        }
+        String lc = step.lifecycle();
+        return "done".equals(lc) || "error".equals(lc) || "skipped".equals(lc) || "terminated".equals(lc);
+    }
+
+    private static boolean isCancelTerminal(ProcessingStep step) {
+        return step != null
+                && "paused".equals(step.lifecycle())
+                && step.summary() != null
+                && step.summary().after() != null
+                && !step.summary().after().isBlank();
+    }
+
     private static String concat(String existing, String chunk) {
         if (existing == null || existing.isEmpty()) {
             return chunk;
@@ -148,7 +182,10 @@ public final class ProcessingStepMerger {
 
     private static ProcessingStep mergeSteps(ProcessingStep existing, ProcessingStep incoming) {
         Long startedAt = minNonNull(existing.startedAt(), incoming.startedAt());
-        StepSummary summary = mergeSummary(existing.summary(), incoming.summary());
+        String lifecycle = mergeLifecycle(existing, incoming);
+        StepSummary summary = isCancelTerminal(existing) && "paused".equals(lifecycle)
+                ? existing.summary()
+                : mergeSummary(existing.summary(), incoming.summary());
         Long endedAt = moreComplete(existing.endedAt(), incoming.endedAt());
         Long durationMs = computeDuration(startedAt, endedAt,
                 existing.durationMs(), incoming.durationMs());
@@ -156,7 +193,7 @@ public final class ProcessingStepMerger {
         return new ProcessingStep(
                 incoming.id(),
                 incoming.phase() != null ? incoming.phase() : existing.phase(),
-                incoming.lifecycle() != null ? incoming.lifecycle() : existing.lifecycle(),
+                lifecycle,
                 summary,
                 startedAt,
                 endedAt,

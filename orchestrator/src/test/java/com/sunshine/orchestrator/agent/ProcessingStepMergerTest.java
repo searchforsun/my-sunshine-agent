@@ -258,6 +258,95 @@ class ProcessingStepMergerTest {
         assertThat(kept.get(0).id()).isEqualTo("intent");
     }
 
+    @Test
+    @DisplayName("upsert：paused+after 不被后续 running 覆盖（spawn 取消）")
+    void upsert_cancelPausedNotOverwrittenByRunning() {
+        ProcessingStep cancelled = new ProcessingStep(
+                "subagent-r1",
+                "subagent",
+                "paused",
+                new StepSummary("委派子任务", null, "子任务已取消"),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                "用户已取消子任务",
+                2L,
+                "子任务",
+                null,
+                null,
+                null);
+        ProcessingStep lateRunning = new ProcessingStep(
+                "subagent-r1",
+                "subagent",
+                "running",
+                new StepSummary("委派子任务", "子任务执行中", null),
+                1L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                3L,
+                "子任务",
+                null,
+                null,
+                null);
+        java.util.ArrayList<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.upsert(steps, cancelled);
+        ProcessingStepMerger.upsert(steps, lateRunning);
+        assertThat(steps).hasSize(1);
+        assertThat(steps.get(0).lifecycle()).isEqualTo("paused");
+        assertThat(steps.get(0).summary().after()).isEqualTo("子任务已取消");
+    }
+
+    @Test
+    @DisplayName("upsert：paused+after 不被后续 done 覆盖")
+    void upsert_cancelPausedNotOverwrittenByDone() {
+        ProcessingStep cancelled = new ProcessingStep(
+                "subagent-r2",
+                "subagent",
+                "paused",
+                new StepSummary("委派子任务", null, "子任务已取消"),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                "用户已取消子任务",
+                2L,
+                "子任务",
+                null,
+                null,
+                null);
+        ProcessingStep lateDone = new ProcessingStep(
+                "subagent-r2",
+                "subagent",
+                "done",
+                new StepSummary("委派子任务", null, "子任务完成"),
+                1L,
+                3L,
+                2L,
+                null,
+                null,
+                null,
+                "答案",
+                3L,
+                "子任务",
+                null,
+                null,
+                null);
+        java.util.ArrayList<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.upsert(steps, cancelled);
+        ProcessingStepMerger.upsert(steps, lateDone);
+        assertThat(steps.get(0).lifecycle()).isEqualTo("paused");
+        assertThat(steps.get(0).summary().after()).isEqualTo("子任务已取消");
+    }
+
     private static ProcessingStep intentLike(String id) {
         return new ProcessingStep(
                 id,

@@ -29,7 +29,10 @@ import reactor.core.publisher.Flux;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -161,6 +164,52 @@ class GenerationJobTest {
         assertThat(contentCaptor.getValue()).isEqualTo("abc");
         String stepsJson = stepsCaptor.getValue();
         assertThat(stepsJson == null || !stepsJson.contains("generate")).isTrue();
+    }
+
+    @Test
+    @DisplayName("并行 emitOutbound / emitStreamToken：seq+XADD 串行，不抛 Redis Stream ID 逆序错")
+    void parallelEmit_doesNotThrowXaddIdConflict() throws Exception {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+        GenerationJob job = newJob(generationId);
+        int threads = 8;
+        int perThread = 40;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+        AtomicInteger writes = new AtomicInteger();
+        for (int t = 0; t < threads; t++) {
+            final int threadIdx = t;
+            pool.execute(() -> {
+                try {
+                    start.await(5, TimeUnit.SECONDS);
+                    for (int i = 0; i < perThread; i++) {
+                        if ((i + threadIdx) % 2 == 0) {
+                            job.emitOutbound("{\"type\":\"ping\",\"t\":" + threadIdx + ",\"i\":" + i + "}");
+                        } else {
+                            job.emitStreamToken(StreamToken.content("c-" + threadIdx + "-" + i));
+                        }
+                        writes.incrementAndGet();
+                    }
+                } catch (Throwable e) {
+                    errorRef.compareAndSet(null, e);
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+        pool.shutdownNow();
+        assertThat(errorRef.get()).as("不应出现 XADD ID 逆序").isNull();
+        List<StreamEvent> events = streamService.readFrom(generationId, 0, threads * perThread + 10);
+        assertThat(events).hasSize(writes.get());
+        for (int i = 0; i < events.size(); i++) {
+            assertThat(events.get(i).seq()).isEqualTo(i + 1L);
+        }
+        GenerationMeta meta = streamService.getMeta(generationId).orElseThrow();
+        assertThat(meta.lastSeq()).isEqualTo(writes.get());
     }
 
     @Test

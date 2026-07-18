@@ -45,6 +45,11 @@ public class GenerationStreamService {
         return generationId;
     }
 
+    /**
+     * 写入事件流。RecordId 为显式 {@code {seq}-0}，调用方须保证同一 generationId 上
+     * 「分配 seq → 本方法」严格按 seq 升序串行（见 {@code GenerationJob#streamAppendLock}）；
+     * 工具并行不得改为关闭，只串行化写流。
+     */
     public void appendChunk(String generationId, long seq, String text) {
         String eventsKey = eventsKey(generationId);
         MapRecord<String, String, String> record = StreamRecords.string(
