@@ -209,7 +209,7 @@ class SandboxSessionServiceTest {
         final List<String> stopped = new ArrayList<>();
 
         FakeDockerCli(SandboxProperties properties) {
-            super(properties);
+            super(properties, new com.sunshine.sandbox.docker.SandboxInvocationRegistry());
         }
 
         @Override

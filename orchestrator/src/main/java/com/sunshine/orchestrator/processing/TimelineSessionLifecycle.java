@@ -53,8 +53,14 @@ final class TimelineSessionLifecycle {
         emitter.apply(stepId, null, EventKind.FAIL, detail, detail);
     }
 
-    void pause(String stepId, String detail) {
-        emitter.apply(stepId, null, EventKind.PAUSE, "已暂停", detail);
+    void pause(String stepId, String afterSummary) {
+        pause(stepId, afterSummary, null);
+    }
+
+    /** @param expandDetail 取消时写入展开区（如 exec 命令）；null 则保留原 active 快照 */
+    void pause(String stepId, String afterSummary, String expandDetail) {
+        String after = afterSummary != null && !afterSummary.isBlank() ? afterSummary.strip() : "已取消";
+        emitter.apply(stepId, null, EventKind.PAUSE, after, expandDetail);
     }
 
     void terminate(String stepId, String detail) {

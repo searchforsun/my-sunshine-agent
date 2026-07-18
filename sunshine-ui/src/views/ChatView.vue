@@ -25,11 +25,9 @@ import { NIcon } from 'naive-ui'
 import { DocumentTextOutline, FolderOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
-import SubagentDrawer from '../components/operation/SubagentDrawer.vue'
 import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
 import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
-import { useSubagentDrawer } from '../composables/useSubagentDrawer'
 import { useSandboxWorkspaceDrawer } from '../composables/useSandboxWorkspaceDrawer'
 import { getWriteHitlMode } from '../composables/useWriteHitlMode'
 import { usePlanDagExpand } from '../composables/usePlanDagExpand'
@@ -76,7 +74,6 @@ const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible } = useSidebar()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
-const { close: closeSubagentDrawer } = useSubagentDrawer()
 const {
   open: openSandboxDrawer,
   close: closeSandboxDrawer,
@@ -108,6 +105,8 @@ const {
 
 const {
   messages, streamRevision, loading, send, resume, reconnectStream, stop,
+  cancelSpawnSubagent,
+  cancelCancellableTool,
   ensureActive, getMessages, setMessages, migrateSession, destroySession,
   applyHitlDecision,
   applyRecoveryDecision,
@@ -280,6 +279,9 @@ function handleHitlDecision(token: string, approved: boolean) {
   applyHitlDecision(token, approved)
 }
 
+provide('stopGeneration', stop)
+provide('cancelSpawnSubagent', cancelSpawnSubagent)
+provide('cancelCancellableTool', cancelCancellableTool)
 provide('applyHitlDecision', handleHitlDecision)
 provide('applyRecoveryDecision', applyRecoveryDecision)
 provide('pendingHitlConfirmations', computed(() => getPendingHitlConfirmations(latestAssistantMessage.value)))
@@ -291,10 +293,6 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
     getPendingHitlConfirmations(latestAssistantMessage.value),
   ),
 )
-provide('subagentDrawerLiveStep', (stepId: string) =>
-  latestAssistantMessage.value?.steps?.find(s => s.id === stepId),
-)
-
 const inputText = ref('')
 const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
 const { kbId, setKbId, applyConversationKb } = useKbPreference()
@@ -566,7 +564,6 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
   setActiveConversation(newId)
   closePlanDrawer()
-  closeSubagentDrawer()
   closeSandboxDrawer()
   closePlanDagExpand()
   sandboxWorkspaceActive.value = false
@@ -929,7 +926,6 @@ watch(
     </footer>
       </div>
       <PlanNodeDrawer />
-      <SubagentDrawer />
       <SandboxWorkspaceDrawer />
     </div>
   </div>

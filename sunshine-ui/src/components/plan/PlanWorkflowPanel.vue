@@ -14,7 +14,6 @@ import { buildDagNodes, resolveDagNodeStep, type DagNodeView } from '../../utils
 import { type HitlConfirmationPayload } from '../../api/hitlSteps'
 import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
-import { useSubagentDrawer } from '../../composables/useSubagentDrawer'
 import { usePlanDagExpand, unregisterPlanDagSelectHandler, registerPlanDagSelectHandler } from '../../composables/usePlanDagExpand'
 import PlanExecutionCanvas from './PlanExecutionCanvas.vue'
 import PlanApprovalActions from './PlanApprovalActions.vue'
@@ -33,14 +32,8 @@ const props = defineProps<{
   pendingHitlConfirmation?: HitlConfirmationPayload | HitlConfirmationPayload[]
 }>()
 
-const { open: openDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()
-const { close: closeSubagentDrawer } = useSubagentDrawer()
+const { open: openPlanNodeDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()
 const { open: openExpand, close: closeExpand, isExpanded, update: updateExpand, bindSelect, state: expandState } = usePlanDagExpand()
-
-function openPlanNodeDrawer(...args: Parameters<typeof openDrawer>) {
-  closeSubagentDrawer()
-  openDrawer(...args)
-}
 
 function subStepsSignature(steps?: ProcessingStep[]): string {
   if (!steps?.length) return ''

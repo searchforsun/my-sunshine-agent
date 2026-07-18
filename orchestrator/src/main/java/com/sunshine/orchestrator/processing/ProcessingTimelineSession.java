@@ -91,6 +91,14 @@ public final class ProcessingTimelineSession {
         tools.skipCurrentToolStep(afterSummary);
     }
 
+    public void pauseToolStepForToolUse(String toolUseId, String afterSummary) {
+        tools.pauseToolStepForToolUse(toolUseId, afterSummary, null);
+    }
+
+    public void pauseToolStepForToolUse(String toolUseId, String afterSummary, String expandDetail) {
+        tools.pauseToolStepForToolUse(toolUseId, afterSummary, expandDetail);
+    }
+
     public void progressCurrentToolStep(String activeSummary) {
         tools.progressCurrentToolStep(activeSummary);
     }

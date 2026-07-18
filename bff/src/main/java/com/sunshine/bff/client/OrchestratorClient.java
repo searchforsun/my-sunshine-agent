@@ -217,6 +217,28 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> cancelSubagent(
+            String generationId, String runId, String userId, String tenantId) {
+        return webClient.post()
+                .uri("/generations/{id}/subagents/{runId}/cancel", generationId, runId)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> cancelTool(
+            String generationId, String toolRef, String userId, String tenantId) {
+        return webClient.post()
+                .uri("/generations/{id}/tools/{toolRef}/cancel", generationId, toolRef)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> getExecutionPlan(String planId, String userId, String tenantId) {
         return webClient.get()
                 .uri("/execution-plans/{planId}", planId)

@@ -117,6 +117,27 @@ class SpawnSubagentTimelineSupportTest {
         assertThat(parent.summary().after()).isEqualTo(SpawnSubagentLabels.afterFail());
     }
 
+    @Test
+    void cancel_marksParentPausedWithAfter() {
+        String runId = "run-cancel";
+        String prompt = "原任务提示词";
+        support.begin(BRIDGE, runId, "子任务", prompt);
+        flushed.clear();
+        hookQueue.clear();
+
+        SpawnSubagentTimelineBridge bridge = new SpawnSubagentTimelineBridge(runId, "子任务", prompt);
+        String result = "用户已取消子任务。\n" + prompt;
+        support.cancel(BRIDGE, bridge, result);
+
+        ProcessingStep parent = findSubagentStep(runId);
+        assertThat(parent).isNotNull();
+        assertThat(parent.lifecycle()).isEqualTo("paused");
+        assertThat(parent.result()).isEqualTo(result);
+        assertThat(parent.summary().after()).isEqualTo(SpawnSubagentLabels.afterCancel());
+        assertThat(parent.endedAt()).isNotNull();
+        assertThat(parent.metadata().spawnPrompt()).isEqualTo(prompt);
+    }
+
     private ProcessingStep findSubagentStep(String runId) {
         String stepId = "subagent-" + runId;
         for (StreamToken token : flushed) {

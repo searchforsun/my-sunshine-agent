@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 public class DockerCli {
 
     private final SandboxProperties properties;
+    private final SandboxInvocationRegistry invocationRegistry;
 
     /** args 为 docker 子命令及参数（如 run / exec / rm），返回 stdout trim */
     public String runDetached(List<String> args) {
@@ -32,6 +33,11 @@ public class DockerCli {
      * 返回 {@code exitCode=-1} 且 stdout 含 {@code timeout}（供工具面软失败）。
      */
     public ExecResult exec(String containerId, String workingDir, List<String> cmd, Duration timeout) {
+        return exec(containerId, workingDir, cmd, timeout, null);
+    }
+
+    public ExecResult exec(
+            String containerId, String workingDir, List<String> cmd, Duration timeout, String invocationId) {
         List<String> args = new ArrayList<>();
         args.add("exec");
         args.add("-w");
@@ -39,10 +45,14 @@ public class DockerCli {
         args.add(containerId);
         args.addAll(cmd);
         try {
-            return runCapture(args, timeout);
+            return runCapture(args, timeout, invocationId);
         } catch (IllegalStateException e) {
-            if (e.getMessage() != null && e.getMessage().contains("timed out")) {
+            String msg = e.getMessage();
+            if (msg != null && msg.contains("timed out")) {
                 return new ExecResult(-1, "timeout", "");
+            }
+            if (msg != null && msg.contains("cancelled")) {
+                return new ExecResult(-1, "cancelled", "");
             }
             throw e;
         }
@@ -96,7 +106,7 @@ public class DockerCli {
     }
 
     private String run(List<String> args, Duration timeout) {
-        ExecResult r = runCapture(args, timeout);
+        ExecResult r = runCapture(args, timeout, null);
         if (r.exitCode() != 0) {
             throw new IllegalStateException(
                     "docker " + args.get(0) + " failed exit=" + r.exitCode() + " stderr=" + r.stderr());
@@ -105,14 +115,22 @@ public class DockerCli {
     }
 
     private ExecResult runCapture(List<String> args, Duration timeout) {
+        return runCapture(args, timeout, null);
+    }
+
+    private ExecResult runCapture(List<String> args, Duration timeout, String invocationId) {
         List<String> full = new ArrayList<>();
         full.add(properties.getDocker().getBinary());
         full.addAll(args);
         log.debug("docker cli: {}", full);
         ProcessBuilder pb = new ProcessBuilder(full);
         pb.redirectErrorStream(false);
+        String invId = invocationId != null && !invocationId.isBlank() ? invocationId.strip() : null;
         try {
             Process p = pb.start();
+            if (invId != null) {
+                invocationRegistry.bindProcess(invId, p);
+            }
             ByteArrayOutputStream stdoutBuf = new ByteArrayOutputStream();
             ByteArrayOutputStream stderrBuf = new ByteArrayOutputStream();
             Thread tOut = drain(p.getInputStream(), stdoutBuf);
@@ -126,6 +144,9 @@ public class DockerCli {
             }
             tOut.join(1000);
             tErr.join(1000);
+            if (invId != null && invocationRegistry.isCancelled(invId)) {
+                throw new IllegalStateException("docker cancelled: " + full);
+            }
             return new ExecResult(
                     p.exitValue(),
                     stdoutBuf.toString(StandardCharsets.UTF_8),
@@ -135,6 +156,10 @@ public class DockerCli {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("docker invoke interrupted: " + full, e);
+        } finally {
+            if (invId != null) {
+                invocationRegistry.unbind(invId);
+            }
         }
     }
 

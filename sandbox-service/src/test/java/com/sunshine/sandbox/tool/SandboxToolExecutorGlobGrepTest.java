@@ -6,6 +6,7 @@ import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.ExecResult;
+import com.sunshine.sandbox.docker.SandboxInvocationRegistry;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
@@ -38,7 +39,8 @@ class SandboxToolExecutorGlobGrepTest {
     void setUp() throws Exception {
         SandboxSessionStore store = new SandboxSessionStore();
         SandboxProperties props = new SandboxProperties();
-        executor = new SandboxToolExecutor(store, new StubDockerCli(props), props, null);
+        executor = new SandboxToolExecutor(
+                store, new StubDockerCli(props), props, null, new SandboxInvocationRegistry());
         sessionId = "sess-glob-001";
         Path hostRoot = tempRoot.resolve(sessionId);
         Path hostSkill = hostRoot.resolve("skills").resolve("demo");
@@ -123,12 +125,18 @@ class SandboxToolExecutorGlobGrepTest {
 
     static final class StubDockerCli extends DockerCli {
         StubDockerCli(SandboxProperties properties) {
-            super(properties);
+            super(properties, new SandboxInvocationRegistry());
         }
 
         @Override
         public ExecResult exec(String containerId, String workingDir, List<String> cmd, Duration timeout) {
             return new ExecResult(0, "", "");
+        }
+
+        @Override
+        public ExecResult exec(
+                String containerId, String workingDir, List<String> cmd, Duration timeout, String invocationId) {
+            return exec(containerId, workingDir, cmd, timeout);
         }
     }
 }

@@ -80,18 +80,18 @@
 
 | 任务卡 | 触发条件 | 说明 |
 |--------|----------|------|
-| **4.1** RAG 平台化 | 语料运营需求 | **4.0** pipeline + 多知识库、配置版本化 / 评测 / Suggest · [RAG 索引](./rag/README.md) · **4.1/4.2 检查门留档** [backlog](./rag/backlog.md) · [ADR-002](./architecture/ADR-002-rag-pipeline-in-rag-service.md) |
-| **4.2** OCR 入库 L1 | PDF/扫描件/发票 | DashScope OCR → 文本 chunk |
-| **4.3** 文档理解 L2 | L1 稳定 | 版面/表格/quarantine |
-| **4.4** 多模态对话 L3 | 聊天发图 | Vision + `/chat` 附件 |
-| **4.5** Skills 沙箱 | Coding Agent 工作区 | **✅ 方案 B**：常驻 `sandbox__*` + 懒开箱 · 工作区抽屉 · `writeHitlMode` · [索引](./sandbox/README.md) · [详设](./superpowers/specs/2026-07-15-skills-docker-sandbox-design.md) · [方案 B](./superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md) · Live：`verify_sandbox_live` / `verify_sandbox_workspace_live` |
+| **4.1** RAG 平台化 | 语料运营需求 | **✅ 检查门通过**（2026-07-06；G6 Recall WARN 可选冲刺）· [RAG 索引](./rag/README.md) · [backlog](./rag/backlog.md) · [ADR-002](./architecture/ADR-002-rag-pipeline-in-rag-service.md) |
+| **4.2** OCR 入库 L1 | PDF/扫描件/发票 | **✅ 检查门通过**（I1–I9；`.doc`/独立入库 Tab 明确不做）· [backlog](./rag/backlog.md) |
+| **4.3** 文档理解 L2 | L1 稳定 | **待做**：版面/表格/quarantine |
+| **4.4** 多模态对话 L3 | 聊天发图 | **待做**：Vision + `/chat` 附件 |
+| **4.5** Skills 沙箱 | Coding Agent 工作区 | **✅ 方案 B**：常驻 `sandbox__*` + 懒开箱 · 工作区抽屉 · `writeHitlMode` · **单工具取消**（exec/grep/glob）· [索引](./sandbox/README.md) · [取消详设](./superpowers/specs/2026-07-18-sandbox-tool-cancel-design.md) · Live：`verify_sandbox_live` / `verify_sandbox_workspace_live` / `verify_sandbox_tool_cancel_live` |
 | **4.6** 动态 DAG 增强 | Plan 不够用 | **✅**：parallel/exclusive/loop + 校验/布局 · **4.6.4 AutoContextMemory** · Live：`verify_plan_dag_live.py` |
-| **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 / ReAct 软规划 | **✅ 多专家协作完整**（2026-07-08）：**第五模式 `PEER_COLLAB`** L1 §E + **`$` L0** §K · `expert-manager` :8235 + `/experts` · Live：`verify_peer_collab_live` + `verify_expert_consultation_live` · 详设 [expert-consultation](./superpowers/specs/2026-07-07-expert-consultation-design.md)；**4.7.5 ReAct TaskBoard** ✅ · [taskboard](./superpowers/specs/2026-06-24-react-taskboard-design.md)；**4.7.6 Spawn Subagent** ✅ · [spawn-subagent](./superpowers/specs/2026-07-18-react-spawn-subagent-design.md) · Live `verify_spawn_subagent_live.py`；**4.7.1 废弃** / **4.7.4 不做**；**4.7.2** 仍按需 |
+| **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 / ReAct 软规划 | **✅ 多专家协作完整**（2026-07-08）：**第五模式 `PEER_COLLAB`** L1 §E + **`$` L0** §K · `expert-manager` :8235 + `/experts` · Live：`verify_peer_collab_live` + `verify_expert_consultation_live` · 详设 [expert-consultation](./superpowers/specs/2026-07-07-expert-consultation-design.md)；**4.7.5 ReAct TaskBoard** ✅ · [taskboard](./superpowers/specs/2026-06-24-react-taskboard-design.md)；**4.7.6 Spawn Subagent** ✅（含**单独取消**子任务）· [spawn-subagent](./superpowers/specs/2026-07-18-react-spawn-subagent-design.md) · Live `verify_spawn_subagent_live.py`；**4.7.1 废弃** / **4.7.4 不做**；**4.7.2** 仍按需 |
 | **4.13** Workflow Studio | 业务自助编排 | **✅ 当前形态收口**（MVP 4.13.1–4.13.6 + **4.13.7** 并行/条件分支/循环）；**v1 非目标不做**（for-each、预检测 while、框内嵌套网关/loop、多出边汇合、画布边条件标签）· [workflow-studio spec](./superpowers/specs/2026-06-25-workflow-studio-design.md) · [loop 设计](./superpowers/specs/2026-07-14-workflow-loop-container-design.md) · [实施计划](./superpowers/plans/2026-07-11-workflow-studio.md) |
 | **4.8** 工具集成（SDK + MCP） | 异构系统 / 业务解耦 | **✅ 检查门通过**：MySQL Catalog + `sunshine-tool-sdk` + MCP 动态接入 + `/tools` 管理页 · 详设 [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) · 计划 [tool-integration plan](./superpowers/plans/2026-07-09-tool-integration.md) · Live：`verify_tool_integration_live.py --suite all` |
 | **4.9** K8s | — | **明确不做**（维持脚本/现有部署） |
 | **4.10** Seata | — | **明确不做**（跨服务写靠 HITL + 幂等） |
-| **4.11** Prompt 后台 | 非研发维护提示词 | 版本/审核/回滚 |
+| **4.11** Prompt 后台 | 非研发维护提示词 | **待做**：版本/审核/回滚 |
 | **4.12** Serverless | — | **明确不做**（常驻实例） |
 
 ---

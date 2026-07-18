@@ -657,6 +657,10 @@ function findAgentNodeStep(
   steps: ProcessingStep[] | undefined,
   nodeId: string,
 ): ProcessingStep | undefined {
+  // ReAct spawn_subagent：抽屉用 step.id（subagent-{runId}）作 node.id
+  if (nodeId.startsWith('subagent-')) {
+    return steps?.find(s => s.id === nodeId)
+  }
   const top = steps?.find(s => s.id === `node-${nodeId}`)
   if (top) return top
   const suffix = `node-${nodeId}`

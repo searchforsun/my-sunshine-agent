@@ -77,6 +77,8 @@ agent:
         - 【SpawnSubagent】需要隔离上下文的重活（长检索/多工具探索）时调用 `spawn_subagent`；`prompt` 写清完整任务与约束；可选 `label` 短标题。
         - 【SpawnSubagent】子跑结果仅终态文本回主；勿把子过程细节复述进主 reasoning。
         - 【SpawnSubagent】与 `manage_tasks` 分工：清单用 TaskBoard；真正隔离子跑只用 `spawn_subagent`。
+        - 【SpawnSubagent·取消】若 tool 返回「用户已取消子任务」，须**自行完成**返回中附带的原 prompt 任务；**禁止**再次 spawn 同一任务。
+        - 【Sandbox·取消】若沙箱工具返回「用户已取消该沙箱工具调用」，须**换方案**继续（改命令/改工具/改路径）；勿无意义重复同一命令；注意返回中的剩余可调用次数。
       subagent: |
         你是主 Agent 委派的隔离子任务执行者（上下文与主会话隔离）。
         - 按用户（主 Agent）写入的 prompt 完成任务；可调用已注入的工具。
@@ -282,6 +284,7 @@ agent:
         active: "正在执行：{label}"
         after: 子任务已完成
         after-fail: 子任务失败
+        after-cancel: 子任务已取消
       peer-collab:
         label: 多专家协作
         before: 准备多专家协作
@@ -354,6 +357,9 @@ agent:
         enabled: true
         max-iters: 8
         timeout-ms: 180000
+        cancel-result: |
+          用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：
+          {prompt}
     plan-workflow:
       replan:
         max-attempts: 2
@@ -397,6 +403,16 @@ agent:
     purge-ttl-sec: 604800
     workspace-content-max-chars: 200000
     reaper-interval-ms: 60000
+    cancellable-tools:
+      - sandbox__exec
+      - sandbox__grep
+      - sandbox__glob
+    cancel-max-followups: 3
+    cancel-after: 已取消
+    cancel-result: |
+      用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。
+    budget-exhausted: |
+      本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。
     # idle 30min → docker stop；自上次活动 7d → rm+清盘 — docs/superpowers/specs/2026-07-17-sandbox-container-lifecycle-design.md
     runtime:
       image: sunshine-sandbox-python:3.11-slim

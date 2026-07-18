@@ -73,6 +73,24 @@ final class TimelineSessionToolFlow {
         state.currentToolStepId = null;
     }
 
+    void pauseToolStepForToolUse(String toolUseId, String afterSummary) {
+        pauseToolStepForToolUse(toolUseId, afterSummary, null);
+    }
+
+    void pauseToolStepForToolUse(String toolUseId, String afterSummary, String expandDetail) {
+        String stepId = com.sunshine.orchestrator.agent.StepEventBridge.stepIdForToolUse(toolUseId);
+        if (stepId == null || stepId.isBlank()) {
+            stepId = state.currentToolStepId;
+        }
+        if (stepId == null) {
+            return;
+        }
+        lifecycle.pause(stepId, afterSummary, expandDetail);
+        if (stepId.equals(state.currentToolStepId)) {
+            state.currentToolStepId = null;
+        }
+    }
+
     void progressCurrentToolStep(String activeSummary) {
         if (state.currentToolStepId == null || activeSummary == null || activeSummary.isBlank()) {
             return;

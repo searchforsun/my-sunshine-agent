@@ -73,7 +73,7 @@
 | `SpawnSubagentTool` | 元工具；解析参数；启动 SUB；等待终态；返回文本 |
 | `SubagentTimelineBridge`（或扩展现有 Hook/Bridge） | 子事件折叠进 `subagent-{runId}` 的 `subSteps`；主卡一行 `summary` |
 | `DynamicToolkitFactory` / Factory | MAIN 注册 `spawn_subagent`；SUB **剥离**该工具 |
-| 前端 `SubagentCard` + `SubagentDrawer` | 主时间线卡片；点击开抽屉 |
+| 前端 `SubagentCard` + `PlanNodeDrawer` | 主时间线卡片；点击开抽屉（复用 Workflow agent 抽屉） |
 
 ---
 
@@ -83,22 +83,22 @@
 
 - 每次成功发起的 `spawn_subagent` → **一张**卡片（id=`subagent-{runId}`，或 `phase=subagent`）。
 - 卡片仅显示：
-  - **状态**：运行中 / 待确认 / 完成 / 失败
+  - **状态**：运行中 / 待确认 / 完成 / 失败 / **已取消**（`lifecycle=paused`，不可恢复）
   - **一行**当前执行摘要（SSE `summary` 当前阶段；Nacos `agent.timeline.subagent`）
+  - 运行中：圆形停止钮 → 单独取消该子任务（非整轮停止）
 - **禁止**：把子 think/tool 抬到主 ReAct 步骤栈；**禁止**主卡内联展开长文。
 
 ### 4.2 子 Agent 抽屉
 
-点击卡片 → 打开抽屉（交互习惯对齐 `PlanNodeDrawer`）：
+点击卡片 → **复用** `PlanNodeDrawer`（synthetic `type=agent` 节点；`planId`/`node.id`=`subagent-{runId}`），与 Workflow 子 Agent / 沙箱工作区同一套三列动态宽度：
 
 | 区块 | 内容 |
 |------|------|
-| 传入提示词 | 主写入的 `prompt`（原样；可进 `metadata.spawnPrompt`） |
-| 执行过程 | `subSteps`（think / tool / …） |
-| HITL | 写工具确认（`HitlStepActions`，在抽屉内） |
-| 最终输出 | 子终态文本（与 tool result 同源） |
+| 传入提示词 | 主写入的 `prompt`（`metadata.spawnPrompt`） |
+| 执行过程 | 与 Workflow agent **同构**：`subSteps` + `contentBlocks` 穿插（思考/工具/正文） |
+| HITL | 写工具确认（抽屉内 `OperationStack` / `HitlStepActions`） |
 
-并行：多卡并列；点哪张开哪张抽屉。
+**无**单独「最终输出」区块。并行：多卡并列；点哪张开哪张抽屉。工作区抽屉挂主会话，与节点抽屉联动调宽。
 
 ### 4.3 HITL
 
@@ -114,8 +114,18 @@
 ### 4.5 SSE
 
 - 子内部事件经 bridge **折叠**进对应 `subagent-*`.`subSteps`。
-- 终态 `COMPLETE`/`FAIL` **必须下发**。
+- 终态 `COMPLETE`/`FAIL`/`paused`（用户取消）**必须下发**。
 - 不对模型输出做截断/过滤兜底。
+
+### 4.6 单独取消子任务
+
+| 项 | 约定 |
+|----|------|
+| API | `POST /api/generations/{id}/subagents/{runId}/cancel` |
+| 后端 | `SpawnRunRegistry.cancel` → `ReActAgent.interrupt` + 立刻父卡 `paused` SSE；**禁止** bump stream epoch |
+| Bridge | `markUserCancelled` 后不再下发父卡 `running` 覆盖 |
+| UI | `SubagentCard` 圆形停止钮；抽屉状态「已取消」；主 Agent 接手原 prompt（Nacos `cancel-result`） |
+| Live | `verify_spawn_subagent_live.py --suite cancel`（或含 cancel 的 suite） |
 
 ---
 

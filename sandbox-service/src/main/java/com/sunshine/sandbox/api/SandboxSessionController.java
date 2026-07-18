@@ -6,6 +6,7 @@ import com.sunshine.common.sandbox.CreateSessionResponse;
 import com.sunshine.common.sandbox.FsContentDto;
 import com.sunshine.common.sandbox.FsNodeDto;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
+import com.sunshine.sandbox.docker.SandboxInvocationRegistry;
 import com.sunshine.sandbox.fs.SandboxFsService;
 import com.sunshine.sandbox.session.SandboxSessionService;
 import com.sunshine.sandbox.tool.SandboxToolExecutor;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,6 +32,7 @@ public class SandboxSessionController {
     private final SandboxSessionService sessions;
     private final SandboxToolExecutor tools;
     private final SandboxFsService fs;
+    private final SandboxInvocationRegistry invocationRegistry;
 
     @PostMapping
     public R<CreateSessionResponse> create(@RequestBody CreateSessionRequest req) {
@@ -89,7 +92,17 @@ public class SandboxSessionController {
     public R<ToolInvokeResponse> invoke(
             @PathVariable String id,
             @PathVariable String name,
+            @RequestHeader(value = "x-sandbox-invocation-id", required = false) String invocationId,
             @RequestBody(required = false) Map<String, Object> body) {
-        return R.ok(tools.invoke(id, name, body));
+        return R.ok(tools.invoke(id, name, body, invocationId));
+    }
+
+    /** 取消进行中的工具调用（docker exec Process 或 host glob/grep 协作标志） */
+    @PostMapping("/{id}/invocations/{invocationId}/cancel")
+    public R<Map<String, Boolean>> cancelInvocation(
+            @PathVariable String id,
+            @PathVariable String invocationId) {
+        boolean cancelled = invocationRegistry.cancel(invocationId);
+        return R.ok(Map.of("cancelled", cancelled));
     }
 }

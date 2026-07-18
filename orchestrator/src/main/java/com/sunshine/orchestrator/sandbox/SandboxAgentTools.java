@@ -47,6 +47,7 @@ public class SandboxAgentTools {
     private final ToolAuditService toolAuditService;
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
     private final AgentSandboxProperties sandboxProperties;
+    private final CancellableToolRunRegistry cancellableToolRunRegistry;
 
     private List<AgentTool> tools = List.of();
 
@@ -114,9 +115,24 @@ public class SandboxAgentTools {
                 bridgeId = StepEventBridge.resolveHitlBridgeId();
             }
             String generationMessageId = bridgeId != null ? StepEventBridge.hitlAssistantMessageId(bridgeId) : null;
+            String messageId = generationMessageId != null
+                    ? generationMessageId : StepEventBridge.activeMessageId();
+            String invocationId = StringUtils.hasText(toolUseId) ? toolUseId.strip() : null;
+            boolean trackCancel = cancellableToolRunRegistry.isCancellableTool(name)
+                    && StringUtils.hasText(invocationId);
+            // 入口即 register：覆盖 PreActing 已出卡、execute/HITL/ensureBound 尚未完成的竞态
+            if (trackCancel) {
+                cancellableToolRunRegistry.register(invocationId, messageId, name, null, invocationId);
+                if (cancellableToolRunRegistry.isCancelled(invocationId)) {
+                    return cancelResult(toolUseId, name, body, messageId, null, System.currentTimeMillis());
+                }
+            }
             long toolEpoch = generationMessageId != null
                     ? StepEventBridge.currentStreamEpoch(generationMessageId) : -1L;
             if (isStaleToolRun(generationMessageId, toolEpoch)) {
+                if (trackCancel) {
+                    cancellableToolRunRegistry.unregister(invocationId);
+                }
                 throw new HitlWaitInterruptedException();
             }
             if (shouldAwaitHitl(bridgeId, body)) {
@@ -132,38 +148,82 @@ public class SandboxAgentTools {
                                         bridgeId, generationMessageId, name, hitlParams)
                                 : hitlConfirmationService.awaitConfirmation(bridgeId, name, hitlParams);
                         if (!approved) {
+                            if (trackCancel) {
+                                cancellableToolRunRegistry.unregister(invocationId);
+                            }
                             return denyResult(toolUseId, bridgeId, generationMessageId, body);
                         }
                     } catch (HitlWaitInterruptedException interrupted) {
+                        if (trackCancel) {
+                            cancellableToolRunRegistry.unregister(invocationId);
+                        }
                         log.info("[SandboxAgentTool] {} HITL 等待被中断（暂停/续跑）", name);
                         throw interrupted;
                     }
                 }
             }
+            if (trackCancel && cancellableToolRunRegistry.isCancelled(invocationId)) {
+                return cancelResult(toolUseId, name, body, messageId, null, System.currentTimeMillis());
+            }
             if (isStaleToolRun(generationMessageId, toolEpoch)) {
+                if (trackCancel) {
+                    cancellableToolRunRegistry.unregister(invocationId);
+                }
                 throw new HitlWaitInterruptedException();
             }
             try {
                 sandboxSessionLifecycle.ensureBound(bridgeId);
             } catch (Exception e) {
+                if (trackCancel) {
+                    cancellableToolRunRegistry.unregister(invocationId);
+                }
                 String err = StringUtils.hasText(e.getMessage())
                         ? e.getMessage() : "沙箱会话未就绪";
                 log.warn("[SandboxAgentTool] ensureBound 失败: {}", err);
                 auditIfBound(name, auditParams(body, null, null, null), err, "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(err).build());
             }
+            if (cancellableToolRunRegistry.isCancellableTool(name)
+                    && !cancellableToolRunRegistry.tryConsumeFollowup(messageId, name)) {
+                if (trackCancel) {
+                    cancellableToolRunRegistry.unregister(invocationId);
+                }
+                String exhausted = StringUtils.hasText(sandboxProperties.getBudgetExhausted())
+                        ? sandboxProperties.getBudgetExhausted().strip()
+                        : "本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。";
+                auditIfBound(name, auditParams(body, null, null, null), exhausted, "fail");
+                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(exhausted).build());
+            }
             String sessionId = SandboxSessionHolder.requireSessionId(bridgeId);
+            if (trackCancel) {
+                cancellableToolRunRegistry.bindSession(invocationId, sessionId);
+                if (cancellableToolRunRegistry.isCancelled(invocationId)) {
+                    return cancelResult(toolUseId, name, body, messageId, sessionId, System.currentTimeMillis());
+                }
+            }
             log.info("[SandboxAgentTool] {} session={} bridge={} params={}",
                     name, sessionId, bridgeId, body.keySet());
             long startMs = System.currentTimeMillis();
             try {
-                ToolInvokeResponse resp = sandboxClient.invoke(sessionId, SandboxIds.rpcName(name), body);
+                if (trackCancel && cancellableToolRunRegistry.isCancelled(invocationId)) {
+                    return cancelResult(toolUseId, name, body, messageId, sessionId, startMs);
+                }
+                ToolInvokeResponse resp = sandboxClient.invoke(
+                        sessionId, SandboxIds.rpcName(name), body, invocationId);
+                if (trackCancel && (cancellableToolRunRegistry.isCancelled(invocationId)
+                        || isCancelledResponse(resp))) {
+                    return cancelResult(toolUseId, name, body, messageId, sessionId, startMs);
+                }
                 String output = resp != null && resp.output() != null ? resp.output() : "";
                 boolean ok = resp != null && resp.ok();
                 Map<String, String> auditParams = auditParams(body, sessionId, resp, System.currentTimeMillis() - startMs);
                 auditIfBound(name, auditParams, output, ok ? "ok" : "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(output).build());
             } catch (Exception e) {
+                if (trackCancel && (cancellableToolRunRegistry.isCancelled(invocationId)
+                        || isCancelException(e))) {
+                    return cancelResult(toolUseId, name, body, messageId, sessionId, startMs);
+                }
                 log.warn("[SandboxAgentTool] {} 调用失败: {}", name, e.getMessage());
                 // 透传 sandbox 原始 msg（如 path escapes jail），供模型改参重试；不做路径兼容改写
                 String raw = e.getMessage();
@@ -171,7 +231,101 @@ public class SandboxAgentTools {
                 Map<String, String> auditParams = auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
                 auditIfBound(name, auditParams, err, "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(err).build());
+            } finally {
+                if (trackCancel) {
+                    cancellableToolRunRegistry.unregister(invocationId);
+                }
             }
+        }
+
+        private ToolResultBlock cancelResult(
+                String toolUseId,
+                String toolName,
+                Map<String, Object> body,
+                String messageId,
+                String sessionId,
+                long startMs) {
+            int remaining = cancellableToolRunRegistry.activateBudgetAndRemaining(messageId);
+            String params = summarizeParams(body);
+            String tpl = StringUtils.hasText(sandboxProperties.getCancelResult())
+                    ? sandboxProperties.getCancelResult().strip()
+                    : "用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。";
+            String text = tpl.replace("{params}", params)
+                    .replace("{remaining}", String.valueOf(remaining));
+            String after = StringUtils.hasText(sandboxProperties.getCancelAfter())
+                    ? sandboxProperties.getCancelAfter().strip() : "已取消";
+            String expandDetail = cancelExpandDetail(toolName, body);
+            String bridge = StepEventBridge.bridgeIdForToolUse(toolUseId);
+            if (StringUtils.hasText(bridge)) {
+                StepEventBridge.emit(bridge, session ->
+                        session.pauseToolStepForToolUse(toolUseId, after, expandDetail));
+            }
+            Map<String, String> auditParams = auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
+            auditIfBound(toolName, auditParams, text, "cancelled");
+            log.info("[SandboxAgentTool] {} 用户取消 toolUseId={} remaining={}", toolName, toolUseId, remaining);
+            return ToolResultBlock.of(toolUseId, toolName, TextBlock.builder().text(text).build());
+        }
+
+        private static boolean isCancelledResponse(ToolInvokeResponse resp) {
+            if (resp == null) {
+                return false;
+            }
+            if (resp.meta() != null && Boolean.TRUE.equals(resp.meta().get("cancelled"))) {
+                return true;
+            }
+            String out = resp.output();
+            return out != null && out.toLowerCase().contains("cancelled");
+        }
+
+        private static boolean isCancelException(Throwable e) {
+            Throwable cur = e;
+            while (cur != null) {
+                String msg = cur.getMessage();
+                if (msg != null && msg.toLowerCase().contains("cancel")) {
+                    return true;
+                }
+                cur = cur.getCause();
+            }
+            return false;
+        }
+
+        /** 取消展开：exec 命令 / grep·glob pattern，供时间线 `$` 面板 */
+        private static String cancelExpandDetail(String toolName, Map<String, Object> body) {
+            if (body == null || body.isEmpty()) {
+                return null;
+            }
+            if (SandboxIds.EXEC.equals(toolName)) {
+                Object cmd = body.get("command");
+                return cmd != null && StringUtils.hasText(String.valueOf(cmd))
+                        ? String.valueOf(cmd).strip() : null;
+            }
+            if (SandboxIds.GREP.equals(toolName) || SandboxIds.GLOB.equals(toolName)) {
+                Object pattern = body.get("pattern");
+                return pattern != null && StringUtils.hasText(String.valueOf(pattern))
+                        ? String.valueOf(pattern).strip() : null;
+            }
+            return null;
+        }
+
+        private static String summarizeParams(Map<String, Object> body) {
+            if (body == null || body.isEmpty()) {
+                return "{}";
+            }
+            StringBuilder sb = new StringBuilder();
+            body.forEach((k, v) -> {
+                if (k == null || DIGEST_PARAM_KEYS.contains(k)) {
+                    return;
+                }
+                if (sb.length() > 0) {
+                    sb.append(", ");
+                }
+                String val = v != null ? String.valueOf(v) : "";
+                if (val.length() > 120) {
+                    val = val.substring(0, 120) + "…";
+                }
+                sb.append(k).append('=').append(val);
+            });
+            return sb.length() > 0 ? sb.toString() : "{}";
         }
 
         private boolean shouldAwaitHitl(String bridgeId, Map<String, Object> body) {

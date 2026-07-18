@@ -153,9 +153,18 @@ public class SandboxClient {
     }
 
     public ToolInvokeResponse invoke(String sessionId, String toolName, Map<String, Object> body) {
-        ToolInvokeResponse data = webClient.post()
+        return invoke(sessionId, toolName, body, null);
+    }
+
+    public ToolInvokeResponse invoke(
+            String sessionId, String toolName, Map<String, Object> body, String invocationId) {
+        var spec = webClient.post()
                 .uri("/api/sandbox/sessions/{id}/tools/{name}", sessionId, toolName)
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(MediaType.APPLICATION_JSON);
+        if (StringUtils.hasText(invocationId)) {
+            spec = spec.header("x-sandbox-invocation-id", invocationId.strip());
+        }
+        ToolInvokeResponse data = spec
                 .bodyValue(body != null ? body : Map.of())
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toSandboxError)
@@ -166,6 +175,20 @@ public class SandboxClient {
             return new ToolInvokeResponse(false, "", null, Map.of());
         }
         return data;
+    }
+
+    /** 取消进行中的沙箱工具调用（杀 docker Process / 置 host 协作标志） */
+    public void cancelInvocation(String sessionId, String invocationId) {
+        if (!StringUtils.hasText(sessionId) || !StringUtils.hasText(invocationId)) {
+            return;
+        }
+        webClient.post()
+                .uri("/api/sandbox/sessions/{id}/invocations/{invocationId}/cancel",
+                        sessionId.strip(), invocationId.strip())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toSandboxError)
+                .bodyToMono(new ParameterizedTypeReference<R<Map<String, Boolean>>>() {})
+                .block();
     }
 
     public void mountSkill(String sessionId, String skillId, Map<String, String> skillFiles) {

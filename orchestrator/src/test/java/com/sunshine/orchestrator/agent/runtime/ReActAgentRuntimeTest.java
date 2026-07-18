@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent.runtime;
 
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
+import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
@@ -31,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -51,6 +54,8 @@ class ReActAgentRuntimeTest {
     private ReactTaskBoardService taskBoardService;
     @Mock
     private SandboxSessionLifecycle sandboxSessionLifecycle;
+    @Mock
+    private ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
 
     private ReActAgentRuntime runtime;
 
@@ -59,9 +64,10 @@ class ReActAgentRuntimeTest {
         AgentGroundingProperties groundingProperties = new AgentGroundingProperties();
         groundingProperties.setEnabled(false);
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
+        lenient().when(spawnRunRegistry.getIfAvailable()).thenReturn(null);
         runtime = new ReActAgentRuntime(
                 agentFactory, promptComposer, groundingChecker, groundingProperties,
-                taskBoardService, executionProperties, sandboxSessionLifecycle);
+                taskBoardService, executionProperties, sandboxSessionLifecycle, spawnRunRegistry);
     }
 
     @Test

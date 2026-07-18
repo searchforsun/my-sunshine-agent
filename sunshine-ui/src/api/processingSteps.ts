@@ -41,6 +41,7 @@ export {
   isStepSummaryTruncated,
   isSandboxToolStep,
   isSandboxExecStep,
+  isCancellableSandboxTool,
   extractSandboxExecCommand,
   extractSandboxWorkspacePath,
   extractSandboxSearchRoot,
@@ -203,12 +204,39 @@ function mergeSummary(
   if (!prev && !incoming) return undefined
   if (!prev) return incoming
   if (!incoming) return prev
-  const terminal = lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped'
+  const terminal = isHardTerminalLifecycle(lifecycle)
+    || (lifecycle === 'paused' && !!(incoming.after ?? prev.after))
   return {
     before: incoming.before ?? prev.before,
     active: terminal ? undefined : (incoming.active ?? prev.active),
     after: incoming.after ?? prev.after,
   }
+}
+
+/** done/error/skipped/terminated；paused+after 为用户取消终态（HITL 中途 paused 无 after 可续跑） */
+function isHardTerminalLifecycle(lifecycle?: StepLifecycle): boolean {
+  return lifecycle === 'done'
+    || lifecycle === 'error'
+    || lifecycle === 'skipped'
+    || lifecycle === 'terminated'
+}
+
+function isCancelTerminalStep(step: ProcessingStep): boolean {
+  return step.lifecycle === 'paused' && !!step.summary?.after?.trim()
+}
+
+function resolveMergedLifecycle(
+  prev: ProcessingStep,
+  incoming: ProcessingStep,
+): StepLifecycle {
+  const next = (incoming.lifecycle ?? prev.lifecycle) as StepLifecycle
+  if (
+    (isHardTerminalLifecycle(prev.lifecycle) || isCancelTerminalStep(prev))
+    && (next === 'running' || next === 'pending')
+  ) {
+    return prev.lifecycle as StepLifecycle
+  }
+  return next
 }
 
 
@@ -255,7 +283,7 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
     const prev = next[idx]
 
-    const lifecycle = incoming.lifecycle ?? prev.lifecycle
+    const lifecycle = resolveMergedLifecycle(prev, incoming)
 
     const merged: ProcessingStep = {
 
@@ -269,7 +297,8 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       output: longerText(prev.output, incoming.output),
 
-      result: longerText(prev.result, incoming.result),
+      // done/error 终稿覆盖流式累积（对齐后端 ProcessingStepMerger.mergeResult）
+      result: mergeStepResult(prev.result, incoming.result, lifecycle),
 
       detail: incoming.detail ?? prev.detail,
 
@@ -417,6 +446,18 @@ function longerText(a?: string, b?: string): string | undefined {
 
   return a + b
 
+}
+
+/** 终态 result 全量覆盖；运行中仍用前缀合并 */
+function mergeStepResult(
+  prev?: string,
+  incoming?: string,
+  lifecycle?: StepLifecycle,
+): string | undefined {
+  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'paused') {
+    if (incoming != null && incoming !== '') return incoming
+  }
+  return longerText(prev, incoming)
 }
 
 export function hasActiveStep(steps: ProcessingStep[] | undefined): boolean {

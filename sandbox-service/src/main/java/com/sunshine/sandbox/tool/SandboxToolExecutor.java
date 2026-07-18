@@ -6,6 +6,7 @@ import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.ExecResult;
+import com.sunshine.sandbox.docker.SandboxInvocationRegistry;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import com.sunshine.sandbox.jail.PathJail;
 import com.sunshine.sandbox.metrics.SandboxMetrics;
@@ -13,6 +14,7 @@ import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
@@ -41,17 +44,29 @@ public class SandboxToolExecutor {
     private final DockerCli dockerCli;
     private final SandboxProperties properties;
     private final SandboxMetrics metrics;
+    private final SandboxInvocationRegistry invocationRegistry;
 
     public ToolInvokeResponse invoke(String sessionId, String name, Map<String, Object> body) {
+        return invoke(sessionId, name, body, null);
+    }
+
+    public ToolInvokeResponse invoke(
+            String sessionId, String name, Map<String, Object> body, String invocationId) {
         long startNanos = System.nanoTime();
         String tool = name != null ? name : "unknown";
+        String invId = StringUtils.hasText(invocationId) ? invocationId.strip() : null;
         try {
-            ToolInvokeResponse response = doInvoke(sessionId, name, body);
+            ToolInvokeResponse response = doInvoke(sessionId, name, body, invId);
             recordMetrics(tool, response != null && response.ok(), startNanos);
             return response;
         } catch (RuntimeException e) {
             recordMetrics(tool, false, startNanos);
             throw e;
+        } finally {
+            if (invId != null
+                    && (SandboxToolNames.GLOB.equals(name) || SandboxToolNames.GREP.equals(name))) {
+                invocationRegistry.unbind(invId);
+            }
         }
     }
 
@@ -61,7 +76,8 @@ public class SandboxToolExecutor {
         }
     }
 
-    private ToolInvokeResponse doInvoke(String sessionId, String name, Map<String, Object> body) {
+    private ToolInvokeResponse doInvoke(
+            String sessionId, String name, Map<String, Object> body, String invocationId) {
         SandboxSession session = store.get(sessionId)
                 .orElseThrow(() -> new BizException(SandboxErrorCode.SESSION_NOT_FOUND));
         Map<String, Object> args = body != null ? body : Map.of();
@@ -69,14 +85,14 @@ public class SandboxToolExecutor {
             case SandboxToolNames.READ -> read(session, args);
             case SandboxToolNames.WRITE -> write(session, args);
             case SandboxToolNames.EDIT -> edit(session, args);
-            case SandboxToolNames.GLOB -> glob(session, args);
-            case SandboxToolNames.GREP -> grep(session, args);
-            case SandboxToolNames.EXEC -> exec(session, args);
+            case SandboxToolNames.GLOB -> glob(session, args, invocationId);
+            case SandboxToolNames.GREP -> grep(session, args, invocationId);
+            case SandboxToolNames.EXEC -> exec(session, args, invocationId);
             case null, default -> throw new BizException(SandboxErrorCode.TOOL_UNKNOWN);
         };
     }
 
-    private ToolInvokeResponse exec(SandboxSession session, Map<String, Object> args) {
+    private ToolInvokeResponse exec(SandboxSession session, Map<String, Object> args, String invocationId) {
         String command = requireString(args, "command");
         String blocked = SandboxExecGuard.denyReason(command);
         if (blocked != null) {
@@ -94,8 +110,12 @@ public class SandboxToolExecutor {
                 session.containerName(),
                 cwd.toString(),
                 List.of("sh", "-lc", command),
-                Duration.ofSeconds(timeoutSec));
+                Duration.ofSeconds(timeoutSec),
+                invocationId);
         String output = combineOutput(result.stdout(), result.stderr());
+        if (result.exitCode() == -1 && output.toLowerCase().contains("cancelled")) {
+            return new ToolInvokeResponse(false, "cancelled", -1, Map.of("cancelled", true));
+        }
         if (result.exitCode() == -1 && output.toLowerCase().contains("timeout")) {
             return new ToolInvokeResponse(false, output, -1, Map.of());
         }
@@ -204,18 +224,30 @@ public class SandboxToolExecutor {
         }
     }
 
-    private ToolInvokeResponse glob(SandboxSession session, Map<String, Object> args) {
+    private ToolInvokeResponse glob(
+            SandboxSession session, Map<String, Object> args, String invocationId) {
+        AtomicBoolean cancelled = invocationId != null
+                ? invocationRegistry.bindFlag(invocationId) : new AtomicBoolean(false);
         String pattern = requireString(args, "pattern");
         PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
         List<String> hits = new ArrayList<>();
         for (SearchRoot root : resolveSearchRoots(session, optionalString(args, "path"))) {
-            collectGlobHits(session, root, matcher, hits);
+            if (cancelled.get()) {
+                return cancelledResponse();
+            }
+            collectGlobHits(session, root, matcher, hits, cancelled);
+            if (cancelled.get()) {
+                return cancelledResponse();
+            }
         }
         Collections.sort(hits);
         return new ToolInvokeResponse(true, String.join("\n", hits), null, Map.of());
     }
 
-    private ToolInvokeResponse grep(SandboxSession session, Map<String, Object> args) {
+    private ToolInvokeResponse grep(
+            SandboxSession session, Map<String, Object> args, String invocationId) {
+        AtomicBoolean cancelled = invocationId != null
+                ? invocationRegistry.bindFlag(invocationId) : new AtomicBoolean(false);
         String patternStr = requireString(args, "pattern");
         Pattern regex;
         try {
@@ -231,7 +263,13 @@ public class SandboxToolExecutor {
         List<String> hits = new ArrayList<>();
         boolean hitLimit = false;
         for (SearchRoot root : resolveSearchRoots(session, optionalString(args, "path"))) {
-            hitLimit = collectGrepHits(session, root, regex, fileGlob, hits);
+            if (cancelled.get()) {
+                return cancelledResponse();
+            }
+            hitLimit = collectGrepHits(session, root, regex, fileGlob, hits, cancelled);
+            if (cancelled.get()) {
+                return cancelledResponse();
+            }
             if (hitLimit) {
                 break;
             }
@@ -240,9 +278,17 @@ public class SandboxToolExecutor {
         return new ToolInvokeResponse(true, String.join("\n", hits), null, meta);
     }
 
+    private static ToolInvokeResponse cancelledResponse() {
+        return new ToolInvokeResponse(false, "cancelled", -1, Map.of("cancelled", true));
+    }
+
     private static void collectGlobHits(
-            SandboxSession session, SearchRoot root, PathMatcher matcher, List<String> hits) {
-        if (!Files.exists(root.host())) {
+            SandboxSession session,
+            SearchRoot root,
+            PathMatcher matcher,
+            List<String> hits,
+            AtomicBoolean cancelled) {
+        if (!Files.exists(root.host()) || cancelled.get()) {
             return;
         }
         if (Files.isRegularFile(root.host())) {
@@ -253,12 +299,15 @@ public class SandboxToolExecutor {
             return;
         }
         try (Stream<Path> walk = Files.walk(root.host())) {
-            walk.filter(Files::isRegularFile).forEach(p -> {
+            for (Path p : walk.filter(Files::isRegularFile).toList()) {
+                if (cancelled.get()) {
+                    return;
+                }
                 Path rel = root.walkBase().relativize(p);
                 if (matcher.matches(rel) || matcher.matches(p.getFileName())) {
                     hits.add(HostPathResolver.toContainer(session, p));
                 }
-            });
+            }
         } catch (IOException e) {
             throw new IllegalStateException("glob failed", e);
         }
@@ -270,8 +319,9 @@ public class SandboxToolExecutor {
             SearchRoot root,
             Pattern regex,
             PathMatcher fileGlob,
-            List<String> hits) {
-        if (!Files.exists(root.host())) {
+            List<String> hits,
+            AtomicBoolean cancelled) {
+        if (!Files.exists(root.host()) || cancelled.get()) {
             return false;
         }
         if (Files.isRegularFile(root.host())) {
@@ -280,6 +330,9 @@ public class SandboxToolExecutor {
         try (Stream<Path> walk = Files.walk(root.host())) {
             List<Path> files = walk.filter(Files::isRegularFile).sorted().toList();
             for (Path p : files) {
+                if (cancelled.get()) {
+                    return false;
+                }
                 if (grepFile(session, p, root.walkBase(), regex, fileGlob, hits)) {
                     return true;
                 }

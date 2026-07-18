@@ -56,6 +56,13 @@ public final class TimelineAggregator {
                 }
             }
             case PAUSE -> {
+                // 取消前保留 active（如「正在执行 sleep 120」）到 detail，供展开显示命令
+                if (event.detail() != null && !event.detail().isBlank()) {
+                    state.detail = event.detail();
+                } else if ((state.detail == null || state.detail.isBlank())
+                        && state.active != null && !state.active.isBlank()) {
+                    state.detail = state.active;
+                }
                 state.lifecycle = "paused";
                 state.active = event.summary();
                 state.after = event.summary();
@@ -65,9 +72,6 @@ public final class TimelineAggregator {
                 }
                 if (state.startedAt != null) {
                     state.durationMs = event.ts() - state.startedAt;
-                }
-                if (event.detail() != null) {
-                    state.detail = event.detail();
                 }
             }
             case TERMINATE -> {

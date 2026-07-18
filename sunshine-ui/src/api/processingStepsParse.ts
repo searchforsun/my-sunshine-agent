@@ -174,6 +174,9 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const sandboxSearchRoot = typeof obj.sandboxSearchRoot === 'string' && obj.sandboxSearchRoot.trim()
     ? obj.sandboxSearchRoot.trim()
     : undefined
+  const spawnPrompt = typeof obj.spawnPrompt === 'string' && obj.spawnPrompt.trim()
+    ? obj.spawnPrompt.trim()
+    : undefined
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -192,6 +195,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !taskProgress
     && !sandboxPath
     && !sandboxSearchRoot
+    && !spawnPrompt
   ) {
     return undefined
   }
@@ -225,6 +229,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     taskProgress,
     sandboxPath,
     sandboxSearchRoot,
+    spawnPrompt,
   }
 }
 

@@ -1,5 +1,8 @@
 package com.sunshine.autoconfigure.orchestrator;
 
+import com.sunshine.orchestrator.agent.SpawnRunRegistry;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
+import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
@@ -56,8 +59,12 @@ public class GenerationAutoConfiguration {
             GenerationRegistry registry,
             GenerationFlushScheduler flushScheduler,
             GenerationProperties generationProperties,
-            ConversationService conversationService) {
+            ConversationService conversationService,
+            SpawnRunRegistry spawnRunRegistry,
+            CancellableToolRunRegistry cancellableToolRunRegistry,
+            AgentSandboxProperties sandboxProperties) {
         return new GenerationController(
-                streamService, registry, flushScheduler, generationProperties, conversationService);
+                streamService, registry, flushScheduler, generationProperties,
+                conversationService, spawnRunRegistry, cancellableToolRunRegistry, sandboxProperties);
     }
 }

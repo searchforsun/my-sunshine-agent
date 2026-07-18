@@ -8,6 +8,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** 子 Agent 步骤 → 挂到 subagent-{runId}.subSteps，主 Timeline 仅一张卡 */
 public final class SpawnSubagentTimelineBridge {
@@ -16,6 +17,8 @@ public final class SpawnSubagentTimelineBridge {
     private final String label;
     private final String spawnPrompt;
     private final List<ProcessingStep> subSteps = new ArrayList<>();
+    /** 用户取消后禁止再下发父卡 running，避免覆盖 paused */
+    private final AtomicBoolean userCancelled = new AtomicBoolean(false);
 
     public SpawnSubagentTimelineBridge(String runId, String label, String spawnPrompt) {
         this.parentStepId = parentStepId(runId);
@@ -43,9 +46,33 @@ public final class SpawnSubagentTimelineBridge {
         return spawnPrompt;
     }
 
+    public void markUserCancelled() {
+        userCancelled.set(true);
+    }
+
+    public boolean userCancelled() {
+        return userCancelled.get();
+    }
+
     public List<StreamToken> wrap(StreamToken token) {
-        if (token == null) {
+        if (token == null || token.isReasoning()) {
             return List.of();
+        }
+        if (userCancelled.get()) {
+            // 仍折叠 subSteps 供抽屉历史，但不再刷新父卡为 running
+            if (token.isStep() && token.step() != null) {
+                ProcessingStepMerger.upsert(subSteps, token.step());
+            } else if (token.isStepDelta()) {
+                ProcessingStepMerger.applyDelta(subSteps, token.stepId(), token.channel(), token.text());
+            }
+            return List.of();
+        }
+        // 与 Workflow AgentStreamCollector 同构：分段正文 → 父卡 contentBlocks（执行过程穿插）
+        if (token.isContentLifecycle() || (token.isContent() && token.segmentId() != null)) {
+            return List.of(token.withScopeNodeStepId(parentStepId));
+        }
+        if (token.isContent() && StringUtils.hasText(token.text())) {
+            return List.of(StreamToken.stepDelta(parentStepId, "result", token.text()));
         }
         if (token.isStep() && token.step() != null) {
             ProcessingStepMerger.upsert(subSteps, token.step());
@@ -65,6 +92,15 @@ public final class SpawnSubagentTimelineBridge {
                 ? after.strip()
                 : (ok ? SpawnSubagentLabels.after() : SpawnSubagentLabels.afterFail());
         return List.of(parentStepUpdate(lifecycle, null, afterLine, result));
+    }
+
+    /** 用户取消：lifecycle=paused（非 error），须下发终态 step SSE */
+    public List<StreamToken> cancel(String after, String result) {
+        userCancelled.set(true);
+        String afterLine = StringUtils.hasText(after)
+                ? after.strip()
+                : SpawnSubagentLabels.afterCancel();
+        return List.of(parentStepUpdate("paused", null, afterLine, result));
     }
 
     public List<ProcessingStep> subSteps() {
@@ -109,7 +145,7 @@ public final class SpawnSubagentTimelineBridge {
                 lifecycle,
                 summary,
                 null,
-                "done".equals(lifecycle) || "error".equals(lifecycle) ? ts : null,
+                isTerminalLifecycle(lifecycle, after) ? ts : null,
                 null,
                 null,
                 null,
@@ -121,5 +157,13 @@ public final class SpawnSubagentTimelineBridge {
                 null,
                 List.copyOf(subSteps));
         return StreamToken.step(parent);
+    }
+
+    /** done/error 终态；paused + after 表示用户取消（HITL 中途 paused 无 after，不算终态） */
+    private static boolean isTerminalLifecycle(String lifecycle, String after) {
+        if ("done".equals(lifecycle) || "error".equals(lifecycle)) {
+            return true;
+        }
+        return "paused".equals(lifecycle) && StringUtils.hasText(after);
     }
 }

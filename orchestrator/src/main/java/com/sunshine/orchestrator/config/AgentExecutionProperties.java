@@ -43,6 +43,13 @@ public class AgentExecutionProperties {
             private boolean enabled = true;
             private int maxIters = 8;
             private long timeoutMs = 180_000L;
+            /**
+             * 用户取消子任务时回主 Agent 的 tool result；占位符 {prompt}。
+             * SSOT：Nacos agent.execution.react.subagent.cancel-result
+             */
+            private String cancelResult = """
+                    用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：
+                    {prompt}""";
         }
     }
 

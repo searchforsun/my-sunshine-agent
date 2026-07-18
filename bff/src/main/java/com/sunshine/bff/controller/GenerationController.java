@@ -40,6 +40,26 @@ public class GenerationController {
         return client.cancelGeneration(id, userId, tenantId);
     }
 
+    @PostMapping("/api/generations/{id}/subagents/{runId}/cancel")
+    public Mono<Map<String, Object>> cancelSubagent(
+            @PathVariable String id,
+            @PathVariable String runId,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        log.info("[BFF] 取消子任务 generation={} runId={} user={}", id, runId, userId);
+        return client.cancelSubagent(id, runId, userId, tenantId);
+    }
+
+    @PostMapping("/api/generations/{id}/tools/{toolRef}/cancel")
+    public Mono<Map<String, Object>> cancelTool(
+            @PathVariable String id,
+            @PathVariable String toolRef,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        log.info("[BFF] 取消工具 generation={} toolRef={} user={}", id, toolRef, userId);
+        return client.cancelTool(id, toolRef, userId, tenantId);
+    }
+
     @GetMapping(value = "/api/chat/stream/{generationId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> reconnectStream(
             @PathVariable String generationId,

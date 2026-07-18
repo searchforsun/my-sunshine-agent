@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.hitl.HitlParamSupport;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
+import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
 import com.sunshine.orchestrator.sandbox.SandboxStepContext;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
@@ -41,18 +42,21 @@ public class ProcessingStepHook implements Hook {
     private final AgentExecutionProperties executionProperties;
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
     private final SandboxTimelineLabelService sandboxTimelineLabels;
+    private final CancellableToolRunRegistry cancellableToolRunRegistry;
 
     ProcessingStepHook(
             String bridgeId,
             ToolCatalogService toolCatalogService,
             AgentExecutionProperties executionProperties,
             TaskBoardTimelineSupport taskBoardTimelineSupport,
-            SandboxTimelineLabelService sandboxTimelineLabels) {
+            SandboxTimelineLabelService sandboxTimelineLabels,
+            CancellableToolRunRegistry cancellableToolRunRegistry) {
         this.bridgeId = bridgeId;
         this.toolCatalogService = toolCatalogService;
         this.executionProperties = executionProperties;
         this.taskBoardTimelineSupport = taskBoardTimelineSupport;
         this.sandboxTimelineLabels = sandboxTimelineLabels;
+        this.cancellableToolRunRegistry = cancellableToolRunRegistry;
     }
 
     @Override
@@ -102,6 +106,14 @@ public class ProcessingStepHook implements Hook {
             if (stepHolder[0] != null) {
                 StepEventBridge.bindToolUseStep(toolUseId, stepHolder[0]);
             }
+            // 出卡即登记：UI 可立即 cancel，无需等 execute 入口
+            if (cancellableToolRunRegistry.isCancellableTool(toolName) && StringUtils.hasText(toolUseId)) {
+                String messageId = StepEventBridge.hitlAssistantMessageId(bridgeId);
+                if (!StringUtils.hasText(messageId)) {
+                    messageId = bridgeId;
+                }
+                cancellableToolRunRegistry.register(toolUseId, messageId, toolName, null, toolUseId);
+            }
             return Mono.just(event);
         }
 
@@ -129,6 +141,16 @@ public class ProcessingStepHook implements Hook {
             } else if (sandboxTimelineLabels.isSandboxTool(toolName)) {
                 Map<String, Object> input = toolInput(post.getToolUse());
                 String raw = rawText != null ? rawText.strip() : "";
+                // 用户单工具取消：SandboxAgentTools 已 pause 终态，禁止再 complete 覆盖
+                if (raw.contains("用户已取消该沙箱工具调用")
+                        || raw.contains("同族沙箱工具调用次数已用尽")) {
+                    StepEventBridge.emit(bridgeId, session -> {
+                        session.recordToolCompleted(toolCatalogService.displayName(toolName));
+                        session.noteToolCallDone();
+                    });
+                    StepEventBridge.unbindToolUseBridge(toolUseId);
+                    return Mono.just(event);
+                }
                 Map<String, Object> enriched = SandboxStepContext.enrichInput(toolName, input, raw);
                 summaryLine = sandboxTimelineLabels.after(
                         toolName, toolCatalogService.displayName(toolName), enriched);

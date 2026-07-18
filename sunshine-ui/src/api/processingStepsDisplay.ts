@@ -30,14 +30,34 @@ export function isSandboxExecStep(step: { id: string }): boolean {
   return catalogToolIdFromStepId(step.id) === 'sandbox__exec'
 }
 
-/** 从 after/active 解析 exec 命令（「cmd」/「… · cmd」/「正在执行 cmd」） */
+/** 可 hover 暂停取消：exec / grep / glob */
+const CANCELLABLE_SANDBOX_TOOL_IDS = [
+  'sandbox__exec',
+  'sandbox__grep',
+  'sandbox__glob',
+] as const
+
+export function isCancellableSandboxTool(step: { id: string }): boolean {
+  const toolId = catalogToolIdFromStepId(step.id)
+  if (!toolId) return false
+  return (CANCELLABLE_SANDBOX_TOOL_IDS as readonly string[]).includes(toolId)
+}
+
+/** 取消终态文案（主行 after）；勿当作 exec 命令 */
+function isSandboxCancelAfter(text: string): boolean {
+  return text === '已取消' || text === '已暂停'
+}
+
+/** 从 after/active/detail 解析 exec 命令（「cmd」/「正在执行 cmd」；取消后命令在 detail） */
 export function extractSandboxExecCommand(step: {
+  lifecycle?: string
   summary?: { after?: string; active?: string }
+  detail?: string
 }): string | undefined {
   const after = step.summary?.after?.trim() || ''
-  const afterMatch = after.match(/(?:完成\s*)?[·•]\s*(.+)$/s)
-  if (afterMatch?.[1]?.trim()) return afterMatch[1].trim()
-  if (after) {
+  if (after && !isSandboxCancelAfter(after)) {
+    const afterMatch = after.match(/(?:完成\s*)?[·•]\s*(.+)$/s)
+    if (afterMatch?.[1]?.trim()) return afterMatch[1].trim()
     const stripped = after
       .replace(/^执行命令(?:完成)?\s*/u, '')
       .replace(/^[·•]\s*/, '')
@@ -47,6 +67,15 @@ export function extractSandboxExecCommand(step: {
   const active = step.summary?.active?.trim() || ''
   const activeMatch = active.match(/正在执行\s+(.+)$/s)
   if (activeMatch?.[1]?.trim()) return activeMatch[1].trim()
+  const detail = step.detail?.trim() || ''
+  if (detail) {
+    const fromDetail = detail.match(/正在执行\s+(.+)$/s)
+    if (fromDetail?.[1]?.trim()) return fromDetail[1].trim()
+    // 取消时后端把 command 原样写入 detail（无 stdout）
+    if (step.lifecycle === 'paused' || step.lifecycle === 'terminated' || isSandboxCancelAfter(after)) {
+      return detail
+    }
+  }
   return undefined
 }
 
@@ -265,11 +294,20 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
       if (preview) header = preview
     }
     if (!header) header = step.summary?.active?.trim() || ''
-  } else if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+  } else if (
+    lifecycle === 'done'
+    || lifecycle === 'error'
+    || lifecycle === 'skipped'
+    || lifecycle === 'paused'
+    || lifecycle === 'terminated'
+  ) {
+    // paused/terminated：用 after（如「已取消」）；兼容旧 SSE 只下发 active 的情况
     header = step.summary?.after?.trim()
+      || ((lifecycle === 'paused' || lifecycle === 'terminated')
+        ? (step.summary?.active?.trim() || '')
+        : '')
       || formatStepMetadata(step)
       || (!isWorkflowAnswerStep(step) && step.result?.trim())
-      || step.detail?.trim()
       || ''
     if (step.phase === 'plan' && header) {
       header = stripPlanMetaText(header)
@@ -305,7 +343,13 @@ function extractFirstProseLine(text: string): string {
 /** 展开区 lead：保留换行，供 StaticMarkdown 渲染（主行预览仍用 resolveStepHeaderText 单行截断） */
 export function resolveStepExpandLead(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
-  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+  if (
+    lifecycle === 'done'
+    || lifecycle === 'error'
+    || lifecycle === 'skipped'
+    || lifecycle === 'paused'
+    || lifecycle === 'terminated'
+  ) {
     let text = step.summary?.after?.trim() || resolveStepSummaryFull(step)
     if (step.phase === 'plan' && text) {
       text = stripPlanMetaText(text)
@@ -318,7 +362,13 @@ export function resolveStepExpandLead(step: ProcessingStep): string {
 export function resolveStepExpandSummary(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
   let oneLine = ''
-  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+  if (
+    lifecycle === 'done'
+    || lifecycle === 'error'
+    || lifecycle === 'skipped'
+    || lifecycle === 'paused'
+    || lifecycle === 'terminated'
+  ) {
     oneLine = (step.summary?.after?.trim() || resolveStepSummaryFull(step)).replace(/\s+/g, ' ').trim()
     if (step.phase === 'plan' && oneLine) {
       oneLine = stripPlanMetaText(oneLine)
@@ -360,6 +410,14 @@ export function resolveStepExpandInner(step: ProcessingStep): string {
 }
 
 function resolveSandboxExpandRaw(step: ProcessingStep): string {
+  const lifecycle = stepLifecycle(step)
+  // 取消：detail 存的是命令/pattern 快照，不是 stdout；由 extractSandboxExecCommand 展示
+  if (
+    isSandboxExecStep(step)
+    && (lifecycle === 'paused' || lifecycle === 'terminated')
+  ) {
+    return ''
+  }
   const detail = step.detail?.trim()
   if (detail) return detail
   const result = step.result?.trim()

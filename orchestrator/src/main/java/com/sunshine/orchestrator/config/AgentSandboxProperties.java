@@ -38,6 +38,25 @@ public class AgentSandboxProperties {
     /** 六工具 displayName / description / JSON Schema — SSOT：Nacos agent.sandbox.tools */
     private Map<String, ToolDef> tools = new LinkedHashMap<>(SandboxToolDefaults.all());
 
+    /** 可单工具取消的名单 — SSOT：Nacos agent.sandbox.cancellable-tools */
+    private List<String> cancellableTools = new ArrayList<>(List.of(
+            SandboxIds.EXEC, SandboxIds.GREP, SandboxIds.GLOB));
+
+    /** 用户取消后同族最多再执行次数 */
+    private int cancelMaxFollowups = 3;
+
+    /**
+     * 取消时回主 Agent 的 tool result；占位符 {params} {remaining}
+     */
+    private String cancelResult = """
+            用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。""";
+
+    /** 预算耗尽拒调文案 */
+    private String budgetExhausted = "本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。";
+
+    /** 时间线工具步取消 after */
+    private String cancelAfter = "已取消";
+
     /** 时间线步骤中文名；未配置时回退 toolId */
     public String displayName(String toolId) {
         ToolDef def = resolveTool(toolId);

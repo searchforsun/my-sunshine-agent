@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent.runtime;
 
 import com.sunshine.orchestrator.agent.AgentScopeEventMapper;
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
+import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
@@ -23,6 +24,7 @@ import io.agentscope.core.agent.StreamOptions;
 import io.agentscope.core.message.Msg;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -44,6 +46,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final ReactTaskBoardService taskBoardService;
     private final AgentExecutionProperties executionProperties;
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
+    private final ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
@@ -106,6 +109,12 @@ public class ReActAgentRuntime implements AgentRuntime {
             StringBuilder answerContent = new StringBuilder();
 
             ReActAgent agent = agentFactory.create(request);
+            if (request.role() == AgentRole.SUB) {
+                SpawnRunRegistry registry = spawnRunRegistry.getIfAvailable();
+                if (registry != null) {
+                    registry.bindAgent(request.runId(), agent);
+                }
+            }
             final String epochMessageId = assistantMessageId != null && !assistantMessageId.isBlank()
                     ? assistantMessageId.strip() : null;
             final long runEpoch = epochMessageId != null

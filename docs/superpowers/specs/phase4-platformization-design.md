@@ -114,6 +114,7 @@
 | **4.5.4** | Skill 元数据 / `/skills` 试跑 / 多 Skill 挂载 | ✅ |
 | **4.5.5** | 审计 + Grafana + Live G1–G9 / W1–W5 | ✅ |
 | **4.5.6** | 工作区抽屉（多 tab / md 切换 / 路径芯片）+ `writeHitlMode` + 时间线路径展示 | ✅ |
+| **4.5.7** | 可取消沙箱工具（exec/grep/glob）· 主行「已取消」· Live `verify_sandbox_tool_cancel_live` · [详设](./2026-07-18-sandbox-tool-cancel-design.md) | ✅ |
 | — | Live：`writeHitlMode` Chat 冒烟 | ✅ |
 
 锁定：默认 `network=none` + `read_only_rootfs`（可写仅 `/workspace` volume）；`network_allow` 非空时经 egress 白名单代理（修订 D4，见详设）。
@@ -140,7 +141,7 @@
 | **4.7.3** | **多专家协作**：`PEER_COLLAB` L1 §E + Expert Catalog `$` §K + `expert-manager` + Hub 反应式轮次 + Synthesizer | **✅** |
 | **4.7.4** | M9 前端子 Agent 详情展开 UI | **不做**（Workflow agent 抽屉 / Peer 展开已覆盖） |
 | **4.7.5** | **ReAct TaskBoard**（`manage_tasks` 元工具 + `tasks` Timeline + 审计） · [详设](./2026-06-24-react-taskboard-design.md) · **D11** | **✅** |
-| **4.7.6** | **ReAct Spawn Subagent**（`spawn_subagent` 元工具；主动态 prompt；上下文隔离；卡片+抽屉） · [详设](./2026-07-18-react-spawn-subagent-design.md) · Live `verify_spawn_subagent_live.py` | **✅** |
+| **4.7.6** | **ReAct Spawn Subagent**（`spawn_subagent`；卡片+抽屉；**单独取消**） · [详设](./2026-07-18-react-spawn-subagent-design.md) · Live `verify_spawn_subagent_live.py` | **✅** |
 
 **4.7.3 摘要（✅）**：第五顶层模式 `peer-collab`；`ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue、反应式选人）+ `ConsultationSynthesizer`；详设 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) · Live `verify_peer_collab_live` + `verify_expert_consultation_live`。
 

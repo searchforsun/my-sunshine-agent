@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, onUnmounted, ref, watch } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import {
   formatDuration,
@@ -12,6 +12,7 @@ import {
   hasExpandableContent,
   resolvePlanIdFromStep,
   resolveSandboxFocusPath,
+  isCancellableSandboxTool,
 } from '../../api/processingSteps'
 import { useRouter } from 'vue-router'
 import StaticMarkdown from '../StaticMarkdown.vue'
@@ -81,10 +82,26 @@ const hitlPanelKey = computed(() =>
   || props.step.id,
 )
 
+const cancelCancellableTool = inject<(stepId: string) => void | Promise<void>>(
+  'cancelCancellableTool',
+  async () => {},
+)
+
 const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
 const isDone = computed(() => lifecycle.value === 'done')
+const isPaused = computed(() => lifecycle.value === 'paused' || lifecycle.value === 'terminated')
 const label = computed(() => formatStepLabel(props.step))
+const canPauseTool = computed(
+  () => props.live && isRunning.value && isCancellableSandboxTool(props.step),
+)
+
+async function onPauseTool(e: Event): Promise<void> {
+  e.stopPropagation()
+  e.preventDefault()
+  if (!canPauseTool.value) return
+  await cancelCancellableTool(props.step.id)
+}
 
 /** 主行摘要：折叠时一行预览；展开且可下移时主行仅保留 label */
 const headerText = computed(() => resolveStepHeaderText(props.step))
@@ -145,7 +162,7 @@ onUnmounted(() => {
 })
 
 const durationText = computed(() => {
-  if (isDone.value) {
+  if (isDone.value || isPaused.value) {
     const ms = resolveStepDurationMs(props.step)
     if (ms != null) return formatDuration(ms)
   }
@@ -165,6 +182,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       'is-expanded': expanded,
       'is-running': isRunning && live,
       'is-clickable': rowClickable,
+      'is-cancellable': canPauseTool,
     }"
   >
     <div
@@ -208,7 +226,21 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
           <span v-if="isRunning && live" class="op-pulse">…</span>
         </span>
       </span>
-      <span v-if="durationText" class="op-dur">{{ durationText }}</span>
+      <span class="op-trailing">
+        <span v-if="durationText" class="op-dur">{{ durationText }}</span>
+        <button
+          v-if="canPauseTool"
+          type="button"
+          class="op-pause"
+          title="暂停"
+          aria-label="暂停"
+          @click="onPauseTool"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" width="11" height="11">
+            <rect x="3" y="3" width="10" height="10" rx="1.5" />
+          </svg>
+        </button>
+      </span>
       <button
         v-if="planLinkId"
         type="button"
@@ -358,15 +390,59 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   min-width: 0;
 }
 
+.op-trailing {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 1.45em;
+  padding-left: 8px;
+  padding-top: 0;
+}
+
 .op-dur {
   flex-shrink: 0;
-  padding-left: 10px;
+  padding-left: 0;
   padding-top: 1px;
   font-size: var(--op-font-sm);
   color: var(--sun-text-muted);
   opacity: 0.65;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  line-height: 1.5;
+}
+
+/* Chat 底栏同款圆钮+方块，缩到工具行一行高；仅 hover/focus 显示 */
+.op-pause {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.45em;
+  height: 1.45em;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--sun-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sun-text-secondary);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.op-line.is-cancellable:hover .op-dur,
+.op-line.is-cancellable:focus-within .op-dur {
+  display: none;
+}
+
+.op-line.is-cancellable:hover .op-pause,
+.op-line.is-cancellable:focus-within .op-pause {
+  display: inline-flex;
+}
+
+.op-pause:hover {
+  color: var(--sun-red, #f85149);
+  border-color: var(--sun-red, #f85149);
+  background: rgba(248, 113, 113, 0.08);
 }
 
 .op-plan-link {

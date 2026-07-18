@@ -42,8 +42,9 @@ export function pauseRunningWorkflowNodes(steps: ProcessingStep[] | undefined): 
     const phase = next.phase ?? ''
     if (shouldPauseStepOnStop(next)
         && !next.id.startsWith('node-')
-        && (phase === 'think' || phase === 'agent' || phase === 'generate'
-            || phase.startsWith('think') || phase.startsWith('tool'))) {
+        && (phase === 'think' || phase === 'agent' || phase === 'subagent' || phase === 'generate'
+            || phase.startsWith('think') || phase.startsWith('tool')
+            || next.id.startsWith('subagent-'))) {
       next = toPausedStep(next)
     }
     return next

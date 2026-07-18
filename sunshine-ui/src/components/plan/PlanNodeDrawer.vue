@@ -38,6 +38,10 @@ const pendingHitl = inject<ComputedRef<HitlConfirmationPayload | undefined>>(
   'pendingHitlConfirmation',
   computed(() => undefined),
 )
+const pendingHitlList = inject<ComputedRef<HitlConfirmationPayload[]>>(
+  'pendingHitlConfirmations',
+  computed(() => []),
+)
 
 const node = computed(() => state.node)
 /** 优先从当前 assistant 消息 steps 读取，避免抽屉 step 快照滞后于 SSE HITL metadata */
@@ -82,7 +86,8 @@ const statusLabel = computed(() => {
     if (s === 'pending') return '等待中'
     return '已通过'
   }
-  if (s === 'paused') return '已暂停'
+  // spawn 取消不可恢复；Plan HITL/续跑仍用「已暂停」
+  if (s === 'paused') return isSpawnSubagent.value ? '已取消' : '已暂停'
   if (s === 'terminated') return '已终止'
   if (s === 'awaiting_confirm') return '待确认'
   if (s === 'skipped') return '已跳过'
@@ -110,10 +115,23 @@ const analysisContent = computed(() => {
   return ''
 })
 
+const spawnPrompt = computed(() => step.value?.metadata?.spawnPrompt?.trim() ?? '')
+
+/** ReAct spawn：仅多「传入提示词」；正文/思考与 Workflow agent 同构（contentBlocks + subSteps） */
+const isSpawnSubagent = computed(() => {
+  const s = step.value
+  if (!s) return false
+  return s.phase === 'subagent'
+    || s.id.startsWith('subagent-')
+    || !!s.metadata?.spawnPrompt
+})
+
 const finalOutput = computed(() => {
   if (node.value?.type !== 'answer') return ''
   return step.value?.result?.trim() || ''
 })
+
+const showSpawnPrompt = computed(() => isSpawnSubagent.value && !!spawnPrompt.value)
 
 const body = computed(() => {
   const t = node.value?.type
@@ -179,6 +197,7 @@ const showLoopContinue = computed(() => loopContinueRows.value.length > 0)
 
 const showBodySection = computed(() => {
   if (node.value?.type === 'start') return false
+  // agent（含 spawn）：正文在 contentBlocks 穿插执行过程，勿再铺「详细输出」
   if (node.value?.type === 'agent' && (step.value?.contentBlocks?.length ?? 0) > 0) return false
   return !!bodyDisplay.value
 })
@@ -261,6 +280,14 @@ const subTimelineLive = computed(() => {
 
 const bodyRef = ref<HTMLElement | null>(null)
 const drawerScrollTop = ref(0)
+const spawnPromptExpanded = ref(false)
+
+function toggleSpawnPrompt() {
+  // 拖选复制时不切换展开
+  const sel = window.getSelection()?.toString()
+  if (sel) return
+  spawnPromptExpanded.value = !spawnPromptExpanded.value
+}
 
 function onDrawerBodyScroll() {
   drawerScrollTop.value = bodyRef.value?.scrollTop ?? 0
@@ -277,6 +304,7 @@ watch(
   ([open, nodeId], [, prevId]) => {
     if (!open) return
     if (nodeId !== prevId) {
+      spawnPromptExpanded.value = false
       drawerScrollTop.value = 0
       void nextTick(() => bodyRef.value?.scrollTo(0, 0))
     }
@@ -385,6 +413,20 @@ watch(
       <section v-if="showRecoverySection && step" class="drawer-section drawer-recovery">
         <PlanNodeRecoveryActions :step="step" @decided="applyRecoveryDecision" />
       </section>
+      <section v-if="showSpawnPrompt" class="drawer-section">
+        <h4>传入提示词</h4>
+        <div
+          class="spawn-prompt"
+          :class="{ 'is-expanded': spawnPromptExpanded }"
+          role="button"
+          tabindex="0"
+          :title="spawnPromptExpanded ? '收起' : '展开全文'"
+          :aria-expanded="spawnPromptExpanded"
+          @click="toggleSpawnPrompt"
+          @keydown.enter.prevent="toggleSpawnPrompt"
+          @keydown.space.prevent="toggleSpawnPrompt"
+        >{{ spawnPrompt }}</div>
+      </section>
       <section v-if="showLoopRoundTimeline" class="drawer-section drawer-sub-timeline">
         <h4>执行过程</h4>
         <div
@@ -398,7 +440,7 @@ watch(
             :stream-live="subTimelineLive"
             :live="subTimelineLive"
             :embed-hitl="false"
-            :pending-hitl-confirmation="pendingHitl"
+            :pending-hitl-confirmations="pendingHitlList"
             @hitl-decided="applyHitlDecision"
           />
         </div>
@@ -411,7 +453,7 @@ watch(
           :stream-live="subTimelineLive"
           :live="subTimelineLive"
           :embed-hitl="false"
-          :pending-hitl-confirmation="pendingHitl"
+          :pending-hitl-confirmations="pendingHitlList"
           @hitl-decided="applyHitlDecision"
         />
       </section>
@@ -479,7 +521,7 @@ watch(
         <h4>日志</h4>
         <StaticMarkdown :source="output" compact />
       </section>
-      <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showRecoverySection && !output && !showSkillBlock && !displayAttempts?.length" class="drawer-empty">
+      <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showRecoverySection && !showSpawnPrompt && !output && !showSkillBlock && !displayAttempts?.length" class="drawer-empty">
         {{ displayStatus === 'running' ? '节点执行中…' : displayStatus === 'paused' ? '节点已暂停' : '暂无详情' }}
       </p>
     </div>
@@ -777,6 +819,36 @@ watch(
   font-size: var(--sun-font-sm);
   font-weight: 600;
   color: var(--sun-text-secondary);
+}
+
+/* 对齐 Chat 用户气泡；收起可滚，展开全文无区内滚动条 */
+.spawn-prompt {
+  display: block;
+  width: 100%;
+  margin: 0;
+  max-height: 160px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 20px;
+  background: var(--sun-surface);
+  color: var(--sun-text);
+  font-family: inherit;
+  font-size: var(--sun-font-md);
+  line-height: var(--sun-line-relaxed);
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.spawn-prompt.is-expanded {
+  max-height: none;
+  overflow: visible;
 }
 
 .drawer-section .drawer-meta-line + .drawer-meta-line {

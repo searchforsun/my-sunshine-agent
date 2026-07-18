@@ -58,7 +58,9 @@ public final class ProcessingStepSerde {
         return switch (lifecycle) {
             case "pending" -> nonEmptySummary(s.before(), null, null);
             case "running" -> nonEmptySummary(null, s.active(), null);
-            case "done", "error", "skipped", "terminated" -> nonEmptySummary(null, null, s.after());
+            // paused：用户取消/中断终态，与 done 一样下发 after（如「已取消」）
+            case "done", "error", "skipped", "terminated", "paused" ->
+                    nonEmptySummary(null, null, s.after());
             default -> nonEmptySummary(null, s.active(), null);
         };
     }

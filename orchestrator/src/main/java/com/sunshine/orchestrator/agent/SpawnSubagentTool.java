@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.processing.ContentSegmentCoordinator;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.extern.slf4j.Slf4j;
@@ -33,18 +34,21 @@ public class SpawnSubagentTool {
     private final SpawnSubagentTimelineSupport timelineSupport;
     private final ToolSetResolver toolSetResolver;
     private final PromptOverlayProperties overlayProperties;
+    private final SpawnRunRegistry spawnRunRegistry;
 
     public SpawnSubagentTool(
             @Lazy AgentRuntime agentRuntime,
             AgentExecutionProperties executionProperties,
             SpawnSubagentTimelineSupport timelineSupport,
             ToolSetResolver toolSetResolver,
-            PromptOverlayProperties overlayProperties) {
+            PromptOverlayProperties overlayProperties,
+            SpawnRunRegistry spawnRunRegistry) {
         this.agentRuntime = agentRuntime;
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
         this.toolSetResolver = toolSetResolver;
         this.overlayProperties = overlayProperties;
+        this.spawnRunRegistry = spawnRunRegistry;
     }
 
     @Tool(name = NAME,
@@ -104,7 +108,9 @@ public class SpawnSubagentTool {
                 new SpawnSubagentTimelineBridge(runId, displayLabel, promptText);
 
         timelineSupport.begin(mainBridge, runId, displayLabel, promptText);
-        // wrapper 仅 fold 步骤到主卡；正文靠 Flux 收集（routeHookToken 对空 outgoing 会入队）
+        spawnRunRegistry.register(runId, messageId, promptText, mainBridge, subTimeline);
+        // fold 只在 wrapper：Hook→routeHookToken 已 fold 后仍会把原 token 入队供 Flux；
+        // Flux 侧禁止再 fold，否则 step_delta(reasoning) 累计翻倍（「用户用户要求要求」）。
         StepEventBridge.bindTokenWrapper(subBridgeId, token -> {
             foldStepToken(mainBridge, subTimeline, token);
             return List.of();
@@ -115,10 +121,16 @@ public class SpawnSubagentTool {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         try {
             agentRuntime.run(request)
-                    .doOnNext(token -> ingestToken(mainBridge, subTimeline, answer, token))
+                    .doOnNext(token -> appendAnswerContent(answer, token))
                     .doOnError(failure::set)
                     .blockLast(Duration.ofMillis(timeoutMs));
+            if (spawnRunRegistry.isCancelled(runId)) {
+                return cancelAndReturn(mainBridge, subTimeline, promptText);
+            }
             if (failure.get() != null) {
+                if (isInterrupted(failure.get())) {
+                    return cancelAndReturn(mainBridge, subTimeline, promptText);
+                }
                 return failAndReturn(mainBridge, subTimeline, failure.get());
             }
             String result = answer.toString();
@@ -128,6 +140,9 @@ public class SpawnSubagentTool {
             }
             return result;
         } catch (Exception e) {
+            if (spawnRunRegistry.isCancelled(runId) || isInterrupted(e)) {
+                return cancelAndReturn(mainBridge, subTimeline, promptText);
+            }
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (isTimeout(cause) || isTimeout(e)) {
                 String msg = "子 Agent 执行超时（" + timeoutMs + "ms）";
@@ -135,33 +150,30 @@ public class SpawnSubagentTool {
                 return msg;
             }
             return failAndReturn(mainBridge, subTimeline, cause != null ? cause : e);
+        } finally {
+            spawnRunRegistry.unregister(runId);
         }
     }
 
-    private void ingestToken(
-            String mainBridge,
-            SpawnSubagentTimelineBridge subTimeline,
-            StringBuilder answer,
-            StreamToken token) {
-        if (token == null) {
-            return;
-        }
-        appendAnswerContent(answer, token);
-        foldStepToken(mainBridge, subTimeline, token);
-    }
-
-    /** 仅收集正文 content / result delta；禁止用 reasoning / subSteps 兜底 */
+    /**
+     * 收集正文：与 {@link ContentSegmentCoordinator} 相同单调规则。
+     * AGENT_RESULT 全量复读不得再 append（否则 complete 终稿翻倍，前端 longerText 会吃更长串）。
+     */
     static void appendAnswerContent(StringBuilder answer, StreamToken token) {
         if (answer == null || token == null || token.text() == null || token.text().isEmpty()) {
             return;
         }
-        if (token.isContent()) {
-            answer.append(token.text());
+        if (!token.isContent() && !(token.isStepDelta() && "result".equals(token.channel()))) {
             return;
         }
-        if (token.isStepDelta() && "result".equals(token.channel())) {
-            answer.append(token.text());
+        String incoming = token.text();
+        String baseline = answer.toString();
+        String delta = ContentSegmentCoordinator.resolveDelta(baseline, incoming);
+        if (delta.isEmpty()) {
+            return;
         }
+        answer.setLength(0);
+        answer.append(ContentSegmentCoordinator.advanceBaseline(baseline, incoming, delta));
     }
 
     private String resolveSubagentOverlay() {
@@ -174,9 +186,30 @@ public class SpawnSubagentTool {
 
     private void foldStepToken(
             String mainBridge, SpawnSubagentTimelineBridge subTimeline, StreamToken token) {
-        if (token != null && (token.isStep() || token.isStepDelta())) {
+        if (token == null) {
+            return;
+        }
+        // step / step_delta → subSteps；content → 父卡 result 流式（见 Bridge.wrap）
+        if (token.isStep() || token.isStepDelta()
+                || token.isContent() || token.isContentStart() || token.isContentEnd()) {
             timelineSupport.fold(mainBridge, subTimeline, token);
         }
+    }
+
+    private String cancelAndReturn(
+            String mainBridge, SpawnSubagentTimelineBridge subTimeline, String prompt) {
+        String result = formatCancelResult(prompt);
+        log.info("[SpawnSubagentTool] 子任务已取消，回主 Agent 接手");
+        timelineSupport.cancel(mainBridge, subTimeline, result);
+        return result;
+    }
+
+    private String formatCancelResult(String prompt) {
+        AgentExecutionProperties.React.Subagent sub = subagentConfig();
+        String tpl = sub != null && StringUtils.hasText(sub.getCancelResult())
+                ? sub.getCancelResult().strip()
+                : "用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：\n{prompt}";
+        return tpl.replace("{prompt}", prompt != null ? prompt : "");
     }
 
     private String failAndReturn(
@@ -204,6 +237,25 @@ public class SpawnSubagentTool {
         String name = t.getClass().getName();
         return name.contains("Timeout")
                 || (t.getMessage() != null && t.getMessage().contains("Did not observe"));
+    }
+
+    private static boolean isInterrupted(Throwable t) {
+        Throwable cur = t;
+        while (cur != null) {
+            if (cur instanceof InterruptedException) {
+                return true;
+            }
+            String name = cur.getClass().getSimpleName();
+            if (name.contains("Interrupt")) {
+                return true;
+            }
+            String msg = cur.getMessage();
+            if (msg != null && msg.toLowerCase().contains("interrupt")) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
     }
 
     private static String errorJson(String message) {

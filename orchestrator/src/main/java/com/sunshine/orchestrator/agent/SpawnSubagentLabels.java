@@ -51,6 +51,10 @@ public class SpawnSubagentLabels {
         return text(step().getAfterFail(), "子任务失败");
     }
 
+    public static String afterCancel() {
+        return text(step().getAfterCancel(), "子任务已取消");
+    }
+
     private static AgentPromptProperties.StepTimeline step() {
         if (instance == null || instance.agentPromptProperties == null) {
             return new AgentPromptProperties.StepTimeline();

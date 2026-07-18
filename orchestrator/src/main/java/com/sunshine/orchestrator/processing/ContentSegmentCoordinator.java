@@ -68,7 +68,7 @@ public final class ContentSegmentCoordinator {
         return incoming;
     }
 
-    static String advanceBaseline(String baseline, String incoming, String delta) {
+    public static String advanceBaseline(String baseline, String incoming, String delta) {
         if (baseline.isEmpty()) {
             return incoming;
         }

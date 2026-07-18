@@ -1,9 +1,12 @@
-# 可取消沙箱工具（exec / grep / glob）单工具暂停
+# 可取消沙箱工具（exec / grep / glob）单工具取消
 
-> **状态**：设计待审阅  
+> **状态**：✅ 已落地（Live：`verify_sandbox_tool_cancel_live.py`）  
+> **计划**：[2026-07-18-sandbox-tool-cancel.md](../plans/2026-07-18-sandbox-tool-cancel.md)  
+
 > **日期**：2026-07-18  
 > **相关**：子 Agent 单独取消（`SpawnRunRegistry`）· `SandboxAgentTools` · `OperationCard` · Chat 底栏停止图标  
-> **示意**：`docs/superpowers/mockups/2026-07-18-sandbox-tool-cancel-hover.html`
+> **示意**：`docs/superpowers/mockups/2026-07-18-sandbox-tool-cancel-hover.html`  
+> **索引**：[`docs/sandbox/README.md`](../../sandbox/README.md)
 
 ---
 
@@ -13,9 +16,10 @@
 
 | 目标 | 说明 |
 |------|------|
-| 单工具取消 | Hover 出暂停钮 → 杀掉该次沙箱调用；**主 Agent 继续** |
+| 单工具取消 | Hover 出取消钮 → 杀掉该次沙箱调用；**主 Agent 继续** |
 | 换方案重试 | 取消后由 **LLM** 换命令/换工具；同族最多再执行 **3** 次 |
-| UI 一致 | 图标与 Chat 底栏「停止生成」同形（圆钮 + 圆角方块），缩到工具行一行高 |
+| UI 一致 | 图标与 Chat 底栏「停止生成」同形（**圆形**外框 + 圆角方块），缩到工具行一行高 |
+| 时间线 | 主行 `summary.after` = **已取消**（不可恢复，勿用「已暂停」）；展开可看原 command/pattern |
 
 **不做**：整轮 `bumpStreamEpoch`；引擎内自动换参；read/write/edit 取消；对模型输出截断二次加工。
 
@@ -37,10 +41,11 @@
 
 | 项 | 约定 |
 |----|------|
-| 可取消工具 | `sandbox__exec`、`sandbox__grep`、`sandbox__glob`（Nacos 名单可配） |
-| 按钮语义 | 展示「暂停」；行为 = **真取消**该次调用（杀进程） |
+| 可取消工具 | `sandbox__exec`、`sandbox__grep`、`sandbox__glob`（Nacos `agent.sandbox.cancellable-tools`） |
+| 按钮语义 | 展示「暂停」；行为 = **真取消**（杀进程，**不可恢复**） |
+| 终态文案 | `cancel-after: 已取消`；`cancel-result` 引导换方案 |
 | 重试主体 | 主 Agent（LLM）；引擎不自动换参 |
-| 预算 | 本轮消息内，**首次用户取消**可取消工具后激活：同族后续再调用最多 **3** 次；第 4 次硬拒 |
+| 预算 | 本轮消息内，**首次用户取消**后激活：同族后续再调用最多 **3** 次；第 4 次硬拒 |
 | 预算计数 | 每次「进入 invoke 前」+1；被取消的那次**不占**这 3 次 |
 | 整轮停止 | Composer「停止生成」语义不变 |
 
@@ -51,87 +56,44 @@
 ```
 Main ReAct
   └─ tool_call: sandbox__exec|grep|glob
-        ├─ CancellableToolRunRegistry.register(toolUseId, …)
-        ├─ SandboxClient.invoke(sessionId, rpc, invocationId=toolUseId)
+        ├─ PreActing / execute 入口 CancellableToolRunRegistry.register
+        ├─ SandboxClient.invoke(..., invocationId=toolUseId)
         │     └─ sandbox-service DockerCli Process（可 destroyForcibly）
-        └─ UI hover → POST .../tools/{toolUseId}/cancel
-              → Registry.cancel → kill + unblock
-              → timeline paused + cancel-result → Main 换方案（≤3）
+        └─ UI hover → POST .../tools/{stepId|toolUseId}/cancel
+              → Registry.cancel（pending 竞态可提前记）→ kill
+              → timeline paused + after=已取消 + detail=command
+              → cancel-result → Main 换方案（≤3）
 ```
 
 **原则**
 
-- 按 `toolUseId` 中断；**禁止** `GenerationRegistry.cancel` / `bumpStreamEpoch`
-- `toolUseId` 与 `ProcessingStepHook` / `StepEventBridge.bindToolUseStep` 一致
-- SSE `metadata.toolUseId` 供前端（若仅有 step.id，后端支持映射）
+- 按 `toolUseId` / 时间线 `tool-*` stepId 中断；**禁止** `GenerationRegistry.cancel` / `bumpStreamEpoch`
+- PreActing 出卡即 register；cancel 早于 execute 时走 `pendingCancel`
+- SSE：`lifecycle=paused` 时 `ProcessingStepSerde` **必须下发 `summary.after`**（勿落入 default→仅 active）
 
 ---
 
-## 5. 后端
+## 5. 后端（落地要点）
 
-### 5.1 `CancellableToolRunRegistry`
-
-Spring 单例：`toolUseId → { messageId, toolName, sessionId, invocationId, cancelled }`  
-`register` / `unregister` / `cancel(toolUseId)` / `isCancelled`。
-
-### 5.2 sandbox-service
-
-- `DockerCli.runCapture`：进行中 `Process` 按 `invocationId` 登记
-- `POST /sessions/{sessionId}/invocations/{invocationId}/cancel` → `destroyForcibly`
-- Orchestrator `SandboxClient.invoke` 传递 `invocationId`（建议 = `toolUseId`）
-
-### 5.3 `SandboxAgentTools`
-
-1. 若预算耗尽 → 直接返回 Nacos `budget-exhausted`（不 RPC）
-2. register → invoke；若 cancelled / interrupt → timeline cancel + 返回 `cancel-result`
-3. `finally` unregister
-
-### 5.4 预算（message 级）
-
-首次用户 cancel 成功后激活；同族（exec/grep/glob）后续发起调用计数；上限 3。
-
-### 5.5 HTTP
-
-`POST /api/generations/{generationId}/tools/{toolUseId}/cancel`  
-校验 generation 归属与 messageId；BFF 透传。
-
-### 5.6 时间线
-
-工具步 `lifecycle=paused`，`summary.after` = Nacos；**必须**下发终态 step SSE。
-
-### 5.7 Nacos（SSOT，禁止硬编码业务句）
-
-建议键（落 `docs/nacos/sunshine-orchestrator.yaml`）：
-
-| 键 | 用途 |
-|----|------|
-| `agent.sandbox.cancellable-tools` | 名单 |
-| `agent.sandbox.cancel-result` | 含原参数 + `{remaining}` |
-| `agent.sandbox.budget-exhausted` | 超限拒调 |
-| `agent.timeline.sandbox.*-after-cancel`（或统一 after-cancel） | 父行 after |
-| `agent.prompt.mode-overlays.react` | 取消后须换方案，勿无意义重复同命令 |
+| 组件 | 职责 |
+|------|------|
+| `CancellableToolRunRegistry` | in-flight + pending cancel + 同族预算 |
+| sandbox-service | `POST .../invocations/{id}/cancel`；header `x-sandbox-invocation-id` |
+| `SandboxAgentTools` | register / bindSession / cancelResult；展开 detail=command\|pattern |
+| `GenerationController` | `POST /generations/{id}/tools/{toolRef}/cancel`；立刻 pause SSE |
+| `ProcessingStepSerde` | `paused` → `currentPhaseSummary` 下发 **after** |
+| Nacos | `cancellable-tools` / `cancel-after` / `cancel-result` / `budget-exhausted` / react overlay |
 
 ---
 
 ## 6. 前端
 
-### 6.1 `OperationCard`
-
-- 条件：`isCancellableSandboxTool(step) && live && running`
-- 默认：`.op-dur`；`:hover` / `:focus-within`：藏耗时，显示暂停钮
-- 图标：与 `ChatView` composer stop **同一 SVG**  
-  `<rect x="3" y="3" width="10" height="10" rx="1.5"/>`，圆钮边框；高度约一行（非 34px 底栏尺寸）
-- `title` / `aria-label`：`暂停`
-- 点击 → `cancelCancellableTool(toolUseId)`（非整轮 `stopGeneration`）
-
-### 6.2 接线
-
-- `chatSessions.cancelCancellableTool` + ChatView `provide` / `inject`
-- `toolUseId` 来自 step metadata（后端补齐）
-
-### 6.3 状态展示
-
-取消后 `paused` → 「已取消」类文案（可映射现有 paused 展示）。
+| 项 | 约定 |
+|----|------|
+| `OperationCard` | `live && running && isCancellableSandboxTool` → hover 圆钮+方块 |
+| 主行 | `paused` → `resolveStepHeaderText` 显示 **已取消**（读 `summary.after`） |
+| 展开 | exec：`$ {command}`（command 来自 detail / 原 active 快照） |
+| API | `cancelCancellableTool(stepId)`；path 可为 `tool-sandbox__exec@…` |
 
 ---
 
@@ -139,13 +101,13 @@ Spring 单例：`toolUseId → { messageId, toolName, sessionId, invocationId, c
 
 | 项 | 期望 |
 |----|------|
-| UI | running + hover 出 Chat 同款方块暂停钮；非名单/非 running 无钮 |
-| Cancel | 进程停；工具步 paused；主消息 `completed` |
-| 接手 | 正文体现主 Agent 换方案继续 |
-| 预算 | 取消后同族第 4 次调用被拒 |
+| UI | running + hover 出圆钮；取消后主行「已取消」、可展开命令 |
+| Cancel | 进程停；工具步 `paused`；主消息 `completed` |
+| 接手 | 正文体现主 Agent 换方案 |
+| 预算 | 取消后同族第 4 次硬拒 |
 | 回归 | Composer 整轮停止仍可用 |
 
-Live：扩展现有 sandbox verify 或新增脚本（中途 cancel API）。
+**Live**：`python3 scripts/verify_sandbox_tool_cancel_live.py`
 
 ---
 

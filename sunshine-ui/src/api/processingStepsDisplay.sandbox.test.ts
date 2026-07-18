@@ -3,6 +3,7 @@ import type { ProcessingStep } from './processingSteps'
 import {
   extractSandboxExecCommand,
   extractSandboxSearchRoot,
+  hasExpandableContent,
   inferSandboxSearchRoot,
   isSandboxExecStep,
   isSandboxToolStep,
@@ -30,6 +31,33 @@ describe('sandbox tool timeline display', () => {
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__read@123' }))).toBe(true)
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__exec@9' }))).toBe(true)
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sdk__finance__list@1' }))).toBe(false)
+  })
+
+  it('cancelled exec: header 已取消 + expand shows command', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@9',
+      label: '执行命令',
+      lifecycle: 'paused',
+      summary: { before: '准备执行命令', active: '已取消', after: '已取消' },
+      detail: 'sleep 120',
+      metadata: {},
+    })
+    expect(resolveStepHeaderText(step)).toBe('已取消')
+    expect(extractSandboxExecCommand(step)).toBe('sleep 120')
+    expect(hasExpandableContent(step)).toBe(true)
+    expect(resolveStepExpandInner(step)).toBe('')
+  })
+
+  it('cancelled exec: legacy SSE only active still shows 已取消', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@10',
+      label: '调用工具 执行命令',
+      lifecycle: 'paused',
+      summary: { active: '已取消' },
+      detail: 'sleep 120',
+      metadata: {},
+    })
+    expect(resolveStepHeaderText(step)).toBe('已取消')
   })
 
   it('header shows backend summary as-is; focus uses metadata.sandboxPath', () => {

@@ -99,6 +99,7 @@ public class AgentPromptProperties {
             subagent.setActive("正在执行：{label}");
             subagent.setAfter("子任务已完成");
             subagent.setAfterFail("子任务失败");
+            subagent.setAfterCancel("子任务已取消");
             map.put("subagent", subagent);
             var generate = new StepTimeline();
             generate.setLabel("生成回答");
@@ -206,6 +207,8 @@ public class AgentPromptProperties {
         private String allDone;
         /** spawn_subagent 失败 after */
         private String afterFail;
+        /** spawn_subagent 用户取消 after */
+        private String afterCancel;
     }
 
     @Getter

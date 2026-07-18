@@ -1,6 +1,10 @@
 package com.sunshine.orchestrator.generation;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.agent.SpawnRunRegistry;
+import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
+import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
@@ -9,6 +13,7 @@ import com.sunshine.orchestrator.conversation.MessageStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,6 +37,9 @@ public class GenerationController {
     private final GenerationFlushScheduler flushScheduler;
     private final GenerationProperties generationProperties;
     private final ConversationService conversationService;
+    private final SpawnRunRegistry spawnRunRegistry;
+    private final CancellableToolRunRegistry cancellableToolRunRegistry;
+    private final AgentSandboxProperties sandboxProperties;
 
     @GetMapping("/generations/{id}")
     public Mono<GenerationStatusResponse> getStatus(
@@ -64,6 +72,91 @@ public class GenerationController {
                 });
             }
             return Map.of("status", GenerationStatus.INTERRUPTED.name());
+        });
+    }
+
+    /**
+     * 单独取消一次 spawn_subagent（按 runId interrupt），不终止整轮 generation。
+     */
+    @PostMapping("/generations/{id}/subagents/{runId}/cancel")
+    public Mono<Map<String, String>> cancelSubagent(
+            @PathVariable("id") String id,
+            @PathVariable("runId") String runId,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> {
+            streamService.assertOwned(id, userId, tenantId);
+            GenerationMeta meta = streamService.getMeta(id)
+                    .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
+            if (!StringUtils.hasText(runId)) {
+                throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
+            }
+            String normalizedRunId = runId.strip();
+            if (normalizedRunId.startsWith("subagent-")) {
+                normalizedRunId = normalizedRunId.substring("subagent-".length());
+            }
+            SpawnRunRegistry.Handle handle = spawnRunRegistry.get(normalizedRunId);
+            if (handle == null) {
+                return Map.of("status", "NOT_FOUND", "runId", normalizedRunId);
+            }
+            if (StringUtils.hasText(handle.messageId())
+                    && !handle.messageId().equals(meta.messageId())) {
+                throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
+            }
+            boolean ok = spawnRunRegistry.cancel(normalizedRunId);
+            return Map.of(
+                    "status", ok ? "CANCELLED" : "NOT_FOUND",
+                    "runId", normalizedRunId);
+        });
+    }
+
+    /**
+     * 单独取消一次可取消沙箱工具（按 toolUseId 或时间线 stepId）。
+     * path 可为 AgentScope toolUseId，或以 tool- 开头的 step.id。
+     */
+    @PostMapping("/generations/{id}/tools/{toolRef}/cancel")
+    public Mono<Map<String, String>> cancelTool(
+            @PathVariable("id") String id,
+            @PathVariable("toolRef") String toolRef,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> {
+            streamService.assertOwned(id, userId, tenantId);
+            GenerationMeta meta = streamService.getMeta(id)
+                    .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
+            if (!StringUtils.hasText(toolRef)) {
+                throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
+            }
+            String ref = toolRef.strip();
+            boolean ok;
+            String resolvedId = ref;
+            if (ref.startsWith("tool-")) {
+                ok = cancellableToolRunRegistry.cancelByStepId(ref);
+            } else {
+                CancellableToolRunRegistry.Handle handle = cancellableToolRunRegistry.get(ref);
+                if (handle != null
+                        && StringUtils.hasText(handle.messageId())
+                        && !handle.messageId().equals(meta.messageId())) {
+                    throw new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND);
+                }
+                ok = cancellableToolRunRegistry.cancel(ref);
+            }
+            if (ok) {
+                String after = StringUtils.hasText(sandboxProperties.getCancelAfter())
+                        ? sandboxProperties.getCancelAfter().strip() : "已取消";
+                String bridge = meta.messageId();
+                if (StringUtils.hasText(bridge)) {
+                    if (ref.startsWith("tool-")) {
+                        StepEventBridge.emit(bridge, session -> session.pause(ref, after));
+                    } else {
+                        StepEventBridge.emit(bridge, session ->
+                                session.pauseToolStepForToolUse(ref, after));
+                    }
+                }
+            }
+            return Map.of(
+                    "status", ok ? "CANCELLED" : "NOT_FOUND",
+                    "toolRef", resolvedId);
         });
     }
 

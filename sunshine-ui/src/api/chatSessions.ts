@@ -222,6 +222,62 @@ export function useChatSessions(
     s.generationId = undefined
   }
 
+  /** 单独取消一次 spawn_subagent（非整轮停止） */
+  async function cancelSpawnSubagent(runId: string): Promise<void> {
+    const s = activeSession.value
+    if (!s || !runId?.trim()) return
+    const stored = loadActiveGeneration()
+    const generationId = s.generationId
+      ?? (stored?.conversationId === s.id ? stored.generationId : undefined)
+    if (!generationId) return
+    const id = runId.trim().startsWith('subagent-')
+      ? runId.trim().slice('subagent-'.length)
+      : runId.trim()
+    const stepId = `subagent-${id}`
+    // 乐观更新：cancel API 会立刻 SSE paused，此处避免晚到前仍显示运行中
+    for (const msg of s.messages) {
+      if (!msg.steps?.length) continue
+      const idx = msg.steps.findIndex(st => st.id === stepId)
+      if (idx < 0) continue
+      const prev = msg.steps[idx]
+      msg.steps[idx] = {
+        ...prev,
+        lifecycle: 'paused',
+        summary: {
+          before: prev.summary?.before,
+          active: undefined,
+          after: prev.summary?.after?.trim() || '子任务已取消',
+        },
+        endedAt: prev.endedAt ?? Date.now(),
+      }
+      break
+    }
+    await fetch(
+      `${API_BASE()}/api/generations/${generationId}/subagents/${encodeURIComponent(id)}/cancel`,
+      {
+        method: 'POST',
+        headers: apiHeaders(),
+      },
+    )
+  }
+
+  /** 单独取消一次可取消沙箱工具（step.id = tool-sandbox__*@…） */
+  async function cancelCancellableTool(stepId: string): Promise<void> {
+    const s = activeSession.value
+    if (!s || !stepId?.trim()) return
+    const stored = loadActiveGeneration()
+    const generationId = s.generationId
+      ?? (stored?.conversationId === s.id ? stored.generationId : undefined)
+    if (!generationId) return
+    await fetch(
+      `${API_BASE()}/api/generations/${generationId}/tools/${encodeURIComponent(stepId.trim())}/cancel`,
+      {
+        method: 'POST',
+        headers: apiHeaders(),
+      },
+    )
+  }
+
   async function resume(conversationId: string, resumeMessageId: string): Promise<void> {
     ensureActive(conversationId)
     const s = activeSession.value ?? getOrCreateSession(conversationId)
@@ -479,6 +535,8 @@ export function useChatSessions(
   return {
     messages, streamRevision, loading, activeContainer,
     switchTo, ensureActive, send, resume, reconnectStream, stop, clearSession,
+    cancelSpawnSubagent,
+    cancelCancellableTool,
     getMessages, setMessages, destroySession, migrateSession,
     mountContainer, unmountContainer, getOrCreate: getOrCreateSession, applyHitlDecision, applyRecoveryDecision,
   }

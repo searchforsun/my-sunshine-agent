@@ -46,7 +46,8 @@
 | `2026-06-24-peer-collab-routing-design.md` | 阶段四 §4.7.3 · 第五顶层模式 `PEER_COLLAB` **✅** |
 | `2026-07-07-expert-consultation-design.md` | 阶段四 **§4.7.3 演进 ✅** · Expert Catalog + `$` + Hub 反应式轮次 + Synthesizer + `/experts` |
 | `2026-06-24-react-taskboard-design.md` | 阶段四 §4.7.5 · ReAct TaskBoard 软规划 · **D11** |
-| `2026-07-18-react-spawn-subagent-design.md` | 阶段四 §4.7.6 · ReAct `spawn_subagent` 隔离子 Agent · **✅** |
+| `2026-07-18-react-spawn-subagent-design.md` | 阶段四 §4.7.6 · ReAct `spawn_subagent` 隔离子 Agent（含单独取消）· **✅** |
+| `2026-07-18-sandbox-tool-cancel-design.md` | 阶段四 §4.5.7 · 沙箱 exec/grep/glob 单工具取消 · **✅** · [sandbox 索引](../../sandbox/README.md) |
 | `2026-06-25-phase4-agent-capabilities-boundaries.md` | 阶段四 §4.7 · P0 接入边界（MsgHub / Parallel / TaskBoard） |
 | `2026-06-25-workflow-studio-design.md` | 阶段四 **§4.13** · Workflow Studio · **DB 唯一 SSOT**（废弃 Nacos workflow）· Chat `#` · MySQL init 种子 |
 | `2026-06-25-chat-execution-mode-selector-design.md` | Chat 底栏执行**路径**选择器 · `executionPreference` · P0 ✅；workflow catalog **不做**（移交 4.13 `#`） |

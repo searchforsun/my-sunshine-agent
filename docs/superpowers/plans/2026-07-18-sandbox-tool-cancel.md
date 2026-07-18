@@ -1,8 +1,11 @@
-# Sandbox 工具单次取消（暂停）Implementation Plan
+# Sandbox 工具单次取消 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态**：✅ 已完成（2026-07-18）· Live `verify_sandbox_tool_cancel_live.py`  
+> **Spec**：[2026-07-18-sandbox-tool-cancel-design.md](../specs/2026-07-18-sandbox-tool-cancel-design.md)
 
-**Goal:** 对 `sandbox__exec` / `grep` / `glob` 提供按 `toolUseId` 真取消（杀 docker 进程）；工具行 hover 显示 Chat 同款暂停图标；取消后 LLM 换方案，同族最多再执行 3 次。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+
+**Goal:** 对 `sandbox__exec` / `grep` / `glob` 提供按 `toolUseId` 真取消（杀 docker 进程）；工具行 hover 显示 Chat 同款圆形取消图标；取消后 LLM 换方案，同族最多再执行 3 次；主行 after=**已取消**。
 
 **Architecture:** 对齐 `SpawnRunRegistry`：`CancellableToolRunRegistry` 登记 in-flight；sandbox-service 按 `invocationId` 持有 `Process` 并可 `destroyForcibly`；取消 **不** bump stream epoch；Tool result / Nacos 引导主 Agent 接手；前端 `OperationCard` hover 切换 duration ↔ 暂停钮。
 
@@ -42,11 +45,11 @@
 - Modify: `sandbox-service/src/main/java/com/sunshine/sandbox/api/SandboxSessionController.java`
 - Test: `sandbox-service/src/test/.../DockerCliCancelTest.java`（或现有 DockerCli 测）
 
-- [ ] **Step 1: DockerCli 支持 invocationId**
+- [x] **Step 1: DockerCli 支持 invocationId**
 
 `runCapture` / `exec` 增加可选 `invocationId`：`start` 后 `activeProcesses.put(id, p)`；结束/超时 `remove`；新增 `cancel(String invocationId)` → `destroyForcibly`。
 
-- [ ] **Step 2: Controller**
+- [x] **Step 2: Controller**
 
 ```
 POST /api/sandbox/sessions/{id}/invocations/{invocationId}/cancel
@@ -55,9 +58,9 @@ POST /api/sandbox/sessions/{id}/invocations/{invocationId}/cancel
 
 工具 invoke 请求体或 header 带 `invocationId`（与 orchestrator 约定：body 字段 `_invocationId` 或 query；**优先** request header `x-sandbox-invocation-id`，避免污染工具参数）。
 
-- [ ] **Step 3: 单测** — register Process 后 cancel 使 wait 结束
+- [x] **Step 3: 单测** — register Process 后 cancel 使 wait 结束
 
-- [ ] **Step 4: Commit** `feat(sandbox): kill in-flight docker exec by invocationId`
+- [x] **Step 4: Commit** `feat(sandbox): kill in-flight docker exec by invocationId`
 
 ---
 
@@ -69,7 +72,7 @@ POST /api/sandbox/sessions/{id}/invocations/{invocationId}/cancel
 - Test: `orchestrator/.../sandbox/CancellableToolRunRegistryTest.java`
 - Modify: `docs/nacos/sunshine-orchestrator.yaml` + `AgentSandboxProperties`（或现有 sandbox props）
 
-- [ ] **Step 1: Registry API**
+- [x] **Step 1: Registry API**
 
 ```java
 register(toolUseId, messageId, toolName, sessionId, invocationId)
@@ -81,9 +84,9 @@ remaining(messageId)
 
 默认名单：`sandbox__exec`,`sandbox__grep`,`sandbox__glob`；预算上限 3（Nacos）。
 
-- [ ] **Step 2: 单测** cancel 标记；预算 3 次后拒绝；cancel 本身不占预算
+- [x] **Step 2: 单测** cancel 标记；预算 3 次后拒绝；cancel 本身不占预算
 
-- [ ] **Step 3: Commit** `feat(orch): CancellableToolRunRegistry and cancel budget`
+- [x] **Step 3: Commit** `feat(orch): CancellableToolRunRegistry and cancel budget`
 
 ---
 
@@ -95,20 +98,20 @@ remaining(messageId)
 - Modify: timeline complete/pause 路径（`ProcessingTimelineSession` / Hook）
 - Test: `SandboxAgentToolsCancelTest.java`
 
-- [ ] **Step 1: Client**
+- [x] **Step 1: Client**
 
 `invoke(sessionId, toolName, body, invocationId)` 设 header `x-sandbox-invocation-id`  
 `cancelInvocation(sessionId, invocationId)`
 
-- [ ] **Step 2: Tool.execute**
+- [x] **Step 2: Tool.execute**
 
 可取消工具：预算检查 → register → invoke → 若 cancelled 或异常含 interrupt/cancel：  
 emit 工具步 `lifecycle=paused` + after 文案 → return cancel-result（含参数摘要 + remaining）  
 `finally` unregister
 
-- [ ] **Step 3: 单测** mock client；cancel 后返回文案且不 fail 整轮
+- [x] **Step 3: 单测** mock client；cancel 后返回文案且不 fail 整轮
 
-- [ ] **Step 4: Commit** `feat(orch): wire sandbox tool cancel into SandboxAgentTools`
+- [x] **Step 4: Commit** `feat(orch): wire sandbox tool cancel into SandboxAgentTools`
 
 ---
 
@@ -120,11 +123,11 @@ emit 工具步 `lifecycle=paused` + after 文案 → return cancel-result（含�
 - Modify: `ProcessingStepHook` beginToolStep metadata
 - Modify: `StepMetadata` + frontend parse
 
-- [ ] **Step 1:** `POST /generations/{id}/tools/{toolUseId}/cancel`（鉴权同 spawn cancel）
+- [x] **Step 1:** `POST /generations/{id}/tools/{toolUseId}/cancel`（鉴权同 spawn cancel）
 
-- [ ] **Step 2:** begin 时 `StepMetadata.toolUseId`；SSE 下发
+- [x] **Step 2:** begin 时 `StepMetadata.toolUseId`；SSE 下发
 
-- [ ] **Step 3:** Commit `feat: API cancel tool by toolUseId + metadata`
+- [x] **Step 3:** Commit `feat: API cancel tool by toolUseId + metadata`
 
 ---
 
@@ -138,19 +141,20 @@ emit 工具步 `lifecycle=paused` + after 文案 → return cancel-result（含�
 agent.sandbox:
   cancellable-tools: [sandbox__exec, sandbox__grep, sandbox__glob]
   cancel-max-followups: 3
+  cancel-after: 已取消
   cancel-result: |
-    用户已暂停该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。
+    用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。
   budget-exhausted: |
     本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。
 ```
 
 react overlay 增加取消后换方案条款。
 
-- [ ] sync_nacos + Commit `feat: Nacos sandbox cancel copy and budget`
+- [x] sync_nacos + Commit `feat: Nacos sandbox cancel copy and budget`
 
 ---
 
-### Task 6: 前端 OperationCard hover 暂停
+### Task 6: 前端 OperationCard hover 取消
 
 **Files:**
 - Modify: `sunshine-ui/src/api/processingStepsDisplay.ts` — `isCancellableSandboxTool`
@@ -159,9 +163,9 @@ react overlay 增加取消后换方案条款。
 - Modify: `sunshine-ui/src/views/ChatView.vue` — provide
 - Modify: parse metadata.toolUseId
 
-- [ ] Hover：`live && running && cancellable` → 藏 duration，显示圆钮+方块 SVG（同 ChatView），title/aria=`暂停`
-- [ ] 点击调 API；paused 展示「已取消」
-- [ ] Commit `feat(ui): hover pause to cancel sandbox tool row`
+- [x] Hover：`live && running && cancellable` → 藏 duration，显示圆钮+方块 SVG（同 ChatView），title/aria=`暂停`
+- [x] 点击调 API；paused 主行「已取消」；展开可见 command
+- [x] Commit `feat(ui): hover pause to cancel sandbox tool row`
 
 ---
 
@@ -170,9 +174,9 @@ react overlay 增加取消后换方案条款。
 **Files:**
 - Create: `scripts/verify_sandbox_tool_cancel_live.py`
 
-- [ ] 诱导长 `sandbox__exec`（如 `sleep 60`）→ 捕获 generationId + toolUseId → cancel → 主消息 completed、工具步 paused
-- [ ] 重启 orchestrator + sandbox-service 后跑脚本
-- [ ] Commit `test: live verify sandbox tool cancel`
+- [x] 诱导长 `sandbox__exec`（如 `sleep 60`）→ 捕获 generationId + toolUseId → cancel → 主消息 completed、工具步 paused
+- [x] 重启 orchestrator + sandbox-service 后跑脚本
+- [x] Commit `test: live verify sandbox tool cancel`
 
 ---
 

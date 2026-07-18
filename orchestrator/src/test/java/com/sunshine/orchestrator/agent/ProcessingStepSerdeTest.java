@@ -14,6 +14,32 @@ import static org.mockito.Mockito.mock;
 class ProcessingStepSerdeTest {
 
     @Test
+    void currentPhaseSummary_paused_emitsAfter() {
+        ProcessingStep step = new ProcessingStep(
+                "tool-sandbox__exec@1",
+                "tool",
+                "paused",
+                new StepSummary("准备执行命令", "已取消", "已取消"),
+                1L,
+                2L,
+                1000L,
+                "sleep 120",
+                null,
+                null,
+                null,
+                2L,
+                "执行命令",
+                null,
+                null,
+                null);
+        StepSummary phase = ProcessingStepSerde.currentPhaseSummary(step);
+        assertThat(phase).isNotNull();
+        assertThat(phase.after()).isEqualTo("已取消");
+        assertThat(phase.active()).isNull();
+        assertThat(phase.before()).isNull();
+    }
+
+    @Test
     void metadataToMap_includesSpawnPrompt() {
         StepMetadata metadata = StepMetadata.withSpawnPrompt(null, "检索差旅制度并摘要");
         Map<String, Object> map = ProcessingStepSerde.metadataToMap(metadata);

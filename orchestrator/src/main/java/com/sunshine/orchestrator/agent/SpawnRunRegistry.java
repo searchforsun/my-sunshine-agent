@@ -1,0 +1,194 @@
+package com.sunshine.orchestrator.agent;
+
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import io.agentscope.core.ReActAgent;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * 运行中 spawn_subagent 句柄 — 按 runId 单独 interrupt，禁止 bump 整轮 stream epoch。
+ */
+@Slf4j
+@Component
+public class SpawnRunRegistry {
+
+    private final ConcurrentHashMap<String, Handle> byRunId = new ConcurrentHashMap<>();
+    private final SpawnSubagentTimelineSupport timelineSupport;
+    private final AgentExecutionProperties executionProperties;
+
+    public SpawnRunRegistry(
+            SpawnSubagentTimelineSupport timelineSupport,
+            AgentExecutionProperties executionProperties) {
+        this.timelineSupport = timelineSupport;
+        this.executionProperties = executionProperties;
+    }
+
+    /** 单测无 Spring 时用 */
+    public SpawnRunRegistry() {
+        this(null, null);
+    }
+
+    public void register(
+            String runId,
+            String messageId,
+            String prompt,
+            String mainBridgeId,
+            SpawnSubagentTimelineBridge timelineBridge) {
+        if (!StringUtils.hasText(runId)) {
+            return;
+        }
+        String id = runId.strip();
+        Handle handle = new Handle(
+                id,
+                messageId != null ? messageId.strip() : null,
+                prompt,
+                mainBridgeId,
+                timelineBridge);
+        byRunId.put(id, handle);
+        log.debug("[SpawnRunRegistry] register runId={}", id);
+    }
+
+    /** ReActAgentRuntime 创建 SUB agent 后绑定，供 cancel → interrupt */
+    public void bindAgent(String runId, ReActAgent agent) {
+        if (!StringUtils.hasText(runId) || agent == null) {
+            return;
+        }
+        Handle handle = byRunId.get(runId.strip());
+        if (handle == null) {
+            return;
+        }
+        handle.agentRef.set(agent);
+        if (handle.cancelled.get()) {
+            safeInterrupt(agent, runId.strip());
+        }
+    }
+
+    public boolean isCancelled(String runId) {
+        if (!StringUtils.hasText(runId)) {
+            return false;
+        }
+        Handle handle = byRunId.get(runId.strip());
+        return handle != null && handle.cancelled.get();
+    }
+
+    public Handle get(String runId) {
+        if (!StringUtils.hasText(runId)) {
+            return null;
+        }
+        return byRunId.get(runId.strip());
+    }
+
+    /**
+     * 取消指定子任务。成功返回 true；未知 runId 返回 false。
+     * 立即下发父卡 paused SSE，不等待工具返回；不调用 GenerationRegistry.cancel / bumpStreamEpoch。
+     */
+    public boolean cancel(String runId) {
+        if (!StringUtils.hasText(runId)) {
+            return false;
+        }
+        String id = runId.strip();
+        Handle handle = byRunId.get(id);
+        if (handle == null) {
+            log.info("[SpawnRunRegistry] cancel miss runId={}", runId);
+            return false;
+        }
+        if (!handle.cancelled.compareAndSet(false, true)) {
+            return true;
+        }
+        SpawnSubagentTimelineBridge bridge = handle.timelineBridge;
+        if (bridge != null) {
+            bridge.markUserCancelled();
+        }
+        if (timelineSupport != null && bridge != null && StringUtils.hasText(handle.mainBridgeId)) {
+            try {
+                timelineSupport.cancel(handle.mainBridgeId, bridge, formatCancelResult(handle.prompt));
+            } catch (Exception e) {
+                log.warn("[SpawnRunRegistry] cancel timeline failed runId={}: {}", id, e.getMessage());
+            }
+        }
+        ReActAgent agent = handle.agentRef.get();
+        if (agent != null) {
+            safeInterrupt(agent, id);
+        }
+        log.info("[SpawnRunRegistry] cancel runId={} messageId={}", id, handle.messageId);
+        return true;
+    }
+
+    public void unregister(String runId) {
+        if (!StringUtils.hasText(runId)) {
+            return;
+        }
+        byRunId.remove(runId.strip());
+    }
+
+    private String formatCancelResult(String prompt) {
+        AgentExecutionProperties.React.Subagent sub = null;
+        if (executionProperties != null && executionProperties.getReact() != null) {
+            sub = executionProperties.getReact().getSubagent();
+        }
+        String tpl = sub != null && StringUtils.hasText(sub.getCancelResult())
+                ? sub.getCancelResult().strip()
+                : "用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：\n{prompt}";
+        return tpl.replace("{prompt}", prompt != null ? prompt : "");
+    }
+
+    private static void safeInterrupt(ReActAgent agent, String runId) {
+        try {
+            agent.interrupt();
+        } catch (Exception e) {
+            log.warn("[SpawnRunRegistry] interrupt failed runId={}: {}", runId, e.getMessage());
+        }
+    }
+
+    public static final class Handle {
+        private final String runId;
+        private final String messageId;
+        private final String prompt;
+        private final String mainBridgeId;
+        private final SpawnSubagentTimelineBridge timelineBridge;
+        private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final AtomicReference<ReActAgent> agentRef = new AtomicReference<>();
+
+        Handle(
+                String runId,
+                String messageId,
+                String prompt,
+                String mainBridgeId,
+                SpawnSubagentTimelineBridge timelineBridge) {
+            this.runId = runId;
+            this.messageId = messageId;
+            this.prompt = prompt;
+            this.mainBridgeId = mainBridgeId;
+            this.timelineBridge = timelineBridge;
+        }
+
+        public String runId() {
+            return runId;
+        }
+
+        public String messageId() {
+            return messageId;
+        }
+
+        public String prompt() {
+            return prompt;
+        }
+
+        public String mainBridgeId() {
+            return mainBridgeId;
+        }
+
+        public SpawnSubagentTimelineBridge timelineBridge() {
+            return timelineBridge;
+        }
+
+        public boolean cancelled() {
+            return cancelled.get();
+        }
+    }
+}
