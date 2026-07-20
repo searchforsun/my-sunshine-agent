@@ -92,12 +92,18 @@ onMounted(() => {
             :placeholder="page.createModalKind === 'routing' ? '我的规则' : '我的场景'"
           />
         </NFormItem>
-        <NFormItem label="描述">
+        <NFormItem
+          :label="page.createModalKind === 'react' ? '描述（适用问法，必填）' : '描述'"
+          :required="page.createModalKind === 'react'"
+        >
           <NInput
             v-model:value="page.createDraft.description"
             class="sun-field"
             type="textarea"
             :autosize="{ minRows: 2, maxRows: 4 }"
+            :placeholder="page.createModalKind === 'react'
+              ? '写清适用问法，例如：待审批列表、报销进度查询…'
+              : ''"
           />
         </NFormItem>
         <NFormItem v-if="page.createModalKind === 'routing'" label="优先级">

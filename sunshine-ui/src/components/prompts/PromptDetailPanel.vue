@@ -117,12 +117,18 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem label="描述">
+            <NFormItem
+              :label="page.detail.kind === 'react-prompt' ? '描述（适用问法，必填）' : '描述'"
+              :required="page.detail.kind === 'react-prompt'"
+            >
               <NInput
                 v-model:value="page.editDescription"
                 class="sun-field sun-field-grow"
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
+                :autosize="{ minRows: 2, maxRows: 5 }"
+                :placeholder="page.detail.kind === 'react-prompt'
+                  ? '写清何时应绑定本场景，便于路由规则选择命中'
+                  : ''"
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>

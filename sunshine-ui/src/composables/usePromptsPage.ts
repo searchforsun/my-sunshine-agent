@@ -150,10 +150,10 @@ export function usePromptsPage() {
       .sort((a, b) => a.id.localeCompare(b.id))
       .map(p => {
         const shortId = shortPromptId(p.id)
+        const name = p.displayName?.trim() || shortId
+        const desc = (p.description ?? '').trim()
         return {
-          label: p.displayName && p.displayName !== p.id && p.displayName !== shortId
-            ? `${p.displayName}（${shortId}）`
-            : shortId,
+          label: desc ? `${name}｜${desc}` : name,
           value: p.id,
         }
       }),
@@ -361,6 +361,10 @@ export function usePromptsPage() {
       message.warning('请先复制为草稿后再修改')
       return
     }
+    if (detail.value.kind === 'react-prompt' && !editDescription.value.trim()) {
+      message.warning('请填写场景描述（写清适用问法，便于路由绑定命中）')
+      return
+    }
     saving.value = true
     try {
       await updatePrompt(selectedId.value, {
@@ -383,6 +387,10 @@ export function usePromptsPage() {
     if (!selectedId.value || !detail.value) return
     if (status === 'draft' && !isContentEditable.value) {
       message.warning('生效版本不可直接修改，请先「复制为草稿」')
+      return
+    }
+    if (detail.value.kind === 'react-prompt' && !editDescription.value.trim()) {
+      message.warning('请填写场景描述（写清适用问法，便于路由绑定命中）')
       return
     }
     const raw = editContentText.value
@@ -586,9 +594,14 @@ export function usePromptsPage() {
   async function handleCreate() {
     const rawId = createDraft.value.id.trim()
     const displayName = createDraft.value.displayName.trim()
+    const description = createDraft.value.description.trim()
     const kind = createDraft.value.kind.trim()
     if (!rawId || !displayName || !kind) {
       message.warning('请填写 ID 与展示名')
+      return
+    }
+    if (createModalKind.value === 'react' && !description) {
+      message.warning('请填写场景描述（写清适用问法，便于路由绑定命中）')
       return
     }
     if (createModalKind.value === 'routing' && kind !== 'routing-rule') {
@@ -606,7 +619,7 @@ export function usePromptsPage() {
         id,
         kind,
         displayName,
-        description: createDraft.value.description.trim(),
+        description,
         priority: createDraft.value.priority,
         enabled: false,
         status: 'draft',
