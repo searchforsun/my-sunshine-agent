@@ -1,7 +1,7 @@
 # 时间线总览行（总耗时 + 整段折叠）
 
 > **阶段**：体验增强（前端）  
-> **状态**：⬜ 设计已锁定（待实施）  
+> **状态**：🟡 计划已出（待实施）· [plan](../plans/2026-07-20-timeline-summary-duration.md)  
 > **日期**：2026-07-20  
 > **前置**：Timeline V2（`lifecycle` + `summary`）· `OperationStack` / `OperationCard` · 正文穿插 `contentInterleave.ts`  
 > **范围**：仅 `sunshine-ui`；不改 SSE / Nacos / orchestrator
