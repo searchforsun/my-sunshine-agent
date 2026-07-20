@@ -11,6 +11,7 @@ import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.peer.PeerMsgSupport;
 import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import io.agentscope.core.ReActAgent;
@@ -44,6 +45,7 @@ public class ExpertHubEngine {
     private final ExpertSpeakStreamer expertSpeakStreamer;
     private final PeerSynthesisProperties peerProperties;
     private final ExpertRoundCoordinatorService roundCoordinator;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     public ExpertHubResult run(
             List<ExpertCatalogEntry> roster,
@@ -154,8 +156,9 @@ public class ExpertHubEngine {
             String assistantMessageId,
             ExpertSpeakCallback callback) {
         List<String> gatherContexts = new ArrayList<>(contextBlocks);
-        if (StringUtils.hasText(peerProperties.getGatherInstruction())) {
-            gatherContexts.add(peerProperties.getGatherInstruction().strip());
+        String gatherInstruction = promptCatalogHolder.requireText("peer.gather-instruction");
+        if (StringUtils.hasText(gatherInstruction)) {
+            gatherContexts.add(gatherInstruction.strip());
         }
         List<Msg> inputs = promptComposer.composeReactInputs(
                 PromptComposeRequest.forReact(

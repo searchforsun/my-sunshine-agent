@@ -137,6 +137,7 @@ export async function consumeChatSseStream(
             setPendingHitlConfirmations(last, undefined)
             normalizeRestoredInterleavedContent(last)
             notifyCompletedIfNeeded(streamConversationId ?? s.id, last)
+            bumpAssistantMessage(s)
           }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'interrupted') {
@@ -144,6 +145,7 @@ export async function consumeChatSseStream(
           if (last?.role === 'assistant') {
             last.status = 'interrupted'
             stampTimelineEnded(last)
+            bumpAssistantMessage(s)
           }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'failed') {
@@ -155,6 +157,7 @@ export async function consumeChatSseStream(
             if (!last.streamError) {
               last.streamError = '可点击下方继续生成重试'
             }
+            bumpAssistantMessage(s)
           }
         }
         continue

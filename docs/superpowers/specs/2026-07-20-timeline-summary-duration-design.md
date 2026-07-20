@@ -26,7 +26,7 @@
 | # | 决策 |
 |---|------|
 | D1 | **纯前端**；不新增 SSE 字段、不落库 `message.durationMs` |
-| D2 | 耗时用**整轮墙钟（含正文流式）**：`streaming` 期间 `now - start` 单调上涨；终态写入 `timelineEndedAt`（刷新用消息 `updatedAt`）；禁止各步 `durationMs` 求和 |
+| D2 | 耗时用**整轮客户端墙钟（含正文流式）**：`timelineStartedAt`→`now`/`timelineEndedAt` 单调；**禁止**与步骤服务端 `startedAt`/`endedAt` 混算；刷新用 `createdAt`/`updatedAt`；禁止各步 `durationMs` 求和 |
 | D3 | 文案：`正在处理` / `已完成` / `已中断` / `已失败` + 时钟 |
 | D4 | 时钟格式独立：`42s` / `1m20s`（秒取整）；与单步 `formatDuration`（`1.2s`）分离 |
 | D5 | **默认折叠**（含进行中 / 终态）；用户点开后 `userToggled` 覆盖 |
@@ -94,11 +94,11 @@ else: expanded = false   // 进行中 / completed | interrupted | failed 一律�
 
 | 端点 | 取值 |
 |------|------|
-| **start** | `min(steps[].startedAt ?? ts)`；皆无则 `timelineStartedAt` / 消息 `createdAt` |
+| **start** | **优先** `timelineStartedAt` / 消息 `createdAt`（客户端墙钟）；皆无再 `min(steps[].startedAt ?? ts)` |
 | **end（streaming / 未终态）** | `Date.now()`（200ms tick） |
-| **end（completed / interrupted / failed）** | `timelineEndedAt`（正文结束时写入）；刷新 hydrate 用消息 `updatedAt` |
+| **end（completed / interrupted / failed）** | **优先** `timelineEndedAt`（可延后抬高）；刷新 hydrate 用消息 `updatedAt`；再无才 `max(endedAt)` |
 
-正文结束时前端 `stampTimelineEnded`；API `MessageDto.updatedAt` 供刷新兜底。
+**禁止**把服务端 step 时钟与浏览器 `now` 混算（会造成先涨后跌）。正文结束时 `stampTimelineEnded`；API `MessageDto.updatedAt` 供刷新兜底。
 
 ### 3.2 时钟格式
 

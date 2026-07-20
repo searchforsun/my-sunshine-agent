@@ -115,6 +115,12 @@ function pickPreferredStatus(
   return api ?? cached
 }
 
+function pickLaterMs(a?: number, b?: number): number | undefined {
+  if (a == null) return b
+  if (b == null) return a
+  return Math.max(a, b)
+}
+
 /** API 与本地缓存合并：取更长正文，保留 reasoning */
 export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] | null): ChatMessage[] {
   if (!cached?.length) return api
@@ -145,6 +151,9 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       executionPreference: a.executionPreference ?? c.executionPreference,
       pendingHitlConfirmations: mergedPending.length ? mergedPending : undefined,
       pendingHitlConfirmation: undefined,
+      // 本地墙钟优先于 API hydrate，避免刷新后 20s→15s
+      timelineStartedAt: c.timelineStartedAt ?? a.timelineStartedAt,
+      timelineEndedAt: pickLaterMs(c.timelineEndedAt, a.timelineEndedAt),
     }
     if (mergedMsg.role === 'assistant') {
       normalizeRestoredInterleavedContent(mergedMsg)

@@ -3,7 +3,7 @@
 
 用法:
   python scripts/migrate_nacos_prompts_to_db.py --dry-run
-  python scripts/migrate_nacos_prompts_to_db.py --sql-out docker/mysql/init/17-sunshine-prompt-manager-seed-prompts.sql
+  python scripts/migrate_nacos_prompts_to_db.py --sql-out docker/mysql/init/17-sunshine-prompt-manager.sql
   python scripts/migrate_nacos_prompts_to_db.py --apply
   python scripts/migrate_nacos_prompts_to_db.py --apply --host ecs4c16g
 
@@ -21,7 +21,69 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_YAML = ROOT / "docs" / "nacos" / "sunshine-orchestrator.yaml"
-DEFAULT_SQL_OUT = ROOT / "docker" / "mysql" / "init" / "17-sunshine-prompt-manager-seed-prompts.sql"
+DEFAULT_SQL_OUT = ROOT / "docker" / "mysql" / "init" / "17-sunshine-prompt-manager.sql"
+
+PURPOSE_DESCRIPTIONS: dict[str, str] = {
+    "system-prompt": "全局系统人设：定义企业助手身份、能力边界与回答风格，作为各模式 Prompt 拼装的最底层。",
+    "scope-prompt": "范围约束：限制助手只处理企业制度/业务相关问题，拒绝越权或无关请求。",
+    "mode-overlay.direct": "Direct 模式叠加层：直答路径的补充行为约束（可为空，保留扩展位）。",
+    "mode-overlay.react": "ReAct 模式叠加层：约束自主推理时如何选工具、写思考与最终作答。",
+    "mode-overlay.react-restart": "ReAct 重启叠加层：用户要求重跑/续跑时的行为与上下文衔接说明。",
+    "mode-overlay.subagent": "子 Agent 叠加层：spawn/workflow 子任务内的角色与工具使用约束。",
+    "mode-overlay.workflow": "Workflow 模式叠加层：静态/计划工作流节点执行时的补充行为约束。",
+    "intent.classifier": "意图分类：将用户问题映射为执行模式（react / workflow / plan-workflow / peer-collab）及可选参数。",
+    "planner.prompt": "动态规划器：根据用户问题生成 Plan JSON（节点与边），供 plan-workflow 校验与执行。",
+    "answer.template": "Answer 节点终态作答模板：综合上游节点输出，面向用户生成 Markdown 结论。",
+    "answer.overlay": "Answer 覆盖层：在 answer 模板之上追加的补充约束（可为空）。",
+    "rewrite.intent": "意图补全改写：结合近期对话补全过短输入并还原指代，供意图路由使用。",
+    "rewrite.planner": "规划前改写：把用户问法整理成适合 Planner 理解的清晰表述。",
+    "rewrite.timeline": "改写步骤时间线文案：控制「查询改写」步骤在时间线上的 before/active/after 展示。",
+    "hitl.agent-prompt": "人机确认（HITL）：写操作需用户确认时，向模型说明确认流程与等待态行为。",
+    "memory.layer-prompt": "记忆分层说明：告知模型 LTM/MTM/STM 的用途，并强调只回答带「当前提问」标记的消息。",
+    "memory.mtm.summarize-prompt": "中期记忆摘要：会话结束后把 transcript 压成 2～4 句事实摘要写入 MTM。",
+    "peer.gather-instruction": "多专家检索阶段：要求专家先调工具收集事实，只输出检索摘要，不写完整发言稿。",
+    "peer.speak-prompt": "多专家正式发言：按专家身份，依据讨论上下文与检索材料发表 Markdown 观点。",
+    "peer.synthesis-prompt": "多专家综合答复：读完全员 transcript 后，面向用户生成最终 Markdown 答案。",
+    "peer.round-continue-prompt": "续轮判定：判断讨论是否已收敛，输出是否还需下一轮专家发言的 JSON。",
+    "peer.round-speakers-prompt": "续轮选人：第 2 轮起选出仍有异议或需补材料的专家名单。",
+    "expert.coordinator-prompt": "专家召集：从候选目录选出 2～4 位相关专家，并估计讨论轮次上限。",
+    "expert.complexity-prompt": "轮次评估：用户已指定专家时，按问题复杂度估计 Hub 讨论轮次上限。",
+    "sandbox.cancel-result": "沙箱工具取消回执：用户取消 exec/grep/glob 后回给主 Agent 的说明（含剩余次数）。",
+    "sandbox.budget-exhausted": "沙箱取消预算耗尽：同族工具再调用次数用尽时，提示模型改方案或直接作答。",
+    "react.subagent.cancel-result": "子任务取消回执：用户取消 spawn_subagent 后，提示主 Agent 自行接手原任务。",
+    "plan-workflow.replan-feedback": "Plan 校验失败反馈：把校验错误注入 Planner，要求修正后重输出一行 Plan JSON。",
+    "plan-workflow.user-modification": "用户改计划：把用户对 DAG 的修改意见注入 Planner，触发重新规划。",
+    "plan-workflow.upstream-failure-line": "上游失败说明行：answer 解析上游占位时，失败节点注入的降级说明文案。",
+    "timeline.intent": "意图步骤时间线：识别意图步骤的 label 与 before/active/after（含各模式 after 文案）。",
+    "timeline.hitl": "HITL 步骤时间线：等待用户确认写操作时的展示文案。",
+    "timeline.agent": "Agent 节点时间线：workflow/plan 中 agent 节点的展示与摘要模板。",
+    "timeline.plan-approval": "Plan 确认步骤时间线：等待用户确认执行计划时的展示文案。",
+    "timeline.rag-after": "RAG 完成后文案：检索步骤结束后写入 after 的摘要模板。",
+    "timeline.sandbox": "沙箱步骤时间线：沙箱相关工具/工作区步骤的展示文案。",
+    "timeline.steps": "时间线步骤整包（历史兼容）：各 phase 的 before/active/after 合集；优先用 timeline.steps.* 细项。",
+    "timeline.steps.intent": "时间线「识别意图」步骤的 before/active/after 展示文案。",
+    "timeline.steps.think": "时间线「思考/推理」步骤的 before/active/after 展示文案。",
+    "timeline.steps.tool": "时间线「调用工具」步骤的 before/active/after 展示文案。",
+    "timeline.steps.generate": "时间线「生成答复」步骤的 before/active/after 展示文案。",
+    "timeline.steps.plan": "时间线「规划」步骤的 before/active/after 展示文案。",
+    "timeline.steps.rag": "时间线「知识检索」步骤的 before/active/after 展示文案。",
+    "timeline.steps.node": "时间线「工作流节点」通用步骤的 before/active/after 展示文案。",
+    "timeline.steps.skill": "时间线「Skill 绑定」步骤的 before/active/after 展示文案。",
+    "timeline.steps.tasks": "时间线「任务看板」步骤的 before/active/after 展示文案。",
+    "timeline.steps.subagent": "时间线「子任务」步骤的 before/active/after 展示文案。",
+    "timeline.steps.peer-collab": "时间线「多专家协作」总步骤的 before/active/after 展示文案。",
+    "timeline.steps.expert-convene": "时间线「召集专家」步骤的 before/active/after 展示文案。",
+    "timeline.steps.expert": "时间线「专家发言」步骤的 before/active/after 展示文案。",
+    "routing-rule.structural-plan": "句式+多领域结构命中时走动态规划（plan-workflow），处理「先…再…」等跨域多步问题。",
+    "routing-rule.peer-phrase": "命中「互相验证/交叉审查/多专家」等句式时路由到多专家协作（peer-collab）。",
+    "routing-rule.react-policy-qa": "命中制度/办法/规定类咨询时走自主推理，并绑定 react-prompt.policy-qa。",
+    "routing-rule.react-travel-standard": "命中差旅/住宿/补贴标准类问法时走 ReAct，绑定 react-prompt.travel-budget。",
+    "routing-rule.react-expense-progress": "命中报销/付款进度与单据状态问法时走 ReAct，绑定 react-prompt.expense-assist。",
+    "routing-rule.react-compliance-risk": "命中风险点/合规风险审查类问法时走 ReAct，绑定 react-prompt.compliance-review。",
+    "routing-rule.rule-finance-smart-compliance": "命中合规审查类问法时走 finance-smart 静态工作流。",
+    "routing-rule.rule-knowledge-budget-travel": "命中预算与出差相关问法时走 knowledge-qa 知识问答工作流。",
+    "routing-rule.rule-finance-list-pending": "命中待审批列表查询类问法时走 finance-list 工作流。",
+}
 
 DISPLAY_NAMES: dict[str, str] = {
     "system-prompt": "系统提示词",
@@ -111,7 +173,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
             display_name=display_name_for("system-prompt"),
             content_text=system,
             content_json=None,
-            description="从 agent.system-prompt 导入",
+            description=PURPOSE_DESCRIPTIONS.get("system-prompt", "全局系统人设"),
         ))
 
     overlays = prompt.get("mode-overlays") or {}
@@ -126,7 +188,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
                 display_name=display_name_for(pid),
                 content_text=text,
                 content_json=None,
-                description=f"从 agent.prompt.mode-overlays.{key} 导入",
+                description=PURPOSE_DESCRIPTIONS.get(f"mode-overlay.{key}", f"模式叠加 · {key}"),
             ))
 
     intent = agent.get("intent") or {}
@@ -137,7 +199,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
             display_name=display_name_for("intent.classifier"),
             content_text=intent["classifier-prompt"],
             content_json=None,
-            description="从 agent.intent.classifier-prompt 导入",
+            description=PURPOSE_DESCRIPTIONS.get("intent.classifier", "意图分类"),
         ))
 
     planner = agent.get("planner") or {}
@@ -148,7 +210,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
             display_name=display_name_for("planner.prompt"),
             content_text=planner["prompt"],
             content_json=None,
-            description="从 agent.planner.prompt 导入",
+            description=PURPOSE_DESCRIPTIONS.get("planner.prompt", "动态规划器"),
         ))
 
     for src_key, pid in (
@@ -167,7 +229,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
             display_name=display_name_for(pid),
             content_text=text,
             content_json=None,
-            description=f"从 agent.prompt.{src_key} 导入",
+            description=PURPOSE_DESCRIPTIONS.get(pid, f"提示词 {pid}"),
         ))
 
     timeline = agent.get("timeline") or {}
@@ -181,7 +243,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
                     display_name=display_name_for("timeline.steps"),
                     content_text=None,
                     content_json=as_json(value),
-                    description="从 agent.timeline.steps 导入（整包）",
+                    description=PURPOSE_DESCRIPTIONS.get("timeline.steps", "时间线步骤整包"),
                 ))
                 for step_key, step_val in value.items():
                     pid = f"timeline.steps.{step_key}"
@@ -193,7 +255,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
                             step_val if isinstance(step_val, str) else str(step_val)
                         ),
                         content_json=as_json(step_val) if isinstance(step_val, (dict, list)) else None,
-                        description=f"从 agent.timeline.steps.{step_key} 导入",
+                        description=PURPOSE_DESCRIPTIONS.get(f"timeline.steps.{step_key}", f"时间线步骤 · {step_key}"),
                     ))
                 continue
             pid = f"timeline.{key}"
@@ -204,7 +266,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
                     display_name=display_name_for(pid),
                     content_text=None,
                     content_json=as_json(value),
-                    description=f"从 agent.timeline.{key} 导入",
+                    description=PURPOSE_DESCRIPTIONS.get(f"timeline.{key}", f"时间线 · {key}"),
                 ))
             elif isinstance(value, str):
                 seeds.append(PromptSeed(
@@ -213,7 +275,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
                     display_name=display_name_for(pid),
                     content_text=value,
                     content_json=None,
-                    description=f"从 agent.timeline.{key} 导入",
+                    description=PURPOSE_DESCRIPTIONS.get(f"timeline.{key}", f"时间线 · {key}"),
                 ))
 
     rewrite = agent.get("rewrite") or {}
@@ -230,7 +292,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
                     display_name=display_name_for(pid),
                     content_text=text,
                     content_json=None,
-                    description=f"从 agent.rewrite.{key}.system-prompt 导入",
+                    description=PURPOSE_DESCRIPTIONS.get(f"rewrite.{key}", f"改写 · {key}"),
                 ))
             elif isinstance(value, (dict, list)):
                 seeds.append(PromptSeed(
@@ -239,7 +301,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
                     display_name=display_name_for(pid),
                     content_text=None,
                     content_json=as_json(value),
-                    description=f"从 agent.rewrite.{key} 导入",
+                    description=PURPOSE_DESCRIPTIONS.get(f"rewrite.{key}", f"改写 · {key}"),
                 ))
             elif isinstance(value, str):
                 seeds.append(PromptSeed(
@@ -248,7 +310,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
                     display_name=display_name_for(pid),
                     content_text=value,
                     content_json=None,
-                    description=f"从 agent.rewrite.{key} 导入",
+                    description=PURPOSE_DESCRIPTIONS.get(f"rewrite.{key}", f"改写 · {key}"),
                 ))
 
     hitl = agent.get("hitl") or {}
@@ -259,7 +321,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
             display_name=display_name_for("hitl.agent-prompt"),
             content_text=hitl["agent-prompt"],
             content_json=None,
-            description="从 agent.hitl.agent-prompt 导入",
+            description=PURPOSE_DESCRIPTIONS.get("hitl.agent-prompt", "HITL 确认"),
         ))
 
     memory = agent.get("memory") or {}
@@ -270,7 +332,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
             display_name=display_name_for("memory.layer-prompt"),
             content_text=memory["layer-prompt"],
             content_json=None,
-            description="从 agent.memory.layer-prompt 导入",
+            description=PURPOSE_DESCRIPTIONS.get("memory.layer-prompt", "记忆分层说明"),
         ))
 
     # 稳定顺序，便于 diff SQL

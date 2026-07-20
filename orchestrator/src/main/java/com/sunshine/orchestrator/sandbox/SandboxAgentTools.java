@@ -7,6 +7,7 @@ import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.AgentTool;
@@ -48,6 +49,7 @@ public class SandboxAgentTools {
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
     private final AgentSandboxProperties sandboxProperties;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     private List<AgentTool> tools = List.of();
 
@@ -196,9 +198,10 @@ public class SandboxAgentTools {
                 if (trackCancel) {
                     cancellableToolRunRegistry.unregister(invocationId);
                 }
-                String exhausted = StringUtils.hasText(sandboxProperties.getBudgetExhausted())
-                        ? sandboxProperties.getBudgetExhausted().strip()
-                        : "本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。";
+                String exhausted = promptCatalogHolder.requireText("sandbox.budget-exhausted").strip();
+                if (!StringUtils.hasText(exhausted)) {
+                    exhausted = "本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。";
+                }
                 auditIfBound(name, auditParams(body, null, null, null), exhausted, "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(exhausted).build());
             }
@@ -255,9 +258,10 @@ public class SandboxAgentTools {
                 long startMs) {
             int remaining = cancellableToolRunRegistry.activateBudgetAndRemaining(messageId);
             String params = summarizeParams(body);
-            String tpl = StringUtils.hasText(sandboxProperties.getCancelResult())
-                    ? sandboxProperties.getCancelResult().strip()
-                    : "用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。";
+            String tpl = promptCatalogHolder.requireText("sandbox.cancel-result").strip();
+            if (!StringUtils.hasText(tpl)) {
+                tpl = "用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。";
+            }
             String text = tpl.replace("{params}", params)
                     .replace("{remaining}", String.valueOf(remaining));
             // 时间线 paused 由 GenerationController.cancelTool 单写；此处只回 ToolResult

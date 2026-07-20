@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject } from 'vue'
 import { NButton, NEmpty, NIcon, NSpin, NSwitch, NTag } from 'naive-ui'
-import { AddOutline, FlashOutline } from '@vicons/ionicons5'
+import { AddOutline, FlashOutline, BookOutline } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import { promptKindLabel, shortPromptId, type PromptListItem } from '../../api/prompts'
 
@@ -16,7 +16,7 @@ function onCreate() {
   else if (page.activeTab === 'react') page.openCreateModal('react')
 }
 
-const showKindTag = () => page.activeTab === 'all'
+const showKindTag = () => page.activeTab === 'system'
 </script>
 
 <template>
@@ -25,6 +25,17 @@ const showKindTag = () => page.activeTab === 'all'
       <span class="panel-title">{{ page.listPanelTitle }}</span>
       <NTag :bordered="false" size="tiny" round>{{ page.filteredPrompts.length }}</NTag>
       <div class="panel-head-actions">
+        <NButton
+          v-if="page.activeTab === 'system'"
+          size="tiny"
+          quaternary
+          class="panel-action-btn"
+          :class="{ active: page.systemPane === 'principles' }"
+          @click="page.systemPane === 'principles' ? page.closePrinciples() : page.openPrinciples()"
+        >
+          <template #icon><NIcon :component="BookOutline" :size="14" /></template>
+          {{ page.systemPane === 'principles' ? '返回编辑' : '原理分析' }}
+        </NButton>
         <NButton
           v-if="page.activeTab === 'routing'"
           size="tiny"
@@ -57,7 +68,9 @@ const showKindTag = () => page.activeTab === 'all'
             type="button"
             class="prompt-row"
             :class="{
-              active: page.routingPane !== 'dry-run' && item.id === page.selectedId,
+              active: page.systemPane !== 'principles'
+                && page.routingPane !== 'dry-run'
+                && item.id === page.selectedId,
             }"
             @click="page.selectPrompt(item.id)"
           >

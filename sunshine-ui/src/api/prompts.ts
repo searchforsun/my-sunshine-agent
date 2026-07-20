@@ -131,6 +131,7 @@ export const PROMPT_KIND_LABELS: Record<string, string> = {
   'mode-overlay': '模式叠加',
   'react-fragment': 'ReAct 片段',
   'react-prompt': 'React 场景',
+  react: 'ReAct 运行时',
   intent: '意图',
   planner: '规划',
   answer: '回答',
@@ -140,6 +141,10 @@ export const PROMPT_KIND_LABELS: Record<string, string> = {
   memory: '记忆',
   scope: '范围',
   'routing-rule': '路由规则',
+  peer: '多专家',
+  expert: '专家协调',
+  sandbox: '沙箱',
+  'plan-workflow': '动态规划',
 }
 
 export function promptKindLabel(kind: string): string {

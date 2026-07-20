@@ -50,11 +50,6 @@ public class MemoryProperties {
         private boolean enabled = true;
         private int topK = 3;
         private float minScore = 0.55f;
-        /** 会话结束后异步摘要（Nacos 维护正文） */
-        private String summarizePrompt = """
-                你是企业对话摘要助手。根据以下会话 transcript，输出 2~4 句中文摘要。
-                只保留事实：用户问了什么、助手答了什么、是否涉及工具/业务。
-                只输出摘要正文，不要标题或 markdown。""";
     }
 
     @Getter

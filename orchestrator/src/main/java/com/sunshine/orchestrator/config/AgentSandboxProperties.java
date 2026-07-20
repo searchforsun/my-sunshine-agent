@@ -46,13 +46,12 @@ public class AgentSandboxProperties {
     private int cancelMaxFollowups = 3;
 
     /**
-     * 取消时回主 Agent 的 tool result；占位符 {params} {remaining}
+     * @deprecated Catalog {@code sandbox.cancel-result}
      */
-    private String cancelResult = """
-            用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。""";
+    private String cancelResult = "";
 
-    /** 预算耗尽拒调文案 */
-    private String budgetExhausted = "本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。";
+    /** @deprecated Catalog {@code sandbox.budget-exhausted} */
+    private String budgetExhausted = "";
 
     /** 时间线工具步取消 after */
     private String cancelAfter = "已取消";

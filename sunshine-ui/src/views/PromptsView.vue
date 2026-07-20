@@ -16,6 +16,7 @@ import { RefreshOutline } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import PromptsListPanel from '../components/prompts/PromptsListPanel.vue'
 import PromptDetailPanel from '../components/prompts/PromptDetailPanel.vue'
+import PromptPrinciplesPanel from '../components/prompts/PromptPrinciplesPanel.vue'
 import RoutingRuleEditor from '../components/prompts/RoutingRuleEditor.vue'
 import RoutingDryRunPanel from '../components/prompts/RoutingDryRunPanel.vue'
 import { PROMPTS_PAGE_KEY, usePromptsPage } from '../composables/usePromptsPage'
@@ -50,14 +51,15 @@ onMounted(() => {
     </header>
 
     <NTabs v-model:value="page.activeTab" type="line" :animated="false" class="prompts-tabs">
-      <NTabPane name="all" tab="全部" />
+      <NTabPane name="system" tab="系统配置" />
       <NTabPane name="routing" tab="路由规则" />
       <NTabPane name="react" tab="React 提示词" />
     </NTabs>
 
-    <div v-if="page.activeTab === 'all'" class="prompts-layout">
+    <div v-if="page.activeTab === 'system'" class="prompts-layout">
       <PromptsListPanel />
-      <PromptDetailPanel />
+      <PromptPrinciplesPanel v-if="page.systemPane === 'principles'" />
+      <PromptDetailPanel v-else />
     </div>
 
     <div v-else-if="page.activeTab === 'routing'" class="prompts-layout">

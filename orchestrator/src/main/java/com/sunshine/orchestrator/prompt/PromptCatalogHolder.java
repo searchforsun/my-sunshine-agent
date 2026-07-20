@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -27,6 +28,18 @@ public class PromptCatalogHolder {
             throw new IllegalStateException("PromptCatalogSnapshot not loaded");
         }
         return current;
+    }
+
+    public Optional<PromptCatalogEntry> entry(String id) {
+        return snapshot().entry(id);
+    }
+
+    /** Catalog 正文；缺 id 或空 → 空串 + warn（禁止 Nacos 影子兜底） */
+    public String requireText(String id) {
+        return snapshot().text(id).orElseGet(() -> {
+            log.warn("[PromptCatalog] missing text id={}", id);
+            return "";
+        });
     }
 
     /**

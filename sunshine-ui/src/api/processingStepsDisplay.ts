@@ -520,7 +520,11 @@ export function formatElapsedClock(ms: number): string {
   return `${m}m${s}s`
 }
 
-/** 总览耗时：含正文流式；live 时用 now，终态用 fallbackEnd（timelineEndedAt / updatedAt） */
+/**
+ * 总览耗时：含正文流式。
+ * 起止优先用客户端墙钟（timelineStartedAt / timelineEndedAt），避免与步骤上服务端
+ * startedAt/endedAt 混算导致「先涨到 20s 再掉到 15s」。
+ */
 export function resolveTimelineElapsedMs(opts: {
   steps: ProcessingStep[]
   live: boolean
@@ -528,18 +532,19 @@ export function resolveTimelineElapsedMs(opts: {
   fallbackStartMs?: number
   fallbackEndMs?: number
 }): number | undefined {
-  let start: number | undefined
+  let stepStart: number | undefined
   let maxEnded: number | undefined
   for (const step of opts.steps) {
     const t = step.startedAt ?? step.ts
     if (typeof t === 'number' && Number.isFinite(t)) {
-      start = start == null ? t : Math.min(start, t)
+      stepStart = stepStart == null ? t : Math.min(stepStart, t)
     }
     if (typeof step.endedAt === 'number' && Number.isFinite(step.endedAt)) {
       maxEnded = maxEnded == null ? step.endedAt : Math.max(maxEnded, step.endedAt)
     }
   }
-  if (start == null && opts.fallbackStartMs != null) start = opts.fallbackStartMs
+  // 有本地 start 时不用服务端 step 时钟（防 JVM/浏览器时钟差）
+  const start = opts.fallbackStartMs ?? stepStart
   if (start == null) return undefined
   let end: number | undefined
   if (opts.live) {

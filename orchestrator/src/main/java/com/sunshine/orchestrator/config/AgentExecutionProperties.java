@@ -5,7 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 
 /**
- * Agent 执行模式配置 — react / plan-workflow 运行时策略（Nacos agent.execution）
+ * Agent 执行模式配置 — react / plan-workflow 运行时策略（Nacos agent.execution）。
+ * 提示词正文 SSOT = Catalog（react.subagent.* / plan-workflow.*）。
  */
 @Data
 @RefreshScope
@@ -44,12 +45,9 @@ public class AgentExecutionProperties {
             private int maxIters = 8;
             private long timeoutMs = 180_000L;
             /**
-             * 用户取消子任务时回主 Agent 的 tool result；占位符 {prompt}。
-             * SSOT：Nacos agent.execution.react.subagent.cancel-result
+             * @deprecated Catalog {@code react.subagent.cancel-result}；仅单测无 Catalog 时可读
              */
-            private String cancelResult = """
-                    用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：
-                    {prompt}""";
+            private String cancelResult = "";
         }
     }
 
@@ -59,20 +57,11 @@ public class AgentExecutionProperties {
         private PlannerInvoke planner = new PlannerInvoke();
         private Answer answer = new Answer();
         private FallbackReact fallbackReact = new FallbackReact();
+        private Approval approval = new Approval();
 
         @Data
         public static class Replan {
             private int maxAttempts = 2;
-            private String userFeedbackTemplate = """
-                    【Plan 校验失败 — 请修正后重输出一行 JSON】
-
-                    {{error}}
-
-                    【契约回顾】
-                    - type 仅 rag/tool/agent/parallel-gateway/join/exclusive-gateway/loop；勿 start/answer
-                    - loop：body 用 parentId；外图仅 start→loop；禁止 loop↔body 连边
-                    - parallel：pg→多分支→join；exclusive：恰好 1 条 default 出边
-                    - 末节点勿连 answer；params 键名 params；每节点 displayName""";
         }
 
         @Data
@@ -83,7 +72,6 @@ public class AgentExecutionProperties {
 
         @Data
         public static class Answer {
-            private String upstreamFailureLine = "（{{displayName}} 执行失败：{{error}}，已尝试 {{attemptCount}} 次）";
         }
 
         @Data
@@ -99,11 +87,6 @@ public class AgentExecutionProperties {
             private int maxUserRounds = 10;
             /** 超时策略：fallback_react 降级 ReAct；auto_approve 视同用户确认并执行 Plan */
             private String onTimeout = "fallback_react";
-            private String userModificationTemplate = """
-                    用户对当前执行计划的修改意见：{{hint}}
-                    请据此重新输出一行 Plan JSON。仍须遵守：rag/tool/agent/parallel-gateway/join/exclusive-gateway/loop；勿含 start/answer；edges 末节点勿连 answer。""";
         }
-
-        private Approval approval = new Approval();
     }
 }

@@ -3,8 +3,8 @@ package com.sunshine.orchestrator.expert;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.catalog.ExpertCatalogEntry;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
-import com.sunshine.orchestrator.config.ExpertCoordinatorProperties;
 import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +15,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,6 +25,9 @@ class ExpertRoundCoordinatorServiceTest {
     @Mock
     private LlmGatewayClient llmGatewayClient;
 
+    @Mock
+    private PromptCatalogHolder promptCatalogHolder;
+
     private ExpertRoundCoordinatorService service;
 
     @BeforeEach
@@ -31,8 +35,8 @@ class ExpertRoundCoordinatorServiceTest {
         PeerSynthesisProperties peer = new PeerSynthesisProperties();
         peer.setMinRounds(1);
         peer.setMaxRounds(3);
-        ExpertCoordinatorProperties expert = new ExpertCoordinatorProperties();
-        service = new ExpertRoundCoordinatorService(llmGatewayClient, peer, expert);
+        lenient().when(promptCatalogHolder.requireText(anyString())).thenReturn("sys");
+        service = new ExpertRoundCoordinatorService(llmGatewayClient, peer, promptCatalogHolder);
     }
 
     @Test

@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.catalog.ExpertCatalogEntry;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
-import com.sunshine.orchestrator.config.ExpertCoordinatorProperties;
 import com.sunshine.orchestrator.peer.PeerMsgSupport;
 import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,7 +28,7 @@ public class ExpertRoundCoordinatorService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final LlmGatewayClient llmGatewayClient;
     private final PeerSynthesisProperties peerProperties;
-    private final ExpertCoordinatorProperties coordinatorProperties;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     public int resolveSessionMaxRounds(Integer coordinatorSuggested, int minRounds, int globalMaxRounds) {
         return ExpertSessionRounds.clampSessionMax(coordinatorSuggested, minRounds, globalMaxRounds);
@@ -43,7 +43,7 @@ public class ExpertRoundCoordinatorService {
         String user = "用户问题：\n" + userQuery.strip()
                 + "\n\n已选专家 id：" + rosterLine
                 + "\n\n全局轮次上限：" + peerProperties.getMaxRounds();
-        String raw = llmGatewayClient.complete(coordinatorProperties.getComplexityPrompt(), user);
+        String raw = llmGatewayClient.complete(promptCatalogHolder.requireText("expert.complexity-prompt"), user);
         try {
             JsonNode node = MAPPER.readTree(extractJsonObject(raw));
             int parsed = ExpertSessionRounds.parseMaxRoundsNode(node);
@@ -62,7 +62,7 @@ public class ExpertRoundCoordinatorService {
             List<ExpertTranscriptEntry> transcript,
             int completedRound) {
         String user = buildRoundUserPayload(userQuery, transcript, completedRound);
-        String raw = llmGatewayClient.complete(peerProperties.getRoundContinuePrompt(), user);
+        String raw = llmGatewayClient.complete(promptCatalogHolder.requireText("peer.round-continue-prompt"), user);
         try {
             JsonNode node = MAPPER.readTree(extractJsonObject(raw));
             boolean cont = node.has("continue") && node.get("continue").asBoolean(false);
@@ -92,7 +92,7 @@ public class ExpertRoundCoordinatorService {
         String user = buildRoundUserPayload(userQuery, transcript, nextRound - 1)
                 + "\n\n本轮候选专家（仅可从下列 id 中选择）：\n" + catalog
                 + "\n\n即将开始第 " + nextRound + " 轮发言。";
-        String raw = llmGatewayClient.complete(peerProperties.getRoundSpeakersPrompt(), user);
+        String raw = llmGatewayClient.complete(promptCatalogHolder.requireText("peer.round-speakers-prompt"), user);
         try {
             JsonNode node = MAPPER.readTree(extractJsonObject(raw));
             Set<String> rosterIds = roster.stream().map(ExpertCatalogEntry::id).collect(Collectors.toCollection(LinkedHashSet::new));

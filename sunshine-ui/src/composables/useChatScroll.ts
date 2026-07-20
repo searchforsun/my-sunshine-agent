@@ -1,4 +1,8 @@
 import { ref, type Ref } from 'vue'
+import {
+  distanceFromChatBottom,
+  resolveChatScrollPinned,
+} from './chatScrollPin'
 
 /** 时间线/工具展开区内层滚动；触顶/触底时把滚轮交给外层 chat-scroll */
 const NESTED_SCROLL_SEL = [
@@ -14,14 +18,31 @@ export function useChatScroll(_loading: Ref<boolean>) {
   const scrollRef = ref<HTMLElement | null>(null)
   const chatScrollPinned = ref(true)
   const forceChatScroll = ref(false)
-  /** 程序化贴底产生的 scroll 事件勿改写 pinned */
+  /** 程序化贴底产生的 scroll 事件勿改写 pinned（但仍允许「已离开底部」取消贴底） */
   let pinSyncSuppressed = false
   let pinSyncSettleRaf = 0
   /** 流式跟随合并到每帧最多一次，避免 step/reasoning 洪水抢滚轮 */
   let followRaf = 0
+  let lastScrollTop = 0
 
   function isNearChatBottom(el: HTMLElement, threshold = 96): boolean {
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
+    return distanceFromChatBottom(el) <= threshold
+  }
+
+  function cancelFollowRaf(): void {
+    if (!followRaf) return
+    cancelAnimationFrame(followRaf)
+    followRaf = 0
+  }
+
+  function unpinFromUser(): void {
+    chatScrollPinned.value = false
+    cancelFollowRaf()
+    pinSyncSuppressed = false
+    if (pinSyncSettleRaf) {
+      cancelAnimationFrame(pinSyncSettleRaf)
+      pinSyncSettleRaf = 0
+    }
   }
 
   function suppressPinSyncBriefly(): void {
@@ -37,10 +58,22 @@ export function useChatScroll(_loading: Ref<boolean>) {
   }
 
   function syncScrollPinned(): void {
-    if (pinSyncSuppressed) return
     const el = scrollRef.value
     if (!el) return
-    chatScrollPinned.value = isNearChatBottom(el)
+    const top = el.scrollTop
+    const scrolledUp = top < lastScrollTop - 0.5
+    lastScrollTop = top
+    chatScrollPinned.value = resolveChatScrollPinned({
+      distanceFromBottom: distanceFromChatBottom(el),
+      suppressed: pinSyncSuppressed,
+      currentlyPinned: chatScrollPinned.value,
+      scrolledUp,
+    })
+    // 用户已离开底部：立刻解除 suppress，避免后续 follow 再抢
+    if (!chatScrollPinned.value) {
+      pinSyncSuppressed = false
+      cancelFollowRaf()
+    }
   }
 
   function onChatScroll() {
@@ -51,7 +84,10 @@ export function useChatScroll(_loading: Ref<boolean>) {
     const el = scrollRef.value
     if (!el) return
     suppressPinSyncBriefly()
-    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+    const nextTop = Math.max(0, el.scrollHeight - el.clientHeight)
+    el.scrollTop = nextTop
+    // 程序化贴底：同步 lastScrollTop，避免下一帧被误判为用户上滑
+    lastScrollTop = nextTop
   }
 
   function scrollToBottom(force = false) {
@@ -81,7 +117,7 @@ export function useChatScroll(_loading: Ref<boolean>) {
    */
   function onChatWheelCapture(e: WheelEvent): void {
     if (e.deltaY < 0) {
-      chatScrollPinned.value = false
+      unpinFromUser()
     }
     const el = scrollRef.value
     if (!el || el.scrollHeight <= el.clientHeight) return
@@ -123,7 +159,7 @@ export function useChatScroll(_loading: Ref<boolean>) {
     const target = e.target
     if (target instanceof Element && target.closest('.skill-suggest')) return
     if (e.deltaY < 0) {
-      chatScrollPinned.value = false
+      unpinFromUser()
     }
     el.scrollTop = Math.min(
       el.scrollHeight - el.clientHeight,

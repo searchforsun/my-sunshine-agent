@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.catalog.ExpertCatalogEntry;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.memory.MemoryContext;
-import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -18,14 +18,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ExpertSpeakStreamer {
     private final LlmGatewayClient llmGatewayClient;
-    private final PeerSynthesisProperties peerProperties;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     public Flux<StreamToken> streamSpeak(
             ExpertCatalogEntry expert,
             String userQuery,
             List<String> contextBlocks,
             String gatheredContext) {
-        String prompt = peerProperties.getSpeakPrompt()
+        String prompt = promptCatalogHolder.requireText("peer.speak-prompt")
                 .replace("{expertName}", displayName(expert))
                 .replace("{userQuery}", userQuery != null ? userQuery : "")
                 .replace("{transcript}", formatContext(contextBlocks))

@@ -7,8 +7,11 @@ export function stampTimelineStarted(msg: ChatMessage, atMs: number = Date.now()
   if (msg.timelineStartedAt == null) msg.timelineStartedAt = atMs
 }
 
+/** 允许延后抬高（SSE completed 偏早时，finally / 末包仍可修正） */
 export function stampTimelineEnded(msg: ChatMessage, atMs: number = Date.now()): void {
-  if (msg.timelineEndedAt == null) msg.timelineEndedAt = atMs
+  if (msg.timelineEndedAt == null || atMs > msg.timelineEndedAt) {
+    msg.timelineEndedAt = atMs
+  }
 }
 
 /** 从 API createdAt/updatedAt（ISO 或 epoch）补全墙钟边界 */

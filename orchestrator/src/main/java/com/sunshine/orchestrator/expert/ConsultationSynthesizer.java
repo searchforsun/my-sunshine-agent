@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.expert;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.peer.PeerMsgSupport;
-import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -17,10 +17,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ConsultationSynthesizer {
     private final LlmGatewayClient llmGatewayClient;
-    private final PeerSynthesisProperties synthesisProperties;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     public Flux<StreamToken> synthesize(String userQuery, List<ExpertTranscriptEntry> transcript) {
-        String prompt = synthesisProperties.getSynthesisPrompt()
+        String prompt = promptCatalogHolder.requireText("peer.synthesis-prompt")
                 .replace("{userQuery}", userQuery != null ? userQuery : "")
                 .replace("{transcript}", formatTranscript(transcript));
         return llmGatewayClient.streamDirectly(prompt);

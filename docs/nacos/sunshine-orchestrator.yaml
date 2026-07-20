@@ -1,9 +1,9 @@
 # 表结构 SSOT：docker/mysql/init/11-sunshine-orchestrator.sql（禁止 Flyway）
 #
 # 【4.11 迁出】提示词正文 / 路由规则 SSOT = prompt-manager DB（:8500 Catalog）
-#   - routing-rule.* / system-prompt / mode-overlay.* / timeline.* / intent.classifier / …
-#   - 种子：docker/mysql/init/17-sunshine-prompt-manager.sql + *-seed-prompts.sql
-#   - 本文件 agent.system-prompt / agent.prompt.* / agent.routing.* 仅留占位或空壳，勿再当运营 SSOT
+#   - routing-rule.* / system-prompt / mode-overlay.* / timeline.* / peer.* / expert.* / …
+#   - 种子：docker/mysql/init/17-sunshine-prompt-manager.sql（含表结构 + 全量种子）
+#   - 本文件 agent.* 仅留数值/开关；提示词正文勿再当运营 SSOT
 #   - 运营入口：sunshine-ui `/prompts`；验收：scripts/verify_prompt_catalog_live.py
 
 server:
@@ -27,7 +27,7 @@ spring:
 
 agent:
   # 提示词/时间线/改写正文已迁 prompt-manager Catalog
-  # （docker/mysql/init/17-sunshine-prompt-manager-seed-prompts.sql）
+  # （docker/mysql/init/17-sunshine-prompt-manager.sql）
   # system-prompt → Catalog id=system-prompt（T8）
   system-prompt: ""
 
@@ -85,27 +85,15 @@ agent:
         enabled: true
         max-iters: 8
         timeout-ms: 180000
-        cancel-result: |
-          用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：
-          {prompt}
+        # cancel-result → Catalog id=react.subagent.cancel-result
     plan-workflow:
       replan:
         max-attempts: 2
-        user-feedback-template: |
-          【Plan 校验失败 — 请修正后重输出一行 JSON】
-
-          {{error}}
-
-          【契约回顾】
-          - type 仅 rag/tool/agent/parallel-gateway/join/exclusive-gateway/loop；勿 start/answer
-          - loop：body 用 parentId；外图仅 start→loop；禁止 loop↔body 连边
-          - parallel：pg→多分支→join；exclusive：恰好 1 条 default 出边
-          - 末节点勿连 answer；params 键名 params；每节点 displayName
+        # user-feedback-template → Catalog id=plan-workflow.replan-feedback
       planner:
         max-attempts: 2
         backoff-ms: 800
-      answer:
-        upstream-failure-line: "（{{displayName}} 执行失败：{{error}}，已尝试 {{attemptCount}} 次）"
+      # answer.upstream-failure-line → Catalog id=plan-workflow.upstream-failure-line
       fallback-react:
         enabled: true
         inject-partial-context: true
@@ -114,9 +102,7 @@ agent:
         timeout-sec: 600
         on-timeout: fallback_react
         max-user-rounds: 10
-        user-modification-template: |
-          用户对当前执行计划的修改意见：{{hint}}
-          请据此重新输出一行 Plan JSON。遵守 Planner 契约：type 仅 rag/tool/agent/parallel-gateway/join/exclusive-gateway/loop；勿 start/answer；loop 用 parentId 且禁止 loop↔body 跨框边；末节点勿连 answer。
+        # user-modification-template → Catalog id=plan-workflow.user-modification
   skill:
     # P1 强提示句式 — 须含命名组 skill；P0 @ 由 SkillBindingParser 硬编码
     hint-patterns:
@@ -137,10 +123,8 @@ agent:
       - sandbox__glob
     cancel-max-followups: 3
     cancel-after: 已取消
-    cancel-result: |
-      用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。
-    budget-exhausted: |
-      本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。
+    # cancel-result → Catalog id=sandbox.cancel-result
+    # budget-exhausted → Catalog id=sandbox.budget-exhausted
     # idle 30min → docker stop；自上次活动 7d → rm+清盘 — docs/superpowers/specs/2026-07-17-sandbox-container-lifecycle-design.md
     runtime:
       image: sunshine-sandbox-python:3.11-slim
@@ -250,47 +234,9 @@ agent:
   peer:
     min-rounds: 1
     max-rounds: 3
-    gather-instruction: |
-      你当前处于多专家协作的工具检索阶段。请调用必要工具收集事实与数据，并在最终回复中仅输出结构化的检索摘要（要点列表），勿撰写面向用户的完整发言稿。后续引擎将根据摘要生成正式发言。
-    speak-prompt: |
-      你是 {expertName}，正在参与多专家讨论。
+    # gather/speak/synthesis/round-* → Catalog peer.*
 
-      用户问题：
-      {userQuery}
-
-      讨论上下文：
-      {transcript}
-
-      工具与检索材料：
-      {gatheredContext}
-
-      请以 {expertName} 身份向讨论组发表专业观点（Markdown），仅依据上述材料，勿编造。
-    synthesis-prompt: |
-      用户问题：{userQuery}
-
-      上游数据：
-      {transcript}
-
-      请严格针对上述「用户问题」作答：仅依据上游数据回答用户所问。使用 Markdown；加粗标记须成对。
-    round-continue-prompt: |
-      你是多专家讨论轮次协调助手。根据用户问题与当前讨论记录，判断是否还需下一轮专家发言。
-      若观点已收敛、无新事实待查、无未回应质疑，则 continue=false；若仍存在分歧、缺材料或未回应的质疑，则 continue=true。
-      只输出 JSON：{"continue":true或false,"reason":"一句话说明"}，不要 markdown。
-    round-speakers-prompt: |
-      你是多专家讨论发言调度助手。第 1 轮全员已发言；请从候选专家中选出第 2 轮及以后仍需发言的人：
-      仅包含对其它观点有异议、需补充材料、或尚未回应关键质疑的专家；无异议者不要选。
-      若无人需要再发言，输出空数组 expertIds:[]。
-      只输出 JSON：{"expertIds":["id1"],"reason":"一句话说明"}，不要 markdown。
-
-  expert:
-    coordinator-prompt: |
-      你是多专家协作召集助手。根据用户问题，从候选专家目录中选择 2~4 位最相关的专家，并估计讨论轮次上限。
-      轮次含义：1=简单事实核对；2=需交叉验证；3=多观点分歧需多轮质疑。不得超过全局 maxRounds（当前 3）。
-      只输出 JSON：{"expertIds":["id1","id2"],"maxRounds":2,"reason":"一句话说明"}，不要 markdown。
-    complexity-prompt: |
-      你是多专家协作轮次评估助手。用户已显式指定专家名单，请根据问题复杂度估计 Hub 讨论轮次上限（整数）。
-      1=简单事实核对；2=需交叉验证；3=多观点分歧需多轮质疑。不得超过用户消息中的全局上限。
-      只输出 JSON：{"maxRounds":1,"reason":"一句话说明"}，不要 markdown。
+  # expert.coordinator/complexity → Catalog expert.*
 
   model:
     base-url: http://localhost:8300/v1
@@ -339,9 +285,7 @@ agent:
 
   memory:
     enabled: true
-    layer-prompt: |
-      记忆分层：LTM/MTM 为摘要，STM 为同会话已结束轮次（仅供指代）。
-      **仅执行并回答**带「【当前提问 · 仅此作答】」标记的用户消息。
+    # layer-prompt → Catalog id=memory.layer-prompt
     current-user-marker: "【当前提问 · 仅此作答】"
     stm:
       redis-ttl-hours: 24
@@ -354,10 +298,7 @@ agent:
       enabled: true
       top-k: 3
       min-score: 0.55
-      summarize-prompt: |
-        你是企业对话摘要助手。根据以下会话 transcript，输出 2~4 句中文摘要。
-        只保留事实：用户问了什么、助手答了什么、是否涉及工具/业务。
-        只输出摘要正文，不要标题或 markdown。
+      # summarize-prompt → Catalog id=memory.mtm.summarize-prompt
     ltm:
       enabled: true
       max-chars: 500

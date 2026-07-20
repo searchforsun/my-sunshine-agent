@@ -27,13 +27,23 @@ describe('resolveTimelineElapsedMs', () => {
     ...partial,
   })
 
-  it('uses min startedAt to now when live (includes content stream)', () => {
+  it('uses min startedAt to now when live and no client start', () => {
     const ms = resolveTimelineElapsedMs({
       steps: [step({ startedAt: 1_000, ts: 9_000 }), step({ id: 'think', startedAt: 2_000 })],
       live: true,
       nowMs: 81_000,
     })
     expect(ms).toBe(80_000)
+  })
+
+  it('prefers client timelineStartedAt over server step startedAt (no clock skew drop)', () => {
+    const ms = resolveTimelineElapsedMs({
+      steps: [step({ startedAt: 6_000, endedAt: 10_000 })],
+      live: true,
+      nowMs: 21_000,
+      fallbackStartMs: 1_000,
+    })
+    expect(ms).toBe(20_000)
   })
 
   it('uses fallbackStart when steps lack timestamps', () => {
@@ -50,8 +60,9 @@ describe('resolveTimelineElapsedMs', () => {
     expect(resolveTimelineElapsedMs({
       steps: [step({ startedAt: 1_000, endedAt: 3_000 })],
       live: false,
-      fallbackEndMs: 9_000,
-    })).toBe(8_000)
+      fallbackStartMs: 1_000,
+      fallbackEndMs: 21_000,
+    })).toBe(20_000)
   })
 
   it('falls back to max endedAt when no timelineEndedAt', () => {

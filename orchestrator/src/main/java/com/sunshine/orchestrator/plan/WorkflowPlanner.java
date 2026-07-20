@@ -56,7 +56,7 @@ public class WorkflowPlanner {
 
     /** 用户修改意见后重新规划 */
     public Mono<PlanJson> replanWithUserHint(ExecutionStreamContext ctx, String userHint, int roundNo) {
-        String template = executionProperties.getPlanWorkflow().getApproval().getUserModificationTemplate();
+        String template = promptCatalogHolder.requireText("plan-workflow.user-modification");
         String hint = userHint != null ? userHint.strip() : "";
         String feedback = StringUtils.hasText(template)
                 ? template.replace("{{hint}}", hint)
@@ -121,7 +121,7 @@ public class WorkflowPlanner {
             return query;
         }
         String formatted = PlanValidationFeedback.formatForReplan(validationIssue);
-        String template = executionProperties.getPlanWorkflow().getReplan().getUserFeedbackTemplate();
+        String template = promptCatalogHolder.requireText("plan-workflow.replan-feedback");
         if (!StringUtils.hasText(template)) {
             return query + "\n\n" + formatted;
         }

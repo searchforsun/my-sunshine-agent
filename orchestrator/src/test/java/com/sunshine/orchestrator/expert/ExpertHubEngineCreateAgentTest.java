@@ -23,6 +23,7 @@ class ExpertHubEngineCreateAgentTest {
     @Mock ExpertSpeakStreamer expertSpeakStreamer;
     @Mock com.sunshine.orchestrator.peer.PeerSynthesisProperties peerProperties;
     @Mock ExpertRoundCoordinatorService roundCoordinator;
+    @Mock com.sunshine.orchestrator.prompt.PromptCatalogHolder promptCatalogHolder;
 
     @InjectMocks ExpertHubEngine engine;
 

@@ -130,6 +130,13 @@ export function useChatSessionHydration(options: {
       }
     }
     restoredLast.status = pickPreferredAssistantStatus(restoredLast.status, localLast.status)
+    if (localLast.timelineStartedAt != null) {
+      restoredLast.timelineStartedAt = localLast.timelineStartedAt
+    }
+    if (localLast.timelineEndedAt != null
+      && (restoredLast.timelineEndedAt == null || localLast.timelineEndedAt > restoredLast.timelineEndedAt)) {
+      restoredLast.timelineEndedAt = localLast.timelineEndedAt
+    }
     if (localLast.streamError && !restoredLast.streamError) {
       restoredLast.streamError = localLast.streamError
     }

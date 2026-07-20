@@ -6,9 +6,9 @@ import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.catalog.ExpertCatalogIndexEntry;
 import com.sunshine.orchestrator.catalog.ExpertCatalogService;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
-import com.sunshine.orchestrator.config.ExpertCoordinatorProperties;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,9 +26,9 @@ public class ExpertCoordinatorService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final ExpertCatalogService expertCatalogService;
     private final LlmGatewayClient llmGatewayClient;
-    private final ExpertCoordinatorProperties properties;
     private final ExpertRoundCoordinatorService roundCoordinator;
     private final PeerSynthesisProperties peerProperties;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     public ExpertRoster resolve(List<String> explicitIds, String query) {
         List<String> normalized = normalizeExplicit(explicitIds);
@@ -70,7 +70,7 @@ public class ExpertCoordinatorService {
                 .map(e -> "- " + e.id() + ": " + e.displayName() + " — " + (e.description() != null ? e.description() : ""))
                 .collect(Collectors.joining("\n"));
         String user = "用户问题：\n" + query + "\n\n候选专家：\n" + catalog;
-        String raw = llmGatewayClient.complete(properties.getCoordinatorPrompt(), user);
+        String raw = llmGatewayClient.complete(promptCatalogHolder.requireText("expert.coordinator-prompt"), user);
         try {
             JsonNode node = MAPPER.readTree(raw);
             List<String> ids = new ArrayList<>();

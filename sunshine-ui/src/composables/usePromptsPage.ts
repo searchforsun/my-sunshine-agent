@@ -1,4 +1,5 @@
 import { computed, h, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { NIcon, useMessage, type DropdownOption } from 'naive-ui'
 import { CopyOutline } from '@vicons/ionicons5'
 import {
@@ -28,10 +29,14 @@ import {
 import { listWorkflowCatalog, type WorkflowCatalogEntry } from '../api/workflows'
 import { friendlyErrorMessage } from '../api/apiError'
 import { formatSkillVersionTime } from '../utils/formatSkillVersionTime'
+import {
+  usePromptsRouteState,
+  type PromptsTab,
+} from './usePromptsRouteState'
 
 export const PROMPTS_PAGE_KEY = Symbol('promptsPage')
 
-export type PromptsTab = 'all' | 'routing' | 'react'
+export type { PromptsTab }
 export type CreateModalKind = 'routing' | 'react'
 export type PromptVersionStatus = 'live' | 'inactive' | 'draft'
 
@@ -56,9 +61,17 @@ function versionStatusTagType(status: PromptVersionStatus): 'success' | 'warning
   return 'default'
 }
 
+function tabForKind(kind: string): PromptsTab {
+  if (kind === 'routing-rule') return 'routing'
+  if (kind === 'react-prompt') return 'react'
+  return 'system'
+}
+
 export function usePromptsPage() {
   const message = useMessage()
-  const activeTab = ref<PromptsTab>('all')
+  const route = useRoute()
+  const routeState = usePromptsRouteState()
+  const activeTab = ref<PromptsTab>(routeState.readTab())
   const loading = ref(false)
   const detailLoading = ref(false)
   const saving = ref(false)
@@ -69,11 +82,13 @@ export function usePromptsPage() {
   const validating = ref(false)
   const dryRunning = ref(false)
   /** 路由 Tab 右侧：规则编辑 / 独立试跑页 */
-  const routingPane = ref<'editor' | 'dry-run'>('editor')
+  const routingPane = ref<'editor' | 'dry-run'>(routeState.readPane())
+  /** 系统配置 Tab 右侧：编辑 / 原理分析（全局说明） */
+  const systemPane = ref<'editor' | 'principles'>(routeState.readSystemPane())
 
   const prompts = ref<PromptListItem[]>([])
   const workflowCatalog = ref<WorkflowCatalogEntry[]>([])
-  const selectedId = ref<string | null>(null)
+  const selectedId = ref<string | null>(routeState.readId())
   const detail = ref<PromptDetail | null>(null)
   const versions = ref<PromptVersionItem[]>([])
 
@@ -115,7 +130,7 @@ export function usePromptsPage() {
         .filter(p => p.kind === 'react-prompt')
         .sort((a, b) => a.id.localeCompare(b.id))
     }
-    // 全部 = 系统配置：排除 routing-rule / react-prompt
+    // 系统配置：排除 routing-rule / react-prompt
     return list
       .filter(p => p.kind !== 'routing-rule' && p.kind !== 'react-prompt')
       .sort((a, b) => {
@@ -261,8 +276,16 @@ export function usePromptsPage() {
       ])
       prompts.value = promptList
       workflowCatalog.value = catalog
+      const fromUrl = routeState.readId()
+      const urlItem = fromUrl ? prompts.value.find(p => p.id === fromUrl) : null
+      // URL 有 id 且未显式 tab 时，按条目 kind 回到对应 Tab（兼容书签）
+      if (urlItem && !routeState.hasExplicitTab()) {
+        activeTab.value = tabForKind(urlItem.kind)
+      }
       const visible = filteredPrompts.value
-      if (!keepSelection || !selectedId.value || !visible.some(p => p.id === selectedId.value)) {
+      if (urlItem && visible.some(p => p.id === urlItem.id)) {
+        selectedId.value = urlItem.id
+      } else if (!keepSelection || !selectedId.value || !visible.some(p => p.id === selectedId.value)) {
         selectedId.value = visible[0]?.id ?? null
       }
       if (selectedId.value) {
@@ -272,6 +295,12 @@ export function usePromptsPage() {
         versions.value = []
         selectedVersion.value = null
       }
+      routeState.syncQuery({
+        tab: activeTab.value,
+        id: selectedId.value,
+        pane: activeTab.value === 'routing' ? routingPane.value : 'editor',
+        systemPane: activeTab.value === 'system' ? systemPane.value : 'editor',
+      })
     } catch (e) {
       message.error(friendlyErrorMessage(e, '加载提示词列表失败'))
       console.error(e)
@@ -340,6 +369,8 @@ export function usePromptsPage() {
 
   async function selectPrompt(id: string) {
     routingPane.value = 'editor'
+    systemPane.value = 'editor'
+    routeState.syncQuery({ id, pane: 'editor', systemPane: 'editor' })
     if (id === selectedId.value) return
     selectedId.value = id
     await loadDetail(id)
@@ -347,6 +378,17 @@ export function usePromptsPage() {
 
   function openRoutingDryRun() {
     routingPane.value = 'dry-run'
+    routeState.syncQuery({ pane: 'dry-run', tab: 'routing' })
+  }
+
+  function openPrinciples() {
+    systemPane.value = 'principles'
+    routeState.syncQuery({ tab: 'system', systemPane: 'principles' })
+  }
+
+  function closePrinciples() {
+    systemPane.value = 'editor'
+    routeState.syncQuery({ systemPane: 'editor' })
   }
 
   function onVersionSelected(ver: number | null) {
@@ -653,7 +695,7 @@ export function usePromptsPage() {
     }
   }
 
-  watch(activeTab, async () => {
+  watch(activeTab, async (tab) => {
     const visible = filteredPrompts.value
     if (!selectedId.value || !visible.some(p => p.id === selectedId.value)) {
       selectedId.value = visible[0]?.id ?? null
@@ -667,8 +709,42 @@ export function usePromptsPage() {
     }
     dryRunResult.value = null
     routingWarnings.value = []
-    routingPane.value = 'editor'
+    if (tab !== 'routing') {
+      routingPane.value = 'editor'
+    }
+    if (tab !== 'system') {
+      systemPane.value = 'editor'
+    }
+    routeState.syncQuery({
+      tab,
+      id: selectedId.value,
+      pane: tab === 'routing' ? routingPane.value : 'editor',
+      systemPane: tab === 'system' ? systemPane.value : 'editor',
+    })
   })
+
+  watch(
+    () => [route.query.tab, route.query.id, route.query.pane, route.query.view] as const,
+    async () => {
+      const tab = routeState.readTab()
+      const id = routeState.readId()
+      const pane = routeState.readPane()
+      const sysPane = routeState.readSystemPane()
+      if (activeTab.value !== tab) {
+        activeTab.value = tab
+      }
+      if (tab === 'routing' && routingPane.value !== pane) {
+        routingPane.value = pane
+      }
+      if (tab === 'system' && systemPane.value !== sysPane) {
+        systemPane.value = sysPane
+      }
+      if (id && id !== selectedId.value && prompts.value.some(p => p.id === id)) {
+        selectedId.value = id
+        await loadDetail(id)
+      }
+    },
+  )
 
   return reactive({
     activeTab,
@@ -682,6 +758,7 @@ export function usePromptsPage() {
     validating,
     dryRunning,
     routingPane,
+    systemPane,
     prompts,
     filteredPrompts,
     listPanelTitle,
@@ -729,6 +806,8 @@ export function usePromptsPage() {
     refreshList,
     selectPrompt,
     openRoutingDryRun,
+    openPrinciples,
+    closePrinciples,
     loadDetail,
     saveMeta,
     saveVersion,

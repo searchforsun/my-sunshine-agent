@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.conversation.MessageBodyText;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.memory.MemoryProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -27,6 +28,7 @@ public class MtmSummarizeService {
     private final LlmGatewayClient llmGatewayClient;
     private final DesensitizeClient desensitizeClient;
     private final MemoryProperties memoryProperties;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     @Async
     public void summarizeIfNeeded(
@@ -47,7 +49,11 @@ public class MtmSummarizeService {
             return;
         }
 
-        String prompt = memoryProperties.getMtm().getSummarizePrompt().strip();
+        String prompt = promptCatalogHolder.requireText("memory.mtm.summarize-prompt").strip();
+        if (!StringUtils.hasText(prompt)) {
+            log.warn("[MTM] Catalog 缺 memory.mtm.summarize-prompt，跳过摘要 conv={}", convId);
+            return;
+        }
         String summary = llmGatewayClient.complete(
                 prompt,
                 "以下是待摘要的会话 transcript：\n\n" + transcript);

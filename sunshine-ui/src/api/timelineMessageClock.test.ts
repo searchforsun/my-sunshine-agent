@@ -7,14 +7,16 @@ import {
 } from './timelineMessageClock'
 
 describe('timelineMessageClock', () => {
-  it('stamps start and end once', () => {
+  it('stamps start once; end may move forward', () => {
     const msg: ChatMessage = { role: 'assistant', content: '', status: 'streaming' }
     stampTimelineStarted(msg, 1000)
     stampTimelineStarted(msg, 2000)
     expect(msg.timelineStartedAt).toBe(1000)
     stampTimelineEnded(msg, 5000)
     stampTimelineEnded(msg, 9000)
-    expect(msg.timelineEndedAt).toBe(5000)
+    expect(msg.timelineEndedAt).toBe(9000)
+    stampTimelineEnded(msg, 8000)
+    expect(msg.timelineEndedAt).toBe(9000)
   })
 
   it('hydrates from createdAt/updatedAt for terminal messages', () => {

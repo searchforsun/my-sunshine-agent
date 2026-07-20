@@ -12,7 +12,7 @@
 | L0 | `SkillBindingRoutingPolicy` + `SkillDiscoveryService` | `agent.skill.hint-patterns` + `@` 硬编码 | 单步：`REACT`+skillId；多步 `@`/强提示：`PLAN_WORKFLOW` **5B**；L3 后自动发现 skill |
 | L1 | `UnifiedRuleRoutingPolicy` | Catalog `matchType=structural`（priority 100） | `PLAN_WORKFLOW` |
 | L1b | （同上引擎） | Catalog `matchType=peer_phrase`（priority 90） | `PEER_COLLAB` |
-| L2 | （同上引擎） | Catalog `matchType=regex`（priority 20/15/10） | 静态 `WORKFLOW` |
+| L2 | （同上引擎） | Catalog `matchType=regex`（workflow P20/15/10；**react+reactPromptId** P40/28/22/18） | 静态 `WORKFLOW` 或带场景的 `REACT` |
 | L3 | `LlmClassifierRoutingPolicy` | Catalog `intent.classifier`（原 Nacos classifier-prompt） | LLM 选 mode/workflow |
 | **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | 覆盖统一规则层与 L3；见 [§J](#j-chat-executionpreference-强制路由p0) |
 
@@ -32,6 +32,19 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 2. prompt-manager :8500 已启动且 Catalog 有种子规则（改规则走 `/prompts` 发布，**勿**再改 Nacos `agent.routing.*`）
 3. orchestrator :8200 已启动（会热拉 Catalog；若改了非提示词 Nacos 项才需 `sync_nacos.py` + 重启）
 4. API Live：`python scripts/verify_prompt_catalog_live.py`
+
+### React 场景规则（`mode=react` + `params.reactPromptId`）
+
+与静态 workflow 规则**错开句式**，避免抢黄金规则：
+
+| 规则 id | P | 样例问句 | 绑定场景 |
+|---------|---|----------|----------|
+| `routing-rule.react-policy-qa` | 40 | 「差旅办法里怎么规定」 | `react-prompt.policy-qa` |
+| `routing-rule.react-travel-standard` | 28 | 「差旅标准是多少」 | `react-prompt.travel-budget` |
+| `routing-rule.react-expense-progress` | 22 | 「报销进度到哪了」 | `react-prompt.expense-assist` |
+| `routing-rule.react-compliance-risk` | 18 | 「有哪些风险点」 | `react-prompt.compliance-review` |
+
+「是否合规」仍走 `finance-smart`（P20）；「有哪些待审批」仍走 `finance-list`（P10）。可在 `/prompts` → 路由规则 → 试跑验证。
 
 ---
 
