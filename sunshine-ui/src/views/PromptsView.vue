@@ -60,12 +60,10 @@ onMounted(() => {
       <PromptDetailPanel />
     </div>
 
-    <div v-else-if="page.activeTab === 'routing'" class="prompts-layout routing-layout">
+    <div v-else-if="page.activeTab === 'routing'" class="prompts-layout">
       <PromptsListPanel />
-      <div class="routing-right">
-        <RoutingRuleEditor />
-        <RoutingDryRunPanel />
-      </div>
+      <RoutingDryRunPanel v-if="page.routingPane === 'dry-run'" />
+      <RoutingRuleEditor v-else />
     </div>
 
     <div v-else class="prompts-layout">
@@ -171,18 +169,6 @@ onMounted(() => {
   display: grid;
   grid-template-columns: minmax(280px, 320px) 1fr;
   gap: 16px;
-}
-
-.routing-layout {
-  grid-template-columns: minmax(280px, 320px) 1fr;
-}
-
-.routing-right {
-  min-height: 0;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  gap: 16px;
-  overflow: hidden;
 }
 
 .action-btn {

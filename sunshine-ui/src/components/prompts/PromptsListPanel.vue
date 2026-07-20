@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject } from 'vue'
 import { NButton, NEmpty, NIcon, NSpin, NSwitch, NTag } from 'naive-ui'
-import { AddOutline } from '@vicons/ionicons5'
+import { AddOutline, FlashOutline } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import { promptKindLabel, shortPromptId, type PromptListItem } from '../../api/prompts'
 
@@ -24,16 +24,29 @@ const showKindTag = () => page.activeTab === 'all'
     <div class="panel-head">
       <span class="panel-title">{{ page.listPanelTitle }}</span>
       <NTag :bordered="false" size="tiny" round>{{ page.filteredPrompts.length }}</NTag>
-      <NButton
-        v-if="page.showListCreateButton"
-        size="tiny"
-        quaternary
-        class="panel-create-btn"
-        @click="onCreate"
-      >
-        <template #icon><NIcon :component="AddOutline" :size="14" /></template>
-        {{ page.listCreateButtonLabel }}
-      </NButton>
+      <div class="panel-head-actions">
+        <NButton
+          v-if="page.activeTab === 'routing'"
+          size="tiny"
+          quaternary
+          class="panel-action-btn"
+          :class="{ active: page.routingPane === 'dry-run' }"
+          @click="page.openRoutingDryRun()"
+        >
+          <template #icon><NIcon :component="FlashOutline" :size="14" /></template>
+          试跑
+        </NButton>
+        <NButton
+          v-if="page.showListCreateButton"
+          size="tiny"
+          quaternary
+          class="panel-action-btn"
+          @click="onCreate"
+        >
+          <template #icon><NIcon :component="AddOutline" :size="14" /></template>
+          {{ page.listCreateButtonLabel }}
+        </NButton>
+      </div>
     </div>
     <NSpin :show="page.loading" size="small" class="list-spin">
       <div class="list-body">
@@ -43,7 +56,9 @@ const showKindTag = () => page.activeTab === 'all'
             :key="item.id"
             type="button"
             class="prompt-row"
-            :class="{ active: item.id === page.selectedId }"
+            :class="{
+              active: page.routingPane !== 'dry-run' && item.id === page.selectedId,
+            }"
             @click="page.selectPrompt(item.id)"
           >
             <div class="prompt-row-head">
@@ -105,8 +120,16 @@ const showKindTag = () => page.activeTab === 'all'
   color: var(--sun-text);
 }
 
-.panel-create-btn {
+.panel-head-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.panel-action-btn.active {
+  color: var(--sun-accent) !important;
+  font-weight: 600;
 }
 
 .list-spin {

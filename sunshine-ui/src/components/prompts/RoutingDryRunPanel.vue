@@ -2,22 +2,25 @@
 import { inject } from 'vue'
 import { NButton, NFormItem, NInput, NSpin, NTag } from 'naive-ui'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
+import { shortPromptId } from '../../api/prompts'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 </script>
 
 <template>
-  <section class="dry-run-panel">
-    <header class="panel-head">
-      <h4 class="panel-title">路由试跑</h4>
-    </header>
-    <div class="panel-body">
+  <main class="detail-panel">
+    <div class="detail-toolbar">
+      <div class="detail-title-block">
+        <h3 class="detail-heading">路由试跑</h3>
+      </div>
+    </div>
+    <div class="detail-scroll">
       <NFormItem label="样例问句" :show-feedback="false">
         <NInput
           v-model:value="page.dryRunQuery"
           class="sun-field"
           type="textarea"
-          :autosize="{ minRows: 2, maxRows: 4 }"
+          :autosize="{ minRows: 4, maxRows: 10 }"
           placeholder="输入一句用户问题，验证会命中哪条规则"
           @keydown.ctrl.enter="page.runDryRun()"
         />
@@ -41,7 +44,13 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
           </div>
           <div class="result-row">
             <span class="result-label">matchedRuleId</span>
-            <span class="result-value mono">{{ page.dryRunResult.matchedRuleId || '（未命中）' }}</span>
+            <span class="result-value mono">
+              {{
+                page.dryRunResult.matchedRuleId
+                  ? shortPromptId(page.dryRunResult.matchedRuleId)
+                  : '（未命中）'
+              }}
+            </span>
           </div>
           <div class="result-row">
             <span class="result-label">wouldLlm</span>
@@ -57,48 +66,65 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
             </span>
           </div>
         </div>
-        <p v-else class="hint">试跑结果将显示命中规则与是否落入 LLM 意图分类。</p>
+        <p v-else class="hint">试跑结果将显示在此处。</p>
       </NSpin>
     </div>
-  </section>
+  </main>
 </template>
 
 <style scoped>
-.dry-run-panel {
+.detail-panel {
+  min-height: 0;
   border-radius: var(--radius-lg);
   border: 1px solid var(--sun-border);
   background: var(--sun-black);
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  overflow: hidden;
 }
 
-.panel-head {
-  padding: 14px 16px;
+.detail-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--sun-border);
+  flex-shrink: 0;
 }
 
-.panel-title {
+.detail-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.detail-heading {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--sun-text);
 }
 
-.panel-body {
-  padding: 16px;
+.detail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px 22px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
-.panel-body :deep(.n-form-item) {
+.detail-scroll :deep(.n-form-item) {
   margin-bottom: 0;
 }
 
-.panel-body :deep(.n-form-item-label) {
+.detail-scroll :deep(.n-form-item-label) {
   color: var(--sun-text-secondary);
   font-size: 13px;
+  font-weight: 500;
   padding-bottom: 8px;
 }
 
@@ -106,7 +132,7 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
 }

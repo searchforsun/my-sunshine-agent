@@ -67,6 +67,8 @@ export function usePromptsPage() {
   const creating = ref(false)
   const validating = ref(false)
   const dryRunning = ref(false)
+  /** 路由 Tab 右侧：规则编辑 / 独立试跑页 */
+  const routingPane = ref<'editor' | 'dry-run'>('editor')
 
   const prompts = ref<PromptListItem[]>([])
   const selectedId = ref<string | null>(null)
@@ -323,9 +325,14 @@ export function usePromptsPage() {
   }
 
   async function selectPrompt(id: string) {
+    routingPane.value = 'editor'
     if (id === selectedId.value) return
     selectedId.value = id
     await loadDetail(id)
+  }
+
+  function openRoutingDryRun() {
+    routingPane.value = 'dry-run'
   }
 
   function onVersionSelected(ver: number | null) {
@@ -599,6 +606,7 @@ export function usePromptsPage() {
       await createPrompt(body)
       message.success('已创建')
       showCreateModal.value = false
+      routingPane.value = 'editor'
       await refreshList(false)
       selectedId.value = id
       await loadDetail(id)
@@ -633,6 +641,7 @@ export function usePromptsPage() {
     }
     dryRunResult.value = null
     routingWarnings.value = []
+    routingPane.value = 'editor'
   })
 
   return reactive({
@@ -646,6 +655,7 @@ export function usePromptsPage() {
     creating,
     validating,
     dryRunning,
+    routingPane,
     prompts,
     filteredPrompts,
     listPanelTitle,
@@ -689,6 +699,7 @@ export function usePromptsPage() {
     createDraft,
     refreshList,
     selectPrompt,
+    openRoutingDryRun,
     loadDetail,
     saveMeta,
     saveVersion,
