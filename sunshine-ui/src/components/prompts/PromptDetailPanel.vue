@@ -282,14 +282,6 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   width: 100%;
 }
 
-.content-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-}
-
 .form-section {
   display: flex;
   flex-direction: column;
