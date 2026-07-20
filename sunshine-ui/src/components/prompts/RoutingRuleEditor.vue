@@ -506,8 +506,7 @@ const reactPromptId = computed({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--sun-border);
+  gap: 12px;
 }
 
 .form-section-title {
@@ -531,11 +530,5 @@ const reactPromptId = computed({
 
 .action-btn {
   --n-color: var(--sun-accent) !important;
-}
-
-.readonly-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--sun-text-muted);
 }
 </style>
