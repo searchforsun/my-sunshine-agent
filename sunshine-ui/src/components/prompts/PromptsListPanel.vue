@@ -238,15 +238,17 @@ const showKindTag = () => page.activeTab === 'all'
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
-  padding: 2px 8px;
+  min-width: 36px;
+  padding: 2px 7px;
   border-radius: 999px;
-  border: 1px solid var(--sun-accent);
-  color: var(--sun-text);
-  font-size: 12px;
-  font-weight: 700;
+  border: 1px solid var(--sun-border);
+  background: transparent;
+  color: var(--sun-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
   font-family: var(--sun-font-mono, monospace);
   line-height: 1.2;
   letter-spacing: 0.02em;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--sun-text) 8%, transparent);
 }
 </style>
