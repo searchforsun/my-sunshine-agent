@@ -86,7 +86,7 @@
 | 项 | 约定 |
 |----|------|
 | 服务 | `prompt-manager` :8500 |
-| 库 | `sunshine_prompt`；init：`docker/mysql/init/15-sunshine-prompt-manager.sql` |
+| 库 | `sunshine_prompt`；init：`docker/mysql/init/17-sunshine-prompt-manager.sql` |
 | 消费 | orchestrator `PromptCatalogClient`；BFF 透传 CRUD |
 
 ### 3.2 表
