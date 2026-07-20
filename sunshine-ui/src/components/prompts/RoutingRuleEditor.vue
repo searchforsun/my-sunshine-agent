@@ -22,21 +22,21 @@ import { routingFieldHelp } from './routingFieldHelp'
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 
 const matchTypeOptions = [
-  { label: 'structural（多步跨域）', value: 'structural' },
-  { label: 'peer_phrase（协作句式）', value: 'peer_phrase' },
-  { label: 'regex（正则）', value: 'regex' },
+  { label: '多步跨域', value: 'structural' },
+  { label: '协作句式', value: 'peer_phrase' },
+  { label: '正则匹配', value: 'regex' },
 ]
 
 const matchOptions = [
-  { label: 'any（任一命中）', value: 'any' },
-  { label: 'all（全部命中）', value: 'all' },
+  { label: '任一命中', value: 'any' },
+  { label: '全部命中', value: 'all' },
 ]
 
 const planModeOptions = [
-  { label: 'workflow', value: 'workflow' },
-  { label: 'plan-workflow', value: 'plan-workflow' },
-  { label: 'peer-collab', value: 'peer-collab' },
-  { label: 'react', value: 'react' },
+  { label: '静态 Workflow', value: 'workflow' },
+  { label: '动态规划', value: 'plan-workflow' },
+  { label: '多专家协作', value: 'peer-collab' },
+  { label: '自主推理', value: 'react' },
 ]
 
 const patternsText = computed({
@@ -273,7 +273,7 @@ const showPlanParams = computed(() =>
               <NFormItem>
                 <template #label>
                   <span class="field-label-row">
-                    matchType
+                    匹配类型
                     <ConfigFieldHelp :text="routingFieldHelp('matchType')" />
                   </span>
                 </template>
