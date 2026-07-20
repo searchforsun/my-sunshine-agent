@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,13 +58,15 @@ public class ReActAgentRuntime implements AgentRuntime {
         return runReAct(request);
     }
 
+    /**
+     * Toolkit / ToolManager 拉取含同步 HTTP {@code block()}，禁止在 reactor-http 线程组装，
+     * 否则会静默得到空工具集（仅 RAG+沙箱），模型误以为无财务/OA 工具。
+     */
     private Flux<StreamToken> runReAct(AgentRunRequest request) {
         MemoryContext memory = request.role() == AgentRole.SUB
                 ? MemoryContext.forSubAgent()
                 : request.memory();
         String query = request.query();
-        String assistantMessageId = request.assistantMessageId();
-
         log.info("[AgentRuntime] role={}, runId={}, user={}, stmTurns={}, injected={}, skill={}, msg={}",
                 request.role(),
                 request.runId(),
@@ -72,13 +75,21 @@ public class ReActAgentRuntime implements AgentRuntime {
                 request.injectedBlocks().size(),
                 request.skillId(),
                 query != null && query.length() > 60 ? query.substring(0, 60) + "..." : query);
+        return Flux.defer(() -> startReActStream(request))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
 
+    private Flux<StreamToken> startReActStream(AgentRunRequest request) {
+        MemoryContext memory = request.role() == AgentRole.SUB
+                ? MemoryContext.forSubAgent()
+                : request.memory();
+        String query = request.query();
+        String assistantMessageId = request.assistantMessageId();
         sandboxSessionLifecycle.prepareRun(request);
         try {
             List<Msg> inputs = promptComposer.composeReactInputs(
                     PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks(),
                             request.reactRestart(), request.reactPromptId()));
-
             StreamOptions options = StreamOptions.builder()
                     .incremental(true)
                     .eventTypes(EventType.REASONING, EventType.AGENT_RESULT)
@@ -86,12 +97,10 @@ public class ReActAgentRuntime implements AgentRuntime {
                     .includeReasoningResult(false)
                     .includeActingChunk(true)
                     .build();
-
             ProcessingTimelineSession session = new ProcessingTimelineSession();
             session.bindUserQuery(query);
             session.bindTraceMessageId(assistantMessageId);
             ConcurrentLinkedQueue<StreamToken> hookQueue = new ConcurrentLinkedQueue<>();
-
             String bridgeId = request.resolveBridgeId();
             StepEventBridge.bind(bridgeId, session, hookQueue);
             if (request.assistantMessageId() != null && !request.assistantMessageId().isBlank()) {
@@ -103,11 +112,9 @@ public class ReActAgentRuntime implements AgentRuntime {
             } else if (assistantMessageId != null) {
                 StepEventBridge.setUserQuery(assistantMessageId, query);
             }
-
             AtomicBoolean answerContentStarted = new AtomicBoolean(false);
             AtomicBoolean answerStreamFinished = new AtomicBoolean(false);
             StringBuilder answerContent = new StringBuilder();
-
             ReActAgent agent = agentFactory.create(request);
             if (request.role() == AgentRole.SUB) {
                 SpawnRunRegistry registry = spawnRunRegistry.getIfAvailable();
@@ -119,7 +126,6 @@ public class ReActAgentRuntime implements AgentRuntime {
                     ? assistantMessageId.strip() : null;
             final long runEpoch = epochMessageId != null
                     ? StepEventBridge.currentStreamEpoch(epochMessageId) : -1L;
-            // sandbox_session SSE：首次 ensureBound（工具调用）时经 StepEventBridge.offerStreamToken 下发
             return agent.stream(inputs, options)
                     .flatMap(event -> {
                         if (epochMessageId != null && runEpoch >= 0
@@ -156,7 +162,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                             request.role(), request.runId(), e.getMessage(), e));
         } catch (RuntimeException e) {
             sandboxSessionLifecycle.closeQuietly(request);
-            throw e;
+            return Flux.error(e);
         }
     }
 

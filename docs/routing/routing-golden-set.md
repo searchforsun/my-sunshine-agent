@@ -13,10 +13,10 @@
 | L1 | `UnifiedRuleRoutingPolicy` | Catalog `matchType=structural`（priority 100） | `PLAN_WORKFLOW` |
 | L1b | （同上引擎） | Catalog `matchType=peer_phrase`（priority 90） | `PEER_COLLAB` |
 | L2 | （同上引擎） | Catalog `matchType=regex`（workflow P20/15/10；**react+reactPromptId** P40/28/22/18） | 静态 `WORKFLOW` 或带场景的 `REACT` |
-| L3 | `LlmClassifierRoutingPolicy` | Catalog `intent.classifier`（原 Nacos classifier-prompt） | LLM 选 mode/workflow |
-| **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | 覆盖统一规则层与 L3；见 [§J](#j-chat-executionpreference-强制路由p0) |
+| L3 | `LlmClassifierRoutingPolicy` | Catalog `intent.classifier`（原 Nacos classifier-prompt） | LLM 选 mode/workflow；强制路径可带 `lockedMode` |
+| **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | **锁死 mode**；仍跑同 mode 规则/L3 解析绑定；见 [§J](#j-chat-executionpreference-强制路由p0) |
 
-**链规则**：首个返回 `ExecutionPlan` 的策略胜出；统一引擎按 **priority** 择优（不再「L1 漏判时跳过 L2」）。**`executionPreference` 非 auto 时**直接走 `ForcedExecutionRouter`，不进入 Policy Chain。
+**链规则**：首个返回 `ExecutionPlan` 的策略胜出；统一引擎按 **priority** 择优（不再「L1 漏判时跳过 L2」）。**`executionPreference` 非 auto 时**走 `ForcedExecutionRouter`（锁 mode，累积解析绑定，非整段旁路意图）。
 
 **时间线**：上述全部发生在 SSE **`intent`（识别意图）** 步；完成后才进入 `plan` / `node-*` / ReAct 步骤。
 
@@ -240,11 +240,12 @@ python3 scripts/verify_skills_ui_live.py
 
 | # | preference | 提示词 | 预期 mode | @skill |
 |---|------------|--------|-----------|--------|
-| J1 | `react` | 待审批是否合规 | `REACT`；`reason=user:forced-react` | ✅ |
-| J2 | `workflow` | 年假可以请几天 | `WORKFLOW` knowledge-qa | ❌ |
+| J1 | `react` | 待审批是否合规 | `REACT`；`reason=user:forced-react`（忽略异 mode workflow 规则） | ✅ |
+| J2 | `workflow` | 有哪些待审批报销 | `WORKFLOW` finance-list（同 mode 规则） | ❌ |
 | J3 | `plan-workflow` | 先查制度再查待审批 | `PLAN_WORKFLOW`；`reason=user:forced-plan-workflow` | ✅ |
-| J4 | `workflow` | `@policy-review 年假可以请几天` | `WORKFLOW` knowledge-qa；**忽略** @skill（strip 正文） | ❌ |
-| J5 | `plan-workflow` | `@finance-analysis 是否合规` | `PLAN_WORKFLOW` + `params.skillId=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
+| J4 | `workflow` | `@policy-review 有哪些待审批报销` | `WORKFLOW` finance-list；**忽略** @skill（strip 正文） | ❌ |
+| J5 | `plan-workflow` | `@finance-analysis 是否合规` | `PLAN_WORKFLOW` + `params.skill=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
+| J6 | `react` | 差旅办法制度怎么说 | `REACT` + 同 mode 规则绑定 `reactPromptId=react-prompt.policy-qa`；`reason=user:forced-react` | ✅ |
 
 单测：`ForcedExecutionRouterTest` · `ExecutionPlanRouterTest` · `RoutingGoldenSetTest#forcedJ*`
 

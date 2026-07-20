@@ -59,7 +59,7 @@
 |------|--------|------|
 | `@skill` | L0（允许时） | 自主推理 / 动态规划 / 自动 |
 | `#workflow` | L0（阶段四 4.13） | **Workflow Studio** 交付；catalog 来自 `workflow-manager`，与本 selector **互补、不重复** |
-| **底栏 preference** | 发送前强制 | 覆盖 L1–L3；L0 skill 按模式表禁用/保留 |
+| **底栏 preference** | 发送前强制 | **锁死 mode**；仍跑同 mode 规则/L3 解析绑定；L0 skill 按模式表禁用/保留 |
 
 P0 仅实现 **底栏 preference**，不实现 `#` 解析。**`#` 补全 / L0 绑定 / catalog API 一律归属 4.13**，不在本方案 P1/P2 重复建设。
 
@@ -88,16 +88,20 @@ flowchart TB
 
 ### 3.1 `ForcedExecutionRouter`
 
-| preference | 产出 | Skill L0 |
-|------------|------|----------|
-| `simple-llm` | `ExecutionPlan(SIMPLE_LLM, reason=user:forced-simple-llm)` | ❌ |
-| `react` | L0 命中则 **合并** skill 参数，否则 forced react | ✅ |
-| `plan-workflow` | L0 命中则 **合并** skill 参数，否则 forced plan | ✅ |
-| `workflow` | `workflowId` 直出，或 L2→L3 仅选 WORKFLOW | ❌ |
+强制 = **锁死 `ExecutionMode` + `reason=user:forced-*`**；**仍**经 L0 → **同 mode** UnifiedRule → L3 解析绑定（`skillId` / `reactPromptId` / `workflowId`），规则或 LLM 的 mode **一律丢弃**。
 
-**强制模式 + `@skill` 合并**（2026-06-25）：`react` / `plan-workflow` 下 L0 单步 `@skill` 默认产出 `REACT` plan，**不得覆盖** forced `mode` / `reason`；`skillOrFallback` 仅合并 `params`（如 `skillId`），保留 `user:forced-*` reason。
+| preference | 绑定解析 | Skill L0 |
+|------------|----------|----------|
+| `react` | L0 `@skill` → 同 mode 规则（如 `reactPromptId`）→ L3 补空 | ✅ |
+| `plan-workflow` | L0 `@skill` → 同 mode 规则（如 structural）→ L3 补 `skillId` | ✅ |
+| `workflow` | 显式 `#`/`workflowId` → 同 mode 规则 → L3 选模板；仍无 id → **400** | ❌ |
+| `peer-collab` | 无绑定解析（本轮） | ❌ |
 
-`workflow` 无 `workflowId` 时顺序：Nacos L2 规则 → `IntentRouter`；若仍非 `WORKFLOW` → **400**。
+**合并策略**：显式绑定优先；其后同 mode 规则与 L3 **只填空位**（已有键不覆盖）。L0 有 `@skill` 时**不短路**，继续规则/L3 以补 `reactPromptId`。异 mode 规则（例：强制 react 时命中 `finance-smart`）视为未命中。
+
+**强制模式 + `@skill` 合并**：`react` / `plan-workflow` 下 L0 默认产出 `REACT` plan，**不得覆盖** forced `mode` / `reason`；仅合并 `params`。
+
+`IntentRouter`：`RoutingContext.lockedMode` 时分类 user 消息含「模式锁定」约束，解析后 `applyLockedMode` 强制 mode。
 
 ### 3.2 `@skill` 禁用
 

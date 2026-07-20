@@ -180,7 +180,18 @@ class WorkflowExecutorTest {
                 new NodeSpec("answer", "answer", Map.of("prompt", "test"), "生成回答")
         ), List.of("start", "rag", "answer"));
 
-        when(loader.load("knowledge-qa")).thenReturn(java.util.Optional.of(def));
+        when(loader.loadBundle("knowledge-qa")).thenReturn(java.util.Optional.of(
+                new WorkflowDefinitionLoader.WorkflowLoadBundle(def, new PlanJson(
+                        null, "查制度",
+                        List.of(
+                                new com.sunshine.orchestrator.plan.PlanNode("start", "start", Map.of()),
+                                new com.sunshine.orchestrator.plan.PlanNode("rag", "rag", Map.of("topK", "3")),
+                                new com.sunshine.orchestrator.plan.PlanNode("answer", "answer", Map.of("prompt", "test"), "生成回答")
+                        ),
+                        List.of(
+                                new com.sunshine.orchestrator.plan.PlanEdge("start", "rag"),
+                                new com.sunshine.orchestrator.plan.PlanEdge("rag", "answer")
+                        )))));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "m1", "请假制度是什么", MemoryContext.empty(),
@@ -201,7 +212,7 @@ class WorkflowExecutorTest {
 
     @Test
     void returnsErrorWhenDefinitionMissing() {
-        when(loader.load("unknown")).thenReturn(java.util.Optional.empty());
+        when(loader.loadBundle("unknown")).thenReturn(java.util.Optional.empty());
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "m1", "test", MemoryContext.empty(),

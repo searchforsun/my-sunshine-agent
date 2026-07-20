@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,7 @@ public class ToolManagerClient {
 
     public List<ToolCatalogEntry> fetchCatalog(String tenantId, boolean enabledOnly) {
         String effectiveTenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
+        assertMayBlock("fetchCatalog");
         try {
             List<ToolCatalogEntry> entries = webClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -72,6 +74,7 @@ public class ToolManagerClient {
 
     public ToolSetToolIdsResponse fetchToolSetToolIds(String kind, String tenantId) {
         String effectiveTenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
+        assertMayBlock("fetchToolSetToolIds:" + kind);
         try {
             ToolSetToolIdsResponse response = webClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -98,6 +101,19 @@ public class ToolManagerClient {
         } catch (Exception e) {
             log.warn("[ToolManagerClient] fetch {} tool-ids error tenant={}: {}", kind, effectiveTenant, e.getMessage());
             return new ToolSetToolIdsResponse(List.of(), List.of());
+        }
+    }
+
+    /**
+     * Reactor 非阻塞线程（如 reactor-http-epoll-*）禁止 {@code block()}：失败会被吞成空工具集，
+     * MAIN ReAct 只剩 RAG/沙箱。调用方须在 {@code Schedulers.boundedElastic()} 上执行。
+     */
+    static void assertMayBlock(String op) {
+        if (Schedulers.isInNonBlockingThread()) {
+            throw new IllegalStateException(
+                    "ToolManagerClient." + op + " must not block on non-blocking thread "
+                            + Thread.currentThread().getName()
+                            + "; use Schedulers.boundedElastic()");
         }
     }
 

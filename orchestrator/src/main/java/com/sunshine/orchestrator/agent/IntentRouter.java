@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.expert.ExpertCollaborationPlanSanitizer;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
@@ -90,16 +91,31 @@ public class IntentRouter {
                 .map(resp -> extractContent(resp))
                 .defaultIfEmpty("")
                 .map(planParser::parse)
-                .map(workflowCatalog::sanitize)
+                .map(plan -> ctx.lockedMode() != null
+                        ? applyLockedMode(plan, ctx.lockedMode())
+                        : workflowCatalog.sanitize(plan))
                 .map(skillCatalogService::sanitizeSkillPlan)
                 .map(expertCollaborationPlanSanitizer::sanitize)
-                .doOnNext(plan -> log.info("[IntentRouter] 计划: mode={}, workflowId={}, skill={}, reason={}",
+                .doOnNext(plan -> log.info("[IntentRouter] 计划: mode={}, workflowId={}, skill={}, reason={}, locked={}",
                         plan.mode(),
                         plan.workflowId(),
                         plan.params() != null ? plan.params().get("skill") : null,
-                        plan.reason()));
+                        plan.reason(),
+                        ctx.lockedMode()));
     }
 
+    /** 强制模式：解析后锁死 mode，保留 LLM 给出的绑定字段 */
+    static ExecutionPlan applyLockedMode(ExecutionPlan plan, ExecutionMode locked) {
+        if (locked == null || plan == null || plan.mode() == locked) {
+            return plan;
+        }
+        return new ExecutionPlan(locked, plan.workflowId(), plan.params(), plan.reason(), plan.ruleId());
+    }
+
+    /**
+     * lockedMode 时跳过 {@link WorkflowCatalog#sanitize}：sanitize 会把未知/缺定义 workflow
+     * 降级为 react，随后再锁回 WORKFLOW 会丢掉 workflowId；强制路径由 ForcedExecutionRouter 校验。
+     */
     private String renderClassifierPrompt() {
         String prompt = catalogHolder.snapshot().text("intent.classifier").map(String::strip).orElse("");
         if (!StringUtils.hasText(prompt)) {
@@ -111,6 +127,11 @@ public class IntentRouter {
 
     static String buildClassifierUserMessage(RoutingContext ctx) {
         StringBuilder sb = new StringBuilder();
+        if (ctx.lockedMode() != null) {
+            sb.append("【模式锁定】执行模式已固定为 ")
+                    .append(lockedModeLabel(ctx.lockedMode()))
+                    .append("，输出 JSON 的 mode 必须为此值；勿改 mode，仅填写该模式下的 workflowId / skillId / reactPromptId / params。\n");
+        }
         if (StringUtils.hasText(ctx.clientSkillId())) {
             sb.append("【会话态】UI 已选 Skill: ").append(ctx.clientSkillId().strip()).append('\n');
         }
@@ -134,6 +155,15 @@ public class IntentRouter {
         }
         sb.append("【当前问题】\n").append(ctx.userMessage());
         return sb.toString();
+    }
+
+    private static String lockedModeLabel(ExecutionMode mode) {
+        return switch (mode) {
+            case REACT -> "react";
+            case PLAN_WORKFLOW -> "plan-workflow";
+            case WORKFLOW -> "workflow";
+            case PEER_COLLAB -> "peer-collab";
+        };
     }
 
     @SuppressWarnings("unchecked")

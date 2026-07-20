@@ -385,6 +385,8 @@ class RoutingGoldenSetTest {
 
     @Test
     void forcedJ2_react() {
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
         ExecutionPlan plan = forcedRoute(ExecutionPreference.REACT, "待审批是否合规", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
         assertThat(plan.reason()).isEqualTo("user:forced-react");

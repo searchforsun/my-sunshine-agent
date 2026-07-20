@@ -48,7 +48,8 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
                             ctx.preference(),
                             ctx.forcedWorkflowId(),
                             ctx.clientSkillId(),
-                            ctx.memory()));
+                            ctx.memory(),
+                            ctx.lockedMode()));
                 });
     }
 }

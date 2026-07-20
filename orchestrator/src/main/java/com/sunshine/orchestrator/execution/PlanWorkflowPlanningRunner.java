@@ -72,33 +72,57 @@ final class PlanWorkflowPlanningRunner {
         Mono<PlanJson> plannerMono = planAttempt == 1
                 ? workflowPlanner.plan(ctx)
                 : workflowPlanner.replan(ctx, lastValidationIssue, planAttempt);
+        // materialize：仅规划期错误走 Replan/降级；执行期错误不得伪装成 Planner 失败
+        Mono<PlanJson> planned = plannerMono.flatMap(plannerJson -> {
+            recordPlannerAttempt(ctx, persistedPlanId, planAttempt, "plan", "completed", null, startedAt);
+            return Mono.fromRunnable(() -> executionPlanStore.updatePlannerOutput(persistedPlanId, plannerJson))
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .thenReturn(plannerJson);
+        });
         return Flux.concat(
                 Flux.fromIterable(prelude),
-                plannerMono
-                        .flatMapMany(plannerJson -> {
-                            recordPlannerAttempt(ctx, persistedPlanId, planAttempt, "plan", "completed", null, startedAt);
-                            return Mono.fromRunnable(() -> executionPlanStore.updatePlannerOutput(persistedPlanId, plannerJson))
-                                    .subscribeOn(Schedulers.boundedElastic())
-                                    .thenMany(executePlanned(ctx, persistedPlanId, plannerJson, planAttempt, session));
-                        })
-                        .onErrorResume(e -> {
-                            recordPlannerAttempt(ctx, persistedPlanId, planAttempt, "plan", "failed",
-                                    e.getMessage(), startedAt);
-                            int maxReplan = Math.max(1, executionProperties.getPlanWorkflow().getReplan().getMaxAttempts());
-                            if (planAttempt < maxReplan) {
-                                log.warn("[PlanWorkflowExecutor] Planner 第 {} 次失败，将 Replan: {}", planAttempt, e.getMessage());
-                                return planAndExecute(ctx, persistedPlanId, planAttempt + 1,
-                                        PlanValidationIssue.of(PlanValidationCode.VALIDATION_FAILED, e.getMessage()),
-                                        session);
-                            }
-                            return Mono.fromRunnable(() -> executionPlanStore.markRejected(persistedPlanId, e.getMessage()))
-                                    .subscribeOn(Schedulers.boundedElastic())
-                                    .doOnSuccess(v -> planExecutionAuditService.failed(
-                                            ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
-                                            persistedPlanId, e.getMessage()))
-                                    .thenMany(reactWithPlanFallback(ctx, "Planner 失败：" + e.getMessage()));
-                        })
+                planned.materialize().flatMapMany(signal -> {
+                    if (signal.isOnError()) {
+                        Throwable e = signal.getThrowable();
+                        String msg = e != null ? e.getMessage() : "unknown";
+                        recordPlannerAttempt(ctx, persistedPlanId, planAttempt, "plan", "failed", msg, startedAt);
+                        int maxReplan = Math.max(1, executionProperties.getPlanWorkflow().getReplan().getMaxAttempts());
+                        if (planAttempt < maxReplan) {
+                            log.warn("[PlanWorkflowExecutor] Planner 第 {} 次失败，将 Replan: {}", planAttempt, msg);
+                            return planAndExecute(ctx, persistedPlanId, planAttempt + 1,
+                                    PlanValidationIssue.of(PlanValidationCode.VALIDATION_FAILED, msg),
+                                    session);
+                        }
+                        return Mono.fromRunnable(() -> executionPlanStore.markRejected(persistedPlanId, msg))
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .doOnSuccess(v -> planExecutionAuditService.failed(
+                                        ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
+                                        persistedPlanId, msg))
+                                .thenMany(reactWithPlanFallback(ctx, "Planner 失败：" + msg));
+                    }
+                    if (signal.isOnNext()) {
+                        return executePlanned(ctx, persistedPlanId, signal.get(), planAttempt, session)
+                                .onErrorResume(ex -> handlePlanExecutionError(ctx, persistedPlanId, session, ex));
+                    }
+                    return Flux.empty();
+                })
         );
+    }
+
+    /** 执行期异常：落库已 failed；时间线标明失败，禁止静默改 ReAct */
+    private Flux<StreamToken> handlePlanExecutionError(
+            ExecutionStreamContext ctx,
+            String planId,
+            ProcessingTimelineSession session,
+            Throwable e) {
+        String msg = e != null && StringUtils.hasText(e.getMessage()) ? e.getMessage() : "未知错误";
+        log.error("[PlanWorkflowExecutor] Plan 执行失败 planId={}: {}", planId, msg);
+        List<StreamToken> tokens = ProcessingTimelineSupport.run(session, () -> {
+            if (session.hasStep("plan")) {
+                session.completeAt("plan", "执行失败：" + msg, System.currentTimeMillis());
+            }
+        });
+        return Flux.fromIterable(tokens);
     }
 
     Flux<StreamToken> executePlanned(

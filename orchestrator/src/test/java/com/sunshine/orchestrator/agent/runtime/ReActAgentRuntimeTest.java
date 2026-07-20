@@ -125,6 +125,30 @@ class ReActAgentRuntimeTest {
     }
 
     @Test
+    void run_createsAgentOnBoundedElastic_evenWhenSubscribedFromParallel() {
+        when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
+        Msg resultMsg = Msg.builder()
+                .role(MsgRole.ASSISTANT)
+                .content(List.of(TextBlock.builder().text("ok").build()))
+                .build();
+        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.just(
+                new Event(EventType.AGENT_RESULT, resultMsg, false)));
+        java.util.concurrent.atomic.AtomicReference<String> createThread = new java.util.concurrent.atomic.AtomicReference<>();
+        when(agentFactory.create(any())).thenAnswer(inv -> {
+            createThread.set(Thread.currentThread().getName());
+            return reactAgent;
+        });
+        AgentRunRequest req = AgentRunRequest.main(
+                MemoryContext.empty(), "待审批是否合规", "u1", "default", "msg-nb");
+        runtime.run(req)
+                .subscribeOn(reactor.core.scheduler.Schedulers.parallel())
+                .collectList()
+                .block();
+        assertThat(createThread.get()).isNotNull();
+        assertThat(createThread.get()).containsIgnoringCase("boundedElastic");
+    }
+
+    @Test
     void run_subUsesSubBridgePrefix() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
 

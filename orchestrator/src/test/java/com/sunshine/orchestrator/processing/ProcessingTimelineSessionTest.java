@@ -656,4 +656,16 @@ class ProcessingTimelineSessionTest {
             ToolNodeLabels.bind(null);
         }
     }
+
+    @Test
+    void parallelToolBegin_doesNotPrematurelyCompleteSibling() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        String first = session.beginToolStep("tool-sdk__sunshine-finance__list_finance_messages", "tool");
+        String second = session.beginToolStep("tool-sdk__sunshine-finance__summarize_finance_by_status", "tool");
+
+        assertThat(session.snapshot().stream().filter(s -> first.equals(s.id())).findFirst().orElseThrow()
+                .lifecycle()).isEqualTo("running");
+        assertThat(session.snapshot().stream().filter(s -> second.equals(s.id())).findFirst().orElseThrow()
+                .lifecycle()).isEqualTo("running");
+    }
 }

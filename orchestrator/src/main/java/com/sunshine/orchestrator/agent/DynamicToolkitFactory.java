@@ -86,7 +86,7 @@ public class DynamicToolkitFactory {
 
     private Toolkit buildFromWhitelist(List<String> whitelist, ToolkitScope scope, String skillId) {
         // skillId 保留签名兼容；方案 B 不再门控沙箱工具
-        // 同轮无依赖 tool_call 并行执行（AgentScope 默认串行）；写操作仍由提示词约束分步串行
+        // 同轮无依赖 tool_call 并行（须 AgentScope ≥1.0.8：mergeSequential 保序，避免结果错配）
         Toolkit tk = new Toolkit(ToolkitConfig.builder().parallel(true).build());
         List<String> registered = new ArrayList<>();
         Set<String> registeredRemote = new HashSet<>();
@@ -144,6 +144,10 @@ public class DynamicToolkitFactory {
 
         if (!missing.isEmpty()) {
             log.error("[Orchestrator] ReAct 工具集条目未在 Catalog 注册: {}", missing);
+        }
+        if (scope == ToolkitScope.MAIN && whitelist.isEmpty()) {
+            log.error("[Orchestrator] ReAct 工具集白名单为空（仅内置 RAG/沙箱/元工具）；"
+                    + "若伴随 ToolManagerClient non-blocking 报错，检查是否在 reactor-http 线程 block");
         }
 
         log.info("[Orchestrator] DynamicToolkit 已注册工具: {}", String.join(", ", registered));

@@ -76,7 +76,8 @@ public class PlanWorkflowExecutor {
                     return planningRunner.planAndExecute(ctx, planId, 1, null, session);
                 })
                 .onErrorResume(e -> {
-                    log.warn("[PlanWorkflowExecutor] Planner 失败，降级 react: {}", e.getMessage());
+                    // 仅规划链路未吞掉的错误；执行期失败由 PlanningRunner.handlePlanExecutionError 收口
+                    log.warn("[PlanWorkflowExecutor] 规划失败，降级 react: {}", e.getMessage());
                     return planningRunner.reactWithPlanFallback(ctx, "Planner 未产出有效 DAG：" + e.getMessage());
                 });
     }

@@ -80,15 +80,20 @@ public class WorkflowNodeRunner {
         }
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
-        NodeRetryPolicy retryPolicy = retryPolicyResolver.resolve(rawSpec, planWorkflow, streamCtx.tenantId());
-        List<StreamToken> startTokens = tracksNodeStep
-                ? WorkflowNodeTimeline.start(session, nodeId, rawSpec.type(), rawSpec.displayName())
-                : List.of();
-        return Flux.concat(
-                Flux.fromIterable(startTokens),
-                runNode(session, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
-                        tracksNodeStep, startedAt, retryPolicy, runSession, def)
-        );
+        // critical 工具集需 block tool-manager：禁止在 reactor-http 上解析（否则 Plan 中途静默降级 ReAct）
+        return Mono.fromCallable(() ->
+                        retryPolicyResolver.resolve(rawSpec, planWorkflow, streamCtx.tenantId()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMapMany(retryPolicy -> {
+                    List<StreamToken> startTokens = tracksNodeStep
+                            ? WorkflowNodeTimeline.start(session, nodeId, rawSpec.type(), rawSpec.displayName())
+                            : List.of();
+                    return Flux.concat(
+                            Flux.fromIterable(startTokens),
+                            runNode(session, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
+                                    tracksNodeStep, startedAt, retryPolicy, runSession, def)
+                    );
+                });
     }
 
     private Flux<StreamToken> resumeFromPendingInteraction(
@@ -105,7 +110,29 @@ public class WorkflowNodeRunner {
             PendingInteraction pending) {
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
-        NodeRetryPolicy retryPolicy = retryPolicyResolver.resolve(rawSpec, planWorkflow, streamCtx.tenantId());
+        return Mono.fromCallable(() ->
+                        retryPolicyResolver.resolve(rawSpec, planWorkflow, streamCtx.tenantId()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMapMany(retryPolicy -> resumeWithPolicy(
+                        session, def, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
+                        runSession, planWorkflow, pending, tracksNodeStep, startedAt, retryPolicy));
+    }
+
+    private Flux<StreamToken> resumeWithPolicy(
+            ProcessingTimelineSession session,
+            WorkflowDefinition def,
+            String nodeId,
+            NodeSpec rawSpec,
+            NodeSpec resolved,
+            NodeHandler handler,
+            WorkflowContext wfCtx,
+            ExecutionStreamContext streamCtx,
+            WorkflowRunSession runSession,
+            boolean planWorkflow,
+            PendingInteraction pending,
+            boolean tracksNodeStep,
+            long startedAt,
+            NodeRetryPolicy retryPolicy) {
         if ("hitl".equals(pending.kind()) && WorkflowNodeType.TOOL.matches(rawSpec.type())) {
             WorkflowHitlScope.Binding hitl = new WorkflowHitlScope.Binding(
                     session, WorkflowNodeTimeline.stepId(nodeId), streamCtx.assistantMsgId());

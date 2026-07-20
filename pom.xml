@@ -39,7 +39,8 @@
         <spring-boot.version>3.2.9</spring-boot.version>
         <spring-cloud.version>2023.0.3</spring-cloud.version>
         <spring-cloud-alibaba.version>2023.0.3.4</spring-cloud-alibaba.version>
-        <agentscope.version>1.0.7</agentscope.version>
+        <!-- 1.0.8+：并行 tool 用 Flux.mergeSequential，避免结果按完成序错配到 toolCalls -->
+        <agentscope.version>1.0.8</agentscope.version>
         <sa-token.version>1.45.0</sa-token.version>
         <milvus-sdk.version>2.6.15</milvus-sdk.version>
         <rocketmq-spring.version>2.3.3</rocketmq-spring.version>

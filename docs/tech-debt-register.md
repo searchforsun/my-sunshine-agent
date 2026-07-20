@@ -174,6 +174,9 @@
 | TD-134 | 2026-07-20 | timeline Catalog 缺条目 → 空+warn；删 Java `defaultSteps` 生产兜底 |
 | TD-135 | 2026-07-20 | `PlanAnswerPromptAssembler` 删 `DEFAULT_TEMPLATE`；缺 `answer.template` → 空+warn |
 | TD-136 | 2026-07-20 | 清 Nacos 僵尸 `topology-hints` / 空 prompt 键；删 `systemPrompt`/`modeOverlays`/`cancelResult` 残留绑定 |
+| TD-137 | 2026-07-20 | ReAct Toolkit 组装改 `boundedElastic`；`ToolManagerClient` 禁止在 reactor-http 上 `block` 静默空工具集 |
+| TD-138 | 2026-07-20 | AgentScope ↑1.0.8（并行 tool `mergeSequential` 保序）；`completeRunningActive` 跳过 tool 步，避免空 after |
+| TD-139 | 2026-07-20 | Plan 执行期 `NodeRetryPolicy` 改 boundedElastic；规划/执行错误分流，禁执行失败静默降级 ReAct |
 
 ### 文档债（DOC）
 

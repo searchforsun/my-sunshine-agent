@@ -188,7 +188,10 @@ final class TimelineSessionCompletions {
         if (state.activeStepId == null) {
             return;
         }
-        if (ThinkStepIds.isThinkStep(state.activeStepId) || TimelineStepId.GENERATE.matches(state.activeStepId)
+        // 并行 tool：同轮 PreActing 连续 start 时勿用空 detail 提前 complete；终态由 PostActing 写入
+        if (ToolStepIds.isToolStep(state.activeStepId)
+                || ThinkStepIds.isThinkStep(state.activeStepId)
+                || TimelineStepId.GENERATE.matches(state.activeStepId)
                 || TimelineStepId.TASKS.matches(state.activeStepId)) {
             return;
         }

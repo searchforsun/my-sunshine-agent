@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
@@ -16,6 +17,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,10 +39,13 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_react_withSkillBinding() {
+    void resolve_react_withSkillBinding_stillCallsL3ForReactPrompt() {
         ExecutionPlan skillPlan = new ExecutionPlan(
                 ExecutionMode.REACT, null, Map.of("skill", "finance-analysis"), "skill:@mention");
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
+        when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(new ExecutionPlan(
+                ExecutionMode.WORKFLOW, "finance-smart",
+                Map.of("reactPromptId", "react-prompt.from-llm"), "llm")));
 
         ExecutionPlan plan = router.resolve(
                 new RoutingContext("@finance-analysis 分析", null, ExecutionPreference.REACT, null, null),
@@ -48,6 +54,71 @@ class ForcedExecutionRouterTest {
         assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
         assertThat(plan.reason()).isEqualTo("user:forced-react");
         assertThat(plan.params()).containsEntry("skill", "finance-analysis");
+        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.from-llm");
+        ArgumentCaptor<RoutingContext> cap = ArgumentCaptor.forClass(RoutingContext.class);
+        verify(intentRouter).classifyPlan(cap.capture());
+        assertThat(cap.getValue().lockedMode()).isEqualTo(ExecutionMode.REACT);
+    }
+
+    @Test
+    void resolve_react_policyPhrase_bindsReactPromptFromRule() {
+        when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
+
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("差旅办法制度怎么说", null, ExecutionPreference.REACT, null, null),
+                ExecutionPreference.REACT, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.policy-qa");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
+    }
+
+    @Test
+    void resolve_react_withSkillAndPolicyRule_mergesBoth() {
+        ExecutionPlan skillPlan = new ExecutionPlan(
+                ExecutionMode.REACT, null, Map.of("skill", "policy-review"), "skill:@mention");
+        when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
+
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("@policy-review 差旅办法制度怎么说", null, ExecutionPreference.REACT, null, null),
+                ExecutionPreference.REACT, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.params()).containsEntry("skill", "policy-review");
+        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.policy-qa");
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
+    }
+
+    @Test
+    void resolve_react_ignoresWorkflowRule_keepsForcedMode() {
+        when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
+        when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
+                ExecutionPlan.reactFallback("llm")));
+
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("待审批是否合规", null, ExecutionPreference.REACT, null, null),
+                ExecutionPreference.REACT, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.workflowId()).isNull();
+        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.ruleId()).isNull();
+    }
+
+    @Test
+    void resolve_react_structuralPhrase_doesNotPromoteToPlan() {
+        when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
+        when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
+                ExecutionPlan.reactFallback("llm")));
+
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("先查制度再查待审批并对合规分析", null, ExecutionPreference.REACT, null, null),
+                ExecutionPreference.REACT, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.reason()).isEqualTo("user:forced-react");
     }
 
     @Test
@@ -65,6 +136,21 @@ class ForcedExecutionRouterTest {
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
         assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
         assertThat(plan.params()).containsEntry("skill", "policy-review");
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
+    }
+
+    @Test
+    void resolve_planWorkflow_structural_hitsSameModeRule() {
+        when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
+
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("先查制度再查待审批并对合规分析", null, ExecutionPreference.PLAN_WORKFLOW, null, null),
+                ExecutionPreference.PLAN_WORKFLOW, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
     @Test
@@ -75,6 +161,7 @@ class ForcedExecutionRouterTest {
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
     @Test
@@ -87,19 +174,23 @@ class ForcedExecutionRouterTest {
         assertThat(plan.workflowId()).isEqualTo("finance-list");
         assertThat(plan.reason()).isEqualTo("user:forced-workflow");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
     @Test
     void resolve_workflow_fromIntentClassifier() {
-        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+        when(intentRouter.classifyPlan(any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
-                ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
+                        ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
 
         ExecutionPlan plan = router.resolve(
                 new RoutingContext("年假制度", null, ExecutionPreference.WORKFLOW, null, null),
                 ExecutionPreference.WORKFLOW, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
+        ArgumentCaptor<RoutingContext> cap = ArgumentCaptor.forClass(RoutingContext.class);
+        verify(intentRouter).classifyPlan(cap.capture());
+        assertThat(cap.getValue().lockedMode()).isEqualTo(ExecutionMode.WORKFLOW);
     }
 
     @Test

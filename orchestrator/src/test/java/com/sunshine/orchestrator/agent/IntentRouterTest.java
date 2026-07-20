@@ -2,10 +2,13 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,5 +44,28 @@ class IntentRouterTest {
         RoutingContext ctx = new RoutingContext("随便聊聊", null);
         String content = IntentRouter.buildClassifierUserMessage(ctx);
         assertThat(content).isEqualTo("【当前问题】\n随便聊聊");
+    }
+
+    @Test
+    void buildClassifierUserMessage_includesLockedMode() {
+        RoutingContext ctx = new RoutingContext("制度怎么说", null)
+                .withLockedMode(ExecutionMode.REACT);
+        String content = IntentRouter.buildClassifierUserMessage(ctx);
+        assertThat(content).contains("【模式锁定】");
+        assertThat(content).contains("react");
+        assertThat(content).contains("【当前问题】");
+    }
+
+    @Test
+    void applyLockedMode_overridesModeKeepsBindings() {
+        ExecutionPlan llm = new ExecutionPlan(
+                ExecutionMode.WORKFLOW,
+                "finance-smart",
+                Map.of("reactPromptId", "react-prompt.policy-qa", "skill", "x"),
+                "llm");
+        ExecutionPlan locked = IntentRouter.applyLockedMode(llm, ExecutionMode.REACT);
+        assertThat(locked.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(locked.workflowId()).isEqualTo("finance-smart");
+        assertThat(locked.params()).containsEntry("reactPromptId", "react-prompt.policy-qa");
     }
 }
