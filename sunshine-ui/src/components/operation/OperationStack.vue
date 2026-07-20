@@ -85,7 +85,7 @@ const timelineExpandedOverride = ref(false)
 const timelineBodyExpanded = computed(() => {
   if (!summaryEnabled.value) return true
   if (timelineUserToggled.value) return timelineExpandedOverride.value
-  if (props.live || props.messageStatus === 'streaming') return true
+  // 进行中 / 终态均默认折叠；用户点开后以 userToggled 为准
   return false
 })
 

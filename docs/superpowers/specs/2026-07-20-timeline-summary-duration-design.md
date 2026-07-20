@@ -17,7 +17,7 @@
 | **总耗时** | 墙钟（非整段步骤 `durationMs` 求和） |
 | **状态文案** | 正在进行 / 已完成 / 已中断 / 失败 |
 | **整段折叠** | 收起实现步骤与中间穿插正文；只留总览行 + 终稿正文块 |
-| **默认态** | 进行中展开；终态（完成/中断/失败）折叠；用户手动切换后不再被状态抢走 |
+| **默认态** | 进行中 / 终态均默认折叠；用户手动切换后不再被状态抢走 |
 
 **不替代**：单步 `.op-dur`、单卡 chevron、Plan 抽屉 / DAG 放大。
 
@@ -29,7 +29,7 @@
 | D2 | 耗时用**墙钟**，禁止各步 `durationMs` 求和 |
 | D3 | 文案：`正在处理` / `已完成` / `已中断` / `已失败` + 时钟 |
 | D4 | 时钟格式独立：`42s` / `1m20s`（秒取整）；与单步 `formatDuration`（`1.2s`）分离 |
-| D5 | 进行中默认展开；`completed` / `interrupted` / `failed` 默认折叠 |
+| D5 | **默认折叠**（含进行中 / 终态）；用户点开后 `userToggled` 覆盖 |
 | D6 | 用户点过 → `userToggled` 覆盖，状态变化不再自动改 expand |
 | D7 | **折叠**：隐藏全部实现步骤 + **中间穿插** `contentBlocks`；**只显示最后一段正文块** |
 | D8 | 终稿 SSOT：有 `contentBlocks` 时取**最后一个非空块**（勿用整段 `message.content` / join）；无块再回退 `content`；Plan 仍走 `resolvePlanAnswerText` |
@@ -79,8 +79,7 @@
 
 ```
 if userToggled: 用用户值
-else if live || status === 'streaming': expanded = true
-else: expanded = false   // completed | interrupted | failed | 无 status 的历史终态
+else: expanded = false   // 进行中 / completed | interrupted | failed 一律默认折叠
 ```
 
 `live` 仍由 `useChatTimelineView.isTimelineLive` 提供；`status` 由 `ChatView` 传入 `msg.status`。
