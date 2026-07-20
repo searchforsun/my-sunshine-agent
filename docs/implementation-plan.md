@@ -91,7 +91,7 @@
 | **4.8** 工具集成（SDK + MCP） | 异构系统 / 业务解耦 | **✅ 检查门通过**：MySQL Catalog + `sunshine-tool-sdk` + MCP 动态接入 + `/tools` 管理页 · 详设 [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) · 计划 [tool-integration plan](./superpowers/plans/2026-07-09-tool-integration.md) · Live：`verify_tool_integration_live.py --suite all` |
 | **4.9** K8s | — | **明确不做**（维持脚本/现有部署） |
 | **4.10** Seata | — | **明确不做**（跨服务写靠 HITL + 幂等） |
-| **4.11** Prompt 后台 | 非研发维护提示词 | **待做**：详设 [prompt-ops-routing-catalog](superpowers/specs/2026-07-20-prompt-ops-routing-catalog-design.md)（DB Catalog + 统一 Rule Engine + `/prompts`；首期 draft/published，审核二期） |
+| **4.11** Prompt 后台 | 非研发维护提示词 | **实施中（backend+UI 近收口）**：详设 [prompt-ops-routing-catalog](superpowers/specs/2026-07-20-prompt-ops-routing-catalog-design.md) · 计划 [prompt-ops plan](superpowers/plans/2026-07-20-prompt-ops-routing-catalog.md)（DB Catalog + 统一 Rule Engine + `/prompts`；首期 draft/published，审核二期）· Live：`verify_prompt_catalog_live.py` |
 | **4.12** Serverless | — | **明确不做**（常驻实例） |
 
 ---
@@ -107,6 +107,7 @@
 | **Experts** | **`/experts`** | **✅ 阶段四 4.7**：Expert CRUD、Catalog 种子（4 专家）、Chat `$` 补全、`ExpertStepPanel` · [expert-consultation spec](./superpowers/specs/2026-07-07-expert-consultation-design.md) |
 | **工具集成** | **`/tools`** | **阶段四 4.8 ✅**：SDK 应用 / MCP Server / 工具集（ReAct + Planner Workflow）/ Plan 执行策略 · [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) |
 | **工作流** | **`/workflows`** | **阶段四 4.13 ✅ 收口**：Studio 可视化编辑/发布；并行 · exclusive 边条件 · loop；Live `verify_workflow_studio_live` / `verify_exclusive_gateway_live` / `verify_loop_live` |
+| **提示词** | **`/prompts`** | **阶段四 4.11 实施中**：Catalog 运营 + 路由 dry-run / ReAct 拼装 · [prompt-ops spec](./superpowers/specs/2026-07-20-prompt-ops-routing-catalog-design.md) · Live `verify_prompt_catalog_live.py` |
 | 系统状态 | `/status` | 12 微服务 + 12 中间件状态矩阵 |
 
 > **阶段四 OCR/多模态**：见 `superpowers/specs/phase4-platformization-design.md` §4.2–4.4  

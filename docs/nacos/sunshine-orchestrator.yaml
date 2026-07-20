@@ -1,4 +1,10 @@
 # 表结构 SSOT：docker/mysql/init/11-sunshine-orchestrator.sql（禁止 Flyway）
+#
+# 【4.11 迁出】提示词正文 / 路由规则 SSOT = prompt-manager DB（:8500 Catalog）
+#   - routing-rule.* / system-prompt / mode-overlay.* / timeline.* / intent.classifier / …
+#   - 种子：docker/mysql/init/17-sunshine-prompt-manager.sql + *-seed-prompts.sql
+#   - 本文件 agent.system-prompt / agent.prompt.* / agent.routing.* 仅留占位或空壳，勿再当运营 SSOT
+#   - 运营入口：sunshine-ui `/prompts`；验收：scripts/verify_prompt_catalog_live.py
 
 server:
   port: 8200

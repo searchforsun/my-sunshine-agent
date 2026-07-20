@@ -54,6 +54,9 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_exclusive_gateway_live.py` | **4.13.7** exclusive-gateway 边条件（`#knowledge-branch`） |
 | `verify_loop_live.py` | **4.13.7** loop do-while + subSteps（`#knowledge-loop`） |
 | `verify_plan_dag_live.py` | **4.6** Plan-Workflow 动态 DAG（parallel/exclusive/loop Planner + 校验 + 布局） |
+| `verify_prompt_catalog_live.py` | **4.11** Prompt Catalog Live（catalog / dry-run / priority / rollback；直连 `:8500`） |
+
+> **提示词 / 路由规则 SSOT**：`prompt-manager` DB（`/prompts` + Catalog），**不再**经 Nacos `agent.routing.*` / 正文提示词；Nacos 仅保留非提示词运行参数与迁出占位注释。
 
 ## 请求链路与模块
 
@@ -73,7 +76,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；重试策略 SSOT **`execution_mode_policy`**（tool-manager DB，`/tools` Planner Workflow Tab）；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
-| **意图路由** | **Policy Chain**：L0 Skill → L1 `agent.routing.structural` → L2 `agent.routing.rules` → L3 `agent.intent`；验收见 `docs/routing/routing-golden-set.md` |
+| **意图路由** | **Policy Chain**：L0 Skill → `UnifiedRuleRoutingPolicy`（Catalog `routing-rule.*`）→ L3 `intent.classifier`；验收见 `docs/routing/routing-golden-set.md` · Live `verify_prompt_catalog_live.py` |
 | **Chat 执行模式** | 底栏 `executionPreference`（`auto` + `react` / `workflow` / `plan-workflow` / `peer-collab`）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 · [remove-simple-llm](docs/superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md) |
 | **Workflow 模板（4.13）** | `workflow-manager` DB + `/workflows` + Chat `#` 补全；标杆维护见 `docs/workflow/README.md`；详设 `2026-06-25-workflow-studio-design.md` · `2026-07-11-workflow-studio.md` |
 | Workflow 节点中文名 | PlanJson `displayName`（runtime bind）+ tool catalog → `WorkflowNodeLabelService` → SSE `step.label` |

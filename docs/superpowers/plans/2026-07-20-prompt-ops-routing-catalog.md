@@ -718,7 +718,7 @@ git commit -am "feat(ui): prompts routing dry-run and react compose panels"
 - Modify: `docs/nacos/sunshine-orchestrator.yaml` 顶部注释「提示词/规则已迁 prompt-manager」
 - Modify: spec 状态 → 实施中/完成（收口时）
 
-- [ ] **Step 1: Live 脚本检查门**
+- [x] **Step 1: Live 脚本检查门**
 
 | 门 | 断言 |
 |----|------|
@@ -734,9 +734,9 @@ python scripts/verify_prompt_catalog_live.py
 
 Expected: 全 PASS。
 
-- [ ] **Step 2: 文档与 CLAUDE 运维表**
+- [x] **Step 2: 文档与 CLAUDE 运维表**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -am "test(4.11): prompt catalog live gates and docs cutover"

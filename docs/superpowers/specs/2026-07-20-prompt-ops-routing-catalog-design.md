@@ -1,7 +1,7 @@
 # Prompt 运营中心 + 统一路由规则引擎
 
 > **阶段**：四 · **任务卡**：4.11（扩展）  
-> **状态**：⬜ 设计已锁定（待实施）  
+> **状态**：🟡 实施中（backend + `/prompts` UI + Live 近收口；审核流二期）  
 > **日期**：2026-07-20  
 > **前置**：[phase3 §3.8 PromptComposer](./phase3-production-hardening-design.md) · [routing-golden-set.md](../../routing/routing-golden-set.md) · [skills-management-ui-design.md](./skills-management-ui-design.md) · [workflow-studio-design.md](./2026-06-25-workflow-studio-design.md)  
 > **关联**：`prompt-manager`（:8500 骨架）· `docs/nacos/sunshine-orchestrator.yaml`（迁出后不再作提示词/规则 SSOT）

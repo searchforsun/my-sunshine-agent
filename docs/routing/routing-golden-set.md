@@ -13,7 +13,7 @@
 | L1 | `UnifiedRuleRoutingPolicy` | Catalog `matchType=structural`（priority 100） | `PLAN_WORKFLOW` |
 | L1b | （同上引擎） | Catalog `matchType=peer_phrase`（priority 90） | `PEER_COLLAB` |
 | L2 | （同上引擎） | Catalog `matchType=regex`（priority 20/15/10） | 静态 `WORKFLOW` |
-| L3 | `LlmClassifierRoutingPolicy` | `agent.intent.classifier-prompt` | LLM 选 mode/workflow |
+| L3 | `LlmClassifierRoutingPolicy` | Catalog `intent.classifier`（原 Nacos classifier-prompt） | LLM 选 mode/workflow |
 | **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | 覆盖统一规则层与 L3；见 [§J](#j-chat-executionpreference-强制路由p0) |
 
 **链规则**：首个返回 `ExecutionPlan` 的策略胜出；统一引擎按 **priority** 择优（不再「L1 漏判时跳过 L2」）。**`executionPreference` 非 auto 时**直接走 `ForcedExecutionRouter`，不进入 Policy Chain。
@@ -29,8 +29,9 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 ## 验收前准备
 
 1. **新建对话**（或 `python scripts/clear_session_cache.py --force`）
-2. Nacos 已同步：`python scripts/sync_nacos.py --data-id sunshine-orchestrator.yaml`
-3. orchestrator :8200 已重启
+2. prompt-manager :8500 已启动且 Catalog 有种子规则（改规则走 `/prompts` 发布，**勿**再改 Nacos `agent.routing.*`）
+3. orchestrator :8200 已启动（会热拉 Catalog；若改了非提示词 Nacos 项才需 `sync_nacos.py` + 重启）
+4. API Live：`python scripts/verify_prompt_catalog_live.py`
 
 ---
 
@@ -340,8 +341,8 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 | 需求 | 改哪里 |
 |------|--------|
 | 新增多步句式 / 跨域信号 / peer 句式 / 正则快路径 | prompt-manager Catalog `routing-rule.*`（`/prompts`）；发布后 orchestrator 热更新 |
-| 意图步文案 | `agent.timeline.intent.modes` |
-| 语义兜底 | `agent.intent.classifier-prompt` |
+| 意图步文案 | Catalog `timeline.intent`（`/prompts`） |
+| 语义兜底 | Catalog `intent.classifier`（`/prompts`） |
 | Plan 重试/降级/Replan | `agent.execution.plan-workflow` · 见 [plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md) |
 | Skill `@` / 强提示 / 5B | `agent.skill.hint-patterns`；L0 多步→`plannerMode=skill-driven` |
 | Skill 自动发现阈值 | `SkillDiscoveryService`（catalog description bigram 打分） |
@@ -350,7 +351,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 | Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) |
 | Workflow 模板 / `#` 绑定 | `workflow-manager` catalog + L0 `#` · **非**底栏二级下拉 · 见 [workflow-studio spec](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3 |
 
-改完：`sync_nacos.py` → 重启 orchestrator → 跑上表至少 A1/B1/C1/D1 + G 对照。
+改完路由/提示词：`/prompts` 保存并发布 → 等 orchestrator Catalog 热更新（或重启）→ 跑上表至少 A1/B1/C1/D1 + G 对照；API 门：`verify_prompt_catalog_live.py`。仅改 Nacos 非提示词项时才 `sync_nacos.py`。
 
 ---
 
