@@ -17,7 +17,7 @@
 | **Prompt Catalog** | `prompt-manager` DB 为唯一 SSOT；全量原 `agent.*` 提示词/时间线/改写等进 Catalog |
 | **统一 Rule Engine** | 合并原 L1 structural / L1b peer / L2 golden-rule 为可无限扩展的规则表（priority + matchType） |
 | **深度运营** | 路由：静态冲突 + 样例试跑；ReAct：Composer 层骨架 + 工具族 fragment |
-| **前端** | `/prompts`，同构 Skills/Experts；三视图：全部 / 路由规则 / ReAct 拼装 |
+| **前端** | `/prompts`：全部（系统配置，不可新建）/ 路由规则 / **React 提示词**（场景叠加）；版本栏对齐 Skills |
 
 **不替代**：Skills / Experts / Workflow 节点各自 overlay（仍在原页维护）。本页只管 **orchestrator 全局** 提示词与路由规则。
 
@@ -54,28 +54,30 @@
 
 ### 2.3 三视图（同一路由 Tabs）
 
-| 视图 | 左列表 | 右栏 |
-|------|--------|------|
-| **全部** | 全 kind | 通用编辑 + 版本（Catalog 壳） |
-| **路由规则** | 仅 `routing-rule`，priority 降序 | 结构化表单 + 冲突告警 + 试跑 |
-| **ReAct 拼装** | `mode-overlay(react*)` + `react-fragment` | 层顺序预览 + 片段启停/编辑；timeline 跳转「全部」 |
+| 视图 | 左列表 | 新建 | 右栏 |
+|------|--------|------|------|
+| **全部** | 系统配置（排除 `routing-rule` / `react-prompt`） | **禁止**（页头无新建） | 编辑内容 + Skills 风格版本栏 |
+| **路由规则** | 仅 `routing-rule`，priority 降序 | 左栏右上角「新建规则」 | 结构化表单 + 冲突/试跑；`mode=react` 可选 `reactPromptId` |
+| **React 提示词** | 仅 `react-prompt`（场景叠加，非基础 system） | 左栏右上角「新建场景」 | 正文编辑 + 版本栏（同 Skills） |
+
+版本栏：当前版本 Select + 状态 Tag + 主按钮（发布并生效 / 设为此生效版）+ 三点更多（复制为新草稿等）。
 
 ### 2.4 路由规则右栏
 
-1. 表单：id、priority、matchType、match(any/all)、patterns / domainGroups、目标 plan（mode + workflowId/params）、enabled  
-2. 冲突条：同 priority、pattern 重叠等 → 警告（可仍保存）  
-3. 试跑：输入一句 → 硬绑定 / Rule Engine 命中规则 id / `would_llm`
+1. 表单：id、priority、matchType、match、patterns / domainGroups、plan（mode + workflowId/params）、可选 **`reactPromptId`**  
+2. 冲突条 + 试跑  
 
-### 2.5 ReAct 拼装右栏
+### 2.5 React 提示词与运行时拼装
 
-1. 层骨架只读：mode-overlay → react-restart → HITL → skill → memory → scope（与 `PromptComposer` 一致）  
-2. 可编辑：`react` / `react-restart` 正文；工具族 fragments 启停与正文  
-3. Timeline 在「全部」按 `timeline` kind 管理
+- kind=`react-prompt`：场景方向文案，**累加**在基础链之后，不替换 `system-prompt`  
+- 拼装顺序：`system-prompt` → `mode-overlay.react` → **`react-prompt.{id}`**（仅当路由 `params.reactPromptId` 有值）→ HITL / skill / memory / scope…  
+- 无 `reactPromptId`：不加场景段（兼容底栏强制 ReAct）
 
 ### 2.6 非目标（前端）
 
 - Chat 底栏不嵌配置  
 - 不迁入 Skill/Expert/Workflow 节点 prompt  
+- 不做「ReAct 层拼装器」运营 UI（fragment 若仍存在仅作全局 overlay 内部消费） 
 
 ---
 
