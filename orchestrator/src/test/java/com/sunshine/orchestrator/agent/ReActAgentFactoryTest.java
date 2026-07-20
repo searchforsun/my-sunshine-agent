@@ -107,7 +107,7 @@ class ReActAgentFactoryTest {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.SUB, "run-1", null, MemoryContext.empty(), "q", List.of(),
                 "u1", "default", null, null, List.of("sdk__sunshine-finance__list_finance_messages"), null, 4,
-                TimelineBinding.SUB_COMPRESSED, false, null);
+                TimelineBinding.SUB_COMPRESSED, false, null, null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
     }
 
@@ -167,6 +167,7 @@ class ReActAgentFactoryTest {
                 0,
                 TimelineBinding.SUB_COMPRESSED,
                 false,
+                null,
                 null);
     }
 }

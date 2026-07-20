@@ -107,10 +107,18 @@ class AgentRunRequestTest {
     }
 
     @Test
+    void main_carriesReactPromptId() {
+        AgentRunRequest req = AgentRunRequest.main(
+                MemoryContext.empty(), "q", "u1", "default", "msg-1",
+                java.util.List.of(), null, false, null, "react-prompt.demo-scenario");
+        assertThat(req.reactPromptId()).isEqualTo("react-prompt.demo-scenario");
+    }
+
+    @Test
     void compactConstructor_normalizesNullMemoryAndBlocks() {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.MAIN, "run-1", null, null, "q", null,
-                "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL, false, null);
+                "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL, false, null, null);
         assertThat(req.memory()).isEqualTo(MemoryContext.empty());
         assertThat(req.injectedBlocks()).isEmpty();
     }

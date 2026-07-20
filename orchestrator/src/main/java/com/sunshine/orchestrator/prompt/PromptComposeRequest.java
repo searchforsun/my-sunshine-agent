@@ -16,7 +16,8 @@ public record PromptComposeRequest(
         String nodePrompt,
         List<String> injectedUserContexts,
         String partialAssistant,
-        boolean reactRestart) {
+        boolean reactRestart,
+        String reactPromptId) {
 
     public PromptComposeRequest {
         injectedUserContexts = injectedUserContexts != null ? List.copyOf(injectedUserContexts) : List.of();
@@ -25,14 +26,14 @@ public record PromptComposeRequest(
     /** 直连 Gateway / DIRECT */
     public static PromptComposeRequest forDirect(MemoryContext memory, String userMessage) {
         return new PromptComposeRequest(
-                PromptMode.DIRECT, memory, userMessage, null, null, null, List.of(), null, false);
+                PromptMode.DIRECT, memory, userMessage, null, null, null, List.of(), null, false, null);
     }
 
     /** 直连 Gateway / DIRECT 续写 */
     public static PromptComposeRequest forDirectContinue(
             MemoryContext memory, String userMessage, String partialAssistant) {
         return new PromptComposeRequest(
-                PromptMode.DIRECT, memory, userMessage, null, null, null, List.of(), partialAssistant, false);
+                PromptMode.DIRECT, memory, userMessage, null, null, null, List.of(), partialAssistant, false, null);
     }
 
     public static PromptComposeRequest forReact(
@@ -48,15 +49,22 @@ public record PromptComposeRequest(
     public static PromptComposeRequest forReact(
             MemoryContext memory, String userMessage, String skillId,
             List<String> injectedUserContexts, boolean reactRestart) {
+        return forReact(memory, userMessage, skillId, injectedUserContexts, reactRestart, null);
+    }
+
+    public static PromptComposeRequest forReact(
+            MemoryContext memory, String userMessage, String skillId,
+            List<String> injectedUserContexts, boolean reactRestart, String reactPromptId) {
         return new PromptComposeRequest(
-                PromptMode.REACT, memory, userMessage, null, skillId, null, injectedUserContexts, null, reactRestart);
+                PromptMode.REACT, memory, userMessage, null, skillId, null, injectedUserContexts, null,
+                reactRestart, reactPromptId);
     }
 
     /** workflow llm 节点 — nodePrompt 为 TemplateResolver 渲染后的第 6 层 */
     public static PromptComposeRequest forWorkflowLlm(
             String workflowId, MemoryContext memory, String userMessage, String nodePrompt) {
         return new PromptComposeRequest(
-                PromptMode.WORKFLOW, memory, userMessage, workflowId, null, nodePrompt, List.of(), null, false);
+                PromptMode.WORKFLOW, memory, userMessage, workflowId, null, nodePrompt, List.of(), null, false, null);
     }
 
     /** 专家 Hub 发言阶段2 — nodePrompt 承载 Expert.systemPrompt；直连 Gateway / DIRECT */
@@ -64,6 +72,6 @@ public record PromptComposeRequest(
             MemoryContext memory, String userMessage, String skillId, String expertSystemPrompt) {
         return new PromptComposeRequest(
                 PromptMode.DIRECT, memory, userMessage, null, skillId, expertSystemPrompt,
-                List.of(), null, false);
+                List.of(), null, false, null);
     }
 }

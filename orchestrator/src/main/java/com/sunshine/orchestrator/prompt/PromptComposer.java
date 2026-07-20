@@ -70,6 +70,7 @@ public class PromptComposer {
             addReactSystem(inputs, catalogText("system-prompt"));
         }
         addReactSystem(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
+        addReactSystem(inputs, resolveReactScenarioOverlay(request.reactPromptId()));
         addReactSystem(inputs, resolveReactRestartOverlay(request));
         addReactSystem(inputs, resolveHitlOverlay(request.mode()));
         addReactSystem(inputs, resolveSkillOverlay(request.skillId()));
@@ -171,6 +172,24 @@ public class PromptComposer {
             return "";
         }
         return catalogText("mode-overlay.react-restart");
+    }
+
+    private String resolveReactScenarioOverlay(String reactPromptId) {
+        if (!StringUtils.hasText(reactPromptId)) {
+            return "";
+        }
+        String id = reactPromptId.strip();
+        var entry = catalogHolder.snapshot().entry(id);
+        if (entry.isEmpty()) {
+            log.warn("[PromptComposer] react scenario missing id={}", id);
+            return "";
+        }
+        PromptCatalogEntry e = entry.get();
+        if (!"react-prompt".equals(e.kind()) || !e.enabled()) {
+            log.warn("[PromptComposer] react scenario invalid id={} kind={} enabled={}", id, e.kind(), e.enabled());
+            return "";
+        }
+        return e.contentText() != null ? e.contentText().strip() : "";
     }
 
     private String resolveSkillOverlay(String skillId) {

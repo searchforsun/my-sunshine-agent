@@ -77,7 +77,7 @@ public class ReActAgentRuntime implements AgentRuntime {
         try {
             List<Msg> inputs = promptComposer.composeReactInputs(
                     PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks(),
-                            request.reactRestart()));
+                            request.reactRestart(), request.reactPromptId()));
 
             StreamOptions options = StreamOptions.builder()
                     .incremental(true)

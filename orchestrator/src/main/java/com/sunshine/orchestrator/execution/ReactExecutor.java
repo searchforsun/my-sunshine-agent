@@ -27,7 +27,8 @@ public class ReactExecutor {
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
         String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
-        return executeWithInjected(ctx, List.of(), query, skillId);
+        String reactPromptId = blankToNull(params.get("reactPromptId"));
+        return executeWithInjected(ctx, List.of(), query, skillId, reactPromptId);
     }
 
     /** plan-workflow 降级 ReAct — 注入已成功节点上下文 */
@@ -38,14 +39,16 @@ public class ReactExecutor {
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
         String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
-        return executeWithInjected(ctx, injectedBlocks, query, skillId);
+        String reactPromptId = blankToNull(params.get("reactPromptId"));
+        return executeWithInjected(ctx, injectedBlocks, query, skillId, reactPromptId);
     }
 
     private Flux<StreamToken> executeWithInjected(
             ExecutionStreamContext ctx,
             List<String> injectedBlocks,
             String query,
-            String skillId) {
+            String skillId,
+            String reactPromptId) {
         if (ctx.assistantMsgId() != null) {
             StepEventBridge.bindToolAudit(ctx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
                     ctx.conversationId(),
@@ -58,7 +61,7 @@ public class ReactExecutor {
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
                         injectedBlocks != null ? injectedBlocks : List.of(), skillId, ctx.reactRestart(),
-                        ctx.conversationId()));
+                        ctx.conversationId(), reactPromptId));
     }
 
     private static String blankToNull(String value) {

@@ -172,6 +172,23 @@ class PromptComposerTest {
     }
 
     @Test
+    void composeReactInputs_appliesReactScenarioOverlayAfterModeOverlay() {
+        catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                textEntry("mode-overlay.react", "mode-overlay", "BASE"),
+                textEntry("react-prompt.demo-scenario", "react-prompt", "SCENARIO"),
+                textEntry("memory.layer-prompt", "memory", ""),
+                textEntry("scope-prompt", "scope", ""),
+                textEntry("hitl.agent-prompt", "hitl", ""))));
+        memoryProperties.setLayerPrompt("");
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                MemoryContext.empty(), "问", null, List.of(), false, "react-prompt.demo-scenario"));
+
+        assertThat(inputs.get(0).getTextContent()).isEqualTo("BASE");
+        assertThat(inputs.get(1).getTextContent()).isEqualTo("SCENARIO");
+    }
+
+    @Test
     void composeReactInputs_skipsBlankInjectedContexts() {
         replaceCatalogTexts(Map.of("memory.layer-prompt", "", "mode-overlay.react", ""));
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
@@ -273,6 +290,9 @@ class PromptComposerTest {
         }
         if ("system-prompt".equals(id)) {
             return "system";
+        }
+        if (id.startsWith("react-prompt.")) {
+            return "react-prompt";
         }
         return "system";
     }
