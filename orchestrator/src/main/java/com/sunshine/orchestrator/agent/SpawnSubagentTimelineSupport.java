@@ -77,4 +77,15 @@ public class SpawnSubagentTimelineSupport {
             }
         });
     }
+
+    public void cancel(String mainBridgeId, SpawnSubagentTimelineBridge bridge, String result) {
+        if (!StringUtils.hasText(mainBridgeId) || bridge == null) {
+            return;
+        }
+        StepEventBridge.emit(mainBridgeId, session -> {
+            for (StreamToken token : bridge.cancel(SpawnSubagentLabels.afterCancel(), result)) {
+                session.enqueueAuxiliary(token);
+            }
+        });
+    }
 }

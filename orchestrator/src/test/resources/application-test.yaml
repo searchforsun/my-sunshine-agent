@@ -100,3 +100,6 @@ logging:
 orchestrator:
   catalog:
     refresh-enabled: false
+
+prompt-catalog:
+  enabled: false
