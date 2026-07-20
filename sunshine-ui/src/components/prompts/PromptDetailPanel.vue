@@ -59,6 +59,17 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
           />
         </div>
         <NButton
+          v-if="page.showSaveDraftButton"
+          size="small"
+          round
+          secondary
+          :loading="page.saving"
+          :disabled="page.isActionBusy"
+          @click="page.saveVersion('draft')"
+        >
+          保存草稿
+        </NButton>
+        <NButton
           v-if="page.showPrimaryPublishButton"
           size="small"
           round
@@ -71,6 +82,7 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
           {{ page.primaryPublishLabel }}
         </NButton>
         <NDropdown
+          v-if="page.showMoreMenu"
           trigger="click"
           size="small"
           :options="page.moreMenuOptions"
@@ -113,22 +125,6 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
               />
             </NFormItem>
             <NFormItem label="内容">
-              <template #label>
-                <div class="content-label-row">
-                  <span>内容</span>
-                  <NButton
-                    v-if="page.showSaveDraftButton"
-                    size="small"
-                    round
-                    secondary
-                    :loading="page.saving"
-                    :disabled="page.isActionBusy"
-                    @click="page.saveVersion('draft')"
-                  >
-                    保存草稿
-                  </NButton>
-                </div>
-              </template>
               <NInput
                 v-model:value="page.editContentText"
                 class="sun-field sun-field-grow content-input"

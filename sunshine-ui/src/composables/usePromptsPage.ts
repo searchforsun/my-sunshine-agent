@@ -1,6 +1,6 @@
 import { computed, h, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { NIcon, useMessage, type DropdownOption } from 'naive-ui'
-import { CheckmarkOutline, CopyOutline } from '@vicons/ionicons5'
+import { CopyOutline } from '@vicons/ionicons5'
 import {
   addPromptVersion,
   createPrompt,
@@ -224,16 +224,11 @@ export function usePromptsPage() {
         disabled: forking.value,
       })
     }
-    if (showPrimaryPublishButton.value) {
-      opts.push({
-        label: primaryPublishLabel.value,
-        key: 'publish',
-        icon: () => h(NIcon, { component: CheckmarkOutline, size: 14 }),
-        disabled: publishing.value,
-      })
-    }
+    // 「发布并生效 / 设为此生效版」已在顶栏主按钮，勿在 ⋯ 菜单重复
     return opts
   })
+
+  const showMoreMenu = computed(() => moreMenuOptions.value.length > 0)
 
   const createModalTitle = computed(() =>
     createModalKind.value === 'routing' ? '新建规则' : '新建场景',
@@ -502,7 +497,6 @@ export function usePromptsPage() {
 
   async function handleMoreMenuSelect(key: string | number) {
     if (key === 'fork') await forkToDraft()
-    else if (key === 'publish') await handlePrimaryPublish()
   }
 
   async function handleRollback(version: number) {
@@ -682,6 +676,7 @@ export function usePromptsPage() {
     primaryPublishLabel,
     showForkToDraft,
     showSaveDraftButton,
+    showMoreMenu,
     isContentEditable,
     isActionBusy,
     moreMenuOptions,

@@ -216,6 +216,17 @@ const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
           />
         </div>
         <NButton
+          v-if="page.showSaveDraftButton"
+          size="small"
+          round
+          secondary
+          :loading="page.saving || page.validating"
+          :disabled="page.isActionBusy"
+          @click="page.saveRoutingRule()"
+        >
+          保存草稿
+        </NButton>
+        <NButton
           v-if="page.showPrimaryPublishButton"
           size="small"
           round
@@ -228,6 +239,7 @@ const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
           {{ page.primaryPublishLabel }}
         </NButton>
         <NDropdown
+          v-if="page.showMoreMenu"
           trigger="click"
           size="small"
           :options="page.moreMenuOptions"
@@ -259,17 +271,6 @@ const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
           <section class="form-section">
             <header class="form-section-head">
               <h4 class="form-section-title">基本信息</h4>
-              <NButton
-                v-if="page.showSaveDraftButton"
-                size="small"
-                round
-                secondary
-                :loading="page.saving || page.validating"
-                :disabled="page.isActionBusy"
-                @click="page.saveRoutingRule()"
-              >
-                保存草稿
-              </NButton>
             </header>
             <div class="form-grid">
               <NFormItem>
