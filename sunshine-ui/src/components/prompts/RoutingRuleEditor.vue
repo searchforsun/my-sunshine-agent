@@ -288,7 +288,7 @@ const showPlanParams = computed(() =>
               <NFormItem v-if="showMatch">
                 <template #label>
                   <span class="field-label-row">
-                    match
+                    命中方式
                     <ConfigFieldHelp :text="routingFieldHelp('match')" />
                   </span>
                 </template>
@@ -303,7 +303,7 @@ const showPlanParams = computed(() =>
             <NFormItem>
               <template #label>
                 <span class="field-label-row">
-                  patterns
+                  匹配模式
                   <ConfigFieldHelp :text="routingFieldHelp('patterns')" />
                 </span>
               </template>
@@ -320,7 +320,7 @@ const showPlanParams = computed(() =>
               <NFormItem>
                 <template #label>
                   <span class="field-label-row">
-                    domainGroups
+                    域关键词组
                     <ConfigFieldHelp :text="routingFieldHelp('domainGroups')" />
                   </span>
                 </template>
@@ -336,7 +336,7 @@ const showPlanParams = computed(() =>
               <NFormItem>
                 <template #label>
                   <span class="field-label-row">
-                    minDomainGroups
+                    最少命中域数
                     <ConfigFieldHelp :text="routingFieldHelp('minDomainGroups')" />
                   </span>
                 </template>
@@ -358,7 +358,7 @@ const showPlanParams = computed(() =>
             <NFormItem>
               <template #label>
                 <span class="field-label-row">
-                  mode
+                  执行模式
                   <ConfigFieldHelp :text="routingFieldHelp('mode')" />
                 </span>
               </template>
@@ -372,7 +372,7 @@ const showPlanParams = computed(() =>
             <NFormItem v-if="showWorkflowId">
               <template #label>
                 <span class="field-label-row">
-                  workflowId
+                  工作流 ID
                   <ConfigFieldHelp :text="routingFieldHelp('workflowId')" />
                 </span>
               </template>
@@ -404,7 +404,7 @@ const showPlanParams = computed(() =>
             <NFormItem v-if="showPlanParams">
               <template #label>
                 <span class="field-label-row">
-                  params
+                  附加参数
                   <ConfigFieldHelp :text="routingFieldHelp('params')" />
                 </span>
               </template>
