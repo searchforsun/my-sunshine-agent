@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import {
   NButton,
   NDropdown,
+  NDynamicTags,
   NEmpty,
   NForm,
   NFormItem,
@@ -13,13 +14,15 @@ import {
   NSpin,
   NTag,
 } from 'naive-ui'
-import { EllipsisHorizontal } from '@vicons/ionicons5'
+import { AddOutline, EllipsisHorizontal, TrashOutline } from '@vicons/ionicons5'
 import { shortPromptId } from '../../api/prompts'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import ConfigFieldHelp from '../knowledge/ConfigFieldHelp.vue'
 import { routingFieldHelp } from './routingFieldHelp'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
+
+type TopicRow = { id: string; name: string; keywords: string[] }
 
 const matchTypeOptions = [
   { label: '多步跨域', value: 'structural' },
@@ -39,41 +42,80 @@ const planModeOptions = [
   { label: '自主推理', value: 'react' },
 ]
 
-const patternsText = computed({
-  get: () => (page.routingForm.patterns ?? []).join('\n'),
-  set: (v: string) => {
-    page.routingForm.patterns = v
-      .split('\n')
-      .map(s => s.trim())
-      .filter(Boolean)
-  },
-})
+function ensurePatterns(): string[] {
+  if (!Array.isArray(page.routingForm.patterns)) {
+    page.routingForm.patterns = []
+  }
+  return page.routingForm.patterns
+}
 
-const domainGroupsText = computed({
-  get: () => {
-    const groups = page.routingForm.domainGroups ?? {}
-    return Object.entries(groups)
-      .map(([name, words]) => `${name}: ${(words ?? []).join(', ')}`)
-      .join('\n')
-  },
-  set: (v: string) => {
-    const out: Record<string, string[]> = {}
-    for (const line of v.split('\n')) {
-      const trimmed = line.trim()
-      if (!trimmed) continue
-      const idx = trimmed.indexOf(':')
-      if (idx <= 0) continue
-      const name = trimmed.slice(0, idx).trim()
-      const words = trimmed
-        .slice(idx + 1)
-        .split(/[,，]/)
-        .map(s => s.trim())
-        .filter(Boolean)
-      if (name) out[name] = words
-    }
-    page.routingForm.domainGroups = out
-  },
-})
+const patternList = computed(() => ensurePatterns())
+
+function addPattern() {
+  ensurePatterns().push('')
+}
+
+function updatePattern(index: number, value: string) {
+  ensurePatterns()[index] = value
+}
+
+function removePattern(index: number) {
+  ensurePatterns().splice(index, 1)
+}
+
+const topicRows = ref<TopicRow[]>([])
+
+function newTopicId(): string {
+  return `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+function loadTopicRowsFromForm() {
+  const groups = page.routingForm.domainGroups ?? {}
+  topicRows.value = Object.entries(groups).map(([name, keywords]) => ({
+    id: newTopicId(),
+    name,
+    keywords: [...(keywords ?? [])],
+  }))
+}
+
+function flushTopicsToForm() {
+  const out: Record<string, string[]> = {}
+  for (const row of topicRows.value) {
+    const name = row.name.trim()
+    if (!name) continue
+    out[name] = row.keywords.map(k => k.trim()).filter(Boolean)
+  }
+  page.routingForm.domainGroups = out
+}
+
+function addTopic() {
+  topicRows.value.push({ id: newTopicId(), name: '', keywords: [] })
+}
+
+function removeTopic(id: string) {
+  topicRows.value = topicRows.value.filter(r => r.id !== id)
+  flushTopicsToForm()
+}
+
+function updateTopicName(id: string, name: string) {
+  const row = topicRows.value.find(r => r.id === id)
+  if (!row) return
+  row.name = name
+  flushTopicsToForm()
+}
+
+function updateTopicKeywords(id: string, keywords: string[]) {
+  const row = topicRows.value.find(r => r.id === id)
+  if (!row) return
+  row.keywords = keywords
+  flushTopicsToForm()
+}
+
+watch(
+  () => [page.detail?.id, page.selectedVersion] as const,
+  () => loadTopicRowsFromForm(),
+  { immediate: true },
+)
 
 const paramsText = computed({
   get: () => {
@@ -139,6 +181,8 @@ const showReactPrompt = computed(() => planMode.value === 'react')
 const showPlanParams = computed(() =>
   planMode.value === 'workflow' || planMode.value === 'react',
 )
+
+const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
 </script>
 
 <template>
@@ -235,7 +279,7 @@ const showPlanParams = computed(() =>
                 <NInput
                   v-model:value="page.editDisplayName"
                   class="sun-field"
-                  :disabled="!page.isContentEditable || page.isActionBusy"
+                  :disabled="formLocked"
                 />
               </NFormItem>
               <NFormItem>
@@ -250,7 +294,7 @@ const showPlanParams = computed(() =>
                   class="sun-field"
                   :min="0"
                   :show-button="false"
-                  :disabled="!page.isContentEditable || page.isActionBusy"
+                  :disabled="formLocked"
                 />
               </NFormItem>
             </div>
@@ -260,7 +304,7 @@ const showPlanParams = computed(() =>
                 class="sun-field"
                 type="textarea"
                 :autosize="{ minRows: 2, maxRows: 4 }"
-                :disabled="!page.isContentEditable || page.isActionBusy"
+                :disabled="formLocked"
               />
             </NFormItem>
           </section>
@@ -282,7 +326,7 @@ const showPlanParams = computed(() =>
                   class="sun-field"
                   :options="matchTypeOptions"
                   :consistent-menu-width="false"
-                  :disabled="!page.isContentEditable || page.isActionBusy"
+                  :disabled="formLocked"
                 />
               </NFormItem>
               <NFormItem v-if="showMatch">
@@ -296,47 +340,109 @@ const showPlanParams = computed(() =>
                   v-model:value="page.routingForm.match"
                   class="sun-field"
                   :options="matchOptions"
-                  :disabled="!page.isContentEditable || page.isActionBusy"
+                  :disabled="formLocked"
                 />
               </NFormItem>
             </div>
+
             <NFormItem>
               <template #label>
                 <span class="field-label-row">
-                  匹配模式
+                  句式规则
                   <ConfigFieldHelp :text="routingFieldHelp('patterns')" />
                 </span>
               </template>
-              <NInput
-                v-model:value="patternsText"
-                class="sun-field sun-field-grow mono"
-                type="textarea"
-                :autosize="{ minRows: 4, maxRows: 12 }"
-                placeholder="每行一条正则，如：是否合规"
-                :disabled="!page.isContentEditable || page.isActionBusy"
-              />
+              <div class="editor-list">
+                <div
+                  v-for="(pattern, index) in patternList"
+                  :key="index"
+                  class="editor-list-row"
+                >
+                  <NInput
+                    :value="pattern"
+                    class="sun-field mono"
+                    placeholder="正则，如：先.+再"
+                    :disabled="formLocked"
+                    @update:value="(v: string) => updatePattern(index, v)"
+                  />
+                  <NButton
+                    quaternary
+                    size="small"
+                    class="row-remove-btn"
+                    :disabled="formLocked"
+                    @click="removePattern(index)"
+                  >
+                    <template #icon><NIcon :component="TrashOutline" :size="14" /></template>
+                  </NButton>
+                </div>
+                <NButton
+                  size="tiny"
+                  quaternary
+                  class="list-add-btn"
+                  :disabled="formLocked"
+                  @click="addPattern"
+                >
+                  <template #icon><NIcon :component="AddOutline" :size="14" /></template>
+                  添加规则
+                </NButton>
+              </div>
             </NFormItem>
+
             <template v-if="showDomainGroups">
               <NFormItem>
                 <template #label>
                   <span class="field-label-row">
-                    域关键词组
+                    业务主题
                     <ConfigFieldHelp :text="routingFieldHelp('domainGroups')" />
                   </span>
                 </template>
-                <NInput
-                  v-model:value="domainGroupsText"
-                  class="sun-field sun-field-grow mono"
-                  type="textarea"
-                  :autosize="{ minRows: 3, maxRows: 10 }"
-                  placeholder="knowledge: 制度, 检索"
-                  :disabled="!page.isContentEditable || page.isActionBusy"
-                />
+                <div class="editor-list">
+                  <div
+                    v-for="row in topicRows"
+                    :key="row.id"
+                    class="topic-card"
+                  >
+                    <div class="topic-card-head">
+                      <NInput
+                        :value="row.name"
+                        class="sun-field topic-name"
+                        placeholder="主题名，如：制度知识"
+                        :disabled="formLocked"
+                        @update:value="(v: string) => updateTopicName(row.id, v)"
+                      />
+                      <NButton
+                        quaternary
+                        size="small"
+                        class="row-remove-btn"
+                        :disabled="formLocked"
+                        @click="removeTopic(row.id)"
+                      >
+                        <template #icon><NIcon :component="TrashOutline" :size="14" /></template>
+                      </NButton>
+                    </div>
+                    <NDynamicTags
+                      :value="row.keywords"
+                      class="topic-tags"
+                      :disabled="formLocked"
+                      @update:value="(v: string[]) => updateTopicKeywords(row.id, v)"
+                    />
+                  </div>
+                  <NButton
+                    size="tiny"
+                    quaternary
+                    class="list-add-btn"
+                    :disabled="formLocked"
+                    @click="addTopic"
+                  >
+                    <template #icon><NIcon :component="AddOutline" :size="14" /></template>
+                    添加主题
+                  </NButton>
+                </div>
               </NFormItem>
               <NFormItem>
                 <template #label>
                   <span class="field-label-row">
-                    最少命中域数
+                    至少命中主题数
                     <ConfigFieldHelp :text="routingFieldHelp('minDomainGroups')" />
                   </span>
                 </template>
@@ -345,7 +451,7 @@ const showPlanParams = computed(() =>
                   class="sun-field"
                   :min="1"
                   :show-button="false"
-                  :disabled="!page.isContentEditable || page.isActionBusy"
+                  :disabled="formLocked"
                 />
               </NFormItem>
             </template>
@@ -366,7 +472,7 @@ const showPlanParams = computed(() =>
                 v-model:value="planMode"
                 class="sun-field"
                 :options="planModeOptions"
-                :disabled="!page.isContentEditable || page.isActionBusy"
+                :disabled="formLocked"
               />
             </NFormItem>
             <NFormItem v-if="showWorkflowId">
@@ -380,7 +486,7 @@ const showPlanParams = computed(() =>
                 v-model:value="workflowId"
                 class="sun-field"
                 placeholder="如 finance-list"
-                :disabled="!page.isContentEditable || page.isActionBusy"
+                :disabled="formLocked"
               />
             </NFormItem>
             <NFormItem v-if="showReactPrompt">
@@ -398,7 +504,7 @@ const showPlanParams = computed(() =>
                 placeholder="可选：绑定 React 场景"
                 :options="page.reactPromptOptions"
                 :consistent-menu-width="false"
-                :disabled="!page.isContentEditable || page.isActionBusy"
+                :disabled="formLocked"
               />
             </NFormItem>
             <NFormItem v-if="showPlanParams">
@@ -414,7 +520,7 @@ const showPlanParams = computed(() =>
                 type="textarea"
                 :autosize="{ minRows: 2, maxRows: 6 }"
                 placeholder="每行 key=value，如：status=pending"
-                :disabled="!page.isContentEditable || page.isActionBusy"
+                :disabled="formLocked"
               />
             </NFormItem>
           </section>
@@ -605,6 +711,64 @@ const showPlanParams = computed(() =>
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+
+.editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.editor-list-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topic-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+}
+
+.topic-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topic-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.topic-tags {
+  width: 100%;
+}
+
+.topic-tags :deep(.n-tag) {
+  --n-color: transparent !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-text-color: var(--sun-text) !important;
+}
+
+.topic-tags :deep(.n-button) {
+  --n-border: 1px dashed var(--sun-border) !important;
+  --n-text-color: var(--sun-text-secondary) !important;
+}
+
+.row-remove-btn {
+  flex-shrink: 0;
+  color: var(--sun-text-muted);
+}
+
+.list-add-btn {
+  align-self: flex-start;
+  color: var(--sun-text-secondary);
 }
 
 .mono :deep(.n-input__textarea-el),
