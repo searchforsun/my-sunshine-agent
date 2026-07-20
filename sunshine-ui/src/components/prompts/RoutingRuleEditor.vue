@@ -479,14 +479,18 @@ const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
             <NFormItem v-if="showWorkflowId">
               <template #label>
                 <span class="field-label-row">
-                  工作流 ID
+                  工作流
                   <ConfigFieldHelp :text="routingFieldHelp('workflowId')" />
                 </span>
               </template>
-              <NInput
+              <NSelect
                 v-model:value="workflowId"
                 class="sun-field"
-                placeholder="如 finance-list"
+                clearable
+                filterable
+                placeholder="从工作流目录选择"
+                :options="page.workflowOptions"
+                :consistent-menu-width="false"
                 :disabled="formLocked"
               />
             </NFormItem>

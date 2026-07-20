@@ -17,7 +17,7 @@ const HELP: Record<string, string> = {
     + '问句命中某主题的任一词，该主题即算命中；再与「至少命中主题数」比较。',
   minDomainGroups: '仅「多步跨域」：问句至少命中几个不同业务主题才算跨域。常见值 2。',
   mode: '命中后的执行模式：工作流 / 动态规划 / 多专家协作 / 自主推理。',
-  workflowId: '仅「工作流」时填写，对应工作流模板 ID（如 finance-list）。',
+  workflowId: '仅「工作流」时从目录选择模板（如 finance-list / finance-smart）。',
   reactPromptId: '仅「自主推理」时可选。绑定 React 提示词场景，叠加到全局 overlay 之后。',
   params: '透传给执行计划的参数，每行 key=value。例如 status=pending。React 场景请用上方下拉选择，勿写在此处。',
 }
