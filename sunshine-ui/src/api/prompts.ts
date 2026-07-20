@@ -10,6 +10,7 @@ export type PromptKind =
   | 'system'
   | 'mode-overlay'
   | 'react-fragment'
+  | 'react-prompt'
   | 'intent'
   | 'planner'
   | 'answer'
@@ -129,6 +130,7 @@ export const PROMPT_KIND_LABELS: Record<string, string> = {
   system: '系统',
   'mode-overlay': '模式叠加',
   'react-fragment': 'ReAct 片段',
+  'react-prompt': 'React 场景',
   intent: '意图',
   planner: '规划',
   answer: '回答',

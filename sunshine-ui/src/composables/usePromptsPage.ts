@@ -1,5 +1,6 @@
-import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
-import { useMessage } from 'naive-ui'
+import { computed, h, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { NIcon, useMessage, type DropdownOption } from 'naive-ui'
+import { CheckmarkOutline, CopyOutline, SaveOutline } from '@vicons/ionicons5'
 import {
   addPromptVersion,
   createPrompt,
@@ -7,11 +8,9 @@ import {
   getPrompt,
   listPrompts,
   listPromptVersions,
-  parseFragmentMeta,
   parseRoutingContentJson,
   publishPrompt,
   rollbackPrompt,
-  serializeFragmentMeta,
   serializeRoutingContent,
   setPromptEnabled,
   updatePrompt,
@@ -29,8 +28,29 @@ import { friendlyErrorMessage } from '../api/apiError'
 export const PROMPTS_PAGE_KEY = Symbol('promptsPage')
 
 export type PromptsTab = 'all' | 'routing' | 'react'
+export type CreateModalKind = 'routing' | 'react'
+export type PromptVersionStatus = 'live' | 'inactive' | 'draft'
 
-const REACT_OVERLAY_IDS = ['mode-overlay.react', 'mode-overlay.react-restart'] as const
+function resolvePromptVersionStatus(
+  v: PromptVersionItem,
+  activeNum: number | null,
+): PromptVersionStatus {
+  if (v.status === 'draft') return 'draft'
+  if (v.version === activeNum) return 'live'
+  return 'inactive'
+}
+
+function versionStatusLabel(status: PromptVersionStatus): string {
+  if (status === 'live') return '生效'
+  if (status === 'draft') return '草稿'
+  return '非生效'
+}
+
+function versionStatusTagType(status: PromptVersionStatus): 'success' | 'warning' | 'default' {
+  if (status === 'live') return 'success'
+  if (status === 'draft') return 'warning'
+  return 'default'
+}
 
 export function usePromptsPage() {
   const message = useMessage()
@@ -40,6 +60,7 @@ export function usePromptsPage() {
   const saving = ref(false)
   const publishing = ref(false)
   const rollingBack = ref(false)
+  const forking = ref(false)
   const creating = ref(false)
   const validating = ref(false)
   const dryRunning = ref(false)
@@ -55,30 +76,19 @@ export function usePromptsPage() {
   const editContentText = ref('')
   const editContentJson = ref('')
   const editChangeNote = ref('')
-  const previewVersion = ref<number | null>(null)
+  /** 当前预览/操作的版本号（对齐 Skills selectedVersion） */
+  const selectedVersion = ref<number | null>(null)
 
   const routingForm = ref<RoutingRuleContent>(parseRoutingContentJson(null))
   const routingWarnings = ref<RoutingWarningItem[]>([])
   const dryRunQuery = ref('')
   const dryRunResult = ref<RoutingDryRunResponse | null>(null)
 
-  const reactOverlayText = ref<Record<string, string>>({
-    'mode-overlay.react': '',
-    'mode-overlay.react-restart': '',
-  })
-  const reactFragments = ref<Array<{
-    id: string
-    displayName: string
-    enabled: boolean
-    contentText: string
-    attachTo: string
-    sortOrder: number
-  }>>([])
-
   const showCreateModal = ref(false)
+  const createModalKind = ref<CreateModalKind>('routing')
   const createDraft = ref({
     id: '',
-    kind: 'system',
+    kind: 'routing-rule',
     displayName: '',
     description: '',
     priority: 0,
@@ -93,19 +103,31 @@ export function usePromptsPage() {
     }
     if (activeTab.value === 'react') {
       return list
-        .filter(p => isReactComposeEntry(p))
-        .sort((a, b) => {
-          const ak = reactSortKey(a)
-          const bk = reactSortKey(b)
-          if (ak !== bk) return ak - bk
-          return a.id.localeCompare(b.id)
-        })
+        .filter(p => p.kind === 'react-prompt')
+        .sort((a, b) => a.id.localeCompare(b.id))
     }
-    return list.sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind.localeCompare(b.kind)
-      return a.id.localeCompare(b.id)
-    })
+    // 全部 = 系统配置：排除 routing-rule / react-prompt
+    return list
+      .filter(p => p.kind !== 'routing-rule' && p.kind !== 'react-prompt')
+      .sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind.localeCompare(b.kind)
+        return a.id.localeCompare(b.id)
+      })
   })
+
+  const listPanelTitle = computed(() => {
+    if (activeTab.value === 'routing') return '路由规则'
+    if (activeTab.value === 'react') return 'React 提示词'
+    return '系统配置'
+  })
+
+  const showListCreateButton = computed(
+    () => activeTab.value === 'routing' || activeTab.value === 'react',
+  )
+
+  const listCreateButtonLabel = computed(() =>
+    activeTab.value === 'routing' ? '新建规则' : '新建场景',
+  )
 
   const selectedListItem = computed(() =>
     prompts.value.find(p => p.id === selectedId.value) ?? null,
@@ -113,33 +135,105 @@ export function usePromptsPage() {
 
   const isRoutingSelected = computed(() => selectedListItem.value?.kind === 'routing-rule')
 
-  const activeVersionEntry = computed(() => {
-    if (!detail.value) return null
-    return versions.value.find(v => v.version === detail.value!.activeVersion) ?? null
-  })
+  const reactPromptOptions = computed(() =>
+    prompts.value
+      .filter(p => p.kind === 'react-prompt')
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(p => ({
+        label: p.displayName && p.displayName !== p.id ? `${p.displayName}（${p.id}）` : p.id,
+        value: p.id,
+      })),
+  )
 
-  const previewVersionEntry = computed(() => {
-    if (previewVersion.value == null) return null
-    return versions.value.find(v => v.version === previewVersion.value) ?? null
+  const selectedVersionEntry = computed(() => {
+    if (selectedVersion.value == null) return null
+    return versions.value.find(v => v.version === selectedVersion.value) ?? null
   })
 
   const hasDraft = computed(() => versions.value.some(v => v.status === 'draft'))
 
-  function isReactComposeEntry(p: PromptListItem): boolean {
-    if (p.kind === 'react-fragment') return true
-    if (p.kind === 'mode-overlay') {
-      return p.id === 'mode-overlay.react' || p.id === 'mode-overlay.react-restart'
-        || p.id.startsWith('mode-overlay.react')
-    }
-    return false
-  }
+  const selectedVersionStatus = computed((): PromptVersionStatus | null => {
+    const ver = selectedVersionEntry.value
+    if (!ver || !detail.value) return null
+    return resolvePromptVersionStatus(ver, detail.value.activeVersion)
+  })
 
-  function reactSortKey(p: PromptListItem): number {
-    if (p.id === 'mode-overlay.react') return 0
-    if (p.id === 'mode-overlay.react-restart') return 1
-    if (p.kind === 'react-fragment') return 10 + p.priority
-    return 20
-  }
+  const detailVersionTagType = computed(() => {
+    const status = selectedVersionStatus.value
+    return status ? versionStatusTagType(status) : 'default'
+  })
+
+  const selectedVersionStatusLabel = computed(() => {
+    const status = selectedVersionStatus.value
+    return status ? versionStatusLabel(status) : ''
+  })
+
+  const versionOptions = computed(() =>
+    versions.value.map(v => {
+      const status = resolvePromptVersionStatus(v, detail.value?.activeVersion ?? null)
+      const note = v.changeNote?.trim()
+      const label = note
+        ? `v${v.version} · ${versionStatusLabel(status)} · ${note}`
+        : `v${v.version} · ${versionStatusLabel(status)}`
+      return { label, value: v.version }
+    }),
+  )
+
+  const showVersionSelect = computed(() => versions.value.length > 0)
+
+  /** 草稿 / 非生效已发布 → 显示主按钮 */
+  const showPrimaryPublishButton = computed(() => {
+    const status = selectedVersionStatus.value
+    return status === 'draft' || status === 'inactive'
+  })
+
+  const primaryPublishLabel = computed(() =>
+    selectedVersionStatus.value === 'draft' ? '发布并生效' : '设为此生效版',
+  )
+
+  const showForkToDraft = computed(() => {
+    const status = selectedVersionStatus.value
+    return (status === 'live' || status === 'inactive') && !hasDraft.value
+  })
+
+  const isActionBusy = computed(
+    () => saving.value || publishing.value || rollingBack.value || forking.value || creating.value,
+  )
+
+  const moreMenuOptions = computed((): DropdownOption[] => {
+    const opts: DropdownOption[] = []
+    if (showForkToDraft.value) {
+      opts.push({
+        label: '复制为新草稿',
+        key: 'fork',
+        icon: () => h(NIcon, { component: CopyOutline, size: 14 }),
+        disabled: forking.value,
+      })
+    }
+    opts.push({
+      label: '保存元数据',
+      key: 'save-meta',
+      icon: () => h(NIcon, { component: SaveOutline, size: 14 }),
+      disabled: saving.value,
+    })
+    if (showPrimaryPublishButton.value) {
+      opts.push({
+        label: primaryPublishLabel.value,
+        key: 'publish',
+        icon: () => h(NIcon, { component: CheckmarkOutline, size: 14 }),
+        disabled: publishing.value,
+      })
+    }
+    return opts
+  })
+
+  const createModalTitle = computed(() =>
+    createModalKind.value === 'routing' ? '新建规则' : '新建场景',
+  )
+
+  const createIdPlaceholder = computed(() =>
+    createModalKind.value === 'routing' ? 'routing-rule.xxx' : 'react-prompt.xxx',
+  )
 
   async function refreshList(keepSelection = true) {
     loading.value = true
@@ -154,9 +248,7 @@ export function usePromptsPage() {
       } else {
         detail.value = null
         versions.value = []
-      }
-      if (activeTab.value === 'react') {
-        await loadReactCompose()
+        selectedVersion.value = null
       }
     } catch (e) {
       message.error(friendlyErrorMessage(e, '加载提示词列表失败'))
@@ -172,7 +264,7 @@ export function usePromptsPage() {
       const [d, vers] = await Promise.all([getPrompt(id), listPromptVersions(id)])
       detail.value = d
       versions.value = vers
-      previewVersion.value = d.activeVersion
+      selectedVersion.value = d.activeVersion
       applyDetailToEditors(d)
     } catch (e) {
       message.error(friendlyErrorMessage(e, '加载详情失败'))
@@ -202,43 +294,10 @@ export function usePromptsPage() {
     await loadDetail(id)
   }
 
-  async function loadReactCompose() {
-    const overlayTexts: Record<string, string> = {
-      'mode-overlay.react': '',
-      'mode-overlay.react-restart': '',
-    }
-    for (const id of REACT_OVERLAY_IDS) {
-      const item = prompts.value.find(p => p.id === id)
-      if (!item) continue
-      try {
-        const d = await getPrompt(id)
-        overlayTexts[id] = d.activeVersionContent?.contentText ?? ''
-      } catch (e) {
-        console.error(e)
-      }
-    }
-    reactOverlayText.value = overlayTexts
-
-    const fragments = prompts.value.filter(p => p.kind === 'react-fragment')
-    const loaded: typeof reactFragments.value = []
-    for (const f of fragments) {
-      try {
-        const d = await getPrompt(f.id)
-        const meta = parseFragmentMeta(d.activeVersionContent?.contentJson)
-        loaded.push({
-          id: f.id,
-          displayName: f.displayName,
-          enabled: f.enabled,
-          contentText: d.activeVersionContent?.contentText ?? '',
-          attachTo: meta.attachTo,
-          sortOrder: meta.sortOrder,
-        })
-      } catch (e) {
-        console.error(e)
-      }
-    }
-    loaded.sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id))
-    reactFragments.value = loaded
+  function onVersionSelected(ver: number | null) {
+    if (ver == null) return
+    const entry = versions.value.find(v => v.version === ver)
+    if (entry) loadVersionIntoEditor(entry)
   }
 
   async function saveMeta() {
@@ -332,13 +391,14 @@ export function usePromptsPage() {
 
   async function handlePublish(version?: number) {
     if (!selectedId.value || !detail.value) return
+    const target = version ?? selectedVersion.value ?? undefined
     publishing.value = true
     try {
       await publishPrompt(selectedId.value, {
-        version,
+        version: target,
         expectedUpdatedAt: detail.value.updatedAt ?? null,
       })
-      message.success('已发布')
+      message.success('已发布并生效')
       await refreshList()
     } catch (e) {
       message.error(friendlyErrorMessage(e, '发布失败'))
@@ -346,6 +406,43 @@ export function usePromptsPage() {
     } finally {
       publishing.value = false
     }
+  }
+
+  async function handlePrimaryPublish() {
+    if (!showPrimaryPublishButton.value || selectedVersion.value == null) return
+    await handlePublish(selectedVersion.value)
+  }
+
+  async function forkToDraft() {
+    if (!selectedId.value || !detail.value || !selectedVersionEntry.value) return
+    if (hasDraft.value) {
+      message.warning('已有草稿，请先发布或切换到草稿编辑')
+      return
+    }
+    const ver = selectedVersionEntry.value
+    forking.value = true
+    try {
+      await addPromptVersion(selectedId.value, {
+        status: 'draft',
+        contentText: ver.contentText,
+        contentJson: ver.contentJson,
+        changeNote: `从 v${ver.version} 复制为新草稿`,
+        expectedUpdatedAt: detail.value.updatedAt ?? null,
+      })
+      message.success('已复制为新草稿')
+      await refreshList()
+    } catch (e) {
+      message.error(friendlyErrorMessage(e, '复制草稿失败'))
+      console.error(e)
+    } finally {
+      forking.value = false
+    }
+  }
+
+  async function handleMoreMenuSelect(key: string | number) {
+    if (key === 'fork') await forkToDraft()
+    else if (key === 'save-meta') await saveMeta()
+    else if (key === 'publish') await handlePrimaryPublish()
   }
 
   async function handleRollback(version: number) {
@@ -368,9 +465,6 @@ export function usePromptsPage() {
       await setPromptEnabled(item.id, enabled)
       message.success(enabled ? '已启用' : '已停用')
       await refreshList()
-      if (activeTab.value === 'react') {
-        await loadReactCompose()
-      }
     } catch (e) {
       message.error(friendlyErrorMessage(e, '切换启用状态失败'))
       console.error(e)
@@ -394,69 +488,24 @@ export function usePromptsPage() {
     }
   }
 
-  async function saveReactOverlay(id: string) {
-    const item = prompts.value.find(p => p.id === id)
-    if (!item) {
-      message.warning(`未找到 ${id}`)
-      return
-    }
-    saving.value = true
-    try {
-      const d = await getPrompt(id)
-      await addPromptVersion(id, {
-        status: 'draft',
-        contentText: reactOverlayText.value[id] ?? '',
-        contentJson: null,
-        changeNote: 'ReAct 拼装编辑',
-        expectedUpdatedAt: d.updatedAt ?? null,
-      })
-      message.success(`${id} 草稿已保存`)
-      await refreshList()
-      await loadReactCompose()
-    } catch (e) {
-      message.error(friendlyErrorMessage(e, '保存失败'))
-      console.error(e)
-    } finally {
-      saving.value = false
-    }
-  }
-
-  async function saveReactFragment(fragmentId: string) {
-    const frag = reactFragments.value.find(f => f.id === fragmentId)
-    if (!frag) return
-    saving.value = true
-    try {
-      const d = await getPrompt(fragmentId)
-      await updatePrompt(fragmentId, {
-        displayName: frag.displayName,
-        expectedUpdatedAt: d.updatedAt ?? null,
-      })
-      const latest = await getPrompt(fragmentId)
-      await addPromptVersion(fragmentId, {
-        status: 'draft',
-        contentText: frag.contentText,
-        contentJson: serializeFragmentMeta(frag.attachTo, frag.sortOrder),
-        changeNote: 'ReAct fragment 编辑',
-        expectedUpdatedAt: latest.updatedAt ?? null,
-      })
-      message.success(`${fragmentId} 草稿已保存`)
-      await refreshList()
-      await loadReactCompose()
-    } catch (e) {
-      message.error(friendlyErrorMessage(e, '保存 fragment 失败'))
-      console.error(e)
-    } finally {
-      saving.value = false
-    }
-  }
-
-  function openCreateModal() {
-    createDraft.value = {
-      id: '',
-      kind: activeTab.value === 'routing' ? 'routing-rule' : 'system',
-      displayName: '',
-      description: '',
-      priority: activeTab.value === 'routing' ? 10 : 0,
+  function openCreateModal(tabKind: CreateModalKind) {
+    createModalKind.value = tabKind
+    if (tabKind === 'routing') {
+      createDraft.value = {
+        id: '',
+        kind: 'routing-rule',
+        displayName: '',
+        description: '',
+        priority: 10,
+      }
+    } else {
+      createDraft.value = {
+        id: '',
+        kind: 'react-prompt',
+        displayName: '',
+        description: '',
+        priority: 0,
+      }
     }
     showCreateModal.value = true
   }
@@ -466,7 +515,15 @@ export function usePromptsPage() {
     const displayName = createDraft.value.displayName.trim()
     const kind = createDraft.value.kind.trim()
     if (!id || !displayName || !kind) {
-      message.warning('请填写 ID、类型与展示名')
+      message.warning('请填写 ID 与展示名')
+      return
+    }
+    if (createModalKind.value === 'routing' && kind !== 'routing-rule') {
+      message.warning('路由规则类型固定为 routing-rule')
+      return
+    }
+    if (createModalKind.value === 'react' && kind !== 'react-prompt') {
+      message.warning('场景类型固定为 react-prompt')
       return
     }
     creating.value = true
@@ -500,7 +557,7 @@ export function usePromptsPage() {
   }
 
   function loadVersionIntoEditor(ver: PromptVersionItem) {
-    previewVersion.value = ver.version
+    selectedVersion.value = ver.version
     editContentText.value = ver.contentText ?? ''
     editContentJson.value = ver.contentJson ?? ''
     if (detail.value?.kind === 'routing-rule') {
@@ -517,10 +574,8 @@ export function usePromptsPage() {
       } else {
         detail.value = null
         versions.value = []
+        selectedVersion.value = null
       }
-    }
-    if (activeTab.value === 'react') {
-      await loadReactCompose()
     }
     dryRunResult.value = null
     routingWarnings.value = []
@@ -533,11 +588,15 @@ export function usePromptsPage() {
     saving,
     publishing,
     rollingBack,
+    forking,
     creating,
     validating,
     dryRunning,
     prompts,
     filteredPrompts,
+    listPanelTitle,
+    showListCreateButton,
+    listCreateButtonLabel,
     selectedId,
     selectedListItem,
     detail,
@@ -548,18 +607,29 @@ export function usePromptsPage() {
     editContentText,
     editContentJson,
     editChangeNote,
-    previewVersion,
-    previewVersionEntry,
-    activeVersionEntry,
+    selectedVersion,
+    selectedVersionEntry,
+    selectedVersionStatus,
+    selectedVersionStatusLabel,
+    detailVersionTagType,
+    versionOptions,
+    showVersionSelect,
+    showPrimaryPublishButton,
+    primaryPublishLabel,
+    showForkToDraft,
+    isActionBusy,
+    moreMenuOptions,
     hasDraft,
     isRoutingSelected,
+    reactPromptOptions,
     routingForm,
     routingWarnings,
     dryRunQuery,
     dryRunResult,
-    reactOverlayText,
-    reactFragments,
     showCreateModal,
+    createModalKind,
+    createModalTitle,
+    createIdPlaceholder,
     createDraft,
     refreshList,
     selectPrompt,
@@ -568,15 +638,16 @@ export function usePromptsPage() {
     saveVersion,
     saveRoutingRule,
     handlePublish,
+    handlePrimaryPublish,
     handleRollback,
     handleToggleEnabled,
     runDryRun,
-    saveReactOverlay,
-    saveReactFragment,
     openCreateModal,
     handleCreate,
     loadVersionIntoEditor,
-    loadReactCompose,
+    onVersionSelected,
+    forkToDraft,
+    handleMoreMenuSelect,
   })
 }
 

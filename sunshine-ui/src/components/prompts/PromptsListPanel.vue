@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { inject } from 'vue'
-import { NEmpty, NSpin, NSwitch, NTag } from 'naive-ui'
+import { NButton, NEmpty, NIcon, NSpin, NSwitch, NTag } from 'naive-ui'
+import { AddOutline } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import { promptKindLabel, type PromptListItem } from '../../api/prompts'
 
@@ -9,13 +10,28 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 function onToggle(item: PromptListItem, enabled: boolean) {
   void page.handleToggleEnabled(item, enabled)
 }
+
+function onCreate() {
+  if (page.activeTab === 'routing') page.openCreateModal('routing')
+  else if (page.activeTab === 'react') page.openCreateModal('react')
+}
 </script>
 
 <template>
   <aside class="list-panel">
     <div class="panel-head">
-      <span class="panel-title">列表</span>
+      <span class="panel-title">{{ page.listPanelTitle }}</span>
       <NTag :bordered="false" size="tiny" round>{{ page.filteredPrompts.length }}</NTag>
+      <NButton
+        v-if="page.showListCreateButton"
+        size="tiny"
+        quaternary
+        class="panel-create-btn"
+        @click="onCreate"
+      >
+        <template #icon><NIcon :component="AddOutline" :size="14" /></template>
+        {{ page.listCreateButtonLabel }}
+      </NButton>
     </div>
     <NSpin :show="page.loading" size="small" class="list-spin">
       <div class="list-body">
@@ -80,6 +96,10 @@ function onToggle(item: PromptListItem, enabled: boolean) {
   font-size: 14px;
   font-weight: 600;
   color: var(--sun-text);
+}
+
+.panel-create-btn {
+  margin-left: auto;
 }
 
 .list-spin {

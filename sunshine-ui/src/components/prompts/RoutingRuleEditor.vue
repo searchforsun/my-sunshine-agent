@@ -2,15 +2,18 @@
 import { computed, inject } from 'vue'
 import {
   NButton,
+  NDropdown,
   NEmpty,
   NForm,
   NFormItem,
+  NIcon,
   NInput,
   NInputNumber,
   NSelect,
-  NSpace,
   NSpin,
+  NTag,
 } from 'naive-ui'
+import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
@@ -73,6 +76,7 @@ const paramsText = computed({
   get: () => {
     const params = page.routingForm.plan?.params ?? {}
     return Object.entries(params)
+      .filter(([k]) => k !== 'reactPromptId')
       .map(([k, val]) => `${k}=${val}`)
       .join('\n')
   },
@@ -80,6 +84,7 @@ const paramsText = computed({
     if (!page.routingForm.plan) {
       page.routingForm.plan = { mode: 'react', workflowId: null, params: {} }
     }
+    const existingReactPromptId = page.routingForm.plan.params?.reactPromptId
     const params: Record<string, string> = {}
     for (const line of v.split('\n')) {
       const trimmed = line.trim()
@@ -88,6 +93,7 @@ const paramsText = computed({
       if (idx <= 0) continue
       params[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim()
     }
+    if (existingReactPromptId) params.reactPromptId = existingReactPromptId
     page.routingForm.plan.params = params
   },
 })
@@ -95,6 +101,9 @@ const paramsText = computed({
 function ensurePlan() {
   if (!page.routingForm.plan) {
     page.routingForm.plan = { mode: 'react', workflowId: null, params: {} }
+  }
+  if (!page.routingForm.plan.params) {
+    page.routingForm.plan.params = {}
   }
   return page.routingForm.plan
 }
@@ -108,37 +117,80 @@ const workflowId = computed({
   get: () => ensurePlan().workflowId ?? '',
   set: (v: string) => { ensurePlan().workflowId = v.trim() || null },
 })
+
+const reactPromptId = computed({
+  get: () => ensurePlan().params?.reactPromptId || null,
+  set: (v: string | null) => {
+    const plan = ensurePlan()
+    if (!plan.params) plan.params = {}
+    if (v) plan.params.reactPromptId = v
+    else delete plan.params.reactPromptId
+  },
+})
 </script>
 
 <template>
   <main v-if="page.detail && page.detail.kind === 'routing-rule'" class="detail-panel">
     <div class="detail-toolbar">
-      <div class="detail-toolbar-text">
+      <div class="detail-title-block">
         <h3 class="detail-heading">{{ page.detail.displayName }}</h3>
         <span class="detail-id">{{ page.detail.id }}</span>
       </div>
-      <NSpace :size="8">
+      <div class="detail-actions">
+        <div v-if="page.showVersionSelect" class="version-row">
+          <span class="version-label">当前版本</span>
+          <NTag
+            v-if="page.selectedVersionStatus"
+            size="small"
+            :bordered="false"
+            round
+            :type="page.detailVersionTagType"
+          >
+            {{ page.selectedVersionStatusLabel }}
+          </NTag>
+          <NSelect
+            v-model:value="page.selectedVersion"
+            :options="page.versionOptions"
+            size="small"
+            class="version-select"
+            placeholder="选择版本"
+            :disabled="page.isActionBusy"
+            :menu-props="{ class: 'version-select-menu' }"
+            @update:value="page.onVersionSelected"
+          />
+        </div>
         <NButton
-          size="small"
-          round
-          secondary
-          :loading="page.saving || page.validating"
-          @click="page.saveRoutingRule()"
-        >
-          保存草稿
-        </NButton>
-        <NButton
+          v-if="page.showPrimaryPublishButton"
           size="small"
           round
           type="primary"
           class="action-btn"
           :loading="page.publishing"
-          :disabled="!page.hasDraft"
-          @click="page.handlePublish()"
+          :disabled="page.isActionBusy"
+          @click="page.handlePrimaryPublish()"
         >
-          发布最新草稿
+          {{ page.primaryPublishLabel }}
         </NButton>
-      </NSpace>
+        <NDropdown
+          trigger="click"
+          size="small"
+          :options="page.moreMenuOptions"
+          :disabled="page.isActionBusy"
+          @select="page.handleMoreMenuSelect"
+        >
+          <NButton
+            size="small"
+            quaternary
+            class="more-menu-btn"
+            title="版本操作"
+            aria-label="版本与元数据操作"
+            :loading="page.isActionBusy"
+            :disabled="page.isActionBusy"
+          >
+            <template #icon><NIcon :component="EllipsisHorizontal" :size="16" /></template>
+          </NButton>
+        </NDropdown>
+      </div>
     </div>
 
     <div v-if="page.routingWarnings.length" class="warn-bar">
@@ -151,6 +203,16 @@ const workflowId = computed({
           <section class="form-section">
             <header class="form-section-head">
               <h4 class="form-section-title">规则元数据</h4>
+              <NButton
+                size="small"
+                round
+                secondary
+                :loading="page.saving || page.validating"
+                :disabled="page.isActionBusy"
+                @click="page.saveRoutingRule()"
+              >
+                保存草稿
+              </NButton>
             </header>
             <div class="form-grid">
               <NFormItem label="展示名">
@@ -247,6 +309,17 @@ const workflowId = computed({
                 />
               </NFormItem>
             </div>
+            <NFormItem v-if="planMode === 'react'" label="React 提示词">
+              <NSelect
+                v-model:value="reactPromptId"
+                class="sun-field"
+                clearable
+                filterable
+                placeholder="可选：绑定 react-prompt 场景"
+                :options="page.reactPromptOptions"
+                :consistent-menu-width="false"
+              />
+            </NFormItem>
             <NFormItem label="params（每行 key=value）">
               <NInput
                 v-model:value="paramsText"
@@ -256,51 +329,6 @@ const workflowId = computed({
                 placeholder="status=pending"
               />
             </NFormItem>
-          </section>
-
-          <section class="form-section">
-            <header class="form-section-head">
-              <h4 class="form-section-title">版本</h4>
-            </header>
-            <div v-if="page.versions.length" class="version-list">
-              <div
-                v-for="ver in page.versions"
-                :key="ver.version"
-                class="version-row"
-              >
-                <span class="version-num">v{{ ver.version }}</span>
-                <span class="version-status">{{ ver.status === 'published' ? '已发布' : '草稿' }}</span>
-                <span
-                  v-if="ver.version === page.detail.activeVersion"
-                  class="active-mark"
-                >当前</span>
-                <NSpace :size="6" class="version-actions">
-                  <NButton
-                    v-if="ver.status === 'draft'"
-                    size="tiny"
-                    secondary
-                    @click="page.handlePublish(ver.version)"
-                  >
-                    发布
-                  </NButton>
-                  <NButton
-                    v-if="ver.status === 'published' && ver.version !== page.detail.activeVersion"
-                    size="tiny"
-                    quaternary
-                    @click="page.handleRollback(ver.version)"
-                  >
-                    回滚
-                  </NButton>
-                  <NButton
-                    size="tiny"
-                    quaternary
-                    @click="page.loadVersionIntoEditor(ver)"
-                  >
-                    载入
-                  </NButton>
-                </NSpace>
-              </div>
-            </div>
           </section>
         </NForm>
       </div>
@@ -330,18 +358,19 @@ const workflowId = computed({
 
 .detail-toolbar {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 18px 22px;
   border-bottom: 1px solid var(--sun-border);
   flex-shrink: 0;
 }
 
-.detail-toolbar-text {
+.detail-title-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -356,6 +385,52 @@ const workflowId = computed({
   font-size: 12px;
   color: var(--sun-text-muted);
   font-family: var(--sun-font-mono, monospace);
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-label {
+  font-size: 13px;
+  color: var(--sun-text-secondary);
+  white-space: nowrap;
+}
+
+.version-select {
+  width: min(228px, 44vw);
+}
+
+.version-select :deep(.n-base-selection) {
+  --n-color: var(--sun-black) !important;
+  --n-color-active: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-arrow-color: var(--sun-text-secondary) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-active: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+  --n-box-shadow-hover: none !important;
+  --n-box-shadow-active: none !important;
+}
+
+.more-menu-btn {
+  padding: 0 6px;
 }
 
 .warn-bar {
@@ -443,40 +518,6 @@ const workflowId = computed({
 .mono :deep(.n-input__input-el) {
   font-family: var(--sun-font-mono, monospace);
   font-size: 12px;
-}
-
-.version-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.version-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-}
-
-.version-num {
-  font-weight: 600;
-  font-family: var(--sun-font-mono, monospace);
-}
-
-.version-status {
-  font-size: 12px;
-  color: var(--sun-text-secondary);
-}
-
-.active-mark {
-  font-size: 11px;
-  color: var(--sun-accent);
-}
-
-.version-actions {
-  margin-left: auto;
 }
 
 .action-btn {

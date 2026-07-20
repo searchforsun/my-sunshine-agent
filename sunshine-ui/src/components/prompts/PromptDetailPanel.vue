@@ -2,15 +2,18 @@
 import { inject } from 'vue'
 import {
   NButton,
+  NDropdown,
   NEmpty,
   NForm,
   NFormItem,
+  NIcon,
   NInput,
   NInputNumber,
-  NSpace,
+  NSelect,
   NSpin,
   NTag,
 } from 'naive-ui'
+import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import { promptKindLabel } from '../../api/prompts'
 
@@ -20,41 +23,70 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 <template>
   <main v-if="page.detail" class="detail-panel">
     <div class="detail-toolbar">
-      <div class="detail-toolbar-text">
+      <div class="detail-title-block">
         <h3 class="detail-heading">{{ page.detail.displayName }}</h3>
-        <span class="detail-id">{{ page.detail.id }}</span>
+        <div class="detail-meta-inline">
+          <span class="detail-id">{{ page.detail.id }}</span>
+          <NTag size="tiny" :bordered="false">
+            {{ promptKindLabel(page.detail.kind) }}
+          </NTag>
+        </div>
       </div>
-      <NSpace :size="8">
+      <div class="detail-actions">
+        <div v-if="page.showVersionSelect" class="version-row">
+          <span class="version-label">当前版本</span>
+          <NTag
+            v-if="page.selectedVersionStatus"
+            size="small"
+            :bordered="false"
+            round
+            :type="page.detailVersionTagType"
+          >
+            {{ page.selectedVersionStatusLabel }}
+          </NTag>
+          <NSelect
+            v-model:value="page.selectedVersion"
+            :options="page.versionOptions"
+            size="small"
+            class="version-select"
+            placeholder="选择版本"
+            :disabled="page.isActionBusy"
+            :menu-props="{ class: 'version-select-menu' }"
+            @update:value="page.onVersionSelected"
+          />
+        </div>
         <NButton
-          size="small"
-          round
-          secondary
-          :loading="page.saving"
-          @click="page.saveMeta()"
-        >
-          保存元数据
-        </NButton>
-        <NButton
-          size="small"
-          round
-          secondary
-          :loading="page.saving"
-          @click="page.saveVersion('draft')"
-        >
-          保存草稿
-        </NButton>
-        <NButton
+          v-if="page.showPrimaryPublishButton"
           size="small"
           round
           type="primary"
           class="action-btn"
           :loading="page.publishing"
-          :disabled="!page.hasDraft"
-          @click="page.handlePublish()"
+          :disabled="page.isActionBusy"
+          @click="page.handlePrimaryPublish()"
         >
-          发布最新草稿
+          {{ page.primaryPublishLabel }}
         </NButton>
-      </NSpace>
+        <NDropdown
+          trigger="click"
+          size="small"
+          :options="page.moreMenuOptions"
+          :disabled="page.isActionBusy"
+          @select="page.handleMoreMenuSelect"
+        >
+          <NButton
+            size="small"
+            quaternary
+            class="more-menu-btn"
+            title="版本操作"
+            aria-label="版本与元数据操作"
+            :loading="page.isActionBusy"
+            :disabled="page.isActionBusy"
+          >
+            <template #icon><NIcon :component="EllipsisHorizontal" :size="16" /></template>
+          </NButton>
+        </NDropdown>
+      </div>
     </div>
 
     <NSpin :show="page.detailLoading" class="detail-spin">
@@ -63,9 +95,6 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
           <section class="form-section">
             <header class="form-section-head">
               <h4 class="form-section-title">基本信息</h4>
-              <NTag size="tiny" :bordered="false">
-                {{ promptKindLabel(page.detail.kind) }}
-              </NTag>
             </header>
             <div class="form-grid">
               <NFormItem label="展示名">
@@ -89,7 +118,7 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
               />
             </NFormItem>
             <p class="meta-line">
-              当前版本 v{{ page.detail.activeVersion }}
+              生效版本 v{{ page.detail.activeVersion }}
               · catalog {{ page.detail.catalogVersion }}
               · {{ page.detail.enabled ? '已启用' : '已停用' }}
             </p>
@@ -98,6 +127,16 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
           <section class="form-section">
             <header class="form-section-head">
               <h4 class="form-section-title">内容</h4>
+              <NButton
+                size="small"
+                round
+                secondary
+                :loading="page.saving"
+                :disabled="page.isActionBusy"
+                @click="page.saveVersion('draft')"
+              >
+                保存草稿
+              </NButton>
             </header>
             <NFormItem label="变更说明">
               <NInput
@@ -125,69 +164,12 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
               />
             </NFormItem>
           </section>
-
-          <section class="form-section">
-            <header class="form-section-head">
-              <h4 class="form-section-title">版本</h4>
-            </header>
-            <div v-if="page.versions.length" class="version-list">
-              <div
-                v-for="ver in page.versions"
-                :key="ver.version"
-                class="version-row"
-                :class="{ active: ver.version === page.previewVersion }"
-              >
-                <button
-                  type="button"
-                  class="version-main"
-                  @click="page.loadVersionIntoEditor(ver)"
-                >
-                  <span class="version-num">v{{ ver.version }}</span>
-                  <NTag
-                    size="tiny"
-                    :bordered="false"
-                    :type="ver.status === 'published' ? 'success' : 'warning'"
-                  >
-                    {{ ver.status === 'published' ? '已发布' : '草稿' }}
-                  </NTag>
-                  <span
-                    v-if="ver.version === page.detail.activeVersion"
-                    class="active-mark"
-                  >
-                    当前
-                  </span>
-                  <span class="version-note">{{ ver.changeNote || '—' }}</span>
-                </button>
-                <NSpace :size="6">
-                  <NButton
-                    v-if="ver.status === 'draft'"
-                    size="tiny"
-                    secondary
-                    :loading="page.publishing"
-                    @click="page.handlePublish(ver.version)"
-                  >
-                    发布
-                  </NButton>
-                  <NButton
-                    v-if="ver.status === 'published' && ver.version !== page.detail.activeVersion"
-                    size="tiny"
-                    quaternary
-                    :loading="page.rollingBack"
-                    @click="page.handleRollback(ver.version)"
-                  >
-                    回滚
-                  </NButton>
-                </NSpace>
-              </div>
-            </div>
-            <NEmpty v-else size="small" description="暂无版本" />
-          </section>
         </NForm>
       </div>
     </NSpin>
   </main>
   <main v-else class="detail-panel detail-empty">
-    <NEmpty description="选择左侧提示词，或新建" />
+    <NEmpty description="选择左侧提示词" />
   </main>
 </template>
 
@@ -211,18 +193,19 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 
 .detail-toolbar {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 18px 22px;
   border-bottom: 1px solid var(--sun-border);
   flex-shrink: 0;
 }
 
-.detail-toolbar-text {
+.detail-title-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -236,10 +219,63 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   white-space: nowrap;
 }
 
+.detail-meta-inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .detail-id {
   font-size: 12px;
   color: var(--sun-text-muted);
   font-family: var(--sun-font-mono, monospace);
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-label {
+  font-size: 13px;
+  color: var(--sun-text-secondary);
+  white-space: nowrap;
+}
+
+.version-select {
+  width: min(228px, 44vw);
+}
+
+.version-select :deep(.n-base-selection) {
+  --n-color: var(--sun-black) !important;
+  --n-color-active: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-arrow-color: var(--sun-text-secondary) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-active: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+  --n-box-shadow-hover: none !important;
+  --n-box-shadow-active: none !important;
+}
+
+.more-menu-btn {
+  padding: 0 6px;
 }
 
 .detail-spin {
@@ -322,63 +358,22 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   font-size: 12px;
 }
 
-.version-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.version-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-  background: transparent;
-}
-
-.version-row.active {
-  box-shadow: inset 0 0 0 1px var(--sun-accent);
-  border-color: var(--sun-accent);
-}
-
-.version-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--sun-text);
-  cursor: pointer;
-  padding: 0;
-  text-align: left;
-}
-
-.version-num {
-  font-weight: 600;
-  font-family: var(--sun-font-mono, monospace);
-  flex-shrink: 0;
-}
-
-.active-mark {
-  font-size: 11px;
-  color: var(--sun-accent);
-  flex-shrink: 0;
-}
-
-.version-note {
-  font-size: 12px;
-  color: var(--sun-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .action-btn {
   --n-color: var(--sun-accent) !important;
+}
+</style>
+
+<style>
+.version-select-menu.n-base-select-menu {
+  --n-color: var(--sun-black) !important;
+  --n-option-color-active: transparent !important;
+  --n-option-color-active-pending: var(--sun-row-hover) !important;
+  --n-option-color-pending: var(--sun-row-hover) !important;
+  --n-option-text-color: var(--sun-text) !important;
+  --n-option-text-color-active: var(--sun-text) !important;
+  --n-option-check-color: var(--sun-text) !important;
+  background: var(--sun-black) !important;
+  border: 1px solid var(--sun-border) !important;
+  box-shadow: var(--shadow-elevated) !important;
 }
 </style>
