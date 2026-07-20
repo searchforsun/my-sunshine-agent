@@ -14,6 +14,7 @@ import {
   NTag,
 } from 'naive-ui'
 import { EllipsisHorizontal } from '@vicons/ionicons5'
+import { shortPromptId } from '../../api/prompts'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
@@ -134,7 +135,7 @@ const reactPromptId = computed({
     <div class="detail-toolbar">
       <div class="detail-title-block">
         <h3 class="detail-heading">{{ page.detail.displayName }}</h3>
-        <span class="detail-id">{{ page.detail.id }}</span>
+        <span class="detail-id">{{ shortPromptId(page.detail.id) }}</span>
       </div>
       <div class="detail-actions">
         <div v-if="page.showVersionSelect" class="version-row">
@@ -326,7 +327,7 @@ const reactPromptId = computed({
                 class="sun-field"
                 clearable
                 filterable
-                placeholder="可选：绑定 react-prompt 场景"
+                placeholder="可选：绑定 React 场景"
                 :options="page.reactPromptOptions"
                 :consistent-menu-width="false"
                 :disabled="!page.isContentEditable || page.isActionBusy"

@@ -5,6 +5,7 @@ import {
   addPromptVersion,
   createPrompt,
   dryRunRouting,
+  ensurePromptIdPrefix,
   getPrompt,
   listPrompts,
   listPromptVersions,
@@ -13,6 +14,7 @@ import {
   rollbackPrompt,
   serializeRoutingContent,
   setPromptEnabled,
+  shortPromptId,
   updatePrompt,
   validateRoutingRules,
   type PromptCreateBody,
@@ -142,10 +144,15 @@ export function usePromptsPage() {
     prompts.value
       .filter(p => p.kind === 'react-prompt')
       .sort((a, b) => a.id.localeCompare(b.id))
-      .map(p => ({
-        label: p.displayName && p.displayName !== p.id ? `${p.displayName}（${p.id}）` : p.id,
-        value: p.id,
-      })),
+      .map(p => {
+        const shortId = shortPromptId(p.id)
+        return {
+          label: p.displayName && p.displayName !== p.id && p.displayName !== shortId
+            ? `${p.displayName}（${shortId}）`
+            : shortId,
+          value: p.id,
+        }
+      }),
   )
 
   const selectedVersionEntry = computed(() => {
@@ -231,7 +238,7 @@ export function usePromptsPage() {
   )
 
   const createIdPlaceholder = computed(() =>
-    createModalKind.value === 'routing' ? 'routing-rule.xxx' : 'react-prompt.xxx',
+    createModalKind.value === 'routing' ? 'structural-plan' : 'demo-scenario',
   )
 
   async function refreshList(keepSelection = true) {
@@ -557,10 +564,10 @@ export function usePromptsPage() {
   }
 
   async function handleCreate() {
-    const id = createDraft.value.id.trim()
+    const rawId = createDraft.value.id.trim()
     const displayName = createDraft.value.displayName.trim()
     const kind = createDraft.value.kind.trim()
-    if (!id || !displayName || !kind) {
+    if (!rawId || !displayName || !kind) {
       message.warning('请填写 ID 与展示名')
       return
     }
@@ -572,6 +579,7 @@ export function usePromptsPage() {
       message.warning('场景类型固定为 react-prompt')
       return
     }
+    const id = ensurePromptIdPrefix(rawId, kind)
     creating.value = true
     try {
       const body: PromptCreateBody = {

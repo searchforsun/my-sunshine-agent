@@ -146,6 +146,26 @@ export function promptKindLabel(kind: string): string {
   return PROMPT_KIND_LABELS[kind] ?? kind
 }
 
+/** 列表/详情展示用：去掉 Tab 内重复的 kind 前缀 */
+export function shortPromptId(id: string): string {
+  if (id.startsWith('routing-rule.')) return id.slice('routing-rule.'.length)
+  if (id.startsWith('react-prompt.')) return id.slice('react-prompt.'.length)
+  return id
+}
+
+/** 新建时补全存储 ID 前缀（用户可只填短名） */
+export function ensurePromptIdPrefix(id: string, kind: string): string {
+  const trimmed = id.trim()
+  if (!trimmed) return trimmed
+  if (kind === 'routing-rule' && !trimmed.startsWith('routing-rule.')) {
+    return `routing-rule.${trimmed}`
+  }
+  if (kind === 'react-prompt' && !trimmed.startsWith('react-prompt.')) {
+    return `react-prompt.${trimmed}`
+  }
+  return trimmed
+}
+
 export async function listPrompts(kind?: string, enabled?: boolean): Promise<PromptListItem[]> {
   const qs = new URLSearchParams()
   if (kind) qs.set('kind', kind)

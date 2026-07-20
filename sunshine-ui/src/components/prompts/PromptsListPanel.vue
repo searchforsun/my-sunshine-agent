@@ -3,7 +3,7 @@ import { inject } from 'vue'
 import { NButton, NEmpty, NIcon, NSpin, NSwitch, NTag } from 'naive-ui'
 import { AddOutline } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
-import { promptKindLabel, type PromptListItem } from '../../api/prompts'
+import { promptKindLabel, shortPromptId, type PromptListItem } from '../../api/prompts'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 
@@ -15,6 +15,8 @@ function onCreate() {
   if (page.activeTab === 'routing') page.openCreateModal('routing')
   else if (page.activeTab === 'react') page.openCreateModal('react')
 }
+
+const showKindTag = () => page.activeTab === 'all'
 </script>
 
 <template>
@@ -54,8 +56,13 @@ function onCreate() {
               />
             </div>
             <div class="prompt-row-meta">
-              <span class="prompt-id">{{ item.id }}</span>
-              <NTag size="tiny" :bordered="false" class="kind-tag">
+              <span class="prompt-id">{{ shortPromptId(item.id) }}</span>
+              <NTag
+                v-if="showKindTag()"
+                size="tiny"
+                :bordered="false"
+                class="kind-tag"
+              >
                 {{ promptKindLabel(item.kind) }}
               </NTag>
               <span v-if="item.kind === 'routing-rule'" class="priority-badge">

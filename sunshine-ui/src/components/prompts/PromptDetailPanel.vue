@@ -14,7 +14,7 @@ import {
 } from 'naive-ui'
 import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
-import { promptKindLabel } from '../../api/prompts'
+import { promptKindLabel, shortPromptId } from '../../api/prompts'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 </script>
@@ -25,8 +25,12 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
       <div class="detail-title-block">
         <h3 class="detail-heading">{{ page.detail.displayName }}</h3>
         <div class="detail-meta-inline">
-          <span class="detail-id">{{ page.detail.id }}</span>
-          <NTag size="tiny" :bordered="false">
+          <span class="detail-id">{{ shortPromptId(page.detail.id) }}</span>
+          <NTag
+            v-if="page.detail.kind !== 'react-prompt' && page.detail.kind !== 'routing-rule'"
+            size="tiny"
+            :bordered="false"
+          >
             {{ promptKindLabel(page.detail.kind) }}
           </NTag>
         </div>
