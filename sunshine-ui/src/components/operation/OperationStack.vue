@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
-import type { ProcessingStep } from '../../api/processingSteps'
-import { hasRealTaskBoardItems, resolvePlanIdFromStep } from '../../api/processingSteps'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import type { ProcessingStep, TimelineMessageStatus } from '../../api/processingSteps'
+import {
+  formatElapsedClock,
+  formatTimelineSummaryText,
+  hasRealTaskBoardItems,
+  isSubagentStep,
+  resolvePlanIdFromStep,
+  resolveTimelineElapsedMs,
+  resolveTimelineSummaryPrefix,
+} from '../../api/processingSteps'
 import {
   isToolStepId,
   resolveHitlUiKey,
@@ -30,7 +38,6 @@ import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { ensurePlanTimelineSteps, isPlanDagNodeStep } from '../../api/planHydrate'
-import { isSubagentStep } from '../../api/processingSteps'
 
 const props = withDefaults(defineProps<{
   steps: ProcessingStep[]
@@ -50,6 +57,10 @@ const props = withDefaults(defineProps<{
   messageId?: string
   pendingHitlConfirmation?: HitlConfirmationPayload | HitlConfirmationPayload[]
   pendingHitlConfirmations?: HitlConfirmationPayload[]
+  /** Chat 顶层传入时启用总览行；嵌套 Stack / 抽屉勿传 */
+  messageStatus?: TimelineMessageStatus
+  /** assistant msg.content，折叠终稿优先（Task 4） */
+  messageContent?: string
 }>(), {
   embedHitl: true,
   inlineHitl: true,
@@ -63,6 +74,25 @@ const emit = defineEmits<{
 
 const cardExpanded = reactive(new Map<string, boolean>())
 const cardUserToggled = reactive(new Set<string>())
+
+const summaryEnabled = computed(() => props.messageStatus !== undefined)
+
+const timelineUserToggled = ref(false)
+const timelineExpandedOverride = ref(false)
+
+function isTimelineBodyExpanded(): boolean {
+  if (!summaryEnabled.value) return true
+  if (timelineUserToggled.value) return timelineExpandedOverride.value
+  if (props.live || props.messageStatus === 'streaming') return true
+  return false
+}
+
+function toggleTimelineBody(): void {
+  if (!summaryEnabled.value) return
+  const next = !isTimelineBodyExpanded()
+  timelineUserToggled.value = true
+  timelineExpandedOverride.value = next
+}
 
 function lifecycleOf(step: ProcessingStep) {
   return step.lifecycle ?? 'pending'
@@ -93,6 +123,60 @@ const effectiveSteps = computed(() => ensurePlanTimelineSteps({
   steps: props.steps,
   executionPlanId: props.executionPlanId,
 }))
+
+const fallbackStartMs = ref<number | undefined>(undefined)
+const fallbackEndMs = ref<number | undefined>(undefined)
+const nowMs = ref(Date.now())
+let tickTimer: ReturnType<typeof setInterval> | undefined
+
+watch(
+  () => [props.live, props.messageStatus, summaryEnabled.value] as const,
+  ([live, status, enabled]) => {
+    if (!enabled) return
+    if ((live || status === 'streaming') && fallbackStartMs.value == null) {
+      fallbackStartMs.value = Date.now()
+    }
+    if (!live && status && status !== 'streaming' && fallbackEndMs.value == null) {
+      fallbackEndMs.value = Date.now()
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => summaryEnabled.value && !!(props.live || props.messageStatus === 'streaming'),
+  (needTick) => {
+    if (tickTimer) {
+      clearInterval(tickTimer)
+      tickTimer = undefined
+    }
+    if (!needTick) return
+    nowMs.value = Date.now()
+    tickTimer = setInterval(() => { nowMs.value = Date.now() }, 200)
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  if (tickTimer) clearInterval(tickTimer)
+})
+
+const summaryText = computed(() => {
+  if (!summaryEnabled.value) return ''
+  const elapsed = resolveTimelineElapsedMs({
+    steps: effectiveSteps.value,
+    live: !!(props.live || props.messageStatus === 'streaming'),
+    nowMs: nowMs.value,
+    fallbackStartMs: fallbackStartMs.value,
+    fallbackEndMs: fallbackEndMs.value,
+  })
+  const clock = elapsed != null ? formatElapsedClock(elapsed) : ''
+  const prefix = resolveTimelineSummaryPrefix({
+    live: !!props.live,
+    messageStatus: props.messageStatus,
+  })
+  return formatTimelineSummaryText(prefix, clock)
+})
 
 const planStep = computed(() => effectiveSteps.value.find(s => s.phase === 'plan'))
 
@@ -188,83 +272,118 @@ const orphanContent = computed(() => {
 
 <template>
   <div class="operation-lines">
-    <template v-for="step in displaySteps" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
-      <PlanWorkflowPanel
-        v-if="step.phase === 'plan' && showPlanDag"
-        :plan-step="step"
-        :all-steps="effectiveSteps"
-        :live="live"
-        :execution-plan-id="executionPlanId"
-        :user-query="userQuery"
-        :pending-hitl-confirmation="pendingList"
-      />
-      <TaskBoardPanel
-        v-else-if="step.phase === 'tasks'"
-        :step="step"
-        :live="live && lifecycleOf(step) === 'running'"
-      />
-      <PeerCollabPanel
-        v-else-if="step.phase === 'peer-collab'"
-        :step="step"
-        :message-id="messageId"
-        :live="live && lifecycleOf(step) === 'running'"
-      />
-      <SubagentCard
-        v-else-if="isSubagentStep(step)"
-        :step="step"
-        :live="live && lifecycleOf(step) === 'running'"
-      />
-      <template v-else>
-        <OperationCard
-          :step="step"
-          :expanded="isCardExpanded(step)"
-          :live="live && lifecycleOf(step) === 'running'"
+    <div
+      v-if="summaryEnabled"
+      class="op-line timeline-summary"
+      :class="{
+        'is-expanded': isTimelineBodyExpanded(),
+        'is-clickable': true,
+        'is-running': live || messageStatus === 'streaming',
+      }"
+    >
+      <button type="button" class="op-line-row" @click="toggleTimelineBody">
+        <span class="op-gutter">
+          <svg
+            class="op-chevron"
+            width="9"
+            height="9"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
+        <span class="op-main">
+          <span
+            class="op-label"
+            :class="{ 'op-shimmer': live || messageStatus === 'streaming' }"
+          >{{ summaryText }}</span>
+        </span>
+      </button>
+    </div>
+
+    <template v-if="isTimelineBodyExpanded()">
+      <template v-for="step in displaySteps" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
+        <PlanWorkflowPanel
+          v-if="step.phase === 'plan' && showPlanDag"
+          :plan-step="step"
+          :all-steps="effectiveSteps"
+          :live="live"
           :execution-plan-id="executionPlanId"
-          :embed-hitl="false"
-          @toggle="toggleCard(step)"
+          :user-query="userQuery"
+          :pending-hitl-confirmation="pendingList"
         />
-        <div v-if="shouldShowInlineHitl(step)" class="op-line-hitl">
-          <span class="op-gutter" aria-hidden="true" />
-          <HitlStepActions
-            :key="hitlStepKey(inlineHitlStep(step))"
-            :step="inlineHitlStep(step)"
-            :pending-confirmation="pendingForStep(step)"
-            @decided="(token, approved) => emit('hitlDecided', token, approved)"
-          />
-        </div>
-        <!-- loop 框内 agent：嵌套 think/正文随卡片展开收起 -->
-        <div
-          v-if="isCardExpanded(step) && hasNestedLoopBodyTimeline(step)"
-          class="op-nested-stack"
-        >
-          <OperationStack
-            :steps="step.subSteps ?? []"
-            :content-blocks="step.contentBlocks"
-            :stream-live="streamLive && lifecycleOf(step) === 'running'"
+        <TaskBoardPanel
+          v-else-if="step.phase === 'tasks'"
+          :step="step"
+          :live="live && lifecycleOf(step) === 'running'"
+        />
+        <PeerCollabPanel
+          v-else-if="step.phase === 'peer-collab'"
+          :step="step"
+          :message-id="messageId"
+          :live="live && lifecycleOf(step) === 'running'"
+        />
+        <SubagentCard
+          v-else-if="isSubagentStep(step)"
+          :step="step"
+          :live="live && lifecycleOf(step) === 'running'"
+        />
+        <template v-else>
+          <OperationCard
+            :step="step"
+            :expanded="isCardExpanded(step)"
             :live="live && lifecycleOf(step) === 'running'"
+            :execution-plan-id="executionPlanId"
             :embed-hitl="false"
-            :pending-hitl-confirmation="pendingList"
-            @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
+            @toggle="toggleCard(step)"
           />
-        </div>
+          <div v-if="shouldShowInlineHitl(step)" class="op-line-hitl">
+            <span class="op-gutter" aria-hidden="true" />
+            <HitlStepActions
+              :key="hitlStepKey(inlineHitlStep(step))"
+              :step="inlineHitlStep(step)"
+              :pending-confirmation="pendingForStep(step)"
+              @decided="(token, approved) => emit('hitlDecided', token, approved)"
+            />
+          </div>
+          <!-- loop 框内 agent：嵌套 think/正文随卡片展开收起 -->
+          <div
+            v-if="isCardExpanded(step) && hasNestedLoopBodyTimeline(step)"
+            class="op-nested-stack"
+          >
+            <OperationStack
+              :steps="step.subSteps ?? []"
+              :content-blocks="step.contentBlocks"
+              :stream-live="streamLive && lifecycleOf(step) === 'running'"
+              :live="live && lifecycleOf(step) === 'running'"
+              :embed-hitl="false"
+              :pending-hitl-confirmation="pendingList"
+              @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
+            />
+          </div>
+        </template>
+        <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanWorkflowPanel 之后渲染 -->
+        <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
+          <div class="op-inline-content">
+            <span class="op-gutter" aria-hidden="true" />
+            <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
+              <StaticMarkdown :source="crow.text" :defer-mermaid="crow.streaming" />
+            </div>
+          </div>
+        </template>
       </template>
-      <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanWorkflowPanel 之后渲染 -->
-      <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
+      <template v-for="row in orphanContent" :key="row.key">
         <div class="op-inline-content">
           <span class="op-gutter" aria-hidden="true" />
-          <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
-            <StaticMarkdown :source="crow.text" :defer-mermaid="crow.streaming" />
+          <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
+            <StaticMarkdown :source="row.text" :defer-mermaid="row.streaming" />
           </div>
         </div>
       </template>
-    </template>
-    <template v-for="row in orphanContent" :key="row.key">
-      <div class="op-inline-content">
-        <span class="op-gutter" aria-hidden="true" />
-        <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
-          <StaticMarkdown :source="row.text" :defer-mermaid="row.streaming" />
-        </div>
-      </div>
     </template>
   </div>
 </template>
@@ -276,6 +395,101 @@ const orphanContent = computed(() => {
   gap: 2px;
   padding: 0 0 12px;
   margin-left: -2px;
+}
+
+.timeline-summary {
+  --op-gutter: 12px;
+  font-size: var(--sun-font-md);
+  line-height: 1.5;
+  color: var(--sun-text-muted);
+  margin-bottom: 2px;
+}
+
+.timeline-summary .op-line-row {
+  display: grid;
+  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
+  column-gap: 4px;
+  align-items: start;
+  width: 100%;
+  padding: 1px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timeline-summary .op-gutter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: var(--op-gutter);
+  padding-top: 4px;
+  flex-shrink: 0;
+}
+
+.timeline-summary .op-chevron {
+  flex-shrink: 0;
+  color: var(--sun-text-muted);
+  opacity: 0.5;
+  display: inline-block;
+  transition: transform 0.15s ease;
+  transform: rotate(0deg);
+}
+
+.timeline-summary.is-expanded .op-chevron {
+  transform: rotate(90deg);
+}
+
+.timeline-summary .op-main {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.timeline-summary .op-label {
+  color: var(--sun-text);
+  font-weight: 500;
+}
+
+.timeline-summary.is-clickable:hover .op-label {
+  color: var(--sun-text-secondary);
+}
+
+.op-shimmer {
+  --op-shimmer-base: var(--sun-text-muted);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 32%, white);
+  display: inline-block;
+  max-width: 100%;
+  background-image: linear-gradient(
+    90deg,
+    var(--op-shimmer-base) 0%,
+    var(--op-shimmer-base) 36%,
+    var(--op-shimmer-peak) 50%,
+    var(--op-shimmer-base) 64%,
+    var(--op-shimmer-base) 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  background-position: 100% center;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: op-text-shimmer 2.6s linear infinite;
+  will-change: background-position;
+}
+
+.timeline-summary .op-label.op-shimmer {
+  --op-shimmer-base: var(--sun-text);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text) 22%, white);
+}
+
+@keyframes op-text-shimmer {
+  0% { background-position: 100% center; }
+  100% { background-position: 0% center; }
 }
 
 .op-line-hitl {
