@@ -189,7 +189,8 @@
 
 ### 4.11 Prompt 运营后台
 
-- `prompt_version` 表；草稿→审核→发布 Nacos；与 **4.1.7** 实验联动 rag_eval
+> **详设**：[2026-07-20-prompt-ops-routing-catalog-design.md](./2026-07-20-prompt-ops-routing-catalog-design.md)  
+> **锁定**：`prompt-manager` DB **唯一 SSOT**（规则/提示词 **不再经 Nacos**）；Catalog 壳 + 统一 Rule Engine + `/prompts`；首期 draft/published + 回滚（审核/评测门禁二期）；与 **4.1.7** rag_eval 实验联动非首期范围。
 
 ### 4.12 Serverless — **明确不做**
 

@@ -91,7 +91,7 @@
 | **4.8** 工具集成（SDK + MCP） | 异构系统 / 业务解耦 | **✅ 检查门通过**：MySQL Catalog + `sunshine-tool-sdk` + MCP 动态接入 + `/tools` 管理页 · 详设 [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) · 计划 [tool-integration plan](./superpowers/plans/2026-07-09-tool-integration.md) · Live：`verify_tool_integration_live.py --suite all` |
 | **4.9** K8s | — | **明确不做**（维持脚本/现有部署） |
 | **4.10** Seata | — | **明确不做**（跨服务写靠 HITL + 幂等） |
-| **4.11** Prompt 后台 | 非研发维护提示词 | **待做**：版本/审核/回滚 |
+| **4.11** Prompt 后台 | 非研发维护提示词 | **待做**：详设 [prompt-ops-routing-catalog](superpowers/specs/2026-07-20-prompt-ops-routing-catalog-design.md)（DB Catalog + 统一 Rule Engine + `/prompts`；首期 draft/published，审核二期） |
 | **4.12** Serverless | — | **明确不做**（常驻实例） |
 
 ---
