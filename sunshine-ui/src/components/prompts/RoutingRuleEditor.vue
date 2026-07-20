@@ -202,8 +202,9 @@ const reactPromptId = computed({
         <NForm class="detail-form" label-placement="top" :show-feedback="false">
           <section class="form-section">
             <header class="form-section-head">
-              <h4 class="form-section-title">规则元数据</h4>
+              <h4 class="form-section-title">基本信息</h4>
               <NButton
+                v-if="page.showSaveDraftButton"
                 size="small"
                 round
                 secondary
@@ -216,14 +217,19 @@ const reactPromptId = computed({
             </header>
             <div class="form-grid">
               <NFormItem label="展示名">
-                <NInput v-model:value="page.editDisplayName" class="sun-field" />
+                <NInput
+                  v-model:value="page.editDisplayName"
+                  class="sun-field"
+                  :disabled="!page.isContentEditable || page.isActionBusy"
+                />
               </NFormItem>
-              <NFormItem label="优先级（越大越优先）">
+              <NFormItem label="优先级">
                 <NInputNumber
                   v-model:value="page.editPriority"
                   class="sun-field"
                   :min="0"
                   :show-button="false"
+                  :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
             </div>
@@ -233,11 +239,12 @@ const reactPromptId = computed({
                 class="sun-field"
                 type="textarea"
                 :autosize="{ minRows: 2, maxRows: 4 }"
+                :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem label="变更说明">
-              <NInput v-model:value="page.editChangeNote" class="sun-field" placeholder="可选" />
-            </NFormItem>
+            <p v-if="!page.isContentEditable" class="readonly-hint">
+              当前为已发布版本，不可直接编辑。请通过右上角「⋯ → 复制为草稿」后再改。
+            </p>
           </section>
 
           <section class="form-section">
@@ -251,6 +258,7 @@ const reactPromptId = computed({
                   class="sun-field"
                   :options="matchTypeOptions"
                   :consistent-menu-width="false"
+                  :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
               <NFormItem label="match">
@@ -258,6 +266,7 @@ const reactPromptId = computed({
                   v-model:value="page.routingForm.match"
                   class="sun-field"
                   :options="matchOptions"
+                  :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
             </div>
@@ -268,6 +277,7 @@ const reactPromptId = computed({
                 type="textarea"
                 :autosize="{ minRows: 4, maxRows: 12 }"
                 placeholder="是否合规"
+                :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
             <NFormItem label="domainGroups（每行：域名: 词1, 词2）">
@@ -277,6 +287,7 @@ const reactPromptId = computed({
                 type="textarea"
                 :autosize="{ minRows: 3, maxRows: 10 }"
                 placeholder="knowledge: 制度, 检索"
+                :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
             <NFormItem label="minDomainGroups">
@@ -285,6 +296,7 @@ const reactPromptId = computed({
                 class="sun-field"
                 :min="1"
                 :show-button="false"
+                :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
           </section>
@@ -299,6 +311,7 @@ const reactPromptId = computed({
                   v-model:value="planMode"
                   class="sun-field"
                   :options="planModeOptions"
+                  :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
               <NFormItem label="workflowId">
@@ -306,6 +319,7 @@ const reactPromptId = computed({
                   v-model:value="workflowId"
                   class="sun-field"
                   placeholder="仅 workflow 模式需要"
+                  :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
             </div>
@@ -318,6 +332,7 @@ const reactPromptId = computed({
                 placeholder="可选：绑定 react-prompt 场景"
                 :options="page.reactPromptOptions"
                 :consistent-menu-width="false"
+                :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
             <NFormItem label="params（每行 key=value）">
@@ -327,6 +342,7 @@ const reactPromptId = computed({
                 type="textarea"
                 :autosize="{ minRows: 2, maxRows: 6 }"
                 placeholder="status=pending"
+                :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
           </section>
@@ -522,5 +538,11 @@ const reactPromptId = computed({
 
 .action-btn {
   --n-color: var(--sun-accent) !important;
+}
+
+.readonly-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--sun-text-muted);
 }
 </style>

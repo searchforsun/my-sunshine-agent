@@ -8,7 +8,6 @@ import {
   NFormItem,
   NIcon,
   NInput,
-  NInputNumber,
   NSelect,
   NSpin,
   NTag,
@@ -79,7 +78,7 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
             quaternary
             class="more-menu-btn"
             title="版本操作"
-            aria-label="版本与元数据操作"
+            aria-label="版本操作"
             :loading="page.isActionBusy"
             :disabled="page.isActionBusy"
           >
@@ -93,76 +92,51 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
       <div class="detail-scroll">
         <NForm class="detail-form" label-placement="top" :show-feedback="false">
           <section class="form-section">
-            <header class="form-section-head">
-              <h4 class="form-section-title">基本信息</h4>
-            </header>
-            <div class="form-grid">
-              <NFormItem label="展示名">
-                <NInput v-model:value="page.editDisplayName" class="sun-field" />
-              </NFormItem>
-              <NFormItem v-if="page.detail.kind === 'routing-rule'" label="优先级">
-                <NInputNumber
-                  v-model:value="page.editPriority"
-                  class="sun-field"
-                  :min="0"
-                  :show-button="false"
-                />
-              </NFormItem>
-            </div>
+            <NFormItem label="展示名">
+              <NInput
+                v-model:value="page.editDisplayName"
+                class="sun-field"
+                :disabled="!page.isContentEditable || page.isActionBusy"
+              />
+            </NFormItem>
             <NFormItem label="描述">
               <NInput
                 v-model:value="page.editDescription"
                 class="sun-field sun-field-grow"
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 6 }"
+                :autosize="{ minRows: 2, maxRows: 4 }"
+                :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <p class="meta-line">
-              生效版本 v{{ page.detail.activeVersion }}
-              · catalog {{ page.detail.catalogVersion }}
-              · {{ page.detail.enabled ? '已启用' : '已停用' }}
-            </p>
-          </section>
-
-          <section class="form-section">
-            <header class="form-section-head">
-              <h4 class="form-section-title">内容</h4>
-              <NButton
-                size="small"
-                round
-                secondary
-                :loading="page.saving"
-                :disabled="page.isActionBusy"
-                @click="page.saveVersion('draft')"
-              >
-                保存草稿
-              </NButton>
-            </header>
-            <NFormItem label="变更说明">
-              <NInput
-                v-model:value="page.editChangeNote"
-                class="sun-field"
-                placeholder="本次修改说明（可选）"
-              />
-            </NFormItem>
-            <NFormItem label="contentText">
+            <NFormItem label="内容">
+              <template #label>
+                <div class="content-label-row">
+                  <span>内容</span>
+                  <NButton
+                    v-if="page.showSaveDraftButton"
+                    size="small"
+                    round
+                    secondary
+                    :loading="page.saving"
+                    :disabled="page.isActionBusy"
+                    @click="page.saveVersion('draft')"
+                  >
+                    保存草稿
+                  </NButton>
+                </div>
+              </template>
               <NInput
                 v-model:value="page.editContentText"
                 class="sun-field sun-field-grow content-input"
                 type="textarea"
-                :autosize="{ minRows: 8, maxRows: 28 }"
-                placeholder="文本内容"
+                :autosize="{ minRows: 12, maxRows: 32 }"
+                placeholder="提示词正文"
+                :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem label="contentJson">
-              <NInput
-                v-model:value="page.editContentJson"
-                class="sun-field sun-field-grow content-input mono"
-                type="textarea"
-                :autosize="{ minRows: 4, maxRows: 20 }"
-                placeholder="JSON 内容（可选）"
-              />
-            </NFormItem>
+            <p v-if="!page.isContentEditable" class="readonly-hint">
+              当前为已发布版本，不可直接编辑。请通过右上角「⋯ → 复制为草稿」后再改。
+            </p>
           </section>
         </NForm>
       </div>
@@ -308,6 +282,15 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   font-size: 13px;
   font-weight: 500;
   padding-bottom: 8px;
+  width: 100%;
+}
+
+.content-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
 }
 
 .form-section {
@@ -320,42 +303,15 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   background: var(--sun-black);
 }
 
-.form-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--sun-border);
-}
-
-.form-section-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--sun-text);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.meta-line {
-  margin: 0;
-  font-size: 12px;
-  color: var(--sun-text-muted);
-}
-
 .content-input :deep(.n-input__textarea-el) {
   font-size: var(--sun-font-base, 14px);
   line-height: 1.6;
 }
 
-.content-input.mono :deep(.n-input__textarea-el) {
-  font-family: var(--sun-font-mono, monospace);
+.readonly-hint {
+  margin: 0;
   font-size: 12px;
+  color: var(--sun-text-muted);
 }
 
 .action-btn {

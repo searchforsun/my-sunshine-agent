@@ -112,10 +112,31 @@ public class PromptAdminService {
         checkOptimisticLock(def, request.expectedUpdatedAt());
         String status = normalizeStatus(request.status(), "draft");
         requireVersionContent(request.contentText(), request.contentJson());
+        Instant now = Instant.now();
+        // 草稿：已有 draft 则原地更新（对齐 Skills 单草稿）；published 始终新建版本
+        if ("draft".equals(status)) {
+            Optional<PromptVersionEntity> existingDraft =
+                    versionRepository.findTopByPromptIdAndStatusOrderByVersionDesc(promptId, "draft");
+            if (existingDraft.isPresent()) {
+                PromptVersionEntity draft = existingDraft.get();
+                draft.setContentText(request.contentText());
+                draft.setContentJson(request.contentJson());
+                if (request.changeNote() != null) {
+                    draft.setChangeNote(request.changeNote().isBlank() ? null : request.changeNote().strip());
+                }
+                if (StringUtils.hasText(request.maintainer())) {
+                    draft.setMaintainer(request.maintainer().strip());
+                }
+                versionRepository.save(draft);
+                def.setUpdatedAt(now);
+                definitionRepository.save(def);
+                log.info("[PromptManager] updated draft prompt={} version={}", promptId, draft.getVersion());
+                return toVersionItem(draft);
+            }
+        }
         int nextVersion = versionRepository.findTopByPromptIdOrderByVersionDesc(promptId)
                 .map(v -> v.getVersion() + 1)
                 .orElse(1);
-        Instant now = Instant.now();
         PromptVersionEntity version = newVersionEntity(promptId, nextVersion, status, request.contentText(),
                 request.contentJson(), request.changeNote(), request.maintainer(), now);
         versionRepository.save(version);

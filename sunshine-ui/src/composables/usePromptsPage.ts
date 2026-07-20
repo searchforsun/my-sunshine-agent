@@ -1,6 +1,6 @@
 import { computed, h, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { NIcon, useMessage, type DropdownOption } from 'naive-ui'
-import { CheckmarkOutline, CopyOutline, SaveOutline } from '@vicons/ionicons5'
+import { CheckmarkOutline, CopyOutline } from '@vicons/ionicons5'
 import {
   addPromptVersion,
   createPrompt,
@@ -24,6 +24,7 @@ import {
   type RoutingWarningItem,
 } from '../api/prompts'
 import { friendlyErrorMessage } from '../api/apiError'
+import { formatSkillVersionTime } from '../utils/formatSkillVersionTime'
 
 export const PROMPTS_PAGE_KEY = Symbol('promptsPage')
 
@@ -75,6 +76,8 @@ export function usePromptsPage() {
   const editPriority = ref(0)
   const editContentText = ref('')
   const editContentJson = ref('')
+  /** 内容区是否写入 contentJson（timeline 等 JSON 为主的条目） */
+  const contentUsesJson = ref(false)
   const editChangeNote = ref('')
   /** 当前预览/操作的版本号（对齐 Skills selectedVersion） */
   const selectedVersion = ref<number | null>(null)
@@ -168,18 +171,18 @@ export function usePromptsPage() {
     return status ? versionStatusLabel(status) : ''
   })
 
+  /** 时间版本（对齐 Skills）：下拉仅显示创建时间，状态由 Tag 表达 */
   const versionOptions = computed(() =>
-    versions.value.map(v => {
-      const status = resolvePromptVersionStatus(v, detail.value?.activeVersion ?? null)
-      const note = v.changeNote?.trim()
-      const label = note
-        ? `v${v.version} · ${versionStatusLabel(status)} · ${note}`
-        : `v${v.version} · ${versionStatusLabel(status)}`
-      return { label, value: v.version }
-    }),
+    versions.value.map(v => ({
+      label: formatSkillVersionTime(v.createdAt),
+      value: v.version,
+    })),
   )
 
   const showVersionSelect = computed(() => versions.value.length > 0)
+
+  /** 仅草稿可编辑（生效 / 非生效 published 只读） */
+  const isContentEditable = computed(() => selectedVersionStatus.value === 'draft')
 
   /** 草稿 / 非生效已发布 → 显示主按钮 */
   const showPrimaryPublishButton = computed(() => {
@@ -196,6 +199,8 @@ export function usePromptsPage() {
     return (status === 'live' || status === 'inactive') && !hasDraft.value
   })
 
+  const showSaveDraftButton = computed(() => selectedVersionStatus.value === 'draft')
+
   const isActionBusy = computed(
     () => saving.value || publishing.value || rollingBack.value || forking.value || creating.value,
   )
@@ -204,18 +209,12 @@ export function usePromptsPage() {
     const opts: DropdownOption[] = []
     if (showForkToDraft.value) {
       opts.push({
-        label: '复制为新草稿',
+        label: '复制为草稿',
         key: 'fork',
         icon: () => h(NIcon, { component: CopyOutline, size: 14 }),
         disabled: forking.value,
       })
     }
-    opts.push({
-      label: '保存元数据',
-      key: 'save-meta',
-      icon: () => h(NIcon, { component: SaveOutline, size: 14 }),
-      disabled: saving.value,
-    })
     if (showPrimaryPublishButton.value) {
       opts.push({
         label: primaryPublishLabel.value,
@@ -264,8 +263,18 @@ export function usePromptsPage() {
       const [d, vers] = await Promise.all([getPrompt(id), listPromptVersions(id)])
       detail.value = d
       versions.value = vers
-      selectedVersion.value = d.activeVersion
-      applyDetailToEditors(d)
+      const draft = vers.find(v => v.status === 'draft')
+      const active = vers.find(v => v.version === d.activeVersion)
+      const pick = draft ?? active ?? vers[0] ?? null
+      selectedVersion.value = pick?.version ?? null
+      if (pick) {
+        loadVersionIntoEditor(pick)
+        editDisplayName.value = d.displayName
+        editDescription.value = d.description ?? ''
+        editPriority.value = d.priority
+      } else {
+        applyDetailToEditors(d)
+      }
     } catch (e) {
       message.error(friendlyErrorMessage(e, '加载详情失败'))
       console.error(e)
@@ -279,12 +288,30 @@ export function usePromptsPage() {
     editDescription.value = d.description ?? ''
     editPriority.value = d.priority
     const content = d.activeVersionContent
-    editContentText.value = content?.contentText ?? ''
-    editContentJson.value = content?.contentJson ?? ''
+    applyVersionContent(content?.contentText ?? null, content?.contentJson ?? null, d.kind)
     editChangeNote.value = ''
     if (d.kind === 'routing-rule') {
       routingForm.value = parseRoutingContentJson(content?.contentJson)
       routingWarnings.value = []
+    }
+  }
+
+  function applyVersionContent(contentText: string | null, contentJson: string | null, kind?: string) {
+    const preferJson = kind === 'timeline' || kind === 'routing-rule'
+      || (!contentText?.trim() && !!contentJson?.trim())
+    contentUsesJson.value = preferJson && kind !== 'routing-rule'
+    if (kind === 'routing-rule') {
+      editContentText.value = ''
+      editContentJson.value = contentJson ?? ''
+      contentUsesJson.value = true
+      return
+    }
+    if (contentUsesJson.value) {
+      editContentText.value = contentJson ?? ''
+      editContentJson.value = contentJson ?? ''
+    } else {
+      editContentText.value = contentText ?? ''
+      editContentJson.value = contentJson ?? ''
     }
   }
 
@@ -302,6 +329,10 @@ export function usePromptsPage() {
 
   async function saveMeta() {
     if (!selectedId.value || !detail.value) return
+    if (!isContentEditable.value) {
+      message.warning('请先复制为草稿后再修改')
+      return
+    }
     saving.value = true
     try {
       await updatePrompt(selectedId.value, {
@@ -322,20 +353,33 @@ export function usePromptsPage() {
 
   async function saveVersion(status: 'draft' | 'published' = 'draft') {
     if (!selectedId.value || !detail.value) return
-    const text = editContentText.value
-    const json = editContentJson.value
-    if (!text.trim() && !json.trim()) {
-      message.warning('contentText 与 contentJson 至少填一项')
+    if (status === 'draft' && !isContentEditable.value) {
+      message.warning('生效版本不可直接修改，请先「复制为草稿」')
       return
     }
+    const raw = editContentText.value
+    if (!raw.trim() && !editContentJson.value.trim()) {
+      message.warning('请填写内容')
+      return
+    }
+    const contentText = contentUsesJson.value ? null : raw
+    const contentJson = contentUsesJson.value
+      ? (raw.trim() || null)
+      : (editContentJson.value.trim() || null)
     saving.value = true
     try {
+      await updatePrompt(selectedId.value, {
+        displayName: editDisplayName.value.trim() || detail.value.displayName,
+        description: editDescription.value.trim(),
+        priority: editPriority.value,
+        expectedUpdatedAt: detail.value.updatedAt ?? null,
+      })
+      const latest = await getPrompt(selectedId.value)
       await addPromptVersion(selectedId.value, {
         status,
-        contentText: text,
-        contentJson: json.trim() ? json : null,
-        changeNote: editChangeNote.value.trim() || undefined,
-        expectedUpdatedAt: detail.value.updatedAt ?? null,
+        contentText,
+        contentJson,
+        expectedUpdatedAt: latest.updatedAt ?? null,
       })
       message.success(status === 'published' ? '已保存并发布' : '草稿已保存')
       await refreshList()
@@ -349,6 +393,10 @@ export function usePromptsPage() {
 
   async function saveRoutingRule() {
     if (!selectedId.value || !detail.value) return
+    if (!isContentEditable.value) {
+      message.warning('生效版本不可直接修改，请先「复制为草稿」')
+      return
+    }
     const contentJson = serializeRoutingContent(routingForm.value)
     saving.value = true
     validating.value = true
@@ -371,7 +419,6 @@ export function usePromptsPage() {
         status: 'draft',
         contentText: null,
         contentJson,
-        changeNote: editChangeNote.value.trim() || '更新路由规则',
         expectedUpdatedAt: latest.updatedAt ?? null,
       })
       if (routingWarnings.value.length) {
@@ -441,7 +488,6 @@ export function usePromptsPage() {
 
   async function handleMoreMenuSelect(key: string | number) {
     if (key === 'fork') await forkToDraft()
-    else if (key === 'save-meta') await saveMeta()
     else if (key === 'publish') await handlePrimaryPublish()
   }
 
@@ -558,8 +604,8 @@ export function usePromptsPage() {
 
   function loadVersionIntoEditor(ver: PromptVersionItem) {
     selectedVersion.value = ver.version
-    editContentText.value = ver.contentText ?? ''
-    editContentJson.value = ver.contentJson ?? ''
+    applyVersionContent(ver.contentText, ver.contentJson, detail.value?.kind)
+    editChangeNote.value = ''
     if (detail.value?.kind === 'routing-rule') {
       routingForm.value = parseRoutingContentJson(ver.contentJson)
     }
@@ -617,6 +663,8 @@ export function usePromptsPage() {
     showPrimaryPublishButton,
     primaryPublishLabel,
     showForkToDraft,
+    showSaveDraftButton,
+    isContentEditable,
     isActionBusy,
     moreMenuOptions,
     hasDraft,
