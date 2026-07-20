@@ -68,8 +68,9 @@
 
 | 显示 | 隐藏 |
 |------|------|
-| 总览行 | intent / think / tool / tasks / plan DAG / peer / subagent 等全部实现行 |
-| 一份终稿正文 | 中间穿插的各段 `contentBlocks` 行 |
+| 总览行 | intent / think / tool / tasks / plan DAG / peer / subagent 等全部实现行（终态） |
+| **正在处理 + 折叠**：仅 `displaySteps` **最后一条**的折叠概要行（无穿插正文） | 其余步骤 + 全部 `contentBlocks` 穿插 |
+| **终态 + 折叠**：一份终稿正文（最后非空 contentBlock） | 中间穿插的各段 `contentBlocks` 行 |
 | | HITL 确认条随实现行一起隐藏（折叠后无法在时间线内点确认；进行中默认展开，一般不挡 HITL） |
 
 **HITL 注**：待确认时若用户手动折叠，确认条不可见——可接受；默认进行中展开即可。不做折叠态「浮出 HITL」特例（YAGNI）。
