@@ -763,15 +763,15 @@ EOF
 - Modify: `docs/superpowers/specs/README.md`（plans 表补本 plan 链接）
 - Modify: `docs/superpowers/specs/2026-07-20-timeline-summary-duration-design.md`（状态改为实施中/计划已出）
 
-- [ ] **Step 1: README plans 行追加链接**
+- [x] **Step 1: README plans 行追加链接**
 
 在阶段「四」单元格末尾追加：
 
 `· **时间线总览** 见 [timeline-summary-duration-design.md](./2026-07-20-timeline-summary-duration-design.md) + [2026-07-20-timeline-summary-duration.md](../plans/2026-07-20-timeline-summary-duration.md)`
 
-Spec 头 `状态` 改为：`🟡 计划已出（待实施）`。
+Spec 头 `状态` 改为：`🟢 已实施`。
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/superpowers/specs/README.md \
