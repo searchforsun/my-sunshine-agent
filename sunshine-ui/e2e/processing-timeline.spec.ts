@@ -32,6 +32,11 @@ test.describe('处理过程时间线', () => {
     await expect(timeline).toBeVisible({ timeout: 20_000 })
     await waitForStreamComplete(page, 60_000)
 
+    // 完成后默认折叠总览，先展开实现线再测步骤行折叠
+    const summary = timeline.locator('.timeline-summary')
+    await expect(summary).toBeVisible()
+    await summary.locator('.op-line-row').click()
+
     const intentLine = timeline.locator('.op-line').filter({ hasText: '识别意图' })
     await expect(intentLine).toBeVisible()
     await expect(intentLine.locator('.op-detail')).toHaveCount(0)
@@ -42,5 +47,28 @@ test.describe('处理过程时间线', () => {
 
     await intentLine.locator('.op-line-row').click()
     await expect(intentLine.locator('.op-detail')).toHaveCount(0)
+  })
+
+  test('总览行：完成后默认折叠，展开可恢复步骤', async ({ page }) => {
+    test.setTimeout(90_000)
+    await sendChatMessage(page, '你好，简单聊聊')
+    const timeline = lastOperationStack(page)
+    await expect(timeline).toBeVisible({ timeout: 20_000 })
+    await waitForStreamComplete(page, 60_000)
+
+    const summary = timeline.locator('.timeline-summary')
+    await expect(summary).toBeVisible()
+    await expect(summary).toContainText(/已完成/)
+    // 默认折叠：实现线意图步不可见
+    await expect(timeline.locator('.op-label', { hasText: '识别意图' })).toHaveCount(0)
+
+    await summary.locator('.op-line-row').click()
+    await expect(timeline.locator('.op-label', { hasText: '识别意图' })).toBeVisible()
+
+    await summary.locator('.op-line-row').click()
+    await expect(timeline.locator('.op-label', { hasText: '识别意图' })).toHaveCount(0)
+    // 折叠后不应出现两份终稿（Stack 内一块 + 底栏）
+    const answers = page.locator('.assistant-body').last().locator('.msg-md, .timeline-collapsed-answer .msg-md')
+    await expect(answers).toHaveCount(1)
   })
 })
