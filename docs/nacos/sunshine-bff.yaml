@@ -19,6 +19,8 @@ tool-manager:
   base-url: http://localhost:8210
 workflow-manager:
   base-url: http://localhost:8230
+prompt-manager:
+  base-url: http://localhost:8500
 
 logging:
   level:
