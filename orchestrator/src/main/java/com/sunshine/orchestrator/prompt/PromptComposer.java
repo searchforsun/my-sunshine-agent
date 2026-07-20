@@ -2,7 +2,6 @@ package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
@@ -12,6 +11,7 @@ import com.sunshine.orchestrator.memory.stm.StmBoundaryFormatter;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -22,12 +22,14 @@ import java.util.Map;
 /**
  * 统一 system / memory 消息拼装 — 6 层叠加顺序见 phase3 SSOT §3.8。
  * ReAct 的 base-system 仍由 {@link com.sunshine.orchestrator.agent.ReActAgentFactory} 注入 AgentScope。
+ * 已迁 Catalog 的层从 {@link PromptCatalogHolder} 读取（缺省空串 + warn）。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PromptComposer {
 
-    private final AgentPromptProperties prompts;
+    private final PromptCatalogHolder catalogHolder;
     private final PromptOverlayProperties overlayProperties;
     private final MemoryProperties memoryProperties;
     private final SkillCatalogService skillCatalogService;
@@ -53,41 +55,37 @@ public class PromptComposer {
             List<Map<String, Object>> messages, PromptComposeRequest request, boolean includeBaseSystem) {
         MemoryContext ctx = request.memory() != null ? request.memory() : MemoryContext.empty();
         if (includeBaseSystem) {
-            addGatewaySystem(messages, prompts.systemPromptOrEmpty());
+            addGatewaySystem(messages, catalogText("system-prompt"));
         }
         addGatewaySystem(messages, resolveModeOverlay(request.mode(), request.workflowId()));
         addGatewaySystem(messages, resolveSkillOverlay(request.skillId()));
         appendGatewayMemoryLayers(messages, ctx);
-        addGatewaySystem(messages, scopePromptOrEmpty());
+        addGatewaySystem(messages, catalogText("scope-prompt"));
         addGatewaySystem(messages, nodePromptOrEmpty(request.nodePrompt()));
     }
 
     private void appendCommonReactLayers(List<Msg> inputs, PromptComposeRequest request, boolean includeBaseSystem) {
         MemoryContext ctx = request.memory() != null ? request.memory() : MemoryContext.empty();
         if (includeBaseSystem) {
-            addReactSystem(inputs, prompts.systemPromptOrEmpty());
+            addReactSystem(inputs, catalogText("system-prompt"));
         }
         addReactSystem(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
         addReactSystem(inputs, resolveReactRestartOverlay(request));
         addReactSystem(inputs, resolveHitlOverlay(request.mode()));
         addReactSystem(inputs, resolveSkillOverlay(request.skillId()));
         appendReactMemoryLayers(inputs, ctx);
-        addReactSystem(inputs, scopePromptOrEmpty());
+        addReactSystem(inputs, catalogText("scope-prompt"));
         addReactSystem(inputs, nodePromptOrEmpty(request.nodePrompt()));
     }
 
     private void appendGatewayMemoryLayers(List<Map<String, Object>> messages, MemoryContext ctx) {
-        if (memoryProperties != null && StringUtils.hasText(memoryProperties.getLayerPrompt())) {
-            addGatewaySystem(messages, memoryProperties.getLayerPrompt().strip());
-        }
+        addGatewaySystem(messages, catalogText("memory.layer-prompt"));
         MemoryMessageBuilder.appendLongTermLayers(messages, ctx);
         MemoryMessageBuilder.appendStmTurns(messages, ctx, memoryProperties);
     }
 
     private void appendReactMemoryLayers(List<Msg> inputs, MemoryContext ctx) {
-        if (memoryProperties != null && StringUtils.hasText(memoryProperties.getLayerPrompt())) {
-            addReactSystem(inputs, memoryProperties.getLayerPrompt().strip());
-        }
+        addReactSystem(inputs, catalogText("memory.layer-prompt"));
         addReactSystem(inputs, ctx.ltmSnippet());
         addReactSystem(inputs, ctx.mtmSnippet());
         appendReactStmTurns(inputs, ctx);
@@ -145,33 +143,34 @@ public class PromptComposer {
     }
 
     private String resolveModeOverlay(PromptMode mode, String workflowId) {
-        if (overlayProperties.getModeOverlays() == null || mode == null) {
+        if (mode == null) {
             return "";
         }
+        if (mode == PromptMode.REACT) {
+            return ReactOverlayAssembler.assemble(catalogHolder.snapshot());
+        }
         if (mode == PromptMode.WORKFLOW && StringUtils.hasText(workflowId)) {
-            String specific = overlayProperties.getModeOverlays().get("workflow:" + workflowId.strip());
+            String specificId = "mode-overlay.workflow:" + workflowId.strip();
+            String specific = catalogHolder.snapshot().text(specificId).map(String::strip).orElse("");
             if (StringUtils.hasText(specific)) {
-                return specific.strip();
+                return specific;
             }
         }
-        String text = overlayProperties.getModeOverlays().get(mode.overlayKey());
-        return StringUtils.hasText(text) ? text.strip() : "";
+        return catalogText("mode-overlay." + mode.overlayKey());
     }
 
     private String resolveHitlOverlay(PromptMode mode) {
         if (mode != PromptMode.REACT || hitlProperties == null || !hitlProperties.isEnabled()) {
             return "";
         }
-        String text = hitlProperties.getAgentPrompt();
-        return StringUtils.hasText(text) ? text.strip() : "";
+        return catalogText("hitl.agent-prompt");
     }
 
     private String resolveReactRestartOverlay(PromptComposeRequest request) {
-        if (!request.reactRestart() || overlayProperties.getModeOverlays() == null) {
+        if (!request.reactRestart()) {
             return "";
         }
-        String text = overlayProperties.getModeOverlays().get("react-restart");
-        return StringUtils.hasText(text) ? text.strip() : "";
+        return catalogText("mode-overlay.react-restart");
     }
 
     private String resolveSkillOverlay(String skillId) {
@@ -189,10 +188,14 @@ public class PromptComposer {
         return StringUtils.hasText(text) ? text.strip() : "";
     }
 
-    private String scopePromptOrEmpty() {
-        return overlayProperties.getScopePrompt() != null
-                ? overlayProperties.getScopePrompt().strip()
-                : "";
+    /** Catalog 缺 id → 空串 + warn；有条目即使正文为空也不 warn */
+    private String catalogText(String id) {
+        return catalogHolder.snapshot().entry(id)
+                .map(e -> e.contentText() != null ? e.contentText().strip() : "")
+                .orElseGet(() -> {
+                    log.warn("[PromptComposer] catalog missing id={}", id);
+                    return "";
+                });
     }
 
     private static String nodePromptOrEmpty(String nodePrompt) {

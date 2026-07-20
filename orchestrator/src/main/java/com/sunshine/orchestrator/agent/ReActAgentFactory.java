@@ -3,8 +3,8 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.memory.MemoryProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.memory.Memory;
 import io.agentscope.core.memory.autocontext.AutoContextConfig;
@@ -21,13 +21,14 @@ import org.springframework.util.StringUtils;
 /**
  * 每次对话创建独立 ReActAgent，避免单例残留 pending tool call / 并发冲突。
  * 可选 {@link AutoContextMemory}（4.6.4）压缩单次 run 内 TOOL 上下文。
+ * base system-prompt 读 {@link PromptCatalogHolder}（id={@code system-prompt}）。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ReActAgentFactory {
 
-    private final AgentPromptProperties prompts;
+    private final PromptCatalogHolder catalogHolder;
     private final AgentExecutionProperties executionProperties;
     private final MemoryProperties memoryProperties;
     private final DynamicToolkitFactory dynamicToolkitFactory;
@@ -102,7 +103,12 @@ public class ReActAgentFactory {
     }
 
     public String composeSystemPrompt(AgentRunRequest request) {
-        String base = prompts.systemPromptOrEmpty();
+        String base = catalogHolder.snapshot().entry("system-prompt")
+                .map(e -> e.contentText() != null ? e.contentText().strip() : "")
+                .orElseGet(() -> {
+                    log.warn("[ReActAgentFactory] catalog missing id=system-prompt");
+                    return "";
+                });
         String overlay = request.systemOverlay();
         if (!StringUtils.hasText(overlay)) {
             return base;
