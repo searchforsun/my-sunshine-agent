@@ -15,6 +15,7 @@ import {
 import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import { promptKindLabel, shortPromptId } from '../../api/prompts'
+import TimelineJsonEditor from './TimelineJsonEditor.vue'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 </script>

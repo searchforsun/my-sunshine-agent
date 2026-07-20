@@ -698,6 +698,7 @@ export function usePromptsPage() {
     showMoreMenu,
     isContentEditable,
     isActionBusy,
+    contentUsesJson,
     moreMenuOptions,
     hasDraft,
     isRoutingSelected,
