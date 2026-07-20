@@ -126,8 +126,12 @@ const effectiveSteps = computed(() => ensurePlanTimelineSteps({
   executionPlanId: props.executionPlanId,
 }))
 
+const isTimelineProcessing = computed(() =>
+  !!(props.live || props.messageStatus === 'streaming'),
+)
+
 const collapsedAnswerText = computed(() => {
-  if (!summaryEnabled.value || timelineBodyExpanded.value) return ''
+  if (!summaryEnabled.value || timelineBodyExpanded.value || isTimelineProcessing.value) return ''
   return resolveCollapsedAnswerText({
     role: 'assistant',
     content: props.messageContent ?? '',
@@ -136,7 +140,7 @@ const collapsedAnswerText = computed(() => {
   })
 })
 
-/** 仅 interleaved 时由 Stack 渲染折叠终稿，避免与底栏 msg-md 双显 */
+/** 终态折叠：仅 interleaved 时由 Stack 渲染终稿，避免与底栏 msg-md 双显 */
 const showCollapsedAnswer = computed(() => {
   if (!collapsedAnswerText.value) return false
   return isContentFullyInterleaved({
@@ -238,6 +242,15 @@ const displaySteps = computed(() => {
     if (s.phase === 'tasks' && !hasRealTaskBoardItems(s)) return false
     return true
   })
+})
+
+/** 正在处理且整段折叠：只露 displaySteps 最后一条（折叠概要，无穿插正文） */
+const collapsedPreviewStep = computed(() => {
+  if (!summaryEnabled.value || timelineBodyExpanded.value || !isTimelineProcessing.value) {
+    return undefined
+  }
+  const steps = displaySteps.value
+  return steps.length ? steps[steps.length - 1] : undefined
 })
 
 const pendingList = computed(() =>
@@ -414,6 +427,42 @@ const orphanContent = computed(() => {
           </div>
         </div>
       </template>
+    </template>
+    <!-- 正在处理折叠：仅最后一步概要行 -->
+    <template v-else-if="collapsedPreviewStep">
+      <PlanWorkflowPanel
+        v-if="collapsedPreviewStep.phase === 'plan' && showPlanDag"
+        :plan-step="collapsedPreviewStep"
+        :all-steps="effectiveSteps"
+        :live="live"
+        :execution-plan-id="executionPlanId"
+        :user-query="userQuery"
+        :pending-hitl-confirmation="pendingList"
+      />
+      <TaskBoardPanel
+        v-else-if="collapsedPreviewStep.phase === 'tasks'"
+        :step="collapsedPreviewStep"
+        :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
+      />
+      <PeerCollabPanel
+        v-else-if="collapsedPreviewStep.phase === 'peer-collab'"
+        :step="collapsedPreviewStep"
+        :message-id="messageId"
+        :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
+      />
+      <SubagentCard
+        v-else-if="isSubagentStep(collapsedPreviewStep)"
+        :step="collapsedPreviewStep"
+        :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
+      />
+      <OperationCard
+        v-else
+        :step="collapsedPreviewStep"
+        :expanded="false"
+        :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
+        :execution-plan-id="executionPlanId"
+        :embed-hitl="false"
+      />
     </template>
     <div
       v-else-if="showCollapsedAnswer"
