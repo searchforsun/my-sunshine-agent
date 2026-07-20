@@ -63,12 +63,21 @@ const showKindTag = () => page.activeTab === 'all'
           >
             <div class="prompt-row-head">
               <span class="prompt-name">{{ item.displayName }}</span>
-              <NSwitch
-                :value="item.enabled"
-                size="small"
-                @click.stop
-                @update:value="(v: boolean) => onToggle(item, v)"
-              />
+              <div class="prompt-row-head-right">
+                <span
+                  v-if="item.kind === 'routing-rule'"
+                  class="priority-badge"
+                  :title="`优先级 ${item.priority}（越大越优先）`"
+                >
+                  P{{ item.priority }}
+                </span>
+                <NSwitch
+                  :value="item.enabled"
+                  size="small"
+                  @click.stop
+                  @update:value="(v: boolean) => onToggle(item, v)"
+                />
+              </div>
             </div>
             <div class="prompt-row-meta">
               <span class="prompt-id">{{ shortPromptId(item.id) }}</span>
@@ -80,9 +89,6 @@ const showKindTag = () => page.activeTab === 'all'
               >
                 {{ promptKindLabel(item.kind) }}
               </NTag>
-              <span v-if="item.kind === 'routing-rule'" class="priority-badge">
-                P{{ item.priority }}
-              </span>
             </div>
           </button>
         </div>
@@ -189,12 +195,20 @@ const showKindTag = () => page.activeTab === 'all'
   gap: 8px;
 }
 
+.prompt-row-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .prompt-name {
   font-size: 14px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .prompt-row-meta {
@@ -221,8 +235,18 @@ const showKindTag = () => page.activeTab === 'all'
 }
 
 .priority-badge {
-  font-size: 11px;
-  color: var(--sun-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--sun-accent);
+  color: var(--sun-text);
+  font-size: 12px;
+  font-weight: 700;
   font-family: var(--sun-font-mono, monospace);
+  line-height: 1.2;
+  letter-spacing: 0.02em;
 }
 </style>
