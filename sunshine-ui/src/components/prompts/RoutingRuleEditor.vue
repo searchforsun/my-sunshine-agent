@@ -178,9 +178,7 @@ const showMatch = computed(() => matchType.value === 'regex')
 const showDomainGroups = computed(() => matchType.value === 'structural')
 const showWorkflowId = computed(() => planMode.value === 'workflow')
 const showReactPrompt = computed(() => planMode.value === 'react')
-const showPlanParams = computed(() =>
-  planMode.value === 'workflow' || planMode.value === 'react',
-)
+const showPlanParams = computed(() => planMode.value === 'workflow')
 
 const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
 </script>
