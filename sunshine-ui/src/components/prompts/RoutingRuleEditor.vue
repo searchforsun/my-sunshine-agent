@@ -33,7 +33,7 @@ const matchOptions = [
 ]
 
 const planModeOptions = [
-  { label: '静态 Workflow', value: 'workflow' },
+  { label: '工作流', value: 'workflow' },
   { label: '动态规划', value: 'plan-workflow' },
   { label: '多专家协作', value: 'peer-collab' },
   { label: '自主推理', value: 'react' },
