@@ -44,10 +44,6 @@ public class AgentExecutionProperties {
             private boolean enabled = true;
             private int maxIters = 8;
             private long timeoutMs = 180_000L;
-            /**
-             * @deprecated Catalog {@code react.subagent.cancel-result}；仅单测无 Catalog 时可读
-             */
-            private String cancelResult = "";
         }
     }
 

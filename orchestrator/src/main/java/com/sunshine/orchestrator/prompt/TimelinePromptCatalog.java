@@ -18,13 +18,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
  * 时间线 / rewrite.timeline 文案 — prompt-manager Catalog JSON（kebab-case）。
- * 缺条目时回退 {@link AgentPromptProperties} 内嵌 Java 默认值。
+ * 缺条目 → 空 POJO + warn（与 {@link PromptComposer} catalogText 一致；禁止 Java/Nacos 影子兜底）。
  */
 @Slf4j
 @Component
@@ -37,10 +40,13 @@ public class TimelinePromptCatalog {
 
     private final PromptCatalogHolder catalogHolder;
 
-    /** 单测：空 Catalog → 全部 Java 默认文案 */
+    /**
+     * 单测 fixture：把 Java 内嵌样例写入 Catalog Snapshot，再经正常读取路径取文案。
+     * 生产路径禁止走此方法背后的样例表。
+     */
     public static TimelinePromptCatalog withDefaults() {
         PromptCatalogHolder holder = new PromptCatalogHolder();
-        holder.replace(PromptCatalogSnapshot.of(0L, java.util.List.of()));
+        holder.replace(PromptCatalogSnapshot.of(0L, fixtureEntries()));
         return new TimelinePromptCatalog(holder);
     }
 
@@ -60,12 +66,12 @@ public class TimelinePromptCatalog {
         if (fromPack.isPresent()) {
             return fromPack.get();
         }
-        StepTimeline fallback = AgentPromptProperties.Timeline.defaultSteps().get(name);
-        return fallback != null ? fallback : new StepTimeline();
+        log.warn("[TimelinePromptCatalog] catalog missing id=timeline.steps.{}", name);
+        return new StepTimeline();
     }
 
     public LinkedHashMap<String, StepTimeline> steps() {
-        LinkedHashMap<String, StepTimeline> out = new LinkedHashMap<>(AgentPromptProperties.Timeline.defaultSteps());
+        LinkedHashMap<String, StepTimeline> out = new LinkedHashMap<>();
         catalogHolder.snapshot().json("timeline.steps").ifPresent(pack -> {
             try {
                 JsonNode root = MAPPER.readTree(pack);
@@ -124,6 +130,7 @@ public class TimelinePromptCatalog {
             }
         });
         if (root.isEmpty() || root.get() == null) {
+            log.warn("[TimelinePromptCatalog] catalog missing id=rewrite.timeline");
             return "";
         }
         JsonNode node = root.get();
@@ -155,8 +162,13 @@ public class TimelinePromptCatalog {
         });
     }
 
-    private <T> T parseJson(String id, Class<T> type, Supplier<T> fallback) {
-        return parseJsonOpt(id, type).orElseGet(fallback);
+    private <T> T parseJson(String id, Class<T> type, Supplier<T> empty) {
+        Optional<T> parsed = parseJsonOpt(id, type);
+        if (parsed.isPresent()) {
+            return parsed.get();
+        }
+        log.warn("[TimelinePromptCatalog] catalog missing id={}", id);
+        return empty.get();
     }
 
     private <T> Optional<T> parseJsonOpt(String id, Class<T> type) {
@@ -168,5 +180,34 @@ public class TimelinePromptCatalog {
                 return Optional.empty();
             }
         });
+    }
+
+    /** 单测 fixture：Java 样例 → Catalog JSON 条目（kebab-case） */
+    static List<PromptCatalogEntry> fixtureEntries() {
+        List<PromptCatalogEntry> entries = new ArrayList<>();
+        AgentPromptProperties.Timeline fixture = AgentPromptProperties.Timeline.fixture();
+        entries.add(jsonEntry("timeline.intent", writeJson(fixture.getIntent())));
+        entries.add(jsonEntry("timeline.hitl", writeJson(fixture.getHitl())));
+        entries.add(jsonEntry("timeline.plan-approval", writeJson(fixture.getPlanApproval())));
+        entries.add(jsonEntry("timeline.agent", writeJson(fixture.getAgent())));
+        entries.add(jsonEntry("timeline.rag-after", writeJson(fixture.getRagAfter())));
+        entries.add(jsonEntry("timeline.sandbox", writeJson(fixture.getSandbox())));
+        for (Map.Entry<String, StepTimeline> e : fixture.getSteps().entrySet()) {
+            entries.add(jsonEntry("timeline.steps." + e.getKey(), writeJson(e.getValue())));
+        }
+        entries.add(jsonEntry("rewrite.timeline", "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"));
+        return entries;
+    }
+
+    private static PromptCatalogEntry jsonEntry(String id, String contentJson) {
+        return new PromptCatalogEntry(id, "timeline", id, true, 0, 1, null, contentJson);
+    }
+
+    private static String writeJson(Object value) {
+        try {
+            return MAPPER.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new IllegalStateException("fixture serialize failed: " + e.getMessage(), e);
+        }
     }
 }

@@ -1,6 +1,8 @@
 # Prompt 运营中心 + 统一路由规则引擎 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态**：🟢 已实施（2026-07-20）— 代码与 Live 已合入；下方 checkbox 为历史切片，勿作未完成清单。  
+> **完成摘要**：`prompt-manager` DB SSOT · `UnifiedRuleRoutingPolicy` · `/prompts` · `verify_prompt_catalog_live.py` · reactPromptId 场景叠加。  
+> **已清债**：TD-131～136（composable 拆分 / Live 硬门 / STM·skill Catalog）。
 
 **Goal:** 落地 4.11：`prompt-manager` DB 为提示词/路由规则唯一 SSOT，统一 Rule Engine 替换 L1/L1b/L2，提供 `/prompts` 运营页与 Live 验收。
 

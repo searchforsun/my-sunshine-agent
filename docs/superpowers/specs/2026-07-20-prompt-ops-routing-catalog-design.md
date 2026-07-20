@@ -1,10 +1,11 @@
 # Prompt 运营中心 + 统一路由规则引擎
 
 > **阶段**：四 · **任务卡**：4.11（扩展）  
-> **状态**：🟡 实施中（rev.2 UX：全部=系统配置；React 场景 + `reactPromptId`；审核流二期）  
+> **状态**：🟢 已实施（rev.2 UX：全部=系统配置；React 场景 + `reactPromptId`；审核流二期）  
 > **日期**：2026-07-20（rev.2）  
 > **前置**：[phase3 §3.8 PromptComposer](./phase3-production-hardening-design.md) · [routing-golden-set.md](../../routing/routing-golden-set.md) · [skills-management-ui-design.md](./skills-management-ui-design.md) · [workflow-studio-design.md](./2026-06-25-workflow-studio-design.md)  
-> **关联**：`prompt-manager`（:8500）· 提示词/规则 SSOT 为 DB（非 Nacos）
+> **关联**：`prompt-manager`（:8500）· 提示词/规则 SSOT 为 DB（非 Nacos）  
+> **收口**：timeline/answer/STM/skill 缺 Catalog → 空串+warn（无 Java/Nacos 影子兜底）
 
 ---
 

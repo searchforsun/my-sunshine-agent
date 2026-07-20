@@ -6,7 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 
 /**
- * 三层记忆配置 — SSOT 见 Nacos {@code agent.memory.*}（docs/nacos/sunshine-orchestrator.yaml）。
+ * 三层记忆运行参数 — 数值/开关 SSOT：Nacos {@code agent.memory.*}。
+ * 提示词正文（layer / STM header·preamble / current-user-marker）SSOT = Catalog。
  */
 @Getter
 @Setter
@@ -15,14 +16,6 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 public class MemoryProperties {
 
     private boolean enabled = true;
-
-    /** 记忆分层总说明 — 注入在 LTM/MTM/STM 块之前 */
-    private String layerPrompt = """
-            记忆分层：LTM/MTM 为摘要，STM 为同会话已结束轮次（仅供指代）。
-            **仅执行并回答**带「【当前提问 · 仅此作答】」标记的用户消息。""";
-
-    /** 当前 user 消息前缀，与历史记忆块明显区分 */
-    private String currentUserMarker = "【当前提问 · 仅此作答】";
 
     private Stm stm = new Stm();
     private Mtm mtm = new Mtm();
@@ -39,9 +32,6 @@ public class MemoryProperties {
         private int maxMessages = 12;
         /** STM 块字符上限 */
         private int maxChars = 8000;
-        private String header = "[本会话近期对话 · STM]";
-        private String preamble = """
-                以下为同会话已结束轮次，仅供指代与消歧（如「这个 skill」「上述脚本」）。""";
     }
 
     @Getter

@@ -21,7 +21,7 @@
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| （暂无 open） | — | — | — | 下一轮从侦察清单选入 |
+| （暂无 open） | — | — | — | — |
 
 ### 文档债
 
@@ -168,6 +168,12 @@
 | TD-128 | 2026-07-18 | 删 `formatForReplan(String)` / `WorkflowPlanner.replan(String)` |
 | TD-129 | 2026-07-18 | FE 终态只信 SSE `after`；stop/interleave 禁「已取消」「已暂停」硬编码 |
 | TD-130 | 2026-07-18 | interrupt 补终态 `flushCancelTerminal` 直写 GenerationJob；删 Support Hook `cancel` |
+| TD-131 | 2026-07-20 | `/prompts` 拆 `usePromptList`/`VersionOps`/`RoutingRuleOps`/`DryRun` + `promptVersionUtils`；门面 ~233 行 |
+| TD-132 | 2026-07-20 | `verify_prompt_catalog_live` P3 硬命中变化 + P5 orchestrator catalogVersion + P6 golden-set 子集 |
+| TD-133 | 2026-07-20 | STM header/preamble/current-user-marker 迁 Catalog；删 Nacos `skill-overlays` 兜底 |
+| TD-134 | 2026-07-20 | timeline Catalog 缺条目 → 空+warn；删 Java `defaultSteps` 生产兜底 |
+| TD-135 | 2026-07-20 | `PlanAnswerPromptAssembler` 删 `DEFAULT_TEMPLATE`；缺 `answer.template` → 空+warn |
+| TD-136 | 2026-07-20 | 清 Nacos 僵尸 `topology-hints` / 空 prompt 键；删 `systemPrompt`/`modeOverlays`/`cancelResult` 残留绑定 |
 
 ### 文档债（DOC）
 
@@ -195,6 +201,7 @@
 | DOC-022 | 2026-07-17 | 5 份已完成 sandbox plan → `docs/superpowers/plans/archive/`（ARCHIVED 头 + 链修复） |
 | DOC-023 | 2026-07-18 | spawn design §5：Nacos 键改为 `agent.timeline.steps.subagent` + `agent.execution.react.subagent.*` |
 | DOC-024 | 2026-07-18 | sandbox cancel plan 对齐 `SandboxInvocationRegistry` / `cancellable`；去幽灵 toolUseId/Budget |
+| DOC-025 | 2026-07-20 | 4.11 Catalog SSOT 文档收口；timeline-summary design 与实现对齐 |
 
 ### 架构决策（ADR）
 

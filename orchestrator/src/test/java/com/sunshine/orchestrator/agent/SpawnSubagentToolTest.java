@@ -51,9 +51,13 @@ class SpawnSubagentToolTest {
 
     @BeforeEach
     void setUp() {
-        spawnRunRegistry = SpawnRunRegistry.forTest(executionProperties);
         catalogHolder = new PromptCatalogHolder();
-        catalogHolder.replace(PromptCatalogSnapshot.of(0L, java.util.List.of()));
+        catalogHolder.replace(PromptCatalogSnapshot.of(1L, java.util.List.of(
+                new com.sunshine.orchestrator.prompt.PromptCatalogEntry(
+                        "react.subagent.cancel-result", "react", "cancel", true, 0, 1,
+                        "用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：\n{prompt}",
+                        null))));
+        spawnRunRegistry = SpawnRunRegistry.forTest(catalogHolder);
         tool = new SpawnSubagentTool(
                 agentRuntime, executionProperties, timelineSupport, toolSetResolver,
                 catalogHolder, spawnRunRegistry);

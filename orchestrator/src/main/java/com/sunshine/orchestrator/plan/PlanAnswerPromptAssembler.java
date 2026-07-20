@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.plan;
 
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -13,24 +14,14 @@ import java.util.Map;
 /**
  * 动态 Plan 的 answer 节点 prompt — Catalog {@code answer.template} + 按拓扑注入上游 {@code {{n*.output}}}。
  * Planner 不负责撰写 answer 话术，避免 meta 指令进入 reasoning。
+ * 缺 Catalog → 空串 + warn（禁止 Java 模板兜底）。
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class PlanAnswerPromptAssembler {
 
     static final String UPSTREAM_PLACEHOLDER = "{{plan.upstream}}";
-
-    private static final String DEFAULT_TEMPLATE = """
-            用户问题：{{start.userQuery}}
-
-            上游数据：
-            {{plan.upstream}}
-
-            请严格针对上述「用户问题」作答：
-            - 仅依据上游数据，用面向用户的中文 Markdown 直接回答
-            - 综合循环/检索/工具结果给出结论与依据；上游为空时说明暂无可用数据
-            - 禁止输出 tool_call、函数调用、JSON 协议、内部节点 id 或原始工具报文
-            - 禁止复述上游中的工具调用结构；若上游含此类内容，只提炼对用户有用的事实""";
 
     private final PromptCatalogHolder catalogHolder;
 
@@ -58,20 +49,24 @@ public class PlanAnswerPromptAssembler {
     }
 
     private String buildPrompt(PlanJson plan, List<String> upstreamIds) {
-        String template = templateOrDefault();
+        String template = catalogTemplateOrEmpty();
         String upstream = buildUpstreamBlock(plan, upstreamIds);
+        if (!StringUtils.hasText(template)) {
+            return "";
+        }
         if (template.contains(UPSTREAM_PLACEHOLDER)) {
             return template.replace(UPSTREAM_PLACEHOLDER, upstream);
         }
         return template.strip() + "\n\n上游数据：\n" + upstream;
     }
 
-    private String templateOrDefault() {
+    private String catalogTemplateOrEmpty() {
         String fromCatalog = catalogHolder.snapshot().text("answer.template").map(String::strip).orElse("");
         if (StringUtils.hasText(fromCatalog)) {
             return fromCatalog;
         }
-        return DEFAULT_TEMPLATE;
+        log.warn("[PlanAnswerPromptAssembler] catalog missing id=answer.template");
+        return "";
     }
 
     private static String buildUpstreamBlock(PlanJson plan, List<String> upstreamIds) {

@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * Agent 非正文配置（模型名/温度等）— 提示词正文已迁 prompt-manager Catalog。
- * 时间线 POJO 仍作 Catalog JSON 反序列化目标与 Java 默认回退。
+ * Agent 非正文配置（模型名/温度等）— 提示词正文 SSOT = prompt-manager Catalog。
+ * 时间线嵌套 POJO 仅作 Catalog JSON 反序列化目标；样例文案见 {@link Timeline#fixture()}（单测）。
  */
 @Getter
 @Setter
@@ -17,23 +17,9 @@ import org.springframework.util.StringUtils;
 @ConfigurationProperties(prefix = "agent")
 public class AgentPromptProperties {
 
-    /**
-     * @deprecated Catalog {@code system-prompt}；仅 MemoryMessageBuilder 遗留路径
-     */
-    @Deprecated
-    private String systemPrompt = "";
-
     private Intent intent = new Intent();
 
     private Planner planner = new Planner();
-
-    public boolean hasSystemPrompt() {
-        return StringUtils.hasText(systemPrompt);
-    }
-
-    public String systemPromptOrEmpty() {
-        return systemPrompt != null ? systemPrompt.strip() : "";
-    }
 
     @Getter
     @Setter
@@ -55,26 +41,33 @@ public class AgentPromptProperties {
         private int routingNodeBuffer = 6;
     }
 
-    /** 时间线文案结构（Catalog / 默认回退） */
+    /** 时间线文案结构（Catalog JSON 反序列化目标） */
     @Getter
     @Setter
     public static class Timeline {
 
         private IntentTimeline intent = new IntentTimeline();
-        /** 通用步骤 before/active 模板（plan / generate / rag 等），占位符 {query} */
-        private java.util.LinkedHashMap<String, StepTimeline> steps = defaultSteps();
-        /** 写工具 HITL 各阶段 active/after 模板，占位符 {toolDisplayName} */
+        private java.util.LinkedHashMap<String, StepTimeline> steps = new java.util.LinkedHashMap<>();
         private HitlTimeline hitl = new HitlTimeline();
-        /** Plan 用户确认时间线文案 */
         private PlanApprovalTimeline planApproval = new PlanApprovalTimeline();
-        /** ReAct agent 步骤摘要模板 */
         private AgentTimeline agent = new AgentTimeline();
-        /** RAG 步骤 after 摘要模板 */
         private RagAfterTimeline ragAfter = new RagAfterTimeline();
-        /** 沙箱工具时间线（path / pattern / command） */
         private SandboxTimeline sandbox = new SandboxTimeline();
 
-        public static java.util.LinkedHashMap<String, StepTimeline> defaultSteps() {
+        /** 单测 / {@code TimelinePromptCatalog.withDefaults} 用样例；生产禁止当兜底 */
+        public static Timeline fixture() {
+            Timeline t = new Timeline();
+            t.setIntent(fixtureIntent());
+            t.setSteps(fixtureSteps());
+            t.setHitl(fixtureHitl());
+            t.setPlanApproval(fixturePlanApproval());
+            t.setAgent(fixtureAgent());
+            t.setRagAfter(fixtureRagAfter());
+            t.setSandbox(fixtureSandbox());
+            return t;
+        }
+
+        public static java.util.LinkedHashMap<String, StepTimeline> fixtureSteps() {
             var map = new java.util.LinkedHashMap<String, StepTimeline>();
             var plan = new StepTimeline();
             plan.setLabel("执行计划");
@@ -148,14 +141,96 @@ public class AgentPromptProperties {
             map.put("node", node);
             return map;
         }
+
+        private static IntentTimeline fixtureIntent() {
+            var intent = new IntentTimeline();
+            intent.setBefore("阅读{query}");
+            intent.setActive("正在分析{query}，匹配最佳处理方式");
+            intent.setLabel("识别意图");
+            intent.setDefaultAfter("已完成对{query}的意图判断");
+            intent.setUnmatchedAfter("{query}将按「{detail}」处理");
+            var modes = new java.util.LinkedHashMap<String, ModeIntent>();
+            var react = new ModeIntent();
+            react.setDetail("自主智能体");
+            react.setAfter("{query}将由自主智能体分析并作答");
+            modes.put("react", react);
+            var workflow = new ModeIntent();
+            workflow.setAfter("{query}将按「{displayName}」流程处理");
+            workflow.setForcedAfter("{query}将按您指定的「工作流」模式处理");
+            modes.put("workflow", workflow);
+            var planWorkflow = new ModeIntent();
+            planWorkflow.setDetail("动态规划");
+            planWorkflow.setAfter("{query}将动态规划多步执行");
+            modes.put("plan-workflow", planWorkflow);
+            intent.setModes(modes);
+            return intent;
+        }
+
+        private static HitlTimeline fixtureHitl() {
+            var hitl = new HitlTimeline();
+            hitl.setPending("将调用工具 {toolDisplayName}");
+            hitl.setAwaiting("等待用户确认执行写操作");
+            hitl.setApproved("用户已确认，正在调用 {toolDisplayName}");
+            hitl.setDenied("用户取消调用");
+            hitl.setSkippedAfter("用户取消调用，已跳过");
+            return hitl;
+        }
+
+        private static PlanApprovalTimeline fixturePlanApproval() {
+            var p = new PlanApprovalTimeline();
+            p.setAwaiting("等待确认执行计划");
+            p.setApproved("已确认执行计划");
+            p.setRegenerating("正在根据修改意见重新规划…");
+            p.setTimedOut("确认超时，将改由自主智能体继续");
+            return p;
+        }
+
+        private static AgentTimeline fixtureAgent() {
+            var a = new AgentTimeline();
+            a.setBefore("理解{query}，规划作答思路");
+            a.setActive("结合上下文分析{query}");
+            a.setProgress("深入分析{query}的背景与上下文");
+            a.setAfterNoContext("完成问题分析，开始生成回复");
+            a.setAfterOutline("已梳理{query}的作答要点");
+            a.setAfterZeroHits("知识库暂无{query}的匹配内容，将结合通用知识作答");
+            a.setAfterWithHits("已从 {hitCount} 条文档中提取与{query}相关的关键信息");
+            a.setAfterDefault("已完成对{query}的分析，开始生成回复");
+            return a;
+        }
+
+        private static RagAfterTimeline fixtureRagAfter() {
+            var r = new RagAfterTimeline();
+            r.setHitsWithSources("找到 {hitCount} 条参考片段，来源：{sources}");
+            r.setHitsWithQuery("找到 {hitCount} 条与{query}相关的参考文档");
+            r.setZeroHits("未找到与{query}直接相关的制度或文档");
+            r.setGenericDone("已完成针对{query}的知识库检索");
+            return r;
+        }
+
+        private static SandboxTimeline fixtureSandbox() {
+            var s = new SandboxTimeline();
+            s.setAfterFallback("");
+            s.setReadAfter("{headerPath}");
+            s.setWriteAfter("{headerPath}");
+            s.setEditAfter("{headerPath}");
+            s.setGlobAfter("{pattern}");
+            s.setGlobAfterWithPath("{pattern} · {path}");
+            s.setGrepAfter("{pattern}");
+            s.setExecAfter("{command}");
+            s.setReadActive("正在读取 {path}");
+            s.setWriteActive("正在写入 {path}");
+            s.setEditActive("正在修改 {path}");
+            s.setGlobActive("正在查找 {pattern}");
+            s.setGrepActive("正在搜索 {pattern}");
+            s.setExecActive("正在执行 {command}");
+            return s;
+        }
     }
 
     @Getter
     @Setter
     public static class StepModeTimeline {
-        /** 首轮 think 标题（按执行模式覆盖时） */
         private String label;
-        /** 后续轮 think-N 标题 */
         private String labelFollowUp;
         private String before;
         private String active;
@@ -169,41 +244,28 @@ public class AgentPromptProperties {
     @Setter
     public static class StepTimeline {
 
-        /** 时间线主行 step.label */
         private String label;
-        /** think-2+ 等后续轮标题（ReAct 默认「综合分析」） */
         private String labelFollowUp;
         private String before;
         private String active;
-        /** 专家再次发言且 Hub 内已有其他专家 */
         private String activeResponding;
-        /** skill / think 等步骤完成态主行模板 */
         private String after;
-        /** workflow node 有用户问句时的 before 模板 */
-        private String beforeWithQuery;
-        /** 无用户问句时的 before/active/after（ReAct fallback） */
+        private String afterFallback;
         private String beforeFallback;
         private String activeFallback;
-        private String afterFallback;
-        /** think-2+ 且已知工具名，占位符 {toolDisplayName} */
         private String beforeFollowUp;
         private String activeFollowUp;
         private String afterFollowUp;
-        /** think-2+ 且无工具名，占位符 {query} */
         private String beforeFollowUpNoTool;
         private String activeFollowUpNoTool;
         private String afterFollowUpNoTool;
-        /** think-2+ 且无问句时的 fallback */
         private String beforeFollowUpFallback;
         private String activeFollowUpFallback;
         private String afterFollowUpFallback;
-        /** 按执行模式覆盖 */
+        private String beforeWithQuery;
         private java.util.LinkedHashMap<String, StepModeTimeline> modes;
-        /** TaskBoard 全部完成 after */
         private String allDone;
-        /** spawn_subagent 失败 after */
         private String afterFail;
-        /** spawn_subagent 用户取消 after */
         private String afterCancel;
     }
 
@@ -211,109 +273,85 @@ public class AgentPromptProperties {
     @Setter
     public static class AgentTimeline {
 
-        private String before = "理解{query}，规划作答思路";
-        private String active = "结合上下文分析{query}";
-        private String progress = "深入分析{query}的背景与上下文";
-        private String afterNoContext = "完成问题分析，开始生成回复";
-        private String afterOutline = "已梳理{query}的作答要点";
-        private String afterZeroHits = "知识库暂无{query}的匹配内容，将结合通用知识作答";
-        private String afterWithHits = "已从 {hitCount} 条文档中提取与{query}相关的关键信息";
-        private String afterDefault = "已完成对{query}的分析，开始生成回复";
+        private String before;
+        private String active;
+        private String progress;
+        private String afterNoContext;
+        private String afterOutline;
+        private String afterZeroHits;
+        private String afterWithHits;
+        private String afterDefault;
     }
 
     @Getter
     @Setter
     public static class RagAfterTimeline {
 
-        private String hitsWithSources = "找到 {hitCount} 条参考片段，来源：{sources}";
-        private String hitsWithQuery = "找到 {hitCount} 条与{query}相关的参考文档";
-        private String zeroHits = "未找到与{query}直接相关的制度或文档";
-        private String genericDone = "已完成针对{query}的知识库检索";
+        private String hitsWithSources;
+        private String hitsWithQuery;
+        private String zeroHits;
+        private String genericDone;
     }
 
     @Getter
     @Setter
     public static class PlanApprovalTimeline {
 
-        private String awaiting = "等待确认执行计划";
-        private String approved = "已确认执行计划";
-        private String regenerating = "正在根据修改意见重新规划…";
-        private String timedOut = "确认超时，将改由自主智能体继续";
+        private String awaiting;
+        private String approved;
+        private String regenerating;
+        private String timedOut;
     }
 
     @Getter
     @Setter
     public static class HitlTimeline {
 
-        private String pending = "将调用工具 {toolDisplayName}";
-        private String awaiting = "等待用户确认执行写操作";
-        private String approved = "用户已确认，正在调用 {toolDisplayName}";
-        private String denied = "用户取消调用";
-        private String skippedAfter = "用户取消调用，已跳过";
+        private String pending;
+        private String awaiting;
+        private String approved;
+        private String denied;
+        private String skippedAfter;
     }
 
-    /**
-     * 沙箱六工具时间线 — 占位符 {displayName} {path} {fileName} {headerPath} {displayPath} {pattern} {command} {cwd}。
-     */
     @Getter
     @Setter
     public static class SandboxTimeline {
 
-        private String afterFallback = "";
-        private String readAfter = "{headerPath}";
-        private String writeAfter = "{headerPath}";
-        private String editAfter = "{headerPath}";
-        private String globAfter = "{pattern}";
-        private String globAfterWithPath = "{pattern} · {path}";
-        private String grepAfter = "{pattern}";
-        private String execAfter = "{command}";
-        private String readActive = "正在读取 {path}";
-        private String writeActive = "正在写入 {path}";
-        private String editActive = "正在修改 {path}";
-        private String globActive = "正在查找 {pattern}";
-        private String grepActive = "正在搜索 {pattern}";
-        private String execActive = "正在执行 {command}";
+        private String afterFallback;
+        private String readAfter;
+        private String writeAfter;
+        private String editAfter;
+        private String globAfter;
+        private String globAfterWithPath;
+        private String grepAfter;
+        private String execAfter;
+        private String readActive;
+        private String writeActive;
+        private String editActive;
+        private String globActive;
+        private String grepActive;
+        private String execActive;
     }
 
-    /** 意图步骤 detail / before / active / after 模板，占位符：{query} {detail} {displayName} {workflowId} */
     @Getter
     @Setter
     public static class IntentTimeline {
 
-        private String before = "阅读{query}";
-        private String active = "正在分析{query}，匹配最佳处理方式";
-        private String label = "识别意图";
-        private String defaultAfter = "已完成对{query}的意图判断";
-        private String unmatchedAfter = "{query}将按「{detail}」处理";
-        private java.util.LinkedHashMap<String, ModeIntent> modes = defaultModes();
-
-        private static java.util.LinkedHashMap<String, ModeIntent> defaultModes() {
-            var map = new java.util.LinkedHashMap<String, ModeIntent>();
-            var react = new ModeIntent();
-            react.setDetail("自主智能体");
-            react.setAfter("{query}将由自主智能体分析并作答");
-            map.put("react", react);
-            var workflow = new ModeIntent();
-            workflow.setAfter("{query}将按「{displayName}」流程处理");
-            workflow.setForcedAfter("{query}将按您指定的「工作流」模式处理");
-            map.put("workflow", workflow);
-            var planWorkflow = new ModeIntent();
-            planWorkflow.setDetail("动态规划");
-            planWorkflow.setAfter("{query}将动态规划多步执行");
-            map.put("plan-workflow", planWorkflow);
-            return map;
-        }
+        private String before;
+        private String active;
+        private String label;
+        private String defaultAfter;
+        private String unmatchedAfter;
+        private java.util.LinkedHashMap<String, ModeIntent> modes;
     }
 
     @Getter
     @Setter
     public static class ModeIntent {
 
-        /** 写入 step.detail 的短标签（workflow 模式可省略，由 catalog displayName 填充） */
         private String detail;
-        /** 意图完成后的用户向摘要模板 */
         private String after;
-        /** 用户底栏强制模式时的 after 模板 */
         private String forcedAfter;
     }
 

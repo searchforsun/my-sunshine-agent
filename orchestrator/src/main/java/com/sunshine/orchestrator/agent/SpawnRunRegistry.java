@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.generation.GenerationJob;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
@@ -26,28 +25,25 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SpawnRunRegistry {
 
     private final ConcurrentHashMap<String, Handle> byRunId = new ConcurrentHashMap<>();
-    private final AgentExecutionProperties executionProperties;
     private final GenerationRegistry generationRegistry;
     private final PromptCatalogHolder promptCatalogHolder;
 
     @Autowired
     public SpawnRunRegistry(
-            AgentExecutionProperties executionProperties,
             @Lazy GenerationRegistry generationRegistry,
             PromptCatalogHolder promptCatalogHolder) {
-        this.executionProperties = executionProperties;
         this.generationRegistry = generationRegistry;
         this.promptCatalogHolder = promptCatalogHolder;
     }
 
     /** 单测无 Spring 时用 */
     public static SpawnRunRegistry forTest() {
-        return new SpawnRunRegistry(null, null, null);
+        return new SpawnRunRegistry(null, null);
     }
 
-    /** 单测：注入 props */
-    public static SpawnRunRegistry forTest(AgentExecutionProperties executionProperties) {
-        return new SpawnRunRegistry(executionProperties, null, null);
+    /** 单测：注入 Catalog */
+    public static SpawnRunRegistry forTest(PromptCatalogHolder promptCatalogHolder) {
+        return new SpawnRunRegistry(null, promptCatalogHolder);
     }
 
     public void register(
@@ -195,19 +191,12 @@ public class SpawnRunRegistry {
 
     /** 与 SSE 父卡 result / tool result 同模板（SSOT = Catalog react.subagent.cancel-result） */
     public String formatCancelResult(String prompt) {
-        String tpl = "";
-        if (promptCatalogHolder != null) {
-            tpl = promptCatalogHolder.requireText("react.subagent.cancel-result").strip();
-        } else if (executionProperties != null && executionProperties.getReact() != null
-                && executionProperties.getReact().getSubagent() != null) {
-            // 单测路径：无 Catalog 时可读 props
-            String fromProps = executionProperties.getReact().getSubagent().getCancelResult();
-            if (StringUtils.hasText(fromProps)) {
-                tpl = fromProps.strip();
-            }
-        }
+        String tpl = promptCatalogHolder != null
+                ? promptCatalogHolder.requireText("react.subagent.cancel-result").strip()
+                : "";
         if (!StringUtils.hasText(tpl)) {
-            tpl = "用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：\n{prompt}";
+            log.warn("[SpawnRunRegistry] catalog missing id=react.subagent.cancel-result");
+            return prompt != null ? prompt : "";
         }
         return tpl.replace("{prompt}", prompt != null ? prompt : "");
     }

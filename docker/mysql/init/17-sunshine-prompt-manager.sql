@@ -567,4 +567,13 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('plan-workflow.upstream-failure-line', 1, 'published', '（{{displayName}} 执行失败：{{error}}，已尝试 {{attemptCount}} 次）', NULL, 'nacos migrate remaining', 'prompt-ops');
 
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.stm.header', 'memory', '记忆 · STM 边界标题', 'STM 块边界标题：紧挨历史轮次之前，标明「本会话近期对话」。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.stm.header', 1, 'published', '[本会话近期对话 · STM]', NULL, 'td-133 migrate', 'prompt-ops');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.stm.preamble', 'memory', '记忆 · STM 边界说明', 'STM 块边界说明：告知模型历史轮次仅供指代消歧。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.stm.preamble', 1, 'published', '以下为同会话已结束轮次，仅供指代与消歧（如「这个 skill」「上述脚本」）。', NULL, 'td-133 migrate', 'prompt-ops');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.current-user-marker', 'memory', '记忆 · 当前提问标记', '当前 user 消息前缀标记，与历史记忆块区分。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.current-user-marker', 1, 'published', '【当前提问 · 仅此作答】', NULL, 'td-133 migrate', 'prompt-ops');
+
 UPDATE prompt_catalog_meta SET catalog_version = catalog_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1;

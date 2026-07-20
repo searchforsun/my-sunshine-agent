@@ -80,7 +80,7 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 | 执行记录 | `execution_trace.attempts[]` | 节点重试时展示 attemptNo / errorClass / summary |
 | （无）执行摘要 | — | answer/llm 不展示时间线 after |
 
-长文由抽屉 `.drawer-body` 统一滚动；**禁止**区块内嵌套滚动条。answer prompt 不对 → 改 Nacos `agent.prompt.answer-template` 或 `mode-overlays.workflow`。
+长文由抽屉 `.drawer-body` 统一滚动；**禁止**区块内嵌套滚动条。answer prompt 不对 → 改 Catalog `answer.template` 或 `mode-overlay.workflow`（`/prompts`）。
 
 ### 降级路径（Planner/校验失败 → Replan → ReAct）
 

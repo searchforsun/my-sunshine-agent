@@ -2,11 +2,9 @@ package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
-import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.memory.MemoryMessageBuilder;
-import com.sunshine.orchestrator.memory.MemoryProperties;
 import com.sunshine.orchestrator.memory.stm.StmBoundaryFormatter;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
@@ -23,6 +21,7 @@ import java.util.Map;
  * 统一 system / memory 消息拼装 — 6 层叠加顺序见 phase3 SSOT §3.8。
  * ReAct 的 base-system 仍由 {@link com.sunshine.orchestrator.agent.ReActAgentFactory} 注入 AgentScope。
  * 已迁 Catalog 的层从 {@link PromptCatalogHolder} 读取（缺省空串 + warn）。
+ * Skill overlay 仅 skill-manager Catalog（无 Nacos 影子兜底）。
  */
 @Slf4j
 @Service
@@ -30,8 +29,6 @@ import java.util.Map;
 public class PromptComposer {
 
     private final PromptCatalogHolder catalogHolder;
-    private final PromptOverlayProperties overlayProperties;
-    private final MemoryProperties memoryProperties;
     private final SkillCatalogService skillCatalogService;
     private final AgentHitlProperties hitlProperties;
 
@@ -82,7 +79,8 @@ public class PromptComposer {
     private void appendGatewayMemoryLayers(List<Map<String, Object>> messages, MemoryContext ctx) {
         addGatewaySystem(messages, catalogText("memory.layer-prompt"));
         MemoryMessageBuilder.appendLongTermLayers(messages, ctx);
-        MemoryMessageBuilder.appendStmTurns(messages, ctx, memoryProperties);
+        MemoryMessageBuilder.appendStmTurns(
+                messages, ctx, catalogText("memory.stm.header"), catalogText("memory.stm.preamble"));
     }
 
     private void appendReactMemoryLayers(List<Msg> inputs, MemoryContext ctx) {
@@ -96,7 +94,8 @@ public class PromptComposer {
         if (memory.stmTurns() == null || memory.stmTurns().isEmpty()) {
             return;
         }
-        String boundary = StmBoundaryFormatter.format(memoryProperties);
+        String boundary = StmBoundaryFormatter.format(
+                catalogText("memory.stm.header"), catalogText("memory.stm.preamble"));
         if (StringUtils.hasText(boundary)) {
             addReactSystem(inputs, boundary.strip());
         }
@@ -113,7 +112,8 @@ public class PromptComposer {
         appendGatewayInjectedContexts(messages, request.injectedUserContexts());
         messages.add(Map.of(
                 "role", "user",
-                "content", MemoryMessageBuilder.formatCurrentUser(request.userMessage(), memoryProperties)));
+                "content", MemoryMessageBuilder.formatCurrentUser(
+                        request.userMessage(), catalogText("memory.current-user-marker"))));
         if (request.partialAssistant() != null && !request.partialAssistant().isEmpty()) {
             messages.add(Map.of("role", "assistant", "content", request.partialAssistant()));
         }
@@ -123,7 +123,8 @@ public class PromptComposer {
         appendReactInjectedContexts(inputs, request.injectedUserContexts());
         inputs.add(Msg.builder()
                 .role(MsgRole.USER)
-                .textContent(MemoryMessageBuilder.formatCurrentUser(request.userMessage(), memoryProperties))
+                .textContent(MemoryMessageBuilder.formatCurrentUser(
+                        request.userMessage(), catalogText("memory.current-user-marker")))
                 .build());
     }
 
@@ -197,14 +198,7 @@ public class PromptComposer {
             return "";
         }
         String fromCatalog = skillCatalogService.overlayOrEmpty(skillId);
-        if (StringUtils.hasText(fromCatalog)) {
-            return fromCatalog.strip();
-        }
-        if (overlayProperties.getSkillOverlays() == null) {
-            return "";
-        }
-        String text = overlayProperties.getSkillOverlays().get(skillId.strip());
-        return StringUtils.hasText(text) ? text.strip() : "";
+        return StringUtils.hasText(fromCatalog) ? fromCatalog.strip() : "";
     }
 
     /** Catalog 缺 id → 空串 + warn；有条目即使正文为空也不 warn */

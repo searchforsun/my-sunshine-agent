@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.memory;
 
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.stm.StmBoundaryFormatter;
 import org.springframework.util.StringUtils;
@@ -11,6 +10,7 @@ import java.util.Map;
 
 /**
  * 方案 C：LTM/MTM → system 摘要块；STM → 边界 system + 完整 user/assistant 轮次；当前提问单独标记。
+ * 系统正文 / STM 边界 / 当前提问标记由调用方从 Catalog 传入。
  */
 public final class MemoryMessageBuilder {
 
@@ -18,11 +18,13 @@ public final class MemoryMessageBuilder {
     }
 
     public static List<Map<String, Object>> buildPrefix(
-            AgentPromptProperties prompts, MemoryProperties memoryProperties, MemoryContext memory) {
+            String systemPrompt, String layerPrompt, MemoryContext memory) {
         List<Map<String, Object>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", prompts.systemPromptOrEmpty()));
-        if (memoryProperties != null && StringUtils.hasText(memoryProperties.getLayerPrompt())) {
-            messages.add(Map.of("role", "system", "content", memoryProperties.getLayerPrompt().strip()));
+        if (StringUtils.hasText(systemPrompt)) {
+            messages.add(Map.of("role", "system", "content", systemPrompt.strip()));
+        }
+        if (StringUtils.hasText(layerPrompt)) {
+            messages.add(Map.of("role", "system", "content", layerPrompt.strip()));
         }
         appendLongTermLayers(messages, memory);
         return messages;
@@ -39,11 +41,14 @@ public final class MemoryMessageBuilder {
 
     /** STM：边界 system + 完整对话轮次（不截断单条 content） */
     public static void appendStmTurns(
-            List<Map<String, Object>> messages, MemoryContext memory, MemoryProperties memoryProperties) {
+            List<Map<String, Object>> messages,
+            MemoryContext memory,
+            String stmHeader,
+            String stmPreamble) {
         if (memory == null || memory.stmTurns() == null || memory.stmTurns().isEmpty()) {
             return;
         }
-        String boundary = StmBoundaryFormatter.format(memoryProperties);
+        String boundary = StmBoundaryFormatter.format(stmHeader, stmPreamble);
         if (StringUtils.hasText(boundary)) {
             messages.add(Map.of("role", "system", "content", boundary));
         }
@@ -57,12 +62,12 @@ public final class MemoryMessageBuilder {
         }
     }
 
-    public static String formatCurrentUser(String userMessage, MemoryProperties memoryProperties) {
+    public static String formatCurrentUser(String userMessage, String currentUserMarker) {
         String content = userMessage != null ? userMessage.strip() : "";
-        if (memoryProperties == null || !StringUtils.hasText(memoryProperties.getCurrentUserMarker())) {
+        if (!StringUtils.hasText(currentUserMarker)) {
             return content;
         }
-        return memoryProperties.getCurrentUserMarker().strip() + "\n" + content;
+        return currentUserMarker.strip() + "\n" + content;
     }
 
     private static void addSystemIfText(List<Map<String, Object>> messages, String text) {

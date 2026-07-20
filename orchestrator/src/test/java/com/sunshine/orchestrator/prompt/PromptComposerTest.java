@@ -2,12 +2,9 @@ package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.memory.MemoryMessageBuilder;
-import com.sunshine.orchestrator.memory.MemoryProperties;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,37 +24,24 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class PromptComposerTest {
 
+    private static final String USER_MARKER = "【当前提问 · 仅此作答】";
+    private static final String STM_HEADER = "[本会话近期对话 · STM]";
+    private static final String STM_PREAMBLE =
+            "以下为同会话已结束轮次，仅供指代与消歧（如「这个 skill」「上述脚本」）。";
+
     @Mock
     private SkillCatalogService skillCatalogService;
 
     private PromptCatalogHolder catalogHolder;
-    private AgentPromptProperties prompts;
-    private MemoryProperties memoryProperties;
-    private PromptOverlayProperties overlayProperties;
     private AgentHitlProperties hitlProperties;
     private PromptComposer composer;
 
     @BeforeEach
     void setUp() {
-        prompts = new AgentPromptProperties();
-        prompts.setSystemPrompt("base-system");
-        memoryProperties = new MemoryProperties();
-        memoryProperties.setLayerPrompt("memory-layer-prompt");
-        memoryProperties.setCurrentUserMarker("【当前提问 · 仅此作答】");
-        overlayProperties = new PromptOverlayProperties();
         hitlProperties = new AgentHitlProperties();
         catalogHolder = new PromptCatalogHolder();
-        catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
-                textEntry("system-prompt", "system", "base-system"),
-                textEntry("mode-overlay.react", "mode-overlay", "react-mode-minimal"),
-                textEntry("mode-overlay.direct", "mode-overlay", ""),
-                textEntry("mode-overlay.workflow", "mode-overlay", ""),
-                textEntry("mode-overlay.react-restart", "mode-overlay", ""),
-                textEntry("memory.layer-prompt", "memory", "memory-layer-prompt"),
-                textEntry("scope-prompt", "scope", ""),
-                textEntry("hitl.agent-prompt", "hitl", ""))));
-        composer = new PromptComposer(
-                catalogHolder, overlayProperties, memoryProperties, skillCatalogService, hitlProperties);
+        catalogHolder.replace(PromptCatalogSnapshot.of(1L, defaultEntries()));
+        composer = new PromptComposer(catalogHolder, skillCatalogService, hitlProperties);
     }
 
     @Test
@@ -69,7 +53,6 @@ class PromptComposerTest {
         assertThat(ReactOverlayAssembler.assemble(catalogHolder.snapshot()))
                 .isEqualTo("BASE\nF1\nF2");
 
-        memoryProperties.setLayerPrompt("");
         catalogHolder.replace(PromptCatalogSnapshot.of(3L, List.of(
                 textEntry("mode-overlay.react", "mode-overlay", "BASE"),
                 fragment("react-fragment.b", "F2", 2),
@@ -89,11 +72,11 @@ class PromptComposerTest {
                 new ChatTurn("assistant", "上一轮回答")));
 
         List<Map<String, Object>> expected = new ArrayList<>(
-                MemoryMessageBuilder.buildPrefix(prompts, memoryProperties, memory));
-        MemoryMessageBuilder.appendStmTurns(expected, memory, memoryProperties);
+                MemoryMessageBuilder.buildPrefix("base-system", "memory-layer-prompt", memory));
+        MemoryMessageBuilder.appendStmTurns(expected, memory, STM_HEADER, STM_PREAMBLE);
         expected.add(Map.of(
                 "role", "user",
-                "content", MemoryMessageBuilder.formatCurrentUser("新问题", memoryProperties)));
+                "content", MemoryMessageBuilder.formatCurrentUser("新问题", USER_MARKER)));
 
         List<Map<String, Object>> actual = composer.composeGatewayMessages(
                 PromptComposeRequest.forDirect(memory, "新问题"));
@@ -157,6 +140,7 @@ class PromptComposerTest {
                 textEntry("mode-overlay.workflow:knowledge-qa", "mode-overlay", "workflow-mode"),
                 textEntry("mode-overlay.workflow", "mode-overlay", ""),
                 textEntry("memory.layer-prompt", "memory", "memory-layer-prompt"),
+                textEntry("memory.current-user-marker", "memory", USER_MARKER),
                 textEntry("scope-prompt", "scope", ""))));
         String nodePrompt = "仅根据检索结果回答。\n检索：制度片段A";
 
@@ -177,13 +161,13 @@ class PromptComposerTest {
                 textEntry("mode-overlay.react", "mode-overlay", "BASE"),
                 textEntry("react-prompt.demo-scenario", "react-prompt", "SCENARIO"),
                 textEntry("memory.layer-prompt", "memory", ""),
+                textEntry("memory.current-user-marker", "memory", USER_MARKER),
                 textEntry("scope-prompt", "scope", ""),
                 textEntry("hitl.agent-prompt", "hitl", ""))));
-        memoryProperties.setLayerPrompt("");
 
-        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                MemoryContext.empty(), "问", null, List.of(), false, "react-prompt.demo-scenario"));
-
+        List<Msg> inputs = composer.composeReactInputs(
+                PromptComposeRequest.forReact(
+                        MemoryContext.empty(), "问", null, List.of(), false, "react-prompt.demo-scenario"));
         assertThat(inputs.get(0).getTextContent()).isEqualTo("BASE");
         assertThat(inputs.get(1).getTextContent()).isEqualTo("SCENARIO");
     }
@@ -191,6 +175,7 @@ class PromptComposerTest {
     @Test
     void composeReactInputs_skipsBlankInjectedContexts() {
         replaceCatalogTexts(Map.of("memory.layer-prompt", "", "mode-overlay.react", ""));
+
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
                 MemoryContext.empty(), "问", List.of("", "  ", "有效上下文")));
 
@@ -211,19 +196,16 @@ class PromptComposerTest {
     }
 
     @Test
-    void composeReactInputs_appliesSkillOverlay() {
-        overlayProperties.setSkillOverlays(new LinkedHashMap<>(Map.of(
-                "finance-analysis", "skill-finance-overlay")));
-        replaceCatalogTexts(Map.of("memory.layer-prompt", "", "mode-overlay.react", ""));
+    void composeReactInputs_skipsSkillOverlayWhenCatalogEmpty() {
         when(skillCatalogService.overlayOrEmpty("finance-analysis")).thenReturn("");
+        replaceCatalogTexts(Map.of("memory.layer-prompt", "", "mode-overlay.react", ""));
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
                 MemoryContext.forSubAgent(), "分析待办", "finance-analysis", List.of("待办 JSON")));
 
         assertThat(inputs.stream().map(Msg::getTextContent))
-                .anyMatch(t -> t.contains("skill-finance-overlay"));
+                .noneMatch(t -> t != null && t.contains("skill-finance"));
         assertThat(inputs.get(inputs.size() - 2).getTextContent()).isEqualTo("待办 JSON");
-        assertThat(inputs.stream().map(Msg::getTextContent)).noneMatch(t -> t.contains("ltm"));
     }
 
     @Test
@@ -264,36 +246,38 @@ class PromptComposerTest {
         texts.put("mode-overlay.workflow", "");
         texts.put("mode-overlay.react-restart", "");
         texts.put("memory.layer-prompt", "memory-layer-prompt");
+        texts.put("memory.stm.header", STM_HEADER);
+        texts.put("memory.stm.preamble", STM_PREAMBLE);
+        texts.put("memory.current-user-marker", USER_MARKER);
         texts.put("scope-prompt", "");
         texts.put("hitl.agent-prompt", "");
         texts.putAll(overrides);
         List<PromptCatalogEntry> entries = new ArrayList<>();
-        texts.forEach((id, body) -> {
-            String kind = kindFor(id);
-            entries.add(textEntry(id, kind, body));
-        });
+        texts.forEach((id, body) -> entries.add(textEntry(id, kindFor(id), body)));
         catalogHolder.replace(PromptCatalogSnapshot.of(1L, entries));
     }
 
+    private List<PromptCatalogEntry> defaultEntries() {
+        return List.of(
+                textEntry("system-prompt", "system", "base-system"),
+                textEntry("mode-overlay.react", "mode-overlay", "react-mode-minimal"),
+                textEntry("mode-overlay.direct", "mode-overlay", ""),
+                textEntry("mode-overlay.workflow", "mode-overlay", ""),
+                textEntry("mode-overlay.react-restart", "mode-overlay", ""),
+                textEntry("memory.layer-prompt", "memory", "memory-layer-prompt"),
+                textEntry("memory.stm.header", "memory", STM_HEADER),
+                textEntry("memory.stm.preamble", "memory", STM_PREAMBLE),
+                textEntry("memory.current-user-marker", "memory", USER_MARKER),
+                textEntry("scope-prompt", "scope", ""),
+                textEntry("hitl.agent-prompt", "hitl", ""));
+    }
+
     private static String kindFor(String id) {
-        if (id.startsWith("mode-overlay.")) {
-            return "mode-overlay";
-        }
-        if (id.startsWith("memory.")) {
-            return "memory";
-        }
-        if (id.startsWith("hitl.")) {
-            return "hitl";
-        }
-        if ("scope-prompt".equals(id)) {
-            return "scope";
-        }
-        if ("system-prompt".equals(id)) {
-            return "system";
-        }
-        if (id.startsWith("react-prompt.")) {
-            return "react-prompt";
-        }
+        if (id.startsWith("mode-overlay")) return "mode-overlay";
+        if (id.startsWith("memory.")) return "memory";
+        if (id.startsWith("hitl.")) return "hitl";
+        if (id.startsWith("react-prompt")) return "react-prompt";
+        if ("scope-prompt".equals(id)) return "scope";
         return "system";
     }
 

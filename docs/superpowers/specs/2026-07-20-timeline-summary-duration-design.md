@@ -4,7 +4,7 @@
 > **状态**：🟢 已实施 · [plan](../plans/2026-07-20-timeline-summary-duration.md)  
 > **日期**：2026-07-20  
 > **前置**：Timeline V2（`lifecycle` + `summary`）· `OperationStack` / `OperationCard` · 正文穿插 `contentInterleave.ts`  
-> **范围**：仅 `sunshine-ui`；不改 SSE / Nacos / orchestrator
+> **范围**：以 `sunshine-ui` 为主；为刷新兜底可暴露已有 `MessageDto.updatedAt`（不新增 SSE duration 字段）
 
 ---
 
@@ -15,7 +15,7 @@
 | 能力 | 定义 |
 |------|------|
 | **总耗时** | 墙钟（非整段步骤 `durationMs` 求和） |
-| **状态文案** | 正在进行 / 已完成 / 已中断 / 失败 |
+| **状态文案** | 正在处理 / 已完成 / 已中断 / 已失败 |
 | **整段折叠** | 收起实现步骤与中间穿插正文；只留总览行 + 终稿正文块 |
 | **默认态** | 进行中 / 终态均默认折叠；用户手动切换后不再被状态抢走 |
 
@@ -25,13 +25,13 @@
 
 | # | 决策 |
 |---|------|
-| D1 | **纯前端**；不新增 SSE 字段、不落库 `message.durationMs` |
-| D2 | 耗时用**整轮客户端墙钟（含正文流式）**：`timelineStartedAt`→`now`/`timelineEndedAt` 单调；**禁止**与步骤服务端 `startedAt`/`endedAt` 混算；刷新用 `createdAt`/`updatedAt`；禁止各步 `durationMs` 求和 |
+| D1 | **前端主导**；不新增 SSE 字段、不落库 `message.durationMs`；可复用已有 `updatedAt` 供刷新 hydrate |
+| D2 | 耗时用**整轮客户端墙钟（含正文流式）**：`timelineStartedAt`→`now`/`timelineEndedAt` 单调；刷新优先客户端 stamp / `updatedAt`；无端点时才可回退 step 时钟（A8）；禁止各步 `durationMs` 求和 |
 | D3 | 文案：`正在处理` / `已完成` / `已中断` / `已失败` + 时钟 |
 | D4 | 时钟格式独立：`42s` / `1m20s`（秒取整）；与单步 `formatDuration`（`1.2s`）分离 |
 | D5 | **默认折叠**（含进行中 / 终态）；用户点开后 `userToggled` 覆盖 |
 | D6 | 用户点过 → `userToggled` 覆盖，状态变化不再自动改 expand |
-| D7 | **折叠**：隐藏全部实现步骤 + **中间穿插** `contentBlocks`；**只显示最后一段正文块** |
+| D7 | **折叠**：隐藏全部实现步骤 + **中间穿插** `contentBlocks`；**只显示最后一段正文块**（进行中折叠亦同：末步预览 + 末段正文） |
 | D8 | 终稿 SSOT：有 `contentBlocks` 时取**最后一个非空块**（勿用整段 `message.content` / join）；无块再回退 `content`；Plan 仍走 `resolvePlanAnswerText` |
 | D9 | 避免与 ChatView 底栏 `msg-md` 双显：折叠终稿在 Stack 内渲染时，底栏继续按 `isContentFullyInterleaved` 隐藏；若未 interleaved，底栏照旧、Stack 折叠态不重复铺同一份 |
 | D10 | ReAct / Plan-Workflow / peer-collab / spawn 均经 `OperationStack`，同一总览壳；单卡折叠逻辑不动 |
@@ -45,10 +45,10 @@
 结构对齐既有 `.op-line`：gutter chevron + 主文案 + 可选尾部（无单步 pause）。
 
 ```
-[▾] 正在进行 1m20s     ← 展开
+[▾] 正在处理 1m20s     ← 展开
 [▸] 已完成 2m10s       ← 折叠
 [▸] 已中断 45s
-[▸] 失败 12s
+[▸] 已失败 12s
 ```
 
 - 点击整行（或 chevron）切换展开
@@ -69,11 +69,11 @@
 | 显示 | 隐藏 |
 |------|------|
 | 总览行 | intent / think / tool / tasks / plan DAG / peer / subagent 等全部实现行（终态） |
-| **正在处理 + 折叠**：仅 `displaySteps` **最后一条**的折叠概要行（无穿插正文） | 其余步骤 + 全部 `contentBlocks` 穿插 |
+| **正在处理 + 折叠**：`displaySteps` **最后一条**概要行 + **最后一段** `contentBlock` 正文 | 其余步骤 + 中间穿插 `contentBlocks` |
 | **终态 + 折叠**：一份终稿正文（最后非空 contentBlock） | 中间穿插的各段 `contentBlocks` 行 |
-| | HITL 确认条随实现行一起隐藏（折叠后无法在时间线内点确认；进行中默认展开，一般不挡 HITL） |
+| | HITL 确认条随实现行一起隐藏（折叠后无法在时间线内点确认；用户可手动展开） |
 
-**HITL 注**：待确认时若用户手动折叠，确认条不可见——可接受；默认进行中展开即可。不做折叠态「浮出 HITL」特例（YAGNI）。
+**HITL 注**：待确认时若用户手动折叠，确认条不可见——可接受；不做折叠态「浮出 HITL」特例（YAGNI）。
 
 ### 2.4 默认 expand 规则
 
@@ -183,10 +183,10 @@ messageStatus?: 'streaming' | 'interrupted' | 'failed' | 'completed'
 
 | # | 场景 | 期望 |
 |---|------|------|
-| A1 | ReAct 流式 | 顶行「正在进行 XmYs」，时间线展开，穿插正常 |
+| A1 | ReAct 流式 | 顶行「正在处理 XmYs」，**默认折叠**；末步预览 + 末段正文；用户可展开看完整穿插 |
 | A2 | ReAct 完成 | 自动折叠；顶行「已完成 …」；可见终稿；无步骤行、无中间穿插段 |
 | A3 | 用户中断 | 「已中断 …」，默认折叠 |
-| A4 | 失败 | 「失败 …」，默认折叠 |
+| A4 | 失败 | 「已失败 …」，默认折叠 |
 | A5 | 完成后手动展开 | 恢复完整实现线 + 穿插；再折叠仍只终稿 |
 | A6 | Plan-Workflow 完成 | 同 A2（DAG 一并收起） |
 | A7 | 底栏不双显 | interleaved 消息折叠/展开均不出现两份终稿 |

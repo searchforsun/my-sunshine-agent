@@ -1,24 +1,26 @@
 package com.sunshine.orchestrator.memory.stm;
 
-import com.sunshine.orchestrator.memory.MemoryProperties;
 import org.springframework.util.StringUtils;
 
 /**
- * STM 边界说明 — 紧挨完整对话轮次之前，标明「以下为已结束会话，非当前任务」。
+ * STM 边界说明 — header/preamble 正文 SSOT = Catalog
+ * （{@code memory.stm.header} / {@code memory.stm.preamble}）。
  */
 public final class StmBoundaryFormatter {
 
     private StmBoundaryFormatter() {
     }
 
-    public static String format(MemoryProperties properties) {
-        if (properties == null) {
-            return "";
+    public static String format(String header, String preamble) {
+        StringBuilder sb = new StringBuilder();
+        if (StringUtils.hasText(header)) {
+            sb.append(header.strip());
         }
-        MemoryProperties.Stm stm = properties.getStm();
-        StringBuilder sb = new StringBuilder(stm.getHeader().strip());
-        if (StringUtils.hasText(stm.getPreamble())) {
-            sb.append("\n").append(stm.getPreamble().strip());
+        if (StringUtils.hasText(preamble)) {
+            if (!sb.isEmpty()) {
+                sb.append('\n');
+            }
+            sb.append(preamble.strip());
         }
         return sb.toString().strip();
     }

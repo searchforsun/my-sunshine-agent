@@ -4,9 +4,9 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 
 ## 编码要义（最高优先级）
 
-1. **两三轮仍不能解决 → 停补丁，查本质**：同一 bug 改 2–3 轮仍反复或出新症状，必须质疑**架构**、**时间线方案**与 **Nacos 提示词**的合理性；禁止继续打补丁式修改。
+1. **两三轮仍不能解决 → 停补丁，查本质**：同一 bug 改 2–3 轮仍反复或出新症状，必须质疑**架构**、**时间线方案**与 **Catalog 提示词**的合理性；禁止继续打补丁式修改。
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑（确需兼容须写明原因并评审通过）。
-3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改提示词或架构，不在前后端打补丁。
+3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改 Catalog/`/prompts` 或架构，不在前后端打补丁。
 
 **进度**：阶段三 **检查门通过** — 阶段四 **4.6 动态 DAG ✅** · **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅**（含单独取消；Live：`verify_spawn_subagent_live`）· **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅ 收口** · **4.5 沙箱方案 B ✅**（工作区抽屉 / `writeHitlMode` / 时间线路径 / **工具取消**，索引 `docs/sandbox/README.md`）；缺口见 `docs/implementation-plan.md`。
 
@@ -74,14 +74,14 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 新 Workflow | **4.13**：`/workflows` + `workflow-manager` DB（**唯一 SSOT**，废弃 Nacos workflow）；MySQL init 种子 **8 标杆**（`13-sunshine-workflow-manager.sql`，含 `knowledge-branch` / `knowledge-loop` / `sandbox-agent`）；orchestrator `WorkflowManagerClient` |
 | **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanExecutionCanvas`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
 | **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；重试策略 SSOT **`execution_mode_policy`**（tool-manager DB，`/tools` Planner Workflow Tab）；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
-| **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
+| **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 Catalog **`answer.template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
 | **意图路由** | **Policy Chain**：L0 Skill → `UnifiedRuleRoutingPolicy`（Catalog `routing-rule.*`）→ L3 `intent.classifier`；验收见 `docs/routing/routing-golden-set.md` · Live `verify_prompt_catalog_live.py` |
 | **Chat 执行模式** | 底栏 `executionPreference`（`auto` + `react` / `workflow` / `plan-workflow` / `peer-collab`）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 · [remove-simple-llm](docs/superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md) |
 | **Workflow 模板（4.13）** | `workflow-manager` DB + `/workflows` + Chat `#` 补全；标杆维护见 `docs/workflow/README.md`；详设 `2026-06-25-workflow-studio-design.md` · `2026-07-11-workflow-studio.md` |
 | Workflow 节点中文名 | PlanJson `displayName`（runtime bind）+ tool catalog → `WorkflowNodeLabelService` → SSE `step.label` |
-| 意图步骤文案 | Nacos `agent.timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
-| 步骤 before/active/after | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
+| 意图步骤文案 | Catalog `timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
+| 步骤 before/active/after | Catalog `timeline.steps.*`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
 | 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
 | 新 Agent 能力 / 子 Agent 配置 | `agent/runtime/` — 扩展 `AgentRunRequest` + `ReActAgentFactory`；workflow agent 节点 params 见 DB PlanJson / Studio |
 | **多专家协作（peer-collab）** | `expert-manager` 种子/CRUD → Nacos `agent.expert.*` / `agent.peer.*` → `ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue 判断、第 2 轮起反应式选人）→ `ConsultationSynthesizer`；详设 `docs/superpowers/specs/2026-07-07-expert-consultation-design.md` |
@@ -91,11 +91,11 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。Catalog ID SSOT：`ToolIds`（`sdk__*` / `mcp__*`）；ReAct LLM `tool_call.name` 与 Catalog 同 ID；静态 Workflow `tool` 节点直调 invoke（不经 LLM）。HITL 读 DB `require_confirmation`。ReAct 验收可查 llm-gateway 日志 `toolCalls=`。
 
-**Agent 运行时（3.10.1–3.10.7 ✅）**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `MemoryContext.forSubAgent()`（无 STM/LTM）+ `skillId`→`PromptComposer`；skill overlay 优先 **skill-manager Catalog**（3.11 ✅），Nacos `agent.prompt.skill-overlays` 兜底。
+**Agent 运行时（3.10.1–3.10.7 ✅）**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `MemoryContext.forSubAgent()`（无 STM/LTM）+ `skillId`→`PromptComposer`；skill overlay **仅** skill-manager Catalog（3.11 ✅）。
 
 **子 Agent 目标（SSOT：`docs/superpowers/plans/2026-06-19-multi-agent-architecture.md` §子 Agent 实现目标）**：编排器-Worker；`query` + 上游 `context` 由 workflow 传入；system = base + skill overlay + 节点 `systemOverlay`；用户正文由下游 **answer** 节点合成。
 
-**Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `AnswerNodeHandler`；SUB 的 `skillId` 走 skill overlay 层；ReAct 工具策略见 Nacos `agent.prompt.mode-overlays.react`。
+**Prompt 拼装（3.8.2 ✅ / 4.11 Catalog）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `AnswerNodeHandler`；SUB 的 `skillId` 走 skill overlay 层；ReAct 工具策略见 Catalog `mode-overlay.react`（`/prompts`）。
 
 **Query 改写（3.8.1 ✅ → 4.0 迁移）**：检索侧 `rag.rewrite.{rag,hyde,empty-recall}` 迁入 `sunshine-rag.yaml` + pipeline；orchestrator 保留 `intent`（`<8` 字）| `planner`；HyDE 为 **首次 0 命中 fallback**；Timeline RAG 步骤读 response `trace`。
 
@@ -128,7 +128,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 
 **Timeline V2 约定**：步骤含 `lifecycle` + `summary.{before,active,after}`；SSE 仅下发当前阶段一行。终态 COMPLETE/FAIL/SKIP **必须下发**。
 
-**前端**：`OperationStack` / `PlanExecutionCanvas` / `PlanNodeDrawer` / `PlanApprovalActions`；时间线主行用 `step.label` + `resolveStepHeaderText`；**Plan 用户确认**折叠框与 HITL/Recovery 同组件；重新生成 **仅图区** loading、确认行「正在重新生成」、放大钮右上角且重生成中隐藏；DAG pending **等待中**；**勿**维护本地步骤话术 Map；**勿**对模型输出做截断/去重兜底（不对改 Nacos 提示词）。
+**前端**：`OperationStack` / `PlanExecutionCanvas` / `PlanNodeDrawer` / `PlanApprovalActions`；时间线主行用 `step.label` + `resolveStepHeaderText`；**Plan 用户确认**折叠框与 HITL/Recovery 同组件；重新生成 **仅图区** loading、确认行「正在重新生成」、放大钮右上角且重生成中隐藏；DAG pending **等待中**；**勿**维护本地步骤话术 Map；**勿**对模型输出做截断/去重兜底（不对改 Catalog/`/prompts`）。
 
 ## 关键约定
 
@@ -136,7 +136,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 2. Gateway 鉴权注入 `x-user-id`；BFF/Orchestrator 只读，客户端不得自填。
 3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync_nacos.py` → 重启（无 `application-dev.yaml`）。
 4. 执行模式：`IntentRouter` → `ExecutionDispatcher`（`workflow` / `react` / `plan-workflow` / `peer-collab`；见 D10 + `2026-06-24-peer-collab-routing-design.md`；`simple-llm` 已移除见 `2026-07-17-remove-simple-llm-mode-design.md`）；workflow 图在 **workflow-manager DB**（4.13）。
-5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板（见 Nacos `agent.system-prompt`）。
+5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板（见 Catalog `system-prompt` / `/prompts`）。
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。
 8. Workflow 意图步：`summary.after` 保留路由文案（如「将按 xx 流程处理」）；`detail` 不下发，避免与 after 重复可展开。
@@ -178,5 +178,5 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 - 禁止保存临时脚本；运维统一 **Python**（`scripts/*.py`）。
 - `start.py` 可带 SkyWalking agent（需先 `download_skywalking_agent.py`）。
 - 改 orchestrator 时间线 / workflow 后：编译 → 重启 → Agent 跑 live/e2e 留记录（见 `/tech-debt-refactor` §7）；**改前须 §1.3 功能识别并获确认**。
-- 项目中禁止硬编码提示词等，统一在nacos管理
+- 项目中禁止硬编码提示词；正文 SSOT = prompt-manager Catalog（`/prompts`）；Nacos 仅保留非提示词运行参数
 - **禁止 Flyway**；库表初始化/变更 SQL SSOT 在 `docker/mysql/init/`（`01` 建库 + `02–05` 中间件 + `10` auth / `11` orchestrator / `12` skill-manager / `13` workflow-manager / `14` rag-service，**一项目一文件**），**禁止**放在各模块 `resources/db/migration`

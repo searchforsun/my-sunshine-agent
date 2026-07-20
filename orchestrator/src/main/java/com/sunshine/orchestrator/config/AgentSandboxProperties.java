@@ -45,14 +45,6 @@ public class AgentSandboxProperties {
     /** 用户取消后同族最多再执行次数 */
     private int cancelMaxFollowups = 3;
 
-    /**
-     * @deprecated Catalog {@code sandbox.cancel-result}
-     */
-    private String cancelResult = "";
-
-    /** @deprecated Catalog {@code sandbox.budget-exhausted} */
-    private String budgetExhausted = "";
-
     /** 时间线工具步取消 after */
     private String cancelAfter = "已取消";
 

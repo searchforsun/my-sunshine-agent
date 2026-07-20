@@ -13,13 +13,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PlanAnswerPromptAssemblerTest {
 
+    private static final String ANSWER_TEMPLATE = """
+            用户问题：{{start.userQuery}}
+
+            上游数据：
+            {{plan.upstream}}
+
+            请严格针对上述「用户问题」作答：
+            - 仅依据上游数据，用面向用户的中文 Markdown 直接回答
+            - 综合循环/检索/工具结果给出结论与依据；上游为空时说明暂无可用数据
+            - 禁止输出 tool_call、函数调用、JSON 协议、内部节点 id 或原始工具报文
+            - 禁止复述上游中的工具调用结构；若上游含此类内容，只提炼对用户有用的事实""";
+
     private PlanAnswerPromptAssembler assembler;
     private PromptCatalogHolder catalogHolder;
 
     @BeforeEach
     void setUp() {
         catalogHolder = new PromptCatalogHolder();
-        catalogHolder.replace(PromptCatalogSnapshot.of(0L, List.of()));
+        catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                new PromptCatalogEntry("answer.template", "answer", "answer.template", true, 0, 1,
+                        ANSWER_TEMPLATE, null))));
         assembler = new PlanAnswerPromptAssembler(catalogHolder);
     }
 
@@ -57,6 +71,19 @@ class PlanAnswerPromptAssemblerTest {
         assertThat(prompt).startsWith("问题：{{start.userQuery}}");
         assertThat(prompt).endsWith("请汇总。");
         assertThat(prompt).contains("{{n1.output}}");
+    }
+
+    @Test
+    void missingCatalogTemplate_writesEmptyPrompt() {
+        catalogHolder.replace(PromptCatalogSnapshot.of(0L, List.of()));
+        assembler = new PlanAnswerPromptAssembler(catalogHolder);
+
+        PlanJson plan = PlanNormalizer.normalize(new PlanJson("p", "r",
+                List.of(new PlanNode("n1", "rag", Map.of())),
+                List.of(new PlanEdge("start", "n1"))));
+
+        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt");
+        assertThat(prompt).isEmpty();
     }
 
     @Test

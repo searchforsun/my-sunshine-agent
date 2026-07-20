@@ -22,7 +22,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-/** 单测绑定 Nacos 默认时间线模板，替代已删除的 IntentLabels/TimelineLabels fallback */
+/** 单测绑定 Catalog fixture 时间线模板（via TimelinePromptCatalog.withDefaults） */
 public final class TimelineLabelTestSupport {
 
     private static final Pattern HIT_COUNT = Pattern.compile("共\\s*(\\d+)\\s*条");

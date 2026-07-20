@@ -28,18 +28,11 @@ spring:
 agent:
   # 提示词/时间线/改写正文已迁 prompt-manager Catalog
   # （docker/mysql/init/17-sunshine-prompt-manager.sql）
-  # system-prompt → Catalog id=system-prompt（T8）
-  system-prompt: ""
+  # 运营入口：/prompts；禁止再在本文件维护提示词正文
+  # system-prompt / mode-overlay.* / answer.* / timeline.* / planner.prompt → Catalog
 
   prompt:
-    # mode-overlays / scope / answer-* → Catalog（T8/T9）
-    # mode-overlay.react|react-restart|subagent|workflow|direct
-    # answer.template / answer.overlay / scope-prompt
-    mode-overlays: {}
-    skill-overlays: {}
-    scope-prompt: ""
-    answer-overlay: ""
-    answer-template: ""
+    # skill overlay SSOT = skill-manager Catalog（无 Nacos 影子）
 
   intent:
     model: deepseek-v4-flash
@@ -51,22 +44,7 @@ agent:
     max_tokens: 4096
     max_nodes: 8
     routing_node_buffer: 6
-    # prompt → Catalog id=planner.prompt
-    topology-hints:
-      rules:
-        - id: parallel
-          patterns: ["同时", "并行", "双路", "一并"]
-          hint: |
-            【须用 parallel-gateway】start→pg→≥2 分支 rag/tool→join。禁止串行 n1→n2 代替并行。
-        - id: exclusive
-          patterns: ["如果", "否则", "不满足"]
-          hint: |
-            【须用 exclusive-gateway】≥2 出边，恰好 1 条 default:true；其余带 condition。
-        - id: loop
-          patterns: ["继续", "循环", "多轮"]
-          hint: |
-            【须用 loop 容器】body 设 parentId=loopId；外图 edges 仅 start→loop。
-            禁止 loop→body 跨框边；单 body 可省略框内 edges。
+    # prompt → Catalog id=planner.prompt（含拓扑约束；勿再写 topology-hints）
 
   # timeline.* → Catalog timeline.intent / timeline.steps.* / timeline.hitl / …（T9）
 
@@ -285,15 +263,11 @@ agent:
 
   memory:
     enabled: true
-    # layer-prompt → Catalog id=memory.layer-prompt
-    current-user-marker: "【当前提问 · 仅此作答】"
+    # layer-prompt / stm.header / stm.preamble / current-user-marker → Catalog memory.*
     stm:
       redis-ttl-hours: 24
       max-messages: 12
       max-chars: 8000
-      header: "[本会话近期对话 · STM]"
-      preamble: |
-        以下为同会话已结束轮次，仅供指代与消歧（如「这个 skill」「上述脚本」）。
     mtm:
       enabled: true
       top-k: 3
