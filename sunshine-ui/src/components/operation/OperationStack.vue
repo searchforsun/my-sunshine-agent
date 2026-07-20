@@ -149,6 +149,8 @@ const showCollapsedAnswer = computed(() => {
 
 const fallbackStartMs = ref<number | undefined>(undefined)
 const fallbackEndMs = ref<number | undefined>(undefined)
+/** 仅本实例曾见过 live/streaming 时才落 fallbackEnd；历史 hydrate：不写 fallbackEnd，交给 steps.endedAt */
+const wasRunning = ref(false)
 const nowMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | undefined
 
@@ -156,11 +158,16 @@ watch(
   () => [props.live, props.messageStatus, summaryEnabled.value] as const,
   ([live, status, enabled]) => {
     if (!enabled) return
-    if ((live || status === 'streaming') && fallbackStartMs.value == null) {
-      fallbackStartMs.value = Date.now()
+    const running = !!(live || status === 'streaming')
+    if (running) {
+      if (fallbackStartMs.value == null) fallbackStartMs.value = Date.now()
+      wasRunning.value = true
+      return
     }
-    if (!live && status && status !== 'streaming' && fallbackEndMs.value == null) {
+    // terminal: only capture end if we observed running in this instance
+    if (wasRunning.value && status && status !== 'streaming' && fallbackEndMs.value == null) {
       fallbackEndMs.value = Date.now()
+      wasRunning.value = false
     }
   },
   { immediate: true },
