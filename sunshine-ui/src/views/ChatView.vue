@@ -723,6 +723,8 @@ watch(
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
                 :message-id="msg.id"
+                :message-status="msg.status ?? 'completed'"
+                :message-content="msg.content"
                 :pending-hitl-confirmations="resolveTimelineContext(msg).pending"
                 @hitl-decided="handleHitlDecision"
               />
