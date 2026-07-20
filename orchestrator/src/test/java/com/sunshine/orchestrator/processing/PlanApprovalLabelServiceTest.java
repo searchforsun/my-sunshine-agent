@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.processing;
 
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,7 +13,7 @@ class PlanApprovalLabelServiceTest {
 
     @BeforeEach
     void setUp() {
-        labelService = new PlanApprovalLabelService(new AgentPromptProperties());
+        labelService = new PlanApprovalLabelService(TimelinePromptCatalog.withDefaults());
         PlanApprovalLabels.bind(labelService);
     }
 

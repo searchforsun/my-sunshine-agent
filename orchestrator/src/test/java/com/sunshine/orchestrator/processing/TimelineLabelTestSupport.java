@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
@@ -33,7 +33,7 @@ public final class TimelineLabelTestSupport {
     }
 
     public static ToolCatalogService bindDefaults() {
-        AgentPromptProperties agentProps = new AgentPromptProperties();
+        TimelinePromptCatalog timelineCatalog = TimelinePromptCatalog.withDefaults();
         SkillCatalogService skillCatalog = Mockito.mock(SkillCatalogService.class);
         ToolCatalogService toolCatalog = Mockito.mock(ToolCatalogService.class);
         WorkflowCatalogRegistry catalogRegistry = Mockito.mock(WorkflowCatalogRegistry.class);
@@ -45,17 +45,17 @@ public final class TimelineLabelTestSupport {
         WorkflowNodeLabels.bind(workflowLabels);
         WorkflowNodeCompletionLabels.bind(new WorkflowNodeCompletionLabelService());
         StepLabels.bind(toolCatalog);
-        SkillLoadLabels.bind(new SkillLoadLabelService(skillCatalog, agentProps));
-        PlanApprovalLabels.bind(new PlanApprovalLabelService(agentProps));
-        ToolNodeLabels.bind(new ToolNodeLabelService(agentProps, toolCatalog));
-        HitlLabels.bind(new HitlLabelService(agentProps));
-        SummaryStepLabels.bind(new SummaryStepLabelService(agentProps, toolCatalog));
-        TaskBoardStepLabels.bind(new TaskBoardStepLabelService(agentProps));
-        SpawnSubagentLabels.bind(new SpawnSubagentLabelService(agentProps));
-        TimelineStepLabelService timelineStepLabelService = new TimelineStepLabelService(agentProps);
-        ThinkStepLabelService thinkStepLabelService = new ThinkStepLabelService(agentProps);
+        SkillLoadLabels.bind(new SkillLoadLabelService(skillCatalog, timelineCatalog));
+        PlanApprovalLabels.bind(new PlanApprovalLabelService(timelineCatalog));
+        ToolNodeLabels.bind(new ToolNodeLabelService(timelineCatalog, toolCatalog));
+        HitlLabels.bind(new HitlLabelService(timelineCatalog));
+        SummaryStepLabels.bind(new SummaryStepLabelService(timelineCatalog, toolCatalog));
+        TaskBoardStepLabels.bind(new TaskBoardStepLabelService(timelineCatalog));
+        SpawnSubagentLabels.bind(new SpawnSubagentLabelService(timelineCatalog));
+        TimelineStepLabelService timelineStepLabelService = new TimelineStepLabelService(timelineCatalog);
+        ThinkStepLabelService thinkStepLabelService = new ThinkStepLabelService(timelineCatalog);
         IntentLabelService intentLabelService = new IntentLabelService(
-                agentProps,
+                timelineCatalog,
                 workflowCatalog,
                 catalogRegistry,
                 workflowLabels);

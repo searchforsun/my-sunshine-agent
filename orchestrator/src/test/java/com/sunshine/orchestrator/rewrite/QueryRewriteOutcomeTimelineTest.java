@@ -1,10 +1,15 @@
 package com.sunshine.orchestrator.rewrite;
 
-import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import com.sunshine.orchestrator.processing.RewriteTimelineLabels;
+import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -12,11 +17,11 @@ class QueryRewriteOutcomeTimelineTest {
 
     @BeforeEach
     void setUp() {
-        AgentRewriteProperties props = new AgentRewriteProperties();
-        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("补全问句");
-        props.setTimeline(timeline);
-        RewriteTimelineLabels.bind(props);
+        PromptCatalogHolder holder = new PromptCatalogHolder();
+        holder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
+                        null, "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"))));
+        RewriteTimelineLabels.bind(new TimelinePromptCatalog(holder));
     }
 
     @AfterEach
@@ -54,7 +59,7 @@ class QueryRewriteOutcomeTimelineTest {
     }
 
     @Test
-    void intentTimelineDetailUsesOrchestratorNacosLabel() {
+    void intentTimelineDetailUsesCatalogLabel() {
         QueryRewriteOutcome outcome = QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 15L);
         assertThat(outcome.timelineDetail()).startsWith("补全问句");
     }

@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -24,7 +25,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class IntentLabelService {
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
     private final WorkflowCatalog workflowCatalog;
     private final WorkflowCatalogRegistry workflowCatalogRegistry;
     private final WorkflowNodeLabelService workflowNodeLabelService;
@@ -47,7 +48,7 @@ public class IntentLabelService {
     }
 
     public String intentAfterSummary(String clippedQuery, String detail) {
-        AgentPromptProperties.IntentTimeline cfg = agentPromptProperties.intentTimelineOrDefault();
+        AgentPromptProperties.IntentTimeline cfg = timelinePromptCatalog.intent();
         if (!StringUtils.hasText(detail)) {
             return TimelineLabelTemplates.applyTemplate(cfg.getDefaultAfter(),
                     TimelineLabelTemplates.vars(clippedQuery, detail, null, null));
@@ -98,7 +99,7 @@ public class IntentLabelService {
     }
 
     private AgentPromptProperties.ModeIntent modeConfig(ExecutionMode mode) {
-        AgentPromptProperties.IntentTimeline cfg = agentPromptProperties.intentTimelineOrDefault();
+        AgentPromptProperties.IntentTimeline cfg = timelinePromptCatalog.intent();
         Map<String, AgentPromptProperties.ModeIntent> modes = cfg.getModes();
         if (modes == null) {
             return new AgentPromptProperties.ModeIntent();
@@ -124,7 +125,7 @@ public class IntentLabelService {
     }
 
     private AgentPromptProperties.ModeIntent findModeByDetail(String detail) {
-        AgentPromptProperties.IntentTimeline cfg = agentPromptProperties.intentTimelineOrDefault();
+        AgentPromptProperties.IntentTimeline cfg = timelinePromptCatalog.intent();
         if (cfg.getModes() == null) {
             return null;
         }

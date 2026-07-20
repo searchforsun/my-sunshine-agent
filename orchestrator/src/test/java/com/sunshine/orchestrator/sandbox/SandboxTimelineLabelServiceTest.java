@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.sandbox;
 
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +14,7 @@ class SandboxTimelineLabelServiceTest {
 
     @BeforeEach
     void setUp() {
-        labels = new SandboxTimelineLabelService(new AgentPromptProperties());
+        labels = new SandboxTimelineLabelService(TimelinePromptCatalog.withDefaults());
     }
 
     @Test

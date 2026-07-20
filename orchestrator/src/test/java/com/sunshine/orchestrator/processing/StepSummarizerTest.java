@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
@@ -43,7 +43,7 @@ class StepSummarizerTest {
                 workflowCatalog, Mockito.mock(ToolCatalogService.class));
         WorkflowNodeLabels.bind(workflowLabels);
         IntentLabels.bind(new IntentLabelService(
-                new AgentPromptProperties(), workflowCatalog, registry, workflowLabels));
+                TimelinePromptCatalog.withDefaults(), workflowCatalog, registry, workflowLabels));
         String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
         assertThat(after).contains("公司考勤制度");
         assertThat(after).contains("知识库问答");

@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class ThinkStepLabelService {
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -115,7 +116,7 @@ public class ThinkStepLabelService {
     }
 
     private AgentPromptProperties.StepTimeline stepTemplate(String stepId) {
-        var steps = agentPromptProperties.timelineOrDefault().getSteps();
+        var steps = timelinePromptCatalog.steps();
         if (steps == null || !StringUtils.hasText(stepId)) {
             return null;
         }

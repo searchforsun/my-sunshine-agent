@@ -61,7 +61,7 @@ class HitlConfirmationServiceTest {
         com.sunshine.orchestrator.processing.TimelineLabelTestSupport.bindDefaults();
         com.sunshine.orchestrator.processing.ToolNodeLabels.bind(
                 new com.sunshine.orchestrator.processing.ToolNodeLabelService(
-                        new com.sunshine.orchestrator.config.AgentPromptProperties(), toolCatalogService));
+                        com.sunshine.orchestrator.prompt.TimelinePromptCatalog.withDefaults(), toolCatalogService));
         com.sunshine.orchestrator.processing.StepLabels.bind(toolCatalogService);
         com.sunshine.orchestrator.agent.StepEventBridge.bindHitl("msg-1", true);
     }

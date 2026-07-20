@@ -2,13 +2,13 @@ package com.sunshine.orchestrator.execution.handler;
 
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.StreamingNodeHandler;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.common.workflow.WorkflowNodeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ import java.util.Map;
 public class AnswerNodeHandler implements StreamingNodeHandler {
 
     private final LlmGatewayClient llmGateway;
-    private final PromptOverlayProperties overlayProperties;
+    private final PromptCatalogHolder catalogHolder;
 
     @Override
     public String type() {
@@ -56,11 +56,15 @@ public class AnswerNodeHandler implements StreamingNodeHandler {
             return Flux.empty();
         }
         return WorkflowLlmStreamSupport.streamTokens(
-                        llmGateway, spec, ctx, streamCtx, nodeId, true, overlayProperties.getAnswerOverlay())
+                        llmGateway, spec, ctx, streamCtx, nodeId, true, answerOverlay())
                 .onErrorResume(e -> {
                     log.warn("[AnswerNodeHandler] 流式失败: {}", e.getMessage());
                     return Flux.error(e);
                 });
+    }
+
+    private String answerOverlay() {
+        return catalogHolder.snapshot().text("answer.overlay").map(String::strip).orElse("");
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.sandbox;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
@@ -20,7 +21,7 @@ public class SandboxTimelineLabelService {
 
     private static final int VALUE_MAX = 96;
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     public boolean isSandboxTool(String toolId) {
         return toolId != null && SandboxIds.ALL.contains(toolId);
@@ -81,8 +82,7 @@ public class SandboxTimelineLabelService {
     }
 
     private AgentPromptProperties.SandboxTimeline template() {
-        AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getSandbox() != null ? timeline.getSandbox() : new AgentPromptProperties.SandboxTimeline();
+        return timelinePromptCatalog.sandbox();
     }
 
     static Map<String, String> vars(String displayName, Map<String, ?> input) {

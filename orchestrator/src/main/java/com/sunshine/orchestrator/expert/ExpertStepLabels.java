@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.expert;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -12,7 +13,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class ExpertStepLabels {
     private static ExpertStepLabels instance;
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -68,7 +69,7 @@ public class ExpertStepLabels {
         if (instance == null) {
             return new AgentPromptProperties.StepTimeline();
         }
-        var steps = instance.agentPromptProperties.timelineOrDefault().getSteps();
+        var steps = instance.timelinePromptCatalog.steps();
         if (steps == null) {
             return new AgentPromptProperties.StepTimeline();
         }

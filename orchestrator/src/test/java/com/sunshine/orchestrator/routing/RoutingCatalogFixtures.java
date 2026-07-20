@@ -64,7 +64,7 @@ public final class RoutingCatalogFixtures {
         return entries;
     }
 
-    /** T8：PromptComposer / ReAct 单测与集成测试最小正文（对齐 seed-prompts 关键 id） */
+    /** T8/T9：PromptComposer / Intent / Rewrite / Answer / Timeline 单测最小正文 */
     private static List<PromptCatalogEntry> promptTextSeeds() {
         return List.of(
                 text("system-prompt", "system", "你是 Sunshine AI 测试助手。"),
@@ -75,11 +75,35 @@ public final class RoutingCatalogFixtures {
                 text("mode-overlay.subagent", "mode-overlay", ""),
                 text("memory.layer-prompt", "memory", "memory-layer-prompt"),
                 text("scope-prompt", "scope", ""),
-                text("hitl.agent-prompt", "hitl", ""));
+                text("hitl.agent-prompt", "hitl", ""),
+                text("intent.classifier", "intent", "classifier-stub"),
+                text("planner.prompt", "planner", "planner-stub"),
+                text("answer.template", "answer",
+                        "用户问题：{{start.userQuery}}\n\n上游数据：\n{{plan.upstream}}\n\n请汇总。"),
+                text("answer.overlay", "answer", ""),
+                text("rewrite.intent", "rewrite", "rewrite-intent-stub"),
+                text("rewrite.planner", "rewrite", "rewrite-planner-stub"),
+                json("rewrite.timeline", "rewrite",
+                        "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"),
+                json("timeline.intent", "timeline",
+                        "{\"label\":\"识别意图\",\"before\":\"阅读{query}\","
+                                + "\"active\":\"正在分析{query}，匹配最佳处理方式\","
+                                + "\"default-after\":\"已完成对{query}的意图判断\","
+                                + "\"unmatched-after\":\"{query}将按「{detail}」处理\","
+                                + "\"modes\":{\"react\":{\"detail\":\"自主智能体\","
+                                + "\"after\":\"{query}将由自主智能体分析并作答\"},"
+                                + "\"plan-workflow\":{\"detail\":\"动态规划\","
+                                + "\"after\":\"{query}将动态规划多步执行\"},"
+                                + "\"peer-collab\":{\"detail\":\"多专家协作\","
+                                + "\"after\":\"{query}将由多专家协作交叉验证\"}}}"));
     }
 
     private static PromptCatalogEntry text(String id, String kind, String contentText) {
         return new PromptCatalogEntry(id, kind, id, true, 0, 1, contentText, null);
+    }
+
+    private static PromptCatalogEntry json(String id, String kind, String contentJson) {
+        return new PromptCatalogEntry(id, kind, id, true, 0, 1, null, contentJson);
     }
 
     private static PromptCatalogEntry entry(String id, String displayName, int priority, String contentJson) {

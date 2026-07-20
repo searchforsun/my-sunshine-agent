@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.peer;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -15,7 +16,7 @@ public class PeerStepLabels {
 
     private static PeerStepLabels instance;
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -49,7 +50,7 @@ public class PeerStepLabels {
         if (instance == null) {
             return new AgentPromptProperties.StepTimeline();
         }
-        var steps = instance.agentPromptProperties.timelineOrDefault().getSteps();
+        var steps = instance.timelinePromptCatalog.steps();
         if (steps == null) {
             return new AgentPromptProperties.StepTimeline();
         }

@@ -1,8 +1,10 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.AgentRewriteProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
@@ -224,11 +226,11 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeIntent_exposesRewriteDetailWhenProvided() {
-        AgentRewriteProperties props = new AgentRewriteProperties();
-        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("补全问句");
-        props.setTimeline(timeline);
-        RewriteTimelineLabels.bind(props);
+        PromptCatalogHolder rewriteHolder = new PromptCatalogHolder();
+        rewriteHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
+                        null, "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"))));
+        RewriteTimelineLabels.bind(new TimelinePromptCatalog(rewriteHolder));
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("待审批");
         session.pending("intent", "intent");
@@ -276,7 +278,7 @@ class ProcessingTimelineSessionTest {
                 new com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry(
                         "skill-demo", "测试技能", "desc", 1, true, "none")));
         SkillLoadLabelService labelService = new SkillLoadLabelService(
-                catalog, new com.sunshine.orchestrator.config.AgentPromptProperties());
+                catalog, TimelinePromptCatalog.withDefaults());
         labelService.init();
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.completeSkillLoad("skill-demo");
@@ -310,11 +312,11 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeAt_workflowRagNode_mergesRewriteAndHitDetail() {
-        AgentRewriteProperties props = new AgentRewriteProperties();
-        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("补全问句");
-        props.setTimeline(timeline);
-        RewriteTimelineLabels.bind(props);
+        PromptCatalogHolder rewriteHolder = new PromptCatalogHolder();
+        rewriteHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
+                        null, "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"))));
+        RewriteTimelineLabels.bind(new TimelinePromptCatalog(rewriteHolder));
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("报差旅");
         session.bindTraceMessageId("msg-2");
@@ -451,7 +453,7 @@ class ProcessingTimelineSessionTest {
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class));
         WorkflowNodeLabels.bind(workflowLabels);
         IntentLabels.bind(new IntentLabelService(
-                new AgentPromptProperties(),
+                TimelinePromptCatalog.withDefaults(),
                 workflowCatalog,
                 registry,
                 workflowLabels));
@@ -627,7 +629,7 @@ class ProcessingTimelineSessionTest {
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class);
         org.mockito.Mockito.when(catalogService.displayName("sdk__sunshine-finance__summarize_finance_by_status"))
                 .thenReturn("统计财务消息");
-        ToolNodeLabels.bind(new ToolNodeLabelService(new AgentPromptProperties(), catalogService));
+        ToolNodeLabels.bind(new ToolNodeLabelService(TimelinePromptCatalog.withDefaults(), catalogService));
         StepLabels.bind(catalogService);
         try {
             ProcessingTimelineSession session = new ProcessingTimelineSession();

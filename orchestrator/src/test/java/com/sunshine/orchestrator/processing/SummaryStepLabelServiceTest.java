@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,10 +20,10 @@ class SummaryStepLabelServiceTest {
 
     @BeforeEach
     void setUp() {
-        AgentPromptProperties props = new AgentPromptProperties();
+        TimelinePromptCatalog timelineCatalog = TimelinePromptCatalog.withDefaults();
         toolCatalogService = Mockito.mock(ToolCatalogService.class);
         TimelineLabelTestSupport.stubDefaultSummarize(toolCatalogService);
-        SummaryStepLabels.bind(new SummaryStepLabelService(props, toolCatalogService));
+        SummaryStepLabels.bind(new SummaryStepLabelService(timelineCatalog, toolCatalogService));
     }
 
     @AfterEach

@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.plan;
 
-import com.sunshine.orchestrator.config.PromptOverlayProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -12,12 +14,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PlanAnswerPromptAssemblerTest {
 
     private PlanAnswerPromptAssembler assembler;
-    private PromptOverlayProperties props;
+    private PromptCatalogHolder catalogHolder;
 
     @BeforeEach
     void setUp() {
-        props = new PromptOverlayProperties();
-        assembler = new PlanAnswerPromptAssembler(props);
+        catalogHolder = new PromptCatalogHolder();
+        catalogHolder.replace(PromptCatalogSnapshot.of(0L, List.of()));
+        assembler = new PlanAnswerPromptAssembler(catalogHolder);
     }
 
     @Test
@@ -40,9 +43,11 @@ class PlanAnswerPromptAssemblerTest {
     }
 
     @Test
-    void usesNacosTemplateWhenConfigured() {
-        props.setAnswerTemplate("问题：{{start.userQuery}}\n\n{{plan.upstream}}\n\n请汇总。");
-        assembler = new PlanAnswerPromptAssembler(props);
+    void usesCatalogTemplateWhenConfigured() {
+        catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                new PromptCatalogEntry("answer.template", "answer", "answer.template", true, 0, 1,
+                        "问题：{{start.userQuery}}\n\n{{plan.upstream}}\n\n请汇总。", null))));
+        assembler = new PlanAnswerPromptAssembler(catalogHolder);
 
         PlanJson plan = PlanNormalizer.normalize(new PlanJson("p", "r",
                 List.of(new PlanNode("n1", "rag", Map.of())),

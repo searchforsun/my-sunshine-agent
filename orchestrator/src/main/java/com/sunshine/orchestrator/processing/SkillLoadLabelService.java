@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.processing;
 import com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -19,7 +20,7 @@ import java.util.Map;
 public class SkillLoadLabelService {
 
     private final SkillCatalogService skillCatalogService;
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -45,7 +46,7 @@ public class SkillLoadLabelService {
     }
 
     private AgentPromptProperties.StepTimeline skillTemplate() {
-        var steps = agentPromptProperties.timelineOrDefault().getSteps();
+        var steps = timelinePromptCatalog.steps();
         if (steps == null) {
             return new AgentPromptProperties.StepTimeline();
         }

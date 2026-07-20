@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ToolNodeLabelService {
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
     private final ToolCatalogService toolCatalogService;
 
     @PostConstruct
@@ -95,7 +96,7 @@ public class ToolNodeLabelService {
     }
 
     private AgentPromptProperties.StepTimeline stepTemplate(String key, AgentPromptProperties.StepTimeline fallback) {
-        var steps = agentPromptProperties.timelineOrDefault().getSteps();
+        var steps = timelinePromptCatalog.steps();
         if (steps == null) {
             return fallback;
         }

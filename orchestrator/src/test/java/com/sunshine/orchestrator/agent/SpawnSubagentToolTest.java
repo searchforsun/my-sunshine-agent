@@ -4,7 +4,8 @@ import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.config.PromptOverlayProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,8 +43,7 @@ class SpawnSubagentToolTest {
     private SpawnSubagentTimelineSupport timelineSupport;
     @Mock
     private ToolSetResolver toolSetResolver;
-    @Mock
-    private PromptOverlayProperties overlayProperties;
+    private PromptCatalogHolder catalogHolder;
 
     private SpawnRunRegistry spawnRunRegistry;
     private SpawnSubagentTool tool;
@@ -52,9 +52,11 @@ class SpawnSubagentToolTest {
     @BeforeEach
     void setUp() {
         spawnRunRegistry = SpawnRunRegistry.forTest(executionProperties);
+        catalogHolder = new PromptCatalogHolder();
+        catalogHolder.replace(PromptCatalogSnapshot.of(0L, java.util.List.of()));
         tool = new SpawnSubagentTool(
                 agentRuntime, executionProperties, timelineSupport, toolSetResolver,
-                overlayProperties, spawnRunRegistry);
+                catalogHolder, spawnRunRegistry);
         registry = new StepEventBridgeRegistry();
         StepEventBridge.bindRegistry(registry);
         AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
@@ -64,7 +66,6 @@ class SpawnSubagentToolTest {
         lenient().when(executionProperties.getReact()).thenReturn(reactProps);
         lenient().when(reactProps.getSubagent()).thenReturn(sub);
         lenient().when(toolSetResolver.resolveReactTools(any())).thenReturn(List.of("search_knowledge"));
-        lenient().when(overlayProperties.getModeOverlays()).thenReturn(java.util.Map.of());
     }
 
     @AfterEach

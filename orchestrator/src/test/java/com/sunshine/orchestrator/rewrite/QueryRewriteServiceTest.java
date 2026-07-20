@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -19,11 +22,14 @@ import static org.mockito.Mockito.when;
 class QueryRewriteServiceTest {
     private QueryRewriteService service;
     private AgentRewriteProperties props;
+    private PromptCatalogHolder catalogHolder;
 
     @BeforeEach
     void setUp() {
         props = new AgentRewriteProperties();
-        service = new QueryRewriteService(props, mock(com.sunshine.orchestrator.client.LlmGatewayClient.class),
+        catalogHolder = seedHolder("rewrite-intent-stub", "rewrite-planner-stub");
+        service = new QueryRewriteService(props, catalogHolder,
+                mock(com.sunshine.orchestrator.client.LlmGatewayClient.class),
                 new ObjectMapper());
     }
 
@@ -36,7 +42,6 @@ class QueryRewriteServiceTest {
     @Test
     void shouldRewriteIntentOnlyWhenShort() {
         props.getIntent().setEnabled(true);
-        props.getIntent().setSystemPrompt("test intent prompt");
         props.getIntent().setMaxChars(8);
         assertThat(service.shouldRewriteIntent("报销")).isTrue();
         assertThat(service.shouldRewriteIntent("请问年假可以请几天")).isFalse();
@@ -45,29 +50,28 @@ class QueryRewriteServiceTest {
     @Test
     void rewriteForIntentSkipsLongQuery() {
         props.getIntent().setEnabled(true);
-        props.getIntent().setSystemPrompt("test intent prompt");
         assertThat(service.rewriteForIntent("请问年假可以请几天")).isEqualTo("请问年假可以请几天");
     }
 
     @Test
     void rewriteForIntentCallsLlm() {
         props.getIntent().setEnabled(true);
-        props.getIntent().setSystemPrompt("test intent prompt");
+        catalogHolder = seedHolder("test intent prompt", "rewrite-planner-stub");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
         when(llm.complete(anyString(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"查询待审批报销消息列表\"}");
-        service = new QueryRewriteService(props, llm, new ObjectMapper());
+        service = new QueryRewriteService(props, catalogHolder, llm, new ObjectMapper());
         assertThat(service.rewriteForIntent("待审批")).isEqualTo("查询待审批报销消息列表");
     }
 
     @Test
     void rewriteForIntentIncludesConversationContext() {
         props.getIntent().setEnabled(true);
-        props.getIntent().setSystemPrompt("test intent prompt");
+        catalogHolder = seedHolder("test intent prompt", "rewrite-planner-stub");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
         when(llm.complete(anyString(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"查询第一条待审批报销单详情\"}");
-        service = new QueryRewriteService(props, llm, new ObjectMapper());
+        service = new QueryRewriteService(props, catalogHolder, llm, new ObjectMapper());
         MemoryContext memory = new MemoryContext(
                 "",
                 "",
@@ -88,12 +92,22 @@ class QueryRewriteServiceTest {
     @Test
     void rewriteForPlannerCallsLlm() {
         props.plannerOrDefault().setEnabled(true);
-        props.plannerOrDefault().setSystemPrompt("test planner prompt");
+        catalogHolder = seedHolder("rewrite-intent-stub", "test planner prompt");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
         when(llm.complete(anyString(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"先检索差旅制度，再查待审批报销并做合规分析\"}");
-        service = new QueryRewriteService(props, llm, new ObjectMapper());
+        service = new QueryRewriteService(props, catalogHolder, llm, new ObjectMapper());
         assertThat(service.rewriteForPlanner("先查制度再查报销"))
                 .isEqualTo("先检索差旅制度，再查待审批报销并做合规分析");
+    }
+
+    private static PromptCatalogHolder seedHolder(String intentPrompt, String plannerPrompt) {
+        PromptCatalogHolder holder = new PromptCatalogHolder();
+        holder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                new PromptCatalogEntry("rewrite.intent", "rewrite", "rewrite.intent", true, 0, 1,
+                        intentPrompt, null),
+                new PromptCatalogEntry("rewrite.planner", "rewrite", "rewrite.planner", true, 0, 1,
+                        plannerPrompt, null))));
+        return holder;
     }
 }

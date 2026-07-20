@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * PromptComposer 模式/技能/作答边界叠加 — SSOT 见 Nacos {@code agent.prompt.*}。
+ * Prompt 叠加残留绑定 — 正文已迁 Catalog；仅保留 skill-overlays Nacos 兜底。
  */
 @Getter
 @Setter
@@ -19,18 +19,12 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "agent.prompt")
 public class PromptOverlayProperties {
 
-    /** 模式叠加：direct（直连 Gateway） / react / workflow / workflow:{id} */
+    /**
+     * @deprecated Catalog {@code mode-overlay.*}；SpawnSubagentTool 遗留读取路径
+     */
+    @Deprecated
     private Map<String, String> modeOverlays = new LinkedHashMap<>();
 
-    /** 技能叠加（3.11 前可空） */
+    /** 技能叠加（Catalog 优先，Nacos 兜底） */
     private Map<String, String> skillOverlays = new LinkedHashMap<>();
-
-    /** 作答边界 — 注入在 memory 层之后、当前提问之前 */
-    private String scopePrompt = "";
-
-    /** 动态 Plan answer 节点 prompt 模板（占位符 {{start.userQuery}} / {{plan.upstream}}） */
-    private String answerTemplate = "";
-
-    /** 终态 answer 节点叠加（拼在 nodePrompt 前；reasoning 由引擎丢弃） */
-    private String answerOverlay = "";
 }

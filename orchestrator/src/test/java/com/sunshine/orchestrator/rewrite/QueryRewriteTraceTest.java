@@ -1,7 +1,12 @@
 package com.sunshine.orchestrator.rewrite;
 
-import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import com.sunshine.orchestrator.processing.RewriteTimelineLabels;
+import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
+
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -17,11 +22,11 @@ class QueryRewriteTraceTest {
 
     @Test
     void recordsAndSummarizesRewriteEvents() {
-        AgentRewriteProperties props = new AgentRewriteProperties();
-        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("补全问句");
-        props.setTimeline(timeline);
-        RewriteTimelineLabels.bind(props);
+        PromptCatalogHolder holder = new PromptCatalogHolder();
+        holder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
+                        null, "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"))));
+        RewriteTimelineLabels.bind(new TimelinePromptCatalog(holder));
         QueryRewriteTrace.bind("m1");
         QueryRewriteTrace.record("m1", QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 12L));
         QueryRewriteTrace.record("m1",

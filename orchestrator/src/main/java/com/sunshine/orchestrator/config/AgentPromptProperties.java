@@ -8,7 +8,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * Agent 提示词 SSOT — 正文维护于 Nacos {@code sunshine-orchestrator.yaml}（本地副本 docs/nacos/）。
+ * Agent 非正文配置（模型名/温度等）— 提示词正文已迁 prompt-manager Catalog。
+ * 时间线 POJO 仍作 Catalog JSON 反序列化目标与 Java 默认回退。
  */
 @Getter
 @Setter
@@ -16,15 +17,15 @@ import org.springframework.util.StringUtils;
 @ConfigurationProperties(prefix = "agent")
 public class AgentPromptProperties {
 
-    /** 主系统提示词（直连 LLM + ReActAgent） */
+    /**
+     * @deprecated Catalog {@code system-prompt}；仅 MemoryMessageBuilder 遗留路径
+     */
+    @Deprecated
     private String systemPrompt = "";
 
     private Intent intent = new Intent();
 
     private Planner planner = new Planner();
-
-    /** 时间线步骤文案（意图等），SSOT 见 Nacos agent.timeline */
-    private Timeline timeline = new Timeline();
 
     public boolean hasSystemPrompt() {
         return StringUtils.hasText(systemPrompt);
@@ -38,11 +39,8 @@ public class AgentPromptProperties {
     @Setter
     public static class Intent {
 
-        /** 意图分类模型 */
+        /** 意图分类模型（提示词见 Catalog {@code intent.classifier}） */
         private String model = "deepseek-v4-flash";
-
-        /** 意图分类 system 提示词 */
-        private String classifierPrompt = "";
     }
 
     @Getter
@@ -55,13 +53,9 @@ public class AgentPromptProperties {
         private int maxNodes = 8;
         /** gateway/join/xgw/loop/answer 等路由节点相对 maxNodes 的 headroom */
         private int routingNodeBuffer = 6;
-        private String prompt = "";
-
-        public String promptOrEmpty() {
-            return prompt != null ? prompt.strip() : "";
-        }
     }
 
+    /** 时间线文案结构（Catalog / 默认回退） */
     @Getter
     @Setter
     public static class Timeline {
@@ -77,10 +71,10 @@ public class AgentPromptProperties {
         private AgentTimeline agent = new AgentTimeline();
         /** RAG 步骤 after 摘要模板 */
         private RagAfterTimeline ragAfter = new RagAfterTimeline();
-        /** 沙箱工具时间线（path / pattern / command），SSOT：Nacos agent.timeline.sandbox */
+        /** 沙箱工具时间线（path / pattern / command） */
         private SandboxTimeline sandbox = new SandboxTimeline();
 
-        private static java.util.LinkedHashMap<String, StepTimeline> defaultSteps() {
+        public static java.util.LinkedHashMap<String, StepTimeline> defaultSteps() {
             var map = new java.util.LinkedHashMap<String, StepTimeline>();
             var plan = new StepTimeline();
             plan.setLabel("执行计划");
@@ -281,10 +275,6 @@ public class AgentPromptProperties {
         private String execActive = "正在执行 {command}";
     }
 
-    public Timeline timelineOrDefault() {
-        return timeline != null ? timeline : new Timeline();
-    }
-
     /** 意图步骤 detail / before / active / after 模板，占位符：{query} {detail} {displayName} {workflowId} */
     @Getter
     @Setter
@@ -325,20 +315,6 @@ public class AgentPromptProperties {
         private String after;
         /** 用户底栏强制模式时的 after 模板 */
         private String forcedAfter;
-    }
-
-    public IntentTimeline intentTimelineOrDefault() {
-        if (timeline == null || timeline.intent == null) {
-            Timeline t = new Timeline();
-            return t.getIntent();
-        }
-        return timeline.intent;
-    }
-
-    public String intentClassifierPromptOrEmpty() {
-        return intent != null && intent.classifierPrompt != null
-                ? intent.classifierPrompt.strip()
-                : "";
     }
 
     public String intentModelOrDefault() {

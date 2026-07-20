@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.processing;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -25,7 +26,7 @@ public class SummaryStepLabelService {
     private static final Pattern RAG_SOURCE = Pattern.compile("来源[：:](.+)");
     private static final int RAG_SOURCE_CLIP = 80;
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
     private final ToolCatalogService toolCatalogService;
 
     @PostConstruct
@@ -110,13 +111,11 @@ public class SummaryStepLabelService {
     }
 
     private AgentPromptProperties.AgentTimeline agentTimeline() {
-        AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getAgent() != null ? timeline.getAgent() : new AgentPromptProperties.AgentTimeline();
+        return timelinePromptCatalog.agent();
     }
 
     private AgentPromptProperties.RagAfterTimeline ragAfterTimeline() {
-        AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getRagAfter() != null ? timeline.getRagAfter() : new AgentPromptProperties.RagAfterTimeline();
+        return timelinePromptCatalog.ragAfter();
     }
 
     private static String clipRagSource(String raw) {

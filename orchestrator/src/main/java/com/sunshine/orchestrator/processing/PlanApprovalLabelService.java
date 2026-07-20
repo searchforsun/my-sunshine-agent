@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -13,7 +14,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class PlanApprovalLabelService {
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -37,10 +38,7 @@ public class PlanApprovalLabelService {
     }
 
     private AgentPromptProperties.PlanApprovalTimeline template() {
-        AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getPlanApproval() != null
-                ? timeline.getPlanApproval()
-                : new AgentPromptProperties.PlanApprovalTimeline();
+        return timelinePromptCatalog.planApproval();
     }
 
     private static String textOrDefault(String value, String fallback) {

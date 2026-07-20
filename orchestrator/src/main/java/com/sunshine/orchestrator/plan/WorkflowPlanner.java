@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
@@ -34,6 +35,7 @@ public class WorkflowPlanner {
     private final PlanJsonParser planJsonParser;
     private final QueryRewriteService queryRewriteService;
     private final SkillCatalogService skillCatalogService;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
     private String baseUrl;
@@ -63,23 +65,25 @@ public class WorkflowPlanner {
     }
 
     private Mono<PlanJson> planWithUserFeedback(ExecutionStreamContext ctx, String userFeedback, int attemptNo) {
-        String systemPrompt = catalogRenderer.renderIntoPrompt(
-                prompts.plannerOrDefault().promptOrEmpty(), ctx.tenantId());
+        String systemPrompt = catalogRenderer.renderIntoPrompt(plannerPromptOrEmpty(), ctx.tenantId());
         if (!StringUtils.hasText(systemPrompt)) {
-            return Mono.error(new PlanParseException("agent.planner.prompt 未配置"));
+            return Mono.error(new PlanParseException("catalog planner.prompt 未配置"));
         }
         String query = ctx.userContent() != null ? ctx.userContent() : "";
         return submitPlanner(systemPrompt, query + "\n\n" + userFeedback, attemptNo);
     }
 
     private Mono<PlanJson> plan(ExecutionStreamContext ctx, PlanValidationIssue validationIssue, int attemptNo) {
-        String systemPrompt = catalogRenderer.renderIntoPrompt(
-                prompts.plannerOrDefault().promptOrEmpty(), ctx.tenantId());
+        String systemPrompt = catalogRenderer.renderIntoPrompt(plannerPromptOrEmpty(), ctx.tenantId());
         if (!StringUtils.hasText(systemPrompt)) {
-            return Mono.error(new PlanParseException("agent.planner.prompt 未配置"));
+            return Mono.error(new PlanParseException("catalog planner.prompt 未配置"));
         }
         String userMessage = buildUserMessage(ctx, validationIssue);
         return submitPlanner(systemPrompt, userMessage, attemptNo);
+    }
+
+    private String plannerPromptOrEmpty() {
+        return promptCatalogHolder.snapshot().text("planner.prompt").map(String::strip).orElse("");
     }
 
     private Mono<PlanJson> submitPlanner(String systemPrompt, String userMessage, int attemptNo) {

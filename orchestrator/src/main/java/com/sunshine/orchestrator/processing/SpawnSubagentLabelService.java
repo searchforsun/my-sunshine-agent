@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -13,7 +14,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class SpawnSubagentLabelService {
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -47,7 +48,7 @@ public class SpawnSubagentLabelService {
     }
 
     private AgentPromptProperties.StepTimeline step() {
-        var steps = agentPromptProperties.timelineOrDefault().getSteps();
+        var steps = timelinePromptCatalog.steps();
         if (steps == null) {
             return new AgentPromptProperties.StepTimeline();
         }

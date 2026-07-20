@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.plan;
 
-import com.sunshine.orchestrator.config.PromptOverlayProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 动态 Plan 的 answer 节点 prompt — Nacos 固定模板 + 按拓扑注入上游 {@code {{n*.output}}}。
+ * 动态 Plan 的 answer 节点 prompt — Catalog {@code answer.template} + 按拓扑注入上游 {@code {{n*.output}}}。
  * Planner 不负责撰写 answer 话术，避免 meta 指令进入 reasoning。
  */
 @Component
@@ -32,7 +32,7 @@ public class PlanAnswerPromptAssembler {
             - 禁止输出 tool_call、函数调用、JSON 协议、内部节点 id 或原始工具报文
             - 禁止复述上游中的工具调用结构；若上游含此类内容，只提炼对用户有用的事实""";
 
-    private final PromptOverlayProperties overlayProperties;
+    private final PromptCatalogHolder catalogHolder;
 
     /** 为 answer 节点写入 params.prompt（覆盖 Planner 自带 prompt） */
     public PlanJson apply(PlanJson plan) {
@@ -67,9 +67,9 @@ public class PlanAnswerPromptAssembler {
     }
 
     private String templateOrDefault() {
-        String fromNacos = overlayProperties.getAnswerTemplate();
-        if (StringUtils.hasText(fromNacos)) {
-            return fromNacos.strip();
+        String fromCatalog = catalogHolder.snapshot().text("answer.template").map(String::strip).orElse("");
+        if (StringUtils.hasText(fromCatalog)) {
+            return fromCatalog;
         }
         return DEFAULT_TEMPLATE;
     }

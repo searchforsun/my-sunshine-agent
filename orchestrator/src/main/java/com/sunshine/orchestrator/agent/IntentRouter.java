@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.expert.ExpertCollaborationPlanSanitizer;
 import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
@@ -31,6 +32,7 @@ public class IntentRouter {
     private static final int MAX_STM_TURNS = 4;
 
     private final AgentPromptProperties prompts;
+    private final PromptCatalogHolder catalogHolder;
     private final WorkflowCatalog workflowCatalog;
     private final SkillCatalogService skillCatalogService;
     private final ExpertCollaborationPlanSanitizer expertCollaborationPlanSanitizer;
@@ -63,7 +65,7 @@ public class IntentRouter {
     public Mono<ExecutionPlan> classifyPlan(RoutingContext ctx) {
         String classifierPrompt = renderClassifierPrompt();
         if (classifierPrompt.isEmpty()) {
-            log.warn("[IntentRouter] agent.intent.classifier-prompt 未配置，默认 react");
+            log.warn("[IntentRouter] catalog intent.classifier 未配置，默认 react");
             return Mono.just(ExecutionPlan.reactFallback("no classifier prompt"));
         }
         String userContent = buildClassifierUserMessage(ctx);
@@ -99,7 +101,10 @@ public class IntentRouter {
     }
 
     private String renderClassifierPrompt() {
-        String prompt = prompts.intentClassifierPromptOrEmpty();
+        String prompt = catalogHolder.snapshot().text("intent.classifier").map(String::strip).orElse("");
+        if (!StringUtils.hasText(prompt)) {
+            return "";
+        }
         prompt = workflowCatalog.renderIntoClassifier(prompt);
         return skillCatalogService.renderIntoClassifier(prompt);
     }

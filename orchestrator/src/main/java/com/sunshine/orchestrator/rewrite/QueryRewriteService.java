@@ -5,15 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.List;
-
 /**
  * Query 改写 — 仅 intent / planner（路由与规划域）。
+ * 提示词读 Catalog {@code rewrite.intent} / {@code rewrite.planner}。
  * RAG 检索改写已迁入 rag-service pipeline（ADR-002）。
  */
 @Slf4j
@@ -21,6 +21,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class QueryRewriteService {
     private final AgentRewriteProperties rewriteProperties;
+    private final PromptCatalogHolder catalogHolder;
     private final LlmGatewayClient llmGatewayClient;
     private final ObjectMapper objectMapper;
 
@@ -52,14 +53,15 @@ public class QueryRewriteService {
     public QueryRewriteOutcome rewriteForPlanner(String originalQuery, String traceMessageId) {
         long start = System.nanoTime();
         AgentRewriteProperties.Planner cfg = rewriteProperties.plannerOrDefault();
-        if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery) || !StringUtils.hasText(cfg.getSystemPrompt())) {
+        String systemPrompt = catalogText("rewrite.planner");
+        if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery) || !StringUtils.hasText(systemPrompt)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
                     QueryRewriteScenario.PLANNER.id(), originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
         String user = "用户问题：" + originalQuery.strip();
-        String raw = llmGatewayClient.complete(cfg.getModel(), cfg.getSystemPrompt(), user);
+        String raw = llmGatewayClient.complete(cfg.getModel(), systemPrompt, user);
         String rewritten = parseSingleQuery(raw, originalQuery);
         if (!StringUtils.hasText(rewritten)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
@@ -85,14 +87,15 @@ public class QueryRewriteService {
             return skipped;
         }
         AgentRewriteProperties.Intent cfg = rewriteProperties.getIntent();
-        if (!StringUtils.hasText(cfg.getSystemPrompt())) {
+        String systemPrompt = catalogText("rewrite.intent");
+        if (!StringUtils.hasText(systemPrompt)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
                     QueryRewriteScenario.INTENT.id(), originalQuery, elapsedMs(start));
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
         String user = RewriteConversationContext.buildUserMessage(originalQuery, memory);
-        String raw = llmGatewayClient.complete(cfg.getModel(), cfg.getSystemPrompt(), user);
+        String raw = llmGatewayClient.complete(cfg.getModel(), systemPrompt, user);
         String rewritten = parseSingleQuery(raw, originalQuery);
         if (!StringUtils.hasText(rewritten)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
@@ -134,6 +137,10 @@ public class QueryRewriteService {
             }
         }
         return "";
+    }
+
+    private String catalogText(String id) {
+        return catalogHolder.snapshot().text(id).map(String::strip).orElse("");
     }
 
     private static String extractJson(String text) {

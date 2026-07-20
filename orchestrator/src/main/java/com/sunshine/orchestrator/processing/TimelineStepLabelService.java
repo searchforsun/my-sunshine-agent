@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -15,7 +16,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class TimelineStepLabelService {
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -26,7 +27,7 @@ public class TimelineStepLabelService {
     public String stepLabel(String stepId) {
         if (TimelineStepId.INTENT.matches(stepId)) {
             return TimelineLabelTemplates.textOrDefault(
-                    agentPromptProperties.intentTimelineOrDefault().getLabel(), "识别意图");
+                    timelinePromptCatalog.intent().getLabel(), "识别意图");
         }
         AgentPromptProperties.StepTimeline step = stepTemplate(stepId);
         if (step != null && StringUtils.hasText(step.getLabel())) {
@@ -38,7 +39,7 @@ public class TimelineStepLabelService {
     public String stepBefore(String stepId, String clippedQuery) {
         if (TimelineStepId.INTENT.matches(stepId)) {
             return TimelineLabelTemplates.applyTemplate(
-                    agentPromptProperties.intentTimelineOrDefault().getBefore(),
+                    timelinePromptCatalog.intent().getBefore(),
                     TimelineLabelTemplates.vars(clippedQuery, null, null, null));
         }
         AgentPromptProperties.StepTimeline step = stepTemplate(stepId);
@@ -52,7 +53,7 @@ public class TimelineStepLabelService {
     public String stepActive(String stepId, String clippedQuery) {
         if (TimelineStepId.INTENT.matches(stepId)) {
             return TimelineLabelTemplates.applyTemplate(
-                    agentPromptProperties.intentTimelineOrDefault().getActive(),
+                    timelinePromptCatalog.intent().getActive(),
                     TimelineLabelTemplates.vars(clippedQuery, null, null, null));
         }
         AgentPromptProperties.StepTimeline step = stepTemplate(stepId);
@@ -90,7 +91,7 @@ public class TimelineStepLabelService {
     }
 
     private AgentPromptProperties.StepTimeline stepTemplate(String stepId) {
-        var steps = agentPromptProperties.timelineOrDefault().getSteps();
+        var steps = timelinePromptCatalog.steps();
         if (steps == null || !StringUtils.hasText(stepId)) {
             return null;
         }

@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,7 +21,7 @@ class StepLabelsTest {
     @BeforeEach
     void bindCatalog() {
         TimelineLabelTestSupport.bindDefaults();
-        ToolNodeLabels.bind(new ToolNodeLabelService(new AgentPromptProperties(), catalogService));
+        ToolNodeLabels.bind(new ToolNodeLabelService(TimelinePromptCatalog.withDefaults(), catalogService));
         StepLabels.bind(catalogService);
     }
 

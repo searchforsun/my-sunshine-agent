@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.processing;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.client.WorkflowManagerClient;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.routing.ExecutionMode;
@@ -38,16 +38,16 @@ class IntentLabelServiceTest {
 
     @BeforeEach
     void setUp() {
-        AgentPromptProperties agentProps = new AgentPromptProperties();
+        TimelinePromptCatalog timelineCatalog = TimelinePromptCatalog.withDefaults();
         stubCatalog();
         WorkflowCatalog workflowCatalog = new WorkflowCatalog(workflowCatalogRegistry, workflowManagerClient);
         WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
                 workflowCatalog, toolCatalogService);
         WorkflowNodeLabels.bind(workflowLabels);
-        timelineStepLabelService = new TimelineStepLabelService(agentProps);
-        thinkStepLabelService = new ThinkStepLabelService(agentProps);
+        timelineStepLabelService = new TimelineStepLabelService(timelineCatalog);
+        thinkStepLabelService = new ThinkStepLabelService(timelineCatalog);
         intentLabelService = new IntentLabelService(
-                agentProps, workflowCatalog, workflowCatalogRegistry, workflowLabels);
+                timelineCatalog, workflowCatalog, workflowCatalogRegistry, workflowLabels);
         IntentLabels.bind(intentLabelService);
         TimelineLabels.bind(timelineStepLabelService);
         TimelineStepLabels.bind(timelineStepLabelService);

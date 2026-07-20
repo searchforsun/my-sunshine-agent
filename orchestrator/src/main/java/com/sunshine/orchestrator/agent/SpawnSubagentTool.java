@@ -5,10 +5,10 @@ import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.config.PromptOverlayProperties;
 import com.sunshine.orchestrator.memory.MemoryContext;
 import com.sunshine.orchestrator.processing.ContentSegmentCoordinator;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.extern.slf4j.Slf4j;
@@ -27,14 +27,14 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SpawnSubagentTool {
 
     public static final String NAME = "spawn_subagent";
-    /** Nacos agent.prompt.mode-overlays.subagent */
-    public static final String OVERLAY_KEY = "subagent";
+    /** Catalog id：mode-overlay.subagent */
+    public static final String OVERLAY_CATALOG_ID = "mode-overlay.subagent";
 
     private final AgentRuntime agentRuntime;
     private final AgentExecutionProperties executionProperties;
     private final SpawnSubagentTimelineSupport timelineSupport;
     private final ToolSetResolver toolSetResolver;
-    private final PromptOverlayProperties overlayProperties;
+    private final PromptCatalogHolder catalogHolder;
     private final SpawnRunRegistry spawnRunRegistry;
 
     public SpawnSubagentTool(
@@ -42,13 +42,13 @@ public class SpawnSubagentTool {
             AgentExecutionProperties executionProperties,
             SpawnSubagentTimelineSupport timelineSupport,
             ToolSetResolver toolSetResolver,
-            PromptOverlayProperties overlayProperties,
+            PromptCatalogHolder catalogHolder,
             SpawnRunRegistry spawnRunRegistry) {
         this.agentRuntime = agentRuntime;
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
         this.toolSetResolver = toolSetResolver;
-        this.overlayProperties = overlayProperties;
+        this.catalogHolder = catalogHolder;
         this.spawnRunRegistry = spawnRunRegistry;
     }
 
@@ -177,11 +177,8 @@ public class SpawnSubagentTool {
     }
 
     private String resolveSubagentOverlay() {
-        if (overlayProperties == null || overlayProperties.getModeOverlays() == null) {
-            return null;
-        }
-        String text = overlayProperties.getModeOverlays().get(OVERLAY_KEY);
-        return StringUtils.hasText(text) ? text.strip() : null;
+        String text = catalogHolder.snapshot().text(OVERLAY_CATALOG_ID).map(String::strip).orElse("");
+        return StringUtils.hasText(text) ? text : null;
     }
 
     private void foldStepToken(
