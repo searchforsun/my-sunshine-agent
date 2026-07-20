@@ -126,8 +126,14 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem label="内容">
+            <NFormItem :label="page.contentUsesJson ? '文案字段' : '内容'">
+              <TimelineJsonEditor
+                v-if="page.contentUsesJson"
+                v-model="page.editContentText"
+                :disabled="!page.isContentEditable || page.isActionBusy"
+              />
               <NInput
+                v-else
                 v-model:value="page.editContentText"
                 class="sun-field sun-field-grow content-input"
                 type="textarea"
