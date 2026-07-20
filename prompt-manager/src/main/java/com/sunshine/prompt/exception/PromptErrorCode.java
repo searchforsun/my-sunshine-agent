@@ -15,7 +15,9 @@ public enum PromptErrorCode implements ErrorCode {
     DRAFT_NOT_FOUND(404, "prompt_draft_not_found", "没有可发布的草稿版本"),
     ROLLBACK_REQUIRES_PUBLISHED(400, "prompt_rollback_requires_published", "只能回滚到已发布版本"),
     INVALID_VERSION_STATUS(400, "prompt_invalid_version_status", "版本状态只能是 draft 或 published"),
-    VERSION_CONTENT_REQUIRED(400, "prompt_version_content_required", "contentText 与 contentJson 至少填一项");
+    VERSION_CONTENT_REQUIRED(400, "prompt_version_content_required", "contentText 与 contentJson 至少填一项"),
+    ROUTING_RULE_PARSE_FAILED(400, "routing_rule_parse_failed", "路由规则 content_json 解析失败"),
+    ROUTING_RULE_INPUT_REQUIRED(400, "routing_rule_input_required", "路由规则校验需提供 id 与 contentJson");
 
     private final int code;
     private final String key;
