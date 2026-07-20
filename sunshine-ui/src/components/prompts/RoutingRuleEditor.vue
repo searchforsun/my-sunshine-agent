@@ -159,8 +159,8 @@ const planMode = computed({
 })
 
 const workflowId = computed({
-  get: () => ensurePlan().workflowId ?? '',
-  set: (v: string) => { ensurePlan().workflowId = v.trim() || null },
+  get: () => ensurePlan().workflowId || null,
+  set: (v: string | null) => { ensurePlan().workflowId = v?.trim() || null },
 })
 
 const reactPromptId = computed({

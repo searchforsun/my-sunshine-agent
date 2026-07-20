@@ -25,6 +25,7 @@ import {
   type RoutingRuleContent,
   type RoutingWarningItem,
 } from '../api/prompts'
+import { listWorkflowCatalog, type WorkflowCatalogEntry } from '../api/workflows'
 import { friendlyErrorMessage } from '../api/apiError'
 import { formatSkillVersionTime } from '../utils/formatSkillVersionTime'
 
@@ -71,6 +72,7 @@ export function usePromptsPage() {
   const routingPane = ref<'editor' | 'dry-run'>('editor')
 
   const prompts = ref<PromptListItem[]>([])
+  const workflowCatalog = ref<WorkflowCatalogEntry[]>([])
   const selectedId = ref<string | null>(null)
   const detail = ref<PromptDetail | null>(null)
   const versions = ref<PromptVersionItem[]>([])
@@ -157,6 +159,18 @@ export function usePromptsPage() {
       }),
   )
 
+  const workflowOptions = computed(() =>
+    workflowCatalog.value
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(w => ({
+        label: w.displayName && w.displayName !== w.id
+          ? `${w.displayName}（${w.id}）`
+          : w.id,
+        value: w.id,
+      })),
+  )
+
   const selectedVersionEntry = computed(() => {
     if (selectedVersion.value == null) return null
     return versions.value.find(v => v.version === selectedVersion.value) ?? null
@@ -241,7 +255,12 @@ export function usePromptsPage() {
   async function refreshList(keepSelection = true) {
     loading.value = true
     try {
-      prompts.value = await listPrompts()
+      const [promptList, catalog] = await Promise.all([
+        listPrompts(),
+        listWorkflowCatalog().catch(() => [] as WorkflowCatalogEntry[]),
+      ])
+      prompts.value = promptList
+      workflowCatalog.value = catalog
       const visible = filteredPrompts.value
       if (!keepSelection || !selectedId.value || !visible.some(p => p.id === selectedId.value)) {
         selectedId.value = visible[0]?.id ?? null
@@ -683,6 +702,7 @@ export function usePromptsPage() {
     hasDraft,
     isRoutingSelected,
     reactPromptOptions,
+    workflowOptions,
     routingForm,
     routingWarnings,
     dryRunQuery,
