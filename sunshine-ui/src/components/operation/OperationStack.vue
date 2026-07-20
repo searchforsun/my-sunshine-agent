@@ -5,6 +5,7 @@ import {
   formatElapsedClock,
   formatTimelineSummaryText,
   hasRealTaskBoardItems,
+  hasTimelineSummaryActiveStep,
   isSubagentStep,
   resolvePlanIdFromStep,
   resolveTimelineElapsedMs,
@@ -156,18 +157,22 @@ const fallbackStartMs = ref<number | undefined>(undefined)
 const nowMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | undefined
 
-/** 仅实现线有 running 步时记 start / tick；正文流式阶段不推进时钟 */
+/** 实现线仍有 running（排除 generate）；正文流式阶段不推进时钟 */
+const summaryPipelineLive = computed(() =>
+  summaryEnabled.value && hasTimelineSummaryActiveStep(effectiveSteps.value),
+)
+
 watch(
-  () => [props.live, summaryEnabled.value] as const,
-  ([live, enabled]) => {
-    if (!enabled || !live) return
+  summaryPipelineLive,
+  (live) => {
+    if (!live) return
     if (fallbackStartMs.value == null) fallbackStartMs.value = Date.now()
   },
   { immediate: true },
 )
 
 watch(
-  () => summaryEnabled.value && !!props.live,
+  summaryPipelineLive,
   (needTick) => {
     if (tickTimer) {
       clearInterval(tickTimer)
@@ -186,10 +191,10 @@ onUnmounted(() => {
 
 const summaryText = computed(() => {
   if (!summaryEnabled.value) return ''
-  // live=props.live：仅有 running 步时用 now；否则 max(endedAt)，不含正文输出
+  const pipelineLive = hasTimelineSummaryActiveStep(effectiveSteps.value)
   const elapsed = resolveTimelineElapsedMs({
     steps: effectiveSteps.value,
-    live: !!props.live,
+    live: pipelineLive,
     nowMs: nowMs.value,
     fallbackStartMs: fallbackStartMs.value,
   })

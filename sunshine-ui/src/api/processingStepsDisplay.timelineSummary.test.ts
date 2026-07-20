@@ -5,6 +5,7 @@ import {
   resolveTimelineElapsedMs,
   resolveTimelineSummaryPrefix,
   formatTimelineSummaryText,
+  hasTimelineSummaryActiveStep,
 } from './processingStepsDisplay'
 
 describe('formatElapsedClock', () => {
@@ -62,6 +63,25 @@ describe('resolveTimelineElapsedMs', () => {
 
   it('returns undefined when no start', () => {
     expect(resolveTimelineElapsedMs({ steps: [step({})], live: false })).toBeUndefined()
+  })
+
+  it('ignores generate step so content stream does not inflate then shrink', () => {
+    expect(resolveTimelineElapsedMs({
+      steps: [
+        step({ startedAt: 1_000, endedAt: 5_000 }),
+        step({
+          id: 'generate',
+          phase: 'generate',
+          lifecycle: 'running',
+          startedAt: 5_000,
+        }),
+      ],
+      live: hasTimelineSummaryActiveStep([
+        step({ startedAt: 1_000, endedAt: 5_000 }),
+        step({ id: 'generate', phase: 'generate', lifecycle: 'running', startedAt: 5_000 }),
+      ]),
+      nowMs: 20_000,
+    })).toBe(4_000)
   })
 })
 

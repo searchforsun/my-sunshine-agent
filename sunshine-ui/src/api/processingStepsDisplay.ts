@@ -520,9 +520,19 @@ export function formatElapsedClock(ms: number): string {
   return `${m}m${s}s`
 }
 
+/** 总览耗时不计 generate（正文流式常挂 running，否则会先涨后缩） */
+function isTimelineSummaryTimingStep(step: ProcessingStep): boolean {
+  return step.id !== 'generate' && step.phase !== 'generate'
+}
+
+/** 实现线是否仍有 running 步（排除 generate） */
+export function hasTimelineSummaryActiveStep(steps: ProcessingStep[] | undefined): boolean {
+  return !!steps?.some(s => s.lifecycle === 'running' && isTimelineSummaryTimingStep(s))
+}
+
 export function resolveTimelineElapsedMs(opts: {
   steps: ProcessingStep[]
-  /** true：实现线仍有 running 步，用 now；false：只用 steps 的 endedAt（不含正文流式） */
+  /** true：实现线仍有 running 步，用 now；false：只用实现线 endedAt（不含正文流式） */
   live: boolean
   nowMs?: number
   fallbackStartMs?: number
@@ -530,6 +540,7 @@ export function resolveTimelineElapsedMs(opts: {
   let start: number | undefined
   let maxEnded: number | undefined
   for (const step of opts.steps) {
+    if (!isTimelineSummaryTimingStep(step)) continue
     const t = step.startedAt ?? step.ts
     if (typeof t === 'number' && Number.isFinite(t)) {
       start = start == null ? t : Math.min(start, t)

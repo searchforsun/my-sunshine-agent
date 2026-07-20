@@ -98,7 +98,8 @@ else: expanded = false   // 进行中 / completed | interrupted | failed 一律�
 | **end（实现线仍有 running）** | `Date.now()`，约 200ms tick（仅 `props.live` / `hasActiveStep`） |
 | **end（步骤已齐 / 仅剩正文流 / 终态）** | `max(endedAt)`；无则时钟可空，只显示状态前缀 |
 
-**禁止**用离开 `streaming` 的本地时刻当 end（会把正文输出算进去，且刷新不一致）。
+**禁止**用离开 `streaming` 的本地时刻当 end（会把正文输出算进去，且刷新不一致）。  
+**禁止**把隐藏的 `generate` 步计入 running/endedAt（正文流式时常挂 running，会导致时钟先涨后缩）。
 
 ### 3.2 时钟格式
 
