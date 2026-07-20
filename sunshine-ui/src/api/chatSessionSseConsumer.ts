@@ -1,5 +1,6 @@
 import type { ChatMessage } from './chat'
 import { hydrateStreamError, applyStreamErrorFromText } from './streamError'
+import { stampTimelineEnded, stampTimelineStarted } from './timelineMessageClock'
 import {
   saveActiveGeneration,
   updateLastSeq,
@@ -132,6 +133,7 @@ export async function consumeChatSseStream(
           const last = s.messages[s.messages.length - 1]
           if (last?.role === 'assistant') {
             last.status = 'completed'
+            stampTimelineEnded(last)
             setPendingHitlConfirmations(last, undefined)
             normalizeRestoredInterleavedContent(last)
             notifyCompletedIfNeeded(streamConversationId ?? s.id, last)
@@ -139,12 +141,16 @@ export async function consumeChatSseStream(
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'interrupted') {
           const last = s.messages[s.messages.length - 1]
-          if (last?.role === 'assistant') last.status = 'interrupted'
+          if (last?.role === 'assistant') {
+            last.status = 'interrupted'
+            stampTimelineEnded(last)
+          }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'failed') {
           const last = s.messages[s.messages.length - 1]
           if (last?.role === 'assistant') {
             last.status = 'failed'
+            stampTimelineEnded(last)
             hydrateStreamError(last)
             if (!last.streamError) {
               last.streamError = '可点击下方继续生成重试'
@@ -323,6 +329,7 @@ export async function consumeChatSseStream(
           }
           if (!lastMsg.status || lastMsg.status === 'interrupted') {
             lastMsg.status = 'streaming'
+            stampTimelineStarted(lastMsg)
           }
           bumpAssistantMessage(s)
         }
@@ -369,6 +376,7 @@ export async function consumeChatSseStream(
           }
           if (!lastMsg.status || lastMsg.status === 'interrupted') {
             lastMsg.status = 'streaming'
+            stampTimelineStarted(lastMsg)
           }
           stripPlanDrawerLeakFromMessage(lastMsg)
           bumpAssistantMessage(s)
@@ -385,6 +393,7 @@ export async function consumeChatSseStream(
       if (lastMsg?.role === 'assistant') {
         if (!lastMsg.status || lastMsg.status === 'interrupted') {
           lastMsg.status = 'streaming'
+          stampTimelineStarted(lastMsg)
         }
         bumpAssistantMessage(s)
       }

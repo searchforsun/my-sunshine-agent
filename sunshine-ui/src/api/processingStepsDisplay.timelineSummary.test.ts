@@ -5,7 +5,6 @@ import {
   resolveTimelineElapsedMs,
   resolveTimelineSummaryPrefix,
   formatTimelineSummaryText,
-  hasTimelineSummaryActiveStep,
 } from './processingStepsDisplay'
 
 describe('formatElapsedClock', () => {
@@ -28,7 +27,7 @@ describe('resolveTimelineElapsedMs', () => {
     ...partial,
   })
 
-  it('uses min startedAt/ts to now when live', () => {
+  it('uses min startedAt to now when live (includes content stream)', () => {
     const ms = resolveTimelineElapsedMs({
       steps: [step({ startedAt: 1_000, ts: 9_000 }), step({ id: 'think', startedAt: 2_000 })],
       live: true,
@@ -47,53 +46,23 @@ describe('resolveTimelineElapsedMs', () => {
     expect(ms).toBe(4_000)
   })
 
-  it('without live uses max endedAt only (excludes content stream)', () => {
+  it('prefers timelineEndedAt over step endedAt when not live', () => {
+    expect(resolveTimelineElapsedMs({
+      steps: [step({ startedAt: 1_000, endedAt: 3_000 })],
+      live: false,
+      fallbackEndMs: 9_000,
+    })).toBe(8_000)
+  })
+
+  it('falls back to max endedAt when no timelineEndedAt', () => {
     expect(resolveTimelineElapsedMs({
       steps: [step({ startedAt: 1_000, endedAt: 3_000 }), step({ id: 't', startedAt: 1_500, endedAt: 4_000 })],
       live: false,
     })).toBe(3_000)
   })
 
-  it('returns undefined when not live and no endedAt', () => {
-    expect(resolveTimelineElapsedMs({
-      steps: [step({ startedAt: 1_000 })],
-      live: false,
-    })).toBeUndefined()
-  })
-
   it('returns undefined when no start', () => {
     expect(resolveTimelineElapsedMs({ steps: [step({})], live: false })).toBeUndefined()
-  })
-
-  it('ignores generate step so content stream does not inflate then shrink', () => {
-    expect(resolveTimelineElapsedMs({
-      steps: [
-        step({ startedAt: 1_000, endedAt: 5_000 }),
-        step({
-          id: 'generate',
-          phase: 'generate',
-          lifecycle: 'running',
-          startedAt: 5_000,
-        }),
-      ],
-      live: hasTimelineSummaryActiveStep([
-        step({ startedAt: 1_000, endedAt: 5_000 }),
-        step({ id: 'generate', phase: 'generate', lifecycle: 'running', startedAt: 5_000 }),
-      ]),
-      nowMs: 20_000,
-    })).toBe(4_000)
-  })
-
-  it('terminal message must not keep ticking even if a step stuck running', () => {
-    // UI: messageStatus=completed → caller passes live=false
-    expect(resolveTimelineElapsedMs({
-      steps: [
-        step({ startedAt: 1_000, endedAt: 5_000 }),
-        step({ id: 'think', lifecycle: 'running', startedAt: 4_000 }),
-      ],
-      live: false,
-      nowMs: 200_000,
-    })).toBe(4_000)
   })
 })
 

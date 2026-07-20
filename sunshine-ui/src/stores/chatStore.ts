@@ -27,6 +27,7 @@ import {
 } from '../api/conversationCache'
 import { hydratePlanAnswerFromContent, normalizeRestoredInterleavedContent, sanitizePlanAssistantMessage } from '../api/contentInterleave'
 import { ensurePlanTimelineSteps } from '../api/planHydrate'
+import { hydrateTimelineBoundsFromMessageTimes } from '../api/timelineMessageClock'
 
 export interface Conversation {
   id: string
@@ -61,11 +62,14 @@ function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
       intent: m.intent,
       executionPlanId: m.executionPlanId,
       executionPreference: m.executionPreference,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
     }
     if (msg.role === 'assistant') {
       sanitizePlanAssistantMessage(msg)
       hydratePlanAnswerFromContent(msg)
       normalizeRestoredInterleavedContent(msg)
+      hydrateTimelineBoundsFromMessageTimes(msg)
       if (!msg.steps?.length && msg.executionPlanId) {
         msg.steps = ensurePlanTimelineSteps(msg)
       }

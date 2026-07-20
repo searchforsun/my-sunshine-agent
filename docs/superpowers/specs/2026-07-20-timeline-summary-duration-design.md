@@ -26,7 +26,7 @@
 | # | 决策 |
 |---|------|
 | D1 | **纯前端**；不新增 SSE 字段、不落库 `message.durationMs` |
-| D2 | 耗时用**实现线墙钟**（`min(startedAt)` → running 用 `now` / 否则 `max(endedAt)`）；**不含**正文 `contentBlocks` 流式输出；禁止各步 `durationMs` 求和 |
+| D2 | 耗时用**整轮墙钟（含正文流式）**：`streaming` 期间 `now - start` 单调上涨；终态写入 `timelineEndedAt`（刷新用消息 `updatedAt`）；禁止各步 `durationMs` 求和 |
 | D3 | 文案：`正在处理` / `已完成` / `已中断` / `已失败` + 时钟 |
 | D4 | 时钟格式独立：`42s` / `1m20s`（秒取整）；与单步 `formatDuration`（`1.2s`）分离 |
 | D5 | **默认折叠**（含进行中 / 终态）；用户点开后 `userToggled` 覆盖 |
@@ -88,18 +88,17 @@ else: expanded = false   // 进行中 / completed | interrupted | failed 一律�
 
 ## 3. 数据与计算
 
-### 3.1 墙钟（不含正文输出）
+### 3.1 墙钟（含正文输出）
 
-口径：**实现步骤**耗时，不含终稿 `contentBlocks` 流式打字时间。刷新前后同一算法。
+口径：从实现开始到**正文输出结束**的整轮等待；`streaming` 期间单调上涨，终态落 `timelineEndedAt`，刷新不回退。
 
 | 端点 | 取值 |
 |------|------|
-| **start** | `min(steps[].startedAt ?? ts)`；皆无则用本条首次 `props.live`（有 running 步）时本地时刻 |
-| **end（实现线仍有 running）** | `Date.now()`，约 200ms tick（仅 `props.live` / `hasActiveStep`） |
-| **end（步骤已齐 / 仅剩正文流 / 终态）** | `max(endedAt)`；无则时钟可空，只显示状态前缀 |
+| **start** | `min(steps[].startedAt ?? ts)`；皆无则 `timelineStartedAt` / 消息 `createdAt` |
+| **end（streaming / 未终态）** | `Date.now()`（200ms tick） |
+| **end（completed / interrupted / failed）** | `timelineEndedAt`（正文结束时写入）；刷新 hydrate 用消息 `updatedAt` |
 
-**禁止**用离开 `streaming` 的本地时刻当 end（会把正文输出算进去，且刷新不一致）。  
-**禁止**把隐藏的 `generate` 步计入 running/endedAt（正文流式时常挂 running，会导致时钟先涨后缩）。
+正文结束时前端 `stampTimelineEnded`；API `MessageDto.updatedAt` 供刷新兜底。
 
 ### 3.2 时钟格式
 

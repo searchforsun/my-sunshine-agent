@@ -10,6 +10,7 @@ import {
   isAbortError,
   isPageUnloading,
 } from './streamError'
+import { stampTimelineEnded, stampTimelineStarted } from './timelineMessageClock'
 import { apiHeaders } from '../stores/authStore'
 import {
   loadActiveGeneration,
@@ -115,6 +116,7 @@ export function useChatSessions(
     s.loading = true
     s.generationId = undefined
     s.messages.push({ role: 'assistant', content: '', reasoning: '', steps: [], status: 'streaming' })
+    stampTimelineStarted(s.messages[s.messages.length - 1])
 
     s.abort = new AbortController()
     const thisRequestId = ++s.requestId
@@ -195,8 +197,10 @@ export function useChatSessions(
         if (last?.role === 'assistant' && last.status === 'streaming' && !aborted && !isPageUnloading()) {
           hydrateStreamError(last)
           last.status = last.streamError ? 'failed' : 'completed'
+          stampTimelineEnded(last)
         }
         if (last?.role === 'assistant' && last.status === 'completed') {
+          stampTimelineEnded(last)
           normalizeRestoredInterleavedContent(last)
           notifyCompletedIfNeeded(sessionId, last)
           clearActiveGenerationIfMatch(sessionId)
@@ -377,6 +381,7 @@ export function useChatSessions(
 
     s.loading = true
     target.status = 'streaming'
+    stampTimelineStarted(target)
     s.abort = new AbortController()
     const thisRequestId = ++s.requestId
     onProgress?.(conversationId)
@@ -391,6 +396,7 @@ export function useChatSessions(
         clearActiveGenerationIfMatch(conversationId)
         s.generationId = undefined
         target.status = 'interrupted'
+        stampTimelineEnded(target)
         return
       }
 
@@ -399,17 +405,24 @@ export function useChatSessions(
       await consumeChatSseStream(s, response, sseHooks, { resume: true })
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        if (target.status === 'streaming') target.status = 'interrupted'
+        if (target.status === 'streaming') {
+          target.status = 'interrupted'
+          stampTimelineEnded(target)
+        }
         return
       }
       applyStreamError(s.messages, err)
       if (target.status === 'streaming') {
         target.status = target.streamError ? 'failed' : 'interrupted'
+        stampTimelineEnded(target)
       }
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
         if (target.status === 'streaming') target.status = 'completed'
+        if (target.status === 'completed' || target.status === 'interrupted' || target.status === 'failed') {
+          stampTimelineEnded(target)
+        }
         if (target.status === 'completed') {
           normalizeRestoredInterleavedContent(target)
           notifyCompletedIfNeeded(conversationId, target)
@@ -451,6 +464,7 @@ export function useChatSessions(
       if (last.status === 'streaming' || !last.status) {
         last.status = 'interrupted'
       }
+      stampTimelineEnded(last)
     }
     s.abort?.abort()
     s.loading = false

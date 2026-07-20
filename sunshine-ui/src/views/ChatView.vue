@@ -725,6 +725,8 @@ watch(
                 :message-id="msg.id"
                 :message-status="msg.status ?? 'completed'"
                 :message-content="msg.content"
+                :timeline-started-at="msg.timelineStartedAt"
+                :timeline-ended-at="msg.timelineEndedAt"
                 :pending-hitl-confirmations="resolveTimelineContext(msg).pending"
                 @hitl-decided="handleHitlDecision"
               />

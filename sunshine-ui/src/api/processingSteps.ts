@@ -58,7 +58,6 @@ export {
   resolveTimelineElapsedMs,
   resolveTimelineSummaryPrefix,
   formatTimelineSummaryText,
-  hasTimelineSummaryActiveStep,
 } from './processingStepsDisplay'
 
 export {

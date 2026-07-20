@@ -24,4 +24,12 @@ export interface ChatMessage {
   streamError?: string
   intent?: string
   executionPlanId?: string
+  /** 消息创建时间（API ISO 或 epoch ms）— 总览墙钟 start 兜底 */
+  createdAt?: string | number
+  /** 消息最后更新（API）— 终态总览墙钟 end 兜底 */
+  updatedAt?: string | number
+  /** 前端墙钟：进入 streaming 时写入 */
+  timelineStartedAt?: number
+  /** 前端墙钟：正文结束 / 消息终态时写入 */
+  timelineEndedAt?: number
 }

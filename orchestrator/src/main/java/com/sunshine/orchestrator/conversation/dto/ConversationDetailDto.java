@@ -53,6 +53,7 @@ public class ConversationDetailDto {
         private String executionPreference;
         private int seq;
         private Instant createdAt;
+        private Instant updatedAt;
 
         public static MessageDto from(ChatMessageEntity m) {
             MessageDto dto = new MessageDto();
@@ -68,6 +69,7 @@ public class ConversationDetailDto {
             dto.setExecutionPreference(m.getExecutionPreference());
             dto.setSeq(m.getSeq());
             dto.setCreatedAt(m.getCreatedAt());
+            dto.setUpdatedAt(m.getUpdatedAt());
             return dto;
         }
     }

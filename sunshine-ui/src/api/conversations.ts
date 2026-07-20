@@ -30,6 +30,7 @@ export interface ConversationMessage {
   intent?: string
   seq?: number
   createdAt?: string
+  updatedAt?: string
   executionPlanId?: string
   executionPreference?: ExecutionPreference
 }
@@ -114,6 +115,7 @@ function mapDetail(raw: Record<string, unknown>): ConversationDetail {
       intent: m.intent as string | undefined,
       seq: m.seq as number | undefined,
       createdAt: m.createdAt as string | undefined,
+      updatedAt: m.updatedAt as string | undefined,
       executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
       executionPreference: isExecutionPreference(m.executionPreference) ? m.executionPreference : undefined,
     }

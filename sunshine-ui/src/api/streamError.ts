@@ -1,6 +1,7 @@
 import type { ChatMessage } from './chat'
 import { normalizeRestoredInterleavedContent } from './contentInterleave'
 import { ApiError, friendlyErrorMessage } from './apiError'
+import { stampTimelineEnded } from './timelineMessageClock'
 
 let pageUnloading = false
 
@@ -121,6 +122,7 @@ export function applyStreamFailure(msg: ChatMessage, err: unknown): void {
   msg.streamError = detail
   msg.content = stripTrailingStreamError(msg.content ?? '', detail)
   msg.status = isTransientNetworkError(err) ? 'interrupted' : 'failed'
+  stampTimelineEnded(msg)
 }
 
 export function applyStreamErrorFromText(msg: ChatMessage, text: string): void {
@@ -131,6 +133,7 @@ export function applyStreamErrorFromText(msg: ChatMessage, text: string): void {
   if (msg.status !== 'failed' && msg.status !== 'interrupted') {
     msg.status = 'failed'
   }
+  stampTimelineEnded(msg)
 }
 
 /** 流式请求异常（messages 数组版） */

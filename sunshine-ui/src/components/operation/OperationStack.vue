@@ -5,7 +5,6 @@ import {
   formatElapsedClock,
   formatTimelineSummaryText,
   hasRealTaskBoardItems,
-  hasTimelineSummaryActiveStep,
   isSubagentStep,
   resolvePlanIdFromStep,
   resolveTimelineElapsedMs,
@@ -62,8 +61,12 @@ const props = withDefaults(defineProps<{
   pendingHitlConfirmations?: HitlConfirmationPayload[]
   /** Chat 顶层传入时启用总览行；嵌套 Stack / 抽屉勿传 */
   messageStatus?: TimelineMessageStatus
-  /** assistant msg.content，折叠终稿优先（Task 4） */
+  /** assistant msg.content，折叠终稿优先 */
   messageContent?: string
+  /** 墙钟 start（进入 streaming / API createdAt） */
+  timelineStartedAt?: number
+  /** 墙钟 end（正文结束 / API updatedAt） */
+  timelineEndedAt?: number
 }>(), {
   embedHitl: true,
   inlineHitl: true,
@@ -157,16 +160,19 @@ const fallbackStartMs = ref<number | undefined>(undefined)
 const nowMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | undefined
 
-/** 实现线仍有 running（排除 generate）；消息已终态则强制停表，避免残留 running 步继续计时 */
-const summaryPipelineLive = computed(() => {
-  if (!summaryEnabled.value) return false
-  const status = props.messageStatus
-  if (status === 'completed' || status === 'interrupted' || status === 'failed') return false
-  return hasTimelineSummaryActiveStep(effectiveSteps.value)
+const isMessageTerminal = computed(() => {
+  const s = props.messageStatus
+  return s === 'completed' || s === 'interrupted' || s === 'failed'
+})
+
+/** 含正文：streaming（或未终态且 live）期间用 now 单调上涨；终态停表 */
+const summaryClockLive = computed(() => {
+  if (!summaryEnabled.value || isMessageTerminal.value) return false
+  return props.messageStatus === 'streaming' || !!props.live
 })
 
 watch(
-  summaryPipelineLive,
+  summaryClockLive,
   (live) => {
     if (!live) return
     if (fallbackStartMs.value == null) fallbackStartMs.value = Date.now()
@@ -175,7 +181,7 @@ watch(
 )
 
 watch(
-  summaryPipelineLive,
+  summaryClockLive,
   (needTick) => {
     if (tickTimer) {
       clearInterval(tickTimer)
@@ -194,12 +200,12 @@ onUnmounted(() => {
 
 const summaryText = computed(() => {
   if (!summaryEnabled.value) return ''
-  const pipelineLive = summaryPipelineLive.value
   const elapsed = resolveTimelineElapsedMs({
     steps: effectiveSteps.value,
-    live: pipelineLive,
+    live: summaryClockLive.value,
     nowMs: nowMs.value,
-    fallbackStartMs: fallbackStartMs.value,
+    fallbackStartMs: props.timelineStartedAt ?? fallbackStartMs.value,
+    fallbackEndMs: props.timelineEndedAt,
   })
   const clock = elapsed != null ? formatElapsedClock(elapsed) : ''
   const prefix = resolveTimelineSummaryPrefix({
