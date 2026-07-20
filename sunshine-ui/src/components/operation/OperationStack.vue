@@ -26,8 +26,10 @@ import {
 import type { ContentBlock } from '../../api/contentInterleave'
 import {
   contentRowsAfterStep,
+  isContentFullyInterleaved,
   isHiddenReactTimelineStep,
   orphanContentRows,
+  resolveCollapsedAnswerText,
   resolveLastContentBlockIndex,
 } from '../../api/contentInterleave'
 import OperationCard from './OperationCard.vue'
@@ -80,16 +82,16 @@ const summaryEnabled = computed(() => props.messageStatus !== undefined)
 const timelineUserToggled = ref(false)
 const timelineExpandedOverride = ref(false)
 
-function isTimelineBodyExpanded(): boolean {
+const timelineBodyExpanded = computed(() => {
   if (!summaryEnabled.value) return true
   if (timelineUserToggled.value) return timelineExpandedOverride.value
   if (props.live || props.messageStatus === 'streaming') return true
   return false
-}
+})
 
 function toggleTimelineBody(): void {
   if (!summaryEnabled.value) return
-  const next = !isTimelineBodyExpanded()
+  const next = !timelineBodyExpanded.value
   timelineUserToggled.value = true
   timelineExpandedOverride.value = next
 }
@@ -123,6 +125,27 @@ const effectiveSteps = computed(() => ensurePlanTimelineSteps({
   steps: props.steps,
   executionPlanId: props.executionPlanId,
 }))
+
+const collapsedAnswerText = computed(() => {
+  if (!summaryEnabled.value || timelineBodyExpanded.value) return ''
+  return resolveCollapsedAnswerText({
+    role: 'assistant',
+    content: props.messageContent ?? '',
+    steps: effectiveSteps.value,
+    contentBlocks: props.contentBlocks,
+  })
+})
+
+/** 仅 interleaved 时由 Stack 渲染折叠终稿，避免与底栏 msg-md 双显 */
+const showCollapsedAnswer = computed(() => {
+  if (!collapsedAnswerText.value) return false
+  return isContentFullyInterleaved({
+    role: 'assistant',
+    content: props.messageContent ?? '',
+    steps: effectiveSteps.value,
+    contentBlocks: props.contentBlocks,
+  })
+})
 
 const fallbackStartMs = ref<number | undefined>(undefined)
 const fallbackEndMs = ref<number | undefined>(undefined)
@@ -276,7 +299,7 @@ const orphanContent = computed(() => {
       v-if="summaryEnabled"
       class="op-line timeline-summary"
       :class="{
-        'is-expanded': isTimelineBodyExpanded(),
+        'is-expanded': timelineBodyExpanded,
         'is-clickable': true,
         'is-running': live || messageStatus === 'streaming',
       }"
@@ -305,7 +328,7 @@ const orphanContent = computed(() => {
       </button>
     </div>
 
-    <template v-if="isTimelineBodyExpanded()">
+    <template v-if="timelineBodyExpanded">
       <template v-for="step in displaySteps" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
         <PlanWorkflowPanel
           v-if="step.phase === 'plan' && showPlanDag"
@@ -385,6 +408,15 @@ const orphanContent = computed(() => {
         </div>
       </template>
     </template>
+    <div
+      v-else-if="showCollapsedAnswer"
+      class="op-inline-content timeline-collapsed-answer"
+    >
+      <span class="op-gutter" aria-hidden="true" />
+      <div class="op-inline-body">
+        <StaticMarkdown :source="collapsedAnswerText" />
+      </div>
+    </div>
   </div>
 </template>
 
