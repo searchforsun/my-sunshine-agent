@@ -188,6 +188,25 @@ export function resolvePlanAnswerText(
   return msg.content?.trim() ?? ''
 }
 
+/** 折叠时间线时展示的唯一终稿（不按 afterStepId 穿插） */
+export function resolveCollapsedAnswerText(
+  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
+): string {
+  if (msg.steps?.some(s => s.phase === 'plan')) {
+    return resolvePlanAnswerText(msg).trim()
+  }
+  const content = msg.content?.trim() ?? ''
+  if (content && !isPlanDrawerLeakContent(msg)) return content
+  const joined = joinedContentBlocks(msg.contentBlocks).trim()
+  if (joined) return joined
+  const blocks = msg.contentBlocks
+  if (blocks?.length) {
+    const last = blocks[blocks.length - 1]?.text?.trim() ?? ''
+    if (last) return last
+  }
+  return content
+}
+
 /** node-answer.result 落步后，同步主时间线 contentBlocks / message.content（plan + 静态 workflow 共用） */
 export function syncPlanAnswerContentFromStep(
   msg: Pick<ChatMessage, 'content' | 'steps' | 'contentBlocks'>,
