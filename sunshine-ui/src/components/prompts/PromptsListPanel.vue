@@ -66,7 +66,7 @@ const showKindTag = () => page.activeTab === 'all'
               <div class="prompt-row-head-right">
                 <span
                   v-if="item.kind === 'routing-rule'"
-                  class="priority-badge"
+                  class="meta-chip priority-chip"
                   :title="`优先级 ${item.priority}（越大越优先）`"
                 >
                   P{{ item.priority }}
@@ -85,7 +85,7 @@ const showKindTag = () => page.activeTab === 'all'
                 v-if="showKindTag()"
                 size="tiny"
                 :bordered="false"
-                class="kind-tag"
+                class="meta-chip"
               >
                 {{ promptKindLabel(item.kind) }}
               </NTag>
@@ -228,27 +228,27 @@ const showKindTag = () => page.activeTab === 'all'
   max-width: 100%;
 }
 
-.kind-tag {
-  background: transparent !important;
-  border: 1px solid var(--sun-border) !important;
-  color: var(--sun-text-secondary) !important;
-}
-
-.priority-badge {
+.meta-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--sun-border);
-  background: transparent;
-  color: var(--sun-text-secondary);
+  padding: 1px 7px;
+  border-radius: 4px;
+  border: none !important;
+  background: color-mix(in srgb, var(--sun-text) 8%, transparent) !important;
+  color: var(--sun-text-secondary) !important;
   font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  --n-color: color-mix(in srgb, var(--sun-text) 8%, transparent) !important;
+  --n-text-color: var(--sun-text-secondary) !important;
+  --n-border: none !important;
+}
+
+.priority-chip {
+  min-width: 36px;
   font-weight: 600;
   font-family: var(--sun-font-mono, monospace);
-  line-height: 1.2;
   letter-spacing: 0.02em;
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--sun-text) 8%, transparent);
 }
 </style>

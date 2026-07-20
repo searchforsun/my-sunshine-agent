@@ -30,6 +30,7 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
             v-if="page.detail.kind !== 'react-prompt' && page.detail.kind !== 'routing-rule'"
             size="tiny"
             :bordered="false"
+            class="meta-chip"
           >
             {{ promptKindLabel(page.detail.kind) }}
           </NTag>
@@ -201,6 +202,17 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   font-size: 12px;
   color: var(--sun-text-muted);
   font-family: var(--sun-font-mono, monospace);
+}
+
+.meta-chip {
+  --n-color: color-mix(in srgb, var(--sun-text) 8%, transparent) !important;
+  --n-text-color: var(--sun-text-secondary) !important;
+  --n-border: none !important;
+  background: color-mix(in srgb, var(--sun-text) 8%, transparent) !important;
+  border: none !important;
+  color: var(--sun-text-secondary) !important;
+  font-size: 11px !important;
+  font-weight: 500;
 }
 
 .detail-actions {
