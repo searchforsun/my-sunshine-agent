@@ -18,7 +18,7 @@ export {
   isWorkflowNodeStepId,
   STEP_ORDER,
 } from './processingStepsNormalize'
-export type { RewriteDetailView } from './processingStepsDisplay'
+export type { RewriteDetailView, TimelineMessageStatus } from './processingStepsDisplay'
 export {
   formatStepLabel,
   formatDuration,
@@ -54,6 +54,10 @@ export {
   totalDuration,
   summarizeSteps,
   isWorkflowAnswerStep,
+  formatElapsedClock,
+  resolveTimelineElapsedMs,
+  resolveTimelineSummaryPrefix,
+  formatTimelineSummaryText,
 } from './processingStepsDisplay'
 
 export {

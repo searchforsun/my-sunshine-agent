@@ -510,3 +510,61 @@ export function summarizeSteps(steps: ProcessingStep[]): string {
   if (total > 0) parts.push(formatDuration(total))
   return parts.join(' · ')
 }
+
+export function formatElapsedClock(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return ''
+  const totalSec = Math.floor(ms / 1000)
+  if (totalSec < 60) return `${totalSec}s`
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return `${m}m${s}s`
+}
+
+export function resolveTimelineElapsedMs(opts: {
+  steps: ProcessingStep[]
+  live: boolean
+  nowMs?: number
+  fallbackStartMs?: number
+  fallbackEndMs?: number
+}): number | undefined {
+  let start: number | undefined
+  let maxEnded: number | undefined
+  for (const step of opts.steps) {
+    const t = step.startedAt ?? step.ts
+    if (typeof t === 'number' && Number.isFinite(t)) {
+      start = start == null ? t : Math.min(start, t)
+    }
+    if (typeof step.endedAt === 'number' && Number.isFinite(step.endedAt)) {
+      maxEnded = maxEnded == null ? step.endedAt : Math.max(maxEnded, step.endedAt)
+    }
+  }
+  if (start == null && opts.fallbackStartMs != null) start = opts.fallbackStartMs
+  if (start == null) return undefined
+  let end: number | undefined
+  if (opts.live) {
+    end = opts.nowMs ?? Date.now()
+  } else if (opts.fallbackEndMs != null) {
+    end = opts.fallbackEndMs
+  } else {
+    end = maxEnded
+  }
+  if (end == null || end < start) return undefined
+  return end - start
+}
+
+export type TimelineMessageStatus = 'streaming' | 'interrupted' | 'failed' | 'completed'
+
+export function resolveTimelineSummaryPrefix(opts: {
+  live: boolean
+  messageStatus?: TimelineMessageStatus
+}): string {
+  if (opts.live || opts.messageStatus === 'streaming') return '正在进行'
+  if (opts.messageStatus === 'interrupted') return '已中断'
+  if (opts.messageStatus === 'failed') return '失败'
+  return '已完成'
+}
+
+export function formatTimelineSummaryText(prefix: string, clock: string): string {
+  const c = clock.trim()
+  return c ? `${prefix} ${c}` : prefix
+}
