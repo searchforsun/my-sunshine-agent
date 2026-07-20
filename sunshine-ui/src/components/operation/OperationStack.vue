@@ -157,10 +157,13 @@ const fallbackStartMs = ref<number | undefined>(undefined)
 const nowMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | undefined
 
-/** 实现线仍有 running（排除 generate）；正文流式阶段不推进时钟 */
-const summaryPipelineLive = computed(() =>
-  summaryEnabled.value && hasTimelineSummaryActiveStep(effectiveSteps.value),
-)
+/** 实现线仍有 running（排除 generate）；消息已终态则强制停表，避免残留 running 步继续计时 */
+const summaryPipelineLive = computed(() => {
+  if (!summaryEnabled.value) return false
+  const status = props.messageStatus
+  if (status === 'completed' || status === 'interrupted' || status === 'failed') return false
+  return hasTimelineSummaryActiveStep(effectiveSteps.value)
+})
 
 watch(
   summaryPipelineLive,
@@ -191,7 +194,7 @@ onUnmounted(() => {
 
 const summaryText = computed(() => {
   if (!summaryEnabled.value) return ''
-  const pipelineLive = hasTimelineSummaryActiveStep(effectiveSteps.value)
+  const pipelineLive = summaryPipelineLive.value
   const elapsed = resolveTimelineElapsedMs({
     steps: effectiveSteps.value,
     live: pipelineLive,

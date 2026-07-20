@@ -83,6 +83,18 @@ describe('resolveTimelineElapsedMs', () => {
       nowMs: 20_000,
     })).toBe(4_000)
   })
+
+  it('terminal message must not keep ticking even if a step stuck running', () => {
+    // UI: messageStatus=completed → caller passes live=false
+    expect(resolveTimelineElapsedMs({
+      steps: [
+        step({ startedAt: 1_000, endedAt: 5_000 }),
+        step({ id: 'think', lifecycle: 'running', startedAt: 4_000 }),
+      ],
+      live: false,
+      nowMs: 200_000,
+    })).toBe(4_000)
+  })
 })
 
 describe('resolveTimelineSummaryPrefix', () => {
