@@ -31,10 +31,13 @@ const props = withDefaults(defineProps<{
   executionPlanId?: string
   /** 为 false 时不在卡片内嵌 HITL（Plan 抽屉等外层承载） */
   embedHitl?: boolean
+  /** 整段时间线折叠预览：不显示 chevron、不可点开详情 */
+  hideChevron?: boolean
   pendingHitlConfirmation?: HitlConfirmationPayload
   hitlUiKey?: string
 }>(), {
   embedHitl: true,
+  hideChevron: false,
   pendingHitlConfirmation: undefined,
   hitlUiKey: '',
 })
@@ -116,8 +119,8 @@ const expandPanels = computed(() => resolveStepExpandPanels(props.step))
 const expandSummary = computed(() => expandPanels.value.lead)
 const expandBody = computed(() => expandPanels.value.body)
 
-const canExpand = computed(() => hasExpandableContent(props.step))
-const rowClickable = computed(() => canExpand.value || isSandboxTool.value)
+const canExpand = computed(() => !props.hideChevron && hasExpandableContent(props.step))
+const rowClickable = computed(() => canExpand.value || (!props.hideChevron && isSandboxTool.value))
 
 const planLinkId = computed(() => {
   if (props.step.phase !== 'plan') return undefined

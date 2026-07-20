@@ -131,7 +131,8 @@ const isTimelineProcessing = computed(() =>
 )
 
 const collapsedAnswerText = computed(() => {
-  if (!summaryEnabled.value || timelineBodyExpanded.value || isTimelineProcessing.value) return ''
+  if (!summaryEnabled.value || timelineBodyExpanded.value) return ''
+  // 正在处理 / 终态折叠：均取最后一段 contentBlock（进行中也要露流式正文）
   return resolveCollapsedAnswerText({
     role: 'assistant',
     content: props.messageContent ?? '',
@@ -142,7 +143,7 @@ const collapsedAnswerText = computed(() => {
 
 /** 终态折叠：仅 interleaved 时由 Stack 渲染终稿，避免与底栏 msg-md 双显 */
 const showCollapsedAnswer = computed(() => {
-  if (!collapsedAnswerText.value) return false
+  if (!collapsedAnswerText.value || isTimelineProcessing.value) return false
   return isContentFullyInterleaved({
     role: 'assistant',
     content: props.messageContent ?? '',
@@ -252,6 +253,11 @@ const collapsedPreviewStep = computed(() => {
   const steps = displaySteps.value
   return steps.length ? steps[steps.length - 1] : undefined
 })
+
+/** 正在处理折叠：在步骤概要下继续展示最后一段正文（contentBlocks） */
+const showProcessingCollapsedAnswer = computed(() =>
+  !!collapsedPreviewStep.value && !!collapsedAnswerText.value,
+)
 
 const pendingList = computed(() =>
   normalizePendingHitlList(props.pendingHitlConfirmations ?? props.pendingHitlConfirmation),
@@ -428,7 +434,7 @@ const orphanContent = computed(() => {
         </div>
       </template>
     </template>
-    <!-- 正在处理折叠：仅最后一步概要行 -->
+    <!-- 正在处理折叠：最后一步概要（无 chevron）+ 最后一段正文 -->
     <template v-else-if="collapsedPreviewStep">
       <PlanWorkflowPanel
         v-if="collapsedPreviewStep.phase === 'plan' && showPlanDag"
@@ -459,10 +465,23 @@ const orphanContent = computed(() => {
         v-else
         :step="collapsedPreviewStep"
         :expanded="false"
+        :hide-chevron="true"
         :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
         :execution-plan-id="executionPlanId"
         :embed-hitl="false"
       />
+      <div
+        v-if="showProcessingCollapsedAnswer"
+        class="op-inline-content timeline-collapsed-answer"
+      >
+        <span class="op-gutter" aria-hidden="true" />
+        <div class="op-inline-body" :class="{ 'is-streaming-md': streamLive || live }">
+          <StaticMarkdown
+            :source="collapsedAnswerText"
+            :defer-mermaid="!!(streamLive || live)"
+          />
+        </div>
+      </div>
     </template>
     <div
       v-else-if="showCollapsedAnswer"
