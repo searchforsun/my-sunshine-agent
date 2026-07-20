@@ -130,6 +130,15 @@ const reactPromptId = computed({
     else delete plan.params.reactPromptId
   },
 })
+
+const matchType = computed(() => page.routingForm.matchType || 'regex')
+const showMatch = computed(() => matchType.value === 'regex')
+const showDomainGroups = computed(() => matchType.value === 'structural')
+const showWorkflowId = computed(() => planMode.value === 'workflow')
+const showReactPrompt = computed(() => planMode.value === 'react')
+const showPlanParams = computed(() =>
+  planMode.value === 'workflow' || planMode.value === 'react',
+)
 </script>
 
 <template>
@@ -260,7 +269,7 @@ const reactPromptId = computed({
             <header class="form-section-head">
               <h4 class="form-section-title">匹配条件</h4>
             </header>
-            <div class="form-grid">
+            <div class="form-grid" :class="{ 'form-grid-single': !showMatch }">
               <NFormItem>
                 <template #label>
                   <span class="field-label-row">
@@ -276,7 +285,7 @@ const reactPromptId = computed({
                   :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
-              <NFormItem>
+              <NFormItem v-if="showMatch">
                 <template #label>
                   <span class="field-label-row">
                     match
@@ -307,74 +316,74 @@ const reactPromptId = computed({
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem>
-              <template #label>
-                <span class="field-label-row">
-                  domainGroups
-                  <ConfigFieldHelp :text="routingFieldHelp('domainGroups')" />
-                </span>
-              </template>
-              <NInput
-                v-model:value="domainGroupsText"
-                class="sun-field sun-field-grow mono"
-                type="textarea"
-                :autosize="{ minRows: 3, maxRows: 10 }"
-                placeholder="knowledge: 制度, 检索"
-                :disabled="!page.isContentEditable || page.isActionBusy"
-              />
-            </NFormItem>
-            <NFormItem>
-              <template #label>
-                <span class="field-label-row">
-                  minDomainGroups
-                  <ConfigFieldHelp :text="routingFieldHelp('minDomainGroups')" />
-                </span>
-              </template>
-              <NInputNumber
-                v-model:value="page.routingForm.minDomainGroups"
-                class="sun-field"
-                :min="1"
-                :show-button="false"
-                :disabled="!page.isContentEditable || page.isActionBusy"
-              />
-            </NFormItem>
+            <template v-if="showDomainGroups">
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    domainGroups
+                    <ConfigFieldHelp :text="routingFieldHelp('domainGroups')" />
+                  </span>
+                </template>
+                <NInput
+                  v-model:value="domainGroupsText"
+                  class="sun-field sun-field-grow mono"
+                  type="textarea"
+                  :autosize="{ minRows: 3, maxRows: 10 }"
+                  placeholder="knowledge: 制度, 检索"
+                  :disabled="!page.isContentEditable || page.isActionBusy"
+                />
+              </NFormItem>
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    minDomainGroups
+                    <ConfigFieldHelp :text="routingFieldHelp('minDomainGroups')" />
+                  </span>
+                </template>
+                <NInputNumber
+                  v-model:value="page.routingForm.minDomainGroups"
+                  class="sun-field"
+                  :min="1"
+                  :show-button="false"
+                  :disabled="!page.isContentEditable || page.isActionBusy"
+                />
+              </NFormItem>
+            </template>
           </section>
 
           <section class="form-section">
             <header class="form-section-head">
               <h4 class="form-section-title">目标 Plan</h4>
             </header>
-            <div class="form-grid">
-              <NFormItem>
-                <template #label>
-                  <span class="field-label-row">
-                    mode
-                    <ConfigFieldHelp :text="routingFieldHelp('mode')" />
-                  </span>
-                </template>
-                <NSelect
-                  v-model:value="planMode"
-                  class="sun-field"
-                  :options="planModeOptions"
-                  :disabled="!page.isContentEditable || page.isActionBusy"
-                />
-              </NFormItem>
-              <NFormItem>
-                <template #label>
-                  <span class="field-label-row">
-                    workflowId
-                    <ConfigFieldHelp :text="routingFieldHelp('workflowId')" />
-                  </span>
-                </template>
-                <NInput
-                  v-model:value="workflowId"
-                  class="sun-field"
-                  placeholder="仅 workflow 模式需要"
-                  :disabled="!page.isContentEditable || page.isActionBusy"
-                />
-              </NFormItem>
-            </div>
-            <NFormItem v-if="planMode === 'react'">
+            <NFormItem>
+              <template #label>
+                <span class="field-label-row">
+                  mode
+                  <ConfigFieldHelp :text="routingFieldHelp('mode')" />
+                </span>
+              </template>
+              <NSelect
+                v-model:value="planMode"
+                class="sun-field"
+                :options="planModeOptions"
+                :disabled="!page.isContentEditable || page.isActionBusy"
+              />
+            </NFormItem>
+            <NFormItem v-if="showWorkflowId">
+              <template #label>
+                <span class="field-label-row">
+                  workflowId
+                  <ConfigFieldHelp :text="routingFieldHelp('workflowId')" />
+                </span>
+              </template>
+              <NInput
+                v-model:value="workflowId"
+                class="sun-field"
+                placeholder="如 finance-list"
+                :disabled="!page.isContentEditable || page.isActionBusy"
+              />
+            </NFormItem>
+            <NFormItem v-if="showReactPrompt">
               <template #label>
                 <span class="field-label-row">
                   React 提示词
@@ -392,7 +401,7 @@ const reactPromptId = computed({
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem>
+            <NFormItem v-if="showPlanParams">
               <template #label>
                 <span class="field-label-row">
                   params
@@ -586,6 +595,10 @@ const reactPromptId = computed({
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+}
+
+.form-grid-single {
+  grid-template-columns: 1fr;
 }
 
 .field-label-row {
