@@ -242,9 +242,6 @@ const reactPromptId = computed({
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <p v-if="!page.isContentEditable" class="readonly-hint">
-              当前为已发布版本，不可直接编辑。请通过右上角「⋯ → 复制为草稿」后再改。
-            </p>
           </section>
 
           <section class="form-section">
@@ -503,10 +500,6 @@ const reactPromptId = computed({
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 18px 20px;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-  background: var(--sun-black);
 }
 
 .form-section-head {

@@ -134,9 +134,6 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <p v-if="!page.isContentEditable" class="readonly-hint">
-              当前为已发布版本，不可直接编辑。请通过右上角「⋯ → 复制为草稿」后再改。
-            </p>
           </section>
         </NForm>
       </div>
@@ -297,21 +294,11 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 18px 20px;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-  background: var(--sun-black);
 }
 
 .content-input :deep(.n-input__textarea-el) {
   font-size: var(--sun-font-base, 14px);
   line-height: 1.6;
-}
-
-.readonly-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--sun-text-muted);
 }
 
 .action-btn {
