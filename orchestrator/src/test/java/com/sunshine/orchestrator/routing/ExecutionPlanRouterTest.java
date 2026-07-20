@@ -1,26 +1,24 @@
 package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.catalog.ExpertCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
-import com.sunshine.orchestrator.config.RoutingRuleProperties;
+import com.sunshine.orchestrator.expert.ExpertBindingParser;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
-import com.sunshine.orchestrator.routing.policy.GoldenRuleRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
-import com.sunshine.orchestrator.routing.policy.PeerStructuralRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
-import com.sunshine.orchestrator.catalog.ExpertCatalogService;
-import com.sunshine.orchestrator.expert.ExpertBindingParser;
-import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
-import com.sunshine.orchestrator.routing.policy.RoutingContext;
-import com.sunshine.orchestrator.routing.policy.StructuralRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.UnifiedRuleRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
-import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import com.sunshine.orchestrator.skill.SkillBindingSource;
 import com.sunshine.orchestrator.skill.SkillDiscoveryService;
+import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,8 +43,6 @@ class ExecutionPlanRouterTest {
     @Mock
     private SkillBindingParser skillBindingParser;
     @Mock
-    private RuleBasedRouter ruleBasedRouter;
-    @Mock
     private IntentRouter intentRouter;
     @Mock
     private QueryRewriteService queryRewriteService;
@@ -61,23 +57,18 @@ class ExecutionPlanRouterTest {
 
     @BeforeEach
     void setUp() {
-        RoutingRuleProperties routingProps = structuralFixture();
-        StructuralPlanMatcher structuralMatcher = new StructuralPlanMatcher(routingProps);
-        PeerPatternMatcher peerMatcher = new PeerPatternMatcher(routingProps);
+        PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
+        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
         WorkflowBindingParser workflowBindingParser = new WorkflowBindingParser(workflowCatalog);
         ExpertBindingParser expertBindingParser = new ExpertBindingParser(expertCatalogService);
         var chain = new RoutingPolicyChain(List.of(
                 new WorkflowBindingRoutingPolicy(workflowBindingParser),
                 new ExpertBindingRoutingPolicy(expertBindingParser),
-                new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
-                new StructuralRoutingPolicy(structuralMatcher),
-                new PeerStructuralRoutingPolicy(peerMatcher, structuralMatcher),
-                new GoldenRuleRoutingPolicy(ruleBasedRouter, structuralMatcher, peerMatcher),
+                skillPolicy,
+                new UnifiedRuleRoutingPolicy(catalogHolder),
                 new LlmClassifierRoutingPolicy(intentRouter, queryRewriteService)));
         router = new ExecutionPlanRouter(chain, new SkillDiscoveryService(skillCatalogService),
-                new ForcedExecutionRouter(
-                        new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
-                        ruleBasedRouter, intentRouter),
+                new ForcedExecutionRouter(skillPolicy, catalogHolder, intentRouter),
                 skillBindingParser);
         when(skillBindingParser.stripAtMention(org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -95,7 +86,7 @@ class ExecutionPlanRouterTest {
 
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
-        verify(ruleBasedRouter, never()).match(query);
+        assertThat(plan.reason()).isEqualTo("rule:" + RoutingCatalogFixtures.STRUCTURAL_ID);
         verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.anyString());
     }
 
@@ -109,7 +100,6 @@ class ExecutionPlanRouterTest {
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        verify(ruleBasedRouter, never()).match(org.mockito.ArgumentMatchers.anyString());
         verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.anyString());
     }
 
@@ -131,12 +121,13 @@ class ExecutionPlanRouterTest {
 
     @Test
     void ruleHitSkipsIntentRewrite() {
-        when(skillBindingParser.parse("年假几天"))
-                .thenReturn(SkillBindingOutcome.none("年假几天"));
-        ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "rule");
-        when(ruleBasedRouter.match("年假几天")).thenReturn(java.util.Optional.of(plan));
+        String query = "有哪些待审批报销";
+        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
 
-        assertThat(router.route("年假几天").block()).isEqualTo(plan);
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("finance-list");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
         verify(queryRewriteService, never()).rewriteForIntent(org.mockito.ArgumentMatchers.anyString());
         verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.anyString());
     }
@@ -145,7 +136,6 @@ class ExecutionPlanRouterTest {
     void shortQueryUsesIntentRewriteBeforeClassify() {
         when(skillBindingParser.parse("待审批"))
                 .thenReturn(SkillBindingOutcome.none("待审批"));
-        when(ruleBasedRouter.match("待审批")).thenReturn(java.util.Optional.empty());
         when(queryRewriteService.shouldRewriteIntent("待审批")).thenReturn(true);
         when(queryRewriteService.rewriteForIntent("待审批", null, null))
                 .thenReturn(QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销消息", 0));
@@ -163,7 +153,6 @@ class ExecutionPlanRouterTest {
         String query = "年假可以请几天";
         when(skillBindingParser.parse(query))
                 .thenReturn(SkillBindingOutcome.none(query));
-        when(ruleBasedRouter.match(query)).thenReturn(java.util.Optional.empty());
         when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
         ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm");
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
@@ -171,22 +160,5 @@ class ExecutionPlanRouterTest {
 
         assertThat(router.route(query).block()).isEqualTo(plan);
         verify(queryRewriteService, never()).rewriteForIntent(org.mockito.ArgumentMatchers.anyString());
-    }
-
-    private static RoutingRuleProperties structuralFixture() {
-        RoutingRuleProperties props = new RoutingRuleProperties();
-        RoutingRuleProperties.Structural structural = new RoutingRuleProperties.Structural();
-        structural.setEnabled(true);
-        structural.setMinDomainGroups(2);
-        structural.setMultiStepPatterns(List.of(
-                "先.+再",
-                "再.+(并|然后|接着)",
-                "并对.+?(分析|审查|检查|评估)"));
-        structural.setDomainGroups(Map.of(
-                "knowledge", List.of("制度", "检索"),
-                "finance", List.of("待审批", "待办", "拉"),
-                "analysis", List.of("分析", "润色", "合规")));
-        props.setStructural(structural);
-        return props;
     }
 }

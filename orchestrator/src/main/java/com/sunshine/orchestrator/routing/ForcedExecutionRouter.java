@@ -3,8 +3,10 @@ package com.sunshine.orchestrator.routing;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.UnifiedRuleRoutingPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -25,7 +27,7 @@ public class ForcedExecutionRouter {
     private static final String REASON_PEER = "user:forced-peer-collab";
 
     private final SkillBindingRoutingPolicy skillBindingRoutingPolicy;
-    private final RuleBasedRouter ruleBasedRouter;
+    private final PromptCatalogHolder promptCatalogHolder;
     private final IntentRouter intentRouter;
 
     public Mono<ExecutionPlan> resolve(RoutingContext ctx, ExecutionPreference preference, String workflowId) {
@@ -83,7 +85,9 @@ public class ForcedExecutionRouter {
             return Mono.just(new ExecutionPlan(
                     ExecutionMode.WORKFLOW, workflowId.strip(), Map.of(), REASON_WORKFLOW));
         }
-        Optional<ExecutionPlan> ruleHit = ruleBasedRouter.match(userMessage).filter(p -> p.mode() == ExecutionMode.WORKFLOW);
+        Optional<ExecutionPlan> ruleHit = UnifiedRuleRoutingPolicy
+                .match(promptCatalogHolder.snapshot().routingRules(), userMessage)
+                .filter(p -> p.mode() == ExecutionMode.WORKFLOW);
         if (ruleHit.isPresent()) {
             ExecutionPlan plan = ruleHit.get();
             return Mono.just(new ExecutionPlan(

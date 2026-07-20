@@ -2,9 +2,9 @@ package com.sunshine.orchestrator.routing.policy;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
-import com.sunshine.orchestrator.routing.StructuralPlanMatcher;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import com.sunshine.orchestrator.skill.SkillBindingSource;
@@ -23,7 +23,7 @@ import java.util.Optional;
 public class SkillBindingRoutingPolicy implements RoutingPolicy {
 
     private final SkillBindingParser skillBindingParser;
-    private final StructuralPlanMatcher structuralPlanMatcher;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     @Override
     public int order() {
@@ -52,7 +52,8 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
             case HINT_PATTERN -> "skill:hint";
             case CLIENT -> "skill:client";
         };
-        if (structuralPlanMatcher.looksLikeMultiStepPlan(binding.effectiveQuery())) {
+        if (UnifiedRuleRoutingPolicy.looksLikeStructural(
+                promptCatalogHolder.snapshot().routingRules(), binding.effectiveQuery())) {
             params.put(SkillBindingOutcome.PARAM_PLANNER_MODE, SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
             return Mono.just(Optional.of(new ExecutionPlan(
                     ExecutionMode.PLAN_WORKFLOW, null, params, reason + ":5b-skill-plan")));

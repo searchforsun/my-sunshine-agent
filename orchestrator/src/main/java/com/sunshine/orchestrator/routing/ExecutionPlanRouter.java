@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-/** 路由入口 — 委托 RoutingPolicyChain（Skill → Structural → GoldenRule → LLM）+ Skill 校验 */
+/** 路由入口 — 委托 RoutingPolicyChain（L0 绑定 → UnifiedRule → LLM）+ Skill 校验 */
 @Component
 @RequiredArgsConstructor
 public class ExecutionPlanRouter {

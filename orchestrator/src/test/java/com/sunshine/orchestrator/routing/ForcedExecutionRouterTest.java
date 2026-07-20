@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,15 +24,15 @@ class ForcedExecutionRouterTest {
     @Mock
     private SkillBindingRoutingPolicy skillBindingRoutingPolicy;
     @Mock
-    private RuleBasedRouter ruleBasedRouter;
-    @Mock
     private IntentRouter intentRouter;
 
+    private PromptCatalogHolder catalogHolder;
     private ForcedExecutionRouter router;
 
     @BeforeEach
     void setUp() {
-        router = new ForcedExecutionRouter(skillBindingRoutingPolicy, ruleBasedRouter, intentRouter);
+        catalogHolder = RoutingCatalogFixtures.seedHolder();
+        router = new ForcedExecutionRouter(skillBindingRoutingPolicy, catalogHolder, intentRouter);
     }
 
     @Test
@@ -77,8 +78,19 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
+    void resolve_workflow_fromCatalogRule() {
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("有哪些待审批报销", null, ExecutionPreference.WORKFLOW, null, null),
+                ExecutionPreference.WORKFLOW, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(plan.workflowId()).isEqualTo("finance-list");
+        assertThat(plan.reason()).isEqualTo("user:forced-workflow");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
+    }
+
+    @Test
     void resolve_workflow_fromIntentClassifier() {
-        when(ruleBasedRouter.match("年假制度")).thenReturn(Optional.empty());
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));

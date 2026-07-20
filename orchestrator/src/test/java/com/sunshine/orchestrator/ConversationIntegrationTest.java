@@ -22,6 +22,7 @@ import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
+import com.sunshine.testsupport.PromptCatalogSeedTestConfig;
 import com.sunshine.testsupport.SseEventTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -75,7 +76,7 @@ import static org.mockito.Mockito.when;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
 @ActiveProfiles("test")
-@Import(EmbeddedRedisTestConfig.class)
+@Import({EmbeddedRedisTestConfig.class, PromptCatalogSeedTestConfig.class})
 class ConversationIntegrationTest {
 
     private static final String ALICE = "alice";
@@ -127,6 +128,8 @@ class ConversationIntegrationTest {
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
         }
+        when(intentRouter.classifyPlan(any(com.sunshine.orchestrator.routing.policy.RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
         when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
         when(llmGateway.streamWithMemory(any(MemoryContext.class), anyString()))

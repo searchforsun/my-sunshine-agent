@@ -6,28 +6,18 @@ import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 
-import com.sunshine.orchestrator.config.RoutingRuleProperties;
-
 import com.sunshine.orchestrator.catalog.ExpertCatalogIndexEntry;
 import com.sunshine.orchestrator.catalog.ExpertCatalogService;
 import com.sunshine.orchestrator.expert.ExpertBindingParser;
 import com.sunshine.orchestrator.expert.ExpertCollaborationParams;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
 import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
-
-import com.sunshine.orchestrator.routing.policy.GoldenRuleRoutingPolicy;
-
 import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
-
-import com.sunshine.orchestrator.routing.policy.PeerStructuralRoutingPolicy;
-
 import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
-
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
-
-import com.sunshine.orchestrator.routing.policy.StructuralRoutingPolicy;
-
+import com.sunshine.orchestrator.routing.policy.UnifiedRuleRoutingPolicy;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
@@ -133,38 +123,18 @@ class RoutingGoldenSetTest {
     @BeforeEach
 
     void setUp() {
-
-        RoutingRuleProperties routingProps = nacosRulesFixture();
-
-        RuleBasedRouter ruleRouter = new RuleBasedRouter(routingProps);
-
-        StructuralPlanMatcher structuralMatcher = new StructuralPlanMatcher(routingProps);
-
-        PeerPatternMatcher peerMatcher = new PeerPatternMatcher(routingProps);
-
+        PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
+        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
         WorkflowBindingParser workflowBindingParser = new WorkflowBindingParser(workflowCatalog);
         ExpertBindingParser expertBindingParser = new ExpertBindingParser(expertCatalogService);
-
         var chain = new RoutingPolicyChain(List.of(
-
                 new WorkflowBindingRoutingPolicy(workflowBindingParser),
-
                 new ExpertBindingRoutingPolicy(expertBindingParser),
-
-                new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
-
-                new StructuralRoutingPolicy(structuralMatcher),
-
-                new PeerStructuralRoutingPolicy(peerMatcher, structuralMatcher),
-
-                new GoldenRuleRoutingPolicy(ruleRouter, structuralMatcher, peerMatcher),
-
+                skillPolicy,
+                new UnifiedRuleRoutingPolicy(catalogHolder),
                 new LlmClassifierRoutingPolicy(intentRouter, queryRewriteService)));
-
         router = new ExecutionPlanRouter(chain, new SkillDiscoveryService(skillCatalogService),
-                new ForcedExecutionRouter(
-                        new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
-                        ruleRouter, intentRouter),
+                new ForcedExecutionRouter(skillPolicy, catalogHolder, intentRouter),
                 skillBindingParser);
 
         when(skillBindingParser.parse(anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
@@ -207,7 +177,7 @@ class RoutingGoldenSetTest {
 
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
 
-        assertThat(plan.reason()).isEqualTo("structural:multi-step-plan");
+        assertThat(plan.reason()).isEqualTo("rule:" + RoutingCatalogFixtures.STRUCTURAL_ID);
 
         verify(intentRouter, never()).classifyPlan(anyString());
 
@@ -237,7 +207,7 @@ class RoutingGoldenSetTest {
 
         assertThat(plan.workflowId()).isEqualTo("finance-list");
 
-        assertThat(plan.ruleId()).isEqualTo("rule-finance-list-pending");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
 
         verify(intentRouter, never()).classifyPlan(anyString());
 
@@ -261,7 +231,7 @@ class RoutingGoldenSetTest {
 
         assertThat(plan.workflowId()).isEqualTo("finance-smart");
 
-        assertThat(plan.ruleId()).isEqualTo("rule-finance-smart-compliance");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_SMART_ID);
 
     }
 
@@ -285,7 +255,7 @@ class RoutingGoldenSetTest {
 
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
 
-        assertThat(plan.ruleId()).isEqualTo("rule-knowledge-budget-travel");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.KNOWLEDGE_BUDGET_ID);
 
     }
 
@@ -482,7 +452,7 @@ class RoutingGoldenSetTest {
         ExecutionPlan plan = router.route(query).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
         assertThat(plan.params()).isEmpty();
-        assertThat(plan.reason()).isEqualTo("structural:peer-collab");
+        assertThat(plan.reason()).isEqualTo("rule:" + RoutingCatalogFixtures.PEER_ID);
         verify(intentRouter, never()).classifyPlan(anyString());
     }
 
@@ -491,7 +461,7 @@ class RoutingGoldenSetTest {
         String query = "先检索报销制度，再查待审批列表，并对结果做合规分析";
         ExecutionPlan plan = router.route(query).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
-        assertThat(plan.reason()).isEqualTo("structural:multi-step-plan");
+        assertThat(plan.reason()).isEqualTo("rule:" + RoutingCatalogFixtures.STRUCTURAL_ID);
         verify(intentRouter, never()).classifyPlan(anyString());
     }
 
@@ -642,78 +612,6 @@ class RoutingGoldenSetTest {
 
     private ExecutionPlan forcedRoute(ExecutionPreference preference, String query, String workflowId) {
         return router.route(new RoutingContext(query, null, preference, workflowId, null)).block();
-    }
-
-
-
-    private static RoutingRuleProperties nacosRulesFixture() {
-
-        RoutingRuleProperties props = new RoutingRuleProperties();
-
-        RoutingRuleProperties.Rule smart = new RoutingRuleProperties.Rule();
-
-        smart.setId("rule-finance-smart-compliance");
-
-        smart.setPriority(20);
-
-        smart.setMatch("any");
-
-        smart.setPatterns(List.of("是否合规", "合规吗", "合不合规", "对比制度"));
-
-        RoutingRuleProperties.PlanSpec smartPlan = new RoutingRuleProperties.PlanSpec();
-
-        smartPlan.setMode("workflow");
-
-        smartPlan.setWorkflowId("finance-smart");
-
-        smartPlan.setParams(Map.of("status", "pending"));
-
-        smart.setPlan(smartPlan);
-
-        RoutingRuleProperties.Rule knowledge = new RoutingRuleProperties.Rule();
-
-        knowledge.setId("rule-knowledge-budget-travel");
-
-        knowledge.setPriority(15);
-
-        knowledge.setMatch("any");
-
-        knowledge.setPatterns(List.of("预算.*出差", "出差.*预算", "预算超支", "预算不够.*出差"));
-
-        RoutingRuleProperties.PlanSpec knowledgePlan = new RoutingRuleProperties.PlanSpec();
-
-        knowledgePlan.setMode("workflow");
-
-        knowledgePlan.setWorkflowId("knowledge-qa");
-
-        knowledgePlan.setParams(Map.of());
-
-        knowledge.setPlan(knowledgePlan);
-
-        RoutingRuleProperties.Rule list = new RoutingRuleProperties.Rule();
-
-        list.setId("rule-finance-list-pending");
-
-        list.setPriority(10);
-
-        list.setMatch("any");
-
-        list.setPatterns(List.of("有哪些待审批", "查询待审批", "列出待审批", "待审批的.*报销", "待审批.*付款"));
-
-        RoutingRuleProperties.PlanSpec listPlan = new RoutingRuleProperties.PlanSpec();
-
-        listPlan.setMode("workflow");
-
-        listPlan.setWorkflowId("finance-list");
-
-        listPlan.setParams(Map.of("status", "pending"));
-
-        list.setPlan(listPlan);
-
-        props.setRules(List.of(smart, knowledge, list));
-
-        return props;
-
     }
 
 }

@@ -519,73 +519,9 @@ agent:
         required:
           - command
 
-  routing:
-    # L1 结构守卫 — SSOT 验收提示词见 docs/routing/routing-golden-set.md
-    structural:
-      enabled: true
-      min-domain-groups: 2
-      multi-step-patterns:
-        - "先.+再"
-        - "再.+(并|然后|接着)"
-        - "分步"
-        - "多步"
-        - "并对.+?(分析|审查|检查|评估)"
-        - "完整处理"
-        - "一套.+(分析|流程|处理)"
-      domain-groups:
-        knowledge: [制度, 检索, 知识库, 政策, 差旅办法, 报销规定]
-        finance: [待审批, 报销, 财务, 付款, 单据]
-        analysis: [合规, 分析, 审查, 对比, 评估, 结论]
-    peer:
-      enabled: true
-      default-template-id: compliance-cross-review
-      structural-patterns:
-        - "互相验证"
-        - "交叉审查"
-        - "多专家讨论"
-        - "分别分析并质疑"
-        - "两个角度.*审查"
-        - "专家.*分别.*审查"
-    rules:
-      - id: rule-finance-smart-compliance
-        priority: 20
-        match: any
-        patterns:
-          - "是否合规"
-          - "合规吗"
-          - "合不合规"
-          - "对比制度"
-        plan:
-          mode: workflow
-          workflowId: finance-smart
-          params:
-            status: pending
-      - id: rule-knowledge-budget-travel
-        priority: 15
-        match: any
-        patterns:
-          - "预算.*出差"
-          - "出差.*预算"
-          - "预算超支"
-          - "预算不够.*出差"
-        plan:
-          mode: workflow
-          workflowId: knowledge-qa
-          params: {}
-      - id: rule-finance-list-pending
-        priority: 10
-        match: any
-        patterns:
-          - "有哪些待审批"
-          - "查询待审批"
-          - "列出待审批"
-          - "待审批的.*报销"
-          - "待审批.*付款"
-        plan:
-          mode: workflow
-          workflowId: finance-list
-          params:
-            status: pending
+  # routing.structural / routing.peer / routing.rules 已退役 → prompt-manager Catalog
+  # （routing-rule.*，见 docker/mysql/init/17-sunshine-prompt-manager.sql）
+  # 验收提示词仍见 docs/routing/routing-golden-set.md；引擎 UnifiedRuleRoutingPolicy
 
   peer:
     min-rounds: 1

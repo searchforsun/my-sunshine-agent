@@ -10,6 +10,7 @@ import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
+import com.sunshine.testsupport.PromptCatalogSeedTestConfig;
 import com.sunshine.testsupport.SseEventTestSupport;
 import com.sunshine.orchestrator.generation.GenerationMeta;
 import com.sunshine.orchestrator.generation.GenerationStatus;
@@ -67,7 +68,7 @@ import static org.mockito.Mockito.when;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
 @ActiveProfiles("test")
-@Import(EmbeddedRedisTestConfig.class)
+@Import({EmbeddedRedisTestConfig.class, PromptCatalogSeedTestConfig.class})
 class GenerationReconnectIntegrationTest {
 
     private static final String ALICE = "alice";
@@ -120,6 +121,8 @@ class GenerationReconnectIntegrationTest {
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
         }
+        when(intentRouter.classifyPlan(any(com.sunshine.orchestrator.routing.policy.RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
         when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
         when(llmGateway.streamContinue(any(MemoryContext.class), anyString(), anyString()))

@@ -1,8 +1,8 @@
 # 路由 Golden-Set（验收提示词）
 
-> **配置 SSOT**：`docs/nacos/sunshine-orchestrator.yaml` → `agent.routing.*`  
-> **验收 SSOT（本文）**：人工/UI 验收 + `RoutingGoldenSetTest` 单测对照；其他文档**只链引用、勿复制 YAML 规则块**  
-> **代码**：`ExecutionPlanRouter` → `RoutingPolicyChain`（L0→L3）  
+> **配置 SSOT**：prompt-manager Catalog（`routing-rule.*`，种子见 `docker/mysql/init/17-sunshine-prompt-manager.sql`）→ orchestrator `PromptCatalogHolder`  
+> **验收 SSOT（本文）**：人工/UI 验收 + `RoutingGoldenSetTest` 单测对照；其他文档**只链引用、勿复制规则 JSON**  
+> **代码**：`ExecutionPlanRouter` → `RoutingPolicyChain`（L0 → `UnifiedRuleRoutingPolicy` → L3）  
 > **重试/降级详设**：[plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md)
 
 ## 策略链（意图识别步内）
@@ -10,20 +10,20 @@
 | 层级 | Policy | 配置 | 产出 |
 |:----:|--------|------|------|
 | L0 | `SkillBindingRoutingPolicy` + `SkillDiscoveryService` | `agent.skill.hint-patterns` + `@` 硬编码 | 单步：`REACT`+skillId；多步 `@`/强提示：`PLAN_WORKFLOW` **5B**；L3 后自动发现 skill |
-| L1 | `StructuralRoutingPolicy` | `agent.routing.structural` | `PLAN_WORKFLOW` |
-| L2 | `GoldenRuleRoutingPolicy` | `agent.routing.rules` | 静态 `WORKFLOW` |
+| L1 | `UnifiedRuleRoutingPolicy` | Catalog `matchType=structural`（priority 100） | `PLAN_WORKFLOW` |
+| L1b | （同上引擎） | Catalog `matchType=peer_phrase`（priority 90） | `PEER_COLLAB` |
+| L2 | （同上引擎） | Catalog `matchType=regex`（priority 20/15/10） | 静态 `WORKFLOW` |
 | L3 | `LlmClassifierRoutingPolicy` | `agent.intent.classifier-prompt` | LLM 选 mode/workflow |
-| L3+ | （阶段四）第五 mode `peer-collab` | 同上 + `agent.routing.peer.*` | 见 [§E](#e-peer_collab阶段四) |
-| **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | 覆盖 L1–L3；见 [§J](#j-chat-executionpreference-强制路由p0) |
+| **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | 覆盖统一规则层与 L3；见 [§J](#j-chat-executionpreference-强制路由p0) |
 
-**链规则**：首个返回 `ExecutionPlan` 的策略胜出；L1 命中后 L2/L3 不执行。L2 内仍调用 `StructuralPlanMatcher` 作 L1 漏判保险丝。**`executionPreference` 非 auto 时**直接走 `ForcedExecutionRouter`，不进入 Policy Chain。
+**链规则**：首个返回 `ExecutionPlan` 的策略胜出；统一引擎按 **priority** 择优（不再「L1 漏判时跳过 L2」）。**`executionPreference` 非 auto 时**直接走 `ForcedExecutionRouter`，不进入 Policy Chain。
 
 **时间线**：上述全部发生在 SSE **`intent`（识别意图）** 步；完成后才进入 `plan` / `node-*` / ReAct 步骤。
 
 ## 单测
 
 ```bash
-mvn test -pl orchestrator -Dtest=StructuralPlanMatcherTest,RoutingGoldenSetTest,ExecutionPlanRouterTest,RuleBasedRouterTest,SkillDiscoveryServiceTest,SkillBindingParserTest
+mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,ForcedExecutionRouterTest,SkillDiscoveryServiceTest,SkillBindingParserTest
 ```
 
 ## 验收前准备
@@ -339,15 +339,13 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 
 | 需求 | 改哪里 |
 |------|--------|
-| 新增多步句式 | `agent.routing.structural.multi-step-patterns` |
-| 新增跨领域信号 | `agent.routing.structural.domain-groups` 增组或扩词 |
-| 新增单域快路径 | `agent.routing.rules` 追加 rule（勿与 structural 重复 plan 规则） |
+| 新增多步句式 / 跨域信号 / peer 句式 / 正则快路径 | prompt-manager Catalog `routing-rule.*`（`/prompts`）；发布后 orchestrator 热更新 |
 | 意图步文案 | `agent.timeline.intent.modes` |
 | 语义兜底 | `agent.intent.classifier-prompt` |
 | Plan 重试/降级/Replan | `agent.execution.plan-workflow` · 见 [plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md) |
 | Skill `@` / 强提示 / 5B | `agent.skill.hint-patterns`；L0 多步→`plannerMode=skill-driven` |
 | Skill 自动发现阈值 | `SkillDiscoveryService`（catalog description bigram 打分） |
-| 第五模式 peer 句式（阶段四） | `agent.routing.peer.structural-patterns` · Expert Catalog 取代 `peer.templates` · 见 [peer-collab spec](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation spec](../superpowers/specs/2026-07-07-expert-consultation-design.md) |
+| 第五模式 peer 句式（阶段四） | Catalog `matchType=peer_phrase` · Expert Catalog · 见 [peer-collab spec](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation spec](../superpowers/specs/2026-07-07-expert-consultation-design.md) |
 | ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.execution.react.max-iters` / `agent.timeline.steps.tasks` / `mode-overlays.react`（仅建板与 status 语义）· 详设 [taskboard spec](../superpowers/specs/2026-06-24-react-taskboard-design.md) |
 | Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) |
 | Workflow 模板 / `#` 绑定 | `workflow-manager` catalog + L0 `#` · **非**底栏二级下拉 · 见 [workflow-studio spec](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3 |
@@ -359,7 +357,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 ## E. PEER_COLLAB（阶段四 · 第五顶层模式）
 
 > **状态**：✅ L1 路由单测 + Live（2026-07-08）；Timeline 与 **§K** 统一（`expert-convene` + `expert-*` + Synthesizer 正文，无 `peer-collab` / `generate`）  
-> **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md) · 配置键 `agent.routing.peer.*`
+> **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md) · Catalog `routing-rule.peer-phrase`（非 `agent.peer.*` 专家协作 prompt）
 
 **预期 intent after**：「…将由多专家协作交叉验证」（`agent.timeline.intent.modes.peer-collab`）
 
