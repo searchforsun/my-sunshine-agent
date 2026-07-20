@@ -558,12 +558,12 @@ const orphanContent = computed(() => {
 }
 
 .timeline-summary .op-label {
-  color: var(--sun-text);
-  font-weight: 500;
+  color: var(--sun-text-secondary);
+  font-weight: 450;
 }
 
 .timeline-summary.is-clickable:hover .op-label {
-  color: var(--sun-text-secondary);
+  color: var(--sun-text);
 }
 
 .op-shimmer {
