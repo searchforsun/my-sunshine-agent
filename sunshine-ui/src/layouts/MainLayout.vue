@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
-import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline, PeopleOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
+import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline, PeopleOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
@@ -73,10 +73,11 @@ const platformMenuOptions: MenuOption[] = [
   { label: '工作流', key: 'workflows', icon: renderIcon(GitNetworkOutline) },
   { label: '工具', key: 'tools', icon: renderIcon(ConstructOutline) },
   { label: '专家', key: 'experts', icon: renderIcon(PeopleOutline) },
+  { label: '提示词', key: 'prompts', icon: renderIcon(DocumentTextOutline) },
   { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
 ]
 
-const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'experts', 'workflow-diff', 'skill-diff'])
+const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'experts', 'prompts', 'workflow-diff', 'skill-diff'])
 const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
 const hideSidebarFab = computed(() =>
   contentFill.value || route.name === 'skill-diff',

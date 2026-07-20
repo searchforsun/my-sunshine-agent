@@ -1,0 +1,227 @@
+<script setup lang="ts">
+import { onMounted, provide } from 'vue'
+import {
+  NButton,
+  NForm,
+  NFormItem,
+  NIcon,
+  NInput,
+  NInputNumber,
+  NModal,
+  NSelect,
+  NSpace,
+  NTabPane,
+  NTabs,
+} from 'naive-ui'
+import { AddOutline, RefreshOutline } from '@vicons/ionicons5'
+import SidebarToggle from '../components/SidebarToggle.vue'
+import PromptsListPanel from '../components/prompts/PromptsListPanel.vue'
+import PromptDetailPanel from '../components/prompts/PromptDetailPanel.vue'
+import RoutingRuleEditor from '../components/prompts/RoutingRuleEditor.vue'
+import RoutingDryRunPanel from '../components/prompts/RoutingDryRunPanel.vue'
+import ReactComposePanel from '../components/prompts/ReactComposePanel.vue'
+import { PROMPTS_PAGE_KEY, usePromptsPage } from '../composables/usePromptsPage'
+import { PROMPT_KIND_LABELS } from '../api/prompts'
+
+const page = usePromptsPage()
+provide(PROMPTS_PAGE_KEY, page)
+
+const kindOptions = Object.entries(PROMPT_KIND_LABELS).map(([value, label]) => ({
+  label: `${label}（${value}）`,
+  value,
+}))
+
+onMounted(() => {
+  void page.refreshList()
+})
+</script>
+
+<template>
+  <div class="prompts-root">
+    <header class="page-header">
+      <div class="page-header-main">
+        <SidebarToggle />
+        <h2>提示词</h2>
+      </div>
+      <NSpace :size="8">
+        <NButton round secondary @click="page.openCreateModal()">
+          <template #icon><NIcon :component="AddOutline" /></template>
+          新建
+        </NButton>
+        <NButton
+          round
+          type="primary"
+          class="action-btn"
+          :loading="page.loading"
+          @click="page.refreshList()"
+        >
+          <template #icon><NIcon :component="RefreshOutline" /></template>
+          刷新
+        </NButton>
+      </NSpace>
+    </header>
+
+    <NTabs v-model:value="page.activeTab" type="line" :animated="false" class="prompts-tabs">
+      <NTabPane name="all" tab="全部" />
+      <NTabPane name="routing" tab="路由规则" />
+      <NTabPane name="react" tab="ReAct 拼装" />
+    </NTabs>
+
+    <div v-if="page.activeTab === 'all'" class="prompts-layout">
+      <PromptsListPanel />
+      <PromptDetailPanel />
+    </div>
+
+    <div v-else-if="page.activeTab === 'routing'" class="prompts-layout routing-layout">
+      <PromptsListPanel />
+      <div class="routing-right">
+        <RoutingRuleEditor />
+        <RoutingDryRunPanel />
+      </div>
+    </div>
+
+    <div v-else class="prompts-layout">
+      <PromptsListPanel />
+      <ReactComposePanel />
+    </div>
+
+    <NModal
+      v-model:show="page.showCreateModal"
+      preset="dialog"
+      title="新建提示词"
+      class="sunshine-dialog"
+    >
+      <NForm class="modal-form" label-placement="top" :show-feedback="false">
+        <NFormItem label="ID" required>
+          <NInput
+            v-model:value="page.createDraft.id"
+            class="sun-field"
+            placeholder="routing-rule.my-rule"
+          />
+        </NFormItem>
+        <NFormItem label="类型" required>
+          <NSelect
+            v-model:value="page.createDraft.kind"
+            class="sun-field"
+            :options="kindOptions"
+            filterable
+          />
+        </NFormItem>
+        <NFormItem label="展示名" required>
+          <NInput
+            v-model:value="page.createDraft.displayName"
+            class="sun-field"
+            placeholder="我的规则"
+          />
+        </NFormItem>
+        <NFormItem label="描述">
+          <NInput
+            v-model:value="page.createDraft.description"
+            class="sun-field"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </NFormItem>
+        <NFormItem v-if="page.createDraft.kind === 'routing-rule'" label="优先级">
+          <NInputNumber
+            v-model:value="page.createDraft.priority"
+            class="sun-field"
+            :min="0"
+            :show-button="false"
+          />
+        </NFormItem>
+      </NForm>
+      <template #action>
+        <NButton @click="page.showCreateModal = false">取消</NButton>
+        <NButton
+          type="primary"
+          class="action-btn"
+          :loading="page.creating"
+          @click="page.handleCreate()"
+        >
+          创建
+        </NButton>
+      </template>
+    </NModal>
+  </div>
+</template>
+
+<style scoped>
+.prompts-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px;
+  gap: 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.page-header-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sun-text);
+}
+
+.prompts-tabs {
+  flex-shrink: 0;
+}
+
+.prompts-tabs :deep(.n-tabs-nav) {
+  padding: 0 2px;
+}
+
+.prompts-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) 1fr;
+  gap: 16px;
+}
+
+.routing-layout {
+  grid-template-columns: minmax(280px, 320px) 1fr;
+}
+
+.routing-right {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.action-btn {
+  --n-color: var(--sun-accent) !important;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-form :deep(.n-form-item) {
+  margin-bottom: 0;
+}
+
+.modal-form :deep(.n-form-item-label) {
+  color: var(--sun-text-secondary);
+  font-size: 13px;
+  padding-bottom: 8px;
+}
+</style>
