@@ -26,7 +26,7 @@
 | # | 决策 |
 |---|------|
 | D1 | **纯前端**；不新增 SSE 字段、不落库 `message.durationMs` |
-| D2 | 耗时用**墙钟**，禁止各步 `durationMs` 求和 |
+| D2 | 耗时用**实现线墙钟**（`min(startedAt)` → running 用 `now` / 否则 `max(endedAt)`）；**不含**正文 `contentBlocks` 流式输出；禁止各步 `durationMs` 求和 |
 | D3 | 文案：`正在处理` / `已完成` / `已中断` / `已失败` + 时钟 |
 | D4 | 时钟格式独立：`42s` / `1m20s`（秒取整）；与单步 `formatDuration`（`1.2s`）分离 |
 | D5 | **默认折叠**（含进行中 / 终态）；用户点开后 `userToggled` 覆盖 |
@@ -88,15 +88,17 @@ else: expanded = false   // 进行中 / completed | interrupted | failed 一律�
 
 ## 3. 数据与计算
 
-### 3.1 墙钟
+### 3.1 墙钟（不含正文输出）
+
+口径：**实现步骤**耗时，不含终稿 `contentBlocks` 流式打字时间。刷新前后同一算法。
 
 | 端点 | 取值 |
 |------|------|
-| **start** | `min(steps[].startedAt ?? ts)`；皆无则用本条进入 `streaming` 时前端记下的本地时刻（`OperationStack` / composable 内 ref，不落库） |
-| **end（进行中）** | `Date.now()`，约 200ms tick（对齐 `OperationCard` live timer） |
-| **end（终态）** | 离开 `streaming` 时记下的本地时刻；若无则 `max(endedAt)`；再无则仅显示状态、时钟可空 |
+| **start** | `min(steps[].startedAt ?? ts)`；皆无则用本条首次 `props.live`（有 running 步）时本地时刻 |
+| **end（实现线仍有 running）** | `Date.now()`，约 200ms tick（仅 `props.live` / `hasActiveStep`） |
+| **end（步骤已齐 / 仅剩正文流 / 终态）** | `max(endedAt)`；无则时钟可空，只显示状态前缀 |
 
-历史 hydrate：有 step 时间戳则仍可算；两者皆无则只显示状态文案、不硬凑耗时。
+**禁止**用离开 `streaming` 的本地时刻当 end（会把正文输出算进去，且刷新不一致）。
 
 ### 3.2 时钟格式
 

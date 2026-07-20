@@ -522,10 +522,10 @@ export function formatElapsedClock(ms: number): string {
 
 export function resolveTimelineElapsedMs(opts: {
   steps: ProcessingStep[]
+  /** true：实现线仍有 running 步，用 now；false：只用 steps 的 endedAt（不含正文流式） */
   live: boolean
   nowMs?: number
   fallbackStartMs?: number
-  fallbackEndMs?: number
 }): number | undefined {
   let start: number | undefined
   let maxEnded: number | undefined
@@ -540,14 +540,7 @@ export function resolveTimelineElapsedMs(opts: {
   }
   if (start == null && opts.fallbackStartMs != null) start = opts.fallbackStartMs
   if (start == null) return undefined
-  let end: number | undefined
-  if (opts.live) {
-    end = opts.nowMs ?? Date.now()
-  } else if (opts.fallbackEndMs != null) {
-    end = opts.fallbackEndMs
-  } else {
-    end = maxEnded
-  }
+  const end = opts.live ? (opts.nowMs ?? Date.now()) : maxEnded
   if (end == null || end < start) return undefined
   return end - start
 }

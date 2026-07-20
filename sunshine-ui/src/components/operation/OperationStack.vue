@@ -153,33 +153,21 @@ const showCollapsedAnswer = computed(() => {
 })
 
 const fallbackStartMs = ref<number | undefined>(undefined)
-const fallbackEndMs = ref<number | undefined>(undefined)
-/** 仅本实例曾见过 live/streaming 时才落 fallbackEnd；历史 hydrate：不写 fallbackEnd，交给 steps.endedAt */
-const wasRunning = ref(false)
 const nowMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | undefined
 
+/** 仅实现线有 running 步时记 start / tick；正文流式阶段不推进时钟 */
 watch(
-  () => [props.live, props.messageStatus, summaryEnabled.value] as const,
-  ([live, status, enabled]) => {
-    if (!enabled) return
-    const running = !!(live || status === 'streaming')
-    if (running) {
-      if (fallbackStartMs.value == null) fallbackStartMs.value = Date.now()
-      wasRunning.value = true
-      return
-    }
-    // terminal: only capture end if we observed running in this instance
-    if (wasRunning.value && status && status !== 'streaming' && fallbackEndMs.value == null) {
-      fallbackEndMs.value = Date.now()
-      wasRunning.value = false
-    }
+  () => [props.live, summaryEnabled.value] as const,
+  ([live, enabled]) => {
+    if (!enabled || !live) return
+    if (fallbackStartMs.value == null) fallbackStartMs.value = Date.now()
   },
   { immediate: true },
 )
 
 watch(
-  () => summaryEnabled.value && !!(props.live || props.messageStatus === 'streaming'),
+  () => summaryEnabled.value && !!props.live,
   (needTick) => {
     if (tickTimer) {
       clearInterval(tickTimer)
@@ -198,12 +186,12 @@ onUnmounted(() => {
 
 const summaryText = computed(() => {
   if (!summaryEnabled.value) return ''
+  // live=props.live：仅有 running 步时用 now；否则 max(endedAt)，不含正文输出
   const elapsed = resolveTimelineElapsedMs({
     steps: effectiveSteps.value,
-    live: !!(props.live || props.messageStatus === 'streaming'),
+    live: !!props.live,
     nowMs: nowMs.value,
     fallbackStartMs: fallbackStartMs.value,
-    fallbackEndMs: fallbackEndMs.value,
   })
   const clock = elapsed != null ? formatElapsedClock(elapsed) : ''
   const prefix = resolveTimelineSummaryPrefix({

@@ -46,20 +46,18 @@ describe('resolveTimelineElapsedMs', () => {
     expect(ms).toBe(4_000)
   })
 
-  it('without fallbackEnd uses max endedAt when not live', () => {
-    // hydrated history: no Date.now end — prefer step endedAt
+  it('without live uses max endedAt only (excludes content stream)', () => {
     expect(resolveTimelineElapsedMs({
       steps: [step({ startedAt: 1_000, endedAt: 3_000 }), step({ id: 't', startedAt: 1_500, endedAt: 4_000 })],
       live: false,
     })).toBe(3_000)
   })
 
-  it('uses fallbackEnd when not live and no endedAt', () => {
+  it('returns undefined when not live and no endedAt', () => {
     expect(resolveTimelineElapsedMs({
       steps: [step({ startedAt: 1_000 })],
       live: false,
-      fallbackEndMs: 5_000,
-    })).toBe(4_000)
+    })).toBeUndefined()
   })
 
   it('returns undefined when no start', () => {
