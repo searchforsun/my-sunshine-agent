@@ -16,6 +16,8 @@ import {
 import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { shortPromptId } from '../../api/prompts'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
+import ConfigFieldHelp from '../knowledge/ConfigFieldHelp.vue'
+import { routingFieldHelp } from './routingFieldHelp'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 
@@ -217,14 +219,23 @@ const reactPromptId = computed({
               </NButton>
             </header>
             <div class="form-grid">
-              <NFormItem label="展示名">
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">展示名</span>
+                </template>
                 <NInput
                   v-model:value="page.editDisplayName"
                   class="sun-field"
                   :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
-              <NFormItem label="优先级">
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    优先级
+                    <ConfigFieldHelp :text="routingFieldHelp('priority')" />
+                  </span>
+                </template>
                 <NInputNumber
                   v-model:value="page.editPriority"
                   class="sun-field"
@@ -250,7 +261,13 @@ const reactPromptId = computed({
               <h4 class="form-section-title">匹配条件</h4>
             </header>
             <div class="form-grid">
-              <NFormItem label="matchType">
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    matchType
+                    <ConfigFieldHelp :text="routingFieldHelp('matchType')" />
+                  </span>
+                </template>
                 <NSelect
                   v-model:value="page.routingForm.matchType"
                   class="sun-field"
@@ -259,7 +276,13 @@ const reactPromptId = computed({
                   :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
-              <NFormItem label="match">
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    match
+                    <ConfigFieldHelp :text="routingFieldHelp('match')" />
+                  </span>
+                </template>
                 <NSelect
                   v-model:value="page.routingForm.match"
                   class="sun-field"
@@ -268,17 +291,29 @@ const reactPromptId = computed({
                 />
               </NFormItem>
             </div>
-            <NFormItem label="patterns（每行一条）">
+            <NFormItem>
+              <template #label>
+                <span class="field-label-row">
+                  patterns
+                  <ConfigFieldHelp :text="routingFieldHelp('patterns')" />
+                </span>
+              </template>
               <NInput
                 v-model:value="patternsText"
                 class="sun-field sun-field-grow mono"
                 type="textarea"
                 :autosize="{ minRows: 4, maxRows: 12 }"
-                placeholder="是否合规"
+                placeholder="每行一条正则，如：是否合规"
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem label="domainGroups（每行：域名: 词1, 词2）">
+            <NFormItem>
+              <template #label>
+                <span class="field-label-row">
+                  domainGroups
+                  <ConfigFieldHelp :text="routingFieldHelp('domainGroups')" />
+                </span>
+              </template>
               <NInput
                 v-model:value="domainGroupsText"
                 class="sun-field sun-field-grow mono"
@@ -288,7 +323,13 @@ const reactPromptId = computed({
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem label="minDomainGroups">
+            <NFormItem>
+              <template #label>
+                <span class="field-label-row">
+                  minDomainGroups
+                  <ConfigFieldHelp :text="routingFieldHelp('minDomainGroups')" />
+                </span>
+              </template>
               <NInputNumber
                 v-model:value="page.routingForm.minDomainGroups"
                 class="sun-field"
@@ -304,7 +345,13 @@ const reactPromptId = computed({
               <h4 class="form-section-title">目标 Plan</h4>
             </header>
             <div class="form-grid">
-              <NFormItem label="mode">
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    mode
+                    <ConfigFieldHelp :text="routingFieldHelp('mode')" />
+                  </span>
+                </template>
                 <NSelect
                   v-model:value="planMode"
                   class="sun-field"
@@ -312,7 +359,13 @@ const reactPromptId = computed({
                   :disabled="!page.isContentEditable || page.isActionBusy"
                 />
               </NFormItem>
-              <NFormItem label="workflowId">
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    workflowId
+                    <ConfigFieldHelp :text="routingFieldHelp('workflowId')" />
+                  </span>
+                </template>
                 <NInput
                   v-model:value="workflowId"
                   class="sun-field"
@@ -321,7 +374,13 @@ const reactPromptId = computed({
                 />
               </NFormItem>
             </div>
-            <NFormItem v-if="planMode === 'react'" label="React 提示词">
+            <NFormItem v-if="planMode === 'react'">
+              <template #label>
+                <span class="field-label-row">
+                  React 提示词
+                  <ConfigFieldHelp :text="routingFieldHelp('reactPromptId')" />
+                </span>
+              </template>
               <NSelect
                 v-model:value="reactPromptId"
                 class="sun-field"
@@ -333,13 +392,19 @@ const reactPromptId = computed({
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
-            <NFormItem label="params（每行 key=value）">
+            <NFormItem>
+              <template #label>
+                <span class="field-label-row">
+                  params
+                  <ConfigFieldHelp :text="routingFieldHelp('params')" />
+                </span>
+              </template>
               <NInput
                 v-model:value="paramsText"
                 class="sun-field mono"
                 type="textarea"
                 :autosize="{ minRows: 2, maxRows: 6 }"
-                placeholder="status=pending"
+                placeholder="每行 key=value，如：status=pending"
                 :disabled="!page.isContentEditable || page.isActionBusy"
               />
             </NFormItem>
@@ -521,6 +586,12 @@ const reactPromptId = computed({
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+}
+
+.field-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .mono :deep(.n-input__textarea-el),
