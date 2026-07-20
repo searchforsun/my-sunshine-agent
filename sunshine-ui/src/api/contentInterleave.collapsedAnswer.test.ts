@@ -7,31 +7,41 @@ function msg(partial: Partial<ChatMessage>): ChatMessage {
 }
 
 describe('resolveCollapsedAnswerText', () => {
-  it('prefers message.content when not plan leak', () => {
+  it('prefers last contentBlock over full message.content', () => {
     expect(resolveCollapsedAnswerText(msg({
-      content: '最终回答',
+      content: '中间段尾段',
       contentBlocks: [
         { segmentId: 'content-1', afterStepId: 'think', text: '中间段' },
-        { segmentId: 'content-2', afterStepId: 'think-2', text: '尾段' },
+        { segmentId: 'content-2', afterStepId: 'think-2', text: '## 终稿标题\n要点' },
       ],
-    }))).toBe('最终回答')
+    }))).toBe('## 终稿标题\n要点')
   })
 
-  it('falls back to joined contentBlocks', () => {
+  it('uses last non-empty block when earlier blocks exist', () => {
     expect(resolveCollapsedAnswerText(msg({
       content: '',
       contentBlocks: [
-        { segmentId: 'content-1', afterStepId: 'think', text: 'A' },
-        { segmentId: 'content-2', afterStepId: 'think-2', text: 'B' },
+        { segmentId: 'content-1', afterStepId: 'think', text: '过程说明' },
+        { segmentId: 'content-2', afterStepId: 'think-2', text: '最终正文' },
       ],
-    }))).toBe('AB')
+    }))).toBe('最终正文')
   })
 
-  it('falls back to last block when join empty', () => {
+  it('falls back to message.content when no blocks', () => {
     expect(resolveCollapsedAnswerText(msg({
-      content: '   ',
-      contentBlocks: [{ segmentId: 'content-1', afterStepId: 'think', text: 'only' }],
-    }))).toBe('only')
+      content: 'only content',
+      contentBlocks: undefined,
+    }))).toBe('only content')
+  })
+
+  it('skips trailing empty blocks', () => {
+    expect(resolveCollapsedAnswerText(msg({
+      content: 'fallback',
+      contentBlocks: [
+        { segmentId: 'content-1', afterStepId: 'think', text: '终稿' },
+        { segmentId: 'content-2', afterStepId: 'think-2', text: '   ' },
+      ],
+    }))).toBe('终稿')
   })
 
   it('uses plan answer SSOT for plan workflows', () => {

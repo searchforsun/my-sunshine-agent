@@ -27,12 +27,12 @@
 |---|------|
 | D1 | **纯前端**；不新增 SSE 字段、不落库 `message.durationMs` |
 | D2 | 耗时用**墙钟**，禁止各步 `durationMs` 求和 |
-| D3 | 文案：`正在进行` / `已完成` / `已中断` / `失败` + 时钟 |
+| D3 | 文案：`正在处理` / `已完成` / `已中断` / `已失败` + 时钟 |
 | D4 | 时钟格式独立：`42s` / `1m20s`（秒取整）；与单步 `formatDuration`（`1.2s`）分离 |
 | D5 | 进行中默认展开；`completed` / `interrupted` / `failed` 默认折叠 |
 | D6 | 用户点过 → `userToggled` 覆盖，状态变化不再自动改 expand |
-| D7 | **折叠**：隐藏全部实现步骤 + **中间穿插** `contentBlocks`；**只显示一份终稿正文** |
-| D8 | 终稿 SSOT：优先 `msg.content` → 否则 `joinedContentBlocks` → 否则最后一段 block；折叠态**不**按 `afterStepId` 插回步骤间 |
+| D7 | **折叠**：隐藏全部实现步骤 + **中间穿插** `contentBlocks`；**只显示最后一段正文块** |
+| D8 | 终稿 SSOT：有 `contentBlocks` 时取**最后一个非空块**（勿用整段 `message.content` / join）；无块再回退 `content`；Plan 仍走 `resolvePlanAnswerText` |
 | D9 | 避免与 ChatView 底栏 `msg-md` 双显：折叠终稿在 Stack 内渲染时，底栏继续按 `isContentFullyInterleaved` 隐藏；若未 interleaved，底栏照旧、Stack 折叠态不重复铺同一份 |
 | D10 | ReAct / Plan-Workflow / peer-collab / spawn 均经 `OperationStack`，同一总览壳；单卡折叠逻辑不动 |
 
@@ -112,10 +112,10 @@ else: expanded = false   // completed | interrupted | failed | 无 status 的历
 
 | `messageStatus` / live | 前缀 |
 |------------------------|------|
-| `live === true` 或 `streaming` | `正在进行` |
+| `live === true` 或 `streaming` | `正在处理` |
 | `completed` | `已完成` |
 | `interrupted` | `已中断` |
-| `failed` | `失败` |
+| `failed` | `已失败` |
 | 缺省且非 live | `已完成`（历史消息兜底） |
 
 完整展示：`{前缀} {clock}`；clock 为空则只显示前缀。
@@ -124,12 +124,11 @@ else: expanded = false   // completed | interrupted | failed | 无 status 的历
 
 新增（或内联）解析函数，例如 `resolveCollapsedAnswerText(msg)`：
 
-1. `msg.content?.trim()` 非空且非 Plan drawer leak → 用它  
-2. 否则 `joinedContentBlocks(contentBlocks)`  
-3. 否则最后一段 `contentBlocks[n-1].text`  
-4. Plan：可用既有 `resolvePlanAnswerText` 对齐
+1. Plan：`resolvePlanAnswerText`  
+2. 有 `contentBlocks` → **最后一个非空块**（折叠态不展示中间穿插段，也不用整段 `message.content`）  
+3. 无块 → `msg.content`（非 Plan drawer leak）  
 
-折叠态用 `StaticMarkdown`（或与穿插行同一渲染组件）渲染该字符串；**流式进行中若用户手动折叠**：显示当前终稿快照（`msg.content` 或最后一段正在增长的 text），不恢复穿插。
+折叠态用 `StaticMarkdown` 渲染该字符串；**流式进行中若用户手动折叠**：显示当前最后一段正在增长的 text，不恢复穿插。
 
 ---
 

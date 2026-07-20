@@ -558,9 +558,9 @@ export function resolveTimelineSummaryPrefix(opts: {
   live: boolean
   messageStatus?: TimelineMessageStatus
 }): string {
-  if (opts.live || opts.messageStatus === 'streaming') return '正在进行'
+  if (opts.live || opts.messageStatus === 'streaming') return '正在处理'
   if (opts.messageStatus === 'interrupted') return '已中断'
-  if (opts.messageStatus === 'failed') return '失败'
+  if (opts.messageStatus === 'failed') return '已失败'
   return '已完成'
 }
 

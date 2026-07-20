@@ -69,11 +69,11 @@ describe('resolveTimelineElapsedMs', () => {
 
 describe('resolveTimelineSummaryPrefix', () => {
   it('maps status and live', () => {
-    expect(resolveTimelineSummaryPrefix({ live: true })).toBe('正在进行')
-    expect(resolveTimelineSummaryPrefix({ live: false, messageStatus: 'streaming' })).toBe('正在进行')
+    expect(resolveTimelineSummaryPrefix({ live: true })).toBe('正在处理')
+    expect(resolveTimelineSummaryPrefix({ live: false, messageStatus: 'streaming' })).toBe('正在处理')
     expect(resolveTimelineSummaryPrefix({ live: false, messageStatus: 'completed' })).toBe('已完成')
     expect(resolveTimelineSummaryPrefix({ live: false, messageStatus: 'interrupted' })).toBe('已中断')
-    expect(resolveTimelineSummaryPrefix({ live: false, messageStatus: 'failed' })).toBe('失败')
+    expect(resolveTimelineSummaryPrefix({ live: false, messageStatus: 'failed' })).toBe('已失败')
     expect(resolveTimelineSummaryPrefix({ live: false })).toBe('已完成')
   })
 })
@@ -81,6 +81,6 @@ describe('resolveTimelineSummaryPrefix', () => {
 describe('formatTimelineSummaryText', () => {
   it('joins prefix and clock', () => {
     expect(formatTimelineSummaryText('已完成', '1m20s')).toBe('已完成 1m20s')
-    expect(formatTimelineSummaryText('失败', '')).toBe('失败')
+    expect(formatTimelineSummaryText('已失败', '')).toBe('已失败')
   })
 })

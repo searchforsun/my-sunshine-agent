@@ -188,22 +188,22 @@ export function resolvePlanAnswerText(
   return msg.content?.trim() ?? ''
 }
 
-/** 折叠时间线时展示的唯一终稿（不按 afterStepId 穿插） */
+/** 折叠时间线：只留最后一段正文块，不拼中间穿插段、不用整段 message.content */
 export function resolveCollapsedAnswerText(
   msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
 ): string {
   if (msg.steps?.some(s => s.phase === 'plan')) {
     return resolvePlanAnswerText(msg).trim()
   }
-  const content = msg.content?.trim() ?? ''
-  if (content && !isPlanDrawerLeakContent(msg)) return content
-  const joined = joinedContentBlocks(msg.contentBlocks).trim()
-  if (joined) return joined
   const blocks = msg.contentBlocks
   if (blocks?.length) {
-    const last = blocks[blocks.length - 1]?.text?.trim() ?? ''
-    if (last) return last
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const last = blocks[i]?.text?.trim() ?? ''
+      if (last) return last
+    }
   }
+  const content = msg.content?.trim() ?? ''
+  if (content && !isPlanDrawerLeakContent(msg)) return content
   return content
 }
 
