@@ -285,7 +285,8 @@ const lineHtml = computed(() => previewLines.value.map(highlightLine))
 .preview-scroll {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 4px 6px 10px;
 }
 
@@ -328,11 +329,11 @@ const lineHtml = computed(() => previewLines.value.map(highlightLine))
   line-height: 1.55;
   letter-spacing: 0;
   font-variant-ligatures: none;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
   word-break: normal;
-  overflow-wrap: normal;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: 0;
   tab-size: 4;
 }
 
@@ -344,8 +345,10 @@ const lineHtml = computed(() => previewLines.value.map(highlightLine))
 .preview-line {
   display: flex;
   align-items: flex-start;
-  min-width: max-content;
-  white-space: pre;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .preview-line code {
@@ -354,8 +357,9 @@ const lineHtml = computed(() => previewLines.value.map(highlightLine))
   padding: 0 0 0 4px;
   margin: 0;
   background: transparent !important;
-  white-space: pre;
-  display: inline;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .preview-code :deep(code),
