@@ -1,6 +1,6 @@
 # 业务库落库 + 表级 CRUD Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 将 finance/oa/hr 从进程内 JSON Mock 改为共享 MySQL `sunshine_biz` + SQL seed；`/mock-data` 改为左表类型 + 右 CRUD；用户下拉读 `sys_user`；身份统一为固定 UUID。
 
@@ -46,7 +46,7 @@ BCrypt（password123）: `$2a$10$56JywJyd.ICYkiKmDc7jI.5RFrwrYDzETgcY6QsITMRjABI
 - Modify: `docker/mysql/init/10-sunshine-auth.sql`
 - Create: `docker/mysql/init/18-sunshine-biz.sql`
 
-- [ ] **Step 1: 01 增加库**
+- [x] **Step 1: 01 增加库**
 
 在 `01-init-databases.sql` 末尾追加：
 
@@ -54,7 +54,7 @@ BCrypt（password123）: `$2a$10$56JywJyd.ICYkiKmDc7jI.5RFrwrYDzETgcY6QsITMRjABI
 CREATE DATABASE IF NOT EXISTS sunshine_biz DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-- [ ] **Step 2: Auth 演示用户 INSERT**
+- [x] **Step 2: Auth 演示用户 INSERT**
 
 在 `10-sunshine-auth.sql` 建表语句后追加（时间用固定值）：
 
@@ -65,7 +65,7 @@ INSERT INTO sys_user (id, username, password_hash, nickname, status, created_at,
 ('c3333333-3333-4333-c333-333333333333', 'carol','$2a$10$56JywJyd.ICYkiKmDc7jI.5RFrwrYDzETgcY6QsITMRjABIhFKW62', '卡罗尔', 1, '2026-07-01 00:00:00.000', '2026-07-01 00:00:00.000', 'default', 'never');
 ```
 
-- [ ] **Step 3: 写 `18-sunshine-biz.sql`**
+- [x] **Step 3: 写 `18-sunshine-biz.sql`**
 
 完整内容须包含：`USE sunshine_biz;` + 六表 DDL + 对齐原 JSON 的 INSERT（user_id 用 §SSOT UUID）。最低种子：
 
@@ -98,7 +98,7 @@ CREATE TABLE fin_expense (
 
 `hr_leave_balance` PK：`(tenant_id, user_id, year)`；`hr_attendance_month` PK：`(tenant_id, user_id, year_month)`。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docker/mysql/init/01-init-databases.sql docker/mysql/init/10-sunshine-auth.sql docker/mysql/init/18-sunshine-biz.sql
@@ -112,7 +112,7 @@ git commit -m "chore(sql): add sunshine_biz schema and demo auth users"
 **Files:**
 - Create: `scripts/apply_sunshine_biz_schema.py`
 
-- [ ] **Step 1: 实现脚本**
+- [x] **Step 1: 实现脚本**
 
 复用 `scripts/sunshine_lib.py` 中已有 MySQL 连接方式（若无，则用 `pymysql`/`mysql.connector`，凭据与 README 一致：`ecs4c16g` / `root` / `root123`）。
 
@@ -133,7 +133,7 @@ git commit -m "chore(sql): add sunshine_biz schema and demo auth users"
 
 注意：重复跑 DDL 可能失败——脚本应：`CREATE TABLE IF NOT EXISTS` 已在 SQL 中，或先检测表存在则跳过建表仅补缺失种子（实现选一种写清；推荐 SQL 用 `IF NOT EXISTS`，种子用 `INSERT IGNORE`）。
 
-- [ ] **Step 2: dry-run 冒烟**
+- [x] **Step 2: dry-run 冒烟**
 
 ```bash
 python3 scripts/apply_sunshine_biz_schema.py --dry-run
@@ -141,7 +141,7 @@ python3 scripts/apply_sunshine_biz_schema.py --dry-run
 
 Expected: 打印将执行的语句，exit 0。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add scripts/apply_sunshine_biz_schema.py
@@ -166,7 +166,7 @@ git commit -m "chore(scripts): apply sunshine_biz schema to Live MySQL"
 - Delete: `store/TenantUserStore.java`；`resources/mock/seed-users.json`；`controller/MockAdminController.java` 及对应测试（本 Task 先删 Store 相关单测并改为 Service 单测；MockAdmin 删除可放 Task 4）
 - Test: `FinanceBizServiceTest.java`（`@DataJpaTest` + H2 schema）
 
-- [ ] **Step 1: 写失败单测（alice 有 2 条报销）**
+- [x] **Step 1: 写失败单测（alice 有 2 条报销）**
 
 使用 `@DataJpaTest` + `schema.sql`/`data.sql` 或 `@Sql` 插入 alice UUID 两行；断言 `listExpenses("default", ALICE, "all").size() == 2`；bob 为 0。常量：
 
@@ -175,7 +175,7 @@ static final String ALICE = "a1111111-1111-4111-a111-111111111111";
 static final String BOB = "b2222222-2222-4222-b222-222222222222";
 ```
 
-- [ ] **Step 2: 依赖与 Nacos**
+- [x] **Step 2: 依赖与 Nacos**
 
 `sunshine-finance.yaml` 追加：
 
@@ -197,7 +197,7 @@ sunshine:
 
 删除旧 `sunshine.mock.admin-token`（禁止双键）。
 
-- [ ] **Step 3: Entity / Repository / FinanceBizService**
+- [x] **Step 3: Entity / Repository / FinanceBizService**
 
 Service 方法签名对齐原 Store（便于工具改接线）：
 
@@ -210,9 +210,9 @@ Optional<FinanceInboxItem> findInbox(...);
 ExpenseSummaryVO summarize(...);
 ```
 
-- [ ] **Step 4: Tools / FinanceController 注入 Service；删除 Store 与 seed-users.json**
+- [x] **Step 4: Tools / FinanceController 注入 Service；删除 Store 与 seed-users.json**
 
-- [ ] **Step 5: 跑测**
+- [x] **Step 5: 跑测**
 
 ```bash
 mvn -pl finance-service -am test -Dtest=FinanceBizServiceTest,FinanceSunshineToolsTest,FinanceControllerTest -q
@@ -220,7 +220,7 @@ mvn -pl finance-service -am test -Dtest=FinanceBizServiceTest,FinanceSunshineToo
 
 Expected: PASS（同步改单测里的 `u-alice` → ALICE UUID）。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add finance-service docs/nacos/sunshine-finance.yaml
@@ -237,7 +237,7 @@ git commit -m "feat(finance): persist expenses/inbox in sunshine_biz via JPA"
 - Create: `BizFinanceControllerTest.java`
 - Modify: `sunshine-ui/vite.config.ts`（可暂留到 Task 8 一并改 proxy）
 
-- [ ] **Step 1: 写失败单测**
+- [x] **Step 1: 写失败单测**
 
 ```java
 mockMvc.perform(get("/api/biz/finance/expenses").header("X-Admin-Token", TOKEN))
@@ -245,7 +245,7 @@ mockMvc.perform(get("/api/biz/finance/expenses").header("X-Admin-Token", TOKEN))
 mockMvc.perform(get("/api/biz/finance/expenses")).andExpect(status().is4xxClientError());
 ```
 
-- [ ] **Step 2: 实现 Controller**
+- [x] **Step 2: 实现 Controller**
 
 ```java
 @RestController
@@ -259,7 +259,7 @@ public class BizFinanceController {
 
 POST body 字段含 `userId`（必填）、业务列；服务端写 `tenant_id`（默认 default）。
 
-- [ ] **Step 3: 单测 PASS；Commit**
+- [x] **Step 3: 单测 PASS；Commit**
 
 ```bash
 git commit -m "feat(finance): add /api/biz/finance CRUD; remove mock admin"
@@ -276,15 +276,15 @@ git commit -m "feat(finance): add /api/biz/finance CRUD; remove mock admin"
 - Delete: `OaTenantUserStore*`；`mock/seed-users.json`；`MockAdminController*`
 - Test: `OaBizServiceTest`；`BizOaControllerTest`；更新既有 tools/controller 测 UUID
 
-- [ ] **Step 1: 失败单测** — bob 有 2 条 pending task；alice 不能 approve bob 的 task-b1
+- [x] **Step 1: 失败单测** — bob 有 2 条 pending task；alice 不能 approve bob 的 task-b1
 
-- [ ] **Step 2: 实现 Entity/Repo/Service/Tools/Controller**
+- [x] **Step 2: 实现 Entity/Repo/Service/Tools/Controller**
 
 表 `oa_task`；Admin：`/api/biz/oa/tasks` CRUD；字段 `assigneeUserId`。
 
-- [ ] **Step 3: Nacos datasource → sunshine_biz；`sunshine.biz.admin-token`**
+- [x] **Step 3: Nacos datasource → sunshine_biz；`sunshine.biz.admin-token`**
 
-- [ ] **Step 4: 测试 PASS + Commit**
+- [x] **Step 4: 测试 PASS + Commit**
 
 ```bash
 git commit -m "feat(oa): persist tasks in sunshine_biz; biz CRUD"
@@ -301,9 +301,9 @@ git commit -m "feat(oa): persist tasks in sunshine_biz; biz CRUD"
 - Delete: Store/JSON/MockAdmin
 - Test: 更新 UUID；Admin 复合键路径单测
 
-- [ ] **Step 1: 失败单测** — alice 2026 qingsong==12；`GET leave-balances` 列表非空
+- [x] **Step 1: 失败单测** — alice 2026 qingsong==12；`GET leave-balances` 列表非空
 
-- [ ] **Step 2: 实现**
+- [x] **Step 2: 实现**
 
 Admin 路径：
 
@@ -311,7 +311,7 @@ Admin 路径：
 - `/api/biz/hr/leave-requests` CRUD by id
 - `/api/biz/hr/attendance-months` + `PUT/DELETE .../attendance-months/{userId}/{yearMonth}`
 
-- [ ] **Step 3: 测试 PASS + Commit**
+- [x] **Step 3: 测试 PASS + Commit**
 
 ```bash
 git commit -m "feat(hr): persist leave/attendance in sunshine_biz; biz CRUD"
@@ -328,13 +328,13 @@ git commit -m "feat(hr): persist leave/attendance in sunshine_biz; biz CRUD"
 - Create/Modify: DTO（可复用 `UserBriefVO`：id/username/nickname）
 - Test: `AuthControllerTest` 增加 listUsers
 
-- [ ] **Step 1: Repository**
+- [x] **Step 1: Repository**
 
 ```java
 List<UserEntity> findByTenantIdAndStatus(String tenantId, byte status);
 ```
 
-- [ ] **Step 2: Service + Controller**
+- [x] **Step 2: Service + Controller**
 
 ```java
 @GetMapping("/users")
@@ -346,9 +346,9 @@ public R<List<UserBriefVO>> listUsers(@RequestParam(defaultValue = "default") St
 
 确认 Gateway/Sa-Token 白名单：**不要**把 `/users` 放进匿名；须带登录 token。
 
-- [ ] **Step 3: 单测** — 插入 alice 后 list 含其 id
+- [x] **Step 3: 单测** — 插入 alice 后 list 含其 id
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "feat(auth): list tenant users for biz-data dropdown"
@@ -365,7 +365,7 @@ git commit -m "feat(auth): list tenant users for biz-data dropdown"
 - Modify: `sunshine-ui/src/vite.config.ts`（proxy `/api/biz/*`；删除 `/api/mock/*`）
 - Delete or gut: `sunshine-ui/src/api/mockData.ts`
 
-- [ ] **Step 1: API 客户端**
+- [x] **Step 1: API 客户端**
 
 ```ts
 export type BizDomain = 'finance' | 'hr' | 'oa'
@@ -378,7 +378,7 @@ export function deleteBizRow(...)
 
 `listAuthUsers(tenantId)` → `GET /api/auth/users`（走已有 `apiHeaders()`）。
 
-- [ ] **Step 2: 重写 MockDataView**
+- [x] **Step 2: 重写 MockDataView**
 
 - 顶栏 Tabs：财务 / 人事 / OA  
 - 左栏：表类型（finance: 报销单/财务待办；hr: 假期余额/请假单/考勤月报；oa: OA 待办）  
@@ -387,7 +387,7 @@ export function deleteBizRow(...)
 - **无**「重置种子」；有「刷新」  
 - 保留 Codex 简约：`--sun-black` 底 + 边框（对齐现页）
 
-- [ ] **Step 3: Vite proxy**
+- [x] **Step 3: Vite proxy**
 
 ```ts
 '/api/biz/finance': { target: 'http://127.0.0.1:8710', changeOrigin: true },
@@ -397,7 +397,7 @@ export function deleteBizRow(...)
 
 删除 `/api/mock/finance|oa|hr`。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "feat(ui): biz-data page as table CRUD with auth user select"
@@ -413,7 +413,7 @@ git commit -m "feat(ui): biz-data page as table CRUD with auth user select"
 - Run: `python3 scripts/sync_nacos.py`（finance/oa/hr yaml）
 - Run: `python3 scripts/apply_sunshine_biz_schema.py`
 
-- [ ] **Step 1: 改 Live 脚本常量**
+- [x] **Step 1: 改 Live 脚本常量**
 
 ```python
 ALICE = "a1111111-1111-4111-a111-111111111111"
@@ -423,7 +423,7 @@ ADMIN_TOKEN = os.environ.get("BIZ_ADMIN_TOKEN", "sunshine-mock-admin-dev")
 
 G3 改为：`GET /api/biz/finance/expenses` 带 Admin token 返回列表（非 `/api/mock/.../users`）。
 
-- [ ] **Step 2: sync_nacos + apply schema + 重启**
+- [x] **Step 2: sync_nacos + apply schema + 重启**
 
 ```bash
 python3 scripts/sync_nacos.py
@@ -433,7 +433,7 @@ python3 scripts/start.py --restart finance oa hr auth tool-manager
 
 （服务名空格分隔，勿用逗号。）
 
-- [ ] **Step 3: Commit 脚本改动**
+- [x] **Step 3: Commit 脚本改动**
 
 ```bash
 git commit -m "test: point user-isolation live verify at UUID + biz CRUD APIs"
@@ -443,7 +443,7 @@ git commit -m "test: point user-isolation live verify at UUID + biz CRUD APIs"
 
 ## Task 10: 验收 G1–G5 + G4 grep
 
-- [ ] **Step 1: 单测回归**
+- [x] **Step 1: 单测回归**
 
 ```bash
 mvn -pl finance-service,oa-service,hr-biz-service,auth-center -am test -q
@@ -451,7 +451,7 @@ mvn -pl finance-service,oa-service,hr-biz-service,auth-center -am test -q
 
 Expected: PASS（若无关模块失败，缩小到本四个模块相关 test class）。
 
-- [ ] **Step 2: Live**
+- [x] **Step 2: Live**
 
 ```bash
 python3 scripts/verify_user_isolated_tools_live.py
@@ -461,7 +461,7 @@ Expected: G1/G2（及脚本内 HR/Admin）PASS。
 
 手动 / Chat：登录 `alice` / `password123`，问报销；确认命中种子。
 
-- [ ] **Step 3: G4 grep**
+- [x] **Step 3: G4 grep**
 
 ```bash
 rg -n "TenantUserStore|seed-users\.json|/api/mock/" \
@@ -477,9 +477,9 @@ rg -n "u-alice|u-bob|u-carol" finance-service oa-service hr-biz-service scripts/
 
 Expected: 0。
 
-- [ ] **Step 4: 勾选本计划 checkbox；可选小幅更新 CLAUDE/README 端口说明（若提到 mock reset）**
+- [x] **Step 4: 勾选本计划 checkbox；可选小幅更新 CLAUDE/README 端口说明（若提到 mock reset）**
 
-- [ ] **Step 5: 最终 commit（若有勾选/文档）**
+- [x] **Step 5: 最终 commit（若有勾选/文档）**
 
 ```bash
 git commit -m "docs: mark biz-db-crud plan gates done"
