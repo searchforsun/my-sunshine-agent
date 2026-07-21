@@ -20,6 +20,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 |------|------|
 | `sunshine_lib.py` | 公共库（MySQL/Redis/启停 JVM） |
 | `sync_nacos.py` | Nacos 配置同步 |
+| `sync_corpus50_platform.py` | Live MySQL：旧 finance 工具 ID → `list_my_expenses` 等；`--dry-run` |
 | `start.py` | 按依赖顺序启动全链路 |
 | `clear_session_cache.py` | 清会话 + 可选重启 |
 | `download_skywalking_agent.py` | 下载 SkyWalking Agent |
@@ -28,7 +29,9 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `rag_reset.py` | RAG Milvus 清库重建 |
 | `rag_ingest_bulk.py` | 按 document 表 + `docs/knowledge/*.md` 批量入库（`--strategy`） |
 | `verify_chunk_strategies_live.py` | 五策略分块 + publish 门禁 Live |
-| `rag_eval.py` | RAG Recall/MRR 基线评测 |
+| `rag_eval.py` | corpus-50 评测（`--sync` 写 MySQL + Admin 跑门禁） |
+| `generate_rag_corpus.py` | 生成 50 篇语料 + `eval_suite.json` |
+| `rag_wipe_and_ingest.py` | 删文档 + 清库 + 批量 ingest |
 | `verify_rewrite_timeline.py` | Timeline 改写 detail/metadata 验收 |
 | `verify_skills_ui_live.py` | **3.12** `/skills` 管理页 API Live（列表/版本/diff/上传） |
 | `verify_skill_5b_live.py` | **3.11** Skill 5B Chat `@` + Plan 触发 |

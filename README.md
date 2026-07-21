@@ -55,9 +55,10 @@ my-sunshine-agent/
 ├── rag-service/     :8400      # RAG 检索（Milvus + Hybrid + Rerank）
 ├── prompt-manager/  :8500      # 提示词管理
 ├── desensitize/     :8600      # 数据脱敏
-├── oa-service/      :8700      # OA 模拟
-├── finance-service/ :8710      # 财务模拟
-├── sunshine-ui/     :5173      # 前端 WebUI
+├── oa-service/      :8700      # OA 模拟（用户隔离待办）
+├── finance-service/ :8710      # 财务模拟（用户隔离报销）
+├── hr-biz-service/  :8720      # 人事模拟（假期/考勤，app-id sunshine-hr）
+├── sunshine-ui/     :5173      # 前端 WebUI（含 /mock-data 业务 Mock）
 ├── docker/                     # Docker Compose（中间件 + Prometheus/Grafana）
 ├── scripts/                    # Python 运维脚本（SSOT：scripts/*.py）
 └── docs/                       # 设计文档（Nacos SSOT：docs/nacos/）
@@ -116,7 +117,7 @@ python scripts/verify_expert_consultation_live.py
 # RAG 评测（需先 MySQL 种子 + ingest）
 python scripts/rag_reset.py
 python scripts/rag_ingest_bulk.py
-python scripts/rag_eval.py --suite-key sunshine-regression --strategy hybrid+rerank --ci
+python scripts/rag_eval.py --ci   # corpus-50：sync 评测集 + sunshine-regression 门禁
 
 # Orchestrator 关键单测
 mvn test -pl orchestrator -Dtest=ExecutionPlanRouterTest,RoutingGoldenSetTest,WorkflowExecutorTest,ReactExecutorTest
