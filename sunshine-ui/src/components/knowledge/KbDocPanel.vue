@@ -486,14 +486,15 @@ function handleConfirmPreview() {
 }
 
 async function handlePublish() {
-  if (!props.kbId || !props.docId || previewId.value == null) return
+  const id = previewId.value
+  if (!props.kbId || !props.docId || !canPublishDraft.value || !id) return
   publishing.value = true
   try {
     const result = await publishDocument(
       props.tenantId,
       props.kbId,
       props.docId,
-      { previewId: previewId.value },
+      { previewId: id },
     )
     message.success(`已发布 ${formatDocumentVersionKey(result.version)}，${result.chunks} chunks`)
     sourceEditing.value = false
