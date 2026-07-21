@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""corpus-50 用户隔离工具 Live（G1/G2 + 可选 HR / mock Admin）。
+"""corpus-50 用户隔离工具 Live（G1/G2 + 可选 HR / biz Admin）。
 
 用法:
   python3 scripts/verify_user_isolated_tools_live.py
-  python3 scripts/verify_user_isolated_tools_live.py --skip-mock
+  python3 scripts/verify_user_isolated_tools_live.py --skip-biz
 
-环境变量: TOOL_MANAGER_URL, FINANCE_URL, OA_URL, HR_URL, MOCK_ADMIN_TOKEN
+环境变量: TOOL_MANAGER_URL, FINANCE_URL, OA_URL, HR_URL, BIZ_ADMIN_TOKEN / MOCK_ADMIN_TOKEN
 """
 from __future__ import annotations
 
@@ -23,7 +23,15 @@ TM_URL = os.environ.get("TOOL_MANAGER_URL", "http://127.0.0.1:8210").rstrip("/")
 FINANCE_URL = os.environ.get("FINANCE_URL", "http://127.0.0.1:8710").rstrip("/")
 OA_URL = os.environ.get("OA_URL", "http://127.0.0.1:8700").rstrip("/")
 HR_URL = os.environ.get("HR_URL", "http://127.0.0.1:8720").rstrip("/")
-MOCK_TOKEN = os.environ.get("MOCK_ADMIN_TOKEN", "sunshine-mock-admin-dev")
+ALICE = "a1111111-1111-4111-a111-111111111111"
+BOB = "b2222222-2222-4222-b222-222222222222"
+CAROL = "c3333333-3333-4333-c333-333333333333"
+ADMIN_TOKEN = os.environ.get(
+    "BIZ_ADMIN_TOKEN",
+    os.environ.get("MOCK_ADMIN_TOKEN", "sunshine-mock-admin-dev"),
+)
+# CAROL reserved for multi-user demos (same UUID as auth seed)
+assert CAROL != ALICE and CAROL != BOB
 
 FIN_LIST = "sdk__sunshine-finance__list_my_expenses"
 FIN_DETAIL = "sdk__sunshine-finance__get_expense_detail"
@@ -89,9 +97,9 @@ def catalog_ids(*, enabled_only: bool) -> set[str]:
 
 
 def run_g1() -> None:
-    print("\n[G1] list_my_expenses u-alice vs u-bob")
-    alice = invoke(FIN_LIST, "u-alice")
-    bob = invoke(FIN_LIST, "u-bob")
+    print("\n[G1] list_my_expenses ALICE vs BOB")
+    alice = invoke(FIN_LIST, ALICE)
+    bob = invoke(FIN_LIST, BOB)
     print(f"  alice: {alice[:120].replace(chr(10), ' ')}...")
     print(f"  bob:   {bob[:120].replace(chr(10), ' ')}...")
     if alice == bob:
@@ -105,38 +113,37 @@ def run_g1() -> None:
 
 def run_g2() -> None:
     print("\n[G2] cross-user get_expense_detail")
-    cross = invoke(FIN_DETAIL, "u-bob", {"expenseId": "exp-a1"})
+    cross = invoke(FIN_DETAIL, BOB, {"expenseId": "exp-a1"})
     print(f"  bob→exp-a1: {cross}")
     if "未找到" not in cross and "not found" not in cross.lower():
         raise AssertionError(f"G2 FAIL: expected not-found, got: {cross}")
-    own = invoke(FIN_DETAIL, "u-alice", {"expenseId": "exp-a1"})
+    own = invoke(FIN_DETAIL, ALICE, {"expenseId": "exp-a1"})
     if "未找到" in own:
         raise AssertionError(f"G2 FAIL: alice should find exp-a1: {own}")
     print("[OK] G2 PASS")
 
 
-def run_g3_mock() -> None:
-    print("\n[G3] mock-data Admin reset/users")
-    headers = {"X-Admin-Token": MOCK_TOKEN}
-    for base, domain in ((FINANCE_URL, "finance"), (OA_URL, "oa"), (HR_URL, "hr")):
-        users = requests.get(f"{base}/api/mock/{domain}/users", headers=headers, timeout=15)
-        users.raise_for_status()
-        ulist = unwrap(users.json(), context=f"mock {domain} users")
-        if not isinstance(ulist, list) or "u-alice" not in ulist or "u-bob" not in ulist:
-            raise AssertionError(f"G3 FAIL: {domain} users={ulist}")
-        reset = requests.post(f"{base}/api/mock/{domain}/reset", headers=headers, timeout=15)
-        reset.raise_for_status()
-        rdata = unwrap(reset.json(), context=f"mock {domain} reset")
-        status = (rdata or {}).get("status") if isinstance(rdata, dict) else None
-        if status != "reset":
-            raise AssertionError(f"G3 FAIL: {domain} reset={rdata}")
-        print(f"  [OK] {domain} users+reset")
+def run_g3_biz() -> None:
+    print("\n[G3] biz Admin CRUD list (no mock reset)")
+    headers = {"X-Admin-Token": ADMIN_TOKEN}
+    checks = (
+        (FINANCE_URL, "/api/biz/finance/expenses", "finance expenses"),
+        (OA_URL, "/api/biz/oa/tasks", "oa tasks"),
+        (HR_URL, "/api/biz/hr/leave-balances", "hr leave-balances"),
+    )
+    for base, path, label in checks:
+        resp = requests.get(f"{base}{path}", headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = unwrap(resp.json(), context=f"biz {label}")
+        if not isinstance(data, list) or len(data) < 1:
+            raise AssertionError(f"G3 FAIL: {label} empty or not list: {data!r}")
+        print(f"  [OK] {label} count={len(data)}")
     print("[OK] G3 PASS")
 
 
 def run_g6_hr_optional() -> None:
     print("\n[G6] get_leave_balance (alice) + catalog params 无 userId")
-    bal = invoke(HR_BALANCE, "u-alice")
+    bal = invoke(HR_BALANCE, ALICE)
     print(f"  balance: {bal.replace(chr(10), ' | ')}")
     if "青松假" not in bal and "qingsong" not in bal.lower():
         raise AssertionError(f"G6 FAIL: expected 青松假/qingsong in: {bal}")
@@ -171,7 +178,7 @@ def run_g8_catalog() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="User-isolated tools live verify")
-    parser.add_argument("--skip-mock", action="store_true", help="跳过 G3 mock Admin")
+    parser.add_argument("--skip-biz", action="store_true", help="跳过 G3 biz Admin")
     parser.add_argument("--skip-hr", action="store_true", help="跳过 G6 HR 可选检查")
     args = parser.parse_args()
 
@@ -186,8 +193,8 @@ def main() -> int:
         report["G1"] = "PASS"
         run_g2()
         report["G2"] = "PASS"
-        if not args.skip_mock:
-            run_g3_mock()
+        if not args.skip_biz:
+            run_g3_biz()
             report["G3"] = "PASS"
         else:
             report["G3"] = "SKIP"
