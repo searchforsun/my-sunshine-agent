@@ -118,7 +118,17 @@ public final class ProcessingTimelineSession {
 
     public void attachHitlPending(
             String token, String toolDisplayName, String paramsSummary, long expiresAt, String expandDetail) {
-        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
+        attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail, null);
+    }
+
+    public void attachHitlPending(
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail,
+            com.sunshine.common.sandbox.SandboxEditDiff editDiff) {
+        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail, editDiff);
     }
 
     public void resolveHitlPending(String status) {
@@ -137,7 +147,18 @@ public final class ProcessingTimelineSession {
             String paramsSummary,
             long expiresAt,
             String expandDetail) {
-        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
+        attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail, null);
+    }
+
+    public void attachHitlPendingOnStep(
+            String stepId,
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail,
+            com.sunshine.common.sandbox.SandboxEditDiff editDiff) {
+        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail, editDiff);
     }
 
     public void resolveHitlPendingOnStep(String stepId, String status) {

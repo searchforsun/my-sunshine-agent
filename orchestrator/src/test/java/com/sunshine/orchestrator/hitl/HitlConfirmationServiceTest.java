@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.hitl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -43,8 +44,11 @@ class HitlConfirmationServiceTest {
     private ValueOperations<String, String> valueOps;
     @Mock
     private com.sunshine.orchestrator.generation.GenerationJob generationJob;
+    @Mock
+    private com.sunshine.orchestrator.client.SandboxClient sandboxClient;
 
     private AgentHitlProperties properties;
+    private AgentSandboxProperties sandboxProperties;
     private HitlConfirmationService service;
 
     @BeforeEach
@@ -52,12 +56,14 @@ class HitlConfirmationServiceTest {
         properties = new AgentHitlProperties();
         properties.setEnabled(true);
         properties.setTimeoutSec(5);
+        sandboxProperties = new AgentSandboxProperties();
         lenient().when(generationJob.getGenerationId()).thenReturn("gen-test");
         HitlTokenRegistry tokenRegistry = new HitlTokenRegistry(properties, redis, new ObjectMapper());
         HitlTimelineBridge timelineBridge = new HitlTimelineBridge(
                 generationRegistry, flushScheduler, toolCatalogService);
         service = new HitlConfirmationService(
-                properties, toolCatalogService, tokenRegistry, timelineBridge, new HitlWriteToolSerialGate());
+                properties, toolCatalogService, tokenRegistry, timelineBridge, new HitlWriteToolSerialGate(),
+                sandboxClient, sandboxProperties);
         com.sunshine.orchestrator.processing.TimelineLabelTestSupport.bindDefaults();
         com.sunshine.orchestrator.processing.ToolNodeLabels.bind(
                 new com.sunshine.orchestrator.processing.ToolNodeLabelService(

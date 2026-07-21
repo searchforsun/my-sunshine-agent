@@ -27,11 +27,11 @@ class HitlParamSupportTest {
 
     @Test
     void expandBodyFromParams_editOldNew() {
-        String body = HitlParamSupport.expandBodyFromParams(Map.of(
+        assertThat(HitlParamSupport.expandBodyFromParams(Map.of(
                 "path", "/workspace/a.txt",
                 "old_string", "a\nb\nc",
-                "new_string", "a\nx\nc"));
-        assertThat(body).isEqualTo(" a\n-b\n+x\n c");
+                "new_string", "a\nx\nc")))
+                .isNull();
     }
 
     @Test

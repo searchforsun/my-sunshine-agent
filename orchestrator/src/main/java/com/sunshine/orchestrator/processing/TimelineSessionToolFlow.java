@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
+import com.sunshine.common.sandbox.SandboxEditDiff;
+
 import java.util.List;
 
 /** ReAct 工具步骤 + HITL / 节点 recovery metadata */
@@ -120,11 +122,21 @@ final class TimelineSessionToolFlow {
 
     void attachHitlPending(
             String token, String toolDisplayName, String paramsSummary, long expiresAt, String expandDetail) {
+        attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail, null);
+    }
+
+    void attachHitlPending(
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail,
+            SandboxEditDiff editDiff) {
         if (state.currentToolStepId == null || token == null || token.isBlank()) {
             return;
         }
         attachHitlPendingOnStep(
-                state.currentToolStepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
+                state.currentToolStepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail, editDiff);
     }
 
     void resolveHitlPending(String status) {
@@ -146,12 +158,24 @@ final class TimelineSessionToolFlow {
             String paramsSummary,
             long expiresAt,
             String expandDetail) {
+        attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail, null);
+    }
+
+    void attachHitlPendingOnStep(
+            String stepId,
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail,
+            SandboxEditDiff editDiff) {
         if (stepId == null || token == null || token.isBlank()) {
             return;
         }
         StepMetadata base = state.aggregator.get(stepId).map(com.sunshine.orchestrator.agent.ProcessingStep::metadata).orElse(null);
         StepMetadata meta = StepMetadata.withHitl(
                 base, HitlStepMeta.awaiting(token, toolDisplayName, paramsSummary, expiresAt));
+        meta = StepMetadata.withEditDiff(meta, editDiff);
         emitter.applyAt(stepId, null, EventKind.PROGRESS, null, expandDetail, meta, System.currentTimeMillis());
     }
 

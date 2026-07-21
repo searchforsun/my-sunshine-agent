@@ -8,8 +8,8 @@ import java.util.stream.Collectors;
 import org.springframework.util.StringUtils;
 
 /**
- * HITL 参数摘要：确认框只展示路径等元信息；正文（content / old_string / new_string）
- * 与超长 command 进工具步骤 detail，供展开查看完整内容。
+ * HITL 参数摘要：确认框只展示路径等元信息；正文（write→content、exec→command）
+ * 进工具步骤 detail；edit 预览只走 {@code metadata.editDiff}（EditDiffBuilder）。
  */
 public final class HitlParamSupport {
 
@@ -45,7 +45,7 @@ public final class HitlParamSupport {
                 .collect(Collectors.joining(", "));
     }
 
-    /** 工具步骤展开用全文（write→content；edit→old/new；exec→command） */
+    /** 工具步骤展开用全文（write→content；exec→command；edit 不在此生成） */
     public static String expandBodyFromParams(Map<String, String> params) {
         if (params == null || params.isEmpty()) {
             return null;
@@ -53,13 +53,6 @@ public final class HitlParamSupport {
         String content = params.get("content");
         if (StringUtils.hasText(content)) {
             return content;
-        }
-        String oldStr = params.get("old_string");
-        String newStr = params.get("new_string");
-        if (StringUtils.hasText(oldStr) || StringUtils.hasText(newStr)) {
-            return formatEditUnifiedDiff(
-                    oldStr != null ? oldStr : "",
-                    newStr != null ? newStr : "");
         }
         String command = params.get("command");
         return StringUtils.hasText(command) ? command : null;
