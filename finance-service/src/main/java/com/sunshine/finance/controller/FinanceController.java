@@ -7,7 +7,7 @@ import com.sunshine.finance.dto.SubmitExpenseRequest;
 import com.sunshine.finance.exception.FinanceErrorCode;
 import com.sunshine.finance.model.ExpenseRecord;
 import com.sunshine.finance.model.FinanceInboxItem;
-import com.sunshine.finance.store.TenantUserStore;
+import com.sunshine.finance.service.FinanceBizService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,7 +26,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FinanceController {
 
-    private final TenantUserStore store;
+    private final FinanceBizService financeBizService;
 
     @GetMapping("/expenses")
     public R<List<ExpenseRecord>> listExpenses(
@@ -34,7 +34,7 @@ public class FinanceController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @RequestParam(value = "status", required = false) String status) {
         String uid = requireUser(userId);
-        return R.ok(store.listExpenses(tenantOrDefault(tenantId), uid, status));
+        return R.ok(financeBizService.listExpenses(tenantOrDefault(tenantId), uid, status));
     }
 
     @GetMapping("/expenses/summary")
@@ -43,7 +43,7 @@ public class FinanceController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @RequestParam(value = "status", required = false) String status) {
         String uid = requireUser(userId);
-        return R.ok(store.summarizeExpenses(tenantOrDefault(tenantId), uid, status));
+        return R.ok(financeBizService.summarizeExpenses(tenantOrDefault(tenantId), uid, status));
     }
 
     @GetMapping("/expenses/{expenseId}")
@@ -52,7 +52,7 @@ public class FinanceController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @PathVariable String expenseId) {
         String uid = requireUser(userId);
-        return R.ok(store.findExpense(tenantOrDefault(tenantId), uid, expenseId)
+        return R.ok(financeBizService.findExpense(tenantOrDefault(tenantId), uid, expenseId)
                 .orElseThrow(() -> new BizException(FinanceErrorCode.EXPENSE_NOT_FOUND)));
     }
 
@@ -66,7 +66,7 @@ public class FinanceController {
                 || request.amount() == null || !StringUtils.hasText(request.occurredOn())) {
             throw new BizException(FinanceErrorCode.INVALID_EXPENSE_REQUEST);
         }
-        return R.ok(store.submitExpense(
+        return R.ok(financeBizService.submitExpense(
                 tenantOrDefault(tenantId),
                 uid,
                 request.category().trim(),
@@ -81,7 +81,7 @@ public class FinanceController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @RequestParam(value = "status", required = false) String status) {
         String uid = requireUser(userId);
-        return R.ok(store.listInbox(tenantOrDefault(tenantId), uid, status));
+        return R.ok(financeBizService.listInbox(tenantOrDefault(tenantId), uid, status));
     }
 
     @GetMapping("/inbox/{itemId}")
@@ -90,7 +90,7 @@ public class FinanceController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @PathVariable String itemId) {
         String uid = requireUser(userId);
-        return R.ok(store.findInboxItem(tenantOrDefault(tenantId), uid, itemId)
+        return R.ok(financeBizService.findInboxItem(tenantOrDefault(tenantId), uid, itemId)
                 .orElseThrow(() -> new BizException(FinanceErrorCode.INBOX_ITEM_NOT_FOUND)));
     }
 

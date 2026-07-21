@@ -1,6 +1,6 @@
 package com.sunshine.finance.tools;
 
-import com.sunshine.finance.store.TenantUserStore;
+import com.sunshine.finance.service.FinanceBizService;
 import com.sunshine.tools.sdk.autoconfigure.SunshineToolAutoConfiguration;
 import com.sunshine.tools.sdk.context.ToolInvocationContext;
 import org.junit.jupiter.api.AfterEach;
@@ -8,12 +8,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,7 +30,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         properties = "sunshine.tools.app-id=sunshine-finance")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Transactional
+@Sql(scripts = "/data-finance.sql")
 class FinanceSunshineToolsTest {
+
+    static final String ALICE = "a1111111-1111-4111-a111-111111111111";
+    static final String BOB = "b2222222-2222-4222-b222-222222222222";
 
     @Autowired
     private MockMvc mockMvc;
@@ -35,16 +44,17 @@ class FinanceSunshineToolsTest {
     private FinanceSunshineTools financeSunshineTools;
 
     @Autowired
-    private TenantUserStore store;
+    private FinanceBizService financeBizService;
 
-    @SpringBootApplication
-    @Import({SunshineToolAutoConfiguration.class, FinanceSunshineTools.class, TenantUserStore.class})
+    @SpringBootApplication(scanBasePackages = "com.sunshine.finance")
+    @Import(SunshineToolAutoConfiguration.class)
+    @EntityScan("com.sunshine.finance.entity")
+    @EnableJpaRepositories("com.sunshine.finance.repo")
     static class TestApplication {
     }
 
     @BeforeEach
     void setUp() {
-        store.reset("default");
         ToolInvocationContext.clear();
     }
 
@@ -55,7 +65,7 @@ class FinanceSunshineToolsTest {
 
     @Test
     void listMyExpenses_withAliceContext_returnsSeed() {
-        ToolInvocationContext.set("default", "u-alice");
+        ToolInvocationContext.set("default", ALICE);
         String result = financeSunshineTools.listMyExpenses("pending");
         assertThat(result).contains("共 1 条报销单")
                 .contains("[exp-a1]")
@@ -83,7 +93,7 @@ class FinanceSunshineToolsTest {
     @Test
     void invokeWithAliceHeader_returnsResult() throws Exception {
         mockMvc.perform(post("/sunshine/tools/invoke/list_my_expenses")
-                        .header("x-user-id", "u-alice")
+                        .header("x-user-id", ALICE)
                         .header("x-tenant-id", "default")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"pending\"}"))
@@ -109,16 +119,16 @@ class FinanceSunshineToolsTest {
 
     @Test
     void getExpenseDetail_crossUser_notFound() {
-        ToolInvocationContext.set("default", "u-bob");
+        ToolInvocationContext.set("default", BOB);
         assertThat(financeSunshineTools.getExpenseDetail("exp-a1"))
                 .contains("未找到");
     }
 
     @Test
     void submitExpense_createsForCurrentUser() {
-        ToolInvocationContext.set("default", "u-bob");
+        ToolInvocationContext.set("default", BOB);
         String result = financeSunshineTools.submitExpense("办公用品", "12.5", "2026-07-20", "笔");
         assertThat(result).contains("已提交报销单").contains("id=exp-");
-        assertThat(store.listExpenses("default", "u-bob", null)).hasSize(1);
+        assertThat(financeBizService.listExpenses("default", BOB, null)).hasSize(1);
     }
 }

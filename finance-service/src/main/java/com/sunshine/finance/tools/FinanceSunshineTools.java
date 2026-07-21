@@ -3,7 +3,7 @@ package com.sunshine.finance.tools;
 import com.sunshine.finance.dto.ExpenseSummaryVO;
 import com.sunshine.finance.model.ExpenseRecord;
 import com.sunshine.finance.model.FinanceInboxItem;
-import com.sunshine.finance.store.TenantUserStore;
+import com.sunshine.finance.service.FinanceBizService;
 import com.sunshine.tools.sdk.annotation.SunshineTool;
 import com.sunshine.tools.sdk.annotation.ToolParam;
 import com.sunshine.tools.sdk.context.ToolInvocationContext;
@@ -18,7 +18,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FinanceSunshineTools {
 
-    private final TenantUserStore store;
+    private final FinanceBizService financeBizService;
 
     @SunshineTool(
             id = "list_my_expenses",
@@ -30,7 +30,7 @@ public class FinanceSunshineTools {
             @ToolParam(value = "status", description = "pending | approved | all", required = false) String status) {
         String userId = ToolInvocationContext.requireUserId();
         String tenantId = ToolInvocationContext.tenantIdOrDefault();
-        List<ExpenseRecord> expenses = store.listExpenses(tenantId, userId, status != null ? status : "all");
+        List<ExpenseRecord> expenses = financeBizService.listExpenses(tenantId, userId, status != null ? status : "all");
         if (expenses.isEmpty()) {
             return "未查询到符合条件的报销单。";
         }
@@ -62,7 +62,7 @@ public class FinanceSunshineTools {
         if (!StringUtils.hasText(expenseId)) {
             return "请提供报销单 expenseId。";
         }
-        return store.findExpense(tenantId, userId, expenseId.trim())
+        return financeBizService.findExpense(tenantId, userId, expenseId.trim())
                 .map(e -> """
                         报销单详情：
                         - id=%s
@@ -100,7 +100,7 @@ public class FinanceSunshineTools {
         } catch (NumberFormatException e) {
             return "金额格式无效：" + amount;
         }
-        ExpenseRecord created = store.submitExpense(
+        ExpenseRecord created = financeBizService.submitExpense(
                 tenantId, userId, category.trim(), parsed, occurredOn.trim(), remark);
         return "已提交报销单：id=" + created.id()
                 + " | 类别=" + created.category()
@@ -118,7 +118,7 @@ public class FinanceSunshineTools {
             @ToolParam(value = "status", description = "pending | approved | all", required = false) String status) {
         String userId = ToolInvocationContext.requireUserId();
         String tenantId = ToolInvocationContext.tenantIdOrDefault();
-        List<FinanceInboxItem> items = store.listInbox(tenantId, userId, status != null ? status : "all");
+        List<FinanceInboxItem> items = financeBizService.listInbox(tenantId, userId, status != null ? status : "all");
         if (items.isEmpty()) {
             return "未查询到符合条件的财务待办。";
         }
@@ -146,7 +146,7 @@ public class FinanceSunshineTools {
         if (!StringUtils.hasText(itemId)) {
             return "请提供财务待办 itemId。";
         }
-        return store.findInboxItem(tenantId, userId, itemId.trim())
+        return financeBizService.findInboxItem(tenantId, userId, itemId.trim())
                 .map(item -> """
                         财务待办详情：
                         - id=%s
@@ -167,7 +167,7 @@ public class FinanceSunshineTools {
             @ToolParam(value = "status", description = "pending | approved | all", required = false) String status) {
         String userId = ToolInvocationContext.requireUserId();
         String tenantId = ToolInvocationContext.tenantIdOrDefault();
-        List<ExpenseSummaryVO> summaries = store.summarizeExpenses(tenantId, userId, status != null ? status : "all");
+        List<ExpenseSummaryVO> summaries = financeBizService.summarizeExpenses(tenantId, userId, status != null ? status : "all");
         if (summaries.isEmpty()) {
             return "未查询到报销汇总数据。";
         }
