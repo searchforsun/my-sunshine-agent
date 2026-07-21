@@ -23,6 +23,10 @@ spring:
       mode: always
       schema-locations: classpath:schema-finance.sql
 
+sunshine:
+  biz:
+    admin-token: sunshine-mock-admin-dev
+
 logging:
   level:
     com.sunshine: warn

@@ -8,6 +8,10 @@ import java.util.Optional;
 
 public interface FinInboxRepository extends JpaRepository<FinInboxEntity, String> {
 
+    List<FinInboxEntity> findByTenantIdOrderByIdAsc(String tenantId);
+
+    List<FinInboxEntity> findByTenantIdAndStatusOrderByIdAsc(String tenantId, String status);
+
     List<FinInboxEntity> findByTenantIdAndUserIdOrderByIdAsc(String tenantId, String userId);
 
     List<FinInboxEntity> findByTenantIdAndUserIdAndStatusOrderByIdAsc(

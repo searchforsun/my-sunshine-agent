@@ -8,6 +8,10 @@ import java.util.Optional;
 
 public interface FinExpenseRepository extends JpaRepository<FinExpenseEntity, String> {
 
+    List<FinExpenseEntity> findByTenantIdOrderByIdAsc(String tenantId);
+
+    List<FinExpenseEntity> findByTenantIdAndStatusOrderByIdAsc(String tenantId, String status);
+
     List<FinExpenseEntity> findByTenantIdAndUserIdOrderByIdAsc(String tenantId, String userId);
 
     List<FinExpenseEntity> findByTenantIdAndUserIdAndStatusOrderByIdAsc(
