@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { NIcon } from 'naive-ui'
 import {
   CloseOutline,
@@ -8,9 +9,11 @@ import {
 } from '@vicons/ionicons5'
 import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
+import CodeLineGutter from './CodeLineGutter.vue'
 import { tabFileName } from '../../composables/useSandboxPreviewTabs'
+import { registerHljsLanguages } from '../../utils/markdown/registerHljsLanguages'
 
-defineProps<{
+const props = defineProps<{
   openTabs: { path: string }[]
   selectedPath: string
   preview: string
@@ -22,7 +25,6 @@ defineProps<{
   canCopyPreview: boolean
   copyDone: boolean
   showMarkdownRendered: boolean
-  previewCodeHtml: string
   previewLangClass: string
 }>()
 
@@ -34,6 +36,45 @@ const emit = defineEmits<{
 }>()
 
 const tabbarRef = defineModel<HTMLElement | null>('tabbarRef', { default: null })
+
+const hljs = registerHljsLanguages()
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+const previewLang = computed(() => {
+  const match = props.previewLangClass.match(/language-(\S+)/)
+  const lang = match?.[1]
+  return lang && lang !== 'plaintext' ? lang : null
+})
+
+const previewLines = computed(() => {
+  if (props.showMarkdownRendered || !props.preview) return [] as string[]
+  const normalized = props.preview.endsWith('\n')
+    ? props.preview.slice(0, -1)
+    : props.preview
+  if (normalized === '') return ['']
+  return normalized.split('\n')
+})
+
+function highlightLine(text: string): string {
+  const lang = previewLang.value
+  try {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(text || ' ', { language: lang }).value
+    }
+    return hljs.highlightAuto(text || ' ').value
+  } catch {
+    return escapeHtml(text)
+  }
+}
+
+const lineHtml = computed(() => previewLines.value.map(highlightLine))
 </script>
 
 <template>
@@ -104,7 +145,12 @@ const tabbarRef = defineModel<HTMLElement | null>('tabbarRef', { default: null }
       <div v-else-if="showMarkdownRendered" class="preview-md">
         <StaticMarkdown :source="preview" />
       </div>
-      <pre v-else-if="previewCodeHtml" class="preview-code"><code :class="previewLangClass" v-html="previewCodeHtml" /></pre>
+      <pre v-else-if="previewLines.length" class="preview-code preview-code--guttered">
+        <div v-for="(line, i) in previewLines" :key="i" class="preview-line">
+          <CodeLineGutter mode="file" :new-line="i + 1" />
+          <code :class="previewLangClass" v-html="lineHtml[i]" />
+        </div>
+      </pre>
       <pre v-else class="preview-code">{{ preview }}</pre>
     </div>
   </div>
@@ -290,6 +336,28 @@ const tabbarRef = defineModel<HTMLElement | null>('tabbarRef', { default: null }
   tab-size: 4;
 }
 
+.preview-code--guttered {
+  display: block;
+  padding: 8px 12px 12px 0;
+}
+
+.preview-line {
+  display: flex;
+  align-items: flex-start;
+  min-width: max-content;
+  white-space: pre;
+}
+
+.preview-line code {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0 0 4px;
+  margin: 0;
+  background: transparent !important;
+  white-space: pre;
+  display: inline;
+}
+
 .preview-code :deep(code),
 .preview-code :deep(.hljs),
 .preview-code :deep(span) {
@@ -299,7 +367,7 @@ const tabbarRef = defineModel<HTMLElement | null>('tabbarRef', { default: null }
 }
 
 .preview-code code.hljs {
-  display: block;
+  display: inline;
   padding: 0;
   background: transparent !important;
   color: inherit;

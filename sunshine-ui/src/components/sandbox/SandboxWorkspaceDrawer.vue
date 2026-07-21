@@ -56,7 +56,6 @@ const {
   copyDone,
   isMarkdownFile,
   showMarkdownRendered,
-  previewCodeHtml,
   previewLangClass,
   canCopyPreview,
   breadcrumbs,
@@ -188,7 +187,6 @@ watch(
         :can-copy-preview="canCopyPreview"
         :copy-done="copyDone"
         :show-markdown-rendered="showMarkdownRendered"
-        :preview-code-html="previewCodeHtml"
         :preview-lang-class="previewLangClass"
         @activate-tab="activateTab"
         @close-tab="closeTab"
