@@ -1,6 +1,6 @@
 # corpus-50 平台适配 + 用户隔离工具 + Mock 页 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 清除旧 demo 遗留（不做兼容），将 Skill/Workflow/Expert/Prompt/验收对齐 corpus-50；SDK 工具按 `x-user-id` 隔离真实参数数据；提供 `/mock-data` 联调页。
 
@@ -35,7 +35,7 @@
 - Modify: `common/sunshine-tool-sdk/src/main/java/com/sunshine/tools/sdk/web/SunshineToolController.java`
 - Test: `common/sunshine-tool-sdk/src/test/java/com/sunshine/tools/sdk/context/ToolInvocationContextTest.java`
 
-- [ ] **Step 1: 写失败单测（无上下文时 requireUserId 抛错）**
+- [x] **Step 1: 写失败单测（无上下文时 requireUserId 抛错）**
 
 ```java
 @Test
@@ -46,7 +46,7 @@ void requireUserId_withoutContext_throws() {
 }
 ```
 
-- [ ] **Step 2: 实现 Context（ThreadLocal）**
+- [x] **Step 2: 实现 Context（ThreadLocal）**
 
 ```java
 public final class ToolInvocationContext {
@@ -59,7 +59,7 @@ public final class ToolInvocationContext {
 }
 ```
 
-- [ ] **Step 3: Controller 注入头并 try/finally clear**
+- [x] **Step 3: Controller 注入头并 try/finally clear**
 
 ```java
 @PostMapping("/invoke/{toolId}")
@@ -77,7 +77,7 @@ public SdkToolInvokeResponse invoke(
 }
 ```
 
-- [ ] **Step 4: 单测通过后 commit**
+- [x] **Step 4: 单测通过后 commit**
 
 ```bash
 mvn -pl common/sunshine-tool-sdk -am test -Dtest=ToolInvocationContextTest,SunshineToolControllerTest
@@ -95,7 +95,7 @@ git add common/sunshine-tool-sdk && git commit -m "feat(tool-sdk): ToolInvocatio
 - Modify: `CatalogRemoteAgentTool.java`、`ToolNodeHandler.java` — 传入当前 user/tenant
 - Test: `SdkInvokeExecutorTest`、`ToolNodeHandlerTest`（旧 `list_finance_messages` 断言一并改为新工具名，见 Task 4）
 
-- [ ] **Step 1: SdkInvokeExecutor 增加 Identity 参数并写头**
+- [x] **Step 1: SdkInvokeExecutor 增加 Identity 参数并写头**
 
 ```java
 public String invoke(ToolDefinitionEntity tool, Map<String, String> params, String userId, String tenantId) {
@@ -107,7 +107,7 @@ public String invoke(ToolDefinitionEntity tool, Map<String, String> params, Stri
 }
 ```
 
-- [ ] **Step 2: ToolManagerClient 签名扩展（无兼容重载：直接改调用方）**
+- [x] **Step 2: ToolManagerClient 签名扩展（无兼容重载：直接改调用方）**
 
 ```java
 public Mono<String> invokeMono(String name, Map<String, String> params, String userId, String tenantId) {
@@ -119,11 +119,11 @@ public Mono<String> invokeMono(String name, Map<String, String> params, String u
 }
 ```
 
-- [ ] **Step 3: CatalogRemoteAgentTool / ToolNodeHandler 从 Agent/Execution 上下文取 userId**
+- [x] **Step 3: CatalogRemoteAgentTool / ToolNodeHandler 从 Agent/Execution 上下文取 userId**
 
 （与现有 `AgentRunRequest.userId` / chat session user 字段对齐；缺 user 时写工具应失败。）
 
-- [ ] **Step 4: 编译相关模块 + commit**
+- [x] **Step 4: 编译相关模块 + commit**
 
 ```bash
 mvn -pl tool-manager,orchestrator -am test -DskipTests=false -Dtest=SdkInvokeExecutorTest,ToolNodeHandlerTest
@@ -141,7 +141,7 @@ git commit -m "feat(tools): propagate x-user-id through invoke chain"
 - Delete: 全局静态 MOCK 实现（`FinanceMessageService` 旧逻辑）
 - Test: `TenantUserStoreTest`
 
-- [ ] **Step 1: seed-users.json 结构（u-alice/u-bob/u-carol）**
+- [x] **Step 1: seed-users.json 结构（u-alice/u-bob/u-carol）**
 
 ```json
 {
@@ -160,7 +160,7 @@ git commit -m "feat(tools): propagate x-user-id through invoke chain"
 }
 ```
 
-- [ ] **Step 2: Store API**
+- [x] **Step 2: Store API**
 
 ```java
 List<ExpenseRecord> listExpenses(String tenantId, String userId, String status);
@@ -169,9 +169,9 @@ ExpenseRecord submitExpense(...);
 void reset(String tenantId); // 从 classpath 重载
 ```
 
-- [ ] **Step 3: 单测 alice/bob 列表不同；跨用户 find 为空**
+- [x] **Step 3: 单测 alice/bob 列表不同；跨用户 find 为空**
 
-- [ ] **Step 4: commit**
+- [x] **Step 4: commit**
 
 ```bash
 git commit -m "feat(finance): TenantUserStore with per-user seed data"
@@ -186,9 +186,9 @@ git commit -m "feat(finance): TenantUserStore with per-user seed data"
 - Update/Delete: `FinanceSunshineToolsTest.java`、`FinanceMessageController*`（REST 若保留则同样按用户；否则改为 mock admin）
 - Update: orchestrator 单测中旧 Catalog ID
 
-- [ ] **Step 1: 删除** `list_finance_messages` / `get_finance_message_detail` / `summarize_finance_by_status`
+- [x] **Step 1: 删除** `list_finance_messages` / `get_finance_message_detail` / `summarize_finance_by_status`
 
-- [ ] **Step 2: 实现新工具（身份来自 Context）**
+- [x] **Step 2: 实现新工具（身份来自 Context）**
 
 ```java
 @SunshineTool(id = "list_my_expenses", displayName = "查询我的报销单", ...)
@@ -200,14 +200,14 @@ public String listMyExpenses(@ToolParam(value = "status", required = false) Stri
 // get_expense_detail / submit_expense / list_my_finance_inbox / get_finance_inbox_item / summarize_my_expenses
 ```
 
-- [ ] **Step 3: grep 确认模块内无旧短名**
+- [x] **Step 3: grep 确认模块内无旧短名**
 
 ```bash
 rg "list_finance_messages|summarize_finance_by_status" finance-service orchestrator
 # 期望：无业务引用（仅本 plan/历史 commit 除外）
 ```
 
-- [ ] **Step 4: commit**
+- [x] **Step 4: commit**
 
 ```bash
 git commit -m "feat(finance): replace demo tools with user-scoped expense APIs"
@@ -222,7 +222,7 @@ git commit -m "feat(finance): replace demo tools with user-scoped expense APIs"
 - Add: seed 中带 `assigneeUserId`
 - Test: alice 看不见 bob 的待办；approve 越权失败
 
-- [ ] **Step 1–4:** 同 Finance 模式；保留短名 `list_oa_tasks` / `approve_oa_task` 但数据模型必须含负责人且过滤；**删除**无用户字段的静态 5 条全局列表。
+- [x] **Step 1–4:** 同 Finance 模式；保留短名 `list_oa_tasks` / `approve_oa_task` 但数据模型必须含负责人且过滤；**删除**无用户字段的静态 5 条全局列表。
 
 ```bash
 git commit -m "feat(oa): user-scoped tasks; remove global mock list"
@@ -239,11 +239,11 @@ git commit -m "feat(oa): user-scoped tasks; remove global mock list"
 - Modify: 根 `pom.xml` modules、`scripts/start.py` 注册 `hr`、`docker/mysql/init/16-sunshine-tool-manager.sql` 增加 sdk_application
 - Create: `docs/nacos/sunshine-hr.yaml`（若项目惯例需要）+ sync_nacos
 
-- [ ] **Step 1: 模块可启动且 `/sunshine/tools/catalog` 含 4 个工具**
+- [x] **Step 1: 模块可启动且 `/sunshine/tools/catalog` 含 4 个工具**
 
-- [ ] **Step 2: 单测余额/请假隔离**
+- [x] **Step 2: 单测余额/请假隔离**
 
-- [ ] **Step 3: commit**
+- [x] **Step 3: commit**
 
 ```bash
 git commit -m "feat(hr): add sunshine-hr tool app with leave/attendance APIs"
@@ -261,7 +261,7 @@ git commit -m "feat(hr): add sunshine-hr tool app with leave/attendance APIs"
   - `PATCH /api/mock/expenses/{id}`（finance）等
 - Header: `X-Admin-Token` 或与现有 RAG admin 同模式；开发态可读配置 token
 
-- [ ] **Step 1–3:** 实现 + 用 curl 验证 reset 恢复种子
+- [x] **Step 1–3:** 实现 + 用 curl 验证 reset 恢复种子
 
 ```bash
 git commit -m "feat(mock): admin APIs to inspect/reset per-user enterprise data"
@@ -277,11 +277,11 @@ git commit -m "feat(mock): admin APIs to inspect/reset per-user enterprise data"
 - Modify: `sunshine-ui/src/router/index.ts`、`MainLayout.vue`（侧栏「业务数据」）
 - Modify: Vite proxy（若需直连 :8710/:8700/:8720）
 
-- [ ] **Step 1: 路由 + 空壳页（`--sun-black` + 边框，左用户/域，右表格）**
+- [x] **Step 1: 路由 + 空壳页（`--sun-black` + 边框，左用户/域，右表格）**
 
-- [ ] **Step 2: 拉取 alice/bob 数据切换；重置按钮**
+- [x] **Step 2: 拉取 alice/bob 数据切换；重置按钮**
 
-- [ ] **Step 3: `npx vue-tsc -b` 通过 + commit**
+- [x] **Step 3: `npx vue-tsc -b` 通过 + commit**
 
 ```bash
 git commit -m "feat(ui): add /mock-data page for enterprise mock inspection"
@@ -300,9 +300,9 @@ git commit -m "feat(ui): add /mock-data page for enterprise mock inspection"
 - Modify: `docker/mysql/init/15-sunshine-expert-manager.sql` — 提示对齐；skill_link 有效
 - Modify: `rag-service/.../config-seed.json` + `14-*.sql` rewrite/hyde 域词
 
-- [ ] **Step 1: rg 确认 13/17 无 `list_finance_messages`、无「年假可以请几天」**
+- [x] **Step 1: rg 确认 13/17 无 `list_finance_messages`、无「年假可以请几天」**
 
-- [ ] **Step 2: commit**
+- [x] **Step 2: commit**
 
 ```bash
 git commit -m "chore(seed): point workflows/prompts at corpus-50 and new tool IDs"
@@ -319,7 +319,7 @@ git commit -m "chore(seed): point workflows/prompts at corpus-50 and new tool ID
 - Modify: `docs/routing/routing-golden-set.md`
 - Modify: `scripts/verify_workflow_studio_live.py`、`verify_exclusive_gateway_live.py`、`verify_loop_live.py`、`verify_rag_studio.py`、`phase2_agent_demo.py`、`verify_tenant_live.py` 等 — 去掉 leave-policy-v1 / 年假句
 
-- [ ] **Step 1–3:** 改完后 `rg "leave-policy-v1|list_finance_messages|年假可以请几天" scripts sunshine-ui docs/routing docs/skills docker/mysql/init` 仅允许出现在本 plan/spec 历史说明（业务路径为 0）
+- [x] **Step 1–3:** 改完后 `rg "leave-policy-v1|list_finance_messages|年假可以请几天" scripts sunshine-ui docs/routing docs/skills docker/mysql/init` 仅允许出现在本 plan/spec 历史说明（业务路径为 0）
 
 ```bash
 git commit -m "chore: purge demo copy from skills, chat hints, and live scripts"
@@ -337,9 +337,9 @@ git commit -m "chore: purge demo copy from skills, chat hints, and live scripts"
   - 可选：skill zip 上传提示
 - Modify: `CLAUDE.md` / `README.md` 命令表
 
-- [ ] **Step 1: 脚本 `--dry-run` 打印将改对象**
+- [x] **Step 1: 脚本 `--dry-run` 打印将改对象**
 
-- [ ] **Step 2: Live 执行 sync；重启 finance/oa/hr/tool-manager/orchestrator/workflow-manager/prompt-manager**
+- [x] **Step 2: Live 执行 sync；重启 finance/oa/hr/tool-manager/orchestrator/workflow-manager/prompt-manager**
 
 ```bash
 python3 scripts/sync_nacos.py   # 若新增 sunshine-hr.yaml
@@ -347,21 +347,23 @@ python3 scripts/start.py --restart finance,oa,hr,tool,orchestrator,workflow,prom
 python3 scripts/sync_corpus50_platform.py
 ```
 
-- [ ] **Step 3: commit 脚本**
+- [x] **Step 3: commit 脚本**
 
 ---
 
 ## Task 12: Live 验收
 
+> **Task 12 Live（2026-07-21）**: G1/G2/G3/G6/G7/G8 PASS；G4 `#knowledge-qa` hash PASS；G5 knowledge-loop/branch PASS，`#knowledge-dual` join 步未进 timeline（FAIL，见 orchestrator join execution_trace WARN）。
+
 **Files:**
 - Create: `scripts/verify_user_isolated_tools_live.py`（G1/G2：不同 user 头调 invoke）
 - Run: `verify_workflow_studio_live.py`、`rag_eval.py --suite-key sunshine-smoke --gate`、手动 `/mock-data`
 
-- [ ] **Step 1: 隔离工具 Live PASS**
+- [x] **Step 1: 隔离工具 Live PASS**
 
-- [ ] **Step 2: knowledge-* Live PASS**
+- [x] **Step 2: knowledge-* Live PASS**
 
-- [ ] **Step 3: G8 grep 清零检查写入报告**
+- [x] **Step 3: G8 grep 清零检查写入报告**
 
 ```bash
 rg -n "list_finance_messages|leave-policy-v1" \
@@ -371,7 +373,7 @@ rg -n "list_finance_messages|leave-policy-v1" \
 # 期望：无匹配
 ```
 
-- [ ] **Step 4: 最终 commit（若有修复）+ 勾选本 plan 全部 Task**
+- [x] **Step 4: 最终 commit（若有修复）+ 勾选本 plan 全部 Task**
 
 ---
 
