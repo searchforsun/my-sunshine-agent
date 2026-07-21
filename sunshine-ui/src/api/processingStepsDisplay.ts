@@ -1,5 +1,6 @@
 /** 时间线步骤展示：摘要、展开区、耗时 */
 import type { ProcessingStep, StepLifecycle } from './processingSteps'
+import { linesFromEditDiffMeta } from './sandboxEditDiff'
 
 export function catalogToolIdFromStepId(stepId: string): string | undefined {
   if (!stepId?.startsWith('tool-')) return undefined
@@ -466,6 +467,9 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
     return true
   }
   if (isSandboxExecStep(step) && extractSandboxExecCommand(step)) {
+    return true
+  }
+  if (linesFromEditDiffMeta(step.metadata?.editDiff)?.length) {
     return true
   }
   if (resolveStepExpandInner(step)) return true

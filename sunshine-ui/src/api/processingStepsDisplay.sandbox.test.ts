@@ -139,4 +139,46 @@ describe('sandbox tool timeline display', () => {
     expect(extractSandboxExecCommand(step)).toBe('ls -la /skills')
     expect(resolveStepExpandInner(step)).toBe('total 0\ndrwxr-xr-x 1 root root 0 Jul 16 03:32 .')
   })
+
+  it('edit step with metadata.editDiff is expandable even without detail', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__edit@1',
+      label: '调用工具 编辑文件',
+      summary: { after: 'hello.py +1 -1' },
+      detail: '',
+      metadata: {
+        sandboxPath: '/skills/demo/scripts/hello.py',
+        editDiff: {
+          path: '/skills/demo/scripts/hello.py',
+          contextRadius: 3,
+          lines: [
+            { kind: 'del', text: 'old', oldLine: 2, newLine: null },
+            { kind: 'add', text: 'new', oldLine: null, newLine: 2 },
+          ],
+        },
+      },
+    })
+    expect(resolveStepExpandInner(step)).toBe('')
+    expect(hasExpandableContent(step)).toBe(true)
+  })
+
+  it('HITL awaiting edit with metadata.editDiff is expandable', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__edit@2',
+      label: '调用工具 编辑文件',
+      lifecycle: 'running',
+      summary: { active: '待确认编辑 hello.py' },
+      detail: '',
+      metadata: {
+        hitlStatus: 'awaiting',
+        hitlToken: 'tok-edit-1',
+        sandboxPath: '/skills/demo/scripts/hello.py',
+        editDiff: {
+          path: '/skills/demo/scripts/hello.py',
+          lines: [{ kind: 'add', text: 'pending', oldLine: null, newLine: 1 }],
+        },
+      },
+    })
+    expect(hasExpandableContent(step)).toBe(true)
+  })
 })
