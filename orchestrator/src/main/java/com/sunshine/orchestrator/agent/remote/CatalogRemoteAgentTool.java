@@ -27,16 +27,22 @@ public class CatalogRemoteAgentTool implements AgentTool {
     private final ToolManagerClient toolManagerClient;
     private final ToolAuditService toolAuditService;
     private final HitlConfirmationService hitlConfirmationService;
+    private final String userId;
+    private final String tenantId;
 
     public CatalogRemoteAgentTool(
             ToolCatalogEntry entry,
             ToolManagerClient toolManagerClient,
             ToolAuditService toolAuditService,
-            HitlConfirmationService hitlConfirmationService) {
+            HitlConfirmationService hitlConfirmationService,
+            String userId,
+            String tenantId) {
         this.entry = entry;
         this.toolManagerClient = toolManagerClient;
         this.toolAuditService = toolAuditService;
         this.hitlConfirmationService = hitlConfirmationService;
+        this.userId = userId;
+        this.tenantId = tenantId;
     }
 
     @Override
@@ -101,7 +107,7 @@ public class CatalogRemoteAgentTool implements AgentTool {
             throw new HitlWaitInterruptedException();
         }
         log.info("[CatalogRemoteAgentTool] {} params={}", entry.id(), invokeParams);
-        String result = toolManagerClient.invokeMono(entry.id(), invokeParams).block();
+        String result = toolManagerClient.invokeMono(entry.id(), invokeParams, userId, tenantId).block();
         auditIfBound(entry.id(), invokeParams, result, "ok");
         return ToolResultBlock.of(
                 toolUseId,

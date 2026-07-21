@@ -55,12 +55,12 @@ class AgentInfraTest {
         when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_finance_messages")).thenReturn(false);
         when(toolCatalogService.isRagTool("sdk__sunshine-oa__list_oa_tasks")).thenReturn(false);
         when(ragTool.getName()).thenReturn(RagTool.NAME);
-        when(remoteToolFactory.create("sdk__sunshine-finance__list_finance_messages"))
+        when(remoteToolFactory.create("sdk__sunshine-finance__list_finance_messages", null, "default"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
-                        financeEntry, toolManagerClient, toolAuditService, hitlService)));
-        when(remoteToolFactory.create("sdk__sunshine-oa__list_oa_tasks"))
+                        financeEntry, toolManagerClient, toolAuditService, hitlService, null, "default")));
+        when(remoteToolFactory.create("sdk__sunshine-oa__list_oa_tasks", null, "default"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
-                        oaEntry, toolManagerClient, toolAuditService, hitlService)));
+                        oaEntry, toolManagerClient, toolAuditService, hitlService, null, "default")));
 
         DynamicToolkitFactory factory = new DynamicToolkitFactory(
                 ragTool,
@@ -71,7 +71,7 @@ class AgentInfraTest {
                 toolSetResolver,
                 executionProperties,
                 Mockito.mock(com.sunshine.orchestrator.sandbox.SandboxAgentTools.class));
-        Toolkit toolkit = factory.build();
+        Toolkit toolkit = factory.build(null);
 
         assertThat(toolkit).isNotNull();
         // 同轮无依赖 tool_call 并行（ToolkitConfig.parallel=true）

@@ -29,7 +29,11 @@ class ToolInvokeControllerTest {
 
     @Test
     void invokeFinanceTool() throws Exception {
-        when(invokeRouter.invoke(eq("sdk__sunshine-finance__list_finance_messages"), eq(java.util.Map.of("status", "pending")), eq("default")))
+        when(invokeRouter.invoke(
+                eq("sdk__sunshine-finance__list_finance_messages"),
+                eq(java.util.Map.of("status", "pending")),
+                eq(null),
+                eq("default")))
                 .thenReturn("2 条待审批");
 
         mockMvc.perform(post("/api/tools/invoke")

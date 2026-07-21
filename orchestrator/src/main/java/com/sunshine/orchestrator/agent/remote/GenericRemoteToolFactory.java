@@ -22,14 +22,15 @@ public class GenericRemoteToolFactory {
     private final ToolAuditService toolAuditService;
     private final HitlConfirmationService hitlConfirmationService;
 
-    public Optional<CatalogRemoteAgentTool> create(String toolName) {
+    public Optional<CatalogRemoteAgentTool> create(String toolName, String userId, String tenantId) {
         return toolCatalogService.find(toolName)
                 .filter(entry -> "remote".equals(entry.kind()) || "mcp".equals(entry.kind()))
                 .map(entry -> new CatalogRemoteAgentTool(
-                        entry, toolManagerClient, toolAuditService, hitlConfirmationService));
+                        entry, toolManagerClient, toolAuditService, hitlConfirmationService, userId, tenantId));
     }
 
-    public CatalogRemoteAgentTool createRequired(ToolCatalogEntry entry) {
-        return new CatalogRemoteAgentTool(entry, toolManagerClient, toolAuditService, hitlConfirmationService);
+    public CatalogRemoteAgentTool createRequired(ToolCatalogEntry entry, String userId, String tenantId) {
+        return new CatalogRemoteAgentTool(
+                entry, toolManagerClient, toolAuditService, hitlConfirmationService, userId, tenantId);
     }
 }

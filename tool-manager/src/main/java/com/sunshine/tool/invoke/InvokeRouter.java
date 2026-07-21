@@ -18,13 +18,13 @@ public class InvokeRouter {
     private final SdkInvokeExecutor sdkInvokeExecutor;
     private final McpInvokeExecutor mcpInvokeExecutor;
 
-    public String invoke(String toolId, Map<String, String> params, String tenantId) {
+    public String invoke(String toolId, Map<String, String> params, String userId, String tenantId) {
         if (!ToolIds.isValid(toolId)) {
             throw new BizException(ToolErrorCode.TOOL_ID_INVALID);
         }
         ToolDefinitionEntity tool = requireEnabled(toolId, tenantId);
         return switch (tool.getSource()) {
-            case "sdk" -> sdkInvokeExecutor.invoke(tool, params);
+            case "sdk" -> sdkInvokeExecutor.invoke(tool, params, userId, tenantId);
             case "mcp" -> mcpInvokeExecutor.invoke(tool, params);
             default -> throw new BizException(ToolErrorCode.UNSUPPORTED_SOURCE);
         };

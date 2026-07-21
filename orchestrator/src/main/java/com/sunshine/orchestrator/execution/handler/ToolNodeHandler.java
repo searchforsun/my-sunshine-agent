@@ -99,7 +99,7 @@ public class ToolNodeHandler implements NodeHandler {
                 return hitlConfirmationService.rejectionMessage();
             }
         }
-        return toolManagerClient.invokeMono(tool, invokeParams).block();
+        return toolManagerClient.invokeMono(tool, invokeParams, streamCtx.userId(), streamCtx.tenantId()).block();
     }
 
     private void auditToolCall(

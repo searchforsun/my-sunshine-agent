@@ -39,52 +39,39 @@ public class DynamicToolkitFactory {
     private final SandboxAgentTools sandboxAgentTools;
 
     /** 主 Agent：租户 ReAct 默认工具集 */
-    public Toolkit build() {
-        return build(DEFAULT_TENANT);
+    public Toolkit build(String userId) {
+        return build(DEFAULT_TENANT, null, userId);
     }
 
-    public Toolkit build(String tenantId) {
-        return build(tenantId, null);
+    public Toolkit build(String tenantId, String skillId, String userId) {
+        return buildFromWhitelist(
+                toolSetResolver.resolveReactTools(tenantId), ToolkitScope.MAIN, skillId, userId, tenantId);
     }
 
-    public Toolkit build(String tenantId, String skillId) {
-        return buildFromWhitelist(toolSetResolver.resolveReactTools(tenantId), ToolkitScope.MAIN, skillId);
-    }
-
-    /** 子 Agent：显式白名单与启用池求交 */
-    public Toolkit build(List<String> toolWhitelist) {
-        return build(toolWhitelist, DEFAULT_TENANT);
-    }
-
-    public Toolkit build(List<String> toolWhitelist, String tenantId) {
-        return build(toolWhitelist, tenantId, null);
-    }
-
-    public Toolkit build(List<String> toolWhitelist, String tenantId, String skillId) {
+    /** 子 Agent / 白名单：显式白名单与启用池求交 */
+    public Toolkit build(List<String> toolWhitelist, String tenantId, String skillId, String userId) {
         if (toolWhitelist == null || toolWhitelist.isEmpty()) {
-            return build(tenantId, skillId);
+            return build(tenantId, skillId, userId);
         }
         return buildFromWhitelist(
-                toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId), ToolkitScope.MAIN, skillId);
+                toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId),
+                ToolkitScope.MAIN, skillId, userId, tenantId);
     }
 
     /** Workflow 子 Agent：始终含 search_knowledge；可选 tools 白名单追加业务工具（不含 manage_tasks / spawn_subagent） */
-    public Toolkit buildForSubAgent(List<String> toolWhitelist, String tenantId) {
-        return buildForSubAgent(toolWhitelist, tenantId, null);
-    }
-
-    public Toolkit buildForSubAgent(List<String> toolWhitelist, String tenantId, String skillId) {
+    public Toolkit buildForSubAgent(List<String> toolWhitelist, String tenantId, String skillId, String userId) {
         List<String> whitelist = toolWhitelist == null || toolWhitelist.isEmpty()
                 ? List.of()
                 : toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId);
-        return buildFromWhitelist(whitelist, ToolkitScope.SUB, skillId);
+        return buildFromWhitelist(whitelist, ToolkitScope.SUB, skillId, userId, tenantId);
     }
 
     private enum ToolkitScope {
         MAIN, SUB
     }
 
-    private Toolkit buildFromWhitelist(List<String> whitelist, ToolkitScope scope, String skillId) {
+    private Toolkit buildFromWhitelist(
+            List<String> whitelist, ToolkitScope scope, String skillId, String userId, String tenantId) {
         // skillId 保留签名兼容；方案 B 不再门控沙箱工具
         // 同轮无依赖 tool_call 并行（须 AgentScope ≥1.0.8：mergeSequential 保序，避免结果错配）
         Toolkit tk = new Toolkit(ToolkitConfig.builder().parallel(true).build());
@@ -116,7 +103,7 @@ public class DynamicToolkitFactory {
                 log.warn("[Orchestrator] 非内置 RAG 工具 {} 已忽略，请使用 {}", toolName, RagTool.NAME);
                 continue;
             }
-            remoteToolFactory.create(toolName).ifPresentOrElse(agentTool -> {
+            remoteToolFactory.create(toolName, userId, tenantId).ifPresentOrElse(agentTool -> {
                 if (registeredRemote.add(agentTool.getName())) {
                     tk.registerAgentTool(agentTool);
                 }

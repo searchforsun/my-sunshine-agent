@@ -14,10 +14,10 @@ public class ToolInvokeService {
 
     private final InvokeRouter invokeRouter;
 
-    public String invoke(String name, Map<String, String> params, String tenantId) {
+    public String invoke(String name, Map<String, String> params, String userId, String tenantId) {
         if (name == null || name.isBlank()) {
             throw new BizException(ToolErrorCode.TOOL_NAME_REQUIRED);
         }
-        return invokeRouter.invoke(name.strip(), params, tenantId);
+        return invokeRouter.invoke(name.strip(), params, userId, tenantId);
     }
 }

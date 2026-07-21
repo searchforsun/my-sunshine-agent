@@ -123,9 +123,9 @@ public class ReActAgentFactory {
     Toolkit resolveToolkit(AgentRunRequest request) {
         if (request.role() == AgentRole.SUB) {
             return dynamicToolkitFactory.buildForSubAgent(
-                    request.toolWhitelist(), request.tenantId(), request.skillId());
+                    request.toolWhitelist(), request.tenantId(), request.skillId(), request.userId());
         }
-        return dynamicToolkitFactory.build(request.tenantId(), request.skillId());
+        return dynamicToolkitFactory.build(request.tenantId(), request.skillId(), request.userId());
     }
 
     public int resolveMaxIters(AgentRunRequest request) {

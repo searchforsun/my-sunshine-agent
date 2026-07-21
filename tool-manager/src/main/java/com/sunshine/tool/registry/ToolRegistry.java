@@ -13,7 +13,7 @@ public class ToolRegistry {
 
     private final InvokeRouter invokeRouter;
 
-    public String invoke(String name, Map<String, String> params, String tenantId) {
-        return invokeRouter.invoke(name, params, tenantId);
+    public String invoke(String name, Map<String, String> params, String userId, String tenantId) {
+        return invokeRouter.invoke(name, params, userId, tenantId);
     }
 }

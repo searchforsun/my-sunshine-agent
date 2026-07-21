@@ -43,7 +43,7 @@ public class SdkInvokeExecutor {
         this.properties = properties;
     }
 
-    public String invoke(ToolDefinitionEntity tool, Map<String, String> params) {
+    public String invoke(ToolDefinitionEntity tool, Map<String, String> params, String userId, String tenantId) {
         SdkApplicationEntity app = sdkApplicationRepository.findById(tool.getSourceRef())
                 .orElseThrow(() -> new BizException(ToolErrorCode.SDK_APP_NOT_FOUND));
         ServiceInstance instance = pickInstance(app.getNacosService());
@@ -56,8 +56,16 @@ public class SdkInvokeExecutor {
         Duration timeout = Duration.ofSeconds(Math.max(5, properties.getSdk().getInvokeTimeoutSeconds()));
         Map<String, String> body = params != null ? params : Map.of();
 
-        SdkToolInvokeResponse response = webClient.post()
-                .uri(url)
+        WebClient.RequestBodySpec request = webClient.post().uri(url);
+        if (StringUtils.hasText(userId)) {
+            request = request.header("x-user-id", userId);
+        }
+        if (StringUtils.hasText(tenantId)) {
+            request = request.header("x-tenant-id", tenantId);
+        } else {
+            request = request.header("x-tenant-id", "default");
+        }
+        SdkToolInvokeResponse response = request
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(SdkToolInvokeResponse.class)

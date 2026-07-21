@@ -117,13 +117,16 @@ public class ToolManagerClient {
         }
     }
 
-    public Mono<String> invokeMono(String name, Map<String, String> params) {
+    public Mono<String> invokeMono(String name, Map<String, String> params, String userId, String tenantId) {
         Map<String, Object> body = Map.of(
                 "name", name,
                 "params", params != null ? params : Map.of());
+        String effectiveTenant = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
         return webClient.post()
                 .uri("/api/tools/invoke")
                 .contentType(MediaType.APPLICATION_JSON)
+                .header("x-user-id", userId != null ? userId : "")
+                .header("x-tenant-id", effectiveTenant)
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<R<String>>() {})

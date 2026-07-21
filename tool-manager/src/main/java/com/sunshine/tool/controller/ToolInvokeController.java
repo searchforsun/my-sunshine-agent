@@ -19,8 +19,9 @@ public class ToolInvokeController {
 
     @PostMapping("/invoke")
     public R<String> invoke(
+            @RequestHeader(value = "x-user-id", required = false) String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
             @RequestBody ToolInvokeRequest request) {
-        return R.ok(toolInvokeService.invoke(request.name(), request.params(), tenantId));
+        return R.ok(toolInvokeService.invoke(request.name(), request.params(), userId, tenantId));
     }
 }

@@ -75,31 +75,31 @@ class ReActAgentFactoryTest {
     void resolveToolkit_subUsesExplicitWhitelist() {
         AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), null);
         when(dynamicToolkitFactory.buildForSubAgent(
-                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null))
+                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null, "u1"))
                 .thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
         verify(dynamicToolkitFactory).buildForSubAgent(
-                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null);
+                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null, "u1");
     }
 
     @Test
     void resolveToolkit_subWithoutExtraToolsUsesSubAgentToolkit() {
         AgentRunRequest req = subRequest("compliance-check", null, null);
-        when(dynamicToolkitFactory.buildForSubAgent(null, "default", "compliance-check")).thenReturn(subToolkit);
+        when(dynamicToolkitFactory.buildForSubAgent(null, "default", "compliance-check", "u1")).thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).buildForSubAgent(null, "default", "compliance-check");
+        verify(dynamicToolkitFactory).buildForSubAgent(null, "default", "compliance-check", "u1");
     }
 
     @Test
     void resolveToolkit_mainBuildsFreshToolkitFromTenantToolSet() {
         AgentRunRequest req = AgentRunRequest.main(
                 MemoryContext.empty(), "q", "u1", "default", "msg-main");
-        when(dynamicToolkitFactory.build("default", null)).thenReturn(subToolkit);
+        when(dynamicToolkitFactory.build("default", null, "u1")).thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).build("default", null);
+        verify(dynamicToolkitFactory).build("default", null, "u1");
     }
 
     @Test

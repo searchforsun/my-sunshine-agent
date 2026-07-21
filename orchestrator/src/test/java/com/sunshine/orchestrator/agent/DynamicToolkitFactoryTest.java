@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -58,7 +60,7 @@ class DynamicToolkitFactoryTest {
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
 
-        var toolkit = factory.build();
+        var toolkit = factory.build(null);
 
         assertThat(toolkit.getToolNames()).contains(RagTool.NAME, ManageTasksTool.NAME, SpawnSubagentTool.NAME);
         assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
@@ -75,7 +77,7 @@ class DynamicToolkitFactoryTest {
         }});
         when(sandboxAgentTools.all()).thenReturn(List.of());
 
-        var toolkit = factory.build();
+        var toolkit = factory.build(null);
 
         assertThat(toolkit.getToolNames()).contains(SpawnSubagentTool.NAME);
     }
@@ -91,7 +93,7 @@ class DynamicToolkitFactoryTest {
         }});
         when(sandboxAgentTools.all()).thenReturn(List.of());
 
-        var toolkit = factory.build();
+        var toolkit = factory.build(null);
 
         assertThat(toolkit.getToolNames()).doesNotContain(SpawnSubagentTool.NAME);
     }
@@ -106,7 +108,7 @@ class DynamicToolkitFactoryTest {
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
 
-        var toolkit = factory.build();
+        var toolkit = factory.build(null);
 
         assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
         assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
@@ -121,9 +123,9 @@ class DynamicToolkitFactoryTest {
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(List.of());
         when(toolCatalogService.isRagTool("ghost_tool")).thenReturn(false);
-        when(remoteToolFactory.create("ghost_tool")).thenReturn(Optional.empty());
+        when(remoteToolFactory.create(eq("ghost_tool"), isNull(), eq("default"))).thenReturn(Optional.empty());
 
-        var toolkit = factory.build();
+        var toolkit = factory.build(null);
 
         assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
     }
@@ -147,11 +149,13 @@ class DynamicToolkitFactoryTest {
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.hitl.HitlConfirmationService.class);
 
         when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_finance_messages")).thenReturn(false);
-        when(remoteToolFactory.create("sdk__sunshine-finance__list_finance_messages"))
+        when(remoteToolFactory.create(eq("sdk__sunshine-finance__list_finance_messages"), eq("u1"), eq("default")))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
-                        financeEntry, toolManagerClient, toolAuditService, hitlService)));
+                        financeEntry, toolManagerClient, toolAuditService, hitlService, "u1", "default")));
 
-        var toolkit = factory.build(List.of("ghost_tool", "sdk__sunshine-finance__list_finance_messages"));
+        var toolkit = factory.build(
+                List.of("ghost_tool", "sdk__sunshine-finance__list_finance_messages"),
+                "default", null, "u1");
 
         assertThat(toolkit.getToolNames()).contains(
                 RagTool.NAME, "sdk__sunshine-finance__list_finance_messages");
@@ -167,7 +171,7 @@ class DynamicToolkitFactoryTest {
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
 
-        var toolkit = factory.build("default", null);
+        var toolkit = factory.build("default", null, null);
 
         assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
     }
@@ -178,7 +182,7 @@ class DynamicToolkitFactoryTest {
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
 
-        var toolkit = factory.buildForSubAgent(null, "default", "coding-skill");
+        var toolkit = factory.buildForSubAgent(null, "default", "coding-skill", "u1");
 
         assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
         assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);

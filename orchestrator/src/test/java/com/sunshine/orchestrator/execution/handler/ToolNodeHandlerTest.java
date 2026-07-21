@@ -22,6 +22,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -46,7 +47,11 @@ class ToolNodeHandlerTest {
 
     @Test
     void invokesToolAndWritesOutput() {
-        when(toolManagerClient.invokeMono(eq("sdk__sunshine-finance__list_finance_messages"), eq(Map.of("status", "pending"))))
+        when(toolManagerClient.invokeMono(
+                eq("sdk__sunshine-finance__list_finance_messages"),
+                eq(Map.of("status", "pending")),
+                anyString(),
+                anyString()))
                 .thenReturn(Mono.just("{\"items\":[]}"));
 
         WorkflowContext ctx = new WorkflowContext();
@@ -77,7 +82,11 @@ class ToolNodeHandlerTest {
         when(hitlConfirmationService.shouldConfirmWorkflow(eq("sdk__sunshine-oa__approve_oa_task"), eq(hitl))).thenReturn(true);
         when(hitlConfirmationService.awaitWorkflowConfirmation(eq(hitl), eq("m1"), eq("sdk__sunshine-oa__approve_oa_task"), any()))
                 .thenReturn(true);
-        when(toolManagerClient.invokeMono(eq("sdk__sunshine-oa__approve_oa_task"), eq(Map.of("taskId", "T1002"))))
+        when(toolManagerClient.invokeMono(
+                eq("sdk__sunshine-oa__approve_oa_task"),
+                eq(Map.of("taskId", "T1002")),
+                anyString(),
+                anyString()))
                 .thenReturn(Mono.just("已审批待办 T1002"));
 
         NodeSpec spec = new NodeSpec("approve", "tool",
@@ -92,7 +101,11 @@ class ToolNodeHandlerTest {
 
     @Test
     void softInvokeFailureMarksNodeFailed() {
-        when(toolManagerClient.invokeMono(eq("sdk__sunshine-oa__list_oa_tasks"), eq(Map.of())))
+        when(toolManagerClient.invokeMono(
+                eq("sdk__sunshine-oa__list_oa_tasks"),
+                eq(Map.of()),
+                anyString(),
+                anyString()))
                 .thenReturn(Mono.just("工具调用失败: Connection refused: getsockopt: localhost/127.0.0.1:8210"));
 
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(

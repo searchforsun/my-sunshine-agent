@@ -19,9 +19,11 @@ import org.springframework.web.reactive.function.client.ExchangeFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,18 +38,23 @@ class SdkInvokeExecutorTest {
     private SdkApplicationRepository sdkApplicationRepository;
 
     @Test
-    void invoke_forwardsToSdkEndpoint() {
-        SdkInvokeExecutor executor = buildExecutor(stubExchange());
-        SdkApplicationEntity app = new SdkApplicationEntity();
-        app.setId("sunshine-finance");
-        app.setNacosService("sunshine-finance");
-        app.setInvokePath("/sunshine/tools/invoke");
-        when(sdkApplicationRepository.findById("sunshine-finance")).thenReturn(Optional.of(app));
-
-        ServiceInstance instance = new DefaultServiceInstance(
-                "sunshine-finance-1", "sunshine-finance", "127.0.0.1", 8710, false,
-                Map.of("sunshine.tool-app", "true"));
-        when(discoveryClient.getInstances("sunshine-finance")).thenReturn(List.of(instance));
+    void invoke_forwardsToSdkEndpoint_withIdentityHeaders() {
+        AtomicReference<List<String>> capturedUser = new AtomicReference<>(new ArrayList<>());
+        AtomicReference<List<String>> capturedTenant = new AtomicReference<>(new ArrayList<>());
+        SdkInvokeExecutor executor = buildExecutor(request -> {
+            capturedUser.set(request.headers().getOrEmpty("x-user-id"));
+            capturedTenant.set(request.headers().getOrEmpty("x-tenant-id"));
+            String path = request.url().getPath();
+            if (path.contains("/sunshine/tools/invoke/list_finance_messages")) {
+                String body = "{\"ok\":true,\"result\":\"2 条待审批\"}";
+                return Mono.just(ClientResponse.create(HttpStatus.OK)
+                        .header("Content-Type", "application/json")
+                        .body(body)
+                        .build());
+            }
+            return Mono.just(ClientResponse.create(HttpStatus.NOT_FOUND).build());
+        });
+        stubFinanceAppAndInstance();
 
         ToolDefinitionEntity tool = new ToolDefinitionEntity();
         tool.setId("sdk__sunshine-finance__list_finance_messages");
@@ -55,8 +62,31 @@ class SdkInvokeExecutorTest {
         tool.setExternalName("list_finance_messages");
         tool.setEnabled(true);
 
-        String result = executor.invoke(tool, Map.of("status", "pending"));
+        String result = executor.invoke(tool, Map.of("status", "pending"), "u-alice", "acme");
         assertThat(result).isEqualTo("2 条待审批");
+        assertThat(capturedUser.get()).containsExactly("u-alice");
+        assertThat(capturedTenant.get()).containsExactly("acme");
+    }
+
+    @Test
+    void invoke_defaultsTenantHeaderWhenBlank() {
+        AtomicReference<List<String>> capturedTenant = new AtomicReference<>(new ArrayList<>());
+        SdkInvokeExecutor executor = buildExecutor(request -> {
+            capturedTenant.set(request.headers().getOrEmpty("x-tenant-id"));
+            return Mono.just(ClientResponse.create(HttpStatus.OK)
+                    .header("Content-Type", "application/json")
+                    .body("{\"ok\":true,\"result\":\"ok\"}")
+                    .build());
+        });
+        stubFinanceAppAndInstance();
+
+        ToolDefinitionEntity tool = new ToolDefinitionEntity();
+        tool.setId("sdk__sunshine-finance__list_finance_messages");
+        tool.setSourceRef("sunshine-finance");
+        tool.setExternalName("list_finance_messages");
+
+        executor.invoke(tool, Map.of(), "u1", null);
+        assertThat(capturedTenant.get()).containsExactly("default");
     }
 
     @Test
@@ -72,10 +102,23 @@ class SdkInvokeExecutorTest {
         tool.setSourceRef("sunshine-finance");
         tool.setExternalName("list_finance_messages");
 
-        assertThatThrownBy(() -> executor.invoke(tool, Map.of()))
+        assertThatThrownBy(() -> executor.invoke(tool, Map.of(), null, "default"))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getErrorCode())
                         .isEqualTo(ToolErrorCode.SDK_APP_OFFLINE));
+    }
+
+    private void stubFinanceAppAndInstance() {
+        SdkApplicationEntity app = new SdkApplicationEntity();
+        app.setId("sunshine-finance");
+        app.setNacosService("sunshine-finance");
+        app.setInvokePath("/sunshine/tools/invoke");
+        when(sdkApplicationRepository.findById("sunshine-finance")).thenReturn(Optional.of(app));
+
+        ServiceInstance instance = new DefaultServiceInstance(
+                "sunshine-finance-1", "sunshine-finance", "127.0.0.1", 8710, false,
+                Map.of("sunshine.tool-app", "true"));
+        when(discoveryClient.getInstances("sunshine-finance")).thenReturn(List.of(instance));
     }
 
     private SdkInvokeExecutor buildExecutor(ExchangeFunction exchangeFunction) {
