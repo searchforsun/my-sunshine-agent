@@ -1,164 +1,418 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 import {
   NButton,
+  NDataTable,
   NEmpty,
+  NForm,
+  NFormItem,
   NIcon,
+  NInput,
+  NInputNumber,
+  NModal,
+  NSelect,
   NSpace,
   NSpin,
   NTabPane,
   NTabs,
   useMessage,
+  type DataTableColumns,
+  type SelectOption,
 } from 'naive-ui'
-import { RefreshOutline } from '@vicons/ionicons5'
+import { AddOutline, RefreshOutline } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import {
-  fetchMockSnapshot,
-  listMockUsers,
-  resetMockData,
-  type MockDomain,
-  type MockSnapshot,
-} from '../api/mockData'
+  createBizRow,
+  deleteBizRow,
+  listBizRows,
+  updateBizRow,
+  type BizDomain,
+  type BizTable,
+} from '../api/bizData'
+import { listAuthUsers } from '../api/auth'
 import { ApiError } from '../api/apiError'
 
-const DOMAINS: { key: MockDomain; label: string }[] = [
+type FieldKind = 'text' | 'number' | 'user' | 'textarea'
+interface FieldDef {
+  key: string
+  label: string
+  kind: FieldKind
+  required?: boolean
+  /** 编辑时锁定（复合主键） */
+  lockOnEdit?: boolean
+}
+
+interface TableDef {
+  key: BizTable
+  label: string
+  fields: FieldDef[]
+  /** 请求体不含这些键 */
+  excludeFromBody?: string[]
+}
+
+const DOMAINS: { key: BizDomain; label: string }[] = [
   { key: 'finance', label: '财务' },
   { key: 'hr', label: '人事' },
   { key: 'oa', label: 'OA' },
 ]
 
+const TABLE_DEFS: Record<BizDomain, TableDef[]> = {
+  finance: [
+    {
+      key: 'expenses',
+      label: '报销单',
+      fields: [
+        { key: 'userId', label: '用户', kind: 'user', required: true },
+        { key: 'tenantId', label: '租户', kind: 'text', required: true },
+        { key: 'category', label: '类别', kind: 'text', required: true },
+        { key: 'amount', label: '金额', kind: 'number', required: true },
+        { key: 'status', label: '状态', kind: 'text', required: true },
+        { key: 'occurredOn', label: '发生日', kind: 'text', required: true },
+        { key: 'remark', label: '备注', kind: 'textarea' },
+      ],
+      excludeFromBody: ['id'],
+    },
+    {
+      key: 'inbox',
+      label: '财务待办',
+      fields: [
+        { key: 'userId', label: '用户', kind: 'user', required: true },
+        { key: 'tenantId', label: '租户', kind: 'text', required: true },
+        { key: 'title', label: '标题', kind: 'text', required: true },
+        { key: 'status', label: '状态', kind: 'text', required: true },
+        { key: 'amount', label: '金额', kind: 'number', required: true },
+      ],
+      excludeFromBody: ['id'],
+    },
+  ],
+  hr: [
+    {
+      key: 'leave-balances',
+      label: '假期余额',
+      fields: [
+        { key: 'userId', label: '用户', kind: 'user', required: true, lockOnEdit: true },
+        { key: 'tenantId', label: '租户', kind: 'text', required: true },
+        { key: 'year', label: '年份', kind: 'number', required: true, lockOnEdit: true },
+        { key: 'annual', label: '年假', kind: 'number', required: true },
+        { key: 'qingsong', label: '青松假', kind: 'number', required: true },
+        { key: 'compensatory', label: '调休', kind: 'number', required: true },
+      ],
+    },
+    {
+      key: 'leave-requests',
+      label: '请假单',
+      fields: [
+        { key: 'userId', label: '用户', kind: 'user', required: true },
+        { key: 'tenantId', label: '租户', kind: 'text', required: true },
+        { key: 'leaveType', label: '假别', kind: 'text', required: true },
+        { key: 'startDate', label: '开始日', kind: 'text', required: true },
+        { key: 'endDate', label: '结束日', kind: 'text', required: true },
+        { key: 'reason', label: '事由', kind: 'textarea' },
+        { key: 'status', label: '状态', kind: 'text', required: true },
+      ],
+      excludeFromBody: ['id'],
+    },
+    {
+      key: 'attendance-months',
+      label: '考勤月报',
+      fields: [
+        { key: 'userId', label: '用户', kind: 'user', required: true, lockOnEdit: true },
+        { key: 'tenantId', label: '租户', kind: 'text', required: true },
+        { key: 'yearMonth', label: '年月', kind: 'text', required: true, lockOnEdit: true },
+        { key: 'lateCount', label: '迟到次数', kind: 'number', required: true },
+        { key: 'overtimeHours', label: '加班小时', kind: 'number', required: true },
+        { key: 'frostLedgerSummary', label: '霜冻台账', kind: 'textarea' },
+      ],
+    },
+  ],
+  oa: [
+    {
+      key: 'tasks',
+      label: 'OA 待办',
+      fields: [
+        { key: 'assigneeUserId', label: '负责人', kind: 'user', required: true },
+        { key: 'tenantId', label: '租户', kind: 'text', required: true },
+        { key: 'title', label: '标题', kind: 'text', required: true },
+        { key: 'category', label: '类别', kind: 'text', required: true },
+        { key: 'status', label: '状态', kind: 'text', required: true },
+      ],
+      excludeFromBody: ['id'],
+    },
+  ],
+}
+
+const TENANT_ID = 'default'
 const message = useMessage()
 const loading = ref(false)
-const resetting = ref(false)
-const domain = ref<MockDomain>('finance')
-const users = ref<string[]>([])
-const selectedUserId = ref<string | null>(null)
-const snapshot = ref<MockSnapshot | null>(null)
-const tenantId = 'default'
+const saving = ref(false)
+const deleting = ref(false)
+const domain = ref<BizDomain>('finance')
+const tableKey = ref<BizTable>('expenses')
+const rows = ref<Record<string, unknown>[]>([])
+const authUsers = ref<Array<{ userId: string; username: string; nickname: string }>>([])
 
-const domainLabel = computed(
-  () => DOMAINS.find(d => d.key === domain.value)?.label ?? domain.value,
+const showFormModal = ref(false)
+const formMode = ref<'create' | 'edit'>('create')
+const formDraft = ref<Record<string, unknown>>({})
+const editKey = ref<Record<string, unknown> | null>(null)
+
+const showDeleteModal = ref(false)
+const deleteTarget = ref<Record<string, unknown> | null>(null)
+
+const tableDefs = computed(() => TABLE_DEFS[domain.value])
+const currentTable = computed(
+  () => tableDefs.value.find(t => t.key === tableKey.value) ?? tableDefs.value[0],
 )
 
-const snapshotJson = computed(() =>
-  snapshot.value ? JSON.stringify(snapshot.value, null, 2) : '',
+const userOptions = computed((): SelectOption[] =>
+  authUsers.value.map(u => ({
+    label: u.nickname?.trim() || u.username || u.userId,
+    value: u.userId,
+  })),
 )
 
-const tableRows = computed(() => {
-  const data = snapshot.value
-  const empty: Array<{ section: string; rows: Array<Record<string, unknown>> }> = []
-  if (!data) return empty
-  if (domain.value === 'finance' && 'expenses' in data) {
-    return [
-      { section: '报销单', rows: data.expenses as Array<Record<string, unknown>> },
-      { section: '财务待办', rows: data.inbox as Array<Record<string, unknown>> },
-    ]
+const userLabelMap = computed(() => {
+  const map = new Map<string, string>()
+  for (const u of authUsers.value) {
+    map.set(u.userId, u.nickname?.trim() || u.username || u.userId)
   }
-  if (domain.value === 'oa' && 'tasks' in data) {
-    return [{ section: '待办任务', rows: data.tasks as Array<Record<string, unknown>> }]
-  }
-  if (domain.value === 'hr' && 'leaveRequests' in data) {
-    const balance = data.leaveBalance
-      ? [data.leaveBalance as Record<string, unknown>]
-      : ([] as Array<Record<string, unknown>>)
-    const attendance: Array<Record<string, unknown>> = Object.entries(data.attendance ?? {}).map(
-      ([ym, v]) => ({
-        yearMonth: ym,
-        ...(typeof v === 'object' && v ? (v as Record<string, unknown>) : { value: v }),
-      }),
-    )
-    return [
-      { section: '假期余额', rows: balance },
-      { section: '请假单', rows: data.leaveRequests as Array<Record<string, unknown>> },
-      { section: '考勤月报', rows: attendance },
-    ]
-  }
-  return empty
+  return map
 })
 
-async function loadUsers() {
-  loading.value = true
+function rowKeyOf(row: Record<string, unknown>): string {
+  const table = currentTable.value.key
+  if (table === 'leave-balances') return `${row.userId}-${row.year}`
+  if (table === 'attendance-months') return `${row.userId}-${row.yearMonth}`
+  return String(row.id ?? '')
+}
+
+function formatUserCell(userId: unknown): string {
+  if (userId == null || userId === '') return ''
+  const id = String(userId)
+  return userLabelMap.value.get(id) ?? id
+}
+
+const columns = computed((): DataTableColumns<Record<string, unknown>> => {
+  const table = currentTable.value
+  const cols: DataTableColumns<Record<string, unknown>> = table.fields.map(f => ({
+    title: f.label,
+    key: f.key,
+    ellipsis: { tooltip: true },
+    render(row) {
+      const v = row[f.key]
+      if (f.kind === 'user') return formatUserCell(v)
+      if (v == null) return ''
+      return String(v)
+    },
+  }))
+  cols.push({
+    title: '操作',
+    key: '_actions',
+    width: 140,
+    render(row) {
+      return h(
+        NSpace,
+        { size: 8 },
+        {
+          default: () => [
+            h(
+              NButton,
+              { size: 'tiny', quaternary: true, onClick: () => openEdit(row) },
+              { default: () => '编辑' },
+            ),
+            h(
+              NButton,
+              { size: 'tiny', quaternary: true, type: 'error', onClick: () => openDelete(row) },
+              { default: () => '删除' },
+            ),
+          ],
+        },
+      )
+    },
+  })
+  return cols
+})
+
+function emptyDraft(): Record<string, unknown> {
+  const draft: Record<string, unknown> = {}
+  for (const f of currentTable.value.fields) {
+    if (f.key === 'tenantId') {
+      draft.tenantId = TENANT_ID
+    } else if (f.kind === 'number') {
+      draft[f.key] = null
+    } else {
+      draft[f.key] = ''
+    }
+  }
+  return draft
+}
+
+function buildBody(draft: Record<string, unknown>): Record<string, unknown> {
+  const exclude = new Set(currentTable.value.excludeFromBody ?? [])
+  const body: Record<string, unknown> = {}
+  for (const f of currentTable.value.fields) {
+    if (exclude.has(f.key)) continue
+    let v = draft[f.key]
+    if (f.kind === 'number') {
+      if (v === '' || v == null) {
+        body[f.key] = null
+      } else {
+        body[f.key] = typeof v === 'number' ? v : Number(v)
+      }
+    } else {
+      body[f.key] = typeof v === 'string' ? v.trim() : v
+    }
+  }
+  return body
+}
+
+async function loadAuthUsers() {
   try {
-    const list = await listMockUsers(domain.value, tenantId)
-    users.value = list
-    if (selectedUserId.value && !list.includes(selectedUserId.value)) {
-      selectedUserId.value = null
-      snapshot.value = null
-    }
-    if (!selectedUserId.value && list.length > 0) {
-      selectedUserId.value = list[0]
-      return
-    }
-    if (selectedUserId.value) {
-      await loadSnapshot()
-    }
+    authUsers.value = await listAuthUsers(TENANT_ID)
   } catch (e) {
     message.error(e instanceof ApiError ? e.message : '加载用户列表失败')
     console.error(e)
-  } finally {
-    loading.value = false
+    authUsers.value = []
   }
 }
 
-async function loadSnapshot() {
-  if (!selectedUserId.value) {
-    snapshot.value = null
-    return
-  }
+async function loadRows() {
   loading.value = true
   try {
-    snapshot.value = await fetchMockSnapshot(domain.value, selectedUserId.value, tenantId)
+    rows.value = await listBizRows(domain.value, currentTable.value.key, {
+      tenantId: TENANT_ID,
+    })
   } catch (e) {
-    message.error(e instanceof ApiError ? e.message : '加载快照失败')
+    message.error(e instanceof ApiError ? e.message : '加载数据失败')
     console.error(e)
-    snapshot.value = null
+    rows.value = []
   } finally {
     loading.value = false
   }
 }
 
-async function onReset() {
-  resetting.value = true
+async function refresh() {
+  await Promise.all([loadAuthUsers(), loadRows()])
+}
+
+function selectTable(key: BizTable) {
+  if (tableKey.value === key) return
+  tableKey.value = key
+}
+
+function openCreate() {
+  formMode.value = 'create'
+  editKey.value = null
+  formDraft.value = emptyDraft()
+  showFormModal.value = true
+}
+
+function openEdit(row: Record<string, unknown>) {
+  formMode.value = 'edit'
+  editKey.value = { ...row }
+  const draft = emptyDraft()
+  for (const f of currentTable.value.fields) {
+    draft[f.key] = row[f.key] ?? draft[f.key]
+  }
+  formDraft.value = draft
+  showFormModal.value = true
+}
+
+function openDelete(row: Record<string, unknown>) {
+  deleteTarget.value = row
+  showDeleteModal.value = true
+}
+
+function fieldDisabled(f: FieldDef): boolean {
+  return formMode.value === 'edit' && !!f.lockOnEdit
+}
+
+function draftText(key: string): string {
+  const v = formDraft.value[key]
+  return v == null ? '' : String(v)
+}
+
+function draftNumber(key: string): number | null {
+  const v = formDraft.value[key]
+  return typeof v === 'number' ? v : null
+}
+
+function draftUser(key: string): string | null {
+  const v = formDraft.value[key]
+  return typeof v === 'string' && v ? v : null
+}
+
+function setDraft(key: string, value: unknown) {
+  formDraft.value[key] = value ?? ''
+}
+
+async function submitForm() {
+  const body = buildBody(formDraft.value)
+  for (const f of currentTable.value.fields) {
+    if (!f.required) continue
+    const v = body[f.key]
+    if (v == null || v === '') {
+      message.warning(`请填写${f.label}`)
+      return
+    }
+  }
+  saving.value = true
   try {
-    await resetMockData(domain.value, tenantId)
-    message.success(`${domainLabel.value} 种子已重置`)
-    await loadUsers()
+    if (formMode.value === 'create') {
+      await createBizRow(domain.value, currentTable.value.key, body)
+      message.success('已创建')
+    } else if (editKey.value) {
+      await updateBizRow(domain.value, currentTable.value.key, editKey.value, body)
+      message.success('已保存')
+    }
+    showFormModal.value = false
+    await loadRows()
   } catch (e) {
-    message.error(e instanceof ApiError ? e.message : '重置失败')
+    message.error(e instanceof ApiError ? e.message : '保存失败')
     console.error(e)
   } finally {
-    resetting.value = false
+    saving.value = false
   }
 }
 
-function selectUser(userId: string) {
-  if (selectedUserId.value === userId) return
-  selectedUserId.value = userId
+async function confirmDelete() {
+  if (!deleteTarget.value) return
+  deleting.value = true
+  try {
+    const query: Record<string, string> = {}
+    const table = currentTable.value.key
+    if (table === 'leave-balances' || table === 'attendance-months') {
+      query.tenantId = String(deleteTarget.value.tenantId ?? TENANT_ID)
+    }
+    await deleteBizRow(domain.value, table, deleteTarget.value, query)
+    message.success('已删除')
+    showDeleteModal.value = false
+    deleteTarget.value = null
+    await loadRows()
+  } catch (e) {
+    message.error(e instanceof ApiError ? e.message : '删除失败')
+    console.error(e)
+  } finally {
+    deleting.value = false
+  }
 }
 
 watch(domain, () => {
-  selectedUserId.value = null
-  snapshot.value = null
-  void loadUsers()
+  const next = TABLE_DEFS[domain.value][0].key
+  if (tableKey.value === next) {
+    void loadRows()
+  } else {
+    tableKey.value = next
+  }
 })
 
-watch(selectedUserId, (id) => {
-  if (!id) {
-    snapshot.value = null
-    return
-  }
-  void loadSnapshot()
+watch(tableKey, () => {
+  void loadRows()
 })
 
 onMounted(() => {
-  void loadUsers()
+  void refresh()
 })
-
-function formatCell(value: unknown): string {
-  if (value == null) return ''
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
-}
 </script>
 
 <template>
@@ -169,12 +423,13 @@ function formatCell(value: unknown): string {
         <h2>业务数据</h2>
       </div>
       <NSpace :size="8">
-        <NButton round secondary :loading="loading" @click="loadUsers">
+        <NButton round secondary :loading="loading" @click="refresh">
           <template #icon><NIcon :component="RefreshOutline" /></template>
           刷新
         </NButton>
-        <NButton round type="primary" class="action-btn" :loading="resetting" @click="onReset">
-          重置种子
+        <NButton round type="primary" class="action-btn" @click="openCreate">
+          <template #icon><NIcon :component="AddOutline" /></template>
+          新建
         </NButton>
       </NSpace>
     </header>
@@ -188,67 +443,118 @@ function formatCell(value: unknown): string {
     <div class="mock-layout">
       <aside class="list-panel">
         <div class="panel-head">
-          <span class="panel-title">用户</span>
-          <span class="panel-count">{{ users.length }}</span>
+          <span class="panel-title">数据表</span>
+          <span class="panel-count">{{ tableDefs.length }}</span>
         </div>
-        <NSpin :show="loading" size="small" class="list-spin">
-          <div class="list-body">
-            <div v-if="users.length === 0 && !loading" class="empty-wrap">
-              <NEmpty size="small" description="暂无用户" />
-            </div>
-            <button
-              v-for="uid in users"
-              :key="uid"
-              type="button"
-              class="user-card"
-              :class="{ active: uid === selectedUserId }"
-              @click="selectUser(uid)"
-            >
-              <span class="user-id">{{ uid }}</span>
-            </button>
-          </div>
-        </NSpin>
+        <div class="list-body">
+          <button
+            v-for="t in tableDefs"
+            :key="t.key"
+            type="button"
+            class="table-card"
+            :class="{ active: t.key === currentTable.key }"
+            @click="selectTable(t.key)"
+          >
+            <span class="table-label">{{ t.label }}</span>
+            <span class="table-id">{{ t.key }}</span>
+          </button>
+        </div>
       </aside>
 
       <section class="detail-panel">
-        <div v-if="!selectedUserId" class="detail-empty">
-          <NEmpty description="选择左侧用户查看数据" />
+        <div class="panel-head detail-head">
+          <span class="panel-title">{{ currentTable.label }}</span>
+          <span class="panel-count">{{ rows.length }}</span>
         </div>
-        <template v-else>
-          <div class="panel-head detail-head">
-            <span class="panel-title">{{ selectedUserId }} · {{ domainLabel }}</span>
-          </div>
-          <NSpin :show="loading" size="small" class="detail-spin">
-            <div class="detail-body">
-              <div v-for="block in tableRows" :key="block.section" class="section-block">
-                <h3 class="section-title">{{ block.section }}</h3>
-                <div v-if="block.rows.length === 0" class="section-empty">（空）</div>
-                <div v-else class="table-wrap">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th v-for="col in Object.keys(block.rows[0])" :key="col">{{ col }}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="(row, idx) in block.rows" :key="idx">
-                        <td v-for="col in Object.keys(block.rows[0])" :key="col">
-                          {{ formatCell(row[col]) }}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div class="json-block">
-                <h3 class="section-title">JSON</h3>
-                <pre class="json-pre">{{ snapshotJson }}</pre>
-              </div>
+        <NSpin :show="loading" size="small" class="detail-spin">
+          <div class="detail-body">
+            <NDataTable
+              v-if="rows.length > 0"
+              :columns="columns"
+              :data="rows"
+              :row-key="rowKeyOf"
+              :bordered="false"
+              size="small"
+              class="biz-table"
+            />
+            <div v-else-if="!loading" class="detail-empty">
+              <NEmpty description="暂无数据，点击右上角新建" />
             </div>
-          </NSpin>
-        </template>
+          </div>
+        </NSpin>
       </section>
     </div>
+
+    <NModal
+      v-model:show="showFormModal"
+      preset="dialog"
+      :title="formMode === 'create' ? `新建 · ${currentTable.label}` : `编辑 · ${currentTable.label}`"
+      class="sunshine-dialog"
+      style="width: 480px"
+    >
+      <NForm class="modal-form" label-placement="top" :show-feedback="false">
+        <NFormItem
+          v-for="f in currentTable.fields"
+          :key="f.key"
+          :label="f.label"
+          :required="f.required"
+        >
+          <NSelect
+            v-if="f.kind === 'user'"
+            :value="draftUser(f.key)"
+            class="sun-field"
+            filterable
+            :options="userOptions"
+            :disabled="fieldDisabled(f)"
+            :placeholder="`选择${f.label}`"
+            @update:value="(v) => setDraft(f.key, v)"
+          />
+          <NInputNumber
+            v-else-if="f.kind === 'number'"
+            :value="draftNumber(f.key)"
+            class="sun-field sun-field-grow"
+            :disabled="fieldDisabled(f)"
+            :show-button="false"
+            @update:value="(v) => { formDraft[f.key] = v }"
+          />
+          <NInput
+            v-else-if="f.kind === 'textarea'"
+            :value="draftText(f.key)"
+            class="sun-field sun-field-grow"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 6 }"
+            :disabled="fieldDisabled(f)"
+            @update:value="(v) => setDraft(f.key, v)"
+          />
+          <NInput
+            v-else
+            :value="draftText(f.key)"
+            class="sun-field"
+            :disabled="fieldDisabled(f)"
+            @update:value="(v) => setDraft(f.key, v)"
+          />
+        </NFormItem>
+      </NForm>
+      <template #action>
+        <NButton @click="showFormModal = false">取消</NButton>
+        <NButton type="primary" class="action-btn" :loading="saving" @click="submitForm">
+          {{ formMode === 'create' ? '创建' : '保存' }}
+        </NButton>
+      </template>
+    </NModal>
+
+    <NModal
+      v-model:show="showDeleteModal"
+      preset="dialog"
+      title="删除确认"
+      class="sunshine-dialog"
+    >
+      <p>确定删除该条「{{ currentTable.label }}」记录？此操作不可恢复。</p>
+      <template #action>
+        <NButton @click="showDeleteModal = false">取消</NButton>
+        <NButton type="error" :loading="deleting" @click="confirmDelete">删除</NButton>
+      </template>
+    </NModal>
   </div>
 </template>
 
@@ -340,17 +646,6 @@ function formatCell(value: unknown): string {
   color: var(--sun-text-muted);
 }
 
-.list-spin,
-.detail-spin {
-  flex: 1;
-  min-height: 0;
-}
-
-.list-spin :deep(.n-spin-content),
-.detail-spin :deep(.n-spin-content) {
-  height: 100%;
-}
-
 .list-body {
   padding: 12px 14px 14px;
   min-height: 0;
@@ -360,12 +655,10 @@ function formatCell(value: unknown): string {
   gap: 8px;
 }
 
-.empty-wrap {
-  padding: 24px 0;
-}
-
-.user-card {
-  display: block;
+.table-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   width: 100%;
   text-align: left;
   padding: 10px 12px;
@@ -377,97 +670,102 @@ function formatCell(value: unknown): string {
   transition: border-color 0.15s ease;
 }
 
-.user-card:hover {
+.table-card:hover {
   border-color: var(--sun-border-light);
 }
 
-.user-card.active {
+.table-card.active {
   box-shadow: inset 0 0 0 1px var(--sun-text);
   border-color: var(--sun-text);
+}
+
+.table-label {
+  font-size: 13px;
   font-weight: 600;
 }
 
-.user-id {
-  font-size: 13px;
+.table-card.active .table-label {
+  font-weight: 700;
+}
+
+.table-id {
+  font-size: 11px;
+  color: var(--sun-text-muted);
   font-family: var(--sun-font-mono, ui-monospace, monospace);
 }
 
-.detail-empty {
+.detail-spin {
   flex: 1;
+  min-height: 0;
+}
+
+.detail-spin :deep(.n-spin-content) {
+  height: 100%;
+}
+
+.detail-body {
+  padding: 12px 16px 16px;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.detail-empty {
+  height: 100%;
+  min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.detail-body {
-  padding: 16px;
-  min-height: 0;
-  overflow: auto;
+.biz-table :deep(.n-data-table) {
+  --n-th-color: transparent;
+  --n-td-color: transparent;
+  --n-th-color-hover: transparent;
+  --n-td-color-hover: transparent;
+  --n-border-color: var(--sun-border);
+  --n-th-text-color: var(--sun-text-muted);
+  --n-td-text-color: var(--sun-text);
+}
+
+.biz-table :deep(.n-data-table-th),
+.biz-table :deep(.n-data-table-td) {
+  background: transparent !important;
+}
+
+.modal-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-}
-
-.section-title {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--sun-text);
-}
-
-.section-empty {
-  font-size: 12px;
-  color: var(--sun-text-muted);
-}
-
-.table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.data-table th,
-.data-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--sun-border);
-  text-align: left;
-  vertical-align: top;
-  color: var(--sun-text);
-  white-space: nowrap;
-}
-
-.data-table th {
-  font-weight: 600;
-  color: var(--sun-text-muted);
-  background: transparent;
-}
-
-.data-table tr:last-child td {
-  border-bottom: none;
-}
-
-.json-pre {
-  margin: 0;
-  padding: 12px;
-  border: 1px solid var(--sun-border);
-  border-radius: var(--radius-md);
-  background: var(--sun-black);
-  color: var(--sun-text);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow: auto;
-  max-height: 360px;
-  white-space: pre-wrap;
-  word-break: break-word;
+  gap: 4px;
 }
 
 .action-btn {
   min-width: 96px;
+}
+
+.sun-field {
+  width: 100%;
+}
+
+.sun-field-grow {
+  width: 100%;
+}
+
+.sun-field :deep(.n-input),
+.sun-field :deep(.n-input-wrapper),
+.sun-field :deep(.n-base-selection),
+.sun-field :deep(.n-input-number) {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  background: var(--sun-black) !important;
+}
+
+.sun-field :deep(.n-input__input-el),
+.sun-field :deep(.n-input__textarea-el),
+.sun-field :deep(.n-base-selection-input),
+.sun-field :deep(.n-input-number-input) {
+  color: var(--sun-text) !important;
 }
 </style>

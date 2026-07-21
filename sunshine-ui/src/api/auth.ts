@@ -63,3 +63,14 @@ export async function updateProfile(
   })
   return parseApiResponse<UpdateProfileResult>(res)
 }
+
+/** 租户下启用用户列表（业务数据页 userId 下拉）；字段为 userId，非 id。 */
+export async function listAuthUsers(
+  tenantId = 'default',
+): Promise<Array<{ userId: string; username: string; nickname: string }>> {
+  const q = new URLSearchParams({ tenantId })
+  const res = await fetch(`${resolveApiBase()}/api/auth/users?${q}`, {
+    headers: apiHeaders(),
+  })
+  return parseApiResponse<Array<{ userId: string; username: string; nickname: string }>>(res)
+}

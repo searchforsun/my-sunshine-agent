@@ -7,17 +7,17 @@ export default defineConfig(({ mode }) => {
   // CI mock E2E 走 mock-server :8001；日常 dev 仍代理 Gateway :8000
   const apiProxyTarget = mode === 'e2e-mock' ? 'http://127.0.0.1:8001' : 'http://127.0.0.1:8000'
 
-  // mock Admin 直连 biz 服务（路径前缀区分三域；须排在 /api 通配之前）
+  // biz Admin CRUD 直连各域服务（路径前缀区分；须排在 /api 通配之前）
   const mockBizProxy = {
-    '/api/mock/finance': {
+    '/api/biz/finance': {
       target: 'http://ecs4c16g:8710',
       changeOrigin: true,
     },
-    '/api/mock/oa': {
+    '/api/biz/oa': {
       target: 'http://ecs4c16g:8700',
       changeOrigin: true,
     },
-    '/api/mock/hr': {
+    '/api/biz/hr': {
       target: 'http://ecs4c16g:8720',
       changeOrigin: true,
     },
