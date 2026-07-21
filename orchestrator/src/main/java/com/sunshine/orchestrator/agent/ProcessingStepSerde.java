@@ -2,6 +2,8 @@ package com.sunshine.orchestrator.agent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.common.sandbox.SandboxEditDiff;
+import com.sunshine.common.sandbox.SandboxEditDiffLine;
 import com.sunshine.orchestrator.processing.ContentBlock;
 import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
@@ -320,7 +322,86 @@ public final class ProcessingStepSerde {
         if (Boolean.TRUE.equals(metadata.cancellable())) {
             map.put("cancellable", true);
         }
+        if (metadata.editDiff() != null) {
+            map.put("editDiff", editDiffToMap(metadata.editDiff()));
+        }
         return map;
+    }
+
+    public static StepMetadata metadataFromMap(Map<String, Object> map) {
+        if (map == null || map.isEmpty()) {
+            return null;
+        }
+        StepMetadata base = null;
+        SandboxEditDiff editDiff = editDiffFromMap(map.get("editDiff"));
+        if (editDiff != null) {
+            base = StepMetadata.withEditDiff(base, editDiff);
+        }
+        return base;
+    }
+
+    private static Map<String, Object> editDiffToMap(SandboxEditDiff editDiff) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (hasText(editDiff.path())) {
+            map.put("path", editDiff.path());
+        }
+        map.put("contextRadius", editDiff.contextRadius());
+        List<Map<String, Object>> lines = new ArrayList<>();
+        for (SandboxEditDiffLine line : editDiff.lines()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("kind", line.kind());
+            row.put("text", line.text() != null ? line.text() : "");
+            if (line.oldLine() != null) {
+                row.put("oldLine", line.oldLine());
+            }
+            if (line.newLine() != null) {
+                row.put("newLine", line.newLine());
+            }
+            lines.add(row);
+        }
+        map.put("lines", lines);
+        return map;
+    }
+
+    private static SandboxEditDiff editDiffFromMap(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return null;
+        }
+        String path = stringValue(map.get("path"));
+        int contextRadius = 0;
+        if (map.get("contextRadius") instanceof Number radius) {
+            contextRadius = radius.intValue();
+        }
+        Object linesObj = map.get("lines");
+        if (!(linesObj instanceof List<?> lineRows) || lineRows.isEmpty()) {
+            return null;
+        }
+        List<SandboxEditDiffLine> lines = new ArrayList<>();
+        for (Object rowObj : lineRows) {
+            if (!(rowObj instanceof Map<?, ?> row)) {
+                continue;
+            }
+            String kind = stringValue(row.get("kind"));
+            if (kind == null) {
+                continue;
+            }
+            String text = row.get("text") != null ? String.valueOf(row.get("text")) : "";
+            Integer oldLine = row.get("oldLine") instanceof Number n ? n.intValue() : null;
+            Integer newLine = row.get("newLine") instanceof Number n ? n.intValue() : null;
+            lines.add(new SandboxEditDiffLine(kind, text, oldLine, newLine));
+        }
+        if (lines.isEmpty()) {
+            return null;
+        }
+        return new SandboxEditDiff(path, contextRadius, List.copyOf(lines));
+    }
+
+    private static String stringValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).strip();
+        return text.isEmpty() ? null : text;
     }
 
     public static Map<String, Object> summaryToMap(StepSummary summary) {

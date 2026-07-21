@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.processing;
 
+import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
@@ -44,7 +45,9 @@ public record StepMetadata(
         /** ReAct spawn_subagent：传入子 Agent 的 prompt（抽屉展示） */
         String spawnPrompt,
         /** 沙箱可单工具取消：UI 跟此字段，勿硬编码工具名单 */
-        Boolean cancellable
+        Boolean cancellable,
+        /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
+        SandboxEditDiff editDiff
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -123,6 +126,10 @@ public record StepMetadata(
         return StepMetadataAssembler.withCancellable(base, cancellable);
     }
 
+    public static StepMetadata withEditDiff(StepMetadata base, SandboxEditDiff editDiff) {
+        return StepMetadataAssembler.withEditDiff(base, editDiff);
+    }
+
     public String sourcesLabel() {
         if (sources == null || sources.isEmpty()) {
             return "";
@@ -147,6 +154,7 @@ public record StepMetadata(
                 && !StringUtils.hasText(sandboxPath)
                 && !StringUtils.hasText(sandboxSearchRoot)
                 && !StringUtils.hasText(spawnPrompt)
-                && (cancellable == null || !cancellable);
+                && (cancellable == null || !cancellable)
+                && editDiff == null;
     }
 }
