@@ -32,7 +32,9 @@ public enum RagErrorCode implements ErrorCode {
     INGEST_DESENSITIZE_FAILED(502, "rag_ingest_desensitize_failed", "入库前脱敏失败"),
     OCR_NOT_CONFIGURED(503, "rag_ocr_not_configured", "OCR 未启用或未配置 API Key"),
     DOCUMENT_PARSE_IN_PROGRESS(409, "rag_document_parse_in_progress", "文档仍在解析中，请稍候"),
-    INGEST_QUARANTINE_PENDING(400, "rag_ingest_quarantine_pending", "解析置信度偏低，请先确认解析内容后再发布");
+    INGEST_QUARANTINE_PENDING(400, "rag_ingest_quarantine_pending", "解析置信度偏低，请先确认解析内容后再发布"),
+    UNKNOWN_CHUNK_STRATEGY(400, "rag_unknown_chunk_strategy", "未知的分块策略"),
+    CHUNK_LIMIT_EXCEEDED(400, "rag_chunk_limit_exceeded", "分块数量超过上限 2000，请增大块大小或拆分文档");
 
     private final int code;
     private final String key;
