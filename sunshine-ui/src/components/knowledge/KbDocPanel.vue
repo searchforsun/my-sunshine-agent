@@ -190,13 +190,20 @@ const hasSourcePreview = computed(() => {
   return !isDocPlaceholder(sourceContent.value, sourceTypeOption.value)
 })
 
+const isPreviewExpired = computed(() => {
+  const expires = previewExpiresAt.value
+  if (!expires) return false
+  return Date.now() >= new Date(expires).getTime()
+})
+
 const canPublishDraft = computed(() =>
   isDraftWritable.value
   && hasSourcePreview.value
   && !isParsing.value
   && !needsQuarantineConfirm.value
   && previewConfirmed.value
-  && previewId.value != null,
+  && previewId.value != null
+  && !isPreviewExpired.value,
 )
 
 const needsQuarantineConfirm = computed(
