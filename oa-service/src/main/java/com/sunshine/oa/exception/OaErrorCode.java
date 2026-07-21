@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 public enum OaErrorCode implements ErrorCode {
 
     USER_REQUIRED(400, "oa_user_required", "缺少 x-user-id"),
+    INVALID_TASK_REQUEST(400, "oa_invalid_task", "OA 待办参数不完整"),
     TASK_NOT_FOUND(404, "oa_task_not_found", "OA 待办不存在或无权操作");
 
     private final int code;

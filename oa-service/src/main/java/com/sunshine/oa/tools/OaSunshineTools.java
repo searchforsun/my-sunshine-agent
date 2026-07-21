@@ -1,7 +1,7 @@
 package com.sunshine.oa.tools;
 
 import com.sunshine.oa.model.OaTask;
-import com.sunshine.oa.store.OaTenantUserStore;
+import com.sunshine.oa.service.OaBizService;
 import com.sunshine.tools.sdk.annotation.SunshineTool;
 import com.sunshine.tools.sdk.annotation.ToolParam;
 import com.sunshine.tools.sdk.context.ToolInvocationContext;
@@ -15,7 +15,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OaSunshineTools {
 
-    private final OaTenantUserStore store;
+    private final OaBizService oaBizService;
 
     @SunshineTool(
             id = "list_oa_tasks",
@@ -27,7 +27,7 @@ public class OaSunshineTools {
             @ToolParam(value = "status", description = "pending | done | all", required = false) String status) {
         String userId = ToolInvocationContext.requireUserId();
         String tenantId = ToolInvocationContext.tenantIdOrDefault();
-        List<OaTask> tasks = store.listTasks(tenantId, userId, status != null ? status : "pending");
+        List<OaTask> tasks = oaBizService.listTasks(tenantId, userId, status != null ? status : "pending");
         if (tasks.isEmpty()) {
             return "未查询到符合条件的 OA 待办。";
         }
@@ -56,7 +56,7 @@ public class OaSunshineTools {
         if (!StringUtils.hasText(taskId)) {
             return "请提供待办 taskId。";
         }
-        return store.approveTask(tenantId, userId, taskId.trim())
+        return oaBizService.approveTask(tenantId, userId, taskId.trim())
                 .map(t -> "已审批待办 " + t.id()
                         + " | 标题=" + t.title()
                         + " | 状态=" + t.status())

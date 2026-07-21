@@ -1,9 +1,13 @@
-server:
-  port: 8700
+# sunshine-oa — 配置入口
+# 业务配置唯一来源：Nacos（Data ID: sunshine-oa.yaml）
+# 本地维护副本：docs/nacos/sunshine-oa.yaml → scripts/sync_nacos.py 同步线上
 
 spring:
   application:
     name: sunshine-oa
+  config:
+    import:
+      - optional:nacos:sunshine-oa.yaml
   cloud:
     nacos:
       discovery:
@@ -14,14 +18,18 @@ spring:
         metadata:
           sunshine.tool-app: "true"
           sunshine.tool-app-id: "sunshine-oa"
+      config:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+        file-extension: yaml
+        group: DEFAULT_GROUP
 
 sunshine:
   tools:
     enabled: true
     app-id: sunshine-oa
-  mock:
+  biz:
     admin-token: sunshine-mock-admin-dev
-
-logging:
-  level:
-    com.sunshine: debug

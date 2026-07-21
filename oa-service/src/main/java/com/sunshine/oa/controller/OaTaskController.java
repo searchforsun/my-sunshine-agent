@@ -4,7 +4,7 @@ import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.result.R;
 import com.sunshine.oa.exception.OaErrorCode;
 import com.sunshine.oa.model.OaTask;
-import com.sunshine.oa.store.OaTenantUserStore;
+import com.sunshine.oa.service.OaBizService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,7 +22,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OaTaskController {
 
-    private final OaTenantUserStore store;
+    private final OaBizService oaBizService;
 
     @GetMapping("/tasks")
     public R<List<OaTask>> listTasks(
@@ -30,7 +30,7 @@ public class OaTaskController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @RequestParam(value = "status", required = false) String status) {
         String uid = requireUser(userId);
-        return R.ok(store.listTasks(tenantOrDefault(tenantId), uid, status));
+        return R.ok(oaBizService.listTasks(tenantOrDefault(tenantId), uid, status));
     }
 
     @PostMapping("/tasks/{taskId}/approve")
@@ -39,7 +39,7 @@ public class OaTaskController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @PathVariable String taskId) {
         String uid = requireUser(userId);
-        return R.ok(store.approveTask(tenantOrDefault(tenantId), uid, taskId)
+        return R.ok(oaBizService.approveTask(tenantOrDefault(tenantId), uid, taskId)
                 .orElseThrow(() -> new BizException(OaErrorCode.TASK_NOT_FOUND)));
     }
 
