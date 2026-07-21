@@ -1,0 +1,1392 @@
+{
+  "version": "corpus-50",
+  "suites": {
+    "sunshine-regression": {
+      "displayName": "corpus50 标准回归",
+      "description": "基于 corpus-50 全新语料的检索回归集",
+      "gates": {
+        "recallAt3Min": 0.9,
+        "recallAt5Min": 0.94,
+        "mrrMin": 0.85,
+        "emptyRatePositiveMax": 0.02,
+        "emptyRateNegativeMin": 0.0,
+        "latencyP95MsMax": 20000
+      },
+      "items": [
+        {
+          "itemKey": "q001",
+          "query": "青松假有多少天、怎么申请",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-leave"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q002",
+          "query": "市内网约车报销上限多少",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-expense"
+          ],
+          "relevantKeywords": [],
+          "category": "finance",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q003",
+          "query": "迟到几次记为半日旷工",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-attendance"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q004",
+          "query": "晨星清单包含哪些入职事项",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-onboard"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q005",
+          "query": "银杏签批适用什么金额",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-approval"
+          ],
+          "relevantKeywords": [],
+          "category": "finance",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q006",
+          "query": "电子发票查重窗口多久",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-invoice"
+          ],
+          "relevantKeywords": [],
+          "category": "finance",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q007",
+          "query": "秋分预警在什么情况下触发",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-budget"
+          ],
+          "relevantKeywords": [],
+          "category": "finance",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q008",
+          "query": "云栖日远程上限几天",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-remote"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q009",
+          "query": "机密文件外发走什么通道",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-data"
+          ],
+          "relevantKeywords": [],
+          "category": "security",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q010",
+          "query": "一线城市住宿和餐补标准",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-travel"
+          ],
+          "relevantKeywords": [],
+          "category": "finance",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q011",
+          "query": "出差生病怎么同时处理差旅和病假",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-scenario"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q012",
+          "query": "绩效多久评一次、能否末位淘汰",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-perf"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q013",
+          "query": "调薪窗口是哪两个月",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-pay"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q014",
+          "query": "社招技术岗面试几轮",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-recruit"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q015",
+          "query": "年度必修学分多少",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-train"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q016",
+          "query": "利益冲突要填什么表",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-conduct"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q017",
+          "query": "大过处分有没有听证",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-discipline"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q018",
+          "query": "多少钱以上要贴资产橙标",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-asset"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q019",
+          "query": "采购要比几家价",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-procure"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q020",
+          "query": "大会议程要提前多久发",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-meeting"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q021",
+          "query": "访客通行证叫什么",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-visitor"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q022",
+          "query": "调岗后多久复核权限",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-account"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q023",
+          "query": "变更窗口是周几几点",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-change"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q024",
+          "query": "P0 故障响应时限",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-incident"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q025",
+          "query": "安全日志留存多少天",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-retain"
+          ],
+          "relevantKeywords": [],
+          "category": "security",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q026",
+          "query": "敏感个人信息怎么存",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-privacy"
+          ],
+          "relevantKeywords": [],
+          "category": "security",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q027",
+          "query": "外包接生产要签什么",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-vendor"
+          ],
+          "relevantKeywords": [],
+          "category": "security",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q028",
+          "query": "机密数据能否贴到外部大模型",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-llm"
+          ],
+          "relevantKeywords": [],
+          "category": "security",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q029",
+          "query": "API 旧版本保留多久",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-api"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q030",
+          "query": "P1 告警多久要确认",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-alert"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q031",
+          "query": "什么情况触发枯枝回收",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-capacity"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q032",
+          "query": "发布前冒烟要求",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-qa"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q033",
+          "query": "非模板合同谁审",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-legal-contract"
+          ],
+          "relevantKeywords": [],
+          "category": "legal",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q034",
+          "query": "引入 GPL 要谁批",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-legal-ip"
+          ],
+          "relevantKeywords": [],
+          "category": "legal",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q035",
+          "query": "匿名举报渠道叫什么",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-legal-report"
+          ],
+          "relevantKeywords": [],
+          "category": "legal",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q036",
+          "query": "媒体问询谁回复",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-crisis"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q037",
+          "query": "供应商要签什么 ESG 承诺",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-esg"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q038",
+          "query": "疏散集合点在哪",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-safety"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q039",
+          "query": "EAP 热线叫什么",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-health"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q040",
+          "query": "合同多久内要归档",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-archive"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q041",
+          "query": "立项评审叫什么门",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-pmo-project"
+          ],
+          "relevantKeywords": [],
+          "category": "pmo",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q042",
+          "query": "需求冻结前多久停变更",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-pmo-rd"
+          ],
+          "relevantKeywords": [],
+          "category": "pmo",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q043",
+          "query": "企业版 P1 响应多久",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-sla"
+          ],
+          "relevantKeywords": [],
+          "category": "biz",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q044",
+          "query": "几折以下要销售 VP 批",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-sales"
+          ],
+          "relevantKeywords": [],
+          "category": "biz",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q045",
+          "query": "金级伙伴分润上限",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-partner"
+          ],
+          "relevantKeywords": [],
+          "category": "biz",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q046",
+          "query": "活动预算五万以上谁立项",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-market"
+          ],
+          "relevantKeywords": [],
+          "category": "biz",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q047",
+          "query": "未公开财报能不能外讲",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-legal-disclose"
+          ],
+          "relevantKeywords": [],
+          "category": "legal",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q048",
+          "query": "核心系统 RTO RPO 目标",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-bc"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q049",
+          "query": "听雨会议室最长订多久",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-space"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q050",
+          "query": "实习最长几个月",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-intern"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "n01",
+          "query": "今天 A 股大盘怎么走",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "n02",
+          "query": "附近哪家火锅评分最高",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "n03",
+          "query": "帮我写一段 Python 爬虫教程",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "n04",
+          "query": "比特币现在什么价格",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "n05",
+          "query": "世界杯冠军是谁",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        }
+      ]
+    },
+    "sunshine-adversarial": {
+      "displayName": "corpus50 难例对抗",
+      "description": "口语化改写难例（对齐 corpus-50）",
+      "gates": {
+        "recallAt3Min": 0.9,
+        "recallAt5Min": 0.88,
+        "mrrMin": 0.8,
+        "emptyRatePositiveMax": 0.02,
+        "emptyRateNegativeMin": 0.0,
+        "latencyP95MsMax": 20000
+      },
+      "items": [
+        {
+          "itemKey": "q_adv_001",
+          "query": "青松假能休几天啊要提前多久报",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-leave"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_002",
+          "query": "打车一天最多能报多少钱",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-expense"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_003",
+          "query": "这个月迟到四次算不算旷工",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-attendance"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_004",
+          "query": "新人第一天要办完哪几样才能开系统",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-onboard"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_005",
+          "query": "八千八以上采购谁批",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-approval"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_006",
+          "query": "发票重复报销会被拦吗",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-invoice"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_007",
+          "query": "预算偏差百分之七要不要写说明",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-budget"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_008",
+          "query": "一周在家办公最多几天",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-remote"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_009",
+          "query": "机密资料能不能发微信",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-data"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_010",
+          "query": "北上广住宿一晚能报多少",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-travel"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_011",
+          "query": "在外面病了差旅单怎么改",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-scenario"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_012",
+          "query": "半年绩效有没有强制淘汰",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-perf"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_013",
+          "query": "不在四月十月调薪要谁批",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-pay"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_014",
+          "query": "价值观面挂了还能发 offer 吗",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-recruit"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_015",
+          "query": "外训三千以上要谁审",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-train"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_016",
+          "query": "亲戚是供应商要不要申报",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-conduct"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_017",
+          "query": "要记大过几天内可以申辩",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-discipline"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_018",
+          "query": "电脑不还能不能办离职",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-asset"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_019",
+          "query": "战略供应商准入叫什么",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-procure"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_020",
+          "query": "纪要几天内要归档",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-meeting"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_021",
+          "query": "客人能不能自己进研发区",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-visitor"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_022",
+          "query": "离职当天账号几点关",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-account"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_023",
+          "query": "没有回滚能不能发版",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-change"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_024",
+          "query": "重大故障多久要说明影响",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-incident"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_025",
+          "query": "销毁数据要不要双人",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-retain"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_026",
+          "query": "对外共享个人信息要记什么台账",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-privacy"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_027",
+          "query": "外包能不能直接用普通账号",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-vendor"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_028",
+          "query": "AI 写的对外文案要不要人工审",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-llm"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_029",
+          "query": "默认租户 QPS 多少",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-api"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_030",
+          "query": "告警没人接会怎样",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-alert"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_031",
+          "query": "资源闲置两周会怎样",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-capacity"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_032",
+          "query": "没有回滚演练能不能发生产",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-qa"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_033",
+          "query": "云玺电子章谁能用",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-legal-contract"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_034",
+          "query": "职务发明归谁",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-legal-ip"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_035",
+          "query": "举报人受不受保护",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-legal-report"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_036",
+          "query": "员工能不能自己发公司声明",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-crisis"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_037",
+          "query": "范围三排放披露吗",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-esg"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_038",
+          "query": "消防演练一年几次",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-safety"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_039",
+          "query": "体检最晚什么时候做",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-health"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_040",
+          "query": "借机密档案谁批",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-archive"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_041",
+          "query": "没过评审能不能加人",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-pmo-project"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_042",
+          "query": "紧急需求走什么通道",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-pmo-rd"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_043",
+          "query": "SLA 超时升给谁",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-sla"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_044",
+          "query": "返点要不要合规审",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-sales"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_045",
+          "query": "客户冲突怎么定",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-partner"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_046",
+          "query": "物料审核叫什么",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-market"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_047",
+          "query": "演讲稿提前几天送审",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-legal-disclose"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_048",
+          "query": "灾备演练一年几次",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-bc"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_049",
+          "query": "工位申请有什么条件",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-space"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_050",
+          "query": "转正评估要签什么表",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-intern"
+          ],
+          "relevantKeywords": [],
+          "category": "adversarial",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "q_adv_n01",
+          "query": "今天 A 股大盘怎么走",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "q_adv_n02",
+          "query": "附近哪家火锅评分最高",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "q_adv_n03",
+          "query": "帮我写一段 Python 爬虫教程",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "q_adv_n04",
+          "query": "比特币现在什么价格",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "q_adv_n05",
+          "query": "世界杯冠军是谁",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        }
+      ]
+    },
+    "sunshine-smoke": {
+      "displayName": "corpus50 冒烟门禁",
+      "description": "发布/切换配置用冒烟子集",
+      "gates": {
+        "recallAt3Min": 0.9,
+        "recallAt5Min": 0.94,
+        "mrrMin": 0.85,
+        "emptyRatePositiveMax": 0.02,
+        "emptyRateNegativeMin": 0.0,
+        "latencyP95MsMax": 20000
+      },
+      "items": [
+        {
+          "itemKey": "s001",
+          "query": "青松假有多少天、怎么申请",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-leave"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s002",
+          "query": "电子发票查重窗口多久",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-fin-invoice"
+          ],
+          "relevantKeywords": [],
+          "category": "finance",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s003",
+          "query": "出差生病怎么同时处理差旅和病假",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-scenario"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s004",
+          "query": "利益冲突要填什么表",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-hr-conduct"
+          ],
+          "relevantKeywords": [],
+          "category": "hr",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s005",
+          "query": "访客通行证叫什么",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-visitor"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s006",
+          "query": "敏感个人信息怎么存",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-sec-privacy"
+          ],
+          "relevantKeywords": [],
+          "category": "security",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s007",
+          "query": "什么情况触发枯枝回收",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-it-capacity"
+          ],
+          "relevantKeywords": [],
+          "category": "it",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s008",
+          "query": "媒体问询谁回复",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-adm-crisis"
+          ],
+          "relevantKeywords": [],
+          "category": "admin",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s009",
+          "query": "立项评审叫什么门",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-pmo-project"
+          ],
+          "relevantKeywords": [],
+          "category": "pmo",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s010",
+          "query": "活动预算五万以上谁立项",
+          "itemType": "positive",
+          "relevantDocIds": [
+            "c50-biz-market"
+          ],
+          "relevantKeywords": [],
+          "category": "biz",
+          "expectEmpty": false
+        },
+        {
+          "itemKey": "s011",
+          "query": "今天 A 股大盘怎么走",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "s012",
+          "query": "附近哪家火锅评分最高",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "s013",
+          "query": "帮我写一段 Python 爬虫教程",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "s014",
+          "query": "比特币现在什么价格",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        },
+        {
+          "itemKey": "s015",
+          "query": "世界杯冠军是谁",
+          "itemType": "negative",
+          "relevantDocIds": [],
+          "relevantKeywords": [],
+          "category": "negative",
+          "expectEmpty": true
+        }
+      ]
+    }
+  }
+}
