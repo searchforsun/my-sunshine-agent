@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -183,6 +184,34 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.username").value("frank01"));
+    }
+
+    @Test
+    @DisplayName("listUsers 带 token 返回租户启用用户")
+    void listUsers_withToken_returnsAliceId() throws Exception {
+        registerUser("alice01");
+        String token = loginAndGetToken("alice01");
+        String aliceId = userRepository.findByUsername("alice01").orElseThrow().getId();
+
+        MvcResult result = mockMvc.perform(get("/api/auth/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andReturn();
+
+        JsonNode users = objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+        assertThat(users.isArray()).isTrue();
+        List<String> ids = new java.util.ArrayList<>();
+        users.forEach(u -> ids.add(u.path("userId").asText()));
+        assertThat(ids).contains(aliceId);
+    }
+
+    @Test
+    @DisplayName("listUsers 无 token 401")
+    void listUsers_withoutToken_unauthorized() throws Exception {
+        mockMvc.perform(get("/api/auth/users"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
     }
 
     @Test

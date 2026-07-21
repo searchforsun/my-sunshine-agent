@@ -119,6 +119,18 @@ public class UserService {
                 .setExtra("tenantId", tenantId));
     }
 
+    /** 租户下启用用户列表 — 供业务数据页用户下拉 */
+    public List<UserBriefVO> listActiveUsers(String tenantId) {
+        String tid = resolveTenantId(tenantId);
+        return userRepository.findByTenantIdAndStatus(tid, STATUS_ACTIVE).stream()
+                .map(user -> UserBriefVO.builder()
+                        .userId(user.getId())
+                        .username(user.getUsername())
+                        .nickname(resolveNickname(user.getNickname(), user.getUsername()))
+                        .build())
+                .toList();
+    }
+
     /** 批量查询用户展示信息 — 供 skill-manager BFF 解析维护人 */
     public List<UserBriefVO> findBriefByIds(Collection<String> ids) {
         if (ids == null || ids.isEmpty()) {

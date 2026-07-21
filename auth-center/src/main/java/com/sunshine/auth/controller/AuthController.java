@@ -6,6 +6,7 @@ import com.sunshine.auth.dto.LoginResponse;
 import com.sunshine.auth.dto.RegisterRequest;
 import com.sunshine.auth.dto.UpdateProfileRequest;
 import com.sunshine.auth.dto.UpdateProfileResponse;
+import com.sunshine.auth.dto.UserBriefVO;
 import com.sunshine.auth.service.UserService;
 import com.sunshine.common.core.result.R;
 import jakarta.validation.Valid;
@@ -15,7 +16,10 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -43,6 +47,11 @@ public class AuthController {
     @GetMapping("/me")
     public R<AuthUserVO> me() {
         return R.ok(userService.currentUser());
+    }
+
+    @GetMapping("/users")
+    public R<List<UserBriefVO>> listUsers(@RequestParam(defaultValue = "default") String tenantId) {
+        return R.ok(userService.listActiveUsers(tenantId));
     }
 
     @PatchMapping("/profile")
