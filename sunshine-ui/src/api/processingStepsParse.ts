@@ -1,4 +1,5 @@
 /** SSE / REST steps JSON 解析 */
+import type { SandboxEditDiffMeta, SandboxDiffLine } from './sandboxEditDiff'
 import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
@@ -60,6 +61,32 @@ function parseNodeAttempts(raw: unknown): StepMetadata['nodeAttempts'] {
     })
     .filter((a): a is NonNullable<typeof a> => !!a)
   return attempts.length > 0 ? attempts : undefined
+}
+
+function parseEditDiff(raw: unknown): SandboxEditDiffMeta | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const obj = raw as Record<string, unknown>
+  if (!Array.isArray(obj.lines) || obj.lines.length === 0) return undefined
+  const lines = obj.lines
+    .map(item => {
+      if (!item || typeof item !== 'object') return null
+      const o = item as Record<string, unknown>
+      const kind = o.kind
+      if (kind !== 'del' && kind !== 'add' && kind !== 'ctx' && kind !== 'fold') return null
+      const text = typeof o.text === 'string' ? o.text : ''
+      const oldLine = typeof o.oldLine === 'number'
+        ? o.oldLine
+        : o.oldLine === null ? null : undefined
+      const newLine = typeof o.newLine === 'number'
+        ? o.newLine
+        : o.newLine === null ? null : undefined
+      return { kind, text, oldLine, newLine } as SandboxDiffLine
+    })
+    .filter((line): line is SandboxDiffLine => line != null)
+  if (lines.length === 0) return undefined
+  const path = typeof obj.path === 'string' && obj.path.trim() ? obj.path.trim() : undefined
+  const contextRadius = typeof obj.contextRadius === 'number' ? obj.contextRadius : undefined
+  return { path, contextRadius, lines }
 }
 
 function parseMetadata(raw: unknown): StepMetadata | undefined {
@@ -178,6 +205,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     ? obj.spawnPrompt.trim()
     : undefined
   const cancellable = obj.cancellable === true ? true : undefined
+  const editDiff = parseEditDiff(obj.editDiff)
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -198,6 +226,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !sandboxSearchRoot
     && !spawnPrompt
     && !cancellable
+    && !editDiff
   ) {
     return undefined
   }
@@ -233,6 +262,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     sandboxSearchRoot,
     spawnPrompt,
     cancellable,
+    editDiff,
   }
 }
 

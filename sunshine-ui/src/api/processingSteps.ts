@@ -8,6 +8,7 @@ import { relocateAgentNodeHitl } from './hitlSteps'
 import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
+import type { SandboxEditDiffMeta } from './sandboxEditDiff'
 import { mergeStepMetadata } from './processingStepsParse'
 import { resolveStepDurationMs } from './processingStepsDisplay'
 import { sortSteps, isWorkflowNodeStepId, isThinkStepId } from './processingStepsNormalize'
@@ -154,6 +155,8 @@ export interface StepMetadata {
   spawnPrompt?: string
   /** 沙箱可单工具取消（后端 Nacos cancellable-tools） */
   cancellable?: boolean
+  /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
+  editDiff?: SandboxEditDiffMeta
 }
 
 

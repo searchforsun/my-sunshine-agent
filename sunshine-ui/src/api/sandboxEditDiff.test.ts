@@ -1,45 +1,35 @@
 import { describe, expect, it } from 'vitest'
 import {
-  formatDiffLinesAsText,
-  lineUnifiedDiff,
-  parseSandboxEditDiff,
-  summarizeDiffCounts,
   writeContentAsAddLines,
+  linesFromEditDiffMeta,
+  summarizeDiffCounts,
 } from './sandboxEditDiff'
 
 describe('sandboxEditDiff', () => {
-  it('lineUnifiedDiff keeps shared lines as ctx', () => {
-    const lines = lineUnifiedDiff('a\nb\nc', 'a\nx\nc')
-    expect(formatDiffLinesAsText(lines)).toBe(' a\n-b\n+x\n c')
-  })
-
-  it('rejects non-unified legacy markers', () => {
-    const raw = '<<< old\nid,amount\n1,150.50\n\n>>> new\nid,amount\n1,999.00'
-    expect(parseSandboxEditDiff(raw)).toBeNull()
-  })
-
-  it('parses already-prefixed +- text', () => {
-    const lines = parseSandboxEditDiff('-foo\n+bar\n baz')
+  it('writeContentAsAddLines assigns newLine 1..N', () => {
+    const lines = writeContentAsAddLines('a\nb\n')
     expect(lines).toEqual([
-      { kind: 'del', text: 'foo' },
-      { kind: 'add', text: 'bar' },
-      { kind: 'ctx', text: 'baz' },
+      { kind: 'add', text: 'a', oldLine: null, newLine: 1 },
+      { kind: 'add', text: 'b', oldLine: null, newLine: 2 },
     ])
+    expect(summarizeDiffCounts(lines)).toEqual({ add: 2, del: 0 })
   })
 
-  it('summarizeDiffCounts', () => {
-    expect(summarizeDiffCounts([
-      { kind: 'ctx', text: 'a' },
-      { kind: 'del', text: 'b' },
-      { kind: 'add', text: 'c' },
-      { kind: 'add', text: 'd' },
-    ])).toEqual({ add: 2, del: 1 })
+  it('linesFromEditDiffMeta maps structured metadata', () => {
+    const lines = linesFromEditDiffMeta({
+      path: '/x.py',
+      contextRadius: 3,
+      lines: [
+        { kind: 'ctx', text: 'a', oldLine: 1, newLine: 1 },
+        { kind: 'del', text: 'b', oldLine: 2, newLine: null },
+        { kind: 'add', text: 'c', oldLine: null, newLine: 2 },
+        { kind: 'fold', text: '', oldLine: null, newLine: null },
+      ],
+    })
+    expect(lines?.map(l => l.kind)).toEqual(['ctx', 'del', 'add', 'fold'])
   })
 
-  it('writeContentAsAddLines counts lines as adds', () => {
-    const lines = writeContentAsAddLines('a\nb\nc\n')
-    expect(lines.every(l => l.kind === 'add')).toBe(true)
-    expect(lines.map(l => l.text)).toEqual(['a', 'b', 'c'])
-    expect(summarizeDiffCounts(lines)).toEqual({ add: 3, del: 0 })
+  it('linesFromEditDiffMeta returns null when missing', () => {
+    expect(linesFromEditDiffMeta(undefined)).toBeNull()
   })
 })
