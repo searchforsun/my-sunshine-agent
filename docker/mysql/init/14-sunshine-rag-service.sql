@@ -35,6 +35,8 @@ CREATE TABLE document_version (
     status          VARCHAR(16) NOT NULL DEFAULT 'draft',
     parsed_markdown MEDIUMTEXT,
     chunk_count     INT NOT NULL DEFAULT 0,
+    chunk_strategy  VARCHAR(32) NULL,
+    chunk_params_json JSON NULL,
     ingest_job_id   BIGINT,
     published_at    TIMESTAMP NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -505,3 +507,8 @@ ALTER TABLE ingest_job
     ADD COLUMN progress_page INT NULL AFTER progress_pct,
     ADD COLUMN total_pages INT NULL AFTER progress_page,
     ADD COLUMN source_object_key VARCHAR(512) NULL AFTER total_pages;
+
+USE sunshine_rag;
+ALTER TABLE document_version
+    ADD COLUMN chunk_strategy VARCHAR(32) NULL AFTER chunk_count,
+    ADD COLUMN chunk_params_json JSON NULL AFTER chunk_strategy;

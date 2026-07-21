@@ -35,6 +35,10 @@ public class DocumentVersionEntity {
     private String storagePath;
     @Column(name = "chunk_count", nullable = false)
     private int chunkCount;
+    @Column(name = "chunk_strategy", length = 32)
+    private String chunkStrategy;
+    @Column(name = "chunk_params_json", columnDefinition = "JSON")
+    private String chunkParamsJson;
     @Column(name = "ingest_job_id")
     private Long ingestJobId;
     @Column(name = "published_at")
