@@ -15,6 +15,7 @@
 | 3 | 实现路径 | **方案 1**：后端在 edit 时产出带绝对行号的 contextual hunk；前端只渲染 |
 | 4 | 沙箱抽屉 | 全文 **单栏绝对行号**（非 diff） |
 | 5 | write 展开 | 整文件按 `add`；旧号空、新号 `1…N`；**不截断**正文 |
+| 6 | 旧消息 | **不做兼容**：无 `metadata.editDiff` 的历史 edit 步不按 Git gutter 渲染（可空/纯文本）；不维护 `+/-/ ` 回退解析路径作为产品能力 |
 
 ---
 
@@ -34,6 +35,7 @@
 - 前端事后拉工作区反推 diff（会话失效不可靠）
 - read / exec / grep / glob 行号（本轮不做）
 - 首版不做「点击 `···` 展开折叠段」（仅展示折叠标记；可后续加）
+- **不做旧消息兼容**（无 structured `editDiff` 的历史会话不保证双行号 / 上下文）
 
 ---
 
@@ -135,28 +137,30 @@ flowchart LR
 1. `SandboxEditDiffHolder.put(toolUseId, editDiff)`（invoke 成功且 meta 含 editDiff）
 2. `ProcessingStepHook` 完成 edit 步时 `take(toolUseId)`：
    - `StepMetadata.editDiff` = structured（需扩展 `StepMetadata` + Serde）
-   - `detail` = 由 lines 格式化的 unified 文本（复制 / 旧前端回退）
-3. 无 holder（失败/旧链路）→ 保持现有 `expandBodyFromParams` 行为
+   - `detail` = 由 lines 格式化的 unified 文本（**仅供复制**；UI **不**靠解析 detail 渲染 gutter）
+3. 无 holder（edit 失败未产出 meta）→ 无 `editDiff`；展开不展示假行号 gutter（可空或仅错误/空态）
 
 ### 4.4 HITL 待确认（尚未落盘）
 
 - 确认框仍不展示正文
-- 展开区：用当前工作区文件内容 + `old_string`/`new_string` 调用**同一** `EditDiffBuilder`（orchestrator 经 `SandboxClient` 读 content）
-- 读失败或 `old_string` 尚未能唯一匹配 → 回退片段级 unified（相对行号，无 fold）
+- 展开区：用当前工作区文件内容 + `old_string`/`new_string` 调用**同一** `EditDiffBuilder`（orchestrator 经 `SandboxClient` 读 content），结果写入该步 `metadata.editDiff`
+- 读失败或无法唯一匹配 → **不**拼片段相对行号兜底；展开空态 / 提示无法预览（与「不做旧消息兼容」一致：禁止第二套弱渲染）
 
 ### 4.5 write
 
 - 不经 EditDiffBuilder；detail 仍为 `content` 全文
-- 前端 `writeContentAsAddLines` 赋 `newLine = 1…N`，`oldLine = null`，`kind = add`
+- 前端仅对 **write** 步用 `writeContentAsAddLines` 赋 `newLine = 1…N`，`oldLine = null`，`kind = add`
 - 不插入 fold
 
-### 4.6 旧消息兼容
+### 4.6 渲染数据源（唯一）
 
-| 来源 | 行为 |
-|------|------|
-| `metadata.editDiff` 存在 | 按 structured 渲染双行号 |
-| 仅有 `+/-/ ` detail | `parseSandboxEditDiff`；行号按片段推算（不保证绝对） |
-| 无前缀纯文本 write | `writeContentAsAddLines` |
+| 步骤 | UI 数据源 |
+|------|-----------|
+| edit | **仅** `metadata.editDiff` |
+| write | detail `content` → 前端标为全 `add` + 新行号 |
+| 历史无 `editDiff` 的 edit | **不** Git gutter（不做兼容） |
+
+可删除或降级前端 `parseSandboxEditDiff` 作为产品路径（复制用的 unified 文本无需再 parse 回 lines）。
 
 ---
 
@@ -167,8 +171,8 @@ flowchart LR
 | `CodeLineGutter.vue`（新） | 双栏或单栏行号 + 标记；`mode: 'diff' \| 'file'` |
 | `SandboxDiffView`（新，或扩 `SandboxToolExpandPanel`） | 渲染 lines；fold 行；hljs 按 path 语言 |
 | `SandboxPreviewPane.vue` | 全文按行拆分 + `mode: 'file'` gutter |
-| `sandboxEditDiff.ts` | 扩展 `SandboxDiffLine`：`oldLine?` / `newLine?` / `kind` 含 `fold`；parse metadata；write 行号赋值 |
-| `useSandboxToolExpand.ts` | 优先 `step.metadata.editDiff`，否则现有解析 |
+| `sandboxEditDiff.ts` | 扩展 `SandboxDiffLine`：`oldLine?` / `newLine?` / `kind` 含 `fold`；从 metadata 映射；write 行号赋值；**移除**旧 unified 文本回退解析产品路径 |
+| `useSandboxToolExpand.ts` | edit **只读** `step.metadata.editDiff`；write 走 `writeContentAsAddLines` |
 
 样式：沿用 `--sun-*`、现有 `is-add` / `is-del` 色；gutter `user-select: none`；数字右对齐。
 
@@ -192,7 +196,7 @@ flowchart LR
 | 层 | 用例 |
 |----|------|
 | Java 单测 | `EditDiffBuilder`：±3 ctx、行号递增、fold 插入、头尾不足、整段替换 |
-| 前端单测 | parse metadata；write 行号；旧 unified 回退；fold 渲染数据 |
+| 前端单测 | metadata → lines；write 行号；fold 渲染数据；无 editDiff 时不渲染 gutter |
 | 手工 / Live | write 新文件时间线双栏（仅新号）+ 抽屉行号；edit 小改可见上下 3 行 ctx 与旧/新号对齐抽屉 |
 
 可选：扩展 `verify_sandbox_workspace_live` / chat suite 断言 expand detail 含 contextual 行（若易稳定）；非阻塞首版。
@@ -214,3 +218,4 @@ flowchart LR
 - 截断 write/edit 正文
 - 首版 fold 点击展开
 - read/exec 输出行号
+- **旧消息 / 无 `editDiff` 的弱渲染兼容**（含仅靠 `+/-/ ` detail 推行号）
