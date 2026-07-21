@@ -1,26 +1,22 @@
 package com.sunshine.finance.tools;
 
-import com.sunshine.finance.dto.FinanceMessageSummaryVO;
-import com.sunshine.finance.dto.FinanceMessageVO;
-import com.sunshine.finance.service.FinanceMessageService;
+import com.sunshine.finance.store.TenantUserStore;
 import com.sunshine.tools.sdk.autoconfigure.SunshineToolAutoConfiguration;
+import com.sunshine.tools.sdk.context.ToolInvocationContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.math.BigDecimal;
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -38,66 +34,91 @@ class FinanceSunshineToolsTest {
     @Autowired
     private FinanceSunshineTools financeSunshineTools;
 
-    @MockBean
-    private FinanceMessageService messageService;
+    @Autowired
+    private TenantUserStore store;
 
     @SpringBootApplication
-    @Import({SunshineToolAutoConfiguration.class, FinanceSunshineTools.class})
+    @Import({SunshineToolAutoConfiguration.class, FinanceSunshineTools.class, TenantUserStore.class})
     static class TestApplication {
     }
 
-    @Test
-    void listFinanceMessages_formatsText() {
-        when(messageService.list(eq("pending"))).thenReturn(List.of(
-                new FinanceMessageVO(1001, "Q2 差旅报销审批", "reimbursement", "pending",
-                        new BigDecimal("3280.50"), "张三", "2026-06-14 09:30")));
-        String result = financeSunshineTools.listFinanceMessages("pending");
-        assertThat(result).contains("共 1 条财务消息")
-                .contains("[1001]")
-                .contains("Q2 差旅报销审批")
-                .contains("申请人=张三");
+    @BeforeEach
+    void setUp() {
+        store.reset("default");
+        ToolInvocationContext.clear();
+    }
+
+    @AfterEach
+    void tearDown() {
+        ToolInvocationContext.clear();
     }
 
     @Test
-    void getFinanceMessageDetail_formatsText() {
-        when(messageService.getById(1001L)).thenReturn(java.util.Optional.of(
-                new FinanceMessageVO(1001, "Q2 差旅报销审批", "reimbursement", "pending",
-                        new BigDecimal("3280.50"), "张三", "2026-06-14 09:30")));
-        String result = financeSunshineTools.getFinanceMessageDetail("1001");
-        assertThat(result).contains("财务消息详情")
-                .contains("id=1001")
-                .contains("标题=Q2 差旅报销审批");
+    void listMyExpenses_withAliceContext_returnsSeed() {
+        ToolInvocationContext.set("default", "u-alice");
+        String result = financeSunshineTools.listMyExpenses("pending");
+        assertThat(result).contains("共 1 条报销单")
+                .contains("[exp-a1]")
+                .contains("市内交通");
     }
 
     @Test
-    void summarizeFinanceByStatus_formatsText() {
-        when(messageService.summarize(eq("pending"))).thenReturn(List.of(
-                new FinanceMessageSummaryVO("pending", 3, new BigDecimal("123456.50"))));
-        String result = financeSunshineTools.summarizeFinanceByStatus("pending");
-        assertThat(result).contains("财务消息汇总")
-                .contains("status=pending")
-                .contains("count=3");
+    void listMyExpenses_withoutContext_throws() {
+        ToolInvocationContext.clear();
+        assertThatThrownBy(() -> financeSunshineTools.listMyExpenses(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("x-user-id");
     }
 
     @Test
-    void catalogReturnsFinanceTools() throws Exception {
-        mockMvc.perform(get("/sunshine/tools/catalog"))
+    void invokeWithoutUserHeader_returnsFailure() throws Exception {
+        mockMvc.perform(post("/sunshine/tools/invoke/list_my_expenses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"pending\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.appId").value("sunshine-finance"))
-                .andExpect(jsonPath("$.tools[?(@.name=='list_finance_messages')].displayName")
-                        .value("查询待审批财务消息"));
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("x-user-id")));
     }
 
     @Test
-    void invokeListFinanceMessagesReturnsResult() throws Exception {
-        when(messageService.list(eq("pending"))).thenReturn(List.of(
-                new FinanceMessageVO(1001, "Q2 差旅报销审批", "reimbursement", "pending",
-                        new BigDecimal("3280.50"), "张三", "2026-06-14 09:30")));
-        mockMvc.perform(post("/sunshine/tools/invoke/list_finance_messages")
+    void invokeWithAliceHeader_returnsResult() throws Exception {
+        mockMvc.perform(post("/sunshine/tools/invoke/list_my_expenses")
+                        .header("x-user-id", "u-alice")
+                        .header("x-tenant-id", "default")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"pending\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true))
-                .andExpect(jsonPath("$.result").value(org.hamcrest.Matchers.containsString("共 1 条财务消息")));
+                .andExpect(jsonPath("$.result").value(org.hamcrest.Matchers.containsString("共 1 条报销单")));
+    }
+
+    @Test
+    void catalogReturnsNewFinanceTools() throws Exception {
+        mockMvc.perform(get("/sunshine/tools/catalog"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.appId").value("sunshine-finance"))
+                .andExpect(jsonPath("$.tools.length()").value(6))
+                .andExpect(jsonPath("$.tools[?(@.name=='list_my_expenses')].displayName")
+                        .value("查询我的报销单"))
+                .andExpect(jsonPath("$.tools[?(@.name=='get_expense_detail')]").exists())
+                .andExpect(jsonPath("$.tools[?(@.name=='submit_expense')]").exists())
+                .andExpect(jsonPath("$.tools[?(@.name=='list_my_finance_inbox')]").exists())
+                .andExpect(jsonPath("$.tools[?(@.name=='get_finance_inbox_item')]").exists())
+                .andExpect(jsonPath("$.tools[?(@.name=='summarize_my_expenses')]").exists());
+    }
+
+    @Test
+    void getExpenseDetail_crossUser_notFound() {
+        ToolInvocationContext.set("default", "u-bob");
+        assertThat(financeSunshineTools.getExpenseDetail("exp-a1"))
+                .contains("未找到");
+    }
+
+    @Test
+    void submitExpense_createsForCurrentUser() {
+        ToolInvocationContext.set("default", "u-bob");
+        String result = financeSunshineTools.submitExpense("办公用品", "12.5", "2026-07-20", "笔");
+        assertThat(result).contains("已提交报销单").contains("id=exp-");
+        assertThat(store.listExpenses("default", "u-bob", null)).hasSize(1);
     }
 }

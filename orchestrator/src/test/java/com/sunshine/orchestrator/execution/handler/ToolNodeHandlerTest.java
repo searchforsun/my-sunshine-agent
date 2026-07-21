@@ -48,7 +48,7 @@ class ToolNodeHandlerTest {
     @Test
     void invokesToolAndWritesOutput() {
         when(toolManagerClient.invokeMono(
-                eq("sdk__sunshine-finance__list_finance_messages"),
+                eq("sdk__sunshine-finance__list_my_expenses"),
                 eq(Map.of("status", "pending")),
                 anyString(),
                 anyString()))
@@ -61,13 +61,13 @@ class ToolNodeHandlerTest {
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-list", Map.of("status", "pending"), "test"));
 
         NodeSpec spec = new NodeSpec("finance-list", "tool",
-                Map.of("tool", "sdk__sunshine-finance__list_finance_messages", "status", "pending"));
+                Map.of("tool", "sdk__sunshine-finance__list_my_expenses", "status", "pending"));
 
         var result = handler.run(spec, ctx, streamCtx).block();
         assertThat(result).isNotNull();
         assertThat(result.success()).isTrue();
         assertThat(result.safeOutputs().get("output")).contains("items");
-        assertThat(result.safeOutputs().get("tool")).isEqualTo("sdk__sunshine-finance__list_finance_messages");
+        assertThat(result.safeOutputs().get("tool")).isEqualTo("sdk__sunshine-finance__list_my_expenses");
     }
 
     @Test

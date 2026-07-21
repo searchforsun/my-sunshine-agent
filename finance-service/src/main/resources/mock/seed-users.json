@@ -1,0 +1,47 @@
+{
+  "default": {
+    "u-alice": {
+      "expenses": [
+        {
+          "id": "exp-a1",
+          "category": "市内交通",
+          "amount": 86.5,
+          "status": "pending",
+          "occurredOn": "2026-07-18",
+          "remark": "客户拜访网约车"
+        },
+        {
+          "id": "exp-a2",
+          "category": "差旅住宿",
+          "amount": 520.0,
+          "status": "approved",
+          "occurredOn": "2026-07-10",
+          "remark": "上海客户拜访"
+        }
+      ],
+      "inbox": [
+        {
+          "id": "inbox-a1",
+          "title": "报销单待补充发票",
+          "status": "pending",
+          "amount": 86.5
+        }
+      ]
+    },
+    "u-bob": {
+      "expenses": [],
+      "inbox": []
+    },
+    "u-carol": {
+      "expenses": [],
+      "inbox": [
+        {
+          "id": "inbox-c1",
+          "title": "待审大额报销",
+          "status": "pending",
+          "amount": 8800
+        }
+      ]
+    }
+  }
+}
