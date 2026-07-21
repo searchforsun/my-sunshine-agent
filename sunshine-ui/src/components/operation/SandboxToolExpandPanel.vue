@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
+import SandboxDiffView from '../sandbox/SandboxDiffView.vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import { useSandboxToolExpand } from '../../composables/useSandboxToolExpand'
 
@@ -16,7 +17,8 @@ const {
   execCommand,
   sandboxRaw,
   sandboxPathEntries,
-  editDiffRendered,
+  sandboxEditDiffLines,
+  editDiffLang,
   execCommandHtml,
   execOutputHtml,
   sandboxContentHtml,
@@ -53,14 +55,8 @@ const {
         </li>
       </ul>
     </template>
-    <template v-else-if="editDiffRendered.length">
-      <pre class="op-sandbox-diff"><code
-        v-for="(line, idx) in editDiffRendered"
-        :key="idx"
-        class="op-diff-line hljs"
-        :class="`is-${line.kind}`"
-        v-html="line.html"
-      /></pre>
+    <template v-else-if="sandboxEditDiffLines.length">
+      <SandboxDiffView :lines="sandboxEditDiffLines" :lang="editDiffLang" />
     </template>
     <template v-else>
       <pre v-if="sandboxContentHtml" class="op-sandbox-code"><code class="hljs" v-html="sandboxContentHtml" /></pre>
@@ -105,8 +101,7 @@ const {
 
 .op-exec-cmd,
 .op-exec-out,
-.op-sandbox-code,
-.op-sandbox-diff {
+.op-sandbox-code {
   margin: 0;
   padding: 0;
   white-space: pre-wrap;
@@ -192,41 +187,5 @@ const {
 .op-sandbox-path-link:hover {
   color: var(--sun-accent, #6cb6ff);
   text-decoration: underline;
-}
-
-.op-sandbox-diff {
-  margin: 0;
-  padding: 0;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: normal;
-  background: transparent;
-  border: none;
-  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace);
-  font-size: var(--sun-font-sm, 12px);
-  line-height: 1.45;
-  letter-spacing: 0;
-  font-variant-ligatures: none;
-  tab-size: 4;
-}
-
-.op-diff-line {
-  display: block;
-  padding: 0 4px;
-  background: transparent !important;
-  white-space: pre-wrap;
-  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace) !important;
-}
-
-.op-sandbox-diff :deep(span) {
-  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace) !important;
-}
-
-.op-diff-line.is-del {
-  background: color-mix(in srgb, #c44 14%, transparent) !important;
-}
-
-.op-diff-line.is-add {
-  background: color-mix(in srgb, #2a9a5c 14%, transparent) !important;
 }
 </style>

@@ -12,9 +12,10 @@ import {
   resolveStepExpandInner,
 } from '../api/processingSteps'
 import {
-  parseSandboxEditDiff,
   writeContentAsAddLines,
+  linesFromEditDiffMeta,
   isSandboxWriteStep,
+  isSandboxEditStep,
   summarizeDiffCounts,
   type SandboxDiffLine,
 } from '../api/sandboxEditDiff'
@@ -62,14 +63,6 @@ function highlightCode(text: string, lang: string | null): string {
   }
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
 /** 沙箱工具步展开区：路径列表 / diff / exec / 高亮正文 */
 export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep>) {
   const isSandboxTool = computed(() => isSandboxToolStep(toValue(stepSource)))
@@ -92,11 +85,12 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
   })
   const sandboxEditDiffLines = computed((): SandboxDiffLine[] => {
     const step = toValue(stepSource)
-    if (!isSandboxTool.value || isSandboxExec.value || !sandboxRaw.value) return []
+    if (!isSandboxTool.value || isSandboxExec.value) return []
     if (sandboxPathEntries.value.length) return []
-    const parsed = parseSandboxEditDiff(sandboxRaw.value)
-    if (parsed?.length) return parsed
-    if (isSandboxWriteStep(step)) {
+    if (isSandboxEditStep(step)) {
+      return linesFromEditDiffMeta(step.metadata?.editDiff) ?? []
+    }
+    if (isSandboxWriteStep(step) && sandboxRaw.value) {
       return writeContentAsAddLines(sandboxRaw.value)
     }
     return []
@@ -109,15 +103,10 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
     return { add, del }
   })
   const editDiffLang = computed(() => {
-    const path = resolveSandboxFocusPath(toValue(stepSource))
+    const step = toValue(stepSource)
+    const metaPath = step.metadata?.editDiff?.path?.trim()
+    const path = metaPath || resolveSandboxFocusPath(step)
     return path ? langFromPath(path) : null
-  })
-  const editDiffRendered = computed(() => {
-    const lang = editDiffLang.value
-    return sandboxEditDiffLines.value.map(line => ({
-      kind: line.kind,
-      html: highlightCode(line.text || ' ', lang) || escapeHtml(line.text || ' '),
-    }))
   })
   const execCommandHtml = computed(() => {
     if (!execCommand.value) return ''
@@ -165,8 +154,9 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
     execCommand,
     sandboxRaw,
     sandboxPathEntries,
+    sandboxEditDiffLines,
     editDiffSummary,
-    editDiffRendered,
+    editDiffLang,
     execCommandHtml,
     execOutputHtml,
     sandboxContentHtml,
