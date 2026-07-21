@@ -323,7 +323,7 @@ def suite_studio() -> str:
 def preflight_rag() -> None:
     resp = requests.post(
         f"{RAG_URL}/api/rag/search",
-        json={"query": "年假可以请几天", "topK": 3},
+        json={"query": "青松假有多少天、怎么申请", "topK": 3},
         timeout=30,
     )
     resp.raise_for_status()
@@ -347,7 +347,7 @@ def suite_hash(wf_id: str | None = None) -> None:
     token = token_hdr["Authorization"].removeprefix("Bearer ").strip()
     conv_id = conversation_id(auth_json("POST", "/api/conversations", None, token))
 
-    query = "#knowledge-qa 年假可以请几天"
+    query = "#knowledge-qa 青松假有多少天、怎么申请"
     print(f"  query={query}")
     chat_sse(token, conv_id, query, executionPreference="auto")
     assistant = wait_assistant(token, conv_id, HASH_TIMEOUT_SEC)
@@ -385,7 +385,7 @@ def suite_parallel() -> None:
     token_hdr = auth_headers()
     token = token_hdr["Authorization"].removeprefix("Bearer ").strip()
     conv_id = conversation_id(auth_json("POST", "/api/conversations", None, token))
-    query = "#knowledge-dual 年假和报销制度"
+    query = "#knowledge-dual 青松假和网约车报销上限一起查"
     print(f"  query={query}")
     chat_sse(token, conv_id, query, executionPreference="auto")
     assistant = wait_assistant(token, conv_id, HASH_TIMEOUT_SEC)
@@ -416,7 +416,7 @@ def suite_exclusive() -> None:
 
     # 条件命中：含「报销」→ 财务 RAG
     conv1 = conversation_id(auth_json("POST", "/api/conversations", None, token))
-    q1 = "#knowledge-branch 报销需要哪些材料"
+    q1 = "#knowledge-branch 网约车报销需要哪些材料"
     print(f"  query={q1}")
     chat_sse(token, conv1, q1, executionPreference="auto")
     a1 = wait_assistant(token, conv1, HASH_TIMEOUT_SEC)
@@ -433,7 +433,7 @@ def suite_exclusive() -> None:
 
     # 默认分支：无「报销」→ 人事 RAG
     conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
-    q2 = "#knowledge-branch 请假制度是什么"
+    q2 = "#knowledge-branch 青松假怎么申请"
     print(f"  query={q2}")
     chat_sse(token, conv2, q2, executionPreference="auto")
     a2 = wait_assistant(token, conv2, HASH_TIMEOUT_SEC)
@@ -480,7 +480,7 @@ def suite_loop() -> None:
 
     # 无「继续」→ 首轮必进，仅 1 轮
     conv1 = conversation_id(auth_json("POST", "/api/conversations", None, token))
-    q1 = "#knowledge-loop 分析年假和待办报销"
+    q1 = "#knowledge-loop 分析青松假余额和我的待报销"
     print(f"  query={q1}")
     chat_sse(token, conv1, q1, executionPreference="auto")
     a1 = wait_assistant(token, conv1, max(HASH_TIMEOUT_SEC, 180))
@@ -510,7 +510,7 @@ def suite_loop() -> None:
 
     # 含「继续」→ 最多 2 轮
     conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
-    q2 = "#knowledge-loop 继续分析年假和待办报销"
+    q2 = "#knowledge-loop 继续分析青松假余额和我的待报销"
     print(f"  query={q2}")
     chat_sse(token, conv2, q2, executionPreference="auto")
     a2 = wait_assistant(token, conv2, max(HASH_TIMEOUT_SEC, 180))

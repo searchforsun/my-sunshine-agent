@@ -106,7 +106,7 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 | # | 提示词 | 说明 |
 |---|--------|------|
 | A1 | 先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论 | **主验收句**（制度+财务+合规，三域） |
-| A2 | 先查一下年假制度，再帮我看看待审批的请假单有没有问题 | 制度 + 审批 + 分析 |
+| A2 | 先查一下青松假制度，再帮我看看我的待报销有没有问题 | 制度 + 审批 + 分析 |
 | A3 | 先检索报销政策，再列出待审批付款，然后逐条审查是否合规 | 「然后」+ 审查 |
 | A4 | 分步处理：先知识库找差旅标准，再查财务待审批报销 | 显式「分步」 |
 | A5 | 请完整处理待审批差旅报销：先对照制度，再查单据并给出评估结论 | 「完整处理」+ 评估 |
@@ -154,7 +154,7 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 
 **预期 intent after**：「…将按「知识库问答」流程处理」（catalog `displayName`）
 
-**UI**：Plan DAG 两业务节点（检索知识库 → 生成回答）。验收句：`年假可以请几天` / `项目预算超支了还能安排出差吗`。
+**UI**：Plan DAG 两业务节点（检索知识库 → 生成回答）。验收句：`青松假有多少天、怎么申请` / `项目预算超支了还能安排出差吗`。
 
 | # | 提示词 | ruleId |
 |---|--------|--------|
@@ -211,13 +211,13 @@ python3 scripts/verify_skills_ui_live.py
 
 | # | 提示词 | 预期 |
 |---|--------|------|
-| I1 | `#knowledge-qa 年假可以请几天` | `WORKFLOW` workflowId=knowledge-qa；`reason=workflow:#mention`；Plan DAG |
-| I2 | `#knowledge-qa 报销流程是什么` | `WORKFLOW` workflowId=knowledge-qa（DB init 种子） |
-| I2b | `#knowledge-dual 年假和报销制度一起查` | `WORKFLOW` workflowId=knowledge-dual；并行双 RAG + join DAG |
-| I2c | `#knowledge-branch 报销需要哪些材料` | `WORKFLOW` workflowId=knowledge-branch；exclusive → 财务 RAG（含「报销」） |
-| I2d | `#knowledge-branch 请假制度是什么` | `WORKFLOW` workflowId=knowledge-branch；exclusive → 默认人事 RAG |
-| I2e | `#knowledge-loop 分析年假和待办报销` | `WORKFLOW` knowledge-loop；do-while 首轮必进（1 轮 subSteps） |
-| I2f | `#knowledge-loop 继续分析年假和待办报销` | `WORKFLOW` knowledge-loop；继续条件真 → 最多 2 轮 subSteps |
+| I1 | `#knowledge-qa 青松假有多少天、怎么申请` | `WORKFLOW` workflowId=knowledge-qa；`reason=workflow:#mention`；Plan DAG |
+| I2 | `#knowledge-qa 市内网约车报销上限多少` | `WORKFLOW` workflowId=knowledge-qa（DB init 种子） |
+| I2b | `#knowledge-dual 青松假和网约车报销上限一起查` | `WORKFLOW` workflowId=knowledge-dual；并行双 RAG + join DAG |
+| I2c | `#knowledge-branch 网约车报销需要哪些材料` | `WORKFLOW` workflowId=knowledge-branch；exclusive → 财务 RAG（含「报销」） |
+| I2d | `#knowledge-branch 青松假怎么申请` | `WORKFLOW` workflowId=knowledge-branch；exclusive → 默认人事 RAG |
+| I2e | `#knowledge-loop 分析青松假余额和我的待报销` | `WORKFLOW` knowledge-loop；do-while 首轮必进（1 轮 subSteps） |
+| I2f | `#knowledge-loop 继续分析青松假余额和我的待报销` | `WORKFLOW` knowledge-loop；继续条件真 → 最多 2 轮 subSteps |
 | I3 | `#finance-smart 待审批报销是否合规` | `WORKFLOW` workflowId=finance-smart；**压过** L2 规则 / L3 自动选型 |
 | I4 | `#not-exists 测试` | HTTP 400；文案指向 `/workflows` |
 | I5 | `@knowledge-qa 测试` | **不得**当 workflow；按 Skill 解析 → 未知 Skill 400 或 none |
@@ -262,7 +262,7 @@ Live：`python scripts/verify_execution_preference.py`
 | # | 提示词 | 预期（典型） |
 |---|--------|--------------|
 | F1 | 随便聊聊 | `REACT`；**无** skill 绑定 |
-| F2 | 年假可以请几天 | `WORKFLOW` knowledge-qa（LLM 选 catalog） |
+| F2 | 青松假有多少天、怎么申请 | `WORKFLOW` knowledge-qa（LLM 选 catalog） |
 | F3 | 待审批 | 短句 → intent 改写后分类（见 timeline detail） |
 | F4 | 帮我做一笔报销的合规分析 | L3→`REACT` + skillId=finance-analysis |
 | F5 | 看一下这个skills能做什么，分析一下脚本 | L3→`REACT`；**可选** skillId（挂载 `/skills/`）；`sandbox__*` **常驻**（方案 B，不依赖 skillId） |

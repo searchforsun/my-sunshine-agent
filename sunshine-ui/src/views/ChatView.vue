@@ -372,10 +372,10 @@ const composerPlaceholder = computed(() => {
 })
 
 const EMPTY_HINTS = [
-  { label: '制度检索', prompt: '检索知识库：公司的差旅报销制度有哪些要点？' },
-  { label: '知识库问答', prompt: '#knowledge-qa 年假可以请几天' },
-  { label: '报销分析', prompt: '#finance-smart 待审批报销是否合规' },
-  { label: 'Skill 合规', prompt: '@compliance-check 对照制度审查一笔差旅报销是否合规' },
+  { label: '青松假政策', prompt: '#knowledge-qa 青松假有多少天、怎么申请' },
+  { label: '网约车上限', prompt: '#knowledge-qa 市内网约车报销上限多少' },
+  { label: '双路检索', prompt: '#knowledge-dual 青松假和网约车报销上限一起查' },
+  { label: '待报销分析', prompt: '#knowledge-loop 分析青松假余额和我的待报销' },
 ] as const
 
 function applyEmptyHint(prompt: string) {

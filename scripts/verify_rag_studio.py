@@ -140,16 +140,16 @@ def check_create_ingest_search(base: str, tenant: str, token: str, kb_id: str) -
         token=token,
         timeout=180,
         json={
-            "content": "年假可以请5天。病假需要医院证明。",
-            "docName": "leave-policy-v1",
-            "displayName": "请假制度",
+            "content": "青松假全年额度 10 天，须提前在人事系统提交申请；病假需医院证明。",
+            "docName": "c50-hr-leave",
+            "displayName": "员工假期与休假管理制度",
         },
     )
     time.sleep(2)
     resp = requests.post(
         f"{base}/api/rag/search",
         headers={"Content-Type": "application/json", "x-tenant-id": tenant},
-        json={"query": "年假可以请几天", "topK": 3, "kbId": kb_id},
+        json={"query": "青松假有多少天、怎么申请", "topK": 3, "kbId": kb_id},
         timeout=60,
     )
     resp.raise_for_status()

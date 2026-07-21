@@ -449,7 +449,7 @@ export function buildLinearToolAgentPlan(
 ): WorkflowPlan {
   const resolved = resolveNodeDefaults(nodeDefaults)
   const toolParams = {
-    tool: 'sdk__sunshine-finance__list_finance_messages',
+    tool: 'sdk__sunshine-finance__list_my_expenses',
     status: '{{plan.params.status}}',
     ...buildRetryParams('tool', resolved),
   }
@@ -457,7 +457,7 @@ export function buildLinearToolAgentPlan(
     query: '{{start.userQuery}}',
     context: '{{tool-d4e8f901.output}}',
     skill: 'finance-analysis',
-    tools: 'sdk__sunshine-finance__list_finance_messages',
+    tools: 'sdk__sunshine-finance__list_my_expenses',
     maxIters: '4',
     systemOverlay: '本节点仅输出内部分析结论，不面向用户',
     ...buildRetryParams('agent', resolved),
@@ -505,7 +505,7 @@ export function buildFinanceListPlan(
 ): WorkflowPlan {
   const resolved = resolveNodeDefaults(nodeDefaults)
   const toolParams = {
-    tool: 'sdk__sunshine-finance__list_finance_messages',
+    tool: 'sdk__sunshine-finance__list_my_expenses',
     status: '{{plan.params.status}}',
     ...buildRetryParams('tool', resolved),
   }
@@ -547,7 +547,7 @@ export function buildFinanceSummaryPlan(
 ): WorkflowPlan {
   const resolved = resolveNodeDefaults(nodeDefaults)
   const toolParams = {
-    tool: 'sdk__sunshine-finance__summarize_finance_by_status',
+    tool: 'sdk__sunshine-finance__summarize_my_expenses',
     status: '{{plan.params.status}}',
     ...buildRetryParams('tool', resolved),
   }

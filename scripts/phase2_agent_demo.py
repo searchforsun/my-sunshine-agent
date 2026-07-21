@@ -33,7 +33,7 @@ except ImportError:
 from sunshine_lib import unwrap_r
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
-FIN_LIST = "sdk__sunshine-finance__list_finance_messages"
+FIN_LIST = "sdk__sunshine-finance__list_my_expenses"
 FINANCE_URL = os.environ.get("FINANCE_URL", "http://ecs4c16g:8710").rstrip("/")
 RAG_URL = os.environ.get("RAG_URL", "http://ecs4c16g:8400").rstrip("/")
 TIMEOUT_SEC = int(os.environ.get("PHASE2_AGENT_TIMEOUT_SEC", "120"))
@@ -229,7 +229,7 @@ def preflight_finance() -> None:
 def preflight_rag() -> None:
     resp = requests.post(
         f"{RAG_URL}/api/rag/search",
-        json={"query": "年假可以请几天", "topK": 3},
+        json={"query": "青松假有多少天、怎么申请", "topK": 3},
         timeout=30,
     )
     resp.raise_for_status()
@@ -319,7 +319,7 @@ def main() -> int:
 
     if args.suite in ("all", "workflow"):
         conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
-        report["steps"]["wf-knowledge"] = run_workflow_chat(token, conv2, "年假可以请几天", "wf-knowledge")
+        report["steps"]["wf-knowledge"] = run_workflow_chat(token, conv2, "青松假有多少天、怎么申请", "wf-knowledge")
         conv3 = conversation_id(auth_json("POST", "/api/conversations", None, token))
         report["steps"]["wf-finance-list"] = run_workflow_chat(
             token, conv3, "有哪些待审批报销", "wf-finance-list",

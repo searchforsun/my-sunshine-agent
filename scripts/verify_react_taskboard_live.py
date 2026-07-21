@@ -31,7 +31,7 @@ except ImportError:
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
 FINANCE_URL = os.environ.get("FINANCE_URL", "http://ecs4c16g:8710").rstrip("/")
-FIN_LIST = "sdk__sunshine-finance__list_finance_messages"
+FIN_LIST = "sdk__sunshine-finance__list_my_expenses"
 TIMEOUT_SEC = int(os.environ.get("TASKBOARD_TIMEOUT_SEC", "180"))
 F1_QUERY = "帮我查待审批报销，并对有风险的单据逐条说明原因"
 FN1_QUERY = "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论"

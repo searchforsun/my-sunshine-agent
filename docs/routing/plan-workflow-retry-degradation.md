@@ -64,7 +64,7 @@
 | tool | 2 | 仅 TIMEOUT / 5xx 等可重试 |
 | agent | 1 | 子 Agent 内部 `max-iters` |
 | answer | 2 | 默认 `on-failure: fail_fast` |
-| critical tool | — | `list_finance_messages` 等 → `fail_fast` |
+| critical tool | — | `list_my_expenses` 等 → `fail_fast` |
 
 ## 7. 验收提示词
 

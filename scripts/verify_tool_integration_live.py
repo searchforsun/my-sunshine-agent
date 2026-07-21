@@ -39,9 +39,9 @@ SKIP_CHAT = os.environ.get("TOOL_INTEGRATION_SKIP_CHAT", "").lower() in ("1", "t
 
 SDK_APPS = ("sunshine-finance", "sunshine-oa")
 SDK_TOOL_IDS = (
-    "sdk__sunshine-finance__list_finance_messages",
-    "sdk__sunshine-finance__get_finance_message_detail",
-    "sdk__sunshine-finance__summarize_finance_by_status",
+    "sdk__sunshine-finance__list_my_expenses",
+    "sdk__sunshine-finance__get_expense_detail",
+    "sdk__sunshine-finance__summarize_my_expenses",
     "sdk__sunshine-oa__list_oa_tasks",
     "sdk__sunshine-oa__approve_oa_task",
 )
