@@ -7,7 +7,7 @@ import com.sunshine.hr.exception.HrErrorCode;
 import com.sunshine.hr.model.AttendanceMonth;
 import com.sunshine.hr.model.LeaveBalance;
 import com.sunshine.hr.model.LeaveRequest;
-import com.sunshine.hr.store.HrTenantUserStore;
+import com.sunshine.hr.service.HrBizService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,7 +26,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class HrController {
 
-    private final HrTenantUserStore store;
+    private final HrBizService hrBizService;
 
     @GetMapping("/leave/balance")
     public R<LeaveBalance> getLeaveBalance(
@@ -34,7 +34,7 @@ public class HrController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @RequestParam(value = "year", required = false) Integer year) {
         String uid = requireUser(userId);
-        return R.ok(store.getLeaveBalance(tenantOrDefault(tenantId), uid, year)
+        return R.ok(hrBizService.getLeaveBalance(tenantOrDefault(tenantId), uid, year)
                 .orElse(null));
     }
 
@@ -44,7 +44,7 @@ public class HrController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @RequestParam(value = "status", required = false) String status) {
         String uid = requireUser(userId);
-        return R.ok(store.listLeaveRequests(tenantOrDefault(tenantId), uid, status));
+        return R.ok(hrBizService.listLeaveRequests(tenantOrDefault(tenantId), uid, status));
     }
 
     @PostMapping("/leave/requests")
@@ -59,7 +59,7 @@ public class HrController {
                 || !StringUtils.hasText(request.reason())) {
             throw new BizException(HrErrorCode.INVALID_LEAVE_REQUEST);
         }
-        return R.ok(store.submitLeaveRequest(
+        return R.ok(hrBizService.submitLeaveRequest(
                 tenantOrDefault(tenantId),
                 uid,
                 request.leaveType().trim(),
@@ -74,7 +74,7 @@ public class HrController {
             @RequestHeader(value = "x-tenant-id", required = false) String tenantId,
             @PathVariable String yearMonth) {
         String uid = requireUser(userId);
-        return R.ok(store.getAttendanceMonth(tenantOrDefault(tenantId), uid, yearMonth)
+        return R.ok(hrBizService.getAttendanceMonth(tenantOrDefault(tenantId), uid, yearMonth)
                 .orElseThrow(() -> new BizException(HrErrorCode.ATTENDANCE_NOT_FOUND)));
     }
 

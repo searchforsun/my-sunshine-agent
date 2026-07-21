@@ -1,6 +1,6 @@
 package com.sunshine.hr.tools;
 
-import com.sunshine.hr.store.HrTenantUserStore;
+import com.sunshine.hr.service.HrBizService;
 import com.sunshine.tools.sdk.autoconfigure.SunshineToolAutoConfiguration;
 import com.sunshine.tools.sdk.context.ToolInvocationContext;
 import org.junit.jupiter.api.AfterEach;
@@ -8,12 +8,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,7 +30,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         properties = "sunshine.tools.app-id=sunshine-hr")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Transactional
+@Sql(scripts = "/data-hr.sql")
 class HrSunshineToolsTest {
+
+    static final String ALICE = "a1111111-1111-4111-a111-111111111111";
+    static final String BOB = "b2222222-2222-4222-b222-222222222222";
 
     @Autowired
     private MockMvc mockMvc;
@@ -35,16 +44,17 @@ class HrSunshineToolsTest {
     private HrSunshineTools hrSunshineTools;
 
     @Autowired
-    private HrTenantUserStore store;
+    private HrBizService hrBizService;
 
-    @SpringBootApplication
-    @Import({SunshineToolAutoConfiguration.class, HrSunshineTools.class, HrTenantUserStore.class})
+    @SpringBootApplication(scanBasePackages = "com.sunshine.hr")
+    @Import(SunshineToolAutoConfiguration.class)
+    @EntityScan("com.sunshine.hr.entity")
+    @EnableJpaRepositories("com.sunshine.hr.repo")
     static class TestApplication {
     }
 
     @BeforeEach
     void setUp() {
-        store.reset("default");
         ToolInvocationContext.clear();
     }
 
@@ -55,7 +65,7 @@ class HrSunshineToolsTest {
 
     @Test
     void getLeaveBalance_withAliceContext_returnsQingsong() {
-        ToolInvocationContext.set("default", "u-alice");
+        ToolInvocationContext.set("default", ALICE);
         String result = hrSunshineTools.getLeaveBalance("2026");
         assertThat(result).contains("青松假=12")
                 .contains("年假=5")
@@ -83,7 +93,7 @@ class HrSunshineToolsTest {
     @Test
     void invokeWithAliceHeader_returnsResult() throws Exception {
         mockMvc.perform(post("/sunshine/tools/invoke/get_leave_balance")
-                        .header("x-user-id", "u-alice")
+                        .header("x-user-id", ALICE)
                         .header("x-tenant-id", "default")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"year\":\"2026\"}"))
@@ -107,9 +117,9 @@ class HrSunshineToolsTest {
 
     @Test
     void listLeaveRequests_bobSeesEmpty_aliceSeesSeed() {
-        ToolInvocationContext.set("default", "u-bob");
+        ToolInvocationContext.set("default", BOB);
         assertThat(hrSunshineTools.listLeaveRequests(null)).contains("未查询到");
-        ToolInvocationContext.set("default", "u-alice");
+        ToolInvocationContext.set("default", ALICE);
         assertThat(hrSunshineTools.listLeaveRequests("pending"))
                 .contains("共 1 条请假单")
                 .contains("[leave-a2]")
@@ -118,19 +128,19 @@ class HrSunshineToolsTest {
 
     @Test
     void submitLeaveRequest_createsForCurrentUser() {
-        ToolInvocationContext.set("default", "u-bob");
+        ToolInvocationContext.set("default", BOB);
         String result = hrSunshineTools.submitLeaveRequest(
                 "annual", "2026-07-22", "2026-07-23", "事假");
         assertThat(result).contains("已提交请假单").contains("id=leave-");
-        assertThat(store.listLeaveRequests("default", "u-bob", null)).hasSize(1);
-        assertThat(store.listLeaveRequests("default", "u-alice", null))
+        assertThat(hrBizService.listLeaveRequests("default", BOB, null)).hasSize(1);
+        assertThat(hrBizService.listLeaveRequests("default", ALICE, null))
                 .extracting(r -> r.id())
-                .doesNotContain(store.listLeaveRequests("default", "u-bob", null).get(0).id());
+                .doesNotContain(hrBizService.listLeaveRequests("default", BOB, null).get(0).id());
     }
 
     @Test
     void getAttendanceMonth_aliceJuly() {
-        ToolInvocationContext.set("default", "u-alice");
+        ToolInvocationContext.set("default", ALICE);
         String result = hrSunshineTools.getAttendanceMonth("2026-07");
         assertThat(result).contains("迟到=2")
                 .contains("加班=8.5")

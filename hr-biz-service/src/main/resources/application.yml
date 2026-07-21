@@ -31,5 +31,5 @@ sunshine:
   tools:
     enabled: true
     app-id: sunshine-hr
-  mock:
+  biz:
     admin-token: sunshine-mock-admin-dev

@@ -2,7 +2,7 @@ package com.sunshine.hr.tools;
 
 import com.sunshine.hr.model.LeaveBalance;
 import com.sunshine.hr.model.LeaveRequest;
-import com.sunshine.hr.store.HrTenantUserStore;
+import com.sunshine.hr.service.HrBizService;
 import com.sunshine.tools.sdk.annotation.SunshineTool;
 import com.sunshine.tools.sdk.annotation.ToolParam;
 import com.sunshine.tools.sdk.context.ToolInvocationContext;
@@ -17,7 +17,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class HrSunshineTools {
 
-    private final HrTenantUserStore store;
+    private final HrBizService hrBizService;
 
     @SunshineTool(
             id = "get_leave_balance",
@@ -30,7 +30,7 @@ public class HrSunshineTools {
         String userId = ToolInvocationContext.requireUserId();
         String tenantId = ToolInvocationContext.tenantIdOrDefault();
         Integer parsedYear = parseYear(year);
-        Optional<LeaveBalance> balance = store.getLeaveBalance(tenantId, userId, parsedYear);
+        Optional<LeaveBalance> balance = hrBizService.getLeaveBalance(tenantId, userId, parsedYear);
         if (balance.isEmpty()) {
             return "未查询到该年度假期余额。";
         }
@@ -53,7 +53,8 @@ public class HrSunshineTools {
             @ToolParam(value = "status", description = "pending | approved | all", required = false) String status) {
         String userId = ToolInvocationContext.requireUserId();
         String tenantId = ToolInvocationContext.tenantIdOrDefault();
-        List<LeaveRequest> requests = store.listLeaveRequests(tenantId, userId, status != null ? status : "all");
+        List<LeaveRequest> requests = hrBizService.listLeaveRequests(
+                tenantId, userId, status != null ? status : "all");
         if (requests.isEmpty()) {
             return "未查询到符合条件的请假单。";
         }
@@ -89,7 +90,7 @@ public class HrSunshineTools {
                 || !StringUtils.hasText(endDate) || !StringUtils.hasText(reason)) {
             return "请提供 leaveType、startDate、endDate、reason。";
         }
-        LeaveRequest created = store.submitLeaveRequest(
+        LeaveRequest created = hrBizService.submitLeaveRequest(
                 tenantId, userId, leaveType.trim(), startDate.trim(), endDate.trim(), reason.trim());
         return "已提交请假单：id=" + created.id()
                 + " | 类型=" + leaveTypeLabel(created.leaveType())
@@ -110,7 +111,7 @@ public class HrSunshineTools {
         if (!StringUtils.hasText(yearMonth)) {
             return "请提供 yearMonth（YYYY-MM）。";
         }
-        return store.getAttendanceMonth(tenantId, userId, yearMonth.trim())
+        return hrBizService.getAttendanceMonth(tenantId, userId, yearMonth.trim())
                 .map(a -> """
                         %s 考勤摘要：
                         - 迟到=%d 次
