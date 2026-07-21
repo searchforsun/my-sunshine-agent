@@ -190,7 +190,8 @@ public class SandboxToolExecutor {
                 Files.createDirectories(parent);
             }
             Files.writeString(host, content, StandardCharsets.UTF_8);
-            return new ToolInvokeResponse(true, "", null, Map.of());
+            // 短确认给 LLM（勿回传全文）；空 output 易被模型误判为失败并重复 write
+            return new ToolInvokeResponse(true, "wrote " + path, null, Map.of());
         } catch (IOException e) {
             throw new IllegalStateException("write failed: " + path, e);
         }
@@ -228,7 +229,8 @@ public class SandboxToolExecutor {
             if (built != null) {
                 meta.put("editDiff", built);
             }
-            return new ToolInvokeResponse(true, "", null, meta);
+            // 短确认给 LLM；结构化 diff 在 meta.editDiff，勿把 hunk 灌进 tool result
+            return new ToolInvokeResponse(true, "edited " + path, null, meta);
         } catch (IOException e) {
             throw new IllegalStateException("edit failed: " + path, e);
         }

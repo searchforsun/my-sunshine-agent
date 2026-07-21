@@ -146,6 +146,7 @@ class SandboxToolExecutorTest {
                 "path", "/workspace/out/a.txt",
                 "content", "hello\nworld\n"));
         assertThat(written.ok()).isTrue();
+        assertThat(written.output()).isEqualTo("wrote /workspace/out/a.txt");
         assertThat(hostWorkspace.resolve("out/a.txt")).hasContent("hello\nworld\n");
 
         ToolInvokeResponse read = executor.invoke(sessionId, SandboxToolNames.READ, Map.of(
