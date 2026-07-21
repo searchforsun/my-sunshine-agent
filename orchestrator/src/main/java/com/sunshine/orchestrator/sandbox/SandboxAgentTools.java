@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.sandbox;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.client.SandboxClient;
+import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
@@ -227,6 +228,13 @@ public class SandboxAgentTools {
                 }
                 String output = resp != null && resp.output() != null ? resp.output() : "";
                 boolean ok = resp != null && resp.ok();
+                if (ok && SandboxIds.EDIT.equals(name) && resp.meta() != null) {
+                    Object rawEditDiff = resp.meta().get("editDiff");
+                    SandboxEditDiff parsed = SandboxEditDiffCodec.fromMeta(rawEditDiff);
+                    if (parsed != null) {
+                        SandboxEditDiffHolder.put(toolUseId, parsed);
+                    }
+                }
                 Map<String, String> auditParams = auditParams(body, sessionId, resp, System.currentTimeMillis() - startMs);
                 auditIfBound(name, auditParams, output, ok ? "ok" : "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(output).build());

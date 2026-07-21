@@ -6,9 +6,11 @@ import com.sunshine.orchestrator.hitl.HitlParamSupport;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
+import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.sandbox.SandboxCancelExpand;
+import com.sunshine.orchestrator.sandbox.SandboxEditDiffHolder;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
 import com.sunshine.orchestrator.sandbox.SandboxStepContext;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
@@ -165,12 +167,22 @@ public class ProcessingStepHook implements Hook {
                 summaryLine = sandboxTimelineLabels.after(
                         toolName, toolCatalogService.displayName(toolName), enriched);
                 StepMetadata sandboxMeta = SandboxStepContext.metadata(toolName, enriched, summaryLine);
-                // 写/编辑：展开入参正文；exec 完整 command 在 after，detail 仅工具输出
+                // 写：展开入参正文；编辑：Holder 桥接 meta.editDiff
                 if (SandboxIds.WRITE.equals(toolName) || SandboxIds.EDIT.equals(toolName)) {
-                    String bodyExpand = HitlParamSupport.expandBodyFromParams(toStringParams(input));
-                    expandDetail = StringUtils.hasText(bodyExpand)
-                            ? bodyExpand
-                            : (!raw.isEmpty() ? raw : null);
+                    if (SandboxIds.EDIT.equals(toolName)) {
+                        SandboxEditDiff editDiff = SandboxEditDiffHolder.take(toolUseId);
+                        if (editDiff != null) {
+                            sandboxMeta = StepMetadata.withEditDiff(sandboxMeta, editDiff);
+                            expandDetail = editDiff.toUnifiedText();
+                        } else {
+                            expandDetail = null;
+                        }
+                    } else {
+                        String bodyExpand = HitlParamSupport.expandBodyFromParams(toStringParams(input));
+                        expandDetail = StringUtils.hasText(bodyExpand)
+                                ? bodyExpand
+                                : (!raw.isEmpty() ? raw : null);
+                    }
                 } else {
                     expandDetail = !raw.isEmpty() ? raw : null;
                 }
