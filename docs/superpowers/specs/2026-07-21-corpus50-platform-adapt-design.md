@@ -21,6 +21,29 @@
 | 8 | 前端 | 新增 **`/mock-data`** 业务 Mock 页（左域列表 + 右详情；可切换用户、重置种子） |
 | 9 | 写工具 | `sideEffect=write`；需确认的走 HITL `require_confirmation` |
 | 10 | 旧语料 | **不回灌** `leave-policy-v1` 等历史 docId |
+| 11 | Demo 遗留 | **清除、不做兼容**（见 §0.1）；禁止别名/双写/旧工具名残留 |
+
+### 0.1 清除 Demo 遗留（最高优先级约束）
+
+**原则**：不对旧 demo 行为做兼容层；发现遗留则删除或整段替换，禁止「旧名继续可用 + 内部转新实现」。
+
+| 类别 | 必须删除 / 禁止保留 | 替换为 |
+|------|---------------------|--------|
+| 财务/OA 静态 MOCK | `FinanceMessageService` / `OaTaskService` 全局静态 List、无用户字段的假数据 | `TenantUserStore` 按用户种子 |
+| 旧工具短名 | `list_finance_messages` / `get_finance_message_detail` / `summarize_finance_by_status` 及 Catalog 旧 ID | §3 新短名（`list_my_expenses` 等）；Workflow/工具集 **改引用**，不留 alias |
+| 旧验收句 | 「年假可以请几天」「报销流程是什么」等 demo 句 | corpus-50 锚点句（§5.3） |
+| 旧 docId / 展示名 | `leave-policy-v1`、`公司请假流程规范` 等作为产品/种子/评测引用 | 仅 `c50-*` + 新 displayName |
+| 提示词/路由 | 仅覆盖差旅/报销/考勤的窄 demo 域词与示例 | 八域扩写；示例全部换锚点 |
+| Chat 空态 / placeholder | 旧 hint、旧 id 风格 | 新场景句 |
+| eval / SQL 种子 | 旧 eval_suite_item、旧 document 种子 | corpus-50 `eval_suite.json` sync |
+| 单测 fixture | 仍断言旧工具名 / 旧全局 MOCK 条数 | 改为用户隔离断言 |
+
+**禁止**：
+
+- `deprecated` / `@Deprecated` 包装旧 API「再留一版」
+- Catalog 双 ID 映射（旧 `sdk__…__list_finance_messages` → 新实现）
+- Workflow PlanJson 里继续写旧 tool Catalog ID
+- 「若无 user 头则回退全局 MOCK」之类兜底
 
 ---
 
@@ -32,6 +55,7 @@
 - Agent 调用企业工具时，**不同登录用户看到不同业务数据**
 - 联调人员可在 `/mock-data` 查看与构造「我的报销 / 假期余额 / OA 待办」等场景
 - 新环境（init）与现网（sync 脚本）行为一致
+- **代码库与 Live 中无旧 demo 数据/旧工具名残留**（验收可 grep）
 
 ### 1.2 非目标
 
@@ -40,7 +64,7 @@
 - 不改 RAG 检索主链路（rewrite 仅扩域词）
 - 不让模型参数决定身份
 - 不新增 knowledge-* 工作流拓扑数量
-
+- **不做**旧 demo / 旧工具 / 旧语料的兼容或迁移适配层
 ---
 
 ## 2. 架构
@@ -104,16 +128,18 @@ flowchart TB
 
 Catalog ID：`sdk__{appId}__{name}`（现有 `ToolIds` 约定）。
 
-### 3.1 `sunshine-finance`（增强）
+### 3.1 `sunshine-finance`（重写，删除旧三工具）
+
+**删除**：`list_finance_messages` / `get_finance_message_detail` / `summarize_finance_by_status` 及其 Catalog 行、Workflow 引用、单测。
 
 | 短名 | sideEffect | 参数 | 行为 |
 |------|------------|------|------|
 | `list_my_expenses` | read | `status?` | 仅当前用户 |
 | `get_expense_detail` | read | `expenseId` | 归属校验 |
 | `submit_expense` | write | `category, amount, occurredOn, remark?` | 写入当前用户 pending |
-| `list_finance_messages` | read | `status?` | **改为按用户过滤**（兼容旧名） |
-| `get_finance_message_detail` | read | `id` | 归属校验 |
-| `summarize_finance_by_status` | read | `status?` | 仅当前用户聚合 |
+| `list_my_finance_inbox` | read | `status?` | 当前用户财务待办收件箱 |
+| `get_finance_inbox_item` | read | `itemId` | 归属校验 |
+| `summarize_my_expenses` | read | `status?` | 仅当前用户聚合 |
 
 ### 3.2 `sunshine-hr`（新建 `hr-biz-service`）
 
@@ -135,10 +161,10 @@ Catalog ID：`sdk__{appId}__{name}`（现有 `ToolIds` 约定）。
 
 ### 3.4 启用与挂载
 
-1. 服务启动 → SdkDiscoveryPuller sync  
-2. `/tools` 启用新工具  
-3. 加入 `global-react-default`；`knowledge-loop` / `finance-*` 改用隔离后工具  
-4. init：`16-sunshine-tool-manager.sql` 增加 `sdk_application`：`sunshine-hr`
+1. 服务启动 → SdkDiscoveryPuller sync；**禁用并删除** Catalog 中旧 finance 三工具（若仍在库中）  
+2. `/tools` 仅启用 §3 新工具  
+3. `global-react-default` 与 `knowledge-loop` / `finance-*` Workflow **改写为新 Catalog ID**（无旧 ID 兜底）  
+4. init：`16-sunshine-tool-manager.sql` 增加 `sdk_application`：`sunshine-hr`  
 
 ---
 
@@ -164,14 +190,14 @@ Catalog ID：`sdk__{appId}__{name}`（现有 `ToolIds` 约定）。
 | 网约车上限 + 待报销 | `c50-hr-expense` | `list_my_expenses` |
 | `#knowledge-dual` | leave + expense 双 RAG | 可选再拉余额/单据 |
 | `#knowledge-branch` | 「报销/费用」→财务 RAG，否则人事 | 边条件可保留关键字 |
-| `#knowledge-loop` | RAG + 财务工具多轮 | 隔离后的 list/summarize |
+| `#knowledge-loop` | RAG + 财务工具多轮 | `list_my_expenses` / `summarize_my_expenses` |
 | Expert 合规 | 制度条文 | 只读拉该用户单据再评 |
 
 ### 5.2 种子 / Catalog 改动面
 
 | SSOT | 改动要点 |
 |------|----------|
-| `13-sunshine-workflow-manager.sql` | knowledge-* 文案/examples → corpus 锚点 |
+| `13-sunshine-workflow-manager.sql` | knowledge-* 文案/examples → corpus 锚点；**finance-* / knowledge-loop 的 tool 节点改新 Catalog ID** |
 | `17-sunshine-prompt-manager.sql` | 路由/场景 prompt 扩八域；例子换锚点 |
 | `14` + `config-seed.json` | rewrite/hyde 域词扩展 |
 | `15-sunshine-expert-manager.sql` | expert 提示对齐；skill_link 与实际上传一致 |
@@ -211,6 +237,7 @@ Catalog ID：`sdk__{appId}__{name}`（现有 `ToolIds` 约定）。
 | G5 | knowledge-branch/dual/loop Live 绿 |
 | G6 | ReAct 可选 `get_leave_balance` 且参数不含 userId |
 | G7 | 配置了 confirmation 的写工具走 HITL |
+| G8 | 仓内/Catalog **无** `list_finance_messages`、`leave-policy-v1`、静态全局 MOCK 列表；无「兼容旧名」注释或映射 |
 
 ---
 
@@ -221,6 +248,7 @@ Catalog ID：`sdk__{appId}__{name}`（现有 `ToolIds` 约定）。
 | 透传遗漏 | 单测：无 user 头时 write 拒绝；read 空集 |
 | 演示账号不一致 | Mock 页与 README 标明 u-alice/bob/carol |
 | Live 与 init 漂移 | sync 脚本可重复执行 |
+| 旧 Workflow/工具集仍引用已删工具 | sync 脚本强制改写 + Live 冒烟失败即修，禁止加回旧 ID |
 
 ---
 
