@@ -3,7 +3,7 @@
 
 行为:
   1. CREATE DATABASE IF NOT EXISTS sunshine_biz
-  2. 执行 docker/mysql/init/18-sunshine-biz.sql（按 ; 拆分；跳过空/纯注释）
+  2. 整文件执行 docker/mysql/init/18-sunshine-biz.sql（同一 mysql 会话，避免按 ; 拆分）
   3. INSERT IGNORE 三演示用户到 sunshine_auth.sys_user（alice/bob/carol）
 
 用法:
@@ -47,13 +47,12 @@ MYSQL_DEFAULTS = {
 
 
 def split_sql_statements(sql_text: str) -> list[str]:
-    """按 ; 拆分 SQL，跳过空语句与纯注释块。"""
+    """按 ; 拆分 SQL（仅供 dry-run 计数/预览；apply 路径不使用）。"""
     statements: list[str] = []
     for raw in sql_text.split(";"):
         chunk = raw.strip()
         if not chunk:
             continue
-        # 去掉逐行 -- 注释后若无实质内容则跳过
         meaningful: list[str] = []
         for line in chunk.splitlines():
             stripped = line.strip()
@@ -79,24 +78,15 @@ def build_auth_inserts() -> list[str]:
     return stmts
 
 
-def collect_statements() -> list[str]:
+def apply_live(*, host: str, port: int, user: str, password: str) -> None:
+    """真实 apply：整文件喂 mysql，避免 split(';') 破坏会话/字面量。"""
     if not BIZ_SQL.is_file():
         raise FileNotFoundError(f"missing schema file: {BIZ_SQL}")
-    biz_stmts = split_sql_statements(BIZ_SQL.read_text(encoding="utf-8"))
-    return [CREATE_DB, *biz_stmts, *build_auth_inserts()]
-
-
-def apply_statements(
-    statements: list[str],
-    *,
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-) -> None:
-    # 整批经 mysql client 执行，保证 USE sunshine_biz 等会话上下文连贯
-    batch = ";\n".join(statements) + ";\n"
-    run_mysql(batch, host=host, port=port, user=user, password=password)
+    biz_sql = BIZ_SQL.read_text(encoding="utf-8")
+    auth_batch = ";\n".join(build_auth_inserts()) + ";\n"
+    run_mysql(CREATE_DB + ";", host=host, port=port, user=user, password=password)
+    run_mysql(biz_sql, host=host, port=port, user=user, password=password)
+    run_mysql(auth_batch, host=host, port=port, user=user, password=password)
 
 
 def main() -> int:
@@ -114,37 +104,41 @@ def main() -> int:
     parser.add_argument("--password", default=MYSQL_DEFAULTS["password"])
     args = parser.parse_args()
 
-    statements = collect_statements()
-    biz_count = len(split_sql_statements(BIZ_SQL.read_text(encoding="utf-8")))
-    auth_count = len(build_auth_inserts())
+    if not BIZ_SQL.is_file():
+        raise FileNotFoundError(f"missing schema file: {BIZ_SQL}")
+    biz_text = BIZ_SQL.read_text(encoding="utf-8")
+    biz_stmts = split_sql_statements(biz_text)
+    auth_stmts = build_auth_inserts()
+    preview = [CREATE_DB, *biz_stmts, *auth_stmts]
 
     print("Sunshine biz schema apply")
     print(f"  MySQL : {args.user}@{args.host}:{args.port}")
     print(f"  source: {BIZ_SQL.relative_to(ROOT)}")
-    print(f"  statements: {len(statements)} total")
+    print(f"  statements (preview): {len(preview)} total")
     print(f"    - CREATE DATABASE: 1")
-    print(f"    - from 18-sunshine-biz.sql: {biz_count}")
-    print(f"    - auth INSERT IGNORE: {auth_count}")
+    print(f"    - from 18-sunshine-biz.sql: {len(biz_stmts)}")
+    print(f"    - auth INSERT IGNORE: {len(auth_stmts)}")
+    if not args.dry_run:
+        print("  apply mode: whole-file batch (no semicolon split)")
     print()
 
     if args.dry_run:
-        for i, stmt in enumerate(statements, 1):
-            preview = stmt.replace("\n", " ")
-            if len(preview) > 120:
-                preview = preview[:117] + "..."
-            print(f"  [{i:02d}] {preview}")
+        for i, stmt in enumerate(preview, 1):
+            line = stmt.replace("\n", " ")
+            if len(line) > 120:
+                line = line[:117] + "..."
+            print(f"  [{i:02d}] {line}")
         print()
         print("dry-run: no writes")
         return 0
 
-    apply_statements(
-        statements,
+    apply_live(
         host=args.host,
         port=args.port,
         user=args.user,
         password=args.password,
     )
-    print(f">> applied {len(statements)} statements OK")
+    print(">> applied CREATE DATABASE + 18-sunshine-biz.sql + auth users OK")
     return 0
 
 
