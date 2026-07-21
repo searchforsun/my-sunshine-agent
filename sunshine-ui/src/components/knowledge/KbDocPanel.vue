@@ -8,6 +8,7 @@ import {
   NFormItem,
   NIcon,
   NInput,
+  NInputNumber,
   NModal,
   NProgress,
   NSelect,
@@ -31,6 +32,7 @@ import {
   getDocument,
   getDocumentContent,
   listChunks,
+  previewChunks,
   publishDocument,
   saveDocumentContent,
   updateDocument,
@@ -38,12 +40,14 @@ import {
   getDocumentParseJob,
   confirmDocumentParseJob,
   type ChunkPreview,
+  type ChunkPreviewItem,
+  type ChunkStrategy,
   type DocumentDetail,
   type DocumentParseJobStatus,
 } from '../../api/ragAdmin'
 import type { TenantId } from '../../api/tenants'
 import { friendlyErrorMessage } from '../../api/apiError'
-import { formatDocumentVersionKey } from '../../utils/formatSkillVersionTime'
+import { formatDocumentVersionKey, formatSkillVersionTime } from '../../utils/formatSkillVersionTime'
 import { DOC_PARSING_PLACEHOLDER, isDocPlaceholder, resolveDocSourceType } from '../../utils/docSourceTypes'
 import { useKbWorkbenchContext, useKbPanelLoad } from '../../composables/useKbWorkbenchContext'
 import StaticMarkdown from '../StaticMarkdown.vue'
@@ -65,6 +69,50 @@ const emit = defineEmits<{
 
 type DocPhase = 'setup' | 'draft' | 'live' | 'history'
 type ViewTab = 'source' | 'milvus' | 'es'
+
+type ChunkParamField = { key: string; label: string; min?: number; max?: number; step?: number }
+
+const STRATEGY_LABELS: Record<ChunkStrategy, string> = {
+  markdown: 'Markdown 结构',
+  fixed: '定长切分',
+  recursive: '递归分隔',
+  semantic: '语义边界',
+  parent_child: '父子块',
+}
+
+const STRATEGY_DEFAULTS: Record<ChunkStrategy, Record<string, number>> = {
+  markdown: { maxSize: 1200 },
+  fixed: { maxSize: 800, overlap: 100 },
+  recursive: { maxSize: 1000, overlap: 80 },
+  semantic: { maxSize: 1200, similarityThreshold: 0.55, minChunkSize: 200 },
+  parent_child: { parentSize: 2000, childSize: 400, childOverlap: 50 },
+}
+
+const STRATEGY_PARAM_FIELDS: Record<ChunkStrategy, ChunkParamField[]> = {
+  markdown: [{ key: 'maxSize', label: '最大字符', min: 256, max: 4096 }],
+  fixed: [
+    { key: 'maxSize', label: '最大字符', min: 256, max: 4096 },
+    { key: 'overlap', label: '重叠字符', min: 0, max: 512 },
+  ],
+  recursive: [
+    { key: 'maxSize', label: '最大字符', min: 256, max: 4096 },
+    { key: 'overlap', label: '重叠字符', min: 0, max: 512 },
+  ],
+  semantic: [
+    { key: 'maxSize', label: '最大字符', min: 256, max: 4096 },
+    { key: 'similarityThreshold', label: '相似度阈值', min: 0, max: 1, step: 0.01 },
+    { key: 'minChunkSize', label: '最小块字符', min: 64, max: 2048 },
+  ],
+  parent_child: [
+    { key: 'parentSize', label: '父块大小', min: 512, max: 8192 },
+    { key: 'childSize', label: '子块大小', min: 128, max: 2048 },
+    { key: 'childOverlap', label: '子块重叠', min: 0, max: 512 },
+  ],
+}
+
+function defaultParamsForStrategy(strategy: ChunkStrategy): Record<string, number> {
+  return { ...STRATEGY_DEFAULTS[strategy] }
+}
 
 const detail = ref<DocumentDetail | null>(null)
 const loadingDetail = ref(false)
@@ -88,8 +136,40 @@ const esChunks = ref<ChunkPreview[]>([])
 const loadingChunks = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const sourceEditing = ref(true)
+const chunkStrategy = ref<ChunkStrategy>('markdown')
+const chunkParams = ref<Record<string, number>>(defaultParamsForStrategy('markdown'))
+const previewId = ref<string | null>(null)
+const previewConfirmed = ref(false)
+const previewExpiresAt = ref<string | null>(null)
+const draftPreviewChunks = ref<ChunkPreviewItem[]>([])
+const previewing = ref(false)
 /** 批量 reload 时避免 selectedVersion watch 与显式 loadSource 竞态 abort */
 let suppressVersionWatch = false
+
+function resetPreviewState() {
+  previewId.value = null
+  previewConfirmed.value = false
+  previewExpiresAt.value = null
+  draftPreviewChunks.value = []
+}
+
+const strategyOptions = computed(() =>
+  (Object.keys(STRATEGY_LABELS) as ChunkStrategy[]).map((value) => ({
+    label: STRATEGY_LABELS[value],
+    value,
+  })),
+)
+
+const activeParamFields = computed(() => STRATEGY_PARAM_FIELDS[chunkStrategy.value])
+
+const publishedChunkStrategyLabel = computed(() => {
+  const strategy = selectedVersionMeta.value?.chunkStrategy
+  if (!strategy) {
+    if (docPhase.value === 'live' || docPhase.value === 'history') return '（历史）markdown'
+    return null
+  }
+  return STRATEGY_LABELS[strategy as ChunkStrategy] ?? strategy
+})
 
 const isDraftWritable = computed(() => docPhase.value === 'draft' || docPhase.value === 'setup')
 
@@ -114,7 +194,9 @@ const canPublishDraft = computed(() =>
   isDraftWritable.value
   && hasSourcePreview.value
   && !isParsing.value
-  && !needsQuarantineConfirm.value,
+  && !needsQuarantineConfirm.value
+  && previewConfirmed.value
+  && previewId.value != null,
 )
 
 const needsQuarantineConfirm = computed(
@@ -293,6 +375,9 @@ function resetPanelState() {
   esChunks.value = []
   viewTab.value = 'source'
   sourceEditing.value = true
+  chunkStrategy.value = 'markdown'
+  chunkParams.value = defaultParamsForStrategy('markdown')
+  resetPreviewState()
 }
 
 function applySourceEditingDefault() {
@@ -356,6 +441,71 @@ watch(viewTab, () => {
   if (viewTab.value === 'source') return
   void loadChunkStores(signal)
 })
+
+watch(chunkStrategy, (next) => {
+  chunkParams.value = defaultParamsForStrategy(next)
+  resetPreviewState()
+})
+
+watch(chunkParams, () => {
+  resetPreviewState()
+}, { deep: true })
+
+function chunkLevelLabel(meta?: Record<string, unknown>): string | null {
+  const level = meta?.level
+  if (level === 'parent') return '父块'
+  if (level === 'child') return '子块'
+  return null
+}
+
+async function handlePreviewChunks() {
+  if (!props.kbId || !props.docId || selectedVersion.value == null) return
+  previewing.value = true
+  try {
+    const response = await previewChunks(props.tenantId, props.kbId, props.docId, {
+      version: selectedVersion.value,
+      strategy: chunkStrategy.value,
+      params: chunkParams.value,
+    })
+    previewId.value = response.previewId
+    previewExpiresAt.value = response.expiresAt
+    draftPreviewChunks.value = response.chunks
+    previewConfirmed.value = false
+    message.success(`已生成 ${response.chunkCount} 个分块预览`)
+  } catch (e) {
+    message.error(friendlyErrorMessage(e, '预览分块失败'))
+  } finally {
+    previewing.value = false
+  }
+}
+
+function handleConfirmPreview() {
+  if (!previewId.value || draftPreviewChunks.value.length === 0) return
+  previewConfirmed.value = true
+  message.success('已确认预览，可以发布')
+}
+
+async function handlePublish() {
+  if (!props.kbId || !props.docId || previewId.value == null) return
+  publishing.value = true
+  try {
+    const result = await publishDocument(
+      props.tenantId,
+      props.kbId,
+      props.docId,
+      { previewId: previewId.value },
+    )
+    message.success(`已发布 ${formatDocumentVersionKey(result.version)}，${result.chunks} chunks`)
+    sourceEditing.value = false
+    resetPreviewState()
+    emit('refreshed')
+    await reloadAll(result.version)
+  } catch (e) {
+    message.error(friendlyErrorMessage(e, '发布失败'))
+  } finally {
+    publishing.value = false
+  }
+}
 
 function pickFile() {
   fileInputRef.value?.click()
@@ -482,27 +632,6 @@ async function handleConfirmQuarantine() {
   }
 }
 
-async function handlePublish() {
-  if (!props.kbId || !props.docId || selectedVersion.value == null) return
-  publishing.value = true
-  try {
-    const result = await publishDocument(
-      props.tenantId,
-      props.kbId,
-      props.docId,
-      selectedVersion.value,
-    )
-    message.success(`已发布 ${formatDocumentVersionKey(result.version)}，${result.chunks} chunks`)
-    sourceEditing.value = false
-    emit('refreshed')
-    await reloadAll(result.version)
-  } catch (e) {
-    message.error(friendlyErrorMessage(e, '发布失败'))
-  } finally {
-    publishing.value = false
-  }
-}
-
 async function handleFork() {
   if (!props.kbId || !props.docId || selectedVersion.value == null) return
   forking.value = true
@@ -617,6 +746,9 @@ async function handleDelete() {
             <NTag v-if="selectedVersionMeta" :bordered="false" size="small">
               {{ selectedVersionMeta.chunkCount }} chunks
             </NTag>
+            <NTag v-if="publishedChunkStrategyLabel && !isDraftWritable" :bordered="false" size="small">
+              {{ publishedChunkStrategyLabel }}
+            </NTag>
             <NDropdown
               trigger="click"
               size="small"
@@ -673,6 +805,60 @@ async function handleDelete() {
                   </div>
                   <pre v-else class="plain-preview">{{ sourceContent }}</pre>
                 </div>
+                <div v-if="hasSourcePreview && !isParsing" class="chunk-gate">
+                  <div class="chunk-gate-head">
+                    <span class="chunk-gate-title">分块策略</span>
+                    <NText v-if="previewExpiresAt" depth="3" class="chunk-gate-expires">
+                      预览有效期至 {{ formatSkillVersionTime(previewExpiresAt) }}
+                    </NText>
+                  </div>
+                  <div class="chunk-gate-form">
+                    <NSelect
+                      v-model:value="chunkStrategy"
+                      :options="strategyOptions"
+                      size="small"
+                      class="strategy-select"
+                    />
+                    <div class="chunk-param-grid">
+                      <label v-for="field in activeParamFields" :key="field.key" class="chunk-param-field">
+                        <span>{{ field.label }}</span>
+                        <NInputNumber
+                          v-model:value="chunkParams[field.key]"
+                          size="small"
+                          :min="field.min"
+                          :max="field.max"
+                          :step="field.step ?? 1"
+                          class="chunk-param-input"
+                        />
+                      </label>
+                    </div>
+                    <div class="chunk-gate-actions">
+                      <NButton size="small" :loading="previewing" @click="handlePreviewChunks">
+                        {{ chunkStrategy === 'semantic' && previewing ? '正在计算语义边界…' : '预览分块' }}
+                      </NButton>
+                      <NButton
+                        size="small"
+                        :disabled="!previewId || draftPreviewChunks.length === 0"
+                        @click="handleConfirmPreview"
+                      >
+                        确认此预览
+                      </NButton>
+                      <NTag v-if="previewConfirmed" :bordered="false" size="small" type="success">已确认</NTag>
+                    </div>
+                  </div>
+                  <div v-if="draftPreviewChunks.length > 0" class="chunk-preview-scroll">
+                    <article v-for="item in draftPreviewChunks" :key="item.index" class="chunk-card">
+                      <header class="chunk-head">
+                        <NTag :bordered="false" size="tiny">#{{ item.index }}</NTag>
+                        <NTag v-if="chunkLevelLabel(item.meta)" :bordered="false" size="tiny" type="info">
+                          {{ chunkLevelLabel(item.meta) }}
+                        </NTag>
+                        <NText depth="3">{{ item.charCount }} 字</NText>
+                      </header>
+                      <div class="chunk-content">{{ item.text }}</div>
+                    </article>
+                  </div>
+                </div>
                 <div class="source-footer">
                   <NButton size="small" @click="sourceEditing = true">编辑草稿</NButton>
                   <NButton
@@ -680,7 +866,7 @@ async function handleDelete() {
                     size="small"
                     class="action-btn"
                     :loading="publishing"
-                    :disabled="isDocPlaceholder(sourceContent, sourceTypeOption)"
+                    :disabled="!canPublishDraft"
                     @click="handlePublish"
                   >
                     发布生效
@@ -707,6 +893,60 @@ async function handleDelete() {
                     <pre v-else class="plain-preview">{{ sourceContent }}</pre>
                   </template>
                   <NEmpty v-else size="small" :description="sourceTypeOption.placeholder" />
+                </div>
+                <div v-if="hasSourcePreview && !isParsing" class="chunk-gate">
+                  <div class="chunk-gate-head">
+                    <span class="chunk-gate-title">分块策略</span>
+                    <NText v-if="previewExpiresAt" depth="3" class="chunk-gate-expires">
+                      预览有效期至 {{ formatSkillVersionTime(previewExpiresAt) }}
+                    </NText>
+                  </div>
+                  <div class="chunk-gate-form">
+                    <NSelect
+                      v-model:value="chunkStrategy"
+                      :options="strategyOptions"
+                      size="small"
+                      class="strategy-select"
+                    />
+                    <div class="chunk-param-grid">
+                      <label v-for="field in activeParamFields" :key="field.key" class="chunk-param-field">
+                        <span>{{ field.label }}</span>
+                        <NInputNumber
+                          v-model:value="chunkParams[field.key]"
+                          size="small"
+                          :min="field.min"
+                          :max="field.max"
+                          :step="field.step ?? 1"
+                          class="chunk-param-input"
+                        />
+                      </label>
+                    </div>
+                    <div class="chunk-gate-actions">
+                      <NButton size="small" :loading="previewing" @click="handlePreviewChunks">
+                        {{ chunkStrategy === 'semantic' && previewing ? '正在计算语义边界…' : '预览分块' }}
+                      </NButton>
+                      <NButton
+                        size="small"
+                        :disabled="!previewId || draftPreviewChunks.length === 0"
+                        @click="handleConfirmPreview"
+                      >
+                        确认此预览
+                      </NButton>
+                      <NTag v-if="previewConfirmed" :bordered="false" size="small" type="success">已确认</NTag>
+                    </div>
+                  </div>
+                  <div v-if="draftPreviewChunks.length > 0" class="chunk-preview-scroll">
+                    <article v-for="item in draftPreviewChunks" :key="item.index" class="chunk-card">
+                      <header class="chunk-head">
+                        <NTag :bordered="false" size="tiny">#{{ item.index }}</NTag>
+                        <NTag v-if="chunkLevelLabel(item.meta)" :bordered="false" size="tiny" type="info">
+                          {{ chunkLevelLabel(item.meta) }}
+                        </NTag>
+                        <NText depth="3">{{ item.charCount }} 字</NText>
+                      </header>
+                      <div class="chunk-content">{{ item.text }}</div>
+                    </article>
+                  </div>
                 </div>
                 <div class="source-footer">
                   <p v-if="needsQuarantineConfirm" class="quarantine-hint">
@@ -881,6 +1121,32 @@ async function handleDelete() {
   padding: 12px 14px;
 }
 .source-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; flex-shrink: 0; flex-wrap: wrap; }
+.chunk-gate {
+  margin-top: 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.chunk-gate-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.chunk-gate-title { font-size: 13px; font-weight: 600; color: var(--sun-text); }
+.chunk-gate-expires { font-size: 12px; }
+.chunk-gate-form { display: flex; flex-direction: column; gap: 10px; }
+.strategy-select { width: min(220px, 100%); }
+.chunk-param-grid { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.chunk-param-field { display: flex; flex-direction: column; gap: 4px; min-width: 120px; font-size: 12px; color: var(--sun-text-secondary); }
+.chunk-param-input { width: 140px; }
+.chunk-gate-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chunk-preview-scroll {
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .quarantine-hint { width: 100%; margin: 0 0 4px; font-size: var(--sun-font-sm, 12px); color: var(--sun-text-secondary); text-align: right; }
 .plain-preview {
   flex: 1;

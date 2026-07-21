@@ -43,6 +43,7 @@ public class DocumentVersionOps {
                         hasVersionContent(doc, v),
                         needsQuarantineConfirm(v),
                         quarantineJobId(v),
+                        v.getChunkStrategy(),
                         v.getPublishedAt() != null ? v.getPublishedAt().toString() : null,
                         v.getCreatedAt() != null ? v.getCreatedAt().toString() : null))
                 .toList();

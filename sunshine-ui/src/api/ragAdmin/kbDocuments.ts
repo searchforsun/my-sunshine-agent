@@ -25,8 +25,28 @@ export interface DocumentVersion {
   hasContent: boolean
   needsQuarantineConfirm?: boolean
   ingestJobId?: number | null
+  chunkStrategy?: string | null
   publishedAt: string | null
   createdAt: string | null
+}
+
+export type ChunkStrategy = 'markdown' | 'fixed' | 'recursive' | 'semantic' | 'parent_child'
+
+export interface ChunkPreviewItem {
+  index: number
+  text: string
+  charCount: number
+  meta?: Record<string, unknown>
+}
+
+export interface ChunkPreviewResponse {
+  previewId: string
+  strategy: string
+  params: Record<string, number>
+  contentHash: string
+  chunkCount: number
+  chunks: ChunkPreviewItem[]
+  expiresAt: string
 }
 
 export interface DocumentDetail {
@@ -278,15 +298,36 @@ export async function confirmDocumentParseJob(
   await parseApiResponse<null>(res, { allowEmptyData: true })
 }
 
+export async function previewChunks(
+  tenantId: TenantId,
+  kbId: string,
+  docId: string,
+  body: { version?: string; strategy: ChunkStrategy; params: Record<string, number> },
+): Promise<ChunkPreviewResponse> {
+  const res = await fetch(
+    `${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}/chunk-preview`,
+    {
+      method: 'POST',
+      headers: adminHeaders(tenantId),
+      body: JSON.stringify(body),
+    },
+  )
+  return parseApiResponse<ChunkPreviewResponse>(res)
+}
+
 export async function publishDocument(
   tenantId: TenantId,
   kbId: string,
   docId: string,
-  version: string,
+  body: { previewId: string },
 ): Promise<{ docId: string; docName: string; version: string; chunks: number }> {
   const res = await fetch(
-    `${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}/publish?version=${encodeURIComponent(version)}`,
-    { method: 'POST', headers: adminHeaders(tenantId) },
+    `${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}/publish`,
+    {
+      method: 'POST',
+      headers: adminHeaders(tenantId),
+      body: JSON.stringify(body),
+    },
   )
   return parseApiResponse(res)
 }
