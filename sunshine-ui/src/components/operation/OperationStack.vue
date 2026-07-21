@@ -592,8 +592,8 @@ const orphanContent = computed(() => {
 }
 
 .timeline-summary .op-label.op-shimmer {
-  --op-shimmer-base: var(--sun-text);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text) 22%, white);
+  --op-shimmer-base: var(--sun-text-secondary);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 32%, white);
 }
 
 @keyframes op-text-shimmer {

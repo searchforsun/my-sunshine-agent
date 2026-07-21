@@ -3,7 +3,7 @@
 
 用法:
   python3 scripts/verify_peer_collab_live.py
-  python3 scripts/verify_peer_collab_live.py --query "请制度专家和财务专家分别审查这笔报销是否合规，并互相验证"
+  python3 scripts/verify_peer_collab_live.py --query "请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证"
 
 前置:
   - docs/nacos/sunshine-orchestrator.yaml 已 sync + orchestrator 已重启
@@ -36,7 +36,7 @@ except ImportError:
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
 ORCH_URL = os.environ.get("ORCHESTRATOR_URL", "http://127.0.0.1:8200").rstrip("/")
 TIMEOUT_SEC = int(os.environ.get("PEER_COLLAB_TIMEOUT_SEC", "240"))
-E1_QUERY = "请制度专家和财务专家分别审查这笔报销是否合规，并互相验证"
+E1_QUERY = "请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证"
 E2_QUERY = "先检索报销制度，再查待审批列表，并对结果做合规分析"
 
 

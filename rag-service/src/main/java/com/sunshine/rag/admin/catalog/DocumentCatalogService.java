@@ -224,7 +224,10 @@ public class DocumentCatalogService {
         return new DocumentContentView(target.getVersion(), content, target.getStoragePath());
     }
 
-    @Transactional
+    /**
+     * 先 embed 成功，再落库 active + 消费 preview。
+     * 避免 embedding 失败后出现：库已生效、前端仍草稿、Redis 预览已删。
+     */
     public Mono<IngestResult> publishVersion(String tenantId, String kbId, String docId, String previewId) {
         if (!StringUtils.hasText(previewId)) {
             throw new BizException(RagErrorCode.PREVIEW_NOT_FOUND);
@@ -250,25 +253,43 @@ public class DocumentCatalogService {
             throw new BizException(RagErrorCode.PREVIEW_CONTENT_STALE);
         }
         String docName = doc.getDisplayName();
+        return chunkIndexer.embedAndIndexDrafts(
+                        tid, kid, docId, docName, version, preview.chunks(), preview.strategy())
+                .then(Mono.fromCallable(() -> {
+                    self.activatePublishedVersion(doc, content, preview, strippedPreviewId);
+                    return new IngestResult(docId, docName, version, preview.chunks().size());
+                }));
+    }
+
+    @Transactional
+    public void activatePublishedVersion(
+            DocumentEntity doc,
+            String content,
+            ChunkPreviewRecord preview,
+            String previewId) {
+        String tid = doc.getTenantId();
+        String kid = doc.getKbId();
+        String docId = doc.getDocId();
+        String version = preview.version();
+        DocumentVersionEntity latest = versionOps.requireVersion(doc, version);
+        if (!"draft".equals(latest.getStatus())) {
+            throw new BizException(RagErrorCode.VERSION_NOT_EDITABLE);
+        }
         versionOps.supersedeActiveVersions(tid, kid, docId);
-        List<String> chunks = preview.chunks().stream().map(ChunkDraft::text).toList();
-        ver.setStatus("active");
-        ver.setChunkCount(chunks.size());
-        ver.setChunkStrategy(preview.strategy().wire());
-        ver.setChunkParamsJson(writeChunkParamsJson(preview.params()));
-        ver.setPublishedAt(Instant.now());
-        ver.setParsedMarkdown(content);
-        documentVersionRepository.save(ver);
+        latest.setStatus("active");
+        latest.setChunkCount(preview.chunks().size());
+        latest.setChunkStrategy(preview.strategy().wire());
+        latest.setChunkParamsJson(writeChunkParamsJson(preview.params()));
+        latest.setPublishedAt(Instant.now());
+        latest.setParsedMarkdown(content);
+        documentVersionRepository.save(latest);
         doc.setActiveVersion(version);
         doc.setUpdatedAt(Instant.now());
         documentRepository.save(doc);
-        versionOps.markIngestJobActive(ver);
-        chunkPreviewService.consumePreview(tid, kid, docId, strippedPreviewId);
+        versionOps.markIngestJobActive(latest);
+        chunkPreviewService.consumePreview(tid, kid, docId, previewId);
         log.info("[RAG] document published: tenant={}, kb={}, doc={}, v={}, strategy={}, chunks={}",
                 tid, kid, docId, version, preview.strategy().wire(), preview.chunks().size());
-        return chunkIndexer.embedAndIndexDrafts(
-                        tid, kid, docId, docName, version, preview.chunks(), preview.strategy())
-                .thenReturn(new IngestResult(docId, docName, version, preview.chunks().size()));
     }
 
     public ChunkPreviewResponse chunkPreview(

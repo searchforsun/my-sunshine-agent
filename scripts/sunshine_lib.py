@@ -309,7 +309,7 @@ console.log('Sunshine local session cache cleared');
 
 # --- eval_suite SSOT：MySQL eval_suite + eval_suite_item（经 Admin API 读取）---
 
-DEFAULT_EVAL_SUITE_KEY = "sunshine-regression"
+DEFAULT_EVAL_SUITE_KEY = "sunshine-regression"  # corpus-50；条目由 rag_eval.py --sync 写入
 
 
 def rag_admin_headers(tenant_id: str, token: str) -> dict[str, str]:

@@ -8,7 +8,8 @@ import {
   SERVICE_DEFS,
   buildServiceList,
   countProbeable,
-  domainServices,
+  domainAccess,
+  domainToolApps,
   entryServices,
   orchestratorServices,
   platformRoots,
@@ -40,7 +41,8 @@ function resolveLaneStatuses(pick: (defs: ServiceDef[]) => ServiceDef[]) {
 const entry = resolveLaneStatuses(entryServices)
 const orch = resolveLaneStatuses(orchestratorServices)
 const platform = resolveLaneStatuses(platformRoots)
-const domain = resolveLaneStatuses(domainServices)
+const domainApps = resolveLaneStatuses(domainToolApps)
+const domainMcp = resolveLaneStatuses(domainAccess)
 const probeableTotal = countProbeable(SERVICE_DEFS)
 
 const infraLabel = computed(() => INFRA_ITEMS.join(' · '))
@@ -174,7 +176,14 @@ onMounted(() => {
         <div class="lane-label">L4 领域 / 接入</div>
         <div class="lane-row">
           <StatusServiceNode
-            v-for="svc in domain"
+            v-for="svc in domainApps"
+            :key="svc.name"
+            :item="svc"
+          />
+        </div>
+        <div class="lane-row lane-row--mcp">
+          <StatusServiceNode
+            v-for="svc in domainMcp"
             :key="svc.name"
             :item="svc"
           />
@@ -274,6 +283,10 @@ onMounted(() => {
 
 .lane-row--center {
   justify-content: center;
+}
+
+.lane-row--mcp {
+  margin-top: 10px;
 }
 
 .platform-grid {

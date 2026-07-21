@@ -375,7 +375,9 @@ const EMPTY_HINTS = [
   { label: '青松假政策', prompt: '#knowledge-qa 青松假有多少天、怎么申请' },
   { label: '网约车上限', prompt: '#knowledge-qa 市内网约车报销上限多少' },
   { label: '双路检索', prompt: '#knowledge-dual 青松假和网约车报销上限一起查' },
-  { label: '待报销分析', prompt: '#knowledge-loop 分析青松假余额和我的待报销' },
+  { label: '假期助手', prompt: '#hr-leave-assist 青松假还有几天，列出我的请假单' },
+  { label: '费用合规', prompt: '#expense-compliance 对照网约车制度看我的报销是否合规' },
+  { label: 'OA 待办', prompt: '#oa-task-assist 我的 OA 待办有哪些' },
 ] as const
 
 function applyEmptyHint(prompt: string) {

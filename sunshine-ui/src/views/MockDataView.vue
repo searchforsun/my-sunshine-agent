@@ -3,6 +3,7 @@ import { computed, h, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NDataTable,
+  NDatePicker,
   NEmpty,
   NForm,
   NFormItem,
@@ -32,14 +33,24 @@ import {
 import { listAuthUsers } from '../api/auth'
 import { ApiError } from '../api/apiError'
 
-type FieldKind = 'text' | 'number' | 'user' | 'textarea'
+type FieldKind =
+  | 'text'
+  | 'number'
+  | 'user'
+  | 'textarea'
+  | 'select'
+  | 'date'
+  | 'month'
+  | 'year'
+
 interface FieldDef {
   key: string
   label: string
   kind: FieldKind
   required?: boolean
-  /** 编辑时锁定（复合主键） */
-  lockOnEdit?: boolean
+  options?: SelectOption[]
+  /** 复合主键字段：编辑时若改动则 delete+create */
+  compositeKey?: boolean
 }
 
 interface TableDef {
@@ -56,6 +67,38 @@ const DOMAINS: { key: BizDomain; label: string }[] = [
   { key: 'oa', label: 'OA' },
 ]
 
+const STATUS_OPTIONS: SelectOption[] = [
+  { label: '待处理 pending', value: 'pending' },
+  { label: '已通过 approved', value: 'approved' },
+  { label: '已驳回 rejected', value: 'rejected' },
+]
+
+const TENANT_OPTIONS: SelectOption[] = [
+  { label: 'default', value: 'default' },
+]
+
+const EXPENSE_CATEGORY_OPTIONS: SelectOption[] = [
+  { label: '市内交通', value: '市内交通' },
+  { label: '差旅住宿', value: '差旅住宿' },
+  { label: '差旅交通', value: '差旅交通' },
+  { label: '餐饮', value: '餐饮' },
+  { label: '办公用品', value: '办公用品' },
+  { label: '其他', value: '其他' },
+]
+
+const LEAVE_TYPE_OPTIONS: SelectOption[] = [
+  { label: '年假 annual', value: 'annual' },
+  { label: '青松假 qingsong', value: 'qingsong' },
+  { label: '调休 compensatory', value: 'compensatory' },
+]
+
+const OA_CATEGORY_OPTIONS: SelectOption[] = [
+  { label: '行政 admin', value: 'admin' },
+  { label: '请假 leave', value: 'leave' },
+  { label: '合同 contract', value: 'contract' },
+  { label: '其他 other', value: 'other' },
+]
+
 const TABLE_DEFS: Record<BizDomain, TableDef[]> = {
   finance: [
     {
@@ -63,11 +106,11 @@ const TABLE_DEFS: Record<BizDomain, TableDef[]> = {
       label: '报销单',
       fields: [
         { key: 'userId', label: '用户', kind: 'user', required: true },
-        { key: 'tenantId', label: '租户', kind: 'text', required: true },
-        { key: 'category', label: '类别', kind: 'text', required: true },
+        { key: 'tenantId', label: '租户', kind: 'select', required: true, options: TENANT_OPTIONS },
+        { key: 'category', label: '类别', kind: 'select', required: true, options: EXPENSE_CATEGORY_OPTIONS },
         { key: 'amount', label: '金额', kind: 'number', required: true },
-        { key: 'status', label: '状态', kind: 'text', required: true },
-        { key: 'occurredOn', label: '发生日', kind: 'text', required: true },
+        { key: 'status', label: '状态', kind: 'select', required: true, options: STATUS_OPTIONS },
+        { key: 'occurredOn', label: '发生日', kind: 'date', required: true },
         { key: 'remark', label: '备注', kind: 'textarea' },
       ],
       excludeFromBody: ['id'],
@@ -77,9 +120,9 @@ const TABLE_DEFS: Record<BizDomain, TableDef[]> = {
       label: '财务待办',
       fields: [
         { key: 'userId', label: '用户', kind: 'user', required: true },
-        { key: 'tenantId', label: '租户', kind: 'text', required: true },
+        { key: 'tenantId', label: '租户', kind: 'select', required: true, options: TENANT_OPTIONS },
         { key: 'title', label: '标题', kind: 'text', required: true },
-        { key: 'status', label: '状态', kind: 'text', required: true },
+        { key: 'status', label: '状态', kind: 'select', required: true, options: STATUS_OPTIONS },
         { key: 'amount', label: '金额', kind: 'number', required: true },
       ],
       excludeFromBody: ['id'],
@@ -90,9 +133,9 @@ const TABLE_DEFS: Record<BizDomain, TableDef[]> = {
       key: 'leave-balances',
       label: '假期余额',
       fields: [
-        { key: 'userId', label: '用户', kind: 'user', required: true, lockOnEdit: true },
-        { key: 'tenantId', label: '租户', kind: 'text', required: true },
-        { key: 'year', label: '年份', kind: 'number', required: true, lockOnEdit: true },
+        { key: 'userId', label: '用户', kind: 'user', required: true, compositeKey: true },
+        { key: 'tenantId', label: '租户', kind: 'select', required: true, options: TENANT_OPTIONS },
+        { key: 'year', label: '年份', kind: 'year', required: true, compositeKey: true },
         { key: 'annual', label: '年假', kind: 'number', required: true },
         { key: 'qingsong', label: '青松假', kind: 'number', required: true },
         { key: 'compensatory', label: '调休', kind: 'number', required: true },
@@ -103,12 +146,12 @@ const TABLE_DEFS: Record<BizDomain, TableDef[]> = {
       label: '请假单',
       fields: [
         { key: 'userId', label: '用户', kind: 'user', required: true },
-        { key: 'tenantId', label: '租户', kind: 'text', required: true },
-        { key: 'leaveType', label: '假别', kind: 'text', required: true },
-        { key: 'startDate', label: '开始日', kind: 'text', required: true },
-        { key: 'endDate', label: '结束日', kind: 'text', required: true },
+        { key: 'tenantId', label: '租户', kind: 'select', required: true, options: TENANT_OPTIONS },
+        { key: 'leaveType', label: '假别', kind: 'select', required: true, options: LEAVE_TYPE_OPTIONS },
+        { key: 'startDate', label: '开始日', kind: 'date', required: true },
+        { key: 'endDate', label: '结束日', kind: 'date', required: true },
         { key: 'reason', label: '事由', kind: 'textarea' },
-        { key: 'status', label: '状态', kind: 'text', required: true },
+        { key: 'status', label: '状态', kind: 'select', required: true, options: STATUS_OPTIONS },
       ],
       excludeFromBody: ['id'],
     },
@@ -116,9 +159,9 @@ const TABLE_DEFS: Record<BizDomain, TableDef[]> = {
       key: 'attendance-months',
       label: '考勤月报',
       fields: [
-        { key: 'userId', label: '用户', kind: 'user', required: true, lockOnEdit: true },
-        { key: 'tenantId', label: '租户', kind: 'text', required: true },
-        { key: 'yearMonth', label: '年月', kind: 'text', required: true, lockOnEdit: true },
+        { key: 'userId', label: '用户', kind: 'user', required: true, compositeKey: true },
+        { key: 'tenantId', label: '租户', kind: 'select', required: true, options: TENANT_OPTIONS },
+        { key: 'yearMonth', label: '年月', kind: 'month', required: true, compositeKey: true },
         { key: 'lateCount', label: '迟到次数', kind: 'number', required: true },
         { key: 'overtimeHours', label: '加班小时', kind: 'number', required: true },
         { key: 'frostLedgerSummary', label: '霜冻台账', kind: 'textarea' },
@@ -131,10 +174,10 @@ const TABLE_DEFS: Record<BizDomain, TableDef[]> = {
       label: 'OA 待办',
       fields: [
         { key: 'assigneeUserId', label: '负责人', kind: 'user', required: true },
-        { key: 'tenantId', label: '租户', kind: 'text', required: true },
+        { key: 'tenantId', label: '租户', kind: 'select', required: true, options: TENANT_OPTIONS },
         { key: 'title', label: '标题', kind: 'text', required: true },
-        { key: 'category', label: '类别', kind: 'text', required: true },
-        { key: 'status', label: '状态', kind: 'text', required: true },
+        { key: 'category', label: '类别', kind: 'select', required: true, options: OA_CATEGORY_OPTIONS },
+        { key: 'status', label: '状态', kind: 'select', required: true, options: STATUS_OPTIONS },
       ],
       excludeFromBody: ['id'],
     },
@@ -238,10 +281,10 @@ function emptyDraft(): Record<string, unknown> {
   for (const f of currentTable.value.fields) {
     if (f.key === 'tenantId') {
       draft.tenantId = TENANT_ID
-    } else if (f.kind === 'number') {
+    } else if (f.kind === 'number' || f.kind === 'year') {
       draft[f.key] = null
     } else {
-      draft[f.key] = ''
+      draft[f.key] = null
     }
   }
   return draft
@@ -253,7 +296,7 @@ function buildBody(draft: Record<string, unknown>): Record<string, unknown> {
   for (const f of currentTable.value.fields) {
     if (exclude.has(f.key)) continue
     let v = draft[f.key]
-    if (f.kind === 'number') {
+    if (f.kind === 'number' || f.kind === 'year') {
       if (v === '' || v == null) {
         body[f.key] = null
       } else {
@@ -264,6 +307,17 @@ function buildBody(draft: Record<string, unknown>): Record<string, unknown> {
     }
   }
   return body
+}
+
+function compositeKeyChanged(body: Record<string, unknown>): boolean {
+  if (!editKey.value) return false
+  for (const f of currentTable.value.fields) {
+    if (!f.compositeKey) continue
+    const next = body[f.key]
+    const prev = editKey.value[f.key]
+    if (String(next ?? '') !== String(prev ?? '')) return true
+  }
+  return false
 }
 
 async function loadAuthUsers() {
@@ -312,7 +366,12 @@ function openEdit(row: Record<string, unknown>) {
   editKey.value = { ...row }
   const draft = emptyDraft()
   for (const f of currentTable.value.fields) {
-    draft[f.key] = row[f.key] ?? draft[f.key]
+    const v = row[f.key]
+    if (f.kind === 'year' || f.kind === 'number') {
+      draft[f.key] = v == null || v === '' ? null : Number(v)
+    } else {
+      draft[f.key] = v == null ? null : String(v)
+    }
   }
   formDraft.value = draft
   showFormModal.value = true
@@ -323,18 +382,15 @@ function openDelete(row: Record<string, unknown>) {
   showDeleteModal.value = true
 }
 
-function fieldDisabled(f: FieldDef): boolean {
-  return formMode.value === 'edit' && !!f.lockOnEdit
-}
-
-function draftText(key: string): string {
+function draftText(key: string): string | null {
   const v = formDraft.value[key]
-  return v == null ? '' : String(v)
+  if (v == null || v === '') return null
+  return String(v)
 }
 
 function draftNumber(key: string): number | null {
   const v = formDraft.value[key]
-  return typeof v === 'number' ? v : null
+  return typeof v === 'number' && !Number.isNaN(v) ? v : null
 }
 
 function draftUser(key: string): string | null {
@@ -342,8 +398,35 @@ function draftUser(key: string): string | null {
   return typeof v === 'string' && v ? v : null
 }
 
+/** year picker: Naive formatted-value 为 yyyy 字符串，草稿存 number */
+function draftYearFormatted(key: string): string | null {
+  const n = draftNumber(key)
+  return n == null ? null : String(n)
+}
+
 function setDraft(key: string, value: unknown) {
-  formDraft.value[key] = value ?? ''
+  formDraft.value[key] = value ?? null
+}
+
+function setYearDraft(key: string, formatted: string | null) {
+  if (!formatted) {
+    formDraft.value[key] = null
+    return
+  }
+  const n = Number(formatted)
+  formDraft.value[key] = Number.isFinite(n) ? n : null
+}
+
+function selectOptionsFor(f: FieldDef): SelectOption[] {
+  const base = f.options ? [...f.options] : []
+  const current = formDraft.value[f.key]
+  if (current != null && current !== '') {
+    const val = String(current)
+    if (!base.some(o => String(o.value) === val)) {
+      base.unshift({ label: val, value: val })
+    }
+  }
+  return base
 }
 
 async function submitForm() {
@@ -362,7 +445,16 @@ async function submitForm() {
       await createBizRow(domain.value, currentTable.value.key, body)
       message.success('已创建')
     } else if (editKey.value) {
-      await updateBizRow(domain.value, currentTable.value.key, editKey.value, body)
+      const table = currentTable.value.key
+      if (compositeKeyChanged(body)) {
+        await createBizRow(domain.value, table, body)
+        const query: Record<string, string> = {
+          tenantId: String(editKey.value.tenantId ?? TENANT_ID),
+        }
+        await deleteBizRow(domain.value, table, editKey.value, query)
+      } else {
+        await updateBizRow(domain.value, table, editKey.value, body)
+      }
       message.success('已保存')
     }
     showFormModal.value = false
@@ -490,7 +582,7 @@ onMounted(() => {
       preset="dialog"
       :title="formMode === 'create' ? `新建 · ${currentTable.label}` : `编辑 · ${currentTable.label}`"
       class="sunshine-dialog"
-      style="width: 480px"
+      style="width: 520px"
     >
       <NForm class="modal-form" label-placement="top" :show-feedback="false">
         <NFormItem
@@ -504,33 +596,76 @@ onMounted(() => {
             :value="draftUser(f.key)"
             class="sun-field"
             filterable
+            clearable
             :options="userOptions"
-            :disabled="fieldDisabled(f)"
             :placeholder="`选择${f.label}`"
             @update:value="(v) => setDraft(f.key, v)"
+          />
+          <NSelect
+            v-else-if="f.kind === 'select'"
+            :value="draftText(f.key)"
+            class="sun-field"
+            filterable
+            tag
+            clearable
+            :options="selectOptionsFor(f)"
+            :placeholder="`选择或输入${f.label}`"
+            @update:value="(v) => setDraft(f.key, v)"
+          />
+          <NDatePicker
+            v-else-if="f.kind === 'date'"
+            class="sun-field sun-field-grow"
+            type="date"
+            clearable
+            :formatted-value="draftText(f.key)"
+            value-format="yyyy-MM-dd"
+            :placeholder="`选择${f.label}`"
+            @update:formatted-value="(v) => setDraft(f.key, v)"
+          />
+          <NDatePicker
+            v-else-if="f.kind === 'month'"
+            class="sun-field sun-field-grow"
+            type="month"
+            clearable
+            :formatted-value="draftText(f.key)"
+            value-format="yyyy-MM"
+            :placeholder="`选择${f.label}`"
+            @update:formatted-value="(v) => setDraft(f.key, v)"
+          />
+          <NDatePicker
+            v-else-if="f.kind === 'year'"
+            class="sun-field sun-field-grow"
+            type="year"
+            clearable
+            :formatted-value="draftYearFormatted(f.key)"
+            value-format="yyyy"
+            :placeholder="`选择${f.label}`"
+            @update:formatted-value="(v) => setYearDraft(f.key, v)"
           />
           <NInputNumber
             v-else-if="f.kind === 'number'"
             :value="draftNumber(f.key)"
             class="sun-field sun-field-grow"
-            :disabled="fieldDisabled(f)"
+            clearable
             :show-button="false"
+            :placeholder="`输入${f.label}`"
             @update:value="(v) => { formDraft[f.key] = v }"
           />
           <NInput
             v-else-if="f.kind === 'textarea'"
-            :value="draftText(f.key)"
+            :value="draftText(f.key) ?? ''"
             class="sun-field sun-field-grow"
             type="textarea"
             :autosize="{ minRows: 2, maxRows: 6 }"
-            :disabled="fieldDisabled(f)"
+            :placeholder="`输入${f.label}`"
             @update:value="(v) => setDraft(f.key, v)"
           />
           <NInput
             v-else
-            :value="draftText(f.key)"
+            :value="draftText(f.key) ?? ''"
             class="sun-field"
-            :disabled="fieldDisabled(f)"
+            clearable
+            :placeholder="`输入${f.label}`"
             @update:value="(v) => setDraft(f.key, v)"
           />
         </NFormItem>
@@ -755,17 +890,25 @@ onMounted(() => {
 .sun-field :deep(.n-input),
 .sun-field :deep(.n-input-wrapper),
 .sun-field :deep(.n-base-selection),
-.sun-field :deep(.n-input-number) {
+.sun-field :deep(.n-input-number),
+.sun-field :deep(.n-date-picker) {
   --n-color: var(--sun-black) !important;
   --n-color-focus: var(--sun-black) !important;
   --n-color-disabled: var(--sun-black) !important;
   background: var(--sun-black) !important;
+  width: 100%;
 }
 
 .sun-field :deep(.n-input__input-el),
 .sun-field :deep(.n-input__textarea-el),
 .sun-field :deep(.n-base-selection-input),
-.sun-field :deep(.n-input-number-input) {
+.sun-field :deep(.n-input-number-input),
+.sun-field :deep(.n-input__border),
+.sun-field :deep(.n-date-picker .n-input) {
   color: var(--sun-text) !important;
+}
+
+.sun-field :deep(.n-date-picker) {
+  width: 100%;
 }
 </style>

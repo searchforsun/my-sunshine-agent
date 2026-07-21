@@ -136,7 +136,9 @@ public class ExpertConsultationExecutor {
                     query,
                     sessionMax,
                     ctx.assistantMsgId(),
-                    callback);
+                    callback,
+                    ctx.userId(),
+                    ctx.tenantId());
             peerRunAuditService.persistFinal(
                     ctx.conversationId(),
                     ctx.assistantMsgId(),

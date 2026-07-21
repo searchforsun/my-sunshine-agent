@@ -83,6 +83,7 @@ class DocumentCatalogServiceTest {
                 versionOps,
                 chunkPreviewService,
                 new ObjectMapper());
+        service.self = service;
         KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
         kb.setTenantId("default");
         kb.setKbId("default");
@@ -90,8 +91,6 @@ class DocumentCatalogServiceTest {
         when(desensitizeClient.scrubForPublish(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(ragStorageFacade.documentContentRef(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn("minio://bucket/key");
-        when(chunkIndexer.embedAndIndex(anyString(), anyString(), anyString(), anyString(), anyString(), any()))
-                .thenReturn(Mono.empty());
         when(chunkIndexer.embedAndIndexDrafts(
                 anyString(), anyString(), anyString(), anyString(), anyString(), any(), any()))
                 .thenReturn(Mono.empty());
@@ -239,11 +238,52 @@ class DocumentCatalogServiceTest {
         DocumentVersionEntity saved = versionCaptor.getValue();
         assertThat(saved.getChunkStrategy()).isEqualTo("markdown");
         assertThat(saved.getChunkParamsJson()).contains("\"maxSize\":500");
-        verify(chunkIndexer).embedAndIndexDrafts(
+        // embed 先于落库激活
+        var inOrder = org.mockito.Mockito.inOrder(chunkIndexer, chunkPreviewService, documentVersionRepository);
+        inOrder.verify(chunkIndexer).embedAndIndexDrafts(
                 eq("default"), eq("default"), eq("doc-a"), eq("doc-a"), eq(V1),
                 eq(previewChunks), eq(ChunkStrategy.MARKDOWN));
-        verify(chunkPreviewService).requirePreview("default", "default", "doc-a", previewId);
-        verify(chunkPreviewService).consumePreview("default", "default", "doc-a", previewId);
+        inOrder.verify(chunkPreviewService).consumePreview("default", "default", "doc-a", previewId);
+    }
+
+    @Test
+    void publish_whenEmbedFails_keepsDraftAndPreview() {
+        String content = "# Title\nbody";
+        String previewId = "prv_fail";
+        DocumentEntity doc = new DocumentEntity();
+        doc.setTenantId("default");
+        doc.setKbId("default");
+        doc.setDocId("doc-a");
+        doc.setDisplayName("doc-a");
+        doc.setSourceType("markdown");
+        when(documentRepository.findByTenantIdAndKbIdAndDocId("default", "default", "doc-a"))
+                .thenReturn(Optional.of(doc));
+        DocumentVersionEntity draft = draftVersion(V1, content);
+        when(versionOps.requireVersion(doc, V1)).thenReturn(draft);
+        when(versionOps.readVersionContent(doc, draft)).thenReturn(content);
+        ChunkParams params = ChunkParams.forStrategy(ChunkStrategy.MARKDOWN, Map.of());
+        ChunkPreviewRecord preview = new ChunkPreviewRecord(
+                previewId,
+                "default",
+                "default",
+                "doc-a",
+                V1,
+                ChunkPreviewService.sha256Hex(content),
+                ChunkStrategy.MARKDOWN,
+                params,
+                List.of(new ChunkDraft(0, "body", Map.of())),
+                Instant.now().plusSeconds(600));
+        when(chunkPreviewService.requirePreview("default", "default", "doc-a", previewId))
+                .thenReturn(preview);
+        when(chunkIndexer.embedAndIndexDrafts(
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), any()))
+                .thenReturn(Mono.error(new RuntimeException("embedding down")));
+
+        assertThatThrownBy(() -> service.publishVersion("default", "default", "doc-a", previewId).block())
+                .hasMessageContaining("embedding down");
+        verify(chunkPreviewService, never()).consumePreview(anyString(), anyString(), anyString(), anyString());
+        verify(versionOps, never()).supersedeActiveVersions(anyString(), anyString(), anyString());
+        assertThat(draft.getStatus()).isEqualTo("draft");
     }
 
     @Test

@@ -88,7 +88,7 @@ public class ElasticsearchIndexService {
         doc.put("status", status != null ? status : "active");
         doc.put("source_type", sourceType != null ? sourceType : "markdown");
         doc.put("strategy", strategy != null ? strategy : "");
-        doc.put("chunk_level", chunkLevel != null ? chunkLevel : "");
+        doc.put("chunk_level", chunkLevel != null && !chunkLevel.isBlank() ? chunkLevel : "chunk");
         doc.put("parent_chunk_id", parentChunkId != null ? parentChunkId : "");
         try {
             webClient.put()

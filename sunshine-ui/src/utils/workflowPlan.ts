@@ -515,7 +515,7 @@ export function buildFinanceListPlan(
     + '数据：\n{{tool-f7a3b2c1.output}}'
   return {
     planId: null,
-    reason: `财务待办查询工作流 ${workflowId}`,
+    reason: `我的报销查询工作流 ${workflowId}`,
     nodes: [
       defaultStartNode(),
       {

@@ -43,14 +43,6 @@ public class DocumentChunkIndexer {
                 .toList();
     }
 
-    public Mono<Void> embedAndIndex(
-            String tenantId, String kbId, String docId, String docName, String version, List<String> chunks) {
-        List<ChunkDraft> drafts = java.util.stream.IntStream.range(0, chunks.size())
-                .mapToObj(i -> new ChunkDraft(i, chunks.get(i), Map.of()))
-                .toList();
-        return embedAndIndexDrafts(tenantId, kbId, docId, docName, version, drafts, ChunkStrategy.MARKDOWN);
-    }
-
     public Mono<Void> embedAndIndexDrafts(
             String tenantId,
             String kbId,
@@ -62,34 +54,48 @@ public class DocumentChunkIndexer {
         if (drafts.isEmpty()) {
             return Mono.empty();
         }
-        String strategyWire = strategy != null ? strategy.wire() : ChunkStrategy.MARKDOWN.wire();
+        if (strategy == null) {
+            throw new IllegalArgumentException("chunk strategy required");
+        }
+        String strategyWire = strategy.wire();
         return Flux.fromIterable(drafts)
                 .flatMap(draft -> {
                     String chunkId = ChunkIds.chunkId(docId, version, draft.index());
-                    String chunkLevel = levelFromMeta(draft.meta());
+                    String chunkLevel = resolveChunkLevel(strategy, draft.meta());
                     String parentChunkId = parentChunkIdFromMeta(docId, version, draft.meta());
                     return embeddingService.embed(draft.text())
                             .doOnNext(vector -> {
                                 ChunkInsertRequest req = new ChunkInsertRequest(
                                         docName, draft.text(), vector, tenantId, kbId, docId,
-                                        version, draft.index(), "active", "markdown",
+                                        version, draft.index(), "active", strategyWire,
                                         strategyWire, chunkLevel, parentChunkId);
                                 milvusService.insert(req);
                                 elasticsearchIndexService.indexChunk(
                                         chunkId, docName, draft.text(), draft.index(), tenantId,
-                                        kbId, docId, version, "active", "markdown",
+                                        kbId, docId, version, "active", strategyWire,
                                         strategyWire, chunkLevel, parentChunkId);
                             });
                 })
                 .then();
     }
 
-    static String levelFromMeta(Map<String, Object> meta) {
-        if (meta == null || meta.isEmpty()) {
-            return "";
+    /** 非父子策略一律标 chunk；父子策略用 meta.level（parent/child） */
+    static String resolveChunkLevel(ChunkStrategy strategy, Map<String, Object> meta) {
+        if (strategy == ChunkStrategy.PARENT_CHILD) {
+            if (meta == null) {
+                throw new IllegalArgumentException("parent_child chunk meta.level required");
+            }
+            Object level = meta.get("level");
+            if (level == null) {
+                throw new IllegalArgumentException("parent_child chunk meta.level required");
+            }
+            String wire = level.toString();
+            if (!"parent".equals(wire) && !"child".equals(wire)) {
+                throw new IllegalArgumentException("parent_child chunk meta.level must be parent|child");
+            }
+            return wire;
         }
-        Object level = meta.get("level");
-        return level != null ? level.toString() : "";
+        return "chunk";
     }
 
     static String parentChunkIdFromMeta(String docId, String version, Map<String, Object> meta) {

@@ -1,5 +1,6 @@
 import type { TenantId } from '../tenants'
 import { ApiError, parseApiResponse, resolveApiMessage } from '../apiError'
+import { sortConfigVersionsDesc } from '../../utils/kbConfigVersion'
 import { adminHeaders, ragApiBase } from './client'
 import type {
   ConfigBundleDraftView,
@@ -63,7 +64,8 @@ export async function listKbConfigVersions(tenantId: TenantId, kbId: string): Pr
   const res = await fetch(`${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/config/versions`, {
     headers: adminHeaders(tenantId),
   })
-  return parseApiResponse(res)
+  const list = await parseApiResponse<ConfigVersionSummary[]>(res)
+  return sortConfigVersionsDesc(list)
 }
 
 export async function activateKbConfigVersion(

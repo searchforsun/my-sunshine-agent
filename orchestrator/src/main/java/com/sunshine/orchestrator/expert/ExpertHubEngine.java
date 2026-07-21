@@ -53,6 +53,17 @@ public class ExpertHubEngine {
             int sessionMaxRounds,
             String assistantMessageId,
             ExpertSpeakCallback callback) {
+        return run(roster, userQuery, sessionMaxRounds, assistantMessageId, callback, null, null);
+    }
+
+    public ExpertHubResult run(
+            List<ExpertCatalogEntry> roster,
+            String userQuery,
+            int sessionMaxRounds,
+            String assistantMessageId,
+            ExpertSpeakCallback callback,
+            String userId,
+            String tenantId) {
         if (roster == null || roster.size() < 2) {
             throw new IllegalStateException("expert roster must have at least 2 members");
         }
@@ -64,7 +75,7 @@ public class ExpertHubEngine {
         Map<String, Integer> speakSeq = new HashMap<>();
         Map<String, ReActAgent> agentByExpertId = new LinkedHashMap<>();
         for (ExpertCatalogEntry expert : roster) {
-            agentByExpertId.put(expert.id(), createAgent(runId, expert));
+            agentByExpertId.put(expert.id(), createAgent(runId, expert, userId, tenantId));
         }
         List<String> contextBlocks = new ArrayList<>();
         contextBlocks.add("用户问题：\n" + userQuery);
@@ -246,17 +257,24 @@ public class ExpertHubEngine {
         callback.onSpeakActive(pendingEntry, label + "…");
     }
 
-    private ReActAgent createAgent(String runId, ExpertCatalogEntry expert) {
+    private ReActAgent createAgent(
+            String runId, ExpertCatalogEntry expert, String userId, String tenantId) {
+        return expertPeerAgentFactory.create(buildPeerRequest(runId, expert, userId, tenantId));
+    }
+
+    /** package-private for tests — 专家 SUB 请求须带 userId/tenantId，否则 SDK 工具 502 */
+    AgentRunRequest buildPeerRequest(
+            String runId, ExpertCatalogEntry expert, String userId, String tenantId) {
         List<String> toolIds = resolveToolWhitelist(expert);
-        AgentRunRequest request = new AgentRunRequest(
+        return new AgentRunRequest(
                 AgentRole.SUB,
                 runId + "-" + expert.id(),
                 runId,
                 MemoryContext.forSubAgent(),
                 "",
                 List.of(),
-                null,
-                null,
+                userId,
+                tenantId,
                 null,
                 expert.primarySkillId(),
                 toolIds,
@@ -266,7 +284,6 @@ public class ExpertHubEngine {
                 false,
                 null,
                 null);
-        return expertPeerAgentFactory.create(request);
     }
 
     /** package-private for tests */

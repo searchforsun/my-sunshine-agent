@@ -23,11 +23,14 @@ class HybridRetrievalServiceTest {
     @Test
     void rrfPromotesDocPresentInBothLists() {
         RetrievalCandidate vectorHit = new RetrievalCandidate(
-                "a#0", "报销制度", "餐费报销规则", 0.55f, RetrievalCandidate.SOURCE_VECTOR);
+                "a#0", "报销制度", "餐费报销规则", 0.55f, RetrievalCandidate.SOURCE_VECTOR,
+                RetrievalCandidate.LEVEL_CHUNK, null);
         RetrievalCandidate bm25Hit = new RetrievalCandidate(
-                "a#0", "报销制度", "餐费报销规则", 12.3f, RetrievalCandidate.SOURCE_BM25);
+                "a#0", "报销制度", "餐费报销规则", 12.3f, RetrievalCandidate.SOURCE_BM25,
+                RetrievalCandidate.LEVEL_CHUNK, null);
         RetrievalCandidate vectorOnly = new RetrievalCandidate(
-                "b#0", "差旅制度", "机票标准", 0.90f, RetrievalCandidate.SOURCE_VECTOR);
+                "b#0", "差旅制度", "机票标准", 0.90f, RetrievalCandidate.SOURCE_VECTOR,
+                RetrievalCandidate.LEVEL_CHUNK, null);
 
         List<RetrievalCandidate> fused = service.fuse(
                 List.of(List.of(vectorHit, vectorOnly), List.of(bm25Hit)), 5);
@@ -40,9 +43,11 @@ class HybridRetrievalServiceTest {
     @Test
     void assignDisplayScoresUsesVectorScoreFirst() {
         RetrievalCandidate vectorHit = new RetrievalCandidate(
-                "a#0", "报销制度", "餐费报销规则", 0.72f, RetrievalCandidate.SOURCE_VECTOR);
+                "a#0", "报销制度", "餐费报销规则", 0.72f, RetrievalCandidate.SOURCE_VECTOR,
+                RetrievalCandidate.LEVEL_CHUNK, null);
         RetrievalCandidate bm25Only = new RetrievalCandidate(
-                "b#0", "请假制度", "产假工资", 9.5f, RetrievalCandidate.SOURCE_BM25);
+                "b#0", "请假制度", "产假工资", 9.5f, RetrievalCandidate.SOURCE_BM25,
+                RetrievalCandidate.LEVEL_CHUNK, null);
         List<RetrievalCandidate> ordered = List.of(vectorHit, bm25Only);
         List<RetrievalCandidate> scored = service.assignDisplayScores(
                 ordered, List.of(vectorHit), List.of(bm25Only));

@@ -517,7 +517,7 @@ export function formatElapsedClock(ms: number): string {
   if (totalSec < 60) return `${totalSec}s`
   const m = Math.floor(totalSec / 60)
   const s = totalSec % 60
-  return `${m}m${s}s`
+  return `${m}m ${s}s`
 }
 
 /**

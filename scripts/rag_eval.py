@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""RAG 评测 CLI：经 Admin API POST /api/rag/admin/eval/run 跑 eval_suite。"""
+"""corpus-50 RAG 评测：从 eval_suite.json 同步内置评测集到 MySQL，再经 Admin API 跑门禁。
 
+用法：
+  python3 scripts/rag_eval.py --sync          # 仅同步评测集
+  python3 scripts/rag_eval.py --suite-key sunshine-regression --strategy hybrid+rerank --gate
+  python3 scripts/rag_eval.py --ci            # sync + regression 跑门禁 + 写报告
+"""
 from __future__ import annotations
 
 import argparse
@@ -13,22 +18,15 @@ from pathlib import Path
 
 import requests
 
-from sunshine_lib import fetch_eval_suite_detail, rag_admin_headers, unwrap_r
+from sunshine_lib import ROOT, rag_admin_headers, run_mysql, unwrap_r
 
-ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_RAG_URL = os.environ.get("RAG_URL", "http://ecs4c16g:8400")
 DEFAULT_ADMIN_TOKEN = os.environ.get("RAG_ADMIN_TOKEN", "sunshine-rag-admin-dev")
-
-
-def run_tag(now: datetime | None = None, extra: str | None = None) -> str:
-    ts = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
-    if extra:
-        safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in extra.strip())
-        return f"{ts}-{safe}"
-    return ts
+DEFAULT_EVAL_JSON = ROOT / "docs/knowledge/eval_suite.json"
+DEFAULT_SUITE = "sunshine-regression"
 
 
 def check_gates(report: dict, gates: dict) -> list[str]:
-    """门禁键与 config_json.gates 一致（camelCase）。"""
     failures: list[str] = []
     recall_at_k = report.get("recall_at_k") or {}
     if gates.get("recallAt3Min") is not None:
@@ -63,6 +61,75 @@ def check_gates(report: dict, gates: dict) -> list[str]:
         if p95 > ceiling:
             failures.append(f"P95 延迟 {p95}ms > {ceiling}ms")
     return failures
+
+
+def _sql_quote(value: str) -> str:
+    return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
+
+
+def _json_sql(obj) -> str:
+    return f"CAST({_sql_quote(json.dumps(obj, ensure_ascii=False))} AS JSON)"
+
+
+def load_eval_suite(path: Path) -> dict:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or "suites" not in data:
+        raise RuntimeError(f"eval_suite 无效: {path}")
+    return data
+
+
+def sync_suites_to_mysql(
+    eval_data: dict,
+    *,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+) -> None:
+    suites = eval_data["suites"]
+    statements = ["USE sunshine_rag;"]
+    for suite_key, suite in suites.items():
+        items = suite.get("items") or []
+        gates = suite.get("gates") or {}
+        config = {"topK": [3, 5, 10], "minScore": 0.48, "gates": gates}
+        display = suite.get("displayName") or suite_key
+        desc = suite.get("description") or display
+        statements.append(
+            "INSERT INTO eval_suite "
+            "(tenant_id, suite_key, display_name, description, kind, format, schema_version, "
+            "storage, item_count, status, config_json) VALUES ("
+            f"'default', {_sql_quote(suite_key)}, {_sql_quote(display)}, {_sql_quote(desc)}, "
+            f"'standard', 'json', 1, 'mysql', {len(items)}, 'active', {_json_sql(config)}"
+            ") ON DUPLICATE KEY UPDATE "
+            "display_name=VALUES(display_name), description=VALUES(description), "
+            "item_count=VALUES(item_count), config_json=VALUES(config_json), "
+            "kind='standard', format='json', storage='mysql', content_ref=NULL;"
+        )
+        statements.append(
+            "DELETE FROM eval_suite_item WHERE suite_id=("
+            f"SELECT id FROM eval_suite WHERE tenant_id='default' AND suite_key={_sql_quote(suite_key)}"
+            ");"
+        )
+        for sort_order, item in enumerate(items):
+            item_key = item["itemKey"]
+            query = item["query"]
+            item_type = item.get("itemType") or "positive"
+            docs = item.get("relevantDocIds") or []
+            kws = item.get("relevantKeywords") or []
+            category = item.get("category") or ""
+            expect_empty = 1 if item.get("expectEmpty") else 0
+            statements.append(
+                "INSERT INTO eval_suite_item "
+                "(suite_id, item_key, sort_order, query_text, item_type, relevant_doc_ids, "
+                "relevant_keywords, category, expect_empty) SELECT id, "
+                f"{_sql_quote(item_key)}, {sort_order}, {_sql_quote(query)}, {_sql_quote(item_type)}, "
+                f"{_json_sql(docs)}, {_json_sql(kws)}, {_sql_quote(category)}, {expect_empty} "
+                f"FROM eval_suite WHERE tenant_id='default' AND suite_key={_sql_quote(suite_key)};"
+            )
+    # 清理任何非 corpus-50 残留自定义集可不做；内置三套已覆盖
+    sql = "\n".join(statements)
+    run_mysql(sql, host=host, port=port, user=user, password=password)
+    print(f"[OK] synced suites={list(suites.keys())}", file=sys.stderr)
 
 
 def normalize_admin_report(
@@ -106,11 +173,14 @@ def normalize_admin_report(
         "gates": report_gates,
         "gate_check": gate_check,
         "admin_eval": {"jobId": job_id, "reportId": report_id},
+        "corpus": "corpus-50",
     }
     if not gate_check.get("failures") and report_gates:
         failures = check_gates(report, report_gates)
         if failures:
             report["gate_check"] = {"passed": False, "failures": failures}
+        else:
+            report["gate_check"] = {"passed": True, "failures": []}
     return report
 
 
@@ -124,10 +194,10 @@ def run_eval_via_admin_api(
     strategy: str | None,
     config_mode: str,
     gates: dict,
-    run_at: datetime | None = None,
-    tag: str = "",
+    run_at: datetime,
+    tag: str,
     poll_sec: float = 2.0,
-    timeout_sec: float = 900.0,
+    timeout_sec: float = 1800.0,
 ) -> dict:
     base = rag_url.rstrip("/")
     body: dict = {"suiteKey": suite_key, "kbId": kb_id, "configMode": config_mode}
@@ -159,7 +229,7 @@ def run_eval_via_admin_api(
             report_id = status.get("reportId")
             break
         if state == "failed":
-            raise RuntimeError(f"eval job {job_id} failed")
+            raise RuntimeError(f"eval job {job_id} failed: {status}")
         time.sleep(poll_sec)
     else:
         raise TimeoutError(f"eval job {job_id} timeout after {timeout_sec}s")
@@ -172,12 +242,11 @@ def run_eval_via_admin_api(
     )
     rep_resp.raise_for_status()
     report_view = unwrap_r(rep_resp.json(), context="eval report") or {}
-    now = run_at or datetime.now()
     return normalize_admin_report(
         report_view,
         suite_key=suite_key,
         strategy=strategy or "vector",
-        run_at=now,
+        run_at=run_at,
         tag=tag,
         gates=gates,
         job_id=job_id,
@@ -188,100 +257,92 @@ def run_eval_via_admin_api(
 def write_markdown_report(report: dict, path: Path) -> None:
     gates = report.get("gates") or {}
     gate_result = report.get("gate_check") or {}
+    recall_at_k = report.get("recall_at_k") or {}
+    latency = report.get("latency_ms") or {}
     lines = [
-        f"# RAG 评测报告 — {report.get('run_at', report.get('date'))}",
+        f"# RAG 评测报告 — {report.get('run_at')}",
         "",
-        f"> suite_key={report.get('suite_key')} · strategy={report.get('strategy')} · "
+        f"> corpus-50 · suite={report.get('suite_key')} · strategy={report.get('strategy')} · "
         f"{report.get('query_count')} queries · run={report.get('run_tag')}",
         "",
-        "## 汇总指标",
+        "## 汇总",
         "",
         "| 指标 | 值 | 门禁 |",
         "|------|-----|------|",
-    ]
-    recall_at_k = report.get("recall_at_k") or {}
-    lines.append(f"| Recall@3 | {recall_at_k.get('3', '—')} | ≥ {gates.get('recallAt3Min', '—')} |")
-    lines.append(f"| Recall@5 | {recall_at_k.get('5', '—')} | ≥ {gates.get('recallAt5Min', '—')} |")
-    lines.append(f"| MRR | {report.get('mrr', '—')} | ≥ {gates.get('mrrMin', '—')} |")
-    lines.append(f"| 正例 EmptyRate | {report.get('empty_rate_positive', '—')} | ≤ {gates.get('emptyRatePositiveMax', '—')} |")
-    lines.append(f"| 负例 EmptyRate | {report.get('empty_rate_negative', '—')} | ≥ {gates.get('emptyRateNegativeMin', '—')} |")
-    latency = report.get("latency_ms") or {}
-    lines.append(f"| P95 延迟 (ms) | {latency.get('p95', '—')} | ≤ {gates.get('latencyP95MsMax', '—')} |")
-    lines.append("")
-    if gate_result.get("passed"):
-        lines.append("**门禁：PASS**")
-    else:
-        lines.append("**门禁：FAIL**")
-        for item in gate_result.get("failures") or []:
-            lines.append(f"- {item}")
-    lines.append("")
-    path.write_text("\n".join(lines), encoding="utf-8")
-
-
-def write_regression_report(report: dict, path: Path) -> None:
-    gate = report.get("gate_check") or {}
-    status = "PASS" if gate.get("passed") else "FAIL"
-    recall_at_k = report.get("recall_at_k") or {}
-    latency = report.get("latency_ms") or {}
-    block = [
-        f"## {report.get('run_at')} — {report.get('suite_key')} / {report.get('strategy')}",
+        f"| Recall@3 | {recall_at_k.get('3', '—')} | ≥ {gates.get('recallAt3Min', '—')} |",
+        f"| Recall@5 | {recall_at_k.get('5', '—')} | ≥ {gates.get('recallAt5Min', '—')} |",
+        f"| MRR | {report.get('mrr', '—')} | ≥ {gates.get('mrrMin', '—')} |",
+        f"| 正例 Empty | {report.get('empty_rate_positive', '—')} | ≤ {gates.get('emptyRatePositiveMax', '—')} |",
+        f"| 负例 Empty | {report.get('empty_rate_negative', '—')} | ≥ {gates.get('emptyRateNegativeMin', '—')} |",
+        f"| P95 (ms) | {latency.get('p95', '—')} | ≤ {gates.get('latencyP95MsMax', '—')} |",
         "",
-        f"- run_tag: `{report.get('run_tag')}`",
-        f"- queries: {report.get('query_count')}",
-        f"- Recall@5: {recall_at_k.get('5')} · MRR: {report.get('mrr')}",
-        f"- 正例 Empty: {report.get('empty_rate_positive')} · 负例 Empty: {report.get('empty_rate_negative')}",
-        f"- P95: {latency.get('p95')} ms",
-        f"- **门禁: {status}**",
+        f"**门禁：{'PASS' if gate_result.get('passed') else 'FAIL'}**",
+        "",
     ]
-    for item in gate.get("failures") or []:
-        block.append(f"- FAIL: {item}")
-    block.append("")
-    if path.exists():
-        existing = path.read_text(encoding="utf-8")
-        path.write_text(existing.rstrip() + "\n\n" + "\n".join(block) + "\n", encoding="utf-8")
-    else:
-        header = [
-            f"# RAG 回归门禁 — {report.get('date')}",
-            "",
-            "> 由 `rag_eval.py --regression-md` 或 CI `rag-eval` workflow 生成。",
-            "",
-        ]
-        path.write_text("\n".join(header + block), encoding="utf-8")
+    for item in gate_result.get("failures") or []:
+        lines.append(f"- {item}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="经 Admin API 跑 eval_suite 标准检索评测")
-    parser.add_argument("--rag-url", default=os.environ.get("RAG_URL", "http://localhost:8400"))
+    parser = argparse.ArgumentParser(description="corpus-50 RAG 评测（同步评测集 + Admin 跑分）")
+    parser.add_argument("--eval-json", default=str(DEFAULT_EVAL_JSON))
+    parser.add_argument("--sync", action="store_true", help="将 eval_suite.json 同步到 MySQL")
+    parser.add_argument("--sync-only", action="store_true", help="只同步不跑评测")
+    parser.add_argument("--rag-url", default=DEFAULT_RAG_URL)
     parser.add_argument("--tenant-id", default=os.environ.get("RAG_TENANT_ID", "default"))
-    parser.add_argument("--suite-key", default="sunshine-regression", help="eval_suite.suite_key")
+    parser.add_argument("--suite-key", default=DEFAULT_SUITE)
     parser.add_argument("--kb-id", default="default")
     parser.add_argument(
         "--strategy",
-        default="vector",
+        default="hybrid+rerank",
         choices=["vector", "hybrid", "hybrid+rerank"],
     )
     parser.add_argument("--config-mode", default="published", choices=["published", "draft"])
     parser.add_argument("--admin-token", default=DEFAULT_ADMIN_TOKEN)
-    parser.add_argument("--gate", action="store_true", help="未达 gates 时 exit 1")
+    parser.add_argument("--mysql-host", default=os.environ.get("MYSQL_HOST", "ecs4c16g"))
+    parser.add_argument("--mysql-port", type=int, default=3306)
+    parser.add_argument("--mysql-user", default="root")
+    parser.add_argument("--mysql-password", default="root123")
+    parser.add_argument("--gate", action="store_true")
     parser.add_argument("--report-md", action="store_true")
-    parser.add_argument("--regression-md", action="store_true")
-    parser.add_argument("--ci", action="store_true", help="--gate --report-md --regression-md")
-    parser.add_argument("--tag", default="", help="报告文件名附加标记")
+    parser.add_argument("--ci", action="store_true")
+    parser.add_argument("--tag", default="")
     args = parser.parse_args()
     if args.ci:
+        args.sync = True
         args.gate = True
         args.report_md = True
-        args.regression_md = True
+
+    eval_path = Path(args.eval_json)
+    if not eval_path.is_file():
+        print(f"[FAIL] 缺少 {eval_path}，先跑 generate_rag_corpus.py", file=sys.stderr)
+        return 1
+    eval_data = load_eval_suite(eval_path)
+
+    if args.sync or args.sync_only:
+        sync_suites_to_mysql(
+            eval_data,
+            host=args.mysql_host,
+            port=args.mysql_port,
+            user=args.mysql_user,
+            password=args.mysql_password,
+        )
+    if args.sync_only:
+        return 0
+
+    suite = (eval_data.get("suites") or {}).get(args.suite_key)
+    if not suite:
+        print(f"[FAIL] eval_suite 无 suite {args.suite_key}", file=sys.stderr)
+        return 1
+    gates = suite.get("gates") or {}
 
     run_at = datetime.now()
-    tag = run_tag(run_at, args.tag or None)
+    tag = run_at.strftime("%Y%m%d-%H%M%S")
+    if args.tag:
+        tag = f"{tag}-{args.tag}"
     strategy = None if args.strategy == "vector" else args.strategy
-
-    detail = fetch_eval_suite_detail(args.rag_url, args.tenant_id, args.admin_token, args.suite_key)
-    config = detail.get("config") or {}
-    gates = config.get("gates") or {}
-
-    print(f"[INFO] eval via admin API suite_key={args.suite_key}", file=sys.stderr)
+    print(f"[INFO] run suite={args.suite_key} strategy={args.strategy}", file=sys.stderr)
     report = run_eval_via_admin_api(
         args.rag_url,
         args.tenant_id,
@@ -294,31 +355,27 @@ def main() -> int:
         run_at=run_at,
         tag=tag,
     )
-    gate_check = report.get("gate_check") or {}
-    failures = list(gate_check.get("failures") or [])
+    failures = list((report.get("gate_check") or {}).get("failures") or [])
     if args.gate and gates and not failures:
         failures = check_gates(report, gates)
         if failures:
             report["gate_check"] = {"passed": False, "failures": failures}
+        else:
+            report["gate_check"] = {"passed": True, "failures": []}
 
     out_dir = ROOT / "reports/rag/eval-reports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    json_path = out_dir / f"baseline-{tag}.json"
+    json_path = out_dir / f"corpus50-{tag}.json"
     json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    print(f"[OK] json report: {json_path}", file=sys.stderr)
-
+    print(f"[OK] json: {json_path}", file=sys.stderr)
     if args.report_md:
-        md_path = out_dir / f"rag-eval-report-{tag}.md"
+        md_path = out_dir / f"corpus50-{tag}.md"
         write_markdown_report(report, md_path)
-        print(f"[OK] markdown report: {md_path}", file=sys.stderr)
-    if args.regression_md:
-        reg_path = ROOT / "reports/rag" / f"regression-{run_at.date().isoformat()}.md"
-        write_regression_report(report, reg_path)
-        print(f"[OK] regression report: {reg_path}", file=sys.stderr)
+        print(f"[OK] md: {md_path}", file=sys.stderr)
 
     passed = bool((report.get("gate_check") or {}).get("passed", True))
-    if args.gate and gates and not passed:
+    if args.gate and not passed:
         print("[FAIL] gates:", "; ".join(failures), file=sys.stderr)
         return 1
     print("[OK] eval finished", file=sys.stderr)

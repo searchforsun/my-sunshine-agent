@@ -19,10 +19,16 @@ spring:
       port: 6379
       password: redis123
   datasource:
-    url: jdbc:mysql://ecs4c16g:3306/sunshine_rag?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    url: jdbc:mysql://ecs4c16g:3306/sunshine_rag?useSSL=false&serverTimezone=UTC&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=utf8
     username: root
     password: root123
   jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        timezone:
+          default_storage: NORMALIZE_UTC
     hibernate:
       ddl-auto: validate
     open-in-view: false

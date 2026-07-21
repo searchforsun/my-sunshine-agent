@@ -41,6 +41,7 @@ export const SERVICE_DEFS: ServiceDef[] = [
   { name: 'Desensitize', port: 8600, description: '数据脱敏引擎', gatewayPath: '/health/desensitize', expectedService: 'sunshine-desensitize', lane: 'platform' },
   { name: 'OA', port: 8700, description: 'OA 模拟 / Tool App', gatewayPath: '/health/oa', expectedService: 'sunshine-oa', lane: 'domain' },
   { name: 'Finance', port: 8710, description: '财务消息与审批 Mock', gatewayPath: '/health/finance', expectedService: 'sunshine-finance', lane: 'domain' },
+  { name: 'HR', port: 8720, description: '人事模拟 / Tool App（假期考勤）', gatewayPath: '/health/hr', expectedService: 'sunshine-hr', lane: 'domain' },
   { name: 'MCP', port: 0, description: 'MCP 工具接入能力（经 tool-manager Catalog，无独立微服务）', lane: 'domain' },
 ]
 
@@ -62,6 +63,16 @@ export function platformRoots(defs: ServiceDef[]): ServiceDef[] {
 
 export function domainServices(defs: ServiceDef[]): ServiceDef[] {
   return defs.filter((d) => d.lane === 'domain')
+}
+
+/** L4 上行：可探测的领域 Tool App（OA / Finance / HR） */
+export function domainToolApps(defs: ServiceDef[]): ServiceDef[] {
+  return defs.filter((d) => d.lane === 'domain' && !!d.gatewayPath)
+}
+
+/** L4 下行：接入能力（MCP，无独立端口） */
+export function domainAccess(defs: ServiceDef[]): ServiceDef[] {
+  return defs.filter((d) => d.lane === 'domain' && !d.gatewayPath)
 }
 
 export function buildServiceList(defs: ServiceDef[]): ServiceStatus[] {

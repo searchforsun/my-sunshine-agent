@@ -38,8 +38,10 @@ import {
   configVersionTimeLabel,
   configVersionStatusLabel,
   configVersionStatusTagType,
+  findNewestConfigVersion,
   isPipelineStatus,
   resolveConfigVersionStatus,
+  sortConfigVersionsDesc,
   type ConfigVersionUiStatus,
 } from '../utils/kbConfigVersion'
 import { formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTime'
@@ -124,7 +126,7 @@ export function useKbConfigPanel(props: KbConfigPanelProps) {
   const showMoreMenu = computed(() => canShowMoreMenu(versions.value))
 
   const versionOptions = computed(() =>
-    versions.value.map((v) => ({
+    sortConfigVersionsDesc(versions.value).map((v) => ({
       label: configVersionTimeLabel(v),
       value: v.id,
     })),
@@ -299,12 +301,11 @@ export function useKbConfigPanel(props: KbConfigPanelProps) {
       wb.setConfigVersions(versionList)
       const pipelineVer = versionList.find((v) => isPipelineStatus(v.status))
       draftVersionId.value = pipelineVer?.id ?? null
-      const activeVer = versionList.find((v) => v.active || v.status === 'active')
       const keepId = selectedVersionId.value
       const keepStillExists = keepId != null && versionList.some((v) => v.id === keepId)
       selectedVersionId.value = keepStillExists
         ? keepId
-        : (pipelineVer?.id ?? activeVer?.id ?? versionList[0]?.id ?? null)
+        : (findNewestConfigVersion(versionList)?.id ?? null)
       if (selectedVersionId.value != null) {
         await loadVersionPayload(selectedVersionId.value, signal)
       }

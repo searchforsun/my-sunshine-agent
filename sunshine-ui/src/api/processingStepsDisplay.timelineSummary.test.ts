@@ -14,8 +14,8 @@ describe('formatElapsedClock', () => {
     expect(formatElapsedClock(0)).toBe('0s')
     expect(formatElapsedClock(999)).toBe('0s')
     expect(formatElapsedClock(42_000)).toBe('42s')
-    expect(formatElapsedClock(80_000)).toBe('1m20s')
-    expect(formatElapsedClock(120_000)).toBe('2m0s')
+    expect(formatElapsedClock(80_000)).toBe('1m 20s')
+    expect(formatElapsedClock(120_000)).toBe('2m 0s')
   })
 })
 
@@ -90,7 +90,7 @@ describe('resolveTimelineSummaryPrefix', () => {
 
 describe('formatTimelineSummaryText', () => {
   it('joins prefix and clock', () => {
-    expect(formatTimelineSummaryText('已完成', '1m20s')).toBe('已完成 1m20s')
+    expect(formatTimelineSummaryText('已完成', '1m 20s')).toBe('已完成 1m 20s')
     expect(formatTimelineSummaryText('已失败', '')).toBe('已失败')
   })
 })

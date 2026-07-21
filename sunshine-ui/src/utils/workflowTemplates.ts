@@ -42,13 +42,13 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplateDefinition[] = [
   },
   {
     id: 'finance-list',
-    name: '财务待办查询',
-    summary: 'start → Tool 列出待审批/已审批财务消息 → answer',
+    name: '我的报销查询',
+    summary: 'start → Tool 列出当前用户报销单 → answer',
   },
   {
     id: 'finance-summary',
-    name: '财务汇总统计',
-    summary: 'start → Tool 按状态汇总条数与金额 → answer',
+    name: '报销汇总统计',
+    summary: 'start → Tool 按状态汇总报销条数与金额 → answer',
   },
   {
     id: 'parallel-dual-rag',

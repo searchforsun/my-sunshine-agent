@@ -109,7 +109,7 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 规则：
 - workflow：匹配下方 Workflow 目录中某一模板，workflowId 填对应 id，params 填本次参数（如 status: pending）
 - plan-workflow：跨多领域/多步骤协作（如「先检索制度，再查待审批，再合规分析」），无固定 workflow 模板；含「先…再…」「分步」「并对…分析」等多步表述时选此项
-- peer-collab：需多角色对等协作、交叉验证、互相质疑（如「制度与财务专家分别审查并互相验证」）；由 Expert Catalog + Coordinator 召集；勿与「先…再…」流水线 plan 混淆
+- peer-collab：需多角色对等协作、交叉验证、互相质疑（如「人事制度与费用报销分析专家分别审查并互相验证」）；由 Expert Catalog + Coordinator 召集；勿与「先…再…」流水线 plan 混淆
 - react：通识闲聊/百科/写作润色/纯概念讲解；审批/提交/确认/继续等操作指令；需多工具组合；需在沙箱/workspace 读写或执行 Skill 脚本；拿不准时亦选此项
 - skillId：当任务需 **Skill 指令 overlay** 或 **挂载 /skills/{id}/ 物料** 时填写（Catalog 内 id）；否则 null
   · 分析/运行某 Skill 包内脚本、用户 @skill 或指代「这个 skill」→ 填对应 id

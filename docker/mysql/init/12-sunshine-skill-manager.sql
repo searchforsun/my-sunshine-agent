@@ -28,9 +28,9 @@ CREATE TABLE skill_version (
 
 -- V2__seed_skills.sql
 INSERT INTO skill_definition (id, display_name, description, enabled, active_version) VALUES
-('finance-analysis', '财务合规分析', '待审批单据与制度/规则的内部分析子 Agent', 1, 1),
-('policy-review', '制度审查', '企业制度条款检索与解读', 1, 1),
-('compliance-check', '合规对比', '制度与业务数据合规对比', 1, 1);
+('finance-analysis', '财务合规分析', '报销/费用单据与企业制度的内部合规分析（对齐 corpus-50）', 1, 1),
+('policy-review', '制度审查', '企业多域制度条款解读（人事/财务/安全/IT 等，对齐 corpus-50）', 1, 1),
+('compliance-check', '合规对比', '制度片段与业务数据逐项合规对比（对齐 corpus-50）', 1, 1);
 
 INSERT INTO skill_version (skill_id, version, system_overlay, tools_json, max_iters, status) VALUES
 ('finance-analysis', 1,

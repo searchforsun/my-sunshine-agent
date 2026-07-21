@@ -62,8 +62,8 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 - **`think` 仅属 ReAct**：answer 的 reasoning 在 `node-*` 步骤与 Plan 抽屉「综合分析」，**不得**再合成顶层 `think` 行
 
 ```
-识别意图 → 将按「财务待办查询」流程处理   （静态）或 将动态规划多步执行（Plan）
-执行计划 → 检索知识库 → 查询待审批… → …（节点链摘要）  [查看详情 / DAG]
+识别意图 → 将按「我的报销查询」流程处理   （静态）或 将动态规划多步执行（Plan）
+执行计划 → 检索知识库 → 查询报销… → …（节点链摘要）  [查看详情 / DAG]
 ```
 
 - **「查看详情」**：跳转 `/plans/:planId`，展示 validated Plan JSON、节点 trace、状态
@@ -123,9 +123,9 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 
 ## B. 静态 WORKFLOW — finance-list（L2 黄金规则）
 
-**预期 intent after**：「…将按「财务待办查询」流程处理」
+**预期 intent after**：「…将按「我的报销查询」流程处理」
 
-**UI**：intent 后出现 **执行计划 + DAG**（`planId=`）；链摘要含「查询待审批财务消息 → 生成回答」；**无**逐步 node 卡片。
+**UI**：intent 后出现 **执行计划 + DAG**（`planId=`）；链摘要含「查询我的报销单 → 生成回答」；**无**逐步 node 卡片。
 
 | # | 提示词 | ruleId |
 |---|--------|--------|
@@ -380,7 +380,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 
 | 提示词 | 必须 **不是** | 必须是 |
 |--------|--------------|--------|
-| 请制度专家和财务专家分别审查这笔报销是否合规，并互相验证 | plan-workflow / finance-smart | **peer-collab** |
+| 请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证 | plan-workflow / finance-smart | **peer-collab** |
 | 从合规和财务两个角度交叉审查上述制度条款 | workflow | **peer-collab** |
 
 ### E2. 应对 → 仍 `plan-workflow`（边界对照）
@@ -431,9 +431,9 @@ python3 scripts/verify_expert_consultation_live.py   # §K `$` 与逐步 expert 
 
 ```
 识别意图 → 多专家协作
-expert-convene → 已召集：制度专家、财务专家
-expert-policy-expert-s1 → 制度专家发言
-expert-finance-expert-s1 → 财务专家发言
+expert-convene → 已召集：人事制度分析专家、费用报销分析专家
+expert-policy-expert-s1 → 人事制度分析专家发言
+expert-finance-expert-s1 → 费用报销分析专家发言
 （消息正文区 Synthesizer 流式结论 — 无 generate 步）
 ```
 

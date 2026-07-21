@@ -18,10 +18,7 @@ public record RetrievalCandidate(
     public static final String SOURCE_RERANK = "rerank";
     public static final String LEVEL_CHILD = "child";
     public static final String LEVEL_PARENT = "parent";
-
-    public RetrievalCandidate(String chunkId, String docName, String content, float score, String source) {
-        this(chunkId, docName, content, score, source, null, null);
-    }
+    public static final String LEVEL_CHUNK = "chunk";
 
     public String dedupeKey() {
         if (chunkId != null && !chunkId.isBlank()) {

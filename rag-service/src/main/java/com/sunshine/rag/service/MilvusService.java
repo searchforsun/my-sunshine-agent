@@ -342,9 +342,9 @@ public class MilvusService {
         createCollection();
     }
 
-    /** 检索 expr：排除 parent 块，兼容 chunk_level 为空的历史数据 */
+    /** 检索 expr：仅可检索 leaf（chunk）与 parent_child 的 child；排除 parent */
     static String retrievableChunkLevelExpr() {
-        return "chunk_level == \"\" || chunk_level == \"child\"";
+        return "chunk_level == \"chunk\" || chunk_level == \"child\"";
     }
 
     private static String nullToEmpty(String value) {

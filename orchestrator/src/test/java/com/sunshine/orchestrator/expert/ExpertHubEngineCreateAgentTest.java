@@ -45,6 +45,15 @@ class ExpertHubEngineCreateAgentTest {
                 .containsExactly("sdk__a__t1");
     }
 
+    @Test
+    void buildPeerRequest_carriesUserAndTenant() {
+        ExpertCatalogEntry e = entry("[\"sdk__sunshine-finance__list_my_expenses\"]");
+        var req = engine.buildPeerRequest("run-1", e, "a1111111-1111-4111-a111-111111111111", "default");
+        assertThat(req.userId()).isEqualTo("a1111111-1111-4111-a111-111111111111");
+        assertThat(req.tenantId()).isEqualTo("default");
+        assertThat(req.toolWhitelist()).containsExactly("sdk__sunshine-finance__list_my_expenses");
+    }
+
     private static ExpertCatalogEntry entry(String toolsJson) {
         return new ExpertCatalogEntry("e1", "E", "d", "sys", List.of(), List.of(), toolsJson, true);
     }

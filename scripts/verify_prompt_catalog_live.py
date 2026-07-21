@@ -39,7 +39,7 @@ STRUCTURAL_QUERY = "先检索制度再分析报销合规"
 OVERLAP_QUERY = "先检索制度再列出待审批报销并对合规分析"
 FINANCE_LIST_ID = "routing-rule.rule-finance-list-pending"
 FINANCE_LIST_QUERY = "列出待审批的差旅报销"
-PEER_QUERY = "请制度专家和财务专家分别审查这笔报销是否合规，并互相验证"
+PEER_QUERY = "请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证"
 REACT_POLICY_QUERY = "差旅办法里怎么规定"
 TIMEOUT = 20
 

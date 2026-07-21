@@ -4,23 +4,26 @@ import {
   SERVICE_DEFS,
   buildServiceList,
   countProbeable,
+  domainAccess,
   domainServices,
+  domainToolApps,
   platformRoots,
 } from './statusArchitecture'
 
 describe('statusArchitecture', () => {
-  it('lists 15 probeable microservices including sandbox and oa', () => {
-    expect(countProbeable(SERVICE_DEFS)).toBe(15)
+  it('lists 16 probeable microservices including sandbox, oa and hr', () => {
+    expect(countProbeable(SERVICE_DEFS)).toBe(16)
     const names = SERVICE_DEFS.map((d) => d.name)
     expect(names).toContain('Sandbox Service')
     expect(names).toContain('OA')
+    expect(names).toContain('HR')
   })
 
-  it('places OA, Finance and MCP capability on L4 domain lane', () => {
-    const domain = domainServices(SERVICE_DEFS)
-    expect(domain.map((d) => d.name)).toEqual(['OA', 'Finance', 'MCP'])
-    expect(domain.filter((d) => d.gatewayPath).map((d) => d.name).sort()).toEqual(['Finance', 'OA'])
-    const mcp = domain.find((d) => d.name === 'MCP')
+  it('places OA, Finance, HR on L4 domain apps row and MCP on access row', () => {
+    expect(domainToolApps(SERVICE_DEFS).map((d) => d.name)).toEqual(['OA', 'Finance', 'HR'])
+    expect(domainAccess(SERVICE_DEFS).map((d) => d.name)).toEqual(['MCP'])
+    expect(domainServices(SERVICE_DEFS).map((d) => d.name)).toEqual(['OA', 'Finance', 'HR', 'MCP'])
+    const mcp = domainAccess(SERVICE_DEFS)[0]
     expect(mcp?.gatewayPath).toBeUndefined()
     expect(mcp?.description).toMatch(/已接入|Catalog/)
   })

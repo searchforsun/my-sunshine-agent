@@ -71,7 +71,9 @@ RAG 能力横跨**阶段三（生产加固）**与**阶段四（平台化）**�
 
 | 脚本 | 用途 |
 |------|------|
-| `scripts/rag_eval.py` | CI / 命令行评测（调 admin eval API） |
+| `scripts/rag_eval.py` | corpus-50 评测：`--sync` 写 MySQL + Admin 跑门禁 |
+| `scripts/generate_rag_corpus.py` | 生成 50 篇语料 + `docs/knowledge/eval_suite.json` |
+| `scripts/rag_wipe_and_ingest.py` | 删文档 + 清库 + 批量 ingest |
 | `scripts/rag_ingest_bulk.py` | 批量入库（`--strategy` / `--params-json`） |
 | `scripts/rag_reset.py` | Milvus 清库重建 |
 | `scripts/verify_rag_studio.py` | 工作台 live 验收 |

@@ -99,7 +99,7 @@
 - **二进制**：仅展示类型与估算大小
 - 预览栏：**复制**（Markdown/文本）
 
-参考包结构见 `docs/skills/demo-full-pack/`。
+参考包结构见 `docs/skills/sandbox-coding-demo/`（含 scripts/references）；企业技能见 `docs/skills/README.md`。
 
 ### 5.3 在线编辑（3.12.2）
 

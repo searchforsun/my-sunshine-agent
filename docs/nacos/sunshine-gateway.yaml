@@ -121,6 +121,12 @@ spring:
             - Path=/health/oa
           filters:
             - RewritePath=/health/oa, /health
+        - id: health-hr
+          uri: lb://sunshine-hr
+          predicates:
+            - Path=/health/hr
+          filters:
+            - RewritePath=/health/hr, /health
         - id: sunshine-auth-api
           uri: lb://sunshine-auth
           predicates:

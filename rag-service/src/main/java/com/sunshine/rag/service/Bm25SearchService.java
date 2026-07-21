@@ -91,7 +91,8 @@ public class Bm25SearchService {
                                         "type", "best_fields")),
                                 Map.of("term", Map.of("tenant_id", tid)),
                                 Map.of("term", Map.of("kb_id", kid)),
-                                Map.of("term", Map.of("status", "active"))),
+                                Map.of("term", Map.of("status", "active")),
+                                Map.of("terms", Map.of("chunk_level", List.of("chunk", "child")))),
                         "must_not", List.of(
                                 Map.of("term", Map.of("chunk_level", "parent"))))));
         return body;

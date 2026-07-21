@@ -123,11 +123,12 @@ class ParentChildRetrievalTest {
     }
 
     @Test
-    void legacyHit_withoutParent_keepsChildContent() {
-        RetrievalCandidate legacy = new RetrievalCandidate(
-                "legacy#v20260701110011#0", "旧文档", "plain chunk", 0.7f, RetrievalCandidate.SOURCE_VECTOR);
+    void plainChunkHit_keepsOwnContent() {
+        RetrievalCandidate leaf = new RetrievalCandidate(
+                "doc#v20260701110011#0", "文档", "plain chunk", 0.7f, RetrievalCandidate.SOURCE_VECTOR,
+                "chunk", null);
         when(vectorSearchService.search(anyString(), anyInt(), anyBoolean(), anyString(), anyString(), anyFloat()))
-                .thenReturn(Mono.just(List.of(legacy)));
+                .thenReturn(Mono.just(List.of(leaf)));
 
         List<RetrievalService.DocFragment> hits = retrievalService
                 .search("query", 5, "vector", "default", "default",

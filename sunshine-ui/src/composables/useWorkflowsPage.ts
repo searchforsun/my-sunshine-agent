@@ -579,7 +579,7 @@ function useWorkflowsPageImpl() {
       case 'finance-list':
         applyWorkflowTemplatePlan(
           buildFinanceListPlan,
-          '已应用财务待办查询模板（start → Tool → answer）',
+          '已应用我的报销查询模板（start → Tool → answer）',
         )
         break
       case 'finance-summary':

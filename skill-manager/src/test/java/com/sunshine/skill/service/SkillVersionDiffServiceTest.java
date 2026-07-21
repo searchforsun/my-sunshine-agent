@@ -26,16 +26,16 @@ class SkillVersionDiffServiceTest {
     void diff_binaryFile_returnsMd5() {
         byte[] v1 = new byte[] { 1, 2, 3 };
         byte[] v2 = new byte[] { 1, 2, 4 };
-        when(skillFileService.readFile("demo-full-pack", 1, "assets/pixel.png"))
+        when(skillFileService.readFile("sandbox-coding-demo", 1, "assets/pixel.png"))
                 .thenReturn(new SkillFileContent(
                         "assets/pixel.png", "image/png",
                         Base64.getEncoder().encodeToString(v1), true));
-        when(skillFileService.readFile("demo-full-pack", 2, "assets/pixel.png"))
+        when(skillFileService.readFile("sandbox-coding-demo", 2, "assets/pixel.png"))
                 .thenReturn(new SkillFileContent(
                         "assets/pixel.png", "image/png",
                         Base64.getEncoder().encodeToString(v2), true));
 
-        SkillVersionDiffResponse resp = diffService.diff("demo-full-pack", 1, 2, "assets/pixel.png");
+        SkillVersionDiffResponse resp = diffService.diff("sandbox-coding-demo", 1, 2, "assets/pixel.png");
 
         assertThat(resp.binary()).isTrue();
         assertThat(resp.fromMd5()).isNotBlank();

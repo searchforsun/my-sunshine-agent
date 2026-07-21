@@ -26,9 +26,26 @@ export function isPipelineStatus(status: string): status is PipelineStatus {
   return (PIPELINE_STATUSES as readonly string[]).includes(status)
 }
 
+/** 版本下拉展示用时间：草稿取 createdAt，其余取 publishedAt（回退 createdAt） */
+export function configVersionSortTime(v: ConfigVersionSummary): string {
+  return v.status === 'draft' ? v.createdAt : (v.publishedAt ?? v.createdAt)
+}
+
 export function configVersionTimeLabel(v: ConfigVersionSummary): string {
-  const iso = v.status === 'draft' ? v.createdAt : (v.publishedAt ?? v.createdAt)
-  return formatSkillVersionTime(iso)
+  return formatSkillVersionTime(configVersionSortTime(v))
+}
+
+/** 版本列表倒序：展示时间新→旧，同秒再按 versionNo / id */
+export function sortConfigVersionsDesc(
+  versions: ConfigVersionSummary[],
+): ConfigVersionSummary[] {
+  return [...versions].sort((a, b) => {
+    const tb = Date.parse(configVersionSortTime(b)) || 0
+    const ta = Date.parse(configVersionSortTime(a)) || 0
+    if (tb !== ta) return tb - ta
+    if (b.versionNo !== a.versionNo) return b.versionNo - a.versionNo
+    return b.id - a.id
+  })
 }
 
 export function resolveConfigVersionStatus(v: ConfigVersionSummary): ConfigVersionUiStatus {
@@ -80,6 +97,13 @@ export function canApplyConfigVersion(v: ConfigVersionSummary): boolean {
 
 export function canRevertConfigVersion(v: ConfigVersionSummary): boolean {
   return v.status === 'pending_eval' || v.status === 'eval_passed' || v.status === 'eval_failed'
+}
+
+/** 参数配置编辑区默认选中：展示时间最新一条 */
+export function findNewestConfigVersion(
+  versions: ConfigVersionSummary[],
+): ConfigVersionSummary | null {
+  return sortConfigVersionsDesc(versions)[0] ?? null
 }
 
 export function findPipelineVersion(versions: ConfigVersionSummary[]): ConfigVersionSummary | null {
@@ -214,7 +238,7 @@ export function isBenchmarkEvalOnly(v: ConfigVersionSummary | null): boolean {
 }
 
 export function appliedConfigVersions(versions: ConfigVersionSummary[]): ConfigVersionSummary[] {
-  return versions.filter((v) => canApplyConfigVersion(v))
+  return sortConfigVersionsDesc(versions.filter((v) => canApplyConfigVersion(v)))
 }
 
 function isEvalJobActiveStatus(status: string): boolean {
