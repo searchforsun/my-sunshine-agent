@@ -91,7 +91,9 @@ public class Bm25SearchService {
                                         "type", "best_fields")),
                                 Map.of("term", Map.of("tenant_id", tid)),
                                 Map.of("term", Map.of("kb_id", kid)),
-                                Map.of("term", Map.of("status", "active"))))));
+                                Map.of("term", Map.of("status", "active"))),
+                        "must_not", List.of(
+                                Map.of("term", Map.of("chunk_level", "parent"))))));
         return body;
     }
 
@@ -110,10 +112,16 @@ public class Bm25SearchService {
             String docName = source.path("doc_name").asText("未知文档");
             String chunkId = source.path("chunk_id").asText(null);
             float score = (float) hit.path("_score").asDouble(0.0);
+            String chunkLevel = textOrNull(source.path("chunk_level").asText(null));
+            String parentChunkId = textOrNull(source.path("parent_chunk_id").asText(null));
             results.add(new RetrievalCandidate(
-                    chunkId, docName, content, score, RetrievalCandidate.SOURCE_BM25));
+                    chunkId, docName, content, score, RetrievalCandidate.SOURCE_BM25, chunkLevel, parentChunkId));
         }
         log.info("[RAG-BM25] 检索完成: 返回={}", results.size());
         return results;
+    }
+
+    private static String textOrNull(String value) {
+        return value != null && !value.isBlank() ? value : null;
     }
 }

@@ -49,12 +49,18 @@ public class VectorSearchService {
                     }
                     return hits.stream()
                             .map(hit -> new RetrievalCandidate(
-                                    null,
+                                    hit.chunkId(),
                                     hit.docName(),
                                     hit.content(),
                                     hit.score(),
-                                    RetrievalCandidate.SOURCE_VECTOR))
+                                    RetrievalCandidate.SOURCE_VECTOR,
+                                    emptyToNull(hit.chunkLevel()),
+                                    emptyToNull(hit.parentChunkId())))
                             .toList();
                 });
+    }
+
+    private static String emptyToNull(String value) {
+        return value != null && !value.isBlank() ? value : null;
     }
 }

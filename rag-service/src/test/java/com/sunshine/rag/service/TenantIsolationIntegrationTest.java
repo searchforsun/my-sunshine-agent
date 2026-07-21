@@ -47,6 +47,8 @@ class TenantIsolationIntegrationTest {
     private Bm25SearchService bm25SearchService;
     @Mock
     private EffectiveConfigResolver effectiveConfigResolver;
+    @Mock
+    private ChunkContentLookup chunkContentLookup;
 
     private RetrievalService retrievalService;
 
@@ -66,7 +68,8 @@ class TenantIsolationIntegrationTest {
                 .thenReturn(ConfigBundlePayload.toResolvedKbConfig(ConfigBundleTestFixtures.fullPayload()));
         retrievalService = new RetrievalService(
                 vectorSearchService, bm25SearchService, hybrid, rerank, effectiveConfigResolver,
-                searchProps, rerankProps, new RagSearchMetrics(new SimpleMeterRegistry()));
+                searchProps, rerankProps, new RagSearchMetrics(new SimpleMeterRegistry()),
+                chunkContentLookup);
         stubTenantAwareSearch();
     }
 

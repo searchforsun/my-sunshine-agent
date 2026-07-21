@@ -33,6 +33,7 @@ public class RetrievalService {
     private final RagSearchProperties searchProperties;
     private final RagRerankProperties rerankProperties;
     private final RagSearchMetrics searchMetrics;
+    private final ChunkContentLookup chunkContentLookup;
 
     public Mono<List<DocFragment>> search(String query, int topK, String strategyOverride) {
         return search(query, topK, strategyOverride, "default");
@@ -102,7 +103,7 @@ public class RetrievalService {
                     FilterOutcome filtered = splitByMinScore(raw, topK, config);
                     stages.add(RetrievalDebugStage.retrieval(
                             "filter", filtered.kept(), filtered.dropped(), 0));
-                    return new RetrievalDebugResult(stages, toFragments(filtered.kept()));
+                    return new RetrievalDebugResult(stages, toFragments(filtered.kept(), tenantId, kbId));
                 });
     }
 
@@ -155,13 +156,13 @@ public class RetrievalService {
                                     FilterOutcome filtered = splitByMinScore(ranked, topK, config);
                                     stages.add(RetrievalDebugStage.retrieval(
                                             "filter", filtered.kept(), filtered.dropped(), 0));
-                                    return new RetrievalDebugResult(stages, toFragments(filtered.kept()));
+                                    return new RetrievalDebugResult(stages, toFragments(filtered.kept(), tenantId, kbId));
                                 });
                     }
                     FilterOutcome filtered = splitByMinScore(working, topK, config);
                     stages.add(RetrievalDebugStage.retrieval(
                             "filter", filtered.kept(), filtered.dropped(), 0));
-                    return Mono.just(new RetrievalDebugResult(stages, toFragments(filtered.kept())));
+                    return Mono.just(new RetrievalDebugResult(stages, toFragments(filtered.kept(), tenantId, kbId)));
                 });
     }
 
@@ -203,7 +204,7 @@ public class RetrievalService {
     private Mono<List<DocFragment>> vectorSearch(
             String query, int topK, String tenantId, String kbId, EffectiveRagConfig config) {
         return vectorSearchService.search(query, topK, true, tenantId, kbId, config.minScore())
-                .map(this::toFragments)
+                .map(candidates -> toFragments(candidates, tenantId, kbId))
                 .doOnSuccess(r -> log.info("[RAG] 有效命中: {} 条", r.size()));
     }
 
@@ -243,7 +244,7 @@ public class RetrievalService {
                     return rerankService.rerank(query, input, topK)
                             .map(ranked -> applyMinScore(ranked, topK, config));
                 })
-                .map(this::toFragments)
+                .map(candidates -> toFragments(candidates, tenantId, kbId))
                 .doOnSuccess(r -> log.info("[RAG] hybrid 有效命中: {} 条", r.size()));
     }
 
@@ -261,10 +262,22 @@ public class RetrievalService {
         return vectorMin;
     }
 
-    private List<DocFragment> toFragments(List<RetrievalCandidate> candidates) {
+    private List<DocFragment> toFragments(List<RetrievalCandidate> candidates, String tenantId, String kbId) {
         return candidates.stream()
+                .map(c -> expandParentContext(c, tenantId, kbId))
                 .map(c -> new DocFragment(c.docName(), c.content(), c.score()))
                 .toList();
+    }
+
+    private RetrievalCandidate expandParentContext(RetrievalCandidate candidate, String tenantId, String kbId) {
+        if (!candidate.isChildWithParent()) {
+            return candidate;
+        }
+        String parentContent = chunkContentLookup.fetchContent(tenantId, kbId, candidate.parentChunkId());
+        if (parentContent == null || parentContent.isBlank()) {
+            return candidate;
+        }
+        return candidate.withContent(parentContent);
     }
 
     public record DocFragment(String docName, String content, float score) {
