@@ -2,6 +2,7 @@ package com.sunshine.sandbox.tool;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.exception.FixedErrorCode;
+import com.sunshine.common.sandbox.EditDiffBuilder;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
@@ -26,6 +27,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -217,9 +219,16 @@ public class SandboxToolExecutor {
                 throw detailError(SandboxErrorCode.EDIT_NOT_UNIQUE,
                         "old_string not unique in " + path + " (matches=" + count + ")");
             }
+            var built = EditDiffBuilder.tryBuild(content, oldString, newString, 3)
+                    .map(d -> d.withPath(path))
+                    .orElse(null);
             String updated = content.replace(oldString, newString);
             Files.writeString(host, updated, StandardCharsets.UTF_8);
-            return new ToolInvokeResponse(true, "", null, Map.of());
+            Map<String, Object> meta = new LinkedHashMap<>();
+            if (built != null) {
+                meta.put("editDiff", built);
+            }
+            return new ToolInvokeResponse(true, "", null, meta);
         } catch (IOException e) {
             throw new IllegalStateException("edit failed: " + path, e);
         }

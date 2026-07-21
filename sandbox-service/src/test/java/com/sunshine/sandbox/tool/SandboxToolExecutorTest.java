@@ -1,6 +1,8 @@
 package com.sunshine.sandbox.tool;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.sandbox.SandboxEditDiff;
+import com.sunshine.common.sandbox.SandboxEditDiffLine;
 import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.sandbox.config.SandboxProperties;
@@ -64,6 +66,20 @@ class SandboxToolExecutorTest {
                 "new_string", "CCC"));
         assertThat(ok.ok()).isTrue();
         assertThat(hostWorkspace.resolve("note.txt")).hasContent("aaa\nCCC\naaa\n");
+        assertThat(ok.meta()).isNotNull().containsKey("editDiff");
+        SandboxEditDiff editDiff = (SandboxEditDiff) ok.meta().get("editDiff");
+        assertThat(editDiff.path()).isEqualTo("/workspace/note.txt");
+        assertThat(editDiff.contextRadius()).isEqualTo(3);
+        SandboxEditDiffLine del = editDiff.lines().stream()
+                .filter(l -> "del".equals(l.kind())).findFirst().orElseThrow();
+        SandboxEditDiffLine add = editDiff.lines().stream()
+                .filter(l -> "add".equals(l.kind())).findFirst().orElseThrow();
+        assertThat(del.text()).isEqualTo("bbb");
+        assertThat(del.oldLine()).isEqualTo(2);
+        assertThat(del.newLine()).isNull();
+        assertThat(add.text()).isEqualTo("CCC");
+        assertThat(add.newLine()).isEqualTo(2);
+        assertThat(add.oldLine()).isNull();
 
         assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.EDIT, Map.of(
                 "path", "/workspace/note.txt",
