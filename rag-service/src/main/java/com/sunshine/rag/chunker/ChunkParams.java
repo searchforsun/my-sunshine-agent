@@ -5,6 +5,7 @@ import java.util.Map;
 
 /** 不可变参数袋：按 strategy 校验并填默认值 */
 public record ChunkParams(
+        ChunkStrategy strategy,
         int maxSize,
         int overlap,
         double similarityThreshold,
@@ -36,49 +37,44 @@ public record ChunkParams(
         };
     }
 
-    /** 仅序列化该策略相关键（由字段非零模式推断策略域） */
+    /** 仅序列化该策略相关键 */
     public Map<String, Object> asMap() {
-        if (parentSize > 0 || childSize > 0) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("parentSize", parentSize);
-            out.put("childSize", childSize);
-            out.put("childOverlap", childOverlap);
-            return out;
+        Map<String, Object> out = new LinkedHashMap<>();
+        switch (strategy) {
+            case MARKDOWN -> out.put("maxSize", maxSize);
+            case FIXED, RECURSIVE -> {
+                out.put("maxSize", maxSize);
+                out.put("overlap", overlap);
+            }
+            case SEMANTIC -> {
+                out.put("maxSize", maxSize);
+                out.put("similarityThreshold", similarityThreshold);
+                out.put("minChunkSize", minChunkSize);
+            }
+            case PARENT_CHILD -> {
+                out.put("parentSize", parentSize);
+                out.put("childSize", childSize);
+                out.put("childOverlap", childOverlap);
+            }
         }
-        if (similarityThreshold > 0 || minChunkSize > 0) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("maxSize", maxSize);
-            out.put("similarityThreshold", similarityThreshold);
-            out.put("minChunkSize", minChunkSize);
-            return out;
-        }
-        if (overlap > 0) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("maxSize", maxSize);
-            out.put("overlap", overlap);
-            return out;
-        }
-        if (maxSize > 0) {
-            return Map.of("maxSize", maxSize);
-        }
-        return Map.of();
+        return out;
     }
 
     private static ChunkParams markdown(Map<String, Object> raw) {
         int maxSize = requirePositiveInt(raw, "maxSize", DEFAULT_MARKDOWN_MAX_SIZE);
-        return new ChunkParams(maxSize, 0, 0, 0, 0, 0, 0);
+        return new ChunkParams(ChunkStrategy.MARKDOWN, maxSize, 0, 0, 0, 0, 0, 0);
     }
 
     private static ChunkParams fixed(Map<String, Object> raw) {
         int maxSize = requirePositiveInt(raw, "maxSize", DEFAULT_FIXED_MAX_SIZE);
         int overlap = requireNonNegativeInt(raw, "overlap", DEFAULT_FIXED_OVERLAP);
-        return new ChunkParams(maxSize, overlap, 0, 0, 0, 0, 0);
+        return new ChunkParams(ChunkStrategy.FIXED, maxSize, overlap, 0, 0, 0, 0, 0);
     }
 
     private static ChunkParams recursive(Map<String, Object> raw) {
         int maxSize = requirePositiveInt(raw, "maxSize", DEFAULT_RECURSIVE_MAX_SIZE);
         int overlap = requireNonNegativeInt(raw, "overlap", DEFAULT_RECURSIVE_OVERLAP);
-        return new ChunkParams(maxSize, overlap, 0, 0, 0, 0, 0);
+        return new ChunkParams(ChunkStrategy.RECURSIVE, maxSize, overlap, 0, 0, 0, 0, 0);
     }
 
     private static ChunkParams semantic(Map<String, Object> raw) {
@@ -86,14 +82,14 @@ public record ChunkParams(
         double similarityThreshold = requirePositiveDouble(raw, "similarityThreshold",
                 DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD);
         int minChunkSize = requirePositiveInt(raw, "minChunkSize", DEFAULT_SEMANTIC_MIN_CHUNK_SIZE);
-        return new ChunkParams(maxSize, 0, similarityThreshold, minChunkSize, 0, 0, 0);
+        return new ChunkParams(ChunkStrategy.SEMANTIC, maxSize, 0, similarityThreshold, minChunkSize, 0, 0, 0);
     }
 
     private static ChunkParams parentChild(Map<String, Object> raw) {
         int parentSize = requirePositiveInt(raw, "parentSize", DEFAULT_PARENT_SIZE);
         int childSize = requirePositiveInt(raw, "childSize", DEFAULT_CHILD_SIZE);
         int childOverlap = requireNonNegativeInt(raw, "childOverlap", DEFAULT_CHILD_OVERLAP);
-        return new ChunkParams(0, 0, 0, 0, parentSize, childSize, childOverlap);
+        return new ChunkParams(ChunkStrategy.PARENT_CHILD, 0, 0, 0, 0, parentSize, childSize, childOverlap);
     }
 
     private static int requirePositiveInt(Map<String, Object> raw, String key, int defaultValue) {
