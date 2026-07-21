@@ -22,7 +22,8 @@ public class RecursiveChunker implements Chunker {
         if (markdown == null || markdown.isBlank()) {
             return List.of();
         }
-        List<String> texts = splitToFit(markdown, params.maxSize(), params.overlap(), 0);
+        List<int[]> ranges = splitToRanges(markdown, params.maxSize(), 0);
+        List<String> texts = applyOverlapCutback(markdown, ranges, params.overlap());
         List<ChunkDraft> chunks = new ArrayList<>(texts.size());
         for (int i = 0; i < texts.size(); i++) {
             chunks.add(new ChunkDraft(i, texts.get(i), Map.of()));
@@ -30,89 +31,121 @@ public class RecursiveChunker implements Chunker {
         return chunks;
     }
 
-    private List<String> splitToFit(String text, int maxSize, int overlap, int sepIndex) {
+    private List<int[]> splitToRanges(String text, int maxSize, int sepIndex) {
         if (sepIndex >= SEPARATORS.length) {
-            return text.length() <= maxSize ? List.of(text) : characterSplit(text, maxSize, overlap);
+            return text.length() <= maxSize ? List.of(range(0, text.length())) : characterSplitRanges(text, maxSize);
         }
         String separator = SEPARATORS[sepIndex];
         if (separator.isEmpty()) {
-            return text.length() <= maxSize ? List.of(text) : characterSplit(text, maxSize, overlap);
+            return text.length() <= maxSize ? List.of(range(0, text.length())) : characterSplitRanges(text, maxSize);
         }
-        List<String> parts = splitBySeparator(text, separator);
+        List<int[]> parts = splitBySeparatorRanges(text, separator);
         if (parts.size() == 1) {
             if (text.length() <= maxSize) {
-                return List.of(text);
+                return List.of(range(0, text.length()));
             }
-            return splitToFit(text, maxSize, overlap, sepIndex + 1);
+            return splitToRanges(text, maxSize, sepIndex + 1);
         }
-        List<String> result = new ArrayList<>();
-        for (String part : parts) {
-            if (part.isEmpty()) {
+        List<int[]> result = new ArrayList<>();
+        for (int[] part : parts) {
+            if (part[1] <= part[0]) {
                 continue;
             }
-            if (part.length() <= maxSize) {
+            int partLen = part[1] - part[0];
+            if (partLen <= maxSize) {
                 result.add(part);
             } else {
-                result.addAll(splitToFit(part, maxSize, overlap, sepIndex + 1));
+                String slice = text.substring(part[0], part[1]);
+                for (int[] sub : splitToRanges(slice, maxSize, sepIndex + 1)) {
+                    result.add(range(part[0] + sub[0], part[0] + sub[1]));
+                }
             }
         }
         return result;
     }
 
-    static List<String> splitBySeparator(String text, String separator) {
-        if ("\n\n".equals(separator)) {
-            return splitByLiteral(text, "\n\n");
+    /**
+     * 切点回退：相邻块共享 overlap 字符——下一块起点 = 上一块切点(end) - overlap；
+     * 若回退后未越过上一块起点则退化为从切点继续（与 FixedLengthChunker 一致，避免死循环）。
+     */
+    static List<String> applyOverlapCutback(String text, List<int[]> ranges, int overlap) {
+        if (ranges.isEmpty()) {
+            return List.of();
         }
-        if ("\n".equals(separator)) {
-            return splitByLiteral(text, "\n");
-        }
-        if ("。".equals(separator)) {
-            List<String> parts = new ArrayList<>();
-            int start = 0;
-            for (int i = 0; i < text.length(); i++) {
-                if (text.charAt(i) == '。') {
-                    parts.add(text.substring(start, i + 1));
-                    start = i + 1;
+        List<String> chunks = new ArrayList<>(ranges.size());
+        int prevStart = ranges.get(0)[0];
+        int prevEnd = ranges.get(0)[1];
+        chunks.add(text.substring(prevStart, prevEnd));
+        for (int i = 1; i < ranges.size(); i++) {
+            int end = ranges.get(i)[1];
+            int start = ranges.get(i)[0];
+            if (overlap > 0) {
+                int nextStart = prevEnd - overlap;
+                if (nextStart <= prevStart) {
+                    nextStart = prevEnd;
                 }
+                start = Math.max(0, nextStart);
             }
-            if (start < text.length()) {
-                parts.add(text.substring(start));
-            }
-            return parts.isEmpty() ? List.of(text) : parts;
+            chunks.add(text.substring(start, end));
+            prevStart = start;
+            prevEnd = end;
         }
-        return List.of(text);
+        return chunks;
     }
 
-    private static List<String> splitByLiteral(String text, String separator) {
-        List<String> parts = new ArrayList<>();
-        int start = 0;
-        int index = text.indexOf(separator);
-        while (index >= 0) {
-            parts.add(text.substring(start, index));
-            start = index + separator.length();
-            index = text.indexOf(separator, start);
-        }
-        parts.add(text.substring(start));
-        return parts;
-    }
-
-    /** 字符级切分：下一块起点 = 切点 - overlap（>= 0） */
-    static List<String> characterSplit(String text, int maxSize, int overlap) {
-        List<String> chunks = new ArrayList<>();
+    static List<int[]> characterSplitRanges(String text, int maxSize) {
+        List<int[]> ranges = new ArrayList<>();
         int start = 0;
         int len = text.length();
         while (start < len) {
             int cutEnd = Math.min(start + maxSize, len);
-            chunks.add(text.substring(start, cutEnd));
+            ranges.add(range(start, cutEnd));
             if (cutEnd >= len) {
                 break;
             }
-            int nextStart = cutEnd - overlap;
-            if (nextStart <= start) {
-                nextStart = cutEnd;
-            }
-            start = Math.max(0, nextStart);
+            start = cutEnd;
         }
-        return chunks;
+        return ranges;
+    }
+
+    static List<int[]> splitBySeparatorRanges(String text, String separator) {
+        if ("\n\n".equals(separator)) {
+            return splitByLiteralRanges(text, "\n\n");
+        }
+        if ("\n".equals(separator)) {
+            return splitByLiteralRanges(text, "\n");
+        }
+        if ("。".equals(separator)) {
+            List<int[]> parts = new ArrayList<>();
+            int start = 0;
+            for (int i = 0; i < text.length(); i++) {
+                if (text.charAt(i) == '。') {
+                    parts.add(range(start, i + 1));
+                    start = i + 1;
+                }
+            }
+            if (start < text.length()) {
+                parts.add(range(start, text.length()));
+            }
+            return parts.isEmpty() ? List.of(range(0, text.length())) : parts;
+        }
+        return List.of(range(0, text.length()));
+    }
+
+    private static List<int[]> splitByLiteralRanges(String text, String separator) {
+        List<int[]> parts = new ArrayList<>();
+        int start = 0;
+        int index = text.indexOf(separator);
+        while (index >= 0) {
+            parts.add(range(start, index));
+            start = index + separator.length();
+            index = text.indexOf(separator, start);
+        }
+        parts.add(range(start, text.length()));
+        return parts;
+    }
+
+    private static int[] range(int start, int end) {
+        return new int[]{start, end};
     }
 }
