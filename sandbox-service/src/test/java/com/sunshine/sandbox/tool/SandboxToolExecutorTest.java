@@ -65,6 +65,7 @@ class SandboxToolExecutorTest {
                 "old_string", "bbb",
                 "new_string", "CCC"));
         assertThat(ok.ok()).isTrue();
+        assertThat(ok.output()).isEqualTo("edited /workspace/note.txt");
         assertThat(hostWorkspace.resolve("note.txt")).hasContent("aaa\nCCC\naaa\n");
         assertThat(ok.meta()).isNotNull().containsKey("editDiff");
         SandboxEditDiff editDiff = (SandboxEditDiff) ok.meta().get("editDiff");
