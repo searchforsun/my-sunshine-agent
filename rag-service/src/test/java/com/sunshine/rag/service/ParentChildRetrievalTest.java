@@ -91,6 +91,38 @@ class ParentChildRetrievalTest {
     }
 
     @Test
+    void multipleChildrenSameParent_dedupesToOneFragmentWithHighestScore() {
+        RetrievalCandidate childLow = new RetrievalCandidate(
+                "policy#v20260701110011#2",
+                "报销制度",
+                "子块 A",
+                0.75f,
+                RetrievalCandidate.SOURCE_VECTOR,
+                RetrievalCandidate.LEVEL_CHILD,
+                PARENT_ID);
+        RetrievalCandidate childHigh = new RetrievalCandidate(
+                "policy#v20260701110011#3",
+                "报销制度",
+                "子块 B",
+                0.92f,
+                RetrievalCandidate.SOURCE_VECTOR,
+                RetrievalCandidate.LEVEL_CHILD,
+                PARENT_ID);
+        when(vectorSearchService.search(anyString(), anyInt(), anyBoolean(), anyString(), anyString(), anyFloat()))
+                .thenReturn(Mono.just(List.of(childLow, childHigh)));
+        when(chunkContentLookup.fetchContent("default", "default", PARENT_ID)).thenReturn(PARENT_TEXT);
+
+        List<RetrievalService.DocFragment> hits = retrievalService
+                .search("餐费报销", 5, "vector", "default", "default",
+                        ConfigBundlePayload.toResolvedKbConfig(ConfigBundleTestFixtures.fullPayload()).retrieval())
+                .block();
+
+        assertThat(hits).hasSize(1);
+        assertThat(hits.getFirst().content()).isEqualTo(PARENT_TEXT);
+        assertThat(hits.getFirst().score()).isEqualTo(0.92f);
+    }
+
+    @Test
     void legacyHit_withoutParent_keepsChildContent() {
         RetrievalCandidate legacy = new RetrievalCandidate(
                 "legacy#v20260701110011#0", "旧文档", "plain chunk", 0.7f, RetrievalCandidate.SOURCE_VECTOR);

@@ -15,7 +15,11 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * RAG 检索编排：vector / hybrid / hybrid+rerank。
@@ -263,10 +267,30 @@ public class RetrievalService {
     }
 
     private List<DocFragment> toFragments(List<RetrievalCandidate> candidates, String tenantId, String kbId) {
-        return candidates.stream()
+        List<RetrievalCandidate> expanded = candidates.stream()
                 .map(c -> expandParentContext(c, tenantId, kbId))
-                .map(c -> new DocFragment(c.docName(), c.content(), c.score()))
                 .toList();
+        Map<String, RetrievalCandidate> bestChildByParent = new HashMap<>();
+        for (RetrievalCandidate c : expanded) {
+            if (c.isChildWithParent()) {
+                bestChildByParent.merge(c.parentChunkId(), c, (a, b) -> a.score() >= b.score() ? a : b);
+            }
+        }
+        Set<String> emittedParents = new HashSet<>();
+        List<DocFragment> fragments = new ArrayList<>();
+        for (RetrievalCandidate c : expanded) {
+            if (c.isChildWithParent()) {
+                String parentId = c.parentChunkId();
+                if (!emittedParents.add(parentId)) {
+                    continue;
+                }
+                RetrievalCandidate best = bestChildByParent.get(parentId);
+                fragments.add(new DocFragment(best.docName(), best.content(), best.score()));
+            } else {
+                fragments.add(new DocFragment(c.docName(), c.content(), c.score()));
+            }
+        }
+        return fragments;
     }
 
     private RetrievalCandidate expandParentContext(RetrievalCandidate candidate, String tenantId, String kbId) {

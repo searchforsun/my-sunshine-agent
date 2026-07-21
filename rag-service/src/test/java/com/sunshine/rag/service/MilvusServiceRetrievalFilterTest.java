@@ -9,7 +9,9 @@ class MilvusServiceRetrievalFilterTest {
     @Test
     void retrievableChunkLevelExpr_excludesParents() {
         assertThat(MilvusService.retrievableChunkLevelExpr())
-                .contains("child")
+                .isEqualTo("chunk_level == \"\" || chunk_level == \"child\"")
+                .contains("chunk_level == \"\"")
+                .contains("chunk_level == \"child\"")
                 .doesNotContain("parent");
     }
 }
