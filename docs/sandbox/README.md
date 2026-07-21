@@ -17,6 +17,7 @@
 | [sub-agent-sandbox-default](../superpowers/specs/2026-07-17-sub-agent-sandbox-default-design.md) | SUB / Workflow agent 默认六工具 + 对话级复用 |
 | [sandbox-container-lifecycle](../superpowers/specs/2026-07-17-sandbox-container-lifecycle-design.md) | idle 停机 / 再进开机 / 7 天销毁 |
 | [sandbox-tool-cancel](../superpowers/specs/2026-07-18-sandbox-tool-cancel-design.md) | **✅** exec/grep/glob 单工具取消（杀进程）· 主行「已取消」· 同族预算 3 · Live `verify_sandbox_tool_cancel_live` |
+| [sandbox-diff-line-numbers](../superpowers/specs/2026-07-21-sandbox-diff-line-numbers-design.md) | **✅** 工作区代码预览绝对行号 · 时间线 write/edit Git 双栏 diff（`metadata.editDiff` ±3 上下文） |
 
 ## 运维与示例
 
@@ -41,11 +42,12 @@
 | exec | `SandboxExecGuard` 硬拒破坏性命令；只读白名单免 HITL |
 | HITL 默认 | write/edit 确认；危险 exec 确认；读类免确认 |
 | 工作区跳过 | 会话 `writeHitlMode`：`never` / `always` / `smart`；**用户默认**见账号设置（auth） |
-| 工作区抽屉 | 多 tab 预览；与 Plan 节点抽屉**可同时开**（`Chat \| 节点 \| 沙箱`，保留执行计划/DAG）；树可独立调宽；激活 tab 自动滚入可视区；代码不换行+横向滚动；**.md 美化/原始切换**；树节点拖入 Composer 为路径芯片 |
+| 工作区抽屉 | 多 tab 预览；与 Plan 节点抽屉**可同时开**（`Chat \| 节点 \| 沙箱`，保留执行计划/DAG）；树可独立调宽；激活 tab 自动滚入可视区；**代码预览左侧绝对行号**（1…N，空文件 / `.md` 美化模式无 gutter）；代码不换行+横向滚动；**.md 美化/原始切换**；树节点拖入 Composer 为路径芯片 |
 | 时间线主行 | 标签「调用工具 xxx」+ 摘要目标（无前导 ·）；glob 为 `{pattern} · /skills`；grep 仅 pattern；read 为 `{headerPath}` |
 | **工具取消** | `exec`/`grep`/`glob` hover 圆形停止钮 → 杀该次调用；主行 **已取消**（`lifecycle=paused`）；展开可见 command/pattern；同族再调用 ≤3 · [详设](../superpowers/specs/2026-07-18-sandbox-tool-cancel-design.md) |
 | HITL 确认框 | 不展示 content/old_string/new_string/command 正文（进展开） |
-| edit 展开 | 行级 unified diff（同屏 `-`/`+`/` `） |
+| edit 展开 | Git 双栏行号（旧 \| 新 \| `+/-`）+ ±3 上下文 + `···` 折叠；**仅** `metadata.editDiff` 结构化渲染（复制仍用 unified 文本）；**无**旧消息 `+/-/ ` 回退解析 |
+| write 展开 | 全文按 `add` 渲染（仅新侧行号 1…N、绿底）；与抽屉行号语义一致 |
 
 ## 已知缺口（可选后续）
 

@@ -649,7 +649,7 @@ EOF
 - Modify: `docs/sandbox/README.md`
 - Modify: spec 状态行可改为「实施中/已落地」（完成手工验后）
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 - 工作区抽屉：代码预览带绝对行号  
 - edit 展开：Git 双行号 + ±3 上下文（`metadata.editDiff`）；**无**旧消息兼容
@@ -661,7 +661,7 @@ EOF
 3. HITL awaiting 展开：有 `editDiff` 或空态（无片段假 diff）  
 4. 历史无 `editDiff` 的 edit：不出现双栏 gutter  
 
-- [ ] **Step 3: Commit docs**
+- [x] **Step 3: Commit docs**
 
 ```bash
 git commit -am "$(cat <<'EOF'
