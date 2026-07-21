@@ -3,10 +3,12 @@ package com.sunshine.tools.sdk.web;
 import com.sunshine.tools.sdk.dto.SdkToolCatalogResponse;
 import com.sunshine.tools.sdk.dto.SdkToolInvokeResponse;
 import com.sunshine.tools.sdk.registry.SunshineToolRegistry;
+import com.sunshine.tools.sdk.context.ToolInvocationContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,8 +29,17 @@ public class SunshineToolController {
     }
 
     @PostMapping("/invoke/{toolId}")
-    public SdkToolInvokeResponse invoke(@PathVariable String toolId, @RequestBody Map<String, String> params) {
-        return registry.invoke(toolId, params);
+    public SdkToolInvokeResponse invoke(
+            @PathVariable String toolId,
+            @RequestBody Map<String, String> params,
+            @RequestHeader(value = "x-user-id", required = false) String userId,
+            @RequestHeader(value = "x-tenant-id", required = false) String tenantId) {
+        ToolInvocationContext.set(tenantId, userId);
+        try {
+            return registry.invoke(toolId, params);
+        } finally {
+            ToolInvocationContext.clear();
+        }
     }
 
     @GetMapping("/health")

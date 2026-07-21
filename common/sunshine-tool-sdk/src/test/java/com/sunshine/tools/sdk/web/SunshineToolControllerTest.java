@@ -3,6 +3,7 @@ package com.sunshine.tools.sdk.web;
 import com.sunshine.tools.sdk.annotation.SunshineTool;
 import com.sunshine.tools.sdk.annotation.ToolParam;
 import com.sunshine.tools.sdk.autoconfigure.SunshineToolAutoConfiguration;
+import com.sunshine.tools.sdk.context.ToolInvocationContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -44,6 +46,14 @@ class SunshineToolControllerTest {
         public String list(@ToolParam(value = "status", description = "pending|approved|all") String status) {
             return "ok-" + status;
         }
+
+        @SunshineTool(
+                id = "whoami",
+                displayName = "当前调用身份",
+                description = "读取 ToolInvocationContext")
+        public String whoami() {
+            return ToolInvocationContext.tenantIdOrDefault() + ":" + ToolInvocationContext.requireUserId();
+        }
     }
 
     @Test
@@ -63,5 +73,19 @@ class SunshineToolControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true))
                 .andExpect(jsonPath("$.result").value("ok-pending"));
+    }
+
+    @Test
+    void invokeInjectsIdentityHeadersAndClearsAfter() throws Exception {
+        mockMvc.perform(post("/sunshine/tools/invoke/whoami")
+                        .header("x-user-id", "u42")
+                        .header("x-tenant-id", "acme")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.result").value("acme:u42"));
+        assertThatThrownBy(ToolInvocationContext::requireUserId)
+                .isInstanceOf(IllegalStateException.class);
     }
 }
