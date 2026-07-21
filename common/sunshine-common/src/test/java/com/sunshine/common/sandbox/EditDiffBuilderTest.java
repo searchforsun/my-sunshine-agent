@@ -28,10 +28,10 @@ class EditDiffBuilderTest {
 
     @Test
     void nearFileStart_noLeadingFold_partialContext() {
-        String before = "A\nB\nC\n";
-        SandboxEditDiff diff = EditDiffBuilder.build(before, "A\nB", "X\nY", 3);
+        String before = "A\nB\nC\nD\nE\n";
+        SandboxEditDiff diff = EditDiffBuilder.build(before, "B", "X", 1);
         assertThat(diff.lines().get(0).kind()).isNotEqualTo("fold");
-        assertThat(diff.lines().stream().anyMatch(l -> "fold".equals(l.kind()))).isTrue(); // trailing after C area
+        assertThat(diff.lines().stream().anyMatch(l -> "fold".equals(l.kind()))).isTrue();
     }
 
     @Test
@@ -42,5 +42,15 @@ class EditDiffBuilderTest {
     @Test
     void notUnique_returnsEmptyOptional() {
         assertThat(EditDiffBuilder.tryBuild("x\nx\n", "x", "y", 3)).isEmpty();
+    }
+
+    @Test
+    void overlappingNeedle_nonOverlappingCountOne_succeeds() {
+        assertThat(EditDiffBuilder.tryBuild("aaa", "aa", "x", 3)).isPresent();
+    }
+
+    @Test
+    void overlappingNeedle_nonOverlappingCountTwo_returnsEmpty() {
+        assertThat(EditDiffBuilder.tryBuild("aaaa", "aa", "x", 3)).isEmpty();
     }
 }

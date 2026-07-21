@@ -71,7 +71,7 @@ public final class EditDiffBuilder {
             oldLine++;
             newLine++;
         }
-        if (beforeLines.length > ctxEnd) {
+        if (contentLines > ctxEnd) {
             out.add(foldLine());
         }
         return Optional.of(new SandboxEditDiff(null, contextRadius, List.copyOf(out)));
@@ -99,10 +99,14 @@ public final class EditDiffBuilder {
             return 0;
         }
         int count = 0;
-        int idx = 0;
-        while ((idx = text.indexOf(needle, idx)) != -1) {
+        int from = 0;
+        while (true) {
+            int idx = text.indexOf(needle, from);
+            if (idx < 0) {
+                break;
+            }
             count++;
-            idx++;
+            from = idx + needle.length();
         }
         return count;
     }
