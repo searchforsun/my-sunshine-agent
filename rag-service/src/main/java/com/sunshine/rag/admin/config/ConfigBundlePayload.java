@@ -14,26 +14,22 @@ public final class ConfigBundlePayload {
         requirePayload(payload);
         EffectiveRagConfig retrieval = requireRetrieval(payload);
         Map<String, Object> search = requireMap(payload, "search");
-        Map<String, Object> chunk = requireMap(payload, "chunk");
         return new ResolvedKbConfig(
                 retrieval,
                 parseRewrite(payload),
-                requireInt(search, "defaultTopK"),
-                requireInt(chunk, "maxSize"));
+                requireInt(search, "defaultTopK"));
     }
 
     public static EffectiveRagConfig requireRetrieval(Map<String, Object> payload) {
         requirePayload(payload);
         Map<String, Object> search = requireMap(payload, "search");
         Map<String, Object> rerank = requireMap(payload, "rerank");
-        Map<String, Object> chunk = requireMap(payload, "chunk");
         return new EffectiveRagConfig(
                 requireFloat(search, "minScore"),
                 requireString(search, "strategy"),
                 requireInt(search, "rrfK"),
                 requireInt(search, "hybridPoolSize"),
-                requireFloat(rerank, "minScore"),
-                requireInt(chunk, "maxSize"));
+                requireFloat(rerank, "minScore"));
     }
 
     @SuppressWarnings("unchecked")

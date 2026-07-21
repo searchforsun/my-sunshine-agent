@@ -57,6 +57,9 @@ public final class EvalSuggestValidator {
         if ("rerank.minRelevance".equals(path)) {
             return "bundle 内 minRelevance 尚未接入检索运行时，请改 search.minScore 或 rerank.minScore";
         }
+        if ("chunk.maxSize".equals(path)) {
+            return "KB 级分段参数已移除，请在文档发布时选择分块策略";
+        }
         if (!THRESHOLD_PATHS.contains(path)) {
             return null;
         }

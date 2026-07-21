@@ -50,17 +50,7 @@ class RagConfigSchemaServiceTest {
                 .orElseThrow();
         assertThat(minScore.currentValue()).isEqualTo(0.48f);
         assertThat(minScore.scope()).isEqualTo("rag-search");
-        assertThat(response.effective().chunkMaxSize()).isEqualTo(1200);
-    }
-
-    @Test
-    void chunkScopeUsesPublishedPayload() {
-        ConfigScopeGroup chunkScope = schemaService.getSchema("default", null).scopes().stream()
-                .filter(group -> "rag-chunk".equals(group.scope()))
-                .findFirst()
-                .orElseThrow();
-        assertThat(chunkScope.fields()).extracting(ConfigFieldSchema::fieldId).containsExactly("maxSize");
-        assertThat(chunkScope.fields().getFirst().currentValue()).isEqualTo(1200);
+        assertThat(response.effective().minScore()).isEqualTo(0.48f);
     }
 }
 
@@ -68,7 +58,7 @@ class ConfigDraftMergerTest {
 
     @org.junit.jupiter.api.Test
     void mergeAppliesSearchScope() {
-        EffectiveRagConfig base = new EffectiveRagConfig(0.48f, "hybrid+rerank", 60, 20, 0.25f, 1200);
+        EffectiveRagConfig base = new EffectiveRagConfig(0.48f, "hybrid+rerank", 60, 20, 0.25f);
         EffectiveRagConfig merged = ConfigDraftMerger.merge(
                 base, ConfigScope.RAG_SEARCH, java.util.Map.of("minScore", 0.55));
         org.assertj.core.api.Assertions.assertThat(merged.minScore()).isEqualTo(0.55f);

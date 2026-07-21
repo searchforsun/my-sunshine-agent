@@ -91,7 +91,7 @@ rag:
         - POSITIVE_RECALL_MISS / RECALL_AT_*_LOW：命中错误制度/交叉文档 → 优先 textSuggestions 改 rewrite.rag/hyde，绑定目标制度名
         - 禁止建议 rerank.minRelevance（bundle 未接入运行时，见 configRuntimeNotes）
         ## 输出约束
-        suggestions.path 仅限：search.minScore / search.hybridPoolSize / search.rrfK / rerank.minScore / chunk.maxSize
+        suggestions.path 仅限：search.minScore / search.hybridPoolSize / search.rrfK / rerank.minScore
         textSuggestions.kind 取 prompt / eval_query；Prompt 类须给出完整替换文本
         禁止无关参数；每条建议须引用具体 badcase 或 gateFailures 条目
   nacos:

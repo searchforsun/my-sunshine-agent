@@ -48,7 +48,7 @@ public class RetrievalDebugService {
         if (overrides != null && !overrides.isEmpty()) {
             EffectiveRagConfig patched = applyOverrides(resolved.retrieval(), overrides);
             resolved = new ResolvedKbConfig(
-                    patched, resolved.rewrite(), resolved.defaultTopK(), resolved.chunkMaxSize());
+                    patched, resolved.rewrite(), resolved.defaultTopK());
         }
         PipelineSearchRequest request = PipelineSearchRequest.of(
                 query, topK, tid, kbId, strategy, includeRewrite, true);

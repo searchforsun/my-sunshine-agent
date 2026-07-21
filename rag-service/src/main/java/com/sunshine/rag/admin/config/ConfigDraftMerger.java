@@ -18,10 +18,8 @@ public final class ConfigDraftMerger {
                     stringVal(payload, "strategy"),
                     intVal(payload, "rrfK"),
                     intVal(payload, "hybridPoolSize"),
-                    0,
                     0));
-            case RAG_RERANK -> base.merge(new EffectiveRagConfig(0, null, 0, 0, floatVal(payload, "minScore"), 0));
-            case RAG_CHUNK -> base.merge(new EffectiveRagConfig(0, null, 0, 0, 0, intVal(payload, "maxSize")));
+            case RAG_RERANK -> base.merge(new EffectiveRagConfig(0, null, 0, 0, floatVal(payload, "minScore")));
             default -> base;
         };
     }

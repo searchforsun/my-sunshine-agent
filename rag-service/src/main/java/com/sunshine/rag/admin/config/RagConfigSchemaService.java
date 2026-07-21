@@ -47,8 +47,6 @@ public class RagConfigSchemaService {
                     field("enabled", "启用 Rerank", "boolean", null, null, scope.id(), bundlePath(payload, "rerank", "enabled"), null),
                     field("minScore", "Rerank 下限", "number", 0.0, 1.0, scope.id(), bundlePath(payload, "rerank", "minScore"), null),
                     field("minRelevance", "Relevance 下限", "number", 0.0, 1.0, scope.id(), bundlePath(payload, "rerank", "minRelevance"), null));
-            case RAG_CHUNK -> List.of(
-                    field("maxSize", "分段最大字符", "number", 256, 4096, scope.id(), bundlePath(payload, "chunk", "maxSize"), null));
             case REWRITE_RAG -> List.of(
                     field("enabled", "启用 RAG 改写", "boolean", null, null, scope.id(), bundlePath(payload, "rewrite", "rag", "enabled"), null),
                     field("model", "模型", "string", null, null, scope.id(), bundlePath(payload, "rewrite", "rag", "model"), null),

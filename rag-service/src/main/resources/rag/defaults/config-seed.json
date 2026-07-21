@@ -11,9 +11,6 @@
     "minScore": 0.25,
     "minRelevance": 0.25
   },
-  "chunk": {
-    "maxSize": 1200
-  },
   "rewrite": {
     "rag": {
       "enabled": true,

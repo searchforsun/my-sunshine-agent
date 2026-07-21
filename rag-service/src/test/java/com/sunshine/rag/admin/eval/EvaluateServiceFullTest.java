@@ -140,7 +140,7 @@ class EvaluateServiceFullTest {
 
     @Test
     void runFullEvalComputesPerfectRecallWithMockHits() {
-        EffectiveRagConfig config = new EffectiveRagConfig(0.48f, "hybrid+rerank", 60, 20, 0.25f, 1200);
+        EffectiveRagConfig config = new EffectiveRagConfig(0.48f, "hybrid+rerank", 60, 20, 0.25f);
         when(effectiveConfigResolver.resolve("default", "default", ConfigResolveMode.PRODUCTION, null))
                 .thenReturn(com.sunshine.rag.admin.config.ConfigBundlePayload.toResolvedKbConfig(
                         com.sunshine.rag.admin.config.ConfigBundleTestFixtures.fullPayload()));

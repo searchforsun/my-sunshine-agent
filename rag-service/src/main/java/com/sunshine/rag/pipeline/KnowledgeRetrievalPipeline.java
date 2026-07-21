@@ -43,7 +43,7 @@ public class KnowledgeRetrievalPipeline {
     public Mono<PipelineSearchResult> searchWithConfig(PipelineSearchRequest request, EffectiveRagConfig config) {
         ResolvedKbConfig production = effectiveConfigResolver.resolve(request.tenantId(), request.kbId());
         ResolvedKbConfig resolved = new ResolvedKbConfig(
-                config, production.rewrite(), production.defaultTopK(), production.chunkMaxSize());
+                config, production.rewrite(), production.defaultTopK());
         return searchWithResolved(request, resolved);
     }
 
