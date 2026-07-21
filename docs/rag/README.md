@@ -72,9 +72,10 @@ RAG 能力横跨**阶段三（生产加固）**与**阶段四（平台化）**�
 | 脚本 | 用途 |
 |------|------|
 | `scripts/rag_eval.py` | CI / 命令行评测（调 admin eval API） |
-| `scripts/rag_ingest_bulk.py` | 批量入库 |
+| `scripts/rag_ingest_bulk.py` | 批量入库（`--strategy` / `--params-json`） |
 | `scripts/rag_reset.py` | Milvus 清库重建 |
 | `scripts/verify_rag_studio.py` | 工作台 live 验收 |
+| `scripts/verify_chunk_strategies_live.py` | 五策略分块 + publish 门禁 Live |
 
 ---
 
