@@ -1,6 +1,6 @@
 # 沙箱 / 时间线：行号与 Git 风格 contextual diff
 
-> **状态**：📝 设计已定稿（Brainstorming 2026-07-21）  
+> **状态**：📝 设计已定稿（Brainstorming 2026-07-21）· [实施计划](../plans/2026-07-21-sandbox-diff-line-numbers.md)  
 > **范围**：沙箱工作区全文预览行号 + 时间线 `sandbox__write` / `sandbox__edit` 展开 Git 风格 diff（旧/新行号、±3 上下文）  
 > **关联**：[docs/sandbox/README.md](../../sandbox/README.md) · [2026-07-16-sandbox-workspace-drawer-design.md](./2026-07-16-sandbox-workspace-drawer-design.md) · 现有 `sunshine-ui/src/api/sandboxEditDiff.ts`
 
