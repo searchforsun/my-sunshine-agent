@@ -1,6 +1,7 @@
 package com.sunshine.rag.service;
 
 import com.sunshine.rag.model.ChunkInsertRequest;
+import com.sunshine.rag.util.ChunkIds;
 import com.sunshine.rag.util.DocumentVersionTime;
 import io.milvus.client.MilvusServiceClient;
 import io.milvus.common.clientenum.ConsistencyLevelEnum;
@@ -46,7 +47,7 @@ public class MilvusService {
     private static final int DIMENSION = 1024;
     private static final Set<String> V2_FIELDS = Set.of(
             "doc_name", "tenant_id", "kb_id", "doc_id", "version",
-            "chunk_index", "status", "source_type");
+            "chunk_index", "status", "source_type", "strategy", "chunk_level", "parent_chunk_id");
 
     @PostConstruct
     public void init() {
@@ -115,6 +116,9 @@ public class MilvusService {
                 .addFieldType(intField("chunk_index"))
                 .addFieldType(varchar("status", 16))
                 .addFieldType(varchar("source_type", 32))
+                .addFieldType(varchar("strategy", 32))
+                .addFieldType(varchar("chunk_level", 16))
+                .addFieldType(varchar("parent_chunk_id", 256))
                 .addFieldType(FieldType.newBuilder()
                         .withName("content")
                         .withDataType(DataType.VarChar)
@@ -175,6 +179,9 @@ public class MilvusService {
         fields.add(new InsertParam.Field("chunk_index", List.of(req.chunkIndex())));
         fields.add(new InsertParam.Field("status", List.of(req.status())));
         fields.add(new InsertParam.Field("source_type", List.of(req.sourceType())));
+        fields.add(new InsertParam.Field("strategy", List.of(nullToEmpty(req.strategy()))));
+        fields.add(new InsertParam.Field("chunk_level", List.of(nullToEmpty(req.chunkLevel()))));
+        fields.add(new InsertParam.Field("parent_chunk_id", List.of(nullToEmpty(req.parentChunkId()))));
         fields.add(new InsertParam.Field("content", List.of(req.content())));
         fields.add(new InsertParam.Field("embedding", List.of(req.embedding())));
         client.insert(InsertParam.newBuilder()
@@ -191,13 +198,15 @@ public class MilvusService {
         String tid = normalizeId(tenantId, "default");
         String kid = normalizeId(kbId, "default");
         String expr = String.format(
-                "tenant_id == \"%s\" && kb_id == \"%s\" && status == \"active\"",
-                escape(tid), escape(kid));
+                "tenant_id == \"%s\" && kb_id == \"%s\" && status == \"active\" && (%s)",
+                escape(tid), escape(kid), retrievableChunkLevelExpr());
         R<SearchResults> result = client.search(SearchParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withMetricType(MetricType.IP)
                 .withExpr(expr)
-                .withOutFields(List.of("doc_name", "content", "tenant_id", "kb_id"))
+                .withOutFields(List.of(
+                        "doc_name", "content", "tenant_id", "kb_id", "doc_id", "version",
+                        "chunk_index", "chunk_level", "parent_chunk_id"))
                 .withTopK(topK)
                 .withVectors(List.of(queryVector))
                 .withVectorFieldName("embedding")
@@ -210,6 +219,11 @@ public class MilvusService {
         SearchResultsWrapper wrapper = new SearchResultsWrapper(result.getData().getResults());
         List<?> docNames = wrapper.getFieldData("doc_name", 0);
         List<?> contents = wrapper.getFieldData("content", 0);
+        List<?> docIds = wrapper.getFieldData("doc_id", 0);
+        List<?> versions = wrapper.getFieldData("version", 0);
+        List<?> indices = wrapper.getFieldData("chunk_index", 0);
+        List<?> chunkLevels = wrapper.getFieldData("chunk_level", 0);
+        List<?> parentChunkIds = wrapper.getFieldData("parent_chunk_id", 0);
         List<SearchResultsWrapper.IDScore> idScores = wrapper.getIDScore(0);
         List<SearchHit> results = new ArrayList<>();
         for (int i = 0; i < contents.size(); i++) {
@@ -221,7 +235,16 @@ public class MilvusService {
                     ? docNames.get(i).toString()
                     : "未知文档";
             float score = idScores != null && i < idScores.size() ? idScores.get(i).getScore() : 0f;
-            results.add(new SearchHit(docName, content.toString(), score));
+            String docId = fieldAsString(docIds, i);
+            String version = versionAsString(versions, i);
+            int chunkIndex = fieldAsInt(indices, i);
+            String chunkId = docId != null && version != null
+                    ? ChunkIds.chunkId(docId, version, chunkIndex)
+                    : null;
+            String chunkLevel = fieldAsString(chunkLevels, i);
+            String parentChunkId = fieldAsString(parentChunkIds, i);
+            results.add(new SearchHit(
+                    docName, content.toString(), score, chunkId, chunkLevel, parentChunkId));
         }
         log.info("[RAG] 检索完成: tenant={}, kb={}, topK={}, 返回={}", tid, kid, topK, results.size());
         return results;
@@ -247,6 +270,30 @@ public class MilvusService {
                 .withExpr(expr)
                 .build());
         log.info("[RAG] 删除 chunk: tenant={}, kb={}, doc={}, v={}", tenantId, kbId, docId, version);
+    }
+
+    /** 按 doc/version/index 取 chunk 正文（parent_child 父块回填） */
+    public String queryChunkContent(String tenantId, String kbId, String docId, String version, int chunkIndex) {
+        String tid = normalizeId(tenantId, "default");
+        String kid = normalizeId(kbId, "default");
+        long code = DocumentVersionTime.toMilvusCode(version);
+        String expr = String.format(
+                "tenant_id == \"%s\" && kb_id == \"%s\" && doc_id == \"%s\" && version == %d && chunk_index == %d",
+                escape(tid), escape(kid), escape(normalizeId(docId, docId)), code, chunkIndex);
+        R<io.milvus.grpc.QueryResults> response = client.query(QueryParam.newBuilder()
+                .withCollectionName(COLLECTION)
+                .withExpr(expr)
+                .withOutFields(List.of("content"))
+                .build());
+        if (response.getData() == null) {
+            return null;
+        }
+        QueryResultsWrapper wrapper = new QueryResultsWrapper(response.getData());
+        List<?> contents = wrapper.getFieldWrapper("content").getFieldData();
+        if (contents == null || contents.isEmpty() || contents.getFirst() == null) {
+            return null;
+        }
+        return contents.getFirst().toString();
     }
 
     public List<ChunkPreview> queryChunks(String tenantId, String kbId, String docId, String version) {
@@ -295,7 +342,51 @@ public class MilvusService {
         createCollection();
     }
 
-    public record SearchHit(String docName, String content, float score) {
+    /** 检索 expr：排除 parent 块，兼容 chunk_level 为空的历史数据 */
+    static String retrievableChunkLevelExpr() {
+        return "chunk_level == \"\" || chunk_level == \"child\"";
+    }
+
+    private static String nullToEmpty(String value) {
+        return value != null ? value : "";
+    }
+
+    private static String fieldAsString(List<?> values, int index) {
+        if (values == null || index >= values.size() || values.get(index) == null) {
+            return "";
+        }
+        return values.get(index).toString();
+    }
+
+    private static int fieldAsInt(List<?> values, int index) {
+        if (values == null || index >= values.size() || !(values.get(index) instanceof Number n)) {
+            return 0;
+        }
+        return n.intValue();
+    }
+
+    private static String versionAsString(List<?> values, int index) {
+        if (values == null || index >= values.size() || values.get(index) == null) {
+            return null;
+        }
+        Object raw = values.get(index);
+        if (raw instanceof Number n) {
+            return String.format("%014d", n.longValue());
+        }
+        return raw.toString();
+    }
+
+    public record SearchHit(
+            String docName,
+            String content,
+            float score,
+            String chunkId,
+            String chunkLevel,
+            String parentChunkId) {
+
+        public SearchHit(String docName, String content, float score) {
+            this(docName, content, score, null, "", "");
+        }
     }
 
     public record ChunkPreview(int chunkIndex, String docName, String content) {

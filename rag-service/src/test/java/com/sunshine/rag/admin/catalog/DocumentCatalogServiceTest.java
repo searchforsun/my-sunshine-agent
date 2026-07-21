@@ -92,6 +92,9 @@ class DocumentCatalogServiceTest {
                 .thenReturn("minio://bucket/key");
         when(chunkIndexer.embedAndIndex(anyString(), anyString(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(Mono.empty());
+        when(chunkIndexer.embedAndIndexDrafts(
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), any()))
+                .thenReturn(Mono.empty());
         when(versionOps.newVersionEntity(anyString(), anyString(), anyString(), anyString()))
                 .thenAnswer(inv -> {
                     DocumentVersionEntity entity = new DocumentVersionEntity();
@@ -132,8 +135,8 @@ class DocumentCatalogServiceTest {
         assertThat(second.version()).isEqualTo(V2);
 
         verify(versionOps, times(2)).supersedeActiveVersions("default", "default", "报销制度");
-        verify(chunkIndexer, times(2)).embedAndIndex(
-                eq("default"), eq("default"), eq("报销制度"), eq("报销制度"), anyString(), any());
+        verify(chunkIndexer, times(2)).embedAndIndexDrafts(
+                eq("default"), eq("default"), eq("报销制度"), eq("报销制度"), anyString(), any(), any());
     }
 
     @Test
@@ -236,9 +239,9 @@ class DocumentCatalogServiceTest {
         DocumentVersionEntity saved = versionCaptor.getValue();
         assertThat(saved.getChunkStrategy()).isEqualTo("markdown");
         assertThat(saved.getChunkParamsJson()).contains("\"maxSize\":500");
-        verify(chunkIndexer).embedAndIndex(
+        verify(chunkIndexer).embedAndIndexDrafts(
                 eq("default"), eq("default"), eq("doc-a"), eq("doc-a"), eq(V1),
-                eq(List.of("chunk-a", "chunk-b")));
+                eq(previewChunks), eq(ChunkStrategy.MARKDOWN));
         verify(chunkPreviewService).requirePreview("default", "default", "doc-a", previewId);
         verify(chunkPreviewService).consumePreview("default", "default", "doc-a", previewId);
     }

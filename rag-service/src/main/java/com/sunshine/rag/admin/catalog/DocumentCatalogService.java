@@ -265,9 +265,10 @@ public class DocumentCatalogService {
         versionOps.markIngestJobActive(ver);
         chunkPreviewService.consumePreview(tid, kid, docId, strippedPreviewId);
         log.info("[RAG] document published: tenant={}, kb={}, doc={}, v={}, strategy={}, chunks={}",
-                tid, kid, docId, version, preview.strategy().wire(), chunks.size());
-        return chunkIndexer.embedAndIndex(tid, kid, docId, docName, version, chunks)
-                .thenReturn(new IngestResult(docId, docName, version, chunks.size()));
+                tid, kid, docId, version, preview.strategy().wire(), preview.chunks().size());
+        return chunkIndexer.embedAndIndexDrafts(
+                        tid, kid, docId, docName, version, preview.chunks(), preview.strategy())
+                .thenReturn(new IngestResult(docId, docName, version, preview.chunks().size()));
     }
 
     public ChunkPreviewResponse chunkPreview(
@@ -370,9 +371,10 @@ public class DocumentCatalogService {
         documentRepository.save(document);
         chunkPreviewService.consumePreview(tid, kid, docId, preview.previewId());
         log.info("[RAG] catalog ingest: tenant={}, kb={}, doc={}, v={}, strategy={}, chunks={}",
-                tid, kid, docId, newVersion, preview.strategy().wire(), chunks.size());
-        return chunkIndexer.embedAndIndex(tid, kid, docId, docName, newVersion, chunks)
-                .thenReturn(new IngestResult(docId, docName, newVersion, chunks.size()));
+                tid, kid, docId, newVersion, preview.strategy().wire(), preview.chunks().size());
+        return chunkIndexer.embedAndIndexDrafts(
+                        tid, kid, docId, docName, newVersion, preview.chunks(), preview.strategy())
+                .thenReturn(new IngestResult(docId, docName, newVersion, preview.chunks().size()));
     }
 
     @Transactional

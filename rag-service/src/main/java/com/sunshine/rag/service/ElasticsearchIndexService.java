@@ -55,6 +55,24 @@ public class ElasticsearchIndexService {
             String version,
             String status,
             String sourceType) {
+        indexChunk(chunkId, docName, content, chunkIndex, tenantId, kbId, docId, version, status, sourceType,
+                null, null, null);
+    }
+
+    public void indexChunk(
+            String chunkId,
+            String docName,
+            String content,
+            int chunkIndex,
+            String tenantId,
+            String kbId,
+            String docId,
+            String version,
+            String status,
+            String sourceType,
+            String strategy,
+            String chunkLevel,
+            String parentChunkId) {
         if (!isEnabled()) {
             return;
         }
@@ -69,6 +87,9 @@ public class ElasticsearchIndexService {
         doc.put("version", com.sunshine.rag.util.DocumentVersionTime.toMilvusCode(version));
         doc.put("status", status != null ? status : "active");
         doc.put("source_type", sourceType != null ? sourceType : "markdown");
+        doc.put("strategy", strategy != null ? strategy : "");
+        doc.put("chunk_level", chunkLevel != null ? chunkLevel : "");
+        doc.put("parent_chunk_id", parentChunkId != null ? parentChunkId : "");
         try {
             webClient.put()
                     .uri("/{index}/_doc/{id}", properties.getIndex(), chunkId)
@@ -124,6 +145,33 @@ public class ElasticsearchIndexService {
         }
         ensureIndex();
         log.warn("[RAG-ES] index rebuilt: {}", properties.getIndex());
+    }
+
+    /** 按 chunk_id 取正文（parent_child 父块回填） */
+    @SuppressWarnings("unchecked")
+    public String fetchContentByChunkId(String chunkId) {
+        if (!isEnabled() || chunkId == null || chunkId.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> response = webClient.get()
+                    .uri("/{index}/_doc/{id}", properties.getIndex(), chunkId)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block(Duration.ofSeconds(10));
+            if (response == null) {
+                return null;
+            }
+            Object sourceObj = response.get("_source");
+            if (!(sourceObj instanceof Map<?, ?> source)) {
+                return null;
+            }
+            Object content = source.get("content");
+            return content != null ? content.toString() : null;
+        } catch (Exception e) {
+            log.debug("[RAG-ES] fetch chunkId={}: {}", chunkId, e.getMessage());
+            return null;
+        }
     }
 
     /** 按文档版本查询 chunk（管理预览） */
@@ -200,6 +248,9 @@ public class ElasticsearchIndexService {
         propertiesMap.put("version", Map.of("type", "long"));
         propertiesMap.put("status", Map.of("type", "keyword"));
         propertiesMap.put("source_type", Map.of("type", "keyword"));
+        propertiesMap.put("strategy", Map.of("type", "keyword"));
+        propertiesMap.put("chunk_level", Map.of("type", "keyword"));
+        propertiesMap.put("parent_chunk_id", Map.of("type", "keyword"));
         propertiesMap.put("section_path", Map.of("type", "keyword"));
         Map<String, Object> body = Map.of("mappings", Map.of("properties", propertiesMap));
         try {
