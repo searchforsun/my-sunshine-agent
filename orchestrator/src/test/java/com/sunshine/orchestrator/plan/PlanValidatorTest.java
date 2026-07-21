@@ -36,9 +36,9 @@ class PlanValidatorTest {
 
     @Test
     void acceptsValidPlan() {
-        when(toolCatalogService.find("sdk__sunshine-finance__list_finance_messages"))
+        when(toolCatalogService.find("sdk__sunshine-finance__list_my_expenses"))
                 .thenReturn(Optional.of(new ToolCatalogEntry(
-                        "sdk__sunshine-finance__list_finance_messages", "财务列表", "", "remote", "sdk", "sunshine-finance", "", null, Map.of(), "read", false, true, true, null)));
+                        "sdk__sunshine-finance__list_my_expenses", "财务列表", "", "remote", "sdk", "sunshine-finance", "", null, Map.of(), "read", false, true, true, null)));
         when(skillCatalogService.findIndex("compliance-check"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
                         "compliance-check", "合规审查", "desc", 1, true, "none")));
@@ -70,9 +70,9 @@ class PlanValidatorTest {
 
     @Test
     void acceptsMultiAgentPlanWithTwoAgents() {
-        when(toolCatalogService.find("sdk__sunshine-finance__list_finance_messages"))
+        when(toolCatalogService.find("sdk__sunshine-finance__list_my_expenses"))
                 .thenReturn(Optional.of(new ToolCatalogEntry(
-                        "sdk__sunshine-finance__list_finance_messages", "财务列表", "", "remote", "sdk", "sunshine-finance", "", null, Map.of(), "read", false, true, true, null)));
+                        "sdk__sunshine-finance__list_my_expenses", "财务列表", "", "remote", "sdk", "sunshine-finance", "", null, Map.of(), "read", false, true, true, null)));
         when(skillCatalogService.findIndex("policy-review"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
                         "policy-review", "制度审查", "desc", 1, true, "none")));
@@ -144,7 +144,7 @@ class PlanValidatorTest {
                 List.of(
                         new PlanNode("n1", "rag", Map.of("topK", "3"), "检索差旅报销制度"),
                         new PlanNode("n2", "tool",
-                                Map.of("tool", "sdk__sunshine-finance__list_finance_messages", "status", "pending"),
+                                Map.of("tool", "sdk__sunshine-finance__list_my_expenses", "status", "pending"),
                                 "查询待审批报销单"),
                         new PlanNode("n3", "agent",
                                 Map.of("skill", "policy-review", "context", "{{n1.output}}",
@@ -165,7 +165,7 @@ class PlanValidatorTest {
     private static PlanJson samplePlan() {
         return new PlanJson("p", "r",
                 List.of(
-                        new PlanNode("n1", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"),
+                        new PlanNode("n1", "tool", Map.of("tool", "sdk__sunshine-finance__list_my_expenses"),
                                 "查询待审批"),
                         new PlanNode("n2", "agent",
                                 Map.of("skill", "compliance-check", "context", "{{n1.output}}",

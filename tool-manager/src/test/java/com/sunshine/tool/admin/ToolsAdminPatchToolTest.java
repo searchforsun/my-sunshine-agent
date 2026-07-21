@@ -49,10 +49,10 @@ class ToolsAdminPatchToolTest {
     @BeforeEach
     void seedTool() {
         ToolDefinitionEntity tool = new ToolDefinitionEntity();
-        tool.setId("sdk__sunshine-finance__list_finance_messages");
+        tool.setId("sdk__sunshine-finance__list_my_expenses");
         tool.setSource("sdk");
         tool.setSourceRef("sunshine-finance");
-        tool.setExternalName("list_finance_messages");
+        tool.setExternalName("list_my_expenses");
         tool.setDisplayName("查询待审批财务消息");
         tool.setDescription("列出财务待办");
         tool.setKind("remote");
@@ -66,7 +66,7 @@ class ToolsAdminPatchToolTest {
     @Test
     void patchTool_rejectsBlankDescription() {
         assertThatThrownBy(() -> toolsAdminController.patchTool(
-                "sdk__sunshine-finance__list_finance_messages",
+                "sdk__sunshine-finance__list_my_expenses",
                 new ToolPatchRequest(null, null, "   ", null, null, null)))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("工具描述不能为空");
@@ -75,7 +75,7 @@ class ToolsAdminPatchToolTest {
     @Test
     void patchTool_trimsDescription() {
         var response = toolsAdminController.patchTool(
-                "sdk__sunshine-finance__list_finance_messages",
+                "sdk__sunshine-finance__list_my_expenses",
                 new ToolPatchRequest(null, null, "  更新后的描述  ", null, null, null));
         assertThat(response.getData().getDescription()).isEqualTo("更新后的描述");
     }

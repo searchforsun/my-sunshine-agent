@@ -97,8 +97,8 @@ class SkillBindingParserTest {
 
     @Test
     void stripAtMention_removesPrefix() {
-        assertThat(parser.stripAtMention("@policy-review 年假可以请几天"))
-                .isEqualTo("年假可以请几天");
+        assertThat(parser.stripAtMention("@policy-review 青松假有多少天、怎么申请"))
+                .isEqualTo("青松假有多少天、怎么申请");
     }
 
     @Test

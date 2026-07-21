@@ -47,16 +47,16 @@ class ToolSummarizeServiceTest {
     @Test
     void summarizeOutput_withTemplate_resolvesSummary() {
         ToolDefinitionEntity entity = new ToolDefinitionEntity();
-        entity.setId("sdk__sunshine-finance__summarize_finance_by_status");
+        entity.setId("sdk__sunshine-finance__summarize_my_expenses");
         entity.setTimelineSummaryTemplate("{status} {count} 条，合计 ¥{amount}");
         entity.setTimelineSummaryExtract(
                 "{\"status\":\"regex:status=([^|\\\\s]+)\",\"count\":\"regex:count=(\\\\d+)\",\"amount\":\"regex:totalAmount=([\\\\d.]+)\"}");
-        when(toolDefinitionRepository.findById("sdk__sunshine-finance__summarize_finance_by_status"))
+        when(toolDefinitionRepository.findById("sdk__sunshine-finance__summarize_my_expenses"))
                 .thenReturn(Optional.of(entity));
 
         ToolSummarizeService service = newService();
         var response = service.summarizeOutput(new ToolSummarizeOutputRequest(
-                "sdk__sunshine-finance__summarize_finance_by_status",
+                "sdk__sunshine-finance__summarize_my_expenses",
                 "- status=pending | count=3 | totalAmount=124140.50"));
         assertThat(response.summary()).isEqualTo("pending 3 条，合计 ¥124140.50");
         assertThat(response.empty()).isFalse();

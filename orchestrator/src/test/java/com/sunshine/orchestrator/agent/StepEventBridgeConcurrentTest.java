@@ -57,12 +57,12 @@ class StepEventBridgeConcurrentTest {
         bind("msg-a", queueA);
         bind("msg-b", queueB);
 
-        StepEventBridge.emit("msg-a", session -> session.beginToolStep("tool-list_finance_messages", "tool"));
+        StepEventBridge.emit("msg-a", session -> session.beginToolStep("tool-list_my_expenses", "tool"));
         StepEventBridge.emit("msg-a", session -> session.completeToolStep("pending 共 3 条"));
         StepEventBridge.emit("msg-b", session -> session.beginToolStep("tool-search_knowledge", "tool"));
         StepEventBridge.emit("msg-b", session -> session.completeToolStep("命中 2 条"));
 
-        assertThat(lastStepId(drain(queueA))).startsWith("tool-list_finance_messages");
+        assertThat(lastStepId(drain(queueA))).startsWith("tool-list_my_expenses");
         assertThat(lastStepId(drain(queueB))).startsWith("tool-search_knowledge");
     }
 

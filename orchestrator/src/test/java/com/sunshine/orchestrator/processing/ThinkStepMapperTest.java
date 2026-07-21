@@ -62,7 +62,7 @@ class ThinkStepMapperTest {
 
     @Test
     void reasoningAlwaysUsesThinkStep() {
-        List<ProcessingStep> steps = new ArrayList<>(List.of(runningStep("tool-list_finance_messages")));
+        List<ProcessingStep> steps = new ArrayList<>(List.of(runningStep("tool-list_my_expenses")));
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "考勤制度是什么");
 
         List<StreamToken> mapped = mapper.map(StreamToken.reasoning("检索结果分析"));

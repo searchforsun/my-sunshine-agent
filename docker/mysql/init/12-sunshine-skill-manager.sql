@@ -35,13 +35,13 @@ INSERT INTO skill_definition (id, display_name, description, enabled, active_ver
 INSERT INTO skill_version (skill_id, version, system_overlay, tools_json, max_iters, status) VALUES
 ('finance-analysis', 1,
  '你是财务合规分析子 Agent（workflow 内嵌节点，不面向用户）。\n仅基于上游注入的待办/制度材料做内部分析；结论供下游 llm 节点润色后展示。\n禁止直接向用户致辞；禁止编造未出现在注入材料中的单据或金额。',
- '["sdk__sunshine-finance__list_finance_messages"]', 4, 'published'),
+ '["sdk__sunshine-finance__list_my_expenses"]', 4, 'published'),
 ('policy-review', 1,
  '你是企业制度审查子 Agent。仅根据注入的检索结果或制度片段做内部分析，不面向用户直接答复。',
  '["search_knowledge"]', 4, 'published'),
 ('compliance-check', 1,
  '你是合规对比子 Agent。对比制度片段与业务数据（待办/单据），输出内部分析结论，不面向用户。',
- '["search_knowledge","sdk__sunshine-finance__list_finance_messages"]', 4, 'published');
+ '["search_knowledge","sdk__sunshine-finance__list_my_expenses"]', 4, 'published');
 
 -- V3__skill_standard_fields.sql
 ALTER TABLE skill_version

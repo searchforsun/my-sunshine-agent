@@ -194,7 +194,7 @@ class WorkflowExecutorTest {
                         )))));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "m1", "请假制度是什么", MemoryContext.empty(),
+                "c1", "m1", "青松假怎么申请", MemoryContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "查制度"));
 

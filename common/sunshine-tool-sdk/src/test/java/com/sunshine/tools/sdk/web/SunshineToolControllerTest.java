@@ -39,7 +39,7 @@ class SunshineToolControllerTest {
 
     static class SampleTools {
         @SunshineTool(
-                id = "list_finance_messages",
+                id = "list_my_expenses",
                 displayName = "查询待审批财务消息",
                 description = "按状态筛选",
                 timelineSummaryTemplate = "{count} 条财务消息")
@@ -61,13 +61,13 @@ class SunshineToolControllerTest {
         mockMvc.perform(get("/sunshine/tools/catalog"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.appId").value("test-app"))
-                .andExpect(jsonPath("$.tools[0].name").value("list_finance_messages"))
+                .andExpect(jsonPath("$.tools[0].name").value("list_my_expenses"))
                 .andExpect(jsonPath("$.tools[0].displayName").value("查询待审批财务消息"));
     }
 
     @Test
     void invokeReturnsResult() throws Exception {
-        mockMvc.perform(post("/sunshine/tools/invoke/list_finance_messages")
+        mockMvc.perform(post("/sunshine/tools/invoke/list_my_expenses")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"pending\"}"))
                 .andExpect(status().isOk())

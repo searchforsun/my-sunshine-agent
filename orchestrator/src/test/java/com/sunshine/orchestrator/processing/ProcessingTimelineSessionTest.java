@@ -532,7 +532,7 @@ class ProcessingTimelineSessionTest {
         TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
         support.ensurePlaceholderAfterFirstThink(session);
 
-        session.beginToolStep("tool-sdk__sunshine-finance__list_finance_messages", "tool");
+        session.beginToolStep("tool-sdk__sunshine-finance__list_my_expenses", "tool");
         session.completeToolStep("3 条");
         session.beginReasoningRound();
         session.endReasoningRound();
@@ -573,7 +573,7 @@ class ProcessingTimelineSessionTest {
                 .filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
         long thinkEnd = think.endedAt() != null ? think.endedAt() : think.startedAt();
 
-        session.beginToolStep("tool-sdk__sunshine-finance__list_finance_messages", "tool");
+        session.beginToolStep("tool-sdk__sunshine-finance__list_my_expenses", "tool");
         session.completeToolStep("命中 3 条");
 
         StepMetadata metadata = StepMetadata.withTasks(
@@ -627,13 +627,13 @@ class ProcessingTimelineSessionTest {
     void repeatedToolInvocation_createsSeparateStepsWithTimestampId() throws InterruptedException {
         com.sunshine.orchestrator.catalog.ToolCatalogService catalogService =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class);
-        org.mockito.Mockito.when(catalogService.displayName("sdk__sunshine-finance__summarize_finance_by_status"))
+        org.mockito.Mockito.when(catalogService.displayName("sdk__sunshine-finance__summarize_my_expenses"))
                 .thenReturn("统计财务消息");
         ToolNodeLabels.bind(new ToolNodeLabelService(TimelinePromptCatalog.withDefaults(), catalogService));
         StepLabels.bind(catalogService);
         try {
             ProcessingTimelineSession session = new ProcessingTimelineSession();
-            String base = "tool-sdk__sunshine-finance__summarize_finance_by_status";
+            String base = "tool-sdk__sunshine-finance__summarize_my_expenses";
 
             session.beginToolStep(base, "tool");
             session.completeToolStep("pending 3 条，合计 ¥124140.5");
@@ -660,8 +660,8 @@ class ProcessingTimelineSessionTest {
     @Test
     void parallelToolBegin_doesNotPrematurelyCompleteSibling() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
-        String first = session.beginToolStep("tool-sdk__sunshine-finance__list_finance_messages", "tool");
-        String second = session.beginToolStep("tool-sdk__sunshine-finance__summarize_finance_by_status", "tool");
+        String first = session.beginToolStep("tool-sdk__sunshine-finance__list_my_expenses", "tool");
+        String second = session.beginToolStep("tool-sdk__sunshine-finance__summarize_my_expenses", "tool");
 
         assertThat(session.snapshot().stream().filter(s -> first.equals(s.id())).findFirst().orElseThrow()
                 .lifecycle()).isEqualTo("running");

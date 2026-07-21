@@ -35,9 +35,9 @@ class SdkCatalogUpsertServiceTest {
         upsertService.upsert("sunshine-finance", "sunshine-finance", sampleCatalog("查询待审批财务消息"));
 
         Optional<ToolDefinitionEntity> tool = toolDefinitionRepository
-                .findBySourceAndSourceRefAndExternalName("sdk", "sunshine-finance", "list_finance_messages");
+                .findBySourceAndSourceRefAndExternalName("sdk", "sunshine-finance", "list_my_expenses");
         assertThat(tool).isPresent();
-        assertThat(tool.get().getId()).isEqualTo("sdk__sunshine-finance__list_finance_messages");
+        assertThat(tool.get().getId()).isEqualTo("sdk__sunshine-finance__list_my_expenses");
         assertThat(tool.get().isIdValid()).isTrue();
         assertThat(tool.get().getSchemaHash()).isNotBlank();
         assertThat(sdkApplicationRepository.findById("sunshine-finance")).isPresent();
@@ -48,7 +48,7 @@ class SdkCatalogUpsertServiceTest {
         upsertService.upsert("sunshine-finance", "sunshine-finance", sampleCatalog("原始名称"));
 
         ToolDefinitionEntity entity = toolDefinitionRepository
-                .findBySourceAndSourceRefAndExternalName("sdk", "sunshine-finance", "list_finance_messages")
+                .findBySourceAndSourceRefAndExternalName("sdk", "sunshine-finance", "list_my_expenses")
                 .orElseThrow();
         entity.setDisplayName("管理页覆盖名");
         entity.setMetadataEdited(true);
@@ -57,7 +57,7 @@ class SdkCatalogUpsertServiceTest {
         upsertService.upsert("sunshine-finance", "sunshine-finance", sampleCatalog("SDK 新名称"));
 
         ToolDefinitionEntity updated = toolDefinitionRepository
-                .findById("sdk__sunshine-finance__list_finance_messages").orElseThrow();
+                .findById("sdk__sunshine-finance__list_my_expenses").orElseThrow();
         assertThat(updated.getDisplayName()).isEqualTo("管理页覆盖名");
     }
 
@@ -90,7 +90,7 @@ class SdkCatalogUpsertServiceTest {
         upsertService.upsert("sunshine-finance", "sunshine-finance", sampleCatalog("查询待审批财务消息"));
 
         ToolDefinitionEntity entity = toolDefinitionRepository
-                .findBySourceAndSourceRefAndExternalName("sdk", "sunshine-finance", "list_finance_messages")
+                .findBySourceAndSourceRefAndExternalName("sdk", "sunshine-finance", "list_my_expenses")
                 .orElseThrow();
         entity.setTimelineSummaryTemplate("{output}");
         entity.setTimelineSummaryExtract("{\"output\":\"line:0\"}");
@@ -100,7 +100,7 @@ class SdkCatalogUpsertServiceTest {
         upsertService.upsert("sunshine-finance", "sunshine-finance", sampleCatalog("SDK 新名称"));
 
         ToolDefinitionEntity updated = toolDefinitionRepository
-                .findById("sdk__sunshine-finance__list_finance_messages").orElseThrow();
+                .findById("sdk__sunshine-finance__list_my_expenses").orElseThrow();
         assertThat(updated.getTimelineSummaryTemplate()).isEqualTo("{output}");
         assertThat(updated.getTimelineSummaryExtract()).isEqualTo("{\"output\":\"line:0\"}");
     }
@@ -108,10 +108,10 @@ class SdkCatalogUpsertServiceTest {
     @Test
     void upsert_replacesLegacyDotIdWithDoubleUnderscore() {
         ToolDefinitionEntity legacy = new ToolDefinitionEntity();
-        legacy.setId("sdk.sunshine-finance.list_finance_messages");
+        legacy.setId("sdk.sunshine-finance.list_my_expenses");
         legacy.setSource("sdk");
         legacy.setSourceRef("sunshine-finance");
-        legacy.setExternalName("list_finance_messages");
+        legacy.setExternalName("list_my_expenses");
         legacy.setDisplayName("旧 ID 工具");
         legacy.setDescription("desc");
         legacy.setSchemaJson(Map.of("type", "object"));
@@ -123,9 +123,9 @@ class SdkCatalogUpsertServiceTest {
 
         upsertService.upsert("sunshine-finance", "sunshine-finance", sampleCatalog("查询待审批财务消息"));
 
-        assertThat(toolDefinitionRepository.findById("sdk.sunshine-finance.list_finance_messages")).isEmpty();
+        assertThat(toolDefinitionRepository.findById("sdk.sunshine-finance.list_my_expenses")).isEmpty();
         Optional<ToolDefinitionEntity> recreated = toolDefinitionRepository
-                .findById("sdk__sunshine-finance__list_finance_messages");
+                .findById("sdk__sunshine-finance__list_my_expenses");
         assertThat(recreated).isPresent();
         assertThat(recreated.get().getDisplayName()).isEqualTo("查询待审批财务消息");
         assertThat(recreated.get().isIdValid()).isTrue();
@@ -137,7 +137,7 @@ class SdkCatalogUpsertServiceTest {
                 "1.0.0-SNAPSHOT",
                 1,
                 List.of(new SdkToolCatalogResponse.ToolEntry(
-                        "list_finance_messages",
+                        "list_my_expenses",
                         displayName,
                         "按状态筛选",
                         "read",

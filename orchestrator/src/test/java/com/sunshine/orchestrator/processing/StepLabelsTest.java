@@ -33,8 +33,8 @@ class StepLabelsTest {
 
     @Test
     void toolDisplayName_readsFromCatalog() {
-        when(catalogService.displayName("sdk__sunshine-finance__list_finance_messages")).thenReturn("查询待审批财务消息");
-        assertThat(StepLabels.toolDisplayName("tool-sdk__sunshine-finance__list_finance_messages"))
+        when(catalogService.displayName("sdk__sunshine-finance__list_my_expenses")).thenReturn("查询待审批财务消息");
+        assertThat(StepLabels.toolDisplayName("tool-sdk__sunshine-finance__list_my_expenses"))
                 .isEqualTo("查询待审批财务消息");
     }
 
@@ -47,8 +47,8 @@ class StepLabelsTest {
 
     @Test
     void labelFor_toolStepWithTimestampId_usesDisplayNameOnly() {
-        when(catalogService.displayName("sdk__sunshine-finance__summarize_finance_by_status")).thenReturn("统计财务消息");
-        assertThat(StepLabels.labelFor("tool-sdk__sunshine-finance__summarize_finance_by_status@1718750000123"))
+        when(catalogService.displayName("sdk__sunshine-finance__summarize_my_expenses")).thenReturn("统计财务消息");
+        assertThat(StepLabels.labelFor("tool-sdk__sunshine-finance__summarize_my_expenses@1718750000123"))
                 .isEqualTo("调用工具 统计财务消息");
     }
 }

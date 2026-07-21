@@ -53,7 +53,7 @@ public enum PlanValidationCode {
             case EXCLUSIVE_DEFAULT -> "出边须 ≥2，且恰好 1 条 \"default\":true；其余出边带 condition（left/op/right）。";
             case EXCLUSIVE_OUT -> "条件分支须 ≥2 条出边：一条 condition 命中臂 + 一条 default:true 兜底臂。";
             case EXCLUSIVE_TOPOLOGY -> "condition/default 只能出现在 exclusive-gateway 出边；网关出度 ≥2，恰好 1 default。";
-            case UNKNOWN_TOOL -> "从下方 Tool 目录选真实 Catalog ID（如 sdk__sunshine-finance__list_finance_messages）。";
+            case UNKNOWN_TOOL -> "从下方 Tool 目录选真实 Catalog ID（如 sdk__sunshine-finance__list_my_expenses）。";
             case ILLEGAL_NODE_TYPE -> "仅允许 rag | tool | agent | parallel-gateway | join | exclusive-gateway | loop；勿输出 start/answer。";
             case ANSWER_IN_EDGES -> "Planner 勿输出 answer 节点，也勿写任何 edge.to=answer；引擎自动拼接终态 answer。";
             case AGENT_CONTEXT -> "agent 须 params.context 引用上游 {{n*.output}}，params.query 写子任务；无上游时用 rag/tool 先产出 output。";

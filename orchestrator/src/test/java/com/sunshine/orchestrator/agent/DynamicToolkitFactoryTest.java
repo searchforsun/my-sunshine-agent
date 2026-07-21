@@ -132,15 +132,15 @@ class DynamicToolkitFactoryTest {
 
     @Test
     void build_withWhitelist_registersRemoteAndSandbox() {
-        when(toolSetResolver.intersectEnabledPool(List.of("ghost_tool", "sdk__sunshine-finance__list_finance_messages"), "default"))
-                .thenReturn(List.of("sdk__sunshine-finance__list_finance_messages"));
+        when(toolSetResolver.intersectEnabledPool(List.of("ghost_tool", "sdk__sunshine-finance__list_my_expenses"), "default"))
+                .thenReturn(List.of("sdk__sunshine-finance__list_my_expenses"));
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(List.of());
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, java.util.Map.of(), "read", false, true, true, null);
+                "sdk__sunshine-finance__list_my_expenses", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, java.util.Map.of(), "read", false, true, true, null);
         com.sunshine.orchestrator.client.ToolManagerClient toolManagerClient =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.client.ToolManagerClient.class);
         com.sunshine.orchestrator.audit.ToolAuditService toolAuditService =
@@ -148,17 +148,17 @@ class DynamicToolkitFactoryTest {
         com.sunshine.orchestrator.hitl.HitlConfirmationService hitlService =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.hitl.HitlConfirmationService.class);
 
-        when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_finance_messages")).thenReturn(false);
-        when(remoteToolFactory.create(eq("sdk__sunshine-finance__list_finance_messages"), eq("u1"), eq("default")))
+        when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_my_expenses")).thenReturn(false);
+        when(remoteToolFactory.create(eq("sdk__sunshine-finance__list_my_expenses"), eq("u1"), eq("default")))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         financeEntry, toolManagerClient, toolAuditService, hitlService, "u1", "default")));
 
         var toolkit = factory.build(
-                List.of("ghost_tool", "sdk__sunshine-finance__list_finance_messages"),
+                List.of("ghost_tool", "sdk__sunshine-finance__list_my_expenses"),
                 "default", null, "u1");
 
         assertThat(toolkit.getToolNames()).contains(
-                RagTool.NAME, "sdk__sunshine-finance__list_finance_messages");
+                RagTool.NAME, "sdk__sunshine-finance__list_my_expenses");
     }
 
     @Test

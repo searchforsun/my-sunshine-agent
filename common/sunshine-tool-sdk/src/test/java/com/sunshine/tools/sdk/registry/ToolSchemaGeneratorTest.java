@@ -15,7 +15,7 @@ class ToolSchemaGeneratorTest {
     @Component
     static class SampleTools {
         @SunshineTool(
-                id = "list_finance_messages",
+                id = "list_my_expenses",
                 displayName = "查询待审批财务消息",
                 description = "按状态筛选",
                 timelineSummaryTemplate = "{count} 条财务消息",
@@ -30,7 +30,7 @@ class ToolSchemaGeneratorTest {
         List<RegisteredToolMethod> tools = ToolSchemaGenerator.scan(SampleTools.class);
         assertThat(tools).hasSize(1);
         RegisteredToolMethod t = tools.get(0);
-        assertThat(t.id()).isEqualTo("list_finance_messages");
+        assertThat(t.id()).isEqualTo("list_my_expenses");
         assertThat(t.timelineSummaryTemplate()).isEqualTo("{count} 条财务消息");
         Map<String, Object> schema = t.parametersSchema();
         assertThat(schema.get("type")).isEqualTo("object");

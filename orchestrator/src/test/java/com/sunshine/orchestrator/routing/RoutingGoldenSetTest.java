@@ -397,7 +397,7 @@ class RoutingGoldenSetTest {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, "年假可以请几天", null);
+        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, "青松假有多少天、怎么申请", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("user:forced-workflow");
@@ -422,7 +422,7 @@ class RoutingGoldenSetTest {
 
     @Test
     void forcedJ5_workflow_ignoresAtSkill() {
-        String query = "@policy-review 年假可以请几天";
+        String query = "@policy-review 青松假有多少天、怎么申请";
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
@@ -472,18 +472,18 @@ class RoutingGoldenSetTest {
     @Test
     void workflowI1_hashKnowledgeQa() {
         when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
-        ExecutionPlan plan = router.route("#knowledge-qa 年假可以请几天").block();
+        ExecutionPlan plan = router.route("#knowledge-qa 青松假有多少天、怎么申请").block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("workflow:#mention");
-        assertThat(plan.params().get("effectiveQuery")).isEqualTo("年假可以请几天");
+        assertThat(plan.params().get("effectiveQuery")).isEqualTo("青松假有多少天、怎么申请");
         verify(intentRouter, never()).classifyPlan(anyString());
     }
 
     @Test
     void workflowI2_hashKnowledgeQaReimbursement() {
         when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
-        ExecutionPlan plan = router.route("#knowledge-qa 报销流程是什么").block();
+        ExecutionPlan plan = router.route("#knowledge-qa 市内网约车报销上限多少").block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("workflow:#mention");

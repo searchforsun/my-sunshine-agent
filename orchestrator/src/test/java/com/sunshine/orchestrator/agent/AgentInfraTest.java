@@ -40,10 +40,10 @@ class AgentInfraTest {
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
 
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of(
-                "search_knowledge", "sdk__sunshine-finance__list_finance_messages", "sdk__sunshine-oa__list_oa_tasks"));
+                "search_knowledge", "sdk__sunshine-finance__list_my_expenses", "sdk__sunshine-oa__list_oa_tasks"));
 
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
-                "sdk__sunshine-finance__list_finance_messages", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, Map.of(), "read", false, true, true, null);
+                "sdk__sunshine-finance__list_my_expenses", "查询待审批财务消息", "desc", "remote", "sdk", "sunshine-finance", "", null, Map.of(), "read", false, true, true, null);
         ToolCatalogEntry oaEntry = new ToolCatalogEntry(
                 "sdk__sunshine-oa__list_oa_tasks", "查询 OA 待办", "desc", "remote", "sdk", "sunshine-oa", "", null, Map.of(), "read", false, true, true, null);
         ToolManagerClient toolManagerClient = Mockito.mock(ToolManagerClient.class);
@@ -52,10 +52,10 @@ class AgentInfraTest {
                 Mockito.mock(com.sunshine.orchestrator.hitl.HitlConfirmationService.class);
 
         when(toolCatalogService.isRagTool("search_knowledge")).thenReturn(true);
-        when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_finance_messages")).thenReturn(false);
+        when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_my_expenses")).thenReturn(false);
         when(toolCatalogService.isRagTool("sdk__sunshine-oa__list_oa_tasks")).thenReturn(false);
         when(ragTool.getName()).thenReturn(RagTool.NAME);
-        when(remoteToolFactory.create("sdk__sunshine-finance__list_finance_messages", null, "default"))
+        when(remoteToolFactory.create("sdk__sunshine-finance__list_my_expenses", null, "default"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         financeEntry, toolManagerClient, toolAuditService, hitlService, null, "default")));
         when(remoteToolFactory.create("sdk__sunshine-oa__list_oa_tasks", null, "default"))
@@ -81,7 +81,7 @@ class AgentInfraTest {
         assertThat(toolkitConfig.isParallel()).isTrue();
         assertThat(toolkit.getToolNames()).contains(
                 RagTool.NAME,
-                "sdk__sunshine-finance__list_finance_messages",
+                "sdk__sunshine-finance__list_my_expenses",
                 "sdk__sunshine-oa__list_oa_tasks");
     }
 

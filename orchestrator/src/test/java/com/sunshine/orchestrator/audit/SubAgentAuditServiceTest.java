@@ -24,7 +24,7 @@ class SubAgentAuditServiceTest {
     void subAgentRun_publishesPayloadWithRunIdAndSkill() {
         service.subAgentRun(
                 "c1", "m1", "u1", "default", "plan-1", "n3", "run-abc",
-                "compliance-check", List.of("tool-list_finance_messages"), "合规风险 2 项", "ok");
+                "compliance-check", List.of("tool-list_my_expenses"), "合规风险 2 项", "ok");
 
         ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
         verify(auditPublisher).publish(captor.capture());

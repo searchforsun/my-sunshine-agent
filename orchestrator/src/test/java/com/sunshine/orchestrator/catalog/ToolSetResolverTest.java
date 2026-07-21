@@ -33,11 +33,11 @@ class ToolSetResolverTest {
 
     @Test
     void intersectEnabledPool_filtersWhitelistByEnabledPool() {
-        when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("sdk__sunshine-finance__list_finance_messages", "search_knowledge"));
+        when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("sdk__sunshine-finance__list_my_expenses", "search_knowledge"));
 
         assertThat(resolver.intersectEnabledPool(
-                List.of("sdk__sunshine-finance__list_finance_messages", "ghost_tool"), "default"))
-                .containsExactly("sdk__sunshine-finance__list_finance_messages");
+                List.of("sdk__sunshine-finance__list_my_expenses", "ghost_tool"), "default"))
+                .containsExactly("sdk__sunshine-finance__list_my_expenses");
     }
 
     @Test

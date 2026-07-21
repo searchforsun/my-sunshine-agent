@@ -77,12 +77,12 @@ class AgentRunRequestTest {
                 "default",
                 null,
                 "finance-analysis",
-                java.util.List.of("sdk__sunshine-finance__list_finance_messages"),
+                java.util.List.of("sdk__sunshine-finance__list_my_expenses"),
                 "仅内部分析",
                 4);
         assertThat(req.role()).isEqualTo(AgentRole.SUB);
         assertThat(req.skillId()).isEqualTo("finance-analysis");
-        assertThat(req.toolWhitelist()).containsExactly("sdk__sunshine-finance__list_finance_messages");
+        assertThat(req.toolWhitelist()).containsExactly("sdk__sunshine-finance__list_my_expenses");
         assertThat(req.systemOverlay()).isEqualTo("仅内部分析");
         assertThat(req.maxIters()).isEqualTo(4);
         assertThat(req.conversationId()).isNull();

@@ -60,27 +60,27 @@ class ReActAgentFactoryTest {
 
     @Test
     void composeSystemPrompt_appendsOverlayWhenPresent() {
-        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), "仅输出合规结论");
+        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_my_expenses"), "仅输出合规结论");
         assertThat(factory.composeSystemPrompt(req))
                 .isEqualTo("base system\n\n仅输出合规结论");
     }
 
     @Test
     void composeSystemPrompt_skipsOverlayWhenBlank() {
-        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), "  ");
+        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_my_expenses"), "  ");
         assertThat(factory.composeSystemPrompt(req)).isEqualTo("base system");
     }
 
     @Test
     void resolveToolkit_subUsesExplicitWhitelist() {
-        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), null);
+        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_my_expenses"), null);
         when(dynamicToolkitFactory.buildForSubAgent(
-                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null, "u1"))
+                List.of("sdk__sunshine-finance__list_my_expenses"), "default", null, "u1"))
                 .thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
         verify(dynamicToolkitFactory).buildForSubAgent(
-                List.of("sdk__sunshine-finance__list_finance_messages"), "default", null, "u1");
+                List.of("sdk__sunshine-finance__list_my_expenses"), "default", null, "u1");
     }
 
     @Test
@@ -106,14 +106,14 @@ class ReActAgentFactoryTest {
     void resolveMaxIters_prefersRequestValue() {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.SUB, "run-1", null, MemoryContext.empty(), "q", List.of(),
-                "u1", "default", null, null, List.of("sdk__sunshine-finance__list_finance_messages"), null, 4,
+                "u1", "default", null, null, List.of("sdk__sunshine-finance__list_my_expenses"), null, 4,
                 TimelineBinding.SUB_COMPRESSED, false, null, null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
     }
 
     @Test
     void resolveMaxIters_fallsBackToDefault() {
-        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_finance_messages"), null);
+        AgentRunRequest req = subRequest(null, List.of("sdk__sunshine-finance__list_my_expenses"), null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(5);
     }
 

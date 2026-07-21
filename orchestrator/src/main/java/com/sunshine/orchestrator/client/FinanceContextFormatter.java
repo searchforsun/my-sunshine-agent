@@ -15,14 +15,14 @@ public final class FinanceContextFormatter {
         if (toolResultJson == null || toolResultJson.isBlank()) {
             return """
                     [财务数据]
-                    工具：list_finance_messages(status=%s)
+                    工具：list_my_expenses(status=%s)
                     结果：未返回数据
                     """.formatted(normalizedStatus);
         }
 
         return """
                 [财务数据]
-                工具：list_finance_messages(status=%s)
+                工具：list_my_expenses(status=%s)
 
                 %s
                 """.formatted(normalizedStatus, toolResultJson.strip());

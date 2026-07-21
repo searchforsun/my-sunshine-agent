@@ -25,17 +25,17 @@ class DbToolCatalogServiceTest {
 
     @Test
     void listCatalog_filtersTenantAndEnabled() {
-        saveTool("sdk__sunshine-finance__list_finance_messages", "default", true);
+        saveTool("sdk__sunshine-finance__list_my_expenses", "default", true);
         saveTool("sdk__sunshine-oa__list_oa_tasks", "default", false);
         saveTool("tenant_tool", "tenant-a", true);
 
         assertThat(dbToolCatalogService.listCatalog("default", true))
                 .extracting(e -> e.id())
-                .containsExactly("sdk__sunshine-finance__list_finance_messages");
+                .containsExactly("sdk__sunshine-finance__list_my_expenses");
 
         assertThat(dbToolCatalogService.listCatalog("tenant-a", true))
                 .extracting(e -> e.id())
-                .containsExactlyInAnyOrder("sdk__sunshine-finance__list_finance_messages", "tenant_tool");
+                .containsExactlyInAnyOrder("sdk__sunshine-finance__list_my_expenses", "tenant_tool");
 
         assertThat(dbToolCatalogService.listCatalog("default", false))
                 .extracting(e -> e.id())
@@ -44,7 +44,7 @@ class DbToolCatalogServiceTest {
 
     @Test
     void listCatalog_mapsParametersFromSchemaJson() {
-        saveTool("sdk__sunshine-finance__list_finance_messages", "default", true);
+        saveTool("sdk__sunshine-finance__list_my_expenses", "default", true);
         var entry = dbToolCatalogService.listCatalog("default", true).getFirst();
         assertThat(entry.parameters()).containsKey("type");
         assertThat(entry.displayName()).isEqualTo("查询待审批财务消息");

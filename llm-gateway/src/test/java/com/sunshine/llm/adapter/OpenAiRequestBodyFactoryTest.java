@@ -31,7 +31,7 @@ class OpenAiRequestBodyFactoryTest {
         call.setId("call_1");
         call.setType("function");
         ChatCompletionRequest.ToolCall.Function fn = new ChatCompletionRequest.ToolCall.Function();
-        fn.setName("list_finance_messages");
+        fn.setName("list_my_expenses");
         fn.setArguments("{\"status\":\"pending\"}");
         call.setFunction(fn);
         assistant.setToolCalls(List.of(call));
@@ -40,7 +40,7 @@ class OpenAiRequestBodyFactoryTest {
         request.setTools(List.of(Map.of(
                 "type", "function",
                 "function", Map.of(
-                        "name", "list_finance_messages",
+                        "name", "list_my_expenses",
                         "description", "查询财务消息",
                         "parameters", Map.of("type", "object")))));
         request.setToolChoice("auto");

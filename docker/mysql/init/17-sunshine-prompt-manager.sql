@@ -51,7 +51,7 @@ INSERT INTO prompt_definition (id, kind, display_name, description, enabled, pri
 
 INSERT INTO prompt_version (prompt_id, version, status, content_json) VALUES
 ('routing-rule.structural-plan', 1, 'published',
- '{"matchType":"structural","minDomainGroups":2,"patterns":["先.+再","再.+(并|然后|接着)","分步","多步","并对.+?(分析|审查|检查|评估)","完整处理","一套.+(分析|流程|处理)"],"domainGroups":{"knowledge":["制度","检索","知识库","政策","差旅办法","报销规定"],"finance":["待审批","报销","财务","付款","单据"],"analysis":["合规","分析","审查","对比","评估","结论"]},"plan":{"mode":"plan-workflow","params":{}}}'),
+ '{"matchType":"structural","minDomainGroups":2,"patterns":["先.+再","再.+(并|然后|接着)","分步","多步","并对.+?(分析|审查|检查|评估)","完整处理","一套.+(分析|流程|处理)"],"domainGroups":{"knowledge":["制度","检索","知识库","政策","差旅办法","报销规定","青松假","网约车","安全","IT","法务","行政","PMO","变更窗口"],"finance":["待审批","报销","财务","付款","单据","费用"],"analysis":["合规","分析","审查","对比","评估","结论"]},"plan":{"mode":"plan-workflow","params":{}}}'),
 ('routing-rule.peer-phrase', 1, 'published',
  '{"matchType":"peer_phrase","patterns":["互相验证","交叉审查","多专家讨论","分别分析并质疑","两个角度.*审查","专家.*分别.*审查"],"plan":{"mode":"peer-collab","params":{}}}'),
 ('routing-rule.react-policy-qa', 1, 'published',
@@ -229,7 +229,7 @@ loop **错误**示例（勿模仿）：edges 含 {"from":"lp1","to":"rb"} — �
 示例：{"planId":null,"reason":"按关键词分支","nodes":[{"id":"xg1","type":"exclusive-gateway","displayName":"条件分支","params":{}},{"id":"rf","type":"rag","displayName":"财务检索","params":{"topK":"3"}},{"id":"rh","type":"rag","displayName":"人事检索","params":{"topK":"3"}}],"edges":[{"from":"start","to":"xg1"},{"from":"xg1","to":"rf","condition":{"left":"{{start.userQuery}}","op":"contains","right":"报销"}},{"from":"xg1","to":"rh","default":true}]}
 
 ## 五、线性链示例
-{"planId":null,"reason":"制度+待审批+合规","nodes":[{"id":"n1","type":"rag","displayName":"检索制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查待审批","params":{"tool":"sdk__sunshine-finance__list_finance_messages","status":"pending"}},{"id":"n3","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\\\n{{n2.output}}","query":"归纳风险"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"}]}
+{"planId":null,"reason":"制度+待审批+合规","nodes":[{"id":"n1","type":"rag","displayName":"检索制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查待审批","params":{"tool":"sdk__sunshine-finance__list_my_expenses","status":"pending"}},{"id":"n3","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\\\n{{n2.output}}","query":"归纳风险"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"}]}
 
 ## Skill 目录
 {{skill-catalog}}

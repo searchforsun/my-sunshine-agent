@@ -44,13 +44,13 @@ class QueryRewriteServiceTest {
         props.getIntent().setEnabled(true);
         props.getIntent().setMaxChars(8);
         assertThat(service.shouldRewriteIntent("报销")).isTrue();
-        assertThat(service.shouldRewriteIntent("请问年假可以请几天")).isFalse();
+        assertThat(service.shouldRewriteIntent("请问青松假有多少天、怎么申请")).isFalse();
     }
 
     @Test
     void rewriteForIntentSkipsLongQuery() {
         props.getIntent().setEnabled(true);
-        assertThat(service.rewriteForIntent("请问年假可以请几天")).isEqualTo("请问年假可以请几天");
+        assertThat(service.rewriteForIntent("请问青松假有多少天、怎么申请")).isEqualTo("请问青松假有多少天、怎么申请");
     }
 
     @Test

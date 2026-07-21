@@ -84,23 +84,23 @@ class EvaluateServiceFullTest {
         lenient().when(evalSuiteService.requireSuite("default", EvalSuiteKeys.REGRESSION)).thenReturn(suiteEntity);
         EvalSuiteItemEntity q1 = new EvalSuiteItemEntity();
         q1.setItemKey("q001");
-        q1.setQueryText("年假可以请几天");
-        q1.setRelevantDocIdsJson("[\"leave-policy-v1\"]");
+        q1.setQueryText("青松假有多少天、怎么申请");
+        q1.setRelevantDocIdsJson("[\"c50-hr-leave\"]");
         q1.setCategory("leave");
         EvalSuiteItemEntity q2 = new EvalSuiteItemEntity();
         q2.setItemKey("q002");
         q2.setQueryText("病假需要什么证明材料");
-        q2.setRelevantDocIdsJson("[\"leave-policy-v1\"]");
+        q2.setRelevantDocIdsJson("[\"c50-hr-leave\"]");
         q2.setCategory("leave");
         EvalSuiteItemEntity q3 = new EvalSuiteItemEntity();
         q3.setItemKey("q003");
         q3.setQueryText("请假要提前多久申请");
-        q3.setRelevantDocIdsJson("[\"leave-policy-v1\"]");
+        q3.setRelevantDocIdsJson("[\"c50-hr-leave\"]");
         q3.setCategory("leave");
         lenient().when(evalSuiteService.loadItems(1L)).thenReturn(List.of(q1, q2, q3));
         lenient().when(documentCatalogService.listDocuments("default", "default"))
                 .thenReturn(List.of(new DocumentSummary(
-                        "leave-policy-v1", "公司请假流程规范", "text", "20260701110011", 1)));
+                        "c50-hr-leave", "公司请假流程规范", "text", "20260701110011", 1)));
         goldenSetLoader = new GoldenSetLoader(evalSuiteService, configParser, documentCatalogService);
         RagStorageProperties storageProperties = new RagStorageProperties();
         storageProperties.setType("local");

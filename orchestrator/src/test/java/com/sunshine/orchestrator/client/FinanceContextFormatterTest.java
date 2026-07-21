@@ -12,7 +12,7 @@ class FinanceContextFormatterTest {
     void emptyResult_structuredPlaceholder() {
         String ctx = FinanceContextFormatter.formatAgentContext("", "pending");
         assertThat(ctx).contains("[财务数据]");
-        assertThat(ctx).contains("list_finance_messages(status=pending)");
+        assertThat(ctx).contains("list_my_expenses(status=pending)");
         assertThat(ctx).contains("未返回数据");
     }
 

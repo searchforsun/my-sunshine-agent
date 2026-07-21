@@ -150,7 +150,7 @@ class ExecutionPlanRouterTest {
 
     @Test
     void longQuerySkipsIntentRewrite() {
-        String query = "年假可以请几天";
+        String query = "青松假有多少天、怎么申请";
         when(skillBindingParser.parse(query))
                 .thenReturn(SkillBindingOutcome.none(query));
         when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);

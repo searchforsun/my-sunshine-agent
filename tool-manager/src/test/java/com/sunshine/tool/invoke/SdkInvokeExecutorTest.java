@@ -45,7 +45,7 @@ class SdkInvokeExecutorTest {
             capturedUser.set(request.headers().getOrEmpty("x-user-id"));
             capturedTenant.set(request.headers().getOrEmpty("x-tenant-id"));
             String path = request.url().getPath();
-            if (path.contains("/sunshine/tools/invoke/list_finance_messages")) {
+            if (path.contains("/sunshine/tools/invoke/list_my_expenses")) {
                 String body = "{\"ok\":true,\"result\":\"2 条待审批\"}";
                 return Mono.just(ClientResponse.create(HttpStatus.OK)
                         .header("Content-Type", "application/json")
@@ -57,9 +57,9 @@ class SdkInvokeExecutorTest {
         stubFinanceAppAndInstance();
 
         ToolDefinitionEntity tool = new ToolDefinitionEntity();
-        tool.setId("sdk__sunshine-finance__list_finance_messages");
+        tool.setId("sdk__sunshine-finance__list_my_expenses");
         tool.setSourceRef("sunshine-finance");
-        tool.setExternalName("list_finance_messages");
+        tool.setExternalName("list_my_expenses");
         tool.setEnabled(true);
 
         String result = executor.invoke(tool, Map.of("status", "pending"), "u-alice", "acme");
@@ -81,9 +81,9 @@ class SdkInvokeExecutorTest {
         stubFinanceAppAndInstance();
 
         ToolDefinitionEntity tool = new ToolDefinitionEntity();
-        tool.setId("sdk__sunshine-finance__list_finance_messages");
+        tool.setId("sdk__sunshine-finance__list_my_expenses");
         tool.setSourceRef("sunshine-finance");
-        tool.setExternalName("list_finance_messages");
+        tool.setExternalName("list_my_expenses");
 
         executor.invoke(tool, Map.of(), "u1", null);
         assertThat(capturedTenant.get()).containsExactly("default");
@@ -100,7 +100,7 @@ class SdkInvokeExecutorTest {
 
         ToolDefinitionEntity tool = new ToolDefinitionEntity();
         tool.setSourceRef("sunshine-finance");
-        tool.setExternalName("list_finance_messages");
+        tool.setExternalName("list_my_expenses");
 
         assertThatThrownBy(() -> executor.invoke(tool, Map.of(), null, "default"))
                 .isInstanceOf(BizException.class)
@@ -134,7 +134,7 @@ class SdkInvokeExecutorTest {
     private ExchangeFunction stubExchange() {
         return request -> {
             String path = request.url().getPath();
-            if (path.contains("/sunshine/tools/invoke/list_finance_messages")) {
+            if (path.contains("/sunshine/tools/invoke/list_my_expenses")) {
                 String body = "{\"ok\":true,\"result\":\"2 条待审批\"}";
                 return Mono.just(ClientResponse.create(HttpStatus.OK)
                         .header("Content-Type", "application/json")

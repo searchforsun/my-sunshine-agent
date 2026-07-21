@@ -52,8 +52,8 @@ class ToolSetMemberServiceTest {
         plan.setDisplayName("Plan");
         toolSetRepository.save(plan);
 
-        saveTool("sdk__sunshine-finance__list_finance_messages", true);
-        saveTool("sdk__sunshine-finance__get_finance_message_detail", true);
+        saveTool("sdk__sunshine-finance__list_my_expenses", true);
+        saveTool("sdk__sunshine-finance__get_expense_detail", true);
         saveTool("sdk__sunshine-oa__list_oa_tasks", false);
     }
 
@@ -76,9 +76,9 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.REACT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_finance_messages", false),
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false),
                         new ToolSetMemberAddItem("sdk__sunshine-oa__list_oa_tasks", false))));
-        assertThat(result.added()).containsExactly("sdk__sunshine-finance__list_finance_messages");
+        assertThat(result.added()).containsExactly("sdk__sunshine-finance__list_my_expenses");
         assertThat(result.rejected()).hasSize(1);
         assertThat(result.rejected().getFirst().reason()).isEqualTo("not_enabled");
         assertThat(toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, null, 1, 20, null).total()).isOne();
@@ -90,13 +90,13 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.REACT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_finance_messages", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
         var second = toolSetMemberService.addMembers(
                 ToolSetKind.REACT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_finance_messages", false))));
-        assertThat(second.skipped()).containsExactly("sdk__sunshine-finance__list_finance_messages");
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
+        assertThat(second.skipped()).containsExactly("sdk__sunshine-finance__list_my_expenses");
     }
 
     @Test
@@ -105,12 +105,12 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.REACT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_finance_messages", false),
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__get_finance_message_detail", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false),
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__get_expense_detail", false))));
         toolSetMemberService.removeMembers(
                 ToolSetKind.REACT_DEFAULT,
                 null,
-                new ToolSetMemberRemoveRequest(List.of("sdk__sunshine-finance__list_finance_messages")));
+                new ToolSetMemberRemoveRequest(List.of("sdk__sunshine-finance__list_my_expenses")));
         assertThat(toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, null, 1, 20, null).total()).isOne();
     }
 
@@ -120,9 +120,9 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.PLAN_WORKFLOW,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_finance_messages", true))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", true))));
         var ids = toolSetMemberService.toolIds(ToolSetKind.PLAN_WORKFLOW, null);
-        assertThat(ids.criticalToolIds()).containsExactly("sdk__sunshine-finance__list_finance_messages");
+        assertThat(ids.criticalToolIds()).containsExactly("sdk__sunshine-finance__list_my_expenses");
     }
 
     @Test
@@ -131,9 +131,9 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.REACT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_finance_messages", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
         assertThat(toolSetMemberService.toolIds(ToolSetKind.REACT_DEFAULT, null).toolIds())
-                .containsExactly("sdk__sunshine-finance__list_finance_messages");
+                .containsExactly("sdk__sunshine-finance__list_my_expenses");
     }
 
     @Test
@@ -142,10 +142,10 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.REACT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_finance_messages", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
         var item = toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, null, 1, 20, null)
                 .items().getFirst();
-        assertThat(item.toolId()).isEqualTo("sdk__sunshine-finance__list_finance_messages");
+        assertThat(item.toolId()).isEqualTo("sdk__sunshine-finance__list_my_expenses");
         assertThat(item.sourceLabel()).contains("SDK");
     }
 

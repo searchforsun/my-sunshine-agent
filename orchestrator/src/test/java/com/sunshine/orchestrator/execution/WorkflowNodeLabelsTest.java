@@ -54,7 +54,7 @@ class WorkflowNodeLabelsTest {
     void planChainSkipsStartAndAnswer() {
         WorkflowDefinition def = WorkflowDefinition.from("finance-list", List.of(
                 new NodeSpec("start", "start", Map.of()),
-                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"),
+                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_my_expenses"),
                         "查询待审批财务消息"),
                 new NodeSpec("answer", "answer", Map.of(), "生成回答")
         ), List.of("start", "finance-list", "answer"));

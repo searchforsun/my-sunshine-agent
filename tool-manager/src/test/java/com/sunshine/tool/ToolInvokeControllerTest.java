@@ -30,7 +30,7 @@ class ToolInvokeControllerTest {
     @Test
     void invokeFinanceTool() throws Exception {
         when(invokeRouter.invoke(
-                eq("sdk__sunshine-finance__list_finance_messages"),
+                eq("sdk__sunshine-finance__list_my_expenses"),
                 eq(java.util.Map.of("status", "pending")),
                 eq(null),
                 eq("default")))
@@ -38,7 +38,7 @@ class ToolInvokeControllerTest {
 
         mockMvc.perform(post("/api/tools/invoke")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"sdk__sunshine-finance__list_finance_messages\",\"params\":{\"status\":\"pending\"}}"))
+                        .content("{\"name\":\"sdk__sunshine-finance__list_my_expenses\",\"params\":{\"status\":\"pending\"}}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value("2 条待审批"));

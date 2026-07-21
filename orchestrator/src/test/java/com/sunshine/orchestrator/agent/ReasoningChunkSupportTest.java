@@ -132,7 +132,7 @@ class ReasoningChunkSupportTest {
         ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
         StepEventBridge.bind("sub-run-tool", session, queue);
 
-        StepEventBridge.emit("sub-run-tool", s -> s.beginToolStep("tool-list_finance_messages", "tool"));
+        StepEventBridge.emit("sub-run-tool", s -> s.beginToolStep("tool-list_my_expenses", "tool"));
 
         assertThat(captured).hasSize(2);
         assertThat(captured).allMatch(StreamToken::isStep);
