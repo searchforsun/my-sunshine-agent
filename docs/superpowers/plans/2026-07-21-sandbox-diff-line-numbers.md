@@ -608,8 +608,7 @@ EOF
 ### Task 8: 沙箱抽屉全文行号
 
 **Files:**
-- Modify: `sunshine-ui/src/components/sandbox/SandboxPreviewPane.vue`
-- 可选 Modify: `sunshine-ui/src/components/sandbox/SandboxWorkspaceDrawer.vue`（若需传 split lines）
+- Modify: `sunshine-ui/src/components/sandbox/SandboxPreviewPane.vue`（行号逻辑收敛在本组件；Drawer 无需改 props，除非现有 `previewCodeHtml` 整块 HTML 无法按行拆——则改为传 `preview` 原文 + 语言，在 Pane 内逐行 highlight）
 
 - [ ] **Step 1: 预览区**
 
