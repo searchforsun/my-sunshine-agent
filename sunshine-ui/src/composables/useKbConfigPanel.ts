@@ -47,7 +47,6 @@ import { formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTi
 const SCOPE_PATH: Record<string, string[]> = {
   'rag-search': ['search'],
   'rag-rerank': ['rerank'],
-  'rag-chunk': ['chunk'],
   'rewrite-rag': ['rewrite', 'rag'],
   'rewrite-hyde': ['rewrite', 'hyde'],
   'rewrite-empty-recall': ['rewrite', 'emptyRecall'],

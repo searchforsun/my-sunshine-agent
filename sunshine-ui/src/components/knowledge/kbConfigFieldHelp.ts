@@ -16,8 +16,6 @@ const FIELD_HELP: Record<string, string> = {
     'Rerank 模型原始打分下限，低于此分的候选会被过滤。与 minRelevance 配合使用，形成双阈值门禁。',
   'rag-rerank:minRelevance':
     'Rerank relevance 分数下限。与 minScore 共同决定精排后保留哪些片段，避免低相关结果进入回答上下文。',
-  'rag-chunk:maxSize':
-    '文档入库 Markdown 分段的最大字符数。越小切片越细、定位越准；越大单段上下文越完整。修改后需重新入库文档才生效。',
   'rewrite-rag:enabled':
     '检索前是否启用 Query 改写。开启后先用 LLM 补全制度/流程等领域词并标准化表述，再走向量/混合检索，短问句召回通常更好。',
   'rewrite-rag:model':
@@ -45,7 +43,6 @@ const FIELD_HELP: Record<string, string> = {
 const SCOPE_HELP: Record<string, string> = {
   'rag-search': '租户级检索默认参数，发布后写入 Nacos sunshine-rag.yaml，全链路检索与 Chat 默认生效。',
   'rag-rerank': '精排阶段参数，控制 cross-encoder 是否启用及分数门禁。',
-  'rag-chunk': '文档入库分段策略，影响向量粒度与检索定位精度。',
   'rewrite-rag': '检索前 Query 改写，提升短问句与口语化问题的召回质量。',
   'rewrite-hyde': '向量零命中 fallback：生成假想文档段落再检索。',
   'rewrite-empty-recall': '检索无结果 fallback：生成备选 query 再检索。',
