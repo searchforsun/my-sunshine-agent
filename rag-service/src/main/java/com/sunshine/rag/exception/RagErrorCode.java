@@ -37,7 +37,8 @@ public enum RagErrorCode implements ErrorCode {
     CHUNK_LIMIT_EXCEEDED(400, "rag_chunk_limit_exceeded", "分块数量超过上限 2000，请增大块大小或拆分文档"),
     PREVIEW_NOT_FOUND(400, "rag_preview_not_found", "分块预览不存在或已失效，请重新预览"),
     PREVIEW_EXPIRED(400, "rag_preview_expired", "分块预览已过期，请重新预览"),
-    PREVIEW_MISMATCH(400, "rag_preview_mismatch", "分块预览与当前文档不匹配，请重新预览");
+    PREVIEW_MISMATCH(400, "rag_preview_mismatch", "分块预览与当前文档不匹配，请重新预览"),
+    PREVIEW_CONTENT_STALE(409, "rag_preview_content_stale", "文档内容已变更，请重新预览后再发布");
 
     private final int code;
     private final String key;

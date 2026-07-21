@@ -98,7 +98,7 @@ public class ChunkPreviewService {
         }
     }
 
-    static String sha256Hex(String content) {
+    public static String sha256Hex(String content) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(content == null ? new byte[0] : content.getBytes(StandardCharsets.UTF_8));

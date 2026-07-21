@@ -1,7 +1,12 @@
 package com.sunshine.rag.admin.catalog;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.rag.admin.catalog.dto.ChunkPreviewChunkItem;
 import com.sunshine.rag.admin.catalog.dto.ChunkPreviewDto;
+import com.sunshine.rag.admin.catalog.dto.ChunkPreviewRequest;
+import com.sunshine.rag.admin.catalog.dto.ChunkPreviewResponse;
 import com.sunshine.rag.admin.catalog.dto.CreateDocumentRequest;
 import com.sunshine.rag.admin.catalog.dto.DocumentContentView;
 import com.sunshine.rag.admin.catalog.dto.DocumentDetail;
@@ -10,13 +15,16 @@ import com.sunshine.rag.admin.catalog.dto.IngestResult;
 import com.sunshine.rag.admin.catalog.dto.IngestTextRequest;
 import com.sunshine.rag.admin.catalog.dto.SaveDocumentContentRequest;
 import com.sunshine.rag.admin.catalog.dto.UpdateDocumentRequest;
-import com.sunshine.rag.admin.config.EffectiveConfigResolver;
 import com.sunshine.rag.client.DesensitizeClient;
 import com.sunshine.rag.admin.catalog.parser.DocumentFileParser;
 import com.sunshine.rag.entity.DocumentEntity;
 import com.sunshine.rag.entity.DocumentVersionEntity;
+import com.sunshine.rag.chunker.ChunkDraft;
+import com.sunshine.rag.chunker.ChunkParams;
+import com.sunshine.rag.chunker.ChunkPreviewRecord;
+import com.sunshine.rag.chunker.ChunkPreviewService;
+import com.sunshine.rag.chunker.ChunkStrategy;
 import com.sunshine.rag.exception.RagErrorCode;
-import com.sunshine.rag.parser.MarkdownParser;
 import com.sunshine.rag.repository.DocumentRepository;
 import com.sunshine.rag.repository.DocumentVersionRepository;
 import com.sunshine.rag.storage.RagStorageFacade;
@@ -32,6 +40,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -42,15 +51,15 @@ public class DocumentCatalogService {
     private static final String DEFAULT_DOC_NAME = "未命名文档";
 
     private final KnowledgeBaseService knowledgeBaseService;
-    private final EffectiveConfigResolver effectiveConfigResolver;
     private final DocumentRepository documentRepository;
     private final DocumentVersionRepository documentVersionRepository;
-    private final MarkdownParser markdownParser;
     private final DocumentFileParser documentFileParser;
     private final RagStorageFacade ragStorageFacade;
     private final DesensitizeClient desensitizeClient;
     private final DocumentChunkIndexer chunkIndexer;
     private final DocumentVersionOps versionOps;
+    private final ChunkPreviewService chunkPreviewService;
+    private final ObjectMapper objectMapper;
 
     @Lazy
     @Autowired
@@ -216,9 +225,16 @@ public class DocumentCatalogService {
     }
 
     @Transactional
-    public Mono<IngestResult> publishVersion(String tenantId, String kbId, String docId, String version) {
+    public Mono<IngestResult> publishVersion(String tenantId, String kbId, String docId, String previewId) {
+        if (!StringUtils.hasText(previewId)) {
+            throw new BizException(RagErrorCode.PREVIEW_NOT_FOUND);
+        }
         DocumentEntity doc = requireDocument(tenantId, kbId, docId);
         DocumentSourceType sourceType = DocumentSourceType.require(doc.getSourceType());
+        String tid = doc.getTenantId();
+        String kid = doc.getKbId();
+        ChunkPreviewRecord preview = chunkPreviewService.consumePreview(tid, kid, docId, previewId.strip());
+        String version = preview.version();
         DocumentVersionEntity ver = versionOps.requireVersion(doc, version);
         if (!"draft".equals(ver.getStatus())) {
             throw new BizException(RagErrorCode.VERSION_NOT_EDITABLE);
@@ -229,14 +245,16 @@ public class DocumentCatalogService {
         if (!StringUtils.hasText(content) || sourceType.isPlaceholder(content)) {
             throw new BizException(RagErrorCode.VERSION_NO_CONTENT);
         }
+        if (!preview.contentHash().equals(ChunkPreviewService.sha256Hex(content))) {
+            throw new BizException(RagErrorCode.PREVIEW_CONTENT_STALE);
+        }
         String docName = doc.getDisplayName();
-        String tid = doc.getTenantId();
-        String kid = doc.getKbId();
         versionOps.supersedeActiveVersions(tid, kid, docId);
-        int chunkMaxSize = effectiveConfigResolver.resolve(tid, kid).chunkMaxSize();
-        List<String> chunks = markdownParser.parse(content, chunkMaxSize);
+        List<String> chunks = preview.chunks().stream().map(ChunkDraft::text).toList();
         ver.setStatus("active");
         ver.setChunkCount(chunks.size());
+        ver.setChunkStrategy(preview.strategy().wire());
+        ver.setChunkParamsJson(writeChunkParamsJson(preview.params()));
         ver.setPublishedAt(Instant.now());
         ver.setParsedMarkdown(content);
         documentVersionRepository.save(ver);
@@ -244,10 +262,36 @@ public class DocumentCatalogService {
         doc.setUpdatedAt(Instant.now());
         documentRepository.save(doc);
         versionOps.markIngestJobActive(ver);
-        log.info("[RAG] document published: tenant={}, kb={}, doc={}, v={}, chunks={}",
-                tid, kid, docId, version, chunks.size());
+        log.info("[RAG] document published: tenant={}, kb={}, doc={}, v={}, strategy={}, chunks={}",
+                tid, kid, docId, version, preview.strategy().wire(), chunks.size());
         return chunkIndexer.embedAndIndex(tid, kid, docId, docName, version, chunks)
                 .thenReturn(new IngestResult(docId, docName, version, chunks.size()));
+    }
+
+    public ChunkPreviewResponse chunkPreview(
+            String tenantId, String kbId, String docId, ChunkPreviewRequest request) {
+        if (request == null || !StringUtils.hasText(request.strategy())) {
+            throw new BizException(RagErrorCode.UNKNOWN_CHUNK_STRATEGY);
+        }
+        DocumentEntity doc = requireDocument(tenantId, kbId, docId);
+        DocumentSourceType sourceType = DocumentSourceType.require(doc.getSourceType());
+        DocumentVersionEntity ver = resolvePreviewDraftVersion(doc, request.version());
+        versionOps.ensureParseFinished(ver);
+        versionOps.ensureQuarantineConfirmed(ver);
+        String content = desensitizeClient.scrubForPublish(versionOps.readVersionContent(doc, ver));
+        if (!StringUtils.hasText(content) || sourceType.isPlaceholder(content)) {
+            throw new BizException(RagErrorCode.VERSION_NO_CONTENT);
+        }
+        ChunkParams params = resolveChunkParams(request.strategy(), request.params());
+        ChunkPreviewRecord record = chunkPreviewService.createPreview(
+                doc.getTenantId(),
+                doc.getKbId(),
+                docId,
+                ver.getVersion(),
+                content,
+                params.strategy(),
+                params);
+        return toPreviewResponse(record);
     }
 
     @Transactional
@@ -302,8 +346,13 @@ public class DocumentCatalogService {
         }
         versionOps.supersedeActiveVersions(tid, kid, docId);
         String newVersion = versionOps.newVersionKey(tid, kid, docId);
-        int chunkMaxSize = effectiveConfigResolver.resolve(tid, kid).chunkMaxSize();
-        List<String> chunks = markdownParser.parse(content, chunkMaxSize);
+        ChunkParams chunkParams = resolveChunkParams(
+                StringUtils.hasText(request.strategy()) ? request.strategy() : ChunkStrategy.MARKDOWN.wire(),
+                request.params());
+        ChunkPreviewRecord preview = chunkPreviewService.createPreview(
+                tid, kid, docId, newVersion, content, chunkParams.strategy(), chunkParams);
+        ChunkPreviewRecord consumed = chunkPreviewService.consumePreview(tid, kid, docId, preview.previewId());
+        List<String> chunks = consumed.chunks().stream().map(ChunkDraft::text).toList();
         String storagePath = ragStorageFacade.documentContentRef(tid, kid, docId, newVersion);
         ragStorageFacade.putDocumentMarkdown(tid, kid, docId, newVersion, content);
         DocumentVersionEntity versionEntity = versionOps.newVersionEntity(tid, kid, docId, newVersion);
@@ -311,13 +360,15 @@ public class DocumentCatalogService {
         versionEntity.setParsedMarkdown(content);
         versionEntity.setStoragePath(storagePath);
         versionEntity.setChunkCount(chunks.size());
+        versionEntity.setChunkStrategy(consumed.strategy().wire());
+        versionEntity.setChunkParamsJson(writeChunkParamsJson(consumed.params()));
         versionEntity.setPublishedAt(Instant.now());
         documentVersionRepository.save(versionEntity);
         document.setActiveVersion(newVersion);
         document.setUpdatedAt(Instant.now());
         documentRepository.save(document);
-        log.info("[RAG] catalog ingest: tenant={}, kb={}, doc={}, v={}, chunks={}",
-                tid, kid, docId, newVersion, chunks.size());
+        log.info("[RAG] catalog ingest: tenant={}, kb={}, doc={}, v={}, strategy={}, chunks={}",
+                tid, kid, docId, newVersion, consumed.strategy().wire(), chunks.size());
         return chunkIndexer.embedAndIndex(tid, kid, docId, docName, newVersion, chunks)
                 .thenReturn(new IngestResult(docId, docName, newVersion, chunks.size()));
     }
@@ -360,6 +411,52 @@ public class DocumentCatalogService {
         }
         return documentRepository.findByTenantIdAndKbIdAndDocId(tid, kid, docId.strip())
                 .orElseThrow(() -> new BizException(RagErrorCode.DOC_NOT_FOUND));
+    }
+
+    private DocumentVersionEntity resolvePreviewDraftVersion(DocumentEntity doc, String version) {
+        if (StringUtils.hasText(version)) {
+            return versionOps.requireDraftVersion(doc, version.strip());
+        }
+        return versionOps.findContentDraft(doc)
+                .or(() -> versionOps.findDraftVersion(doc))
+                .orElseThrow(() -> new BizException(RagErrorCode.VERSION_NOT_FOUND));
+    }
+
+    private ChunkParams resolveChunkParams(String strategyRaw, Map<String, Object> rawParams) {
+        ChunkStrategy strategy;
+        try {
+            strategy = ChunkStrategy.parse(strategyRaw);
+        } catch (IllegalArgumentException ex) {
+            throw new BizException(RagErrorCode.UNKNOWN_CHUNK_STRATEGY);
+        }
+        try {
+            return ChunkParams.forStrategy(strategy, rawParams);
+        } catch (IllegalArgumentException ex) {
+            throw new BizException(RagErrorCode.CONFIG_PAYLOAD_INVALID);
+        }
+    }
+
+    private String writeChunkParamsJson(ChunkParams params) {
+        try {
+            return objectMapper.writeValueAsString(params.asMap());
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("分块参数序列化失败", e);
+        }
+    }
+
+    private static ChunkPreviewResponse toPreviewResponse(ChunkPreviewRecord record) {
+        List<ChunkPreviewChunkItem> chunks = record.chunks().stream()
+                .map(draft -> new ChunkPreviewChunkItem(
+                        draft.index(), draft.text(), draft.charCount(), draft.meta()))
+                .toList();
+        return new ChunkPreviewResponse(
+                record.previewId(),
+                record.strategy().wire(),
+                record.params().asMap(),
+                record.contentHash(),
+                chunks.size(),
+                chunks,
+                record.expiresAt());
     }
 
     private static String resolveDocName(IngestTextRequest request) {

@@ -1,12 +1,19 @@
 package com.sunshine.rag.admin.catalog;
 
-import com.sunshine.rag.admin.config.EffectiveConfigResolver;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.rag.admin.catalog.dto.ChunkPreviewRequest;
 import com.sunshine.rag.admin.catalog.dto.IngestTextRequest;
+import com.sunshine.rag.chunker.ChunkDraft;
+import com.sunshine.rag.chunker.ChunkParams;
+import com.sunshine.rag.chunker.ChunkPreviewRecord;
+import com.sunshine.rag.chunker.ChunkPreviewService;
+import com.sunshine.rag.chunker.ChunkStrategy;
 import com.sunshine.rag.entity.DocumentEntity;
 import com.sunshine.rag.entity.DocumentVersionEntity;
 import com.sunshine.rag.entity.KnowledgeBaseEntity;
 import com.sunshine.rag.admin.catalog.parser.DocumentFileParser;
-import com.sunshine.rag.parser.MarkdownParser;
+import com.sunshine.rag.exception.RagErrorCode;
 import com.sunshine.rag.repository.DocumentRepository;
 import com.sunshine.rag.repository.DocumentVersionRepository;
 import com.sunshine.rag.util.DocumentVersionTime;
@@ -19,12 +26,14 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import reactor.core.publisher.Mono;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -41,13 +50,9 @@ class DocumentCatalogServiceTest {
     @Mock
     private KnowledgeBaseService knowledgeBaseService;
     @Mock
-    private EffectiveConfigResolver effectiveConfigResolver;
-    @Mock
     private DocumentRepository documentRepository;
     @Mock
     private DocumentVersionRepository documentVersionRepository;
-    @Mock
-    private MarkdownParser markdownParser;
     @Mock
     private DocumentFileParser documentFileParser;
     @Mock
@@ -58,6 +63,8 @@ class DocumentCatalogServiceTest {
     private DocumentChunkIndexer chunkIndexer;
     @Mock
     private DocumentVersionOps versionOps;
+    @Mock
+    private ChunkPreviewService chunkPreviewService;
 
     private DocumentCatalogService service;
 
@@ -65,23 +72,20 @@ class DocumentCatalogServiceTest {
     void setUp() {
         service = new DocumentCatalogService(
                 knowledgeBaseService,
-                effectiveConfigResolver,
                 documentRepository,
                 documentVersionRepository,
-                markdownParser,
                 documentFileParser,
                 ragStorageFacade,
                 desensitizeClient,
                 chunkIndexer,
-                versionOps);
+                versionOps,
+                chunkPreviewService,
+                new ObjectMapper());
         KnowledgeBaseEntity kb = new KnowledgeBaseEntity();
         kb.setTenantId("default");
         kb.setKbId("default");
         when(knowledgeBaseService.requireKb(anyString(), anyString())).thenReturn(kb);
         when(desensitizeClient.scrubForPublish(anyString())).thenAnswer(inv -> inv.getArgument(0));
-        when(effectiveConfigResolver.resolve(anyString(), anyString()))
-                .thenReturn(com.sunshine.rag.admin.config.ConfigBundlePayload.toResolvedKbConfig(
-                        com.sunshine.rag.admin.config.ConfigBundleTestFixtures.fullPayload()));
         when(ragStorageFacade.documentContentRef(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn("minio://bucket/key");
         when(chunkIndexer.embedAndIndex(anyString(), anyString(), anyString(), anyString(), anyString(), any()))
@@ -109,23 +113,112 @@ class DocumentCatalogServiceTest {
         doc.setDisplayName("报销制度");
         when(documentRepository.findByTenantIdAndKbIdAndDocId("default", "default", "报销制度"))
                 .thenReturn(Optional.of(doc));
-        when(markdownParser.parse(eq(contentV1), anyInt())).thenReturn(List.of("v1"));
-        when(markdownParser.parse(eq(contentV2), anyInt())).thenReturn(List.of("v2"));
         when(versionOps.newVersionKey("default", "default", "报销制度")).thenReturn(V1, V2);
         when(documentVersionRepository.save(any(DocumentVersionEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        stubPreviewGate("default", "default", "报销制度", V1, contentV1, List.of("v1"), "prv_v1");
+        stubPreviewGate("default", "default", "报销制度", V2, contentV2, List.of("v2"), "prv_v2");
 
-        var first = service.ingestText("default", "default", new IngestTextRequest(contentV1, null, "报销制度", null)).block();
+        var first = service.ingestText("default", "default",
+                new IngestTextRequest(contentV1, null, "报销制度", null, null, null)).block();
         assertThat(first).isNotNull();
         assertThat(first.version()).isEqualTo(V1);
         assertThat(first.chunks()).isEqualTo(1);
 
-        var second = service.ingestText("default", "default", new IngestTextRequest(contentV2, null, "报销制度", null)).block();
+        var second = service.ingestText("default", "default",
+                new IngestTextRequest(contentV2, null, "报销制度", null, null, null)).block();
         assertThat(second).isNotNull();
         assertThat(second.version()).isEqualTo(V2);
 
         verify(versionOps, times(2)).supersedeActiveVersions("default", "default", "报销制度");
         verify(chunkIndexer, times(2)).embedAndIndex(
                 eq("default"), eq("default"), eq("报销制度"), eq("报销制度"), anyString(), any());
+    }
+
+    @Test
+    void publish_withoutPreviewId_fails() {
+        DocumentEntity doc = new DocumentEntity();
+        doc.setTenantId("default");
+        doc.setKbId("default");
+        doc.setDocId("doc-a");
+        when(documentRepository.findByTenantIdAndKbIdAndDocId("default", "default", "doc-a"))
+                .thenReturn(Optional.of(doc));
+
+        assertThatThrownBy(() -> service.publishVersion("default", "default", "doc-a", null).block())
+                .isInstanceOf(BizException.class)
+                .extracting(ex -> ((BizException) ex).getErrorCode())
+                .isEqualTo(RagErrorCode.PREVIEW_NOT_FOUND);
+    }
+
+    @Test
+    void publish_whenContentChanged_returnsConflict() {
+        String content = "# Title\nbody";
+        DocumentEntity doc = new DocumentEntity();
+        doc.setTenantId("default");
+        doc.setKbId("default");
+        doc.setDocId("doc-a");
+        doc.setDisplayName("doc-a");
+        doc.setSourceType("markdown");
+        when(documentRepository.findByTenantIdAndKbIdAndDocId("default", "default", "doc-a"))
+                .thenReturn(Optional.of(doc));
+        DocumentVersionEntity draft = draftVersion(V1, content);
+        when(versionOps.requireVersion(doc, V1)).thenReturn(draft);
+        when(versionOps.readVersionContent(doc, draft)).thenReturn(content);
+        ChunkParams params = ChunkParams.forStrategy(ChunkStrategy.MARKDOWN, Map.of());
+        ChunkPreviewRecord stale = new ChunkPreviewRecord(
+                "prv_stale",
+                "default",
+                "default",
+                "doc-a",
+                V1,
+                ChunkPreviewService.sha256Hex("old content"),
+                ChunkStrategy.MARKDOWN,
+                params,
+                List.of(new ChunkDraft(0, "body", Map.of())),
+                Instant.now().plusSeconds(600));
+        when(chunkPreviewService.consumePreview("default", "default", "doc-a", "prv_stale"))
+                .thenReturn(stale);
+
+        assertThatThrownBy(() -> service.publishVersion("default", "default", "doc-a", "prv_stale").block())
+                .isInstanceOf(BizException.class)
+                .extracting(ex -> ((BizException) ex).getErrorCode())
+                .isEqualTo(RagErrorCode.PREVIEW_CONTENT_STALE);
+    }
+
+    @Test
+    void chunkPreview_usesScrubbedDraftContent() {
+        String content = "# Title\nbody";
+        DocumentEntity doc = new DocumentEntity();
+        doc.setTenantId("default");
+        doc.setKbId("default");
+        doc.setDocId("doc-a");
+        doc.setSourceType("markdown");
+        when(documentRepository.findByTenantIdAndKbIdAndDocId("default", "default", "doc-a"))
+                .thenReturn(Optional.of(doc));
+        DocumentVersionEntity draft = draftVersion(V1, content);
+        when(versionOps.requireDraftVersion(doc, V1)).thenReturn(draft);
+        when(versionOps.readVersionContent(doc, draft)).thenReturn(content);
+        ChunkParams params = ChunkParams.forStrategy(ChunkStrategy.MARKDOWN, Map.of());
+        ChunkPreviewRecord record = new ChunkPreviewRecord(
+                "prv_ok",
+                "default",
+                "default",
+                "doc-a",
+                V1,
+                ChunkPreviewService.sha256Hex(content),
+                ChunkStrategy.MARKDOWN,
+                params,
+                List.of(new ChunkDraft(0, "body", Map.of())),
+                Instant.now().plusSeconds(600));
+        when(chunkPreviewService.createPreview(
+                "default", "default", "doc-a", V1, content, ChunkStrategy.MARKDOWN, params))
+                .thenReturn(record);
+
+        var response = service.chunkPreview(
+                "default", "default", "doc-a", new ChunkPreviewRequest(V1, "markdown", Map.of()));
+
+        assertThat(response.previewId()).isEqualTo("prv_ok");
+        assertThat(response.chunkCount()).isEqualTo(1);
+        assertThat(response.chunks().getFirst().text()).isEqualTo("body");
     }
 
     @Test
@@ -149,6 +242,45 @@ class DocumentCatalogServiceTest {
     void documentVersionTimeFormat() {
         assertThat(DocumentVersionTime.fromInstant(java.time.Instant.parse("2026-07-01T03:00:11Z")))
                 .matches("\\d{14}");
+    }
+
+    private void stubPreviewGate(
+            String tenant,
+            String kb,
+            String docId,
+            String version,
+            String content,
+            List<String> chunkTexts,
+            String previewId) {
+        ChunkParams params = ChunkParams.forStrategy(ChunkStrategy.MARKDOWN, Map.of());
+        List<ChunkDraft> drafts = chunkTexts.stream()
+                .map(text -> new ChunkDraft(chunkTexts.indexOf(text), text, Map.of()))
+                .toList();
+        ChunkPreviewRecord created = new ChunkPreviewRecord(
+                previewId,
+                tenant,
+                kb,
+                docId,
+                version,
+                ChunkPreviewService.sha256Hex(content),
+                ChunkStrategy.MARKDOWN,
+                params,
+                drafts,
+                Instant.now().plusSeconds(600));
+        when(chunkPreviewService.createPreview(tenant, kb, docId, version, content, ChunkStrategy.MARKDOWN, params))
+                .thenReturn(created);
+        when(chunkPreviewService.consumePreview(tenant, kb, docId, previewId)).thenReturn(created);
+    }
+
+    private static DocumentVersionEntity draftVersion(String version, String markdown) {
+        DocumentVersionEntity entity = new DocumentVersionEntity();
+        entity.setTenantId("default");
+        entity.setKbId("default");
+        entity.setDocId("doc-a");
+        entity.setVersion(version);
+        entity.setStatus("draft");
+        entity.setParsedMarkdown(markdown);
+        return entity;
     }
 
     private static DocumentVersionEntity activeVersion(String version, String markdown) {
