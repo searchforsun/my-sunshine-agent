@@ -1,0 +1,12 @@
+# ============================================================
+# sunshine-hr — Nacos 配置
+# Data ID: sunshine-hr.yaml
+# Group:   DEFAULT_GROUP
+# ============================================================
+
+server:
+  port: 8720
+
+logging:
+  level:
+    com.sunshine: debug

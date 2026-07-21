@@ -84,8 +84,9 @@ CREATE TABLE execution_mode_policy (
 );
 
 INSERT INTO sdk_application (id, nacos_service, display_name, tenant_id, status) VALUES
-('sunshine-finance', 'sunshine-finance', '财务 Demo 应用', 'default', 'offline'),
-('sunshine-oa', 'sunshine-oa', 'OA Demo 应用', 'default', 'offline');
+('sunshine-finance', 'sunshine-finance', '财务应用', 'default', 'offline'),
+('sunshine-oa', 'sunshine-oa', 'OA 应用', 'default', 'offline'),
+('sunshine-hr', 'sunshine-hr', 'HR 假勤应用', 'default', 'offline');
 
 INSERT INTO tool_set (id, set_type, tenant_id, display_name) VALUES
 ('global-react-default', 'global_react_default', NULL, '平台 ReAct 工具集'),

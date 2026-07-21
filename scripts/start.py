@@ -21,6 +21,7 @@ SERVICES = [
     ("rag", "rag-service", "sunshine-rag", 8400),
     ("finance", "finance-service", "sunshine-finance", 8710),
     ("oa", "oa-service", "sunshine-oa", 8700),
+    ("hr", "hr-biz-service", "sunshine-hr", 8720),
     ("tool-manager", "tool-manager", "sunshine-tool-manager", 8210),
     ("skill-manager", "skill-manager", "sunshine-skill-manager", 8225),
     ("sandbox-service", "sandbox-service", "sunshine-sandbox-service", 8226),
@@ -83,7 +84,7 @@ def main() -> int:
         procs.append(start_service(name, module, artifact, port))
 
     print("\n[OK] Core services started (Nacos config)")
-    print("  LLM Gateway  :8300 | RAG :8400 | Finance :8710 | Tool Manager :8210 | Skill Manager :8225 | Sandbox :8226 | Workflow Manager :8230 | Expert Manager :8235")
+    print("  LLM Gateway  :8300 | RAG :8400 | Finance :8710 | OA :8700 | HR :8720 | Tool Manager :8210 | Skill Manager :8225 | Sandbox :8226 | Workflow Manager :8230 | Expert Manager :8235")
     print("  Desensitize  :8600 | Prompt :8500 | Orchestrator :8200")
     print("  Auth Center  :8100 | BFF :8001 | Gateway :8000")
     print("Live SkyWalking trace requires OAP at ecs4c16g:11800")

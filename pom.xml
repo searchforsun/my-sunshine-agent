@@ -29,6 +29,7 @@
         <module>desensitize</module>
         <module>oa-service</module>
         <module>finance-service</module>
+        <module>hr-biz-service</module>
     </modules>
 
     <properties>

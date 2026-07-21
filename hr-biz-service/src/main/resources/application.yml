@@ -1,0 +1,33 @@
+# sunshine-hr — 配置入口
+# 业务配置唯一来源：Nacos（Data ID: sunshine-hr.yaml）
+# 本地维护副本：docs/nacos/sunshine-hr.yaml → scripts/sync_nacos.py 同步线上
+
+spring:
+  application:
+    name: sunshine-hr
+  config:
+    import:
+      - optional:nacos:sunshine-hr.yaml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        group: SUNSHINE_V2
+        metadata:
+          sunshine.tool-app: "true"
+          sunshine.tool-app-id: "sunshine-hr"
+      config:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+        file-extension: yaml
+        group: DEFAULT_GROUP
+
+sunshine:
+  tools:
+    enabled: true
+    app-id: sunshine-hr
