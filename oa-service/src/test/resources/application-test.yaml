@@ -25,7 +25,7 @@ spring:
 
 sunshine:
   biz:
-    admin-token: sunshine-mock-admin-dev
+    admin-token: sunshine-biz-admin-dev
 
 logging:
   level:

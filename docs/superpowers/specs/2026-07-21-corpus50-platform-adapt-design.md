@@ -1,9 +1,13 @@
-# corpus-50 平台适配 + 用户隔离 SDK 工具 + Mock 业务页
+# corpus-50 平台适配 + 用户隔离 SDK 工具 + 业务数据页
 
-> **状态**：📝 设计已定稿（Brainstorming 2026-07-21）  
-> **范围**：知识库语料切换后的 Skill / Workflow / Expert / Prompt / 路由验收适配；SDK 工具按用户隔离；前端 Mock 企业数据页  
-> **实现路径**：**方案 A** — SSOT 改种子 + 运维脚本同步 Live  
+> **状态**：✅ 已落地（数据层见下方 supersede）  
+> **范围**：知识库语料切换后的 Skill / Workflow / Expert / Prompt / 路由验收适配；SDK 工具按用户隔离；前端业务数据页  
+> **实现路径**：**方案 A** — SSOT 改种子；Live 以 `docker/mysql/init` + 域同步脚本为准  
 > **关联**：corpus-50（`docs/knowledge/` · `generate_rag_corpus.py` · `rag_eval.py`）· [tool-integration](./2026-07-09-tool-integration-design.md) · [workflow-studio](./2026-06-25-workflow-studio-design.md) · [expert-consultation](./2026-07-07-expert-consultation-design.md)
+
+> **Supersede（2026-07-21）**：§0 决策 6/8、§2.2 TenantUserStore、§4 `/mock-data` 重置种子、一次性 `sync_corpus50_platform.py`  
+> **已被** [biz-db-crud-design](./2026-07-21-biz-db-crud-design.md) **取代**：共享 MySQL `sunshine_biz` + `/api/biz/...` CRUD；前端路由 **`/biz-data`**（`BizDataView`）；Admin token 默认 `sunshine-biz-admin-dev`（`BizAdminAuth`）。  
+> 下文中 TenantUserStore / `/mock-data` / 旧工具 ID 迁移脚本段落仅作历史上下文，**不得再指导实现**。
 
 ---
 
@@ -16,9 +20,9 @@
 | 3 | 知识场景 | 非 demo：对齐 corpus-50 八域锚点问法（青松假、网约车上限、锁钥通道、变更窗口等） |
 | 4 | knowledge 拓扑 | **不新增**第 5 个 knowledge 工作流；深化现有 `knowledge-qa/dual/branch/loop` |
 | 5 | SDK 工具 | **合理增加**真实参数工具；身份只认 Gateway `x-user-id` / `x-tenant-id`；**禁止** LLM 传 `userId` 冒充 |
-| 6 | 数据层 | 进程内可重置 **TenantUserStore**（JSON 种子）；接口形状按真实企业 API，暂不建业务 MySQL |
+| 6 | 数据层 | ~~进程内 TenantUserStore~~ → **见 biz-db-crud**：MySQL `sunshine_biz` + JPA |
 | 7 | 服务切分 | **增强 finance + oa**；新增 **`hr-biz-service`（app-id `sunshine-hr`）** 承载假期/考勤 |
-| 8 | 前端 | 新增 **`/mock-data`** 业务 Mock 页（左域列表 + 右详情；可切换用户、重置种子） |
+| 8 | 前端 | ~~`/mock-data`~~ → **`/biz-data`** 业务数据表级 CRUD（无重置种子） |
 | 9 | 写工具 | `sideEffect=write`；需确认的走 HITL `require_confirmation` |
 | 10 | 旧语料 | **不回灌** `leave-policy-v1` 等历史 docId |
 | 11 | Demo 遗留 | **清除、不做兼容**（见 §0.1）；禁止别名/双写/旧工具名残留 |
@@ -29,7 +33,7 @@
 
 | 类别 | 必须删除 / 禁止保留 | 替换为 |
 |------|---------------------|--------|
-| 财务/OA 静态 MOCK | `FinanceMessageService` / `OaTaskService` 全局静态 List、无用户字段的假数据 | `TenantUserStore` 按用户种子 |
+| 财务/OA 静态 MOCK | `FinanceMessageService` / `OaTaskService` 全局静态 List、无用户字段的假数据 | **biz-db-crud**：`sunshine_biz` 按 userId 隔离 |
 | 旧工具短名 | `list_finance_messages` / `get_finance_message_detail` / `summarize_finance_by_status` 及 Catalog 旧 ID | §3 新短名（`list_my_expenses` 等）；Workflow/工具集 **改引用**，不留 alias |
 | 旧验收句 | 「年假可以请几天」「报销流程是什么」等 demo 句 | corpus-50 锚点句（§5.3） |
 | 旧 docId / 展示名 | `leave-policy-v1`、`公司请假流程规范` 等作为产品/种子/评测引用 | 仅 `c50-*` + 新 displayName |

@@ -1,4 +1,8 @@
-# 业务库落库 + `/mock-data` 表级 CRUD
+# 业务库落库 + `/biz-data` 表级 CRUD
+
+> **状态**：✅ 已落地  
+> **路由**：前端 `/biz-data`（`BizDataView`）；Admin 默认 token `sunshine-biz-admin-dev`（`BizAdminAuth`）  
+> **关联**：[corpus50-platform-adapt](./2026-07-21-corpus50-platform-adapt-design.md)（数据层已被本文 supersede）
 
 > **状态**：📝 设计已定稿（Brainstorming 2026-07-21）  
 > **范围**：finance / oa / hr 三服务去掉进程内 JSON Mock，改为共享 MySQL `sunshine_biz` + SQL seed；前端业务数据页改为「左表类型 + 右 CRUD」  
@@ -37,7 +41,7 @@
 ### 1.1 目标
 
 - 三服务业务数据持久化在 MySQL，重启不丢联调改动（除非手工 DELETE 或重跑 init）
-- `/mock-data`（文案「业务数据」）左侧为**表类型**，右侧为该表基础增删改查列表
+- `/biz-data`（文案「业务数据」）左侧为**表类型**，右侧为该表基础增删改查列表
 - SDK 工具与 Admin CRUD 读写同一库表；按 `x-user-id` 隔离
 - 用户枚举来自真实 auth，表单提交 UUID
 
@@ -55,7 +59,7 @@
 
 ```mermaid
 flowchart LR
-  UI["/mock-data 业务数据页"]
+  UI["/biz-data 业务数据页"]
   AUTH[auth-center]
   FIN[finance-service]
   OA[oa-service]
@@ -149,7 +153,7 @@ flowchart LR
 
 ### 4.4 前端
 
-- 路由可保留 `/mock-data`；侧栏文案「业务数据」
+- 路由 **`/biz-data`**；侧栏文案「业务数据」
 - 顶栏：财务 / 人事 / OA
 - 左栏：该域表类型列表（非用户）
 - 右栏：`n-data-table` + 新建/编辑弹窗 + 删除确认；`user_id` / `assignee_user_id` 下拉绑定 auth 用户（展示 nickname，提交 id）
@@ -188,7 +192,7 @@ flowchart LR
 ## 7. 测试策略
 
 - 单测：Repository + Admin CRUD + 工具读库（H2/Testcontainers，跟仓内 JPA 惯例）
-- Live：更新 `verify_user_isolated_tools_live.py`；手动 `/mock-data` CRUD
+- Live：更新 `verify_user_isolated_tools_live.py`；手动 `/biz-data` CRUD
 - 编译启动：三服务 + auth + tool-manager；执行 biz schema 脚本后再验
 
 ---
@@ -199,7 +203,7 @@ flowchart LR
 2. 三服务：datasource + JPA 实体/Repo；工具改读库；删 Store/JSON/MockAdmin
 3. Admin CRUD Controllers（`/api/biz/...`）
 4. Auth：`GET /api/auth/users`
-5. 前端重写 `MockDataView` + api；proxy
+5. 前端 `BizDataView` + `bizData.ts`；proxy `/api/biz/*`
 6. Nacos datasource；Live apply schema；改 Live 脚本 UUID
 7. 单测 + G1–G5 验收
 

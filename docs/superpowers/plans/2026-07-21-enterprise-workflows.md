@@ -190,7 +190,7 @@ EOF
 # 3. --write-sql: 重写 13 文件中 INSERT 段（保留表结构 DDL）
 ```
 
-MySQL 连接复用 `sync_corpus50_platform.py` 的 `MYSQL_DEFAULTS` / `mysql_query` 模式。
+MySQL 连接复用 `scripts/sunshine_lib.py` 的连接约定（host/port/user）。
 
 转义：`plan_json` / `catalog_meta` 写入时对 `\` → `\\`、`'` → `\'`（或用 `mysql` 客户端 `--binary-mode` + 预处理）。
 

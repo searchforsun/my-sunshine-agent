@@ -4,8 +4,7 @@ import { parseApiResponse } from './apiError'
 
 const ADMIN_TOKEN =
   import.meta.env.VITE_BIZ_ADMIN_TOKEN
-  ?? import.meta.env.VITE_MOCK_ADMIN_TOKEN
-  ?? 'sunshine-mock-admin-dev'
+  ?? 'sunshine-biz-admin-dev'
 
 export type BizDomain = 'finance' | 'hr' | 'oa'
 

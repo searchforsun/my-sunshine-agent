@@ -58,7 +58,7 @@ my-sunshine-agent/
 ├── oa-service/      :8700      # OA 模拟（用户隔离待办）
 ├── finance-service/ :8710      # 财务模拟（用户隔离报销）
 ├── hr-biz-service/  :8720      # 人事模拟（假期/考勤，app-id sunshine-hr）
-├── sunshine-ui/     :5173      # 前端 WebUI（含 /mock-data 业务 Mock）
+├── sunshine-ui/     :5173      # 前端 WebUI（含 /biz-data 业务数据）
 ├── docker/                     # Docker Compose（中间件 + Prometheus/Grafana）
 ├── scripts/                    # Python 运维脚本（SSOT：scripts/*.py）
 └── docs/                       # 设计文档（Nacos SSOT：docs/nacos/）

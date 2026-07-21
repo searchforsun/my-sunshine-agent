@@ -5,7 +5,7 @@
   python3 scripts/verify_user_isolated_tools_live.py
   python3 scripts/verify_user_isolated_tools_live.py --skip-biz
 
-环境变量: TOOL_MANAGER_URL, FINANCE_URL, OA_URL, HR_URL, BIZ_ADMIN_TOKEN / MOCK_ADMIN_TOKEN
+环境变量: TOOL_MANAGER_URL, FINANCE_URL, OA_URL, HR_URL, BIZ_ADMIN_TOKEN
 """
 from __future__ import annotations
 
@@ -26,10 +26,7 @@ HR_URL = os.environ.get("HR_URL", "http://127.0.0.1:8720").rstrip("/")
 ALICE = "a1111111-1111-4111-a111-111111111111"
 BOB = "b2222222-2222-4222-b222-222222222222"
 CAROL = "c3333333-3333-4333-c333-333333333333"
-ADMIN_TOKEN = os.environ.get(
-    "BIZ_ADMIN_TOKEN",
-    os.environ.get("MOCK_ADMIN_TOKEN", "sunshine-mock-admin-dev"),
-)
+ADMIN_TOKEN = os.environ.get("BIZ_ADMIN_TOKEN", "sunshine-biz-admin-dev")
 # CAROL reserved for multi-user demos (same UUID as auth seed)
 assert CAROL != ALICE and CAROL != BOB
 

@@ -20,7 +20,6 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 |------|------|
 | `sunshine_lib.py` | 公共库（MySQL/Redis/启停 JVM） |
 | `sync_nacos.py` | Nacos 配置同步 |
-| `sync_corpus50_platform.py` | Live MySQL：旧 finance 工具 ID → `list_my_expenses` 等；`--dry-run` |
 | `start.py` | 按依赖顺序启动全链路 |
 | `clear_session_cache.py` | 清会话 + 可选重启 |
 | `download_skywalking_agent.py` | 下载 SkyWalking Agent |

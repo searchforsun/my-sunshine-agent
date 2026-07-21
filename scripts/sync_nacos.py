@@ -28,6 +28,7 @@ DEFAULT_DATA_IDS = [
     "sunshine-llm-gateway.yaml",
     "sunshine-rag.yaml",
     "sunshine-finance.yaml",
+    "sunshine-oa.yaml",
     "sunshine-hr.yaml",
     "sunshine-tool-manager.yaml",
     "sunshine-skill-manager.yaml",

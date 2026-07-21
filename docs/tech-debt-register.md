@@ -21,13 +21,14 @@
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| （暂无 open） | — | — | — | — |
+| TD-105 | P2 | open | `KbDocPanel.vue` (~1281 行) | RAG 分块预览门禁堆入上帝组件；下一轮 RAG scope 拆分 |
+| TD-106 | P3 | open | finance/oa/hr `*BizService` | 三服务平行 CRUD 样板；暂不抽泛型 |
 
 ### 文档债
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| （暂无 open） | — | — | — | — |
+| DOC-101 | P3 | open | `plans/2026-07-21-corpus50-platform-adapt.md` 等历史 plan | 仍写 TenantUserStore/`/mock-data`；实现期清单，可读但非 SSOT |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 
@@ -177,6 +178,11 @@
 | TD-137 | 2026-07-20 | ReAct Toolkit 组装改 `boundedElastic`；`ToolManagerClient` 禁止在 reactor-http 上 `block` 静默空工具集 |
 | TD-138 | 2026-07-20 | AgentScope ↑1.0.8（并行 tool `mergeSequential` 保序）；`completeRunningActive` 跳过 tool 步，避免空 after |
 | TD-139 | 2026-07-20 | Plan 执行期 `NodeRetryPolicy` 改 boundedElastic；规划/执行错误分流，禁执行失败静默降级 ReAct |
+| TD-100 | 2026-07-21 | 三服务 Admin 鉴权收敛 `BizAdminAuth`（common） |
+| TD-101 | 2026-07-21 | `MockDataView` 拆 `bizTableSchema` + `useBizDataPage` + `BizDataView` |
+| TD-102 | 2026-07-21 | 路由 `/mock-data`→`/biz-data`；token 默认 `sunshine-biz-admin-dev`；删 `VITE_MOCK_ADMIN` 兼容 |
+| TD-104 | 2026-07-21 | 删一次性 `sync_corpus50_platform.py`（Live 已无旧 Catalog ID） |
+| TD-107 | 2026-07-21 | `sync_nacos.py` 补漏 `sunshine-oa.yaml`（否则 OA admin-token 永不更新） |
 
 ### 文档债（DOC）
 
@@ -205,6 +211,7 @@
 | DOC-023 | 2026-07-18 | spawn design §5：Nacos 键改为 `agent.timeline.steps.subagent` + `agent.execution.react.subagent.*` |
 | DOC-024 | 2026-07-18 | sandbox cancel plan 对齐 `SandboxInvocationRegistry` / `cancellable`；去幽灵 toolUseId/Budget |
 | DOC-025 | 2026-07-20 | 4.11 Catalog SSOT 文档收口；timeline-summary design 与实现对齐 |
+| DOC-100 | 2026-07-21 | corpus50 design 数据层 supersede → biz-db-crud；路由 `/biz-data` |
 
 ### 架构决策（ADR）
 

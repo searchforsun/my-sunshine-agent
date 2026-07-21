@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Sql(scripts = "/data-finance.sql")
 class BizFinanceControllerTest {
 
-    static final String TOKEN = "sunshine-mock-admin-dev";
+    static final String TOKEN = "sunshine-biz-admin-dev";
     static final String ALICE = "a1111111-1111-4111-a111-111111111111";
     static final String BOB = "b2222222-2222-4222-b222-222222222222";
 
