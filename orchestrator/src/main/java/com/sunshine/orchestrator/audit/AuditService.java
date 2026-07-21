@@ -78,8 +78,8 @@ public class AuditService {
                     payloadJson,
                     Instant.now());
             auditPublisher.publish(event);
-        } catch (Exception e) {
-            log.warn("[Audit] 构建事件失败 msgId={}: {}", message.getId(), e.getMessage());
+        } catch (Throwable e) {
+            log.warn("[Audit] 构建事件失败 msgId={}: {}", message.getId(), e.toString());
         }
     }
 }

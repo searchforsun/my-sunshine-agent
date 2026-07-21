@@ -57,8 +57,8 @@ public class ToolAuditService {
                     outputSummary != null ? outputSummary.length() : 0,
                     payloadJson,
                     Instant.now()));
-        } catch (Exception e) {
-            log.warn("[ToolAudit] 事件构建失败 toolId={}: {}", toolId, e.getMessage());
+        } catch (Throwable e) {
+            log.warn("[ToolAudit] 事件构建失败 toolId={}: {}", toolId, e.toString());
         }
     }
 
