@@ -20,6 +20,7 @@ import com.sunshine.rag.util.DocumentVersionTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -175,13 +177,70 @@ class DocumentCatalogServiceTest {
                 params,
                 List.of(new ChunkDraft(0, "body", Map.of())),
                 Instant.now().plusSeconds(600));
-        when(chunkPreviewService.consumePreview("default", "default", "doc-a", "prv_stale"))
+        when(chunkPreviewService.requirePreview("default", "default", "doc-a", "prv_stale"))
                 .thenReturn(stale);
 
         assertThatThrownBy(() -> service.publishVersion("default", "default", "doc-a", "prv_stale").block())
                 .isInstanceOf(BizException.class)
                 .extracting(ex -> ((BizException) ex).getErrorCode())
                 .isEqualTo(RagErrorCode.PREVIEW_CONTENT_STALE);
+        verify(chunkPreviewService, never()).consumePreview(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void publish_success_writesChunkMetadataAndIndexesPreviewChunks() {
+        String content = "# Title\nbody";
+        String previewId = "prv_ok";
+        DocumentEntity doc = new DocumentEntity();
+        doc.setTenantId("default");
+        doc.setKbId("default");
+        doc.setDocId("doc-a");
+        doc.setDisplayName("doc-a");
+        doc.setSourceType("markdown");
+        when(documentRepository.findByTenantIdAndKbIdAndDocId("default", "default", "doc-a"))
+                .thenReturn(Optional.of(doc));
+        DocumentVersionEntity draft = draftVersion(V1, content);
+        when(versionOps.requireVersion(doc, V1)).thenReturn(draft);
+        when(versionOps.readVersionContent(doc, draft)).thenReturn(content);
+        ChunkParams params = ChunkParams.forStrategy(ChunkStrategy.MARKDOWN, Map.of("maxSize", 500));
+        List<ChunkDraft> previewChunks = List.of(
+                new ChunkDraft(0, "chunk-a", Map.of()),
+                new ChunkDraft(1, "chunk-b", Map.of()));
+        ChunkPreviewRecord preview = new ChunkPreviewRecord(
+                previewId,
+                "default",
+                "default",
+                "doc-a",
+                V1,
+                ChunkPreviewService.sha256Hex(content),
+                ChunkStrategy.MARKDOWN,
+                params,
+                previewChunks,
+                Instant.now().plusSeconds(600));
+        when(chunkPreviewService.requirePreview("default", "default", "doc-a", previewId))
+                .thenReturn(preview);
+        when(chunkPreviewService.consumePreview("default", "default", "doc-a", previewId))
+                .thenReturn(preview);
+        when(documentVersionRepository.save(any(DocumentVersionEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(documentRepository.save(any(DocumentEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        var result = service.publishVersion("default", "default", "doc-a", previewId).block();
+
+        assertThat(result).isNotNull();
+        assertThat(result.version()).isEqualTo(V1);
+        assertThat(result.chunks()).isEqualTo(2);
+        ArgumentCaptor<DocumentVersionEntity> versionCaptor = ArgumentCaptor.forClass(DocumentVersionEntity.class);
+        verify(documentVersionRepository).save(versionCaptor.capture());
+        DocumentVersionEntity saved = versionCaptor.getValue();
+        assertThat(saved.getChunkStrategy()).isEqualTo("markdown");
+        assertThat(saved.getChunkParamsJson()).contains("\"maxSize\":500");
+        verify(chunkIndexer).embedAndIndex(
+                eq("default"), eq("default"), eq("doc-a"), eq("doc-a"), eq(V1),
+                eq(List.of("chunk-a", "chunk-b")));
+        verify(chunkPreviewService).requirePreview("default", "default", "doc-a", previewId);
+        verify(chunkPreviewService).consumePreview("default", "default", "doc-a", previewId);
     }
 
     @Test

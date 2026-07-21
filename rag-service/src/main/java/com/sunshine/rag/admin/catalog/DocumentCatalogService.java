@@ -233,7 +233,8 @@ public class DocumentCatalogService {
         DocumentSourceType sourceType = DocumentSourceType.require(doc.getSourceType());
         String tid = doc.getTenantId();
         String kid = doc.getKbId();
-        ChunkPreviewRecord preview = chunkPreviewService.consumePreview(tid, kid, docId, previewId.strip());
+        String strippedPreviewId = previewId.strip();
+        ChunkPreviewRecord preview = chunkPreviewService.requirePreview(tid, kid, docId, strippedPreviewId);
         String version = preview.version();
         DocumentVersionEntity ver = versionOps.requireVersion(doc, version);
         if (!"draft".equals(ver.getStatus())) {
@@ -262,6 +263,7 @@ public class DocumentCatalogService {
         doc.setUpdatedAt(Instant.now());
         documentRepository.save(doc);
         versionOps.markIngestJobActive(ver);
+        chunkPreviewService.consumePreview(tid, kid, docId, strippedPreviewId);
         log.info("[RAG] document published: tenant={}, kb={}, doc={}, v={}, strategy={}, chunks={}",
                 tid, kid, docId, version, preview.strategy().wire(), chunks.size());
         return chunkIndexer.embedAndIndex(tid, kid, docId, docName, version, chunks)
@@ -351,8 +353,7 @@ public class DocumentCatalogService {
                 request.params());
         ChunkPreviewRecord preview = chunkPreviewService.createPreview(
                 tid, kid, docId, newVersion, content, chunkParams.strategy(), chunkParams);
-        ChunkPreviewRecord consumed = chunkPreviewService.consumePreview(tid, kid, docId, preview.previewId());
-        List<String> chunks = consumed.chunks().stream().map(ChunkDraft::text).toList();
+        List<String> chunks = preview.chunks().stream().map(ChunkDraft::text).toList();
         String storagePath = ragStorageFacade.documentContentRef(tid, kid, docId, newVersion);
         ragStorageFacade.putDocumentMarkdown(tid, kid, docId, newVersion, content);
         DocumentVersionEntity versionEntity = versionOps.newVersionEntity(tid, kid, docId, newVersion);
@@ -360,15 +361,16 @@ public class DocumentCatalogService {
         versionEntity.setParsedMarkdown(content);
         versionEntity.setStoragePath(storagePath);
         versionEntity.setChunkCount(chunks.size());
-        versionEntity.setChunkStrategy(consumed.strategy().wire());
-        versionEntity.setChunkParamsJson(writeChunkParamsJson(consumed.params()));
+        versionEntity.setChunkStrategy(preview.strategy().wire());
+        versionEntity.setChunkParamsJson(writeChunkParamsJson(preview.params()));
         versionEntity.setPublishedAt(Instant.now());
         documentVersionRepository.save(versionEntity);
         document.setActiveVersion(newVersion);
         document.setUpdatedAt(Instant.now());
         documentRepository.save(document);
+        chunkPreviewService.consumePreview(tid, kid, docId, preview.previewId());
         log.info("[RAG] catalog ingest: tenant={}, kb={}, doc={}, v={}, strategy={}, chunks={}",
-                tid, kid, docId, newVersion, consumed.strategy().wire(), chunks.size());
+                tid, kid, docId, newVersion, preview.strategy().wire(), chunks.size());
         return chunkIndexer.embedAndIndex(tid, kid, docId, docName, newVersion, chunks)
                 .thenReturn(new IngestResult(docId, docName, newVersion, chunks.size()));
     }
