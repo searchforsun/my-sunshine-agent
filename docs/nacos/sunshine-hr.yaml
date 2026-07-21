@@ -7,6 +7,10 @@
 server:
   port: 8720
 
+sunshine:
+  mock:
+    admin-token: sunshine-mock-admin-dev
+
 logging:
   level:
     com.sunshine: debug

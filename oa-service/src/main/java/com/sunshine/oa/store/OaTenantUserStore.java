@@ -10,6 +10,7 @@ import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -81,6 +82,25 @@ public class OaTenantUserStore {
             return Optional.of(approved);
         }
         return Optional.empty();
+    }
+
+    /** 当前租户下已加载的 userId 列表（含种子用户）。 */
+    public List<String> listUserIds(String tenantId) {
+        ConcurrentHashMap<String, UserData> users = tenants.get(blankToDefault(tenantId));
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+        return users.keySet().stream().sorted().toList();
+    }
+
+    /** Admin 快照：tasks。 */
+    public Map<String, Object> snapshot(String tenantId, String userId) {
+        UserData data = userData(tenantId, userId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("userId", userId == null ? "" : userId.trim());
+        out.put("tenantId", blankToDefault(tenantId));
+        out.put("tasks", List.copyOf(data.tasks));
+        return out;
     }
 
     /** 从 classpath 种子重载指定租户（清空该租户运行时写入）。 */

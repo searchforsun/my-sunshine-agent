@@ -112,6 +112,48 @@ public class TenantUserStore {
         return List.of(buildSummary(normalized, filtered));
     }
 
+    /** 当前租户下已加载的 userId 列表（含种子用户）。 */
+    public List<String> listUserIds(String tenantId) {
+        ConcurrentHashMap<String, UserData> users = tenants.get(blankToDefault(tenantId));
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+        return users.keySet().stream().sorted().toList();
+    }
+
+    /** Admin 快照：expenses + inbox。 */
+    public Map<String, Object> snapshot(String tenantId, String userId) {
+        UserData data = userData(tenantId, userId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("userId", userId == null ? "" : userId.trim());
+        out.put("tenantId", blankToDefault(tenantId));
+        out.put("expenses", List.copyOf(data.expenses));
+        out.put("inbox", List.copyOf(data.inbox));
+        return out;
+    }
+
+    /** 更新指定报销单状态；不存在则 empty。 */
+    public Optional<ExpenseRecord> updateExpenseStatus(String tenantId, String userId,
+                                                       String expenseId, String status) {
+        if (!StringUtils.hasText(expenseId) || !StringUtils.hasText(status)) {
+            return Optional.empty();
+        }
+        String id = expenseId.trim();
+        String next = status.trim().toLowerCase(Locale.ROOT);
+        UserData data = userData(tenantId, userId);
+        for (int i = 0; i < data.expenses.size(); i++) {
+            ExpenseRecord row = data.expenses.get(i);
+            if (!id.equals(row.id())) {
+                continue;
+            }
+            ExpenseRecord updated = new ExpenseRecord(
+                    row.id(), row.category(), row.amount(), next, row.occurredOn(), row.remark());
+            data.expenses.set(i, updated);
+            return Optional.of(updated);
+        }
+        return Optional.empty();
+    }
+
     /** 从 classpath 种子重载指定租户（清空该租户运行时写入）。 */
     public void reset(String tenantId) {
         String tenant = blankToDefault(tenantId);

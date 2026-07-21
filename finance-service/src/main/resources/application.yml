@@ -31,3 +31,5 @@ sunshine:
   tools:
     enabled: true
     app-id: sunshine-finance
+  mock:
+    admin-token: sunshine-mock-admin-dev

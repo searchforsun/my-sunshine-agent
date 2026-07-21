@@ -19,6 +19,8 @@ sunshine:
   tools:
     enabled: true
     app-id: sunshine-oa
+  mock:
+    admin-token: sunshine-mock-admin-dev
 
 logging:
   level:
