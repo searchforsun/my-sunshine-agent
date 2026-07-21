@@ -88,6 +88,12 @@ const router = createRouter({
           component: () => import('../views/StatusView.vue'),
           meta: { title: '系统状态' },
         },
+        {
+          path: 'mock-data',
+          name: 'mock-data',
+          component: () => import('../views/MockDataView.vue'),
+          meta: { title: '业务数据' },
+        },
       ],
     },
   ],
