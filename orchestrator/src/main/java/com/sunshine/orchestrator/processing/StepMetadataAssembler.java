@@ -162,7 +162,7 @@ final class StepMetadataAssembler {
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, List.copyOf(nodeAttempts), null,
+                    null, null, null, null, null, null, null, List.copyOf(nodeAttempts), null,
                     null, null, null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
@@ -208,7 +208,7 @@ final class StepMetadataAssembler {
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, planApproval,
+                    null, null, null, null, null, null, null, null, planApproval,
                     null, null, null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
