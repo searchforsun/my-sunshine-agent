@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.expert;
 import com.sunshine.orchestrator.catalog.ExpertCatalogEntry;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +33,7 @@ public class ExpertSpeakStreamer {
                         ? gatheredContext.strip()
                         : "(无工具检索材料)");
         PromptComposeRequest request = PromptComposeRequest.forExpertSpeak(
-                MemoryContext.forSubAgent(),
+                AssembledContext.forSubAgent(),
                 prompt,
                 expert.primarySkillId(),
                 expert.systemPrompt());

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +46,7 @@ class ExecutionPlanStoreTest {
     @Test
     void createDraft_persistsAndLinksMessage() {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "conv-1", "msg-1", "query", MemoryContext.empty(),
+                "conv-1", "msg-1", "query", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
         PlanJson planJson = new PlanJson(null, "跨领域", List.of(

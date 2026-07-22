@@ -2,10 +2,8 @@ package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
-import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.memory.MemoryContext;
-import com.sunshine.orchestrator.memory.MemoryMessageBuilder;
-import com.sunshine.orchestrator.memory.stm.StmBoundaryFormatter;
+import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.context.ContextMessageBuilder;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 统一 system / memory 消息拼装 — 6 层叠加顺序见 phase3 SSOT §3.8。
+ * 统一 system / context 消息拼装 — 6 层叠加顺序见 phase3 SSOT §3.8。
  * ReAct 的 base-system 仍由 {@link com.sunshine.orchestrator.agent.ReActAgentFactory} 注入 AgentScope。
  * 已迁 Catalog 的层从 {@link PromptCatalogHolder} 读取（缺省空串 + warn）。
  * Skill overlay 仅 skill-manager Catalog（无 Nacos 影子兜底）。
@@ -50,19 +48,19 @@ public class PromptComposer {
 
     private void appendCommonGatewayLayers(
             List<Map<String, Object>> messages, PromptComposeRequest request, boolean includeBaseSystem) {
-        MemoryContext ctx = request.memory() != null ? request.memory() : MemoryContext.empty();
+        AssembledContext ctx = request.context() != null ? request.context() : AssembledContext.empty();
         if (includeBaseSystem) {
             addGatewaySystem(messages, catalogText("system-prompt"));
         }
         addGatewaySystem(messages, resolveModeOverlay(request.mode(), request.workflowId()));
         addGatewaySystem(messages, resolveSkillOverlay(request.skillId()));
-        appendGatewayMemoryLayers(messages, ctx);
+        appendGatewayContextLayers(messages, ctx);
         addGatewaySystem(messages, catalogText("scope-prompt"));
         addGatewaySystem(messages, nodePromptOrEmpty(request.nodePrompt()));
     }
 
     private void appendCommonReactLayers(List<Msg> inputs, PromptComposeRequest request, boolean includeBaseSystem) {
-        MemoryContext ctx = request.memory() != null ? request.memory() : MemoryContext.empty();
+        AssembledContext ctx = request.context() != null ? request.context() : AssembledContext.empty();
         if (includeBaseSystem) {
             addReactSystem(inputs, catalogText("system-prompt"));
         }
@@ -71,40 +69,29 @@ public class PromptComposer {
         addReactSystem(inputs, resolveReactRestartOverlay(request));
         addReactSystem(inputs, resolveHitlOverlay(request.mode()));
         addReactSystem(inputs, resolveSkillOverlay(request.skillId()));
-        appendReactMemoryLayers(inputs, ctx);
+        appendReactContextLayers(inputs, ctx);
         addReactSystem(inputs, catalogText("scope-prompt"));
         addReactSystem(inputs, nodePromptOrEmpty(request.nodePrompt()));
     }
 
-    private void appendGatewayMemoryLayers(List<Map<String, Object>> messages, MemoryContext ctx) {
-        addGatewaySystem(messages, catalogText("memory.layer-prompt"));
-        MemoryMessageBuilder.appendLongTermLayers(messages, ctx);
-        MemoryMessageBuilder.appendStmTurns(
-                messages, ctx, catalogText("memory.stm.header"), catalogText("memory.stm.preamble"));
+    private void appendGatewayContextLayers(List<Map<String, Object>> messages, AssembledContext ctx) {
+        ContextMessageBuilder.appendAll(
+                messages, ctx, catalogText("context.layer-prompt"), catalogText("context.usage-rules"));
     }
 
-    private void appendReactMemoryLayers(List<Msg> inputs, MemoryContext ctx) {
-        addReactSystem(inputs, catalogText("memory.layer-prompt"));
-        addReactSystem(inputs, ctx.ltmSnippet());
-        addReactSystem(inputs, ctx.mtmSnippet());
-        appendReactStmTurns(inputs, ctx);
-    }
-
-    private void appendReactStmTurns(List<Msg> inputs, MemoryContext memory) {
-        if (memory.stmTurns() == null || memory.stmTurns().isEmpty()) {
-            return;
-        }
-        String boundary = StmBoundaryFormatter.format(
-                catalogText("memory.stm.header"), catalogText("memory.stm.preamble"));
-        if (StringUtils.hasText(boundary)) {
-            addReactSystem(inputs, boundary.strip());
-        }
-        for (ChatTurn turn : memory.stmTurns()) {
-            if (turn.content() == null || turn.content().isBlank()) {
-                continue;
-            }
-            MsgRole role = "assistant".equals(turn.role()) ? MsgRole.ASSISTANT : MsgRole.USER;
-            inputs.add(Msg.builder().role(role).textContent(turn.content()).build());
+    private void appendReactContextLayers(List<Msg> inputs, AssembledContext ctx) {
+        List<Map<String, Object>> layers = new ArrayList<>();
+        ContextMessageBuilder.appendAll(
+                layers, ctx, catalogText("context.layer-prompt"), catalogText("context.usage-rules"));
+        for (Map<String, Object> msg : layers) {
+            String role = String.valueOf(msg.get("role"));
+            String content = String.valueOf(msg.get("content"));
+            MsgRole msgRole = switch (role) {
+                case "assistant" -> MsgRole.ASSISTANT;
+                case "user" -> MsgRole.USER;
+                default -> MsgRole.SYSTEM;
+            };
+            inputs.add(Msg.builder().role(msgRole).textContent(content).build());
         }
     }
 
@@ -112,8 +99,8 @@ public class PromptComposer {
         appendGatewayInjectedContexts(messages, request.injectedUserContexts());
         messages.add(Map.of(
                 "role", "user",
-                "content", MemoryMessageBuilder.formatCurrentUser(
-                        request.userMessage(), catalogText("memory.current-user-marker"))));
+                "content", ContextMessageBuilder.formatCurrentUser(
+                        request.userMessage(), catalogText("context.current-user-marker"))));
         if (request.partialAssistant() != null && !request.partialAssistant().isEmpty()) {
             messages.add(Map.of("role", "assistant", "content", request.partialAssistant()));
         }
@@ -123,8 +110,8 @@ public class PromptComposer {
         appendReactInjectedContexts(inputs, request.injectedUserContexts());
         inputs.add(Msg.builder()
                 .role(MsgRole.USER)
-                .textContent(MemoryMessageBuilder.formatCurrentUser(
-                        request.userMessage(), catalogText("memory.current-user-marker")))
+                .textContent(ContextMessageBuilder.formatCurrentUser(
+                        request.userMessage(), catalogText("context.current-user-marker")))
                 .build());
     }
 

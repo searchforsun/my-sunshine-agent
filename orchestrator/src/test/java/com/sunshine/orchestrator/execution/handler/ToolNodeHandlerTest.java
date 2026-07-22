@@ -5,7 +5,7 @@ import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.hitl.WorkflowHitlScope;
@@ -56,7 +56,7 @@ class ToolNodeHandlerTest {
 
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "m1", "有哪些待审批", MemoryContext.empty(),
+                "c1", "m1", "有哪些待审批", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-list", Map.of("status", "pending"), "test"));
 
@@ -75,7 +75,7 @@ class ToolNodeHandlerTest {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         WorkflowHitlScope.Binding hitl = new WorkflowHitlScope.Binding(session, "node-approve", "m1");
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "m1", "审批", MemoryContext.empty(),
+                "c1", "m1", "审批", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, "dynamic", Map.of(), "test"))
                 .withWorkflowHitl(hitl);
@@ -109,7 +109,7 @@ class ToolNodeHandlerTest {
                 .thenReturn(Mono.just("工具调用失败: Connection refused: getsockopt: localhost/127.0.0.1:8210"));
 
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "m1", "查待办", MemoryContext.empty(),
+                "c1", "m1", "查待办", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, "dynamic", Map.of(), "test"));
 

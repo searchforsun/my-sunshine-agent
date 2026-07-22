@@ -10,12 +10,15 @@ import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
+import com.sunshine.orchestrator.execution.agent.AgentNodeDetailLabelService;
+import com.sunshine.orchestrator.execution.agent.AgentNodeDetailSummarizer;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.grounding.GroundingVerdict;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,7 +61,13 @@ class AgentNodeHandlerTest {
 
     @BeforeEach
     void stubGroundingPass() {
+        AgentNodeDetailSummarizer.bind(new AgentNodeDetailLabelService());
         when(groundingChecker.check(any(), any())).thenReturn(GroundingVerdict.pass());
+    }
+
+    @AfterEach
+    void unbindAgentDetailLabels() {
+        AgentNodeDetailSummarizer.bind(null);
     }
 
     @Test
@@ -69,7 +78,7 @@ class AgentNodeHandlerTest {
 
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "m1", "待审批是否合规", MemoryContext.empty(),
+                "c1", "m1", "待审批是否合规", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
 
@@ -90,8 +99,8 @@ class AgentNodeHandlerTest {
         assertThat(req.assistantMessageId()).isEqualTo("m1");
         assertThat(req.resolveBridgeId()).startsWith("sub-");
         assertThat(req.injectedBlocks()).containsExactly("制度摘要");
-        assertThat(req.memory()).isEqualTo(MemoryContext.forSubAgent());
-        assertThat(req.memory().stmTurns()).isEmpty();
+        assertThat(req.memory()).isEqualTo(AssembledContext.forSubAgent());
+        assertThat(req.memory().nearTurns()).isEmpty();
         assertThat(req.skillId()).isNull();
         assertThat(req.toolWhitelist()).isNull();
         assertThat(req.systemOverlay()).isNull();
@@ -106,7 +115,7 @@ class AgentNodeHandlerTest {
 
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "m1", "q", MemoryContext.empty(),
+                "c1", "m1", "q", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
 
@@ -127,7 +136,7 @@ class AgentNodeHandlerTest {
         assertThat(req.toolWhitelist()).containsExactly("sdk__sunshine-finance__list_my_expenses", "search_knowledge");
         assertThat(req.systemOverlay()).isEqualTo("仅输出内部分析结论");
         assertThat(req.maxIters()).isEqualTo(4);
-        assertThat(req.memory()).isEqualTo(MemoryContext.forSubAgent());
+        assertThat(req.memory()).isEqualTo(AssembledContext.forSubAgent());
     }
 
     @Test
@@ -135,8 +144,8 @@ class AgentNodeHandlerTest {
         when(agentRuntime.run(any(AgentRunRequest.class)))
                 .thenReturn(Flux.just(StreamToken.content("ok")));
 
-        MemoryContext fullMemory = new MemoryContext("ltm", "mtm", List.of(
-                new ChatTurn("user", "上一轮"), new ChatTurn("assistant", "上一轮答")));
+        AssembledContext fullMemory = new AssembledContext("ltm", "mtm", List.of(), List.of(
+                new ChatTurn("user", "上一轮"), new ChatTurn("assistant", "上一轮答")), "");
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "q", fullMemory,
                 null, null, "u1", "default",
@@ -147,8 +156,8 @@ class AgentNodeHandlerTest {
 
         ArgumentCaptor<AgentRunRequest> captor = ArgumentCaptor.forClass(AgentRunRequest.class);
         verify(agentRuntime).run(captor.capture());
-        assertThat(captor.getValue().memory()).isEqualTo(MemoryContext.forSubAgent());
-        assertThat(captor.getValue().memory().stmTurns()).isEmpty();
+        assertThat(captor.getValue().memory()).isEqualTo(AssembledContext.forSubAgent());
+        assertThat(captor.getValue().memory().nearTurns()).isEmpty();
     }
 
     @Test
@@ -164,7 +173,7 @@ class AgentNodeHandlerTest {
                 "skill", "finance-analysis"));
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "m1", "q", MemoryContext.empty(),
+                "c1", "m1", "q", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
         var result = handler.run(spec, ctx, streamCtx).block();
@@ -186,7 +195,7 @@ class AgentNodeHandlerTest {
                 "skill", "finance-analysis"));
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "m1", "q", MemoryContext.empty(),
+                "c1", "m1", "q", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
         handler.run(spec, ctx, streamCtx).block();
@@ -206,7 +215,7 @@ class AgentNodeHandlerTest {
 
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "m1", "报销上限", MemoryContext.empty(),
+                "c1", "m1", "报销上限", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test"));
 

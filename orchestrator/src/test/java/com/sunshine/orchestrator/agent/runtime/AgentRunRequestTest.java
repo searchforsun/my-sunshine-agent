@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.agent.runtime;
 
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -10,7 +10,7 @@ class AgentRunRequestTest {
     @Test
     void main_bindsRoleTimelineAndAssistantMsgId() {
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "hello", "u1", "default", "msg-1");
+                AssembledContext.empty(), "hello", "u1", "default", "msg-1");
         assertThat(req.role()).isEqualTo(AgentRole.MAIN);
         assertThat(req.assistantMessageId()).isEqualTo("msg-1");
         assertThat(req.timeline()).isEqualTo(TimelineBinding.MAIN_FULL);
@@ -21,7 +21,7 @@ class AgentRunRequestTest {
     @Test
     void main_carriesInjectedBlocks() {
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-1",
+                AssembledContext.empty(), "q", "u1", "default", "msg-1",
                 java.util.List.of("rag ctx", "finance ctx"));
         assertThat(req.injectedBlocks()).containsExactly("rag ctx", "finance ctx");
     }
@@ -29,7 +29,7 @@ class AgentRunRequestTest {
     @Test
     void sub_noAssistantMsgIdAndCompressedTimeline() {
         AgentRunRequest req = AgentRunRequest.sub(
-                MemoryContext.empty(), "analyze", java.util.List.of("ctx block"), "u1", "default");
+                AssembledContext.empty(), "analyze", java.util.List.of("ctx block"), "u1", "default");
         assertThat(req.role()).isEqualTo(AgentRole.SUB);
         assertThat(req.assistantMessageId()).isNull();
         assertThat(req.timeline()).isEqualTo(TimelineBinding.SUB_COMPRESSED);
@@ -39,21 +39,21 @@ class AgentRunRequestTest {
     @Test
     void resolveBridgeId_subUsesRunIdPrefix() {
         AgentRunRequest req = AgentRunRequest.sub(
-                MemoryContext.empty(), "analyze", java.util.List.of("ctx block"), "u1", "default");
+                AssembledContext.empty(), "analyze", java.util.List.of("ctx block"), "u1", "default");
         assertThat(req.resolveBridgeId()).isEqualTo("sub-" + req.runId());
     }
 
     @Test
     void resolveBridgeId_mainUsesRunIdPrefix() {
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "hello", "u1", "default", "msg-1");
+                AssembledContext.empty(), "hello", "u1", "default", "msg-1");
         assertThat(req.resolveBridgeId()).isEqualTo("main-" + req.runId());
     }
 
     @Test
     void resolveBridgeId_subWithAssistantMsgIdStillUsesSubPrefix() {
         AgentRunRequest req = AgentRunRequest.sub(
-                MemoryContext.empty(),
+                AssembledContext.empty(),
                 "审批",
                 java.util.List.of("ctx"),
                 "u1",
@@ -70,7 +70,7 @@ class AgentRunRequestTest {
     @Test
     void sub_withNodeParams_carriesSkillToolsOverlayAndMaxIters() {
         AgentRunRequest req = AgentRunRequest.sub(
-                MemoryContext.empty(),
+                AssembledContext.empty(),
                 "analyze",
                 java.util.List.of("ctx"),
                 "u1",
@@ -91,7 +91,7 @@ class AgentRunRequestTest {
     @Test
     void sub_withConversationId_reusesDialogueSandbox() {
         AgentRunRequest req = AgentRunRequest.sub(
-                MemoryContext.empty(),
+                AssembledContext.empty(),
                 "analyze",
                 java.util.List.of("ctx"),
                 "u1",
@@ -109,7 +109,7 @@ class AgentRunRequestTest {
     @Test
     void main_carriesReactPromptId() {
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-1",
+                AssembledContext.empty(), "q", "u1", "default", "msg-1",
                 java.util.List.of(), null, false, null, "react-prompt.demo-scenario");
         assertThat(req.reactPromptId()).isEqualTo("react-prompt.demo-scenario");
     }
@@ -119,7 +119,7 @@ class AgentRunRequestTest {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.MAIN, "run-1", null, null, "q", null,
                 "u1", "default", "msg-1", null, null, null, 0, TimelineBinding.MAIN_FULL, false, null, null);
-        assertThat(req.memory()).isEqualTo(MemoryContext.empty());
+        assertThat(req.memory()).isEqualTo(AssembledContext.empty());
         assertThat(req.injectedBlocks()).isEmpty();
     }
 }

@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.rewrite;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
@@ -72,12 +72,9 @@ class QueryRewriteServiceTest {
         when(llm.complete(anyString(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"查询第一条待审批报销单详情\"}");
         service = new QueryRewriteService(props, catalogHolder, llm, new ObjectMapper());
-        MemoryContext memory = new MemoryContext(
-                "",
-                "",
-                List.of(
+        AssembledContext memory = new AssembledContext("", "", List.of(), List.of(
                         new ChatTurn("user", "查待审批报销"),
-                        new ChatTurn("assistant", "共有3条待审批")));
+                        new ChatTurn("assistant", "共有3条待审批")), "");
         assertThat(service.rewriteForIntent("那第一条", null, memory).effectiveQuery())
                 .isEqualTo("查询第一条待审批报销单详情");
         verify(llm).complete(

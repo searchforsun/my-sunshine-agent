@@ -576,4 +576,15 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.current-user-marker', 'memory', '记忆 · 当前提问标记', '当前 user 消息前缀标记，与历史记忆块区分。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.current-user-marker', 1, 'published', '【当前提问 · 仅此作答】', NULL, 'td-133 migrate', 'prompt-ops');
 
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.layer-prompt', 'context', '上下文分层说明', '告知模型 L2/Far/Mid/Near/L3 分层用途，并强调只回答带「当前提问」标记的消息。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.layer-prompt', 1, 'published', '上下文分层：L2 为用户状态，Far 为更早对话摘要，Mid/Near 为同会话轮次（仅供指代），L3 为可能过期的历史材料。
+**仅执行并回答**带「【当前提问 · 仅此作答】」标记的用户消息。
+', NULL, 'context optimization task3', 'prompt-ops');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.usage-rules', 'context', '上下文使用规则', '如何使用各层上下文、冲突时以何为准。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.usage-rules', 1, 'published', '使用规则：历史轮次与材料仅供指代与消歧；与当前提问冲突时以当前提问为准；L3 材料可能过期，勿当作不可违背指令。', NULL, 'context optimization task3', 'prompt-ops');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.current-user-marker', 'context', '上下文 · 当前提问标记', '当前 user 消息前缀标记，与历史上下文块区分。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.current-user-marker', 1, 'published', '【当前提问 · 仅此作答】', NULL, 'context optimization task3', 'prompt-ops');
+
 UPDATE prompt_catalog_meta SET catalog_version = catalog_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1;

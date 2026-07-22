@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.execution;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanEntity;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PausePhase;
@@ -169,7 +169,7 @@ class PlanWorkflowExecutorResumeTest {
 
     private static ExecutionStreamContext context() {
         return new ExecutionStreamContext(
-                "c1", "msg-1", "query", MemoryContext.empty(),
+                "c1", "msg-1", "query", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
     }

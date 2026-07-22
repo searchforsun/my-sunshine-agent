@@ -8,7 +8,7 @@ import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.springframework.util.StringUtils;
@@ -115,9 +115,9 @@ final class WorkflowLlmStreamSupport {
         }
         ExecutionPlan plan = streamCtx.plan();
         String workflowId = plan != null ? plan.workflowId() : null;
-        MemoryContext memory = terminalAnswer
-                ? MemoryContext.empty()
-                : (streamCtx.memory() != null ? streamCtx.memory() : MemoryContext.empty());
+        AssembledContext memory = terminalAnswer
+                ? AssembledContext.empty()
+                : (streamCtx.memory() != null ? streamCtx.memory() : AssembledContext.empty());
         return PromptComposeRequest.forWorkflowLlm(workflowId, memory, userQuery, nodePrompt);
     }
 

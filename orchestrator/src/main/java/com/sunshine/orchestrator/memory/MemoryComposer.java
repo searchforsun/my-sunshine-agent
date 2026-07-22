@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.memory;
 
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.ltm.LtmProfileService;
 import com.sunshine.orchestrator.memory.mtm.MtmService;
@@ -9,12 +10,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
- * 方案 C：LTM/MTM 摘要 + STM 完整轮次窗口。
+ * 过渡：仍读旧 LTM/MTM/STM，映射为 {@link AssembledContext}（Task 4 由 ContextAssembler 替换）。
+ * ltm+mtm → l2SystemBlock；stm → nearTurns。
  */
 @Slf4j
 @Service
@@ -28,9 +30,9 @@ public class MemoryComposer {
     @Autowired(required = false)
     private StmStore stmStore;
 
-    public MemoryContext compose(ComposeRequest request) {
+    public AssembledContext compose(ComposeRequest request) {
         if (!memoryProperties.isEnabled()) {
-            return MemoryContext.empty();
+            return AssembledContext.empty();
         }
 
         String ltm = ltmProfileService.buildSnippet(request.userId(), request.tenantId()).orElse("");
@@ -46,14 +48,29 @@ public class MemoryComposer {
 
         List<ChatTurn> stmSource = resolveStmSource(request);
         List<ChatTurn> stmTurns = StmWindowPolicy.selectWindow(stmSource, memoryProperties.getStm());
+        String l2 = joinNonBlank(ltm, mtm);
 
-        log.debug("[Memory] compose conv={} ltm={} mtm={} stmTurns={}",
+        log.debug("[Memory] compose conv={} l2={} nearTurns={}",
                 request.conversationId(),
-                ltm.isEmpty() ? 0 : 1,
-                mtm.isEmpty() ? 0 : 1,
+                l2.isEmpty() ? 0 : 1,
                 stmTurns.size());
 
-        return new MemoryContext(ltm, mtm, stmTurns);
+        return new AssembledContext(l2, "", List.of(), stmTurns, "");
+    }
+
+    private static String joinNonBlank(String a, String b) {
+        boolean ha = StringUtils.hasText(a);
+        boolean hb = StringUtils.hasText(b);
+        if (ha && hb) {
+            return a.strip() + "\n" + b.strip();
+        }
+        if (ha) {
+            return a.strip();
+        }
+        if (hb) {
+            return b.strip();
+        }
+        return "";
     }
 
     /**

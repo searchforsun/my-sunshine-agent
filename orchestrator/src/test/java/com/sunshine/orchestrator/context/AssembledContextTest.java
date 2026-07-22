@@ -2,7 +2,9 @@ package com.sunshine.orchestrator.context;
 
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import org.junit.jupiter.api.Test;
+
 import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AssembledContextTest {

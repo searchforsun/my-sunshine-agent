@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.controller.stream;
 
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionPreference;
 
 /** 续跑前从 DB 组装的上下文 */
@@ -8,7 +8,7 @@ public record ChatResumePreparation(
         String assistantId,
         String conversationId,
         String userContent,
-        MemoryContext memory,
+        AssembledContext memory,
         String resumeContent,
         String resumeReasoning,
         String intent,

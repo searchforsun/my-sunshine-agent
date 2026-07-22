@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.expert.ExpertCollaborationPlanSanitizer;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -135,13 +135,22 @@ public class IntentRouter {
         if (StringUtils.hasText(ctx.clientSkillId())) {
             sb.append("【会话态】UI 已选 Skill: ").append(ctx.clientSkillId().strip()).append('\n');
         }
-        MemoryContext memory = ctx.memory();
+        AssembledContext memory = ctx.memory();
         if (memory != null) {
-            if (StringUtils.hasText(memory.mtmSnippet())) {
-                sb.append("【近期摘要】\n").append(memory.mtmSnippet().strip()).append("\n\n");
+            String summary = StringUtils.hasText(memory.farSummaryBlock())
+                    ? memory.farSummaryBlock()
+                    : memory.l2SystemBlock();
+            if (StringUtils.hasText(summary)) {
+                sb.append("【近期摘要】\n").append(summary.strip()).append("\n\n");
             }
-            List<ChatTurn> turns = memory.stmTurns();
-            if (turns != null && !turns.isEmpty()) {
+            List<ChatTurn> turns = new java.util.ArrayList<>();
+            if (memory.midTurns() != null) {
+                turns.addAll(memory.midTurns());
+            }
+            if (memory.nearTurns() != null) {
+                turns.addAll(memory.nearTurns());
+            }
+            if (!turns.isEmpty()) {
                 int from = Math.max(0, turns.size() - MAX_STM_TURNS);
                 sb.append("【近期对话】\n");
                 for (int i = from; i < turns.size(); i++) {

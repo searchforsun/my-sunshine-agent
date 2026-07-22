@@ -5,7 +5,7 @@ package com.sunshine.orchestrator.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import jakarta.annotation.PostConstruct;
@@ -91,19 +91,19 @@ public class LlmGatewayClient {
 
 
     public Flux<StreamToken> streamWithHistory(List<ChatTurn> history, String userMessage) {
-        return streamWithMemory(MemoryContext.empty(), userMessage);
+        return streamWithMemory(AssembledContext.empty(), userMessage);
     }
 
-    public Flux<StreamToken> streamWithMemory(MemoryContext memory, String userMessage) {
+    public Flux<StreamToken> streamWithMemory(AssembledContext memory, String userMessage) {
         List<Map<String, Object>> messages = buildMessages(memory, userMessage, null);
         return doStream(messages);
     }
 
     public Flux<StreamToken> streamContinue(List<ChatTurn> history, String userMessage, String partialAssistant) {
-        return streamContinue(MemoryContext.empty(), userMessage, partialAssistant);
+        return streamContinue(AssembledContext.empty(), userMessage, partialAssistant);
     }
 
-    public Flux<StreamToken> streamContinue(MemoryContext memory, String userMessage, String partialAssistant) {
+    public Flux<StreamToken> streamContinue(AssembledContext memory, String userMessage, String partialAssistant) {
         List<Map<String, Object>> messages = buildMessages(memory, userMessage, partialAssistant);
         return doStream(messages);
     }
@@ -186,7 +186,7 @@ public class LlmGatewayClient {
 
 
     private List<Map<String, Object>> buildMessages(
-            MemoryContext memory, String userMessage, String partialAssistant) {
+            AssembledContext memory, String userMessage, String partialAssistant) {
         PromptComposeRequest request = partialAssistant != null && !partialAssistant.isEmpty()
                 ? PromptComposeRequest.forDirectContinue(memory, userMessage, partialAssistant)
                 : PromptComposeRequest.forDirect(memory, userMessage);

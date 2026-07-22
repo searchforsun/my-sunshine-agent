@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
@@ -25,7 +25,7 @@ final class AgentNodeRequestAssembler {
         List<String> tools = parseToolList(params.get("tools"));
         int maxIters = parseMaxIters(params.get("maxIters"));
         return AgentRunRequest.sub(
-                MemoryContext.forSubAgent(),
+                AssembledContext.forSubAgent(),
                 query,
                 injected,
                 streamCtx.userId(),

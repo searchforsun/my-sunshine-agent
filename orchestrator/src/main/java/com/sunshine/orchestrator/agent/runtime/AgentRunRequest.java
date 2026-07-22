@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.agent.runtime;
 
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 
 import java.util.List;
 import java.util.UUID;
@@ -10,7 +10,7 @@ public record AgentRunRequest(
         AgentRole role,
         String runId,
         String parentRunId,
-        MemoryContext memory,
+        AssembledContext memory,
         String query,
         List<String> injectedBlocks,
         String userId,
@@ -27,7 +27,7 @@ public record AgentRunRequest(
         String conversationId
 ) {
     public AgentRunRequest {
-        memory = memory != null ? memory : MemoryContext.empty();
+        memory = memory != null ? memory : AssembledContext.empty();
         injectedBlocks = injectedBlocks != null ? List.copyOf(injectedBlocks) : List.of();
         toolWhitelist = toolWhitelist != null ? List.copyOf(toolWhitelist) : null;
     }
@@ -42,7 +42,7 @@ public record AgentRunRequest(
 
     /** 顶层 ReAct — 绑定 assistantMessageId，全量 Timeline */
     public static AgentRunRequest main(
-            MemoryContext memory,
+            AssembledContext memory,
             String query,
             String userId,
             String tenantId,
@@ -53,7 +53,7 @@ public record AgentRunRequest(
     }
 
     public static AgentRunRequest main(
-            MemoryContext memory,
+            AssembledContext memory,
             String query,
             String userId,
             String tenantId,
@@ -65,7 +65,7 @@ public record AgentRunRequest(
     }
 
     public static AgentRunRequest main(
-            MemoryContext memory,
+            AssembledContext memory,
             String query,
             String userId,
             String tenantId,
@@ -79,7 +79,7 @@ public record AgentRunRequest(
     }
 
     public static AgentRunRequest main(
-            MemoryContext memory,
+            AssembledContext memory,
             String query,
             String userId,
             String tenantId,
@@ -110,7 +110,7 @@ public record AgentRunRequest(
     }
 
     public static AgentRunRequest main(
-            MemoryContext memory,
+            AssembledContext memory,
             String query,
             String userId,
             String tenantId,
@@ -120,13 +120,13 @@ public record AgentRunRequest(
     }
 
     public static AgentRunRequest main(
-            MemoryContext memory, String query, String userId, String tenantId, String assistantMessageId) {
+            AssembledContext memory, String query, String userId, String tenantId, String assistantMessageId) {
         return main(memory, query, userId, tenantId, assistantMessageId, List.of(), null, false, null, null);
     }
 
     /** Workflow 子 Agent — 不绑定 assistantMessageId，压缩 Timeline */
     public static AgentRunRequest sub(
-            MemoryContext memory,
+            AssembledContext memory,
             String query,
             List<String> injectedBlocks,
             String userId,
@@ -136,7 +136,7 @@ public record AgentRunRequest(
 
     /** Workflow 子 Agent — 含节点 params（skill / tools / overlay / maxIters） */
     public static AgentRunRequest sub(
-            MemoryContext memory,
+            AssembledContext memory,
             String query,
             List<String> injectedBlocks,
             String userId,
@@ -153,7 +153,7 @@ public record AgentRunRequest(
 
     /** Workflow 子 Agent — 含对话级沙箱复用键 */
     public static AgentRunRequest sub(
-            MemoryContext memory,
+            AssembledContext memory,
             String query,
             List<String> injectedBlocks,
             String userId,
@@ -194,7 +194,7 @@ public record AgentRunRequest(
                 AgentRole.PLANNER,
                 UUID.randomUUID().toString(),
                 null,
-                MemoryContext.empty(),
+                AssembledContext.empty(),
                 query,
                 List.of(),
                 userId,

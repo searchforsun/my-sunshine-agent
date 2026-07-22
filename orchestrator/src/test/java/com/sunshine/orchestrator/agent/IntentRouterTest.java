@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
@@ -16,12 +16,9 @@ class IntentRouterTest {
 
     @Test
     void buildClassifierUserMessage_includesContextAndCurrentQuery() {
-        MemoryContext memory = new MemoryContext(
-                "",
-                "用户此前在讨论沙箱脚本",
-                List.of(
+        AssembledContext memory = new AssembledContext("", "用户此前在讨论沙箱脚本", List.of(), List.of(
                         new ChatTurn("user", "上一个问题"),
-                        new ChatTurn("assistant", "上一个回答")));
+                        new ChatTurn("assistant", "上一个回答")), "");
         RoutingContext ctx = new RoutingContext(
                 "看一下这个skills能做什么，分析一下脚本",
                 "msg-1",

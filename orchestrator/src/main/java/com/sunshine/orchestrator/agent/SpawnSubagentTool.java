@@ -5,7 +5,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.processing.ContentSegmentCoordinator;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
@@ -92,7 +92,7 @@ public class SpawnSubagentTool {
         String systemOverlay = resolveSubagentOverlay();
 
         AgentRunRequest request = AgentRunRequest.sub(
-                MemoryContext.forSubAgent(),
+                AssembledContext.forSubAgent(),
                 promptText,
                 List.of(),
                 audit.userId(),

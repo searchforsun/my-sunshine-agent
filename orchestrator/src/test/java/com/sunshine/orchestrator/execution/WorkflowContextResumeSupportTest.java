@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.execution;
 
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.plan.PlanNodeTrace;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -22,7 +22,7 @@ class WorkflowContextResumeSupportTest {
                 List.of(new NodeSpec("t1", "tool", Map.of("tool", "sdk__sunshine-oa__list_oa_tasks"), "查待办")),
                 List.of("t1"));
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c", "m", "查待办", MemoryContext.empty(), "", "", "u", "t",
+                "c", "m", "查待办", AssembledContext.empty(), "", "", "u", "t",
                 new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "r"))
                 .withPersistedPlanId("plan-1");
 

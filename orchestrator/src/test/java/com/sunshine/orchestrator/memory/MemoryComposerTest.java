@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.memory;
 
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.memory.ltm.LtmProfileService;
 import com.sunshine.orchestrator.memory.mtm.MtmService;
@@ -48,11 +49,11 @@ class MemoryComposerTest {
         List<ChatTurn> loaded = List.of(
                 new ChatTurn("user", "写 cpp 快排"),
                 new ChatTurn("assistant", "cpp code full content"));
-        MemoryContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
+        AssembledContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
                 "u1", "default", "c1", loaded, "写 py 快排"));
-        assertThat(ctx.stmTurns()).hasSize(2);
-        assertThat(ctx.stmTurns().get(0).content()).isEqualTo("写 cpp 快排");
-        assertThat(ctx.stmTurns().get(1).content()).isEqualTo("cpp code full content");
+        assertThat(ctx.nearTurns()).hasSize(2);
+        assertThat(ctx.nearTurns().get(0).content()).isEqualTo("写 cpp 快排");
+        assertThat(ctx.nearTurns().get(1).content()).isEqualTo("cpp code full content");
     }
 
     @Test
@@ -61,9 +62,9 @@ class MemoryComposerTest {
         List<ChatTurn> loaded = List.of(
                 new ChatTurn("user", "q"),
                 new ChatTurn("assistant", longReply));
-        MemoryContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
+        AssembledContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
                 "u1", "default", "c1", loaded, "follow up"));
-        assertThat(ctx.stmTurns().get(1).content()).hasSize(2000);
+        assertThat(ctx.nearTurns().get(1).content()).hasSize(2000);
     }
 
     @Test
@@ -72,11 +73,11 @@ class MemoryComposerTest {
                 new ChatTurn("user", "写 cpp 快排"),
                 new ChatTurn("assistant", "完整 cpp 快排代码"));
 
-        MemoryContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
+        AssembledContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
                 "u1", "default", "c1", fromDb, "再写 py 快排"));
 
-        assertThat(ctx.stmTurns()).hasSize(2);
-        assertThat(ctx.stmTurns().get(1).content()).isEqualTo("完整 cpp 快排代码");
+        assertThat(ctx.nearTurns()).hasSize(2);
+        assertThat(ctx.nearTurns().get(1).content()).isEqualTo("完整 cpp 快排代码");
         verify(stmStore, never()).load(eq("u1"), eq("c1"));
     }
 
@@ -86,11 +87,11 @@ class MemoryComposerTest {
                 new ChatTurn("user", "hello"),
                 new ChatTurn("assistant", "  "));
 
-        MemoryContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
+        AssembledContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
                 "u1", "default", "c1", fromDb, "again"));
 
-        assertThat(ctx.stmTurns()).hasSize(1);
-        assertThat(ctx.stmTurns().get(0).role()).isEqualTo("user");
+        assertThat(ctx.nearTurns()).hasSize(1);
+        assertThat(ctx.nearTurns().get(0).role()).isEqualTo("user");
     }
 
     @Test
@@ -100,10 +101,10 @@ class MemoryComposerTest {
         when(mtmService.recallSnippet(eq("u1"), eq("default"), eq("报销流程"), eq("c1")))
                 .thenReturn(Optional.of("[相关历史情景 · MTM]\n- 上周问过报销"));
 
-        MemoryContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
+        AssembledContext ctx = composer.compose(new MemoryComposer.ComposeRequest(
                 "u1", "default", "c1", List.of(), "报销流程"));
 
-        assertThat(ctx.ltmSnippet()).contains("LTM");
-        assertThat(ctx.mtmSnippet()).contains("MTM");
+        assertThat(ctx.l2SystemBlock()).contains("LTM");
+        assertThat(ctx.l2SystemBlock()).contains("MTM");
     }
 }

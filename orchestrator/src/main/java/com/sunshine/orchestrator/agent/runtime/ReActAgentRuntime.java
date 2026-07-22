@@ -11,7 +11,7 @@ import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
 import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
@@ -63,15 +63,18 @@ public class ReActAgentRuntime implements AgentRuntime {
      * 否则会静默得到空工具集（仅 RAG+沙箱），模型误以为无财务/OA 工具。
      */
     private Flux<StreamToken> runReAct(AgentRunRequest request) {
-        MemoryContext memory = request.role() == AgentRole.SUB
-                ? MemoryContext.forSubAgent()
+        AssembledContext memory = request.role() == AgentRole.SUB
+                ? AssembledContext.forSubAgent()
                 : request.memory();
         String query = request.query();
-        log.info("[AgentRuntime] role={}, runId={}, user={}, stmTurns={}, injected={}, skill={}, msg={}",
+        int near = memory.nearTurns() != null ? memory.nearTurns().size() : 0;
+        int mid = memory.midTurns() != null ? memory.midTurns().size() : 0;
+        log.info("[AgentRuntime] role={}, runId={}, user={}, nearTurns={}, midTurns={}, injected={}, skill={}, msg={}",
                 request.role(),
                 request.runId(),
                 request.userId(),
-                memory.stmTurns() != null ? memory.stmTurns().size() : 0,
+                near,
+                mid,
                 request.injectedBlocks().size(),
                 request.skillId(),
                 query != null && query.length() > 60 ? query.substring(0, 60) + "..." : query);
@@ -80,8 +83,8 @@ public class ReActAgentRuntime implements AgentRuntime {
     }
 
     private Flux<StreamToken> startReActStream(AgentRunRequest request) {
-        MemoryContext memory = request.role() == AgentRole.SUB
-                ? MemoryContext.forSubAgent()
+        AssembledContext memory = request.role() == AgentRole.SUB
+                ? AssembledContext.forSubAgent()
                 : request.memory();
         String query = request.query();
         String assistantMessageId = request.assistantMessageId();

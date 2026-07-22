@@ -8,7 +8,7 @@ import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.execution.handler.AnswerNodeHandler;
 import com.sunshine.orchestrator.execution.handler.RagNodeHandler;
 import com.sunshine.orchestrator.execution.handler.StartNodeHandler;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.execution.workflow.WorkflowNodeFinalizer;
 import com.sunshine.orchestrator.execution.workflow.WorkflowNodeRunner;
@@ -194,7 +194,7 @@ class WorkflowExecutorTest {
                         )))));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "m1", "青松假怎么申请", MemoryContext.empty(),
+                "c1", "m1", "青松假怎么申请", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "查制度"));
 
@@ -215,7 +215,7 @@ class WorkflowExecutorTest {
         when(loader.loadBundle("unknown")).thenReturn(java.util.Optional.empty());
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "m1", "test", MemoryContext.empty(),
+                "c1", "m1", "test", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "unknown", Map.of(), "test"));
 

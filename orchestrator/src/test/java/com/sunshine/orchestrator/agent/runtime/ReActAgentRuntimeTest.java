@@ -8,7 +8,7 @@ import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.taskboard.ReactTaskBoardService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
@@ -73,21 +73,21 @@ class ReActAgentRuntimeTest {
     @Test
     void resolveBridgeId_mainUsesRunIdPrefix() {
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-main");
+                AssembledContext.empty(), "q", "u1", "default", "msg-main");
         assertThat(req.resolveBridgeId()).isEqualTo("main-" + req.runId());
     }
 
     @Test
     void resolveBridgeId_subUsesRunIdPrefix() {
         AgentRunRequest req = AgentRunRequest.sub(
-                MemoryContext.empty(), "q", List.of(), "u1", "default");
+                AssembledContext.empty(), "q", List.of(), "u1", "default");
         assertThat(req.resolveBridgeId()).isEqualTo("sub-" + req.runId());
     }
 
     @Test
     void run_plannerRoleRejected() {
         AgentRunRequest planner = new AgentRunRequest(
-                AgentRole.PLANNER, "run-p", null, MemoryContext.empty(), "plan",
+                AgentRole.PLANNER, "run-p", null, AssembledContext.empty(), "plan",
                 List.of(), "u1", "default", null, null, null, null, 1,
                 TimelineBinding.PLANNER_ONLY, false, null, null);
         assertThatThrownBy(() -> runtime.run(planner).collectList().block())
@@ -107,7 +107,7 @@ class ReActAgentRuntimeTest {
                 .build();
         Event resultEvent = new Event(EventType.AGENT_RESULT, resultMsg, false);
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "用户问题", "u1", "default", "msg-1");
+                AssembledContext.empty(), "用户问题", "u1", "default", "msg-1");
         when(agentFactory.create(req)).thenReturn(reactAgent);
         when(reactAgent.stream(anyList(), any())).thenReturn(Flux.just(resultEvent));
 
@@ -139,7 +139,7 @@ class ReActAgentRuntimeTest {
             return reactAgent;
         });
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "待审批是否合规", "u1", "default", "msg-nb");
+                AssembledContext.empty(), "待审批是否合规", "u1", "default", "msg-nb");
         runtime.run(req)
                 .subscribeOn(reactor.core.scheduler.Schedulers.parallel())
                 .collectList()
@@ -163,7 +163,7 @@ class ReActAgentRuntimeTest {
         when(agentFactory.create(requestCaptor.capture())).thenReturn(reactAgent);
 
         AgentRunRequest req = AgentRunRequest.sub(
-                MemoryContext.empty(), "分析合规", List.of("制度上下文"), "u1", "default");
+                AssembledContext.empty(), "分析合规", List.of("制度上下文"), "u1", "default");
 
         List<StreamToken> tokens = runtime.run(req).collectList().block();
         assertThat(tokens).isNotNull();
@@ -171,7 +171,7 @@ class ReActAgentRuntimeTest {
 
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
         verify(promptComposer).composeReactInputs(composeCaptor.capture());
-        assertThat(composeCaptor.getValue().memory().stmTurns()).isEmpty();
+        assertThat(composeCaptor.getValue().context().nearTurns()).isEmpty();
         assertThat(composeCaptor.getValue().injectedUserContexts()).containsExactly("制度上下文");
         verify(sandboxSessionLifecycle).prepareRun(req);
         verify(sandboxSessionLifecycle).closeQuietly(req);
@@ -189,8 +189,8 @@ class ReActAgentRuntimeTest {
                 new Event(EventType.AGENT_RESULT, resultMsg, false)));
         when(agentFactory.create(any())).thenReturn(reactAgent);
 
-        MemoryContext fullMemory = new MemoryContext("ltm", "mtm", List.of(
-                new ChatTurn("user", "历史")));
+        AssembledContext fullMemory = new AssembledContext("ltm", "mtm", List.of(), List.of(
+                new ChatTurn("user", "历史")), "");
         AgentRunRequest req = AgentRunRequest.sub(
                 fullMemory, "子任务", List.of("上游"), "u1", "default",
                 null, "finance-analysis", List.of("sdk__sunshine-finance__list_my_expenses"), "overlay", 4);
@@ -200,8 +200,8 @@ class ReActAgentRuntimeTest {
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
         verify(promptComposer).composeReactInputs(composeCaptor.capture());
         PromptComposeRequest composed = composeCaptor.getValue();
-        assertThat(composed.memory().stmTurns()).isEmpty();
-        assertThat(composed.memory().ltmSnippet()).isBlank();
+        assertThat(composed.context().nearTurns()).isEmpty();
+        assertThat(composed.context().l2SystemBlock()).isBlank();
         assertThat(composed.skillId()).isEqualTo("finance-analysis");
         assertThat(composed.injectedUserContexts()).containsExactly("上游");
     }
@@ -218,7 +218,7 @@ class ReActAgentRuntimeTest {
         when(agentFactory.create(any())).thenReturn(reactAgent);
 
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "读文件", "u1", "default", "msg-s", List.of(), "coding-skill");
+                AssembledContext.empty(), "读文件", "u1", "default", "msg-s", List.of(), "coding-skill");
 
         runtime.run(req).collectList().block();
 
@@ -233,7 +233,7 @@ class ReActAgentRuntimeTest {
         when(reactAgent.stream(anyList(), any())).thenReturn(Flux.error(new RuntimeException("boom")));
 
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-err", List.of(), "coding-skill");
+                AssembledContext.empty(), "q", "u1", "default", "msg-err", List.of(), "coding-skill");
 
         assertThatThrownBy(() -> runtime.run(req).collectList().block())
                 .hasMessageContaining("boom");

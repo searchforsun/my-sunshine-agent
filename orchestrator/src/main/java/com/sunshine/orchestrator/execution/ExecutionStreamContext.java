@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.hitl.WorkflowHitlScope;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.plan.ResumeInteractionHint;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 
@@ -12,7 +12,7 @@ public record ExecutionStreamContext(
         String conversationId,
         String assistantMsgId,
         String userContent,
-        MemoryContext memory,
+        AssembledContext memory,
         String existingContent,
         String existingReasoning,
         String userId,
@@ -28,7 +28,7 @@ public record ExecutionStreamContext(
             String conversationId,
             String assistantMsgId,
             String userContent,
-            MemoryContext memory,
+            AssembledContext memory,
             String existingContent,
             String existingReasoning,
             String userId,
@@ -43,7 +43,7 @@ public record ExecutionStreamContext(
             String conversationId,
             String assistantMsgId,
             String userContent,
-            MemoryContext memory,
+            AssembledContext memory,
             String existingContent,
             String existingReasoning,
             String userId,

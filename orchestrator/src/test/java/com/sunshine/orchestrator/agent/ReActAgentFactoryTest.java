@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.memory.MemoryProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
@@ -95,7 +95,7 @@ class ReActAgentFactoryTest {
     @Test
     void resolveToolkit_mainBuildsFreshToolkitFromTenantToolSet() {
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-main");
+                AssembledContext.empty(), "q", "u1", "default", "msg-main");
         when(dynamicToolkitFactory.build("default", null, "u1")).thenReturn(subToolkit);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
@@ -105,7 +105,7 @@ class ReActAgentFactoryTest {
     @Test
     void resolveMaxIters_prefersRequestValue() {
         AgentRunRequest req = new AgentRunRequest(
-                AgentRole.SUB, "run-1", null, MemoryContext.empty(), "q", List.of(),
+                AgentRole.SUB, "run-1", null, AssembledContext.empty(), "q", List.of(),
                 "u1", "default", null, null, List.of("sdk__sunshine-finance__list_my_expenses"), null, 4,
                 TimelineBinding.SUB_COMPRESSED, false, null, null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
@@ -155,7 +155,7 @@ class ReActAgentFactoryTest {
                 AgentRole.SUB,
                 "run-sub",
                 null,
-                MemoryContext.empty(),
+                AssembledContext.empty(),
                 "analyze",
                 List.of(),
                 "u1",

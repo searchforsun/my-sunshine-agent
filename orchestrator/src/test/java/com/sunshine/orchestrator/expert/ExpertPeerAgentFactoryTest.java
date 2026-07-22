@@ -6,7 +6,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.memory.MemoryProperties;
 import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,7 +65,7 @@ class ExpertPeerAgentFactoryTest {
     private static AgentRunRequest subWithTools(List<String> tools) {
         return new AgentRunRequest(
                 AgentRole.SUB, "run-1", "parent",
-                MemoryContext.forSubAgent(), "", List.of(),
+                AssembledContext.forSubAgent(), "", List.of(),
                 null, null, null, null, tools, "overlay", 2,
                 TimelineBinding.SUB_COMPRESSED, false, null, null);
     }

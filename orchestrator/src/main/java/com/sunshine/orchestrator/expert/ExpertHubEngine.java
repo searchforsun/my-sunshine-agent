@@ -7,7 +7,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
 import com.sunshine.orchestrator.catalog.ExpertCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.peer.PeerMsgSupport;
 import com.sunshine.orchestrator.peer.PeerSynthesisProperties;
@@ -173,7 +173,7 @@ public class ExpertHubEngine {
         }
         List<Msg> inputs = promptComposer.composeReactInputs(
                 PromptComposeRequest.forReact(
-                        MemoryContext.forSubAgent(),
+                        AssembledContext.forSubAgent(),
                         userQuery,
                         expert.primarySkillId(),
                         gatherContexts,
@@ -270,7 +270,7 @@ public class ExpertHubEngine {
                 AgentRole.SUB,
                 runId + "-" + expert.id(),
                 runId,
-                MemoryContext.forSubAgent(),
+                AssembledContext.forSubAgent(),
                 "",
                 List.of(),
                 userId,

@@ -15,7 +15,7 @@ import com.sunshine.testsupport.SseEventTestSupport;
 import com.sunshine.orchestrator.generation.GenerationMeta;
 import com.sunshine.orchestrator.generation.GenerationStatus;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -125,7 +125,7 @@ class GenerationReconnectIntegrationTest {
                 .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
         when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
-        when(llmGateway.streamContinue(any(MemoryContext.class), anyString(), anyString()))
+        when(llmGateway.streamContinue(any(AssembledContext.class), anyString(), anyString()))
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
     }
 
@@ -137,7 +137,7 @@ class GenerationReconnectIntegrationTest {
     @Test
     @DisplayName("generationBuffersWhileNoSubscriber — disconnect 后 Redis lastSeq 仍增长")
     void generationBuffersWhileNoSubscriber() throws Exception {
-        when(llmGateway.streamWithMemory(any(MemoryContext.class), eq("buffer test")))
+        when(llmGateway.streamWithMemory(any(AssembledContext.class), eq("buffer test")))
                 .thenReturn(Flux.range(1, 100)
                         .delayElements(Duration.ofMillis(40))
                         .map(i -> StreamToken.content("t")));
@@ -178,7 +178,7 @@ class GenerationReconnectIntegrationTest {
     @Test
     @DisplayName("reconnectAfterSeq_resumesStream — afterSeq=10 只收到 seq>10")
     void reconnectAfterSeq_resumesStream() throws Exception {
-        when(llmGateway.streamWithMemory(any(MemoryContext.class), eq("reconnect test")))
+        when(llmGateway.streamWithMemory(any(AssembledContext.class), eq("reconnect test")))
                 .thenReturn(Flux.range(1, 25)
                         .delayElements(Duration.ofMillis(30))
                         .map(i -> StreamToken.content("c" + i)));
@@ -233,7 +233,7 @@ class GenerationReconnectIntegrationTest {
     @Test
     @DisplayName("reconnectWhenInterrupted_returns410 — cancel 后 GET reconnect → 410")
     void reconnectWhenInterrupted_returns410() throws Exception {
-        when(llmGateway.streamWithMemory(any(MemoryContext.class), eq("cancel test")))
+        when(llmGateway.streamWithMemory(any(AssembledContext.class), eq("cancel test")))
                 .thenReturn(Flux.range(1, 100)
                         .delayElements(Duration.ofMillis(50))
                         .map(i -> StreamToken.content("x")));
@@ -286,7 +286,7 @@ class GenerationReconnectIntegrationTest {
     @Test
     @DisplayName("reconnect410ThenResume_succeeds — cancel → reconnect 410 → resume 200")
     void reconnect410ThenResume_succeeds() throws Exception {
-        when(llmGateway.streamWithMemory(any(MemoryContext.class), eq("resume combo")))
+        when(llmGateway.streamWithMemory(any(AssembledContext.class), eq("resume combo")))
                 .thenReturn(Flux.range(1, 100)
                         .delayElements(Duration.ofMillis(50))
                         .map(i -> StreamToken.content("p")));
@@ -365,7 +365,7 @@ class GenerationReconnectIntegrationTest {
                 convId, messageId, MessageStatus.COMPLETED, 50);
         assertThat(assistant.getStatus()).isEqualTo(MessageStatus.COMPLETED);
         assertThat(assistant.getContent()).contains("p").contains("continued");
-        verify(llmGateway).streamContinue(any(MemoryContext.class), anyString(), anyString());
+        verify(llmGateway).streamContinue(any(AssembledContext.class), anyString(), anyString());
     }
 
     private ConversationDetailDto.MessageDto awaitAssistantStatus(
@@ -407,7 +407,7 @@ class GenerationReconnectIntegrationTest {
     @Test
     @DisplayName("reconnectForbiddenUser_returns404 — bob 重连 alice generation → 404")
     void reconnectForbiddenUser_returns404() throws Exception {
-        when(llmGateway.streamWithMemory(any(MemoryContext.class), eq("forbidden test")))
+        when(llmGateway.streamWithMemory(any(AssembledContext.class), eq("forbidden test")))
                 .thenReturn(Flux.range(1, 50)
                         .delayElements(Duration.ofMillis(40))
                         .map(i -> StreamToken.content("y")));

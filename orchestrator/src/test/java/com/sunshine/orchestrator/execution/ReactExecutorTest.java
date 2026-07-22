@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
@@ -38,7 +38,7 @@ class ReactExecutorTest {
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "msg-1", "@finance-analysis 是否合规", MemoryContext.empty(),
+                "c1", "msg-1", "@finance-analysis 是否合规", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.REACT, null,
                         Map.of(
@@ -60,7 +60,7 @@ class ReactExecutorTest {
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "msg-1", "查财务待审批", MemoryContext.empty(),
+                "c1", "msg-1", "查财务待审批", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"));
 

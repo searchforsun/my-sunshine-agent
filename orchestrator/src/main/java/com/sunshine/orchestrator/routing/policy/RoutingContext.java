@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.routing.policy;
 
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPreference;
 
@@ -11,7 +11,7 @@ public record RoutingContext(
         ExecutionPreference preference,
         String forcedWorkflowId,
         String clientSkillId,
-        MemoryContext memory,
+        AssembledContext memory,
         /** 强制模式：L3 锁死 mode，仅解析绑定 */
         ExecutionMode lockedMode) {
 
@@ -34,7 +34,7 @@ public record RoutingContext(
             ExecutionPreference preference,
             String forcedWorkflowId,
             String clientSkillId,
-            MemoryContext memory) {
+            AssembledContext memory) {
         this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, null);
     }
 

@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -69,7 +69,7 @@ class RagNodeHandlerTest {
 
         WorkflowContext ctx = new WorkflowContext();
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
-                "c1", "msg-1", "年假几天", MemoryContext.empty(),
+                "c1", "msg-1", "年假几天", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "test"));
         NodeSpec spec = new NodeSpec(

@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class ExecutionDispatcherTest {
     @Test
     void dispatchesPeerCollabToExpertExecutor() {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "m1", "q", MemoryContext.empty(), "", "", "u", "t",
+                "c1", "m1", "q", AssembledContext.empty(), "", "", "u", "t",
                 new ExecutionPlan(ExecutionMode.PEER_COLLAB, null, java.util.Map.of(), "test"));
         when(expertConsultationExecutor.execute(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 

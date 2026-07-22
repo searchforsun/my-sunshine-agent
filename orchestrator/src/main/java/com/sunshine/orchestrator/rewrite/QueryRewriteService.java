@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,7 +78,7 @@ public class QueryRewriteService {
         return outcome;
     }
 
-    public QueryRewriteOutcome rewriteForIntent(String originalQuery, String traceMessageId, MemoryContext memory) {
+    public QueryRewriteOutcome rewriteForIntent(String originalQuery, String traceMessageId, AssembledContext memory) {
         long start = System.nanoTime();
         if (!shouldRewriteIntent(originalQuery)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(

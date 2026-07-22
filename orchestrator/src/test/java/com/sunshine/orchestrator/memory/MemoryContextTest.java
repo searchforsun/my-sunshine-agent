@@ -7,6 +7,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/** 旧 MemoryContext 仍被 MemoryMessageBuilder 使用，直至 Task 8 删除。 */
 class MemoryContextTest {
 
     @Test

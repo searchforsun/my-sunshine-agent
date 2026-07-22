@@ -5,7 +5,7 @@ import com.sunshine.orchestrator.client.SandboxClient;
 import com.sunshine.orchestrator.client.SkillCatalogClient;
 import com.sunshine.common.sandbox.CreateSessionRequest;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,7 +55,7 @@ class SandboxSessionLifecycleTest {
     @Test
     void prepareRun_doesNotCreateSession() {
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-1", List.of(), null, false, "conv-1");
+                AssembledContext.empty(), "q", "u1", "default", "msg-1", List.of(), null, false, "conv-1");
         lifecycle.prepareRun(req);
         verify(sandboxClient, never()).createSession(any());
         assertThat(SandboxSessionHolder.get(req.resolveBridgeId())).isNull();
@@ -67,7 +67,7 @@ class SandboxSessionLifecycleTest {
         when(conversationSandboxStore.find(anyString(), anyString())).thenReturn(Optional.empty());
 
         AgentRunRequest req = AgentRunRequest.sub(
-                MemoryContext.empty(), "q", List.of("ctx"), "u1", "default",
+                AssembledContext.empty(), "q", List.of("ctx"), "u1", "default",
                 "msg-1", null, null, null, 0, "conv-sub");
         lifecycle.prepareRun(req);
         verify(sandboxClient, never()).createSession(any());
@@ -84,7 +84,7 @@ class SandboxSessionLifecycleTest {
         when(conversationSandboxStore.find(anyString(), anyString())).thenReturn(Optional.empty());
 
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-1", List.of(), null, false, "conv-1");
+                AssembledContext.empty(), "q", "u1", "default", "msg-1", List.of(), null, false, "conv-1");
         lifecycle.prepareRun(req);
 
         assertThat(lifecycle.ensureBound(req.resolveBridgeId())).isEqualTo("sess-1");
@@ -106,7 +106,7 @@ class SandboxSessionLifecycleTest {
         when(conversationSandboxStore.find(anyString(), anyString())).thenReturn(Optional.empty());
 
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-1", List.of(), "coding",
+                AssembledContext.empty(), "q", "u1", "default", "msg-1", List.of(), "coding",
                 false, "conv-1");
         lifecycle.prepareRun(req);
         assertThat(lifecycle.ensureBound(req.resolveBridgeId())).isEqualTo("sess-1");
@@ -125,7 +125,7 @@ class SandboxSessionLifecycleTest {
         when(sandboxClient.sessionRunning("sess-reuse")).thenReturn(true);
 
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-x", List.of(), "coding-b",
+                AssembledContext.empty(), "q", "u1", "default", "msg-x", List.of(), "coding-b",
                 false, "conv-x");
         lifecycle.prepareRun(req);
         assertThat(lifecycle.ensureBound(req.resolveBridgeId())).isEqualTo("sess-reuse");
@@ -145,7 +145,7 @@ class SandboxSessionLifecycleTest {
         when(sandboxClient.sessionRunning("sess-stop")).thenReturn(false);
 
         AgentRunRequest req = AgentRunRequest.main(
-                MemoryContext.empty(), "q", "u1", "default", "msg-s", List.of(), null,
+                AssembledContext.empty(), "q", "u1", "default", "msg-s", List.of(), null,
                 false, "conv-stop");
         lifecycle.prepareRun(req);
         assertThat(lifecycle.ensureBound(req.resolveBridgeId())).isEqualTo("sess-stop");
