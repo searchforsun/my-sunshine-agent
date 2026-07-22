@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 import {
   NButton,
   NDataTable,
@@ -17,11 +17,21 @@ import {
   NTabs,
   NTag,
 } from 'naive-ui'
-import { AddOutline, EllipsisHorizontal, SyncOutline } from '@vicons/ionicons5'
+import { AddOutline, EllipsisHorizontal, SearchOutline, SyncOutline } from '@vicons/ionicons5'
 import { formatSkillVersionTime } from '../../utils/formatSkillVersionTime'
 import { TOOLS_PAGE_KEY, type ToolsPageApi } from '../../composables/useToolsPage'
 
 const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
+const mcpSearch = ref('')
+const filteredMcpServers = computed(() => {
+  const q = mcpSearch.value.trim().toLowerCase()
+  if (!q) return page.mcpServers
+  return page.mcpServers.filter(
+    s =>
+      s.id.toLowerCase().includes(q)
+      || (s.displayName ?? '').toLowerCase().includes(q),
+  )
+})
 </script>
 
 <template>
@@ -29,7 +39,7 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
     <aside class="list-panel">
       <div class="panel-head">
         <span class="panel-title">服务</span>
-        <NTag :bordered="false" size="tiny" round>{{ page.mcpServers.length }}</NTag>
+        <NTag :bordered="false" size="tiny" round>{{ filteredMcpServers.length }}</NTag>
         <NButton
           size="tiny"
           quaternary
@@ -40,11 +50,26 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
           新建 MCP
         </NButton>
       </div>
+      <div class="list-search">
+        <NInput
+          v-model:value="mcpSearch"
+          placeholder="搜索名称或 ID…"
+          size="small"
+          round
+          clearable
+          class="search-input"
+          :disabled="page.loading"
+        >
+          <template #prefix>
+            <NIcon :component="SearchOutline" :size="14" />
+          </template>
+        </NInput>
+      </div>
       <NSpin :show="page.loading" size="small" class="list-spin">
         <div class="list-body">
-          <div v-if="page.mcpServers.length" class="item-list">
+          <div v-if="filteredMcpServers.length" class="item-list">
             <div
-              v-for="server in page.mcpServers"
+              v-for="server in filteredMcpServers"
               :key="server.id"
               class="item-row-wrap"
             >
@@ -81,7 +106,10 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
             </div>
           </div>
           <div v-else-if="!page.loading" class="empty-wrap">
-            <NEmpty size="small" description="暂无 MCP 服务" />
+            <NEmpty
+              size="small"
+              :description="page.mcpServers.length && mcpSearch.trim() ? '无匹配服务' : '暂无 MCP 服务'"
+            />
           </div>
         </div>
       </NSpin>
@@ -330,12 +358,11 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
   overflow: hidden;
 }
 
-.panel-head {
+.list-panel .panel-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--sun-border);
+  padding: 14px 16px 0;
   flex-shrink: 0;
 }
 
@@ -343,6 +370,24 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
   font-size: 14px;
   font-weight: 600;
   color: var(--sun-text);
+}
+
+.list-search {
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.search-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
 }
 
 .panel-create-btn {

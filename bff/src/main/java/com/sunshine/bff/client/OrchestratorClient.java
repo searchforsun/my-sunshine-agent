@@ -284,6 +284,18 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> listContextConversations(String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/admin/context/conversations")
+                        .queryParam("userId", userId)
+                        .queryParam("tenantId", tenantId != null ? tenantId : "default")
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> listContextL2(String userId, String tenantId) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -331,6 +343,17 @@ public class OrchestratorClient {
                         .path("/api/admin/context/l3/status")
                         .queryParam("userId", userId)
                         .queryParam("tenantId", tenantId != null ? tenantId : "default")
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> listContextL3Entries(String convId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/admin/context/l3/entries")
+                        .queryParam("convId", convId)
                         .build())
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)

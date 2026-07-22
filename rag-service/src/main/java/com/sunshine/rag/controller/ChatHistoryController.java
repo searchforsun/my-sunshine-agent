@@ -60,6 +60,19 @@ public class ChatHistoryController {
                 .thenReturn(R.ok(Map.of("msgId", msgId != null ? msgId : "")));
     }
 
+    @PostMapping("/list")
+    public Mono<R<Map<String, Object>>> list(@RequestBody Map<String, Object> body) {
+        String userId = str(body, "userId");
+        String tenantId = body.containsKey("tenantId") ? str(body, "tenantId") : "default";
+        String convId = str(body, "convId");
+        int limit = body.containsKey("limit") && body.get("limit") instanceof Number n
+                ? n.intValue() : 200;
+
+        return chatHistoryRetrievalService.listByConv(userId, tenantId, convId, limit)
+                .map(chunks -> R.ok(Map.of(
+                        "results", (Object) chunks.stream().map(ChatHistoryController::toChunkMap).toList())));
+    }
+
     private static Map<String, Object> toMap(ChatHistoryMilvusService.ChatHistoryHit hit) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("convId", hit.convId());
@@ -67,6 +80,16 @@ public class ChatHistoryController {
         item.put("content", hit.content());
         item.put("score", hit.score());
         item.put("createdAt", hit.createdAtMs());
+        return item;
+    }
+
+    private static Map<String, Object> toChunkMap(ChatHistoryMilvusService.ChatHistoryChunk chunk) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("convId", chunk.convId());
+        item.put("msgId", chunk.msgId());
+        item.put("chunkIndex", chunk.chunkIndex());
+        item.put("content", chunk.content());
+        item.put("createdAt", chunk.createdAtMs());
         return item;
     }
 

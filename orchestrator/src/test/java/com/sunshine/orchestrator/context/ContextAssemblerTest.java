@@ -59,9 +59,11 @@ class ContextAssemblerTest {
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
                 "u1", "default", "c1", history, "current query"));
 
-        assertThat(ctx.nearTurns()).hasSize(2);
-        assertThat(ctx.nearTurns().get(0).content()).isEqualTo("m18");
-        assertThat(ctx.nearTurns().get(1).content()).isEqualTo("m19");
+        assertThat(ctx.nearTurns()).hasSize(4);
+        assertThat(ctx.nearTurns().get(0).content()).isEqualTo("m16");
+        assertThat(ctx.nearTurns().get(1).content()).isEqualTo("m17");
+        assertThat(ctx.nearTurns().get(2).content()).isEqualTo("m18");
+        assertThat(ctx.nearTurns().get(3).content()).isEqualTo("m19");
         assertThat(ctx.midTurns()).isEmpty();
         assertThat(ctx.l2SystemBlock()).isBlank();
         assertThat(ctx.farSummaryBlock()).isBlank();

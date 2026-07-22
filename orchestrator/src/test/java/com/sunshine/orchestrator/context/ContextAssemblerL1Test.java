@@ -37,8 +37,8 @@ class ContextAssemblerL1Test {
     @BeforeEach
     void setUp() {
         properties = new ContextProperties();
-        properties.getL1().setNearTurns(2);
-        properties.getL1().setMidTurns(2);
+        properties.getL1().setNearTurns(1);
+        properties.getL1().setMidTurns(1);
         properties.getL1().setMaxChars(100_000);
         assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService);
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");

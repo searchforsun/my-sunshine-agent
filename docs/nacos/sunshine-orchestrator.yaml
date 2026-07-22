@@ -264,9 +264,10 @@ agent:
   context:
     enabled: true
     l1:
+      # near/mid 按「问答轮次」计（一轮 = 1 次 user + 其后 assistant），非消息条数
       near-turns: 8
       mid-turns: 8
-      max-chars: 12000
+      max-chars: 120000
     l2:
       min-confidence: 0.75
       constraint-overwrite-confidence: 0.9
@@ -284,6 +285,11 @@ agent:
     maintenance:
       interval-ms: 3600000
       superseded-retention-days: 180
+      void-retention-days: 30
+      audit-enabled: true
+      audit-on-extract: true
+      audit-max-users-per-tick: 50
+      audit-extract-debounce-ms: 30000
   memory:
     # 仅 AutoContext（4.6.4）；跨轮上下文见 agent.context + Catalog context.*
     auto-context:

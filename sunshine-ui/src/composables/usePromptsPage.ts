@@ -155,6 +155,7 @@ export function usePromptsPage() {
     systemPane,
     prompts: listOps.prompts,
     filteredPrompts: listOps.filteredPrompts,
+    promptSearch: listOps.promptSearch,
     listPanelTitle: listOps.listPanelTitle,
     showListCreateButton: listOps.showListCreateButton,
     listCreateButtonLabel: listOps.listCreateButtonLabel,

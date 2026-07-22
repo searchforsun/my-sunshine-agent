@@ -85,7 +85,9 @@ public class L2StateStore {
     }
 
     /**
-     * 置信已由调用方过滤；同 key 走 Merger；ACCEPT 时旧条 superseded + 插入新条。
+     * 置信已由调用方过滤；同 key 走 Merger。
+     * <p>同 value（strip 后相等）→ 原地刷新 {@code updatedAt}/溯源/置信，不 supersede。
+     * <p>ACCEPT 且 value 变化 → 旧条 superseded + 插入新条。
      */
     public void upsert(
             String userId,
@@ -105,10 +107,15 @@ public class L2StateStore {
         String tid = tenantId != null ? tenantId : "default";
         String kind = L2ConflictMerger.normalizeKind(candidate.kind());
         String key = candidate.key().strip();
+        String value = candidate.value().strip();
         Instant clock = now != null ? now : Instant.now();
         Optional<UserContextStateEntity> existingOpt =
                 repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(userId, tid, kind, key, "active");
         UserContextStateEntity existing = existingOpt.orElse(null);
+        if (existing != null && sameValue(existing.getStateValue(), value)) {
+            refreshSameValue(existing, candidate.confidence(), sourceMsgId, clock);
+            return;
+        }
         L2ConflictMerger.Decision decision = merger.decide(existing, candidate, contextProperties.getL2());
         if (decision == L2ConflictMerger.Decision.REJECT) {
             log.debug("[ContextL2] reject overwrite user={} kind={} key={} conf={}",
@@ -126,7 +133,7 @@ public class L2StateStore {
         neu.setTenantId(tid);
         neu.setKind(kind);
         neu.setStateKey(key);
-        neu.setStateValue(candidate.value().strip());
+        neu.setStateValue(value);
         neu.setConfidence(candidate.confidence());
         neu.setStatus("active");
         neu.setExpiresAt(expiresAtFor(kind, clock));
@@ -134,6 +141,30 @@ public class L2StateStore {
         neu.setCreatedAt(clock);
         neu.setUpdatedAt(clock);
         repository.save(neu);
+    }
+
+    /** 同 key+value：只刷新时间（及溯源/更高置信），不产生 superseded。 */
+    private void refreshSameValue(
+            UserContextStateEntity existing,
+            double incomingConfidence,
+            String sourceMsgId,
+            Instant clock) {
+        existing.setUpdatedAt(clock);
+        if (incomingConfidence > existing.getConfidence()) {
+            existing.setConfidence(incomingConfidence);
+        }
+        if (StringUtils.hasText(sourceMsgId)) {
+            existing.setSourceMsgId(sourceMsgId);
+        }
+        repository.save(existing);
+        log.debug("[ContextL2] refresh same value id={} key={}", existing.getId(), existing.getStateKey());
+    }
+
+    static boolean sameValue(String a, String b) {
+        if (!StringUtils.hasText(a) || !StringUtils.hasText(b)) {
+            return false;
+        }
+        return a.strip().equals(b.strip());
     }
 
     Instant expiresAtFor(String kind, Instant now) {

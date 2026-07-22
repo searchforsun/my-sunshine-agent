@@ -22,14 +22,16 @@ import {
   BIZ_TENANT_ID,
   type FieldDef,
 } from '../utils/bizTableSchema'
+import { useBizDataRouteState } from './useBizDataRouteState'
 
 export function useBizDataPage() {
   const message = useMessage()
+  const { readDomain, readTable, syncQuery } = useBizDataRouteState()
   const loading = ref(false)
   const saving = ref(false)
   const deleting = ref(false)
-  const domain = ref<BizDomain>('finance')
-  const tableKey = ref<BizTable>('expenses')
+  const domain = ref<BizDomain>(readDomain())
+  const tableKey = ref<BizTable>(readTable(domain.value))
   const rows = ref<Record<string, unknown>[]>([])
   const authUsers = ref<Array<{ userId: string; username: string; nickname: string }>>([])
 
@@ -330,18 +332,21 @@ export function useBizDataPage() {
 
   watch(domain, () => {
     const next = BIZ_TABLE_DEFS[domain.value][0].key
-    if (tableKey.value === next) {
-      void loadRows()
-    } else {
+    if (tableKey.value !== next) {
       tableKey.value = next
+      return
     }
+    syncQuery({ domain: domain.value, table: tableKey.value })
+    void loadRows()
   })
 
   watch(tableKey, () => {
+    syncQuery({ domain: domain.value, table: tableKey.value })
     void loadRows()
   })
 
   onMounted(() => {
+    syncQuery({ domain: domain.value, table: tableKey.value })
     void refresh()
   })
 

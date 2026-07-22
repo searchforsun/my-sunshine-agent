@@ -16,7 +16,8 @@ import {
   NTabPane,
   NTabs,
 } from 'naive-ui'
-import { AddOutline, RefreshOutline } from '@vicons/ionicons5'
+import { AddOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5'
+import { computed, ref, watch } from 'vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import { useBizDataPage } from '../composables/useBizDataPage'
 
@@ -49,6 +50,19 @@ const {
   submitForm,
   confirmDelete,
 } = useBizDataPage()
+
+const tableSearch = ref('')
+const filteredTables = computed(() => {
+  const q = tableSearch.value.trim().toLowerCase()
+  if (!q) return tableDefs.value
+  return tableDefs.value.filter(
+    t => t.key.toLowerCase().includes(q) || t.label.toLowerCase().includes(q),
+  )
+})
+
+watch(domain, () => {
+  tableSearch.value = ''
+})
 </script>
 
 <template>
@@ -80,11 +94,25 @@ const {
       <aside class="list-panel">
         <div class="panel-head">
           <span class="panel-title">数据表</span>
-          <span class="panel-count">{{ tableDefs.length }}</span>
+          <span class="panel-count">{{ filteredTables.length }}</span>
+        </div>
+        <div class="list-search">
+          <NInput
+            v-model:value="tableSearch"
+            placeholder="搜索表名…"
+            size="small"
+            round
+            clearable
+            class="search-input"
+          >
+            <template #prefix>
+              <NIcon :component="SearchOutline" :size="14" />
+            </template>
+          </NInput>
         </div>
         <div class="list-body">
           <button
-            v-for="t in tableDefs"
+            v-for="t in filteredTables"
             :key="t.key"
             type="button"
             class="table-card"
@@ -94,6 +122,9 @@ const {
             <span class="table-label">{{ t.label }}</span>
             <span class="table-id">{{ t.key }}</span>
           </button>
+          <div v-if="!filteredTables.length" class="list-empty">
+            <NEmpty size="small" description="无匹配表" />
+          </div>
         </div>
       </aside>
 
@@ -305,7 +336,16 @@ const {
   overflow: hidden;
 }
 
-.panel-head {
+.list-panel .panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 0;
+  border-bottom: none;
+  flex-shrink: 0;
+}
+
+.detail-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -325,6 +365,24 @@ const {
   color: var(--sun-text-muted);
 }
 
+.list-search {
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.search-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+}
+
 .list-body {
   padding: 12px 14px 14px;
   min-height: 0;
@@ -332,6 +390,14 @@ const {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.list-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
 }
 
 .table-card {
@@ -354,17 +420,13 @@ const {
 }
 
 .table-card.active {
-  box-shadow: inset 0 0 0 1px var(--sun-text);
+  font-weight: 600;
   border-color: var(--sun-text);
 }
 
 .table-label {
   font-size: 13px;
   font-weight: 600;
-}
-
-.table-card.active .table-label {
-  font-weight: 700;
 }
 
 .table-id {

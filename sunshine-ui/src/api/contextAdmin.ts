@@ -27,6 +27,15 @@ export interface L2UpdatePayload {
   status?: string
 }
 
+export interface L1WindowRow {
+  band: 'near' | 'mid' | 'far' | string
+  index: number
+  userText?: string | null
+  assistantText?: string | null
+  assistantSummarized?: boolean
+  at?: string | null
+}
+
 export interface L1Snapshot {
   convId: string
   userId: string
@@ -37,6 +46,7 @@ export interface L1Snapshot {
   nearN: number
   midN: number
   updatedAt?: string
+  rows?: L1WindowRow[]
 }
 
 export interface L3Status {
@@ -50,6 +60,15 @@ export interface L3Status {
   l3MinScore: number
 }
 
+export interface L3Entry {
+  msgId: string
+  role: string
+  chunkIndex: number
+  content: string
+  createdAt?: string | null
+  expiresAt?: string | null
+}
+
 export interface GcResult {
   ok: boolean
   message: string
@@ -59,6 +78,22 @@ export interface ReingestResult {
   convId: string
   ingested: number
   message: string
+}
+
+export interface ConversationSummary {
+  id: string
+  title: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export async function listContextConversations(
+  userId: string,
+  tenantId = 'default',
+): Promise<ConversationSummary[]> {
+  const q = new URLSearchParams({ userId, tenantId })
+  const res = await fetch(apiUrl(`/api/admin/context/conversations?${q}`), { headers: apiHeaders() })
+  return parseApiResponse<ConversationSummary[]>(res)
 }
 
 export async function listContextL2(userId: string, tenantId = 'default'): Promise<L2StateEntry[]> {
@@ -94,6 +129,12 @@ export async function getContextL3Status(userId: string, tenantId = 'default'): 
   const q = new URLSearchParams({ userId, tenantId })
   const res = await fetch(apiUrl(`/api/admin/context/l3/status?${q}`), { headers: apiHeaders() })
   return parseApiResponse<L3Status>(res)
+}
+
+export async function listContextL3Entries(convId: string): Promise<L3Entry[]> {
+  const q = new URLSearchParams({ convId })
+  const res = await fetch(apiUrl(`/api/admin/context/l3/entries?${q}`), { headers: apiHeaders() })
+  return parseApiResponse<L3Entry[]>(res)
 }
 
 export async function runContextL3Gc(): Promise<GcResult> {

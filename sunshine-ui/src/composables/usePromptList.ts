@@ -48,6 +48,7 @@ export function usePromptList(deps: PromptListDeps) {
   } = deps
 
   const loading = ref(false)
+  const promptSearch = ref('')
   const prompts = ref<PromptListItem[]>([])
   const workflowCatalog = ref<WorkflowCatalogEntry[]>([])
 
@@ -62,23 +63,30 @@ export function usePromptList(deps: PromptListDeps) {
   })
 
   const filteredPrompts = computed(() => {
-    const list = [...prompts.value]
+    let list = [...prompts.value]
     if (activeTab.value === 'routing') {
-      return list
+      list = list
         .filter(p => p.kind === 'routing-rule')
         .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
-    }
-    if (activeTab.value === 'react') {
-      return list
+    } else if (activeTab.value === 'react') {
+      list = list
         .filter(p => p.kind === 'react-prompt')
         .sort((a, b) => a.id.localeCompare(b.id))
+    } else {
+      list = list
+        .filter(p => p.kind !== 'routing-rule' && p.kind !== 'react-prompt')
+        .sort((a, b) => {
+          if (a.kind !== b.kind) return a.kind.localeCompare(b.kind)
+          return a.id.localeCompare(b.id)
+        })
     }
-    return list
-      .filter(p => p.kind !== 'routing-rule' && p.kind !== 'react-prompt')
-      .sort((a, b) => {
-        if (a.kind !== b.kind) return a.kind.localeCompare(b.kind)
-        return a.id.localeCompare(b.id)
-      })
+    const q = promptSearch.value.trim().toLowerCase()
+    if (!q) return list
+    return list.filter(
+      p =>
+        p.id.toLowerCase().includes(q)
+        || (p.displayName ?? '').toLowerCase().includes(q),
+    )
   })
 
   const listPanelTitle = computed(() => {
@@ -246,6 +254,7 @@ export function usePromptList(deps: PromptListDeps) {
   return {
     loading,
     prompts,
+    promptSearch,
     workflowCatalog,
     creating,
     filteredPrompts,

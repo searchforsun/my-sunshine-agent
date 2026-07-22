@@ -567,18 +567,45 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.current-user-marker', 1, 'published', '【当前提问 · 仅此作答】', NULL, 'context optimization task3', 'prompt-ops');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l1.mid-compress', 'context', 'L1 · Mid 答案压缩', '后台将落入 Mid 带的 assistant 原文压成短摘要，写入 mid_answers（不改用户可见终态正文）。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.mid-compress', 1, 'published', '你是对话答案压缩助手。将下列助手回复压成 1～3 句中文摘要，保留关键事实、结论与用户可指代的要点。
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.mid-compress', 1, 'published', '你是对话答案压缩助手。将下列助手回复压成 1～3 句中文摘要。
+保留关键事实、结论与用户可指代的要点（含具体代号、数字、名称、约束）；彼此不同的条目不得因句式相似而省略。
+若原文含已更正、作废或被覆盖的旧信息，只保留最终有效结论，不要新旧并存。
 只输出摘要正文，不要标题或 markdown。', NULL, 'context optimization task5', 'prompt-ops');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l1.far-fold', 'context', 'L1 · Far 远窗折叠', '后台将更早对话折叠进 far_summary 边界摘要块（可叠加上一轮远窗摘要）。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.far-fold', 1, 'published', '你是会话远窗折叠助手。综合「已有远窗摘要」与「待折叠对话」，输出一段连贯中文摘要（约 3～8 句）。
-只保留可指代的事实与结论；不要标题或 markdown；不要编造未出现的内容。', NULL, 'context optimization task5', 'prompt-ops');
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l1.far-fold', 'context', 'L1 · Far 远窗折叠', '后台将更早对话折叠进 far_summary；对照现行 L2，冲突以 L2 为准，避免污染 system。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.far-fold', 1, 'published', '你是会话远窗折叠助手。综合「现行 L2 用户状态」「已有远窗摘要」与「待折叠对话」，输出一段连贯中文摘要。
+
+权威与去污：
+0. L2 优先：输入中「现行 L2」是权威实时状态。Far 摘要不得与 L2 冲突；若待折叠/旧摘要与 L2 同 key 或同主题取值不同，以 L2 为准，删除或改写 Far 中的过时值，不要把冲突事实再写进摘要（避免 system 里 L2 与 Far 互相污染）。
+1. 保真：保留所有仍可指代且彼此不同、且不与 L2 冲突的事实与标识（如多个历史项目代号）；句式相似也不得塌缩成只留一条。
+2. 过期：同一主题出现更新值时，以较新的待折叠对话为准（但若与 L2 冲突仍服从 L2）；可简短注明已变更。
+3. 腐败：明显错误、自相矛盾或无法对齐的句子直接丢弃；不要保留暧昧表述。
+4. 禁止编造未出现的内容；不要标题或 markdown；不要复述整段 L2 原文（L2 已单独注入 system）。
+5. 篇幅约 3～12 句，优先保真。
+只输出摘要正文。', NULL, 'context far-fold anti-corruption + L2 authority', 'prompt-ops');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l2.extract', 'context', 'L2 · 用户状态抽取', '后台从对话抽取跨会话结构化状态；仅输出 JSON 数组；低置信由运行时丢弃。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l2.extract', 1, 'published', '你是用户状态抽取助手。从对话中识别可跨会话复用的结构化条目。
 仅输出 JSON 数组，不要其它文字或 markdown。每项字段：kind、key、value、confidence（0~1）。
 kind 只能是：profile、preference、goal、agreement、constraint、fact、decision。
 只抽取用户明确表达或双方已确认的内容；不要猜测。无条目时输出 []。', NULL, 'context optimization task6', 'prompt-ops');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l2.audit', 'context', 'L2 · 状态矛盾审计', '审阅用户 active L2；明确互斥/错误 → voidIds；暧昧可疑 → conflictIds；仅输出 JSON。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l2.audit', 1, 'published', '你是用户状态审计助手。审阅下列 L2 条目（每行含 id/kind/key/value/confidence）。
+找出：1) 明确互斥或明显错误、应作废的 id → voidIds；2) 暧昧矛盾、仅需打标的 id → conflictIds。
+仅输出 JSON 对象，不要其它文字或 markdown：{"voidIds":[],"conflictIds":[],"reasons":{"id":"简短原因"}}。
+禁止编造不在输入列表中的 id。无问题时输出 {"voidIds":[],"conflictIds":[],"reasons":{}}。', NULL, 'context corruption audit', 'prompt-ops');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l1.audit', 'context', 'L1 · 派生摘要审计', '对照 L2 修订会话 mid/far；清理过期/矛盾，保留可区分有效事实。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.audit', 1, 'published', '你是会话摘要审计助手。对照用户当前 L2 状态，检查各会话的 mid_answers 与 far_summary。
+
+处理规则：
+1. 与现行 L2 明确冲突或明显过时 → 将对应 mid 键列入 removeMidKeys；重写 farSummaryByConv：去掉过期/矛盾句，保留仍有效且互不冲突的事实。
+2. far/mid 内部自相矛盾 → 以较新、且与 L2 一致者为准；无法判定则删除矛盾句，不要暧昧保留。
+3. 同类多条仍有效的不同值（如多个项目代号）不得塌缩成只留一条。
+4. 无问题时 removeMidKeys / farSummaryByConv 可为 {}。
+仅输出 JSON 对象：{"removeMidKeys":{"convId":["msgId",…]},"farSummaryByConv":{"convId":"修订后全文或空串"},"notes":"可选说明"}。
+仅使用输入中出现的 convId 与 mid 键（msgId）；不要编造；不要 markdown。', NULL, 'context corruption audit', 'prompt-ops');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l3.material-header', 'context', 'L3 · 历史材料边界头', '注入 L3 召回材料块时的 system 边界头；标明可能过期、非指令。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l3.material-header', 1, 'published', '[历史材料 · L3 · 可能过期]', NULL, 'context optimization task7', 'prompt-ops');

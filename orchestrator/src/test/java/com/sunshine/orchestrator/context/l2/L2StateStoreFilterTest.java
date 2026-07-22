@@ -69,6 +69,27 @@ class L2StateStoreFilterTest {
     }
 
     @Test
+    void upsert_sameValue_refreshesUpdatedAt_doesNotSupersede() {
+        UserContextStateEntity old = entity("old", "profile", "name", "测一", 0.9, null);
+        Instant oldUpdated = old.getUpdatedAt();
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "profile", "name", "active"))
+                .thenReturn(Optional.of(old));
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("profile", "name", "测一", 0.95),
+                "msg-same", now);
+
+        assertThat(old.getStatus()).isEqualTo("active");
+        assertThat(old.getStateValue()).isEqualTo("测一");
+        assertThat(old.getUpdatedAt()).isEqualTo(now);
+        assertThat(old.getUpdatedAt()).isAfter(oldUpdated);
+        assertThat(old.getConfidence()).isEqualTo(0.95);
+        assertThat(old.getSourceMsgId()).isEqualTo("msg-same");
+        verify(repository, times(1)).save(old);
+    }
+
+    @Test
     void upsert_preference_supersedesOldWhenAccepted() {
         UserContextStateEntity old = entity("old", "preference", "style", "详细", 0.8, null);
         when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(

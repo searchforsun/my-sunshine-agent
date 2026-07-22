@@ -3,10 +3,14 @@ package com.sunshine.orchestrator.context.admin;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.exception.CommonErrorCode;
 import com.sunshine.orchestrator.context.ContextProperties;
+import com.sunshine.orchestrator.context.SessionTurn;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.ConversationSummaryView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.GcResultView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L1SnapshotView;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L1WindowRowView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L2StateView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L2UpdateRequest;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L3EntryView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L3StatusView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.ReingestResultView;
 import com.sunshine.orchestrator.context.job.ContextMaintenanceService;
@@ -15,6 +19,7 @@ import com.sunshine.orchestrator.context.l1.ConversationContextL1Repository;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import com.sunshine.orchestrator.context.l2.UserContextStateEntity;
 import com.sunshine.orchestrator.context.l2.UserContextStateRepository;
+import com.sunshine.orchestrator.context.l3.HistoryRagClient;
 import com.sunshine.orchestrator.context.l3.L3IngestService;
 import com.sunshine.orchestrator.conversation.MessageBodyText;
 import com.sunshine.orchestrator.conversation.MessageStatus;
@@ -28,6 +33,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -37,7 +43,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ContextAdminService {
 
-    private static final Set<String> ALLOWED_STATUS = Set.of("active", "superseded", "void");
+    private static final Set<String> ALLOWED_STATUS = Set.of("active", "superseded", "void", "conflict");
 
     private final UserContextStateRepository l2Repository;
     private final ConversationContextL1Repository l1Repository;
@@ -45,6 +51,7 @@ public class ContextAdminService {
     private final ChatConversationRepository conversationRepository;
     private final ChatMessageRepository messageRepository;
     private final L3IngestService l3IngestService;
+    private final HistoryRagClient historyRagClient;
     private final ContextMaintenanceService maintenanceService;
     private final ContextProperties contextProperties;
 
@@ -53,6 +60,18 @@ public class ContextAdminService {
         String tid = normalizeTenant(tenantId);
         return l2Repository.findByUserIdAndTenantIdOrderByUpdatedAtDesc(userId, tid).stream()
                 .map(ContextAdminService::toL2View)
+                .toList();
+    }
+
+    public List<ConversationSummaryView> listConversations(String userId, String tenantId) {
+        requireText(userId, "userId");
+        String tid = normalizeTenant(tenantId);
+        return conversationRepository.findByUserIdAndTenantIdOrderByUpdatedAtDesc(userId, tid).stream()
+                .map(c -> new ConversationSummaryView(
+                        c.getId(),
+                        StringUtils.hasText(c.getTitle()) ? c.getTitle() : "新对话",
+                        c.getCreatedAt(),
+                        c.getUpdatedAt()))
                 .toList();
     }
 
@@ -99,20 +118,62 @@ public class ContextAdminService {
 
     public L1SnapshotView getL1(String convId) {
         requireText(convId, "convId");
-        ConversationContextL1Entity entity = l1Repository.findById(convId)
+        ChatConversationEntity conv = conversationRepository.findById(convId)
                 .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND));
+        ConversationContextL1Entity entity = l1Repository.findById(convId).orElse(null);
         Map<String, String> mid = l1Store.parseMidAnswers(entity);
         List<String> folded = new ArrayList<>(l1Store.parseFarFoldedMsgIds(entity));
+        String far = l1Store.farSummaryOf(entity);
+        int nearN;
+        int midN;
+        Instant updatedAt;
+        if (entity != null) {
+            nearN = entity.getNearN() > 0
+                    ? entity.getNearN()
+                    : Math.max(1, contextProperties.getL1().getNearTurns());
+            midN = entity.getMidN() >= 0
+                    ? entity.getMidN()
+                    : Math.max(0, contextProperties.getL1().getMidTurns());
+            updatedAt = entity.getUpdatedAt();
+        } else {
+            nearN = Math.max(1, contextProperties.getL1().getNearTurns());
+            midN = Math.max(0, contextProperties.getL1().getMidTurns());
+            updatedAt = conv.getUpdatedAt() != null ? conv.getUpdatedAt() : Instant.now();
+        }
+        List<SessionTurn> history = new ArrayList<>();
+        Map<String, Instant> times = new HashMap<>();
+        for (ChatMessageEntity m : messageRepository.findByConversationIdOrderBySeqAsc(convId)) {
+            if (m == null) {
+                continue;
+            }
+            if (!"user".equals(m.getRole()) && !"assistant".equals(m.getRole())) {
+                continue;
+            }
+            if (!MessageStatus.COMPLETED.equals(m.getStatus())) {
+                continue;
+            }
+            String body = MessageBodyText.resolve(m);
+            if (!StringUtils.hasText(body)) {
+                continue;
+            }
+            history.add(SessionTurn.of(m.getId(), m.getRole(), body));
+            if (m.getCreatedAt() != null) {
+                times.put(m.getId(), m.getCreatedAt());
+            }
+        }
+        List<L1WindowRowView> rows = L1WindowRowBuilder.build(
+                history, times, mid, far, updatedAt, nearN, midN);
         return new L1SnapshotView(
-                entity.getConvId(),
-                entity.getUserId(),
-                entity.getTenantId(),
+                conv.getId(),
+                conv.getUserId(),
+                conv.getTenantId(),
                 mid,
-                l1Store.farSummaryOf(entity),
+                far != null ? far : "",
                 folded,
-                entity.getNearN(),
-                entity.getMidN(),
-                entity.getUpdatedAt());
+                nearN,
+                midN,
+                updatedAt,
+                rows);
     }
 
     public L3StatusView l3Status(String userId, String tenantId) {
@@ -125,15 +186,45 @@ public class ContextAdminService {
                 tid,
                 contextProperties.isEnabled(),
                 l3.getCollection(),
-                "Milvus vector count unavailable from orchestrator; use reingest/GC for ops",
+                "L3 无硬过期；消息删除后由 GC 清理孤儿向量",
                 l1Count,
                 l3.getTopK(),
                 l3.getMinScore());
     }
 
+    public List<L3EntryView> listL3Entries(String convId) {
+        requireText(convId, "convId");
+        ChatConversationEntity conv = conversationRepository.findById(convId)
+                .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND));
+        Map<String, String> roleByMsg = new HashMap<>();
+        for (ChatMessageEntity m : messageRepository.findByConversationIdOrderBySeqAsc(convId)) {
+            if (m != null && StringUtils.hasText(m.getId()) && StringUtils.hasText(m.getRole())) {
+                roleByMsg.put(m.getId(), m.getRole());
+            }
+        }
+        List<HistoryRagClient.HistoryChunk> chunks = historyRagClient
+                .listByConv(conv.getUserId(), conv.getTenantId(), convId, 200)
+                .block();
+        if (chunks == null || chunks.isEmpty()) {
+            return List.of();
+        }
+        List<L3EntryView> out = new ArrayList<>(chunks.size());
+        for (HistoryRagClient.HistoryChunk c : chunks) {
+            Instant created = c.createdAtMs() > 0 ? Instant.ofEpochMilli(c.createdAtMs()) : null;
+            out.add(new L3EntryView(
+                    c.msgId(),
+                    roleByMsg.getOrDefault(c.msgId(), ""),
+                    c.chunkIndex(),
+                    c.content(),
+                    created,
+                    null));
+        }
+        return List.copyOf(out);
+    }
+
     public GcResultView runGc() {
         maintenanceService.runOnce();
-        return new GcResultView(true, "maintenance runOnce completed");
+        return new GcResultView(true, "过期清理已完成");
     }
 
     public ReingestResultView reingest(String convId) {
@@ -168,7 +259,7 @@ public class ContextAdminService {
                     createdAt);
             count++;
         }
-        return new ReingestResultView(convId, count, "reingest submitted");
+        return new ReingestResultView(convId, count, "已提交重建，共 " + count + " 条");
     }
 
     private static L2StateView toL2View(UserContextStateEntity e) {

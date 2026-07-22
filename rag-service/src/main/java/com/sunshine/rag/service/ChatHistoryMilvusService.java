@@ -12,15 +12,19 @@ import io.milvus.param.collection.HasCollectionParam;
 import io.milvus.param.collection.LoadCollectionParam;
 import io.milvus.param.dml.DeleteParam;
 import io.milvus.param.dml.InsertParam;
+import io.milvus.param.dml.QueryParam;
 import io.milvus.param.dml.SearchParam;
 import io.milvus.param.index.CreateIndexParam;
+import io.milvus.response.QueryResultsWrapper;
 import io.milvus.response.SearchResultsWrapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -123,6 +127,57 @@ public class ChatHistoryMilvusService {
                 .withCollectionName(COLLECTION)
                 .withExpr(expr)
                 .build());
+    }
+
+    /** Admin：按会话列出已索引 chunk（无向量字段）。 */
+    public List<ChatHistoryChunk> listByConv(String userId, String tenantId, String convId, int limit) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(convId)) {
+            return List.of();
+        }
+        String tid = StringUtils.hasText(tenantId) ? tenantId : "default";
+        int lim = Math.max(1, Math.min(limit, 500));
+        String expr = "user_id == \"" + escape(userId)
+                + "\" && tenant_id == \"" + escape(tid)
+                + "\" && conv_id == \"" + escape(convId) + "\"";
+        R<io.milvus.grpc.QueryResults> response = client.query(QueryParam.newBuilder()
+                .withCollectionName(COLLECTION)
+                .withExpr(expr)
+                .withOutFields(List.of("msg_id", "chunk_index", "content", "created_at", "conv_id"))
+                .withLimit((long) lim)
+                .build());
+        if (response.getData() == null) {
+            log.warn("[ChatHistory] listByConv 空: {}", response.getMessage());
+            return List.of();
+        }
+        QueryResultsWrapper wrapper = new QueryResultsWrapper(response.getData());
+        List<?> msgIds = wrapper.getFieldWrapper("msg_id").getFieldData();
+        List<?> indexes = wrapper.getFieldWrapper("chunk_index").getFieldData();
+        List<?> contents = wrapper.getFieldWrapper("content").getFieldData();
+        List<?> createdAts = wrapper.getFieldWrapper("created_at").getFieldData();
+        int size = contents != null ? contents.size() : 0;
+        List<ChatHistoryChunk> out = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            Object content = contents.get(i);
+            if (content == null) {
+                continue;
+            }
+            int chunkIndex = indexes != null && i < indexes.size() && indexes.get(i) instanceof Number n
+                    ? n.intValue() : i;
+            long createdAt = 0L;
+            if (createdAts != null && i < createdAts.size() && createdAts.get(i) instanceof Number num) {
+                createdAt = num.longValue();
+            }
+            out.add(new ChatHistoryChunk(
+                    convId,
+                    fieldAt(msgIds, i),
+                    chunkIndex,
+                    content.toString(),
+                    createdAt));
+        }
+        out.sort(Comparator
+                .comparingLong(ChatHistoryChunk::createdAtMs).reversed()
+                .thenComparingInt(ChatHistoryChunk::chunkIndex));
+        return List.copyOf(out);
     }
 
     public void insertChunks(
@@ -238,5 +293,9 @@ public class ChatHistoryMilvusService {
     }
 
     public record ChatHistoryHit(String convId, String msgId, String content, float score, long createdAtMs) {
+    }
+
+    public record ChatHistoryChunk(
+            String convId, String msgId, int chunkIndex, String content, long createdAtMs) {
     }
 }

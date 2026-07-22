@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.context.ContextProperties;
 import com.sunshine.orchestrator.context.SessionTurn;
+import com.sunshine.orchestrator.context.audit.ContextAuditService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +21,7 @@ import java.util.Set;
 
 /**
  * 每轮 completed 后静默抽取 L2 状态：LLM + Catalog {@code context.l2.extract} → 置信门禁 → Merger upsert。
- * 失败仅日志，不阻断用户路径。
+ * 成功后触发轻量腐败/矛盾审计（异步、可防抖）。失败仅日志，不阻断用户路径。
  */
 @Slf4j
 @Service
@@ -38,6 +39,7 @@ public class L2ExtractService {
     private final LlmGatewayClient llmGatewayClient;
     private final PromptCatalogHolder catalogHolder;
     private final L2StateStore l2StateStore;
+    private final ContextAuditService contextAuditService;
 
     @Async
     public void extractAsync(
@@ -94,6 +96,21 @@ public class L2ExtractService {
         }
         log.debug("[ContextL2] extracted user={} candidates={} accepted={}",
                 userId, candidates.size(), accepted);
+        if (accepted > 0 || !candidates.isEmpty()) {
+            maybeAuditAfterExtract(userId, tenantId);
+        }
+    }
+
+    private void maybeAuditAfterExtract(String userId, String tenantId) {
+        ContextProperties.Maintenance m = contextProperties.getMaintenance();
+        if (!m.isAuditEnabled() || !m.isAuditOnExtract()) {
+            return;
+        }
+        try {
+            contextAuditService.auditUserLightAsync(userId, tenantId);
+        } catch (Exception e) {
+            log.warn("[ContextL2] trigger audit failed user={}: {}", userId, e.getMessage());
+        }
     }
 
     static String buildExtractPayload(List<SessionTurn> history) {

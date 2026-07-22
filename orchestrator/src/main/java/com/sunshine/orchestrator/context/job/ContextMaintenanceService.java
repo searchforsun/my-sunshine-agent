@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.context.job;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.context.ContextProperties;
+import com.sunshine.orchestrator.context.audit.ContextAuditService;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Repository;
 import com.sunshine.orchestrator.context.l2.UserContextStateEntity;
@@ -24,7 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 上下文治理：L2 硬过期 void、superseded 清理、L3 孤儿向量 GC、L1 无主会话行删除。
+ * 上下文治理：L2 硬过期 void、superseded 清理、L3 孤儿向量 GC、L1 无主会话行删除、腐败/矛盾审计。
  * L2 生命周期与 L3 chat-history 向量解耦：L2 void/过期不删对话向量。
  * 失败仅日志，不抛出。
  */
@@ -45,16 +46,21 @@ public class ContextMaintenanceService {
     private final ChatMessageRepository messageRepository;
     private final HistoryRagClient historyRagClient;
     private final ContextProperties contextProperties;
+    private final ContextAuditService contextAuditService;
 
     public void runOnce() {
         try {
             Instant now = Instant.now();
             int voided = voidExpiredL2(now);
             int superseded = cleanupLongSuperseded(now);
+            int voidsDeleted = cleanupLongVoid(now);
             int vectors = gcL3Vectors();
             int orphanL1 = gcOrphanL1();
-            log.info("[ContextMaintenance] done voided={} supersededDeleted={} vectorDeletes={} orphanL1={}",
-                    voided, superseded, vectors, orphanL1);
+            ContextAuditService.AuditStats audit = contextAuditService.auditRecentUsers();
+            log.info("[ContextMaintenance] done expiredVoided={} supersededDeleted={} voidDeleted={} "
+                            + "vectorDeletes={} orphanL1={} auditVoided={} auditConflicted={} auditL1Patched={}",
+                    voided, superseded, voidsDeleted, vectors, orphanL1,
+                    audit.voided(), audit.conflicted(), audit.l1Patched());
         } catch (Exception e) {
             log.warn("[ContextMaintenance] runOnce failed: {}", e.getMessage());
         }
@@ -103,6 +109,32 @@ public class ContextMaintenanceService {
                 count++;
             } catch (Exception e) {
                 log.warn("[ContextMaintenance] delete superseded failed id={}: {}",
+                        entity.getId(), e.getMessage());
+            }
+        }
+        return count;
+    }
+
+    /** 超过 retention 的 void 行物理删除（按 updated_at，即标为作废的时间）。 */
+    int cleanupLongVoid(Instant now) {
+        Instant clock = now != null ? now : Instant.now();
+        int days = contextProperties.getMaintenance().getVoidRetentionDays();
+        if (days <= 0) {
+            return 0;
+        }
+        Instant cutoff = clock.minus(days, ChronoUnit.DAYS);
+        List<UserContextStateEntity> stale =
+                l2Repository.findByStatusAndUpdatedAtBefore("void", cutoff);
+        if (stale == null || stale.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (UserContextStateEntity entity : stale) {
+            try {
+                l2Repository.delete(entity);
+                count++;
+            } catch (Exception e) {
+                log.warn("[ContextMaintenance] delete void failed id={}: {}",
                         entity.getId(), e.getMessage());
             }
         }

@@ -20,6 +20,13 @@ public class ContextAdminController {
 
     private final OrchestratorClient orchestratorClient;
 
+    @GetMapping("/api/admin/context/conversations")
+    public Mono<Map<String, Object>> listConversations(
+            @RequestParam String userId,
+            @RequestParam(required = false, defaultValue = "default") String tenantId) {
+        return orchestratorClient.listContextConversations(userId, tenantId);
+    }
+
     @GetMapping("/api/admin/context/l2")
     public Mono<Map<String, Object>> listL2(
             @RequestParam String userId,
@@ -49,6 +56,11 @@ public class ContextAdminController {
             @RequestParam String userId,
             @RequestParam(required = false, defaultValue = "default") String tenantId) {
         return orchestratorClient.getContextL3Status(userId, tenantId);
+    }
+
+    @GetMapping("/api/admin/context/l3/entries")
+    public Mono<Map<String, Object>> listL3Entries(@RequestParam String convId) {
+        return orchestratorClient.listContextL3Entries(convId);
     }
 
     @PostMapping("/api/admin/context/l3/gc")

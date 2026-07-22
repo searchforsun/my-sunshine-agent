@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { DropdownOption } from 'naive-ui'
 import {
   NButton,
@@ -22,6 +22,7 @@ import {
   CreateOutline,
   EllipsisHorizontal,
   RefreshOutline,
+  SearchOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
@@ -35,11 +36,13 @@ import {
 } from '../api/experts'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
 import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
+import { useExpertsRouteState } from '../composables/useExpertsRouteState'
 
 const PLACEHOLDER_PROMPT = '待补充系统提示词'
 const EXPERT_ID_PATTERN = /^[\w\u4e00-\u9fff-]+$/
 
 const message = useMessage()
+const { readId, syncId } = useExpertsRouteState()
 const loading = ref(false)
 const saving = ref(false)
 const creating = ref(false)
@@ -48,7 +51,7 @@ const isEditing = ref(false)
 const experts = ref<ExpertEntry[]>([])
 const skillOptions = ref<SkillCatalogIndexEntry[]>([])
 const toolOptions = ref<ToolCatalogEntry[]>([])
-const selectedId = ref<string | null>(null)
+const selectedId = ref<string | null>(readId())
 const showCreateModal = ref(false)
 const showDeleteConfirm = ref(false)
 
@@ -65,6 +68,18 @@ const editForm = ref({
 const selectedExpert = computed(() =>
   experts.value.find(e => e.id === selectedId.value) ?? null,
 )
+
+const expertSearch = ref('')
+const filteredExperts = computed(() => {
+  const q = expertSearch.value.trim().toLowerCase()
+  if (!q) return experts.value
+  return experts.value.filter(
+    e =>
+      e.id.toLowerCase().includes(q)
+      || (e.displayName ?? '').toLowerCase().includes(q)
+      || (e.description ?? '').toLowerCase().includes(q),
+  )
+})
 
 const skillSelectOptions = computed(() =>
   skillOptions.value.map(s => ({ label: `${s.displayName} (${s.id})`, value: s.id })),
@@ -182,10 +197,15 @@ async function refreshPage() {
       selectedId.value = null
       isEditing.value = false
     }
-    if (!selectedId.value && list.length > 0) {
-      selectExpert(list[0].id, true)
-    } else if (selectedId.value) {
-      selectExpert(selectedId.value, true)
+    const preferred = selectedId.value || readId()
+    const targetId = preferred && list.some(e => e.id === preferred)
+      ? preferred
+      : (list[0]?.id ?? null)
+    if (targetId) {
+      selectExpert(targetId, true)
+    } else {
+      selectedId.value = null
+      syncId(null)
     }
   } catch (e) {
     message.error('加载专家列表失败')
@@ -201,6 +221,7 @@ function selectExpert(id: string, force = false) {
     return
   }
   selectedId.value = id
+  syncId(id)
   isEditing.value = false
   const expert = experts.value.find(e => e.id === id)
   if (!expert) return
@@ -292,6 +313,7 @@ async function handleDeleteConfirm() {
     message.success('已删除')
     showDeleteConfirm.value = false
     selectedId.value = null
+    syncId(null)
     isEditing.value = false
     await refreshPage()
   } catch (e) {
@@ -323,6 +345,16 @@ async function handleToggleEnabled(expert: ExpertEntry, enabled: boolean) {
     console.error(e)
   }
 }
+
+watch(
+  () => readId(),
+  (id) => {
+    if (!id || id === selectedId.value) return
+    if (experts.value.some(e => e.id === id)) {
+      selectExpert(id, true)
+    }
+  },
+)
 
 onMounted(() => {
   window.addEventListener('keydown', handleEscape)
@@ -357,13 +389,28 @@ onUnmounted(() => {
       <aside class="list-panel">
         <div class="panel-head">
           <span class="panel-title">列表</span>
-          <NTag :bordered="false" size="tiny" round>{{ experts.length }}</NTag>
+          <NTag :bordered="false" size="tiny" round>{{ filteredExperts.length }}</NTag>
+        </div>
+        <div class="list-search">
+          <NInput
+            v-model:value="expertSearch"
+            placeholder="搜索名称或 ID…"
+            size="small"
+            round
+            clearable
+            class="search-input"
+            :disabled="loading"
+          >
+            <template #prefix>
+              <NIcon :component="SearchOutline" :size="14" />
+            </template>
+          </NInput>
         </div>
         <NSpin :show="loading" size="small" class="list-spin">
           <div class="list-body">
-            <div v-if="experts.length" class="expert-list">
+            <div v-if="filteredExperts.length" class="expert-list">
               <button
-                v-for="expert in experts"
+                v-for="expert in filteredExperts"
                 :key="expert.id"
                 type="button"
                 class="expert-row"
@@ -385,7 +432,10 @@ onUnmounted(() => {
               </button>
             </div>
             <div v-else-if="!loading" class="empty-wrap">
-              <NEmpty size="small" description="暂无专家" />
+              <NEmpty
+                size="small"
+                :description="experts.length && expertSearch.trim() ? '无匹配专家' : '暂无专家'"
+              />
             </div>
           </div>
         </NSpin>
@@ -634,12 +684,11 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.panel-head {
+.list-panel .panel-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--sun-border);
+  padding: 14px 16px 0;
   flex-shrink: 0;
 }
 
@@ -647,6 +696,24 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   color: var(--sun-text);
+}
+
+.list-search {
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.search-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
 }
 
 .list-spin {

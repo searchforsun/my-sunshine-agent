@@ -35,7 +35,13 @@ const router = createRouter({
           meta: { title: '知识库' },
         },
         {
-          path: 'skills',
+          path: 'skills/:skillId/diff',
+          name: 'skill-diff',
+          component: () => import('../views/SkillVersionDiffView.vue'),
+          meta: { title: '版本对比' },
+        },
+        {
+          path: 'skills/:skillId?',
           name: 'skills',
           component: () => import('../views/SkillsView.vue'),
           meta: { title: 'Skills' },
@@ -75,12 +81,6 @@ const router = createRouter({
           name: 'workflows',
           component: () => import('../views/WorkflowsView.vue'),
           meta: { title: '工作流' },
-        },
-        {
-          path: 'skills/:skillId/diff',
-          name: 'skill-diff',
-          component: () => import('../views/SkillVersionDiffView.vue'),
-          meta: { title: '版本对比' },
         },
         {
           path: 'plans/:planId',

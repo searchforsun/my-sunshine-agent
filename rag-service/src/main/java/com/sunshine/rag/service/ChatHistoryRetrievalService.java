@@ -88,4 +88,17 @@ public class ChatHistoryRetrievalService {
                     return Mono.empty();
                 });
     }
+
+    public Mono<List<ChatHistoryMilvusService.ChatHistoryChunk>> listByConv(
+            String userId, String tenantId, String convId, int limit) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(convId)) {
+            return Mono.just(List.of());
+        }
+        String tid = tenantId != null ? tenantId : "default";
+        return Mono.fromCallable(() -> milvusService.listByConv(userId, tid, convId, limit))
+                .onErrorResume(e -> {
+                    log.warn("[ChatHistory] listByConv 失败 conv={}: {}", convId, e.getMessage());
+                    return Mono.just(List.of());
+                });
+    }
 }

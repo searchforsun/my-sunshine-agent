@@ -1,5 +1,5 @@
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
-import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { NIcon, useMessage, type DropdownOption } from 'naive-ui'
 import {
   CreateOutline,
@@ -47,15 +47,19 @@ import {
   listCardMaintainer,
 } from '../utils/skills/skillsVersionUtils'
 import { useSkillFilePreview } from '../composables/useSkillFilePreview'
+import { useSkillsRouteState } from '../composables/useSkillsRouteState'
 
 export const SKILLS_PAGE_KEY = Symbol('skillsPage')
 
 export function useSkillsPage() {
   const message = useMessage()
   const router = useRouter()
+  const route = useRoute()
+  const { readSkillId, syncSkillId } = useSkillsRouteState()
   const skills = ref<SkillEntry[]>([])
   const loading = ref(false)
   const selectedId = ref<string | null>(null)
+  let suppressRouteWatch = false
   const versions = ref<SkillVersion[]>([])
   const selectedVersion = ref<number | null>(null)
   const files = ref<{ path: string; size: number; directory: boolean }[]>([])
@@ -349,22 +353,27 @@ export function useSkillsPage() {
     try {
       skills.value = await listSkills()
       loading.value = false
-      if (!keepSkillId) {
-        if (skills.value.length > 0) {
-          selectedId.value = skills.value[0].id
+      const routeId = readSkillId()
+      const preferred = routeId || keepSkillId
+      const targetId = preferred && skills.value.some(s => s.id === preferred)
+        ? preferred
+        : (skills.value[0]?.id ?? null)
+      if (targetId !== selectedId.value) {
+        selectedId.value = targetId
+      } else if (targetId) {
+        suppressVersionWatch = true
+        try {
+          await loadVersions(targetId, { preserveVersion: keepVersion ?? undefined })
+          await loadDetailContent({ preservePath: keepFilePath ?? undefined })
+        } finally {
+          suppressVersionWatch = false
         }
-        return
       }
-      if (!skills.value.some(s => s.id === keepSkillId)) {
-        selectedId.value = skills.value[0]?.id ?? null
-        return
-      }
-      suppressVersionWatch = true
-      try {
-        await loadVersions(keepSkillId, { preserveVersion: keepVersion ?? undefined })
-        await loadDetailContent({ preservePath: keepFilePath ?? undefined })
-      } finally {
-        suppressVersionWatch = false
+      if (readSkillId() !== targetId) {
+        suppressRouteWatch = true
+        syncSkillId(targetId)
+        await nextTick()
+        suppressRouteWatch = false
       }
     } catch (e: unknown) {
       message.error(friendlyErrorMessage(e, '刷新失败'))
@@ -507,6 +516,10 @@ export function useSkillsPage() {
     if (id === selectedId.value) return
     if (!(await flushFileEditBeforeLeave())) return
     selectedId.value = id
+    suppressRouteWatch = true
+    syncSkillId(id)
+    await nextTick()
+    suppressRouteWatch = false
   }
 
   function onPickLabelClick(e: MouseEvent) {
@@ -818,7 +831,16 @@ export function useSkillsPage() {
     files.value = []
     versions.value = []
     selectedVersion.value = null
-    if (!id) return
+    if (!id) {
+      if (!suppressRouteWatch) syncSkillId(null)
+      return
+    }
+    if (!suppressRouteWatch && readSkillId() !== id) {
+      suppressRouteWatch = true
+      syncSkillId(id)
+      await nextTick()
+      suppressRouteWatch = false
+    }
     detailLoading.value = true
     suppressVersionWatch = true
     try {
@@ -831,6 +853,34 @@ export function useSkillsPage() {
       detailLoading.value = false
     }
   })
+
+  watch(
+    () => route.params.skillId,
+    async (raw) => {
+      if (suppressRouteWatch || route.name !== 'skills') return
+      const id = typeof raw === 'string' && raw.trim() ? raw.trim() : null
+      if (id === selectedId.value) return
+      if (id && skills.value.some(s => s.id === id)) {
+        if (!(await flushFileEditBeforeLeave())) {
+          suppressRouteWatch = true
+          syncSkillId(selectedId.value)
+          await nextTick()
+          suppressRouteWatch = false
+          return
+        }
+        selectedId.value = id
+        return
+      }
+      if (!id && skills.value.length > 0) {
+        const first = skills.value[0].id
+        selectedId.value = first
+        suppressRouteWatch = true
+        syncSkillId(first)
+        await nextTick()
+        suppressRouteWatch = false
+      }
+    },
+  )
 
   watch(selectedFilePath, async (path, oldPath) => {
     if (suppressFilePathWatch) return

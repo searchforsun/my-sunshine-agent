@@ -98,8 +98,7 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 12px 14px 8px;
-  border-bottom: 1px solid var(--sun-border);
+  padding: 14px 16px 0;
 }
 
 .panel-title {
@@ -109,8 +108,7 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
 }
 
 .list-search {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--sun-border);
+  padding: 10px 12px;
 }
 
 .list-spin {
@@ -154,8 +152,8 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
 }
 
 .wf-card.active {
+  font-weight: 600;
   border-color: var(--sun-text);
-  box-shadow: inset 0 0 0 1px var(--sun-text);
 }
 
 .wf-card.disabled {

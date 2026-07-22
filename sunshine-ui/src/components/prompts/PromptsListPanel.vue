@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject } from 'vue'
-import { NButton, NEmpty, NIcon, NSpin, NSwitch, NTag } from 'naive-ui'
-import { AddOutline, FlashOutline, BookOutline } from '@vicons/ionicons5'
+import { NButton, NEmpty, NIcon, NInput, NSpin, NSwitch, NTag } from 'naive-ui'
+import { AddOutline, FlashOutline, BookOutline, SearchOutline } from '@vicons/ionicons5'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import { promptKindLabel, shortPromptId, type PromptListItem } from '../../api/prompts'
 
@@ -59,6 +59,21 @@ const showKindTag = () => page.activeTab === 'system'
         </NButton>
       </div>
     </div>
+    <div class="list-search">
+      <NInput
+        v-model:value="page.promptSearch"
+        placeholder="搜索名称或 ID…"
+        size="small"
+        round
+        clearable
+        class="search-input"
+        :disabled="page.loading"
+      >
+        <template #prefix>
+          <NIcon :component="SearchOutline" :size="14" />
+        </template>
+      </NInput>
+    </div>
     <NSpin :show="page.loading" size="small" class="list-spin">
       <div class="list-body">
         <div v-if="page.filteredPrompts.length" class="prompt-list">
@@ -106,7 +121,10 @@ const showKindTag = () => page.activeTab === 'system'
           </button>
         </div>
         <div v-else-if="!page.loading" class="empty-wrap">
-          <NEmpty size="small" description="暂无提示词" />
+          <NEmpty
+            size="small"
+            :description="page.promptSearch.trim() ? '无匹配项' : '暂无提示词'"
+          />
         </div>
       </div>
     </NSpin>
@@ -128,8 +146,7 @@ const showKindTag = () => page.activeTab === 'system'
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--sun-border);
+  padding: 14px 16px 0;
   flex-shrink: 0;
 }
 
@@ -149,6 +166,24 @@ const showKindTag = () => page.activeTab === 'system'
 .panel-action-btn.active {
   color: var(--sun-accent) !important;
   font-weight: 600;
+}
+
+.list-search {
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.search-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
 }
 
 .list-spin {
@@ -197,8 +232,8 @@ const showKindTag = () => page.activeTab === 'system'
 }
 
 .prompt-row.active {
-  box-shadow: inset 0 0 0 1px var(--sun-accent);
-  border-color: var(--sun-accent);
+  font-weight: 600;
+  border-color: var(--sun-text);
 }
 
 .prompt-row-head {

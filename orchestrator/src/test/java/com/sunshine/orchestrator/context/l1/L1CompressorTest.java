@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.context.l1;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.context.ContextProperties;
 import com.sunshine.orchestrator.context.SessionTurn;
+import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,8 @@ class L1CompressorTest {
     @Mock
     private ConversationContextL1Store store;
     @Mock
+    private L2StateStore l2StateStore;
+    @Mock
     private PromptCatalogHolder catalogHolder;
 
     private ContextProperties properties;
@@ -58,7 +61,7 @@ class L1CompressorTest {
         properties.getL1().setNearTurns(2);
         properties.getL1().setMidTurns(2);
         properties.getL1().setMaxChars(100_000);
-        compressor = new L1Compressor(properties, llm, store, catalogHolder);
+        compressor = new L1Compressor(properties, llm, store, l2StateStore, catalogHolder);
         lenient().when(catalogHolder.requireText("context.l1.mid-compress"))
                 .thenReturn("mid-system");
         lenient().when(catalogHolder.requireText("context.l1.far-fold"))
@@ -67,6 +70,7 @@ class L1CompressorTest {
         lenient().when(store.parseMidAnswers(any())).thenReturn(Map.of());
         lenient().when(store.farSummaryOf(any())).thenReturn("");
         lenient().when(store.parseFarFoldedMsgIds(any())).thenReturn(Set.of());
+        lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
     }
 
     @Test
@@ -81,9 +85,11 @@ class L1CompressorTest {
 
     @Test
     void shouldCompress_whenOverTurnCapEvenIfUnderChars() {
+        // 5 问答轮次 > near(2)+mid(2)
         List<SessionTurn> turns = IntStream.range(0, 10)
                 .mapToObj(i -> SessionTurn.of("m" + i, i % 2 == 0 ? "user" : "assistant", "x"))
                 .toList();
+        assertThat(L1Compressor.countRounds(turns)).isEqualTo(5);
         assertThat(L1Compressor.shouldCompress(turns, 2, 2, 100_000)).isTrue();
     }
 
@@ -96,16 +102,37 @@ class L1CompressorTest {
     }
 
     @Test
+    void partition_usesQaRoundsNotMessageCount() {
+        // 9 轮 × 2 消息；near=8 mid=8 → 仅第 1 轮进中窗，近窗 8 轮
+        List<SessionTurn> history = IntStream.range(0, 18)
+                .mapToObj(i -> SessionTurn.of(
+                        (i % 2 == 0 ? "u" : "a") + (i / 2),
+                        i % 2 == 0 ? "user" : "assistant",
+                        "t" + i))
+                .toList();
+        L1Compressor.WindowBands bands = L1Compressor.partition(history, 8, 8);
+        assertThat(L1Compressor.countRounds(bands.near())).isEqualTo(8);
+        assertThat(L1Compressor.countRounds(bands.mid())).isEqualTo(1);
+        assertThat(L1Compressor.countRounds(bands.far())).isZero();
+        assertThat(bands.mid().stream().filter(t -> "assistant".equals(t.role())).count()).isEqualTo(1);
+    }
+
+    @Test
     void compress_writesMidAnswersAndFarSummary() {
         when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要A");
         when(llm.complete(eq("far-system"), anyString())).thenReturn("远窗摘要");
+        // 5 轮；near=2 mid=2 → far=r0, mid=r1+r2, near=r3+r4
         List<SessionTurn> history = List.of(
                 SessionTurn.of("u0", "user", "Q0"),
                 SessionTurn.of("a0", "assistant", "long answer 0"),
                 SessionTurn.of("u1", "user", "Q1"),
                 SessionTurn.of("a1", "assistant", "long answer 1"),
                 SessionTurn.of("u2", "user", "Q2"),
-                SessionTurn.of("a2", "assistant", "long answer 2"));
+                SessionTurn.of("a2", "assistant", "long answer 2"),
+                SessionTurn.of("u3", "user", "Q3"),
+                SessionTurn.of("a3", "assistant", "long answer 3"),
+                SessionTurn.of("u4", "user", "Q4"),
+                SessionTurn.of("a4", "assistant", "long answer 4"));
 
         compressor.compress("u", "default", "c1", history);
 
@@ -118,9 +145,11 @@ class L1CompressorTest {
                 eq("u"), eq("default"), eq("c1"),
                 midCaptor.capture(), farCaptor.capture(), foldedCaptor.capture(), eq(2), eq(2));
         assertThat(midCaptor.getValue()).containsEntry("a1", "摘要A");
+        assertThat(midCaptor.getValue()).containsEntry("a2", "摘要A");
+        assertThat(midCaptor.getValue()).doesNotContainKey("a0");
         assertThat(farCaptor.getValue()).isEqualTo("远窗摘要");
         assertThat(foldedCaptor.getValue()).containsExactlyInAnyOrder("u0", "a0");
-        verify(llm).complete(eq("mid-system"), anyString());
+        verify(llm, times(2)).complete(eq("mid-system"), anyString());
         verify(llm).complete(eq("far-system"), anyString());
     }
 
@@ -141,22 +170,28 @@ class L1CompressorTest {
     void compress_reusesExistingMidAnswers() {
         Map<String, String> existing = new HashMap<>();
         existing.put("a1", "已有摘要");
+        existing.put("a2", "已有摘要2");
         ConversationContextL1Entity entity = new ConversationContextL1Entity();
         entity.setConvId("c1");
-        entity.setMidAnswers("{\"a1\":\"已有摘要\"}");
+        entity.setMidAnswers("{\"a1\":\"已有摘要\",\"a2\":\"已有摘要2\"}");
         entity.setFarSummary("旧远窗");
         when(store.find("c1")).thenReturn(Optional.of(entity));
         when(store.parseMidAnswers(any())).thenReturn(existing);
         when(store.farSummaryOf(any())).thenReturn("旧远窗");
         when(store.parseFarFoldedMsgIds(any())).thenReturn(Set.of("u0", "a0"));
 
+        // 5 轮；mid=r1+r2 已有摘要 → 不调 mid-compress；far 已折叠 → 不调 far-fold
         List<SessionTurn> history = List.of(
                 SessionTurn.of("u0", "user", "Q0"),
                 SessionTurn.of("a0", "assistant", "A0"),
                 SessionTurn.of("u1", "user", "Q1"),
                 SessionTurn.of("a1", "assistant", "A1 full"),
                 SessionTurn.of("u2", "user", "Q2"),
-                SessionTurn.of("a2", "assistant", "A2"));
+                SessionTurn.of("a2", "assistant", "A2"),
+                SessionTurn.of("u3", "user", "Q3"),
+                SessionTurn.of("a3", "assistant", "A3"),
+                SessionTurn.of("u4", "user", "Q4"),
+                SessionTurn.of("a4", "assistant", "A4"));
 
         compressor.compress("u", "default", "c1", history);
 
@@ -166,8 +201,8 @@ class L1CompressorTest {
                 eq("u"), eq("default"), eq("c1"),
                 midCaptor.capture(), anyString(), anyCollection(), eq(2), eq(2));
         assertThat(midCaptor.getValue()).containsEntry("a1", "已有摘要");
+        assertThat(midCaptor.getValue()).containsEntry("a2", "已有摘要2");
         verify(llm, never()).complete(eq("mid-system"), anyString());
-        // Far 已折叠完 → 不再调 far-fold
         verify(llm, never()).complete(eq("far-system"), anyString());
     }
 
@@ -179,14 +214,16 @@ class L1CompressorTest {
         entity.setFarFoldedMsgIds("[\"u0\",\"a0\"]");
         Map<String, String> mid = new HashMap<>();
         mid.put("a1", "Mid摘要A1");
+        mid.put("a2", "Mid摘要A2");
         when(store.find("c1")).thenReturn(Optional.of(entity));
         when(store.parseMidAnswers(any())).thenReturn(mid);
         when(store.farSummaryOf(any())).thenReturn("旧远窗摘要");
         when(store.parseFarFoldedMsgIds(any())).thenReturn(Set.of("u0", "a0"));
-        when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要A2");
+        when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要新");
         when(llm.complete(eq("far-system"), anyString())).thenReturn("叠加远窗");
 
-        // near=2 mid=2 → far=[u0,a0,u1,a1], mid=[u2,a2], near=[u3,a3]
+        // 5 轮 near=2 mid=2 → far=r0, mid=r1+r2, near=r3+r4；r0 已折叠，无新 Far
+        // 再加第 6 轮后 far=r0+r1 → 仅折叠 r1
         List<SessionTurn> history = List.of(
                 SessionTurn.of("u0", "user", "UNIQUE_FAR_OLD_Q0"),
                 SessionTurn.of("a0", "assistant", "UNIQUE_FAR_OLD_A0"),
@@ -195,7 +232,11 @@ class L1CompressorTest {
                 SessionTurn.of("u2", "user", "Q2"),
                 SessionTurn.of("a2", "assistant", "A2 full"),
                 SessionTurn.of("u3", "user", "Q3"),
-                SessionTurn.of("a3", "assistant", "A3"));
+                SessionTurn.of("a3", "assistant", "A3"),
+                SessionTurn.of("u4", "user", "Q4"),
+                SessionTurn.of("a4", "assistant", "A4"),
+                SessionTurn.of("u5", "user", "Q5"),
+                SessionTurn.of("a5", "assistant", "A5"));
 
         compressor.compress("u", "default", "c1", history);
 
@@ -205,8 +246,10 @@ class L1CompressorTest {
         assertThat(farPrompt).contains("旧远窗摘要");
         assertThat(farPrompt).contains("UNIQUE_NEW_FAR_Q1");
         assertThat(farPrompt).contains("UNIQUE_NEW_FAR_A1");
+        assertThat(farPrompt).contains("【现行 L2 用户状态 · 权威】");
         assertThat(farPrompt).doesNotContain("UNIQUE_FAR_OLD_Q0");
         assertThat(farPrompt).doesNotContain("UNIQUE_FAR_OLD_A0");
+        verify(l2StateStore).assembleSystemBlock("u", "default");
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, String>> midCaptor = ArgumentCaptor.forClass(Map.class);
@@ -215,9 +258,10 @@ class L1CompressorTest {
         verify(store).upsert(
                 eq("u"), eq("default"), eq("c1"),
                 midCaptor.capture(), eq("叠加远窗"), foldedCaptor.capture(), eq(2), eq(2));
-        // a1 已进 Far → 从 mid_answers 剔除
+        // mid = r2+r3 → a2 复用, a3 新建；a1 已进 Far
         assertThat(midCaptor.getValue()).doesNotContainKey("a1");
-        assertThat(midCaptor.getValue()).containsEntry("a2", "摘要A2");
+        assertThat(midCaptor.getValue()).containsEntry("a2", "Mid摘要A2");
+        assertThat(midCaptor.getValue()).containsEntry("a3", "摘要新");
         assertThat(foldedCaptor.getValue()).containsExactlyInAnyOrder("u0", "a0", "u1", "a1");
     }
 
@@ -228,13 +272,18 @@ class L1CompressorTest {
         when(store.parseFarFoldedMsgIds(any())).thenReturn(Set.of("u0", "a0"));
         when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要");
 
+        // 5 轮；far=r0 已全部 folded
         List<SessionTurn> history = List.of(
                 SessionTurn.of("u0", "user", "Q0"),
                 SessionTurn.of("a0", "assistant", "A0"),
                 SessionTurn.of("u1", "user", "Q1"),
                 SessionTurn.of("a1", "assistant", "A1"),
                 SessionTurn.of("u2", "user", "Q2"),
-                SessionTurn.of("a2", "assistant", "A2"));
+                SessionTurn.of("a2", "assistant", "A2"),
+                SessionTurn.of("u3", "user", "Q3"),
+                SessionTurn.of("a3", "assistant", "A3"),
+                SessionTurn.of("u4", "user", "Q4"),
+                SessionTurn.of("a4", "assistant", "A4"));
 
         compressor.compress("u", "default", "c1", history);
 
@@ -269,7 +318,11 @@ class L1CompressorTest {
                 SessionTurn.of("u1", "user", "Q1"),
                 SessionTurn.of("a1", "assistant", "A1"),
                 SessionTurn.of("u2", "user", "Q2"),
-                SessionTurn.of("a2", "assistant", "A2"));
+                SessionTurn.of("a2", "assistant", "A2"),
+                SessionTurn.of("u3", "user", "Q3"),
+                SessionTurn.of("a3", "assistant", "A3"),
+                SessionTurn.of("u4", "user", "Q4"),
+                SessionTurn.of("a4", "assistant", "A4"));
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {

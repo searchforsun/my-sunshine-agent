@@ -25,7 +25,9 @@ public class ContextProperties {
     @Getter
     @Setter
     public static class L1 {
+        /** 近窗保留的问答轮次数（一轮 = 1 次 user + 其后 assistant），非消息条数。 */
         private int nearTurns = 8;
+        /** 中窗轮次数；仅压缩该窗内 assistant 答案。 */
         private int midTurns = 8;
         private int maxChars = 12000;
     }
@@ -59,5 +61,15 @@ public class ContextProperties {
         private long intervalMs = 3_600_000L;
         /** superseded 行保留天数，超时物理删除 */
         private int supersededRetentionDays = 180;
+        /** void 行保留天数，超时物理删除；≤0 表示不清理 */
+        private int voidRetentionDays = 30;
+        /** 腐败/矛盾审计总开关 */
+        private boolean auditEnabled = true;
+        /** L2 抽取后轻量审计 */
+        private boolean auditOnExtract = true;
+        /** 小时维护每 tick 最多审阅用户数 */
+        private int auditMaxUsersPerTick = 50;
+        /** 同一用户抽取后审计防抖（ms） */
+        private long auditExtractDebounceMs = 30_000L;
     }
 }

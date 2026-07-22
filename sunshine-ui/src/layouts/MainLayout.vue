@@ -98,7 +98,7 @@ function handleMenuClick(key: string) {
     handleNewChat()
     return
   }
-  router.push(`/${key}`)
+  void router.push({ name: key })
 }
 
 const activeKey = computed(() => {

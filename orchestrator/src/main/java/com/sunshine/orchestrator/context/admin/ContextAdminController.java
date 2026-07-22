@@ -2,10 +2,12 @@ package com.sunshine.orchestrator.context.admin;
 
 import com.sunshine.common.core.result.R;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.ConversationSummaryView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.GcResultView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L1SnapshotView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L2StateView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L2UpdateRequest;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L3EntryView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L3StatusView;
 import com.sunshine.orchestrator.context.admin.ContextAdminDtos.ReingestResultView;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,13 @@ import java.util.List;
 public class ContextAdminController {
 
     private final ContextAdminService contextAdminService;
+
+    @GetMapping("/conversations")
+    public Mono<R<List<ConversationSummaryView>>> listConversations(
+            @RequestParam String userId,
+            @RequestParam(required = false, defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.listConversations(userId, tenantId)));
+    }
 
     @GetMapping("/l2")
     public Mono<R<List<L2StateView>>> listL2(
@@ -58,6 +67,11 @@ public class ContextAdminController {
             @RequestParam String userId,
             @RequestParam(required = false, defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> R.ok(contextAdminService.l3Status(userId, tenantId)));
+    }
+
+    @GetMapping("/l3/entries")
+    public Mono<R<List<L3EntryView>>> listL3Entries(@RequestParam String convId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.listL3Entries(convId)));
     }
 
     @PostMapping("/l3/gc")

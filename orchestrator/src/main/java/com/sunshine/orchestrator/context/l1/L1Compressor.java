@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.context.l1;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.context.ContextProperties;
 import com.sunshine.orchestrator.context.SessionTurn;
+import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,9 +21,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * L1 Mid/Far 压缩：逼近字符预算或轮次超 near+mid 时，异步写 mid_answers / far_summary。
+ * L1 Mid/Far 压缩：逼近字符预算或**问答轮次**超 near+mid 时，异步写 mid_answers / far_summary。
+ * <p>一轮 = 一次 user 提问及其后的 assistant（等）回复；{@code near-turns}/{@code mid-turns} 按轮次计，非消息条数。
  * <p>同一 convId 的 compress 经 ConcurrentHashMap 锁串行，避免并发 upsert 丢更新。
- * Far 仅增量折叠：只把尚未记入 far_folded_msg_ids 的 Far 轮次送给 LLM。
+ * Far 仅增量折叠：只把尚未记入 far_folded_msg_ids 的 Far 轮次送给 LLM；
+ * 折叠时注入现行 L2，冲突以 L2 为准，避免 Far 摘要污染 system。
  */
 @Slf4j
 @Service
@@ -35,6 +38,7 @@ public class L1Compressor {
     private final ContextProperties contextProperties;
     private final LlmGatewayClient llmGatewayClient;
     private final ConversationContextL1Store l1Store;
+    private final L2StateStore l2StateStore;
     private final PromptCatalogHolder catalogHolder;
 
     /** 按会话串行化 compress，防止并发 async 丢更新。 */
@@ -76,10 +80,12 @@ public class L1Compressor {
         String farSummary = l1Store.farSummaryOf(existing);
         LinkedHashSet<String> foldedIds = new LinkedHashSet<>(l1Store.parseFarFoldedMsgIds(existing));
 
+        Set<String> midAssistantIds = new HashSet<>();
         for (SessionTurn turn : bands.mid()) {
             if (!"assistant".equals(turn.role()) || !StringUtils.hasText(turn.messageId())) {
                 continue;
             }
+            midAssistantIds.add(turn.messageId());
             if (midAnswers.containsKey(turn.messageId())) {
                 continue;
             }
@@ -88,15 +94,8 @@ public class L1Compressor {
                 midAnswers.put(turn.messageId(), summary.strip());
             }
         }
-
-        // Mid → Far 后剔除 mid_answers，避免 map 无限增长
-        Set<String> farMsgIds = new HashSet<>();
-        for (SessionTurn turn : bands.far()) {
-            if (StringUtils.hasText(turn.messageId())) {
-                farMsgIds.add(turn.messageId());
-            }
-        }
-        midAnswers.keySet().removeIf(farMsgIds::contains);
+        // 只保留当前中窗 assistant，滑入近窗 / 远窗的旧摘要剔除
+        midAnswers.keySet().removeIf(id -> !midAssistantIds.contains(id));
 
         List<SessionTurn> newToFold = new ArrayList<>();
         for (SessionTurn turn : bands.far()) {
@@ -108,7 +107,8 @@ public class L1Compressor {
             }
         }
         if (!newToFold.isEmpty()) {
-            String folded = foldFar(farSummary, newToFold);
+            String l2Block = l2StateStore.assembleSystemBlock(userId, tenantId);
+            String folded = foldFar(farSummary, newToFold, l2Block);
             if (StringUtils.hasText(folded)) {
                 farSummary = folded.strip();
             }
@@ -122,13 +122,13 @@ public class L1Compressor {
                 convId, midAnswers.size(), farSummary != null ? farSummary.length() : 0, foldedIds.size());
     }
 
-    /** 混合触发：超 near+mid 轮次，或总字符超预算。 */
+    /** 混合触发：超 near+mid **问答轮次**，或总字符超预算。 */
     public static boolean shouldCompress(List<SessionTurn> history, int nearTurns, int midTurns, int maxChars) {
         if (history == null || history.isEmpty()) {
             return false;
         }
         int turnCap = Math.max(1, nearTurns) + Math.max(0, midTurns);
-        if (history.size() > turnCap) {
+        if (countRounds(history) > turnCap) {
             return true;
         }
         if (maxChars <= 0) {
@@ -140,23 +140,62 @@ public class L1Compressor {
         return chars > maxChars;
     }
 
+    /**
+     * 按问答轮次划分 Far / Mid / Near。一轮以 user 消息起头，后续非 user 归入该轮；
+     * 若开头无 user，则先攒一条「残轮」。
+     */
     public static WindowBands partition(List<SessionTurn> history, int nearTurns, int midTurns) {
         if (history == null || history.isEmpty()) {
             return new WindowBands(List.of(), List.of(), List.of());
         }
+        List<List<SessionTurn>> rounds = groupRounds(history);
         int nearN = Math.max(1, nearTurns);
         int midN = Math.max(0, midTurns);
-        int size = history.size();
+        int size = rounds.size();
         int nearStart = Math.max(0, size - nearN);
         int midStart = Math.max(0, nearStart - midN);
-        List<SessionTurn> far = midStart > 0
-                ? List.copyOf(history.subList(0, midStart))
-                : List.of();
-        List<SessionTurn> mid = midStart < nearStart
-                ? List.copyOf(history.subList(midStart, nearStart))
-                : List.of();
-        List<SessionTurn> near = List.copyOf(history.subList(nearStart, size));
+        List<SessionTurn> far = flatten(rounds.subList(0, midStart));
+        List<SessionTurn> mid = flatten(rounds.subList(midStart, nearStart));
+        List<SessionTurn> near = flatten(rounds.subList(nearStart, size));
         return new WindowBands(far, mid, near);
+    }
+
+    /** 一轮 = user + 其后连续非 user；孤立开头的 assistant 自成残轮。 */
+    public static List<List<SessionTurn>> groupRounds(List<SessionTurn> history) {
+        List<List<SessionTurn>> rounds = new ArrayList<>();
+        List<SessionTurn> current = null;
+        for (SessionTurn turn : history) {
+            if (turn == null) {
+                continue;
+            }
+            if ("user".equals(turn.role())) {
+                current = new ArrayList<>();
+                current.add(turn);
+                rounds.add(current);
+            } else if (current == null) {
+                current = new ArrayList<>();
+                current.add(turn);
+                rounds.add(current);
+            } else {
+                current.add(turn);
+            }
+        }
+        return rounds;
+    }
+
+    public static int countRounds(List<SessionTurn> history) {
+        return groupRounds(history).size();
+    }
+
+    private static List<SessionTurn> flatten(List<List<SessionTurn>> rounds) {
+        if (rounds == null || rounds.isEmpty()) {
+            return List.of();
+        }
+        List<SessionTurn> out = new ArrayList<>();
+        for (List<SessionTurn> round : rounds) {
+            out.addAll(round);
+        }
+        return List.copyOf(out);
     }
 
     private String compressMidAnswer(String assistantContent) {
@@ -173,14 +212,22 @@ public class L1Compressor {
         }
     }
 
-    /** 仅折叠 newFarTurns（已有摘要作前缀）；调用方保证不含已折叠轮次。 */
-    private String foldFar(String previousFarSummary, List<SessionTurn> newFarTurns) {
+    /**
+     * 仅折叠 newFarTurns（已有摘要作前缀）；附带现行 L2，冲突以 L2 为准。
+     * 调用方保证不含已折叠轮次。
+     */
+    private String foldFar(String previousFarSummary, List<SessionTurn> newFarTurns, String l2Block) {
         String system = catalogHolder.requireText(FAR_FOLD_PROMPT);
         if (!StringUtils.hasText(system)) {
             log.warn("[ContextL1] missing catalog {}", FAR_FOLD_PROMPT);
             return previousFarSummary != null ? previousFarSummary : "";
         }
         StringBuilder user = new StringBuilder();
+        if (StringUtils.hasText(l2Block)) {
+            user.append("【现行 L2 用户状态 · 权威】\n").append(l2Block.strip()).append("\n\n");
+        } else {
+            user.append("【现行 L2 用户状态 · 权威】\n（无）\n\n");
+        }
         if (StringUtils.hasText(previousFarSummary)) {
             user.append("【已有远窗摘要】\n").append(previousFarSummary.strip()).append("\n\n");
         }

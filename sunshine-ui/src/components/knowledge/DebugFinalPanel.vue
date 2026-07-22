@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { NText } from 'naive-ui'
+import { ref, watch } from 'vue'
 import MetricBadge from './MetricBadge.vue'
 
 export interface DebugHit {
@@ -9,26 +8,32 @@ export interface DebugHit {
   score: number
 }
 
-defineProps<{
+const props = defineProps<{
   hits: DebugHit[]
 }>()
 
-const expanded = ref<Set<number>>(new Set([0]))
+/** 与 L1 一致：同时仅展开一条 */
+const expandedKey = ref<string | null>(null)
 
-function toggle(idx: number) {
-  const next = new Set(expanded.value)
-  if (next.has(idx)) {
-    next.delete(idx)
-  } else {
-    next.add(idx)
-  }
-  expanded.value = next
+watch(
+  () => props.hits,
+  () => {
+    expandedKey.value = props.hits.length > 0 ? '0' : null
+  },
+  { immediate: true },
+)
+
+function rowKey(idx: number): string {
+  return String(idx)
 }
 
-function preview(content: string, max = 96): string {
-  const text = content.replace(/\s+/g, ' ').trim()
-  if (text.length <= max) return text
-  return `${text.slice(0, max)}…`
+function toggle(idx: number) {
+  const key = rowKey(idx)
+  expandedKey.value = expandedKey.value === key ? null : key
+}
+
+function isExpanded(idx: number): boolean {
+  return expandedKey.value === rowKey(idx)
 }
 </script>
 
@@ -37,17 +42,22 @@ function preview(content: string, max = 96): string {
     <article
       v-for="(hit, idx) in hits"
       :key="idx"
-      class="final-row"
-      :class="{ expanded: expanded.has(idx) }"
+      class="hit-row"
+      :class="{ expanded: isExpanded(idx) }"
+      role="button"
+      tabindex="0"
+      @click="toggle(idx)"
+      @keydown.enter.prevent="toggle(idx)"
+      @keydown.space.prevent="toggle(idx)"
     >
-      <button type="button" class="final-row-head" @click="toggle(idx)">
+      <header class="hit-row-head">
         <MetricBadge :value="`#${idx + 1}`" />
-        <span class="final-doc">{{ hit.docName }}</span>
+        <span class="hit-doc">{{ hit.docName }}</span>
         <MetricBadge :value="hit.score.toFixed(4)" />
-        <NText depth="3" class="expand-hint">{{ expanded.has(idx) ? '收起' : '展开' }}</NText>
-      </button>
-      <p v-if="!expanded.has(idx)" class="final-preview">{{ preview(hit.content) }}</p>
-      <div v-else class="final-content">{{ hit.content }}</div>
+      </header>
+      <div class="hit-row-scroll">
+        <div class="hit-content">{{ hit.content }}</div>
+      </div>
     </article>
   </div>
 </template>
@@ -59,31 +69,40 @@ function preview(content: string, max = 96): string {
   gap: 8px;
 }
 
-.final-row {
+.hit-row {
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
+  padding: 12px 14px;
   background: var(--sun-black);
-  overflow: hidden;
+  cursor: pointer;
+  transition: height 0.18s ease, border-color 0.15s ease;
 }
 
-.final-row.expanded {
-  box-shadow: inset 0 0 0 1px var(--sun-border-light);
+.hit-row:hover {
+  border-color: var(--sun-text-muted);
 }
 
-.final-row-head {
-  width: 100%;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+.hit-row.expanded {
+  height: 480px;
+  border-color: var(--sun-text);
+}
+
+.hit-row-head {
+  flex-shrink: 0;
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
+  margin-bottom: 10px;
+  min-width: 0;
 }
 
-.final-doc {
+.hit-doc {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--sun-text);
@@ -92,27 +111,17 @@ function preview(content: string, max = 96): string {
   white-space: nowrap;
 }
 
-.expand-hint {
-  font-size: 11px;
+.hit-row-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
-.final-preview {
-  margin: 0;
-  padding: 0 10px 10px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--sun-text-muted);
-}
-
-.final-content {
-  padding: 0 10px 10px;
+.hit-content {
   font-size: var(--sun-font-base, 14px);
   line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--sun-text);
-  border-top: 1px solid var(--sun-border);
-  padding-top: 10px;
-  margin: 0 10px 10px;
 }
 </style>

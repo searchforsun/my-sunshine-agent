@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.context.job;
 
 import com.sunshine.orchestrator.context.ContextProperties;
+import com.sunshine.orchestrator.context.audit.ContextAuditService;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Repository;
 import com.sunshine.orchestrator.context.l2.UserContextStateEntity;
@@ -49,9 +50,12 @@ class ContextMaintenanceServiceTest {
     void setUp() {
         ContextProperties properties = new ContextProperties();
         properties.getMaintenance().setSupersededRetentionDays(180);
+        properties.getMaintenance().setVoidRetentionDays(30);
+        properties.getMaintenance().setAuditEnabled(false);
+        ContextAuditService auditService = org.mockito.Mockito.mock(ContextAuditService.class);
         service = new ContextMaintenanceService(
                 l2Repository, l1Repository, conversationRepository,
-                messageRepository, historyRagClient, properties);
+                messageRepository, historyRagClient, properties, auditService);
         now = Instant.parse("2026-07-22T04:00:00Z");
     }
 
@@ -98,6 +102,20 @@ class ContextMaintenanceServiceTest {
                 .thenReturn(List.of(stale));
 
         int deleted = service.cleanupLongSuperseded(now);
+
+        assertThat(deleted).isEqualTo(1);
+        verify(l2Repository).delete(stale);
+    }
+
+    @Test
+    void cleanupLongVoid_deletesStaleRows() {
+        Instant cutoff = now.minus(30, ChronoUnit.DAYS);
+        UserContextStateEntity stale = l2("v-old", "void", "u1", "default", null, null);
+        stale.setUpdatedAt(cutoff.minus(1, ChronoUnit.DAYS));
+        when(l2Repository.findByStatusAndUpdatedAtBefore(eq("void"), any()))
+                .thenReturn(List.of(stale));
+
+        int deleted = service.cleanupLongVoid(now);
 
         assertThat(deleted).isEqualTo(1);
         verify(l2Repository).delete(stale);

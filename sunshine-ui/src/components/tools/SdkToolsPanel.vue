@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { inject } from 'vue'
-import { NButton, NDataTable, NEmpty, NIcon, NSpin, NTag } from 'naive-ui'
-import { SyncOutline } from '@vicons/ionicons5'
+import { computed, inject, ref } from 'vue'
+import { NButton, NDataTable, NEmpty, NIcon, NInput, NSpin, NTag } from 'naive-ui'
+import { SearchOutline, SyncOutline } from '@vicons/ionicons5'
 import { TOOLS_PAGE_KEY, type ToolsPageApi } from '../../composables/useToolsPage'
 
 const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
+const sdkSearch = ref('')
+const filteredSdkApps = computed(() => {
+  const q = sdkSearch.value.trim().toLowerCase()
+  if (!q) return page.sdkApps
+  return page.sdkApps.filter(
+    a =>
+      a.id.toLowerCase().includes(q)
+      || (a.displayName ?? '').toLowerCase().includes(q)
+      || (a.nacosService ?? '').toLowerCase().includes(q),
+  )
+})
 </script>
 
 <template>
@@ -12,13 +23,28 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
     <aside class="list-panel">
       <div class="panel-head">
         <span class="panel-title">应用</span>
-        <NTag :bordered="false" size="tiny" round>{{ page.sdkApps.length }}</NTag>
+        <NTag :bordered="false" size="tiny" round>{{ filteredSdkApps.length }}</NTag>
+      </div>
+      <div class="list-search">
+        <NInput
+          v-model:value="sdkSearch"
+          placeholder="搜索名称或 ID…"
+          size="small"
+          round
+          clearable
+          class="search-input"
+          :disabled="page.loading"
+        >
+          <template #prefix>
+            <NIcon :component="SearchOutline" :size="14" />
+          </template>
+        </NInput>
       </div>
       <NSpin :show="page.loading" size="small" class="list-spin">
         <div class="list-body">
-          <div v-if="page.sdkApps.length" class="item-list">
+          <div v-if="filteredSdkApps.length" class="item-list">
             <button
-              v-for="app in page.sdkApps"
+              v-for="app in filteredSdkApps"
               :key="app.id"
               type="button"
               class="item-row"
@@ -35,7 +61,10 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
             </button>
           </div>
           <div v-else-if="!page.loading" class="empty-wrap">
-            <NEmpty size="small" description="暂无 SDK 应用" />
+            <NEmpty
+              size="small"
+              :description="page.sdkApps.length && sdkSearch.trim() ? '无匹配应用' : '暂无 SDK 应用'"
+            />
           </div>
         </div>
       </NSpin>
@@ -106,12 +135,11 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
   overflow: hidden;
 }
 
-.panel-head {
+.list-panel .panel-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--sun-border);
+  padding: 14px 16px 0;
   flex-shrink: 0;
 }
 
@@ -119,6 +147,24 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
   font-size: 14px;
   font-weight: 600;
   color: var(--sun-text);
+}
+
+.list-search {
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.search-input {
+  --n-color: var(--sun-black) !important;
+  --n-color-focus: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
 }
 
 .list-spin {
