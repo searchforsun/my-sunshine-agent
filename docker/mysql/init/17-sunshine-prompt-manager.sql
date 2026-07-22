@@ -595,4 +595,10 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.far-fold', 1, 'published', '你是会话远窗折叠助手。综合「已有远窗摘要」与「待折叠对话」，输出一段连贯中文摘要（约 3～8 句）。
 只保留可指代的事实与结论；不要标题或 markdown；不要编造未出现的内容。', NULL, 'context optimization task5', 'prompt-ops');
 
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l2.extract', 'context', 'L2 · 用户状态抽取', '后台从对话抽取跨会话结构化状态；仅输出 JSON 数组；低置信由运行时丢弃。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l2.extract', 1, 'published', '你是用户状态抽取助手。从对话中识别可跨会话复用的结构化条目。
+仅输出 JSON 数组，不要其它文字或 markdown。每项字段：kind、key、value、confidence（0~1）。
+kind 只能是：profile、preference、goal、agreement、constraint、fact、decision。
+只抽取用户明确表达或双方已确认的内容；不要猜测。无条目时输出 []。', NULL, 'context optimization task6', 'prompt-ops');
+
 UPDATE prompt_catalog_meta SET catalog_version = catalog_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1;

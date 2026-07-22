@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.context;
 
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
+import com.sunshine.orchestrator.context.l2.L2StateStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +25,8 @@ class ContextAssemblerTest {
 
     @Mock
     private ConversationContextL1Store l1Store;
+    @Mock
+    private L2StateStore l2StateStore;
 
     private ContextProperties properties;
     private ContextAssembler assembler;
@@ -31,10 +34,11 @@ class ContextAssemblerTest {
     @BeforeEach
     void setUp() {
         properties = new ContextProperties();
-        assembler = new ContextAssembler(properties, l1Store);
+        assembler = new ContextAssembler(properties, l1Store, l2StateStore);
         lenient().when(l1Store.find(anyString())).thenReturn(Optional.empty());
         lenient().when(l1Store.parseMidAnswers(any())).thenReturn(Map.of());
         lenient().when(l1Store.farSummaryOf(any())).thenReturn("");
+        lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
     }
 
     @Test

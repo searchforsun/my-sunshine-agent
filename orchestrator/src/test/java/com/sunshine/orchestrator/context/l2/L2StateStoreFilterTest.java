@@ -1,0 +1,131 @@
+package com.sunshine.orchestrator.context.l2;
+
+import com.sunshine.orchestrator.context.ContextProperties;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class L2StateStoreFilterTest {
+
+    @Mock
+    private UserContextStateRepository repository;
+
+    private ContextProperties properties;
+    private L2StateStore store;
+    private Instant now;
+
+    @BeforeEach
+    void setUp() {
+        properties = new ContextProperties();
+        store = new L2StateStore(repository, new L2ConflictMerger(), properties);
+        now = Instant.parse("2026-07-22T03:00:00Z");
+    }
+
+    @Test
+    void filterActive_excludesExpired_keepsUnexpiredConstraint() {
+        UserContextStateEntity expiredPref = entity("1", "preference", "style", "详细", 0.9,
+                now.minus(1, ChronoUnit.HOURS));
+        UserContextStateEntity liveConstraint = entity("2", "constraint", "budget", "单次不超过500", 0.95,
+                now.plus(10, ChronoUnit.DAYS));
+        when(repository.findByUserIdAndTenantIdAndStatus("u1", "default", "active"))
+                .thenReturn(List.of(expiredPref, liveConstraint));
+
+        List<UserContextStateEntity> live = store.listInjectable("u1", "default", now);
+
+        assertThat(live).hasSize(1);
+        assertThat(live.get(0).getKind()).isEqualTo("constraint");
+        assertThat(live.get(0).getStateKey()).isEqualTo("budget");
+    }
+
+    @Test
+    void renderSystemBlock_formatsKindKeyValue() {
+        UserContextStateEntity pref = entity("1", "preference", "style", "简洁", 0.9, null);
+        UserContextStateEntity constraint = entity("2", "constraint", "budget", "单次不超过500", 0.95,
+                now.plus(5, ChronoUnit.DAYS));
+
+        String block = L2StateStore.renderSystemBlock(List.of(pref, constraint));
+
+        assertThat(block).isEqualTo("""
+                [用户状态 · L2]
+                - preference/style: 简洁
+                - constraint/budget: 单次不超过500""");
+    }
+
+    @Test
+    void upsert_preference_supersedesOldWhenAccepted() {
+        UserContextStateEntity old = entity("old", "preference", "style", "详细", 0.8, null);
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "preference", "style", "active"))
+                .thenReturn(Optional.of(old));
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("preference", "style", "简洁", 0.85),
+                "msg-1", now);
+
+        assertThat(old.getStatus()).isEqualTo("superseded");
+        ArgumentCaptor<UserContextStateEntity> cap = ArgumentCaptor.forClass(UserContextStateEntity.class);
+        verify(repository, times(2)).save(cap.capture());
+        List<UserContextStateEntity> saved = cap.getAllValues();
+        assertThat(saved.get(0).getStatus()).isEqualTo("superseded");
+        UserContextStateEntity neu = saved.get(1);
+        assertThat(neu.getStatus()).isEqualTo("active");
+        assertThat(neu.getStateValue()).isEqualTo("简洁");
+        assertThat(neu.getConfidence()).isEqualTo(0.85);
+        assertThat(neu.getSourceMsgId()).isEqualTo("msg-1");
+    }
+
+    @Test
+    void upsert_constraint_rejectsBelowOverwriteBar() {
+        UserContextStateEntity old = entity("old", "constraint", "budget", "单次不超过500", 0.9, null);
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "constraint", "budget", "active"))
+                .thenReturn(Optional.of(old));
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("constraint", "budget", "单次不超过800", 0.8),
+                "msg-2", now);
+
+        assertThat(old.getStatus()).isEqualTo("active");
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void ttlDays_forConstraintUsesConfiguredDays() {
+        Instant expires = store.expiresAtFor("constraint", now);
+        assertThat(expires).isEqualTo(now.plus(30, ChronoUnit.DAYS));
+    }
+
+    private static UserContextStateEntity entity(
+            String id, String kind, String key, String value, double conf, Instant expiresAt) {
+        UserContextStateEntity e = new UserContextStateEntity();
+        e.setId(id);
+        e.setUserId("u1");
+        e.setTenantId("default");
+        e.setKind(kind);
+        e.setStateKey(key);
+        e.setStateValue(value);
+        e.setConfidence(conf);
+        e.setStatus("active");
+        e.setExpiresAt(expiresAt);
+        e.setCreatedAt(Instant.parse("2026-07-01T00:00:00Z"));
+        e.setUpdatedAt(Instant.parse("2026-07-01T00:00:00Z"));
+        return e;
+    }
+}

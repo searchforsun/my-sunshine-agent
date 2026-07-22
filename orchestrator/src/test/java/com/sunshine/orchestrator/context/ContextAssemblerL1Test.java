@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.context;
 
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
+import com.sunshine.orchestrator.context.l2.L2StateStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +14,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -20,6 +23,8 @@ class ContextAssemblerL1Test {
 
     @Mock
     private ConversationContextL1Store l1Store;
+    @Mock
+    private L2StateStore l2StateStore;
 
     private ContextProperties properties;
     private ContextAssembler assembler;
@@ -30,7 +35,22 @@ class ContextAssemblerL1Test {
         properties.getL1().setNearTurns(2);
         properties.getL1().setMidTurns(2);
         properties.getL1().setMaxChars(100_000);
-        assembler = new ContextAssembler(properties, l1Store);
+        assembler = new ContextAssembler(properties, l1Store, l2StateStore);
+        lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
+    }
+
+    @Test
+    void assemble_injectsL2SystemBlock() {
+        when(l2StateStore.assembleSystemBlock("u1", "default"))
+                .thenReturn("[用户状态 · L2]\n- preference/style: 简洁");
+        when(l1Store.find("c1")).thenReturn(Optional.empty());
+        when(l1Store.parseMidAnswers(null)).thenReturn(Map.of());
+        when(l1Store.farSummaryOf(null)).thenReturn("");
+
+        AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
+                "u1", "default", "c1", List.of(SessionTurn.of("user", "hi")), "q"));
+
+        assertThat(ctx.l2SystemBlock()).contains("preference/style: 简洁");
     }
 
     @Test

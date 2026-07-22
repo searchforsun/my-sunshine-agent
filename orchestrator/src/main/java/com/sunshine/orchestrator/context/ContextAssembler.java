@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import com.sunshine.orchestrator.context.l1.L1Compressor;
+import com.sunshine.orchestrator.context.l2.L2StateStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 跨轮上下文读路径：L1 Near 全文 + Mid（user 全文 / assistant 摘要）+ Far system 块。
+ * 跨轮上下文读路径：L2 system + L1 Near/Mid/Far。
  */
 @Slf4j
 @Service
@@ -23,6 +24,7 @@ public class ContextAssembler {
 
     private final ContextProperties contextProperties;
     private final ConversationContextL1Store l1Store;
+    private final L2StateStore l2StateStore;
 
     public AssembledContext assemble(AssembleRequest request) {
         if (!contextProperties.isEnabled()) {
@@ -41,13 +43,15 @@ public class ContextAssembler {
         List<ChatTurn> mid = projectMid(bands.mid(), midAnswers);
         List<ChatTurn> near = toChatTurns(trimByChars(bands.near(), l1.getMaxChars()));
         String farBlock = StringUtils.hasText(farSummary) ? farSummary.strip() : "";
+        String l2Block = l2StateStore.assembleSystemBlock(request.userId(), request.tenantId());
 
-        log.debug("[Context] assemble conv={} far={} mid={} near={}",
+        log.debug("[Context] assemble conv={} l2={} far={} mid={} near={}",
                 request.conversationId(),
+                l2Block.isBlank() ? 0 : 1,
                 farBlock.isBlank() ? 0 : 1,
                 mid.size(),
                 near.size());
-        return new AssembledContext("", farBlock, mid, near, "");
+        return new AssembledContext(l2Block, farBlock, mid, near, "");
     }
 
     static List<ChatTurn> projectMid(List<SessionTurn> midBand, Map<String, String> midAnswers) {

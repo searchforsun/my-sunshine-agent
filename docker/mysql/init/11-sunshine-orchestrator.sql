@@ -83,7 +83,8 @@ CREATE TABLE user_context_state (
     source_msg_id   VARCHAR(64)  NULL,
     created_at      TIMESTAMP(3) NOT NULL,
     updated_at      TIMESTAMP(3) NOT NULL,
-    UNIQUE KEY uk_ctx_user_kind_key (user_id, tenant_id, kind, state_key),
+    -- 无 UNIQUE(kind,key)：同 key 可多条 superseded 审计；应用保证至多一条 active
+    INDEX idx_ctx_user_kind_key_status (user_id, tenant_id, kind, state_key, status),
     INDEX idx_ctx_user_status (user_id, tenant_id, status),
     INDEX idx_ctx_expires (expires_at)
 );

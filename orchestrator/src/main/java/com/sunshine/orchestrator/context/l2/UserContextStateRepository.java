@@ -10,6 +10,6 @@ public interface UserContextStateRepository extends JpaRepository<UserContextSta
     List<UserContextStateEntity> findByUserIdAndTenantIdAndStatus(
             String userId, String tenantId, String status);
 
-    Optional<UserContextStateEntity> findByUserIdAndTenantIdAndKindAndStateKey(
-            String userId, String tenantId, String kind, String stateKey);
+    Optional<UserContextStateEntity> findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+            String userId, String tenantId, String kind, String stateKey, String status);
 }
