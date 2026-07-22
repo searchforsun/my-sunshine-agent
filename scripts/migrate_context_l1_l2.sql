@@ -7,16 +7,22 @@ USE sunshine_chat;
 DROP TABLE IF EXISTS conversation_memory_mtm, user_memory_profile;
 
 CREATE TABLE IF NOT EXISTS conversation_context_l1 (
-    conv_id       VARCHAR(32)  NOT NULL PRIMARY KEY,
-    user_id       VARCHAR(64)  NOT NULL,
-    tenant_id     VARCHAR(32)  NOT NULL DEFAULT 'default',
-    mid_answers   MEDIUMTEXT   NULL COMMENT 'JSON map msgId -> answer summary',
-    far_summary   MEDIUMTEXT   NULL,
-    near_n        INT          NOT NULL DEFAULT 8,
-    mid_n         INT          NOT NULL DEFAULT 8,
-    updated_at    TIMESTAMP(3) NOT NULL,
+    conv_id              VARCHAR(32)  NOT NULL PRIMARY KEY,
+    user_id              VARCHAR(64)  NOT NULL,
+    tenant_id            VARCHAR(32)  NOT NULL DEFAULT 'default',
+    mid_answers          MEDIUMTEXT   NULL COMMENT 'JSON map msgId -> answer summary',
+    far_summary          MEDIUMTEXT   NULL,
+    far_folded_msg_ids   MEDIUMTEXT   NULL COMMENT 'JSON array of msgIds already folded into far_summary',
+    near_n               INT          NOT NULL DEFAULT 8,
+    mid_n                INT          NOT NULL DEFAULT 8,
+    updated_at           TIMESTAMP(3) NOT NULL,
     INDEX idx_l1_user (user_id, tenant_id)
 );
+
+-- 已有库缺列时手工执行（CREATE IF NOT EXISTS 不会补列）:
+-- ALTER TABLE conversation_context_l1
+--   ADD COLUMN far_folded_msg_ids MEDIUMTEXT NULL
+--   COMMENT 'JSON array of msgIds already folded into far_summary' AFTER far_summary;
 
 CREATE TABLE IF NOT EXISTS user_context_state (
     id              VARCHAR(32)  NOT NULL PRIMARY KEY,

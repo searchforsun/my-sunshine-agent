@@ -33,6 +33,10 @@ public class ConversationContextL1Entity {
     @Column(name = "far_summary", columnDefinition = "MEDIUMTEXT")
     private String farSummary;
 
+    /** JSON array of messageIds already folded into far_summary */
+    @Column(name = "far_folded_msg_ids", columnDefinition = "MEDIUMTEXT")
+    private String farFoldedMsgIds;
+
     @Column(name = "near_n", nullable = false)
     private int nearN = 8;
 

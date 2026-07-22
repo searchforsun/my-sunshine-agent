@@ -58,14 +58,15 @@ CREATE TABLE chat_audit_log (
 -- 已有库一次性迁移见 scripts/migrate_context_l1_l2.sql（禁止 Flyway）
 
 CREATE TABLE conversation_context_l1 (
-    conv_id       VARCHAR(32)  NOT NULL PRIMARY KEY,
-    user_id       VARCHAR(64)  NOT NULL,
-    tenant_id     VARCHAR(32)  NOT NULL DEFAULT 'default',
-    mid_answers   MEDIUMTEXT   NULL COMMENT 'JSON map msgId -> answer summary',
-    far_summary   MEDIUMTEXT   NULL,
-    near_n        INT          NOT NULL DEFAULT 8,
-    mid_n         INT          NOT NULL DEFAULT 8,
-    updated_at    TIMESTAMP(3) NOT NULL,
+    conv_id              VARCHAR(32)  NOT NULL PRIMARY KEY,
+    user_id              VARCHAR(64)  NOT NULL,
+    tenant_id            VARCHAR(32)  NOT NULL DEFAULT 'default',
+    mid_answers          MEDIUMTEXT   NULL COMMENT 'JSON map msgId -> answer summary',
+    far_summary          MEDIUMTEXT   NULL,
+    far_folded_msg_ids   MEDIUMTEXT   NULL COMMENT 'JSON array of msgIds already folded into far_summary',
+    near_n               INT          NOT NULL DEFAULT 8,
+    mid_n                INT          NOT NULL DEFAULT 8,
+    updated_at           TIMESTAMP(3) NOT NULL,
     INDEX idx_l1_user (user_id, tenant_id)
 );
 

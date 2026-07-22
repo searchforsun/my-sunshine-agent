@@ -10,12 +10,19 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * L1 Mid/Far 压缩：逼近字符预算或轮次超 near+mid 时，异步写 mid_answers / far_summary。
+ * <p>同一 convId 的 compress 经 ConcurrentHashMap 锁串行，避免并发 upsert 丢更新。
+ * Far 仅增量折叠：只把尚未记入 far_folded_msg_ids 的 Far 轮次送给 LLM。
  */
 @Slf4j
 @Service
@@ -30,6 +37,9 @@ public class L1Compressor {
     private final ConversationContextL1Store l1Store;
     private final PromptCatalogHolder catalogHolder;
 
+    /** 按会话串行化 compress，防止并发 async 丢更新。 */
+    private final ConcurrentHashMap<String, Object> compressLocks = new ConcurrentHashMap<>();
+
     @Async
     public void compressAsync(String userId, String tenantId, String convId, List<SessionTurn> history) {
         try {
@@ -43,6 +53,16 @@ public class L1Compressor {
         if (!contextProperties.isEnabled() || history == null || history.isEmpty()) {
             return;
         }
+        if (!StringUtils.hasText(convId)) {
+            return;
+        }
+        Object lock = compressLocks.computeIfAbsent(convId, id -> new Object());
+        synchronized (lock) {
+            compressLocked(userId, tenantId, convId, history);
+        }
+    }
+
+    private void compressLocked(String userId, String tenantId, String convId, List<SessionTurn> history) {
         ContextProperties.L1 l1 = contextProperties.getL1();
         int nearN = Math.max(1, l1.getNearTurns());
         int midN = Math.max(0, l1.getMidTurns());
@@ -54,6 +74,7 @@ public class L1Compressor {
         ConversationContextL1Entity existing = l1Store.find(convId).orElse(null);
         Map<String, String> midAnswers = new HashMap<>(l1Store.parseMidAnswers(existing));
         String farSummary = l1Store.farSummaryOf(existing);
+        LinkedHashSet<String> foldedIds = new LinkedHashSet<>(l1Store.parseFarFoldedMsgIds(existing));
 
         for (SessionTurn turn : bands.mid()) {
             if (!"assistant".equals(turn.role()) || !StringUtils.hasText(turn.messageId())) {
@@ -68,16 +89,37 @@ public class L1Compressor {
             }
         }
 
-        if (!bands.far().isEmpty()) {
-            String folded = foldFar(farSummary, bands.far());
+        // Mid → Far 后剔除 mid_answers，避免 map 无限增长
+        Set<String> farMsgIds = new HashSet<>();
+        for (SessionTurn turn : bands.far()) {
+            if (StringUtils.hasText(turn.messageId())) {
+                farMsgIds.add(turn.messageId());
+            }
+        }
+        midAnswers.keySet().removeIf(farMsgIds::contains);
+
+        List<SessionTurn> newToFold = new ArrayList<>();
+        for (SessionTurn turn : bands.far()) {
+            if (!StringUtils.hasText(turn.messageId())) {
+                continue;
+            }
+            if (!foldedIds.contains(turn.messageId())) {
+                newToFold.add(turn);
+            }
+        }
+        if (!newToFold.isEmpty()) {
+            String folded = foldFar(farSummary, newToFold);
             if (StringUtils.hasText(folded)) {
                 farSummary = folded.strip();
             }
+            for (SessionTurn turn : newToFold) {
+                foldedIds.add(turn.messageId());
+            }
         }
 
-        l1Store.upsert(userId, tenantId, convId, midAnswers, farSummary, nearN, midN);
-        log.debug("[ContextL1] compressed conv={} midKeys={} farLen={}",
-                convId, midAnswers.size(), farSummary != null ? farSummary.length() : 0);
+        l1Store.upsert(userId, tenantId, convId, midAnswers, farSummary, foldedIds, nearN, midN);
+        log.debug("[ContextL1] compressed conv={} midKeys={} farLen={} folded={}",
+                convId, midAnswers.size(), farSummary != null ? farSummary.length() : 0, foldedIds.size());
     }
 
     /** 混合触发：超 near+mid 轮次，或总字符超预算。 */
@@ -131,7 +173,8 @@ public class L1Compressor {
         }
     }
 
-    private String foldFar(String previousFarSummary, List<SessionTurn> farTurns) {
+    /** 仅折叠 newFarTurns（已有摘要作前缀）；调用方保证不含已折叠轮次。 */
+    private String foldFar(String previousFarSummary, List<SessionTurn> newFarTurns) {
         String system = catalogHolder.requireText(FAR_FOLD_PROMPT);
         if (!StringUtils.hasText(system)) {
             log.warn("[ContextL1] missing catalog {}", FAR_FOLD_PROMPT);
@@ -142,7 +185,7 @@ public class L1Compressor {
             user.append("【已有远窗摘要】\n").append(previousFarSummary.strip()).append("\n\n");
         }
         user.append("【待折叠对话】\n");
-        for (SessionTurn turn : farTurns) {
+        for (SessionTurn turn : newFarTurns) {
             user.append(turn.role()).append(": ").append(turn.content()).append('\n');
         }
         try {

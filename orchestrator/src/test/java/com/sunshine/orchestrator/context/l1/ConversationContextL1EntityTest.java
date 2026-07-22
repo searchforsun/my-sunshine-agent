@@ -23,6 +23,7 @@ class ConversationContextL1EntityTest {
         e.setTenantId("t1");
         e.setMidAnswers("{\"m1\":\"s\"}");
         e.setFarSummary("far");
+        e.setFarFoldedMsgIds("[\"m0\"]");
         e.setNearN(6);
         e.setMidN(4);
         Instant now = Instant.parse("2026-07-22T02:00:00Z");
@@ -32,6 +33,7 @@ class ConversationContextL1EntityTest {
         assertThat(e.getTenantId()).isEqualTo("t1");
         assertThat(e.getMidAnswers()).isEqualTo("{\"m1\":\"s\"}");
         assertThat(e.getFarSummary()).isEqualTo("far");
+        assertThat(e.getFarFoldedMsgIds()).isEqualTo("[\"m0\"]");
         assertThat(e.getNearN()).isEqualTo(6);
         assertThat(e.getMidN()).isEqualTo(4);
         assertThat(e.getUpdatedAt()).isEqualTo(now);
