@@ -51,6 +51,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_sandbox_live.py` | **4.5** Skills Docker 沙箱 Live（`--suite direct\|chat\|all`；G1–G12，含 `#sandbox-agent` S4） |
 | `verify_sandbox_workspace_live.py` | **4.5** 对话级 Workspace 抽屉（W1–W5：status/SSE/list/content/复用） |
 | `verify_sandbox_tool_cancel_live.py` | **4.5.7** 沙箱 exec/grep/glob 单工具取消（paused + 主消息 completed） |
+| `verify_context_layers_live.py` | **上下文 L1/L2/L3** Admin + 单测门禁（SUB 空记忆 / 近窗排除 / GC） |
 
 沙箱文档索引：[`docs/sandbox/README.md`](./docs/sandbox/README.md)。
 | `verify_tool_integration_live.py` | **4.8** SDK+MCP 工具集成 Live（`--suite sdk\|mcp\|toolset\|hitl\|all`） |
@@ -96,7 +97,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。Catalog ID SSOT：`ToolIds`（`sdk__*` / `mcp__*`）；ReAct LLM `tool_call.name` 与 Catalog 同 ID；静态 Workflow `tool` 节点直调 invoke（不经 LLM）。HITL 读 DB `require_confirmation`。ReAct 验收可查 llm-gateway 日志 `toolCalls=`。
 
-**Agent 运行时（3.10.1–3.10.7 ✅）**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `MemoryContext.forSubAgent()`（无 STM/LTM）+ `skillId`→`PromptComposer`；skill overlay **仅** skill-manager Catalog（3.11 ✅）。
+**Agent 运行时（3.10.1–3.10.7 ✅）**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `AssembledContext.forSubAgent()`（无 L1/L2/L3）+ `skillId`→`PromptComposer`；skill overlay **仅** skill-manager Catalog（3.11 ✅）。
 
 **子 Agent 目标（SSOT：`docs/superpowers/plans/2026-06-19-multi-agent-architecture.md` §子 Agent 实现目标）**：编排器-Worker；`query` + 上游 `context` 由 workflow 传入；system = base + skill overlay + 节点 `systemOverlay`；用户正文由下游 **answer** 节点合成。
 

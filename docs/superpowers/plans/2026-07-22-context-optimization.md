@@ -610,7 +610,7 @@ EOF
 - Modify: `router/index.ts`、`MainLayout.vue` 加入口（如 `/context`）
 - Test: Controller WebMvcTest 或 Live 脚本覆盖写接口
 
-- [ ] **Step 1: API 契约**
+- [x] **Step 1: API 契约**
 
 ```text
 GET  /api/admin/context/l2?userId=&tenantId=
@@ -622,9 +622,9 @@ POST /api/admin/context/l3/gc
 POST /api/admin/context/l3/reingest?convId=
 ```
 
-- [ ] **Step 2: 前端最小可读写**（黑底边框；不作视觉专项）
+- [x] **Step 2: 前端最小可读写**（黑底边框；不作视觉专项）
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -644,7 +644,7 @@ EOF
 - Modify: `docs/superpowers/specs/2026-06-17-agent-memory-design.md` 顶部加废止声明指向新详设
 - Modify: `README.md` 若有记忆章节则改链接
 
-- [ ] **Step 1: Live 覆盖**
+- [x] **Step 1: Live 覆盖**
 
 | Case | 断言 |
 |------|------|
@@ -655,7 +655,7 @@ EOF
 | Job | 调 `runOnce` 或 Admin GC → 过期 void + 向量减少 |
 | 回归 | SUB 无 L2/L1；AutoContext 开关仍生效 |
 
-- [ ] **Step 2: 跑 Live（实施机）**
+- [x] **Step 2: 跑 Live（实施机）**
 
 ```bash
 python scripts/verify_context_layers_live.py
@@ -663,7 +663,7 @@ python scripts/verify_context_layers_live.py
 
 Expected: 全 PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
