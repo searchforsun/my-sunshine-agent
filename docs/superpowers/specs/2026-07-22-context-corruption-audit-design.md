@@ -73,11 +73,11 @@ Admin「清理过期索引」继续调 `runOnce`（含本审计）。
 
 ```
 onTurnCompleted
-  → L1 compressAsync
-  → L2 extractAsync
-       → extract → upsert…
-       → auditUserLightAsync(user, tenant)   // 新增，独立 @Async
-  → L3 ingestAsync
+  → ContextWritePath（L2 → L1 → L3）
+       → L2 extract
+            → upsert…
+            → auditUserLightAsync(user, tenant)   // 独立 @Async
+  → （L1/L3 与审计并行可接受）
 ```
 
 轻量检查**不阻塞**用户 SSE；与 compress/ingest 并行可接受。同一用户可用短 TTL 内存锁（如 30s）合并抖动，避免连发两轮抽取得出双次 LLM。

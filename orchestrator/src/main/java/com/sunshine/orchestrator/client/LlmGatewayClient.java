@@ -109,7 +109,7 @@ public class LlmGatewayClient {
     }
 
     /**
-     * 非流式补全 — MTM 会话摘要等内部用途。
+     * 非流式补全 — L1 Far / L2 抽取 / 审计等内部用途。
      */
     public String complete(String systemPrompt, String userContent) {
         return complete(modelName, systemPrompt, userContent);

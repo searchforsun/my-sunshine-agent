@@ -40,6 +40,7 @@ class ContextAuditServiceTest {
     @Mock
     private PromptCatalogHolder catalogHolder;
 
+    private L2RuleAuditor l2RuleAuditor;
     private ContextAuditService service;
     private Instant now;
 
@@ -48,8 +49,11 @@ class ContextAuditServiceTest {
         ContextProperties props = new ContextProperties();
         props.getMaintenance().setAuditEnabled(true);
         props.getMaintenance().setAuditExtractDebounceMs(0);
+        l2RuleAuditor = new L2RuleAuditor(l2Repository);
+        ContextLlmAuditClient llmAuditClient = new ContextLlmAuditClient(llmGatewayClient, catalogHolder);
+        L1AuditApplier l1AuditApplier = new L1AuditApplier(l1Repository, l1Store);
         service = new ContextAuditService(
-                props, l2Repository, l1Repository, l1Store, llmGatewayClient, catalogHolder);
+                props, l2Repository, l1Repository, l2RuleAuditor, llmAuditClient, l1AuditApplier);
         now = Instant.parse("2026-07-22T08:00:00Z");
     }
 
@@ -60,7 +64,7 @@ class ContextAuditServiceTest {
         when(l2Repository.findByUserIdAndTenantIdAndStatus("u1", "default", "active"))
                 .thenReturn(List.of(keep, lose));
 
-        int voided = service.ruleDedupeActiveSameKey("u1", "default", now);
+        int voided = l2RuleAuditor.dedupeActiveSameKey("u1", "default", now);
 
         assertThat(voided).isEqualTo(1);
         ArgumentCaptor<UserContextStateEntity> cap = ArgumentCaptor.forClass(UserContextStateEntity.class);
@@ -75,7 +79,7 @@ class ContextAuditServiceTest {
         when(l2Repository.findByUserIdAndTenantIdAndStatus("u1", "default", "active"))
                 .thenReturn(List.of(only));
         when(l1Repository.findByUserIdAndTenantId("u1", "default")).thenReturn(List.of());
-        when(catalogHolder.requireText(ContextAuditService.L2_AUDIT_PROMPT)).thenReturn("sys");
+        when(catalogHolder.requireText(ContextLlmAuditClient.L2_AUDIT_PROMPT)).thenReturn("sys");
         when(llmGatewayClient.complete(eq("sys"), anyString()))
                 .thenReturn("{\"voidIds\":[\"hallucinated\",\"real-1\"],\"conflictIds\":[],\"reasons\":{}}");
         when(l2Repository.findById("real-1")).thenReturn(Optional.of(only));
@@ -96,7 +100,7 @@ class ContextAuditServiceTest {
         when(l2Repository.findByUserIdAndTenantIdAndStatus("u1", "default", "active"))
                 .thenReturn(List.of(a));
         when(l1Repository.findByUserIdAndTenantId("u1", "default")).thenReturn(List.of());
-        when(catalogHolder.requireText(ContextAuditService.L2_AUDIT_PROMPT)).thenReturn("sys");
+        when(catalogHolder.requireText(ContextLlmAuditClient.L2_AUDIT_PROMPT)).thenReturn("sys");
         when(llmGatewayClient.complete(anyString(), anyString()))
                 .thenReturn("{\"voidIds\":[],\"conflictIds\":[\"c1\"],\"reasons\":{\"c1\":\"暧昧\"}}");
         when(l2Repository.findById("c1")).thenReturn(Optional.of(a));
@@ -113,7 +117,7 @@ class ContextAuditServiceTest {
         when(l2Repository.findByUserIdAndTenantIdAndStatus("u1", "default", "active"))
                 .thenReturn(List.of(a));
         when(l1Repository.findByUserIdAndTenantId("u1", "default")).thenReturn(List.of());
-        when(catalogHolder.requireText(ContextAuditService.L2_AUDIT_PROMPT)).thenReturn("sys");
+        when(catalogHolder.requireText(ContextLlmAuditClient.L2_AUDIT_PROMPT)).thenReturn("sys");
         when(llmGatewayClient.complete(anyString(), anyString())).thenThrow(new RuntimeException("timeout"));
 
         ContextAuditService.AuditStats stats = service.auditUserLight("u1", "default", false);
@@ -125,7 +129,7 @@ class ContextAuditServiceTest {
     @Test
     void parseL1Decision_removesMidKeys() {
         String raw = "{\"removeMidKeys\":{\"conv1\":[\"m1\",\"ghost\"]},\"farSummaryByConv\":{\"conv1\":\"修订\"},\"notes\":\"\"}";
-        ContextAuditService.L1AuditDecision d = ContextAuditService.parseL1Decision(raw);
+        ContextAuditDecisions.L1AuditDecision d = ContextLlmAuditClient.parseL1Decision(raw);
         assertThat(d.removeMidKeys()).containsEntry("conv1", List.of("m1", "ghost"));
         assertThat(d.farSummaryByConv()).containsEntry("conv1", "修订");
     }

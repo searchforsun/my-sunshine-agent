@@ -29,7 +29,8 @@ public class ContextProperties {
         private int nearTurns = 8;
         /** 中窗轮次数；仅压缩该窗内 assistant 答案。 */
         private int midTurns = 8;
-        private int maxChars = 12000;
+        /** 与 Nacos {@code agent.context.l1.max-chars} 默认对齐（SSOT=Nacos）。 */
+        private int maxChars = 120_000;
     }
 
     @Getter

@@ -1,11 +1,11 @@
 # 4.6.4 ContextCompressor（AutoContextMemory）设计
 
 > 状态：已确认 · 2026-07-17  
-> 归属：阶段四 4.6.4 / 原 P5「STM 工具结果摘要」
+> 归属：阶段四 4.6.4 / 原「单次 ReAct 工具结果摘要」
 
 ## 1. 问题
 
-单次 ReAct run 内，多轮 TOOL 结果进入 AgentScope `Memory` 后易撑爆下一轮 reasoning 上下文。跨轮 Sunshine STM（user/assistant）不含 tool 轨迹，现有 `StmWindowPolicy` 解决不了本问题。
+单次 ReAct run 内，多轮 TOOL 结果进入 AgentScope `Memory` 后易撑爆下一轮 reasoning 上下文。跨轮对话上下文由 L1/L2/L3（`ContextAssembler`）负责，**不含** tool 轨迹；本能力仅压缩**单次 run 内**工具消息。
 
 ## 2. 方案
 
@@ -14,7 +14,7 @@
 | 做 | 不做 |
 |----|------|
 | ReAct / SUB 经 `ReActAgentFactory` 注入 AutoContext | 改 Timeline / SSE 工具结果 |
-| Nacos `agent.memory.auto-context.*` 可开关与调参 | 改跨轮 STM/MTM/LTM |
+| Nacos `agent.memory.auto-context.*` 可开关与调参 | 改跨轮 L1/L2/L3 |
 | 压缩发生在 `PreReasoning`（给下一轮 LLM） | 对模型最终答案二次加工 |
 
 ## 3. 接入

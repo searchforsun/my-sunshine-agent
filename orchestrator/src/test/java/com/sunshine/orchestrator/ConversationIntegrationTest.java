@@ -176,7 +176,7 @@ class ConversationIntegrationTest {
     }
 
     @Test
-    @DisplayName("multiTurnContext_simpleIntent — 任意轮次均携带 STM 记忆块")
+    @DisplayName("multiTurnContext_simpleIntent — 任意轮次均携带 L1 上下文块")
     void multiTurnContext_simpleIntent() {
         ArgumentCaptor<AssembledContext> memoryCaptor = ArgumentCaptor.forClass(AssembledContext.class);
 
@@ -189,7 +189,7 @@ class ConversationIntegrationTest {
     }
 
     @Test
-    @DisplayName("threeTurnContext_simpleIntent — 三轮追问 STM 记忆块连贯")
+    @DisplayName("threeTurnContext_simpleIntent — 三轮追问 L1 上下文连贯")
     void threeTurnContext_simpleIntent() {
         ArgumentCaptor<AssembledContext> memoryCaptor = ArgumentCaptor.forClass(AssembledContext.class);
 

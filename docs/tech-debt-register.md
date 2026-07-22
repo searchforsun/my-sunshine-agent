@@ -23,6 +23,8 @@
 |----|--------|------|------|------|
 | TD-105 | P2 | open | `KbDocPanel.vue` (~1281 行) | RAG 分块预览门禁堆入上帝组件；下一轮 RAG scope 拆分 |
 | TD-106 | P3 | open | finance/oa/hr `*BizService` | 三服务平行 CRUD 样板；暂不抽泛型 |
+| TD-140 | P1 | open | IntentRouter / RewriteConversationContext / ContextMessageBuilder | AssembledContext 三重格式化旁路；合并行为面大，下轮单独 scope |
+| TD-141 | P3 | open | sandbox `formatEditUnifiedDiff` / `formatDiffLinesAsText` | editDiff 死代码与 detail 双写；产品路径已收口 |
 
 ### 文档债
 
@@ -183,6 +185,11 @@
 | TD-102 | 2026-07-21 | 路由 `/mock-data`→`/biz-data`；token 默认 `sunshine-biz-admin-dev`；删 `VITE_MOCK_ADMIN` 兼容 |
 | TD-104 | 2026-07-21 | 删一次性 `sync_corpus50_platform.py`（Live 已无旧 Catalog ID） |
 | TD-107 | 2026-07-21 | `sync_nacos.py` 补漏 `sunshine-oa.yaml`（否则 OA admin-token 永不更新） |
+| TD-142 | 2026-07-22 | 删 rag 孤儿 MTM（`MemoryMilvus*`/`MemoryController`/`MemoryRetrievalService`） |
+| TD-143 | 2026-07-22 | 统一 `agent.context.l1.max-chars=120000`（Java 默认对齐 Nacos） |
+| TD-144 | 2026-07-22 | 拆 `ContextAuditService` → `L2RuleAuditor` / `ContextLlmAuditClient` / `L1AuditApplier` |
+| TD-145 | 2026-07-22 | 拆 `ContextView` → `useContextPage` + L1/L2/L3 Panel |
+| TD-146 | 2026-07-22 | STM/MTM 命名残留清理（IntentRouter/GenerationJob/注释） |
 
 ### 文档债（DOC）
 
@@ -212,6 +219,7 @@
 | DOC-024 | 2026-07-18 | sandbox cancel plan 对齐 `SandboxInvocationRegistry` / `cancellable`；去幽灵 toolUseId/Budget |
 | DOC-025 | 2026-07-20 | 4.11 Catalog SSOT 文档收口；timeline-summary design 与实现对齐 |
 | DOC-100 | 2026-07-21 | corpus50 design 数据层 supersede → biz-db-crud；路由 `/biz-data` |
+| DOC-026 | 2026-07-22 | Context 文档勘误（写序 L2→L1、maxChars、类名）；废止稿归档 `specs/archive/`；autocontext 去 STM 误导 |
 
 ### 架构决策（ADR）
 

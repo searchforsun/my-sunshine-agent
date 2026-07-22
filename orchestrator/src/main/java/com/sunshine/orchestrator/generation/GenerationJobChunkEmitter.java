@@ -101,7 +101,7 @@ final class GenerationJobChunkEmitter {
 
     /**
      * HITL / ReAct 旁路 token。须写入与 {@link #onChunk} 同一 {@code mysqlBuffer}，
-     * 否则正文只进 content_blocks、content 为空，STM 会丢弃 assistant 轮次。
+     * 否则正文只进 content_blocks、content 为空，L1 会丢弃 assistant 轮次。
      */
     void emitStreamToken(StreamToken token, StringBuilder mysqlBuffer, Consumer<String> flushPartial) {
         if (token == null || finished.get() || !isStreamEpochValid()) {

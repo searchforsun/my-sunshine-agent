@@ -29,10 +29,10 @@
 | `docker/mysql/init/11-sunshine-orchestrator.sql` | 新表；删旧 MTM/LTM 表定义 |
 | `docker/mysql/init/17-sunshine-prompt-manager.sql` | 新 `context.*` Catalog；旧 `memory.*` 除 current-user-marker 可迁 |
 | `docs/nacos/sunshine-orchestrator.yaml` | `agent.context.*`；去掉 stm/mtm/ltm |
-| `rag-service/...` | chat-history collection API（可演进现有 MemoryController 或新建） |
-| `sunshine-ui/.../ContextView.vue` + `api/contextAdmin.ts` | Admin 可读写页 |
+| `rag-service/.../ChatHistory*` | L3 collection API（`sunshine_chat_history`）；**已删**孤儿 `MemoryController`/`MemoryMilvusService` |
+| `sunshine-ui/.../ContextView.vue` + `components/context/*` + `api/contextAdmin.ts` | Admin 可读写页 |
 | `scripts/verify_context_layers_live.py` | Live 门禁 |
-| **删除** | `memory/stm/*`、`memory/mtm/*`、`memory/ltm/*`、`MemoryComposer`、旧 Redis STM 等（`MemoryContext` 改为薄适配或直接换成 `AssembledContext`） |
+| **删除** | `memory/stm/*`、`memory/mtm/*`、`memory/ltm/*`、`MemoryComposer`、旧 Redis STM、rag `Memory*`（MTM）等 |
 
 **注入顺序（固定）：** system(L2+usage-rules) → system(Far) → Mid 轮次 → Near 轮次 → system(L3 materials) → 当前提问。
 
@@ -482,8 +482,8 @@ EOF
 ### Task 7: L3 chat-history RAG + Far 回填
 
 **Files:**
-- Modify or replace: `rag-service/.../MemoryController.java` → 支持 collection=`sunshine_chat_history` 的 upsert/search/delete；或新建 `ChatHistoryController`
-- Create: `orchestrator/.../context/l3/HistoryRagClient.java`（可改写 `MemoryRagClient`）
+- Create: `rag-service/.../ChatHistoryController.java` + `ChatHistoryMilvusService`（**已落地**；孤儿 `Memory*` 已删）
+- Create: `orchestrator/.../context/l3/HistoryRagClient.java`
 - Create: `orchestrator/.../context/l3/L3IngestService.java` / `L3RecallService.java`
 - Modify: Assembler — query 召回；排除本会话 Near/Mid 已覆盖 msgId；时间衰减
 - Catalog: `context.l3.material-header`

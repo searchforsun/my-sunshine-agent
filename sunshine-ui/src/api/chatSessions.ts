@@ -159,7 +159,7 @@ export function useChatSessions(
             const cid = meta.conversationId || sessionId
             if (cid) {
               onSandboxSession?.(sessionId, cid)
-              requestSandboxWorkspaceRefresh(cid, 'skills')
+              requestSandboxWorkspaceRefresh(cid, 'skills', true)
             }
           }
         },

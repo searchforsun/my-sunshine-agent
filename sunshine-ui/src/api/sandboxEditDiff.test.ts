@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   writeContentAsAddLines,
+  countWriteAddLines,
   linesFromEditDiffMeta,
   summarizeDiffCounts,
 } from './sandboxEditDiff'
@@ -13,6 +14,12 @@ describe('sandboxEditDiff', () => {
       { kind: 'add', text: 'b', oldLine: null, newLine: 2 },
     ])
     expect(summarizeDiffCounts(lines)).toEqual({ add: 2, del: 0 })
+  })
+
+  it('countWriteAddLines matches writeContentAsAddLines length', () => {
+    expect(countWriteAddLines('a\nb\n')).toBe(2)
+    expect(countWriteAddLines('')).toBe(0)
+    expect(countWriteAddLines('\n')).toBe(1)
   })
 
   it('linesFromEditDiffMeta maps structured metadata', () => {

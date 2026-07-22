@@ -30,7 +30,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class IntentRouter {
 
-    private static final int MAX_STM_TURNS = 4;
+    /** 意图分类注入的近期轮次上限（L1 mid/near 尾部）。 */
+    private static final int MAX_INTENT_CONTEXT_TURNS = 4;
 
     private final AgentPromptProperties prompts;
     private final PromptCatalogHolder catalogHolder;
@@ -151,7 +152,7 @@ public class IntentRouter {
                 turns.addAll(memory.nearTurns());
             }
             if (!turns.isEmpty()) {
-                int from = Math.max(0, turns.size() - MAX_STM_TURNS);
+                int from = Math.max(0, turns.size() - MAX_INTENT_CONTEXT_TURNS);
                 sb.append("【近期对话】\n");
                 for (int i = from; i < turns.size(); i++) {
                     ChatTurn turn = turns.get(i);

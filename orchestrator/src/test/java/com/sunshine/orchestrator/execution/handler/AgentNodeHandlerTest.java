@@ -144,7 +144,7 @@ class AgentNodeHandlerTest {
         when(agentRuntime.run(any(AgentRunRequest.class)))
                 .thenReturn(Flux.just(StreamToken.content("ok")));
 
-        AssembledContext fullMemory = new AssembledContext("ltm", "mtm", List.of(), List.of(
+        AssembledContext fullMemory = new AssembledContext("l2", "far", List.of(), List.of(
                 new ChatTurn("user", "上一轮"), new ChatTurn("assistant", "上一轮答")), "");
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "q", fullMemory,

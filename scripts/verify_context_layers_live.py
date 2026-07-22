@@ -181,6 +181,9 @@ def seed_l1(conv_id: str, user_id: str) -> None:
     far_sql = far.replace("'", "''")
     sql = f"""
 USE sunshine_chat;
+INSERT INTO chat_conversation (id, user_id, tenant_id, title, created_at, updated_at)
+VALUES ('{conv_id}', '{user_id}', 'default', 'ctx-verify-l1', NOW(3), NOW(3))
+ON DUPLICATE KEY UPDATE updated_at=NOW(3);
 DELETE FROM conversation_context_l1 WHERE conv_id='{conv_id}';
 INSERT INTO conversation_context_l1 (
   conv_id, user_id, tenant_id, mid_answers, far_summary, far_folded_msg_ids,

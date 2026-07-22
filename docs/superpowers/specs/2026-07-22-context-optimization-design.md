@@ -63,15 +63,15 @@
 ```text
 读：ChatStreamContextFactory
   → ContextAssembler.assemble(user, conv, query)
-       ├─ L2 ProfileStore     → system 稳定状态
-       ├─ L1 SessionWindow    → Near/Mid 轮次 + Far 折叠块
-       └─ L3 HistoryRag       → 按需 chunk（可回填 Far）
+       ├─ L2StateStore        → system 稳定状态
+       ├─ L1（ConversationContextL1Store + Near 窗）→ Mid/Near 轮次 + Far 折叠块
+       └─ L3 HistoryRagClient → 按需 chunk（可回填 Far）
   → AssembledContext → PromptComposer → LLM
 
 写：assistant completed
-  → ContextLifecycle.onTurnCompleted（异步）
-       ├─ L1 压缩 / Far 折叠
+  → ContextLifecycle.onTurnCompleted → ContextWritePath（异步，顺序固定）
        ├─ L2 抽取 → 置信门禁 → 冲突合并 → upsert
+       ├─ L1 压缩 / Far 折叠（可读本轮 L2）
        └─ L3 chunk ingest（失败可重试，不阻塞主路径）
 
 治：ContextMaintenanceJob（定时）
@@ -151,7 +151,7 @@ agent:
     l1:
       near-turns: 8          # N 的默认
       mid-turns: 8           # 再 N 轮 Mid
-      max-chars: 12000       # 预算（与轮次双触发）
+      max-chars: 120000     # 预算（与轮次双触发）；SSOT=Nacos，Java 默认对齐
     l2:
       min-confidence: 0.75
       constraint-overwrite-confidence: 0.9
@@ -187,5 +187,5 @@ agent:
 
 ## 11. 与旧文档关系
 
-- `2026-06-17-agent-memory-design.md`（方案 C）：**废止为运行时 SSOT**；本文件取而代之  
+- `docs/superpowers/specs/archive/2026-06-17-agent-memory-design.md`（方案 C）：**已归档**；本文件取而代之  
 - `2026-07-17-autocontext-memory-design.md`（4.6.4）：**仍然有效**（单次 run 内工具压缩）

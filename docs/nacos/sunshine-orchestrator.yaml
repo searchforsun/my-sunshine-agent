@@ -267,7 +267,7 @@ agent:
       # near/mid 按「问答轮次」计（一轮 = 1 次 user + 其后 assistant），非消息条数
       near-turns: 8
       mid-turns: 8
-      max-chars: 120000
+      max-chars: 120000  # SSOT；与 ContextProperties.L1 默认对齐
     l2:
       min-confidence: 0.75
       constraint-overwrite-confidence: 0.9

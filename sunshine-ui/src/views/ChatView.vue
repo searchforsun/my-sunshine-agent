@@ -126,10 +126,8 @@ const {
     chatStore.syncMessages(id, getMessages(id))
   },
   (sessionId: string) => {
-    chatStore.syncMessages(sessionId, getMessages(sessionId))
-    if (sessionId === chatStore.currentId) {
-      hydrationBridge.schedulePersist(sessionId)
-    }
+    // 流式中勿每条 SSE 同步 JSON.stringify→localStorage；合并到 schedulePersist
+    hydrationBridge.schedulePersist(sessionId)
   },
   (sid: string, convId: string) => {
     if (convId !== sid) migrateSession(sid, convId)
@@ -441,7 +439,7 @@ async function handleSend() {
     const skillBinding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
     const workflowBinding = resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value)
     if (skillBinding.skillId) {
-      requestSandboxWorkspaceRefresh(convId, 'skills')
+      requestSandboxWorkspaceRefresh(convId, 'skills', true)
     }
     const sendPromise = send(text, convId, {
       executionPreference: preference.value,

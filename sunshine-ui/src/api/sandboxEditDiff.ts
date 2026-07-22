@@ -60,6 +60,18 @@ export function summarizeDiffCounts(lines: SandboxDiffLine[]): { add: number; de
   return { add, del }
 }
 
+/** write 主行 +N：只计数，避免折叠态为摘要分配整文件 diff 行数组 */
+export function countWriteAddLines(raw: string): number {
+  if (raw == null || raw === '') return 0
+  const normalized = raw.endsWith('\n') ? raw.slice(0, -1) : raw
+  if (normalized === '') return 1
+  let n = 1
+  for (let i = 0; i < normalized.length; i++) {
+    if (normalized.charCodeAt(i) === 10) n++
+  }
+  return n
+}
+
 /** write 展开：全文视为新增行（绿底 + 新侧行号 1..N） */
 export function writeContentAsAddLines(raw: string): SandboxDiffLine[] {
   if (raw == null || raw === '') return []

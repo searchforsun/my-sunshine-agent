@@ -236,12 +236,12 @@ public class GenerationJob {
         emitFinishSteps();
         streamService.updateStatus(generationId, GenerationStatus.COMPLETED);
         persistFinal(MessageStatus.COMPLETED, () -> {
-            refreshMemoryAfterComplete();
+            refreshContextAfterComplete();
             onComplete.run();
         });
     }
 
-    private void refreshMemoryAfterComplete() {
+    private void refreshContextAfterComplete() {
         if (contextLifecycle == null) {
             return;
         }
@@ -295,7 +295,7 @@ public class GenerationJob {
         contentBlockAccumulator.mergeIntoSteps(stepsBuffer);
         String steps = stepsJson();
         String contentBlocks = contentBlockAccumulator.messageBlocksJson();
-        // ReAct 旁路 emitStreamToken 曾漏写 mysqlBuffer：用 content_blocks 回填，保证 STM SSOT
+        // ReAct 旁路 emitStreamToken 曾漏写 mysqlBuffer：用 content_blocks 回填，保证 content SSOT（L1/历史）
         final String content;
         if (!StringUtils.hasText(buffered)) {
             String fromBlocks = contentBlockAccumulator.messageBlocksPlainText();

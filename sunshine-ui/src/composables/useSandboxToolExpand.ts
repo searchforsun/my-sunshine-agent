@@ -13,6 +13,7 @@ import {
 } from '../api/processingSteps'
 import {
   writeContentAsAddLines,
+  countWriteAddLines,
   linesFromEditDiffMeta,
   isSandboxWriteStep,
   isSandboxEditStep,
@@ -96,11 +97,22 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
     return []
   })
   const editDiffSummary = computed(() => {
-    const lines = sandboxEditDiffLines.value
-    if (!lines.length) return null
-    const { add, del } = summarizeDiffCounts(lines)
-    if (!add && !del) return null
-    return { add, del }
+    const step = toValue(stepSource)
+    if (!isSandboxTool.value || isSandboxExec.value) return null
+    if (sandboxPathEntries.value.length) return null
+    // 折叠主行：write 只计数，勿构建整文件行数组（密集脚手架写文件时主路径）
+    if (isSandboxWriteStep(step) && sandboxRaw.value) {
+      const add = countWriteAddLines(sandboxRaw.value)
+      return add > 0 ? { add, del: 0 } : null
+    }
+    if (isSandboxEditStep(step)) {
+      const lines = linesFromEditDiffMeta(step.metadata?.editDiff) ?? []
+      if (!lines.length) return null
+      const { add, del } = summarizeDiffCounts(lines)
+      if (!add && !del) return null
+      return { add, del }
+    }
+    return null
   })
   const editDiffLang = computed(() => {
     const step = toValue(stepSource)

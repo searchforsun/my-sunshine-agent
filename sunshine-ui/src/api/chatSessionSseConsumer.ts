@@ -46,7 +46,8 @@ import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceR
 import { resolveSandboxWorkspaceRefreshScope } from './sandboxWorkspaceRefreshPolicy'
 import { appendChunk, getOrCreateSession, type SessionState } from './chatSessionRegistry'
 import {
-  bumpAssistantMessage,
+  scheduleAssistantMessageBump,
+  flushAssistantMessageBump,
   updateNodeStepContent,
 } from './chatSessionMutations'
 
@@ -137,7 +138,7 @@ export async function consumeChatSseStream(
             setPendingHitlConfirmations(last, undefined)
             normalizeRestoredInterleavedContent(last)
             notifyCompletedIfNeeded(streamConversationId ?? s.id, last)
-            bumpAssistantMessage(s)
+            scheduleAssistantMessageBump(s)
           }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'interrupted') {
@@ -145,7 +146,7 @@ export async function consumeChatSseStream(
           if (last?.role === 'assistant') {
             last.status = 'interrupted'
             stampTimelineEnded(last)
-            bumpAssistantMessage(s)
+            scheduleAssistantMessageBump(s)
           }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'failed') {
@@ -157,7 +158,7 @@ export async function consumeChatSseStream(
             if (!last.streamError) {
               last.streamError = '可点击下方继续生成重试'
             }
-            bumpAssistantMessage(s)
+            scheduleAssistantMessageBump(s)
           }
         }
         continue
@@ -244,7 +245,7 @@ export async function consumeChatSseStream(
           if (refreshScope) {
             requestSandboxWorkspaceRefresh(streamConversationId ?? s.id, refreshScope)
           }
-          bumpAssistantMessage(s)
+          flushAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -271,7 +272,7 @@ export async function consumeChatSseStream(
           }
           lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
           if (delta.stepId.startsWith('expert-')) {
-            bumpAssistantMessage(s)
+            scheduleAssistantMessageBump(s)
           }
           if (delta.stepId === 'node-answer' && (delta.channel === 'result' || delta.channel === 'output')) {
             syncPlanAnswerContentFromStep(lastMsg)
@@ -313,7 +314,7 @@ export async function consumeChatSseStream(
           setPendingHitlConfirmations(lastMsg, synced.pending)
           stripPlanDrawerLeakFromMessage(lastMsg)
           notifyHitlIfNeeded(streamConversationId ?? s.id, lastMsg)
-          bumpAssistantMessage(s)
+          flushAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -334,7 +335,7 @@ export async function consumeChatSseStream(
             lastMsg.status = 'streaming'
             stampTimelineStarted(lastMsg)
           }
-          bumpAssistantMessage(s)
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -351,7 +352,7 @@ export async function consumeChatSseStream(
           } else {
             endContentSegment(lastMsg, parsed.segmentId)
           }
-          bumpAssistantMessage(s)
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -382,7 +383,7 @@ export async function consumeChatSseStream(
             stampTimelineStarted(lastMsg)
           }
           stripPlanDrawerLeakFromMessage(lastMsg)
-          bumpAssistantMessage(s)
+          scheduleAssistantMessageBump(s)
         }
         hooks.onChunk?.(s.id, parsed.text)
         hooks.onProgress?.(s.id)
@@ -398,7 +399,7 @@ export async function consumeChatSseStream(
           lastMsg.status = 'streaming'
           stampTimelineStarted(lastMsg)
         }
-        bumpAssistantMessage(s)
+        scheduleAssistantMessageBump(s)
       }
 
       hooks.onProgress?.(s.id)
@@ -409,4 +410,5 @@ export async function consumeChatSseStream(
 
     if (done) break
   }
+  flushAssistantMessageBump(s)
 }

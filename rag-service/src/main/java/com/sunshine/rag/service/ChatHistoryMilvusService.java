@@ -29,7 +29,7 @@ import java.util.List;
 
 /**
  * 对话历史 chunk 向量库 — collection {@code sunshine_chat_history}，
- * 与企业 KB、旧 {@code sunshine_memory_mtm} 分离。
+ * 与企业 KB 分离（独立 collection）。
  */
 @Slf4j
 @Service
