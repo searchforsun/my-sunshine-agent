@@ -57,5 +57,7 @@ public class ContextProperties {
     public static class Maintenance {
         /** ms；仿 SandboxSessionReaper */
         private long intervalMs = 3_600_000L;
+        /** superseded 行保留天数，超时物理删除 */
+        private int supersededRetentionDays = 180;
     }
 }

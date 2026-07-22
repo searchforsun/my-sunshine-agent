@@ -283,6 +283,7 @@ agent:
       time-decay: true
     maintenance:
       interval-ms: 3600000
+      superseded-retention-days: 180
   memory:
     # 仅 AutoContext（4.6.4）；跨轮上下文见 agent.context + Catalog context.*
     auto-context:
