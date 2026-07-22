@@ -53,6 +53,12 @@ const router = createRouter({
           meta: { title: '专家' },
         },
         {
+          path: 'context',
+          name: 'context',
+          component: () => import('../views/ContextView.vue'),
+          meta: { title: '上下文' },
+        },
+        {
           path: 'prompts',
           name: 'prompts',
           component: () => import('../views/PromptsView.vue'),

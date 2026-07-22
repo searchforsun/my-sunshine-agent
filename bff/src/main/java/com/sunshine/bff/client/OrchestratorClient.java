@@ -284,6 +284,78 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> listContextL2(String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/admin/context/l2")
+                        .queryParam("userId", userId)
+                        .queryParam("tenantId", tenantId != null ? tenantId : "default")
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> updateContextL2(String id, Map<String, Object> body) {
+        return webClient.put()
+                .uri("/api/admin/context/l2/{id}", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body != null ? body : Map.of())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> voidContextL2(String id) {
+        return webClient.post()
+                .uri("/api/admin/context/l2/{id}/void", id)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> getContextL1(String convId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/admin/context/l1")
+                        .queryParam("convId", convId)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> getContextL3Status(String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/admin/context/l3/status")
+                        .queryParam("userId", userId)
+                        .queryParam("tenantId", tenantId != null ? tenantId : "default")
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> runContextL3Gc() {
+        return webClient.post()
+                .uri("/api/admin/context/l3/gc")
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> reingestContextL3(String convId) {
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/admin/context/l3/reingest")
+                        .queryParam("convId", convId)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     private Mono<? extends Throwable> toStatusException(
             org.springframework.web.reactive.function.client.ClientResponse response) {
         return response.bodyToMono(String.class)

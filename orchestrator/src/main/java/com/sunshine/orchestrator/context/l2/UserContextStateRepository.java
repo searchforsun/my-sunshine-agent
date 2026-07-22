@@ -8,6 +8,9 @@ import java.util.Optional;
 
 public interface UserContextStateRepository extends JpaRepository<UserContextStateEntity, String> {
 
+    List<UserContextStateEntity> findByUserIdAndTenantIdOrderByUpdatedAtDesc(
+            String userId, String tenantId);
+
     List<UserContextStateEntity> findByUserIdAndTenantIdAndStatus(
             String userId, String tenantId, String status);
 
