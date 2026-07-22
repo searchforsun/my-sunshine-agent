@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 
 /**
- * 旧 LTM 表已 DROP；Task 8 前空实现，保证 MemoryComposer 可编译启动。
+ * 旧 LTM 表已 DROP；Task 8 前空实现，保证 MemoryLifecycle 等过渡路径可编译。
  */
 @Slf4j
 @Service

@@ -11,8 +11,8 @@ import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
-import com.sunshine.orchestrator.memory.MemoryComposer;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.context.ContextAssembler;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
@@ -32,7 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/** 新消息 / 续跑前的会话落库与 Memory 组装 */
+/** 新消息 / 续跑前的会话落库与 Context 组装 */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -41,7 +41,7 @@ public class ChatStreamContextFactory {
     private final ConversationService conversationService;
     private final DesensitizeClient desensitizeClient;
     private final SkillBindingParser skillBindingParser;
-    private final MemoryComposer memoryComposer;
+    private final ContextAssembler contextAssembler;
     private final ExecutionPlanStore executionPlanStore;
     private final ExecutionPlanParser executionPlanParser;
     private final DefaultKbResolver defaultKbResolver;
@@ -80,10 +80,10 @@ public class ChatStreamContextFactory {
         } else if (StringUtils.hasText(msg.getSkillId())) {
             executionQuery = skillBindingParser.stripSkillMentions(userContent);
         }
-        AssembledContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
+        AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
                 userId, tenantId, conv.getId(), loadedHistory, executionQuery));
         if (!loadedHistory.isEmpty() && !memory.hasAnyLayer()) {
-            log.debug("[Orchestrator] 记忆块为空 loaded={} user={}",
+            log.debug("[Orchestrator] 上下文为空 loaded={} user={}",
                     loadedHistory.size(),
                     executionQuery.length() > 40 ? executionQuery.substring(0, 40) + "..." : executionQuery);
         }
@@ -176,10 +176,10 @@ public class ChatStreamContextFactory {
             history.remove(history.size() - 1);
         }
 
-        AssembledContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
+        AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
                 userId, tenantId, assistant.getConversationId(), history, userContent));
         // ReAct 续跑重规划：loadHistoryForResume 已在当前 assistant 前截断，并去掉同轮 user（作 query）；
-        // STM 仅含更早已完成轮次，不含本轮 tool/正文执行史；Agent 侧靠新 ReActAgent + stream epoch 隔离。
+        // Near 仅含更早已完成轮次，不含本轮 tool/正文执行史；Agent 侧靠新 ReActAgent + stream epoch 隔离。
 
         return new ChatResumePreparation(
                 assistant.getId(),
