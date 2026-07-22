@@ -100,11 +100,11 @@ const renderedLines = computed(() =>
 }
 
 .diff-row.is-del {
-  background: color-mix(in srgb, #c44 14%, transparent);
+  background: color-mix(in srgb, #c44 28%, transparent);
 }
 
 .diff-row.is-add {
-  background: color-mix(in srgb, #2a9a5c 14%, transparent);
+  background: color-mix(in srgb, #2a9a5c 28%, transparent);
 }
 
 .diff-row.is-fold {
