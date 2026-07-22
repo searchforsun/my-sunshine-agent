@@ -53,36 +53,38 @@ CREATE TABLE chat_audit_log (
     INDEX idx_audit_msg (message_id)
 );
 
--- V5__memory_schema.sql
--- STM/MTM/LTM 三层记忆 — 中期摘要与长期画像（STM 热数据在 Redis）
+-- V5__context_schema.sql
+-- 上下文优化：L1 派生 + L2 状态（废止 conversation_memory_mtm / user_memory_profile）
+-- 已有库一次性迁移见 scripts/migrate_context_l1_l2.sql（禁止 Flyway）
 
-CREATE TABLE conversation_memory_mtm (
-    id          VARCHAR(32)  NOT NULL PRIMARY KEY,
-    user_id     VARCHAR(64)  NOT NULL,
-    tenant_id   VARCHAR(32)  NOT NULL DEFAULT 'default',
-    conv_id     VARCHAR(32)  NOT NULL,
-    summary     TEXT         NOT NULL,
-    topics      VARCHAR(512) NULL,
-    intent      VARCHAR(32)  NULL,
-    heat_score  INT          NOT NULL DEFAULT 0,
-    created_at  TIMESTAMP(3) NOT NULL,
-    updated_at  TIMESTAMP(3) NOT NULL,
-    UNIQUE KEY uk_mtm_conv (conv_id),
-    INDEX idx_mtm_user_time (user_id, tenant_id, created_at DESC)
-);
-
-CREATE TABLE user_memory_profile (
-    id            VARCHAR(32)  NOT NULL PRIMARY KEY,
+CREATE TABLE conversation_context_l1 (
+    conv_id       VARCHAR(32)  NOT NULL PRIMARY KEY,
     user_id       VARCHAR(64)  NOT NULL,
     tenant_id     VARCHAR(32)  NOT NULL DEFAULT 'default',
-    department    VARCHAR(128) NULL,
-    role_label    VARCHAR(128) NULL,
-    preferences   TEXT         NULL,
-    stable_facts  TEXT         NULL,
-    permissions   VARCHAR(512) NULL,
-    created_at    TIMESTAMP(3) NOT NULL,
+    mid_answers   MEDIUMTEXT   NULL COMMENT 'JSON map msgId -> answer summary',
+    far_summary   MEDIUMTEXT   NULL,
+    near_n        INT          NOT NULL DEFAULT 8,
+    mid_n         INT          NOT NULL DEFAULT 8,
     updated_at    TIMESTAMP(3) NOT NULL,
-    UNIQUE KEY uk_profile_user (user_id, tenant_id)
+    INDEX idx_l1_user (user_id, tenant_id)
+);
+
+CREATE TABLE user_context_state (
+    id              VARCHAR(32)  NOT NULL PRIMARY KEY,
+    user_id         VARCHAR(64)  NOT NULL,
+    tenant_id       VARCHAR(32)  NOT NULL DEFAULT 'default',
+    kind            VARCHAR(32)  NOT NULL,
+    state_key       VARCHAR(128) NOT NULL,
+    state_value     TEXT         NOT NULL,
+    confidence      DOUBLE       NOT NULL DEFAULT 0,
+    status          VARCHAR(16)  NOT NULL DEFAULT 'active',
+    expires_at      TIMESTAMP(3) NULL,
+    source_msg_id   VARCHAR(64)  NULL,
+    created_at      TIMESTAMP(3) NOT NULL,
+    updated_at      TIMESTAMP(3) NOT NULL,
+    UNIQUE KEY uk_ctx_user_kind_key (user_id, tenant_id, kind, state_key),
+    INDEX idx_ctx_user_status (user_id, tenant_id, status),
+    INDEX idx_ctx_expires (expires_at)
 );
 
 -- V6__execution_plan.sql

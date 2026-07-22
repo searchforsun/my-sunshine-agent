@@ -37,12 +37,12 @@ def build_mysql_sql(
         "SET FOREIGN_KEY_CHECKS = 0;",
         "TRUNCATE TABLE chat_message;",
         "TRUNCATE TABLE chat_conversation;",
-        "TRUNCATE TABLE conversation_memory_mtm;",
+        "TRUNCATE TABLE conversation_context_l1;",
     ]
     if include_audit:
         lines.append("TRUNCATE TABLE chat_audit_log;")
     if include_ltm:
-        lines.append("TRUNCATE TABLE user_memory_profile;")
+        lines.append("TRUNCATE TABLE user_context_state;")
     lines.append("SET FOREIGN_KEY_CHECKS = 1;")
     return "\n".join(lines)
 
@@ -70,11 +70,11 @@ def main() -> int:
     print("\nSunshine session / memory cache cleanup")
     print(f"  MySQL : {args.mysql_user}@{args.mysql_host}:{args.mysql_port}/{args.mysql_database}")
     print(f"  Redis : {args.redis_host}:{args.redis_port}")
-    print("  scope : chat_* + conversation_memory_mtm")
+    print("  scope : chat_* + conversation_context_l1")
     if args.include_audit:
         print("         + chat_audit_log")
     if args.include_ltm:
-        print("         + user_memory_profile (LTM)")
+        print("         + user_context_state (L2)")
     print(f"  Redis : {' / '.join(REDIS_PATTERNS)}")
     print()
 

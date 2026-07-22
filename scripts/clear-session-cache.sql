@@ -7,12 +7,12 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 TRUNCATE TABLE chat_message;
 TRUNCATE TABLE chat_conversation;
-TRUNCATE TABLE conversation_memory_mtm;
+TRUNCATE TABLE conversation_context_l1;
 
 -- 可选：审计日志（脚本 -IncludeAudit 时执行）
 -- TRUNCATE TABLE chat_audit_log;
 
--- 可选：长期用户画像（脚本 -IncludeLtm 时执行）
--- TRUNCATE TABLE user_memory_profile;
+-- 可选：L2 跨会话状态（脚本 --include-ltm 时执行）
+-- TRUNCATE TABLE user_context_state;
 
 SET FOREIGN_KEY_CHECKS = 1;
