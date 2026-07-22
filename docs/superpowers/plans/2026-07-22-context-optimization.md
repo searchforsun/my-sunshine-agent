@@ -389,7 +389,7 @@ EOF
 - Catalog: `17-sunshine-prompt-manager.sql` 增加 `context.l1.mid-compress` / `context.l1.far-fold`
 - Test: `L1CompressorTest`、`ContextAssemblerL1Test`
 
-- [ ] **Step 1: 单测 — Mid 形态**
+- [x] **Step 1: 单测 — Mid 形态**
 
 ```java
 @Test
@@ -400,7 +400,7 @@ void midTurn_keepsFullUser_andSummarizedAssistant() {
 }
 ```
 
-- [ ] **Step 2: 单测 — 触发条件（预算或轮次）**
+- [x] **Step 2: 单测 — 触发条件（预算或轮次）**
 
 ```java
 @Test
@@ -410,11 +410,11 @@ void shouldCompress_whenOverMaxCharsEvenIfUnderTurnCap() { … }
 void shouldCompress_whenOverTurnCapEvenIfUnderChars() { … }
 ```
 
-- [ ] **Step 3: 实现压缩**：对将落入 Mid 的 assistant 原文调 LLM（Catalog `context.l1.mid-compress`）写入 `mid_answers`；对将落入 Far 的区间调 `context.l1.far-fold` 更新 `far_summary`。异步；失败打日志不抛到用户。
+- [x] **Step 3: 实现压缩**：对将落入 Mid 的 assistant 原文调 LLM（Catalog `context.l1.mid-compress`）写入 `mid_answers`；对将落入 Far 的区间调 `context.l1.far-fold` 更新 `far_summary`。异步；失败打日志不抛到用户。
 
-- [ ] **Step 4: Assembler 读派生表拼装 Mid/Far（Far 为 system 块文本）**
+- [x] **Step 4: Assembler 读派生表拼装 Mid/Far（Far 为 system 块文本）**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'

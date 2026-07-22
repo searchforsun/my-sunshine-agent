@@ -15,7 +15,7 @@ import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PendingInteraction;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
-import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.processing.ContentBlockAccumulator;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
 import lombok.Getter;
@@ -46,7 +46,7 @@ public class GenerationJob {
     private final GenerationStreamService streamService;
     private final GenerationProperties properties;
     private final GenerationFlushScheduler flushScheduler;
-    private final MemoryLifecycleService memoryLifecycleService;
+    private final ContextLifecycle contextLifecycle;
     private final WorkflowPauseService workflowPauseService;
     private final ExecutionPlanStore executionPlanStore;
     private final AgentPauseProperties pauseProperties;
@@ -75,7 +75,7 @@ public class GenerationJob {
             GenerationStreamService streamService,
             GenerationProperties properties,
             GenerationFlushScheduler flushScheduler,
-            MemoryLifecycleService memoryLifecycleService,
+            ContextLifecycle contextLifecycle,
             WorkflowPauseService workflowPauseService,
             ExecutionPlanStore executionPlanStore,
             AgentPauseProperties pauseProperties,
@@ -90,7 +90,7 @@ public class GenerationJob {
         this.streamService = streamService;
         this.properties = properties;
         this.flushScheduler = flushScheduler;
-        this.memoryLifecycleService = memoryLifecycleService;
+        this.contextLifecycle = contextLifecycle;
         this.workflowPauseService = workflowPauseService;
         this.executionPlanStore = executionPlanStore;
         this.pauseProperties = pauseProperties != null ? pauseProperties : new AgentPauseProperties();
@@ -242,14 +242,14 @@ public class GenerationJob {
     }
 
     private void refreshMemoryAfterComplete() {
-        if (memoryLifecycleService == null) {
+        if (contextLifecycle == null) {
             return;
         }
         try {
-            memoryLifecycleService.onAssistantCompleted(
+            contextLifecycle.onTurnCompleted(
                     messageId, userId, tenantId, MessageStatus.COMPLETED);
         } catch (Exception e) {
-            log.warn("[GenerationJob] STM 刷新失败 msg={}: {}", messageId, e.getMessage());
+            log.warn("[GenerationJob] Context 刷新失败 msg={}: {}", messageId, e.getMessage());
         }
     }
 

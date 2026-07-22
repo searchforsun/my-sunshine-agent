@@ -587,4 +587,12 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.current-user-marker', 'context', '上下文 · 当前提问标记', '当前 user 消息前缀标记，与历史上下文块区分。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.current-user-marker', 1, 'published', '【当前提问 · 仅此作答】', NULL, 'context optimization task3', 'prompt-ops');
 
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l1.mid-compress', 'context', 'L1 · Mid 答案压缩', '后台将落入 Mid 带的 assistant 原文压成短摘要，写入 mid_answers（不改用户可见终态正文）。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.mid-compress', 1, 'published', '你是对话答案压缩助手。将下列助手回复压成 1～3 句中文摘要，保留关键事实、结论与用户可指代的要点。
+只输出摘要正文，不要标题或 markdown。', NULL, 'context optimization task5', 'prompt-ops');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l1.far-fold', 'context', 'L1 · Far 远窗折叠', '后台将更早对话折叠进 far_summary 边界摘要块（可叠加上一轮远窗摘要）。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.far-fold', 1, 'published', '你是会话远窗折叠助手。综合「已有远窗摘要」与「待折叠对话」，输出一段连贯中文摘要（约 3～8 句）。
+只保留可指代的事实与结论；不要标题或 markdown；不要编造未出现的内容。', NULL, 'context optimization task5', 'prompt-ops');
+
 UPDATE prompt_catalog_meta SET catalog_version = catalog_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1;

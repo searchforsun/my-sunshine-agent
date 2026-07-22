@@ -1,16 +1,29 @@
 package com.sunshine.orchestrator.context;
 
-import com.sunshine.orchestrator.conversation.ChatTurn;
+import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class ContextAssemblerTest {
+
+    @Mock
+    private ConversationContextL1Store l1Store;
 
     private ContextProperties properties;
     private ContextAssembler assembler;
@@ -18,15 +31,19 @@ class ContextAssemblerTest {
     @BeforeEach
     void setUp() {
         properties = new ContextProperties();
-        assembler = new ContextAssembler(properties);
+        assembler = new ContextAssembler(properties, l1Store);
+        lenient().when(l1Store.find(anyString())).thenReturn(Optional.empty());
+        lenient().when(l1Store.parseMidAnswers(any())).thenReturn(Map.of());
+        lenient().when(l1Store.farSummaryOf(any())).thenReturn("");
     }
 
     @Test
     void assemble_keepsLastNearTurns() {
         properties.getL1().setNearTurns(2);
+        properties.getL1().setMidTurns(0);
         properties.getL1().setMaxChars(100_000);
-        List<ChatTurn> history = IntStream.range(0, 20)
-                .mapToObj(i -> new ChatTurn(i % 2 == 0 ? "user" : "assistant", "m" + i))
+        List<SessionTurn> history = IntStream.range(0, 20)
+                .mapToObj(i -> SessionTurn.of("m" + i, i % 2 == 0 ? "user" : "assistant", "m" + i))
                 .toList();
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
@@ -44,11 +61,12 @@ class ContextAssemblerTest {
     @Test
     void assemble_dropsWholeTurnsFromHeadWhenOverMaxChars() {
         properties.getL1().setNearTurns(10);
+        properties.getL1().setMidTurns(0);
         properties.getL1().setMaxChars(6);
-        List<ChatTurn> history = List.of(
-                new ChatTurn("user", "aaaa"),
-                new ChatTurn("assistant", "bbbb"),
-                new ChatTurn("user", "cc"));
+        List<SessionTurn> history = List.of(
+                SessionTurn.of("user", "aaaa"),
+                SessionTurn.of("assistant", "bbbb"),
+                SessionTurn.of("user", "cc"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
                 "u1", "default", "c1", history, "q"));
@@ -63,9 +81,9 @@ class ContextAssemblerTest {
         properties.getL1().setNearTurns(4);
         properties.getL1().setMaxChars(100_000);
         String longReply = "x".repeat(2000);
-        List<ChatTurn> history = List.of(
-                new ChatTurn("user", "q"),
-                new ChatTurn("assistant", longReply));
+        List<SessionTurn> history = List.of(
+                SessionTurn.of("user", "q"),
+                SessionTurn.of("assistant", longReply));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
                 "u1", "default", "c1", history, "follow up"));
@@ -76,9 +94,9 @@ class ContextAssemblerTest {
     @Test
     void assemble_filtersBlankTurns() {
         properties.getL1().setNearTurns(8);
-        List<ChatTurn> history = List.of(
-                new ChatTurn("user", "hello"),
-                new ChatTurn("assistant", "  "));
+        List<SessionTurn> history = List.of(
+                SessionTurn.of("user", "hello"),
+                SessionTurn.of("assistant", "  "));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
                 "u1", "default", "c1", history, "again"));
@@ -90,7 +108,7 @@ class ContextAssemblerTest {
     @Test
     void assemble_whenDisabled_returnsEmpty() {
         properties.setEnabled(false);
-        List<ChatTurn> history = List.of(new ChatTurn("user", "hi"));
+        List<SessionTurn> history = List.of(SessionTurn.of("user", "hi"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
                 "u1", "default", "c1", history, "q"));
@@ -120,9 +138,9 @@ class ContextAssemblerTest {
     void assemble_historyWithinBudget_keepsAll() {
         properties.getL1().setNearTurns(8);
         properties.getL1().setMaxChars(100_000);
-        List<ChatTurn> history = new ArrayList<>();
-        history.add(new ChatTurn("user", "写 cpp 快排"));
-        history.add(new ChatTurn("assistant", "cpp code full content"));
+        List<SessionTurn> history = new ArrayList<>();
+        history.add(SessionTurn.of("user", "写 cpp 快排"));
+        history.add(SessionTurn.of("assistant", "cpp code full content"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
                 "u1", "default", "c1", history, "写 py 快排"));

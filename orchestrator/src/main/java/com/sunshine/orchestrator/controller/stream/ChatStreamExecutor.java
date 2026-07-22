@@ -13,7 +13,7 @@ import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.ExecutionDispatcher;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.PlanWorkflowExecutor;
-import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
@@ -57,7 +57,7 @@ public class ChatStreamExecutor {
     private final ConversationService conversationService;
     private final GenerationFlushScheduler flushScheduler;
     private final DesensitizeClient desensitizeClient;
-    private final MemoryLifecycleService memoryLifecycleService;
+    private final ContextLifecycle contextLifecycle;
 
     @Value("${agent.generation.flush-interval-ms:500}")
     private long flushIntervalMs;
@@ -130,7 +130,7 @@ public class ChatStreamExecutor {
                                 MessageStatus.COMPLETED,
                                 ProcessingStepSerde.toJson(stepsBuffer));
                         maybeUpdateTitle(ctx);
-                        memoryLifecycleService.onAssistantCompleted(
+                        contextLifecycle.onTurnCompleted(
                                 ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), MessageStatus.COMPLETED);
                     })
                     .subscribeOn(Schedulers.boundedElastic())

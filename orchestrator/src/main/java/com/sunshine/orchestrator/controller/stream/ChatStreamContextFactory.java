@@ -4,7 +4,6 @@ import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.client.DesensitizeClient;
-import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.MessageBodyText;
 import com.sunshine.orchestrator.conversation.MessageStatus;
@@ -13,6 +12,7 @@ import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.context.ContextAssembler;
+import com.sunshine.orchestrator.context.SessionTurn;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
@@ -55,9 +55,9 @@ public class ChatStreamContextFactory {
     public ChatStreamContext prepareNewMessage(ChatMessage msg, String userId, String tenantId) {
         ChatConversationEntity conv = resolveConversation(msg.getConversationId(), userId, tenantId);
         // 先加载历史再落库本轮 user/assistant，避免 history + userContent 重复注入 LLM
-        List<ChatTurn> loadedHistory = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
+        List<SessionTurn> loadedHistory = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
                 .filter(m -> !MessageStatus.STREAMING.equals(m.getStatus()))
-                .map(m -> new ChatTurn(m.getRole(), MessageBodyText.resolve(m)))
+                .map(m -> SessionTurn.of(m.getId(), m.getRole(), MessageBodyText.resolve(m)))
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toList());
 
@@ -165,9 +165,9 @@ public class ChatStreamContextFactory {
                 .map(MessageBodyText::resolve)
                 .orElse("");
 
-        List<ChatTurn> history = historyEntities.stream()
+        List<SessionTurn> history = historyEntities.stream()
                 .filter(m -> !m.getId().equals(assistantId))
-                .map(m -> new ChatTurn(m.getRole(), MessageBodyText.resolve(m)))
+                .map(m -> SessionTurn.of(m.getId(), m.getRole(), MessageBodyText.resolve(m)))
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toCollection(ArrayList::new));
         if (!history.isEmpty()

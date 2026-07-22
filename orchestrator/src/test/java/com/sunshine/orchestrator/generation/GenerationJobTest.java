@@ -7,7 +7,7 @@ import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
-import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
 import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
@@ -268,11 +268,11 @@ class GenerationJobTest {
     void start_refreshesMemoryAfterComplete() throws Exception {
         String generationId = streamService.createGeneration(
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
-        MemoryLifecycleService memoryLifecycleService = mock(MemoryLifecycleService.class);
+        ContextLifecycle contextLifecycle = mock(ContextLifecycle.class);
 
         GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler, memoryLifecycleService,
+                streamService, properties, flushScheduler, contextLifecycle,
                 workflowPauseService, executionPlanStore, new AgentPauseProperties(), null);
 
         CountDownLatch done = new CountDownLatch(1);
@@ -285,7 +285,7 @@ class GenerationJobTest {
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
-        verify(memoryLifecycleService).onAssistantCompleted(
+        verify(contextLifecycle).onTurnCompleted(
                 MESSAGE_ID, USER_ID, TENANT_ID, MessageStatus.COMPLETED);
     }
 
