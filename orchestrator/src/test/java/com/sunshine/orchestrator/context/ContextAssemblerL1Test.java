@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.context;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
+import com.sunshine.orchestrator.context.l3.L3RecallService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +15,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -25,6 +28,8 @@ class ContextAssemblerL1Test {
     private ConversationContextL1Store l1Store;
     @Mock
     private L2StateStore l2StateStore;
+    @Mock
+    private L3RecallService l3RecallService;
 
     private ContextProperties properties;
     private ContextAssembler assembler;
@@ -35,8 +40,10 @@ class ContextAssemblerL1Test {
         properties.getL1().setNearTurns(2);
         properties.getL1().setMidTurns(2);
         properties.getL1().setMaxChars(100_000);
-        assembler = new ContextAssembler(properties, l1Store, l2StateStore);
+        assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService);
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
+        lenient().when(l3RecallService.recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean()))
+                .thenReturn("");
     }
 
     @Test

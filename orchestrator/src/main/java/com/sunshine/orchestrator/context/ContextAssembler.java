@@ -5,17 +5,20 @@ import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import com.sunshine.orchestrator.context.l1.L1Compressor;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
+import com.sunshine.orchestrator.context.l3.L3RecallService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * 跨轮上下文读路径：L2 system + L1 Near/Mid/Far。
+ * 跨轮上下文读路径：L2 system + L1 Near/Mid/Far + L3 材料（含 Far 回填）。
  */
 @Slf4j
 @Service
@@ -25,6 +28,7 @@ public class ContextAssembler {
     private final ContextProperties contextProperties;
     private final ConversationContextL1Store l1Store;
     private final L2StateStore l2StateStore;
+    private final L3RecallService l3RecallService;
 
     public AssembledContext assemble(AssembleRequest request) {
         if (!contextProperties.isEnabled()) {
@@ -45,13 +49,116 @@ public class ContextAssembler {
         String farBlock = StringUtils.hasText(farSummary) ? farSummary.strip() : "";
         String l2Block = l2StateStore.assembleSystemBlock(request.userId(), request.tenantId());
 
-        log.debug("[Context] assemble conv={} l2={} far={} mid={} near={}",
+        Set<String> nearMidIds = collectMsgIds(bands.near(), bands.mid());
+        Set<String> farIds = collectMsgIds(bands.far());
+        String l3Block = "";
+        if (StringUtils.hasText(request.currentUserQuery())) {
+            try {
+                l3Block = l3RecallService.recall(
+                        request.userId(),
+                        request.tenantId(),
+                        request.currentUserQuery(),
+                        nearMidIds,
+                        farIds,
+                        StringUtils.hasText(farBlock));
+            } catch (Exception e) {
+                log.warn("[Context] L3 recall 失败 conv={}: {}", request.conversationId(), e.getMessage());
+            }
+        }
+
+        AssembledContext assembled = new AssembledContext(
+                l2Block != null ? l2Block : "",
+                farBlock,
+                mid,
+                near,
+                l3Block != null ? l3Block : "");
+        AssembledContext trimmed = applyBudget(assembled, l1.getMaxChars());
+
+        log.debug("[Context] assemble conv={} l2={} far={} mid={} near={} l3={}",
                 request.conversationId(),
-                l2Block.isBlank() ? 0 : 1,
-                farBlock.isBlank() ? 0 : 1,
-                mid.size(),
-                near.size());
-        return new AssembledContext(l2Block, farBlock, mid, near, "");
+                trimmed.l2SystemBlock().isBlank() ? 0 : 1,
+                trimmed.farSummaryBlock().isBlank() ? 0 : 1,
+                trimmed.midTurns().size(),
+                trimmed.nearTurns().size(),
+                trimmed.l3MaterialBlock().isBlank() ? 0 : 1);
+        return trimmed;
+    }
+
+    /**
+     * 预算裁剪：先丢 L3 → 再丢 Far → 永不丢 L2（含 constraint 行）。
+     * Mid/Near 已在 Near 带做过 trimByChars；此处只处理 L3/Far 溢出。
+     */
+    static AssembledContext applyBudget(AssembledContext ctx, int maxChars) {
+        if (ctx == null) {
+            return AssembledContext.empty();
+        }
+        if (maxChars <= 0) {
+            return ctx;
+        }
+        if (estimateChars(ctx) <= maxChars) {
+            return ctx;
+        }
+        AssembledContext dropL3 = new AssembledContext(
+                ctx.l2SystemBlock(),
+                ctx.farSummaryBlock(),
+                ctx.midTurns(),
+                ctx.nearTurns(),
+                "");
+        if (estimateChars(dropL3) <= maxChars) {
+            return dropL3;
+        }
+        return new AssembledContext(
+                ctx.l2SystemBlock(),
+                "",
+                ctx.midTurns(),
+                ctx.nearTurns(),
+                "");
+    }
+
+    static int estimateChars(AssembledContext ctx) {
+        if (ctx == null) {
+            return 0;
+        }
+        int n = len(ctx.l2SystemBlock()) + len(ctx.farSummaryBlock()) + len(ctx.l3MaterialBlock());
+        n += turnsChars(ctx.midTurns());
+        n += turnsChars(ctx.nearTurns());
+        return n;
+    }
+
+    private static int turnsChars(List<ChatTurn> turns) {
+        if (turns == null || turns.isEmpty()) {
+            return 0;
+        }
+        int n = 0;
+        for (ChatTurn t : turns) {
+            if (t != null && t.content() != null) {
+                n += t.content().length();
+            }
+        }
+        return n;
+    }
+
+    private static int len(String s) {
+        return s != null ? s.length() : 0;
+    }
+
+    @SafeVarargs
+    static Set<String> collectMsgIds(List<SessionTurn>... bands) {
+        Set<String> ids = new HashSet<>();
+        if (bands == null) {
+            return ids;
+        }
+        for (List<SessionTurn> band : bands) {
+            if (band == null) {
+                continue;
+            }
+            for (SessionTurn t : band) {
+                if (t != null && StringUtils.hasText(t.messageId())) {
+                    ids.add(t.messageId());
+                }
+            }
+        }
+        return ids;
     }
 
     static List<ChatTurn> projectMid(List<SessionTurn> midBand, Map<String, String> midAnswers) {

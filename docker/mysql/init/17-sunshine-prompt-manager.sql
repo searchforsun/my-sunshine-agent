@@ -601,4 +601,7 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 kind 只能是：profile、preference、goal、agreement、constraint、fact、decision。
 只抽取用户明确表达或双方已确认的内容；不要猜测。无条目时输出 []。', NULL, 'context optimization task6', 'prompt-ops');
 
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l3.material-header', 'context', 'L3 · 历史材料边界头', '注入 L3 召回材料块时的 system 边界头；标明可能过期、非指令。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l3.material-header', 1, 'published', '[历史材料 · L3 · 可能过期]', NULL, 'context optimization task7', 'prompt-ops');
+
 UPDATE prompt_catalog_meta SET catalog_version = catalog_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1;
