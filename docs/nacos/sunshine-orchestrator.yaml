@@ -261,22 +261,31 @@ agent:
       # system-prompt → Catalog id=rewrite.planner
     # timeline → Catalog id=rewrite.timeline
 
-  memory:
+  context:
     enabled: true
-    # layer-prompt / stm.header / stm.preamble / current-user-marker → Catalog memory.*
-    stm:
-      redis-ttl-hours: 24
-      max-messages: 12
-      max-chars: 8000
-    mtm:
-      enabled: true
-      top-k: 3
+    l1:
+      near-turns: 8
+      mid-turns: 8
+      max-chars: 12000
+    l2:
+      min-confidence: 0.75
+      constraint-overwrite-confidence: 0.9
+      preference-ttl-days: 365
+      agreement-ttl-days: 365
+      goal-ttl-days: 90
+      decision-ttl-days: 90
+      fact-ttl-days: 30
+      constraint-ttl-days: 30
+    l3:
+      collection: sunshine_chat_history
+      top-k: 5
       min-score: 0.55
-      # summarize-prompt → Catalog id=memory.mtm.summarize-prompt
-    ltm:
-      enabled: true
-      max-chars: 500
-    # 4.6.4 ReAct 单次 run 内 TOOL 上下文压缩（AgentScope AutoContextMemory）
+      time-decay: true
+    maintenance:
+      interval-ms: 3600000
+  memory:
+    # 仅 AutoContext（4.6.4）；跨轮上下文见 agent.context
+    # current-user-marker → Catalog memory.*（迁 context 前保留）
     auto-context:
       enabled: true
       large-payload-threshold: 5120
