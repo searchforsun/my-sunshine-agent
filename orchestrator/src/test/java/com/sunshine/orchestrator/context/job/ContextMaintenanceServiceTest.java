@@ -56,12 +56,11 @@ class ContextMaintenanceServiceTest {
     }
 
     @Test
-    void voidExpiredL2_andDeleteCorrespondingVectors() {
+    void voidExpiredL2_doesNotDeleteChatHistoryVectors() {
         UserContextStateEntity expired = l2("s1", "active", "u1", "default",
                 now.minus(1, ChronoUnit.HOURS), "msg-expired");
         when(l2Repository.findByStatusAndExpiresAtBefore("active", now))
                 .thenReturn(List.of(expired));
-        when(historyRagClient.delete("u1", "default", "msg-expired")).thenReturn(Mono.empty());
 
         int voided = service.voidExpiredL2(now);
 
@@ -70,7 +69,7 @@ class ContextMaintenanceServiceTest {
         verify(l2Repository).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo("void");
         assertThat(captor.getValue().getUpdatedAt()).isEqualTo(now);
-        verify(historyRagClient).delete("u1", "default", "msg-expired");
+        verify(historyRagClient, never()).delete(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -105,19 +104,20 @@ class ContextMaintenanceServiceTest {
     }
 
     @Test
-    void gcL3Vectors_deletesVoidSourcesAndMissingMessages() {
-        UserContextStateEntity voided = l2("v1", "void", "u1", "default", null, "msg-void");
+    void gcL3_deletesOrphanVectorsWhenChatMessageMissing() {
+        UserContextStateEntity voidButMsgAlive = l2("v1", "void", "u1", "default", null, "msg-alive");
         UserContextStateEntity orphanSrc = l2("a1", "active", "u1", "default", null, "msg-missing");
-        when(l2Repository.findByStatus("void")).thenReturn(List.of(voided));
-        when(l2Repository.findByStatus("active")).thenReturn(List.of(orphanSrc));
+        when(l2Repository.findAll()).thenReturn(List.of(voidButMsgAlive, orphanSrc));
+        when(l1Repository.findAll()).thenReturn(List.of());
+        when(messageRepository.existsById("msg-alive")).thenReturn(true);
         when(messageRepository.existsById("msg-missing")).thenReturn(false);
         when(historyRagClient.delete(anyString(), anyString(), anyString())).thenReturn(Mono.empty());
 
         int count = service.gcL3Vectors();
 
-        assertThat(count).isEqualTo(2);
-        verify(historyRagClient).delete("u1", "default", "msg-void");
+        assertThat(count).isEqualTo(1);
         verify(historyRagClient).delete("u1", "default", "msg-missing");
+        verify(historyRagClient, never()).delete("u1", "default", "msg-alive");
     }
 
     @Test

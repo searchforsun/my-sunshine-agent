@@ -85,8 +85,8 @@ public class ContextAssembler {
     }
 
     /**
-     * 预算裁剪：先丢 L3 → 再丢 Far → 永不丢 L2（含 constraint 行）。
-     * Mid/Near 已在 Near 带做过 trimByChars；此处只处理 L3/Far 溢出。
+     * 预算裁剪：先丢 L3 → 再丢 Far → Mid 从头整轮丢弃 → 永不丢 L2（含 constraint 行）。
+     * Near 已在组装路径 trimByChars；此处在 L3/Far 仍超预算时再裁 Mid。
      */
     static AssembledContext applyBudget(AssembledContext ctx, int maxChars) {
         if (ctx == null) {
@@ -107,10 +107,26 @@ public class ContextAssembler {
         if (estimateChars(dropL3) <= maxChars) {
             return dropL3;
         }
-        return new AssembledContext(
+        AssembledContext dropFar = new AssembledContext(
                 ctx.l2SystemBlock(),
                 "",
                 ctx.midTurns(),
+                ctx.nearTurns(),
+                "");
+        if (estimateChars(dropFar) <= maxChars) {
+            return dropFar;
+        }
+        List<ChatTurn> mid = ctx.midTurns() != null
+                ? new ArrayList<>(ctx.midTurns())
+                : new ArrayList<>();
+        while (!mid.isEmpty() && estimateChars(new AssembledContext(
+                ctx.l2SystemBlock(), "", mid, ctx.nearTurns(), "")) > maxChars) {
+            mid.remove(0);
+        }
+        return new AssembledContext(
+                ctx.l2SystemBlock(),
+                "",
+                List.copyOf(mid),
                 ctx.nearTurns(),
                 "");
     }

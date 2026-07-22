@@ -44,10 +44,8 @@ export interface L3Status {
   tenantId: string
   contextEnabled: boolean
   collection: string
-  activeL2Count: number
-  voidL2Count: number
-  supersededL2Count: number
-  l1ConversationCount: number
+  note?: string
+  l1RowCount: number
   l3TopK: number
   l3MinScore: number
 }

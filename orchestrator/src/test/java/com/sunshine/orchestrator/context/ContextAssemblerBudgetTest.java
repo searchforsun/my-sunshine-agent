@@ -42,6 +42,25 @@ class ContextAssemblerBudgetTest {
     }
 
     @Test
+    void applyBudget_trimsMidFromHeadWhenStillOverBudget() {
+        String l2 = "[L2]x";
+        List<ChatTurn> mid = List.of(
+                new ChatTurn("user", "M1".repeat(20)),
+                new ChatTurn("user", "M2".repeat(20)),
+                new ChatTurn("assistant", "M3".repeat(20)));
+        List<ChatTurn> near = List.of(new ChatTurn("user", "near"));
+        AssembledContext full = new AssembledContext(l2, "FAR", mid, near, "L3-material");
+        int keepL2NearAndOneMid = l2.length() + "near".length() + "M3".repeat(20).length();
+        AssembledContext out = ContextAssembler.applyBudget(full, keepL2NearAndOneMid);
+        assertThat(out.l3MaterialBlock()).isBlank();
+        assertThat(out.farSummaryBlock()).isBlank();
+        assertThat(out.l2SystemBlock()).isEqualTo(l2);
+        assertThat(out.nearTurns()).isEqualTo(near);
+        assertThat(out.midTurns()).hasSize(1);
+        assertThat(out.midTurns().get(0).content()).isEqualTo("M3".repeat(20));
+    }
+
+    @Test
     void applyBudget_withinLimit_keepsAll() {
         AssembledContext ctx = new AssembledContext(
                 "[用户状态 · L2]\n- constraint/x: y",

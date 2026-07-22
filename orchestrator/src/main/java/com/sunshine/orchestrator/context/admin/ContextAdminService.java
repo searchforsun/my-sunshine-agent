@@ -118,23 +118,6 @@ public class ContextAdminService {
     public L3StatusView l3Status(String userId, String tenantId) {
         requireText(userId, "userId");
         String tid = normalizeTenant(tenantId);
-        List<UserContextStateEntity> rows =
-                l2Repository.findByUserIdAndTenantIdOrderByUpdatedAtDesc(userId, tid);
-        long active = 0;
-        long voided = 0;
-        long superseded = 0;
-        for (UserContextStateEntity e : rows) {
-            if (e == null || e.getStatus() == null) {
-                continue;
-            }
-            switch (e.getStatus()) {
-                case "active" -> active++;
-                case "void" -> voided++;
-                case "superseded" -> superseded++;
-                default -> {
-                }
-            }
-        }
         long l1Count = l1Repository.findByUserIdAndTenantId(userId, tid).size();
         ContextProperties.L3 l3 = contextProperties.getL3();
         return new L3StatusView(
@@ -142,9 +125,7 @@ public class ContextAdminService {
                 tid,
                 contextProperties.isEnabled(),
                 l3.getCollection(),
-                active,
-                voided,
-                superseded,
+                "Milvus vector count unavailable from orchestrator; use reingest/GC for ops",
                 l1Count,
                 l3.getTopK(),
                 l3.getMinScore());

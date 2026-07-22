@@ -280,7 +280,7 @@ def check_admin_l3(orch: str, report: Report, user_id: str, conv_id: str) -> Non
         report.add(
             "A3-l3-status",
             "PASS",
-            f"collection={status.get('collection')} activeL2={status.get('activeL2Count')}",
+            f"collection={status.get('collection')} note={status.get('note')} l1={status.get('l1RowCount')}",
         )
         gc = unwrap_r(api_json("POST", f"{orch}/api/admin/context/l3/gc"), context="L3 GC")
         if not isinstance(gc, dict) or not gc.get("ok"):

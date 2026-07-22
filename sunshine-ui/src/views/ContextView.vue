@@ -396,9 +396,8 @@ onMounted(() => {
         <div class="aux-body">
           <template v-if="l3Status">
             <p class="meta-line">enabled={{ l3Status.contextEnabled }} · collection={{ l3Status.collection }}</p>
-            <p class="meta-line">L2 active/void/superseded =
-              {{ l3Status.activeL2Count }}/{{ l3Status.voidL2Count }}/{{ l3Status.supersededL2Count }}</p>
-            <p class="meta-line">L1 会话数={{ l3Status.l1ConversationCount }} · topK={{ l3Status.l3TopK }} · minScore={{ l3Status.l3MinScore }}</p>
+            <p class="meta-line">{{ l3Status.note || 'Milvus count N/A' }}</p>
+            <p class="meta-line">L1 行数={{ l3Status.l1RowCount }} · topK={{ l3Status.l3TopK }} · minScore={{ l3Status.l3MinScore }}</p>
           </template>
           <NEmpty v-else description="填写 userId 后查看 L3 状态" />
         </div>

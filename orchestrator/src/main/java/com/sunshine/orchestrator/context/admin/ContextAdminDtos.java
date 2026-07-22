@@ -40,15 +40,17 @@ public final class ContextAdminDtos {
             Instant updatedAt) {
     }
 
+    /**
+     * L3 索引运维视图。Milvus 向量条数暂无 orchestrator 侧 count API，
+     * 勿用 L2 状态计数冒充索引健康；{@code note} 说明限制。
+     */
     public record L3StatusView(
             String userId,
             String tenantId,
             boolean contextEnabled,
             String collection,
-            long activeL2Count,
-            long voidL2Count,
-            long supersededL2Count,
-            long l1ConversationCount,
+            String note,
+            long l1RowCount,
             int l3TopK,
             double l3MinScore) {
     }
