@@ -284,8 +284,7 @@ agent:
     maintenance:
       interval-ms: 3600000
   memory:
-    # 仅 AutoContext（4.6.4）；跨轮上下文见 agent.context
-    # current-user-marker → Catalog memory.*（迁 context 前保留）
+    # 仅 AutoContext（4.6.4）；跨轮上下文见 agent.context + Catalog context.*
     auto-context:
       enabled: true
       large-payload-threshold: 5120

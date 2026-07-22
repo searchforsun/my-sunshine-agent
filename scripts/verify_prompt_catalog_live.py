@@ -94,13 +94,13 @@ def gate_p1() -> dict:
     if "system-prompt" not in ids and "mode-overlay.react" not in ids:
         raise RuntimeError("P1 catalog 缺少 system-prompt 或 mode-overlay.react")
     for required in (
-        "memory.layer-prompt",
-        "memory.stm.header",
-        "memory.stm.preamble",
-        "memory.current-user-marker",
+        "context.layer-prompt",
+        "context.usage-rules",
+        "context.current-user-marker",
+        "context.l3.material-header",
     ):
         if required not in ids:
-            raise RuntimeError(f"P1 catalog 缺少 {required}（TD-133）")
+            raise RuntimeError(f"P1 catalog 缺少 {required}（context optimization）")
     print(
         f"  [OK] P1 catalogVersion={version} entries={len(entries)} "
         f"routing-rules={sum(1 for e in entries if e.get('kind') == 'routing-rule')}"

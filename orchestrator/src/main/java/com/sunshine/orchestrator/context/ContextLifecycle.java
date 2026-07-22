@@ -15,7 +15,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 
 /**
- * 对话完成后的上下文写路径入口（替代 MemoryLifecycleService）。
+ * 对话完成后的上下文写路径入口。
  * L1 Mid/Far 压缩 → L2 静默抽取 → L3 chunk ingest。
  */
 @Slf4j

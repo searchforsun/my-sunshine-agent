@@ -124,12 +124,6 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 {{skill-catalog}}
 ', NULL, 'nacos migrate', 'migrate_nacos_prompts_to_db');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.layer-prompt', 'memory', '记忆分层提示词', '记忆分层说明：告知模型 LTM/MTM/STM 的用途，并强调只回答带「当前提问」标记的消息。', 1, 0, 1, 1);
-
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.layer-prompt', 1, 'published', '记忆分层：LTM/MTM 为摘要，STM 为同会话已结束轮次（仅供指代）。
-**仅执行并回答**带「【当前提问 · 仅此作答】」标记的用户消息。
-', NULL, 'nacos migrate', 'migrate_nacos_prompts_to_db');
-
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('mode-overlay.direct', 'mode-overlay', '模式覆盖 · Direct', 'Direct 模式叠加层：直答路径的补充行为约束（可为空，保留扩展位）。', 1, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('mode-overlay.direct', 1, 'published', '', NULL, 'nacos migrate', 'migrate_nacos_prompts_to_db');
@@ -527,12 +521,6 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 1=简单事实核对；2=需交叉验证；3=多观点分歧需多轮质疑。不得超过用户消息中的全局上限。
 只输出 JSON：{"maxRounds":1,"reason":"一句话说明"}，不要 markdown。', NULL, 'nacos migrate remaining', 'prompt-ops');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.mtm.summarize-prompt', 'memory', '记忆 · MTM 摘要', '中期记忆摘要：会话结束后把 transcript 压成 2～4 句事实摘要写入 MTM。', 1, 0, 1, 1);
-
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.mtm.summarize-prompt', 1, 'published', '你是企业对话摘要助手。根据以下会话 transcript，输出 2~4 句中文摘要。
-只保留事实：用户问了什么、助手答了什么、是否涉及工具/业务。
-只输出摘要正文，不要标题或 markdown。', NULL, 'nacos migrate remaining', 'prompt-ops');
-
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('sandbox.cancel-result', 'sandbox', '沙箱 · 工具取消回执', '沙箱工具取消回执：用户取消 exec/grep/glob 后回给主 Agent 的说明（含剩余次数）。', 1, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('sandbox.cancel-result', 1, 'published', '用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。', NULL, 'nacos migrate remaining', 'prompt-ops');
@@ -566,15 +554,6 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('plan-workflow.upstream-failure-line', 'plan-workflow', 'Plan · 上游失败行', '上游失败说明行：answer 解析上游占位时，失败节点注入的降级说明文案。', 1, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('plan-workflow.upstream-failure-line', 1, 'published', '（{{displayName}} 执行失败：{{error}}，已尝试 {{attemptCount}} 次）', NULL, 'nacos migrate remaining', 'prompt-ops');
-
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.stm.header', 'memory', '记忆 · STM 边界标题', 'STM 块边界标题：紧挨历史轮次之前，标明「本会话近期对话」。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.stm.header', 1, 'published', '[本会话近期对话 · STM]', NULL, 'td-133 migrate', 'prompt-ops');
-
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.stm.preamble', 'memory', '记忆 · STM 边界说明', 'STM 块边界说明：告知模型历史轮次仅供指代消歧。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.stm.preamble', 1, 'published', '以下为同会话已结束轮次，仅供指代与消歧（如「这个 skill」「上述脚本」）。', NULL, 'td-133 migrate', 'prompt-ops');
-
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('memory.current-user-marker', 'memory', '记忆 · 当前提问标记', '当前 user 消息前缀标记，与历史记忆块区分。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('memory.current-user-marker', 1, 'published', '【当前提问 · 仅此作答】', NULL, 'td-133 migrate', 'prompt-ops');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.layer-prompt', 'context', '上下文分层说明', '告知模型 L2/Far/Mid/Near/L3 分层用途，并强调只回答带「当前提问」标记的消息。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.layer-prompt', 1, 'published', '上下文分层：L2 为用户状态，Far 为更早对话摘要，Mid/Near 为同会话轮次（仅供指代），L3 为可能过期的历史材料。

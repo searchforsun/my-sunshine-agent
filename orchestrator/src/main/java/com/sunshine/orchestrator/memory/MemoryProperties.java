@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 
 /**
- * 三层记忆运行参数 — 数值/开关 SSOT：Nacos {@code agent.memory.*}。
- * 提示词正文（layer / STM header·preamble / current-user-marker）SSOT = Catalog。
+ * 仅绑定 {@code agent.memory.auto-context}（单次 ReAct TOOL 压缩）。
+ * 跨轮上下文见 {@code agent.context.*} / {@link com.sunshine.orchestrator.context.ContextProperties}。
  */
 @Getter
 @Setter
@@ -15,40 +15,8 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 @ConfigurationProperties(prefix = "agent.memory")
 public class MemoryProperties {
 
-    private boolean enabled = true;
-
-    private Stm stm = new Stm();
-    private Mtm mtm = new Mtm();
-    private Ltm ltm = new Ltm();
     /** ReAct 单次 run 内 TOOL 上下文压缩（AgentScope AutoContextMemory） */
     private AutoContext autoContext = new AutoContext();
-
-    @Getter
-    @Setter
-    public static class Stm {
-        /** Redis 会话缓存 TTL（小时） */
-        private int redisTtlHours = 24;
-        /** 注入 LLM 的最近消息条数上限 */
-        private int maxMessages = 12;
-        /** STM 块字符上限 */
-        private int maxChars = 8000;
-    }
-
-    @Getter
-    @Setter
-    public static class Mtm {
-        private boolean enabled = true;
-        private int topK = 3;
-        private float minScore = 0.55f;
-    }
-
-    @Getter
-    @Setter
-    public static class Ltm {
-        private boolean enabled = true;
-        /** 画像注入字符上限 */
-        private int maxChars = 500;
-    }
 
     /** 4.6.4 — 单次 ReAct 内 AutoContextMemory 参数（相对库默认略收紧） */
     @Getter

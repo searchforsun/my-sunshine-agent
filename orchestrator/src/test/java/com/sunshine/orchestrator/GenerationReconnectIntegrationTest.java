@@ -23,6 +23,7 @@ import com.sunshine.orchestrator.generation.GenerationRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -65,6 +66,7 @@ import static org.mockito.Mockito.when;
  * 阶段 1.6 Track G — Redis SSE 无感重连集成测试。
  * 仅本类启用 embedded-redis；不影响 ConversationIntegrationTest。
  */
+@Tag("integration")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
 @ActiveProfiles("test")

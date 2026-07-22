@@ -26,6 +26,7 @@ import com.sunshine.testsupport.PromptCatalogSeedTestConfig;
 import com.sunshine.testsupport.SseEventTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,6 +74,7 @@ import static org.mockito.Mockito.when;
 /**
  * 阶段 1.5 会话 MVP 集成测试 — H2 + Mock LLM，不依赖外部服务。
  */
+@Tag("integration")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
 @ActiveProfiles("test")

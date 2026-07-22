@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""清空 Sunshine 会话数据：MySQL 对话/记忆表 + Redis STM/生成流缓存。
+"""清空 Sunshine 会话数据：MySQL 对话/上下文表 + Redis 生成流缓存。
 
 用法:
   python scripts/clear_session_cache.py
   python scripts/clear_session_cache.py --force
   python scripts/clear_session_cache.py --force --restart-orchestrator
-  python scripts/clear_session_cache.py --include-audit --include-ltm
+  python scripts/clear_session_cache.py --include-audit --include-l2
 
 --restart-orchestrator 会一并重启 orchestrator :8200 与 llm-gateway :8300。
 浏览器 localStorage 需在 DevTools 控制台执行脚本末尾给出的 JS。
@@ -23,6 +23,7 @@ from sunshine_lib import (
     stop_java_service,
 )
 
+# sunshine:stm:* 仅清遗留 Redis 键（旧 STM 运行时已删除）
 REDIS_PATTERNS = ["sunshine:stm:*", "sunshine:gen:*", "sunshine:user:*"]
 
 
@@ -30,7 +31,7 @@ def build_mysql_sql(
     database: str,
     *,
     include_audit: bool,
-    include_ltm: bool,
+    include_l2: bool,
 ) -> str:
     lines = [
         f"USE {database};",
@@ -41,17 +42,23 @@ def build_mysql_sql(
     ]
     if include_audit:
         lines.append("TRUNCATE TABLE chat_audit_log;")
-    if include_ltm:
+    if include_l2:
         lines.append("TRUNCATE TABLE user_context_state;")
     lines.append("SET FOREIGN_KEY_CHECKS = 1;")
     return "\n".join(lines)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Clear Sunshine session / memory cache")
+    parser = argparse.ArgumentParser(description="Clear Sunshine session / context cache")
     parser.add_argument("--force", action="store_true", help="Skip confirmation")
     parser.add_argument("--include-audit", action="store_true")
-    parser.add_argument("--include-ltm", action="store_true")
+    parser.add_argument(
+        "--include-l2",
+        "--include-ltm",
+        dest="include_l2",
+        action="store_true",
+        help="Also truncate user_context_state (L2)",
+    )
     parser.add_argument(
         "--restart-orchestrator",
         action="store_true",
@@ -67,13 +74,13 @@ def main() -> int:
     parser.add_argument("--redis-password", default="redis123")
     args = parser.parse_args()
 
-    print("\nSunshine session / memory cache cleanup")
+    print("\nSunshine session / context cache cleanup")
     print(f"  MySQL : {args.mysql_user}@{args.mysql_host}:{args.mysql_port}/{args.mysql_database}")
     print(f"  Redis : {args.redis_host}:{args.redis_port}")
     print("  scope : chat_* + conversation_context_l1")
     if args.include_audit:
         print("         + chat_audit_log")
-    if args.include_ltm:
+    if args.include_l2:
         print("         + user_context_state (L2)")
     print(f"  Redis : {' / '.join(REDIS_PATTERNS)}")
     print()
@@ -89,7 +96,7 @@ def main() -> int:
         build_mysql_sql(
             args.mysql_database,
             include_audit=args.include_audit,
-            include_ltm=args.include_ltm,
+            include_l2=args.include_l2,
         ),
         host=args.mysql_host,
         port=args.mysql_port,
