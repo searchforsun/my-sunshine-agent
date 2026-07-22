@@ -40,7 +40,6 @@ class MemoryComposerTest {
         composer = new MemoryComposer(memoryProperties, ltmProfileService, mtmService);
         ReflectionTestUtils.setField(composer, "stmStore", stmStore);
         when(ltmProfileService.buildSnippet(any(), any())).thenReturn(Optional.empty());
-        when(ltmProfileService.ensureProfile(any(), any())).thenReturn(null);
         when(mtmService.recallSnippet(any(), any(), any(), any())).thenReturn(Optional.empty());
     }
 
