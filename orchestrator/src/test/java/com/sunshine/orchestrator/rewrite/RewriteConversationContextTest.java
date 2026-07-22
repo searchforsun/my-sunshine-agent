@@ -28,4 +28,21 @@ class RewriteConversationContextTest {
         assertThat(user).contains("助手：共有3条待审批");
         assertThat(user).endsWith("用户输入：那第一条");
     }
+
+    @Test
+    void buildUserMessage_labelsL2AndFarSeparately() {
+        AssembledContext memory = new AssembledContext(
+                "- preference: 简洁",
+                "[更早对话 · Far]\n曾讨论差旅",
+                java.util.List.of(),
+                java.util.List.of(),
+                "");
+        String user = RewriteConversationContext.buildUserMessage("继续", memory);
+        assertThat(user).contains("用户状态（L2）：");
+        assertThat(user).contains("- preference: 简洁");
+        assertThat(user).contains("更早对话摘要（Far）：");
+        assertThat(user).contains("曾讨论差旅");
+        assertThat(user).doesNotContain("中期记忆摘要");
+        assertThat(user).doesNotContain("长期记忆摘要");
+    }
 }

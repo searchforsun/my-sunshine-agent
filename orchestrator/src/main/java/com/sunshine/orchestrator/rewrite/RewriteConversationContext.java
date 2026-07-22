@@ -19,10 +19,10 @@ public final class RewriteConversationContext {
         }
         StringBuilder sb = new StringBuilder();
         if (StringUtils.hasText(memory.l2SystemBlock())) {
-            sb.append("长期记忆摘要：\n").append(memory.l2SystemBlock().strip()).append("\n\n");
+            sb.append("用户状态（L2）：\n").append(memory.l2SystemBlock().strip()).append("\n\n");
         }
         if (StringUtils.hasText(memory.farSummaryBlock())) {
-            sb.append("中期记忆摘要：\n").append(memory.farSummaryBlock().strip()).append("\n\n");
+            sb.append("更早对话摘要（Far）：\n").append(memory.farSummaryBlock().strip()).append("\n\n");
         }
         List<ChatTurn> turns = mergeTurns(memory);
         if (!turns.isEmpty()) {
