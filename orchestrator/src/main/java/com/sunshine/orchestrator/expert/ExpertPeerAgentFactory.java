@@ -8,7 +8,7 @@ import com.sunshine.orchestrator.memory.MemoryProperties;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.memory.autocontext.AutoContextHook;
 import io.agentscope.core.memory.autocontext.AutoContextMemory;
-import io.agentscope.core.model.OpenAIChatModel;
+import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
