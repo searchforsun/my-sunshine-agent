@@ -15,11 +15,7 @@ import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import io.agentscope.core.ReActAgent;
-import io.agentscope.core.agent.AgentBase;
 import io.agentscope.core.message.Msg;
-import io.agentscope.core.message.MsgRole;
-import io.agentscope.core.message.TextBlock;
-import io.agentscope.core.pipeline.MsgHub;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -33,12 +29,16 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 对等专家 MsgHub — 反应式轮次：首轮全员发言，后续轮仅异议/补材料专家；每轮结束可提前收敛。
+ * 对等专家 Hub — 反应式轮次：首轮全员发言，后续轮仅异议/补材料专家；每轮结束可提前收敛。
+ * AS2_P0_PEER_SEQUENTIAL：去 MsgHub，专家顺序调用，上下文经 contextBlocks/transcript 显式传递。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ExpertHubEngine {
+    /** spec §P0：顺序桥标记，P6 反应式恢复后删除 */
+    public static final String AS2_P0_PEER_SEQUENTIAL = "AS2_P0_PEER_SEQUENTIAL";
+
     private final ExpertPeerAgentFactory expertPeerAgentFactory;
     private final ToolSetResolver toolSetResolver;
     private final PromptComposer promptComposer;
@@ -80,65 +80,60 @@ public class ExpertHubEngine {
         List<String> contextBlocks = new ArrayList<>();
         contextBlocks.add("用户问题：\n" + userQuery);
         boolean othersSpoke = false;
-        try (MsgHub hub = MsgHub.builder()
-                .name("expert-" + runId)
-                .participants(agentByExpertId.values().stream().map(AgentBase.class::cast).toList())
-                .enableAutoBroadcast(true)
-                .build()) {
-            hub.enter().block();
-            for (int round = 1; round <= effectiveMax; round++) {
-                List<ExpertCatalogEntry> speakers = resolveSpeakers(roster, userQuery, transcript, round);
-                if (speakers.isEmpty()) {
-                    log.info("[ExpertHubEngine] round {} 无发言人，提前结束 runId={}", round, runId);
-                    break;
+        for (int round = 1; round <= effectiveMax; round++) {
+            List<ExpertCatalogEntry> speakers = resolveSpeakers(roster, userQuery, transcript, round);
+            if (speakers.isEmpty()) {
+                log.info("[ExpertHubEngine] round {} 无发言人，提前结束 runId={}", round, runId);
+                break;
+            }
+            for (ExpertCatalogEntry expert : speakers) {
+                ReActAgent peer = agentByExpertId.get(expert.id());
+                int seq = speakSeq.getOrDefault(expert.id(), 0) + 1;
+                boolean responding = othersSpoke && seq > 1;
+                ExpertTranscriptEntry pending = new ExpertTranscriptEntry(
+                        expert.id(), expert.displayName(), seq, "");
+                if (callback != null) {
+                    callback.onSpeak(pending, "running", responding);
                 }
-                for (ExpertCatalogEntry expert : speakers) {
-                    ReActAgent peer = agentByExpertId.get(expert.id());
-                    int seq = speakSeq.getOrDefault(expert.id(), 0) + 1;
-                    boolean responding = othersSpoke && seq > 1;
-                    ExpertTranscriptEntry pending = new ExpertTranscriptEntry(
-                            expert.id(), expert.displayName(), seq, "");
+                String reply = invokeAgent(
+                        runId, peer, userQuery, contextBlocks, expert, pending,
+                        assistantMessageId, callback);
+                if (!StringUtils.hasText(reply)) {
                     if (callback != null) {
-                        callback.onSpeak(pending, "running", responding);
+                        callback.onSpeak(pending, "done", responding);
                     }
-                    String reply = invokeAgent(
-                            runId, peer, userQuery, contextBlocks, expert, pending,
-                            assistantMessageId, callback);
-                    if (!StringUtils.hasText(reply)) {
-                        if (callback != null) {
-                            callback.onSpeak(pending, "done", responding);
-                        }
-                        continue;
-                    }
-                    speakSeq.put(expert.id(), seq);
-                    ExpertTranscriptEntry entry = new ExpertTranscriptEntry(
-                            expert.id(), expert.displayName(), seq, reply);
-                    transcript.add(entry);
-                    contextBlocks.add(PeerMsgSupport.formatTranscriptBlock(expert.displayName(), reply));
-                    hub.broadcast(Msg.builder()
-                            .role(MsgRole.ASSISTANT)
-                            .name(expert.displayName())
-                            .content(List.of(TextBlock.builder().text(reply).build()))
-                            .build()).block();
-                    othersSpoke = true;
-                    if (callback != null) {
-                        callback.onSpeak(entry, "done", responding);
-                    }
+                    continue;
                 }
-                if (round >= minRounds && round < effectiveMax) {
-                    ExpertContinueDecision decision = roundCoordinator.evaluateContinue(userQuery, transcript, round);
-                    if (!decision.shouldContinue()) {
-                        log.info("[ExpertHubEngine] round {} 收敛：{} runId={}", round, decision.reason(), runId);
-                        break;
-                    }
+                speakSeq.put(expert.id(), seq);
+                ExpertTranscriptEntry entry = appendToTranscript(transcript, contextBlocks, expert, seq, reply);
+                othersSpoke = true;
+                if (callback != null) {
+                    callback.onSpeak(entry, "done", responding);
                 }
             }
-            hub.exit().block();
-        } catch (Exception e) {
-            log.warn("[ExpertHubEngine] MsgHub 执行异常 runId={}: {}", runId, e.getMessage());
-            throw e;
+            if (round >= minRounds && round < effectiveMax) {
+                ExpertContinueDecision decision = roundCoordinator.evaluateContinue(userQuery, transcript, round);
+                if (!decision.shouldContinue()) {
+                    log.info("[ExpertHubEngine] round {} 收敛：{} runId={}", round, decision.reason(), runId);
+                    break;
+                }
+            }
         }
         return new ExpertHubResult(runId, transcript);
+    }
+
+    /** AS2_P0_PEER_SEQUENTIAL：去 MsgHub，专家间上下文经 transcript/contextBlocks 显式传递（spec §3 / §P6 G-a 路径 1） */
+    private ExpertTranscriptEntry appendToTranscript(
+            List<ExpertTranscriptEntry> transcript,
+            List<String> contextBlocks,
+            ExpertCatalogEntry expert,
+            int speakSeq,
+            String reply) {
+        ExpertTranscriptEntry entry = new ExpertTranscriptEntry(
+                expert.id(), expert.displayName(), speakSeq, reply);
+        transcript.add(entry);
+        contextBlocks.add(PeerMsgSupport.formatTranscriptBlock(expert.displayName(), reply));
+        return entry;
     }
 
     private List<ExpertCatalogEntry> resolveSpeakers(
