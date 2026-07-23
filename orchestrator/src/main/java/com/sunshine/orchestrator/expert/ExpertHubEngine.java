@@ -36,7 +36,10 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 public class ExpertHubEngine {
-    /** spec §P0：顺序桥标记，P6 反应式恢复后删除 */
+    /**
+     * spec §P0：顺序桥标记，P6 反应式恢复后删除。
+     * 注意：MsgHub autoBroadcast 原会写入 SUB agent memory；本桥仅经 contextBlocks 传递，SUB memory 不再跨轮累积。P6 恢复反应式时需评估是否需 memory 维度。
+     */
     public static final String AS2_P0_PEER_SEQUENTIAL = "AS2_P0_PEER_SEQUENTIAL";
 
     private final ExpertPeerAgentFactory expertPeerAgentFactory;
