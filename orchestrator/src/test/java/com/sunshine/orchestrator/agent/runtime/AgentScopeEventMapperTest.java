@@ -48,7 +48,7 @@ class AgentScopeEventMapperTest {
         assertEquals(1, out.size());
         StreamToken token = out.get(0);
         assertEquals(StreamToken.KIND_STEP, token.kind());
-        assertEquals("tool-call-1", token.step().id());
+        assertEquals("tool-search_knowledge@call-1", token.step().id());
         assertEquals("tool", token.step().phase());
         assertEquals("running", token.step().lifecycle());
         assertEquals("search_knowledge", token.step().label());
@@ -61,10 +61,18 @@ class AgentScopeEventMapperTest {
         assertEquals(1, out.size());
         StreamToken token = out.get(0);
         assertEquals(StreamToken.KIND_STEP, token.kind());
-        assertEquals("tool-call-1", token.step().id());
+        assertEquals("tool-search_knowledge@call-1", token.step().id());
         assertEquals("tool", token.step().phase());
         assertEquals("done", token.step().lifecycle());
         assertEquals("search_knowledge", token.step().label());
+    }
+
+    @Test
+    void nullToolNameProducesNoTokens() {
+        ToolCallStartEvent start = new ToolCallStartEvent("reply-1", "call-1", null);
+        assertTrue(mapper.mapAgentEvent(start, "msg-1").isEmpty());
+        ToolCallEndEvent end = new ToolCallEndEvent("reply-1", "call-1", null);
+        assertTrue(mapper.mapAgentEvent(end, "msg-1").isEmpty());
     }
 
     @Test
