@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent.runtime;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.processing.ToolStepIds;
 import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.AgentStartEvent;
 import io.agentscope.core.event.CustomEvent;
@@ -48,7 +49,9 @@ class AgentScopeEventMapperTest {
         assertEquals(1, out.size());
         StreamToken token = out.get(0);
         assertEquals(StreamToken.KIND_STEP, token.kind());
-        assertEquals("tool-search_knowledge@call-1", token.step().id());
+        assertTrue(token.step().id().matches("tool-search_knowledge@\\d+"),
+                "step id should match tool-search_knowledge@<epochMs>, got: " + token.step().id());
+        assertEquals("search_knowledge", ToolStepIds.catalogToolName(token.step().id()));
         assertEquals("tool", token.step().phase());
         assertEquals("running", token.step().lifecycle());
         assertEquals("search_knowledge", token.step().label());
@@ -56,12 +59,19 @@ class AgentScopeEventMapperTest {
 
     @Test
     void mapsToolCallEndToDoneStep() {
-        ToolCallEndEvent ev = new ToolCallEndEvent("reply-1", "call-1", "search_knowledge");
-        List<StreamToken> out = mapper.mapAgentEvent(ev, "msg-1");
+        ToolCallStartEvent start = new ToolCallStartEvent("reply-1", "call-1", "search_knowledge");
+        List<StreamToken> startOut = mapper.mapAgentEvent(start, "msg-1");
+        String startStepId = startOut.get(0).step().id();
+
+        ToolCallEndEvent end = new ToolCallEndEvent("reply-1", "call-1", "search_knowledge");
+        List<StreamToken> out = mapper.mapAgentEvent(end, "msg-1");
         assertEquals(1, out.size());
         StreamToken token = out.get(0);
         assertEquals(StreamToken.KIND_STEP, token.kind());
-        assertEquals("tool-search_knowledge@call-1", token.step().id());
+        assertEquals(startStepId, token.step().id());
+        assertTrue(token.step().id().matches("tool-search_knowledge@\\d+"),
+                "step id should match tool-search_knowledge@<epochMs>, got: " + token.step().id());
+        assertEquals("search_knowledge", ToolStepIds.catalogToolName(token.step().id()));
         assertEquals("tool", token.step().phase());
         assertEquals("done", token.step().lifecycle());
         assertEquals("search_knowledge", token.step().label());
