@@ -72,14 +72,16 @@ exit=0（仅 jackson-annotation 类缺失警告，与 streamEvents 无关）
 
 ### 2.5 HarnessAgent 缺口（**重大发现，影响 P0 定型**）
 
-```
+> **勘误（2026-07-23，见 `2026-07-23-harness-agent-spike.md`）**：本节结论错误。`HarnessAgent` 存在于独立 artifact `io.agentscope:agentscope-harness:2.0.0`，非 `agentscope-core` / 聚合 `agentscope`。本 spike 当时只检查了后两者，遗漏了 harness 模块。spec §3.1 锁定成立。下方原文保留作记录，**不再作为决策依据**。
+
+~~```
 $ jar -tf agentscope-core-2.0.0.jar | grep -i harness
 （无结果）
 $ jar -tf agentscope-2.0.0.jar | grep -i HarnessAgent
 （无结果）
-```
+```~~
 
-**AS 2.0.0 jar 内不存在 `HarnessAgent` 类**。spec §3.1 锁定的「统一 HarnessAgent 载体」基于官方 changelog B.4 描述，但 2.0.0 实际只发布了 `ReActAgent`。
+~~**AS 2.0.0 jar 内不存在 `HarnessAgent` 类**。spec §3.1 锁定的「统一 HarnessAgent 载体」基于官方 changelog B.4 描述，但 2.0.0 实际只发布了 `ReActAgent`。~~
 
 **影响**：
 - P0 已按 spec 落 HarnessAgent 骨架的方案需要复核——当前 P0 实际只用 `ReActAgent`（见 `ExpertPeerAgentFactory` / `ReActAgentFactory`），所以**未踩坑**。
