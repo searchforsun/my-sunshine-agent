@@ -98,7 +98,8 @@ class PromptComposerTest {
                 ctx, "当前问", List.of("rag-context")));
 
         assertThat(inputs).isNotEmpty();
-        assertThat(inputs.get(0).getRole()).isEqualTo(MsgRole.SYSTEM);
+        // AS 2.0 PreCall hook guard：inputMessages 禁止 SYSTEM 角色
+        assertThat(inputs.get(0).getRole()).isEqualTo(MsgRole.USER);
         assertThat(inputs.get(0).getTextContent()).isEqualTo("react-mode-minimal");
         assertThat(inputs.stream().map(Msg::getTextContent)).anyMatch(t -> t.contains(LAYER_PROMPT));
         assertThat(inputs.stream().map(Msg::getTextContent)).anyMatch(t -> t.contains("l2-block"));
@@ -108,6 +109,67 @@ class PromptComposerTest {
         assertThat(lastUser.getRole()).isEqualTo(MsgRole.USER);
         assertThat(lastUser.getTextContent()).contains("当前问");
         assertThat(inputs.get(inputs.size() - 2).getTextContent()).isEqualTo("rag-context");
+    }
+
+    @Test
+    void composeReactInputs_neverEmitsSystemRole_messagesPreserveTextAndNonSystemRoles() {
+        // 覆盖完整 react 链路：mode overlay + scenario overlay + restart overlay + hitl overlay
+        // + skill overlay + 上下文 L2/Far/Mid/Near/L3 + scope + nodePrompt + injected + 当前提问
+        when(skillCatalogService.overlayOrEmpty("finance-analysis")).thenReturn("skill-overlay-text");
+        catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                textEntry("system-prompt", "system", "base-system"),
+                textEntry("mode-overlay.react", "mode-overlay", "react-mode-overlay"),
+                textEntry("react-prompt.demo", "react-prompt", "react-scenario-overlay"),
+                textEntry("mode-overlay.react-restart", "mode-overlay", "react-restart-overlay"),
+                textEntry("hitl.agent-prompt", "hitl", "hitl-overlay"),
+                textEntry("context.layer-prompt", "context", LAYER_PROMPT),
+                textEntry("context.usage-rules", "context", USAGE_RULES),
+                textEntry("context.current-user-marker", "context", USER_MARKER),
+                textEntry("scope-prompt", "scope", "scope-text"))));
+        hitlProperties.setEnabled(true);
+
+        AssembledContext ctx = new AssembledContext(
+                "l2-block", "far-block",
+                List.of(new ChatTurn("user", "mid-Q"), new ChatTurn("assistant", "mid-A")),
+                List.of(new ChatTurn("user", "near-Q"), new ChatTurn("assistant", "near-A")),
+                "l3-block");
+
+        List<Msg> inputs = composer.composeReactInputs(new PromptComposeRequest(
+                PromptMode.REACT, ctx, "当前提问正文", null, "finance-analysis", "node-prompt-text",
+                List.of("injected-ctx"), null, true, "react-prompt.demo"));
+
+        // 主断言：无任何 SYSTEM 角色
+        assertThat(inputs).isNotEmpty();
+        assertThat(inputs).allMatch(m -> m.getRole() != MsgRole.SYSTEM,
+                "AS 2.0 PreCall hook guard: inputMessages 禁止 SYSTEM 角色");
+
+        // 指令/上下文文本不丢（角色已收敛为 USER，但正文一字未改）
+        List<String> texts = inputs.stream().map(Msg::getTextContent).toList();
+        assertThat(texts).anyMatch(t -> t.contains("react-mode-overlay"));
+        assertThat(texts).anyMatch(t -> t.contains("react-scenario-overlay"));
+        assertThat(texts).anyMatch(t -> t.contains("react-restart-overlay"));
+        assertThat(texts).anyMatch(t -> t.contains("hitl-overlay"));
+        assertThat(texts).anyMatch(t -> t.contains("skill-overlay-text"));
+        assertThat(texts).anyMatch(t -> t.contains(LAYER_PROMPT));
+        assertThat(texts).anyMatch(t -> t.contains("l2-block"));
+        assertThat(texts).anyMatch(t -> t.contains("far-block"));
+        assertThat(texts).anyMatch(t -> t.contains("mid-Q"));
+        assertThat(texts).anyMatch(t -> t.contains("mid-A"));
+        assertThat(texts).anyMatch(t -> t.contains("near-Q"));
+        assertThat(texts).anyMatch(t -> t.contains("near-A"));
+        assertThat(texts).anyMatch(t -> t.contains("l3-block"));
+        assertThat(texts).anyMatch(t -> t.contains("scope-text"));
+        assertThat(texts).anyMatch(t -> t.contains("node-prompt-text"));
+        assertThat(texts).anyMatch(t -> t.contains("injected-ctx"));
+        // 末尾仍是当前提问 user 消息
+        Msg last = inputs.get(inputs.size() - 1);
+        assertThat(last.getRole()).isEqualTo(MsgRole.USER);
+        assertThat(last.getTextContent()).contains("当前提问正文");
+        // user/assistant 历史对话角色保持
+        assertThat(inputs.stream().filter(m -> "mid-A".equals(m.getTextContent())).findFirst())
+                .hasValueSatisfying(m -> assertThat(m.getRole()).isEqualTo(MsgRole.ASSISTANT));
+        assertThat(inputs.stream().filter(m -> "mid-Q".equals(m.getTextContent())).findFirst())
+                .hasValueSatisfying(m -> assertThat(m.getRole()).isEqualTo(MsgRole.USER));
     }
 
     @Test

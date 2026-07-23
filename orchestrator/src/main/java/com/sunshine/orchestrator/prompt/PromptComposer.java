@@ -38,7 +38,12 @@ public class PromptComposer {
         return messages;
     }
 
-    /** ReAct AgentScope 输入（不含 base-system，由 ReActAgent.sysPrompt 承载） */
+    /**
+     * ReAct AgentScope 输入（不含 base-system，由 ReActAgent.sysPrompt 承载）。
+     * AS 2.0 Hook 校验：PreCallEvent.inputMessages 禁止 SYSTEM 角色 → 本方法链路所有
+     * 指令性/上下文消息统一收敛为 USER 角色（P0 热修，语义基本等价；P1/P2 再迁原生
+     * systemMessage / appendSystemContent 注入）。
+     */
     public List<Msg> composeReactInputs(PromptComposeRequest request) {
         List<Msg> inputs = new ArrayList<>();
         appendCommonReactLayers(inputs, request, false);
@@ -62,16 +67,16 @@ public class PromptComposer {
     private void appendCommonReactLayers(List<Msg> inputs, PromptComposeRequest request, boolean includeBaseSystem) {
         AssembledContext ctx = request.context() != null ? request.context() : AssembledContext.empty();
         if (includeBaseSystem) {
-            addReactSystem(inputs, catalogText("system-prompt"));
+            addReactUser(inputs, catalogText("system-prompt"));
         }
-        addReactSystem(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
-        addReactSystem(inputs, resolveReactScenarioOverlay(request.reactPromptId()));
-        addReactSystem(inputs, resolveReactRestartOverlay(request));
-        addReactSystem(inputs, resolveHitlOverlay(request.mode()));
-        addReactSystem(inputs, resolveSkillOverlay(request.skillId()));
+        addReactUser(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
+        addReactUser(inputs, resolveReactScenarioOverlay(request.reactPromptId()));
+        addReactUser(inputs, resolveReactRestartOverlay(request));
+        addReactUser(inputs, resolveHitlOverlay(request.mode()));
+        addReactUser(inputs, resolveSkillOverlay(request.skillId()));
         appendReactContextLayers(inputs, ctx);
-        addReactSystem(inputs, catalogText("scope-prompt"));
-        addReactSystem(inputs, nodePromptOrEmpty(request.nodePrompt()));
+        addReactUser(inputs, catalogText("scope-prompt"));
+        addReactUser(inputs, nodePromptOrEmpty(request.nodePrompt()));
     }
 
     private void appendGatewayContextLayers(List<Map<String, Object>> messages, AssembledContext ctx) {
@@ -89,7 +94,7 @@ public class PromptComposer {
             MsgRole msgRole = switch (role) {
                 case "assistant" -> MsgRole.ASSISTANT;
                 case "user" -> MsgRole.USER;
-                default -> MsgRole.SYSTEM;
+                default -> MsgRole.USER;
             };
             inputs.add(Msg.builder().role(msgRole).textContent(content).build());
         }
@@ -208,9 +213,9 @@ public class PromptComposer {
         }
     }
 
-    private static void addReactSystem(List<Msg> inputs, String text) {
+    private static void addReactUser(List<Msg> inputs, String text) {
         if (StringUtils.hasText(text)) {
-            inputs.add(Msg.builder().role(MsgRole.SYSTEM).textContent(text.strip()).build());
+            inputs.add(Msg.builder().role(MsgRole.USER).textContent(text.strip()).build());
         }
     }
 }
