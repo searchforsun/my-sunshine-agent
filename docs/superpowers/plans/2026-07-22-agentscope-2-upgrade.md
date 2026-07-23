@@ -830,12 +830,14 @@ git commit -m "feat(as2-p2): native interrupt/checkpoint resume behind react-che
 **Files:**
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentHolder.java`
 
-- [ ] **Step 1: 在 `HarnessAgentHolder.build` 装配 `CompactionConfig`，阈值对标现网 `AutoContextConfig`（`largePayloadThreshold`→`triggerMessages`、`lastKeep`→`keepMessages`，映射表写注释）**
+**前置事实（P0-3 实测校准）**：`memory/autocontext` 包在 2.0 已整体删除，P0-3 已移除全部引用，当前**无任何压缩**（SDK 默认）。阈值字段保留在 `MemoryProperties.AutoContext`（Nacos `agent.memory.auto-context.*` 仍下发、暂不消费）。本任务恢复压缩能力。
+
+- [ ] **Step 1: 在 `HarnessAgentHolder.build` 装配 `CompactionConfig`，阈值对标 `MemoryProperties.AutoContext` 字段（先用 `javap` 确认 `CompactionConfig` builder 真实方法名——P0-3 已证 2.0 API 与文档假设可能不符；下方代码为示意，以实测为准）**
 
 ```java
         .compaction(CompactionConfig.builder()
-                .triggerMessages(ac.getMsgThreshold())     // 对标 AutoContextConfig.msgThreshold
-                .keepMessages(ac.getLastKeep())            // 对标 AutoContextConfig.lastKeep
+                .triggerMessages(ac.getMsgThreshold())     // 对标 MemoryProperties.AutoContext.msgThreshold
+                .keepMessages(ac.getLastKeep())            // 对标 MemoryProperties.AutoContext.lastKeep
                 .build())
 ```
 
@@ -844,6 +846,8 @@ git commit -m "feat(as2-p2): native interrupt/checkpoint resume behind react-che
 ```bash
 git commit -m "feat(as2-p2): CompactionConfig replaces AutoContextHook on HarnessAgent"
 ```
+
+- [ ] **Step 3: 落地 AgentState TTL（P0-3 遗留）**：`RedisAgentStateStore` 无 TTL 参数，按 spec §4.1 锁定 7 天（604800s）。三选一并在报告说明：`clientAdapter` 自定义带 TTL 的 save / 在 keyPrefix 层包装 expire / 评估 SDK 是否后续版本补 TTL。完成后单测断言 key 写入带 TTL。
 
 ### Task P2-4: Live `verify_react_checkpoint_live.py`（新建）
 

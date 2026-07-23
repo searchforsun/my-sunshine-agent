@@ -115,7 +115,7 @@ AS 2.0 为**双层架构**：
 | 自研 | AS 2.0 | 阶段 |
 |------|--------|------|
 | ReAct 软续跑 | `stateStore` + `interrupt` | P2 |
-| `AutoContextHook`（hook 包，2.0 软弃用） | **HarnessAgent `CompactionConfig`**（`triggerMessages`/`keepMessages`，可独立小模型 `.model()`/`.prompt()`） | P2 起对齐，禁双轨 |
+| `AutoContextHook`（hook 包，2.0 **整体移除**） | **HarnessAgent `CompactionConfig`**（`triggerMessages`/`keepMessages`，可独立小模型 `.model()`/`.prompt()`） | P2 起对齐，禁双轨 |
 | TaskBoard `manage_tasks` | `enableTaskList` + TodoTools | P3 |
 | `spawn_subagent` | Harness Subagent + distributedStore | P4 |
 | 沙箱执行内核（部分） | Workspace / DockerFilesystemSpec | P5 |
@@ -123,6 +123,8 @@ AS 2.0 为**双层架构**：
 | 每请求 `new ReActAgent` | 无状态 HarnessAgent 单例 + `RuntimeContext` | P2 |
 
 > 注：Sunshine 现网用的是 `AutoContextHook`（`io.agentscope.core.memory.autocontext`），**不是** `AutoContextMemory`；2.0 原生替代是 `CompactionConfig`，且**仅在 HarnessAgent 上可用**——这正是 §3.1 统一 HarnessAgent 载体的直接动因。
+>
+> **P0-3 实施校准（2026-07-23 实测）**：`memory/autocontext` 包在 2.0 **整体删除**（AutoContextHook/AutoContextMemory/AutoContextConfig 均不编译，**非** LegacyHookDispatcher 可桥），P0 已移除全部引用、压缩能力暂退至 SDK 默认（无压缩），P2 以 `CompactionConfig` 恢复、阈值对标 `MemoryProperties.AutoContext`（字段保留）。另：`RedisAgentStateStore` 在 `io.agentscope.extensions.redis.state`，**builder-only + lettuceClient、无 TTL 参数**，P2 须另行落地 TTL（clientAdapter / keyPrefix 包装 / SDK 升级三选一）。
 
 **不可替代（继续自研）**：Plan-Workflow / Studio、静态 Workflow 检查点、路由与 Prompt Catalog、peer 产品层（Catalog/`$`/Synthesizer）、RAG、tool-manager、审计、Timeline/SSE 外壳。
 
