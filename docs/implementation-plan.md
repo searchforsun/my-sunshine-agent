@@ -93,6 +93,7 @@
 | **4.10** Seata | — | **明确不做**（跨服务写靠 HITL + 幂等） |
 | **4.11** Prompt 后台 | 非研发维护提示词 | **实施中（backend+UI 近收口）**：详设 [prompt-ops-routing-catalog](superpowers/specs/2026-07-20-prompt-ops-routing-catalog-design.md) · 计划 [prompt-ops plan](superpowers/plans/2026-07-20-prompt-ops-routing-catalog.md)（DB Catalog + 统一 Rule Engine + `/prompts`；首期 draft/published，审核二期）· Live：`verify_prompt_catalog_live.py` |
 | **4.12** Serverless | — | **明确不做**（常驻实例） |
+| **AS2 升级** | AgentScope 2.0 | **P0 ✅（2026-07-23）**：jar 2.0.0 + 7 类删除项清理（`agent.stream(` 按 spec 留 P1）+ 顺序 peer 桥 + **P0-4b SYSTEM 角色收敛热修**（AS 2.0 PreCall 拒 SYSTEM 输入）· 闸门：`verify_rollback_p0_compile` + peer §E/§K + spawn Live 全绿 · 详设 [agentscope-2-upgrade](./superpowers/specs/2026-07-22-agentscope-2-upgrade-design.md) · 计划 [upgrade plan](./superpowers/plans/2026-07-22-agentscope-2-upgrade.md)；**P1–P7 待做**（streamEvents / checkpoint / TaskList / Subagent / Workspace / peer 反应式 / 清桥） |
 
 ---
 
