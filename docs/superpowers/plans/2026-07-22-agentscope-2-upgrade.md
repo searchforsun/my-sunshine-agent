@@ -25,6 +25,36 @@
 - 运维脚本统一 Python（`scripts/*.py`），禁止临时脚本入库
 - 每阶段 commit 信息前缀：`feat(as2-p<n>)` / `test(as2-p<n>)` / `chore(as2-p<n>)`
 
+## 前端回归总约定（每阶段必读）
+
+前端回归 = **自动化 Playwright e2e** + **人工真请求**两层，均为该阶段出口闸门的组成部分。
+
+| 层 | 工具 | 跑法 | 覆盖 |
+|----|------|------|------|
+| 自动化 | Playwright（`sunshine-ui/e2e/`） | `cd sunshine-ui && npm run test:e2e`（CI 走 `--mode e2e-mock` mock-server :8001；阶段验收改打真实 Gateway，见下） | 时间线渲染、DAG、抽屉、确认框、任务卡等**结构性断言** |
+| 人工 | 浏览器 `http://ecs4c16g:5173` | `npm run dev`（proxy `/api` → `127.0.0.1:8000`） | 流式手感、取消 UX、续跑语义、跨模式切换等**机器难断言项** |
+
+**约定**
+
+1. 每阶段**至少 1 个新/改 Playwright spec** 落入 `sunshine-ui/e2e/`，命名 `as2-p<n>-<feature>.spec.ts`，纳入 `npm run test:e2e`。
+2. e2e 默认打 mock；**阶段出口前**必须用 `PLAYWRIGHT_BASE_URL=http://ecs4c16g:5173`（或 `webServer` 配置）切真实 Gateway 跑一次同 spec，确认与后端真链路一致。
+3. 人工步骤固定格式：**前置（模式/开关）→ 提示词 → 预期（步骤序列 + 关键 UI 断言）**；提示词复用各 `verify_*_live.py` 的 `*_QUERY` 常量，保证 e2e 与 Live 同源。
+4. 提示词原则：**短、确定性高、能触发该阶段特性**；涉及工具调用/HITL/取消的，提示词须能稳定命中（优先复用已验收的 golden query，不新造）。
+5. 每阶段前端回归结果（e2e 绿 + 人工确认截图/记录）追加到 `docs/implementation-plan.md` 缺口行，与 Live 记录同级。
+
+**提示词常量来源（e2e 与 Live 同源，禁止新造）**
+
+| 常量 | 出处 | 内容 |
+|------|------|------|
+| `F1_QUERY` | `verify_react_taskboard_live.py:36` | 帮我查待审批报销，并对有风险的单据逐条说明原因 |
+| `FN1_QUERY` | `verify_react_taskboard_live.py:37` | 先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论 |
+| `E1_QUERY` | `verify_peer_collab_live.py:39` | 请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证 |
+| `S1_QUERY` | `verify_spawn_subagent_live.py:47` | 请调用 spawn_subagent，prompt 写：用 search_knowledge 检索差旅住宿标准并返回要点摘要；label=制度检索… |
+| `HITL_QUERY` | `verify_hitl_live.py:263` | 请调用 {OA_APPROVE} 工具审批 OA 待办 taskId=T1001，不要查询其它工具。 |
+| `SANDBOX_CANCEL_QUERY` | `verify_sandbox_tool_cancel_live.py:29` | 请调用 sandbox__exec：command 必须是 sleep 120，并传 timeout_sec=180… |
+
+e2e spec 顶部统一定义这些常量（从对应 verify 脚本 docstring 复制），保证 Playwright 与 Live 触发同一后端路径。
+
 ---
 
 ## P0 — 依赖可编译可跑
@@ -373,6 +403,49 @@ git commit -m "test(as2-p0): gate pass — react + peer-sequential live" --allow
 git tag as2-p0-done
 ```
 
+### Task P0-8: 前端回归（基线对齐 + peer 顺序降级）
+
+**Files:**
+- Modify: `sunshine-ui/e2e/processing-timeline-real.spec.ts`（断言基线不变）
+- Create: `sunshine-ui/e2e/as2-p0-peer-sequential.spec.ts`
+
+**自动化 e2e**
+
+- [ ] **Step 1: 跑全量现有 e2e 确认无回归（升级 jar 后外壳应零变化）**
+
+Run: `cd sunshine-ui && npm run test:e2e`
+Expected: 全绿（重点 `processing-timeline-real.spec.ts` / `reasoning-panel.spec.ts` / `stream-content-format.spec.ts`）
+
+- [ ] **Step 2: 新增 `as2-p0-peer-sequential.spec.ts`——peer 模式下专家步按顺序出现（不再断言反应式 hub 的并发交错）**
+
+```ts
+test('as2-p0 peer sequential expert steps', async ({ page }) => {
+  await page.goto('/chat');
+  await page.getByTestId('execution-mode-selector').selectOption('peer-collab');
+  await page.getByTestId('composer-input').fill(E1_QUERY);
+  await page.getByTestId('composer-send').click();
+  // 顺序桥：专家步逐个 append，无并发交错
+  const expertSteps = page.locator('[data-phase="expert"]');
+  await expect(expertSteps.first()).toBeVisible({ timeout: 60000 });
+  // 至少 2 位专家依次出现
+  await expect(expertSteps).toHaveCount(2, { timeout: 120000 });
+});
+```
+
+**人工真请求**
+
+| 前置 | 提示词 | 预期 |
+|------|--------|------|
+| 模式 `react` | `帮我查待审批报销，并对有风险的单据逐条说明原因`（F1_QUERY） | 时间线 `intent → think → tool → generate` 完整；正文流式无截断；与 1.0.8 基线一致 |
+| 模式 `peer-collab` | `请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证`（E1_QUERY） | 能出 ≥2 个专家步（`data-phase=expert`）；**顺序出现即可**，不要求与现网反应式轮次一致；Synthesizer 终态正文正常 |
+
+- [ ] **Step 3: e2e 绿 + 人工两项确认 → 记录到 `docs/implementation-plan.md` → Commit**
+
+```bash
+git add sunshine-ui/e2e/as2-p0-peer-sequential.spec.ts
+git commit -m "test(as2-p0): peer-sequential e2e + baseline regression pass"
+```
+
 ---
 
 ## P1 — 事件契约 streamEvents → Timeline
@@ -584,6 +657,47 @@ git add scripts/verify_rollback_p1_events.py
 git commit -m "test(as2-p1): rollback gate — legacy vs streamEvents byte-identical"
 ```
 
+### Task P1-5: 前端回归（事件契约切换后时间线/正文一致）
+
+**Files:**
+- Create: `sunshine-ui/e2e/as2-p1-stream-events.spec.ts`
+
+**自动化 e2e**
+
+- [ ] **Step 1: 新增 `as2-p1-stream-events.spec.ts`——streamEvents 路径下步骤序列 + 流式正文结构断言**
+
+```ts
+test('as2-p1 streamEvents timeline + content parity', async ({ page }) => {
+  await page.goto('/chat');
+  await page.getByTestId('execution-mode-selector').selectOption('react');
+  await page.getByTestId('composer-input').fill(F1_QUERY);
+  await page.getByTestId('composer-send').click();
+  // 步骤容器渲染（OperationStack），含 think/tool/generate
+  await expect(page.locator('.operation-stack .operation-card')).toHaveCount(3, { timeout: 90000 });
+  // 正文流式完整（markdown 渲染、无截断）
+  await expect(page.locator('.markdown-content').last()).not.toBeEmpty({ timeout: 90000 });
+});
+```
+
+- [ ] **Step 2: 打真实 Gateway 跑一次**
+
+Run: `cd sunshine-ui && PLAYWRIGHT_BASE_URL=http://ecs4c16g:5173 npm run test:e2e -- as2-p1-stream-events`
+Expected: 绿（与 `verify_rollback_p1_events` 的 SSE 一致断言互为印证）
+
+**人工真请求**
+
+| 前置 | 提示词 | 预期 |
+|------|--------|------|
+| 模式 `react`、flag `stream-events=on` | `先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论`（FN1_QUERY） | 步骤卡片逐个出现、无重复/乱序；正文 token 平滑流式；**与 flag=off 时逐字一致** |
+| 模式 `plan-workflow` | 触发含 RAG 节点的 Plan（复用 `verify_plan_dag_live` 用例） | DAG `node-*` 步骤 + `PlanNodeDrawer` 综合分析/最终输出正常；正文不经 think/generate 步 |
+
+- [ ] **Step 3: e2e + 人工两项确认 → 记录 → Commit**
+
+```bash
+git add sunshine-ui/e2e/as2-p1-stream-events.spec.ts
+git commit -m "test(as2-p1): streamEvents timeline/content parity e2e"
+```
+
 ---
 
 ## P2 — 原生 ReAct checkpoint / resume
@@ -766,6 +880,49 @@ git add scripts/verify_rollback_p2_checkpoint.py
 git commit -m "test(as2-p2): rollback gate — checkpoint vs soft-resume + state cleanup"
 ```
 
+### Task P2-6: 前端回归（停→「继续执行」真续跑 UX）
+
+**Files:**
+- Create: `sunshine-ui/e2e/as2-p2-checkpoint-resume.spec.ts`
+
+**自动化 e2e**
+
+- [ ] **Step 1: 新增 `as2-p2-checkpoint-resume.spec.ts`——中断后续跑按钮文案 + 步骤连续性**
+
+```ts
+test('as2-p2 checkpoint resume keeps steps continuous', async ({ page }) => {
+  await page.goto('/chat');
+  await page.getByTestId('execution-mode-selector').selectOption('react');
+  await page.getByTestId('composer-input').fill(F1_QUERY);
+  await page.getByTestId('composer-send').click();
+  // 出现 tool 步后中断
+  await page.locator('[data-step-kind="tool"]').first().waitFor({ timeout: 60000 });
+  await page.getByTestId('stop-generation').click();
+  // 续跑按钮文案 = 继续执行（有 checkpoint）
+  await expect(page.getByTestId('resume-btn')).toHaveText(/继续执行/);
+  const stepsBefore = await page.locator('.operation-card').count();
+  await page.getByTestId('resume-btn').click();
+  // 续跑后：已有 steps 保留（不重新发 intent）、新事件 append
+  await page.locator('.msg-status-completed').waitFor({ timeout: 120000 });
+  const stepsAfter = await page.locator('.operation-card').count();
+  expect(stepsAfter).toBeGreaterThanOrEqual(stepsBefore);   // 不回退、不整轮重来
+});
+```
+
+**人工真请求**
+
+| 前置 | 提示词 | 预期 |
+|------|--------|------|
+| 模式 `react`、flag `react-checkpoint=on` | `先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论`（FN1_QUERY），在 tool 步出现时点「停止」 | 停止后按钮显示「**继续执行**」（非「重新生成」）；点击后**保留已有 steps**、从断点续跑；已完成的 tool 步状态仍 `completed`、**不整轮重来** |
+| 同上，但等 TTL 过期/手动清 Redis `agentscope:state:*` 后 | 同一消息点续跑 | 按钮退化为「**重新生成**」+ 明确提示（spec §4.3）；**禁止**静默空跑 |
+
+- [ ] **Step 2: e2e + 人工两项确认（含 TTL 降级路径）→ 记录 → Commit**
+
+```bash
+git add sunshine-ui/e2e/as2-p2-checkpoint-resume.spec.ts
+git commit -m "test(as2-p2): checkpoint resume UX e2e + TTL fallback manual check"
+```
+
 ---
 
 ## P3 — TaskList 替换 TaskBoard
@@ -829,6 +986,43 @@ git commit -m "feat(as2-p3): gate manage_tasks registration behind tasklist-nati
 git commit -m "test(as2-p3): taskboard live re-assert + rollback gate"
 ```
 
+### Task P3-4: 前端回归（任务卡数据源切换后 UI 零变化）
+
+**Files:**
+- Create: `sunshine-ui/e2e/as2-p3-tasklist.spec.ts`
+
+**自动化 e2e**
+
+- [ ] **Step 1: 新增 `as2-p3-tasklist.spec.ts`——TaskList 路径下任务卡渲染与现网一致**
+
+```ts
+test('as2-p3 tasklist renders single tasks step card', async ({ page }) => {
+  await page.goto('/chat');
+  await page.getByTestId('execution-mode-selector').selectOption('react');
+  await page.getByTestId('composer-input').fill(F1_QUERY);
+  await page.getByTestId('composer-send').click();
+  // 单一 tasks 步（TaskBoardPanel）
+  await expect(page.locator('.task-board-panel')).toBeVisible({ timeout: 90000 });
+  await expect(page.locator('.task-board-panel')).toHaveCount(1);
+  // 任务项状态推进 pending → in_progress → completed
+  await expect(page.locator('.task-item[data-status="completed"]').first()).toBeVisible({ timeout: 120000 });
+});
+```
+
+**人工真请求**
+
+| 前置 | 提示词 | 预期 |
+|------|--------|------|
+| 模式 `react`、TaskBoard 开、flag `tasklist-native=on` | `帮我查待审批报销，并对有风险的单据逐条说明原因`（F1_QUERY） | 任务卡出现且**仍只有一个 `tasks` 步**（锚定 think 后）；任务项增删/状态切换正常；**与 flag=off（manage_tasks）UI 完全一致** |
+| 回滚 flag=off | 同上 | 任务卡行为回退到 manage_tasks 路径，无脏数据/重复卡 |
+
+- [ ] **Step 2: e2e + 人工两项确认 → 记录 → Commit**
+
+```bash
+git add sunshine-ui/e2e/as2-p3-tasklist.spec.ts
+git commit -m "test(as2-p3): tasklist card parity e2e + manage_tasks rollback check"
+```
+
 ---
 
 ## P4 — Harness Subagent 替换 spawn
@@ -881,6 +1075,48 @@ git commit -m "feat(as2-p4): declarative subagent behind subagent-native flag"
 git commit -m "test(as2-p4): spawn live re-run + rollback gate (cancel no-epoch-bump both paths)"
 ```
 
+### Task P4-4: 前端回归（子卡 / 抽屉 / 单独取消不 bump epoch）
+
+**Files:**
+- Create: `sunshine-ui/e2e/as2-p4-subagent.spec.ts`
+
+**自动化 e2e**
+
+- [ ] **Step 1: 新增 `as2-p4-subagent.spec.ts`——子卡 + 抽屉字段 + 单独取消**
+
+```ts
+test('as2-p4 subagent card + drawer + standalone cancel', async ({ page }) => {
+  await page.goto('/chat');
+  await page.getByTestId('execution-mode-selector').selectOption('react');
+  await page.getByTestId('composer-input').fill(S1_QUERY);   // 诱导 spawn_subagent
+  await page.getByTestId('composer-send').click();
+  // 主卡 subagent-* 出现
+  const card = page.locator('[data-step-phase="subagent"]').first();
+  await expect(card).toBeVisible({ timeout: 90000 });
+  // 抽屉含 spawnPrompt / subSteps
+  await card.click();
+  await expect(page.locator('.plan-node-drawer [data-field="spawnPrompt"]')).not.toBeEmpty();
+  // 单独取消：点取消钮 → 主卡「已取消」、主消息仍 completed、stream epoch 不变（正文不被清空）
+  await page.getByTestId('subagent-cancel').click();
+  await expect(card).toContainText('已取消');
+  await expect(page.locator('.msg-status-completed')).toBeVisible({ timeout: 120000 });
+});
+```
+
+**人工真请求**
+
+| 前置 | 提示词 | 预期 |
+|------|--------|------|
+| 模式 `react`、flag `subagent-native=on` | `请调用 spawn_subagent，prompt 写：用 search_knowledge 检索差旅住宿标准并返回要点摘要；label=制度检索。主 Agent 只根据子任务返回作答。`（S1_QUERY） | 主卡 `subagent-*` 一行摘要 + 抽屉（`spawnPrompt`/`subSteps`）；子 Agent think/tool **不上主时间线** |
+| 同上，子任务运行中点取消 | 同上 | 子卡「已取消」、主消息最终 `completed`；**单独取消不 bump epoch**（已流正文不清空、不重发）；与 flag=off（SpawnSubagentTool）行为一致 |
+
+- [ ] **Step 2: e2e + 人工两项确认 → 记录 → Commit**
+
+```bash
+git add sunshine-ui/e2e/as2-p4-subagent.spec.ts
+git commit -m "test(as2-p4): subagent card/drawer/standalone-cancel e2e"
+```
+
 ---
 
 ## P5 — Workspace 沙箱 + Permission HITL
@@ -930,6 +1166,47 @@ git commit -m "feat(as2-p5): permission HITL behind hitl-permission flag"
 git commit -m "test(as2-p5): sandbox+hitl live + rollback gate (cancel UX both paths)"
 ```
 
+### Task P5-4: 前端回归（沙箱抽屉 + 写确认 + 取消 UX 不变）
+
+**Files:**
+- Create: `sunshine-ui/e2e/as2-p5-sandbox-workspace.spec.ts`
+
+**自动化 e2e**
+
+- [ ] **Step 1: 新增 `as2-p5-sandbox-workspace.spec.ts`——Workspace 内核下抽屉/取消 UX 不变**
+
+```ts
+test('as2-p5 workspace sandbox drawer + tool cancel unchanged', async ({ page }) => {
+  await page.goto('/chat');
+  await page.getByTestId('composer-input').fill(SANDBOX_CANCEL_QUERY);   // 诱导 sleep 120
+  await page.getByTestId('composer-send').click();
+  const toolStep = page.locator('[data-tool="sandbox__exec"]').first();
+  await expect(toolStep).toBeVisible({ timeout: 60000 });
+  // hover 出取消圆钮 → 取消 → lifecycle=paused + summary.after=已取消
+  await toolStep.hover();
+  await toolStep.getByTestId('tool-cancel-btn').click();
+  await expect(toolStep).toHaveAttribute('data-lifecycle', 'paused');
+  await expect(toolStep).toContainText('已取消');
+  // detail 保留 command 供展开
+  await toolStep.click();
+  await expect(page.locator('.tool-detail')).toContainText('sleep 120');
+});
+```
+
+**人工真请求**
+
+| 前置 | 提示词 | 预期 |
+|------|--------|------|
+| 模式 `react`、flag `sandbox-workspace=on` | `请调用 sandbox__exec：command 必须是 sleep 120，并传 timeout_sec=180；不要自己提前结束。若工具返回「用户已取消」，请换方案执行 echo cancel-ok 并作答。`（SANDBOX_CANCEL_QUERY） | hover 出取消圆钮；取消后主行「已取消」、detail 保留 command；主消息仍 completed；**与现网 4.5.7 UX 完全一致** |
+| 同上、写工具、flag `hitl-permission=on` | `请调用 {OA_APPROVE} 工具审批 OA 待办 taskId=T1001，不要查询其它工具。`（HITL_QUERY） | 弹出现有确认 UI（Permission 事件驱动，**非**新组件）；确认/拒绝路径正常；沙箱抽屉（文件树/diff/writeHitlMode）不变 |
+
+- [ ] **Step 2: e2e + 人工两项确认 → 记录 → Commit**
+
+```bash
+git add sunshine-ui/e2e/as2-p5-sandbox-workspace.spec.ts
+git commit -m "test(as2-p5): workspace sandbox drawer + permission hitl UX e2e"
+```
+
 ---
 
 ## P6 — peer-collab 正式化
@@ -964,6 +1241,45 @@ git commit -m "feat(as2-p6): restore reactive speaker selection behind peer-reac
 
 ```bash
 git commit -m "test(as2-p6): peer/expert live + rollback gate"
+```
+
+### Task P6-3: 前端回归（反应式选人恢复 + `$` 完整路径）
+
+**Files:**
+- Create: `sunshine-ui/e2e/as2-p6-peer-reactive.spec.ts`
+
+**自动化 e2e**
+
+- [ ] **Step 1: 新增 `as2-p6-peer-reactive.spec.ts`——反应式轮次下专家步 + Synthesizer 正文**
+
+```ts
+test('as2-p6 reactive peer expert steps + synthesizer', async ({ page }) => {
+  await page.goto('/chat');
+  await page.getByTestId('execution-mode-selector').selectOption('peer-collab');
+  await page.getByTestId('composer-input').fill(E1_QUERY);
+  await page.getByTestId('composer-send').click();
+  // 专家步 expert-{id}-s{seq} 出现（data-phase=expert）
+  const experts = page.locator('[data-phase="expert"]');
+  await expect(experts.first()).toBeVisible({ timeout: 90000 });
+  // 反应式：第 2 轮起可能少于全名册（动态选人）——不强断言人数，但至少有 2 位
+  expect(await experts.count()).toBeGreaterThanOrEqual(2);
+  // Synthesizer 终态正文流式（无 generate Timeline 步）
+  await expect(page.locator('.markdown-content').last()).not.toBeEmpty({ timeout: 120000 });
+});
+```
+
+**人工真请求**
+
+| 前置 | 提示词 | 预期 |
+|------|--------|------|
+| 模式 `peer-collab`、flag `peer-reactive=on` | `请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证`（E1_QUERY） | `expert-convene` → 多专家步 + `step_delta(result)`；**第 2 轮起反应式选人**（与 P0 顺序桥可观察差异）；Synthesizer 终态正文流式完整、无截断 |
+| Chat 输入框 `$` 绑定专家 | `$费用报销分析专家 这笔报销合规吗` | `$` 绑定路径正常、指定专家发言；Catalog/`$`/前端专家步产品层不变 |
+
+- [ ] **Step 2: e2e + 人工两项确认 → 记录 → Commit**
+
+```bash
+git add sunshine-ui/e2e/as2-p6-peer-reactive.spec.ts
+git commit -m "test(as2-p6): reactive peer + dollar-bind e2e"
 ```
 
 ---
@@ -1027,20 +1343,52 @@ git commit -m "test(as2-p7): full regression + four-mode frontend spot check" --
 git tag as2-upgrade-done
 ```
 
+### Task P7-4: 前端回归（四模式全量 + 清桥后无残留）
+
+**Files:**
+- Modify: `sunshine-ui/e2e/`（全量回归；删除 P1–P6 中依赖已拆 flag 的临时 spec，保留通用回归）
+
+**自动化 e2e**
+
+- [ ] **Step 1: 全量 e2e 回归（含 P0–P6 全部 as2-p*.spec.ts，flag 已拆后应仍全绿）**
+
+Run: `cd sunshine-ui && npm run test:e2e`
+Expected: 全绿；无对已删 flag 的引用
+
+- [ ] **Step 2: 打真实 Gateway 全量**
+
+Run: `cd sunshine-ui && PLAYWRIGHT_BASE_URL=http://ecs4c16g:5173 npm run test:e2e`
+Expected: 全绿
+
+**人工真请求（四模式抽检，每模式一条 golden query）**
+
+| 模式 | 提示词 | 预期 |
+|------|--------|------|
+| `react` | `帮我查待审批报销，并对有风险的单据逐条说明原因`（F1_QUERY） | ReAct 时间线 + 真续跑 + 任务卡全链路 |
+| `workflow` | 触发静态 workflow 标杆（`#` 选模板） | DAG + answer 节点 `step_delta(result)` 正常 |
+| `plan-workflow` | 触发 Plan-Workflow（动态 DAG） | Planner → 校验 → 执行 → answer；Plan 用户确认框正常 |
+| `peer-collab` | `请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证`（E1_QUERY） | 反应式专家步 + Synthesizer 正文 |
+
+- [ ] **Step 3: 四模式全绿 + 全量 e2e 绿 → 记录 → Commit**
+
+```bash
+git commit -m "test(as2-p7): four-mode frontend regression + e2e full pass" --allow-empty
+```
+
 ---
 
 ## 附录 A — 阶段-脚本-闸门速查
 
-| 阶段 | 新建脚本 | 复用 Live | 回滚脚本 | 前端验收 |
-|------|----------|-----------|----------|----------|
-| P0 | — | — | `verify_rollback_p0_compile.py` | ReAct 一轮 + peer 降级 |
-| P1 | `bench_event_adapter.py` | — | `verify_rollback_p1_events.py` | 步骤 + 流式正文 |
-| P2 | `verify_react_checkpoint_live.py` | — | `verify_rollback_p2_checkpoint.py` | 停→「继续执行」 |
-| P3 | — | `verify_react_taskboard_live.py` | `verify_rollback_p3_tasklist.py` | 任务卡 |
-| P4 | — | `verify_spawn_subagent_live.py` | `verify_rollback_p4_subagent.py` | 子卡/取消 |
-| P5 | — | `verify_sandbox_live` / `verify_hitl_live` / `verify_sandbox_tool_cancel_live` | `verify_rollback_p5_sandbox.py` | 沙箱抽屉 + 写确认 |
-| P6 | — | `verify_peer_collab_live` / `verify_expert_consultation_live` | `verify_rollback_p6_peer.py` | `$` 完整路径 |
-| P7 | — | 全量回归包 | 全量回滚最终回归 | 四模式抽检 |
+| 阶段 | 新建脚本 | 复用 Live | 回滚脚本 | 自动化 e2e | 前端人工验收 |
+|------|----------|-----------|----------|------------|--------------|
+| P0 | — | — | `verify_rollback_p0_compile.py` | 全量基线 + `as2-p0-peer-sequential.spec.ts` | ReAct 一轮（F1）+ peer 降级（E1） |
+| P1 | `bench_event_adapter.py` | — | `verify_rollback_p1_events.py` | `as2-p1-stream-events.spec.ts` | 步骤+流式正文（FN1）+ Plan DAG |
+| P2 | `verify_react_checkpoint_live.py` | — | `verify_rollback_p2_checkpoint.py` | `as2-p2-checkpoint-resume.spec.ts` | 停→「继续执行」（FN1）+ TTL 降级 |
+| P3 | — | `verify_react_taskboard_live.py` | `verify_rollback_p3_tasklist.py` | `as2-p3-tasklist.spec.ts` | 任务卡（F1）+ 回滚 |
+| P4 | — | `verify_spawn_subagent_live.py` | `verify_rollback_p4_subagent.py` | `as2-p4-subagent.spec.ts` | 子卡/抽屉（S1）+ 单独取消 |
+| P5 | — | `verify_sandbox_live` / `verify_hitl_live` / `verify_sandbox_tool_cancel_live` | `verify_rollback_p5_sandbox.py` | `as2-p5-sandbox-workspace.spec.ts` | 沙箱取消（SANDBOX_CANCEL）+ 写确认（HITL） |
+| P6 | — | `verify_peer_collab_live` / `verify_expert_consultation_live` | `verify_rollback_p6_peer.py` | `as2-p6-peer-reactive.spec.ts` | 反应式（E1）+ `$` 绑定 |
+| P7 | — | 全量回归包 | 全量回滚最终回归 | 全量 e2e（真实 Gateway） | 四模式抽检（F1/模板/Plan/E1） |
 
 ## 附录 B — 关键文件改动速查
 
