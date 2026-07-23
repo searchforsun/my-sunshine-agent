@@ -7,7 +7,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.context.AssembledContext;
-import com.sunshine.orchestrator.memory.MemoryProperties;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,13 +32,14 @@ class ExpertPeerAgentFactoryTest {
     @Mock DynamicToolkitFactory dynamicToolkitFactory;
     @Mock ToolCatalogService toolCatalogService;
     @Mock ReActAgentFactory reactAgentFactory;
+    @Mock AgentStateStore stateStore;
 
     ExpertPeerAgentFactory factory;
 
     @BeforeEach
     void setUp() {
         factory = new ExpertPeerAgentFactory(
-                dynamicToolkitFactory, toolCatalogService, reactAgentFactory, new MemoryProperties());
+                dynamicToolkitFactory, toolCatalogService, reactAgentFactory, stateStore);
         ReflectionTestUtils.setField(factory, "modelName", "test-model");
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");
         ReflectionTestUtils.setField(factory, "apiKey", "k");

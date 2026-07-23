@@ -3,13 +3,9 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.memory.MemoryProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import io.agentscope.core.ReActAgent;
-import io.agentscope.core.memory.Memory;
-import io.agentscope.core.memory.autocontext.AutoContextConfig;
-import io.agentscope.core.memory.autocontext.AutoContextHook;
-import io.agentscope.core.memory.autocontext.AutoContextMemory;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +16,9 @@ import org.springframework.util.StringUtils;
 
 /**
  * 每次对话创建独立 ReActAgent，避免单例残留 pending tool call / 并发冲突。
- * 可选 {@link AutoContextMemory}（4.6.4）压缩单次 run 内 TOOL 上下文。
+ * 2.0 起 `.memory()` 被 `.stateStore(AgentStateStore)` 取代；
+ * AutoContextMemory/AutoContextHook/AutoContextConfig 在 2.0 已整体移除，压缩改在 P2 用原生
+ * CompactionConfig 重做（阈值字段保留于 {@code MemoryProperties.AutoContext} 供 P2 对标）。
  * base system-prompt 读 {@link PromptCatalogHolder}（id={@code system-prompt}）。
  */
 @Slf4j
@@ -30,9 +28,9 @@ public class ReActAgentFactory {
 
     private final PromptCatalogHolder catalogHolder;
     private final AgentExecutionProperties executionProperties;
-    private final MemoryProperties memoryProperties;
     private final DynamicToolkitFactory dynamicToolkitFactory;
     private final ProcessingStepHookFactory stepHookFactory;
+    private final AgentStateStore stateStore;
 
     @Value("${agent.model.name:deepseek-v4-pro}")
     private String modelName;
@@ -48,48 +46,17 @@ public class ReActAgentFactory {
         Toolkit toolkit = resolveToolkit(request);
         int maxIters = resolveMaxIters(request);
         OpenAIChatModel model = buildModel();
-        MemoryProperties.AutoContext ac = memoryProperties.getAutoContext();
-        boolean autoContext = ac != null && ac.isEnabled();
-        log.info("[ReActAgentFactory] role={} skill={} tools={} maxIters={} autoContext={}",
-                request.role(), request.skillId(), toolkit.getToolNames(), maxIters, autoContext);
+        log.info("[ReActAgentFactory] role={} skill={} tools={} maxIters={}",
+                request.role(), request.skillId(), toolkit.getToolNames(), maxIters);
 
-        ReActAgent.Builder builder = ReActAgent.builder()
+        return ReActAgent.builder()
                 .name(resolveAgentName(request))
                 .sysPrompt(composeSystemPrompt(request))
                 .model(model)
                 .toolkit(toolkit)
-                .maxIters(maxIters);
-
-        if (autoContext) {
-            builder.memory(new AutoContextMemory(buildAutoContextConfig(ac), model))
-                    .hook(new AutoContextHook())
-                    .hook(stepHookFactory.forBridge(bridgeId));
-        } else {
-            builder.hook(stepHookFactory.forBridge(bridgeId));
-        }
-        return builder.build();
-    }
-
-    /** 供单测断言 memory 类型；与 create 同策略 */
-    Memory createMemory(OpenAIChatModel model) {
-        MemoryProperties.AutoContext ac = memoryProperties.getAutoContext();
-        if (ac == null || !ac.isEnabled()) {
-            return null;
-        }
-        return new AutoContextMemory(buildAutoContextConfig(ac), model);
-    }
-
-    public static AutoContextConfig buildAutoContextConfig(MemoryProperties.AutoContext ac) {
-        return AutoContextConfig.builder()
-                .largePayloadThreshold(ac.getLargePayloadThreshold())
-                .maxToken(ac.getMaxToken())
-                .tokenRatio(ac.getTokenRatio())
-                .offloadSinglePreview(ac.getOffloadSinglePreview())
-                .msgThreshold(ac.getMsgThreshold())
-                .lastKeep(ac.getLastKeep())
-                .minConsecutiveToolMessages(ac.getMinConsecutiveToolMessages())
-                .currentRoundCompressionRatio(ac.getCurrentRoundCompressionRatio())
-                .minCompressionTokenThreshold(ac.getMinCompressionTokenThreshold())
+                .maxIters(maxIters)
+                .stateStore(stateStore)   // 注入 AgentStateStore（P0 占位，P2 启用续跑语义）
+                .hook(stepHookFactory.forBridge(bridgeId))
                 .build();
     }
 

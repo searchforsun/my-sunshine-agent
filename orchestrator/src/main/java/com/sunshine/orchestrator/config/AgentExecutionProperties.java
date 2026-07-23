@@ -85,4 +85,30 @@ public class AgentExecutionProperties {
             private String onTimeout = "fallback_react";
         }
     }
+
+    private As2 as2 = new As2();
+
+    @Data
+    public static class As2 {
+        /** P0 总开关：编译期置 true，所有 as2 子 flag 依此生效 */
+        private boolean enabled = true;
+        /** P1 事件路径：true=streamEvents，false=legacy-hook */
+        private boolean streamEvents = false;
+        /** P2 续跑：true=原生 checkpoint，false=retainIntentStepsOnly 软续跑 */
+        private boolean reactCheckpoint = false;
+        /** P3：true=enableTaskList，false=manage_tasks */
+        private boolean tasklistNative = false;
+        /** P4：true=Harness subagent，false=SpawnSubagentTool */
+        private boolean subagentNative = false;
+        /** P5：true=Workspace 沙箱，false=现网沙箱内核 */
+        private boolean sandboxWorkspace = false;
+        /** P5：true=Permission HITL，false=自研 HITL */
+        private boolean hitlPermission = false;
+        /** P6：true=反应式 hub，false=顺序桥 */
+        private boolean peerReactive = false;
+        /** AgentState Redis TTL 秒（spec §4.1 锁定 7 天） */
+        private long stateTtlSec = 604800L;
+        /** AgentState Redis key 前缀（与 GenerationJob 隔离） */
+        private String stateKeyPrefix = "agentscope:state:";
+    }
 }
