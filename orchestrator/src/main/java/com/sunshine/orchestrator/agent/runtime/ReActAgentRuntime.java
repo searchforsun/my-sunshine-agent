@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.agent.runtime;
 
-import com.sunshine.orchestrator.agent.AgentScopeEventMapper;
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
@@ -18,9 +17,9 @@ import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import io.agentscope.core.ReActAgent;
-import io.agentscope.core.agent.Event;
-import io.agentscope.core.agent.EventType;
-import io.agentscope.core.agent.StreamOptions;
+import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.TextBlockDeltaEvent;
+import io.agentscope.core.event.ThinkingBlockDeltaEvent;
 import io.agentscope.core.message.Msg;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,16 +89,9 @@ public class ReActAgentRuntime implements AgentRuntime {
         String assistantMessageId = request.assistantMessageId();
         sandboxSessionLifecycle.prepareRun(request);
         try {
-            List<Msg> inputs = promptComposer.composeReactInputs(
-                    PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks(),
-                            request.reactRestart(), request.reactPromptId()));
-            StreamOptions options = StreamOptions.builder()
-                    .incremental(true)
-                    .eventTypes(EventType.REASONING, EventType.AGENT_RESULT)
-                    .includeReasoningChunk(true)
-                    .includeReasoningResult(false)
-                    .includeActingChunk(true)
-                    .build();
+        List<Msg> inputs = promptComposer.composeReactInputs(
+                PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks(),
+                        request.reactRestart(), request.reactPromptId()));
             ProcessingTimelineSession session = new ProcessingTimelineSession();
             session.bindUserQuery(query);
             session.bindTraceMessageId(assistantMessageId);
@@ -129,15 +121,15 @@ public class ReActAgentRuntime implements AgentRuntime {
                     ? assistantMessageId.strip() : null;
             final long runEpoch = epochMessageId != null
                     ? StepEventBridge.currentStreamEpoch(epochMessageId) : -1L;
-            return agent.stream(inputs, options)
-                    .flatMap(event -> {
+            return agent.streamEvents(inputs)
+                    .flatMap(agentEvent -> {
                         if (epochMessageId != null && runEpoch >= 0
                                 && !StepEventBridge.isStreamEpochValid(epochMessageId, runEpoch)) {
                             return Flux.empty();
                         }
-                        List<StreamToken> tokens = new ArrayList<>();
-                        tokens.addAll(mapAgentEvent(event, session, answerContentStarted));
-                        tokens.addAll(drainHookTokens(hookQueue));
+                        // delta 事件经 bridge 路由进 hookQueue（与 legacy Hook 一致：reasoning/content 不直灌）
+                        routeDeltaToBridge(agentEvent, bridgeId);
+                        List<StreamToken> tokens = new ArrayList<>(drainHookTokens(hookQueue));
                         for (StreamToken token : tokens) {
                             if (token.isContent() && token.text() != null) {
                                 answerContent.append(token.text());
@@ -233,10 +225,14 @@ public class ReActAgentRuntime implements AgentRuntime {
         return tokens;
     }
 
-    private static List<StreamToken> mapAgentEvent(
-            Event event,
-            ProcessingTimelineSession session,
-            AtomicBoolean answerContentStarted) {
-        return AgentScopeEventMapper.map(event, session, answerContentStarted);
+    private static void routeDeltaToBridge(AgentEvent ev, String bridgeId) {
+        // AS2 streamEvents：reasoning/content delta 经 bridge 路由进 hookQueue，
+        // 与 legacy Hook 路径一致（emitReasoningChunk/emitReasoningContentChunk 写 hookQueue，runtime drain）。
+        if (ev instanceof ThinkingBlockDeltaEvent t) {
+            StepEventBridge.emitReasoningChunk(bridgeId, t.getDelta());
+        } else if (ev instanceof TextBlockDeltaEvent d) {
+            StepEventBridge.emitReasoningContentChunk(bridgeId, d.getDelta());
+        }
+        // ToolCall/ToolResult 事件由 ProcessingStepMiddleware.onActing 驱动（不经此处）
     }
 }
