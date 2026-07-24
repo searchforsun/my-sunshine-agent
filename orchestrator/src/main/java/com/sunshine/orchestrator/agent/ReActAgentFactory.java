@@ -29,7 +29,7 @@ public class ReActAgentFactory {
     private final PromptCatalogHolder catalogHolder;
     private final AgentExecutionProperties executionProperties;
     private final DynamicToolkitFactory dynamicToolkitFactory;
-    private final ProcessingStepHookFactory stepHookFactory;
+    private final ProcessingStepMiddlewareFactory middlewareFactory;
     private final AgentStateStore stateStore;
 
     @Value("${agent.model.name:deepseek-v4-pro}")
@@ -56,7 +56,7 @@ public class ReActAgentFactory {
                 .toolkit(toolkit)
                 .maxIters(maxIters)
                 .stateStore(stateStore)   // 注入 AgentStateStore（P0 占位，P2 启用续跑语义）
-                .hook(stepHookFactory.forBridge(bridgeId))
+                .middleware(middlewareFactory.forBridge(bridgeId))
                 .build();
     }
 
