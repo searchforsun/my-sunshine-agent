@@ -29,7 +29,7 @@ class ReActAgentFactoryTest {
     @Mock
     private DynamicToolkitFactory dynamicToolkitFactory;
     @Mock
-    private ProcessingStepHookFactory stepHookFactory;
+    private ProcessingStepMiddlewareFactory middlewareFactory;
     @Mock
     private AgentStateStore stateStore;
 
@@ -48,7 +48,7 @@ class ReActAgentFactoryTest {
                 new PromptCatalogEntry("system-prompt", "system", "系统提示", true, 0, 1,
                         "base system", null))));
         factory = new ReActAgentFactory(
-                catalogHolder, executionProperties, dynamicToolkitFactory, stepHookFactory,
+                catalogHolder, executionProperties, dynamicToolkitFactory, middlewareFactory,
                 stateStore);
         ReflectionTestUtils.setField(factory, "modelName", "deepseek-v4-pro");
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");

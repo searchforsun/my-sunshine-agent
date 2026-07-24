@@ -585,7 +585,7 @@ class ProcessingTimelineSessionTest {
         ProcessingStep tasks = session.snapshot().stream()
                 .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).findFirst().orElseThrow();
         assertThat(tasks.startedAt()).isLessThanOrEqualTo(session.snapshot().stream()
-                .filter(s -> s.id().startsWith("tool-sdk__sunshine-finance__list_finance"))
+                .filter(s -> s.id().startsWith("tool-sdk__sunshine-finance__list_my_expenses"))
                 .findFirst().orElseThrow().startedAt());
         assertThat(tasks.startedAt()).isGreaterThanOrEqualTo(thinkEnd);
     }

@@ -92,8 +92,6 @@ public class AgentExecutionProperties {
     public static class As2 {
         /** P0 总开关：编译期置 true，所有 as2 子 flag 依此生效 */
         private boolean enabled = true;
-        /** P1 事件路径：true=streamEvents，false=legacy-hook */
-        private boolean streamEvents = false;
         /** P2 续跑：true=原生 checkpoint，false=retainIntentStepsOnly 软续跑 */
         private boolean reactCheckpoint = false;
         /** P3：true=enableTaskList，false=manage_tasks */

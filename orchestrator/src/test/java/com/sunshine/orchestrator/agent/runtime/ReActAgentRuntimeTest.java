@@ -13,11 +13,8 @@ import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import io.agentscope.core.ReActAgent;
-import io.agentscope.core.agent.Event;
-import io.agentscope.core.agent.EventType;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
-import io.agentscope.core.message.TextBlock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -101,15 +98,10 @@ class ReActAgentRuntimeTest {
         Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of(userMsg));
 
-        Msg resultMsg = Msg.builder()
-                .role(MsgRole.ASSISTANT)
-                .content(List.of(TextBlock.builder().text("主 Agent 答复").build()))
-                .build();
-        Event resultEvent = new Event(EventType.AGENT_RESULT, resultMsg, false);
         AgentRunRequest req = AgentRunRequest.main(
                 AssembledContext.empty(), "用户问题", "u1", "default", "msg-1");
         when(agentFactory.create(req)).thenReturn(reactAgent);
-        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.just(resultEvent));
+        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
 
         List<StreamToken> tokens = runtime.run(req).collectList().block();
         assertThat(tokens).isNotNull();
@@ -127,12 +119,8 @@ class ReActAgentRuntimeTest {
     @Test
     void run_createsAgentOnBoundedElastic_evenWhenSubscribedFromParallel() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-        Msg resultMsg = Msg.builder()
-                .role(MsgRole.ASSISTANT)
-                .content(List.of(TextBlock.builder().text("ok").build()))
-                .build();
-        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.just(
-                new Event(EventType.AGENT_RESULT, resultMsg, false)));
+        when(agentFactory.create(any())).thenReturn(reactAgent);
+        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         java.util.concurrent.atomic.AtomicReference<String> createThread = new java.util.concurrent.atomic.AtomicReference<>();
         when(agentFactory.create(any())).thenAnswer(inv -> {
             createThread.set(Thread.currentThread().getName());
@@ -151,13 +139,7 @@ class ReActAgentRuntimeTest {
     @Test
     void run_subUsesSubBridgePrefix() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-
-        Msg resultMsg = Msg.builder()
-                .role(MsgRole.ASSISTANT)
-                .content(List.of(TextBlock.builder().text("子 Agent 结论").build()))
-                .build();
-        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.just(
-                new Event(EventType.AGENT_RESULT, resultMsg, false)));
+        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
 
         ArgumentCaptor<AgentRunRequest> requestCaptor = ArgumentCaptor.forClass(AgentRunRequest.class);
         when(agentFactory.create(requestCaptor.capture())).thenReturn(reactAgent);
@@ -180,13 +162,7 @@ class ReActAgentRuntimeTest {
     @Test
     void run_subStripsStreamMemoryAndPassesSkillId() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-
-        Msg resultMsg = Msg.builder()
-                .role(MsgRole.ASSISTANT)
-                .content(List.of(TextBlock.builder().text("ok").build()))
-                .build();
-        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.just(
-                new Event(EventType.AGENT_RESULT, resultMsg, false)));
+        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         when(agentFactory.create(any())).thenReturn(reactAgent);
 
         AssembledContext fullMemory = new AssembledContext("ltm", "mtm", List.of(), List.of(
@@ -209,12 +185,7 @@ class ReActAgentRuntimeTest {
     @Test
     void run_mainPreparesSandboxContextAndClosesOnce() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-        Msg resultMsg = Msg.builder()
-                .role(MsgRole.ASSISTANT)
-                .content(List.of(TextBlock.builder().text("done").build()))
-                .build();
-        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.just(
-                new Event(EventType.AGENT_RESULT, resultMsg, false)));
+        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         when(agentFactory.create(any())).thenReturn(reactAgent);
 
         AgentRunRequest req = AgentRunRequest.main(
@@ -230,7 +201,7 @@ class ReActAgentRuntimeTest {
     void run_errorStillClosesSandboxSession() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
         when(agentFactory.create(any())).thenReturn(reactAgent);
-        when(reactAgent.stream(anyList(), any())).thenReturn(Flux.error(new RuntimeException("boom")));
+        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>error(new RuntimeException("boom")));
 
         AgentRunRequest req = AgentRunRequest.main(
                 AssembledContext.empty(), "q", "u1", "default", "msg-err", List.of(), "coding-skill");
