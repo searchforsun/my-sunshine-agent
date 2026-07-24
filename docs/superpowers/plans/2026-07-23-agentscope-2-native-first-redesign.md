@@ -23,6 +23,17 @@
 - 改 orchestrator 后：编译 -> 重启 -> 跑 Live 留记录
 - commit 前缀：feat(as2-p<n>) / test(as2-p<n>) / chore(as2-p<n>)
 
+## P1 实施偏差记录（实施时确认，覆盖原 P1 骨架）
+
+> 以下为 P1 实施中经 AS2 真实 API（javap 验证）确认的偏差，原 P1-2/P1-3/P1-4 骨架据此修正。
+
+1. **P1-3 载体改 ReActAgent+.middleware()（非 HarnessAgent）**：ReActAgent.builder() 原生支持 `.middleware(MiddlewareBase)`/`.stateStore()`/`.build()` 且有 `streamEvents()`。HarnessAgent 默认注入 filesystem/shell/memory/subagent/skill 工具，P1 用需显式 disable 一堆才不污染工具集。故 P1 载体=ReActAgent+.middleware()；HarnessAgent 延后到真正用其能力的阶段（P4 subagent / P5 workspace）。**P2 续跑仍用 ReActAgent+stateStore**。
+2. **P1-2 onActing 出口用方案 A（delta 累积）**：`streamEvents` 的 `ToolResultEndEvent` 不携带 `ToolResultBlock`（仅 toolCallId/toolCallName/state）。故 `ProcessingStepMiddleware.onActing` 返回 Flux 内 `doOnNext` 拦截 `ToolResultTextDeltaEvent` 按 toolCallId 累积结果文本，`ToolResultEndEvent` 触发完整 PostActing 收口（摘要/editDiff/取消判定）。验证：`ToolResultTextDeltaEvent.getDelta()` 按 TextBlock 逐块发出，累积即等价 legacy `extractToolResultText`。
+3. **P1-4 delta 经 bridge 路由（非直灌）**：`TextBlockDeltaEvent`/`ThinkingBlockDeltaEvent` 经 `StepEventBridge.emitReasoningContentChunk`/`emitReasoningChunk` 路由进 hookQueue（与 legacy Hook 一致，runtime drain），而非裸 `StreamToken.content`。`ToolCall/ToolResult` 事件由 middleware onActing 驱动。
+4. **P1-2/P1-5 删 dead 原型**：除计划指定的 3 文件外，额外删 dead 原型 `runtime.AgentScopeEventMapper`（未接线）+ `ReasoningChunkSupport`（主调用者 ProcessingStepHook 已删）。ExpertSpeakHook 保留至 P6（peer 路径）。
+5. **P2 待修**：`ReactCheckpointService` 计划用 `agent.interrupt(RuntimeContext)`，但实际 `HarnessAgent`/`ReActAgent.interrupt()` 仅有 `interrupt()` 与 `interrupt(Msg)` 两种签名（无 RuntimeContext）。P2 实施时改用 `interrupt()` + stateStore 定位会话。
+6. **P1 验收记录**：724 单测绿；verify_rollback_p1.py 静态检查全绿（删除项零残留 + 2.0 编译绿 + git revert 后基线编译绿）。Live 验收（ReAct/workflow/spawn 真请求）待运行环境。
+
 ---
 
 ## P1 - 载体迁移 + Hook->Middleware + streamEvents（一次性）
