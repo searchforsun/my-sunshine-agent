@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.AuditEvent;
 import com.sunshine.orchestrator.audit.AuditPublisher;
-import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 /** TaskBoard 变更事件 + 终态 MySQL 快照 */
 @Slf4j
@@ -27,15 +25,7 @@ public class ReactTaskBoardAuditService {
 
     private final AuditPublisher auditPublisher;
     private final ReactTaskBoardRepository repository;
-    private final AgentExecutionProperties executionProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    public void onUpdated(ReactTaskBoardState state) {
-        if (state == null || !shouldSample()) {
-            return;
-        }
-        publishEvent("react.taskboard.updated", state, "ok");
-    }
 
     public void persistFinal(ReactTaskBoardState state) {
         if (state == null || state.assistantMsgId() == null || state.assistantMsgId().isBlank()) {
@@ -126,20 +116,5 @@ public class ReactTaskBoardAuditService {
         } catch (Exception e) {
             log.warn("[TaskBoardAudit] 事件构建失败 type={}: {}", eventType, e.getMessage());
         }
-    }
-
-    private boolean shouldSample() {
-        AgentExecutionProperties.React react = executionProperties.getReact();
-        if (react == null || react.getTaskboard() == null || react.getTaskboard().getAudit() == null) {
-            return true;
-        }
-        double rate = react.getTaskboard().getAudit().getSampleRate();
-        if (rate >= 1.0) {
-            return true;
-        }
-        if (rate <= 0.0) {
-            return false;
-        }
-        return ThreadLocalRandom.current().nextDouble() < rate;
     }
 }

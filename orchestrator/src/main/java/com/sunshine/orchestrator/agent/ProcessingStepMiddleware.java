@@ -15,6 +15,7 @@ import com.sunshine.orchestrator.sandbox.SandboxIds;
 import com.sunshine.orchestrator.sandbox.SandboxStepContext;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
+import com.sunshine.orchestrator.taskboard.TodoTasksBridge;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
@@ -102,7 +103,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                 toolUseById.put(id, tu);
             }
             String toolName = tu.getName();
-            if (ManageTasksTool.NAME.equals(toolName) || SpawnSubagentTool.NAME.equals(toolName)) {
+            if (SpawnSubagentTool.NAME.equals(toolName) || TodoTasksBridge.isTodoWrite(toolName)) {
                 continue;
             }
             beginToolStep(tu);
@@ -113,7 +114,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                         resultTextById.computeIfAbsent(d.getToolCallId(), k -> new StringBuilder())
                                 .append(d.getDelta());
                     } else if (ev instanceof ToolResultEndEvent end) {
-                        completeToolStep(end, resultTextById);
+                        completeToolStep(agent, ctx, end, resultTextById);
                     }
                 })
                 .doFinally(sig -> {
@@ -160,13 +161,19 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     }
 
     /** PostActing 收口（方案 A）：ToolResultEndEvent 触发，用累积的结果文本复现 legacy PostActing 全套逻辑 */
-    private void completeToolStep(ToolResultEndEvent end, Map<String, StringBuilder> resultTextById) {
+    private void completeToolStep(
+            Agent agent, RuntimeContext ctx,
+            ToolResultEndEvent end, Map<String, StringBuilder> resultTextById) {
         String toolName = end.getToolCallName();
         String toolUseId = end.getToolCallId();
         if (toolName == null) {
             return;
         }
-        if (ManageTasksTool.NAME.equals(toolName)) {
+        // 原生 todo_write 是状态工具（无结果可分析）：不上 tool-* 步、不 recordToolCompleted，
+        // 避免触发「已完成任务板的工具结果综合分析」单独 think 步；任务列表投影由
+        // TodoTasksBridge 完成，且 TaskBoardTimelineSupport 已自带 think 锚定防连续复用覆盖。
+        if (TodoTasksBridge.isTodoWrite(toolName)) {
+            TodoTasksBridge.emitTodoTasks(agent, ctx, bridgeId, taskBoardTimelineSupport);
             StepEventBridge.unbindToolUseBridge(toolUseId);
             return;
         }

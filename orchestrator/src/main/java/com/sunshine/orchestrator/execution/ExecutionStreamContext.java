@@ -23,7 +23,9 @@ public record ExecutionStreamContext(
         WorkflowHitlScope.Binding workflowHitl,
         ResumeInteractionHint resumeInteraction,
         boolean workflowHitlPreApproved,
-        boolean reactRestart) {
+        boolean reactRestart,
+        /** 续跑时已有的步骤 JSON；ReactExecutor 用于计算 checkpoint think 轮次 */
+        String existingStepsJson) {
     public ExecutionStreamContext(
             String conversationId,
             String assistantMsgId,
@@ -36,7 +38,7 @@ public record ExecutionStreamContext(
             ExecutionPlan plan) {
         this(conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning,
-                userId, tenantId, null, plan, null, null, null, false, false);
+                userId, tenantId, null, plan, null, null, null, false, false, null);
     }
 
     public ExecutionStreamContext(
@@ -56,7 +58,7 @@ public record ExecutionStreamContext(
         this(conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning,
                 userId, tenantId, null, plan, persistedPlanId, workflowHitl, resumeInteraction,
-                workflowHitlPreApproved, false);
+                workflowHitlPreApproved, false, null);
     }
 
     public ExecutionStreamContext withPlan(ExecutionPlan newPlan) {
@@ -64,7 +66,7 @@ public record ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning,
                 userId, tenantId, kbId, newPlan, persistedPlanId, workflowHitl, resumeInteraction,
-                workflowHitlPreApproved, reactRestart);
+                workflowHitlPreApproved, reactRestart, existingStepsJson);
     }
 
     public ExecutionStreamContext withPersistedPlanId(String planId) {
@@ -72,7 +74,7 @@ public record ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning,
                 userId, tenantId, kbId, plan, planId, workflowHitl, resumeInteraction,
-                workflowHitlPreApproved, reactRestart);
+                workflowHitlPreApproved, reactRestart, existingStepsJson);
     }
 
     /** Workflow tool 节点 HITL — 跨线程随 streamCtx 传递，勿用 ThreadLocal */
@@ -81,7 +83,7 @@ public record ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning,
                 userId, tenantId, kbId, plan, persistedPlanId, binding, resumeInteraction,
-                workflowHitlPreApproved, reactRestart);
+                workflowHitlPreApproved, reactRestart, existingStepsJson);
     }
 
     public ExecutionStreamContext withResumeInteraction(ResumeInteractionHint hint) {
@@ -89,7 +91,7 @@ public record ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning,
                 userId, tenantId, kbId, plan, persistedPlanId, workflowHitl, hint,
-                workflowHitlPreApproved, reactRestart);
+                workflowHitlPreApproved, reactRestart, existingStepsJson);
     }
 
     /** HITL 续跑 re-await 已确认，跳过 ToolNodeHandler 二次确认 */
@@ -97,6 +99,6 @@ public record ExecutionStreamContext(
         return new ExecutionStreamContext(
                 conversationId, assistantMsgId, userContent, memory,
                 existingContent, existingReasoning,
-                userId, tenantId, kbId, plan, persistedPlanId, workflowHitl, null, true, reactRestart);
+                userId, tenantId, kbId, plan, persistedPlanId, workflowHitl, null, true, reactRestart, existingStepsJson);
     }
 }

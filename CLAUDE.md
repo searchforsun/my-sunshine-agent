@@ -14,6 +14,8 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 
 编译、启动、验收命令见 [README.md](./README.md) §快速开始。改 `docs/nacos/*.yaml` 后必跑 `python scripts/sync_nacos.py` 并重启消费服务。
 
+修改后端功能后必须重启对应服务start.py
+
 **运维脚本（SSOT：`scripts/*.py`）**
 
 | 脚本 | 用途 |

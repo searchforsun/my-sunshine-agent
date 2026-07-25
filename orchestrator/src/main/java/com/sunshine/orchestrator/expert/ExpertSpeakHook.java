@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.expert;
 
-import com.sunshine.orchestrator.agent.ManageTasksTool;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import io.agentscope.core.hook.Hook;
@@ -27,7 +26,8 @@ public final class ExpertSpeakHook implements Hook {
     public <T extends HookEvent> Mono<T> onEvent(T event) {
         if (event instanceof PreActingEvent pre) {
             String toolName = pre.getToolUse().getName();
-            if (ManageTasksTool.NAME.equals(toolName)) {
+            // 任务板（原生 todo_write）不上专家发言的 tool 行
+            if (com.sunshine.orchestrator.taskboard.TodoTasksBridge.isTodoWrite(toolName)) {
                 return Mono.just(event);
             }
             StepEventBridge.bindToolUseBridge(pre.getToolUse().getId(), bridgeId);

@@ -27,6 +27,26 @@ public final class TimelineAggregator {
                 if (state.startedAt == null || event.ts() < state.startedAt) {
                     state.startedAt = event.ts();
                 }
+                // think-N 中断续跑复用同 id 重推：清空旧半截 reasoning，前端同步收到 running 快照后从头续写
+                if (state.endedAt != null) {
+                    state.reasoning = null;
+                }
+                state.endedAt = null;
+                state.durationMs = null;
+                state.after = null;
+                state.active = event.summary();
+            }
+            case RESUME -> {
+                // 无业务 tool 间隔复用同一 think-N：仅翻回 running 并清计时态，
+                // 保留既有 reasoning，让新 delta 经 concat 续写（避免覆盖之前已完成的思考）。
+                // 与 START 的差异：START 在中断续跑时清空旧半截 reasoning，RESUME 不清。
+                state.lifecycle = "running";
+                if (state.startedAt == null || event.ts() < state.startedAt) {
+                    state.startedAt = event.ts();
+                }
+                state.endedAt = null;
+                state.durationMs = null;
+                state.after = null;
                 state.active = event.summary();
             }
             case PROGRESS -> {

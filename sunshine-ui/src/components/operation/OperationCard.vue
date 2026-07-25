@@ -144,12 +144,12 @@ function clearElapsedTimer() {
 }
 
 watch(
-  () => [props.live, isRunning.value, props.step.startedAt] as const,
-  ([live, running, startedAt]) => {
+  () => [props.live, isRunning.value, props.step.clientStartedAt] as const,
+  ([live, running, clientStartedAt]) => {
     clearElapsedTimer()
-    if (live && running && typeof startedAt === 'number') {
+    if (live && running && typeof clientStartedAt === 'number') {
       const tick = () => {
-        liveElapsedMs.value = Math.max(0, Date.now() - startedAt)
+        liveElapsedMs.value = Math.max(0, Date.now() - clientStartedAt)
       }
       tick()
       elapsedTimer = setInterval(tick, 200)

@@ -29,6 +29,11 @@ final class TimelineSessionLifecycle {
         completions.startAt(stepId, phase, startedAt);
     }
 
+    /** 复用已 done 的 think-N 续跑：发 RESUME（翻回 running、保留 reasoning），不发 pending/start（避免清空） */
+    void resume(String stepId, String phase) {
+        emitter.apply(stepId, phase, EventKind.RESUME, summaries.resolveActive(stepId), null);
+    }
+
     void progress(String stepId, String activeSummary) {
         emitter.apply(stepId, null, EventKind.PROGRESS, activeSummary, null);
     }

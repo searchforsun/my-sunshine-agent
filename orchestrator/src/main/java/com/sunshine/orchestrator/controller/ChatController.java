@@ -8,7 +8,6 @@ import com.sunshine.orchestrator.controller.stream.ChatStreamContextFactory;
 import com.sunshine.orchestrator.controller.stream.ChatStreamExecutor;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
-import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
@@ -61,6 +60,7 @@ public class ChatController {
     private final ConversationService conversationService;
     private final GenerationFlushScheduler flushScheduler;
     private final GenerationProperties generationProperties;
+    private final com.sunshine.orchestrator.agent.ReactCheckpointService checkpointService;
 
     @Autowired(required = false)
     private GenerationJobFactory jobFactory;
@@ -157,13 +157,25 @@ public class ChatController {
         boolean planWorkflowResume = resume
                 && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
         boolean reactRestartResume = resume && !planWorkflowResume && streamExecutor.isReactStoredIntent(ctx.intent());
+        boolean hasNativeCheckpoint = reactRestartResume
+                && checkpointService.hasCheckpoint(ctx.userId(), ctx.assistantMsgId());
+        log.info("[ChatController] resume msg={} reactRestart={} hasNativeCheckpoint={} initialSteps={}",
+                ctx.assistantMsgId(), reactRestartResume, hasNativeCheckpoint,
+                resume ? ProcessingStepSerde.fromJson(ctx.existingStepsJson()).size() : 0);
         java.util.List<ProcessingStep> initialSteps = resume
                 ? new java.util.ArrayList<>(ProcessingStepSerde.fromJson(ctx.existingStepsJson()))
                 : java.util.List.of();
         if (reactRestartResume) {
-            initialSteps.clear();
-            initialSteps.addAll(ProcessingStepLifecycleOps.retainIntentStepsOnly(
-                    ProcessingStepSerde.fromJson(ctx.existingStepsJson())));
+            if (!hasNativeCheckpoint) {
+                // 无 checkpoint 无法续传：仅保留 intent，从规划推理全量重来
+                initialSteps.clear();
+                initialSteps.addAll(ProcessingStepLifecycleOps.retainIntentStepsOnly(
+                        ProcessingStepSerde.fromJson(ctx.existingStepsJson())));
+            } else {
+                // AgentScope 从最后一个完整 think 之后全量重放：截断到该 think 为止，
+                // 丢弃其后的未完成 tool/rag/tasks 步，避免与重放的新步重复、或残留 running
+                truncateAfterLastDoneThink(initialSteps);
+            }
         }
         String initialContent = resume && !planWorkflowResume && !reactRestartResume
                 ? ctx.existingContent() : "";
@@ -195,6 +207,11 @@ public class ChatController {
                 flushPartial, onComplete, onError, executionMode);
 
         return sseFluxFromRedis(ctx, generationId, job, resume);
+    }
+
+    /** 断点续传截断：仅保留到「最后一个完整 think」，丢弃半截 think 及其后 tool/rag/tasks（见 ThinkStepIds） */
+    private static void truncateAfterLastDoneThink(java.util.List<ProcessingStep> steps) {
+        com.sunshine.orchestrator.processing.ThinkStepIds.truncateToLastCompleteThink(steps);
     }
 
     private Flux<ServerSentEvent<String>> sseFluxFromRedis(

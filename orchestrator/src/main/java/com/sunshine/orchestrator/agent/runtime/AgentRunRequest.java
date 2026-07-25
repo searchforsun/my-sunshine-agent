@@ -24,7 +24,9 @@ public record AgentRunRequest(
         boolean reactRestart,
         String reactPromptId,
         /** 对话级沙箱复用键；MAIN 必填方可跨 run 保留 workspace */
-        String conversationId
+        String conversationId,
+        /** ReAct checkpoint 续跑：中断前最大 think 轮次，用于 session.resumeFromCheckpoint */
+        int checkpointThinkIteration
 ) {
     public AgentRunRequest {
         memory = memory != null ? memory : AssembledContext.empty();
@@ -88,7 +90,8 @@ public record AgentRunRequest(
             String skillId,
             boolean reactRestart,
             String conversationId,
-            String reactPromptId) {
+            String reactPromptId,
+            int checkpointThinkIteration) {
         return new AgentRunRequest(
                 AgentRole.MAIN,
                 UUID.randomUUID().toString(),
@@ -106,7 +109,23 @@ public record AgentRunRequest(
                 TimelineBinding.MAIN_FULL,
                 reactRestart,
                 reactPromptId,
-                conversationId);
+                conversationId,
+                checkpointThinkIteration);
+    }
+
+    public static AgentRunRequest main(
+            AssembledContext memory,
+            String query,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            List<String> injectedBlocks,
+            String skillId,
+            boolean reactRestart,
+            String conversationId,
+            String reactPromptId) {
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks,
+                skillId, reactRestart, conversationId, reactPromptId, 0);
     }
 
     public static AgentRunRequest main(
@@ -181,7 +200,8 @@ public record AgentRunRequest(
                 TimelineBinding.SUB_COMPRESSED,
                 false,
                 null,
-                conversationId);
+                conversationId,
+                0);
     }
 
     /** Planner — 仅 plan 步 Timeline */
@@ -207,6 +227,7 @@ public record AgentRunRequest(
                 TimelineBinding.PLANNER_ONLY,
                 false,
                 null,
-                null);
+                null,
+                0);
     }
 }

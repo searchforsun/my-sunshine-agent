@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.agent.runtime;
 
-import com.sunshine.orchestrator.agent.ReActAgentFactory;
+import com.sunshine.orchestrator.agent.HarnessAgentFactory;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
@@ -12,7 +12,8 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
-import io.agentscope.core.ReActAgent;
+import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,11 +41,11 @@ import static org.mockito.Mockito.when;
 class ReActAgentRuntimeTest {
 
     @Mock
-    private ReActAgentFactory agentFactory;
+    private HarnessAgentFactory agentFactory;
     @Mock
     private PromptComposer promptComposer;
     @Mock
-    private ReActAgent reactAgent;
+    private HarnessAgent reactAgent;
     @Mock
     private AnswerGroundingChecker groundingChecker;
     @Mock
@@ -86,7 +87,7 @@ class ReActAgentRuntimeTest {
         AgentRunRequest planner = new AgentRunRequest(
                 AgentRole.PLANNER, "run-p", null, AssembledContext.empty(), "plan",
                 List.of(), "u1", "default", null, null, null, null, 1,
-                TimelineBinding.PLANNER_ONLY, false, null, null);
+                TimelineBinding.PLANNER_ONLY, false, null, null, 0);
         assertThatThrownBy(() -> runtime.run(planner).collectList().block())
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("PLANNER");
@@ -101,7 +102,7 @@ class ReActAgentRuntimeTest {
         AgentRunRequest req = AgentRunRequest.main(
                 AssembledContext.empty(), "用户问题", "u1", "default", "msg-1");
         when(agentFactory.create(req)).thenReturn(reactAgent);
-        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
 
         List<StreamToken> tokens = runtime.run(req).collectList().block();
         assertThat(tokens).isNotNull();
@@ -119,8 +120,7 @@ class ReActAgentRuntimeTest {
     @Test
     void run_createsAgentOnBoundedElastic_evenWhenSubscribedFromParallel() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-        when(agentFactory.create(any())).thenReturn(reactAgent);
-        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         java.util.concurrent.atomic.AtomicReference<String> createThread = new java.util.concurrent.atomic.AtomicReference<>();
         when(agentFactory.create(any())).thenAnswer(inv -> {
             createThread.set(Thread.currentThread().getName());
@@ -139,7 +139,7 @@ class ReActAgentRuntimeTest {
     @Test
     void run_subUsesSubBridgePrefix() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
 
         ArgumentCaptor<AgentRunRequest> requestCaptor = ArgumentCaptor.forClass(AgentRunRequest.class);
         when(agentFactory.create(requestCaptor.capture())).thenReturn(reactAgent);
@@ -162,7 +162,7 @@ class ReActAgentRuntimeTest {
     @Test
     void run_subStripsStreamMemoryAndPassesSkillId() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         when(agentFactory.create(any())).thenReturn(reactAgent);
 
         AssembledContext fullMemory = new AssembledContext("ltm", "mtm", List.of(), List.of(
@@ -185,7 +185,7 @@ class ReActAgentRuntimeTest {
     @Test
     void run_mainPreparesSandboxContextAndClosesOnce() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         when(agentFactory.create(any())).thenReturn(reactAgent);
 
         AgentRunRequest req = AgentRunRequest.main(
@@ -201,7 +201,7 @@ class ReActAgentRuntimeTest {
     void run_errorStillClosesSandboxSession() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
         when(agentFactory.create(any())).thenReturn(reactAgent);
-        when(reactAgent.streamEvents(anyList())).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>error(new RuntimeException("boom")));
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>error(new RuntimeException("boom")));
 
         AgentRunRequest req = AgentRunRequest.main(
                 AssembledContext.empty(), "q", "u1", "default", "msg-err", List.of(), "coding-skill");

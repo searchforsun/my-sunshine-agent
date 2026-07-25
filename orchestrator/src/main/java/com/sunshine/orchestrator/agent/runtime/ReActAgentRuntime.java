@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.agent.runtime;
 
-import com.sunshine.orchestrator.agent.ReActAgentFactory;
+import com.sunshine.orchestrator.agent.HarnessAgentFactory;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -16,10 +16,11 @@ import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
-import io.agentscope.core.ReActAgent;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.ThinkingBlockDeltaEvent;
+import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RequiredArgsConstructor
 public class ReActAgentRuntime implements AgentRuntime {
 
-    private final ReActAgentFactory agentFactory;
+    private final HarnessAgentFactory agentFactory;
     private final PromptComposer promptComposer;
     private final AnswerGroundingChecker groundingChecker;
     private final AgentGroundingProperties groundingProperties;
@@ -95,6 +96,13 @@ public class ReActAgentRuntime implements AgentRuntime {
             ProcessingTimelineSession session = new ProcessingTimelineSession();
             session.bindUserQuery(query);
             session.bindTraceMessageId(assistantMessageId);
+            HarnessAgent agent = agentFactory.create(request);
+            int checkpointThinkIter = request.checkpointThinkIteration();
+            if (checkpointThinkIter > 0) {
+                session.resumeFromCheckpoint(checkpointThinkIter);
+                log.info("[AgentRuntime] resume from checkpoint userId={} msg={} thinkIter={}",
+                        request.userId(), assistantMessageId, checkpointThinkIter);
+            }
             ConcurrentLinkedQueue<StreamToken> hookQueue = new ConcurrentLinkedQueue<>();
             String bridgeId = request.resolveBridgeId();
             StepEventBridge.bind(bridgeId, session, hookQueue);
@@ -110,23 +118,21 @@ public class ReActAgentRuntime implements AgentRuntime {
             AtomicBoolean answerContentStarted = new AtomicBoolean(false);
             AtomicBoolean answerStreamFinished = new AtomicBoolean(false);
             StringBuilder answerContent = new StringBuilder();
-            ReActAgent agent = agentFactory.create(request);
             if (request.role() == AgentRole.SUB) {
                 SpawnRunRegistry registry = spawnRunRegistry.getIfAvailable();
                 if (registry != null) {
                     registry.bindAgent(request.runId(), agent);
                 }
             }
-            final String epochMessageId = assistantMessageId != null && !assistantMessageId.isBlank()
-                    ? assistantMessageId.strip() : null;
-            final long runEpoch = epochMessageId != null
-                    ? StepEventBridge.currentStreamEpoch(epochMessageId) : -1L;
-            return agent.streamEvents(inputs)
+            RuntimeContext rt = RuntimeContext.builder()
+                    .userId(request.userId())
+                    .sessionId(assistantMessageId)
+                    .build();
+            return agent.streamEvents(inputs, rt)
                     .flatMap(agentEvent -> {
-                        if (epochMessageId != null && runEpoch >= 0
-                                && !StepEventBridge.isStreamEpochValid(epochMessageId, runEpoch)) {
-                            return Flux.empty();
-                        }
+                        // 不在订阅时捕获 epoch 做流级过滤：恢复续跑会 bumpStreamEpoch 抬高 epoch，
+                        // 订阅时捕获的旧 epoch 会让本轮所有 drain 失效（子 Agent 步骤卡到主 Agent drain）。
+                        // 旧 run 写新流的防护由 GenerationJob.isStreamEpochValid / generationFlush 绑定 epoch 兜底。
                         // delta 事件经 bridge 路由进 hookQueue（与 legacy Hook 一致：reasoning/content 不直灌）
                         routeDeltaToBridge(agentEvent, bridgeId);
                         List<StreamToken> tokens = new ArrayList<>(drainHookTokens(hookQueue));
@@ -140,10 +146,25 @@ public class ReActAgentRuntime implements AgentRuntime {
                     .concatWith(Flux.defer(() -> {
                         List<StreamToken> tail = new ArrayList<>(drainHookTokens(hookQueue));
                         tail.addAll(finishAnswerStream(
-                                session, answerContentStarted, answerStreamFinished, request, answerContent.toString()));
+                                session, answerContentStarted, answerStreamFinished, request, answerContent.toString(), agent));
                         return Flux.fromIterable(tail);
                     }))
                     .doFinally(sig -> {
+                        // 用户主动取消(CANCEL)与系统异常中断(ON_ERROR)都保存 checkpoint，保证续跑可断点续传
+                        if (request.role() == AgentRole.MAIN
+                                && (sig == reactor.core.publisher.SignalType.CANCEL
+                                    || sig == reactor.core.publisher.SignalType.ON_ERROR)
+                                && request.assistantMessageId() != null
+                                && !request.assistantMessageId().isBlank()
+                                && request.userId() != null) {
+                            try {
+                                agent.getDelegate().saveAgentState(request.userId(), request.assistantMessageId());
+                                log.info("[AgentRuntime] checkpoint saved on {} userId={} msg={}",
+                                        sig, request.userId(), request.assistantMessageId());
+                            } catch (Exception e) {
+                                log.warn("[AgentRuntime] saveCheckpoint failed: {}", e.getMessage());
+                            }
+                        }
                         sandboxSessionLifecycle.closeQuietly(request);
                         if (request.role() == AgentRole.MAIN
                                 && request.assistantMessageId() != null
@@ -166,7 +187,8 @@ public class ReActAgentRuntime implements AgentRuntime {
             AtomicBoolean answerContentStarted,
             AtomicBoolean answerStreamFinished,
             AgentRunRequest request,
-            String answerContent) {
+            String answerContent,
+            HarnessAgent agent) {
         if (!answerStreamFinished.compareAndSet(false, true)) {
             return List.of();
         }
@@ -181,7 +203,9 @@ public class ReActAgentRuntime implements AgentRuntime {
             session.closeContentSegment();
             session.completeThinkIfRunning();
             if (isTaskboardEnabled(request)) {
-                taskBoardService.finalizeTimeline(session, request.assistantMessageId());
+                taskBoardService.finalizeNativeTimeline(
+                        session, request,
+                        agent.getDelegate().getAgentState(request.userId(), request.assistantMessageId()));
             }
         });
     }

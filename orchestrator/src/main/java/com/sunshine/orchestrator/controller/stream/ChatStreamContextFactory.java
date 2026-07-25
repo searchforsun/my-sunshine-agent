@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.controller.stream;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
+import com.sunshine.orchestrator.agent.ReactCheckpointService;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.MessageBodyText;
@@ -45,6 +46,7 @@ public class ChatStreamContextFactory {
     private final ExecutionPlanStore executionPlanStore;
     private final ExecutionPlanParser executionPlanParser;
     private final DefaultKbResolver defaultKbResolver;
+    private final ReactCheckpointService checkpointService;
 
     @Autowired(required = false)
     private GenerationRegistry registry;
@@ -137,6 +139,10 @@ public class ChatStreamContextFactory {
         boolean reactRestartResume = !planWorkflowResume
                 && (storedPlan.mode() == ExecutionMode.REACT
                 || storedPlan.mode() == ExecutionMode.PEER_COLLAB);
+        boolean hasNativeCheckpoint = reactRestartResume
+                && checkpointService.hasCheckpoint(userId, assistantId);
+        log.info("[ChatStreamContextFactory] resume userId={} msg={} reactRestart={} hasNativeCheckpoint={}",
+                userId, assistantId, reactRestartResume, hasNativeCheckpoint);
 
         String resumeContent;
         String resumeReasoning;
@@ -145,8 +151,13 @@ public class ChatStreamContextFactory {
         if (reactRestartResume) {
             resumeContent = "";
             resumeReasoning = "";
-            stepsJson = ProcessingStepSerde.toJson(ProcessingStepLifecycleOps.retainIntentStepsOnly(existingSteps));
-            contentBlocksJson = "[]";
+            if (hasNativeCheckpoint) {
+                stepsJson = assistant.getSteps();
+                contentBlocksJson = assistant.getContentBlocks();
+            } else {
+                stepsJson = ProcessingStepSerde.toJson(ProcessingStepLifecycleOps.retainIntentStepsOnly(existingSteps));
+                contentBlocksJson = "[]";
+            }
         } else if (planWorkflowResume) {
             resumeContent = "";
             resumeReasoning = "";

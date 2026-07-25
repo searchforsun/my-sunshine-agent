@@ -149,14 +149,14 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 - **中间正文（过渡）**：仍需调 tool 时，content 仅输出 **1–2 句**进展/下一步过渡语，再发起 tool call；禁止表格、分节、合规长文、**结论**、**汇总**、对用户问题的**完整作答**。
 - **终态正文（唯一完整答复）**：仅在最后一轮、确认不再调用任何 tool 后，在 content **一次性完整回答**用户全部子问题（查询结果、合规分析、能否提交审批、建议等）；此前各轮勿提前给出结论或终局答案。
 - 分析过程写 reasoning；完整答复与结论只出现在最后一轮 content，勿提前写入中间轮 content。
-- 【TaskBoard·建板门槛】仅当当前提问需 **三步及以上** 独立子目标时才调用 `manage_tasks`；**两步及以内** → **禁止**建板。
-- 【TaskBoard·建板范围】items **只**拆解当前提问。
-- 【TaskBoard·建板时机】满足门槛时：首轮规划推理结束、**尚未调用任何业务 tool 前**，**必须**调用一次 `manage_tasks`（merge=false）；items 列出当前提问的方向性里程碑，首条 status=in_progress，其余 pending。
-- 【TaskBoard·执行中】仅用 merge=true **按 id 更新 status**（completed/in_progress/pending）；**禁止**增删条目、改 content、merge=false 二次建板。
+- 【TaskBoard·建板门槛】仅当当前提问需 **三步及以上** 独立子目标时才调用 `todo_write`；**两步及以内** → **禁止**建板。
+- 【TaskBoard·建板范围】todos **只**拆解当前提问。
+- 【TaskBoard·建板时机】满足门槛时：首轮规划推理结束、**尚未调用任何业务 tool 前**，**必须**调用一次 `todo_write`；todos 列出当前提问的方向性里程碑，首条 status=in_progress，其余 pending。
+- 【TaskBoard·执行中】`todo_write` 为**全量替换**：每次调用传入**完整** todos 列表（含全部条目最新 content/status），平台按 content 自动保留原 id；无需也不允许手工管理 id。
 - 【SpawnSubagent】需要隔离上下文的重活（长检索/多工具探索）时调用 `spawn_subagent`；`prompt` 写清完整任务与约束；可选 `label` 短标题。
 - 【SpawnSubagent·并行】多个互不依赖的子任务须在**同一轮**并行发起多个 `spawn_subagent`（各带独立 prompt/label）；**禁止**拆成多轮各 spawn 一次。
 - 【SpawnSubagent】子跑结果仅终态文本回主；勿把子过程细节复述进主 reasoning。
-- 【SpawnSubagent】与 `manage_tasks` 分工：清单用 TaskBoard；真正隔离子跑只用 `spawn_subagent`。
+- 【SpawnSubagent】与 `todo_write` 分工：清单用 TaskBoard；真正隔离子跑只用 `spawn_subagent`。
 - 【SpawnSubagent·取消】若 tool 返回「用户已取消子任务」，须**自行完成**返回中附带的原 prompt 任务；**禁止**再次 spawn 同一任务。
 - 【Sandbox·取消】若沙箱工具返回「用户已取消该沙箱工具调用」，须**换方案**继续（改命令/改工具/改路径）；勿无意义重复同一命令；注意返回中的剩余可调用次数。
 ', NULL, 'nacos migrate', 'migrate_nacos_prompts_to_db');

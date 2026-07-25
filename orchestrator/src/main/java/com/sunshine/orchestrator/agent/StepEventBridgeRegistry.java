@@ -118,7 +118,11 @@ public class StepEventBridgeRegistry {
             ConcurrentLinkedQueue<StreamToken> hookTokenQueue) {
         if (messageId != null && session != null) {
             sessions.put(messageId, session);
-            sessionStreamEpoch.put(messageId, currentStreamEpoch(messageId));
+            // bridgeId 可能是 main-{runId}/sub-{runId}，均非 streamEpoch 的键（其键是 assistantMessageId）。
+            // 经 hitlAssistantMessageId 解析回 assistantMessageId 再取 epoch，否则恢复续跑 bumpStreamEpoch 后，
+            // 新 spawn 的 sub bridge 会取到 0 与 bindingEpoch(N+1) 错配，isHookFlushAllowed 拒绝直刷 → 前端卡住。
+            String epochKey = hitlAssistantMessageId(messageId);
+            sessionStreamEpoch.put(messageId, currentStreamEpoch(epochKey != null ? epochKey : messageId));
         }
         if (messageId != null && hookTokenQueue != null) {
             hookTokenQueues.put(messageId, hookTokenQueue);
@@ -137,8 +141,24 @@ public class StepEventBridgeRegistry {
             return 0L;
         }
         String key = messageId.strip();
-        long next = streamEpoch.merge(key, 0L, (k, v) -> v + 1);
+        // merge(key,0,fn) 在 key 不存在时直接放 0（不调 fn），首次 bump 会得 0；改为显式 +1 保证单调递增。
+        long next = streamEpoch.compute(key, (k, v) -> (v == null ? 0L : v) + 1);
         generationFlush.remove(key);
+        // 同步抬高 sessionStreamEpoch：bindGenerationFlush 用新 epoch 绑定，
+        // 若 session bind 尚未重放（flux 异步订阅），isHookFlushAllowed 仍因 sessionEpoch 旧而拒绝 flush，
+        // 导致 spawn_subagent 等子 Agent token 无法直达 GenerationJob（卡到主 Agent drain）。
+        // 恢复续跑时 main/sub bridge 键（main-*/sub-*）的 sessionStreamEpoch 也须在 bind 前抬到新 epoch，
+        // 否则 resume run 的 bridge bind 记录旧 epoch，直刷与 drain 双双被 epoch 闸门拦截。
+        sessionStreamEpoch.put(key, next);
+        String activeBridge = mainRunByMessage.get(key);
+        if (activeBridge != null) {
+            sessionStreamEpoch.put(activeBridge, next);
+        }
+        for (Map.Entry<String, String> e : hitlAssistantByBridge.entrySet()) {
+            if (key.equals(e.getValue())) {
+                sessionStreamEpoch.put(e.getKey(), next);
+            }
+        }
         return next;
     }
 
@@ -176,6 +196,13 @@ public class StepEventBridgeRegistry {
             hitlEnabled.put(bridgeId, true);
             if (assistantMessageId != null && !assistantMessageId.isBlank()) {
                 hitlAssistantByBridge.put(bridgeId, assistantMessageId.strip());
+                // 统一在此校准 sessionStreamEpoch：bridgeId（main-*/sub-*）非 streamEpoch 键，
+                // bind 时 hitlAssistantByBridge 可能尚未注册（main 先 bind 后 bindHitl），
+                // 故在映射确立后按 assistantMessageId 重取 epoch，保证恢复续跑 bump 后新 spawn 的
+                // sub bridge 与 bindingEpoch 对齐，isHookFlushAllowed 放行直刷。
+                if (sessions.containsKey(bridgeId)) {
+                    sessionStreamEpoch.put(bridgeId, currentStreamEpoch(assistantMessageId));
+                }
             }
         } else {
             hitlEnabled.remove(bridgeId);

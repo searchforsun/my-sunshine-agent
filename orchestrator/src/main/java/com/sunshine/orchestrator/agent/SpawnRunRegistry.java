@@ -5,7 +5,7 @@ import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.generation.GenerationJob;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
-import io.agentscope.core.ReActAgent;
+import io.agentscope.core.agent.Agent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -71,7 +71,7 @@ public class SpawnRunRegistry {
     }
 
     /** ReActAgentRuntime 创建 SUB agent 后绑定，供 cancel → interrupt */
-    public void bindAgent(String runId, ReActAgent agent) {
+    public void bindAgent(String runId, Agent agent) {
         if (!StringUtils.hasText(runId) || agent == null) {
             return;
         }
@@ -131,7 +131,7 @@ public class SpawnRunRegistry {
                         id, handle.messageId);
             }
         }
-        ReActAgent agent = handle.agentRef.get();
+        Agent agent = handle.agentRef.get();
         if (agent != null) {
             safeInterrupt(agent, id);
         }
@@ -201,7 +201,7 @@ public class SpawnRunRegistry {
         return tpl.replace("{prompt}", prompt != null ? prompt : "");
     }
 
-    private static void safeInterrupt(ReActAgent agent, String runId) {
+    private static void safeInterrupt(Agent agent, String runId) {
         try {
             agent.interrupt();
         } catch (Exception e) {
@@ -216,7 +216,7 @@ public class SpawnRunRegistry {
         private final String mainBridgeId;
         private final SpawnSubagentTimelineBridge timelineBridge;
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
-        private final AtomicReference<ReActAgent> agentRef = new AtomicReference<>();
+        private final AtomicReference<Agent> agentRef = new AtomicReference<>();
 
         Handle(
                 String runId,

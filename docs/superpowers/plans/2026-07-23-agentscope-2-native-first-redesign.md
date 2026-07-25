@@ -4,19 +4,22 @@
 
 **Goal:** 将 Sunshine 从 AgentScope-Java 1.0.8 一次性迁移到 2.0 原生能力（HarnessAgent + Middleware + streamEvents），不遗留 Hook/stream/双路径兼容层，P1-P7 每阶段删旧实现。
 
-**Architecture:** P1 原子迁移载体+事件层（ReActAgent->HarnessAgent, Hook->Middleware, stream->streamEvents），P2-P6 在 HarnessAgent 上逐阶段启用原生能力并删自研，P7 收口。回滚靠 git revert，非运行时 flag。
+**Architecture:** P1 原子迁移载体+事件层（ReActAgent->HarnessAgent, Hook->Middleware, stream->streamEvents），P2 原生 checkpoint + CompactionConfig + 实例复用优化（指纹缓存），P3 TaskList 替换 TaskBoard，P7 收口。回滚靠 git revert，非运行时 flag。
+
+> **E5 修订（2026-07-25）**：依据 spec `2026-07-22-agentscope-2-upgrade-design.md` §6 E5——**P4（Subagent）/ P5（Workspace 沙箱 + Permission HITL）/ P6（peer 正式化）不迁移，保留全栈自研**。官方原生能力覆盖执行内核，而 Sunshine 产品承诺（单独取消不 bump epoch、对话级沙箱容器共享、editDiff 抽屉、六工具 schema、`writeHitlMode` 三态、sha256 审计、反应式选人）全在外壳，占比 80%+，强迁破坏产品承诺。本文 P4/P5/P6 原任务整体作废（保留存档于各节末尾说明），2.0 净收益聚焦 P2（实例复用 + stateStore 自动保存 + 优雅停机）与 P3（TaskList 状态随 checkpoint 恢复）。
 
 **Tech Stack:** Java 21 - Spring Boot 3.2.9 - AgentScope-Java 2.0.0（agentscope + agentscope-extensions-model-openai + agentscope-harness）- Reactor - Redis
 
 ## Global Constraints
 
 - 版本：agentscope.version=2.0.0（pom.xml:44，P0 已升）；P1 新增 agentscope-harness 依赖
-- 载体：P1 即定 HarnessAgent 单例（spec 3.1），后续阶段载体不变
+- 载体：P1 即定 HarnessAgent（spec 3.1）；P2 实例管理为**配置指纹缓存**（非全局单例，见 P2-1 E5 修订）
 - Hook 整包 @Deprecated(forRemoval=true)：P1 删除全部 io.agentscope.core.hook 引用，改 MiddlewareBase
 - stream() @Deprecated(forRemoval=true)：P1 改 streamEvents()
 - 每阶段合入即删旧自研实现+删 flag，不留双轨；回滚靠 git revert
 - 回滚验证：行为等价（phase/label/正文一致，允许 id 时间戳不同）
 - AgentState：Redis-only - TTL=7d - sessionId=assistantMessageId - 零 MySQL DDL
+- **P4/P5/P6 不迁移（E5）**：spawn / 沙箱 / peer 保留自研；原 Live 脚本转常驻回归并入 P7
 - 提示词正文 SSOT = prompt-manager Catalog，禁止 Java 硬编码
 - 模型输出不二次加工：禁截断/摘要/过滤
 - 编译：mvn -pl orchestrator -am compile；启动：python scripts/start.py
@@ -682,49 +685,90 @@ git commit -m "test(as2-p1): streamEvents timeline/content parity e2e"
 
 **出口闸门**：verify_react_checkpoint_live 全绿 + 前端停->继续执行 + verify_rollback_p2 全绿。
 
-### Task P2-1: HarnessAgentHolder 单例骨架
+### Task P2-1: 配置指纹缓存 + Middleware 去 per-request 状态（E5 修订，替换原「HarnessAgentHolder 单例骨架」）
+
+> **E5 修订说明**：原计划做「全局单例 HarnessAgentHolder（toolsetKey 粗粒度）」。经官方无状态模型与 Sunshine 动态项逐项评审（2026-07-25），全局双单例不可行：MAIN 的 React Catalog 运行时可变（工具启用/停用、skill 绑定、租户差异）、SUB 四种模式（plan-workflow / workflow / react-spawn / peer）的工具白名单是任意子集组合——强行单例需把「安全边界」从构建期挪到 middleware 运行时过滤，反而更脆弱。官方文档自身也留了出口（「agent factory + 有界实例池」）。修订为**配置指纹缓存**：配置相同即复用，配置变化即新建，兼顾官方无状态模型与 Sunshine 动态性。
 
 **Files:**
 - Create: orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentHolder.java
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ReActAgentFactory.java（改为返回单例包装）
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ReActAgentFactory.java（拆出指纹计算 + 去 per-request builder 项）
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ProcessingStepMiddleware.java（去 bridgeId 实例字段）
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ProcessingStepMiddlewareFactory.java
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/runtime/ReActAgentRuntime.java（从 Holder 取实例 + RuntimeContext 注入 bridgeId/overlay）
 
-- [ ] **Step 1: 写失败单测--同 toolsetKey 两次 get 返回同一实例**
+- [ ] **Step 1: 写失败单测--同指纹两次 get 返回同一实例；不同指纹（skillId 变）返回不同实例**
 
 ```java
 @Test
-void sameToolsetReturnsSingleton() {
-    HarnessAgentHolder h = new HarnessAgentHolder(deps);
-    HarnessAgent a1 = h.get("default");
-    HarnessAgent a2 = h.get("default");
+void sameFingerprintReturnsCachedInstance() {
+    HarnessAgentHolder h = new HarnessAgentHolder(factory);
+    HarnessAgent a1 = h.get(req("skill-a"));
+    HarnessAgent a2 = h.get(req("skill-a"));
     assertSame(a1, a2);
+    HarnessAgent b = h.get(req("skill-b"));
+    assertNotSame(a1, b);
 }
 ```
 
-- [ ] **Step 2: 实现 HarnessAgentHolder（ConcurrentHashMap 缓存 + builder 装配）**
+- [ ] **Step 2: 实现 HarnessAgentHolder（Caffeine 有界缓存 + catalogVersion 失效）**
 
 ```java
 package com.sunshine.orchestrator.agent;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.agentscope.harness.agent.HarnessAgent;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.Duration;
 
+/**
+ * 配置指纹缓存（E5）：key = hash(role + skillId + 工具集指纹 + maxIters + taskboard开关 + catalogVersion)。
+ * 配置相同即等价复用；React Catalog 变更 → catalogVersion 自增 → 旧条目自然失效重建。
+ * 不 mutate 存活实例的 toolkit（在飞 call 与新建 call 会看到不一致 schema，比重建更危险）。
+ */
 public final class HarnessAgentHolder {
-    private final ConcurrentHashMap<String, HarnessAgent> cache = new ConcurrentHashMap<>();
+    private final Cache<String, HarnessAgent> cache =
+            Caffeine.newBuilder().maximumSize(64).expireAfterAccess(Duration.ofHours(2)).build();
     private final ReActAgentFactory factory;
+
     public HarnessAgentHolder(ReActAgentFactory factory) { this.factory = factory; }
-    public HarnessAgent get(String toolsetKey) {
-        return cache.computeIfAbsent(toolsetKey, k -> factory.buildHarness(k));
+
+    public HarnessAgent get(AgentRunRequest request) {
+        return cache.get(factory.fingerprint(request), k -> factory.create(request));
     }
+
+    /** 优雅停机用：遍历全部缓存实例 */
+    public java.util.Collection<HarnessAgent> getAll() { return cache.asMap().values(); }
 }
 ```
 
-- [ ] **Step 3: ReActAgentFactory 拆出 buildHarness(toolsetKey) 供 Holder 调用**
+- [ ] **Step 3: ReActAgentFactory 增加 fingerprint(request)；catalogVersion 由 ToolCatalogService 暴露（catalog 变更时自增的版本号/更新时间戳）**
 
-- [ ] **Step 4: 跑测试确认通过 + Commit**
+- [ ] **Step 4: ProcessingStepMiddleware 去 bridgeId 实例字段--构造器删 bridgeId 参数；onReasoning/onActing 内 `String bridgeId = ctx.get("bridgeId")`；`toolUseById` 从实例字段移入 RuntimeContext（`ctx.put("toolUseById", map)` / `ctx.get(...)`），消除缓存复用后的并发污染**
+
+- [ ] **Step 5: ReActAgentRuntime 改从 Holder 取实例 + RuntimeContext 注入 per-call 项**
+
+```java
+HarnessAgent agent = harnessAgentHolder.get(request);
+RuntimeContext rt = RuntimeContext.builder()
+        .userId(request.userId())
+        .sessionId(assistantMessageId)
+        .put("bridgeId", request.resolveBridgeId())
+        .put("systemOverlay", request.systemOverlay())
+        .put("maxIters", request.maxIters())
+        .put("tenantId", request.tenantId())
+        .put("skillId", request.skillId())
+        .build();
+```
+
+- [ ] **Step 6: 基准量化--打印一次 `factory.create` 的 toolkit 装配耗时（DynamicToolkitFactory 内含同步 HTTP）；若 P99 < 50ms，允许跳过缓存直接每请求新建（简单优先），Holder 保留但 runtime 走直连开关 `agent.holder.enabled`**
+
+- [ ] **Step 7: 编译 + 单测 + Commit**
 
 ```bash
-git commit -m "feat(as2-p2): HarnessAgentHolder singleton per toolset (spec 3.1)"
+git commit -m "feat(as2-p2): fingerprint-keyed HarnessAgent cache + middleware drops per-request state (E5)"
 ```
+
+> **注（E5）**：sysPrompt overlay 的 `onSystemPrompt` transformer 迁移为可选优化项，不在本任务强制——当前 overlay 在 PromptComposer 拼装 inputs 时已注入对话，官方 transformer 路径仅在「构建期 base + 运行时拼接」确有收益时再启。`maxIters` 维持构建期（指纹含 maxIters，差异天然分桶）。
 
 ### Task P2-2: interrupt 停止 + checkpoint 续跑
 
@@ -758,15 +802,15 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class ReactCheckpointService {
-    private final HarnessAgentHolder holder;
     private final AgentStateStore stateStore;
 
     public boolean hasCheckpoint(String userId, String assistantMessageId) {
         return stateStore.exists(userId, assistantMessageId);
     }
-    public void interrupt(String userId, String assistantMessageId) {
-        HarnessAgent agent = holder.get("default");
-        agent.interrupt(RuntimeContext.builder().userId(userId).sessionId(assistantMessageId).build());
+    // P1 偏差记录 #5：interrupt() 仅无参 / interrupt(Msg) 两种签名，无 RuntimeContext 版。
+    // 单实例随指纹缓存复用后，per-session 精确中断改走 agent.interrupt(userId, sessionId)（官方文档确认存在）。
+    public void interrupt(HarnessAgent agent, String userId, String assistantMessageId) {
+        agent.interrupt(userId, assistantMessageId);
     }
     public RuntimeContext resumeCtx(String userId, String assistantMessageId) {
         return RuntimeContext.builder().userId(userId).sessionId(assistantMessageId).build();
@@ -793,7 +837,7 @@ git commit -m "feat(as2-p2): native interrupt/checkpoint resume"
 
 Run: `javap -cp <harness jar> io.agentscope.harness.agent.memory.compaction.CompactionConfig 2>&1 | head -20`
 
-- [ ] **Step 2: 在 buildHarness 装配 CompactionConfig（阈值对标 MemoryProperties.AutoContext）**
+- [ ] **Step 2: 在 HarnessAgent 构建时装配 CompactionConfig（阈值对标 MemoryProperties.AutoContext）**
 
 ```java
         .compaction(CompactionConfig.builder()
@@ -838,6 +882,65 @@ git tag as2-p2-done
 
 - [ ] **Step 3: Commit**
 
+### Task P2-6: stateStore 自动保存 + 优雅停机（E5 新增）
+
+> **E5 新增说明**：E5 评审确认官方净收益三项之二、三为「自动 AgentState 持久化」与「官方 shutdown 入口」。当前 `ReActAgentFactory.disableSessionPersistence()` 关闭了官方自动保存，改由 `ReActAgentRuntime.doFinally` 手捞内存对象兜底——重启后状态丢失。本任务恢复官方自动保存 + 落地优雅停机，使「服务重启 -> 会话可续」成为可用能力（Redis 兜底）。
+
+**Files:**
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ReActAgentFactory.java（删 disableSessionPersistence）
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/runtime/ReActAgentRuntime.java（精简 doFinally 手捞兜底）
+- Create: orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentShutdownHook.java
+
+- [ ] **Step 1: 写失败单测--agent 构建后 stateStore 已绑定（非 disabled）**
+
+```java
+@Test
+void sessionPersistenceEnabled() {
+    HarnessAgent agent = factory.create(req);
+    assertTrue(agent.getStateStore().isPresent()); // 或等价断言：非 NoopStateStore
+}
+```
+
+- [ ] **Step 2: ReActAgentFactory 删 `.disableSessionPersistence()`，恢复官方自动保存（ReActAgent 自带生命周期持久化）；删 `HarnessAgentFactory` 中的显式 save 调用（`doFinally` 手捞兜底改为「stateStore 已有则不重复 save」的防御分支或整段删除）**
+
+- [ ] **Step 3: 实现 HarnessAgentShutdownHook--@PreDestroy 遍历 Holder 全部实例 shutdown()，进行中任务落 `shutdown_interrupted=true`，重启后 hasCheckpoint 分支可恢复**
+
+```java
+package com.sunshine.orchestrator.agent;
+
+import io.agentscope.harness.agent.HarnessAgent;
+import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class HarnessAgentShutdownHook {
+    private final HarnessAgentHolder holder;
+
+    @PreDestroy
+    public void shutdownAll() {
+        for (HarnessAgent agent : holder.getAll()) {
+            try {
+                agent.shutdown(); // 官方入口：等待/中断进行中任务，落 shutdown_interrupted
+            } catch (Exception e) {
+                log.warn("harness agent shutdown failed", e);
+            }
+        }
+    }
+}
+```
+
+- [ ] **Step 4: 扩展 verify_react_checkpoint_live--新增场景「run 中途 kill -15 orchestrator -> 重启 -> hasCheckpoint=true -> 续跑恢复」（shutdown_interrupted 路径）**
+
+- [ ] **Step 5: 编译 + 单测 + Live + Commit**
+
+```bash
+git commit -m "feat(as2-p2): enable stateStore auto-persistence + graceful shutdown hook (E5)"
+```
+
 ---
 
 ## P3 - TaskList 替换 TaskBoard
@@ -849,7 +952,7 @@ git tag as2-p2-done
 **Files:**
 - Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentHolder.java
 
-- [ ] **Step 1: buildHarness 装配 enableTaskList + TodoTools + TaskReminderMiddleware**
+- [ ] **Step 1: HarnessAgent 构建时装配 enableTaskList + TodoTools + TaskReminderMiddleware**
 
 ```java
         if (props.getAs2().isTasklistNative()) {
@@ -893,138 +996,48 @@ git tag as2-p3-done
 
 ---
 
-## P4 - Harness Subagent 替换 spawn
+## P4 - Harness Subagent 替换 spawn（已作废 · E5）
 
-**出口闸门**：verify_spawn_subagent_live（含单独取消不 bump epoch）全绿 + 前端子卡/取消 + verify_rollback_p4 全绿。
-
-### Task P4-1: 子取消 spike
-
-**Files:**
-- Create: docs/superpowers/spikes/2026-07-23-subagent-cancel-spike.md
-
-- [ ] **Step 1: 半日 spike--HarnessAgent 异步 subagent（timeout_seconds=0）下按 task_id 单独 cancel 是否 bump 父 epoch**
-
-- [ ] **Step 2: 结论写文档：原生支持 -> P4-2 直接用；不支持 -> 保留 SpawnRunRegistry 作取消适配层**
-
-- [ ] **Step 3: Commit**
-
-```bash
-git commit -m "docs(as2-p4): subagent standalone-cancel spike (G-b)"
-```
-
-### Task P4-2: 声明式 Subagent 装配
-
-**Files:**
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentHolder.java
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/SpawnSubagentTool.java
-
-- [ ] **Step 1: buildHarness 装配 .subagent(SubagentDeclaration...); SpawnSubagentTool 改薄封装或删除**
-
-- [ ] **Step 2: 主卡 subagent-* / 抽屉 spawnPrompt/subSteps 字段不变；单独取消不 bump epoch（按 spike 结论）**
-
-- [ ] **Step 3: 编译 + 单测 + Commit**
-
-```bash
-git commit -m "feat(as2-p4): declarative subagent behind"
-```
-
-### Task P4-3: Live + 回滚 + 前端
-
-- [ ] **Step 1: verify_rollback_p4_subagent.py 三段式（原生 subagent ↔ SpawnSubagentTool，两路径单独取消都不 bump epoch）**
-
-- [ ] **Step 2: verify_spawn_subagent_live --suite all + e2e as2-p4-subagent.spec.ts + 人工（S1_QUERY + 取消）**
-
-- [ ] **Step 3: 全绿 + 删 flag + Commit + 打标签**
-
-```bash
-git tag as2-p4-done
-```
+> **决策：不迁移，保留全栈自研（E5，2026-07-25）。** 原 P4-1 ~ P4-3 任务整体作废。
+>
+> **理由**（spec §6 P4 决策记录）：
+> 1. 官方 Harness Subagent 是「编排内核」——父 agent 声明子角色 + 分发 task + 收集结果。Sunshine 的 `SpawnSubagentTool` 全栈含：**单独取消不 bump epoch**（`SpawnRunRegistry`）、`spawnPrompt`/`subSteps` 抽屉字段、主卡 `subagent-*` 摘要、spawn 请求动态工具白名单过滤（任意子集组合）、skillId overlay 注入。这些外壳能力官方均无等价物，强迁需在外面包一层适配层，净复杂度反升。
+> 2. G-b「子取消粒度」在官方实现下不可保证（父 epoch 语义与 Sunshine 的独立 runId 语义不同），spike 结论即为保留自研取消适配层——既如此，迁移失去意义。
+> 3. 产品承诺不可降级：`verify_spawn_subagent_live`（S1 hard + S4 soft + S5 单测）断言的行为即终态。
+>
+> **回归保障**：`verify_spawn_subagent_live.py` 转为常驻回归，并入 P7 全量回归包（见 P7-3）。
 
 ---
 
-## P5 - Workspace 沙箱 + Permission HITL
+## P5 - Workspace 沙箱 + Permission HITL（已作废 · E5）
 
-**出口闸门**：sandbox + hitl Live + verify_sandbox_tool_cancel_live 全绿 + 前端沙箱抽屉/写确认 + verify_rollback_p5 全绿。
-
-### Task P5-1: Workspace 沙箱执行内核迁移
-
-**Files:**
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/sandbox/SandboxAgentTools.java
-
-- [ ] **Step 1: SandboxAgentTool.callAsync 经 Workspace/DockerFilesystemSpec 执行；取消入口/SSE 文案/detail 全不变（G-c）**
-
-- [ ] **Step 2: 编译 + 单测 + Commit**
-
-```bash
-git commit -m "feat(as2-p5): workspace sandbox kernel"
-```
-
-### Task P5-2: Permission HITL 替代自研确认
-
-**Files:**
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/runtime/ReActAgentRuntime.java
-
-- [ ] **Step 1: Catalog require_confirmation -> Permission 事件（RequireUserConfirmEvent）-> 现有确认 UI；Workflow 节点 HITL 仍自研**
-
-- [ ] **Step 2: 编译 + 单测 + Commit**
-
-```bash
-git commit -m "feat(as2-p5): permission HITL"
-```
-
-### Task P5-3: Live + 回滚 + 前端
-
-- [ ] **Step 1: verify_rollback_p5_sandbox.py（Workspace ↔ 现网沙箱，verify_sandbox_tool_cancel_live 两路径全绿；Permission ↔ 自研 HITL UI 一致）**
-
-- [ ] **Step 2: verify_sandbox_live --suite all + verify_hitl_live --live + e2e as2-p5-sandbox-workspace.spec.ts + 人工（SANDBOX_CANCEL_QUERY + HITL_QUERY）**
-
-- [ ] **Step 3: 全绿 + 删 flag + Commit + 打标签**
-
-```bash
-git tag as2-p5-done
-```
+> **决策：不迁移，保留全栈自研（E5，2026-07-25）。** 原 P5-1 ~ P5-3 任务整体作废。
+>
+> **理由**（spec §6 P5 决策记录）：
+> 1. **沙箱**：官方 Workspace / DockerFilesystemSpec 覆盖「容器内文件读写 + 命令执行」内核；Sunshine 沙箱六工具（exec/grep/glob/read/write/edit）schema 即产品契约，且含**对话级容器共享**（同会话多消息复用同一容器，官方按 Workspace 声明粒度，无对话级等价物）、**editDiff 抽屉**、`writeHitlMode` 三态、**工具级取消**（`CancellableToolRunRegistry` + sandbox kill）、sha256 审计落库——外壳占比 80%+。
+> 2. **HITL**：官方 Permission + `RequireUserConfirmEvent` 的「仅首次确认」语义与 Sunshine「按 Catalog `require_confirmation` 逐工具判定 + Workflow 节点独立 HITL」语义不同；确认 UI 数据契约（参数预览、风险评估文案）亦无官方承载。
+> 3. 产品承诺不可降级：`verify_sandbox_live`（G1-G12）、`verify_sandbox_tool_cancel_live`、`verify_hitl_live --live` 断言的行为即终态。
+>
+> **回归保障**：`verify_sandbox_live.py --suite all`、`verify_sandbox_tool_cancel_live.py`、`verify_hitl_live.py --live` 转为常驻回归，并入 P7 全量回归包（见 P7-3）。
 
 ---
 
-## P6 - peer-collab 正式化
+## P6 - peer-collab 正式化（已作废 · E5）
 
-**出口闸门**：verify_peer_collab_live + verify_expert_consultation_live（反应式选人恢复）全绿 + 前端 $ 完整路径 + verify_rollback_p6 全绿。
-
-### Task P6-1: peer 迁 streamEvents + middleware + 反应式恢复
-
-**Files:**
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/expert/ExpertPeerAgentFactory.java
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/expert/ExpertHubEngine.java
-
-- [ ] **Step 1: ExpertPeerAgentFactory 迁 HarnessAgent + streamEvents + middleware（清 ExpertSpeakHook）**
-
-- [ ] **Step 2: ExpertHubEngine.invokeAgent 从两阶段（call().block() + expertSpeakStreamer）合并为单阶段 streamEvents（prompt 合并 gather+speak）**
-
-- [ ] **Step 3: 反应式选人恢复（selectReactiveSpeakers，P0-4 已保留）；删 AS2_P0_PEER_SEQUENTIAL 常量**
-
-- [ ] **Step 4: 编译 + 单测 + Commit**
-
-```bash
-git commit -m "feat(as2-p6): peer migrate to streamEvents + restore reactive selection"
-```
-
-### Task P6-2: Live + 回滚 + 前端
-
-- [ ] **Step 1: verify_rollback_p6_peer.py（反应式 ↔ 顺序桥，verify_peer_collab_live + $ 绑定两路径全绿）**
-
-- [ ] **Step 2: verify_peer_collab_live + verify_expert_consultation_live + e2e as2-p6-peer-reactive.spec.ts + 人工（E1_QUERY + $ 绑定）**
-
-- [ ] **Step 3: 全绿 + 删 flag + Commit + 打标签**
-
-```bash
-git tag as2-p6-done
-```
+> **决策：阶段取消，peer 维持 P0 终态（E5，2026-07-25）。** 原 P6-1 ~ P6-2 任务整体作废。
+>
+> **理由**（spec §6 P6 决策记录）：
+> 1. P0 spike 已验证路径 1（G-a）可行：`MsgHub` 删除后由自研 `ExpertHubEngine` 驱动反应式选人，**P0 落地即为终态**，无需「正式化」阶段。反应式选人（`selectReactiveSpeakers`）在 P0 即保留启用，非降级项。
+> 2. 官方 2.0 无 peer-collab 等价能力（无 MsgHub / 无专家路由 / 无 Synthesizer），「正式化」没有可迁移的目标，只会是换皮重写，净收益为零。
+> 3. 产品承诺不可降级：`verify_peer_collab_live`、`verify_expert_consultation_live`（`$` 绑定 + expert 步 + Synthesizer）断言的行为即终态。
+>
+> **回归保障**：`verify_peer_collab_live.py`、`verify_expert_consultation_live.py` 转为常驻回归，并入 P7 全量回归包（见 P7-3）。
 
 ---
 
 ## P7 - 收口
 
-**出口闸门**：全量回归包 + feature flag 全拆 + 四模式前端抽检 + 全量回滚脚本最终回归。
+**出口闸门**：全量回归包（含 spawn/沙箱/peer 常驻 Live）+ feature flag 全拆 + 四模式前端抽检 + 回滚脚本最终回归（P1-P3）。
 
 ### Task P7-1: 确认无桥可清
 
@@ -1033,7 +1046,7 @@ git tag as2-p6-done
 Run: `grep -rnE "io.agentscope.core.hook|LegacyHookDispatcher|as2\." orchestrator/src/main/java --include='*.java' | head -10`
 Expected: 空
 
-- [ ] **Step 2: 删 AgentExecutionProperties.As2 整块（所有 flag 已在 P1-P6 删，此处删容器）**
+- [ ] **Step 2: 删 AgentExecutionProperties.As2 整块（所有 flag 已在 P1-P3 删，此处删容器）**
 
 ### Task P7-2: 更新 CLAUDE.md
 
@@ -1047,14 +1060,14 @@ git commit -m "docs(as2-p7): drop AS2 ban, note Redis StateStore TTL=7d resume d
 
 ### Task P7-3: 全量回归
 
-- [ ] **Step 1: 跑全量 Live 回归包**
+- [ ] **Step 1: 跑全量 Live 回归包（E5：spawn / 沙箱 / peer 常驻回归在此守护自研实现）**
 
-Run: `python scripts/phase2_agent_demo.py --suite all && python scripts/verify_spawn_subagent_live.py && python scripts/verify_react_taskboard_live.py && python scripts/verify_sandbox_live.py --suite all && python scripts/verify_sandbox_tool_cancel_live.py && python scripts/verify_peer_collab_live.py && python scripts/verify_expert_consultation_live.py && python scripts/verify_react_checkpoint_live.py`
+Run: `python scripts/phase2_agent_demo.py --suite all && python scripts/verify_spawn_subagent_live.py && python scripts/verify_react_taskboard_live.py && python scripts/verify_sandbox_live.py --suite all && python scripts/verify_sandbox_tool_cancel_live.py && python scripts/verify_hitl_live.py --live && python scripts/verify_peer_collab_live.py && python scripts/verify_expert_consultation_live.py && python scripts/verify_react_checkpoint_live.py`
 Expected: 全绿
 
-- [ ] **Step 2: 全量回滚脚本最终回归**
+- [ ] **Step 2: 回滚脚本最终回归（E5：仅 P1-P3；P4-P6 不迁移无回滚脚本）**
 
-Run: `for f in scripts/verify_rollback_p*.py; do python "$f" || echo "REGRESS $f"; done`
+Run: `for f in scripts/verify_rollback_p1*.py scripts/verify_rollback_p2*.py scripts/verify_rollback_p3*.py; do python "$f" || echo "REGRESS $f"; done`
 Expected: 全 exit 0
 
 ### Task P7-4: 四模式前端抽检 + e2e 全量
@@ -1080,25 +1093,26 @@ git tag as2-upgrade-done
 | 阶段 | 新建脚本 | 复用 Live | 回滚脚本 | e2e | 前端人工 |
 |------|----------|-----------|----------|-----|----------|
 | P1 | - | - | verify_rollback_p1.py | as2-p1-stream-events | ReAct(F1)+workflow+spawn(S1) |
-| P2 | verify_react_checkpoint_live | - | verify_rollback_p2 | as2-p2-checkpoint-resume | 停->继续(FN1)+TTL |
+| P2 | verify_react_checkpoint_live（含 kill-15 重启恢复场景） | - | verify_rollback_p2 | as2-p2-checkpoint-resume | 停->继续(FN1)+TTL |
 | P3 | - | verify_react_taskboard_live | verify_rollback_p3 | as2-p3-tasklist | 任务卡(F1) |
-| P4 | - | verify_spawn_subagent_live | verify_rollback_p4 | as2-p4-subagent | 子卡/取消(S1) |
-| P5 | - | verify_sandbox/hitl/tool_cancel | verify_rollback_p5 | as2-p5-sandbox-workspace | 沙箱取消+写确认 |
-| P6 | - | verify_peer/expert | verify_rollback_p6 | as2-p6-peer-reactive | 反应式(E1)+$ |
-| P7 | - | 全量回归包 | 全量回滚最终 | 全量 e2e | 四模式抽检 |
+| ~~P4~~ | E5 不迁移，spawn 自研保留 | verify_spawn_subagent_live（常驻） | - | - | - |
+| ~~P5~~ | E5 不迁移，沙箱/HITL 自研保留 | verify_sandbox/hitl/tool_cancel（常驻） | - | - | - |
+| ~~P6~~ | E5 阶段取消，peer 维持 P0 终态 | verify_peer/expert（常驻） | - | - | - |
+| P7 | - | 全量回归包（含常驻 Live） | P1-P3 回滚最终回归 | 全量 e2e | 四模式抽检 |
 
 ## 附录 - 关键文件改动速查
 
 | 文件 | 阶段 | 改动 |
 |------|------|------|
 | pom.xml | P1 | +agentscope-harness 依赖 |
-| ReActAgentFactory | P1 | ReActAgent->HarnessAgent + Hook->Middleware |
-| ProcessingStepMiddleware（新） | P1 | 替代 ProcessingStepHook |
-| ReActAgentRuntime | P1 | stream->streamEvents + EventMapper |
-| HarnessAgentHolder（新） | P2 | 单例载体 |
-| ReactCheckpointService（新） | P2 | interrupt/resume |
+| ReActAgentFactory | P1/P2 | ReActAgent->HarnessAgent + Hook->Middleware；P2 删 disableSessionPersistence + 拆 fingerprint |
+| ProcessingStepMiddleware（新） | P1/P2 | 替代 ProcessingStepHook；P2 去 bridgeId/toolUseById 实例字段 |
+| ReActAgentRuntime | P1/P2 | stream->streamEvents + EventMapper；P2 从 Holder 取实例 + RuntimeContext 注入 + 精简 doFinally 手捞兜底 |
+| HarnessAgentHolder（新） | P2 | 配置指纹缓存（Caffeine 有界 + catalogVersion 失效），非全局单例（E5） |
+| HarnessAgentShutdownHook（新） | P2 | @PreDestroy 遍历 shutdown()，落 shutdown_interrupted（E5） |
+| ReactCheckpointService（新） | P2 | interrupt(userId, sessionId) / hasCheckpoint / resumeCtx |
 | DynamicToolkitFactory | P3 | 删 ManageTasksTool |
-| SpawnSubagentTool | P4 | 薄封装或删 |
-| SandboxAgentTools | P5 | Workspace 内核 |
-| ExpertPeerAgentFactory / ExpertHubEngine | P6 | 迁 streamEvents + 反应式 |
+| ~~SpawnSubagentTool~~ | ~~P4~~ | E5 不迁移，自研保留 |
+| ~~SandboxAgentTools~~ | ~~P5~~ | E5 不迁移，自研保留 |
+| ~~ExpertPeerAgentFactory / ExpertHubEngine~~ | ~~P6~~ | E5 阶段取消，维持 P0 终态 |
 | AgentExecutionProperties | P1/P7 | 删 flag -> 删 As2 块 |

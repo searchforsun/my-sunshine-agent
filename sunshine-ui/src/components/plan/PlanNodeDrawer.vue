@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, ref, watch, type ComputedRef } from 'vue'
+import { computed, inject, nextTick, onUnmounted, ref, watch, type ComputedRef } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import type { HitlConfirmationPayload } from '../../api/hitlSteps'
 import { findHitlStep, isRecoveryAwaiting, isRecoverySkipped, stepHasHitlAwaiting } from '../../api/recoverySteps'
@@ -100,7 +100,42 @@ const statusLabel = computed(() => {
   return '等待中'
 })
 
+const liveElapsedMs = ref<number | null>(null)
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+
+function clearElapsedTimer() {
+  if (elapsedTimer != null) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+}
+
+watch(
+  () => [displayStatus.value, step.value?.clientStartedAt] as const,
+  ([status, clientStartedAt]) => {
+    clearElapsedTimer()
+    // 子 Agent / Workflow 节点 running 期间持续计时（客户端墙钟，完成后回归服务端 durationMs）
+    if (status === 'running' && typeof clientStartedAt === 'number') {
+      const tick = () => {
+        liveElapsedMs.value = Math.max(0, Date.now() - clientStartedAt)
+      }
+      tick()
+      elapsedTimer = setInterval(tick, 200)
+    } else {
+      liveElapsedMs.value = null
+    }
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  clearElapsedTimer()
+})
+
 const durationText = computed(() => {
+  if (displayStatus.value === 'running' && liveElapsedMs.value != null) {
+    return formatDuration(liveElapsedMs.value)
+  }
   const fromStep = step.value ? resolveStepDurationMs(step.value) : undefined
   const ms = fromStep ?? node.value?.durationMs
   return ms != null ? formatDuration(ms) : ''

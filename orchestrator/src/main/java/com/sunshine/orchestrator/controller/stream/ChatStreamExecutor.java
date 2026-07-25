@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.controller.stream;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
@@ -41,8 +42,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
-
 /** 直连 SSE 流组装（无 Redis GenerationJob 缓冲） */
 @Slf4j
 @Component
@@ -86,6 +85,13 @@ public class ChatStreamExecutor {
                         ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
                 ProcessingStepSerde.fromJson(ctx.existingStepsJson()));
+        if (reactRestartOnResume) {
+            // 与 ChatController resume 一致：截断到最后一个完整 think，丢弃未终态 tool/rag/tasks
+            truncateAfterLastDoneThink(stepsBuffer);
+            // 截断后若最后一个 think 仍是 done（中断在其流式中途、半截被误标 done），
+            // 该 think 不在 checkpoint message 历史里、将被重生成，重置为 paused 让前端清空旧内容
+            resetTrailingDoneThinkToPaused(stepsBuffer);
+        }
         QueryRewriteTrace.bind(ctx.assistantMsgId());
         ThinkStepMapper thinkMapper = new ThinkStepMapper(stepsBuffer, ctx.userContent(), executionMode);
         var appender = flushScheduler.createChunkAppender(buffer, ctx.assistantMsgId(), flushIntervalMs);
@@ -147,6 +153,8 @@ public class ChatStreamExecutor {
                     } else {
                         buffer.append(errMsg);
                     }
+                    // 异常中断：running 步（含 rag/tool/think 等）标 paused 再落库，避免残留 running
+                    ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
                     Mono.fromRunnable(() ->
                                     flushScheduler.commitFinal(
                                             ctx.assistantMsgId(),
@@ -161,13 +169,16 @@ public class ChatStreamExecutor {
                             sse(flushScheduler.metaMessage(
                                     ctx.assistantMsgId(), MessageStatus.FAILED, resume)));
                 })
-                .doOnCancel(() -> Mono.fromRunnable(() ->
+                .doOnCancel(() -> Mono.fromRunnable(() -> {
+                                // 用户中断：running 步（含 rag/tool/think 等）标 paused 再落库，避免残留 running
+                                ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
                                 flushScheduler.commitFinal(
                                         ctx.assistantMsgId(),
                                         buffer.toString(),
                                         reasoningBuffer.toString(),
                                         MessageStatus.INTERRUPTED,
-                                        ProcessingStepSerde.toJson(stepsBuffer)))
+                                        ProcessingStepSerde.toJson(stepsBuffer));
+                            })
                         .subscribeOn(Schedulers.boundedElastic())
                         .subscribe())
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成 conv={}", ctx.conversationId()))
@@ -277,7 +288,8 @@ public class ChatStreamExecutor {
                 null,
                 null,
                 false,
-                ctx.reactRestart());
+                ctx.reactRestart(),
+                ctx.existingStepsJson());
     }
 
     private static List<StreamToken> drainStepTokens(List<ProcessingStep> stepEmissions) {
@@ -294,6 +306,33 @@ public class ChatStreamExecutor {
                         ctx.conversationId(), ctx.userId(), ctx.tenantId(), ctx.userContent()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
+    }
+
+    /** 断点续传截断：仅保留到「最后一个完整 think」，丢弃半截 think 及其后 tool/rag/tasks（见 ThinkStepIds） */
+    private static void truncateAfterLastDoneThink(java.util.List<ProcessingStep> steps) {
+        com.sunshine.orchestrator.processing.ThinkStepIds.truncateToLastCompleteThink(steps);
+    }
+
+    /** 截断后若最后一个步是 done think（流式中途被误标 done），重置为 paused 并清 reasoning，续跑重推时前端从头渲染 */
+    private static void resetTrailingDoneThinkToPaused(java.util.List<ProcessingStep> steps) {
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep s = steps.get(i);
+            if (!com.sunshine.orchestrator.processing.ThinkStepIds.isThinkStep(s.id())) {
+                continue;
+            }
+            if ("done".equals(s.lifecycle())) {
+                com.sunshine.orchestrator.processing.StepSummary summary = s.summary();
+                steps.set(i, new ProcessingStep(
+                        s.id(), s.phase(), "paused",
+                        new com.sunshine.orchestrator.processing.StepSummary(
+                                summary != null ? summary.before() : null, "已暂停", "已暂停"),
+                        s.startedAt(), null, null,
+                        s.detail(), null, s.output(), s.result(),
+                        System.currentTimeMillis(), s.label(), s.metadata(),
+                        s.contentBlocks(), s.subSteps()));
+            }
+            return;
+        }
     }
 
     private ServerSentEvent<String> tokenToSse(StreamToken token) {

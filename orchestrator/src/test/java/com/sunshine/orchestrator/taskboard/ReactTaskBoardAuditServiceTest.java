@@ -3,7 +3,6 @@ package com.sunshine.orchestrator.taskboard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.audit.AuditEvent;
 import com.sunshine.orchestrator.audit.AuditPublisher;
-import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,7 +15,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,23 +30,7 @@ class ReactTaskBoardAuditServiceTest {
 
     @BeforeEach
     void setUp() {
-        AgentExecutionProperties props = new AgentExecutionProperties();
-        props.getReact().getTaskboard().getAudit().setSampleRate(1.0);
-        service = new ReactTaskBoardAuditService(auditPublisher, repository, props);
-    }
-
-    @Test
-    void onUpdated_publishesAuditEvent() {
-        ReactTaskBoardState state = new ReactTaskBoardState(
-                "board-1", "msg-1", 2, 1000L,
-                List.of(new TaskBoardItemView("t1", "检索制度", "completed")));
-
-        service.onUpdated(state);
-
-        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
-        verify(auditPublisher).publish(captor.capture());
-        assertThat(captor.getValue().eventType()).isEqualTo("react.taskboard.updated");
-        assertThat(captor.getValue().messageId()).isEqualTo("msg-1");
+        service = new ReactTaskBoardAuditService(auditPublisher, repository);
     }
 
     @Test
@@ -72,20 +54,6 @@ class ReactTaskBoardAuditServiceTest {
         ArgumentCaptor<AuditEvent> eventCaptor = ArgumentCaptor.forClass(AuditEvent.class);
         verify(auditPublisher).publish(eventCaptor.capture());
         assertThat(eventCaptor.getValue().eventType()).isEqualTo("react.taskboard.final");
-    }
-
-    @Test
-    void onUpdated_respectsZeroSampleRate() {
-        AgentExecutionProperties props = new AgentExecutionProperties();
-        props.getReact().getTaskboard().getAudit().setSampleRate(0.0);
-        ReactTaskBoardAuditService sampled = new ReactTaskBoardAuditService(auditPublisher, repository, props);
-        ReactTaskBoardState state = new ReactTaskBoardState(
-                "board-3", "msg-3", 1, 1000L,
-                List.of(new TaskBoardItemView("t1", "步骤", "pending")));
-
-        sampled.onUpdated(state);
-
-        verify(auditPublisher, never()).publish(any());
     }
 
     @Test

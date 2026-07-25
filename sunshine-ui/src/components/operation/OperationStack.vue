@@ -247,12 +247,20 @@ const displaySteps = computed(() => {
   })
 })
 
-/** 正在处理且整段折叠：只露 displaySteps 最后一条（折叠概要，无穿插正文） */
+/** 折叠态常驻的 taskboard 步（若有真实任务项）：生成 todolist 后即便后续还有 think/tool 步，
+ * 折叠时间线时仍在概要区露出，不被最后一条 preview 步顶掉 */
+const collapsedTaskBoardStep = computed(() => {
+  if (!summaryEnabled.value || timelineBodyExpanded.value) return undefined
+  return displaySteps.value.find(s => s.phase === 'tasks' && hasRealTaskBoardItems(s))
+})
+
+/** 正在处理且整段折叠：只露 displaySteps 最后一条（折叠概要，无穿插正文）。
+ * taskboard 步已由 collapsedTaskBoardStep 单独常驻，此处跳过 tasks，避免与常驻面板重复 */
 const collapsedPreviewStep = computed(() => {
   if (!summaryEnabled.value || timelineBodyExpanded.value || !isTimelineProcessing.value) {
     return undefined
   }
-  const steps = displaySteps.value
+  const steps = displaySteps.value.filter(s => s.phase !== 'tasks')
   return steps.length ? steps[steps.length - 1] : undefined
 })
 
@@ -436,8 +444,15 @@ const orphanContent = computed(() => {
         </div>
       </template>
     </template>
+    <!-- 折叠态常驻 taskboard：生成 todolist 后折叠时间线仍可见（进行中/终态均露出） -->
+    <!-- 折叠态常驻 taskboard：生成 todolist 后折叠时间线仍可见（进行中/终态均露出） -->
+    <TaskBoardPanel
+      v-if="!timelineBodyExpanded && collapsedTaskBoardStep"
+      :step="collapsedTaskBoardStep"
+      :live="live && lifecycleOf(collapsedTaskBoardStep) === 'running'"
+    />
     <!-- 正在处理折叠：最后一步概要（无 chevron）+ 最后一段正文 -->
-    <template v-else-if="collapsedPreviewStep">
+    <template v-if="!timelineBodyExpanded && collapsedPreviewStep">
       <PlanWorkflowPanel
         v-if="collapsedPreviewStep.phase === 'plan' && showPlanDag"
         :plan-step="collapsedPreviewStep"
@@ -446,11 +461,6 @@ const orphanContent = computed(() => {
         :execution-plan-id="executionPlanId"
         :user-query="userQuery"
         :pending-hitl-confirmation="pendingList"
-      />
-      <TaskBoardPanel
-        v-else-if="collapsedPreviewStep.phase === 'tasks'"
-        :step="collapsedPreviewStep"
-        :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
       />
       <PeerCollabPanel
         v-else-if="collapsedPreviewStep.phase === 'peer-collab'"
@@ -486,7 +496,7 @@ const orphanContent = computed(() => {
       </div>
     </template>
     <div
-      v-else-if="showCollapsedAnswer"
+      v-else-if="!timelineBodyExpanded && showCollapsedAnswer"
       class="op-inline-content timeline-collapsed-answer"
     >
       <span class="op-gutter" aria-hidden="true" />

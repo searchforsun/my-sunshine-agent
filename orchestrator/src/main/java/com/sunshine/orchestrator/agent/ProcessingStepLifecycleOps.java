@@ -76,8 +76,13 @@ public final class ProcessingStepLifecycleOps {
             if (isAwaitingInteractionStep(step)) {
                 continue;
             }
+            // 中断可能发生在意图路由 / skill 加载 / RAG 检索 / TaskBoard 等前置或并行阶段（尚无 think 步），一并落 paused，
+            // 否则停止后时间线残留 running 步（A6 验收场景）；intent 中断后重新识别、直接换新步，不在此列
             if (TimelineStepId.THINK.matches(phase) || TimelineStepId.AGENT.matches(phase)
                     || TimelineStepId.GENERATE.matches(phase)
+                    || TimelineStepId.SKILL.matches(phase)
+                    || TimelineStepId.RAG.matches(phase) || TimelineStepId.PLAN.matches(phase)
+                    || TimelineStepId.TASKS.matches(phase)
                     || phase.startsWith("think") || phase.startsWith("tool")) {
                 steps.set(i, toPaused(step));
             }

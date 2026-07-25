@@ -30,8 +30,6 @@ class DynamicToolkitFactoryTest {
     @Mock
     private RagTool ragTool;
     @Mock
-    private ManageTasksTool manageTasksTool;
-    @Mock
     private SpawnSubagentTool spawnSubagentTool;
     @Mock
     private GenericRemoteToolFactory remoteToolFactory;
@@ -49,20 +47,20 @@ class DynamicToolkitFactoryTest {
     private DynamicToolkitFactory factory;
 
     @Test
-    void build_withTaskboardEnabled_registersManageTasksAndSandbox() {
+    void build_withTaskboardEnabled_doesNotRegisterManageTasks_nativeTodoWriteOwnedByEnableTaskList() {
+        // P3 原生 TaskList：todo_write 由 ReActAgent.enableTaskList 在 build 时注册，
+        // 工厂不再注册自研 manage_tasks（避免两个任务板工具并存）。
         List<AgentTool> sandboxTools = stubSandboxTools();
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard() {{
-            setEnabled(true);
-        }});
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
 
         var toolkit = factory.build(null);
 
-        assertThat(toolkit.getToolNames()).contains(RagTool.NAME, ManageTasksTool.NAME, SpawnSubagentTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
+        assertThat(toolkit.getToolNames()).doesNotContain("todo_write");
         assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
     }
 
@@ -71,7 +69,6 @@ class DynamicToolkitFactoryTest {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent() {{
             setEnabled(true);
         }});
@@ -87,7 +84,6 @@ class DynamicToolkitFactoryTest {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent() {{
             setEnabled(false);
         }});
@@ -104,7 +100,6 @@ class DynamicToolkitFactoryTest {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
 
@@ -119,7 +114,6 @@ class DynamicToolkitFactoryTest {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of("ghost_tool"));
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(List.of());
         when(toolCatalogService.isRagTool("ghost_tool")).thenReturn(false);
@@ -136,7 +130,6 @@ class DynamicToolkitFactoryTest {
                 .thenReturn(List.of("sdk__sunshine-finance__list_my_expenses"));
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(List.of());
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(
@@ -167,7 +160,6 @@ class DynamicToolkitFactoryTest {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getTaskboard()).thenReturn(new AgentExecutionProperties.React.Taskboard());
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
 
@@ -186,7 +178,7 @@ class DynamicToolkitFactoryTest {
 
         assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
         assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
-        assertThat(toolkit.getToolNames()).doesNotContain(ManageTasksTool.NAME);
+        assertThat(toolkit.getToolNames()).doesNotContain("todo_write");
         assertThat(toolkit.getToolNames()).doesNotContain(SpawnSubagentTool.NAME);
     }
 

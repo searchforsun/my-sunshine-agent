@@ -24,6 +24,8 @@ export function useChatScroll(_loading: Ref<boolean>) {
   /** 流式跟随合并到每帧最多一次，避免 step/reasoning 洪水抢滚轮 */
   let followRaf = 0
   let lastScrollTop = 0
+  /** 用户手动离开底部后置位：流式跟随立即停止，直到重新贴底。解决拖拽滚动条（无 wheel）上滑被贴底 rAF 抢回导致的抖动 */
+  let userTakenOver = false
 
   function isNearChatBottom(el: HTMLElement, threshold = 96): boolean {
     return distanceFromChatBottom(el) <= threshold
@@ -37,6 +39,7 @@ export function useChatScroll(_loading: Ref<boolean>) {
 
   function unpinFromUser(): void {
     chatScrollPinned.value = false
+    userTakenOver = true
     cancelFollowRaf()
     pinSyncSuppressed = false
     if (pinSyncSettleRaf) {
@@ -61,19 +64,43 @@ export function useChatScroll(_loading: Ref<boolean>) {
     const el = scrollRef.value
     if (!el) return
     const top = el.scrollTop
+    const dist = distanceFromChatBottom(el)
     const scrolledUp = top < lastScrollTop - 0.5
     lastScrollTop = top
+    // 「仍在底部」优先于 scrollTop 减小：程序化贴底后内容继续变高（表格逐行渲染），
+    // 浏览器补发 scroll 时 top < lastScrollTop，但此刻用户其实还在底部，勿误判上滑；
+    // 仅「位置不变或向下」时据此 repin —— 贴底态用户上滑经过 dist≤1 帧时保持现状，
+    // 交给后续 scrolledUp 帧取消贴底
+    if (dist <= 1) {
+      if (!scrolledUp) {
+        chatScrollPinned.value = true
+        userTakenOver = false
+      }
+      return
+    }
+    // 贴底态 + suppress 窗口（程序化贴底双 rAF 内）:scroll 链上任何「top 减小」都是
+    // 内容变高/布局 settle 的假象（贴底态用户上滑必过 dist≤1 帧），勿接管
+    if (pinSyncSuppressed && chatScrollPinned.value) return
+    // 用户主动上滑且确已离开底部：立即接管并硬性打断跟随（不等跨帧 ref/watch/rAF），
+    // 覆盖拖拽滚动条 / 触控板等不产生 wheel 事件的上滑路径
+    if (scrolledUp && dist > 1) {
+      unpinFromUser()
+      return
+    }
     chatScrollPinned.value = resolveChatScrollPinned({
-      distanceFromBottom: distanceFromChatBottom(el),
+      distanceFromBottom: dist,
       suppressed: pinSyncSuppressed,
       currentlyPinned: chatScrollPinned.value,
       scrolledUp,
     })
-    // 用户已离开底部：立刻解除 suppress，避免后续 follow 再抢
-    if (!chatScrollPinned.value) {
-      pinSyncSuppressed = false
-      cancelFollowRaf()
+    // 用户回到底部：解除接管闩锁，恢复流式跟随
+    if (chatScrollPinned.value) {
+      userTakenOver = false
+      return
     }
+    // 用户已离开底部：立刻解除 suppress，避免后续 follow 再抢
+    pinSyncSuppressed = false
+    cancelFollowRaf()
   }
 
   function onChatScroll() {
@@ -93,6 +120,8 @@ export function useChatScroll(_loading: Ref<boolean>) {
   function scrollToBottom(force = false) {
     const el = scrollRef.value
     if (!el) return
+    // 用户已接管滚动（手动上滑离开底部）：流式跟随一律不抢，强制贴底除外
+    if (userTakenOver && !force && !forceChatScroll.value) return
     const shouldScroll = force || forceChatScroll.value || chatScrollPinned.value
     if (!shouldScroll) return
     if (force || forceChatScroll.value) {
@@ -106,6 +135,7 @@ export function useChatScroll(_loading: Ref<boolean>) {
     if (followRaf) return
     followRaf = requestAnimationFrame(() => {
       followRaf = 0
+      if (userTakenOver && !forceChatScroll.value) return
       if (!chatScrollPinned.value && !forceChatScroll.value) return
       applyScrollBottom()
     })
@@ -144,10 +174,12 @@ export function useChatScroll(_loading: Ref<boolean>) {
 
   /** 用户主动发消息 / 续跑：恢复贴底，流式阶段跟随新内容 */
   function pinScrollForSend() {
+    userTakenOver = false
     chatScrollPinned.value = true
   }
 
   function pinScrollForHitl() {
+    userTakenOver = false
     chatScrollPinned.value = true
     forceChatScroll.value = true
   }

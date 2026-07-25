@@ -135,6 +135,28 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void beginReasoningRound_reusePreservesReasoning_concatAppends() {
+        // 复用 think-N（无业务 tool 间隔，如 todo_write 建板后再推理）发 RESUME：
+        // 翻回 running 但保留既有 reasoning，新 reasoning 经 concat 续写在旧内容后，不覆盖。
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("规划后建板再推理");
+        session.beginReasoningRound();
+        session.appendDelta("think", "reasoning", "规划内容第一段");
+        session.endReasoningRound();
+
+        // todo_write 建板：非业务 tool，toolCompletedSinceLastThink 仍 false → 复用同一 think
+        session.beginReasoningRound();
+        session.appendDelta("think", "reasoning", "第二段续写");
+        session.endReasoningRound();
+
+        ProcessingStep think = session.snapshot().stream()
+                .filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
+        assertThat(think.reasoning()).isEqualTo("规划内容第一段第二段续写");
+        assertThat(session.snapshot().stream().filter(s -> ThinkStepIds.isThinkStep(s.id())).count())
+                .isEqualTo(1);
+    }
+
+    @Test
     void contentAnchorAfterStepId_returnsLastDoneThinkAfterTool() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");

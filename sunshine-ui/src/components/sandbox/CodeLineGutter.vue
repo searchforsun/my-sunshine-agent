@@ -52,6 +52,7 @@ const displayLine = computed(() => {
   padding: 0 4px;
   text-align: right;
   box-sizing: content-box;
+  font-weight: 300;
 }
 
 .gutter-mark {
@@ -59,7 +60,7 @@ const displayLine = computed(() => {
   width: 1.2ch;
   text-align: center;
   flex-shrink: 0;
-  font-weight: 400;
+  font-weight: 300;
   opacity: 0.85;
 }
 

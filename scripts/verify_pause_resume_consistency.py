@@ -277,6 +277,74 @@ def live_a1_plan_stop_resume(token: str, conv_id: str) -> None:
     print("  OK A1 resume SSE 已发起")
 
 
+def live_a7_react_resume_think_continuation(token: str, conv_id: str) -> None:
+    """A7：ReAct 断在 tool/rag 中途 → 续跑「截断到最后 done think」无感续传。
+
+    断言：
+    - 中断后无 running 残留（tool/rag/tasks 落 paused）
+    - 续跑后无重复步 id（重放的新步不与服务端截断后的残留叠加）
+    - intent 单步（重新识别后覆盖）
+    - think 编号连续（think / think-2 / ... 无重复）
+    """
+    print("[LIVE A7] ReAct tool/rag 中断续跑 think 续传")
+    sess = StreamSession(token, {
+        "conversationId": conv_id,
+        "content": "查我的报销单和财务待办，并结合报销制度分析风险",
+        "executionPreference": "react",
+    })
+    sess.start()
+    # 等出现 running 的 tool / rag 步
+    deadline = time.time() + 90
+    seen = False
+    while time.time() < deadline:
+        for st in sess.steps:
+            sid = st.get("id") or ""
+            if (sid.startswith("tool-") or sid.startswith("rag")) and st.get("lifecycle") == "running":
+                seen = True
+                break
+        if seen:
+            break
+        if sess._done.is_set() and sess.error:
+            raise sess.error
+        time.sleep(0.4)
+    if not seen:
+        print("  SKIP A7: 未等到 running 的 tool/rag 步")
+        return
+    time.sleep(1)
+    if sess.generation_id:
+        sess.cancel_generation()
+    msg = wait_assistant_status(token, conv_id, "interrupted")
+    steps = parse_steps(msg.get("steps"))
+    running = [s.get("id") for s in steps if (s.get("lifecycle") or s.get("status")) == "running"]
+    if running:
+        raise AssertionError(f"A7: 中断后仍有 running 步: {running}")
+    print(f"  OK 中断无 running 残留 steps={len(steps)}")
+
+    # 续跑
+    resume = StreamSession(token, {"conversationId": conv_id, "resumeMessageId": msg.get("id")})
+    resume.start()
+    deadline = time.time() + 150
+    while time.time() < deadline:
+        if resume._done.is_set():
+            break
+        time.sleep(0.5)
+    final = wait_assistant_status(token, conv_id, "completed", timeout=60)
+    fsteps = parse_steps(final.get("steps"))
+    ids = [s.get("id") for s in fsteps]
+    dups = sorted({i for i in ids if ids.count(i) > 1})
+    if dups:
+        raise AssertionError(f"A7: 续跑后重复步 id: {dups}")
+    running = [s.get("id") for s in fsteps if (s.get("lifecycle") or s.get("status")) == "running"]
+    if running:
+        raise AssertionError(f"A7: 续跑后仍有 running 步: {running}")
+    if ids.count("intent") != 1:
+        raise AssertionError(f"A7: intent 步数={ids.count('intent')}（期望 1）")
+    thinks = [i for i in ids if i.startswith("think")]
+    if len(thinks) != len(set(thinks)):
+        raise AssertionError(f"A7: think 编号重复: {thinks}")
+    print(f"  OK 续跑无重复/无残留 intent=1 think={thinks}")
+
+
 def run_live() -> None:
     if not gateway_ready():
         print(f"[LIVE] Gateway 不可达 {GATEWAY_URL}，跳过 Live 验收")
@@ -287,6 +355,9 @@ def run_live() -> None:
     conv2 = auth_json("POST", "/api/conversations", None, token)
     conv_id2 = (conv2.get("data") or conv2).get("id")
     live_a1_plan_stop_resume(token, conv_id2)
+    conv3 = auth_json("POST", "/api/conversations", None, token)
+    conv_id3 = (conv3.get("data") or conv3).get("id")
+    live_a7_react_resume_think_continuation(token, conv_id3)
 
 
 def main() -> int:

@@ -112,26 +112,27 @@ class ProcessingStepMiddlewareTest {
     }
 
     @Test
-    void onActingSkipsManageTasksToolStep() {
+    void onActingSkipsTodoWriteToolStep() {
         StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
         when(executionProperties.getReact()).thenReturn(null);
 
-        String toolUseId = "tu-mt";
+        String toolUseId = "tu-todo";
         ToolUseBlock toolUse = mock(ToolUseBlock.class);
-        when(toolUse.getName()).thenReturn(ManageTasksTool.NAME);
+        when(toolUse.getName()).thenReturn("todo_write");
         when(toolUse.getId()).thenReturn(toolUseId);
 
         ProcessingStepMiddleware mw = newMiddleware();
         Function<ActingInput, Flux<AgentEvent>> next = in -> Flux.just(
-                new ToolResultEndEvent("e-mt", null, "r-mt", toolUseId, ManageTasksTool.NAME, ToolResultState.SUCCESS));
+                new ToolResultEndEvent("e-todo", null, "r-todo", toolUseId, "todo_write", ToolResultState.SUCCESS));
 
         ActingInput input = new ActingInput(List.of(toolUse));
         mw.onActing(mock(Agent.class), mock(RuntimeContext.class), input, next)
                 .collectList().block();
 
-        // manage_tasks 不开 tool 步
+        // todo_write 不开 tool 步、不 recordToolCompleted（不触发「任务板工具结果综合分析」单独 think 步）
         verify(session, never()).beginToolStep(any(), any());
         verify(session, never()).noteToolCallPending();
+        verify(session, never()).recordToolCompleted(any());
     }
 
     @Test

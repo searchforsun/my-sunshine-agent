@@ -106,4 +106,23 @@ class TimelineAggregatorTest {
         assertEquals("done", step.lifecycle());
         assertEquals(NodeRecoveryMeta.STATUS_SKIPPED, step.metadata().recovery().status());
     }
+
+    @Test
+    void restartAfterTerminal_clearsStaleReasoningForThinkResume() {
+        TimelineAggregator aggregator = new TimelineAggregator();
+        long t0 = 1_000L;
+        aggregator.apply(new ProcessingEvent("think-3", "think", EventKind.START, "正在分析", t0, null, null));
+        aggregator.appendDelta("think-3", "reasoning", "半截推理内容", t0 + 50);
+        aggregator.apply(new ProcessingEvent("think-3", "think", EventKind.COMPLETE, null, t0 + 100, null, null));
+
+        // 续跑复用 think-3 重开：旧 reasoning 须清空，新 delta 从头续写
+        aggregator.apply(new ProcessingEvent("think-3", "think", EventKind.START, "正在分析", t0 + 200, null, null));
+        ProcessingStep restarted = aggregator.get("think-3").orElseThrow();
+        assertEquals("running", restarted.lifecycle());
+        assertEquals(null, restarted.reasoning());
+        assertEquals(null, restarted.endedAt());
+
+        aggregator.appendDelta("think-3", "reasoning", "新推理", t0 + 250);
+        assertEquals("新推理", aggregator.get("think-3").orElseThrow().reasoning());
+    }
 }

@@ -18,6 +18,7 @@ import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.processing.ContentBlockAccumulator;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
@@ -124,6 +125,9 @@ public class GenerationJob {
         if (initialSteps != null && !initialSteps.isEmpty()) {
             stepsBuffer.clear();
             stepsBuffer.addAll(initialSteps);
+            // 与 ChatStreamExecutor resume 对齐：截断后最后一个 done think（流式中途被误标 done）将重生成，
+            // 重置为 paused 并清 reasoning，保证 Redis 落库与 SSE 下发一致
+            resetTrailingDoneThinkToPaused(stepsBuffer);
         }
         this.thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery, executionMode);
         this.chunkEmitter = newChunkEmitter();
@@ -160,6 +164,7 @@ public class GenerationJob {
         finishOnce(() -> {
             cancelOrphanTimer();
             persistWorkflowPauseIfNeeded();
+            dropUnfinishedIntentStep();
             emitFinishSteps(true);
             emitPausedWorkflowSteps();
             disposeLlmSubscription();
@@ -222,7 +227,7 @@ public class GenerationJob {
         StringBuilder mysqlBuffer = mysqlBufferRef;
         Consumer<String> flushPartial = directPartialFlush();
         if (chunkEmitter != null) {
-            for (ProcessingStep step : stepsBuffer) {
+            for (ProcessingStep step : new java.util.ArrayList<>(stepsBuffer)) {
                 if ("paused".equals(step.lifecycle())) {
                     chunkEmitter.emitPausedStep(StreamToken.step(step), mysqlBuffer, flushPartial);
                 }
@@ -239,6 +244,33 @@ public class GenerationJob {
             refreshContextAfterComplete();
             onComplete.run();
         });
+    }
+
+    /** 中断时若意图识别尚未完成：删除 running 的 intent 步，续跑重新意图识别后以下发的新步为准 */
+    private void dropUnfinishedIntentStep() {
+        stepsBuffer.removeIf(step -> TimelineStepId.INTENT.matches(step.id()) && !"done".equals(step.lifecycle()));
+    }
+
+    /** 续跑预填后：截断锚点之后最后一个 done think（流式中途被误标 done）将重生成，重置为 paused 并清 reasoning */
+    private static void resetTrailingDoneThinkToPaused(java.util.List<ProcessingStep> steps) {
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep s = steps.get(i);
+            if (!com.sunshine.orchestrator.processing.ThinkStepIds.isThinkStep(s.id())) {
+                continue;
+            }
+            if ("done".equals(s.lifecycle())) {
+                com.sunshine.orchestrator.processing.StepSummary summary = s.summary();
+                steps.set(i, new ProcessingStep(
+                        s.id(), s.phase(), "paused",
+                        new com.sunshine.orchestrator.processing.StepSummary(
+                                summary != null ? summary.before() : null, "已暂停", "已暂停"),
+                        s.startedAt(), null, null,
+                        s.detail(), null, s.output(), s.result(),
+                        System.currentTimeMillis(), s.label(), s.metadata(),
+                        s.contentBlocks(), s.subSteps()));
+            }
+            return;
+        }
     }
 
     private void refreshContextAfterComplete() {
@@ -261,6 +293,7 @@ public class GenerationJob {
                 || (error.getCause() instanceof HitlWaitInterruptedException)) {
             cancelOrphanTimer();
             disposeLlmSubscription();
+            dropUnfinishedIntentStep();
             emitFinishSteps(true);
             emitPausedWorkflowSteps();
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
@@ -269,6 +302,7 @@ public class GenerationJob {
         }
         cancelOrphanTimer();
         disposeLlmSubscription();
+        dropUnfinishedIntentStep();
         emitFinishSteps(true);
         String errMsg = StreamErrorMessages.resolve(error);
         if (errMsg != null && !errMsg.isBlank()) {

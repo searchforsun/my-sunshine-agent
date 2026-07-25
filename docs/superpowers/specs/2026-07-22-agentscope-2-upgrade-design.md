@@ -1,9 +1,9 @@
 # AgentScope Java 2.0 分阶段升级与原生能力采纳
 
-> **状态**：已评审（brainstorming 锁定 + 一轮完善性评审）· 待实施计划  
-> **日期**：2026-07-22（2026-07-23 完善性修订）  
+> **状态**：已评审（brainstorming 锁定 + 一轮完善性评审 + E5 迁移范围评审）· 实施中（**P0/P1/P2/P3 已完成**）  
+> **日期**：2026-07-22（2026-07-23 完善性修订；**2026-07-25 E5 修订：P4/P5/P6 不迁移，保留自研**；**2026-07-25 P3 TaskList 完成**）  
 > **关联**：现网 AS **1.0.8** · ReAct 软续跑 · Plan/Workflow `WorkflowCheckpoint`（3.9.5）· TaskBoard（4.7.5）· spawn_subagent（4.7.6）· 沙箱（4.5）· peer-collab  
-> **前置决策**：方案 **1（兼容桥先行）** · P0 peer-collab **允许顺序降级 (A)** · AgentState **Redis-only · TTL 7 天 · 不改 MySQL 表** · **统一 HarnessAgent 载体**（§3.1）
+> **前置决策**：方案 **1（兼容桥先行）** · P0 peer-collab **允许顺序降级 (A)** · AgentState **Redis-only · TTL 7 天 · 不改 MySQL 表** · **统一 HarnessAgent 载体**（§3.1） · **P4/P5/P6 保留自研**（§6 E5）
 
 ## 1. 背景
 
@@ -48,7 +48,7 @@ Sunshine（Timeline · SSE · GenerationJob · Catalog · 路由 · Plan/Workflo
 | 禁双轨 | 同能力过渡期可有桥，阶段结束必须拆桥 |
 | 闸门失败不跨阶段 | 禁止带着红灯开下一阶段 |
 
-**P0 peer-collab**：`MsgHub` 在 2.0 已删除 → 允许**顺序发言降级**（功能可用、弱于现网反应式 hub），P6 正式恢复/对齐。
+**P0 peer-collab**：`MsgHub` 在 2.0 已删除 → 允许**顺序发言降级**（功能可用、弱于现网反应式 hub），由自研 `ExpertHubEngine` 驱动反应式选人（G-a 路径 1，E5 确认为终态，不再设 P6 迁移阶段）。
 
 ### 3.1 Agent 载体选型（E3 修订，P0 前必须定调）
 
@@ -57,11 +57,11 @@ AS 2.0 为**双层架构**：
 | 层 | 能力 | 覆盖本方案阶段 |
 |----|------|----------------|
 | `ReActAgent` | 无状态推理 · `stateStore`+`interrupt` · `streamEvents` | P2 已够用 |
-| `HarnessAgent`（上层） | 在 ReAct 之上加 Workspace / **Compaction** / **TaskList** / **Subagent** / Channel | P3 / P4 / P5 必需 |
+| `HarnessAgent`（上层） | 在 ReAct 之上加 Workspace / **Compaction** / **TaskList** / **Subagent** / Channel | **Compaction**（P2）与 **TaskList**（P3）必需；Subagent / Workspace 经 E5 评审不采用 |
 
 **决策：ReAct 主路径统一到 `HarnessAgent` 单例载体（P0 即定型，不在 P2→P3 之间二次迁移载体）。**
 
-理由：若 P2 先在 `ReActAgent` 上做 checkpoint，P3 TaskList / P4 Subagent / P5 Workspace 又必须迁到 `HarnessAgent`，等于 P2→P3 之间再迁一次 Agent 载体，违背"避免大爆炸 / 禁双轨"原则。一次到位到 HarnessAgent，P2 只用其子集能力（stateStore/interrupt/streamEvents），后续阶段逐步启用上层能力，载体不变。
+理由：HarnessAgent 的 **CompactionConfig 仅在上层可用**（§5 注），这正是统一载体的直接动因；TaskList（P3）亦为上层能力。一次到位到 HarnessAgent，P2 用其 stateStore/interrupt/streamEvents + Compaction，P3 增量启用 TaskList，载体不变。（E5：Subagent / Workspace 能力经评审不启用，不影响本决策——统一载体的动因是 Compaction，非 Subagent。）
 
 **兼容性核对**：`HarnessAgent.streamEvents()` 与 `ReActAgent.streamEvents()` 同签名（官方 changelog B.4），P1 事件契约不受影响；`.enableTaskList(true)` / `.subagent(...)` / `.workspace(...)` / `.compaction(...)` 为 builder 增量项，P2 不启用即可。
 
@@ -117,16 +117,18 @@ AS 2.0 为**双层架构**：
 | ReAct 软续跑 | `stateStore` + `interrupt` | P2 |
 | `AutoContextHook`（hook 包，2.0 **整体移除**） | **HarnessAgent `CompactionConfig`**（`triggerMessages`/`keepMessages`，可独立小模型 `.model()`/`.prompt()`） | P2 起对齐，禁双轨 |
 | TaskBoard `manage_tasks` | `enableTaskList` + TodoTools | P3 |
-| `spawn_subagent` | Harness Subagent + distributedStore | P4 |
-| 沙箱执行内核（部分） | Workspace / DockerFilesystemSpec | P5 |
-| ReAct 写工具 HITL | Permission + `RequireUserConfirmEvent` | P5 |
 | 每请求 `new ReActAgent` | 无状态 HarnessAgent 单例 + `RuntimeContext` | P2 |
+| ~~`spawn_subagent`~~ | ~~Harness Subagent + distributedStore~~ | ~~P4~~ **评审后不迁移**（§6 P4，E5 修订） |
+| ~~沙箱执行内核（部分）~~ | ~~Workspace / DockerFilesystemSpec~~ | ~~P5~~ **评审后不迁移**（§6 P5，E5 修订） |
+| ~~ReAct 写工具 HITL~~ | ~~Permission + `RequireUserConfirmEvent`~~ | ~~P5~~ **评审后不迁移**（§6 P5，E5 修订） |
+
+> **E5 修订（2026-07-25）**：P4 / P5 / P6 经官方文档逐项对照评审后决定**不迁移，保留自研**。核心理由：官方原生能力集中在执行内核，但 Sunshine 的产品承诺（单独取消不 bump epoch、对话级沙箱容器共享、editDiff 抽屉、六工具 schema、`writeHitlMode` 三态、sha256 审计、反应式选人）全在外壳——外壳占比超 80%，迁移后代码量不减反增（多一层桥接），且部分语义（对话级隔离粒度、仅首次确认）官方无等价物，强迁会破坏产品承诺。P2 的单例优化 + 原生 stateStore 自动保存才是 2.0 对本平台的净收益点。详见 §6 P4/P5/P6 各节决策记录。
 
 > 注：Sunshine 现网用的是 `AutoContextHook`（`io.agentscope.core.memory.autocontext`），**不是** `AutoContextMemory`；2.0 原生替代是 `CompactionConfig`，且**仅在 HarnessAgent 上可用**——这正是 §3.1 统一 HarnessAgent 载体的直接动因。
 >
 > **P0-3 实施校准（2026-07-23 实测）**：`memory/autocontext` 包在 2.0 **整体删除**（AutoContextHook/AutoContextMemory/AutoContextConfig 均不编译，**非** LegacyHookDispatcher 可桥），P0 已移除全部引用、压缩能力暂退至 SDK 默认（无压缩），P2 以 `CompactionConfig` 恢复、阈值对标 `MemoryProperties.AutoContext`（字段保留）。另：`RedisAgentStateStore` 在 `io.agentscope.extensions.redis.state`，**builder-only + lettuceClient、无 TTL 参数**，P2 须另行落地 TTL（clientAdapter / keyPrefix 包装 / SDK 升级三选一）。
 
-**不可替代（继续自研）**：Plan-Workflow / Studio、静态 Workflow 检查点、路由与 Prompt Catalog、peer 产品层（Catalog/`$`/Synthesizer）、RAG、tool-manager、审计、Timeline/SSE 外壳。
+**不可替代（继续自研）**：Plan-Workflow / Studio、静态 Workflow 检查点、路由与 Prompt Catalog、peer 产品层（Catalog/`$`/Synthesizer/反应式 hub）、RAG、tool-manager、审计、Timeline/SSE 外壳、**spawn_subagent 全栈**（E5）、**沙箱六工具 + 取消 + editDiff + 审计全栈**（E5）、**HITL 判定与续跑**（E5）。
 
 ## 6. 分阶段技术方案
 
@@ -193,40 +195,89 @@ AS 2.0 为**双层架构**：
 
 **闸门**：新 Live（如 `verify_react_checkpoint_live.py`）；前端停→续步骤连续、已完成 tool 不无故整轮重来
 
-### P3 — TaskList 替换 TaskBoard
+### P3 — TaskList 替换 TaskBoard ✅（2026-07-25 完成）
 
 **范围**：`.enableTaskList(true)` + TodoTools + TaskReminderMiddleware；下线 `manage_tasks` 主路径；Timeline 仍投影为单一 `tasks` 步（前端尽量零改）
 
-**闸门**：更新后的 TaskBoard Live + 前端任务卡
+**实现要点（已落地）**
 
-### P4 — Harness Subagent 替换 spawn
+| 项 | 实现 |
+|----|------|
+| 启用点 | `ReActAgentFactory`：仅 `role == MAIN` 且 `agent.execution.react.taskboard.enabled=true` 时 `builder.enableTaskList(true)`；SUB / 专家（`ExpertPeerAgentFactory` 独立 builder）/ workflow agent 均不开任务板 |
+| 状态持久化 | 原生 `todo_write` 写 `AgentState.tasksContext`，随 checkpoint 落 `AgentStateStore`，**中断恢复后任务列表（含 id）随 stateStore 还原**——根治自研 `manage_tasks`（Redis 独立存储）恢复丢 id / merge 校验失败 |
+| Timeline 投影 | 新增 `TodoTasksBridge`：原生 `Task` 列表 → timeline `TaskBoardItemView`，经 `ProcessingStepMiddleware.completeToolStep` 在 `todo_write` 完成时投影到单一 `tasks` 步（前端零改，`TaskBoardPanel` 通用渲染 `metadata.tasks`） |
+| 去单独 think 步 | `todo_write` 是状态工具（无结果可分析），**不 `recordToolCompleted`** → 不再触发「已完成任务板的工具结果综合分析」think 步；`todo_write` 后推理复用同一 think（连续 reasoning 合并） |
+| 终态收口 | `ReActAgentRuntime.finishAnswerStream` 传 `HarnessAgent` → `ReactTaskBoardService.finalizeNativeTimeline` 从 `tasksContext` 读任务，完成 timeline `tasks` 步 + **终态落 MySQL 审计**（`persistFinal`，审计数据源从 Redis 改为 tasksContext） |
+| 自研遗留清理 | 删除 `ManageTasksTool` / `ReactTaskBoardStore`(Redis) / `TaskBoardContentMatch` / `TaskBoardItemInput` / `ReactTaskBoardApplyResult`；`ReactTaskBoardService` 删 `apply/load/emitTimelineUpdate/finalizeTimeline/saveState` 及全部 merge 校验；审计删 `onUpdated/shouldSample`；清理 `ProcessingStepMiddleware`/`ExpertSpeakHook`/`DynamicToolkitFactory` 的 `manage_tasks` 分支；删死配置 `taskboard.{maxItems,maxInProgress,seedFromInjectedSummary,audit.sampleRate}` + `as2.tasklistNative` |
+| 提示词 | `mode-overlay.react` v2 已发布（`manage_tasks` → `todo_write` 全量替换语义：每次传完整 todos 列表，平台按 content 自动保留原 id，模型不管 id）；SQL 种子 `17-sunshine-prompt-manager.sql` 同步 |
 
-**范围**：声明式 Subagent；薄封装或下线 `SpawnSubagentTool`；主卡 `subagent-*` / 抽屉字段尽量保持；单独取消不得 bump 整轮 stream epoch；`distributedStore`（Redis）
+**决策修订（相对原 P3 设计）**
 
-**单独取消映射（G-b 钉死）**：现网 `SpawnRunRegistry.cancel` 基于 interrupt、不 bump epoch。迁移后必须验证：异步模式（`timeout_seconds=0`）下能否按 `task_id` **单独 cancel 子 agent** 而不触发父 Agent 的 State 落盘中断。P4 开始前先用一个 spike（半日）在 HarnessAgent 上实测；若原生不支持，**保留 `SpawnRunRegistry` 作为子取消适配层**（不算双轨，属于外壳 UX 保留），不得为迁就原生取消语义而放弃不 bump epoch 的 UX 承诺。
+- **一次性迁移，无 feature flag**：原 §7.5 规划的 `agent.tasklist.native` 回滚 flag 未落地——用户决策全量切换、自研代码直接删除（非保留双轨）。回滚靠 `git revert`（自研 `manage_tasks` 全链路单 commit 可恢复），不再需要 `verify_rollback_p3_tasklist.py`。
+- **保留 MySQL 审计**：终态 `tasksContext` 快照仍落 `react_taskboard` 表（`ReactTaskBoardAuditService.persistFinal`），仅删过程事件 `onUpdated`。
 
-**闸门**：`verify_spawn_subagent_live`（含单独取消）+ 前端
+**闸门（已通过）**
 
-### P5 — Workspace 沙箱 + Permission HITL
+- 单测：`ReactTaskBoardTest`（含 3 个 `finalizeNative*` 新增）/ `TodoTasksBridgeTest`（新增）/ `DynamicToolkitFactoryTest` / `AgentInfraTest` 等 25/25 绿
+- Live：`scripts/verify_tasklist_native_live.py`（新建，强制 `executionPreference=react`）—— N1 `tasks` 步含 4 items / N2 全程无 `manage_tasks` / N3 无「任务板的工具结果综合分析」think 步，全过；前端任务卡正常渲染
 
-**范围**：执行内核迁 Workspace/Docker；保留抽屉 / diff / `writeHitlMode` / 取消 UX；Catalog `require_confirmation` → Permission 事件 → 现有确认 UI；Workflow 节点 HITL 可仍自研
+### P4 — ~~Harness Subagent 替换 spawn~~ → 保留自研（E5 修订，2026-07-25）
 
-**沙箱取消兼容（G-c 钉死）**：现网 4.5.7 `CancellableToolRunRegistry` + sandbox kill 提供 `sandbox__exec/grep/glob` 的细粒度取消（hover 圆钮 / 主行「已取消」/ 同族预算 3）。迁 Workspace 后：执行后端换成 DockerFilesystemSpec，但**取消入口、SSE `lifecycle=paused`、`summary.after=已取消` 文案、detail 保留 command/pattern** 全部不变。P5 闸门必须含 `verify_sandbox_tool_cancel_live` 全绿；若 Workspace 原生取消粒度不足，保留 `CancellableToolRunRegistry` 作为取消适配层（同 G-b 原则）。
+**决策：不迁移，保留 `SpawnSubagentTool` 全栈自研。**
 
-**闸门**：沙箱 Live + ReAct HITL Live + **`verify_sandbox_tool_cancel_live`** + 前端
+**评审依据（官方 Harness Subagent 逐项对照）**
 
-### P6 — peer-collab 正式化
+| 维度 | Sunshine 现状 | 官方原生 | 结论 |
+|------|--------------|----------|------|
+| 委派触发 / 隔离 / 嵌套保护 / 并行 / 超时 | 元工具 + `AssembledContext.forSubAgent()` + 硬拒 | `agent_spawn` + ISOLATED + 叶子保护 | ✅ 等价，可迁 |
+| 流式转发 | bridge 折叠 `subagent-{runId}.subSteps` | `streamEvents` `source` 字段 | ✅ 等价 |
+| **单独取消** | `SpawnRunRegistry.cancel` → `interrupt()` + 父卡 paused SSE 直写 GenerationJob + **不 bump epoch** | `task_cancel` 仅覆盖后台任务（`timeout_seconds=0`），后台任务**不支持流式转发**；同步模式的取消语义与 GenerationJob/stream epoch 模型无等价物 | ❌ 保留 `SpawnRunRegistry`（G-b 已锁定） |
+| **沙箱会话共享** | `conversationId` = 主会话 → 同一对话级容器 | ISOLATED 独立工作区 / SHARED 共享 Harness workspace（≠ Sunshine 对话级容器） | ❌ 保留 |
+| **HITL 抽屉** | `bindHitlBridge(subBridgeId, messageId)` | Permission 继承父 DENY（解决权限边界，不解决抽屉确认 UX） | ❌ 保留 |
+| **工具集** | 与 MAIN 同 Catalog（`toolSetResolver` 运行时按租户动态解析） | 构建期声明白名单或继承父 | ⚠️ 可桥但桥接层不薄 |
+| 主卡 / 抽屉 UI / Catalog 提示词 | `subagent-*` 卡 + `PlanNodeDrawer` + `mode-overlay.subagent` | `SubagentExposedEvent` / Channel | ❌ 产品外壳保留 |
 
-**范围**：用 subagent/middleware/显式轮次恢复反应式语义；删除 P0 顺序桥；保留 expert Catalog / `$` / 前端专家步
+**净收益评估**：外壳（取消/HITL/沙箱/UI/Catalog）占复杂度 80%+，迁移后变为「官方内核 + 自研外壳 + 桥接层」，代码量不减反增，且工具集语义（同集 vs 继承子集）需额外适配。`SpawnSubagentTool` 已过 S1/S4/S5 验收，无痛点驱动重构。
 
-**反应式 hub 技术路径（G-a 钉死，P0 期间即需 spike 验证）**：AS 2.0 删 `pipeline` 包后无现成圆桌原语。恢复「第 2 轮起反应式选人」的候选路径，按优先级：
+**保留项全清单**：`SpawnSubagentTool`、`SpawnRunRegistry`（G-b）、`SpawnSubagentTimelineBridge` / `SpawnSubagentTimelineSupport`、`bindHitlBridge`、沙箱会话共享注入、`mode-overlay.subagent` / `react.subagent.cancel-result` Catalog、前端 `SubagentCard` + 抽屉。
 
-1. **保留自研 `ExpertHubEngine` 选人逻辑**（min/max 轮次 + continue 判断 + 反应式选人），仅把「专家 Agent 调用」从 MsgHub 换成对每专家 HarnessAgent 的 `streamEvents`；反应式 hub 属**不可替代产品层**（§5 已列 peer 产品层自研），不强行用 AS 原生多智能体替代。
-2. 若坚持原生对齐：用 Harness subagent + 显式轮次编排近似，但「反应式选人」仍需自研决策函数。
+**原 G-b 钉死条款效力**：继续有效——`SpawnRunRegistry` 不是「适配层」，而是**永久保留的产品实现**，不再是「原生不支持时的兜底」。
 
-**P0 spike 出口**：P0 顺序桥落地时，用半日 spike 验证路径 1 在 2.0 下编译/流式可行，结论写入实施计划。**禁止**到 P6 才发现反应式语义无法恢复——若路径 1 不可行，P6 降级为「顺序 + 自研轮次控制」，并在文档明示对 4.7.3 反应式特性的取舍。
+> **附：自研 SSE epoch 闸门是永久维护项（2026-07-25 案例）**。恢复续跑 + 新 spawn 子任务曾卡死（子任务 token 积压在 hookQueue 等主 Agent drain，前端直到子任务完成才显示）。根因：`StepEventBridgeRegistry.bind()` 用 bridgeId（`sub-{runId}`）当 `streamEpoch` 键取 epoch，而该 map 键是 assistantMessageId → 取到 0，与 `bumpStreamEpoch` 抬升后的 bindingEpoch 错配，`isHookFlushAllowed` 拒直刷。修复：`bind`/`bindHitlBridge` 经 `hitlAssistantMessageId` 解析回 assistantMessageId 再取/校准 epoch + `bumpStreamEpoch` 改 `compute` 保证首次单调递增（回归 `StepEventBridgeRegistryResumeEpochTest`）。**结论**：这套 `streamEpoch`/`GenerationJob`/hookQueue 直刷闸门是 Sunshine 自研的前端实时投影机制，与 AS 2.0 无关——即使 P4 迁到 Harness 原生 subagent，只要仍用此桥接做「主时间线子卡 + 抽屉 subSteps」投影，epoch 对齐就需自己维护；唯有把恢复+子任务实时投影也整体交给原生统一事件流，才能废弃。
 
-**闸门**：`verify_peer_collab_live` + `verify_expert_consultation_live` + 前端
+### P5 — ~~Workspace 沙箱 + Permission HITL~~ → 保留自研（E5 修订，2026-07-25）
+
+**决策：不迁移，保留沙箱六工具 + 取消 + HITL 全栈自研。**
+
+**评审依据（官方 Workspace / Permission 逐项对照）**
+
+| 维度 | Sunshine 现状 | 官方原生 | 结论 |
+|------|--------------|----------|------|
+| 沙箱快照恢复 | `SandboxSessionLifecycle` 容器随对话生灭 | `DockerFilesystemSpec` sessionId 快照（含 `node_modules`） | ✅ 官方更优，但见下条 |
+| **隔离粒度** | **对话级容器**：`conversationId` 一个容器，MAIN + 所有 SUB + 同对话多条消息共享 | `IsolationScope.SESSION`（每 sessionId 隔离）；Sunshine sessionId = `assistantMessageId`（§4.1a）→ 每条消息一个沙箱，**前一条消息装的环境下一条即丢失** | ❌ **产品承诺破坏**，保留 |
+| **六工具 schema** | `sandbox__{exec,grep,glob,read,write,edit}`，edit 带 `old_string`/`new_string` 精确替换 | `execute`/`read_file`/`write_file`/`grep_files`/`glob_files`，无精确 edit | ❌ 保留 schema + 命名（Catalog/Timeline/前端零改的前提） |
+| **editDiff 抽屉** | `SandboxEditDiffHolder` + unified diff 展示 | 无等价物 | ❌ 保留 |
+| **单工具取消** | `CancellableToolRunRegistry` + sandbox kill + 同族预算 3 + `paused` SSE 文案 | 无等价取消粒度 | ❌ 保留（G-c 已锁定） |
+| **sha256 审计** | `ToolAuditService` 敏感字段脱敏 | 无等价物 | ❌ 保留 |
+| **HITL 判定** | `SandboxHitlPolicy` + `writeHitlMode` 三态（全确认/仅首次/不确认） | `PermissionRule` 按 `toolName + ruleContent` 模式匹配，无「仅首次确认」会话级语义 | ❌ 保留判定逻辑 |
+| **HITL 续跑** | `consumeHitlPreApproval` 跳过二次确认 | `ConfirmResult` 附 metadata 新 call 恢复；checkpoint 后 `AgentState.getPermissionContext()` 已确认规则完整性未验证 | ❌ 保留 |
+| HITL 传输层 | `HitlConfirmationService.awaitConfirmation` | `RequireUserConfirmEvent` + `ConfirmResult` | ⚠️ 唯一可迁项，但见下 |
+
+**HITL 传输层为何不单独迁**：传输层（事件收发）与判定层（`SandboxHitlPolicy` + `writeHitlMode` + `consumeHitlPreApproval`）在 `SandboxAgentTools.execute` 内深度交织（`awaitConfirmation` 内联在工具执行流里，前后各有取消检查 / stale epoch 检查 / 预算扣减）。只换传输层需要把执行流拆成「官方事件驱动」模型，重构成本接近全迁，收益仅是少一个 `awaitConfirmation` 自研实现——不划算。
+
+**净收益评估**：官方唯一明确更优的是「沙箱快照含 `node_modules` 恢复」，但代价是隔离粒度从对话级降为消息级——这是方案 B 的核心设计，不可接受。其余各项官方能力均已被 Sunshine 自研覆盖或超越。
+
+**保留项全清单**：`SandboxAgentTools`（六工具）、`CancellableToolRunRegistry`（G-c）、`SandboxSessionLifecycle` / `SandboxSessionHolder`（对话级容器）、`SandboxEditDiffHolder` / `SandboxEditDiffCodec`、`SandboxHitlPolicy` / `SandboxWriteHitlMode`、`HitlConfirmationService`、`consumeHitlPreApproval`、`ToolAuditService` sha256、前端 hover 取消钮 + 抽屉 diff + `HitlStepActions`。
+
+**原 G-c 钉死条款效力**：同 G-b——`CancellableToolRunRegistry` 转为**永久保留的产品实现**。
+
+### P6 — peer-collab 正式化（G-a 路径 1 已锁定，E5 补充确认）
+
+**决策：不迁移（spec 原已锁定路径 1），P0 顺序桥即为终态调用方式。**
+
+P0 已完成「去掉 MsgHub → 顺序调用专家 HarnessAgent `streamEvents`」，这就是路径 1 的落地形态。「第 2 轮起反应式选人」由自研 `ExpertHubEngine` 决策函数驱动，与 AS 原生多智能体无关——P6 不存在「迁移」动作，仅需在 P7 确认无 Legacy 残留。
+
+**P6 阶段取消**，相关验收（`verify_peer_collab_live` / `verify_expert_consultation_live`）并入 P7 回归包。
 
 ### P7 — 清桥收口
 
@@ -239,10 +290,10 @@ AS 2.0 为**双层架构**：
 | MsgHub 删除导致 P0 编译不过 | 顺序桥为硬前置 |
 | P1 事件映射双写正文 | 单一适配器；沿用 ContentSegment 规则 |
 | State 与 steps 续跑策略冲突 | P2 禁止清空 steps；State 缺失则 regenerate |
-| 双轨 TaskBoard/spawn/沙箱 | 阶段结束拆桥；禁止两套执行器并行 |
+| 双轨 TaskBoard | 阶段结束拆桥；禁止两套执行器并行 |
 | 误用 Plan Mode | 文档与评审明确禁止 |
 | HarnessAgent 未定型导致 P2→P3 二次迁移 | §3.1 前置定型，P0 即落 HarnessAgent 骨架 |
-| P6 反应式 hub 无法恢复 | P0 spike 验证路径 1（G-a），提前暴露 |
+| 反应式 hub 在 2.0 下不可行 | P0 spike 已验证路径 1（G-a）可行；E5 确认为终态，无 P6 迁移风险 |
 | 消息级 sessionId 并发失控 | §4.1a：靠 GenerationJob + stream epoch 防护，不依赖 AS 串行门 |
 
 ## 7.5 回滚策略（G-d，按阶段）
@@ -252,10 +303,9 @@ AS 2.0 为**双层架构**：
 | P0 | jar 版本 | 回 `agentscope.version` 至 1.0.8 + revert P0 commit |
 | P1 | jar + 事件适配器开关 | `agent.events.legacy-hook=true` 切回 hook 路径（P1 期间保留双路径开关，P7 才拆） |
 | P2 | feature flag | `agent.react.checkpoint.enabled=false` → 回 `retainIntentStepsOnly` 软续跑（代码保留至 P7） |
-| P3 | feature flag | `agent.tasklist.native=false` → 回 `manage_tasks` 主路径 |
-| P4 | feature flag | `agent.subagent.native=false` → 回 `SpawnSubagentTool` |
-| P5 | feature flag | `agent.sandbox.workspace=false` → 回现网沙箱执行内核；`agent.hitl.permission=false` → 回自研 HITL |
-| P6 | feature flag | `agent.peer.reactive=false` → 回 P0 顺序桥 |
+| P3 | git revert（一次性迁移，无 flag） | 自研 `manage_tasks` 全链路单 commit 恢复；orchestrator 重启 + `mode-overlay.react` 回滚 v1 |
+
+> **E5 修订**：P4 / P5 / P6 不迁移（§6 各节决策记录），无双轨，无需 feature flag 与回滚脚本。
 
 **原则**：每阶段合入必须带同名 feature flag（默认开），flag 全保留到 P7 清桥统一删除；线上出事故**先切 flag 再查因**，禁止直接回版本导致跨阶段混杂。
 
@@ -276,10 +326,9 @@ AS 2.0 为**双层架构**：
 | P0 | `verify_rollback_p0_compile.py` | 切 1.0.8 jar 后 `mvn -pl orchestrator -am compile` 绿；peer 顺序桥 flag 切换无编译残留 |
 | P1 | `verify_rollback_p1_events.py` | legacy-hook ↔ streamEvents 双路径切换，Timeline 步骤数 / SSE 正文 **逐字节一致** |
 | P2 | `verify_rollback_p2_checkpoint.py` | checkpoint ↔ 软续跑切换：同一会话先停→续（checkpoint），回滚后停→**重新生成**（软续跑），steps 不丢失、Redis State 不串会话 |
-| P3 | `verify_rollback_p3_tasklist.py` | TaskList ↔ `manage_tasks` 切换，任务卡 UI 数据一致，`tasks` 步投影不回退 |
-| P4 | `verify_rollback_p4_subagent.py` | 原生 subagent ↔ `SpawnSubagentTool` 切换，**单独取消**在两条路径下都不 bump epoch |
-| P5 | `verify_rollback_p5_sandbox.py` | Workspace ↔ 现网沙箱切换，`verify_sandbox_tool_cancel_live` 两条路径全绿；Permission ↔ 自研 HITL 切换确认 UI 一致 |
-| P6 | `verify_rollback_p6_peer.py` | 反应式 ↔ 顺序桥切换，`verify_peer_collab_live` 主路径 + `$` 绑定两条路径全绿 |
+| P3 | ~~`verify_rollback_p3_tasklist.py`~~（一次性迁移，无 flag，不需要） | 回滚靠 git revert + 提示词回滚 v1；任务卡 UI 数据由 `verify_tasklist_native_live` 守护 |
+
+> **E5 修订**：P4 / P5 / P6 不迁移，对应回滚脚本（`verify_rollback_p4_subagent` / `p5_sandbox` / `p6_peer`）不再需要；已有的 spawn/沙箱/peer Live 脚本（`verify_spawn_subagent_live` / `verify_sandbox_tool_cancel_live` / `verify_peer_collab_live` 等）作为**常驻回归**并入 P7 回归包，继续守护自研实现。
 
 **脏数据清零检查（每次回滚后必跑）**：Redis `FLUSHDB` 不可取——按 key 前缀清：`agentscope:state:*` / `agentscope:tasklist:*` / `agentscope:subagent:*`；MySQL 检查 `chat_message.steps` 无半写入；GenerationJob Redis stream 无孤立 generationId。
 
@@ -292,11 +341,10 @@ AS 2.0 为**双层架构**：
 | P0 | 编译 + 核心单测 + 基础 demo + **7 类删除项零残留** + 反应式 hub spike 结论 + `verify_rollback_p0_compile` | ReAct 一轮对话；peer 降级可用 |
 | P1 | Timeline/事件相关单测 + **适配层性能基线达标** + `verify_rollback_p1_events` | 步骤 + 流式正文 |
 | P2 | `verify_react_checkpoint_live`（新建） + `verify_rollback_p2_checkpoint` | 停→「继续执行」 |
-| P3 | TaskBoard Live（改断言） + `verify_rollback_p3_tasklist` | 任务卡 |
-| P4 | spawn Live（含**单独取消不 bump epoch**） + `verify_rollback_p4_subagent` | 子卡/取消 |
-| P5 | sandbox + hitl Live + **`verify_sandbox_tool_cancel_live`** + `verify_rollback_p5_sandbox` | 沙箱抽屉 + 写确认 |
-| P6 | peer/expert Live（**反应式选人恢复**） + `verify_rollback_p6_peer` | `$` 完整路径 |
-| P7 | 回归包 + feature flag 全拆 + **全量回滚脚本最终回归** | react/workflow/plan/peer 抽检 |
+| P3 | `verify_tasklist_native_live`（N1 tasks 步 items / N2 无 manage_tasks / N3 无任务板单独 think 步）+ 任务板单测 25 绿 | 任务卡 |
+| P7 | 回归包 + feature flag 全拆 + **全量回滚脚本最终回归** + spawn/沙箱/peer 常驻 Live 回归（`verify_spawn_subagent_live` / `verify_sandbox_tool_cancel_live` / `verify_peer_collab_live` / `verify_expert_consultation_live`） | react/workflow/plan/peer 抽检 + 子卡/取消 + 沙箱抽屉/写确认 + `$` 完整路径 |
+
+> **E5 修订**：P4 / P5 / P6 不迁移（§6 各节决策记录），原三阶段验收项中属于自研实现的 Live 脚本转为常驻回归，并入 P7。
 
 ## 9. 文档与后续
 
@@ -318,4 +366,5 @@ AS 2.0 为**双层架构**：
 10. **每阶段带同名 feature flag 作回退单元（§7.5），flag 全保留至 P7 统一拆**  
 11. **反应式 hub：保留自研 `ExpertHubEngine` 决策逻辑（G-a 路径 1），P0 spike 验证**  
 12. **子取消 / 沙箱取消 UX 不可降级**（G-b / G-c）：原生粒度不足时保留自研取消适配层  
-13. **每阶段强制回滚测试**（§7.5a）：三段式（正向→回滚→回切）+ 分阶段专项断言 + 脏数据清零，回滚脚本红一个即整阶段红灯
+13. **每阶段强制回滚测试**（§7.5a）：三段式（正向→回滚→回切）+ 分阶段专项断言 + 脏数据清零，回滚脚本红一个即整阶段红灯  
+14. **P4 / P5 / P6 不迁移（E5，2026-07-25）**：spawn_subagent / 沙箱六工具+HITL / peer 反应式 hub **保留全栈自研**。理由：官方原生能力覆盖的是执行内核，而 Sunshine 产品承诺（单独取消不 bump epoch、对话级沙箱容器共享、editDiff 抽屉、六工具 schema、`writeHitlMode` 三态、sha256 审计、反应式选人）全在外壳，占比 80%+；且对话级隔离粒度、「仅首次确认」语义官方无等价物，强迁破坏产品承诺。G-b / G-c 的「适配层」定性相应转为**永久产品实现**。2.0 净收益聚焦 P2（单例 + stateStore 自动保存 + 优雅停机）与 P3（TaskList 状态随 checkpoint 恢复）。原 P4/P5/P6 Live 脚本转为常驻回归并入 P7。

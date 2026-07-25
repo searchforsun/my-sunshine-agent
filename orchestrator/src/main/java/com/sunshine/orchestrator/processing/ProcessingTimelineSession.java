@@ -198,6 +198,22 @@ public final class ProcessingTimelineSession {
         }
     }
 
+    /**
+     * 从 AgentScope checkpoint 恢复 think 轮次基线：续跑时 thinkIteration 从 curIter 起递增，
+     * 生成的 step id（think-{n+1}）不与中断前已落库的 think-{1..n} 冲突；
+     * 中断在 think-N 中途时 curIter 传 N-1，下一轮复用 think-N（TimelineAggregator START 会清空旧 reasoning）。
+     */
+    public void resumeFromCheckpoint(int curIter) {
+        state.thinkIteration = curIter;
+        state.lastCompletedThinkId = curIter > 0 ? ThinkStepIds.forIteration(curIter) : null;
+        state.toolCompletedSinceLastThink = true;
+        // 中断若发生在 tool 执行中途（curIter 轮 think 已 done、工具未终态）， AgentScope 会重放该 tool，
+        // 此处预标记使重放的首个 reasoning delta 开新 think-(curIter+1) 而非复用已 done 的 think
+        if (curIter > 0) {
+            state.currentThinkId = ThinkStepIds.forIteration(curIter);
+        }
+    }
+
     public String userQuery() {
         return state.userQuery;
     }

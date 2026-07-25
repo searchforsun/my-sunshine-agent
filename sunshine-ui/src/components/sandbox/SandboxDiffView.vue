@@ -43,7 +43,7 @@ const renderedLines = computed(() =>
         isFold: true,
       }
     }
-    const mark = line.kind === 'del' ? '-' : line.kind === 'add' ? '+' : ''
+    const mark = (line.kind === 'del' ? '-' : line.kind === 'add' ? '+' : '') as '' | '+' | '-'
     const html = highlightCode(line.text || ' ', props.lang) || escapeHtml(line.text || ' ')
     return {
       kind: line.kind,

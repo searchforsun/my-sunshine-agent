@@ -30,7 +30,7 @@ import {
   pauseRunningWorkflowNodes,
   reactivatePausedStepsForResume,
   reactivatePausedPlanHitlNodes,
-  retainIntentStepsOnly,
+  resetStepsForReactResume,
 } from './processingStepsPause'
 import { isExecutionRestartMessage, isReactAssistantMessage, resolveResumeMode } from './resumeMode'
 import { normalizeRestoredInterleavedContent, stripPlanDrawerLeakFromMessage } from './contentInterleave'
@@ -238,7 +238,7 @@ export function useChatSessions(
       ? runId.trim().slice('subagent-'.length)
       : runId.trim()
     const stepId = `subagent-${id}`
-    // 乐观：仅切 lifecycle；after 等 SSE（禁止硬编码话术）
+    // 乐观：切 lifecycle + after 文案（与后端 SpawnSubagentLabels.afterCancel 一致）；SSE 终态会覆盖
     for (const msg of s.messages) {
       if (!msg.steps?.length) continue
       const idx = msg.steps.findIndex(st => st.id === stepId)
@@ -250,7 +250,7 @@ export function useChatSessions(
         summary: {
           before: prev.summary?.before,
           active: undefined,
-          after: prev.summary?.after?.trim() || undefined,
+          after: prev.summary?.after?.trim() || '已取消',
         },
         endedAt: prev.endedAt ?? Date.now(),
       }
@@ -296,7 +296,7 @@ export function useChatSessions(
     const executionRestart = !planWorkflowResume
       && resolveResumeMode(target) === 'regenerate'
       && isExecutionRestartMessage(target)
-    const reactRestart = executionRestart && isReactAssistantMessage(target)
+    const reactRestart = false
     if (planWorkflowResume) {
       target.content = ''
       target.reasoning = ''
@@ -310,7 +310,19 @@ export function useChatSessions(
       target.reasoning = ''
       target.contentBlocks = undefined
       setPendingHitlConfirmations(target, undefined)
-      target.steps = retainIntentStepsOnly(target.steps)
+      if (target.steps?.length) {
+        target.steps = pauseRunningWorkflowNodes(target.steps)
+        // intent 保留：续跑重新识别后由 SSE 覆盖（shouldIgnoreResumeStepReplay 忽略 pending/running 回退）
+      }
+    } else if (target.steps?.length) {
+      // ReAct 续跑（reactRestart/checkpoint）：后端对复用 id 的步重放 running→done。
+      // 暂停期被乐观标「已取消/已暂停」（paused + after 非空）的步在前端是 cancel-terminal 硬终态，
+      // resolveMergedLifecycle 会挡住后端重放的 running/done → 卡死。恢复时统一重置这些步：
+      // 解除终态保护（回 pending、清 after）、清旧半截 reasoning，让重放从空白干净落地。
+      target.steps = resetStepsForReactResume(target.steps)
+      // 消息级 reasoning 同样残留旧流（综合分析等 step_delta(reasoning) 会经 appendChunk 叠加到
+      // lastMsg.reasoning），一并清空，避免旧（英文）与新（中文）互相覆盖。
+      target.reasoning = ''
     }
     stripPlanDrawerLeakFromMessage(target)
     if (executionRestart || planWorkflowResume) bumpAssistantMessage(s)

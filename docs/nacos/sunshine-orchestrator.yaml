@@ -54,11 +54,6 @@ agent:
       max-iters: 20
       taskboard:
         enabled: true
-        max-items: 12
-        max-in-progress: 1
-        seed-from-injected-summary: true
-        audit:
-          sample-rate: 1.0
       subagent:
         enabled: true
         max-iters: 8

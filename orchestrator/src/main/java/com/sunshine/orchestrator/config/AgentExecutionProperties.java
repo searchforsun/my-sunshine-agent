@@ -27,16 +27,8 @@ public class AgentExecutionProperties {
 
         @Data
         public static class Taskboard {
+            /** true=主 Agent 启用原生 todo_write 任务板（任务列表随 checkpoint 持久化，终态落 MySQL 审计） */
             private boolean enabled = false;
-            private int maxItems = 12;
-            private int maxInProgress = 1;
-            private boolean seedFromInjectedSummary = true;
-            private Audit audit = new Audit();
-
-            @Data
-            public static class Audit {
-                private double sampleRate = 1.0;
-            }
         }
 
         @Data
@@ -92,10 +84,6 @@ public class AgentExecutionProperties {
     public static class As2 {
         /** P0 总开关：编译期置 true，所有 as2 子 flag 依此生效 */
         private boolean enabled = true;
-        /** P2 续跑：true=原生 checkpoint，false=retainIntentStepsOnly 软续跑 */
-        private boolean reactCheckpoint = false;
-        /** P3：true=enableTaskList，false=manage_tasks */
-        private boolean tasklistNative = false;
         /** P4：true=Harness subagent，false=SpawnSubagentTool */
         private boolean subagentNative = false;
         /** P5：true=Workspace 沙箱，false=现网沙箱内核 */

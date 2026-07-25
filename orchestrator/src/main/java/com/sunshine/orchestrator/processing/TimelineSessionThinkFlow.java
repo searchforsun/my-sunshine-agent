@@ -51,11 +51,12 @@ final class TimelineSessionThinkFlow {
             openNextThink();
             return;
         }
-        // 无业务 tool 间隔的连续 reasoning（如终态前空转多轮）复用同一 think，避免堆叠「综合分析」
+        // 无业务 tool 间隔的连续 reasoning（如终态前空转多轮、todo_write 建板后再推理）复用同一 think，
+        // 避免堆叠「综合分析」。复用发 RESUME（翻回 running、保留既有 reasoning），不发 pending/start：
+        // START 会清空旧 reasoning 导致覆盖之前的思考；此处新 reasoning 应 concat 续写在旧内容后。
         if (state.lastCompletedThinkId != null && !emitter.isStepRunning(state.lastCompletedThinkId)) {
             state.currentThinkId = state.lastCompletedThinkId;
-            lifecycle.pending(state.currentThinkId, TimelineStepId.THINK.phase());
-            lifecycle.start(state.currentThinkId, TimelineStepId.THINK.phase());
+            lifecycle.resume(state.currentThinkId, TimelineStepId.THINK.phase());
             return;
         }
         if (isThinkRunning()) {

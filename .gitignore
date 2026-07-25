@@ -49,3 +49,4 @@ agent-workspace/
 __pycache__/
 
 .superpowers/
+.agentscope/

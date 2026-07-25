@@ -177,6 +177,9 @@ export interface ProcessingStep {
 
   durationMs?: number
 
+  /** 前端墙钟：收到 running 步时记本地时刻，避免与服务端 startedAt 时钟差导致 live 计时偏移 */
+  clientStartedAt?: number
+
   detail?: string
 
   /** V3：步骤内流式思考 */
@@ -294,6 +297,11 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
     const lifecycle = resolveMergedLifecycle(prev, incoming)
 
+    // 后端 step 事件从不携带增量 reasoning（aggregator 不落 reasoning，reasoning 仅经 step_delta 下发），
+    // 故 running 快照 incoming.reasoning 恒为 null，无法据此区分「中断续传」与「同 id 复用」。
+    // 中断恢复的清理由 resetStepsForReactResume（resume 时重置 pending + 清 reasoning）保证；
+    // 此处统一 longerText：复用（如建板后再推理）prev 非空、incoming null → 保留 prev，
+    // 后续 step_delta 经 concatText 续写 → 累加，不覆盖。
     const merged: ProcessingStep = {
 
       ...prev,
@@ -329,11 +337,25 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
     merged.durationMs = resolveStepDurationMs(merged) ?? merged.durationMs
 
+    // live 计时用客户端墙钟：首次 running 记本地时刻；离开 running（done/paused/error）清空，
+    // 避免与服务端 startedAt 时钟差导致 live 计时偏移（完成后回归服务端 durationMs）
+    if (lifecycle === 'running' && merged.clientStartedAt == null) {
+      merged.clientStartedAt = Date.now()
+    } else if (lifecycle !== 'running') {
+      merged.clientStartedAt = undefined
+    }
+
     next[idx] = merged.id.startsWith('node-') ? relocateAgentNodeHitl(merged) : merged
 
   } else {
 
-    next.push(incoming)
+    // 新步直接 running 且无 clientStartedAt（applyStepDelta 的 base 已从 steps[idx] 拷贝，
+    // 不会进此分支；仅真正新步打时间戳）
+    if (incoming.lifecycle === 'running' && incoming.clientStartedAt == null) {
+      next.push({ ...incoming, clientStartedAt: Date.now() })
+    } else {
+      next.push(incoming)
+    }
 
   }
 
