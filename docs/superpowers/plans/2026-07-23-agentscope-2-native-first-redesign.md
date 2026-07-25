@@ -887,61 +887,25 @@ git tag as2-p2-done
 
 ### Task P2-6: stateStore 自动保存 + 优雅停机（E5 新增）
 
-> **E5 新增说明**：E5 评审确认官方净收益三项之二、三为「自动 AgentState 持久化」与「官方 shutdown 入口」。当前 `ReActAgentFactory.disableSessionPersistence()` 关闭了官方自动保存，改由 `ReActAgentRuntime.doFinally` 手捞内存对象兜底——重启后状态丢失。本任务恢复官方自动保存 + 落地优雅停机，使「服务重启 -> 会话可续」成为可用能力（Redis 兜底）。
+> **E5 新增说明**：E5 评审确认官方净收益三项之二、三为「自动 AgentState 持久化」与「官方 shutdown 入口」。
+>
+> **实施校准（2026-07-26 源码实证）**：经 `agentscope-harness-2.0.0-sources` / `agentscope-core-2.0.0-sources` 核实——
+> 1. `HarnessAgent.Builder.disableSessionPersistence()` 自 2.0 起为 **no-op**（"session persistence is owned by ReActAgent itself"），官方自动持久化由 `ReActAgentFactory.stateStore(...)` 已真实绑定即激活，**无需也不应**手写保存。
+> 2. 官方优雅停机**已自动接线且完备**：`GracefulShutdownManager`（全局单例）经 `AgentScopeJvmShutdownHook` 注册 JVM hook；`ReActAgent` 构造时把 `GracefulShutdownMiddleware` 置于 middlewares 首位，每次 call 自动 `registerRequest`；shutdown 时对每个在飞请求 `setShutdownInterrupted(true)` + save（经 `bindStateSaver` 落 stateStore，`PartialReasoningPolicy.SAVE`，默认 `shutdownTimeout=null` 无限等待）；重启后 `doCallInner` 经 `checkAndClearShutdownInterrupted` 去重续跑。
+> 3. 因此**计划中手写 `HarnessAgentShutdownHook` 冗余，取消**。本任务实际改动收敛为：删除误导性的 no-op `disableSessionPersistence()` 调用 + 文档澄清。默认配置（无限等待 + SAVE）无需调整，不设 `GracefulShutdownConfig`。
+>
+> 用户取消 / ON_ERROR 的 checkpoint 仍由 P2-2 的 `ReactCheckpointService.interrupt`（`agent.interrupt()` + `saveAgentState`）与 `doFinally` 兜底负责，与 shutdown 路径互不冲突。
 
 **Files:**
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ReActAgentFactory.java（删 disableSessionPersistence）
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/runtime/ReActAgentRuntime.java（精简 doFinally 手捞兜底）
-- Create: orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentShutdownHook.java
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentFactory.java（删 no-op `disableSessionPersistence()` + 注释澄清）
+- ~~Create: HarnessAgentShutdownHook.java~~（E5 校准后取消：官方 `GracefulShutdownManager` 已覆盖）
 
-- [ ] **Step 1: 写失败单测--agent 构建后 stateStore 已绑定（非 disabled）**
+- [ ] **Step 1: 删 `HarnessAgentFactory` 的 `.disableSessionPersistence()`（2.0 no-op，误导），加注释说明持久化/停机归官方**
 
-```java
-@Test
-void sessionPersistenceEnabled() {
-    HarnessAgent agent = factory.create(req);
-    assertTrue(agent.getStateStore().isPresent()); // 或等价断言：非 NoopStateStore
-}
-```
-
-- [ ] **Step 2: ReActAgentFactory 删 `.disableSessionPersistence()`，恢复官方自动保存（ReActAgent 自带生命周期持久化）；删 `HarnessAgentFactory` 中的显式 save 调用（`doFinally` 手捞兜底改为「stateStore 已有则不重复 save」的防御分支或整段删除）**
-
-- [ ] **Step 3: 实现 HarnessAgentShutdownHook--@PreDestroy 遍历 Holder 全部实例 shutdown()，进行中任务落 `shutdown_interrupted=true`，重启后 hasCheckpoint 分支可恢复**
-
-```java
-package com.sunshine.orchestrator.agent;
-
-import io.agentscope.harness.agent.HarnessAgent;
-import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-
-@Slf4j
-@Component
-@RequiredArgsConstructor
-public class HarnessAgentShutdownHook {
-    private final HarnessAgentHolder holder;
-
-    @PreDestroy
-    public void shutdownAll() {
-        for (HarnessAgent agent : holder.getAll()) {
-            try {
-                agent.shutdown(); // 官方入口：等待/中断进行中任务，落 shutdown_interrupted
-            } catch (Exception e) {
-                log.warn("harness agent shutdown failed", e);
-            }
-        }
-    }
-}
-```
-
-- [ ] **Step 4: 扩展 verify_react_checkpoint_live--新增场景「run 中途 kill -15 orchestrator -> 重启 -> hasCheckpoint=true -> 续跑恢复」（shutdown_interrupted 路径）**
-
-- [ ] **Step 5: 编译 + 单测 + Live + Commit**
+- [ ] **Step 2: 编译 + 单测 + 实证 Live（P2-4 含 kill -15 重启恢复场景，验证官方 shutdown_interrupted 路径）**
 
 ```bash
-git commit -m "feat(as2-p2): enable stateStore auto-persistence + graceful shutdown hook (E5)"
+git commit -m "feat(as2-p2): drop no-op disableSessionPersistence; rely on official auto-persist + graceful shutdown (E5)"
 ```
 
 ---

@@ -26,6 +26,12 @@ import java.util.List;
  * HarnessAgent 默认注入 filesystem/shell/memory/subagent/skill 等工具，此处全部 disable，
  * 确保工具集仅含 ReActAgentFactory 已声明的 Toolkit（财务/OA/HR/RAG/沙箱等）。
  * <p>
+ * 持久化：官方自动持久化由 ReActAgent 自身持有（{@code .stateStore(stateStore)}），
+ * 本类不再叠加 disable——{@code disableSessionPersistence()} 自 2.0 起为 no-op。
+ * 优雅停机：官方 {@code GracefulShutdownManager}（JVM shutdown hook + middleware 首位）
+ * 自动 interrupt 在飞请求并落 {@code shutdown_interrupted}，重启后经
+ * {@code checkAndClearShutdownInterrupted} 去重续跑，无需自研 ShutdownHook。
+ * <p>
  * P2-1（E5）：实例经 {@link HarnessAgentHolder} 按 {@link #fingerprint(AgentRunRequest)}
  * 缓存复用——fingerprint 覆盖全部不可变构建项（sysPrompt/toolkit/maxIters/taskboard/catalog 版本），
  * 任意一项变化即新建，不 mutate 存活实例。
@@ -49,7 +55,6 @@ public class HarnessAgentFactory {
                 .disableShellTool()
                 .disableMemoryTools()
                 .disableMemoryHooks()
-                .disableSessionPersistence()
                 .disableWorkspaceContext()
                 .disableAtPathExpansion()
                 .disableSubagents()
