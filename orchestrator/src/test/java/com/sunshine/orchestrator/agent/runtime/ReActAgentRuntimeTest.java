@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.agent.runtime;
 
-import com.sunshine.orchestrator.agent.HarnessAgentFactory;
+import com.sunshine.orchestrator.agent.HarnessAgentHolder;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
@@ -41,7 +41,7 @@ import static org.mockito.Mockito.when;
 class ReActAgentRuntimeTest {
 
     @Mock
-    private HarnessAgentFactory agentFactory;
+    private HarnessAgentHolder agentHolder;
     @Mock
     private PromptComposer promptComposer;
     @Mock
@@ -64,7 +64,7 @@ class ReActAgentRuntimeTest {
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
         lenient().when(spawnRunRegistry.getIfAvailable()).thenReturn(null);
         runtime = new ReActAgentRuntime(
-                agentFactory, promptComposer, groundingChecker, groundingProperties,
+                agentHolder, promptComposer, groundingChecker, groundingProperties,
                 taskBoardService, executionProperties, sandboxSessionLifecycle, spawnRunRegistry);
     }
 
@@ -101,7 +101,7 @@ class ReActAgentRuntimeTest {
 
         AgentRunRequest req = AgentRunRequest.main(
                 AssembledContext.empty(), "用户问题", "u1", "default", "msg-1");
-        when(agentFactory.create(req)).thenReturn(reactAgent);
+        when(agentHolder.get(req)).thenReturn(reactAgent);
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
 
         List<StreamToken> tokens = runtime.run(req).collectList().block();
@@ -112,7 +112,7 @@ class ReActAgentRuntimeTest {
         verify(promptComposer).composeReactInputs(composeCaptor.capture());
         assertThat(composeCaptor.getValue().userMessage()).isEqualTo("用户问题");
         assertThat(composeCaptor.getValue().skillId()).isNull();
-        verify(agentFactory).create(req);
+        verify(agentHolder).get(req);
         verify(sandboxSessionLifecycle).prepareRun(req);
         verify(sandboxSessionLifecycle).closeQuietly(req);
     }
@@ -122,7 +122,7 @@ class ReActAgentRuntimeTest {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         java.util.concurrent.atomic.AtomicReference<String> createThread = new java.util.concurrent.atomic.AtomicReference<>();
-        when(agentFactory.create(any())).thenAnswer(inv -> {
+        when(agentHolder.get(any())).thenAnswer(inv -> {
             createThread.set(Thread.currentThread().getName());
             return reactAgent;
         });
@@ -142,7 +142,7 @@ class ReActAgentRuntimeTest {
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
 
         ArgumentCaptor<AgentRunRequest> requestCaptor = ArgumentCaptor.forClass(AgentRunRequest.class);
-        when(agentFactory.create(requestCaptor.capture())).thenReturn(reactAgent);
+        when(agentHolder.get(requestCaptor.capture())).thenReturn(reactAgent);
 
         AgentRunRequest req = AgentRunRequest.sub(
                 AssembledContext.empty(), "分析合规", List.of("制度上下文"), "u1", "default");
@@ -163,7 +163,7 @@ class ReActAgentRuntimeTest {
     void run_subStripsStreamMemoryAndPassesSkillId() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
-        when(agentFactory.create(any())).thenReturn(reactAgent);
+        when(agentHolder.get(any())).thenReturn(reactAgent);
 
         AssembledContext fullMemory = new AssembledContext("ltm", "mtm", List.of(), List.of(
                 new ChatTurn("user", "历史")), "");
@@ -186,7 +186,7 @@ class ReActAgentRuntimeTest {
     void run_mainPreparesSandboxContextAndClosesOnce() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
-        when(agentFactory.create(any())).thenReturn(reactAgent);
+        when(agentHolder.get(any())).thenReturn(reactAgent);
 
         AgentRunRequest req = AgentRunRequest.main(
                 AssembledContext.empty(), "读文件", "u1", "default", "msg-s", List.of(), "coding-skill");
@@ -200,7 +200,7 @@ class ReActAgentRuntimeTest {
     @Test
     void run_errorStillClosesSandboxSession() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
-        when(agentFactory.create(any())).thenReturn(reactAgent);
+        when(agentHolder.get(any())).thenReturn(reactAgent);
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>error(new RuntimeException("boom")));
 
         AgentRunRequest req = AgentRunRequest.main(

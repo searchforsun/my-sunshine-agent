@@ -44,7 +44,6 @@ public class ReActAgentFactory {
     private String apiKey;
 
     public ReActAgent create(AgentRunRequest request) {
-        String bridgeId = request.resolveBridgeId();
         Toolkit toolkit = resolveToolkit(request);
         int maxIters = resolveMaxIters(request);
         OpenAIChatModel model = buildModel();
@@ -59,7 +58,7 @@ public class ReActAgentFactory {
                 .maxIters(maxIters)
                 .stateStore(stateStore)
                 .enablePendingToolRecovery(true)
-                .middleware(middlewareFactory.forBridge(bridgeId));
+                .middleware(middlewareFactory.shared());
         // 原生 TaskList：todo_write + TaskReminderMiddleware，任务列表随 AgentState checkpoint 持久化，
         // 中断恢复后（含 id）随 stateStore 还原。仅主 Agent 开任务板（SUB/专家无独立任务清单）。
         if (request.role() == AgentRole.MAIN && isTaskBoardEnabled()) {

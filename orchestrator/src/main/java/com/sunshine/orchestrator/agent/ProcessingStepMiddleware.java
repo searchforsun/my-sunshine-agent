@@ -49,11 +49,17 @@ import java.util.function.Function;
  * </ul>
  *
  * <p>流式 reasoning/content delta 不在此处（由 EventMapper 经 streamEvents 驱动）。
+ *
+ * <p>P2-1（E5）：middleware 改为无状态——bridgeId 不再为构造参数，由 ReActAgentRuntime
+ * 经 RuntimeContext 注入（{@link #CTX_BRIDGE_ID}），使 HarnessAgent 指纹缓存可安全复用
+ * 共享 middleware 实例；toolUseById 收窄为 onActing 局部 Map，消除跨 call 污染。
  */
 @Slf4j
 public class ProcessingStepMiddleware implements MiddlewareBase {
 
-    private final String bridgeId;
+    /** RuntimeContext key：per-call bridgeId（由 runtime 注入） */
+    public static final String CTX_BRIDGE_ID = "sunshine.bridgeId";
+
     private final ToolCatalogService toolCatalogService;
     private final AgentExecutionProperties executionProperties;
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
@@ -61,13 +67,11 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
 
     public ProcessingStepMiddleware(
-            String bridgeId,
             ToolCatalogService toolCatalogService,
             AgentExecutionProperties executionProperties,
             TaskBoardTimelineSupport taskBoardTimelineSupport,
             SandboxTimelineLabelService sandboxTimelineLabels,
             CancellableToolRunRegistry cancellableToolRunRegistry) {
-        this.bridgeId = bridgeId;
         this.toolCatalogService = toolCatalogService;
         this.executionProperties = executionProperties;
         this.taskBoardTimelineSupport = taskBoardTimelineSupport;
@@ -75,10 +79,16 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         this.cancellableToolRunRegistry = cancellableToolRunRegistry;
     }
 
+    /** per-call bridgeId：由 ReActAgentRuntime 经 RuntimeContext 注入（缓存复用下禁止实例字段） */
+    private static String bridgeIdOf(RuntimeContext ctx) {
+        return ctx != null ? ctx.get(CTX_BRIDGE_ID) : null;
+    }
+
     @Override
     public Flux<AgentEvent> onReasoning(
             Agent agent, RuntimeContext ctx, ReasoningInput input,
             Function<ReasoningInput, Flux<AgentEvent>> next) {
+        String bridgeId = bridgeIdOf(ctx);
         StepEventBridge.emit(bridgeId, ProcessingTimelineSession::beginReasoningRound);
         return next.apply(input)
                 .doFinally(sig -> StepEventBridge.emit(bridgeId, session -> {
@@ -93,9 +103,12 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     public Flux<AgentEvent> onActing(
             Agent agent, RuntimeContext ctx, ActingInput input,
             Function<ActingInput, Flux<AgentEvent>> next) {
+        String bridgeId = bridgeIdOf(ctx);
         List<ToolUseBlock> toolCalls = input.toolCalls();
         // toolCallId -> 累积的结果文本（ToolResultTextDeltaEvent 按 toolCallId 分组还原 ToolResultBlock 文本）
         Map<String, StringBuilder> resultTextById = new ConcurrentHashMap<>();
+        // toolCallId -> 本次 onActing 的 ToolUseBlock（局部缓存，End 事件回查 input 用，随 call 生命周期回收）
+        Map<String, ToolUseBlock> toolUseById = new ConcurrentHashMap<>();
         // 入口：开 tool 步（跳过 manage_tasks / spawn_subagent，二者不上 tool-* 步）
         for (ToolUseBlock tu : toolCalls) {
             String id = tu.getId();
@@ -106,7 +119,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             if (SpawnSubagentTool.NAME.equals(toolName) || TodoTasksBridge.isTodoWrite(toolName)) {
                 continue;
             }
-            beginToolStep(tu);
+            beginToolStep(bridgeId, tu);
         }
         return next.apply(input)
                 .doOnNext(ev -> {
@@ -114,23 +127,22 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                         resultTextById.computeIfAbsent(d.getToolCallId(), k -> new StringBuilder())
                                 .append(d.getDelta());
                     } else if (ev instanceof ToolResultEndEvent end) {
-                        completeToolStep(agent, ctx, end, resultTextById);
+                        completeToolStep(agent, ctx, bridgeId, end, resultTextById, toolUseById);
                     }
                 })
                 .doFinally(sig -> {
-                    // 兜底：异常/取消未收到 End 事件的 tool 步不残留 bridge 绑定与缓存
+                    // 兜底：异常/取消未收到 End 事件的 tool 步不残留 bridge 绑定
                     for (ToolUseBlock tu : toolCalls) {
                         String id = tu.getId();
                         if (id != null) {
                             StepEventBridge.unbindToolUseBridge(id);
-                            toolUseById.remove(id);
                         }
                     }
                 });
     }
 
     /** 入口开 tool 步（对齐 PreActing）：开步 + sandbox active 文案 + 取消登记 */
-    private void beginToolStep(ToolUseBlock toolUse) {
+    private void beginToolStep(String bridgeId, ToolUseBlock toolUse) {
         String toolName = toolUse.getName();
         String toolUseId = toolUse.getId();
         StepEventBridge.bindToolUseBridge(toolUseId, bridgeId);
@@ -156,14 +168,15 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         }
         // 出卡即登记：UI 可立即 cancel（messageId 必须为 assistant，禁止 bridgeId 冒充）
         if (cancellable) {
-            registerCancellable(toolName, toolUseId, toolInput);
+            registerCancellable(bridgeId, toolName, toolUseId, toolInput);
         }
     }
 
     /** PostActing 收口（方案 A）：ToolResultEndEvent 触发，用累积的结果文本复现 legacy PostActing 全套逻辑 */
     private void completeToolStep(
-            Agent agent, RuntimeContext ctx,
-            ToolResultEndEvent end, Map<String, StringBuilder> resultTextById) {
+            Agent agent, RuntimeContext ctx, String bridgeId,
+            ToolResultEndEvent end, Map<String, StringBuilder> resultTextById,
+            Map<String, ToolUseBlock> toolUseById) {
         String toolName = end.getToolCallName();
         String toolUseId = end.getToolCallId();
         if (toolName == null) {
@@ -186,7 +199,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         }
         StringBuilder acc = resultTextById.remove(toolUseId);
         String rawText = acc != null ? acc.toString() : "";
-        ToolUseBlock toolUse = lookupToolUse(toolUseId, toolName);
+        ToolUseBlock toolUse = toolUseById.get(toolUseId);
         final String summaryLine;
         final String expandDetail;
         final StepMetadata meta;
@@ -247,18 +260,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         StepEventBridge.unbindToolUseBridge(toolUseId);
     }
 
-    /** onActing 入口拿到的 ToolUseBlock 缓存，供 End 事件回查 input（沙箱 enrich 需要） */
-    private final Map<String, ToolUseBlock> toolUseById = new ConcurrentHashMap<>();
-
-    private ToolUseBlock lookupToolUse(String toolUseId, String fallbackToolName) {
-        ToolUseBlock tu = toolUseById.get(toolUseId);
-        if (tu != null) {
-            return tu;
-        }
-        return null;
-    }
-
-    private void registerCancellable(String toolName, String toolUseId, Map<String, Object> input) {
+    private void registerCancellable(String bridgeId, String toolName, String toolUseId, Map<String, Object> input) {
         String messageId = StepEventBridge.hitlAssistantMessageId(bridgeId);
         if (!StringUtils.hasText(messageId)) {
             messageId = StepEventBridge.activeMessageId();

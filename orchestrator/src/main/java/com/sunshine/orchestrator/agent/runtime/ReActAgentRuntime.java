@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent.runtime;
 
-import com.sunshine.orchestrator.agent.HarnessAgentFactory;
+import com.sunshine.orchestrator.agent.HarnessAgentHolder;
+import com.sunshine.orchestrator.agent.ProcessingStepMiddleware;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -40,7 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RequiredArgsConstructor
 public class ReActAgentRuntime implements AgentRuntime {
 
-    private final HarnessAgentFactory agentFactory;
+    private final HarnessAgentHolder agentHolder;
     private final PromptComposer promptComposer;
     private final AnswerGroundingChecker groundingChecker;
     private final AgentGroundingProperties groundingProperties;
@@ -96,7 +97,6 @@ public class ReActAgentRuntime implements AgentRuntime {
             ProcessingTimelineSession session = new ProcessingTimelineSession();
             session.bindUserQuery(query);
             session.bindTraceMessageId(assistantMessageId);
-            HarnessAgent agent = agentFactory.create(request);
             int checkpointThinkIter = request.checkpointThinkIteration();
             if (checkpointThinkIter > 0) {
                 session.resumeFromCheckpoint(checkpointThinkIter);
@@ -118,6 +118,9 @@ public class ReActAgentRuntime implements AgentRuntime {
             AtomicBoolean answerContentStarted = new AtomicBoolean(false);
             AtomicBoolean answerStreamFinished = new AtomicBoolean(false);
             StringBuilder answerContent = new StringBuilder();
+            // P2-1（E5）：指纹缓存取实例。SUB 的 spawn 单独取消句柄绑定本轮实例；
+            // 缓存复用下旧 run 已 cancel 的句柄不迁移——新 run 会经 register+bindAgent 覆盖
+            HarnessAgent agent = agentHolder.get(request);
             if (request.role() == AgentRole.SUB) {
                 SpawnRunRegistry registry = spawnRunRegistry.getIfAvailable();
                 if (registry != null) {
@@ -127,6 +130,7 @@ public class ReActAgentRuntime implements AgentRuntime {
             RuntimeContext rt = RuntimeContext.builder()
                     .userId(request.userId())
                     .sessionId(assistantMessageId)
+                    .put(ProcessingStepMiddleware.CTX_BRIDGE_ID, bridgeId)
                     .build();
             return agent.streamEvents(inputs, rt)
                     .flatMap(agentEvent -> {
@@ -158,14 +162,20 @@ public class ReActAgentRuntime implements AgentRuntime {
                                 && !request.assistantMessageId().isBlank()
                                 && request.userId() != null) {
                             try {
-                                agent.getDelegate().saveAgentState(request.userId(), request.assistantMessageId());
-                                log.info("[AgentRuntime] checkpoint saved on {} userId={} msg={}",
-                                        sig, request.userId(), request.assistantMessageId());
+                                if (agent.getDelegate() != null) {
+                                    agent.getDelegate().saveAgentState(request.userId(), request.assistantMessageId());
+                                    log.info("[AgentRuntime] checkpoint saved on {} userId={} msg={}",
+                                            sig, request.userId(), request.assistantMessageId());
+                                }
                             } catch (Exception e) {
                                 log.warn("[AgentRuntime] saveCheckpoint failed: {}", e.getMessage());
                             }
                         }
-                        sandboxSessionLifecycle.closeQuietly(request);
+                        try {
+                            sandboxSessionLifecycle.closeQuietly(request);
+                        } catch (Exception e) {
+                            log.warn("[AgentRuntime] closeSandbox failed: {}", e.getMessage());
+                        }
                         if (request.role() == AgentRole.MAIN
                                 && request.assistantMessageId() != null
                                 && !request.assistantMessageId().isBlank()) {

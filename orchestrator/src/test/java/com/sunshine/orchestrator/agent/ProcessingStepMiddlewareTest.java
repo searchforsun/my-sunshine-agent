@@ -46,8 +46,17 @@ class ProcessingStepMiddlewareTest {
 
     private ProcessingStepMiddleware newMiddleware() {
         return new ProcessingStepMiddleware(
-                bridgeId, toolCatalogService, executionProperties,
+                toolCatalogService, executionProperties,
                 taskBoardTimelineSupport, sandboxTimelineLabels, cancellableToolRunRegistry);
+    }
+
+    /** P2-1：bridgeId 经 RuntimeContext 注入（middleware 无状态） */
+    private RuntimeContext ctxWithBridge() {
+        return RuntimeContext.builder()
+                .userId("u1")
+                .sessionId("m1")
+                .put(ProcessingStepMiddleware.CTX_BRIDGE_ID, bridgeId)
+                .build();
     }
 
     @AfterEach
@@ -65,7 +74,7 @@ class ProcessingStepMiddlewareTest {
         ReasoningInput input = new ReasoningInput(List.of(), List.of(), null);
         Function<ReasoningInput, Flux<AgentEvent>> next = in -> Flux.empty();
 
-        mw.onReasoning(mock(Agent.class), mock(RuntimeContext.class), input, next)
+        mw.onReasoning(mock(Agent.class), ctxWithBridge(), input, next)
                 .collectList().block();
 
         verify(session).beginReasoningRound();
@@ -99,7 +108,7 @@ class ProcessingStepMiddlewareTest {
                 new ToolResultEndEvent("e-1", null, "r-1", toolUseId, toolName, ToolResultState.SUCCESS));
 
         ActingInput input = new ActingInput(List.of(toolUse));
-        mw.onActing(mock(Agent.class), mock(RuntimeContext.class), input, next)
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
                 .collectList().block();
 
         // 入口：开 tool 步 + notePending
@@ -126,7 +135,7 @@ class ProcessingStepMiddlewareTest {
                 new ToolResultEndEvent("e-todo", null, "r-todo", toolUseId, "todo_write", ToolResultState.SUCCESS));
 
         ActingInput input = new ActingInput(List.of(toolUse));
-        mw.onActing(mock(Agent.class), mock(RuntimeContext.class), input, next)
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
                 .collectList().block();
 
         // todo_write 不开 tool 步、不 recordToolCompleted（不触发「任务板工具结果综合分析」单独 think 步）
@@ -153,7 +162,7 @@ class ProcessingStepMiddlewareTest {
                 new ToolResultEndEvent("e-sp", null, "r-sp", toolUseId, SpawnSubagentTool.NAME, ToolResultState.SUCCESS));
 
         ActingInput input = new ActingInput(List.of(toolUse));
-        mw.onActing(mock(Agent.class), mock(RuntimeContext.class), input, next)
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
                 .collectList().block();
 
         verify(session, never()).beginToolStep(any(), any());

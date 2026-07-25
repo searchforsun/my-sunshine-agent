@@ -32,6 +32,8 @@ public class ToolCatalogService {
     private final AgentSandboxProperties sandboxProperties;
     private volatile Map<String, ToolCatalogEntry> entries = Map.of();
     private volatile Set<String> defaultEnabledIds = Set.of();
+    /** catalog 版本号：refresh 时自增，供 HarnessAgent 指纹缓存失效（P2-1） */
+    private volatile long catalogVersion = 0L;
 
     public ToolCatalogService(ToolManagerClient toolManagerClient, AgentSandboxProperties sandboxProperties) {
         this.toolManagerClient = toolManagerClient;
@@ -53,8 +55,14 @@ public class ToolCatalogService {
         this.defaultEnabledIds = toolManagerClient.fetchCatalog(DEFAULT_TENANT, true).stream()
                 .map(ToolCatalogEntry::id)
                 .collect(Collectors.toUnmodifiableSet());
+        this.catalogVersion++;
         log.info("[ToolCatalogService] catalog loaded: {} (enabled={})",
                 String.join(", ", entries.keySet()), String.join(", ", defaultEnabledIds));
+    }
+
+    /** catalog 版本号（refresh 自增）；HarnessAgent 指纹缓存 key 组成部分 */
+    public long catalogVersion() {
+        return catalogVersion;
     }
 
     /** 租户可见且启用的工具 id 池（ToolSet 白名单求交用） */

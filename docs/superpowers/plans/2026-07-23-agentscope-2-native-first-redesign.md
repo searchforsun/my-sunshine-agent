@@ -691,10 +691,13 @@ git commit -m "test(as2-p1): streamEvents timeline/content parity e2e"
 
 **Files:**
 - Create: orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentHolder.java
-- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ReActAgentFactory.java（拆出指纹计算 + 去 per-request builder 项）
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/HarnessAgentFactory.java（拆出指纹计算）
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ReActAgentFactory.java（middleware 改共享无状态实例）
 - Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ProcessingStepMiddleware.java（去 bridgeId 实例字段）
 - Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/ProcessingStepMiddlewareFactory.java
 - Modify: orchestrator/src/main/java/com/sunshine/orchestrator/agent/runtime/ReActAgentRuntime.java（从 Holder 取实例 + RuntimeContext 注入 bridgeId/overlay）
+- Modify: orchestrator/pom.xml（+caffeine 3.1.8）
+- Modify: orchestrator/src/main/java/com/sunshine/orchestrator/catalog/ToolCatalogService.java（catalogVersion 暴露）
 
 - [ ] **Step 1: 写失败单测--同指纹两次 get 返回同一实例；不同指纹（skillId 变）返回不同实例**
 
@@ -730,7 +733,7 @@ public final class HarnessAgentHolder {
             Caffeine.newBuilder().maximumSize(64).expireAfterAccess(Duration.ofHours(2)).build();
     private final ReActAgentFactory factory;
 
-    public HarnessAgentHolder(ReActAgentFactory factory) { this.factory = factory; }
+    public HarnessAgentHolder(HarnessAgentFactory factory) { this.factory = factory; }
 
     public HarnessAgent get(AgentRunRequest request) {
         return cache.get(factory.fingerprint(request), k -> factory.create(request));
