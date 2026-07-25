@@ -156,7 +156,8 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 
 ## 版本与前端
 
-- 勿升 Spring Boot 3.3+、AgentScope 2.0.0；Sa-Token **1.45.0**（需 `sa-token-jwt`）。
+- 勿升 Spring Boot 3.3+；Sa-Token **1.45.0**（需 `sa-token-jwt`）。**AgentScope 已升 2.0**（native-first，P0-P3 完成；P4-P6 经 E5 评审不迁移，spawn/沙箱/HITL/peer 保留全栈自研）。
+- ReAct 续跑/checkpoint 依赖 **Redis StateStore TTL=7d**（`agentscope:state:` 前缀）；`disableSessionPersistence()` 自 2.0 起为 no-op，自动持久化 + JVM 优雅停机（`GracefulShutdownManager`）由官方接管，勿自研 ShutdownHook。
 - SSE 基址：生产构建须设 `VITE_BFF_STREAM_BASE`（见 `sunshine-ui/.env.production.example`）；开发态走 Vite proxy。
 - 思考区字号：`OperationCard` / `ReasoningPanel` 用 `--sun-font-base`（14px）。
 
