@@ -420,10 +420,15 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
 
   if (base.lifecycle == null) base.lifecycle = 'running'
 
-  if (base.lifecycle === 'running' && base.startedAt == null) {
-
-    base.startedAt = Date.now()
-
+  if (base.lifecycle === 'running') {
+    if (base.startedAt == null) {
+      base.startedAt = Date.now()
+    }
+    // live 计时锚点与 upsertStep 对齐：running 步首见即记 clientStartedAt，之后 delta 不再重置，
+    // 避免 think 的 step_delta(reasoning) 流与 step 事件交错时计时器反复归零跳变
+    if (base.clientStartedAt == null) {
+      base.clientStartedAt = Date.now()
+    }
   }
 
   return upsertStep(steps.filter(s => s.id !== delta.stepId), base)
