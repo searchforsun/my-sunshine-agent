@@ -43,4 +43,57 @@ describe('applyStepDelta clientStartedAt 稳定性', () => {
       vi.useRealTimers()
     }
   })
+
+  it('think 复用：done→(todo_write)→running(resume) 放行，清 endedAt/durationMs，clientStartedAt 延续最初锚点连续计时', () => {
+    vi.useFakeTimers()
+    try {
+      // think 最初 running（第一轮 reasoning 进行中）
+      vi.setSystemTime(3_000_000)
+      let steps = applyStepDelta([], { stepId: 'think-3', channel: 'reasoning', text: '第一段' })
+      const anchor = steps[0].clientStartedAt
+      expect(anchor).toBe(3_000_000)
+
+      // 第一轮 reasoning 输出 todo_write → endReasoningRound → done
+      vi.setSystemTime(3_009_239)
+      steps = upsertStep(steps, {
+        id: 'think-3', phase: 'think', lifecycle: 'done',
+        summary: { after: '已完成「查询财务待办详情」的工具结果综合分析' },
+        startedAt: 1000, endedAt: 10239, durationMs: 9239,
+      })
+      // think done 保留锚点（可能随后 resume 复用）
+      expect(steps[0].clientStartedAt).toBe(anchor)
+
+      // 第二轮 reasoning（todo_write 后综合输出）→ resume（running）
+      vi.setSystemTime(3_009_242)
+      steps = upsertStep(steps, {
+        id: 'think-3', phase: 'think', lifecycle: 'running',
+        summary: { active: '正在综合分析「查询财务待办详情」返回结果' },
+        startedAt: 1000, reasoning: null as unknown as undefined,
+      })
+      const s = steps[0]
+      expect(s.lifecycle).toBe('running')
+      expect(s.endedAt).toBeUndefined()
+      expect(s.durationMs).toBeUndefined()
+      // 锚点延续最初（3_000_000），不重置为 resume 时刻 → 计时器从最初起点连续递增
+      expect(s.clientStartedAt).toBe(anchor)
+      expect(s.reasoning).toBe('第一段')
+      expect(s.summary?.active).toBe('正在综合分析「查询财务待办详情」返回结果')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('非 think 步仍受硬终态保护：tool 步 done 后拒绝 running', () => {
+    const steps: ProcessingStep[] = [{
+      id: 'tool-1', phase: 'tool', lifecycle: 'done',
+      summary: { after: '已查询' }, startedAt: 1000, endedAt: 2000, durationMs: 1000,
+    }]
+    const out = upsertStep(steps, {
+      id: 'tool-1', phase: 'tool', lifecycle: 'running',
+      summary: { active: '重新查询' },
+    })
+    expect(out[0].lifecycle).toBe('done')
+    expect(out[0].endedAt).toBe(2000)
+    expect(out[0].durationMs).toBe(1000)
+  })
 })

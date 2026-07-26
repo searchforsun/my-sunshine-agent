@@ -242,6 +242,13 @@ function resolveMergedLifecycle(
   incoming: ProcessingStep,
 ): StepLifecycle {
   const next = (incoming.lifecycle ?? prev.lifecycle) as StepLifecycle
+  // think 步例外：ReAct 最后一轮 reasoning 输出 todo_write 后被 endReasoningRound 置 done，
+  // 继续第二轮 reasoning 时 beginReasoningRound 走复用分支发 resume（running）——后端有意复用
+  // 同一 think 卡片续写（TimelineSessionThinkFlow.beginReasoningRound）。此处放行 done→running，
+  // 让计时器/摘要随复用连续，否则硬终态保护会冻结在首个 done（如 9.2s）直到终态跳变。
+  if (next === 'running' && isThinkStepId(incoming.id)) {
+    return 'running'
+  }
   if (
     (isHardTerminalLifecycle(prev.lifecycle) || isCancelTerminalStep(prev))
     && (next === 'running' || next === 'pending')
@@ -325,23 +332,39 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       contentBlocks: incoming.contentBlocks?.length ? incoming.contentBlocks : prev.contentBlocks,
 
-      durationMs: incoming.durationMs ?? prev.durationMs,
+    durationMs: lifecycle === 'running' && isThinkStepId(incoming.id)
+      ? undefined
+      : (incoming.durationMs ?? prev.durationMs),
 
-      startedAt: incoming.startedAt ?? prev.startedAt,
+    // think 复用（done→running）：清 endedAt，避免 resolveStepDurationMs 用旧 endedAt-startedAt
+    // 冻结在首个 done 的时长（如 9.2s），导致计时器不连续
+    startedAt: incoming.startedAt ?? prev.startedAt,
 
-      endedAt: incoming.endedAt ?? prev.endedAt,
+    endedAt: lifecycle === 'running' && isThinkStepId(incoming.id)
+      ? undefined
+      : (incoming.endedAt ?? prev.endedAt),
 
-      lifecycle,
+    lifecycle,
 
+    }
+
+    // think 复用后无 endedAt，resolveStepDurationMs 返回 undefined → 回退 incoming.durationMs
+    // （running 快照无 durationMs）→ prev.durationMs（旧 9.2s）残留；此处显式清空，
+    // 让 live 计时走 clientStartedAt 而非残留 durationMs
+    if (lifecycle === 'running' && isThinkStepId(merged.id)) {
+      merged.durationMs = undefined
     }
 
     merged.durationMs = resolveStepDurationMs(merged) ?? merged.durationMs
 
     // live 计时用客户端墙钟：首次 running 记本地时刻；离开 running（done/paused/error）清空，
-    // 避免与服务端 startedAt 时钟差导致 live 计时偏移（完成后回归服务端 durationMs）
+    // 避免与服务端 startedAt 时钟差导致 live 计时偏移（完成后回归服务端 durationMs）。
+    // think 步例外：done 时保留 clientStartedAt（可能随后 resume 复用），running 时仅在无锚点
+    // 时才记新时刻——复用场景锚点延续，计时器从 think 最初起点连续递增，不从 0 重计。
+    const isThinkResume = isThinkStepId(incoming.id)
     if (lifecycle === 'running' && merged.clientStartedAt == null) {
       merged.clientStartedAt = Date.now()
-    } else if (lifecycle !== 'running') {
+    } else if (lifecycle !== 'running' && !isThinkResume) {
       merged.clientStartedAt = undefined
     }
 
