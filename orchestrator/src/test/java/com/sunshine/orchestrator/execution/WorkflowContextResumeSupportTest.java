@@ -16,7 +16,7 @@ class WorkflowContextResumeSupportTest {
     @Test
     void enrichFromTraces_fillsMissingToolOutput() {
         WorkflowContext wfCtx = new WorkflowContext();
-        wfCtx.putNode("start", Map.of("userQuery", "q"));
+        wfCtx.putNode("start", Map.of("userQuery", TypedValue.scalar("q")));
         WorkflowDefinition def = WorkflowDefinition.from(
                 "p1",
                 List.of(new NodeSpec("t1", "tool", Map.of("tool", "sdk__sunshine-oa__list_oa_tasks"), "查待办")),
@@ -33,8 +33,8 @@ class WorkflowContextResumeSupportTest {
                         "t1", "tool", "completed", "查待办完成", "[{\"taskId\":\"T1\"}]", 1L, 2L)),
                 def);
 
-        assertThat(wfCtx.resolvePath("t1.output")).contains("T1");
-        assertThat(wfCtx.resolvePath("start.userQuery")).isEqualTo("q");
+        assertThat(wfCtx.resolvePathString("t1.output")).contains("T1");
+        assertThat(wfCtx.resolvePathString("start.userQuery")).isEqualTo("q");
     }
 
     @Test
@@ -43,7 +43,7 @@ class WorkflowContextResumeSupportTest {
         assertThat(WorkflowContextCodec.hasNodes(
                 WorkflowContextCodec.toJson(new WorkflowContext()))).isFalse();
         WorkflowContext ctx = new WorkflowContext();
-        ctx.putNode("t1", Map.of("output", "data"));
+        ctx.putNode("t1", Map.of("output", TypedValue.scalar("data")));
         assertThat(WorkflowContextCodec.hasNodes(WorkflowContextCodec.toJson(ctx))).isTrue();
     }
 }

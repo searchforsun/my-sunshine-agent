@@ -35,20 +35,20 @@ public class PlanDisplayNameEnricher {
             return node;
         }
         String name = resolveDisplayName(node);
-        return new PlanNode(node.id(), node.type(), node.params(), name, node.parentId());
+        return new PlanNode(node.id(), node.type(), node.params(), node.inputs(), name, node.parentId());
     }
 
     private String resolveDisplayName(PlanNode node) {
         String type = node.type() != null ? node.type() : "";
         if (WorkflowNodeType.TOOL.matches(type)) {
-            String tool = node.params().get("tool");
+            String tool = readParamString(node, "tool");
             if (StringUtils.hasText(tool)) {
                 return toolCatalogService.displayName(tool.strip());
             }
             return workflowNodeLabelService.typeLabel(type);
         }
         if (WorkflowNodeType.AGENT.matches(type)) {
-            String skill = node.params().get("skill");
+            String skill = readParamString(node, "skill");
             if (StringUtils.hasText(skill)) {
                 return skillCatalogService.findIndex(skill.strip())
                         .map(SkillCatalogIndexEntry::displayName)
@@ -61,5 +61,10 @@ public class PlanDisplayNameEnricher {
             return workflowNodeLabelService.typeLabel(type);
         }
         return WorkflowNodeLabels.displayName(node.id(), node.type());
+    }
+
+    private static String readParamString(PlanNode node, String key) {
+        Object v = node.params().get(key);
+        return v != null ? v.toString() : null;
     }
 }

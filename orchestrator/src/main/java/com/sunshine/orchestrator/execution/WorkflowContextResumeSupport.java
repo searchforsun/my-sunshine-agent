@@ -23,9 +23,11 @@ final class WorkflowContextResumeSupport {
     }
 
     private static void ensureStartUserQuery(WorkflowContext wfCtx, ExecutionStreamContext streamCtx) {
-        Map<String, String> start = new LinkedHashMap<>(wfCtx.node("start"));
-        if (!StringUtils.hasText(start.get("userQuery")) && StringUtils.hasText(streamCtx.userContent())) {
-            start.put("userQuery", streamCtx.userContent().strip());
+        Map<String, TypedValue> start = new LinkedHashMap<>(wfCtx.node("start"));
+        TypedValue existing = start.get("userQuery");
+        boolean hasQuery = existing != null && StringUtils.hasText(existing.render());
+        if (!hasQuery && StringUtils.hasText(streamCtx.userContent())) {
+            start.put("userQuery", TypedValue.scalar(streamCtx.userContent().strip()));
             wfCtx.putNode("start", start);
         }
     }
@@ -45,23 +47,24 @@ final class WorkflowContextResumeSupport {
             if (!StringUtils.hasText(nodeId)) {
                 continue;
             }
-            Map<String, String> existing = wfCtx.node(nodeId);
-            if (StringUtils.hasText(existing.get("output"))) {
+            Map<String, TypedValue> existing = wfCtx.node(nodeId);
+            TypedValue existingOutput = existing.get("output");
+            if (existingOutput != null && StringUtils.hasText(existingOutput.render())) {
                 continue;
             }
             String payload = StringUtils.hasText(trace.detail()) ? trace.detail() : trace.summary();
             if (!StringUtils.hasText(payload)) {
                 continue;
             }
-            Map<String, String> outputs = new LinkedHashMap<>(existing);
-            outputs.put("output", payload.strip());
-            outputs.put("detail", payload.strip());
+            Map<String, TypedValue> outputs = new LinkedHashMap<>(existing);
+            outputs.put("output", TypedValue.scalar(payload.strip()));
+            outputs.put("detail", TypedValue.scalar(payload.strip()));
             if ("tool".equals(trace.type()) && def != null) {
                 NodeSpec spec = def.node(nodeId);
                 if (spec != null && spec.params() != null) {
-                    String tool = spec.params().get("tool");
-                    if (StringUtils.hasText(tool)) {
-                        outputs.put("tool", tool.strip());
+                    Object toolObj = spec.params().get("tool");
+                    if (toolObj != null && StringUtils.hasText(toolObj.toString())) {
+                        outputs.put("tool", TypedValue.scalar(toolObj.toString().strip()));
                     }
                 }
             }

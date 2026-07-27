@@ -57,7 +57,7 @@ final class WorkflowLlmStreamSupport {
         outputs.put("output", text);
         if (terminalAnswer) {
             outputs.put("detail", text.isBlank() ? "未生成内容" : text.strip());
-            return NodeResult.ok(outputs);
+            return NodeResult.okString(outputs);
         }
         String reasoning = collector.reasoning();
         if (StringUtils.hasText(reasoning)) {
@@ -66,7 +66,7 @@ final class WorkflowLlmStreamSupport {
         } else {
             outputs.put("detail", text.isBlank() ? "未生成内容" : text.strip());
         }
-        return NodeResult.ok(outputs);
+        return NodeResult.okString(outputs);
     }
 
     static Flux<StreamToken> mapStreamToken(StreamToken token, String stepId, boolean terminalAnswer) {
@@ -105,11 +105,11 @@ final class WorkflowLlmStreamSupport {
             ExecutionStreamContext streamCtx,
             boolean terminalAnswer,
             String answerOverlay) {
-        String nodePrompt = spec.params().getOrDefault("prompt", "");
+        String nodePrompt = readParamString(spec, "prompt", "");
         if (terminalAnswer && StringUtils.hasText(answerOverlay)) {
             nodePrompt = answerOverlay.strip() + "\n\n" + nodePrompt;
         }
-        String userQuery = ctx.resolvePath("start.userQuery");
+        String userQuery = ctx.resolvePathString("start.userQuery");
         if (!StringUtils.hasText(userQuery)) {
             userQuery = streamCtx.userContent();
         }
@@ -122,6 +122,14 @@ final class WorkflowLlmStreamSupport {
     }
 
     static boolean hasNodePrompt(NodeSpec spec) {
-        return spec.params() != null && StringUtils.hasText(spec.params().get("prompt"));
+        return spec.params() != null && StringUtils.hasText(readParamString(spec, "prompt", ""));
+    }
+
+    private static String readParamString(NodeSpec spec, String key, String defaultValue) {
+        if (spec.params() == null) {
+            return defaultValue;
+        }
+        Object v = spec.params().get(key);
+        return v != null ? v.toString() : defaultValue;
     }
 }

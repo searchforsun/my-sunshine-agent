@@ -53,7 +53,7 @@ final class AgentNodeResultBuilder {
         outputs.put("toolCalls", String.join(",", output.toolCalls()));
         outputs.put("detail", summaryLine);
         outputs.put("expandDetail", expandDetail);
-        return NodeResult.ok(outputs);
+        return NodeResult.okString(outputs);
     }
 
     private static String resolveSkillLabel(String skillId, SkillCatalogService skillCatalogService) {

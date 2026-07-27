@@ -14,8 +14,12 @@ class GroundingEvidenceSupportTest {
     @Test
     void fromWorkflowDetectsRagAndToolNodes() {
         WorkflowContext ctx = new WorkflowContext();
-        ctx.putNode("rag", Map.of("output", "制度摘要", "hitCount", "2"));
-        ctx.putNode("tool", Map.of("output", "[]", "tool", "sdk__sunshine-finance__list_my_expenses"));
+        ctx.putNode("rag", Map.of(
+                "output", com.sunshine.orchestrator.execution.TypedValue.scalar("制度摘要"),
+                "hitCount", com.sunshine.orchestrator.execution.TypedValue.scalar("2")));
+        ctx.putNode("tool", Map.of(
+                "output", com.sunshine.orchestrator.execution.TypedValue.scalar("[]"),
+                "tool", com.sunshine.orchestrator.execution.TypedValue.scalar("sdk__sunshine-finance__list_my_expenses")));
 
         var evidence = GroundingEvidenceSupport.fromWorkflow(ctx);
         assertThat(evidence.hasToolOrRag()).isTrue();

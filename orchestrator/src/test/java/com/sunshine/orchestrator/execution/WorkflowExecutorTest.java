@@ -134,10 +134,12 @@ class WorkflowExecutorTest {
         when(registry.require("answer")).thenReturn(answerNodeHandler);
 
         when(startNodeHandler.run(any(), any(), any()))
-                .thenReturn(Mono.just(NodeResult.ok(Map.of("userQuery", "请假制度"))));
+                .thenReturn(Mono.just(NodeResult.ok(Map.of("userQuery", TypedValue.scalar("请假制度")))));
         when(ragNodeHandler.run(any(), any(), any()))
                 .thenReturn(Mono.just(NodeResult.ok(Map.of(
-                        "output", "rag-hit", "detail", "命中 1 条", "hitCount", "1"))));
+                        "output", TypedValue.scalar("rag-hit"),
+                        "detail", TypedValue.scalar("命中 1 条"),
+                        "hitCount", TypedValue.scalar("1")))));
         when(answerNodeHandler.createStreamCollector(any(), any()))
                 .thenReturn(new WorkflowStreamCollector());
         when(answerNodeHandler.streamTokens(any(), any(), any(), any(), any()))
@@ -146,10 +148,10 @@ class WorkflowExecutorTest {
                 .thenReturn(Flux.just(StreamToken.content("请假需提前申请")));
         when(answerNodeHandler.buildResult(any()))
                 .thenReturn(NodeResult.ok(Map.of(
-                        "answer", "请假需提前申请",
-                        "output", "请假需提前申请",
-                        "reasoning", "先核对制度条款再归纳要点",
-                        "detail", "先核对制度条款再归纳要点")));
+                        "answer", TypedValue.scalar("请假需提前申请"),
+                        "output", TypedValue.scalar("请假需提前申请"),
+                        "reasoning", TypedValue.scalar("先核对制度条款再归纳要点"),
+                        "detail", TypedValue.scalar("先核对制度条款再归纳要点"))));
 
         when(executionPlanStore.createDraft(any(), any(PlanJson.class))).thenReturn("static-plan-1");
         when(displayNameEnricher.enrich(any(PlanJson.class))).thenAnswer(inv -> inv.getArgument(0));

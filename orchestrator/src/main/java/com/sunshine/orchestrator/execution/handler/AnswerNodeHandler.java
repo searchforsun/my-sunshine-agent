@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.StreamingNodeHandler;
+import com.sunshine.orchestrator.execution.TypedValue;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
@@ -78,26 +79,36 @@ public class AnswerNodeHandler implements StreamingNodeHandler {
         outputs.put("answer", answer);
         outputs.put("output", answer);
         outputs.put("detail", answer);
-        return NodeResult.ok(outputs);
+        return NodeResult.okString(outputs);
     }
 
     private static String resolveUpstreamAnswer(NodeSpec spec, WorkflowContext ctx) {
-        String fromParam = spec.params().get("from");
+        Object fromParamObj = spec.params() != null ? spec.params().get("from") : null;
+        String fromParam = fromParamObj != null ? fromParamObj.toString() : null;
         if (StringUtils.hasText(fromParam)) {
-            String direct = ctx.resolvePath(fromParam.strip());
+            String direct = ctx.resolvePathString(fromParam.strip());
             if (StringUtils.hasText(direct)) {
                 return direct;
             }
         }
         String last = "";
-        for (Map.Entry<String, Map<String, String>> entry : ctx.nodeEntries()) {
-            Map<String, String> node = entry.getValue();
-            if (node.containsKey("answer") && StringUtils.hasText(node.get("answer"))) {
-                last = node.get("answer");
-            } else if (node.containsKey("output") && StringUtils.hasText(node.get("output"))) {
-                last = node.get("output");
+        for (Map.Entry<String, Map<String, TypedValue>> entry : ctx.nodeEntries()) {
+            Map<String, TypedValue> node = entry.getValue();
+            String answer = renderScalar(node, "answer");
+            if (node.containsKey("answer") && StringUtils.hasText(answer)) {
+                last = answer;
+            } else {
+                String output = renderScalar(node, "output");
+                if (node.containsKey("output") && StringUtils.hasText(output)) {
+                    last = output;
+                }
             }
         }
         return last;
+    }
+
+    private static String renderScalar(Map<String, TypedValue> outputs, String key) {
+        TypedValue v = outputs.get(key);
+        return v != null ? v.render() : null;
     }
 }

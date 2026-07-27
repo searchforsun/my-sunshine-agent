@@ -136,7 +136,7 @@ public class AgentNodeHandler implements StreamingNodeHandler {
         return new AgentStreamCollector(
                 nodeId,
                 resolveDisplayName(spec),
-                AgentNodeRequestAssembler.blankToNull(spec.params() != null ? spec.params().get("skill") : null));
+                AgentNodeRequestAssembler.blankToNull(readParamString(spec, "skill")));
     }
 
     private String resolveDisplayName(NodeSpec spec) {
@@ -162,11 +162,19 @@ public class AgentNodeHandler implements StreamingNodeHandler {
 
     private static String resolveAgentKbId(NodeSpec spec, ExecutionStreamContext streamCtx) {
         if (spec.params() != null) {
-            String kbId = spec.params().get("kbId");
+            String kbId = readParamString(spec, "kbId");
             if (StringUtils.hasText(kbId)) {
                 return kbId.strip();
             }
         }
         return streamCtx.kbId();
+    }
+
+    private static String readParamString(NodeSpec spec, String key) {
+        if (spec.params() == null) {
+            return null;
+        }
+        Object v = spec.params().get(key);
+        return v != null ? v.toString() : null;
     }
 }

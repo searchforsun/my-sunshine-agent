@@ -47,7 +47,7 @@ class PlanAnswerPromptAssemblerTest {
                         new PlanEdge("start", "n1"),
                         new PlanEdge("n1", "n2"))));
 
-        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt");
+        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt").toString();
 
         assertThat(prompt).contains("{{start.userQuery}}");
         assertThat(prompt).contains("【检索知识库】");
@@ -67,7 +67,7 @@ class PlanAnswerPromptAssemblerTest {
                 List.of(new PlanNode("n1", "rag", Map.of())),
                 List.of(new PlanEdge("start", "n1"))));
 
-        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt");
+        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt").toString();
         assertThat(prompt).startsWith("问题：{{start.userQuery}}");
         assertThat(prompt).endsWith("请汇总。");
         assertThat(prompt).contains("{{n1.output}}");
@@ -82,7 +82,7 @@ class PlanAnswerPromptAssemblerTest {
                 List.of(new PlanNode("n1", "rag", Map.of())),
                 List.of(new PlanEdge("start", "n1"))));
 
-        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt");
+        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt").toString();
         assertThat(prompt).isEmpty();
     }
 
@@ -93,7 +93,7 @@ class PlanAnswerPromptAssemblerTest {
                         Map.of("prompt", "旧 prompt meta"))),
                 List.of(new PlanEdge("start", PlanNormalizer.ANSWER_NODE_ID)));
 
-        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt");
+        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt").toString();
         assertThat(prompt).doesNotContain("旧 prompt");
         assertThat(prompt).contains("{{start.userQuery}}");
     }

@@ -1,12 +1,17 @@
 package com.sunshine.orchestrator.execution.handler;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.execution.InputBinding;
 import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
+import com.sunshine.orchestrator.execution.TemplateResolver;
+import com.sunshine.orchestrator.execution.TypedValue;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
@@ -21,18 +26,15 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * 工具调用节点 — 委托 tool-manager，params 统一透传；写工具走 HITL（streamCtx.workflowHitl）
+ * 工具调用节点 - 从 {@code spec.inputs()} 解析显式输入绑定，调 {@link ToolManagerClient#invokeJsonMono}
+ * 获取结构化 JSON 结果；写工具走 HITL（streamCtx.workflowHitl）。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ToolNodeHandler implements NodeHandler {
-
-    private static final Set<String> RESERVED_INVOKE_KEYS = Set.of(
-            "tool", "output.mode", "output.extract");
 
     private final ToolManagerClient toolManagerClient;
     private final ToolCatalogService toolCatalogService;
@@ -46,60 +48,92 @@ public class ToolNodeHandler implements NodeHandler {
 
     @Override
     public Mono<NodeResult> run(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
-        String tool = spec.params().getOrDefault("tool", "");
-        Map<String, String> invokeParams = new LinkedHashMap<>();
-        spec.params().forEach((k, v) -> {
-            if (!RESERVED_INVOKE_KEYS.contains(k)) {
-                invokeParams.put(k, v);
-            }
-        });
+        String tool = readParamString(spec, "tool");
+        Map<String, Object> invokeParams = resolveInvokeParams(spec.inputs(), ctx);
+        if (invokeParams == null) {
+            return Mono.just(NodeResult.fail("缺少必填参数"));
+        }
+        Map<String, String> displayParams = toStringParams(invokeParams);
 
-        return Mono.fromCallable(() -> invokeWithHitl(spec, streamCtx, tool, invokeParams))
+        return Mono.fromCallable(() -> invokeWithHitl(spec, streamCtx, tool, invokeParams, displayParams))
                 .subscribeOn(Schedulers.boundedElastic())
-                .map(result -> {
-                    if (ToolManagerClient.isInvokeFailureResult(result)) {
-                        return NodeResult.fail(result);
-                    }
-                    String text = result != null ? result : "";
-                    Map<String, String> outputs = new LinkedHashMap<>();
-                    outputs.put("output", text);
-                    outputs.put("tool", tool);
-                    String summary = summarizeToolOutput(tool, text);
-                    if (StringUtils.hasText(summary)) {
-                        outputs.put("summary", summary.strip());
-                    }
-                    outputs.put("detail", summary);
-                    appendParsedOutputs(outputs, spec.params(), text);
-                    return NodeResult.ok(outputs);
-                })
-                .doOnSuccess(result -> auditToolCall(spec, streamCtx, tool, invokeParams, result))
+                .map(result -> buildResult(tool, result))
+                .doOnSuccess(result -> auditToolCall(spec, streamCtx, tool, displayParams, result))
                 .onErrorResume(e -> {
                     if (e instanceof HitlWaitInterruptedException
                             || (e.getCause() instanceof HitlWaitInterruptedException)) {
                         return Mono.error(e);
                     }
                     log.warn("[ToolNodeHandler] 工具 {} 失败: {}", tool, e.getMessage());
-                    auditToolFailure(spec, streamCtx, tool, invokeParams, e.getMessage());
+                    auditToolFailure(spec, streamCtx, tool, displayParams, e.getMessage());
                     return Mono.just(NodeResult.fail(e.getMessage()));
                 });
     }
 
-    private String invokeWithHitl(
+    private NodeResult buildResult(String tool, JsonNode result) {
+        if (ToolManagerClient.isInvokeFailureResult(result)) {
+            String err = result.has("error") ? result.get("error").asText() : "工具调用失败";
+            return NodeResult.fail(err);
+        }
+        JsonNode payload = result != null ? result : NullNode.getInstance();
+        Map<String, TypedValue> outputs = new LinkedHashMap<>();
+        outputs.put("output", TypedValue.fromJson(payload));
+        outputs.put("tool", TypedValue.scalar(tool));
+        String text = renderForSummary(payload);
+        String summary = summarizeToolOutput(tool, text);
+        if (StringUtils.hasText(summary)) {
+            outputs.put("summary", TypedValue.scalar(summary.strip()));
+        }
+        outputs.put("detail", TypedValue.scalar(summary));
+        return NodeResult.ok(outputs);
+    }
+
+    /**
+     * 按 {@link InputBinding} 解析显式输入；必填项缺失返回 {@code null}（节点失败）。
+     * 无 inputs 时退化为空 params（兼容旧 YAML 直接写 params 的场景由调用方保证）。
+     */
+    private Map<String, Object> resolveInvokeParams(java.util.List<InputBinding> inputs, WorkflowContext ctx) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (inputs == null || inputs.isEmpty()) {
+            return params;
+        }
+        for (InputBinding binding : inputs) {
+            TypedValue val = TemplateResolver.resolveTyped(binding.source(), ctx);
+            if (binding.required() && isNullTypedValue(val)) {
+                return null;
+            }
+            params.put(binding.name(), val.toJson());
+        }
+        return params;
+    }
+
+    private static boolean isNullTypedValue(TypedValue val) {
+        if (val == null) {
+            return true;
+        }
+        JsonNode json = val.toJson();
+        return json == null || json.isNull();
+    }
+
+    private JsonNode invokeWithHitl(
             NodeSpec spec,
             ExecutionStreamContext streamCtx,
             String tool,
-            Map<String, String> invokeParams) {
+            Map<String, Object> invokeParams,
+            Map<String, String> displayParams) {
         WorkflowHitlScope.Binding hitl = streamCtx.workflowHitl();
         if (hitlConfirmationService != null
                 && hitlConfirmationService.shouldConfirmWorkflow(tool, hitl)
                 && !streamCtx.workflowHitlPreApproved()) {
             boolean approved = hitlConfirmationService.awaitWorkflowConfirmation(
-                    hitl, streamCtx.assistantMsgId(), tool, invokeParams);
+                    hitl, streamCtx.assistantMsgId(), tool, displayParams);
             if (!approved) {
-                return hitlConfirmationService.rejectionMessage();
+                return hitlConfirmationService.rejectionMessage() != null
+                        ? ToolManagerClientFailure.toJson(hitlConfirmationService.rejectionMessage())
+                        : ToolManagerClientFailure.toJson("HITL 拒绝");
             }
         }
-        return toolManagerClient.invokeMono(tool, invokeParams, streamCtx.userId(), streamCtx.tenantId()).block();
+        return toolManagerClient.invokeJsonMono(tool, invokeParams, streamCtx.userId(), streamCtx.tenantId()).block();
     }
 
     private void auditToolCall(
@@ -111,7 +145,8 @@ public class ToolNodeHandler implements NodeHandler {
         if (result == null || !result.success()) {
             return;
         }
-        String summary = result.safeOutputs().getOrDefault("detail", result.safeOutputs().getOrDefault("output", ""));
+        TypedValue detailVal = result.safeOutputs().getOrDefault("detail", result.safeOutputs().get("output"));
+        String summary = detailVal != null ? detailVal.render() : "";
         toolAuditService.toolCall(
                 streamCtx.conversationId(),
                 streamCtx.assistantMsgId(),
@@ -148,21 +183,52 @@ public class ToolNodeHandler implements NodeHandler {
         return toolCatalogService.timelineSummary(tool, text);
     }
 
-    private void appendParsedOutputs(Map<String, String> outputs, Map<String, String> params, String text) {
-        if (params == null || !"extract".equals(params.get("output.mode"))) {
-            return;
+    /** 结构化 JsonNode 渲染为可读文本（供 timeline summary） */
+    private static String renderForSummary(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return "";
         }
-        String extractJson = params.get("output.extract");
-        if (!StringUtils.hasText(extractJson)) {
-            return;
+        if (node.isTextual()) {
+            return node.asText();
         }
-        Map<String, String> parsed = toolManagerClient.extractBindingsMono(extractJson, text)
-                .blockOptional()
-                .orElse(Map.of());
-        parsed.forEach((key, value) -> {
-            if (StringUtils.hasText(key) && value != null) {
-                outputs.put("parsed." + key.strip(), value);
+        if (node.isObject() && node.has("output") && node.size() == 1) {
+            return node.get("output").asText();
+        }
+        return node.toString();
+    }
+
+    private static String readParamString(NodeSpec spec, String key) {
+        if (spec.params() == null) {
+            return "";
+        }
+        Object v = spec.params().get(key);
+        return v != null ? v.toString() : "";
+    }
+
+    /** Map<String,Object> -> Map<String,String>（HITL/审计展示用，非文本值 JSON 序列化） */
+    private static Map<String, String> toStringParams(Map<String, Object> params) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (params == null) {
+            return out;
+        }
+        params.forEach((k, v) -> {
+            if (k == null || v == null) {
+                return;
             }
+            out.put(k, v instanceof CharSequence ? v.toString() : v.toString());
         });
+        return out;
+    }
+
+    /** HITL 拒绝等非工具返回的错误包装为含 error 字段的 JsonNode */
+    private static final class ToolManagerClientFailure {
+        private static final com.fasterxml.jackson.databind.ObjectMapper OM =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+
+        static JsonNode toJson(String message) {
+            com.fasterxml.jackson.databind.node.ObjectNode node = OM.createObjectNode();
+            node.put("error", message != null ? message : "工具调用失败");
+            return node;
+        }
     }
 }

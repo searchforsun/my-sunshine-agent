@@ -163,7 +163,7 @@ public class PlanValidator {
 
     private PlanValidationIssue validateBusinessNode(PlanNode node) {
         if ("tool".equals(node.type())) {
-            String tool = node.params().get("tool");
+            String tool = readParamString(node, "tool");
             if (!StringUtils.hasText(tool) || toolCatalogService.find(tool.strip()).isEmpty()) {
                 return PlanValidationIssue.of(
                         PlanValidationCode.UNKNOWN_TOOL,
@@ -171,23 +171,31 @@ public class PlanValidator {
             }
         }
         if ("agent".equals(node.type())) {
-            String skillId = node.params().get("skill");
+            String skillId = readParamString(node, "skill");
             if (StringUtils.hasText(skillId) && skillCatalogService.findIndex(skillId.strip()).isEmpty()) {
                 return PlanValidationIssue.of(
                         PlanValidationCode.VALIDATION_FAILED,
                         "未知 skill: " + skillId);
             }
-            if (!StringUtils.hasText(node.params().get("context"))) {
+            if (!StringUtils.hasText(readParamString(node, "context"))) {
                 return PlanValidationIssue.of(
                         PlanValidationCode.AGENT_CONTEXT,
                         "agent 节点 " + node.id() + " 缺少 params.context");
             }
-            if (!StringUtils.hasText(node.params().get("query"))) {
+            if (!StringUtils.hasText(readParamString(node, "query"))) {
                 return PlanValidationIssue.of(
                         PlanValidationCode.AGENT_CONTEXT,
                         "agent 节点 " + node.id() + " 缺少 params.query");
             }
         }
         return null;
+    }
+
+    private static String readParamString(PlanNode node, String key) {
+        if (node.params() == null) {
+            return null;
+        }
+        Object v = node.params().get(key);
+        return v != null ? v.toString() : null;
     }
 }

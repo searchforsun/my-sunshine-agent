@@ -137,8 +137,60 @@ public class ToolManagerClient {
                 });
     }
 
+    /**
+     * Workflow tool 节点结构化调用：params 为 Map<String,Object>（含结构化 JSON 值），返回完整 JSON。
+     * 失败时返回含 {@code error} 字段的 ObjectNode（保持 {@link #isInvokeFailureResult(JsonNode)} 兼容判断）；
+     * 解析失败 fallback 为 {@code {output: text}}。
+     */
+    public Mono<com.fasterxml.jackson.databind.JsonNode> invokeJsonMono(
+            String name, Map<String, Object> params, String userId, String tenantId) {
+        Map<String, Object> body = Map.of(
+                "name", name,
+                "params", params != null ? params : Map.of());
+        String effectiveTenant = tenantId != null && !tenantId.isBlank() ? tenantId.strip() : "default";
+        return webClient.post()
+                .uri("/api/tools/invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("x-user-id", userId != null ? userId : "")
+                .header("x-tenant-id", effectiveTenant)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<R<String>>() {})
+                .map(R::getData)
+                .map(text -> parseInvokeResult(text))
+                .onErrorResume(e -> {
+                    log.warn("[ToolManagerClient] invokeJson {} failed: {}", name, e.getMessage());
+                    com.fasterxml.jackson.databind.node.ObjectNode err = JSON_MAPPER.createObjectNode();
+                    err.put("error", INVOKE_FAILURE_PREFIX + " " + e.getMessage());
+                    return Mono.just(err);
+                });
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    private static com.fasterxml.jackson.databind.JsonNode parseInvokeResult(String text) {
+        if (text == null) {
+            return JSON_MAPPER.createObjectNode();
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode parsed = JSON_MAPPER.readTree(text);
+            return parsed != null ? parsed : JSON_MAPPER.createObjectNode();
+        } catch (Exception e) {
+            // 非 JSON 文本 fallback 为 {output: text}
+            com.fasterxml.jackson.databind.node.ObjectNode wrapper = JSON_MAPPER.createObjectNode();
+            wrapper.put("output", text);
+            return wrapper;
+        }
+    }
+
     public static boolean isInvokeFailureResult(String result) {
         return result != null && result.startsWith(INVOKE_FAILURE_PREFIX);
+    }
+
+    /** 结构化调用失败判断：结果含 error 字段视为失败（与字符串版 {@link #isInvokeFailureResult(String)} 语义一致） */
+    public static boolean isInvokeFailureResult(com.fasterxml.jackson.databind.JsonNode result) {
+        return result != null && result.isObject() && result.has("error");
     }
 
     public Mono<ToolSummarizeOutputResponse> summarizeOutputMono(String toolName, String text) {

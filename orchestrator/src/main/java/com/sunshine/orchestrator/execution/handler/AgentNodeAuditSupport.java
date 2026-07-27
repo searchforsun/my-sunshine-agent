@@ -5,10 +5,12 @@ import com.sunshine.orchestrator.audit.SubAgentAuditService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
+import com.sunshine.orchestrator.execution.TypedValue;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /** 子 Agent 审计落库 */
 final class AgentNodeAuditSupport {
@@ -26,7 +28,7 @@ final class AgentNodeAuditSupport {
         if (result == null || !result.success()) {
             return;
         }
-        String summary = result.safeOutputs().getOrDefault("detail", result.safeOutputs().getOrDefault("answer", ""));
+        String summary = renderScalarFirst(result, "detail", "answer");
         subAgentAuditService.subAgentRun(
                 streamCtx.conversationId(),
                 streamCtx.assistantMsgId(),
@@ -36,7 +38,7 @@ final class AgentNodeAuditSupport {
                 spec.id(),
                 request.runId(),
                 skillId,
-                parseToolCalls(result.safeOutputs().get("toolCalls")),
+                parseToolCalls(renderScalar(result, "toolCalls")),
                 summary,
                 "ok");
     }
@@ -70,5 +72,19 @@ final class AgentNodeAuditSupport {
                 .map(String::strip)
                 .filter(StringUtils::hasText)
                 .toList();
+    }
+
+    private static String renderScalar(NodeResult result, String key) {
+        TypedValue v = result.safeOutputs().get(key);
+        return v != null ? v.render() : null;
+    }
+
+    private static String renderScalarFirst(NodeResult result, String k1, String k2) {
+        String v1 = renderScalar(result, k1);
+        if (v1 != null && !v1.isBlank()) {
+            return v1;
+        }
+        String v2 = renderScalar(result, k2);
+        return v2 != null ? v2 : "";
     }
 }

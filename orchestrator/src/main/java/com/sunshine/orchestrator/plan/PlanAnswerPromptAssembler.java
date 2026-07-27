@@ -38,9 +38,9 @@ public class PlanAnswerPromptAssembler {
         List<PlanNode> nodes = new ArrayList<>(plan.nodes().size());
         for (PlanNode node : plan.nodes()) {
             if ("answer".equals(node.type()) && answerId.equals(node.id())) {
-                Map<String, String> params = new LinkedHashMap<>(node.params());
+                Map<String, Object> params = new LinkedHashMap<>(node.params());
                 params.put("prompt", prompt);
-                nodes.add(new PlanNode(node.id(), node.type(), params, node.displayName(), node.parentId()));
+                nodes.add(new PlanNode(node.id(), node.type(), params, node.inputs(), node.displayName(), node.parentId()));
             } else {
                 nodes.add(node);
             }

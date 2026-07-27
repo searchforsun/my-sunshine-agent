@@ -287,8 +287,8 @@ public final class PlanExecutionSchedule {
     }
 
     private static PlanValidationIssue validateLoopConditionParams(PlanNode node) {
-        Map<String, String> p = node.params();
-        String maxRaw = p.getOrDefault("maxIterations", "3").strip();
+        Map<String, Object> p = node.params();
+        String maxRaw = paramStr(p, "maxIterations", "3").strip();
         int max;
         try {
             max = Integer.parseInt(maxRaw);
@@ -302,14 +302,14 @@ public final class PlanExecutionSchedule {
                     PlanValidationCode.VALIDATION_FAILED,
                     "loop 节点 " + node.id() + " 的 maxIterations 须在 1–5");
         }
-        String onMax = p.getOrDefault("onMaxIterations", "fail_fast").strip().toLowerCase();
+        String onMax = paramStr(p, "onMaxIterations", "fail_fast").strip().toLowerCase();
         if (!ON_MAX_ITERATIONS.contains(onMax)) {
             return PlanValidationIssue.of(
                     PlanValidationCode.VALIDATION_FAILED,
                     "loop 节点 " + node.id() + " 的 onMaxIterations 非法: " + onMax);
         }
-        String op = p.getOrDefault("condition.op", "").strip().toLowerCase();
-        String left = p.getOrDefault("condition.left", "").strip();
+        String op = paramStr(p, "condition.op", "").strip().toLowerCase();
+        String left = paramStr(p, "condition.left", "").strip();
         if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
             return PlanValidationIssue.of(
                     PlanValidationCode.VALIDATION_FAILED,
@@ -322,7 +322,7 @@ public final class PlanExecutionSchedule {
                     "loop " + node.id() + " 的 condition.op=" + op + " 非法");
         }
         if (("contains".equals(op) || "eq".equals(op))
-                && !StringUtils.hasText(p.getOrDefault("condition.right", "").strip())) {
+                && !StringUtils.hasText(paramStr(p, "condition.right", "").strip())) {
             return PlanValidationIssue.of(
                     PlanValidationCode.VALIDATION_FAILED,
                     "loop 节点 " + node.id() + " 的 condition.right 不能为空");
@@ -418,11 +418,11 @@ public final class PlanExecutionSchedule {
         if (loopNode == null) {
             return null;
         }
-        Map<String, String> p = loopNode.params();
+        Map<String, Object> p = loopNode.params();
         return new PlanEdgeCondition(
-                p.getOrDefault("condition.left", ""),
-                p.getOrDefault("condition.op", ""),
-                p.getOrDefault("condition.right", ""));
+                paramStr(p, "condition.left", ""),
+                paramStr(p, "condition.op", ""),
+                paramStr(p, "condition.right", ""));
     }
 
     public static int loopMaxIterations(PlanNode loopNode) {
@@ -430,7 +430,7 @@ public final class PlanExecutionSchedule {
             return 3;
         }
         try {
-            int n = Integer.parseInt(loopNode.params().getOrDefault("maxIterations", "3").strip());
+            int n = Integer.parseInt(paramStr(loopNode.params(), "maxIterations", "3").strip());
             return Math.max(1, Math.min(5, n));
         } catch (NumberFormatException e) {
             return 3;
@@ -441,7 +441,7 @@ public final class PlanExecutionSchedule {
         if (loopNode == null) {
             return "fail_fast";
         }
-        String v = loopNode.params().getOrDefault("onMaxIterations", "fail_fast").strip().toLowerCase();
+        String v = paramStr(loopNode.params(), "onMaxIterations", "fail_fast").strip().toLowerCase();
         return ON_MAX_ITERATIONS.contains(v) ? v : "fail_fast";
     }
 
@@ -866,5 +866,17 @@ public final class PlanExecutionSchedule {
             adj.computeIfAbsent(edge.to(), k -> new ArrayList<>()).add(edge.from());
         }
         return adj;
+    }
+
+    /** params Map<String,Object> 取字符串值（兼容 String/Number 字面量） */
+    private static String paramStr(Map<String, Object> params, String key, String def) {
+        if (params == null) {
+            return def;
+        }
+        Object v = params.get(key);
+        if (v == null) {
+            return def;
+        }
+        return v.toString();
     }
 }

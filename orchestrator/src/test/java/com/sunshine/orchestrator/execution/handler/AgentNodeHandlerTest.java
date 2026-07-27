@@ -88,8 +88,8 @@ class AgentNodeHandlerTest {
         var result = handler.run(spec, ctx, streamCtx).block();
         assertThat(result).isNotNull();
         assertThat(result.success()).isTrue();
-        assertThat(result.safeOutputs().get("answer")).contains("合规风险");
-        assertThat(result.safeOutputs().get("detail")).contains("合规风险");
+        assertThat(result.safeOutputs().get("answer").render()).contains("合规风险");
+        assertThat(result.safeOutputs().get("detail").render()).contains("合规风险");
 
         ArgumentCaptor<AgentRunRequest> captor = ArgumentCaptor.forClass(AgentRunRequest.class);
         verify(agentRuntime).run(captor.capture());
@@ -179,8 +179,8 @@ class AgentNodeHandlerTest {
         var result = handler.run(spec, ctx, streamCtx).block();
 
         assertThat(result).isNotNull();
-        assertThat(result.safeOutputs().get("answer")).isEqualTo("无法判断的合规要素");
-        assertThat(result.safeOutputs().get("expandDetail"))
+        assertThat(result.safeOutputs().get("answer").render()).isEqualTo("无法判断的合规要素");
+        assertThat(result.safeOutputs().get("expandDetail").render())
                 .startsWith("已加载技能：财务合规分析\n\n无法判断的合规要素");
     }
 
@@ -224,7 +224,7 @@ class AgentNodeHandlerTest {
         var result = handler.run(spec, ctx, streamCtx).block();
         assertThat(result).isNotNull();
         assertThat(result.success()).isFalse();
-        assertThat(result.safeOutputs().get("error")).contains("未经验证");
+        assertThat(result.safeOutputs().get("error").render()).contains("未经验证");
     }
 
     @Test

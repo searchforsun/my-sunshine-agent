@@ -40,7 +40,7 @@ class WorkflowLlmStreamSupportTest {
         collector.accept(StreamToken.content("最终答复"));
         var result = WorkflowLlmStreamSupport.buildResult(collector, true);
         assertThat(result.safeOutputs()).doesNotContainKey("reasoning");
-        assertThat(result.safeOutputs().get("answer")).isEqualTo("最终答复");
-        assertThat(result.safeOutputs().get("detail")).isEqualTo("最终答复");
+        assertThat(result.safeOutputs().get("answer").render()).isEqualTo("最终答复");
+        assertThat(result.safeOutputs().get("detail").render()).isEqualTo("最终答复");
     }
 }
