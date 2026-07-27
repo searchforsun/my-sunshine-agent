@@ -16,6 +16,12 @@ const CONDITION_OP_OPTIONS = [
   { label: '非空 not_empty', value: 'not_empty' },
   { label: '包含 contains', value: 'contains' },
   { label: '等于 eq', value: 'eq' },
+  { label: '大于 gt', value: 'gt' },
+  { label: '小于 lt', value: 'lt' },
+  { label: '大于等于 gte', value: 'gte' },
+  { label: '小于等于 lte', value: 'lte' },
+  { label: '属于 in', value: 'in' },
+  { label: '不属于 not_in', value: 'not_in' },
 ]
 
 const gatewayTopology = computed(() => {

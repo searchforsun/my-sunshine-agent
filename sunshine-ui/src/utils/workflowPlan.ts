@@ -3,7 +3,7 @@ import { buildRetryParams, resolveNodeDefaults } from './workflowNodeParams'
 import { isGatewayType } from './workflowGateway'
 
 /** Studio 可添加的业务节点 type — 与 sunshine-common WorkflowNodeType.plannerTypeIds / loopBodyTypeIds 对齐 */
-export const WORKFLOW_NODE_TYPES = ['rag', 'tool', 'agent'] as const
+export const WORKFLOW_NODE_TYPES = ['rag', 'tool', 'agent', 'variable-assignment', 'parameter-extractor'] as const
 export type WorkflowBusinessNodeType = (typeof WORKFLOW_NODE_TYPES)[number]
 
 /** 节点链选中「流程配置」时的哨兵 ID */
@@ -299,6 +299,10 @@ export function defaultParamsForType(type: WorkflowBusinessNodeType): Record<str
         maxIters: '8',
         systemOverlay: '',
       }
+    case 'variable-assignment':
+      return { assignments: '[]' }
+    case 'parameter-extractor':
+      return { input: '', instruction: '', schema: '{}' }
     default:
       return {}
   }
@@ -312,6 +316,10 @@ export function defaultDisplayName(type: WorkflowBusinessNodeType): string {
       return '工具调用'
     case 'agent':
       return '智能体分析'
+    case 'variable-assignment':
+      return '变量赋值'
+    case 'parameter-extractor':
+      return '参数提取'
     default:
       return type
   }

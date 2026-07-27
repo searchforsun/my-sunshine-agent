@@ -27,6 +27,8 @@ const businessPalette: { label: string; type: WorkflowBusinessNodeType }[] = [
   { label: 'RAG', type: 'rag' },
   { label: 'Tool', type: 'tool' },
   { label: 'Agent', type: 'agent' },
+  { label: '变量赋值', type: 'variable-assignment' },
+  { label: '参数提取', type: 'parameter-extractor' },
 ]
 
 const gatewayPalette: { label: string; type: WorkflowGatewayType | 'loop' }[] = [
@@ -40,7 +42,7 @@ function addNode(type: WorkflowBusinessNodeType | WorkflowGatewayType | 'loop') 
   if (!page.plan || !page.canEditPlan) return
   const parentLoopId = resolveLoopParentForAdd(page.plan, unref(page.selectedNodeId as never))
   if (parentLoopId && (type === 'loop' || isGatewayType(type))) {
-    message.warning('循环框内仅可添加 RAG / Tool / Agent')
+    message.warning('循环框内仅可添加 RAG / Tool / Agent / 变量赋值')
     return
   }
   const prevIds = new Set((page.plan.nodes ?? []).map(n => n.id))

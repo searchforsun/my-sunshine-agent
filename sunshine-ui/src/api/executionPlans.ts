@@ -131,6 +131,8 @@ export function formatPlanNodeType(type: string): string {
     'parallel-gateway': '并行分叉',
     'exclusive-gateway': '条件分支',
     loop: '循环',
+    'variable-assignment': '变量赋值',
+    'parameter-extractor': '参数提取',
     answer: '回答',
     start: '开始',
   }

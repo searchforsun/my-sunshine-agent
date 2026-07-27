@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan;
 
+import com.sunshine.common.workflow.WorkflowNodeType;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayDeque;
@@ -172,7 +173,7 @@ public final class PlanExecutionSchedule {
     }
 
     private static final Set<String> ON_MAX_ITERATIONS = Set.of("fail_fast", "exit", "fallback_react");
-    private static final Set<String> LOOP_BODY_TYPES = Set.of("rag", "tool", "agent");
+    private static final Set<String> LOOP_BODY_TYPES = WorkflowNodeType.loopBodyTypeIds();
 
     /** loop 容器拓扑校验；通过返回 null */
     public static PlanValidationIssue validateLoopTopology(PlanJson plan) {
@@ -198,7 +199,7 @@ public final class PlanExecutionSchedule {
                 if (!LOOP_BODY_TYPES.contains(node.type())) {
                     return PlanValidationIssue.of(
                             PlanValidationCode.VALIDATION_FAILED,
-                            "loop 框内节点 " + node.id() + " 类型须为 rag/tool/agent");
+                            "loop 框内节点 " + node.id() + " 类型不在允许范围内");
                 }
                 if ("loop".equals(node.type())) {
                     return PlanValidationIssue.of(

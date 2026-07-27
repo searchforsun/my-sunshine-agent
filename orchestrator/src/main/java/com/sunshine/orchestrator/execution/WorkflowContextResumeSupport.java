@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.execution;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.plan.PlanNodeTrace;
 import org.springframework.util.StringUtils;
 
@@ -56,9 +58,11 @@ final class WorkflowContextResumeSupport {
             if (!StringUtils.hasText(payload)) {
                 continue;
             }
+            String trimmedPayload = payload.strip();
+            TypedValue outputValue = parseStructuredOrScalar(trimmedPayload);
             Map<String, TypedValue> outputs = new LinkedHashMap<>(existing);
-            outputs.put("output", TypedValue.scalar(payload.strip()));
-            outputs.put("detail", TypedValue.scalar(payload.strip()));
+            outputs.put("output", outputValue);
+            outputs.put("detail", TypedValue.scalar(trimmedPayload));
             if ("tool".equals(trace.type()) && def != null) {
                 NodeSpec spec = def.node(nodeId);
                 if (spec != null && spec.params() != null) {
@@ -70,5 +74,26 @@ final class WorkflowContextResumeSupport {
             }
             wfCtx.putNode(nodeId, outputs);
         }
+    }
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** 续跑回填：trace payload 若为 JSON 对象/数组则保留结构化，否则退化为 scalar */
+    private static TypedValue parseStructuredOrScalar(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return TypedValue.scalar("");
+        }
+        String trimmed = payload.strip();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            try {
+                JsonNode node = JSON.readTree(trimmed);
+                if (node.isObject() || node.isArray()) {
+                    return TypedValue.fromJson(node);
+                }
+            } catch (Exception ignored) {
+                // 非 JSON，回退 scalar
+            }
+        }
+        return TypedValue.scalar(trimmed);
     }
 }
