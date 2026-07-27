@@ -8,7 +8,7 @@ import java.util.Optional;
 
 /**
  * 子 Agent 正文 token 路由（Workflow {@code AgentStreamCollector} 与 spawn Bridge 共用）。
- * 分段/lifecycle → scope 父步；legacy plain content → {@code step_delta(result)}。
+ * 分段/lifecycle → scope 父步；未分段 plain content → {@code step_delta(result)}。
  */
 public final class SubAgentContentTokens {
 

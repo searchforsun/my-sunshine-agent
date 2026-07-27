@@ -18,7 +18,7 @@ class StaticPlanAdapterTest {
                 new NodeSpec("answer", "answer", Map.of("prompt", "p"), "生成回答")
         ), List.of("finance-list", "answer"));
 
-        PlanJson plan = StaticPlanAdapter.from(def, "查待办");
+        PlanJson plan = StaticPlanAdapterTestSupport.from(def, "查待办");
 
         assertThat(plan.planId()).isNull();
         assertThat(plan.reason()).isEqualTo("查待办");

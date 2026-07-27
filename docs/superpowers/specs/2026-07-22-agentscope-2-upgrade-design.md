@@ -348,7 +348,7 @@ P0 已完成「去掉 MsgHub → 顺序调用专家 HarnessAgent `streamEvents`�
 
 ## 9. 文档与后续
 
-- 实施计划：另写 `docs/superpowers/plans/2026-07-22-agentscope-2-upgrade.md`（writing-plans）
+- 实施计划：~~`docs/superpowers/plans/2026-07-22-agentscope-2-upgrade.md`~~（已废弃归档，见 `plans/archive/`；实际按 native-first 重设计实施）
 - 本升级**不**修改 `docker/mysql/init` 作为前置；可选后续删除未用 `react_pause_checkpoint` 列不阻塞主线
 - 索引：挂入 `docs/superpowers/specs/README.md`、必要时 `implementation-plan.md` 增「AS2 升级」缺口行
 

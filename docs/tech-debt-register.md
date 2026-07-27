@@ -25,6 +25,7 @@
 | TD-106 | P3 | open | finance/oa/hr `*BizService` | 三服务平行 CRUD 样板；暂不抽泛型 |
 | TD-140 | P1 | open | IntentRouter / RewriteConversationContext / ContextMessageBuilder | AssembledContext 三重格式化旁路；合并行为面大，下轮单独 scope |
 | TD-141 | P3 | open | sandbox `formatEditUnifiedDiff` / `formatDiffLinesAsText` | editDiff 死代码与 detail 双写；产品路径已收口 |
+| TD-157 | P3 | open | `implementation-plan.md` 缺口段 | 三份未实施 spec（dynamic-context-compression / workflow-structured-io / expert-as-subagent-A2A）状态未统一登记 |
 
 ### 文档债
 
@@ -190,6 +191,13 @@
 | TD-144 | 2026-07-22 | 拆 `ContextAuditService` → `L2RuleAuditor` / `ContextLlmAuditClient` / `L1AuditApplier` |
 | TD-145 | 2026-07-22 | 拆 `ContextView` → `useContextPage` + L1/L2/L3 Panel |
 | TD-146 | 2026-07-22 | STM/MTM 命名残留清理（IntentRouter/GenerationJob/注释） |
+| TD-150 | 2026-07-27 | 归档 `plans/2026-07-22-agentscope-2-upgrade.md`（兼容桥旧路线，SUPERSEDED 头） |
+| TD-151 | 2026-07-27 | 归档 `plans/2026-07-23-agentscope-2-native-first-redesign.md`（P0-P3+P7 ✅ 注记） |
+| TD-152 | 2026-07-27 | `specs/2026-07-23` 状态头改「已完成」+ `specs/README` AS2 行状态修正 |
+| TD-153 | 2026-07-27 | `expert-as-subagent-design` 标注 E5 不采纳（内部 P6 统一否决，A2A 保留参考） |
+| TD-154 | 2026-07-27 | `ReActAgentRuntime` checkpoint 保存失败 warn→error（含 userId/msgId）；删 `ReactCheckpointService` 死代码 `interrupt/saveCheckpoint` |
+| TD-155 | 2026-07-27 | 注释去 legacy（ReActAgentRuntime/ProcessingStepMiddleware/SubAgentContentTokens/StreamToken） |
+| TD-156 | 2026-07-27 | `StaticPlanAdapter.from` 迁测试源集 `StaticPlanAdapterTestSupport`，删生产 deprecated |
 
 ### 文档债（DOC）
 

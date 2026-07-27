@@ -36,19 +36,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
- * AS2 P1：ProcessingStepHook 的 Middleware 替代（spec 4.1.2，方案 A）。
+ * AS2 P1：ReAct 执行步的 Middleware（spec 4.1.2，方案 A）。
  *
- * <p>onReasoning 入口开 think / 出口闭 think + TaskBoard 占位（行为对齐 PreReasoning/PostReasoning）。
+ * <p>onReasoning 入口开 think / 出口闭 think + TaskBoard 占位。
  *
  * <p>onActing：
  * <ul>
- *   <li>入口：开 tool 步（跳过 manage_tasks / spawn_subagent），登记可取消工具（对齐 PreActing）</li>
+ *   <li>入口：开 tool 步（跳过 manage_tasks / spawn_subagent），登记可取消工具</li>
  *   <li>返回 Flux 内 doOnNext 拦截 {@link ToolResultTextDeltaEvent} 按 toolCallId 累积结果文本，
- *       {@link ToolResultEndEvent} 触发完整 PostActing 收口（摘要/editDiff/取消判定）。
+ *       {@link ToolResultEndEvent} 触发收口（摘要/editDiff/取消判定）。
  *       streamEvents 事件流不携带 ToolResultBlock，故以 delta 累积还原结果文本（方案 A）</li>
  * </ul>
  *
- * <p>流式 reasoning/content delta 不在此处（由 EventMapper 经 streamEvents 驱动）。
+ * <p>流式 reasoning/content delta 不在此处（由 ReActAgentRuntime 经 streamEvents 路由进 bridge）。
  *
  * <p>P2-1（E5）：middleware 改为无状态——bridgeId 不再为构造参数，由 ReActAgentRuntime
  * 经 RuntimeContext 注入（{@link #CTX_BRIDGE_ID}），使 HarnessAgent 指纹缓存可安全复用
@@ -172,7 +172,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         }
     }
 
-    /** PostActing 收口（方案 A）：ToolResultEndEvent 触发，用累积的结果文本复现 legacy PostActing 全套逻辑 */
+    /** 工具步收口（方案 A）：ToolResultEndEvent 触发，用累积的结果文本完成摘要/editDiff/取消判定 */
     private void completeToolStep(
             Agent agent, RuntimeContext ctx, String bridgeId,
             ToolResultEndEvent end, Map<String, StringBuilder> resultTextById,

@@ -1,5 +1,8 @@
 # AgentScope 2.0 Native-First Redesign Implementation Plan
 
+> **ARCHIVED（2026-07-27）**：实施已完成。**P0–P3 + P7 ✅**；**P4/P5/P6 经 E5 评审不迁移**（spawn/沙箱/HITL/peer 保留全栈自研）。
+> 实施偏差与验收记录见本文 §「P1 实施偏差记录」及各阶段出口闸门。本文仅作历史存档，不再作为实施依据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 Sunshine 从 AgentScope-Java 1.0.8 一次性迁移到 2.0 原生能力（HarnessAgent + Middleware + streamEvents），不遗留 Hook/stream/双路径兼容层，P1-P7 每阶段删旧实现。

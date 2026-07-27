@@ -1,8 +1,8 @@
 # AgentScope Java 2.0 升级路线重设计（原生优先 · 单路径 · 无 1.0.8 遗产）
 
-> **状态**：已 brainstorming 锁定（9 项决策）· 待实施计划
-> **日期**：2026-07-23
-> **关联**：取代 `2026-07-22-agentscope-2-upgrade-design.md` 的 P1-P7 部分（P0 已完成，不变）
+> **状态**：**已完成（P0–P3 + P7，2026-07-26）**；P4/P5/P6 经 E5 评审不迁移
+> **日期**：2026-07-23（2026-07-27 收口更新）
+> **关联**：取代 `2026-07-22-agentscope-2-upgrade-design.md` 的 P1-P7 部分（P0 已完成，不变）；实施记录见 `../plans/archive/2026-07-23-agentscope-2-native-first-redesign.md`（已归档）
 > **前置**：P0 ✅（tag `as2-p0-done`）· HarnessAgent spike ✅（`2026-07-23-harness-agent-spike.md`）
 
 ## 1. 背景与动因

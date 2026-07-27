@@ -1,5 +1,9 @@
 # AgentScope Java 2.0 分阶段升级实施计划
 
+> **ARCHIVED（2026-07-27）**：本文档为已废弃的「兼容桥先行」分阶段计划，**已被** native-first 重设计取代并实施完成。
+> **当前 SSOT**：`../archive/2026-07-23-agentscope-2-native-first-redesign.md`（实施记录）+ `../../specs/2026-07-22-agentscope-2-upgrade-design.md`（§1 背景 / §6 E5 决策）。
+> 本文仅作历史存档，**不再作为实施依据**。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 Sunshine 从 AgentScope-Java 1.0.8 分 8 阶段（P0–P7）升级到 2.0，用原生 stateStore/interrupt/streamEvents/TaskList/Subagent/Workspace/Permission 替换自研 ReAct 内核，每阶段含强制回滚测试。

@@ -137,7 +137,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                         // 不在订阅时捕获 epoch 做流级过滤：恢复续跑会 bumpStreamEpoch 抬高 epoch，
                         // 订阅时捕获的旧 epoch 会让本轮所有 drain 失效（子 Agent 步骤卡到主 Agent drain）。
                         // 旧 run 写新流的防护由 GenerationJob.isStreamEpochValid / generationFlush 绑定 epoch 兜底。
-                        // delta 事件经 bridge 路由进 hookQueue（与 legacy Hook 一致：reasoning/content 不直灌）
+                        // reasoning/content delta 经 bridge 路由进 hookQueue 由 runtime 统一 drain（不直灌 SSE）
                         routeDeltaToBridge(agentEvent, bridgeId);
                         List<StreamToken> tokens = new ArrayList<>(drainHookTokens(hookQueue));
                         for (StreamToken token : tokens) {
@@ -168,7 +168,9 @@ public class ReActAgentRuntime implements AgentRuntime {
                                             sig, request.userId(), request.assistantMessageId());
                                 }
                             } catch (Exception e) {
-                                log.warn("[AgentRuntime] saveCheckpoint failed: {}", e.getMessage());
+                                // checkpoint 保存失败 = 断点续传数据丢失（一致性问题），需 error 级可告警
+                                log.error("[AgentRuntime] saveCheckpoint failed userId={} msg={}",
+                                        request.userId(), request.assistantMessageId(), e);
                             }
                         }
                         try {
@@ -260,8 +262,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     }
 
     private static void routeDeltaToBridge(AgentEvent ev, String bridgeId) {
-        // AS2 streamEvents：reasoning/content delta 经 bridge 路由进 hookQueue，
-        // 与 legacy Hook 路径一致（emitReasoningChunk/emitReasoningContentChunk 写 hookQueue，runtime drain）。
+        // AS2 streamEvents：reasoning/content delta 经 bridge 写 hookQueue，runtime 统一 drain。
         if (ev instanceof ThinkingBlockDeltaEvent t) {
             StepEventBridge.emitReasoningChunk(bridgeId, t.getDelta());
         } else if (ev instanceof TextBlockDeltaEvent d) {

@@ -2,7 +2,7 @@
 
 > 日期：2026-07-24
 > 状态：设计已确认，待 AS2 迁移完成后实施
-> 前置依赖：AgentScope 2.0 迁移完成（docs/superpowers/plans/2026-07-23-agentscope-2-native-first-redesign.md）
+> 前置依赖：AgentScope 2.0 迁移完成（docs/superpowers/plans/archive/2026-07-23-agentscope-2-native-first-redesign.md，已归档）
 
 ## 1. 背景与问题
 

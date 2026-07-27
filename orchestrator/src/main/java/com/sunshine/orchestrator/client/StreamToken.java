@@ -102,7 +102,7 @@ public record StreamToken(
         return null;
     }
 
-    /** content_start 的穿插锚点；legacy content 的 afterStepId */
+    /** content_start 的穿插锚点；未分段 plain content 的 afterStepId */
     public String afterStepId() {
         if (isContentStart()) {
             return stepId;
