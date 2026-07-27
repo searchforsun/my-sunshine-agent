@@ -2,7 +2,9 @@ package com.sunshine.orchestrator.context.l1;
 
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.context.ContextProperties;
+import com.sunshine.orchestrator.context.ModelWindowCache;
 import com.sunshine.orchestrator.context.SessionTurn;
+import com.sunshine.orchestrator.context.TokenEstimator;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +31,7 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -51,6 +54,10 @@ class L1CompressorTest {
     private L2StateStore l2StateStore;
     @Mock
     private PromptCatalogHolder catalogHolder;
+    @Mock
+    private TokenEstimator tokenEstimator;
+    @Mock
+    private ModelWindowCache modelWindowCache;
 
     private ContextProperties properties;
     private L1Compressor compressor;
@@ -60,8 +67,13 @@ class L1CompressorTest {
         properties = new ContextProperties();
         properties.getL1().setNearTurns(2);
         properties.getL1().setMidTurns(2);
-        properties.getL1().setMaxChars(100_000);
-        compressor = new L1Compressor(properties, llm, store, l2StateStore, catalogHolder);
+        // 轮数兜底触发旧压缩测试（测试用 5-6 轮，backstop=4 保证触发）
+        properties.getL1().setTurnBackstop(4);
+        compressor = new L1Compressor(properties, llm, store, l2StateStore, catalogHolder,
+                tokenEstimator, modelWindowCache);
+        lenient().when(modelWindowCache.windowFor(any())).thenReturn(128000);
+        // 默认低 token（远低于阈值），靠轮数兜底触发
+        lenient().when(tokenEstimator.effectiveCount(any(), anyDouble())).thenReturn(10);
         lenient().when(catalogHolder.requireText("context.l1.mid-compress"))
                 .thenReturn("mid-system");
         lenient().when(catalogHolder.requireText("context.l1.far-fold"))
@@ -71,34 +83,6 @@ class L1CompressorTest {
         lenient().when(store.farSummaryOf(any())).thenReturn("");
         lenient().when(store.parseFarFoldedMsgIds(any())).thenReturn(Set.of());
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
-    }
-
-    @Test
-    void shouldCompress_whenOverMaxCharsEvenIfUnderTurnCap() {
-        List<SessionTurn> turns = List.of(
-                SessionTurn.of("u1", "user", "a".repeat(40)),
-                SessionTurn.of("a1", "assistant", "b".repeat(40)),
-                SessionTurn.of("u2", "user", "c".repeat(40)));
-        assertThat(turns).hasSizeLessThan(2 + 2);
-        assertThat(L1Compressor.shouldCompress(turns, 2, 2, 100)).isTrue();
-    }
-
-    @Test
-    void shouldCompress_whenOverTurnCapEvenIfUnderChars() {
-        // 5 问答轮次 > near(2)+mid(2)
-        List<SessionTurn> turns = IntStream.range(0, 10)
-                .mapToObj(i -> SessionTurn.of("m" + i, i % 2 == 0 ? "user" : "assistant", "x"))
-                .toList();
-        assertThat(L1Compressor.countRounds(turns)).isEqualTo(5);
-        assertThat(L1Compressor.shouldCompress(turns, 2, 2, 100_000)).isTrue();
-    }
-
-    @Test
-    void shouldNotCompress_whenUnderBothCaps() {
-        List<SessionTurn> turns = List.of(
-                SessionTurn.of("u1", "user", "hi"),
-                SessionTurn.of("a1", "assistant", "hello"));
-        assertThat(L1Compressor.shouldCompress(turns, 2, 2, 100_000)).isFalse();
     }
 
     @Test

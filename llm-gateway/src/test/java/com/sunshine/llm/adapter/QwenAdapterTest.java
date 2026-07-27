@@ -22,7 +22,11 @@ class QwenAdapterTest {
         ProviderProperties.ProviderConfig qwen = new ProviderProperties.ProviderConfig();
         qwen.setBaseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1");
         qwen.setApiKey("test-key");
-        qwen.setModels(List.of("qwen-plus", "qwen-turbo"));
+        ProviderProperties.ModelMeta plus = new ProviderProperties.ModelMeta();
+        plus.setName("qwen-plus");
+        ProviderProperties.ModelMeta turbo = new ProviderProperties.ModelMeta();
+        turbo.setName("qwen-turbo");
+        qwen.setModels(List.of(plus, turbo));
         props.setProviders(Map.of("qwen", qwen));
         adapter = new QwenAdapter(props, new LlmWebClientFactory(), new OpenAiRequestBodyFactory(new ObjectMapper()));
     }

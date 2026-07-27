@@ -31,7 +31,8 @@ public class L2ExtractService {
     public static final String EXTRACT_PROMPT = "context.l2.extract";
 
     private static final Set<String> VALID_KINDS = Set.of(
-            "profile", "preference", "goal", "agreement", "constraint", "fact", "decision");
+            "profile", "preference", "goal", "agreement", "constraint", "fact", "decision",
+            "reasoning", "option", "interim_conclusion", "topic");
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -82,10 +83,11 @@ public class L2ExtractService {
             return;
         }
         List<L2ConflictMerger.Candidate> candidates = parseCandidates(raw);
-        double minConf = contextProperties.getL2().getMinConfidence();
+        ContextProperties.L2 l2 = contextProperties.getL2();
         Instant now = Instant.now();
         int accepted = 0;
         for (L2ConflictMerger.Candidate c : candidates) {
+            double minConf = minConfidenceFor(c.kind(), l2);
             if (c.confidence() < minConf) {
                 log.debug("[ContextL2] drop low confidence kind={} key={} conf={}",
                         c.kind(), c.key(), c.confidence());
@@ -111,6 +113,19 @@ public class L2ExtractService {
         } catch (Exception e) {
             log.warn("[ContextL2] trigger audit failed user={}: {}", userId, e.getMessage());
         }
+    }
+
+    /** 按 kind 分级置信门禁：原 7 类 0.75，reasoning/option 0.7，interim_conclusion 0.6，topic 无门禁。 */
+    static double minConfidenceFor(String kind, ContextProperties.L2 l2) {
+        if (l2 == null) {
+            l2 = new ContextProperties.L2();
+        }
+        return switch (L2ConflictMerger.normalizeKind(kind)) {
+            case "reasoning", "option" -> l2.getReasoningMinConfidence();
+            case "interim_conclusion" -> l2.getInterimConclusionMinConfidence();
+            case "topic" -> 0.0;
+            default -> l2.getMinConfidence();
+        };
     }
 
     static String buildExtractPayload(List<SessionTurn> history) {

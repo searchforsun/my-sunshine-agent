@@ -262,7 +262,12 @@ agent:
       # near/mid 按「问答轮次」计（一轮 = 1 次 user + 其后 assistant），非消息条数
       near-turns: 8
       mid-turns: 8
-      max-chars: 120000  # SSOT；与 ContextProperties.L1 默认对齐
+      # 压缩触发：真实 token 达模型上下文窗口 80% 才触发；轮次为宽限兜底
+      max-tokens-ratio: 0.8
+      turn-backstop: 40
+      default-model-window: 128000
+      token-safety-factor: 1.1
+      mid-compress-ratio: 0.15
     l2:
       min-confidence: 0.75
       constraint-overwrite-confidence: 0.9
@@ -272,11 +277,19 @@ agent:
       decision-ttl-days: 90
       fact-ttl-days: 30
       constraint-ttl-days: 30
+      # 过程记忆分级置信 + TTL
+      reasoning-min-confidence: 0.7
+      interim-conclusion-min-confidence: 0.6
+      reasoning-ttl-days: 7
+      option-ttl-days: 7
+      interim-conclusion-ttl-days: 7
+      topic-ttl-days: 1
     l3:
       collection: sunshine_chat_history
-      top-k: 5
-      min-score: 0.55
+      top-k: 8
+      min-score: 0.45
       time-decay: true
+      decay-half-life-days: 90
     maintenance:
       interval-ms: 3600000
       superseded-retention-days: 180
@@ -334,6 +347,18 @@ rocketmq:
     topic: sunshine-audit
   push-consumer:
     endpoints: ecs4c16g:8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: sunshine-orchestrator
 
 logging:
   level:

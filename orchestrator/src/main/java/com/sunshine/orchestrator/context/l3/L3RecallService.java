@@ -26,9 +26,6 @@ public class L3RecallService {
 
     public static final String MATERIAL_HEADER = "context.l3.material-header";
 
-    /** 时间衰减半衰期（天）：score *= 0.5^(ageDays / halfLife) */
-    private static final double DECAY_HALF_LIFE_DAYS = 30.0;
-
     private final ContextProperties contextProperties;
     private final HistoryRagClient historyRagClient;
     private final PromptCatalogHolder catalogHolder;
@@ -51,7 +48,7 @@ public class L3RecallService {
         ContextProperties.L3 l3 = contextProperties.getL3();
         int topK = Math.max(1, l3.getTopK());
         // 多取一些，过滤 Near/Mid 后仍够 topK
-        int fetchK = Math.min(50, Math.max(topK * 3, topK + (excludeMsgIds != null ? excludeMsgIds.size() : 0)));
+        int fetchK = Math.min(50, Math.max(topK * 4, topK + (excludeMsgIds != null ? excludeMsgIds.size() : 0)));
         List<HistoryRagClient.HistoryHit> raw;
         try {
             raw = historyRagClient.search(userId, tenantId, query, fetchK).block();
@@ -88,6 +85,7 @@ public class L3RecallService {
             Instant now) {
         double minScore = l3.getMinScore();
         boolean timeDecay = l3.isTimeDecay();
+        double halfLife = l3.getDecayHalfLifeDays() > 0 ? l3.getDecayHalfLifeDays() : 90.0;
         // 同 msgId 只保留衰减后最高分 chunk
         Map<String, ScoredHit> bestByMsg = new LinkedHashMap<>();
         for (HistoryRagClient.HistoryHit hit : raw) {
@@ -99,10 +97,13 @@ public class L3RecallService {
                 continue;
             }
             boolean inFar = StringUtils.hasText(msgId) && farMsgIds.contains(msgId);
-            // Far 带命中一律可进 L3（Near/Mid 已排除）；far_summary 非空时标为 Far 回填
             double score = hit.score();
             if (timeDecay) {
-                score = applyTimeDecay(score, hit.createdAtMs(), now);
+                score = applyTimeDecay(score, hit.createdAtMs(), now, halfLife);
+            }
+            // Far 已折叠 msgId 降权（非硬排除）：摘要可能丢细节，原文仍有补充价值
+            if (inFar) {
+                score *= 0.5;
             }
             if (score < minScore) {
                 continue;
@@ -119,13 +120,13 @@ public class L3RecallService {
         return out;
     }
 
-    static double applyTimeDecay(double score, long createdAtMs, Instant now) {
+    static double applyTimeDecay(double score, long createdAtMs, Instant now, double halfLifeDays) {
         if (createdAtMs <= 0 || now == null) {
             return score;
         }
         long ageMs = Math.max(0L, now.toEpochMilli() - createdAtMs);
         double ageDays = ageMs / 86_400_000.0;
-        double factor = Math.pow(0.5, ageDays / DECAY_HALF_LIFE_DAYS);
+        double factor = Math.pow(0.5, ageDays / halfLifeDays);
         return score * factor;
     }
 

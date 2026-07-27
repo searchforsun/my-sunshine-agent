@@ -30,7 +30,9 @@ class ContextAssemblerL1Test {
     private L2StateStore l2StateStore;
     @Mock
     private L3RecallService l3RecallService;
-
+    @Mock
+    private ModelWindowCache modelWindowCache;
+    private final TokenEstimator tokenEstimator = new TokenEstimator();
     private ContextProperties properties;
     private ContextAssembler assembler;
 
@@ -39,8 +41,9 @@ class ContextAssemblerL1Test {
         properties = new ContextProperties();
         properties.getL1().setNearTurns(1);
         properties.getL1().setMidTurns(1);
-        properties.getL1().setMaxChars(100_000);
-        assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService);
+        assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService,
+                tokenEstimator, modelWindowCache);
+        lenient().when(modelWindowCache.windowFor(any())).thenReturn(128000);
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
         lenient().when(l3RecallService.recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean()))
                 .thenReturn("");

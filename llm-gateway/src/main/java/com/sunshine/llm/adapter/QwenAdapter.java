@@ -43,7 +43,7 @@ public class QwenAdapter implements LlmAdapter {
         if (config == null) {
             return false;
         }
-        return config.getModels().contains(model) || model.startsWith("qwen-");
+        return config.modelNames().contains(model) || model.startsWith("qwen-");
     }
 
     @Override

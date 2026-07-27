@@ -589,6 +589,15 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 仅输出 JSON 数组，不要其它文字或 markdown。每项字段：kind、key、value、confidence（0~1）。
 kind 只能是：profile、preference、goal、agreement、constraint、fact、decision。
 只抽取用户明确表达或双方已确认的内容；不要猜测。无条目时输出 []。', NULL, 'context optimization task6', 'prompt-ops');
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l2.extract', 2, 'published', '你是用户状态与对话脉络抽取助手。从对话中识别可跨会话复用的结构化条目。
+仅输出 JSON 数组，不要其它文字或 markdown。每项字段：kind、key、value、confidence（0~1）。
+kind 只能是：profile、preference、goal、agreement、constraint、fact、decision、reasoning、option、interim_conclusion、topic。
+- 前 7 类（profile~decision）：只抽取用户明确表达或双方已确认的内容；不要猜测。
+- reasoning/option：抽取对话中出现的推理依据与备选方案对比，需有明确依据来源。
+- interim_conclusion：抽取临时性、待验证的结论，value 须含"待验证/暂定"语义。
+- topic：抽取当前对话焦点话题，仅 1 条，key 固定 "current_topic"。
+无条目时输出 []。', NULL, 'L2 extend kinds +4 (reasoning/option/interim/topic)', 'prompt-ops');
+UPDATE prompt_definition SET active_version = 2, catalog_version = catalog_version + 1 WHERE id = 'context.l2.extract';
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l2.audit', 'context', 'L2 · 状态矛盾审计', '审阅用户 active L2；明确互斥/错误 → voidIds；暧昧可疑 → conflictIds；仅输出 JSON。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l2.audit', 1, 'published', '你是用户状态审计助手。审阅下列 L2 条目（每行含 id/kind/key/value/confidence）。

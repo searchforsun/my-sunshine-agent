@@ -31,14 +31,19 @@ class ContextAssemblerTest {
     private L2StateStore l2StateStore;
     @Mock
     private L3RecallService l3RecallService;
+    @Mock
+    private ModelWindowCache modelWindowCache;
 
+    private final TokenEstimator tokenEstimator = new TokenEstimator();
     private ContextProperties properties;
     private ContextAssembler assembler;
 
     @BeforeEach
     void setUp() {
         properties = new ContextProperties();
-        assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService);
+        assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService,
+                tokenEstimator, modelWindowCache);
+        lenient().when(modelWindowCache.windowFor(any())).thenReturn(128000);
         lenient().when(l1Store.find(anyString())).thenReturn(Optional.empty());
         lenient().when(l1Store.parseMidAnswers(any())).thenReturn(Map.of());
         lenient().when(l1Store.farSummaryOf(any())).thenReturn("");
@@ -51,7 +56,6 @@ class ContextAssemblerTest {
     void assemble_keepsLastNearTurns() {
         properties.getL1().setNearTurns(2);
         properties.getL1().setMidTurns(0);
-        properties.getL1().setMaxChars(100_000);
         List<SessionTurn> history = IntStream.range(0, 20)
                 .mapToObj(i -> SessionTurn.of("m" + i, i % 2 == 0 ? "user" : "assistant", "m" + i))
                 .toList();
@@ -71,10 +75,15 @@ class ContextAssemblerTest {
     }
 
     @Test
-    void assemble_dropsWholeTurnsFromHeadWhenOverMaxChars() {
+    void assemble_dropsWholeTurnsFromHeadWhenOverBudget() {
         properties.getL1().setNearTurns(10);
         properties.getL1().setMidTurns(0);
-        properties.getL1().setMaxChars(6);
+        // 小窗口触发 token 裁剪：budget = window × 0.8，装不下 3 条则从头丢
+        int bbbb = tokenEstimator.count("bbbb");
+        int cc = tokenEstimator.count("cc");
+        // window 使 budgetTokens = bbbb + cc（只装下后两条）
+        int window = (int) Math.ceil((bbbb + cc) / 0.8);
+        lenient().when(modelWindowCache.windowFor(any())).thenReturn(window);
         List<SessionTurn> history = List.of(
                 SessionTurn.of("user", "aaaa"),
                 SessionTurn.of("assistant", "bbbb"),
@@ -91,7 +100,6 @@ class ContextAssemblerTest {
     @Test
     void assemble_doesNotTruncateSingleMessageContent() {
         properties.getL1().setNearTurns(4);
-        properties.getL1().setMaxChars(100_000);
         String longReply = "x".repeat(2000);
         List<SessionTurn> history = List.of(
                 SessionTurn.of("user", "q"),
@@ -149,7 +157,6 @@ class ContextAssemblerTest {
     @Test
     void assemble_historyWithinBudget_keepsAll() {
         properties.getL1().setNearTurns(8);
-        properties.getL1().setMaxChars(100_000);
         List<SessionTurn> history = new ArrayList<>();
         history.add(SessionTurn.of("user", "写 cpp 快排"));
         history.add(SessionTurn.of("assistant", "cpp code full content"));

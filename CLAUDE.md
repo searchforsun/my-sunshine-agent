@@ -54,6 +54,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_sandbox_workspace_live.py` | **4.5** 对话级 Workspace 抽屉（W1–W5：status/SSE/list/content/复用） |
 | `verify_sandbox_tool_cancel_live.py` | **4.5.7** 沙箱 exec/grep/glob 单工具取消（paused + 主消息 completed） |
 | `verify_context_layers_live.py` | **上下文 L1/L2/L3** Admin + 单测门禁（SUB 空记忆 / 近窗排除 / GC） |
+| `verify_dynamic_context_live.py` | **动态上下文压缩** 单测聚合 + Gateway `/v1/models` + 短对话不压缩（`--skip-live` 跳过 SSE） |
 
 沙箱文档索引：[`docs/sandbox/README.md`](./docs/sandbox/README.md)。
 | `verify_tool_integration_live.py` | **4.8** SDK+MCP 工具集成 Live（`--suite sdk\|mcp\|toolset\|hitl\|all`） |

@@ -29,8 +29,16 @@ public class ContextProperties {
         private int nearTurns = 8;
         /** 中窗轮次数；仅压缩该窗内 assistant 答案。 */
         private int midTurns = 8;
-        /** 与 Nacos {@code agent.context.l1.max-chars} 默认对齐（SSOT=Nacos）。 */
-        private int maxChars = 120_000;
+        /** 压缩触发阈值（模型上下文窗口占比），达到即触发压缩。 */
+        private double maxTokensRatio = 0.8;
+        /** 轮次宽限兜底：即使 token 未到阈值，轮数超此值也触发（防极端短消息无限膨胀）。 */
+        private int turnBackstop = 40;
+        /** Gateway 不可用时的降级模型上下文窗口（token）。 */
+        private int defaultModelWindow = 128000;
+        /** cl100k 估算保守系数（对 deepseek/qwen 偏高 5-15%，提前触发留 buffer）。 */
+        private double tokenSafetyFactor = 1.1;
+        /** Mid 摘要后 token 估算比（1-3 句摘要约为原文 15%）。 */
+        private double midCompressRatio = 0.15;
     }
 
     @Getter
@@ -44,6 +52,16 @@ public class ContextProperties {
         private int decisionTtlDays = 90;
         private int factTtlDays = 30;
         private int constraintTtlDays = 30;
+        /** 过程记忆（reasoning/option）分级置信门禁。 */
+        private double reasoningMinConfidence = 0.7;
+        /** 临时结论（interim_conclusion）分级置信门禁。 */
+        private double interimConclusionMinConfidence = 0.6;
+        /** 过程记忆 TTL（易过时）。 */
+        private int reasoningTtlDays = 7;
+        private int optionTtlDays = 7;
+        private int interimConclusionTtlDays = 7;
+        /** 话题锚点 TTL（短生命周期）。 */
+        private int topicTtlDays = 1;
     }
 
     @Getter
@@ -53,6 +71,8 @@ public class ContextProperties {
         private int topK = 5;
         private double minScore = 0.55;
         private boolean timeDecay = true;
+        /** 时间衰减半衰期（天）：score *= 0.5^(ageDays / halfLife)。 */
+        private int decayHalfLifeDays = 90;
     }
 
     @Getter

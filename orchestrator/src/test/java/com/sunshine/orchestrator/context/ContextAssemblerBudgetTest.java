@@ -9,6 +9,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ContextAssemblerBudgetTest {
 
+    private final TokenEstimator estimator = new TokenEstimator();
+
     @Test
     void applyBudget_dropsL3FirstThenFar_neverDropsL2Constraint() {
         String l2 = """
@@ -24,17 +26,17 @@ class ContextAssemblerBudgetTest {
                 List.of(new ChatTurn("user", "near-q")),
                 l3);
 
-        int midNear = "mid-q".length() + "near-q".length();
-        int withL2Only = l2.length() + midNear;
+        int midNear = estimator.count("mid-q") + estimator.count("near-q");
+        int withL2Only = estimator.count(l2) + midNear;
         // 允许 L2+Mid+Near，但装不下 Far；L3 必须先被丢掉
-        int budgetDropL3KeepFar = withL2Only + far.length();
-        AssembledContext afterL3 = ContextAssembler.applyBudget(full, budgetDropL3KeepFar);
+        int budgetDropL3KeepFar = withL2Only + estimator.count(far);
+        AssembledContext afterL3 = ContextAssembler.applyBudget(full, budgetDropL3KeepFar, estimator);
         assertThat(afterL3.l3MaterialBlock()).isBlank();
         assertThat(afterL3.farSummaryBlock()).isEqualTo(far);
         assertThat(afterL3.l2SystemBlock()).contains("constraint/budget: 单次不超过500");
 
         int budgetDropFar = withL2Only;
-        AssembledContext afterFar = ContextAssembler.applyBudget(full, budgetDropFar);
+        AssembledContext afterFar = ContextAssembler.applyBudget(full, budgetDropFar, estimator);
         assertThat(afterFar.l3MaterialBlock()).isBlank();
         assertThat(afterFar.farSummaryBlock()).isBlank();
         assertThat(afterFar.l2SystemBlock()).contains("constraint/budget: 单次不超过500");
@@ -50,8 +52,8 @@ class ContextAssemblerBudgetTest {
                 new ChatTurn("assistant", "M3".repeat(20)));
         List<ChatTurn> near = List.of(new ChatTurn("user", "near"));
         AssembledContext full = new AssembledContext(l2, "FAR", mid, near, "L3-material");
-        int keepL2NearAndOneMid = l2.length() + "near".length() + "M3".repeat(20).length();
-        AssembledContext out = ContextAssembler.applyBudget(full, keepL2NearAndOneMid);
+        int keepL2NearAndOneMid = estimator.count(l2) + estimator.count("near") + estimator.count("M3".repeat(20));
+        AssembledContext out = ContextAssembler.applyBudget(full, keepL2NearAndOneMid, estimator);
         assertThat(out.l3MaterialBlock()).isBlank();
         assertThat(out.farSummaryBlock()).isBlank();
         assertThat(out.l2SystemBlock()).isEqualTo(l2);
@@ -68,7 +70,7 @@ class ContextAssemblerBudgetTest {
                 List.of(),
                 List.of(new ChatTurn("user", "hi")),
                 "[历史材料 · L3 · 可能过期]\n- old");
-        AssembledContext out = ContextAssembler.applyBudget(ctx, 100_000);
+        AssembledContext out = ContextAssembler.applyBudget(ctx, 100_000, estimator);
         assertThat(out.l3MaterialBlock()).isEqualTo(ctx.l3MaterialBlock());
         assertThat(out.farSummaryBlock()).isEqualTo("far");
         assertThat(out.l2SystemBlock()).contains("constraint/x: y");

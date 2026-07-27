@@ -35,7 +35,7 @@ public class DeepSeekAdapter implements LlmAdapter {
         if (config == null) {
             return false;
         }
-        return config.getModels().contains(model) || model.startsWith("deepseek-");
+        return config.modelNames().contains(model) || model.startsWith("deepseek-");
     }
 
     @Override

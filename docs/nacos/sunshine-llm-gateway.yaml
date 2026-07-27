@@ -24,14 +24,22 @@ llm:
       base-url: https://api.deepseek.com
       api-key: ${DEEPSEEK_API_KEY:sk-1e18dbd6edd4477bac49a0a290e92462}
       models:
-        - deepseek-v4-pro
-        - deepseek-v4-flash
+        - name: deepseek-v4-pro
+          context-window: 128000
+          encoding: cl100k_base
+        - name: deepseek-v4-flash
+          context-window: 64000
+          encoding: cl100k_base
     qwen:
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       api-key: ${QWEN_API_KEY:sk-22e7ab6f7bbb4078b7163facb4d3aee0}
       models:
-        - qwen-plus
-        - qwen-max
+        - name: qwen-plus
+          context-window: 131072
+          encoding: cl100k_base
+        - name: qwen-max
+          context-window: 32768
+          encoding: cl100k_base
   fallback:
     routes:
       deepseek-v4-pro: qwen-plus

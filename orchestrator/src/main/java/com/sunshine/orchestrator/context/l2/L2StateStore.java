@@ -187,6 +187,10 @@ public class L2StateStore {
             case "decision" -> l2.getDecisionTtlDays();
             case "fact" -> l2.getFactTtlDays();
             case "constraint" -> l2.getConstraintTtlDays();
+            case "reasoning" -> l2.getReasoningTtlDays();
+            case "option" -> l2.getOptionTtlDays();
+            case "interim_conclusion" -> l2.getInterimConclusionTtlDays();
+            case "topic" -> l2.getTopicTtlDays();
             default -> l2.getFactTtlDays();
         };
     }

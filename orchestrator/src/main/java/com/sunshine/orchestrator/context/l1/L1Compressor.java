@@ -2,7 +2,9 @@ package com.sunshine.orchestrator.context.l1;
 
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.context.ContextProperties;
+import com.sunshine.orchestrator.context.ModelWindowCache;
 import com.sunshine.orchestrator.context.SessionTurn;
+import com.sunshine.orchestrator.context.TokenEstimator;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,11 @@ public class L1Compressor {
     private final ConversationContextL1Store l1Store;
     private final L2StateStore l2StateStore;
     private final PromptCatalogHolder catalogHolder;
+    private final TokenEstimator tokenEstimator;
+    private final ModelWindowCache modelWindowCache;
+
+    @org.springframework.beans.factory.annotation.Value("${agent.model.name:deepseek-v4-pro}")
+    private String modelName;
 
     /** 按会话串行化 compress，防止并发 async 丢更新。 */
     private final ConcurrentHashMap<String, Object> compressLocks = new ConcurrentHashMap<>();
@@ -68,16 +75,18 @@ public class L1Compressor {
 
     private void compressLocked(String userId, String tenantId, String convId, List<SessionTurn> history) {
         ContextProperties.L1 l1 = contextProperties.getL1();
-        int nearN = Math.max(1, l1.getNearTurns());
-        int midN = Math.max(0, l1.getMidTurns());
-        int maxChars = l1.getMaxChars();
-        if (!shouldCompress(history, nearN, midN, maxChars)) {
+        int modelWindow = modelWindowCache.windowFor(modelName);
+        if (!shouldCompress(history, l1, modelWindow, tokenEstimator)) {
             return;
         }
-        WindowBands bands = partition(history, nearN, midN);
         ConversationContextL1Entity existing = l1Store.find(convId).orElse(null);
-        Map<String, String> midAnswers = new HashMap<>(l1Store.parseMidAnswers(existing));
         String farSummary = l1Store.farSummaryOf(existing);
+        String l2Block = l2StateStore.assembleSystemBlock(userId, tenantId);
+        // 自适应 Near 轮数：默认保轮数完整，组装估算超阈值时逐轮缩小（溢出转 Mid）
+        int nearN = resolveNearRounds(history, l1, modelWindow, tokenEstimator, l2Block, farSummary);
+        int midN = Math.max(0, l1.getMidTurns());
+        WindowBands bands = partition(history, nearN, midN);
+        Map<String, String> midAnswers = new HashMap<>(l1Store.parseMidAnswers(existing));
         LinkedHashSet<String> foldedIds = new LinkedHashSet<>(l1Store.parseFarFoldedMsgIds(existing));
 
         Set<String> midAssistantIds = new HashSet<>();
@@ -107,7 +116,6 @@ public class L1Compressor {
             }
         }
         if (!newToFold.isEmpty()) {
-            String l2Block = l2StateStore.assembleSystemBlock(userId, tenantId);
             String folded = foldFar(farSummary, newToFold, l2Block);
             if (StringUtils.hasText(folded)) {
                 farSummary = folded.strip();
@@ -122,22 +130,24 @@ public class L1Compressor {
                 convId, midAnswers.size(), farSummary != null ? farSummary.length() : 0, foldedIds.size());
     }
 
-    /** 混合触发：超 near+mid **问答轮次**，或总字符超预算。 */
-    public static boolean shouldCompress(List<SessionTurn> history, int nearTurns, int midTurns, int maxChars) {
+    /** token 阈值为主 + 轮次宽限兜底：effectiveToken > window×ratio 或轮数 > turnBackstop。 */
+    public static boolean shouldCompress(
+            List<SessionTurn> history,
+            ContextProperties.L1 l1,
+            int modelWindow,
+            TokenEstimator estimator) {
         if (history == null || history.isEmpty()) {
             return false;
         }
-        int turnCap = Math.max(1, nearTurns) + Math.max(0, midTurns);
-        if (countRounds(history) > turnCap) {
-            return true;
-        }
-        if (maxChars <= 0) {
+        if (l1 == null || estimator == null || modelWindow <= 0) {
             return false;
         }
-        int chars = history.stream()
-                .mapToInt(t -> t.content() != null ? t.content().length() : 0)
-                .sum();
-        return chars > maxChars;
+        int effective = estimator.effectiveCount(history, l1.getTokenSafetyFactor());
+        int threshold = (int) (modelWindow * l1.getMaxTokensRatio());
+        if (effective > threshold) {
+            return true;
+        }
+        return countRounds(history) > Math.max(1, l1.getTurnBackstop());
     }
 
     /**
@@ -185,6 +195,63 @@ public class L1Compressor {
 
     public static int countRounds(List<SessionTurn> history) {
         return groupRounds(history).size();
+    }
+
+    /**
+     * 自适应 Near 轮数：默认 nearTurns 保交互完整；组装估算超阈值时逐轮缩小 Near（溢出转 Mid），
+     * 直到 token 降到阈值内或 Near 缩到 1 轮（当前交互永不丢）。
+     * Mid 摘要后 token 按 midCompressRatio 估算。
+     */
+    public static int resolveNearRounds(
+            List<SessionTurn> history,
+            ContextProperties.L1 l1,
+            int modelWindow,
+            TokenEstimator estimator,
+            String l2Block,
+            String farSummary) {
+        int defaultNear = Math.max(1, l1.getNearTurns());
+        if (history == null || history.isEmpty() || estimator == null || modelWindow <= 0) {
+            return defaultNear;
+        }
+        int threshold = (int) (modelWindow * l1.getMaxTokensRatio());
+        int totalRounds = countRounds(history);
+        int near = Math.min(defaultNear, totalRounds);
+        double midRatio = l1.getMidCompressRatio() > 0 ? l1.getMidCompressRatio() : 0.15;
+
+        while (near > 1) {
+            int assembled = estimateAssembled(history, l1, estimator, l2Block, farSummary, near, midRatio);
+            if (assembled <= threshold) {
+                break;
+            }
+            near--;
+        }
+        return near;
+    }
+
+    /** 估算组装后总 token：L2 + Far + Mid(摘要后估算) + Near(原文)。 */
+    private static int estimateAssembled(
+            List<SessionTurn> history,
+            ContextProperties.L1 l1,
+            TokenEstimator estimator,
+            String l2Block,
+            String farSummary,
+            int nearRounds,
+            double midRatio) {
+        WindowBands bands = partition(history, nearRounds, l1.getMidTurns());
+        int n = estimator.count(l2Block) + estimator.count(farSummary);
+        int midRaw = 0;
+        for (SessionTurn t : bands.mid()) {
+            if (t != null) {
+                midRaw += estimator.count(t.content());
+            }
+        }
+        n += (int) (midRaw * midRatio);
+        for (SessionTurn t : bands.near()) {
+            if (t != null) {
+                n += estimator.count(t.content());
+            }
+        }
+        return n;
     }
 
     private static List<SessionTurn> flatten(List<List<SessionTurn>> rounds) {
