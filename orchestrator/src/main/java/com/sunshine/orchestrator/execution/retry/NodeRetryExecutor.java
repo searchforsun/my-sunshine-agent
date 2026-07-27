@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution.retry;
 
 import com.sunshine.orchestrator.execution.NodeResult;
+import com.sunshine.orchestrator.execution.TypedValue;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,7 @@ import reactor.core.scheduler.Schedulers;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -65,7 +67,7 @@ public class NodeRetryExecutor {
                                 attemptNo, "completed", null, WorkflowNodeCompletionLabels.attemptComplete(), startedAt, endedAt));
                         return Mono.just(new AttemptOutcome(result, List.copyOf(attempts)));
                     }
-                    String err = result.safeOutputs().getOrDefault("error", WorkflowNodeCompletionLabels.nodeFailed());
+                    String err = renderScalar(result.safeOutputs(), "error", WorkflowNodeCompletionLabels.nodeFailed());
                     ExecutionErrorClass errorClass = errorClassifier.classifyMessage(err);
                     boolean retryable = errorClassifier.isRetryable(errorClass, policy.retryOnErrorClass());
                     attempts.add(new PlanNodeAttemptRecord(
@@ -110,5 +112,14 @@ public class NodeRetryExecutor {
         if (onAttemptsUpdated != null && !attempts.isEmpty()) {
             onAttemptsUpdated.accept(List.copyOf(attempts));
         }
+    }
+
+    private static String renderScalar(Map<String, TypedValue> outputs, String key, String defaultValue) {
+        TypedValue v = outputs.get(key);
+        if (v == null) {
+            return defaultValue;
+        }
+        String rendered = v.render();
+        return rendered != null && !rendered.isBlank() ? rendered : defaultValue;
     }
 }

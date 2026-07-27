@@ -52,11 +52,11 @@ public class NodeRetryPolicyResolver {
             PlanWorkflowExecutionPolicy policy,
             PlanWorkflowExecutionPolicy.NodeDefaults defaults,
             String tenantId) {
-        String param = spec.params() != null ? spec.params().get("retry.onFailure") : null;
+        String param = readParamString(spec, "retry.onFailure");
         if (StringUtils.hasText(param)) {
             return OnFailureAction.fromConfig(param);
         }
-        String tool = spec.params() != null ? spec.params().get("tool") : null;
+        String tool = readParamString(spec, "tool");
         if (StringUtils.hasText(tool)) {
             Set<String> criticalTools = new HashSet<>(toolSetResolver.resolvePlanWorkflowCriticalTools(tenantId));
             if (criticalTools.contains(tool.strip())) {
@@ -94,7 +94,7 @@ public class NodeRetryPolicyResolver {
         if (spec.params() == null) {
             return 0;
         }
-        String raw = spec.params().get(key);
+        String raw = readParamString(spec, key);
         if (!StringUtils.hasText(raw)) {
             return 0;
         }
@@ -107,5 +107,14 @@ public class NodeRetryPolicyResolver {
 
     private static long paramLong(NodeSpec spec, String key) {
         return paramInt(spec, key);
+    }
+
+    /** 从 Map<String,Object> params 读取字符串值（兼容 Object 值） */
+    private static String readParamString(NodeSpec spec, String key) {
+        if (spec.params() == null) {
+            return null;
+        }
+        Object v = spec.params().get(key);
+        return v != null ? v.toString() : null;
     }
 }

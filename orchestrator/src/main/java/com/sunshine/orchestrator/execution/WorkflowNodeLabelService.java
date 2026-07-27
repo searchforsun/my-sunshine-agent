@@ -43,7 +43,8 @@ public class WorkflowNodeLabelService {
                 continue;
             }
             if (WorkflowNodeType.TOOL.matches(spec.type()) && spec.params() != null) {
-                String tool = spec.params().get("tool");
+                Object toolObj = spec.params().get("tool");
+                String tool = toolObj != null ? toolObj.toString() : null;
                 if (StringUtils.hasText(tool)) {
                     tools.put(entry.getKey(), tool.strip());
                 }

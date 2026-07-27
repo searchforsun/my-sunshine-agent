@@ -30,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-
 /** Workflow DAG 执行引擎（串行 + 并行 fan-out/join） */
 @Slf4j
 @Component
@@ -208,13 +207,13 @@ public class WorkflowExecutor {
             return Flux.empty();
         }
         NodeSpec loopSpec = def.node(loop.loopNodeId());
-        Map<String, String> params = loopSpec != null ? loopSpec.params() : Map.of();
+        Map<String, Object> params = loopSpec != null ? loopSpec.params() : Map.of();
         int maxIterations = parseMaxIterations(params);
-        String onMax = params.getOrDefault("onMaxIterations", "fail_fast").strip().toLowerCase();
+        String onMax = readParamString(params, "onMaxIterations", "fail_fast").strip().toLowerCase();
         PlanEdgeCondition condition = new PlanEdgeCondition(
-                params.getOrDefault("condition.left", ""),
-                params.getOrDefault("condition.op", ""),
-                params.getOrDefault("condition.right", ""));
+                readParamString(params, "condition.left", ""),
+                readParamString(params, "condition.op", ""),
+                readParamString(params, "condition.right", ""));
         AtomicInteger iter = new AtomicInteger(0);
         AtomicReference<String> buffer = new AtomicReference<>("");
         return loopCycle(
@@ -344,38 +343,39 @@ public class WorkflowExecutor {
             String output,
             int iterations,
             String status) {
-        Map<String, String> out = new LinkedHashMap<>();
-        out.put("output", output != null ? output : "");
-        out.put("status", status);
+        Map<String, TypedValue> out = new LinkedHashMap<>();
+        out.put("output", TypedValue.scalar(output != null ? output : ""));
+        out.put("status", TypedValue.scalar(status));
         if (iterations >= 0) {
-            out.put("iterations", String.valueOf(iterations));
+            out.put("iterations", TypedValue.scalar(String.valueOf(iterations)));
         }
         wfCtx.putNode(loopId, out);
     }
 
     private static String resolveBodyTailOutput(WorkflowContext wfCtx, List<String> body) {
         String last = body.get(body.size() - 1);
-        Map<String, String> node = wfCtx.node(last);
-        if (StringUtils.hasText(node.get("answer"))) {
-            return node.get("answer");
+        Map<String, TypedValue> node = wfCtx.node(last);
+        String answer = renderScalar(node, "answer");
+        if (StringUtils.hasText(answer)) {
+            return answer;
         }
-        return node.getOrDefault("output", "");
+        return renderScalar(node, "output");
     }
 
     private static boolean hasLoopSettled(WorkflowContext wfCtx, String loopId) {
-        Map<String, String> node = wfCtx.node(loopId);
+        Map<String, TypedValue> node = wfCtx.node(loopId);
         if (node == null || node.isEmpty()) {
             return false;
         }
-        String status = node.get("status");
+        String status = renderScalar(node, "status");
         return "completed".equals(status) || "max_exit".equals(status)
                 || "max_fail".equals(status) || "max_fallback".equals(status)
-                || StringUtils.hasText(node.get("output")) && !"looping".equals(status);
+                || StringUtils.hasText(renderScalar(node, "output")) && !"looping".equals(status);
     }
 
-    private static int parseMaxIterations(Map<String, String> params) {
+    private static int parseMaxIterations(Map<String, Object> params) {
         try {
-            int n = Integer.parseInt(params.getOrDefault("maxIterations", "3").strip());
+            int n = Integer.parseInt(readParamString(params, "maxIterations", "3").strip());
             return Math.max(1, Math.min(5, n));
         } catch (NumberFormatException e) {
             return 3;
@@ -497,18 +497,18 @@ public class WorkflowExecutor {
     }
 
     private static boolean isNodeCompleted(WorkflowContext wfCtx, String nodeId) {
-        Map<String, String> node = wfCtx.node(nodeId);
+        Map<String, TypedValue> node = wfCtx.node(nodeId);
         if (node == null || node.isEmpty()) {
             return false;
         }
-        if (StringUtils.hasText(node.get("output")) || StringUtils.hasText(node.get("answer"))) {
-            String status = node.get("status");
+        if (StringUtils.hasText(renderScalar(node, "output")) || StringUtils.hasText(renderScalar(node, "answer"))) {
+            String status = renderScalar(node, "status");
             if ("looping".equals(status)) {
                 return false;
             }
             return true;
         }
-        String status = node.get("status");
+        String status = renderScalar(node, "status");
         return "joined".equals(status) || "routed".equals(status) || "forked".equals(status);
     }
 
@@ -548,15 +548,30 @@ public class WorkflowExecutor {
 
     private static WorkflowContext initContext(ExecutionStreamContext streamCtx) {
         WorkflowContext wfCtx = new WorkflowContext();
-        Map<String, String> start = new LinkedHashMap<>();
+        Map<String, TypedValue> start = new LinkedHashMap<>();
         if (StringUtils.hasText(streamCtx.userContent())) {
-            start.put("userQuery", streamCtx.userContent());
+            start.put("userQuery", TypedValue.scalar(streamCtx.userContent()));
         }
         wfCtx.putNode("start", start);
         ExecutionPlan plan = streamCtx.plan();
         if (plan != null && plan.params() != null) {
-            wfCtx.putNode("plan", new LinkedHashMap<>(plan.params()));
+            Map<String, TypedValue> planParams = new LinkedHashMap<>();
+            plan.params().forEach((k, v) -> planParams.put(k, TypedValue.scalar(v)));
+            wfCtx.putNode("plan", planParams);
         }
         return wfCtx;
+    }
+
+    private static String renderScalar(Map<String, TypedValue> outputs, String key) {
+        TypedValue v = outputs.get(key);
+        return v != null ? v.render() : null;
+    }
+
+    private static String readParamString(Map<String, Object> params, String key, String defaultValue) {
+        if (params == null) {
+            return defaultValue;
+        }
+        Object v = params.get(key);
+        return v != null ? v.toString() : defaultValue;
     }
 }

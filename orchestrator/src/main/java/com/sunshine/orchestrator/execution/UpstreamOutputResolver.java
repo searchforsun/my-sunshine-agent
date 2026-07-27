@@ -37,11 +37,12 @@ public class UpstreamOutputResolver {
     }
 
     private String resolveOutput(String nodeId, WorkflowContext ctx, WorkflowDefinition def) {
-        String direct = ctx.resolvePath(nodeId + ".output");
+        String direct = ctx.resolvePathString(nodeId + ".output");
         if (StringUtils.hasText(direct)) {
             return direct;
         }
-        String answer = ctx.node(nodeId).get("answer");
+        TypedValue answerVal = ctx.node(nodeId).get("answer");
+        String answer = answerVal != null ? answerVal.render() : null;
         if (StringUtils.hasText(answer)) {
             return answer;
         }

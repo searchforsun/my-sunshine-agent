@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.StreamingNodeHandler;
 import com.sunshine.orchestrator.execution.TemplateResolver;
+import com.sunshine.orchestrator.execution.TypedValue;
 import com.sunshine.orchestrator.execution.UpstreamOutputResolver;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowDefinition;
@@ -138,14 +139,14 @@ public class WorkflowNodeRunner {
                     session, WorkflowNodeTimeline.stepId(nodeId), streamCtx.assistantMsgId());
             return Mono.fromCallable(() -> hitlConfirmationService.resumeAwaitingFromCheckpoint(
                             hitl, streamCtx.assistantMsgId(), pending,
-                            resolved.params().getOrDefault("tool", "")))
+                            readParamString(resolved.params(), "tool")))
                     .subscribeOn(Schedulers.boundedElastic())
                     .flatMapMany(approved -> {
                         if (!approved) {
-                            Map<String, String> outputs = new LinkedHashMap<>();
+                            Map<String, TypedValue> outputs = new LinkedHashMap<>();
                             String msg = hitlConfirmationService.rejectionMessage();
-                            outputs.put("output", msg);
-                            outputs.put("detail", msg);
+                            outputs.put("output", TypedValue.scalar(msg));
+                            outputs.put("detail", TypedValue.scalar(msg));
                             return nodeFinalizer.finalizeNode(session, nodeId, rawSpec, NodeResult.ok(outputs), wfCtx, streamCtx,
                                     tracksNodeStep, startedAt, retryPolicy, List.of(), runSession);
                         }
@@ -271,7 +272,7 @@ public class WorkflowNodeRunner {
             return nodeFinalizer.finalizeNode(session, nodeId, rawSpec, outcome.result(), wfCtx, streamCtx,
                     tracksNodeStep, startedAt, retryPolicy, outcome.attempts(), runSession);
         }
-        String err = outcome.result().safeOutputs().getOrDefault("error", "节点执行失败");
+        String err = renderOutput(outcome.result().safeOutputs(), "error", "节点执行失败");
         return Mono.fromCallable(() -> workflowNodeRecoveryService.awaitRecovery(
                         session, nodeId, streamCtx.assistantMsgId(), err, runSession))
                 .subscribeOn(Schedulers.boundedElastic())
@@ -360,7 +361,7 @@ public class WorkflowNodeRunner {
                         return nodeFinalizer.finalizeNode(session, nodeId, rawSpec, result, wfCtx, streamCtx,
                                 tracksNodeStep, startedAt, retryPolicy, attempts, runSession);
                     }
-                    String err = result.safeOutputs().getOrDefault("error", WorkflowNodeCompletionLabels.nodeFailed());
+                    String err = renderOutput(result.safeOutputs(), "error", WorkflowNodeCompletionLabels.nodeFailed());
                     attempts.add(new NodeRetryExecutor.PlanNodeAttemptRecord(
                             attemptNo, "failed", null, WorkflowNodeCompletionLabels.attemptFailed(err), attemptStarted, attemptEnded));
                     nodeFinalizer.publishNodeAttemptsProgress(session, nodeId, rawSpec, streamCtx, tracksNodeStep,
@@ -409,17 +410,37 @@ public class WorkflowNodeRunner {
                 || lower.contains("503") || lower.contains("502") || lower.contains("不可用");
     }
 
+    private static String renderOutput(Map<String, TypedValue> outputs, String key, String defaultValue) {
+        TypedValue v = outputs.get(key);
+        if (v == null) {
+            return defaultValue;
+        }
+        String rendered = v.render();
+        return rendered != null && !rendered.isBlank() ? rendered : defaultValue;
+    }
+
+    /** 从 Map<String,Object> params 读取字符串值（兼容 Object 值） */
+    private static String readParamString(Map<String, Object> params, String key) {
+        if (params == null) {
+            return "";
+        }
+        Object v = params.get(key);
+        return v != null ? v.toString() : "";
+    }
+
     private NodeSpec resolveParams(NodeSpec spec, WorkflowContext ctx, WorkflowDefinition def, boolean planWorkflow) {
-        Map<String, String> resolved = new LinkedHashMap<>();
+        Map<String, Object> resolved = new LinkedHashMap<>();
         if (spec.params() != null) {
             spec.params().forEach((k, v) -> {
-                if (planWorkflow && "prompt".equals(k)) {
-                    resolved.put(k, upstreamOutputResolver.resolvePrompt(v, ctx, def));
+                if (planWorkflow && "prompt".equals(k) && v instanceof String s) {
+                    resolved.put(k, upstreamOutputResolver.resolvePrompt(s, ctx, def));
+                } else if (v instanceof String s) {
+                    resolved.put(k, TemplateResolver.resolve(s, ctx));
                 } else {
-                    resolved.put(k, TemplateResolver.resolve(v, ctx));
+                    resolved.put(k, v);
                 }
             });
         }
-        return new NodeSpec(spec.id(), spec.type(), resolved, spec.displayName());
+        return new NodeSpec(spec.id(), spec.type(), resolved, spec.inputs(), spec.displayName());
     }
 }

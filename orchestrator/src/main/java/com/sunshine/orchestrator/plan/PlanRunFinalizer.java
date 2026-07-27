@@ -105,7 +105,8 @@ public class PlanRunFinalizer {
         }
         List<String> blocks = new ArrayList<>();
         runSession.getPartialOutputs().forEach((nodeId, outputs) -> {
-            String text = outputs.getOrDefault("output", outputs.getOrDefault("answer", ""));
+            TypedValue outVal = outputs.getOrDefault("output", outputs.get("answer"));
+            String text = outVal != null ? outVal.render() : "";
             if (StringUtils.hasText(text)) {
                 blocks.add("【节点 " + nodeId + "】\n" + text.strip());
             }

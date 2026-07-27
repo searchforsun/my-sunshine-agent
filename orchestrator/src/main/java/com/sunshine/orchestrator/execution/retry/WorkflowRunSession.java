@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.execution.retry;
 
+import com.sunshine.orchestrator.execution.TypedValue;
 import lombok.Getter;
 
 import java.util.ArrayList;
@@ -7,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 单次 Workflow 执行运行时状态 — 节点失败、整单中断 */
+/** 单次 Workflow 执行运行时状态 - 节点失败、整单中断 */
 @Getter
 public class WorkflowRunSession {
 
@@ -16,9 +17,9 @@ public class WorkflowRunSession {
     private String abortReason;
     private boolean hasNodeFailures;
     private final List<String> failedNodeIds = new ArrayList<>();
-    private final Map<String, Map<String, String>> partialOutputs = new LinkedHashMap<>();
+    private final Map<String, Map<String, TypedValue>> partialOutputs = new LinkedHashMap<>();
 
-    public void noteNodeSuccess(String nodeId, Map<String, String> outputs) {
+    public void noteNodeSuccess(String nodeId, Map<String, TypedValue> outputs) {
         if (outputs != null && !outputs.isEmpty()) {
             partialOutputs.put(nodeId, new LinkedHashMap<>(outputs));
         }

@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.grounding;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.execution.TypedValue;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.processing.ToolStepIds;
 import org.springframework.util.StringUtils;
@@ -23,26 +24,30 @@ public final class GroundingEvidenceSupport {
         }
         boolean hasToolOrRag = false;
         Set<String> texts = new LinkedHashSet<>();
-        for (Map.Entry<String, Map<String, String>> entry : ctx.nodeEntries()) {
-            Map<String, String> node = entry.getValue();
+        for (Map.Entry<String, Map<String, TypedValue>> entry : ctx.nodeEntries()) {
+            Map<String, TypedValue> node = entry.getValue();
             if (node == null || node.isEmpty()) {
                 continue;
             }
             if (node.containsKey("hitCount") || node.containsKey("tool")) {
                 hasToolOrRag = true;
             }
-            if (StringUtils.hasText(node.get("toolCalls"))) {
+            if (StringUtils.hasText(render(node.get("toolCalls")))) {
                 hasToolOrRag = true;
             }
-            collectText(node.get("output"), texts);
-            collectText(node.get("detail"), texts);
-            collectText(node.get("expandDetail"), texts);
-            collectText(node.get("answer"), texts);
+            collectText(render(node.get("output")), texts);
+            collectText(render(node.get("detail")), texts);
+            collectText(render(node.get("expandDetail")), texts);
+            collectText(render(node.get("answer")), texts);
         }
         if (hasToolOrRag) {
             return GroundingEvidence.supported(List.copyOf(texts));
         }
         return new GroundingEvidence(false, List.copyOf(texts));
+    }
+
+    private static String render(TypedValue value) {
+        return value != null ? value.render() : null;
     }
 
     public static GroundingEvidence fromSubAgent(
