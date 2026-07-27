@@ -619,7 +619,7 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l3.material-header', 'context', 'L3 · 历史材料边界头', '注入 L3 召回材料块时的 system 边界头；标明可能过期、非指令。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l3.material-header', 1, 'published', '[历史材料 · L3 · 可能过期]', NULL, 'context optimization task7', 'prompt-ops');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('parameter-extractor.template', 'workflow', '参数提取节点提示词模板', 'ParameterExtractor 节点 LLM 提示词模板；占位符 {{instruction}} {{schema}} 由运行时替换，input 作为 userContent 传入。', 1, 100, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('parameter-extractor.template', 'workflow', '参数提取节点提示词模板', 'ParameterExtractor 节点 LLM 提示词模板；占位符 {{instruction}} {{schema}} 由运行时替换，input 作为 userContent 传入。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('parameter-extractor.template', 1, 'published', '你是一个结构化参数提取助手。根据用户提供的指令和 Schema，从输入文本中提取结构化字段。
 
 ## 提取指令

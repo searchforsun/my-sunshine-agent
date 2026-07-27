@@ -28,8 +28,7 @@ public class PlanAnswerPromptAssembler {
 
     /** 为 answer 节点写入 params.prompt（覆盖 Planner 自带 prompt） */
     public PlanJson apply(PlanJson plan) {
-        List<String> order = PlanLinearizer.linearOrder(plan);
-        String answerId = findAnswerNodeId(plan, order);
+        String answerId = findAnswerNodeId(plan);
         if (answerId == null) {
             return plan;
         }
@@ -68,7 +67,7 @@ public class PlanAnswerPromptAssembler {
         return "";
     }
 
-    private static String findAnswerNodeId(PlanJson plan, List<String> order) {
+    private static String findAnswerNodeId(PlanJson plan) {
         if (plan.nodesById().containsKey(PlanNormalizer.ANSWER_NODE_ID)) {
             return PlanNormalizer.ANSWER_NODE_ID;
         }
