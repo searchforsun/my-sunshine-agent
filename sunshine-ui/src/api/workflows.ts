@@ -36,11 +36,21 @@ export interface WorkflowCatalogEntry {
   nodes: string[]
 }
 
+export interface WorkflowPlanInputBinding {
+  name: string
+  source: string
+  /** string | number | boolean | object | array（小写；缺省按 string） */
+  type?: string
+  required?: boolean
+}
+
 export interface WorkflowPlanNode {
   id: string
   type: string
   displayName?: string
   params?: Record<string, unknown>
+  /** 显式输入绑定（WF-1 结构化 I/O）：业务入参由 inputs 承载，params 仅保留控制参数 */
+  inputs?: WorkflowPlanInputBinding[]
   /** loop 容器内 body 归属 */
   parentId?: string
 }

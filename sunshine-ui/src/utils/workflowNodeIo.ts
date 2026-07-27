@@ -1,8 +1,6 @@
 import type { ToolCatalogEntry } from '../api/tools'
 import type { WorkflowPlanNode } from '../api/workflows'
 
-export type ToolOutputMode = 'full' | 'summary' | 'extract'
-
 export interface NodeOutputRef {
   ref: string
   label: string
@@ -14,46 +12,8 @@ export interface ToolParamField {
   required: boolean
 }
 
-export const TOOL_OUTPUT_MODE_OPTIONS = [
-  { label: '完整输出', value: 'full' as ToolOutputMode },
-  { label: '时间线摘要', value: 'summary' as ToolOutputMode },
-  { label: '自定义提取', value: 'extract' as ToolOutputMode },
-]
-
-const EXTRACT_PRESETS: { label: string; value: string }[] = [
-  {
-    label: '条数（regex）',
-    value: '{"count":"regex:共\\\\s*(\\\\d+)\\\\s*条"}',
-  },
-  {
-    label: '首行（line）',
-    value: '{"head":"line:0"}',
-  },
-  {
-    label: '任务 ID 列表（regex）',
-    value: '{"firstId":"regex:\\\\[(\\\\d+)\\\\]"}',
-  },
-]
-
-export function toolOutputMode(params?: Record<string, unknown>): ToolOutputMode {
-  const raw = String(params?.['output.mode'] ?? 'full').trim()
-  if (raw === 'summary' || raw === 'extract') return raw
-  return 'full'
-}
-
-export function toolOutputExtract(params?: Record<string, unknown>): string {
-  return String(params?.['output.extract'] ?? '').trim()
-}
-
-export function parseExtractKeys(extractJson: string): string[] {
-  if (!extractJson.trim()) return []
-  try {
-    const obj = JSON.parse(extractJson) as Record<string, unknown>
-    return Object.keys(obj).filter(k => k.trim())
-  } catch {
-    return []
-  }
-}
+/** @deprecated output.mode 已在 WF-1 结构化 I/O 中废弃，保留以兼容旧 plan 解析，不再用于编辑 UI */
+export type ToolOutputMode = 'full' | 'summary' | 'extract'
 
 export function parseToolSchemaFields(tool?: ToolCatalogEntry | null): ToolParamField[] {
   if (!tool?.parameters) return []
@@ -71,22 +31,19 @@ export function parseToolSchemaFields(tool?: ToolCatalogEntry | null): ToolParam
   }))
 }
 
+/**
+ * 节点下游可引用的输出变量列表。
+ * WF-1 结构化 I/O 后 tool 节点输出统一为 `{{id.output}}`（完整对象，可嵌套取值）；
+ * summary 仅在工具 Catalog 配置了摘要模板时展示。
+ */
 export function nodeOutputRefs(node: WorkflowPlanNode, tool?: ToolCatalogEntry | null): NodeOutputRef[] {
   const id = node.id
   switch (node.type) {
     case 'tool': {
-      const refs: NodeOutputRef[] = [
-        { ref: `{{${id}.output}}`, label: '完整原始输出' },
-      ]
-      const mode = toolOutputMode(node.params)
+      const refs: NodeOutputRef[] = [{ ref: `{{${id}.output}}`, label: '完整输出' }]
       const hasSummaryTemplate = !!tool?.timelineSummaryTemplate?.trim()
-      if (mode === 'summary' || hasSummaryTemplate) {
+      if (hasSummaryTemplate) {
         refs.push({ ref: `{{${id}.summary}}`, label: '时间线摘要' })
-      }
-      if (mode === 'extract') {
-        for (const key of parseExtractKeys(toolOutputExtract(node.params))) {
-          refs.push({ ref: `{{${id}.parsed.${key}}}`, label: `提取字段 ${key}` })
-        }
       }
       return refs
     }
@@ -100,15 +57,6 @@ export function nodeOutputRefs(node: WorkflowPlanNode, tool?: ToolCatalogEntry |
     default:
       return []
   }
-}
-
-export function defaultToolOutputExtract(tool?: ToolCatalogEntry | null): string {
-  const raw = tool?.timelineSummaryExtract?.trim()
-  return raw || EXTRACT_PRESETS[0].value
-}
-
-export function toolExtractPresets(): { label: string; value: string }[] {
-  return EXTRACT_PRESETS
 }
 
 export function readToolParamValue(params: Record<string, unknown> | undefined, name: string): string {
