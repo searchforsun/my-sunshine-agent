@@ -16,6 +16,11 @@ public record PlanEdgeCondition(String left, String op, String right) {
         if ("empty".equals(op) || "not_empty".equals(op)) {
             return !left.isBlank();
         }
-        return !left.isBlank() && ("contains".equals(op) || "eq".equals(op));
+        // 数值/枚举类算子只需 left，比较/包含类算子需 left + right
+        if ("gt".equals(op) || "lt".equals(op) || "gte".equals(op)
+                || "lte".equals(op) || "in".equals(op) || "not_in".equals(op)) {
+            return !left.isBlank();
+        }
+        return !left.isBlank() && !right.isBlank();
     }
 }

@@ -2,7 +2,6 @@ package com.sunshine.orchestrator.plan;
 
 import com.sunshine.orchestrator.execution.InputBinding;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,18 +27,8 @@ public record PlanNode(
         this(id, type, params, List.of(), displayName, null);
     }
 
-    /** 兼容旧调用方：String params 自动包装为 Object params */
-    public PlanNode(String id, String type, Map<String, String> params, String displayName, String parentId) {
-        this(id, type, toStringObjectMap(params), List.of(), displayName, parentId);
-    }
-
-    private static Map<String, Object> toStringObjectMap(Map<String, String> stringParams) {
-        if (stringParams == null) {
-            return Map.of();
-        }
-        Map<String, Object> obj = new LinkedHashMap<>();
-        stringParams.forEach(obj::put);
-        return obj;
+    public PlanNode(String id, String type, Map<String, Object> params, String displayName, String parentId) {
+        this(id, type, params, List.of(), displayName, parentId);
     }
 
     public boolean hasParent() {

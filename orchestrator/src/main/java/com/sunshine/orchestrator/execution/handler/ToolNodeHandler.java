@@ -205,7 +205,7 @@ public class ToolNodeHandler implements NodeHandler {
         return v != null ? v.toString() : "";
     }
 
-    /** Map<String,Object> -> Map<String,String>（HITL/审计展示用，非文本值 JSON 序列化） */
+    /** Map<String,Object> -> Map<String,String>（HITL/审计展示用，JsonNode 走 toString 产出紧凑 JSON） */
     private static Map<String, String> toStringParams(Map<String, Object> params) {
         Map<String, String> out = new LinkedHashMap<>();
         if (params == null) {
@@ -215,7 +215,7 @@ public class ToolNodeHandler implements NodeHandler {
             if (k == null || v == null) {
                 return;
             }
-            out.put(k, v instanceof CharSequence ? v.toString() : v.toString());
+            out.put(k, v.toString());
         });
         return out;
     }

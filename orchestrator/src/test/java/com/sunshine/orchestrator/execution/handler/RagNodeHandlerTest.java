@@ -2,7 +2,9 @@ package com.sunshine.orchestrator.execution.handler;
 
 import com.sunshine.orchestrator.client.RagClient;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
+import com.sunshine.orchestrator.execution.TypedValue;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
@@ -81,5 +83,17 @@ class RagNodeHandlerTest {
         ragNodeHandler.run(spec, ctx, streamCtx).block();
 
         verify(ragClient).searchKnowledge(eq("年假几天\n\n待办列表"), eq(null), eq("default"), eq("default"), eq(null), eq(true));
+    }
+
+    @Test
+    void buildOkResultContainsStructuredHits() {
+        var hits = List.of(
+                new RagClient.RagHit("doc1.md", "content1", 0.9f),
+                new RagClient.RagHit("doc2.md", "content2", 0.8f));
+        NodeResult result = RagNodeHandler.buildOkResultForTest(hits);
+        TypedValue hitsVal = result.safeOutputs().get("hits");
+        assertThat(hitsVal).isInstanceOf(TypedValue.JsonArray.class);
+        assertThat(((TypedValue.JsonArray) hitsVal).node().size()).isEqualTo(2);
+        assertThat(result.safeOutputs().get("hitCount").render()).isEqualTo("2");
     }
 }

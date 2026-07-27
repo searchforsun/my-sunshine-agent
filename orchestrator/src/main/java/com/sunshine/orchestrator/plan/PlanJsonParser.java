@@ -59,7 +59,7 @@ public class PlanJsonParser {
             if (id == null || type == null) {
                 continue;
             }
-            Map<String, String> params = parseParams(node.get("params"));
+            Map<String, Object> params = parseParams(node.get("params"));
             if (params.isEmpty()) {
                 params = parseParams(node.get("config"));
             }
@@ -136,15 +136,26 @@ public class PlanJsonParser {
                 right != null ? right : "");
     }
 
-    private static Map<String, String> parseParams(JsonNode paramsNode) {
-        Map<String, String> params = new HashMap<>();
+    private static Map<String, Object> parseParams(JsonNode paramsNode) {
+        Map<String, Object> params = new HashMap<>();
         if (paramsNode == null || !paramsNode.isObject()) {
             return params;
         }
         Iterator<Map.Entry<String, JsonNode>> it = paramsNode.fields();
         while (it.hasNext()) {
             Map.Entry<String, JsonNode> e = it.next();
-            params.put(e.getKey(), e.getValue().asText(""));
+            JsonNode v = e.getValue();
+            if (v == null || v.isNull()) {
+                params.put(e.getKey(), null);
+            } else if (v.isObject() || v.isArray()) {
+                params.put(e.getKey(), v);
+            } else if (v.isNumber()) {
+                params.put(e.getKey(), v.numberValue());
+            } else if (v.isBoolean()) {
+                params.put(e.getKey(), v.booleanValue());
+            } else {
+                params.put(e.getKey(), v.asText(""));
+            }
         }
         return params;
     }
