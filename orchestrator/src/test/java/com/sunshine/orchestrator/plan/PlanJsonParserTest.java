@@ -112,4 +112,26 @@ class PlanJsonParserTest {
         assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).isNull();
         assertThat(PlanExecutionSchedule.build(plan).get(0)).isInstanceOf(PlanExecutionSchedule.Loop.class);
     }
+
+    @Test
+    void parseInputsFromNodeJson() {
+        String json = """
+                {"planId":"p1","reason":"test","nodes":[
+                  {"id":"start","type":"start","params":{}},
+                  {"id":"tool_1","type":"tool","params":{"tool":"sdk__app__tool"},
+                   "inputs":[
+                     {"name":"status","source":"{{plan.params.status}}","type":"string","required":true},
+                     {"name":"userId","source":"{{start.userId}}","type":"string","required":false}
+                   ]},
+                  {"id":"answer","type":"answer","params":{"prompt":"{{tool_1.output}}"}}
+                ],"edges":[{"from":"start","to":"tool_1"},{"from":"tool_1","to":"answer"}]}
+                """;
+        PlanJson plan = parser.parse(json);
+        PlanNode toolNode = plan.nodesById().get("tool_1");
+        assertThat(toolNode.inputs()).hasSize(2);
+        assertThat(toolNode.inputs().get(0).name()).isEqualTo("status");
+        assertThat(toolNode.inputs().get(0).required()).isTrue();
+        assertThat(toolNode.inputs().get(1).name()).isEqualTo("userId");
+        assertThat(toolNode.inputs().get(1).required()).isFalse();
+    }
 }
