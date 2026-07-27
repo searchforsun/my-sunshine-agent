@@ -56,4 +56,25 @@ class VariableAssignmentNodeHandlerTest {
         NodeResult result = handler.run(spec, ctx, mock(ExecutionStreamContext.class)).block();
         assertThat(result.success()).isFalse();
     }
+
+    @Test
+    void assignmentsAsArrayNodeWorks() {
+        var ctx = new WorkflowContext();
+        var data = new ObjectMapper().createObjectNode();
+        data.put("status", "approved");
+        ctx.putNode("tool_1", Map.of("output", TypedValue.fromJson(data)));
+
+        var assignmentsArr = new ObjectMapper().createArrayNode();
+        var item = assignmentsArr.addObject();
+        item.put("name", "approvalStatus");
+        item.put("source", "{{tool_1.output.status}}");
+        item.put("type", "string");
+
+        var spec = new NodeSpec("var_4", "variable-assignment",
+                Map.of("assignments", assignmentsArr), "ArrayNode 入参");
+
+        NodeResult result = handler.run(spec, ctx, mock(ExecutionStreamContext.class)).block();
+        assertThat(result.success()).isTrue();
+        assertThat(result.safeOutputs().get("approvalStatus").render()).isEqualTo("approved");
+    }
 }

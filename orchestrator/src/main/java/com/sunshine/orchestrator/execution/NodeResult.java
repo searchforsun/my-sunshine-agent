@@ -43,6 +43,12 @@ public record NodeResult(
         return outputs != null ? outputs : Collections.emptyMap();
     }
 
+    /** 失败场景下返回错误信息；成功时为空串 */
+    public String errorMessage() {
+        TypedValue v = safeOutputs().get("error");
+        return v != null ? v.render() : "";
+    }
+
     /** 兼容旧调用方：取 output 字段的 render 字符串 */
     public String outputString() {
         TypedValue v = safeOutputs().get("output");

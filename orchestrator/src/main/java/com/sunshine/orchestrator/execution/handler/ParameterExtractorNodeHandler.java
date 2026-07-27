@@ -54,6 +54,7 @@ public class ParameterExtractorNodeHandler implements NodeHandler {
             return Mono.just(NodeResult.fail("Catalog 缺少 " + CATALOG_TEMPLATE_ID));
         }
 
+        // input 作为 userContent 传入 complete()，不在 systemPrompt 中替换 {{input}}
         String systemPrompt = template
                 .replace("{{instruction}}", instruction != null ? instruction : "")
                 .replace("{{schema}}", schema != null ? schema : "");

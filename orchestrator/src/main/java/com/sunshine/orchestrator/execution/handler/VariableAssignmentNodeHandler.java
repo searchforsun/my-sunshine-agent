@@ -35,16 +35,33 @@ public class VariableAssignmentNodeHandler implements NodeHandler {
     @Override
     public Mono<NodeResult> run(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
         Map<String, Object> params = spec.params() != null ? spec.params() : Map.of();
-        String assignmentsJson = params.getOrDefault("assignments", "[]").toString();
         Map<String, TypedValue> outputs = new LinkedHashMap<>();
+        // PlanJsonParser.parseParams 对数组值产出 ArrayNode，而非 String；此处显式兼容两种形态
+        Object rawAssignments = params.getOrDefault("assignments", "[]");
+        JsonNode arr;
         try {
-            JsonNode arr = OM.readTree(assignmentsJson);
-            if (!arr.isArray()) {
-                return Mono.just(NodeResult.fail("assignments 不是 JSON 数组"));
+            if (rawAssignments instanceof JsonNode node) {
+                arr = node;
+            } else if (rawAssignments instanceof String s) {
+                arr = OM.readTree(s);
+            } else {
+                arr = OM.readTree(rawAssignments.toString());
             }
+        } catch (Exception e) {
+            return Mono.just(NodeResult.fail("assignments 解析失败: " + e.getMessage()));
+        }
+        if (!arr.isArray()) {
+            return Mono.just(NodeResult.fail("assignments 不是 JSON 数组"));
+        }
+        try {
             for (JsonNode item : arr) {
-                String name = item.get("name").asText();
-                String source = item.get("source").asText();
+                JsonNode nameNode = item.get("name");
+                JsonNode sourceNode = item.get("source");
+                if (nameNode == null || sourceNode == null) {
+                    return Mono.just(NodeResult.fail("assignment 缺少 name/source 字段"));
+                }
+                String name = nameNode.asText();
+                String source = sourceNode.asText();
                 TypedValue val = TemplateResolver.resolveTyped(source, ctx);
                 outputs.put(name, val);
             }
