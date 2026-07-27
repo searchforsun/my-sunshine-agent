@@ -38,7 +38,7 @@ class PlanAnswerPromptAssemblerTest {
     }
 
     @Test
-    void injectsUpstreamByLinearOrder() {
+    void doesNotAutoInjectUpstreamOutputReferences() {
         PlanJson plan = PlanNormalizer.normalize(new PlanJson("p", "r",
                 List.of(
                         new PlanNode("n1", "rag", Map.of(), "检索知识库"),
@@ -50,17 +50,31 @@ class PlanAnswerPromptAssemblerTest {
         String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt").toString();
 
         assertThat(prompt).contains("{{start.userQuery}}");
-        assertThat(prompt).contains("【检索知识库】");
-        assertThat(prompt).contains("{{n1.output}}");
-        assertThat(prompt).contains("【查待审批】");
-        assertThat(prompt).contains("{{n2.output}}");
+        // 不再自动注入上游 {{nodeId.output}} 块与【节点标签】
+        assertThat(prompt).doesNotContain("【检索知识库】");
+        assertThat(prompt).doesNotContain("{{n1.output}}");
+        assertThat(prompt).doesNotContain("【查待审批】");
+        assertThat(prompt).doesNotContain("{{n2.output}}");
     }
 
     @Test
-    void usesCatalogTemplateWhenConfigured() {
+    void placeholderReplacedWithEmptyStringWhenTemplateContainsIt() {
+        PlanJson plan = PlanNormalizer.normalize(new PlanJson("p", "r",
+                List.of(new PlanNode("n1", "rag", Map.of())),
+                List.of(new PlanEdge("start", "n1"))));
+
+        String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt").toString();
+
+        assertThat(prompt).contains("{{start.userQuery}}");
+        // {{plan.upstream}} 占位符被替换为空串
+        assertThat(prompt).doesNotContain("{{plan.upstream}}");
+    }
+
+    @Test
+    void templateWithoutPlaceholderReturnedAsIs() {
         catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
                 new PromptCatalogEntry("answer.template", "answer", "answer.template", true, 0, 1,
-                        "问题：{{start.userQuery}}\n\n{{plan.upstream}}\n\n请汇总。", null))));
+                        "问题：{{start.userQuery}}\n\n请汇总。", null))));
         assembler = new PlanAnswerPromptAssembler(catalogHolder);
 
         PlanJson plan = PlanNormalizer.normalize(new PlanJson("p", "r",
@@ -68,9 +82,11 @@ class PlanAnswerPromptAssemblerTest {
                 List.of(new PlanEdge("start", "n1"))));
 
         String prompt = assembler.apply(plan).nodesById().get(PlanNormalizer.ANSWER_NODE_ID).params().get("prompt").toString();
+
         assertThat(prompt).startsWith("问题：{{start.userQuery}}");
         assertThat(prompt).endsWith("请汇总。");
-        assertThat(prompt).contains("{{n1.output}}");
+        // 无自动注入的上游块
+        assertThat(prompt).doesNotContain("{{n1.output}}");
     }
 
     @Test

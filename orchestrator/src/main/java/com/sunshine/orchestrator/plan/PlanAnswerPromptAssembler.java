@@ -12,9 +12,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 动态 Plan 的 answer 节点 prompt — Catalog {@code answer.template} + 按拓扑注入上游 {@code {{n*.output}}}。
- * Planner 不负责撰写 answer 话术，避免 meta 指令进入 reasoning。
- * 缺 Catalog → 空串 + warn（禁止 Java 模板兜底）。
+ * 动态 Plan 的 answer 节点 prompt - Catalog {@code answer.template}。
+ * Planner 在 answer prompt 中显式写 {@code {{nodeId.output}}} 引用，不再自动注入全量上游，
+ * 避免 meta 指令进入 reasoning。
+ * 缺 Catalog -> 空串 + warn（禁止 Java 模板兜底）。
  */
 @Slf4j
 @Component
@@ -32,9 +33,7 @@ public class PlanAnswerPromptAssembler {
         if (answerId == null) {
             return plan;
         }
-        int answerIdx = order.indexOf(answerId);
-        List<String> upstreamIds = answerIdx > 0 ? order.subList(0, answerIdx) : List.of();
-        String prompt = buildPrompt(plan, upstreamIds);
+        String prompt = buildPrompt();
         List<PlanNode> nodes = new ArrayList<>(plan.nodes().size());
         for (PlanNode node : plan.nodes()) {
             if ("answer".equals(node.type()) && answerId.equals(node.id())) {
@@ -48,16 +47,16 @@ public class PlanAnswerPromptAssembler {
         return new PlanJson(plan.planId(), plan.reason(), nodes, plan.edges(), plan.layout());
     }
 
-    private String buildPrompt(PlanJson plan, List<String> upstreamIds) {
+    private String buildPrompt() {
         String template = catalogTemplateOrEmpty();
-        String upstream = buildUpstreamBlock(plan, upstreamIds);
         if (!StringUtils.hasText(template)) {
             return "";
         }
+        // Planner 在 answer prompt 中显式写 {{nodeId.output}} 引用，不再自动注入全量上游
         if (template.contains(UPSTREAM_PLACEHOLDER)) {
-            return template.replace(UPSTREAM_PLACEHOLDER, upstream);
+            return template.replace(UPSTREAM_PLACEHOLDER, "");
         }
-        return template.strip() + "\n\n上游数据：\n" + upstream;
+        return template.strip();
     }
 
     private String catalogTemplateOrEmpty() {
@@ -67,24 +66,6 @@ public class PlanAnswerPromptAssembler {
         }
         log.warn("[PlanAnswerPromptAssembler] catalog missing id=answer.template");
         return "";
-    }
-
-    private static String buildUpstreamBlock(PlanJson plan, List<String> upstreamIds) {
-        if (upstreamIds.isEmpty()) {
-            return "（无上游节点）";
-        }
-        StringBuilder sb = new StringBuilder();
-        Map<String, PlanNode> byId = plan.nodesById();
-        for (String id : upstreamIds) {
-            PlanNode node = byId.get(id);
-            if (node == null) {
-                continue;
-            }
-            String label = StringUtils.hasText(node.displayName()) ? node.displayName().strip() : id;
-            sb.append("【").append(label).append("】\n");
-            sb.append("{{").append(id).append(".output}}\n\n");
-        }
-        return sb.toString().strip();
     }
 
     private static String findAnswerNodeId(PlanJson plan, List<String> order) {
