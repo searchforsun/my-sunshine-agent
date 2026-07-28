@@ -26,4 +26,7 @@ public class ChatRequest {
 
     /** never | always | smart — 沙箱写操作 HITL 跳过；缺省 never */
     private String writeHitlMode;
+
+    /** 用户个人规则（soul）；透传字段，BFF 不加工 */
+    private String personalRules;
 }

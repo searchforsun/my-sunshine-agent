@@ -76,4 +76,56 @@ class ReactExecutorTest {
         assertThat(req.assistantMessageId()).isEqualTo("msg-1");
         assertThat(req.userId()).isEqualTo("u1");
     }
+
+    @Test
+    void execute_passesPersonalRulesAsFirstInjectedBlock() {
+        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
+
+        ExecutionStreamContext ctx = new ExecutionStreamContext(
+                "c1", "msg-1", "你好", AssembledContext.empty(),
+                null, null, "u1", "default", null,
+                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                null, null, null, false, false, null, "用文言文回答");
+
+        reactExecutor.execute(ctx).collectList().block();
+
+        ArgumentCaptor<AgentRunRequest> captor = ArgumentCaptor.forClass(AgentRunRequest.class);
+        verify(agentRuntime).run(captor.capture());
+        assertThat(captor.getValue().injectedBlocks())
+                .containsExactly("## 用户个人规则\n用文言文回答");
+    }
+
+    @Test
+    void execute_personalRulesBeforeDegradedInjectedBlocks() {
+        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
+
+        ExecutionStreamContext ctx = new ExecutionStreamContext(
+                "c1", "msg-1", "你好", AssembledContext.empty(),
+                null, null, "u1", "default", null,
+                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                null, null, null, false, false, null, "用文言文回答");
+
+        reactExecutor.executeWithInjected(ctx, List.of("上游节点输出")).collectList().block();
+
+        ArgumentCaptor<AgentRunRequest> captor = ArgumentCaptor.forClass(AgentRunRequest.class);
+        verify(agentRuntime).run(captor.capture());
+        assertThat(captor.getValue().injectedBlocks())
+                .containsExactly("## 用户个人规则\n用文言文回答", "上游节点输出");
+    }
+
+    @Test
+    void execute_withoutPersonalRulesKeepsInjectedBlocksUntouched() {
+        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
+
+        ExecutionStreamContext ctx = new ExecutionStreamContext(
+                "c1", "msg-1", "你好", AssembledContext.empty(),
+                null, null, "u1", "default",
+                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"));
+
+        reactExecutor.executeWithInjected(ctx, List.of("上游节点输出")).collectList().block();
+
+        ArgumentCaptor<AgentRunRequest> captor = ArgumentCaptor.forClass(AgentRunRequest.class);
+        verify(agentRuntime).run(captor.capture());
+        assertThat(captor.getValue().injectedBlocks()).containsExactly("上游节点输出");
+    }
 }

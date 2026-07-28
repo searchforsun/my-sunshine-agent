@@ -21,5 +21,7 @@ public record ChatStreamContext(
         String forcedWorkflowId,
         String clientSkillId,
         String kbId,
-        boolean reactRestart) {
+        boolean reactRestart,
+        /** 用户个人规则（soul）；新消息路径透传，续跑路径为 null 不重注入 */
+        String personalRules) {
 }

@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.processing.ThinkStepIds;
+import com.sunshine.orchestrator.prompt.PersonalRulesSupport;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -64,9 +66,18 @@ public class ReactExecutor {
                     ctx.kbId()));
         }
         int checkpointThinkIteration = resolveCheckpointThinkIteration(ctx);
+        // 个人规则（soul）作为 injectedBlocks 首元素注入 MAIN Agent；子 Agent 经 sub() 工厂不继承
+        List<String> blocks = new ArrayList<>();
+        String wrappedRules = PersonalRulesSupport.wrap(ctx.personalRules());
+        if (wrappedRules != null) {
+            blocks.add(wrappedRules);
+        }
+        if (injectedBlocks != null) {
+            blocks.addAll(injectedBlocks);
+        }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
-                        injectedBlocks != null ? injectedBlocks : List.of(), skillId, ctx.reactRestart(),
+                        blocks, skillId, ctx.reactRestart(),
                         ctx.conversationId(), reactPromptId, checkpointThinkIteration));
     }
 

@@ -107,7 +107,8 @@ public class ChatStreamContextFactory {
                 msg.getWorkflowId(),
                 msg.getSkillId(),
                 kbId,
-                false);
+                false,
+                msg.getPersonalRules());
     }
 
     private String resolveSessionKbId(String requestKbId, String storedKbId, String tenantId) {

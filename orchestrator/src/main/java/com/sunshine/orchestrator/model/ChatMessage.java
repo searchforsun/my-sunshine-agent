@@ -26,4 +26,7 @@ public class ChatMessage {
 
     /** never | always | smart — 沙箱写操作 HITL 跳过；缺省 never */
     private String writeHitlMode;
+
+    /** 用户个人规则（soul）；空则不注入，>4000 由 orchestrator 防御截断 */
+    private String personalRules;
 }
