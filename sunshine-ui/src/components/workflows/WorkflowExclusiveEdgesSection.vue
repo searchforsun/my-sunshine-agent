@@ -6,7 +6,7 @@ import { formatPlanNodeType } from '../../api/executionPlans'
 import { workflowNodeFieldHelp } from './workflowFieldHelp'
 import { WORKFLOWS_PAGE_KEY, type WorkflowsPageApi } from '../../composables/useWorkflowsPage'
 import { countNodeDegree } from '../../utils/workflowPlanValidation'
-import { normalizeEdgeConditionGroup } from '../../utils/workflowPlan'
+import { normalizeEdgeConditionGroup, exclusiveGatewayConditionLeft } from '../../utils/workflowPlan'
 import { upstreamNodesOf } from '../../utils/workflowVariableRefs'
 import type { WorkflowPlanEdgeConditionGroup } from '../../api/workflows'
 
@@ -59,8 +59,9 @@ function updateEdgeCondition(to: string, group: WorkflowPlanEdgeConditionGroup) 
 
 function updateEdgeDefault(to: string, isDefault: boolean) {
   if (!page.plan || readOnly.value || !page.selectedNode) return
+  const plan = page.plan
   const from = page.selectedNode.id
-  const edges = (page.plan.edges ?? []).map(e => {
+  const edges = (plan.edges ?? []).map(e => {
     if (e.from !== from) return e
     if (e.to === to) {
       if (isDefault) {
@@ -68,11 +69,18 @@ function updateEdgeDefault(to: string, isDefault: boolean) {
         return { ...rest, default: true }
       }
       const { default: _d, ...rest } = e
-      return { ...rest, condition: rest.condition ?? { logic: 'and', items: [{ left: '{{start.userQuery}}', op: 'contains', right: '' }] } }
+      const left = exclusiveGatewayConditionLeft(plan, from)
+      return { ...rest, condition: rest.condition ?? { logic: 'and', items: [{ left, op: 'contains', right: '' }] } }
+    }
+    // 切换为默认分支时，清除同源其他边的 default 标记，恢复条件结构
+    if (isDefault && e.default) {
+      const { default: _d, ...rest } = e
+      const left = exclusiveGatewayConditionLeft(plan, from)
+      return { ...rest, condition: rest.condition ?? { logic: 'and', items: [{ left, op: 'contains', right: '' }] } }
     }
     return e
   })
-  page.plan = { ...page.plan, edges }
+  page.plan = { ...plan, edges }
 }
 </script>
 
