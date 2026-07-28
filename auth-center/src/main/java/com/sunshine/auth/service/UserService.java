@@ -76,6 +76,7 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .personalRules(user.getPersonalRules())
                 .build();
     }
 
@@ -99,6 +100,11 @@ public class UserService {
         user.setTenantId(resolveTenantId(request.getTenantId()));
         if (request.getDefaultWriteHitlMode() != null && !request.getDefaultWriteHitlMode().isBlank()) {
             user.setDefaultWriteHitlMode(WriteHitlModeSupport.from(request.getDefaultWriteHitlMode()));
+        }
+        // 个人规则三态：null=不修改；空白=清空；其余 trim 保存
+        if (request.getPersonalRules() != null) {
+            String trimmed = request.getPersonalRules().trim();
+            user.setPersonalRules(trimmed.isEmpty() ? null : trimmed);
         }
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
@@ -180,6 +186,7 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .personalRules(user.getPersonalRules())
                 .build();
     }
 
@@ -190,6 +197,7 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .personalRules(user.getPersonalRules())
                 .token(token)
                 .build();
     }

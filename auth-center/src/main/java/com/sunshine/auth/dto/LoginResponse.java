@@ -15,4 +15,6 @@ public class LoginResponse {
     private String tenantId;
     /** never|always|smart */
     private String defaultWriteHitlMode;
+    /** 用户个人规则（soul） */
+    private String personalRules;
 }

@@ -11,6 +11,7 @@ CREATE TABLE sys_user (
     UNIQUE KEY uk_username (username),
     tenant_id     VARCHAR(32)  NOT NULL DEFAULT 'default' COMMENT '租户标识',
     default_write_hitl_mode VARCHAR(16) NOT NULL DEFAULT 'never' COMMENT 'never|always|smart 沙箱写 HITL 用户默认',
+    personal_rules TEXT NULL COMMENT '用户个人规则（soul），注入系统提示',
     INDEX idx_sys_user_tenant (tenant_id)
 );
 -- 演示用户（biz CRUD / corpus50 联调；密码与现网测试账号同一口令）
@@ -18,3 +19,6 @@ INSERT IGNORE INTO sys_user (id, username, password_hash, nickname, status, crea
 ('a1111111-1111-4111-a111-111111111111', 'alice', '$2a$10$56JywJyd.ICYkiKmDc7jI.5RFrwrYDzETgcY6QsITMRjABIhFKW62', '爱丽丝', 1, '2026-07-01 00:00:00.000', '2026-07-01 00:00:00.000', 'default', 'never'),
 ('b2222222-2222-4222-b222-222222222222', 'bob',   '$2a$10$56JywJyd.ICYkiKmDc7jI.5RFrwrYDzETgcY6QsITMRjABIhFKW62', '鲍勃',   1, '2026-07-01 00:00:00.000', '2026-07-01 00:00:00.000', 'default', 'never'),
 ('c3333333-3333-4333-c333-333333333333', 'carol','$2a$10$56JywJyd.ICYkiKmDc7jI.5RFrwrYDzETgcY6QsITMRjABIhFKW62', '卡罗尔', 1, '2026-07-01 00:00:00.000', '2026-07-01 00:00:00.000', 'default', 'never');
+
+-- 既有环境迁移（2026-07-28 个人规则）：
+-- ALTER TABLE sys_user ADD COLUMN personal_rules TEXT NULL COMMENT '用户个人规则（soul），注入系统提示';

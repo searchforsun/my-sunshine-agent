@@ -316,6 +316,72 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.defaultWriteHitlMode").value("never"));
     }
 
+    @Test
+    @DisplayName("profile 写 personalRules 后 me 与 login 可读到")
+    void updateProfileSavesAndReturnsPersonalRules() throws Exception {
+        registerUser("rules01");
+        String token = loginAndGetToken("rules01");
+
+        String newToken = patchProfile(token, """
+                {"nickname":"Rules","tenantId":"default","personalRules":"回答用文言文"}
+                """);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.personalRules").value("回答用文言文"));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"rules01","password":"password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.personalRules").value("回答用文言文"));
+    }
+
+    @Test
+    @DisplayName("profile personalRules 空串清空为 null")
+    void updateProfileBlankPersonalRulesClearsToNull() throws Exception {
+        registerUser("rules02");
+        String token = loginAndGetToken("rules02");
+        token = patchProfile(token, """
+                {"nickname":"Rules","tenantId":"default","personalRules":"回答用文言文"}
+                """);
+
+        token = patchProfile(token, """
+                {"nickname":"Rules","tenantId":"default","personalRules":"  "}
+                """);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.personalRules").doesNotExist());
+        var user = userRepository.findByUsername("rules02");
+        assertThat(user).isPresent();
+        assertThat(user.get().getPersonalRules()).isNull();
+    }
+
+    @Test
+    @DisplayName("profile 不带 personalRules 字段保持原值")
+    void updateProfileNullPersonalRulesKeepsExisting() throws Exception {
+        registerUser("rules03");
+        String token = loginAndGetToken("rules03");
+        token = patchProfile(token, """
+                {"nickname":"Rules","tenantId":"default","personalRules":"回答用文言文"}
+                """);
+
+        token = patchProfile(token, """
+                {"nickname":"Rules2","tenantId":"default"}
+                """);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("Rules2"))
+                .andExpect(jsonPath("$.data.personalRules").value("回答用文言文"));
+    }
+
     private void registerUser(String username) throws Exception {
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -335,5 +401,17 @@ class AuthControllerTest {
         JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
         assertThat(root.path("code").asInt()).isEqualTo(200);
         return root.path("data").path("token").asText();
+    }
+
+    private String patchProfile(String token, String body) throws Exception {
+        MvcResult result = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("token").asText();
     }
 }
