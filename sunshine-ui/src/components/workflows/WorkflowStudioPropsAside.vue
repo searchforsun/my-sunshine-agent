@@ -27,8 +27,13 @@ import {
 } from '../../utils/workflowNodeParams'
 import { upstreamNodesOf } from '../../utils/workflowVariableRefs'
 import { countNodeDegree } from '../../utils/workflowPlanValidation'
-import { loopConditionLeft } from '../../utils/workflowPlan'
-import type { WorkflowPlanInputBinding } from '../../api/workflows'
+import {
+  normalizeLoopConditionGroup,
+  updateBusinessNode,
+  writeLoopConditionGroup,
+} from '../../utils/workflowPlan'
+import ConditionGroupEditor from './ConditionGroupEditor.vue'
+import type { WorkflowPlanEdgeConditionGroup, WorkflowPlanInputBinding } from '../../api/workflows'
 
 defineProps<{
   open: boolean
@@ -67,6 +72,27 @@ const upstreamNodesForSelected = computed(() => {
   if (!node || !page.plan) return []
   return upstreamNodesOf(page.plan, node.id)
 })
+
+/** loop 容器：当前条件组（从 params 规范化得到） */
+const loopConditionGroup = computed(() =>
+  normalizeLoopConditionGroup(page.selectedNode?.params),
+)
+
+/** loop 容器：上游节点列表（供 ConditionGroupEditor 的变量选择器） */
+const loopUpstreamNodes = computed(() => {
+  if (!page.plan || !page.selectedNode) return []
+  return upstreamNodesOf(page.plan, page.selectedNode.id)
+})
+
+/** loop 容器：条件组更新 -> 写回 params（conditions + conditionLogic） */
+function onLoopConditionUpdate(group: WorkflowPlanEdgeConditionGroup) {
+  if (!page.plan || readOnly.value || !page.selectedNode) return
+  const params = writeLoopConditionGroup(
+    page.selectedNode.params ?? {},
+    group,
+  )
+  page.plan = updateBusinessNode(page.plan, page.selectedNode.id, { params })
+}
 
 const JOIN_MERGE_STRATEGY_OPTIONS = [
   { label: 'collect · 收集为数组（默认）', value: 'collect' },
@@ -148,13 +174,6 @@ const ON_MAX_ITERATIONS_OPTIONS = [
   { label: '失败终止 fail_fast', value: 'fail_fast' },
   { label: '出框继续 exit', value: 'exit' },
   { label: '降级 ReAct fallback_react', value: 'fallback_react' },
-]
-
-const CONDITION_OP_OPTIONS = [
-  { label: '为空 empty', value: 'empty' },
-  { label: '非空 not_empty', value: 'not_empty' },
-  { label: '包含 contains', value: 'contains' },
-  { label: '等于 eq', value: 'eq' },
 ]
 
 const defaultIntentAfter = computed(() => defaultCatalogIntentAfter(page.nodeDefaults))
@@ -634,34 +653,15 @@ function expand() {
                 </template>
                 <template v-else-if="page.selectedNode.type === 'loop'">
                   <WorkflowNodeConfigSection title="循环" :help="workflowNodeFieldHelp('loopTopology')">
-                    <NFormItem label="继续条件 · 左值（随上游自动填入）" :show-feedback="false">
-                      <NInput
-                        :value="loopConditionLeft(page.plan!, page.selectedNode.id)"
-                        disabled
-                        placeholder="{{start.userQuery}}"
-                      />
-                    </NFormItem>
-                    <NFormItem label="继续条件 · 算子" :show-feedback="false">
-                      <NSelect
-                        :value="String(page.selectedNode.params?.['condition.op'] || 'contains')"
-                        :options="CONDITION_OP_OPTIONS"
+                    <div class="loop-condition-group">
+                      <span class="condition-label">继续条件</span>
+                      <ConditionGroupEditor
+                        :model-value="loopConditionGroup"
+                        :upstream-nodes="loopUpstreamNodes"
                         :disabled="readOnly"
-                        @update:value="v => updateNodeParam('condition.op', String(v))"
+                        @update:modelValue="onLoopConditionUpdate"
                       />
-                    </NFormItem>
-                    <NFormItem
-                      v-if="page.selectedNode.params?.['condition.op'] !== 'empty'
-                        && page.selectedNode.params?.['condition.op'] !== 'not_empty'"
-                      label="继续条件 · 右值"
-                      :show-feedback="false"
-                    >
-                      <NInput
-                        :value="String(page.selectedNode.params?.['condition.right'] ?? '')"
-                        :disabled="readOnly"
-                        placeholder="比较值"
-                        @update:value="v => updateNodeParam('condition.right', v)"
-                      />
-                    </NFormItem>
+                    </div>
                     <NFormItem label="最大轮次" :show-feedback="false">
                       <NInputNumber
                         :value="Number(page.selectedNode.params?.maxIterations ?? 3)"
@@ -1007,6 +1007,18 @@ function expand() {
 
 .catalog-bind-hint code {
   font-family: var(--sun-font-mono, ui-monospace, monospace);
+  color: var(--sun-text-secondary);
+}
+
+.loop-condition-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.loop-condition-group .condition-label {
+  font-size: 12px;
   color: var(--sun-text-secondary);
 }
 

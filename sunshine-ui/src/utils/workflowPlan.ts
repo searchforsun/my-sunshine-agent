@@ -1,4 +1,10 @@
-import type { WorkflowPlan, WorkflowPlanNode, WorkflowNodeDefaultsResponse } from '../api/workflows'
+import type {
+  WorkflowPlan,
+  WorkflowPlanNode,
+  WorkflowPlanEdgeCondition,
+  WorkflowPlanEdgeConditionGroup,
+  WorkflowNodeDefaultsResponse,
+} from '../api/workflows'
 import { buildRetryParams, resolveNodeDefaults } from './workflowNodeParams'
 import { isGatewayType } from './workflowGateway'
 
@@ -151,6 +157,40 @@ export function loopConditionLeft(plan: WorkflowPlan, loopId: string): string {
   return resolveConditionLeftFromUpstream(plan, loopId)
 }
 
+/** 将 loop params 中的条件规范化为 {logic, items} 结构（用于 UI 编辑） */
+export function normalizeLoopConditionGroup(
+  params: Record<string, unknown> | undefined,
+): WorkflowPlanEdgeConditionGroup {
+  const conditions = params?.conditions
+  if (Array.isArray(conditions)) {
+    const logic = (params?.conditionLogic === 'or' ? 'or' : 'and') as 'and' | 'or'
+    const items = conditions.filter(c => c && typeof c === 'object') as WorkflowPlanEdgeCondition[]
+    return { logic, items: items.length > 0 ? items : [] }
+  }
+  // 兼容旧格式 condition.left/op/right
+  const left = String(params?.['condition.left'] ?? '')
+  const op = String(params?.['condition.op'] ?? '')
+  const right = String(params?.['condition.right'] ?? '')
+  if (op) {
+    return { logic: 'and', items: [{ left, op, right }] }
+  }
+  return { logic: 'and', items: [] }
+}
+
+/** 将条件组写回 loop params（新格式 conditions + conditionLogic） */
+export function writeLoopConditionGroup(
+  params: Record<string, unknown>,
+  group: WorkflowPlanEdgeConditionGroup,
+): Record<string, unknown> {
+  const next = { ...params }
+  delete next['condition.left']
+  delete next['condition.op']
+  delete next['condition.right']
+  next.conditions = group.items
+  next.conditionLogic = group.logic
+  return next
+}
+
 function resolveConditionLeftFromUpstream(plan: WorkflowPlan, nodeId: string): string {
   const edges = plan.edges ?? []
   const nodes = plan.nodes ?? []
@@ -258,26 +298,12 @@ export function reconcilePlanDataFlow(
   })
   const nodesWithLoop = nodes.map(n => {
     if (n.type !== 'loop') return n
-    const left = loopConditionLeft({ ...plan, nodes, edges }, n.id)
     const params = { ...(n.params ?? {}) }
-    const curLeft = String(params['condition.left'] ?? '')
-    if (curLeft === left
-      && params['condition.op']
-      && params['maxIterations']
-      && params['onMaxIterations']) {
-      return n
-    }
-    return {
-      ...n,
-      params: {
-        ...params,
-        'condition.left': left,
-        'condition.op': params['condition.op'] || 'contains',
-        'condition.right': params['condition.right'] ?? '',
-        maxIterations: params['maxIterations'] ?? '3',
-        onMaxIterations: params['onMaxIterations'] ?? 'fail_fast',
-      },
-    }
+    // 仅补全 maxIterations / onMaxIterations 默认值，不强制覆盖条件
+    if (!params.maxIterations) params.maxIterations = '3'
+    if (!params.onMaxIterations) params.onMaxIterations = 'fail_fast'
+    // 兼容旧格式：如果只有 condition.* 无 conditions，保留原样（解析层兼容）
+    return { ...n, params }
   })
   return { ...plan, nodes: nodesWithLoop, edges }
 }
