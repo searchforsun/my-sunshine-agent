@@ -207,11 +207,11 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 - **禁止跨框边**：loop↔body 之间不得有任何 edge（常见错误 lp1→n1）
 **外图 edges**：只写 start→loop（及 loop 之后由引擎接 answer；勿连 body）
 **框内 edges**：仅 body↔body；须单链无环；**单 body 可省略框内 edges**
-**loop.params 必填**：condition.left / condition.op / condition.right（contains/eq 时）、maxIterations(1-5)、onMaxIterations(fail_fast|exit|fallback_react)
-**condition.op 仅允许**：empty | not_empty | contains | eq（**勿用 ==**）
+**loop.params 必填**：conditions[]（每项 {left, op, right}）+ conditionLogic(and|or)；maxIterations(1-5)、onMaxIterations(fail_fast|exit|fallback_react)。兼容旧 condition.left/op/right。
+**condition.op 仅允许**：empty | not_empty | contains | not_contains | eq（**勿用 ==**）
 
 loop 正确示例（单行）：
-{"planId":null,"reason":"条件循环检索","nodes":[{"id":"lp1","type":"loop","displayName":"条件循环","params":{"condition.left":"{{start.userQuery}}","condition.op":"contains","condition.right":"继续","maxIterations":"2","onMaxIterations":"exit"}},{"id":"rb","type":"rag","displayName":"框内检索","parentId":"lp1","params":{"topK":"3"}}],"edges":[{"from":"start","to":"lp1"}]}
+{"planId":null,"reason":"条件循环检索","nodes":[{"id":"lp1","type":"loop","displayName":"条件循环","params":{"conditions":[{"left":"{{rb.output}}","op":"contains","right":"继续"}],"conditionLogic":"and","maxIterations":"2","onMaxIterations":"exit"}},{"id":"rb","type":"rag","displayName":"框内检索","parentId":"lp1","params":{"topK":"3"}}],"edges":[{"from":"start","to":"lp1"}]}
 
 loop **错误**示例（勿模仿）：edges 含 {"from":"lp1","to":"rb"} — 跨框边，校验失败 LOOP_CROSS_FRAME
 
@@ -220,7 +220,7 @@ loop **错误**示例（勿模仿）：edges 含 {"from":"lp1","to":"rb"} — �
 示例：{"planId":null,"reason":"双路并行检索","nodes":[{"id":"pg1","type":"parallel-gateway","displayName":"并行分叉","params":{}},{"id":"r1","type":"rag","displayName":"制度检索","params":{"topK":"3"}},{"id":"r2","type":"rag","displayName":"财务检索","params":{"topK":"3"}},{"id":"j1","type":"join","displayName":"并行汇总","params":{}}],"edges":[{"from":"start","to":"pg1"},{"from":"pg1","to":"r1"},{"from":"pg1","to":"r2"},{"from":"r1","to":"j1"},{"from":"r2","to":"j1"}]}
 
 **条件分支**：exclusive 出边带 condition 或 default:true（恰好 1 条 default）
-示例：{"planId":null,"reason":"按关键词分支","nodes":[{"id":"xg1","type":"exclusive-gateway","displayName":"条件分支","params":{}},{"id":"rf","type":"rag","displayName":"财务检索","params":{"topK":"3"}},{"id":"rh","type":"rag","displayName":"人事检索","params":{"topK":"3"}}],"edges":[{"from":"start","to":"xg1"},{"from":"xg1","to":"rf","condition":{"left":"{{start.userQuery}}","op":"contains","right":"报销"}},{"from":"xg1","to":"rh","default":true}]}
+示例：{"planId":null,"reason":"按关键词分支","nodes":[{"id":"xg1","type":"exclusive-gateway","displayName":"条件分支","params":{}},{"id":"rf","type":"rag","displayName":"财务检索","params":{"topK":"3"}},{"id":"rh","type":"rag","displayName":"人事检索","params":{"topK":"3"}}],"edges":[{"from":"start","to":"xg1"},{"from":"xg1","to":"rf","condition":{"logic":"or","items":[{"left":"{{start.userQuery}}","op":"contains","right":"报销"},{"left":"{{start.userQuery}}","op":"contains","right":"发票"}]}},{"from":"xg1","to":"rh","default":true}]}
 
 ## 五、线性链示例
 {"planId":null,"reason":"制度+待审批+合规","nodes":[{"id":"n1","type":"rag","displayName":"检索制度","params":{"topK":"3"}},{"id":"n2","type":"tool","displayName":"查待审批","params":{"tool":"sdk__sunshine-finance__list_my_expenses","status":"pending"}},{"id":"n3","type":"agent","displayName":"合规分析","params":{"skill":"compliance-check","context":"{{n1.output}}\\\\n{{n2.output}}","query":"归纳风险"}}],"edges":[{"from":"start","to":"n1"},{"from":"n1","to":"n2"},{"from":"n2","to":"n3"}]}
