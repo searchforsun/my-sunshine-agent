@@ -12,9 +12,6 @@ export interface ToolParamField {
   required: boolean
 }
 
-/** @deprecated output.mode 已在 WF-1 结构化 I/O 中废弃，保留以兼容旧 plan 解析，不再用于编辑 UI */
-export type ToolOutputMode = 'full' | 'summary' | 'extract'
-
 export function parseToolSchemaFields(tool?: ToolCatalogEntry | null): ToolParamField[] {
   if (!tool?.parameters) return []
   const props = (tool.parameters as { properties?: Record<string, { description?: string }> }).properties

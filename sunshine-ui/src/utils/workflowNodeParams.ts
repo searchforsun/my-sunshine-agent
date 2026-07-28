@@ -25,6 +25,7 @@ export const ON_FAILURE_OPTIONS = [
   { label: '降级 ReAct（fallback_react）', value: 'fallback_react' },
 ] as const
 
+// 过滤旧 plan JSON 中可能残留的 output.mode/output.extract（WF-1 前遗留字段，新 plan 不再写入）
 const RESERVED_TOOL_PARAM_KEYS = new Set([
   'tool',
   'output.mode',
