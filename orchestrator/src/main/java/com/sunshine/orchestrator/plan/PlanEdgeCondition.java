@@ -21,6 +21,7 @@ public record PlanEdgeCondition(String left, String op, String right) {
                 || "lte".equals(op) || "in".equals(op) || "not_in".equals(op)) {
             return !left.isBlank();
         }
+        // eq / not_eq / contains / not_contains 需 left + right
         return !left.isBlank() && !right.isBlank();
     }
 }
