@@ -212,7 +212,7 @@ async function handleSave() {
 }
 
 .settings-nav-item:hover:not(:disabled) {
-  border-color: var(--sun-border);
+  color: var(--sun-text-strong, var(--sun-text));
 }
 
 .settings-nav-item.active {
