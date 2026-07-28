@@ -55,6 +55,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_sandbox_tool_cancel_live.py` | **4.5.7** 沙箱 exec/grep/glob 单工具取消（paused + 主消息 completed） |
 | `verify_context_layers_live.py` | **上下文 L1/L2/L3** Admin + 单测门禁（SUB 空记忆 / 近窗排除 / GC） |
 | `verify_dynamic_context_live.py` | **动态上下文压缩** 单测聚合 + Gateway `/v1/models` + 短对话不压缩（`--skip-live` 跳过 SSE） |
+| `verify_observability_live.py` | **6.x 可观测性** 三台联动 Live（L1 指标/L2 Run 瀑布/L3 Kibana trace_id/L4 SkyWalking 业务 span/L5 Grafana） |
 
 沙箱文档索引：[`docs/sandbox/README.md`](./docs/sandbox/README.md)。
 | `verify_tool_integration_live.py` | **4.8** SDK+MCP 工具集成 Live（`--suite sdk\|mcp\|toolset\|hitl\|all`） |
@@ -81,7 +82,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 |--------|--------|
 | 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册（metadata `sunshine.tool-app=true`）→ `/tools` 启用 → 加入 ReAct 工具集；Workflow 节点 `params.tool` 填 **Catalog ID**（`sdk__{app}__{name}`）；**禁止** tool-manager 新增编译期 `ToolHandler` |
 | 新 Workflow | **4.13**：`/workflows` + `workflow-manager` DB（**唯一 SSOT**，废弃 Nacos workflow）；MySQL init 种子 **8 标杆**（`13-sunshine-workflow-manager.sql`，含 `knowledge-branch` / `knowledge-loop` / `sandbox-agent`）；orchestrator `WorkflowManagerClient` |
-| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanExecutionCanvas`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
+| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanExecutionCanvas`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`）--静态 workflow 的 answer prompt 是业务定制内容（含特定上游 `{{nodeId.output}}` 引用与流程约束），与 workflow 定义一体维护于 DB `plan_json`，非 Java 硬编码；动态 Plan 才走 Catalog `answer.template` |
 | **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；重试策略 SSOT **`execution_mode_policy`**（tool-manager DB，`/tools` Planner Workflow Tab）；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 Catalog **`answer.template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
@@ -109,6 +110,8 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 **Query 改写（3.8.1 ✅ → 4.0 迁移）**：检索侧 `rag.rewrite.{rag,hyde,empty-recall}` 迁入 `sunshine-rag.yaml` + pipeline；orchestrator 保留 `intent`（`<8` 字）| `planner`；HyDE 为 **首次 0 命中 fallback**；Timeline RAG 步骤读 response `trace`。
 
 **RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）；向量锚点门禁见 `RetrievalService`。
+
+**可观测性（6.x 设计中）**：三台联动以 `traceId` 贯穿--logging 经 Filebeat 进 ES（logback `%tid` 注入 SkyWalking traceId）+ Kibana Index Pattern；metrics 全服务 Prometheus + LLM 指标（`LlmMetricsRecorder`：`llm_call_duration_seconds`/`llm_tokens_total`/`llm_tool_calls_total`/`llm_fallback_total`）+ Grafana 面板；trace 业务 span（`@Trace`：`orchestrator.execution`/`agent.run`/`react.loop`/`workflow.node`/`tool.invoke`/`rag.search`）+ SSE 首事件 traceId；前端 `/observability` LangSmith 式 Run Explorer（echarts 瀑布图 + 三台外链）；详设 `2026-07-27-observability-enhancement-design.md`。**复用** 5.1/5.2/5.3 落库，不重复建表。
 
 ### 时间线（ReAct vs Workflow DAG）
 
