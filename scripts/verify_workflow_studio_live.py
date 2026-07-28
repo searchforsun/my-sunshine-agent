@@ -412,12 +412,20 @@ def suite_parallel() -> None:
 
 
 def suite_exclusive() -> None:
-    print("[exclusive] 4.13.7 exclusive-gateway 边条件 Live")
+    print("[exclusive] 4.13.7 exclusive-gateway 边条件 Live（OR 多条件）")
     preflight_rag()
     token_hdr = auth_headers()
     token = token_hdr["Authorization"].removeprefix("Bearer ").strip()
 
-    # 条件命中：含「报销」→ 财务 RAG
+    # 多条件语义（knowledge-branch 升级后）：
+    #   condition.logic = or
+    #   condition.items = [
+    #     { start.userQuery contains "报销" },
+    #     { start.userQuery contains "发票" },
+    #   ]
+    # 含「报销」或「发票」均命中财务分支 rag-f1a2b3c4；都不含走 default rag-d5e6f7a8。
+    #
+    # q1（含「报销」）：OR 第一条命中 → 财务 RAG
     conv1 = conversation_id(auth_json("POST", "/api/conversations", None, token))
     q1 = "#knowledge-branch 网约车报销需要哪些材料"
     print(f"  query={q1}")
@@ -432,9 +440,9 @@ def suite_exclusive() -> None:
         raise RuntimeError(f"条件分支未走财务 RAG: steps={s1[:800]}")
     if "node-rag-d5e6f7a8" in s1:
         raise RuntimeError("条件命中时不应执行默认人事 RAG")
-    print("  [OK] 含「报销」→ node-rag-f1a2b3c4")
+    print("  [OK] 含「报销」→ OR 第一条命中 → node-rag-f1a2b3c4")
 
-    # 默认分支：无「报销」→ 人事 RAG
+    # q2（都不含）：OR 两条均不命中 -> 走 default 人事 RAG
     conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
     q2 = "#knowledge-branch 青松假怎么申请"
     print(f"  query={q2}")
@@ -449,7 +457,24 @@ def suite_exclusive() -> None:
         raise RuntimeError(f"默认分支未走人事 RAG: steps={s2[:800]}")
     if "node-rag-f1a2b3c4" in s2:
         raise RuntimeError("默认分支不应执行财务 RAG")
-    print("  [OK] 无「报销」→ node-rag-d5e6f7a8")
+    print("  [OK] 都不含 → OR 不命中 → default node-rag-d5e6f7a8")
+
+    # q3（含「发票」）：OR 第二条命中 → 财务 RAG
+    conv3 = conversation_id(auth_json("POST", "/api/conversations", None, token))
+    q3 = "#knowledge-branch 发票申请流程"
+    print(f"  query={q3}")
+    chat_sse(token, conv3, q3, executionPreference="auto")
+    a3 = wait_assistant(token, conv3, max(HASH_TIMEOUT_SEC, 180))
+    if not workflow_hit(a3, "knowledge-branch"):
+        raise RuntimeError(
+            f"exclusive OR 路由失败 workflowId={a3.get('workflowId')} intent={a3.get('intent')}",
+        )
+    s3 = json.dumps(a3.get("steps") or [], ensure_ascii=False)
+    if "node-rag-f1a2b3c4" not in s3:
+        raise RuntimeError(f"OR 第二条命中未走财务 RAG: steps={s3[:800]}")
+    if "node-rag-d5e6f7a8" in s3:
+        raise RuntimeError("OR 命中时不应执行默认人事 RAG")
+    print("  [OK] 含「发票」→ OR 第二条命中 → node-rag-f1a2b3c4")
 
 
 def _as_steps(assistant: dict) -> list[dict]:
@@ -476,12 +501,20 @@ def _find_loop_step(assistant: dict) -> dict | None:
 
 
 def suite_loop() -> None:
-    print("[loop] 4.13.7 loop do-while + subSteps Live")
+    print("[loop] 4.13.7 loop do-while + subSteps Live（AND 多条件）")
     preflight_rag()
     token_hdr = auth_headers()
     token = token_hdr["Authorization"].removeprefix("Bearer ").strip()
 
-    # 无「继续」→ 首轮必进，仅 1 轮
+    # 多条件语义（knowledge-loop 升级后）：
+    #   conditions = [
+    #     { rag-l1o2o3p4.output contains "继续" },
+    #     { tool-t1o2o3p4.output not_contains "已完成" },
+    #   ]
+    #   conditionLogic = and
+    # 即：检索输出含「继续」且待报销未「已完成」才继续下一轮。
+    #
+    # q1（无「继续」）：rag 输出不含「继续」→ AND 第一条不满足 → 条件不满足 → 仅 i1 一轮退出
     conv1 = conversation_id(auth_json("POST", "/api/conversations", None, token))
     q1 = "#knowledge-loop 分析青松假余额和我的待报销"
     print(f"  query={q1}")
@@ -494,7 +527,7 @@ def suite_loop() -> None:
     top1 = _top_step_ids(a1)
     if "node-loop-a1b2c3d4" not in top1:
         raise RuntimeError(f"主时间线缺少 loop 步: {top1}")
-    for body_id in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-agent-a1g2e3n4"):
+    for body_id in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-tool-leave01", "node-agent-a1g2e3n4"):
         if body_id in top1:
             raise RuntimeError(f"body 不应出现在主时间线: {body_id} in {top1}")
     loop1 = _find_loop_step(a1)
@@ -504,16 +537,19 @@ def suite_loop() -> None:
     if "未进入循环体" in after1:
         raise RuntimeError(f"do-while 应至少 1 轮: after={after1}")
     sub1 = [str(s.get("id") or "") for s in (loop1.get("subSteps") or []) if isinstance(s, dict)]
-    for body in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-agent-a1g2e3n4"):
+    for body in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-tool-leave01", "node-agent-a1g2e3n4"):
         if f"i1-{body}" not in sub1:
             raise RuntimeError(f"首轮缺少 {body}: {sub1}")
         if f"i2-{body}" in sub1:
             raise RuntimeError(f"无「继续」不应有第 2 轮: {sub1}")
-    print("  [OK] 无「继续」→ 首轮必进，仅 i1 body")
+    print("  [OK] 无「继续」→ AND 第一条不满足 → 仅 i1 一轮")
 
-    # 含「继续」→ 最多 2 轮
+    # q2（检索含「继续」）：查询「继续出差违规处理」使 rag 命中《跨制度场景处理速查》§8
+    # 禁止事项 chunk（含「禁止隐瞒病情继续挂出差状态...」），故 rag 输出 contains "继续"（AND 第一条满足）；
+    # tool 输出「未查询到符合条件的报销单。」不含「已完成」（AND 第二条满足）
+    # → 条件满足 → 继续 i2 → i2 后达 maxIterations=2 → exit
     conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
-    q2 = "#knowledge-loop 继续分析青松假余额和我的待报销"
+    q2 = "#knowledge-loop 继续出差违规处理和待报销"
     print(f"  query={q2}")
     chat_sse(token, conv2, q2, executionPreference="auto")
     a2 = wait_assistant(token, conv2, max(HASH_TIMEOUT_SEC, 180))
@@ -526,11 +562,11 @@ def suite_loop() -> None:
         raise RuntimeError("多轮未找到 node-loop-* 步骤")
     sub2 = [str(s.get("id") or "") for s in (loop2.get("subSteps") or []) if isinstance(s, dict)]
     for round_prefix in ("i1-", "i2-"):
-        for body in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-agent-a1g2e3n4"):
+        for body in ("node-rag-l1o2o3p4", "node-tool-t1o2o3p4", "node-tool-leave01", "node-agent-a1g2e3n4"):
             expect = round_prefix + body
             if expect not in sub2:
                 raise RuntimeError(f"缺少 subStep {expect}: {sub2}")
-    print("  [OK] 含「继续」→ i1/i2 rag+tool+agent")
+    print("  [OK] 含「继续」→ AND 两条均满足 → i1/i2 rag+tool+agent")
 
 
 def main() -> int:
