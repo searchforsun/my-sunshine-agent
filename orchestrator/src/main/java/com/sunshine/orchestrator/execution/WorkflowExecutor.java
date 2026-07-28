@@ -442,6 +442,11 @@ public class WorkflowExecutor {
                 fallback = arm;
                 continue;
             }
+            // 空条件组（PlanEdge 构造时把空 group 折叠为 null）不可作为命中条件，
+            // 否则 matchesGroup(null, ctx) 会返回 true 导致误选；跳过，回落到 default。
+            if (arm.condition() == null) {
+                continue;
+            }
             if (EdgeConditionEvaluator.matchesGroup(arm.condition(), wfCtx)) {
                 return arm;
             }

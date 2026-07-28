@@ -348,6 +348,10 @@ public final class PlanExecutionSchedule {
     }
 
     private static PlanValidationIssue validateLoopOp(String nodeId, String op, String right) {
+        // 算子集与 EdgeConditionEvaluator.matches 保持一致（in/not_in 除外——loop 条件
+        // 不支持集合判定，故此处拒绝）。新旧两种 conditions 形态共用此校验：旧格式
+        // condition.* 原仅允许 empty/not_empty/contains/eq，现放宽至全部算子，属
+        // 向后兼容的渐进增强（旧 plan 仍可通过校验，新 plan 可用 gt/lt 等）。
         if (!"empty".equals(op) && !"not_empty".equals(op)
                 && !"contains".equals(op) && !"not_contains".equals(op)
                 && !"eq".equals(op) && !"not_eq".equals(op)
@@ -448,17 +452,6 @@ public final class PlanExecutionSchedule {
             cur = nexts.isEmpty() ? null : nexts.get(0);
         }
         return List.copyOf(order);
-    }
-
-    public static PlanEdgeCondition loopCondition(PlanNode loopNode) {
-        if (loopNode == null) {
-            return null;
-        }
-        Map<String, Object> p = loopNode.params();
-        return new PlanEdgeCondition(
-                paramStr(p, "condition.left", ""),
-                paramStr(p, "condition.op", ""),
-                paramStr(p, "condition.right", ""));
     }
 
     public static int loopMaxIterations(PlanNode loopNode) {
