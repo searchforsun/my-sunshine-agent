@@ -97,6 +97,43 @@
 
 ---
 
+### 阶段五：运营化与开放化（规划）
+
+> 设计 spec（SSOT）：[superpowers/specs/phase5-operation-openness-design.md](./superpowers/specs/phase5-operation-openness-design.md)（2026-07-27 立项）
+
+| 任务卡 | 内容 | 状态 |
+|--------|------|:----:|
+| **5.1** 对话 Badcase 闭环 | 消息反馈标注 + `/ops` 运营页 + 回流 RAG golden-set + 效果报表 | ⬜ |
+| **5.2** 用量计量与配额 | token 落库（`LlmIoTracer` → MQ → MySQL）+ 租户配额 429 + 用量页 | ⬜ |
+| **5.3** 多模型场景路由 | `model_route_policy` 表 + `scene` 注入 + `ModelRouter` 扩展（`model=auto`） | ⬜ |
+| **5.4** Optimizer MVP | Badcase/评测 → 提案 → prompt/kb draft → 复评对比 → 人工发布（半自动） | ⬜ |
+| **5.5** 工具语义检索 | 工具描述 Milvus 索引 + ReAct Top-K 注入 + HITL/元工具白名单 | ⬜ |
+| **5.6** 开放 API | `api_key` + Gateway Bearer 校验 + `/open/v1/*`（直转 orchestrator 不经 BFF） | ⬜ |
+| **5.7** Prompt 灰度 | canary 版本百分比分流 + 指标对比 + 全量/回滚 | ⬜ |
+| 5.8–5.10 | 渠道嵌入 / 组织分级 / ASR·TTS | 按需 |
+| — | 通用 A/B 平台、多 Agent 通用消息总线 | **明确不做**（spec §7 D1/D3） |
+
+**前置**：4.11 收口 + AS2 遗留人工验收（spec §7 D5）。**建议顺序**：5.1 → 5.2 → 5.6 → 5.3 → 5.7 → 5.4 → 5.5。
+
+---
+
+### 可观测性增强（6.x · 贯穿阶段三收口 + 阶段五底座）
+
+> 设计 spec（SSOT）：[superpowers/specs/2026-07-27-observability-enhancement-design.md](./superpowers/specs/2026-07-27-observability-enhancement-design.md)（2026-07-27 立项）
+> **定位**：补齐 logging(Kibana) / metrics(Grafana) / trace(SkyWalking) 三台端到端闭环 + 前端 LangSmith 式 Run Explorer；**复用** 5.1/5.2/5.3 落库与聚合，不重复建表
+
+| 任务卡 | 内容 | 优先级 | 状态 |
+|--------|------|:------:|:----:|
+| **6.1** | Logging 集中化 + traceId 关联：logback `%tid` + Filebeat 采集进 ES + 关键日志 JSON 结构化 + Kibana Index Pattern | P1 | ⬜ |
+| **6.2** | Metrics 全服务覆盖 + LLM 指标 + 告警落地：全 Java 服务补 prometheus；`LlmMetricsRecorder`（耗时/token/工具调用/降级/熔断）+ orchestrator/tool 指标；Grafana 面板 ×3 + LLM 告警 | **P0** | ⬜ |
+| **6.3** | Trace 业务 span 补全 + SSE 串联 + agent 告警：`@Trace` 注解（execution/agent.run/react.loop/workflow.node/tool.invoke/rag.search）；SSE 首事件 traceId；`start.py` agent 缺失显式 WARN | P1 | ⬜ |
+| **6.4** | 前端 Run Explorer 观测页（`/observability`）：会话/Run 列表 + 瀑布图（echarts）+ 步骤详情 + 三台外链跳转；BFF 聚合 API（复用 `chat_message.steps` + 5.2 用量表） | **P0** | ⬜ |
+| **6.5** | 三台联动：traceId 贯穿前端观测页 / Kibana / SkyWalking / Grafana；`chat_message.trace_id` 落库 | P1 | ⬜ |
+
+**检查门**：`scripts/verify_observability_live.py`（L1 指标/L2 Run 瀑布/L3 Kibana trace_id 命中/L4 SkyWalking 业务 span/L5 Grafana 数据点）。
+
+---
+
 ### 前端模块
 
 | 页面 | 路由 | 功能 |

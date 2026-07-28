@@ -18,6 +18,7 @@
 | [sandbox-container-lifecycle](../superpowers/specs/2026-07-17-sandbox-container-lifecycle-design.md) | idle 停机 / 再进开机 / 7 天销毁 |
 | [sandbox-tool-cancel](../superpowers/specs/2026-07-18-sandbox-tool-cancel-design.md) | **✅** exec/grep/glob 单工具取消（杀进程）· 主行「已取消」· 同族预算 3 · Live `verify_sandbox_tool_cancel_live` |
 | [sandbox-diff-line-numbers](../superpowers/specs/2026-07-21-sandbox-diff-line-numbers-design.md) | **✅** 工作区代码预览绝对行号 · 时间线 write/edit Git 双栏 diff（`metadata.editDiff` ±3 上下文） |
+| [sandbox-repo-binding](../superpowers/specs/2026-07-28-sandbox-repo-binding-design.md) | **待评审** 工作区绑定 Git 项目：用户级 GitHub/GitLab 令牌 + clone 进 /workspace + per-session egress |
 
 ## 运维与示例
 
