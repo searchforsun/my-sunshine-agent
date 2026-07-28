@@ -11,7 +11,7 @@ import {
   isPageUnloading,
 } from './streamError'
 import { stampTimelineEnded, stampTimelineStarted } from './timelineMessageClock'
-import { apiHeaders } from '../stores/authStore'
+import { apiHeaders, useAuthStore } from '../stores/authStore'
 import {
   loadActiveGeneration,
   clearActiveGenerationIfMatch,
@@ -139,6 +139,11 @@ export function useChatSessions(
       }
       if (options?.writeHitlMode) {
         body.writeHitlMode = options.writeHitlMode
+      }
+      // 个人规则（soul）：用户级常量随请求透传，非单次发送选项，不入 SendOptions
+      const personalRules = useAuthStore().user?.personalRules?.trim()
+      if (personalRules) {
+        body.personalRules = personalRules
       }
 
       const response = await fetch(`${API_BASE()}/api/chat/stream`, {

@@ -9,6 +9,8 @@ export interface AuthUser {
   tenantId: string
   /** never|always|smart */
   defaultWriteHitlMode?: string
+  /** 用户个人规则（soul），注入系统提示；null/缺省表示未配置 */
+  personalRules?: string | null
 }
 
 export interface LoginResult extends AuthUser {
@@ -55,11 +57,12 @@ export async function updateProfile(
   nickname: string,
   tenantId: string,
   defaultWriteHitlMode?: string,
+  personalRules?: string | null,
 ): Promise<UpdateProfileResult> {
   const res = await fetch(`${resolveApiBase()}/api/auth/profile`, {
     method: 'PATCH',
     headers: apiHeaders(),
-    body: JSON.stringify({ nickname, tenantId, defaultWriteHitlMode }),
+    body: JSON.stringify({ nickname, tenantId, defaultWriteHitlMode, personalRules }),
   })
   return parseApiResponse<UpdateProfileResult>(res)
 }

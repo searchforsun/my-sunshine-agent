@@ -16,6 +16,7 @@ function toAuthUser(res: authApi.AuthUser): authApi.AuthUser {
     defaultWriteHitlMode: isWriteHitlMode(res.defaultWriteHitlMode)
       ? res.defaultWriteHitlMode
       : 'never',
+    personalRules: res.personalRules ?? null,
   }
 }
 
@@ -73,8 +74,9 @@ export const useAuthStore = defineStore('auth', () => {
     nickname: string,
     tenantId: string,
     defaultWriteHitlMode?: string,
+    personalRules?: string | null,
   ) {
-    const res = await authApi.updateProfile(nickname, tenantId, defaultWriteHitlMode)
+    const res = await authApi.updateProfile(nickname, tenantId, defaultWriteHitlMode, personalRules)
     if (!res.token?.trim()) {
       throw new Error('资料已保存但登录凭证刷新失败，请重新登录')
     }
