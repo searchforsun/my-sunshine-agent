@@ -82,7 +82,7 @@ async function handleSave() {
   <NModal
     :show="show"
     preset="card"
-    title="账号设置"
+    title="设置"
     class="user-settings-modal"
     :style="{ width: 'min(680px, 94vw)' }"
     :mask-closable="!saving"
@@ -127,7 +127,7 @@ async function handleSave() {
                 :disabled="saving"
                 @update:model-value="tenantId = $event"
               />
-              <p class="settings-hint">影响 Chat 知识库检索与对话隔离；保存后自动刷新登录凭证，无需重新登录。</p>
+              <p class="settings-hint">保存后自动刷新登录凭证，无需重新登录。</p>
             </div>
           </NFormItem>
           <NFormItem label="默认执行模式">
@@ -138,7 +138,7 @@ async function handleSave() {
                 :disabled="saving"
                 @update:model-value="defaultMode = $event"
               />
-              <p class="settings-hint">新建或无记忆会话时使用；已有会话恢复其最近一次选择。</p>
+              <p class="settings-hint">已有会话保留其最近一次选择。</p>
             </div>
           </NFormItem>
           <NFormItem label="默认写操作确认">
@@ -149,7 +149,7 @@ async function handleSave() {
                 :disabled="saving"
                 @update:model-value="defaultWriteHitl = $event"
               />
-              <p class="settings-hint">新建或无记忆会话时使用；工作区可按会话临时覆盖，不回写此处默认。</p>
+              <p class="settings-hint">已有会话保留其最近一次选择；工作区临时覆盖不回写。</p>
             </div>
           </NFormItem>
         </NForm>
@@ -160,15 +160,13 @@ async function handleSave() {
                 v-model:value="personalRules"
                 class="sun-field"
                 type="textarea"
-                placeholder="例：回答默认使用简体中文；涉及金额时保留两位小数……"
+                placeholder="例：回答默认使用简体中文……"
                 maxlength="4000"
                 show-count
-                :autosize="{ minRows: 8, maxRows: 16 }"
+                :autosize="{ minRows: 8, maxRows: 8 }"
                 :disabled="saving"
               />
-              <p class="settings-hint">
-                将作为系统提示注入你的所有对话（ReAct / Workflow / 专家协作）；留空则不注入。子 Agent 不继承。
-              </p>
+              <p class="settings-hint">注入你的所有对话系统提示；留空不注入，子 Agent 不继承。</p>
             </div>
           </NFormItem>
         </NForm>
@@ -187,7 +185,8 @@ async function handleSave() {
 .settings-body {
   display: flex;
   gap: 16px;
-  min-height: 320px;
+  /* 锁定弹窗高度，切换分组不抖动；按最高面板（对话偏好 3 项 + 说明）对齐 */
+  height: 460px;
 }
 
 .settings-nav {
