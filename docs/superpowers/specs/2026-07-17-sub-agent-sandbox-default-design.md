@@ -1,6 +1,6 @@
 # SUB / Workflow agent 节点默认沙箱（方案 A）
 
-> **阶段**：4.5 沙箱 · **状态**：✅ 已实现  
+> **阶段**：4.5 沙箱 · **状态**：✅ 已实现（2026-07-28 增补工作区级粒度说明，见 §8）  
 > **日期**：2026-07-17  
 > **前序**：[conversation-sandbox-permanent-tools](./2026-07-16-conversation-sandbox-permanent-tools-design.md) · 索引 [docs/sandbox/README.md](../../sandbox/README.md)
 
@@ -109,3 +109,16 @@ flowchart LR
 | 容器 | 对话级复用（选 1） |
 | HITL | 继承 Chat `writeHitlMode`（选 1） |
 | 路径 | 方案 A |
+
+---
+
+## 8. 增补：工作区级粒度（2026-07-28）
+
+Codex 式智能体工作区（[task-workspace-codex](./2026-07-28-task-workspace-codex-design.md)）引入工作区级容器后，SUB 复用粒度按会话 `kind` 分流：
+
+| 会话 kind | SUB 复用键 | 说明 |
+|-----------|-----------|------|
+| `chat`（现状） | `conversationId` | 本 spec 原设计，不变 |
+| `agent`（工作区会话） | `workspaceId` | 经 `resolveWorkspaceId(conversationId)` 解析；同工作区多会话的 SUB 共享同一完全体容器 |
+
+读写并发约束（读并发/写串行写锁）对工作区内所有 MAIN/SUB 统一生效，见 task-workspace-codex §2.3。

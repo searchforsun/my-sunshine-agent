@@ -2,19 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { filterWorkspacePaths, matchWorkspacePathMention } from './workspacePathSuggest'
 
 describe('matchWorkspacePathMention', () => {
-  it('matches trailing slash query', () => {
-    expect(matchWorkspacePathMention('读 /workspace/test')).toEqual({
+  it('matches trailing at query', () => {
+    expect(matchWorkspacePathMention('读 @workspace/test')).toEqual({
       start: 2,
       query: 'workspace/test',
     })
   })
 
-  it('matches bare slash at end', () => {
-    expect(matchWorkspacePathMention('请读 /')).toEqual({ start: 3, query: '' })
+  it('matches bare at at end', () => {
+    expect(matchWorkspacePathMention('请读 @')).toEqual({ start: 3, query: '' })
   })
 
-  it('ignores when slash not at end', () => {
-    expect(matchWorkspacePathMention('/workspace 然后')).toBeNull()
+  it('ignores when at not at end', () => {
+    expect(matchWorkspacePathMention('@workspace 然后')).toBeNull()
   })
 })
 

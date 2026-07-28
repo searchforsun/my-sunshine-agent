@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NButton, NIcon } from 'naive-ui'
 import { CloseOutline } from '@vicons/ionicons5'
 import WorkflowDagEditor from './WorkflowDagEditor.vue'
 import WorkflowStudioCanvasToolbar from './WorkflowStudioCanvasToolbar.vue'
 import WorkflowStudioPropsColumn from './WorkflowStudioPropsColumn.vue'
+import { WORKFLOWS_PAGE_KEY, type WorkflowsPageApi } from '../../composables/useWorkflowsPage'
 import type { WorkflowPlan } from '../../api/workflows'
 
 const props = defineProps<{
@@ -24,6 +25,26 @@ const emit = defineEmits<{
   'update:plan': [plan: WorkflowPlan]
   select: [nodeId: string | null]
 }>()
+
+const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
+
+const validationAlertExpanded = ref(false)
+
+const validationCollapsedLine = computed(() => {
+  const issues = page.validationIssues
+  if (issues.length === 0) return ''
+  const head = `DAG 校验问题（${issues.length}）`
+  return issues.length === 1 ? `${head} · ${issues[0]}` : `${head} · ${issues[0]}…`
+})
+
+watch(
+  () => page.validationIssues.length,
+  (count, prev) => {
+    if (count > 0 && count !== prev) {
+      validationAlertExpanded.value = false
+    }
+  },
+)
 
 function close() {
   emit('update:show', false)
@@ -78,6 +99,38 @@ onUnmounted(() => {
       </header>
       <div class="wf-studio-layer-toolbar">
         <WorkflowStudioCanvasToolbar :read-only="readOnly" />
+      </div>
+      <div
+        v-if="page.validationIssues.length"
+        class="wf-studio-layer-validation"
+        :class="{ 'is-collapsed': !validationAlertExpanded, 'is-expanded': validationAlertExpanded }"
+      >
+        <button
+          type="button"
+          class="wf-studio-layer-validation-head"
+          :aria-expanded="validationAlertExpanded"
+          aria-label="展开或收起 DAG 校验问题"
+          @click="validationAlertExpanded = !validationAlertExpanded"
+        >
+          <svg
+            class="wf-studio-layer-validation-chevron"
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          <span v-if="validationAlertExpanded" class="wf-studio-layer-validation-title">DAG 校验问题</span>
+          <span v-else class="wf-studio-layer-validation-collapsed">{{ validationCollapsedLine }}</span>
+        </button>
+        <ul v-show="validationAlertExpanded" class="wf-studio-layer-validation-list">
+          <li v-for="(issue, idx) in page.validationIssues" :key="idx">{{ issue }}</li>
+        </ul>
       </div>
       <div class="wf-studio-layer-body studio-body">
         <div class="studio-canvas">
@@ -154,6 +207,61 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.wf-studio-layer-validation {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--sun-border);
+  background: var(--sun-amber-glow);
+}
+.wf-studio-layer-validation-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--sun-text);
+}
+.wf-studio-layer-validation.is-collapsed .wf-studio-layer-validation-head {
+  padding: 6px 16px;
+}
+.wf-studio-layer-validation-chevron {
+  flex-shrink: 0;
+  color: var(--sun-amber);
+  opacity: 0.85;
+  transition: transform 0.15s ease;
+}
+.wf-studio-layer-validation.is-expanded .wf-studio-layer-validation-chevron {
+  transform: rotate(90deg);
+}
+.wf-studio-layer-validation-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sun-text);
+}
+.wf-studio-layer-validation-collapsed {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--sun-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wf-studio-layer-validation-list {
+  margin: 0;
+  padding: 0 16px 10px 38px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--sun-text-muted);
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .wf-studio-layer-body {

@@ -3,7 +3,7 @@ import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skill
 import { allowsSkillMention, type ExecutionPreference } from '../api/executionModes'
 import type ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 
-/** Composer @ Skill 补全 */
+/** Composer / Skill 补全 */
 export function useChatSkillMention(
   inputText: Ref<string>,
   preference: Ref<ExecutionPreference>,
@@ -19,7 +19,7 @@ export function useChatSkillMention(
   const skillMentionAllowed = computed(() => allowsSkillMention(preference.value))
   const inputPlaceholder = computed(() =>
     skillMentionAllowed.value
-      ? '发消息，Enter 发送；输入 @ 指定 Skill'
+      ? '发消息，Enter 发送；输入 / 指定 Skill'
       : '发消息，Enter 发送',
   )
 
@@ -39,7 +39,7 @@ export function useChatSkillMention(
       showSkillSuggest.value = false
       return
     }
-    const match = text.match(/@([\w\u4e00-\u9fff-]*)$/)
+    const match = text.match(/\/([\w\u4e00-\u9fff-]*)$/)
     if (!match || match.index == null) {
       showSkillSuggest.value = false
       return
@@ -58,7 +58,7 @@ export function useChatSkillMention(
   function applySkillSuggest(skill: SkillCatalogIndexEntry) {
     if (skillMentionStart.value < 0) return
     const prefix = inputText.value.slice(0, skillMentionStart.value)
-    inputText.value = `${prefix}@${skill.id} `
+    inputText.value = `${prefix}/${skill.id} `
     showSkillSuggest.value = false
     nextTick(() => inputRef.value?.focus())
   }

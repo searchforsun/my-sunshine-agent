@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
-import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, LayersOutline, PeopleOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline } from '@vicons/ionicons5'
+import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, PeopleOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
@@ -69,7 +69,7 @@ const chatMenuOptions = computed((): MenuOption[] => {
 
 const platformMenuOptions: MenuOption[] = [
   { label: '知识库', key: 'knowledge', icon: renderIcon(BookOutline) },
-  { label: 'Skills', key: 'skills', icon: renderIcon(LayersOutline) },
+  { label: 'Skills', key: 'skills', icon: renderIcon(SparklesOutline) },
   { label: '工作流', key: 'workflows', icon: renderIcon(GitNetworkOutline) },
   { label: '工具', key: 'tools', icon: renderIcon(ConstructOutline) },
   { label: '专家', key: 'experts', icon: renderIcon(PeopleOutline) },

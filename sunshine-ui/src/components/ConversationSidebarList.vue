@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { NDropdown, type DropdownOption } from 'naive-ui'
 import { EllipsisHorizontal } from '@vicons/ionicons5'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useChatStore } from '../stores/chatStore'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarGroups } from '../composables/useConversationSidebarGroups'
 import { useConversationSidebarIndicator, type SidebarConvIndicator } from '../composables/useConversationSidebarIndicator'
-import { formatConversationTime } from '../utils/conversationTime'
+import { formatSidebarItemTime } from '../utils/conversationTime'
 import type { Conversation } from '../stores/chatStore'
 import ConversationStatusIcon from './ConversationStatusIcon.vue'
+import ConversationHoverCard from './ConversationHoverCard.vue'
 
 const emit = defineEmits<{
   switch: [id: string]
@@ -26,6 +27,24 @@ const { resolveIndicator } = useConversationSidebarIndicator()
 const { attentionByConv } = useConversationAttention()
 const { groups, now } = useConversationSidebarGroups(computed(() => chatStore.conversations))
 
+/** hover 详情卡：当前 hovered 会话 + anchor + card 引用 */
+const hoverConv = ref<Conversation | null>(null)
+const hoverAnchor = ref<HTMLElement | null>(null)
+const hoverCardRef = ref<InstanceType<typeof ConversationHoverCard> | null>(null)
+
+function onItemEnter(conv: Conversation, e: MouseEvent) {
+  hoverConv.value = conv
+  hoverAnchor.value = e.currentTarget as HTMLElement
+  // 等 card 挂载后 show
+  requestAnimationFrame(() => hoverCardRef.value?.show())
+}
+
+function onItemLeave() {
+  hoverCardRef.value?.hide()
+  hoverConv.value = null
+  hoverAnchor.value = null
+}
+
 /** 仅在对话页高亮当前会话；进入平台页后取消选中态 */
 function isActiveConv(id: string): boolean {
   return route.name === 'chat' && id === chatStore.currentId
@@ -38,7 +57,7 @@ function indicator(conv: Conversation): SidebarConvIndicator | null {
 
 function convTime(conv: Conversation): string {
   void now.value
-  return formatConversationTime(conv.createdAt, now.value)
+  return formatSidebarItemTime(conv.updatedAt, now.value)
 }
 
 function handleSwitch(id: string) {
@@ -64,6 +83,8 @@ function handleMenu(key: string) {
           'is-hitl-pending': indicator(conv) === 'hitl_pending',
         }"
         @click="handleSwitch(conv.id)"
+        @mouseenter="onItemEnter(conv, $event)"
+        @mouseleave="onItemLeave"
       >
         <ConversationStatusIcon
           :state="indicator(conv)"
@@ -95,6 +116,12 @@ function handleMenu(key: string) {
     <div v-else class="history-empty">
       <span class="history-empty-text">暂无对话</span>
     </div>
+    <ConversationHoverCard
+      v-if="hoverConv"
+      ref="hoverCardRef"
+      :conversation="hoverConv"
+      :anchor="hoverAnchor"
+    />
   </div>
 </template>
 

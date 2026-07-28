@@ -59,11 +59,18 @@ WORKFLOWS: list[dict[str, Any]] = [
                     "displayName": "查询我的报销单",
                     "params": {
                         "tool": T_LIST_EXP,
-                        "status": "{{plan.params.status}}",
                         "retry.maxAttempts": "2",
                         "retry.backoffMs": "500",
                         "retry.onFailure": "continue",
                     },
+                    "inputs": [
+                        {
+                            "name": "status",
+                            "source": "{{plan.params.status}}",
+                            "type": "string",
+                            "required": False,
+                        },
+                    ],
                 },
                 {
                     "id": "answer",
@@ -147,11 +154,18 @@ WORKFLOWS: list[dict[str, Any]] = [
                     "displayName": "查询我的报销单",
                     "params": {
                         "tool": T_LIST_EXP,
-                        "status": "{{plan.params.status}}",
                         "retry.maxAttempts": "2",
                         "retry.backoffMs": "500",
                         "retry.onFailure": "continue",
                     },
+                    "inputs": [
+                        {
+                            "name": "status",
+                            "source": "{{plan.params.status}}",
+                            "type": "string",
+                            "required": False,
+                        },
+                    ],
                 },
                 {
                     "id": "agent-b2c6d803",
@@ -257,11 +271,18 @@ WORKFLOWS: list[dict[str, Any]] = [
                     "displayName": "汇总我的报销",
                     "params": {
                         "tool": T_SUM_EXP,
-                        "status": "{{plan.params.status}}",
                         "retry.maxAttempts": "2",
                         "retry.backoffMs": "500",
                         "retry.onFailure": "continue",
                     },
+                    "inputs": [
+                        {
+                            "name": "status",
+                            "source": "{{plan.params.status}}",
+                            "type": "string",
+                            "required": False,
+                        },
+                    ],
                 },
                 {
                     "id": "answer",
@@ -703,11 +724,18 @@ WORKFLOWS: list[dict[str, Any]] = [
                     "displayName": "查询我的待报销",
                     "params": {
                         "tool": T_LIST_EXP,
-                        "status": "{{plan.params.status}}",
                         "retry.maxAttempts": "2",
                         "retry.backoffMs": "500",
                         "retry.onFailure": "continue",
                     },
+                    "inputs": [
+                        {
+                            "name": "status",
+                            "source": "{{plan.params.status}}",
+                            "type": "string",
+                            "required": False,
+                        },
+                    ],
                 },
                 {
                     "id": "tool-leave01",
@@ -1074,11 +1102,18 @@ WORKFLOWS: list[dict[str, Any]] = [
                     "displayName": "查询我的报销单",
                     "params": {
                         "tool": T_LIST_EXP,
-                        "status": "{{plan.params.status}}",
                         "retry.maxAttempts": "2",
                         "retry.backoffMs": "500",
                         "retry.onFailure": "continue",
                     },
+                    "inputs": [
+                        {
+                            "name": "status",
+                            "source": "{{plan.params.status}}",
+                            "type": "string",
+                            "required": False,
+                        },
+                    ],
                 },
                 {
                     "id": "agent-expcomp1",
@@ -1262,6 +1297,327 @@ WORKFLOWS: list[dict[str, Any]] = [
                 "answer",
             ],
             "intentAfter": "将按 OA 待办助手流程处理",
+        },
+    },
+    # ── 新标杆：parameter-extractor + 字面量 inputs + 嵌套路径 ──
+    {
+        "id": "expense-detail-query",
+        "displayName": "报销单详情查询",
+        "description": "parameter-extractor 提取报销单 ID → 查询详情 → 展示（结构化 IO 标杆）",
+        "mode": "workflow",
+        "plan": {
+            "planId": None,
+            "reason": "结构化 IO 标杆：parameter-extractor 提取 expenseId → get_expense_detail 详情",
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "start",
+                    "displayName": "开始",
+                    "params": {},
+                },
+                {
+                    "id": "pe-extract01",
+                    "type": "parameter-extractor",
+                    "displayName": "参数提取",
+                    "params": {
+                        "input": "{{start.userQuery}}",
+                        "instruction": "从用户问题中提取报销单 ID（expenseId）。如果用户提到多个，取第一个。",
+                        "schema": '{"expenseId": {"type": "string", "description": "报销单 ID，如 EXP-2024-001"}}',
+                        "retry.maxAttempts": "1",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "fail_fast",
+                    },
+                },
+                {
+                    "id": "tool-detail01",
+                    "type": "tool",
+                    "displayName": "查询报销详情",
+                    "params": {
+                        "tool": T_GET_EXP,
+                        "retry.maxAttempts": "2",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "continue",
+                    },
+                    "inputs": [
+                        {
+                            "name": "expenseId",
+                            "source": "{{pe-extract01.expenseId}}",
+                            "type": "string",
+                            "required": True,
+                        },
+                    ],
+                },
+                {
+                    "id": "answer",
+                    "type": "answer",
+                    "displayName": "回答",
+                    "params": {
+                        "prompt": "根据报销单详情回答用户。\n\n约束：禁止暴露英文流程/工具内部名；仅依据下方数据作答。\n\n报销单详情：\n{{tool-detail01.output}}",
+                        "retry.maxAttempts": "2",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "fail_fast",
+                    },
+                },
+            ],
+            "edges": [
+                {
+                    "from": "start",
+                    "to": "pe-extract01",
+                },
+                {
+                    "from": "pe-extract01",
+                    "to": "tool-detail01",
+                },
+                {
+                    "from": "tool-detail01",
+                    "to": "answer",
+                },
+            ],
+            "layout": {
+                "start": {
+                    "x": 48,
+                    "y": 72,
+                },
+                "pe-extract01": {
+                    "x": 248,
+                    "y": 72,
+                },
+                "tool-detail01": {
+                    "x": 468,
+                    "y": 72,
+                },
+                "answer": {
+                    "x": 688,
+                    "y": 72,
+                },
+            },
+        },
+        "catalogMeta": {
+            "examples": [
+                "查询 EXP-2024-001 的报销详情",
+                "帮我看看报销单 EXP-2024-001 的明细",
+            ],
+            "nodeSummary": [
+                "start",
+                "parameter-extractor",
+                "tool",
+                "answer",
+            ],
+            "intentAfter": "将按报销单详情查询流程处理",
+        },
+    },
+    # ── 新标杆：variable-assignment + 字面量 inputs ──
+    {
+        "id": "expense-status-filter",
+        "displayName": "报销状态筛选查询",
+        "description": "variable-assignment 定义查询条件 → 按状态筛选报销单（字面量 inputs 标杆）",
+        "mode": "workflow",
+        "plan": {
+            "planId": None,
+            "reason": "结构化 IO 标杆：variable-assignment 定义 status 变量 → tool 字面量绑定",
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "start",
+                    "displayName": "开始",
+                    "params": {},
+                },
+                {
+                    "id": "va-setstatus",
+                    "type": "variable-assignment",
+                    "displayName": "设置查询条件",
+                    "params": {
+                        "assignments": '[{"name": "targetStatus", "source": "pending", "type": "string"}, {"name": "queryDesc", "source": "{{start.userQuery}}", "type": "string"}]',
+                        "retry.maxAttempts": "1",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "fail_fast",
+                    },
+                },
+                {
+                    "id": "tool-filter01",
+                    "type": "tool",
+                    "displayName": "按状态查询报销",
+                    "params": {
+                        "tool": T_LIST_EXP,
+                        "retry.maxAttempts": "2",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "continue",
+                    },
+                    "inputs": [
+                        {
+                            "name": "status",
+                            "source": "{{va-setstatus.targetStatus}}",
+                            "type": "string",
+                            "required": False,
+                        },
+                    ],
+                },
+                {
+                    "id": "answer",
+                    "type": "answer",
+                    "displayName": "回答",
+                    "params": {
+                        "prompt": "根据筛选结果回答用户。\n\n约束：禁止暴露英文流程/工具内部名；仅依据下方数据作答。\n\n查询条件：{{va-setstatus.targetStatus}}\n筛选结果：\n{{tool-filter01.output}}",
+                        "retry.maxAttempts": "2",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "fail_fast",
+                    },
+                },
+            ],
+            "edges": [
+                {
+                    "from": "start",
+                    "to": "va-setstatus",
+                },
+                {
+                    "from": "va-setstatus",
+                    "to": "tool-filter01",
+                },
+                {
+                    "from": "tool-filter01",
+                    "to": "answer",
+                },
+            ],
+            "layout": {
+                "start": {
+                    "x": 48,
+                    "y": 72,
+                },
+                "va-setstatus": {
+                    "x": 248,
+                    "y": 72,
+                },
+                "tool-filter01": {
+                    "x": 468,
+                    "y": 72,
+                },
+                "answer": {
+                    "x": 688,
+                    "y": 72,
+                },
+            },
+        },
+        "catalogMeta": {
+            "examples": [
+                "查询我所有待审批的报销单",
+                "列出 pending 状态的报销",
+            ],
+            "nodeSummary": [
+                "start",
+                "variable-assignment",
+                "tool",
+                "answer",
+            ],
+            "intentAfter": "将按报销状态筛选查询流程处理",
+        },
+    },
+    # ── 新标杆：嵌套路径引用（tool output 子字段 → agent context） ──
+    {
+        "id": "expense-amount-check",
+        "displayName": "报销金额合规检查",
+        "description": "查询报销汇总 → 提取总金额 → 合规判断（嵌套路径引用标杆）",
+        "mode": "workflow",
+        "plan": {
+            "planId": None,
+            "reason": "结构化 IO 标杆：tool output 嵌套字段（totalAmount）→ agent 合规分析",
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "start",
+                    "displayName": "开始",
+                    "params": {},
+                },
+                {
+                    "id": "tool-sumcheck",
+                    "type": "tool",
+                    "displayName": "汇总报销金额",
+                    "params": {
+                        "tool": T_SUM_EXP,
+                        "retry.maxAttempts": "2",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "continue",
+                    },
+                    "inputs": [
+                        {
+                            "name": "status",
+                            "source": "approved",
+                            "type": "string",
+                            "required": False,
+                        },
+                    ],
+                },
+                {
+                    "id": "agent-amount01",
+                    "type": "agent",
+                    "displayName": "金额合规分析",
+                    "params": {
+                        "query": "{{start.userQuery}}",
+                        "context": "报销汇总数据：{{tool-sumcheck.output}}\n已批准报销总金额：{{tool-sumcheck.output.totalAmount}} 元\n报销单数量：{{tool-sumcheck.output.count}} 笔",
+                        "skill": "compliance-check",
+                        "maxIters": "3",
+                        "systemOverlay": "仅基于上游汇总数据做金额合规分析；禁止编造金额；如总金额超过 10000 元需提示超标风险。",
+                        "retry.maxAttempts": "1",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "continue",
+                    },
+                },
+                {
+                    "id": "answer",
+                    "type": "answer",
+                    "displayName": "回答",
+                    "params": {
+                        "prompt": "根据金额合规分析结果回答用户。\n\n约束：禁止暴露英文流程/工具内部名；仅依据下方分析作答。\n\n合规分析：\n{{agent-amount01.answer}}",
+                        "retry.maxAttempts": "2",
+                        "retry.backoffMs": "500",
+                        "retry.onFailure": "fail_fast",
+                    },
+                },
+            ],
+            "edges": [
+                {
+                    "from": "start",
+                    "to": "tool-sumcheck",
+                },
+                {
+                    "from": "tool-sumcheck",
+                    "to": "agent-amount01",
+                },
+                {
+                    "from": "agent-amount01",
+                    "to": "answer",
+                },
+            ],
+            "layout": {
+                "start": {
+                    "x": 48,
+                    "y": 72,
+                },
+                "tool-sumcheck": {
+                    "x": 268,
+                    "y": 72,
+                },
+                "agent-amount01": {
+                    "x": 488,
+                    "y": 72,
+                },
+                "answer": {
+                    "x": 708,
+                    "y": 72,
+                },
+            },
+        },
+        "catalogMeta": {
+            "examples": [
+                "我的已批准报销总金额是否超标",
+                "检查我的报销金额合规性",
+            ],
+            "nodeSummary": [
+                "start",
+                "tool",
+                "agent",
+                "answer",
+            ],
+            "intentAfter": "将按报销金额合规检查流程处理",
         },
     },
 ]

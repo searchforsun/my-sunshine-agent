@@ -29,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -121,7 +122,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             }
             beginToolStep(bridgeId, tu);
         }
-        return next.apply(input)
+        return executeByReadWritePartition(toolCalls, next)
                 .doOnNext(ev -> {
                     if (ev instanceof ToolResultTextDeltaEvent d) {
                         resultTextById.computeIfAbsent(d.getToolCallId(), k -> new StringBuilder())
@@ -139,6 +140,61 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                         }
                     }
                 });
+    }
+
+    /**
+     * 同轮多 tool_calls 读写分区调度：连续只读工具一批（框架并行），写工具单独串行。
+     * 避免并发写操作导致的状态竞争（如两个写工具同时改同一资源）。
+     * 单工具或全读时直接整批执行，无额外开销。
+     */
+    private Flux<AgentEvent> executeByReadWritePartition(
+            List<ToolUseBlock> toolCalls,
+            Function<ActingInput, Flux<AgentEvent>> next) {
+        if (toolCalls.size() <= 1) {
+            return next.apply(new ActingInput(toolCalls));
+        }
+        List<List<ToolUseBlock>> batches = partitionByReadWrite(toolCalls);
+        if (batches.size() == 1) {
+            return next.apply(new ActingInput(toolCalls));
+        }
+        List<Flux<AgentEvent>> batchFluxes = batches.stream()
+                .map(batch -> next.apply(new ActingInput(batch)))
+                .toList();
+        return Flux.concat(batchFluxes);
+    }
+
+    /**
+     * 按 sideEffect 将 toolCalls 切成连续批次：连续只读工具归一批，写工具单独成批。
+     * 元工具（spawn_subagent / todo_write）视为只读（不竞争外部状态）。
+     */
+    private List<List<ToolUseBlock>> partitionByReadWrite(List<ToolUseBlock> toolCalls) {
+        List<List<ToolUseBlock>> batches = new ArrayList<>();
+        List<ToolUseBlock> currentReadOnlyBatch = new ArrayList<>();
+        for (ToolUseBlock tu : toolCalls) {
+            if (isWriteTool(tu.getName())) {
+                if (!currentReadOnlyBatch.isEmpty()) {
+                    batches.add(currentReadOnlyBatch);
+                    currentReadOnlyBatch = new ArrayList<>();
+                }
+                batches.add(List.of(tu));
+            } else {
+                currentReadOnlyBatch.add(tu);
+            }
+        }
+        if (!currentReadOnlyBatch.isEmpty()) {
+            batches.add(currentReadOnlyBatch);
+        }
+        return batches;
+    }
+
+    /** 写工具判定：catalog sideEffect=write 或沙箱写文件工具（sandbox__write/edit）；exec 不加锁避免长任务阻塞会话 */
+    private boolean isWriteTool(String toolName) {
+        if (SandboxIds.WRITE.equals(toolName) || SandboxIds.EDIT.equals(toolName)) {
+            return true;
+        }
+        return toolCatalogService.find(toolName)
+                .map(e -> "write".equals(e.sideEffect()))
+                .orElse(false);
     }
 
     /** 入口开 tool 步（对齐 PreActing）：开步 + sandbox active 文案 + 取消登记 */

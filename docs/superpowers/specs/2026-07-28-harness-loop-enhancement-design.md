@@ -1,9 +1,9 @@
-# ReAct Harness Loop 长任务能力增强（四阶段）
+# ReAct Harness Loop 长任务能力增强（五阶段）
 
 > **阶段**：四 · **任务卡**：4.7.8（候选）
 > **状态**：📋 设计评审中（未实现）
 > **日期**：2026-07-28
-> **前置**：4.7.7 ReAct 目标对齐与失败预算（`2026-07-27-react-goal-alignment-design.md`）、AS 2.0 HarnessAgent + CompactionConfig（P2）、4.7.6 spawn_subagent、4.5 沙箱六工具、3.7 Grounding 校验
+> **前置**：4.7.7 ReAct 目标对齐与失败预算（`2026-07-27-react-goal-alignment-design.md`）、AS 2.0 HarnessAgent + CompactionConfig（P2，当前仅启用最简配置）、4.7.6 spawn_subagent、4.5 沙箱六工具、3.7 Grounding 校验、AS 2.0 原生 compaction 栈文档（[Context Compaction](https://java.agentscope.io/v2/en/docs/harness/compaction.html) · [Memory](https://java.agentscope.io/v2/en/docs/harness/memory.html)）
 > **关联**：[2026-07-27-react-goal-alignment-design.md](./2026-07-27-react-goal-alignment-design.md) · [2026-07-22-agentscope-2-upgrade-design.md](./2026-07-22-agentscope-2-upgrade-design.md) · `ReActAgentRuntime` · `HarnessAgentFactory` · `ProcessingStepMiddleware` · `AgentExecutionProperties`
 
 ---
@@ -18,8 +18,9 @@
 | 验证闭环缺失 | 沙箱能跑 `mvn test`，但无「写后必验证」约束 | 模型可写完直接收束，验证全靠自觉 |
 | 子 Agent 上下文膨胀 | `spawn_subagent` 结果全文回传主循环 | 主循环 8 轮子任务后上下文爆炸，compaction 丢失关键发现 |
 | ReAct 错误无分类重试 | `ExecutionErrorClassifier` 仅 Plan 节点用；ReAct 工具失败全占 LLM 轮次 | 瞬态错误（超时/限流）浪费决策轮次，加速 max-iters 耗尽 |
+| compaction 能力栈未启用 | `buildCompactionConfig()` 仅 `triggerMessages/keepMessages`，AS 2.0 原生 token 触发 / offload 引用化 / tool 结果驱逐 / overflow 恢复 / 参数截断全部未启用 | 长 tool 结果全量进 context 爆窗；压缩后原始消息丢失无法回溯；`write_file` body 白占预算；超窗直接报错无恢复 |
 
-**定位**：本 spec 是 4.7.7 的续篇，复用其 `AgentRunState` 载体与瞬态注入模式，分四阶段补齐上述缺口。**不引入新 ExecutionMode、不新增前端组件、不违背 D11（TaskBoard 非 mini-DAG）**。
+**定位**：本 spec 是 4.7.7 的续篇，复用其 `AgentRunState` 载体与瞬态注入模式，分五阶段补齐上述缺口。**不引入新 ExecutionMode、不新增前端组件、不违背 D11（TaskBoard 非 mini-DAG）**。阶段五全面启用 AS 2.0 原生 compaction 能力栈，不自研压缩逻辑。
 
 ### 关键事实（代码核查结论）
 
@@ -564,14 +565,19 @@ mvn test -pl orchestrator -Dtest=CompletionGuardMiddlewareTest,ReactToolRetryerT
 | 子 Agent 摘要丢失关键细节 | 二 | 摘要模板保留「关键数据/路径/文件名」；主 Agent 可再次 spawn 取细节 |
 | EXPLORE 工具集过窄（模型想读+写） | 二 | EXPLORE 保留 `read`/`grep`/`glob`/`exec`；仅剥离 `write`/`edit`。模型需写时用 `execute` |
 | ReactToolRetryer 延迟增加 | 三 | 仅瞬态错误重试 1 次 + 500ms 退避；确定性错误不重试 |
-| `max-iters=15` 成本上升 | 四 | 配合失败预算 + CompletionGuard，实际平均轮数应低于 15；成本监控靠 6.2 LLM 指标 |
-| 四阶段同时启用稳定性 | 全 | 灰度：阶段一三先开（`enabled=true`），阶段二再开，阶段四最后调 `max-iters` |
+| `max-iters=15` 成本上升 | 四 | 配合失败预算 + CompletionGuard + 阶段五 compaction，实际平均轮数应低于 15；成本监控靠 6.2 LLM 指标 |
+| 四阶段同时启用稳定性 | 全 | 灰度：阶段一三先开（`enabled=true`），阶段二再开，阶段五再开，阶段四最后调 `max-iters` |
+| AS compaction `flushBeforeCompact` 与 L2 抽取重复 | 五 | 两者独立：AS flush 写 MEMORY.md（单次 run 内），L2 写 `user_context_state`（跨会话）。`disableMemoryHooks` 关闭 AS 后台维护，flush 仅压缩时触发 |
+| `session_search` 检索到过期信息 | 五 | `session_search` 仅检索本轮 `*.log.jsonl`，不跨会话 |
+| `ToolResultEviction` workspace 目录膨胀 | 五 | AS 按 agentId+sessionId 隔离；需确认沙箱 purge 是否覆盖 AS workspace，必要时补清理 |
+| 压缩专用模型（flash）质量不足 | 五 | `compaction-model` 可配；摘要任务比推理简单，flash 已足够；可随时切回主模型 |
+| compaction + L1 压缩双重信息损失叠加 | 五 | 两者作用域正交（AS 管单次 run 内 tool 消息，L1 管跨轮对话轮次），不重叠。AS compaction 产物经 `ContextWritePath` 只取 user/assistant 入 L1，tool 摘要不进 L1 |
 
 ---
 
 ## 11. 明确不做
 
-- **自定义 compaction 引用化**：当前 `CompactionConfig`（保留最近 N 条）足够支撑 15 轮；引用化是深水区，待本 spec 四阶段落地后评估是否需要
+- **自研 compaction 引用化**：AS 2.0 原生已提供完整引用化能力（`offloadBeforeCompact` 写 `*.log.jsonl` + `session_search` 按需检索 + `ToolResultEviction` offload 到 workspace + `read_file` 指针），阶段五直接启用原生能力，不自建引用表
 - **子 Agent 嵌套 spawn**：4.7.6 已禁（`SpawnSubagentTool:83-85`），不放开
 - **ReAct 显式 Replan 节点**：违背 D11（TaskBoard 非 mini-DAG）；长任务的「动态重规划」由 4.7.7 失败预算 + 本 spec CompletionGuard 软引导
 - **CompletionGuard 硬拒 complete**：保持「引擎不替模型决策」原则；硬拒仅保留给 4.5.7 用户取消路径
@@ -579,6 +585,8 @@ mvn test -pl orchestrator -Dtest=CompletionGuardMiddlewareTest,ReactToolRetryerT
 - **SUB Agent / peer-collab 专家侧注入 CompletionGuard**：MAIN-only
 - **ReactToolRetryer 重试 >1 次**：瞬态错误重试 >1 次应升级为失败预算问题
 - **TaskBoard 代码层强约束**：纯 prompt 策略，不破坏模型自主性
+- **用 AS MEMORY.md 替代自研 L2**：AS memory flush（`flushBeforeCompact`）是单次 run 内事实提取，L2 是跨会话用户画像，两者作用域不同，保留各自体系不合并
+- **用 AS `session_search` 替代自研 L3**：`session_search` 仅检索本轮会话 `*.log.jsonl`，L3 是跨会话 Milvus 向量检索，作用域不同不合并
 
 ---
 
@@ -588,11 +596,11 @@ mvn test -pl orchestrator -Dtest=CompletionGuardMiddlewareTest,ReactToolRetryerT
 
 | 维度 | 4.7.7 | 本 spec（4.7.8） |
 |------|-------|------------------|
-| 关注点 | 过程中漂移 | 终态完成度 + 上下文经济学 + 错误重试 |
-| 触发时机 | 周期性（每 N 轮）/ 失败时 | 终态（准备收束）/ 工具执行时 / 子 Agent 回传时 |
-| Middleware | `FailureBudget` + `GoalAlignment` | `CompletionGuard` + `ReactToolRetryer` |
+| 关注点 | 过程中漂移 | 终态完成度 + 上下文经济学 + 错误重试 + compaction 能力栈 |
+| 触发时机 | 周期性（每 N 轮）/ 失败时 | 终态（准备收束）/ 工具执行时 / 子 Agent 回传时 / PreReasoning compaction |
+| Middleware | `FailureBudget` + `GoalAlignment` | `CompletionGuard` + `ReactToolRetryer` + AS 原生 `CompactionMiddleware`/`ToolResultEviction` |
 | 状态载体 | `AgentRunState`（新建） | `AgentRunState`（扩展，不改已有字段） |
 | 瞬态注入模式 | 复用 `TaskReminderMiddleware` | 同上（复用 4.7.7 验证过的模式） |
 
-**执行依赖**：本 spec 阶段一扩展 `AgentRunState`，要求 4.7.7 的 `AgentRunState` 已落地。建议 4.7.7 先执行（或至少 4.7.7a Task 先完成），再启动本 spec。
+**执行依赖**：本 spec 阶段一扩展 `AgentRunState`，要求 4.7.7 的 `AgentRunState` 已落地。建议 4.7.7 先执行（或至少 4.7.7a Task 先完成），再启动本 spec。阶段五（compaction 能力栈）无 4.7.7 依赖，可独立先行。
 

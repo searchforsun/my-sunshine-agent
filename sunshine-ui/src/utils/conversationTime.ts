@@ -26,8 +26,24 @@ export function conversationDayLabel(ts: number, now = Date.now()): string {
   return `${d.getMonth() + 1}月${d.getDate()}日`
 }
 
-/** 简洁时间：刚刚 / N分钟前 / HH:mm / M/D */
+/** 简洁时间：刚刚 / N分钟前 / 今天 HH:mm / 昨天 HH:mm / M月D日 HH:mm */
 export function formatConversationTime(ts: number, now = Date.now()): string {
+  const diff = now - ts
+  const ago = daysBeforeToday(ts, now)
+  const d = new Date(ts)
+  const clock = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  if (ago === 0) {
+    if (diff < 60_000) return '刚刚'
+    if (diff < 3_600_000) return `${Math.max(1, Math.floor(diff / 60_000))}分钟前`
+    return `今天 ${clock}`
+  }
+  if (ago === 1) return `昨天 ${clock}`
+  if (ago < 7) return `${d.getMonth() + 1}月${d.getDate()}日 ${clock}`
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+/** 侧栏列表项时间（已按天分组，不带日期前缀）：刚刚 / N分钟前 / HH:mm / M/D */
+export function formatSidebarItemTime(ts: number, now = Date.now()): string {
   const diff = now - ts
   const ago = daysBeforeToday(ts, now)
   const d = new Date(ts)

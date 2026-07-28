@@ -18,7 +18,8 @@
 | [sandbox-container-lifecycle](../superpowers/specs/2026-07-17-sandbox-container-lifecycle-design.md) | idle 停机 / 再进开机 / 7 天销毁 |
 | [sandbox-tool-cancel](../superpowers/specs/2026-07-18-sandbox-tool-cancel-design.md) | **✅** exec/grep/glob 单工具取消（杀进程）· 主行「已取消」· 同族预算 3 · Live `verify_sandbox_tool_cancel_live` |
 | [sandbox-diff-line-numbers](../superpowers/specs/2026-07-21-sandbox-diff-line-numbers-design.md) | **✅** 工作区代码预览绝对行号 · 时间线 write/edit Git 双栏 diff（`metadata.editDiff` ±3 上下文） |
-| [sandbox-repo-binding](../superpowers/specs/2026-07-28-sandbox-repo-binding-design.md) | **待评审** 工作区绑定 Git 项目：用户级 GitHub/GitLab 令牌 + clone 进 /workspace + per-session egress |
+| [sandbox-repo-binding](../superpowers/specs/2026-07-28-sandbox-repo-binding-design.md) | **已被 task-workspace-codex 吸收** 工作区绑定 Git 项目：用户级 GitHub/GitLab 令牌（T1）+ egress per-session（T0）保留有效；粒度升级为工作区级 |
+| [task-workspace-codex](../superpowers/specs/2026-07-28-task-workspace-codex-design.md) | **待评审** Codex 式智能体工作区：强制绑定 Git repo+分支 · 完全体沙箱（出网+任意命令）· 硬件档位 · 多会话读并发/写串行任务流 · 「新智能体」入口（强制 ReAct） |
 
 ## 运维与示例
 
@@ -38,6 +39,7 @@
 |------|------|
 | 工具 | MAIN / SUB ReAct 始终 `sandbox__*`；不进 tool-manager Catalog；SUB 复用对话容器 |
 | 开箱 | 首次 `sandbox__*` 或抽屉 list → `ensureSession`；同 `conversationId` 复用；**idle 30min 停机、再进 start；自上次活动 7d 销毁** |
+| 粒度 | **对话级**（轻量，skills 脚本场景）；**工作区级**完全体沙箱见 [task-workspace-codex](../superpowers/specs/2026-07-28-task-workspace-codex-design.md)（强制绑 repo · 出网 · 硬件档位 · 读并发/写串行 · 手动销毁） |
 | PathJail | `/workspace` 可写；`/skills/{id}/` 只读挂载 |
 | write | **拒覆盖**已存在文件（须 edit / 换路径） |
 | exec | `SandboxExecGuard` 硬拒破坏性命令；只读白名单免 HITL |

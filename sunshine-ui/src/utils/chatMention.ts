@@ -48,7 +48,7 @@ interface RawMentionMatch {
 }
 
 const PREFIX_RE: { kind: Exclude<ChatMentionKind, 'path'>; re: RegExp }[] = [
-  { kind: 'skill', re: /@([\w\u4e00-\u9fff-]+)/g },
+  { kind: 'skill', re: /\/([\w\u4e00-\u9fff-]+)/g },
   { kind: 'expert', re: /\$([\w\u4e00-\u9fff-]+)/g },
   { kind: 'workflow', re: /#([\w\u4e00-\u9fff-]+)/g },
 ]
@@ -155,7 +155,7 @@ export function hasChatMentionChips(
 
 export function mentionPrefix(kind: ChatMentionKind): string {
   switch (kind) {
-    case 'skill': return '@'
+    case 'skill': return '/'
     case 'expert': return '$'
     case 'workflow': return '#'
     case 'path': return ''

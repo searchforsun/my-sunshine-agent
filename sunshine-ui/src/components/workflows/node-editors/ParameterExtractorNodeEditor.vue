@@ -147,7 +147,6 @@ function emitSchemaFields(fields: SchemaField[]) {
     </WorkflowNodeConfigSection>
 
     <WorkflowNodeConfigSection title="输出 Schema" :help="workflowNodeFieldHelp('nodeOutputs')">
-      <p v-pre class="wf-schema-hint">声明要提取的字段；LLM 输出 JSON 后每字段可被下游 <code>{{节点-id.字段名}}</code> 引用。</p>
       <div v-if="schemaFields.length === 0" class="wf-schema-empty">
         <p class="wf-schema-empty-hint">暂无字段。</p>
         <NButton size="small" secondary :disabled="readOnly" @click="addSchemaField">+ 添加字段</NButton>
@@ -226,12 +225,6 @@ function emitSchemaFields(fields: SchemaField[]) {
 </template>
 
 <style scoped>
-.wf-schema-hint {
-  margin: 0;
-  font-size: var(--sun-font-xs);
-  color: var(--sun-text-muted);
-  line-height: 1.5;
-}
 .wf-schema-empty {
   display: flex;
   flex-direction: column;

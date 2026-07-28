@@ -35,6 +35,7 @@ import { fetchSandboxWorkspaceStatus } from '../api/sandboxWorkspace'
 import type { ChatMessage } from '../api/chat'
 import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
 import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
+import { formatConversationTime } from '../utils/conversationTime'
 import {
   isContentFullyInterleaved,
   resolveStreamingContentText,
@@ -362,8 +363,8 @@ const {
 } = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef)
 
 const composerPlaceholder = computed(() => {
-  const hints = ['/ 工作区']
-  if (allowsSkillMention(preference.value)) hints.push('@ Skill')
+  const hints = ['@ 工作区']
+  if (allowsSkillMention(preference.value)) hints.push('/ Skill')
   if (allowsWorkflowMention(preference.value)) hints.push('# 工作流')
   if (allowsExpertMention(preference.value)) hints.push('$ 专家')
   return `发消息，Enter 发送 · ${hints.join(' · ')}`
@@ -390,6 +391,26 @@ function canCopyAssistant(msg: { role: string; content: string }, idx: number): 
   return msg.role === 'assistant'
     && !!msg.content.trim()
     && !(loading.value && idx === messages.value.length - 1)
+}
+
+/** 消息结束时间（epoch ms）：timelineEndedAt 优先，updatedAt 兜底 */
+function resolveMessageEndedAt(msg: ChatMessage): number | null {
+  if (typeof msg.timelineEndedAt === 'number' && msg.timelineEndedAt > 0) {
+    return msg.timelineEndedAt
+  }
+  const u = msg.updatedAt
+  if (typeof u === 'number' && u > 0) return u
+  if (typeof u === 'string' && u) {
+    const t = Date.parse(u)
+    return Number.isNaN(t) ? null : t
+  }
+  return null
+}
+
+/** hover 复制栏时右侧显示的结束时间文案（复用侧栏相对时间格式） */
+function messageEndTimeLabel(msg: ChatMessage): string {
+  const ts = resolveMessageEndedAt(msg)
+  return ts ? formatConversationTime(ts) : ''
 }
 
 async function copyAssistantMessage(text: string, idx: number) {
@@ -678,7 +699,7 @@ watch(
             </svg>
           </div>
           <h2 class="empty-title">有什么可以帮你的？</h2>
-          <p class="empty-desc">知识库检索 · ReAct 工具 · Plan 动态规划 · Skill @ 触发</p>
+          <p class="empty-desc">知识库检索 · ReAct 工具 · Plan 动态规划 · Skill / 触发</p>
           <div class="hint-chips">
             <button
               v-for="hint in EMPTY_HINTS"
@@ -754,6 +775,7 @@ watch(
                 >
                   <CopyToggleIcon :copied="copiedIndex === idx" />
                 </button>
+                <span v-if="messageEndTimeLabel(msg)" class="msg-end-time">{{ messageEndTimeLabel(msg) }}</span>
               </div>
               <p
                 v-if="resolveStreamErrorText(msg)"
@@ -832,7 +854,7 @@ watch(
             >
               <div class="skill-suggest-main">
                 <span class="skill-suggest-id is-workflow">#{{ wf.id }}</span>
-                <span class="skill-suggest-name">{{ wf.displayName }}</span>
+                <span class="skill-suggest-title">{{ wf.displayName }}</span>
               </div>
               <p v-if="wf.description" class="skill-suggest-desc">{{ wf.description }}</p>
             </li>
@@ -844,8 +866,11 @@ watch(
               :class="{ 'is-highlighted': idx === expertSuggestIndex }"
               @mousedown.prevent="applyExpertSuggest(expert)"
             >
-              <span class="skill-suggest-id is-expert">${{ expert.id }}</span>
-              <span class="skill-suggest-name">{{ expert.displayName }}</span>
+              <div class="skill-suggest-main">
+                <span class="skill-suggest-id is-expert">${{ expert.id }}</span>
+                <span class="skill-suggest-title">{{ expert.displayName }}</span>
+              </div>
+              <p v-if="expert.description" class="skill-suggest-desc">{{ expert.description }}</p>
             </li>
           </ul>
           <ul v-else-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
@@ -855,8 +880,11 @@ watch(
               :class="{ 'is-highlighted': idx === skillSuggestIndex }"
               @mousedown.prevent="applySkillSuggest(skill)"
             >
-              <span class="skill-suggest-id is-skill">@{{ skill.id }}</span>
-              <span class="skill-suggest-name">{{ skill.displayName }}</span>
+              <div class="skill-suggest-main">
+                <span class="skill-suggest-id is-skill">/{{ skill.id }}</span>
+                <span class="skill-suggest-title">{{ skill.displayName }}</span>
+              </div>
+              <p v-if="skill.description" class="skill-suggest-desc">{{ skill.description }}</p>
             </li>
           </ul>
           <div class="composer-input-area">
@@ -1212,6 +1240,22 @@ watch(
   margin-bottom: 12px;
   display: flex;
   justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 对话结束时间：hover 消息行时显示在复制按钮右侧 */
+.msg-end-time {
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  user-select: none;
+}
+
+.msg-block:hover .msg-end-time {
+  opacity: 1;
 }
 
 .msg-resume-bar {
@@ -1440,7 +1484,7 @@ watch(
 
 .skill-suggest-main {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
 }
 
@@ -1451,6 +1495,10 @@ watch(
   color: var(--sun-text-muted);
   line-height: 1.4;
   padding-left: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skill-suggest-meta {
@@ -1488,6 +1536,15 @@ watch(
   color: var(--mention-path-prefix);
 }
 
+/* 第一行中文名（id 之后） */
+.skill-suggest-title {
+  color: var(--sun-text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .skill-suggest li.path-suggest-item {
   flex-direction: row;
   align-items: center;
@@ -1514,13 +1571,6 @@ watch(
 
 .skill-suggest-loading:hover {
   background: transparent;
-}
-
-.skill-suggest-name {
-  color: var(--sun-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .streaming-status {

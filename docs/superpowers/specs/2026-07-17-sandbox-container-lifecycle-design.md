@@ -1,6 +1,6 @@
 # 沙箱容器双层生命周期（停机 / 开机 / 7 天销毁）
 
-> **阶段**：4.5 沙箱 · **状态**：✅ 已实现  
+> **阶段**：4.5 沙箱 · **状态**：✅ 已实现（2026-07-28 增补工作区级生命周期差异，见 §7）  
 > **日期**：2026-07-17  
 > **前序**：[conversation-sandbox-permanent-tools](./2026-07-16-conversation-sandbox-permanent-tools-design.md) · [sandbox-workspace-drawer](./2026-07-16-sandbox-workspace-drawer-design.md) · 索引 [docs/sandbox/README.md](../../sandbox/README.md)
 
@@ -140,3 +140,18 @@ agent.sandbox:
 | 7 天 | 容器+宿主机目录一并删 |
 | purge 起算 | 自上次活动 |
 | idle | 沿用 `conversation-ttl-sec`（默认 30min） |
+
+---
+
+## 7. 增补：工作区级生命周期差异（2026-07-28）
+
+Codex 式智能体工作区（[task-workspace-codex](./2026-07-28-task-workspace-codex-design.md)）引入工作区级容器后，生命周期按粒度分流：
+
+| 时机 | 对话级（本 spec） | 工作区级 |
+|------|-------------------|----------|
+| idle 30min | `docker stop` | 同（复用 reaper，ZSET 键换 `sandbox:ws:expiry`） |
+| 再进 | `docker start` | 同 |
+| 销毁 | 7d 自动 purge（注册 `sandbox:conv:purge` ZSET） | **不自动 purge**（不注册 purge ZSET）；仅手动 `DELETE /api/agent-workspaces/{id}` 确认后销毁 |
+| 删会话 | 立即销毁容器 | **不销毁**（容器属工作区，删 `chat_conversation` 不影响） |
+
+对话级 `sandbox:conv:*` 三 ZSET 与本 spec §3.2 不变；工作区级仅新增 `sandbox:ws:expiry` 一个 ZSET（idle stop），不建 purge ZSET。

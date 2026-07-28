@@ -20,7 +20,7 @@ const NODE_HELP: Record<string, string> = {
   toolExtra: '除 tool 外的业务入参，每行 key=value。支持 {{node-id.field}} 模板，如 status=pending。',
   toolParam: '按工具 Schema 声明的入参；支持 {{start.userQuery}}、{{上游节点.output}} 等模板表达式。',
   nodeInputs: '本节点执行时消费的输入；支持 {{start.userQuery}}、{{上游节点-id.output}} 等模板表达式。',
-  nodeOutputs: '下游节点可在 context / prompt 中引用的输出变量；点击右侧复制按钮复制 {{节点-id.字段}}。',
+  nodeOutputs: '下游节点可在 context / prompt 中引用的输出变量；点击右侧复制按钮复制 {{节点-id.字段}}。\n\n声明要提取的字段；LLM 输出 JSON 后每字段可被下游 {{节点-id.字段名}} 引用。',
   skill: '子 Agent 加载的 Skill Catalog ID，叠加 Skill 指令与 overlay。',
   query: '子 Agent 用户正文；常用 {{start.userQuery}} 透传用户原问。',
   context: '注入子 Agent 的上游材料，支持 {{node-id.output}}。多段可用换行拼接。',

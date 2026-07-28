@@ -25,18 +25,18 @@ function useNowTick(intervalMs = 60_000): Ref<number> {
   return now
 }
 
-/** 侧栏会话列表：按创建日分组（近 7 天逐日，更早合并） */
+/** 侧栏会话列表：按最新消息时间（updatedAt）分组排序（近 7 天逐日，更早合并） */
 export function useConversationSidebarGroups(conversations: Ref<Conversation[]>) {
   const now = useNowTick()
 
   const groups = computed((): ConversationSidebarGroup[] => {
     const tick = now.value
-    const sorted = [...conversations.value].sort((a, b) => b.createdAt - a.createdAt)
+    const sorted = [...conversations.value].sort((a, b) => b.updatedAt - a.updatedAt)
     const map = new Map<string, ConversationSidebarGroup>()
     for (const conv of sorted) {
-      const bucket = conversationDayBucketKey(conv.createdAt, tick)
-      const label = conversationDayLabel(conv.createdAt, tick)
-      const sortOrder = bucket === 'older' ? 9999 : daysBeforeToday(conv.createdAt, tick)
+      const bucket = conversationDayBucketKey(conv.updatedAt, tick)
+      const label = conversationDayLabel(conv.updatedAt, tick)
+      const sortOrder = bucket === 'older' ? 9999 : daysBeforeToday(conv.updatedAt, tick)
       const existing = map.get(bucket)
       if (existing) {
         existing.items.push(conv)

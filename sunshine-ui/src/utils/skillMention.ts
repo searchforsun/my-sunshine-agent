@@ -2,7 +2,7 @@ import type { SkillCatalogIndexEntry } from '../api/skills'
 import type { ExecutionPreference } from '../api/executionModes'
 import { allowsSkillMention } from '../api/executionModes'
 
-const AT_TOKEN = /@([\w\u4e00-\u9fff-]+)/g
+const AT_TOKEN = /\/([\w\u4e00-\u9fff-]+)/g
 
 /** token 后须为空白、标点或串尾，避免误匹配更长单词 */
 const TOKEN_BOUNDARY = /[\s，。！？,.!?;；：:]/
@@ -75,7 +75,7 @@ export interface SkillBindingForSend {
   skillId?: string
 }
 
-/** 发送前解析首个 catalog 内 @skill，供 chat 请求 skillId 入参 */
+/** 发送前解析首个 catalog 内 /skill，供 chat 请求 skillId 入参 */
 export function resolveSkillBindingForSend(
   content: string,
   catalog: SkillCatalogIndexEntry[],

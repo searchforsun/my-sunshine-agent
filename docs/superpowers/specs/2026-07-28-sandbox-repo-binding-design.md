@@ -1,8 +1,24 @@
 # 工作区项目绑定（Git 仓库 + 用户令牌）
 
-> **阶段**：4.5 沙箱 · **状态**：待评审（评审通过后再动工）  
-> **触发**：对话级工作区目前只有「空目录 + Skill 只读挂载」一档；需支持**绑定 Git 项目**：clone 进 `/workspace`、按白名单开网，形成「项目工作区」完整形态  
-> **关联**：索引 [docs/sandbox/README.md](../../sandbox/README.md) · 基座 [skills-docker-sandbox-design](./2026-07-15-skills-docker-sandbox-design.md) · 用户级配置范式 [user-default-write-hitl-design](./2026-07-16-user-default-write-hitl-design.md) · 出网 [EgressProxyManager](../../../sandbox-service/src/main/java/com/sunshine/sandbox/docker/EgressProxyManager.java)
+> **阶段**：4.5 沙箱 · **状态**：**已被 [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) 吸收**（2026-07-28）——粒度从「会话级」升级为「工作区级」，绑定从可选增强变为工作区创建强制前置；本文保留 T0（egress per-session）与 T1（用户级 Git 令牌）作为**粒度无关的基础设施**继续有效，T2–T4 由新设计 W2/W6 取代
+> **触发**：对话级工作区目前只有「空目录 + Skill 只读挂载」一档；需支持**绑定 Git 项目**——演进为 Codex 式智能体工作区后，绑定是工作区的一等属性
+> **关联**：索引 [docs/sandbox/README.md](../../sandbox/README.md) · 基座 [skills-docker-sandbox-design](./2026-07-15-skills-docker-sandbox-design.md) · 用户级配置范式 [user-default-write-hitl-design](./2026-07-16-user-default-write-hitl-design.md) · 出网 [EgressProxyManager](../../../sandbox-service/src/main/java/com/sunshine/sandbox/docker/EgressProxyManager.java) · **粒度升级** [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md)
+
+---
+
+## 0. 粒度升级说明（2026-07-28 修订）
+
+本 spec 最初按「会话级绑定」设计。Codex 式智能体工作区 spec 将其升级为**工作区级绑定**，核心差异：
+
+| 维度 | 本 spec 原设计（会话级） | 升级后（工作区级） |
+|------|--------------------------|---------------------|
+| 绑定粒度 | `ConversationSandboxBinding` 增 repo 字段 | 独立 `WorkspaceSandboxBinding` + `agent_workspace` 表 |
+| 绑定时机 | 会话内可选增强 | **创建智能体工作区时强制必填** repo + 分支 |
+| 分支 | clone 参数 | 一等字段（工作区列表展示/切换） |
+| 网络 | git 白名单 | 完全体档直接 bridge 出网（白名单档仅对话级保留） |
+| 生命周期 | 会话 7d TTL | 工作区手动销毁 |
+
+**仍有效（粒度无关）**：T0 egress per-session 化、T1 用户级 Git 令牌（`sys_user` 4 列 + `git-credentials` 内网端点）、§7 安全清单（令牌流转约束）。**被取代**：T2（绑定 API/ensureSession clone 分支）→ 新设计 W2；T4（前端抽屉绑定入口）→ 新设计 W6（创建工作区弹窗 + 工作区分类）。
 
 ---
 

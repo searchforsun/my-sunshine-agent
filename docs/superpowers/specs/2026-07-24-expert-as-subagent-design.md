@@ -1,6 +1,28 @@
-# 专家作为可调用子 Agent + 外部专家市场（Expert as Subagent + A2A）- 技术设计
+# 多智能体协作 + Handoff 交接 + 外部智能体市场 - 技术设计
 
-> **状态**：**内部「专家内核统一并入 P6」方向经 E5 评审不采纳（2026-07-25）**——P6 peer-collab 保留全栈自研，不迁移官方 Subagent；本文仅 **外部专家 A2A 接入（P6+）** 部分仍可作为未来增量参考  
+> **状态**：**内部「专家内核统一并入 P6」方向经 E5 评审不采纳（2026-07-25）**——P6 peer-collab 保留全栈自研，不迁移官方 Subagent；本文仅 **外部专家 A2A 接入（P6+）** 部分仍可作为未来增量参考
+
+> **日期**：2026-07-24（rev.3 · 2026-07-28 术语重命名+Handoff；rev.2 · 2026-07-27 E5 结论）
+> **编号**：阶段四增量（~~内部统一并入 AS2 P6~~【E5 否决】；外部 A2A 独立 P6+；Handoff 交接 P6+）
+> **前置**：[4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [多专家协作](./2026-07-07-expert-consultation-design.md) · ~~[AS2 P6 peer-collab 正式化](../plans/2026-07-23-agentscope-2-native-first-redesign.md)~~（E5 不迁移，peer 保留自研） · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)
+> **一句话**：术语「专家」->「智能体」、「多专家协作」->「多智能体协作」（用户可见层）；智能体间任务交接（Handoff）引入结构化交接包 + 上下文过滤 + 权限裁剪；外部智能体通过 A2A Agent Card 接入。
+
+---
+
+## 0. 术语重命名映射
+
+用户可见层（前端文案 / 执行模式名 / 文档术语 / 新 Handoff 代码）统一用新词；旧 Expert*/Peer* 代码类名、DB 表名（`expert_*`）、Nacos key（`agent.expert.*` / `agent.peer.*`）保留，避免大范围破坏（代码已有 `AgentRuntime`/`AgentRunRequest`，`Expert->Agent` 会命名冲突）。
+
+| 旧术语（代码层保留） | 新术语（用户可见层） |
+|----------------------|----------------------|
+| 专家（Expert） | 智能体（Agent） |
+| 多专家协作（peer-collab） | 多智能体协作 |
+| `ExpertConsultationExecutor` | （类名保留，注释/日志用新词） |
+| `expert_definition` 表 / `agent.expert.*` / Catalog `expert.*` `peer.*` | （均保留） |
+
+**前端改动**：`/experts` -> `/agents`；标题"专家管理"->"智能体管理"；Chat `$` 提示"专家"->"智能体"；执行模式下拉"多专家协作"->"多智能体协作"。
+
+---
 > **日期**：2026-07-24（2026-07-27 标注 E5 结论）  
 > **编号**：阶段四增量（~~内部统一并入 AS2 P6~~【E5 否决】；外部专家 A2A 独立增量 P6+）  
 > **前置**：[4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [多专家协作](./2026-07-07-expert-consultation-design.md) · ~~[AS2 P6 peer-collab 正式化](../plans/2026-07-23-agentscope-2-native-first-redesign.md)~~（E5 不迁移，peer 保留自研） · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)  
@@ -380,12 +402,15 @@ Chat `$` 补全和 ReAct spawn `expertId` 两个 tab 的专家**统一列表**�
 
 **做**
 
+- 术语重命名：用户可见层「专家」->「智能体」、「多专家协作」->「多智能体协作」
 - 内部专家执行内核统一到 `AgentRuntime.run`
 - spawn_subagent 支持 `expertId` 调用预定义专家（内部/外部均可）
 - 删除 `ExpertPeerAgentFactory` / `ExpertSpeakHook` / `ExpertSpeakStreamer`
 - peer-collab 行为不退化（反应式选人、轮次协调、Synthesizer）
 - 外部专家通过 A2A Agent Card 接入，`ExpertCatalogEntry` 统一契约 + 按 `source` 分派执行
 - 前端 `/experts` 双 tab（内部/外部）；外部专家 agentCard URL 注册 + 预填
+- Handoff 交接包：结构化 `HandoffEnvelope` 替代裸 `contextBlocks`；上下文过滤 + 权限裁剪 + 敏感信息脱敏
+- 修复安全缺口：智能体层 HITL 动态开关 / HITL 身份校验 / 工具 output 脱敏 / 审计查询鉴权 / transcript 脱敏
 
 **不做**
 
@@ -394,6 +419,7 @@ Chat `$` 补全和 ReAct spawn `expertId` 两个 tab 的专家**统一列表**�
 - 外部专家 A2A push notifications（仅 streaming 模式）
 - 专家在 Plan/Workflow agent 节点中的直接引用（节点已有 `params.skill` / `params.systemOverlay`，可后续增量）
 - 专家嵌套调用（SUB 仍禁止再 spawn，与 spawn_subagent 一致）
+- 全量代码重命名 Expert->Agent（仅用户可见层改词，代码层保留）
 
 ---
 
@@ -410,6 +436,91 @@ Chat `$` 补全和 ReAct spawn `expertId` 两个 tab 的专家**统一列表**�
 | 外部专家鉴权泄露 | `auth_config_json` 只存密钥引用（如 `nacos:expert.auth.legal`），实际 token 从 Nacos 加密配置读取，不落库明文 |
 | 外部专家返回非 text artifact | A2A client 只解析 `text/plain` parts，非 text part 跳过并 warn；后续如需多模态再扩展 |
 | 外部专家与内部专家 Timeline 不一致 | `ExternalExpertClient` 产出相同 `StreamToken`（step + content），Timeline 形态对前端透明 |
+
+---
+
+## 9.5 Handoff 交接原则（多智能体协作核心）
+
+### 9.5.1 问题：现状是全量历史裸传
+
+当前多智能体协作（peer-collab）中，智能体间上下文经 `contextBlocks` **全量累积传递**（`ExpertHubEngine.java:95-152`）：
+
+```
+contextBlocks = [用户问题, 【智能体A】完整发言, 【智能体B】完整发言, ...]
+```
+
+无摘要、无截断、无权限裁剪。spawn_subagent 路径虽靠 `forSubAgent()` 硬隔离，但主 Agent 写的 `prompt` 也是裸文本，无结构化。这与 Handoff 原则要求的"受控转派 + 上下文过滤"相悖。
+
+### 9.5.2 交接包（Handoff Envelope）结构化
+
+引入 `HandoffEnvelope`（固定字段），替代裸 `contextBlocks` 累积：
+
+```java
+public record HandoffEnvelope(
+    String objective,              // 目标：本轮交接要解决什么
+    List<ConfirmedFact> confirmedFacts,    // 已确认事实（带来源标记）
+    List<String> evidenceRefs,     // 证据链接（工具结果摘要/文档引用）
+    List<AttemptedAction> attemptedActions, // 已尝试动作 + 失败原因
+    List<String> openQuestions,    // 未解决问题
+    List<String> risks,            // 风险点
+    String nextStepSuggestion,     // 下一步建议
+    String recipientAgentId,       // 接手智能体
+    List<String> allowedTools,     // 权限边界：可调用工具
+    String expectedOutput          // 期望输出格式
+) {
+    public record ConfirmedFact(String fact, String source, boolean verified) {}
+    public record AttemptedAction(String action, String result, String failureReason) {}
+}
+```
+
+### 9.5.3 三类不可乱传信息的处理
+
+| 类别 | 风险 | Handoff 处理 |
+|------|------|-------------|
+| **敏感信息** | userId/tenantId/支付/内部工具返回数据 -> 隐形越权 | 交接包只含 `objective` + `confirmedFacts`（已脱敏）；userId/tenantId **不进** contextBlocks（现状已隔离，`AssembledContext.forSubAgent()`=empty）；工具结果摘要进 `evidenceRefs` 前经 `DesensitizeClient.scrub` |
+| **噪声/错误假设** | 模型试错、工具失败、被用户否定的内容带偏新智能体 | `attemptedActions` 标明失败原因；`confirmedFacts` 区分 `verified=true/false`；完整历史保留在后台 `peer_run.transcript_json` trace，**不默认传递**；接收方可按需查询 trace |
+| **责任边界** | 交接后谁负责最终回答、谁能调工具、谁能要求补充信息 | `recipientAgentId` 明确接手者；`allowedTools` 裁剪权限（按接收方 `toolsJson` 白名单求交）；Synthesizer 仍是最终正文负责方（不变） |
+
+### 9.5.4 交接流程
+
+```
+智能体A 发言完成
+  └─ HandoffEnvelopeBuilder.build(transcript, expertA, expertB)
+       ├─ 提取 confirmedFacts（从 A 发言中 LLM 抽取或规则标记）
+       ├─ 裁剪 allowedTools = A.toolsJson ∩ B.toolsJson（接收方权限）
+       ├─ 脱敏 evidenceRefs（DesensitizeClient.scrub）
+       └─ 产出 HandoffEnvelope
+  └─ 传递给智能体B：envelope 序列化为结构化文本注入 injectedBlocks
+       （替代现有 PeerMsgSupport.formatTranscriptBlock 裸文本）
+  └─ 完整 transcript 仍落 peer_run.transcript_json（后台 trace）
+```
+
+### 9.5.5 权限不足处理
+
+接收方智能体 `toolsJson` 白名单不包含交接包 `allowedTools` 中的某工具时：
+- **拒绝接手**该子任务，返回"权限不足：需 X 工具但未授权"
+- 或**请求重新授权**：向 HubEngine 发信号，由编排层决定是否升级权限或换人
+- **禁止**拿着被裁剪的信息猜测答案
+
+### 9.5.6 质量验证指标
+
+| 指标 | 定义 | 采集方式 |
+|------|------|----------|
+| 重复提问率 | 接收方重新问了已被前序智能体回答的问题 | transcript 对比 LLM 判定（离线） |
+| 错误继承率 | 接收方基于未确认的猜测继续推理 | `confirmedFacts.verified=false` 被引用计数 |
+| 敏感字段泄露率 | 交接包含 userId/tenantId/原始支付数据 | 自动化扫描 envelope 内容 |
+
+### 9.5.7 现有安全缺口的修复（Handoff 落地时一并修）
+
+探索发现以下缺口与 Handoff 原则直接相关，应在 Handoff 落地时修复：
+
+| 缺口 | 现状 | 修复 |
+|------|------|------|
+| 智能体层 HITL 被关闭 | `ExpertHubEngine.bindHitlBridge(..., false)` | 按智能体 `toolsJson` 是否含写工具动态决定 HITL 开关 |
+| HITL 确认无身份校验 | `confirmTool` 仅凭 token，不比对发起用户 | `HitlTokenRegistry` 注册时存发起 userId，confirm 时校验 |
+| 工具 output 未脱敏 | `ToolAuditService` 只脱敏 params，output 仅截断 240 字符 | output 也走 `DesensitizeClient.scrub` |
+| 审计查询无鉴权 | `AuditController` 三接口不校验归属 | 按 conversationId/userId 归属校验 |
+| transcript 全文不脱敏 | `peer_run.transcript_json` 含 userQuery 原文 | 落库前对 content 脱敏 |
 
 ---
 
@@ -451,6 +562,21 @@ Live：新增 `scripts/verify_expert_subagent_live.py`（或扩 `verify_spawn_su
 
 Live：新增 `scripts/verify_external_expert_live.py`（需 mock A2A server 或真实外部专家）
 
+### 10.4 Handoff 交接（新增）
+
+| # | 场景 | 期望 |
+|---|------|------|
+| H1 | `$A $B 协作`：A 发言后 B 接手 | B 收到 `HandoffEnvelope`（非裸 transcript）；B 的 `injectedBlocks` 含结构化字段 |
+| H2 | 交接包含敏感字段 | envelope 无 userId/tenantId/原始支付数据；`evidenceRefs` 已脱敏 |
+| H3 | A 发言含错误猜测 | `confirmedFacts` 标 `verified=false`；B 不将其当事实继承 |
+| H4 | B 权限不足（缺 A 用的写工具） | B 拒绝接手或请求重新授权；不猜测 |
+| H5 | 完整历史可追溯 | `peer_run.transcript_json` 含完整 trace；B 可按需查询 |
+| H6 | 智能体层写工具 HITL | `toolsJson` 含写工具时 HITL 自动开；确认需校验发起用户身份 |
+| H7 | 工具 output 脱敏 | 审计记录的 output 经 `DesensitizeClient.scrub` |
+| H8 | 审计查询鉴权 | `/api/audit/*` 校验 conversationId/userId 归属 |
+
+Live：新增 `scripts/verify_handoff_live.py`（H1-H8）
+
 ---
 
 ## 11. 实施衔接
@@ -485,14 +611,34 @@ Live：新增 `scripts/verify_external_expert_live.py`（需 mock A2A server 或
 
 外部专家增量在内部统一合入后启动，依赖 `ExpertExecutorRouter` 已就位。
 
+### 11.3 术语重命名 + Handoff 交接（P6+ 独立增量）
+
+| 任务 | 说明 |
+|------|------|
+| 前端术语重命名 | `/experts`->`/agents`；文案"专家"->"智能体"；执行模式"多专家协作"->"多智能体协作" |
+| `HandoffEnvelope` | 新增结构化交接包 record + `HandoffEnvelopeBuilder` |
+| `ExpertHubEngine` 交接改造 | `contextBlocks` 裸累积 -> `HandoffEnvelope` 注入 `injectedBlocks` |
+| `PeerMsgSupport` | `formatTranscriptBlock` -> `formatHandoffEnvelope` |
+| 智能体层 HITL 修复 | `bindHitlBridge` 按 `toolsJson` 含写工具动态开 |
+| HITL 身份校验 | `HitlTokenRegistry` 存发起 userId，confirm 时比对 |
+| 工具 output 脱敏 | `ToolAuditService` output 走 `DesensitizeClient.scrub` |
+| 审计查询鉴权 | `AuditController` 按 conversationId/userId 归属校验 |
+| transcript 脱敏 | `PeerRunAuditService` 落库前脱敏 content |
+| Live | H1-H8 检查门 |
+
+术语重命名可与 Handoff 独立先行；Handoff 安全缺口修复优先（H6-H8 影响线上安全）。
+
 ---
 
 ## 12. 自检清单
 
 - [x] 无 TBD/TODO 占位需求
-- [x] 与背景/方案一致：内部统一执行内核 + spawn 支持 expertId + 外部 A2A 接入 + 消除平行路径
-- [x] 范围清晰：内部统一并入 P6，外部 A2A 独立 P6+ 增量
-- [x] 工具名/参数/AgentRunRequest 字段映射/A2A 事件映射/Catalog/检查门无歧义
+- [x] 与背景/方案一致：术语重命名 + 内部统一执行内核 + spawn 支持 expertId + 外部 A2A 接入 + Handoff 交接 + 安全缺口修复
+- [x] 范围清晰：内部统一并入 P6（E5 已否决）；外部 A2A 独立 P6+；术语重命名 + Handoff 独立 P6+
+- [x] 工具名/参数/AgentRunRequest 字段映射/A2A 事件映射/HandoffEnvelope 结构/Catalog/检查门无歧义
 - [x] A2A 仅做 Client（消费外部 Agent Card），不做 Server
 - [x] 内部/外部在 `ExpertCatalogEntry` 层统一，执行层按 source 分派
+- [x] Handoff：结构化交接包替代裸 contextBlocks；三类不可乱传信息有明确处理；权限不足拒绝而非猜测
+- [x] 术语重命名仅用户可见层，代码层保留 Expert* 避免命名冲突
+- [x] 安全缺口（HITL/脱敏/鉴权）与 Handoff 一并修复
 - [x] 不做兼容兜底（旧两阶段直接删，非 flag 切换）

@@ -81,9 +81,9 @@ export function filterWorkspacePaths(
     .slice(0, limit)
 }
 
-/** 输入框尾部 `/query` 触发补全 */
+/** 输入框尾部 `@query` 触发工作区路径补全（符号与 Skill 互换：原 `/` 触发改为 `@`） */
 export function matchWorkspacePathMention(text: string): { start: number; query: string } | null {
-  const match = text.match(/\/([\w\u4e00-\u9fff./_-]*)$/)
+  const match = text.match(/@([\w\u4e00-\u9fff./_-]*)$/)
   if (!match || match.index == null) return null
   return { start: match.index, query: match[1] ?? '' }
 }
