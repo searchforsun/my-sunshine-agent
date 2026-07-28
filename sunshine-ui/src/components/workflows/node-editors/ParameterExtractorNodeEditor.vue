@@ -92,11 +92,14 @@ function updateSchemaField(idx: number, patch: Partial<SchemaField>) {
 
 function removeSchemaField(idx: number) {
   if (props.readOnly) return
-  emitSchemaFields(schemaFields.value.filter((_, i) => i !== idx))
+  const next = schemaFields.value.filter((_, i) => i !== idx)
+  schemaFields.value = next
+  emitSchemaFields(next, true)
 }
 
-/** 将字段列表序列化为 JSON 字符串并 emit（跳过未命名草稿行，避免空 schema 触发 props watch 重置） */
-function emitSchemaFields(fields: SchemaField[]) {
+/** 将字段列表序列化为 JSON 字符串并 emit（跳过未命名草稿行）
+ *  force=true 时允许空 schema（用于删除最后一个字段） */
+function emitSchemaFields(fields: SchemaField[], force = false) {
   const obj: Record<string, Record<string, unknown>> = {}
   for (const f of fields) {
     const name = f.fieldName.trim()
@@ -110,7 +113,7 @@ function emitSchemaFields(fields: SchemaField[]) {
     if (enums.length > 0) def.enum = enums
     obj[name] = def
   }
-  if (Object.keys(obj).length === 0) return
+  if (!force && Object.keys(obj).length === 0) return
   emit('update:schema', JSON.stringify(obj))
 }
 </script>

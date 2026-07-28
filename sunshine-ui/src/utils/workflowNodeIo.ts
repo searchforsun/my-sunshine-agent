@@ -51,6 +51,38 @@ export function nodeOutputRefs(node: WorkflowPlanNode, tool?: ToolCatalogEntry |
         { ref: `{{${id}.answer}}`, label: '分析结论（推荐下游引用）' },
         { ref: `{{${id}.output}}`, label: '同 answer' },
       ]
+    case 'parameter-extractor': {
+      // 从 params.schema 动态生成字段引用
+      const schema = node.params?.schema
+      if (typeof schema !== 'string' || !schema.trim()) return []
+      try {
+        const obj = JSON.parse(schema) as Record<string, { type?: string; description?: string }>
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return []
+        return Object.entries(obj).map(([name, def]) => ({
+          ref: `{{${id}.${name}}}`,
+          label: def?.description?.trim() || `${name} · ${String(def?.type ?? 'string')}`,
+        }))
+      } catch {
+        return []
+      }
+    }
+    case 'variable-assignment': {
+      const assignments = node.params?.assignments
+      const raw = typeof assignments === 'string' ? assignments : JSON.stringify(assignments ?? [])
+      try {
+        const list = JSON.parse(raw) as Record<string, unknown>[]
+        if (!Array.isArray(list)) return []
+        return list
+          .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+          .map((a) => ({
+            ref: `{{${id}.${String(a.name ?? '')}}}`,
+            label: `${String(a.name ?? '')} · ${String(a.type ?? 'string')}`,
+          }))
+          .filter((r) => !r.ref.endsWith('.'))
+      } catch {
+        return []
+      }
+    }
     default:
       return []
   }
