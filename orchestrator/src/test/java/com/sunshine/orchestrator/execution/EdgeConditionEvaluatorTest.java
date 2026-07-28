@@ -1,8 +1,10 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.plan.PlanEdgeCondition;
+import com.sunshine.orchestrator.plan.PlanEdgeConditionGroup;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,5 +78,65 @@ class EdgeConditionEvaluatorTest {
         ctx.putNode("extract_1", Map.of("result", TypedValue.scalar("rejected")));
         var cond = new PlanEdgeCondition("{{extract_1.result}}", "not_in", "[\"approved\",\"pending\"]");
         assertThat(EdgeConditionEvaluator.matches(cond, ctx)).isTrue();
+    }
+
+    @Test
+    void notEqOperator() {
+        var ctx = new WorkflowContext();
+        ctx.putNode("n1", Map.of("output", TypedValue.scalar("done")));
+        assertThat(EdgeConditionEvaluator.matches(
+                new PlanEdgeCondition("{{n1.output}}", "not_eq", "done"), ctx)).isFalse();
+        assertThat(EdgeConditionEvaluator.matches(
+                new PlanEdgeCondition("{{n1.output}}", "not_eq", "pending"), ctx)).isTrue();
+    }
+
+    @Test
+    void notContainsOperator() {
+        var ctx = new WorkflowContext();
+        ctx.putNode("n1", Map.of("output", TypedValue.scalar("已完成")));
+        assertThat(EdgeConditionEvaluator.matches(
+                new PlanEdgeCondition("{{n1.output}}", "not_contains", "已完成"), ctx)).isFalse();
+        assertThat(EdgeConditionEvaluator.matches(
+                new PlanEdgeCondition("{{n1.output}}", "not_contains", "待处理"), ctx)).isTrue();
+    }
+
+    @Test
+    void matchesGroupAndAllTrue() {
+        var ctx = new WorkflowContext();
+        ctx.putNode("n1", Map.of("count", TypedValue.scalar(5)));
+        ctx.putNode("n2", Map.of("status", TypedValue.scalar("running")));
+        var group = new PlanEdgeConditionGroup("and", List.of(
+                new PlanEdgeCondition("{{n1.count}}", "gt", "3"),
+                new PlanEdgeCondition("{{n2.status}}", "not_eq", "done")));
+        assertThat(EdgeConditionEvaluator.matchesGroup(group, ctx)).isTrue();
+    }
+
+    @Test
+    void matchesGroupAndOneFalse() {
+        var ctx = new WorkflowContext();
+        ctx.putNode("n1", Map.of("count", TypedValue.scalar(2)));
+        ctx.putNode("n2", Map.of("status", TypedValue.scalar("running")));
+        var group = new PlanEdgeConditionGroup("and", List.of(
+                new PlanEdgeCondition("{{n1.count}}", "gt", "3"),
+                new PlanEdgeCondition("{{n2.status}}", "not_eq", "done")));
+        assertThat(EdgeConditionEvaluator.matchesGroup(group, ctx)).isFalse();
+    }
+
+    @Test
+    void matchesGroupOrOneTrue() {
+        var ctx = new WorkflowContext();
+        ctx.putNode("n1", Map.of("count", TypedValue.scalar(2)));
+        ctx.putNode("n2", Map.of("status", TypedValue.scalar("done")));
+        var group = new PlanEdgeConditionGroup("or", List.of(
+                new PlanEdgeCondition("{{n1.count}}", "gt", "3"),
+                new PlanEdgeCondition("{{n2.status}}", "not_eq", "done")));
+        assertThat(EdgeConditionEvaluator.matchesGroup(group, ctx)).isFalse();
+    }
+
+    @Test
+    void matchesGroupEmptyReturnsTrue() {
+        var ctx = new WorkflowContext();
+        var group = PlanEdgeConditionGroup.empty();
+        assertThat(EdgeConditionEvaluator.matchesGroup(group, ctx)).isTrue();
     }
 }
