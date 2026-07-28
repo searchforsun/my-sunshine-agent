@@ -136,7 +136,7 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(new PromptComposeRequest(
                 PromptMode.REACT, ctx, "当前提问正文", null, "finance-analysis", "node-prompt-text",
-                List.of("injected-ctx"), null, true, "react-prompt.demo"));
+                List.of("injected-ctx"), null, true, "react-prompt.demo", null));
 
         // 主断言：无任何 SYSTEM 角色
         assertThat(inputs).isNotEmpty();
@@ -316,6 +316,51 @@ class PromptComposerTest {
 
         assertThat(inputs.stream().map(Msg::getTextContent))
                 .noneMatch(t -> t.contains("写操作须直接 tool call"));
+    }
+
+    @Test
+    void composeGatewayMessages_injectsPersonalRulesAfterBaseSystem() {
+        List<Map<String, Object>> messages = composer.composeGatewayMessages(
+                PromptComposeRequest.forDirect(AssembledContext.empty(), "新问题", "用文言文回答"));
+
+        assertThat(messages.get(0)).containsEntry("content", "base-system");
+        assertThat(messages.get(1))
+                .containsEntry("role", "system")
+                .containsEntry("content", "## 用户个人规则\n用文言文回答");
+    }
+
+    @Test
+    void composeReactInputs_injectsPersonalRulesAfterModeOverlay() {
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                AssembledContext.empty(), "问", null, List.of(), false, null, "用文言文回答"));
+
+        assertThat(inputs.get(0).getTextContent()).isEqualTo("react-mode-minimal");
+        assertThat(inputs.get(1).getTextContent()).isEqualTo("## 用户个人规则\n用文言文回答");
+        assertThat(inputs.get(1).getRole()).isEqualTo(MsgRole.USER);
+    }
+
+    @Test
+    void compose_blankPersonalRulesNotInjected() {
+        List<Map<String, Object>> gateway = composer.composeGatewayMessages(
+                PromptComposeRequest.forDirect(AssembledContext.empty(), "问", "   "));
+        assertThat(gateway.stream().map(m -> m.get("content").toString()))
+                .noneMatch(c -> c.contains("用户个人规则"));
+
+        List<Msg> react = composer.composeReactInputs(PromptComposeRequest.forReact(
+                AssembledContext.empty(), "问", null, List.of(), false, null, null));
+        assertThat(react.stream().map(Msg::getTextContent))
+                .noneMatch(t -> t != null && t.contains("用户个人规则"));
+    }
+
+    @Test
+    void compose_oversizedPersonalRulesTruncated() {
+        String oversized = "规".repeat(PersonalRulesSupport.MAX_LENGTH + 100);
+        List<Map<String, Object>> messages = composer.composeGatewayMessages(
+                PromptComposeRequest.forDirect(AssembledContext.empty(), "问", oversized));
+
+        String injected = messages.get(1).get("content").toString();
+        assertThat(injected).startsWith("## 用户个人规则\n");
+        assertThat(injected).hasSize("## 用户个人规则\n".length() + PersonalRulesSupport.MAX_LENGTH);
     }
 
     private void replaceCatalogTexts(Map<String, String> overrides) {

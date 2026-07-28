@@ -57,6 +57,8 @@ public class PromptComposer {
         if (includeBaseSystem) {
             addGatewaySystem(messages, catalogText("system-prompt"));
         }
+        // 用户个人规则（soul）：base-system 之后独立注入层；空不注入
+        addGatewaySystem(messages, PersonalRulesSupport.wrap(request.personalRules()));
         addGatewaySystem(messages, resolveModeOverlay(request.mode(), request.workflowId()));
         addGatewaySystem(messages, resolveSkillOverlay(request.skillId()));
         appendGatewayContextLayers(messages, ctx);
@@ -70,6 +72,8 @@ public class PromptComposer {
             addReactUser(inputs, catalogText("system-prompt"));
         }
         addReactUser(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
+        // 用户个人规则（soul）：mode-overlay 之后独立注入层；空不注入
+        addReactUser(inputs, PersonalRulesSupport.wrap(request.personalRules()));
         addReactUser(inputs, resolveReactScenarioOverlay(request.reactPromptId()));
         addReactUser(inputs, resolveReactRestartOverlay(request));
         addReactUser(inputs, resolveHitlOverlay(request.mode()));
