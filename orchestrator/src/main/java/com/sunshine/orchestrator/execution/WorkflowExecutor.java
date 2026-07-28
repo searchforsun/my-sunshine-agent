@@ -11,6 +11,7 @@ import com.sunshine.orchestrator.execution.workflow.WorkflowStaticPlanRunner;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PausePhase;
 import com.sunshine.orchestrator.plan.PlanEdgeCondition;
+import com.sunshine.orchestrator.plan.PlanEdgeConditionGroup;
 import com.sunshine.orchestrator.plan.PlanExecutionSchedule;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
@@ -24,6 +25,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -210,22 +212,47 @@ public class WorkflowExecutor {
         Map<String, Object> params = loopSpec != null ? loopSpec.params() : Map.of();
         int maxIterations = parseMaxIterations(params);
         String onMax = readParamString(params, "onMaxIterations", "fail_fast").strip().toLowerCase();
-        PlanEdgeCondition condition = new PlanEdgeCondition(
-                readParamString(params, "condition.left", ""),
-                readParamString(params, "condition.op", ""),
-                readParamString(params, "condition.right", ""));
+        PlanEdgeConditionGroup conditionGroup = parseLoopConditionGroup(params);
         AtomicInteger iter = new AtomicInteger(0);
         AtomicReference<String> buffer = new AtomicReference<>("");
         return loopCycle(
-                loop, bridge, foldIter, condition, maxIterations, onMax, iter, buffer,
+                loop, bridge, foldIter, conditionGroup, maxIterations, onMax, iter, buffer,
                 session, def, wfCtx, streamCtx, runSession, planWorkflow);
+    }
+
+    private static PlanEdgeConditionGroup parseLoopConditionGroup(Map<String, Object> params) {
+        // 新格式：conditions 数组 + conditionLogic
+        Object conditionsObj = params.get("conditions");
+        if (conditionsObj instanceof JsonNode conditionsNode && conditionsNode.isArray()) {
+            String logic = readParamString(params, "conditionLogic", "and");
+            List<PlanEdgeCondition> items = new ArrayList<>();
+            for (JsonNode item : conditionsNode) {
+                String left = item.has("left") ? item.get("left").asText("") : "";
+                String op = item.has("op") ? item.get("op").asText("") : "";
+                String right = item.has("right") ? item.get("right").asText("") : "";
+                if (!op.isBlank()) {
+                    items.add(new PlanEdgeCondition(left, op, right));
+                }
+            }
+            return new PlanEdgeConditionGroup(logic, items);
+        }
+        // 兼容旧格式：condition.left / condition.op / condition.right
+        String op = readParamString(params, "condition.op", "");
+        if (!op.isBlank()) {
+            return PlanEdgeConditionGroup.single(new PlanEdgeCondition(
+                    readParamString(params, "condition.left", ""),
+                    op,
+                    readParamString(params, "condition.right", "")));
+        }
+        // 无条件 -> 空组（永远继续，靠 maxIterations 兜底）
+        return PlanEdgeConditionGroup.empty();
     }
 
     private Flux<StreamToken> loopCycle(
             PlanExecutionSchedule.Loop loop,
             LoopBodyTimelineBridge bridge,
             AtomicInteger foldIter,
-            PlanEdgeCondition condition,
+            PlanEdgeConditionGroup conditionGroup,
             int maxIterations,
             String onMax,
             AtomicInteger iter,
@@ -262,7 +289,7 @@ public class WorkflowExecutor {
                 .concatWith(Flux.defer(() -> {
                     buffer.set(resolveBodyTailOutput(wfCtx, body));
                     iter.incrementAndGet();
-                    if (!EdgeConditionEvaluator.matches(condition, wfCtx)) {
+                    if (!EdgeConditionEvaluator.matchesGroup(conditionGroup, wfCtx)) {
                         settleLoop(wfCtx, loop.loopNodeId(), buffer.get(), iter.get(), "completed");
                         return Flux.just(loopCompleteToken(
                                 loop.loopNodeId(),
@@ -272,7 +299,7 @@ public class WorkflowExecutor {
                                 bridge.subSteps()));
                     }
                     return loopCycle(
-                            loop, bridge, foldIter, condition, maxIterations, onMax, iter, buffer,
+                            loop, bridge, foldIter, conditionGroup, maxIterations, onMax, iter, buffer,
                             session, def, wfCtx, streamCtx, runSession, planWorkflow);
                 }));
     }
@@ -415,7 +442,7 @@ public class WorkflowExecutor {
                 fallback = arm;
                 continue;
             }
-            if (EdgeConditionEvaluator.matches(arm.condition(), wfCtx)) {
+            if (EdgeConditionEvaluator.matchesGroup(arm.condition(), wfCtx)) {
                 return arm;
             }
         }

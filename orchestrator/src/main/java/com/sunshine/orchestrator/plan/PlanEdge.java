@@ -4,7 +4,7 @@ package com.sunshine.orchestrator.plan;
 public record PlanEdge(
         String from,
         String to,
-        PlanEdgeCondition condition,
+        PlanEdgeConditionGroup condition,
         boolean isDefault) {
 
     public PlanEdge(String from, String to) {
@@ -12,12 +12,12 @@ public record PlanEdge(
     }
 
     public PlanEdge {
-        if (condition != null && condition.op().isBlank() && condition.left().isBlank() && condition.right().isBlank()) {
+        if (condition != null && condition.isEmpty()) {
             condition = null;
         }
     }
 
     public boolean hasCondition() {
-        return condition != null && condition.isComplete();
+        return condition != null && !condition.isEmpty();
     }
 }

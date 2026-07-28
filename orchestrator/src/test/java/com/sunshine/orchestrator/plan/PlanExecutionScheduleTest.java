@@ -98,8 +98,8 @@ class PlanExecutionScheduleTest {
                         new PlanNode("answer", "answer", Map.of())),
                 List.of(
                         new PlanEdge("start", "xg-1"),
-                        new PlanEdge("xg-1", "a", new PlanEdgeCondition("{{a.output}}", "not_empty", ""), false),
-                        new PlanEdge("xg-1", "b", new PlanEdgeCondition("{{a.output}}", "empty", ""), false),
+                        new PlanEdge("xg-1", "a", PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{a.output}}", "not_empty", "")), false),
+                        new PlanEdge("xg-1", "b", PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{a.output}}", "empty", "")), false),
                         new PlanEdge("a", "answer"),
                         new PlanEdge("b", "answer")));
         assertThat(PlanExecutionSchedule.validateExclusiveTopology(plan).message())
@@ -166,7 +166,7 @@ class PlanExecutionScheduleTest {
                 List.of(
                         new PlanEdge("start", "xg-1"),
                         new PlanEdge("xg-1", "rag-hit",
-                                new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销"), false),
+                                PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销")), false),
                         new PlanEdge("xg-1", "rag-miss", null, true),
                         new PlanEdge("rag-hit", "answer"),
                         new PlanEdge("rag-miss", "answer")));

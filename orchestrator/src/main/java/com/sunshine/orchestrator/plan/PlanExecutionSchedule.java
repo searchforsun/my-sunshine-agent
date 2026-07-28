@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sunshine.common.workflow.WorkflowNodeType;
 import org.springframework.util.StringUtils;
 
@@ -33,7 +34,7 @@ public final class PlanExecutionSchedule {
     /** 排他网关：运行时按边条件选中一臂并执行 pathNodeIds */
     public record ExclusiveArm(
             String targetNodeId,
-            PlanEdgeCondition condition,
+            PlanEdgeConditionGroup condition,
             boolean isDefault,
             List<String> pathNodeIds) {
         public ExclusiveArm {
@@ -309,6 +310,33 @@ public final class PlanExecutionSchedule {
                     PlanValidationCode.VALIDATION_FAILED,
                     "loop 节点 " + node.id() + " 的 onMaxIterations 非法: " + onMax);
         }
+        // 新格式：conditions 数组 + conditionLogic
+        Object conditionsObj = p.get("conditions");
+        if (conditionsObj instanceof JsonNode conditionsNode
+                && conditionsNode.isArray() && !conditionsNode.isEmpty()) {
+            String logic = paramStr(p, "conditionLogic", "and").strip().toLowerCase();
+            if (!"and".equals(logic) && !"or".equals(logic)) {
+                return PlanValidationIssue.of(
+                        PlanValidationCode.VALIDATION_FAILED,
+                        "loop 节点 " + node.id() + " 的 conditionLogic 非法: " + logic);
+            }
+            for (JsonNode item : conditionsNode) {
+                String op = item.has("op") ? item.get("op").asText("").strip().toLowerCase() : "";
+                String left = item.has("left") ? item.get("left").asText("").strip() : "";
+                if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.VALIDATION_FAILED,
+                            "loop 节点 " + node.id() + " conditions 项须配置 op 与 left");
+                }
+                PlanValidationIssue opErr = validateLoopOp(node.id(), op,
+                        item.has("right") ? item.get("right").asText("") : "");
+                if (opErr != null) {
+                    return opErr;
+                }
+            }
+            return null;
+        }
+        // 兼容旧格式：condition.left / condition.op / condition.right
         String op = paramStr(p, "condition.op", "").strip().toLowerCase();
         String left = paramStr(p, "condition.left", "").strip();
         if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
@@ -316,17 +344,24 @@ public final class PlanExecutionSchedule {
                     PlanValidationCode.VALIDATION_FAILED,
                     "loop 节点 " + node.id() + " 须配置 condition.op 与 condition.left");
         }
+        return validateLoopOp(node.id(), op, paramStr(p, "condition.right", ""));
+    }
+
+    private static PlanValidationIssue validateLoopOp(String nodeId, String op, String right) {
         if (!"empty".equals(op) && !"not_empty".equals(op)
-                && !"contains".equals(op) && !"eq".equals(op)) {
+                && !"contains".equals(op) && !"not_contains".equals(op)
+                && !"eq".equals(op) && !"not_eq".equals(op)
+                && !"gt".equals(op) && !"lt".equals(op)
+                && !"gte".equals(op) && !"lte".equals(op)) {
             return PlanValidationIssue.of(
                     PlanValidationCode.LOOP_CONDITION_OP,
-                    "loop " + node.id() + " 的 condition.op=" + op + " 非法");
+                    "loop " + nodeId + " 的 condition.op=" + op + " 非法");
         }
         if (("contains".equals(op) || "eq".equals(op))
-                && !StringUtils.hasText(paramStr(p, "condition.right", "").strip())) {
+                && !StringUtils.hasText(right.strip())) {
             return PlanValidationIssue.of(
                     PlanValidationCode.VALIDATION_FAILED,
-                    "loop 节点 " + node.id() + " 的 condition.right 不能为空");
+                    "loop 节点 " + nodeId + " 的 condition.right 不能为空");
         }
         return null;
     }

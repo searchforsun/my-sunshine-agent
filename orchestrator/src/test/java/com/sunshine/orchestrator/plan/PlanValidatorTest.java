@@ -117,7 +117,7 @@ class PlanValidatorTest {
                 List.of(
                         new PlanEdge("start", "xg-1"),
                         new PlanEdge("xg-1", "rag-hit",
-                                new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销"), false),
+                                PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销")), false),
                         new PlanEdge("xg-1", "rag-miss", null, true)));
         assertThat(validator.validatePlannerOutput(raw)).isNull();
         assertThat(validator.validate(PlanNormalizer.normalize(raw))).isNull();

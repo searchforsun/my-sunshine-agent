@@ -224,15 +224,35 @@ public class PlanJsonCodec {
         if (edge.isDefault()) {
             map.put("default", true);
         }
-        if (edge.condition() != null) {
-            Map<String, Object> cond = new LinkedHashMap<>();
-            cond.put("left", edge.condition().left());
-            cond.put("op", edge.condition().op());
-            if (!edge.condition().right().isBlank()) {
-                cond.put("right", edge.condition().right());
+        PlanEdgeConditionGroup group = edge.condition();
+        if (group != null && !group.isEmpty()) {
+            if (group.items().size() == 1 && "and".equals(group.logic())) {
+                // 单条件序列化为旧格式 {left, op, right}，便于旧消费方读取
+                PlanEdgeCondition c = group.items().get(0);
+                Map<String, Object> cond = new LinkedHashMap<>();
+                cond.put("left", c.left());
+                cond.put("op", c.op());
+                if (!c.right().isBlank()) {
+                    cond.put("right", c.right());
+                }
+                map.put("condition", cond);
+            } else {
+                Map<String, Object> cond = new LinkedHashMap<>();
+                cond.put("logic", group.logic());
+                cond.put("items", group.items().stream().map(this::conditionMap).toList());
+                map.put("condition", cond);
             }
-            map.put("condition", cond);
         }
         return map;
+    }
+
+    private Map<String, Object> conditionMap(PlanEdgeCondition c) {
+        Map<String, Object> cond = new LinkedHashMap<>();
+        cond.put("left", c.left());
+        cond.put("op", c.op());
+        if (!c.right().isBlank()) {
+            cond.put("right", c.right());
+        }
+        return cond;
     }
 }

@@ -43,7 +43,7 @@ class PlanNormalizerTest {
                 List.of(
                         new PlanEdge("start", "xg-1"),
                         new PlanEdge("xg-1", "rag-hit",
-                                new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销"), false),
+                                PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销")), false),
                         new PlanEdge("xg-1", "rag-miss", null, true)));
         PlanJson normalized = PlanNormalizer.normalize(raw);
         assertThat(normalized.edges()).contains(
