@@ -247,6 +247,8 @@ export function reconcilePlanDataFlow(
   })
   const edges = (plan.edges ?? []).map(e => {
     if (typeById.get(e.from) !== 'exclusive-gateway' || e.default) return e
+    // 新格式 {logic, items} 保留不动（Task 8 处理）
+    if (e.condition && 'items' in e.condition) return e
     const left = exclusiveGatewayConditionLeft(plan, e.from)
     if (e.condition) {
       if (e.condition.left === left) return e

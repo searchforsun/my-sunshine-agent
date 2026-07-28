@@ -57,14 +57,20 @@ export interface WorkflowPlanNode {
 
 export interface WorkflowPlanEdgeCondition {
   left: string
-  op: 'empty' | 'not_empty' | 'contains' | 'eq' | string
+  op: string
   right?: string
+}
+
+export interface WorkflowPlanEdgeConditionGroup {
+  logic: 'and' | 'or'
+  items: WorkflowPlanEdgeCondition[]
 }
 
 export interface WorkflowPlanEdge {
   from: string
   to: string
-  condition?: WorkflowPlanEdgeCondition
+  /** 复合条件（新格式 {logic, items}）；兼容旧 {left, op, right} */
+  condition?: WorkflowPlanEdgeConditionGroup | WorkflowPlanEdgeCondition
   default?: boolean
 }
 

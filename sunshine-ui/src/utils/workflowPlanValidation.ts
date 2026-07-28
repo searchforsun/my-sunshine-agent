@@ -185,6 +185,12 @@ export function validatePlanTopologyLocally(plan: WorkflowPlan): string[] {
       }
       for (const e of outEdges) {
         if (e.default) continue
+        if (e.condition && 'items' in e.condition) {
+          if (e.condition.items.length === 0) {
+            issues.push(`条件分支出边 ${e.from}->${e.to} 须配置条件或标为默认`)
+          }
+          continue
+        }
         const op = e.condition?.op?.trim()
         const left = e.condition?.left?.trim()
         if (!op || !left) {

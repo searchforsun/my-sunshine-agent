@@ -7,6 +7,7 @@ import { workflowNodeFieldHelp } from './workflowFieldHelp'
 import { WORKFLOWS_PAGE_KEY, type WorkflowsPageApi } from '../../composables/useWorkflowsPage'
 import { countNodeDegree } from '../../utils/workflowPlanValidation'
 import { exclusiveGatewayConditionLeft } from '../../utils/workflowPlan'
+import type { WorkflowPlanEdge } from '../../api/workflows'
 
 const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
 const readOnly = computed(() => !page.canEditPlan)
@@ -43,17 +44,27 @@ const exclusiveOutEdges = computed(() => {
   const autoLeft = exclusiveGatewayConditionLeft(page.plan, node.id)
   return (page.plan.edges ?? [])
     .filter(e => e.from === node.id)
-    .map(e => ({
-      ...e,
-      toLabel: labelById.get(e.to) || e.to,
-      condition: e.default
-        ? e.condition
-        : {
-            left: autoLeft,
-            op: e.condition?.op ?? 'contains',
-            right: e.condition?.right ?? '',
-          },
-    }))
+    .map(e => {
+      if (e.default) {
+        return { ...e, toLabel: labelById.get(e.to) || e.to }
+      }
+      // 新格式 {logic, items} 保留不动
+      if (e.condition && 'items' in e.condition) {
+        return { ...e, toLabel: labelById.get(e.to) || e.to }
+      }
+      // 旧格式 {left, op, right}：强制 left 为上游变量
+      const single = e.condition as { left?: string; op?: string; right?: string } | undefined
+      const condition: { left: string; op: string; right?: string } = {
+        left: autoLeft,
+        op: single?.op ?? 'contains',
+        right: single?.right ?? '',
+      }
+      return {
+        ...e,
+        toLabel: labelById.get(e.to) || e.to,
+        condition,
+      }
+    })
 })
 
 function updateExclusiveEdge(
@@ -65,12 +76,14 @@ function updateExclusiveEdge(
   const autoLeft = exclusiveGatewayConditionLeft(page.plan, from)
   const edges = (page.plan.edges ?? []).map(e => {
     if (e.from !== from) return e
+    // 新格式 {logic, items} 不被旧 patch 逻辑改动
+    const isGroup = e.condition && 'items' in e.condition
     if (patch.default === true && e.to !== to && e.default) {
       const { default: _d, ...rest } = e
       return {
         ...rest,
         condition: rest.condition
-          ? { ...rest.condition, left: autoLeft }
+          ? (isGroup ? rest.condition : { ...(rest.condition as { left?: string; op?: string; right?: string }), left: autoLeft })
           : { left: autoLeft, op: 'contains', right: '' },
       }
     }
@@ -85,8 +98,8 @@ function updateExclusiveEdge(
       delete next.default
       next.condition = {
         left: autoLeft,
-        op: next.condition?.op ?? 'contains',
-        right: next.condition?.right ?? '',
+        op: (next.condition as { op?: string } | undefined)?.op ?? 'contains',
+        right: (next.condition as { right?: string } | undefined)?.right ?? '',
       }
       return next
     }
@@ -97,7 +110,7 @@ function updateExclusiveEdge(
       delete next.default
     }
     return next
-  })
+  }) as WorkflowPlanEdge[]
   page.plan = { ...page.plan, edges }
 }
 
@@ -105,13 +118,22 @@ function updateExclusiveEdgeField(to: string, field: 'op' | 'right', value: stri
   if (!page.plan || readOnly.value || !page.selectedNode) return
   const from = page.selectedNode.id
   const edge = (page.plan.edges ?? []).find(e => e.from === from && e.to === to)
+  const single = edge?.condition as { op?: string; right?: string } | undefined
   const condition = {
     left: exclusiveGatewayConditionLeft(page.plan, from),
-    op: edge?.condition?.op ?? 'contains',
-    right: edge?.condition?.right ?? '',
+    op: single?.op ?? 'contains',
+    right: single?.right ?? '',
     [field]: value,
   }
   updateExclusiveEdge(to, { condition })
+}
+
+/** 模板取旧格式单条件视图（新 {logic, items} 格式由 Task 8 重写后移除） */
+function singleConditionOf(edge: { condition?: { left?: string; op?: string; right?: string } | { logic?: string; items?: unknown[] } }): { left: string; op: string; right?: string } | undefined {
+  const c = edge.condition
+  if (!c) return undefined
+  if ('items' in c) return undefined
+  return c as { left: string; op: string; right?: string }
 }
 </script>
 
@@ -146,26 +168,26 @@ function updateExclusiveEdgeField(to: string, field: 'op' | 'right', value: stri
       <template v-if="!edge.default">
         <NFormItem label="左值（随上游自动填入）" :show-feedback="false">
           <NInput
-            :value="edge.condition?.left ?? ''"
+            :value="singleConditionOf(edge)?.left ?? ''"
             disabled
             placeholder="{{start.userQuery}}"
           />
         </NFormItem>
         <NFormItem label="算子" :show-feedback="false">
           <NSelect
-            :value="edge.condition?.op || 'contains'"
+            :value="singleConditionOf(edge)?.op || 'contains'"
             :options="CONDITION_OP_OPTIONS"
             :disabled="readOnly"
             @update:value="v => updateExclusiveEdgeField(edge.to, 'op', String(v))"
           />
         </NFormItem>
         <NFormItem
-          v-if="edge.condition?.op !== 'empty' && edge.condition?.op !== 'not_empty'"
+          v-if="singleConditionOf(edge)?.op !== 'empty' && singleConditionOf(edge)?.op !== 'not_empty'"
           label="右值"
           :show-feedback="false"
         >
           <NInput
-            :value="edge.condition?.right ?? ''"
+            :value="singleConditionOf(edge)?.right ?? ''"
             :disabled="readOnly"
             placeholder="比较值"
             @update:value="v => updateExclusiveEdgeField(edge.to, 'right', v)"
