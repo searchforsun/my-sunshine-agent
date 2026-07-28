@@ -163,7 +163,7 @@ async function handleSave() {
                 placeholder="例：回答默认使用简体中文……"
                 maxlength="4000"
                 show-count
-                :autosize="{ minRows: 8, maxRows: 8 }"
+                :autosize="{ minRows: 15, maxRows: 15 }"
                 :disabled="saving"
               />
               <p class="settings-hint">注入你的所有对话系统提示；留空不注入，子 Agent 不继承。</p>
