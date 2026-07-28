@@ -157,6 +157,25 @@ export function loopConditionLeft(plan: WorkflowPlan, loopId: string): string {
   return resolveConditionLeftFromUpstream(plan, loopId)
 }
 
+/** 将 edge.condition 规范化为 {logic, items}（兼容旧 {left, op, right}） */
+export function normalizeEdgeConditionGroup(
+  condition: WorkflowPlanEdgeConditionGroup | WorkflowPlanEdgeCondition | undefined,
+): WorkflowPlanEdgeConditionGroup {
+  if (!condition) return { logic: 'and', items: [] }
+  if ('items' in condition && Array.isArray(condition.items)) {
+    return {
+      logic: condition.logic === 'or' ? 'or' : 'and',
+      items: condition.items,
+    }
+  }
+  // 旧格式 {left, op, right}
+  const single = condition as WorkflowPlanEdgeCondition
+  if (single.op) {
+    return { logic: 'and', items: [single] }
+  }
+  return { logic: 'and', items: [] }
+}
+
 /** 将 loop params 中的条件规范化为 {logic, items} 结构（用于 UI 编辑） */
 export function normalizeLoopConditionGroup(
   params: Record<string, unknown> | undefined,
@@ -287,14 +306,10 @@ export function reconcilePlanDataFlow(
   })
   const edges = (plan.edges ?? []).map(e => {
     if (typeById.get(e.from) !== 'exclusive-gateway' || e.default) return e
-    // 新格式 {logic, items} 保留不动（Task 8 处理）
+    // 新格式 {logic, items} 保留不动
     if (e.condition && 'items' in e.condition) return e
-    const left = exclusiveGatewayConditionLeft(plan, e.from)
-    if (e.condition) {
-      if (e.condition.left === left) return e
-      return { ...e, condition: { ...e.condition, left } }
-    }
-    return { ...e, condition: { left, op: 'contains', right: '' } }
+    // 旧格式：保持原样（后端兼容）
+    return e
   })
   const nodesWithLoop = nodes.map(n => {
     if (n.type !== 'loop') return n
