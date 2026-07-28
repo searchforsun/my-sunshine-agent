@@ -25,16 +25,6 @@ export const ON_FAILURE_OPTIONS = [
   { label: '降级 ReAct（fallback_react）', value: 'fallback_react' },
 ] as const
 
-// 过滤旧 plan JSON 中可能残留的 output.mode/output.extract（WF-1 前遗留字段，新 plan 不再写入）
-const RESERVED_TOOL_PARAM_KEYS = new Set([
-  'tool',
-  'output.mode',
-  'output.extract',
-  RETRY_PARAM_KEYS.maxAttempts,
-  RETRY_PARAM_KEYS.backoffMs,
-  RETRY_PARAM_KEYS.onFailure,
-])
-
 export function resolveRetryForType(
   nodeType: string,
   defaults: WorkflowNodeDefaultsResponse,
@@ -272,42 +262,6 @@ export function patchNodeParams(
       next[key] = String(val)
     }
   }
-  return next
-}
-
-export function toolExtraParamsLines(params?: Record<string, unknown>): string {
-  if (!params) return ''
-  return Object.entries(params)
-    .filter(([k]) => !RESERVED_TOOL_PARAM_KEYS.has(k))
-    .map(([k, v]) => `${k}=${String(v ?? '')}`)
-    .join('\n')
-}
-
-export function parseToolExtraParamsLines(text: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eq = trimmed.indexOf('=')
-    if (eq <= 0) continue
-    const key = trimmed.slice(0, eq).trim()
-    if (!key || RESERVED_TOOL_PARAM_KEYS.has(key)) continue
-    out[key] = trimmed.slice(eq + 1).trim()
-  }
-  return out
-}
-
-export function mergeToolExtraParams(
-  params: Record<string, unknown> | undefined,
-  extraLines: string,
-): Record<string, unknown> {
-  const next: Record<string, unknown> = { ...(params ?? {}) }
-  for (const k of Object.keys(next)) {
-    if (!RESERVED_TOOL_PARAM_KEYS.has(k)) {
-      delete next[k]
-    }
-  }
-  Object.assign(next, parseToolExtraParamsLines(extraLines))
   return next
 }
 

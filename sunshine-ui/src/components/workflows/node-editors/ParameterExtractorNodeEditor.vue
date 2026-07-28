@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NButton, NFormItem, NInput, NSelect } from 'naive-ui'
 import VariableReferencePicker from '../VariableReferencePicker.vue'
 import WorkflowNodeConfigSection from '../WorkflowNodeConfigSection.vue'
@@ -36,10 +36,19 @@ const FIELD_TYPE_OPTIONS = [
 const inputValue = computed(() => String(props.node.params?.input ?? ''))
 const instructionValue = computed(() => String(props.node.params?.instruction ?? ''))
 
-/** schema 在 params 中以 JSON 字符串存储；解析为字段列表供可视化编辑 */
-const schemaFields = computed<SchemaField[]>(() => {
-  const raw = props.node.params?.schema
-  if (typeof raw !== 'string' || !raw.trim()) return []
+/** 编辑中的 schema 字段（含未命名草稿行）；保存时仅序列化已命名字段 */
+const schemaFields = ref<SchemaField[]>([])
+
+watch(
+  () => props.node.params?.schema,
+  (raw) => {
+    schemaFields.value = parseSchemaFields(typeof raw === 'string' ? raw : '')
+  },
+  { immediate: true },
+)
+
+function parseSchemaFields(raw: string): SchemaField[] {
+  if (!raw.trim()) return []
   try {
     const obj = JSON.parse(raw) as Record<string, unknown>
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return []
@@ -57,7 +66,7 @@ const schemaFields = computed<SchemaField[]>(() => {
   } catch {
     return []
   }
-})
+}
 
 function onInputUpdate(v: string) {
   if (props.readOnly) return
@@ -71,8 +80,8 @@ function onInstructionUpdate(v: string) {
 
 function addSchemaField() {
   if (props.readOnly) return
-  const next = [...schemaFields.value, { fieldName: '', type: 'string', description: '', enumValues: '' }]
-  emitSchemaFields(next)
+  schemaFields.value.push({ fieldName: '', type: 'string', description: '', enumValues: '' })
+  emitSchemaFields(schemaFields.value)
 }
 
 function updateSchemaField(idx: number, patch: Partial<SchemaField>) {
@@ -86,7 +95,7 @@ function removeSchemaField(idx: number) {
   emitSchemaFields(schemaFields.value.filter((_, i) => i !== idx))
 }
 
-/** 将字段列表序列化为 JSON 字符串并 emit */
+/** 将字段列表序列化为 JSON 字符串并 emit（跳过未命名草稿行，避免空 schema 触发 props watch 重置） */
 function emitSchemaFields(fields: SchemaField[]) {
   const obj: Record<string, Record<string, unknown>> = {}
   for (const f of fields) {
@@ -101,6 +110,7 @@ function emitSchemaFields(fields: SchemaField[]) {
     if (enums.length > 0) def.enum = enums
     obj[name] = def
   }
+  if (Object.keys(obj).length === 0) return
   emit('update:schema', JSON.stringify(obj))
 }
 </script>
