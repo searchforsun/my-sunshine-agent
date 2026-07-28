@@ -37,6 +37,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_skills_ui_live.py` | **3.12** `/skills` 管理页 API Live（列表/版本/diff/上传） |
 | `verify_skill_5b_live.py` | **3.11** Skill 5B Chat `@` + Plan 触发 |
 | `verify_hitl_live.py` | **3.3** HITL 写工具（`--live`） |
+| `verify_personal_rules_live.py` | 个人规则（soul）注入 Live（P1–P5：设置/ReAct/Workflow 生效/清空/请求体不带不注入） |
 | `verify_audit_live.py` | **3.6** 审计三 API |
 | `verify_grafana_rag_live.py` | **3.5** Grafana RAG 可观测 |
 | `verify_sentinel_dashboard.py` | **3.5** Sentinel Dashboard 联调 |
