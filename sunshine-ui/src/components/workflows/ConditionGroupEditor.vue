@@ -65,39 +65,43 @@ function addItem() {
     <div
       v-for="(item, idx) in modelValue.items"
       :key="idx"
-      class="condition-row"
+      class="condition-card"
     >
-      <VariableReferencePicker
-        class="cond-left"
-        :model-value="item.left"
-        :upstream-nodes="upstreamNodes"
-        :disabled="disabled"
-        placeholder="{{node.field}}"
-        @update:modelValue="v => updateItem(idx, { left: v })"
-      />
-      <NSelect
-        class="sun-field cond-op"
-        :value="item.op"
-        :options="CONDITION_OP_OPTIONS"
-        :disabled="disabled"
-        @update:value="v => updateItem(idx, { op: String(v) })"
-      />
-      <NInput
-        v-if="item.op !== 'empty' && item.op !== 'not_empty'"
-        class="sun-field cond-right"
-        :value="item.right ?? ''"
-        :disabled="disabled"
-        placeholder="比较值"
-        @update:value="v => updateItem(idx, { right: v })"
-      />
-      <NButton
-        quaternary
-        size="small"
-        :disabled="disabled"
-        @click="removeItem(idx)"
-      >
-        ✕
-      </NButton>
+      <div class="condition-card-top">
+        <VariableReferencePicker
+          :model-value="item.left"
+          :upstream-nodes="upstreamNodes"
+          :disabled="disabled"
+          placeholder="{{node.field}}"
+          @update:modelValue="v => updateItem(idx, { left: v })"
+        />
+        <NButton
+          quaternary
+          size="small"
+          class="condition-remove"
+          :disabled="disabled"
+          @click="removeItem(idx)"
+        >
+          ✕
+        </NButton>
+      </div>
+      <div class="condition-card-bottom">
+        <NSelect
+          class="sun-field cond-op"
+          :value="item.op"
+          :options="CONDITION_OP_OPTIONS"
+          :disabled="disabled"
+          @update:value="v => updateItem(idx, { op: String(v) })"
+        />
+        <NInput
+          v-if="item.op !== 'empty' && item.op !== 'not_empty'"
+          class="sun-field cond-right"
+          :value="item.right ?? ''"
+          :disabled="disabled"
+          placeholder="比较值"
+          @update:value="v => updateItem(idx, { right: v })"
+        />
+      </div>
     </div>
     <NButton
       quaternary
@@ -120,17 +124,35 @@ function addItem() {
   font-size: 12px;
   color: var(--sun-text-secondary);
 }
-.condition-row {
+.condition-card {
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--sun-black);
+}
+.condition-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.condition-card-top > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.condition-remove {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.condition-card-bottom {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.cond-left {
-  flex: 1;
-  min-width: 0;
-}
 .cond-op {
-  width: 140px;
+  width: 160px;
   flex-shrink: 0;
 }
 .cond-right {
