@@ -2,8 +2,10 @@ package com.sunshine.orchestrator.expert;
 
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.peer.PeerMsgSupport;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -20,10 +22,16 @@ public class ConsultationSynthesizer {
     private final PromptCatalogHolder promptCatalogHolder;
 
     public Flux<StreamToken> synthesize(String userQuery, List<ExpertTranscriptEntry> transcript) {
+        return synthesize(userQuery, transcript, null);
+    }
+
+    public Flux<StreamToken> synthesize(String userQuery, List<ExpertTranscriptEntry> transcript, String personalRules) {
         String prompt = promptCatalogHolder.requireText("peer.synthesis-prompt")
                 .replace("{userQuery}", userQuery != null ? userQuery : "")
                 .replace("{transcript}", formatTranscript(transcript));
-        return llmGatewayClient.streamDirectly(prompt);
+        // streamComposed 等价 streamDirectly（DIRECT + 空上下文），另携带个人规则注入层
+        return llmGatewayClient.streamComposed(
+                PromptComposeRequest.forDirect(AssembledContext.empty(), prompt, personalRules));
     }
 
     private String formatTranscript(List<ExpertTranscriptEntry> transcript) {

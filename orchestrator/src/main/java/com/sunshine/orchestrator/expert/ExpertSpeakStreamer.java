@@ -25,6 +25,15 @@ public class ExpertSpeakStreamer {
             String userQuery,
             List<String> contextBlocks,
             String gatheredContext) {
+        return streamSpeak(expert, userQuery, contextBlocks, gatheredContext, null);
+    }
+
+    public Flux<StreamToken> streamSpeak(
+            ExpertCatalogEntry expert,
+            String userQuery,
+            List<String> contextBlocks,
+            String gatheredContext,
+            String personalRules) {
         String prompt = promptCatalogHolder.requireText("peer.speak-prompt")
                 .replace("{expertName}", displayName(expert))
                 .replace("{userQuery}", userQuery != null ? userQuery : "")
@@ -36,7 +45,8 @@ public class ExpertSpeakStreamer {
                 AssembledContext.forSubAgent(),
                 prompt,
                 expert.primarySkillId(),
-                expert.systemPrompt());
+                expert.systemPrompt(),
+                personalRules);
         return llmGatewayClient.streamComposed(request);
     }
 

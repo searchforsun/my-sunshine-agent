@@ -138,7 +138,8 @@ public class ExpertConsultationExecutor {
                     ctx.assistantMsgId(),
                     callback,
                     ctx.userId(),
-                    ctx.tenantId());
+                    ctx.tenantId(),
+                    ctx.personalRules());
             peerRunAuditService.persistFinal(
                     ctx.conversationId(),
                     ctx.assistantMsgId(),
@@ -147,7 +148,7 @@ public class ExpertConsultationExecutor {
                     hubResult.runId(),
                     String.join(",", roster.expertIds()),
                     hubResult.transcript());
-            consultationSynthesizer.synthesize(query, hubResult.transcript())
+            consultationSynthesizer.synthesize(query, hubResult.transcript(), ctx.personalRules())
                     .doOnNext(emit)
                     .doOnComplete(() -> {
                         synchronized (emitLock) {

@@ -118,7 +118,8 @@ final class WorkflowLlmStreamSupport {
         AssembledContext memory = terminalAnswer
                 ? AssembledContext.empty()
                 : (streamCtx.memory() != null ? streamCtx.memory() : AssembledContext.empty());
-        return PromptComposeRequest.forWorkflowLlm(workflowId, memory, userQuery, nodePrompt);
+        return PromptComposeRequest.forWorkflowLlm(
+                workflowId, memory, userQuery, nodePrompt, streamCtx.personalRules());
     }
 
     static boolean hasNodePrompt(NodeSpec spec) {

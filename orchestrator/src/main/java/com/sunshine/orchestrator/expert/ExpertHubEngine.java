@@ -67,6 +67,18 @@ public class ExpertHubEngine {
             ExpertSpeakCallback callback,
             String userId,
             String tenantId) {
+        return run(roster, userQuery, sessionMaxRounds, assistantMessageId, callback, userId, tenantId, null);
+    }
+
+    public ExpertHubResult run(
+            List<ExpertCatalogEntry> roster,
+            String userQuery,
+            int sessionMaxRounds,
+            String assistantMessageId,
+            ExpertSpeakCallback callback,
+            String userId,
+            String tenantId,
+            String personalRules) {
         if (roster == null || roster.size() < 2) {
             throw new IllegalStateException("expert roster must have at least 2 members");
         }
@@ -100,7 +112,7 @@ public class ExpertHubEngine {
                 }
                 String reply = invokeAgent(
                         runId, peer, userQuery, contextBlocks, expert, pending,
-                        assistantMessageId, callback);
+                        assistantMessageId, callback, personalRules);
                 if (!StringUtils.hasText(reply)) {
                     if (callback != null) {
                         callback.onSpeak(pending, "done", responding);
@@ -163,7 +175,8 @@ public class ExpertHubEngine {
             ExpertCatalogEntry expert,
             ExpertTranscriptEntry pendingEntry,
             String assistantMessageId,
-            ExpertSpeakCallback callback) {
+            ExpertSpeakCallback callback,
+            String personalRules) {
         List<String> gatherContexts = new ArrayList<>(contextBlocks);
         String gatherInstruction = promptCatalogHolder.requireText("peer.gather-instruction");
         if (StringUtils.hasText(gatherInstruction)) {
@@ -201,7 +214,7 @@ public class ExpertHubEngine {
         }
         StringBuilder speakText = new StringBuilder();
         try {
-            expertSpeakStreamer.streamSpeak(expert, userQuery, contextBlocks, gatheredContext)
+            expertSpeakStreamer.streamSpeak(expert, userQuery, contextBlocks, gatheredContext, personalRules)
                     .doOnNext(token -> appendSpeakToken(token, pendingEntry, callback, speakText))
                     .blockLast();
         } catch (Exception e) {
