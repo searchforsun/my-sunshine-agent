@@ -694,9 +694,14 @@ WORKFLOWS: list[dict[str, Any]] = [
                     "type": "loop",
                     "displayName": "条件循环",
                     "params": {
-                        "condition.left": "{{start.userQuery}}",
-                        "condition.op": "contains",
-                        "condition.right": "继续",
+                        "conditions": [
+                            {
+                                "left": "{{start.userQuery}}",
+                                "op": "contains",
+                                "right": "继续",
+                            }
+                        ],
+                        "conditionLogic": "and",
                         "maxIterations": "2",
                         "onMaxIterations": "exit",
                         "retry.maxAttempts": "1",

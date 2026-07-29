@@ -207,8 +207,8 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 - **禁止跨框边**：loop↔body 之间不得有任何 edge（常见错误 lp1→n1）
 **外图 edges**：只写 start→loop（及 loop 之后由引擎接 answer；勿连 body）
 **框内 edges**：仅 body↔body；须单链无环；**单 body 可省略框内 edges**
-**loop.params 必填**：conditions[]（每项 {left, op, right}）+ conditionLogic(and|or)；maxIterations(1-5)、onMaxIterations(fail_fast|exit|fallback_react)。兼容旧 condition.left/op/right。
-**condition.op 仅允许**：empty | not_empty | contains | not_contains | eq（**勿用 ==**）
+**loop.params 必填**：conditions[]（每项 {left, op, right}）+ conditionLogic(and|or)；maxIterations(1-5)、onMaxIterations(fail_fast|exit|fallback_react)。
+**condition.op 仅允许**：empty | not_empty | contains | not_contains | eq | not_eq | gt | lt | gte | lte（**勿用 ==**）
 
 loop 正确示例（单行）：
 {"planId":null,"reason":"条件循环检索","nodes":[{"id":"lp1","type":"loop","displayName":"条件循环","params":{"conditions":[{"left":"{{rb.output}}","op":"contains","right":"继续"}],"conditionLogic":"and","maxIterations":"2","onMaxIterations":"exit"}},{"id":"rb","type":"rag","displayName":"框内检索","parentId":"lp1","params":{"topK":"3"}}],"edges":[{"from":"start","to":"lp1"}]}

@@ -221,7 +221,6 @@ public class WorkflowExecutor {
     }
 
     private static PlanEdgeConditionGroup parseLoopConditionGroup(Map<String, Object> params) {
-        // 新格式：conditions 数组 + conditionLogic
         Object conditionsObj = params.get("conditions");
         if (conditionsObj instanceof JsonNode conditionsNode && conditionsNode.isArray()) {
             String logic = readParamString(params, "conditionLogic", "and");
@@ -235,14 +234,6 @@ public class WorkflowExecutor {
                 }
             }
             return new PlanEdgeConditionGroup(logic, items);
-        }
-        // 兼容旧格式：condition.left / condition.op / condition.right
-        String op = readParamString(params, "condition.op", "");
-        if (!op.isBlank()) {
-            return PlanEdgeConditionGroup.single(new PlanEdgeCondition(
-                    readParamString(params, "condition.left", ""),
-                    op,
-                    readParamString(params, "condition.right", "")));
         }
         // 无条件 -> 空组（永远继续，靠 maxIterations 兜底）
         return PlanEdgeConditionGroup.empty();

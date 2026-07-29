@@ -159,28 +159,22 @@ public class PlanJsonParser {
         if (node == null || !node.isObject()) {
             return null;
         }
-        // 新格式：{logic, items: [...]}
         JsonNode itemsNode = node.get("items");
-        if (itemsNode != null && itemsNode.isArray()) {
-            String logic = text(node, "logic");
-            List<PlanEdgeCondition> items = new ArrayList<>();
-            for (JsonNode item : itemsNode) {
-                PlanEdgeCondition c = parseSingleCondition(item);
-                if (c != null) {
-                    items.add(c);
-                }
-            }
-            if (items.isEmpty() && logic == null) {
-                return null;
-            }
-            return new PlanEdgeConditionGroup(logic, items);
-        }
-        // 兼容旧格式：{left, op, right}
-        PlanEdgeCondition single = parseSingleCondition(node);
-        if (single == null) {
+        if (itemsNode == null || !itemsNode.isArray()) {
             return null;
         }
-        return PlanEdgeConditionGroup.single(single);
+        String logic = text(node, "logic");
+        List<PlanEdgeCondition> items = new ArrayList<>();
+        for (JsonNode item : itemsNode) {
+            PlanEdgeCondition c = parseSingleCondition(item);
+            if (c != null) {
+                items.add(c);
+            }
+        }
+        if (items.isEmpty() && logic == null) {
+            return null;
+        }
+        return new PlanEdgeConditionGroup(logic, items);
     }
 
     private static PlanEdgeCondition parseSingleCondition(JsonNode node) {

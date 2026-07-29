@@ -146,20 +146,16 @@ export function upstreamOutputRef(node: WorkflowPlanNode): string {
 }
 
 /**
- * 条件分支出边 / loop 容器左值：沿入边回溯最近业务前驱的 output/answer；
+ * 条件分支出边左值：沿入边回溯最近业务前驱的 output/answer；
  * 无业务前驱（直连 start 或仅路由）时用 {{start.userQuery}}。
  */
 export function exclusiveGatewayConditionLeft(plan: WorkflowPlan, gatewayId: string): string {
   return resolveConditionLeftFromUpstream(plan, gatewayId)
 }
 
-export function loopConditionLeft(plan: WorkflowPlan, loopId: string): string {
-  return resolveConditionLeftFromUpstream(plan, loopId)
-}
-
-/** 将 edge.condition 规范化为 {logic, items}（兼容旧 {left, op, right}） */
+/** 将 edge.condition 规范化为 {logic, items} */
 export function normalizeEdgeConditionGroup(
-  condition: WorkflowPlanEdgeConditionGroup | WorkflowPlanEdgeCondition | undefined,
+  condition: WorkflowPlanEdgeConditionGroup | undefined,
 ): WorkflowPlanEdgeConditionGroup {
   if (!condition) return { logic: 'and', items: [] }
   if ('items' in condition && Array.isArray(condition.items)) {
@@ -167,11 +163,6 @@ export function normalizeEdgeConditionGroup(
       logic: condition.logic === 'or' ? 'or' : 'and',
       items: condition.items,
     }
-  }
-  // 旧格式 {left, op, right}
-  const single = condition as WorkflowPlanEdgeCondition
-  if (single.op) {
-    return { logic: 'and', items: [single] }
   }
   return { logic: 'and', items: [] }
 }
@@ -186,13 +177,6 @@ export function normalizeLoopConditionGroup(
     const items = conditions.filter(c => c && typeof c === 'object') as WorkflowPlanEdgeCondition[]
     return { logic, items: items.length > 0 ? items : [] }
   }
-  // 兼容旧格式 condition.left/op/right
-  const left = String(params?.['condition.left'] ?? '')
-  const op = String(params?.['condition.op'] ?? '')
-  const right = String(params?.['condition.right'] ?? '')
-  if (op) {
-    return { logic: 'and', items: [{ left, op, right }] }
-  }
   return { logic: 'and', items: [] }
 }
 
@@ -202,9 +186,6 @@ export function writeLoopConditionGroup(
   group: WorkflowPlanEdgeConditionGroup,
 ): Record<string, unknown> {
   const next = { ...params }
-  delete next['condition.left']
-  delete next['condition.op']
-  delete next['condition.right']
   next.conditions = group.items
   next.conditionLogic = group.logic
   return next
@@ -317,7 +298,6 @@ export function reconcilePlanDataFlow(
     // 仅补全 maxIterations / onMaxIterations 默认值，不强制覆盖条件
     if (!params.maxIterations) params.maxIterations = '3'
     if (!params.onMaxIterations) params.onMaxIterations = 'fail_fast'
-    // 兼容旧格式：如果只有 condition.* 无 conditions，保留原样（解析层兼容）
     return { ...n, params }
   })
   return { ...plan, nodes: nodesWithLoop, edges }
@@ -757,7 +737,7 @@ export function buildExclusiveBranchRagPlan(
       {
         from: 'xg-b1c2d3e4',
         to: 'rag-f1a2b3c4',
-        condition: { left: '{{start.userQuery}}', op: 'contains', right: '报销' },
+        condition: { logic: 'or', items: [{ left: '{{start.userQuery}}', op: 'contains', right: '报销' }, { left: '{{start.userQuery}}', op: 'contains', right: '发票' }] },
       },
       { from: 'xg-b1c2d3e4', to: 'rag-d5e6f7a8', default: true },
       { from: 'rag-f1a2b3c4', to: 'answer' },

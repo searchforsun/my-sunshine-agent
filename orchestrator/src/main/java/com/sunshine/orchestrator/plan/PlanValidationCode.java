@@ -44,7 +44,7 @@ public enum PlanValidationCode {
                     1. 外图从 loop 出发的边只能 1 条（normalize 后接 answer，Planner 勿连 answer）
                     2. 删除 loop→body 跨框边；body 仅用 parentId 归属
                     3. 勿额外写 loop→n2 串行外图链""";
-            case LOOP_CONDITION_OP -> "condition.op 仅允许 empty | not_empty | contains | eq（勿用 == 或 =）；contains/eq 须填 condition.right。";
+            case LOOP_CONDITION_OP -> "condition.op 仅允许 empty | not_empty | contains | not_contains | eq | not_eq | gt | lt | gte | lte；contains/eq 等须填 condition.right。";
             case LOOP_BODY_CHAIN -> """
                     loop 框内 body 须为单链：恰好 1 个入口（入度 0），节点依次 b1→b2→…，无分叉无环。
                     多 body 时在 edges 写框内链；单 body 省略框内 edges。""";

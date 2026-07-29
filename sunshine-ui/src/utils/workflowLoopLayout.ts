@@ -164,9 +164,8 @@ export function addLoopContainer(
     displayName: '循环',
     params: {
       ...buildRetryParams('loop', resolved),
-      'condition.left': '{{start.userQuery}}',
-      'condition.op': 'contains',
-      'condition.right': '',
+      conditions: [{ left: '{{start.userQuery}}', op: 'contains', right: '' }],
+      conditionLogic: 'and',
       maxIterations: '3',
       onMaxIterations: 'fail_fast',
     },

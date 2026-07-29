@@ -128,9 +128,11 @@ class PlanValidatorTest {
         PlanJson raw = new PlanJson("p", "循环",
                 List.of(
                         new PlanNode("loop-1", "loop", Map.of(
-                                "condition.left", "{{start.userQuery}}",
-                                "condition.op", "contains",
-                                "condition.right", "继续",
+                                "conditions", List.of(Map.of(
+                                        "left", "{{start.userQuery}}",
+                                        "op", "contains",
+                                        "right", "继续")),
+                                "conditionLogic", "and",
                                 "maxIterations", "2",
                                 "onMaxIterations", "exit"), "循环", null),
                         new PlanNode("rag-body", "rag", Map.of("topK", "3"), "框内检索", "loop-1")),

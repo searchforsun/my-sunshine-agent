@@ -63,7 +63,7 @@ class PlanJsonParserTest {
                   ],
                   "edges": [
                     {"from":"start","to":"xg-1"},
-                    {"from":"xg-1","to":"rag-a","condition":{"left":"{{start.userQuery}}","op":"contains","right":"报销"}},
+                    {"from":"xg-1","to":"rag-a","condition":{"logic":"and","items":[{"left":"{{start.userQuery}}","op":"contains","right":"报销"}]}},
                     {"from":"xg-1","to":"rag-b","default":true},
                     {"from":"rag-a","to":"answer"},
                     {"from":"rag-b","to":"answer"}
@@ -94,7 +94,8 @@ class PlanJsonParserTest {
                   "reason": "循环",
                   "nodes": [
                     {"id":"loop-1","type":"loop","params":{
-                      "condition.left":"{{start.userQuery}}","condition.op":"contains","condition.right":"继续",
+                      "conditions":[{"left":"{{start.userQuery}}","op":"contains","right":"继续"}],
+                      "conditionLogic":"and",
                       "maxIterations":"3","onMaxIterations":"exit",
                       "retry.maxAttempts":"1","retry.backoffMs":"500","retry.onFailure":"fail_fast"
                     }},
@@ -175,38 +176,6 @@ class PlanJsonParserTest {
     }
 
     @Test
-    void parsesLegacySingleConditionAsGroup() {
-        String json = """
-                {
-                  "planId": "xg-3",
-                  "reason": "兼容旧单条件",
-                  "nodes": [
-                    {"id":"xg-1","type":"exclusive-gateway","params":{}},
-                    {"id":"rag-a","type":"rag","params":{"topK":"3"}},
-                    {"id":"rag-b","type":"rag","params":{"topK":"3"}},
-                    {"id":"answer","type":"answer","params":{}}
-                  ],
-                  "edges": [
-                    {"from":"start","to":"xg-1"},
-                    {"from":"xg-1","to":"rag-a","condition":{"left":"{{start.userQuery}}","op":"contains","right":"报销"}},
-                    {"from":"xg-1","to":"rag-b","default":true},
-                    {"from":"rag-a","to":"answer"},
-                    {"from":"rag-b","to":"answer"}
-                  ]
-                }
-                """;
-        PlanJson plan = parser.parse(json);
-        PlanEdge cond = plan.edges().stream()
-                .filter(e -> "rag-a".equals(e.to()))
-                .findFirst()
-                .orElseThrow();
-        assertThat(cond.hasCondition()).isTrue();
-        assertThat(cond.condition().logic()).isEqualTo("and");
-        assertThat(cond.condition().items()).hasSize(1);
-        assertThat(cond.condition().items().get(0).op()).isEqualTo("contains");
-    }
-
-    @Test
     void parsesLoopConditionsArray() {
         String json = """
                 {
@@ -233,30 +202,5 @@ class PlanJsonParserTest {
         PlanJson plan = parser.parse(json);
         assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).isNull();
         assertThat(PlanExecutionSchedule.build(plan).get(0)).isInstanceOf(PlanExecutionSchedule.Loop.class);
-    }
-
-    @Test
-    void parsesLegacyLoopSingleCondition() {
-        String json = """
-                {
-                  "planId": "lp-3",
-                  "reason": "兼容旧 loop 单条件",
-                  "nodes": [
-                    {"id":"loop-1","type":"loop","params":{
-                      "condition.left":"{{start.userQuery}}","condition.op":"contains","condition.right":"继续",
-                      "maxIterations":"3","onMaxIterations":"exit"
-                    }},
-                    {"id":"rag-b","type":"rag","parentId":"loop-1","params":{"query":"{{start.userQuery}}","topK":"3"}},
-                    {"id":"answer","type":"answer","params":{}}
-                  ],
-                  "edges": [
-                    {"from":"start","to":"loop-1"},
-                    {"from":"loop-1","to":"answer"}
-                  ]
-                }
-                """;
-        PlanJson plan = parser.parse(json);
-        assertThat(plan.nodesById().get("rag-b").parentId()).isEqualTo("loop-1");
-        assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).isNull();
     }
 }

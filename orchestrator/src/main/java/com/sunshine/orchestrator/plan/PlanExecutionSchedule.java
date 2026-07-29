@@ -336,15 +336,8 @@ public final class PlanExecutionSchedule {
             }
             return null;
         }
-        // 兼容旧格式：condition.left / condition.op / condition.right
-        String op = paramStr(p, "condition.op", "").strip().toLowerCase();
-        String left = paramStr(p, "condition.left", "").strip();
-        if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
-            return PlanValidationIssue.of(
-                    PlanValidationCode.VALIDATION_FAILED,
-                    "loop 节点 " + node.id() + " 须配置 condition.op 与 condition.left");
-        }
-        return validateLoopOp(node.id(), op, paramStr(p, "condition.right", ""));
+        // 无 conditions -> 由其它校验保证（topology 校验已覆盖）
+        return null;
     }
 
     private static PlanValidationIssue validateLoopOp(String nodeId, String op, String right) {

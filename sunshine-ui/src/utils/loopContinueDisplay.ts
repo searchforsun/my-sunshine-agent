@@ -13,15 +13,20 @@ export function resolveLoopContinueRows(
   _step?: ProcessingStep | null,
 ): LoopContinueRow[] {
   if (!params) return []
-  const op = String(params['condition.op'] ?? '').trim()
-  if (!op) return []
-  return [{
-    key: 'continue',
-    label: '继续循环',
-    value: formatConditionExpr(
-      params['condition.left'],
-      op,
-      params['condition.right'],
-    ),
-  }]
+  const conditions = params.conditions as unknown
+  if (!Array.isArray(conditions)) return []
+  const logic = params.conditionLogic === 'or' ? 'or' : 'and'
+  const rows: LoopContinueRow[] = []
+  for (const [i, c] of conditions.entries()) {
+    const item = c as Record<string, string>
+    const op = String(item?.op ?? '').trim()
+    const left = String(item?.left ?? '').trim()
+    if (!op || !left) continue
+    rows.push({
+      key: `continue-${i}`,
+      label: logic === 'or' ? '继续循环（任一）' : '继续循环',
+      value: formatConditionExpr(left, op, String(item?.right ?? '')),
+    })
+  }
+  return rows
 }

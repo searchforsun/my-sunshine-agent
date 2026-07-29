@@ -28,7 +28,7 @@ public class WorkflowContext {
         nodes.put(nodeId, new LinkedHashMap<>(outputs));
     }
 
-    /** 测试与模板解析兼容别名 */
+    /** 测试构造用别名（等价于 putNode） */
     public void put(String nodeId, Map<String, TypedValue> outputs) {
         putNode(nodeId, outputs);
     }
@@ -76,7 +76,7 @@ public class WorkflowContext {
         return descend(current, remaining);
     }
 
-    /** 兼容旧调用方：返回 render() 字符串 */
+    /** 解析路径并返回 render() 字符串（handler 主力取值方法） */
     public String resolvePathString(String path) {
         return resolvePath(path).render();
     }

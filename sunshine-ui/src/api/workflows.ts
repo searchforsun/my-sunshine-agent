@@ -69,8 +69,8 @@ export interface WorkflowPlanEdgeConditionGroup {
 export interface WorkflowPlanEdge {
   from: string
   to: string
-  /** 复合条件（新格式 {logic, items}）；兼容旧 {left, op, right} */
-  condition?: WorkflowPlanEdgeConditionGroup | WorkflowPlanEdgeCondition
+  /** 复合条件 {logic, items} */
+  condition?: WorkflowPlanEdgeConditionGroup
   default?: boolean
 }
 

@@ -179,9 +179,11 @@ class WorkflowPlanValidatorTest {
     @Test
     void validLoopWithRagToolAgentBody() {
         Map<String, Object> loopParams = new LinkedHashMap<>(Map.of(
-                "condition.left", "{{start.userQuery}}",
-                "condition.op", "contains",
-                "condition.right", "继续",
+                "conditions", List.of(Map.of(
+                        "left", "{{start.userQuery}}",
+                        "op", "contains",
+                        "right", "继续")),
+                "conditionLogic", "and",
                 "maxIterations", "2",
                 "onMaxIterations", "exit",
                 "retry.maxAttempts", "1",

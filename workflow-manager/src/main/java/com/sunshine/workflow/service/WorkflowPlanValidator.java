@@ -534,18 +534,47 @@ public class WorkflowPlanValidator {
         if (!ON_MAX_ITERATIONS.contains(onMax.strip().toLowerCase())) {
             return "loop 节点 " + loopId + " 的 onMaxIterations 非法: " + onMax;
         }
-        String op = paramText(node, "condition.op");
-        String left = paramText(node, "condition.left");
-        if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
-            return "loop 节点 " + loopId + " 须配置 condition.op 与 condition.left";
+        JsonNode params = node.get("params");
+        if (params == null || !params.isObject()) {
+            return "loop 节点 " + loopId + " 缺失 params";
         }
-        String normalized = op.strip().toLowerCase();
-        if (!"empty".equals(normalized) && !"not_empty".equals(normalized)
-                && !"contains".equals(normalized) && !"eq".equals(normalized)) {
+        JsonNode conditionsNode = params.get("conditions");
+        if (conditionsNode == null || !conditionsNode.isArray() || conditionsNode.isEmpty()) {
+            return "loop 节点 " + loopId + " 须配置 conditions 数组（至少一条继续条件）";
+        }
+        String logic = params.has("conditionLogic") ? params.get("conditionLogic").asText("") : "";
+        if (StringUtils.hasText(logic)
+                && !"and".equals(logic.strip().toLowerCase())
+                && !"or".equals(logic.strip().toLowerCase())) {
+            return "loop 节点 " + loopId + " 的 conditionLogic 非法: " + logic;
+        }
+        for (JsonNode item : conditionsNode) {
+            String op = item.has("op") ? item.get("op").asText("").strip().toLowerCase() : "";
+            String left = item.has("left") ? item.get("left").asText("").strip() : "";
+            if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
+                return "loop 节点 " + loopId + " conditions 项须配置 op 与 left";
+            }
+            String opErr = validateLoopConditionOp(loopId, op,
+                    item.has("right") ? item.get("right").asText("") : "");
+            if (opErr != null) {
+                return opErr;
+            }
+        }
+        return null;
+    }
+
+    private static String validateLoopConditionOp(String loopId, String op, String right) {
+        if (!"empty".equals(op) && !"not_empty".equals(op)
+                && !"contains".equals(op) && !"not_contains".equals(op)
+                && !"eq".equals(op) && !"not_eq".equals(op)
+                && !"gt".equals(op) && !"lt".equals(op)
+                && !"gte".equals(op) && !"lte".equals(op)) {
             return "loop 节点 " + loopId + " 的 condition.op 非法: " + op;
         }
-        if (("contains".equals(normalized) || "eq".equals(normalized))
-                && !StringUtils.hasText(paramText(node, "condition.right"))) {
+        if (("contains".equals(op) || "eq".equals(op) || "not_contains".equals(op)
+                || "not_eq".equals(op) || "gt".equals(op) || "lt".equals(op)
+                || "gte".equals(op) || "lte".equals(op))
+                && !StringUtils.hasText(right.strip())) {
             return "loop 节点 " + loopId + " 的 condition.right 不能为空";
         }
         return null;

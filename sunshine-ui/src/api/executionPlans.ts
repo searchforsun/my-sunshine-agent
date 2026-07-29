@@ -37,9 +37,8 @@ export interface PlanGraphEdge {
   from: string
   to: string
   condition?: {
-    left: string
-    op: string
-    right?: string
+    logic: 'and' | 'or'
+    items: { left: string; op: string; right?: string }[]
   }
   default?: boolean
 }

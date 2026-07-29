@@ -124,9 +124,11 @@ class PlanExecutionScheduleTest {
         PlanJson plan = new PlanJson("bad-loop", "test",
                 List.of(
                         new PlanNode("loop-1", "loop", Map.of(
-                                "condition.left", "{{start.userQuery}}",
-                                "condition.op", "contains",
-                                "condition.right", "x",
+                                "conditions", List.of(Map.of(
+                                        "left", "{{start.userQuery}}",
+                                        "op", "contains",
+                                        "right", "x")),
+                                "conditionLogic", "and",
                                 "maxIterations", "3",
                                 "onMaxIterations", "fail_fast")),
                         new PlanNode("answer", "answer", Map.of())),
@@ -140,9 +142,11 @@ class PlanExecutionScheduleTest {
         return new PlanJson("loop-ok", "test",
                 List.of(
                         new PlanNode("loop-1", "loop", Map.of(
-                                "condition.left", "{{start.userQuery}}",
-                                "condition.op", "contains",
-                                "condition.right", "继续",
+                                "conditions", List.of(Map.of(
+                                        "left", "{{start.userQuery}}",
+                                        "op", "contains",
+                                        "right", "继续")),
+                                "conditionLogic", "and",
                                 "maxIterations", "3",
                                 "onMaxIterations", "exit",
                                 "retry.maxAttempts", "1",

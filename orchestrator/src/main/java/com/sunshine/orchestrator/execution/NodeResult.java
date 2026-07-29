@@ -30,7 +30,7 @@ public record NodeResult(
                 contentTokens != null ? contentTokens : List.of());
     }
 
-    /** 兼容旧调用方：String outputs 自动转 Scalar */
+    /** String outputs 自动转 Scalar（handler 主力构造方法） */
     public static NodeResult okString(Map<String, String> outputs) {
         return new NodeResult(true, toTyped(outputs), List.of(), List.of());
     }
@@ -46,12 +46,6 @@ public record NodeResult(
     /** 失败场景下返回错误信息；成功时为空串 */
     public String errorMessage() {
         TypedValue v = safeOutputs().get("error");
-        return v != null ? v.render() : "";
-    }
-
-    /** 兼容旧调用方：取 output 字段的 render 字符串 */
-    public String outputString() {
-        TypedValue v = safeOutputs().get("output");
         return v != null ? v.render() : "";
     }
 

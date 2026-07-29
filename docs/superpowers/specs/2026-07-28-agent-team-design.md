@@ -1,5 +1,7 @@
 # Agent Team 去中心化协作 - 技术设计
 
+> **⚠️ 已被取代**：本文档内容已合并入 [`2026-07-29-multi-agent-unified-design.md`](./2026-07-29-multi-agent-unified-design.md)。保留仅供历史追溯，请以统一设计文档为准。
+
 > **状态**：设计稿（待评审）
 > **日期**：2026-07-28
 > **编号**：阶段四增量（重构 peer-collab -> agent-team）
@@ -43,13 +45,171 @@ for round = 1..effectiveMax:
 
 ---
 
-## 2. 核心概念
+## 2. 智能体定义模型扩展
 
-### 2.1 Agent Team
+当前 `expert_definition` 表仅有 `display_name / description / system_prompt / enabled / tags_json / tools_json`，无法支撑 Agent Team 的 Handoff 权限裁剪、知识库范围、租户隔离等需求。需扩展。
+
+### 2.1 现状缺口
+
+| 维度 | 现状 | 问题 |
+|------|------|------|
+| 知识库范围 | 无配置；所有 Agent 共享会话级单一 `kbId`（`ChatConversationEntity.kbId`） | 不同智能体应访问不同知识库（如法务智能体只查法务库），无法裁剪 |
+| 租户绑定 | `expert_definition` 无 `tenantId`；专家全局可见 | 跨租户场景下智能体应按租户隔离（A 租户的法务智能体 != B 租户的） |
+| 权限模型 | 工具仅 `require_confirmation` + `side_effect`；沙箱策略硬编码 | 智能体需要更细粒度的数据访问权限（只读/可写/数据范围） |
+| 数据访问范围 | 完全不存在 `dataScope/kbScope` | 智能体调工具时无法限定可操作的数据范围（如只能查本部门报销） |
+| 模型配置 | 无；所有智能体用同一 `OpenAIChatModel` | 不同智能体可能需要不同模型/温度（如法务用更强模型） |
+
+### 2.2 扩展后的 `expert_definition` 表（DDL 增量）
+
+```sql
+ALTER TABLE expert_definition
+    ADD COLUMN tenant_id         VARCHAR(32) NOT NULL DEFAULT 'default' AFTER enabled,
+    ADD COLUMN kb_scope_json     VARCHAR(512) NOT NULL DEFAULT '[]' AFTER tools_json,
+    ADD COLUMN data_scope_json   TEXT AFTER kb_scope_json,
+    ADD COLUMN permissions_json  VARCHAR(512) NOT NULL DEFAULT '{}' AFTER data_scope_json,
+    ADD COLUMN model_config_json VARCHAR(512) NOT NULL DEFAULT '{}' AFTER permissions_json,
+    ADD COLUMN max_iters         INT NOT NULL DEFAULT 2 AFTER model_config_json,
+    ADD COLUMN max_handoffs      INT NOT NULL DEFAULT 5 AFTER max_iters,
+    ADD INDEX idx_tenant_enabled (tenant_id, enabled);
+```
+
+### 2.3 新增字段说明
+
+#### `tenant_id` -- 租户绑定
+
+- 智能体按租户隔离：`tenant_id = 'default'` 为全局共享（现有种子）；租户私有智能体 `tenant_id = 具体租户`
+- Catalog 查询按 `tenant_id = ? OR tenant_id = 'default'` 过滤（与工具可见性一致）
+- Agent Team 组队时只选当前租户可见的智能体
+
+#### `kb_scope_json` -- 知识库范围
+
+```json
+["kb-legal", "kb-hr-policy"]
+```
+
+- 空数组 `[]` = 继承会话级 `kbId`（现状，向后兼容）
+- `["*"]` = 全部知识库
+- 具体列表 = 仅可检索这些 kbId
+- 运行时 `RagTool` 按 `kb_scope_json` 覆盖会话级 `kbId`：智能体调 `search_knowledge` 时，若 `kb_scope` 非空，用它替代会话 `kbId`
+
+**改动点**：`RagTool.resolveKbId`（当前只读会话级 `ToolAuditContext.kbId`）增加从智能体配置读取 `kb_scope` 的逻辑；`AgentRunRequest` 增加 `kbScope` 字段透传。
+
+#### `data_scope_json` -- 数据访问范围
+
+```json
+{
+  "department": ["finance", "hr"],
+  "expenseCategory": ["travel", "meal"],
+  "maxAmount": 50000
+}
+```
+
+- JSON 结构化，语义由工具侧解释
+- 工具执行时，orchestrator 把 `data_scope` 注入 `ToolAuditContext`，业务工具（SDK）读取并按范围过滤
+- **不强制**所有工具支持 `data_scope`；不支持的工具忽略（向后兼容）
+- Handoff 交接时，`allowedTools` + `dataScope` 一并裁剪
+
+#### `permissions_json` -- 权限配置
+
+```json
+{
+  "toolConfirmation": "always",     // always / never / inherit（inherit = 读工具 require_confirmation）
+  "sandboxWriteMode": "never",      // never / always / smart（覆盖 SandboxWriteHitlMode）
+  "allowDelegate": true,            // 是否允许调 delegate_to_agent
+  "allowFinishTask": true,          // 是否允许调 finish_task
+  "maxConcurrentHandoffs": 3        // 同时被委派的次数上限
+}
+```
+
+- `toolConfirmation` 覆盖当前专家层 HITL 硬关闭（`bindHitlBridge(..., false)`）的问题：按智能体配置决定
+- `sandboxWriteMode` 覆盖沙箱策略：法务智能体可设 `never`（禁止写），开发智能体可设 `smart`
+
+#### `model_config_json` -- 模型配置
+
+```json
+{
+  "model": "gpt-4o",
+  "temperature": 0.3
+}
+```
+
+- 空 `{}` = 继承全局默认（现状）
+- 非空 = 该智能体用指定模型/温度（`ExpertPeerAgentFactory` / `AgentRuntime` 读取并覆盖 `OpenAIChatModel.builder`）
+
+#### `max_iters` / `max_handoffs` -- 执行限制
+
+- `max_iters`：单次被委派时 ReAct 最大轮次（现有硬编码 2，改为可配置）
+- `max_handoffs`：该智能体在单次 Team 协作中最多被委派几次（防止循环）
+
+### 2.4 ExpertCatalogEntry 扩展
+
+```java
+public record ExpertCatalogEntry(
+        String id,
+        String displayName,
+        String description,
+        String systemPrompt,
+        List<String> skillIds,
+        List<String> tags,
+        String toolsJson,
+        boolean enabled,
+        // 新增
+        String tenantId,             // 租户绑定
+        List<String> kbScope,        // 知识库范围
+        String dataScopeJson,        // 数据访问范围
+        String permissionsJson,      // 权限配置
+        String modelConfigJson,      // 模型配置
+        int maxIters,                // 单次 ReAct 上限
+        int maxHandoffs,             // Team 内被委派上限
+        // 外部 A2A（来自 expert-as-subagent spec）
+        ExpertSource source,         // INTERNAL / EXTERNAL
+        String agentCardUrl,
+        String endpointOverride
+) {
+    public enum ExpertSource { INTERNAL, EXTERNAL }
+}
+```
+
+### 2.5 运行时透传链路
+
+```
+expert_definition (DB)
+  -> ExpertCatalogEntry (DTO)
+  -> AgentRunRequest.sub(...) 新增字段：
+       kbScope / dataScopeJson / permissionsJson / modelConfigJson / maxHandoffs
+  -> ReActAgentRuntime：
+       modelConfig -> OpenAIChatModel.builder 覆盖
+       kbScope -> RagTool.resolveKbId 优先用 kbScope
+       permissionsJson -> HITL bindHitlBridge 覆盖 / 沙箱 WriteMode 覆盖
+       dataScopeJson -> StepEventBridge.ToolAuditContext 注入
+  -> 工具执行：
+       ToolAuditContext.dataScope -> 业务工具读取并过滤
+       ToolAuditContext.kbScope -> RagTool 检索范围
+```
+
+### 2.6 前端 `/agents` 配置页扩展
+
+| 配置区块 | 字段 |
+|----------|------|
+| 基础（现有） | ID / 展示名 / 描述 / systemPrompt / 启用 / tags |
+| 工具与技能（现有） | toolsJson / skillIds |
+| 知识库范围（新） | kbScope 多选（从 rag-service `/api/rag/kb/list` 拉） |
+| 数据范围（新） | dataScope JSON 编辑器（结构化表单 or JSON） |
+| 权限（新） | toolConfirmation 下拉 / sandboxWriteMode 下拉 / allowDelegate 开关 / allowFinishTask 开关 |
+| 模型（新） | model 下拉 / temperature 滑块 |
+| 执行限制（新） | maxIters / maxHandoffs 数值输入 |
+| 租户（新） | tenantId（admin 可见，普通用户只看本租户） |
+| 外部接入（A2A） | source / agentCardUrl / endpointOverride（外部 tab） |
+
+---
+
+## 3. 核心概念
+
+### 3.1 Agent Team
 
 一组智能体组成的协作团队，围绕一个用户目标动态协作。不预设轮次、不全员广播；由当前持有"发言权"的智能体决定下一步动作（继续处理 / 委派给队友 / 请求用户补充 / 完成任务）。
 
-### 2.2 Team State（共享状态）
+### 3.2 Team State（共享状态）
 
 所有团队成员可读写的共享状态，区别于单 Agent 的 `AssembledContext`（私有的、隔离的）：
 
@@ -69,7 +229,7 @@ public record TeamState(
 - 存储：Redis（`sunshine:team:{teamId}`），TTL 与会话绑定
 - 读写：每次智能体被委派时，读取当前 Team State 快照注入 context；发言后更新 Team State
 
-### 2.3 HandoffEnvelope（交接包）
+### 3.3 HandoffEnvelope（交接包）
 
 复用 `2026-07-24-expert-as-subagent-design.md` §9.5.2 的设计，但从"Hub 注入"改为"智能体主动产出"：
 
@@ -88,7 +248,7 @@ public record HandoffEnvelope(
 ) {}
 ```
 
-### 2.4 去中心化委派元工具
+### 3.4 去中心化委派元工具
 
 新增元工具 `delegate_to_agent`（仅 Team 成员可调用），智能体在 ReAct 中自主决定委派：
 
@@ -114,9 +274,9 @@ public String delegate(
 
 ---
 
-## 3. 架构
+## 4. 架构
 
-### 3.1 整体链路
+### 4.1 整体链路
 
 ```
 用户问题 -> 意图路由 -> AGENT_TEAM 模式
@@ -137,7 +297,7 @@ public String delegate(
            -> 强制收束 -> TeamSynthesizer
 ```
 
-### 3.2 组件清单
+### 4.2 组件清单
 
 | 组件 | 职责 | 替代 |
 |------|------|------|
@@ -150,7 +310,7 @@ public String delegate(
 | `TeamTimelineBridge` | Team 协作步骤折叠进主时间线 | `ExpertTimelineSupport` |
 | `AgentRuntime.run` | 统一执行内核（复用，不改） | 不变 |
 
-### 3.3 删除清单（完全替换 peer-collab）
+### 4.3 删除清单（完全替换 peer-collab）
 
 | 删除组件 | 原职责 |
 |----------|--------|
@@ -165,7 +325,7 @@ public String delegate(
 | `PeerSynthesisProperties` | min/max rounds 配置 |
 | ExecutionMode `PEER_COLLAB` | 改为 `AGENT_TEAM` |
 
-### 3.4 与 spawn_subagent / Handoff spec 的关系
+### 4.4 与 spawn_subagent / Handoff spec 的关系
 
 | 能力 | spawn_subagent（保留） | Agent Team（新增） |
 |------|----------------------|---------------------|
@@ -178,9 +338,9 @@ public String delegate(
 
 ---
 
-## 4. 执行流程详解
+## 5. 执行流程详解
 
-### 4.1 Team 创建与起步
+### 5.1 Team 创建与起步
 
 ```
 TeamOrchestrator.createTeam(roster, objective, userId, tenantId):
@@ -193,7 +353,7 @@ TeamOrchestrator.createTeam(roster, objective, userId, tenantId):
   6. return run(startAgentId, initialHandoff=null)
 ```
 
-### 4.2 单次 Agent 执行（Team loop 一步）
+### 5.2 单次 Agent 执行（Team loop 一步）
 
 ```
 TeamOrchestrator.run(currentAgentId, incomingEnvelope):
@@ -229,7 +389,7 @@ TeamOrchestrator.run(currentAgentId, incomingEnvelope):
       return run(nextAgent, null)
 ```
 
-### 4.3 死锁与收束保护
+### 5.3 死锁与收束保护
 
 | 情况 | 处理 |
 |------|------|
@@ -239,7 +399,7 @@ TeamOrchestrator.run(currentAgentId, incomingEnvelope):
 | 超时（默认 300s） | 强制 synthesize |
 | 所有 agent 都 NO_ACTION | synthesize |
 
-### 4.4 TeamSynthesizer
+### 5.4 TeamSynthesizer
 
 与 `ConsultationSynthesizer` 区别：输入不是 transcript（发言列表），而是 **TeamState**（结构化状态：objective + confirmedFacts + tasks + handoffLog）。
 
@@ -255,9 +415,9 @@ TeamSynthesizer.synthesize(teamState):
 
 ---
 
-## 5. Timeline / UI
+## 6. Timeline / UI
 
-### 5.1 主时间线步骤形态
+### 6.1 主时间线步骤形态
 
 ```
 识别意图     -> …将由智能体团队处理…
@@ -276,7 +436,7 @@ TeamSynthesizer.synthesize(teamState):
 - 智能体可被多次委派，Timeline 按委派顺序排列（id=`agent-{agentId}-h{handoffSeq}`）
 - **无** `expert-convene` 改为 `team-convene`；**无** `expert-{id}-s{seq}` 改为 `agent-{id}-h{seq}`
 
-### 5.2 Step ID
+### 6.2 Step ID
 
 | id | 说明 |
 |----|------|
@@ -286,7 +446,7 @@ TeamSynthesizer.synthesize(teamState):
 
 `phase=team`；`metadata`: `agentId`, `displayName`, `handoffSeq`, `handoffFrom?`（委派方）, `handoffReason?`
 
-### 5.3 前端改动
+### 6.3 前端改动
 
 - 新增 `TeamStepPanel`：主行 `label` + `summary`；展开含 HandoffEnvelope（目标/事实/未解决问题/已尝试动作）
 - 委派箭头：两个 agent 步之间显示 `->` 连线 + 可展开交接包
@@ -295,7 +455,7 @@ TeamSynthesizer.synthesize(teamState):
 
 ---
 
-## 6. Catalog / 提示词
+## 7. Catalog / 提示词
 
 | Catalog id | 用途 |
 |------------|------|
@@ -314,7 +474,7 @@ TeamSynthesizer.synthesize(teamState):
 
 ---
 
-## 7. Handoff 交接原则（复用 + 演进）
+## 8. Handoff 交接原则（复用 + 演进）
 
 复用 `2026-07-24-expert-as-subagent-design.md` §9.5 的全部设计，演进点：
 
@@ -330,7 +490,7 @@ TeamSynthesizer.synthesize(teamState):
 
 ---
 
-## 8. 边界与非目标
+## 9. 边界与非目标
 
 **做**
 
@@ -350,7 +510,7 @@ TeamSynthesizer.synthesize(teamState):
 
 ---
 
-## 9. 风险与对策
+## 10. 风险与对策
 
 | 风险 | 对策 |
 |------|------|
@@ -364,7 +524,7 @@ TeamSynthesizer.synthesize(teamState):
 
 ---
 
-## 10. 检查门
+## 11. 检查门
 
 | # | 场景 | 期望 |
 |---|------|------|
@@ -378,14 +538,20 @@ TeamSynthesizer.synthesize(teamState):
 | T8 | TeamState 共享 | 多个 agent 读写同一 teamId 的 confirmedFacts/tasks |
 | T9 | Timeline 委派箭头 | 前端显示 A->B 委派连线；可展开交接包 |
 | T10 | peer-collab 代码零残留 | grep 无 ExpertHubEngine/ExpertSpeak*/PeerMsgSupport |
+| T11 | 智能体 `kb_scope` 生效 | 法务智能体 `kb_scope=["kb-legal"]` 时 `search_knowledge` 仅检索法务库，不查 HR 库 |
+| T12 | 智能体 `tenant_id` 隔离 | A 租户用户组队时看不到 B 租户私有智能体；default 智能体全可见 |
+| T13 | 智能体 `permissions` 生效 | `toolConfirmation=always` 的智能体调写工具时 HITL 开启；`sandboxWriteMode=never` 禁止沙箱写 |
+| T14 | 智能体 `data_scope` 透传 | 工具收到 `ToolAuditContext.dataScope`；业务工具按范围过滤（支持的工具） |
+| T15 | 智能体 `model_config` 生效 | 配 `model=gpt-4o` 的智能体实际用 gpt-4o（非全局默认） |
+| T16 | Handoff 交接按权限裁剪 | delegate 时 `allowedTools` = 发起方 ∩ 接收方 tools；`dataScope` 取交集 |
 
 Live：新增 `scripts/verify_agent_team_live.py`
 
 ---
 
-## 11. 实施衔接
+## 12. 实施衔接
 
-### 11.1 与现有设计的关系
+### 12.1 与现有设计的关系
 
 | 现有设计 | 关系 |
 |----------|------|
@@ -394,13 +560,21 @@ Live：新增 `scripts/verify_agent_team_live.py`
 | `2026-07-18-react-spawn-subagent-design.md` | 保留（spawn_subagent 与 Team 正交，不删） |
 | AS2 P6（peer-collab 正式化） | E5 已否决迁移；本设计替代 P6 的 peer-collab 重构目标 |
 
-### 11.2 任务拆解
+### 12.2 任务拆解
 
 | 任务 | 说明 |
 |------|------|
+| `expert_definition` DDL 扩展 | 加 `tenant_id` / `kb_scope_json` / `data_scope_json` / `permissions_json` / `model_config_json` / `max_iters` / `max_handoffs` |
+| `ExpertCatalogEntry` 扩展 | DTO 加对应字段（orchestrator + expert-manager 两份同步） |
+| `AgentRunRequest` 扩展 | 加 `kbScope` / `dataScopeJson` / `permissionsJson` / `modelConfigJson` / `maxHandoffs` 透传 |
+| `RagTool` 改造 | `resolveKbId` 优先读智能体 `kbScope`，覆盖会话级 kbId |
+| `ToolAuditContext` 扩展 | 加 `dataScope` / `kbScope` / `permissions` 字段 |
+| HITL 动态化 | `bindHitlBridge` 按 `permissions.toolConfirmation` 决定（always/never/inherit） |
+| 沙箱 WriteMode 覆盖 | 按 `permissions.sandboxWriteMode` 覆盖 `SandboxWriteHitlMode` |
+| 模型配置覆盖 | `ReActAgentFactory` / `ExpertPeerAgentFactory` 读 `modelConfigJson` 覆盖 `OpenAIChatModel` |
 | `TeamStateService` | Redis 读写 TeamState + TTL |
 | `TeamOrchestrator` | 创建 Team / 选起步 / 调度 loop / 死锁检测 / 强制收束 |
-| `TeamHandoffService` | 构建/裁剪/脱敏 HandoffEnvelope（复用 Handoff spec） |
+| `TeamHandoffService` | 构建/裁剪/脱敏 HandoffEnvelope；按 `allowedTools` + `dataScope` 取交集裁剪 |
 | `DelegateToAgentTool` | 元工具：成员间委派 |
 | `FinishTaskTool` | 元工具：声明完成 |
 | `TeamSynthesizer` | TeamState -> 流式正文 |
@@ -409,21 +583,24 @@ Live：新增 `scripts/verify_agent_team_live.py`
 | 路由层改造 | `PEER_COLLAB` -> `AGENT_TEAM`；`$A $B` 进 Team |
 | 删除 peer-collab 全套 | ExpertHubEngine/ExpertSpeak*/PeerMsg*/ExpertRoundCoordinator/ConsultationSynthesizer(改造) |
 | Catalog 新增 | team.* 系列；废弃 peer.*/expert.* 协作专属 |
-| 前端 | TeamStepPanel + 委派箭头 + `/agents` 术语重命名 |
-| 安全缺口修复 | HITL 动态开关 / 身份校验 / output 脱敏 / 审计鉴权 / transcript 脱敏 |
-| Live | T1-T10 检查门 |
+| 前端 | `/agents` 配置页扩展（kb/data/permissions/model/执行限制）+ TeamStepPanel + 委派箭头 + 术语重命名 |
+| 安全缺口修复 | HITL 身份校验 / output 脱敏 / 审计鉴权 / transcript 脱敏 |
+| Live | T1-T16 检查门 |
 
-### 11.3 优先级
+### 12.3 优先级
 
-1. **安全缺口修复**（HITL/脱敏/鉴权）-- 影响线上安全，最高优先
-2. **术语重命名**（前端）-- 低风险，可先行
-3. **Agent Team 核心**（TeamOrchestrator + delegate + TeamState）-- 主体重构
-4. **peer-collab 删除** -- Team 稳定后删除，保留一个版本的回退窗口
-5. **外部 A2A 接入** -- 作为 Team 外部成员的未来扩展
+1. **`expert_definition` DDL 扩展 + DTO 扩展** -- 基础设施，其他任务依赖
+2. **安全缺口修复**（HITL/脱敏/鉴权）-- 影响线上安全
+3. **HITL 动态化 + 沙箱 WriteMode 覆盖 + 模型配置** -- `permissions_json` / `model_config_json` 落地
+4. **RagTool kbScope + dataScope 透传** -- 知识库范围/数据范围生效
+5. **术语重命名**（前端）-- 低风险，可并行
+6. **Agent Team 核心**（TeamOrchestrator + delegate + TeamState）-- 主体重构
+7. **peer-collab 删除** -- Team 稳定后删除
+8. **外部 A2A 接入** -- 作为 Team 外部成员的未来扩展
 
 ---
 
-## 12. 自检清单
+## 13. 自检清单
 
 - [x] 无 TBD/TODO 占位需求
 - [x] 去中心化控制模式：智能体自主委派（delegate_to_agent）
@@ -432,6 +609,10 @@ Live：新增 `scripts/verify_agent_team_live.py`
 - [x] HandoffEnvelope 复用：从 Hub 注入改为智能体主动产出
 - [x] 与 spawn_subagent 正交：主子（中心化）vs Team（去中心化），两者共存
 - [x] 死锁/收束保护：maxHandoffs + 循环检测 + 超时 + 强制 synthesize
+- [x] 智能体定义模型扩展：tenant_id / kb_scope / data_scope / permissions / model_config / max_iters / max_handoffs
+- [x] 知识库范围：kb_scope_json 覆盖会话级 kbId，RagTool 按智能体裁剪
+- [x] 权限模型：permissions_json 覆盖 HITL/沙箱 WriteMode/委派权限
+- [x] 数据访问范围：data_scope_json 透传到工具层
 - [x] 安全缺口一并修复
 - [x] 术语重命名复用
 - [x] 范围可落单一实施计划
