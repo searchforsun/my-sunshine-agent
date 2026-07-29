@@ -72,8 +72,7 @@ function removeAssignment(idx: number) {
 </script>
 
 <template>
-  <WorkflowNodeConfigSection title="变量赋值" :help="workflowNodeFieldHelp('nodeInputs')">
-    <p v-pre class="wf-assign-hint">将上游变量或字面量赋值给命名变量，供下游以 <code>{{节点-id.变量名}}</code> 引用。</p>
+  <WorkflowNodeConfigSection title="变量赋值" :help="workflowNodeFieldHelp('variableAssignment')">
     <div v-if="assignments.length === 0" class="wf-assign-empty">
       <p class="wf-assign-empty-hint">暂无赋值。</p>
       <NButton size="small" secondary :disabled="readOnly" @click="addAssignment">+ 添加赋值</NButton>
@@ -139,12 +138,6 @@ function removeAssignment(idx: number) {
 </template>
 
 <style scoped>
-.wf-assign-hint {
-  margin: 0;
-  font-size: var(--sun-font-xs);
-  color: var(--sun-text-muted);
-  line-height: 1.5;
-}
 .wf-assign-empty {
   display: flex;
   flex-direction: column;
@@ -230,5 +223,9 @@ function removeAssignment(idx: number) {
   --n-border-active: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
   --n-box-shadow-focus: none !important;
+}
+.wf-assign-row-grid :deep(.n-base-selection-input) {
+  font-family: var(--sun-font-mono) !important;
+  font-size: var(--sun-font-sm) !important;
 }
 </style>

@@ -33,6 +33,7 @@ const NODE_HELP: Record<string, string> = {
   parallelGatewayTopology: '至少分出两条可同时进行的路线；各分支完成后应汇入「并行汇总」。',
   exclusiveGatewayTopology: '至少分出两条互斥路线；配置出边条件，并指定恰好一条默认分支。左值随上游自动填入。运行时按顺序求值，命中即走，否则走默认。',
   loopTopology: '循环容器（do-while）：首轮必进框内线性 rag/tool/agent；跑完后「继续条件」为真再进下一轮；maxIterations 硬顶 1–5；超限策略 fail_fast / exit / fallback_react。',
+  variableAssignment: '将上游变量或字面量赋值给命名变量，供下游以 {{节点-id.变量名}} 引用。',
 }
 
 const RETRY_HELP: Record<string, string> = {
