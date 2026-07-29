@@ -180,7 +180,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | 卡片/DAG 选中 | 内描边或 ring，hover 仅改边框（见 `SkillsView` / `PlanExecutionCanvas`） |
 | 文件树选中 | active 背景 transparent + 文字加粗 |
 | 代码/Mermaid | `--smd-block-bg` = 正文色；hljs/Mermaid 主题走 `useTheme` / `mermaidConfig`（`theme: 'base'`）；复制用 `stream-markdown/clipboard.ts` |
-
+| 功能参数说明 | 禁止添加冗余描述，详细说明添加到？说明中 |
 **已对齐**：Chat、Plan 组件、Skills / **Experts** / Knowledge / Status 页、MainLayout 侧栏。
 
 **Experts `/experts`**：与 Skills 同构（左列表 + 右详情）；`--sun-black` 底 + 边框分区，输入/下拉用 `sun-field` 覆写 Naive 灰底；新建弹窗仅 ID+展示名，启用开关在左卡（必填保存后）。
