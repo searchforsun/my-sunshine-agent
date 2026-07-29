@@ -26,7 +26,15 @@ public record AgentRunRequest(
         /** 对话级沙箱复用键；MAIN 必填方可跨 run 保留 workspace */
         String conversationId,
         /** ReAct checkpoint 续跑：中断前最大 think 轮次，用于 session.resumeFromCheckpoint */
-        int checkpointThinkIteration
+        int checkpointThinkIteration,
+        /** 知识库范围（覆盖会话级 kbId） */
+        List<String> kbScope,
+        /** 数据访问范围 */
+        String dataScopeJson,
+        /** 权限配置 */
+        String permissionsJson,
+        /** 模型配置 */
+        String modelConfigJson
 ) {
     public AgentRunRequest {
         memory = memory != null ? memory : AssembledContext.empty();
@@ -110,7 +118,11 @@ public record AgentRunRequest(
                 reactRestart,
                 reactPromptId,
                 conversationId,
-                checkpointThinkIteration);
+                checkpointThinkIteration,
+                null,
+                null,
+                null,
+                null);
     }
 
     public static AgentRunRequest main(
@@ -201,7 +213,11 @@ public record AgentRunRequest(
                 false,
                 null,
                 conversationId,
-                0);
+                0,
+                null,
+                null,
+                null,
+                null);
     }
 
     /** Planner — 仅 plan 步 Timeline */
@@ -228,6 +244,10 @@ public record AgentRunRequest(
                 false,
                 null,
                 null,
-                0);
+                0,
+                null,
+                null,
+                null,
+                null);
     }
 }
