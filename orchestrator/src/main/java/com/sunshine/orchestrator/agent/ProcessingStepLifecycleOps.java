@@ -89,23 +89,6 @@ public final class ProcessingStepLifecycleOps {
         }
     }
 
-        if (steps == null || steps.isEmpty()) {
-            return;
-        }
-        for (int i = 0; i < steps.size(); i++) {
-            ProcessingStep step = steps.get(i);
-            if (step == null || step.id() == null) {
-                continue;
-            }
-            String phase = step.phase();
-            if (!isRunning(step)) {
-                continue;
-            }
-                steps.set(i, toPaused(step));
-            }
-        }
-    }
-
     /** ReAct 暂停续跑：仅保留意图识别步，从规划推理重新开始 */
     public static List<ProcessingStep> retainIntentStepsOnly(List<ProcessingStep> steps) {
         if (steps == null || steps.isEmpty()) {

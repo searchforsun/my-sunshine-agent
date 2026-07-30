@@ -1,6 +1,7 @@
 package com.sunshine.agent.controller;
 
 import com.sunshine.common.core.result.R;
+import com.sunshine.agent.dto.AgentCardPreFill;
 import com.sunshine.agent.dto.AgentCatalogEntry;
 import com.sunshine.agent.dto.AgentCreateRequest;
 import com.sunshine.agent.dto.AgentEnableRequest;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -48,5 +50,11 @@ public class AgentAdminController {
     public R<Void> delete(@PathVariable String id) {
         agentAdminService.delete(id);
         return R.ok(null);
+    }
+
+    /** 外部智能体：拉取 Agent Card 预填 */
+    @GetMapping("/external/card-prefill")
+    public R<AgentCardPreFill> fetchAgentCard(@RequestParam String agentCardUrl) {
+        return R.ok(agentAdminService.fetchAgentCard(agentCardUrl));
     }
 }

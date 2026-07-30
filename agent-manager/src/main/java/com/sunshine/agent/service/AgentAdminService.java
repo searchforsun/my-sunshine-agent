@@ -2,6 +2,7 @@ package com.sunshine.agent.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.agent.dto.AgentCardPreFill;
 import com.sunshine.agent.dto.AgentCatalogEntry;
 import com.sunshine.agent.dto.AgentCatalogIndexEntry;
 import com.sunshine.agent.dto.AgentCreateRequest;
@@ -18,9 +19,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -128,6 +135,71 @@ public class AgentAdminService {
     private AgentDefinitionEntity requireDefinition(String agentId) {
         return definitionRepository.findById(agentId.strip())
                 .orElseThrow(() -> new BizException(AgentErrorCode.AGENT_NOT_FOUND));
+    }
+
+    /**
+     * 拉取外部 Agent Card 并返回预填数据。
+     */
+    public AgentCardPreFill fetchAgentCard(String agentCardUrl) {
+        if (!StringUtils.hasText(agentCardUrl)) {
+            return AgentCardPreFill.error("agentCardUrl 不能为空");
+        }
+        String url = agentCardUrl.strip();
+        if (!url.startsWith("https://") && !url.startsWith("http://")) {
+            return AgentCardPreFill.error("agentCardUrl 必须以 http:// 或 https:// 开头");
+        }
+        try {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(10))
+                    .build();
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .GET()
+                    .timeout(Duration.ofSeconds(10))
+                    .build();
+            HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                return AgentCardPreFill.error("Agent Card 返回 HTTP " + resp.statusCode());
+            }
+            String body = resp.body();
+            if (!StringUtils.hasText(body)) {
+                return AgentCardPreFill.error("Agent Card 返回内容为空");
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> card = MAPPER.readValue(body, Map.class);
+
+            String name = (String) card.getOrDefault("name", "");
+            String description = (String) card.getOrDefault("description", "");
+            String version = (String) card.getOrDefault("version", "");
+
+            List<String> skillNames = new ArrayList<>();
+            Object skills = card.get("skills");
+            if (skills instanceof List) {
+                for (Object sk : (List<?>) skills) {
+                    if (sk instanceof Map) {
+                        Object skName = ((Map<?, ?>) sk).get("name");
+                        if (skName != null) {
+                            skillNames.add(String.valueOf(skName));
+                        }
+                    }
+                }
+            }
+
+            String endpointUrl = "";
+            @SuppressWarnings("unchecked")
+            List<Object> interfaces = (List<Object>) card.get("supportedInterfaces");
+            if (interfaces != null && !interfaces.isEmpty() && interfaces.get(0) instanceof Map) {
+                Object urlVal = ((Map<?, ?>) interfaces.get(0)).get("url");
+                if (urlVal != null) {
+                    endpointUrl = String.valueOf(urlVal);
+                }
+            }
+
+            return new AgentCardPreFill(name, description, version, skillNames, endpointUrl, null);
+        } catch (Exception e) {
+            log.warn("[AgentAdminService] fetch agent card failed: url={} error={}", url, e.getMessage());
+            return AgentCardPreFill.error("拉取 Agent Card 失败: " + (e.getMessage() != null ? e.getMessage() : "network error"));
+        }
     }
 
     private String serializeToolIds(List<String> toolIds) {

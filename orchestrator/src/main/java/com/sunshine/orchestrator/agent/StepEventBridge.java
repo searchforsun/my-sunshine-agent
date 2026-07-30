@@ -127,12 +127,6 @@ public final class StepEventBridge {
         return registry.loopBodyFold(assistantMessageId);
     }
 
-    }
-
-    }
-
-    }
-
     public static void bindGenerationFlush(String messageId, Consumer<StreamToken> consumer) {
         registry.bindGenerationFlush(messageId, consumer);
     }

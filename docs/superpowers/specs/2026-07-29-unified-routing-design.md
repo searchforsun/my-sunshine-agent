@@ -589,49 +589,134 @@ public class ResourceDispatcher {
 
 ### 9.1 现状（代码核实）
 
-`DynamicToolkitFactory.build(tenantId, skillId, userId)` 为通用 REACT（MAIN）注入的工具：
+`DynamicToolkitFactory.build(tenantId, skillId, userId)` 为通用 REACT（MAIN）注入的工具分为两层：
 
-| 工具 | 来源 | 条件 | 安全机制 |
-|------|------|------|----------|
-| `search_knowledge` | 硬编码 `RagTool` | 始终注入 | kbId 由会话上下文动态注入 |
-| `sandbox__read` | 硬编码 `SandboxIds.ALL` | 始终注入 | HITL + PathJail |
-| `sandbox__write` | 硬编码 | 始终注入 | HITL（`writeHitlMode`） |
-| `sandbox__edit` | 硬编码 | 始终注入 | HITL |
-| `sandbox__glob` | 硬编码 | 始终注入 | 只读，无安全风险 |
-| `sandbox__grep` | 硬编码 | 始终注入 | 只读，无安全风险 |
-| `sandbox__exec` | 硬编码 | 始终注入 | `SandboxExecGuard` 硬拒绝危险命令 + HITL |
-| `spawn_subagent` | 硬编码 `SpawnSubagentTool` | 仅 MAIN + `agent.execution.react.subagent.enabled=true` | 禁止嵌套委派 |
-| 远程业务工具 | `ToolSetResolver.resolveReactTools()` → DB `global-react-default` | **当前种子为空，不加载任何业务工具** | 求交 `ToolCatalogService.enabledIds` |
+**第一层：硬编码内置工具（始终注入）**
 
-关键发现：`global-react-default` 工具集在 `16-sunshine-tool-manager.sql` 种子中**无任何 member**，默认 REACT 兜底仅加载内置安全工具。
+| 工具 | 条件 | 安全机制 |
+|------|------|----------|
+| `search_knowledge` | 始终注入 | kbId 由会话上下文动态注入 |
+| `sandbox__read` | 始终注入 | HITL + PathJail |
+| `sandbox__write` | 始终注入 | HITL（`writeHitlMode`） |
+| `sandbox__edit` | 始终注入 | HITL |
+| `sandbox__glob` | 始终注入 | 只读，无安全风险 |
+| `sandbox__grep` | 始终注入 | 只读，无安全风险 |
+| `sandbox__exec` | 始终注入 | `SandboxExecGuard` 硬拒绝危险命令 + HITL |
+| `spawn_subagent` | 仅 MAIN + `agent.execution.react.subagent.enabled=true` | 禁止嵌套委派 |
 
-### 9.2 安全分层：按路由精度递进工具集
+**第二层：场景默认工具集（按 scene + 租户独立配置）**
+
+当前实现为 `react-default`（所有场景共享一套），本设计重构为 `chat-default` / `task-default`，按场景独立配置。
+
+### 9.2 设计方案：场景驱动默认工具集
+
+**核心变更**：废弃按执行模式（`react-default` / `plan-workflow`）分类的工具集，改为按使用场景（`chat-default` / `task-default`）分类。
+
+**设计理由**：
+- 路由层已从 `ExecutionMode` 改为 `ResourceType`，工具集不应再耦合执行模式
+- `scene` 字段贯穿全链路，工具集按 scene 分类与路由、agent、skill 的过滤逻辑一致
+- 对话场景和编码任务场景对工具的默认需求不同（如 task 场景可能需要更多沙箱权限、不需要审批工具）
+- Plan-Workflow 已从路由入口移除，`plan-workflow` 工具集无存在必要
+
+**数据模型**：
+
+```
+tool_set 表
+  └── set_type: 'tenant_chat_default' | 'tenant_task_default'
+  └── tenant_id: 'ABC'（所有租户均为租户级，无 NULL 全局集）
+  └── id: 'tenant-ABC-chat-default' | 'tenant-ABC-task-default'（自动生成）
+```
+
+**解析链路**（替代 `ToolSetResolver.resolveReactTools`）：
+
+```
+resolveSceneTools(scene, tenantId)
+  → ToolManagerClient.fetchSceneDefault(scene, tenantId)
+  → GET /api/tools/sets/{scene}-default/tool-ids?tenantId={tenantId}
+  → ToolSetMemberService.toolIds(scene, tenantId)
+       → 直接查 tool_set WHERE set_type='tenant_chat_default' AND tenant_id='{id}'
+         若不存在 → 自动创建 tenant-{id}-chat-default（空成员）
+  → 与 ToolCatalogService.enabledIds(tenantId) 求交（仅保留已启用的工具）
+```
+
+**API 变更**：
+
+| 旧 API | 新 API |
+|--------|--------|
+| `/admin/tools/sets/react-default/members` | `/admin/tools/sets/chat-default/members` |
+| `/admin/tools/sets/react-default/picker` | `/admin/tools/sets/chat-default/picker` |
+| `/admin/tools/sets/plan-workflow/members` | `/admin/tools/sets/task-default/members` |
+| `/admin/tools/sets/plan-workflow/members/{toolId}` (PATCH critical) | **删除**（critical 标记机制移除） |
+
+**DB 种子变更**：
+
+```sql
+-- 删除以下旧种子（不再需要，租户首次访问自动创建）
+-- DELETE: INSERT INTO tool_set (id, set_type, tenant_id, display_name) VALUES
+--   ('global-react-default', 'global_react_default', NULL, ...),
+--   ('global-plan-workflow', 'global_plan_workflow', NULL, ...);
+-- 不再预插入任何 tool_set 行
+```
+
+**租户隔离**：
+- 所有工具集均为租户级（`tenant_id` 不为 NULL），无全局工具集
+- 每个租户的 `chat-default` 和 `task-default` 完全独立
+- 首次访问时自动创建空集，运营通过 `/admin/tools/sets/{scene}-default/members` 配置
+
+### 9.3 组件处置
+
+| 组件 | 操作 | 说明 |
+|------|------|------|
+| `ToolSetKind` 枚举 | **删除** | `REACT_DEFAULT` / `PLAN_WORKFLOW` 两个值均被 scene 替代 |
+| `ToolManagerClient.fetchReactDefault()` | **重命名** | → `fetchSceneDefault("chat")` |
+| `ToolManagerClient.fetchPlanWorkflow()` | **删除** | Planner 工具池改走 `chat-default` |
+| `ToolManagerClient.fetchPlanWorkflowCritical()` | **删除** | critical 机制一并移除 |
+| `ToolSetResolver.resolveReactTools()` | **重命名** | → `resolveSceneTools(scene, tenantId)` |
+| `ToolSetResolver.resolvePlanWorkflowTools()` | **删除** | Planner 改走 `resolveSceneTools("chat", tenantId)` |
+| `ToolSetResolver.resolvePlanWorkflowCriticalTools()` | **删除** | — |
+| `ToolSetMemberService.patchCritical()` | **删除** | critical 标记机制移除 |
+| `NodeRetryPolicyResolver` | **修改** | 删除 `criticalTools` 依赖，Planner 节点统一走通用重试策略 |
+| `PlanCatalogRenderer.renderTools()` | **修改** | `resolvePlanWorkflowTools` → `resolveSceneTools("chat", tenantId)` |
+| `DynamicToolkitFactory` | **修改** | `resolveReactTools` 调用 → `resolveSceneTools(scene, tenantId)` |
+| `tool_set` 表种子数据 | **删除** | `16-sunshine-tool-manager.sql` 中两条 INSERT 移除 |
+| `/tools` 管理页 — 工具集 Tab | **修改** | 展示 `chat-default` + `task-default` 两种类 |
+
+### 9.4 安全分层（不变）
 
 ```
 兜底 REACT / GUIDED（resourceId=null）
-  → global-react-default 为空
-  → 仅内置工具：RAG + sandbox__* ×6 + spawn_subagent（可选）
+  → 场景默认工具集（chat-default / task-default）
+  + 硬编码内置工具：RAG + sandbox__* ×6 + spawn_subagent（可选）
   → 全部受 HITL/Guard 约束
 
 指定 Agent（resourceId=agentId）
-  → global-react-default     + agent_definition.tools_json
-  → 兜底内置工具              + Agent 专属业务工具（SDK/MCP）
+  → 场景默认工具集           + agent_definition.tools_json
+  → 内置工具                  + Agent 专属业务工具（SDK/MCP）
 
 指定 Skill（resourceId=skillId）
-  → global-react-default     + skill_definition.tools_json（或 embedding 召回）
-  → 兜底内置工具              + Skill 绑定工具
+  → 场景默认工具集           + skill_definition.tools_json（或 embedding 召回）
+  → 内置工具                  + Skill 绑定工具
 
 指定 Workflow（resourceId=workflowId）
   → workflow 定义的工具集（PlanJson 节点 params.tool）
 ```
 
-### 9.3 结论
+### 9.5 安全模型（不变）
 
-通用 REACT 兜底的工具配置**不需额外改动**：
-- `global-react-default` 在 DB 种子中默认空 → 天然不加载业务工具
-- 内置工具全受 HITL/SandboxExecGuard/PathJail 约束
-- 沙箱容器懒创建——REACT 不调则不开，无资源浪费
-- 统一路由重构时 `DynamicToolkitFactory` 无需改动
+| 安全层 | 说明 |
+|--------|------|
+| **HITL** | 写工具确认由用户 `writeHitlMode` 控制（always/smart/never） |
+| **SandboxExecGuard** | 沙箱 exec 命令白名单，危险命令硬拒绝 |
+| **PathJail** | 沙箱路径隔离 |
+| **租户隔离** | 每个租户独立场景默认工具集，A 租户的工具不泄露到 B 租户 |
+| **Catalog 启用池** | 工具集结果与 `enabledIds` 求交，已禁用的工具自动过滤 |
+
+### 9.6 结论
+
+- 场景默认工具集（`chat-default` / `task-default`）替代 `react-default` / `plan-workflow`，与路由层的 `scene` 设计对齐
+- 全租户级、无全局工具集，首次访问自动创建空集
+- Planner 工具池复用 `chat-default`（Planner 只在 chat 场景触发）
+- 安全不依赖空工具集假设，依赖 HITL + Guard + 租户隔离 + Catalog 门禁
 
 ---
 
@@ -657,8 +742,8 @@ public class ResourceDispatcher {
 | `UnifiedRuleRoutingPolicy` | 输出改为 `RoutingResult`；规则增加 `resourceType` 字段 |
 | `LlmClassifierRoutingPolicy` | 入参改为候选资源列表（含 type）；输出改为 `RoutingResult` |
 | `IntentRouter` | 新增 `classifyWithCandidates` 方法 |
-| `DynamicToolkitFactory` | 根据 `RoutingResult`（AGENT/SKILL/REACT）加载不同工具集 |
-| `ToolSetResolver` | 增加 `scene` 参数 |
+| `DynamicToolkitFactory` | 根据 `RoutingResult`（AGENT/SKILL/REACT）加载工具；`resolveReactTools` → `resolveSceneTools(scene, tenantId)` |
+| `ToolSetResolver` | `resolveReactTools` → `resolveSceneTools(scene, tenantId)`；删除 `resolvePlanWorkflowTools` / `resolvePlanWorkflowCriticalTools` |
 | `ChatController` | 请求体增加 `scene` 字段；删除 `executionPreference` |
 | `ExecutionStreamContext` | `executionPlan` → `routingResult` |
 | `ChatConversationEntity` | `executionMode` → `routingType` + `routingResourceId` |
@@ -697,14 +782,14 @@ public class ResourceDispatcher {
 | 路由结果 | 工具加载策略 |
 |---------|-------------|
 | `WORKFLOW` | workflow 定义中的工具集（`PlanJson` 节点 `params.tool`） |
-| `AGENT` | `global-react-default` + `agent_definition.tools_json` + agent 绑定的 `skill.tools_json` |
-| `SKILL` | `global-react-default` + `skill_definition.tools_json` 显式声明 + 通用工具 embedding 召回（Top-K 注入） |
-| `REACT` | `global-react-default`（当前为空，仅内置工具）+ embedding 召回 Top-K 工具 |
+| `AGENT` | 场景默认工具集（`chat-default` / `task-default`）+ `agent_definition.tools_json` + agent 绑定的 `skill.tools_json` |
+| `SKILL` | 场景默认工具集 + `skill_definition.tools_json` 显式声明 + 通用工具 embedding 召回（Top-K 注入） |
+| `REACT` | 场景默认工具集（初始为空，运营按需配置）+ embedding 召回 Top-K 工具 |
 | `GUIDED` | 不加载工具——前端展示候选列表，用户点选后重新路由 |
 
-**标准 skill（无 `tools_json`）**：`global-react-default` 内置工具 + embedding 召回 Top-K 工具，不加载全量工具。
+**标准 skill（无 `tools_json`）**：场景默认工具集内置工具 + embedding 召回 Top-K 工具，不加载全量工具。
 
-（兜底 REACT 的详细工具配置见 §9。）
+（兜底 REACT 的详细工具配置与安全模型见 §9。）
 
 ---
 
@@ -830,7 +915,7 @@ Chat 底栏 `ExecutionModeSelector` 删除。用户不再手动选模式，改�
 | 引导兜底 | 四层全空 + L2 有候选（score ≥ 0.75）→ `GUIDED` 展示候选列表 | 单测 + live |
 | 引导兜底 | 单候选不出引导、低分过滤、连续 3 次忽略退化 | 单测 |
 | 引导兜底 | 用户点选候选 → 重新路由并执行 | live |
-| 工具配置 | 兜底 REACT 仅加载内置工具（RAG+沙箱+spawn），无业务工具 | 单测 |
+| 工具配置 | 兜底 REACT 按租户独立加载默认工具集 + 内置工具（RAG+沙箱+spawn），全链路受 HITL/Guard/Catalog 门禁 | 单测 |
 | scene | chat/task 分别过滤资源 | 单测 |
 | 前端 | 无执行模式选择器；GUIDED 展示 inline 候选提示 | live |
 | 回归 | 8 标杆 workflow 仍可执行 | live |
