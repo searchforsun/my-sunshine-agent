@@ -13,7 +13,6 @@ import java.util.List;
 public final class RoutingCatalogFixtures {
 
     public static final String STRUCTURAL_ID = "routing-rule.structural-plan";
-    public static final String PEER_ID = "routing-rule.peer-phrase";
     public static final String REACT_POLICY_QA_ID = "routing-rule.react-policy-qa";
     public static final String FINANCE_SMART_ID = "routing-rule.rule-finance-smart-compliance";
     public static final String KNOWLEDGE_BUDGET_ID = "routing-rule.rule-knowledge-budget-travel";
@@ -42,11 +41,6 @@ public final class RoutingCatalogFixtures {
                                 + "\"finance\":[\"待审批\",\"报销\",\"财务\",\"付款\",\"单据\"],"
                                 + "\"analysis\":[\"合规\",\"分析\",\"审查\",\"对比\",\"评估\",\"结论\"]},"
                                 + "\"plan\":{\"mode\":\"plan-workflow\",\"params\":{}}}"));
-        entries.add(entry(PEER_ID, "Peer句式→协作", 90,
-                        "{\"matchType\":\"peer_phrase\","
-                                + "\"patterns\":[\"互相验证\",\"交叉审查\",\"多专家讨论\",\"分别分析并质疑\","
-                                + "\"两个角度.*审查\",\"专家.*分别.*审查\"],"
-                                + "\"plan\":{\"mode\":\"peer-collab\",\"params\":{}}}"));
         entries.add(entry(REACT_POLICY_QA_ID, "制度咨询→React政策问答", 40,
                         "{\"matchType\":\"regex\",\"match\":\"any\","
                                 + "\"patterns\":[\"制度怎么说\",\"有没有规定\",\"差旅办法\",\"报销规定\","

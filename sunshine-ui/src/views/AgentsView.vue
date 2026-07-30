@@ -80,8 +80,8 @@ const editForm = ref({
   permissionsHitl: 'inherit' as string,
   permissionsSandboxWrite: 'inherit' as string,
   modelConfig: '',
-  maxIters: 0 as number,
-  maxHandoffs: 0 as number,
+  maxIters: '',
+  maxHandoffs: '',
 })
 
 // ---- 外部智能体 ----
@@ -267,8 +267,8 @@ const isFormDirty = computed(() => {
     || editForm.value.permissionsHitl !== parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit')
     || editForm.value.permissionsSandboxWrite !== parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit')
     || editForm.value.modelConfig !== (agent.modelConfigJson ?? '')
-    || editForm.value.maxIters !== (agent.maxIters ?? 0)
-    || editForm.value.maxHandoffs !== (agent.maxHandoffs ?? 0)
+    || editForm.value.maxIters !== String(agent.maxIters ?? 0)
+    || editForm.value.maxHandoffs !== String(agent.maxHandoffs ?? 0)
 })
 
 function isAgentComplete(agent: AgentEntry): boolean {
@@ -320,8 +320,8 @@ function loadEditForm(agent: AgentEntry) {
     permissionsHitl: parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit'),
     permissionsSandboxWrite: parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit'),
     modelConfig: agent.modelConfigJson ?? '',
-    maxIters: agent.maxIters ?? 0,
-    maxHandoffs: agent.maxHandoffs ?? 0,
+    maxIters: String(agent.maxIters ?? 0),
+    maxHandoffs: String(agent.maxHandoffs ?? 0),
   }
 }
 
@@ -564,7 +564,10 @@ async function handleSave() {
         {
           kbScope: editForm.value.kbScope ? [editForm.value.kbScope] : [],
           dataScopeJson: editForm.value.dataScope || undefined,
-          permissionsJson: makePermissionsJson(editForm.value) || undefined,
+          permissionsJson: makePermissionsJson({
+            permissionsHitl: editForm.value.permissionsHitl,
+            permissionsSandboxWrite: editForm.value.permissionsSandboxWrite,
+          }) || undefined,
           modelConfigJson: editForm.value.modelConfig || undefined,
           maxIters: Number(editForm.value.maxIters) || 0,
           maxHandoffs: Number(editForm.value.maxHandoffs) || 0,

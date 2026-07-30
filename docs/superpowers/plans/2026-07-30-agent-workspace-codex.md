@@ -33,6 +33,7 @@
 | `orchestrator/.../sandbox/WorkspaceSandboxBinding.java` | 工作区级 Redis 绑定 record（对齐 `ConversationSandboxBinding`） |
 | `orchestrator/.../sandbox/WorkspaceSandboxStore.java` | 工作区级 Redis KV + ZSET（对齐 `ConversationSandboxStore`，但不注册 purge ZSET） |
 | `orchestrator/.../sandbox/WorkspaceSandboxLifecycle.java` | 工作区懒开箱：宿主机 git clone + 完全体 Docker create |
+| `orchestrator/.../sandbox/RunContext.java` | 从 `SandboxSessionLifecycle` 内 record 提升为独立 public record，新增 `workspaceId` + `checkoutPath` 字段 |
 | `orchestrator/.../sandbox/WorkspaceCheckoutService.java` | worktree 管理：createWorktree / listCheckouts / mergeToMain / removeWorktree |
 | `orchestrator/.../controller/AgentWorkspaceController.java` | REST CRUD API：`POST/GET/DELETE /api/agent-workspaces` |
 | `orchestrator/.../model/AgentWorkspaceEntity.java` | `agent_workspace` 表 JPA Entity |
@@ -54,7 +55,8 @@
 | `docker/mysql/init/11-sunshine-orchestrator.sql` | 追加 `agent_workspace` 表 + `chat_conversation` ALTER |
 | `docker/mysql/init/10-sunshine-auth.sql` | 追加 `sys_user` 四列（`github_url`/`github_token`/`gitlab_url`/`gitlab_token`） |
 | `sandbox-service/.../docker/EgressProxyManager.java` | per-session 化：容器命名 `sunshine-sandbox-egress-{sessionId[:12]}` |
-| `orchestrator/.../sandbox/SandboxSessionLifecycle.java` | `ensureSession` 支持工作区级路径（`resolveWorkspaceId` → `WorkspaceSandboxLifecycle`） |
+| `orchestrator/.../sandbox/SandboxSessionLifecycle.java` | `prepareRun` 填充 workspaceId/checkoutPath + `ensureBound` 委托 `WorkspaceSandboxLifecycle` |
+| `orchestrator/.../conversation/entity/ChatConversationEntity.java` | 增加 `kind` / `workspaceId` / `checkoutPath` 三字段 |
 | `orchestrator/.../sandbox/SandboxAgentTools.java` | `execute` 方法根据 `conversation.checkoutPath` 设置 cwd + PathJail 边界 |
 | `orchestrator/.../sandbox/SandboxSessionReaper.java` | `reap` 增加工作区 ZSET 扫描（仅 idle stop，不 purge） |
 | `orchestrator/.../config/AgentSandboxProperties.java` | 增加 `profiles` 档位预设 Map |
@@ -330,6 +332,7 @@ git commit -m "feat: auth 用户级 Git 令牌（GitHub + 内网 GitLab）+ git-
 
 **Files:**
 - Modify: `docker/mysql/init/11-sunshine-orchestrator.sql`
+- Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/conversation/entity/ChatConversationEntity.java`
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/model/AgentWorkspaceEntity.java`
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/repo/AgentWorkspaceRepository.java`
 - Create: `orchestrator/src/main/java/com/sunshine/orchestrator/dto/CreateWorkspaceRequest.java`
@@ -531,13 +534,30 @@ public class AgentWorkspaceController {
 }
 ```
 
-- [ ] **Step 6: 编译验证**
+- [ ] **Step 6: 修改 ChatConversationEntity 增加新字段**
+
+```java
+// ChatConversationEntity.java 增加以下字段
+/** 会话类型：chat / task（task 绑定工作区） */
+@Column(length = 16)
+private String kind = "chat";
+
+/** kind=task 时绑定的工作区 id */
+@Column(name = "workspace_id", length = 64)
+private String workspaceId;
+
+/** 用户选定的 checkout 路径（如 /workspace/main 或 /workspace/branches/feat-x） */
+@Column(name = "checkout_path", length = 256)
+private String checkoutPath;
+```
+
+- [ ] **Step 7: 编译验证**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl orchestrator -q -DskipTests
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add orchestrator/src/main/java/com/sunshine/orchestrator/model/AgentWorkspaceEntity.java \
@@ -545,6 +565,7 @@ git add orchestrator/src/main/java/com/sunshine/orchestrator/model/AgentWorkspac
         orchestrator/src/main/java/com/sunshine/orchestrator/dto/CreateWorkspaceRequest.java \
         orchestrator/src/main/java/com/sunshine/orchestrator/dto/WorkspaceVO.java \
         orchestrator/src/main/java/com/sunshine/orchestrator/controller/AgentWorkspaceController.java \
+        orchestrator/src/main/java/com/sunshine/orchestrator/conversation/entity/ChatConversationEntity.java \
         docker/mysql/init/11-sunshine-orchestrator.sql
 git commit -m "feat: agent_workspace 表 + conversation kind/workspace_id + CRUD API"
 ```
@@ -794,11 +815,14 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
@@ -818,15 +842,19 @@ public class WorkspaceSandboxLifecycle {
     public String ensureWorkspaceSession(
             String workspaceId, String userId, String tenantId) {
         WorkspaceSandboxBinding binding = store.find(tenantId, workspaceId).orElse(null);
-        if (binding != null && sandboxClient.sessionAlive(binding.sessionId())) {
-            store.touch(tenantId, workspaceId);
-            return binding.sessionId();
-        }
-        if (binding != null && sandboxClient.sessionAlive(binding.sessionId())) {
-            // stopped 容器：docker start + 续期
-            sandboxClient.startSession(binding.sessionId());
-            store.touch(tenantId, workspaceId);
-            return binding.sessionId();
+        if (binding != null) {
+            if (sandboxClient.sessionRunning(binding.sessionId())) {
+                store.touch(tenantId, workspaceId);
+                return binding.sessionId();
+            }
+            if (sandboxClient.sessionAlive(binding.sessionId())) {
+                // stopped 容器：docker start + 续期
+                sandboxClient.startSession(binding.sessionId());
+                store.touch(tenantId, workspaceId);
+                return binding.sessionId();
+            }
+            // 容器已销毁，清理 binding 走新建路径
+            store.remove(tenantId, workspaceId);
         }
         AgentWorkspaceEntity ws = workspaceRepo.findById(workspaceId)
                 .orElseThrow(() -> new IllegalStateException("工作区不存在: " + workspaceId));
@@ -856,32 +884,70 @@ public class WorkspaceSandboxLifecycle {
     }
 
     private SandboxPolicy fullSessionPolicy(AgentWorkspaceEntity ws) {
+        // 工作区容器使用 bridge 网络（完全体），非 none；volume mount 已在 create session body 中传入。
+        // 现有 SandboxPolicy 已支持 networkMode/networkAllow 字段，若需显式 bridge 需在 SandboxPolicy 构造或
+        // sandbox-service 侧 default 逻辑中处理（当前对话级 sessionPolicy 默认 none）。
         return new SandboxPolicy(
                 "docker", ws.getImage(), 120, ws.getMemoryMb(),
                 ws.getCpus().doubleValue(),
-                List.of(),    // 完全体不挂 egress ACL
+                List.of(),    // 完全体不挂 egress ACL（bridge 模式直出）
                 List.of());   // exec 无只读白名单
     }
 
     private void cloneRepo(String repoUrl, String branch, String userId, Path target) {
         String host = extractHost(repoUrl);
-        // 取令牌
         Map<String, String> cred = fetchGitCredentials(userId, host);
         String token = cred.getOrDefault("token", "");
-        String authUrl = token.isEmpty() ? repoUrl
-                : injectToken(repoUrl, token);
         File dir = target.toFile();
         if (dir.exists() && new File(dir, ".git").exists()) {
             return;  // 已 clone 幂等
         }
         dir.mkdirs();
-        ProcessBuilder pb = new ProcessBuilder(
-                "git", "clone", "--depth", "1", "--branch", branch, authUrl, dir.getAbsolutePath());
+        // 使用 GIT_ASKPASS 脚本注入令牌，避免令牌出现在 ps aux / .git/config 中
+        File askpassScript = null;
+        ProcessBuilder pb;
+        if (!token.isEmpty()) {
+            askpassScript = writeAskpassScript(target.getParent(), token);
+            pb = new ProcessBuilder(
+                    "git", "clone", "--depth", "1", "--branch", branch, repoUrl, dir.getAbsolutePath());
+            pb.environment().put("GIT_ASKPASS", askpassScript.getAbsolutePath());
+            pb.environment().put("GIT_TERMINAL_PROMPT", "0");
+        } else {
+            pb = new ProcessBuilder(
+                    "git", "clone", "--depth", "1", "--branch", branch, repoUrl, dir.getAbsolutePath());
+        }
         pb.redirectErrorStream(true);
-        Process p = pb.start();
-        String output = new String(p.getInputStream().readAllBytes());
-        int code = p.waitFor();
-        if (code != 0) throw new RuntimeException("git clone exit " + code + ": " + truncate(output, 200));
+        try {
+            Process p = pb.start();
+            boolean done = p.waitFor(5, TimeUnit.MINUTES);
+            if (!done) {
+                p.destroyForcibly();
+                throw new RuntimeException("git clone timeout after 5min");
+            }
+            String output = new String(p.getInputStream().readAllBytes());
+            int code = p.exitValue();
+            if (code != 0) throw new RuntimeException("git clone exit " + code + ": " + truncate(output, 200));
+            // clone 成功后清理 askpass 脚本
+            if (askpassScript != null) askpassScript.delete();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("git clone interrupted", e);
+        }
+    }
+
+    /** 写入临时 GIT_ASKPASS 脚本（仅 root 可读），返回脚本文件 */
+    private static File writeAskpassScript(Path parentDir, String token) throws IOException {
+        File script = File.createTempFile("git-askpass-", ".sh", parentDir.toFile());
+        script.setExecutable(true, true);
+        script.setReadable(false, false);  // 仅 owner
+        script.setReadable(true, true);
+        String content = "#!/bin/sh\necho " + shellEscape(token) + "\n";
+        Files.writeString(script.toPath(), content);
+        return script;
+    }
+
+    private static String shellEscape(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
     }
 
     private Map<String, String> fetchGitCredentials(String userId, String host) {
@@ -903,14 +969,6 @@ public class WorkspaceSandboxLifecycle {
         try { return new URI(url).getHost(); } catch (Exception e) { return ""; }
     }
 
-    private static String injectToken(String url, String token) {
-        if (url.startsWith("https://")) {
-            String rest = url.substring(8);
-            return "https://oauth2:" + token + "@" + rest;
-        }
-        return url;
-    }
-
     private static String truncate(String s, int maxLen) {
         if (s == null) return "";
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
@@ -925,30 +983,62 @@ public class WorkspaceSandboxLifecycle {
 }
 ```
 
-- [ ] **Step 2: 修改 SandboxSessionLifecycle.ensureBound 增加工作区路径**
+- [ ] **Step 2: 修改 SandboxSessionLifecycle 增加工作区路径**
+
+在 `SandboxSessionLifecycle` 中新增依赖注入 `WorkspaceSandboxLifecycle` 和 `ConversationRepository`：
 
 ```java
-// SandboxSessionLifecycle.ensureBound 方法中，在现有 check 逻辑前增加：
-String workspaceId = resolveWorkspaceId(ctx);
-if (StringUtils.hasText(workspaceId)) {
+// SandboxSessionLifecycle.java 新增字段
+private final WorkspaceSandboxLifecycle workspaceSandboxLifecycle;
+private final ConversationRepository conversationRepository;
+```
+
+**RunContext 移为独立 public record**（原为 package-private，需在 `prepareRun` 中填充 `workspaceId` + `checkoutPath`）：
+
+```java
+// sandbox/RunContext.java — 独立 public record
+public record RunContext(
+        String userId, String tenantId, String conversationId,
+        String skillId, String runId, String assistantMessageId,
+        String workspaceId,    // 新增：kind=task 时非空
+        String checkoutPath) { // 新增：用户选定的 worktree 路径
+    static RunContext from(AgentRunRequest req, ConversationRepository convRepo) {
+        String convId = req.conversationId();
+        String wsId = null;
+        String ckPath = null;
+        if (StringUtils.hasText(convId)) {
+            ChatConversationEntity conv = convRepo.findById(convId).orElse(null);
+            if (conv != null && "task".equals(conv.getKind())) {
+                wsId = conv.getWorkspaceId();
+                ckPath = conv.getCheckoutPath();
+            }
+        }
+        return new RunContext(
+                req.userId(),
+                StringUtils.hasText(req.tenantId()) ? req.tenantId().strip() : "default",
+                convId, req.skillId(), req.runId(), req.assistantMessageId(),
+                wsId, ckPath);
+    }
+}
+```
+
+`prepareRun` 调用处同步改为 `RunContext.from(req, conversationRepository)`。
+
+**`ensureBound` 方法**中，在现有 check 逻辑前增加工作区路径：
+
+```java
+// SandboxSessionLifecycle.ensureBound 方法中
+if (ctx != null && StringUtils.hasText(ctx.workspaceId())) {
     String wsSessionId = workspaceSandboxLifecycle.ensureWorkspaceSession(
-            workspaceId, ctx.userId(), ctx.tenantId());
+            ctx.workspaceId(), ctx.userId(), ctx.tenantId());
     SandboxSessionHolder.bind(bid, wsSessionId, fullSessionPolicy());
     emitSandboxSessionSse(bid, ctx, List.of());
     return wsSessionId;
 }
-// ... 现存逻辑不变 ...
-
-// 新增辅助方法
-private String resolveWorkspaceId(RunContext ctx) {
-    if (!StringUtils.hasText(ctx.conversationId())) return null;
-    // 查 chat_conversation，若 kind=task 且 workspace_id 非空则返回
-    // （可缓存在 RunContext 或直接查 DB）
-    return /* conversationService.getKind(convId) == task ? conv.workspaceId : null */ null;
-}
+// ... 现存对话级逻辑不变 ...
 ```
 
-> 注：具体实现需依赖 `ConversationRepository`。RunContext 可扩展 `workspaceId` 字段，在 `prepareRun` 时查库填充。
+> 注：工作区级 `fullSessionPolicy()` 由 `WorkspaceSandboxLifecycle` 内部维护，与对话级 `sessionPolicy()` 独立。
 
 - [ ] **Step 3: 编译验证**
 
@@ -988,11 +1078,14 @@ git commit -m "feat: WorkspaceSandboxLifecycle 懒开箱（宿主机 clone + 完
 package com.sunshine.orchestrator.sandbox;
 
 import com.sunshine.orchestrator.client.SandboxClient;
+import com.sunshine.orchestrator.repo.ConversationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -1005,24 +1098,39 @@ public class WorkspaceCheckoutService {
     private final WorkspaceSandboxStore store;
     private final WorkspaceSandboxLifecycle lifecycle;
     private final SandboxClient sandboxClient;
+    private final StringRedisTemplate redis;
 
     public record CheckoutInfo(String branch, String path, boolean isMain, List<String> conversationIds) {}
 
     public record MergeResult(boolean success, List<String> conflictFiles) {}
 
+    /**
+     * 工作区级 Redis 分布式锁 key 前缀（同一 workspace 容器内 git 操作互斥）。
+     * 使用 {@code redis.setIfAbsent(key, "1", 30, SECONDS)} 获取锁。
+     */
+    private static final String LOCK_PREFIX = "sandbox:ws:lock:";
+
     /** 新建 worktree 分支（用户显式触发） */
     public String createWorktree(String workspaceId, String userId, String tenantId,
                                   String branch, String fromRef) {
         String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
-        String ref = StringUtils.hasText(fromRef) ? fromRef.strip() : "HEAD";
-        String cmd = "git -C /workspace/main worktree add /workspace/branches/" + branch
-                + " -b " + branch + " " + ref;
-        var resp = sandboxClient.invoke(sessionId, "exec",
-                Map.of("command", cmd, "cwd", "/workspace/main"));
-        if (!resp.ok()) {
-            throw new IllegalStateException("worktree create failed: " + resp.output());
+        String lockKey = LOCK_PREFIX + workspaceId;
+        if (!redis.opsForValue().setIfAbsent(lockKey, "1", Duration.ofSeconds(30))) {
+            throw new IllegalStateException("工作区 git 操作繁忙，请稍后重试");
         }
-        return "/workspace/branches/" + branch;
+        try {
+            String ref = StringUtils.hasText(fromRef) ? fromRef.strip() : "HEAD";
+            String cmd = "git -C /workspace/main worktree add /workspace/branches/" + branch
+                    + " -b " + branch + " " + ref;
+            var resp = sandboxClient.invoke(sessionId, "exec",
+                    Map.of("command", cmd, "cwd", "/workspace/main"));
+            if (!resp.isSuccess()) {
+                throw new IllegalStateException("worktree create failed: " + resp.getOutput());
+            }
+            return "/workspace/branches/" + branch;
+        } finally {
+            redis.delete(lockKey);
+        }
     }
 
     /** 列出工作区所有 checkout */
@@ -1040,28 +1148,45 @@ public class WorkspaceCheckoutService {
     /** 合并 worktree 到主分支（用户显式触发） */
     public MergeResult mergeToMain(String workspaceId, String userId, String tenantId, String branch) {
         String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
-        var resp = sandboxClient.invoke(sessionId, "exec",
-                Map.of("command", "git -C /workspace/main merge " + branch, "cwd", "/workspace/main"));
-        if (resp.ok()) {
-            return new MergeResult(true, List.of());
+        String lockKey = LOCK_PREFIX + workspaceId;
+        if (!redis.opsForValue().setIfAbsent(lockKey, "1", Duration.ofSeconds(30))) {
+            throw new IllegalStateException("工作区 git 操作繁忙，请稍后重试");
         }
-        // 冲突时获取冲突文件清单
-        var conflictResp = sandboxClient.invoke(sessionId, "exec",
-                Map.of("command", "git -C /workspace/main diff --name-only --diff-filter=U", "cwd", "/workspace/main"));
-        List<String> conflicts = conflictResp.output() != null
-                ? conflictResp.output().lines().map(String::strip).filter(s -> !s.isEmpty()).toList()
-                : List.of();
-        return new MergeResult(false, conflicts);
+        try {
+            var resp = sandboxClient.invoke(sessionId, "exec",
+                    Map.of("command", "git -C /workspace/main merge " + branch, "cwd", "/workspace/main"));
+            if (resp.isSuccess()) {
+                return new MergeResult(true, List.of());
+            }
+            // 冲突时获取冲突文件清单
+            var conflictResp = sandboxClient.invoke(sessionId, "exec",
+                    Map.of("command", "git -C /workspace/main diff --name-only --diff-filter=U",
+                           "cwd", "/workspace/main"));
+            List<String> conflicts = conflictResp.getOutput() != null
+                    ? conflictResp.getOutput().lines().map(String::strip).filter(s -> !s.isEmpty()).toList()
+                    : List.of();
+            return new MergeResult(false, conflicts);
+        } finally {
+            redis.delete(lockKey);
+        }
     }
 
     /** 删除 worktree 分支（用户显式触发） */
     public void removeWorktree(String workspaceId, String userId, String tenantId, String branch) {
         String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
-        sandboxClient.invoke(sessionId, "exec",
-                Map.of("command",
-                        "git -C /workspace/main worktree remove /workspace/branches/" + branch + " --force"
-                                + " && git -C /workspace/main branch -D " + branch,
-                        "cwd", "/workspace/main"));
+        String lockKey = LOCK_PREFIX + workspaceId;
+        if (!redis.opsForValue().setIfAbsent(lockKey, "1", Duration.ofSeconds(30))) {
+            throw new IllegalStateException("工作区 git 操作繁忙，请稍后重试");
+        }
+        try {
+            sandboxClient.invoke(sessionId, "exec",
+                    Map.of("command",
+                            "git -C /workspace/main worktree remove /workspace/branches/" + branch + " --force"
+                                    + " && git -C /workspace/main branch -D " + branch,
+                            "cwd", "/workspace/main"));
+        } finally {
+            redis.delete(lockKey);
+        }
     }
 }
 ```
@@ -1071,14 +1196,22 @@ public class WorkspaceCheckoutService {
 ```java
 // SandboxAgentTools.execute() 方法中，在 ensureBound 之后、RPC 调用之前增加：
 
-// 工作区级：cwd = 会话选定的 checkout
-String workspaceId = conversationService.getWorkspaceId(conversationId);
-if (StringUtils.hasText(workspaceId)) {
-    String checkoutPath = conversationService.getCheckoutPath(conversationId);
-    if (StringUtils.hasText(checkoutPath)) {
-        body.put("cwd", checkoutPath);  // PathJail 边界 = checkoutPath
+// 工作区级：cwd = 会话选定的 checkout（从 conversation 表直接读取）
+String workspaceId = null;
+String checkoutPath = null;
+if (StringUtils.hasText(conversationId)) {
+    ChatConversationEntity conv = conversationRepository.findById(conversationId).orElse(null);
+    if (conv != null && "task".equals(conv.getKind()) && StringUtils.hasText(conv.getWorkspaceId())) {
+        workspaceId = conv.getWorkspaceId();
+        checkoutPath = conv.getCheckoutPath();
     }
 }
+if (StringUtils.hasText(checkoutPath)) {
+    body.put("cwd", checkoutPath);  // PathJail 边界 = checkoutPath
+}
+```
+
+> 依赖注入：`SandboxAgentTools` 新增 `private final ConversationRepository conversationRepository;`。
 ```
 
 - [ ] **Step 3: 编译验证**
@@ -1148,6 +1281,31 @@ public ProfilePreset resolveProfile(String name) {
         return fallback;
     }
     return profiles.getOrDefault(name, profiles.values().iterator().next());
+}
+
+/**
+ * 校验用户请求的 hardware spec 是否在 Nacos allowed-presets 范围内。
+ * 返回第一个匹配的预设（精确匹配 memoryMb+cpus），否则抛异常。
+ */
+public Map<String, Object> validateAndResolve(String profileName, int memoryMb, double cpus) {
+    ProfilePreset profile = resolveProfile(profileName);
+    if (profile.getAllowedPresets() == null || profile.getAllowedPresets().isEmpty()) {
+        if (memoryMb <= profile.getDefaultMemoryMb() && cpus <= profile.getDefaultCpus()) {
+            return Map.of("memoryMb", memoryMb, "cpus", cpus);
+        }
+        throw new IllegalArgumentException(
+            String.format("硬件规格超限: memoryMb=%d (max %d), cpus=%.1f (max %.1f)",
+                memoryMb, profile.getDefaultMemoryMb(), cpus, profile.getDefaultCpus()));
+    }
+    for (Map<String, Object> preset : profile.getAllowedPresets()) {
+        int pm = ((Number) preset.getOrDefault("memoryMb", 0)).intValue();
+        double pc = ((Number) preset.getOrDefault("cpus", 0.0)).doubleValue();
+        if (memoryMb == pm && Math.abs(cpus - pc) < 0.01) {
+            return preset;
+        }
+    }
+    throw new IllegalArgumentException(
+        String.format("硬件规格不在允许范围内: memoryMb=%d cpus=%.1f", memoryMb, cpus));
 }
 ```
 
@@ -1498,8 +1656,8 @@ export async function deleteWorkspace(id: string): Promise<void> {
 
 ```vue
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { NSelect, NButton, NTag, useMessage, type SelectOption } from 'naive-ui'
+import { ref, watch, onMounted } from 'vue'
+import { NSelect, NInput, NTag, useMessage, type SelectOption } from 'naive-ui'
 import type { AgentWorkspace } from '../../api/agentWorkspaces'
 import { listWorkspaces } from '../../api/agentWorkspaces'
 
@@ -1513,10 +1671,24 @@ const emit = defineEmits<{
 }>()
 
 const workspaces = ref<AgentWorkspace[]>([])
+const loading = ref(false)
 const selectedWorkspaceId = ref<string | null>(null)
 const branchMode = ref<'main' | 'worktree'>('main')
 const worktreeBranch = ref('')
 const newBranchName = ref('')
+
+const fetchWorkspaces = async () => {
+  loading.value = true
+  try {
+    workspaces.value = await listWorkspaces()
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchWorkspaces()
+})
 
 watch(() => props.modelValue, (v) => {
   if (v?.workspaceId) {
@@ -1609,21 +1781,151 @@ const emitSelected = () => {
 </div>
 ```
 
-- [ ] **Step 6: 编译前端**
+- [ ] **Step 6: WorkspaceView.vue 工作区列表/详情页**
+
+```vue
+<!-- sunshine-ui/src/views/WorkspaceView.vue -->
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { NButton, NModal, NForm, NFormItem, NInput, NInputNumber, NTag, NDataTable, NSpin, useMessage, type DataTableColumns } from 'naive-ui'
+import type { AgentWorkspace } from '../api/agentWorkspaces'
+import { listWorkspaces, createWorkspace, deleteWorkspace } from '../api/agentWorkspaces'
+import { useAuthStore } from '../stores/authStore'
+
+const auth = useAuthStore()
+const message = useMessage()
+const workspaces = ref<AgentWorkspace[]>([])
+const loading = ref(false)
+const showCreate = ref(false)
+
+const newName = ref('')
+const newRepoUrl = ref('')
+const newRepoBranch = ref('main')
+const newMemoryMb = ref(2048)
+const newCpus = ref(2.0)
+const creating = ref(false)
+
+const columns: DataTableColumns<AgentWorkspace> = [
+  { title: '名称', key: 'name', ellipsis: { tooltip: true } },
+  { title: '仓库', key: 'repoUrl', ellipsis: { tooltip: true } },
+  { title: '分支', key: 'repoBranch', width: 100 },
+  { title: '规格', key: 'memoryMb', width: 100, render: (row) => `${row.memoryMb}MB / ${row.cpus} CPU` },
+  { title: '状态', key: 'status', width: 80, render: (row) => h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : 'default' }, () => row.status) },
+  {
+    title: '操作', key: 'actions', width: 100,
+    render: (row) => h(NButton, { size: 'tiny', type: 'error', quaternary: true, onClick: () => handleDestroy(row) }, () => '删除'),
+  },
+]
+
+const fetchData = async () => {
+  loading.value = true
+  try { workspaces.value = await listWorkspaces() } finally { loading.value = false }
+}
+
+const handleCreate = async () => {
+  if (!newName.value.trim() || !newRepoUrl.value.trim()) {
+    message.warning('名称和仓库地址必填')
+    return
+  }
+  creating.value = true
+  try {
+    await createWorkspace({
+      name: newName.value.trim(),
+      repoUrl: newRepoUrl.value.trim(),
+      repoBranch: newRepoBranch.value.trim() || 'main',
+      memoryMb: newMemoryMb.value,
+      cpus: newCpus.value,
+    })
+    showCreate.value = false
+    newName.value = ''
+    newRepoUrl.value = ''
+    await fetchData()
+    message.success('工作区已创建')
+  } catch (e: any) {
+    message.error(e?.message || '创建失败')
+  } finally {
+    creating.value = false
+  }
+}
+
+const handleDestroy = async (ws: AgentWorkspace) => {
+  try {
+    await deleteWorkspace(ws.id)
+    await fetchData()
+    message.success('工作区已归档')
+  } catch (e: any) {
+    message.error(e?.message || '删除失败')
+  }
+}
+
+onMounted(fetchData)
+</script>
+
+<template>
+  <div class="workspace-view">
+    <div class="ws-header">
+      <h2 class="ws-title">工作区</h2>
+      <NButton type="primary" size="small" @click="showCreate = true">新建工作区</NButton>
+    </div>
+    <NSpin :show="loading">
+      <NDataTable :columns="columns" :data="workspaces" :bordered="false" />
+    </NSpin>
+    <!-- 新建弹窗 -->
+    <NModal v-model:show="showCreate" title="新建工作区">
+      <NForm label-placement="top">
+        <NFormItem label="名称" required>
+          <NInput v-model:value="newName" class="sun-field" placeholder="如 sun-bot" :disabled="creating" />
+        </NFormItem>
+        <NFormItem label="Git 仓库地址" required>
+          <NInput v-model:value="newRepoUrl" class="sun-field" placeholder="https://github.com/org/repo.git" :disabled="creating" />
+        </NFormItem>
+        <NFormItem label="分支">
+          <NInput v-model:value="newRepoBranch" class="sun-field" placeholder="main" :disabled="creating" />
+        </NFormItem>
+        <NFormItem label="内存 (MB)">
+          <NInputNumber v-model:value="newMemoryMb" class="sun-field" :min="512" :max="12288" :step="512" :disabled="creating" />
+        </NFormItem>
+        <NFormItem label="CPU 核数">
+          <NInputNumber v-model:value="newCpus" class="sun-field" :min="0.5" :max="4.0" :step="0.5" :disabled="creating" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <NButton @click="showCreate = false" :disabled="creating">取消</NButton>
+        <NButton type="primary" @click="handleCreate" :loading="creating">创建</NButton>
+      </template>
+    </NModal>
+  </div>
+</template>
+
+<style scoped>
+.workspace-view { padding: 24px; max-width: 960px; }
+.ws-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.ws-title { font-size: 18px; font-weight: 600; margin: 0; }
+</style>
+```
+
+- [ ] **Step 7: 编译前端**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent/sunshine-ui && npx vue-tsc --noEmit 2>&1 | head -20
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: 编译前端**
+
+```bash
+cd /usr/local/gitproj/my-sunshine-agent/sunshine-ui && npx vue-tsc --noEmit 2>&1 | head -20
+```
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add sunshine-ui/src/api/agentWorkspaces.ts \
         sunshine-ui/src/components/chat/WorkspaceSelector.vue \
         sunshine-ui/src/components/ConversationSidebarList.vue \
         sunshine-ui/src/layouts/MainLayout.vue \
-        sunshine-ui/src/views/ChatView.vue
-git commit -m "feat: 前端新任务入口 + 工作区分类 + WorkspaceSelector + kind=task 适配"
+        sunshine-ui/src/views/ChatView.vue \
+        sunshine-ui/src/views/WorkspaceView.vue
+git commit -m "feat: 前端新任务入口 + 工作区分类 + WorkspaceSelector + WorkspaceView + kind=task 适配"
 ```
 
 ---
@@ -1754,7 +2056,7 @@ git commit -m "feat: verify_agent_workspace_live.py 验收脚本"
 | 硬件档位 + sunshine-sandbox-full（W4） | Task 7 |
 | Reaper 不 purge 工作区 + 手动销毁（W5） | Task 8 |
 | 前端 Git 分组（W6 前半） | Task 9 |
-| 前端新任务入口 + 选择器 + 延迟菜单（W6 后半）| Task 10 |
+| 前端新任务入口 + 选择器 + WorkspaceView（W6 后半）| Task 10 |
 | ChatView kind=task 适配（W6） | Task 10 |
 | 验收脚本（W7） | Task 11 |
 
@@ -1768,8 +2070,29 @@ git commit -m "feat: verify_agent_workspace_live.py 验收脚本"
 ### 3. 类型一致性
 
 - `WorkspaceSandboxBinding` 字段定义在 Task 4，Task 5/6/8 引用一致
-- `AgentSandboxProperties.ProfilePreset` 定义在 Task 7，Task 5 create 引用 `resolveProfile()` 一致
+- `AgentSandboxProperties.ProfilePreset` 定义在 Task 7，Task 5 create 引用 `resolveProfile()` 一致；Task 3 create 使用 `validateAndResolve()` 校验
 - `AuthUser.githubTokenSet`（boolean）在 Task 2（后端 VO）与 Task 9（前端 TS 接口）类型一致
+- `ToolInvokeResponse` 使用 `.isSuccess()` / `.getOutput()` 而非 `.ok()` / `.output()`（已修正）
+
+### 4. 修正记录（2026-07-30 评审后）
+
+| 问题 | 修正内容 |
+|------|----------|
+| Task 5 `ensureWorkspaceSession` 重复 if 条件 | 改为 `sessionRunning()` → `sessionAlive()` → 新建，判死后走新建路径 |
+| Task 5 `resolveWorkspaceId` 空实现 | `RunContext` 提升为独立 public record，新增 `workspaceId` + `checkoutPath` 字段，`prepareRun` 时查 `ConversationRepository` 填充 |
+| Task 5 `cloneRepo` 无超时 + 令牌 URL 泄露 | 增加 `waitFor(5, MINUTES)` + 超时 `destroyForcibly`；改用 `GIT_ASKPASS` 脚本注入令牌，clone 后删除脚本 |
+| Task 6 `SandboxClient.invoke` API 不匹配 | `.ok()` → `.isSuccess()`，`.output()` → `.getOutput()` |
+| Task 6 `WorkspaceCheckoutService` 缺并发锁 | `createWorktree` / `mergeToMain` / `removeWorktree` 增加 Redis `setIfAbsent` 分布式锁（30s 超时），`finally` 释放 |
+| Task 6 `SandboxAgentTools` 依赖未声明 | 改用 `ConversationRepository` 直查 `chat_conversation.kind/workspace_id/checkout_path`，注入声明 |
+| Task 5 `SandboxSessionLifecycle` 注入缺失 | 声明新增 `WorkspaceSandboxLifecycle` + `ConversationRepository` 注入 |
+| Task 7 Profile 无校验 | `AgentSandboxProperties` 新增 `validateAndResolve()` 方法，校验用户请求是否在 Nacos allowed-presets 范围内 |
+| Task 10 缺失 `WorkspaceView.vue` | 新增 Step 6：完整列表页（含表格 + 新建弹窗 + 删除确认 + Nacos 校验限值） |
+| Task 10 `WorkspaceSelector` 缺 `onMounted` | 增加 `fetchWorkspaces()` + `onMounted` 调用 + `loading` 状态 |
+| Task 5 `SandboxPolicy` 网络模式说明 | 增加注释说明工作区容器需 bridge 模式（完全体），与对话级 none 区分 |
+
+### 5. 执行顺序建议
+
+Task 1（egress）→ Task 2（auth 令牌）→ Task 3（DB + CRUD）→ Task 4（Store）+ Task 7（镜像+档位）可并行 → Task 5（Lifecycle，依赖 3/4/7）→ Task 6（Checkout，依赖 5）→ Task 8（Reaper，依赖 5）→ Task 9 + Task 10（前端，可并行）→ Task 11（验收）
 
 ---
 

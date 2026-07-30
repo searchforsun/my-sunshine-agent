@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.routing;
 
 /**
- * 顶层执行模式：workflow / react / plan-workflow / peer-collab
+ * 顶层执行模式：workflow / react / plan-workflow
  */
 public enum ExecutionMode {
     WORKFLOW,

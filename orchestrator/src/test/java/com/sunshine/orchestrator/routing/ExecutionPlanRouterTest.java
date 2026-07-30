@@ -1,13 +1,10 @@
 package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
-import com.sunshine.orchestrator.catalog.ExpertCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
-import com.sunshine.orchestrator.expert.ExpertBindingParser;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
-import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
@@ -50,8 +47,6 @@ class ExecutionPlanRouterTest {
     private SkillCatalogService skillCatalogService;
     @Mock
     private WorkflowCatalog workflowCatalog;
-    @Mock
-    private ExpertCatalogService expertCatalogService;
 
     private ExecutionPlanRouter router;
 
@@ -60,10 +55,8 @@ class ExecutionPlanRouterTest {
         PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
         SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
         WorkflowBindingParser workflowBindingParser = new WorkflowBindingParser(workflowCatalog);
-        ExpertBindingParser expertBindingParser = new ExpertBindingParser(expertCatalogService);
         var chain = new RoutingPolicyChain(List.of(
                 new WorkflowBindingRoutingPolicy(workflowBindingParser),
-                new ExpertBindingRoutingPolicy(expertBindingParser),
                 skillPolicy,
                 new UnifiedRuleRoutingPolicy(catalogHolder),
                 new LlmClassifierRoutingPolicy(intentRouter, queryRewriteService)));

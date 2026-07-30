@@ -192,15 +192,4 @@ class ForcedExecutionRouterTest {
         verify(intentRouter).classifyPlan(cap.capture());
         assertThat(cap.getValue().lockedMode()).isEqualTo(ExecutionMode.WORKFLOW);
     }
-
-    @Test
-    void resolve_peerCollab_withoutTemplate() {
-        ExecutionPlan plan = router.resolve(
-                new RoutingContext("待审批是否合规", null, ExecutionPreference.PEER_COLLAB, null, null),
-                ExecutionPreference.PEER_COLLAB, null).block();
-        assertThat(plan).isNotNull();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.reason()).isEqualTo("user:forced-peer-collab");
-        assertThat(plan.params()).isEmpty();
-    }
 }

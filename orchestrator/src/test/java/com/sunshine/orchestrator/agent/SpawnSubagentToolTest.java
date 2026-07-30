@@ -4,9 +4,11 @@ import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.SpawnSubagentLabelService;
+import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
-import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +45,10 @@ class SpawnSubagentToolTest {
     private SpawnSubagentTimelineSupport timelineSupport;
     @Mock
     private ToolSetResolver toolSetResolver;
+    @Mock
+    private com.sunshine.orchestrator.catalog.AgentCatalogService agentCatalogService;
+    @Mock
+    private com.sunshine.orchestrator.prompt.TimelinePromptCatalog timelinePromptCatalog;
     private PromptCatalogHolder catalogHolder;
 
     private SpawnRunRegistry spawnRunRegistry;
@@ -60,7 +66,7 @@ class SpawnSubagentToolTest {
         spawnRunRegistry = SpawnRunRegistry.forTest(catalogHolder);
         tool = new SpawnSubagentTool(
                 agentRuntime, executionProperties, timelineSupport, toolSetResolver,
-                catalogHolder, spawnRunRegistry);
+                catalogHolder, spawnRunRegistry, agentCatalogService);
         registry = new StepEventBridgeRegistry();
         StepEventBridge.bindRegistry(registry);
         AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
@@ -70,6 +76,7 @@ class SpawnSubagentToolTest {
         lenient().when(executionProperties.getReact()).thenReturn(reactProps);
         lenient().when(reactProps.getSubagent()).thenReturn(sub);
         lenient().when(toolSetResolver.resolveReactTools(any())).thenReturn(List.of("search_knowledge"));
+        SpawnSubagentLabels.bind(new SpawnSubagentLabelService(timelinePromptCatalog));
     }
 
     @AfterEach
@@ -85,7 +92,7 @@ class SpawnSubagentToolTest {
 
     @Test
     void emptyPrompt_returnsErrorJson() {
-        String out = tool.spawnSubagent("  ", null);
+        String out = tool.spawnSubagent("  ", null, null);
         assertThat(out).contains("\"ok\":false");
         assertThat(out).contains("prompt");
     }
@@ -97,11 +104,11 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
 
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("hello")));
 
-        String out = tool.spawnSubagent("请完成子任务", "制度检索");
+        String out = tool.spawnSubagent("请完成子任务", null, "制度检索");
 
         assertThat(out).isEqualTo("hello");
         ArgumentCaptor<String> runIdCaptor = ArgumentCaptor.forClass(String.class);
@@ -142,13 +149,13 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
 
         when(agentRuntime.run(any())).thenReturn(Flux.just(
                 StreamToken.stepDelta("think-1", "reasoning", "用户"),
                 StreamToken.content("答案")));
 
-        String out = tool.spawnSubagent("请完成子任务", "制度检索");
+        String out = tool.spawnSubagent("请完成子任务", null, "制度检索");
 
         assertThat(out).isEqualTo("答案");
         // fold 仅 wrapper（本测 Flux 直出、不经 Hook）；禁止 Flux 再 fold 导致思考翻倍
@@ -164,7 +171,7 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
 
         when(agentRuntime.run(any())).thenAnswer(inv -> {
             com.sunshine.orchestrator.agent.runtime.AgentRunRequest req = inv.getArgument(0);
@@ -172,7 +179,7 @@ class SpawnSubagentToolTest {
             return Flux.empty();
         });
 
-        String out = tool.spawnSubagent("请检索制度并汇总", "制度检索");
+        String out = tool.spawnSubagent("请检索制度并汇总", null, "制度检索");
 
         assertThat(out).contains("用户已取消子任务");
         assertThat(out).contains("请检索制度并汇总");

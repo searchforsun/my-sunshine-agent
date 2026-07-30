@@ -162,7 +162,7 @@ def main() -> int:
         return 0
 
     headers = auth_headers()
-    existing = {e["id"] for e in api_json("GET", "/api/experts", headers)}
+    existing = {e["id"] for e in api_json("GET", "/api/agents", headers)}
     for e in EXPERTS:
         eid = e["id"]
         body = {
@@ -175,17 +175,17 @@ def main() -> int:
         if eid not in existing:
             api_json(
                 "POST",
-                "/api/experts",
+                "/api/agents",
                 headers,
                 json={"id": eid, **body},
             )
             print(f"[OK] POST {eid}")
         else:
-            api_json("PUT", f"/api/experts/{eid}", headers, json=body)
+            api_json("PUT", f"/api/agents/{eid}", headers, json=body)
             print(f"[OK] PUT {eid} → {e['displayName']}")
-        api_json("PUT", f"/api/experts/{eid}/enable", headers, json={"enabled": True})
+        api_json("PUT", f"/api/agents/{eid}/enable", headers, json={"enabled": True})
 
-    rows = api_json("GET", "/api/experts", headers)
+    rows = api_json("GET", "/api/agents", headers)
     for r in sorted(rows, key=lambda x: x["id"]):
         print(f"  {r['id']}: {r.get('displayName')} | {(r.get('description') or '')[:40]}")
     bad = [r for r in rows if "待审批单据与财务合规" in (r.get("description") or "")]

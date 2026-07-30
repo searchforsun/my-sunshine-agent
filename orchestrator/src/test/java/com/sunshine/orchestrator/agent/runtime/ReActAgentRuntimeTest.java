@@ -87,7 +87,7 @@ class ReActAgentRuntimeTest {
         AgentRunRequest planner = new AgentRunRequest(
                 AgentRole.PLANNER, "run-p", null, AssembledContext.empty(), "plan",
                 List.of(), "u1", "default", null, null, null, null, 1,
-                TimelineBinding.PLANNER_ONLY, false, null, null, 0);
+                TimelineBinding.PLANNER_ONLY, false, null, null, 0, null, null, null, null);
         assertThatThrownBy(() -> runtime.run(planner).collectList().block())
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("PLANNER");

@@ -110,10 +110,6 @@ SSE 默认经 Gateway `:8000`（`sunshine-ui` 环境变量 `VITE_BFF_STREAM_BASE
 # Agent 执行模式（react / workflow / plan-workflow / peer-collab）
 python scripts/phase2_agent_demo.py --suite all
 
-# 多专家协作 Live（§E L1 句式 + §K `$` 绑定）
-python scripts/verify_peer_collab_live.py
-python scripts/verify_expert_consultation_live.py
-
 # RAG 评测（需先 MySQL 种子 + ingest）
 python scripts/rag_reset.py
 python scripts/rag_ingest_bulk.py

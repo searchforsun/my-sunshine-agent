@@ -48,8 +48,6 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `verify_pause_resume_consistency.py` | **3.9.5** 暂停/续跑（`--live`） |
 | `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
 | `verify_spawn_subagent_live.py` | **4.7.6** ReAct `spawn_subagent` Live（S1 hard + S4 soft；S5 单测） |
-| `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（L1 句式路由） |
-| `verify_expert_consultation_live.py` | **4.7.3 演进** 多专家协作 §K Live（`$` 绑定 + expert 步 + Synthesizer） |
 | `sync_enterprise_experts.py` | 企业业务分析专家文案/工具/skill 同步 Live（保留 id） |
 | `verify_sandbox_live.py` | **4.5** Skills Docker 沙箱 Live（`--suite direct\|chat\|all`；G1–G12，含 `#sandbox-agent` S4） |
 | `verify_sandbox_workspace_live.py` | **4.5** 对话级 Workspace 抽屉（W1–W5：status/SSE/list/content/复用） |
@@ -88,16 +86,15 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 Catalog **`answer.template`** + `PlanAnswerPromptAssembler` 注入 |
 | Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
 | **意图路由** | **Policy Chain**：L0 Skill → `UnifiedRuleRoutingPolicy`（Catalog `routing-rule.*`）→ L3 `intent.classifier`；验收见 `docs/routing/routing-golden-set.md` · Live `verify_prompt_catalog_live.py` |
-| **Chat 执行模式** | 底栏 `executionPreference`（`auto` + `react` / `workflow` / `plan-workflow` / `peer-collab`）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 · [remove-simple-llm](docs/superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md) |
+| **Chat 执行模式** | 底栏 `executionPreference`（`auto` + `react` / `workflow` / `plan-workflow`）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 · [remove-simple-llm](docs/superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md) |
 | **Workflow 模板（4.13）** | `workflow-manager` DB + `/workflows` + Chat `#` 补全；标杆维护见 `docs/workflow/README.md`；详设 `2026-06-25-workflow-studio-design.md` · `2026-07-11-workflow-studio.md` |
 | Workflow 节点中文名 | PlanJson `displayName`（runtime bind）+ tool catalog → `WorkflowNodeLabelService` → SSE `step.label` |
 | 意图步骤文案 | Catalog `timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
 | 步骤 before/active/after | Catalog `timeline.steps.*`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
 | 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
 | 新 Agent 能力 / 子 Agent 配置 | `agent/runtime/` — 扩展 `AgentRunRequest` + `ReActAgentFactory`；workflow agent 节点 params 见 DB PlanJson / Studio |
-| **多专家协作（peer-collab）** | `expert-manager` 种子/CRUD → Nacos `agent.expert.*` / `agent.peer.*` → `ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue 判断、第 2 轮起反应式选人）→ `ConsultationSynthesizer`；详设 `docs/superpowers/specs/2026-07-07-expert-consultation-design.md` |
 | **ReAct TaskBoard（4.7.5）** | `manage_tasks` 元工具 + 唯一 `tasks` 步；Hook 跳过 manage_tasks tool 行、首建锚定 think；prompt 仅建板/status；merge 引擎去重；详设 `docs/superpowers/specs/2026-06-24-react-taskboard-design.md` |
-| **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；`AgentRuntime.run(SUB)` 上下文隔离；主卡 `subagent-*` + 抽屉 `spawnPrompt`/`subSteps`；**单独取消**（`SpawnRunRegistry`，勿 bump epoch）；详设 `docs/superpowers/specs/2026-07-18-react-spawn-subagent-design.md` · Live `verify_spawn_subagent_live.py` |
+| **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；`AgentRuntime.run(SUB)` 上下文隔离；主卡 `subagent-*` + 抽屉 `spawnPrompt`/`subSteps`；**单独取消**（`SpawnRunRegistry`，勿 bump epoch）；支持 `agentId` 绑定具体 Agent；详设 `docs/superpowers/specs/2026-07-18-react-spawn-subagent-design.md` · Live `verify_spawn_subagent_live.py` |
 | **沙箱工具取消（4.5.7）** | `sandbox__exec`/`grep`/`glob`：`CancellableToolRunRegistry` + sandbox kill；hover 圆钮；主行 **已取消**；同族预算 3；详设 `2026-07-18-sandbox-tool-cancel-design.md` · Live `verify_sandbox_tool_cancel_live.py` |
 
 **Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。Catalog ID SSOT：`ToolIds`（`sdk__*` / `mcp__*`）；ReAct LLM `tool_call.name` 与 Catalog 同 ID；静态 Workflow `tool` 节点直调 invoke（不经 LLM）。HITL 读 DB `require_confirmation`。ReAct 验收可查 llm-gateway 日志 `toolCalls=`。
@@ -127,7 +124,6 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 | **Workflow loop 容器** | 主时间线仅 `node-{loopId}` | body 多轮 → `subSteps`（id=`i{n}-node-…`）；**禁止** body 节点上主时间线 |
 | **Workflow / Plan answer 节点** | 主时间线 `node-answer` + `step_delta(result)` | 仅 `step_delta(result)` SSOT（勿双写 content）；空白 token 勿 `hasText`/`isBlank` 过滤 |
 | **Plan/Workflow agent 节点** | 子 Timeline + `contentBlocks` | ReAct 正文经 `ingestStreamingContentDelta` → 分段 SSE；**禁止** `isBlank` 丢弃空白 delta |
-| **Expert 发言（peer-collab）** | `expert-convene` → `expert-{id}-s{seq}` + `step_delta(result)` | Hub 阶段2 `ExpertSpeakStreamer` Gateway 流式；**禁止** `hasText`/`trim` 丢弃 token；`step_delta(result)` **不切分**（TD-075） |
 | **Synthesizer 终态正文** | Hub 后 `message.content` 流式 | `ConsultationSynthesizer` → `LlmGatewayClient` → `StreamDeltaNormalizer`（闭合 `**` 等短 token 勿按前缀回退丢弃，TD-076）；**无** `generate` Timeline 步 |
 
 **reasoning 落点（勿双写）**
@@ -148,7 +144,7 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 1. OpenAIChatModel 对接 Gateway `/v1/chat/completions`。
 2. Gateway 鉴权注入 `x-user-id`；BFF/Orchestrator 只读，客户端不得自填。
 3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync_nacos.py` → 重启（无 `application-dev.yaml`）。
-4. 执行模式：`IntentRouter` → `ExecutionDispatcher`（`workflow` / `react` / `plan-workflow` / `peer-collab`；见 D10 + `2026-06-24-peer-collab-routing-design.md`；`simple-llm` 已移除见 `2026-07-17-remove-simple-llm-mode-design.md`）；workflow 图在 **workflow-manager DB**（4.13）。
+4. 执行模式：`IntentRouter` → `ExecutionDispatcher`（`workflow` / `react` / `plan-workflow`）；`simple-llm` 已移除见 `2026-07-17-remove-simple-llm-mode-design.md`）；workflow 图在 **workflow-manager DB**（4.13）。
 5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板（见 Catalog `system-prompt` / `/prompts`）。
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。
