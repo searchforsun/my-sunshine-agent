@@ -1,0 +1,69 @@
+package com.sunshine.orchestrator.client;
+
+import com.sunshine.common.core.result.R;
+import com.sunshine.orchestrator.catalog.AgentCatalogEntry;
+import com.sunshine.orchestrator.catalog.AgentCatalogIndexEntry;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+import java.util.List;
+import java.util.Optional;
+
+@Slf4j
+@Component
+public class AgentCatalogClient {
+    @Value("${agent-manager.base-url:http://localhost:8235}")
+    private String baseUrl;
+    private WebClient webClient;
+
+    @PostConstruct
+    void init() {
+        webClient = WebClient.builder().baseUrl(baseUrl).build();
+    }
+
+    public List<AgentCatalogIndexEntry> fetchCatalogIndex() {
+        try {
+            List<AgentCatalogIndexEntry> entries = webClient.get()
+                    .uri("/api/agents/catalog/index")
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<R<List<AgentCatalogIndexEntry>>>() {})
+                    .map(R::getData)
+                    .onErrorResume(e -> {
+                        log.warn("[AgentCatalogClient] fetch catalog index failed: {}", e.getMessage());
+                        return Mono.just(List.of());
+                    })
+                    .block();
+            return entries != null ? entries : List.of();
+        } catch (Exception e) {
+            log.warn("[AgentCatalogClient] fetch catalog index error: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    public Optional<AgentCatalogEntry> fetchAgentDetail(String expertId) {
+        if (expertId == null || expertId.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            AgentCatalogEntry entry = webClient.get()
+                    .uri("/api/agents/{id}/catalog", expertId.strip())
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<R<AgentCatalogEntry>>() {})
+                    .map(R::getData)
+                    .onErrorResume(e -> {
+                        log.warn("[AgentCatalogClient] fetch expert detail failed id={}: {}", expertId, e.getMessage());
+                        return Mono.empty();
+                    })
+                    .block();
+            return Optional.ofNullable(entry);
+        } catch (Exception e) {
+            log.warn("[AgentCatalogClient] fetch expert detail error id={}: {}", expertId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+}

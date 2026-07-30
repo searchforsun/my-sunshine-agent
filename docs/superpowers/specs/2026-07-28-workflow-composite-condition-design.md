@@ -1,5 +1,7 @@
 # Workflow 条件复合化设计（loop 继续条件 + exclusive-gateway 出边条件）
 
+> **状态**：✅ 已完成（2026-07-28） · Live 验收通过（`verify_loop_live` + `verify_exclusive_gateway_live`）
+
 ## 背景
 
 当前 workflow 的条件判断过于简单：
