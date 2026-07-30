@@ -24,4 +24,20 @@ public class UpdateProfileRequest {
     /** 个人规则（soul）；null=不修改，空串=清空，最长 4000 字符 */
     @Size(max = 4000, message = "个人规则最长 4000 字符")
     private String personalRules;
+
+    /** Git 服务：GitHub 基础地址 */
+    @Size(max = 255, message = "GitHub 地址最长 255 字符")
+    private String githubUrl;
+
+    /** Git 服务：GitHub PAT（空串=清空，null=不修改） */
+    @Size(max = 255, message = "令牌最长 255 字符")
+    private String githubToken;
+
+    /** Git 服务：GitLab 基础地址 */
+    @Size(max = 255, message = "GitLab 地址最长 255 字符")
+    private String gitlabUrl;
+
+    /** Git 服务：GitLab PAT（空串=清空，null=不修改） */
+    @Size(max = 255, message = "令牌最长 255 字符")
+    private String gitlabToken;
 }

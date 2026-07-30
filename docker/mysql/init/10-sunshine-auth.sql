@@ -22,3 +22,10 @@ INSERT IGNORE INTO sys_user (id, username, password_hash, nickname, status, crea
 
 -- 既有环境迁移（2026-07-28 个人规则）：
 -- ALTER TABLE sys_user ADD COLUMN personal_rules TEXT NULL COMMENT '用户个人规则（soul），注入系统提示';
+
+-- V1__user_git_columns.sql
+ALTER TABLE sys_user
+  ADD COLUMN github_url     VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'GitHub 基础地址',
+  ADD COLUMN github_token   VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'GitHub PAT',
+  ADD COLUMN gitlab_url     VARCHAR(255) NOT NULL DEFAULT '' COMMENT '内网 GitLab 基础地址',
+  ADD COLUMN gitlab_token   VARCHAR(255) NOT NULL DEFAULT '' COMMENT '内网 GitLab PAT';

@@ -77,6 +77,10 @@ public class UserService {
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .personalRules(user.getPersonalRules())
+                .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubTokenSet(isNotBlank(user.getGithubToken()))
+                .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .build();
     }
 
@@ -105,6 +109,19 @@ public class UserService {
         if (request.getPersonalRules() != null) {
             String trimmed = request.getPersonalRules().trim();
             user.setPersonalRules(trimmed.isEmpty() ? null : trimmed);
+        }
+        // Git 服务令牌
+        if (request.getGithubUrl() != null && !request.getGithubUrl().isBlank()) {
+            user.setGithubUrl(request.getGithubUrl().strip());
+        }
+        if (request.getGithubToken() != null) {
+            user.setGithubToken(request.getGithubToken().strip());
+        }
+        if (request.getGitlabUrl() != null && !request.getGitlabUrl().isBlank()) {
+            user.setGitlabUrl(request.getGitlabUrl().strip());
+        }
+        if (request.getGitlabToken() != null) {
+            user.setGitlabToken(request.getGitlabToken().strip());
         }
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
@@ -187,6 +204,10 @@ public class UserService {
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .personalRules(user.getPersonalRules())
+                .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubTokenSet(isNotBlank(user.getGithubToken()))
+                .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .build();
     }
 
@@ -198,7 +219,46 @@ public class UserService {
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .personalRules(user.getPersonalRules())
+                .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubTokenSet(isNotBlank(user.getGithubToken()))
+                .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .token(token)
                 .build();
+    }
+
+    /**
+     * 按 host 匹配用户已配置的 Git 凭据，供 orchestrator clone 时使用（服务间调用）。
+     * @return Map.of("url", ..., "token", ...) 或空 Map（无匹配凭据）
+     */
+    public Map<String, String> findGitCredential(String userId, String host) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new BizException(AuthErrorCode.USER_NOT_FOUND));
+        String h = host != null ? host.strip().toLowerCase() : "";
+        if (!h.isEmpty() && isNotBlank(user.getGithubUrl())
+                && h.equals(extractHost(user.getGithubUrl()))) {
+            return Map.of("url", user.getGithubUrl(), "token", user.getGithubToken());
+        }
+        if (!h.isEmpty() && isNotBlank(user.getGitlabUrl())
+                && h.equals(extractHost(user.getGitlabUrl()))) {
+            return Map.of("url", user.getGitlabUrl(), "token", user.getGitlabToken());
+        }
+        return Map.of();
+    }
+
+    private static String extractHost(String url) {
+        try {
+            return new java.net.URL(url).getHost().toLowerCase();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.strip();
+    }
+
+    private static boolean isNotBlank(String s) {
+        return s != null && !s.isBlank();
     }
 }

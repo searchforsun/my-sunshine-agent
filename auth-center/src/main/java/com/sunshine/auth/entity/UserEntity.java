@@ -38,6 +38,18 @@ public class UserEntity {
     @Column(name = "personal_rules", columnDefinition = "TEXT")
     private String personalRules;
 
+    @Column(name = "github_url", length = 255)
+    private String githubUrl = "";
+
+    @Column(name = "github_token", length = 255)
+    private String githubToken = "";
+
+    @Column(name = "gitlab_url", length = 255)
+    private String gitlabUrl = "";
+
+    @Column(name = "gitlab_token", length = 255)
+    private String gitlabToken = "";
+
     @Column(nullable = false, columnDefinition = "TINYINT")
     private Byte status = 1;
 

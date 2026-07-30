@@ -15,6 +15,10 @@ public class UpdateProfileResponse {
     private String defaultWriteHitlMode;
     /** 用户个人规则（soul） */
     private String personalRules;
+    private String githubUrl;
+    private boolean githubTokenSet;
+    private String gitlabUrl;
+    private boolean gitlabTokenSet;
     /** 资料更新后重新签发的 JWT（extra 含 nickname / tenantId） */
     private String token;
 }

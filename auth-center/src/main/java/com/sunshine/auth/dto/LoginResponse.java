@@ -17,4 +17,8 @@ public class LoginResponse {
     private String defaultWriteHitlMode;
     /** 用户个人规则（soul） */
     private String personalRules;
+    private String githubUrl;
+    private boolean githubTokenSet;
+    private String gitlabUrl;
+    private boolean gitlabTokenSet;
 }
