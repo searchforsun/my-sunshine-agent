@@ -187,3 +187,27 @@ CREATE TABLE peer_run (
     UNIQUE KEY uk_peer_run_msg (message_id),
     INDEX idx_peer_run_conv (conversation_id, updated_at)
 );
+
+-- V18__agent_workspace.sql
+CREATE TABLE agent_workspace (
+    id              VARCHAR(64)  NOT NULL PRIMARY KEY,
+    tenant_id       VARCHAR(64)  NOT NULL,
+    user_id         VARCHAR(64)  NOT NULL,
+    name            VARCHAR(128) NOT NULL,
+    repo_url        VARCHAR(512) NOT NULL,
+    repo_branch     VARCHAR(128) NOT NULL DEFAULT 'main',
+    sandbox_profile VARCHAR(32)  NOT NULL DEFAULT 'full',
+    memory_mb       INT          NOT NULL DEFAULT 2048,
+    cpus            DECIMAL(3,1) NOT NULL DEFAULT 2.0,
+    image           VARCHAR(128) NOT NULL DEFAULT 'sunshine-sandbox-full:latest',
+    status          VARCHAR(16)  NOT NULL DEFAULT 'active',
+    created_at      DATETIME(3)  NOT NULL,
+    updated_at      DATETIME(3)  NOT NULL,
+    INDEX idx_ws_tenant_user (tenant_id, user_id, status)
+);
+
+-- V19__conversation_kind_workspace.sql
+ALTER TABLE chat_conversation
+  ADD COLUMN kind          VARCHAR(16)  NOT NULL DEFAULT 'chat' COMMENT 'chat / task',
+  ADD COLUMN workspace_id  VARCHAR(64)  NULL COMMENT 'kind=task 时必填',
+  ADD COLUMN checkout_path VARCHAR(256) NULL COMMENT '用户选定的 checkout';
