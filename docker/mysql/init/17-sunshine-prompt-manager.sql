@@ -40,7 +40,7 @@ INSERT INTO prompt_catalog_meta (id, catalog_version) VALUES (1, 1);
 
 INSERT INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version) VALUES
 ('routing-rule.structural-plan', 'routing-rule', '多步跨域→Plan', '句式+多领域结构命中时走动态规划（plan-workflow），处理「先…再…」等跨域多步问题。', 1, 100, 1),
-('routing-rule.peer-phrase', 'routing-rule', 'Peer句式→协作', '命中「互相验证/交叉审查/多专家」等句式时路由到多专家协作（peer-collab）。', 1, 90, 1),
+('routing-rule.peer-phrase', 'routing-rule', 'Peer句式→协作（已退役）', '命中「互相验证/交叉审查/多专家」等句式时路由到多专家协作（peer-collab）。peer-collab 模式已退役，由 spawn_subagent 中心化协作替代。', 0, 90, 1),
 ('routing-rule.react-policy-qa', 'routing-rule', '制度咨询→React政策问答', '命中制度/办法/规定类咨询时走自主推理，并绑定 react-prompt.policy-qa。', 1, 40, 1),
 ('routing-rule.react-travel-standard', 'routing-rule', '差旅标准→React预算场景', '命中差旅/住宿/补贴标准类问法时走 ReAct，绑定 react-prompt.travel-budget（与「预算×出差」workflow 规则错开）。', 1, 28, 1),
 ('routing-rule.react-expense-progress', 'routing-rule', '报销进度→React报销助手', '命中报销/付款进度与单据状态问法时走 ReAct，绑定 react-prompt.expense-assist（与待审批列表 workflow 错开）。', 1, 22, 1),
@@ -313,11 +313,11 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.steps', 1, 'published', NULL, '{"intent":{"label":"识别意图"},"plan":{"label":"执行计划","before":"规划执行路径","active":"正在编排业务节点顺序","after":"执行计划已生成"},"think":{"label":"规划推理","label-follow-up":"综合分析","before":"规划如何回答{query}","active":"正在规划{query}的工具调用方案","after":"已完成{query}的工具调用规划","before-fallback":"规划工具与作答路径","active-fallback":"正在规划工具调用方案","after-fallback":"工具调用方案已拟定","before-follow-up":"准备结合{toolDisplayName}结果继续分析","active-follow-up":"正在综合分析{toolDisplayName}返回结果","after-follow-up":"已完成{toolDisplayName}的工具结果综合分析","before-follow-up-no-tool":"准备结合工具结果分析{query}","active-follow-up-no-tool":"正在结合工具返回结果分析{query}","after-follow-up-no-tool":"工具结果综合分析已完成","before-follow-up-fallback":"准备结合工具结果分析","active-follow-up-fallback":"正在综合分析工具结果","after-follow-up-fallback":"工具结果分析完成"},"tool":{"label":"调用工具 {displayName}","before":"准备{displayName}","active":"正在{displayName}","after":"{displayName}完成"},"node":{"before":"准备{displayName}","active":"正在{displayName}","after":"{displayName}完成","before-with-query":"准备处理{query}的「{displayName}」环节"},"generate":{"label":"生成回答","before":"为{query}撰写回复","active":"正在撰写并输出针对{query}的回复","after":"已完成对{query}的回复"},"rag":{"label":"检索知识库","before":"在企业知识库中查找与{query}相关的资料","active":"正在匹配与{query}最相关的文档片段"},"skill":{"label":"加载技能","before":"准备加载 Skill","active":"正在加载 Skill 指令","after":"@{skillId} {skillDisplayName}","after-fallback":"Skill 已加载"},"tasks":{"label":"任务清单","before":"规划任务步骤","active":"正在执行：{activeTask}","after":"任务清单已更新","all-done":"全部任务已完成"},"subagent":{"label":"子任务","before":"准备委派子任务","active":"正在执行：{label}","after":"子任务已完成","after-fail":"子任务失败","after-cancel":"已取消"},"peer-collab":{"label":"多专家协作","before":"准备多专家协作","active":"正在召集专家","after":"将由多专家协作处理"},"expert-convene":{"label":"多专家协作","before":"正在匹配协作专家","active":"正在召集专家","after":"已召集：{expertNames}"},"expert":{"label":"{displayName}","before":"准备听取{displayName}意见","active":"{displayName}正在分析","active-responding":"{displayName}正在回应其他专家观点","after":"{displayName}已完成发言"}}', 'nacos migrate', 'migrate_nacos_prompts_to_db');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.steps.expert', 'timeline', '时间线 · Steps · expert', '时间线「专家发言」步骤的 before/active/after 展示文案。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.steps.expert', 'timeline', '时间线 · Steps · expert（已退役）', '时间线「专家发言」步骤（peer-collab 已退役）。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.steps.expert', 1, 'published', NULL, '{"label":"{displayName}","before":"准备听取{displayName}意见","active":"{displayName}正在分析","active-responding":"{displayName}正在回应其他专家观点","after":"{displayName}已完成发言"}', 'nacos migrate', 'migrate_nacos_prompts_to_db');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.steps.expert-convene', 'timeline', '时间线 · Steps · expert-convene', '时间线「召集专家」步骤的 before/active/after 展示文案。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.steps.expert-convene', 'timeline', '时间线 · Steps · expert-convene（已退役）', '时间线「召集专家」步骤（peer-collab 已退役）。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.steps.expert-convene', 1, 'published', NULL, '{"label":"多专家协作","before":"正在匹配协作专家","active":"正在召集专家","after":"已召集：{expertNames}"}', 'nacos migrate', 'migrate_nacos_prompts_to_db');
 
@@ -333,7 +333,7 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.steps.node', 1, 'published', NULL, '{"before":"准备{displayName}","active":"正在{displayName}","after":"{displayName}完成","before-with-query":"准备处理{query}的「{displayName}」环节"}', 'nacos migrate', 'migrate_nacos_prompts_to_db');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.steps.peer-collab', 'timeline', '时间线 · Steps · peer-collab', '时间线「多专家协作」总步骤的 before/active/after 展示文案。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.steps.peer-collab', 'timeline', '时间线 · Steps · peer-collab（已退役）', '时间线「多专家协作」总步骤的 before/active/after 展示文案。peer-collab 模式已退役。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.steps.peer-collab', 1, 'published', NULL, '{"label":"多专家协作","before":"准备多专家协作","active":"正在召集专家","after":"将由多专家协作处理"}', 'nacos migrate', 'migrate_nacos_prompts_to_db');
 
@@ -468,11 +468,11 @@ WHERE id = 'react-prompt.demo-scenario';
 UPDATE prompt_catalog_meta SET catalog_version = catalog_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1;
 
 -- ========== peer / expert / memory / sandbox / plan-workflow（orchestrator 剩余迁出）==========
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('peer.gather-instruction', 'peer', 'Peer · 检索阶段说明', '多专家检索阶段：要求专家先调工具收集事实，只输出检索摘要，不写完整发言稿。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('peer.gather-instruction', 'peer', 'Peer · 检索阶段说明（已退役）', '多专家检索阶段（peer-collab 已退役，由 spawn_subagent 替代）。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('peer.gather-instruction', 1, 'published', '你当前处于多专家协作的工具检索阶段。请调用必要工具收集事实与数据，并在最终回复中仅输出结构化的检索摘要（要点列表），勿撰写面向用户的完整发言稿。后续引擎将根据摘要生成正式发言。', NULL, 'nacos migrate remaining', 'prompt-ops');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('peer.speak-prompt', 'peer', 'Peer · 专家发言', '多专家正式发言：按专家身份，依据讨论上下文与检索材料发表 Markdown 观点。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('peer.speak-prompt', 'peer', 'Peer · 专家发言（已退役）', '多专家正式发言（peer-collab 已退役，由 spawn_subagent 替代）。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('peer.speak-prompt', 1, 'published', '你是 {expertName}，正在参与多专家讨论。
 
@@ -487,7 +487,7 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 
 请以 {expertName} 身份向讨论组发表专业观点（Markdown），仅依据上述材料，勿编造。', NULL, 'nacos migrate remaining', 'prompt-ops');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('peer.synthesis-prompt', 'peer', 'Peer · 综合作答', '多专家综合答复：读完全员 transcript 后，面向用户生成最终 Markdown 答案。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('peer.synthesis-prompt', 'peer', 'Peer · 综合作答（已退役）', '多专家综合答复（peer-collab 已退役，由 spawn_subagent 替代）。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('peer.synthesis-prompt', 1, 'published', '用户问题：{userQuery}
 
@@ -496,7 +496,7 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 
 请严格针对上述「用户问题」作答：仅依据上游数据回答用户所问。使用 Markdown；加粗标记须成对。', NULL, 'nacos migrate remaining', 'prompt-ops');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('peer.round-continue-prompt', 'peer', 'Peer · 是否续轮', '续轮判定：判断讨论是否已收敛，输出是否还需下一轮专家发言的 JSON。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('peer.round-continue-prompt', 'peer', 'Peer · 是否续轮（已退役）', '续轮判定（peer-collab 已退役）。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('peer.round-continue-prompt', 1, 'published', '你是多专家讨论轮次协调助手。根据用户问题与当前讨论记录，判断是否还需下一轮专家发言。
 若观点已收敛、无新事实待查、无未回应质疑，则 continue=false；若仍存在分歧、缺材料或未回应的质疑，则 continue=true。
@@ -509,13 +509,13 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 若无人需要再发言，输出空数组 expertIds:[]。
 只输出 JSON：{"expertIds":["id1"],"reason":"一句话说明"}，不要 markdown。', NULL, 'nacos migrate remaining', 'prompt-ops');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('expert.coordinator-prompt', 'expert', 'Expert · 召集选人', '专家召集：从候选目录选出 2～4 位相关专家，并估计讨论轮次上限。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('expert.coordinator-prompt', 'expert', 'Expert · 召集选人（已退役）', '专家召集（peer-collab 已退役，由 spawn_subagent 替代）。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('expert.coordinator-prompt', 1, 'published', '你是多专家协作召集助手。根据用户问题，从候选专家目录中选择 2~4 位最相关的专家，并估计讨论轮次上限。
 轮次含义：1=简单事实核对；2=需交叉验证；3=多观点分歧需多轮质疑。不得超过全局 maxRounds（当前 3）。
 只输出 JSON：{"expertIds":["id1","id2"],"maxRounds":2,"reason":"一句话说明"}，不要 markdown。', NULL, 'nacos migrate remaining', 'prompt-ops');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('expert.complexity-prompt', 'expert', 'Expert · 轮次评估', '轮次评估：用户已指定专家时，按问题复杂度估计 Hub 讨论轮次上限。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('expert.complexity-prompt', 'expert', 'Expert · 轮次评估（已退役）', '轮次评估（peer-collab 已退役）。', 0, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('expert.complexity-prompt', 1, 'published', '你是多专家协作轮次评估助手。用户已显式指定专家名单，请根据问题复杂度估计 Hub 讨论轮次上限（整数）。
 1=简单事实核对；2=需交叉验证；3=多观点分歧需多轮质疑。不得超过用户消息中的全局上限。
@@ -530,6 +530,15 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('sandbox.budget-exhausted', 1, 'published', '本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。', NULL, 'nacos migrate remaining', 'prompt-ops');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('react.subagent.cancel-result', 'react', 'ReAct · 子任务取消回执', '子任务取消回执：用户取消 spawn_subagent 后，提示主 Agent 自行接手原任务。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react.subagent.cancel-result', 1, 'published', '子任务已被用户取消。请根据已有上下文，自行分析并回答用户的原问题。
+不要因子任务取消而拒绝回答；可用已有知识库、工具结果等信息继续。', NULL, 'init', 'system');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('react.spawn-agent.desc', 'react', 'ReAct · 智能体委派说明', 'spawn_subagent 智能体委派：告知 ReAct 主 Agent 如何通过 agent_id 参数调用预定义智能体。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react.spawn-agent.desc', 1, 'published', '你可以使用 spawn_subagent 工具将子任务委派给预定义的智能体：
+- 传入 agent_id（如 policy-agent / finance-agent）指定使用哪个智能体的系统提示词、工具和配置
+- 传入 prompt 描述委派的具体任务
+- 子 Agent 执行结果会自动返回，你可以结合主上下文综合分析
+- 未传 agent_id 时创建临时子 Agent（无预定义配置）', NULL, 'init', 'system');
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react.subagent.cancel-result', 1, 'published', '用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：
 {prompt}', NULL, 'nacos migrate remaining', 'prompt-ops');

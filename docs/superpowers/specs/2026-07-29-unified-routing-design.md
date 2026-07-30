@@ -234,12 +234,14 @@ public class RoutingPolicyChain {
 
 用户输入中的 `#workflow-id` / `$agent-id` / `@skill-id` 为最高优先级，置信度 1.0 直通。
 
+`$` 支持绑定**多个智能体**（如 `$agent-A $agent-B 帮我做竞品分析`），采用**主子智能体**模式：第一个 `$` 的 agent 作为主 Agent（负责执行和编排），全部绑定的 agent 注入 system prompt 供主 Agent 通过 `spawn_subagent` 在推理中自主委派。
+
 ```java
 @Component
 @RequiredArgsConstructor
 public class ExplicitBindingRoutingPolicy implements RoutingPolicy {
     private final WorkflowBindingParser workflowBindingParser;
-    private final AgentBindingParser agentBindingParser;
+    private final AgentBindingParser agentBindingParser;  // 支持单 $ / 多 $ 解析
     private final SkillBindingParser skillBindingParser;
 
     @Override public int order() { return 0; }
@@ -259,9 +261,19 @@ public class ExplicitBindingRoutingPolicy implements RoutingPolicy {
 
         var agent = agentBindingParser.resolve(msg);
         if (agent.bound()) {
+            Map<String, String> params = new LinkedHashMap<>();
+            // 全部绑定的 agent ID（注入 system prompt，供主 Agent spawn）
+            params.put("agentIds", String.join(",", agent.agentIds()));
+            params.put("effectiveQuery", agent.effectiveQuery());
+            // 第一个 $ 的 agent 作为主 Agent
+            String primaryAgentId = agent.agentIds().get(0);
             return Mono.just(Optional.of(new RoutingResult(
-                ResourceType.AGENT, agent.agentId(), ctx.scene(),
-                Map.of(), "l0:agent", 1.0)));
+                ResourceType.AGENT, primaryAgentId, ctx.scene(),
+                params,
+                agent.agentIds().size() > 1
+                    ? "l0:agent:multi:" + agent.agentIds().size()
+                    : "l0:agent",
+                1.0)));
         }
 
         var skill = skillBindingParser.resolve(msg);
@@ -276,7 +288,33 @@ public class ExplicitBindingRoutingPolicy implements RoutingPolicy {
 }
 ```
 
-**约束**：`#workflow-id` 仅在 `scene=chat` 场景生效（task 场景走 agent/skill 路由）。
+### 3.1 多 $ 绑定语义
+
+| 输入 | resourceId | params.agentIds | 执行语义 |
+|------|-----------|----------------|---------|
+| `$agent-A 帮我报销` | `agent-A` | `agent-A` | agent-A 作为主 Agent 发起 ReAct |
+| `$agent-A $agent-B 竞品分析` | `agent-A` | `agent-A,agent-B` | agent-A 作为主 Agent，可将子任务 spawn 给 agent-B |
+| `$agent-A $agent-B $agent-C ...` | `agent-A` | `agent-A,agent-B,agent-C` | 主 Agent 可并行 spawn 多个子 Agent，综合结论 |
+
+### 3.2 执行层处理
+
+`ReactExecutor`（作为 `AGENT` 类型的统一执行入口）收到 `params.agentIds` 后：
+
+1. 以 `resourceId`（第一个 agent）加载主 Agent 配置（system prompt / tools / skills）
+2. 将全部 agent ID 注入 system prompt，告知主 Agent 可通过 `spawn_subagent` 委派
+3. 用户原文由 `effectiveQuery`（剥离 `$` 标记后）提供
+4. 主 Agent 在推理中**自主决定**何时 spawn、spawn 谁
+
+### 3.3 约束
+
+| 规则 | 说明 |
+|------|------|
+| `#workflow-id` 优先级最高 | `#` 与 `$` 同时出现时，走 workflow 路由（`$` 不生效） |
+| `#workflow-id` 仅在 `chat` 场景 | task 场景不走 workflow 路由 |
+| `$` 在 `@` 之前 | agent 绑定优先于 skill 绑定（`$agent $skill` → 走到 agent 分支） |
+| 行首 `$` 为主 Agent | `$agent-A 请 $agent-B 帮你` → `agent-A` 为主，`agent-B` 为可 spawn 对象 |
+| 未识别的 `$` → 报错 | `$unknown-agent` → 返回 agent not found 错误 |
+| `$` 不是「多 Agent 平权协作」 | 这是主子模式，不是 team-delegate；与 spawn_subagent 中心化一致 |
 
 ---
 

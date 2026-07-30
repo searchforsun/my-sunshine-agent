@@ -1,7 +1,7 @@
 # 表结构 SSOT：docker/mysql/init/11-sunshine-orchestrator.sql（禁止 Flyway）
 #
 # 【4.11 迁出】提示词正文 / 路由规则 SSOT = prompt-manager DB（:8500 Catalog）
-#   - routing-rule.* / system-prompt / mode-overlay.* / timeline.* / peer.* / expert.* / …
+#   - routing-rule.* / system-prompt / mode-overlay.* / timeline.* / …
 #   - 种子：docker/mysql/init/17-sunshine-prompt-manager.sql（含表结构 + 全量种子）
 #   - 本文件 agent.* 仅留数值/开关；提示词正文勿再当运营 SSOT
 #   - 运营入口：sunshine-ui `/prompts`；验收：scripts/verify_prompt_catalog_live.py
@@ -204,9 +204,8 @@ agent:
   # （routing-rule.*，见 docker/mysql/init/17-sunshine-prompt-manager.sql）
   # 验收提示词仍见 docs/routing/routing-golden-set.md；引擎 UnifiedRuleRoutingPolicy
 
-  peer:
-    min-rounds: 1
-    max-rounds: 3
+  # peer-collab 相关配置已退役；多智能体协作统一为 spawn_subagent 中心化编排
+  # peer: { min-rounds, max-rounds } 等字段已移除
     # gather/speak/synthesis/round-* → Catalog peer.*
 
   # expert.coordinator/complexity → Catalog expert.*
@@ -315,7 +314,7 @@ tool-manager:
   base-url: http://localhost:8210
 skill-manager:
   base-url: http://localhost:8225
-expert-manager:
+agent-manager:
   base-url: http://localhost:8235
 workflow-manager:
   base-url: http://localhost:8230

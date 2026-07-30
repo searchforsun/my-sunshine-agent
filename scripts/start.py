@@ -26,7 +26,7 @@ SERVICES = [
     ("skill-manager", "skill-manager", "sunshine-skill-manager", 8225),
     ("sandbox-service", "sandbox-service", "sunshine-sandbox-service", 8226),
     ("workflow-manager", "workflow-manager", "sunshine-workflow-manager", 8230),
-    ("expert-manager", "expert-manager", "sunshine-expert-manager", 8235),
+    ("agent-manager", "agent-manager", "sunshine-agent-manager", 8235),
     ("desensitize", "desensitize", "sunshine-desensitize", 8600),
     ("prompt", "prompt-manager", "sunshine-prompt", 8500),
     ("orchestrator", "orchestrator", "sunshine-orchestrator", 8200),

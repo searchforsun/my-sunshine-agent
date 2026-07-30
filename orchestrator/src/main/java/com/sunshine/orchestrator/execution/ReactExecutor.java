@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.execution;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
@@ -26,6 +27,9 @@ import java.util.Map;
 public class ReactExecutor {
 
     private final AgentRuntime agentRuntime;
+    private final AgentCatalogService agentCatalogService;
+
+    private static final String PARAM_AGENT_IDS = "agentIds";
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         Map<String, String> params = ctx.plan() != null && ctx.plan().params() != null
@@ -75,6 +79,32 @@ public class ReactExecutor {
         }
         if (injectedBlocks != null) {
             blocks.addAll(injectedBlocks);
+        }
+        // $A $B 绑定：注入可 spawn 的智能体列表
+        Map<String, String> allParams = ctx.plan() != null && ctx.plan().params() != null
+                ? ctx.plan().params() : Map.of();
+        String agentIdsRaw = allParams.get(PARAM_AGENT_IDS);
+        if (StringUtils.hasText(agentIdsRaw)) {
+            String[] ids = agentIdsRaw.split(",");
+            StringBuilder spawnableInfo = new StringBuilder();
+            spawnableInfo.append("你可以使用 spawn_subagent 工具委派任务给以下预定义智能体：\n");
+            for (String id : ids) {
+                String aid = id.strip();
+                if (!aid.isEmpty()) {
+                    var entry = agentCatalogService.find(aid);
+                    if (entry.isPresent()) {
+                        spawnableInfo.append("- ").append(aid)
+                                .append(" (").append(entry.get().displayName()).append(")");
+                        if (entry.get().description() != null && !entry.get().description().isBlank()) {
+                            spawnableInfo.append(": ").append(entry.get().description());
+                        }
+                        spawnableInfo.append("\n");
+                    }
+                }
+            }
+            spawnableInfo.append("调用示例：spawn_subagent(agent_id=\"").append(ids[0].strip())
+                    .append("\", prompt=\"任务描述\")");
+            blocks.add(spawnableInfo.toString());
         }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),

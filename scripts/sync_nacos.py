@@ -34,7 +34,7 @@ DEFAULT_DATA_IDS = [
     "sunshine-skill-manager.yaml",
     "sunshine-sandbox-service.yaml",
     "sunshine-workflow-manager.yaml",
-    "sunshine-expert-manager.yaml",
+    "sunshine-agent-manager.yaml",
     "sunshine-desensitize.yaml",
     "sunshine-prompt.yaml",
 ]
