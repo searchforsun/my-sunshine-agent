@@ -1,7 +1,11 @@
 package com.sunshine.orchestrator.agent;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.catalog.AgentCatalogEntry;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -36,6 +40,7 @@ public class SpawnSubagentTool {
     private final ToolSetResolver toolSetResolver;
     private final PromptCatalogHolder catalogHolder;
     private final SpawnRunRegistry spawnRunRegistry;
+    private final AgentCatalogService agentCatalogService;
 
     public SpawnSubagentTool(
             @Lazy AgentRuntime agentRuntime,
@@ -43,19 +48,23 @@ public class SpawnSubagentTool {
             SpawnSubagentTimelineSupport timelineSupport,
             ToolSetResolver toolSetResolver,
             PromptCatalogHolder catalogHolder,
-            SpawnRunRegistry spawnRunRegistry) {
+            SpawnRunRegistry spawnRunRegistry,
+            AgentCatalogService agentCatalogService) {
         this.agentRuntime = agentRuntime;
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
         this.toolSetResolver = toolSetResolver;
         this.catalogHolder = catalogHolder;
         this.spawnRunRegistry = spawnRunRegistry;
+        this.agentCatalogService = agentCatalogService;
     }
 
     @Tool(name = NAME,
-            description = "创建隔离子 Agent：传入完整 prompt，返回子任务最终文本；用于避免主上下文膨胀。")
+            description = "创建隔离子 Agent：可指定预定义智能体 agentId（使用该智能体的系统提示词/工具/配置），"
+                    + "或仅传 prompt 创建临时子 Agent；返回子任务最终文本。")
     public String spawnSubagent(
             @ToolParam(name = "prompt", description = "给子 Agent 的完整任务说明（必填）") String prompt,
+            @ToolParam(name = "agent_id", description = "预定义智能体 ID（可选，如 policy-agent / finance-agent）") String agentId,
             @ToolParam(name = "label", description = "时间线卡片短标题（可选）") String label) {
         AgentExecutionProperties.React.Subagent subCfg = subagentConfig();
         if (subCfg == null || !subCfg.isEnabled()) {
@@ -91,18 +100,57 @@ public class SpawnSubagentTool {
         List<String> sameToolsAsMain = toolSetResolver.resolveReactTools(audit.tenantId());
         String systemOverlay = resolveSubagentOverlay();
 
+        AgentCatalogEntry agentEntry = null;
+        if (StringUtils.hasText(agentId)) {
+            agentEntry = agentCatalogService.find(agentId.strip()).orElse(null);
+            if (agentEntry == null) {
+                return errorJson("未找到智能体: " + agentId);
+            }
+        }
+        List<String> toolIds;
+        String resolvedSystemOverlay;
+        List<String> skillIds;
+        String resolvedKbScopeJson;
+        String resolvedPermissionsJson;
+        String resolvedModelConfigJson;
+        int resolvedMaxIters;
+        if (agentEntry != null) {
+            toolIds = parseToolIds(agentEntry.toolsJson());
+            resolvedSystemOverlay = agentEntry.systemPrompt();
+            skillIds = agentEntry.skillIds() != null ? agentEntry.skillIds() : List.of();
+            resolvedKbScopeJson = agentEntry.kbScope() != null ? serializeKbScope(agentEntry.kbScope()) : null;
+            resolvedPermissionsJson = agentEntry.permissionsJson();
+            resolvedModelConfigJson = agentEntry.modelConfigJson();
+            resolvedMaxIters = agentEntry.maxIters() > 0 ? agentEntry.maxIters() : maxIters;
+            if (displayLabel.equals(SpawnSubagentLabels.label())) {
+                displayLabel = agentEntry.displayName();
+            }
+        } else {
+            toolIds = sameToolsAsMain;
+            resolvedSystemOverlay = systemOverlay;
+            skillIds = List.of();
+            resolvedKbScopeJson = null;
+            resolvedPermissionsJson = "{}";
+            resolvedModelConfigJson = "{}";
+            resolvedMaxIters = maxIters;
+        }
+
         AgentRunRequest request = AgentRunRequest.sub(
                 AssembledContext.forSubAgent(),
                 promptText,
-                List.of(),
+                skillIds,
                 audit.userId(),
                 audit.tenantId(),
                 messageId,
                 null,
-                sameToolsAsMain,
-                systemOverlay,
-                maxIters,
-                audit.conversationId());
+                toolIds,
+                resolvedSystemOverlay,
+                resolvedMaxIters,
+                audit.conversationId(),
+                agentEntry != null ? agentEntry.kbScope() : null,
+                agentEntry != null ? agentEntry.dataScopeJson() : null,
+                resolvedPermissionsJson,
+                resolvedModelConfigJson);
         String runId = request.runId();
         String subBridgeId = request.resolveBridgeId();
         SpawnSubagentTimelineBridge subTimeline =
@@ -262,5 +310,30 @@ public class SpawnSubagentTool {
             return "";
         }
         return text.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static List<String> parseToolIds(String toolsJson) {
+        if (toolsJson == null || toolsJson.isBlank() || "[]".equals(toolsJson)) {
+            return List.of();
+        }
+        try {
+            return MAPPER.readValue(toolsJson, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            log.warn("[SpawnSubagentTool] 解析 toolsJson 失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static String serializeKbScope(List<String> kbScope) {
+        if (kbScope == null || kbScope.isEmpty()) {
+            return "[]";
+        }
+        try {
+            return MAPPER.writeValueAsString(kbScope);
+        } catch (Exception e) {
+            return "[]";
+        }
     }
 }

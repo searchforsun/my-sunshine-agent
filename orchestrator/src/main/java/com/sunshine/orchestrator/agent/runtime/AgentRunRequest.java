@@ -195,6 +195,29 @@ public record AgentRunRequest(
             String systemOverlay,
             int maxIters,
             String conversationId) {
+        return sub(
+                memory, query, injectedBlocks, userId, tenantId, assistantMessageId,
+                skillId, toolWhitelist, systemOverlay, maxIters, conversationId,
+                null, null, null, null);
+    }
+
+    /** SpawnSubagent 智能体配置版 */
+    public static AgentRunRequest sub(
+            AssembledContext memory,
+            String query,
+            List<String> injectedBlocks,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            String skillId,
+            List<String> toolWhitelist,
+            String systemOverlay,
+            int maxIters,
+            String conversationId,
+            List<String> kbScope,
+            String dataScopeJson,
+            String permissionsJson,
+            String modelConfigJson) {
         return new AgentRunRequest(
                 AgentRole.SUB,
                 UUID.randomUUID().toString(),
@@ -214,10 +237,10 @@ public record AgentRunRequest(
                 null,
                 conversationId,
                 0,
-                null,
-                null,
-                null,
-                null);
+                kbScope,
+                dataScopeJson,
+                permissionsJson,
+                modelConfigJson);
     }
 
     /** Planner — 仅 plan 步 Timeline */
