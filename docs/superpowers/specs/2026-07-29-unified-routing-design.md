@@ -1,10 +1,10 @@
-# 统一资源路由设计（L0-L3 四层 + 三路语义召回）
+# 统一资源路由设计（Pre-Routing + L0-L2 快速路径 + L3 语义兜底）
 
-> **状态**：设计稿（待评审）
-> **日期**：2026-07-29
+> **状态**：设计稿（已评审 v3 — 2026-07-30）
+> **日期**：2026-07-29（初稿）· 2026-07-30（v2 修订：全部 agent 为子 Agent）· 2026-07-30（v3 修订：深层语义兜底替代 L3 跳过/GUIDED）
 > **编号**：阶段四增量（路由层重构：ExecutionMode → ResourceType）
 > **前置**：[multi-agent-unified-design](./2026-07-29-multi-agent-unified-design.md)（agent_definition 扩展 + scene 字段）· [workflow-structured-io](./2026-07-24-workflow-structured-io-design.md)（workflow 结构化 I/O 完成后 AgentNodeHandler 契约稳定）
-> **一句话**：删除 `ExecutionMode` 路由体系，改为 L0-L3 四层统一资源路由，将 `workflow`/`agent`/`skill` 作为**平级资源类型**三路语义召回，`React` 收敛为唯一兜底执行内核；`Plan-Workflow` 保留代码但去掉路由入口。
+> **一句话**：删除 `ExecutionMode` 路由体系，改为 Pre-Routing + L0-L2 快速路径 + L3 语义兜底（L2 有候选→快速分类 / L2 空→全量 L1 上下文+完整 Catalog 深层召回）；所有命中的 agent 一律为子 Agent；Pre-Routing 处理 HITL/Plan/续跑等系统等待态复用。
 
 ---
 
@@ -15,7 +15,13 @@
 | 资源（Resource） | workflow / agent / skill / react 四种可路由目标 |
 | 路由（Routing） | 从用户输入到 `RoutingResult` 的决策过程 |
 | 执行（Execution） | 从 `RoutingResult` 到 `Flux<StreamToken>` 的派发过程 |
-| 兜底（Fallback） | 所有路由层无结果时，最终交给通用 ReAct |
+| Pre-Routing | 在路由链之前拦截系统等待态（HITL/Plan/续跑），复用上次路由结果 — **本 spec 不动** |
+| 快速路径（Fast Path） | L0-L2 + L3 快速分类（L2 有候选时） |
+| 深层语义兜底（Deep Semantic Fallback） | L2 全空或极低分时，用**全量 L1 会话快照 + 完整 Agent/Skill/Workflow Catalog** 做 LLM 语义召回，解决指代消解 |
+| 累积器（Accumulator） | 跨 L0-L2 逐层收集 agentIds / skillIds / workflowId 的状态容器 |
+| 主 Agent（Main Agent） | **通用 ReAct** — 唯一的编排者和综合者 |
+| 子 Agent（Sub Agent） | 路由命中的 agent — 由主 Agent 通过 `spawn_subagent(agent_id=...)` 按需委派 |
+| 终止信号（STOP） | WORKFLOW 在任意层命中时立即返回 RoutingResult，跳过后续所有层 |
 
 ---
 
@@ -45,43 +51,69 @@
 | **模式 vs 资源混淆** | `WORKFLOW` 既是执行模式又是资源类型，`PEER_COLLAB` 是模式但不是资源（无 resourceId），`REACT` 是兜底但不代表任何资源 |
 | **workflow 无语义召回** | 只能靠 `#workflow-id` 显式绑定或 L1 规则命中，用户说「走报销流程」必须记住 workflow ID |
 | **agent/skill 无语义召回** | L2 全空，L3 只做模式分类不选具体资源，「指定智能体」全靠 `$agent-id` 绑定 |
+| **多 Agent 协作缺失** | `PEER_COLLAB` 是独立 ExecutionMode（待实现），与 ReAct 边界模糊；spawn_subagent 已支持 `agent_id` 参数，但 LLM 不知道有哪些预置 agent 可调用 |
+| **首次命中即返回** | `$agent-A` 命中后 L1/L2/L3 全跳过，用户显式绑定和语义召回无法合并；分类器识别的资源被丢弃 |
+| **主子 Agent 模型错误** | 原「第一个 `$` 的 agent 做主 Agent」把业务 agent 硬推上编排位——合同审查 agent 的 prompt 是「审查合同条款」，不是「理解用户多步需求、编排子任务」 |
 | **ForcedExecutionRouter** | 用户手动选模式，与「资源路由」理念冲突——用户应该选资源（#/$/@），不是选模式 |
 | **Plan-Workflow 在路由入口** | 动态 DAG 脆弱，LLM 产出不可靠，且用户确认后仍有退化风险 |
-| **PEER_COLLAB 即将删除** | 被 [multi-agent-unified-design](./2026-07-29-multi-agent-unified-design.md) 的 spawn_subagent 中心化替代 |
 
 ### 1.2 目标
 
 1. 删除 `ExecutionMode` 路由体系，改为 `ResourceType` 驱动
-2. L0-L3 四层统一路由链，workflow / agent / skill 三路平等语义召回
-3. `React` 收敛为唯一兜底执行内核（不再作为「模式」参与路由）
-4. `Plan-Workflow` 保留代码但去掉路由入口（仅直接 API 调用）
-5. 删除 `ForcedExecutionRouter`，删除 `PEER_COLLAB` 路由分支
-6. `scene` 字段贯穿全链路，过滤资源
+2. **Pre-Routing** 优先：HITL/Plan/续跑等系统等待态复用，不进入路由链
+3. L0-L2 快速路径 + L3 语义兜底：L2 有候选→快速分类（200-500ms）；L2 全空→深层语义兜底（用全量 L1 上下文+完整 Catalog 解决指代消解）
+4. **所有路由命中的 agent 一律为子 Agent**，通用 ReAct 为唯一主 Agent
+5. agent 和 skill 可共存（同入 ReactExecutor），workflow 独占（进 WorkflowExecutor）
+6. `Plan-Workflow` 保留代码但去掉路由入口
+7. 删除 `ForcedExecutionRouter`、`PEER_COLLAB`、`GUIDED` 兜底
+8. `scene` 字段贯穿全链路
 
 ---
 
 ## 2. 路由层架构
 
-### 2.1 四层路由链
+### 2.1 路由链路全貌
 
 ```
-用户输入 + scene ──→ L0 显式绑定
-                      │  #workflow-id → RoutingResult(WORKFLOW, id, 1.0)
-                      │  $agent-id    → RoutingResult(AGENT, id, 1.0)
-                      │  @skill-id    → RoutingResult(SKILL, id, 1.0)
-                      │
-                      ├── L1 规则匹配（PromptCatalog routing-rule.*）
-                      │   任意 resourceType，confidence 阈值 → 命中即出
-                      │
-                      ├── L2 三路语义召回（embedding）
-                      │   workflow + agent + skill 并行检索
-                      │   合并排序，按类型分阈值直接命中
-                      │   未达阈值 → 候选列表注入 L3
-                      │
-                      └── L3 LLM 分类器（带候选列表）
-                         在候选资源中做最终选择
-                         无结果 → RoutingResult.reactFallback
+用户输入 + scene
+      │
+      ├── Pre-Routing（< 1ms）← HITL/Plan 确认/续跑 等系统等待态复用，不在本 spec 范围
+      │   命中 → 复用上次 RoutingResult，不进入路由链
+      │
+      └── RoutingPolicyChain —— 路由链入口
+           │
+           ├── L0 显式绑定（< 1ms）— 永远跑
+           │   #workflow-id → STOP
+           │   $agent-id(s) → agentIds += [...]
+           │   @skill-id(s) → skillIds += [...]
+           │
+           ├── L1 规则匹配（< 5ms）— 永远跑
+           │   workflow 规则命中 → STOP
+           │   agent/skill 规则 → 补充 agentIds / skillIds
+           │
+           ├── L2 三路语义召回（30-100ms）— 永远跑
+           │   workflow ≥ 0.88 → STOP
+           │   agent ≥ 0.85 → agentIds += [...]
+           │   skill ≥ 0.85 → skillIds += [...]
+           │   所有候选列表存 acc
+           │
+           └── L3 语义兜底（200-500ms 或 500-800ms）— 永远跑
+               │
+               ├── ● 候选列表非空 → 【L3 快速分类】
+               │   输入：userQuery + L2 候选 Top-9（含 type/id/name/desc/score）
+               │   输出：agentIds / skillIds（最终决策或 no_match）
+               │   耗时：~200-500ms
+               │
+               └── ● 候选列表为空 → 【深层语义兜底】← 指代消解
+                   输入：userQuery + 全量 L1 会话快照（不限 4 轮）
+                       + 完整 Agent Catalog（含 name/desc/擅长领域）
+                       + 完整 Skill Catalog（含 name/desc）
+                       + 完整 Workflow Catalog（含 name/desc/触发示例）
+                   输出：agentIds / skillIds / workflowId（或 no_match → REACT）
+                   耗时：~500-800ms
 ```
+
+> **关键区分**：Pre-Routing 处理「系统正在等用户回答」（HITL 确认 / Plan 审批 / 续跑），语义上是从系统发散到用户；深层语义兜底处理「用户发来指代词 / 无明确信号的追问」（"那个" / "第一个" / "继续"），语义上是从用户收敛到系统。两者隔离，不动 Pre-Routing。
 
 ### 2.2 核心数据模型
 
@@ -90,44 +122,56 @@
 ```java
 package com.sunshine.orchestrator.routing;
 
+import java.util.List;
 import java.util.Map;
 
+/** 路由输出 — 统一承载 workflow/agent/skill/react 四种决策结果 */
 public record RoutingResult(
-    ResourceType type,      // WORKFLOW / AGENT / SKILL / REACT
-    String resourceId,      // workflowId / agentId / skillId / null（REACT 时）
-    String scene,           // chat / task
-    Map<String, String> params,
-    String reason,          // 如 "l0:workflow" / "l1:rule:expense" / "l2:workflow:0.91" / "fallback:silent" / "fallback:guided"
-    double confidence
+    ResourceType type,           // 执行路径标识
+    String workflowId,           // type=WORKFLOW 时非空
+    List<String> agentIds,       // 全部命中的 agent（L0+L1+L2+L3 合集去重），全部作为子 Agent
+    List<String> skillIds,       // 全部命中的 skill（L0+L1+L2+L3 合集去重）
+    String scene,                // chat / task
+    Map<String, String> params,  // effectiveQuery / __l2Candidates 等
+    String reason                // 路由来源追踪（l0:agent / l1:rule:xxx / l2:semantic / l3:classify / l3:deep_semantic / fallback:silent）
 ) {
     public enum ResourceType {
-        WORKFLOW,   // #workflow-id 或 L1/L2/L3 命中
-        AGENT,      // $agent-id 或语义选中
-        SKILL,      // @skill-id 或语义选中
-        REACT,      // 静默兜底（通用 AI 直接执行）
-        GUIDED      // 引导兜底（前端展示候选列表，用户点选后重新路由）
+        /** 静态工作流 — 独占 WorkflowExecutor */
+        WORKFLOW,
+        /** 路由命中了 agent — 前端展示标识；执行走 ReactExecutor */
+        AGENT,
+        /** 仅命中 skill — 前端展示标识；执行走 ReactExecutor */
+        SKILL,
+        /** 静默兜底 — agentIds 和 skillIds 都空，通用 ReAct 自由执行 */
+        REACT
     }
 
-    /** 静默兜底：四层全空 + L2 无候选 → 直接 REACT 执行 */
+    // ---- 工厂方法 ----
+
+    public static RoutingResult workflow(String workflowId, String scene, String reason) {
+        return new RoutingResult(ResourceType.WORKFLOW, workflowId, List.of(), List.of(),
+                scene, Map.of(), reason);
+    }
+
     public static RoutingResult silentFallback(String scene, String reason) {
-        return new RoutingResult(ResourceType.REACT, null, scene, Map.of(), reason, 1.0);
+        return new RoutingResult(ResourceType.REACT, null, List.of(), List.of(),
+                scene, Map.of(), reason);
     }
 
-    /** 引导兜底：四层全空 + L2 有候选未达阈值 → 前端展示候选列表 */
-    public static RoutingResult guidedFallback(String scene, List<ScoredResource> candidates) {
-        return new RoutingResult(
-            ResourceType.GUIDED, null, scene,
-            Map.of("__candidates", toJson(candidates.subList(0, Math.min(3, candidates.size())))),
-            "fallback:guided", 0.0);
-    }
+    // ---- 便捷判断 ----
 
     public boolean isWorkflow() { return type == ResourceType.WORKFLOW; }
-    public boolean isAgent() { return type == ResourceType.AGENT; }
-    public boolean isSkill() { return type == ResourceType.SKILL; }
-    public boolean isReact() { return type == ResourceType.REACT; }
-    public boolean isGuided() { return type == ResourceType.GUIDED; }
+
+    public boolean usesReactExecutor() {
+        return type == ResourceType.AGENT || type == ResourceType.SKILL || type == ResourceType.REACT;
+    }
+
+    public boolean hasAgents() { return agentIds != null && !agentIds.isEmpty(); }
+    public boolean hasSkills() { return skillIds != null && !skillIds.isEmpty(); }
 }
 ```
+
+> **v3 移除**：`GUIDED` 类型、`confidence` 字段、`candidates` 字段、`guidedFallback` 工厂方法。兜底统一为静默 REACT（不再打断用户做候选选择）。
 
 #### RoutingContext（替代现有 RoutingContext）
 
@@ -138,6 +182,7 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import java.util.HashMap;
 import java.util.Map;
 
+/** 单次路由请求上下文 — scene 贯穿全链路 */
 public record RoutingContext(
     String userMessage,
     String traceMessageId,
@@ -147,33 +192,44 @@ public record RoutingContext(
     private static final Map<String, Object> attributes = new HashMap<>();
 
     @SuppressWarnings("unchecked")
-    public <T> T getAttribute(String key) {
-        return (T) attributes.get(key);
-    }
+    public <T> T getAttribute(String key) { return (T) attributes.get(key); }
 
-    public void setAttribute(String key, Object value) {
-        attributes.put(key, value);
-    }
+    public void setAttribute(String key, Object value) { attributes.put(key, value); }
 
     public boolean isChatScene() { return "chat".equals(scene); }
     public boolean isTaskScene() { return "task".equals(scene); }
 }
 ```
 
-### 2.3 RoutingPolicyChain（含两层兜底）
+#### RoutingOutcome（策略层返回信号）
+
+```java
+package com.sunshine.orchestrator.routing.policy;
+
+/** 路由层返回信号 */
+public enum RoutingOutcome {
+    /** 继续下一层 */
+    CONTINUE,
+    /** WORKFLOW 独占命中 — 立即终止路由链，构建 RoutingResult 返回 */
+    STOP
+}
+```
+
+### 2.3 RoutingPolicyChain（累积收集 + WORKFLOW 终止 + L3 必跑）
+
+路由链核心编排：L0/L1/L2 逐层累积，WORKFLOW 立即终止，L3 **始终运行**（候选非空→快速分类 / 候选空→深层语义兜底）。
 
 ```java
 package com.sunshine.orchestrator.routing.policy;
 
 import com.sunshine.orchestrator.routing.RoutingResult;
+import com.sunshine.orchestrator.routing.RoutingResult.ResourceType;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Component
 @RequiredArgsConstructor
@@ -184,147 +240,316 @@ public class RoutingPolicyChain {
     @PostConstruct
     void init() {
         sorted = policies.stream()
-            .sorted(Comparator.comparingInt(RoutingPolicy::order))
-            .toList();
+                .sorted(Comparator.comparingInt(RoutingPolicy::order))
+                .toList();
     }
 
     public Mono<RoutingResult> route(RoutingContext ctx) {
-        return routeRecursive(ctx, 0)
-            .switchIfEmpty(Mono.defer(() -> {
-                // 四层全空 → 检查 L2 是否有候选
-                List<ScoredResource> candidates = ctx.getAttribute("semanticCandidates");
-                if (candidates == null || candidates.isEmpty()) {
-                    // 第一层兜底：静默 REACT（用户意图不指向任何预置资源）
-                    return Mono.just(RoutingResult.silentFallback(ctx.scene(), "fallback:no_candidates"));
-                }
-                // 过滤低分候选（< 0.75 的不展示，避免误导）
-                List<ScoredResource> qualified = candidates.stream()
-                    .filter(c -> c.score() >= 0.75)
-                    .limit(3)
-                    .toList();
-                if (qualified.isEmpty()) {
-                    return Mono.just(RoutingResult.silentFallback(ctx.scene(), "fallback:low_quality_candidates"));
-                }
-                // 第二层兜底：引导提示（用户意图在平台能力范围内，但路由层不确定）
-                return Mono.just(RoutingResult.guidedFallback(ctx.scene(), qualified));
-            }));
+        RoutingAccumulator acc = new RoutingAccumulator(ctx.scene());
+
+        return runL0(ctx, acc)       // 永远跑 (< 1ms)
+                .flatMap(keepGoing -> {
+                    if (!keepGoing) return Mono.just(acc.buildWorkflowStop());
+                    return runL1(ctx, acc);  // 永远跑 (< 5ms)
+                })
+                .flatMap(keepGoing -> {
+                    if (!keepGoing) return Mono.just(acc.buildWorkflowStop());
+                    return runL2(ctx, acc);  // 永远跑 (30-100ms)
+                })
+                .flatMap(keepGoing -> {
+                    if (!keepGoing) return Mono.just(acc.buildWorkflowStop());
+
+                    // L3 始终运行 — 候选非空→快速分类，候选空→深层语义兜底
+                    boolean hasCandidates = acc.hasL2Candidates();
+                    return runL3(ctx, acc, hasCandidates)
+                            .map(decision -> acc.absorbL3(decision));
+                });
     }
 
-    private Mono<RoutingResult> routeRecursive(RoutingContext ctx, int index) {
-        if (index >= sorted.size()) {
-            return Mono.empty();  // 空信号 → 进入兜底逻辑
+    // ---- 各层运行器 ----
+
+    private Mono<Boolean> runL0(RoutingContext ctx, RoutingAccumulator acc) {
+        RoutingPolicy l0 = sorted.get(0);
+        return l0.tryRoute(ctx).map(outcome -> {
+            if (outcome instanceof RoutingPolicy.L0Result r) {
+                return acc.absorbL0(r);
+            }
+            return true;
+        });
+    }
+
+    private Mono<Boolean> runL1(RoutingContext ctx, RoutingAccumulator acc) {
+        RoutingPolicy l1 = findPolicy(10);
+        if (l1 == null) return Mono.just(true);
+        return l1.tryRoute(ctx).map(match -> {
+            if (match == null) return true;
+            return acc.absorbL1((RoutingResult) match);
+        });
+    }
+
+    private Mono<Boolean> runL2(RoutingContext ctx, RoutingAccumulator acc) {
+        RoutingPolicy l2 = findPolicy(20);
+        if (l2 == null) return Mono.just(true);
+        return l2.tryRoute(ctx).map(candidates ->
+                acc.absorbL2((List<ScoredResource>) candidates));
+    }
+
+    private Mono<RoutingResult.L3Decision> runL3(RoutingContext ctx,
+                                                   RoutingAccumulator acc,
+                                                   boolean hasCandidates) {
+        RoutingPolicy l3 = findPolicy(30);
+        if (l3 == null) return Mono.just(RoutingResult.L3Decision.NO_MATCH);
+
+        if (hasCandidates) {
+            // 快速路径：传给 L2 候选清单
+            return ((LlmClassifierRoutingPolicy) l3)
+                    .tryRouteWithCandidates(ctx, acc.getL2Candidates());
+        } else {
+            // 深层语义兜底：全量 L1 上下文 + 完整 Catalog
+            return ((LlmClassifierRoutingPolicy) l3)
+                    .tryRouteDeepSemantic(ctx);
         }
-        return sorted.get(index).tryRoute(ctx)
-            .flatMap(opt -> opt.<Mono<RoutingResult>>map(Mono::just)
-                .orElseGet(() -> routeRecursive(ctx, index + 1)));
+    }
+
+    private RoutingPolicy findPolicy(int order) {
+        return sorted.stream().filter(p -> p.order() == order).findFirst().orElse(null);
     }
 }
 ```
 
-**两层兜底说明**（详见 §8）：
+---
 
-| 兜底类型 | ResourceType | 触发条件 | 行为 |
-|---------|-------------|---------|------|
-| 静默兜底 | `REACT` | L2 无候选或候选质量过低 | 直接走 REACT 执行，不打扰用户 |
-| 引导兜底 | `GUIDED` | L2 有候选（score ≥ 0.75）但未达阈值 | 前端展示 Top-3 候选列表，用户点选后重新路由 |
+### 2.4 RoutingAccumulator（跨层累积 → L3 兜底）
+
+L0/L1/L2 逐层收集 agentIds/skillIds/L2 候选。只有 WORKFLOW 终止。agent/skill 结果累积到底，到 L3 做最终决策（快速分类 或 深层语义兜底）。
+
+```java
+package com.sunshine.orchestrator.routing.policy;
+
+import com.sunshine.orchestrator.routing.RoutingResult;
+import com.sunshine.orchestrator.routing.RoutingResult.ResourceType;
+import java.util.*;
+
+/**
+ * 跨路由层累积状态 — WORKFLOW 独占终止，agent/skill 逐层收集后交 L3 最终决策。
+ */
+class RoutingAccumulator {
+    private String scene;
+    private String workflowId;
+    private String workflowReason;
+    private final Set<String> agentIds = new LinkedHashSet<>();
+    private final Set<String> skillIds = new LinkedHashSet<>();
+    private String effectiveQuery;
+    private String l0Reason;
+    private final List<ScoredResource> l2Candidates = new ArrayList<>();
+
+    RoutingAccumulator(String scene) { this.scene = scene; }
+
+    // ---- absorb 方法 ----
+
+    boolean absorbL0(L0Result result) {
+        if (result.isWorkflow()) {
+            workflowId = result.workflowId();
+            workflowReason = "l0:workflow";
+            return false; // STOP
+        }
+        if (!result.agentIds().isEmpty()) {
+            agentIds.addAll(result.agentIds());
+            effectiveQuery = result.effectiveQuery();
+            l0Reason = result.agentIds().size() > 1
+                    ? "l0:agent:multi:" + result.agentIds().size()
+                    : "l0:agent";
+        }
+        if (!result.skillIds().isEmpty()) {
+            skillIds.addAll(result.skillIds());
+            if (l0Reason == null) l0Reason = "l0:skill";
+        }
+        return true;
+    }
+
+    boolean absorbL1(RoutingResult ruleMatch) {
+        if (ruleMatch == null) return true;
+        if (ruleMatch.isWorkflow()) {
+            workflowId = ruleMatch.workflowId();
+            workflowReason = ruleMatch.reason();
+            return false;
+        }
+        if (ruleMatch.hasAgents()) agentIds.addAll(ruleMatch.agentIds());
+        if (ruleMatch.hasSkills()) skillIds.addAll(ruleMatch.skillIds());
+        return true;
+    }
+
+    boolean absorbL2(List<ScoredResource> merged) {
+        if (merged == null || merged.isEmpty()) return true;
+
+        Optional<ScoredResource> topWf = merged.stream()
+                .filter(r -> r.type() == ResourceType.WORKFLOW && r.score() >= 0.88)
+                .findFirst();
+        if (topWf.isPresent()) {
+            workflowId = topWf.get().id();
+            workflowReason = "l2:workflow:" + topWf.get().score();
+            return false; // STOP
+        }
+
+        merged.stream()
+                .filter(r -> r.type() == ResourceType.AGENT && r.score() >= 0.85)
+                .forEach(r -> agentIds.add(r.id()));
+
+        merged.stream()
+                .filter(r -> r.type() == ResourceType.SKILL && r.score() >= 0.85)
+                .forEach(r -> skillIds.add(r.id()));
+
+        l2Candidates.addAll(merged);
+        return true;
+    }
+
+    /** L3 最终决策（快速分类 或 深层语义兜底） */
+    RoutingResult absorbL3(L3Decision decision) {
+        if (decision != null && !decision.isNoMatch() && decision.confidence() >= 0.5) {
+            if (decision.hasAgents()) agentIds.addAll(decision.agentIds());
+            if (decision.hasSkills()) skillIds.addAll(decision.skillIds());
+        }
+        return build();
+    }
+
+    // ---- 查询方法 ----
+
+    boolean hasL2Candidates() {
+        return !l2Candidates.isEmpty();
+    }
+
+    List<ScoredResource> getL2Candidates() {
+        return List.copyOf(l2Candidates);
+    }
+
+    // ---- build ----
+
+    RoutingResult buildWorkflowStop() {
+        return RoutingResult.workflow(workflowId, scene, workflowReason);
+    }
+
+    private RoutingResult build() {
+        if (agentIds.isEmpty() && skillIds.isEmpty()) {
+            return RoutingResult.silentFallback(scene, "fallback:silent");
+        }
+
+        ResourceType type = !agentIds.isEmpty() ? ResourceType.AGENT : ResourceType.SKILL;
+        String reason = l0Reason != null ? l0Reason : "l2+3";
+        return new RoutingResult(type, null,
+                List.copyOf(agentIds), List.copyOf(skillIds),
+                scene,
+                effectiveQuery != null ? Map.of("effectiveQuery", effectiveQuery) : Map.of(),
+                reason);
+    }
+}
+```
+
+> **v3 简化**：删除 `canSkipL3()`、`buildWithoutL3()`、`guidedFallback`、`confidence` 字段。L3 始终跑，候选非空→快速分类，候选空→深层语义兜底。
+
+### 2.5 典型请求耗时估算
+
+| 场景 | L0 | L1 | L2 | L3 | 总耗时 | L3 模式 |
+|------|----|----|----|----|--------|---------|
+| `#expense-flow 报销` | 1ms | — | — | — | **< 1ms** | L0 WORKFLOW→STOP |
+| `$compliance-checker 审查合同` | 1ms | 5ms | 50ms | 250ms | **~300ms** | 快速分类（L2 有候选） |
+| 闲聊「今天天气不错」 | 1ms | 5ms | 50ms | 550ms | **~600ms** | 深层语义兜底（L2 空→全量上下文） |
+| 「怎么处理报销单」 | 1ms | 5ms | 50ms | 300ms | **~350ms** | 快速分类（L2 有 workflow/agent 候选） |
+| 「那个/第一个/继续」指代词 | 1ms | 5ms | 50ms | 600ms | **~650ms** | 深层语义兜底（指代词 L2 不可能匹配） |
+| 「合规审查+财务分析」多意图 | 1ms | 5ms | 50ms | 400ms | **~450ms** | 快速分类（多 agent 候选→L3 合并） |
 
 ---
 
 ## 3. L0：显式绑定路由
 
-用户输入中的 `#workflow-id` / `$agent-id` / `@skill-id` 为最高优先级，置信度 1.0 直通。
+用户输入中的 `#workflow-id` / `$agent-id` / `@skill-id` 为最高优先级。
 
-`$` 支持绑定**多个智能体**（如 `$agent-A $agent-B 帮我做竞品分析`），采用**主子智能体**模式：第一个 `$` 的 agent 作为主 Agent（负责执行和编排），全部绑定的 agent 注入 system prompt 供主 Agent 通过 `spawn_subagent` 在推理中自主委派。
+### 3.1 核心语义：全部 Agent 均为子 Agent
+
+**关键设计变更（v2）**：`$agent` 绑定不再指定「主 Agent」。所有路由命中的 agent 一律作为**子 Agent**，由**通用 ReAct** 作为唯一主 Agent（编排者 + 综合者）。
+
+> **理由**：业务 agent 的 system prompt 是为特定领域任务设计的（如「审查合同条款」），不是为「理解用户多步需求、分解子任务、编排 spawn、综合结论」设计的。强制执行主 Agent 角色的 agent 会出现编排失误、spawn 遗漏、总结不完整等问题。通用 ReAct 的 system prompt（`mode-overlay.react`）天然包含全套编排规则（taskboard/spawn/并行/串行/HITL），是最合适的主 Agent。
 
 ```java
 @Component
 @RequiredArgsConstructor
 public class ExplicitBindingRoutingPolicy implements RoutingPolicy {
     private final WorkflowBindingParser workflowBindingParser;
-    private final AgentBindingParser agentBindingParser;  // 支持单 $ / 多 $ 解析
+    private final AgentBindingParser agentBindingParser;
     private final SkillBindingParser skillBindingParser;
 
     @Override public int order() { return 0; }
 
     @Override
-    public Mono<Optional<RoutingResult>> tryRoute(RoutingContext ctx) {
+    public Mono<Object> tryRoute(RoutingContext ctx) {
         String msg = ctx.userMessage();
 
+        // #workflow-id 最高优先级 → STOP（WORKFLOW 独占）
         if (ctx.isChatScene()) {
             var wf = workflowBindingParser.resolve(msg);
             if (wf.bound()) {
-                return Mono.just(Optional.of(new RoutingResult(
-                    ResourceType.WORKFLOW, wf.workflowId(), ctx.scene(),
-                    Map.of(), "l0:workflow", 1.0)));
+                return Mono.just(new L0Result(
+                        true, wf.workflowId(), List.of(), List.of(), msg));
             }
         }
 
+        // $agent-id(s) → 全部收集为子 Agent，不设主 Agent
         var agent = agentBindingParser.resolve(msg);
         if (agent.bound()) {
-            Map<String, String> params = new LinkedHashMap<>();
-            // 全部绑定的 agent ID（注入 system prompt，供主 Agent spawn）
-            params.put("agentIds", String.join(",", agent.agentIds()));
-            params.put("effectiveQuery", agent.effectiveQuery());
-            // 第一个 $ 的 agent 作为主 Agent
-            String primaryAgentId = agent.agentIds().get(0);
-            return Mono.just(Optional.of(new RoutingResult(
-                ResourceType.AGENT, primaryAgentId, ctx.scene(),
-                params,
-                agent.agentIds().size() > 1
-                    ? "l0:agent:multi:" + agent.agentIds().size()
-                    : "l0:agent",
-                1.0)));
+            return Mono.just(new L0Result(
+                    false, null,
+                    agent.agentIds(),            // 全部 agentId
+                    List.of(),
+                    agent.effectiveQuery()));     // 剥离 $ 标记后的原文
         }
 
+        // @skill-id(s) → 收集
         var skill = skillBindingParser.resolve(msg);
         if (skill.bound()) {
-            return Mono.just(Optional.of(new RoutingResult(
-                ResourceType.SKILL, skill.skillId(), ctx.scene(),
-                Map.of(), "l0:skill", 1.0)));
+            return Mono.just(new L0Result(
+                    false, null, List.of(),
+                    List.of(skill.skillId()), msg));
         }
 
-        return Mono.just(Optional.empty());
+        return Mono.just(new L0Result(false, null, List.of(), List.of(), msg));
     }
+
+    /** L0 显式绑定结果 */
+    public record L0Result(
+            boolean isWorkflow,
+            String workflowId,
+            List<String> agentIds,
+            List<String> skillIds,
+            String effectiveQuery) {}
 }
 ```
 
-### 3.1 多 $ 绑定语义
+### 3.2 多 $ 绑定语义（v2 修订）
 
-| 输入 | resourceId | params.agentIds | 执行语义 |
-|------|-----------|----------------|---------|
-| `$agent-A 帮我报销` | `agent-A` | `agent-A` | agent-A 作为主 Agent 发起 ReAct |
-| `$agent-A $agent-B 竞品分析` | `agent-A` | `agent-A,agent-B` | agent-A 作为主 Agent，可将子任务 spawn 给 agent-B |
-| `$agent-A $agent-B $agent-C ...` | `agent-A` | `agent-A,agent-B,agent-C` | 主 Agent 可并行 spawn 多个子 Agent，综合结论 |
-
-### 3.2 执行层处理
-
-`ReactExecutor`（作为 `AGENT` 类型的统一执行入口）收到 `params.agentIds` 后：
-
-1. 以 `resourceId`（第一个 agent）加载主 Agent 配置（system prompt / tools / skills）
-2. 将全部 agent ID 注入 system prompt，告知主 Agent 可通过 `spawn_subagent` 委派
-3. 用户原文由 `effectiveQuery`（剥离 `$` 标记后）提供
-4. 主 Agent 在推理中**自主决定**何时 spawn、spawn 谁
+| 输入 | agentIds | 执行语义 |
+|------|----------|---------|
+| `$agent-A 帮我报销` | [`agent-A`] | 通用 ReAct 做主，agent-A 作为可 spawn 的子 Agent |
+| `$agent-A $agent-B 竞品分析` | [`agent-A`, `agent-B`] | 通用 ReAct 做主，两个全平权子 Agent 可按需 spawn |
+| `$agent-A $agent-B $agent-C ...` | [`agent-A`, `agent-B`, `agent-C`] | 全平权，主 Agent 自主并行/串行 spawn |
 
 ### 3.3 约束
 
 | 规则 | 说明 |
 |------|------|
-| `#workflow-id` 优先级最高 | `#` 与 `$` 同时出现时，走 workflow 路由（`$` 不生效） |
+| `#workflow-id` 优先级最高 | `#` 出现时立即返回 WORKFLOW，`$`/`@` 不生效 |
 | `#workflow-id` 仅在 `chat` 场景 | task 场景不走 workflow 路由 |
-| `$` 在 `@` 之前 | agent 绑定优先于 skill 绑定（`$agent $skill` → 走到 agent 分支） |
-| 行首 `$` 为主 Agent | `$agent-A 请 $agent-B 帮你` → `agent-A` 为主，`agent-B` 为可 spawn 对象 |
+| `$` 和 `@` 可共存 | 两个都收集（agentIds + skillIds），同进 ReactExecutor |
+| **$agent 不作为主 Agent** | 全部 agentId 进 agentIds 列表，由通用 ReAct 按需 spawn |
 | 未识别的 `$` → 报错 | `$unknown-agent` → 返回 agent not found 错误 |
-| `$` 不是「多 Agent 平权协作」 | 这是主子模式，不是 team-delegate；与 spawn_subagent 中心化一致 |
 
 ---
 
 ## 4. L1：规则匹配路由
 
-保持现有 `UnifiedRuleRoutingPolicy` 核心逻辑不变，Catalog `routing-rule.*` 规则匹配。改动点：
+保持现有 `UnifiedRuleRoutingPolicy` 核心逻辑不变，改动点：
 
 1. **输出改为 `RoutingResult`**（不再返回 `ExecutionPlan`）
-2. **规则增加 `resourceType` 字段**：明确命中后返回 `WORKFLOW` / `AGENT` / `SKILL`
-3. **confidence 阈值**：规则命中 confidence 由规则定义，默认 0.95
+2. **规则增加 `resourceType` 字段**
+3. **WORKFLOW 规则命中 → 返回 STOP 信号**
 
 ```java
 @Component
@@ -335,18 +560,22 @@ public class RuleBasedRoutingPolicy implements RoutingPolicy {
     @Override public int order() { return 10; }
 
     @Override
-    public Mono<Optional<RoutingResult>> tryRoute(RoutingContext ctx) {
+    public Mono<RoutingResult> tryRoute(RoutingContext ctx) {
         return ruleEngine.match(ctx.userMessage(), ctx.scene())
-            .filter(match -> match.confidence() >= 0.85)
-            .map(match -> Optional.of(new RoutingResult(
-                match.resourceType(),
-                match.resourceId(),
-                ctx.scene(),
-                Map.of(),
-                "l1:rule:" + match.ruleId(),
-                match.confidence()
-            )))
-            .defaultIfEmpty(Optional.empty());
+                .filter(match -> match.confidence() >= 0.85)
+                .map(match -> new RoutingResult(
+                        match.resourceType(),
+                        match.resourceId(),
+                        match.resourceType() == ResourceType.AGENT
+                                ? List.of(match.resourceId()) : List.of(),
+                        match.resourceType() == ResourceType.SKILL
+                                ? List.of(match.resourceId()) : List.of(),
+                        ctx.scene(),
+                        Map.of(),
+                        List.of(),
+                        "l1:rule:" + match.ruleId(),
+                        match.confidence()))
+                .defaultIfEmpty(null);
     }
 }
 ```
@@ -355,7 +584,7 @@ public class RuleBasedRoutingPolicy implements RoutingPolicy {
 
 ## 5. L2：三路语义召回
 
-### 5.1 三路并行检索
+### 5.1 三路并行检索（收集模式，非互斥）
 
 ```java
 @Component
@@ -368,70 +597,48 @@ public class SemanticRoutingPolicy implements RoutingPolicy {
     @Override public int order() { return 20; }
 
     @Override
-    public Mono<Optional<RoutingResult>> tryRoute(RoutingContext ctx) {
+    public Mono<List<ScoredResource>> tryRoute(RoutingContext ctx) {
         String query = ctx.userMessage();
         String scene = ctx.scene();
 
-        Mono<List<ScoredResource>> agentCandidates =
-            agentIndex.search(query, 3, scene)
-                .map(list -> list.stream()
-                    .map(e -> new ScoredResource(ResourceType.AGENT, e.id(), e.score()))
-                    .toList());
+        return Mono.zip(
+                agentIndex.search(query, 3, scene)
+                        .map(list -> toScored(list, ResourceType.AGENT)),
+                skillIndex.search(query, 3, scene)
+                        .map(list -> toScored(list, ResourceType.SKILL)),
+                workflowIndex.search(query, 3, scene)
+                        .map(list -> toScored(list, ResourceType.WORKFLOW))
+        ).map(tuple -> {
+            List<ScoredResource> merged = new ArrayList<>();
+            merged.addAll(tuple.getT1());
+            merged.addAll(tuple.getT2());
+            merged.addAll(tuple.getT3());
+            merged.sort((a, b) -> Double.compare(b.score(), a.score()));
+            return merged;
+        });
+    }
 
-        Mono<List<ScoredResource>> skillCandidates =
-            skillIndex.search(query, 3, scene)
-                .map(list -> list.stream()
-                    .map(e -> new ScoredResource(ResourceType.SKILL, e.id(), e.score()))
-                    .toList());
-
-        Mono<List<ScoredResource>> workflowCandidates =
-            workflowIndex.search(query, 3, scene)
-                .map(list -> list.stream()
-                    .map(e -> new ScoredResource(ResourceType.WORKFLOW, e.id(), e.score()))
-                    .toList());
-
-        return Mono.zip(agentCandidates, skillCandidates, workflowCandidates)
-            .map(tuple -> {
-                List<ScoredResource> merged = new ArrayList<>();
-                merged.addAll(tuple.getT1());
-                merged.addAll(tuple.getT2());
-                merged.addAll(tuple.getT3());
-                merged.sort((a, b) -> Double.compare(b.score(), a.score()));
-
-                if (merged.isEmpty()) {
-                    return Optional.<RoutingResult>empty();
-                }
-
-                ScoredResource top = merged.get(0);
-                double threshold = directHitThreshold(top.type());
-                if (top.score() >= threshold) {
-                    return Optional.of(new RoutingResult(
-                        top.type(), top.id(), scene, Map.of(),
-                        "l2:" + top.type().name().toLowerCase() + ":" + top.score(),
-                        top.score()));
-                }
-
-                // 未达阈值 → 候选列表注入 L3
-                ctx.setAttribute("semanticCandidates", merged);
-                return Optional.<RoutingResult>empty();
-            });
+    private List<ScoredResource> toScored(List<Result> list, ResourceType type) {
+        return list.stream()
+                .map(e -> new ScoredResource(type, e.id(), e.score()))
+                .toList();
     }
 
     /**
      * 分类型直接命中阈值。
      * workflow 误路由成本高（确定性 DAG 整跑一轮），要求更高置信。
      */
-    private double directHitThreshold(ResourceType type) {
+    static double directHitThreshold(ResourceType type) {
         return switch (type) {
             case WORKFLOW -> 0.88;
             case AGENT, SKILL -> 0.85;
             default -> 0.85;
         };
     }
-
-    public record ScoredResource(ResourceType type, String id, double score) {}
 }
 ```
+
+> **注意**：L2 不再做「top-1 直接命中返回」逻辑。所有候选列表交给 `RoutingAccumulator.absorbL2()` 处理——workflow 达阈值 → STOP；agent/skill 达阈值 → 累加到 agentIds/skillIds；全未达阈值 → 候选进 L3。
 
 ### 5.2 workflow embedding 索引
 
@@ -440,39 +647,119 @@ public class SemanticRoutingPolicy implements RoutingPolicy {
 **索引生命周期**：
 - 发布/更新 → 重建该 workflow 的 embedding 向量
 - 禁用/删除 → 从索引中移除
-- 服务启动 → 全量重建（与 agent/skill 索引一致）
-
-**触发示例**：8 标杆 workflow 种子数据补齐 `trigger_examples` 字段（如 `"帮我报销"、"走一下审批流程"`），作为 embedding 输入的一部分。
+- 服务启动 → 全量重建
 
 ### 5.3 降级路径
 
-embedding 服务不可用时，L2 返回 `Optional.empty()`，不阻塞路由链，直接进入 L3。
+embedding 服务不可用时，L2 返回空列表，不阻塞路由链。
 
 ---
 
-## 6. L3：LLM 分类器（带候选列表）
+## 6. L3：LLM 语义兜底（两种模式，始终运行）
 
-### 6.1 设计决策：不打断用户
+L3 不再是一个可选的「分类器步骤」，而是**锁定**的最后语义决策层。根据 L2 的结果分两条路径：
 
-L3 是最后一层路由，低置信度时**不打断用户**，而是交给 REACT 执行层自行澄清。理由：
+### 6.1 模式 A：快速分类（L2 候选非空）
 
-| 决策因素 | 说明 |
-|---------|------|
-| **REACT 自己会澄清** | REACT 执行中是自由推理循环，遇到歧义可通过 `react-request-decision`（4.7.7 spec）主动向用户出选择题。澄清职责在执行层，不在路由层 |
-| **闲聊/通用问答不匹配是正常的** | 用户说"今天天气不错"或"Python 怎么读 CSV"，L3 应返回 `no_match`，直接走 REACT 兜底正常回答。这不是"低置信度"，而是"明确不匹配预置资源" |
-| **LLM 自评 confidence 不可靠** | 同一个 prompt 两次可能输出 0.5 和 0.9，无严格概率意义。用这个数字做"是否打断用户"的决策依据不可靠 |
-| **打断成本高** | 用户一句话被路由层反问，需等待回复、再分类、再执行。而 REACT 在推理中出选择题时已有上下文（如已 read 文件、理解项目结构），选择题更有针对性 |
+```
+输入：userQuery + L2 候选 Top-9（含 type/id/name/desc/score）
+输出：{type, agentIds[], skillIds[], confidence, reason, is_no_match}
+耗时：~200-500ms
+```
 
-### 6.2 三段式决策
+候选足够 → LLM 从中筛选/合并，不加载全量 Catalog。
 
-L3 分类器输出后，按 confidence 分三段处理：
+**分类器输出格式**：
+
+```json
+{
+  "type": "AGENT",
+  "agentIds": ["compliance-checker", "finance-analyst"],
+  "skillIds": ["report-generator"],
+  "confidence": 0.85,
+  "reason": "需合规审查和财务分析"
+}
+```
+
+**no_match 时**：
+```json
+{"type": "REACT", "agentIds": [], "skillIds": [], "confidence": 0, "reason": "no_match"}
+```
+
+### 6.2 模式 B：深层语义兜底（L2 候选为空 — 指代消解）
+
+```
+触发条件：L2 候选全空 或 全部 score < 0.7
+输入：
+  1. userQuery（用户的原始输入，如 "那个"、"第一个"、"继续"）
+  2. 全量 L1 会话快照（不限于 4 轮）— 完整的对话上下文
+  3. 完整 Agent Catalog（全量，不过滤）：
+     每个 agent 包含：id / name / description / 擅长领域 / 触发示例
+  4. 完整 Skill Catalog（全量，不过滤）：
+     每个 skill 包含：id / name / description / 触发示例
+  5. 完整 Workflow Catalog（全量，不过滤）：
+     每个 workflow 包含：id / name / description / 触发示例
+输出：{type, agentIds[], skillIds[], workflowId?, confidence, reason, is_no_match}
+耗时：~500-800ms
+```
+
+**设计意图**：指代词（"那个"、"第一个"、"继续"、"Tell me more"）在 L0-L2 不可能命中任何 agent/skill/workflow。深层语义兜底用**完整上下文 + 完整资源**让 LLM 来推断用户意图。LLM 能看到：
+- 上一轮对话说了什么（全量 L1 快照）
+- 全量可用 agent / skill / workflow 清单
+
+从而判断「那个」指的是上轮提到的 workflow，还是 agent，还是只是一般性追问。
+
+**prompt 结构**：
+
+```
+你是路由判断助手。用户正向多轮对话发出后续请求，请你根据对话上下文和可用资源列表，判断用户意图。
+
+## 对话历史（全量）
+{全量 L1 会话快照：每轮 user/assistant 完整内容}
+
+## 可用智能体（全量，共 N 个）
+| agent_id | 名称 | 擅长领域 | 描述 |
+|----------|------|---------|------|
+| compliance-checker | 合规审查智能体 | 制度检查、法规比对 | 合同条款合规性审查... |
+| finance-analyst | 财务分析智能体 | 预算审查、费用分析 | 合同财务条款分析... |
+...（全量，不分页）
+
+## 可用技能（全量，共 M 个）
+| skill_id | 名称 | 描述 |
+|----------|------|------|
+| report-generator | 报告生成 | 生成格式化的分析报告... |
+...（全量，不分页）
+
+## 可用工作流（全量，共 K 个）
+| workflow_id | 名称 | 描述 | 触发示例 |
+|-------------|------|------|---------|
+| expense-flow | 报销审批流程 | 处理报销申请... | "报销"、"差旅费" |
+...（全量，不分页）
+
+## 当前用户输入
+{userQuery}
+
+## 输出格式
+{type: "AGENT"|"SKILL"|"WORKFLOW"|"REACT", agentIds: string[], skillIds: string[],
+ workflowId: string|null, confidence: number 0-1, reason: string, is_no_match: boolean}
+
+规则：
+- 如果用户是追问上一轮的话题（如 "那个"、"第一个"、"继续"），结合对话历史确定 target
+- 如果用户的内容是全新话题，target 选意图最匹配的
+- 无明确 agent/skill/workflow 目标时返回 is_no_match=true，type="REACT"
+- confidence 反映你对判断的确信度
+```
+
+### 6.3 三段式决策（两种模式共享）
 
 | 分段 | confidence | 行为 |
 |------|-----------|------|
-| `no_match` | N/A | 分类器明确判断无匹配资源 → 返回 empty，走 REACT 兜底 |
-| 低置信度 | 0.5 ≤ c < 0.8 | 执行选中的资源，但把 L2 候选列表注入 `params.__candidates`，供 REACT 首轮推理中参考，必要时自行判断是否切换方向 |
-| 高置信度 | c ≥ 0.8 | 直接执行，不注入额外信息 |
-| 极低置信度 | c < 0.5 | 视为分类器不确定 → 返回 empty，走 REACT 兜底（安全网，防止 LLM 乱选） |
+| `is_no_match` | N/A | LLM 判断无匹配 → agentIds/skillIds 留空，走 REACT |
+| 极低置信 | c < 0.5 | 安全网 → agentIds/skillIds 留空，走 REACT |
+| 低置信 | 0.5 ≤ c < 0.8 | 采纳 LLM 决策 |
+| 高置信 | c ≥ 0.8 | 直接采纳 |
+
+### 6.4 LlmClassifierRoutingPolicy 实现
 
 ```java
 @Component
@@ -482,54 +769,29 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
 
     @Override public int order() { return 30; }
 
-    @Override
-    public Mono<Optional<RoutingResult>> tryRoute(RoutingContext ctx) {
-        @SuppressWarnings("unchecked")
-        List<SemanticRoutingPolicy.ScoredResource> candidates =
-            ctx.getAttribute("semanticCandidates");
-
+    /** 模式 A：快速分类（L2 候选非空） */
+    Mono<L3Decision> tryRouteWithCandidates(RoutingContext ctx, List<ScoredResource> candidates) {
         return intentRouter.classifyWithCandidates(
-                ctx.userMessage(), candidates, ctx.scene(), ctx.memory())
-            .map(decision -> {
-                // no_match 或极低置信度 → 不给 REACT 任何偏好，自由执行
-                if (decision.isNoMatch() || decision.confidence() < 0.5) {
-                    return Optional.<RoutingResult>empty();
-                }
-                // 中等置信度 → 执行选中资源，但附候选列表供 REACT 参考
-                if (decision.confidence() < 0.8) {
-                    return Optional.of(new RoutingResult(
-                        decision.type(),
-                        decision.resourceId(),
-                        ctx.scene(),
-                        Map.of("__candidates", toJson(candidates)),
-                        "l3:low:" + decision.reason(),
-                        decision.confidence()));
-                }
-                // 高置信度 → 直接执行
-                return Optional.of(new RoutingResult(
-                    decision.type(),
-                    decision.resourceId(),
-                    ctx.scene(),
-                    Map.of(),
-                    "l3:" + decision.reason(),
-                    decision.confidence()));
-            })
-            .defaultIfEmpty(Optional.empty());
+                ctx.userMessage(), candidates, ctx.scene())
+                .map(L3Decision::from);
+    }
+
+    /** 模式 B：深层语义兜底（L2 全空 → 全量上下文 + 全量 Catalog） */
+    Mono<L3Decision> tryRouteDeepSemantic(RoutingContext ctx) {
+        return intentRouter.classifyDeepSemantic(
+                ctx.userMessage(),
+                ctx.memory(),                    // 全量 L1 会话快照
+                loadFullAgentCatalog(ctx),        // 全量 Agent Catalog
+                loadFullSkillCatalog(ctx),        // 全量 Skill Catalog
+                loadFullWorkflowCatalog(ctx),     // 全量 Workflow Catalog
+                ctx.scene());
     }
 }
 ```
 
-### 6.3 分类器 prompt 要点
-
-- 输入包含候选资源清单（含 type + id + name + description + score）
-- 要求输出 `{type, resourceId, confidence, reason}` JSON
-- **候选资源都不匹配时返回 `{type: "REACT", resourceId: null, confidence: 0, reason: "no_match"}`**——这是明确的不匹配信号，不是低置信度
-- 场景约束：`scene=task` 时不选 `WORKFLOW`（task 场景主要走 agent/skill）
-- `confidence` 字段要求 LLM 输出 0.0–1.0 的浮点数，表示对选择的确定程度
-
 ---
 
-## 7. 资源派发器
+## 7. 资源派发器（ResourceDispatcher）
 
 ```java
 package com.sunshine.orchestrator.execution;
@@ -546,477 +808,418 @@ import reactor.core.publisher.Flux;
 public class ResourceDispatcher {
     private final WorkflowExecutor workflowExecutor;
     private final ReactExecutor reactExecutor;
-    private final PlanWorkflowExecutor planWorkflowExecutor; // 保留，仅直接 API 调用
+    private final PlanWorkflowExecutor planWorkflowExecutor; // 保留，仅直接 API
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
-        RoutingResult result = ctx.routingResult();
+        RoutingResult r = ctx.routingResult();
 
-        // Plan-Workflow 仅直接 API 调用路径（__mode=plan-workflow），不经过路由
-        if (result != null && "plan-workflow".equals(result.params().get("__mode"))) {
+        if (r != null && "plan-workflow".equals(r.params().get("__mode"))) {
             return planWorkflowExecutor.execute(ctx);
         }
 
-        return switch (result != null ? result.type() : ResourceType.REACT) {
+        ResourceType type = r != null ? r.type() : ResourceType.REACT;
+        return switch (type) {
             case WORKFLOW -> workflowExecutor.execute(ctx);
             case AGENT, SKILL, REACT -> reactExecutor.execute(ctx);
-            case GUIDED -> Flux.empty();  // 不执行——前端展示候选列表
         };
     }
 }
 ```
 
 **关键设计**：
-- `AGENT` / `SKILL` / `REACT` 三种 RoutingResult 都走 `ReactExecutor`——因为它们的执行内核统一为 `AgentRuntime.run`（或 ReAct 兜底）
-- `AGENT` 命中时，`ReactExecutor` 内部根据 `resourceId` 加载 agent 配置（system prompt / tools / skills），构造 `AgentRunRequest`
-- `SKILL` 命中时，`ReactExecutor` 内部根据 `resourceId` 加载 skill overlay，注入 tool 白名单
-- `REACT` 兜底时，走通用 ReAct 配置
-- `GUIDED` 时，不执行——前端展示候选列表，用户点选后重新发起请求（携带绑定的 resourceId）
+- `AGENT` / `SKILL` / `REACT` 三类全部走 `ReactExecutor`
+- `AGENT` 时 `ReactExecutor` **不加载** agent 的 system prompt 做主 Agent——改为注入 Agent Catalog 摘要到通用 ReAct system prompt
+- `SKILL` 时 `ReactExecutor` 注入 skill overlays + 挂载物料
+- `WORKFLOW` 独占 `WorkflowExecutor`
 
 ---
 
-## 8. 兜底策略：静默兜底 vs 引导兜底
+## 7.1 ReactExecutor 改造（AGENT / SKILL / REACT 统一入口）
 
-### 8.1 设计决策
+```java
+// ReactExecutor.execute() 内部：
 
-四层路由（L0→L1→L2→L3）全部无结果时，不统一走 REACT，而是根据 L2 候选情况分流：
+// 1. 加载通用 ReAct system prompt（base + mode-overlay.react）
+String systemPrompt = assembleBaseReactSystem(routingResult.scene());
 
-| 场景 | L2 候选 | 行为 | 理由 |
-|------|--------|------|------|
-| 闲聊/通用问答/编码 | 空（用户意图不指向任何预置资源） | **静默 REACT 兜底** | 这正是 REACT 的主场，无需打扰 |
-| 模糊业务意图 | 有，且 score ≥ 0.75，但未达直接命中阈值 | **引导提示** | 用户意图在平台能力范围内，但路由层不确定；把线索反馈给用户 |
-| 明确但未预置 | 有弱相关候选但不匹配 | **引导提示** | 提示该场景暂无预置服务，同时给 REACT 自由探索入口 |
-| 极短/无效输入 | 空 | **静默 REACT 兜底** | 让 REACT 友好回应 |
+// 2. 有 agent → 注入 Agent Catalog（不加载 agent 的 system prompt 做主 Agent）
+if (routingResult.hasAgents()) {
+    systemPrompt += renderAgentCatalog(routingResult.agentIds());
+    systemPrompt += renderOrchestrationGuide();
+}
 
-### 8.2 两层兜底实现
+// 3. 有 skill → 注入 skill overlays + 挂载物料
+if (routingResult.hasSkills()) {
+    for (String skillId : routingResult.skillIds()) {
+        String overlay = skillCatalogService.getOverlay(skillId);
+        if (overlay != null) systemPrompt += "\n" + overlay;
+        sandboxSessionLifecycle.mountSkill(sessionId, skillId);
+    }
+}
 
-已在 `RoutingPolicyChain` 中实现（见 §2.3），核心逻辑：
-
-- **L2 无候选** → `RoutingResult.silentFallback`（`ResourceType.REACT`）
-- **L2 有候选但未达阈值** → `RoutingResult.guidedFallback`（`ResourceType.GUIDED`）
-
-### 8.3 前端交互（GUIDED）
-
-`ResourceType.GUIDED` 不触发执行。前端收到后展示 inline 提示（不阻塞对话流）：
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ 💡 你可能想要：                                          │
-│                                                         │
-│   [📋 报销审批流程]  [🤖 财务助手]  [🔧 通用 AI 处理]    │
-│                                                         │
-│   继续输入补充说明，或直接回车用通用 AI 处理              │
-└─────────────────────────────────────────────────────────┘
+// 4. 构造 AgentRunRequest（role=MAIN，system=通用ReAct叠加后的prompt）
+AgentRunRequest request = AgentRunRequest.main(assembledCtx, query, ...);
+return agentRuntime.run(request);
 ```
 
-- 点击候选资源 → 相当于 `#workflow-id` / `$agent-id`，重新请求并路由
-- 点击「通用 AI 处理」→ 强制 REACT 执行
-- 用户继续输入新消息 → 上一条提示自动消失，新消息正常路由
+**Agent Catalog 注入格式**：
 
-### 8.4 退化策略
+```
+## 可调用的专业智能体
+你可以通过 spawn_subagent(agent_id="...", prompt="...", label="...")
+将子任务委派给以下智能体：
 
-| 规则 | 说明 |
+| agent_id | 名称 | 擅长领域 |
+|----------|------|----------|
+| compliance-checker | 合规审查智能体 | 制度合规性检查、法规比对、风险识别 |
+| finance-analyst | 财务分析智能体 | 预算审查、费用分析、合同财务条款 |
+
+多个独立子任务可在同一轮并行 spawn；有依赖关系的串行。
+```
+
+---
+
+## 8. 资源优先级规则一览
+
+### 8.1 WORKFLOW 独占（最高优先级）
+
+| 触发 | 行为 |
 |------|------|
-| 单候选不出引导 | L2 只有一个候选时不打扰，直接静默 REACT |
-| 低分候选过滤 | score < 0.75 的候选不展示（避免误导） |
-| 用户连续 3 次忽略 | 后续会话不再出引导提示（避免变成"请选择"机器） |
-| 跨会话重置 | 连续忽略计数仅当前会话有效 |
+| L0 `#workflow-id` | **STOP** → `RoutingResult(type=WORKFLOW)` |
+| L1 workflow 规则命中 | **STOP** |
+| L2 workflow ≥ 0.88 | **STOP** |
+| L3 深层语义兜底返回 workflowId | **STOP** → `RoutingResult(type=WORKFLOW)` |
+
+workflow 出现即**立即终止路由链**，agentIds / skillIds 全部丢弃。
+
+### 8.2 AGENT / SKILL 共存（同入 ReactExecutor）
+
+| agentIds | skillIds | 结果 type | 注入内容 |
+|----------|----------|-----------|---------|
+| 非空 | 空 | `AGENT` | Agent Catalog |
+| 非空 | 非空 | `AGENT` | Agent Catalog + skill overlays |
+| 空 | 非空 | `SKILL` | skill overlays |
+| 空 | 空 | `REACT` | 通用 ReAct（无注入） |
+
+type 字段主要用于**前端展示标识**，对执行路径无影响——全部进 `ReactExecutor`。
+
+### 8.3 兜底路径
+
+| 条件 | 结果 | 说明 |
+|------|------|------|
+| L0-L3 全程无 agent/skill/workflow 命中 | `REACT` 静默兜底 | 通用 ReAct 自由执行 |
+| Pre-Routing 命中（HITL/Plan/续跑） | 复用上次 RoutingResult | 不进入路由链 |
 
 ---
 
-## 9. 兜底工具配置
+## 9. 兜底策略（已移除 GUIDED）
 
-### 9.1 现状（代码核实）
+v3 移除了 `GUIDED` 引导兜底。理由：
+1. Pre-Routing 已处理系统等待态（HITL/Plan/续跑），不需要另一层「选候选」打断
+2. 深层语义兜底用全量上下文+完整 Catalog 推断指代，覆盖率高
+3. 打断用户做「选 A 还是 B」本质上是 L2 embedding 召回不够好的补偿——应优化索引和 prompt 而非甩锅给用户
 
-`DynamicToolkitFactory.build(tenantId, skillId, userId)` 为通用 REACT（MAIN）注入的工具分为两层：
+所有非 WORKFLOW/非 agent/非 skill 的路由结果统一为 `REACT` 静默兜底。
 
-**第一层：硬编码内置工具（始终注入）**
+---
 
-| 工具 | 条件 | 安全机制 |
-|------|------|----------|
-| `search_knowledge` | 始终注入 | kbId 由会话上下文动态注入 |
-| `sandbox__read` | 始终注入 | HITL + PathJail |
-| `sandbox__write` | 始终注入 | HITL（`writeHitlMode`） |
-| `sandbox__edit` | 始终注入 | HITL |
-| `sandbox__glob` | 始终注入 | 只读，无安全风险 |
-| `sandbox__grep` | 始终注入 | 只读，无安全风险 |
-| `sandbox__exec` | 始终注入 | `SandboxExecGuard` 硬拒绝危险命令 + HITL |
-| `spawn_subagent` | 仅 MAIN + `agent.execution.react.subagent.enabled=true` | 禁止嵌套委派 |
+## 10. 工具加载策略
 
-**第二层：场景默认工具集（按 scene + 租户独立配置）**
+工具注入分为**三层**，各自独立的加载时机和来源。**主 Agent（通用 ReAct）与子 Agent（spawn）的工具完全分离**。
 
-当前实现为 `react-default`（所有场景共享一套），本设计重构为 `chat-default` / `task-default`，按场景独立配置。
-
-### 9.2 设计方案：场景驱动默认工具集
-
-**核心变更**：废弃按执行模式（`react-default` / `plan-workflow`）分类的工具集，改为按使用场景（`chat-default` / `task-default`）分类。
-
-**设计理由**：
-- 路由层已从 `ExecutionMode` 改为 `ResourceType`，工具集不应再耦合执行模式
-- `scene` 字段贯穿全链路，工具集按 scene 分类与路由、agent、skill 的过滤逻辑一致
-- 对话场景和编码任务场景对工具的默认需求不同（如 task 场景可能需要更多沙箱权限、不需要审批工具）
-- Plan-Workflow 已从路由入口移除，`plan-workflow` 工具集无存在必要
-
-**数据模型**：
+### 10.1 三层工具架构
 
 ```
-tool_set 表
-  └── set_type: 'tenant_chat_default' | 'tenant_task_default'
-  └── tenant_id: 'ABC'（所有租户均为租户级，无 NULL 全局集）
-  └── id: 'tenant-ABC-chat-default' | 'tenant-ABC-task-default'（自动生成）
+主 Agent 工具（ReactExecutor 加载）
+  ├── L1: 场景默认工具集      ← scene=chat→chat-default / scene=task→task-default
+  │    + 硬编码内置工具         ← RAG + sandbox__* x6 + spawn_subagent
+  │
+  ├── L2: skill 语义召回工具   ← 仅当 skillIds 非空时，按 skill embeddings 召回 Top-K 工具
+  │    + skill overlays        ← 各 skill 的 overlay prompt 拼入 system prompt
+  │    + skill 物料挂载        ← /skills/{id}/ 挂载进沙箱
+  │
+  └── L3: Agent Catalog 注入   ← 仅当 agentIds 非空时，注入系统提示（不注入工具给主 Agent）
+
+子 Agent 工具（SpawnSubagentTool 加载，按 agent_id 逐个创建时）
+  └── agent_definition.tools_json  ← 该 agent 预配置的工具白名单
 ```
 
-**解析链路**（替代 `ToolSetResolver.resolveReactTools`）：
+**关键原则**：主 Agent 的工具 = 通用能力（检索、沙箱、spawn）+ skill 召回的领域工具。子 Agent 的工具 = 该 agent 自己的专属配置。**不交叉**——主 Agent 不加子 Agent 的工具，子 Agent 不加 skill 召回的工具。
+
+### 10.2 各路由类型的加载详情
+
+| 路由结果 | 主 Agent 工具 | 子 Agent 工具 |
+|---------|-------------|-------------|
+| `REACT`（兜底） | 场景默认工具集 + embedding 召回 Top-K | 无 |
+| `SKILL`（仅 skill） | 场景默认工具集 + skill 语义召回 Top-K + skill overlays + 物料 | 无 |
+| `AGENT`（仅 agent） | 场景默认工具集（spawn_subagent 告知有哪些 agent 可调） | 每个被 spawn 的子 Agent 加载 agent_definition.tools_json |
+| `AGENT` + `SKILL`（共存） | 场景默认工具集 + skill 语义召回 Top-K + skill overlays + 物料 + spawn_subagent（Agent Catalog 注入） | 同上 |
+| `WORKFLOW` | 无（不进 ReactExecutor） | workflow 节点定义的工具（PlanJson.params.tool） |
+
+### 10.3 L1：场景默认工具集（所有 ReactExecutor 路径共用）
 
 ```
 resolveSceneTools(scene, tenantId)
   → ToolManagerClient.fetchSceneDefault(scene, tenantId)
-  → GET /api/tools/sets/{scene}-default/tool-ids?tenantId={tenantId}
-  → ToolSetMemberService.toolIds(scene, tenantId)
-       → 直接查 tool_set WHERE set_type='tenant_chat_default' AND tenant_id='{id}'
-         若不存在 → 自动创建 tenant-{id}-chat-default（空成员）
-  → 与 ToolCatalogService.enabledIds(tenantId) 求交（仅保留已启用的工具）
+  → tool_set WHERE set_type='tenant_{chat|task}_default' AND tenant_id='{id}'
+  → 与 ToolCatalogService.enabledIds(tenantId) 求交
+
++ 硬编码内置工具（始终注入，不受 tool_set 控制）：
+  - search_knowledge        （RAG 检索，kbId 由会话上下文动态注入）
+  - sandbox__read / write / edit / glob / grep / exec
+  - spawn_subagent          （仅 MAIN，agent.execution.react.subagent.enabled=true）
 ```
 
-**API 变更**：
+**租户隔离**：每个租户的 `chat-default` 和 `task-default` 完全独立，首次访问自动创建空集。
 
-| 旧 API | 新 API |
-|--------|--------|
-| `/admin/tools/sets/react-default/members` | `/admin/tools/sets/chat-default/members` |
-| `/admin/tools/sets/react-default/picker` | `/admin/tools/sets/chat-default/picker` |
-| `/admin/tools/sets/plan-workflow/members` | `/admin/tools/sets/task-default/members` |
-| `/admin/tools/sets/plan-workflow/members/{toolId}` (PATCH critical) | **删除**（critical 标记机制移除） |
+### 10.4 L2：Skill 语义召回工具
 
-**DB 种子变更**：
+当 `RoutingResult.skillIds` 非空时，ReactExecutor 为每个 skill 加载两部分内容：
 
-```sql
--- 删除以下旧种子（不再需要，租户首次访问自动创建）
--- DELETE: INSERT INTO tool_set (id, set_type, tenant_id, display_name) VALUES
---   ('global-react-default', 'global_react_default', NULL, ...),
---   ('global-plan-workflow', 'global_plan_workflow', NULL, ...);
--- 不再预插入任何 tool_set 行
-```
-
-**租户隔离**：
-- 所有工具集均为租户级（`tenant_id` 不为 NULL），无全局工具集
-- 每个租户的 `chat-default` 和 `task-default` 完全独立
-- 首次访问时自动创建空集，运营通过 `/admin/tools/sets/{scene}-default/members` 配置
-
-### 9.3 组件处置
-
-| 组件 | 操作 | 说明 |
-|------|------|------|
-| `ToolSetKind` 枚举 | **删除** | `REACT_DEFAULT` / `PLAN_WORKFLOW` 两个值均被 scene 替代 |
-| `ToolManagerClient.fetchReactDefault()` | **重命名** | → `fetchSceneDefault("chat")` |
-| `ToolManagerClient.fetchPlanWorkflow()` | **删除** | Planner 工具池改走 `chat-default` |
-| `ToolManagerClient.fetchPlanWorkflowCritical()` | **删除** | critical 机制一并移除 |
-| `ToolSetResolver.resolveReactTools()` | **重命名** | → `resolveSceneTools(scene, tenantId)` |
-| `ToolSetResolver.resolvePlanWorkflowTools()` | **删除** | Planner 改走 `resolveSceneTools("chat", tenantId)` |
-| `ToolSetResolver.resolvePlanWorkflowCriticalTools()` | **删除** | — |
-| `ToolSetMemberService.patchCritical()` | **删除** | critical 标记机制移除 |
-| `NodeRetryPolicyResolver` | **修改** | 删除 `criticalTools` 依赖，Planner 节点统一走通用重试策略 |
-| `PlanCatalogRenderer.renderTools()` | **修改** | `resolvePlanWorkflowTools` → `resolveSceneTools("chat", tenantId)` |
-| `DynamicToolkitFactory` | **修改** | `resolveReactTools` 调用 → `resolveSceneTools(scene, tenantId)` |
-| `tool_set` 表种子数据 | **删除** | `16-sunshine-tool-manager.sql` 中两条 INSERT 移除 |
-| `/tools` 管理页 — 工具集 Tab | **修改** | 展示 `chat-default` + `task-default` 两种类 |
-
-### 9.4 安全分层（不变）
+**a) 工具注入（语义召回）**
 
 ```
-兜底 REACT / GUIDED（resourceId=null）
-  → 场景默认工具集（chat-default / task-default）
-  + 硬编码内置工具：RAG + sandbox__* ×6 + spawn_subagent（可选）
-  → 全部受 HITL/Guard 约束
-
-指定 Agent（resourceId=agentId）
-  → 场景默认工具集           + agent_definition.tools_json
-  → 内置工具                  + Agent 专属业务工具（SDK/MCP）
-
-指定 Skill（resourceId=skillId）
-  → 场景默认工具集           + skill_definition.tools_json（或 embedding 召回）
-  → 内置工具                  + Skill 绑定工具
-
-指定 Workflow（resourceId=workflowId）
-  → workflow 定义的工具集（PlanJson 节点 params.tool）
+resolveSkillTools(skillId, userQuery, tenantId)
+  → SkillEmbeddingIndex.searchTools(userQuery, topK=5)
+  → 根据 userQuery 从该 skill 的工具池中语义召回 Top-5 工具
+  → 注入到主 Agent 的 toolkit 中
 ```
 
-### 9.5 安全模型（不变）
+标准 skill（无 `tools_json` 显式声明工具白名单）：从全量已启用的工具（租户级）中按用户 query 语义召回 Top-K。有 `tools_json` 声明的 skill：在声明的工具子集中做语义召回。
+
+**b) Prompt 注入**
+
+```java
+// ReactExecutor 内部：
+for (String skillId : routingResult.skillIds()) {
+    String overlay = skillCatalogService.getOverlay(skillId);
+    if (overlay != null) systemPrompt += "\n" + overlay;
+    sandboxSessionLifecycle.mountSkill(sessionId, skillId);  // 挂载 /skills/{id}/ 物料
+}
+```
+
+### 10.5 L3：Agent Catalog 注入（不注入工具给主 Agent）
+
+当 `RoutingResult.agentIds` 非空时，**仅注入 Agent Catalog 摘要到 system prompt**，不把子 Agent 的工具加载到主 Agent 的 toolkit 中。主 Agent 通过 `spawn_subagent(agent_id=...)` 委派后，`SpawnSubagentTool` 按 `agent_id` 加载对应 agent 的 `agent_definition.tools_json`。
+
+```java
+// ReactExecutor 注入 Agent Catalog：
+if (routingResult.hasAgents()) {
+    systemPrompt += renderAgentCatalog(routingResult.agentIds());
+    // 格式：
+    // ## 可调用的专业智能体
+    // | agent_id | 名称 | 擅长领域 |
+    // |----------|------|----------|
+    // | compliance-checker | 合规审查 | 制度检查、法规比对 |
+    // 多个独立子任务可在同一轮并行 spawn
+}
+
+// SpawnSubagentTool 内部（子 Agent 创建时）：
+AgentCatalogEntry entry = agentCatalogService.find(agentId);
+toolIds = parseToolIds(entry.toolsJson());        // ← 该 agent 的专属工具
+resolvedSystemOverlay = entry.systemPrompt();      // ← 该 agent 的 system prompt
+skillIds = entry.skillIds();                        // ← 该 agent 绑定的 skill
+```
+
+**为什么不把子 Agent 的工具也注入给主 Agent？**
+1. 主 Agent 不应该直接调用子 Agent 的领域工具——它应该委派给子 Agent
+2. 子 Agent 的工具和主 Agent 的工具混在一起会让 LLM 困惑
+3. 隔离上下文是 spawn_subagent 设计的核心目标
+
+### 10.6 完整加载链（ReactExecutor.execute）
+
+```java
+// ReactExecutor.execute() 完整流程：
+
+// 1. 基础工具（所有路径共用）
+List<AgentTool> tools = new ArrayList<>();
+tools.addAll(builtinTools());                                    // RAG + sandbox x6
+tools.addAll(resolveSceneTools(scene, tenantId));                // chat-default / task-default
+if (isMainAgent) tools.add(spawnSubagentTool);                   // 仅 MAIN
+
+// 2. Skill 工具注入（含 agent+skill 共存场景）
+if (routingResult.hasSkills()) {
+    for (String skillId : routingResult.skillIds()) {
+        // 2a. 语义召回 Top-K 工具（按用户 query 从该 skill 的工具池召回）
+        tools.addAll(resolveSkillSemanticTools(skillId, userQuery, tenantId));
+        // 2b. 挂载 /skills/{id}/ 物料
+        sandboxSessionLifecycle.mountSkill(sessionId, skillId);
+    }
+}
+
+// 3. 系统提示拼装
+String systemPrompt = baseReactSystem(scene);
+if (routingResult.hasSkills()) {
+    for (String skillId : routingResult.skillIds()) {
+        systemPrompt += skillCatalogService.getOverlay(skillId); // skill overlay
+    }
+}
+if (routingResult.hasAgents()) {
+    systemPrompt += renderAgentCatalog(routingResult.agentIds()); // Agent Catalog 表格
+}
+systemPrompt += modeOverlayReact();  // mode-overlay.react（含 orchestration 指导）
+
+// 4. 构造 AgentRunRequest
+AgentRunRequest main = AgentRunRequest.main(
+    assembledCtx, userQuery, systemPrompt, tools, ...);
+
+// 5. 主 Agent 运行中调用 spawn_subagent(agent_id="xxx") 时
+//    → SpawnSubagentTool 加载 agent_definition.tools_json + systemPrompt + skills
+//    → AgentRunRequest.sub(...)
+```
+
+### 10.7 安全模型（不变）
 
 | 安全层 | 说明 |
 |--------|------|
-| **HITL** | 写工具确认由用户 `writeHitlMode` 控制（always/smart/never） |
-| **SandboxExecGuard** | 沙箱 exec 命令白名单，危险命令硬拒绝 |
+| **HITL** | 写工具确认由用户 `writeHitlMode` 控制 |
+| **SandboxExecGuard** | 沙箱 exec 危险命令硬拒绝 |
 | **PathJail** | 沙箱路径隔离 |
-| **租户隔离** | 每个租户独立场景默认工具集，A 租户的工具不泄露到 B 租户 |
-| **Catalog 启用池** | 工具集结果与 `enabledIds` 求交，已禁用的工具自动过滤 |
-
-### 9.6 结论
-
-- 场景默认工具集（`chat-default` / `task-default`）替代 `react-default` / `plan-workflow`，与路由层的 `scene` 设计对齐
-- 全租户级、无全局工具集，首次访问自动创建空集
-- Planner 工具池复用 `chat-default`（Planner 只在 chat 场景触发）
-- 安全不依赖空工具集假设，依赖 HITL + Guard + 租户隔离 + Catalog 门禁
+| **租户隔离** | 每租户独立默认工具集 + skill 召回池 |
+| **Catalog 启用池** | 工具集结果与 `enabledIds` 求交 |
 
 ---
 
-## 10. 组件处置清单
+## 11. 组件处置清单
 
-### 10.1 删除
+### 11.1 删除
 
 | 组件 | 原因 |
 |------|------|
 | `ExecutionMode` 枚举 | 被 `ResourceType` 替代 |
-| `ExecutionPreference` 枚举 | 显式绑定 + scene 约束替代 |
-| `ForcedExecutionRouter` | 不再需要用户手动选模式 |
+| `ExecutionPreference` 枚举 | 显式绑定 + scene 替代 |
+| `ForcedExecutionRouter` | 不再需要 |
 | `ExecutionPlanRouter` | 被 `ResourceRouter` 替代 |
 | `ExecutionPlan` | 被 `RoutingResult` 替代 |
 | `ExecutionDispatcher` | 被 `ResourceDispatcher` 替代 |
-| `PEER_COLLAB` 路由分支 | 被 spawn_subagent 中心化替代 |
-| `SkillDiscoveryService`（orchestrator） | L3 直接输出 skillId，不再需要二次校验 |
+| `PEER_COLLAB` 相关分支 | spawn_subagent 中心化替代 |
+| `SkillDiscoveryService` | L3 直接输出 |
+| `GUIDED` 相关逻辑 | 被深层语义兜底替代
 
-### 10.2 修改
+### 11.2 修改
 
 | 组件 | 改动 |
 |------|------|
+| `ReactExecutor` | **重大改动**：不加载 agent system prompt 做主 Agent；改为注入 Agent Catalog + 通用 ReAct 系统编排 |
 | `UnifiedRuleRoutingPolicy` | 输出改为 `RoutingResult`；规则增加 `resourceType` 字段 |
-| `LlmClassifierRoutingPolicy` | 入参改为候选资源列表（含 type）；输出改为 `RoutingResult` |
+| `LlmClassifierRoutingPolicy` | 输出支持多 agentIds/skillIds |
 | `IntentRouter` | 新增 `classifyWithCandidates` 方法 |
-| `DynamicToolkitFactory` | 根据 `RoutingResult`（AGENT/SKILL/REACT）加载工具；`resolveReactTools` → `resolveSceneTools(scene, tenantId)` |
-| `ToolSetResolver` | `resolveReactTools` → `resolveSceneTools(scene, tenantId)`；删除 `resolvePlanWorkflowTools` / `resolvePlanWorkflowCriticalTools` |
-| `ChatController` | 请求体增加 `scene` 字段；删除 `executionPreference` |
+| `DynamicToolkitFactory` | `resolveReactTools` → `resolveSceneTools(scene, tenantId)` |
+| `ToolSetResolver` | 同上 |
+| `ChatController` | 请求体增加 `scene`，删除 `executionPreference` |
 | `ExecutionStreamContext` | `executionPlan` → `routingResult` |
 | `ChatConversationEntity` | `executionMode` → `routingType` + `routingResourceId` |
-| `chat_message` 表 | `execution_mode` → `routing_type` + `routing_resource_id` |
-| `routing-golden-set.md` | 全量改写为资源路由 golden set |
 
-### 10.3 新建
+### 11.3 新建
 
 | 组件 | 说明 |
 |------|------|
-| `RoutingResult` + `ResourceType` | 核心路由输出 |
-| `RoutingContext`（新） | 路由上下文，含 `scene` + `attributes` |
-| `RoutingPolicyChain` | 策略链编排 |
-| `ExplicitBindingRoutingPolicy` | L0 显式绑定（合并 `#`/`$`/`@`） |
-| `RuleBasedRoutingPolicy` | L1 规则匹配（重构自 `UnifiedRuleRoutingPolicy`） |
+| `RoutingResult` + `ResourceType` | 核心路由输出（含 agentIds/skillIds 列表） |
+| `RoutingAccumulator` | 跨层累积器 + L3 跳过判断 |
+| `RoutingPolicyChain` | 累积 + 条件终止编排 |
+| `ExplicitBindingRoutingPolicy` | L0 显式绑定 |
+| `RuleBasedRoutingPolicy` | L1 规则匹配 |
 | `SemanticRoutingPolicy` | L2 三路语义召回 |
-| `WorkflowEmbeddingIndex` | workflow embedding 索引 |
-| `AgentEmbeddingIndex` | agent embedding 索引 |
-| `SkillEmbeddingIndex` | skill embedding 索引 |
+| `LlmClassifierRoutingPolicy` | L3 LLM 分类 |
 | `ResourceRouter` | 替代 `ExecutionPlanRouter` |
 | `ResourceDispatcher` | 替代 `ExecutionDispatcher` |
-
-### 10.4 保留（不改动）
-
-| 组件 | 说明 |
-|------|------|
-| `PlanWorkflowExecutor` | 保留代码，仅直接 API 调用（`__mode=plan-workflow`），不经过路由 |
-| `PlanWorkflowExecutor` 相关全套类 | `PlanValidator` / `PlanAnswerPromptAssembler` / `NodeRetryExecutor` 等均保留 |
-| `WorkflowExecutor` | 路由命中 WORKFLOW → 走此执行器 |
-| `ReactExecutor` | 路由命中 AGENT/SKILL/REACT → 走此执行器 |
+| embedding 索引 ×3 | `WorkflowEmbeddingIndex` / `AgentEmbeddingIndex` / `SkillEmbeddingIndex` |
 
 ---
 
-## 11. 工具加载策略（全路由类型）
-
-| 路由结果 | 工具加载策略 |
-|---------|-------------|
-| `WORKFLOW` | workflow 定义中的工具集（`PlanJson` 节点 `params.tool`） |
-| `AGENT` | 场景默认工具集（`chat-default` / `task-default`）+ `agent_definition.tools_json` + agent 绑定的 `skill.tools_json` |
-| `SKILL` | 场景默认工具集 + `skill_definition.tools_json` 显式声明 + 通用工具 embedding 召回（Top-K 注入） |
-| `REACT` | 场景默认工具集（初始为空，运营按需配置）+ embedding 召回 Top-K 工具 |
-| `GUIDED` | 不加载工具——前端展示候选列表，用户点选后重新路由 |
-
-**标准 skill（无 `tools_json`）**：场景默认工具集内置工具 + embedding 召回 Top-K 工具，不加载全量工具。
-
-（兜底 REACT 的详细工具配置与安全模型见 §9。）
-
----
-
-## 12. scene 字段贯穿全链路
-
-### 9.1 定义
-
-| scene | 含义 | 典型入口 |
-|-------|------|---------|
-| `chat` | 对话场景 | 主 Chat 页面 |
-| `task` | 编码任务场景 | 工作区（agent_workspace）创建的任务会话 |
-
-### 9.2 过滤规则
-
-| 资源类型 | scene=chat | scene=task |
-|----------|-----------|-----------|
-| workflow | ✅ 全部可用 | 仅 `scene in (task, both)` 的 workflow |
-| agent | ✅ 全部可用 | 仅 `scene in (task, both)` 的 agent |
-| skill | ✅ 全部可用 | 仅 `scene in (task, both)` 的 skill |
-| react | ✅ 兜底 | ✅ 兜底 |
-
-### 9.3 数据模型扩展
-
-| 表 | 新增字段 | 说明 |
-|----|---------|------|
-| `agent_definition` | `scene` VARCHAR(16) DEFAULT 'both' | chat / task / both |
-| `skill_definition`（或 `skill_versions`） | `scene` VARCHAR(16) DEFAULT 'both' | chat / task / both |
-| `workflow_definition` | `scene` VARCHAR(16) DEFAULT 'chat' | 主要 chat，少数 both |
-| `tool_catalog` | `scene` VARCHAR(16) DEFAULT 'both' | 工具集过滤 |
-| `routing-rule`（prompt-manager） | `scene` VARCHAR(16) DEFAULT 'both' | 规则过滤 |
-
----
-
-## 13. 前端适配
-
-### 10.1 删除执行模式选择器
-
-Chat 底栏 `ExecutionModeSelector` 删除。用户不再手动选模式，改为：
-- 显式绑定：输入 `#workflow-id` / `$agent-id` / `@skill-id`（补全提示保留）
-- 隐式路由：系统自动 L0→L1→L2→L3 决策
-
-### 10.2 新增用户可见信息
-
-- 路由结果提示：消息区顶部显示「已匹配到 xx 工作流」/「已分配 xx 智能体」/「已加载 xx 技能」（可关闭）
-- 路由失败时：「未匹配到特定资源，由通用 AI 助手处理」
-
-### 10.3 请求体变更
-
-```diff
-{
-  "message": "...",
-- "executionPreference": "AUTO",
-- "writeHitlMode": "smart",
-+ "scene": "chat",
-+ "writeHitlMode": "smart"
-}
-```
-
----
-
-## 14. 实施阶段
+## 12. 实施阶段
 
 ### 阶段 R-1：数据模型 + 核心路由
 
-- `RoutingResult` / `ResourceType` / `RoutingContext` 新建
-- `RoutingPolicyChain` + `ExplicitBindingRoutingPolicy` 新建
-- `RuleBasedRoutingPolicy` 重构（`UnifiedRuleRoutingPolicy` → 新输出）
-- `ResourceRouter` 替代 `ExecutionPlanRouter`
+- `RoutingResult` / `RoutingAccumulator` / `RoutingPolicyChain` 新建
+- L0/L1 路由逻辑（累积模式）
 - `ResourceDispatcher` 替代 `ExecutionDispatcher`
 - 删除 `ExecutionMode` / `ExecutionPreference` / `ForcedExecutionRouter`
-- **出口闸门**：编译绿 + 单测（L0/L1 路由输出正确）
+- **出口**：编译绿 + 单测（L0/L1 累积输出正确）
 
-### 阶段 R-2：三路语义召回
+### 阶段 R-2：L2 语义召回 + L3
 
-- `AgentEmbeddingIndex` / `SkillEmbeddingIndex` / `WorkflowEmbeddingIndex` 新建
-- `SemanticRoutingPolicy` 新建
-- `LlmClassifierRoutingPolicy` 改造（候选列表输入）
-- `IntentRouter.classifyWithCandidates` 新增
-- **出口闸门**：编译绿 + 单测（三路检索 + 分类型阈值 + L3 候选）
+- 三路 embedding 索引
+- `SemanticRoutingPolicy`（返回全量候选，不做 top-1 命中）
+- `LlmClassifierRoutingPolicy`（多 agentIds/skillIds 输出）
+- **出口**：编译绿 + 单测（分类型阈值 + L3 合并决策）
 
-### 阶段 R-3：scene 贯穿 + 工具加载
+### 阶段 R-3：ReactExecutor 改造 + scene
 
-- `agent_definition` / `skill_definition` / `workflow_definition` / `tool_catalog` / `routing-rule` 增加 `scene` 字段
-- `DynamicToolkitFactory` 按 `RoutingResult` 加载工具
-- `ToolSetResolver` 增加 `scene` 参数
-- embedding 索引按 `scene` 过滤
-- **出口闸门**：编译绿 + scene 过滤单测
+- ReactExecutor 不加载 agent system prompt → 注入 Agent Catalog
+- `DynamicToolkitFactory` 按 scene 加载
+- scene 贯穿全链路
+- **出口**：编译绿 + scene 过滤单测
 
 ### 阶段 R-4：DB 迁移 + 前端
 
-- `chat_message` 表 `execution_mode` → `routing_type` + `routing_resource_id`
-- `ChatConversationEntity` 对应字段变更
-- `ChatController` 请求体 `scene` 替代 `executionPreference`
-- 前端删除 `ExecutionModeSelector`，增加路由结果提示
+- `chat_message` / `chat_conversation` 字段迁移
+- 前端删除 `ExecutionModeSelector`，增加 GUIDED 交互
 - Golden set 重写
-- **出口闸门**：Live 验收（路由 golden set 全过）
+- **出口**：Live 验收
 
 ### 阶段 R-5：清理
 
-- 删除 `PEER_COLLAB` 相关路由分支（已在 multi-agent-unified-design 中完成）
-- 删除 `SkillDiscoveryService`
-- 清理 `ExecutionMode` / `ExecutionPreference` 引用残留
-- **出口闸门**：编译绿 + 全量回归
+- 删除 `PEER_COLLAB` 残留
+- 清理 `ExecutionMode` / `ExecutionPreference` 引用
 
 ---
 
-## 15. 验收标准
+## 13. 验收标准
 
-| 维度 | 验收点 | 方式 |
-|------|--------|------|
-| L0 | `#workflow-id` / `$agent-id` / `@skill-id` 直通 | 单测 + live |
-| L1 | Catalog 规则命中 workflow/agent/skill | 单测 + live |
-| L2 | 三路语义召回 > 阈值直接命中 | 单测 |
-| L2 | workflow 阈值 0.88 vs agent/skill 0.85 | 单测 |
-| L2 | embedding 不可用 → 降级到 L3 | 单测 |
-| L3 | LLM 分类器在候选列表中正确选择（高置信度） | 单测 + live |
-| L3 | `no_match` → 返回 empty，走 REACT 兜底（不打断用户） | 单测 |
-| L3 | confidence < 0.5 → 返回 empty，走 REACT 兜底（安全网） | 单测 |
-| L3 | 0.5 ≤ confidence < 0.8 → 执行选中资源 + 注入 `__candidates` 供 REACT 参考 | 单测 |
-| L3 | 候选列表为空 → fallback REACT | 单测 |
-| L3 | 闲聊/通用问答（"今天天气不错"）→ no_match → REACT 正常回答 | 单测 + live |
-| 静默兜底 | 四层全空 + L2 无候选 → `REACT` 直接执行，不打扰用户 | 单测 |
-| 引导兜底 | 四层全空 + L2 有候选（score ≥ 0.75）→ `GUIDED` 展示候选列表 | 单测 + live |
-| 引导兜底 | 单候选不出引导、低分过滤、连续 3 次忽略退化 | 单测 |
-| 引导兜底 | 用户点选候选 → 重新路由并执行 | live |
-| 工具配置 | 兜底 REACT 按租户独立加载默认工具集 + 内置工具（RAG+沙箱+spawn），全链路受 HITL/Guard/Catalog 门禁 | 单测 |
-| scene | chat/task 分别过滤资源 | 单测 |
-| 前端 | 无执行模式选择器；GUIDED 展示 inline 候选提示 | live |
-| 回归 | 8 标杆 workflow 仍可执行 | live |
-| 回归 | ReAct 仍可正常使用 | live |
-| 回归 | Plan-Workflow 直接 API 调用仍可用 | live |
+| 维度 | 验收点 |
+|------|--------|
+| Pre-Routing | HITL/Plan 确认/续跑 等待态复用，不进入路由链 |
+| L0 | `#workflow` → STOP（WORKFLOW 独占）；`$agent` + `@skill` → 共存收集 |
+| L0 | `$agent-A $agent-B` → agentIds=[A,B]，全平权子 Agent |
+| L1 | 规则命中 workflow → STOP |
+| L2 | workflow ≥ 0.88 → STOP；agent ≥ 0.85 → 累积；skill ≥ 0.85 → 累积 |
+| L3 快速分类 | L2 候选非空 → 传入候选清单，LLM 筛选/合并，~200-500ms |
+| L3 深层语义兜底 | L2 候选全空 → 全量 L1 上下文 + 完整 Agent/Skill/Workflow Catalog → LLM 推断 |
+| L3 深层语义兜底 | 指代词「那个/第一个/继续」→ 正确识别目标（结合对话历史） |
+| L3 深层语义兜底 | 无明确目标 → is_no_match=true → REACT 静默兜底 |
+| agent + skill 共存 | `RoutingResult(AGENT, agentIds=[...], skillIds=[...])`，同入 ReactExecutor |
+| ReactExecutor | AGENT 时不加载 agent system prompt → 注入 Agent Catalog |
+| 回归 | 8 标杆 workflow 仍可执行；ReAct 仍可用；Plan-Workflow 直接 API 仍可用 |
 
 ---
 
-## 16. 关键文件索引
+## 14. 关键文件索引
 
-| 文件 | 改动类型 | 说明 |
-|------|---------|------|
-| orchestrator/.../routing/RoutingResult.java | 新建 | 替代 ExecutionPlan |
-| orchestrator/.../routing/ResourceType.java | 新建 | 替代 ExecutionMode |
-| orchestrator/.../routing/ResourceRouter.java | 新建 | 替代 ExecutionPlanRouter |
-| orchestrator/.../routing/policy/RoutingContext.java | 重写 | 含 scene + attributes |
-| orchestrator/.../routing/policy/RoutingPolicyChain.java | 新建 | 策略链编排 |
-| orchestrator/.../routing/policy/ExplicitBindingRoutingPolicy.java | 新建 | L0 显式绑定 |
-| orchestrator/.../routing/policy/RuleBasedRoutingPolicy.java | 新建 | L1 规则匹配 |
-| orchestrator/.../routing/policy/SemanticRoutingPolicy.java | 新建 | L2 三路语义召回 |
-| orchestrator/.../routing/policy/LlmClassifierRoutingPolicy.java | 重写 | 候选列表模式 |
-| orchestrator/.../routing/embedding/WorkflowEmbeddingIndex.java | 新建 | workflow embedding |
-| orchestrator/.../routing/embedding/AgentEmbeddingIndex.java | 新建 | agent embedding |
-| orchestrator/.../routing/embedding/SkillEmbeddingIndex.java | 新建 | skill embedding |
-| orchestrator/.../execution/ResourceDispatcher.java | 新建 | 替代 ExecutionDispatcher |
-| orchestrator/.../execution/ExecutionStreamContext.java | 修改 | routingResult 替代 executionPlan |
-| orchestrator/.../controller/ChatController.java | 修改 | scene 替代 executionPreference |
-| orchestrator/.../routing/ExecutionPlanRouter.java | 删除 | 被 ResourceRouter 替代 |
-| orchestrator/.../routing/ForcedExecutionRouter.java | 删除 | 不再需要 |
-| orchestrator/.../routing/ExecutionMode.java | 删除 | 被 ResourceType 替代 |
-| orchestrator/.../routing/ExecutionPreference.java | 删除 | 不再需要 |
-| orchestrator/.../routing/ExecutionPlan.java | 删除 | 被 RoutingResult 替代 |
-| orchestrator/.../execution/ExecutionDispatcher.java | 删除 | 被 ResourceDispatcher 替代 |
-| orchestrator/.../skill/SkillDiscoveryService.java | 删除 | L3 直接输出 |
-| docker/mysql/init/11-sunshine-orchestrator.sql | 修改 | 字段迁移 |
-| docker/mysql/init/12-sunshine-skill-manager.sql | 修改 | scene 字段 |
-| docker/mysql/init/13-sunshine-workflow-manager.sql | 修改 | scene 字段 + 触发示例 |
-| sunshine-ui/.../chat/ChatView.vue | 修改 | 删除执行模式选择器 |
-| sunshine-ui/.../chat/ExecutionModeSelector.vue | 删除 | 不再需要 |
-| docs/routing/routing-golden-set.md | 重写 | 资源路由 golden set |
+| 文件 | 改动 | 说明 |
+|------|------|------|
+| `orchestrator/.../routing/RoutingResult.java` | 新建 | 替代 ExecutionPlan，含 agentIds/skillIds |
+| `orchestrator/.../routing/policy/RoutingAccumulator.java` | 新建 | 跨层累积器 |
+| `orchestrator/.../routing/policy/RoutingPolicyChain.java` | 新建 | 累积 + 条件终止 |
+| `orchestrator/.../execution/ResourceDispatcher.java` | 新建 | AGENT/SKILL/REACT → ReactExecutor |
+| `orchestrator/.../execution/ReactExecutor.java` | **重大修改** | 注入 Agent Catalog 而非加载 agent system prompt |
+| `orchestrator/.../routing/ExecutionMode.java` | 删除 | |
+| `orchestrator/.../routing/ExecutionPreference.java` | 删除 | |
+| `orchestrator/.../routing/ForcedExecutionRouter.java` | 删除 | |
+| `sunshine-ui/.../chat/ExecutionModeSelector.vue` | 删除 | |
 
 ---
 
-## 17. 与相关 spec 的关系
+## 15. 与相关 spec 的关系
 
 | spec | 关系 |
 |------|------|
-| [multi-agent-unified-design](./2026-07-29-multi-agent-unified-design.md) | 前置：agent_definition 扩展 + scene 字段 + spawn_subagent 中心化 |
-| [workflow-structured-io](./2026-07-24-workflow-structured-io-design.md) | 前置：AgentNodeHandler I/O 契约稳定 |
-| [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) | 并行：task 场景的 `scene` 过滤依赖本设计 |
-| [prompt-ops-routing-catalog](./2026-07-20-prompt-ops-routing-catalog-design.md) | 修改：routing-rule 增加 `resourceType` + `scene` 字段 |
-| [remove-simple-llm-mode](./2026-07-17-remove-simple-llm-mode-design.md) | 已完成：simple-llm 已删除，本设计是最终形态 |
+| [multi-agent-unified-design](./2026-07-29-multi-agent-unified-design.md) | 前置：agent_definition 扩展 + spawn_subagent 中心化 |
+| [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) | 并行：task 场景的 `scene` 过滤 |
+| [prompt-ops-routing-catalog](./2026-07-20-prompt-ops-routing-catalog-design.md) | 修改：routing-rule 增加 `resourceType` + `scene` |
+| [2026-07-07-expert-consultation-design.md] | **废止**：PEER_COLLAB 模式被 spawn_subagent 中心化替代；多 Agent 协作统一到「通用 ReAct 主 Agent + spawn 子 Agent」模型 |
 
 ---
 
-## 18. 风险与对策
+## 16. 风险与对策
 
 | 风险 | 对策 |
 |------|------|
-| embedding 索引冷启动慢 | 异步预热 + 启动时只加载当前活跃租户的索引 |
-| workflow 语义召回误触发 | 0.88 高阈值 + L1 规则优先 + Grafana 按 resourceType 统计误召回率 |
-| L3 候选过多稀释分类器注意力 | Top-3 per type 上限（共 9 个候选） |
-| 前端用户习惯变更 | 保留 `#`/`$`/`@` 补全提示，GUIDED 候选提示 inline 不阻塞对话流 |
-| 存量 `execution_mode` 字段兼容 | 迁移脚本一次性转换，不保留旧字段 |
-| 引导提示过于频繁，干扰用户 | 单候选不出引导、候选 score < 0.75 过滤、连续 3 次忽略后退化 |
-| 引导提示中的候选不够准确 | 仅展示 Top-3 候选，低分（< 0.75）不展示，避免误导 |
+| Agent Catalog 描述太简单，ReAct spawn 不当 | 运维优化 Agent Catalog 的 `description` + `擅长领域` |
+| 单一 agent 场景下多一次 spawn 降效 | 通用 ReAct 可判断「简单，我自己答」，不强制 spawn |
+| 用户写 `$agent-A` 期望它做主，结果成了子 | 前端展示「已识别专业智能体，交 AI 编排调用」 |
+| **深层语义兜底耗时偏高**（500-800ms） | 仅 L2 空时触发（低频）；用全量上下文换准确率是合理权衡 |
+| **深层语义兜底模型幻觉**（指代词判错目标） | 输出 confidence + 三段式决策控制采纳；错判→静默 REACT 兜底 |
+| embedding 索引冷启动慢 | 异步预热 + 活跃租户优先 |
+| workflow 语义召回误触发 | 0.88 高阈值 + L1 规则优先 |
+| L3 候选过多稀释分类器 | Top-3 per type 上限（共 9 个） |

@@ -5,7 +5,7 @@ public enum ExecutionPreference {
     AUTO,
     REACT,
     WORKFLOW,
-    PLAN_WORKFLOW,
+    PLAN_WORKFLOW;
 
     public static ExecutionPreference from(String raw) {
         if (raw == null || raw.isBlank() || "auto".equalsIgnoreCase(raw.strip())) {

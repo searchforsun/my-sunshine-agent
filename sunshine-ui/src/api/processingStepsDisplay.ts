@@ -456,9 +456,6 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
   if (step.phase === 'tasks' && (step.metadata?.tasks?.length ?? 0) > 0) {
     return false
   }
-  if (step.phase === 'peer-collab' || step.id === 'peer-collab') {
-    return false
-  }
   if (step.phase === 'subagent' || step.id.startsWith('subagent-')) {
     return false
   }

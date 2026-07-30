@@ -199,10 +199,6 @@ public final class StepEventBridge {
         return registry.hitlAssistantMessageId(bridgeId);
     }
 
-    public static ToolAuditContext toolAuditContext(String messageId) {
-        return registry.toolAuditContext(messageId);
-    }
-
     public static String ragDetail(String messageId) {
         return registry.ragDetail(messageId);
     }

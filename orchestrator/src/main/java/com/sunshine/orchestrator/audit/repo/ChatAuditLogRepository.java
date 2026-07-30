@@ -9,6 +9,8 @@ public interface ChatAuditLogRepository extends JpaRepository<ChatAuditLogEntity
 
     List<ChatAuditLogEntity> findTop20ByUserIdOrderByCreatedAtDesc(String userId);
 
+    List<ChatAuditLogEntity> findTop20ByOrderByCreatedAtDesc();
+
     List<ChatAuditLogEntity> findByMessageIdAndEventTypeOrderByCreatedAtDesc(
             String messageId, String eventType);
 

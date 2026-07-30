@@ -5,7 +5,6 @@ export type ExecutionPreference =
   | 'react'
   | 'workflow'
   | 'plan-workflow'
-  | 'peer-collab'
 
 export interface ExecutionModeOption {
   value: ExecutionPreference
@@ -54,15 +53,6 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     allowsAgentMention: false,
     allowsWorkflowMention: false,
   },
-  {
-    value: 'peer-collab',
-    label: '多专家协作',
-    shortLabel: '协作',
-    description: '多位智能体对等讨论后引擎汇总作答',
-    allowsSkillMention: false,
-    allowsAgentMention: true,
-    allowsWorkflowMention: false,
-  },
 ]
 
 export function findExecutionModeOption(value: ExecutionPreference): ExecutionModeOption {
@@ -88,5 +78,4 @@ export function isExecutionPreference(raw: unknown): raw is ExecutionPreference 
     || raw === 'react'
     || raw === 'workflow'
     || raw === 'plan-workflow'
-    || raw === 'peer-collab'
 }

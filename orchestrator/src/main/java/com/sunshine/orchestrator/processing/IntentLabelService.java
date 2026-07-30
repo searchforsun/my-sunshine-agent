@@ -42,7 +42,6 @@ public class IntentLabelService {
         return switch (plan.mode()) {
             case REACT -> modeDetail(modeConfig(ExecutionMode.REACT), "自主智能体");
             case PLAN_WORKFLOW -> modeDetail(modeConfig(ExecutionMode.PLAN_WORKFLOW), "动态规划");
-            case PEER_COLLAB -> modeDetail(modeConfig(ExecutionMode.PEER_COLLAB), "多专家协作");
             case WORKFLOW -> workflowNodeLabelService.workflowDisplayName(plan.workflowId());
         };
     }
@@ -83,9 +82,6 @@ public class IntentLabelService {
                     TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
             case PLAN_WORKFLOW -> TimelineLabelTemplates.applyTemplate(
                     modeAfter(modeConfig(ExecutionMode.PLAN_WORKFLOW), "{query}将动态规划多步执行"),
-                    TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
-            case PEER_COLLAB -> TimelineLabelTemplates.applyTemplate(
-                    modeAfter(modeConfig(ExecutionMode.PEER_COLLAB), "{query}将由多专家协作交叉验证"),
                     TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
             case WORKFLOW -> {
                 WorkflowManagerClient.WorkflowCatalogEntryDto entry = workflowCatalog.findEntry(plan.workflowId());
@@ -169,7 +165,6 @@ public class IntentLabelService {
             case REACT -> "{query}将按您指定的「自主推理」模式处理";
             case WORKFLOW -> "{query}将按您指定的「工作流」模式处理";
             case PLAN_WORKFLOW -> "{query}将按您指定的「动态规划」模式处理";
-            case PEER_COLLAB -> "{query}将按您指定的「多专家协作」模式处理";
         };
     }
 

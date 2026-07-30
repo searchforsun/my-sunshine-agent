@@ -269,7 +269,7 @@ public class ChatStreamExecutor {
             return true;
         }
         ExecutionMode mode = executionPlanParser.parseStoredIntent(intent).mode();
-        return mode == ExecutionMode.REACT || mode == ExecutionMode.PEER_COLLAB;
+        return mode == ExecutionMode.REACT;
     }
 
     private static ExecutionStreamContext toExecutionContext(ChatStreamContext ctx, ExecutionPlan plan) {

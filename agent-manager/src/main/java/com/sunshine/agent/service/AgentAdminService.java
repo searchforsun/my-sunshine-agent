@@ -1,5 +1,6 @@
 package com.sunshine.agent.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.agent.dto.AgentCardPreFill;
@@ -59,7 +60,8 @@ public class AgentAdminService {
         if (!StringUtils.hasText(request.id()) || !StringUtils.hasText(request.displayName())) {
             throw new BizException(AgentErrorCode.ID_DISPLAY_NAME_REQUIRED);
         }
-        if (!StringUtils.hasText(request.systemPrompt())) {
+        boolean isExternal = "EXTERNAL".equalsIgnoreCase(request.source());
+        if (!isExternal && !StringUtils.hasText(request.systemPrompt())) {
             throw new BizException(AgentErrorCode.SYSTEM_PROMPT_REQUIRED);
         }
         String id = request.id().strip();
@@ -71,17 +73,25 @@ public class AgentAdminService {
         def.setId(id);
         def.setDisplayName(request.displayName().strip());
         def.setDescription(request.description() != null ? request.description().strip() : "");
-        def.setSystemPrompt(request.systemPrompt().strip());
+        def.setSystemPrompt(request.systemPrompt() != null ? request.systemPrompt().strip() : "");
         def.setEnabled(true);
         def.setTagsJson("[]");
         def.setToolsJson(serializeToolIds(request.toolIds()));
         def.setTenantId("default");
-        def.setKbScopeJson("[]");
-        def.setPermissionsJson("{}");
-        def.setModelConfigJson("{}");
-        def.setMaxIters(2);
-        def.setMaxHandoffs(5);
-        def.setSource("INTERNAL");
+        def.setKbScopeJson(serializeKbScope(request.kbScope()));
+        def.setDataScopeJson(trimToEmpty(request.dataScopeJson(), "{}"));
+        def.setPermissionsJson(trimToEmpty(request.permissionsJson(), "{}"));
+        def.setModelConfigJson(trimToEmpty(request.modelConfigJson(), "{}"));
+        def.setMaxIters(request.maxIters() != null && request.maxIters() > 0 ? request.maxIters() : 2);
+        def.setMaxHandoffs(request.maxHandoffs() != null && request.maxHandoffs() > 0 ? request.maxHandoffs() : 5);
+        if (StringUtils.hasText(request.source())) {
+            def.setSource(request.source().strip());
+        } else {
+            def.setSource("INTERNAL");
+        }
+        def.setAgentCardUrl(request.agentCardUrl() != null ? request.agentCardUrl().strip() : null);
+        def.setAuthConfigJson(request.authConfigJson() != null ? request.authConfigJson().strip() : null);
+        def.setEndpointOverride(request.endpointOverride() != null ? request.endpointOverride().strip() : null);
         def.setCreatedAt(now);
         def.setUpdatedAt(now);
         definitionRepository.save(def);
@@ -95,14 +105,45 @@ public class AgentAdminService {
         if (!StringUtils.hasText(request.displayName())) {
             throw new BizException(AgentErrorCode.DISPLAY_NAME_REQUIRED);
         }
-        if (!StringUtils.hasText(request.systemPrompt())) {
+        AgentDefinitionEntity def = requireDefinition(agentId);
+        boolean isExternal = "EXTERNAL".equalsIgnoreCase(def.getSource());
+        if (!isExternal && !StringUtils.hasText(request.systemPrompt())) {
             throw new BizException(AgentErrorCode.SYSTEM_PROMPT_REQUIRED);
         }
-        AgentDefinitionEntity def = requireDefinition(agentId);
         def.setDisplayName(request.displayName().strip());
         def.setDescription(request.description() != null ? request.description().strip() : "");
-        def.setSystemPrompt(request.systemPrompt().strip());
+        def.setSystemPrompt(request.systemPrompt() != null ? request.systemPrompt().strip() : "");
         def.setToolsJson(serializeToolIds(request.toolIds()));
+        if (request.kbScope() != null) {
+            def.setKbScopeJson(serializeKbScope(request.kbScope()));
+        }
+        if (StringUtils.hasText(request.dataScopeJson())) {
+            def.setDataScopeJson(request.dataScopeJson().strip());
+        }
+        if (StringUtils.hasText(request.permissionsJson())) {
+            def.setPermissionsJson(request.permissionsJson().strip());
+        }
+        if (StringUtils.hasText(request.modelConfigJson())) {
+            def.setModelConfigJson(request.modelConfigJson().strip());
+        }
+        if (request.maxIters() != null && request.maxIters() > 0) {
+            def.setMaxIters(request.maxIters());
+        }
+        if (request.maxHandoffs() != null && request.maxHandoffs() > 0) {
+            def.setMaxHandoffs(request.maxHandoffs());
+        }
+        if (StringUtils.hasText(request.source())) {
+            def.setSource(request.source().strip());
+        }
+        if (request.agentCardUrl() != null) {
+            def.setAgentCardUrl(request.agentCardUrl().strip());
+        }
+        if (request.authConfigJson() != null) {
+            def.setAuthConfigJson(request.authConfigJson().strip());
+        }
+        if (request.endpointOverride() != null) {
+            def.setEndpointOverride(request.endpointOverride().strip());
+        }
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
         replaceSkillLinks(agentId, request.skillIds());
@@ -216,6 +257,24 @@ public class AgentAdminService {
         } catch (Exception e) {
             return "[]";
         }
+    }
+
+    private static String serializeKbScope(List<String> kbScope) {
+        if (kbScope == null || kbScope.isEmpty()) {
+            return "[]";
+        }
+        try {
+            return MAPPER.writeValueAsString(kbScope);
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private static String trimToEmpty(String value, String fallback) {
+        if (StringUtils.hasText(value)) {
+            return value.strip();
+        }
+        return fallback;
     }
 
     private void replaceSkillLinks(String agentId, List<String> skillIds) {

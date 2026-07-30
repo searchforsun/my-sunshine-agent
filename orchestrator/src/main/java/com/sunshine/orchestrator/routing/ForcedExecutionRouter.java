@@ -137,7 +137,6 @@ public class ForcedExecutionRouter {
                 case WORKFLOW -> !StringUtils.hasText(workflowId);
                 case REACT -> !StringUtils.hasText(params.get(PARAM_REACT_PROMPT));
                 case PLAN_WORKFLOW -> !sameModeRuleHit && !StringUtils.hasText(params.get(SkillBindingOutcome.PARAM_SKILL));
-                case PEER_COLLAB -> false;
             };
         }
 

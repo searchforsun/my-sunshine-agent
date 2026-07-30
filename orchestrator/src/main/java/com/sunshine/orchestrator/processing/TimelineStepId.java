@@ -17,7 +17,7 @@ public enum TimelineStepId {
     AGENT("agent"),
     TOOL("tool"),
     NODE("node"),
-    TASKS("tasks"),
+    TASKS("tasks");
 
     private final String id;
 

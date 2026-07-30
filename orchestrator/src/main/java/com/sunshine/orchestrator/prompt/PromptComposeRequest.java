@@ -91,10 +91,4 @@ public record PromptComposeRequest(
                 personalRules);
     }
 
-    }
-
-            String personalRules) {
-        return new PromptComposeRequest(
-                List.of(), null, false, null, personalRules);
-    }
 }

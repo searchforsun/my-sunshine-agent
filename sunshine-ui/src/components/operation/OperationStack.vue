@@ -34,7 +34,6 @@ import {
 } from '../../api/contentInterleave'
 import OperationCard from './OperationCard.vue'
 import TaskBoardPanel from './TaskBoardPanel.vue'
-import PeerCollabPanel from './PeerCollabPanel.vue'
 import SubagentCard from './SubagentCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
@@ -55,7 +54,7 @@ const props = withDefaults(defineProps<{
   embedHitl?: boolean
   /** 步骤行下方 HitlStepActions（ReAct 主 timeline / 抽屉 subSteps）；仅 Plan 抽屉纯 tool 单行等特殊场景传 false */
   inlineHitl?: boolean
-  /** assistant 消息 id — peer-collab 展开 transcript 审计 */
+  /** assistant 消息 id */
   messageId?: string
   pendingHitlConfirmation?: HitlConfirmationPayload | HitlConfirmationPayload[]
   pendingHitlConfirmations?: HitlConfirmationPayload[]
@@ -231,8 +230,6 @@ const displaySteps = computed(() => {
     return effectiveSteps.value.filter(s => {
       if (s.phase === 'node' || isPlanDagNodeStep(s)) return false
       if (s.phase === 'tasks') return false
-      if (s.phase === 'peer-collab') return false
-      if (s.phase === 'expert-convene') return false
       if (isSubagentStep(s)) return false
       if (isToolStepId(s.id)) return false
       if (s.id === 'think' || s.id.startsWith('think-')) return false
@@ -380,12 +377,6 @@ const orphanContent = computed(() => {
           :step="step"
           :live="live && lifecycleOf(step) === 'running'"
         />
-        <PeerCollabPanel
-          v-else-if="step.phase === 'peer-collab'"
-          :step="step"
-          :message-id="messageId"
-          :live="live && lifecycleOf(step) === 'running'"
-        />
         <SubagentCard
           v-else-if="isSubagentStep(step)"
           :step="step"
@@ -461,12 +452,6 @@ const orphanContent = computed(() => {
         :execution-plan-id="executionPlanId"
         :user-query="userQuery"
         :pending-hitl-confirmation="pendingList"
-      />
-      <PeerCollabPanel
-        v-else-if="collapsedPreviewStep.phase === 'peer-collab'"
-        :step="collapsedPreviewStep"
-        :message-id="messageId"
-        :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
       />
       <SubagentCard
         v-else-if="isSubagentStep(collapsedPreviewStep)"

@@ -14,13 +14,18 @@ import {
   NSpace,
   NSwitch,
   NSpin,
+  NTabPane,
+  NTabs,
   NTag,
   useMessage,
 } from 'naive-ui'
 import {
   AddOutline,
+  CloudDownloadOutline,
+  CloudOutline,
   CreateOutline,
   EllipsisHorizontal,
+  HardwareChipOutline,
   RefreshOutline,
   SearchOutline,
   TrashOutline,
@@ -29,19 +34,24 @@ import SidebarToggle from '../components/SidebarToggle.vue'
 import {
   createAgent,
   deleteAgent,
+  fetchAgentCard,
   listAgents,
   setAgentEnabled,
   updateAgent,
+  type AgentCardPreFill,
   type AgentEntry,
 } from '../api/agents'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
 import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
+import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
+import { useTenantPreference } from '../composables/useTenantPreference'
 import { useAgentsRouteState } from '../composables/useAgentsRouteState'
 
 const PLACEHOLDER_PROMPT = '待补充系统提示词'
 const AGENT_ID_PATTERN = /^[\w\u4e00-\u9fff-]+$/
 
 const message = useMessage()
+const { tenantId } = useTenantPreference()
 const { readId, syncId } = useAgentsRouteState()
 const loading = ref(false)
 const saving = ref(false)
@@ -51,11 +61,13 @@ const isEditing = ref(false)
 const agents = ref<AgentEntry[]>([])
 const skillOptions = ref<SkillCatalogIndexEntry[]>([])
 const toolOptions = ref<ToolCatalogEntry[]>([])
+const kbOptions = ref<KnowledgeBase[]>([])
 const selectedId = ref<string | null>(readId())
-const showCreateModal = ref(false)
-const showDeleteConfirm = ref(false)
+const activeTab = ref<'internal' | 'external'>('internal')
 
-const createDraft = ref({ id: '', displayName: '' })
+// ---- 内部智能体 ----
+const showInternalCreateModal = ref(false)
+const internalCreateDraft = ref({ id: '', displayName: '' })
 
 const editForm = ref({
   displayName: '',
@@ -63,7 +75,7 @@ const editForm = ref({
   systemPrompt: '',
   skillIds: [] as string[],
   toolIds: [] as string[],
-  kbScopeText: '',
+  kbScope: '' as string,
   dataScope: '',
   permissionsHitl: 'inherit' as string,
   permissionsSandboxWrite: 'inherit' as string,
@@ -72,21 +84,50 @@ const editForm = ref({
   maxHandoffs: 0 as number,
 })
 
-const selectedAgent = computed(() =>
-  agents.value.find(e => e.id === selectedId.value) ?? null,
+// ---- 外部智能体 ----
+const showExternalCreateModal = ref(false)
+const externalCreateDraft = ref({
+  id: '',
+  displayName: '',
+  agentCardUrl: '',
+})
+const cardPreFill = ref<AgentCardPreFill | null>(null)
+const fetchingCard = ref(false)
+
+const externalEdit = ref({
+  displayName: '',
+  description: '',
+  agentCardUrl: '',
+  authConfigType: 'bearer' as string,
+  authConfigToken: '',
+  endpointOverride: '',
+})
+
+// ---- 计算属性 ----
+const internalAgents = computed(() => agents.value.filter(a => a.source !== 'EXTERNAL'))
+const externalAgents = computed(() => agents.value.filter(a => a.source === 'EXTERNAL'))
+const filteredAgents = computed(() =>
+  activeTab.value === 'internal' ? internalAgents.value : externalAgents.value,
 )
 
 const agentSearch = ref('')
-const filteredAgents = computed(() => {
+const searchedAgents = computed(() => {
   const q = agentSearch.value.trim().toLowerCase()
-  if (!q) return agents.value
-  return agents.value.filter(
+  const list = filteredAgents.value
+  if (!q) return list
+  return list.filter(
     e =>
       e.id.toLowerCase().includes(q)
       || (e.displayName ?? '').toLowerCase().includes(q)
       || (e.description ?? '').toLowerCase().includes(q),
   )
 })
+
+const selectedAgent = computed(() =>
+  agents.value.find(e => e.id === selectedId.value) ?? null,
+)
+
+const isExternalSelected = computed(() => selectedAgent.value?.source === 'EXTERNAL')
 
 const skillSelectOptions = computed(() =>
   skillOptions.value.map(s => ({ label: `${s.displayName} (${s.id})`, value: s.id })),
@@ -95,58 +136,151 @@ const skillSelectOptions = computed(() =>
 const toolSelectOptions = computed(() =>
   toolOptions.value
     .filter(t => t.enabled)
-    .map(t => ({
-      label: `${t.displayName || t.id} (${t.id})`,
-      value: t.id,
-    })),
+    .map(t => ({ label: `${t.displayName || t.id} (${t.id})`, value: t.id })),
+)
+
+const kbSelectOptions = computed(() =>
+  kbOptions.value.map(k => ({ label: `${k.displayName} (${k.kbId})`, value: k.kbId })),
 )
 
 const enabledToolIds = computed(() =>
   toolOptions.value.filter(t => t.enabled).map(t => t.id),
 )
 
+// ---- 工具函数 ----
 function parseAgentToolIds(toolsJson: string | undefined | null): string[] {
   if (!toolsJson?.trim()) return []
   try {
     const parsed = JSON.parse(toolsJson) as unknown
     if (!Array.isArray(parsed)) return []
     const ids = parsed.map(x => String(x).trim()).filter(Boolean)
-    if (ids.length === 1 && ids[0] === '*') {
-      return [...enabledToolIds.value]
-    }
+    if (ids.length === 1 && ids[0] === '*') return [...enabledToolIds.value]
     return ids.filter(id => id !== '*')
   } catch {
     return []
   }
 }
 
-const createIdTrimmed = computed(() => createDraft.value.id.trim())
-const createNameTrimmed = computed(() => createDraft.value.displayName.trim())
+function parsePermissionsString(json: string | undefined | null, key: string, def: string): string {
+  if (!json?.trim()) return def
+  try {
+    const obj = JSON.parse(json)
+    return obj[key] ?? def
+  } catch {
+    return def
+  }
+}
 
-const createIdDuplicate = computed(() =>
-  createIdTrimmed.value.length > 0
-  && agents.value.some(e => e.id === createIdTrimmed.value),
+function makePermissionsJson(source: Record<string, string>): string {
+  const obj: Record<string, string> = {}
+  if (source.permissionsHitl !== 'inherit') obj.hitl = source.permissionsHitl
+  if (source.permissionsSandboxWrite !== 'inherit') obj.sandboxWriteMode = source.permissionsSandboxWrite
+  if (Object.keys(obj).length === 0) return ''
+  return JSON.stringify(obj)
+}
+
+function parseAuthConfig(agent: AgentEntry): { type: string; token: string } {
+  if (!agent.authConfigJson?.trim()) return { type: 'bearer', token: '' }
+  try {
+    const obj = JSON.parse(agent.authConfigJson)
+    return {
+      type: obj.type ?? 'bearer',
+      token: obj.token ?? obj.key ?? '',
+    }
+  } catch {
+    return { type: 'bearer', token: '' }
+  }
+}
+
+function makeAuthConfigJson(type: string, token: string): string {
+  if (!type || !token.trim()) return ''
+  if (type === 'api-key') return JSON.stringify({ type: 'api-key', key: token.trim() })
+  return JSON.stringify({ type: 'bearer', token: token.trim() })
+}
+
+// ---- 内部创建 ----
+const internalIdTrimmed = computed(() => internalCreateDraft.value.id.trim())
+const internalNameTrimmed = computed(() => internalCreateDraft.value.displayName.trim())
+const internalIdDuplicate = computed(() =>
+  internalIdTrimmed.value.length > 0 && agents.value.some(e => e.id === internalIdTrimmed.value),
+)
+const internalIdInvalid = computed(() =>
+  internalIdTrimmed.value.length > 0 && !AGENT_ID_PATTERN.test(internalIdTrimmed.value),
+)
+const canConfirmInternalCreate = computed(() =>
+  internalIdTrimmed.value.length > 0
+  && internalNameTrimmed.value.length > 0
+  && !internalIdDuplicate.value
+  && !internalIdInvalid.value,
 )
 
-const createIdInvalid = computed(() =>
-  createIdTrimmed.value.length > 0 && !AGENT_ID_PATTERN.test(createIdTrimmed.value),
+// ---- 外部创建 ----
+const externalIdTrimmed = computed(() => externalCreateDraft.value.id.trim())
+const externalNameTrimmed = computed(() => externalCreateDraft.value.displayName.trim())
+const externalUrlTrimmed = computed(() => externalCreateDraft.value.agentCardUrl.trim())
+const externalIdDuplicate = computed(() =>
+  externalIdTrimmed.value.length > 0 && agents.value.some(e => e.id === externalIdTrimmed.value),
+)
+const externalIdInvalid = computed(() =>
+  externalIdTrimmed.value.length > 0 && !AGENT_ID_PATTERN.test(externalIdTrimmed.value),
+)
+const canConfirmExternalCreate = computed(() =>
+  externalIdTrimmed.value.length > 0
+  && externalNameTrimmed.value.length > 0
+  && externalUrlTrimmed.value.length > 0
+  && !externalIdDuplicate.value
+  && !externalIdInvalid.value,
 )
 
-const canConfirmCreate = computed(() =>
-  createIdTrimmed.value.length > 0
-  && createNameTrimmed.value.length > 0
-  && !createIdDuplicate.value
-  && !createIdInvalid.value,
-)
+// ---- 表单完整性 ----
+const editFormComplete = computed(() => {
+  if (isExternalSelected.value) {
+    return !!externalEdit.value.displayName.trim()
+  }
+  return !!editForm.value.displayName.trim()
+    && !!editForm.value.systemPrompt.trim()
+    && editForm.value.systemPrompt.trim() !== PLACEHOLDER_PROMPT
+})
 
-const editFormComplete = computed(() =>
-  !!editForm.value.displayName.trim()
-  && !!editForm.value.systemPrompt.trim()
-  && editForm.value.systemPrompt.trim() !== PLACEHOLDER_PROMPT,
-)
+// ---- Dirty ----
+const isFormDirty = computed(() => {
+  const agent = selectedAgent.value
+  if (!agent) return false
+  if (agent.source === 'EXTERNAL') {
+    const auth = parseAuthConfig(agent)
+    return externalEdit.value.displayName !== agent.displayName
+      || externalEdit.value.description !== (agent.description ?? '')
+      || externalEdit.value.agentCardUrl !== (agent.agentCardUrl ?? '')
+      || externalEdit.value.authConfigType !== auth.type
+      || externalEdit.value.authConfigToken !== auth.token
+      || externalEdit.value.endpointOverride !== (agent.endpointOverride ?? '')
+  }
+  return editForm.value.displayName !== agent.displayName
+    || editForm.value.description !== (agent.description ?? '')
+    || editForm.value.systemPrompt !== agent.systemPrompt
+    || JSON.stringify([...editForm.value.skillIds].sort())
+      !== JSON.stringify([...(agent.skillIds ?? [])].sort())
+    || JSON.stringify([...editForm.value.toolIds].sort())
+      !== JSON.stringify([...parseAgentToolIds(agent.toolsJson)].sort())
+    || editForm.value.kbScope !== ((agent.kbScope ?? []).length > 0 ? agent.kbScope![0] : '')
+    || editForm.value.dataScope !== (agent.dataScopeJson ?? '')
+    || editForm.value.permissionsHitl !== parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit')
+    || editForm.value.permissionsSandboxWrite !== parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit')
+    || editForm.value.modelConfig !== (agent.modelConfigJson ?? '')
+    || editForm.value.maxIters !== (agent.maxIters ?? 0)
+    || editForm.value.maxHandoffs !== (agent.maxHandoffs ?? 0)
+})
 
-const systemPromptLength = computed(() => editForm.value.systemPrompt.length)
+function isAgentComplete(agent: AgentEntry): boolean {
+  if (agent.source === 'EXTERNAL') {
+    return !!agent.displayName?.trim() && !!agent.agentCardUrl?.trim()
+  }
+  return !!agent.displayName?.trim()
+    && !!agent.systemPrompt?.trim()
+    && agent.systemPrompt.trim() !== PLACEHOLDER_PROMPT
+}
 
+// ---- View 菜单 ----
 const viewMenuOptions: DropdownOption[] = [
   {
     label: '编辑',
@@ -161,39 +295,27 @@ const viewMenuOptions: DropdownOption[] = [
   },
 ]
 
-const isFormDirty = computed(() => {
-  const agent = selectedAgent.value
-  if (!agent) return false
-  return editForm.value.displayName !== agent.displayName
-    || editForm.value.description !== (agent.description ?? '')
-    || editForm.value.systemPrompt !== agent.systemPrompt
-    || JSON.stringify([...editForm.value.skillIds].sort())
-      !== JSON.stringify([...(agent.skillIds ?? [])].sort())
-    || JSON.stringify([...editForm.value.toolIds].sort())
-      !== JSON.stringify([...parseAgentToolIds(agent.toolsJson)].sort())
-    || editForm.value.kbScopeText !== (agent.kbScope ?? []).join('\n')
-    || editForm.value.dataScope !== (agent.dataScopeJson ?? '')
-    || parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit') !== editForm.value.permissionsHitl
-    || parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit') !== editForm.value.permissionsSandboxWrite
-    || editForm.value.modelConfig !== (agent.modelConfigJson ?? '')
-    || editForm.value.maxIters !== (agent.maxIters ?? 0)
-    || editForm.value.maxHandoffs !== (agent.maxHandoffs ?? 0)
-})
-
-function isAgentComplete(agent: AgentEntry): boolean {
-  return !!agent.displayName?.trim()
-    && !!agent.systemPrompt?.trim()
-    && agent.systemPrompt.trim() !== PLACEHOLDER_PROMPT
-}
-
+// ---- 加载表单 ----
 function loadEditForm(agent: AgentEntry) {
+  if (agent.source === 'EXTERNAL') {
+    const auth = parseAuthConfig(agent)
+    externalEdit.value = {
+      displayName: agent.displayName,
+      description: agent.description ?? '',
+      agentCardUrl: agent.agentCardUrl ?? '',
+      authConfigType: auth.type,
+      authConfigToken: auth.token,
+      endpointOverride: agent.endpointOverride ?? '',
+    }
+    return
+  }
   editForm.value = {
     displayName: agent.displayName,
     description: agent.description ?? '',
     systemPrompt: agent.systemPrompt,
     skillIds: [...(agent.skillIds ?? [])],
     toolIds: parseAgentToolIds(agent.toolsJson),
-    kbScopeText: (agent.kbScope ?? []).join('\n'),
+    kbScope: (agent.kbScope ?? []).length > 0 ? agent.kbScope![0] : '',
     dataScope: agent.dataScopeJson ?? '',
     permissionsHitl: parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit'),
     permissionsSandboxWrite: parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit'),
@@ -203,24 +325,7 @@ function loadEditForm(agent: AgentEntry) {
   }
 }
 
-function parsePermissionsString(json: string | undefined | null, key: string, def: string): string {
-  if (!json?.trim()) return def
-  try {
-    const obj = JSON.parse(json)
-    return obj[key] ?? def
-  } catch {
-    return def
-  }
-}
-
-function makePermissionsJson(): string {
-  const obj: Record<string, string> = {}
-  if (editForm.value.permissionsHitl !== 'inherit') obj.hitl = editForm.value.permissionsHitl
-  if (editForm.value.permissionsSandboxWrite !== 'inherit') obj.sandboxWriteMode = editForm.value.permissionsSandboxWrite
-  if (Object.keys(obj).length === 0) return ''
-  return JSON.stringify(obj)
-}
-
+// ---- 数据刷新 ----
 async function refreshPage() {
   loading.value = true
   try {
@@ -232,14 +337,20 @@ async function refreshPage() {
     agents.value = list
     skillOptions.value = skills
     toolOptions.value = tools
+    try {
+      kbOptions.value = await listKbs(tenantId.value)
+    } catch {
+      kbOptions.value = []
+    }
     if (selectedId.value && !list.some(e => e.id === selectedId.value)) {
       selectedId.value = null
       isEditing.value = false
     }
     const preferred = selectedId.value || readId()
-    const targetId = preferred && list.some(e => e.id === preferred)
+    const tabList = activeTab.value === 'internal' ? internalAgents.value : externalAgents.value
+    const targetId = preferred && tabList.some(e => e.id === preferred)
       ? preferred
-      : (list[0]?.id ?? null)
+      : (tabList[0]?.id ?? null)
     if (targetId) {
       selectAgent(targetId, true)
     } else {
@@ -289,22 +400,45 @@ function handleEscape(e: KeyboardEvent) {
   cancelEdit()
 }
 
-function openCreateModal() {
-  createDraft.value = { id: '', displayName: '' }
-  showCreateModal.value = true
+// ---- Tab 切换 ----
+function handleTabChange(tab: 'internal' | 'external') {
+  if (isEditing.value && isFormDirty.value) {
+    message.warning('请先保存修改')
+    return
+  }
+  activeTab.value = tab
+  const tabList = tab === 'internal' ? internalAgents.value : externalAgents.value
+  const target = tabList[0]?.id ?? null
+  if (target) {
+    selectAgent(target, true)
+  } else {
+    selectedId.value = null
+    syncId(null)
+  }
 }
 
-async function handleCreateConfirm() {
-  if (!canConfirmCreate.value) return
+// ---- 创建 ----
+function openCreateModal() {
+  if (activeTab.value === 'internal') {
+    internalCreateDraft.value = { id: '', displayName: '' }
+    showInternalCreateModal.value = true
+  } else {
+    externalCreateDraft.value = { id: '', displayName: '', agentCardUrl: '' }
+    cardPreFill.value = null
+    showExternalCreateModal.value = true
+  }
+}
+
+async function handleInternalCreateConfirm() {
+  if (!canConfirmInternalCreate.value) return
   creating.value = true
   try {
-    const id = createIdTrimmed.value
-    const displayName = createNameTrimmed.value
-    await createAgent(id, displayName, PLACEHOLDER_PROMPT, '', [])
+    const id = internalIdTrimmed.value
+    const displayName = internalNameTrimmed.value
+    await createAgent(id, displayName, PLACEHOLDER_PROMPT, '', [], [], 'INTERNAL')
     await setAgentEnabled(id, false)
     message.success('已创建')
-    showCreateModal.value = false
-    createDraft.value = { id: '', displayName: '' }
+    showInternalCreateModal.value = false
     await refreshPage()
     selectAgent(id, true)
   } catch (e) {
@@ -315,30 +449,128 @@ async function handleCreateConfirm() {
   }
 }
 
+async function fetchCardForCreate() {
+  if (!externalUrlTrimmed.value) return
+  fetchingCard.value = true
+  try {
+    cardPreFill.value = await fetchAgentCard(externalUrlTrimmed.value)
+    if (cardPreFill.value.error) {
+      message.warning(cardPreFill.value.error)
+      cardPreFill.value = null
+    } else if (cardPreFill.value.displayName && !externalCreateDraft.value.displayName) {
+      externalCreateDraft.value.displayName = cardPreFill.value.displayName
+    }
+  } catch (e) {
+    message.error('拉取 Agent Card 失败')
+    console.error(e)
+  } finally {
+    fetchingCard.value = false
+  }
+}
+
+async function fetchCardForEdit() {
+  const url = externalEdit.value.agentCardUrl.trim()
+  if (!url) return
+  fetchingCard.value = true
+  try {
+    const pre = await fetchAgentCard(url)
+    if (pre.error) {
+      message.warning(pre.error)
+    } else {
+      if (pre.displayName && !externalEdit.value.displayName.trim()) {
+        externalEdit.value.displayName = pre.displayName
+      }
+      if (pre.description && !externalEdit.value.description.trim()) {
+        externalEdit.value.description = pre.description
+      }
+      if (pre.endpointUrl && !externalEdit.value.endpointOverride.trim()) {
+        externalEdit.value.endpointOverride = pre.endpointUrl
+      }
+      message.success('已从 Agent Card 预填信息')
+    }
+  } catch (e) {
+    message.error('拉取 Agent Card 失败')
+    console.error(e)
+  } finally {
+    fetchingCard.value = false
+  }
+}
+
+async function handleExternalCreateConfirm() {
+  if (!canConfirmExternalCreate.value) return
+  creating.value = true
+  try {
+    const id = externalIdTrimmed.value
+    await createAgent(
+      id,
+      externalNameTrimmed.value,
+      '',
+      cardPreFill.value?.description ?? '',
+      [],
+      [],
+      'EXTERNAL',
+      externalUrlTrimmed.value,
+      undefined,
+      cardPreFill.value?.endpointUrl || undefined,
+    )
+    await setAgentEnabled(id, false)
+    message.success('已创建')
+    showExternalCreateModal.value = false
+    externalCreateDraft.value = { id: '', displayName: '', agentCardUrl: '' }
+    cardPreFill.value = null
+    await refreshPage()
+    selectAgent(id, true)
+  } catch (e) {
+    message.error('创建失败，请检查 ID 是否重复')
+    console.error(e)
+  } finally {
+    creating.value = false
+  }
+}
+
+// ---- 保存 ----
 async function handleSave() {
   if (!selectedId.value) return
   if (!editFormComplete.value) {
-    message.warning('请填写展示名与系统提示词')
+    message.warning('请填写必要信息')
     return
   }
   saving.value = true
   try {
-    await updateAgent(
-      selectedId.value,
-      editForm.value.displayName.trim(),
-      editForm.value.systemPrompt.trim(),
-      editForm.value.description.trim(),
-      editForm.value.skillIds,
-      editForm.value.toolIds,
-      {
-        kbScope: editForm.value.kbScopeText ? editForm.value.kbScopeText.split('\n').map(s => s.trim()).filter(Boolean) : [],
-        dataScopeJson: editForm.value.dataScope || undefined,
-        permissionsJson: makePermissionsJson() || undefined,
-        modelConfigJson: editForm.value.modelConfig || undefined,
-        maxIters: Number(editForm.value.maxIters) || 0,
-        maxHandoffs: Number(editForm.value.maxHandoffs) || 0,
-      },
-    )
+    if (isExternalSelected.value) {
+      const authJson = makeAuthConfigJson(externalEdit.value.authConfigType, externalEdit.value.authConfigToken)
+      await updateAgent(
+        selectedId.value,
+        externalEdit.value.displayName.trim(),
+        '',
+        externalEdit.value.description.trim(),
+        [],
+        [],
+        {
+          source: 'EXTERNAL',
+          agentCardUrl: externalEdit.value.agentCardUrl.trim() || undefined,
+          authConfigJson: authJson || undefined,
+          endpointOverride: externalEdit.value.endpointOverride.trim() || undefined,
+        },
+      )
+    } else {
+      await updateAgent(
+        selectedId.value,
+        editForm.value.displayName.trim(),
+        editForm.value.systemPrompt.trim(),
+        editForm.value.description.trim(),
+        editForm.value.skillIds,
+        editForm.value.toolIds,
+        {
+          kbScope: editForm.value.kbScope ? [editForm.value.kbScope] : [],
+          dataScopeJson: editForm.value.dataScope || undefined,
+          permissionsJson: makePermissionsJson(editForm.value) || undefined,
+          modelConfigJson: editForm.value.modelConfig || undefined,
+          maxIters: Number(editForm.value.maxIters) || 0,
+          maxHandoffs: Number(editForm.value.maxHandoffs) || 0,
+        },
+      )
+    }
     message.success('已保存')
     isEditing.value = false
     await refreshPage()
@@ -350,6 +582,9 @@ async function handleSave() {
     saving.value = false
   }
 }
+
+// ---- 删除 ----
+const showDeleteConfirm = ref(false)
 
 async function handleDeleteConfirm() {
   if (!selectedId.value) return
@@ -371,13 +606,14 @@ async function handleDeleteConfirm() {
   }
 }
 
+// ---- 启用/停用 ----
 async function handleToggleEnabled(agent: AgentEntry, enabled: boolean) {
   if (agent.id === selectedId.value && isEditing.value) {
     message.warning('请先保存修改')
     return
   }
   if (!isAgentComplete(agent)) {
-    message.warning('请先补全展示名与系统提示词并保存')
+    message.warning('请先补全必要信息并保存')
     return
   }
   try {
@@ -393,6 +629,7 @@ async function handleToggleEnabled(agent: AgentEntry, enabled: boolean) {
   }
 }
 
+// ---- 生命周期 ----
 watch(
   () => readId(),
   (id) => {
@@ -432,11 +669,21 @@ onUnmounted(() => {
       </NSpace>
     </header>
 
+    <div class="agents-tabs">
+      <NTabs v-model:value="activeTab" type="line" @update:value="(v: string) => handleTabChange(v as 'internal' | 'external')">
+        <NTabPane name="internal" tab="内部智能体" />
+        <NTabPane name="external" tab="外部智能体" />
+      </NTabs>
+    </div>
+
     <div class="agents-layout">
       <aside class="list-panel">
         <div class="panel-head">
-          <span class="panel-title">列表</span>
-          <NTag :bordered="false" size="tiny" round>{{ filteredAgents.length }}</NTag>
+          <span class="panel-title">
+            <NIcon :component="activeTab === 'internal' ? HardwareChipOutline : CloudOutline" :size="14" />
+            <span style="margin-left:6px">{{ activeTab === 'internal' ? '内部' : '外部' }}智能体</span>
+          </span>
+          <NTag :bordered="false" size="tiny" round>{{ searchedAgents.length }}</NTag>
         </div>
         <div class="list-search">
           <NInput
@@ -455,9 +702,9 @@ onUnmounted(() => {
         </div>
         <NSpin :show="loading" size="small" class="list-spin">
           <div class="list-body">
-            <div v-if="filteredAgents.length" class="agent-list">
+            <div v-if="searchedAgents.length" class="agent-list">
               <button
-                v-for="agent in filteredAgents"
+                v-for="agent in searchedAgents"
                 :key="agent.id"
                 type="button"
                 class="agent-row"
@@ -481,14 +728,15 @@ onUnmounted(() => {
             <div v-else-if="!loading" class="empty-wrap">
               <NEmpty
                 size="small"
-                :description="agents.length && agentSearch.trim() ? '无匹配智能体' : '暂无智能体'"
+                :description="searchedAgents.length && agentSearch.trim() ? '无匹配智能体' : '暂无智能体'"
               />
             </div>
           </div>
         </NSpin>
       </aside>
 
-      <main v-if="selectedAgent" class="detail-panel">
+      <!-- ========= 内部智能体详情 ========= -->
+      <main v-if="selectedAgent && !isExternalSelected" class="detail-panel">
         <div class="detail-toolbar">
           <div class="detail-toolbar-text">
             <h3 class="detail-heading">{{ selectedAgent.displayName }}</h3>
@@ -516,15 +764,7 @@ onUnmounted(() => {
               </NButton>
             </NDropdown>
             <NSpace v-else :size="8">
-              <NButton
-                size="small"
-                round
-                secondary
-                :disabled="saving"
-                @click="cancelEdit"
-              >
-                取消
-              </NButton>
+              <NButton size="small" round secondary :disabled="saving" @click="cancelEdit">取消</NButton>
               <NButton
                 size="small"
                 round
@@ -533,9 +773,7 @@ onUnmounted(() => {
                 :loading="saving"
                 :disabled="!isFormDirty || !editFormComplete"
                 @click="handleSave"
-              >
-                保存
-              </NButton>
+              >保存</NButton>
             </NSpace>
           </div>
         </div>
@@ -547,39 +785,20 @@ onUnmounted(() => {
                 <h4 class="form-section-title">基本信息</h4>
               </header>
               <NFormItem label="展示名" required>
-                <NInput
-                  v-model:value="editForm.displayName"
-                  class="sun-field"
-                  :disabled="!isEditing"
-                  placeholder="制度智能体"
-                />
+                <NInput v-model:value="editForm.displayName" class="sun-field" :disabled="!isEditing" placeholder="制度智能体" />
               </NFormItem>
               <NFormItem label="描述">
-                <NInput
-                  v-model:value="editForm.description"
-                  class="sun-field sun-field-grow"
-                  type="textarea"
-                  :disabled="!isEditing"
-                  :autosize="{ minRows: 2, maxRows: 10 }"
-                  placeholder="智能体职责说明（可选）"
-                />
+                <NInput v-model:value="editForm.description" class="sun-field sun-field-grow" type="textarea" :disabled="!isEditing" :autosize="{ minRows: 2, maxRows: 10 }" placeholder="智能体职责说明（可选）" />
               </NFormItem>
             </section>
 
             <section class="form-section">
               <header class="form-section-head prompt-head">
                 <h4 class="form-section-title">系统提示词</h4>
-                <span class="prompt-count">{{ systemPromptLength }} 字</span>
+                <span class="prompt-count">{{ editForm.systemPrompt.length }} 字</span>
               </header>
               <NFormItem label="角色与输出要求" required>
-                <NInput
-                  v-model:value="editForm.systemPrompt"
-                  class="sun-field sun-field-grow prompt-input"
-                  type="textarea"
-                  :disabled="!isEditing"
-                  :autosize="{ minRows: 8, maxRows: 28 }"
-                  placeholder="定义智能体角色、分析范围与输出格式"
-                />
+                <NInput v-model:value="editForm.systemPrompt" class="sun-field sun-field-grow prompt-input" type="textarea" :disabled="!isEditing" :autosize="{ minRows: 8, maxRows: 28 }" placeholder="定义智能体角色、分析范围与输出格式" />
               </NFormItem>
             </section>
 
@@ -589,28 +808,10 @@ onUnmounted(() => {
               </header>
               <div class="form-grid form-grid-config">
                 <NFormItem label="关联 Skill">
-                  <NSelect
-                    v-model:value="editForm.skillIds"
-                    class="sun-field"
-                    multiple
-                    filterable
-                    :disabled="!isEditing"
-                    :options="skillSelectOptions"
-                    :menu-props="{ class: 'agent-select-menu' }"
-                    placeholder="可选 0~N 个 Skill"
-                  />
+                  <NSelect v-model:value="editForm.skillIds" class="sun-field" multiple filterable :disabled="!isEditing" :options="skillSelectOptions" :menu-props="{ class: 'agent-select-menu' }" placeholder="可选 0~N 个 Skill" />
                 </NFormItem>
                 <NFormItem label="工具">
-                  <NSelect
-                    v-model:value="editForm.toolIds"
-                    class="sun-field"
-                    multiple
-                    filterable
-                    :disabled="!isEditing"
-                    :options="toolSelectOptions"
-                    :menu-props="{ class: 'agent-select-menu' }"
-                    placeholder="可选 0~N 个工具"
-                  />
+                  <NSelect v-model:value="editForm.toolIds" class="sun-field" multiple filterable :disabled="!isEditing" :options="toolSelectOptions" :menu-props="{ class: 'agent-select-menu' }" placeholder="可选 0~N 个工具" />
                 </NFormItem>
               </div>
             </section>
@@ -621,20 +822,10 @@ onUnmounted(() => {
               </header>
               <div class="form-grid form-grid-config">
                 <NFormItem label="最大迭代轮次">
-                  <NInput
-                    v-model:value="editForm.maxIters"
-                    class="sun-field"
-                    placeholder="0=使用默认"
-                    :disabled="!isEditing"
-                  />
+                  <NInput v-model:value="editForm.maxIters" class="sun-field" placeholder="0=使用默认" :disabled="!isEditing" />
                 </NFormItem>
                 <NFormItem label="最大委派次数">
-                  <NInput
-                    v-model:value="editForm.maxHandoffs"
-                    class="sun-field"
-                    placeholder="0=不限"
-                    :disabled="!isEditing"
-                  />
+                  <NInput v-model:value="editForm.maxHandoffs" class="sun-field" placeholder="0=不限" :disabled="!isEditing" />
                 </NFormItem>
               </div>
             </section>
@@ -645,62 +836,94 @@ onUnmounted(() => {
               </header>
               <div class="form-grid form-grid-config">
                 <NFormItem label="HITL 模式">
-                  <NSelect
-                    v-model:value="editForm.permissionsHitl"
-                    class="sun-field"
-                    :disabled="!isEditing"
-                    :options="[
-                      { label: '继承', value: 'inherit' },
-                      { label: '总是', value: 'always' },
-                      { label: '从不', value: 'never' },
-                    ]"
-                    :menu-props="{ class: 'agent-select-menu' }"
-                  />
+                  <NSelect v-model:value="editForm.permissionsHitl" class="sun-field" :disabled="!isEditing" :options="[{ label: '继承', value: 'inherit' },{ label: '总是', value: 'always' },{ label: '从不', value: 'never' }]" :menu-props="{ class: 'agent-select-menu' }" />
                 </NFormItem>
                 <NFormItem label="沙盒写模式">
-                  <NSelect
-                    v-model:value="editForm.permissionsSandboxWrite"
-                    class="sun-field"
-                    :disabled="!isEditing"
-                    :options="[
-                      { label: '继承', value: 'inherit' },
-                      { label: '总是', value: 'always' },
-                      { label: '智能', value: 'smart' },
-                      { label: '从不', value: 'never' },
-                    ]"
-                    :menu-props="{ class: 'agent-select-menu' }"
-                  />
+                  <NSelect v-model:value="editForm.permissionsSandboxWrite" class="sun-field" :disabled="!isEditing" :options="[{ label: '继承', value: 'inherit' },{ label: '总是', value: 'always' },{ label: '智能', value: 'smart' },{ label: '从不', value: 'never' }]" :menu-props="{ class: 'agent-select-menu' }" />
                 </NFormItem>
               </div>
-              <NFormItem label="知识库范围（每行一个 ID，* 代表所有）">
-                <NInput
-                  v-model:value="editForm.kbScopeText"
-                  class="sun-field sun-field-grow"
-                  type="textarea"
-                  :disabled="!isEditing"
-                  :autosize="{ minRows: 2, maxRows: 6 }"
-                  placeholder="default"
-                />
+              <NFormItem label="知识库">
+                <NSelect v-model:value="editForm.kbScope" class="sun-field" filterable clearable :disabled="!isEditing" :options="kbSelectOptions" :menu-props="{ class: 'agent-select-menu' }" placeholder="选择一个知识库（可选）" />
               </NFormItem>
               <NFormItem label="数据范围（JSON）">
-                <NInput
-                  v-model:value="editForm.dataScope"
-                  class="sun-field prompt-input"
-                  type="textarea"
-                  :disabled="!isEditing"
-                  :autosize="{ minRows: 2, maxRows: 6 }"
-                  placeholder='{"departments": ["hr", "finance"]}'
-                />
+                <NInput v-model:value="editForm.dataScope" class="sun-field prompt-input" type="textarea" :disabled="!isEditing" :autosize="{ minRows: 2, maxRows: 6 }" placeholder='{"departments": ["hr", "finance"]}' />
               </NFormItem>
               <NFormItem label="模型配置（JSON，覆盖默认模型）">
-                <NInput
-                  v-model:value="editForm.modelConfig"
-                  class="sun-field prompt-input"
-                  type="textarea"
-                  :disabled="!isEditing"
-                  :autosize="{ minRows: 2, maxRows: 6 }"
-                  placeholder='{"modelName": "gpt-4o", "modelBaseUrl": ""}'
-                />
+                <NInput v-model:value="editForm.modelConfig" class="sun-field prompt-input" type="textarea" :disabled="!isEditing" :autosize="{ minRows: 2, maxRows: 6 }" placeholder='{"modelName": "gpt-4o", "modelBaseUrl": ""}' />
+              </NFormItem>
+            </section>
+          </NForm>
+        </div>
+      </main>
+
+      <!-- ========= 外部智能体详情 ========= -->
+      <main v-else-if="selectedAgent && isExternalSelected" class="detail-panel">
+        <div class="detail-toolbar">
+          <div class="detail-toolbar-text">
+            <h3 class="detail-heading">{{ selectedAgent.displayName }}</h3>
+            <span class="detail-id">{{ selectedAgent.id }}</span>
+          </div>
+          <div class="detail-actions">
+            <NDropdown
+              v-if="!isEditing"
+              trigger="click"
+              size="small"
+              :options="viewMenuOptions"
+              :disabled="saving || deleting"
+              @select="handleViewMenuSelect"
+            >
+              <NButton size="small" quaternary class="more-menu-btn" title="更多操作" aria-label="更多操作" :loading="deleting" :disabled="saving">
+                <template #icon><NIcon :component="EllipsisHorizontal" :size="16" /></template>
+              </NButton>
+            </NDropdown>
+            <NSpace v-else :size="8">
+              <NButton size="small" secondary round :loading="fetchingCard" :disabled="!externalEdit.agentCardUrl.trim() || saving" @click="fetchCardForEdit">
+                <template #icon><NIcon :component="CloudDownloadOutline" :size="14" /></template>
+                拉取
+              </NButton>
+              <NButton size="small" round secondary :disabled="saving" @click="cancelEdit">取消</NButton>
+              <NButton
+                size="small"
+                round
+                type="primary"
+                class="action-btn"
+                :loading="saving"
+                :disabled="!isFormDirty || !editFormComplete"
+                @click="handleSave"
+              >保存</NButton>
+            </NSpace>
+          </div>
+        </div>
+
+        <div class="detail-scroll">
+          <NForm class="detail-form" label-placement="top" :show-feedback="false">
+            <section class="form-section">
+              <header class="form-section-head">
+                <h4 class="form-section-title">基本信息</h4>
+              </header>
+              <NFormItem label="展示名" required>
+                <NInput v-model:value="externalEdit.displayName" class="sun-field" :disabled="!isEditing" placeholder="外部智能体名称" />
+              </NFormItem>
+              <NFormItem label="描述">
+                <NInput v-model:value="externalEdit.description" class="sun-field sun-field-grow" type="textarea" :disabled="!isEditing" :autosize="{ minRows: 2, maxRows: 10 }" placeholder="外部智能体职责说明（可选）" />
+              </NFormItem>
+            </section>
+
+            <section class="form-section">
+              <header class="form-section-head">
+                <h4 class="form-section-title">A2A 接入</h4>
+              </header>
+              <NFormItem label="Agent Card URL" required>
+                <NInput v-model:value="externalEdit.agentCardUrl" class="sun-field" :disabled="!isEditing" placeholder="https://example.com/.well-known/agent-card.json" />
+              </NFormItem>
+              <NFormItem label="认证方式">
+                <NSelect v-model:value="externalEdit.authConfigType" class="sun-field" :disabled="!isEditing" :options="[{ label: 'Bearer Token', value: 'bearer' },{ label: 'API Key', value: 'api-key' }]" :menu-props="{ class: 'agent-select-menu' }" />
+              </NFormItem>
+              <NFormItem :label="externalEdit.authConfigType === 'api-key' ? 'API Key' : 'Token'">
+                <NInput v-model:value="externalEdit.authConfigToken" class="sun-field" type="password" show-password-on="click" :disabled="!isEditing" placeholder="填写认证凭据" />
+              </NFormItem>
+              <NFormItem label="端点覆盖（可选，不填则从 Agent Card 自动解析）">
+                <NInput v-model:value="externalEdit.endpointOverride" class="sun-field" :disabled="!isEditing" placeholder="https://api.example.com/v1" />
               </NFormItem>
             </section>
           </NForm>
@@ -712,52 +935,61 @@ onUnmounted(() => {
       </main>
     </div>
 
-    <NModal
-      v-model:show="showCreateModal"
-      preset="dialog"
-      title="新建智能体"
-      class="sunshine-dialog"
-    >
+    <!-- ========= 内部智能体创建弹窗 ========= -->
+    <NModal v-model:show="showInternalCreateModal" preset="dialog" title="新建内部智能体" class="sunshine-dialog agents-create-dialog">
       <NForm class="modal-form" label-placement="top" :show-feedback="false">
         <NFormItem label="智能体 ID" required>
-          <NInput
-            v-model:value="createDraft.id"
-            class="sun-field"
-            placeholder="policy-agent"
-            @keydown.enter="canConfirmCreate && handleCreateConfirm()"
-          />
-          <p v-if="createIdInvalid" class="field-error">仅支持字母、数字、连字符与中文</p>
-          <p v-else-if="createIdDuplicate" class="field-error">该 ID 已存在</p>
+          <NInput v-model:value="internalCreateDraft.id" class="sun-field" placeholder="policy-agent" @keydown.enter="canConfirmInternalCreate && handleInternalCreateConfirm()" />
+          <p v-if="internalIdInvalid" class="field-error">仅支持字母、数字、连字符与中文</p>
+          <p v-else-if="internalIdDuplicate" class="field-error">该 ID 已存在</p>
         </NFormItem>
         <NFormItem label="展示名" required>
-          <NInput
-            v-model:value="createDraft.displayName"
-            class="sun-field"
-            placeholder="制度智能体"
-            @keydown.enter="canConfirmCreate && handleCreateConfirm()"
-          />
+          <NInput v-model:value="internalCreateDraft.displayName" class="sun-field" placeholder="制度智能体" @keydown.enter="canConfirmInternalCreate && handleInternalCreateConfirm()" />
         </NFormItem>
       </NForm>
       <template #action>
-        <NButton @click="showCreateModal = false">取消</NButton>
-        <NButton
-          type="primary"
-          class="action-btn"
-          :loading="creating"
-          :disabled="!canConfirmCreate"
-          @click="handleCreateConfirm"
-        >
-          创建
-        </NButton>
+        <NButton @click="showInternalCreateModal = false">取消</NButton>
+        <NButton type="primary" class="action-btn" :loading="creating" :disabled="!canConfirmInternalCreate" @click="handleInternalCreateConfirm">创建</NButton>
       </template>
     </NModal>
 
-    <NModal
-      v-model:show="showDeleteConfirm"
-      preset="dialog"
-      title="删除智能体"
-      class="sunshine-dialog"
-    >
+    <!-- ========= 外部智能体创建弹窗 ========= -->
+    <NModal v-model:show="showExternalCreateModal" preset="dialog" title="新建外部智能体" class="sunshine-dialog agents-create-dialog external">
+      <NForm class="modal-form" label-placement="top" :show-feedback="false">
+        <NFormItem label="智能体 ID" required>
+          <NInput v-model:value="externalCreateDraft.id" class="sun-field" placeholder="external-finance-agent" />
+          <p v-if="externalIdInvalid" class="field-error">仅支持字母、数字、连字符与中文</p>
+          <p v-else-if="externalIdDuplicate" class="field-error">该 ID 已存在</p>
+        </NFormItem>
+        <NFormItem label="展示名" required>
+          <NInput v-model:value="externalCreateDraft.displayName" class="sun-field" placeholder="外部财务智能体" />
+        </NFormItem>
+        <NFormItem label="Agent Card URL" required>
+            <NInput v-model:value="externalCreateDraft.agentCardUrl" class="sun-field" placeholder="https://example.com/.well-known/agent-card.json" />
+        </NFormItem>
+        <div v-if="cardPreFill && !cardPreFill.error" class="card-prefill-info">
+          <div class="card-prefill-title">预填信息</div>
+          <div class="card-prefill-grid">
+            <span class="card-prefill-label">名称</span><span class="card-prefill-value">{{ cardPreFill.displayName || '-' }}</span>
+            <span class="card-prefill-label">描述</span><span class="card-prefill-value">{{ cardPreFill.description || '-' }}</span>
+            <span class="card-prefill-label">版本</span><span class="card-prefill-value">{{ cardPreFill.version || '-' }}</span>
+            <span class="card-prefill-label">端点</span><span class="card-prefill-value">{{ cardPreFill.endpointUrl || '-' }}</span>
+            <span class="card-prefill-label">Skills</span><span class="card-prefill-value">{{ cardPreFill.skills?.join(', ') || '-' }}</span>
+          </div>
+        </div>
+      </NForm>
+      <template #action>
+        <NButton size="small" secondary round :loading="fetchingCard" :disabled="!externalUrlTrimmed || creating" @click="fetchCardForCreate">
+          <template #icon><NIcon :component="CloudDownloadOutline" :size="14" /></template>
+          拉取
+        </NButton>
+        <NButton @click="showExternalCreateModal = false">取消</NButton>
+        <NButton type="primary" class="action-btn" :loading="creating" :disabled="!canConfirmExternalCreate" @click="handleExternalCreateConfirm">创建</NButton>
+      </template>
+    </NModal>
+
+    <!-- ========= 删除弹窗 ========= -->
+    <NModal v-model:show="showDeleteConfirm" preset="dialog" title="删除智能体" class="sunshine-dialog">
       <p>确定删除智能体「{{ selectedAgent?.id }}」（{{ selectedAgent?.displayName }}）？此操作不可恢复。</p>
       <template #action>
         <NButton @click="showDeleteConfirm = false">取消</NButton>
@@ -798,6 +1030,17 @@ onUnmounted(() => {
   color: var(--sun-text);
 }
 
+.agents-tabs {
+  flex-shrink: 0;
+}
+
+.agents-tabs :deep(.n-tabs-nav) {
+  --n-tab-text-color: var(--sun-text-muted);
+  --n-tab-text-color-active: var(--sun-text);
+  --n-tab-text-color-hover: var(--sun-text);
+  --n-bar-color: var(--sun-text);
+}
+
 .agents-layout {
   flex: 1;
   min-height: 0;
@@ -832,6 +1075,8 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   color: var(--sun-text);
+  display: flex;
+  align-items: center;
 }
 
 .list-search {
@@ -1063,6 +1308,41 @@ onUnmounted(() => {
   grid-template-columns: 1fr 1fr;
 }
 
+/* Card prefill info */
+.card-prefill-info {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md);
+  background: var(--sun-black);
+}
+
+.card-prefill-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sun-text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.card-prefill-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.card-prefill-label {
+  color: var(--sun-text-muted);
+}
+
+.card-prefill-value {
+  color: var(--sun-text);
+  word-break: break-all;
+}
+
+/* Agent list */
 .agent-list {
   display: flex;
   flex-direction: column;
@@ -1126,6 +1406,7 @@ onUnmounted(() => {
   opacity: 0.85;
 }
 
+/* Modal */
 .modal-form {
   display: flex;
   flex-direction: column;
@@ -1189,5 +1470,13 @@ onUnmounted(() => {
   background: var(--sun-black) !important;
   border: 1px solid var(--sun-border) !important;
   box-shadow: var(--shadow-elevated) !important;
+}
+
+.agents-create-dialog.n-dialog {
+  max-width: 540px !important;
+}
+
+.agents-create-dialog.external.n-dialog {
+  max-width: 660px !important;
 }
 </style>

@@ -82,6 +82,16 @@ public class AgentManagerClient {
         return get("/api/agents/" + id + "/catalog");
     }
 
+    public Mono<Map<String, Object>> fetchAgentCard(String agentCardUrl) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/api/agents/external/card-prefill")
+                        .queryParam("agentCardUrl", agentCardUrl)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     private Mono<Map<String, Object>> get(String path) {
         return webClient.get()
                 .uri(path)

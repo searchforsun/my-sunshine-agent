@@ -8,6 +8,16 @@ public record AgentCreateRequest(
         String description,
         String systemPrompt,
         List<String> skillIds,
-        List<String> toolIds
+        List<String> toolIds,
+        String source,
+        String agentCardUrl,
+        String authConfigJson,
+        String endpointOverride,
+        List<String> kbScope,
+        String dataScopeJson,
+        String permissionsJson,
+        String modelConfigJson,
+        Integer maxIters,
+        Integer maxHandoffs
 ) {
 }

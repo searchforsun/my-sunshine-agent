@@ -242,11 +242,6 @@ public class StepEventBridgeRegistry {
         return loopBodyFolds.get(assistantMessageId.strip());
     }
 
-    /** 专家发言专用：ReasoningChunk / 工具步等 Hook 产出即时消费，不依赖 ProcessingTimelineSession think 锚点 */
-        if (bridgeId != null && sink != null) {
-        }
-    }
-
     public void bindGenerationFlush(String messageId, Consumer<StreamToken> consumer) {
         bindGenerationFlush(messageId, currentStreamEpoch(messageId), consumer);
     }
@@ -468,9 +463,6 @@ public class StepEventBridgeRegistry {
         if (messageId == null || incrementalText == null || incrementalText.isEmpty()) {
             return;
         }
-        if (emitExpertSpeakText(messageId, incrementalText)) {
-            return;
-        }
         ProcessingTimelineSession session = sessions.get(messageId);
         if (session == null) {
             return;
@@ -487,9 +479,6 @@ public class StepEventBridgeRegistry {
         if (messageId == null || incrementalText == null || incrementalText.isEmpty()) {
             return;
         }
-        if (emitExpertSpeakText(messageId, incrementalText)) {
-            return;
-        }
         ProcessingTimelineSession session = sessions.get(messageId);
         if (session == null) {
             return;
@@ -502,48 +491,6 @@ public class StepEventBridgeRegistry {
         if (queue != null) {
             routeHookToken(messageId, StreamToken.stepDelta(thinkId, "reasoning", incrementalText), queue);
         }
-    }
-
-    /** 专家 Hub：Hook 增量直出正文，不经 think 锚点 */
-        emitExpertSpeakText(bridgeId, incrementalText);
-    }
-
-    /** 专家 Hub：工具调用开始时刷新 expert 步 active 文案 */
-        if (bridgeId == null || toolLabel == null || toolLabel.isBlank()) {
-            return;
-        }
-        if (sink == null) {
-            return;
-        }
-        long ts = System.currentTimeMillis();
-        String active = toolLabel.strip() + "…";
-        com.sunshine.orchestrator.processing.StepSummary summary =
-                new com.sunshine.orchestrator.processing.StepSummary(null, active, null);
-        ProcessingStep step = new ProcessingStep(
-                "tool",
-                "running",
-                summary,
-                ts,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                ts,
-                toolLabel.strip(),
-                null,
-                null,
-                null);
-        sink.accept(StreamToken.step(step));
-    }
-
-    /** 专家 Hub：Hook 增量直出正文，不经 think 锚点 */
-    private boolean emitExpertSpeakText(String bridgeId, String incrementalText) {
-            return false;
-        }
-        sink.accept(StreamToken.content(incrementalText));
-        return true;
     }
 
     public void emitSingletonReasoningChunk(String incrementalText) {
@@ -567,11 +514,7 @@ public class StepEventBridgeRegistry {
         if (!isHookBridgeActive(messageId)) {
             return;
         }
-            // 专家 Hub：正文走 agent.stream REASONING；Hook 仅即时下发工具步（工具 RPC 期间 stream 无事件）
-            }
-            return;
-        }
-        // 无 wrapper 的 sub Agent（专家 Hub 等）：禁止 Hook 刷入主 assistant 时间线
+        // 无 wrapper 的 sub Agent：禁止 Hook 刷入主 assistant 时间线
         if (messageId.startsWith("sub-") && !tokenWrappers.containsKey(messageId)) {
             if (queue != null) {
                 queue.offer(token);
@@ -670,13 +613,6 @@ public class StepEventBridgeRegistry {
             return false;
         }
         return bindingEpoch == currentStreamEpoch(flushKey);
-    }
-
-        if (token == null || !token.isStep() || token.step() == null) {
-            return false;
-        }
-        String phase = token.step().phase();
-        return phase != null && phase.startsWith("tool");
     }
 
     public void drainHookQueueToGeneration(String messageId,

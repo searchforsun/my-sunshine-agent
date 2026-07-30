@@ -138,8 +138,7 @@ public class ChatStreamContextFactory {
         ExecutionPlan storedPlan = executionPlanParser.parseStoredIntent(
                 assistant.getIntent() != null ? assistant.getIntent() : "");
         boolean reactRestartResume = !planWorkflowResume
-                && (storedPlan.mode() == ExecutionMode.REACT
-                || storedPlan.mode() == ExecutionMode.PEER_COLLAB);
+                && storedPlan.mode() == ExecutionMode.REACT;
         boolean hasNativeCheckpoint = reactRestartResume
                 && checkpointService.hasCheckpoint(userId, assistantId);
         log.info("[ChatStreamContextFactory] resume userId={} msg={} reactRestart={} hasNativeCheckpoint={}",

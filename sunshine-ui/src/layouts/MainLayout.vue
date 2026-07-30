@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
-import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, PeopleOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline } from '@vicons/ionicons5'
+import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, HardwareChipOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
@@ -72,7 +72,7 @@ const platformMenuOptions: MenuOption[] = [
   { label: 'Skills', key: 'skills', icon: renderIcon(SparklesOutline) },
   { label: '工作流', key: 'workflows', icon: renderIcon(GitNetworkOutline) },
   { label: '工具', key: 'tools', icon: renderIcon(ConstructOutline) },
-  { label: '智能体', key: 'agents', icon: renderIcon(PeopleOutline) },
+  { label: '智能体', key: 'agents', icon: renderIcon(HardwareChipOutline) },
   { label: '上下文', key: 'context', icon: renderIcon(AlbumsOutline) },
   { label: '提示词', key: 'prompts', icon: renderIcon(DocumentTextOutline) },
   { label: '业务数据', key: 'biz-data', icon: renderIcon(BriefcaseOutline) },
