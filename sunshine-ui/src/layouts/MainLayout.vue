@@ -12,6 +12,7 @@ import { useConversationSidebarIndicator } from '../composables/useConversationS
 import BrandMark from '../components/BrandMark.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import UserSettingsModal from '../components/UserSettingsModal.vue'
+import WorkspaceSelector from '../components/chat/WorkspaceSelector.vue'
 import ConversationSidebarList from '../components/ConversationSidebarList.vue'
 
 const router = useRouter()
@@ -64,6 +65,11 @@ const chatMenuOptions = computed((): MenuOption[] => {
       key: 'chat',
       icon: renderIcon(ChatbubblesOutline),
     },
+    {
+      label: '新任务',
+      key: 'new-task',
+      icon: renderIcon(ConstructOutline),
+    },
   ]
 })
 
@@ -96,6 +102,10 @@ function renderDropdownIcon(icon: Component) {
 function handleMenuClick(key: string) {
   if (key === 'chat') {
     handleNewChat()
+    return
+  }
+  if (key === 'new-task') {
+    handleNewTask()
     return
   }
   void router.push({ name: key })
@@ -158,6 +168,22 @@ function handleNewChat() {
       console.error('[MainLayout] 创建会话失败', e)
     }
   })()
+}
+
+const showWorkspaceSelector = ref(false)
+
+function handleNewTask() {
+  showWorkspaceSelector.value = true
+}
+
+async function selectWorkspaceAndCreate(workspaceId: string) {
+  showWorkspaceSelector.value = false
+  try {
+    await chatStore.create({ kind: 'task', workspaceId, checkoutPath: '/workspace/main' })
+    if (route.name !== 'chat') router.push('/chat')
+  } catch (e) {
+    console.error('[MainLayout] 创建任务会话失败', e)
+  }
 }
 
 function handleSwitchConversation(id: string) {
@@ -332,6 +358,10 @@ onMounted(() => {
     </NLayoutSider>
 
     <UserSettingsModal v-model:show="showSettings" />
+    <WorkspaceSelector
+      v-model:model-value="showWorkspaceSelector"
+      @selected="selectWorkspaceAndCreate"
+    />
 
     <!-- Content -->
     <NLayoutContent class="content-area" :class="{ 'content-area--fill': contentFill }">

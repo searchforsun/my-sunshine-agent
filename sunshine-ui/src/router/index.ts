@@ -83,6 +83,12 @@ const router = createRouter({
           meta: { title: '工作流' },
         },
         {
+          path: 'workspaces',
+          name: 'workspaces',
+          component: () => import('../views/WorkspaceView.vue'),
+          meta: { title: '工作区' },
+        },
+        {
           path: 'plans/:planId',
           name: 'plan-detail',
           component: () => import('../views/PlanDetailView.vue'),

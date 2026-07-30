@@ -17,6 +17,10 @@ function toAuthUser(res: authApi.AuthUser): authApi.AuthUser {
       ? res.defaultWriteHitlMode
       : 'never',
     personalRules: res.personalRules ?? null,
+    githubUrl: res.githubUrl ?? null,
+    githubTokenSet: res.githubTokenSet ?? false,
+    gitlabUrl: res.gitlabUrl ?? null,
+    gitlabTokenSet: res.gitlabTokenSet ?? false,
   }
 }
 
@@ -75,8 +79,13 @@ export const useAuthStore = defineStore('auth', () => {
     tenantId: string,
     defaultWriteHitlMode?: string,
     personalRules?: string | null,
+    githubUrl?: string | null,
+    githubToken?: string | null,
+    gitlabUrl?: string | null,
+    gitlabToken?: string | null,
   ) {
-    const res = await authApi.updateProfile(nickname, tenantId, defaultWriteHitlMode, personalRules)
+    const res = await authApi.updateProfile(nickname, tenantId, defaultWriteHitlMode, personalRules,
+      githubUrl, githubToken, gitlabUrl, gitlabToken)
     if (!res.token?.trim()) {
       throw new Error('资料已保存但登录凭证刷新失败，请重新登录')
     }

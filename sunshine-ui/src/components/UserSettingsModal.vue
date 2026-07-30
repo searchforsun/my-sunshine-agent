@@ -12,12 +12,13 @@ import { isWriteHitlMode, type WriteHitlMode } from '../api/writeHitlModes'
 import { friendlyErrorMessage } from '../api/apiError'
 import type { TenantId } from '../api/tenants'
 
-type SettingsGroup = 'account' | 'chat' | 'rules'
+type SettingsGroup = 'account' | 'chat' | 'rules' | 'git'
 
 const GROUPS: Array<{ key: SettingsGroup; label: string }> = [
   { key: 'account', label: '账号' },
   { key: 'chat', label: '对话偏好' },
   { key: 'rules', label: '个人规则' },
+  { key: 'git', label: 'Git' },
 ]
 
 const props = defineProps<{ show: boolean }>()
@@ -36,6 +37,10 @@ const defaultMode = ref(globalDefault.value)
 const defaultWriteHitl = ref<WriteHitlMode>(writeHitlGlobal.value)
 const tenantId = ref<TenantId>('default')
 const personalRules = ref('')
+const githubUrl = ref('')
+const githubToken = ref('')
+const gitlabUrl = ref('')
+const gitlabToken = ref('')
 const saving = ref(false)
 
 watch(
@@ -49,6 +54,10 @@ watch(
       defaultWriteHitl.value = isWriteHitlMode(fromAuth) ? fromAuth : writeHitlGlobal.value
       tenantId.value = auth.user?.tenantId ?? 'default'
       personalRules.value = auth.user?.personalRules ?? ''
+      githubUrl.value = auth.user?.githubUrl ?? ''
+      githubToken.value = ''
+      gitlabUrl.value = auth.user?.gitlabUrl ?? ''
+      gitlabToken.value = ''
     }
   },
 )
@@ -65,7 +74,9 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    await auth.updateProfile(value, tenantId.value, defaultWriteHitl.value, personalRules.value)
+    await auth.updateProfile(value, tenantId.value, defaultWriteHitl.value, personalRules.value,
+      githubUrl.value || null, githubToken.value || null,
+      gitlabUrl.value || null, gitlabToken.value || null)
     setGlobalDefault(defaultMode.value)
     setWriteHitlGlobal(defaultWriteHitl.value)
     message.success('资料已更新')
@@ -168,6 +179,46 @@ async function handleSave() {
               />
               <p class="settings-hint">注入你的所有对话系统提示；留空不注入，子 Agent 不继承。</p>
             </div>
+          </NFormItem>
+        </NForm>
+        <NForm v-show="activeGroup === 'git'" label-placement="top" :show-require-mark="false">
+          <NFormItem label="GitHub 基础地址">
+            <NInput
+              v-model:value="githubUrl"
+              class="sun-field"
+              placeholder="如 https://github.com"
+              maxlength="255"
+              :disabled="saving"
+            />
+          </NFormItem>
+          <NFormItem label="GitHub PAT">
+            <NInput
+              v-model:value="githubToken"
+              class="sun-field"
+              type="password"
+              placeholder="留空不修改"
+              maxlength="255"
+              :disabled="saving"
+            />
+          </NFormItem>
+          <NFormItem label="内网 GitLab 基础地址">
+            <NInput
+              v-model:value="gitlabUrl"
+              class="sun-field"
+              placeholder="如 https://gitlab.example.com"
+              maxlength="255"
+              :disabled="saving"
+            />
+          </NFormItem>
+          <NFormItem label="内网 GitLab PAT">
+            <NInput
+              v-model:value="gitlabToken"
+              class="sun-field"
+              type="password"
+              placeholder="留空不修改"
+              maxlength="255"
+              :disabled="saving"
+            />
           </NFormItem>
         </NForm>
       </div>

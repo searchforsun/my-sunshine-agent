@@ -37,6 +37,9 @@ export interface Conversation {
   messages: ChatMessage[]
   executionPreference?: ExecutionPreference
   kbId?: string | null
+  kind?: string
+  workspaceId?: string | null
+  checkoutPath?: string | null
 }
 
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
@@ -272,9 +275,9 @@ export const useChatStore = defineStore('chat', () => {
     [...conversations.value].sort((a, b) => b.updatedAt - a.updatedAt)
   )
 
-  async function create(): Promise<string> {
+  async function create(params?: { kind?: string; workspaceId?: string; checkoutPath?: string }): Promise<string> {
     try {
-      const created = await createConversation()
+      const created = await createConversation(params)
       const conv: Conversation = {
         id: created.id,
         title: created.title,
@@ -283,6 +286,8 @@ export const useChatStore = defineStore('chat', () => {
         messages: [],
         executionPreference: created.executionPreference,
         kbId: created.kbId ?? null,
+        kind: created.kind,
+        workspaceId: created.workspaceId ?? null,
       }
       conversations.value.unshift(conv)
       currentId.value = conv.id

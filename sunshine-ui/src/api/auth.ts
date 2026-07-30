@@ -11,6 +11,14 @@ export interface AuthUser {
   defaultWriteHitlMode?: string
   /** 用户个人规则（soul），注入系统提示；null/缺省表示未配置 */
   personalRules?: string | null
+  /** GitHub 基础地址 */
+  githubUrl?: string | null
+  /** GitHub PAT 是否已配置 */
+  githubTokenSet?: boolean
+  /** GitLab 基础地址 */
+  gitlabUrl?: string | null
+  /** GitLab PAT 是否已配置 */
+  gitlabTokenSet?: boolean
 }
 
 export interface LoginResult extends AuthUser {
@@ -58,11 +66,22 @@ export async function updateProfile(
   tenantId: string,
   defaultWriteHitlMode?: string,
   personalRules?: string | null,
+  githubUrl?: string | null,
+  githubToken?: string | null,
+  gitlabUrl?: string | null,
+  gitlabToken?: string | null,
 ): Promise<UpdateProfileResult> {
+  const body: Record<string, unknown> = { nickname, tenantId }
+  if (defaultWriteHitlMode !== undefined) body.defaultWriteHitlMode = defaultWriteHitlMode
+  if (personalRules !== undefined) body.personalRules = personalRules
+  if (githubUrl !== undefined) body.githubUrl = githubUrl
+  if (githubToken !== undefined) body.githubToken = githubToken
+  if (gitlabUrl !== undefined) body.gitlabUrl = gitlabUrl
+  if (gitlabToken !== undefined) body.gitlabToken = gitlabToken
   const res = await fetch(`${resolveApiBase()}/api/auth/profile`, {
     method: 'PATCH',
     headers: apiHeaders(),
-    body: JSON.stringify({ nickname, tenantId, defaultWriteHitlMode, personalRules }),
+    body: JSON.stringify(body),
   })
   return parseApiResponse<UpdateProfileResult>(res)
 }

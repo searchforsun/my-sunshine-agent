@@ -17,6 +17,9 @@ export interface ConversationSummary {
   updatedAt: number
   executionPreference?: ExecutionPreference
   kbId?: string | null
+  /** chat / task */
+  kind?: string
+  workspaceId?: string | null
 }
 
 export interface ConversationMessage {
@@ -65,6 +68,8 @@ function mapSummary(raw: Record<string, unknown>): ConversationSummary {
     updatedAt: toTimestamp(raw.updatedAt as string | undefined),
     executionPreference: isExecutionPreference(pref) ? pref : undefined,
     kbId: typeof raw.kbId === 'string' ? raw.kbId : null,
+    kind: typeof raw.kind === 'string' ? raw.kind : undefined,
+    workspaceId: typeof raw.workspaceId === 'string' ? raw.workspaceId : null,
   }
 }
 
@@ -148,11 +153,19 @@ export async function listConversations(): Promise<ConversationSummary[]> {
   return unwrapList(await parseBffPayload(res)).map(mapSummary)
 }
 
-export async function createConversation(): Promise<ConversationSummary> {
+export async function createConversation(params?: {
+  kind?: string
+  workspaceId?: string
+  checkoutPath?: string
+}): Promise<ConversationSummary> {
+  const body: Record<string, unknown> = {}
+  if (params?.kind) body.kind = params.kind
+  if (params?.workspaceId) body.workspaceId = params.workspaceId
+  if (params?.checkoutPath) body.checkoutPath = params.checkoutPath
   const res = await fetch(`${API_BASE()}/api/conversations`, {
     method: 'POST',
     headers: apiHeaders(),
-    body: '{}',
+    body: JSON.stringify(body),
   })
   return mapSummary(unwrapObject(await parseBffPayload(res)))
 }
