@@ -63,6 +63,13 @@ const editForm = ref({
   systemPrompt: '',
   skillIds: [] as string[],
   toolIds: [] as string[],
+  kbScopeText: '',
+  dataScope: '',
+  permissionsHitl: 'inherit' as string,
+  permissionsSandboxWrite: 'inherit' as string,
+  modelConfig: '',
+  maxIters: 0 as number,
+  maxHandoffs: 0 as number,
 })
 
 const selectedAgent = computed(() =>
@@ -164,6 +171,13 @@ const isFormDirty = computed(() => {
       !== JSON.stringify([...(agent.skillIds ?? [])].sort())
     || JSON.stringify([...editForm.value.toolIds].sort())
       !== JSON.stringify([...parseAgentToolIds(agent.toolsJson)].sort())
+    || editForm.value.kbScopeText !== (agent.kbScope ?? []).join('\n')
+    || editForm.value.dataScope !== (agent.dataScopeJson ?? '')
+    || parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit') !== editForm.value.permissionsHitl
+    || parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit') !== editForm.value.permissionsSandboxWrite
+    || editForm.value.modelConfig !== (agent.modelConfigJson ?? '')
+    || editForm.value.maxIters !== (agent.maxIters ?? 0)
+    || editForm.value.maxHandoffs !== (agent.maxHandoffs ?? 0)
 })
 
 function isAgentComplete(agent: AgentEntry): boolean {
@@ -179,7 +193,32 @@ function loadEditForm(agent: AgentEntry) {
     systemPrompt: agent.systemPrompt,
     skillIds: [...(agent.skillIds ?? [])],
     toolIds: parseAgentToolIds(agent.toolsJson),
+    kbScopeText: (agent.kbScope ?? []).join('\n'),
+    dataScope: agent.dataScopeJson ?? '',
+    permissionsHitl: parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit'),
+    permissionsSandboxWrite: parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit'),
+    modelConfig: agent.modelConfigJson ?? '',
+    maxIters: agent.maxIters ?? 0,
+    maxHandoffs: agent.maxHandoffs ?? 0,
   }
+}
+
+function parsePermissionsString(json: string | undefined | null, key: string, def: string): string {
+  if (!json?.trim()) return def
+  try {
+    const obj = JSON.parse(json)
+    return obj[key] ?? def
+  } catch {
+    return def
+  }
+}
+
+function makePermissionsJson(): string {
+  const obj: Record<string, string> = {}
+  if (editForm.value.permissionsHitl !== 'inherit') obj.hitl = editForm.value.permissionsHitl
+  if (editForm.value.permissionsSandboxWrite !== 'inherit') obj.sandboxWriteMode = editForm.value.permissionsSandboxWrite
+  if (Object.keys(obj).length === 0) return ''
+  return JSON.stringify(obj)
 }
 
 async function refreshPage() {
@@ -291,6 +330,14 @@ async function handleSave() {
       editForm.value.description.trim(),
       editForm.value.skillIds,
       editForm.value.toolIds,
+      {
+        kbScope: editForm.value.kbScopeText ? editForm.value.kbScopeText.split('\n').map(s => s.trim()).filter(Boolean) : [],
+        dataScopeJson: editForm.value.dataScope || undefined,
+        permissionsJson: makePermissionsJson() || undefined,
+        modelConfigJson: editForm.value.modelConfig || undefined,
+        maxIters: Number(editForm.value.maxIters) || 0,
+        maxHandoffs: Number(editForm.value.maxHandoffs) || 0,
+      },
     )
     message.success('已保存')
     isEditing.value = false
@@ -566,6 +613,95 @@ onUnmounted(() => {
                   />
                 </NFormItem>
               </div>
+            </section>
+
+            <section class="form-section">
+              <header class="form-section-head">
+                <h4 class="form-section-title">运行参数</h4>
+              </header>
+              <div class="form-grid form-grid-config">
+                <NFormItem label="最大迭代轮次">
+                  <NInput
+                    v-model:value="editForm.maxIters"
+                    class="sun-field"
+                    placeholder="0=使用默认"
+                    :disabled="!isEditing"
+                  />
+                </NFormItem>
+                <NFormItem label="最大委派次数">
+                  <NInput
+                    v-model:value="editForm.maxHandoffs"
+                    class="sun-field"
+                    placeholder="0=不限"
+                    :disabled="!isEditing"
+                  />
+                </NFormItem>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <header class="form-section-head">
+                <h4 class="form-section-title">高级配置</h4>
+              </header>
+              <div class="form-grid form-grid-config">
+                <NFormItem label="HITL 模式">
+                  <NSelect
+                    v-model:value="editForm.permissionsHitl"
+                    class="sun-field"
+                    :disabled="!isEditing"
+                    :options="[
+                      { label: '继承', value: 'inherit' },
+                      { label: '总是', value: 'always' },
+                      { label: '从不', value: 'never' },
+                    ]"
+                    :menu-props="{ class: 'agent-select-menu' }"
+                  />
+                </NFormItem>
+                <NFormItem label="沙盒写模式">
+                  <NSelect
+                    v-model:value="editForm.permissionsSandboxWrite"
+                    class="sun-field"
+                    :disabled="!isEditing"
+                    :options="[
+                      { label: '继承', value: 'inherit' },
+                      { label: '总是', value: 'always' },
+                      { label: '智能', value: 'smart' },
+                      { label: '从不', value: 'never' },
+                    ]"
+                    :menu-props="{ class: 'agent-select-menu' }"
+                  />
+                </NFormItem>
+              </div>
+              <NFormItem label="知识库范围（每行一个 ID，* 代表所有）">
+                <NInput
+                  v-model:value="editForm.kbScopeText"
+                  class="sun-field sun-field-grow"
+                  type="textarea"
+                  :disabled="!isEditing"
+                  :autosize="{ minRows: 2, maxRows: 6 }"
+                  placeholder="default"
+                />
+              </NFormItem>
+              <NFormItem label="数据范围（JSON）">
+                <NInput
+                  v-model:value="editForm.dataScope"
+                  class="sun-field prompt-input"
+                  type="textarea"
+                  :disabled="!isEditing"
+                  :autosize="{ minRows: 2, maxRows: 6 }"
+                  placeholder='{"departments": ["hr", "finance"]}'
+                />
+              </NFormItem>
+              <NFormItem label="模型配置（JSON，覆盖默认模型）">
+                <NInput
+                  v-model:value="editForm.modelConfig"
+                  class="sun-field prompt-input"
+                  type="textarea"
+                  :disabled="!isEditing"
+                  :autosize="{ minRows: 2, maxRows: 6 }"
+                  placeholder='{"modelName": "gpt-4o", "modelBaseUrl": ""}'
+                />
+              </NFormItem>
             </section>
           </NForm>
         </div>
