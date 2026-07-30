@@ -36,7 +36,7 @@ export function resumeButtonLabel(msg: ChatMessage): string {
   return '重新生成'
 }
 
-/** 多专家协作助手消息 */
+/** 多智能体协作助手消息 */
 export function isPeerCollabAssistantMessage(msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
   const intent = (msg.intent ?? '').toLowerCase()
   if (intent === 'peer-collab') return true
@@ -47,7 +47,7 @@ export function isPeerCollabAssistantMessage(msg: Pick<ChatMessage, 'intent' | '
     || (s.id?.startsWith('expert-') ?? false)) ?? false
 }
 
-/** ReAct 助手消息（非 Plan/Workflow / 多专家协作） */
+/** ReAct 助手消息（非 Plan/Workflow / 多智能体协作） */
 export function isReactAssistantMessage(msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
   if (isPeerCollabAssistantMessage(msg)) return false
   if (msg.steps?.some(s => s.phase === 'plan' || s.id.startsWith('node-'))) return false
@@ -57,7 +57,7 @@ export function isReactAssistantMessage(msg: Pick<ChatMessage, 'intent' | 'steps
   return true
 }
 
-/** 续跑时清空步骤并从意图步重跑（ReAct 或多专家协作） */
+/** 续跑时清空步骤并从意图步重跑（ReAct 或多智能体协作） */
 export function isExecutionRestartMessage(msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
   return isReactAssistantMessage(msg) || isPeerCollabAssistantMessage(msg)
 }

@@ -141,7 +141,7 @@ export const PROMPT_KIND_LABELS: Record<string, string> = {
   memory: '记忆',
   scope: '范围',
   'routing-rule': '路由规则',
-  peer: '多专家',
+  peer: '多智能体',
   expert: '专家协调',
   sandbox: '沙箱',
   'plan-workflow': '动态规划',

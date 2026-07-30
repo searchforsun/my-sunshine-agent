@@ -1,19 +1,19 @@
-import type { ExpertCatalogIndexEntry } from '../api/experts'
+import type { AgentCatalogIndexEntry } from '../api/agents'
 import type { ExecutionPreference } from '../api/executionModes'
-import { allowsExpertMention } from '../api/executionModes'
+import { allowsAgentMention } from '../api/executionModes'
 
 const DOLLAR_TOKEN = /\$([\w\u4e00-\u9fff-]+)/g
 
 const TOKEN_BOUNDARY = /[\s，。！？,.!?;；：:]/
 
-export type ExpertMentionSegment =
+export type AgentMentionSegment =
   | { type: 'text'; value: string }
-  | { type: 'expert'; token: string; expert: ExpertCatalogIndexEntry }
+  | { type: 'agent'; token: string; agent: AgentCatalogIndexEntry }
 
-export function findExpertByToken(
+export function findAgentByToken(
   token: string,
-  catalog: ExpertCatalogIndexEntry[],
-): ExpertCatalogIndexEntry | undefined {
+  catalog: AgentCatalogIndexEntry[],
+): AgentCatalogIndexEntry | undefined {
   const lower = token.toLowerCase()
   return catalog.find(e => e.enabled && (
     e.id.toLowerCase() === lower
@@ -21,26 +21,26 @@ export function findExpertByToken(
   ))
 }
 
-export function segmentExpertMentions(
+export function segmentAgentMentions(
   content: string,
-  catalog: ExpertCatalogIndexEntry[],
-): ExpertMentionSegment[] {
+  catalog: AgentCatalogIndexEntry[],
+): AgentMentionSegment[] {
   if (!content) return [{ type: 'text', value: '' }]
-  const segments: ExpertMentionSegment[] = []
+  const segments: AgentMentionSegment[] = []
   let lastIndex = 0
   DOLLAR_TOKEN.lastIndex = 0
   let m: RegExpExecArray | null
   while ((m = DOLLAR_TOKEN.exec(content)) !== null) {
     const token = m[1]
-    const expert = findExpertByToken(token, catalog)
-    if (!expert) continue
+    const agent = findAgentByToken(token, catalog)
+    if (!agent) continue
     const afterIdx = m.index + m[0].length
     const afterChar = content[afterIdx]
     if (afterChar != null && !TOKEN_BOUNDARY.test(afterChar)) continue
     if (m.index > lastIndex) {
       segments.push({ type: 'text', value: content.slice(lastIndex, m.index) })
     }
-    segments.push({ type: 'expert', token: expert.id, expert })
+    segments.push({ type: 'agent', token: agent.id, agent })
     lastIndex = afterIdx
   }
   if (lastIndex < content.length) {
@@ -49,14 +49,14 @@ export function segmentExpertMentions(
   return segments.length > 0 ? segments : [{ type: 'text', value: content }]
 }
 
-export function segmentExpertMentionsForMessage(
+export function segmentAgentMentionsForMessage(
   content: string,
-  catalog: ExpertCatalogIndexEntry[],
+  catalog: AgentCatalogIndexEntry[],
   executionPreference?: ExecutionPreference,
-): ExpertMentionSegment[] {
+): AgentMentionSegment[] {
   const pref = executionPreference ?? 'auto'
-  if (!allowsExpertMention(pref)) {
+  if (!allowsAgentMention(pref)) {
     return [{ type: 'text', value: content }]
   }
-  return segmentExpertMentions(content, catalog)
+  return segmentAgentMentions(content, catalog)
 }

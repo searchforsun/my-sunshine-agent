@@ -72,14 +72,14 @@ const platformMenuOptions: MenuOption[] = [
   { label: 'Skills', key: 'skills', icon: renderIcon(SparklesOutline) },
   { label: '工作流', key: 'workflows', icon: renderIcon(GitNetworkOutline) },
   { label: '工具', key: 'tools', icon: renderIcon(ConstructOutline) },
-  { label: '专家', key: 'experts', icon: renderIcon(PeopleOutline) },
+  { label: '智能体', key: 'agents', icon: renderIcon(PeopleOutline) },
   { label: '上下文', key: 'context', icon: renderIcon(AlbumsOutline) },
   { label: '提示词', key: 'prompts', icon: renderIcon(DocumentTextOutline) },
   { label: '业务数据', key: 'biz-data', icon: renderIcon(BriefcaseOutline) },
   { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
 ]
 
-const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'experts', 'context', 'prompts', 'biz-data', 'workflow-diff', 'skill-diff'])
+const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'agents', 'context', 'prompts', 'biz-data', 'workflow-diff', 'skill-diff'])
 const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
 const hideSidebarFab = computed(() =>
   contentFill.value || route.name === 'skill-diff',

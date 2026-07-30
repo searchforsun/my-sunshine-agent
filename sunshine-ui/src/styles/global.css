@@ -398,7 +398,7 @@ html.theme-switching *::after {
   --n-border: none !important;
 }
 
-/* 表单字段：黑底禁用态（SSOT，对齐 Experts / Skills） */
+/* 表单字段：黑底禁用态（SSOT，对齐 Agents / Skills） */
 .sun-field.n-input,
 .sun-field.n-input-number,
 .search-input.n-input {
@@ -656,9 +656,9 @@ html.theme-switching *::after {
   --mention-skill-bg: rgba(201, 162, 39, 0.11);
   --mention-skill-border: rgba(201, 162, 39, 0.28);
   --mention-skill-prefix: #a68b4b;
-  --mention-expert-bg: rgba(111, 175, 142, 0.11);
-  --mention-expert-border: rgba(111, 175, 142, 0.28);
-  --mention-expert-prefix: #6fa08a;
+  --mention-agent-bg: rgba(111, 175, 142, 0.11);
+  --mention-agent-border: rgba(111, 175, 142, 0.28);
+  --mention-agent-prefix: #6fa08a;
   --mention-workflow-bg: rgba(107, 155, 210, 0.11);
   --mention-workflow-border: rgba(107, 155, 210, 0.28);
   --mention-workflow-prefix: #6b9bc8;
@@ -690,9 +690,9 @@ html.theme-switching *::after {
   border-color: var(--mention-skill-border);
 }
 
-.mention-chip--expert {
-  background: var(--mention-expert-bg);
-  border-color: var(--mention-expert-border);
+.mention-chip--agent {
+  background: var(--mention-agent-bg);
+  border-color: var(--mention-agent-border);
 }
 
 .mention-chip--workflow {
@@ -757,8 +757,8 @@ button.mention-chip--path {
   color: var(--mention-skill-prefix);
 }
 
-.mention-chip--expert .mention-chip__prefix {
-  color: var(--mention-expert-prefix);
+.mention-chip--agent .mention-chip__prefix {
+  color: var(--mention-agent-prefix);
 }
 
 .mention-chip--workflow .mention-chip__prefix {

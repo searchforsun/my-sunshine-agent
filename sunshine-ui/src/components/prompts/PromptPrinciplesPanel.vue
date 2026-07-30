@@ -7,7 +7,7 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 
 /** 意图链路；底栏强制只锁执行方式，仍可解析 # / $ / / */
 const ROUTING_STEPS = [
-  { key: 'L0', title: '硬绑定', detail: '#工作流 / $专家 / /Skill → 立刻锁定' },
+  { key: 'L0', title: '硬绑定', detail: '#工作流 / $智能体 / /Skill → 立刻锁定' },
   { key: '规则', title: '统一规则', detail: 'Catalog 路由规则（routing-rule）按 priority 首命中' },
   { key: 'L3', title: '意图分类', detail: '未命中 → intent.classifier' },
   { key: '执行', title: '分发', detail: 'workflow / plan-workflow / peer-collab / react' },
@@ -109,7 +109,7 @@ const AGENT_ROWS = [
   },
   {
     key: 'expert',
-    title: '多专家 Hub',
+    title: '多智能体协作（已退役）',
     when: 'peer-collab',
     stack: '可先 ReAct 收材料 → 专家发言 → Synthesizer 综合',
   },

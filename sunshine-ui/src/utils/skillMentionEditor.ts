@@ -1,5 +1,5 @@
 import type { SkillCatalogIndexEntry } from '../api/skills'
-import type { ExpertCatalogIndexEntry } from '../api/experts'
+import type { AgentCatalogIndexEntry } from '../api/agents'
 import type { WorkflowCatalogEntry } from '../api/workflows'
 import {
   type ChatMentionAllows,
@@ -174,8 +174,8 @@ export function renderEditorSegments(root: HTMLElement, segments: ChatMentionSeg
       if (seg.value) root.appendChild(document.createTextNode(seg.value))
     } else if (seg.type === 'skill') {
       root.appendChild(createMentionChipElement('skill', seg.token))
-    } else if (seg.type === 'expert') {
-      root.appendChild(createMentionChipElement('expert', seg.token))
+    } else if (seg.type === 'agent') {
+      root.appendChild(createMentionChipElement('agent', seg.token))
     } else if (seg.type === 'workflow') {
       root.appendChild(createMentionChipElement('workflow', seg.token))
     } else if (seg.type === 'path') {
@@ -239,8 +239,8 @@ export type { ChatMentionSegment as SkillMentionSegment }
 
 export function defaultMentionCatalogs(
   skills: SkillCatalogIndexEntry[] = [],
-  experts: ExpertCatalogIndexEntry[] = [],
+  agents: AgentCatalogIndexEntry[] = [],
   workflows: WorkflowCatalogEntry[] = [],
 ): ChatMentionCatalogs {
-  return { skills, experts, workflows }
+  return { skills, agents, workflows }
 }

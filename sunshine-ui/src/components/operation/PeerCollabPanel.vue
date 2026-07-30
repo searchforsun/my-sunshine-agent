@@ -60,7 +60,7 @@ async function loadTranscript(): Promise<void> {
     if (!view) {
       loadError.value = '协作记录尚未就绪'
     } else if (transcript.value.length === 0) {
-      loadError.value = '暂无专家发言记录'
+      loadError.value = '暂无智能体发言记录'
     }
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载协作记录失败'

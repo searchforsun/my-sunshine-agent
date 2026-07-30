@@ -27,28 +27,28 @@ import {
 } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import {
-  createExpert,
-  deleteExpert,
-  listExperts,
-  setExpertEnabled,
-  updateExpert,
-  type ExpertEntry,
-} from '../api/experts'
+  createAgent,
+  deleteAgent,
+  listAgents,
+  setAgentEnabled,
+  updateAgent,
+  type AgentEntry,
+} from '../api/agents'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
 import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
-import { useExpertsRouteState } from '../composables/useExpertsRouteState'
+import { useAgentsRouteState } from '../composables/useAgentsRouteState'
 
 const PLACEHOLDER_PROMPT = '待补充系统提示词'
-const EXPERT_ID_PATTERN = /^[\w\u4e00-\u9fff-]+$/
+const AGENT_ID_PATTERN = /^[\w\u4e00-\u9fff-]+$/
 
 const message = useMessage()
-const { readId, syncId } = useExpertsRouteState()
+const { readId, syncId } = useAgentsRouteState()
 const loading = ref(false)
 const saving = ref(false)
 const creating = ref(false)
 const deleting = ref(false)
 const isEditing = ref(false)
-const experts = ref<ExpertEntry[]>([])
+const agents = ref<AgentEntry[]>([])
 const skillOptions = ref<SkillCatalogIndexEntry[]>([])
 const toolOptions = ref<ToolCatalogEntry[]>([])
 const selectedId = ref<string | null>(readId())
@@ -65,15 +65,15 @@ const editForm = ref({
   toolIds: [] as string[],
 })
 
-const selectedExpert = computed(() =>
-  experts.value.find(e => e.id === selectedId.value) ?? null,
+const selectedAgent = computed(() =>
+  agents.value.find(e => e.id === selectedId.value) ?? null,
 )
 
-const expertSearch = ref('')
-const filteredExperts = computed(() => {
-  const q = expertSearch.value.trim().toLowerCase()
-  if (!q) return experts.value
-  return experts.value.filter(
+const agentSearch = ref('')
+const filteredAgents = computed(() => {
+  const q = agentSearch.value.trim().toLowerCase()
+  if (!q) return agents.value
+  return agents.value.filter(
     e =>
       e.id.toLowerCase().includes(q)
       || (e.displayName ?? '').toLowerCase().includes(q)
@@ -98,7 +98,7 @@ const enabledToolIds = computed(() =>
   toolOptions.value.filter(t => t.enabled).map(t => t.id),
 )
 
-function parseExpertToolIds(toolsJson: string | undefined | null): string[] {
+function parseAgentToolIds(toolsJson: string | undefined | null): string[] {
   if (!toolsJson?.trim()) return []
   try {
     const parsed = JSON.parse(toolsJson) as unknown
@@ -118,11 +118,11 @@ const createNameTrimmed = computed(() => createDraft.value.displayName.trim())
 
 const createIdDuplicate = computed(() =>
   createIdTrimmed.value.length > 0
-  && experts.value.some(e => e.id === createIdTrimmed.value),
+  && agents.value.some(e => e.id === createIdTrimmed.value),
 )
 
 const createIdInvalid = computed(() =>
-  createIdTrimmed.value.length > 0 && !EXPERT_ID_PATTERN.test(createIdTrimmed.value),
+  createIdTrimmed.value.length > 0 && !AGENT_ID_PATTERN.test(createIdTrimmed.value),
 )
 
 const canConfirmCreate = computed(() =>
@@ -155,30 +155,30 @@ const viewMenuOptions: DropdownOption[] = [
 ]
 
 const isFormDirty = computed(() => {
-  const expert = selectedExpert.value
-  if (!expert) return false
-  return editForm.value.displayName !== expert.displayName
-    || editForm.value.description !== (expert.description ?? '')
-    || editForm.value.systemPrompt !== expert.systemPrompt
+  const agent = selectedAgent.value
+  if (!agent) return false
+  return editForm.value.displayName !== agent.displayName
+    || editForm.value.description !== (agent.description ?? '')
+    || editForm.value.systemPrompt !== agent.systemPrompt
     || JSON.stringify([...editForm.value.skillIds].sort())
-      !== JSON.stringify([...(expert.skillIds ?? [])].sort())
+      !== JSON.stringify([...(agent.skillIds ?? [])].sort())
     || JSON.stringify([...editForm.value.toolIds].sort())
-      !== JSON.stringify([...parseExpertToolIds(expert.toolsJson)].sort())
+      !== JSON.stringify([...parseAgentToolIds(agent.toolsJson)].sort())
 })
 
-function isExpertComplete(expert: ExpertEntry): boolean {
-  return !!expert.displayName?.trim()
-    && !!expert.systemPrompt?.trim()
-    && expert.systemPrompt.trim() !== PLACEHOLDER_PROMPT
+function isAgentComplete(agent: AgentEntry): boolean {
+  return !!agent.displayName?.trim()
+    && !!agent.systemPrompt?.trim()
+    && agent.systemPrompt.trim() !== PLACEHOLDER_PROMPT
 }
 
-function loadEditForm(expert: ExpertEntry) {
+function loadEditForm(agent: AgentEntry) {
   editForm.value = {
-    displayName: expert.displayName,
-    description: expert.description ?? '',
-    systemPrompt: expert.systemPrompt,
-    skillIds: [...(expert.skillIds ?? [])],
-    toolIds: parseExpertToolIds(expert.toolsJson),
+    displayName: agent.displayName,
+    description: agent.description ?? '',
+    systemPrompt: agent.systemPrompt,
+    skillIds: [...(agent.skillIds ?? [])],
+    toolIds: parseAgentToolIds(agent.toolsJson),
   }
 }
 
@@ -186,11 +186,11 @@ async function refreshPage() {
   loading.value = true
   try {
     const [list, skills, tools] = await Promise.all([
-      listExperts(),
+      listAgents(),
       listSkillCatalogIndex(),
       listToolCatalog(),
     ])
-    experts.value = list
+    agents.value = list
     skillOptions.value = skills
     toolOptions.value = tools
     if (selectedId.value && !list.some(e => e.id === selectedId.value)) {
@@ -202,20 +202,20 @@ async function refreshPage() {
       ? preferred
       : (list[0]?.id ?? null)
     if (targetId) {
-      selectExpert(targetId, true)
+      selectAgent(targetId, true)
     } else {
       selectedId.value = null
       syncId(null)
     }
   } catch (e) {
-    message.error('加载专家列表失败')
+    message.error('加载智能体列表失败')
     console.error(e)
   } finally {
     loading.value = false
   }
 }
 
-function selectExpert(id: string, force = false) {
+function selectAgent(id: string, force = false) {
   if (!force && isEditing.value && isFormDirty.value && id !== selectedId.value) {
     message.warning('请先保存修改')
     return
@@ -223,13 +223,13 @@ function selectExpert(id: string, force = false) {
   selectedId.value = id
   syncId(id)
   isEditing.value = false
-  const expert = experts.value.find(e => e.id === id)
-  if (!expert) return
-  loadEditForm(expert)
+  const agent = agents.value.find(e => e.id === id)
+  if (!agent) return
+  loadEditForm(agent)
 }
 
 function enterEditMode() {
-  if (!selectedExpert.value) return
+  if (!selectedAgent.value) return
   isEditing.value = true
 }
 
@@ -239,9 +239,9 @@ function handleViewMenuSelect(key: string | number) {
 }
 
 function cancelEdit() {
-  const expert = selectedExpert.value
-  if (!expert) return
-  loadEditForm(expert)
+  const agent = selectedAgent.value
+  if (!agent) return
+  loadEditForm(agent)
   isEditing.value = false
 }
 
@@ -261,13 +261,13 @@ async function handleCreateConfirm() {
   try {
     const id = createIdTrimmed.value
     const displayName = createNameTrimmed.value
-    await createExpert(id, displayName, PLACEHOLDER_PROMPT, '', [])
-    await setExpertEnabled(id, false)
+    await createAgent(id, displayName, PLACEHOLDER_PROMPT, '', [])
+    await setAgentEnabled(id, false)
     message.success('已创建')
     showCreateModal.value = false
     createDraft.value = { id: '', displayName: '' }
     await refreshPage()
-    selectExpert(id, true)
+    selectAgent(id, true)
   } catch (e) {
     message.error('创建失败，请检查 ID 是否重复')
     console.error(e)
@@ -284,7 +284,7 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    await updateExpert(
+    await updateAgent(
       selectedId.value,
       editForm.value.displayName.trim(),
       editForm.value.systemPrompt.trim(),
@@ -295,7 +295,7 @@ async function handleSave() {
     message.success('已保存')
     isEditing.value = false
     await refreshPage()
-    selectExpert(selectedId.value, true)
+    selectAgent(selectedId.value, true)
   } catch (e) {
     message.error('保存失败')
     console.error(e)
@@ -309,7 +309,7 @@ async function handleDeleteConfirm() {
   deleting.value = true
   const id = selectedId.value
   try {
-    await deleteExpert(id)
+    await deleteAgent(id)
     message.success('已删除')
     showDeleteConfirm.value = false
     selectedId.value = null
@@ -324,21 +324,21 @@ async function handleDeleteConfirm() {
   }
 }
 
-async function handleToggleEnabled(expert: ExpertEntry, enabled: boolean) {
-  if (expert.id === selectedId.value && isEditing.value) {
+async function handleToggleEnabled(agent: AgentEntry, enabled: boolean) {
+  if (agent.id === selectedId.value && isEditing.value) {
     message.warning('请先保存修改')
     return
   }
-  if (!isExpertComplete(expert)) {
+  if (!isAgentComplete(agent)) {
     message.warning('请先补全展示名与系统提示词并保存')
     return
   }
   try {
-    await setExpertEnabled(expert.id, enabled)
+    await setAgentEnabled(agent.id, enabled)
     message.success(enabled ? '已启用' : '已停用')
     await refreshPage()
-    if (selectedId.value === expert.id) {
-      selectExpert(expert.id, true)
+    if (selectedId.value === agent.id) {
+      selectAgent(agent.id, true)
     }
   } catch (e) {
     message.error('切换启用状态失败')
@@ -350,8 +350,8 @@ watch(
   () => readId(),
   (id) => {
     if (!id || id === selectedId.value) return
-    if (experts.value.some(e => e.id === id)) {
-      selectExpert(id, true)
+    if (agents.value.some(e => e.id === id)) {
+      selectAgent(id, true)
     }
   },
 )
@@ -367,11 +367,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="experts-root">
+  <div class="agents-root">
     <header class="page-header">
       <div class="page-header-main">
         <SidebarToggle />
-        <h2>专家管理</h2>
+        <h2>智能体管理</h2>
       </div>
       <NSpace :size="8">
         <NButton round secondary @click="openCreateModal">
@@ -385,15 +385,15 @@ onUnmounted(() => {
       </NSpace>
     </header>
 
-    <div class="experts-layout">
+    <div class="agents-layout">
       <aside class="list-panel">
         <div class="panel-head">
           <span class="panel-title">列表</span>
-          <NTag :bordered="false" size="tiny" round>{{ filteredExperts.length }}</NTag>
+          <NTag :bordered="false" size="tiny" round>{{ filteredAgents.length }}</NTag>
         </div>
         <div class="list-search">
           <NInput
-            v-model:value="expertSearch"
+            v-model:value="agentSearch"
             placeholder="搜索名称或 ID…"
             size="small"
             round
@@ -408,44 +408,44 @@ onUnmounted(() => {
         </div>
         <NSpin :show="loading" size="small" class="list-spin">
           <div class="list-body">
-            <div v-if="filteredExperts.length" class="expert-list">
+            <div v-if="filteredAgents.length" class="agent-list">
               <button
-                v-for="expert in filteredExperts"
-                :key="expert.id"
+                v-for="agent in filteredAgents"
+                :key="agent.id"
                 type="button"
-                class="expert-row"
-                :class="{ active: expert.id === selectedId }"
-                @click="selectExpert(expert.id)"
+                class="agent-row"
+                :class="{ active: agent.id === selectedId }"
+                @click="selectAgent(agent.id)"
               >
-                <div class="expert-row-head">
-                  <span class="expert-name">{{ expert.displayName }}</span>
+                <div class="agent-row-head">
+                  <span class="agent-name">{{ agent.displayName }}</span>
                   <NSwitch
-                    v-if="isExpertComplete(expert)"
-                    :value="expert.enabled"
+                    v-if="isAgentComplete(agent)"
+                    :value="agent.enabled"
                     size="small"
                     @click.stop
-                    @update:value="(v: boolean) => handleToggleEnabled(expert, v)"
+                    @update:value="(v: boolean) => handleToggleEnabled(agent, v)"
                   />
-                  <span v-else class="expert-badge draft">草稿</span>
+                  <span v-else class="agent-badge draft">草稿</span>
                 </div>
-                <span class="expert-id">{{ expert.id }}</span>
+                <span class="agent-id">{{ agent.id }}</span>
               </button>
             </div>
             <div v-else-if="!loading" class="empty-wrap">
               <NEmpty
                 size="small"
-                :description="experts.length && expertSearch.trim() ? '无匹配专家' : '暂无专家'"
+                :description="agents.length && agentSearch.trim() ? '无匹配智能体' : '暂无智能体'"
               />
             </div>
           </div>
         </NSpin>
       </aside>
 
-      <main v-if="selectedExpert" class="detail-panel">
+      <main v-if="selectedAgent" class="detail-panel">
         <div class="detail-toolbar">
           <div class="detail-toolbar-text">
-            <h3 class="detail-heading">{{ selectedExpert.displayName }}</h3>
-            <span class="detail-id">{{ selectedExpert.id }}</span>
+            <h3 class="detail-heading">{{ selectedAgent.displayName }}</h3>
+            <span class="detail-id">{{ selectedAgent.id }}</span>
           </div>
           <div class="detail-actions">
             <NDropdown
@@ -504,7 +504,7 @@ onUnmounted(() => {
                   v-model:value="editForm.displayName"
                   class="sun-field"
                   :disabled="!isEditing"
-                  placeholder="制度专家"
+                  placeholder="制度智能体"
                 />
               </NFormItem>
               <NFormItem label="描述">
@@ -514,7 +514,7 @@ onUnmounted(() => {
                   type="textarea"
                   :disabled="!isEditing"
                   :autosize="{ minRows: 2, maxRows: 10 }"
-                  placeholder="专家职责说明（可选）"
+                  placeholder="智能体职责说明（可选）"
                 />
               </NFormItem>
             </section>
@@ -531,7 +531,7 @@ onUnmounted(() => {
                   type="textarea"
                   :disabled="!isEditing"
                   :autosize="{ minRows: 8, maxRows: 28 }"
-                  placeholder="定义专家角色、分析范围与输出格式"
+                  placeholder="定义智能体角色、分析范围与输出格式"
                 />
               </NFormItem>
             </section>
@@ -549,7 +549,7 @@ onUnmounted(() => {
                     filterable
                     :disabled="!isEditing"
                     :options="skillSelectOptions"
-                    :menu-props="{ class: 'expert-select-menu' }"
+                    :menu-props="{ class: 'agent-select-menu' }"
                     placeholder="可选 0~N 个 Skill"
                   />
                 </NFormItem>
@@ -561,7 +561,7 @@ onUnmounted(() => {
                     filterable
                     :disabled="!isEditing"
                     :options="toolSelectOptions"
-                    :menu-props="{ class: 'expert-select-menu' }"
+                    :menu-props="{ class: 'agent-select-menu' }"
                     placeholder="可选 0~N 个工具"
                   />
                 </NFormItem>
@@ -572,22 +572,22 @@ onUnmounted(() => {
       </main>
 
       <main v-else class="detail-panel detail-empty">
-        <NEmpty description="选择左侧专家，或新建专家" />
+        <NEmpty description="选择左侧智能体，或新建智能体" />
       </main>
     </div>
 
     <NModal
       v-model:show="showCreateModal"
       preset="dialog"
-      title="新建专家"
+      title="新建智能体"
       class="sunshine-dialog"
     >
       <NForm class="modal-form" label-placement="top" :show-feedback="false">
-        <NFormItem label="专家 ID" required>
+        <NFormItem label="智能体 ID" required>
           <NInput
             v-model:value="createDraft.id"
             class="sun-field"
-            placeholder="policy-expert"
+            placeholder="policy-agent"
             @keydown.enter="canConfirmCreate && handleCreateConfirm()"
           />
           <p v-if="createIdInvalid" class="field-error">仅支持字母、数字、连字符与中文</p>
@@ -597,7 +597,7 @@ onUnmounted(() => {
           <NInput
             v-model:value="createDraft.displayName"
             class="sun-field"
-            placeholder="制度专家"
+            placeholder="制度智能体"
             @keydown.enter="canConfirmCreate && handleCreateConfirm()"
           />
         </NFormItem>
@@ -619,10 +619,10 @@ onUnmounted(() => {
     <NModal
       v-model:show="showDeleteConfirm"
       preset="dialog"
-      title="删除专家"
+      title="删除智能体"
       class="sunshine-dialog"
     >
-      <p>确定删除专家「{{ selectedExpert?.id }}」（{{ selectedExpert?.displayName }}）？此操作不可恢复。</p>
+      <p>确定删除智能体「{{ selectedAgent?.id }}」（{{ selectedAgent?.displayName }}）？此操作不可恢复。</p>
       <template #action>
         <NButton @click="showDeleteConfirm = false">取消</NButton>
         <NButton type="error" :loading="deleting" @click="handleDeleteConfirm">删除</NButton>
@@ -632,7 +632,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.experts-root {
+.agents-root {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -662,7 +662,7 @@ onUnmounted(() => {
   color: var(--sun-text);
 }
 
-.experts-layout {
+.agents-layout {
   flex: 1;
   min-height: 0;
   display: grid;
@@ -927,13 +927,13 @@ onUnmounted(() => {
   grid-template-columns: 1fr 1fr;
 }
 
-.expert-list {
+.agent-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.expert-row {
+.agent-row {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -948,16 +948,16 @@ onUnmounted(() => {
   transition: border-color 0.15s ease;
 }
 
-.expert-row:hover {
+.agent-row:hover {
   border-color: var(--sun-border-light);
 }
 
-.expert-row.active {
+.agent-row.active {
   font-weight: 600;
   border-color: var(--sun-text);
 }
 
-.expert-row-head {
+.agent-row-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -965,19 +965,19 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.expert-name {
+.agent-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.expert-id {
+.agent-id {
   font-size: 12px;
   color: var(--sun-text-muted);
 }
 
-.expert-badge {
+.agent-badge {
   flex-shrink: 0;
   font-size: 11px;
   padding: 1px 6px;
@@ -986,7 +986,7 @@ onUnmounted(() => {
   color: var(--sun-text-muted);
 }
 
-.expert-badge.draft {
+.agent-badge.draft {
   opacity: 0.85;
 }
 
@@ -1030,7 +1030,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 960px) {
-  .experts-layout {
+  .agents-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
   }
@@ -1042,7 +1042,7 @@ onUnmounted(() => {
 </style>
 
 <style>
-.expert-select-menu.n-base-select-menu {
+.agent-select-menu.n-base-select-menu {
   --n-color: var(--sun-black) !important;
   --n-option-color-active: transparent !important;
   --n-option-color-active-pending: var(--sun-row-hover) !important;

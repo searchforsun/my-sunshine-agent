@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import MentionChip from './MentionChip.vue'
 import type { SkillCatalogIndexEntry } from '../../api/skills'
-import type { ExpertCatalogIndexEntry } from '../../api/experts'
+import type { AgentCatalogIndexEntry } from '../../api/agents'
 import type { WorkflowCatalogEntry } from '../../api/workflows'
 import type { ExecutionPreference } from '../../api/executionModes'
 import { segmentChatMentionsForMessage } from '../../utils/chatMention'
@@ -10,7 +10,7 @@ import { segmentChatMentionsForMessage } from '../../utils/chatMention'
 const props = defineProps<{
   content: string
   catalog: SkillCatalogIndexEntry[]
-  expertCatalog?: ExpertCatalogIndexEntry[]
+  agentCatalog?: AgentCatalogIndexEntry[]
   workflowCatalog?: WorkflowCatalogEntry[]
   executionPreference?: ExecutionPreference
 }>()
@@ -20,7 +20,7 @@ const segments = computed(() =>
     props.content,
     {
       skills: props.catalog,
-      experts: props.expertCatalog ?? [],
+      agents: props.agentCatalog ?? [],
       workflows: props.workflowCatalog ?? [],
     },
     props.executionPreference,
@@ -42,10 +42,10 @@ const hasMentionChip = computed(() =>
         :display-name="seg.skill.displayName"
       />
       <MentionChip
-        v-else-if="seg.type === 'expert'"
-        kind="expert"
+        v-else-if="seg.type === 'agent'"
+        kind="agent"
         :token="seg.token"
-        :display-name="seg.expert.displayName"
+        :display-name="seg.agent.displayName"
       />
       <MentionChip
         v-else-if="seg.type === 'workflow'"

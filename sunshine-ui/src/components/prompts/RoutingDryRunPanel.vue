@@ -9,7 +9,7 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 const MODE_LABELS: Record<string, string> = {
   workflow: '工作流',
   'plan-workflow': '动态规划',
-  'peer-collab': '多专家协作',
+  'peer-collab': '多智能体协作(已退役)',
   react: '自主推理',
 }
 

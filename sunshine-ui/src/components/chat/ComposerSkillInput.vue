@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { SkillCatalogIndexEntry } from '../../api/skills'
-import type { ExpertCatalogIndexEntry } from '../../api/experts'
+import type { AgentCatalogIndexEntry } from '../../api/agents'
 import type { WorkflowCatalogEntry } from '../../api/workflows'
 import {
   displaySegments,
@@ -25,10 +25,10 @@ import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspace
 const props = defineProps<{
   modelValue: string
   allowsSkillMention: boolean
-  allowsExpertMention?: boolean
+  allowsAgentMention?: boolean
   allowsWorkflowMention?: boolean
   catalog: SkillCatalogIndexEntry[]
-  expertCatalog?: ExpertCatalogIndexEntry[]
+  agentCatalog?: AgentCatalogIndexEntry[]
   workflowCatalog?: WorkflowCatalogEntry[]
   placeholder?: string
 }>()
@@ -48,12 +48,12 @@ const sandboxDrawer = useSandboxWorkspaceDrawer()
 const mentionContext = computed<ComposerMentionContext>(() => ({
   catalogs: {
     skills: props.catalog,
-    experts: props.expertCatalog ?? [],
+    agents: props.agentCatalog ?? [],
     workflows: props.workflowCatalog ?? [],
   },
   allows: {
     skill: props.allowsSkillMention,
-    expert: props.allowsExpertMention ?? false,
+    agent: props.allowsAgentMention ?? false,
     workflow: props.allowsWorkflowMention ?? false,
   },
 }))

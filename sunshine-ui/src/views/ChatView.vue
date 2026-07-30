@@ -9,7 +9,7 @@ import { registerHljsLanguages } from '../utils/markdown/registerHljsLanguages'
 import { useChatTimelineView } from '../composables/useChatTimelineView'
 import { useChatScroll } from '../composables/useChatScroll'
 import { useChatSkillMention } from '../composables/useChatSkillMention'
-import { useChatExpertMention } from '../composables/useChatExpertMention'
+import { useChatAgentMention } from '../composables/useChatAgentMention'
 import { useChatWorkflowMention } from '../composables/useChatWorkflowMention'
 import { useChatWorkspacePathMention } from '../composables/useChatWorkspacePathMention'
 import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
@@ -51,7 +51,7 @@ import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { useKbPreference } from '../composables/useKbPreference'
 import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
 import { useTenantPreference } from '../composables/useTenantPreference'
-import { allowsExpertMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
+import { allowsAgentMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
 import { useConversationAttention } from '../composables/useConversationAttention'
@@ -332,15 +332,15 @@ const {
 } = useChatSkillMention(inputText, preference, loading)
 
 const {
-  showExpertSuggest,
-  expertSuggestIndex,
-  filteredExperts,
-  expertCatalog,
-  expertMentionAllowed,
-  applyExpertSuggest,
-  loadExpertCatalog,
-  handleExpertKeydown,
-} = useChatExpertMention(inputText, preference, loading)
+  showAgentSuggest,
+  agentSuggestIndex,
+  filteredAgents,
+  agentCatalog,
+  agentMentionAllowed,
+  applyAgentSuggest,
+  loadAgentCatalog,
+  handleAgentKeydown,
+} = useChatAgentMention(inputText, preference, loading)
 
 const {
   showWorkflowSuggest,
@@ -366,7 +366,7 @@ const composerPlaceholder = computed(() => {
   const hints = ['@ 工作区']
   if (allowsSkillMention(preference.value)) hints.push('/ Skill')
   if (allowsWorkflowMention(preference.value)) hints.push('# 工作流')
-  if (allowsExpertMention(preference.value)) hints.push('$ 专家')
+  if (allowsAgentMention(preference.value)) hints.push('$ 智能体')
   return `发消息，Enter 发送 · ${hints.join(' · ')}`
 })
 
@@ -506,7 +506,7 @@ async function handleResume() {
 function handleKeydown(e: KeyboardEvent) {
   if (handlePathKeydown(e)) return
   if (handleWorkflowKeydown(e)) return
-  if (handleExpertKeydown(e)) return
+  if (handleAgentKeydown(e)) return
   handleSkillKeydown(e, () => { void handleSend() })
 }
 
@@ -530,7 +530,7 @@ function applyChatDeepLink() {
 onMounted(async () => {
   setChatRouteActive(true)
   void loadSkillCatalog()
-  void loadExpertCatalog()
+  void loadAgentCatalog()
   void loadWorkflowCatalog()
   sessionHydrating.value = true
   try {
@@ -725,7 +725,7 @@ watch(
               <UserMessageContent
                 :content="msg.content"
                 :catalog="skillCatalog"
-                :expert-catalog="expertCatalog"
+                :agent-catalog="agentCatalog"
                 :workflow-catalog="workflowCatalog"
                 :execution-preference="msg.executionPreference"
               />
@@ -859,18 +859,18 @@ watch(
               <p v-if="wf.description" class="skill-suggest-desc">{{ wf.description }}</p>
             </li>
           </ul>
-          <ul v-else-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">
+          <ul v-else-if="showAgentSuggest && filteredAgents.length && !loading" class="skill-suggest">
             <li
-              v-for="(expert, idx) in filteredExperts"
-              :key="expert.id"
-              :class="{ 'is-highlighted': idx === expertSuggestIndex }"
-              @mousedown.prevent="applyExpertSuggest(expert)"
+              v-for="(agent, idx) in filteredAgents"
+              :key="agent.id"
+              :class="{ 'is-highlighted': idx === agentSuggestIndex }"
+              @mousedown.prevent="applyAgentSuggest(agent)"
             >
               <div class="skill-suggest-main">
-                <span class="skill-suggest-id is-expert">${{ expert.id }}</span>
-                <span class="skill-suggest-title">{{ expert.displayName }}</span>
+                <span class="skill-suggest-id is-agent">${{ agent.id }}</span>
+                <span class="skill-suggest-title">{{ agent.displayName }}</span>
               </div>
-              <p v-if="expert.description" class="skill-suggest-desc">{{ expert.description }}</p>
+              <p v-if="agent.description" class="skill-suggest-desc">{{ agent.description }}</p>
             </li>
           </ul>
           <ul v-else-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
@@ -897,10 +897,10 @@ watch(
               ref="inputRef"
               v-model="inputText"
               :allows-skill-mention="skillMentionAllowed"
-              :allows-expert-mention="expertMentionAllowed"
+              :allows-agent-mention="agentMentionAllowed"
               :allows-workflow-mention="workflowMentionAllowed"
               :catalog="skillCatalog"
-              :expert-catalog="expertCatalog"
+              :agent-catalog="agentCatalog"
               :workflow-catalog="workflowCatalog"
               :placeholder="composerPlaceholder"
               @keydown="handleKeydown"
@@ -1524,8 +1524,8 @@ watch(
   color: var(--mention-skill-prefix);
 }
 
-.skill-suggest-id.is-expert {
-  color: var(--mention-expert-prefix);
+.skill-suggest-id.is-agent {
+  color: var(--mention-agent-prefix);
 }
 
 .skill-suggest-id.is-workflow {

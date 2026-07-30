@@ -34,7 +34,7 @@ export const SERVICE_DEFS: ServiceDef[] = [
   { name: 'Skill Manager', port: 8225, description: 'Skill 包管理与 Catalog', gatewayPath: '/health/skill-manager', expectedService: 'sunshine-skill-manager', lane: 'platform' },
   { name: 'Sandbox Service', port: 8226, description: 'Skills Docker 沙箱', gatewayPath: '/health/sandbox', expectedService: 'sunshine-sandbox-service', lane: 'platform' },
   { name: 'Workflow Manager', port: 8230, description: 'Workflow Studio DB / Catalog（4.13）', gatewayPath: '/health/workflow-manager', expectedService: 'sunshine-workflow-manager', lane: 'platform' },
-  { name: 'Expert Manager', port: 8235, description: '多专家协作 Catalog / Admin', gatewayPath: '/health/expert-manager', expectedService: 'sunshine-expert-manager', lane: 'platform' },
+  { name: 'Agent Manager', port: 8235, description: '多智能体协作 Catalog / Admin', gatewayPath: '/health/agent-manager', expectedService: 'sunshine-agent-manager', lane: 'platform' },
   { name: 'LLM Gateway', port: 8300, description: '多厂商大模型路由', gatewayPath: '/health/llm-gateway', expectedService: 'sunshine-llm-gateway', lane: 'platform' },
   { name: 'RAG Service', port: 8400, description: 'Milvus 向量检索', gatewayPath: '/health/rag', expectedService: 'sunshine-rag', lane: 'platform' },
   { name: 'Prompt Manager', port: 8500, description: '提示词模板管理', gatewayPath: '/health/prompt', expectedService: 'sunshine-prompt', lane: 'platform' },

@@ -1,14 +1,14 @@
 import type { SkillCatalogIndexEntry } from '../api/skills'
-import type { ExpertCatalogIndexEntry } from '../api/experts'
+import type { AgentCatalogIndexEntry } from '../api/agents'
 import type { WorkflowCatalogEntry } from '../api/workflows'
 import type { ExecutionPreference } from '../api/executionModes'
 import {
-  allowsExpertMention,
+  allowsAgentMention,
   allowsSkillMention,
   allowsWorkflowMention,
 } from '../api/executionModes'
 import { findSkillByToken } from './skillMention'
-import { findExpertByToken } from './expertMention'
+import { findAgentByToken } from './agentMention'
 import { findWorkflowByToken } from './workflowMention'
 import {
   collectSandboxPathMatches,
@@ -18,24 +18,24 @@ import {
 
 const TOKEN_BOUNDARY = /[\s，。！？,.!?;；：:]/
 
-export type ChatMentionKind = 'skill' | 'expert' | 'workflow' | 'path'
+export type ChatMentionKind = 'skill' | 'agent' | 'workflow' | 'path'
 
 export type ChatMentionSegment =
   | { type: 'text'; value: string }
   | { type: 'skill'; token: string; skill: SkillCatalogIndexEntry }
-  | { type: 'expert'; token: string; expert: ExpertCatalogIndexEntry }
+  | { type: 'agent'; token: string; agent: AgentCatalogIndexEntry }
   | { type: 'workflow'; token: string; workflow: WorkflowCatalogEntry }
   | { type: 'path'; token: string; label: string }
 
 export interface ChatMentionCatalogs {
   skills: SkillCatalogIndexEntry[]
-  experts: ExpertCatalogIndexEntry[]
+  agents: AgentCatalogIndexEntry[]
   workflows: WorkflowCatalogEntry[]
 }
 
 export interface ChatMentionAllows {
   skill: boolean
-  expert: boolean
+  agent: boolean
   workflow: boolean
 }
 
@@ -49,7 +49,7 @@ interface RawMentionMatch {
 
 const PREFIX_RE: { kind: Exclude<ChatMentionKind, 'path'>; re: RegExp }[] = [
   { kind: 'skill', re: /\/([\w\u4e00-\u9fff-]+)/g },
-  { kind: 'expert', re: /\$([\w\u4e00-\u9fff-]+)/g },
+  { kind: 'agent', re: /\$([\w\u4e00-\u9fff-]+)/g },
   { kind: 'workflow', re: /#([\w\u4e00-\u9fff-]+)/g },
 ]
 
@@ -62,9 +62,9 @@ function resolveMention(
     const skill = findSkillByToken(token, catalogs.skills)
     return skill ? { type: 'skill', token: skill.id, skill } : null
   }
-  if (kind === 'expert') {
-    const expert = findExpertByToken(token, catalogs.experts)
-    return expert ? { type: 'expert', token: expert.id, expert } : null
+  if (kind === 'agent') {
+    const agent = findAgentByToken(token, catalogs.agents)
+    return agent ? { type: 'agent', token: agent.id, agent } : null
   }
   const workflow = findWorkflowByToken(token, catalogs.workflows)
   return workflow ? { type: 'workflow', token: workflow.id, workflow } : null
@@ -131,7 +131,7 @@ export function segmentChatMentions(
 export function allowsForPreference(preference: ExecutionPreference): ChatMentionAllows {
   return {
     skill: allowsSkillMention(preference),
-    expert: allowsExpertMention(preference),
+    agent: allowsAgentMention(preference),
     workflow: allowsWorkflowMention(preference),
   }
 }
@@ -156,7 +156,7 @@ export function hasChatMentionChips(
 export function mentionPrefix(kind: ChatMentionKind): string {
   switch (kind) {
     case 'skill': return '/'
-    case 'expert': return '$'
+    case 'agent': return '$'
     case 'workflow': return '#'
     case 'path': return ''
   }

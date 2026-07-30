@@ -53,10 +53,10 @@ const router = createRouter({
           meta: { title: '工具' },
         },
         {
-          path: 'experts',
-          name: 'experts',
-          component: () => import('../views/ExpertsView.vue'),
-          meta: { title: '专家' },
+          path: 'agents',
+          name: 'agents',
+          component: () => import('../views/AgentsView.vue'),
+          meta: { title: '智能体' },
         },
         {
           path: 'context',

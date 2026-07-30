@@ -13,7 +13,7 @@ export interface ExecutionModeOption {
   shortLabel: string
   description: string
   allowsSkillMention: boolean
-  allowsExpertMention: boolean
+  allowsAgentMention: boolean
   allowsWorkflowMention: boolean
 }
 
@@ -24,7 +24,7 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '自动',
     description: '根据提问意图自动选择执行方式',
     allowsSkillMention: true,
-    allowsExpertMention: true,
+    allowsAgentMention: true,
     allowsWorkflowMention: true,
   },
   {
@@ -33,7 +33,7 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '推理',
     description: 'ReAct 多工具自主分析',
     allowsSkillMention: true,
-    allowsExpertMention: false,
+    allowsAgentMention: false,
     allowsWorkflowMention: false,
   },
   {
@@ -42,7 +42,7 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '流程',
     description: '按预置 workflow 模板执行',
     allowsSkillMention: false,
-    allowsExpertMention: false,
+    allowsAgentMention: false,
     allowsWorkflowMention: true,
   },
   {
@@ -51,16 +51,16 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '规划',
     description: 'Planner 动态编排多步 DAG',
     allowsSkillMention: true,
-    allowsExpertMention: false,
+    allowsAgentMention: false,
     allowsWorkflowMention: false,
   },
   {
     value: 'peer-collab',
     label: '多专家协作',
     shortLabel: '协作',
-    description: '多位 Expert 对等讨论后引擎汇总作答',
+    description: '多位智能体对等讨论后引擎汇总作答',
     allowsSkillMention: false,
-    allowsExpertMention: true,
+    allowsAgentMention: true,
     allowsWorkflowMention: false,
   },
 ]
@@ -73,8 +73,8 @@ export function allowsSkillMention(preference: ExecutionPreference): boolean {
   return findExecutionModeOption(preference).allowsSkillMention
 }
 
-export function allowsExpertMention(preference: ExecutionPreference): boolean {
-  return findExecutionModeOption(preference).allowsExpertMention
+export function allowsAgentMention(preference: ExecutionPreference): boolean {
+  return findExecutionModeOption(preference).allowsAgentMention
 }
 
 export function allowsWorkflowMention(preference: ExecutionPreference): boolean {
