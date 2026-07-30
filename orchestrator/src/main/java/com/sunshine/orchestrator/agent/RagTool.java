@@ -104,7 +104,16 @@ public class RagTool implements AgentTool {
 
     private static String resolveKbId() {
         StepEventBridge.ToolAuditContext ctx = auditContext();
-        if (ctx == null || ctx.kbId() == null || ctx.kbId().isBlank()) {
+        if (ctx == null) {
+            return null;
+        }
+        if (ctx.kbScope() != null && !ctx.kbScope().isEmpty()) {
+            if (ctx.kbScope().size() == 1 && "*".equals(ctx.kbScope().get(0))) {
+                return ctx.kbId() != null ? ctx.kbId().strip() : null;
+            }
+            return ctx.kbScope().get(0);
+        }
+        if (ctx.kbId() == null || ctx.kbId().isBlank()) {
             return null;
         }
         return ctx.kbId().strip();

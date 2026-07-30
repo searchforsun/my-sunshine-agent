@@ -25,7 +25,10 @@ public final class StepEventBridge {
             String userId,
             String tenantId,
             String planId,
-            String kbId) {
+            String kbId,
+            List<String> kbScope,
+            String dataScopeJson,
+            String permissionsJson) {
     }
 
     private StepEventBridge() {

@@ -63,7 +63,8 @@ public class ReactExecutor {
                     ctx.userId(),
                     ctx.tenantId(),
                     ctx.persistedPlanId(),
-                    ctx.kbId()));
+                    ctx.kbId(),
+                    null, null, null));
         }
         int checkpointThinkIteration = resolveCheckpointThinkIteration(ctx);
         // 个人规则（soul）作为 injectedBlocks 首元素注入 MAIN Agent；子 Agent 经 sub() 工厂不继承

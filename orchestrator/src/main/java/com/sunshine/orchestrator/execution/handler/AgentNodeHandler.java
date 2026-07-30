@@ -157,7 +157,8 @@ public class AgentNodeHandler implements StreamingNodeHandler {
                 streamCtx.userId(),
                 streamCtx.tenantId(),
                 streamCtx.persistedPlanId(),
-                kbId));
+                kbId,
+                null, null, null));
     }
 
     private static String resolveAgentKbId(NodeSpec spec, ExecutionStreamContext streamCtx) {
