@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, type MenuOption, type DropdownOption } from 'naive-ui'
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, NModal, type MenuOption, type DropdownOption } from 'naive-ui'
 import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, HardwareChipOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline } from '@vicons/ionicons5'
-import { h, type Component, computed, onMounted, ref, watch } from 'vue'
+import { h, type Component, computed, onMounted, reactive, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { useChatStore } from '../stores/chatStore'
@@ -16,7 +16,7 @@ import SidebarToggle from '../components/SidebarToggle.vue'
 import UserSettingsModal from '../components/UserSettingsModal.vue'
 import ConversationSidebarList from '../components/ConversationSidebarList.vue'
 
-type TabKey = 'platform' | 'chat' | 'workspace'
+type SectionKey = 'platform' | 'chat' | 'workspace'
 
 const router = useRouter()
 const route = useRoute()
@@ -30,24 +30,16 @@ const {
   requestScrollToBottom,
 } = useConversationAttention()
 
-const TAB_STORAGE_KEY = 'sunshine-sidebar-tab'
-const expandedTab = ref<TabKey | null>((localStorage.getItem(TAB_STORAGE_KEY) as TabKey) || 'chat')
+// 各分组的展开/折叠状态：对话默认展开
+const expanded = reactive<Record<SectionKey, boolean>>({
+  platform: false,
+  chat: true,
+  workspace: false,
+})
 
-function setExpandedTab(key: TabKey) {
-  if (expandedTab.value === key) {
-    expandedTab.value = null
-    localStorage.removeItem(TAB_STORAGE_KEY)
-  } else {
-    expandedTab.value = key
-    localStorage.setItem(TAB_STORAGE_KEY, key)
-  }
+function toggleSection(key: SectionKey) {
+  expanded[key] = !expanded[key]
 }
-
-const tabs: Array<{ key: TabKey; label: string; icon: Component }> = [
-  { key: 'platform', label: '平台', icon: SparklesOutline },
-  { key: 'chat', label: '对话', icon: ChatbubblesOutline },
-  { key: 'workspace', label: '工作区', icon: ConstructOutline },
-]
 
 const platformMenuOptions: MenuOption[] = [
   { label: '知识库', key: 'knowledge', icon: renderIcon(BookOutline) },
@@ -125,6 +117,10 @@ function handleNewChat() {
       console.error('[MainLayout] 创建会话失败', e)
     }
   })()
+}
+
+function handleNewTask() {
+  expanded.workspace = true
 }
 
 function handleSwitchConversation(id: string) {
@@ -225,8 +221,8 @@ async function fetchWorkspaces() {
   finally { loadingWorkspaces.value = false }
 }
 
-watch(expandedTab, (tab) => {
-  if (tab === 'workspace' && workspaces.value.length === 0) {
+watch(() => expanded.workspace, (open) => {
+  if (open && workspaces.value.length === 0 && !loadingWorkspaces.value) {
     fetchWorkspaces()
   }
 })
@@ -274,79 +270,107 @@ onMounted(() => {
       :width="280"
       class="sidebar"
     >
+      <!-- Brand -->
       <div class="brand">
         <BrandMark class="brand-mark" />
         <span class="brand-name">Sunshine<span class="brand-ai"> AI</span></span>
       </div>
 
-      <!-- 三 Tab 切换 -->
-      <div class="tab-bar">
-        <button
-          v-for="tab in tabs"
-          :key="tab.key"
-          type="button"
-          class="tab-btn"
-          :class="{ active: expandedTab === tab.key }"
-          @click="setExpandedTab(tab.key)"
-        >
-          <NIcon :size="16" :component="tab.icon" />
-          <span>{{ tab.label }}</span>
-          <NIcon :size="12" :component="ChevronDownOutline" class="tab-chevron" :class="{ rotated: expandedTab === tab.key }" />
-        </button>
-      </div>
-
-      <!-- 平台面板 -->
-      <div v-show="expandedTab === 'platform'" class="tab-panel">
-        <NMenu
-          :value="activeKey"
-          :options="platformMenuOptions"
-          @update:value="handleMenuClick"
-          class="nav-menu"
-        />
-      </div>
-
-      <!-- 对话面板 -->
-      <div v-show="expandedTab === 'chat'" class="tab-panel chat-panel">
-        <button type="button" class="chat-new-btn" @click="handleNewChat">
+      <!-- 快捷操作：新对话 / 新任务 -->
+      <div class="quick-actions">
+        <button type="button" class="action-btn" @click="handleNewChat">
           <NIcon :size="16" :component="ChatbubblesOutline" />
           <span>新对话</span>
         </button>
-        <div class="chat-history">
-          <ConversationSidebarList
-            :menu-options="conversationMenuOptions"
-            @switch="handleSwitchConversation"
-            @menu="handleConversationMenu"
-          />
-        </div>
+        <button type="button" class="action-btn" @click="handleNewTask">
+          <NIcon :size="16" :component="ConstructOutline" />
+          <span>新任务</span>
+        </button>
       </div>
 
-      <!-- 工作区面板 -->
-      <div v-show="expandedTab === 'workspace'" class="tab-panel workspace-panel">
-        <div class="ws-panel-header">
-          <span class="ws-panel-title">工作区</span>
-          <button type="button" class="ws-add-btn" title="添加工作区" @click="showCreateWorkspace = true">
-            <NIcon :size="16" :component="AddOutline" />
+      <!-- 可折叠面板容器 -->
+      <div class="sections-scroll">
+
+        <!-- 平台 -->
+        <section class="section">
+          <button
+            type="button"
+            class="section-header"
+            @click="toggleSection('platform')"
+          >
+            <NIcon :size="14" :component="ChevronDownOutline" class="section-chevron" :class="{ rotated: expanded.platform }" />
+            <span class="section-label">平台</span>
           </button>
-        </div>
-        <div class="ws-scroll">
-          <div v-if="loadingWorkspaces" class="ws-loading">加载中...</div>
-          <div v-else-if="workspaces.length === 0" class="ws-empty">
-            <span class="ws-empty-text">暂无工作区</span>
-            <NButton size="tiny" quaternary @click="showCreateWorkspace = true">创建</NButton>
+          <div v-show="expanded.platform" class="section-body">
+            <NMenu
+              :value="activeKey"
+              :options="platformMenuOptions"
+              @update:value="handleMenuClick"
+              class="nav-menu"
+            />
           </div>
-          <div v-else class="ws-list">
+        </section>
+
+        <!-- 对话 -->
+        <section class="section">
+          <button
+            type="button"
+            class="section-header"
+            @click="toggleSection('chat')"
+          >
+            <NIcon :size="14" :component="ChevronDownOutline" class="section-chevron" :class="{ rotated: expanded.chat }" />
+            <span class="section-label">对话</span>
+          </button>
+          <div v-show="expanded.chat" class="section-body chat-body">
+            <ConversationSidebarList
+              :menu-options="conversationMenuOptions"
+              @switch="handleSwitchConversation"
+              @menu="handleConversationMenu"
+            />
+          </div>
+        </section>
+
+        <!-- 任务（工作区） -->
+        <section class="section">
+          <div class="section-header-row">
             <button
-              v-for="ws in workspaces"
-              :key="ws.id"
               type="button"
-              class="ws-item"
-              @click="handleWorkspaceClick(ws)"
+              class="section-header section-header--grow"
+              @click="toggleSection('workspace')"
             >
-              <div class="ws-item-name">{{ ws.name }}</div>
-              <div class="ws-item-repo">{{ ws.repoUrl }}</div>
+              <NIcon :size="14" :component="ChevronDownOutline" class="section-chevron" :class="{ rotated: expanded.workspace }" />
+              <span class="section-label">任务</span>
+            </button>
+            <button
+              type="button"
+              class="section-add-btn"
+              title="添加工作区"
+              @click.stop="showCreateWorkspace = true"
+            >
+              <NIcon :size="16" :component="AddOutline" />
             </button>
           </div>
-        </div>
+          <div v-show="expanded.workspace" class="section-body ws-body">
+            <div v-if="loadingWorkspaces" class="ws-loading">加载中...</div>
+            <div v-else-if="workspaces.length === 0" class="ws-empty">
+              <span class="ws-empty-text">暂无工作区</span>
+              <NButton size="tiny" quaternary @click="showCreateWorkspace = true">创建</NButton>
+            </div>
+            <div v-else class="ws-list">
+              <button
+                v-for="ws in workspaces"
+                :key="ws.id"
+                type="button"
+                class="ws-item"
+                @click="handleWorkspaceClick(ws)"
+              >
+                <div class="ws-item-name">{{ ws.name }}</div>
+                <div class="ws-item-repo">{{ ws.repoUrl }}</div>
+              </button>
+            </div>
+          </div>
+        </section>
+
       </div>
 
       <!-- 用户区 -->
@@ -356,8 +380,7 @@ onMounted(() => {
         <div class="sidebar-user-actions">
           <button class="theme-toggle" type="button" @click="toggleTheme" :title="isDark ? '切换浅色模式' : '切换深色模式'">
             <svg v-if="isDark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <circle cx="12" cy="12" r="5" />
-              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+              <circle cx="12" cy="12" r="5" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
             </svg>
             <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
@@ -412,7 +435,7 @@ onMounted(() => {
   margin-left: auto;
 }
 
-/* --- Sidebar --- */
+/* --- Layout --- */
 .app-shell {
   height: 100vh;
   min-height: 100vh;
@@ -469,68 +492,130 @@ onMounted(() => {
   color: var(--sun-text-muted);
 }
 
-/* --- Tab Bar --- */
-.tab-bar {
+/* --- Quick Actions --- */
+.quick-actions {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 2px;
-  padding: 4px 8px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--sun-border);
   flex-shrink: 0;
 }
 
-.tab-btn {
-  flex: 1;
+.action-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 6px 0;
+  gap: 8px;
+  padding: 7px 10px;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--sun-text-muted);
-  font-size: var(--sun-font-xs, 12px);
-  font-weight: 500;
+  color: var(--sun-text-secondary);
+  font-size: var(--sun-font-sm);
   font-family: inherit;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
-.tab-btn:hover {
+.action-btn:hover {
   background: var(--sun-row-hover);
-  color: var(--sun-text-secondary);
+  color: var(--sun-text);
 }
 
-.tab-btn.active {
+/* --- Sections --- */
+.sections-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.section {
+  flex-shrink: 0;
+}
+
+.section-header-row {
+  display: flex;
+  align-items: center;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: var(--sun-font-xs);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: color 0.15s, background 0.15s;
+}
+
+.section-header:hover {
+  color: var(--sun-text-secondary);
+  background: var(--sun-row-hover);
+}
+
+.section-header--grow {
+  flex: 1;
+}
+
+.section-chevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: transform 0.18s ease;
+}
+
+.section-chevron.rotated {
+  transform: rotate(90deg);
+  opacity: 0.85;
+}
+
+.section-label {
+  flex: 1;
+  text-align: left;
+}
+
+.section-add-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 8px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.section-add-btn:hover {
   color: var(--sun-text);
   background: var(--sun-row-hover);
 }
 
-.tab-chevron {
-  opacity: 0.5;
-  transition: transform 0.18s ease;
-  flex-shrink: 0;
-}
-
-.tab-chevron.rotated {
-  transform: rotate(180deg);
-  opacity: 0.8;
-}
-
-/* --- Tab Panel --- */
-.tab-panel {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+.section-body {
   overflow: hidden;
 }
 
-/* --- Platform --- */
+.section-body.chat-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 4px;
+}
+
+/* --- Platform NMenu --- */
 .nav-menu {
-  flex-shrink: 0;
-  padding: 4px 8px;
+  padding: 0 8px;
 }
 
 .nav-menu :deep(.n-menu) {
@@ -542,7 +627,7 @@ onMounted(() => {
 
 .nav-menu :deep(.n-menu-item-content) {
   border-radius: var(--radius-sm);
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .nav-menu :deep(.n-menu-item-content--selected) {
@@ -567,91 +652,13 @@ onMounted(() => {
   height: 40px;
 }
 
-/* --- Chat Panel --- */
-.chat-panel {
-  padding: 0;
-}
-
-.chat-new-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: calc(100% - 16px);
-  margin: 8px 8px 4px;
-  padding: 8px 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--sun-text-secondary);
-  font-size: var(--sun-font-sm);
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-  flex-shrink: 0;
-}
-
-.chat-new-btn:hover {
-  border-color: var(--sun-accent);
-  color: var(--sun-text);
-}
-
-.chat-history {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0 8px 8px;
-  overflow: hidden;
-}
-
-/* --- Workspace Panel --- */
-.workspace-panel {
-  padding: 0;
-}
-
-.ws-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px 6px;
-  flex-shrink: 0;
-}
-
-.ws-panel-title {
-  font-size: var(--sun-font-xs, 12px);
-  font-weight: 600;
-  color: var(--sun-text-muted);
-  letter-spacing: 0.02em;
-}
-
-.ws-add-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 1px solid var(--sun-border);
-  background: transparent;
-  color: var(--sun-text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-
-.ws-add-btn:hover {
-  border-color: var(--sun-accent);
-  color: var(--sun-text);
-  background: var(--sun-row-hover);
-}
-
-.ws-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 8px 8px;
+/* --- Workspace Body --- */
+.ws-body {
+  padding: 0 8px 4px;
 }
 
 .ws-loading {
-  padding: 16px;
+  padding: 12px;
   color: var(--sun-text-muted);
   text-align: center;
   font-size: var(--sun-font-xs);
@@ -662,7 +669,7 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 20px 8px 4px;
+  padding: 16px 8px 4px;
 }
 
 .ws-empty-text {
@@ -673,7 +680,7 @@ onMounted(() => {
 .ws-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .ws-item {
@@ -681,7 +688,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 2px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border: 1px solid var(--sun-border);
   border-radius: 8px;
   background: transparent;
@@ -702,14 +709,14 @@ onMounted(() => {
 }
 
 .ws-item-repo {
-  font-size: var(--sun-font-xs, 12px);
+  font-size: var(--sun-font-xs, 11px);
   color: var(--sun-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* --- 创建工作区弹窗 --- */
+/* --- Create Workspace Modal --- */
 .ws-create-form {
   display: flex;
   flex-direction: column;
@@ -722,7 +729,7 @@ onMounted(() => {
   color: var(--sun-text);
 }
 
-/* --- 用户区 --- */
+/* --- User Area --- */
 .sidebar-user {
   display: flex;
   align-items: center;
@@ -787,7 +794,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
   flex-shrink: 0;
 }
 
