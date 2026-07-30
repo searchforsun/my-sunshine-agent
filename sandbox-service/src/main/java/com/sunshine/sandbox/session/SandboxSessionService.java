@@ -72,7 +72,7 @@ public class SandboxSessionService {
                 : properties.getDocker().getDefaultCpus();
         String containerName = "sunshine-sb-" + sessionId.substring(0, Math.min(12, sessionId.length()));
         List<String> args = buildRunArgs(
-                containerName, image, memoryMb, cpus, hostSkills, hostWorkspace, networkAllow);
+                sessionId, containerName, image, memoryMb, cpus, hostSkills, hostWorkspace, networkAllow);
         String storedId = null;
         boolean dockerStarted = false;
         try {
@@ -139,6 +139,7 @@ public class SandboxSessionService {
     }
 
     public void close(String sessionId) {
+        egressProxyManager.removeEgress(sessionId);
         SandboxSession session = store.remove(sessionId);
         if (session == null) {
             throw new BizException(SandboxErrorCode.SESSION_NOT_FOUND);
@@ -185,6 +186,7 @@ public class SandboxSessionService {
     }
 
     private List<String> buildRunArgs(
+            String sessionId,
             String containerName,
             String image,
             int memoryMb,
@@ -199,10 +201,10 @@ public class SandboxSessionService {
         args.add(containerName);
         boolean withNet = networkAllow != null && !networkAllow.isEmpty();
         if (withNet) {
-            egressProxyManager.ensureRunning(networkAllow);
+            egressProxyManager.ensureRunning(sessionId, networkAllow);
             args.add("--network");
             args.add(EgressProxyManager.NETWORK_NAME);
-            String proxy = egressProxyManager.proxyUrl();
+            String proxy = egressProxyManager.proxyUrl(sessionId);
             args.add("-e");
             args.add("HTTP_PROXY=" + proxy);
             args.add("-e");
