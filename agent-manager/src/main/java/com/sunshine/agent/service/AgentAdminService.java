@@ -43,8 +43,8 @@ public class AgentAdminService {
         return catalogRegistry.listEnabledIndex();
     }
 
-    public Optional<AgentCatalogEntry> findCatalogEntry(String expertId) {
-        return catalogRegistry.find(expertId);
+    public Optional<AgentCatalogEntry> findCatalogEntry(String agentId) {
+        return catalogRegistry.find(agentId);
     }
 
     @Transactional
@@ -57,7 +57,7 @@ public class AgentAdminService {
         }
         String id = request.id().strip();
         if (definitionRepository.existsById(id)) {
-            throw new BizException(AgentErrorCode.EXPERT_ALREADY_EXISTS);
+            throw new BizException(AgentErrorCode.AGENT_ALREADY_EXISTS);
         }
         Instant now = Instant.now();
         AgentDefinitionEntity def = new AgentDefinitionEntity();
@@ -68,6 +68,13 @@ public class AgentAdminService {
         def.setEnabled(true);
         def.setTagsJson("[]");
         def.setToolsJson(serializeToolIds(request.toolIds()));
+        def.setTenantId("default");
+        def.setKbScopeJson("[]");
+        def.setPermissionsJson("{}");
+        def.setModelConfigJson("{}");
+        def.setMaxIters(2);
+        def.setMaxHandoffs(5);
+        def.setSource("INTERNAL");
         def.setCreatedAt(now);
         def.setUpdatedAt(now);
         definitionRepository.save(def);
@@ -77,28 +84,28 @@ public class AgentAdminService {
     }
 
     @Transactional
-    public AgentCatalogEntry update(String expertId, AgentUpdateRequest request) {
+    public AgentCatalogEntry update(String agentId, AgentUpdateRequest request) {
         if (!StringUtils.hasText(request.displayName())) {
             throw new BizException(AgentErrorCode.DISPLAY_NAME_REQUIRED);
         }
         if (!StringUtils.hasText(request.systemPrompt())) {
             throw new BizException(AgentErrorCode.SYSTEM_PROMPT_REQUIRED);
         }
-        AgentDefinitionEntity def = requireDefinition(expertId);
+        AgentDefinitionEntity def = requireDefinition(agentId);
         def.setDisplayName(request.displayName().strip());
         def.setDescription(request.description() != null ? request.description().strip() : "");
         def.setSystemPrompt(request.systemPrompt().strip());
         def.setToolsJson(serializeToolIds(request.toolIds()));
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
-        replaceSkillLinks(expertId, request.skillIds());
+        replaceSkillLinks(agentId, request.skillIds());
         catalogRegistry.refresh();
         return catalogRegistry.toEntry(def);
     }
 
     @Transactional
-    public AgentCatalogEntry setEnabled(String expertId, boolean enabled) {
-        AgentDefinitionEntity def = requireDefinition(expertId);
+    public AgentCatalogEntry setEnabled(String agentId, boolean enabled) {
+        AgentDefinitionEntity def = requireDefinition(agentId);
         def.setEnabled(enabled);
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
@@ -107,20 +114,20 @@ public class AgentAdminService {
     }
 
     @Transactional
-    public void delete(String expertId) {
-        String id = expertId.strip();
+    public void delete(String agentId) {
+        String id = agentId.strip();
         if (!definitionRepository.existsById(id)) {
-            throw new BizException(AgentErrorCode.EXPERT_NOT_FOUND);
+            throw new BizException(AgentErrorCode.AGENT_NOT_FOUND);
         }
-        skillLinkRepository.deleteByIdExpertId(id);
+        skillLinkRepository.deleteByIdAgentId(id);
         definitionRepository.deleteById(id);
         catalogRegistry.refresh();
-        log.info("[ExpertManager] deleted expert={}", id);
+        log.info("[AgentManager] deleted agent={}", id);
     }
 
-    private AgentDefinitionEntity requireDefinition(String expertId) {
-        return definitionRepository.findById(expertId.strip())
-                .orElseThrow(() -> new BizException(AgentErrorCode.EXPERT_NOT_FOUND));
+    private AgentDefinitionEntity requireDefinition(String agentId) {
+        return definitionRepository.findById(agentId.strip())
+                .orElseThrow(() -> new BizException(AgentErrorCode.AGENT_NOT_FOUND));
     }
 
     private String serializeToolIds(List<String> toolIds) {
@@ -139,8 +146,8 @@ public class AgentAdminService {
         }
     }
 
-    private void replaceSkillLinks(String expertId, List<String> skillIds) {
-        skillLinkRepository.deleteByIdExpertId(expertId);
+    private void replaceSkillLinks(String agentId, List<String> skillIds) {
+        skillLinkRepository.deleteByIdAgentId(agentId);
         if (skillIds == null || skillIds.isEmpty()) {
             return;
         }
@@ -151,7 +158,7 @@ public class AgentAdminService {
             }
             AgentSkillLinkEntity link = new AgentSkillLinkEntity();
             AgentSkillLinkId id = new AgentSkillLinkId();
-            id.setExpertId(expertId);
+            id.setAgentId(agentId);
             id.setSkillId(raw.strip());
             link.setId(id);
             links.add(link);

@@ -223,7 +223,6 @@ public class GenerationJob {
             ProcessingStepLifecycleOps.pauseRunningWorkflowNodes(stepsBuffer, nodeId, skipNodeId);
         }
         ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
-        ProcessingStepLifecycleOps.pauseRunningExpertSteps(stepsBuffer);
         StringBuilder mysqlBuffer = mysqlBufferRef;
         Consumer<String> flushPartial = directPartialFlush();
         if (chunkEmitter != null) {

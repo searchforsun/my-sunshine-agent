@@ -299,8 +299,6 @@ public final class ThinkStepMapper {
         if (TimelineStepId.PLAN.matches(step.id())
                 || TimelineStepId.PEER_COLLAB.matches(step.id())
                 || TimelineStepId.isNodeStep(step.id())
-                || "expert-convene".equals(step.id())
-                || (step.id() != null && step.id().startsWith("expert-"))) {
             workflowMode = true;
             generateOpened = true;
         }

@@ -49,15 +49,15 @@ public class AgentCatalogRegistry {
         return entries.values().stream().map(AgentCatalogIndexEntry::from).toList();
     }
 
-    public Optional<AgentCatalogEntry> find(String expertId) {
-        if (expertId == null || expertId.isBlank()) {
+    public Optional<AgentCatalogEntry> find(String agentId) {
+        if (agentId == null || agentId.isBlank()) {
             return Optional.empty();
         }
-        return Optional.ofNullable(entries.get(expertId.strip()));
+        return Optional.ofNullable(entries.get(agentId.strip()));
     }
 
     AgentCatalogEntry toEntry(AgentDefinitionEntity def) {
-        List<String> skillIds = skillLinkRepository.findByIdExpertIdOrderByIdSkillIdAsc(def.getId()).stream()
+        List<String> skillIds = skillLinkRepository.findByIdAgentIdOrderByIdSkillIdAsc(def.getId()).stream()
                 .map(link -> link.getId().getSkillId())
                 .toList();
         return new AgentCatalogEntry(
@@ -68,10 +68,25 @@ public class AgentCatalogRegistry {
                 skillIds,
                 parseTags(def.getTagsJson()),
                 def.getToolsJson(),
-                def.isEnabled());
+                def.isEnabled(),
+                def.getTenantId(),
+                parseStringList(def.getKbScopeJson()),
+                def.getDataScopeJson(),
+                def.getPermissionsJson(),
+                def.getModelConfigJson(),
+                def.getMaxIters(),
+                def.getMaxHandoffs(),
+                AgentCatalogEntry.AgentSource.valueOf(def.getSource()),
+                def.getAgentCardUrl(),
+                def.getAuthConfigJson(),
+                def.getEndpointOverride());
     }
 
     private static List<String> parseTags(String json) {
+        return parseStringList(json);
+    }
+
+    private static List<String> parseStringList(String json) {
         if (json == null || json.isBlank()) {
             return List.of();
         }

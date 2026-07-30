@@ -4,7 +4,6 @@ import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.catalog.AgentBindingOutcome;
 import com.sunshine.orchestrator.catalog.AgentBindingParser;
-//  deleted (peer-collab removed)
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import lombok.RequiredArgsConstructor;
@@ -17,10 +16,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/** L0：$ expert 硬绑定 → peer-collab */
+/** L0：$ agent 硬绑定 → 主 Agent ReAct（可 spawn 其他 $ 绑定智能体） */
 @Component
 @RequiredArgsConstructor
-public class ExpertBindingRoutingPolicy implements RoutingPolicy {
+public class AgentBindingRoutingPolicy implements RoutingPolicy {
     private final AgentBindingParser agentBindingParser;
 
     @Override
@@ -38,19 +37,19 @@ public class ExpertBindingRoutingPolicy implements RoutingPolicy {
         try {
             binding = agentBindingParser.parse(message);
         } catch (IllegalStateException e) {
-            return Mono.error(new BizException(OrchestratorErrorCode.EXPERT_NOT_FOUND));
+            return Mono.error(new BizException(OrchestratorErrorCode.AGENT_NOT_FOUND));
         }
         if (binding.unknown()) {
-            return Mono.error(new BizException(OrchestratorErrorCode.EXPERT_NOT_FOUND));
+            return Mono.error(new BizException(OrchestratorErrorCode.AGENT_NOT_FOUND));
         }
         if (!binding.bound()) {
             return Mono.just(Optional.empty());
         }
         Map<String, String> params = new LinkedHashMap<>();
-        params.put(.EXPERT_IDS,
-                binding.expertIds().stream().collect(Collectors.joining(",")));
-        params.put(.EFFECTIVE_QUERY, binding.effectiveQuery());
+        params.put("agentIds",
+                binding.agentIds().stream().collect(Collectors.joining(",")));
+        params.put("effectiveQuery", binding.effectiveQuery());
         return Mono.just(Optional.of(new ExecutionPlan(
-                ExecutionMode.PEER_COLLAB, null, params, "expert:$mention")));
+                ExecutionMode.REACT, null, params, "agent:$mention")));
     }
 }

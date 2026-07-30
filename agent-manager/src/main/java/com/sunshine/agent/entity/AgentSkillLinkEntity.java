@@ -7,7 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "expert_skill_link")
+@Table(name = "agent_skill_link")
 @Getter
 @Setter
 public class AgentSkillLinkEntity {

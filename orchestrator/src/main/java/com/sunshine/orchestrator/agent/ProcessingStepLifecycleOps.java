@@ -89,8 +89,6 @@ public final class ProcessingStepLifecycleOps {
         }
     }
 
-    /** 多专家协作停止：expert / expert-convene running 步标 paused */
-    public static void pauseRunningExpertSteps(List<ProcessingStep> steps) {
         if (steps == null || steps.isEmpty()) {
             return;
         }
@@ -103,7 +101,6 @@ public final class ProcessingStepLifecycleOps {
             if (!isRunning(step)) {
                 continue;
             }
-            if ("expert".equals(phase) || "expert-convene".equals(phase) || step.id().startsWith("expert-")) {
                 steps.set(i, toPaused(step));
             }
         }

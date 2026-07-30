@@ -6,8 +6,7 @@ package com.sunshine.orchestrator.routing;
 public enum ExecutionMode {
     WORKFLOW,
     REACT,
-    PLAN_WORKFLOW,
-    PEER_COLLAB;
+    PLAN_WORKFLOW;
 
     public static ExecutionMode from(String raw) {
         if (raw == null || raw.isBlank()) {
@@ -16,7 +15,6 @@ public enum ExecutionMode {
         return switch (raw.toLowerCase().replace('_', '-')) {
             case "workflow", "pipeline" -> WORKFLOW;
             case "plan-workflow", "plan_workflow", "plan" -> PLAN_WORKFLOW;
-            case "peer-collab", "peer_collab", "peer" -> PEER_COLLAB;
             default -> REACT; // includes historical simple-llm / simple / direct
         };
     }

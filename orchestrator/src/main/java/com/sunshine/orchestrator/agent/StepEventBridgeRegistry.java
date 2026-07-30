@@ -44,7 +44,6 @@ public class StepEventBridgeRegistry {
     private final Map<String, Long> streamEpoch = new ConcurrentHashMap<>();
     private final Map<String, Long> sessionStreamEpoch = new ConcurrentHashMap<>();
     /** 专家 Hub Sub-Agent：Hook 增量直出，不经主 Timeline think 锚点 */
-    private final Map<String, Consumer<StreamToken>> expertSpeakSinks = new ConcurrentHashMap<>();
 
     @PostConstruct
     void installFacade() {
@@ -74,7 +73,6 @@ public class StepEventBridgeRegistry {
         generationFlush.clear();
         streamEpoch.clear();
         sessionStreamEpoch.clear();
-        expertSpeakSinks.clear();
     }
 
     public void registerMainRun(String assistantMessageId, String bridgeId) {
@@ -245,9 +243,7 @@ public class StepEventBridgeRegistry {
     }
 
     /** 专家发言专用：ReasoningChunk / 工具步等 Hook 产出即时消费，不依赖 ProcessingTimelineSession think 锚点 */
-    public void bindExpertSpeakSink(String bridgeId, Consumer<StreamToken> sink) {
         if (bridgeId != null && sink != null) {
-            expertSpeakSinks.put(bridgeId, sink);
         }
     }
 
@@ -422,7 +418,6 @@ public class StepEventBridgeRegistry {
             loopBodyFolds.remove(messageId);
             generationFlush.remove(messageId);
             sessionStreamEpoch.remove(messageId);
-            expertSpeakSinks.remove(messageId);
             toolUseBridge.entrySet().removeIf(e -> messageId.equals(e.getValue()));
         }
     }
@@ -510,16 +505,13 @@ public class StepEventBridgeRegistry {
     }
 
     /** 专家 Hub：Hook 增量直出正文，不经 think 锚点 */
-    public void emitExpertSpeakDelta(String bridgeId, String incrementalText) {
         emitExpertSpeakText(bridgeId, incrementalText);
     }
 
     /** 专家 Hub：工具调用开始时刷新 expert 步 active 文案 */
-    public void emitExpertSpeakToolActive(String bridgeId, String toolLabel) {
         if (bridgeId == null || toolLabel == null || toolLabel.isBlank()) {
             return;
         }
-        Consumer<StreamToken> sink = expertSpeakSinks.get(bridgeId);
         if (sink == null) {
             return;
         }
@@ -528,7 +520,6 @@ public class StepEventBridgeRegistry {
         com.sunshine.orchestrator.processing.StepSummary summary =
                 new com.sunshine.orchestrator.processing.StepSummary(null, active, null);
         ProcessingStep step = new ProcessingStep(
-                "tool-expert-speak",
                 "tool",
                 "running",
                 summary,
@@ -549,10 +540,8 @@ public class StepEventBridgeRegistry {
 
     /** 专家 Hub：Hook 增量直出正文，不经 think 锚点 */
     private boolean emitExpertSpeakText(String bridgeId, String incrementalText) {
-        if (!expertSpeakSinks.containsKey(bridgeId)) {
             return false;
         }
-        Consumer<StreamToken> sink = expertSpeakSinks.get(bridgeId);
         sink.accept(StreamToken.content(incrementalText));
         return true;
     }
@@ -578,11 +567,7 @@ public class StepEventBridgeRegistry {
         if (!isHookBridgeActive(messageId)) {
             return;
         }
-        Consumer<StreamToken> expertSink = expertSpeakSinks.get(messageId);
-        if (expertSink != null) {
             // 专家 Hub：正文走 agent.stream REASONING；Hook 仅即时下发工具步（工具 RPC 期间 stream 无事件）
-            if (isExpertToolProgressToken(token)) {
-                expertSink.accept(token);
             }
             return;
         }
@@ -687,7 +672,6 @@ public class StepEventBridgeRegistry {
         return bindingEpoch == currentStreamEpoch(flushKey);
     }
 
-    private static boolean isExpertToolProgressToken(StreamToken token) {
         if (token == null || !token.isStep() || token.step() == null) {
             return false;
         }

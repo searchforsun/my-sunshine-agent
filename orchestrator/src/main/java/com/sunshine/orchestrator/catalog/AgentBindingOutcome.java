@@ -5,7 +5,7 @@ import java.util.List;
 public record AgentBindingOutcome(
         boolean bound,
         boolean unknown,
-        List<String> expertIds,
+        List<String> agentIds,
         String effectiveQuery,
         AgentBindingSource source
 ) {
@@ -17,7 +17,7 @@ public record AgentBindingOutcome(
         return new AgentBindingOutcome(false, true, List.of(), "", null);
     }
 
-    public static AgentBindingOutcome bound(List<String> expertIds, String effectiveQuery) {
-        return new AgentBindingOutcome(true, false, List.copyOf(expertIds), effectiveQuery, AgentBindingSource.DOLLAR_MENTION);
+    public static AgentBindingOutcome bound(List<String> agentIds, String effectiveQuery) {
+        return new AgentBindingOutcome(true, false, List.copyOf(agentIds), effectiveQuery, AgentBindingSource.DOLLAR_MENTION);
     }
 }

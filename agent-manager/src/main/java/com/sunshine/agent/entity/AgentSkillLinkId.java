@@ -13,8 +13,8 @@ import java.io.Serializable;
 @Setter
 @EqualsAndHashCode
 public class AgentSkillLinkId implements Serializable {
-    @Column(name = "expert_id", length = 64)
-    private String expertId;
+    @Column(name = "agent_id", length = 64)
+    private String agentId;
     @Column(name = "skill_id", length = 64)
     private String skillId;
 }

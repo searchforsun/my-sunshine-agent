@@ -19,34 +19,34 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/experts")
+@RequestMapping("/api/agents")
 @RequiredArgsConstructor
 public class AgentAdminController {
-    private final AgentAdminService expertAdminService;
+    private final AgentAdminService agentAdminService;
 
     @GetMapping
     public R<List<AgentCatalogEntry>> list() {
-        return R.ok(expertAdminService.listAll());
+        return R.ok(agentAdminService.listAll());
     }
 
     @PostMapping
     public R<AgentCatalogEntry> create(@RequestBody AgentCreateRequest request) {
-        return R.ok(expertAdminService.create(request));
+        return R.ok(agentAdminService.create(request));
     }
 
     @PutMapping("/{id}")
     public R<AgentCatalogEntry> update(@PathVariable String id, @RequestBody AgentUpdateRequest request) {
-        return R.ok(expertAdminService.update(id, request));
+        return R.ok(agentAdminService.update(id, request));
     }
 
     @PutMapping("/{id}/enable")
     public R<AgentCatalogEntry> enable(@PathVariable String id, @RequestBody AgentEnableRequest request) {
-        return R.ok(expertAdminService.setEnabled(id, request.enabled()));
+        return R.ok(agentAdminService.setEnabled(id, request.enabled()));
     }
 
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable String id) {
-        expertAdminService.delete(id);
+        agentAdminService.delete(id);
         return R.ok(null);
     }
 }

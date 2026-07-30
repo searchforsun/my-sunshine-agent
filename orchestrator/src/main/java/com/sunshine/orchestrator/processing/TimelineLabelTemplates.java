@@ -16,7 +16,6 @@ final class TimelineLabelTemplates {
         return switch (mode != null ? mode : ExecutionMode.REACT) {
             case WORKFLOW -> "workflow";
             case PLAN_WORKFLOW -> "plan-workflow";
-            case PEER_COLLAB -> "peer-collab";
             default -> "react";
         };
     }

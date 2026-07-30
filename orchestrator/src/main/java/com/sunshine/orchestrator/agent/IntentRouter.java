@@ -3,7 +3,6 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.expert.ExpertCollaborationPlanSanitizer;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.ExecutionMode;
@@ -37,7 +36,6 @@ public class IntentRouter {
     private final PromptCatalogHolder catalogHolder;
     private final WorkflowCatalog workflowCatalog;
     private final SkillCatalogService skillCatalogService;
-    private final ExpertCollaborationPlanSanitizer expertCollaborationPlanSanitizer;
     private final ExecutionPlanParser planParser;
 
     @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
@@ -96,7 +94,6 @@ public class IntentRouter {
                         ? applyLockedMode(plan, ctx.lockedMode())
                         : workflowCatalog.sanitize(plan))
                 .map(skillCatalogService::sanitizeSkillPlan)
-                .map(expertCollaborationPlanSanitizer::sanitize)
                 .doOnNext(plan -> log.info("[IntentRouter] 计划: mode={}, workflowId={}, skill={}, reason={}, locked={}",
                         plan.mode(),
                         plan.workflowId(),
@@ -172,7 +169,6 @@ public class IntentRouter {
             case REACT -> "react";
             case PLAN_WORKFLOW -> "plan-workflow";
             case WORKFLOW -> "workflow";
-            case PEER_COLLAB -> "peer-collab";
         };
     }
 

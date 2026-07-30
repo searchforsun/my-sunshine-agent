@@ -6,8 +6,6 @@ import com.sunshine.common.core.result.R;
 import com.sunshine.orchestrator.audit.entity.ChatAuditLogEntity;
 import com.sunshine.orchestrator.audit.repo.ChatAuditLogRepository;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
-import com.sunshine.orchestrator.peer.PeerRunAuditService;
-import com.sunshine.orchestrator.peer.PeerRunAuditView;
 import com.sunshine.orchestrator.taskboard.ReactTaskBoardAuditService;
 import com.sunshine.orchestrator.taskboard.ReactTaskBoardAuditView;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +25,6 @@ public class AuditController {
 
     private final ChatAuditLogRepository auditLogRepository;
     private final ReactTaskBoardAuditService taskBoardAuditService;
-    private final PeerRunAuditService peerRunAuditService;
 
     @GetMapping("/recent")
     public Mono<R<List<ChatAuditLogEntity>>> recent() {
@@ -65,10 +62,7 @@ public class AuditController {
                         .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND))));
     }
 
-    @GetMapping("/peer-run/{messageId}")
-    public Mono<R<PeerRunAuditView>> peerRun(@PathVariable String messageId) {
         return ReactiveBlocking.call(() -> R.ok(
-                peerRunAuditService.findByMessageId(messageId)
                         .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND))));
     }
 }

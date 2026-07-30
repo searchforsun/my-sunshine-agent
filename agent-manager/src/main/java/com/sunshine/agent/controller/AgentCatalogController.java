@@ -16,10 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/experts")
+@RequestMapping("/api/agents")
 @RequiredArgsConstructor
 public class AgentCatalogController {
-    private final AgentAdminService expertAdminService;
+    private final AgentAdminService agentAdminService;
 
     @GetMapping("/catalog")
     public R<Void> catalogRemoved() {
@@ -28,13 +28,13 @@ public class AgentCatalogController {
 
     @GetMapping("/catalog/index")
     public R<List<AgentCatalogIndexEntry>> catalogIndex() {
-        return R.ok(expertAdminService.listCatalogIndex());
+        return R.ok(agentAdminService.listCatalogIndex());
     }
 
     @GetMapping("/{id}/catalog")
     public R<AgentCatalogEntry> catalogDetail(@PathVariable String id) {
-        return expertAdminService.findCatalogEntry(id)
+        return agentAdminService.findCatalogEntry(id)
                 .map(R::ok)
-                .orElseThrow(() -> new BizException(AgentErrorCode.EXPERT_NOT_FOUND));
+                .orElseThrow(() -> new BizException(AgentErrorCode.AGENT_NOT_FOUND));
     }
 }

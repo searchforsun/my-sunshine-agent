@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 统一规则引擎路由（原 L1 structural + L1b peer + L2 regex）。
  * 规则 SSOT：prompt-manager Catalog → {@link PromptCatalogHolder}。
  */
 @Component
@@ -62,7 +61,6 @@ public class UnifiedRuleRoutingPolicy implements RoutingPolicy {
         return switch (raw.toLowerCase()) {
             case "react" -> ExecutionMode.REACT;
             case "plan-workflow", "plan_workflow", "plan" -> ExecutionMode.PLAN_WORKFLOW;
-            case "peer-collab", "peer_collab", "peer" -> ExecutionMode.PEER_COLLAB;
             default -> ExecutionMode.WORKFLOW;
         };
     }

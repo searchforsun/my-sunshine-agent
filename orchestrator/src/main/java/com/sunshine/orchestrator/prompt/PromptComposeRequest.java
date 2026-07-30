@@ -91,17 +91,10 @@ public record PromptComposeRequest(
                 personalRules);
     }
 
-    /** 专家 Hub 发言阶段2 — nodePrompt 承载 Expert.systemPrompt；直连 Gateway / DIRECT */
-    public static PromptComposeRequest forExpertSpeak(
-            AssembledContext context, String userMessage, String skillId, String expertSystemPrompt) {
-        return forExpertSpeak(context, userMessage, skillId, expertSystemPrompt, null);
     }
 
-    public static PromptComposeRequest forExpertSpeak(
-            AssembledContext context, String userMessage, String skillId, String expertSystemPrompt,
             String personalRules) {
         return new PromptComposeRequest(
-                PromptMode.DIRECT, context, userMessage, null, skillId, expertSystemPrompt,
                 List.of(), null, false, null, personalRules);
     }
 }

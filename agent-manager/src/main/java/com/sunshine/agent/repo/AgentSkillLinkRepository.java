@@ -7,6 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface AgentSkillLinkRepository extends JpaRepository<AgentSkillLinkEntity, AgentSkillLinkId> {
-    List<AgentSkillLinkEntity> findByIdExpertIdOrderByIdSkillIdAsc(String expertId);
-    void deleteByIdExpertId(String expertId);
+    List<AgentSkillLinkEntity> findByIdAgentIdOrderByIdSkillIdAsc(String agentId);
+    void deleteByIdAgentId(String agentId);
 }

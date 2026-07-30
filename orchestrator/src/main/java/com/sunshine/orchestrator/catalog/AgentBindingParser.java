@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 解析 Chat $expert 绑定 */
+/** 解析 Chat $agent 绑定 */
 @Component
 @RequiredArgsConstructor
 public class AgentBindingParser {
@@ -22,35 +22,35 @@ public class AgentBindingParser {
     private static final Pattern INLINE_DOLLAR = Pattern.compile(
             "\\$([\\w\\u4e00-\\u9fff-]+)(?=[\\s，。！？,.!?;；：:]|$)");
 
-    private final AgentCatalogService expertCatalogService;
+    private final AgentCatalogService agentCatalogService;
 
     public AgentBindingOutcome parse(String userMessage) {
         if (!StringUtils.hasText(userMessage)) {
             return AgentBindingOutcome.none("");
         }
         String trimmed = userMessage.strip();
-        LinkedHashSet<String> expertIds = new LinkedHashSet<>();
+        LinkedHashSet<String> agentIds = new LinkedHashSet<>();
         Matcher head = DOLLAR_HEAD.matcher(trimmed);
         if (head.matches()) {
-            Optional<String> first = resolveExpertId(head.group(1));
+            Optional<String> first = resolveAgentId(head.group(1));
             if (first.isEmpty()) {
                 return AgentBindingOutcome.unknown(head.group(1));
             }
-            expertIds.add(first.get());
-            collectInline(head.group(2), expertIds);
-            if (expertIds.isEmpty()) {
+            agentIds.add(first.get());
+            collectInline(head.group(2), agentIds);
+            if (agentIds.isEmpty()) {
                 return AgentBindingOutcome.none(trimmed);
             }
-            return AgentBindingOutcome.bound(new ArrayList<>(expertIds), stripExpertMentions(trimmed));
+            return AgentBindingOutcome.bound(new ArrayList<>(agentIds), stripAgentMentions(trimmed));
         }
-        collectInline(trimmed, expertIds);
-        if (expertIds.isEmpty()) {
+        collectInline(trimmed, agentIds);
+        if (agentIds.isEmpty()) {
             return AgentBindingOutcome.none(trimmed);
         }
-        return AgentBindingOutcome.bound(new ArrayList<>(expertIds), stripExpertMentions(trimmed));
+        return AgentBindingOutcome.bound(new ArrayList<>(agentIds), stripAgentMentions(trimmed));
     }
 
-    public String stripExpertMentions(String userMessage) {
+    public String stripAgentMentions(String userMessage) {
         if (!StringUtils.hasText(userMessage)) {
             return userMessage != null ? userMessage : "";
         }
@@ -58,30 +58,30 @@ public class AgentBindingParser {
         return stripped.isEmpty() ? "请处理" : stripped;
     }
 
-    private void collectInline(String text, LinkedHashSet<String> expertIds) {
+    private void collectInline(String text, LinkedHashSet<String> agentIds) {
         if (!StringUtils.hasText(text)) {
             return;
         }
         Matcher inline = INLINE_DOLLAR.matcher(text);
         while (inline.find()) {
-            Optional<String> expertId = resolveExpertId(inline.group(1));
-            if (expertId.isEmpty()) {
-                throw new IllegalStateException("unknown expert: " + inline.group(1));
+            Optional<String> agentId = resolveAgentId(inline.group(1));
+            if (agentId.isEmpty()) {
+                throw new IllegalStateException("unknown agent: " + inline.group(1));
             }
-            expertIds.add(expertId.get());
+            agentIds.add(agentId.get());
         }
     }
 
-    private Optional<String> resolveExpertId(String token) {
+    private Optional<String> resolveAgentId(String token) {
         if (!StringUtils.hasText(token)) {
             return Optional.empty();
         }
         String raw = token.strip();
-        Optional<AgentCatalogIndexEntry> byId = expertCatalogService.findIndex(raw);
+        Optional<AgentCatalogIndexEntry> byId = agentCatalogService.findIndex(raw);
         if (byId.isPresent()) {
             return Optional.of(byId.get().id());
         }
-        return expertCatalogService.indexEntries().stream()
+        return agentCatalogService.indexEntries().stream()
                 .filter(e -> raw.equals(e.displayName()))
                 .map(AgentCatalogIndexEntry::id)
                 .findFirst();

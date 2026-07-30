@@ -124,16 +124,10 @@ public final class StepEventBridge {
         return registry.loopBodyFold(assistantMessageId);
     }
 
-    public static void bindExpertSpeakSink(String bridgeId, Consumer<StreamToken> sink) {
-        registry.bindExpertSpeakSink(bridgeId, sink);
     }
 
-    public static void emitExpertSpeakDelta(String bridgeId, String incrementalText) {
-        registry.emitExpertSpeakDelta(bridgeId, incrementalText);
     }
 
-    public static void emitExpertSpeakToolActive(String bridgeId, String toolLabel) {
-        registry.emitExpertSpeakToolActive(bridgeId, toolLabel);
     }
 
     public static void bindGenerationFlush(String messageId, Consumer<StreamToken> consumer) {

@@ -377,6 +377,28 @@ embedding 服务不可用时，L2 返回 `Optional.empty()`，不阻塞路由链
 
 ## 6. L3：LLM 分类器（带候选列表）
 
+### 6.1 设计决策：不打断用户
+
+L3 是最后一层路由，低置信度时**不打断用户**，而是交给 REACT 执行层自行澄清。理由：
+
+| 决策因素 | 说明 |
+|---------|------|
+| **REACT 自己会澄清** | REACT 执行中是自由推理循环，遇到歧义可通过 `react-request-decision`（4.7.7 spec）主动向用户出选择题。澄清职责在执行层，不在路由层 |
+| **闲聊/通用问答不匹配是正常的** | 用户说"今天天气不错"或"Python 怎么读 CSV"，L3 应返回 `no_match`，直接走 REACT 兜底正常回答。这不是"低置信度"，而是"明确不匹配预置资源" |
+| **LLM 自评 confidence 不可靠** | 同一个 prompt 两次可能输出 0.5 和 0.9，无严格概率意义。用这个数字做"是否打断用户"的决策依据不可靠 |
+| **打断成本高** | 用户一句话被路由层反问，需等待回复、再分类、再执行。而 REACT 在推理中出选择题时已有上下文（如已 read 文件、理解项目结构），选择题更有针对性 |
+
+### 6.2 三段式决策
+
+L3 分类器输出后，按 confidence 分三段处理：
+
+| 分段 | confidence | 行为 |
+|------|-----------|------|
+| `no_match` | N/A | 分类器明确判断无匹配资源 → 返回 empty，走 REACT 兜底 |
+| 低置信度 | 0.5 ≤ c < 0.8 | 执行选中的资源，但把 L2 候选列表注入 `params.__candidates`，供 REACT 首轮推理中参考，必要时自行判断是否切换方向 |
+| 高置信度 | c ≥ 0.8 | 直接执行，不注入额外信息 |
+| 极低置信度 | c < 0.5 | 视为分类器不确定 → 返回 empty，走 REACT 兜底（安全网，防止 LLM 乱选） |
+
 ```java
 @Component
 @RequiredArgsConstructor
@@ -393,23 +415,42 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
 
         return intentRouter.classifyWithCandidates(
                 ctx.userMessage(), candidates, ctx.scene(), ctx.memory())
-            .map(decision -> Optional.of(new RoutingResult(
-                decision.type(),
-                decision.resourceId(),
-                ctx.scene(),
-                Map.of(),
-                "l3:" + decision.reason(),
-                decision.confidence())))
+            .map(decision -> {
+                // no_match 或极低置信度 → 不给 REACT 任何偏好，自由执行
+                if (decision.isNoMatch() || decision.confidence() < 0.5) {
+                    return Optional.<RoutingResult>empty();
+                }
+                // 中等置信度 → 执行选中资源，但附候选列表供 REACT 参考
+                if (decision.confidence() < 0.8) {
+                    return Optional.of(new RoutingResult(
+                        decision.type(),
+                        decision.resourceId(),
+                        ctx.scene(),
+                        Map.of("__candidates", toJson(candidates)),
+                        "l3:low:" + decision.reason(),
+                        decision.confidence()));
+                }
+                // 高置信度 → 直接执行
+                return Optional.of(new RoutingResult(
+                    decision.type(),
+                    decision.resourceId(),
+                    ctx.scene(),
+                    Map.of(),
+                    "l3:" + decision.reason(),
+                    decision.confidence()));
+            })
             .defaultIfEmpty(Optional.empty());
     }
 }
 ```
 
-**分类器 prompt 要点**：
+### 6.3 分类器 prompt 要点
+
 - 输入包含候选资源清单（含 type + id + name + description + score）
-- 要求输出 `{type, resourceId, reason}` JSON
-- 候选资源都不匹配时返回 `{type: "REACT", resourceId: null, reason: "no_match"}`
+- 要求输出 `{type, resourceId, confidence, reason}` JSON
+- **候选资源都不匹配时返回 `{type: "REACT", resourceId: null, confidence: 0, reason: "no_match"}`**——这是明确的不匹配信号，不是低置信度
 - 场景约束：`scene=task` 时不选 `WORKFLOW`（task 场景主要走 agent/skill）
+- `confidence` 字段要求 LLM 输出 0.0–1.0 的浮点数，表示对选择的确定程度
 
 ---
 
@@ -638,8 +679,12 @@ Chat 底栏 `ExecutionModeSelector` 删除。用户不再手动选模式，改�
 | L2 | 三路语义召回 > 阈值直接命中 | 单测 |
 | L2 | workflow 阈值 0.88 vs agent/skill 0.85 | 单测 |
 | L2 | embedding 不可用 → 降级到 L3 | 单测 |
-| L3 | LLM 分类器在候选列表中正确选择 | 单测 + live |
+| L3 | LLM 分类器在候选列表中正确选择（高置信度） | 单测 + live |
+| L3 | `no_match` → 返回 empty，走 REACT 兜底（不打断用户） | 单测 |
+| L3 | confidence < 0.5 → 返回 empty，走 REACT 兜底（安全网） | 单测 |
+| L3 | 0.5 ≤ confidence < 0.8 → 执行选中资源 + 注入 `__candidates` 供 REACT 参考 | 单测 |
 | L3 | 候选列表为空 → fallback REACT | 单测 |
+| L3 | 闲聊/通用问答（"今天天气不错"）→ no_match → REACT 正常回答 | 单测 + live |
 | Fallback | 四层无结果 → REACT 兜底 | 单测 + live |
 | scene | chat/task 分别过滤资源 | 单测 |
 | 前端 | 无执行模式选择器；路由结果提示 | live |

@@ -22,7 +22,7 @@
         <module>skill-manager</module>
         <module>sandbox-service</module>
         <module>workflow-manager</module>
-        <module>expert-manager</module>
+        <module>agent-manager</module>
         <module>llm-gateway</module>
         <module>rag-service</module>
         <module>prompt-manager</module>

@@ -42,7 +42,6 @@ public class ExecutionPlanParser {
         }
     }
 
-    /** 解析 DB 中已存的 intentLabel（react / plan-workflow / peer-collab / workflow:{id}） */
     public ExecutionPlan parseStoredIntent(String stored) {
         if (stored.startsWith("workflow:")) {
             String workflowId = stored.substring("workflow:".length());
@@ -54,7 +53,6 @@ public class ExecutionPlanParser {
         if ("plan-workflow".equalsIgnoreCase(stored)) {
             return new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "stored");
         }
-        if ("peer-collab".equalsIgnoreCase(stored)) {
             return new ExecutionPlan(ExecutionMode.PEER_COLLAB, null, Map.of(), "stored");
         }
         return ExecutionPlan.reactFallback("unknown stored intent: " + stored);
