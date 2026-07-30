@@ -17,6 +17,9 @@ import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
+import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
@@ -32,6 +35,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -107,7 +111,8 @@ public class ReActAgentRuntime implements AgentRuntime {
             String bridgeId = request.resolveBridgeId();
             StepEventBridge.bind(bridgeId, session, hookQueue);
             if (request.assistantMessageId() != null && !request.assistantMessageId().isBlank()) {
-                StepEventBridge.bindHitlBridge(bridgeId, request.assistantMessageId(), true);
+                StepEventBridge.bindHitlBridge(bridgeId, request.assistantMessageId(), resolveHitlEnabled(request));
+                StepEventBridge.bindWriteHitlMode(request.assistantMessageId(), resolveWriteHitlMode(request));
                 StepEventBridge.setUserQuery(request.assistantMessageId(), query);
                 if (request.role() == AgentRole.MAIN) {
                     StepEventBridge.registerMainRun(request.assistantMessageId(), bridgeId);
@@ -269,5 +274,50 @@ public class ReActAgentRuntime implements AgentRuntime {
             StepEventBridge.emitReasoningContentChunk(bridgeId, d.getDelta());
         }
         // ToolCall/ToolResult 事件由 ProcessingStepMiddleware.onActing 驱动（不经此处）
+    }
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static boolean resolveHitlEnabled(AgentRunRequest request) {
+        String permissionsJson = request.permissionsJson();
+        if (permissionsJson == null || permissionsJson.isBlank() || "{}".equals(permissionsJson)) {
+            return true;
+        }
+        try {
+            Map<String, Object> permissions = MAPPER.readValue(permissionsJson, new TypeReference<Map<String, Object>>() {});
+            String toolConfirmation = (String) permissions.get("toolConfirmation");
+            if ("never".equals(toolConfirmation)) {
+                return false;
+            }
+            if ("always".equals(toolConfirmation)) {
+                return true;
+            }
+            return true;
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    private static SandboxWriteHitlMode resolveWriteHitlMode(AgentRunRequest request) {
+        String permissionsJson = request.permissionsJson();
+        if (permissionsJson == null || permissionsJson.isBlank() || "{}".equals(permissionsJson)) {
+            return SandboxWriteHitlMode.NEVER;
+        }
+        try {
+            Map<String, Object> permissions = MAPPER.readValue(permissionsJson, new TypeReference<Map<String, Object>>() {});
+            String sandboxWriteMode = (String) permissions.get("sandboxWriteMode");
+            if ("never".equals(sandboxWriteMode)) {
+                return SandboxWriteHitlMode.NEVER;
+            }
+            if ("always".equals(sandboxWriteMode)) {
+                return SandboxWriteHitlMode.ALWAYS;
+            }
+            if ("smart".equals(sandboxWriteMode)) {
+                return SandboxWriteHitlMode.SMART;
+            }
+            return SandboxWriteHitlMode.NEVER;
+        } catch (Exception e) {
+            return SandboxWriteHitlMode.NEVER;
+        }
     }
 }

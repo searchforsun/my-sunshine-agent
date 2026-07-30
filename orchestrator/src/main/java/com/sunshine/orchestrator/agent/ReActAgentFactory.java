@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
@@ -13,6 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+
+import java.util.Map;
 
 /**
  * 每次对话创建独立 ReActAgent，避免单例残留 pending tool call / 并发冲突。
@@ -27,6 +30,8 @@ import org.springframework.util.StringUtils;
 @Component
 @RequiredArgsConstructor
 public class ReActAgentFactory {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final PromptCatalogHolder catalogHolder;
     private final AgentExecutionProperties executionProperties;
@@ -46,7 +51,7 @@ public class ReActAgentFactory {
     public ReActAgent create(AgentRunRequest request) {
         Toolkit toolkit = resolveToolkit(request);
         int maxIters = resolveMaxIters(request);
-        OpenAIChatModel model = buildModel();
+        OpenAIChatModel model = buildModel(request);
         log.info("[ReActAgentFactory] role={} skill={} tools={} maxIters={}",
                 request.role(), request.skillId(), toolkit.getToolNames(), maxIters);
 
@@ -72,11 +77,28 @@ public class ReActAgentFactory {
         return react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled();
     }
 
-    private OpenAIChatModel buildModel() {
+    private OpenAIChatModel buildModel(AgentRunRequest request) {
+        String overriddenModel = modelName;
+        String overriddenBaseUrl = modelBaseUrl;
+        if (request != null && request.modelConfigJson() != null && !request.modelConfigJson().isBlank()
+                && !"{}".equals(request.modelConfigJson())) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> config = MAPPER.readValue(request.modelConfigJson(), Map.class);
+                if (config.get("model") instanceof String m && !m.isBlank()) {
+                    overriddenModel = m;
+                }
+                if (config.get("baseUrl") instanceof String b && !b.isBlank()) {
+                    overriddenBaseUrl = b;
+                }
+            } catch (Exception e) {
+                log.warn("[ReActAgentFactory] modelConfigJson 解析失败: {}", e.getMessage());
+            }
+        }
         return OpenAIChatModel.builder()
                 .apiKey(apiKey)
-                .modelName(modelName)
-                .baseUrl(modelBaseUrl)
+                .modelName(overriddenModel)
+                .baseUrl(overriddenBaseUrl)
                 .stream(true)
                 .build();
     }

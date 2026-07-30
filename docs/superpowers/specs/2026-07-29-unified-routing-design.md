@@ -97,24 +97,35 @@ public record RoutingResult(
     String resourceId,      // workflowId / agentId / skillId / null（REACT 时）
     String scene,           // chat / task
     Map<String, String> params,
-    String reason,          // 如 "l0:workflow" / "l1:rule:expense" / "l2:workflow:0.91"
+    String reason,          // 如 "l0:workflow" / "l1:rule:expense" / "l2:workflow:0.91" / "fallback:silent" / "fallback:guided"
     double confidence
 ) {
     public enum ResourceType {
         WORKFLOW,   // #workflow-id 或 L1/L2/L3 命中
         AGENT,      // $agent-id 或语义选中
         SKILL,      // @skill-id 或语义选中
-        REACT       // 通用兜底
+        REACT,      // 静默兜底（通用 AI 直接执行）
+        GUIDED      // 引导兜底（前端展示候选列表，用户点选后重新路由）
     }
 
-    public static RoutingResult reactFallback(String scene, String reason) {
+    /** 静默兜底：四层全空 + L2 无候选 → 直接 REACT 执行 */
+    public static RoutingResult silentFallback(String scene, String reason) {
         return new RoutingResult(ResourceType.REACT, null, scene, Map.of(), reason, 1.0);
+    }
+
+    /** 引导兜底：四层全空 + L2 有候选未达阈值 → 前端展示候选列表 */
+    public static RoutingResult guidedFallback(String scene, List<ScoredResource> candidates) {
+        return new RoutingResult(
+            ResourceType.GUIDED, null, scene,
+            Map.of("__candidates", toJson(candidates.subList(0, Math.min(3, candidates.size())))),
+            "fallback:guided", 0.0);
     }
 
     public boolean isWorkflow() { return type == ResourceType.WORKFLOW; }
     public boolean isAgent() { return type == ResourceType.AGENT; }
     public boolean isSkill() { return type == ResourceType.SKILL; }
     public boolean isReact() { return type == ResourceType.REACT; }
+    public boolean isGuided() { return type == ResourceType.GUIDED; }
 }
 ```
 
@@ -149,11 +160,12 @@ public record RoutingContext(
 }
 ```
 
-### 2.3 RoutingPolicyChain
+### 2.3 RoutingPolicyChain（含两层兜底）
 
 ```java
 package com.sunshine.orchestrator.routing.policy;
 
+import com.sunshine.orchestrator.routing.RoutingResult;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -177,12 +189,30 @@ public class RoutingPolicyChain {
     }
 
     public Mono<RoutingResult> route(RoutingContext ctx) {
-        return routeRecursive(ctx, 0);
+        return routeRecursive(ctx, 0)
+            .switchIfEmpty(Mono.defer(() -> {
+                // 四层全空 → 检查 L2 是否有候选
+                List<ScoredResource> candidates = ctx.getAttribute("semanticCandidates");
+                if (candidates == null || candidates.isEmpty()) {
+                    // 第一层兜底：静默 REACT（用户意图不指向任何预置资源）
+                    return Mono.just(RoutingResult.silentFallback(ctx.scene(), "fallback:no_candidates"));
+                }
+                // 过滤低分候选（< 0.75 的不展示，避免误导）
+                List<ScoredResource> qualified = candidates.stream()
+                    .filter(c -> c.score() >= 0.75)
+                    .limit(3)
+                    .toList();
+                if (qualified.isEmpty()) {
+                    return Mono.just(RoutingResult.silentFallback(ctx.scene(), "fallback:low_quality_candidates"));
+                }
+                // 第二层兜底：引导提示（用户意图在平台能力范围内，但路由层不确定）
+                return Mono.just(RoutingResult.guidedFallback(ctx.scene(), qualified));
+            }));
     }
 
     private Mono<RoutingResult> routeRecursive(RoutingContext ctx, int index) {
         if (index >= sorted.size()) {
-            return Mono.just(RoutingResultUtils.reactFallback(ctx.scene(), "no_policy_match"));
+            return Mono.empty();  // 空信号 → 进入兜底逻辑
         }
         return sorted.get(index).tryRoute(ctx)
             .flatMap(opt -> opt.<Mono<RoutingResult>>map(Mono::just)
@@ -190,6 +220,13 @@ public class RoutingPolicyChain {
     }
 }
 ```
+
+**两层兜底说明**（详见 §8）：
+
+| 兜底类型 | ResourceType | 触发条件 | 行为 |
+|---------|-------------|---------|------|
+| 静默兜底 | `REACT` | L2 无候选或候选质量过低 | 直接走 REACT 执行，不打扰用户 |
+| 引导兜底 | `GUIDED` | L2 有候选（score ≥ 0.75）但未达阈值 | 前端展示 Top-3 候选列表，用户点选后重新路由 |
 
 ---
 
@@ -484,6 +521,7 @@ public class ResourceDispatcher {
         return switch (result != null ? result.type() : ResourceType.REACT) {
             case WORKFLOW -> workflowExecutor.execute(ctx);
             case AGENT, SKILL, REACT -> reactExecutor.execute(ctx);
+            case GUIDED -> Flux.empty();  // 不执行——前端展示候选列表
         };
     }
 }
@@ -494,12 +532,112 @@ public class ResourceDispatcher {
 - `AGENT` 命中时，`ReactExecutor` 内部根据 `resourceId` 加载 agent 配置（system prompt / tools / skills），构造 `AgentRunRequest`
 - `SKILL` 命中时，`ReactExecutor` 内部根据 `resourceId` 加载 skill overlay，注入 tool 白名单
 - `REACT` 兜底时，走通用 ReAct 配置
+- `GUIDED` 时，不执行——前端展示候选列表，用户点选后重新发起请求（携带绑定的 resourceId）
 
 ---
 
-## 8. 组件处置清单
+## 8. 兜底策略：静默兜底 vs 引导兜底
 
-### 8.1 删除
+### 8.1 设计决策
+
+四层路由（L0→L1→L2→L3）全部无结果时，不统一走 REACT，而是根据 L2 候选情况分流：
+
+| 场景 | L2 候选 | 行为 | 理由 |
+|------|--------|------|------|
+| 闲聊/通用问答/编码 | 空（用户意图不指向任何预置资源） | **静默 REACT 兜底** | 这正是 REACT 的主场，无需打扰 |
+| 模糊业务意图 | 有，且 score ≥ 0.75，但未达直接命中阈值 | **引导提示** | 用户意图在平台能力范围内，但路由层不确定；把线索反馈给用户 |
+| 明确但未预置 | 有弱相关候选但不匹配 | **引导提示** | 提示该场景暂无预置服务，同时给 REACT 自由探索入口 |
+| 极短/无效输入 | 空 | **静默 REACT 兜底** | 让 REACT 友好回应 |
+
+### 8.2 两层兜底实现
+
+已在 `RoutingPolicyChain` 中实现（见 §2.3），核心逻辑：
+
+- **L2 无候选** → `RoutingResult.silentFallback`（`ResourceType.REACT`）
+- **L2 有候选但未达阈值** → `RoutingResult.guidedFallback`（`ResourceType.GUIDED`）
+
+### 8.3 前端交互（GUIDED）
+
+`ResourceType.GUIDED` 不触发执行。前端收到后展示 inline 提示（不阻塞对话流）：
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 💡 你可能想要：                                          │
+│                                                         │
+│   [📋 报销审批流程]  [🤖 财务助手]  [🔧 通用 AI 处理]    │
+│                                                         │
+│   继续输入补充说明，或直接回车用通用 AI 处理              │
+└─────────────────────────────────────────────────────────┘
+```
+
+- 点击候选资源 → 相当于 `#workflow-id` / `$agent-id`，重新请求并路由
+- 点击「通用 AI 处理」→ 强制 REACT 执行
+- 用户继续输入新消息 → 上一条提示自动消失，新消息正常路由
+
+### 8.4 退化策略
+
+| 规则 | 说明 |
+|------|------|
+| 单候选不出引导 | L2 只有一个候选时不打扰，直接静默 REACT |
+| 低分候选过滤 | score < 0.75 的候选不展示（避免误导） |
+| 用户连续 3 次忽略 | 后续会话不再出引导提示（避免变成"请选择"机器） |
+| 跨会话重置 | 连续忽略计数仅当前会话有效 |
+
+---
+
+## 9. 兜底工具配置
+
+### 9.1 现状（代码核实）
+
+`DynamicToolkitFactory.build(tenantId, skillId, userId)` 为通用 REACT（MAIN）注入的工具：
+
+| 工具 | 来源 | 条件 | 安全机制 |
+|------|------|------|----------|
+| `search_knowledge` | 硬编码 `RagTool` | 始终注入 | kbId 由会话上下文动态注入 |
+| `sandbox__read` | 硬编码 `SandboxIds.ALL` | 始终注入 | HITL + PathJail |
+| `sandbox__write` | 硬编码 | 始终注入 | HITL（`writeHitlMode`） |
+| `sandbox__edit` | 硬编码 | 始终注入 | HITL |
+| `sandbox__glob` | 硬编码 | 始终注入 | 只读，无安全风险 |
+| `sandbox__grep` | 硬编码 | 始终注入 | 只读，无安全风险 |
+| `sandbox__exec` | 硬编码 | 始终注入 | `SandboxExecGuard` 硬拒绝危险命令 + HITL |
+| `spawn_subagent` | 硬编码 `SpawnSubagentTool` | 仅 MAIN + `agent.execution.react.subagent.enabled=true` | 禁止嵌套委派 |
+| 远程业务工具 | `ToolSetResolver.resolveReactTools()` → DB `global-react-default` | **当前种子为空，不加载任何业务工具** | 求交 `ToolCatalogService.enabledIds` |
+
+关键发现：`global-react-default` 工具集在 `16-sunshine-tool-manager.sql` 种子中**无任何 member**，默认 REACT 兜底仅加载内置安全工具。
+
+### 9.2 安全分层：按路由精度递进工具集
+
+```
+兜底 REACT / GUIDED（resourceId=null）
+  → global-react-default 为空
+  → 仅内置工具：RAG + sandbox__* ×6 + spawn_subagent（可选）
+  → 全部受 HITL/Guard 约束
+
+指定 Agent（resourceId=agentId）
+  → global-react-default     + agent_definition.tools_json
+  → 兜底内置工具              + Agent 专属业务工具（SDK/MCP）
+
+指定 Skill（resourceId=skillId）
+  → global-react-default     + skill_definition.tools_json（或 embedding 召回）
+  → 兜底内置工具              + Skill 绑定工具
+
+指定 Workflow（resourceId=workflowId）
+  → workflow 定义的工具集（PlanJson 节点 params.tool）
+```
+
+### 9.3 结论
+
+通用 REACT 兜底的工具配置**不需额外改动**：
+- `global-react-default` 在 DB 种子中默认空 → 天然不加载业务工具
+- 内置工具全受 HITL/SandboxExecGuard/PathJail 约束
+- 沙箱容器懒创建——REACT 不调则不开，无资源浪费
+- 统一路由重构时 `DynamicToolkitFactory` 无需改动
+
+---
+
+## 10. 组件处置清单
+
+### 10.1 删除
 
 | 组件 | 原因 |
 |------|------|
@@ -512,7 +650,7 @@ public class ResourceDispatcher {
 | `PEER_COLLAB` 路由分支 | 被 spawn_subagent 中心化替代 |
 | `SkillDiscoveryService`（orchestrator） | L3 直接输出 skillId，不再需要二次校验 |
 
-### 8.2 修改
+### 10.2 修改
 
 | 组件 | 改动 |
 |------|------|
@@ -527,7 +665,7 @@ public class ResourceDispatcher {
 | `chat_message` 表 | `execution_mode` → `routing_type` + `routing_resource_id` |
 | `routing-golden-set.md` | 全量改写为资源路由 golden set |
 
-### 8.3 新建
+### 10.3 新建
 
 | 组件 | 说明 |
 |------|------|
@@ -543,7 +681,7 @@ public class ResourceDispatcher {
 | `ResourceRouter` | 替代 `ExecutionPlanRouter` |
 | `ResourceDispatcher` | 替代 `ExecutionDispatcher` |
 
-### 8.4 保留（不改动）
+### 10.4 保留（不改动）
 
 | 组件 | 说明 |
 |------|------|
@@ -554,7 +692,23 @@ public class ResourceDispatcher {
 
 ---
 
-## 9. scene 字段贯穿全链路
+## 11. 工具加载策略（全路由类型）
+
+| 路由结果 | 工具加载策略 |
+|---------|-------------|
+| `WORKFLOW` | workflow 定义中的工具集（`PlanJson` 节点 `params.tool`） |
+| `AGENT` | `global-react-default` + `agent_definition.tools_json` + agent 绑定的 `skill.tools_json` |
+| `SKILL` | `global-react-default` + `skill_definition.tools_json` 显式声明 + 通用工具 embedding 召回（Top-K 注入） |
+| `REACT` | `global-react-default`（当前为空，仅内置工具）+ embedding 召回 Top-K 工具 |
+| `GUIDED` | 不加载工具——前端展示候选列表，用户点选后重新路由 |
+
+**标准 skill（无 `tools_json`）**：`global-react-default` 内置工具 + embedding 召回 Top-K 工具，不加载全量工具。
+
+（兜底 REACT 的详细工具配置见 §9。）
+
+---
+
+## 12. scene 字段贯穿全链路
 
 ### 9.1 定义
 
@@ -584,7 +738,7 @@ public class ResourceDispatcher {
 
 ---
 
-## 10. 前端适配
+## 13. 前端适配
 
 ### 10.1 删除执行模式选择器
 
@@ -611,20 +765,7 @@ Chat 底栏 `ExecutionModeSelector` 删除。用户不再手动选模式，改�
 
 ---
 
-## 11. 工具加载策略
-
-| 路由结果 | 工具加载策略 |
-|---------|-------------|
-| `WORKFLOW` | workflow 定义中的工具集（`PlanJson` 节点 `params.tool`） |
-| `AGENT` | `agent_definition.tools_json` + `skills.tools_json`（agent 绑定的 skill） |
-| `SKILL` | `skill_definition` 的 `tools_json` 显式声明 + 通用工具 embedding 召回（Top-K 注入） |
-| `REACT` | 通用工具集（租户默认 toolset）+ embedding 召回 Top-K 工具 |
-
-**标准 skill（无 `tools_json`）**：ReAct 通用工具集 + embedding 召回 Top-K 工具，不加载全量工具。
-
----
-
-## 12. 实施阶段
+## 14. 实施阶段
 
 ### 阶段 R-1：数据模型 + 核心路由
 
@@ -670,7 +811,7 @@ Chat 底栏 `ExecutionModeSelector` 删除。用户不再手动选模式，改�
 
 ---
 
-## 13. 验收标准
+## 15. 验收标准
 
 | 维度 | 验收点 | 方式 |
 |------|--------|------|
@@ -685,16 +826,20 @@ Chat 底栏 `ExecutionModeSelector` 删除。用户不再手动选模式，改�
 | L3 | 0.5 ≤ confidence < 0.8 → 执行选中资源 + 注入 `__candidates` 供 REACT 参考 | 单测 |
 | L3 | 候选列表为空 → fallback REACT | 单测 |
 | L3 | 闲聊/通用问答（"今天天气不错"）→ no_match → REACT 正常回答 | 单测 + live |
-| Fallback | 四层无结果 → REACT 兜底 | 单测 + live |
+| 静默兜底 | 四层全空 + L2 无候选 → `REACT` 直接执行，不打扰用户 | 单测 |
+| 引导兜底 | 四层全空 + L2 有候选（score ≥ 0.75）→ `GUIDED` 展示候选列表 | 单测 + live |
+| 引导兜底 | 单候选不出引导、低分过滤、连续 3 次忽略退化 | 单测 |
+| 引导兜底 | 用户点选候选 → 重新路由并执行 | live |
+| 工具配置 | 兜底 REACT 仅加载内置工具（RAG+沙箱+spawn），无业务工具 | 单测 |
 | scene | chat/task 分别过滤资源 | 单测 |
-| 前端 | 无执行模式选择器；路由结果提示 | live |
+| 前端 | 无执行模式选择器；GUIDED 展示 inline 候选提示 | live |
 | 回归 | 8 标杆 workflow 仍可执行 | live |
 | 回归 | ReAct 仍可正常使用 | live |
 | 回归 | Plan-Workflow 直接 API 调用仍可用 | live |
 
 ---
 
-## 14. 关键文件索引
+## 16. 关键文件索引
 
 | 文件 | 改动类型 | 说明 |
 |------|---------|------|
@@ -729,7 +874,7 @@ Chat 底栏 `ExecutionModeSelector` 删除。用户不再手动选模式，改�
 
 ---
 
-## 15. 与相关 spec 的关系
+## 17. 与相关 spec 的关系
 
 | spec | 关系 |
 |------|------|
@@ -741,12 +886,14 @@ Chat 底栏 `ExecutionModeSelector` 删除。用户不再手动选模式，改�
 
 ---
 
-## 16. 风险与对策
+## 18. 风险与对策
 
 | 风险 | 对策 |
 |------|------|
 | embedding 索引冷启动慢 | 异步预热 + 启动时只加载当前活跃租户的索引 |
 | workflow 语义召回误触发 | 0.88 高阈值 + L1 规则优先 + Grafana 按 resourceType 统计误召回率 |
 | L3 候选过多稀释分类器注意力 | Top-3 per type 上限（共 9 个候选） |
-| 前端用户习惯变更 | 保留 `#`/`$`/`@` 补全提示，路由结果提示可关闭 |
+| 前端用户习惯变更 | 保留 `#`/`$`/`@` 补全提示，GUIDED 候选提示 inline 不阻塞对话流 |
 | 存量 `execution_mode` 字段兼容 | 迁移脚本一次性转换，不保留旧字段 |
+| 引导提示过于频繁，干扰用户 | 单候选不出引导、候选 score < 0.75 过滤、连续 3 次忽略后退化 |
+| 引导提示中的候选不够准确 | 仅展示 Top-3 候选，低分（< 0.75）不展示，避免误导 |
