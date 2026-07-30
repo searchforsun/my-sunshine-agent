@@ -16,9 +16,9 @@ import java.util.Map;
 
 @Slf4j
 @Component
-public class ExpertManagerClient {
+public class AgentManagerClient {
 
-    @Value("${expert-manager.base-url:http://localhost:8235}")
+    @Value("${agent-manager.base-url:http://localhost:8235}")
     private String baseUrl;
 
     private WebClient webClient;
@@ -29,16 +29,16 @@ public class ExpertManagerClient {
                 .baseUrl(baseUrl)
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
                 .build();
-        log.info("[BFF] ExpertManager 客户端: baseUrl={}", baseUrl);
+        log.info("[BFF] AgentManager 客户端: baseUrl={}", baseUrl);
     }
 
-    public Mono<Map<String, Object>> listExperts() {
-        return get("/api/experts");
+    public Mono<Map<String, Object>> listAgents() {
+        return get("/api/agents");
     }
 
-    public Mono<Map<String, Object>> createExpert(Map<String, Object> body) {
+    public Mono<Map<String, Object>> createAgent(Map<String, Object> body) {
         return webClient.post()
-                .uri("/api/experts")
+                .uri("/api/agents")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -46,9 +46,9 @@ public class ExpertManagerClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> updateExpert(String id, Map<String, Object> body) {
+    public Mono<Map<String, Object>> updateAgent(String id, Map<String, Object> body) {
         return webClient.put()
-                .uri("/api/experts/{id}", id)
+                .uri("/api/agents/{id}", id)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -58,7 +58,7 @@ public class ExpertManagerClient {
 
     public Mono<Map<String, Object>> setEnabled(String id, boolean enabled) {
         return webClient.put()
-                .uri("/api/experts/{id}/enable", id)
+                .uri("/api/agents/{id}/enable", id)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("enabled", enabled))
                 .retrieve()
@@ -66,20 +66,20 @@ public class ExpertManagerClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> deleteExpert(String id) {
+    public Mono<Map<String, Object>> deleteAgent(String id) {
         return webClient.delete()
-                .uri("/api/experts/{id}", id)
+                .uri("/api/agents/{id}", id)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
     public Mono<Map<String, Object>> catalogIndex() {
-        return get("/api/experts/catalog/index");
+        return get("/api/agents/catalog/index");
     }
 
     public Mono<Map<String, Object>> catalogDetail(String id) {
-        return get("/api/experts/" + id + "/catalog");
+        return get("/api/agents/" + id + "/catalog");
     }
 
     private Mono<Map<String, Object>> get(String path) {
