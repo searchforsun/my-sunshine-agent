@@ -190,6 +190,10 @@ public final class StepEventBridge {
         return registry.resolveHitlBridgeId();
     }
 
+    public static ToolAuditContext toolAuditContext(String messageId) {
+        return registry.toolAuditContext(messageId);
+    }
+
     public static String activeBridgeId() {
         return registry.activeBridgeId();
     }

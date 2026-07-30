@@ -11,6 +11,7 @@ import com.sunshine.orchestrator.taskboard.ReactTaskBoardAuditView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,29 +28,42 @@ public class AuditController {
     private final ReactTaskBoardAuditService taskBoardAuditService;
 
     @GetMapping("/recent")
-    public Mono<R<List<ChatAuditLogEntity>>> recent() {
-        return ReactiveBlocking.call(() -> R.ok(auditLogRepository.findTop20ByOrderByCreatedAtDesc()));
+    public Mono<R<List<ChatAuditLogEntity>>> recent(
+            @RequestHeader(value = "x-user-id", required = false) String userId) {
+        return ReactiveBlocking.call(() -> {
+            if (userId != null && !userId.isBlank()) {
+                return R.ok(auditLogRepository.findTop20ByUserIdOrderByCreatedAtDesc(userId));
+            }
+            return R.ok(auditLogRepository.findTop20ByOrderByCreatedAtDesc());
+        });
     }
 
     @GetMapping("/sub-runs")
-    public Mono<R<List<ChatAuditLogEntity>>> subRuns(@RequestParam String messageId) {
-        return ReactiveBlocking.call(() -> R.ok(
-                auditLogRepository.findByMessageIdAndEventTypeOrderByCreatedAtDesc(
-                        messageId, "sub_agent_run")));
+    public Mono<R<List<ChatAuditLogEntity>>> subRuns(
+            @RequestParam String messageId,
+            @RequestHeader(value = "x-user-id", required = false) String userId) {
+        return ReactiveBlocking.call(() -> {
+            List<ChatAuditLogEntity> logs = auditLogRepository
+                    .findByMessageIdAndEventTypeOrderByCreatedAtDesc(messageId, "sub_agent_run");
+            return R.ok(filtersByUserId(logs, userId));
+        });
     }
 
     @GetMapping("/tool-calls")
     public Mono<R<List<ChatAuditLogEntity>>> toolCalls(
             @RequestParam(required = false) String messageId,
-            @RequestParam(required = false) String conversationId) {
+            @RequestParam(required = false) String conversationId,
+            @RequestHeader(value = "x-user-id", required = false) String userId) {
         return ReactiveBlocking.call(() -> {
             if (messageId != null && !messageId.isBlank()) {
-                return R.ok(auditLogRepository.findByMessageIdAndEventTypeOrderByCreatedAtDesc(
-                        messageId, "tool.call"));
+                List<ChatAuditLogEntity> logs = auditLogRepository
+                        .findByMessageIdAndEventTypeOrderByCreatedAtDesc(messageId, "tool.call");
+                return R.ok(filtersByUserId(logs, userId));
             }
             if (conversationId != null && !conversationId.isBlank()) {
-                return R.ok(auditLogRepository.findByConversationIdAndEventTypeOrderByCreatedAtDesc(
-                        conversationId, "tool.call"));
+                List<ChatAuditLogEntity> logs = auditLogRepository
+                        .findByConversationIdAndEventTypeOrderByCreatedAtDesc(conversationId, "tool.call");
+                return R.ok(filtersByUserId(logs, userId));
             }
             return R.ok(List.<ChatAuditLogEntity>of());
         });
@@ -62,7 +76,12 @@ public class AuditController {
                         .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND))));
     }
 
-        return ReactiveBlocking.call(() -> R.ok(
-                        .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND))));
+    private List<ChatAuditLogEntity> filtersByUserId(List<ChatAuditLogEntity> logs, String userId) {
+        if (userId == null || userId.isBlank()) {
+            return logs;
+        }
+        return logs.stream()
+                .filter(log -> userId.equals(log.getUserId()))
+                .toList();
     }
 }

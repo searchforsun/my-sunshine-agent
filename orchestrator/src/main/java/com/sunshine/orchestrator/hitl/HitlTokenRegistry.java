@@ -31,12 +31,12 @@ public class HitlTokenRegistry {
     private final ConcurrentHashMap<String, HitlPendingWaiter> waiters = new ConcurrentHashMap<>();
 
     /** 注册待确认 token，返回 token 与阻塞 Future */
-    public HitlRegistration register(String messageId, String toolId) {
+    public HitlRegistration register(String messageId, String toolId, String userId) {
         String token = UUID.randomUUID().toString();
         CompletableFuture<Boolean> future = new CompletableFuture<>();
-        waiters.put(token, new HitlPendingWaiter(messageId, toolId, future));
+        waiters.put(token, new HitlPendingWaiter(messageId, toolId, userId, future));
         long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
-        storeToken(token, messageId, toolId, expiresAt);
+        storeToken(token, messageId, toolId, userId, expiresAt);
         return new HitlRegistration(token, future, expiresAt);
     }
 
@@ -44,13 +44,18 @@ public class HitlTokenRegistry {
         return properties.getTimeoutSec();
     }
 
-    /** confirm-tool API */
-    public boolean confirm(String token, boolean approved) {
+    /** confirm-tool API（含发起用户身份校验） */
+    public boolean confirm(String token, boolean approved, String currentUserId) {
         if (token == null || token.isBlank()) {
             return false;
         }
         HitlPendingWaiter waiter = waiters.remove(token);
         if (waiter != null) {
+            String userId = waiter.userId();
+            if (userId != null && !userId.equals(currentUserId)) {
+                log.warn("[HITL] 拒绝确认：发起用户 {} vs 当前用户 {} token={}", userId, currentUserId, token);
+                return false;
+            }
             waiter.future().complete(approved);
             redis.delete(redisKey(token));
             return true;
@@ -63,6 +68,11 @@ public class HitlTokenRegistry {
         redis.delete(key);
         log.warn("[HITL] confirm token={} 无本地 waiter（可能已超时或其它实例）", token);
         return false;
+    }
+
+    /** confirm-tool API（无身份校验，仅用于内部降级） */
+    public boolean confirm(String token, boolean approved) {
+        return confirm(token, approved, null);
     }
 
     public void cancelWaitersForMessage(String messageId) {
@@ -88,10 +98,11 @@ public class HitlTokenRegistry {
         }
     }
 
-    private void storeToken(String token, String messageId, String toolId, long expiresAt) {
+    private void storeToken(String token, String messageId, String toolId, String userId, long expiresAt) {
         Map<String, String> payload = new LinkedHashMap<>();
         payload.put("messageId", messageId);
         payload.put("toolId", toolId);
+        payload.put("userId", userId != null ? userId : "");
         payload.put("expiresAt", String.valueOf(expiresAt));
         try {
             redis.opsForValue().set(

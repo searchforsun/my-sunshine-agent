@@ -7,7 +7,7 @@ import java.util.List;
 
 public interface ChatAuditLogRepository extends JpaRepository<ChatAuditLogEntity, String> {
 
-    List<ChatAuditLogEntity> findTop20ByOrderByCreatedAtDesc();
+    List<ChatAuditLogEntity> findTop20ByUserIdOrderByCreatedAtDesc(String userId);
 
     List<ChatAuditLogEntity> findByMessageIdAndEventTypeOrderByCreatedAtDesc(
             String messageId, String eventType);

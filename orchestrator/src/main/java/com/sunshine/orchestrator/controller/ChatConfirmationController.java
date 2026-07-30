@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -32,7 +33,8 @@ public class ChatConfirmationController {
     private PlanApprovalService planApprovalService;
 
     @PostMapping("/chat/confirm-tool")
-    public Mono<Map<String, Object>> confirmTool(@RequestBody ConfirmToolRequest request) {
+    public Mono<Map<String, Object>> confirmTool(@RequestBody ConfirmToolRequest request,
+                                                  @RequestHeader(value = "x-user-id", required = false) String userId) {
         if (hitlConfirmationService == null) {
             return Mono.error(new BizException(OrchestratorErrorCode.HITL_DISABLED));
         }
@@ -40,7 +42,7 @@ public class ChatConfirmationController {
             return Mono.error(new BizException(OrchestratorErrorCode.CONFIRM_TOKEN_REQUIRED));
         }
         return Mono.fromCallable(() -> {
-                    boolean ok = hitlConfirmationService.confirm(request.token(), request.approved());
+                    boolean ok = hitlConfirmationService.confirm(request.token(), request.approved(), userId);
                     return Map.<String, Object>of("accepted", ok);
                 })
                 .subscribeOn(Schedulers.boundedElastic());
