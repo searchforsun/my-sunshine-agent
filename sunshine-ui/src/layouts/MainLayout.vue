@@ -1,77 +1,53 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, type MenuOption, type DropdownOption } from 'naive-ui'
-import { ChatbubblesOutline, BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, HardwareChipOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline } from '@vicons/ionicons5'
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, type MenuOption, type DropdownOption } from 'naive-ui'
+import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, HardwareChipOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
 import { useConversationAttention } from '../composables/useConversationAttention'
-import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
+import { friendlyErrorMessage } from '../api/apiError'
+import { listWorkspaces, createWorkspace } from '../api/workspaces'
+import type { WorkspaceVO } from '../api/workspaces'
 import BrandMark from '../components/BrandMark.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import UserSettingsModal from '../components/UserSettingsModal.vue'
-import WorkspaceSelector from '../components/chat/WorkspaceSelector.vue'
 import ConversationSidebarList from '../components/ConversationSidebarList.vue'
+
+type TabKey = 'platform' | 'chat' | 'workspace'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const chatStore = useChatStore()
+const message = useMessage()
 const {
   attentionByConv,
   getAttention,
   clearAttention,
   requestScrollToBottom,
 } = useConversationAttention()
-const {
-  navMenuIndicator,
-} = useConversationSidebarIndicator()
 
-const PLATFORM_NAV_STORAGE_KEY = 'sunshine-sidebar-platform-nav'
-/** 「新对话」以下的平台入口：默认展开；状态记入 localStorage */
-const platformNavOpen = ref(localStorage.getItem(PLATFORM_NAV_STORAGE_KEY) !== '0')
+const TAB_STORAGE_KEY = 'sunshine-sidebar-tab'
+const expandedTab = ref<TabKey | null>((localStorage.getItem(TAB_STORAGE_KEY) as TabKey) || 'chat')
 
-function togglePlatformNav() {
-  platformNavOpen.value = !platformNavOpen.value
-  localStorage.setItem(PLATFORM_NAV_STORAGE_KEY, platformNavOpen.value ? '1' : '0')
+function setExpandedTab(key: TabKey) {
+  if (expandedTab.value === key) {
+    expandedTab.value = null
+    localStorage.removeItem(TAB_STORAGE_KEY)
+  } else {
+    expandedTab.value = key
+    localStorage.setItem(TAB_STORAGE_KEY, key)
+  }
 }
 
-function setPlatformNavOpen(open: boolean) {
-  if (platformNavOpen.value === open) return
-  platformNavOpen.value = open
-  localStorage.setItem(PLATFORM_NAV_STORAGE_KEY, open ? '1' : '0')
-}
-
-const chatMenuOptions = computed((): MenuOption[] => {
-  void attentionByConv.size
-  void chatStore.conversations.map(c => c.messages?.length ?? 0)
-  const navInd = navMenuIndicator(chatStore.conversations)
-  return [
-    {
-      label: () => h('span', { class: 'nav-menu-label' }, [
-        '新对话',
-        navInd === 'streaming'
-          ? h('span', { class: 'nav-streaming-dot', 'aria-hidden': 'true', title: '有对话正在生成' })
-          : navInd
-            ? h('span', {
-              class: ['nav-attention-dot', `is-${navInd}`],
-              'aria-hidden': 'true',
-              title: navInd === 'hitl_pending' ? '有待确认项' : '回答已完成',
-            })
-            : null,
-      ]),
-      key: 'chat',
-      icon: renderIcon(ChatbubblesOutline),
-    },
-    {
-      label: '新任务',
-      key: 'new-task',
-      icon: renderIcon(ConstructOutline),
-    },
-  ]
-})
+const tabs: Array<{ key: TabKey; label: string; icon: Component }> = [
+  { key: 'platform', label: '平台', icon: SparklesOutline },
+  { key: 'chat', label: '对话', icon: ChatbubblesOutline },
+  { key: 'workspace', label: '工作区', icon: ConstructOutline },
+]
 
 const platformMenuOptions: MenuOption[] = [
   { label: '知识库', key: 'knowledge', icon: renderIcon(BookOutline) },
@@ -87,9 +63,7 @@ const platformMenuOptions: MenuOption[] = [
 
 const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'agents', 'context', 'prompts', 'biz-data', 'workflow-diff', 'skill-diff'])
 const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
-const hideSidebarFab = computed(() =>
-  contentFill.value || route.name === 'skill-diff',
-)
+const hideSidebarFab = computed(() => contentFill.value || route.name === 'skill-diff')
 
 function renderIcon(icon: Component) {
   return () => h(icon)
@@ -100,30 +74,14 @@ function renderDropdownIcon(icon: Component) {
 }
 
 function handleMenuClick(key: string) {
-  if (key === 'chat') {
-    handleNewChat()
-    return
-  }
-  if (key === 'new-task') {
-    handleNewTask()
-    return
-  }
   void router.push({ name: key })
 }
 
 const activeKey = computed(() => {
   if (route.name === 'skill-diff') return 'skills'
   if (route.name === 'workflow-diff') return 'workflows'
-  // 「新对话」是动作入口，不高亮；仅平台页高亮对应项
   if (route.name === 'chat') return ''
   return (route.name as string) || ''
-})
-
-/** 进入平台页时自动展开，避免当前路由藏在折叠区内 */
-watch(activeKey, (key) => {
-  if (key && key !== 'chat') {
-    setPlatformNavOpen(true)
-  }
 })
 
 const { theme, toggle: toggleTheme } = useTheme()
@@ -159,7 +117,6 @@ function handleLogout() {
 }
 
 function handleNewChat() {
-  setPlatformNavOpen(false)
   void (async () => {
     try {
       await chatStore.create()
@@ -170,24 +127,7 @@ function handleNewChat() {
   })()
 }
 
-const showWorkspaceSelector = ref(false)
-
-function handleNewTask() {
-  showWorkspaceSelector.value = true
-}
-
-async function selectWorkspaceAndCreate(workspaceId: string) {
-  showWorkspaceSelector.value = false
-  try {
-    await chatStore.create({ kind: 'task', workspaceId, checkoutPath: '/workspace/main' })
-    if (route.name !== 'chat') router.push('/chat')
-  } catch (e) {
-    console.error('[MainLayout] 创建任务会话失败', e)
-  }
-}
-
 function handleSwitchConversation(id: string) {
-  setPlatformNavOpen(false)
   void (async () => {
     if (getAttention(id)) {
       requestScrollToBottom(id)
@@ -269,6 +209,58 @@ function handleDeleteConversation(id: string) {
   })
 }
 
+// ===== 工作区 =====
+const workspaces = ref<WorkspaceVO[]>([])
+const loadingWorkspaces = ref(false)
+const showCreateWorkspace = ref(false)
+const newWsName = ref('')
+const newWsRepoUrl = ref('')
+const newWsBranch = ref('main')
+const creatingWs = ref(false)
+
+async function fetchWorkspaces() {
+  loadingWorkspaces.value = true
+  try { workspaces.value = await listWorkspaces() }
+  catch { /* silently fail */ }
+  finally { loadingWorkspaces.value = false }
+}
+
+watch(expandedTab, (tab) => {
+  if (tab === 'workspace' && workspaces.value.length === 0) {
+    fetchWorkspaces()
+  }
+})
+
+async function handleCreateWorkspace() {
+  const name = newWsName.value.trim()
+  const url = newWsRepoUrl.value.trim()
+  if (!name) { message.warning('请输入名称'); return }
+  if (!url) { message.warning('请输入仓库地址'); return }
+  creatingWs.value = true
+  try {
+    await createWorkspace({ name, repoUrl: url, repoBranch: newWsBranch.value || 'main' })
+    message.success('工作区已创建')
+    showCreateWorkspace.value = false
+    newWsName.value = ''
+    newWsRepoUrl.value = ''
+    newWsBranch.value = 'main'
+    await fetchWorkspaces()
+  } catch (e) {
+    message.error(friendlyErrorMessage(e, '创建失败'))
+  } finally { creatingWs.value = false }
+}
+
+function handleWorkspaceClick(ws: WorkspaceVO) {
+  void (async () => {
+    try {
+      await chatStore.create({ kind: 'task', workspaceId: ws.id, checkoutPath: '/workspace/main' })
+      if (route.name !== 'chat') router.push('/chat')
+    } catch (e) {
+      console.error('[MainLayout] 创建任务会话失败', e)
+    }
+  })()
+}
+
 onMounted(() => {
   void chatStore.init()
 })
@@ -276,64 +268,87 @@ onMounted(() => {
 
 <template>
   <NLayout has-sider class="app-shell">
-    <!-- Sidebar -->
     <NLayoutSider
       v-if="sidebarVisible"
       bordered
       :width="280"
       class="sidebar"
     >
-      <!-- Brand -->
       <div class="brand">
         <BrandMark class="brand-mark" />
         <span class="brand-name">Sunshine<span class="brand-ai"> AI</span></span>
       </div>
 
-      <!-- Nav：新对话固定；其下平台入口可折叠；历史列表常驻 -->
-      <div class="nav-block">
+      <!-- 三 Tab 切换 -->
+      <div class="tab-bar">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          type="button"
+          class="tab-btn"
+          :class="{ active: expandedTab === tab.key }"
+          @click="setExpandedTab(tab.key)"
+        >
+          <NIcon :size="16" :component="tab.icon" />
+          <span>{{ tab.label }}</span>
+          <NIcon :size="12" :component="ChevronDownOutline" class="tab-chevron" :class="{ rotated: expandedTab === tab.key }" />
+        </button>
+      </div>
+
+      <!-- 平台面板 -->
+      <div v-show="expandedTab === 'platform'" class="tab-panel">
         <NMenu
           :value="activeKey"
-          :options="chatMenuOptions"
+          :options="platformMenuOptions"
           @update:value="handleMenuClick"
-          class="nav-menu nav-menu--chat"
+          class="nav-menu"
         />
-        <div class="nav-platform">
-          <button
-            type="button"
-            class="nav-collapse-toggle"
-            :aria-expanded="platformNavOpen"
-            :title="platformNavOpen ? '折叠平台入口' : '展开平台入口'"
-            @click="togglePlatformNav"
-          >
-            <NIcon
-              :component="ChevronDownOutline"
-              :size="14"
-              class="nav-collapse-chevron"
-              :class="{ 'is-collapsed': !platformNavOpen }"
-            />
-            <span class="nav-collapse-label">平台</span>
-            <span class="nav-collapse-hint">{{ platformNavOpen ? '收起' : '展开' }}</span>
-          </button>
-          <Transition name="nav-platform">
-            <div v-show="platformNavOpen" class="nav-platform-body">
-              <NMenu
-                :value="activeKey"
-                :options="platformMenuOptions"
-                @update:value="handleMenuClick"
-                class="nav-menu nav-menu--platform"
-              />
-            </div>
-          </Transition>
+      </div>
+
+      <!-- 对话面板 -->
+      <div v-show="expandedTab === 'chat'" class="tab-panel chat-panel">
+        <button type="button" class="chat-new-btn" @click="handleNewChat">
+          <NIcon :size="16" :component="ChatbubblesOutline" />
+          <span>新对话</span>
+        </button>
+        <div class="chat-history">
+          <ConversationSidebarList
+            :menu-options="conversationMenuOptions"
+            @switch="handleSwitchConversation"
+            @menu="handleConversationMenu"
+          />
         </div>
       </div>
 
-      <div class="chat-history">
-        <ConversationSidebarList
-          :menu-options="conversationMenuOptions"
-          @switch="handleSwitchConversation"
-          @menu="handleConversationMenu"
-        />
+      <!-- 工作区面板 -->
+      <div v-show="expandedTab === 'workspace'" class="tab-panel workspace-panel">
+        <div class="ws-panel-header">
+          <span class="ws-panel-title">工作区</span>
+          <button type="button" class="ws-add-btn" title="添加工作区" @click="showCreateWorkspace = true">
+            <NIcon :size="16" :component="AddOutline" />
+          </button>
+        </div>
+        <div class="ws-scroll">
+          <div v-if="loadingWorkspaces" class="ws-loading">加载中...</div>
+          <div v-else-if="workspaces.length === 0" class="ws-empty">
+            <span class="ws-empty-text">暂无工作区</span>
+            <NButton size="tiny" quaternary @click="showCreateWorkspace = true">创建</NButton>
+          </div>
+          <div v-else class="ws-list">
+            <button
+              v-for="ws in workspaces"
+              :key="ws.id"
+              type="button"
+              class="ws-item"
+              @click="handleWorkspaceClick(ws)"
+            >
+              <div class="ws-item-name">{{ ws.name }}</div>
+              <div class="ws-item-repo">{{ ws.repoUrl }}</div>
+            </button>
+          </div>
+        </div>
       </div>
+
       <!-- 用户区 -->
       <div class="sidebar-user">
         <div class="user-avatar" aria-hidden="true">{{ userInitial }}</div>
@@ -358,12 +373,29 @@ onMounted(() => {
     </NLayoutSider>
 
     <UserSettingsModal v-model:show="showSettings" />
-    <WorkspaceSelector
-      v-model:model-value="showWorkspaceSelector"
-      @selected="selectWorkspaceAndCreate"
-    />
 
-    <!-- Content -->
+    <!-- 创建工作区弹窗 -->
+    <NModal
+      :show="showCreateWorkspace"
+      preset="card"
+      title="新建工作区"
+      style="width:480px"
+      @update:show="showCreateWorkspace = $event"
+    >
+      <div class="ws-create-form">
+        <label class="ws-create-label">名称</label>
+        <NInput v-model:value="newWsName" class="sun-field" placeholder="my-project" maxlength="128" :disabled="creatingWs" />
+        <label class="ws-create-label">仓库地址</label>
+        <NInput v-model:value="newWsRepoUrl" class="sun-field" placeholder="https://github.com/user/repo" maxlength="512" :disabled="creatingWs" />
+        <label class="ws-create-label">默认分支</label>
+        <NInput v-model:value="newWsBranch" class="sun-field" maxlength="128" :disabled="creatingWs" />
+      </div>
+      <template #footer>
+        <NButton quaternary :disabled="creatingWs" @click="showCreateWorkspace = false">取消</NButton>
+        <NButton type="primary" :loading="creatingWs" @click="handleCreateWorkspace">创建</NButton>
+      </template>
+    </NModal>
+
     <NLayoutContent class="content-area" :class="{ 'content-area--fill': contentFill }">
       <SidebarToggle v-if="!sidebarVisible && !hideSidebarFab" variant="fab" />
       <router-view />
@@ -398,11 +430,10 @@ onMounted(() => {
   height: 100vh;
 }
 
-/* 与自定义边框统一，避免 Naive bordered 延迟换色 */
 .sidebar :deep(.n-layout-sider-border) {
   background-color: var(--sun-border) !important;
 }
-/* Naive UI 内部滚动容器也需要 flex 列布局，否则 margin-top:auto 不生效 */
+
 .sidebar :deep(.n-layout-sider-scroll-container) {
   display: flex;
   flex-direction: column;
@@ -438,107 +469,68 @@ onMounted(() => {
   color: var(--sun-text-muted);
 }
 
-/* --- Nav --- */
-.nav-block {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 6px;
-  padding-bottom: 4px;
-}
-
-.nav-menu {
-  flex-shrink: 0;
-  padding: 0 8px;
-}
-
-.nav-menu--chat :deep(.n-menu-item) {
-  height: 40px;
-}
-
-.nav-platform {
-  margin: 4px 0 0;
-  padding: 6px 8px 0;
-  border-top: 1px solid var(--sun-border);
-}
-
-.nav-collapse-toggle {
+/* --- Tab Bar --- */
+.tab-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 7px 12px;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--sun-border);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 0;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   background: transparent;
   color: var(--sun-text-muted);
-  font-size: var(--sun-font-sm);
+  font-size: var(--sun-font-xs, 12px);
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
-.nav-collapse-toggle:hover {
+.tab-btn:hover {
   background: var(--sun-row-hover);
   color: var(--sun-text-secondary);
 }
 
-.nav-collapse-toggle:hover .nav-collapse-hint {
-  opacity: 1;
+.tab-btn.active {
+  color: var(--sun-text);
+  background: var(--sun-row-hover);
 }
 
-.nav-collapse-label {
-  flex: 1;
-  text-align: left;
-  letter-spacing: 0.02em;
-}
-
-.nav-collapse-hint {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--sun-text-muted);
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.nav-collapse-chevron {
+.tab-chevron {
+  opacity: 0.5;
   transition: transform 0.18s ease;
   flex-shrink: 0;
-  opacity: 0.85;
 }
 
-.nav-collapse-chevron.is-collapsed {
-  transform: rotate(-90deg);
+.tab-chevron.rotated {
+  transform: rotate(180deg);
+  opacity: 0.8;
 }
 
-.nav-platform-body {
+/* --- Tab Panel --- */
+.tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.nav-menu--platform {
-  margin-top: 2px;
-  padding: 0;
-}
-
-.nav-menu--platform :deep(.n-menu-item) {
-  height: 40px;
-}
-
-.nav-menu--platform :deep(.n-menu-item-content-header) {
-  font-size: var(--sun-font-base);
-}
-
-.nav-platform-enter-active,
-.nav-platform-leave-active {
-  transition: opacity 0.16s ease, transform 0.16s ease;
-}
-
-.nav-platform-enter-from,
-.nav-platform-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
+/* --- Platform --- */
+.nav-menu {
+  flex-shrink: 0;
+  padding: 4px 8px;
 }
 
 .nav-menu :deep(.n-menu) {
@@ -575,13 +567,167 @@ onMounted(() => {
   height: 40px;
 }
 
+/* --- Chat Panel --- */
+.chat-panel {
+  padding: 0;
+}
+
+.chat-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 16px);
+  margin: 8px 8px 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sun-text-secondary);
+  font-size: var(--sun-font-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.chat-new-btn:hover {
+  border-color: var(--sun-accent);
+  color: var(--sun-text);
+}
+
+.chat-history {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 8px;
+  overflow: hidden;
+}
+
+/* --- Workspace Panel --- */
+.workspace-panel {
+  padding: 0;
+}
+
+.ws-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 6px;
+  flex-shrink: 0;
+}
+
+.ws-panel-title {
+  font-size: var(--sun-font-xs, 12px);
+  font-weight: 600;
+  color: var(--sun-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.ws-add-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--sun-border);
+  background: transparent;
+  color: var(--sun-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.ws-add-btn:hover {
+  border-color: var(--sun-accent);
+  color: var(--sun-text);
+  background: var(--sun-row-hover);
+}
+
+.ws-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.ws-loading {
+  padding: 16px;
+  color: var(--sun-text-muted);
+  text-align: center;
+  font-size: var(--sun-font-xs);
+}
+
+.ws-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 8px 4px;
+}
+
+.ws-empty-text {
+  font-size: var(--sun-font-sm);
+  color: var(--sun-text-muted);
+}
+
+.ws-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ws-item:hover {
+  border-color: var(--sun-accent);
+  background: var(--sun-row-hover);
+}
+
+.ws-item-name {
+  font-size: var(--sun-font-sm);
+  font-weight: 500;
+  color: var(--sun-text);
+}
+
+.ws-item-repo {
+  font-size: var(--sun-font-xs, 12px);
+  color: var(--sun-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- 创建工作区弹窗 --- */
+.ws-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ws-create-label {
+  font-size: var(--sun-font-sm);
+  font-weight: 500;
+  color: var(--sun-text);
+}
+
 /* --- 用户区 --- */
 .sidebar-user {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 14px 14px 14px 16px;
-  margin-top: auto;
   flex-shrink: 0;
   border-top: 1px solid var(--sun-border);
 }
@@ -644,59 +790,10 @@ onMounted(() => {
   transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
   flex-shrink: 0;
 }
+
 .theme-toggle:hover {
   color: var(--sun-text);
   background: var(--sun-row-hover);
-}
-
-/* --- Chat History（豆包式） --- */
-.chat-history {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 8px 10px 8px;
-  margin-top: 2px;
-  overflow: hidden;
-  gap: 8px;
-}
-
-.nav-menu-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.nav-attention-dot {
-  flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
-.nav-attention-dot.is-hitl_pending {
-  background: var(--sun-amber);
-  box-shadow: 0 0 0 2px var(--sun-amber-glow);
-}
-
-.nav-attention-dot.is-completed {
-  background: #ef4444;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #ef4444 22%, transparent);
-}
-
-.nav-streaming-dot {
-  flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--sun-text-secondary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sun-text-muted) 20%, transparent);
-  animation: sidebar-stream-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes sidebar-stream-pulse {
-  0%, 100% { opacity: 0.45; transform: scale(0.92); }
-  50% { opacity: 1; transform: scale(1); }
 }
 
 /* --- Content --- */
