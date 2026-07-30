@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.client.SandboxClient;
 import com.sunshine.orchestrator.client.SkillCatalogClient;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
+import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -33,6 +34,8 @@ public class SandboxSessionLifecycle {
     private final SandboxClient sandboxClient;
     private final ConversationSandboxStore conversationSandboxStore;
     private final AgentSandboxProperties sandboxProperties;
+    private final WorkspaceSandboxLifecycle workspaceSandboxLifecycle;
+    private final ChatConversationRepository conversationRepository;
 
     /** run 级上下文 — 供工具线程 ensure（与 Holder 同：跨线程） */
     private final ConcurrentHashMap<String, RunContext> runContexts = new ConcurrentHashMap<>();
@@ -45,7 +48,7 @@ public class SandboxSessionLifecycle {
             return;
         }
         String bridgeId = req.resolveBridgeId();
-        runContexts.put(bridgeId, RunContext.from(req));
+        runContexts.put(bridgeId, RunContext.from(req, conversationRepository));
         log.debug("[SandboxSession] prepareRun bridge={} role={} conv={} skill={}",
                 bridgeId, req.role(), req.conversationId(), req.skillId());
     }
@@ -75,6 +78,13 @@ public class SandboxSessionLifecycle {
         }
         if (ctx == null) {
             throw new IllegalStateException("sandbox run context missing; call prepareRun first");
+        }
+        if (ctx != null && StringUtils.hasText(ctx.workspaceId())) {
+            String wsSessionId = workspaceSandboxLifecycle.ensureWorkspaceSession(
+                    ctx.workspaceId(), ctx.userId(), ctx.tenantId());
+            SandboxSessionHolder.bind(bid, wsSessionId, workspaceSessionPolicy());
+            emitSandboxSessionSse(bid, ctx, List.of());
+            return wsSessionId;
         }
         EnsureResult result = ensureSession(
                 ctx.userId(), ctx.tenantId(), ctx.conversationId(), ctx.skillId(), ctx.runId());
@@ -255,21 +265,17 @@ public class SandboxSessionLifecycle {
 
     private record EnsureResult(String sessionId, List<String> loadedSkillIds) {}
 
-    record RunContext(
-            String userId,
-            String tenantId,
-            String conversationId,
-            String skillId,
-            String runId,
-            String assistantMessageId) {
-        static RunContext from(AgentRunRequest req) {
-            return new RunContext(
-                    req.userId(),
-                    StringUtils.hasText(req.tenantId()) ? req.tenantId().strip() : "default",
-                    req.conversationId(),
-                    req.skillId(),
-                    req.runId(),
-                    req.assistantMessageId());
-        }
+    private SandboxPolicy workspaceSessionPolicy() {
+        // 工作区级使用完全体容器配置，由 WorkspaceSandboxLifecycle 维护
+        return new SandboxPolicy(
+                "docker", "sunshine-sandbox-full:latest", 120, 2048,
+                2.0, List.of(), List.of());
+    }
+
+    /** 返回当前 bridge 的工作区 checkout 路径（无工作区时返回 null） */
+    public String getCheckoutPath(String bridgeId) {
+        if (!StringUtils.hasText(bridgeId)) return null;
+        RunContext ctx = runContexts.get(bridgeId.strip());
+        return ctx != null ? ctx.checkoutPath() : null;
     }
 }

@@ -207,6 +207,10 @@ public class SandboxAgentTools {
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(exhausted).build());
             }
             String sessionId = SandboxSessionHolder.requireSessionId(bridgeId);
+            String checkoutPath = sandboxSessionLifecycle.getCheckoutPath(bridgeId);
+            if (StringUtils.hasText(checkoutPath)) {
+                body.put("cwd", checkoutPath);
+            }
             if (trackCancel) {
                 cancellableToolRunRegistry.bindSession(invocationId, sessionId);
                 if (cancellableToolRunRegistry.isCancelled(invocationId)) {

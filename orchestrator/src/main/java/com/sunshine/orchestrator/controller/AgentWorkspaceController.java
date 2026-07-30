@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.controller;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.exception.FixedErrorCode;
 import com.sunshine.common.core.result.R;
+import com.sunshine.orchestrator.sandbox.WorkspaceSandboxLifecycle;
 import com.sunshine.orchestrator.workspace.dto.CreateWorkspaceRequest;
 import com.sunshine.orchestrator.workspace.dto.WorkspaceVO;
 import com.sunshine.orchestrator.workspace.entity.AgentWorkspaceEntity;
@@ -32,6 +33,7 @@ public class AgentWorkspaceController {
     private static final int MAX_MEMORY_MB = 12288;
 
     private final AgentWorkspaceRepository workspaceRepo;
+    private final WorkspaceSandboxLifecycle workspaceSandboxLifecycle;
 
     @PostMapping
     public R<WorkspaceVO> create(@Valid @RequestBody CreateWorkspaceRequest req,
@@ -78,6 +80,7 @@ public class AgentWorkspaceController {
         if (!ws.getUserId().equals(userId) || !ws.getTenantId().equals(tenantId)) {
             throw new BizException(new FixedErrorCode(403, "workspace_forbidden", "无权操作"));
         }
+        workspaceSandboxLifecycle.destroyWorkspaceSession(tenantId, id);
         ws.setStatus("archived");
         ws.setUpdatedAt(Instant.now());
         workspaceRepo.save(ws);

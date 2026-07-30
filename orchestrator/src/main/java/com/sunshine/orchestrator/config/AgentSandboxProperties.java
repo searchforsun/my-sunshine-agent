@@ -48,6 +48,27 @@ public class AgentSandboxProperties {
     /** 时间线工具步取消 after */
     private String cancelAfter = "已取消";
 
+    /** 硬件档位预设 */
+    private Map<String, ProfilePreset> profiles = new LinkedHashMap<>();
+
+    public ProfilePreset resolveProfile(String name) {
+        if (profiles == null || profiles.isEmpty()) {
+            ProfilePreset fallback = new ProfilePreset();
+            fallback.setImage("sunshine-sandbox-full:latest");
+            return fallback;
+        }
+        return profiles.getOrDefault(name, profiles.values().iterator().next());
+    }
+
+    @Getter
+    @Setter
+    public static class ProfilePreset {
+        private int defaultMemoryMb = 2048;
+        private double defaultCpus = 2.0;
+        private List<Map<String, Object>> allowedPresets = new ArrayList<>();
+        private String image = "sunshine-sandbox-full:latest";
+    }
+
     /** 时间线步骤中文名；未配置时回退 toolId */
     public String displayName(String toolId) {
         ToolDef def = resolveTool(toolId);
