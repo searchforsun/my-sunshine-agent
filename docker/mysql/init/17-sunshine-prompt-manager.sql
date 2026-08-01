@@ -128,6 +128,26 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('mode-overlay.direct', 1, 'published', '', NULL, 'nacos migrate', 'migrate_nacos_prompts_to_db');
 
+-- ===== 场景覆盖层（scene-overlay） =====
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('scene-overlay.chat', 'scene-overlay', '场景覆盖 · 对话', '对话模式叠加层：日常办公助手约束与行为风格。', 1, 0, 1, 1);
+
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('scene-overlay.chat', 1, 'published', '你是日常办公助手，专注于信息检索、任务问答与流程协作：
+- 优先从知识库、企业系统查询数据，给出准确、直接的结论。
+- 答复简洁清晰，避免大段代码与工程化细节。
+- 当用户提出编码任务时，评估可行性后引导使用"新任务"模式进入编码工作区。', NULL, '初始种子', 'agent');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('scene-overlay.task', 'scene-overlay', '场景覆盖 · 任务', '任务模式叠加层：编码工作区约束与工程行为规范。', 1, 0, 1, 1);
+
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('scene-overlay.task', 1, 'published', '你是编码工作区助手，当前沙箱绑定真实 Git 仓库：
+- 通过 sandbox__* 工具读写 /workspace 目录，结合 git 状态做出工程决策。
+- plan → code → verify 三步闭环：先理解代码结构再改动，改后自我审查。
+- 编码时提供完整文件 context，改动前后对比清晰；勿输出无用的过渡语。
+- 工程问题优先用沙箱 exec 验证（如编译、单测）；不编造不存在的文件/目录/输出。', NULL, '初始种子', 'agent');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('workspace.checkout-hint', 'scene-overlay', '工作区 · 当前目录', '工作区会话动态注入：告知模型当前 checkout 工作目录，避免误操作其它分支目录。', 1, 0, 1, 1);
+
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('workspace.checkout-hint', 1, 'published', '你正在编码工作区工作，当前工作目录为 {checkoutPath}（会话绑定该 checkout）。沙箱 exec 请默认以 {checkoutPath} 为 cwd，勿 cd 到其它分支目录。', NULL, '初始种子', 'agent');
+
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('mode-overlay.react', 'mode-overlay', '模式覆盖 · ReAct', 'ReAct 模式叠加层：约束自主推理时如何选工具、写思考与最终作答。', 1, 0, 1, 1);
 
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('mode-overlay.react', 1, 'published', '- 企业制度/政策/知识库检索 → **必须**调用 `search_knowledge`（勿用 demo-memory 等其它 search 工具）。
@@ -307,7 +327,7 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.sandbox', 'timeline', '时间线 · Sandbox', '沙箱步骤时间线：沙箱相关工具/工作区步骤的展示文案。', 1, 0, 1, 1);
 
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.sandbox', 1, 'published', NULL, '{"after-fallback":"","read-after":"{headerPath}","write-after":"{headerPath}","edit-after":"{headerPath}","glob-after":"{pattern}","glob-after-with-path":"{pattern} · {path}","grep-after":"{pattern}","exec-after":"{command}","read-active":"正在读取 {path}","write-active":"正在写入 {path}","edit-active":"正在修改 {path}","glob-active":"正在查找 {pattern}","grep-active":"正在搜索 {pattern}","exec-active":"正在执行 {command}"}', 'nacos migrate', 'migrate_nacos_prompts_to_db');
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.sandbox', 1, 'published', NULL, '{"after-fallback":"","read-after":"{headerPath}","write-after":"{headerPath}","edit-after":"{headerPath}","glob-after":"{pattern}","glob-after-with-path":"{pattern} · {path}","grep-after":"{pattern}","exec-after":"{command}","webfetch-after":"{url}","websearch-after":"{query}","read-active":"正在读取 {path}","write-active":"正在写入 {path}","edit-active":"正在修改 {path}","glob-active":"正在查找 {pattern}","grep-active":"正在搜索 {pattern}","exec-active":"正在执行 {command}","webfetch-active":"正在抓取 {url}","websearch-active":"正在搜索 {query}"}', 'nacos migrate', 'migrate_nacos_prompts_to_db');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.steps', 'timeline', '时间线 · Steps', '时间线步骤整包（历史兼容）：各 phase 的 before/active/after 合集；优先用 timeline.steps.* 细项。', 1, 0, 1, 1);
 

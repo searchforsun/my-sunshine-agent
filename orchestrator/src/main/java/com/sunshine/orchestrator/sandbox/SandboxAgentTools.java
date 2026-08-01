@@ -335,7 +335,19 @@ public class SandboxAgentTools {
                 msgId = StepEventBridge.activeMessageId();
             }
             SandboxWriteHitlMode mode = StepEventBridge.writeHitlMode(msgId);
+            // Task 模式默认 SMART：写免确认，仅危险 exec 保留确认
+            if (mode == SandboxWriteHitlMode.NEVER && isTaskSession()) {
+                mode = SandboxWriteHitlMode.SMART;
+            }
             return SandboxHitlPolicy.requiresConfirmation(name, body, mode);
+        }
+
+        private boolean isTaskSession() {
+            SandboxSessionHolder.Binding binding = SandboxSessionHolder.current();
+            if (binding == null || binding.policy() == null) {
+                return false;
+            }
+            return "task".equals(binding.policy().kind());
         }
 
         private ToolResultBlock denyResult(

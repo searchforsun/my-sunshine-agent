@@ -1,5 +1,5 @@
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
-import { readSandboxWorkspaceFile } from '../api/sandboxWorkspace'
+import { readSandboxWorkspaceFile, readWorkspaceSandboxFile } from '../api/sandboxWorkspace'
 import { registerHljsLanguages } from '../utils/markdown/registerHljsLanguages'
 import { copyText } from '../utils/stream-markdown/clipboard'
 import markdown from 'highlight.js/lib/languages/markdown'
@@ -44,7 +44,23 @@ function langFromPath(path: string): string | null {
 
 export interface UseSandboxPreviewTabsOptions {
   getConversationId: () => string
+  getWorkspaceId?: () => string | null
   selectedKeys: Ref<string[]>
+}
+
+interface PreviewEntry {
+  content: string
+  meta: string
+  offset: number
+  totalSize: number
+  truncated: boolean
+}
+
+function computeHasMore(entry: PreviewEntry): boolean {
+  return entry.truncated && (entry.offset + entry.content.length) < entry.totalSize
+}
+function computeNextOffset(entry: PreviewEntry): number {
+  return entry.offset + entry.content.length
 }
 
 export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
@@ -55,7 +71,8 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
   const preview = ref('')
   const previewMeta = ref('')
   const previewLoading = ref(false)
-  const previewCache = ref<Record<string, { content: string; meta: string }>>({})
+  const previewLoadingMore = ref(false)
+  const previewCache = ref<Record<string, PreviewEntry>>({})
   const copyDone = ref(false)
   let copyTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -93,6 +110,12 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
   })
 
   const canCopyPreview = computed(() => !!preview.value && !previewLoading.value)
+  const hasMoreContent = computed(() => {
+    if (!selectedPath.value) return false
+    const entry = previewCache.value[selectedPath.value]
+    if (!entry) return false
+    return computeHasMore(entry)
+  })
 
   const breadcrumbs = computed(() => {
     if (!selectedPath.value) return [] as { label: string; path: string }[]
@@ -120,7 +143,8 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
 
   async function openFile(path: string) {
     const conversationId = options.getConversationId()
-    if (!conversationId || !path || path === '/workspace' || path === '/skills') return
+    const wsId = options.getWorkspaceId?.()
+    if ((!conversationId && !wsId) || !path || path === '/workspace' || path === '/skills') return
     if (!openTabs.value.some((t) => t.path === path)) {
       openTabs.value = [...openTabs.value, { path }]
     }
@@ -137,23 +161,46 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     preview.value = ''
     previewMeta.value = ''
     try {
-      const data = await readSandboxWorkspaceFile(conversationId, path)
+      let data: { content?: string; binary?: boolean; truncated?: boolean; offset?: number; totalSize?: number }
+      if (conversationId) {
+        data = await readSandboxWorkspaceFile(conversationId, path, 0)
+      } else if (wsId) {
+        data = await readWorkspaceSandboxFile(wsId, path, 0)
+      } else {
+        return
+      }
       let content = ''
       let meta = ''
       if (data.binary) {
         meta = '二进制文件，暂不支持预览'
       } else {
         content = data.content ?? ''
-        meta = data.truncated ? '内容已截断' : ''
+        const newOffset = data.offset ?? 0
+        meta = data.truncated ? '内容已截断，可滚动加载更多' : ''
+        previewCache.value = {
+          ...previewCache.value,
+          [path]: { content, meta, offset: newOffset, totalSize: data.totalSize ?? content.length, truncated: data.truncated ?? false },
+        }
+        if (selectedPath.value === path) {
+          preview.value = content
+          previewMeta.value = meta
+        }
+        return
       }
-      previewCache.value = { ...previewCache.value, [path]: { content, meta } }
+      previewCache.value = {
+        ...previewCache.value,
+        [path]: { content, meta, offset: 0, totalSize: 0, truncated: false },
+      }
       if (selectedPath.value === path) {
         preview.value = content
         previewMeta.value = meta
       }
     } catch (e) {
       const meta = e instanceof Error ? e.message : '读取失败'
-      previewCache.value = { ...previewCache.value, [path]: { content: '', meta } }
+      previewCache.value = {
+        ...previewCache.value,
+        [path]: { content: '', meta, offset: 0, totalSize: 0, truncated: false },
+      }
       if (selectedPath.value === path) {
         preview.value = ''
         previewMeta.value = meta
@@ -162,6 +209,43 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
       if (selectedPath.value === path) {
         previewLoading.value = false
       }
+    }
+  }
+
+  async function loadMore(path: string) {
+    const entry = previewCache.value[path]
+    if (!entry || !computeHasMore(entry)) return
+    const conversationId = options.getConversationId()
+    const wsId = options.getWorkspaceId?.()
+    if (!conversationId && !wsId) return
+    previewLoadingMore.value = true
+    try {
+      let data: { content?: string; binary?: boolean; truncated?: boolean; offset?: number; totalSize?: number }
+      if (conversationId) {
+        data = await readSandboxWorkspaceFile(conversationId, path, computeNextOffset(entry))
+      } else if (wsId) {
+        data = await readWorkspaceSandboxFile(wsId, path, computeNextOffset(entry))
+      } else {
+        return
+      }
+      const chunk = data.content ?? ''
+      const newOffset = data.offset ?? 0
+      const newTotalSize = data.totalSize ?? (entry.offset + chunk.length)
+      const newTruncated = data.truncated ?? false
+      const newContent = entry.content + chunk
+      const newMeta = newTruncated ? '内容已截断，可滚动加载更多' : ''
+      previewCache.value = {
+        ...previewCache.value,
+        [path]: { content: newContent, meta: newMeta, offset: entry.offset, totalSize: newTotalSize, truncated: newTruncated },
+      }
+      if (selectedPath.value === path) {
+        preview.value = newContent
+        previewMeta.value = newMeta
+      }
+    } catch (e) {
+      // silently ignore load-more failures
+    } finally {
+      previewLoadingMore.value = false
     }
   }
 
@@ -207,6 +291,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     preview.value = ''
     previewMeta.value = ''
     previewLoading.value = false
+    previewLoadingMore.value = false
     mdRawMode.value = false
     options.selectedKeys.value = []
   }
@@ -218,6 +303,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     options.selectedKeys.value = []
     preview.value = ''
     previewMeta.value = ''
+    previewLoadingMore.value = false
   }
 
   function clearCache() {
@@ -246,6 +332,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     preview,
     previewMeta,
     previewLoading,
+    previewLoadingMore,
     previewCache,
     copyDone,
     isMarkdownFile,
@@ -253,9 +340,11 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     previewCodeHtml,
     previewLangClass,
     canCopyPreview,
+    hasMoreContent,
     breadcrumbs,
     copyPreview,
     openFile,
+    loadMore,
     activateTab,
     closeTab,
     resetPreview,

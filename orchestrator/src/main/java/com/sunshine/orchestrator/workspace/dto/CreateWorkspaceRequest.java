@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
 public record CreateWorkspaceRequest(
-        @NotBlank @Size(max = 128) String name,
+        @Size(max = 128) String name,
         @NotBlank @Size(max = 512) String repoUrl,
         @Size(max = 128) String repoBranch,
         Integer memoryMb,

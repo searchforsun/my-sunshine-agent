@@ -48,17 +48,21 @@ public class SandboxSessionService {
 
     public String create(CreateSessionRequest req) {
         SandboxPolicy policy = req.policy() != null ? req.policy()
-                : new SandboxPolicy(null, null, null, null, null, null, null);
+                : new SandboxPolicy(null, null, null, null, null, null, null, null);
         List<String> networkAllow = policy.networkAllow() != null ? policy.networkAllow() : List.of();
         String sessionId = UUID.randomUUID().toString().replace("-", "");
         Path hostRoot = Path.of(properties.getDocker().getHostDataRoot(), sessionId);
         Path hostSkills = hostRoot.resolve("skills");
-        Path hostWorkspace = hostRoot.resolve("workspace");
+        boolean externalWorkspace = req.workspaceHostDir() != null && !req.workspaceHostDir().isBlank();
+        Path hostWorkspace = externalWorkspace ? Path.of(req.workspaceHostDir().strip()) : hostRoot.resolve("workspace");
+        // 工作区共享 git 裸库：挂到 /opt/git（PathJail 只允许 /workspace、/skills，AI 工具读不到，git 命令经 worktree gitdir 仍可用）
+        String repoHostDir = req.repoHostDir();
         try {
             Files.createDirectories(hostSkills);
-            Files.createDirectories(hostWorkspace);
-            // create 仅建空目录；Skill 物料走 mountSkill 懒挂载
-            writeWorkspaceFiles(hostWorkspace, req.workspaceFiles());
+            if (!externalWorkspace) {
+                Files.createDirectories(hostWorkspace);
+                writeWorkspaceFiles(hostWorkspace, req.workspaceFiles());
+            }
             preparePermissions(hostSkills, hostWorkspace);
         } catch (IOException e) {
             deleteTreeQuietly(hostRoot);
@@ -72,7 +76,8 @@ public class SandboxSessionService {
                 : properties.getDocker().getDefaultCpus();
         String containerName = "sunshine-sb-" + sessionId.substring(0, Math.min(12, sessionId.length()));
         List<String> args = buildRunArgs(
-                sessionId, containerName, image, memoryMb, cpus, hostSkills, hostWorkspace, networkAllow);
+                sessionId, containerName, image, memoryMb, cpus, hostSkills, hostWorkspace,
+                networkAllow, externalWorkspace, repoHostDir);
         String storedId = null;
         boolean dockerStarted = false;
         try {
@@ -86,8 +91,9 @@ public class SandboxSessionService {
                     memoryMb,
                     Double.valueOf(cpus),
                     networkAllow,
-                    policy.execReadonlyAllow());
-            store.put(new SandboxSession(sessionId, storedId, hostRoot, resolved));
+                    policy.execReadonlyAllow(),
+                    policy.kind());
+            store.put(new SandboxSession(sessionId, storedId, hostRoot, resolved, hostWorkspace));
             log.info("sandbox session created id={} container={}", sessionId, storedId);
             return sessionId;
         } catch (RuntimeException e) {
@@ -193,14 +199,20 @@ public class SandboxSessionService {
             String cpus,
             Path hostSkills,
             Path hostWorkspace,
-            List<String> networkAllow) {
+            List<String> networkAllow,
+            boolean externalWorkspace,
+            String repoHostDir) {
         List<String> args = new ArrayList<>();
         args.add("run");
         args.add("-d");
         args.add("--name");
         args.add(containerName);
         boolean withNet = networkAllow != null && !networkAllow.isEmpty();
-        if (withNet) {
+        if (externalWorkspace) {
+            // 工作区容器：直接走 bridge 默认网络（git 远程操作需要外网）；不加 egress 代理
+            args.add("--network");
+            args.add("bridge");
+        } else if (withNet) {
             egressProxyManager.ensureRunning(sessionId, networkAllow);
             args.add("--network");
             args.add(EgressProxyManager.NETWORK_NAME);
@@ -228,6 +240,10 @@ public class SandboxSessionService {
         args.add(hostSkills.toAbsolutePath() + ":/skills:ro");
         args.add("-v");
         args.add(hostWorkspace.toAbsolutePath() + ":/workspace");
+        if (repoHostDir != null && !repoHostDir.isBlank()) {
+            args.add("-v");
+            args.add(Path.of(repoHostDir).toAbsolutePath() + ":/opt/git");
+        }
         args.add("--cap-drop");
         args.add("ALL");
         args.add(image);

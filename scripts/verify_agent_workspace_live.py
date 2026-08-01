@@ -134,7 +134,7 @@ def run():
                               json={
                                   "kind": "task",
                                   "workspaceId": ws_id,
-                                  "checkoutPath": "/workspace/main",
+                                  "checkoutPath": "/workspace/branches/main",
                               },
                               headers=api_headers(token))
     check(conv_resp.status_code == 200, f"create task conv ok: status={conv_resp.status_code}")

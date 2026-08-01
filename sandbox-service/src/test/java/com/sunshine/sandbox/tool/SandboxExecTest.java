@@ -55,7 +55,8 @@ class SandboxExecTest {
                 "cid-exec-1",
                 hostRoot,
                 new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 45, 256, 0.5,
-                        List.of(), List.of())));
+                        List.of(), List.of(), null),
+                null));
     }
 
     @Test
@@ -101,7 +102,8 @@ class SandboxExecTest {
                 sid,
                 "cid-2",
                 hostRoot,
-                new SandboxPolicy("docker", "img", null, 256, 0.5, List.of(), List.of())));
+                new SandboxPolicy("docker", "img", null, 256, 0.5, List.of(), List.of(), null),
+                null));
         docker.nextResult = new ExecResult(0, "", "");
         executor.invoke(sid, SandboxToolNames.EXEC, Map.of("command", "true"));
         assertThat(docker.invocations.get(0).timeout()).isEqualTo(Duration.ofSeconds(30));

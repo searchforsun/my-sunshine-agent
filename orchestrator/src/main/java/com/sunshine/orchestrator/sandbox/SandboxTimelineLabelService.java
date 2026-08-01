@@ -33,6 +33,8 @@ public class SandboxTimelineLabelService {
         String path = vars.get("path");
         String pattern = vars.get("pattern");
         String command = vars.get("command");
+        String url = vars.get("url");
+        String query = vars.get("query");
         String chosen = switch (toolId != null ? toolId : "") {
             case SandboxIds.READ -> hasText(path) ? tpl.getReadAfter() : null;
             case SandboxIds.WRITE -> hasText(path) ? tpl.getWriteAfter() : null;
@@ -52,6 +54,8 @@ public class SandboxTimelineLabelService {
                 yield tpl.getGrepAfter();
             }
             case SandboxIds.EXEC -> hasText(command) ? tpl.getExecAfter() : null;
+            case SandboxIds.WEBFETCH -> hasText(url) ? tpl.getWebfetchAfter() : null;
+            case SandboxIds.WEBSEARCH -> hasText(query) ? tpl.getWebsearchAfter() : null;
             default -> null;
         };
         if (!hasText(chosen)) {
@@ -66,6 +70,8 @@ public class SandboxTimelineLabelService {
         String path = vars.get("path");
         String pattern = vars.get("pattern");
         String command = vars.get("command");
+        String url = vars.get("url");
+        String query = vars.get("query");
         String chosen = switch (toolId != null ? toolId : "") {
             case SandboxIds.READ -> hasText(path) ? tpl.getReadActive() : null;
             case SandboxIds.WRITE -> hasText(path) ? tpl.getWriteActive() : null;
@@ -73,6 +79,8 @@ public class SandboxTimelineLabelService {
             case SandboxIds.GLOB -> hasText(pattern) ? tpl.getGlobActive() : null;
             case SandboxIds.GREP -> hasText(pattern) ? tpl.getGrepActive() : null;
             case SandboxIds.EXEC -> hasText(command) ? tpl.getExecActive() : null;
+            case SandboxIds.WEBFETCH -> hasText(url) ? tpl.getWebfetchActive() : null;
+            case SandboxIds.WEBSEARCH -> hasText(query) ? tpl.getWebsearchActive() : null;
             default -> null;
         };
         if (!hasText(chosen)) {
@@ -97,6 +105,8 @@ public class SandboxTimelineLabelService {
         // command 保留全文：主行由前端单行省略，展开区展示完整命令
         map.put("command", full(str(input, "command")));
         map.put("cwd", clip(str(input, "cwd")));
+        map.put("url", clip(str(input, "url")));
+        map.put("query", clip(str(input, "query")));
         return map;
     }
 

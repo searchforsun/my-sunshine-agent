@@ -4,7 +4,7 @@
 > **日期**：2026-07-29（初稿）· 2026-07-30（v2 修订：全部 agent 为子 Agent）· 2026-07-30（v3 修订：深层语义兜底替代 L3 跳过/GUIDED）
 > **编号**：阶段四增量（路由层重构：ExecutionMode → ResourceType）
 > **前置**：[multi-agent-unified-design](./2026-07-29-multi-agent-unified-design.md)（agent_definition 扩展 + scene 字段）· [workflow-structured-io](./2026-07-24-workflow-structured-io-design.md)（workflow 结构化 I/O 完成后 AgentNodeHandler 契约稳定）
-> **一句话**：删除 `ExecutionMode` 路由体系，改为 Pre-Routing + L0-L2 快速路径 + L3 语义兜底（L2 有候选→快速分类 / L2 空→全量 L1 上下文+完整 Catalog 深层召回）；所有命中的 agent 一律为子 Agent；Pre-Routing 处理 HITL/Plan/续跑等系统等待态复用。
+> **一句话**：删除 `ExecutionMode` 路由体系，改为 Pre-Routing + L0-L2 快速路径 + L3 语义兜底（L2 有候选→快速分类 / L2 空→全量 L1 上下文+完整 Catalog 深层召回）。所有命中的 agent 一律为子 Agent。L3 输出 `planMode`（none→ReAct / harness→Planner-Worker Loop），`scene` 来自用户选择作为 L3 输入参数。Pre-Routing 处理 HITL/Plan/续跑等系统等待态复用。
 
 ---
 
@@ -100,17 +100,17 @@
            └── L3 语义兜底（200-500ms 或 500-800ms）— 永远跑
                │
                ├── ● 候选列表非空 → 【L3 快速分类】
-               │   输入：userQuery + L2 候选 Top-9（含 type/id/name/desc/score）
-               │   输出：agentIds / skillIds（最终决策或 no_match）
+               │   输入：userQuery + L2 候选 Top-9 + scene
+               │   输出：agentIds / skillIds / planMode / confidence
                │   耗时：~200-500ms
                │
                └── ● 候选列表为空 → 【深层语义兜底】← 指代消解
-                   输入：userQuery + 全量 L1 会话快照（不限 4 轮）
-                       + 完整 Agent Catalog（含 name/desc/擅长领域）
-                       + 完整 Skill Catalog（含 name/desc）
-                       + 完整 Workflow Catalog（含 name/desc/触发示例）
-                   输出：agentIds / skillIds / workflowId（或 no_match → REACT）
+                   输入：userQuery + 全量 L1 会话快照 + 全量 Catalog + scene
+                   输出：agentIds / skillIds / workflowId / planMode / confidence
                    耗时：~500-800ms
+
+├── planMode=none  → ResourceDispatcher → ReactExecutor
+└── planMode=harness → ResourceDispatcher → PlannerHarnessExecutor（Chat/Task 由 scene 区分）
 ```
 
 > **关键区分**：Pre-Routing 处理「系统正在等用户回答」（HITL 确认 / Plan 审批 / 续跑），语义上是从系统发散到用户；深层语义兜底处理「用户发来指代词 / 无明确信号的追问」（"那个" / "第一个" / "继续"），语义上是从用户收敛到系统。两者隔离，不动 Pre-Routing。
@@ -131,18 +131,19 @@ public record RoutingResult(
     String workflowId,           // type=WORKFLOW 时非空
     List<String> agentIds,       // 全部命中的 agent（L0+L1+L2+L3 合集去重），全部作为子 Agent
     List<String> skillIds,       // 全部命中的 skill（L0+L1+L2+L3 合集去重）
-    String scene,                // chat / task
+    String scene,                // chat / task（来自用户选择，L3 作为输入参数影响 planMode 判定）
+    String planMode,             // "none" | "harness"（仅 L3 输出；none→ReactExecutor，harness→PlannerHarnessExecutor）
     Map<String, String> params,  // effectiveQuery / __l2Candidates 等
     String reason                // 路由来源追踪（l0:agent / l1:rule:xxx / l2:semantic / l3:classify / l3:deep_semantic / fallback:silent）
 ) {
     public enum ResourceType {
         /** 静态工作流 — 独占 WorkflowExecutor */
         WORKFLOW,
-        /** 路由命中了 agent — 前端展示标识；执行走 ReactExecutor */
+        /** 路由命中了 agent — 前端展示标识；planMode=none→ReactExecutor / planMode=harness→PlannerHarnessExecutor */
         AGENT,
-        /** 仅命中 skill — 前端展示标识；执行走 ReactExecutor */
+        /** 仅命中 skill — 前端展示标识；planMode=none→ReactExecutor / planMode=harness→PlannerHarnessExecutor */
         SKILL,
-        /** 静默兜底 — agentIds 和 skillIds 都空，通用 ReAct 自由执行 */
+        /** 静默兜底 — agentIds/skillIds 空，planMode=none，通用 ReAct */
         REACT
     }
 
@@ -150,20 +151,27 @@ public record RoutingResult(
 
     public static RoutingResult workflow(String workflowId, String scene, String reason) {
         return new RoutingResult(ResourceType.WORKFLOW, workflowId, List.of(), List.of(),
-                scene, Map.of(), reason);
+                scene, "none", Map.of(), reason);
     }
 
     public static RoutingResult silentFallback(String scene, String reason) {
         return new RoutingResult(ResourceType.REACT, null, List.of(), List.of(),
-                scene, Map.of(), reason);
+                scene, "none", Map.of(), reason);
     }
 
     // ---- 便捷判断 ----
 
     public boolean isWorkflow() { return type == ResourceType.WORKFLOW; }
+    public boolean isHarness() { return "harness".equals(planMode); }
 
     public boolean usesReactExecutor() {
-        return type == ResourceType.AGENT || type == ResourceType.SKILL || type == ResourceType.REACT;
+        return (type == ResourceType.AGENT || type == ResourceType.SKILL || type == ResourceType.REACT)
+                && "none".equals(planMode);
+    }
+
+    public boolean usesPlannerHarnessExecutor() {
+        return (type == ResourceType.AGENT || type == ResourceType.SKILL)
+                && "harness".equals(planMode);
     }
 
     public boolean hasAgents() { return agentIds != null && !agentIds.isEmpty(); }
@@ -171,7 +179,7 @@ public record RoutingResult(
 }
 ```
 
-> **v3 移除**：`GUIDED` 类型、`confidence` 字段、`candidates` 字段、`guidedFallback` 工厂方法。兜底统一为静默 REACT（不再打断用户做候选选择）。
+> **v3 变更**：移除 `GUIDED` 类型、`confidence` 字段、`candidates` 字段、`guidedFallback` 工厂方法、`is_no_match` 标志位。新增 `planMode` 字段（none→ReactExecutor / harness→PlannerHarnessExecutor）。兜底统一为静默 REACT（不再打断用户做候选选择）。`scene` 来自用户选择，L3 以此为输入调整 `planMode` 判定规则。
 
 #### RoutingContext（替代现有 RoutingContext）
 
@@ -200,6 +208,8 @@ public record RoutingContext(
     public boolean isTaskScene() { return "task".equals(scene); }
 }
 ```
+
+> **v4 注记（scene 命名隔离）**：本 spec 的 `scene` = **用户选择场景**（chat/task，贯穿路由与上下文组装）。llm-gateway 侧另有 **`call_scene`** = **LLM 调用点**（plan/worker/evaluator/rewrite 等，用于 5.3 模型路由，见 [phase5 §5.3](./phase5-operation-openness-design.md)）。**两个字段语义不同、禁止合并**——harness 场景下 orchestrator 需同时传「用户 scene=task」与「调用点 call_scene=plan/worker」，同名字段会冲突。协议上：`scene` 进路由/上下文，`call_scene` 只进 `ChatCompletionRequest` 扩展字段，BFF/Gateway 均只透传不自填。
 
 #### RoutingOutcome（策略层返回信号）
 
@@ -298,7 +308,7 @@ public class RoutingPolicyChain {
                                                    RoutingAccumulator acc,
                                                    boolean hasCandidates) {
         RoutingPolicy l3 = findPolicy(30);
-        if (l3 == null) return Mono.just(RoutingResult.L3Decision.NO_MATCH);
+        if (l3 == null) return Mono.just(RoutingResult.L3Decision.empty());
 
         if (hasCandidates) {
             // 快速路径：传给 L2 候选清单
@@ -341,6 +351,7 @@ class RoutingAccumulator {
     private final Set<String> skillIds = new LinkedHashSet<>();
     private String effectiveQuery;
     private String l0Reason;
+    private String l3PlanMode = "none";  // L3 输出的 planMode，默认 none
     private final List<ScoredResource> l2Candidates = new ArrayList<>();
 
     RoutingAccumulator(String scene) { this.scene = scene; }
@@ -405,9 +416,10 @@ class RoutingAccumulator {
 
     /** L3 最终决策（快速分类 或 深层语义兜底） */
     RoutingResult absorbL3(L3Decision decision) {
-        if (decision != null && !decision.isNoMatch() && decision.confidence() >= 0.5) {
+        if (decision != null && decision.confidence() >= 0.5) {
             if (decision.hasAgents()) agentIds.addAll(decision.agentIds());
             if (decision.hasSkills()) skillIds.addAll(decision.skillIds());
+            l3PlanMode = decision.planMode();
         }
         return build();
     }
@@ -437,14 +449,14 @@ class RoutingAccumulator {
         String reason = l0Reason != null ? l0Reason : "l2+3";
         return new RoutingResult(type, null,
                 List.copyOf(agentIds), List.copyOf(skillIds),
-                scene,
+                scene, l3PlanMode,
                 effectiveQuery != null ? Map.of("effectiveQuery", effectiveQuery) : Map.of(),
                 reason);
     }
 }
 ```
 
-> **v3 简化**：删除 `canSkipL3()`、`buildWithoutL3()`、`guidedFallback`、`confidence` 字段。L3 始终跑，候选非空→快速分类，候选空→深层语义兜底。
+> **v3 简化**：删除 `canSkipL3()`、`buildWithoutL3()`、`guidedFallback`、`confidence`、`is_no_match`。新增 `l3PlanMode`。L3 始终跑，候选非空→快速分类，候选空→深层语义兜底。`planMode` 默认 `"none"`，L3 可覆盖为 `"harness"`。
 
 ### 2.5 典型请求耗时估算
 
@@ -663,7 +675,7 @@ L3 不再是一个可选的「分类器步骤」，而是**锁定**的最后语�
 
 ```
 输入：userQuery + L2 候选 Top-9（含 type/id/name/desc/score）
-输出：{type, agentIds[], skillIds[], confidence, reason, is_no_match}
+输出：{type, agentIds[], skillIds[], planMode, confidence, reason}
 耗时：~200-500ms
 ```
 
@@ -676,14 +688,15 @@ L3 不再是一个可选的「分类器步骤」，而是**锁定**的最后语�
   "type": "AGENT",
   "agentIds": ["compliance-checker", "finance-analyst"],
   "skillIds": ["report-generator"],
+  "planMode": "none",
   "confidence": 0.85,
-  "reason": "需合规审查和财务分析"
+  "reason": "需合规审查和财务分析，线性依赖可一次完成"
 }
 ```
 
-**no_match 时**：
+**未命中时**（agentIds 和 skillIds 均为空 → planMode=none → 静默 REACT）：
 ```json
-{"type": "REACT", "agentIds": [], "skillIds": [], "confidence": 0, "reason": "no_match"}
+{"type": "REACT", "agentIds": [], "skillIds": [], "planMode": "none", "confidence": 0, "reason": "no_match"}
 ```
 
 ### 6.2 模式 B：深层语义兜底（L2 候选为空 — 指代消解）
@@ -692,19 +705,21 @@ L3 不再是一个可选的「分类器步骤」，而是**锁定**的最后语�
 触发条件：L2 候选全空 或 全部 score < 0.7
 输入：
   1. userQuery（用户的原始输入，如 "那个"、"第一个"、"继续"）
-  2. 全量 L1 会话快照（不限于 4 轮）— 完整的对话上下文
-  3. 完整 Agent Catalog（全量，不过滤）：
+  2. scene（chat / task，来自用户选择，影响 planMode 判定规则）
+  3. 全量 L1 会话快照（不限于 4 轮）— 完整的对话上下文
+  4. 完整 Agent Catalog（全量，不过滤）：
      每个 agent 包含：id / name / description / 擅长领域 / 触发示例
-  4. 完整 Skill Catalog（全量，不过滤）：
+  5. 完整 Skill Catalog（全量，不过滤）：
      每个 skill 包含：id / name / description / 触发示例
-  5. 完整 Workflow Catalog（全量，不过滤）：
+  6. 完整 Workflow Catalog（全量，不过滤）：
      每个 workflow 包含：id / name / description / 触发示例
-输出：{type, agentIds[], skillIds[], workflowId?, confidence, reason, is_no_match}
+输出：{type, agentIds[], skillIds[], workflowId?, planMode, confidence, reason}
 耗时：~500-800ms
 ```
 
 **设计意图**：指代词（"那个"、"第一个"、"继续"、"Tell me more"）在 L0-L2 不可能命中任何 agent/skill/workflow。深层语义兜底用**完整上下文 + 完整资源**让 LLM 来推断用户意图。LLM 能看到：
 - 上一轮对话说了什么（全量 L1 快照）
+- 当前场景（chat/task，影响 planMode 判定规则）
 - 全量可用 agent / skill / workflow 清单
 
 从而判断「那个」指的是上轮提到的 workflow，还是 agent，还是只是一般性追问。
@@ -736,28 +751,45 @@ L3 不再是一个可选的「分类器步骤」，而是**锁定**的最后语�
 | expense-flow | 报销审批流程 | 处理报销申请... | "报销"、"差旅费" |
 ...（全量，不分页）
 
+## 当前场景
+{scene}  // chat: 语义分析类任务，task: 编码/文件产出类任务
+
 ## 当前用户输入
 {userQuery}
 
 ## 输出格式
 {type: "AGENT"|"SKILL"|"WORKFLOW"|"REACT", agentIds: string[], skillIds: string[],
- workflowId: string|null, confidence: number 0-1, reason: string, is_no_match: boolean}
+ workflowId: string|null, planMode: "none"|"harness", confidence: number 0-1, reason: string}
 
 规则：
 - 如果用户是追问上一轮的话题（如 "那个"、"第一个"、"继续"），结合对话历史确定 target
 - 如果用户的内容是全新话题，target 选意图最匹配的
-- 无明确 agent/skill/workflow 目标时返回 is_no_match=true，type="REACT"
+- agentIds/skillIds 为空时 → type="REACT", planMode="none"（静默兜底，通用 ReAct）
+- planMode 判定：
+  - 认知步骤 ≥4、多级依赖、需验证闭环、需探索 → planMode="harness"（Planner-Worker Loop）
+  - 线性任务、路径明确 → planMode="none"（通用 ReAct）
+  - scene=chat 时偏向语义复杂度（分析深度），scene=task 时偏向工程复杂度（文件/模块数）
+- 没把握判定 harness → 走 none（安全网）
 - confidence 反映你对判断的确信度
 ```
 
-### 6.3 三段式决策（两种模式共享）
+### 6.3 决策规则
 
 | 分段 | confidence | 行为 |
 |------|-----------|------|
-| `is_no_match` | N/A | LLM 判断无匹配 → agentIds/skillIds 留空，走 REACT |
-| 极低置信 | c < 0.5 | 安全网 → agentIds/skillIds 留空，走 REACT |
-| 低置信 | 0.5 ≤ c < 0.8 | 采纳 LLM 决策 |
-| 高置信 | c ≥ 0.8 | 直接采纳 |
+| agentIds/skillIds 空 | N/A | planMode=none → 静默 REACT（通用 ReAct，按 scene 加载对应工具集） |
+| 极低置信 | c < 0.5 | 安全网 → agentIds/skillIds 留空，planMode=none，走 REACT |
+| 低置信 | 0.5 ≤ c < 0.8 | 采纳 LLM 的 agentIds/skillIds；planMode 仅 c ≥ 0.7 时采纳，否则退为 none |
+| 高置信 | c ≥ 0.8 | 直接采纳（含 planMode） |
+
+**planMode 判定依据**（L3 输入参数 `scene` 参与规则调整）：
+
+| scene | planMode=none（通用 ReAct） | planMode=harness（Planner-Worker） |
+|-------|---------------------------|----------------------------------|
+| chat | 认知步骤 ≤3，线性依赖，路径明确 | 认知步骤 ≥4，多级依赖，需验证闭环，需探索后再定方向 |
+| task | 单文件修改，明确重构点 | 多文件修改，跨模块重构，含测试编写，不确定性高 |
+
+**注意**：`scene` 来自用户选择（前端传入），L3 **不作为输出**，仅作为 `planMode` 判定的输入参数。
 
 ### 6.4 LlmClassifierRoutingPolicy 实现
 
@@ -808,7 +840,8 @@ import reactor.core.publisher.Flux;
 public class ResourceDispatcher {
     private final WorkflowExecutor workflowExecutor;
     private final ReactExecutor reactExecutor;
-    private final PlanWorkflowExecutor planWorkflowExecutor; // 保留，仅直接 API
+    private final PlannerHarnessExecutor plannerHarnessExecutor;  // 新增：planMode=harness
+    private final PlanWorkflowExecutor planWorkflowExecutor;      // 保留，仅直接 API
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         RoutingResult r = ctx.routingResult();
@@ -820,14 +853,21 @@ public class ResourceDispatcher {
         ResourceType type = r != null ? r.type() : ResourceType.REACT;
         return switch (type) {
             case WORKFLOW -> workflowExecutor.execute(ctx);
-            case AGENT, SKILL, REACT -> reactExecutor.execute(ctx);
+            case AGENT, SKILL, REACT -> {
+                if (r != null && r.isHarness()) {
+                    yield plannerHarnessExecutor.execute(ctx);
+                }
+                yield reactExecutor.execute(ctx);
+            }
         };
     }
 }
 ```
 
 **关键设计**：
-- `AGENT` / `SKILL` / `REACT` 三类全部走 `ReactExecutor`
+- `AGENT` / `SKILL` / `REACT` 三类根据 `planMode` 分流：
+  - `planMode=none` → `ReactExecutor`（通用 ReAct）
+  - `planMode=harness` → `PlannerHarnessExecutor`（Planner-Worker Loop，scene 区分 Chat/Task 模式）
 - `AGENT` 时 `ReactExecutor` **不加载** agent 的 system prompt 做主 Agent——改为注入 Agent Catalog 摘要到通用 ReAct system prompt
 - `SKILL` 时 `ReactExecutor` 注入 skill overlays + 挂载物料
 - `WORKFLOW` 独占 `WorkflowExecutor`
@@ -918,8 +958,9 @@ v3 移除了 `GUIDED` 引导兜底。理由：
 1. Pre-Routing 已处理系统等待态（HITL/Plan/续跑），不需要另一层「选候选」打断
 2. 深层语义兜底用全量上下文+完整 Catalog 推断指代，覆盖率高
 3. 打断用户做「选 A 还是 B」本质上是 L2 embedding 召回不够好的补偿——应优化索引和 prompt 而非甩锅给用户
+4. `scene` 来自用户选择，静默 REACT 兜底可获场景适配的工具集（chat→知识分析工具 / task→编码工具），底气更足
 
-所有非 WORKFLOW/非 agent/非 skill 的路由结果统一为 `REACT` 静默兜底。
+所有非 WORKFLOW 且 agentIds/skillIds 为空的路由结果统一为 `REACT` 静默兜底（`planMode=none`）。
 
 ---
 
@@ -1177,8 +1218,10 @@ AgentRunRequest main = AgentRunRequest.main(
 | L3 快速分类 | L2 候选非空 → 传入候选清单，LLM 筛选/合并，~200-500ms |
 | L3 深层语义兜底 | L2 候选全空 → 全量 L1 上下文 + 完整 Agent/Skill/Workflow Catalog → LLM 推断 |
 | L3 深层语义兜底 | 指代词「那个/第一个/继续」→ 正确识别目标（结合对话历史） |
-| L3 深层语义兜底 | 无明确目标 → is_no_match=true → REACT 静默兜底 |
-| agent + skill 共存 | `RoutingResult(AGENT, agentIds=[...], skillIds=[...])`，同入 ReactExecutor |
+| L3 深层语义兜底 | 无明确目标 → agentIds/skillIds 为空，planMode=none → REACT 静默兜底 |
+| planMode 判定 | L3 输出 planMode：认知步骤≥4或多级依赖→harness（Planner-Worker），否则→none（ReAct） |
+| planMode=harness 分发 | ResourceDispatcher → PlannerHarnessExecutor（Chat/Task 由 scene 区分） |
+| agent + skill 共存 | `RoutingResult(AGENT, agentIds=[...], skillIds=[...], planMode)`，planMode 决定 executor |
 | ReactExecutor | AGENT 时不加载 agent system prompt → 注入 Agent Catalog |
 | 回归 | 8 标杆 workflow 仍可执行；ReAct 仍可用；Plan-Workflow 直接 API 仍可用 |
 
@@ -1207,6 +1250,7 @@ AgentRunRequest main = AgentRunRequest.main(
 | [multi-agent-unified-design](./2026-07-29-multi-agent-unified-design.md) | 前置：agent_definition 扩展 + spawn_subagent 中心化 |
 | [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) | 并行：task 场景的 `scene` 过滤 |
 | [prompt-ops-routing-catalog](./2026-07-20-prompt-ops-routing-catalog-design.md) | 修改：routing-rule 增加 `resourceType` + `scene` |
+| [phase5-operation-openness-design.md](./phase5-operation-openness-design.md) | 命名隔离：本 spec `scene`（用户场景）与 llm-gateway `call_scene`（调用点，§0.2 v4 注记）互不冲突 |
 | [2026-07-07-expert-consultation-design.md] | **废止**：PEER_COLLAB 模式被 spawn_subagent 中心化替代；多 Agent 协作统一到「通用 ReAct 主 Agent + spawn 子 Agent」模型 |
 
 ---

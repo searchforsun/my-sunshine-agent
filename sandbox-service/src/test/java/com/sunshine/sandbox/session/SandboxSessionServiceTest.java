@@ -44,9 +44,9 @@ class SandboxSessionServiceTest {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
                 new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
-                        List.of(), List.of("ls *")),
+                        List.of(), List.of("ls *"), null),
                 Map.of(),
-                Map.of("note.txt", "hi"));
+                Map.of("note.txt", "hi"), null, null);
 
         String sessionId = service.create(req);
 
@@ -92,8 +92,8 @@ class SandboxSessionServiceTest {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
                 new SandboxPolicy(null, null, null, null, null,
-                        List.of("pypi.org", "files.pythonhosted.org"), null),
-                Map.of(), Map.of());
+                        List.of("pypi.org", "files.pythonhosted.org"), null, null),
+                Map.of(), Map.of(), null, null);
 
         String sessionId = service.create(req);
 
@@ -115,8 +115,8 @@ class SandboxSessionServiceTest {
     void emptyNetworkAllowStillUsesNone() {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicy(null, null, null, null, null, List.of(), null),
-                Map.of(), Map.of());
+                new SandboxPolicy(null, null, null, null, null, List.of(), null, null),
+                Map.of(), Map.of(), null, null);
         service.create(req);
         assertThat(docker.lastRunArgs).containsSequence("--network", "none");
         assertThat(docker.lastRunArgs).noneMatch(a -> a.startsWith("HTTP_PROXY="));
@@ -135,8 +135,8 @@ class SandboxSessionServiceTest {
     void rejectsSkillFileOutsideScriptsOrReferences() {
         String sessionId = service.create(new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicy(null, null, null, null, null, List.of(), null),
-                Map.of(), Map.of()));
+                new SandboxPolicy(null, null, null, null, null, List.of(), null, null),
+                Map.of(), Map.of(), null, null));
         assertThatThrownBy(() -> service.mountSkill(sessionId, "demo", Map.of("bin/hack.sh", "x")))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
@@ -147,8 +147,8 @@ class SandboxSessionServiceTest {
     void rejectsInvalidImage() {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicy(null, "-evil", null, null, null, List.of(), null),
-                Map.of(), Map.of());
+                new SandboxPolicy(null, "-evil", null, null, null, List.of(), null, null),
+                Map.of(), Map.of(), null, null);
         assertThatThrownBy(() -> service.create(req))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
@@ -163,8 +163,8 @@ class SandboxSessionServiceTest {
         service = new SandboxSessionService(docker, store, props, new EgressProxyManager(docker, props));
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
-                new SandboxPolicy(null, "  ", null, null, null, List.of(), null),
-                Map.of(), Map.of());
+                new SandboxPolicy(null, "  ", null, null, null, List.of(), null, null),
+                Map.of(), Map.of(), null, null);
         assertThatThrownBy(() -> service.create(req))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
@@ -184,8 +184,8 @@ class SandboxSessionServiceTest {
         CreateSessionRequest req = new CreateSessionRequest(
                 "u1", "t1", "demo", "r1",
                 new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
-                        List.of(), List.of()),
-                Map.of(), Map.of());
+                        List.of(), List.of(), null),
+                Map.of(), Map.of(), null, null);
         assertThatThrownBy(() -> service.create(req))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("store down");

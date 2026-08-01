@@ -59,6 +59,9 @@ public class PromptComposer {
         }
         // 用户个人规则（soul）：base-system 之后独立注入层；空不注入
         addGatewaySystem(messages, PersonalRulesSupport.wrap(request.personalRules()));
+        // 场景覆盖层：根据 kind 注入专属上下文（chat / task）
+        addGatewaySystem(messages, resolveSceneOverlay(request.kind()));
+        addGatewaySystem(messages, resolveWorkspaceCheckoutOverlay(request.workspaceCheckout()));
         addGatewaySystem(messages, resolveModeOverlay(request.mode(), request.workflowId()));
         addGatewaySystem(messages, resolveSkillOverlay(request.skillId()));
         appendGatewayContextLayers(messages, ctx);
@@ -78,6 +81,10 @@ public class PromptComposer {
         addReactUser(inputs, resolveReactRestartOverlay(request));
         addReactUser(inputs, resolveHitlOverlay(request.mode()));
         addReactUser(inputs, resolveSkillOverlay(request.skillId()));
+        // 场景覆盖层：根据 kind 注入专属上下文（chat / task）
+        addReactUser(inputs, resolveSceneOverlay(request.kind()));
+        // 工作区 checkout 目录：让 AI 明确当前工作目录，避免误用 main checkout
+        addReactUser(inputs, resolveWorkspaceCheckoutOverlay(request.workspaceCheckout()));
         appendReactContextLayers(inputs, ctx);
         addReactUser(inputs, catalogText("scope-prompt"));
         addReactUser(inputs, nodePromptOrEmpty(request.nodePrompt()));
@@ -138,6 +145,25 @@ public class PromptComposer {
                 inputs.add(Msg.builder().role(MsgRole.USER).textContent(context.strip()).build());
             }
         }
+    }
+
+    private String resolveSceneOverlay(String kind) {
+        if (!StringUtils.hasText(kind)) {
+            return "";
+        }
+        return catalogText("scene-overlay." + kind.strip());
+    }
+
+    /** 工作区 checkout 目录提示：模板在 Catalog（workspace.checkout-hint），{checkoutPath} 运行时替换 */
+    private String resolveWorkspaceCheckoutOverlay(String checkoutPath) {
+        if (!StringUtils.hasText(checkoutPath)) {
+            return "";
+        }
+        String template = catalogText("workspace.checkout-hint");
+        if (!StringUtils.hasText(template)) {
+            return "";
+        }
+        return template.replace("{checkoutPath}", checkoutPath.strip());
     }
 
     private String resolveModeOverlay(PromptMode mode, String workflowId) {

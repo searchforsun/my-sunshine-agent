@@ -25,7 +25,7 @@ class SkillAdminServiceSandboxTest {
     void applySandboxFields_persistsPolicyJson() {
         SkillVersionEntity ver = new SkillVersionEntity();
         SandboxPolicy policy = new SandboxPolicy(
-                "docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5, List.of(), List.of("pwd"));
+                "docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5, List.of(), List.of("pwd"), null);
         SkillAdminService.applySandboxFields(ver, "docker", policy);
         assertThat(ver.getSandbox()).isEqualTo("docker");
         assertThat(ver.getSandboxPolicyJson()).contains("timeoutSec");

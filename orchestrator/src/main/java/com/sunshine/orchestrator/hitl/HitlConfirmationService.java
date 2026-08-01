@@ -333,7 +333,7 @@ public class HitlConfirmationService {
             String path = params != null ? params.get("path") : null;
             if (sid != null && StringUtils.hasText(path)) {
                 FsContentDto fs = sandboxClient.readFsContent(
-                        sid, path, sandboxProperties.getWorkspaceContentMaxChars());
+                        sid, path, sandboxProperties.getWorkspaceContentMaxChars(), 0);
                 String before = fs != null ? fs.content() : null;
                 preview = EditDiffBuilder.tryBuild(
                                 before,

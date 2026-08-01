@@ -98,13 +98,13 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
     }
 
-    public Mono<Map<String, Object>> createConversation(String userId, String tenantId) {
+    public Mono<Map<String, Object>> createConversation(Map<String, Object> body, String userId, String tenantId) {
         return webClient.post()
                 .uri("/conversations")
                 .header("x-user-id", userId)
                 .header("x-tenant-id", tenantId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of())
+                .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
@@ -156,11 +156,12 @@ public class OrchestratorClient {
     }
 
     public Mono<Map<String, Object>> readSandboxWorkspaceFile(
-            String conversationId, String path, String userId, String tenantId) {
+            String conversationId, String path, int offset, String userId, String tenantId) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/conversations/{id}/sandbox/workspace/content")
                         .queryParam("path", path)
+                        .queryParam("offset", offset)
                         .build(conversationId))
                 .header("x-user-id", userId)
                 .header("x-tenant-id", tenantId)
@@ -374,6 +375,199 @@ public class OrchestratorClient {
                         .path("/api/admin/context/l3/reingest")
                         .queryParam("convId", convId)
                         .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> listWorkspaces(String userId, String tenantId) {
+        return webClient.get()
+                .uri("/api/agent-workspaces")
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> createWorkspace(Map<String, Object> body, String userId, String tenantId) {
+        return webClient.post()
+                .uri("/api/agent-workspaces")
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> destroyWorkspace(String id, String userId, String tenantId) {
+        return webClient.delete()
+                .uri("/api/agent-workspaces/{id}", id)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> listBranches(String id) {
+        return webClient.get()
+                .uri("/api/agent-workspaces/{id}/branches", id)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> createBranch(String id, Map<String, String> body) {
+        return webClient.post()
+                .uri("/api/agent-workspaces/{id}/branches", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> listCheckouts(String id, String userId, String tenantId) {
+        return webClient.get()
+                .uri("/api/agent-workspaces/{id}/checkouts", id)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> createCheckout(String id, Map<String, String> body,
+                                                     String userId, String tenantId) {
+        return webClient.post()
+                .uri("/api/agent-workspaces/{id}/checkouts", id)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> ensureCheckout(String id, Map<String, String> body,
+                                                     String userId, String tenantId) {
+        return webClient.post()
+                .uri("/api/agent-workspaces/{id}/checkouts/ensure", id)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> removeCheckout(String id, String checkoutId,
+                                                     String userId, String tenantId) {
+        return webClient.delete()
+                .uri("/api/agent-workspaces/{id}/checkouts/{checkoutId}", id, checkoutId)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> gitStatus(String id, String checkoutId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/git/status")
+                        .queryParam("checkoutId", checkoutId)
+                        .build(id))
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> gitStage(String id, String checkoutId, Map<String, Object> body) {
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/git/stage")
+                        .queryParam("checkoutId", checkoutId)
+                        .build(id))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> gitCommit(String id, String checkoutId, Map<String, String> body) {
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/git/commit")
+                        .queryParam("checkoutId", checkoutId)
+                        .build(id))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> gitPush(String id, String checkoutId, String userId) {
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/git/push")
+                        .queryParam("checkoutId", checkoutId)
+                        .build(id))
+                .header("x-user-id", userId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> gitPull(String id, String checkoutId, String userId) {
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/git/pull")
+                        .queryParam("checkoutId", checkoutId)
+                        .build(id))
+                .header("x-user-id", userId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> syncWorkspace(String id, String userId, String tenantId) {
+        return webClient.post()
+                .uri("/api/agent-workspaces/{id}/sync", id)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> listWsFiles(String id, String path, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/sandbox/workspace")
+                        .queryParam("path", path)
+                        .build(id))
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> readWsFile(String id, String path, String tenantId, int offset) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/sandbox/workspace/content")
+                        .queryParam("path", path)
+                        .queryParam("offset", offset)
+                        .build(id))
+                .header("x-tenant-id", tenantId)
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});

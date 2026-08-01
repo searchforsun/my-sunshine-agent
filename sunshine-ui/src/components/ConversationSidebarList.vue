@@ -17,15 +17,17 @@ const emit = defineEmits<{
   menu: [key: string]
 }>()
 
-defineProps<{
+const props = defineProps<{
   menuOptions: (id: string) => DropdownOption[]
+  conversations?: import('../stores/chatStore').Conversation[]
 }>()
 
 const route = useRoute()
 const chatStore = useChatStore()
 const { resolveIndicator } = useConversationSidebarIndicator()
 const { attentionByConv } = useConversationAttention()
-const { groups, now } = useConversationSidebarGroups(computed(() => chatStore.conversations))
+const sourceConversations = computed(() => props.conversations ?? chatStore.conversations)
+const { groups, now } = useConversationSidebarGroups(sourceConversations)
 
 /** hover 详情卡：当前 hovered 会话 + anchor + card 引用 */
 const hoverConv = ref<Conversation | null>(null)

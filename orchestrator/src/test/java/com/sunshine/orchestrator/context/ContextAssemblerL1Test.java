@@ -42,7 +42,7 @@ class ContextAssemblerL1Test {
         properties.getL1().setNearTurns(1);
         properties.getL1().setMidTurns(1);
         assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService,
-                tokenEstimator, modelWindowCache);
+                tokenEstimator, modelWindowCache, null, null);
         lenient().when(modelWindowCache.windowFor(any())).thenReturn(128000);
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
         lenient().when(l3RecallService.recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean()))

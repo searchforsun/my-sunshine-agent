@@ -42,7 +42,7 @@ class ContextAssemblerTest {
     void setUp() {
         properties = new ContextProperties();
         assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService,
-                tokenEstimator, modelWindowCache);
+                tokenEstimator, modelWindowCache, null, null);
         lenient().when(modelWindowCache.windowFor(any())).thenReturn(128000);
         lenient().when(l1Store.find(anyString())).thenReturn(Optional.empty());
         lenient().when(l1Store.parseMidAnswers(any())).thenReturn(Map.of());

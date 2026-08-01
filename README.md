@@ -17,13 +17,14 @@ Gateway (:8000, JWT + Sentinel) ──▶ BFF (:8001, SSE) ──▶ Orchestrato
                     ▼                                     ▼                     ▼
             LLM Gateway (:8300)                    RAG (:8400)           tool-manager (:8210)
             DeepSeek / Qwen                        Milvus + ES           skill-manager (:8225)
-                                                                               expert-manager (:8235)
+                                                                         expert-manager (:8235)
+                    │                                     │               prompt-manager (:8500)
                     │                                     │
                Auth Center (:8100)                  finance / oa 模拟服务
                Sa-Token JWT
 ```
 
-**执行模式**（IntentRouter → ExecutionDispatcher）：静态 `workflow` · `react` · 动态 `plan-workflow`（Planner DAG + Plan 抽屉 UI）· **`peer-collab`**（多专家协作：Expert Catalog + MsgHub + Synthesizer，见 [expert-consultation spec](docs/superpowers/specs/2026-07-07-expert-consultation-design.md)）。Chat 底栏另含 `auto`（自动路由）；`simple-llm` 已移除，见 [remove-simple-llm](docs/superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md)。
+**执行模式**（`IntentRouter` → `ExecutionDispatcher`）：`auto` · `react` · `workflow` · `plan-workflow` · `peer-collab`（多专家协作）。Workflow Studio 见 `/workflows`，Prompt 运营见 `/prompts`；`simple-llm` 已移除。
 
 ## 技术栈
 
@@ -31,7 +32,7 @@ Gateway (:8000, JWT + Sentinel) ──▶ BFF (:8001, SSE) ──▶ Orchestrato
 |---|------|------|
 | **JDK** | OpenJDK | 21 LTS |
 | **框架** | Spring Boot + Spring Cloud + Spring Cloud Alibaba | 3.2.9 / 2023.0.3 / 2023.0.3.4 |
-| **Agent** | AgentScope-Java | 1.0.7 |
+| **Agent** | AgentScope-Java | 2.0（native-first，P0–P3 完成）|
 | **认证** | Sa-Token（JWT + Redis） | 1.45.0 |
 | **向量库** | Milvus + Elasticsearch | 2.6.16 |
 | **消息队列** | Apache RocketMQ | 5.3.2 |
@@ -47,7 +48,7 @@ my-sunshine-agent/
 ├── gateway/         :8000      # Spring Cloud Gateway + Sentinel
 ├── bff/             :8001      # WebFlux + SSE 流式转发
 ├── auth-center/     :8100      # Sa-Token 认证中心
-├── orchestrator/    :8200      # 四模式编排（workflow/react/plan-workflow/peer-collab）+ Timeline + AgentRuntime
+├── orchestrator/    :8200      # 核心编排（workflow / react / plan-workflow / peer-collab）+ Timeline + AgentRuntime
 ├── tool-manager/    :8210      # 业务 API → Agent Tool（Catalog 驱动）
 ├── skill-manager/   :8225      # Skills 上传 / 版本 / Catalog
 ├── expert-manager/  :8235      # Expert CRUD / Catalog（多专家协作）
@@ -107,8 +108,10 @@ SSE 默认经 Gateway `:8000`（`sunshine-ui` 环境变量 `VITE_BFF_STREAM_BASE
 ### 5. 验收
 
 ```bash
-# Agent 执行模式（react / workflow / plan-workflow / peer-collab）
-python scripts/phase2_agent_demo.py --suite all
+# Workflow Studio + 动态 DAG + Prompt Catalog
+python scripts/verify_workflow_studio_live.py
+python scripts/verify_plan_dag_live.py
+python scripts/verify_prompt_catalog_live.py
 
 # RAG 评测（需先 MySQL 种子 + ingest）
 python scripts/rag_reset.py
@@ -134,10 +137,13 @@ mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest
 |------|------|
 | `/chat` | 流式对话；底栏执行路径选择；静态 / Plan workflow 共用 Plan DAG 面板 |
 | `/plans/:planId` | Plan 详情与节点 trace |
-| `/knowledge` | 知识库入库与检索测试 |
+| `/knowledge` | 知识库工作台（文档/检索调试/参数/评测） |
 | `/skills` | Skill 管理；版本 diff → `/skills/:skillId/diff` |
-| `/experts` | Expert 管理（多专家协作 Catalog）；Chat `$` 补全 |
-| `/status` | 服务与中间件状态 |
+| `/experts` | Expert 管理；Chat `$` 补全 |
+| `/tools` | 工具集成管理（SDK / MCP / 工具集 / 执行策略） |
+| `/workflows` | Workflow Studio 可视化编辑 |
+| `/prompts` | Prompt Catalog 运营（Catalog / dry-run / priority / rollback） |
+| `/status` | 12 微服务 + 12 中间件状态矩阵 |
 
 ## 服务器中间件（ecs4c16g）
 
@@ -156,15 +162,12 @@ mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest
 
 ## 可观测
 
-| 能力 | 本地开发 | Live 完整（阶段三 3.5 检查门） |
-|------|----------|--------------------------------|
-| **RAG 质量** | `rag_eval.py`（主验收，不依赖 Grafana） | 同左 |
-| **应用指标** | `curl :8400/actuator/prometheus` | Prometheus 能 scrape 到各服务 |
-| **Grafana RAG 面板 + 4 告警** | 可跳过（见 [docs/grafana/README.md](./docs/grafana/README.md) 方案 B） | rag-service 与 Prometheus **同机或内网可达**；`docker compose up prometheus grafana` |
-| **Sentinel 租户 QPS** | 本机 Gateway 时 Dashboard 可能看不到机器 | Gateway 与 Dashboard **同网段**；见 [docs/sentinel/README.md](./docs/sentinel/README.md) |
-| **SkyWalking 链路** | agent 上报 `ecs4c16g:11800`（OAP 在中间件机） | UI `:8084` 查 trace |
-
-本地开发**不必**起 Grafana 也能完成 RAG / Agent 功能开发；**关阶段三 3.5 检查门**需要在 ecs4c16g 联机部署观测栈与被观测服务。
+| 组件 | 访问地址 | 用途 |
+|------|----------|------|
+| Grafana | `http://ecs4c16g:3000` | RAG 指标面板 + 告警（admin / admin123） |
+| Sentinel Dashboard | `http://ecs4c16g:8858` | 租户 QPS 限流（sentinel / sentinel123） |
+| SkyWalking UI | `http://ecs4c16g:8084` | 全链路 trace |
+| Prometheus | `http://ecs4c16g:9090` | 应用指标采集 |
 
 ## 环境变量
 
@@ -180,8 +183,8 @@ export QWEN_API_KEY=sk-xxx        # 通义千问（Embedding 复用）
 | 阶段〇 | ✅ | 中间件 + 项目骨架 |
 | 阶段一 | ✅ | LLM Gateway · ReActAgent · RAG · SSE · SkyWalking 探针 |
 | 阶段二 | ✅ | 认证 · 财务/OA 工具链 · Workflow · Timeline V2 · 会话断点续传 |
-| 阶段三 | **检查门基本通过** | 详见 [implementation-plan.md](./docs/implementation-plan.md) |
-| 阶段四 | ⬜ | PEER_COLLAB · TaskBoard · Workflow Studio · MCP · K8s（按需） |
+| 阶段三 | ✅ | 多租户 · HITL · PLAN_WORKFLOW · AgentRuntime · Skill · 审计 · 可观测 |
+| 阶段四 | ✅ 收口 | 动态 DAG · 多专家协作 · TaskBoard · Spawn · 沙箱 · Workflow Studio · 工具集成 · Prompt Catalog · **4.11 实施中** · 缺口见实现计划 |
 
 进度 SSOT：[docs/implementation-plan.md](./docs/implementation-plan.md)
 
@@ -190,13 +193,12 @@ export QWEN_API_KEY=sk-xxx        # 通义千问（Embedding 复用）
 | 文档 | 说明 |
 |------|------|
 | [implementation-plan.md](./docs/implementation-plan.md) | 分阶段任务卡与检查门 |
-| [superpowers/specs/README.md](./docs/superpowers/specs/README.md) | 阶段一～四设计 SSOT 索引 |
+| [superpowers/specs/README.md](./docs/superpowers/specs/README.md) | 阶段一～五设计 SSOT 索引 |
 | [tech-solution.md](./docs/tech-solution.md) | 架构设计与技术选型 |
-| [CLAUDE.md](./CLAUDE.md) | 扩展点、时间线约定、验收脚本索引 |
-| [grafana/README.md](./docs/grafana/README.md) | RAG 指标与 Grafana 部署 |
-| [sentinel/README.md](./docs/sentinel/README.md) | Gateway 租户 QPS 与 Dashboard |
-| [tech-debt-register.md](./docs/tech-debt-register.md) | 技术债 / 文档债 backlog |
+| [CLAUDE.md](./CLAUDE.md) | 服务端口、扩展点、时间线约定 |
 | [architecture/README.md](./docs/architecture/README.md) | 架构决策（ADR） |
 | [routing/routing-golden-set.md](./docs/routing/routing-golden-set.md) | 意图路由验收集 |
-| [2026-06-26-pause-resume-consistency-design.md](./docs/superpowers/specs/2026-06-26-pause-resume-consistency-design.md) | 阶段三收尾 3.9.5 设计 |
-| [2026-06-26-pause-resume-consistency.md](./docs/superpowers/plans/2026-06-26-pause-resume-consistency.md) | 3.9.5 实施计划 |
+| [sandbox/README.md](./docs/sandbox/README.md) | Skills 沙箱设计与验收索引 |
+| [rag/README.md](./docs/rag/README.md) | RAG 知识库设计与评测索引 |
+| [workflow/README.md](./docs/workflow/README.md) | Workflow 标杆维护 |
+| [tech-debt-register.md](./docs/tech-debt-register.md) | 技术债 / 文档债 backlog |

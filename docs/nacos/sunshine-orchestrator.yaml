@@ -199,6 +199,30 @@ agent:
             description: 超时秒数（可选，默认 30）
         required:
           - command
+      sandbox__webfetch:
+        display-name: 抓取网页
+        description: 获取指定 http/https URL 的网页正文（HTML 转纯文本；禁止内网地址；常用以核验搜索结果或读取文档）
+        properties:
+          url:
+            type: string
+            description: 目标 URL（仅 http/https；禁内网/本机/保留地址）
+          max_chars:
+            type: integer
+            description: 返回正文最大字符数（可选，默认 200000）
+        required:
+          - url
+      sandbox__websearch:
+        display-name: 搜索网页
+        description: 通过 Bing 搜索网页，返回标题 / URL / 摘要（通常随后用 webfetch 打开原文）
+        properties:
+          query:
+            type: string
+            description: 搜索关键词（建议中文/英文均可）
+          count:
+            type: integer
+            description: 返回结果条数（可选，默认 5，最多 10）
+        required:
+          - query
 
   # routing.structural / routing.peer / routing.rules 已退役 → prompt-manager Catalog
   # （routing-rule.*，见 docker/mysql/init/17-sunshine-prompt-manager.sql）
@@ -310,6 +334,8 @@ agent:
       min-consecutive-tool-messages: 4
       current-round-compression-ratio: 0.3
       min-compression-token-threshold: 3000
+auth-service:
+  base-url: http://localhost:8100
 tool-manager:
   base-url: http://localhost:8210
 skill-manager:

@@ -138,12 +138,13 @@ public class SandboxClient {
                 .block();
     }
 
-    public FsContentDto readFsContent(String sessionId, String path, int maxChars) {
+    public FsContentDto readFsContent(String sessionId, String path, int maxChars, int offset) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/sandbox/sessions/{id}/fs/content")
                         .queryParam("path", path)
                         .queryParam("maxChars", maxChars)
+                        .queryParam("offset", offset)
                         .build(sessionId))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toSandboxError)

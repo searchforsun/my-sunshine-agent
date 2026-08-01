@@ -37,9 +37,13 @@ public class ConversationController {
     @PostMapping("/conversations")
     public Mono<ConversationSummaryDto> create(
             @RequestHeader("x-user-id") String userId,
-            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @RequestBody(required = false) java.util.Map<String, Object> body) {
         return ReactiveBlocking.call(() -> {
-            ChatConversationEntity conv = conversationService.create(userId, tenantId);
+            String kind = body != null ? (String) body.getOrDefault("kind", "chat") : "chat";
+            String workspaceId = body != null ? (String) body.get("workspaceId") : null;
+            String checkoutPath = body != null ? (String) body.get("checkoutPath") : null;
+            ChatConversationEntity conv = conversationService.create(userId, tenantId, kind, workspaceId, checkoutPath);
             return ConversationSummaryDto.from(conv);
         });
     }

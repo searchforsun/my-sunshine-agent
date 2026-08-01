@@ -1,11 +1,14 @@
 package com.sunshine.orchestrator.context;
 
 import com.sunshine.orchestrator.conversation.ChatTurn;
+import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
+import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import com.sunshine.orchestrator.context.l1.L1Compressor;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.context.l3.L3RecallService;
+import com.sunshine.orchestrator.workspace.repo.WorkspaceProjectGuideRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +34,8 @@ public class ContextAssembler {
     private final L3RecallService l3RecallService;
     private final TokenEstimator tokenEstimator;
     private final ModelWindowCache modelWindowCache;
+    private final ChatConversationRepository conversationRepo;
+    private final WorkspaceProjectGuideRepository projectGuideRepo;
 
     @org.springframework.beans.factory.annotation.Value("${agent.model.name:deepseek-v4-pro}")
     private String modelName;
@@ -78,17 +83,40 @@ public class ContextAssembler {
                 farBlock,
                 mid,
                 near,
-                l3Block != null ? l3Block : "");
+                l3Block != null ? l3Block : "",
+                resolveProjectGuide(request.conversationId()));
         AssembledContext trimmed = applyBudget(assembled, budgetTokens, tokenEstimator);
 
-        log.debug("[Context] assemble conv={} l2={} far={} mid={} near={} l3={}",
+        log.debug("[Context] assemble conv={} l2={} far={} mid={} near={} l3={} guide={}",
                 request.conversationId(),
                 trimmed.l2SystemBlock().isBlank() ? 0 : 1,
                 trimmed.farSummaryBlock().isBlank() ? 0 : 1,
                 trimmed.midTurns().size(),
                 trimmed.nearTurns().size(),
-                trimmed.l3MaterialBlock().isBlank() ? 0 : 1);
+                trimmed.l3MaterialBlock().isBlank() ? 0 : 1,
+                trimmed.projectGuideBlock().isBlank() ? 0 : 1);
         return trimmed;
+    }
+
+    /**
+     * 项目规范（类 CLAUDE.md）：会话所属工作区（kind=task）的共享规范，注入静态 system 层。
+     * 读取失败降级为空串，不影响主链路。
+     */
+    private String resolveProjectGuide(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return "";
+        }
+        try {
+            return conversationRepo.findById(conversationId)
+                    .map(ChatConversationEntity::getWorkspaceId)
+                    .filter(StringUtils::hasText)
+                    .flatMap(projectGuideRepo::findById)
+                    .map(g -> g.getContent() != null ? g.getContent().strip() : "")
+                    .orElse("");
+        } catch (Exception e) {
+            log.warn("[Context] project guide 读取失败 conv={}: {}", conversationId, e.getMessage());
+            return "";
+        }
     }
 
     /**
@@ -110,7 +138,8 @@ public class ContextAssembler {
                 ctx.farSummaryBlock(),
                 ctx.midTurns(),
                 ctx.nearTurns(),
-                "");
+                "",
+                ctx.projectGuideBlock());
         if (estimator.countAssembled(dropL3) <= maxTokens) {
             return dropL3;
         }
@@ -119,7 +148,8 @@ public class ContextAssembler {
                 "",
                 ctx.midTurns(),
                 ctx.nearTurns(),
-                "");
+                "",
+                ctx.projectGuideBlock());
         if (estimator.countAssembled(dropFar) <= maxTokens) {
             return dropFar;
         }
@@ -127,7 +157,7 @@ public class ContextAssembler {
                 ? new ArrayList<>(ctx.midTurns())
                 : new ArrayList<>();
         while (!mid.isEmpty() && estimator.countAssembled(new AssembledContext(
-                ctx.l2SystemBlock(), "", mid, ctx.nearTurns(), "")) > maxTokens) {
+                ctx.l2SystemBlock(), "", mid, ctx.nearTurns(), "", ctx.projectGuideBlock())) > maxTokens) {
             mid.remove(0);
         }
         return new AssembledContext(
@@ -135,7 +165,8 @@ public class ContextAssembler {
                 "",
                 List.copyOf(mid),
                 ctx.nearTurns(),
-                "");
+                "",
+                ctx.projectGuideBlock());
     }
 
     @SafeVarargs

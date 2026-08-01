@@ -211,3 +211,15 @@ ALTER TABLE chat_conversation
   ADD COLUMN kind          VARCHAR(16)  NOT NULL DEFAULT 'chat' COMMENT 'chat / task',
   ADD COLUMN workspace_id  VARCHAR(64)  NULL COMMENT 'kind=task 时必填',
   ADD COLUMN checkout_path VARCHAR(256) NULL COMMENT '用户选定的 checkout';
+
+-- V20__workspace_project_guide.sql
+-- 项目级规范（类 CLAUDE.md）：用户手动维护，随工作区共享，注入 task 场景上下文
+CREATE TABLE workspace_project_guide (
+    workspace_id VARCHAR(64)  NOT NULL PRIMARY KEY,
+    tenant_id    VARCHAR(64)  NOT NULL DEFAULT 'default',
+    user_id      VARCHAR(64)  NOT NULL,
+    content      MEDIUMTEXT   NOT NULL,
+    updated_by   VARCHAR(64)  NULL,
+    created_at   DATETIME(3)  NOT NULL,
+    updated_at   DATETIME(3)  NOT NULL
+);

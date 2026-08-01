@@ -8,18 +8,22 @@ import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SandboxWorkspaceService {
 
     private final ConversationService conversationService;
     private final ConversationSandboxStore conversationSandboxStore;
+    private final WorkspaceSandboxStore workspaceSandboxStore;
     private final SandboxClient sandboxClient;
     private final AgentSandboxProperties sandboxProperties;
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
+    private final WorkspaceSandboxLifecycle workspaceSandboxLifecycle;
 
     public FsNodeDto.FsListResponse list(
             String conversationId, String userId, String tenantId, String path) {
@@ -33,13 +37,48 @@ public class SandboxWorkspaceService {
         return resp;
     }
 
+    /** 工作区级别：直接用 workspaceId 找 sandbox session */
+    public FsNodeDto.FsListResponse listByWorkspace(
+            String workspaceId, String tenantId, String path) {
+        assertBrowsablePath(path);
+        String sessionId = workspaceSandboxStore.find(tenantId, workspaceId)
+                .map(WorkspaceSandboxBinding::sessionId)
+                .orElseGet(() -> {
+                    log.info("[SandboxWorkspace] binding not found, ensuring session ws={}", workspaceId);
+                    return workspaceSandboxLifecycle.ensureWorkspaceSession(workspaceId, "system", tenantId);
+                });
+        FsNodeDto.FsListResponse resp = sandboxClient.listFs(sessionId, path);
+        if (resp == null) {
+            throw new BizException(OrchestratorErrorCode.SANDBOX_WORKSPACE_NOT_FOUND);
+        }
+        return resp;
+    }
+
     public FsContentDto content(
-            String conversationId, String userId, String tenantId, String path) {
+            String conversationId, String userId, String tenantId, String path, int offset) {
         assertBrowsablePath(path);
         String sessionId = requireOrEnsureSession(conversationId, userId, tenantId);
         conversationSandboxStore.touch(tenantId, conversationId);
         FsContentDto resp = sandboxClient.readFsContent(
-                sessionId, path, sandboxProperties.getWorkspaceContentMaxChars());
+                sessionId, path, sandboxProperties.getWorkspaceContentMaxChars(), offset);
+        if (resp == null) {
+            throw new BizException(OrchestratorErrorCode.SANDBOX_WORKSPACE_NOT_FOUND);
+        }
+        return resp;
+    }
+
+    /** 工作区级别：直接用 workspaceId 找 sandbox session */
+    public FsContentDto contentByWorkspace(
+            String workspaceId, String tenantId, String path, int offset) {
+        assertBrowsablePath(path);
+        String sessionId = workspaceSandboxStore.find(tenantId, workspaceId)
+                .map(WorkspaceSandboxBinding::sessionId)
+                .orElseGet(() -> {
+                    log.info("[SandboxWorkspace] binding not found, ensuring session ws={}", workspaceId);
+                    return workspaceSandboxLifecycle.ensureWorkspaceSession(workspaceId, "system", tenantId);
+                });
+        FsContentDto resp = sandboxClient.readFsContent(
+                sessionId, path, sandboxProperties.getWorkspaceContentMaxChars(), offset);
         if (resp == null) {
             throw new BizException(OrchestratorErrorCode.SANDBOX_WORKSPACE_NOT_FOUND);
         }
@@ -62,7 +101,12 @@ public class SandboxWorkspaceService {
         if (!StringUtils.hasText(conversationId)) {
             throw new BizException(OrchestratorErrorCode.SANDBOX_WORKSPACE_NOT_FOUND);
         }
-        conversationService.getOwned(conversationId, userId, tenantId);
+        var conv = conversationService.getOwned(conversationId, userId, tenantId);
+        // Task 会话：走工作区 session（含 git clone + workspace volume mount）
+        if (conv != null && "task".equals(conv.getKind()) && StringUtils.hasText(conv.getWorkspaceId())) {
+            return workspaceSandboxLifecycle.ensureWorkspaceSession(
+                    conv.getWorkspaceId(), userId, tenantId);
+        }
         try {
             return sandboxSessionLifecycle.ensureConversationSession(
                     userId, tenantId, conversationId, null);

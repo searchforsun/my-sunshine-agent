@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.state.AgentStateStore;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
 import lombok.RequiredArgsConstructor;
@@ -44,7 +45,8 @@ public class ReActAgentFactory {
 
     @Value("${agent.model.base-url:http://localhost:8300/v1}")
     private String modelBaseUrl;
-
+    @Value("${agent.model.max-tokens:16384}")
+    private int maxTokens;
     @Value("${agent.model.api-key:}")
     private String apiKey;
 
@@ -80,6 +82,7 @@ public class ReActAgentFactory {
     private OpenAIChatModel buildModel(AgentRunRequest request) {
         String overriddenModel = modelName;
         String overriddenBaseUrl = modelBaseUrl;
+        int resolvedMaxTokens = maxTokens;
         if (request != null && request.modelConfigJson() != null && !request.modelConfigJson().isBlank()
                 && !"{}".equals(request.modelConfigJson())) {
             try {
@@ -91,6 +94,9 @@ public class ReActAgentFactory {
                 if (config.get("baseUrl") instanceof String b && !b.isBlank()) {
                     overriddenBaseUrl = b;
                 }
+                if (config.get("maxTokens") instanceof Number n) {
+                    resolvedMaxTokens = n.intValue();
+                }
             } catch (Exception e) {
                 log.warn("[ReActAgentFactory] modelConfigJson 解析失败: {}", e.getMessage());
             }
@@ -99,6 +105,7 @@ public class ReActAgentFactory {
                 .apiKey(apiKey)
                 .modelName(overriddenModel)
                 .baseUrl(overriddenBaseUrl)
+                .generateOptions(GenerateOptions.builder().maxTokens(resolvedMaxTokens).build())
                 .stream(true)
                 .build();
     }

@@ -33,8 +33,9 @@ public class ConversationController {
     @PostMapping("/api/conversations")
     public Mono<Map<String, Object>> create(
             @RequestHeader("x-user-id") String userId,
-            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return client.createConversation(userId, tenantId);
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        return client.createConversation(body != null ? body : Map.of(), userId, tenantId);
     }
 
     @GetMapping("/api/conversations/{id}")
@@ -75,9 +76,10 @@ public class ConversationController {
     public Mono<Map<String, Object>> readSandboxWorkspace(
             @PathVariable String id,
             @RequestParam("path") String path,
+            @RequestParam(value = "offset", required = false, defaultValue = "0") int offset,
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return client.readSandboxWorkspaceFile(id, path, userId, tenantId);
+        return client.readSandboxWorkspaceFile(id, path, offset, userId, tenantId);
     }
 
     @GetMapping("/api/conversations/{id}/sandbox/workspace/status")

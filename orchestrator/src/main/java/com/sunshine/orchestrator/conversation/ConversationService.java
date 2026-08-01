@@ -37,12 +37,20 @@ public class ConversationService {
 
     @Transactional
     public ChatConversationEntity create(String userId, String tenantId) {
+        return create(userId, tenantId, "chat", null, null);
+    }
+
+    public ChatConversationEntity create(String userId, String tenantId,
+                                          String kind, String workspaceId, String checkoutPath) {
         Instant now = Instant.now();
         ChatConversationEntity entity = new ChatConversationEntity();
         entity.setId(newId());
         entity.setUserId(userId);
         entity.setTenantId(tenantId != null ? tenantId : "default");
         entity.setTitle("新对话");
+        entity.setKind(kind != null && !kind.isBlank() ? kind : "chat");
+        entity.setWorkspaceId(workspaceId);
+        entity.setCheckoutPath(checkoutPath);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
         return conversationRepo.save(entity);

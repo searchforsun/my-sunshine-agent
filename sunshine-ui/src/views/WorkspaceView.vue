@@ -12,12 +12,10 @@ const showCreate = ref(false)
 const creating = ref(false)
 const newName = ref('')
 const newRepoUrl = ref('')
-const newRepoBranch = ref('main')
 
 const columns = [
   { key: 'name', title: '名称', width: 200 },
   { key: 'repoUrl', title: '仓库', ellipsis: { tooltip: true } },
-  { key: 'repoBranch', title: '分支', width: 100 },
   { key: 'status', title: '状态', width: 80 },
   {
     key: 'actions', title: '操作', width: 80,
@@ -44,8 +42,9 @@ async function handleCreate() {
   if (!url) { message.warning('请输入仓库地址'); return }
   creating.value = true
   try {
+    // 只填 git 路径：clone 默认拉取远程主分支
     const req: CreateWorkspaceRequest = {
-      name, repoUrl: url, repoBranch: newRepoBranch.value || 'main',
+      name, repoUrl: url,
     }
     await createWorkspace(req)
     message.success('工作区已创建')
@@ -93,9 +92,6 @@ onMounted(fetchWorkspaces)
         </NFormItem>
         <NFormItem label="仓库地址">
           <NInput v-model:value="newRepoUrl" class="sun-field" placeholder="https://github.com/user/repo" maxlength="512" :disabled="creating" />
-        </NFormItem>
-        <NFormItem label="默认分支">
-          <NInput v-model:value="newRepoBranch" class="sun-field" placeholder="main" maxlength="128" :disabled="creating" />
         </NFormItem>
       </NForm>
       <template #footer>

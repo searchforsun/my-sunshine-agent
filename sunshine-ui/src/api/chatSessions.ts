@@ -99,6 +99,18 @@ export function useChatSessions(
     activeId.value = id
   }
 
+  function clearActive(): void {
+    if (activeId.value) {
+      const s = sessions.get(activeId.value)
+      if (s) {
+        s.abort?.abort()
+        s.containerEl.remove()
+        sessions.delete(activeId.value)
+      }
+      activeId.value = null
+    }
+  }
+
   function ensureActive(id: string): void {
     if (activeId.value !== id) switchTo(id)
   }
@@ -565,7 +577,7 @@ export function useChatSessions(
 
   return {
     messages, streamRevision, loading, activeContainer,
-    switchTo, ensureActive, send, resume, reconnectStream, stop, clearSession,
+    switchTo, clearActive, ensureActive, send, resume, reconnectStream, stop, clearSession,
     cancelSpawnSubagent,
     cancelCancellableTool,
     getMessages, setMessages, destroySession, migrateSession,

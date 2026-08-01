@@ -136,7 +136,7 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(new PromptComposeRequest(
                 PromptMode.REACT, ctx, "当前提问正文", null, "finance-analysis", "node-prompt-text",
-                List.of("injected-ctx"), null, true, "react-prompt.demo", null));
+                List.of("injected-ctx"), null, true, "react-prompt.demo", null, null, null));
 
         // 主断言：无任何 SYSTEM 角色
         assertThat(inputs).isNotEmpty();
@@ -340,6 +340,43 @@ class PromptComposerTest {
     }
 
     @Test
+    void composeReactInputs_injectsWorkspaceCheckoutHintWithReplacement() {
+        replaceCatalogTexts(Map.of(
+                "context.layer-prompt", "",
+                "context.usage-rules", "",
+                "mode-overlay.react", "",
+                "scene-overlay.task", "task-overlay",
+                "workspace.checkout-hint", "当前工作目录 {checkoutPath}"));
+        hitlProperties.setEnabled(false);
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                AssembledContext.empty(), "改代码", null, List.of(), false, null, null, "task",
+                "/workspace/branches/wt-abc123"));
+
+        List<String> texts = inputs.stream().map(Msg::getTextContent).filter(t -> t != null).toList();
+        assertThat(texts).anyMatch(t -> t.contains("task-overlay"));
+        assertThat(texts).anyMatch(t -> t.equals("当前工作目录 /workspace/branches/wt-abc123"));
+        // 占位符必须被替换，不得残留
+        assertThat(texts).noneMatch(t -> t.contains("{checkoutPath}"));
+    }
+
+    @Test
+    void composeReactInputs_skipsWorkspaceCheckoutHintWhenAbsent() {
+        replaceCatalogTexts(Map.of(
+                "context.layer-prompt", "",
+                "context.usage-rules", "",
+                "mode-overlay.react", "",
+                "workspace.checkout-hint", "当前工作目录 {checkoutPath}"));
+        hitlProperties.setEnabled(false);
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                AssembledContext.empty(), "问", List.of()));
+
+        assertThat(inputs.stream().map(Msg::getTextContent).filter(t -> t != null))
+                .noneMatch(t -> t.contains("当前工作目录"));
+    }
+
+    @Test
     void compose_blankPersonalRulesNotInjected() {
         List<Map<String, Object>> gateway = composer.composeGatewayMessages(
                 PromptComposeRequest.forDirect(AssembledContext.empty(), "问", "   "));
@@ -375,6 +412,7 @@ class PromptComposerTest {
         texts.put("context.current-user-marker", USER_MARKER);
         texts.put("scope-prompt", "");
         texts.put("hitl.agent-prompt", "");
+        texts.put("workspace.checkout-hint", "");
         texts.putAll(overrides);
         List<PromptCatalogEntry> entries = new ArrayList<>();
         texts.forEach((id, body) -> entries.add(textEntry(id, kindFor(id), body)));
@@ -392,7 +430,8 @@ class PromptComposerTest {
                 textEntry("context.usage-rules", "context", USAGE_RULES),
                 textEntry("context.current-user-marker", "context", USER_MARKER),
                 textEntry("scope-prompt", "scope", ""),
-                textEntry("hitl.agent-prompt", "hitl", ""));
+                textEntry("hitl.agent-prompt", "hitl", ""),
+                textEntry("workspace.checkout-hint", "scene-overlay", ""));
     }
 
     private static String kindFor(String id) {
@@ -400,6 +439,7 @@ class PromptComposerTest {
         if (id.startsWith("context.")) return "context";
         if (id.startsWith("hitl.")) return "hitl";
         if (id.startsWith("react-prompt")) return "react-prompt";
+        if (id.startsWith("workspace.")) return "scene-overlay";
         if ("scope-prompt".equals(id)) return "scope";
         return "system";
     }

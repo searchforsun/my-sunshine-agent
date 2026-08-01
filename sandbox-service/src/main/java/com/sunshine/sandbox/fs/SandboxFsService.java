@@ -49,6 +49,9 @@ public class SandboxFsService {
                     .forEach(child -> {
                         try {
                             String name = child.getFileName().toString();
+                            if (name.equals(".git")) {
+                                return;
+                            }
                             String childContainer = HostPathResolver.toContainer(session, child);
                             if (Files.isDirectory(child)) {
                                 entries.add(FsNodeDto.dir(name, childContainer));
@@ -66,7 +69,7 @@ public class SandboxFsService {
         return new FsNodeDto.FsListResponse(containerPath, entries);
     }
 
-    public FsContentDto readContent(String sessionId, String rawPath, int maxChars) {
+    public FsContentDto readContent(String sessionId, String rawPath, int maxChars, int offset) {
         SandboxSession session = requireSession(sessionId);
         String containerPath = normalizeBrowsePath(rawPath);
         if (containerPath.equals(PathJail.WORKSPACE.toString())
@@ -79,20 +82,23 @@ public class SandboxFsService {
         }
         int limit = maxChars > 0 ? maxChars : DEFAULT_MAX_CHARS;
         try {
+            long totalBytes = Files.size(host);
+            long totalChars = totalBytes; // UTF-8 近似（实际字符数 ≤ 字节数）
             byte[] bytes = Files.readAllBytes(host);
             if (looksBinary(bytes)) {
-                return new FsContentDto(containerPath, "", false, true);
+                return new FsContentDto(containerPath, "", false, true, 0, totalBytes);
             }
             String full;
             try {
                 full = decodeUtf8(bytes);
             } catch (CharacterCodingException e) {
-                return new FsContentDto(containerPath, "", false, true);
+                return new FsContentDto(containerPath, "", false, true, 0, totalBytes);
             }
-            if (full.length() <= limit) {
-                return new FsContentDto(containerPath, full, false, false);
-            }
-            return new FsContentDto(containerPath, full.substring(0, limit), true, false);
+            int start = Math.min(offset, full.length());
+            int end = Math.min(start + limit, full.length());
+            String chunk = full.substring(start, end);
+            boolean truncated = end < full.length();
+            return new FsContentDto(containerPath, chunk, truncated, false, start, full.length());
         } catch (IOException e) {
             throw new BizException(SandboxErrorCode.FILE_PATH_INVALID);
         }

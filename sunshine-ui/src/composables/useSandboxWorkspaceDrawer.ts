@@ -9,8 +9,7 @@ import {
 import { setSandboxDrawerLayout } from './sandboxDrawerBridge'
 
 export interface SandboxWorkspaceDrawerPayload {
-  conversationId: string
-  /** 打开时聚焦的文件路径（可选） */
+  conversationId?: string
   focusPath?: string
 }
 
@@ -242,8 +241,7 @@ export function useSandboxWorkspaceDrawer() {
   }
 
   function open(payload: SandboxWorkspaceDrawerPayload) {
-    if (!payload.conversationId?.trim()) return
-    state.conversationId = payload.conversationId.trim()
+    state.conversationId = payload.conversationId?.trim() ?? ''
     state.focusPath = payload.focusPath?.trim() ?? ''
     state.open = true
   }
@@ -254,10 +252,17 @@ export function useSandboxWorkspaceDrawer() {
     state.focusPath = ''
   }
 
+  function updateConversationId(convId: string) {
+    if (state.open && convId) {
+      state.conversationId = convId
+    }
+  }
+
   return {
     state,
     open,
     close,
+    updateConversationId,
     compareMode,
     drawerWidth,
     drawerMaxWidth,

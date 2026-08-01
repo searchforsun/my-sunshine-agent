@@ -24,7 +24,7 @@ class SandboxPolicyCodecTest {
                 256,
                 0.5,
                 List.of(),
-                List.of("ls *", "pwd"));
+                List.of("ls *", "pwd"), null);
         String json = SandboxPolicyCodec.write(policy);
         assertThat(MAPPER.readTree(json).get("timeoutSec").asInt()).isEqualTo(30);
         assertThat(SandboxPolicyCodec.parse(json)).isEqualTo(policy);
@@ -48,7 +48,7 @@ class SandboxPolicyCodecTest {
     @Test
     void catalogEntry_serializesSandboxFields() throws Exception {
         SandboxPolicy policy = new SandboxPolicy(
-                "docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5, List.of(), List.of("pwd"));
+                "docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5, List.of(), List.of("pwd"), null);
         SkillCatalogEntry entry = new SkillCatalogEntry(
                 "demo", "Demo", "d", "overlay", 1, true, null, null, true, "docker", policy);
         String json = MAPPER.writeValueAsString(entry);

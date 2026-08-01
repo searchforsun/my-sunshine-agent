@@ -84,8 +84,9 @@ public class SandboxSessionController {
     public R<FsContentDto> readFs(
             @PathVariable String id,
             @RequestParam("path") String path,
-            @RequestParam(value = "maxChars", required = false, defaultValue = "200000") int maxChars) {
-        return R.ok(fs.readContent(id, path, maxChars));
+            @RequestParam(value = "maxChars", required = false, defaultValue = "200000") int maxChars,
+            @RequestParam(value = "offset", required = false, defaultValue = "0") int offset) {
+        return R.ok(fs.readContent(id, path, maxChars, offset));
     }
 
     @PostMapping("/{id}/tools/{name}")

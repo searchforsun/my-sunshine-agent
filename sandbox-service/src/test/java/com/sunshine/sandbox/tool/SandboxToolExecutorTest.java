@@ -55,7 +55,8 @@ class SandboxToolExecutorTest {
                 "fake-cid",
                 hostRoot,
                 new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
-                        List.of(), List.of())));
+                        List.of(), List.of(), null),
+                null));
     }
 
     @Test

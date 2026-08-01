@@ -10,5 +10,11 @@ public record SandboxPolicy(
         Integer memoryMb,
         Double cpus,
         List<String> networkAllow,
-        List<String> execReadonlyAllow) {
+        List<String> execReadonlyAllow,
+        String kind) {
+
+    /** @return 安全模式：{@code "chat"} 严格 / {@code "task"} 放宽（编码工作区场景） */
+    public String kind() {
+        return kind != null ? kind : "chat";
+    }
 }

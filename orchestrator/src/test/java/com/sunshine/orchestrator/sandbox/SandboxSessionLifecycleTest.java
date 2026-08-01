@@ -35,6 +35,10 @@ class SandboxSessionLifecycleTest {
     private SandboxClient sandboxClient;
     @Mock
     private ConversationSandboxStore conversationSandboxStore;
+    @Mock
+    private WorkspaceSandboxLifecycle workspaceSandboxLifecycle;
+    @Mock
+    private com.sunshine.orchestrator.conversation.repo.ChatConversationRepository chatConversationRepository;
 
     private AgentSandboxProperties sandboxProperties;
     private SandboxSessionLifecycle lifecycle;
@@ -43,7 +47,7 @@ class SandboxSessionLifecycleTest {
     void setUp() {
         sandboxProperties = new AgentSandboxProperties();
         lifecycle = new SandboxSessionLifecycle(
-                skillCatalogClient, sandboxClient, conversationSandboxStore, sandboxProperties);
+                skillCatalogClient, sandboxClient, conversationSandboxStore, sandboxProperties, workspaceSandboxLifecycle, chatConversationRepository);
         SandboxSessionHolder.clearAll();
     }
 

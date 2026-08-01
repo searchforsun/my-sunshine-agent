@@ -21,6 +21,8 @@ export interface SandboxFsContent {
   content: string
   truncated: boolean
   binary: boolean
+  offset: number
+  totalSize: number
 }
 
 export async function fetchSandboxWorkspaceStatus(conversationId: string): Promise<boolean> {
@@ -48,10 +50,38 @@ export async function listSandboxWorkspace(
 export async function readSandboxWorkspaceFile(
   conversationId: string,
   path: string,
+  offset = 0,
 ): Promise<SandboxFsContent> {
-  const q = new URLSearchParams({ path })
+  const q = new URLSearchParams({ path, offset: String(offset) })
   const res = await fetch(
     `${API_BASE()}/api/conversations/${encodeURIComponent(conversationId)}/sandbox/workspace/content?${q}`,
+    { headers: apiHeaders() },
+  )
+  return parseBffPayload<SandboxFsContent>(res)
+}
+
+// ===== 工作区级别文件浏览（无需 conversationId） =====
+
+export async function listWorkspaceSandboxFiles(
+  workspaceId: string,
+  path = '/workspace',
+): Promise<SandboxFsList> {
+  const q = new URLSearchParams({ path })
+  const res = await fetch(
+    `${API_BASE()}/api/agent-workspaces/${encodeURIComponent(workspaceId)}/sandbox/workspace?${q}`,
+    { headers: apiHeaders() },
+  )
+  return parseBffPayload<SandboxFsList>(res)
+}
+
+export async function readWorkspaceSandboxFile(
+  workspaceId: string,
+  path: string,
+  offset = 0,
+): Promise<SandboxFsContent> {
+  const q = new URLSearchParams({ path, offset: String(offset) })
+  const res = await fetch(
+    `${API_BASE()}/api/agent-workspaces/${encodeURIComponent(workspaceId)}/sandbox/workspace/content?${q}`,
     { headers: apiHeaders() },
   )
   return parseBffPayload<SandboxFsContent>(res)

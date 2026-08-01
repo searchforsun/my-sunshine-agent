@@ -326,12 +326,16 @@ public class AgentPromptProperties {
         private String globAfterWithPath;
         private String grepAfter;
         private String execAfter;
+        private String webfetchAfter;
+        private String websearchAfter;
         private String readActive;
         private String writeActive;
         private String editActive;
         private String globActive;
         private String grepActive;
         private String execActive;
+        private String webfetchActive;
+        private String websearchActive;
     }
 
     @Getter

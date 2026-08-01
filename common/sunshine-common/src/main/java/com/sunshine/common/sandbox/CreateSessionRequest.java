@@ -9,5 +9,7 @@ public record CreateSessionRequest(
         String runId,
         SandboxPolicy policy,
         Map<String, String> skillFiles,
-        Map<String, String> workspaceFiles) {
+        Map<String, String> workspaceFiles,
+        String workspaceHostDir,
+        String repoHostDir) {
 }

@@ -20,6 +20,8 @@ export interface ConversationSummary {
   /** chat / task */
   kind?: string
   workspaceId?: string | null
+  /** task 会话的 checkout 目录（/workspace/branches/{checkoutId}） */
+  checkoutPath?: string | null
 }
 
 export interface ConversationMessage {
@@ -70,6 +72,7 @@ function mapSummary(raw: Record<string, unknown>): ConversationSummary {
     kbId: typeof raw.kbId === 'string' ? raw.kbId : null,
     kind: typeof raw.kind === 'string' ? raw.kind : undefined,
     workspaceId: typeof raw.workspaceId === 'string' ? raw.workspaceId : null,
+    checkoutPath: typeof raw.checkoutPath === 'string' ? raw.checkoutPath : null,
   }
 }
 

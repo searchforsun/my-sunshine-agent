@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * AssembledContext → Gateway messages。
- * 顺序：system(L2 + layerPrompt/usage) → system(Far) → Mid → Near → system(L3)。
+ * 顺序：system(ProjectGuide) → system(L2 + layerPrompt/usage) → system(Far) → Mid → Near → system(L3)。
  */
 public final class ContextMessageBuilder {
 
@@ -24,6 +24,7 @@ public final class ContextMessageBuilder {
             return;
         }
         AssembledContext context = ctx != null ? ctx : AssembledContext.empty();
+        addSystemIfText(messages, context.projectGuideBlock());
         addSystemIfText(messages, joinNonBlank(layerPrompt, usageRules, context.l2SystemBlock()));
         addSystemIfText(messages, context.farSummaryBlock());
         appendTurns(messages, context.midTurns());

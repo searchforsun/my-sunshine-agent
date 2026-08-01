@@ -16,6 +16,9 @@ public class ConversationSummaryDto {
     private Instant updatedAt;
     private String executionPreference;
     private String kbId;
+    private String kind;
+    private String workspaceId;
+    private String checkoutPath;
 
     public static ConversationSummaryDto from(ChatConversationEntity conv) {
         return ConversationSummaryDto.builder()
@@ -25,6 +28,9 @@ public class ConversationSummaryDto {
                 .updatedAt(conv.getUpdatedAt())
                 .executionPreference(conv.getExecutionPreference())
                 .kbId(conv.getKbId())
+                .kind(conv.getKind())
+                .workspaceId(conv.getWorkspaceId())
+                .checkoutPath(conv.getCheckoutPath())
                 .build();
     }
 }

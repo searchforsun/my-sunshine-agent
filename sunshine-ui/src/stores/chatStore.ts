@@ -88,6 +88,10 @@ export const useChatStore = defineStore('chat', () => {
   const conversations = ref<Conversation[]>([])
   const currentId = ref<string | null>(null)
   const initializing = ref(false)
+  /** workspace selector → chart page：在对话页勾选分支后再创建 */
+  const pendingWorkspace = ref<{ wsId: string; wsName: string; wsBranch?: string } | null>(null)
+  /** 顶部"新任务"入口：空白页 + 项目选择器，未选项目前不创建会话 */
+  const newTaskMode = ref(false)
   let loaded = false
   let initPromise: Promise<void> | null = null
 
@@ -130,6 +134,9 @@ export const useChatStore = defineStore('chat', () => {
         messages: prev?.messages ?? [],
         executionPreference: c.executionPreference ?? prev?.executionPreference,
         kbId: c.kbId ?? prev?.kbId ?? null,
+        kind: c.kind ?? prev?.kind,
+        workspaceId: c.workspaceId ?? prev?.workspaceId ?? null,
+        checkoutPath: c.checkoutPath ?? prev?.checkoutPath ?? null,
       }
     })
     conversations.value = merged.filter(c => isValidConversationId(c.id))
@@ -288,6 +295,7 @@ export const useChatStore = defineStore('chat', () => {
         kbId: created.kbId ?? null,
         kind: created.kind,
         workspaceId: created.workspaceId ?? null,
+        checkoutPath: created.checkoutPath ?? null,
       }
       conversations.value.unshift(conv)
       currentId.value = conv.id
@@ -481,5 +489,7 @@ export const useChatStore = defineStore('chat', () => {
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
     updateExecutionPreferenceLocal,
     updateKbIdLocal,
+    pendingWorkspace,
+    newTaskMode,
   }
 })

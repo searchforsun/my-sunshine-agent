@@ -230,7 +230,9 @@ public class SandboxSessionLifecycle {
                 runId,
                 policy,
                 Map.of(),
-                Map.of()));
+                Map.of(),
+                null,
+                null));
     }
 
     private void mountSkill(String sessionId, String skillId) {
@@ -260,7 +262,8 @@ public class SandboxSessionLifecycle {
                 rt.getMemoryMb(),
                 rt.getCpus(),
                 rt.getNetworkAllow() != null ? rt.getNetworkAllow() : List.of(),
-                rt.getExecReadonlyAllow() != null ? rt.getExecReadonlyAllow() : List.of());
+                rt.getExecReadonlyAllow() != null ? rt.getExecReadonlyAllow() : List.of(),
+                "chat");
     }
 
     private record EnsureResult(String sessionId, List<String> loadedSkillIds) {}
@@ -269,7 +272,7 @@ public class SandboxSessionLifecycle {
         // 工作区级使用完全体容器配置，由 WorkspaceSandboxLifecycle 维护
         return new SandboxPolicy(
                 "docker", "sunshine-sandbox-full:latest", 120, 2048,
-                2.0, List.of(), List.of());
+                2.0, List.of(), List.of(), "task");
     }
 
     /** 返回当前 bridge 的工作区 checkout 路径（无工作区时返回 null） */

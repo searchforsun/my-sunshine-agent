@@ -16,6 +16,8 @@ import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
+import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
+import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -32,6 +34,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +55,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final ReactTaskBoardService taskBoardService;
     private final AgentExecutionProperties executionProperties;
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
+    private final ChatConversationRepository conversationRepo;
     private final ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
 
     @Override
@@ -95,9 +99,19 @@ public class ReActAgentRuntime implements AgentRuntime {
         String assistantMessageId = request.assistantMessageId();
         sandboxSessionLifecycle.prepareRun(request);
         try {
+        // 场景覆盖层：MAIN 模式根据 conversation.kind 注入 scene-overlay；task 会话同时注入当前 checkout 目录
+        String convKind = null;
+        String workspaceCheckout = null;
+        if (request.role() == AgentRole.MAIN && StringUtils.hasText(request.conversationId())) {
+            ChatConversationEntity conv = conversationRepo.findById(request.conversationId()).orElse(null);
+            if (conv != null) {
+                convKind = conv.getKind();
+                workspaceCheckout = conv.getCheckoutPath();
+            }
+        }
         List<Msg> inputs = promptComposer.composeReactInputs(
                 PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks(),
-                        request.reactRestart(), request.reactPromptId()));
+                        request.reactRestart(), request.reactPromptId(), null, convKind, workspaceCheckout));
             ProcessingTimelineSession session = new ProcessingTimelineSession();
             session.bindUserQuery(query);
             session.bindTraceMessageId(assistantMessageId);
@@ -112,7 +126,12 @@ public class ReActAgentRuntime implements AgentRuntime {
             StepEventBridge.bind(bridgeId, session, hookQueue);
             if (request.assistantMessageId() != null && !request.assistantMessageId().isBlank()) {
                 StepEventBridge.bindHitlBridge(bridgeId, request.assistantMessageId(), resolveHitlEnabled(request));
-                StepEventBridge.bindWriteHitlMode(request.assistantMessageId(), resolveWriteHitlMode(request));
+                // 仅当请求显式携带写跳过模式时才绑定；否则保留 ChatController 按 writeHitlMode 已绑定的值，
+                // 避免 main request permissionsJson 为空时用 NEVER 覆盖用户选择的 always/smart。
+                SandboxWriteHitlMode writeMode = resolveWriteHitlMode(request);
+                if (writeMode != null) {
+                    StepEventBridge.bindWriteHitlMode(request.assistantMessageId(), writeMode);
+                }
                 StepEventBridge.setUserQuery(request.assistantMessageId(), query);
                 if (request.role() == AgentRole.MAIN) {
                     StepEventBridge.registerMainRun(request.assistantMessageId(), bridgeId);
@@ -298,26 +317,29 @@ public class ReActAgentRuntime implements AgentRuntime {
         }
     }
 
+    /**
+     * 从请求权限配置解析写跳过模式；请求未携带（permissionsJson 为空/无 sandboxWriteMode）时返回 null，
+     * 表示「不覆盖外部已绑定模式」（如 ChatController 按 writeHitlMode 注入的 always/smart）。
+     */
     private static SandboxWriteHitlMode resolveWriteHitlMode(AgentRunRequest request) {
         String permissionsJson = request.permissionsJson();
         if (permissionsJson == null || permissionsJson.isBlank() || "{}".equals(permissionsJson)) {
-            return SandboxWriteHitlMode.NEVER;
+            return null;
         }
         try {
             Map<String, Object> permissions = MAPPER.readValue(permissionsJson, new TypeReference<Map<String, Object>>() {});
             String sandboxWriteMode = (String) permissions.get("sandboxWriteMode");
-            if ("never".equals(sandboxWriteMode)) {
-                return SandboxWriteHitlMode.NEVER;
+            if (sandboxWriteMode == null || sandboxWriteMode.isBlank()) {
+                return null;
             }
-            if ("always".equals(sandboxWriteMode)) {
-                return SandboxWriteHitlMode.ALWAYS;
-            }
-            if ("smart".equals(sandboxWriteMode)) {
-                return SandboxWriteHitlMode.SMART;
-            }
-            return SandboxWriteHitlMode.NEVER;
+            return switch (sandboxWriteMode.strip().toLowerCase()) {
+                case "never" -> SandboxWriteHitlMode.NEVER;
+                case "always" -> SandboxWriteHitlMode.ALWAYS;
+                case "smart" -> SandboxWriteHitlMode.SMART;
+                default -> null;
+            };
         } catch (Exception e) {
-            return SandboxWriteHitlMode.NEVER;
+            return null;
         }
     }
 }

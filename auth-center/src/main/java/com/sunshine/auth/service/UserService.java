@@ -110,7 +110,14 @@ public class UserService {
             String trimmed = request.getPersonalRules().trim();
             user.setPersonalRules(trimmed.isEmpty() ? null : trimmed);
         }
-        // Git 服务令牌
+        // Git 服务令牌（先验证再保存）
+        if (request.getGithubToken() != null && !request.getGithubToken().isBlank()) {
+            validateGitToken(request.getGithubUrl(), request.getGithubToken(), "GitHub", "https://api.github.com/user");
+        }
+        if (request.getGitlabToken() != null && !request.getGitlabToken().isBlank()) {
+            validateGitToken(request.getGitlabUrl(), request.getGitlabToken(), "GitLab",
+                    (request.getGitlabUrl() != null ? request.getGitlabUrl().strip().replaceAll("/+$", "") : "") + "/api/v4/user");
+        }
         if (request.getGithubUrl() != null && !request.getGithubUrl().isBlank()) {
             user.setGithubUrl(request.getGithubUrl().strip());
         }
@@ -127,6 +134,41 @@ public class UserService {
         userRepository.save(user);
         String newToken = reissueToken(user);
         return toUpdateProfileResponse(user, newToken);
+    }
+
+    /** 通过请求 API 验证 Git PAT 是否有效 */
+    private void validateGitToken(String url, String token, String platform, String apiUrl) {
+        String host = url != null && !url.isBlank() ? extractHost(url) : null;
+        if (host == null) {
+            throw new BizException(new com.sunshine.common.core.exception.FixedErrorCode(
+                    400, "git_url_missing", platform + " 地址未配置，无法验证令牌"));
+        }
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(10))
+                    .build();
+            java.net.http.HttpRequest httpReq = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(apiUrl))
+                    .timeout(java.time.Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+            java.net.http.HttpResponse<String> resp = client.send(httpReq,
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+            int code = resp.statusCode();
+            if (code < 200 || code >= 300) {
+                throw new BizException(new com.sunshine.common.core.exception.FixedErrorCode(
+                        400, "git_token_invalid",
+                        platform + " PAT 验证失败 (HTTP " + code + ")，请检查令牌和地址是否正确"));
+            }
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(new com.sunshine.common.core.exception.FixedErrorCode(
+                    400, "git_token_error",
+                    platform + " PAT 验证失败: " + e.getMessage()));
+        }
     }
 
     /** 注销当前 JWT 并签发含最新 extra 的新 token（避免 getTokenValue 返回旧值） */

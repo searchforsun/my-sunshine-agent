@@ -1,9 +1,9 @@
 # 阶段五：运营化与开放化 — 技术设计（SSOT）
 
 > **周期**：按需启动（子项独立排期）
-> **状态**：⬜ 规划（2026-07-27 立项）
-> **触发**：阶段四收口 + 平台需对外交付/量化运营效果
-> **前置**：[阶段四](./phase4-platformization-design.md) 4.1/4.2/4.5/4.6/4.7/4.8/4.13 检查门通过；**4.11 Prompt 后台收口**（5.3/5.4 依赖其 Catalog 版本模型）
+> **状态**：⬜ 规划（2026-07-27 立项）· **v2（2026-08-01）**：以 harness 长任务为终点重定位；5.2/5.3/5.5 随 harness 上线**前置拆分触发**（不必等阶段四全收口），5.1/5.4/5.7 等 harness 稳定后接
+> **触发**：① 阶段四收口 + 平台需对外交付/量化运营效果（全量）② **5.2/5.3/5.5 随 harness 上线前置**（见 §1 触发拆分）
+> **前置**：[阶段四](./phase4-platformization-design.md) 4.1/4.2/4.5/4.6/4.7/4.8/4.13 检查门通过；**4.11 Prompt 后台收口**（5.3/5.4 依赖其 Catalog 版本模型）；**harness-loop 阶段一（CompletionGuard）** 落地后启动 5.1 系列（效果评估前提）
 > **对标缺口**：智能体中台蓝图 §5 运营管控与观测层、§6 应用输出层、§1 多模型混部路由、§4 工具 RAG 检索
 
 ---
@@ -14,6 +14,16 @@
 
 - **运营闭环**：Badcase → 评测 → 调优 → 灰度 → 再评测，让平台效果可量化、可迭代；
 - **开放输出**：开放 API / SDK / 渠道嵌入，让平台能力被业务系统真正集成。
+
+**v2 重定位（以 harness 长任务为终点）**：Planner-Worker 长任务（[planner-harness-loop](./2026-07-31-planner-harness-loop-design.md)）是横跨沙箱/ReAct 增强/路由重构/上下文优化四线的汇聚点，其运行期依赖三块运营底座——**5.2 用量计量**（长任务多次 LLM 调用的成本可控）、**5.3 场景路由**（Planner 强模型 / Worker 快模型分层）、**5.5 工具检索**（Worker toolWhitelist 动态化）。这三块**随 harness 上线前置启动**，不等阶段四全收口；5.1/5.4/5.7 等 harness 稳定后接（效果评估与迭代前提）。
+
+**触发拆分**：
+
+| 批次 | 子项 | 触发 |
+|------|------|------|
+| A（随 harness 前置） | 5.2 / 5.3 / 5.5 | planner-harness 上线前完成（提供成本 / 模型分层 / 工具动态底座） |
+| B（harness 稳定后） | 5.1 / 5.4 / 5.7 | harness-loop 阶段一（CompletionGuard）落地、效果可评估后 |
+| C（按需） | 5.6 / 5.8 / 5.9 / 5.10 | 对外交付诉求 |
 
 | 条件 | 说明 |
 |------|------|
@@ -39,9 +49,10 @@
 | — | 通用 A/B 实验平台 | — | **明确不做**（5.7 仅做 prompt 版本灰度；检索策略对比走 rag-service 评测双轨，不建通用实验框架） |
 | — | 多 Agent 通用通信总线（广播/点对点消息中间件） | — | **明确不做**（维持委派/会诊/编排三范式，见 §7 决策 D3） |
 
-**建议顺序**：5.1 → 5.2 → 5.6 → 5.3 → 5.7 → 5.4 → 5.5 →（5.8/5.9/5.10 按需）
+**建议顺序**：A 批次（随 harness 前置）：**5.2 → 5.3 → 5.5**；B 批次（harness 稳定后）：**5.1 → 5.7 → 5.4**；C 批次（按需）：**5.6** →（5.8/5.9/5.10 按需）
 
-> 顺序依据：5.1/5.2 复用现有数据链路（审计 + `LlmIoTracer`），改动小收益直接；5.6 是对外交付前提；5.3/5.7 为 5.4 提供灰度与路由底座；5.4 依赖 5.1（Badcase 回流）+ 5.7（灰度）；5.5 在工具规模上来后再做不迟。
+> 顺序依据（v2）：A 批次是 harness 运行期底座——5.2 计量（长任务多次 LLM 调用成本可控）、5.3 模型分层路由（Planner 强/Worker 快）、5.5 工具检索（Worker toolWhitelist 动态化），随 harness 上线前置；B 批次在 harness 效果可评估后接——5.1（Badcase 回流 harness task 级成功率）、5.7（灰度底座供 5.4）、5.4（依赖 5.1 + 5.7）；5.6 对 harness 弱相关，按需。
+> 原顺序依据（5.1 → 5.2 → 5.6 → 5.3 → 5.7 → 5.4 → 5.5）在 v2 触发拆分后不再作为严格排期，仅作 B/C 批次内部参考。
 
 ---
 
@@ -54,12 +65,19 @@
 
 | 子任务 | 内容 |
 |--------|------|
-| **5.1.1** | `chat_message_feedback` 表（`11-sunshine-orchestrator.sql` 追加，禁 Flyway）：message_id / user_id / tenant_id /  thumbs(up\|down) / reason_code（检索错误\|答非所问\|工具失败\|幻觉\|时延\|其他）/ comment / trace 快照（execution_mode、plan_id、tool_calls、model）/ created_at |
+| **5.1.1** | `chat_message_feedback` 表（`11-sunshine-orchestrator.sql` 追加，禁 Flyway）：message_id / user_id / tenant_id /  thumbs(up\|down) / reason_code（检索错误\|答非所问\|工具失败\|幻觉\|时延\|其他）/ comment / trace 快照（execution_mode、plan_id、tool_calls、model）/ created_at。**v2 新增 `run_id` + `round_id`**（harness 多轮 Planner-Worker 定位维度，见下） |
 | **5.1.2** | Chat 前端消息气泡 👍/👎 + 原因选择弹层（复用现有 Codex 简约风格，`--sun-*` 变量） |
 | **5.1.3** | `GET /api/ops/badcases` 列表 API（orchestrator）：按租户/模式/原因/时间过滤，关联 `chat_audit_log` 取工具调用明细 |
 | **5.1.4** | RAG 类 Badcase 一键回流：按钮 → `POST /api/rag/feedback`（复用 4.1.6 链路）入 golden-set 待审 |
 | **5.1.5** | `/ops` 运营页（sunshine-ui 新增视图）：Badcase 列表 + 分布图（按原因/模式/模型）+ 周趋势 |
 | **5.1.6** | 效果指标聚合：问答好评率、工具调用成功率、P95 时延按日聚合（读审计 + 5.2 用量表） |
+
+> **v2 注记（harness 计量粒度）**：harness 一条 assistant message 内部是多轮 Planner-Worker（含 Worker handoff），`plan_id` 语义是 Plan-Workflow 的 plan，**不是** Planner-Harness 的 run。一个点踩无法定位「哪一轮的哪个 Worker 出问题」。为此：
+>
+> 1. `chat_message_feedback` 增加 `run_id`（harness run 标识，普通 ReAct 为空）+ `round_id`（run 内轮次，Planner-Worker round 序号；普通对话为空）。
+> 2. **Evaluator 结果落库**：Chat 模式 `TaskEvaluator`/`GoalEvaluator` 的 task PASS/FAIL 结果写入 `harness_eval_result`（`run_id` + task + PASS/FAIL + reason，随 feedback 表同库），供 5.1.6 按 run 聚合 task 级成功率——这是 harness 效果可视化的唯一来源。
+>
+> 字段在 phase5 阶段即定死，harness 落地时直接写入，避免事后 ALTER。
 
 **检查门**：对话点踩 → `/ops` 可见且 trace 完整；RAG 类回流 golden-set 后可被 `rag_eval.py` 收录；好评率/工具成功率趋势可在页面按周对比。
 
@@ -71,10 +89,10 @@
 | 子任务 | 内容 |
 |--------|------|
 | **5.2.1** | `TokenUsageCollector`（llm-gateway）：非流式直接取 `usage`；流式从末尾 chunk `usage` 提取，缺失时按 messages 估算（标记 `estimated=true`） |
-| **5.2.2** | 写 RocketMQ topic `llm-usage`（复用现有 MQ 基建，与审计同模式）；消费端 `llm_usage_record` 落 MySQL（新增 `19-sunshine-ops.sql`，一项目一文件） |
-| **5.2.3** | 聚合任务（xxl-job，复用 `03-xxl-job-tables.sql` 基建）：小时/日 级 `llm_usage_daily`（tenant/model/mode → tokens、calls、成本估算） |
+| **5.2.2** | 写 RocketMQ topic `llm-usage`（复用现有 MQ 基建，与审计同模式）；消费端 `llm_usage_record` 落 MySQL（新增 `19-sunshine-ops.sql`，一项目一文件）。**v2：记录 `call_scene`（来自 5.3 注入，见 §5.3.2）+ `run_id`/`round_id`**（harness 多次 LLM 调用归集到同一 run） |
+| **5.2.3** | 聚合任务（xxl-job，复用 `03-xxl-job-tables.sql` 基建）：小时/日 级 `llm_usage_daily`（tenant/model/call_scene → tokens、calls、成本估算） |
 | **5.2.4** | 租户配额表 `tenant_quota`（月 token 上限/模型白名单）+ llm-gateway 请求前校验切面（超限 429 + 明确错误码） |
-| **5.2.5** | `/ops` 用量 Tab：租户×模型用量排行、日趋势、成本估算（每模型 单价配置存 Nacos 非提示词参数） |
+| **5.2.5** | `/ops` 用量 Tab：租户×模型用量排行、日趋势、成本估算（每模型 单价配置存 Nacos 非提示词参数）；**v2：加 call_scene × run 维度**（harness 单次任务总成本可查） |
 
 **检查门**：一次 ReAct 对话后 `llm_usage_record` 有全链路各次调用记录（含 tool 循环内多次 LLM 调用）；超限租户收到 429；用量页数据与记录一致。
 
@@ -85,11 +103,15 @@
 
 | 子任务 | 内容 |
 |--------|------|
-| **5.3.1** | `model_route_policy` 表（`19-sunshine-ops.sql`）：scene（chat\|plan\|tool-call\|rewrite\|summarize\|subagent）→ 模型池（按优先级 + 权重）+ 约束（max_cost_per_1k、max_latency_ms） |
-| **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 `scene` 扩展字段（来源：ExecutionDispatcher 模式 + 调用点，如 QueryRewriteService=rewrite、Planner=plan）；BFF/Gateway 透传，客户端不得自填（同 `x-user-id` 约定） |
+| **5.3.1** | `model_route_policy` 表（`19-sunshine-ops.sql`）：`call_scene`（chat\|plan\|worker\|tool-call\|evaluator\|rewrite\|summarize\|subagent）→ 模型池（按优先级 + 权重）+ 约束（max_cost_per_1k、max_latency_ms）。**v2：命名用 `call_scene`，与用户场景 `scene` 隔离**（见 §5.3.2 注记）；枚举**扩展 `worker`/`evaluator`**（harness 分层模型，见下） |
+| **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 **`call_scene`** 扩展字段（来源：ExecutionDispatcher 模式 + 调用点，如 QueryRewriteService=rewrite、Planner=plan、Worker=worker、Evaluator=evaluator）；BFF/Gateway 透传，客户端不得自填（同 `x-user-id` 约定） |
 | **5.3.3** | `ModelRouter` 扩展：`model=auto` 或缺省时查策略表选模型，选中结果写 trace 头便于观测；保留显式指定 model 直路由 + 现有降级链 |
 | **5.3.4** | `/tools` 或 `/ops` 增加路由策略编辑页（复用 `execution_mode_policy` 编辑模式） |
-| **5.3.5** | Grafana 面板：scene × model 的调用量/时延/成本（接 5.2 数据） |
+| **5.3.5** | Grafana 面板：`call_scene` × model 的调用量/时延/成本（接 5.2 数据） |
+
+> **v2 注记（scene 命名隔离）**：路由链已有 `RoutingResult.scene`（用户选择 chat/task，见 [unified-routing](./2026-07-29-unified-routing-design.md)），与 llm-gateway 的调用点语义**互不冲突但不可同名**。本 spec 明确：`scene` = 用户场景（用户选择，贯穿链路），`call_scene` = LLM 调用点（orchestrator 注入，用于模型路由）。**禁止**复用 `scene` 字段承载调用点，避免 harness 上线后（需同时传 task + worker 两个维度）字段冲突。
+>
+> **v2 注记（harness 模型分层）**：harness 有 4 类 LLM 调用——Planner（=plan，强模型）、Worker（**forWorker 内部多次 LLM 调用**，中等快模型）、Evaluator（Chat 模式独立 LLM，快模型）、普通 tool-call。5.3.1 枚举扩展 `worker`/`evaluator` 后，策略表可配置「Planner → 强模型、Worker → 快模型」，实现 harness 的模型成本分层；否则 Worker 只能沿用 `plan` 场景，无法按成本分流。
 
 **检查门**：`model=auto` 时 rewrite 请求路由到轻量模型、plan 请求路由到强模型（策略表驱动）；改策略表热生效；显式 model 行为不回归（`phase2_agent_demo.py --suite all` PASS）。
 
@@ -107,6 +129,8 @@
 | **5.4.4** | 复评：draft 跑评测门禁（`POST /api/kb/{kbId}/evaluate` / prompt dry-run golden-set），报告对比 active 基线 |
 | **5.4.5** | 达标后人工一键 publish（prompt 走 5.7 灰度；kb 配置走 active 切换） |
 
+> **v2 注记（优化面边界）**：Optimizer 的可优化面 = Catalog 管理的 prompt（含 `harness.planner`/`harness.worker` system prompt）+ 检索参数。harness 的 **H1 渲染与压缩点阈值是代码逻辑非 Catalog prompt**，Optimizer 覆盖不到（属 4.7.8 compaction 配置调整，人工在 Nacos/代码层改）。MVP 明确此边界，不做「代码参数自调」。
+
 **检查门**：从一批真实 Badcase 出发，Optimizer 产出可解释提案 → draft → 评测报告含 vs 基线对比 → 人工发布；全链路在 `/ops` 可追踪。
 
 ### 5.5 工具语义检索（tool RAG）
@@ -118,9 +142,18 @@
 |--------|------|
 | **5.5.1** | tool-manager：`ToolEmbeddingIndexer`——工具 Catalog（name+description+参数摘要）向量化入 Milvus collection `tool_index`（复用 rag-service embedding 通道，租户隔离 namespace） |
 | **5.5.2** | Catalog 变更事件（已有 Redis `catalog-changed` 频道）触发增量重建索引 |
-| **5.5.3** | orchestrator `ToolSetResolver` 增加 `retrieval` 模式：ReAct 首轮按 query 检索 Top-K（默认 8），后续轮次按 think 上下文增量补充；`full` 模式保留兼容小工具集 |
+| **5.5.3** | orchestrator `ToolSetResolver` 增加 `retrieval` 模式：**分层注入**——Tier 0 静态注入「全量工具名列表」（字节稳定，见下注记），Tier 2 尾部按 query 检索 Top-K（默认 8）注入详细 schema；`full` 模式保留兼容小工具集 |
 | **5.5.4** | HITL/白名单工具（require_confirmation、sandbox、manage 类元工具）始终注入，不参与检索过滤 |
 | **5.5.5** | 评测：构造工具选择 golden-set（query → 期望工具），门禁 = 检索命中率 ≥ 基线 & ReAct 任务成功率不回退 |
+
+> **v2 注记（与五层 Tier 0 的兼容，冲突解决）**：naive retrieval 模式（每轮注入动态 Top-K 工具 schema）会改变 `tools` 块字节 → 破坏五层 spec §5.5.3 的 Tier 0 绝对静态 → 全量 KV cache miss。本设计采用**分层注入**：
+>
+> - **Tier 0**：全量工具**名列表**（确定性序列化，字节稳定，仅名字+一行描述，对齐 task-scene §7.4 的 MCP 描述按需读策略）；
+> - **Tier 2 尾部**：Top-K 工具的完整 schema（随 query/think 动态变化，放尾部只 miss 尾部小块）。
+>
+> 工具规模 ≤ 阈值（如 20）时 `full` 模式（全量 schema 进 Tier 0）仍可用——由 Nacos `agent.tool.inject` 模式开关切换，二选一不并存。
+>
+> **v2 注记（harness Worker 检索基准，冲突解决）**：harness 下 Worker 的 `toolWhitelist` 由 **Planner 下发**（planner-harness §2.4 动态段），**不是** Worker 自己按 query 检索。检索路径定为：**Planner 用 5.5 检索生成候选工具集 → 下发 toolWhitelist 给 Worker**；Worker 内部不再二次检索（Planner 有全局视角，Worker 每轮检索有额外成本）。
 
 **检查门**：工具集 50+ 时 ReAct 首轮注入工具数 ≤10；golden-set 工具命中率 ≥0.9；`verify_tool_integration_live.py --suite all` + spawn/沙箱/HITL Live 不回退。
 
@@ -137,6 +170,8 @@
 | **5.6.4** | 配额联动 5.2.4（key 维度限流：Sentinel 规则按 appkey）；调用全量入审计（`caller_type=apikey`） |
 | **5.6.5** | 接入文档 + curl/HTTP 示例（docs/open-api/README.md） |
 
+> **v2 注记（v1 范围）**：开放端点 SSE「对齐 OpenAI 语义子集」——harness 的 SSE 含 `subSteps`/node 事件/plan 阶段（OpenAI 语义之外），**v1 开放 API 仅暴露 react + workflow 模板**，harness/planner-harness 不进 v1；后续按需以扩展事件形式暴露。
+
 **检查门**：外部脚本以 sk-* 调通 SSE 对话（五模式至少 react + workflow 模板）；无效/过期 key 401；超配额 429；审计可按 key 检索。
 
 ### 5.7 Prompt 版本灰度发布
@@ -151,6 +186,8 @@
 | **5.7.2** | 每次 LLM 调用在 5.2 用量记录 + 审计中打 `prompt_version` 标签 |
 | **5.7.3** | `/prompts` 页：灰度发布操作 + canary vs 主版本指标对比（好评率来自 5.1、时延/tokens 来自 5.2） |
 | **5.7.4** | 一键全量（canary → published）/ 一键回滚（复用现有 rollback） |
+
+> **v2 注记（灰度与前缀稳定性）**：canary 切换 = prompt 字节变化 → Tier 0/1 前缀一次性失效（低频，可接受）。但 **harness 长任务 run 内禁止切换**——5.7.1 的 conversation_id 哈希稳定分流已保证同会话不换版本；对 run 内多轮 Planner-Worker 同样成立（同一 conversation 全 run 走同版本）。5.7.2 的 `prompt_version` 标签写入 5.2 用量记录 + 审计，供 canary vs 主版本指标对比（对齐五层 spec §5.5.6 版本标签约束）。
 
 **检查门**：10% 灰度时约 10% 会话走 canary 且同会话稳定；对比页指标正确；全量/回滚行为与 `verify_prompt_catalog_live.py` 门禁兼容。
 
@@ -193,12 +230,13 @@
 
 | 变更 | 位置 |
 |------|------|
-| `chat_message_feedback` | `docker/mysql/init/11-sunshine-orchestrator.sql` 追加 |
-| `19-sunshine-ops.sql`（新建）：`llm_usage_record` / `llm_usage_daily` / `tenant_quota` / `model_route_policy` / `api_key` / `optimization_proposal` | `docker/mysql/init/`（一项目一文件，禁 Flyway） |
+| `chat_message_feedback`（含 `run_id`/`round_id` v2） | `docker/mysql/init/11-sunshine-orchestrator.sql` 追加 |
+| `harness_eval_result`（v2：Evaluator task PASS/FAIL 落库） | `docker/mysql/init/11-sunshine-orchestrator.sql` 追加 |
+| `19-sunshine-ops.sql`（新建）：`llm_usage_record`（含 `call_scene`/`run_id`/`round_id` v2）/ `llm_usage_daily` / `tenant_quota` / `model_route_policy`（`call_scene` 主键）/ `api_key` / `optimization_proposal` | `docker/mysql/init/`（一项目一文件，禁 Flyway） |
 | 前端新页 `/ops`（Badcase/用量/密钥/优化 Tab）+ 路由策略编辑 | `sunshine-ui/src/views/OpsView.vue`（Codex 简约风格，`--sun-*` 变量） |
-| llm-gateway | `TokenUsageCollector`、MQ 生产者、配额切面、`ModelRouter` 场景路由 |
-| orchestrator | Badcase API、`scene` 注入、`ToolSetResolver` retrieval 模式、`PromptComposer` 灰度分流 |
-| 新 Nacos 配置 | 模型单价、限流规则（非提示词参数，走 `docs/nacos/*.yaml` + `sync_nacos.py`） |
+| llm-gateway | `TokenUsageCollector`、MQ 生产者、配额切面、`ModelRouter` 场景路由（`call_scene`） |
+| orchestrator | Badcase API、`call_scene` 注入、`ToolSetResolver` retrieval 分层模式、`PromptComposer` 灰度分流 |
+| 新 Nacos 配置 | 模型单价、限流规则、`agent.tool.inject` 模式开关（非提示词参数，走 `docs/nacos/*.yaml` + `sync_nacos.py`） |
 
 ---
 
@@ -208,9 +246,12 @@
 |------|------|
 | 5.2 流式 usage 缺失导致计量偏差 | 估算标记 `estimated` + 定期对账；优先选支持 stream usage 的厂商参数 |
 | 5.5 工具检索漏召回导致 ReAct 能力回退 | HITL/元工具白名单必注入 + golden-set 门禁 + `full` 模式可回切 |
-| 5.7 分流不稳定导致指标不可比 | conversation_id 哈希稳定分流；同会话不换版本 |
+| 5.5 动态 Top-K 破坏 Tier 0 前缀（v2） | 分层注入：工具名列表进 Tier 0 静态 + schema 进 Tier 2 尾部；≤阈值用 `full` 不并存 |
+| 5.7 分流不稳定导致指标不可比 | conversation_id 哈希稳定分流；同会话/同 run 不换版本 |
 | 5.4 自动优化引入回归 | MVP 强制人工确认发布；提案必须附复评对比报告 |
 | 开放 API 鉴权攻击面扩大 | key 哈希存储、scope 最小化、Sentinel 按 key 限流、全量审计 |
+| `call_scene` 与用户 `scene` 混用（v2） | 命名隔离（§5.3.2 注记）；BFF/Gateway 只透传不自填 |
+| harness 计量粒度不足导致点踩无法归因（v2） | feedback/usage 预置 `run_id`+`round_id` + Evaluator 结果落库（§5.1 注记） |
 
 ---
 
@@ -221,3 +262,7 @@
 - **D3（不做通用多 Agent 通信总线）**：委派（spawn_subagent）/ 会诊（peer-collab）/ 编排（workflow）三范式已覆盖当前场景；通用消息总线在出现真实"数十 Agent 自由组网"需求前不预建。
 - **D4（Optimizer 半自动）**：MVP 每次发布必须人工确认，与平台 HITL 哲学一致；全自动调优待 5.4 闭环稳定后再评估。
 - **D5（AS2 遗留先行）**：启动 5.x 前需先人工验收 AS2 迁移遗留项（e2e 3 例选择器漂移修复、ReAct 停→续跑 / kill-15 重启恢复交互式验收）。
+- **D6（scene / call_scene 命名隔离，v2）**：`scene` 保留用户场景语义（unified-routing `RoutingResult.scene`）；llm-gateway 模型路由用 **`call_scene`**（调用点）。避免 harness 上线后同名字段承载两义。
+- **D7（5.5 工具分层注入，v2）**：工具名列表进 Tier 0 静态 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 二选一不并存。对齐五层 spec §5.5.3 前缀稳定性。
+- **D8（harness 计量维度，v2）**：feedback/usage 预置 `run_id`+`round_id`，Evaluator 结果落 `harness_eval_result`；phase5 阶段定死字段，harness 直接写入。
+- **D9（phase5 触发拆分，v2）**：5.2/5.3/5.5 随 harness 前置启动，5.1/5.4/5.7 等 harness 稳定后接，5.6 按需。

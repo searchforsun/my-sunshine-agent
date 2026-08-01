@@ -9,18 +9,30 @@ public record AssembledContext(
         String farSummaryBlock,
         List<ChatTurn> midTurns,
         List<ChatTurn> nearTurns,
-        String l3MaterialBlock
+        String l3MaterialBlock,
+        String projectGuideBlock
 ) {
     public static AssembledContext empty() {
-        return new AssembledContext("", "", List.of(), List.of(), "");
+        return new AssembledContext("", "", List.of(), List.of(), "", "");
     }
 
     public static AssembledContext forSubAgent() {
         return empty();
     }
 
+    /** 5 参便捷构造：无项目规范块（测试/直连路径用）。 */
+    public AssembledContext(
+            String l2SystemBlock,
+            String farSummaryBlock,
+            List<ChatTurn> midTurns,
+            List<ChatTurn> nearTurns,
+            String l3MaterialBlock) {
+        this(l2SystemBlock, farSummaryBlock, midTurns, nearTurns, l3MaterialBlock, "");
+    }
+
     public boolean hasAnyLayer() {
         return hasText(l2SystemBlock) || hasText(farSummaryBlock) || hasText(l3MaterialBlock)
+                || hasText(projectGuideBlock)
                 || (midTurns != null && !midTurns.isEmpty())
                 || (nearTurns != null && !nearTurns.isEmpty());
     }

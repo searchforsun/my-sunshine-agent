@@ -1,18 +1,26 @@
-import { h, ref } from 'vue'
+import { h, ref, watch } from 'vue'
 import { NIcon, type TreeDragInfo, type TreeOption } from 'naive-ui'
 import {
   DocumentTextOutline,
   FolderOpenOutline,
   FolderOutline,
 } from '@vicons/ionicons5'
-import { listSandboxWorkspace, type SandboxFsNode } from '../api/sandboxWorkspace'
+import { listSandboxWorkspace, listWorkspaceSandboxFiles, type SandboxFsNode } from '../api/sandboxWorkspace'
 import { setSandboxPathDrag } from '../utils/sandboxPathChip'
 import { formatFileSize } from '../utils/buildFileTree'
 
 export interface UseSandboxFileTreeOptions {
   getConversationId: () => string
+  getWorkspaceId?: () => string | null
+  /** 工作区模式下选中的 checkoutId（缺省 main），根目录直接映射项目 checkout */
+  getCheckoutId?: () => string | null
+  /** 工作区模式根节点显示名（项目名） */
+  getWorkspaceName?: () => string | null
   onOpenFile: (path: string) => void | Promise<void>
 }
+
+/** 打开工作区时文件树加载超时（docker stop 后需重启容器，可能较慢） */
+const LOAD_TIMEOUT_MS = 15000
 
 export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
   const treeLoading = ref(false)
@@ -20,6 +28,10 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
   const treeData = ref<TreeOption[]>([])
   const expandedKeys = ref<string[]>([])
   const selectedKeys = ref<string[]>([])
+  /** 工作区模式下项目根 key（/workspace/{checkoutId}）；普通对话沙箱为空 */
+  const workspaceRootKey = ref('')
+  /** 加载超时标记：由抽屉层触发「自动返回」（关闭抽屉） */
+  const timedOut = ref(false)
 
   function dirIcon(expanded: boolean) {
     return () => h(NIcon, {
@@ -62,19 +74,74 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     })
   }
 
-  async function fetchChildren(path: string): Promise<TreeOption[]> {
+  function fetchChildrenRaw(path: string): Promise<TreeOption[]> {
     const conversationId = options.getConversationId()
-    if (!conversationId) return []
-    const data = await listSandboxWorkspace(conversationId, path)
-    return toOptions(data.entries ?? [])
+    if (conversationId) {
+      return listSandboxWorkspace(conversationId, path).then(data => toOptions(data.entries ?? []))
+    }
+    const wsId = options.getWorkspaceId?.()
+    if (wsId) {
+      return listWorkspaceSandboxFiles(wsId, path).then(data => toOptions(data.entries ?? []))
+    }
+    return Promise.resolve([])
+  }
+
+  /** 带超时的目录列举；超时抛「加载超时」 */
+  async function fetchChildren(path: string): Promise<TreeOption[]> {
+    const task = fetchChildrenRaw(path)
+    const timer = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('加载超时')), LOAD_TIMEOUT_MS)
+    })
+    return Promise.race([task, timer])
   }
 
   async function loadRoots() {
     const conversationId = options.getConversationId()
-    if (!conversationId) return
+    const wsId = options.getWorkspaceId?.()
+    if (!conversationId && !wsId) return
     treeLoading.value = true
     errorText.value = ''
+    timedOut.value = false
     try {
+      // 工作区模式：项目根（类 VSCode 打开项目 checkout 目录）+ skills 根
+      const checkoutId = options.getCheckoutId?.()
+      if (wsId && checkoutId) {
+        const rootPath = `/workspace/${checkoutId}`
+        // 项目根失败/超时 → 整体失败（可能容器未就绪）；skills 独立失败不阻塞
+        const kids = await fetchChildren(rootPath)
+        const skillKids = await fetchChildren('/skills').catch(() => [] as TreeOption[])
+        workspaceRootKey.value = rootPath
+        treeData.value = [
+          {
+            key: rootPath,
+            label: options.getWorkspaceName?.() || checkoutId,
+            isLeaf: false,
+            path: rootPath,
+            isDir: true,
+            children: kids,
+            prefix: dirIcon(true),
+          },
+          {
+            key: '/skills',
+            label: 'skills',
+            isLeaf: false,
+            path: '/skills',
+            isDir: true,
+            children: skillKids,
+            prefix: dirIcon(true),
+          },
+        ]
+        expandedKeys.value = [rootPath, '/skills']
+        return
+      }
+      // 任务工作区但尚未选择 checkout（新任务未发送）：无代码，空态由抽屉提示
+      if (wsId) {
+        workspaceRootKey.value = ''
+        treeData.value = []
+        expandedKeys.value = []
+        return
+      }
+      workspaceRootKey.value = ''
       const [wsKids, skillKids] = await Promise.all([
         fetchChildren('/workspace').catch(() => [] as TreeOption[]),
         fetchChildren('/skills').catch(() => [] as TreeOption[]),
@@ -101,7 +168,9 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
       ]
       expandedKeys.value = ['/workspace', '/skills']
     } catch (e) {
-      errorText.value = e instanceof Error ? e.message : '加载失败'
+      const timed = e instanceof Error && e.message === '加载超时'
+      timedOut.value = timed
+      errorText.value = timed ? '加载超时，工作区容器可能尚未就绪' : (e instanceof Error ? e.message : '加载失败')
       treeData.value = []
     } finally {
       treeLoading.value = false
@@ -119,22 +188,40 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     return null
   }
 
+  /** 项目名（getWorkspaceName）异步就绪后，把根节点 label 从 checkoutId 刷新为项目名 */
+  watch(
+    () => options.getWorkspaceName?.(),
+    (name) => {
+      if (!name || !workspaceRootKey.value) return
+      const root = findNode(treeData.value, workspaceRootKey.value)
+      if (root && root.label !== name) {
+        root.label = name
+        treeData.value = [...treeData.value]
+      }
+    },
+  )
+
   /** 仅刷新指定根目录子树（保留另一根目录已加载内容） */
   async function reloadBranch(rootPath: '/workspace' | '/skills') {
     const conversationId = options.getConversationId()
-    if (!conversationId) return
+    const wsId = options.getWorkspaceId?.()
+    if (!conversationId && !wsId) return
+    // 工作区模式下「workspace」分支 = 项目 checkout 根
+    const effectiveRoot = rootPath === '/workspace' && workspaceRootKey.value
+      ? workspaceRootKey.value
+      : rootPath
     if (!treeData.value.length) {
       await loadRoots()
       return
     }
-    const root = findNode(treeData.value, rootPath)
+    const root = findNode(treeData.value, effectiveRoot)
     if (!root) {
       await loadRoots()
       return
     }
-    root.children = await fetchChildren(rootPath)
+    root.children = await fetchChildren(effectiveRoot)
     const expandedUnder = expandedKeys.value
-      .filter((k) => k.startsWith(`${rootPath}/`))
+      .filter((k) => k.startsWith(`${effectiveRoot}/`))
       .sort((a, b) => a.length - b.length)
     for (const dir of expandedUnder) {
       const node = findNode(treeData.value, dir)
@@ -237,11 +324,13 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     expandedKeys.value = []
     selectedKeys.value = []
     errorText.value = ''
+    timedOut.value = false
   }
 
   return {
     treeLoading,
     errorText,
+    timedOut,
     treeData,
     expandedKeys,
     selectedKeys,

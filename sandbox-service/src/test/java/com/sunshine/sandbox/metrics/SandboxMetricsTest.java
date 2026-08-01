@@ -24,7 +24,8 @@ class SandboxMetricsTest {
         assertThat(registry.get("sandbox.session.active").gauge().value()).isEqualTo(0.0);
         store.put(new SandboxSession(
                 "s1", "c1", temp,
-                new SandboxPolicy("docker", "img", 30, 256, 0.5, List.of(), List.of())));
+                new SandboxPolicy("docker", "img", 30, 256, 0.5, List.of(), List.of(), null),
+                null));
         assertThat(registry.get("sandbox.session.active").gauge().value()).isEqualTo(1.0);
         store.remove("s1");
         assertThat(registry.get("sandbox.session.active").gauge().value()).isEqualTo(0.0);

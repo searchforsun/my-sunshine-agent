@@ -33,9 +33,10 @@ public class SandboxWorkspaceController {
     public Mono<FsContentDto> content(
             @PathVariable("id") String id,
             @RequestParam("path") String path,
+            @RequestParam(value = "offset", required = false, defaultValue = "0") int offset,
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return ReactiveBlocking.call(() -> workspaceService.content(id, userId, tenantId, path));
+        return ReactiveBlocking.call(() -> workspaceService.content(id, userId, tenantId, path, offset));
     }
 
     @GetMapping("/conversations/{id}/sandbox/workspace/status")

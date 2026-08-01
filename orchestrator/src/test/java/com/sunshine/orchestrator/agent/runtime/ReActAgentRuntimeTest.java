@@ -53,6 +53,8 @@ class ReActAgentRuntimeTest {
     @Mock
     private SandboxSessionLifecycle sandboxSessionLifecycle;
     @Mock
+    private com.sunshine.orchestrator.conversation.repo.ChatConversationRepository conversationRepo;
+    @Mock
     private ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
 
     private ReActAgentRuntime runtime;
@@ -65,7 +67,8 @@ class ReActAgentRuntimeTest {
         lenient().when(spawnRunRegistry.getIfAvailable()).thenReturn(null);
         runtime = new ReActAgentRuntime(
                 agentHolder, promptComposer, groundingChecker, groundingProperties,
-                taskBoardService, executionProperties, sandboxSessionLifecycle, spawnRunRegistry);
+                taskBoardService, executionProperties, sandboxSessionLifecycle,
+                conversationRepo, spawnRunRegistry);
     }
 
     @Test
