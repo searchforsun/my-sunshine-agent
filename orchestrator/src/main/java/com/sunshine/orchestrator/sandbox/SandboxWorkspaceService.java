@@ -54,6 +54,36 @@ public class SandboxWorkspaceService {
         return resp;
     }
 
+    /** 会话级别：递归列举文件索引（扁平化路径列表） */
+    public FsNodeDto.FsIndexResponse index(
+            String conversationId, String userId, String tenantId, String path, int maxDepth) {
+        assertBrowsablePath(path);
+        String sessionId = requireOrEnsureSession(conversationId, userId, tenantId);
+        conversationSandboxStore.touch(tenantId, conversationId);
+        FsNodeDto.FsIndexResponse resp = sandboxClient.listFsIndex(sessionId, path, maxDepth);
+        if (resp == null) {
+            throw new BizException(OrchestratorErrorCode.SANDBOX_WORKSPACE_NOT_FOUND);
+        }
+        return resp;
+    }
+
+    /** 工作区级别：递归列举文件索引（扁平化路径列表） */
+    public FsNodeDto.FsIndexResponse indexByWorkspace(
+            String workspaceId, String tenantId, String path, int maxDepth) {
+        assertBrowsablePath(path);
+        String sessionId = workspaceSandboxStore.find(tenantId, workspaceId)
+                .map(WorkspaceSandboxBinding::sessionId)
+                .orElseGet(() -> {
+                    log.info("[SandboxWorkspace] binding not found, ensuring session ws={}", workspaceId);
+                    return workspaceSandboxLifecycle.ensureWorkspaceSession(workspaceId, "system", tenantId);
+                });
+        FsNodeDto.FsIndexResponse resp = sandboxClient.listFsIndex(sessionId, path, maxDepth);
+        if (resp == null) {
+            throw new BizException(OrchestratorErrorCode.SANDBOX_WORKSPACE_NOT_FOUND);
+        }
+        return resp;
+    }
+
     public FsContentDto content(
             String conversationId, String userId, String tenantId, String path, int offset) {
         assertBrowsablePath(path);

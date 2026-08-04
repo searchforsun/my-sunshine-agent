@@ -19,7 +19,7 @@
 | [sandbox-tool-cancel](../superpowers/specs/2026-07-18-sandbox-tool-cancel-design.md) | **✅** exec/grep/glob 单工具取消（杀进程）· 主行「已取消」· 同族预算 3 · Live `verify_sandbox_tool_cancel_live` |
 | [sandbox-diff-line-numbers](../superpowers/specs/2026-07-21-sandbox-diff-line-numbers-design.md) | **✅** 工作区代码预览绝对行号 · 时间线 write/edit Git 双栏 diff（`metadata.editDiff` ±3 上下文） |
 | [sandbox-repo-binding](../superpowers/specs/2026-07-28-sandbox-repo-binding-design.md) | **已被 task-workspace-codex 吸收** 工作区绑定 Git 项目：用户级 GitHub/GitLab 令牌（T1）+ egress per-session（T0）保留有效；粒度升级为工作区级 |
-| [task-workspace-codex](../superpowers/specs/2026-07-28-task-workspace-codex-design.md) | **待评审** Codex 式智能体工作区：强制绑定 Git repo+分支 · 完全体沙箱（出网+任意命令）· 硬件档位 · 多会话读并发/写串行任务流 · 「新智能体」入口（强制 ReAct） |
+| [task-workspace-codex](../superpowers/specs/archive/2026-07-28-task-workspace-codex-design.md) | **✅ 已实现** Codex 式智能体工作区：强制绑定 Git repo+分支 · 完全体沙箱（出网+任意命令）· 硬件档位 · 多会话任务流 · 「新任务」入口 · 实现演进差异见 spec §12（裸镜像库 + 无主 checkout + 完整 git 工作流替代 mergeToMain） |
 
 ## 运维与示例
 

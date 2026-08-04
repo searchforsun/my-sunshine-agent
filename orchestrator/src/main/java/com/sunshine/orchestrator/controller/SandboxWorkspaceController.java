@@ -29,6 +29,16 @@ public class SandboxWorkspaceController {
         return ReactiveBlocking.call(() -> workspaceService.list(id, userId, tenantId, path));
     }
 
+    @GetMapping("/conversations/{id}/sandbox/workspace/index")
+    public Mono<FsNodeDto.FsIndexResponse> listIndex(
+            @PathVariable("id") String id,
+            @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
+            @RequestParam(value = "maxDepth", required = false, defaultValue = "64") int maxDepth,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> workspaceService.index(id, userId, tenantId, path, maxDepth));
+    }
+
     @GetMapping("/conversations/{id}/sandbox/workspace/content")
     public Mono<FsContentDto> content(
             @PathVariable("id") String id,

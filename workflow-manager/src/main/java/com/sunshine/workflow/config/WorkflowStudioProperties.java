@@ -25,7 +25,7 @@ public class WorkflowStudioProperties {
     @Setter
     public static class CatalogDefaults {
 
-        private String intentAfter = "{query}将按「{displayName}」流程处理";
+        private String intentAfter = "将按「{displayName}」流程处理";
     }
 
     @Getter

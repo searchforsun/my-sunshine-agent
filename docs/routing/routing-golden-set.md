@@ -50,15 +50,15 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 
 ## A. PLAN_WORKFLOW（L1 结构守卫）
 
-**预期 intent after**：「…将动态规划多步执行」
+**预期 intent after**：「将动态规划多步执行」
 
 ### Plan 可视化（成功路径 — 含静态 WORKFLOW）
 
-意图步之后应出现 **「执行计划」** + **Plan DAG**（`PlanWorkflowPanel`），而非 ReAct 的「规划推理」或逐步 `node-*` 卡片：
+意图步之后应出现 **「执行计划」** + **Plan DAG**（`PlanWorkflowPanel`），而非 ReAct 的「深度思考」或逐步 `node-*` 卡片：
 
 - **动态 Plan（L1/L3）**：Planner 产出 JSON → `PlanWorkflowExecutor`
 - **静态 Workflow（L2）**：DB 定义经 `StaticPlanAdapter` 物化为 Plan → `WorkflowExecutor`；plan 步 `detail` 含 **`planId=`**（与动态 Plan 同门控）
-- **不应**在成功路径出现：`规划推理` / `think` / 自主 ReAct 工具链（除非 Planner 失败降级，见下）
+- **不应**在成功路径出现：`深度思考` / `think` / 自主 ReAct 工具链（除非 Planner 失败降级，见下）
 - **`think` 仅属 ReAct**：answer 的 reasoning 在 `node-*` 步骤与 Plan 抽屉「综合分析」，**不得**再合成顶层 `think` 行
 
 ```
@@ -92,7 +92,7 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 | **执行计划** after「规划经 N 次修正后开始执行」 | Replan 后校验通过 |
 | **执行计划** 一行摘要「Plan 校验未通过，降级为 ReAct」、**无 DAG 图** | 校验耗尽，改 ReAct 执行 |
 | 有 `执行计划` 摘要含「Planner 未产出…改由自主智能体」 | Planner 调用/解析失败 |
-| 有 `执行计划` + DAG + 后续 `规划推理` | 旧版行为；升级后 reject 不应再出 DAG |
+| 有 `执行计划` + DAG + 后续 `深度思考` | 旧版行为；升级后 reject 不应再出 DAG |
 
 执行期降级见 [§H](#h-plan-workflow-重试与降级执行期)。
 
@@ -330,8 +330,8 @@ Live：`python scripts/verify_execution_preference.py`
 ### F3. Timeline（成功路径）
 
 ```
-识别意图 → …将由自主智能体分析并作答
-规划推理 → think*
+识别意图 → 将由自主智能体分析并作答
+深度思考 → think*（think_summary 结构化摘要替换标题，无摘要兜底「深度思考」）
 任务清单 → metadata.tasks[]（锚定在刚结束的 think 之后；Hook 写入 startedAt）
 工具调用 → tool-*（manage_tasks 不上 tool 行）
 …
@@ -374,7 +374,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 > **状态**：✅ L1 路由单测 + Live（2026-07-08）；Timeline 与 **§K** 统一（`expert-convene` + `expert-*` + Synthesizer 正文，无 `peer-collab` / `generate`）  
 > **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md) · Catalog `routing-rule.peer-phrase`（非 `agent.peer.*` 专家协作 prompt）
 
-**预期 intent after**：「…将由多专家协作交叉验证」（`agent.timeline.intent.modes.peer-collab`）
+**预期 intent after**：「将由多专家协作交叉验证」（`agent.timeline.intent.modes.peer-collab`）
 
 ### E1. 应对 → `peer-collab`
 

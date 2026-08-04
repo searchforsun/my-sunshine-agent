@@ -64,7 +64,7 @@ workflow:
       llm:
         max-attempts: 2
   catalog-defaults:
-    intent-after: "{query}将按「{displayName}」流程处理"
+    intent-after: "将按「{displayName}」流程处理"
   node-param-defaults:
     rag:
       top-k: 3

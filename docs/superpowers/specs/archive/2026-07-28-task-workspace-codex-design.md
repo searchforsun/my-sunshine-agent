@@ -1,9 +1,9 @@
 # Codex 式智能体工作区（Agent Workspace）设计
 
-> **阶段**：4.5 沙箱 · 增量 · **状态**：待评审
-> **日期**：2026-07-28
+> **阶段**：4.5 沙箱 · 增量 · **状态**：✅ 已实现（2026-08-03 核对；实现见 §12 演进差异）
+> **日期**：2026-07-28 · **实现核对**：2026-08-03
 > **定位**：在「对话级轻量沙箱」（skills 脚本场景）之外，新增**工作区级完全体沙箱**——绑定 Git 项目、多会话共用、用户显式选择 checkout（主分支/worktree，无锁无自动隔离）、硬件档位可配，形成 Codex 式编码智能体产品形态
-> **关联**：[sandbox-repo-binding](./2026-07-28-sandbox-repo-binding-design.md)（粒度升级为本设计的子集）· [sub-agent-sandbox-default](./2026-07-17-sub-agent-sandbox-default-design.md) · [sandbox-container-lifecycle](./2026-07-17-sandbox-container-lifecycle-design.md) · [harness-loop-enhancement](./2026-07-28-harness-loop-enhancement-design.md)（长任务体验依赖）· 索引 [docs/sandbox/README.md](../../sandbox/README.md)
+> **关联**：[sandbox-repo-binding](./2026-07-28-sandbox-repo-binding-design.md)（已归档，粒度升级为本设计的子集）· [sub-agent-sandbox-default](../2026-07-17-sub-agent-sandbox-default-design.md) · [sandbox-container-lifecycle](../2026-07-17-sandbox-container-lifecycle-design.md) · [harness-loop-enhancement](../2026-07-28-harness-loop-enhancement-design.md)（长任务体验依赖）· 索引 [docs/sandbox/README.md](../../../sandbox/README.md)
 
 ---
 
@@ -324,3 +324,71 @@ Codex 式长任务体验高度依赖 harness loop 能力（**本设计不重复�
 - 工作区级多容器（一工作区一容器 + 容器内多 checkout；多容器编排属后续 K8s 化议题）
 - 工作区协作（多人共享同一工作区；v1 `user_id` 单属主）
 - 自动 purge 工作区（手动销毁，防误删生产资料）
+
+---
+
+## 12. 实现演进差异（2026-08-03 核对）
+
+> 本 spec 原始设计为评审稿，落地时在几个关键点上做了**简化与演进**。下方对照实现代码 SSOT，标注差异与原因；以实现为准，spec 原文保留作为决策记录。
+
+### 12.1 已按设计落地（一致项）
+
+| 设计点 | 实现位置 |
+|--------|----------|
+| `agent_workspace` 表 + CRUD（repoUrl 必填、`cpus<=4`/`mem<=12288` 护栏） | `AgentWorkspaceController` · `AgentWorkspaceEntity/Repository` · SQL `V18` |
+| `chat_conversation` 加 `kind`/`workspace_id`/`checkout_path` | SQL `V19` · `ChatConversationEntity` |
+| `WorkspaceSandboxBinding`（Redis `sandbox:ws:{tenant}:{wsId}`，无 purge ZSET） | `WorkspaceSandboxStore`（仅 idle ZSET） |
+| 工作区容器 `bridge` 直出网；普通 Chat 仍 `none` 不回归 | `SandboxSessionService` `externalWorkspace` -> `--network bridge` |
+| ExecGuard 硬拒防自毁仍生效（task 走精简 TASK_RULES） | `SandboxExecGuard.denyReason(cmd, kind)` |
+| Reaper 工作区仅 idle stop、不自动 purge；DELETE 手动销毁+归档 | `SandboxSessionReaper.reapWorkspaceIdleStop` · `destroyWorkspaceSession` |
+| 完全体镜像 `sunshine-sandbox-full`（git/build-essential/node/npm/curl/vim） | `docker/sandbox-full/Dockerfile` |
+| 用户级 Git 令牌 + `GET /api/auth/git-credentials`，GIT_ASKPASS 注入不落盘 | `WorkspaceSandboxLifecycle.cloneMirrorRepo` · auth `InternalGitCredentialController` |
+| 前端「新任务」入口（延迟建菜单）+ `WorkspaceView` + 工作区分类 | `ChatView` `newTaskMode`/`pendingWorkspace` · `WorkspaceView.vue` |
+
+### 12.2 关键差异（实现已偏离原设计）
+
+1. **clone/存储模型：普通 clone -> 共享裸镜像库**
+   - 原设计 §4.2：宿主机普通 clone 到 `/workspace/main`，主 checkout 直接挂载给 AI。
+   - 实现：宿主机 `git clone --mirror` 成**共享裸镜像库** `repos/{wsId}.git`，挂容器 `/opt/git`（PathJail 外，AI 读不到）；会话工作目录均为容器内懒建 worktree。
+   - 收益：分支对象全量共享、凭据落 `/opt/git` 不暴露给模型、push 走常规 refspec（已 `--unset remote.origin.mirror`）。
+
+2. **「主分支 checkout」概念取消**
+   - 原设计 §2.3/§4.3：用户创建会话二选一「主分支 `/workspace/main` / worktree `/workspace/branches/{branch}`」，并给「两会话同选主分支」second-write-wins 轻提示。
+   - 实现：**无主 checkout**，一律 worktree `/workspace/{checkoutId}`（`wt-{uuid}`），分支↔目录一一对应；`WorkspaceCheckoutService.ensureCheckout` 按分支幂等复用已有 worktree。
+   - 随之「同主分支共用 checkout + 轻提示」整套语义**未落地**（无主分支则无共享语义）。
+
+3. **`mergeToMain` 未做，换为完整 Git 工作流**
+   - 原设计 §4.3：抽屉「合并到主分支」-> 冲突返回文件清单，由用户决定。
+   - 实现：全代码库无 merge；取而代之是 `WorkspaceGitService` 的 `status/stage/commit/push/pull` + `/sync`（fetch --all / 重新 clone），前端 `GitBranchSelector` + 会话内 git 操作按钮。
+   - 合并语义变为：worktree 内 commit -> push 远程 -> 用户自行处理（对齐 Git 原生工作流，平台不介入合并）。
+
+4. **懒开箱 -> 创建即开箱 + 手动同步**
+   - 原设计 §4.1/§4.2：创建时不立即开箱，首会话/首工具才 `ensureWorkspaceSession`。
+   - 实现：`POST /api/agent-workspaces` 创建后**后台线程立即开箱**（clone + create 容器）；另加 `POST /{id}/sync` 手动刷新、clone 失败自动重试。
+   - 原因：避免首条消息才 clone 的长等待，前置到创建时后台进行。
+
+5. **「强制 ReAct」仅前端隐藏，后端未锁死**
+   - 原设计 §2.2：`kind=task` 强制 `execution_preference=react`（复用 `ForcedExecutionRouter`）。
+   - 实现：前端 task 会话隐藏 `ExecutionModeSelector`，但 `useExecutionPreference` 默认仍 `auto`/本地存储值，`ConversationService.create` 未写死 `react`。
+   - **缺口**：后端未真正锁死模式，task 会话理论上仍可走其他模式。
+
+6. **硬件档位名存实亡**
+   - 原设计 §4.4：Nacos `agent.sandbox.profiles.full.allowed-presets` 三档 + `validateAndResolve` 校验。
+   - 实现：`AgentSandboxProperties.ProfilePreset` 已定义，但 **Nacos `sunshine-orchestrator.yaml` 无 `profiles` 配置**；实际是工作区落库用户自定义 `memory_mb`/`cpus` + Controller 硬编码上限。`sandbox_profile` 列存了但未走档位解析。
+   - **缺口**：档位预设未生效，仅硬护栏生效。
+
+### 12.3 实现新增（spec 未覆盖）
+
+- `WorkspaceGitService`：完整 git 操作（`safe.directory` 豁免、askpass 注入 push/pull/fetch）。
+- `WorkspaceProjectGuideEntity`：项目规范（类 CLAUDE.md，注入 task 场景上下文，有独立 spec 跟进）。
+- `SandboxWorkspaceService`：工作区文件浏览 API（`/sandbox/workspace`，无需 conversationId）。
+- `PromptComposer` scene-overlay（`resolveSceneOverlay(kind)`）+ `workspaceCheckout` overlay（提示 AI 当前工作目录）。
+- `POST /{id}/checkouts/ensure` 幂等端点、`ReactiveBlocking` 规避 reactor 线程阻塞。
+
+### 12.4 明确不做 / 已补齐
+
+| 项 | 结论 | 说明 |
+|----|------|------|
+| 强制 ReAct 锁死 | **明确不做** | task 会话前端已隐藏模式选择器；后端不锁死 mode，保留用户在 task 会话内切其他模式的能力（与「不强制」产品决策一致） |
+| 硬件档位 Nacos 配置 + 校验 | **✅ 已补齐** | Nacos `agent.sandbox.profiles.full.allowed-presets` 三档；`AgentSandboxProperties.validateAndResolve` 接入 `AgentWorkspaceController.create`；前端 WorkspaceView 档位下拉；Live `verify_agent_workspace_live.py` 覆盖非法档位 400 + 合法档位落库 |
+| `verify_agent_workspace_live.py` 覆盖增强 | **✅ 已补齐** | 现 17 项断言：档位校验 + checkout list/ensure 幂等 + clone 真实成功 + task 会话绑定 + 归档 |

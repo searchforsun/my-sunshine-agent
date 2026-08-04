@@ -31,6 +31,7 @@ public class DynamicToolkitFactory {
 
     private final RagTool ragTool;
     private final SpawnSubagentTool spawnSubagentTool;
+    private final ThinkSummaryTool thinkSummaryTool;
     private final GenericRemoteToolFactory remoteToolFactory;
     private final ToolCatalogService toolCatalogService;
     private final ToolSetResolver toolSetResolver;
@@ -106,6 +107,10 @@ public class DynamicToolkitFactory {
             }, () -> missing.add(toolName));
         }
 
+        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {
+            tk.registerTool(thinkSummaryTool);
+            registered.add(ThinkSummaryTool.NAME);
+        }
         if (scope == ToolkitScope.MAIN) {
             AgentExecutionProperties.React react = executionProperties.getReact();
             // 原生 todo_write 由 ReActAgent.enableTaskList 在 build 时注册；timeline tasks 步投影由 TodoTasksBridge 完成。

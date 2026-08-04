@@ -19,11 +19,14 @@ const props = withDefaults(defineProps<{
   skillPreview?: boolean
   /** 流式输出中：未闭合 mermaid 用稳定占位，闭合后立即渲染 */
   deferMermaid?: boolean
+  /** 文件预览场景：当前文件容器路径，用于解析 markdown 内相对链接 */
+  basePath?: string
 }>(), {
   compact: false,
   scrollable: false,
   skillPreview: false,
   deferMermaid: false,
+  basePath: '',
 })
 
 const rootRef = ref<HTMLElement | null>(null)
@@ -47,6 +50,7 @@ async function enhanceDom() {
     enhanceStaticMarkdown(rootRef.value, {
       deferMermaid: props.deferMermaid,
       source: props.source,
+      basePath: props.basePath,
     })
   }
 }

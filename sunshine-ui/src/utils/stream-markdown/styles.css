@@ -315,3 +315,25 @@ body.smd-mermaid-overlay-open {
 [data-theme="light"] .smd-toolbtn:hover {
   background: rgba(0, 0, 0, 0.06);
 }
+
+/* ── 沙箱路径链接（inline code 增强为蓝色可点击，保留 code 原有样式仅改色） ── */
+.msg-md code.smd-sandbox-path {
+  color: var(--sun-blue, #58a6ff);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.msg-md code.smd-sandbox-path:hover {
+  color: color-mix(in srgb, var(--sun-blue, #58a6ff) 88%, white);
+  text-decoration: underline;
+}
+
+/* 标准 markdown 链接增强为工作区路径：移除 href 后保持链接观感（蓝色+下划线） */
+.msg-md a.smd-sandbox-path {
+  color: var(--sun-blue, #58a6ff);
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.msg-md a.smd-sandbox-path:hover {
+  color: color-mix(in srgb, var(--sun-blue, #58a6ff) 88%, white);
+}

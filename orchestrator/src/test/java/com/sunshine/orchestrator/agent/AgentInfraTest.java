@@ -65,6 +65,7 @@ class AgentInfraTest {
         DynamicToolkitFactory factory = new DynamicToolkitFactory(
                 ragTool,
                 Mockito.mock(SpawnSubagentTool.class),
+                Mockito.mock(com.sunshine.orchestrator.agent.ThinkSummaryTool.class),
                 remoteToolFactory,
                 toolCatalogService,
                 toolSetResolver,
@@ -81,7 +82,8 @@ class AgentInfraTest {
         assertThat(toolkit.getToolNames()).contains(
                 RagTool.NAME,
                 "sdk__sunshine-finance__list_my_expenses",
-                "sdk__sunshine-oa__list_oa_tasks");
+                "sdk__sunshine-oa__list_oa_tasks",
+                ThinkSummaryTool.NAME);
     }
 
     @Test

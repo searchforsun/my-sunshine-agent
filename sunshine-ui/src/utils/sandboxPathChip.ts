@@ -8,10 +8,122 @@ export interface SandboxPathDragPayload {
   isDir: boolean
 }
 
-const PATH_TOKEN_RE = /`(\/(?:workspace|skills)(?:\/[^`\n]*)?)`/g
+const PATH_TOKEN_RE = /`(\/(?:workspace|skills)(?:\/[^`\n]*)?)`(?:\s+L(\d+)(?:-(\d+))?)?/g
+
+export interface SandboxPathMatch {
+  index: number
+  end: number
+  path: string
+  lineStart?: number
+  lineEnd?: number
+}
 
 export function isSandboxContainerPath(path: string): boolean {
   return /^\/(?:workspace|skills)(?:\/|$)/.test(path.trim())
+}
+
+/**
+ * 基于后端文件索引精确匹配路径（非启发式）。
+ * window.__smd_sandboxIndex 由会话级路径索引（进入会话即加载）填充（真实文件路径集合）。
+ * - 绝对路径（/workspace/... /skills/...）：直接查集合；索引未就绪时仍信任（确定路径）
+ * - 相对路径：结合 workspaceRoot 拼接后查集合；索引未就绪时不识别（避免误识别）
+ */
+export function matchSandboxPathByIndex(
+  rawPath: string,
+  workspaceRoot: string,
+): { resolved: string; hit: boolean } {
+  const t = rawPath.trim().replace(/\/+$/, '')
+  if (!t) return { resolved: '', hit: false }
+  const root = workspaceRoot.trim().replace(/\/+$/, '')
+  const idx = (window as any).__smd_sandboxIndex as Set<string> | undefined
+  // 绝对路径
+  if (isSandboxContainerPath(t)) {
+    if (idx && idx.size > 0) {
+      // 索引就绪：精确匹配（含目录前缀匹配，支持目录路径点击）
+      if (idx.has(t)) return { resolved: t, hit: true }
+      for (const p of idx) {
+        if (p.startsWith(t + '/')) return { resolved: t, hit: true }
+      }
+      return { resolved: '', hit: false }
+    }
+    // 索引未就绪：绝对路径是确定的，仍允许点击
+    return { resolved: t, hit: false }
+  }
+  // 相对路径：必须有 root 才能解析
+  if (!root || !isSandboxContainerPath(root)) return { resolved: '', hit: false }
+  const resolved = `${root}/${t}`
+  if (idx && idx.size > 0) {
+    if (idx.has(resolved)) return { resolved, hit: true }
+    // 目录前缀匹配
+    for (const p of idx) {
+      if (p.startsWith(resolved + '/')) return { resolved, hit: true }
+    }
+    // 单文件名 basename 后缀匹配：模型常只输出文件名（如 assemble-index.mjs），
+    // 实际位于子目录（scripts/assemble-index.mjs）。仅对单段（无 /）启用，
+    // 多段路径歧义大不启用。唯一命中即解析，多命中不解析（避免误识别）。
+    if (!t.includes('/')) {
+      const suffix = '/' + t
+      let hitPath = ''
+      let hitCount = 0
+      for (const p of idx) {
+        if (p.endsWith(suffix) && p.length > suffix.length) {
+          hitPath = p
+          hitCount++
+          if (hitCount > 1) break
+        }
+      }
+      if (hitCount === 1) return { resolved: hitPath, hit: true }
+    }
+    // 索引就绪但未命中 -> 不识别（精确匹配，避免 CSS/JS 误识别）
+    return { resolved: '', hit: false }
+  }
+  // 索引未就绪：相对路径不识别（避免误识别）
+  return { resolved: '', hit: false }
+}
+
+/**
+ * 判断是否像沙箱相对路径。
+ * - 单段含扩展名：assemble-index.mjs（单文件名）
+ * - 多段含 /：src/App.vue、templates/styles、wt-abc123/src/index.ts
+ * 排除 URL、windows 路径、版本号、CSS/JS 这类大写缩写词组合等。
+ */
+export function looksLikeSandboxRelativePath(text: string): boolean {
+  const t = text.trim()
+  if (!t || t.length < 2) return false
+  if (t.startsWith('/')) return false
+  if (t.startsWith('http://') || t.startsWith('https://')) return false
+  // 排除 windows 盘符
+  if (/^[A-Za-z]:[\\/]/.test(t)) return false
+  // 排除版本号形如 1.2.3
+  if (/^\d+(\.\d+)+$/.test(t)) return false
+  // 排除含空格的句子片段
+  if (/\s/.test(t)) return false
+  // 每段不能为空，且不能含特殊字符（除 . _ -）
+  const segments = t.split('/')
+  if (segments.some((s) => !s || /[;:|<>"'`{}()]/.test(s))) return false
+  // 至少有一个段含扩展名（.xxx）或路径深度 >= 2
+  const hasExtension = segments.some((s) => /\.[A-Za-z0-9]{1,12}$/.test(s))
+  const depth = segments.length
+  if (!hasExtension && depth < 2) return false
+  // 排除 CSS/JS、JS/JSON 这类纯大写缩写词组合（无扩展名且每段短）
+  if (!hasExtension && segments.every((s) => /^[A-Z]{2,8}$/.test(s))) return false
+  return true
+}
+
+/**
+ * 将可能的相对路径解析为沙箱绝对路径。
+ * - 已是 /workspace/... 或 /skills/... -> 原样返回
+ * - 相对路径 -> 结合 workspaceRoot 拼接（workspaceRoot 形如 /workspace/wt-xxx）
+ * - 无法解析 -> 返回空串
+ */
+export function resolveSandboxPath(rawPath: string, workspaceRoot: string): string {
+  const t = rawPath.trim()
+  if (!t) return ''
+  if (isSandboxContainerPath(t)) return t
+  if (!looksLikeSandboxRelativePath(t)) return ''
+  const root = workspaceRoot.trim().replace(/\/+$/, '')
+  if (!root || !isSandboxContainerPath(root)) return ''
+  return `${root}/${t}`
 }
 
 export function sandboxPathBasename(path: string): string {
@@ -23,9 +135,19 @@ export function sandboxPathBasename(path: string): string {
   return i >= 0 ? normalized.slice(i + 1) : normalized
 }
 
-/** 发送给模型的纯文本 token */
-export function sandboxPathPlainToken(path: string): string {
-  return `\`${path.trim()}\``
+/** 发送给模型的纯文本 token；带行范围时输出 `path` L120-125 / `path` L120 */
+export function sandboxPathPlainToken(
+  path: string,
+  lineStart?: number,
+  lineEnd?: number,
+): string {
+  const base = `\`${path.trim()}\``
+  if (typeof lineStart === 'number' && lineStart > 0) {
+    const start = Math.floor(lineStart)
+    const end = typeof lineEnd === 'number' && lineEnd >= start ? Math.floor(lineEnd) : start
+    return `${base} L${start}${end > start ? `-${end}` : ''}`
+  }
+  return base
 }
 
 /** 启发式：无扩展名视为目录（与拖拽 isDir 一致，供 Chip 图标） */
@@ -80,13 +202,21 @@ export function setSandboxPathDrag(
   dataTransfer.effectAllowed = 'copy'
 }
 
-/** 在 plain 文本中收集反引号沙箱路径 */
-export function collectSandboxPathMatches(content: string): { index: number; end: number; path: string }[] {
-  const matches: { index: number; end: number; path: string }[] = []
+/** 在 plain 文本中收集反引号沙箱路径（可选带行范围 `path` L120-125） */
+export function collectSandboxPathMatches(content: string): SandboxPathMatch[] {
+  const matches: SandboxPathMatch[] = []
   PATH_TOKEN_RE.lastIndex = 0
   let m: RegExpExecArray | null
   while ((m = PATH_TOKEN_RE.exec(content)) !== null) {
-    matches.push({ index: m.index, end: m.index + m[0].length, path: m[1] })
+    const lineStart = m[2] ? Number(m[2]) : undefined
+    const lineEnd = m[3] ? Number(m[3]) : undefined
+    matches.push({
+      index: m.index,
+      end: m.index + m[0].length,
+      path: m[1],
+      lineStart: lineStart && lineStart > 0 ? lineStart : undefined,
+      lineEnd: lineEnd && lineEnd >= (lineStart ?? 0) ? lineEnd : undefined,
+    })
   }
   return matches
 }

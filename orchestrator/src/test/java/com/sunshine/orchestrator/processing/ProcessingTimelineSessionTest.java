@@ -22,7 +22,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -57,7 +56,8 @@ class ProcessingTimelineSessionTest {
         assertEquals("pending", emitted.get(0).lifecycle());
         assertEquals("running", emitted.get(1).lifecycle());
         assertEquals("done", emitted.get(2).lifecycle());
-        assertThat(emitted.get(2).summary().after()).contains("年假政策");
+        assertThat(emitted.get(2).summary().after()).contains("知识库查询");
+        assertThat(emitted.get(2).summary().after()).doesNotContain("年假政策");
         assertTrue(session.lastChanged().isPresent());
         assertEquals("done", session.lastChanged().get().lifecycle());
     }
@@ -308,7 +308,7 @@ class ProcessingTimelineSessionTest {
                 .filter(s -> "skill".equals(s.id())).findFirst().orElseThrow();
         assertThat(skill.phase()).isEqualTo("skill");
         assertThat(skill.label()).isEqualTo("加载技能");
-        assertThat(skill.summary().after()).isEqualTo("@skill-demo 测试技能");
+        assertThat(skill.summary().after()).isEqualTo("skill-demo 测试技能");
         assertThat(skill.metadata().skillId()).isEqualTo("skill-demo");
         SkillLoadLabels.bind(null);
     }

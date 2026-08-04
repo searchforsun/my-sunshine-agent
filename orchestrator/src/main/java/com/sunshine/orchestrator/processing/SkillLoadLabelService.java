@@ -38,7 +38,7 @@ public class SkillLoadLabelService {
     public String afterLine(String skillId) {
         String id = skillId.strip();
         String displayName = resolveDisplayName(id);
-        String template = textOrDefault(skillTemplate().getAfter(), "@{skillId} {skillDisplayName}");
+        String template = textOrDefault(skillTemplate().getAfter(), "{skillId} {skillDisplayName}");
         Map<String, String> vars = new HashMap<>();
         vars.put("skillId", id);
         vars.put("skillDisplayName", id.equals(displayName) ? "" : displayName);

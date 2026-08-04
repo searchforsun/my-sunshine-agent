@@ -3,14 +3,19 @@ import type { ProcessingStep } from './processingSteps'
 import {
   extractSandboxExecCommand,
   extractSandboxSearchRoot,
+  formatExecCommandHeader,
+  formatExecCommandHeaderText,
   hasExpandableContent,
   inferSandboxSearchRoot,
   isSandboxExecStep,
+  isSandboxReadStep,
   isSandboxToolStep,
   parseSandboxPathList,
   resolveSandboxFocusPath,
+  resolveSandboxReadLineRange,
   resolveStepExpandInner,
   resolveStepHeaderText,
+  sandboxToolKind,
   shouldShiftSummaryOnExpand,
 } from './processingStepsDisplay'
 
@@ -32,6 +37,38 @@ describe('sandbox tool timeline display', () => {
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__exec@9' }))).toBe(true)
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__future@1' }))).toBe(true)
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sdk__finance__list@1' }))).toBe(false)
+  })
+
+  it('detects sandbox__read step', () => {
+    expect(isSandboxReadStep(sandboxStep({ id: 'tool-sandbox__read@1' }))).toBe(true)
+    expect(isSandboxReadStep(sandboxStep({ id: 'tool-sandbox__exec@1' }))).toBe(false)
+    expect(isSandboxReadStep(sandboxStep({ id: 'tool-sdk__finance__list@1' }))).toBe(false)
+  })
+
+  it('read step: parses line range from after summary', () => {
+    const partial = sandboxStep({
+      id: 'tool-sandbox__read@1',
+      summary: { after: 'test.py L20-28' },
+    })
+    expect(resolveSandboxReadLineRange(partial)).toEqual({ start: 20, end: 28 })
+    const full = sandboxStep({
+      id: 'tool-sandbox__read@2',
+      summary: { after: 'readme.md L1-129' },
+    })
+    expect(resolveSandboxReadLineRange(full)).toEqual({ start: 1, end: 129 })
+  })
+
+  it('read step: no line range when after has none', () => {
+    expect(resolveSandboxReadLineRange(sandboxStep({ id: 'tool-sandbox__read@1' }))).toBeUndefined()
+    expect(resolveSandboxReadLineRange(sandboxStep({
+      id: 'tool-sandbox__read@1',
+      summary: { after: '读文件 test.py' },
+    }))).toBeUndefined()
+  })
+
+  it('read step: content is not expanded (only locate in workspace)', () => {
+    const step = sandboxStep({ id: 'tool-sandbox__read@1', detail: 'line1\nline2' })
+    expect(hasExpandableContent(step)).toBe(false)
   })
 
   it('cancelled exec: header trusts after; expand command from detail (lifecycle, not 已取消 text)', () => {
@@ -180,5 +217,70 @@ describe('sandbox tool timeline display', () => {
       },
     })
     expect(hasExpandableContent(step)).toBe(true)
+  })
+
+  it('formatExecCommandHeader: keeps first token per pipe/and segment', () => {
+    expect(formatExecCommandHeader(
+      'find /workspace/wt-1b385872d4 -maxdepth 3 -type f | head -120',
+    )).toBe('find | head')
+    expect(formatExecCommandHeader('ls -la')).toBe('ls')
+    expect(formatExecCommandHeader('ls -la src 2>&1 || echo "src 目录不存在"')).toBe('ls || echo')
+    expect(formatExecCommandHeader('cd /tmp && ls -la')).toBe('cd && ls')
+    expect(formatExecCommandHeader('python3 -c "print(1 | 2)"')).toBe('python3')
+    expect(formatExecCommandHeader('echo "a | b" && echo c; sleep 1')).toBe('echo && echo ; sleep')
+  })
+
+  it('formatExecCommandHeaderText: think_summary 摘要前置 + 命令头', () => {
+    expect(formatExecCommandHeaderText(
+      'git status | grep src',
+      '提交一下改动',
+    )).toBe('提交一下改动 git | grep')
+    expect(formatExecCommandHeaderText(
+      'find /workspace -name "*.py" | head -20',
+      '',
+    )).toBe('find | head')
+    expect(formatExecCommandHeaderText('ls -la', '  ')).toBe('ls')
+    expect(formatExecCommandHeaderText('ls -la', undefined)).toBe('ls')
+  })
+
+  it('header for exec step: shows compact command head, keeps cancelled text', () => {
+    const exec = sandboxStep({
+      id: 'tool-sandbox__exec@3',
+      label: '执行命令',
+      lifecycle: 'done',
+      summary: { after: 'find /workspace/wt-1b385872d4 -maxdepth 3 -type f | head -120' },
+      detail: 'ok',
+    })
+    expect(extractSandboxExecCommand(exec)).toBe(
+      'find /workspace/wt-1b385872d4 -maxdepth 3 -type f | head -120',
+    )
+  })
+})
+
+describe('sandboxToolKind 按用途细分（组文案决定）', () => {
+  it('查看类：read / glob / grep', () => {
+    expect(sandboxToolKind('sandbox__read')).toBe('view')
+    expect(sandboxToolKind('sandbox__glob')).toBe('view')
+    expect(sandboxToolKind('sandbox__grep')).toBe('view')
+  })
+
+  it('修改类：write / edit', () => {
+    expect(sandboxToolKind('sandbox__write')).toBe('edit')
+    expect(sandboxToolKind('sandbox__edit')).toBe('edit')
+  })
+
+  it('查找类：webfetch / websearch', () => {
+    expect(sandboxToolKind('sandbox__webfetch')).toBe('fetch')
+    expect(sandboxToolKind('sandbox__websearch')).toBe('fetch')
+  })
+
+  it('其余 sandbox 工具归执行类', () => {
+    expect(sandboxToolKind('sandbox__exec')).toBe('exec')
+    expect(sandboxToolKind('sandbox__unknown')).toBe('exec')
+  })
+
+  it('非 sandbox 工具返回 null', () => {
+    expect(sandboxToolKind('sdk__sunshine-oa__list_oa_tasks')).toBeNull()
+    expect(sandboxToolKind(undefined)).toBeNull()
   })
 })

@@ -107,6 +107,21 @@ final class TimelineSessionThinkFlow {
         state.contentSegments.ingest(delta, anchor, sink);
     }
 
+    /** think_summary 工具参数摘要 → 最近一轮 think 步 step_summary（前端主行显示） */
+    void applyThinkStepSummary(String summary, java.util.function.Consumer<com.sunshine.orchestrator.client.StreamToken> sink) {
+        if (summary == null || summary.isBlank()) {
+            return;
+        }
+        String thinkId = state.currentThinkId;
+        if (thinkId == null) {
+            thinkId = state.lastCompletedThinkId;
+        }
+        if (thinkId == null) {
+            return;
+        }
+        sink.accept(com.sunshine.orchestrator.client.StreamToken.stepDelta(thinkId, "step_summary", summary.strip()));
+    }
+
     String contentSegmentBaseline() {
         return state.contentSegments.currentBaseline();
     }

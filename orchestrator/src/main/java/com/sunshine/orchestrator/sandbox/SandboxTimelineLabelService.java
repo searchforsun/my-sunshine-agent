@@ -64,6 +64,48 @@ public class SandboxTimelineLabelService {
         return apply(chosen, vars);
     }
 
+    /**
+     * 读文件主行：{fileName} 或 {fileName} L{a}-{b}。
+     * 工具名（displayName）由前端 label 展示，此处仅补行范围便于前端定位与上下文感知。
+     */
+    public String readAfter(String displayName, Map<String, ?> input, String rawText) {
+        AgentPromptProperties.SandboxTimeline tpl = template();
+        Map<String, String> vars = vars(displayName, input);
+        String path = vars.get("path");
+        if (!hasText(path)) {
+            return tpl.getAfterFallback();
+        }
+        Integer offset = asInteger(input, "offset");
+        int lines = countLines(rawText);
+        String base = apply(tpl.getReadAfter(), vars);
+        String lineRange = lineRangeText(offset, lines);
+        return hasText(lineRange) ? base + " " + lineRange : base;
+    }
+
+    /** L{a}-{b}（部分读取）或 L1-{n}（读全部）；offset 缺省视为从第 1 行读起 */
+    static String lineRangeText(Integer offset, int lines) {
+        if (lines <= 0) {
+            return "";
+        }
+        int start = offset != null && offset > 0 ? offset : 1;
+        int end = start + lines - 1;
+        return "L" + start + "-" + end;
+    }
+
+    static int countLines(String text) {
+        if (!hasText(text)) {
+            return 0;
+        }
+        int n = 1;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') {
+                n++;
+            }
+        }
+        // 末尾换行不产生新行
+        return text.endsWith("\n") ? n - 1 : n;
+    }
+
     public String active(String toolId, String displayName, Map<String, ?> input) {
         AgentPromptProperties.SandboxTimeline tpl = template();
         Map<String, String> vars = vars(displayName, input);
@@ -116,6 +158,24 @@ public class SandboxTimelineLabelService {
         }
         Object v = input.get(key);
         return v != null ? String.valueOf(v).strip() : "";
+    }
+
+    private static Integer asInteger(Map<String, ?> input, String key) {
+        if (input == null || key == null) {
+            return null;
+        }
+        Object v = input.get(key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(v).strip());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     static String fileName(String path) {

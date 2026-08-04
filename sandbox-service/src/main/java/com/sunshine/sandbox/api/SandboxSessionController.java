@@ -80,6 +80,15 @@ public class SandboxSessionController {
         return R.ok(fs.list(id, path));
     }
 
+    /** 递归列举指定目录下所有文件/目录的容器路径（扁平化索引） */
+    @GetMapping("/{id}/fs/index")
+    public R<FsNodeDto.FsIndexResponse> listFsIndex(
+            @PathVariable String id,
+            @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
+            @RequestParam(value = "maxDepth", required = false, defaultValue = "64") int maxDepth) {
+        return R.ok(fs.listDeep(id, path, maxDepth));
+    }
+
     @GetMapping("/{id}/fs/content")
     public R<FsContentDto> readFs(
             @PathVariable String id,

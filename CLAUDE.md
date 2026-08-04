@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改 Catalog/`/prompts` 或架构。
 
-**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅**；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅**（spec §12 演进差异：裸镜像库 + 无主 checkout + git 工作流替代 mergeToMain；强制 ReAct 不锁死为明确决策；硬件档位 Nacos + 校验已补齐）· **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅**；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 

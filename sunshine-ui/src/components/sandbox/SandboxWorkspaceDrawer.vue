@@ -3,7 +3,7 @@ import { ref, watch, computed } from 'vue'
 import { NIcon, NButton } from 'naive-ui'
 import { RefreshOutline, WarningOutline } from '@vicons/ionicons5'
 import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
-import { sandboxWorkspaceRefresh } from '../../composables/sandboxWorkspaceRefresh'
+import { sandboxWorkspaceRefresh, sandboxPathIndexRefresh } from '../../composables/sandboxWorkspaceRefresh'
 import { useWriteHitlMode } from '../../composables/useWriteHitlMode'
 import { useSandboxFileTree } from '../../composables/useSandboxFileTree'
 import { useSandboxPreviewTabs } from '../../composables/useSandboxPreviewTabs'
@@ -35,7 +35,7 @@ const {
 const { mode: writeHitlMode } = useWriteHitlMode(() => state.conversationId)
 
 
-let openFile: (path: string) => void | Promise<void> = () => {}
+let openFile: (path: string, focusLine?: number) => void | Promise<void> = () => {}
 const {
   treeLoading,
   errorText,
@@ -56,8 +56,11 @@ const {
   getWorkspaceId: () => props.workspaceId ?? null,
   getCheckoutId: () => props.checkoutId || null,
   getWorkspaceName: () => props.workspaceName || null,
-  onOpenFile: (path) => openFile(path),
+  onOpenFile: (path, focusLine) => openFile(path, focusLine),
 })
+
+// 文件树刷新版本号：refresh/checkout切换/sync 完成后 +1，通知会话级路径索引重新加载
+const treeVersion = sandboxPathIndexRefresh
 
 const {
   selectedPath,
@@ -71,8 +74,10 @@ const {
   isMarkdownFile,
   showMarkdownRendered,
   previewLangClass,
+  previewCodeHtml,
   canCopyPreview,
   breadcrumbs,
+  focusLine,
   copyPreview,
   openFile: previewOpenFile,
   activateTab,
@@ -94,6 +99,7 @@ async function refresh() {
   const keepActive = selectedPath.value
   clearCache()
   await loadRoots()
+  treeVersion.value++
   if (keepTabs.length) {
     openTabs.value = keepTabs.map((path) => ({ path }))
     if (keepActive) await previewOpenFile(keepActive)
@@ -117,7 +123,7 @@ async function retryClone() {
     wsSynced.value = true
     retryError.value = ''
     // 工作区级别文件树（无需等待会话创建）
-    try { await loadRoots() } catch { /* ok */ }
+    try { await loadRoots(); treeVersion.value++ } catch { /* ok */ }
   } catch (e) {
     wsSynced.value = false
     const msg = (e as any)?.message || String(e)
@@ -165,6 +171,7 @@ async function refreshBranch(scope: 'workspace' | 'skills') {
   const prefix = scope === 'workspace' ? '/workspace' : '/skills'
   clearCacheUnder(prefix)
   await reloadBranch(prefix)
+  treeVersion.value++
   const keepActive = selectedPath.value
   if (keepActive?.startsWith(prefix)) {
     await previewOpenFile(keepActive)
@@ -175,9 +182,19 @@ function toggleMdRawMode() {
   mdRawMode.value = !mdRawMode.value
 }
 
+/** 预览区选中行 -> 添加到会话（由 ChatView 注入全局回调，插入输入框引用） */
+function onAddSelection(payload: { start: number; end: number }) {
+  const path = selectedPath.value
+  const cb = (window as any).__smd_addSandboxSelection as
+    | ((path: string, start: number, end: number) => void)
+    | undefined
+  if (!path || !cb) return
+  cb(path, payload.start, payload.end)
+}
+
 watch(
-  () => [state.open, state.conversationId, state.focusPath] as const,
-  ([open, convId, focus], prev) => {
+  () => [state.open, state.conversationId, state.focusPath, state.focusLine] as const,
+  ([open, convId, focus, focusLine], prev) => {
     if (!open || !convId) {
       resetTree()
       resetPreview()
@@ -195,7 +212,7 @@ watch(
     }
     void (async () => {
       await loadRoots()
-      if (focus) await revealPath(focus)
+      if (focus) await revealPath(focus, focusLine || undefined)
     })()
   },
 )
@@ -294,10 +311,13 @@ watch(
         :copy-done="copyDone"
         :show-markdown-rendered="showMarkdownRendered"
         :preview-lang-class="previewLangClass"
+        :preview-code-html="previewCodeHtml"
+        :focus-line="focusLine"
         @activate-tab="activateTab"
         @close-tab="closeTab"
         @toggle-md-raw-mode="toggleMdRawMode"
         @copy-preview="copyPreview"
+        @add-selection="onAddSelection"
       />
     </div>
   </aside>

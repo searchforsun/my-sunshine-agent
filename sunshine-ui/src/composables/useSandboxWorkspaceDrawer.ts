@@ -11,6 +11,8 @@ import { setSandboxDrawerLayout } from './sandboxDrawerBridge'
 export interface SandboxWorkspaceDrawerPayload {
   conversationId?: string
   focusPath?: string
+  /** 打开后定位到文件起始行（read 步骤 L 范围起点）；不传则默认顶部 */
+  focusLine?: number
 }
 
 /** 与 Chat / 节点抽屉统一 */
@@ -47,6 +49,7 @@ const state = reactive({
   open: false,
   conversationId: '' as string,
   focusPath: '' as string,
+  focusLine: 0 as number,
 })
 
 const savedWidth = ref(loadSavedWidth())
@@ -243,6 +246,7 @@ export function useSandboxWorkspaceDrawer() {
   function open(payload: SandboxWorkspaceDrawerPayload) {
     state.conversationId = payload.conversationId?.trim() ?? ''
     state.focusPath = payload.focusPath?.trim() ?? ''
+    state.focusLine = typeof payload.focusLine === 'number' && payload.focusLine > 0 ? payload.focusLine : 0
     state.open = true
   }
 
@@ -250,6 +254,7 @@ export function useSandboxWorkspaceDrawer() {
     state.open = false
     state.conversationId = ''
     state.focusPath = ''
+    state.focusLine = 0
   }
 
   function updateConversationId(convId: string) {

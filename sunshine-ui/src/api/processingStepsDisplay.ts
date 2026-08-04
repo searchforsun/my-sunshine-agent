@@ -15,8 +15,33 @@ export function isSandboxToolStep(step: { id: string; phase?: string }): boolean
   return !!toolId?.startsWith('sandbox__')
 }
 
+/** sandbox 工具按用途细分：查看（read/glob/grep）/ 修改（write/edit）/ 查找（webfetch/websearch）/ 执行（其余） */
+export type SandboxToolKind = 'view' | 'edit' | 'fetch' | 'exec'
+
+export function sandboxToolKind(toolId: string | undefined): SandboxToolKind | null {
+  if (!toolId?.startsWith('sandbox__')) return null
+  switch (toolId) {
+    case 'sandbox__read':
+    case 'sandbox__glob':
+    case 'sandbox__grep':
+      return 'view'
+    case 'sandbox__write':
+    case 'sandbox__edit':
+      return 'edit'
+    case 'sandbox__webfetch':
+    case 'sandbox__websearch':
+      return 'fetch'
+    default:
+      return 'exec'
+  }
+}
+
 export function isSandboxExecStep(step: { id: string }): boolean {
   return catalogToolIdFromStepId(step.id) === 'sandbox__exec'
+}
+
+export function isSandboxReadStep(step: { id: string }): boolean {
+  return catalogToolIdFromStepId(step.id) === 'sandbox__read'
 }
 
 /** 可 hover 取消：跟 SSE metadata.cancellable（Nacos cancellable-tools） */
@@ -61,6 +86,56 @@ export function extractSandboxExecCommand(step: {
     }
   }
   return undefined
+}
+
+/** 将 exec 命令压缩为命令头摘要：按 | || && ; 切分（引号内不切），每段取首个 token，操作符保留。
+ * 例：find ... | head -120 → find | head；ls -la && cat f → ls && cat */
+export function formatExecCommandHeader(command: string): string {
+  const segments: { text: string; op: string }[] = []
+  let buf = ''
+  let quote: string | null = null
+  const ops = ['&&', '||', '|', ';']
+  let i = 0
+  while (i < command.length) {
+    const ch = command[i]
+    if (quote) {
+      buf += ch
+      if (ch === quote) quote = null
+      i++
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch
+      buf += ch
+      i++
+      continue
+    }
+    const matched = ops.find(op => command.startsWith(op, i))
+    if (matched) {
+      segments.push({ text: buf, op: matched })
+      buf = ''
+      i += matched.length
+      continue
+    }
+    buf += ch
+    i++
+  }
+  segments.push({ text: buf, op: '' })
+
+  const heads: string[] = []
+  for (const seg of segments) {
+    const firstToken = seg.text.trim().split(/\s+/)[0] ?? ''
+    if (firstToken) heads.push(firstToken)
+    if (seg.op) heads.push(seg.op)
+  }
+  return heads.join(' ')
+}
+
+/** exec 步主行命令头文本：think_summary 摘要前置 + 命令头（如「提交一下改动 git | grep」）；无摘要仅命令头 */
+export function formatExecCommandHeaderText(command: string, summary?: string): string {
+  const head = formatExecCommandHeader(command)
+  const s = summary?.trim()
+  return s ? `${s} ${head}` : head
 }
 
 /** 从沙箱工具 after 文案解析 /workspace 或 /skills 路径（legacy；优先 metadata.sandboxPath） */
@@ -136,6 +211,19 @@ export function resolveSandboxFocusPath(step: {
     if (embedded) return embedded
   }
   return undefined
+}
+
+/** read 步骤行范围：从 summary.after「读文件 xxx.py L20-28」解析 { start, end }；无行范围返回 undefined */
+export function resolveSandboxReadLineRange(step: {
+  summary?: { after?: string }
+}): { start: number; end: number } | undefined {
+  const after = step.summary?.after?.trim() || ''
+  const m = after.match(/\bL(\d+)-(\d+)\b/)
+  if (!m) return undefined
+  const start = Number(m[1])
+  const end = Number(m[2])
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || end < start) return undefined
+  return { start, end }
 }
 
 /** glob 等：detail 中的容器路径列表 → 相对搜索根展示名 + 完整 path（点击跳转） */
@@ -465,6 +553,10 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
   }
   if (isSandboxExecStep(step) && extractSandboxExecCommand(step)) {
     return true
+  }
+  // 读文件：内容在工作区预览，不重复渲染展开（点击卡片定位到文件即可）
+  if (isSandboxReadStep(step)) {
+    return false
   }
   if (linesFromEditDiffMeta(step.metadata?.editDiff)?.length) {
     return true

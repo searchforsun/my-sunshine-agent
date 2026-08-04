@@ -54,7 +54,7 @@ public class IntentLabelService {
         }
         WorkflowManagerClient.WorkflowCatalogEntryDto catalogEntry = findCatalogByDetail(detail);
         if (catalogEntry != null) {
-            String template = modeAfter(modeConfig(ExecutionMode.WORKFLOW), "{query}将按「{displayName}」流程处理");
+            String template = modeAfter(modeConfig(ExecutionMode.WORKFLOW), "将按「{displayName}」流程处理");
             return TimelineLabelTemplates.applyTemplate(template, TimelineLabelTemplates.vars(
                     clippedQuery, detail, catalogEntry.id(), displayNameOf(catalogEntry)));
         }
@@ -78,10 +78,10 @@ public class IntentLabelService {
         }
         return switch (plan.mode()) {
             case REACT -> TimelineLabelTemplates.applyTemplate(
-                    modeAfter(modeConfig(ExecutionMode.REACT), "{query}将由自主智能体分析并作答"),
+                    modeAfter(modeConfig(ExecutionMode.REACT), "将由自主智能体分析并作答"),
                     TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
             case PLAN_WORKFLOW -> TimelineLabelTemplates.applyTemplate(
-                    modeAfter(modeConfig(ExecutionMode.PLAN_WORKFLOW), "{query}将动态规划多步执行"),
+                    modeAfter(modeConfig(ExecutionMode.PLAN_WORKFLOW), "将动态规划多步执行"),
                     TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
             case WORKFLOW -> {
                 WorkflowManagerClient.WorkflowCatalogEntryDto entry = workflowCatalog.findEntry(plan.workflowId());
@@ -162,9 +162,9 @@ public class IntentLabelService {
             return mode.getForcedAfter();
         }
         return switch (executionMode) {
-            case REACT -> "{query}将按您指定的「自主推理」模式处理";
-            case WORKFLOW -> "{query}将按您指定的「工作流」模式处理";
-            case PLAN_WORKFLOW -> "{query}将按您指定的「动态规划」模式处理";
+            case REACT -> "将按您指定的「自主推理」模式处理";
+            case WORKFLOW -> "将按您指定的「工作流」模式处理";
+            case PLAN_WORKFLOW -> "将按您指定的「动态规划」模式处理";
         };
     }
 
@@ -180,6 +180,6 @@ public class IntentLabelService {
         if (entry != null && StringUtils.hasText(entry.intentAfter())) {
             return entry.intentAfter().strip();
         }
-        return modeAfter(modeConfig(ExecutionMode.WORKFLOW), "{query}将按「{displayName}」流程处理");
+        return modeAfter(modeConfig(ExecutionMode.WORKFLOW), "将按「{displayName}」流程处理");
     }
 }

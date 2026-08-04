@@ -31,7 +31,7 @@ class SkillLoadLabelServiceTest {
                 new SkillCatalogIndexEntry("skill-demo", "测试技能", "desc", 1, true, "none")));
         SkillLoadLabelService service = new SkillLoadLabelService(skillCatalogService, TimelinePromptCatalog.withDefaults());
         service.init();
-        assertThat(SkillLoadLabels.after("skill-demo")).isEqualTo("@skill-demo 测试技能");
+        assertThat(SkillLoadLabels.after("skill-demo")).isEqualTo("skill-demo 测试技能");
     }
 
     @Test
@@ -39,6 +39,6 @@ class SkillLoadLabelServiceTest {
         when(skillCatalogService.findIndex("finance-analysis")).thenReturn(Optional.empty());
         SkillLoadLabelService service = new SkillLoadLabelService(skillCatalogService, TimelinePromptCatalog.withDefaults());
         service.init();
-        assertThat(SkillLoadLabels.after("finance-analysis")).isEqualTo("@finance-analysis");
+        assertThat(SkillLoadLabels.after("finance-analysis")).isEqualTo("finance-analysis");
     }
 }

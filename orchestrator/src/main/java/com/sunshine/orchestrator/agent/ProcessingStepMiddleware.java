@@ -110,13 +110,17 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         Map<String, StringBuilder> resultTextById = new ConcurrentHashMap<>();
         // toolCallId -> 本次 onActing 的 ToolUseBlock（局部缓存，End 事件回查 input 用，随 call 生命周期回收）
         Map<String, ToolUseBlock> toolUseById = new ConcurrentHashMap<>();
-        // 入口：开 tool 步（跳过 manage_tasks / spawn_subagent，二者不上 tool-* 步）
+        // 入口：开 tool 步（跳过 think_summary / spawn_subagent / todo_write，三者不上 tool-* 步）
         for (ToolUseBlock tu : toolCalls) {
             String id = tu.getId();
             if (id != null) {
                 toolUseById.put(id, tu);
             }
             String toolName = tu.getName();
+            if (ThinkSummaryTool.NAME.equals(toolName)) {
+                applyThinkSummary(bridgeId, tu);
+                continue;
+            }
             if (SpawnSubagentTool.NAME.equals(toolName) || TodoTasksBridge.isTodoWrite(toolName)) {
                 continue;
             }
@@ -147,6 +151,12 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
      * 避免并发写操作导致的状态竞争（如两个写工具同时改同一资源）。
      * 单工具或全读时直接整批执行，无额外开销。
      */
+    private void applyThinkSummary(String bridgeId, ToolUseBlock tu) {
+        Object raw = tu.getInput() != null ? tu.getInput().get("summary") : null;
+        if (raw instanceof String s && StringUtils.hasText(s)) {
+            StepEventBridge.emit(bridgeId, session -> session.applyThinkStepSummary(s));
+        }
+    }
     private Flux<AgentEvent> executeByReadWritePartition(
             List<ToolUseBlock> toolCalls,
             Function<ActingInput, Flux<AgentEvent>> next) {
@@ -165,7 +175,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
 
     /**
      * 按 sideEffect 将 toolCalls 切成连续批次：连续只读工具归一批，写工具单独成批。
-     * 元工具（spawn_subagent / todo_write）视为只读（不竞争外部状态）。
+     * 元工具（spawn_subagent / todo_write / think_summary）视为只读（不竞争外部状态）。
      */
     private List<List<ToolUseBlock>> partitionByReadWrite(List<ToolUseBlock> toolCalls) {
         List<List<ToolUseBlock>> batches = new ArrayList<>();
@@ -238,6 +248,11 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         if (toolName == null) {
             return;
         }
+        // think_summary 摘要工具：入口已 applyThinkSummary，结果无需处理 tool 步
+        if (ThinkSummaryTool.NAME.equals(toolName)) {
+            StepEventBridge.unbindToolUseBridge(toolUseId);
+            return;
+        }
         // 原生 todo_write 是状态工具（无结果可分析）：不上 tool-* 步、不 recordToolCompleted，
         // 避免触发「已完成任务板的工具结果综合分析」单独 think 步；任务列表投影由
         // TodoTasksBridge 完成，且 TaskBoardTimelineSupport 已自带 think 锚定防连续复用覆盖。
@@ -277,7 +292,13 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                 return;
             }
             Map<String, Object> enriched = SandboxStepContext.enrichInput(toolName, input, raw);
-            summaryLine = sandboxTimelineLabels.after(toolName, toolCatalogService.displayName(toolName), enriched);
+            // 读文件：主行附行范围（L{start}-{end}），前端据此定位文件起始行
+            if (SandboxIds.READ.equals(toolName)) {
+                summaryLine = sandboxTimelineLabels.readAfter(
+                        toolCatalogService.displayName(toolName), enriched, raw);
+            } else {
+                summaryLine = sandboxTimelineLabels.after(toolName, toolCatalogService.displayName(toolName), enriched);
+            }
             StepMetadata sandboxMeta = SandboxStepContext.metadata(toolName, enriched, summaryLine);
             if (SandboxIds.WRITE.equals(toolName) || SandboxIds.EDIT.equals(toolName)) {
                 if (SandboxIds.EDIT.equals(toolName)) {

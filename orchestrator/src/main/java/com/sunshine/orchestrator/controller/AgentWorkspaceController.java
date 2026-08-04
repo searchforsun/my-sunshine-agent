@@ -48,8 +48,6 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class AgentWorkspaceController {
 
-    private static final int MAX_CPUS = 4;
-    private static final int MAX_MEMORY_MB = 12288;
     private static final int MAX_PROJECT_GUIDE_CHARS = 64 * 1024;
 
     private final AgentWorkspaceRepository workspaceRepo;
@@ -60,19 +58,21 @@ public class AgentWorkspaceController {
     private final SandboxWorkspaceService sandboxWorkspaceService;
     private final ChatConversationRepository conversationRepo;
     private final WorkspaceProjectGuideRepository projectGuideRepo;
+    private final com.sunshine.orchestrator.config.AgentSandboxProperties sandboxProperties;
 
     @PostMapping
     public R<WorkspaceVO> create(@Valid @RequestBody CreateWorkspaceRequest req,
                                   @RequestHeader("x-user-id") String userId,
                                   @RequestHeader("x-tenant-id") String tenantId) {
-        if (req.memoryMb() != null && req.memoryMb() > MAX_MEMORY_MB) {
-            throw new BizException(new FixedErrorCode(400, "workspace_hardware_limit",
-                    "内存规格超限: memoryMb=" + req.memoryMb() + " (max " + MAX_MEMORY_MB + ")"));
+        // 硬件档位校验：命中 Nacos allowed-presets 或上限护栏；未传值用 full 档默认
+        int[] resolved;
+        try {
+            resolved = sandboxProperties.validateAndResolve("full", req.memoryMb(), req.cpus());
+        } catch (IllegalArgumentException e) {
+            throw new BizException(new FixedErrorCode(400, "workspace_hardware_invalid", e.getMessage()));
         }
-        if (req.cpus() != null && req.cpus().doubleValue() > MAX_CPUS) {
-            throw new BizException(new FixedErrorCode(400, "workspace_hardware_limit",
-                    "CPU 规格超限: cpus=" + req.cpus() + " (max " + MAX_CPUS + ")"));
-        }
+        int memoryMb = resolved[0];
+        BigDecimal cpus = BigDecimal.valueOf(resolved[1] / 10.0);
         AgentWorkspaceEntity entity = new AgentWorkspaceEntity();
         entity.setId(UUID.randomUUID().toString().replace("-", ""));
         entity.setTenantId(tenantId);
@@ -84,8 +84,8 @@ public class AgentWorkspaceController {
         entity.setRepoUrl(req.repoUrl().strip());
         // repoBranch 留空 = clone 拉取远程默认主分支；显式填值才指定 --branch
         entity.setRepoBranch(req.repoBranch() != null && !req.repoBranch().isBlank() ? req.repoBranch().strip() : "");
-        entity.setMemoryMb(req.memoryMb() != null ? req.memoryMb() : 2048);
-        entity.setCpus(req.cpus() != null ? req.cpus() : new BigDecimal("2.0"));
+        entity.setMemoryMb(memoryMb);
+        entity.setCpus(cpus);
         entity.setCreatedAt(Instant.now());
         entity.setUpdatedAt(Instant.now());
         workspaceRepo.save(entity);
@@ -129,74 +129,91 @@ public class AgentWorkspaceController {
         return R.ok();
     }
 
-    // ===== Git 操作 =====
+    // ===== Git 操作（均异步执行在 boundedElastic，避免 reactor 线程 block） =====
 
     @GetMapping("/{id}/branches")
-    public R<List<Map<String, Object>>> listBranches(@PathVariable String id) {
-        return R.ok(workspaceGitService.listBranches(id));
+    public Mono<R<List<Map<String, Object>>>> listBranches(@PathVariable String id,
+                                                     @RequestHeader("x-user-id") String userId,
+                                                     @RequestHeader("x-tenant-id") String tenantId) {
+        return Mono.fromCallable(() -> R.ok(workspaceGitService.listBranches(id, userId, tenantId)))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
     @PostMapping("/{id}/branches")
-    public R<Void> createBranch(@PathVariable String id,
-                                 @RequestBody Map<String, String> body) {
+    public Mono<R<Void>> createBranch(@PathVariable String id,
+                                @RequestHeader("x-user-id") String userId,
+                                @RequestHeader("x-tenant-id") String tenantId,
+                                @RequestBody Map<String, String> body) {
         String name = body.get("name");
         String from = body.get("from");
         if (name == null || name.isBlank()) {
             throw new BizException(new FixedErrorCode(400, "branch_name_required", "分支名不能为空"));
         }
-        workspaceGitService.createBranch(id, name.strip(), from);
-        return R.ok();
+        String branch = name.strip();
+        return Mono.fromRunnable(() -> workspaceGitService.createBranch(id, userId, tenantId, branch, from))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .thenReturn(R.ok());
     }
 
     @GetMapping("/{id}/git/status")
-    public R<Map<String, Object>> gitStatus(@PathVariable String id,
-                                             @RequestParam("checkoutId") String checkoutId) {
-        return R.ok(workspaceGitService.gitStatus(id, checkoutId));
+    public Mono<R<Map<String, Object>>> gitStatus(@PathVariable String id,
+                                            @RequestParam("checkoutId") String checkoutId,
+                                            @RequestHeader("x-user-id") String userId,
+                                            @RequestHeader("x-tenant-id") String tenantId) {
+        return Mono.fromCallable(() -> R.ok(workspaceGitService.gitStatus(id, checkoutId, userId, tenantId)))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
     @PostMapping("/{id}/git/stage")
-    public R<Void> gitStage(@PathVariable String id,
-                             @RequestParam("checkoutId") String checkoutId,
-                             @RequestBody Map<String, Object> body) {
+    public Mono<R<Void>> gitStage(@PathVariable String id,
+                            @RequestParam("checkoutId") String checkoutId,
+                            @RequestHeader("x-user-id") String userId,
+                            @RequestHeader("x-tenant-id") String tenantId,
+                            @RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")
         List<String> files = body != null ? (List<String>) body.get("files") : null;
         boolean all = body != null && Boolean.TRUE.equals(body.get("all"));
-        workspaceGitService.gitStage(id, checkoutId, files, all);
-        return R.ok();
+        return Mono.fromRunnable(() -> workspaceGitService.gitStage(id, checkoutId, userId, tenantId, files, all))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .thenReturn(R.ok());
     }
 
     @PostMapping("/{id}/git/commit")
-    public R<Void> gitCommit(@PathVariable String id,
-                              @RequestParam("checkoutId") String checkoutId,
-                              @RequestBody Map<String, String> body) {
+    public Mono<R<Void>> gitCommit(@PathVariable String id,
+                             @RequestParam("checkoutId") String checkoutId,
+                             @RequestHeader("x-user-id") String userId,
+                             @RequestHeader("x-tenant-id") String tenantId,
+                             @RequestBody Map<String, String> body) {
         String message = body != null ? body.get("message") : null;
         if (message == null || message.isBlank()) {
             throw new BizException(new FixedErrorCode(400, "commit_message_required", "commit 信息不能为空"));
         }
-        workspaceGitService.gitCommit(id, checkoutId, message.strip());
-        return R.ok();
+        String msg = message.strip();
+        return Mono.fromRunnable(() -> workspaceGitService.gitCommit(id, checkoutId, userId, tenantId, msg))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .thenReturn(R.ok());
     }
 
     @PostMapping("/{id}/git/push")
-    public R<Void> gitPush(@PathVariable String id,
-                            @RequestParam("checkoutId") String checkoutId,
-                            @RequestHeader("x-user-id") String userId) {
-        workspaceGitService.gitPush(id, checkoutId, userId);
-        return R.ok();
+    public Mono<R<Void>> gitPush(@PathVariable String id,
+                           @RequestParam("checkoutId") String checkoutId,
+                           @RequestHeader("x-user-id") String userId,
+                           @RequestHeader("x-tenant-id") String tenantId) {
+        return Mono.fromRunnable(() -> workspaceGitService.gitPush(id, checkoutId, userId, tenantId))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .thenReturn(R.ok());
     }
 
     /** git pull：从远程拉取最新代码（作用于会话工作目录） */
     @PostMapping("/{id}/git/pull")
-    public R<Map<String, Object>> gitPull(@PathVariable String id,
-                                           @RequestParam("checkoutId") String checkoutId,
-                                           @RequestHeader("x-user-id") String userId) {
-        try {
-            Map<String, Object> result = workspaceGitService.gitPull(id, checkoutId, userId);
-            return R.ok(result);
-        } catch (Exception e) {
-            throw new BizException(new FixedErrorCode(500, "git_pull_failed",
-                    "拉取失败: " + e.getMessage()));
-        }
+    public Mono<R<Map<String, Object>>> gitPull(@PathVariable String id,
+                                          @RequestParam("checkoutId") String checkoutId,
+                                          @RequestHeader("x-user-id") String userId,
+                                          @RequestHeader("x-tenant-id") String tenantId) {
+        return Mono.fromCallable(() -> R.ok(workspaceGitService.gitPull(id, checkoutId, userId, tenantId)))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .onErrorMap(e -> e instanceof BizException ? e : new BizException(new FixedErrorCode(500,
+                        "git_pull_failed", "拉取失败: " + e.getMessage())));
     }
 
     /** 同步工作区代码：已克隆则 git pull，未克隆则重新 clone；用于刷新/重试 */
@@ -351,6 +368,15 @@ public class AgentWorkspaceController {
             @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> sandboxWorkspaceService.listByWorkspace(id, tenantId, path));
+    }
+
+    @GetMapping("/{id}/sandbox/workspace/index")
+    public Mono<FsNodeDto.FsIndexResponse> listFileIndex(
+            @PathVariable String id,
+            @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
+            @RequestParam(value = "maxDepth", required = false, defaultValue = "64") int maxDepth,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> sandboxWorkspaceService.indexByWorkspace(id, tenantId, path, maxDepth));
     }
 
     @GetMapping("/{id}/sandbox/workspace/content")

@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 
 export type SandboxWorkspaceRefreshScope = 'workspace' | 'skills'
 
@@ -93,3 +93,11 @@ export function clearSandboxWorkspaceRefreshPending() {
   }
   pendingByConv.clear()
 }
+
+/** 沙箱路径索引就绪信号：索引加载完成后 tick++，触发已渲染消息重新增强路径链接 */
+export const sandboxPathIndexReady = reactive({
+  tick: 0,
+})
+
+/** 会话级路径索引的刷新版本号：抽屉文件树刷新 / checkout 切换 / sync 完成后 +1，触发索引重新加载 */
+export const sandboxPathIndexRefresh = ref(0)

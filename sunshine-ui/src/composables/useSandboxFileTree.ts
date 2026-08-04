@@ -16,7 +16,7 @@ export interface UseSandboxFileTreeOptions {
   getCheckoutId?: () => string | null
   /** 工作区模式根节点显示名（项目名） */
   getWorkspaceName?: () => string | null
-  onOpenFile: (path: string) => void | Promise<void>
+  onOpenFile: (path: string, focusLine?: number) => void | Promise<void>
 }
 
 /** 打开工作区时文件树加载超时（docker stop 后需重启容器，可能较慢） */
@@ -282,17 +282,7 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
   }
 
   async function ensureExpanded(dirPath: string) {
-    const find = (nodes: TreeOption[], key: string): TreeOption | null => {
-      for (const n of nodes) {
-        if (String(n.key) === key) return n
-        if (n.children?.length) {
-          const hit = find(n.children as TreeOption[], key)
-          if (hit) return hit
-        }
-      }
-      return null
-    }
-    const node = find(treeData.value, dirPath)
+    const node = findNode(treeData.value, dirPath)
     if (!node) return
     if (!node.children || node.children.length === 0) {
       await onLoad(node)
@@ -300,8 +290,23 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     }
   }
 
-  async function revealPath(focus: string) {
+  async function revealPath(focus: string, focusLine?: number) {
     if (!focus.startsWith('/workspace') && !focus.startsWith('/skills')) return
+    // 通配符路径（含 * ? [ 等）：截断到最后一个不含通配符的段，作为目录展开
+    const hasWildcard = /[*?\[\]{}]/.test(focus)
+    if (hasWildcard) {
+      const parts = focus.split('/').filter(Boolean)
+      let safePath = ''
+      for (const p of parts) {
+        if (/[*?\[\]{}]/.test(p)) break
+        safePath += `/${p}`
+      }
+      if (!safePath || safePath === '/workspace' || safePath === '/skills') return
+      await ensureExpanded(safePath)
+      expandedKeys.value = [...new Set([...expandedKeys.value, safePath])]
+      selectedKeys.value = [safePath]
+      return
+    }
     const parts = focus.split('/').filter(Boolean)
     const ancestors: string[] = []
     let acc = ''
@@ -312,10 +317,17 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     for (const dir of ancestors) {
       await ensureExpanded(dir)
     }
-    expandedKeys.value = [...new Set([...expandedKeys.value, ...ancestors])]
-    const isLikelyFile = parts.length > 1 && (focus.includes('.') || !focus.endsWith('/'))
-    if (isLikelyFile && focus !== '/workspace' && focus !== '/skills') {
-      await options.onOpenFile(focus)
+    if (focus !== '/workspace' && focus !== '/skills') {
+      // 通过文件树节点 isDir 属性精确判断目录/文件（避免扩展名启发式误判）
+      const node = findNode(treeData.value, focus)
+      const isDir = node ? !!(node as TreeOption & { isDir?: boolean }).isDir || !node.isLeaf : false
+      if (isDir) {
+        expandedKeys.value = [...new Set([...expandedKeys.value, ...ancestors, focus])]
+        selectedKeys.value = [focus]
+      } else {
+        expandedKeys.value = [...new Set([...expandedKeys.value, ...ancestors])]
+        await options.onOpenFile(focus, focusLine)
+      }
     }
   }
 

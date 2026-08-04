@@ -26,6 +26,18 @@ class ContentSegmentCoordinatorTest {
     }
 
     @Test
+    void ingest_plainIncrementalWithoutSummaryMarkers() {
+        ContentSegmentCoordinator coordinator = new ContentSegmentCoordinator();
+        List<StreamToken> sink = new ArrayList<>();
+
+        coordinator.ingest("好的", "think", sink::add);
+        coordinator.ingest("，我先同时查询 OA 待办和财务待办。", "think", sink::add);
+
+        assertThat(sink.stream().filter(t -> t.isContent() && t.segmentId() != null).map(StreamToken::text).toList())
+                .containsExactly("好的", "，我先同时查询 OA 待办和财务待办。");
+    }
+
+    @Test
     void ingest_emitsStartAndMonotonicChunks() {
         ContentSegmentCoordinator coordinator = new ContentSegmentCoordinator();
         List<StreamToken> sink = new ArrayList<>();

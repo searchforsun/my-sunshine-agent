@@ -32,6 +32,8 @@ class DynamicToolkitFactoryTest {
     @Mock
     private SpawnSubagentTool spawnSubagentTool;
     @Mock
+    private ThinkSummaryTool thinkSummaryTool;
+    @Mock
     private GenericRemoteToolFactory remoteToolFactory;
     @Mock
     private ToolCatalogService toolCatalogService;

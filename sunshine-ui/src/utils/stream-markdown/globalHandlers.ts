@@ -198,6 +198,19 @@ function zoomMermaid(btn: HTMLElement): void {
 }
 
 function handleSmdToolClick(e: MouseEvent): void {
+  // 沙箱路径链接点击（inline code 增强为可点击路径）
+  const pathLink = (e.target as HTMLElement | null)?.closest('[data-sandbox-path]') as HTMLElement | null
+  if (pathLink) {
+    e.preventDefault()
+    e.stopPropagation()
+    const path = pathLink.getAttribute('data-sandbox-path')
+    if (path) {
+      const fn = (window as any).__smd_openSandboxPath
+      if (typeof fn === 'function') fn(path)
+    }
+    return
+  }
+
   const btn = (e.target as HTMLElement | null)?.closest('button.smd-toolbtn') as HTMLButtonElement | null
   if (!btn) return
 

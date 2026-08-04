@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
 import {
+  AddOutline,
   CloseOutline,
   CodeSlashOutline,
   DocumentTextOutline,
@@ -11,7 +12,6 @@ import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import CodeLineGutter from './CodeLineGutter.vue'
 import { tabFileName } from '../../composables/useSandboxPreviewTabs'
-import { registerHljsLanguages } from '../../utils/markdown/registerHljsLanguages'
 
 const props = defineProps<{
   openTabs: { path: string }[]
@@ -26,6 +26,8 @@ const props = defineProps<{
   copyDone: boolean
   showMarkdownRendered: boolean
   previewLangClass: string
+  previewCodeHtml: string[]
+  focusLine?: number
 }>()
 
 const emit = defineEmits<{
@@ -33,25 +35,16 @@ const emit = defineEmits<{
   closeTab: [path: string, ev?: Event]
   toggleMdRawMode: []
   copyPreview: []
+  addSelection: [payload: { start: number; end: number }]
 }>()
 
 const tabbarRef = defineModel<HTMLElement | null>('tabbarRef', { default: null })
+const scrollEl = ref<HTMLElement | null>(null)
+const lineEls = ref<Record<string, HTMLElement | null>>({})
 
-const hljs = registerHljsLanguages()
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-const previewLang = computed(() => {
-  const match = props.previewLangClass.match(/language-(\S+)/)
-  const lang = match?.[1]
-  return lang && lang !== 'plaintext' ? lang : null
-})
+/** 当前选中的代码行范围（预览区鼠标选中） */
+const selectionRange = ref<{ start: number; end: number } | null>(null)
+const selectionBtnTop = ref(0)
 
 const previewLines = computed(() => {
   if (props.showMarkdownRendered || !props.preview) return [] as string[]
@@ -62,19 +55,82 @@ const previewLines = computed(() => {
   return normalized.split('\n')
 })
 
-function highlightLine(text: string): string {
-  const lang = previewLang.value
-  try {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(text || ' ', { language: lang }).value
-    }
-    return hljs.highlightAuto(text || ' ').value
-  } catch {
-    return escapeHtml(text)
+function setLineEl(line: number, el: unknown) {
+  lineEls.value[String(line)] = el instanceof HTMLElement ? el : null
+}
+
+function lineFromNode(node: Node): number | null {
+  const el = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement
+  const lineEl = el?.closest?.('.preview-line') as HTMLElement | null
+  if (!lineEl) return null
+  const n = Number(lineEl.dataset.line)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function computeSelectionRange(): { start: number; end: number } | null {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null
+  const range = sel.getRangeAt(0)
+  const scroller = scrollEl.value
+  if (!scroller || !scroller.contains(range.startContainer) || !scroller.contains(range.endContainer)) {
+    return null
+  }
+  const startLine = lineFromNode(range.startContainer)
+  const endLine = lineFromNode(range.endContainer)
+  if (!startLine || !endLine) return null
+  return {
+    start: Math.min(startLine, endLine),
+    end: Math.max(startLine, endLine),
   }
 }
 
-const lineHtml = computed(() => previewLines.value.map(highlightLine))
+function onPreviewMouseUp(e: MouseEvent) {
+  if (props.showMarkdownRendered) return
+  const t = e.target as HTMLElement | null
+  if (t?.closest?.('.add-selection-btn')) return
+  void nextTick(() => {
+    const r = computeSelectionRange()
+    if (r) {
+      selectionRange.value = r
+      const el = lineEls.value[String(r.start)]
+      selectionBtnTop.value = el ? Math.max(el.offsetTop - 28, 0) : 0
+    } else {
+      selectionRange.value = null
+    }
+  })
+}
+
+function addSelectionToChat() {
+  const r = selectionRange.value
+  if (!r) return
+  selectionRange.value = null
+  emit('addSelection', r)
+}
+
+// 切换文件 / 内容变化时清除选中
+watch(
+  () => [props.selectedPath, props.preview, props.showMarkdownRendered] as const,
+  () => {
+    selectionRange.value = null
+  },
+)
+
+watch(
+  () => [props.selectedPath, props.focusLine, props.previewLoading, props.preview] as const,
+  () => {
+    if (props.showMarkdownRendered) return
+    void nextTick(() => {
+      const target = props.focusLine
+      if (!target || target < 1) return
+      const lineEl = lineEls.value[String(target)]
+      const scroller = scrollEl.value
+      if (lineEl && scroller) {
+        const top = lineEl.offsetTop - Math.min(scroller.clientHeight / 2, 160)
+        scroller.scrollTo({ top: Math.max(top, 0) })
+      }
+    })
+  },
+)
 </script>
 
 <template>
@@ -134,8 +190,10 @@ const lineHtml = computed(() => previewLines.value.map(highlightLine))
       </div>
     </div>
     <div
+      ref="scrollEl"
       class="preview-scroll"
       :class="{ 'preview-scroll--md-wrap': showMarkdownRendered }"
+      @mouseup="onPreviewMouseUp"
     >
       <div v-if="!selectedPath" class="empty-editor">
         <p class="pane-hint">从左侧打开文件预览</p>
@@ -143,15 +201,37 @@ const lineHtml = computed(() => previewLines.value.map(highlightLine))
       </div>
       <p v-else-if="previewLoading" class="pane-hint">读取中…</p>
       <div v-else-if="showMarkdownRendered" class="preview-md">
-        <StaticMarkdown :source="preview" />
+        <StaticMarkdown :source="preview" :base-path="selectedPath" />
       </div>
       <pre v-else-if="previewLines.length" class="preview-code preview-code--guttered">
-        <div v-for="(line, i) in previewLines" :key="i" class="preview-line">
+        <div
+          v-for="(line, i) in previewLines"
+          :key="i"
+          :ref="(el) => setLineEl(i + 1, el)"
+          :data-line="i + 1"
+          class="preview-line"
+          :class="{
+            'preview-line--focus': focusLine === i + 1,
+            'is-selected': !!selectionRange && i + 1 >= selectionRange.start && i + 1 <= selectionRange.end,
+          }"
+        >
           <CodeLineGutter mode="file" :new-line="i + 1" />
-          <code :class="previewLangClass" v-html="lineHtml[i]" />
+          <code :class="previewLangClass" v-html="previewCodeHtml[i]" />
         </div>
       </pre>
       <pre v-else class="preview-code">{{ preview }}</pre>
+      <button
+        v-if="selectionRange && !showMarkdownRendered"
+        type="button"
+        class="add-selection-btn"
+        :style="{ top: `${selectionBtnTop}px` }"
+        title="添加到会话"
+        @mousedown.prevent.stop
+        @click.stop="addSelectionToChat"
+      >
+        <NIcon :component="AddOutline" :size="13" />
+        <span>添加到会话</span>
+      </button>
     </div>
   </div>
 </template>
@@ -288,6 +368,7 @@ const lineHtml = computed(() => previewLines.value.map(highlightLine))
   overflow-x: hidden;
   overflow-y: auto;
   padding: 4px 6px 10px;
+  position: relative;
 }
 
 .preview-scroll--md-wrap {
@@ -349,6 +430,47 @@ const lineHtml = computed(() => previewLines.value.map(highlightLine))
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: normal;
+  /* 跳过不可见区域的渲染，大幅提升大文件滚动性能 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 19px;
+}
+
+.preview-line--focus {
+  background: color-mix(in srgb, var(--sun-blue, #58a6ff) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--sun-blue, #58a6ff);
+}
+
+.preview-line.is-selected {
+  background: color-mix(in srgb, var(--sun-blue, #58a6ff) 10%, transparent);
+}
+
+.add-selection-btn {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--sun-text-secondary);
+  background: var(--sun-black);
+  border: 1px solid var(--sun-border-light);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.add-selection-btn:hover {
+  color: var(--sun-blue, #58a6ff);
+  border-color: var(--sun-blue, #58a6ff);
 }
 
 .preview-line code {

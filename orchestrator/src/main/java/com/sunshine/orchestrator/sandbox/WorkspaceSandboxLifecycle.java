@@ -315,7 +315,7 @@ public class WorkspaceSandboxLifecycle {
         String action;
         if (repoPath.toFile().exists() && new File(repoPath.toFile(), "objects").exists()) {
             try {
-                Map<String, Object> result = gitService.gitFetchAll(workspaceId, userId, repoPath);
+                Map<String, Object> result = gitService.gitFetchAll(workspaceId, userId, ws.getTenantId());
                 action = "fetched";
                 updateBindingCloneState(ws.getTenantId(), workspaceId, "done");
                 log.info("[WorkspaceLifecycle] sync fetched ws={}", workspaceId);

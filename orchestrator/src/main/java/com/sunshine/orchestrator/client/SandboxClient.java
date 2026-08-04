@@ -138,6 +138,21 @@ public class SandboxClient {
                 .block();
     }
 
+    /** 递归列举目录下所有文件/目录路径（扁平化索引） */
+    public FsNodeDto.FsIndexResponse listFsIndex(String sessionId, String path, int maxDepth) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/sandbox/sessions/{id}/fs/index")
+                        .queryParam("path", path != null ? path : "/workspace")
+                        .queryParam("maxDepth", maxDepth > 0 ? maxDepth : 64)
+                        .build(sessionId))
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toSandboxError)
+                .bodyToMono(new ParameterizedTypeReference<R<FsNodeDto.FsIndexResponse>>() {})
+                .map(R::getData)
+                .block();
+    }
+
     public FsContentDto readFsContent(String sessionId, String path, int maxChars, int offset) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder

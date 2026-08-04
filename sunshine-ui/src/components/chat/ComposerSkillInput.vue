@@ -202,6 +202,21 @@ function onDrop(e: DragEvent) {
   nextTick(() => syncChipEditor(next, nextCaret))
 }
 
+/** 插入工作区选中行引用：`path` L120-125 / `path` L120（光标处） */
+function insertPathRange(path: string, lineStart: number, lineEnd: number) {
+  const el = editorRef.value
+  if (!el || !path) return
+  el.focus()
+  const plain = plainTextFromEditor(el)
+  const caret = getCaretPlainOffset(el)
+  const token = sandboxPathPlainToken(path, lineStart, lineEnd)
+  const { next, caret: nextCaret } = insertPlainAtOffset(plain, caret, token)
+  syncing.value = true
+  emit('update:modelValue', next)
+  syncing.value = false
+  nextTick(() => syncChipEditor(next, nextCaret))
+}
+
 function onEditorClick(e: MouseEvent) {
   const el = (e.target as HTMLElement | null)?.closest?.('.mention-chip--path') as HTMLElement | null
   if (!el) return
@@ -217,7 +232,7 @@ function focus() {
   editorRef.value?.focus()
 }
 
-defineExpose({ focus })
+defineExpose({ focus, insertPathRange })
 
 onMounted(() => {
   nextTick(() => applyExternalValue(props.modelValue))

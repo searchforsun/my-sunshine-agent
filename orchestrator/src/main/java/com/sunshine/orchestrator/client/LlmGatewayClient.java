@@ -20,11 +20,16 @@ import org.springframework.http.MediaType;
 
 import org.springframework.http.codec.ServerSentEvent;
 
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+
 import org.springframework.stereotype.Component;
 
 import org.springframework.web.reactive.function.client.WebClient;
 
 import reactor.core.publisher.Flux;
+import reactor.netty.http.client.HttpClient;
+
+import java.time.Duration;
 
 
 
@@ -73,6 +78,10 @@ public class LlmGatewayClient {
                 .baseUrl(baseUrl)
 
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
+
+                .clientConnector(new ReactorClientHttpConnector(
+
+                        HttpClient.create().responseTimeout(Duration.ofSeconds(180))))
 
                 .build();
 

@@ -12,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,7 +29,7 @@ class StepSummarizerTest {
     }
 
     @Test
-    void intentAfter_knowledge_mentionsQuery() {
+    void intentAfter_workflowUsesDisplayNameWithoutQuery() {
         WorkflowCatalogRegistry registry = org.mockito.Mockito.mock(WorkflowCatalogRegistry.class);
         WorkflowManagerClient client = org.mockito.Mockito.mock(WorkflowManagerClient.class);
         WorkflowManagerClient.WorkflowCatalogEntryDto entry =
@@ -45,8 +44,8 @@ class StepSummarizerTest {
         IntentLabels.bind(new IntentLabelService(
                 TimelinePromptCatalog.withDefaults(), workflowCatalog, registry, workflowLabels));
         String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
-        assertThat(after).contains("公司考勤制度");
         assertThat(after).contains("知识库问答");
+        assertThat(after).doesNotContain("公司考勤制度");
     }
 
     @Test
@@ -102,7 +101,7 @@ class StepSummarizerTest {
     @Test
     void before_active_includeUserQuery() {
         assertThat(StepSummarizer.before("intent", "测试问题"))
-                .isEqualTo("阅读「测试问题」");
+                .isEqualTo("识别用户意图");
         assertThat(StepSummarizer.active("rag", "测试问题"))
                 .contains("测试问题");
     }

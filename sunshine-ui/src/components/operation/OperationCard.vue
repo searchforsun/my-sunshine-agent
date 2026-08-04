@@ -12,8 +12,14 @@ import {
   hasExpandableContent,
   resolvePlanIdFromStep,
   resolveSandboxFocusPath,
+  resolveSandboxReadLineRange,
+  isSandboxReadStep,
+  isSandboxExecStep,
+  formatExecCommandHeaderText,
+  extractSandboxExecCommand,
   isCancellableSandboxTool,
 } from '../../api/processingSteps'
+import { isThinkStepId } from '../../api/processingStepsNormalize'
 import { useRouter } from 'vue-router'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { isToolStepId, type HitlConfirmationPayload } from '../../api/hitlSteps'
@@ -35,11 +41,14 @@ const props = withDefaults(defineProps<{
   hideChevron?: boolean
   pendingHitlConfirmation?: HitlConfirmationPayload
   hitlUiKey?: string
+  /** exec 步所属轮次 think 摘要（think_summary 工具输出），主行「执行命令 {摘要} {命令头}」 */
+  roundSummary?: string
 }>(), {
   embedHitl: true,
   hideChevron: false,
   pendingHitlConfirmation: undefined,
   hitlUiKey: '',
+  roundSummary: undefined,
 })
 
 const router = useRouter()
@@ -52,11 +61,17 @@ const emit = defineEmits<{
 }>()
 
 function onRowActivate() {
-  if (isSandboxTool.value && chatStore.currentId) {
+  // exec 步只展开详情，不跳转工作区；read 步定位文件、其余沙箱步打开工作区
+  if (isSandboxTool.value && !isSandboxExecStep(props.step) && chatStore.currentId) {
     const focus = resolveSandboxFocusPath(props.step)
+    // read 步骤：附带起始行，点击后工作区直接定位到对应行（不重复渲染内容）
+    const lineRange = isSandboxReadStep(props.step)
+      ? resolveSandboxReadLineRange(props.step)
+      : undefined
     sandboxDrawer.open({
       conversationId: chatStore.currentId,
       focusPath: focus,
+      focusLine: lineRange?.start,
     })
   }
   if (canExpand.value) {
@@ -94,7 +109,18 @@ const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
 const isDone = computed(() => lifecycle.value === 'done')
 const isPaused = computed(() => lifecycle.value === 'paused' || lifecycle.value === 'terminated')
-const label = computed(() => formatStepLabel(props.step))
+const label = computed(() => {
+  // think 步：有结构化摘要显示摘要，无摘要统一兜底「深度思考」（running/done 一致）
+  if (isThinkStepId(props.step.id)) {
+    if (props.step.stepSummary?.trim()) return props.step.stepSummary.trim()
+    return '深度思考'
+  }
+  // tool 步：去掉「调用工具」前缀，直接显示工具名
+  if (isToolStepId(props.step.id)) {
+    return formatStepLabel(props.step).replace(/^调用工具\s*/, '').trim() || formatStepLabel(props.step)
+  }
+  return formatStepLabel(props.step)
+})
 const canPauseTool = computed(
   () => props.live && isRunning.value && isCancellableSandboxTool(props.step),
 )
@@ -107,7 +133,20 @@ async function onPauseTool(e: Event): Promise<void> {
 }
 
 /** 主行摘要：折叠时一行预览；展开且可下移时主行仅保留 label */
-const headerText = computed(() => resolveStepHeaderText(props.step))
+const headerText = computed(() => {
+  // think 步：摘要已由 stepSummary 主行承载，不再展示 before/active/after 冗余文案
+  if (isThinkStepId(props.step.id)) return ''
+  // exec 步：摘要压缩为命令头（如 `find ... | head -120` → `find | head`），
+  // 有 think_summary 摘要时前置展示（如「提交一下改动 git | grep」）；取消/暂停保留状态文案
+  if (isSandboxExecStep(props.step)) {
+    const cancelled = lifecycle.value === 'paused' || lifecycle.value === 'terminated'
+    const command = extractSandboxExecCommand(props.step)
+    if (command && !cancelled) {
+      return formatExecCommandHeaderText(command, props.roundSummary)
+    }
+  }
+  return resolveStepHeaderText(props.step)
+})
 const shiftSummary = computed(() => shouldShiftSummaryOnExpand(props.step))
 const { isSandboxTool, editDiffSummary } = useSandboxToolExpand(() => props.step)
 

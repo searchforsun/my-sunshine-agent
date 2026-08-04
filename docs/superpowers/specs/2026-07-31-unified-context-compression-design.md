@@ -3,6 +3,7 @@
 > 日期：2026-07-31
 > 状态：**Layer 2/3/4/5 ✅ 已实现** · **Layer 1 ⚠️ 待恢复**（AgentScope 2.0 迁移后移除）
 > **v2/v3 优化（2026-08-01）**：§5.5 压缩点模式（L1 压缩点前移、L3 尾部动态段、Budget「丢」改「退役并入」）；§5.5.3 起 v3 分层修正——**按变化频率 Tier 0/1/2 分层**、幂等 upsert、T0 降频、意图尾部注入（业界调研见 §5.5.5）· 关联 [task-scene-context-design](./2026-08-01-task-scene-context-design.md)
+> **v8（2026-08-02）**：H1 拆分——HIERARCHICAL 下阶段骨架（低频）进 Tier 1 幂等 upsert、阶段细节（高频）留 Tier 2 尾部（§5.5.7 注记），承接 [planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md) 分层增量规划
 > 整合：`2026-07-17-autocontext-memory-design.md` + `2026-07-22-context-optimization-design.md` + `2026-07-24-dynamic-context-compression-design.md`（三者均已归档）
 > 行业参考：Claude Code 五层渐进压缩 · Cursor 单层摘要 · Oracle 双层模式 · Mem0 LLM 记忆管理
 
@@ -600,6 +601,8 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 | run 内 Layer 1 | 三阶段一次（§4.4） | 同 | ❌ 统一 |
 
 > **Planner-Worker 适配**：harness 场景下，Planner 是唯一带跨轮前缀包袱的角色，按本表分层并追加 H1（Tier 2 尾部，高频）——详见 [planner-harness spec §2.4](./2026-07-31-planner-harness-loop-design.md)。Worker/子 Agent 无前缀包袱，不占预算。
+>
+> **v8 注记（H1 拆分）**：HIERARCHICAL 模式（[planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md)）下 H1 拆两块——**阶段骨架**（3~5 阶段 + 依赖，仅阶段切换时变）进 **Tier 1 幂等 upsert**；**当前阶段 task 细节 + handoff**（每轮追加）进 **Tier 2 尾部**。阶段骨架稳定上移，跨阶段前缀复用更好。FULL/INCREMENTAL 无骨架，H1 仍整体 Tier 2 尾部。
 
 ---
 
@@ -1048,7 +1051,7 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 | ⑥ | **按频率分层（v3）** | §5.5.3 | Tier 0/1/2 定序；高频块（T0 原稿）移出 Tier 0/1 前部，意图注入走尾部 system 消息 |
 | ⑦ | **幂等 upsert + 定宽隔离** | §5.5.6 | L2/W0 抽取加 content-hash 比对；appendix 定宽分隔、阈值重编译；确定性序列化（键排序、无时间戳/session id） |
 | ⑧ | **T0 降频** | §5.5.6 / task-scene §6.1 | T0 有界块随压缩点推进刷新，非每轮；与 T0 写路径解耦 |
-| ⑨ | **Planner-Worker 分层适配** | §5.5.7 注记 / [planner-harness §2.4](./2026-07-31-planner-harness-loop-design.md) | Planner 上下文 Tier 0/1/2 定序（H1 在 Tier 2 尾部、Worker handoff 双写 L1 尾部 + H1）；Worker 稳定前缀跨 worker 复用，upstream 结果经 `plan_shared_memory` 按需读取 |
+| ⑨ | **Planner-Worker 分层适配** | §5.5.7 注记 / [planner-harness §2.4](./2026-07-31-planner-harness-loop-design.md) | Planner 上下文 Tier 0/1/2 定序（H1 在 Tier 2 尾部、Worker handoff 双写 L1 尾部 + H1）；Worker 稳定前缀跨 worker 复用，upstream 结果经 `plan_shared_memory` 按需读取。**v8：HIERARCHICAL 下 H1 拆分**——阶段骨架 Tier 1 幂等 upsert、阶段细节 Tier 2 尾部 |
 | ⑩ | **tools 分层注入** | §5.5.3 v6 注记 / [phase5 §5.5](./phase5-operation-openness-design.md) | 工具规模 > 阈值时：全量名列表进 Tier 0 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 由 Nacos `agent.tool.inject` 切换 |
 | ⑪ | **L2/W0 语义冲突识别** | §6.4 / task-scene §5.2 | 写路径加语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT，`context.l2.merge` / `context.ws.merge`）；Nacos `agent.context.l2.semantic-merge` 开关 |
 

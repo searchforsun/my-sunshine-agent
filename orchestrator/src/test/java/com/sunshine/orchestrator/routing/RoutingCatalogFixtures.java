@@ -88,16 +88,16 @@ public final class RoutingCatalogFixtures {
                 json("rewrite.timeline", "rewrite",
                         "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"),
                 json("timeline.intent", "timeline",
-                        "{\"label\":\"识别意图\",\"before\":\"阅读{query}\","
-                                + "\"active\":\"正在分析{query}，匹配最佳处理方式\","
-                                + "\"default-after\":\"已完成对{query}的意图判断\","
-                                + "\"unmatched-after\":\"{query}将按「{detail}」处理\","
+                        "{\"label\":\"识别意图\",\"before\":\"识别用户意图\","
+                                + "\"active\":\"正在匹配最佳处理方式\","
+                                + "\"default-after\":\"已完成意图判断\","
+                                + "\"unmatched-after\":\"将按「{detail}」处理\","
                                 + "\"modes\":{\"react\":{\"detail\":\"自主智能体\","
-                                + "\"after\":\"{query}将由自主智能体分析并作答\"},"
+                                + "\"after\":\"将由自主智能体分析并作答\"},"
                                 + "\"plan-workflow\":{\"detail\":\"动态规划\","
-                                + "\"after\":\"{query}将动态规划多步执行\"},"
+                                + "\"after\":\"将动态规划多步执行\"},"
                                 + "\"peer-collab\":{\"detail\":\"多专家协作\","
-                                + "\"after\":\"{query}将由多专家协作交叉验证\"}}}"));
+                                + "\"after\":\"将由多专家协作交叉验证\"}}}"));
     }
 
     private static PromptCatalogEntry text(String id, String kind, String contentText) {

@@ -28,6 +28,37 @@ class SandboxTimelineLabelServiceTest {
     }
 
     @Test
+    void readAfter_includesLineRange() {
+        // 读全部：L1-{n}
+        assertThat(labels.readAfter("读文件",
+                Map.of("path", "/workspace/readme.md"),
+                "line1\nline2\nline3\n"))
+                .isEqualTo("readme.md L1-3");
+        // 读部分：offset/limit
+        assertThat(labels.readAfter("读文件",
+                Map.of("path", "/workspace/test.py", "offset", 20, "limit", 9),
+                "line20\nline21\nline22\nline23\nline24\nline25\nline26\nline27\nline28\n"))
+                .isEqualTo("test.py L20-28");
+        // 空内容：无行范围
+        assertThat(labels.readAfter("读文件",
+                Map.of("path", "/workspace/empty.txt"), ""))
+                .isEqualTo("empty.txt");
+    }
+
+    @Test
+    void readAfter_missingPath_fallsBackEmpty() {
+        assertThat(labels.readAfter("读文件", Map.of(), "line1\n"))
+                .isEqualTo("");
+    }
+
+    @Test
+    void lineRangeText_computesRange() {
+        assertThat(SandboxTimelineLabelService.lineRangeText(null, 129)).isEqualTo("L1-129");
+        assertThat(SandboxTimelineLabelService.lineRangeText(20, 9)).isEqualTo("L20-28");
+        assertThat(SandboxTimelineLabelService.lineRangeText(20, 0)).isEmpty();
+    }
+
+    @Test
     void after_glob_infersSearchRootFromResults() {
         String raw = "/skills/sandbox-coding-demo/SKILL.md\n/skills/sandbox-coding-demo/scripts/hello.py\n";
         Map<String, Object> enriched = SandboxStepContext.enrichInput(

@@ -25,7 +25,7 @@ export type ChatMentionSegment =
   | { type: 'skill'; token: string; skill: SkillCatalogIndexEntry }
   | { type: 'agent'; token: string; agent: AgentCatalogIndexEntry }
   | { type: 'workflow'; token: string; workflow: WorkflowCatalogEntry }
-  | { type: 'path'; token: string; label: string }
+  | { type: 'path'; token: string; label: string; lineStart?: number; lineEnd?: number }
 
 export interface ChatMentionCatalogs {
   skills: SkillCatalogIndexEntry[]
@@ -45,6 +45,8 @@ interface RawMentionMatch {
   kind: ChatMentionKind
   token: string
   label?: string
+  lineStart?: number
+  lineEnd?: number
 }
 
 const PREFIX_RE: { kind: Exclude<ChatMentionKind, 'path'>; re: RegExp }[] = [
@@ -90,6 +92,8 @@ function collectMatches(content: string, allows: ChatMentionAllows): RawMentionM
       kind: 'path',
       token: hit.path,
       label: sandboxPathBasename(hit.path),
+      lineStart: hit.lineStart,
+      lineEnd: hit.lineEnd,
     })
   }
   return matches.sort((a, b) => a.index - b.index)
@@ -110,7 +114,13 @@ export function segmentChatMentions(
       if (hit.index > lastIndex) {
         segments.push({ type: 'text', value: content.slice(lastIndex, hit.index) })
       }
-      segments.push({ type: 'path', token: hit.token, label: hit.label || sandboxPathBasename(hit.token) })
+      segments.push({
+        type: 'path',
+        token: hit.token,
+        label: hit.label || sandboxPathBasename(hit.token),
+        lineStart: hit.lineStart,
+        lineEnd: hit.lineEnd,
+      })
       lastIndex = hit.end
       continue
     }
@@ -162,7 +172,12 @@ export function mentionPrefix(kind: ChatMentionKind): string {
   }
 }
 
-export function mentionPlainToken(kind: ChatMentionKind, token: string): string {
-  if (kind === 'path') return sandboxPathPlainToken(token)
+export function mentionPlainToken(
+  kind: ChatMentionKind,
+  token: string,
+  lineStart?: number,
+  lineEnd?: number,
+): string {
+  if (kind === 'path') return sandboxPathPlainToken(token, lineStart, lineEnd)
   return `${mentionPrefix(kind)}${token}`
 }

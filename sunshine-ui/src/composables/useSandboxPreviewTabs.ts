@@ -14,6 +14,57 @@ export function tabFileName(path: string): string {
   return parts[parts.length - 1] || path
 }
 
+function escapeHtmlForLine(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
+ * 将 highlight.js 输出的整段 HTML 按行切分。
+ * highlight.js 的输出中 `\n` 均为纯文本换行（不在标签内），
+ * 因此可安全地按 `\n` 切分，再用 open-tag 栈补齐每行的未闭合标签。
+ */
+function splitHighlightedHtmlByLines(html: string): string[] {
+  const rawLines = html.split('\n')
+  const out: string[] = new Array(rawLines.length)
+  let openTags: string[] = []
+  for (let i = 0; i < rawLines.length; i++) {
+    let line = rawLines[i]
+    // 行首补齐上一行遗留的未闭合标签
+    if (openTags.length) {
+      line = openTags.map((t) => `<${t}>`).join('') + line
+    }
+    // 解析本行标签状态
+    const tagRe = /<\/?([a-zA-Z][\w-]*)([^>]*)>/g
+    let m: RegExpExecArray | null
+    const stack: string[] = []
+    while ((m = tagRe.exec(line)) !== null) {
+      const isClose = m[0][1] === '/'
+      const name = m[1].toLowerCase()
+      if (isClose) {
+        // 弹出到匹配的开标签
+        const idx = stack.lastIndexOf(name)
+        if (idx >= 0) stack.splice(idx, 1)
+      } else if (!/\/\s*$/.test(m[2])) {
+        stack.push(name)
+      }
+    }
+    // 行尾补齐本行未闭合标签
+    if (stack.length) {
+      line += stack
+        .slice()
+        .reverse()
+        .map((t) => `</${t}>`)
+        .join('')
+    }
+    out[i] = line
+    openTags = stack
+  }
+  return out
+}
+
 function langFromPath(path: string): string | null {
   const dot = path.lastIndexOf('.')
   if (dot < 0) return null
@@ -29,6 +80,8 @@ function langFromPath(path: string): string | null {
     '.xml': 'xml',
     '.html': 'xml',
     '.htm': 'xml',
+    '.css': 'css',
+    '.scss': 'scss',
     '.js': 'javascript',
     '.ts': 'typescript',
     '.jsx': 'javascript',
@@ -74,6 +127,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
   const previewLoadingMore = ref(false)
   const previewCache = ref<Record<string, PreviewEntry>>({})
   const copyDone = ref(false)
+  const focusLine = ref(0)
   let copyTimer: ReturnType<typeof setTimeout> | null = null
 
   function scrollActiveTabIntoView() {
@@ -92,16 +146,21 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
   const showMarkdownRendered = computed(() => isMarkdownFile.value && !mdRawMode.value)
 
   const previewCodeHtml = computed(() => {
-    if (!preview.value || !selectedPath.value || showMarkdownRendered.value) return ''
+    if (!preview.value || !selectedPath.value || showMarkdownRendered.value) return [] as string[]
     const lang = langFromPath(selectedPath.value)
+    let html = ''
     try {
       if (lang && hljs.getLanguage(lang)) {
-        return hljs.highlight(preview.value, { language: lang }).value
+        html = hljs.highlight(preview.value, { language: lang }).value
+      } else {
+        html = hljs.highlightAuto(preview.value).value
       }
-      return hljs.highlightAuto(preview.value).value
     } catch {
-      return ''
+      // 降级：按行转义
+      return preview.value.split('\n').map(escapeHtmlForLine)
     }
+    // highlight.js 输出的是带 span 的 HTML，按行切分需保证标签闭合
+    return splitHighlightedHtmlByLines(html)
   })
 
   const previewLangClass = computed(() => {
@@ -141,10 +200,11 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     }, 2000)
   }
 
-  async function openFile(path: string) {
+  async function openFile(path: string, focusLineArg?: number) {
     const conversationId = options.getConversationId()
     const wsId = options.getWorkspaceId?.()
     if ((!conversationId && !wsId) || !path || path === '/workspace' || path === '/skills') return
+    focusLine.value = typeof focusLineArg === 'number' && focusLineArg > 0 ? focusLineArg : 0
     if (!openTabs.value.some((t) => t.path === path)) {
       openTabs.value = [...openTabs.value, { path }]
     }
@@ -293,6 +353,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     previewLoading.value = false
     previewLoadingMore.value = false
     mdRawMode.value = false
+    focusLine.value = 0
     options.selectedKeys.value = []
   }
 
@@ -304,6 +365,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     preview.value = ''
     previewMeta.value = ''
     previewLoadingMore.value = false
+    focusLine.value = 0
   }
 
   function clearCache() {
@@ -351,5 +413,6 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     resetTabsOnConversationChange,
     clearCache,
     clearCacheUnder,
+    focusLine,
   }
 }

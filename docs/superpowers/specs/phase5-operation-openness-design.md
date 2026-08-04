@@ -1,7 +1,7 @@
 # 阶段五：运营化与开放化 — 技术设计（SSOT）
 
 > **周期**：按需启动（子项独立排期）
-> **状态**：⬜ 规划（2026-07-27 立项）· **v2（2026-08-01）**：以 harness 长任务为终点重定位；5.2/5.3/5.5 随 harness 上线**前置拆分触发**（不必等阶段四全收口），5.1/5.4/5.7 等 harness 稳定后接
+> **状态**：⬜ 规划（2026-07-27 立项）· **v2（2026-08-01）**：以 harness 长任务为终点重定位；5.2/5.3/5.5 随 harness 上线**前置拆分触发**（不必等阶段四全收口），5.1/5.4/5.7 等 harness 稳定后接 · **v8（2026-08-02）**：`call_scene` 枚举扩展 `plan-phase`（HIERARCHICAL 阶段细拆，[planner-harness §0.2](./2026-07-31-planner-harness-loop-design.md)），全局粗规划强模型 / 阶段细拆轻量模型分层
 > **触发**：① 阶段四收口 + 平台需对外交付/量化运营效果（全量）② **5.2/5.3/5.5 随 harness 上线前置**（见 §1 触发拆分）
 > **前置**：[阶段四](./phase4-platformization-design.md) 4.1/4.2/4.5/4.6/4.7/4.8/4.13 检查门通过；**4.11 Prompt 后台收口**（5.3/5.4 依赖其 Catalog 版本模型）；**harness-loop 阶段一（CompletionGuard）** 落地后启动 5.1 系列（效果评估前提）
 > **对标缺口**：智能体中台蓝图 §5 运营管控与观测层、§6 应用输出层、§1 多模型混部路由、§4 工具 RAG 检索
@@ -103,8 +103,8 @@
 
 | 子任务 | 内容 |
 |--------|------|
-| **5.3.1** | `model_route_policy` 表（`19-sunshine-ops.sql`）：`call_scene`（chat\|plan\|worker\|tool-call\|evaluator\|rewrite\|summarize\|subagent）→ 模型池（按优先级 + 权重）+ 约束（max_cost_per_1k、max_latency_ms）。**v2：命名用 `call_scene`，与用户场景 `scene` 隔离**（见 §5.3.2 注记）；枚举**扩展 `worker`/`evaluator`**（harness 分层模型，见下） |
-| **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 **`call_scene`** 扩展字段（来源：ExecutionDispatcher 模式 + 调用点，如 QueryRewriteService=rewrite、Planner=plan、Worker=worker、Evaluator=evaluator）；BFF/Gateway 透传，客户端不得自填（同 `x-user-id` 约定） |
+| **5.3.1** | `model_route_policy` 表（`19-sunshine-ops.sql`）：`call_scene`（chat\|plan\|plan-phase\|worker\|tool-call\|evaluator\|rewrite\|summarize\|subagent）→ 模型池（按优先级 + 权重）+ 约束（max_cost_per_1k、max_latency_ms）。**v2：命名用 `call_scene`，与用户场景 `scene` 隔离**（见 §5.3.2 注记）；枚举**扩展 `worker`/`evaluator`**（harness 分层模型，见下）；**v8：扩展 `plan-phase`**（HIERARCHICAL 阶段细拆，见 §5.3.2 注记） |
+| **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 **`call_scene`** 扩展字段（来源：ExecutionDispatcher 模式 + 调用点，如 QueryRewriteService=rewrite、Planner=plan、阶段细拆=plan-phase、Worker=worker、Evaluator=evaluator）；BFF/Gateway 透传，客户端不得自填（同 `x-user-id` 约定） |
 | **5.3.3** | `ModelRouter` 扩展：`model=auto` 或缺省时查策略表选模型，选中结果写 trace 头便于观测；保留显式指定 model 直路由 + 现有降级链 |
 | **5.3.4** | `/tools` 或 `/ops` 增加路由策略编辑页（复用 `execution_mode_policy` 编辑模式） |
 | **5.3.5** | Grafana 面板：`call_scene` × model 的调用量/时延/成本（接 5.2 数据） |
@@ -112,6 +112,8 @@
 > **v2 注记（scene 命名隔离）**：路由链已有 `RoutingResult.scene`（用户选择 chat/task，见 [unified-routing](./2026-07-29-unified-routing-design.md)），与 llm-gateway 的调用点语义**互不冲突但不可同名**。本 spec 明确：`scene` = 用户场景（用户选择，贯穿链路），`call_scene` = LLM 调用点（orchestrator 注入，用于模型路由）。**禁止**复用 `scene` 字段承载调用点，避免 harness 上线后（需同时传 task + worker 两个维度）字段冲突。
 >
 > **v2 注记（harness 模型分层）**：harness 有 4 类 LLM 调用——Planner（=plan，强模型）、Worker（**forWorker 内部多次 LLM 调用**，中等快模型）、Evaluator（Chat 模式独立 LLM，快模型）、普通 tool-call。5.3.1 枚举扩展 `worker`/`evaluator` 后，策略表可配置「Planner → 强模型、Worker → 快模型」，实现 harness 的模型成本分层；否则 Worker 只能沿用 `plan` 场景，无法按成本分流。
+>
+> **v8 注记（HIERARCHICAL 模型分层）**：分层增量规划（[planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md)）下，全局粗规划 `call_scene=plan`（强模型，1 次/任务，保质量）与阶段细拆 `call_scene=plan-phase`（轻量模型，N 次/任务，控成本）分离。策略表可配置 `plan → 强模型 / plan-phase → 快模型`；同一 `HarnessPlanner` 组件，仅调用点分层，不新增角色。
 
 **检查门**：`model=auto` 时 rewrite 请求路由到轻量模型、plan 请求路由到强模型（策略表驱动）；改策略表热生效；显式 model 行为不回归（`phase2_agent_demo.py --suite all` PASS）。
 
@@ -266,3 +268,4 @@
 - **D7（5.5 工具分层注入，v2）**：工具名列表进 Tier 0 静态 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 二选一不并存。对齐五层 spec §5.5.3 前缀稳定性。
 - **D8（harness 计量维度，v2）**：feedback/usage 预置 `run_id`+`round_id`，Evaluator 结果落 `harness_eval_result`；phase5 阶段定死字段，harness 直接写入。
 - **D9（phase5 触发拆分，v2）**：5.2/5.3/5.5 随 harness 前置启动，5.1/5.4/5.7 等 harness 稳定后接，5.6 按需。
+- **D10（`plan-phase` 调用点，v8）**：HIERARCHICAL 阶段细拆新增 `call_scene=plan-phase`（轻量模型），与全局粗规划 `plan`（强模型）分层；同一 `HarnessPlanner` 组件不新增角色，仅调用点区分（对齐 [planner-harness §0.2](./2026-07-31-planner-harness-loop-design.md)）。

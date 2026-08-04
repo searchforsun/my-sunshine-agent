@@ -86,3 +86,33 @@ export async function readWorkspaceSandboxFile(
   )
   return parseBffPayload<SandboxFsContent>(res)
 }
+
+/** 文件索引（递归扁平化路径列表） */
+export async function fetchSandboxFileIndex(
+  conversationId: string,
+  path = '/workspace',
+  maxDepth = 64,
+): Promise<string[]> {
+  const q = new URLSearchParams({ path, maxDepth: String(maxDepth) })
+  const res = await fetch(
+    `${API_BASE()}/api/conversations/${encodeURIComponent(conversationId)}/sandbox/workspace/index?${q}`,
+    { headers: apiHeaders() },
+  )
+  const data = await parseBffPayload<{ root: string; paths: string[] }>(res)
+  return data?.paths ?? []
+}
+
+/** 工作区级别文件索引（无需 conversationId） */
+export async function fetchWorkspaceFileIndex(
+  workspaceId: string,
+  path = '/workspace',
+  maxDepth = 64,
+): Promise<string[]> {
+  const q = new URLSearchParams({ path, maxDepth: String(maxDepth) })
+  const res = await fetch(
+    `${API_BASE()}/api/agent-workspaces/${encodeURIComponent(workspaceId)}/sandbox/workspace/index?${q}`,
+    { headers: apiHeaders() },
+  )
+  const data = await parseBffPayload<{ root: string; paths: string[] }>(res)
+  return data?.paths ?? []
+}

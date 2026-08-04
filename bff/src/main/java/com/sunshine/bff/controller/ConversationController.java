@@ -72,6 +72,15 @@ public class ConversationController {
         return client.listSandboxWorkspace(id, path, userId, tenantId);
     }
 
+    @GetMapping("/api/conversations/{id}/sandbox/workspace/index")
+    public Mono<Map<String, Object>> listSandboxFileIndex(
+            @PathVariable String id,
+            @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.listSandboxFileIndex(id, path, userId, tenantId);
+    }
+
     @GetMapping("/api/conversations/{id}/sandbox/workspace/content")
     public Mono<Map<String, Object>> readSandboxWorkspace(
             @PathVariable String id,

@@ -343,6 +343,11 @@ public final class ProcessingTimelineSession {
         think.ingestStreamingContentDelta(delta, this::enqueueAuxiliary);
     }
 
+    /** think_summary 元工具结构化摘要 → 写入最近一轮 think 步 step_summary */
+    public void applyThinkStepSummary(String summary) {
+        think.applyThinkStepSummary(summary, this::enqueueAuxiliary);
+    }
+
     public String contentSegmentBaseline() {
         return think.contentSegmentBaseline();
     }

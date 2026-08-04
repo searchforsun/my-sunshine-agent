@@ -9,6 +9,10 @@ import java.util.function.Consumer;
 /**
  * ReAct 正文分段：每轮 think 完成后开一段，工具调用前关闭。
  * 段内只接受相对 {@link #segmentBaseline} 的单调累积前缀扩展，禁止终态快照二次灌入。
+ * AgentScope 2.0 content delta 为增量帧/累积帧混合，统一经 {@link #resolveDelta} 求相对下发的增量。
+ *
+ * <p>模型正文不再承载摘要标记：本轮摘要由 {@code think_summary} 元工具结构化输出，
+ * 经 step_delta(step_summary) 独立下发，本类仅负责正文分段。
  */
 public final class ContentSegmentCoordinator {
 
@@ -18,9 +22,9 @@ public final class ContentSegmentCoordinator {
     private String segmentBaseline = "";
 
     /** 将分段 token 写入 session 辅助队列，由 {@link ProcessingTimelineSupport} 一并刷出 */
-    public List<StreamToken> ingest(String cumulativeText, String afterStepId, Consumer<StreamToken> sink) {
+    public List<StreamToken> ingest(String incoming, String afterStepId, Consumer<StreamToken> sink) {
         List<StreamToken> out = new ArrayList<>();
-        if (cumulativeText == null || cumulativeText.isEmpty() || afterStepId == null || afterStepId.isBlank()) {
+        if (incoming == null || incoming.isEmpty() || afterStepId == null || afterStepId.isBlank()) {
             return out;
         }
         if (openSegmentId == null || !afterStepId.equals(openAfterStepId)) {
@@ -32,11 +36,11 @@ public final class ContentSegmentCoordinator {
             out.add(start);
             sink.accept(start);
         }
-        String delta = resolveDelta(segmentBaseline, cumulativeText);
+        String delta = resolveDelta(segmentBaseline, incoming);
         if (delta.isEmpty()) {
             return out;
         }
-        segmentBaseline = advanceBaseline(segmentBaseline, cumulativeText, delta);
+        segmentBaseline = advanceBaseline(segmentBaseline, incoming, delta);
         StreamToken chunk = StreamToken.contentInSegment(openSegmentId, delta);
         out.add(chunk);
         sink.accept(chunk);

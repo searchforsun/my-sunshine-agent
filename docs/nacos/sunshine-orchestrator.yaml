@@ -110,21 +110,31 @@ agent:
         - "ls *"
         - "pwd"
         - "python -m pytest *"
+    # 工作区级完全体沙箱硬件档位（task-workspace-codex §4.4）- 创建工作区时校验 memoryMb/cpus 须命中 allowed-presets
+    profiles:
+      full:
+        default-memory-mb: 2048
+        default-cpus: 2.0
+        allowed-presets:
+          - { memoryMb: 1024, cpus: 1.0 }
+          - { memoryMb: 2048, cpus: 2.0 }
+          - { memoryMb: 4096, cpus: 4.0 }
+        image: sunshine-sandbox-full:latest
     # 六工具 displayName / description / JSON Schema — TD-111 SSOT
     tools:
       sandbox__read:
         display-name: 读文件
-        description: 读取沙箱内文本文件（/skills/{skillId}/... 或 /workspace；勿对目录调用）
+        description: 读取沙箱内文本文件（/skills/{skillId}/... 或 /workspace；勿对目录调用）；大文件按需用 offset/limit 分段读取，勿一次读全
         properties:
           path:
             type: string
             description: 文件路径（须 /skills/{skillId}/... 或 /workspace/...；禁止旧路径 /skill）
           offset:
             type: integer
-            description: 起始行（可选）
+            description: 起始行（1-based，可选）；缺省从第 1 行读起
           limit:
             type: integer
-            description: 读取行数上限（可选）
+            description: 读取行数上限（可选）；大文件建议 50-200 行，先定位再读局部
         required:
           - path
       sandbox__write:

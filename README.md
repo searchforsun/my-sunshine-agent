@@ -202,3 +202,154 @@ export QWEN_API_KEY=sk-xxx        # 通义千问（Embedding 复用）
 | [rag/README.md](./docs/rag/README.md) | RAG 知识库设计与评测索引 |
 | [workflow/README.md](./docs/workflow/README.md) | Workflow 标杆维护 |
 | [tech-debt-register.md](./docs/tech-debt-register.md) | 技术债 / 文档债 backlog |
+
+```mermaid
+flowchart TD
+    %% 流量入口层
+    subgraph 客户端接入层
+        C1[Web前端]
+        C2[第三方业务系统]
+        C3[移动端]
+    end
+
+    subgraph 负载接入层
+        LB1[四层SLB/LVS]
+        NGX[Nginx OpenResty SSE WebSocket 动静分离]
+    end
+
+    subgraph api_gw["API网关（无状态）"]
+        GW[APISIX网关 鉴权 多租户 限流 流式透传 灰度]
+    end
+
+    %% 双平面核心隔离
+    subgraph control_plane["管控平面（低并发 配置管理）"]
+        M1[Agent配置服务]
+        M2[工具中心服务]
+        M3[知识库管理服务]
+        M4[租户&权限中心]
+        M5[审计&运营报表服务]
+    end
+
+    subgraph runtime_plane["运行平面（高并发 会话主链路 无状态计算）"]
+        subgraph agent_engine["Agent编排引擎（Plan-Worker 架构拆分）"]
+            Planner["Planner 规划器
+任务拆解｜进度校验｜重规划决策｜结果汇总"]
+            WorkerPool["Worker执行池
+独立执行单元｜内部ReAct/SubAgent
+执行RAG、工具调用、子任务探索"]
+        end
+        MemorySvc[记忆中心服务]
+        ModelGateway[模型推理网关]
+        ToolGateway[工具执行网关]
+        RAGSvc[RAG检索服务]
+    end
+
+    %% 异步解耦层
+    subgraph 消息队列集群
+        MQ[Kafka/RocketMQ]
+    end
+
+    subgraph 异步任务消费服务
+        T1[文档解析文本分块服务]
+        T2[文本向量化任务服务]
+        T3[离线质量评测Badcase采集]
+    end
+
+    %% 存储层
+    subgraph 分布式存储集群
+        REDIS[(Redis Cluster)]
+        MYSQL[(MySQL MGR集群)]
+        MILVUS[(Milvus向量集群)]
+        S3[(MinIO/S3 对象存储)]
+    end
+
+    %% 算力推理资源池
+    subgraph LLM算力调度层
+        Scheduler[推理调度器]
+        GPUCluster[私有化GPU推理集群 vLLM]
+        APIPool[第三方大模型API资源池]
+    end
+
+    %% 可观测体系
+    subgraph 全链路可观测
+        TRACE[OpenTelemetry分布式追踪]
+        MONITOR[Prometheus Grafana指标监控]
+        LOG[Loki/ELK日志聚合]
+        LANGFUSE[Langfuse Agent专项观测]
+    end
+
+    %% 同步主链路
+    C1 --> LB1
+    C2 --> LB1
+    C3 --> LB1
+    LB1 --> NGX --> GW
+    
+    GW --> M1
+    GW --> M2
+    GW --> M3
+    GW --> M4
+    GW --> M5
+    GW --> Planner
+
+    %% ========= Plan Worker核心链路 =========
+    Planner <--> WorkerPool
+    %% Worker执行任务依赖底层原子服务
+    WorkerPool <--> MemorySvc
+    WorkerPool <--> ModelGateway
+    WorkerPool <--> ToolGateway
+    WorkerPool <--> RAGSvc
+    %% Planner读写会话记忆（全局上下文、任务清单）
+    Planner <--> MemorySvc
+
+    %% 模型算力链路
+    ModelGateway <--> Scheduler
+    Scheduler <--> GPUCluster
+    Scheduler <--> APIPool
+
+    %% 存储交互
+    MemorySvc <--> REDIS
+    RAGSvc <--> MILVUS
+    Planner --> MYSQL
+
+    %% 管控面存储
+    M1 --> MYSQL
+    M2 --> MYSQL
+    M3 --> MYSQL
+    M4 --> MYSQL
+
+    %% 异步虚线链路
+    M1 -.-> MQ
+    M3 -.-> MQ
+    Planner -.-> MQ
+    MQ --> T1
+    MQ --> T2
+    MQ --> T3
+    T1 --> S3
+    T1 --> MILVUS
+
+    %% 可观测埋点
+    GW -.-> TRACE
+    GW -.-> MONITOR
+    GW -.-> LOG
+    GW -.-> LANGFUSE
+    
+    Planner -.-> TRACE
+    Planner -.-> MONITOR
+    Planner -.-> LOG
+    Planner -.-> LANGFUSE
+
+    WorkerPool -.-> TRACE
+    WorkerPool -.-> MONITOR
+    WorkerPool -.-> LOG
+    WorkerPool -.-> LANGFUSE
+    
+    ModelGateway -.-> TRACE
+    ModelGateway -.-> MONITOR
+    ModelGateway -.-> LOG
+    ModelGateway -.-> LANGFUSE
+    
+    ToolGateway -.-> TRACE
+    ToolGateway -.-> MONITOR
+    ToolGateway -.-> LOG
+    ToolGateway -.-> LANGFUSE
+```

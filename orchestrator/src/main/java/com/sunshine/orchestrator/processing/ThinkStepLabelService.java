@@ -25,22 +25,12 @@ public class ThinkStepLabelService {
     }
 
     public String thinkStepLabel(String stepId, ExecutionMode mode) {
-        ExecutionMode resolved = mode != null ? mode : ExecutionMode.REACT;
-        boolean first = ThinkStepIds.iterationOf(stepId) <= 1;
+        // think 步 label 统一为「深度思考」，不再区分首轮/续轮（摘要由 think_summary 结构化输出）
         AgentPromptProperties.StepTimeline think = stepTemplate(TimelineStepId.THINK.id());
         if (think == null) {
             return null;
         }
-        String modeKey = TimelineLabelTemplates.modeConfigKey(resolved);
-        AgentPromptProperties.StepModeTimeline modeTimeline = think.getModes() != null
-                ? think.getModes().get(modeKey) : null;
-        if (modeTimeline != null) {
-            String modeLabel = first ? modeTimeline.getLabel() : modeTimeline.getLabelFollowUp();
-            if (StringUtils.hasText(modeLabel)) {
-                return modeLabel.strip();
-            }
-        }
-        String label = first ? think.getLabel() : think.getLabelFollowUp();
+        String label = think.getLabel();
         return StringUtils.hasText(label) ? label.strip() : null;
     }
 

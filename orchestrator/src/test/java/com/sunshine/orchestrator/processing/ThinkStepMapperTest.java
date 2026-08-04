@@ -168,7 +168,7 @@ class ThinkStepMapperTest {
                 .forEach(t -> ProcessingStepMerger.upsert(steps, t.step()));
 
         ProcessingStep think = steps.stream().filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
-        assertThat(think.label()).isEqualTo("规划推理");
+        assertThat(think.label()).isEqualTo("深度思考");
         assertThat(think.summary().active()).contains("工具");
         assertThat(think.summary().after()).contains("工具");
     }

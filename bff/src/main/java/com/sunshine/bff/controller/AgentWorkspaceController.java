@@ -46,14 +46,18 @@ public class AgentWorkspaceController {
     // ===== Git =====
 
     @GetMapping("/api/agent-workspaces/{id}/branches")
-    public Mono<Map<String, Object>> listBranches(@PathVariable String id) {
-        return orchestratorClient.listBranches(id);
+    public Mono<Map<String, Object>> listBranches(@PathVariable String id,
+                                                  @RequestHeader("x-user-id") String userId,
+                                                  @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.listBranches(id, userId, tenantId);
     }
 
     @PostMapping("/api/agent-workspaces/{id}/branches")
     public Mono<Map<String, Object>> createBranch(@PathVariable String id,
-                                                   @RequestBody Map<String, String> body) {
-        return orchestratorClient.createBranch(id, body);
+                                                  @RequestBody Map<String, String> body,
+                                                  @RequestHeader("x-user-id") String userId,
+                                                  @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.createBranch(id, body, userId, tenantId);
     }
 
     // ===== Checkout 管理（会话工作目录：/workspace/{checkoutId}，分支与目录一一对应） =====
@@ -91,36 +95,44 @@ public class AgentWorkspaceController {
 
     @GetMapping("/api/agent-workspaces/{id}/git/status")
     public Mono<Map<String, Object>> gitStatus(@PathVariable String id,
-                                                @RequestParam("checkoutId") String checkoutId) {
-        return orchestratorClient.gitStatus(id, checkoutId);
+                                                @RequestParam("checkoutId") String checkoutId,
+                                                @RequestHeader("x-user-id") String userId,
+                                                @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.gitStatus(id, checkoutId, userId, tenantId);
     }
 
     @PostMapping("/api/agent-workspaces/{id}/git/stage")
     public Mono<Map<String, Object>> gitStage(@PathVariable String id,
                                                @RequestParam("checkoutId") String checkoutId,
-                                               @RequestBody Map<String, Object> body) {
-        return orchestratorClient.gitStage(id, checkoutId, body);
+                                               @RequestBody Map<String, Object> body,
+                                               @RequestHeader("x-user-id") String userId,
+                                               @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.gitStage(id, checkoutId, body, userId, tenantId);
     }
 
     @PostMapping("/api/agent-workspaces/{id}/git/commit")
     public Mono<Map<String, Object>> gitCommit(@PathVariable String id,
                                                 @RequestParam("checkoutId") String checkoutId,
-                                                @RequestBody Map<String, String> body) {
-        return orchestratorClient.gitCommit(id, checkoutId, body);
+                                                @RequestBody Map<String, String> body,
+                                                @RequestHeader("x-user-id") String userId,
+                                                @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.gitCommit(id, checkoutId, body, userId, tenantId);
     }
 
     @PostMapping("/api/agent-workspaces/{id}/git/push")
     public Mono<Map<String, Object>> gitPush(@PathVariable String id,
                                               @RequestParam("checkoutId") String checkoutId,
-                                              @RequestHeader("x-user-id") String userId) {
-        return orchestratorClient.gitPush(id, checkoutId, userId);
+                                              @RequestHeader("x-user-id") String userId,
+                                              @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.gitPush(id, checkoutId, userId, tenantId);
     }
 
     @PostMapping("/api/agent-workspaces/{id}/git/pull")
     public Mono<Map<String, Object>> gitPull(@PathVariable String id,
                                               @RequestParam("checkoutId") String checkoutId,
-                                              @RequestHeader("x-user-id") String userId) {
-        return orchestratorClient.gitPull(id, checkoutId, userId);
+                                              @RequestHeader("x-user-id") String userId,
+                                              @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.gitPull(id, checkoutId, userId, tenantId);
     }
 
     @PostMapping("/api/agent-workspaces/{id}/sync")
@@ -138,6 +150,14 @@ public class AgentWorkspaceController {
             @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
             @RequestHeader("x-tenant-id") String tenantId) {
         return orchestratorClient.listWsFiles(id, path, tenantId);
+    }
+
+    @GetMapping("/api/agent-workspaces/{id}/sandbox/workspace/index")
+    public Mono<Map<String, Object>> listFileIndex(
+            @PathVariable String id,
+            @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
+            @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.listWsFileIndex(id, path, tenantId);
     }
 
     @GetMapping("/api/agent-workspaces/{id}/sandbox/workspace/content")

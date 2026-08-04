@@ -17,8 +17,33 @@ export interface ComposerMentionContext {
   allows: ChatMentionAllows
 }
 
-function chipDataset(kind: ChatMentionKind, token: string): Record<string, string> {
-  return { mentionKind: kind, mentionId: token }
+function chipDataset(
+  kind: ChatMentionKind,
+  token: string,
+  lineStart?: number,
+  lineEnd?: number,
+): Record<string, string> {
+  const ds: Record<string, string> = { mentionKind: kind, mentionId: token }
+  if (kind === 'path' && typeof lineStart === 'number' && lineStart > 0) {
+    ds.lineStart = String(lineStart)
+    if (typeof lineEnd === 'number' && lineEnd >= lineStart) {
+      ds.lineEnd = String(lineEnd)
+    }
+  }
+  return ds
+}
+
+/** path chip 展示名：test.py(120-125) / test.py(120)；无行范围退化为 basename */
+export function sandboxPathChipLabel(
+  token: string,
+  labelText?: string,
+  lineStart?: number,
+  lineEnd?: number,
+): string {
+  const base = labelText || sandboxPathBasename(token)
+  if (typeof lineStart !== 'number' || lineStart < 1) return base
+  const end = typeof lineEnd === 'number' && lineEnd >= lineStart ? lineEnd : lineStart
+  return end > lineStart ? `${base}(${lineStart}-${end})` : `${base}(${lineStart})`
 }
 
 const FILE_ICON_SVG =
@@ -42,7 +67,11 @@ function plainTextFromNode(node: Node): string {
   const el = node as HTMLElement
   const kind = el.dataset.mentionKind as ChatMentionKind | undefined
   const mentionId = el.dataset.mentionId
-  if (kind && mentionId) return mentionPlainToken(kind, mentionId)
+  if (kind && mentionId) {
+    const lineStart = el.dataset.lineStart ? Number(el.dataset.lineStart) : undefined
+    const lineEnd = el.dataset.lineEnd ? Number(el.dataset.lineEnd) : undefined
+    return mentionPlainToken(kind, mentionId, lineStart, lineEnd)
+  }
   let out = ''
   for (const child of Array.from(node.childNodes)) {
     out += plainTextFromNode(child)
@@ -94,7 +123,9 @@ export function setCaretPlainOffset(root: HTMLElement, offset: number): void {
       const kind = el.dataset.mentionKind as ChatMentionKind | undefined
       const mentionId = el.dataset.mentionId
       if (kind && mentionId) {
-        const len = mentionPlainToken(kind, mentionId).length
+        const lineStart = el.dataset.lineStart ? Number(el.dataset.lineStart) : undefined
+        const lineEnd = el.dataset.lineEnd ? Number(el.dataset.lineEnd) : undefined
+        const len = mentionPlainToken(kind, mentionId, lineStart, lineEnd).length
         if (pos + len >= target) {
           if (target <= pos) {
             range.setStartBefore(el)
@@ -126,15 +157,17 @@ function createMentionChipElement(
   kind: ChatMentionKind,
   token: string,
   labelText?: string,
+  lineStart?: number,
+  lineEnd?: number,
 ): HTMLSpanElement {
   const chip = document.createElement('span')
   chip.className = `mention-chip mention-chip--${kind}`
   chip.contentEditable = 'false'
-  Object.entries(chipDataset(kind, token)).forEach(([k, v]) => {
+  Object.entries(chipDataset(kind, token, lineStart, lineEnd)).forEach(([k, v]) => {
     chip.dataset[k] = v
   })
   const display = kind === 'path'
-    ? (labelText || sandboxPathBasename(token))
+    ? sandboxPathChipLabel(token, labelText, lineStart, lineEnd)
     : token
   chip.title = kind === 'path' ? token : display
   if (kind === 'path') {
@@ -179,7 +212,7 @@ export function renderEditorSegments(root: HTMLElement, segments: ChatMentionSeg
     } else if (seg.type === 'workflow') {
       root.appendChild(createMentionChipElement('workflow', seg.token))
     } else if (seg.type === 'path') {
-      root.appendChild(createMentionChipElement('path', seg.token, seg.label))
+      root.appendChild(createMentionChipElement('path', seg.token, seg.label, seg.lineStart, seg.lineEnd))
     }
   }
 }
@@ -213,8 +246,16 @@ export function editorNeedsChipSync(
   if (domChips.length !== expected.length) {
     return true
   }
-  const domPairs = domChips.map(el => `${el.dataset.mentionKind}:${el.dataset.mentionId ?? ''}`)
-  const expectedPairs = expected.map(s => `${s.type}:${s.token}`)
+  const domPairs = domChips.map(el => {
+    const start = el.dataset.lineStart ?? ''
+    const end = el.dataset.lineEnd ?? ''
+    return `${el.dataset.mentionKind}:${el.dataset.mentionId ?? ''}:${start}:${end}`
+  })
+  const expectedPairs = expected.map(s => {
+    const start = s.type === 'path' && s.lineStart ? String(s.lineStart) : ''
+    const end = s.type === 'path' && s.lineEnd ? String(s.lineEnd) : ''
+    return `${s.type}:${s.token}:${start}:${end}`
+  })
   if (domPairs.some((pair, i) => pair !== expectedPairs[i])) {
     return true
   }

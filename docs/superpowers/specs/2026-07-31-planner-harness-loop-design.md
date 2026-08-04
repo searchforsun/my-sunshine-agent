@@ -3,6 +3,7 @@
 > **状态**：📋 设计评审中
 > **日期**：2026-07-31
 > **编号**：阶段四 P1 增量（Planner-Worker 架构：Chat 3-agent 分工 · Task Cursor 模式）
+> **v8（2026-08-02）**：三态分解（FULL/HIERARCHICAL/INCREMENTAL）——采纳「分层增量规划 + 触发式重规划」：阶段粗规划进 G 域稳定层（强模型 1 次/任务），到达阶段再细拆 task DAG（轻模型 `plan-phase`，N 次/任务）；重规划 5 类触发 + 4 条边界规则（局部修正/保留成果/上下文隔离/收敛控制）；H1 拆成「阶段骨架 Tier 1 + 阶段细节 Tier 2」。
 > **前置**：
 >   - [统一资源路由 v3](./2026-07-29-unified-routing-design.md) — `RoutingResult.planMode` + `RoutingResult.scene`（用户选择） + `ResourceDispatcher` 分发
 >   - [ReAct 目标对齐与失败预算 4.7.7](./2026-07-27-react-goal-alignment-design.md) — `GoalAlignmentMiddleware` + `FailureBudgetMiddleware` + `AgentRunState`
@@ -24,9 +25,11 @@
 | 规划轮次（Round） | Loop 的一次完整迭代 |
 | PlanNotebook (H1) | 跨轮共享工作记忆：原始目标 + task 分解 + 每轮规划摘要 + Worker handoff 摘要 + 目标完成度（Chat 由 Evaluator 打分，Task 由 Planner 自判） |
 | 全量分解（taskDecomposition=full） | Planner 首轮输出完整 Task Tree（completeness=closed）→ 逐个 task 工具调用 Worker → 回传评估 → 全部完成 → Planner 综合回答 |
+| 阶段增量分解（taskDecomposition=hierarchical） | Planner 首轮仅输出阶段骨架（completeness=phase-closed，3~5 阶段 + 依赖 + 全局约束，只需原始需求）→ 阶段骨架写 G 域稳定层 → 到达当前阶段再基于前序真实产出细拆 task DAG（§4.1.1），阶段结束即归档 |
 | 渐进式分解（taskDecomposition=incremental） | Planner 首轮仅输出第一步（completeness=open）→ 工具调用 Worker → 评估 → 未完成则 Planner 重新规划下一步 → 循环 |
 | Worker（Planner 的工具调用） | Planner 的**一次工具调用**（类似 `search_web` / `sandbox_exec`），拥有丰富上下文（`forWorker()`：明确目标 + 上游 Worker 关键结果 + 任务约束 + 工具白名单）。Worker 内部是 ReAct Agent，自主 think/tool 循环 |
 | 子 Agent（Worker 内部 spawn） | Worker 内部通过 `spawn_subagent` 启动的**真正隔离子 Agent**（`forSubAgent()=empty()`），仅接收 spawn prompt（任务描述 + 输入）→ 输出结论，无上下文记忆 |
+| Executor（调度层） | `PlannerHarnessExecutor` = 任务分发、依赖校验（`dependsOn`）、状态流转、重试降级、并行管控的**调度组件，不做推理决策**。是 §2.5 上下文隔离模型的**唯一出入口**：G 域读写、P1/P2 读写（§2.5.1）、S 域隔离、底层能力统一鉴权配额 |
 | scene | 来自**用户选择**的会话场景（`chat` / `task`），前端传入 → `RoutingContext.scene` → L3 以 scene 调整 `planMode` 判定规则 + Planner 按 scene 区分 Chat/Task 模式 + Worker 按 scene 选择沙箱/工具策略 |
 
 **三层 Agent 角色**：
@@ -79,25 +82,35 @@ Worker = Planner 的工具调用（forWorker()），视同 ReAct 的 tool 调用
 子 Agent = Worker 内部 spawn（forSubAgent=empty()），真正上下文隔离
 ```
 
-### 0.2 Full vs Incremental：决策机制
+### 0.2 Full vs Incremental vs Hierarchical：决策机制
 
-不需要单独的意图识别步骤。Planner 首轮调用的自然产物决定分解模式：
+不需要单独的意图识别步骤。Planner 首轮调用的自然产物决定分解模式——**规划粒度与信息完备度匹配**：信息越少规划越粗，信息越足规划越细（对齐 Claude Code Dynamic Workflows 的「分层增量规划」实践）：
 
 ```
 Planner 被调用（首次，PlanNotebook 为空）
         │
         ▼
-   Planner 尝试输出完整 Task Tree
+   Planner 尝试输出阶段级 Task Tree
         │
-        ┌─────────┴─────────┐
-        ▼                   ▼
-   输出了完整 Task Tree    仅输出了第一步
-   （completeness=closed）  （completeness=open）
-        │                   │
-        ▼                   ▼
-   FULL 模式                 INCREMENTAL 模式
-   （逐个 task spawn+评估）    （执行→评估→再规划）
+        ├─────────────┬──────────────────────┐
+        ▼             ▼                      ▼
+   完整 Task Tree  阶段完整、任务开放      仅第一步
+   (closed)        (phase-closed)          (open)
+        │             │                      │
+        ▼             ▼                      ▼
+   FULL 模式      HIERARCHICAL 模式      INCREMENTAL 模式
+   （逐个 task      （阶段粗规划进 G 域      （执行→评估→再规划，
+      spawn+评估）    → 到达阶段再细拆         逐步推进）
+                      task DAG）
 ```
+
+| 模式 | 首轮输出 | 触发条件 | 说明 |
+|------|----------|----------|------|
+| **FULL** | 完整 Task Tree（`completeness=closed`） | 简单/已知任务，信息完备 | 首轮全量拆，最大并行度 |
+| **HIERARCHICAL** | 阶段粗规划（`completeness=phase-closed`）：3~5 个阶段 + 依赖 + 全局约束 | **复杂任务默认**（绝大多数任务信息不完备，无法一次全拆但可定阶段） | 阶段骨架只依赖原始需求（成功率近 100%）→ 写 G 域稳定层；到达当前阶段时再基于前序真实产出细拆 task DAG（§4.1.1） |
+| **INCREMENTAL** | 仅第一步（`completeness=open`） | 完全开放/探索性任务（未知根因排查、陌生领域调研），阶段级都无法确定 | 规划一步、执行一步的步进模式（§4.1.2），仍是解耦的规划-执行分离，非纯 ReAct |
+
+**模型成本分层（对齐 [phase5 §5.3](./phase5-operation-openness-design.md)）**：HIERARCHICAL 下全局粗规划 `call_scene=plan`（强模型，1 次/任务，保质量）；阶段细规划 `call_scene=plan-phase`（轻量模型，N 次/任务，控成本）。同一 `HarnessPlanner` 组件，不新增角色。
 
 ---
 
@@ -111,7 +124,7 @@ Planner 被调用（首次，PlanNotebook 为空）
 | 静态 Workflow | 中 | 预定义 DAG | 不可自适应 |
 | Plan-Workflow | 中~高 | 一次性全量 DAG | 必须首轮预见全部步骤 |
 
-核心缺口：**不存在"Planner 边执行边规划"的模式**。
+核心缺口：**Planner-Worker（本 spec）填补"Planner 边执行边规划"的空档**——HIERARCHICAL 分层增量规划（首轮阶段粗规划 + 到达阶段再细拆，§0.2）+ INCREMENTAL 步进式兜底。
 
 ### 1.2 目标场景
 
@@ -240,8 +253,12 @@ public class PlanNotebook {
     private final String userQuery;
     /** 执行场景：chat | task（来自用户选择）*/
     private String scene;
-    /** 分解模式：full | incremental */
+    /** 分解模式：full | hierarchical | incremental（§0.2 三态） */
     private String taskDecomposition;
+    /** HIERARCHICAL：阶段骨架（3~5 个阶段 + 依赖 + 全局约束），G 域稳定层（§4.1.1） */
+    private List<Phase> phases;
+    /** HIERARCHICAL：当前阶段索引，阶段完成即前移 */
+    private int currentPhaseIndex = 0;
     /** Full 模式的任务队列 */
     private final Deque<TaskItem> taskQueue = new ArrayDeque<>();
     /** 所有已完成轮次 */
@@ -265,9 +282,18 @@ public class PlanNotebook {
     public boolean isChat() { return "chat".equals(scene); }
     public boolean isTask() { return "task".equals(scene); }
     public boolean isFull() { return "full".equals(taskDecomposition); }
+    public boolean isHierarchical() { return "hierarchical".equals(taskDecomposition); }
+    public boolean isIncremental() { return "incremental".equals(taskDecomposition); }
     public Optional<TaskItem> nextTask() { return Optional.ofNullable(taskQueue.pollFirst()); }
     public boolean hasMoreTasks() { return !taskQueue.isEmpty(); }
     public void requeueTask(TaskItem task) { taskQueue.addFirst(task); }
+    /** HIERARCHICAL：当前阶段；phase-closed 时首轮只有骨架，taskQueue 由阶段细拆填充 */
+    public Optional<Phase> currentPhase() {
+        return (phases == null || currentPhaseIndex >= phases.size())
+                ? Optional.empty()
+                : Optional.of(phases.get(currentPhaseIndex));
+    }
+    public void advancePhase() { currentPhaseIndex++; }
 
     public boolean shouldStop() {
         return currentRound >= maxRounds
@@ -279,6 +305,18 @@ public class PlanNotebook {
         StringBuilder sb = new StringBuilder();
         sb.append("## 原始任务\n").append(originalGoal).append("\n\n");
         sb.append("## 执行场景\n").append(isChat() ? "Chat (3-agent)" : "Task (Cursor)").append("\n\n");
+        if (isHierarchical() && phases != null) {
+            sb.append("## 阶段骨架\n");
+            for (int i = 0; i < phases.size(); i++) {
+                Phase p = phases.get(i);
+                sb.append(i == currentPhaseIndex ? "▶ " : "  ")
+                  .append(i + 1).append(". ").append(p.name())
+                  .append(" [").append(p.status()).append("]")
+                  .append(p.dependsOn().isEmpty() ? "" : " 依赖: " + p.dependsOn())
+                  .append("\n");
+            }
+            sb.append("\n");
+        }
         sb.append("## 已执行步骤\n");
         for (RoundRecord r : rounds) {
             sb.append("### 第 ").append(r.roundIndex()).append(" 轮\n");
@@ -298,6 +336,9 @@ public class PlanNotebook {
             List<NodeResult> nodeResults, double roundGoalCompletion, String evaluatorReason) {}
     public record TaskItem(String taskId, String label, PlanJson plan, String status) {}
     public record NodeResult(String nodeId, String nodeType, String status, String summary, String detail) {}
+    /** HIERARCHICAL：阶段骨架节点（G 域稳定层）；status: pending|in-progress|done|archived */
+    public record Phase(String phaseId, String name, String goal, List<String> dependsOn,
+            String status, int replanCount) {}
 }
 ```
 
@@ -322,8 +363,9 @@ String planMode;   // "none" | "harness"
 // planMode=none  → ReactExecutor
 // planMode=harness → PlannerHarnessExecutor（Chat/Task 由 RoutingResult.scene 区分）
 
-// 注意：taskDecomposition（full vs incremental）不在 RoutingResult 中。
-// 它是 Planner 首轮调用的输出，路由层不感知。
+// 注意：taskDecomposition（full vs hierarchical vs incremental）不在 RoutingResult 中。
+// 它是 Planner 首轮调用的输出（PlanJson.completeness 三态），路由层不感知。
+// PlanJson 扩展：completeness 增加 "phase-closed"，新增 phases[]（阶段骨架，§2.2）。
 ```
 
 ---
@@ -383,6 +425,8 @@ H1 压缩与 Planner L1 压缩**独立触发**。L1 压缩看 token 预算，H1 
 
 > **v6 注记（压缩点模式）**：H1 的 Near/Mid/Far 为**固定轮数窗口**（3/6），每次 Mid 截断都会改变 H1 块字节 → 破坏 Planner Tier 2 prefix。对齐 [五层 spec §5.5](./2026-07-31-unified-context-compression-design.md) 压缩点模式：H1 引入**压缩点**（`last_folded_round`），Near = 压缩点之后的轮次原文，Mid/Far = 压缩点之前（结构截断 + LLM 合并），触发压缩时压缩点前移一次重建。由于 H1 位于 Planner 上下文 **Tier 2 尾部**（§2.4），其变化只 miss 尾部小块，不影响 Tier 0/1。
 
+> **v8 注记（H1 拆分：骨架与细节分层）**：HIERARCHICAL 模式（§0.2/§4.1.1）下 H1 **拆成两块**——**阶段骨架**（3~5 阶段 + 依赖 + 全局约束）只在阶段切换时变 → **Tier 1 幂等 upsert**（真变才失效一次，字节稳定跨阶段可复用）；**当前阶段 task 细节 + handoff 摘要**每轮追加 → **Tier 2 尾部**（变化只 miss 尾部小块）。比「H1 整体沉 Tier 2 尾部」更优：阶段骨架稳定时上移 Tier 1，跨阶段前缀复用更好。FULL/INCREMENTAL 模式无阶段骨架，H1 仍整体在 Tier 2 尾部。
+
 #### 2.3.5 跨轮用户交互
 
 当用户在 Planner-Worker 执行中发送 follow-up（如「等一下，我说的竞品不是 A 公司，是 B 公司」）：
@@ -401,6 +445,8 @@ Planner 决策:
 #### 2.4 上下文分层分配（v6 优化 · 压缩点模式适配）
 
 > 对齐 [unified-context-compression-design §5.5](./2026-07-31-unified-context-compression-design.md) 的 Tier 0/1/2 分层与压缩点模式。Planner 是唯一有跨轮 KV 缓存包袱的角色（多轮 ReAct run、每轮多次 LLM 调用），**分层只应用于 Planner 与 Worker 稳定前缀**。
+>
+> **双视角关系**：本节按**变化频率**分层（Tier 0/1/2，KV 缓存视角）；[§2.5](./2026-07-31-planner-harness-loop-design.md) 按**共享范围**隔离（G 全局 / P 任务计划 / S 子任务，风险与 Token 视角）。两维正交——本节 Tier 2 尾部 = S 域入口，本节 Tier 0/1 = G 域主体，H1 = P1 载体，`plan_shared_memory` = P2 载体（§2.5.1）。
 
 **Planner 上下文（主 Agent，按变化频率分层）：**
 
@@ -452,6 +498,64 @@ H1 每轮 round 结束时**必然追加**（NodeResult + goal 更新），属**�
 
 前端「插件」菜单（关联 [task-scene spec](./2026-08-01-task-scene-context-design.md) §7.4）的 system/user 级标识即对应 Tier 0 / Tier 1 划分：**system 级**=后台统一开启、全局共有（进 Tier 0 前缀）；**user 级**=个人自选或自建（进 Tier 1 幂等块）。Worker 的 `toolWhitelist` 是 Planner 动态下发的（`call_scene=worker` 走 5.3 快模型分层，见 [phase5 §5.3](./phase5-operation-openness-design.md)）。
 
+#### 2.5 上下文隔离边界：三层模型（v7 细化）
+
+> §2.4 解决「上下文**按变化频率**分层」→ KV 缓存（时间维度）；本节解决「上下文**按共享范围**隔离」→ 风险与 Token（空间维度）。**两维正交**：任何上下文块都可同时落在「某个 Tier」×「某个隔离域」。
+
+调研对齐（Claude Code / Cursor / Codex / 工单自动化等 Planner-Executor 实现共识）：`全局共享（只读为主）→ 跨任务按需传递（DAG 定向）→ 单任务完全隔离（用完即毁）`。
+
+##### 2.5.1 三层定义
+
+| 层 | 归属 | 内容 | 读写权限 | 生命周期 |
+|----|------|------|----------|----------|
+| **G 全局会话上下文** | 编排层（PlannerHarnessExecutor + Planner） | 用户原始需求、最终业务目标、全局约束（权限/TTL/合规/超时）、Planner 输出计划 + 依赖 DAG、会话凭证、task 场景的 W0 工作区记忆 + P0 项目规范 | Planner / Executor / Evaluator 读写；**Worker 只读任务级子集（按需，非全量）** | 会话级 |
+| **P 任务计划上下文** | Executor 调度器 | **P1 = H1 PlanNotebook**：原始目标 + task 分解 + 每轮规划摘要 + handoff 摘要 + 完成度（跨轮持久化，Redis + MySQL + Checkpoint）<br>**P2 = `plan_shared_memory`**：已完成子任务的**标准化产出** + 中间业务变量 + 进度快照（run 内临时，按 `dependsOn` 定向） | Executor 读写；Worker 只读分配给自己的前置结果（P2 经 S 动态段按需读取，**不进稳定前缀**） | P1 跨轮持久化；P2 run 结束即清 |
+| **S 子任务执行上下文** | 单个 Worker 执行单元 | 当前子任务专属目标、执行指令、边界约束、ReAct 推理链、工具调用记录、临时变量、任务内重试记录；内部可再 spawn **S' 子 Agent**（`forSubAgent()=empty()`，最严格隔离） | 仅本 Worker（或本子 Agent）读写 | 任务结束即销毁 |
+
+##### 2.5.2 映射到本 spec 已有概念
+
+```
+G 全局会话上下文 = Planner Tier 0/1 静态层（tools/base/overlay/P0/L2/Far/Mid）
+                  + 会话 L1 中「用户 query + 综合回答」骨架
+                  + task 场景的 W0 工作区记忆（跨会话共享项目索引/约束/事实）
+P1 跨轮共享记忆  = H1 PlanNotebook（原始目标 + task 分解 + 轮次摘要 + handoff 摘要 + 完成度）
+P2 run 内共享    = plan_shared_memory（按 dependsOn 定向传递的 upstreamResults / 中间变量）
+                  + T0 任务进度摘要（task 场景，随压缩点降频）
+S 子任务执行上下文 = forWorker() 动态段（taskGoal + toolWhitelist + query）
+                  + Worker 内部 L1 scratchpad（think/tool/observe，不回流）
+                  + S' 子 Agent（forSubAgent=empty()，仅 spawn prompt → 输出）
+```
+
+**关键对应**：Worker handoff **双写**（§2.3.3/§4.3）=「S → P/G」的唯一出口——S 域中间推理全丢弃，仅**标准化产出**（handoff 摘要）写入 P1（H1）与 Planner L1 尾部（G 域）；执行完成后 S 域即时销毁。隔离是**四层嵌套**：G（全量，仅 Planner/Executor/Evaluator）⊃ P（P1/P2 共享）⊃ S（单 Worker）⊃ S'（子 Agent，`empty()` 最严格）——S' 是项目里隔离最彻底的一层。
+
+##### 2.5.3 隔离规则（本 spec 落地约束）
+
+1. **非全量共享，按 DAG 定向传递**：`plan_shared_memory`（P2）仅把**前置依赖任务**的产出注入后续任务；无依赖的并行 Worker 之间**完全不可见**（对齐 §4.3 `dependsOn`）。
+2. **只传最终结果，不传中间推理**：跨任务注入的是标准化产出（结果契约），ReAct 推理链/失败尝试**不跨任务透传**（S 域私有）。
+3. **按需子集读取，唯一写入口**：Worker 对 G 域只读**任务级子集**（taskGoal + constraints + toolWhitelist + 共享快照），**不注入全量 G 域**（L2 画像/Far/Mid 对 Worker 是纯 Token 开销）；禁止写全局上下文，唯一写入口是 handoff 双写（经 Executor 统一管控）。
+4. **失败闭环 + 审计分级**：Worker 异常/重试仅在 S 域内闭环（错误栈不扩散）；**S 域留执行态**（本任务重试用）、**P1 留结构化异常摘要**（审计）、**G 域干净**；重试/降级由 Executor（`taskRetryMax` + replan）统一处理。
+5. **底层能力共享但统一鉴权**：模型层（llm-gateway）、工具层（tool-manager）、记忆层（Redis/MySQL）、缓存层全链路共享，但**所有访问经 Executor 统一鉴权与配额管控**——toolWhitelist（Planner 下发）、HITL、`call_scene` 模型分层（phase5 5.3）、Token 预算——不直接暴露给 S 域执行单元。
+6. **KV 红线：定向传递只进 S 动态段，不进稳定前缀**：P2 按需读取结果必须渲染在 Worker **动态段（query 附近）**，**禁止**写入 Worker 稳定前缀——否则每个 Worker 前缀字节不同，跨 worker 前缀复用全失效（每个都 miss，vLLM 实证）。对齐 §2.4。
+
+> **S 域不是无界**：Worker 内部 ReAct 循环同样有 Token 预算，需 compaction/eviction（对齐五层压缩点 / 4.7.8）——「完全隔离」≠「无界增长」，S 域内部裁剪不回流 P/G 域。
+
+##### 2.5.4 分场景差异（task 编码 / chat 企业）
+
+| 场景 | 共享侧重（G/P） | 隔离侧重（S） | 特殊机制 |
+|------|----------------|---------------|----------|
+| **task 编码** | 项目结构 / 代码索引 / 技术栈约束 / 编码规范 / 依赖版本（P0 项目规范 + W0 工作区记忆，均进 G 域） | 每文件/模块修改独立 S 域，A 文件的调试逻辑不透传 B 文件；并行改不同模块完全隔离，避免同文件覆盖冲突 | **写隔离由 `agent_workspace` checkout 承载**（用户显式选主分支/worktree，[task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) §2.3）——**不引入应用层读写锁**（业界验证锁是错误抽象，冲突语义交给 Git + 用户）；临时代码不写全局，仅最终合入回传 |
+| **chat 企业** | 业务目标 / 身份权限 / 合规规则 / 审计 traceId | 不同系统工具调用隔离（内部库查询结果不透传外部 API 工具）；高权限操作中间结果不向低权限任务透传 | 上下文流转全程留痕（审计）；敏感数据跨任务传递前自动脱敏（[desensitize 服务](./2026-07-27-observability-enhancement-design.md)） |
+
+##### 2.5.5 与纯 ReAct 的核心区别
+
+| 维度 | 纯 ReAct | Planner-Worker（本 spec） |
+|------|----------|---------------------------|
+| 上下文结构 | 单上下文全程累加，每轮携带全量历史 | 四层嵌套（G/P/S/S'）：子任务隔离 + 按需传递（§2.5.1） |
+| Token 增长 | 任务越长膨胀越严重 | 控制在单任务维度（S 域用完即毁 + 内部 compaction） |
+| 相互干扰 | 历史推理互相污染 | 逻辑污染架构性避免（S 域完全隔离） |
+| 风险扩散 | 错误上下文扩散到后续 | 失败闭环在 S 域，Executor 统一重试降级 |
+| 共享方式 | 全量历史对每次决策可见 | P2 按 DAG 定向注入动态段，稳定前缀跨 worker 复用（KV 红线） |
+
 ---
 
 ## 3. 复杂度识别：L3 路由
@@ -488,7 +592,7 @@ L3 LLM 分类器输出 `planMode`。`scene` 来自用户选择（前端传入）
 
 **注意**：
 - `scene` 来自用户选择（前端 `ChatController` 请求体），L3 **不作为输出**
-- L3 不判断 taskDecomposition（full vs incremental）。Planner 首调用自行决定
+- L3 不判断 taskDecomposition（full vs hierarchical vs incremental）。Planner 首调用自行决定（completeness 三态）
 - 去掉 `is_no_match`：agentIds/skillIds 为空 → `planMode=none` → 静默 REACT，无需额外标志位
 
 ### 3.3 指代消解策略
@@ -505,30 +609,62 @@ L3 LLM 分类器输出 `planMode`。`scene` 来自用户选择（前端传入）
 
 ## 4. 各阶段详细设计
 
-### 4.1 S1: Plan — 双模规划 + Full/Incremental 自判
+### 4.1 S1: Plan — 双模规划 + Full/Hierarchical/Incremental 三态自判
 
 Planner 是 ReAct 主 Agent，拥有**全量上下文**（与普通 ReAct MAIN 一致）：
 
 - **L1**：对话历史（用户多轮消息 + Planner 综合回答 + 之前 Worker 的 handoff 作为工具结果）
 - **L2**：用户画像（偏好、角色、组织信息）
-- **H1**：PlanNotebook（`renderForPlanner()`：原始目标 + 已完成轮次摘要 + 进度）
+- **H1**：PlanNotebook（`renderForPlanner()`：原始目标 + 阶段骨架 + 已完成轮次摘要 + 进度）
 
 ```java
-// PlannerHarnessLoop.start():
+// PlannerHarnessLoop.start() —— 三态决策（§0.2）
 PlanJson plan = harnessPlanner.planFirstRound(notebook, fullContext);
 // fullContext = assembledContext(L1 + L2) + notebook.renderForPlanner()
 
-if ("full".equals(plan.taskDecomposition()) && "closed".equals(plan.completeness())) {
-    notebook.setTaskDecomposition("full");
-    plan.taskList().forEach(task -> notebook.getTaskQueue().add(task));
-    executeTasks(notebook);
-} else {
-    notebook.setTaskDecomposition("incremental");
-    executeIncremental(notebook, plan);
+switch (plan.completeness()) {
+    case "closed" -> {                    // FULL：信息完备，全量拆
+        notebook.setTaskDecomposition("full");
+        plan.taskList().forEach(task -> notebook.getTaskQueue().add(task));
+        executeTasks(notebook);
+    }
+    case "phase-closed" -> {              // HIERARCHICAL：阶段粗规划（默认复杂任务）
+        notebook.setTaskDecomposition("hierarchical");
+        notebook.setPhases(plan.phases());
+        decomposeCurrentPhase(notebook);  // 到达阶段 1 即细拆（§4.1.1）
+        executeTasks(notebook);
+    }
+    case "open" -> {                      // INCREMENTAL：步进式（兜底）
+        notebook.setTaskDecomposition("incremental");
+        executeIncremental(notebook, plan);
+    }
 }
 ```
 
-**后续轮次 Planner 输入**：Tier 0/1 稳定前缀 + Tier 2（Near 原文 + H1 含已完成轮次摘要）+ 本轮 query（§2.4）。记忆与普通 ReAct MAIN 的跨轮压缩管线完全一致，采用**压缩点模式**（[五层 spec §5.5](./2026-07-31-unified-context-compression-design.md)）：当 L1 上下文爆满时，Worker handoff 视同 tool_result 参与压缩点前进（旧 handoff 折叠进 Far，**不重排 Near/Mid**）。H1 PlanNotebook 自身走压缩点窗口（见 §2.3.4）。
+**后续轮次 Planner 输入**（三态通用）：Tier 0/1 稳定前缀 + Tier 2（Near 原文 + H1 含已完成轮次摘要 + 阶段骨架）+ 本轮 query（§2.4）。记忆与普通 ReAct MAIN 的跨轮压缩管线完全一致，采用**压缩点模式**（[五层 spec §5.5](./2026-07-31-unified-context-compression-design.md)）：当 L1 上下文爆满时，Worker handoff 视同 tool_result 参与压缩点前进（旧 handoff 折叠进 Far，**不重排 Near/Mid**）。H1 PlanNotebook 自身走压缩点窗口（见 §2.3.4）。
+
+#### 4.1.1 HIERARCHICAL：阶段细拆（走到哪、规划到哪）
+
+```
+阶段骨架（首轮，G 域稳定层）
+  [代码调研] → [方案设计] → [代码实现] → [回归验证]      ← 3~5 阶段 + 依赖 + 全局约束
+         │ 阶段 1 完成，拿到真实文件结构/依赖/核心逻辑
+         ▼
+阶段 2 细拆（读取 H1 前序产出 + G 域，仅当前阶段有效）
+  [方案设计] ── 文件级子任务 DAG（A 模块改造 / B 接口对接 / ...）
+        │ 阶段结束 → 归档进 P 域（§2.5 P1），阶段骨架仅 status 前移
+        ▼
+阶段 3 细拆 ... （复用前两阶段真实产出，不臆测文件列表）
+```
+
+- 细拆输入：**H1 已完成阶段产出 + G 域阶段骨架**，不读 S 域中间推理（§2.5 规则 4）。
+- 细拆调用：`call_scene=plan-phase`（轻量模型，N 次/任务，控成本），全局粗规划走 `call_scene=plan`（强模型，1 次/任务，保质量）——同一 `HarnessPlanner`，仅调用点分层（phase5 §5.3）。
+- 细拆产物：仅当前阶段有效，阶段结束即归档（`Phase.status=archived` + 阶段细节从 H1 压缩进 P 域）；阶段骨架字节不变 → Tier 1 幂等 upsert（§2.3.4 H1 拆分）。
+- 阶段切换 = 天然的重规划边界：信息缺口（成功但发现新依赖）在阶段完成时自然驱动下一阶段细拆，无需额外触发。
+
+#### 4.1.2 INCREMENTAL：步进式单步规划（兜底）
+
+完全开放/探索性任务（未知根因故障排查、陌生领域调研），连阶段级粗规划都无法确定时退化为步进模式：每轮基于当前全部信息只规划下一步，Executor 执行后反馈再规划。**与纯 ReAct 的本质区别**（对齐 §2.5.5）：仍保持「规划决策 → 执行落地」职责分离、上下文分层管理（S 域用完即毁）、Executor 统一调度（超时/重试/熔断）。
 
 ### 4.2 S2: Validate — 目标对齐校验
 
@@ -843,6 +979,28 @@ while (retries <= maxTaskRetries) {
 }
 ```
 
+#### 5.2.2 触发式重规划（执行中修正计划偏差）
+
+**重规划触发条件**（Executor 监控，命中任意一条 → 交 Planner 重规划；触发本身机械可量化，不做推理）：
+
+| # | 触发 | 检测 | 响应 |
+|---|------|------|------|
+| 1 | **连续失败** | 单 task 重试耗尽（`taskRetryMax`） | replan 当前失败 task |
+| 2 | **信息缺口** | 执行成功但 handoff 暴露原计划未覆盖的依赖/约束 | replan 当前阶段剩余任务（HIERARCHICAL 下阶段完成自然驱动下一阶段细拆） |
+| 3 | **目标变更** | 用户 follow-up 更新 `H1.originalGoal`（§2.3.5） | 标记受影响 task obsolete → replan 剩余 |
+| 4 | **进度偏差** | `GoalAlignmentValidator` 每轮校验 + `staleRounds≥2`（Stuck） | 方向偏离则修正计划；Stuck 强制综合 |
+| 5 | **资源溢出** | Token/时长接近预算（`max-rounds`/`max-total-tasks`/`max-duration-ms`） | 拆分或简化当前阶段任务，而非直接停止 |
+
+**重规划边界规则**（避免失控）：
+
+1. **保留成果**：已完成 task 标记幂等（Checkpoint + `version` 重放，§5.1），重规划只调整未执行部分，**不重复执行已完成任务**。
+2. **局部修正**：优先只调整当前阶段计划；**不轻易修改全局阶段骨架**（阶段划分变更需目标变更/信息缺口重大证据，且写回 G 域触发 Tier 1 一次失效）。
+3. **上下文隔离**：重规划只读取**全局目标 + 已执行结果**（G 域 + P1），**不读取 S 域内部推理过程**（§2.5 规则 4）。
+4. **收敛控制**：单阶段重规划上限 `max-phase-replans=3`；计划相似度校验（规则化：新 task label 与旧重叠率 > 阈值即视为无效重规划）；总时长熔断 `max-duration-ms`，耗尽 → 综合已收集结果回答。
+5. **写隔离**：重规划**不回滚已完成文件修改**——同 checkout 内已完成文件不动（task-workspace-codex §2.3：无应用层锁，隔离/回滚语义交给 Git + 用户显式 checkout）。
+
+> **编码场景注记**：调研中的「文件级锁与快照」在本项目等价实现为 **checkout（主分支/worktree）隔离 + Git 语义**（[task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) §2.3 否决应用层读写锁）。「重规划不回滚已完成修改」的目标由 checkout 承载：并行 Worker 改不同模块天然隔离，同 checkout 内已完成文件不动。
+
 #### 5.2.2 Planner LLM 调用故障
 
 ```
@@ -953,8 +1111,9 @@ public void save(PlanNotebook notebook, CheckpointReason reason) {
 
 | 边界 | 默认值 | 说明 |
 |------|:-----:|------|
-| `maxRounds` | 5 | Incremental 模式硬顶 |
+| `maxRounds` | 5 | 硬顶（全模式；Incremental 步进轮数 / Hierarchical 阶段内轮数） |
 | `maxTotalTasks` | 10 | Full 模式 task 数硬顶 |
+| `maxPhaseReplans` | 3 | 单阶段重规划上限（v8，收敛控制） |
 | `taskRetryMax` | 1 | 单 task Worker 调用最大重试（含超时/崩溃） |
 | `plannerRetryMax` | 2 | Planner LLM 调用最大重试 |
 | `maxReplanAttempts` | 2 | Planner replan 次数（不同于 LLM retry） |
@@ -1046,8 +1205,9 @@ intent → plan(R1,inc) → worker → think → plan(R2) → worker → ... →
 | `PlanNotebook` | 跨轮共享工作记忆 POJO (H1)，叠加在 Planner L1+L2 之上。含 `version` 自增计数器支持幂等重放 |
 | `PlanNotebookStore` | Redis + MySQL 双写（Checkpoint C1-C4 驱动）。支持崩溃恢复、Orphan Worker 清理、Idempotent replay |
 | `PlanNotebookRecoveryService` | 崩溃恢复入口：load Notebook → 检查 task 状态 → 查 AgentScope StateStore 回收 handoff → resumeloop() |
-| `HarnessPlanner` | 双模 Planner：规划 + 决策 + 综合回答（复刻普通 ReAct MAIN 的记忆模型） |
+| `HarnessPlanner` | 双模 Planner：规划 + 决策 + 综合回答（复刻普通 ReAct MAIN 的记忆模型）。三态分解自判（FULL/HIERARCHICAL/INCREMENTAL，§0.2）+ 阶段细拆（`planner.phase`，§4.1.1）+ 触发式重规划（§5.2.2） |
 | `WorkerContextFactory` | 构造 `AssembledContext.forWorker()`：**稳定前缀**（Tier 0 + 任务目标 + `plan_shared_memory` 共享快照，跨 worker 复用）+ toolWhitelist + query；upstreamResults 改由共享区按需读取（§2.4） |
+| `PlanSharedMemoryStore` | **P2 域载体**（§2.5.1）：按 `dependsOn` 定向传递的任务产出存储（Redis），只读注入 S 动态段、S 域失败闭环、run 结束清理 |
 | `GoalEvaluator` | LLM 全局目标评估器（Chat 专用） |
 | `TaskEvaluator` | LLM 逐 task 评估器（Chat Full 专用） |
 | `GoalAlignmentValidator` | 目标对齐校验 |
@@ -1080,8 +1240,8 @@ intent → plan(R1,inc) → worker → think → plan(R2) → worker → ... →
 | H-0 | `planner_notebooks` DDL + `PlanNotebook` POJO + `PlanNotebookStore` 接口 | 单测绿 |
 | H-1 | `PlanNotebookStore` Redis+MySQL 实现（C1-C4 持久化 + 幂等 replay） | 单测（save→load→checkpoint 一致性） |
 | H-2 | `PlanNotebookRecoveryService`（崩溃恢复 + 查 AgentScope StateStore 回收 Worker handoff） | 单测（模拟 crash→恢复→状态一致） |
-| H-3 | `HarnessPlanner` + `GoalAlignmentValidator` | 单测（Full/Incremental 输出） |
-| H-4 | `TaskEvaluator` + `GoalEvaluator` + `PlannerHarnessLoop`（含 Checkpoint + 超时/重试/Stuck 逻辑） | 单测（双模编排 + 评估 + 故障模拟） |
+| H-3 | `HarnessPlanner` + `GoalAlignmentValidator` | 单测（Full/Hierarchical/Incremental 三态输出） |
+| H-4 | `TaskEvaluator` + `GoalEvaluator` + `PlannerHarnessLoop`（含 Checkpoint + 超时/重试/Stuck/重规划逻辑） | 单测（双模编排 + 评估 + 故障模拟） |
 | H-5 | `PlannerHarnessExecutor` + v3 RoutingResult 扩展 | 路由正确 |
 | H-6 | 前端 + Timeline | 视觉验收 |
 | H-7 | Live 验收（含崩溃恢复/超时重试验收） | 回归门禁 |
@@ -1093,6 +1253,7 @@ intent → plan(R1,inc) → worker → think → plan(R2) → worker → ... →
 | Catalog ID | 用途 | 模式 |
 |-----------|------|:---:|
 | `planner.harness` | Planner system prompt（规划+决策+综合，含 Worker 工具调用说明） | 共用 |
+| `planner.phase` | 阶段细拆 prompt（HIERARCHICAL，读取 H1 前序产出 + G 域，输出当前阶段 task DAG） | Hierarchical |
 | `harness.task-evaluator` | 逐 task 评估器 | Chat |
 | `harness.goal-evaluator` | 全局目标评估器 | Chat |
 | `harness.worker` | Worker 的 system prompt（forWorker 上下文模板） | 共用 |
@@ -1112,12 +1273,15 @@ agent:
       # scene=task → Task 模式（Planner 自判）
       max-rounds: 5
       max-total-tasks: 10
+      max-duration-ms: 600000       # v8：总时长熔断（资源溢出触发 → 拆分/简化任务，非直接停止）
       stale-rounds-threshold: 2
       task:
         max-retries: 1
       planner:
         timeout-ms: 60000
         max-attempts: 2          # LLM 调用最大重试（不同于 replan-次数）
+        max-phase-replans: 3     # v8：单阶段重规划上限（收敛控制）
+        plan-similarity-threshold: 0.8  # v8：新 task label 与旧重叠率 > 此值 → 无效重规划
       evaluator:                  # Chat 专用（scene=chat 时有效）
         timeout-ms: 30000
         goal-threshold: 0.9
@@ -1152,7 +1316,11 @@ agent:
 | PlanNotebook scene 切换 | `isChat()` / `isTask()` 正确 |
 | WorkerContextFactory 构造 | forWorker 上下文含 taskGoal + upstreamResults + constraints + toolWhitelist |
 | Worker 内部 spawn 子 Agent | 子 Agent `forSubAgent=empty()`，仅 spawn prompt → 输出 |
-| HarnessPlanner Full/Incremental | 结构清晰→closed/full；高不确定→open/incremental |
+| HarnessPlanner 三态输出 | 结构清晰→closed/full；复杂任务→phase-closed/hierarchical；高不确定→open/incremental |
+| HarnessPlanner Hierarchical | 复杂任务→phase-closed；阶段骨架 3~5 个 + 依赖 + 全局约束，无虚构 task |
+| 阶段细拆（`planner.phase`） | 到达阶段 2 时仅拆当前阶段 task DAG，读取 H1 前序产出，不臆测未到阶段 |
+| 触发式重规划局部修正 | 信息缺口 → 仅 replan 当前阶段，阶段骨架不变，已完成 task 幂等跳过 |
+| 重规划收敛控制 | `max-phase-replans=3` 触发后强制综合；task label 重叠率 > 阈值 → 无效重规划丢弃 |
 | HarnessPlanner 综合回答 | 输入 L1+H1 后正确综合回答 |
 | Worker handoff 回流 Planner L1 | handoff 以 tool_result 形态进入 L1，可被 Planner 读取 |
 | TaskEvaluator PASS/RETRY/FAIL | 各场景正确 |
@@ -1184,6 +1352,12 @@ agent:
 | H5 | 长任务上下文压缩 | chat | 6 轮后 H1 Far 压缩生效，L1 中旧 handoff 被摘要 |
 | H6 | 崩溃恢复 | chat | Kill orchestrator 在第 2 轮 Worker 执行中 → 重启 → 恢复 Notebook → 继续执行正常完成 |
 | H7 | Worker 超时 → 重试奏效 | task | Worker 超时触发 taskRetry → 重试后产出正确 handoff → 继续 |
+| H8 | 三层上下文隔离（task） | task | 并行 Worker 只读各自 `dependsOn` 前置产出；无依赖 Worker 互不可见；Worker 内部 think/tool 不回流，仅 handoff 双写进 H1（P1）与 L1 尾部（G） |
+| H9 | KV 红线：定向结果不进稳定前缀 | task | 三个并行 Worker 的稳定前缀字节一致（Tier 0 + 任务目标 + 共享快照），P2 定向结果只出现在各 Worker 动态段（query 附近） |
+| H10 | S 域失败闭环 + 审计摘要 | task | 单 Worker 异常仅本任务重试，错误栈不扩散；异常结构化摘要写入 P1 可审计；G 域无残留 |
+| H11 | HIERARCHICAL 分层增量规划 | task | 陌生仓库功能开发：首轮仅输出 4 阶段骨架（代码调研→方案设计→代码实现→回归验证），调研完成后才细拆「代码实现」为文件级 task DAG；阶段骨架字节稳定（Tier 1），细节在 Tier 2 尾部 |
+| H12 | 触发式重规划边界 | task | 模拟信息缺口（执行中发现新依赖）：仅 replan 当前阶段剩余任务，阶段骨架不变，已完成 task 不重跑（幂等）；`max-phase-replans=3` 触发后强制综合 |
+| H13 | 资源溢出 → 拆分而非停止 | task | 制造接近 `max-duration-ms` 的长任务：Planner 拆分/简化剩余任务继续，而非直接停止 |
 
 ---
 
@@ -1199,6 +1373,17 @@ agent:
 | H1 PlanNotebook 膨胀 | Near/Mid/Far 压缩点模式（§2.3.4）：Mid 截断 detail，Far LLM 合并多轮；H1 位于 Tier 2 尾部，变化只 miss 尾部小块 |
 | Worker handoff 破坏 Planner prefix | handoff 双写（§2.4）：L1 尾部 append（C2 天然友好）+ H1（Tier 2 尾部）；**禁止**注入 L1 中段 / 压缩时重排消息 |
 | upstreamResults 全量注入导致每个 Worker 都 miss | 改由 `plan_shared_memory` 按需读取，稳定前缀跨 worker 复用（§2.4） |
+| S 域中间推理透传到 P/G 域（v7） | handoff 双写只传**标准化产出**；Worker 内部 think/tool 留在 S 域 scratchpad，任务结束即销毁（§2.5.2） |
+| 并行 Worker 共享越界（v7） | `plan_shared_memory` 按 `dependsOn` 定向传递，无依赖并行 Worker 完全不可见（§2.5.3 规则 1） |
+| 底层能力绕过 Executor 鉴权（v7） | 工具/模型/记忆/缓存访问全经 Executor（toolWhitelist + HITL + `call_scene` + Token 预算），不直接暴露给 S 域（§2.5.3 规则 5） |
+| Worker 前缀被定向结果污染 → 跨 worker 前缀复用失效（v7） | KV 红线：P2 定向结果只渲染 **S 动态段**，禁止写入 Worker 稳定前缀，否则每个 Worker 前缀字节不同、全量 miss（§2.5.3 规则 6） |
+| S 域无界增长（v7） | Worker 内部 ReAct 同样 compaction/eviction（对齐五层压缩点 / 4.7.8），S 域内部裁剪不回流 P/G（§2.5.3 注记） |
+| S 域销毁后审计丢失（v7） | 执行态留 S 域（重试用），**结构化异常摘要写 P1**（审计用），G 域干净（§2.5.3 规则 4） |
+| 复杂任务首轮强拆导致失败（v8） | HIERARCHICAL 三态：信息不足时首轮只出阶段骨架（phase-closed），到达阶段再细拆（§0.2/§4.1.1） |
+| 重规划全盘推翻 / 无限循环（v8） | 边界规则：局部修正（阶段骨架不变）+ 保留成果（幂等）+ `max-phase-replans=3` + 计划相似度校验（§5.2.2） |
+| 重规划后已完成文件被回滚（v8） | 同 checkout 内已完成文件不动；隔离/回滚语义交给 Git + 用户显式 checkout（无应用层锁，task-workspace-codex §2.3） |
+| 阶段骨架抖动破坏 Tier 1 前缀（v8） | H1 拆分：骨架 Tier 1 幂等 upsert（仅阶段切换失效一次），细节 Tier 2 尾部（§2.3.4 v8 注记） |
+| 阶段细拆成本失控（v8） | `call_scene=plan-phase` 轻量模型分层 + 全局 `max-rounds`/`max-duration-ms` 硬顶 |
 | 官方 skill 目录 / 个人配置混入前缀 | 分层（§2.4.2）：system skills → Tier 0 目录摘要，user skills → Tier 1 幂等块，命中正文 → Tier 2 |
 | Worker 并行时上游结果还未产出 | `dependsOn` 约束串行执行，无依赖的 Worker 并行时才共享同一上游快照 
 | 用户在 Planner-Worker 执行中发 follow-up | Planner 接收新消息，根据 H1 状态决定中断/等待/redirect |
@@ -1272,6 +1457,7 @@ v3 路由设计 → planMode（RoutingResult 新增）+ scene（用户选择，�
 | `orchestrator/.../plan/harness/PlanNotebookStore.java` | 新建 | Redis + MySQL 双写接口（save/load/updateTaskStatus/renewTtl/delete） |
 | `orchestrator/.../plan/harness/PlanNotebookStoreImpl.java` | 新建 | Store 实现（Checkpoint 版本控制 + 幂等重放 + MySQL 异步写入） |
 | `orchestrator/.../plan/harness/PlanNotebookRecoveryService.java` | 新建 | 崩溃恢复入口（load → 检查 IN_PROGRESS → 查 AgentScope StateStore → resumeloop） |
+| `orchestrator/.../plan/harness/PlanSharedMemoryStore.java` | 新建 | P2 域载体（§2.5.1）：按 `dependsOn` 定向传递的任务产出存储（Redis），只读注入 S 动态段 + run 结束清理 |
 | `orchestrator/.../execution/PlannerHarnessExecutor.java` | 新建 | ResourceDispatcher 分发入口 |
 | `orchestrator/.../routing/RoutingResult.java` | 修改 | 新增 planMode 字段（L3 输出），scene 已存在 |
 | `orchestrator/.../execution/ResourceDispatcher.java` | 修改 | 新增 planMode=harness → PlannerHarnessExecutor 分支 |
@@ -1279,6 +1465,7 @@ v3 路由设计 → planMode（RoutingResult 新增）+ scene（用户选择，�
 | `orchestrator/.../context/compression/` | 修改 | H1 Near/Mid/Far 压缩策略 |
 | `docker/mysql/init/15-planner-harness.sql` | 新建 | `planner_notebooks` 表 DDL |
 | Catalog `planner.harness` | 新建 | Planner system prompt（含 Worker 工具调用描述） |
+| Catalog `planner.phase` | 新建 | 阶段细拆 prompt（HIERARCHICAL，输出当前阶段 task DAG） |
 | Catalog `harness.worker` | 新建 | Worker system prompt（forWorker 模板） |
 | Catalog `harness.task-evaluator` | 新建 | Task 评估 prompt |
 | Catalog `harness.goal-evaluator` | 新建 | 全局评估 prompt |

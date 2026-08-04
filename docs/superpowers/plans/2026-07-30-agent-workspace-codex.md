@@ -1,5 +1,6 @@
 # Codex 式智能体工作区（Agent Workspace）实现计划
 
+> **状态**：✅ 已实现（2026-08-03 核对；实现与原计划差异见 spec §12，以实现为准）
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在「对话级轻量沙箱」之外新增**工作区级完全体沙箱**——绑定 Git 仓库、多会话共用、用户显式选择 checkout、硬件档位可配，形成 Codex 式编码智能体产品形态。

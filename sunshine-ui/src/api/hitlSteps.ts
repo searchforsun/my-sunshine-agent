@@ -90,7 +90,20 @@ export function isHitlAwaiting(step: ProcessingStep): boolean {
 }
 
 export function isToolStepId(stepId: string): boolean {
-  return stepId.startsWith('tool-') || stepId.startsWith('tool@')
+  return stepId.startsWith('tool-') || stepId.startsWith('tool@') || isRagStepId(stepId)
+}
+
+/** 去掉 {@code @{epochMs}} 调用后缀，还原 base stepId（与后端 ToolStepIds.stripInvokeSuffix 对齐） */
+function stripInvokeSuffix(stepId: string): string {
+  const at = stepId.lastIndexOf('@')
+  if (at <= 0) return stepId
+  if (!/^\d+$/.test(stepId.slice(at + 1))) return stepId
+  return stepId.slice(0, at)
+}
+
+/** RAG 检索知识库工具步（id 形如 {@code rag@{epochMs}}） */
+export function isRagStepId(stepId: string): boolean {
+  return stripInvokeSuffix(stepId) === 'rag'
 }
 
 /** Plan workflow 业务 node 步（含 tool 写操作 HITL，id 为 node-{id}） */

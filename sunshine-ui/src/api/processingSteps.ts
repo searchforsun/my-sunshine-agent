@@ -42,12 +42,16 @@ export {
   isStepSummaryTruncated,
   isSandboxToolStep,
   isSandboxExecStep,
+  isSandboxReadStep,
   isCancellableSandboxTool,
   extractSandboxExecCommand,
+  formatExecCommandHeader,
+  formatExecCommandHeaderText,
   extractSandboxWorkspacePath,
   extractSandboxSearchRoot,
   inferSandboxSearchRoot,
   resolveSandboxFocusPath,
+  resolveSandboxReadLineRange,
   parseSandboxPathList,
   isSandboxPathListOutput,
   sandboxBasename,
@@ -190,6 +194,9 @@ export interface ProcessingStep {
 
   /** V3：步骤结果摘要 */
   result?: string
+
+  /** think 步本轮摘要（由 think_summary 元工具结构化输出，经 step_summary 通道下发） */
+  stepSummary?: string
 
   ts?: number
 
@@ -420,6 +427,12 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
     case 'reasoning':
 
       base.reasoning = concatText(base.reasoning, delta.text)
+
+      break
+
+    case 'step_summary':
+
+      base.stepSummary = delta.text
 
       break
 

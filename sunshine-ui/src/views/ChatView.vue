@@ -12,8 +12,10 @@ import { useChatSkillMention } from '../composables/useChatSkillMention'
 import { useChatAgentMention } from '../composables/useChatAgentMention'
 import { useChatWorkflowMention } from '../composables/useChatWorkflowMention'
 import { useChatWorkspacePathMention } from '../composables/useChatWorkspacePathMention'
-import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
+import { requestSandboxWorkspaceRefresh, sandboxPathIndexReady, sandboxPathIndexRefresh } from '../composables/sandboxWorkspaceRefresh'
+import { useSandboxPathIndex } from '../composables/useSandboxPathIndex'
 import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
+import { reEnhanceAllSandboxPathLinks } from '../utils/stream-markdown/StaticEnhancer'
 import { useChatSessionHydration } from '../composables/useChatSessionHydration'
 import { useChatStore } from '../stores/chatStore'
 import { isValidConversationId } from '../api/conversations'
@@ -24,8 +26,8 @@ import type { WorkspaceVO } from '../api/workspaces'
 import { gitStage, gitCommit, gitPush, gitPull, ensureCheckout, listCheckouts } from '../api/workspaceGit'
 import { loadActiveGeneration } from '../composables/useActiveGeneration'
 import CopyToggleIcon from '../components/icons/CopyToggleIcon.vue'
-import { NIcon, NPopover, NModal, NButton } from 'naive-ui'
-import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline } from '@vicons/ionicons5'
+import { NIcon, NPopover, NButton } from 'naive-ui'
+import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
 import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
@@ -497,6 +499,18 @@ const currentWorkspaceName = computed(() => {
 })
 const currentWorkspaceRepo = computed(() => '')
 
+// 会话级文件路径索引：进入会话即加载（不依赖工作区抽屉打开），
+// 注入 window.__smd_sandboxIndex 供 markdown 路径精确匹配。
+// - 会话有效（有 conversationId 或 workspaceId，含新任务待选工作区）即加载；抽屉打开/关闭不影响
+// - 文件树刷新 / checkout 切换 / sync 完成 / SSE 工具写文件后自动重载
+useSandboxPathIndex({
+  getOpen: () => !!currentConversationId.value || !!currentWorkspaceId.value || !!chatStore.pendingWorkspace?.wsId,
+  getConversationId: () => currentConversationId.value ?? '',
+  getWorkspaceId: () => currentWorkspaceId.value ?? chatStore.pendingWorkspace?.wsId ?? null,
+  getCheckoutId: () => taskCheckoutId.value || null,
+  treeVersion: sandboxPathIndexRefresh,
+})
+
 /** 工作区项目选择器 */
 const wsProjectOpen = ref(false)
 const wsProjectList = ref<WorkspaceVO[]>([])
@@ -522,47 +536,73 @@ function selectWsProject(ws: WorkspaceVO) {
 const staging = ref(false)
 const committing = ref(false)
 const commitMsg = ref('')
-const showCommitDialog = ref(false)
+/** 提交信息输入用侧边二级 Popover（替代原 NModal 弹窗） */
+const showCommitPopover = ref(false)
 const pushing = ref(false)
 const pulling = ref(false)
+/** git 操作内联提示（成功/失败/无可操作 checkout） */
+const gitToast = ref<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null)
+let gitToastTimer: ReturnType<typeof setTimeout> | null = null
+function flashGitToast(kind: 'info' | 'success' | 'error', text: string) {
+  gitToast.value = { kind, text }
+  if (gitToastTimer) clearTimeout(gitToastTimer)
+  gitToastTimer = setTimeout(() => { gitToast.value = null }, 2800)
+}
+/** git 操作前置：无 checkoutId（新任务未发送，懒创建尚未发生）时提示并中止 */
+function requireCheckout(): string | null {
+  const cid = taskCheckoutId.value
+  if (!cid) {
+    flashGitToast('info', '请先发送消息以拉取代码到工作区')
+    return null
+  }
+  return cid
+}
 
 async function handleGitStage() {
-  if (!currentWorkspaceId.value) return
+  const wsId = currentWorkspaceId.value
+  const cid = requireCheckout()
+  if (!wsId || !cid) return
   staging.value = true
-  try { await gitStage(currentWorkspaceId.value, taskCheckoutId.value, undefined, true) }
-  catch { /* silently fail */ }
+  try { await gitStage(wsId, cid, undefined, true); flashGitToast('success', '已暂存所有改动') }
+  catch (e) { flashGitToast('error', (e as Error)?.message || '暂存失败') }
   finally { staging.value = false }
 }
 
-function openCommitDialog() {
+function openCommitPopover() {
   commitMsg.value = ''
-  showCommitDialog.value = true
+  showCommitPopover.value = true
 }
 
 async function handleGitCommit() {
-  if (!currentWorkspaceId.value) return
+  const wsId = currentWorkspaceId.value
+  const cid = requireCheckout()
+  if (!wsId || !cid) return
   const msg = commitMsg.value.trim()
   if (!msg) return
-  showCommitDialog.value = false
+  showCommitPopover.value = false
   committing.value = true
-  try { await gitCommit(currentWorkspaceId.value, taskCheckoutId.value, msg); commitMsg.value = '' }
-  catch { /* silently fail */ }
+  try { await gitCommit(wsId, cid, msg); commitMsg.value = ''; flashGitToast('success', '提交成功') }
+  catch (e) { flashGitToast('error', (e as Error)?.message || '提交失败'); showCommitPopover.value = true }
   finally { committing.value = false }
 }
 
 async function handleGitPush() {
-  if (!currentWorkspaceId.value) return
+  const wsId = currentWorkspaceId.value
+  const cid = requireCheckout()
+  if (!wsId || !cid) return
   pushing.value = true
-  try { await gitPush(currentWorkspaceId.value, taskCheckoutId.value) }
-  catch { /* silently fail */ }
+  try { await gitPush(wsId, cid); flashGitToast('success', '推送成功') }
+  catch (e) { flashGitToast('error', (e as Error)?.message || '推送失败') }
   finally { pushing.value = false }
 }
 
 async function handleGitPull() {
-  if (!currentWorkspaceId.value) return
+  const wsId = currentWorkspaceId.value
+  const cid = requireCheckout()
+  if (!wsId || !cid) return
   pulling.value = true
-  try { await gitPull(currentWorkspaceId.value, taskCheckoutId.value) }
-  catch { /* silently fail */ }
+  try { await gitPull(wsId, cid); flashGitToast('success', '拉取成功') }
+  catch (e) { flashGitToast('error', (e as Error)?.message || '拉取失败') }
   finally { pulling.value = false }
 }
 
@@ -811,7 +851,34 @@ onMounted(async () => {
   applyChatDeepLink()
   inputRef.value?.focus()
   window.addEventListener('pagehide', flushAllOnPageHide)
+  ;(window as any).__smd_openSandboxPath = (path: string) => {
+    const cid = chatStore.currentId
+    if (!cid || !path) return
+    // 相对路径结合当前工作区根解析为绝对路径
+    let resolved = path
+    const root = (window as any).__smd_sandboxRoot as string | undefined
+    if (root && !path.startsWith('/workspace/') && !path.startsWith('/skills/')) {
+      resolved = `${root.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+    }
+    openSandboxDrawer({ conversationId: cid, focusPath: resolved })
+  }
+  // 工作区选中行 -> 插入输入框引用 `path` L120-125
+  ;(window as any).__smd_addSandboxSelection = (path: string, start: number, end: number) => {
+    const cid = chatStore.currentId
+    if (!cid || !path || typeof start !== 'number') return
+    const resolved = (window as any).__smd_sandboxRoot
+      ? path.startsWith('/workspace/') || path.startsWith('/skills/')
+        ? path
+        : `${(window as any).__smd_sandboxRoot.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+      : path
+    inputRef.value?.insertPathRange(resolved, start, end)
+  }
 })
+
+// 注入工作区根路径供 markdown 路径增强使用（相对路径 -> 绝对路径解析）
+watch(taskCheckoutId, (cid) => {
+  ;(window as any).__smd_sandboxRoot = cid ? `/workspace/${cid}` : ''
+}, { immediate: true })
 
 onUnmounted(() => {
   setChatRouteActive(false)
@@ -819,6 +886,10 @@ onUnmounted(() => {
   window.removeEventListener('pagehide', flushAllOnPageHide)
   registerChatBody(null)
   registerSandboxChatBody(null)
+  delete (window as any).__smd_openSandboxPath
+  delete (window as any).__smd_addSandboxSelection
+  delete (window as any).__smd_sandboxRoot
+  delete (window as any).__smd_sandboxIndex
 })
 
 watch(chatBodyRef, (el) => {
@@ -826,6 +897,10 @@ watch(chatBodyRef, (el) => {
   registerSandboxChatBody(el)
 }, { immediate: true })
 onUpdated(() => { nextTick(() => enhanceAllStaticMarkdown()) })
+// 沙箱路径索引就绪后，重新增强已渲染消息中的相对路径链接（索引未就绪时漏增强的）
+watch(() => sandboxPathIndexReady.tick, () => {
+  nextTick(() => reEnhanceAllSandboxPathLinks())
+})
 watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
   // 把当前会话锚定到 URL：刷新后可定位回同一会话
@@ -1167,6 +1242,7 @@ watch(
                   />
                   <span class="path-suggest-name">{{ entry.name }}</span>
                 </div>
+                <span class="skill-suggest-meta path-suggest-path">{{ entry.path }}</span>
               </li>
             </template>
           </ul>
@@ -1299,47 +1375,62 @@ watch(
                 </button>
               </template>
               <div class="git-dropdown-menu">
-                <button type="button" class="git-dd-item" :disabled="staging" @click="handleGitStage">
+                <button type="button" class="git-dd-item" :disabled="staging || !taskCheckoutId" @click="handleGitStage">
                   <NIcon :size="14" :component="AddOutline" /><span>暂存所有</span>
                 </button>
-                <button type="button" class="git-dd-item" :disabled="committing" @click="openCommitDialog">
-                  <span>提交</span>
+                <button type="button" class="git-dd-item" :disabled="committing || !taskCheckoutId" @click="openCommitPopover">
+                  <NIcon :size="14" :component="CreateOutline" /><span>提交</span>
                 </button>
-                <button type="button" class="git-dd-item" :disabled="pushing" @click="handleGitPush">
+                <button type="button" class="git-dd-item" :disabled="pushing || !taskCheckoutId" @click="handleGitPush">
                   <NIcon :size="14" :component="CloudUploadOutline" /><span>推送</span>
                 </button>
-                <button type="button" class="git-dd-item" :disabled="pulling" @click="handleGitPull">
+                <button type="button" class="git-dd-item" :disabled="pulling || !taskCheckoutId" @click="handleGitPull">
                   <NIcon :size="14" :component="CloudDownloadOutline" /><span>拉取</span>
                 </button>
               </div>
             </NPopover>
+            <!-- 提交信息输入：侧边二级 Popover（替代弹窗） -->
+            <NPopover
+              trigger="manual"
+              placement="bottom-end"
+              :width="300"
+              :show="showCommitPopover"
+              :show-arrow="false"
+              raw
+            >
+              <template #trigger>
+                <span class="commit-popover-anchor" />
+              </template>
+              <div class="commit-popover">
+                <div class="commit-popover-head">
+                  <NIcon :size="14" :component="CreateOutline" />
+                  <span>提交变更</span>
+                  <button type="button" class="commit-popover-close" title="关闭" @click="showCommitPopover = false">×</button>
+                </div>
+                <textarea
+                  v-model="commitMsg"
+                  class="commit-popover-input"
+                  placeholder="feat: 描述你的变更…"
+                  maxlength="256"
+                  rows="3"
+                  spellcheck="false"
+                  @keydown.enter.exact.prevent="handleGitCommit"
+                  @keydown.esc="showCommitPopover = false"
+                />
+                <div class="commit-popover-actions">
+                  <span class="commit-popover-hint">Enter 提交 · Esc 取消</span>
+                  <NButton size="small" quaternary @click="showCommitPopover = false">取消</NButton>
+                  <NButton size="small" type="primary" :disabled="!commitMsg.trim() || committing" :loading="committing" @click="handleGitCommit">提交</NButton>
+                </div>
+              </div>
+            </NPopover>
           </div>
+          <!-- git 操作内联提示 -->
+          <transition name="git-toast-fade">
+            <span v-if="gitToast" class="git-toast" :class="`git-toast--${gitToast.kind}`">{{ gitToast.text }}</span>
+          </transition>
         </template>
       </SandboxWorkspaceDrawer>
-      <!-- 提交对话框 -->
-      <NModal
-        :show="showCommitDialog"
-        :mask-closable="true"
-        title="Git 提交"
-        style="max-width: 400px"
-        @update:show="showCommitDialog = $event"
-      >
-        <div class="commit-dialog">
-          <p class="commit-dialog-hint">请输入提交信息</p>
-          <input
-            v-model="commitMsg"
-            class="commit-dialog-input"
-            placeholder="feat: 描述你的变更…"
-            maxlength="256"
-            spellcheck="false"
-            @keydown.enter="handleGitCommit"
-          />
-          <div class="commit-dialog-actions">
-            <NButton quaternary @click="showCommitDialog = false">取消</NButton>
-            <NButton type="primary" :disabled="!commitMsg.trim() || committing" :loading="committing" @click="handleGitCommit">提交</NButton>
-          </div>
-        </div>
-      </NModal>
     </div>
   </div>
 </template>
@@ -1761,22 +1852,42 @@ watch(
   cursor: not-allowed;
 }
 
-/* ---- Git 提交对话框 ---- */
-.commit-dialog {
+/* ---- Git 提交侧边 Popover（替代弹窗） ---- */
+.commit-popover-anchor { display: inline-block; width: 0; height: 0; }
+.commit-popover {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px 20px;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--n-color, var(--sun-black, #0a0a0a));
+  border: 1px solid var(--sun-border, #2a2a2a);
+  box-shadow: var(--shadow-elevated, 0 6px 20px rgba(0, 0, 0, 0.35));
 }
-.commit-dialog-hint {
-  margin: 0;
+.commit-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--sun-font-sm, 12px);
-  color: var(--sun-text-muted);
+  font-weight: 600;
+  color: var(--sun-text);
 }
-.commit-dialog-input {
+.commit-popover-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.commit-popover-close:hover { color: var(--sun-text); }
+.commit-popover-input {
   width: 100%;
-  height: 36px;
-  padding: 0 12px;
+  min-height: 64px;
+  resize: vertical;
+  padding: 8px 10px;
   border: 1px solid var(--sun-border);
   border-radius: 8px;
   background: var(--sun-black);
@@ -1785,19 +1896,38 @@ watch(
   font-family: inherit;
   outline: none;
   transition: border-color 0.15s;
+  box-sizing: border-box;
 }
-.commit-dialog-input:focus {
-  border-color: var(--sun-accent);
+.commit-popover-input:focus { border-color: var(--sun-accent); }
+.commit-popover-input::placeholder { color: var(--sun-text-muted); }
+.commit-popover-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
 }
-.commit-dialog-input::placeholder {
+.commit-popover-hint {
+  margin-right: auto;
+  font-size: 11px;
   color: var(--sun-text-muted);
 }
-.commit-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 4px;
+
+/* ---- Git 操作内联提示 ---- */
+.git-toast {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.git-toast--success { color: #4ade80; background: rgba(34, 197, 94, 0.12); }
+.git-toast--error { color: #f87171; background: rgba(239, 68, 68, 0.12); }
+.git-toast--info { color: var(--sun-text-muted); background: rgba(148, 163, 184, 0.12); }
+.git-toast-fade-enter-active, .git-toast-fade-leave-active { transition: opacity 0.2s; }
+.git-toast-fade-enter-from, .git-toast-fade-leave-to { opacity: 0; }
 
 /* ── 滚动消息区 ── */
 .chat-scroll {
@@ -1889,7 +2019,7 @@ watch(
 }
 
 .user-bubble {
-  max-width: 75%;
+  max-width: 85%;
   padding: 10px 16px;
   background: var(--sun-surface);
   border: none;
@@ -2184,8 +2314,9 @@ watch(
 }
 
 .skill-suggest li.path-suggest-item {
-  flex-direction: row;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
 }
 
 .path-suggest-icon {

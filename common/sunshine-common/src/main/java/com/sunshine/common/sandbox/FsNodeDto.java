@@ -14,4 +14,7 @@ public record FsNodeDto(String name, String path, String type, Long size) {
     }
 
     public record FsListResponse(String path, List<FsNodeDto> entries) {}
+
+    /** 递归文件索引：扁平化返回指定根下所有文件/目录的容器路径 */
+    public record FsIndexResponse(String root, List<String> paths) {}
 }

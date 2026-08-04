@@ -11,6 +11,13 @@ import {
   resolveTimelineSummaryPrefix,
 } from '../../api/processingSteps'
 import {
+  catalogToolIdFromStepId,
+  isSandboxExecStep,
+  sandboxToolKind,
+} from '../../api/processingStepsDisplay'
+import { isThinkStepId } from '../../api/processingStepsNormalize'
+import {
+  isRagStepId,
   isToolStepId,
   resolveHitlUiKey,
   isHitlCarrierStep,
@@ -35,6 +42,7 @@ import {
 import OperationCard from './OperationCard.vue'
 import TaskBoardPanel from './TaskBoardPanel.vue'
 import SubagentCard from './SubagentCard.vue'
+import ToolGroupCard from './ToolGroupCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
@@ -244,6 +252,84 @@ const displaySteps = computed(() => {
   })
 })
 
+/** 显示行：普通步骤或工具/检索组（连续的同类步折叠为一组） */
+type DisplayRow =
+  | { kind: 'step'; step: ProcessingStep }
+  | {
+      kind: 'toolGroup'
+      groupKind: ToolGroupKind
+      steps: ProcessingStep[]
+      allDone: boolean
+      anyRunning: boolean
+    }
+
+/** 组类别：普通工具调用 / 知识检索 / sandbox 按用途细分 */
+type ToolGroupKind =
+  | 'tool'
+  | 'rag'
+  | 'sandbox-view'
+  | 'sandbox-edit'
+  | 'sandbox-fetch'
+  | 'sandbox-exec'
+
+/** 步可折叠分组的类别；其余返回 null 单独成行。
+ * rag 步须在 tool 前判定——后端将 rag 归入 tool 步（phase=tool），但按 id 精确区分。
+ * sandbox 工具按用途细分，同类别可混组（如 read/glob/grep 归「查看」）。 */
+function toolGroupKind(step: ProcessingStep): ToolGroupKind | null {
+  if (isRagStepId(step.id)) return 'rag'
+  if (!isToolStepId(step.id) || step.phase !== 'tool') return null
+  const toolId = catalogToolIdFromStepId(step.id)
+  const sandboxKind = sandboxToolKind(toolId)
+  if (sandboxKind) return `sandbox-${sandboxKind}` as ToolGroupKind
+  return 'tool'
+}
+
+/** 将连续同类的 tool / rag 步各分为一组；HITL awaiting 中的工具步单独成行保持内联确认框可见 */
+function groupToolSteps(steps: ProcessingStep[]): DisplayRow[] {
+  const rows: DisplayRow[] = []
+  let i = 0
+  while (i < steps.length) {
+    const s = steps[i]
+    const groupKind = toolGroupKind(s)
+    if (!groupKind) {
+      rows.push({ kind: 'step', step: s })
+      i++
+      continue
+    }
+    // 收集连续的同类步（tool 与 rag 不混组）
+    const group: ProcessingStep[] = []
+    while (i < steps.length && toolGroupKind(steps[i]) === groupKind) {
+      group.push(steps[i])
+      i++
+    }
+    if (group.length === 1) {
+      rows.push({ kind: 'step', step: group[0] })
+    } else {
+      const allDone = group.every(s => s.lifecycle === 'done' || s.lifecycle === 'skipped' || s.lifecycle === 'error')
+      const anyRunning = group.some(s => s.lifecycle === 'running')
+      rows.push({ kind: 'toolGroup', groupKind, steps: group, allDone, anyRunning })
+    }
+  }
+  return rows
+}
+
+const displayRows = computed(() => groupToolSteps(displaySteps.value))
+
+/** exec 步所属轮次 think 摘要（think_summary 工具输出）：exec 步向前取最近 think 步的 stepSummary。
+ * 主行显示「执行命令 {摘要} {命令头}」，摘要缺失则仅命令头。 */
+const thinkSummaryByStepId = computed(() => {
+  const map = new Map<string, string>()
+  let current = ''
+  for (const s of displaySteps.value) {
+    if (isThinkStepId(s.id)) {
+      if (s.stepSummary?.trim()) current = s.stepSummary.trim()
+    } else if (isSandboxExecStep(s)) {
+      if (current) map.set(s.id, current)
+    }
+  }
+  return map
+})
+
 /** 折叠态常驻的 taskboard 步（若有真实任务项）：生成 todolist 后即便后续还有 think/tool 步，
  * 折叠时间线时仍在概要区露出，不被最后一条 preview 步顶掉 */
 const collapsedTaskBoardStep = computed(() => {
@@ -362,7 +448,26 @@ const orphanContent = computed(() => {
     </div>
 
     <template v-if="timelineBodyExpanded">
-      <template v-for="step in displaySteps" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
+      <template
+        v-for="(row, rowIdx) in displayRows"
+        :key="row.kind === 'toolGroup' ? `tg-${row.steps.map(s => s.id).join('|')}` : `row-${rowIdx}`"
+      >
+        <div class="op-row">
+        <template v-if="row.kind === 'toolGroup'">
+          <ToolGroupCard
+            :group-kind="row.groupKind"
+            :steps="row.steps"
+            :all-done="row.allDone"
+            :any-running="row.anyRunning"
+            :live="live"
+            :pending-list="pendingList"
+            :all-steps="effectiveSteps"
+            :summary-by-step-id="thinkSummaryByStepId"
+            @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
+          />
+        </template>
+        <template v-else>
+        <template v-for="step in [row.step]" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
         <PlanWorkflowPanel
           v-if="step.phase === 'plan' && showPlanDag"
           :plan-step="step"
@@ -389,6 +494,7 @@ const orphanContent = computed(() => {
             :live="live && lifecycleOf(step) === 'running'"
             :execution-plan-id="executionPlanId"
             :embed-hitl="false"
+            :round-summary="thinkSummaryByStepId.get(step.id)"
             @toggle="toggleCard(step)"
           />
           <div v-if="shouldShowInlineHitl(step)" class="op-line-hitl">
@@ -425,6 +531,9 @@ const orphanContent = computed(() => {
             </div>
           </div>
         </template>
+        </template>
+        </template>
+        </div>
       </template>
       <template v-for="row in orphanContent" :key="row.key">
         <div class="op-inline-content">
@@ -466,6 +575,7 @@ const orphanContent = computed(() => {
         :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
         :execution-plan-id="executionPlanId"
         :embed-hitl="false"
+        :round-summary="thinkSummaryByStepId.get(collapsedPreviewStep.id)"
       />
       <div
         v-if="showProcessingCollapsedAnswer"
@@ -496,9 +606,19 @@ const orphanContent = computed(() => {
 .operation-lines {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   padding: 0 0 12px;
   margin-left: -2px;
+}
+
+.op-row {
+  min-width: 0;
+}
+
+/* 行间距统一走 margin-top 单侧 8px（flex 中 margin 不折叠，避免 gap+margin 叠加）；
+   HITL 与折叠内工具调用不加行间距（折叠外的工具组行由 .op-row 承担） */
+.op-row + .op-row {
+  margin-top: 8px;
 }
 
 .timeline-summary {
@@ -506,7 +626,7 @@ const orphanContent = computed(() => {
   font-size: var(--sun-font-md);
   line-height: 1.5;
   color: var(--sun-text-muted);
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
 .timeline-summary .op-line-row {
@@ -602,11 +722,6 @@ const orphanContent = computed(() => {
   grid-template-columns: var(--op-gutter) minmax(0, 1fr);
   column-gap: 4px;
   align-items: start;
-  margin-top: 6px;
-}
-
-.op-line-hitl + .op-line-hitl {
-  margin-top: 10px;
 }
 
 .op-line-hitl .op-gutter {
@@ -620,7 +735,8 @@ const orphanContent = computed(() => {
   grid-template-columns: var(--op-gutter) minmax(0, 1fr);
   column-gap: 4px;
   align-items: start;
-  margin: 4px 0 8px;
+  /* 阶段正文：与 card 间距 8px；下方间距由下一行的 margin-top 承担，避免叠加 */
+  margin: 8px 0 0;
 }
 
 .op-nested-stack {

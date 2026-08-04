@@ -662,10 +662,10 @@ html.theme-switching *::after {
   --mention-workflow-bg: rgba(107, 155, 210, 0.11);
   --mention-workflow-border: rgba(107, 155, 210, 0.28);
   --mention-workflow-prefix: #6b9bc8;
-  /* path：青绿，区别于 @/$/# */
-  --mention-path-bg: rgba(72, 158, 152, 0.12);
-  --mention-path-border: rgba(72, 158, 152, 0.34);
-  --mention-path-prefix: #3d8f8a;
+  /* path：蓝色高亮，可点击打开工作区（仅改色，不加边框/背景） */
+  --mention-path-bg: transparent;
+  --mention-path-border: transparent;
+  --mention-path-prefix: var(--sun-blue, #58a6ff);
 }
 
 .mention-chip,
@@ -719,6 +719,7 @@ button.mention-chip--path {
 .mention-chip--path:hover {
   border-color: var(--mention-path-prefix);
   color: var(--sun-text);
+  text-decoration: underline;
 }
 
 .mention-chip__icon {
@@ -740,7 +741,7 @@ button.mention-chip--path {
 
 .mention-chip--path .mention-chip__label {
   color: var(--mention-path-prefix);
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .mention-chip__prefix,

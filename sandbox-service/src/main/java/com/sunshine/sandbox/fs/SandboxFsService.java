@@ -69,6 +69,45 @@ public class SandboxFsService {
         return new FsNodeDto.FsListResponse(containerPath, entries);
     }
 
+    /** 递归列举指定目录下所有文件/目录的容器路径（扁平化，跳过 .git / node_modules） */
+    public FsNodeDto.FsIndexResponse listDeep(String sessionId, String rawPath, int maxDepth) {
+        SandboxSession session = requireSession(sessionId);
+        String containerPath = normalizeBrowsePath(rawPath);
+        Path host = HostPathResolver.toHost(session, containerPath, false);
+        if (!Files.exists(host) || !Files.isDirectory(host)) {
+            return new FsNodeDto.FsIndexResponse(containerPath, List.of());
+        }
+        // 容器路径前缀：host 相对路径直接拼接，避免逐节点 toContainer 的重复字符串操作
+        String containerPrefix = containerPath.endsWith("/") ? containerPath : containerPath + "/";
+        List<String> paths = new ArrayList<>();
+        paths.add(containerPath);
+        int depth = maxDepth > 0 && maxDepth <= 128 ? maxDepth : 64;
+        try (Stream<Path> stream = Files.walk(host, depth)) {
+            stream.skip(1)
+                    .filter(p -> {
+                        Path rel = host.relativize(p);
+                        for (Path seg : rel) {
+                            String s = seg.toString();
+                            if (s.equals(".git") || s.equals("node_modules")
+                                    || s.equals(".idea") || s.equals("target")
+                                    || s.equals("dist") || s.equals("build")) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    })
+                    .forEach(p -> {
+                        String rel = host.relativize(p).toString().replace('\\', '/');
+                        if (!rel.isEmpty()) {
+                            paths.add(containerPrefix + rel);
+                        }
+                    });
+        } catch (IOException e) {
+            throw new BizException(SandboxErrorCode.FILE_PATH_INVALID);
+        }
+        return new FsNodeDto.FsIndexResponse(containerPath, paths);
+    }
+
     public FsContentDto readContent(String sessionId, String rawPath, int maxChars, int offset) {
         SandboxSession session = requireSession(sessionId);
         String containerPath = normalizeBrowsePath(rawPath);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
+import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, useMessage } from 'naive-ui'
 import type { WorkspaceVO, CreateWorkspaceRequest } from '../api/workspaces'
 import { listWorkspaces, createWorkspace, destroyWorkspace } from '../api/workspaces'
 import { friendlyErrorMessage } from '../api/apiError'
@@ -12,6 +12,19 @@ const showCreate = ref(false)
 const creating = ref(false)
 const newName = ref('')
 const newRepoUrl = ref('')
+
+/** 硬件档位预设（与 Nacos agent.sandbox.profiles.full.allowed-presets 对齐；后端校验 SSOT） */
+const HARDWARE_PRESETS = [
+  { label: '1C / 1G', value: '1-1024' },
+  { label: '2C / 2G', value: '2-2048' },
+  { label: '4C / 4G', value: '4-4096' },
+] as const
+const newHardware = ref<string>('2-2048')
+
+function presetToSpec(value: string): { cpus: number; memoryMb: number } {
+  const [cpu, mem] = value.split('-')
+  return { cpus: Number(cpu), memoryMb: Number(mem) }
+}
 
 const columns = [
   { key: 'name', title: '名称', width: 200 },
@@ -42,9 +55,9 @@ async function handleCreate() {
   if (!url) { message.warning('请输入仓库地址'); return }
   creating.value = true
   try {
-    // 只填 git 路径：clone 默认拉取远程主分支
+    const spec = presetToSpec(newHardware.value)
     const req: CreateWorkspaceRequest = {
-      name, repoUrl: url,
+      name, repoUrl: url, memoryMb: spec.memoryMb, cpus: spec.cpus,
     }
     await createWorkspace(req)
     message.success('工作区已创建')
@@ -92,6 +105,9 @@ onMounted(fetchWorkspaces)
         </NFormItem>
         <NFormItem label="仓库地址">
           <NInput v-model:value="newRepoUrl" class="sun-field" placeholder="https://github.com/user/repo" maxlength="512" :disabled="creating" />
+        </NFormItem>
+        <NFormItem label="硬件档位">
+          <NSelect v-model:value="newHardware" :options="[...HARDWARE_PRESETS]" :disabled="creating" />
         </NFormItem>
       </NForm>
       <template #footer>

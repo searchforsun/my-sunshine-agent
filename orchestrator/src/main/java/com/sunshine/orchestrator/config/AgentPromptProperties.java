@@ -4,7 +4,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
@@ -105,12 +104,11 @@ public class AgentPromptProperties {
             skill.setLabel("加载技能");
             skill.setBefore("准备加载 Skill");
             skill.setActive("正在加载 Skill 指令");
-            skill.setAfter("@{skillId} {skillDisplayName}");
+            skill.setAfter("{skillId} {skillDisplayName}");
             skill.setAfterFallback("Skill 已加载");
             map.put("skill", skill);
             var think = new StepTimeline();
-            think.setLabel("规划推理");
-            think.setLabelFollowUp("综合分析");
+            think.setLabel("深度思考");
             think.setBefore("规划如何回答{query}");
             think.setActive("正在规划{query}的工具调用方案");
             think.setAfter("已完成{query}的工具调用规划");
@@ -144,23 +142,23 @@ public class AgentPromptProperties {
 
         private static IntentTimeline fixtureIntent() {
             var intent = new IntentTimeline();
-            intent.setBefore("阅读{query}");
-            intent.setActive("正在分析{query}，匹配最佳处理方式");
+            intent.setBefore("识别用户意图");
+            intent.setActive("正在匹配最佳处理方式");
             intent.setLabel("识别意图");
-            intent.setDefaultAfter("已完成对{query}的意图判断");
-            intent.setUnmatchedAfter("{query}将按「{detail}」处理");
+            intent.setDefaultAfter("已完成意图判断");
+            intent.setUnmatchedAfter("将按「{detail}」处理");
             var modes = new java.util.LinkedHashMap<String, ModeIntent>();
             var react = new ModeIntent();
             react.setDetail("自主智能体");
-            react.setAfter("{query}将由自主智能体分析并作答");
+            react.setAfter("将由自主智能体分析并作答");
             modes.put("react", react);
             var workflow = new ModeIntent();
-            workflow.setAfter("{query}将按「{displayName}」流程处理");
-            workflow.setForcedAfter("{query}将按您指定的「工作流」模式处理");
+            workflow.setAfter("将按「{displayName}」流程处理");
+            workflow.setForcedAfter("将按您指定的「工作流」模式处理");
             modes.put("workflow", workflow);
             var planWorkflow = new ModeIntent();
             planWorkflow.setDetail("动态规划");
-            planWorkflow.setAfter("{query}将动态规划多步执行");
+            planWorkflow.setAfter("将动态规划多步执行");
             modes.put("plan-workflow", planWorkflow);
             intent.setModes(modes);
             return intent;
