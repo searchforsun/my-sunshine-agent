@@ -1,0 +1,17 @@
+server:
+  port: 8240
+spring:
+  application:
+    name: sunshine-resource-manager
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:}
+        file-extension: yaml
+  config:
+    import:
+      - nacos:sunshine-resource-manager.yaml

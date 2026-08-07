@@ -30,6 +30,7 @@
         <module>oa-service</module>
         <module>finance-service</module>
         <module>hr-biz-service</module>
+        <module>resource-manager</module>
     </modules>
 
     <properties>
