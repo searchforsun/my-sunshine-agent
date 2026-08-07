@@ -118,21 +118,22 @@ function onShowUpdate(next: boolean) {
   height: 30px;
   max-width: 100%;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font: inherit;
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
   flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .write-hitl-trigger.variant-block {
   width: 100%;
   height: 36px;
   padding: 0 12px;
+  border: 1px solid var(--sun-border);
   border-radius: var(--radius-md, 10px);
   justify-content: space-between;
   background: var(--n-color, #fff);
@@ -141,7 +142,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .write-hitl-trigger:hover:not(:disabled) {
-  border-color: var(--sun-border-light, #ccc);
+  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
   color: var(--sun-text, #212121);
 }
 

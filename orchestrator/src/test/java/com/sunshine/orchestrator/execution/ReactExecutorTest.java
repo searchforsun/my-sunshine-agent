@@ -3,7 +3,9 @@ package com.sunshine.orchestrator.execution;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -30,11 +32,28 @@ class ReactExecutorTest {
     @Mock
     private AgentRuntime agentRuntime;
 
+    @Mock
+    private AgentCatalogService agentCatalogService;
+
+    @Mock
+    private AgentExecutionProperties executionProperties;
+
     @InjectMocks
     private ReactExecutor reactExecutor;
 
+    private AgentExecutionProperties.React reactStub() {
+        AgentExecutionProperties.React react = new AgentExecutionProperties.React();
+        react.setTaskMaxIters(100);
+        return react;
+    }
+
+    private void stubReact() {
+        when(executionProperties.getReact()).thenReturn(reactStub());
+    }
+
     @Test
     void execute_passesSkillIdFromPlan() {
+        stubReact();
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
@@ -57,6 +76,7 @@ class ReactExecutorTest {
 
     @Test
     void execute_buildsMainAgentRunRequest() {
+        stubReact();
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
@@ -78,14 +98,50 @@ class ReactExecutorTest {
     }
 
     @Test
+    void execute_taskConversation_injectsTaskMaxIters() {
+        stubReact();
+        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
+
+        ExecutionStreamContext ctx = new ExecutionStreamContext(
+                "c1", "msg-1", "执行沙箱任务", AssembledContext.empty(),
+                null, null, "u1", "default", null,
+                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                null, null, null, false, false, null, null, "task");
+
+        reactExecutor.execute(ctx).collectList().block();
+
+        ArgumentCaptor<AgentRunRequest> captor = ArgumentCaptor.forClass(AgentRunRequest.class);
+        verify(agentRuntime).run(captor.capture());
+        assertThat(captor.getValue().maxIters()).isEqualTo(100);
+    }
+
+    @Test
+    void execute_chatConversation_usesNacosDefaultMaxIters() {
+        stubReact();
+        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
+
+        ExecutionStreamContext ctx = new ExecutionStreamContext(
+                "c1", "msg-1", "普通聊天", AssembledContext.empty(),
+                null, null, "u1", "default",
+                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"));
+
+        reactExecutor.execute(ctx).collectList().block();
+
+        ArgumentCaptor<AgentRunRequest> captor = ArgumentCaptor.forClass(AgentRunRequest.class);
+        verify(agentRuntime).run(captor.capture());
+        assertThat(captor.getValue().maxIters()).isEqualTo(0);
+    }
+
+    @Test
     void execute_passesPersonalRulesAsFirstInjectedBlock() {
+        stubReact();
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "你好", AssembledContext.empty(),
                 null, null, "u1", "default", null,
                 new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
-                null, null, null, false, false, null, "用文言文回答");
+                null, null, null, false, false, null, "用文言文回答", null);
 
         reactExecutor.execute(ctx).collectList().block();
 
@@ -97,13 +153,14 @@ class ReactExecutorTest {
 
     @Test
     void execute_personalRulesBeforeDegradedInjectedBlocks() {
+        stubReact();
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "你好", AssembledContext.empty(),
                 null, null, "u1", "default", null,
                 new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
-                null, null, null, false, false, null, "用文言文回答");
+                null, null, null, false, false, null, "用文言文回答", null);
 
         reactExecutor.executeWithInjected(ctx, List.of("上游节点输出")).collectList().block();
 
@@ -115,6 +172,7 @@ class ReactExecutorTest {
 
     @Test
     void execute_withoutPersonalRulesKeepsInjectedBlocksUntouched() {
+        stubReact();
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(

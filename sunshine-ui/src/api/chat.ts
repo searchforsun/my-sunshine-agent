@@ -17,8 +17,6 @@ export interface ChatMessage {
   contentBlocks?: ContentBlock[]
   /** SSE confirmation 先于 tool 步骤到达时的暂存（按 token 多条） */
   pendingHitlConfirmations?: HitlConfirmationPayload[]
-  /** @deprecated 使用 pendingHitlConfirmations */
-  pendingHitlConfirmation?: HitlConfirmationPayload
   status?: 'streaming' | 'interrupted' | 'failed' | 'completed'
   /** 流式失败时的用户可见错误（与正文分离展示） */
   streamError?: string
@@ -28,6 +26,8 @@ export interface ChatMessage {
   createdAt?: string | number
   /** 消息最后更新（API）— 终态总览墙钟 end 兜底 */
   updatedAt?: string | number
+  /** 会话内自增序号 — 历史游标分页 beforeSeq 基准 */
+  seq?: number
   /** 前端墙钟：进入 streaming 时写入 */
   timelineStartedAt?: number
   /** 前端墙钟：正文结束 / 消息终态时写入 */

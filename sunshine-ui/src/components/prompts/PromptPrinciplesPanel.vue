@@ -10,14 +10,14 @@ const ROUTING_STEPS = [
   { key: 'L0', title: '硬绑定', detail: '#工作流 / $智能体 / /Skill → 立刻锁定' },
   { key: '规则', title: '统一规则', detail: 'Catalog 路由规则（routing-rule）按 priority 首命中' },
   { key: 'L3', title: '意图分类', detail: '未命中 → intent.classifier' },
-  { key: '执行', title: '分发', detail: 'workflow / plan-workflow / peer-collab / react' },
+  { key: '执行', title: '分发', detail: 'workflow / plan-workflow / react' },
 ] as const
 
 /** 底栏强制执行模式（≠ 自动） */
 const FORCE_ROWS = [
   {
     item: '触发',
-    detail: 'Chat 底栏执行模式 ≠ 自动（react / workflow / plan-workflow / peer-collab）',
+    detail: 'Chat 底栏执行模式 ≠ 自动（react / workflow / plan-workflow）',
   },
   {
     item: '效果',
@@ -106,12 +106,6 @@ const AGENT_ROWS = [
     title: 'DAG · agent 节点',
     when: 'Workflow / Plan',
     stack: 'system + 节点 systemOverlay / skill；上游靠注入，默认不带会话 L1/L2/L3',
-  },
-  {
-    key: 'expert',
-    title: '多智能体协作（已退役）',
-    when: 'peer-collab',
-    stack: '可先 ReAct 收材料 → 专家发言 → Synthesizer 综合',
   },
 ] as const
 </script>

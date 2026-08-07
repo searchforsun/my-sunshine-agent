@@ -51,12 +51,22 @@ agent:
   execution:
     default-mode: react
     react:
-      max-iters: 20
+      # ReAct think→tool 单 run 循环上限（chat 会话）。长任务（持续开发/多步执行）需充足余量，
+      # 过低会触达 AgentScope 总结轮：该轮不传 tools，DeepSeek-V4 会把 DSML 工具调用
+      # 泄漏进 content（乱码 + 工具时间线错乱）。50 轮 ≈ 50 次 think+工具对。
+      max-iters: 50
+      # task 会话（沙箱任务、coding 任务等长任务）的上限，高于 chat 值；
+      # task 会话经 ReactExecutor 显式注入 request.maxIters 生效。
+      task-max-iters: 100
+      # 软限额收束缓冲 = maxIters 的 20%（/5），上限 10 轮，按各档位自动计算：
+      # 50→10（约第 40 轮收束）、100→10（约第 90 轮）、30→6（约第 24 轮）；
+      # 避免模型感知不到轮数上限、最后轮继续调工具 + 输出伪终稿后触发 AgentScope 总结轮。
       taskboard:
         enabled: true
       subagent:
         enabled: true
-        max-iters: 8
+        # 子 Agent 单 run 轮数上限：能拆就拆后子任务可能含多步工具调用（8 太紧），放宽到 30
+        max-iters: 30
         timeout-ms: 180000
         # cancel-result → Catalog id=react.subagent.cancel-result
     plan-workflow:
@@ -238,16 +248,13 @@ agent:
   # （routing-rule.*，见 docker/mysql/init/17-sunshine-prompt-manager.sql）
   # 验收提示词仍见 docs/routing/routing-golden-set.md；引擎 UnifiedRuleRoutingPolicy
 
-  # peer-collab 相关配置已退役；多智能体协作统一为 spawn_subagent 中心化编排
-  # peer: { min-rounds, max-rounds } 等字段已移除
-    # gather/speak/synthesis/round-* → Catalog peer.*
-
-  # expert.coordinator/complexity → Catalog expert.*
-
   model:
     base-url: http://localhost:8300/v1
     name: deepseek-v4-pro
     api-key: sunshine-gateway
+    # 上下文窗口（token）：AgentScope CompactionConfig 动态触发依据，须与实际模型一致
+    # （llm-gateway deepseek-v4-pro = 256k，见 sunshine-llm-gateway.yaml）
+    context-window: 256000
   history:
     max-messages: 20
   generation:
@@ -298,7 +305,8 @@ agent:
       # 压缩触发：真实 token 达模型上下文窗口 80% 才触发；轮次为宽限兜底
       max-tokens-ratio: 0.8
       turn-backstop: 40
-      default-model-window: 128000
+      # Gateway 不可用时的降级模型窗口（对齐 agent.model.context-window=256k）
+      default-model-window: 256000
       token-safety-factor: 1.1
       mid-compress-ratio: 0.15
     l2:
@@ -336,11 +344,27 @@ agent:
     auto-context:
       enabled: true
       large-payload-threshold: 5120
-      max-token: 131072
+      max-token: 262144
       token-ratio: 0.75
       offload-single-preview: 200
-      msg-threshold: 40
+      # 方案 A：token 动态触发（trigger 依据 agent.model.context-window）
+      msg-threshold: 0            # 0=禁用消息数触发，仅 token 触发
       last-keep: 12
+      trigger-tokens: 0           # 0=动态：effectiveTrigger = contextWindow - reserved
+      reserved: 20000             # 摘要过程 token 缓冲
+      keep-tokens: -1             # -1=动态保留 tail（min/max/ratio）
+      keep-tokens-min: 2000
+      keep-tokens-max: 8000
+      keep-tokens-ratio: 0.25
+      flush-before-compact: false # 本工程 disableMemoryHooks，压缩前不做 LLM 记忆抽取
+      offload-before-compact: true
+      # 压缩摘要模板 SSOT：prompt-manager Catalog id=compaction.summary-prompt（勿在此配置）
+      truncate-args-enabled: true
+      truncate-args-max-chars: 2000
+      prune-enabled: true
+      prune-protect-tokens: 40000
+      prune-min-tokens: 20000
+      prune-max-output-chars: 2000
       min-consecutive-tool-messages: 4
       current-round-compression-ratio: 0.3
       min-compression-token-threshold: 3000

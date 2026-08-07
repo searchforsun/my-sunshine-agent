@@ -11,7 +11,7 @@ const props = defineProps<{
   modelValue: string
   /** 右侧工作区真实代码分支（会话未发送时为缺省 checkout 分支；与 modelValue 意图分支可不同） */
   activeBranch?: string
-  /** 是否新建会话：可选择任意分支；已有会话仅展示当前分支 */
+  /** 是否新建会话：可选择任意分支；已有会话亦可切换分支（发送时才真正切换 checkout） */
   createMode?: boolean
 }>()
 const emit = defineEmits<{
@@ -114,7 +114,6 @@ watch(() => props.modelValue, () => {
         <button
           type="button"
           class="branch-trigger"
-          :disabled="!createMode"
           :title="currentBranch || '选择分支'"
         >
           <span class="branch-leading">
@@ -253,25 +252,20 @@ watch(() => props.modelValue, () => {
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
   flex-shrink: 0;
   max-width: 180px;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
-.branch-trigger:hover:not(:disabled) {
-  border-color: var(--sun-border-light);
+.branch-trigger:hover {
+  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
   color: var(--sun-text);
-}
-
-.branch-trigger:disabled {
-  cursor: default;
-  color: var(--sun-text-secondary);
 }
 
 .branch-leading {

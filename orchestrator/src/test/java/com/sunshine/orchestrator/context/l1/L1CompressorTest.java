@@ -71,7 +71,7 @@ class L1CompressorTest {
         properties.getL1().setTurnBackstop(4);
         compressor = new L1Compressor(properties, llm, store, l2StateStore, catalogHolder,
                 tokenEstimator, modelWindowCache);
-        lenient().when(modelWindowCache.windowFor(any())).thenReturn(128000);
+        lenient().when(modelWindowCache.windowFor(any())).thenReturn(256000);
         // 默认低 token（远低于阈值），靠轮数兜底触发
         lenient().when(tokenEstimator.effectiveCount(any(), anyDouble())).thenReturn(10);
         lenient().when(catalogHolder.requireText("context.l1.mid-compress"))

@@ -31,6 +31,7 @@ class ProcessingStepSerdeTest {
                 "执行命令",
                 null,
                 null,
+                null,
                 null);
         StepSummary phase = ProcessingStepSerde.currentPhaseSummary(step);
         assertThat(phase).isNotNull();
@@ -84,6 +85,7 @@ class ProcessingStepSerdeTest {
                         List.of(new TaskBoardItemView("t1", "检索制度", "completed")),
                         1,
                         "1/1 已完成"),
+                null,
                 null,
                 null);
         String json = new com.sunshine.orchestrator.conversation.GenerationFlushScheduler(mock(), mock())

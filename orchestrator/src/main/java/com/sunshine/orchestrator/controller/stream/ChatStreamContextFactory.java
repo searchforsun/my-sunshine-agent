@@ -108,7 +108,8 @@ public class ChatStreamContextFactory {
                 msg.getSkillId(),
                 kbId,
                 false,
-                msg.getPersonalRules());
+                msg.getPersonalRules(),
+                conv.getKind());
     }
 
     private String resolveSessionKbId(String requestKbId, String storedKbId, String tenantId) {
@@ -205,7 +206,8 @@ public class ChatStreamContextFactory {
                 reactRestartResume,
                 userId,
                 tenantId,
-                kbId);
+                kbId,
+                conv.getKind());
     }
 
     private ChatConversationEntity resolveConversation(String conversationId, String userId, String tenantId) {

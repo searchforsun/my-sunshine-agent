@@ -6,11 +6,17 @@ import { hasRealTaskBoardItems, stepLifecycle } from '../../api/processingSteps'
 const props = withDefaults(defineProps<{
   step: ProcessingStep
   live?: boolean
+  /** 初始折叠（悬浮场景默认收一行进度，避免遮挡输入区） */
+  defaultCollapsed?: boolean
+  /** 悬浮态：去掉左侧 gutter，横向撑满，hover 时头部图标切换为展开/收起箭头 */
+  floating?: boolean
 }>(), {
   live: false,
+  defaultCollapsed: false,
+  floating: false,
 })
 
-const expanded = ref(true)
+const expanded = ref(!props.defaultCollapsed)
 const userToggled = ref(false)
 
 const lifecycle = computed(() => stepLifecycle(props.step))
@@ -73,30 +79,10 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
       'is-expanded': expanded,
       'is-collapsed': !expanded,
       'is-running': isRunning && live,
+      'is-floating': floating,
     }"
   >
     <div class="taskboard-row">
-      <button
-        type="button"
-        class="op-gutter taskboard-gutter"
-        :aria-expanded="expanded"
-        aria-label="展开或收起任务清单"
-        @click="toggleExpand"
-      >
-        <svg
-          class="taskboard-chevron"
-          width="9"
-          height="9"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          aria-hidden="true"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </button>
       <div class="taskboard-card">
         <button
           type="button"
@@ -108,6 +94,9 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
             <path d="M2 4.5h12M2 8h8M2 11.5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
             <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
             <circle cx="12.5" cy="11.5" r="1.1" fill="currentColor" />
+          </svg>
+          <svg class="taskboard-head-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6" />
           </svg>
           <span class="taskboard-progress">{{ progressLabel }}</span>
         </button>
@@ -136,15 +125,23 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 
 <style scoped>
 .taskboard-wrap {
-  --op-gutter: 12px;
   --panel-radius: var(--radius-sm, 6px);
   margin: 6px 0;
 }
 
+/* 悬浮态：卡片横向撑满；悬浮面板自身已有外边框，内部卡片去边框 */
+.taskboard-wrap.is-floating {
+  margin: 0;
+}
+
+.taskboard-wrap.is-floating .taskboard-card {
+  border: none;
+  background: transparent;
+}
+
 .taskboard-row {
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
-  column-gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -152,39 +149,16 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   align-items: center;
 }
 
-.taskboard-gutter {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  width: var(--op-gutter);
-  height: 100%;
-  padding: 4px 0 0;
-  margin: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.taskboard-wrap.is-collapsed .taskboard-gutter {
-  align-items: center;
-  align-self: stretch;
-  padding-top: 0;
-}
-
-.taskboard-gutter:hover .taskboard-chevron {
-  opacity: 0.75;
-}
-
-.op-gutter {
-  flex-shrink: 0;
-}
-
 .taskboard-card {
   min-width: 0;
   border: 1px solid var(--sun-border);
   border-radius: var(--panel-radius);
   background: var(--sun-black);
+}
+
+/* 普通态卡片左缘与上下时间线文字对齐（gutter 已移除，无需偏移） */
+.taskboard-wrap:not(.is-floating) {
+  margin-left: 0;
 }
 
 .taskboard-card-head {
@@ -216,17 +190,17 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   color: var(--sun-text-secondary);
 }
 
-.taskboard-chevron {
-  flex-shrink: 0;
+.taskboard-progress {
+  flex: 1;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
   color: var(--sun-text-muted);
-  opacity: 0.45;
-  transition: transform 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.taskboard-wrap.is-expanded .taskboard-chevron {
-  transform: rotate(90deg);
-}
-
+/* 行首三条杠：默认常驻；hover 时切换为展开箭头（同 chat 输入框上方悬浮 todolist 样式） */
 .taskboard-list-icon {
   width: 14px;
   height: 14px;
@@ -234,9 +208,33 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   opacity: 0.72;
 }
 
-.taskboard-progress {
-  font-variant-numeric: tabular-nums;
-  color: var(--sun-text-muted);
+/* hover 切换：三条杠隐藏，显示 > / ^ 箭头；与三条杠同宽（14px）居中，避免 progress 左右移动 */
+.taskboard-head-chevron {
+  display: none;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  padding: 1px;
+  color: var(--sun-text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.taskboard-card-head:hover .taskboard-list-icon {
+  display: none;
+}
+
+.taskboard-card-head:hover .taskboard-head-chevron {
+  display: block;
+}
+
+/* 折叠态右箭头 >，展开态上箭头 ^ */
+.taskboard-wrap.is-collapsed .taskboard-card-head:hover .taskboard-head-chevron {
+  transform: rotate(0deg);
+}
+
+.taskboard-wrap.is-expanded .taskboard-card-head:hover .taskboard-head-chevron {
+  transform: rotate(-90deg);
 }
 
 .taskboard-list {

@@ -52,7 +52,8 @@ public final class SubAgentTimelineBridge {
                 nodeLabel,
                 null,
                 null,
-                subSteps.snapshot());
+                subSteps.snapshot(),
+                null);
         return StreamToken.step(node);
     }
 }

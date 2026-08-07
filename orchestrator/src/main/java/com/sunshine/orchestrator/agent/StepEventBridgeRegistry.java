@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -19,6 +20,7 @@ import java.util.function.Function;
  * per-bridge Hook / Timeline / Generation 绑定注册表 — 替代 StepEventBridge 静态 Map。
  * 生产由 Spring 单例托管；单测可走 {@link StepEventBridge} 静态门面或独立实例。
  */
+@Slf4j
 @Component
 public class StepEventBridgeRegistry {
 
@@ -484,7 +486,12 @@ public class StepEventBridgeRegistry {
             return;
         }
         String thinkId = session.currentThinkStepId();
-        if (thinkId == null || !session.isThinkRunning()) {
+        boolean running = session.isThinkRunning();
+        if (thinkId == null || !running) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TimelineBridge] dropReasoning thinkId={} running={} deltaLen={}",
+                        thinkId, running, incrementalText.length());
+            }
             return;
         }
         ConcurrentLinkedQueue<StreamToken> queue = hookTokenQueues.get(messageId);

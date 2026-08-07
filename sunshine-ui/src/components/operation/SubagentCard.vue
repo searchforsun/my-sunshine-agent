@@ -177,10 +177,8 @@ async function onStop(e: Event): Promise<void> {
 
 <style scoped>
 .subagent-card-wrap {
-  --op-gutter: 12px;
   --panel-radius: var(--radius-sm, 6px);
   margin: 6px 0;
-  padding-left: calc(var(--op-gutter) + 4px);
 }
 
 .subagent-card {
@@ -355,12 +353,12 @@ async function onStop(e: Event): Promise<void> {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: op-text-shimmer 2.6s linear infinite;
+  animation: op-text-shimmer 1.2s linear infinite;
 }
 
 .subagent-label.op-shimmer {
-  --op-shimmer-base: var(--sun-text);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text) 22%, white);
+  --op-shimmer-base: var(--sun-text-secondary);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 30%, white);
 }
 
 .op-pulse {

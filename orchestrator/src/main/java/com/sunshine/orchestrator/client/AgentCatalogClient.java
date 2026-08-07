@@ -26,10 +26,16 @@ public class AgentCatalogClient {
         webClient = WebClient.builder().baseUrl(baseUrl).build();
     }
 
-    public List<AgentCatalogIndexEntry> fetchCatalogIndex() {
+    public List<AgentCatalogIndexEntry> fetchCatalogIndex(String tenantId) {
         try {
             List<AgentCatalogIndexEntry> entries = webClient.get()
-                    .uri("/api/agents/catalog/index")
+                    .uri(uriBuilder -> {
+                        uriBuilder.path("/api/agents/catalog/index");
+                        if (tenantId != null && !tenantId.isBlank()) {
+                            uriBuilder.queryParam("tenantId", tenantId);
+                        }
+                        return uriBuilder.build();
+                    })
                     .retrieve()
                     .bodyToMono(new ParameterizedTypeReference<R<List<AgentCatalogIndexEntry>>>() {})
                     .map(R::getData)

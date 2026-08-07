@@ -19,8 +19,11 @@ public class AgentExecutionProperties {
 
     @Data
     public static class React {
-        /** ReAct 最大 think→tool 循环轮数（SSOT：Nacos agent.execution.react.max-iters） */
+        /** ReAct 最大 think→tool 循环轮数（chat 会话；SSOT：Nacos agent.execution.react.max-iters） */
         private int maxIters = 5;
+        /** task 会话（沙箱任务等长任务）的最大 think→tool 循环轮数，高于 chat 值
+         *  （SSOT：Nacos agent.execution.react.task-max-iters） */
+        private int taskMaxIters = 100;
         private Taskboard taskboard = new Taskboard();
         /** 4.7.6 spawn_subagent — SSOT：Nacos agent.execution.react.subagent */
         private Subagent subagent = new Subagent();
@@ -34,7 +37,7 @@ public class AgentExecutionProperties {
         @Data
         public static class Subagent {
             private boolean enabled = true;
-            private int maxIters = 8;
+            private int maxIters = 30;
             private long timeoutMs = 180_000L;
         }
     }

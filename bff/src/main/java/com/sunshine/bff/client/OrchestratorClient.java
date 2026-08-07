@@ -1,6 +1,7 @@
 package com.sunshine.bff.client;
 
 import com.sunshine.bff.model.ChatRequest;
+import com.sunshine.bff.model.UpdateCheckoutRequest;
 import com.sunshine.bff.model.UpdateTitleRequest;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -119,6 +120,20 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> getConversationMessages(
+            String id, int beforeSeq, int limit, String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/conversations/{id}/messages")
+                        .queryParam("beforeSeq", beforeSeq)
+                        .queryParam("limit", limit)
+                        .build(id))
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> updateConversationTitle(
             String id, UpdateTitleRequest body, String userId, String tenantId) {
         return webClient.patch()
@@ -128,6 +143,19 @@ public class OrchestratorClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> updateConversationCheckout(
+            String id, UpdateCheckoutRequest body, String userId, String tenantId) {
+        return webClient.patch()
+                .uri("/conversations/{id}/checkout", id)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
@@ -494,10 +522,57 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> gitDiff(String id, String checkoutId, String path, String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> {
+                    var b = uriBuilder.path("/api/agent-workspaces/{id}/git/diff")
+                            .queryParam("checkoutId", checkoutId);
+                    if (path != null && !path.isBlank()) {
+                        b = b.queryParam("path", path);
+                    }
+                    return b.build(id);
+                })
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> gitStage(String id, String checkoutId, Map<String, Object> body, String userId, String tenantId) {
         return webClient.post()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/agent-workspaces/{id}/git/stage")
+                        .queryParam("checkoutId", checkoutId)
+                        .build(id))
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> gitRevert(String id, String checkoutId, Map<String, Object> body, String userId, String tenantId) {
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/git/revert")
+                        .queryParam("checkoutId", checkoutId)
+                        .build(id))
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> gitUnstage(String id, String checkoutId, Map<String, Object> body, String userId, String tenantId) {
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent-workspaces/{id}/git/unstage")
                         .queryParam("checkoutId", checkoutId)
                         .build(id))
                 .header("x-user-id", userId)

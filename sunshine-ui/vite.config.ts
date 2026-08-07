@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig(({ mode }) => {
@@ -66,6 +66,11 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       include: ['markdown-it', 'highlight.js', 'markdown-it-highlightjs', 'markdown-it-task-lists', '@mdit/plugin-katex', 'katex'],
+    },
+    // 单测仅收 src；e2e 由 playwright 负责（test:e2e），避免 vitest 误收集 e2e/*.spec.ts
+    test: {
+      include: ['src/**/*.{test,spec}.ts'],
+      exclude: ['e2e/**', 'node_modules/**'],
     },
   }
 })

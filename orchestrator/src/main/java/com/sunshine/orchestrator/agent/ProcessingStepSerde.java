@@ -119,6 +119,9 @@ public final class ProcessingStepSerde {
         if (step.label() != null) {
             map.put("label", step.label());
         }
+        if (hasText(step.stepSummary())) {
+            map.put("stepSummary", step.stepSummary());
+        }
         if (step.metadata() != null && !step.metadata().isEmpty()) {
             map.put("metadata", metadataToMap(step.metadata()));
         }

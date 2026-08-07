@@ -1,6 +1,6 @@
 # 多智能体协作统一设计 - 技术设计
 
-> **状态**：修订稿（删除 Agent Team，改为 spawn_subagent 中心化协作）  
+> **状态**：实施中（主体已落地，2026-08-05 接通 A2A 外部执行分派链路；术语清理完成：`sync_enterprise_agents.py` 重命名 + prompt-manager 种子 peer/expert 退役 ID 删除；遗留：X5 INPUT_REQUIRED 续传、subagent 卡 `metadata.source` badge、`$` 绑定租户校验）
 > **日期**：2026-07-29（修订版）  
 > **编号**：阶段四增量（统一智能体定义 + A2A 外部接入 + spawn_subagent 多智能体协作）  
 > **前置**：[4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [多专家协作（原设计）](./2026-07-07-expert-consultation-design.md) · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)  
@@ -307,7 +307,7 @@ expert_definition (DB)
 
 | 场景 | 机制 | 说明 |
 |------|------|------|
-| `$A $B` 显式绑定 | L0 `$` 路由 -> 主 Agent = A -> A 自主 spawn B | 用户指定协作对象，主 Agent 决定如何使用 |
+| `$A $B` 显式绑定 | L0 `$` 路由 -> agentIds=[A,B] **全为子 Agent**，通用 ReAct 唯一主 Agent -> 按需 spawn | 用户指定协作对象，主 Agent 决定如何使用（对齐 [unified-routing §3.1](./2026-07-29-unified-routing-design.md)「全部 Agent 均为子 Agent」） |
 | 智能体自主拉人 | 主 Agent think 发现需要其他领域视角 -> spawn_subagent(expertId) | 路由层无需判断"是否需要协作"，智能体执行中自主决定 |
 | 外部智能体 | 同上，spawn_subagent(expertId) -> source=EXTERNAL -> A2A | 外部/内部在 spawn 层面完全平等 |
 
@@ -347,7 +347,7 @@ expert_definition (DB)
 ```
 用户问题 -> 意图路由 -> 选中智能体（或通用 ReAct）
   │
-  ├─ 有 $ 绑定? -> 主 Agent = 首个 $ 绑定的智能体（ReAct MAIN）
+  ├─ 有 $ 绑定? -> agentIds 全为子 Agent，通用 ReAct 为唯一主 Agent
   ├─ 有 @ 绑定? -> ReAct + skill overlay
   ├─ 有 # 绑定? -> 静态 Workflow
   ├─ kind=task? -> ReAct + 工作区沙箱（强制）
@@ -650,16 +650,16 @@ tool_call: spawn_subagent(expertId="finance-agent", prompt="查询财务标准..
 
 ### 8.3 `$A $B` 显式多智能体绑定
 
-用户 `$A $B` 时，路由层 L0 `$` 绑定解析：
-1. 主 Agent = A（首个 `$` 绑定的智能体）
-2. A 的 `systemPrompt` 注入提示："用户要求 B 也参与协作，你可以通过 spawn_subagent(expertId='B', ...) 调用 B"
-3. A 在 ReAct 中自主决定何时/是否 spawn B
-4. A 综合 B 的返回 + 自己的结果 -> 终态正文
+用户 `$A $B` 时，路由层 L0 `$` 绑定解析（对齐 [unified-routing §3.2](./2026-07-29-unified-routing-design.md)「多 `$` 绑定语义」）：
+1. agentIds = [A, B]（全平权子 Agent），**不设主 Agent**；主 Agent = 通用 ReAct
+2. 通用 ReAct system prompt 注入 Agent Catalog 摘要："可 spawn 的智能体：A、B"
+3. 通用 ReAct 在 ReAct 中自主决定何时/是否 spawn A、B
+4. 主 Agent 综合子 Agent 返回 + 自己的结果 -> 终态正文
 
 **关键区别**（vs Agent Team `$A $B`）：
 - 不预设 roster，不锁定"必须 A 和 B 都发言"
-- A 有全局视角，自主决定是否需要 B 的输入
-- 如果 A 判断自己能独立解决，可以不 spawn B（避免不必要的协作开销）
+- 主 Agent（通用 ReAct）有全局视角，自主决定是否需要 A/B 的输入
+- 如果主 Agent 判断自己能独立解决，可以不 spawn（避免不必要的协作开销）
 
 ### 8.4 智能体子 Agent 的 AgentRunRequest 映射
 
@@ -850,7 +850,7 @@ AgentRuntime.run(MAIN)
 | 风险 | 对策 |
 |------|------|
 | gather+speak 合并后智能体发言质量下降（不再"先检索再发言"） | expert.systemPrompt + gather-instruction injectedBlock 双重约束；种子智能体文案同步调整；Live 对比前后发言质量 |
-| spawn_subagent expertId 与 `$` 路由冲突 | 不冲突：`$` 是路由层 L0 硬绑定（选主 Agent），expertId 是 ReAct 元工具内主 LLM 主动点名（进 SUB），两者正交 |
+| spawn_subagent expertId 与 `$` 路由冲突 | 不冲突：`$` 是路由层 L0 硬绑定（agentIds 全部进子 Agent 列表，**不再指定主 Agent**），expertId 是 ReAct 元工具内主 LLM 主动点名（进 SUB），两者正交 |
 | 主 Agent 不 spawn 该 spawn 的智能体 | 路由层 `$` 绑定注入提示；主 Agent systemPrompt 写明可调用的智能体列表；Live 验证 |
 | 主 Agent 过度 spawn（简单问题也拉人） | mode-overlay.react 约束：仅在确实需要其他领域视角时 spawn；子智能体 maxIters 限制 |
 | 子智能体返回质量差 | 智能体 systemPrompt 优化；主 Agent 在 prompt 中明确期望输出格式 |
@@ -868,7 +868,7 @@ AgentRuntime.run(MAIN)
 
 | # | 场景 | 期望 |
 |---|------|------|
-| T1 | `$policy-agent $finance-agent 分析差旅报销合规性` | 主 Agent = policy-agent；主 Agent 调 spawn_subagent(expertId="finance-agent")；终态正文含两领域综合结论 |
+| T1 | `$policy-agent $finance-agent 分析差旅报销合规性` | agentIds=[policy-agent, finance-agent] 全为子 Agent；通用 ReAct 主 Agent 自主 spawn 二者；终态正文含两领域综合结论 |
 | T2 | ReAct 主 Agent 调 `spawn_subagent(expertId)` | 子智能体执行 -> 终态文本回主 Agent；主卡 `subagent-{runId}` + label=智能体名 |
 | T3 | 并行 spawn 多个智能体 | 同一轮多个 spawn_subagent 调用并行执行；主 Agent 收集全部结果后综合 |
 | T4 | 子智能体执行失败/超时 | tool result 含错误；主 Agent 可降级处理（自己回答或 spawn 其他智能体） |
@@ -901,7 +901,7 @@ AgentRuntime.run(MAIN)
 | # | 场景 | 期望 |
 |---|------|------|
 | X1 | `/agents` 外部 tab 新增：填 agentCard URL | 拉取 Agent Card 预填 name/description/tags；存库 source=EXTERNAL |
-| X2 | `$external-legal 分析这份合同风险` | 主 Agent = external-legal -> A2A 执行 -> 终态正文流式 |
+| X2 | `$external-legal 分析这份合同风险` | agentIds=[external-legal] 为子 Agent；通用 ReAct 主 Agent spawn -> A2A 执行 -> 终态正文流式 |
 | X3 | ReAct `spawn_subagent(expertId="external-legal", prompt="审查条款3")` | 主卡 subagent + label=外部法务智能体；A2A task 流式回 tool result |
 | X4 | 外部智能体超时/不可达 | tool result 含错误；主 Agent 可改用内部智能体 |
 | X5 | 外部智能体 INPUT_REQUIRED（HITL） | 智能体步 `待确认`；用户确认后续跑（A2A `tasks/send` 续传） |
@@ -1104,7 +1104,7 @@ PeerRunAuditView / PeerMsgSupport / PeerRunAuditService / PeerRunEntity
 | `ExternalAgentClient` | A2A Client：`tasks/sendSubscribe` + SSE 事件 -> StreamToken | 外部接入 |
 | agent-manager API | 外部智能体 CRUD + Agent Card 拉取预填接口 | 外部接入 |
 | `SpawnSubagentTool` 扩展 | 入参加 `expertId` + `resolveAgent`；走 `AgentExecutorRouter`；并行 spawn 支持 | ReAct 集成 |
-| `$A $B` 路由改造 | 主 Agent = 首个 $ 绑定；systemPrompt 注入"可 spawn 的智能体列表" | 路由 |
+| `$A $B` 路由改造 | agentIds=[A,B] 全为子 Agent；通用 ReAct systemPrompt 注入"可 spawn 的智能体列表" | 路由 |
 | 删除 peer-collab 全套 | ExpertHubEngine/ExpertSpeak*/PeerMsg*/ExpertRoundCoordinator/ConsultationSynthesizer | 清理 |
 | Catalog 废弃 | 废弃 peer.*/expert.* 协作专属 | 提示词 |
 | 前端 | `/agents` 配置页扩展 + spawn 卡片 metadata 扩展 + 外部 tab | UI |

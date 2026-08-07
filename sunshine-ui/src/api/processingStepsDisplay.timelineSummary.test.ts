@@ -17,6 +17,12 @@ describe('formatElapsedClock', () => {
     expect(formatElapsedClock(80_000)).toBe('1m 20s')
     expect(formatElapsedClock(120_000)).toBe('2m 0s')
   })
+
+  it('formats hours as h m s', () => {
+    expect(formatElapsedClock(3_600_000)).toBe('1h 0m 0s')
+    expect(formatElapsedClock(13_510_000)).toBe('3h 45m 10s')
+    expect(formatElapsedClock(46_787_000)).toBe('12h 59m 47s')
+  })
 })
 
 describe('resolveTimelineElapsedMs', () => {

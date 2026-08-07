@@ -31,7 +31,7 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "mode-overlay.react-restart": "ReAct 重启叠加层：用户要求重跑/续跑时的行为与上下文衔接说明。",
     "mode-overlay.subagent": "子 Agent 叠加层：spawn/workflow 子任务内的角色与工具使用约束。",
     "mode-overlay.workflow": "Workflow 模式叠加层：静态/计划工作流节点执行时的补充行为约束。",
-    "intent.classifier": "意图分类：将用户问题映射为执行模式（react / workflow / plan-workflow / peer-collab）及可选参数。",
+    "intent.classifier": "意图分类：将用户问题映射为执行模式（react / workflow / plan-workflow）及可选参数。",
     "planner.prompt": "动态规划器：根据用户问题生成 Plan JSON（节点与边），供 plan-workflow 校验与执行。",
     "answer.template": "Answer 节点终态作答模板：综合上游节点输出，面向用户生成 Markdown 结论。",
     "answer.overlay": "Answer 覆盖层：在 answer 模板之上追加的补充约束（可为空）。",
@@ -39,15 +39,6 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "rewrite.planner": "规划前改写：把用户问法整理成适合 Planner 理解的清晰表述。",
     "rewrite.timeline": "改写步骤时间线文案：控制「查询改写」步骤在时间线上的 before/active/after 展示。",
     "hitl.agent-prompt": "人机确认（HITL）：写操作需用户确认时，向模型说明确认流程与等待态行为。",
-    "memory.layer-prompt": "记忆分层说明：告知模型 LTM/MTM/STM 的用途，并强调只回答带「当前提问」标记的消息。",
-    "memory.mtm.summarize-prompt": "中期记忆摘要：会话结束后把 transcript 压成 2～4 句事实摘要写入 MTM。",
-    "peer.gather-instruction": "多专家检索阶段：要求专家先调工具收集事实，只输出检索摘要，不写完整发言稿。",
-    "peer.speak-prompt": "多专家正式发言：按专家身份，依据讨论上下文与检索材料发表 Markdown 观点。",
-    "peer.synthesis-prompt": "多专家综合答复：读完全员 transcript 后，面向用户生成最终 Markdown 答案。",
-    "peer.round-continue-prompt": "续轮判定：判断讨论是否已收敛，输出是否还需下一轮专家发言的 JSON。",
-    "peer.round-speakers-prompt": "续轮选人：第 2 轮起选出仍有异议或需补材料的专家名单。",
-    "expert.coordinator-prompt": "专家召集：从候选目录选出 2～4 位相关专家，并估计讨论轮次上限。",
-    "expert.complexity-prompt": "轮次评估：用户已指定专家时，按问题复杂度估计 Hub 讨论轮次上限。",
     "sandbox.cancel-result": "沙箱工具取消回执：用户取消 exec/grep/glob 后回给主 Agent 的说明（含剩余次数）。",
     "sandbox.budget-exhausted": "沙箱取消预算耗尽：同族工具再调用次数用尽时，提示模型改方案或直接作答。",
     "react.subagent.cancel-result": "子任务取消回执：用户取消 spawn_subagent 后，提示主 Agent 自行接手原任务。",
@@ -71,11 +62,7 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "timeline.steps.skill": "时间线「Skill 绑定」步骤的 before/active/after 展示文案。",
     "timeline.steps.tasks": "时间线「任务看板」步骤的 before/active/after 展示文案。",
     "timeline.steps.subagent": "时间线「子任务」步骤的 before/active/after 展示文案。",
-    "timeline.steps.peer-collab": "时间线「多专家协作」总步骤的 before/active/after 展示文案。",
-    "timeline.steps.expert-convene": "时间线「召集专家」步骤的 before/active/after 展示文案。",
-    "timeline.steps.expert": "时间线「专家发言」步骤的 before/active/after 展示文案。",
     "routing-rule.structural-plan": "句式+多领域结构命中时走动态规划（plan-workflow），处理「先…再…」等跨域多步问题。",
-    "routing-rule.peer-phrase": "命中「互相验证/交叉审查/多专家」等句式时路由到多专家协作（peer-collab）。",
     "routing-rule.react-policy-qa": "命中制度/办法/规定类咨询时走自主推理，并绑定 react-prompt.policy-qa。",
     "routing-rule.react-travel-standard": "命中差旅/住宿/补贴标准类问法时走 ReAct，绑定 react-prompt.travel-budget。",
     "routing-rule.react-expense-progress": "命中报销/付款进度与单据状态问法时走 ReAct，绑定 react-prompt.expense-assist。",
@@ -98,7 +85,6 @@ DISPLAY_NAMES: dict[str, str] = {
     "answer.overlay": "Answer 覆盖层",
     "scope-prompt": "Scope 提示词",
     "hitl.agent-prompt": "HITL Agent 提示词",
-    "memory.layer-prompt": "记忆分层提示词",
     "rewrite.intent": "改写 · Intent",
     "rewrite.planner": "改写 · Planner",
     "rewrite.timeline": "改写 · Timeline 文案",
@@ -322,17 +308,6 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
             content_text=hitl["agent-prompt"],
             content_json=None,
             description=PURPOSE_DESCRIPTIONS.get("hitl.agent-prompt", "HITL 确认"),
-        ))
-
-    memory = agent.get("memory") or {}
-    if isinstance(memory, dict) and isinstance(memory.get("layer-prompt"), str):
-        seeds.append(PromptSeed(
-            id="memory.layer-prompt",
-            kind="memory",
-            display_name=display_name_for("memory.layer-prompt"),
-            content_text=memory["layer-prompt"],
-            content_json=None,
-            description=PURPOSE_DESCRIPTIONS.get("memory.layer-prompt", "记忆分层说明"),
         ))
 
     # 稳定顺序，便于 diff SQL

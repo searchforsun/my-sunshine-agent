@@ -123,9 +123,9 @@ public Mono<Map<String, String>> cancel(...) {
 
 **无需哨兵**：sandbox cancel 直接生效（HTTP kill 容器进程），不需要执行实例配合。
 
-### 4.4 HITL/Plan/Recovery 阻塞：Future -> Redis pub/sub
+### 4.4 HITL/Recovery/Decision 阻塞：Future -> Redis pub/sub
 
-三处结构相同（`HitlTokenRegistry`/`PlanApprovalService`/`WorkflowNodeRecoveryService`），统一用 `RedisBlockingNotifier` 抽象：
+两处结构相同（`HitlTokenRegistry`/`WorkflowNodeRecoveryService`），统一用 `RedisBlockingNotifier` 抽象；`request_decision`（4.7.9）复用 `HitlTokenRegistry` 的阻塞唤醒模式，无需新抽象。~~`PlanApprovalService`~~ **已删除**（[planner-executor-rebuild D5](./2026-08-05-planner-executor-rebuild-design.md) 废弃 PlanApproval，HITL 阻塞复用 `DecisionRegistry`/`HitlTokenRegistry`）：
 
 ```java
 public class RedisBlockingNotifier {
@@ -167,7 +167,7 @@ public boolean confirm(String token, boolean approved, String currentUserId) {
 }
 ```
 
-阻塞线程在执行实例上等 pub/sub，但 `confirm` 请求可以打到任意实例。`PlanApprovalService`、`WorkflowNodeRecoveryService` 同理。
+阻塞线程在执行实例上等 pub/sub，但 `confirm` 请求可以打到任意实例。`WorkflowNodeRecoveryService` 同理。
 
 ### 4.5 StepEventBridgeRegistry：从"跨请求驻留"到"per-call 重建"
 
@@ -254,7 +254,6 @@ TTL:  与 generation 生命周期一致
 | `CancelSignalChecker` | 新增 | 低 |
 | `RedisBlockingNotifier` | 新增 | 低 |
 | `HitlTokenRegistry` | Future -> pub/sub | 中 |
-| `PlanApprovalService` | 同上 | 中 |
 | `WorkflowNodeRecoveryService` | 同上 | 中 |
 | `CancellableToolRunRegistry` | 6 个 Map -> Redis | 中 |
 | `SpawnRunRegistry` | 句柄转 Redis + 哨兵 | 中 |
@@ -269,11 +268,11 @@ TTL:  与 generation 生命周期一致
 ### 第一批：解锁"确认/取消跨实例"（低风险高收益）
 
 1. `RedisBlockingNotifier` 抽象
-2. `HitlTokenRegistry` / `PlanApprovalService` / `WorkflowNodeRecoveryService` 三处 Future -> pub/sub
+2. `HitlTokenRegistry` / `WorkflowNodeRecoveryService` 两处 Future -> pub/sub（`request_decision` 4.7.9 复用 HitlTokenRegistry 模式，届时一并覆盖）
 3. `WorkflowPauseService` -> Redis Hash
 4. `GenerationRegistry.messageLocks` -> Redis 锁
 
-验收：HITL 确认、Plan 审批、节点 Recovery 可打到非执行实例成功。
+验收：HITL 确认、Decision 决议（4.7.9）、节点 Recovery 可打到非执行实例成功。
 
 ### 第二批：解锁"取消跨实例"
 
@@ -342,7 +341,7 @@ orchestrator 现有 435 个文件、约 42,550 行，职责可按状态特征清
 | 模块 | 来源包 | 说明 |
 |------|--------|------|
 | HTTP 端点 | `controller/` | `/chat/stream` 入口（转发到 worker）、`/generations/*` 查询、`/conversations/*` CRUD |
-| 意图路由 | `routing/` | Policy Chain（L0 Skill -> L2 规则 -> L3 LLM 分类） |
+| 意图路由 | `routing/` | 统一资源路由 v3：Pre-Routing + Policy Chain（L0 显式绑定 -> L1 规则 -> L2 语义 -> L3 LLM 兜底），对齐 [unified-routing](./2026-07-29-unified-routing-design.md)；`RoutingResult{type, planMode, scene}` 落 Redis 供 worker 消费 |
 | 会话管理 | `conversation/` | 纯 MySQL 读写 |
 | 查询改写 | `rewrite/` | 纯计算 |
 | RAG 客户端 | `rag/` | WebClient 调 rag-service |
@@ -372,10 +371,10 @@ cancel/confirm 类请求：router 直接写 Redis 标记或发 pub/sub（见 §4
 |------|--------|------|
 | 流式生成 | `generation/` | GenerationJob + Redis Stream 写入 |
 | ReAct 编排 | `agent/` | ReActAgentRuntime + StepEventBridgeContext（per-call） |
-| 执行引擎 | `execution/` | Workflow/Plan-Workflow/ReAct 三种 Executor |
+| 执行引擎 | `execution/` | 三种 Executor：`ReactExecutor`（通用 ReAct / planMode=none）、`PlannerHarnessExecutor`（Planner-Worker / planMode=harness）、`WorkflowExecutor`（静态 Workflow）——对齐 [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)，动态 Plan-Workflow 已删 |
 | Timeline 聚合 | `processing/` | per-call，生命周期与 GenerationJob 绑定 |
 | HITL | `hitl/` | 阻塞线程等 Redis pub/sub |
-| Plan 审批 | `plan/` | 同上 |
+| Decision 阻塞 | `decision/`（4.7.9） | 复用 HitlTokenRegistry 模式；`plan/` 审批已随 PlanApproval 删除 |
 | 沙箱工具 | `sandbox/`（orchestrator 侧） | CancellableToolRunRegistry（Redis 句柄表） |
 | TaskBoard | `taskboard/` | Redis 存储 |
 | Prompt 组装 | `prompt/` | 从 prompt-manager 拉取 Catalog |
@@ -499,7 +498,7 @@ def start_service(name, module, nacos_name, base_port, instances=1):
 ### 第一批：无状态化 - 确认/取消跨实例（§7 原第一批）
 
 1. `RedisBlockingNotifier` 抽象
-2. HITL/Plan/Recovery 三处 Future -> pub/sub
+2. HITL/Decision/Recovery 阻塞 Future -> pub/sub（`PlanApproval` 已随 planner-executor-rebuild 删除，Decision 4.7.9 复用 HitlTokenRegistry 模式）
 3. `WorkflowPauseService` -> Redis Hash
 4. `messageLocks` -> Redis 锁
 

@@ -63,6 +63,7 @@ class ReactResumeContextSupportTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -83,6 +84,7 @@ class ReactResumeContextSupportTest {
                 "规划推理",
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -101,6 +103,7 @@ class ReactResumeContextSupportTest {
                 result,
                 2L,
                 "知识检索",
+                null,
                 null,
                 null,
                 null);
@@ -125,6 +128,7 @@ class ReactResumeContextSupportTest {
                 2L,
                 "审批 OA 待办",
                 meta,
+                null,
                 null,
                 null);
     }

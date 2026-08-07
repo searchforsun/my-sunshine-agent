@@ -3,7 +3,6 @@ package com.sunshine.orchestrator.agent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
-import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.catalog.AgentCatalogEntry;
 import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
@@ -16,7 +15,6 @@ import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -34,29 +32,29 @@ public class SpawnSubagentTool {
     /** Catalog id：mode-overlay.subagent */
     public static final String OVERLAY_CATALOG_ID = "mode-overlay.subagent";
 
-    private final AgentRuntime agentRuntime;
     private final AgentExecutionProperties executionProperties;
     private final SpawnSubagentTimelineSupport timelineSupport;
     private final ToolSetResolver toolSetResolver;
     private final PromptCatalogHolder catalogHolder;
     private final SpawnRunRegistry spawnRunRegistry;
     private final AgentCatalogService agentCatalogService;
+    private final AgentExecutorRouter agentExecutorRouter;
 
     public SpawnSubagentTool(
-            @Lazy AgentRuntime agentRuntime,
             AgentExecutionProperties executionProperties,
             SpawnSubagentTimelineSupport timelineSupport,
             ToolSetResolver toolSetResolver,
             PromptCatalogHolder catalogHolder,
             SpawnRunRegistry spawnRunRegistry,
-            AgentCatalogService agentCatalogService) {
-        this.agentRuntime = agentRuntime;
+            AgentCatalogService agentCatalogService,
+            AgentExecutorRouter agentExecutorRouter) {
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
         this.toolSetResolver = toolSetResolver;
         this.catalogHolder = catalogHolder;
         this.spawnRunRegistry = spawnRunRegistry;
         this.agentCatalogService = agentCatalogService;
+        this.agentExecutorRouter = agentExecutorRouter;
     }
 
     @Tool(name = NAME,
@@ -106,11 +104,13 @@ public class SpawnSubagentTool {
             if (agentEntry == null) {
                 return errorJson("未找到智能体: " + agentId);
             }
+            if (!canAccess(agentEntry, audit.tenantId())) {
+                return errorJson("无权访问智能体: " + agentEntry.displayName());
+            }
         }
         List<String> toolIds;
         String resolvedSystemOverlay;
         List<String> skillIds;
-        String resolvedKbScopeJson;
         String resolvedPermissionsJson;
         String resolvedModelConfigJson;
         int resolvedMaxIters;
@@ -118,7 +118,6 @@ public class SpawnSubagentTool {
             toolIds = parseToolIds(agentEntry.toolsJson());
             resolvedSystemOverlay = agentEntry.systemPrompt();
             skillIds = agentEntry.skillIds() != null ? agentEntry.skillIds() : List.of();
-            resolvedKbScopeJson = agentEntry.kbScope() != null ? serializeKbScope(agentEntry.kbScope()) : null;
             resolvedPermissionsJson = agentEntry.permissionsJson();
             resolvedModelConfigJson = agentEntry.modelConfigJson();
             resolvedMaxIters = agentEntry.maxIters() > 0 ? agentEntry.maxIters() : maxIters;
@@ -129,7 +128,6 @@ public class SpawnSubagentTool {
             toolIds = sameToolsAsMain;
             resolvedSystemOverlay = systemOverlay;
             skillIds = List.of();
-            resolvedKbScopeJson = null;
             resolvedPermissionsJson = "{}";
             resolvedModelConfigJson = "{}";
             resolvedMaxIters = maxIters;
@@ -168,7 +166,7 @@ public class SpawnSubagentTool {
         StringBuilder answer = new StringBuilder();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         try {
-            agentRuntime.run(request)
+            agentExecutorRouter.dispatch(agentEntry, request, promptText, List.of())
                     .doOnNext(token -> appendAnswerContent(answer, token))
                     .doOnError(failure::set)
                     .blockLast(Duration.ofMillis(timeoutMs));
@@ -305,6 +303,15 @@ public class SpawnSubagentTool {
         return "{\"ok\":false,\"error\":\"" + escape(message) + "\"}";
     }
 
+    /** 租户隔离：default 全局共享；租户私有智能体仅当前租户可 spawn */
+    private static boolean canAccess(AgentCatalogEntry entry, String tenantId) {
+        String entryTenant = entry.tenantId();
+        if (entryTenant == null || entryTenant.isBlank() || "default".equals(entryTenant)) {
+            return true;
+        }
+        return entryTenant.equals(tenantId);
+    }
+
     private static String escape(String text) {
         if (text == null) {
             return "";
@@ -323,17 +330,6 @@ public class SpawnSubagentTool {
         } catch (Exception e) {
             log.warn("[SpawnSubagentTool] 解析 toolsJson 失败: {}", e.getMessage());
             return List.of();
-        }
-    }
-
-    private static String serializeKbScope(List<String> kbScope) {
-        if (kbScope == null || kbScope.isEmpty()) {
-            return "[]";
-        }
-        try {
-            return MAPPER.writeValueAsString(kbScope);
-        } catch (Exception e) {
-            return "[]";
         }
     }
 }

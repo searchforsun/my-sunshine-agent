@@ -333,6 +333,10 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       detail: incoming.detail ?? prev.detail,
 
+      // stepSummary 由 think_summary 经 step_delta(step_summary) 写入，后端 think 步
+      // complete 快照同样携带；incoming 缺失（历史/早期版本）时保留 prev，避免覆盖成兜底。
+      stepSummary: incoming.stepSummary ?? prev.stepSummary,
+
       metadata: mergeStepMetadata(prev.metadata, incoming.metadata, lifecycle),
 
       subSteps: mergeSubSteps(prev.subSteps, incoming.subSteps),
@@ -417,7 +421,7 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
 
   const base: ProcessingStep = idx >= 0 ? { ...steps[idx] } : {
     id: delta.stepId,
-    phase: delta.stepId.startsWith('expert-') ? 'expert' : (delta.stepId as StepPhase),
+    phase: delta.stepId as StepPhase,
     lifecycle: 'running',
     summary: { active: delta.stepId },
   }

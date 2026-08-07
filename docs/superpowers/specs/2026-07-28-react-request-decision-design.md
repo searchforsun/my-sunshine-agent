@@ -1,8 +1,8 @@
-# 4.7.7 ReAct Request Decision（主 Agent 主动向用户出选择题 / 需求澄清）
+# 4.7.9 ReAct Request Decision（主 Agent 主动向用户出选择题 / 需求澄清）
 
 > **状态**：spec（待实施）
 > **日期**：2026-07-28
-> **编号**：阶段四 **4.7.7**
+> **编号**：阶段四 **4.7.9**（原 4.7.7 占号冲突，goal-alignment 已用 4.7.7）
 > **相关**：`AgentRuntime` / `HitlTokenRegistry`（阻塞唤醒复用）· [spawn-subagent](./2026-07-18-react-spawn-subagent-design.md)（元工具范式）· [plan-user-approval](./2026-06-27-plan-user-approval-design.md)（阻塞确认范式）· [taskboard](./2026-06-24-react-taskboard-design.md)
 
 ---
@@ -716,7 +716,7 @@ Live：`scripts/verify_decision_live.py`（仿 `verify_spawn_subagent_live.py`�
 
 ## 11. 文档与编号同步（实施时）
 
-- [ ] `phase4-platformization-design.md` §4.7：新增 **4.7.7**
+- [x] `phase4-platformization-design.md` §4.7：新增 **4.7.9**（已同步，含 4.7.7/4.7.8 行）
 - [ ] `implementation-plan.md` 阶段四 4.7 行同步
 - [ ] `CLAUDE.md` 时间线表增补 ReAct `decision-*` 一行；架构扩展表增补 `request_decision` 元工具
 - [ ] 本目录 README / specs 索引按需挂链
@@ -767,7 +767,7 @@ Live：`scripts/verify_decision_live.py`（仿 `verify_spawn_subagent_live.py`�
 
 - [x] 无 TBD/TODO 占位需求
 - [x] 与 §1-§3 对话结论一致（独立路径、元工具、阻塞复用、样式复用、输入支持）
-- [x] 范围可落单一实施计划（4.7.7）
+- [x] 范围可落单一实施计划（4.7.9）
 - [x] 工具名/参数/UI/Nacos/检查门无歧义
 - [x] 不混用工具确认 HITL（用户已拍板）
 - [x] 不引入新 SSE type（复用 metaStep）

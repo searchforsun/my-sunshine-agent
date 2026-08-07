@@ -150,7 +150,6 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       executionPlanId: a.executionPlanId ?? c.executionPlanId,
       executionPreference: a.executionPreference ?? c.executionPreference,
       pendingHitlConfirmations: mergedPending.length ? mergedPending : undefined,
-      pendingHitlConfirmation: undefined,
       // 本地墙钟优先于 API hydrate，避免刷新后 20s→15s
       timelineStartedAt: c.timelineStartedAt ?? a.timelineStartedAt,
       timelineEndedAt: pickLaterMs(c.timelineEndedAt, a.timelineEndedAt),
@@ -162,8 +161,14 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
     if (a.id) byId.delete(a.id)
   }
 
-  if (api.length < cached.length) {
-    merged.push(...cached.slice(api.length))
+  // 本地缓存可能比 API 多出「后端尚未落库的最新消息」：按 seq 增量追加尾部。
+  // 不能按 cached.slice(api.length) 追加——分页场景下 API 只返回最近窗口，会与缓存窗口重复。
+  const apiMaxSeq = api.reduce((max, m) => Math.max(max, m.seq ?? 0), 0)
+  const mergedIds = new Set(merged.filter(m => m.id).map(m => m.id!))
+  for (const c of cached) {
+    if (!c.id || mergedIds.has(c.id)) continue
+    if ((c.seq ?? 0) <= apiMaxSeq) continue
+    merged.push(c)
   }
 
   return merged

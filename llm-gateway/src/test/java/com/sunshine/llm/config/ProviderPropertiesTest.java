@@ -18,7 +18,7 @@ class ProviderPropertiesTest {
                 "llm.providers.deepseek.base-url", "https://api.deepseek.com",
                 "llm.providers.deepseek.api-key", "k",
                 "llm.providers.deepseek.models[0].name", "deepseek-v4-pro",
-                "llm.providers.deepseek.models[0].context-window", "128000",
+                "llm.providers.deepseek.models[0].context-window", "256000",
                 "llm.providers.deepseek.models[0].encoding", "cl100k_base"));
         ProviderProperties props = new Binder(source)
                 .bind("llm", Bindable.of(ProviderProperties.class))
@@ -27,7 +27,7 @@ class ProviderPropertiesTest {
         assertThat(ds.getModels()).hasSize(1);
         ProviderProperties.ModelMeta meta = ds.getModels().get(0);
         assertThat(meta.getName()).isEqualTo("deepseek-v4-pro");
-        assertThat(meta.getContextWindow()).isEqualTo(128000);
+        assertThat(meta.getContextWindow()).isEqualTo(256000);
         assertThat(meta.getEncoding()).isEqualTo("cl100k_base");
     }
 

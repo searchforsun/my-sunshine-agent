@@ -1,6 +1,3 @@
-import type { SkillCatalogIndexEntry } from '../api/skills'
-import type { AgentCatalogIndexEntry } from '../api/agents'
-import type { WorkflowCatalogEntry } from '../api/workflows'
 import {
   type ChatMentionAllows,
   type ChatMentionCatalogs,
@@ -275,13 +272,3 @@ export function insertPlainAtOffset(plain: string, offset: number, insert: strin
   return { next: before + chunk + after, caret: before.length + chunk.length }
 }
 
-/** @deprecated 兼容旧调用 */
-export type { ChatMentionSegment as SkillMentionSegment }
-
-export function defaultMentionCatalogs(
-  skills: SkillCatalogIndexEntry[] = [],
-  agents: AgentCatalogIndexEntry[] = [],
-  workflows: WorkflowCatalogEntry[] = [],
-): ChatMentionCatalogs {
-  return { skills, agents, workflows }
-}

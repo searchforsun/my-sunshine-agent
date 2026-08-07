@@ -32,6 +32,7 @@ class ProcessingStepMergerTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null
         );
 
@@ -59,6 +60,7 @@ class ProcessingStepMergerTest {
                 null,
                 1L,
                 "思考过程",
+                null,
                 null,
                 null,
                 null
@@ -90,6 +92,7 @@ class ProcessingStepMergerTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null
         );
 
@@ -116,6 +119,7 @@ class ProcessingStepMergerTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null
         );
         ProcessingStep think = new ProcessingStep(
@@ -132,6 +136,7 @@ class ProcessingStepMergerTest {
                 null,
                 4L,
                 "思考过程",
+                null,
                 null,
                 null,
                 null
@@ -173,6 +178,7 @@ class ProcessingStepMergerTest {
                 "识别意图",
                 metadata,
                 null,
+                null,
                 null
         );
         String json = ProcessingStepSerde.toPersistJson(List.of(intent));
@@ -196,11 +202,11 @@ class ProcessingStepMergerTest {
         ProcessingStep running = new ProcessingStep(
                 "expert-x-s1", "expert", "running", null,
                 1L, null, null, null, null, null, "部分流式",
-                1L, "专家", null, null, null);
+                1L, "专家", null, null, null, null);
         ProcessingStep done = new ProcessingStep(
                 "expert-x-s1", "expert", "done", null,
                 1L, 2L, 1L, null, null, null, "完整终稿",
-                2L, "专家", null, null, null);
+                2L, "专家", null, null, null, null);
         List<ProcessingStep> steps = new java.util.ArrayList<>();
         ProcessingStepMerger.upsert(steps, running);
         ProcessingStepMerger.upsert(steps, done);
@@ -227,6 +233,21 @@ class ProcessingStepMergerTest {
     }
 
     @Test
+    @DisplayName("applyDelta step_summary 通道写入 stepSummary，不动 output/result")
+    void applyDelta_stepSummaryChannelWritesStepSummary() {
+        List<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.applyDelta(steps, "think-3", "reasoning", "思考过程");
+        ProcessingStepMerger.applyDelta(steps, "think-3", "step_summary", "先规划要做的事");
+        assertThat(steps).hasSize(1);
+        ProcessingStep step = steps.get(0);
+        assertThat(step.stepSummary()).isEqualTo("先规划要做的事");
+        assertThat(step.reasoning()).isEqualTo("思考过程");
+        assertThat(step.output()).isNull();
+        String json = ProcessingStepSerde.toPersistJson(steps);
+        assertThat(json).contains("\"stepSummary\":\"先规划要做的事\"");
+    }
+
+    @Test
     @DisplayName("mergeSteps running 快照：reasoning 前缀合并，禁止全量二次 append")
     void mergeSteps_runningReasoningSnapshot_usesPrefixMerge() {
         List<ProcessingStep> steps = new java.util.ArrayList<>();
@@ -241,7 +262,7 @@ class ProcessingStepMergerTest {
         return new ProcessingStep(
                 id, "think", "running", null,
                 ts, null, null, null, reasoning, null, null,
-                ts, "思考", null, null, null);
+                ts, "思考", null, null, null, null);
     }
 
     @Test
@@ -277,6 +298,7 @@ class ProcessingStepMergerTest {
                 "子任务",
                 null,
                 null,
+                null,
                 null);
         ProcessingStep lateRunning = new ProcessingStep(
                 "subagent-r1",
@@ -292,6 +314,7 @@ class ProcessingStepMergerTest {
                 null,
                 3L,
                 "子任务",
+                null,
                 null,
                 null,
                 null);
@@ -322,6 +345,7 @@ class ProcessingStepMergerTest {
                 "子任务",
                 null,
                 null,
+                null,
                 null);
         ProcessingStep lateDone = new ProcessingStep(
                 "subagent-r2",
@@ -337,6 +361,7 @@ class ProcessingStepMergerTest {
                 "答案",
                 3L,
                 "子任务",
+                null,
                 null,
                 null,
                 null);
@@ -362,6 +387,7 @@ class ProcessingStepMergerTest {
                 null,
                 2L,
                 id,
+                null,
                 null,
                 null,
                 null);

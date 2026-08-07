@@ -26,6 +26,9 @@
 | TD-140 | P1 | open | IntentRouter / RewriteConversationContext / ContextMessageBuilder | AssembledContext 三重格式化旁路；合并行为面大，下轮单独 scope |
 | TD-141 | P3 | open | sandbox `formatEditUnifiedDiff` / `formatDiffLinesAsText` | editDiff 死代码与 detail 双写；产品路径已收口 |
 | TD-157 | P3 | open | `implementation-plan.md` 缺口段 | 三份未实施 spec（dynamic-context-compression / workflow-structured-io / expert-as-subagent-A2A）状态未统一登记 |
+| TD-162 | P0 | open | `sys_user.github_token` / `gitlab_token` | Git PAT 明文落库（`10-sunshine-auth.sql`）；2026-08-04 用户决策「先明文」，加密/外置凭据延后单独 scope |
+| TD-163 | P2 | open | `MainLayout.vue`(1456 行) / `ChatView.vue`(2445 行) | 上帝组件（模板/样式混排）；拆分是跨模块大动作，下轮单独 scope |
+| TD-164 | P2 | open | `specs/2026-07-31-unified-context-compression-design.md` | Layer 1 标注「⚠️ 待恢复」（AS 2.0 迁移移除）；需确认是否仍计划恢复 |
 
 ### 文档债
 
@@ -198,6 +201,10 @@
 | TD-154 | 2026-07-27 | `ReActAgentRuntime` checkpoint 保存失败 warn→error（含 userId/msgId）；删 `ReactCheckpointService` 死代码 `interrupt/saveCheckpoint` |
 | TD-155 | 2026-07-27 | 注释去 legacy（ReActAgentRuntime/ProcessingStepMiddleware/SubAgentContentTokens/StreamToken） |
 | TD-156 | 2026-07-27 | `StaticPlanAdapter.from` 迁测试源集 `StaticPlanAdapterTestSupport`，删生产 deprecated |
+| TD-158 | 2026-08-04 | 删 `io/agentscope/` 死代码（2 文件 +1402 行，与 agentscope-2.0.0-sources.jar 逐字节相同、无构建引用） |
+| TD-159 | 2026-08-04 | 删 `arti.png`（1.1MB 死二进制，零引用） |
+| TD-160 | 2026-08-04 | 删 `skillMentionEditor.ts` `@deprecated` 别名 + `defaultMentionCatalogs` 死导出 + 3 个未用类型导入 |
+| TD-161 | 2026-08-04 | `WorkspaceSandboxLifecycle` `auth-service.base-url` 默认值 `8210`→`8100`（配置漂移） |
 
 ### 文档债（DOC）
 

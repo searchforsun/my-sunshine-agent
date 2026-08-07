@@ -74,8 +74,17 @@ public class AgentManagerClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> catalogIndex() {
-        return get("/api/agents/catalog/index");
+    public Mono<Map<String, Object>> catalogIndex(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return get("/api/agents/catalog/index");
+        }
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/api/agents/catalog/index")
+                        .queryParam("tenantId", tenantId)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
     public Mono<Map<String, Object>> catalogDetail(String id) {

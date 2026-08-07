@@ -27,26 +27,28 @@ llm:
     # 上游 connect/response 超时：慢或挂起时快速失败，交由 ModelRouter 降级到备用模型
     connect-timeout: 10s
     response-timeout: 120s
+    # SSE 流两次 chunk 之间静默超过该阈值即断开（上游半挂时快速降级，避免前端干等满 response-timeout）
+    read-idle-timeout: 60s
   providers:
     deepseek:
       base-url: https://api.deepseek.com
       api-key: ${DEEPSEEK_API_KEY:sk-1e18dbd6edd4477bac49a0a290e92462}
       models:
         - name: deepseek-v4-pro
-          context-window: 128000
+          context-window: 256000
           encoding: cl100k_base
         - name: deepseek-v4-flash
-          context-window: 64000
+          context-window: 128000
           encoding: cl100k_base
     qwen:
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       api-key: ${QWEN_API_KEY:sk-22e7ab6f7bbb4078b7163facb4d3aee0}
       models:
         - name: qwen-plus
-          context-window: 131072
+          context-window: 262144
           encoding: cl100k_base
         - name: qwen-max
-          context-window: 32768
+          context-window: 65536
           encoding: cl100k_base
   fallback:
     routes:

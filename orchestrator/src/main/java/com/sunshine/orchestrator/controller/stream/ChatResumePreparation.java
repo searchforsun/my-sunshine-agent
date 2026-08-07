@@ -17,7 +17,8 @@ public record ChatResumePreparation(
         boolean reactRestart,
         String userId,
         String tenantId,
-        String kbId) {
+        String kbId,
+        String conversationKind) {
 
     public ChatStreamContext toStreamContext() {
         return new ChatStreamContext(
@@ -39,6 +40,7 @@ public record ChatResumePreparation(
                 kbId,
                 reactRestart,
                 // 续跑不重注入个人规则（原始 run 已注入；规则随新消息生效）
-                null);
+                null,
+                conversationKind);
     }
 }

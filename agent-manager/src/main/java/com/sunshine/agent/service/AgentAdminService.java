@@ -1,6 +1,5 @@
 package com.sunshine.agent.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.agent.dto.AgentCardPreFill;
@@ -47,8 +46,19 @@ public class AgentAdminService {
                 .toList();
     }
 
-    public List<AgentCatalogIndexEntry> listCatalogIndex() {
-        return catalogRegistry.listEnabledIndex();
+    public List<AgentCatalogIndexEntry> listCatalogIndex(String tenantId) {
+        return catalogRegistry.listEnabledIndex().stream()
+                .filter(entry -> visibleTo(entry, tenantId))
+                .toList();
+    }
+
+    /** 租户隔离：default 全局共享；租户私有智能体仅当前租户可见；tenantId 为空时全量（向后兼容） */
+    private static boolean visibleTo(AgentCatalogIndexEntry entry, String tenantId) {
+        String entryTenant = entry.tenantId();
+        if (entryTenant == null || entryTenant.isBlank() || "default".equals(entryTenant)) {
+            return true;
+        }
+        return StringUtils.hasText(tenantId) && entryTenant.equals(tenantId);
     }
 
     public Optional<AgentCatalogEntry> findCatalogEntry(String agentId) {

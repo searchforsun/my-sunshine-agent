@@ -147,7 +147,8 @@ public final class SpawnSubagentTimelineBridge {
                 label,
                 metadata,
                 null,
-                subSteps.snapshot());
+                subSteps.snapshot(),
+                null);
         return StreamToken.step(parent);
     }
 

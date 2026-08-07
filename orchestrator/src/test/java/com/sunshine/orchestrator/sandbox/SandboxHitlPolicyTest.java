@@ -24,7 +24,7 @@ class SandboxHitlPolicyTest {
     }
 
     @Test
-    void catalogDefault_execTrue_readFalse() {
+    void catalogDefault_execWriteTrue_readFalse() {
         assertThat(SandboxHitlPolicy.catalogDefault(SandboxIds.READ)).isFalse();
         assertThat(SandboxHitlPolicy.catalogDefault(SandboxIds.GLOB)).isFalse();
         assertThat(SandboxHitlPolicy.catalogDefault(SandboxIds.GREP)).isFalse();
@@ -54,6 +54,8 @@ class SandboxHitlPolicyTest {
                 SandboxIds.WRITE, empty, SandboxWriteHitlMode.SMART)).isFalse();
         assertThat(SandboxHitlPolicy.requiresConfirmation(
                 SandboxIds.EDIT, empty, SandboxWriteHitlMode.SMART)).isFalse();
+        assertThat(SandboxHitlPolicy.requiresConfirmation(
+                SandboxIds.EDIT, empty, SandboxWriteHitlMode.NEVER)).isTrue();
 
         assertThat(SandboxHitlPolicy.requiresConfirmation(
                 SandboxIds.EXEC, danger, SandboxWriteHitlMode.NEVER)).isTrue();

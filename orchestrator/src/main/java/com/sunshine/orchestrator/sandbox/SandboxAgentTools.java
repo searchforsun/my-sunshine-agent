@@ -154,10 +154,13 @@ public class SandboxAgentTools {
                     log.info("[SandboxAgentTool] {} 续跑 re-await 已确认，跳过二次 HITL", name);
                 } else {
                     try {
+                        // 一轮多 tool_calls 时须按 toolUseId 精确定位 HITL 步（currentToolStepId 可能已被
+                        // 其它工具覆盖），否则「等待用户确认」会误挂到同轮其它工具步（如 glob）。
+                        String hitlStepId = StepEventBridge.stepIdForToolUse(toolUseId);
                         boolean approved = generationMessageId != null
                                 ? hitlConfirmationService.awaitConfirmation(
-                                        bridgeId, generationMessageId, name, hitlParams)
-                                : hitlConfirmationService.awaitConfirmation(bridgeId, name, hitlParams);
+                                        bridgeId, generationMessageId, name, hitlParams, hitlStepId)
+                                : hitlConfirmationService.awaitConfirmation(bridgeId, name, hitlParams, hitlStepId);
                         if (!approved) {
                             if (trackCancel) {
                                 cancellableToolRunRegistry.unregister(invocationId);
@@ -335,7 +338,7 @@ public class SandboxAgentTools {
                 msgId = StepEventBridge.activeMessageId();
             }
             SandboxWriteHitlMode mode = StepEventBridge.writeHitlMode(msgId);
-            // Task 模式默认 SMART：写免确认，仅危险 exec 保留确认
+            // Task 模式默认 SMART：write/edit 免确认，仅危险 exec 保留确认
             if (mode == SandboxWriteHitlMode.NEVER && isTaskSession()) {
                 mode = SandboxWriteHitlMode.SMART;
             }

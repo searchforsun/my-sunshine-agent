@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改 Catalog/`/prompts` 或架构。
 
-**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅**（spec §12 演进差异：裸镜像库 + 无主 checkout + git 工作流替代 mergeToMain；强制 ReAct 不锁死为明确决策；硬件档位 Nacos + 校验已补齐）· **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅**；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多智能体协作 ✅**（spawn_subagent(expertId) 中心化 + A2A 外部接入）· **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅**（spec §12 演进差异：裸镜像库 + 无主 checkout + git 工作流替代 mergeToMain；强制 ReAct 不锁死为明确决策；硬件档位 Nacos + 校验已补齐）· **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅** · **4.14 Planner-Executor 重建 ⬜ 设计中**（完全舍弃动态 Plan-Workflow：一次性 DAG + PlanApproval + Plan DAG 时间线 → Planner=ReAct 主 Agent + Worker=工具调用，**两态分解** full/hierarchical + PlanNotebook **Redis 单写** + 3 类显式触发重规划；**简化决议 S1-S7**：砍独立 Evaluator→Planner 自判、持久化降级 Redis 单写、去 Tier/压缩点基建、砍 P2 共享内存、三态→两态、重规划收敛、不复用 PlanValidator；静态 Workflow 保留、DAG 画布留存给静态 Workflow；新 Timeline 步骤时间线卡片；见 [spec](docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md)）；缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -21,8 +21,8 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | 启停/同步 | `start.py`、`sync_nacos.py`、`sunshine_lib.py` |
 | RAG | `rag_reset.py`、`rag_ingest_bulk.py`、`rag_eval.py`、`rag_wipe_and_ingest.py`、`generate_rag_corpus.py`、`verify_chunk_strategies_live.py` |
 | 阶段三验收 | `verify_tenant_live.py`、`verify_hitl_live.py`、`verify_skills_ui_live.py`、`verify_pause_resume_consistency.py` |
-| 阶段四验收 | `verify_sandbox_live.py`、`verify_sandbox_workspace_live.py`、`verify_sandbox_tool_cancel_live.py`、`verify_spawn_subagent_live.py`、`verify_react_taskboard_live.py`、`verify_tool_integration_live.py`、`verify_workflow_studio_live.py`、`verify_plan_dag_live.py`、`verify_prompt_catalog_live.py`、`verify_enterprise_workflow_live.py`、`verify_loop_live.py`、`verify_exclusive_gateway_live.py`、`verify_personal_rules_live.py` |
-| 其他 | `clear_session_cache.py`、`download_skywalking_agent.py`、`sync_enterprise_experts.py` |
+| 阶段四验收 | `verify_sandbox_live.py`、`verify_sandbox_workspace_live.py`、`verify_sandbox_tool_cancel_live.py`、`verify_spawn_subagent_live.py`、`verify_external_agent_live.py`、`verify_react_taskboard_live.py`、`verify_tool_integration_live.py`、`verify_workflow_studio_live.py`、`verify_plan_dag_live.py`、`verify_prompt_catalog_live.py`、`verify_enterprise_workflow_live.py`、`verify_loop_live.py`、`verify_exclusive_gateway_live.py`、`verify_personal_rules_live.py` |
+| 其他 | `clear_session_cache.py`、`download_skywalking_agent.py`、`sync_enterprise_agents.py` |
 
 > **提示词 / 路由规则 SSOT**：`prompt-manager` DB（`/prompts` + Catalog），**不再**经 Nacos `agent.routing.*`。
 
@@ -34,10 +34,10 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 | `gateway` | 8000 | Spring Cloud Gateway + Sentinel（统一入口） |
 | `bff` | 8001 | WebFlux + SSE 流式转发 |
 | `auth-center` | 8100 | Sa-Token 认证中心 |
-| `orchestrator` | 8200 | 核心编排（workflow / react / plan-workflow / peer-collab） |
+| `orchestrator` | 8200 | 核心编排（workflow / react / planner-executor / 多智能体协作） |
 | `tool-manager` | 8210 | 工具注册与调用（SDK + MCP） |
 | `skill-manager` | 8225 | Skills 上传 / 版本 / Catalog |
-| `expert-manager` | 8235 | Expert CRUD / Catalog |
+| `agent-manager` | 8235 | Agent CRUD / Catalog（含 A2A 外部接入） |
 | `llm-gateway` | 8300 | LLM 网关（多厂商路由 / 缓存 / 熔断） |
 | `rag-service` | 8400 | RAG 检索（Milvus + Hybrid + Rerank） |
 | `prompt-manager` | 8500 | 提示词管理（`/prompts` + Catalog） |
@@ -60,12 +60,12 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 |--------|--------|
 | 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册 → `/tools` 启用；Workflow 节点 `params.tool` 填 Catalog ID（`sdk__{app}__{name}`） |
 | 新 Workflow | `/workflows` + `workflow-manager` DB（唯一 SSOT）+ MySQL init 种子；orchestrator `WorkflowManagerClient` |
-| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor` → `StaticPlanAdapter`→ 与 plan-workflow **同 UI**（`PlanWorkflowPanel`）；answer prompt 随 workflow 定义维护于 DB `plan_json` |
-| **Plan-Workflow** | `PlanWorkflowExecutor`：Planner → `PlanValidator` → **Replan** → **用户确认**（可选）→ 执行；`NodeRetryExecutor` + `on-failure`；重试策略 `execution_mode_policy`（tool-manager DB）；耗尽降级 ReAct；详见 `docs/routing/plan-workflow-retry-degradation.md` |
+| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor` → `StaticPlanAdapter` → `PlanWorkflowPanel`（DAG 画布）；answer prompt 随 workflow 定义维护于 DB `plan_json` |
+| **Planner-Executor（4.14）** | `PlannerHarnessExecutor`：Planner=ReAct 主 Agent（**两态分解**，简化决议 S5）→ Worker=工具调用（`forWorker()`）→ Planner 自判 → 综合回答；`PlanNotebook` + **Redis 单写** + 3 类显式触发重规划；**完全舍弃动态 Plan-Workflow**（`PlanWorkflowExecutor`/`WorkflowPlanner`/PlanApproval 已删）；详见 `docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md` |
 | **意图路由** | Policy Chain：L0 Skill → `UnifiedRuleRoutingPolicy`（Catalog `routing-rule.*`）→ L3 `intent.classifier` |
-| **Chat 执行模式** | 底栏 `executionPreference`（`auto`/`react`/`workflow`/`plan-workflow`）→ `ForcedExecutionRouter`；workflow 模板用 4.13 `#` 补全 |
+| **Chat 执行模式** | `executionPreference` → `ForcedExecutionRouter`；`planMode=harness` 进 Planner-Executor；workflow 模板用 4.13 `#` 补全 |
 | **ReAct TaskBoard（4.7.5）** | 元工具 `manage_tasks` + 唯一 `tasks` 步；merge 引擎去重 |
-| **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；上下文隔离；`subagent-*` 卡 + 抽屉；**单独取消**（`SpawnRunRegistry`）；支持 `agentId` |
+| **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；上下文隔离；`subagent-*` 卡 + 抽屉；**单独取消**（`SpawnRunRegistry`）；`agentId` 指定预定义智能体，经 `AgentExecutorRouter` 按 `source` 分派 INTERNAL/EXTERNAL（A2A） |
 | **沙箱工具取消（4.5.7）** | `sandbox__exec`/`grep`/`glob`：`CancellableToolRunRegistry` + sandbox kill；同族预算 3 |
 
 **Agent 运行时**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `AssembledContext.forSubAgent()`（无 L1/L2/L3）+ `skillId`→`PromptComposer`；禁止绕过 `AgentRunRequest`。
@@ -85,16 +85,16 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 | 模式 | 关键约束 |
 |------|----------|
 | **ReAct** | `intent → think → tasks? → tool → think-2 → generate`；连续 reasoning 合并为同一 think；SSE 仅下发当前阶段一行 |
-| **ReAct spawn_subagent** | 主卡 `subagent-{runId}` + 抽屉 `subSteps`；取消 → `paused` +「已取消」 |
-| **Workflow（静态/Plan）** | 主时间线 `intent → plan → …`（DAG）；agent 节点内部不上主时间线；loop body 进 `subSteps`；answer 节点仅 `step_delta(result)`，勿双写 content |
+| **ReAct spawn_subagent** | 主卡 `subagent-{runId}` + 抽屉 `subSteps`（指定 agentId 时 label 取智能体 displayName）；取消 → `paused` +「已取消」 |
+| **Workflow（静态）** | 主时间线 `intent → plan → …`（DAG 画布）；agent 节点内部不上主时间线；loop body 进 `subSteps`；answer 节点仅 `step_delta(result)`，勿双写 content |
+| **Planner-Executor（4.14）** | 步骤时间线卡片 `intent → plan(Rn,{mode}) → worker-* → planner-answer`；**不渲染 DAG**；worker 内部 `subSteps` 折叠；handoff 双写 H1 + Planner L1 尾部 |
 | **沙箱工具** | 取消 → `lifecycle=paused`，`summary.after=已取消` |
-| **Synthesizer** | Hub 后 `message.content` 流式；**无** `generate` Timeline 步 |
 
-**reasoning 落点**：ReAct `think*` step、Plan/Workflow `node-*` reasoning 挂 node step、Plan 不合成 think。
+**reasoning 落点**：ReAct `think*` step、静态 Workflow `node-*` reasoning 挂 node step、Planner-Executor `plan`/`worker` 步。Plan 不合成 think。
 
-**Plan 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析** + **最终输出**（原样）；业务节点 **执行记录**（`attempts[]`）；RAG 改写 trace 进抽屉 **检索过程**。
+**静态 Workflow 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析** + **最终输出**（原样）；业务节点 **执行记录**（`attempts[]`）；RAG 改写 trace 进抽屉 **检索过程**。
 
-**前端**：`OperationStack` / `PlanExecutionCanvas` / `PlanNodeDrawer` / `PlanApprovalActions`；**禁止**维护本地步骤话术 Map、对模型输出做截断兜底。
+**前端**：`OperationStack` / `PlanExecutionCanvas`（仅静态 Workflow）/ `PlanNodeDrawer`；Planner-Executor 用步骤时间线卡片；**禁止**维护本地步骤话术 Map、对模型输出做截断兜底。
 
 ## 关键约定
 

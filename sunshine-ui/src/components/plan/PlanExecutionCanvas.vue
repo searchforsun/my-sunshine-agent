@@ -235,7 +235,7 @@ onUnmounted(() => {
 <style scoped>
 .plan-exec-canvas {
   position: relative;
-  margin: 8px 0 4px calc(var(--op-gutter, 12px) + 4px);
+  margin: 8px 0 4px 0;
   min-height: 200px;
   height: 200px;
   border: 1px solid var(--sun-border);

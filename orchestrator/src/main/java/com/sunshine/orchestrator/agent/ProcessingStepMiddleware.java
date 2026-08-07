@@ -23,8 +23,14 @@ import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.middleware.ActingInput;
 import io.agentscope.core.middleware.MiddlewareBase;
+import io.agentscope.core.middleware.ModelCallInput;
 import io.agentscope.core.middleware.ReasoningInput;
+import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.MsgRole;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultMessage;
 import io.agentscope.core.message.ToolUseBlock;
+import io.agentscope.core.message.UserMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -61,6 +67,12 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     /** RuntimeContext key：per-call bridgeId（由 runtime 注入） */
     public static final String CTX_BRIDGE_ID = "sunshine.bridgeId";
 
+    /** RuntimeContext key：ReAct 每轮推理迭代计数（per-call，软限额预警用） */
+    public static final String CTX_REACT_ITERATION = "sunshine.react.iteration";
+
+    /** RuntimeContext key：实际生效的 maxIters（由 runtime 注入，含 request 覆盖，middleware 读取） */
+    public static final String CTX_REACT_MAX_ITERS = "sunshine.react.maxIters";
+
     private final ToolCatalogService toolCatalogService;
     private final AgentExecutionProperties executionProperties;
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
@@ -86,18 +98,175 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     }
 
     @Override
+    public Flux<AgentEvent> onModelCall(
+            Agent agent, RuntimeContext ctx, ModelCallInput input,
+            Function<ModelCallInput, Flux<AgentEvent>> next) {
+        // 历史消息合法性修复：上一次流被中断（如 llm-gateway 读超时）时，AgentScope 可能把
+        // 已累积 tool_calls 但无 tool 响应的 assistant 消息写入历史。OpenAI 兼容 API
+        // （DeepSeek）会校验「tool_calls 必须紧跟 tool 响应」，直接 400 拒绝，进而触发熔断、
+        // 长期降级到无 reasoning 通道的模型，导致思考内容混入正文。发送前补齐缺失的
+        // tool 响应，从根因上避免 400，让主模型持续走 reasoning 通道。
+        List<Msg> messages = repairOrphanToolCalls(input.messages());
+        // AgentScope maxIters 超限总结轮不传 tools（summaryStream 传 null）。DeepSeek-V4 在
+        // 无 tools 参数时若仍想调用工具，会把 DSML 协议块直接写进 content，前端渲染成乱码且
+        // 工具调用跑到正文后面。这里检测总结轮并向模型注入「如实汇报进度」的约束，从
+        // 根因上阻止 DSML 泄漏（对应 AgentScope 官方 PR #1877 的 tool_choice=none 思路）。
+        // 总结轮本质是软中断：任务未必完成，只应如实汇报，禁止为凑结论编造结果；
+        // 且平台内部机制（轮次/上限）不得出现在面向用户的内容里。
+        if (input.tools() == null || input.tools().isEmpty()) {
+            boolean summaryTurn = messages.stream()
+                    .anyMatch(m -> containsMaxItersSummary(m));
+            if (summaryTurn) {
+                List<Msg> guarded = new ArrayList<>(messages.size() + 1);
+                guarded.addAll(messages);
+                guarded.add(UserMessage.builder()
+                        .content(TextBlock.builder()
+                                .text("本轮为任务收尾（平台强制结束的收尾轮）：本轮不需要也无法调用任何工具，"
+                                        + "系统提示词中关于 think_summary 等工具的每轮调用要求在本轮一律豁免，"
+                                        + "请直接以自然语言输出文本。基于已有执行结果，若任务已全部完成可直接给出最终结论；"
+                                        + "若尚有事项未完成，请如实说明当前进展、未完成的部分以及后续建议，"
+                                        + "切勿编造未实际完成的结果。仅用纯文本输出，"
+                                        + "不要包含任何工具调用标记、XML/DSML 标签、尖括号标签或结构化格式；"
+                                        + "也请不要在回复中提及平台运行限制等内部细节。")
+                                .build())
+                        .build());
+                return next.apply(new ModelCallInput(guarded, input.tools(), input.options(), input.model()));
+            }
+        }
+        return next.apply(new ModelCallInput(messages, input.tools(), input.options(), input.model()));
+    }
+
+    /** 历史消息中 assistant 声明了 tool_calls 但无对应 tool 响应（流中断残留）时，补一条占位 tool 响应 */
+    private static List<Msg> repairOrphanToolCalls(List<Msg> messages) {
+        boolean repaired = false;
+        List<Msg> result = new ArrayList<>(messages.size() + 2);
+        for (Msg m : messages) {
+            result.add(m);
+            if (m.getRole() == MsgRole.ASSISTANT) {
+                for (ToolUseBlock tu : m.getContentBlocks(ToolUseBlock.class)) {
+                    String callId = tu.getId();
+                    if (callId == null || callId.isBlank() || hasToolResult(messages, callId)) {
+                        continue;
+                    }
+                    String toolName = tu.getName() != null ? tu.getName() : "unknown";
+                    result.add(new ToolResultMessage(callId, toolName,
+                            "[工具调用因流中断未产生结果，本次调用视为失败，请继续下一步。]"));
+                    repaired = true;
+                }
+            }
+        }
+        if (repaired) {
+            log.warn("[Middleware] 历史消息存在孤儿 tool_calls，已补占位 tool 响应: messages={} -> {}",
+                    messages.size(), result.size());
+        }
+        return repaired ? result : messages;
+    }
+
+    /** 任意消息中是否已存在该 toolCallId 对应的 tool 响应 */
+    private static boolean hasToolResult(List<Msg> messages, String callId) {
+        for (Msg m : messages) {
+            if (m.getRole() == MsgRole.TOOL
+                    && m.getContentBlocks(io.agentscope.core.message.ToolResultBlock.class).stream()
+                            .anyMatch(r -> callId.equals(r.getId()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 总结轮消息：AgentScope 注入的 maxIters 收尾提示（msg 正文或首文本块含特征串） */
+    private static boolean containsMaxItersSummary(Msg m) {
+        String text = m.getTextContent();
+        if (text != null && text.contains("maximum iterations")) {
+            return true;
+        }
+        return m.getContent().stream()
+                .filter(b -> b instanceof TextBlock)
+                .anyMatch(b -> ((TextBlock) b).getText() != null
+                        && ((TextBlock) b).getText().contains("maximum iterations"));
+    }
+
+    @Override
     public Flux<AgentEvent> onReasoning(
             Agent agent, RuntimeContext ctx, ReasoningInput input,
             Function<ReasoningInput, Flux<AgentEvent>> next) {
         String bridgeId = bridgeIdOf(ctx);
+        ReasoningInput effectiveInput = applySoftLimitWarning(ctx, input);
         StepEventBridge.emit(bridgeId, ProcessingTimelineSession::beginReasoningRound);
-        return next.apply(input)
+        return next.apply(effectiveInput)
                 .doFinally(sig -> StepEventBridge.emit(bridgeId, session -> {
                     session.endReasoningRound();
                     if (isTaskBoardEnabled()) {
                         taskBoardTimelineSupport.ensurePlaceholderAfterFirstThink(session);
                     }
                 }));
+    }
+
+    /**
+     * 软限额预警：ReAct 模型感知不到轮数上限，触达 maxIters 时 AgentScope 会强制 summarizing，
+     * 在最后一轮工具调用后输出中间态总结并挂起未完成工具（时间线混乱根因）。剩余轮数 ≤ 阈值时
+     * 在模型输入末尾注入收束提示，引导模型提前自然终止（toolCalls 为空），从源头避免触达总结轮。
+     */
+    private ReasoningInput applySoftLimitWarning(RuntimeContext ctx, ReasoningInput input) {
+        if (ctx == null || input == null || input.messages() == null || input.messages().isEmpty()) {
+            return input;
+        }
+        int maxIters = resolveMaxIters(ctx);
+        int margin = resolveSoftLimitMargin(maxIters);
+        if (maxIters <= 0 || margin <= 0) {
+            return input;
+        }
+        int iter = incrementIteration(ctx);
+        int remaining = maxIters - iter + 1;
+        if (remaining > margin) {
+            return input;
+        }
+        log.info("[Middleware] ReAct soft-limit warning: iter={}/maxIters={} remaining={}",
+                iter, maxIters, remaining);
+        List<Msg> messages = new ArrayList<>(input.messages().size() + 1);
+        messages.addAll(input.messages());
+        messages.add(UserMessage.builder()
+                .content(TextBlock.builder()
+                        .text("【执行收束】本任务的执行步数即将耗尽，请尽快收束：若任务已完成或可在本轮内完成，"
+                                + "请停止调用业务工具，直接完整回答用户问题；若确认剩余步数不足以完成任务，"
+                                + "请如实说明已完成进展、未完成事项与后续建议，勿编造未实际完成的结果；"
+                                + "若确需再调用工具，请确保这是最后一次工具调用，之后不再调用任何业务工具，直接作答。"
+                                + "面向用户的回复请保持自然，不要提及步数限制等平台内部细节。")
+                        .build())
+                .build());
+        return new ReasoningInput(messages, input.tools(), input.options());
+    }
+
+    private int resolveMaxIters(RuntimeContext ctx) {
+        Integer injected = ctx != null ? ctx.get(CTX_REACT_MAX_ITERS) : null;
+        if (injected != null && injected > 0) {
+            return injected;
+        }
+        AgentExecutionProperties.React react = executionProperties.getReact();
+        return react != null ? react.getMaxIters() : 0;
+    }
+
+    /**
+     * 软限额收束缓冲轮数 = maxIters 的 20%（maxIters/5），上限 10 轮：
+     * chat=50 → 缓冲 10（约第 40 轮起收束）、task=100 → 缓冲 10（约第 90 轮起）、
+     * subagent=30 → 缓冲 6（约第 24 轮起）。固定 margin 在 maxIters 增大后预警过早/过晚，
+     * 按比例自动计算适配各档位轮数上限。
+     */
+    static int resolveSoftLimitMargin(int maxIters) {
+        if (maxIters <= 0) {
+            return 0;
+        }
+        return Math.min(Math.max(maxIters / 5, 1), 10);
+    }
+
+    private int incrementIteration(RuntimeContext ctx) {
+        if (ctx == null) {
+            return 0;
+        }
+        Integer it = ctx.get(CTX_REACT_ITERATION);
+        int next = (it == null ? 0 : it) + 1;
+        ctx.put(CTX_REACT_ITERATION, next);
+        return next;
     }
 
     @Override
@@ -153,6 +322,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
      */
     private void applyThinkSummary(String bridgeId, ToolUseBlock tu) {
         Object raw = tu.getInput() != null ? tu.getInput().get("summary") : null;
+        log.info("[ThinkSummary] applyThinkSummary bridgeId={} summary={}", bridgeId, raw);
         if (raw instanceof String s && StringUtils.hasText(s)) {
             StepEventBridge.emit(bridgeId, session -> session.applyThinkStepSummary(s));
         }

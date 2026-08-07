@@ -40,6 +40,7 @@ public class SpawnSubagentTimelineSupport {
                     label,
                     metadata,
                     null,
+                    null,
                     null);
             session.enqueueAuxiliary(StreamToken.step(card));
         });

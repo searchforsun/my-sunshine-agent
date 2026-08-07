@@ -206,7 +206,8 @@ public final class ProcessingStepLifecycleOps {
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
-                subSteps);
+                subSteps,
+                step.stepSummary());
     }
 
     public static String findLastRunningWorkflowNodeId(List<ProcessingStep> steps) {
@@ -253,6 +254,7 @@ public final class ProcessingStepLifecycleOps {
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
-                step.subSteps());
+                step.subSteps(),
+                step.stepSummary());
     }
 }

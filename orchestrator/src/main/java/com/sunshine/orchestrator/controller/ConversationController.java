@@ -4,6 +4,8 @@ import com.sunshine.orchestrator.config.ReactiveBlocking;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
 import com.sunshine.orchestrator.conversation.dto.ConversationSummaryDto;
+import com.sunshine.orchestrator.conversation.dto.MessagePageDto;
+import com.sunshine.orchestrator.conversation.dto.UpdateCheckoutRequest;
 import com.sunshine.orchestrator.conversation.dto.UpdateTitleRequest;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
@@ -59,6 +62,17 @@ public class ConversationController {
         });
     }
 
+    @GetMapping("/conversations/{id}/messages")
+    public Mono<MessagePageDto> getMessagesPage(
+            @PathVariable("id") String id,
+            @RequestParam(value = "beforeSeq", defaultValue = "0") int beforeSeq,
+            @RequestParam(value = "limit", defaultValue = "30") int limit,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() ->
+                conversationService.getMessagesPage(id, userId, tenantId, beforeSeq, limit));
+    }
+
     @PatchMapping("/conversations/{id}")
     public Mono<ConversationSummaryDto> updateTitle(
             @PathVariable("id") String id,
@@ -68,6 +82,19 @@ public class ConversationController {
         return ReactiveBlocking.call(() -> {
             ChatConversationEntity conv = conversationService.updateTitle(
                     id, userId, tenantId, body.getTitle());
+            return ConversationSummaryDto.from(conv);
+        });
+    }
+
+    @PatchMapping("/conversations/{id}/checkout")
+    public Mono<ConversationSummaryDto> updateCheckout(
+            @PathVariable("id") String id,
+            @RequestBody UpdateCheckoutRequest body,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> {
+            ChatConversationEntity conv = conversationService.updateCheckoutPath(
+                    id, userId, tenantId, body.getCheckoutPath());
             return ConversationSummaryDto.from(conv);
         });
     }

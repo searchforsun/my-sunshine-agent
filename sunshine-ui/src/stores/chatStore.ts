@@ -11,8 +11,10 @@ import {
   listConversations,
   createConversation,
   getConversation,
+  getConversationMessages,
   deleteConversation,
   updateConversationTitle,
+  updateConversationCheckout,
   isValidConversationId,
 } from '../api/conversations'
 import { isConversationNotFoundError } from '../api/apiError'
@@ -45,6 +47,13 @@ export interface Conversation {
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
 const DEFAULT_CONV_TITLE = '新对话'
 
+/** 会话消息首屏 / 游标分页每页条数：AI 会话场景，一轮=提问+回复，10 条约最近 5 轮问答 */
+const MESSAGE_PAGE_SIZE = 10
+
+/** 每会话历史加载状态：hasMore 表示更早消息仍存在；loading 防并发 */
+const historyHasMore = new Map<string, boolean>()
+const historyLoading = new Set<string>()
+
 /** API 仍为默认标题时保留本地已推导标题，避免流式过程中 loadDetail / 侧栏点击回退 */
 function pickConversationTitle(apiTitle: string, localTitle?: string): string {
   if (apiTitle && apiTitle !== DEFAULT_CONV_TITLE) return apiTitle
@@ -67,6 +76,7 @@ function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
       executionPreference: m.executionPreference,
       createdAt: m.createdAt,
       updatedAt: m.updatedAt,
+      seq: m.seq,
     }
     if (msg.role === 'assistant') {
       sanitizePlanAssistantMessage(msg)
@@ -242,16 +252,12 @@ export const useChatStore = defineStore('chat', () => {
   async function loadDetail(id: string) {
     if (!isValidConversationId(id)) return
     try {
-      const detail = await getConversation(id)
+      const page = await getConversationMessages(id, { limit: MESSAGE_PAGE_SIZE })
       const conv = conversations.value.find(c => c.id === id)
       if (conv) {
-        conv.title = pickConversationTitle(detail.title, conv.title)
-        conv.executionPreference = detail.executionPreference
-        conv.kbId = detail.kbId ?? null
-        const apiMsgs = mapApiMessages(detail.messages)
+        const apiMsgs = mapApiMessages(page.messages)
         const cached = loadCachedMessages(id)
         conv.messages = sanitizeRestoredMessages(mergeRestoredMessages(apiMsgs, cached))
-        conv.updatedAt = detail.updatedAt
         if (conv.messages.length) {
           cacheMessages(id, conv.messages, {
             title: conv.title,
@@ -259,6 +265,7 @@ export const useChatStore = defineStore('chat', () => {
             updatedAt: conv.updatedAt,
           })
         }
+        historyHasMore.set(id, page.hasMore)
       }
     } catch (e) {
       if (isConversationNotFoundError(e)) {
@@ -272,6 +279,54 @@ export const useChatStore = defineStore('chat', () => {
         conv.messages = sanitizeRestoredMessages(cached)
       }
     }
+  }
+
+  /**
+   * 向上滚动加载更早历史：以当前已加载最旧 seq 为游标，前插去重并更新 hasMore。
+   * 由 ChatView 触顶检测调用；加载成功后返回是否仍有更早消息。
+   */
+  async function loadHistory(id: string): Promise<boolean> {
+    if (!isValidConversationId(id) || historyLoading.has(id)) return false
+    const conv = conversations.value.find(c => c.id === id)
+    const msgs = conv?.messages ?? []
+    const minSeq = msgs.reduce(
+      (min, m) => (typeof m.seq === 'number' ? Math.min(min, m.seq) : min),
+      Number.POSITIVE_INFINITY,
+    )
+    if (!Number.isFinite(minSeq)) return false
+    historyLoading.add(id)
+    try {
+      const page = await getConversationMessages(id, { beforeSeq: minSeq, limit: MESSAGE_PAGE_SIZE })
+      const byId = new Map(msgs.filter(m => m.id).map(m => [m.id!, m]))
+      for (const m of page.messages) {
+        if (m.id && !byId.has(m.id)) byId.set(m.id, mapApiMessages([m])[0])
+      }
+      const merged = [...byId.values()].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+      if (!conv) return page.hasMore
+      conv.messages = sanitizeRestoredMessages(merged)
+      if (conv.messages.length) {
+        cacheMessages(id, conv.messages, {
+          title: conv.title,
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
+        })
+      }
+      historyHasMore.set(id, page.hasMore)
+      return page.hasMore
+    } catch (e) {
+      console.warn('[chatStore] 加载更早历史失败', id, e)
+      return false
+    } finally {
+      historyLoading.delete(id)
+    }
+  }
+
+  function hasHistoryMore(id: string): boolean {
+    return historyHasMore.get(id) ?? false
+  }
+
+  function isHistoryLoading(id: string): boolean {
+    return historyLoading.has(id)
   }
 
   const current = computed(() =>
@@ -383,6 +438,13 @@ export const useChatStore = defineStore('chat', () => {
     if (conv) conv.kbId = kb
   }
 
+  /** 分支切换后重绑定会话 checkout 目录：后端持久化 + 本地会话同步；失败抛错由调用方中止流程 */
+  async function updateCheckout(id: string, checkoutPath: string): Promise<void> {
+    await updateConversationCheckout(id, checkoutPath)
+    const conv = conversations.value.find(c => c.id === id)
+    if (conv) conv.checkoutPath = checkoutPath
+  }
+
   function syncMessages(id: string, msgs: ChatMessage[]) {
     const conv = conversations.value.find(c => c.id === id)
     if (!conv) return
@@ -489,6 +551,10 @@ export const useChatStore = defineStore('chat', () => {
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
     updateExecutionPreferenceLocal,
     updateKbIdLocal,
+    updateCheckout,
+    loadHistory,
+    hasHistoryMore,
+    isHistoryLoading,
     pendingWorkspace,
     newTaskMode,
   }

@@ -14,7 +14,7 @@
 
 ### 分组维度
 
-执行模式（`ExecutionMode`）：`react` / `workflow` / `plan-workflow` / `peer-collab`。
+统一路由后（[unified-routing v3](./2026-07-29-unified-routing-design.md)）以 `RoutingResult.type`（`ResourceType`）为分组维度：`WORKFLOW` / `AGENT` / `SKILL` / `REACT`（harness 场景附加 `planMode=harness` 维度；`peer-collab`、`plan-workflow` 已随 v3 删除）。前端展示沿用消息 `execution_mode` 兼容字段映射到 ResourceType。
 
 ### 非目标
 
@@ -39,10 +39,12 @@
 
 DDL SSOT：`docker/mysql/init/11-sunshine-orchestrator.sql`（orchestrator 一项目一文件，禁止 Flyway / 模块内 migration）。
 
-### 3.1 `chat_feedback`（显式 + 隐式反馈，承载归因快照）
+### 3.1 `chat_message_feedback`（显式 + 隐式反馈，承载归因快照）
+
+> **表名对齐**：与 [phase5 §5.1](./phase5-operation-openness-design.md) 的 `chat_message_feedback` 统一（同一张表）。**v2 字段**：`run_id`（harness run 标识，普通 ReAct 为空）+ `round_id`（run 内轮次；普通对话为空）——见 phase5 §5.1 v2 注记，harness 多轮定位维度。
 
 ```sql
-CREATE TABLE chat_feedback (
+CREATE TABLE chat_message_feedback (
     id              VARCHAR(64)  NOT NULL PRIMARY KEY,
     message_id      VARCHAR(64)  NOT NULL,          -- assistant 消息
     conversation_id VARCHAR(64)  NOT NULL,
@@ -53,6 +55,9 @@ CREATE TABLE chat_feedback (
     signal          VARCHAR(20)  NOT NULL,
     reason_tags     VARCHAR(255) NULL,              -- 逗号分隔，仅 explicit down
     comment         TEXT         NULL,              -- 补充说明，仅 explicit
+    -- harness 定位维度（v2，对齐 phase5 §5.1）
+    run_id          VARCHAR(64)  NULL,              -- harness run 标识，普通 ReAct 为空
+    round_id        INT          NULL,              -- run 内轮次，Planner-Worker round 序号
     -- 归因快照
     execution_mode  VARCHAR(16)  NULL,
     intent          VARCHAR(32)  NULL,
@@ -68,7 +73,8 @@ CREATE TABLE chat_feedback (
     updated_at      DATETIME(3)  NOT NULL,
     UNIQUE KEY uk_feedback_msg_user (message_id, user_id, kind),
     INDEX idx_fb_tenant_mode_time (tenant_id, execution_mode, created_at),
-    INDEX idx_fb_signal (signal, created_at)
+    INDEX idx_fb_signal (signal, created_at),
+    INDEX idx_fb_run_round (run_id, round_id)
 );
 ```
 
@@ -96,20 +102,20 @@ CREATE TABLE chat_message_snapshot (
 ```
 
 - 写入时机：**首次对某 message 产生显式 down 反馈时**（lazy，避免全量消息冗余）。
-- 与 §3.1 `attachments` 区别：`chat_feedback.attachments` 为轻量元数据（列表展示）；`chat_message_snapshot.attachments` 为完整内容（详情展示）。
+- 与 §3.1 `attachments` 区别：`chat_message_feedback.attachments` 为轻量元数据（列表展示）；`chat_message_snapshot.attachments` 为完整内容（详情展示）。
 
 ### 3.3 `eval_case`（全模式线下评测集，P2 框架）
 
 ```sql
 CREATE TABLE eval_case (
     id             VARCHAR(64)  NOT NULL PRIMARY KEY,
-    suite_key      VARCHAR(64)  NOT NULL,          -- e2e-react / e2e-workflow / e2e-plan-workflow / e2e-peer-collab
+    suite_key      VARCHAR(64)  NOT NULL,          -- e2e-workflow / e2e-agent / e2e-skill / e2e-react（对齐 v3 ResourceType）
     query          TEXT         NOT NULL,
-    expected_route VARCHAR(16)  NULL,              -- 期望 execution_mode
+    expected_route VARCHAR(16)  NULL,              -- 期望 RoutingResult.type（ResourceType）
     expected_tools JSON         NULL,              -- 期望工具 catalog id 列表
     answer_points  JSON         NULL,              -- 期望答案要点（judge rubric，二期用）
     source         VARCHAR(16)  NOT NULL DEFAULT 'seed', -- seed / downvote_reflow
-    ref_feedback_id VARCHAR(64) NULL,              -- 回流来源 chat_feedback.id
+    ref_feedback_id VARCHAR(64) NULL,              -- 回流来源 chat_message_feedback.id
     enabled        TINYINT(1)   NOT NULL DEFAULT 1,
     created_at     DATETIME(3)  NOT NULL,
     INDEX idx_eval_suite (suite_key, enabled)
@@ -145,9 +151,11 @@ orchestrator 新建 `feedback` 包（`FeedbackController` / `FeedbackService` / 
 | **DB 同步直写（采用）** | 即时可读、upsert 幂等简单、无 MQ 消费乱序覆盖问题；反馈量级低 |
 | 复用审计 MQ→MySQL | 解耦削峰但延迟可见、改评乱序难处理；需保证审计器先就绪 → 引入依赖 |
 
-选择 DB 直写。**但大盘页强依赖 chat_message（归因/正文）与 chat_feedback 同时可读**；审计/消息持久化由 orchestrator 现有链路保证。大盘聚合 SQL 均走 MySQL。
+选择 DB 直写。**但大盘页强依赖 chat_message（归因/正文）与 chat_message_feedback 同时可读**；审计/消息持久化由 orchestrator 现有链路保证。大盘聚合 SQL 均走 MySQL。
 
 ## 6. 大盘页（§3 设计确认）
+
+> **与 `/ops`、`/observability` 分工**（对齐 [observability §1.2](./2026-07-27-observability-enhancement-design.md)）：`/evaluation` 本页 = **分模式反馈统计 + 踩样本归因 + 评测集回流**（数据来源：`chat_message_feedback`）；`/ops` = 跨会话运营聚合（Badcase 列表、用量、密钥、优化 Tab，phase5）；`/observability` = 单次会话 LLM 调用链与 trace 深潜（Run Explorer）。三者数据互不重复建表。
 
 - 前端 `EvaluationView` + 路由 `/evaluation`（菜单「评测大盘」），样式对齐 StatusView/ExpertsView（`--sun-black` 底 + 边框分区，禁用灰底）。
 - BFF 聚合 API（orchestrator 出数据，仅管理员可见）：
@@ -160,7 +168,7 @@ orchestrator 新建 `feedback` 包（`FeedbackController` / `FeedbackService` / 
 ## 7. 评测集回流（§4 P2 框架确认）
 
 - `eval_case` 表 + 每模式种子集 10-20 条（SQL 种子 / Python 生成脚本）。
-- 大盘踩样本详情提供「回流为评测用例」操作 → 生成 `eval_case(source=downvote_reflow, ref_feedback_id)`，suite_key 按该样本 execution_mode 归到对应套件。
+- 大盘踩样本详情提供「回流为评测用例」操作 → 生成 `eval_case(source=downvote_reflow, ref_feedback_id)`，suite_key 按该样本 `RoutingResult.type`（ResourceType）归到对应套件。
 - `scripts/eval_e2e.py`：按 suite_key 拉启用用例 → 调 Chat SSE → 校验 route/工具/（二期 judge 要点）→ 报告。一期仅框架 + 种子校验跑通，不接门禁 CI。
 
 ## 8. 错误处理

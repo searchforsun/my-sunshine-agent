@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.processing.ThinkStepIds;
 import com.sunshine.orchestrator.prompt.PersonalRulesSupport;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
@@ -28,6 +29,7 @@ public class ReactExecutor {
 
     private final AgentRuntime agentRuntime;
     private final AgentCatalogService agentCatalogService;
+    private final AgentExecutionProperties executionProperties;
 
     private static final String PARAM_AGENT_IDS = "agentIds";
 
@@ -109,7 +111,20 @@ public class ReactExecutor {
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
                         blocks, skillId, ctx.reactRestart(),
-                        ctx.conversationId(), reactPromptId, checkpointThinkIteration));
+                        ctx.conversationId(), reactPromptId, checkpointThinkIteration,
+                        resolveMaxItersByKind(ctx)));
+    }
+
+    /** task 会话（沙箱长任务）用更高的轮数上限；chat 会话传 0 取 Nacos 默认 max-iters */
+    private int resolveMaxItersByKind(ExecutionStreamContext ctx) {
+        AgentExecutionProperties.React react = executionProperties.getReact();
+        if (react == null) {
+            return 0;
+        }
+        if ("task".equals(ctx.conversationKind())) {
+            return react.getTaskMaxIters();
+        }
+        return 0;
     }
 
     /**

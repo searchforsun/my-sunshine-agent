@@ -29,7 +29,7 @@ const props = defineProps<{
   live?: boolean
   executionPlanId?: string
   userQuery?: string
-  pendingHitlConfirmation?: HitlConfirmationPayload | HitlConfirmationPayload[]
+  pendingHitlConfirmations?: HitlConfirmationPayload | HitlConfirmationPayload[]
 }>()
 
 const { open: openPlanNodeDrawer, state: drawerState, isActivePlan } = usePlanNodeDrawer()
@@ -193,7 +193,7 @@ const dagNodes = computed(() =>
     nodeTraces.value.length ? nodeTraces.value : undefined,
     skillCatalog.value,
     props.planStep,
-    props.pendingHitlConfirmation,
+    props.pendingHitlConfirmations,
   ),
 )
 
@@ -400,7 +400,6 @@ watch(isRegenerating, () => syncExpandLayer())
 <template>
   <div class="plan-panel op-line">
     <div class="op-line-row">
-      <span class="op-gutter" aria-hidden="true" />
       <span class="op-main">
         <span class="op-label" :class="{ 'op-shimmer': isRunning && live }">{{ label }}</span>
       </span>
@@ -431,7 +430,6 @@ watch(isRegenerating, () => syncExpandLayer())
 
 <style scoped>
 .plan-panel {
-  --op-gutter: 12px;
   font-size: var(--sun-font-md);
   line-height: 1.5;
   color: var(--sun-text-muted);
@@ -439,15 +437,10 @@ watch(isRegenerating, () => syncExpandLayer())
 
 .op-line-row {
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 4px;
   align-items: start;
   padding: 1px 0;
-}
-
-.op-gutter {
-  width: var(--op-gutter);
-  flex-shrink: 0;
 }
 
 .op-main {
@@ -488,7 +481,7 @@ watch(isRegenerating, () => syncExpandLayer())
 }
 
 .plan-dag-skeleton {
-  margin: 8px 0 4px calc(var(--op-gutter) + 4px);
+  margin: 8px 0 4px 0;
   padding: 16px;
   font-size: var(--sun-font-sm);
   color: var(--sun-text-muted);
@@ -497,11 +490,11 @@ watch(isRegenerating, () => syncExpandLayer())
 }
 
 .plan-dag-collapsed-slot {
-  margin: 8px 0 4px calc(var(--op-gutter) + 4px);
+  margin: 8px 0 4px 0;
   min-height: 94px;
 }
 
 .plan-panel :deep(.collapsible-confirm) {
-  margin-left: calc(var(--op-gutter) + 4px);
+  margin-left: 0;
 }
 </style>

@@ -38,6 +38,8 @@ import {
   orphanContentRows,
   resolveCollapsedAnswerText,
   resolveLastContentBlockIndex,
+  shouldShowAfterThinkPendingHint,
+  shouldShowPendingHintForLastRow,
 } from '../../api/contentInterleave'
 import OperationCard from './OperationCard.vue'
 import TaskBoardPanel from './TaskBoardPanel.vue'
@@ -64,7 +66,6 @@ const props = withDefaults(defineProps<{
   inlineHitl?: boolean
   /** assistant 消息 id */
   messageId?: string
-  pendingHitlConfirmation?: HitlConfirmationPayload | HitlConfirmationPayload[]
   pendingHitlConfirmations?: HitlConfirmationPayload[]
   /** Chat 顶层传入时启用总览行；嵌套 Stack / 抽屉勿传 */
   messageStatus?: TimelineMessageStatus
@@ -93,8 +94,14 @@ const summaryEnabled = computed(() => props.messageStatus !== undefined)
 const timelineUserToggled = ref(false)
 const timelineExpandedOverride = ref(false)
 
+/** 存在等待用户确认的 HITL 步（tool 或 plan node）→ 折叠态会隐藏确认框，须强制展开避免写操作阻塞不可达 */
+const hasAwaitingHitlStep = computed(() =>
+  props.steps.some(step => isHitlAwaiting(step) || isHitlSummaryAwaiting(step)),
+)
+
 const timelineBodyExpanded = computed(() => {
   if (!summaryEnabled.value) return true
+  if (hasAwaitingHitlStep.value) return true
   if (timelineUserToggled.value) return timelineExpandedOverride.value
   // 进行中 / 终态均默认折叠；用户点开后以 userToggled 为准
   return false
@@ -166,6 +173,23 @@ const showCollapsedAnswer = computed(() => {
 const fallbackStartMs = ref<number | undefined>(undefined)
 const nowMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | undefined
+
+/** 正文（message.content / contentBlocks）最近一次流式增长的时间戳。
+ * 用于区分「整文正在流式输出」（正文逐字增长，用户可见反馈，无需占位）
+ * 与「正文已输出完、模型在生成下一步 tool 参数」（正文静止，需占位提示仍在工作）。 */
+const lastContentGrowthAt = ref(0)
+
+watch(
+  () => props.messageContent,
+  () => {
+    if (isTimelineProcessing.value) lastContentGrowthAt.value = Date.now()
+  },
+)
+
+/** 正文是否正在流式增长（2s 窗口）：整文输出中 → 抑制空档占位，避免与正文并存 */
+const isContentGrowthActive = computed(() =>
+  isTimelineProcessing.value && nowMs.value - lastContentGrowthAt.value < 2000,
+)
 
 const isMessageTerminal = computed(() => {
   const s = props.messageStatus
@@ -352,8 +376,22 @@ const showProcessingCollapsedAnswer = computed(() =>
   !!collapsedPreviewStep.value && !!collapsedAnswerText.value,
 )
 
+/** 折叠态执行空档占位：正在处理、最后可见步已终态时展示三点，
+ * 覆盖模型生成 tool 参数（写大文件等）或下一轮推理的长空档，防止用户误以为卡死。
+ * 折叠区展示的历史正文不抑制占位——占位表示「还有内容在生成」；
+ * 但整文正在流式输出时正文本身是反馈，不显示占位 */
+const showCollapsedPendingHint = computed(() => {
+  if (isContentGrowthActive.value) return false
+  const step = collapsedPreviewStep.value
+  if (!step || timelineBodyExpanded.value) return false
+  return shouldShowAfterThinkPendingHint({
+    processing: isTimelineProcessing.value,
+    lastStep: step,
+  })
+})
+
 const pendingList = computed(() =>
-  normalizePendingHitlList(props.pendingHitlConfirmations ?? props.pendingHitlConfirmation),
+  normalizePendingHitlList(props.pendingHitlConfirmations),
 )
 
 const hitlRevision = computed(() =>
@@ -410,6 +448,38 @@ const orphanContent = computed(() => {
     contentRowOpts.value,
   )
 })
+
+/** 占位伪 think 步：复用 OperationCard 渲染「正在执行」，与「深度思考」行结构/流光完全一致。
+ * id 以 think- 开头走 isThinkStepId；stepSummary 承载占位文案；clientStartedAt 驱动运行时长 */
+const placeholderStartedAt = ref(0)
+const placeholderStep = computed<ProcessingStep>(() => ({
+  id: 'think-__pending',
+  phase: 'think',
+  lifecycle: 'running',
+  stepSummary: '正在执行',
+  clientStartedAt: placeholderStartedAt.value,
+}))
+
+/** 执行空档占位：末尾是已完成（done/error/skipped）的可见步时展示。
+ * 末尾为工具组时取组内最后一步判定（组内仍有运行中步自带 pulse 不提示）。
+ * 整文正在流式输出时正文本身是反馈，不显示占位 */
+const showAfterThinkPendingHint = computed(() => {
+  void props.timelineRevision
+  if (isContentGrowthActive.value) return false
+  const rows = displayRows.value
+  const last = rows.length ? rows[rows.length - 1] : undefined
+  if (!last) return false
+  return shouldShowPendingHintForLastRow({
+    processing: isTimelineProcessing.value,
+    lastRow: last,
+  })
+})
+
+watch([showCollapsedPendingHint, showAfterThinkPendingHint], () => {
+  if (showCollapsedPendingHint.value || showAfterThinkPendingHint.value) {
+    placeholderStartedAt.value = Date.now()
+  }
+})
 </script>
 
 <template>
@@ -424,25 +494,24 @@ const orphanContent = computed(() => {
       }"
     >
       <button type="button" class="op-line-row" @click="toggleTimelineBody">
-        <span class="op-gutter">
-          <svg
-            class="op-chevron"
-            width="9"
-            height="9"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-          >
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </span>
         <span class="op-main">
           <span
             class="op-label"
             :class="{ 'op-shimmer': live || messageStatus === 'streaming' }"
           >{{ summaryText }}</span>
+          <svg
+            class="op-chevron"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
         </span>
       </button>
     </div>
@@ -475,10 +544,11 @@ const orphanContent = computed(() => {
           :live="live"
           :execution-plan-id="executionPlanId"
           :user-query="userQuery"
-          :pending-hitl-confirmation="pendingList"
+          :pending-hitl-confirmations="pendingList"
         />
         <TaskBoardPanel
           v-else-if="step.phase === 'tasks'"
+          :data-live-taskboard="live && lifecycleOf(step) === 'running' ? '1' : undefined"
           :step="step"
           :live="live && lifecycleOf(step) === 'running'"
         />
@@ -498,7 +568,6 @@ const orphanContent = computed(() => {
             @toggle="toggleCard(step)"
           />
           <div v-if="shouldShowInlineHitl(step)" class="op-line-hitl">
-            <span class="op-gutter" aria-hidden="true" />
             <HitlStepActions
               :key="hitlStepKey(inlineHitlStep(step))"
               :step="inlineHitlStep(step)"
@@ -517,7 +586,7 @@ const orphanContent = computed(() => {
               :stream-live="streamLive && lifecycleOf(step) === 'running'"
               :live="live && lifecycleOf(step) === 'running'"
               :embed-hitl="false"
-              :pending-hitl-confirmation="pendingList"
+              :pending-hitl-confirmations="pendingList"
               @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
             />
           </div>
@@ -525,7 +594,6 @@ const orphanContent = computed(() => {
         <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanWorkflowPanel 之后渲染 -->
         <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
           <div class="op-inline-content">
-            <span class="op-gutter" aria-hidden="true" />
             <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
               <StaticMarkdown :source="crow.text" :defer-mermaid="crow.streaming" />
             </div>
@@ -537,17 +605,28 @@ const orphanContent = computed(() => {
       </template>
       <template v-for="row in orphanContent" :key="row.key">
         <div class="op-inline-content">
-          <span class="op-gutter" aria-hidden="true" />
           <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
             <StaticMarkdown :source="row.text" :defer-mermaid="row.streaming" />
           </div>
         </div>
-      </template>
     </template>
+    <!-- think 步后、工具出现前的过渡提示：工具步出现或消息终态后自动消失 -->
+    <!-- think 完成后的执行空档占位：「正在执行」复用 OperationCard（与「深度思考」行结构一致），工具步出现后消失 -->
+    <OperationCard
+      v-if="showAfterThinkPendingHint"
+      :step="placeholderStep"
+      :expanded="false"
+      :live="true"
+      :hide-chevron="true"
+      :embed-hitl="false"
+      class="op-pending-hint"
+    />
+  </template>
     <!-- 折叠态常驻 taskboard：生成 todolist 后折叠时间线仍可见（进行中/终态均露出） -->
     <!-- 折叠态常驻 taskboard：生成 todolist 后折叠时间线仍可见（进行中/终态均露出） -->
     <TaskBoardPanel
       v-if="!timelineBodyExpanded && collapsedTaskBoardStep"
+      :data-live-taskboard="live && lifecycleOf(collapsedTaskBoardStep) === 'running' ? '1' : undefined"
       :step="collapsedTaskBoardStep"
       :live="live && lifecycleOf(collapsedTaskBoardStep) === 'running'"
     />
@@ -581,7 +660,6 @@ const orphanContent = computed(() => {
         v-if="showProcessingCollapsedAnswer"
         class="op-inline-content timeline-collapsed-answer"
       >
-        <span class="op-gutter" aria-hidden="true" />
         <div class="op-inline-body" :class="{ 'is-streaming-md': streamLive || live }">
           <StaticMarkdown
             :source="collapsedAnswerText"
@@ -589,12 +667,21 @@ const orphanContent = computed(() => {
           />
         </div>
       </div>
+      <!-- 折叠态执行空档占位：正在处理且最后可见步已终态时显示「正在执行」，工具/正文出现后自动消失 -->
+      <OperationCard
+        v-if="showCollapsedPendingHint"
+        :step="placeholderStep"
+        :expanded="false"
+        :live="true"
+        :hide-chevron="true"
+        :embed-hitl="false"
+        class="op-pending-hint"
+      />
     </template>
     <div
       v-else-if="!timelineBodyExpanded && showCollapsedAnswer"
       class="op-inline-content timeline-collapsed-answer"
     >
-      <span class="op-gutter" aria-hidden="true" />
       <div class="op-inline-body">
         <StaticMarkdown :source="collapsedAnswerText" />
       </div>
@@ -608,7 +695,6 @@ const orphanContent = computed(() => {
   flex-direction: column;
   gap: 0;
   padding: 0 0 12px;
-  margin-left: -2px;
 }
 
 .op-row {
@@ -622,7 +708,6 @@ const orphanContent = computed(() => {
 }
 
 .timeline-summary {
-  --op-gutter: 12px;
   font-size: var(--sun-font-md);
   line-height: 1.5;
   color: var(--sun-text-muted);
@@ -631,7 +716,7 @@ const orphanContent = computed(() => {
 
 .timeline-summary .op-line-row {
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   column-gap: 4px;
   align-items: start;
   width: 100%;
@@ -644,20 +729,15 @@ const orphanContent = computed(() => {
   cursor: pointer;
 }
 
-.timeline-summary .op-gutter {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  width: var(--op-gutter);
-  padding-top: 4px;
-  flex-shrink: 0;
-}
-
+/* 文字后展开箭头：紧跟概要文字，折叠 > 展开 ^；尺寸加大更明显 */
 .timeline-summary .op-chevron {
   flex-shrink: 0;
-  color: var(--sun-text-muted);
-  opacity: 0.5;
-  display: inline-block;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  color: var(--sun-text-secondary);
+  opacity: 0.85;
+  margin-left: 2px;
   transition: transform 0.15s ease;
   transform: rotate(0deg);
 }
@@ -702,7 +782,7 @@ const orphanContent = computed(() => {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: op-text-shimmer 2.6s linear infinite;
+  animation: op-text-shimmer 1.2s linear infinite;
   will-change: background-position;
 }
 
@@ -717,23 +797,14 @@ const orphanContent = computed(() => {
 }
 
 .op-line-hitl {
-  --op-gutter: 12px;
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
-  column-gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
-.op-line-hitl .op-gutter {
-  width: var(--op-gutter);
-  flex-shrink: 0;
-}
-
 .op-inline-content {
-  --op-gutter: 12px;
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
-  column-gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   /* 阶段正文：与 card 间距 8px；下方间距由下一行的 margin-top 承担，避免叠加 */
   margin: 8px 0 0;
@@ -743,11 +814,6 @@ const orphanContent = computed(() => {
   margin: 2px 0 8px 16px;
   padding-left: 8px;
   border-left: 1px solid var(--sun-border);
-}
-
-.op-inline-content .op-gutter {
-  width: var(--op-gutter);
-  flex-shrink: 0;
 }
 
 .op-inline-body {
@@ -763,8 +829,12 @@ const orphanContent = computed(() => {
   min-height: 1.5em;
 }
 
+/* 执行空档占位（复用 OperationCard 渲染，与「深度思考」行结构一致）：上侧边距与相邻卡片一致 */
+.op-pending-hint {
+  margin-top: 8px;
+}
+
 .op-line-hitl :deep(.collapsible-confirm) {
-  --confirm-inset-left: 0;
   margin-left: 0;
 }
 </style>

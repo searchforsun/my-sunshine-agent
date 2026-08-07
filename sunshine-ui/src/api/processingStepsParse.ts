@@ -368,5 +368,6 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
     metadata: parseMetadata(raw.metadata),
     subSteps: parseSubSteps(raw.subSteps),
     contentBlocks: parseContentBlocks(raw.contentBlocks),
+    stepSummary: typeof raw.stepSummary === 'string' && raw.stepSummary.trim() ? raw.stepSummary : undefined,
   }
 }

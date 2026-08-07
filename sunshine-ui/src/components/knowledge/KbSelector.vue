@@ -138,19 +138,19 @@ function onShowUpdate(next: boolean) {
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
   flex-shrink: 0;
   max-width: 140px;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .kb-trigger:hover:not(:disabled) {
-  border-color: var(--sun-border-light);
+  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
   color: var(--sun-text);
 }
 

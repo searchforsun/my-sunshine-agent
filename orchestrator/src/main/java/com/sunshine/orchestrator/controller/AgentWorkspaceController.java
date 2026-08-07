@@ -164,6 +164,21 @@ public class AgentWorkspaceController {
                 .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
+    /** git diff：无 path → 改动文件摘要（path/add/del/status）；有 path → 单文件结构化 diff 详情 */
+    @GetMapping("/{id}/git/diff")
+    public Mono<R<Object>> gitDiff(@PathVariable String id,
+                                   @RequestParam("checkoutId") String checkoutId,
+                                   @RequestParam(value = "path", required = false) String path,
+                                   @RequestHeader("x-user-id") String userId,
+                                   @RequestHeader("x-tenant-id") String tenantId) {
+        return Mono.fromCallable(() -> {
+            if (path != null && !path.isBlank()) {
+                return R.ok((Object) workspaceGitService.gitDiffDetail(id, checkoutId, userId, tenantId, path.strip()));
+            }
+            return R.ok((Object) workspaceGitService.gitDiffSummary(id, checkoutId, userId, tenantId));
+        }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+    }
+
     @PostMapping("/{id}/git/stage")
     public Mono<R<Void>> gitStage(@PathVariable String id,
                             @RequestParam("checkoutId") String checkoutId,
@@ -174,6 +189,40 @@ public class AgentWorkspaceController {
         List<String> files = body != null ? (List<String>) body.get("files") : null;
         boolean all = body != null && Boolean.TRUE.equals(body.get("all"));
         return Mono.fromRunnable(() -> workspaceGitService.gitStage(id, checkoutId, userId, tenantId, files, all))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .thenReturn(R.ok());
+    }
+
+    /** git revert：回退指定文件改动到 HEAD（未跟踪文件删除） */
+    @PostMapping("/{id}/git/revert")
+    public Mono<R<Void>> gitRevert(@PathVariable String id,
+                            @RequestParam("checkoutId") String checkoutId,
+                            @RequestHeader("x-user-id") String userId,
+                            @RequestHeader("x-tenant-id") String tenantId,
+                            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> files = body != null ? (List<String>) body.get("files") : null;
+        if (files == null || files.isEmpty()) {
+            throw new BizException(new FixedErrorCode(400, "revert_files_required", "回退文件不能为空"));
+        }
+        return Mono.fromRunnable(() -> workspaceGitService.gitRevert(id, checkoutId, userId, tenantId, files))
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .thenReturn(R.ok());
+    }
+
+    /** git unstage：撤回暂存（仅清暂存区，保留工作区改动） */
+    @PostMapping("/{id}/git/unstage")
+    public Mono<R<Void>> gitUnstage(@PathVariable String id,
+                            @RequestParam("checkoutId") String checkoutId,
+                            @RequestHeader("x-user-id") String userId,
+                            @RequestHeader("x-tenant-id") String tenantId,
+                            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> files = body != null ? (List<String>) body.get("files") : null;
+        if (files == null || files.isEmpty()) {
+            throw new BizException(new FixedErrorCode(400, "unstage_files_required", "撤回文件不能为空"));
+        }
+        return Mono.fromRunnable(() -> workspaceGitService.gitUnstage(id, checkoutId, userId, tenantId, files))
                 .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
                 .thenReturn(R.ok());
     }

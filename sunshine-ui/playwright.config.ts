@@ -8,8 +8,9 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // 真实后端测试依赖 LLM 链路，高并发会触发资源竞争导致偶发超时；本地限制 worker 数
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 1 : 2,
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:5173',

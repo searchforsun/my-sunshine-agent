@@ -61,7 +61,6 @@ const KEY_LABELS: Record<string, string> = {
   rag: '检索',
   node: '节点',
   agent: '智能体',
-  'expert-convene': '召集专家(已退役)',
   'read-after': '读取完成',
   'write-after': '写入完成',
   'edit-after': '编辑完成',

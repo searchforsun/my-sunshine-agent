@@ -110,31 +110,39 @@ function parseMessageContentBlocks(raw: unknown): ContentBlock[] | undefined {
   return parseContentBlocks(raw)
 }
 
+function parseMessage(m: Record<string, unknown>): ConversationMessage {
+  const msg: ConversationMessage = {
+    id: String(m.id),
+    role: m.role as 'user' | 'assistant',
+    content: String(m.content ?? ''),
+    reasoning: typeof m.reasoning === 'string' ? m.reasoning : undefined,
+    steps: parseSteps(m.steps),
+    contentBlocks: parseMessageContentBlocks(m.contentBlocks),
+    status: m.status as string | undefined,
+    intent: m.intent as string | undefined,
+    seq: m.seq as number | undefined,
+    createdAt: m.createdAt as string | undefined,
+    updatedAt: m.updatedAt as string | undefined,
+    executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
+    executionPreference: isExecutionPreference(m.executionPreference) ? m.executionPreference : undefined,
+  }
+  if (msg.role === 'assistant') {
+    sanitizePlanAssistantMessage(msg)
+    hydratePlanAnswerFromContent(msg)
+    normalizeRestoredInterleavedContent(msg as ChatMessage)
+  }
+  return msg
+}
+
 function mapDetail(raw: Record<string, unknown>): ConversationDetail {
-  const messages = (raw.messages as Record<string, unknown>[] | undefined ?? []).map(m => {
-    const msg: ConversationMessage = {
-      id: String(m.id),
-      role: m.role as 'user' | 'assistant',
-      content: String(m.content ?? ''),
-      reasoning: typeof m.reasoning === 'string' ? m.reasoning : undefined,
-      steps: parseSteps(m.steps),
-      contentBlocks: parseMessageContentBlocks(m.contentBlocks),
-      status: m.status as string | undefined,
-      intent: m.intent as string | undefined,
-      seq: m.seq as number | undefined,
-      createdAt: m.createdAt as string | undefined,
-      updatedAt: m.updatedAt as string | undefined,
-      executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
-      executionPreference: isExecutionPreference(m.executionPreference) ? m.executionPreference : undefined,
-    }
-    if (msg.role === 'assistant') {
-      sanitizePlanAssistantMessage(msg)
-      hydratePlanAnswerFromContent(msg)
-      normalizeRestoredInterleavedContent(msg as ChatMessage)
-    }
-    return msg
-  })
+  const messages = (raw.messages as Record<string, unknown>[] | undefined ?? []).map(parseMessage)
   return { ...mapSummary(raw), messages }
+}
+
+/** 游标分页结果：messages 升序，hasMore 指示更早历史仍存在 */
+export interface MessagePage {
+  messages: ConversationMessage[]
+  hasMore: boolean
 }
 
 function unwrapList(raw: unknown): Record<string, unknown>[] {
@@ -179,6 +187,41 @@ export async function getConversation(id: string): Promise<ConversationDetail> {
   }
   const res = await fetch(`${API_BASE()}/api/conversations/${id}`, { headers: apiHeaders() })
   return mapDetail(unwrapObject(await parseBffPayload(res)))
+}
+
+/**
+ * 会话消息游标分页：beforeSeq<=0 返回最近 limit 条；否则返回 seq<beforeSeq 的最近 limit 条。
+ * IM 标准：首屏加载最近消息，向上滚动按游标加载更早历史。
+ */
+export async function getConversationMessages(
+  id: string,
+  opts: { beforeSeq?: number; limit?: number },
+): Promise<MessagePage> {
+  if (!isValidConversationId(id)) {
+    throw new ApiError('数据加载失败，请刷新重试', { kind: 'unknown' })
+  }
+  const params = new URLSearchParams({
+    beforeSeq: String(opts.beforeSeq ?? 0),
+    limit: String(opts.limit ?? 30),
+  })
+  const res = await fetch(`${API_BASE()}/api/conversations/${id}/messages?${params}`, {
+    headers: apiHeaders(),
+  })
+  const raw = unwrapObject(await parseBffPayload(res))
+  return {
+    messages: (raw.messages as Record<string, unknown>[] | undefined ?? []).map(parseMessage),
+    hasMore: raw.hasMore === true,
+  }
+}
+
+/** 分支切换后更新 task 会话绑定的 checkout 目录（本地 + 后端持久化） */
+export async function updateConversationCheckout(id: string, checkoutPath: string): Promise<void> {
+  const res = await fetch(`${API_BASE()}/api/conversations/${id}/checkout`, {
+    method: 'PATCH',
+    headers: apiHeaders(),
+    body: JSON.stringify({ checkoutPath }),
+  })
+  await parseBffPayload(res, { allowEmptyData: true })
 }
 
 export async function deleteConversation(id: string): Promise<void> {

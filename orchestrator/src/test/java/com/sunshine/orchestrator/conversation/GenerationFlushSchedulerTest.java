@@ -35,6 +35,7 @@ class GenerationFlushSchedulerTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null
         );
 

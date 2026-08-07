@@ -55,10 +55,7 @@ export function bumpAssistantMessage(session: SessionState): void {
   session.streamRevision++
   session.messages = [
     ...session.messages.slice(0, idx),
-    {
-      ...last,
-      pendingHitlConfirmation: undefined,
-    },
+    { ...last },
   ]
 }
 

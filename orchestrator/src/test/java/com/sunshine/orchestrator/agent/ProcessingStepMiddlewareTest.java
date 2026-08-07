@@ -15,9 +15,16 @@ import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.middleware.ActingInput;
+import io.agentscope.core.middleware.ModelCallInput;
 import io.agentscope.core.middleware.ReasoningInput;
+import io.agentscope.core.message.AssistantMessage;
+import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.ToolResultMessage;
 import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.message.ToolUseBlock;
+import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.Model;
+import io.agentscope.core.model.ToolSchema;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
@@ -326,5 +333,85 @@ class ProcessingStepMiddlewareTest {
 
         // sandbox__exec 不加写锁（避免长任务阻塞会话）-> 与读工具并行 = 单批
         assertThat(nextCallCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    void onModelCallRepairsOrphanToolCalls() {
+        StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
+
+        // 历史：assistant 声明了 tool_calls，但后面没有 tool 响应（流中断残留）
+        ToolUseBlock orphan = ToolUseBlock.builder()
+                .id("call-orphan")
+                .name("sandbox__write")
+                .input(Map.of("path", "/x", "content", "y"))
+                .build();
+        AssistantMessage broken = AssistantMessage.builder()
+                .content(List.of(orphan))
+                .build();
+        List<Msg> history = List.of(
+                Msg.builder().role(io.agentscope.core.message.MsgRole.USER)
+                        .textContent("user q").build(),
+                broken);
+
+        AtomicInteger calledWithTool = new AtomicInteger(0);
+        AtomicInteger calledWithoutTool = new AtomicInteger(0);
+        Function<ModelCallInput, Flux<AgentEvent>> next = in -> {
+            calledWithTool.incrementAndGet();
+            List<Msg> msgs = in.messages();
+            assertThat(msgs.get(msgs.size() - 1).getRole())
+                    .isEqualTo(io.agentscope.core.message.MsgRole.TOOL);
+            return Flux.empty();
+        };
+
+        Model model = mock(Model.class);
+        ProcessingStepMiddleware mw = newMiddleware();
+        mw.onModelCall(mock(Agent.class), ctxWithBridge(),
+                new ModelCallInput(history, List.of(mock(ToolSchema.class)), GenerateOptions.builder().build(), model),
+                next).blockLast();
+
+        assertThat(calledWithTool.get()).isEqualTo(1);
+        assertThat(calledWithoutTool.get()).isZero();
+    }
+
+    @Test
+    void onModelCallKeepsValidHistoryUntouched() {
+        StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
+
+        // 已有 tool 响应：assistant tool_calls 后有匹配的 tool 响应，不补消息
+        ToolUseBlock call = ToolUseBlock.builder()
+                .id("call-ok")
+                .name("sandbox__read")
+                .input(Map.of())
+                .build();
+        ToolResultMessage result = new ToolResultMessage("call-ok", "sandbox__read", "done");
+        List<Msg> history = List.of(
+                Msg.builder().role(io.agentscope.core.message.MsgRole.USER)
+                        .textContent("user q").build(),
+                AssistantMessage.builder().content(List.of(call)).build(),
+                result);
+
+        AtomicInteger msgCount = new AtomicInteger(0);
+        Function<ModelCallInput, Flux<AgentEvent>> next = in -> {
+            msgCount.set(in.messages().size());
+            return Flux.empty();
+        };
+
+        Model model = mock(Model.class);
+        ProcessingStepMiddleware mw = newMiddleware();
+        mw.onModelCall(mock(Agent.class), ctxWithBridge(),
+                new ModelCallInput(history, List.of(mock(ToolSchema.class)), GenerateOptions.builder().build(), model),
+                next).blockLast();
+
+        assertThat(msgCount.get()).isEqualTo(history.size());
+    }
+
+    @Test
+    void softLimitMargin_scalesWithMaxIters() {
+        // 收束缓冲 = maxIters 的 20%（/5），上限 10：50→10、100→10、30→6
+        assertThat(ProcessingStepMiddleware.resolveSoftLimitMargin(50)).isEqualTo(10);
+        assertThat(ProcessingStepMiddleware.resolveSoftLimitMargin(100)).isEqualTo(10);
+        assertThat(ProcessingStepMiddleware.resolveSoftLimitMargin(30)).isEqualTo(6);
+        assertThat(ProcessingStepMiddleware.resolveSoftLimitMargin(8)).isEqualTo(1);
+        assertThat(ProcessingStepMiddleware.resolveSoftLimitMargin(0)).isZero();
     }
 }

@@ -3,6 +3,8 @@ package com.sunshine.orchestrator.conversation;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.audit.AuditService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
+import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
+import com.sunshine.orchestrator.conversation.dto.MessagePageDto;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -87,6 +90,32 @@ public class ConversationService {
         return messageRepo.findByConversationIdOrderBySeqAsc(conversationId);
     }
 
+    /**
+     * 会话消息游标分页：beforeSeq<=0 时取最近 limit 条（IM 首屏），否则取 seq<beforeSeq 的最近 limit 条。
+     * 返回升序，hasMore 表示更早历史仍存在。
+     */
+    @Transactional
+    public MessagePageDto getMessagesPage(String conversationId, String userId, String tenantId,
+            int beforeSeq, int limit) {
+        getOwned(conversationId, userId, tenantId);
+        int pageSize = Math.max(1, Math.min(limit <= 0 ? 30 : limit, 100));
+        List<ChatMessageEntity> rows = beforeSeq > 0
+                ? messageRepo.findPageBeforeSeqDesc(conversationId, beforeSeq, pageSize)
+                : messageRepo.findRecentByConversationIdDesc(conversationId, pageSize);
+        for (ChatMessageEntity msg : rows) {
+            messagePersistenceReconciler.reconcileStreamingAssistant(msg);
+        }
+        rows.sort(Comparator.comparingInt(ChatMessageEntity::getSeq));
+        int oldestSeq = rows.stream()
+                .mapToInt(ChatMessageEntity::getSeq)
+                .min().orElse(beforeSeq > 0 ? beforeSeq : 0);
+        boolean hasMore = messageRepo.countByConversationIdAndSeqLessThan(conversationId, oldestSeq) > 0;
+        return MessagePageDto.builder()
+                .messages(rows.stream().map(ConversationDetailDto.MessageDto::from).toList())
+                .hasMore(hasMore)
+                .build();
+    }
+
     private static final String DEFAULT_TITLE = "新对话";
     private static final int AUTO_TITLE_MAX_LEN = 28;
 
@@ -94,6 +123,15 @@ public class ConversationService {
     public ChatConversationEntity updateTitle(String id, String userId, String tenantId, String title) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
         conv.setTitle(title);
+        conv.setUpdatedAt(Instant.now());
+        return conversationRepo.save(conv);
+    }
+
+    /** 切换分支后重绑定会话工作区 checkout 目录（task 会话 checkoutPath 随发送时的分支切换更新） */
+    @Transactional
+    public ChatConversationEntity updateCheckoutPath(String id, String userId, String tenantId, String checkoutPath) {
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        conv.setCheckoutPath(checkoutPath);
         conv.setUpdatedAt(Instant.now());
         return conversationRepo.save(conv);
     }

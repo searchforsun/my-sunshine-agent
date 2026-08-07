@@ -226,7 +226,7 @@ public final class ThinkStepMapper {
                 stepId, TimelineStepId.THINK.phase(), "running", summary,
                 ts, null, null, null,
                 null, null, null,
-                ts, label, null, null, null);
+                ts, label, null, null, null, null);
     }
 
     private ProcessingStep completeThinkStep(String stepId) {
@@ -246,7 +246,8 @@ public final class ThinkStepMapper {
                 null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
-                ts, label, null, null, null);
+                ts, label, null, null, null,
+                prev != null ? prev.stepSummary() : null);
     }
 
     private ProcessingStep runningGenerateStep() {
@@ -260,7 +261,7 @@ public final class ThinkStepMapper {
                 TimelineStepId.GENERATE.id(), TimelineStepId.GENERATE.id(), "running", summary,
                 ts, null, null, null,
                 null, null, null,
-                ts, label, null, null, null);
+                ts, label, null, null, null, null);
     }
 
     private ProcessingStep completeGenerateStep() {
@@ -279,7 +280,7 @@ public final class ThinkStepMapper {
                 prev != null ? prev.reasoning() : null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
-                ts, label, null, null, null);
+                ts, label, null, null, null, null);
     }
 
     private void trackExistingStep(ProcessingStep step) {

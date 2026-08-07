@@ -2,6 +2,7 @@
 
 > **状态**：设计稿（已评审 v3 — 2026-07-30）
 > **日期**：2026-07-29（初稿）· 2026-07-30（v2 修订：全部 agent 为子 Agent）· 2026-07-30（v3 修订：深层语义兜底替代 L3 跳过/GUIDED）
+> **v5 注记（2026-08-05 · harness 简化决议对齐）**：路由层设计**保持不变**——`scene`（chat/task）用户显式选择保留为产品设计（[rebuild spec §0.1「保留不变」](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05)）；`planMode` 仍为 `none|harness`，`planMode=harness` 分发到 `PlannerHarnessExecutor` 的语义不变。简化决议 S1-S7 全部落在 harness 内部（executor/loop/持久化），路由层无字段增减。唯一影响：目标 executor 内部执行体按两态分解（S5），INCREMENTAL 场景不再产生 harness 路由（L3 判定不足时走 none 安全网）。
 > **编号**：阶段四增量（路由层重构：ExecutionMode → ResourceType）
 > **前置**：[multi-agent-unified-design](./2026-07-29-multi-agent-unified-design.md)（agent_definition 扩展 + scene 字段）· [workflow-structured-io](./2026-07-24-workflow-structured-io-design.md)（workflow 结构化 I/O 完成后 AgentNodeHandler 契约稳定）
 > **一句话**：删除 `ExecutionMode` 路由体系，改为 Pre-Routing + L0-L2 快速路径 + L3 语义兜底（L2 有候选→快速分类 / L2 空→全量 L1 上下文+完整 Catalog 深层召回）。所有命中的 agent 一律为子 Agent。L3 输出 `planMode`（none→ReAct / harness→Planner-Worker Loop），`scene` 来自用户选择作为 L3 输入参数。Pre-Routing 处理 HITL/Plan/续跑等系统等待态复用。
@@ -209,7 +210,9 @@ public record RoutingContext(
 }
 ```
 
-> **v4 注记（scene 命名隔离）**：本 spec 的 `scene` = **用户选择场景**（chat/task，贯穿路由与上下文组装）。llm-gateway 侧另有 **`call_scene`** = **LLM 调用点**（plan/worker/evaluator/rewrite 等，用于 5.3 模型路由，见 [phase5 §5.3](./phase5-operation-openness-design.md)）。**两个字段语义不同、禁止合并**——harness 场景下 orchestrator 需同时传「用户 scene=task」与「调用点 call_scene=plan/worker」，同名字段会冲突。协议上：`scene` 进路由/上下文，`call_scene` 只进 `ChatCompletionRequest` 扩展字段，BFF/Gateway 均只透传不自填。
+> **v4 注记（scene 命名隔离）**：本 spec 的 `scene` = **用户选择场景**（chat/task，贯穿路由与上下文组装）。llm-gateway 侧另有 **`call_scene`** = **LLM 调用点**（plan/plan-phase/worker/rewrite 等，用于 5.3 模型路由，见 [phase5 §5.3](./phase5-operation-openness-design.md)）。**两个字段语义不同、禁止合并**——harness 场景下 orchestrator 需同时传「用户 scene=task」与「调用点 call_scene=plan/worker」，同名字段会冲突。协议上：`scene` 进路由/上下文，`call_scene` 只进 `ChatCompletionRequest` 扩展字段，BFF/Gateway 均只透传不自填。
+>
+> **v5 注记（S1 删除 evaluator 调用点）**：v8 详设曾定义 `call_scene=evaluator`；[简化决议 S1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator 后该调用点**不存在**。当前 harness 调用点集合：`plan`（全局粗规划）、`plan-phase`（阶段细拆）、`worker`（工具调用）、`self-assess`（自判决策，Chat/Task 统一）。
 
 #### RoutingOutcome（策略层返回信号）
 
@@ -1195,7 +1198,7 @@ AgentRunRequest main = AgentRunRequest.main(
 ### 阶段 R-4：DB 迁移 + 前端
 
 - `chat_message` / `chat_conversation` 字段迁移
-- 前端删除 `ExecutionModeSelector`，增加 GUIDED 交互
+- 前端删除 `ExecutionModeSelector`；无 GUIDED 交互（v3 已移除兜底，见 §9）
 - Golden set 重写
 - **出口**：Live 验收
 

@@ -75,7 +75,7 @@
 > **v2 注记（harness 计量粒度）**：harness 一条 assistant message 内部是多轮 Planner-Worker（含 Worker handoff），`plan_id` 语义是 Plan-Workflow 的 plan，**不是** Planner-Harness 的 run。一个点踩无法定位「哪一轮的哪个 Worker 出问题」。为此：
 >
 > 1. `chat_message_feedback` 增加 `run_id`（harness run 标识，普通 ReAct 为空）+ `round_id`（run 内轮次，Planner-Worker round 序号；普通对话为空）。
-> 2. **Evaluator 结果落库**：Chat 模式 `TaskEvaluator`/`GoalEvaluator` 的 task PASS/FAIL 结果写入 `harness_eval_result`（`run_id` + task + PASS/FAIL + reason，随 feedback 表同库），供 5.1.6 按 run 聚合 task 级成功率——这是 harness 效果可视化的唯一来源。
+> 2. **自判结果落库**：harness 采用 Planner 自判（[简化决议 S1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator）——Planner `selfAssess` 的 task 结果（PASS/FAIL + reason）写入 `harness_eval_result`（`run_id` + task + PASS/FAIL + reason，随 feedback 表同库），供 5.1.6 按 run 聚合 task 级成功率——这是 harness 效果可视化的唯一来源。字段语义保留，数据来源由 Evaluator 变为 Planner 自判。
 >
 > 字段在 phase5 阶段即定死，harness 落地时直接写入，避免事后 ALTER。
 
@@ -103,8 +103,8 @@
 
 | 子任务 | 内容 |
 |--------|------|
-| **5.3.1** | `model_route_policy` 表（`19-sunshine-ops.sql`）：`call_scene`（chat\|plan\|plan-phase\|worker\|tool-call\|evaluator\|rewrite\|summarize\|subagent）→ 模型池（按优先级 + 权重）+ 约束（max_cost_per_1k、max_latency_ms）。**v2：命名用 `call_scene`，与用户场景 `scene` 隔离**（见 §5.3.2 注记）；枚举**扩展 `worker`/`evaluator`**（harness 分层模型，见下）；**v8：扩展 `plan-phase`**（HIERARCHICAL 阶段细拆，见 §5.3.2 注记） |
-| **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 **`call_scene`** 扩展字段（来源：ExecutionDispatcher 模式 + 调用点，如 QueryRewriteService=rewrite、Planner=plan、阶段细拆=plan-phase、Worker=worker、Evaluator=evaluator）；BFF/Gateway 透传，客户端不得自填（同 `x-user-id` 约定） |
+| **5.3.1** | `model_route_policy` 表（`19-sunshine-ops.sql`）：`call_scene`（chat\|plan\|plan-phase\|worker\|tool-call\|rewrite\|summarize\|subagent）→ 模型池（按优先级 + 权重）+ 约束（max_cost_per_1k、max_latency_ms）。**v2：命名用 `call_scene`，与用户场景 `scene` 隔离**（见 §5.3.2 注记）；枚举**扩展 `worker`**（harness 分层模型，见下）；**v8：扩展 `plan-phase`**（HIERARCHICAL 阶段细拆，见 §5.3.2 注记）；**v9（S1）：删除 `evaluator` 枚举**——独立 Evaluator 不实现，自判走 `call_scene=plan` |
+| **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 **`call_scene`** 扩展字段（来源：ExecutionDispatcher 模式 + 调用点，如 QueryRewriteService=rewrite、Planner=plan、阶段细拆=plan-phase、Worker=worker、**Planner 自判=plan**）；BFF/Gateway 透传，客户端不得自填（同 `x-user-id` 约定） |
 | **5.3.3** | `ModelRouter` 扩展：`model=auto` 或缺省时查策略表选模型，选中结果写 trace 头便于观测；保留显式指定 model 直路由 + 现有降级链 |
 | **5.3.4** | `/tools` 或 `/ops` 增加路由策略编辑页（复用 `execution_mode_policy` 编辑模式） |
 | **5.3.5** | Grafana 面板：`call_scene` × model 的调用量/时延/成本（接 5.2 数据） |
@@ -112,6 +112,8 @@
 > **v2 注记（scene 命名隔离）**：路由链已有 `RoutingResult.scene`（用户选择 chat/task，见 [unified-routing](./2026-07-29-unified-routing-design.md)），与 llm-gateway 的调用点语义**互不冲突但不可同名**。本 spec 明确：`scene` = 用户场景（用户选择，贯穿链路），`call_scene` = LLM 调用点（orchestrator 注入，用于模型路由）。**禁止**复用 `scene` 字段承载调用点，避免 harness 上线后（需同时传 task + worker 两个维度）字段冲突。
 >
 > **v2 注记（harness 模型分层）**：harness 有 4 类 LLM 调用——Planner（=plan，强模型）、Worker（**forWorker 内部多次 LLM 调用**，中等快模型）、Evaluator（Chat 模式独立 LLM，快模型）、普通 tool-call。5.3.1 枚举扩展 `worker`/`evaluator` 后，策略表可配置「Planner → 强模型、Worker → 快模型」，实现 harness 的模型成本分层；否则 Worker 只能沿用 `plan` 场景，无法按成本分流。
+>
+> **v9 注记（S1/S5 修正 harness 模型分层）**：[简化决议 S1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator——调用点收敛为 **Planner（=plan，强模型）、Worker（=worker，快模型）、阶段细拆（=plan-phase，快模型）、Planner 自判（=plan，与规划同调用点）**。策略表配置「Planner → 强模型、Worker/plan-phase → 快模型」即可覆盖 harness 全部调用；`evaluator` 枚举不建。
 >
 > **v8 注记（HIERARCHICAL 模型分层）**：分层增量规划（[planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md)）下，全局粗规划 `call_scene=plan`（强模型，1 次/任务，保质量）与阶段细拆 `call_scene=plan-phase`（轻量模型，N 次/任务，控成本）分离。策略表可配置 `plan → 强模型 / plan-phase → 快模型`；同一 `HarnessPlanner` 组件，仅调用点分层，不新增角色。
 
@@ -233,7 +235,7 @@
 | 变更 | 位置 |
 |------|------|
 | `chat_message_feedback`（含 `run_id`/`round_id` v2） | `docker/mysql/init/11-sunshine-orchestrator.sql` 追加 |
-| `harness_eval_result`（v2：Evaluator task PASS/FAIL 落库） | `docker/mysql/init/11-sunshine-orchestrator.sql` 追加 |
+| `harness_eval_result`（v2：task PASS/FAIL 落库；**v9 S1：数据源改为 Planner 自判**） | `docker/mysql/init/11-sunshine-orchestrator.sql` 追加 |
 | `19-sunshine-ops.sql`（新建）：`llm_usage_record`（含 `call_scene`/`run_id`/`round_id` v2）/ `llm_usage_daily` / `tenant_quota` / `model_route_policy`（`call_scene` 主键）/ `api_key` / `optimization_proposal` | `docker/mysql/init/`（一项目一文件，禁 Flyway） |
 | 前端新页 `/ops`（Badcase/用量/密钥/优化 Tab）+ 路由策略编辑 | `sunshine-ui/src/views/OpsView.vue`（Codex 简约风格，`--sun-*` 变量） |
 | llm-gateway | `TokenUsageCollector`、MQ 生产者、配额切面、`ModelRouter` 场景路由（`call_scene`） |
@@ -253,7 +255,7 @@
 | 5.4 自动优化引入回归 | MVP 强制人工确认发布；提案必须附复评对比报告 |
 | 开放 API 鉴权攻击面扩大 | key 哈希存储、scope 最小化、Sentinel 按 key 限流、全量审计 |
 | `call_scene` 与用户 `scene` 混用（v2） | 命名隔离（§5.3.2 注记）；BFF/Gateway 只透传不自填 |
-| harness 计量粒度不足导致点踩无法归因（v2） | feedback/usage 预置 `run_id`+`round_id` + Evaluator 结果落库（§5.1 注记） |
+| harness 计量粒度不足导致点踩无法归因（v2） | feedback/usage 预置 `run_id`+`round_id` + 自判结果落库（§5.1 注记；**v9 S1 数据源为 Planner 自判**） |
 
 ---
 
@@ -266,6 +268,6 @@
 - **D5（AS2 遗留先行）**：启动 5.x 前需先人工验收 AS2 迁移遗留项（e2e 3 例选择器漂移修复、ReAct 停→续跑 / kill-15 重启恢复交互式验收）。
 - **D6（scene / call_scene 命名隔离，v2）**：`scene` 保留用户场景语义（unified-routing `RoutingResult.scene`）；llm-gateway 模型路由用 **`call_scene`**（调用点）。避免 harness 上线后同名字段承载两义。
 - **D7（5.5 工具分层注入，v2）**：工具名列表进 Tier 0 静态 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 二选一不并存。对齐五层 spec §5.5.3 前缀稳定性。
-- **D8（harness 计量维度，v2）**：feedback/usage 预置 `run_id`+`round_id`，Evaluator 结果落 `harness_eval_result`；phase5 阶段定死字段，harness 直接写入。
+- **D8（harness 计量维度，v2）**：feedback/usage 预置 `run_id`+`round_id`，task 评估结果落 `harness_eval_result`（**v9 S1：数据源为 Planner 自判，字段语义不变**）；phase5 阶段定死字段，harness 直接写入。
 - **D9（phase5 触发拆分，v2）**：5.2/5.3/5.5 随 harness 前置启动，5.1/5.4/5.7 等 harness 稳定后接，5.6 按需。
 - **D10（`plan-phase` 调用点，v8）**：HIERARCHICAL 阶段细拆新增 `call_scene=plan-phase`（轻量模型），与全局粗规划 `plan`（强模型）分层；同一 `HarnessPlanner` 组件不新增角色，仅调用点区分（对齐 [planner-harness §0.2](./2026-07-31-planner-harness-loop-design.md)）。

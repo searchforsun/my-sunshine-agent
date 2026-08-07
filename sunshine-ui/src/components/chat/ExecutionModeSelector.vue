@@ -121,8 +121,8 @@ function onShowUpdate(next: boolean) {
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
@@ -136,6 +136,7 @@ function onShowUpdate(next: boolean) {
   width: 100%;
   height: 36px;
   padding: 0 12px;
+  border: 1px solid var(--sun-border);
   border-radius: var(--radius-md, 10px);
   justify-content: space-between;
   background: var(--n-color, #fff);
@@ -144,7 +145,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .mode-selector:hover:not(:disabled) {
-  border-color: var(--sun-border-light, #ccc);
+  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
   color: var(--sun-text, #212121);
 }
 

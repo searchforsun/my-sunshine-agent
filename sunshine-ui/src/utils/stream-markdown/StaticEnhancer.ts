@@ -49,6 +49,9 @@ export function enhanceStaticMarkdown(
   }
 
   renderPendingStaticMermaids(container)
+  // 流式中的容器不做路径增强：v-html 每 chunk 重建 DOM，若每次重建后重新加高亮会闪烁；
+  // 流式结束（无 .streaming）后由 enhanceAllStaticMarkdown / StaticMarkdown watch 统一增强。
+  if (isStreamingContainer(container)) return
   // 路径增强采用视口内懒加载：可见容器立即增强，不可见容器由 observer 滚动时触发
   const rect = container.getBoundingClientRect()
   if (rect.bottom > -200 && rect.top < window.innerHeight + 200) {
@@ -58,6 +61,11 @@ export function enhanceStaticMarkdown(
   } else {
     ensureSandboxPathObserver(basePath)
   }
+}
+
+/** 容器自身或祖先处于流式输出（.streaming）时返回 true */
+function isStreamingContainer(el: HTMLElement): boolean {
+  return el.classList.contains('streaming') || !!el.closest('.streaming')
 }
 
 function enhanceCodeBlock(pre: HTMLElement, lang: string, _raw: string): void {

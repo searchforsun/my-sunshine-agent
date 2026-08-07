@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { NIcon, NButton } from 'naive-ui'
-import { RefreshOutline, WarningOutline } from '@vicons/ionicons5'
+import { RefreshOutline, WarningOutline, GitCompareOutline, DocumentTextOutline } from '@vicons/ionicons5'
 import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
 import { sandboxWorkspaceRefresh, sandboxPathIndexRefresh } from '../../composables/sandboxWorkspaceRefresh'
 import { useWriteHitlMode } from '../../composables/useWriteHitlMode'
 import { useSandboxFileTree } from '../../composables/useSandboxFileTree'
-import { useSandboxPreviewTabs } from '../../composables/useSandboxPreviewTabs'
+import { useSandboxPreviewTabs, stripWorkspaceRootPath } from '../../composables/useSandboxPreviewTabs'
 import { syncWorkspace } from '../../api/workspaces'
 import WriteHitlModeSelector from './WriteHitlModeSelector.vue'
 import DrawerCollapseIcon from '../icons/DrawerCollapseIcon.vue'
 import SandboxFileTreePane from './SandboxFileTreePane.vue'
 import SandboxPreviewPane from './SandboxPreviewPane.vue'
+import SandboxDiffPanel from './SandboxDiffPanel.vue'
 
 const props = defineProps<{
   workspaceId?: string | null
@@ -24,6 +25,8 @@ const props = defineProps<{
 const {
   state,
   close,
+  switchTab,
+  openFileFromDiff,
   drawerWidth,
   canResizeDrawer,
   treeWidth,
@@ -31,6 +34,8 @@ const {
   onResizePointerDown,
   onTreeResizePointerDown,
 } = useSandboxWorkspaceDrawer()
+
+const diffPanelRef = ref<{ refresh: () => void } | null>(null)
 
 const { mode: writeHitlMode } = useWriteHitlMode(() => state.conversationId)
 
@@ -89,11 +94,21 @@ const {
 } = useSandboxPreviewTabs({
   getConversationId: () => state.conversationId,
   getWorkspaceId: () => props.workspaceId ?? null,
+  getWorkspaceRootPath: () => (props.checkoutId ? `/workspace/${props.checkoutId}` : null),
   selectedKeys,
 })
 openFile = previewOpenFile
 
+/** 显示路径转换：工作区模式去掉 /workspace/{checkoutId} 前缀 */
+function displayPath(path: string): string {
+  return stripWorkspaceRootPath(path, props.checkoutId ? `/workspace/${props.checkoutId}` : null)
+}
+
 async function refresh() {
+  if (diffMode.value) {
+    diffPanelRef.value?.refresh()
+    return
+  }
   // 重建文件树（不主动触发 git 操作）
   const keepTabs = openTabs.value.map((t) => t.path)
   const keepActive = selectedPath.value
@@ -148,6 +163,22 @@ watch(() => props.checkoutId, () => {
 
 /** 是否任务工作区（带 workspaceId）；chat 沙箱不显示 git 相关提示 */
 const isTaskWorkspace = computed(() => !!props.workspaceId)
+
+/** 当前处于「改动」diff 视图（消息卡片点击 / 头部 tab 进入） */
+const diffMode = computed(() => state.tab === 'diff')
+
+/** 改动视图展示条件：v-show 保持组件挂载实现懒加载（切换 tab 不销毁、不重复加载） */
+const showDiffView = computed(() =>
+  diffMode.value && isTaskWorkspace.value && !!props.workspaceId && !!props.checkoutId,
+)
+
+/** 改动视图点击文件名 -> 跳转文件区定位该文件（git 相对路径需拼 checkout 根） */
+function openFileFromDiffTab(path: string) {
+  const cid = props.checkoutId
+  if (!cid || !path) return
+  const full = path.startsWith('/') ? path : `/workspace/${cid}/${path}`
+  openFileFromDiff(full)
+}
 
 /** 文件树根是否有子节点（工作区模式根 = 项目 checkout 目录；无子节点可能表示 clone 失败） */
 const workspaceEmpty = computed(() => {
@@ -227,6 +258,8 @@ watch(
   () => {
     if (!state.open || !state.conversationId) return
     if (sandboxWorkspaceRefresh.conversationId !== state.conversationId) return
+    // 工具终态等信号：文件树与 diff 摘要均按需刷新（diff 面板仅已加载过才重拉，未进入过保持懒加载）
+    diffPanelRef.value?.refresh()
     void refreshBranch(sandboxWorkspaceRefresh.scope)
   },
 )
@@ -250,8 +283,39 @@ watch(
     />
     <header class="drawer-header">
       <div class="drawer-head-top">
-        <h3 class="drawer-title">工作区</h3>
-        <span class="readonly-badge">只读</span>
+        <!-- 任务工作区：标题换图标 + 文件/改动 tab 切换；chat 沙箱保持原样 -->
+        <template v-if="isTaskWorkspace">
+          <div class="drawer-tabs" role="tablist" aria-label="工作区视图">
+            <button
+              type="button"
+              class="drawer-tab"
+              :class="{ active: state.tab === 'files' }"
+              role="tab"
+              :aria-selected="state.tab === 'files'"
+              title="文件浏览"
+              @click="switchTab('files')"
+            >
+              <NIcon :component="DocumentTextOutline" :size="13" class="drawer-tab-icon" />
+              <span class="drawer-tab-label">文件</span>
+            </button>
+            <button
+              type="button"
+              class="drawer-tab"
+              :class="{ active: state.tab === 'diff' }"
+              role="tab"
+              :aria-selected="state.tab === 'diff'"
+              :disabled="!props.checkoutId"
+              :title="props.checkoutId ? '查看改动' : '请先发送消息以拉取代码'"
+              @click="switchTab('diff')"
+            >
+              <NIcon :component="GitCompareOutline" :size="13" class="drawer-tab-icon" />
+              <span class="drawer-tab-label">改动</span>
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <h3 class="drawer-title">工作区</h3>
+        </template>
         <div class="drawer-head-actions">
           <slot name="head-actions-pre" />
           <WriteHitlModeSelector v-model="writeHitlMode" />
@@ -282,7 +346,17 @@ watch(
       选择分支并发送消息后拉取代码到工作区
     </div>
 
-    <div class="explorer">
+    <!-- 改动 diff 视图（仅任务工作区；v-show 常驻挂载实现懒加载，切换 tab 不重新拉取） -->
+    <SandboxDiffPanel
+      v-show="showDiffView"
+      ref="diffPanelRef"
+      :workspace-id="props.workspaceId!"
+      :checkout-id="props.checkoutId!"
+      :initial-path="state.diffPath || undefined"
+      @open-file="openFileFromDiffTab"
+    />
+
+    <div v-show="!showDiffView" class="explorer">
       <SandboxFileTreePane
         :tree-width="treeWidth"
         :can-resize-tree="canResizeTree"
@@ -292,6 +366,7 @@ watch(
         :expanded-keys="expandedKeys"
         :selected-keys="selectedKeys"
         :on-tree-load="onLoad"
+        :display-path="displayPath"
         @tree-resize-pointer-down="onTreeResizePointerDown"
         @dragstart="onTreeDragStart"
         @update:expanded-keys="onUpdateExpanded"
@@ -313,6 +388,7 @@ watch(
         :preview-lang-class="previewLangClass"
         :preview-code-html="previewCodeHtml"
         :focus-line="focusLine"
+        :display-path="displayPath"
         @activate-tab="activateTab"
         @close-tab="closeTab"
         @toggle-md-raw-mode="toggleMdRawMode"
@@ -363,7 +439,7 @@ watch(
 
 .drawer-header {
   flex-shrink: 0;
-  padding: 10px 12px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--sun-border);
 }
 
@@ -379,16 +455,6 @@ watch(
   font-size: var(--sun-font-base);
   font-weight: 550;
   color: var(--sun-text);
-}
-
-.readonly-badge {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--sun-text-muted);
-  border: 1px solid var(--sun-border);
-  padding: 1px 6px;
-  border-radius: 3px;
 }
 
 .ws-retry-banner {
@@ -438,6 +504,68 @@ watch(
   padding: 2px 4px;
   display: inline-flex;
   align-items: center;
+}
+
+.drawer-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  /* 允许随抽屉变窄收缩，但文字保持常显 */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.drawer-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: var(--sun-font-sm, 12px);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.drawer-tab-icon {
+  flex-shrink: 0;
+}
+
+/* 分支名 / 写操作模式按钮文字保持常显；分支名的收缩由 ChatView 依据 slot compact 切换文字内容 */
+.drawer-tab-label {
+  white-space: nowrap;
+}
+
+.drawer-tab:hover {
+  color: var(--sun-text);
+}
+
+.drawer-tab.active {
+  background: color-mix(in srgb, var(--sun-text) 8%, transparent);
+  color: var(--sun-text-secondary);
+}
+
+.drawer-tab.active .drawer-tab-label {
+  font-weight: 600;
+}
+
+.drawer-tab.active .drawer-tab-icon :deep(svg) {
+  stroke-width: 2.2;
+}
+
+.drawer-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .icon-btn:hover {

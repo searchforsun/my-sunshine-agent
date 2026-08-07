@@ -6,6 +6,7 @@
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
 import { formatStepLabel } from './processingStepsDisplay'
+import { isThinkStepId } from './processingStepsNormalize'
 
 function mergeStreamChunk(existing: string, chunk: string): string {
   const maxOverlap = Math.min(existing.length, chunk.length, 64)
@@ -188,15 +189,39 @@ export function resolvePlanAnswerText(
   return msg.content?.trim() ?? ''
 }
 
-/** 折叠时间线：只留最后一段正文块，不拼中间穿插段、不用整段 message.content */
+/** 折叠时间线：ReAct 展示最后一个 think 步骤之后的所有正文段（含紧邻分段），
+ * 多轮会话折叠时不再只露最后一段终稿，中间穿插分析一并展示；
+ * Plan 走 answer SSOT；无 think 或 think 后无正文时退化为仅最后一段 */
 export function resolveCollapsedAnswerText(
   msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
 ): string {
   if (msg.steps?.some(s => s.phase === 'plan')) {
     return resolvePlanAnswerText(msg).trim()
   }
+  const steps = msg.steps ?? []
   const blocks = msg.contentBlocks
   if (blocks?.length) {
+    let lastThinkIdx = -1
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (isThinkStepId(steps[i].id)) {
+        lastThinkIdx = i
+        break
+      }
+    }
+    if (lastThinkIdx >= 0) {
+      const visibleIds = new Set(steps.map(s => s.id))
+      const chunks: string[] = []
+      for (const block of blocks) {
+        const text = block.text?.trim()
+        if (!text) continue
+        const anchor = resolveVisibleContentAnchor(block.afterStepId, steps, visibleIds)
+        if (!anchor) continue
+        const anchorIdx = steps.findIndex(s => s.id === anchor)
+        if (anchorIdx < lastThinkIdx) continue
+        chunks.push(block.text)
+      }
+      if (chunks.length) return chunks.join('\n\n').trim()
+    }
     for (let i = blocks.length - 1; i >= 0; i--) {
       const last = blocks[i]?.text?.trim() ?? ''
       if (last) return last
@@ -485,6 +510,50 @@ export function hydratePlanAnswerFromContent(
   }
   syncPlanAnswerContentFromStep(msg)
   stripPlanDrawerLeakFromMessage(msg)
+}
+
+/** ReAct 步完成后的执行空档提示：最后可见步已终态（think/tool/tasks 等）、其后方无正文/新步骤跟进时展示。
+ * 覆盖模型长时间生成 tool 参数（如写大文件）或下一次推理的空档，防止用户误以为卡死；
+ * 运行中步骤自带 pulse 不重复提示，HITL 等待由确认框承载。新步骤出现后自然消失 */
+/** 执行空档占位：正在处理、最后可见步已终态（done/error/skipped）时展示三点，
+ * 覆盖模型长时间生成 tool 参数（如写大文件）或下一次推理的空档，防止用户误以为卡死。
+ * 运行中步骤自带 pulse 不重复提示，HITL 等待由确认框承载；新步骤出现或消息终态后自然消失。
+ * 该步之后是否有（含已输出的历史）正文不抑制占位——占位表示「还有内容在生成」，与正文展示并存 */
+export function shouldShowAfterThinkPendingHint(opts: {
+  processing: boolean
+  lastStep?: ProcessingStep
+}): boolean {
+  if (!opts.processing) return false
+  const step = opts.lastStep
+  if (!step) return false
+  // 仅已完成步骤后的空档展示；running/pending（含 HITL awaiting）不提示
+  if (step.lifecycle !== 'done' && step.lifecycle !== 'error' && step.lifecycle !== 'skipped') return false
+  return true
+}
+
+/** 时间线末行为工具组（连续同类工具折叠成行）时的占位判定：
+ * 组内仍有运行中步自带 pulse 不提示；全终态组取组内最后一步参与空档判定 */
+export type PendingHintLastRow =
+  | { kind: 'step'; step: ProcessingStep }
+  | { kind: 'toolGroup'; steps: ProcessingStep[]; anyRunning: boolean }
+
+export function shouldShowPendingHintForLastRow(opts: {
+  processing: boolean
+  lastRow?: PendingHintLastRow
+}): boolean {
+  const row = opts.lastRow
+  if (!row) return false
+  if (row.kind === 'toolGroup') {
+    if (row.anyRunning) return false
+    return shouldShowAfterThinkPendingHint({
+      processing: opts.processing,
+      lastStep: row.steps[row.steps.length - 1],
+    })
+  }
+  return shouldShowAfterThinkPendingHint({
+    processing: opts.processing,
+    lastStep: row.step,
+  })
 }
 
 /** 无法映射到可见步骤的正文块 */

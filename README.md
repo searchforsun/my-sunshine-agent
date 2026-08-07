@@ -12,19 +12,19 @@ Gateway (:8000, JWT + Sentinel) ──▶ BFF (:8001, SSE) ──▶ Orchestrato
                                                           │
                     ┌─────────────────────────────────────┼─────────────────────┐
                     │                                     │                     │
-              workflow / react / plan-workflow / peer-collab                    │
+              workflow / react / plan-workflow / multi-agent (spawn)              │
                     │                                     │                     │
                     ▼                                     ▼                     ▼
             LLM Gateway (:8300)                    RAG (:8400)           tool-manager (:8210)
             DeepSeek / Qwen                        Milvus + ES           skill-manager (:8225)
-                                                                         expert-manager (:8235)
+                                                                         agent-manager (:8235)
                     │                                     │               prompt-manager (:8500)
                     │                                     │
                Auth Center (:8100)                  finance / oa 模拟服务
                Sa-Token JWT
 ```
 
-**执行模式**（`IntentRouter` → `ExecutionDispatcher`）：`auto` · `react` · `workflow` · `plan-workflow` · `peer-collab`（多专家协作）。Workflow Studio 见 `/workflows`，Prompt 运营见 `/prompts`；`simple-llm` 已移除。
+**执行模式**（`IntentRouter` → `ExecutionDispatcher`）：`auto` · `react` · `workflow` · `plan-workflow`（4.14 重建中，将舍弃）。多智能体协作 = ReAct `spawn_subagent(expertId)` 中心化编排（含 A2A 外部接入），非独立模式。Workflow Studio 见 `/workflows`，Prompt 运营见 `/prompts`；`simple-llm` 已移除。
 
 ## 技术栈
 
@@ -48,10 +48,10 @@ my-sunshine-agent/
 ├── gateway/         :8000      # Spring Cloud Gateway + Sentinel
 ├── bff/             :8001      # WebFlux + SSE 流式转发
 ├── auth-center/     :8100      # Sa-Token 认证中心
-├── orchestrator/    :8200      # 核心编排（workflow / react / plan-workflow / peer-collab）+ Timeline + AgentRuntime
+├── orchestrator/    :8200      # 核心编排（workflow / react / plan-workflow / 多智能体协作）+ Timeline + AgentRuntime
 ├── tool-manager/    :8210      # 业务 API → Agent Tool（Catalog 驱动）
 ├── skill-manager/   :8225      # Skills 上传 / 版本 / Catalog
-├── expert-manager/  :8235      # Expert CRUD / Catalog（多专家协作）
+├── agent-manager/   :8235      # Agent CRUD / Catalog（含 A2A 外部接入）
 ├── llm-gateway/     :8300      # LLM 网关（多厂商路由 / 缓存 / 熔断）
 ├── rag-service/     :8400      # RAG 检索（Milvus + Hybrid + Rerank）
 ├── prompt-manager/  :8500      # 提示词管理
@@ -139,7 +139,7 @@ mvn test -pl orchestrator -am "-Dgroups=integration" "-Dtest=ChatIntegrationTest
 | `/plans/:planId` | Plan 详情与节点 trace |
 | `/knowledge` | 知识库工作台（文档/检索调试/参数/评测） |
 | `/skills` | Skill 管理；版本 diff → `/skills/:skillId/diff` |
-| `/experts` | Expert 管理；Chat `$` 补全 |
+| `/agents` | Agent 管理；Chat `$` 补全 |
 | `/tools` | 工具集成管理（SDK / MCP / 工具集 / 执行策略） |
 | `/workflows` | Workflow Studio 可视化编辑 |
 | `/prompts` | Prompt Catalog 运营（Catalog / dry-run / priority / rollback） |
@@ -184,7 +184,7 @@ export QWEN_API_KEY=sk-xxx        # 通义千问（Embedding 复用）
 | 阶段一 | ✅ | LLM Gateway · ReActAgent · RAG · SSE · SkyWalking 探针 |
 | 阶段二 | ✅ | 认证 · 财务/OA 工具链 · Workflow · Timeline V2 · 会话断点续传 |
 | 阶段三 | ✅ | 多租户 · HITL · PLAN_WORKFLOW · AgentRuntime · Skill · 审计 · 可观测 |
-| 阶段四 | ✅ 收口 | 动态 DAG · 多专家协作 · TaskBoard · Spawn · 沙箱 · Workflow Studio · 工具集成 · Prompt Catalog · **4.11 实施中** · 缺口见实现计划 |
+| 阶段四 | ✅ 收口 | 动态 DAG · 多智能体协作 · TaskBoard · Spawn · 沙箱 · Workflow Studio · 工具集成 · Prompt Catalog · **4.11 实施中** · 缺口见实现计划 |
 
 进度 SSOT：[docs/implementation-plan.md](./docs/implementation-plan.md)
 

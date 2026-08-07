@@ -1,8 +1,10 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import lombok.extern.slf4j.Slf4j;
 
 /** ReAct think 轮次 + 正文段锚点 */
+@Slf4j
 final class TimelineSessionThinkFlow {
 
     private final TimelineSessionState state;
@@ -49,6 +51,7 @@ final class TimelineSessionThinkFlow {
                 completeThinkIfRunning();
             }
             openNextThink();
+            log.debug("[ThinkFlow] begin: tool-sep -> openThink={}", state.currentThinkId);
             return;
         }
         // 无业务 tool 间隔的连续 reasoning（如终态前空转多轮、todo_write 建板后再推理）复用同一 think，
@@ -57,30 +60,35 @@ final class TimelineSessionThinkFlow {
         if (state.lastCompletedThinkId != null && !emitter.isStepRunning(state.lastCompletedThinkId)) {
             state.currentThinkId = state.lastCompletedThinkId;
             lifecycle.resume(state.currentThinkId, TimelineStepId.THINK.phase());
+            log.debug("[ThinkFlow] begin: reuseThink={}", state.currentThinkId);
             return;
         }
         if (isThinkRunning()) {
             completeThinkIfRunning();
         }
         openNextThink();
+        log.debug("[ThinkFlow] begin: freshThink={}", state.currentThinkId);
     }
 
     void endReasoningRound() {
         long endedAt = System.currentTimeMillis();
         String thinkId = resolveRunningThinkId();
         if (thinkId == null) {
+            log.debug("[ThinkFlow] end: noRunningThink");
             return;
         }
         state.lastCompletedThinkId = thinkId;
         if (emitter.isStepRunning(thinkId)) {
             lifecycle.completeAt(thinkId, null, endedAt);
             state.lastCompletedThinkEndedAt = endedAt;
+            log.debug("[ThinkFlow] end: completeThink={}", thinkId);
             return;
         }
         state.lastCompletedThinkEndedAt = state.aggregator.get(thinkId)
                 .map(ProcessingStep::endedAt)
                 .filter(ts -> ts > 0)
                 .orElse(endedAt);
+        log.debug("[ThinkFlow] end: alreadyDoneThink={}", thinkId);
     }
 
     private String resolveRunningThinkId() {
@@ -107,7 +115,7 @@ final class TimelineSessionThinkFlow {
         state.contentSegments.ingest(delta, anchor, sink);
     }
 
-    /** think_summary 工具参数摘要 → 最近一轮 think 步 step_summary（前端主行显示） */
+    /** think_summary 工具参数摘要 → 最近一轮 think 步 step_summary（写回 aggregator + 下发前端主行） */
     void applyThinkStepSummary(String summary, java.util.function.Consumer<com.sunshine.orchestrator.client.StreamToken> sink) {
         if (summary == null || summary.isBlank()) {
             return;
@@ -117,9 +125,16 @@ final class TimelineSessionThinkFlow {
             thinkId = state.lastCompletedThinkId;
         }
         if (thinkId == null) {
+            log.info("[ThinkSummary] applyStepSummary drop: noThinkId cur={} last={} summary={}",
+                    state.currentThinkId, state.lastCompletedThinkId, summary);
             return;
         }
-        sink.accept(com.sunshine.orchestrator.client.StreamToken.stepDelta(thinkId, "step_summary", summary.strip()));
+        String trimmed = summary.strip();
+        log.info("[ThinkSummary] applyStepSummary thinkId={} cur={} last={} running={} summary={}",
+                thinkId, state.currentThinkId, state.lastCompletedThinkId,
+                emitter.isStepRunning(thinkId), trimmed);
+        state.aggregator.appendDelta(thinkId, "step_summary", trimmed, System.currentTimeMillis());
+        sink.accept(com.sunshine.orchestrator.client.StreamToken.stepDelta(thinkId, "step_summary", trimmed));
     }
 
     String contentSegmentBaseline() {

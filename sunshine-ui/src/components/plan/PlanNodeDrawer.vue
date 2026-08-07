@@ -80,6 +80,9 @@ const displayStatus = computed((): DagNodeStatus => {
   return nodeStatus ?? 'pending'
 })
 
+/** 节点流式输出中：抽屉内 reasoning/正文暂缓路径增强，避免 v-html 重建闪烁 */
+const isNodeStreaming = computed(() => displayStatus.value === 'running')
+
 const statusLabel = computed(() => {
   const s = displayStatus.value
   if (node.value?.type === 'start') {
@@ -544,19 +547,19 @@ watch(
       </section>
       <section v-if="showAnalysisSection" class="drawer-section">
         <h4>综合分析</h4>
-        <StaticMarkdown :source="analysisDisplay" compact />
+        <StaticMarkdown :source="analysisDisplay" compact :streaming="isNodeStreaming" />
       </section>
       <section v-if="showBodySection" class="drawer-section">
         <h4>{{ bodySectionTitle }}</h4>
-        <StaticMarkdown :source="bodyDisplay" compact />
+        <StaticMarkdown :source="bodyDisplay" compact :streaming="isNodeStreaming" />
       </section>
       <section v-if="showReasoningSection" class="drawer-section">
         <h4>推理过程</h4>
-        <StaticMarkdown :source="reasoning" compact />
+        <StaticMarkdown :source="reasoning" compact :streaming="isNodeStreaming" />
       </section>
       <section v-if="output" class="drawer-section">
         <h4>日志</h4>
-        <StaticMarkdown :source="output" compact />
+        <StaticMarkdown :source="output" compact :streaming="isNodeStreaming" />
       </section>
       <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showRecoverySection && !showSpawnPrompt && !output && !showSkillBlock && !displayAttempts?.length" class="drawer-empty">
         {{ displayStatus === 'running' ? '节点执行中…' : '暂无详情' }}
@@ -965,7 +968,6 @@ watch(
 }
 
 .drawer-recovery :deep(.collapsible-confirm) {
-  --confirm-inset-left: 0;
   margin-left: 0;
   margin-top: 6px;
   margin-bottom: 2px;

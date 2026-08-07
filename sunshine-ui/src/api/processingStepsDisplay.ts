@@ -80,8 +80,13 @@ export function extractSandboxExecCommand(step: {
   if (detail) {
     const fromDetail = detail.match(/正在执行\s+(.+)$/s)
     if (fromDetail?.[1]?.trim()) return fromDetail[1].trim()
-    // 取消时后端把 command 原样写入 detail（无 stdout）
+    // 取消终态：后端把 command 原样写入 detail（无 stdout）
     if (cancelled) {
+      return detail
+    }
+    // HITL 等待确认（running 未完成）：command 经 HITL expandDetail 写入 detail，
+    // 此时主行须展示命令便于用户决策；done 态 detail 为 stdout 输出，不能当命令
+    if (step.lifecycle === 'running' && !detail.includes('等待用户确认')) {
       return detail
     }
   }
@@ -344,28 +349,12 @@ export function isWorkflowAnswerStep(step: ProcessingStep): boolean {
   return step.id === 'node-answer'
 }
 
-function resolveExpertSpeakPreview(step: ProcessingStep): string {
-  const result = step.result?.trim()
-  if (!result) return ''
-  const line = extractFirstProseLine(result)
-  if (line) return line
-  return truncateStepPreview(result.replace(/\s+/g, ' '))
-}
-
 export function resolveStepSummaryFull(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
   const title = formatStepLabel(step)
-  if (step.phase === 'expert') {
-    const preview = resolveExpertSpeakPreview(step)
-    if (preview) return preview
-  }
   let header = ''
   if (lifecycle === 'running') {
-    if (step.phase === 'expert') {
-      const preview = resolveExpertSpeakPreview(step)
-      if (preview) header = preview
-    }
-    if (!header) header = step.summary?.active?.trim() || ''
+    header = step.summary?.active?.trim() || ''
   } else if (
     lifecycle === 'done'
     || lifecycle === 'error'
@@ -459,9 +448,6 @@ export function resolveStepExpandSummary(step: ProcessingStep): string {
 export function resolveStepExpandInner(step: ProcessingStep): string {
   if (isWorkflowAnswerStep(step)) {
     return ''
-  }
-  if (step.phase === 'expert') {
-    return step.result?.trim() || ''
   }
   if (isSandboxToolStep(step)) {
     // 沙箱展开由 OperationCard 嵌入面板渲染（无 markdown code 边框）
@@ -608,8 +594,10 @@ export function formatElapsedClock(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return ''
   const totalSec = Math.floor(ms / 1000)
   if (totalSec < 60) return `${totalSec}s`
-  const m = Math.floor(totalSec / 60)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
   const s = totalSec % 60
+  if (h > 0) return `${h}h ${m}m ${s}s`
   return `${m}m ${s}s`
 }
 

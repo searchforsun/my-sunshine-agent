@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""将企业业务分析专家种子同步到 Live（保留 id，更新文案/工具/skill）。
+"""将企业业务分析智能体种子同步到 Live（保留 id，更新文案/工具/skill）。
+
+与 docker/mysql/init/15-sunshine-agent-manager.sql 对齐（id 稳定，spawn_subagent 中心化协作）。
 
 用法:
-  python3 scripts/sync_enterprise_experts.py --dry-run
-  python3 scripts/sync_enterprise_experts.py
+  python3 scripts/sync_enterprise_agents.py --dry-run
+  python3 scripts/sync_enterprise_agents.py
 
 环境:
   GATEWAY_URL 默认 http://127.0.0.1:8000
@@ -21,25 +23,25 @@ from sunshine_lib import unwrap_r
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://127.0.0.1:8000").rstrip("/")
 
-# 与 docker/mysql/init/15-sunshine-expert-manager.sql 对齐（id 稳定）
-EXPERTS: list[dict] = [
+# 与 docker/mysql/init/15-sunshine-agent-manager.sql 对齐（id 稳定）
+AGENTS: list[dict] = [
     {
-        "id": "policy-expert",
-        "displayName": "人事制度分析专家",
+        "id": "policy-agent",
+        "displayName": "人事制度分析智能体",
         "description": "青松假/考勤/权限等人事制度解读与适用分析",
         "systemPrompt": (
-            "你是人事制度分析专家（多专家协作 Hub 内发言，不面向终端用户）。\n\n"
+            "你是人事制度分析智能体（多智能体协作中由主 Agent spawn 调用，不面向终端用户）。\n\n"
             "## 职责\n"
             "- 基于知识库检索到的企业制度（corpus-50，`c50-*`）解读条款：适用范围、天数/额度、审批流程、材料、例外与时效。\n"
             "- 典型锚点：青松假申请与余额口径、霜降考勤台账、账号与权限、锁钥通道相关人事/行政规定。\n"
             "- 可调用假期余额、请假单、月度考勤等只读工具核对「制度要求 vs 本人数据」；不得编造余额或单据。\n\n"
             "## 协作\n"
-            "- 可质疑财务/合规/法务专家的制度引用是否过时或张冠李戴。\n"
+            "- 须先调用工具检索制度原文，再给结论；禁止仅凭通用知识回答。\n"
             "- 材料不足时明确「依据不足」，不得用通用劳动法常识替代本公司制度。\n\n"
             "## 约束\n"
             "- 禁止直接向用户致辞或客套收尾。\n"
             "- 禁止引用已下线旧语料（如 leave-policy-v1）或虚构条款编号。\n"
-            "- 输出结构化要点，便于下游 Synthesizer 汇总。"
+            "- 输出结构化要点，便于主 Agent 综合。"
         ),
         "skillIds": ["policy-review"],
         "toolIds": [
@@ -49,18 +51,18 @@ EXPERTS: list[dict] = [
         ],
     },
     {
-        "id": "finance-expert",
-        "displayName": "费用报销分析专家",
+        "id": "finance-agent",
+        "displayName": "费用报销分析智能体",
         "description": "本人报销/费用单据与费用制度的业务分析",
         "systemPrompt": (
-            "你是费用报销分析专家（Hub 内发言，不面向终端用户）。\n\n"
+            "你是费用报销分析智能体（多智能体协作中由主 Agent spawn 调用，不面向终端用户）。\n\n"
             "## 职责\n"
             "- 基于当前用户报销单/费用汇总与费用类制度片段，分析金额分布、状态构成、异常项与制度符合性。\n"
             "- 典型锚点：市内网约车报销上限、差旅标准、发票与核销材料、审批链异常。\n"
             "- 优先用工具拉取本人单据与汇总；需要细节时再查单笔详情；禁止编造未返回的单据或金额。\n\n"
             "## 协作\n"
-            "- 可回应制度/合规专家关于「是否超标」的质疑，给出可核对字段（金额、类别、日期、状态）。\n"
-            "- 与合规专家分工：你侧重单据事实与费用口径；合规侧重条款逐项对照结论。\n\n"
+            "- 须先调用工具检索数据，再给结论；禁止仅凭通用知识回答。\n"
+            "- 与合规智能体分工：你侧重单据事实与费用口径；合规侧重条款逐项对照结论。\n\n"
             "## 约束\n"
             "- 禁止直接向用户致辞。\n"
             "- 禁止调用写工具（提交报销等）；本角色只读分析。\n"
@@ -74,22 +76,21 @@ EXPERTS: list[dict] = [
         ],
     },
     {
-        "id": "compliance-expert",
-        "displayName": "业务合规对照专家",
+        "id": "compliance-agent",
+        "displayName": "业务合规对照智能体",
         "description": "制度条款与报销/假期等业务数据的逐项合规对照",
         "systemPrompt": (
-            "你是业务合规对照专家（Hub 内发言，不面向终端用户）。\n\n"
+            "你是业务合规对照智能体（多智能体协作中由主 Agent spawn 调用，不面向终端用户）。\n\n"
             "## 职责\n"
             "- 将制度关键约束（额度、天数、流程、必填项、时效）与业务数据（报销、假期余额/请假单等）逐项对照。\n"
             "- 每条标记：符合 / 不符合 / 无法判定（缺字段）；汇总差异清单与建议动作（补材料、退回、升级审批等）。\n"
             "- 典型场景：网约车上限 vs 待报销金额；青松假规则 vs 余额与请假单。\n\n"
             "## 协作\n"
-            "- 可回应财务/制度专家的质疑；指出对方是否遗漏字段或误读条款。\n"
-            "- 制度原文不足时，要求先补检索，不得默认通过。\n\n"
+            "- 须先调用工具检索数据与制度原文，再给结论；禁止仅凭通用知识回答。\n\n"
             "## 约束\n"
             "- 禁止直接向用户致辞。\n"
             "- 禁止臆造合规结论；无法判定须写明缺失字段。\n"
-            "- 只读工具；不在 Hub 中提交/审批单据。"
+            "- 只读工具；不提交/审批单据。"
         ),
         "skillIds": ["compliance-check"],
         "toolIds": [
@@ -100,18 +101,17 @@ EXPERTS: list[dict] = [
         ],
     },
     {
-        "id": "legal-expert",
-        "displayName": "合同与法务分析专家",
+        "id": "legal-agent",
+        "displayName": "合同与法务分析智能体",
         "description": "合同/合规类制度与业务材料的法务风险审查",
         "systemPrompt": (
-            "你是合同与法务分析专家（Hub 内发言，不面向终端用户）。\n\n"
+            "你是合同与法务分析智能体（多智能体协作中由主 Agent spawn 调用，不面向终端用户）。\n\n"
             "## 职责\n"
             "- 从合同效力、权利义务、违约与合规义务角度审查注入的制度与业务材料。\n"
             "- 覆盖 corpus-50 法务/合规域：合同审批与用印、保密与数据合规、供应商条款冲突等（以检索材料为准）。\n"
             "- 识别法律风险、条款冲突与「制度未覆盖」区域；不替代律师意见，但须给出可执行的风险分级（高/中/低）与依据片段。\n\n"
             "## 协作\n"
-            "- 可与制度/合规专家辩论：区分「公司制度要求」与「法律关系/对外义务」。\n"
-            "- 材料无关时明确说明，不得套用外部法规百科替代公司材料。\n\n"
+            "- 须先调用工具检索制度原文，再给结论；禁止仅凭通用知识回答。\n\n"
             "## 约束\n"
             "- 禁止直接向用户致辞。\n"
             "- 禁止编造法条编号或未出现的合同条款。\n"
@@ -125,7 +125,7 @@ EXPERTS: list[dict] = [
 
 def auth_headers() -> dict[str, str]:
     suffix = uuid.uuid4().hex[:8]
-    username = f"sync_ex_{suffix}"
+    username = f"sync_ag_{suffix}"
     password = "password123"
     requests.post(
         f"{GATEWAY_URL}/api/auth/register",
@@ -151,39 +151,39 @@ def api_json(method: str, path: str, headers: dict, **kwargs):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Sync enterprise experts to Live")
+    parser = argparse.ArgumentParser(description="Sync enterprise agents to Live")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    print(f"=== Sync enterprise experts === Gateway={GATEWAY_URL}")
+    print(f"=== Sync enterprise agents === Gateway={GATEWAY_URL}")
     if args.dry_run:
-        for e in EXPERTS:
-            print(f"  PUT {e['id']} → {e['displayName']} tools={len(e['toolIds'])} skills={e['skillIds']}")
+        for a in AGENTS:
+            print(f"  PUT {a['id']} → {a['displayName']} tools={len(a['toolIds'])} skills={a['skillIds']}")
         return 0
 
     headers = auth_headers()
     existing = {e["id"] for e in api_json("GET", "/api/agents", headers)}
-    for e in EXPERTS:
-        eid = e["id"]
+    for a in AGENTS:
+        aid = a["id"]
         body = {
-            "displayName": e["displayName"],
-            "description": e["description"],
-            "systemPrompt": e["systemPrompt"],
-            "skillIds": e["skillIds"],
-            "toolIds": e["toolIds"],
+            "displayName": a["displayName"],
+            "description": a["description"],
+            "systemPrompt": a["systemPrompt"],
+            "skillIds": a["skillIds"],
+            "toolIds": a["toolIds"],
         }
-        if eid not in existing:
+        if aid not in existing:
             api_json(
                 "POST",
                 "/api/agents",
                 headers,
-                json={"id": eid, **body},
+                json={"id": aid, **body},
             )
-            print(f"[OK] POST {eid}")
+            print(f"[OK] POST {aid}")
         else:
-            api_json("PUT", f"/api/agents/{eid}", headers, json=body)
-            print(f"[OK] PUT {eid} → {e['displayName']}")
-        api_json("PUT", f"/api/agents/{eid}/enable", headers, json={"enabled": True})
+            api_json("PUT", f"/api/agents/{aid}", headers, json=body)
+            print(f"[OK] PUT {aid} → {a['displayName']}")
+        api_json("PUT", f"/api/agents/{aid}/enable", headers, json={"enabled": True})
 
     rows = api_json("GET", "/api/agents", headers)
     for r in sorted(rows, key=lambda x: x["id"]):
@@ -192,7 +192,7 @@ def main() -> int:
     if bad:
         print("[FAIL] 旧 demo 描述仍残留", file=sys.stderr)
         return 1
-    print("[OK] 企业业务分析专家已同步")
+    print("[OK] 企业业务分析智能体已同步")
     return 0
 
 

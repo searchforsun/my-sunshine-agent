@@ -6,32 +6,71 @@ import { applySyncedPendingHitl, resolveHitlUiKey, getPendingHitlConfirmations, 
 
 /** Chat 消息区时间线：steps 解析与 OperationStack 绑定 */
 export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<boolean>) {
+  /**
+   * resolveTimelineContext 结果缓存：流式 bump 每 80ms 替换 messages 数组触发整页重渲染，
+   * 若对每条历史消息都重算 ensurePlanTimelineSteps + applySyncedPendingHitl + sortSteps（全新建数组），
+   * 轮次越多每次流式 chunk 成本线性上涨。依赖引用未变时直接复用结果，
+   * 保证历史消息 OperationStack 的 props.steps 引用稳定，Vue 跳过子组件更新。
+   */
+  const timelineContextCache = new WeakMap<ChatMessage, {
+    stepsRef: ProcessingStep[] | undefined
+    planId: string | undefined
+    pendingRef: HitlConfirmationPayload[] | undefined
+    result: { steps: ProcessingStep[]; pending: HitlConfirmationPayload[] }
+  }>()
+
   function resolveTimelineContext(msg: ChatMessage): {
     steps: ProcessingStep[]
     pending: HitlConfirmationPayload[]
   } {
-    const baseSteps = ensurePlanTimelineSteps(msg)
-    if (!baseSteps.length) return { steps: [], pending: [] }
-    const synced = applySyncedPendingHitl(baseSteps, getPendingHitlConfirmations(msg))
-    return {
-      steps: sortSteps(synced.steps),
-      pending: synced.pending ?? [],
+    const cached = timelineContextCache.get(msg)
+    if (cached
+      && cached.stepsRef === msg.steps
+      && cached.planId === msg.executionPlanId
+      && cached.pendingRef === msg.pendingHitlConfirmations) {
+      return cached.result
     }
+    const baseSteps = ensurePlanTimelineSteps(msg)
+    let result: { steps: ProcessingStep[]; pending: HitlConfirmationPayload[] }
+    if (!baseSteps.length) {
+      result = { steps: [], pending: [] }
+    } else {
+      const synced = applySyncedPendingHitl(baseSteps, getPendingHitlConfirmations(msg))
+      result = { steps: sortSteps(synced.steps), pending: synced.pending ?? [] }
+    }
+    timelineContextCache.set(msg, {
+      stepsRef: msg.steps,
+      planId: msg.executionPlanId,
+      pendingRef: msg.pendingHitlConfirmations,
+      result,
+    })
+    return result
   }
 
   function resolveTimelineSteps(msg: ChatMessage): ProcessingStep[] {
     return resolveTimelineContext(msg).steps
   }
 
+  /** 该 assistant 消息对应最近的用户问题，按消息 id 缓存，避免整页重渲染时反复前向扫描 */
+  const userQueryCache = new Map<string, string>()
+
   function resolveUserQuery(idx: number): string {
+    const msg = messages.value[idx]
+    if (!msg || msg.role !== 'assistant') return ''
+    if (msg.id && userQueryCache.has(msg.id)) return userQueryCache.get(msg.id)!
+    let q = ''
     for (let i = idx - 1; i >= 0; i--) {
       const m = messages.value[i]
       if (m?.role === 'user') {
         const text = m.content?.trim()
-        if (text) return text
+        if (text) {
+          q = text
+          break
+        }
       }
     }
-    return ''
+    if (msg.id) userQueryCache.set(msg.id, q)
+    return q
   }
 
   function showTimeline(msg: ChatMessage, idx: number): boolean {
@@ -46,9 +85,8 @@ export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<b
   }
 
   function isTimelineLive(msg: ChatMessage, idx: number): boolean {
-    return loading.value
-      && idx === messages.value.length - 1
-      && hasActiveStep(resolveTimelineSteps(msg))
+    if (!loading.value || idx !== messages.value.length - 1) return false
+    return hasActiveStep(resolveTimelineSteps(msg))
   }
 
   const showStreamWaiting: ComputedRef<boolean> = computed(() => {

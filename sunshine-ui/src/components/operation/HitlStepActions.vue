@@ -116,7 +116,7 @@ async function submit(approved: boolean): Promise<void> {
     :summary="summaryLine"
     :detail="collapsedDetail"
     :resolved="isResolved"
-    :default-collapsed="isResolved"
+    icon="tool"
   >
     <p class="hitl-tool">{{ toolName }}</p>
     <dl v-if="paramPairs.length" class="hitl-params">

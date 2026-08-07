@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
@@ -54,8 +55,9 @@ public class AgentsController {
     }
 
     @GetMapping("/api/agents/catalog/index")
-    public Mono<Map<String, Object>> agentCatalogIndex() {
-        return agentManagerClient.catalogIndex();
+    public Mono<Map<String, Object>> agentCatalogIndex(
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return agentManagerClient.catalogIndex(tenantId);
     }
 
     @GetMapping("/api/agents/catalog")

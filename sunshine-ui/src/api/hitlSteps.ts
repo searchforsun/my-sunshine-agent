@@ -20,20 +20,19 @@ export function normalizePendingHitlList(
 }
 
 export function getPendingHitlConfirmations(
-  msg?: { pendingHitlConfirmation?: HitlConfirmationPayload; pendingHitlConfirmations?: HitlConfirmationPayload[] } | null,
+  msg?: { pendingHitlConfirmations?: HitlConfirmationPayload[] } | null,
 ): HitlConfirmationPayload[] {
   if (!msg) return []
-  if (msg.pendingHitlConfirmations?.length) return msg.pendingHitlConfirmations.map(p => ({ ...p }))
-  if (msg.pendingHitlConfirmation) return [{ ...msg.pendingHitlConfirmation }]
-  return []
+  return msg.pendingHitlConfirmations?.length
+    ? msg.pendingHitlConfirmations.map(p => ({ ...p }))
+    : []
 }
 
 export function setPendingHitlConfirmations(
-  msg: { pendingHitlConfirmation?: HitlConfirmationPayload; pendingHitlConfirmations?: HitlConfirmationPayload[] },
+  msg: { pendingHitlConfirmations?: HitlConfirmationPayload[] },
   list: HitlConfirmationPayload[] | undefined,
 ): void {
   msg.pendingHitlConfirmations = list?.length ? list.map(p => ({ ...p })) : undefined
-  msg.pendingHitlConfirmation = undefined
 }
 
 export function upsertPendingHitlConfirmationList(

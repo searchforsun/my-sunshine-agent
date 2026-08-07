@@ -106,20 +106,6 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
       @keydown.enter.prevent="toggle"
       @keydown.space.prevent="toggle"
     >
-      <span class="op-gutter" aria-hidden="true">
-        <svg
-          class="op-chevron"
-          width="9"
-          height="9"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-          stroke-linecap="round"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </span>
       <span class="op-main">
         <span class="tool-group-label" :class="{ 'op-shimmer': showShimmer }">{{ label }}</span>
         <span v-if="allDone" class="tool-group-check" aria-label="完成">
@@ -129,6 +115,19 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
           </svg>
         </span>
         <span v-if="anyRunning && live" class="op-pulse">…</span>
+        <svg
+          class="op-chevron"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
       </span>
     </div>
     <div v-if="isExpanded()" class="tool-group-body">
@@ -142,7 +141,6 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
           @toggle="toggleToolCard(step)"
         />
         <div v-if="shouldShowInlineHitl(step)" class="tool-group-hitl">
-          <span class="op-gutter" aria-hidden="true" />
           <HitlStepActions
             :key="`${step.id}-${stepHitlToken(step)}`"
             :step="step"
@@ -157,7 +155,6 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
 
 <style scoped>
 .tool-group {
-  --op-gutter: 12px;
   font-size: var(--sun-font-md);
   line-height: 1.5;
   color: var(--sun-text-muted);
@@ -165,7 +162,7 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
 
 .tool-group-row {
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   column-gap: 4px;
   align-items: start;
   width: 100%;
@@ -173,19 +170,15 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
   cursor: pointer;
 }
 
-.op-gutter {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  width: var(--op-gutter);
-  padding-top: 4px;
-  flex-shrink: 0;
-}
-
+/* 文字后展开箭头：紧跟组 label，折叠 > 展开 ^；尺寸加大更明显 */
 .op-chevron {
   flex-shrink: 0;
-  color: var(--sun-text-muted);
-  opacity: 0.5;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  color: var(--sun-text-secondary);
+  opacity: 0.85;
+  margin-left: 2px;
   transition: transform 0.15s ease;
 }
 
@@ -233,20 +226,12 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
 }
 
 .tool-group-hitl {
-  --op-gutter: 12px;
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
-  column-gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
-.tool-group-hitl .op-gutter {
-  width: var(--op-gutter);
-  flex-shrink: 0;
-}
-
 .tool-group-hitl :deep(.collapsible-confirm) {
-  --confirm-inset-left: 0;
   margin-left: 0;
 }
 
@@ -269,12 +254,12 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: op-text-shimmer 2.6s linear infinite;
+  animation: op-text-shimmer 1.2s linear infinite;
 }
 
 .tool-group-label.op-shimmer {
-  --op-shimmer-base: var(--sun-text);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text) 22%, white);
+  --op-shimmer-base: var(--sun-text-secondary);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 30%, white);
 }
 
 .op-pulse {

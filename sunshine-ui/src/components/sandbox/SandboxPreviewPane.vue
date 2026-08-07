@@ -28,6 +28,8 @@ const props = defineProps<{
   previewLangClass: string
   previewCodeHtml: string[]
   focusLine?: number
+  /** 显示路径转换（工作区模式去掉项目根前缀）；缺省原样展示 */
+  displayPath?: (path: string) => string
 }>()
 
 const emit = defineEmits<{
@@ -142,7 +144,7 @@ watch(
         type="button"
         class="editor-tab"
         :class="{ active: tab.path === selectedPath }"
-        :title="tab.path"
+        :title="displayPath ? displayPath(tab.path) : tab.path"
         @click="emit('activateTab', tab.path)"
       >
         <NIcon :component="DocumentTextOutline" :size="13" />

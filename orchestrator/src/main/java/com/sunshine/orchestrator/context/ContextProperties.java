@@ -34,7 +34,7 @@ public class ContextProperties {
         /** 轮次宽限兜底：即使 token 未到阈值，轮数超此值也触发（防极端短消息无限膨胀）。 */
         private int turnBackstop = 40;
         /** Gateway 不可用时的降级模型上下文窗口（token）。 */
-        private int defaultModelWindow = 128000;
+        private int defaultModelWindow = 256000;
         /** cl100k 估算保守系数（对 deepseek/qwen 偏高 5-15%，提前触发留 buffer）。 */
         private double tokenSafetyFactor = 1.1;
         /** Mid 摘要后 token 估算比（1-3 句摘要约为原文 15%）。 */

@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.client;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.catalog.AgentCatalogEntry;
@@ -70,7 +69,8 @@ public class ExternalAgentClient {
                                     String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                                     log.warn("[ExternalAgentClient] agent={} error: {}", agent.id(), msg);
                                 })
-                                .onErrorResume(e -> Flux.empty())
+                                .onErrorResume(e -> Flux.just(
+                                        StreamToken.content("外部智能体调用失败：" + errorMessage(e))))
                 )
                 .concatWithValues(StreamToken.step(doneStep));
     }
@@ -118,6 +118,15 @@ public class ExternalAgentClient {
 
     private Duration agentTimeout(AgentCatalogEntry agent) {
         return DEFAULT_TIMEOUT;
+    }
+
+    private static String errorMessage(Throwable e) {
+        if (e == null) {
+            return "unknown error";
+        }
+        return e.getMessage() != null && !e.getMessage().isBlank()
+                ? e.getMessage().strip()
+                : e.getClass().getSimpleName();
     }
 
     private Map<String, Object> buildA2aPayload(String query, List<String> contextBlocks) {

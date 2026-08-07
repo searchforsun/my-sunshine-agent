@@ -142,6 +142,9 @@
 | **4.7.4** | M9 前端子 Agent 详情展开 UI | **不做**（Workflow agent 抽屉 / Peer 展开已覆盖） |
 | **4.7.5** | **ReAct TaskBoard**（`manage_tasks` 元工具 + `tasks` Timeline + 审计） · [详设](./2026-06-24-react-taskboard-design.md) · **D11** | **✅** |
 | **4.7.6** | **ReAct Spawn Subagent**（`spawn_subagent`；卡片+抽屉；**单独取消**） · [详设](./2026-07-18-react-spawn-subagent-design.md) · Live `verify_spawn_subagent_live.py` | **✅** |
+| **4.7.7** | **ReAct 目标对齐与失败预算**（`GoalAlignmentMiddleware` + `FailureBudgetMiddleware`） · [详设](./2026-07-27-react-goal-alignment-design.md) | ⬜ 候选 |
+| **4.7.8** | **ReAct Harness Loop 增强**（假完成门禁 / 子 Agent 经济学 / 错误重试 / compaction 能力栈） · [详设](./2026-07-28-harness-loop-enhancement-design.md) | ⬜ 候选 |
+| **4.7.9** | **ReAct Request Decision**（`request_decision` 元工具，Agent 主动向用户出选择题） · [详设](./2026-07-28-react-request-decision-design.md) | ⬜ spec |
 
 **4.7.3 摘要（✅）**：第五顶层模式 `peer-collab`；`ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue、反应式选人）+ `ConsultationSynthesizer`；详设 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) · Live `verify_peer_collab_live` + `verify_expert_consultation_live`。
 

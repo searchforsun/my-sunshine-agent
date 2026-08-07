@@ -101,6 +101,15 @@ public class AgentWorkspaceController {
         return orchestratorClient.gitStatus(id, checkoutId, userId, tenantId);
     }
 
+    @GetMapping("/api/agent-workspaces/{id}/git/diff")
+    public Mono<Map<String, Object>> gitDiff(@PathVariable String id,
+                                              @RequestParam("checkoutId") String checkoutId,
+                                              @RequestParam(value = "path", required = false) String path,
+                                              @RequestHeader("x-user-id") String userId,
+                                              @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.gitDiff(id, checkoutId, path, userId, tenantId);
+    }
+
     @PostMapping("/api/agent-workspaces/{id}/git/stage")
     public Mono<Map<String, Object>> gitStage(@PathVariable String id,
                                                @RequestParam("checkoutId") String checkoutId,
@@ -108,6 +117,24 @@ public class AgentWorkspaceController {
                                                @RequestHeader("x-user-id") String userId,
                                                @RequestHeader("x-tenant-id") String tenantId) {
         return orchestratorClient.gitStage(id, checkoutId, body, userId, tenantId);
+    }
+
+    @PostMapping("/api/agent-workspaces/{id}/git/revert")
+    public Mono<Map<String, Object>> gitRevert(@PathVariable String id,
+                                                @RequestParam("checkoutId") String checkoutId,
+                                                @RequestBody Map<String, Object> body,
+                                                @RequestHeader("x-user-id") String userId,
+                                                @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.gitRevert(id, checkoutId, body, userId, tenantId);
+    }
+
+    @PostMapping("/api/agent-workspaces/{id}/git/unstage")
+    public Mono<Map<String, Object>> gitUnstage(@PathVariable String id,
+                                                 @RequestParam("checkoutId") String checkoutId,
+                                                 @RequestBody Map<String, Object> body,
+                                                 @RequestHeader("x-user-id") String userId,
+                                                 @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.gitUnstage(id, checkoutId, body, userId, tenantId);
     }
 
     @PostMapping("/api/agent-workspaces/{id}/git/commit")

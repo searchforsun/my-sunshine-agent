@@ -57,6 +57,7 @@ public final class ProcessingStepMerger {
                     concat(step.output(), text),
                     step.result());
             case "result" -> copyStep(step, step.reasoning(), step.output(), concat(step.result(), text));
+            case "step_summary" -> copyStepWithSummary(step, text);
             default -> copyStep(step, step.reasoning(), concat(step.output(), text), step.result());
         };
     }
@@ -136,6 +137,16 @@ public final class ProcessingStepMerger {
 
     private static ProcessingStep copyStep(
             ProcessingStep step, String reasoning, String output, String result) {
+        return copyStep(step, reasoning, output, result, step.stepSummary());
+    }
+
+    /** step_summary 通道：仅覆盖摘要字段，不动 reasoning/output/result */
+    private static ProcessingStep copyStepWithSummary(ProcessingStep step, String summary) {
+        return copyStep(step, step.reasoning(), step.output(), step.result(), summary);
+    }
+
+    private static ProcessingStep copyStep(
+            ProcessingStep step, String reasoning, String output, String result, String stepSummary) {
         return new ProcessingStep(
                 step.id(),
                 step.phase(),
@@ -152,7 +163,8 @@ public final class ProcessingStepMerger {
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
-                step.subSteps()
+                step.subSteps(),
+                stepSummary
         );
     }
 
@@ -206,7 +218,8 @@ public final class ProcessingStepMerger {
                 incoming.label() != null ? incoming.label() : existing.label(),
                 incoming.metadata() != null ? mergeMetadata(existing.metadata(), incoming.metadata()) : existing.metadata(),
                 mergeContentBlocks(existing.contentBlocks(), incoming.contentBlocks()),
-                mergeSubSteps(existing.subSteps(), incoming.subSteps())
+                mergeSubSteps(existing.subSteps(), incoming.subSteps()),
+                incoming.stepSummary() != null ? incoming.stepSummary() : existing.stepSummary()
         );
     }
 
@@ -263,7 +276,8 @@ public final class ProcessingStepMerger {
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
-                subSteps);
+                subSteps,
+                step.stepSummary());
     }
 
     private static List<ProcessingStep> mergeSubSteps(
@@ -339,6 +353,7 @@ public final class ProcessingStepMerger {
                 step.label(),
                 step.metadata(),
                 contentBlocks,
-                step.subSteps());
+                step.subSteps(),
+                step.stepSummary());
     }
 }

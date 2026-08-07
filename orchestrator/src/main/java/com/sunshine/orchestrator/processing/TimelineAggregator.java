@@ -121,6 +121,7 @@ public final class TimelineAggregator {
             case "reasoning" -> state.reasoning = concat(state.reasoning, text);
             case "output" -> state.output = concat(state.output, text);
             case "result" -> state.result = text;
+            case "step_summary" -> state.stepSummary = text;
             default -> state.output = concat(state.output, text);
         }
     }
@@ -185,6 +186,7 @@ public final class TimelineAggregator {
         private String reasoning;
         private String output;
         private String result;
+        private String stepSummary;
         private StepMetadata metadata;
         private String labelOverride;
         private long ts;
@@ -213,7 +215,8 @@ public final class TimelineAggregator {
                     label,
                     metadata,
                     null,
-                    null
+                    null,
+                    stepSummary
             );
         }
     }

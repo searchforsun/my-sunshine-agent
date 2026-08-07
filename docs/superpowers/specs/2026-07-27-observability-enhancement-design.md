@@ -27,10 +27,11 @@
 
 | 能力 | 归属 | 本设计关系 |
 |------|------|-----------|
-| 反馈 👍/👎 + `chat_feedback` 表 + 归因快照 | 5.1 / `feedback-eval-dashboard` spec | **数据来源**：Run Explorer 复用 `chat_feedback.trace_id`/`latency_ms`/`execution_mode` 做过滤与关联 |
+| 反馈 👍/👎 + `chat_message_feedback` 表 + 归因快照 | 5.1 / `feedback-eval-dashboard` spec | **数据来源**：Run Explorer 复用 `chat_message_feedback.trace_id`/`latency_ms`/`execution_mode` 做过滤与关联 |
 | token 用量 `llm_usage_record` + `llm_usage_daily` + 配额 | 5.2 | **数据来源**：Run Explorer 与 Grafana LLM 面板复用用量表；LLM 指标埋点与 5.2 `TokenUsageCollector` 共用采集点 |
 | 模型场景路由 + Grafana scene×model 面板 | 5.3 | **指标来源**：本设计补的 `llm_call_duration_seconds{scene,model}` 标签供 5.3 面板使用 |
 | `/ops` 运营页（Badcase/用量/密钥/优化 Tab） | 5.1/5.2/5.6/5.4 | **并列**：本设计新增 `/observability` Run Explorer 页，定位"单次会话的 LLM 调用链与 trace 深潜"，与 `/ops` 的"跨会话运营聚合"互补 |
+| `/evaluation` 评测大盘（反馈统计/踩样本归因/评测集回流） | `feedback-eval-dashboard` spec | **并列**：与 `/ops`（运营聚合）、`/observability`（单次会话深潜）三页分工，数据互不重复建表 |
 
 **一句话**：5.x 解决"运营数据落库与聚合"，本设计解决"三台基础设施增强 + LLM 调用链可视化 + 三台联动"。
 
@@ -281,7 +282,7 @@ SkyWalking 自动埋点只覆盖 HTTP/RPC，业务语义层级需手动 `@Trace`
 | 会话/Run 列表 | `GET /api/audit/recent`（已有）+ `chat_message`（execution_mode/intent/latency_ms） | 按 mode/model/时间/反馈过滤 |
 | Run 步骤瀑布 | `chat_message.steps`（已有 ProcessingStep JSON，含 durationMs/type/label） | 前端 `processingStepsParse.ts` 已能解析 |
 | LLM 调用明细 | 5.2 `llm_usage_record`（messageId 关联） | 含 model/token/duration；未落 5.2 前用 `[LLM-IO]` ES 索引兜底 |
-| 反馈过滤 | 5.1 `chat_feedback`（signal=down 过滤踩样本） | 未落 5.1 前先不支持该过滤 |
+| 反馈过滤 | 5.1 `chat_message_feedback`（signal=down 过滤踩样本） | 未落 5.1 前先不支持该过滤 |
 | traceId | orchestrator SSE 首事件 + `chat_message`（新增列 `trace_id`） | 见 6.3.2 |
 
 新增 BFF 聚合 API（orchestrator 出数据）：
@@ -365,7 +366,7 @@ Run 详情顶部提供：
 ## 7. 决策记录
 
 - **D1（不引入 OpenTelemetry）**：已有 SkyWalking 9.7.0 全套（OAP+UI+agent），2-3 人团队维护不起两套 trace 体系；OTel 与 SkyWalking agent 混用会增加排障复杂度。SkyWalking 9.x 已支持 OTLP 接收，未来需对接 OTel 生态时可在 OAP 侧接收，不影响 agent 侧。
-- **D2（Run Explorer 不新建落库）**：复用 `chat_message.steps` + 5.2 `llm_usage_record` + 5.1 `chat_feedback`，前端聚合展示。避免与 5.x 重复建表；若 5.x 未落地，先用 `[LLM-IO]` ES 索引兜底。
+- **D2（Run Explorer 不新建落库）**：复用 `chat_message.steps` + 5.2 `llm_usage_record` + 5.1 `chat_message_feedback`，前端聚合展示。避免与 5.x 重复建表；若 5.x 未落地，先用 `[LLM-IO]` ES 索引兜底。
 - **D3（LLM 指标与 5.2 共用采集点）**：`LlmMetricsRecorder` 与 5.2 `TokenUsageCollector` 都在 `ModelRouter` 调用点采集，避免重复埋点；指标打 Micrometer，用量落 MQ+MySQL，两条通道独立不耦合。
 - **D4（filebeat 而非 logstash）**：filebeat 轻量、资源占用低，与 ES 7.17.23 同生态；logstash 重，2-3 人团队无独立运维。
 - **D5（echarts 而非 d3/vis-network）**：echarts 开箱即用、瀑布/Gantt/折线/热力图都支持、与 Naive UI 暗色主题易对齐；d3 学习成本高、vis-network 偏图论场景。

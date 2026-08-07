@@ -100,6 +100,24 @@ public record AgentRunRequest(
             String conversationId,
             String reactPromptId,
             int checkpointThinkIteration) {
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks,
+                skillId, reactRestart, conversationId, reactPromptId, checkpointThinkIteration, 0);
+    }
+
+    /** MAIN — 显式指定 ReAct 轮数上限（0 = 取 Nacos 默认） */
+    public static AgentRunRequest main(
+            AssembledContext memory,
+            String query,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            List<String> injectedBlocks,
+            String skillId,
+            boolean reactRestart,
+            String conversationId,
+            String reactPromptId,
+            int checkpointThinkIteration,
+            int maxIters) {
         return new AgentRunRequest(
                 AgentRole.MAIN,
                 UUID.randomUUID().toString(),
@@ -113,7 +131,7 @@ public record AgentRunRequest(
                 skillId,
                 null,
                 null,
-                0,
+                maxIters,
                 TimelineBinding.MAIN_FULL,
                 reactRestart,
                 reactPromptId,

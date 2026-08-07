@@ -155,10 +155,10 @@ async function handleNewTask() {
 }
 
 function handleSwitchConversation(id: string) {
-  const conv = chatStore.conversations.find(c => c.id === id)
-  if (!conv || conv.kind !== 'task') {
-    chatStore.pendingWorkspace = null
-  }
+  // 切换到已有会话：无论任务还是对话，都退出「新任务选项目」流程。
+  // 若只对非 task 清 pendingWorkspace，点完「新任务」再点已有任务对话会残留，
+  // 导致该对话错误显示项目/分支选择器。
+  chatStore.pendingWorkspace = null
   chatStore.newTaskMode = false
   void (async () => {
     if (getAttention(id)) {
@@ -513,11 +513,11 @@ onMounted(() => {
       <!-- 快捷操作：新对话、新任务 -->
       <div class="quick-actions">
         <button type="button" class="action-btn" @click="handleNewChat">
-          <NIcon :size="18" :component="ChatbubblesOutline" />
+          <NIcon :size="16" :component="ChatbubblesOutline" />
           <span>新对话</span>
         </button>
         <button type="button" class="action-btn" @click="handleNewTask">
-          <NIcon :size="18" :component="ConstructOutline" />
+          <NIcon :size="16" :component="ConstructOutline" />
           <span>新任务</span>
         </button>
       </div>
@@ -819,7 +819,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 16px 14px;
+  padding: 12px 16px 10px;
   border-bottom: 1px solid var(--sun-border);
 }
 
@@ -829,7 +829,7 @@ onMounted(() => {
 }
 
 .brand-name {
-  font-size: var(--sun-font-lg);
+  font-size: var(--sun-font-md);
   font-weight: 600;
   letter-spacing: -0.45px;
   color: var(--sun-text);
@@ -847,7 +847,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--sun-border);
   flex-shrink: 0;
 }
@@ -856,12 +856,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 9px 12px;
+  padding: 6px 12px;
   border: none;
   border-radius: 6px;
   background: transparent;
   color: var(--sun-text-secondary);
-  font-size: var(--sun-font-base);
+  font-size: var(--sun-font-sm);
   line-height: 1.3;
   font-family: inherit;
   cursor: pointer;
@@ -1365,7 +1365,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 14px 14px 16px;
+  padding: 8px 12px 8px 14px;
   flex-shrink: 0;
   border-top: 1px solid var(--sun-border);
 }
@@ -1373,7 +1373,7 @@ onMounted(() => {
 .user-nickname {
   flex: 1;
   min-width: 0;
-  font-size: var(--sun-font-base);
+  font-size: var(--sun-font-sm);
   font-weight: 600;
   color: var(--sun-text);
   white-space: nowrap;
@@ -1382,8 +1382,8 @@ onMounted(() => {
 }
 
 .user-more-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -1402,13 +1402,13 @@ onMounted(() => {
 
 .user-avatar {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: var(--sun-black);
   border: 1px solid var(--sun-border);
   color: var(--sun-text-secondary);
-  font-size: var(--sun-font-base);
+  font-size: var(--sun-font-sm);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -1416,7 +1416,7 @@ onMounted(() => {
 }
 
 .theme-toggle {
-  width: 28px; height: 28px;
+  width: 26px; height: 26px;
   border-radius: 6px;
   border: none;
   background: transparent;

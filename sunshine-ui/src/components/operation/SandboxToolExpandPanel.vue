@@ -72,7 +72,6 @@ const {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-right: 28px;
   font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace);
   font-size: var(--sun-font-sm, 12px);
   font-weight: 400;
@@ -93,10 +92,13 @@ const {
 }
 
 .op-sandbox-copy {
-  position: absolute;
-  top: -2px;
-  right: 0;
-  z-index: 1;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  align-self: flex-end;
+  margin-bottom: -28px;
+  border-radius: 8px;
+  background: transparent;
 }
 
 .op-exec-cmd,

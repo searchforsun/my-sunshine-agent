@@ -124,7 +124,7 @@ async function regenerate(): Promise<void> {
       :summary="roundSummary(round)"
       :detail="roundDetail(round)"
       :resolved="isRoundResolved(round)"
-      :default-collapsed="isRoundResolved(round)"
+      icon="approval"
     >
       <template v-if="isActiveAwaitingRound(round)">
         <p v-if="round.chainSummary" class="plan-chain">{{ round.chainSummary }}</p>

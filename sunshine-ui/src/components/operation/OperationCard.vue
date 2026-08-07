@@ -22,7 +22,7 @@ import {
 import { isThinkStepId } from '../../api/processingStepsNormalize'
 import { useRouter } from 'vue-router'
 import StaticMarkdown from '../StaticMarkdown.vue'
-import { isToolStepId, type HitlConfirmationPayload } from '../../api/hitlSteps'
+import { isToolStepId, isHitlSummaryAwaiting } from '../../api/hitlSteps'
 import HitlStepActions from './HitlStepActions.vue'
 import SandboxToolExpandPanel from './SandboxToolExpandPanel.vue'
 import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
@@ -39,14 +39,12 @@ const props = withDefaults(defineProps<{
   embedHitl?: boolean
   /** 整段时间线折叠预览：不显示 chevron、不可点开详情 */
   hideChevron?: boolean
-  pendingHitlConfirmation?: HitlConfirmationPayload
   hitlUiKey?: string
   /** exec 步所属轮次 think 摘要（think_summary 工具输出），主行「执行命令 {摘要} {命令头}」 */
   roundSummary?: string
 }>(), {
   embedHitl: true,
   hideChevron: false,
-  pendingHitlConfirmation: undefined,
   hitlUiKey: '',
   roundSummary: undefined,
 })
@@ -95,7 +93,6 @@ const hitlPanelKey = computed(() =>
   props.hitlUiKey
   || props.step.metadata?.hitlToken
   || props.step.metadata?.hitlStatus
-  || props.pendingHitlConfirmation?.confirmationToken
   || props.step.summary?.active
   || props.step.id,
 )
@@ -109,6 +106,8 @@ const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
 const isDone = computed(() => lifecycle.value === 'done')
 const isPaused = computed(() => lifecycle.value === 'paused' || lifecycle.value === 'terminated')
+/** 终态（done/error/skipped/paused/terminated）：label 统一灰，与工具调用完成态一致 */
+const isTerminal = computed(() => ['done', 'error', 'skipped', 'paused', 'terminated'].includes(lifecycle.value))
 const label = computed(() => {
   // think 步：有结构化摘要显示摘要，无摘要统一兜底「深度思考」（running/done 一致）
   if (isThinkStepId(props.step.id)) {
@@ -142,6 +141,10 @@ const headerText = computed(() => {
     const cancelled = lifecycle.value === 'paused' || lifecycle.value === 'terminated'
     const command = extractSandboxExecCommand(props.step)
     if (command && !cancelled) {
+      // HITL 等待确认：命令在执行前展示（完整命令），便于用户决策
+      if (isHitlSummaryAwaiting(props.step)) {
+        return `等待确认执行：${command}`
+      }
       return formatExecCommandHeaderText(command, props.roundSummary)
     }
   }
@@ -235,25 +238,10 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       @keydown.enter.prevent="onRowActivate"
       @keydown.space.prevent="onRowActivate"
     >
-      <span class="op-gutter" aria-hidden="true">
-        <svg
-          v-if="canExpand"
-          class="op-chevron"
-          width="9"
-          height="9"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-          stroke-linecap="round"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </span>
       <span class="op-main">
         <span
           class="op-label operation-card-title"
-          :class="{ 'op-shimmer': showShimmer }"
+          :class="{ 'op-shimmer': showShimmer, 'is-terminal': isTerminal }"
         >{{ label }}</span>
         <span
           v-if="showHeaderPreview"
@@ -267,6 +255,20 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
           </span>
           <span v-if="isRunning && live" class="op-pulse">…</span>
         </span>
+        <svg
+          v-if="canExpand"
+          class="op-chevron"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
       </span>
       <span class="op-trailing">
         <span v-if="durationText" class="op-dur">{{ durationText }}</span>
@@ -297,7 +299,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       v-if="showEmbeddedHitl"
       :key="hitlPanelKey"
       :step="step"
-      :pending-confirmation="pendingHitlConfirmation"
       @decided="(token, approved) => emit('hitlDecided', token, approved)"
     />
 
@@ -309,13 +310,13 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       />
       <template v-else>
         <div v-if="expandSummary && shiftSummary" class="op-detail-after">
-          <StaticMarkdown :source="expandSummary" compact />
+          <StaticMarkdown :source="expandSummary" compact :streaming="live" />
         </div>
-        <StaticMarkdown v-if="expandBody" :source="expandBody" compact />
+        <StaticMarkdown v-if="expandBody" :source="expandBody" compact :streaming="live" />
         <div v-if="step.reasoning?.trim()" class="op-detail-thinking">
-          <StaticMarkdown :source="step.reasoning" compact />
+          <StaticMarkdown :source="step.reasoning" compact :streaming="live" />
         </div>
-        <StaticMarkdown v-if="step.output?.trim()" :source="step.output" compact />
+        <StaticMarkdown v-if="step.output?.trim()" :source="step.output" compact :streaming="live" />
       </template>
     </div>
   </div>
@@ -323,8 +324,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 
 <style scoped>
 .op-line {
-  --op-gutter: 12px;
-  --op-detail-inset: calc(var(--op-gutter) + 4px);
   --op-font: var(--sun-font-md);
   --op-font-sm: var(--sun-font-sm);
   --op-detail-font: var(--sun-font-base);
@@ -335,7 +334,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 
 .op-line-row {
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   column-gap: 4px;
   align-items: start;
   width: 100%;
@@ -354,26 +353,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 
 .op-line.is-clickable:hover .op-label {
   color: var(--sun-text-secondary);
-}
-
-.op-gutter {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  width: var(--op-gutter);
-  padding-top: 4px;
-  flex-shrink: 0;
-}
-
-.op-chevron {
-  flex-shrink: 0;
-  color: var(--sun-text-muted);
-  opacity: 0.5;
-  transition: transform 0.15s ease;
-}
-
-.op-line.is-expanded .op-chevron {
-  transform: rotate(90deg);
 }
 
 .op-main {
@@ -403,13 +382,13 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: op-text-shimmer 2.6s linear infinite;
+  animation: op-text-shimmer 1.2s linear infinite;
   will-change: background-position;
 }
 
 .op-label.op-shimmer {
-  --op-shimmer-base: var(--sun-text);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text) 22%, white);
+  --op-shimmer-base: var(--sun-text-secondary);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 30%, white);
 }
 
 .op-text.op-shimmer {
@@ -422,8 +401,18 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   font-weight: 450;
 }
 
+/* 终态（done/paused/terminated）label 与工具调用完成态一致，保持灰 */
+.op-label.is-terminal {
+  color: var(--sun-text-muted);
+}
+
+.op-line.is-clickable:hover .op-label.is-terminal {
+  color: var(--sun-text-muted);
+}
+
 .op-text {
-  flex: 1 1 0;
+  /* 不撑满：按内容宽度排布，使行尾 chevron 紧跟文字而非被推到最右 */
+  flex: 0 1 auto;
   color: var(--sun-text-muted);
   opacity: 0.92;
   white-space: nowrap;
@@ -440,6 +429,22 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   min-width: 1.45em;
   padding-left: 8px;
   padding-top: 0;
+}
+
+/* 文字后展开箭头：紧跟 label/text，折叠 > 展开 ^；尺寸加大更明显 */
+.op-main .op-chevron {
+  flex-shrink: 0;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  color: var(--sun-text-secondary);
+  opacity: 0.85;
+  margin-left: 2px;
+  transition: transform 0.15s ease;
+}
+
+.op-line.is-expanded .op-main .op-chevron {
+  transform: rotate(90deg);
 }
 
 .op-dur {
@@ -515,7 +520,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 }
 
 .op-detail {
-  margin: 2px 0 6px var(--op-detail-inset);
+  margin: 2px 0 6px 0;
   padding-left: 8px;
   border-left: 1px solid color-mix(in srgb, var(--sun-text-muted) 18%, transparent);
   display: flex;
@@ -569,8 +574,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 }
 
 .op-line :deep(.collapsible-confirm) {
-  --confirm-inset-left: 0;
-  margin-left: var(--op-detail-inset);
+  margin-left: 0;
 }
 
 @keyframes op-pulse {

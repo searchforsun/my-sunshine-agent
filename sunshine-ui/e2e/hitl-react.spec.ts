@@ -61,7 +61,7 @@ test.describe('ReAct HITL 工具确认 UI', () => {
     await expect(hitlPanel.getByRole('button', { name: '取消调用' })).toBeVisible()
 
     await hitlPanel.getByRole('button', { name: '确认调用' }).click()
-    await expect(hitlPanel.getByText('写操作确认 · 已确认')).toBeVisible({ timeout: 30_000 })
-    await expect(hitlPanel.getByRole('button', { name: '确认调用' })).toBeHidden()
+    // 确认后确认框收敛：按钮消失（面板随之被终态折叠收起）
+    await expect(hitlPanel.getByRole('button', { name: '确认调用' })).toBeHidden({ timeout: 30_000 })
   })
 })

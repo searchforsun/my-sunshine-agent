@@ -290,7 +290,8 @@ public class ChatStreamExecutor {
                 false,
                 ctx.reactRestart(),
                 ctx.existingStepsJson(),
-                ctx.personalRules());
+                ctx.personalRules(),
+                ctx.conversationKind());
     }
 
     private static List<StreamToken> drainStepTokens(List<ProcessingStep> stepEmissions) {
@@ -330,7 +331,7 @@ public class ChatStreamExecutor {
                         s.startedAt(), null, null,
                         s.detail(), null, s.output(), s.result(),
                         System.currentTimeMillis(), s.label(), s.metadata(),
-                        s.contentBlocks(), s.subSteps()));
+                        s.contentBlocks(), s.subSteps(), s.stepSummary()));
             }
             return;
         }

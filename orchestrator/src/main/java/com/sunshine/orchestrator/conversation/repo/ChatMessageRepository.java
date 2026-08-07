@@ -27,7 +27,20 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessageEntity, 
             @Param("convId") String conversationId,
             @Param("limit") int limit);
 
+    @Query(value = """
+            SELECT * FROM chat_message
+            WHERE conversation_id = :convId AND seq < :beforeSeq
+            ORDER BY seq DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<ChatMessageEntity> findPageBeforeSeqDesc(
+            @Param("convId") String conversationId,
+            @Param("beforeSeq") int beforeSeq,
+            @Param("limit") int limit);
+
     void deleteByConversationId(String conversationId);
 
     long countByConversationIdAndSeqGreaterThan(String conversationId, int seq);
+
+    long countByConversationIdAndSeqLessThan(String conversationId, int seq);
 }

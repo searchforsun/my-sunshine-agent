@@ -9,7 +9,7 @@ test.describe('会话切换展示', () => {
     await waitForStreamComplete(page)
     await expect(page.locator('.user-bubble').filter({ hasText: '你好' })).toBeVisible()
 
-    await page.locator('.nav-menu--chat').getByText('新对话').click()
+    await page.getByRole('button', { name: '新对话' }).click()
     await fillComposer(page, '写一段 Python 快速排序')
     await page.keyboard.press('Enter')
     await waitForStreamComplete(page)

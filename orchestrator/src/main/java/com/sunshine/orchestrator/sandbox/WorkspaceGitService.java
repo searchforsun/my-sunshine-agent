@@ -7,9 +7,12 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 工作区 Git 操作：stage / commit / push / pull / status / branches。
@@ -116,6 +119,255 @@ public class WorkspaceGitService {
         return result;
     }
 
+    /** git status --porcelain 单行：code + path（重命名/复制取新路径） */
+    private record StatusEntry(String code, String path) {
+    }
+
+    /** 解析 porcelain 行（XY path / XY old -> new） */
+    private static List<StatusEntry> parsePorcelainStatus(String out) {
+        List<StatusEntry> list = new ArrayList<>();
+        for (String line : out.lines().toList()) {
+            if (line == null || line.length() < 4) {
+                continue;
+            }
+            String code = line.substring(0, 2);
+            String rest = line.substring(3).strip();
+            if (rest.isEmpty()) {
+                continue;
+            }
+            int arrow = rest.lastIndexOf(" -> ");
+            if (arrow >= 0) {
+                rest = rest.substring(arrow + 4).strip();
+            }
+            list.add(new StatusEntry(code, rest));
+        }
+        return list;
+    }
+
+    /** porcelain 状态码归一：MM/ M/A → 单一变更字母；?? → ? */
+    private static String normalizeStatus(String code) {
+        for (int i = 0; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == '?') {
+                return "?";
+            }
+            if (c != ' ') {
+                return String.valueOf(c);
+            }
+        }
+        return "?";
+    }
+
+    private static long parseLong(String s) {
+        try {
+            return Long.parseLong(s.strip());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** 无意义的目录/文件段：整段命中即忽略（node_modules/target 等依赖与构建产物） */
+    private static final Set<String> IGNORED_PATH_SEGMENTS = Set.of(
+            "node_modules", "target", "dist", "build", "out", ".next", ".nuxt",
+            ".venv", "venv", "__pycache__", ".idea", ".vscode", ".git", "logs",
+            "coverage", ".cache", ".DS_Store", "Thumbs.db", ".gradle", ".mvn",
+            ".terraform", "vendor", ".pytest_cache");
+
+    private static boolean isIgnoredDiffPath(String path) {
+        if (path == null || path.isBlank()) {
+            return true;
+        }
+        // 未跟踪目录整体（git status 输出 dir/）：无 diff 基线，作为改动条目无意义
+        if (path.endsWith("/")) {
+            return true;
+        }
+        for (String seg : path.split("/")) {
+            if (seg != null && IGNORED_PATH_SEGMENTS.contains(seg)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 工作区 diff 摘要：合并（HEAD vs 工作区）+ 已暂存（HEAD vs 暂存区）+ 未暂存（暂存区 vs 工作区）三套计数。
+     * 未跟踪文件无 staged，unstaged 即新增行数。过滤依赖/构建产物等无意义目录的改动。
+     */
+    public List<Map<String, Object>> gitDiffSummary(String workspaceId, String checkoutId, String userId, String tenantId) {
+        String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
+        String dir = worktreePath(checkoutId);
+        List<StatusEntry> entries = parsePorcelainStatus(
+                execInSandbox(sessionId, git(dir, "status", "--porcelain")));
+        if (entries.isEmpty()) {
+            return List.of();
+        }
+        Map<String, long[]> merged = new LinkedHashMap<>();
+        Map<String, long[]> staged = new LinkedHashMap<>();
+        Map<String, long[]> unstaged = new LinkedHashMap<>();
+        Map<String, Boolean> binary = new HashMap<>();
+        try {
+            // numstat vs HEAD：合并（已暂存 + 未暂存）；二进制行 add/del 为 "-"
+            parseNumstat(execInSandbox(sessionId, git(dir, "diff", "HEAD", "--numstat")), merged, binary);
+        } catch (RuntimeException e) {
+            log.warn("[WorkspaceGit] gitDiffSummary merged numstat failed ws={}: {}", workspaceId, e.getMessage());
+        }
+        try {
+            // numstat vs 暂存区：仅已暂存改动
+            parseNumstat(execInSandbox(sessionId, git(dir, "diff", "--cached", "--numstat")), staged, binary);
+        } catch (RuntimeException e) {
+            log.warn("[WorkspaceGit] gitDiffSummary staged numstat failed ws={}: {}", workspaceId, e.getMessage());
+        }
+        try {
+            // numstat 暂存区 vs 工作区：仅未暂存改动（不含未跟踪文件）
+            parseNumstat(execInSandbox(sessionId, git(dir, "diff", "--numstat")), unstaged, binary);
+        } catch (RuntimeException e) {
+            log.warn("[WorkspaceGit] gitDiffSummary unstaged numstat failed ws={}: {}", workspaceId, e.getMessage());
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (StatusEntry entry : entries) {
+            if (isIgnoredDiffPath(entry.path())) {
+                continue;
+            }
+            long add = 0;
+            long del = 0;
+            long stagedAdd = 0;
+            long stagedDel = 0;
+            long unstagedAdd = 0;
+            long unstagedDel = 0;
+            boolean bin = false;
+            if ("??".equals(entry.code())) {
+                // 未跟踪文件：无 diff 基线，合并/未暂存行数即新增行数
+                add = countWorktreeLines(sessionId, dir, entry.path());
+                unstagedAdd = add;
+            } else {
+                long[] m = merged.get(entry.path());
+                if (m != null) {
+                    add = m[0];
+                    del = m[1];
+                }
+                long[] s = staged.get(entry.path());
+                if (s != null) {
+                    stagedAdd = s[0];
+                    stagedDel = s[1];
+                }
+                long[] u = unstaged.get(entry.path());
+                if (u != null) {
+                    unstagedAdd = u[0];
+                    unstagedDel = u[1];
+                }
+                bin = binary.getOrDefault(entry.path(), false);
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("path", entry.path());
+            item.put("status", normalizeStatus(entry.code()));
+            item.put("rawStatus", entry.code());
+            item.put("added", add);
+            item.put("deleted", del);
+            item.put("binary", bin);
+            Map<String, Object> stagedCounts = new LinkedHashMap<>();
+            stagedCounts.put("added", stagedAdd);
+            stagedCounts.put("deleted", stagedDel);
+            item.put("staged", stagedCounts);
+            Map<String, Object> unstagedCounts = new LinkedHashMap<>();
+            unstagedCounts.put("added", unstagedAdd);
+            unstagedCounts.put("deleted", unstagedDel);
+            item.put("unstaged", unstagedCounts);
+            result.add(item);
+        }
+        return result;
+    }
+
+    /** 解析 numstat 文本 -> path -> [add, del]；二进制行写入 binary map */
+    private static void parseNumstat(String out, Map<String, long[]> counts, Map<String, Boolean> binary) {
+        for (String line : out.lines().toList()) {
+            if (line.isBlank()) {
+                continue;
+            }
+            String[] parts = line.split("\t", -1);
+            if (parts.length < 3) {
+                continue;
+            }
+            boolean bin = "-".equals(parts[0]) || "-".equals(parts[1]);
+            long add = bin ? 0 : parseLong(parts[0]);
+            long del = bin ? 0 : parseLong(parts[1]);
+            counts.put(parts[2], new long[]{add, del});
+            if (bin) {
+                binary.put(parts[2], true);
+            }
+        }
+    }
+
+    /** 未跟踪文件行数（wc -l；失败返回 0） */
+    private long countWorktreeLines(String sessionId, String dir, String path) {
+        try {
+            String out = execInSandbox(sessionId, "wc -l -- " + shq(dir + "/" + path)).trim();
+            return parseLong(out.split("\\s+")[0]);
+        } catch (RuntimeException e) {
+            log.warn("[WorkspaceGit] countWorktreeLines failed path={}: {}", path, e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * 单文件 diff 详情：合并（HEAD vs 工作区）+ 已暂存（HEAD vs 暂存区）+ 未暂存（暂存区 vs 工作区）。
+     * 未跟踪文件与 /dev/null 比对（无 staged），均解析为结构化 diff 行。
+     */
+    public Map<String, Object> gitDiffDetail(String workspaceId, String checkoutId, String userId, String tenantId, String path) {
+        String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
+        String dir = worktreePath(checkoutId);
+        boolean untracked = isUntracked(sessionId, dir, path);
+        String merged = "";
+        String staged = "";
+        String unstaged = "";
+        try {
+            if (untracked) {
+                // 未跟踪：与 /dev/null 比较；--no-index 有差异时退出码为 1，追加 || true 掩掉避免 exec 报错
+                merged = execInSandbox(sessionId,
+                        git(dir, "diff", "--no-index", "--unified=3", "/dev/null", path) + " || true");
+            } else {
+                merged = execInSandbox(sessionId, git(dir, "diff", "--unified=3", "HEAD", "--", path));
+            }
+        } catch (RuntimeException e) {
+            log.warn("[WorkspaceGit] gitDiffDetail merged diff failed ws={}: {}", workspaceId, e.getMessage());
+        }
+        try {
+            staged = execInSandbox(sessionId, git(dir, "diff", "--unified=3", "--cached", "--", path));
+        } catch (RuntimeException e) {
+            log.warn("[WorkspaceGit] gitDiffDetail staged diff failed ws={}: {}", workspaceId, e.getMessage());
+        }
+        try {
+            if (untracked) {
+                unstaged = execInSandbox(sessionId,
+                        git(dir, "diff", "--no-index", "--unified=3", "/dev/null", path) + " || true");
+            } else {
+                unstaged = execInSandbox(sessionId, git(dir, "diff", "--unified=3", "--", path));
+            }
+        } catch (RuntimeException e) {
+            log.warn("[WorkspaceGit] gitDiffDetail unstaged diff failed ws={}: {}", workspaceId, e.getMessage());
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("path", path);
+        result.put("lines", UnifiedDiffLines.parse(merged));
+        result.put("staged", Map.of(
+                "present", !staged.isBlank(),
+                "lines", UnifiedDiffLines.parse(staged)));
+        result.put("unstaged", Map.of(
+                "present", !unstaged.isBlank(),
+                "lines", UnifiedDiffLines.parse(unstaged)));
+        return result;
+    }
+
+    /** 单文件是否未跟踪（git status --porcelain -- path 以 ?? 开头） */
+    private boolean isUntracked(String sessionId, String dir, String path) {
+        try {
+            String out = execInSandbox(sessionId, git(dir, "status", "--porcelain", "--", path));
+            return out != null && out.startsWith("??");
+        } catch (RuntimeException e) {
+            log.warn("[WorkspaceGit] isUntracked failed path={}: {}", path, e.getMessage());
+            return false;
+        }
+    }
+
     /** git add（作用于 worktree） */
     public void gitStage(String workspaceId, String checkoutId, String userId, String tenantId,
                          List<String> files, boolean all) {
@@ -129,6 +381,55 @@ public class WorkspaceGitService {
             List<String> cmd = new ArrayList<>(List.of("add"));
             cmd.addAll(files);
             execInSandbox(sessionId, git(dir, cmd.toArray(new String[0])));
+        }
+    }
+
+    /** 撤回暂存（仅清暂存区，保留工作区改动）：git restore --staged */
+    public void gitUnstage(String workspaceId, String checkoutId, String userId, String tenantId,
+                           List<String> files) {
+        if (files == null || files.isEmpty()) {
+            throw new RuntimeException("撤回文件不能为空");
+        }
+        String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
+        String dir = worktreePath(checkoutId);
+        List<String> cmd = new ArrayList<>(List.of("restore", "--staged", "--"));
+        cmd.addAll(files);
+        execInSandbox(sessionId, git(dir, cmd.toArray(new String[0])));
+    }
+
+    /**
+     * 回退文件改动到 HEAD（含清暂存区）；未跟踪文件直接删除。
+     * 已跟踪文件走 git restore --staged --worktree；未跟踪文件 rm。
+     */
+    public void gitRevert(String workspaceId, String checkoutId, String userId, String tenantId,
+                          List<String> files) {
+        if (files == null || files.isEmpty()) {
+            throw new RuntimeException("回退文件不能为空");
+        }
+        String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
+        String dir = worktreePath(checkoutId);
+        Set<String> untracked = new HashSet<>();
+        for (StatusEntry e : parsePorcelainStatus(execInSandbox(sessionId, git(dir, "status", "--porcelain")))) {
+            if ("??".equals(e.code())) {
+                untracked.add(e.path());
+            }
+        }
+        List<String> tracked = new ArrayList<>();
+        List<String> toDelete = new ArrayList<>();
+        for (String p : files) {
+            if (untracked.contains(p)) {
+                toDelete.add(p);
+            } else {
+                tracked.add(p);
+            }
+        }
+        if (!tracked.isEmpty()) {
+            List<String> cmd = new ArrayList<>(List.of("restore", "--staged", "--worktree", "--"));
+            cmd.addAll(tracked);
+            execInSandbox(sessionId, git(dir, cmd.toArray(new String[0])));
+        }
+        for (String p : toDelete) {
+            execInSandbox(sessionId, "rm -f " + shq(dir + "/" + p));
         }
     }
 

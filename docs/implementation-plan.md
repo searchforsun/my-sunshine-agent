@@ -88,6 +88,7 @@
 | **4.6** 动态 DAG 增强 | Plan 不够用 | **✅**：parallel/exclusive/loop + 校验/布局 · **4.6.4 AutoContextMemory** · Live：`verify_plan_dag_live.py` |
 | **4.7** 多 Agent 增强 | 复杂协作 / 交叉验证 / ReAct 软规划 | **✅ 多专家协作完整**（2026-07-08）：**第五模式 `PEER_COLLAB`** L1 §E + **`$` L0** §K · `expert-manager` :8235 + `/experts` · Live：`verify_peer_collab_live` + `verify_expert_consultation_live` · 详设 [expert-consultation](./superpowers/specs/2026-07-07-expert-consultation-design.md)；**4.7.5 ReAct TaskBoard** ✅ · [taskboard](./superpowers/specs/2026-06-24-react-taskboard-design.md)；**4.7.6 Spawn Subagent** ✅（含**单独取消**子任务）· [spawn-subagent](./superpowers/specs/2026-07-18-react-spawn-subagent-design.md) · Live `verify_spawn_subagent_live.py`；**4.7.1 废弃** / **4.7.4 不做**；**4.7.2** 仍按需 |
 | **4.13** Workflow Studio | 业务自助编排 | **✅ 当前形态收口**（MVP 4.13.1–4.13.6 + **4.13.7** 并行/条件分支/循环 + **4.13.8** 变量赋值/参数提取 + **条件复合化**（AND/OR 多条件））；**v1 非目标不做**（for-each、预检测 while、框内嵌套网关/loop、多出边汇合、画布边条件标签）· [workflow-studio spec](./superpowers/specs/2026-06-25-workflow-studio-design.md) · [loop 设计](./superpowers/specs/2026-07-14-workflow-loop-container-design.md) · [结构化 IO spec](./superpowers/specs/2026-07-24-workflow-structured-io-design.md) · [条件复合化 spec](./superpowers/specs/2026-07-28-workflow-composite-condition-design.md) · [实施计划](./superpowers/plans/2026-07-11-workflow-studio.md) |
+|| **4.14 Planner-Executor 重建** | 真 Planner-Executor 取代动态 Plan-Workflow | **⬜ 设计评审中（2026-08-05 立项 · v2 简化决议）**：**完全舍弃动态 Plan-Workflow**（一次性 DAG 规划 + PlanApproval + Plan DAG 时间线）→ 重建为 **Planner = ReAct 主 Agent + Worker = 工具调用**（**两态分解** full/hierarchical 边走边规划 + PlanNotebook + **Redis 单写** + **3 类显式触发**重规划；**简化决议 S1-S7**：砍独立 Evaluator→Planner 自判、持久化降级 Redis 单写、去 Tier/压缩点基建、砍 P2 共享内存、三态→两态、重规划收敛、不复用 PlanValidator）；**静态 Workflow（4.13）保留**、DAG 画布留存给静态 Workflow；新 Timeline 为步骤时间线卡片。· [planner-executor-rebuild spec](./superpowers/specs/2026-08-05-planner-executor-rebuild-design.md) · [Planner-Worker Loop v8 详设](./superpowers/specs/2026-07-31-planner-harness-loop-design.md) · 实施 H-0→H-7 + 阶段 D（删旧代码） |
 | **4.8** 工具集成（SDK + MCP） | 异构系统 / 业务解耦 | **✅ 检查门通过**：MySQL Catalog + `sunshine-tool-sdk` + MCP 动态接入 + `/tools` 管理页 · 详设 [tool-integration spec](./superpowers/specs/2026-07-09-tool-integration-design.md) · 计划 [tool-integration plan](./superpowers/plans/2026-07-09-tool-integration.md) · Live：`verify_tool_integration_live.py --suite all` |
 | **4.9** K8s | — | **明确不做**（维持脚本/现有部署） |
 | **4.10** Seata | — | **明确不做**（跨服务写靠 HITL + 幂等） |
@@ -138,7 +139,7 @@
 
 | 页面 | 路由 | 功能 |
 |------|------|------|
-| AI 对话 | `/chat` | SSE 流式；底栏 **执行路径**选择器（五模式）；workflow **模板**用 `#id`（4.13）非底栏下拉；**静态 / Plan workflow** 均展示 `PlanWorkflowPanel` + `PlanNodeDrawer` |
+| AI 对话 | `/chat` | SSE 流式；workflow **模板**用 `#id`（4.13）非底栏下拉；**静态 Workflow** 展示 `PlanWorkflowPanel` + `PlanNodeDrawer`（DAG 画布）；**Planner-Executor（4.14）** 展示步骤时间线卡片 |
 | **Plan 详情** | **`/plans/:planId`** | Planner JSON、节点 trace、状态机 |
 | 知识库 | `/knowledge` | 知识库工作台（文档/检索调试/参数/评测）；**配置版本化** + suite 管理 · [docs/rag/README.md](./rag/README.md) |
 | **Skills** | **`/skills`** | Skill 列表/上传/版本/预览/元数据；**版本 diff** → `/skills/:skillId/diff`（见 [skills-management-ui-design.md](./superpowers/specs/skills-management-ui-design.md)） |

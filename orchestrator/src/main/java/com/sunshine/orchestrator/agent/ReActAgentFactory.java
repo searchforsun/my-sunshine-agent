@@ -49,6 +49,13 @@ public class ReActAgentFactory {
     private int maxTokens;
     @Value("${agent.model.api-key:}")
     private String apiKey;
+    /**
+     * 模型上下文窗口（token）。供 AgentScope CompactionConfig 动态触发使用
+     * （effectiveTrigger = contextWindow - reserved）；须与实际模型窗口一致，
+     * 否则 run 内压缩触发点会偏离真实溢出点。
+     */
+    @Value("${agent.model.context-window:256000}")
+    private int contextWindowSize;
 
     public ReActAgent create(AgentRunRequest request) {
         Toolkit toolkit = resolveToolkit(request);
@@ -105,6 +112,7 @@ public class ReActAgentFactory {
                 .apiKey(apiKey)
                 .modelName(overriddenModel)
                 .baseUrl(overriddenBaseUrl)
+                .contextWindowSize(contextWindowSize)
                 .generateOptions(GenerateOptions.builder().maxTokens(resolvedMaxTokens).build())
                 .stream(true)
                 .build();

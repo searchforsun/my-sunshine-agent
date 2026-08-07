@@ -155,6 +155,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                     .userId(request.userId())
                     .sessionId(assistantMessageId)
                     .put(ProcessingStepMiddleware.CTX_BRIDGE_ID, bridgeId)
+                    .put(ProcessingStepMiddleware.CTX_REACT_MAX_ITERS, resolveMaxIters(request))
                     .build();
             return agent.streamEvents(inputs, rt)
                     .flatMap(agentEvent -> {
@@ -287,6 +288,9 @@ public class ReActAgentRuntime implements AgentRuntime {
 
     private static void routeDeltaToBridge(AgentEvent ev, String bridgeId) {
         // AS2 streamEvents：reasoning/content delta 经 bridge 写 hookQueue，runtime 统一 drain。
+        if (log.isDebugEnabled()) {
+            log.debug("[Runtime] routeDeltaToBridge ev={}", ev.getClass().getSimpleName());
+        }
         if (ev instanceof ThinkingBlockDeltaEvent t) {
             StepEventBridge.emitReasoningChunk(bridgeId, t.getDelta());
         } else if (ev instanceof TextBlockDeltaEvent d) {
@@ -296,6 +300,15 @@ public class ReActAgentRuntime implements AgentRuntime {
     }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** 与 ReActAgentFactory.resolveMaxIters 一致：request 显式携带优先，否则取 Nacos 默认 */
+    private int resolveMaxIters(AgentRunRequest request) {
+        if (request != null && request.maxIters() > 0) {
+            return request.maxIters();
+        }
+        AgentExecutionProperties.React react = executionProperties.getReact();
+        return react != null ? react.getMaxIters() : 0;
+    }
 
     private static boolean resolveHitlEnabled(AgentRunRequest request) {
         String permissionsJson = request.permissionsJson();

@@ -24,14 +24,18 @@ async function expandTimeline(lines: Locator) {
 }
 
 test.describe('处理过程时间线（真实后端）', () => {
+  // 真实 LLM 链路耗时不定，文件内串行避免并发资源竞争
+  test.describe.configure({ mode: 'serial' })
+
   test('simple 路径：意图识别 + 正文生成', async ({ page }) => {
-    test.setTimeout(120_000)
+    test.setTimeout(150_000)
     const question = '你好，今天天气不错'
     await sendChatMessage(page, question)
 
     const lines = page.locator('.operation-lines').last()
-    await expect(lines).toBeVisible({ timeout: 30_000 })
-    await waitForStreamComplete(page, 90_000)
+    // 真实 LLM 链路偶发慢响应，放宽首步等待
+    await expect(lines).toBeVisible({ timeout: 60_000 })
+    await waitForStreamComplete(page, 120_000)
 
     // 时间线默认折叠：展开后可见「识别意图」步骤（ReAct generate 步骤行刻意隐藏）
     await expandTimeline(lines)
@@ -46,46 +50,43 @@ test.describe('处理过程时间线（真实后端）', () => {
     await sendChatMessage(page, question)
 
     const lines = page.locator('.operation-lines').last()
-    await expect(lines).toBeVisible({ timeout: 30_000 })
+    await expect(lines).toBeVisible({ timeout: 60_000 })
     await expect(lines.getByText(/知识库|企业知识/).first()).toBeVisible({ timeout: 45_000 })
-    await waitForStreamComplete(page)
+    await waitForStreamComplete(page, 120_000)
 
     await expandTimeline(lines)
-    // 现行时间线契约：识别意图 → 规划推理(think) → 调用工具(检索知识库) → 综合分析
-    await expect(lines.locator('.operation-card-title', { hasText: '规划推理' }).first()).toBeVisible({ timeout: 15_000 })
+    // 现行时间线契约：识别意图 → 知识检索（RAG 步固定 label）→ 正文终稿（无独立 think 行）
     await expect(lines.locator('.operation-card-title', { hasText: '检索知识库' }).first()).toBeVisible({ timeout: 30_000 })
-    // 展开检索步骤查看召回结果（现行 catalog 文案：「找到 N 条参考片段」/「未找到…」）
-    const ragLine = lines.locator('.op-line-row').filter({ hasText: '检索知识库' }).first()
-    await ragLine.click()
+    // RAG 检索步已展示召回结果（现行 catalog 文案：「找到 N 条参考片段」/「未找到…」）
     await expect(lines.getByText(/未找到|找到 \d+ 条/).first()).toBeVisible({ timeout: 30_000 })
     // ReAct 无「生成回答」步骤行；正文即终稿
     await expect(page.locator('.assistant-body').last()).not.toBeEmpty()
   })
 
   test('单步可展开详情', async ({ page }) => {
-    test.setTimeout(120_000)
-    await sendChatMessage(page, '用一句话介绍你自己')
+    test.setTimeout(180_000)
+    await sendChatMessage(page, '公司考勤制度是什么？')
 
     const lines = page.locator('.operation-lines').last()
-    await expect(lines).toBeVisible({ timeout: 30_000 })
-    await waitForStreamComplete(page, 90_000)
+    await expect(lines).toBeVisible({ timeout: 60_000 })
+    await waitForStreamComplete(page, 120_000)
 
     await expandTimeline(lines)
-    // 「识别意图」为纯文本行（无展开）；「规划推理」(think) 可展开，展开区含 reasoning
-    const thinkLine = lines.locator('.op-line-row').filter({ hasText: '规划推理' }).first()
-    await expect(thinkLine).toBeVisible()
-    await thinkLine.click()
-    // 展开区（.op-detail）展示 detail/reasoning 等详情正文
+    // 任一可展开步骤（tool/RAG 均有内容）点击后展开区（.op-detail）展示详情；
+    // 用 .op-row 排除 timeline-summary 概要行
+    const clickableRow = lines.locator('.op-row .op-line.is-clickable .op-line-row').first()
+    await expect(clickableRow).toBeVisible({ timeout: 15_000 })
+    await clickableRow.click()
     await expect(lines.locator('.op-detail').first()).toBeVisible({ timeout: 10_000 })
   })
 
   test('刷新页面后步骤行仍保留', async ({ page }) => {
-    test.setTimeout(120_000)
+    test.setTimeout(150_000)
     await sendChatMessage(page, '你好，请简短回复')
 
     const lines = page.locator('.operation-lines').last()
-    await expect(lines).toBeVisible({ timeout: 30_000 })
-    await waitForStreamComplete(page, 90_000)
+    await expect(lines).toBeVisible({ timeout: 60_000 })
+    await waitForStreamComplete(page, 120_000)
     await expandTimeline(lines)
     await expect(lines.locator('.operation-card-title', { hasText: '识别意图' })).toBeVisible()
 

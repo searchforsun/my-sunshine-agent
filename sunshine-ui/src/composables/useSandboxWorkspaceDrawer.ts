@@ -13,7 +13,12 @@ export interface SandboxWorkspaceDrawerPayload {
   focusPath?: string
   /** 打开后定位到文件起始行（read 步骤 L 范围起点）；不传则默认顶部 */
   focusLine?: number
+  /** 进入「改动」diff 模式，展示该文件的 diff 详情（优先级高于 focusPath） */
+  diffPath?: string
 }
+
+/** 任务工作区内容 tab：文件树 / 改动 */
+export type SandboxWorkspaceTab = 'files' | 'diff'
 
 /** 与 Chat / 节点抽屉统一 */
 export const DRAWER_MIN_WIDTH = PANE_MIN_WIDTH
@@ -50,6 +55,10 @@ const state = reactive({
   conversationId: '' as string,
   focusPath: '' as string,
   focusLine: 0 as number,
+  /** 任务工作区内容 tab：文件树 / 改动 diff */
+  tab: 'files' as SandboxWorkspaceTab,
+  /** diff 视图初始打开的文件（空 = 改动列表） */
+  diffPath: '' as string,
 })
 
 const savedWidth = ref(loadSavedWidth())
@@ -247,7 +256,29 @@ export function useSandboxWorkspaceDrawer() {
     state.conversationId = payload.conversationId?.trim() ?? ''
     state.focusPath = payload.focusPath?.trim() ?? ''
     state.focusLine = typeof payload.focusLine === 'number' && payload.focusLine > 0 ? payload.focusLine : 0
+    state.diffPath = payload.diffPath?.trim() ?? ''
+    state.tab = state.diffPath ? 'diff' : 'files'
+    if (state.tab === 'diff') {
+      // diff 模式下定位到改动视图，不需要文件定位参数
+      state.focusPath = ''
+      state.focusLine = 0
+    }
     state.open = true
+  }
+
+  /** 切换任务工作区内容 tab：文件树 / 改动 */
+  function switchTab(tab: SandboxWorkspaceTab) {
+    if (state.tab === tab) return
+    state.tab = tab
+    if (tab === 'files') state.diffPath = ''
+  }
+
+  /** 从改动视图跳转文件区：切回文件树并定位到目标文件（打开预览） */
+  function openFileFromDiff(path: string) {
+    state.tab = 'files'
+    state.diffPath = ''
+    state.focusPath = path
+    state.focusLine = 0
   }
 
   function close() {
@@ -255,6 +286,13 @@ export function useSandboxWorkspaceDrawer() {
     state.conversationId = ''
     state.focusPath = ''
     state.focusLine = 0
+    state.tab = 'files'
+    state.diffPath = ''
+  }
+
+  /** 退出「改动」diff 视图，回到文件树浏览 */
+  function closeDiff() {
+    switchTab('files')
   }
 
   function updateConversationId(convId: string) {
@@ -266,7 +304,10 @@ export function useSandboxWorkspaceDrawer() {
   return {
     state,
     open,
+    switchTab,
+    openFileFromDiff,
     close,
+    closeDiff,
     updateConversationId,
     compareMode,
     drawerWidth,

@@ -1,9 +1,11 @@
 # 上下文压缩统一设计（五层渐进管道）
 
 > 日期：2026-07-31
-> 状态：**Layer 2/3/4/5 ✅ 已实现** · **Layer 1 ⚠️ 待恢复**（AgentScope 2.0 迁移后移除）
+> 状态：**Layer 1/2/3/4/5 ✅ 已实现**（Layer 1 于 2026-08-05 方案 A 恢复：token 动态触发 + 自定义摘要保留思考，见 §4.5）
 > **v2/v3 优化（2026-08-01）**：§5.5 压缩点模式（L1 压缩点前移、L3 尾部动态段、Budget「丢」改「退役并入」）；§5.5.3 起 v3 分层修正——**按变化频率 Tier 0/1/2 分层**、幂等 upsert、T0 降频、意图尾部注入（业界调研见 §5.5.5）· 关联 [task-scene-context-design](./2026-08-01-task-scene-context-design.md)
 > **v8（2026-08-02）**：H1 拆分——HIERARCHICAL 下阶段骨架（低频）进 Tier 1 幂等 upsert、阶段细节（高频）留 Tier 2 尾部（§5.5.7 注记），承接 [planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md) 分层增量规划
+> **v9（2026-08-05）**：场景隔离——chat 保留 L3（`scene=chat` 通道）、task 不读不写；task 不读用户 L2（写/读双侧路由，[task-scene §2.1/§6.3](./2026-08-01-task-scene-context-design.md)）；同步 §5.5.3 图注记与 §5.5.7 差异表
+> **v10（2026-08-05 · harness 简化决议 S3 覆盖）**：Planner-Executor 场景**不新建压缩点基建**——run 内压缩用 AgentScope 官方 `CompactionMiddleware`，跨轮 L1 压缩用既有 `L1Compressor`；H1 仅作为注入块放 query 前（Tier 2 尾部语义），rounds 超阈值时**简单截断为摘要**。§5.5.7「Planner-Worker 适配」注记与落地清单 ⑨ 中「H1 拆 Tier 1/2」的 v8 方案**作废**。本文 §5.5 压缩点模式本身保留（既有已实现能力，继续服务普通 ReAct 与静态 Workflow）。
 > 整合：`2026-07-17-autocontext-memory-design.md` + `2026-07-22-context-optimization-design.md` + `2026-07-24-dynamic-context-compression-design.md`（三者均已归档）
 > 行业参考：Claude Code 五层渐进压缩 · Cursor 单层摘要 · Oracle 双层模式 · Mem0 LLM 记忆管理
 
@@ -50,7 +52,7 @@ cross-turn（跨用户问答轮次）:
 ```
 每轮 LLM 调用前 / 每轮 assistant 完成后 / 每次读时组装：
 
- ┌── Layer 1  AutoContextMemory           ⚠️ 待恢复
+ ┌── Layer 1  AutoContextMemory           ✅ 已实现（方案 A 恢复）
  │    触发: PreReasoning（每轮自动）
  │    开销: 零 LLM 调用
  │    压缩: intra-turn ReAct 工具结果
@@ -112,9 +114,9 @@ cross-turn（跨用户问答轮次）:
 
 ### 4.2 当前实际状态
 
-AgentScope 2.0 的 `CompactionConfig` 是一个**完整的多步骤管道**，通过 `HarnessAgent.compaction()` 注入，以 `CompactionMiddleware` 形式在每轮 `onReasoning` 前运行。
+> ✅ **已恢复（2026-08-05 方案 A）**。AgentScope 2.0 的 `CompactionConfig` 经 `HarnessAgent.compaction()` 注入，以 `CompactionMiddleware` 形式在每轮 `onReasoning` 前运行；`buildCompactionConfig()` 已改为 **token 动态触发** + 保留思考的自定义摘要（见 §4.5）。
 
-**唯一的实质问题**：当前 `buildCompactionConfig()` 只设了 `triggerMessages=40`。对于默认 `maxIters=5`（约 18-22 条消息），永远不会触发。
+历史问题：早期 `buildCompactionConfig()` 只设 `triggerMessages=40`，而 `maxIters=20` 下消息数通常达不到，token 触发因 `contextWindowSize` 未显式配置（`deepseek-v4-pro` 不在 AgentScope `ModelContextWindows` 表）而退化到巨大 fallback，**实际永不触发**——长 run 中思考样例被长期上下文稀释 → 后段「先思考再行动」行为退化。
 
 详见 `ReActAgentFactory.java:22-24` 注释——"压缩改在 P2 用原生 CompactionConfig 重做"，`HarnessAgentFactory` 已实施，仅阈值配错。
 
@@ -319,56 +321,74 @@ Layer 5 预算：96k（modelWindow × 0.75 = 96k）
 
 ### 4.5 配置
 
-**MemoryProperties.AutoContext** —— 完整字段（Phase 0/1/2 参数）：
+> **实际落地（2026-08-05 方案 A）**：启用 AgentScope 原生 `CompactionConfig` 的 **token 动态触发 + tail 裁剪 + 保留思考的自定义摘要**。未实现下述 §4.6 的 `CrossTurnCompactMiddleware`（Phase 1 三阶段批处理，属后续增强，不阻塞当前防御目标）。
+
+**MemoryProperties.AutoContext** —— 实际字段（`HarnessAgentFactory.buildCompactionConfig()` 消费）：
 
 ```java
 public static class AutoContext {
     private boolean enabled = true;
 
-    // ── Phase 0：tail 裁剪（CompactionConfig 参数）────────────────
-    private long protectTokens = 40_000;          // 保护最近 N tokens
-    private long minTokensToPrune = 20_000;       // 最小超限才触发
-    private String summaryPrompt;                 // 可选摘要 prompt
+    // ── token 动态触发（方案 A）──────────────────────────────────
+    private int triggerTokens = 0;          // 0=动态：effectiveTrigger = modelWindow - reserved
+    private int reserved = 20_000;          // 摘要过程 token 缓冲
+    private int keepTokens = -1;            // -1=动态保留 tail
+    private int keepTokensMin = 2_000;
+    private int keepTokensMax = 8_000;
+    private double keepTokensRatio = 0.25;
+    private boolean flushBeforeCompact = false;   // disableMemoryHooks，压缩前不做 LLM 记忆抽取
+    private boolean offloadBeforeCompact = true;  // 压缩前原文落会话 JSONL
+    private String summaryPrompt = DEFAULT_SUMMARY_PROMPT;  // 保留思考的自定义摘要模板
 
-    // ── Phase 1：跨轮激进压缩阈值 ────────────────────────────────
-    private double crossTurnRatio = 0.85;          // 触发比例（modelWindow × 0.85）
-    private int nearKeepTurns = 4;                 // 保留 Near 轮次
-    private int midKeepTurns = 4;                  // 保留 Mid 压缩轮次
+    // ── tail 裁剪（非 LLM，常态操作）─────────────────────────────
+    private boolean truncateArgsEnabled = true;
+    private int truncateArgsMaxChars = 2_000;
+    private boolean pruneEnabled = true;
+    private int pruneProtectTokens = 40_000;
+    private int pruneMinTokens = 20_000;
+    private int pruneMaxOutputChars = 2_000;
 
-    // ── Phase 2：tail 收缩参数 ───────────────────────────────────
-    private long phase2ProtectTokens = 20_000;     // 更激进保护
-    private long phase2MinTokensToPrune = 10_000;
-    private int phase2TruncateChars = 500;         // 更激进截断
-
-    // ── 保留字段（向后兼容）──────────────────────────────────────
-    private long msgThreshold = 40;                // 消息数 fallback
+    // ── 保留字段（消息数兜底 + 跨轮 L1）────────────────────────────
+    private long msgThreshold = 0;          // 0=禁用消息数触发，仅 token 触发
     private int lastKeep = 12;
     private long maxToken = 128 * 1024;
     private double tokenRatio = 0.75;
     private long largePayloadThreshold = 5 * 1024;
+    private int minConsecutiveToolMessages = 4;
+    private double currentRoundCompressionRatio = 0.3;
     private int minCompressionTokenThreshold = 3000;
 }
 ```
 
-Nacos 对应配置：
+Nacos 对应配置（`sunshine-orchestrator.yaml`，`agent.model.context-window` 为动态触发依据）：
 
 ```yaml
 agent:
+  model:
+    context-window: 200000    # 上下文窗口，须与实际模型一致（默认 200k）
   memory:
     auto-context:
       enabled: true
-      # Phase 0：tail 裁剪
-      protect-tokens: 40000
-      min-tokens-to-prune: 20000
-      # Phase 1：跨轮激进压缩
-      cross-turn-ratio: 0.85
-      near-keep-turns: 4
-      mid-keep-turns: 4
-      # Phase 2：tail 收缩
-      phase2-protect-tokens: 20000
-      phase2-min-tokens-to-prune: 10000
-      phase2-truncate-chars: 500
+      msg-threshold: 0
+      last-keep: 12
+      trigger-tokens: 0
+      reserved: 20000
+      keep-tokens: -1
+      keep-tokens-min: 2000
+      keep-tokens-max: 8000
+      keep-tokens-ratio: 0.25
+      flush-before-compact: false
+      offload-before-compact: true
+      summary-prompt: ""      # 留空用内置保留思考模板；可覆盖
+      truncate-args-enabled: true
+      truncate-args-max-chars: 2000
+      prune-enabled: true
+      prune-protect-tokens: 40000
+      prune-min-tokens: 20000
+      prune-max-output-chars: 2000
 ```
+
+**自定义摘要模板（DEFAULT_SUMMARY_PROMPT）**：AgentScope 默认模板丢弃 `ThinkingBlock`，导致压缩后模型失去「先思考再行动」样例 → 后段思考退化。方案 A 改为分段模板（SESSION INTENT / SUMMARY / ARTIFACTS / NEXT STEPS），并**明确要求归纳各轮思考要点**；`{messages}` 占位符保留原文供摘要。
 
 Layer 5 预算联动调整（`sunshine-orchestrator.yaml`）：
 
@@ -381,13 +401,14 @@ agent:
 
 ### 4.6 实施清单
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| **新增** `CrossTurnCompactMiddleware.java` | 新建 | Phase 1 跨轮激进压缩逻辑（L3 清 + Near↓ + Mid↓ + Far 合成），`compacted` 标记 |
-| **修改** `ProcessingStepMiddlewareFactory.java` | 扩展 | 注入 `CrossTurnCompactMiddleware`，**放在 CompactionMiddleware 之前** |
-| **修改** `HarnessAgentFactory.buildCompactionConfig()` | 3 行参数 | `triggerTokens=0` / `keepTokens=-1` / `PruneConfig` |
-| **修改** `MemoryProperties.AutoContext` | 新增 7 字段 | Phase 1/2 参数 |
-| **修改** `L1Compressor`（可选） | 调用封装 | Phase 1 复用于 Mid/Far 压缩的 LLM 调用 |
+| 文件 | 操作 | 状态 | 说明 |
+|------|------|:---:|------|
+| `HarnessAgentFactory.buildCompactionConfig()` | 修改 | ✅ | token 动态触发（`triggerTokens=0`/`reserved`/`keepTokens=-1`+min/max/ratio）+ `PruneConfig` + `TruncateArgsConfig` + 保留思考的 `summaryPrompt`；指纹纳入全部压缩参数 |
+| `MemoryProperties.AutoContext` | 修改 | ✅ | 新增方案 A 字段（见 §4.5） |
+| `ReActAgentFactory.buildModel()` | 修改 | ✅ | 显式设置 `contextWindowSize`（Nacos `agent.model.context-window`，默认 200k），修正 AgentScope `ModelContextWindows` 缺表导致的 fallback |
+| `mode-overlay.react`（Catalog v5） | 修改 | ✅ | 新增 【reasoning·限长】150 字软约束，控制思考量、缓解上下文膨胀 |
+| **新增** `CrossTurnCompactMiddleware.java` | 新建 | ⏳ 后续增强 | Phase 1 跨轮激进压缩（L3 清 + Near↓ + Mid↓ + Far 合成），`compacted` 标记 |
+| **修改** `ProcessingStepMiddlewareFactory.java` | 扩展 | ⏳ 后续增强 | 注入 `CrossTurnCompactMiddleware`，**放在 CompactionMiddleware 之前** |
 
 #### 4.6.1 CrossTurnCompactMiddleware 核心算法
 
@@ -524,20 +545,22 @@ WHILE assembled > window × 0.8 AND nearRounds > 1:
 Tier 0 · 绝对静态核（字节恒定，永不失效）
   tools（确定性序列化：排序后渲染；工具规模大时改「名列表静态 + schema 尾部」，见下方 v6 注记）
   + System base · scene/mode overlay
-  + P0 项目规范（用户手动编辑时才变，单次失效可接受）
+  + P0 项目规范（用户手动编辑时才变，单次失效可接受；仅 task）
 
 Tier 1 · 低频记忆（content-hash 幂等 upsert，真变才失效一次）
-  + L2 用户状态（11 类结构化键值，幂等）
-  + W0 工作区记忆（索引/约束/事实，幂等）
-  + T0 任务进度（降频：随压缩点推进刷新，非每轮）
+  + L2 用户状态（11 类结构化键值，幂等；仅 chat）
+  + W0 工作区记忆（索引/约束/事实，幂等；仅 task）
+  + T0 任务进度（降频：随压缩点推进刷新，非每轮；仅 task）
   + L1 Far/Mid 摘要（压缩时才变）
 
 Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
   Near 原文（压缩点之后逐轮增长）
-  + L3 召回（U 形排序：高相关放首尾，Lost-in-Middle 缓解）
+  + L3 召回（U 形排序：高相关放首尾，Lost-in-Middle 缓解；仅 chat，scene=chat 过滤）
   + 意图/模式注入（追加为尾部 system 消息，Anthropic mode-switch 模式）
   + user query（tail 末尾）
 ```
+
+> **v9 注记（2026-08-05 场景隔离）**：上图为**最大并集**示意；实际按场景过滤——chat 注入 L2 + L3，不注入 W0/T0/P0；task 注入 W0 + T0 + P0，不注入用户 L2、不召回 L3（[task-scene §2.1](./2026-08-01-task-scene-context-design.md)）。
 
 - **Tier 0 是双层缓存的内层稳定核**：Tier 1 任何一次真实变化只使外层失效，Tier 0 仍命中（two-level caching）
 - **意图识别结果不注入 prefix**：它是路由决策（控制流）；需告知模型当前模式时，用尾部 system 消息
@@ -554,7 +577,7 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 
 **③ Budget「丢」改「退役并入」（C3 + 保质量）**：见 §8.2。Mid 头部不再直接丢，先触发 Far 折叠（并入 far_summary、压缩点前移），折叠后仍超预算才丢 Far。让 Budget 成为压缩点推进的触发源之一，保住「原文可查」原则。
 
-**④ chat/task 统一启用（§3 前提修正）**：统一路由后（[routing v3](./2026-07-29-unified-routing-design.md)）chat 与 task 同走 ReAct，无 DIRECT 直答模式。压缩点作为 **L1 通用机制统一启用**，场景差异只留两处：静态层内容（P0 项目规范 / W0 / T0 仅 task）+ L3 开关（chat/task 均关闭或按场景配）。
+**④ chat/task 统一启用（§3 前提修正）**：统一路由后（[routing v3](./2026-07-29-unified-routing-design.md)）chat 与 task 同走 ReAct，无 DIRECT 直答模式。压缩点作为 **L1 通用机制统一启用**，场景差异留三处：静态层内容（P0 项目规范 / W0 / T0 仅 task）+ L3 差异（**chat 保留、经 scene=chat 隔离通道；task 不读不写**，见 [task-scene §6.3](./2026-08-01-task-scene-context-design.md)）+ **写/读双侧场景路由**（task 不写用户 L2，见 task-scene §2.1）。
 
 **⑤ 双压缩点衔接**：run 内压缩点（§4.4 Phase 1 后新 prefix 起点）与跨轮压缩点（far_folded_msg_ids）是两条独立线——run 内压缩**不落库、不移动 far_folded_msg_ids**；跨轮压缩在 assistant 完成后异步推进。二者互不干扰，实现时不得混淆（run 内压缩产物经 `ContextWritePath` 只取 user/assistant 角色入 history）。
 
@@ -596,13 +619,15 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 | 执行路径 | 通用 ReAct（planMode=none/harness） | 同 | ❌ 统一 |
 | L1 窗口 | 压缩点前移 | 压缩点前移 | ❌ 统一 |
 | Tier 0 | base + overlay.chat + tools | base + overlay.task + **P0 项目规范** + tools | ✅ 差异（内容） |
-| Tier 1 | L2 + Far/Mid | L2 + **W0 + T0** + Far/Mid | ✅ 差异（内容） |
-| L3 | 关闭 | 移除 | ✅ 差异（开关） |
+| Tier 1 | L2（用户）+ Far/Mid | **W0 + T0** + Far/Mid（**不读用户 L2**，[task-scene §2.1](./2026-08-01-task-scene-context-design.md) 场景隔离） | ✅ 差异（内容） |
+| L3 | 保留（scene=chat 隔离通道） | 不读不写（kind 门禁） | ✅ 差异（开关 + 通道隔离） |
 | run 内 Layer 1 | 三阶段一次（§4.4） | 同 | ❌ 统一 |
 
 > **Planner-Worker 适配**：harness 场景下，Planner 是唯一带跨轮前缀包袱的角色，按本表分层并追加 H1（Tier 2 尾部，高频）——详见 [planner-harness spec §2.4](./2026-07-31-planner-harness-loop-design.md)。Worker/子 Agent 无前缀包袱，不占预算。
 >
 > **v8 注记（H1 拆分）**：HIERARCHICAL 模式（[planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md)）下 H1 拆两块——**阶段骨架**（3~5 阶段 + 依赖，仅阶段切换时变）进 **Tier 1 幂等 upsert**；**当前阶段 task 细节 + handoff**（每轮追加）进 **Tier 2 尾部**。阶段骨架稳定上移，跨阶段前缀复用更好。FULL/INCREMENTAL 无骨架，H1 仍整体 Tier 2 尾部。
+>
+> **v10（2026-08-05 · S3 作废上述 v8 拆分）**：H1 不拆 Tier 1/2、不建压缩点。落地为：**H1 作为注入块固定放 query 前（Tier 2 尾部语义）**；rounds 超阈值时简单截断为摘要。跨轮 L1 压缩仍由既有 `L1Compressor` + `far_folded_msg_ids` 负责，run 内压缩由 AgentScope 官方 `CompactionMiddleware` 负责——Planner-Executor 不新增任何压缩基建。
 
 ---
 
@@ -1051,7 +1076,7 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 | ⑥ | **按频率分层（v3）** | §5.5.3 | Tier 0/1/2 定序；高频块（T0 原稿）移出 Tier 0/1 前部，意图注入走尾部 system 消息 |
 | ⑦ | **幂等 upsert + 定宽隔离** | §5.5.6 | L2/W0 抽取加 content-hash 比对；appendix 定宽分隔、阈值重编译；确定性序列化（键排序、无时间戳/session id） |
 | ⑧ | **T0 降频** | §5.5.6 / task-scene §6.1 | T0 有界块随压缩点推进刷新，非每轮；与 T0 写路径解耦 |
-| ⑨ | **Planner-Worker 分层适配** | §5.5.7 注记 / [planner-harness §2.4](./2026-07-31-planner-harness-loop-design.md) | Planner 上下文 Tier 0/1/2 定序（H1 在 Tier 2 尾部、Worker handoff 双写 L1 尾部 + H1）；Worker 稳定前缀跨 worker 复用，upstream 结果经 `plan_shared_memory` 按需读取。**v8：HIERARCHICAL 下 H1 拆分**——阶段骨架 Tier 1 幂等 upsert、阶段细节 Tier 2 尾部 |
+| ⑨ | **Planner-Worker 分层适配** | §5.5.7 注记 / [planner-harness §2.4](./2026-07-31-planner-harness-loop-design.md) | Planner 上下文 Tier 0/1/2 定序（H1 在 Tier 2 尾部、Worker handoff 双写 L1 尾部 + H1）；Worker 稳定前缀跨 worker 复用，upstream 结果从 H1 rounds 读取。**v10（S3）**：H1 不拆 Tier 1/2、不建压缩点，rounds 超阈值简单截断摘要 |
 | ⑩ | **tools 分层注入** | §5.5.3 v6 注记 / [phase5 §5.5](./phase5-operation-openness-design.md) | 工具规模 > 阈值时：全量名列表进 Tier 0 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 由 Nacos `agent.tool.inject` 切换 |
 | ⑪ | **L2/W0 语义冲突识别** | §6.4 / task-scene §5.2 | 写路径加语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT，`context.l2.merge` / `context.ws.merge`）；Nacos `agent.context.l2.semantic-merge` 开关 |
 
@@ -1070,5 +1095,5 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 | `archive/2026-07-22-context-corruption-audit-design.md` | 腐败审计子设计，本文 §9 引用 |
 | `archive/2026-07-22-l1-admin-window-rows-design.md` | L1 Admin 工具页，小粒度 |
 | `2026-08-01-task-scene-context-design.md` | task 场景适配；压缩点模式据此回写本文 §5.5/§7.5/§8.2（v2 优化） |
-| `2026-07-31-planner-harness-loop-design.md` | Planner-Worker 场景；其 §2.4 落地本文 §5.5 分层与压缩点模式（H1 在 Tier 2 尾部、handoff 双写、Worker 稳定前缀） |
+| `2026-07-31-planner-harness-loop-design.md` | Planner-Worker 场景；其 §2.4 落地本文 §5.5 分层与压缩点模式（H1 在 Tier 2 尾部、handoff 双写、Worker 稳定前缀）· **v10：H1 不拆 Tier 1/2（S3），见 §5.5.7 注记** |
 | `phase5-operation-openness-design.md` | 运营化；其 5.5 工具分层注入对齐本文 §5.5.3 tools（名列表静态 + schema 尾部）；5.3 `call_scene` 与路由 `scene` 命名隔离 |

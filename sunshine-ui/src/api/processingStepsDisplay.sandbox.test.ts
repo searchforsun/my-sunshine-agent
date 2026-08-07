@@ -255,6 +255,54 @@ describe('sandbox tool timeline display', () => {
       'find /workspace/wt-1b385872d4 -maxdepth 3 -type f | head -120',
     )
   })
+
+  it('HITL awaiting exec: command extracted from detail (running, command 已写入 detail)', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@11',
+      label: '执行命令',
+      lifecycle: 'running',
+      summary: { active: '等待用户确认执行写操作' },
+      detail: 'ls -la /workspace',
+      metadata: { cancellable: true, hitlStatus: 'awaiting', hitlToken: 'tok-exec-1' },
+    })
+    expect(extractSandboxExecCommand(step)).toBe('ls -la /workspace')
+  })
+
+  it('HITL awaiting exec without detail falls back to undefined (no stdout as command)', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@12',
+      label: '执行命令',
+      lifecycle: 'running',
+      summary: { active: '等待用户确认执行写操作' },
+      detail: '',
+      metadata: { cancellable: true, hitlStatus: 'awaiting', hitlToken: 'tok-exec-2' },
+    })
+    expect(extractSandboxExecCommand(step)).toBeUndefined()
+  })
+
+  it('done exec: stdout in detail is never treated as the command', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@13',
+      label: '执行命令',
+      lifecycle: 'done',
+      summary: { after: 'echo hello' },
+      detail: 'hello\n',
+      metadata: {},
+    })
+    expect(extractSandboxExecCommand(step)).toBe('echo hello')
+  })
+
+  it('running exec: command extracted from active summary (正在执行 {command})', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@14',
+      label: '执行命令',
+      lifecycle: 'running',
+      summary: { active: '正在执行 ls -la /workspace' },
+      detail: '',
+      metadata: { cancellable: true },
+    })
+    expect(extractSandboxExecCommand(step)).toBe('ls -la /workspace')
+  })
 })
 
 describe('sandboxToolKind 按用途细分（组文案决定）', () => {

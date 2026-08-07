@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.memory.MemoryProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
@@ -45,6 +46,7 @@ public class HarnessAgentFactory {
     private final MemoryProperties memoryProperties;
     private final AgentExecutionProperties executionProperties;
     private final ToolCatalogService toolCatalogService;
+    private final PromptCatalogHolder promptCatalogHolder;
 
     public HarnessAgent create(AgentRunRequest request) {
         ReActAgent reactAgent = reactAgentFactory.create(request);
@@ -92,8 +94,45 @@ public class HarnessAgentFactory {
                 String.valueOf(taskboard),
                 String.valueOf(subagentEnabled),
                 String.valueOf(toolCatalogService.catalogVersion()),
-                ac.isEnabled() ? ac.getMsgThreshold() + ":" + ac.getLastKeep() : "off");
+                ac.isEnabled() ? compactionFingerprint(ac, resolveSummaryPrompt()) : "off");
         return sha256(material);
+    }
+
+    /**
+     * 压缩摘要提示词 SSOT：prompt-manager Catalog id=compaction.summary-prompt；
+     * Catalog 缺失时回退代码默认模板（与 Nacos 旧 summary-prompt 同源），禁止空模板压缩丢思考。
+     */
+    private String resolveSummaryPrompt() {
+        String fromCatalog = promptCatalogHolder.snapshot().text("compaction.summary-prompt")
+                .map(String::strip).orElse("");
+        if (!fromCatalog.isBlank()) {
+            return fromCatalog;
+        }
+        String fromConfig = memoryProperties.getAutoContext().getSummaryPrompt();
+        return fromConfig != null && !fromConfig.isBlank()
+                ? fromConfig : MemoryProperties.DEFAULT_SUMMARY_PROMPT;
+    }
+
+    /** 压缩配置指纹：任一压缩参数变化 → 新实例（缓存复用安全） */
+    private String compactionFingerprint(MemoryProperties.AutoContext ac, String summaryPrompt) {
+        return String.join("|",
+                String.valueOf(ac.getMsgThreshold()),
+                String.valueOf(ac.getLastKeep()),
+                String.valueOf(ac.getTriggerTokens()),
+                String.valueOf(ac.getReserved()),
+                String.valueOf(ac.getKeepTokens()),
+                String.valueOf(ac.getKeepTokensMin()),
+                String.valueOf(ac.getKeepTokensMax()),
+                String.valueOf(ac.getKeepTokensRatio()),
+                String.valueOf(ac.isFlushBeforeCompact()),
+                String.valueOf(ac.isOffloadBeforeCompact()),
+                summaryPrompt,
+                String.valueOf(ac.isTruncateArgsEnabled()),
+                String.valueOf(ac.getTruncateArgsMaxChars()),
+                String.valueOf(ac.isPruneEnabled()),
+                String.valueOf(ac.getPruneProtectTokens()),
+                String.valueOf(ac.getPruneMinTokens()),
+                String.valueOf(ac.getPruneMaxOutputChars()));
     }
 
     private CompactionConfig buildCompactionConfig() {
@@ -101,10 +140,36 @@ public class HarnessAgentFactory {
         if (!ac.isEnabled()) {
             return CompactionConfig.builder().build();
         }
-        return CompactionConfig.builder()
+        CompactionConfig.Builder builder = CompactionConfig.builder()
                 .triggerMessages(ac.getMsgThreshold())
+                .triggerTokens(ac.getTriggerTokens())
+                .reserved(ac.getReserved())
                 .keepMessages(ac.getLastKeep())
-                .build();
+                .keepTokens(ac.getKeepTokens())
+                .keepTokensMin(ac.getKeepTokensMin())
+                .keepTokensMax(ac.getKeepTokensMax())
+                .keepTokensRatio(ac.getKeepTokensRatio())
+                .flushBeforeCompact(ac.isFlushBeforeCompact())
+                .offloadBeforeCompact(ac.isOffloadBeforeCompact());
+        String summaryPrompt = resolveSummaryPrompt();
+        if (summaryPrompt != null && !summaryPrompt.isBlank()) {
+            builder.summaryPrompt(summaryPrompt);
+        }
+        if (ac.isTruncateArgsEnabled()) {
+            builder.truncateArgs(CompactionConfig.TruncateArgsConfig.builder()
+                    .triggerTokens(0)
+                    .triggerMessages(0)
+                    .maxArgLength(ac.getTruncateArgsMaxChars())
+                    .build());
+        }
+        if (ac.isPruneEnabled()) {
+            builder.prune(CompactionConfig.PruneConfig.builder()
+                    .protectTokens(ac.getPruneProtectTokens())
+                    .minimumTokens(ac.getPruneMinTokens())
+                    .maxOutputChars(ac.getPruneMaxOutputChars())
+                    .build());
+        }
+        return builder.build();
     }
 
     private static String nullToEmpty(String s) {

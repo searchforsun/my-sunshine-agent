@@ -3,7 +3,6 @@ import type { ChatMessage } from '../api/chat'
 import { resolveApiBase } from '../api/config'
 import { apiHeaders } from '../stores/authStore'
 import {
-  isContentFullyInterleaved,
   normalizeRestoredInterleavedContent,
 } from '../api/contentInterleave'
 import { stepsHaveAwaitingHitl, getPendingHitlConfirmations } from '../api/hitlSteps'
@@ -117,10 +116,8 @@ export function useChatSessionHydration(options: {
       restoredLast.reasoning = localLast.reasoning ?? ''
       restoredLast.contentBlocks = localLast.contentBlocks
       restoredLast.pendingHitlConfirmations = undefined
-      restoredLast.pendingHitlConfirmation = undefined
     } else if (getPendingHitlConfirmations(localLast).length && !localIntentOnly) {
       restoredLast.pendingHitlConfirmations = getPendingHitlConfirmations(localLast)
-      restoredLast.pendingHitlConfirmation = undefined
     }
     if (localLast.contentBlocks?.length) {
       const localJoined = localLast.contentBlocks.map(b => b.text).join('')
@@ -249,10 +246,11 @@ export function useChatSessionHydration(options: {
         if (tail?.role === 'assistant') {
           normalizeRestoredInterleavedContent(tail)
         }
+        // 续连必须从「前端已消费到的 seq」之后重放，不能因 isContentFullyInterleaved 就跳到
+        // 后端最新 seq：流式中 contentBlocks 与 content 一致并不代表前端已收到后端最新 chunk，
+        // 跳变会跳过中间 seq 的 chunk，导致刷新后续连丢内容、loading 卡死、重新生成无反应。
         let afterSeq = active.lastSeq
-        if (tail?.role === 'assistant' && isContentFullyInterleaved(tail)) {
-          afterSeq = Math.max(afterSeq, status.lastSeq ?? 0)
-        } else if (afterSeq <= 0 && (status.lastSeq ?? 0) > 0 && tail?.content?.trim()) {
+        if (afterSeq <= 0 && (status.lastSeq ?? 0) > 0 && tail?.content?.trim()) {
           afterSeq = status.lastSeq
         }
         await nextTick()
@@ -260,6 +258,20 @@ export function useChatSessionHydration(options: {
         await nextTick()
         await ensureStreamRenderer()
         await reconnectPromise
+        // 续传异常结束（网络失败 / 后端已终态导致 SSE 中断）：重新拉取 API + 本地缓存，
+        // 后端 commitFinal 可能已落库已输出的步骤/正文，避免停留在空白或失败态消息上
+        const tailAfter = active.messageId
+          ? msgs.find(m => m.id === active.messageId && m.role === 'assistant')
+          : msgs[msgs.length - 1]
+        if (
+          tailAfter?.role === 'assistant' &&
+          tailAfter.status !== 'completed' &&
+          tailAfter.status !== 'streaming'
+        ) {
+          clearActiveGeneration()
+          await hydrateSessionFromStore(cid)
+          return
+        }
         syncSessionToStore(cid)
       }
     } catch (e) {

@@ -20,6 +20,8 @@ export function useChatStreamMarkdown(
   const settledHtml = ref('')
   const sessionSettledHtml = new Map<string, string>()
   const streamingMdRef = ref<HTMLElement | null>(null)
+  /** 历史消息 markdown HTML 缓存：content 未变则复用，避免流式 bump 时全量重解析 */
+  const assistantHtmlCache = new WeakMap<ChatMessage, { content: string; html: string }>()
 
   function setStreamingMdRef(el: unknown) {
     streamingMdRef.value = el instanceof HTMLElement ? el : null
@@ -39,12 +41,22 @@ export function useChatStreamMarkdown(
     if (idx === messages.value.length - 1 && settledHtml.value && !loading.value) {
       return settledHtml.value
     }
-    return renderMarkdown(resolveAssistantDisplayContent(msg))
+    const content = resolveAssistantDisplayContent(msg)
+    const cached = assistantHtmlCache.get(msg)
+    if (cached && cached.content === content) return cached.html
+    const html = renderMarkdown(content)
+    assistantHtmlCache.set(msg, { content, html })
+    return html
   }
 
   function enhanceAllStaticMarkdown(): void {
     document.querySelectorAll('.msg-md:not(.streaming)').forEach(el => {
-      if (el instanceof HTMLElement) enhanceStaticMarkdown(el)
+      if (!(el instanceof HTMLElement)) return
+      // 已扫描过的容器跳过：避免长对话每次更新全量 querySelectorAll + getBoundingClientRect（强制布局）。
+      // 视口外容器仅注册 IntersectionObserver，进入视口时由 observer 完成路径增强，不依赖此标记。
+      if (el.dataset.smdScanned === '1') return
+      enhanceStaticMarkdown(el)
+      el.dataset.smdScanned = '1'
     })
   }
 

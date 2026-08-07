@@ -23,16 +23,20 @@ import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
 import { listWorkspaces } from '../api/workspaces'
 import type { WorkspaceVO } from '../api/workspaces'
-import { gitStage, gitCommit, gitPush, gitPull, ensureCheckout, listCheckouts } from '../api/workspaceGit'
+import { gitStage, gitCommit, gitPush, gitPull, ensureCheckout, listCheckouts, gitDiffSummary, saveDiffBaseSnapshot } from '../api/workspaceGit'
 import { loadActiveGeneration } from '../composables/useActiveGeneration'
 import CopyToggleIcon from '../components/icons/CopyToggleIcon.vue'
-import { NIcon, NPopover, NButton } from 'naive-ui'
-import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline } from '@vicons/ionicons5'
+import { NIcon, NPopover, NButton, NSpin } from 'naive-ui'
+import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline, AlertCircleOutline, WarningOutline, ChatboxEllipsesOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
+import TaskBoardPanel from '../components/operation/TaskBoardPanel.vue'
+import { hasRealTaskBoardItems } from '../api/processingSteps'
+import { isElVisibleInRoot } from '../utils/floatingTaskboard'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
 import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
 import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
 import GitBranchSelector from '../components/chat/GitBranchSelector.vue'
+import MessageDiffCard from '../components/chat/MessageDiffCard.vue'
 import DrawerCollapseIcon from '../components/icons/DrawerCollapseIcon.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
 import { useSandboxWorkspaceDrawer } from '../composables/useSandboxWorkspaceDrawer'
@@ -41,8 +45,9 @@ import { usePlanDagExpand } from '../composables/usePlanDagExpand'
 import { fetchSandboxWorkspaceStatus } from '../api/sandboxWorkspace'
 import type { ChatMessage } from '../api/chat'
 import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
-import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
+import { resolveAssistantDisplayContent, resolveStreamErrorText, sanitizeRestoredMessages } from '../api/streamError'
 import { formatConversationTime } from '../utils/conversationTime'
+import { loadCachedMessages } from '../api/conversationCache'
 import {
   isContentFullyInterleaved,
   resolveStreamingContentText,
@@ -165,30 +170,69 @@ const {
   forwardWheelToChatScroll,
 } = useChatScroll(loading)
 
+const historyLoading = ref(false)
+
+/** 触顶加载更早消息（IM 游标分页）：保持滚动位置，完成后同步 session */
+async function maybeLoadHistory(): Promise<void> {
+  const cid = chatStore.currentId
+  if (!cid || loading.value || historyLoading.value) return
+  if (!chatStore.hasHistoryMore(cid)) return
+  const el = scrollRef.value
+  if (!el) return
+  // 距顶 < 可视高度约 40%（至少 240px）即提前拉取历史，避免滚到顶才加载的顿挫
+  const threshold = Math.max(240, el.clientHeight * 0.4)
+  if (el.scrollTop > threshold) return
+  const prevHeight = el.scrollHeight
+  historyLoading.value = true
+  try {
+    await chatStore.loadHistory(cid)
+    const updated = chatStore.conversations.find(c => c.id === cid)?.messages ?? []
+    if (updated.length && cid === chatStore.currentId) {
+      setMessages(cid, [...updated])
+      await nextTick()
+      enhanceAllStaticMarkdown()
+      const el2 = scrollRef.value
+      if (el2) {
+        // 历史消息前插使内容变高：滚动偏移 = 高度差，用户视线不动
+        el2.scrollTop = Math.max(0, el2.scrollTop + (el2.scrollHeight - prevHeight))
+      }
+    }
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+function handleChatScroll(): void {
+  onChatScroll()
+  void maybeLoadHistory()
+}
+
 watch(chatScrollPinned, pinned => {
   setScrollPinned(pinned)
   const cid = chatStore.currentId
   if (pinned && cid) clearAttention(cid)
 })
 
-const attentionBubble = computed(() => {
+/**
+ * 用户上滑离开底部：输入框上方右侧圆形快捷按钮（置于 todolist/错误信息等气泡之上）。
+ * 待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头。点击统一回到底部。
+ */
+const scrollFab = computed<{ kind: 'hitl_pending' | 'completed' | 'down' } | null>(() => {
   const cid = chatStore.currentId
   if (!cid || chatScrollPinned.value) return null
   void streamRevision.value
   const ind = resolveIndicator(cid, chatStore.current?.messages)
-  if (ind !== 'hitl_pending' && ind !== 'completed') return null
-  return ind === 'hitl_pending'
-    ? { kind: ind, text: '待确认' }
-    : { kind: ind, text: '新回复' }
+  if (ind === 'hitl_pending') return { kind: 'hitl_pending' }
+  if (ind === 'completed') return { kind: 'completed' }
+  return { kind: 'down' }
 })
 
-function handleAttentionBubbleClick(): void {
+function handleScrollFabClick(): void {
   const cid = chatStore.currentId
-  if (!cid) return
+  if (cid) clearAttention(cid)
   chatScrollPinned.value = true
   setScrollPinned(true)
   scrollToBottom(true)
-  clearAttention(cid)
 }
 
 function scrollToBottomIfRequested(convId: string): void {
@@ -206,6 +250,63 @@ const {
   isTimelineLive,
   showStreamWaiting,
 } = useChatTimelineView(messages, loading)
+
+/** 运行中消息的 taskboard 步（有真实任务项才参与悬浮） */
+const liveTaskboardStep = computed(() => {
+  if (!loading.value) return undefined
+  const last = messages.value[messages.value.length - 1]
+  if (last?.role !== 'assistant') return undefined
+  return resolveTimelineContext(last).steps.find(s => s.phase === 'tasks' && hasRealTaskBoardItems(s))
+})
+
+/**
+ * 运行期间 todolist 滚出视口时，在输入框上方悬浮一个可折叠的任务板。
+ * 用 IntersectionObserver（root = 滚动容器）跟踪 `[data-live-taskboard]` 元素：
+ * 完全不可见 → 悬浮显示；重新可见 → 隐藏。
+ */
+const floatingTaskboardVisible = ref(false)
+let taskboardObserver: IntersectionObserver | null = null
+
+function updateFloatingTaskboard(): void {
+  taskboardObserver?.disconnect()
+  taskboardObserver = null
+  if (!loading.value || !liveTaskboardStep.value) {
+    floatingTaskboardVisible.value = false
+    return
+  }
+  const el = document.querySelector<HTMLElement>('[data-live-taskboard="1"]')
+  const root = scrollRef.value
+  if (!el || !root) {
+    floatingTaskboardVisible.value = false
+    return
+  }
+  floatingTaskboardVisible.value = !isElVisibleInRoot(el, root)
+  if (typeof IntersectionObserver !== 'undefined') {
+    taskboardObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          floatingTaskboardVisible.value = !entry.isIntersecting
+        }
+      },
+      { root, threshold: 0 },
+    )
+    taskboardObserver.observe(el)
+  }
+}
+
+watch(
+  () => [loading.value, messages.value, liveTaskboardStep.value] as const,
+  async () => {
+    await nextTick()
+    updateFloatingTaskboard()
+  },
+  { flush: 'post' },
+)
+
+onUnmounted(() => {
+  taskboardObserver?.disconnect()
+  taskboardObserver = null
+})
 
 const markdown = useChatStreamMarkdown(
   md,
@@ -379,18 +480,39 @@ const composerPlaceholder = computed(() => {
   return `发消息，Enter 发送 · ${hints.join(' · ')}`
 })
 
-const EMPTY_HINTS = [
-  { label: '青松假政策', prompt: '#knowledge-qa 青松假有多少天、怎么申请' },
-  { label: '网约车上限', prompt: '#knowledge-qa 市内网约车报销上限多少' },
-  { label: '双路检索', prompt: '#knowledge-dual 青松假和网约车报销上限一起查' },
-  { label: '假期助手', prompt: '#hr-leave-assist 青松假还有几天，列出我的请假单' },
-  { label: '费用合规', prompt: '#expense-compliance 对照网约车制度看我的报销是否合规' },
-  { label: 'OA 待办', prompt: '#oa-task-assist 我的 OA 待办有哪些' },
+/** 新对话空态快捷提示：业务场景自然语言，点击即发送（意图路由自动匹配知识库 / Skill） */
+const CHAT_EMPTY_HINTS = [
+  { label: '青松假政策', prompt: '青松假有多少天、怎么申请？' },
+  { label: '网约车上限', prompt: '市内网约车报销上限是多少？' },
+  { label: '双路检索', prompt: '青松假有多少天，同时查一下网约车报销上限' },
+  { label: '假期助手', prompt: '我今年还有几天假期？帮我列出请假单' },
+  { label: '费用合规', prompt: '对照网约车制度，帮我看我的报销是否合规' },
+  { label: 'OA 待办', prompt: '我的 OA 待办有哪些？' },
 ] as const
+
+/** 新任务空态快捷提示：工作区代码任务场景，点击填入输入框（需先选项目与分支再发送） */
+const TASK_EMPTY_HINTS = [
+  { label: '分析代码', prompt: '分析当前工作区的代码结构，梳理核心模块与调用链路' },
+  { label: '审查改动', prompt: '审查工作区中的代码改动，指出潜在问题并给出修改建议' },
+  { label: '实现功能', prompt: '实现一个新功能，具体需求是：' },
+  { label: '修复问题', prompt: '修复一个 Bug，具体现象是：' },
+  { label: '补充测试', prompt: '为当前代码补充单元测试用例' },
+  { label: '讲解项目', prompt: '讲解当前工作区的项目架构和关键文件' },
+] as const
+
+/** 空态场景：新任务（工作区代码任务）还是新对话（知识库/Skill） */
+const emptyTaskState = computed(() => chatStore.newTaskMode || !!chatStore.pendingWorkspace)
+const emptyHints = computed(() => (emptyTaskState.value ? TASK_EMPTY_HINTS : CHAT_EMPTY_HINTS))
+const emptyTitle = computed(() => (emptyTaskState.value ? '有什么代码任务可以帮你？' : '有什么可以帮你的？'))
+const emptyDesc = computed(() =>
+  emptyTaskState.value
+    ? '选择项目与分支 · 描述需求 · 自动拉取代码到工作区'
+    : '政策、假期、报销、待办，随时问我',
+)
 
 function applyEmptyHint(prompt: string) {
   inputText.value = prompt
-  void handleSend()
+  void nextTick(() => inputRef.value?.focus())
 }
 
 const copiedIndex = ref<number | null>(null)
@@ -406,6 +528,96 @@ const taskActiveBranch = ref('')
 const wsPreparing = ref(false)
 /** 拉取失败提示（不发消息，可重试） */
 const wsPrepareError = ref('')
+/** 发送失败提示（如「请求参数有误」4xx）：与对话前动作错误统一提升到输入框上方气泡展示 */
+const sendFailedError = ref('')
+
+/** 发送前分支切换：当前 checkout 有未提交改动时，输入框上方弹出提交确认框（样式对齐 todolist 卡片） */
+const branchSwitchOpen = ref(false)
+/** 提交框内的 commit 信息 */
+const branchSwitchMsg = ref('')
+/** 提交框输入框 ref（打开后聚焦便于输入 commit 信息） */
+const branchSwitchInputRef = ref<HTMLTextAreaElement | null>(null)
+/** 分支切换执行中（暂存/提交/切换）；期间禁止再次发送 */
+const branchSwitchBusy = ref(false)
+/** 切换步骤气泡：staging / committing / switching */
+const branchSwitchStatus = ref<'staging' | 'committing' | 'switching' | ''>('')
+/** 切换失败提示（气泡红色显示；输入框恢复原文，可重新发送重试） */
+const branchSwitchError = ref('')
+/** 挂起的发送上下文：弹框期间暂存，提交后恢复发送 */
+const pendingSendText = ref('')
+const pendingSendConvId = ref('')
+const pendingTargetBranch = ref('')
+/** 切换步骤气泡文案（模型/契约不涉及，纯前端提示；无省略号） */
+const branchSwitchStatusText = computed(() => {
+  switch (branchSwitchStatus.value) {
+    case 'staging': return '正在暂存改动'
+    case 'committing': return '正在提交改动'
+    case 'switching': return '正在切换分支'
+    default: return ''
+  }
+})
+
+/**
+ * 分支气泡：抽屉头部空间不足（气泡边框将碰到相邻元素/抽屉边缘）时收缩为「分支」两字。
+ * 遍历 .drawer-head-top 全部子元素，分支气泡以完整分支名计自然宽，其余按 scrollWidth 计，
+ * 与实际可用宽度比较；不依赖固定宽度阈值，也不受 flex 压缩吸收影响。
+ * slot 渲染时机不可靠，故用 watch 在 label 挂载后建立 observer。
+ */
+const branchLabelRef = ref<HTMLElement | null>(null)
+const branchFullNameRef = ref<HTMLElement | null>(null)
+const branchCollapsed = ref(false)
+
+let branchResizeObserver: ResizeObserver | null = null
+
+/** label 挂载后建立 ResizeObserver 观察抽屉头部，并初始化收缩状态 */
+function setupBranchObserver() {
+  const el = branchLabelRef.value
+  if (!el || branchResizeObserver) return
+  const headTop = el.closest('.drawer-head-top') as HTMLElement | null
+  if (!headTop || typeof ResizeObserver === 'undefined') return
+  branchResizeObserver = new ResizeObserver(updateBranchCollapse)
+  branchResizeObserver.observe(headTop)
+  updateBranchCollapse()
+}
+
+watch(branchLabelRef, (el) => {
+  if (el) setupBranchObserver()
+})
+
+function updateBranchCollapse() {
+  const headTop = branchLabelRef.value?.closest('.drawer-head-top') as HTMLElement | null
+  const full = branchFullNameRef.value
+  if (!headTop || !full) return
+  let natural = 0
+  for (const child of Array.from(headTop.children)) {
+    const el = child as HTMLElement
+    if (el.classList.contains('drawer-head-actions')) {
+      // head-actions 内各子元素逐项计宽；分支气泡恒按完整分支名克隆测量（与当前折叠状态无关，避免还原抖动）
+      for (const sub of Array.from(el.children)) {
+        const subEl = sub as HTMLElement
+        if (subEl.classList.contains('git-dropdown-wrap')) {
+          natural += full.getBoundingClientRect().width
+        } else {
+          natural += subEl.scrollWidth
+        }
+      }
+    } else {
+      natural += el.scrollWidth
+    }
+  }
+  const available = headTop.clientWidth
+  if (natural > available) {
+    branchCollapsed.value = true
+  } else if (branchCollapsed.value && natural < available - 16) {
+    // 滞回：留 16px 余量才还原，避免临界宽度反复切换
+    branchCollapsed.value = false
+  }
+}
+
+onUnmounted(() => {
+  branchResizeObserver?.disconnect()
+  branchResizeObserver = null
+})
 
 /** 从 checkoutPath（/workspace/{checkoutId}）解析 checkoutId；空/无则返回空串 */
 function checkoutIdFromPath(path?: string | null): string {
@@ -439,6 +651,8 @@ async function lastTaskBranch(workspaceId: string): Promise<string> {
 
 /** 会话切换时从 checkoutPath 恢复：解析 checkoutId + 反查分支名 */
 async function applyConversationCheckout() {
+  // 切换会话：丢弃发送前分支切换的挂起状态（避免残留到新会话）
+  resetBranchSwitchState()
   const cp = chatStore.current?.checkoutPath
   const wsId = chatStore.current?.workspaceId
   if (chatStore.current?.kind === 'task' && cp && wsId) {
@@ -481,6 +695,12 @@ async function refreshCheckoutForBranch(wsId: string, branch: string) {
 }
 
 watch(taskBranch, (branch) => {
+  const inNewTask = chatStore.newTaskMode || chatStore.pendingWorkspace
+  if (isCurrentTask.value && currentWorkspaceId.value && !inNewTask) {
+    // 已有任务会话：选择分支仅更新发送意图（taskBranch），会话绑定 checkout 保持不变，
+    // 发送时才统一「提交改动 → 切换 checkout」；避免提前改绑导致未提交改动检测丢失
+    return
+  }
   const wsId = currentWorkspaceId.value ?? chatStore.pendingWorkspace?.wsId
   if (wsId) void refreshCheckoutForBranch(wsId, branch)
 })
@@ -533,17 +753,19 @@ function selectWsProject(ws: WorkspaceVO) {
   wsProjectOpen.value = false
 }
 
-const staging = ref(false)
-const committing = ref(false)
+/** 分支下拉 git 操作按钮状态机：idle -> loading（转圈）-> done（√，稍后回 idle） */
+type GitOpKind = 'stage' | 'push' | 'pull'
+const gitOpKind = ref<GitOpKind | ''>('')
+const gitOpState = ref<'idle' | 'loading' | 'done'>('idle')
 const commitMsg = ref('')
 /** 提交信息输入用侧边二级 Popover（替代原 NModal 弹窗） */
 const showCommitPopover = ref(false)
-const pushing = ref(false)
-const pulling = ref(false)
-/** git 操作内联提示（成功/失败/无可操作 checkout） */
-const gitToast = ref<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null)
+/** 提交按钮状态机：idle -> loading（转圈）-> done（√，稍后回 idle 并关闭弹窗） */
+const commitState = ref<'idle' | 'loading' | 'done'>('idle')
+/** git 操作内联提示（成功不再提示，仅错误/无可操作 checkout） */
+const gitToast = ref<{ kind: 'info' | 'error'; text: string } | null>(null)
 let gitToastTimer: ReturnType<typeof setTimeout> | null = null
-function flashGitToast(kind: 'info' | 'success' | 'error', text: string) {
+function flashGitToast(kind: 'info' | 'error', text: string) {
   gitToast.value = { kind, text }
   if (gitToastTimer) clearTimeout(gitToastTimer)
   gitToastTimer = setTimeout(() => { gitToast.value = null }, 2800)
@@ -558,18 +780,36 @@ function requireCheckout(): string | null {
   return cid
 }
 
+/** 操作完成：按钮转 √，900ms 后恢复文本 */
+function finishGitOp(kind: GitOpKind) {
+  gitOpKind.value = kind
+  gitOpState.value = 'done'
+  window.setTimeout(() => {
+    gitOpState.value = 'idle'
+    gitOpKind.value = ''
+  }, 900)
+}
+
 async function handleGitStage() {
   const wsId = currentWorkspaceId.value
   const cid = requireCheckout()
-  if (!wsId || !cid) return
-  staging.value = true
-  try { await gitStage(wsId, cid, undefined, true); flashGitToast('success', '已暂存所有改动') }
-  catch (e) { flashGitToast('error', (e as Error)?.message || '暂存失败') }
-  finally { staging.value = false }
+  if (!wsId || !cid || gitOpState.value !== 'idle') return
+  gitOpKind.value = 'stage'
+  gitOpState.value = 'loading'
+  try {
+    await gitStage(wsId, cid, undefined, true)
+    finishGitOp('stage')
+    bumpDiffCardRefresh()
+  } catch (e) {
+    gitOpState.value = 'idle'
+    gitOpKind.value = ''
+    flashGitToast('error', (e as Error)?.message || '暂存失败')
+  }
 }
 
 function openCommitPopover() {
   commitMsg.value = ''
+  commitState.value = 'idle'
   showCommitPopover.value = true
 }
 
@@ -578,32 +818,83 @@ async function handleGitCommit() {
   const cid = requireCheckout()
   if (!wsId || !cid) return
   const msg = commitMsg.value.trim()
-  if (!msg) return
-  showCommitPopover.value = false
-  committing.value = true
-  try { await gitCommit(wsId, cid, msg); commitMsg.value = ''; flashGitToast('success', '提交成功') }
-  catch (e) { flashGitToast('error', (e as Error)?.message || '提交失败'); showCommitPopover.value = true }
-  finally { committing.value = false }
+  if (!msg || commitState.value !== 'idle') return
+  commitState.value = 'loading'
+  try {
+    await gitCommit(wsId, cid, msg)
+    commitMsg.value = ''
+    commitState.value = 'done'
+    bumpDiffCardRefresh()
+    window.setTimeout(() => {
+      commitState.value = 'idle'
+      showCommitPopover.value = false
+    }, 900)
+  } catch (e) {
+    commitState.value = 'idle'
+    flashGitToast('error', (e as Error)?.message || '提交失败')
+  }
 }
 
 async function handleGitPush() {
   const wsId = currentWorkspaceId.value
   const cid = requireCheckout()
-  if (!wsId || !cid) return
-  pushing.value = true
-  try { await gitPush(wsId, cid); flashGitToast('success', '推送成功') }
-  catch (e) { flashGitToast('error', (e as Error)?.message || '推送失败') }
-  finally { pushing.value = false }
+  if (!wsId || !cid || gitOpState.value !== 'idle') return
+  gitOpKind.value = 'push'
+  gitOpState.value = 'loading'
+  try {
+    await gitPush(wsId, cid)
+    finishGitOp('push')
+    bumpDiffCardRefresh()
+  } catch (e) {
+    gitOpState.value = 'idle'
+    gitOpKind.value = ''
+    flashGitToast('error', (e as Error)?.message || '推送失败')
+  }
 }
 
 async function handleGitPull() {
   const wsId = currentWorkspaceId.value
   const cid = requireCheckout()
-  if (!wsId || !cid) return
-  pulling.value = true
-  try { await gitPull(wsId, cid); flashGitToast('success', '拉取成功') }
-  catch (e) { flashGitToast('error', (e as Error)?.message || '拉取失败') }
-  finally { pulling.value = false }
+  if (!wsId || !cid || gitOpState.value !== 'idle') return
+  gitOpKind.value = 'pull'
+  gitOpState.value = 'loading'
+  try {
+    await gitPull(wsId, cid)
+    finishGitOp('pull')
+    bumpDiffCardRefresh()
+  } catch (e) {
+    gitOpState.value = 'idle'
+    gitOpKind.value = ''
+    flashGitToast('error', (e as Error)?.message || '拉取失败')
+  }
+}
+
+/** 消息改动卡片刷新版本号：会话完成 / git 操作后 +1，触发卡片重新拉取 */
+const diffCardRefreshTick = ref(0)
+
+watch(loading, (now, prev) => {
+  if (prev === true && now === false) diffCardRefreshTick.value++
+})
+
+function bumpDiffCardRefresh() {
+  diffCardRefreshTick.value++
+}
+
+/** 复制按钮下方是否展示改动卡片：仅任务工作区、已完成的最后一条 assistant 消息 */
+function canShowDiffCard(msg: ChatMessage, idx: number): boolean {
+  return msg.role === 'assistant'
+    && idx === messages.value.length - 1
+    && isCurrentTask.value
+    && !!currentWorkspaceId.value
+    && !!taskCheckoutId.value
+    && !(loading.value && idx === messages.value.length - 1)
+}
+
+/** 点击改动卡片行 -> 右侧工作区进入「改动」视图并展开该文件的 diff 详情 */
+function openDiffInDrawer(path: string) {
+  const cid = chatStore.currentId
+  if (!cid || !path) return
+  openSandboxDrawer({ conversationId: cid, diffPath: path })
 }
 
 function canCopyAssistant(msg: { role: string; content: string }, idx: number): boolean {
@@ -674,7 +965,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 async function handleSend() {
   const text = inputText.value.trim()
-  if (!text || loading.value || wsPreparing.value) return
+  if (!text || wsPreparing.value || branchSwitchBusy.value || branchSwitchOpen.value) return
   try {
     const pending = chatStore.pendingWorkspace
     let convId: string
@@ -711,47 +1002,200 @@ async function handleSend() {
       chatStore.newTaskMode = false
     } else {
       convId = await chatStore.ensureCurrent()
+      // 已有任务会话：发送前若切换了分支，先统一走「改动检测 → 提交 → 切换 checkout」流程；
+      // 当前 checkout 有未提交改动时挂起发送，等待用户在提交框内决定（取消则放弃本次发送）
+      if (isCurrentTask.value && currentWorkspaceId.value && taskBranch.value && taskBranch.value !== taskActiveBranch.value) {
+        const canSend = await maybeSwitchBranchBeforeSend(text, convId)
+        if (!canSend) return
+      }
     }
-    ensureActive(convId)
-    if (messages.value.length === 0) chatStore.updateTitle(convId, text)
-    pinScrollForSend()
-    setScrollPinned(true)
-    clearAttention(convId)
-    inputText.value = ''
-    settledHtml.value = ''
-    sessionSettledHtml.delete(convId)
-    clearStreamRenderer()
-    await nextTick()
-    const skillBinding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
-    const workflowBinding = resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value)
-    if (skillBinding.skillId) {
-      requestSandboxWorkspaceRefresh(convId, 'skills', true)
-    }
-    const sendPromise = send(text, convId, {
-      executionPreference: preference.value,
-      skillId: skillBinding.skillId,
-      workflowId: workflowBinding.workflowId,
-      kbId: kbId.value,
-      writeHitlMode: getWriteHitlMode(convId),
-    })
-    chatStore.updateExecutionPreferenceLocal(convId, preference.value)
-    if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
-    await nextTick()
-    scrollToBottom(true)
-    await ensureStreamRenderer()
-    await sendPromise
-    await nextTick()
-    scrollToBottom(true)
+    await performSend(text, convId)
   } catch (e) {
     console.error('[ChatView] 发送失败', e)
     inputText.value = text
   }
 }
 
+/** 发送主流程：清空输入、落基线、发起 SSE 并等待完成（新任务创建 / 分支切换成功后统一调用） */
+async function performSend(text: string, convId: string) {
+  ensureActive(convId)
+  // 新一轮发送即「继续执行」：清空上一次发送失败的提示（气泡），避免残留
+  sendFailedError.value = ''
+  if (messages.value.length === 0) chatStore.updateTitle(convId, text)
+  // 本轮改动基线：记录发送瞬间工作区已有改动，供完成后 diff 卡片做差集（只显示本轮新增）
+  if (currentWorkspaceId.value && taskCheckoutId.value) {
+    const wsId = currentWorkspaceId.value
+    const cid = taskCheckoutId.value
+    void gitDiffSummary(wsId, cid)
+      .then(items => saveDiffBaseSnapshot(convId, items.map(i => i.path)))
+      .catch(() => { /* 基线快照失败不阻塞发送 */ })
+  }
+  pinScrollForSend()
+  setScrollPinned(true)
+  clearAttention(convId)
+  inputText.value = ''
+  settledHtml.value = ''
+  sessionSettledHtml.delete(convId)
+  clearStreamRenderer()
+  await nextTick()
+  const skillBinding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
+  const workflowBinding = resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value)
+  if (skillBinding.skillId) {
+    requestSandboxWorkspaceRefresh(convId, 'skills', true)
+  }
+  // 发送时若上一轮仍在运行：先暂停（停止）上一轮，再开始新一轮
+  if (loading.value) await stop()
+  const sendPromise = send(text, convId, {
+    executionPreference: preference.value,
+    skillId: skillBinding.skillId,
+    workflowId: workflowBinding.workflowId,
+    kbId: kbId.value,
+    writeHitlMode: getWriteHitlMode(convId),
+  })
+  chatStore.updateExecutionPreferenceLocal(convId, preference.value)
+  if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
+  await nextTick()
+  scrollToBottom(true)
+  await ensureStreamRenderer()
+  await sendPromise
+  await nextTick()
+  scrollToBottom(true)
+  // 发送失败（如后端校验 4xx「请求参数有误」）：统一在输入框上方气泡展示（消息卡不再显示错误）
+  const lastMsg = messages.value[messages.value.length - 1]
+  if (lastMsg?.role === 'assistant') {
+    const errText = resolveStreamErrorText(lastMsg)
+    if (errText && lastMsg.status !== 'completed') {
+      sendFailedError.value = errText
+    }
+  }
+}
+
+/**
+ * 发送前分支切换检测：目标分支与当前 checkout 分支不一致时，
+ * 当前 checkout 有未提交改动 → 弹出提交框挂起发送；无改动 → 直接切换后继续发送。
+ * 返回 false 表示发送已挂起，由提交框交互接管。
+ */
+async function maybeSwitchBranchBeforeSend(text: string, convId: string): Promise<boolean> {
+  const wsId = currentWorkspaceId.value
+  const targetBranch = taskBranch.value
+  if (!wsId || !targetBranch) return true
+  const currentCheckoutId = taskCheckoutId.value
+  if (!currentCheckoutId) {
+    // 异常态（会话绑定丢失）：直接切换到目标分支即可发送
+    await switchBranch(wsId, targetBranch, convId)
+    return true
+  }
+  let hasChanges = false
+  try {
+    const items = await gitDiffSummary(wsId, currentCheckoutId)
+    hasChanges = items.length > 0
+  } catch {
+    // 改动检测失败不阻塞发送：按无改动处理，直接切换
+  }
+  if (!hasChanges) {
+    await switchBranch(wsId, targetBranch, convId)
+    return true
+  }
+  // 有未提交改动：挂起发送，弹出提交框等待用户提交或取消
+  pendingSendText.value = text
+  pendingSendConvId.value = convId
+  pendingTargetBranch.value = targetBranch
+  branchSwitchMsg.value = ''
+  branchSwitchError.value = ''
+  branchSwitchOpen.value = true
+  void nextTick(() => branchSwitchInputRef.value?.focus())
+  return false
+}
+
+/** 暂存全部 → 提交 → 切换目标分支 checkout，并重绑定会话 checkoutPath；commitMsg 为空时跳过提交 */
+async function switchBranch(wsId: string, targetBranch: string, convId: string, commitMsg?: string) {
+  branchSwitchBusy.value = true
+  branchSwitchError.value = ''
+  try {
+    if (commitMsg) {
+      branchSwitchStatus.value = 'staging'
+      await gitStage(wsId, taskCheckoutId.value, undefined, true)
+      branchSwitchStatus.value = 'committing'
+      await gitCommit(wsId, taskCheckoutId.value, commitMsg)
+    }
+    branchSwitchStatus.value = 'switching'
+    const newCheckoutId = await withTimeout(ensureCheckout(wsId, targetBranch), 60000, '切换分支超时')
+    if (chatStore.currentId !== convId) {
+      // 切换期间用户已离开该会话：git 提交已完成，但不把 checkout 绑定套用到当前会话
+      return
+    }
+    // 先持久化会话 checkoutPath（失败则中止，本地状态保持原分支，可重试），成功后才更新本地绑定
+    await chatStore.updateCheckout(convId, '/workspace/' + newCheckoutId)
+    taskCheckoutId.value = newCheckoutId
+    taskActiveBranch.value = targetBranch
+    taskBranch.value = targetBranch
+    bumpDiffCardRefresh()
+  } catch (e) {
+    branchSwitchError.value = (e instanceof Error ? e.message : String(e)) || '切换分支失败'
+    throw e
+  } finally {
+    branchSwitchStatus.value = ''
+    branchSwitchBusy.value = false
+  }
+}
+
+/** 提交框「提交改动」：提交当前改动并切换到目标分支，随后恢复发送挂起的消息 */
+async function handleBranchSwitchCommit() {
+  const msg = branchSwitchMsg.value.trim()
+  const convId = pendingSendConvId.value
+  const targetBranch = pendingTargetBranch.value
+  const wsId = currentWorkspaceId.value
+  if (!msg || !convId || !targetBranch || !wsId || branchSwitchBusy.value) return
+  if (chatStore.currentId !== convId) {
+    // 挂起期间用户已切换会话：丢弃本次发送
+    resetBranchSwitchState()
+    return
+  }
+  // 挂起期间用户可能编辑过输入框：以最新输入为准，空则用挂起时的文本
+  const text = inputText.value.trim() || pendingSendText.value
+  resetBranchSwitchState()
+  try {
+    await switchBranch(wsId, targetBranch, convId, msg)
+    await performSend(text, convId)
+  } catch (e) {
+    console.error('[ChatView] 提交改动并发送失败', e)
+    inputText.value = text
+  }
+}
+
+/** 清理发送前分支切换的挂起状态（提交 / 取消 / 会话切换时调用） */
+function resetBranchSwitchState() {
+  branchSwitchOpen.value = false
+  branchSwitchMsg.value = ''
+  branchSwitchStatus.value = ''
+  branchSwitchError.value = ''
+  branchSwitchBusy.value = false
+  pendingSendText.value = ''
+  pendingSendConvId.value = ''
+  pendingTargetBranch.value = ''
+}
+
+/** 对话前动作（拉取分支 / 切换分支 / 发送失败）出错详情：统一展示于输入框上方的详情卡片（非红色，可关闭） */
+const preActionError = computed(() => wsPrepareError.value || branchSwitchError.value || sendFailedError.value)
+
+function dismissPreActionError() {
+  wsPrepareError.value = ''
+  branchSwitchError.value = ''
+  sendFailedError.value = ''
+}
+
+/** 提交框「取消」：放弃本次发送，输入框保留原文（改动留在当前分支） */
+function handleBranchSwitchCancel() {
+  resetBranchSwitchState()
+  void nextTick(() => inputRef.value?.focus())
+}
+
 async function handleResume() {
   const last = messages.value[messages.value.length - 1]
   const convId = chatStore.currentId
   if (!last?.id || !convId || loading.value) return
+  // 继续执行：清空上一次发送失败的提示
+  sendFailedError.value = ''
   pinScrollForSend()
   setScrollPinned(true)
   if (convId) clearAttention(convId)
@@ -766,6 +1210,12 @@ async function handleResume() {
   await resumePromise
   await nextTick()
   scrollToBottom(true)
+}
+
+/** 输入框右下暂停按钮：运行中显示，点击暂停当前生成 */
+function handleComposerPause() {
+  if (!loading.value) return
+  void stop()
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -799,6 +1249,18 @@ onMounted(async () => {
   void loadWorkflowCatalog()
   void loadWsProjects()
   sessionHydrating.value = true
+  // 刷新无感：先用 localStorage 缓存渲染目标会话（URL cid / active generation / 本地当前 id 同优先序），
+  // 网络 init/loadDetail 返回后由 hydrateSessionFromStore 合并覆盖，避免刷新后出现空态期
+  const preloadCid = (typeof route.query.cid === 'string' && route.query.cid.trim())
+    || loadActiveGeneration()?.conversationId
+    || localStorage.getItem('sunshine-current-conversation-id') || ''
+  if (isValidConversationId(preloadCid)) {
+    const cached = loadCachedMessages(preloadCid)
+    if (cached?.length) {
+      ensureActive(preloadCid)
+      setMessages(preloadCid, sanitizeRestoredMessages(cached))
+    }
+  }
   try {
     await chatStore.init()
     // URL ?cid= 优先：刷新后定位回用户打开的那个会话（URL 是唯一能跨刷新保留的会话锚点）
@@ -1024,7 +1486,7 @@ watch(
     <div
       ref="scrollRef"
       class="chat-scroll"
-      @scroll="onChatScroll"
+      @scroll="handleChatScroll"
       @wheel.capture="onChatWheelCapture"
     >
       <div class="chat-inner">
@@ -1039,16 +1501,21 @@ watch(
         </div>
         <div v-else-if="messages.length === 0" class="empty-state">
           <div class="empty-icon">
-            <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+            <!-- 新任务：代码任务图标；新对话：对话图标 -->
+            <svg v-if="emptyTaskState" width="40" height="40" viewBox="0 0 48 48" fill="none">
+              <rect x="9" y="9" width="30" height="30" rx="6" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
+              <path d="M19 21l-5 4 5 4M29 21l5 4-5 4M24 18l-3 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+            </svg>
+            <svg v-else width="40" height="40" viewBox="0 0 48 48" fill="none">
               <circle cx="24" cy="24" r="14" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
               <circle cx="24" cy="24" r="5" fill="currentColor" opacity="0.5" />
             </svg>
           </div>
-          <h2 class="empty-title">有什么可以帮你的？</h2>
-          <p class="empty-desc">知识库检索 · ReAct 工具 · Plan 动态规划 · Skill / 触发</p>
+          <h2 class="empty-title">{{ emptyTitle }}</h2>
+          <p class="empty-desc">{{ emptyDesc }}</p>
           <div class="hint-chips">
             <button
-              v-for="hint in EMPTY_HINTS"
+              v-for="hint in emptyHints"
               :key="hint.label"
               type="button"
               class="hint-chip"
@@ -1060,6 +1527,12 @@ watch(
         </div>
 
         <div v-else class="msg-list">
+          <div
+            v-if="historyLoading"
+            class="history-load-bar"
+          >
+            <NSpin size="small" />
+          </div>
           <div
             v-for="(msg, idx) in messages"
             :key="msg.id ?? `local-${idx}`"
@@ -1123,12 +1596,15 @@ watch(
                 </button>
                 <span v-if="messageEndTimeLabel(msg)" class="msg-end-time">{{ messageEndTimeLabel(msg) }}</span>
               </div>
-              <p
-                v-if="resolveStreamErrorText(msg)"
-                class="msg-stream-error"
-              >
-                发生错误：{{ resolveStreamErrorText(msg) }}
-              </p>
+              <!-- 对话完成后：复制按钮下方的改动文件卡片（点击打开右侧工作区 diff 详情） -->
+              <MessageDiffCard
+                v-if="canShowDiffCard(msg, idx)"
+                :key="`${msg.id ?? idx}-${diffCardRefreshTick}`"
+                :workspace-id="currentWorkspaceId"
+                :checkout-id="taskCheckoutId"
+                :conversation-id="chatStore.currentId"
+                @open-diff="openDiffInDrawer"
+              />
               <div v-if="canResume(msg, idx)" class="msg-resume-bar">
                 <button type="button" class="resume-btn" @click="handleResume">{{ resumeButtonLabel(msg) }}</button>
               </div>
@@ -1154,18 +1630,27 @@ watch(
     <!-- 悬浮输入区 -->
     <footer v-show="!planDagExpanded" class="chat-composer" @wheel="forwardWheelToChatScroll">
       <div class="composer-inner">
-        <button
-          v-if="attentionBubble"
-          type="button"
-          class="chat-attention-bubble"
-          :class="`is-${attentionBubble.kind}`"
-          @click="handleAttentionBubbleClick"
-        >
-          <span>{{ attentionBubble.text }}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
+        <!-- 用户上滑离开底部：输入框上方右侧圆形快捷按钮；始终置于其它气泡（todolist/错误信息等）之上。
+             待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头 -->
+        <transition name="fab-fade">
+          <button
+            v-if="scrollFab"
+            type="button"
+            class="scroll-fab"
+            :class="`is-${scrollFab.kind}`"
+            :title="scrollFab.kind === 'hitl_pending' ? '待确认，点击回到底部' : '回到底部'"
+            @click="handleScrollFabClick"
+          >
+            <NIcon v-if="scrollFab.kind === 'hitl_pending'" :size="16" :component="WarningOutline" />
+            <template v-else-if="scrollFab.kind === 'completed'">
+              <NIcon :size="16" :component="ChatboxEllipsesOutline" />
+              <span class="scroll-fab-dot" aria-hidden="true" />
+            </template>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+        </transition>
         <!-- 工作区项目选择器（任务模式下显示在输入框上方，胶囊样式） -->
         <div v-if="chatStore.newTaskMode || chatStore.pendingWorkspace" class="ws-project-pill">
           <NPopover
@@ -1210,15 +1695,67 @@ watch(
               </button>
             </div>
           </NPopover>
-          <!-- 新任务发送前同步拉取分支代码：等待气泡 / 失败重试（项目选择气泡右侧） -->
-          <div v-if="wsPreparing" class="ws-prepare-bubble">
+          <!-- 新任务发送前同步拉取分支代码：进行中气泡（对话前动作统一样式，复用分支切换气泡） -->
+          <div v-if="wsPreparing" class="pre-action-bubble">
             <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
-            <span class="ws-prepare-text">正在拉取分支代码到工作区...</span>
+            <span class="pre-action-text">正在拉取分支代码到工作区</span>
           </div>
-          <div v-else-if="wsPrepareError" class="ws-prepare-error">
-            <span class="ws-prepare-text">{{ wsPrepareError }}</span>
-            <button type="button" class="resume-btn" @click="handleSend">重试</button>
+        </div>
+        <div
+          v-if="floatingTaskboardVisible && liveTaskboardStep"
+          class="floating-taskboard"
+        >
+          <TaskBoardPanel
+            :step="liveTaskboardStep"
+            :live="true"
+            :default-collapsed="true"
+            floating
+          />
+        </div>
+        <!-- 发送前分支切换：当前分支有未提交改动 → 输入框上方提交确认框（样式对齐 todolist 卡片） -->
+        <div v-if="branchSwitchOpen" class="branch-switch-commit">
+          <div class="branch-switch-commit-head">
+            <NIcon :size="14" :component="CreateOutline" />
+            <span>当前分支有未提交改动</span>
+            <button type="button" class="branch-switch-close" title="取消" @click="handleBranchSwitchCancel">×</button>
           </div>
+          <p class="branch-switch-desc">
+            切换分支前需先提交当前改动（暂存全部并提交到「{{ taskActiveBranch || '当前分支' }}」），
+            提交完成后自动切换到「{{ pendingTargetBranch }}」再发送消息。
+          </p>
+          <textarea
+            ref="branchSwitchInputRef"
+            v-model="branchSwitchMsg"
+            class="branch-switch-input"
+            placeholder="feat: 描述你的变更…"
+            maxlength="256"
+            rows="2"
+            spellcheck="false"
+            @keydown.enter.exact.prevent="handleBranchSwitchCommit"
+            @keydown.esc="handleBranchSwitchCancel"
+          />
+          <div class="branch-switch-actions">
+            <span class="branch-switch-kbd">Enter 提交 · Esc 取消</span>
+            <NButton size="small" quaternary :disabled="branchSwitchBusy" @click="handleBranchSwitchCancel">取消</NButton>
+            <NButton size="small" type="primary" :disabled="!branchSwitchMsg.trim() || branchSwitchBusy" :loading="branchSwitchBusy" @click="handleBranchSwitchCommit">提交改动</NButton>
+          </div>
+        </div>
+        <!-- 对话前动作出错详情卡片（拉取分支 / 切换分支）：todolist 同款样式，非红色，最小高度，右上角可关闭 -->
+        <div v-if="preActionError" class="pre-action-error">
+          <div class="pre-action-error-head">
+            <NIcon :size="14" :component="AlertCircleOutline" />
+            <span>操作失败</span>
+            <button type="button" class="pre-action-error-close" title="关闭" @click="dismissPreActionError">×</button>
+          </div>
+          <div class="pre-action-error-body">{{ preActionError }}</div>
+          <div v-if="wsPrepareError" class="pre-action-error-actions">
+            <NButton size="small" type="primary" @click="handleSend">重试</NButton>
+          </div>
+        </div>
+        <!-- 分支切换步骤气泡：输入框上方右侧（暂存 → 提交 → 切换），与拉取分支气泡统一样式 -->
+        <div v-else-if="branchSwitchStatus" class="pre-action-bubble pre-action-bubble--float">
+          <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
+          <span class="pre-action-text">{{ branchSwitchStatusText }}</span>
         </div>
         <div
           class="composer-box composer-box--input"
@@ -1289,12 +1826,7 @@ watch(
             </li>
           </ul>
           <div class="composer-input-area">
-            <div v-if="loading" class="composer-status">
-              <span class="streaming-pulse" />
-              <span>AI 正在回复…</span>
-            </div>
             <ComposerSkillInput
-              v-else
               ref="inputRef"
               v-model="inputText"
               :allows-skill-mention="skillMentionAllowed"
@@ -1320,7 +1852,6 @@ watch(
                 <template v-else-if="!(chatStore.newTaskMode || chatStore.pendingWorkspace)">
                   <ExecutionModeSelector
                     :model-value="preference"
-                    :disabled="loading"
                     @update:model-value="setPreference"
                   />
                 </template>
@@ -1335,9 +1866,9 @@ watch(
               <button
                 v-if="loading"
                 type="button"
-                class="composer-icon-btn stop"
-                title="停止生成"
-                @click="stop"
+                class="composer-icon-btn pause"
+                title="暂停当前生成"
+                @click="handleComposerPause"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
               </button>
@@ -1366,26 +1897,65 @@ watch(
       >
         <template v-if="isCurrentTask && currentWorkspaceId" #head-actions-pre>
           <div class="git-dropdown-wrap">
-            <NPopover trigger="click" placement="bottom-end" :width="220" raw :show-arrow="false">
+            <!-- 隐藏测量：完整分支名气泡的自然宽度（不参与布局），用于判断气泡是否会被挤压 -->
+            <span ref="branchFullNameRef" class="branch-fullname-measure" aria-hidden="true">
+              <NIcon :size="14" :component="GitBranchOutline" />
+              <span class="git-dropdown-label">{{ taskBranch || taskCheckoutId }}</span>
+              <NIcon :size="12" :component="ChevronDownOutline" class="git-dropdown-chevron" />
+            </span>
+            <NPopover trigger="click" placement="bottom-end" :width="150" raw :show-arrow="false">
               <template #trigger>
                 <button type="button" class="git-dropdown-trigger" title="分支信息">
                   <NIcon :size="14" :component="GitBranchOutline" />
-                  <span class="git-dropdown-label">{{ taskBranch || taskCheckoutId }}</span>
-                  <NIcon :size="12" :component="ChevronDownOutline" />
+                  <!-- 气泡边框将碰到相邻元素时收缩为「分支」两字，空间宽裕后还原完整分支名 -->
+                  <span ref="branchLabelRef" class="git-dropdown-label">{{ branchCollapsed ? '分支' : (taskBranch || taskCheckoutId) }}</span>
+                  <NIcon :size="12" :component="ChevronDownOutline" class="git-dropdown-chevron" />
                 </button>
               </template>
               <div class="git-dropdown-menu">
-                <button type="button" class="git-dd-item" :disabled="staging || !taskCheckoutId" @click="handleGitStage">
-                  <NIcon :size="14" :component="AddOutline" /><span>暂存所有</span>
+                <button
+                  type="button"
+                  class="git-dd-item"
+                  :disabled="gitOpState !== 'idle' || !taskCheckoutId"
+                  title="暂存全部改动"
+                  @click="handleGitStage"
+                >
+                  <span v-if="gitOpKind === 'stage' && gitOpState === 'loading'" class="git-btn-spinner" />
+                  <NIcon v-else-if="gitOpKind === 'stage' && gitOpState === 'done'" :size="14" :component="CheckmarkOutline" />
+                  <NIcon v-else :size="14" :component="AddOutline" />
+                  <span>{{ gitOpKind === 'stage' && gitOpState !== 'idle' ? '' : '暂存' }}</span>
                 </button>
-                <button type="button" class="git-dd-item" :disabled="committing || !taskCheckoutId" @click="openCommitPopover">
+                <button
+                  type="button"
+                  class="git-dd-item"
+                  :disabled="gitOpState !== 'idle' || !taskCheckoutId"
+                  @click="openCommitPopover"
+                >
                   <NIcon :size="14" :component="CreateOutline" /><span>提交</span>
                 </button>
-                <button type="button" class="git-dd-item" :disabled="pushing || !taskCheckoutId" @click="handleGitPush">
-                  <NIcon :size="14" :component="CloudUploadOutline" /><span>推送</span>
+                <button
+                  type="button"
+                  class="git-dd-item"
+                  :disabled="gitOpState !== 'idle' || !taskCheckoutId"
+                  title="推送到远端"
+                  @click="handleGitPush"
+                >
+                  <span v-if="gitOpKind === 'push' && gitOpState === 'loading'" class="git-btn-spinner" />
+                  <NIcon v-else-if="gitOpKind === 'push' && gitOpState === 'done'" :size="14" :component="CheckmarkOutline" />
+                  <NIcon v-else :size="14" :component="CloudUploadOutline" />
+                  <span>{{ gitOpKind === 'push' && gitOpState !== 'idle' ? '' : '推送' }}</span>
                 </button>
-                <button type="button" class="git-dd-item" :disabled="pulling || !taskCheckoutId" @click="handleGitPull">
-                  <NIcon :size="14" :component="CloudDownloadOutline" /><span>拉取</span>
+                <button
+                  type="button"
+                  class="git-dd-item"
+                  :disabled="gitOpState !== 'idle' || !taskCheckoutId"
+                  title="从远端拉取"
+                  @click="handleGitPull"
+                >
+                  <span v-if="gitOpKind === 'pull' && gitOpState === 'loading'" class="git-btn-spinner" />
+                  <NIcon v-else-if="gitOpKind === 'pull' && gitOpState === 'done'" :size="14" :component="CheckmarkOutline" />
+                  <NIcon v-else :size="14" :component="CloudDownloadOutline" />
+                  <span>{{ gitOpKind === 'pull' && gitOpState !== 'idle' ? '' : '拉取' }}</span>
                 </button>
               </div>
             </NPopover>
@@ -1420,7 +1990,18 @@ watch(
                 <div class="commit-popover-actions">
                   <span class="commit-popover-hint">Enter 提交 · Esc 取消</span>
                   <NButton size="small" quaternary @click="showCommitPopover = false">取消</NButton>
-                  <NButton size="small" type="primary" :disabled="!commitMsg.trim() || committing" :loading="committing" @click="handleGitCommit">提交</NButton>
+                  <NButton
+                    size="small"
+                    type="primary"
+                    :disabled="!commitMsg.trim() || commitState !== 'idle'"
+                    :loading="commitState === 'loading'"
+                    @click="handleGitCommit"
+                  >
+                    <template v-if="commitState === 'done'">
+                      <NIcon :component="CheckmarkOutline" :size="14" /> 已提交
+                    </template>
+                    <template v-else>提交</template>
+                  </NButton>
                 </div>
               </div>
             </NPopover>
@@ -1461,38 +2042,65 @@ watch(
   min-width: 1260px;
 }
 
-.chat-attention-bubble {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  margin-bottom: 8px;
-  max-width: 100%;
-  padding: 5px 12px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
-  background: var(--sun-black);
-  color: var(--sun-text-secondary);
-  font-size: var(--sun-font-sm);
-  line-height: 1.35;
-  cursor: pointer;
-  box-shadow: var(--composer-shadow);
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.chat-attention-bubble:hover {
-  border-color: var(--sun-border-light);
-  color: var(--sun-text);
-}
-
-.chat-attention-bubble.is-hitl_pending {
-  border-color: color-mix(in srgb, var(--sun-amber) 45%, var(--sun-border));
-  color: color-mix(in srgb, var(--sun-amber-light) 65%, var(--sun-text-secondary));
-}
-
 .chat-attention-bubble.is-completed {
   border-color: color-mix(in srgb, #ef4444 40%, var(--sun-border));
   color: color-mix(in srgb, #f87171 75%, var(--sun-text-secondary));
+}
+
+/* 回到底部圆形按钮：用户上滑离开底部时显示；右对齐，置于输入框上方所有气泡之上。
+   待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头 */
+.scroll-fab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 1px solid var(--sun-border);
+  border-radius: 50%;
+  background: var(--sun-black);
+  color: var(--sun-text-secondary);
+  box-shadow: var(--composer-shadow);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.scroll-fab:hover {
+  border-color: var(--sun-border-light);
+  color: var(--sun-text);
+  background: var(--sun-row-hover);
+}
+
+.scroll-fab.is-hitl_pending {
+  border-color: color-mix(in srgb, var(--sun-amber) 45%, var(--sun-border));
+  color: color-mix(in srgb, var(--sun-amber-light) 75%, var(--sun-text-secondary));
+}
+
+/* 对话完成：会话图标右上角的未读红点 */
+.scroll-fab-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid var(--sun-black);
+}
+
+.fab-fade-enter-active,
+.fab-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.fab-fade-enter-from,
+.fab-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 .chat-main {
@@ -1523,7 +2131,7 @@ watch(
 .chat-header {
   flex-shrink: 0;
   width: 100%;
-  height: 48px;
+  height: 36px;
   border-bottom: 1px solid var(--sun-border);
   background: var(--sun-black);
   z-index: 10;
@@ -1535,10 +2143,10 @@ watch(
 
 .header-theme-btn {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--sun-text-muted);
   cursor: pointer;
@@ -1566,7 +2174,7 @@ watch(
 }
 
 .header-title {
-  font-size: var(--sun-font-lg);
+  font-size: var(--sun-font-md);
   font-weight: 600;
   color: var(--sun-text);
   margin: 0;
@@ -1583,7 +2191,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--sun-font-sm);
+  font-size: var(--sun-font-xs);
   color: var(--sun-text-muted);
 }
 
@@ -1646,30 +2254,27 @@ watch(
   padding: 0 0 6px;
 }
 
-/* 新任务发送前同步拉取分支代码：等待气泡 / 失败重试（项目选择气泡右侧） */
-.ws-prepare-bubble,
-.ws-prepare-error {
+/* 对话前动作进行中气泡（新任务拉取分支 / 分支切换暂存-提交-切换）：三点动画 + 纯文案（无省略号） */
+.pre-action-bubble {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   height: 30px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-lg, 12px);
   font-size: var(--sun-font-sm, 12px);
+  color: var(--sun-text-muted);
+  white-space: nowrap;
   flex-shrink: 0;
 }
 
-.ws-prepare-bubble {
-  border: 1px solid var(--sun-border);
-  color: var(--sun-text-muted);
+/* 分支切换气泡：独立一行，右对齐显示于输入框上方 */
+.pre-action-bubble--float {
+  margin-left: auto;
+  margin-bottom: 8px;
 }
 
-.ws-prepare-error {
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  color: rgba(239, 68, 68, 0.9);
-}
-
-.ws-prepare-text {
+.pre-action-text {
   white-space: nowrap;
 }
 
@@ -1679,19 +2284,19 @@ watch(
   gap: 6px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .ws-project-trigger:hover {
-  border-color: var(--sun-border-light);
+  background: var(--sun-row-hover);
   color: var(--sun-text);
 }
 
@@ -1788,6 +2393,21 @@ watch(
 .git-dropdown-wrap {
   display: inline-flex;
   margin-right: 4px;
+  position: relative;
+}
+
+/* 隐藏测量：完整分支名气泡的克隆（与 trigger 同尺寸），不参与布局；宽度不受 flex 压缩影响 */
+.branch-fullname-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  white-space: nowrap;
+  font-size: var(--sun-font-sm, 12px);
 }
 
 .git-dropdown-trigger {
@@ -1796,24 +2416,29 @@ watch(
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
   font-family: inherit;
   cursor: pointer;
-  flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  transition: background 0.15s, color 0.15s;
 }
 
 .git-dropdown-trigger:hover {
-  border-color: var(--sun-border-light);
+  background: var(--sun-row-hover);
   color: var(--sun-text);
 }
 
 .git-dropdown-label {
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .git-dropdown-menu {
@@ -1850,6 +2475,29 @@ watch(
 .git-dd-item:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* 操作进行中：仅显示 spinner/√，保持居中 */
+.git-dd-item.is-busy {
+  justify-content: center;
+}
+
+/* 分支下拉按钮内 loading 转圈（与 diff 面板提交按钮一致） */
+.git-btn-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: git-btn-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes git-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ---- Git 提交侧边 Popover（替代弹窗） ---- */
@@ -1917,13 +2565,12 @@ watch(
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-md, 10px);
   max-width: 220px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.git-toast--success { color: #4ade80; background: rgba(34, 197, 94, 0.12); }
 .git-toast--error { color: #f87171; background: rgba(239, 68, 68, 0.12); }
 .git-toast--info { color: var(--sun-text-muted); background: rgba(148, 163, 184, 0.12); }
 .git-toast-fade-enter-active, .git-toast-fade-leave-active { transition: opacity 0.2s; }
@@ -1990,7 +2637,7 @@ watch(
   padding: 8px 14px;
   background: transparent;
   border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border-radius: var(--radius-lg, 12px);
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-base);
   font-weight: 500;
@@ -2011,6 +2658,21 @@ watch(
   flex-direction: column;
   gap: 28px;
   padding-bottom: 32px;
+}
+
+/* 触顶加载更早消息时的 loading 指示（无文字，避免误以为卡顿） */
+.history-load-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 0;
+}
+
+/* 视口外消息跳过布局/绘制：多轮长对话滚动不卡；
+   contain-intrinsic-size 记忆实际高度，滚动条不跳动（auto 需 Chrome 107+） */
+.msg-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
 }
 
 .msg-block.user {
@@ -2072,13 +2734,6 @@ watch(
 
 .msg-resume-bar {
   margin-top: 8px;
-}
-
-.msg-stream-error {
-  margin: 10px 0 0;
-  font-size: var(--sun-font-base);
-  line-height: 1.5;
-  color: var(--sun-text-muted);
 }
 
 .resume-btn {
@@ -2148,6 +2803,131 @@ watch(
   pointer-events: auto;
 }
 
+/* 运行期间 todolist 滚出视口时悬浮于输入框上方，样式与下方输入框一致（圆角/阴影对齐） */
+.floating-taskboard {
+  margin-bottom: 8px;
+  padding: 0;
+  background: var(--sun-black);
+  border: 1px solid var(--sun-border);
+  border-radius: 20px;
+  box-shadow: var(--composer-shadow);
+}
+
+.floating-taskboard :deep(.taskboard-wrap) {
+  margin: 0;
+}
+
+/* ---- 发送前分支切换：提交确认框（样式对齐 todolist 卡片）/ 切换步骤气泡 ---- */
+.branch-switch-commit {
+  margin-bottom: 8px;
+  padding: 12px 14px 14px;
+  background: var(--sun-black);
+  border: 1px solid var(--sun-border);
+  border-radius: 20px;
+  box-shadow: var(--composer-shadow);
+}
+.branch-switch-commit-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sun-font-sm, 12px);
+  font-weight: 600;
+  color: var(--sun-text);
+}
+.branch-switch-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.branch-switch-close:hover { color: var(--sun-text); }
+.branch-switch-desc {
+  margin: 8px 0 10px;
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 1.5;
+  color: var(--sun-text-secondary);
+}
+.branch-switch-input {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  background: var(--sun-black);
+  color: var(--sun-text);
+  font-size: var(--sun-font-base, 14px);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.branch-switch-input:focus { border-color: var(--sun-accent); }
+.branch-switch-input::placeholder { color: var(--sun-text-muted); }
+.branch-switch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+}
+.branch-switch-kbd {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--sun-text-muted);
+}
+
+/* ---- 对话前动作出错详情卡片（拉取分支 / 切换分支失败）：todolist 同款样式，非红色，最小高度，右上角可关闭 ---- */
+.pre-action-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 12px 14px 14px;
+  min-height: 92px;
+  background: var(--sun-black);
+  border: 1px solid var(--sun-border);
+  border-radius: 20px;
+  box-shadow: var(--composer-shadow);
+}
+.pre-action-error-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sun-font-sm, 12px);
+  font-weight: 600;
+  color: var(--sun-text);
+}
+.pre-action-error-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.pre-action-error-close:hover { color: var(--sun-text); }
+.pre-action-error-body {
+  flex: 1;
+  min-height: 0;
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 1.5;
+  color: var(--sun-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+}
+.pre-action-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .composer-box {
   display: flex;
   align-items: center;
@@ -2173,17 +2953,6 @@ watch(
 .composer-box--busy:focus-within {
   border-color: var(--sun-border);
   box-shadow: var(--composer-shadow);
-}
-
-.composer-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 32px;
-  padding: 4px 2px;
-  font-size: var(--sun-font-base);
-  color: var(--sun-text-muted);
-  user-select: none;
 }
 
 .composer-box--input {
@@ -2352,15 +3121,6 @@ watch(
   user-select: none;
 }
 
-.streaming-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--sun-text-muted);
-  flex-shrink: 0;
-  animation: glow-pulse 1.5s ease-in-out infinite;
-}
-
 .composer-icon-btn {
   flex-shrink: 0;
   width: 34px;
@@ -2390,13 +3150,13 @@ watch(
   opacity: 0.7;
 }
 
-.composer-icon-btn.stop {
+.composer-icon-btn.pause {
   background: transparent;
   border: 1px solid var(--sun-border);
   color: var(--sun-text-secondary);
 }
 
-.composer-icon-btn.stop:hover {
+.composer-icon-btn.pause:hover {
   border-color: var(--sun-red);
   color: var(--sun-red);
   background: rgba(248, 113, 113, 0.08);
@@ -2441,5 +3201,15 @@ watch(
   box-shadow: none !important;
   border: none !important;
   border-radius: 0 !important;
+}
+
+/* 分支操作 Git 下拉 Popover 全局样式（修复直角阴影残余）：内层 .git-dropdown-menu
+   自带圆角 + 阴影，外层 Naive UI 容器直角 box-shadow 会从四角露出，去掉它 */
+.n-popover.n-popover--raw:has(.git-dropdown-menu),
+.n-popover-shared:has(.git-dropdown-menu) {
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
 }
 </style>

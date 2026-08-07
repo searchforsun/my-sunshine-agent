@@ -12,6 +12,8 @@ const props = defineProps<{
   expandedKeys: string[]
   selectedKeys: string[]
   onTreeLoad: (option: TreeOption) => Promise<void>
+  /** 显示路径转换（工作区模式去掉项目根前缀）；缺省原样展示 */
+  displayPath?: (path: string) => string
 }>()
 
 const emit = defineEmits<{
@@ -26,8 +28,9 @@ function denyTreeDrop() {
 }
 
 function treeNodeProps({ option }: { option: TreeOption }) {
+  const raw = String((option as TreeOption & { path?: string }).path || option.key)
   return {
-    title: String((option as TreeOption & { path?: string }).path || option.key),
+    title: props.displayPath ? props.displayPath(raw) : raw,
   }
 }
 
@@ -43,7 +46,7 @@ function onLoad(option: TreeOption) {
       <p v-if="treeLoading" class="pane-hint">加载中…</p>
       <p v-else-if="errorText" class="pane-error">{{ errorText }}</p>
       <NTree
-        v-else
+        v-else-if="treeData.length"
         block-line
         expand-on-click
         :draggable="true"
@@ -58,7 +61,7 @@ function onLoad(option: TreeOption) {
         @update:expanded-keys="emit('update:expanded-keys', $event)"
         @update:selected-keys="(keys, option) => emit('update:selected-keys', keys, option)"
       />
-      <p v-if="!treeLoading && !errorText && !treeData.length" class="pane-hint">暂无文件</p>
+      <p v-else class="pane-hint">暂无文件</p>
     </div>
   </div>
   <div

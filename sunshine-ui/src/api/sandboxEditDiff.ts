@@ -1,6 +1,6 @@
 /** 沙箱 write/edit 展开：结构化 editDiff metadata + write 全文 add 行 */
 
-export type SandboxDiffLineKind = 'del' | 'add' | 'ctx' | 'fold'
+export type SandboxDiffLineKind = 'del' | 'add' | 'ctx' | 'fold' | 'hunk'
 
 export type SandboxDiffLine = {
   kind: SandboxDiffLineKind
@@ -16,7 +16,7 @@ export type SandboxEditDiffMeta = {
 }
 
 function parseDiffLineKind(raw: unknown): SandboxDiffLineKind | null {
-  if (raw === 'del' || raw === 'add' || raw === 'ctx' || raw === 'fold') return raw
+  if (raw === 'del' || raw === 'add' || raw === 'ctx' || raw === 'fold' || raw === 'hunk') return raw
   return null
 }
 

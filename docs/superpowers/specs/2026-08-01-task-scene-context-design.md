@@ -1,9 +1,9 @@
 # Task 场景上下文方案（CLAUDE.md 式项目规范 + KV Cache 增量组装）
 
 > **阶段**：四（增量）· **状态**：设计稿（待评审）
-> **日期**：2026-08-01
+> **日期**：2026-08-01 · **v2（2026-08-05）**：确立 chat/task **跨会话记忆隔离边界**（写/读双侧路由，前置必做）；chat **保留** L3 并经 scene 隔离向量通道；task 用户偏好**严格隔离**、由 P0 项目规范显式补位
 > **定位**：为 `kind=task` 编码场景建立区别于 chat 的上下文治理体系——对齐 Cursor 的 Dynamic Context Discovery 与 KV Cache 经济学；其中的「项目规范」功能已先行落地 ✅
-> **关联**：[unified-context-compression-design](./2026-07-31-unified-context-compression-design.md)（五层管道，本方案是其 task 场景适配）· [task-workspace-codex-design](./2026-07-28-task-workspace-codex-design.md)（`agent_workspace` + `kind=task` 载体）· [harness-loop-enhancement-design](./2026-07-28-harness-loop-enhancement-design.md)（4.7.8 阶段五 AS compaction，run 内 tool 消息流，与本方案正交）
+> **关联**：[unified-context-compression-design](./2026-07-31-unified-context-compression-design.md)（五层管道，本方案是其 task 场景适配；v2 起场景隔离边界已同步其 §5.5.7 差异表）· [task-workspace-codex-design](./2026-07-28-task-workspace-codex-design.md)（`agent_workspace` + `kind=task` 载体）· [harness-loop-enhancement-design](./2026-07-28-harness-loop-enhancement-design.md)（4.7.8 阶段五 AS compaction，run 内 tool 消息流，与本方案正交）
 
 ---
 
@@ -42,7 +42,8 @@ Cursor 的核心哲学是 **Dynamic Context Discovery**（[官方博客](https:/
 
 | 做 | 不做 |
 |----|------|
-| chat 场景关闭 L3（链路不变） | L3 语义提取层升级（spec §7.4 P1） |
+| chat **保留** L3（scene 隔离向量通道 + kind 门禁，见 §6.3） | L3 语义提取层升级（五层 spec §7.4 P1） |
+| **写/读双侧场景路由（防跨会话污染，前置必做，见 §2.1）** | — |
 | 工作区级项目记忆（W0，会话公有） | 新建独立 context 微服务 |
 | 任务级进度摘要（T0） | 对最终答案二次加工 |
 | KV Cache 增量组装（压缩点模式，chat/task 统一启用） | 兼容/双写旧 STM Redis |
@@ -53,6 +54,60 @@ Cursor 的核心哲学是 **Dynamic Context Discovery**（[官方博客](https:/
 - **静态层稳定 → prefix 缓存命中**：低频变更的规范/状态放最前，逐轮只 append 尾部
 - **先轻后重**：tail 增量零代价每轮跑，跨轮压缩一次性集中触发（对齐五层 spec §4.4「三阶段一次」；压缩点模式已回写五层 spec §5.5，chat/task 统一）
 - **按需发现，不全量注入**：项目细节存索引，Agent 经工具按需拉取
+
+### 2.1 场景隔离边界（v2 前置 · chat/task 跨会话记忆互不污染）
+
+**决策记录（2026-08-05 拍板）**：
+- chat **保留** L3 跨会话历史召回，经 **scene 隔离向量通道**（同一 collection + `scene` 字段过滤，见 §6.3）
+- task 会话发现的**用户级偏好严格隔离**，不回流用户 L2；用户显式偏好经 **P0 项目规范**（CLAUDE.md 式）补位
+
+**隔离矩阵**（记忆层 × 场景 × 读写）：
+
+| 记忆层 | 作用域 | chat 读 | chat 写 | task 读 | task 写 |
+|--------|--------|:---:|:---:|:---:|:---:|
+| L1 Near/Mid/Far | conversation | ✅ | ✅ | ✅ | ✅ |
+| L2 用户状态 | (user, tenant) | ✅ | ✅ | ❌ | ❌ |
+| W0 工作区记忆 | (tenant, workspace) | ❌ | ❌ | ✅ | ✅ |
+| T0 任务进度 | conversation | — | — | ✅ | ✅ |
+| L3 chat 历史 | (user, tenant) | ✅ | ✅（scene=chat） | ❌ | ❌ |
+| P0 项目规范 | workspace | ❌ | — | ✅ | — |
+
+> L1 按 `convId` 天然会话内隔离，本方案只补跨会话层（L2/W0/L3/T0）的场景闸门。
+
+**写路由（防污染闸门）**——`ContextWritePath.runAsync` 按 `conversation.kind` 分流：
+
+```
+task 会话（kind=task）:
+  L2 抽取   → 跳过（不写用户 L2）
+  L1 压缩   → 执行，但压缩上下文读 W0/T0（不读用户 L2，修弱串通道）
+  W0 抽取   → 执行（§5.2）
+  T0 刷新   → 随压缩点推进（§6.1）
+  L3 ingest → 跳过（不写向量库）
+
+chat 会话（kind=chat）:
+  L2 抽取   → 执行（现状）
+  L1 压缩   → 执行（现状）
+  L3 ingest → 执行（scene=chat，§6.3）
+```
+
+**读路由（防串闸门）**——`ContextAssembler.assemble` 按 `AssembleRequest.scene` 选源：
+
+```
+task 场景:
+  注入 W0 + T0 + P0 项目规范
+  不注入用户 L2；不召回 L3
+chat 场景:
+  注入用户 L2
+  不注入 W0/T0/P0；L3 召回 scene=chat
+```
+
+**现状污染证据（改造前）**：
+- 写路径无条件 L2+L3：`ContextWritePath.runAsync` 对 chat/task 一视同仁（L2 抽取 + L1 压缩 + L3 ingest 全部执行）
+- 读路径无条件用户 L2：`ContextAssembler.assemble` 恒读 `l2StateStore.assembleSystemBlock(userId, tenantId)`；`AssembleRequest` 无 `scene`/`workspaceId` 维度
+- L3 共享向量库：`sunshine_chat_history` 按 `(user_id, tenant_id)` 召回，无 scene 过滤
+- 弱串通道：`L1Compressor.compress` 压缩 task 历史时也读用户 L2 作为压缩上下文
+
+**隔离原则**：执行链路（`AgentRuntime`/ReAct/压缩点机制）完全共用；只对「读写哪份记忆」按场景路由。写/读路由是**两处唯一闸门**，禁止在业务代码里用临时 if 打补丁——防污染靠写侧，防串靠读侧，双侧缺一不可。
 
 ---
 
@@ -83,7 +138,7 @@ Cursor 的核心哲学是 **Dynamic Context Discovery**（[官方博客](https:/
 - `W0` = 新增跨会话层（工作区维度），Tier 1
 - `T0` = 新增会话级摘要（任务态优先于对话态），Tier 1 · 降频
 - `L1/L2/Budget` = 保留改造（压缩点模式 + Tier 0/1/2 分层）
-- `L3` = task 场景移除；chat 场景关闭（Nacos 开关），Tier 2 尾部
+- `L3` = task 场景不读不写（kind 门禁，见 §6.3）；chat 场景保留，经 scene 隔离向量通道（`scene=chat` 过滤），Tier 2 尾部
 - Layer 1 / 4.7.8 阶段五 AS compaction = 正交不变（管单次 run 内 tool 消息流）
 
 ---
@@ -136,7 +191,7 @@ Cursor 的核心哲学是 **Dynamic Context Discovery**（[官方博客](https:/
 
 ### 4.4 实施范围
 
-**压缩点模式作为 L1 通用机制统一启用**（chat/task 同走 ReAct，无 DIRECT 直答，见五层 spec §5.5.4 ④）；差异仅 Tier 0/1 内容（P0/W0/T0 仅 task）与 L3 开关。实施顺序 **task 先行验证**（`AssembleRequest` 透传 `scene`/`workspaceId`），task 验收通过后 chat 跟随切换；切换期 chat 可保留现滑动窗（不回归）。
+**压缩点模式作为 L1 通用机制统一启用**（chat/task 同走 ReAct，无 DIRECT 直答，见五层 spec §5.5.4 ④）；差异为 Tier 0/1 内容（P0/W0/T0 仅 task）与 L3 通道（chat 保留 scene=chat、task 不读不写，§6.3）。实施顺序 **P1/P2 场景隔离前置**（`AssembleRequest` 透传 `scene`/`workspaceId`，task 先行验证），隔离验收通过后 chat 跟随切换；切换期 chat 可保留现滑动窗（不回归）。
 
 ---
 
@@ -170,7 +225,7 @@ CREATE TABLE workspace_context_state (
 ### 5.2 读写链路
 
 - **注入**：`ContextAssembler.assemble` 依据 `conv.workspaceId` 组装成 system 块，放 **Tier 1**（L2 之后、T0 之前）
-- **写入**：`ContextWritePath` 在 L2 抽取后追加一次 workspace 抽取（LLM 按 Catalog `context.ws.extract` 抽项目级信息）；**content-hash 幂等 upsert**：产出块 sha256 与库中 `content_hash` 比对，未变化跳过写库（对齐五层 spec §5.5.6，保证 Tier 1 字节稳定）
+- **写入**：`ContextWritePath` 按 kind 分流（§2.1 写路由）——task 会话**跳过用户 L2 抽取**、独立执行 workspace 抽取（LLM 按 Catalog `context.ws.extract` 抽项目级信息）；chat 会话不执行 W0 抽取；**content-hash 幂等 upsert**：产出块 sha256 与库中 `content_hash` 比对，未变化跳过写库（对齐五层 spec §5.5.6，保证 Tier 1 字节稳定）
 - **冲突合并**：复用 `L2ConflictMerger` 逻辑（时间优先覆盖，旧条 superseded 审计保留）
 - **语义冲突识别（v7 预置）**：W0 写路径**直接内置语义候选判定**（对齐五层 spec §6.4）——新 candidate 入库前对同 kind active 条目做语义判定（LLM · Catalog `context.ws.merge`），动作 NOOP/MERGE/UPDATE/CONFLICT 与 L2 一致。**这是 2026-08-01 L2 线上 bug 的前置防护**：工作区摘要/约束/事实更易出现语义相似 key（"项目用 Java17" vs "项目 JDK=17"），若不在 W0 落地时内置，将复现「相似的 key、value 相反也无法判矛盾」
 - **清理**：`ContextMaintenanceJob` 扩展扫 workspace 维度（过期/矛盾）
@@ -179,9 +234,9 @@ CREATE TABLE workspace_context_state (
 
 | 层 | 作用域 | 内容 | 关系 |
 |----|--------|------|------|
-| L2 | 用户 | 画像/偏好/约定 | 不动 |
-| **W0** | 工作区 | 项目索引/方案/确认项/事实/约束/摘要 | 新增，与 L2 并存不冲突 |
-| L3 | 用户/会话 | 语义历史段落 | task 移除，chat 关闭 |
+| L2 | 用户 | 画像/偏好/约定 | **仅 chat 读写**（写路由闸门，§2.1）；task 不读不写，task 发现的用户偏好由 P0 项目规范显式补位 |
+| **W0** | 工作区 | 项目索引/方案/确认项/事实/约束/摘要 | 新增；**仅 task 读写**，chat 不读不写 |
+| L3 | 用户/会话 | chat 语义历史段落 | **仅 chat 读写**（kind 门禁 + `scene=chat` 通道，§6.3）；task 不 ingest 不召回 |
 
 ---
 
@@ -199,6 +254,35 @@ CREATE TABLE workspace_context_state (
 ### 6.2 项目索引
 
 工作区首次开箱后构建 repo 结构索引（模块树 / 关键文件 / 依赖 / 构建命令），存 W0 `kind=project_index`；提供 `ws_index` / `ws_read` / `ws_grep` 工具（或复用现有 `sandbox__glob`/`grep`）让 Agent **按需发现**，而非全量注入。对齐 Cursor「小索引引导 + 按需拉取」。
+
+### 6.3 chat L3 scene 隔离向量通道（v2）
+
+> **决策（2026-08-05）**：chat **保留** L3 跨会话历史召回。task 消息**不写入**向量库（kind 门禁）；chat 消息写入带 `scene=chat`，召回按 `scene=chat` 过滤——即使历史遗留 task 数据（改造前混入）也不会被 chat 召回。task 侧项目级记忆不建向量库，走 W0 + T0 + 文件系统按需发现（§6.2），避免双份存储。
+
+**数据模型**：复用 `sunshine_chat_history` collection，schema 增加 `scene` 字段（VarChar/16，chat 恒为 `"chat"`）：
+
+```java
+.addFieldType(FieldType.newBuilder()
+        .withName("scene")
+        .withDataType(DataType.VarChar)
+        .withMaxLength(16)
+        .build())
+```
+
+**读写链路**：
+
+| 环节 | 改动 |
+|------|------|
+| `ChatHistoryMilvusService` | `ensureCollection` schema 加 `scene`；`insertChunks` 增参 scene 写库；`search` expr 追加 `&& scene == "chat"` |
+| `ChatHistoryRetrievalService` / `ChatHistoryController` | upsert / search 透传 scene |
+| `HistoryRagClient.upsert` | 增参 scene |
+| `L3IngestService.ingest` | 增参 scene；由写路由传 `"chat"` |
+| `L3RecallService.recall` | 固定 `scene=chat`（chat 场景专用，读路由决定是否调用） |
+| `ContextWritePath` | task 会话跳过 `ingestTurnPair`（kind 门禁，§2.1） |
+
+**上线迁移**：collection 重建（drop + recreate + 重建索引 + reload），旧向量一次性清除——改造前 collection 已混入 task 消息，无法用缺省值兜底；重建后从 chat 历史重新 ingest。与五层 spec §9 GC 机制一致，无残留。
+
+**防御性隔离**：`scene` 字段是双保险。即使未来写路径遗漏 kind 门禁误 ingest 了 task 消息，search 的 `scene == "chat"` 过滤仍保证其不被 chat 召回；task 侧如需向量能力，再以独立 `scene=task`（或独立 collection）扩展，不复用 chat 通道。
 
 ---
 
@@ -261,18 +345,21 @@ CREATE TABLE workspace_context_state (
 | # | 任务 | 文件 | 依赖 |
 |---|------|------|------|
 | P0 | 项目规范（CLAUDE.md 式） | 已落地 ✅ | — |
-| 1 | W0 表 + `WorkspaceContextStore` + `WorkspaceContextExtractService` | orchestrator context/ | — |
-| 2 | `ContextAssembler` 增量组装（压缩点模式 + Tier 0/1/2 分层，对齐五层 spec §5.5）+ `AssembleRequest` 加 `workspaceId`/`scene` | `ContextAssembler`、`L1Compressor` | 1 |
+| **P1** | **写路由（防污染闸门，§2.1）**：`ContextWritePath` 按 `conversation.kind` 分流——task 跳过用户 L2 抽取与 L3 ingest、改走 W0+T0；chat 走用户 L2 + L3(scene=chat)；`L1Compressor` 压缩上下文 task 读 W0/T0、不读用户 L2（修弱串通道） | `ContextLifecycle`、`ContextWritePath`、`L1Compressor` | — |
+| **P2** | **读路由（防串闸门，§2.1）**：`AssembleRequest` 加 `scene`/`workspaceId`；task 注入 W0+T0+guide、不注入用户 L2；chat 注入用户 L2、不注入 W0/T0/guide | `ContextAssembler`、`AssembleRequest` | P1 |
+| 1 | W0 表 + `WorkspaceContextStore` + `WorkspaceContextExtractService` | orchestrator context/ | P2 |
+| 2 | `ContextAssembler` 增量组装（压缩点模式 + Tier 0/1/2 分层，对齐五层 spec §5.5） | `ContextAssembler`、`L1Compressor` | 1 |
 | 3 | `ContextMessageBuilder` 顺序调整（Tier 0/1/2 定序 + 意图/模式尾部 system 注入 + 确定性序列化） | `ContextMessageBuilder` | 1、2 |
 | 4 | T0 任务进度摘要（**降频随压缩点刷新** + 有界块） | `L1Compressor`/`ContextWritePath` | 2 |
 | 4a | **幂等 upsert**：W0/L2 抽取加 content-hash 比对，未变化跳过写库 | `WorkspaceContextExtractService`、`L2ExtractService` | 1、2 |
 | 4b | **W0 语义冲突识别（v7）**：写路径语义候选判定（NOOP/MERGE/UPDATE/CONFLICT · Catalog `context.ws.merge`，复用五层 §6.4 设计）+ Nacos `semantic-merge` 开关 | `WorkspaceContextStore`、`WorkspaceContextExtractService` | 4a |
 | 5 | 项目索引构建 + `ws_index` 工具 | orchestrator workspace/ | 1 |
-| 6 | Nacos：chat/task 场景开关（L3 关闭、W0 启用）、Catalog `context.ws.extract` | Nacos + prompt-manager | 全部 |
-| 7 | 验收脚本 `verify_task_context_live.py`（KV 命中、W0 会话公有、进度摘要、**幂等字节稳定**、L3 关闭回归） | scripts/ | 全部 |
+| 5a | **chat L3 scene 隔离通道（§6.3）**：`sunshine_chat_history` 重建加 `scene` 字段；chat ingest `scene=chat`；search 过滤 `scene=chat`；旧向量一次性清除（含改造前混入的 task 数据） | rag-service `ChatHistoryMilvusService`/`ChatHistoryRetrievalService`/`ChatHistoryController`、orchestrator `L3IngestService`/`L3RecallService`/`HistoryRagClient` | P1 |
+| 6 | Nacos：chat/task 场景开关（L3 按 scene、W0 启用）、Catalog `context.ws.extract` | Nacos + prompt-manager | 全部 |
+| 7 | 验收脚本 `verify_task_context_live.py`（KV 命中、W0 会话公有、进度摘要、**幂等字节稳定**、**场景隔离回归**：task 不写用户 L2 / chat 不读 W0 / L3 scene 过滤） | scripts/ | 全部 |
 | 8 | 插件菜单分层渲染（§7.4）：skill-manager 加 system/user 标记 + `user_skill_binding` + Tier 0 目录摘要 / Tier 1 幂等块 + 前端双 Tab | skill-manager、orchestrator context/、sunshine-ui | 2、3 |
 
-**建议顺序**：P0（已完成）→ 1 → 2 → 3 → 6 → 4/4a/5 → 7 → 8。
+**建议顺序**：P0（已完成）→ **P1 → P2（隔离前置，先行落地）** → 1 → 2 → 3 → 6 → 4/4a/5a/5 → 7 → 8。
 
 ---
 
@@ -281,7 +368,9 @@ CREATE TABLE workspace_context_state (
 | 风险/取舍 | 结论 |
 |-----------|------|
 | KV 增量组装依赖 DeepSeek prefix caching 服务端支持 | 验收需透传并统计 `prompt_cache_hit_tokens`（llm-gateway 透传）；服务端不支持则退化为「正常组装，零收益」，不阻塞 |
-| chat 关闭 L3 后跨会话召回能力消失 | L1+L2 覆盖普通对话足够；若后续需召回，优先做五层 spec §7.4 的 LLM 语义提取层而非原样 L3 |
+| chat 保留 L3 的隔离成本（v2） | 同一 collection + `scene` 字段过滤（§6.3），非新建独立库；kind 门禁防 task 数据混入，`scene=chat` 双保险兜底 |
+| **task 用户偏好严格隔离（v2）** | task 不写用户 L2，任务内发现的用户级偏好不回流；用户显式偏好走 **P0 项目规范**（CLAUDE.md 式）——用户主动声明、可覆盖、不可被自动抽取污染，天然补位 |
+| **改造前跨会话记忆已污染（v2）** | 写/读路由闸门上线即止住新增污染；存量用户 L2 由腐败审计 `auditL2` 清理；存量 L3 向量经 §6.3 重建 collection 一次性清除 |
 | 项目规范与 W0 `scheme/agreement` 语义重叠 | 分工：P0 是用户权威手写规范（不可自动覆盖）；W0 是系统自动抽取的补充状态（可被用户规范压制/冲突时以用户为准） |
 | 压缩点前进导致 Near 在压缩后变短 | 一次性压缩的语义损失由 T0 任务进度摘要兜底（任务关键信息在摘要层，不依赖 Near 原文） |
 | W0 表膨胀 | 复用 L2 治理：类型化 TTL（`summary` 30 天、`constraint` 30 天等）+ `superseded` 审计 + 定时 GC |
@@ -302,7 +391,10 @@ CREATE TABLE workspace_context_state (
 | W0 语义矛盾识别（v7） | 工作区出现语义相似 key（如 "项目用 Java17" vs "项目 JDK=17"）、value 相反时：判定 CONFLICT 双标不注入 / MERGE 归一，`active` 中不并存相反事实 | 同上 |
 | 压缩点增量组装 | task 会话连续多轮，prefix 稳定（组装日志 Near 起点不动） | 同上 |
 | 压缩一次性触发 | tail 超阈值才触发一次 Near→Mid/Far，`compacted` 标记生效 | 同上 |
-| chat L3 关闭回归 | chat 场景 L3 块为空，L1+L2 正常 | 回归 `verify_context_layers_live.py` |
+| **场景隔离·写路由（v2）** | task 会话结束后 `user_context_state` 无新增行；chat 会话结束后 W0 无新增行 | 同上 |
+| **场景隔离·读路由（v2）** | task 组装块不含 L2 用户状态，含 W0+T0+guide；chat 组装块含 L2、不含 W0/T0/guide | 同上 |
+| **场景隔离·L3（v2）** | task 消息不 ingest 向量库；chat query 检索结果 scene 恒为 chat（Milvus expr 带 `scene == "chat"`） | 同上 |
+| chat L3 scene 隔离回归 | chat 场景 L3 块正常召回且过滤后不含 task 内容，L1+L2 正常 | 回归 `verify_context_layers_live.py` |
 | 编译绿 + 前端类型检查 | orchestrator `mvn compile`、UI `vue-tsc` | CI |
 
 ---
@@ -311,7 +403,7 @@ CREATE TABLE workspace_context_state (
 
 | 文件 | 关系 |
 |------|------|
-| `2026-07-31-unified-context-compression-design.md` | 五层管道 SSOT；压缩点模式已回写其 §5.5（chat/task 统一），本方案是其 task 场景适配，落地后同步其 §10 配置；**W0 语义冲突识别对齐其 §6.4**（写路径语义判定，`context.ws.merge`） |
+| `2026-07-31-unified-context-compression-design.md` | 五层管道 SSOT；压缩点模式已回写其 §5.5（chat/task 统一），本方案是其 task 场景适配，落地后同步其 §10 配置；**W0 语义冲突识别对齐其 §6.4**（写路径语义判定，`context.ws.merge`）；**v2 场景隔离边界已同步其 §5.5.7 差异表**（chat 保留 L3 / task 不读不写） |
 | `2026-07-28-task-workspace-codex-design.md` | 工作区/`kind=task` 载体 |
 | `2026-07-31-harness-loop-enhancement-design.md` | 4.7.8 阶段五 AS compaction 管 run 内，本方案管跨轮组装，正交 |
 | `2026-07-31-planner-harness-loop-design.md` | Planner-Worker 场景；其 §2.4 落地本 spec 的 Tier 0/1/2 分层与插件映射到 Planner/Worker 上下文 |

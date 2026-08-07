@@ -60,7 +60,7 @@ class WorkflowLlmStreamSupportTest {
                 "c1", "msg-1", "用户问题", AssembledContext.empty(),
                 null, null, "u1", "default", null,
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "test"),
-                null, null, null, false, false, null, "用文言文回答");
+                null, null, null, false, false, null, "用文言文回答", null);
 
         PromptComposeRequest request = WorkflowLlmStreamSupport.buildRequest(spec, wfCtx, streamCtx);
 

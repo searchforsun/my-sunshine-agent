@@ -14,6 +14,13 @@ export function tabFileName(path: string): string {
   return parts[parts.length - 1] || path
 }
 
+/** 去掉工作区项目根前缀的显示路径（/workspace/wt-xxx/README.md -> README.md） */
+export function stripWorkspaceRootPath(path: string, root: string | null | undefined): string {
+  if (!root || !path.startsWith(root)) return path
+  const rel = path.slice(root.length)
+  return rel || path
+}
+
 function escapeHtmlForLine(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -98,6 +105,8 @@ function langFromPath(path: string): string | null {
 export interface UseSandboxPreviewTabsOptions {
   getConversationId: () => string
   getWorkspaceId?: () => string | null
+  /** 工作区模式项目根（/workspace/{checkoutId}），面包屑/显示路径去掉此前缀 */
+  getWorkspaceRootPath?: () => string | null
   selectedKeys: Ref<string[]>
 }
 
@@ -178,7 +187,9 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
 
   const breadcrumbs = computed(() => {
     if (!selectedPath.value) return [] as { label: string; path: string }[]
-    const parts = selectedPath.value.split('/').filter(Boolean)
+    // 工作区模式去掉 /workspace/{checkoutId} 前缀，面包屑从项目根开始展示
+    const display = stripWorkspaceRootPath(selectedPath.value, options.getWorkspaceRootPath?.())
+    const parts = display.split('/').filter(Boolean)
     const out: { label: string; path: string }[] = []
     let acc = ''
     for (const p of parts) {

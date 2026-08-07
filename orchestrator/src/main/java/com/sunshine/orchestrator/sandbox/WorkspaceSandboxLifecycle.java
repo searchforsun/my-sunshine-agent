@@ -37,7 +37,7 @@ public class WorkspaceSandboxLifecycle {
     @Value("${sandbox.host-workspace-root:/var/lib/sunshine-sandbox}")
     private String hostWorkspaceRoot;
 
-    @Value("${auth-service.base-url:http://localhost:8210}")
+    @Value("${auth-service.base-url:http://localhost:8100}")
     private String authBaseUrl;
 
     public String ensureWorkspaceSession(String workspaceId, String userId, String tenantId) {

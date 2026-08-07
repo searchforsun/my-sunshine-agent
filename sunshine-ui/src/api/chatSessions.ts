@@ -44,6 +44,7 @@ import {
 import { bumpAssistantMessage } from './chatSessionMutations'
 import { consumeChatSseStream } from './chatSessionSseConsumer'
 import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
+import { getWriteHitlMode } from '../composables/useWriteHitlMode'
 
 export type { SendOptions, SessionState } from './chatSessionRegistry'
 export { appendChunk } from './chatSessionRegistry'
@@ -356,7 +357,11 @@ export function useChatSessions(
       const response = await fetch(`${API_BASE()}/api/chat/stream`, {
         method: 'POST',
         headers: { ...apiHeaders(), Accept: 'text/event-stream' },
-        body: JSON.stringify({ conversationId, resumeMessageId }),
+        body: JSON.stringify({
+          conversationId,
+          resumeMessageId,
+          writeHitlMode: getWriteHitlMode(conversationId),
+        }),
         signal: s.abort.signal,
       })
 

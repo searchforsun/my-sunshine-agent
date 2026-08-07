@@ -266,7 +266,7 @@ public class GenerationJob {
                         s.startedAt(), null, null,
                         s.detail(), null, s.output(), s.result(),
                         System.currentTimeMillis(), s.label(), s.metadata(),
-                        s.contentBlocks(), s.subSteps()));
+                        s.contentBlocks(), s.subSteps(), s.stepSummary()));
             }
             return;
         }

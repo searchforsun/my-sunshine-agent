@@ -146,6 +146,26 @@ final class GenerationJobChunkEmitter {
         }
     }
 
+    private final AtomicLong lastStepsFlush = new AtomicLong(0);
+
+    /**
+     * 步骤落库 throttle：HITL/Recovery 等待步立即落库（续跑阻塞期间需保持暂停快照）；
+     * 其余 ReAct 工具步按间隔增量落库，保证长任务执行中刷新时 DB 已含已输出步骤/推理，
+     * 不依赖前端 localStorage 缓存兜底。
+     */
+    void throttleStepsFlush() {
+        maybeFlushStepsForAwaitingInteraction();
+        long now = System.currentTimeMillis();
+        if (now - lastStepsFlush.get() >= stepsFlushIntervalMs()) {
+            lastStepsFlush.set(now);
+            flushScheduler.flushStepsPartial(messageId, ProcessingStepSerde.toPersistJson(stepsBuffer));
+        }
+    }
+
+    private long stepsFlushIntervalMs() {
+        return Math.max(properties.flushIntervalMs() * 10, 5000);
+    }
+
     void maybeFlushStepsForAwaitingInteraction() {
         boolean awaiting = stepsBuffer.stream().anyMatch(ProcessingStepLifecycleOps::isAwaitingInteractionStep);
         if (!awaiting) {
@@ -181,8 +201,8 @@ final class GenerationJobChunkEmitter {
             }
             if (token.isStep()) {
                 ProcessingStepMerger.upsert(stepsBuffer, token.step());
-                maybeFlushStepsForAwaitingInteraction();
                 streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
+                throttleStepsFlush();
                 return;
             }
             if (token.isStepDelta()) {
@@ -194,6 +214,7 @@ final class GenerationJobChunkEmitter {
                         && (token.stepId() == null || !token.stepId().startsWith("node-"))) {
                     reasoningBufferRef.append(token.text());
                 }
+                throttleStepsFlush();
                 return;
             }
             if (token.isContentStart()) {

@@ -32,7 +32,7 @@ public class AgentCatalogService {
 
     public synchronized void refresh() {
         Map<String, AgentCatalogIndexEntry> merged = new LinkedHashMap<>();
-        for (AgentCatalogIndexEntry entry : catalogClient.fetchCatalogIndex()) {
+        for (AgentCatalogIndexEntry entry : catalogClient.fetchCatalogIndex(null)) {
             if (entry.id() != null) {
                 merged.put(entry.id(), entry);
             }

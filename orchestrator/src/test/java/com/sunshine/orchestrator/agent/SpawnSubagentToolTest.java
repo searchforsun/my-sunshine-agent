@@ -38,6 +38,8 @@ class SpawnSubagentToolTest {
     @Mock
     private AgentRuntime agentRuntime;
     @Mock
+    private AgentExecutorRouter agentExecutorRouter;
+    @Mock
     private AgentExecutionProperties executionProperties;
     @Mock
     private AgentExecutionProperties.React reactProps;
@@ -65,8 +67,8 @@ class SpawnSubagentToolTest {
                         null))));
         spawnRunRegistry = SpawnRunRegistry.forTest(catalogHolder);
         tool = new SpawnSubagentTool(
-                agentRuntime, executionProperties, timelineSupport, toolSetResolver,
-                catalogHolder, spawnRunRegistry, agentCatalogService);
+                executionProperties, timelineSupport, toolSetResolver,
+                catalogHolder, spawnRunRegistry, agentCatalogService, agentExecutorRouter);
         registry = new StepEventBridgeRegistry();
         StepEventBridge.bindRegistry(registry);
         AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
@@ -106,7 +108,8 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
                 "conv-1", MSG, "user-1", "default", null, null, null, null, null));
 
-        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("hello")));
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("hello")));
 
         String out = tool.spawnSubagent("请完成子任务", null, "制度检索");
 
@@ -151,7 +154,7 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
                 "conv-1", MSG, "user-1", "default", null, null, null, null, null));
 
-        when(agentRuntime.run(any())).thenReturn(Flux.just(
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any())).thenReturn(Flux.just(
                 StreamToken.stepDelta("think-1", "reasoning", "用户"),
                 StreamToken.content("答案")));
 
@@ -173,8 +176,8 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
                 "conv-1", MSG, "user-1", "default", null, null, null, null, null));
 
-        when(agentRuntime.run(any())).thenAnswer(inv -> {
-            com.sunshine.orchestrator.agent.runtime.AgentRunRequest req = inv.getArgument(0);
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any())).thenAnswer(inv -> {
+            com.sunshine.orchestrator.agent.runtime.AgentRunRequest req = inv.getArgument(1);
             spawnRunRegistry.cancel(req.runId());
             return Flux.empty();
         });
