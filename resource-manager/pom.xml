@@ -46,6 +46,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+        <!-- JPA（skill 实体与 Repository） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
         <!-- MyBatis / MySQL（prompt-manager / skill-manager / agent-manager 均用） -->
         <dependency>
             <groupId>org.mybatis.spring.boot</groupId>
