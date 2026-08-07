@@ -20,17 +20,10 @@
         <module>auth-center</module>
         <module>orchestrator</module>
         <module>tool-manager</module>
-        <module>skill-manager</module>
         <module>sandbox-service</module>
         <module>workflow-manager</module>
-        <module>agent-manager</module>
         <module>llm-gateway</module>
         <module>rag-service</module>
-        <module>prompt-manager</module>
-        <module>desensitize</module>
-        <module>oa-service</module>
-        <module>finance-service</module>
-        <module>hr-biz-service</module>
         <module>resource-manager</module>
     </modules>
 

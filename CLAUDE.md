@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改 Catalog/`/prompts` 或架构。
 
-**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多智能体协作 ✅**（spawn_subagent(agentId) 中心化 + A2A 外部接入）· **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅**（spec §12 演进差异：裸镜像库 + 无主 checkout + git 工作流替代 mergeToMain；强制 ReAct 不锁死为明确决策；硬件档位 Nacos + 校验已补齐）· **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅** · **4.14 Planner-Executor 重建 ⬜ 设计中**（完全舍弃动态 Plan-Workflow：一次性 DAG + PlanApproval + Plan DAG 时间线 → Planner=ReAct 主 Agent + Worker=工具调用，**两态分解** full/hierarchical + PlanNotebook **Redis 单写** + 3 类显式触发重规划；**简化决议 S1-S7**：砍独立 Evaluator→Planner 自判、持久化降级 Redis 单写、去 Tier/压缩点基建、砍 P2 共享内存、三态→两态、重规划收敛、不复用 PlanValidator；静态 Workflow 保留、DAG 画布留存给静态 Workflow；新 Timeline 步骤时间线卡片；见 [spec](docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md)）· **会话标题 LLM 摘要 ✅**（首条消息异步调小模型 `deepseek-v4-flash` 生成 ≤15 字标题，SSE `meta:title` 推送；见 [spec](docs/superpowers/specs/archive/2026-08-07-conversation-title-design.md)）；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多智能体协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅** · **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅** · **4.14 Planner-Executor 重建 ⬜ 设计中** · **服务合并 ✅**（管理类 skill/agent/prompt/desensitize → resource-manager :8240；业务模拟 oa/finance/hr → biz-simulator :8700；tool-manager 更名 tool-service :8210；见 [spec](docs/superpowers/specs/2026-08-03-service-consolidation-design.md)）· 缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -34,7 +34,7 @@ python scripts/start.py --stop bff     # 停止指定服务
 | 阶段四验收 | `verify_sandbox_live.py`、`verify_sandbox_workspace_live.py`、`verify_sandbox_tool_cancel_live.py`、`verify_spawn_subagent_live.py`、`verify_external_agent_live.py`、`verify_react_taskboard_live.py`、`verify_tool_integration_live.py`、`verify_workflow_studio_live.py`、`verify_plan_dag_live.py`、`verify_prompt_catalog_live.py`、`verify_enterprise_workflow_live.py`、`verify_loop_live.py`、`verify_exclusive_gateway_live.py`、`verify_personal_rules_live.py` |
 | 其他 | `clear_session_cache.py`、`download_skywalking_agent.py`、`sync_enterprise_agents.py` |
 
-> **提示词 / 路由规则 SSOT**：`prompt-manager` DB（`/prompts` + Catalog），**不再**经 Nacos `agent.routing.*`。
+> **提示词 / 路由规则 SSOT**：`prompt` DB（`/prompts` + Catalog，现聚合于 resource-manager），**不再**经 Nacos `agent.routing.*`。
 
 ## 服务端口
 
@@ -45,16 +45,13 @@ python scripts/start.py --stop bff     # 停止指定服务
 | `bff` | 8001 | WebFlux + SSE 流式转发 |
 | `auth-center` | 8100 | Sa-Token 认证中心 |
 | `orchestrator` | 8200 | 核心编排（workflow / react / planner-executor / 多智能体协作） |
-| `tool-manager` | 8210 | 工具注册与调用（SDK + MCP） |
-| `skill-manager` | 8225 | Skills 上传 / 版本 / Catalog |
-| `agent-manager` | 8235 | Agent CRUD / Catalog（含 A2A 外部接入） |
+| `tool-service` | 8210 | 工具注册与调用（SDK + MCP，原 tool-manager） |
+| `resource-manager` | 8240 | 聚合管理服务（Skill / Agent / Prompt / Desensitize） |
+| `sandbox-service` | 8226 | 沙箱执行环境 |
+| `workflow-manager` | 8230 | Workflow 定义 / 版本 / 执行 |
 | `llm-gateway` | 8300 | LLM 网关（多厂商路由 / 缓存 / 熔断） |
 | `rag-service` | 8400 | RAG 检索（Milvus + Hybrid + Rerank） |
-| `prompt-manager` | 8500 | 提示词管理（`/prompts` + Catalog） |
-| `desensitize` | 8600 | 数据脱敏 |
-| `oa-service` | 8700 | OA 模拟 |
-| `finance-service` | 8710 | 财务模拟 |
-| `hr-biz-service` | 8720 | 人事模拟 |
+| `biz-simulator` | 8700 | 业务模拟聚合（OA / Finance / HR） |
 
 **中间件**：Nacos `8848/9848` · MySQL `3306` · Redis `6379`（凭据见 [README.md](./README.md) §服务器中间件）。
 
@@ -112,7 +109,7 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 2. Gateway 鉴权注入 `x-user-id`；BFF/Orchestrator 只读，客户端不得自填。
 3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync_nacos.py` → 重启（无 `application-dev.yaml`）。
 4. 执行模式：`IntentRouter` → `ExecutionDispatcher`；workflow 图在 **workflow-manager DB**（4.13）。
-5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板。
+5. 财务/react 工具经 tool-service；**禁止** Controller 拼 prompt 模板。
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。
 8. ReAct / workflow agent 节点统一经 `AgentRuntime.run(AgentRunRequest)`。
@@ -141,5 +138,5 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 - 架构决策（ADR）：[docs/architecture/README.md](./docs/architecture/README.md)。
 - 代码加适量中文注释；**禁止**在业务代码中插入多余空行。
 - 禁止保存临时脚本；运维统一 **Python**（`scripts/*.py`）。
-- 项目中禁止硬编码提示词；正文 SSOT = prompt-manager Catalog（`/prompts`）。
+- 项目中禁止硬编码提示词；正文 SSOT = resource-manager Catalog（`/prompts`）。
 - **禁止 Flyway**；库表 SQL SSOT 在 `docker/mysql/init/`（一项目一文件），禁止放各模块 `resources/db/migration`。

@@ -55,30 +55,24 @@ spring:
             - Path=/health/orchestrator
           filters:
             - RewritePath=/health/orchestrator, /health
-        - id: health-tool-manager
-          uri: lb://sunshine-tool-manager
+        - id: health-tool-service
+          uri: lb://sunshine-tool-service
           predicates:
-            - Path=/health/tool-manager
+            - Path=/health/tool-service
           filters:
-            - RewritePath=/health/tool-manager, /health
-        - id: health-skill-manager
-          uri: lb://sunshine-skill-manager
+            - RewritePath=/health/tool-service, /health
+        - id: health-resource-manager
+          uri: lb://sunshine-resource-manager
           predicates:
-            - Path=/health/skill-manager
+            - Path=/health/resource-manager
           filters:
-            - RewritePath=/health/skill-manager, /health
+            - RewritePath=/health/resource-manager, /health
         - id: health-workflow-manager
           uri: lb://sunshine-workflow-manager
           predicates:
             - Path=/health/workflow-manager
           filters:
             - RewritePath=/health/workflow-manager, /health
-        - id: health-agent-manager
-          uri: lb://sunshine-agent-manager
-          predicates:
-            - Path=/health/agent-manager
-          filters:
-            - RewritePath=/health/agent-manager, /health
         - id: health-llm-gateway
           uri: lb://sunshine-llm-gateway
           predicates:
@@ -91,42 +85,18 @@ spring:
             - Path=/health/rag
           filters:
             - RewritePath=/health/rag, /health
-        - id: health-prompt
-          uri: lb://sunshine-prompt
+        - id: health-biz-simulator
+          uri: lb://sunshine-biz-simulator
           predicates:
-            - Path=/health/prompt
+            - Path=/health/biz-simulator
           filters:
-            - RewritePath=/health/prompt, /health
-        - id: health-desensitize
-          uri: lb://sunshine-desensitize
-          predicates:
-            - Path=/health/desensitize
-          filters:
-            - RewritePath=/health/desensitize, /health
-        - id: health-finance
-          uri: lb://sunshine-finance
-          predicates:
-            - Path=/health/finance
-          filters:
-            - RewritePath=/health/finance, /health
+            - RewritePath=/health/biz-simulator, /health
         - id: health-sandbox
           uri: lb://sunshine-sandbox-service
           predicates:
             - Path=/health/sandbox
           filters:
             - RewritePath=/health/sandbox, /health
-        - id: health-oa
-          uri: lb://sunshine-oa
-          predicates:
-            - Path=/health/oa
-          filters:
-            - RewritePath=/health/oa, /health
-        - id: health-hr
-          uri: lb://sunshine-hr
-          predicates:
-            - Path=/health/hr
-          filters:
-            - RewritePath=/health/hr, /health
         - id: sunshine-auth-api
           uri: lb://sunshine-auth
           predicates:
