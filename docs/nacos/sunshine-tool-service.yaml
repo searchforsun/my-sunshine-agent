@@ -1,14 +1,16 @@
 # ============================================================
-# sunshine-tool-manager — Nacos 配置
-# Data ID: sunshine-tool-manager.yaml
+# sunshine-tool-service — Nacos 配置
+# Data ID: sunshine-tool-service.yaml
 # Group:   DEFAULT_GROUP
-# 表结构 SSOT：docker/mysql/init/16-sunshine-tool-manager.sql（禁止 Flyway）
+# 表结构 SSOT：docker/mysql/init/16-sunshine-tool-service.sql（禁止 Flyway）
 # ============================================================
 
 server:
   port: 8210
 
 spring:
+  application:
+    name: sunshine-tool-service
   datasource:
     url: jdbc:mysql://ecs4c16g:3306/sunshine_tool?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: root
