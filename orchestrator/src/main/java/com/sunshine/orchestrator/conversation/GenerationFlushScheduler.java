@@ -331,6 +331,20 @@ public class GenerationFlushScheduler {
         }
     }
 
+    /** 会话标题 LLM 摘要生成完成 — type:title，前端据此即时更新侧栏/header */
+    public String metaTitle(String conversationId, String title) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "title");
+            map.put("conversationId", conversationId != null ? conversationId : "");
+            map.put("title", title != null ? title : "");
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"title\",\"conversationId\":\""
+                    + conversationId + "\",\"title\":\"" + title + "\"}";
+        }
+    }
+
     private String metaText(String type, String text) {
         try {
             return objectMapper.writeValueAsString(java.util.Map.of(

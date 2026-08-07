@@ -403,7 +403,20 @@ export const useChatStore = defineStore('chat', () => {
   function updateTitleLocal(id: string, title: string) {
     const conv = conversations.value.find(c => c.id === id)
     if (!conv || conv.title !== '新对话') return
-    conv.title = title.length > 28 ? title.slice(0, 28) + '…' : title || '新对话'
+    conv.title = title.length > 15 ? title.slice(0, 15) + '…' : title || '新对话'
+    upsertCachedIndex({
+      id: conv.id,
+      title: conv.title,
+      createdAt: conv.createdAt,
+      updatedAt: conv.updatedAt,
+    })
+  }
+
+  /** SSE meta:title 事件 — 后端 LLM 标题摘要生成完成（仅未改名才推送），直接覆盖 */
+  function updateTitleFromStream(id: string, title: string) {
+    const conv = conversations.value.find(c => c.id === id)
+    if (!conv || !title) return
+    conv.title = title
     upsertCachedIndex({
       id: conv.id,
       title: conv.title,
@@ -548,6 +561,7 @@ export const useChatStore = defineStore('chat', () => {
     conversations, currentId, current, sortedConversations, initializing,
     init, create, remove, rename, switchTo, ensureConversation, recoverAfterStaleConversation,
     updateTitle: updateTitleLocal,
+    updateTitleFromStream,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
     updateExecutionPreferenceLocal,
     updateKbIdLocal,

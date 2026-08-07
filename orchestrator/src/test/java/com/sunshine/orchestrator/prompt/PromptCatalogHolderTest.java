@@ -60,14 +60,15 @@ class PromptCatalogHolderTest {
         PromptCatalogHolder holder = new PromptCatalogHolder();
         holder.replace(PromptCatalogSnapshot.of(1L, List.of()));
         PromptCatalogSnapshot next = PromptCatalogSnapshot.of(2L, List.of(
-                new PromptCatalogEntry("routing-rule.peer", "routing-rule", "peer", true, 90, 1, null,
-                        "{\"matchType\":\"peer_phrase\",\"patterns\":[\"互相验证\"],\"plan\":{\"mode\":\"peer-collab\"}}")));
+                new PromptCatalogEntry("routing-rule.react-policy-qa", "routing-rule", "react", true, 40, 1, null,
+                        "{\"matchType\":\"regex\",\"match\":\"any\",\"patterns\":[\"差旅办法\"],\"plan\":{\"mode\":\"react\",\"params\":{\"reactPromptId\":\"react-prompt.policy-qa\"}}}")));
         boolean replaced = holder.refreshSafely(() -> next);
         assertThat(replaced).isTrue();
         assertThat(holder.snapshot()).isSameAs(next);
         List<RoutingRuleDef> rules = holder.snapshot().routingRules();
         assertThat(rules).hasSize(1);
-        assertThat(rules.getFirst().matchType()).isEqualTo("peer_phrase");
-        assertThat(holder.snapshot().json("routing-rule.peer")).isPresent();
+        assertThat(rules.getFirst().matchType()).isEqualTo("regex");
+        assertThat(rules.getFirst().plan().mode()).isEqualTo("react");
+        assertThat(holder.snapshot().json("routing-rule.react-policy-qa")).isPresent();
     }
 }

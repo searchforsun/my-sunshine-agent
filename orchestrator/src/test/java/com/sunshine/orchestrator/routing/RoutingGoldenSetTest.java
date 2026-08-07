@@ -14,7 +14,6 @@ import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.UnifiedRuleRoutingPolicy;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
-import com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import com.sunshine.orchestrator.skill.SkillBindingSource;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
@@ -44,8 +43,6 @@ import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-
 
 
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
@@ -418,13 +415,6 @@ class RoutingGoldenSetTest {
         assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
         assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
     }
-
-    @ParameterizedTest(name = "peerCollab E1: {0}")
-    @ValueSource(strings = {
-            "请制度专家和财务专家分别审查这笔报销是否合规，并互相验证",
-            "从合规和财务两个角度交叉审查上述制度条款"
-    })
-
 
     // --- §I Workflow `#` 绑定（routing-golden-set.md） ---
 

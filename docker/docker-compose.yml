@@ -7,6 +7,13 @@ networks:
       config:
         - subnet: ${SUBNET:-10.10.0.0/16}
 
+# 统一容器日志轮转，防止 json.log 无上限增长撑爆磁盘
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
 services:
   mysql:
     image: mysql:8.0.35
@@ -162,6 +169,7 @@ services:
     image: elasticsearch:7.17.23
     container_name: smt-es01
     restart: unless-stopped
+    logging: *default-logging
     environment:
       cluster.name: smt-es-cluster
       node.name: es01
@@ -189,6 +197,7 @@ services:
     image: elasticsearch:7.17.23
     container_name: smt-es02
     restart: unless-stopped
+    logging: *default-logging
     environment:
       cluster.name: smt-es-cluster
       node.name: es02
@@ -216,6 +225,7 @@ services:
     image: elasticsearch:7.17.23
     container_name: smt-es03
     restart: unless-stopped
+    logging: *default-logging
     environment:
       cluster.name: smt-es-cluster
       node.name: es03
@@ -243,6 +253,7 @@ services:
     image: docker.elastic.co/kibana/kibana:7.17.23
     container_name: smt-kibana
     restart: unless-stopped
+    logging: *default-logging
     environment:
       NODE_OPTIONS: "--max-old-space-size=256"
       ELASTICSEARCH_HOSTS: '["http://es01:9200","http://es02:9200","http://es03:9200"]'
@@ -327,6 +338,7 @@ services:
     image: apache/skywalking-oap-server:9.7.0
     container_name: smt-skywalking-oap
     restart: unless-stopped
+    logging: *default-logging
     environment:
       SW_STORAGE: elasticsearch
       SW_STORAGE_ES_CLUSTER_NODES: es01:9200,es02:9200,es03:9200
@@ -491,6 +503,7 @@ services:
     image: milvusdb/milvus:v2.6.16
     restart: unless-stopped
     command: ["milvus", "run", "standalone"]
+    logging: *default-logging
     security_opt:
     - seccomp:unconfined
     environment:

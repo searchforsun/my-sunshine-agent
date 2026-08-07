@@ -41,7 +41,7 @@ import {
   type SendOptions,
   type SessionState,
 } from './chatSessionRegistry'
-import { bumpAssistantMessage } from './chatSessionMutations'
+import { bumpAssistantMessage, flushAssistantMessageBump } from './chatSessionMutations'
 import { consumeChatSseStream } from './chatSessionSseConsumer'
 import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
 import { getWriteHitlMode } from '../composables/useWriteHitlMode'
@@ -59,6 +59,7 @@ export function useChatSessions(
   onConversationMeta?: (sessionId: string, convId: string) => void,
   onStaleConversation?: () => Promise<string | null>,
   onSandboxSession?: (sessionId: string, conversationId: string) => void,
+  onConversationTitle?: (conversationId: string, title: string) => void,
 ) {
   const activeId = ref<string | null>(null)
   const sseHooks = { onChunk, onProgress }
@@ -180,6 +181,9 @@ export function useChatSessions(
               requestSandboxWorkspaceRefresh(cid, 'skills', true)
             }
           }
+          if (meta.type === 'title' && meta.conversationId && meta.title) {
+            onConversationTitle?.(meta.conversationId, meta.title)
+          }
         },
       })
     } catch (err: unknown) {
@@ -203,6 +207,17 @@ export function useChatSessions(
         }
       } else {
         applyStreamError(s.messages, err)
+      }
+      if (isAbortError(err) && !isPageUnloading()) {
+        // 用户主动停止（stop()）：abort 前在途 chunk 会把 status 从 interrupted 改回 streaming，
+        // 而 stop() 已 ++requestId 使 finally 失效，此处兜底落回 interrupted 并立即持久化
+        const last = s.messages[s.messages.length - 1]
+        if (last?.role === 'assistant' && last.status === 'streaming') {
+          last.status = 'interrupted'
+          stampTimelineEnded(last)
+          flushAssistantMessageBump(s)
+        }
+        return
       }
       if (isAbortError(err) || isPageUnloading()) {
         return
@@ -308,6 +323,11 @@ export function useChatSessions(
     const target = s.messages.find(m => m.id === resumeMessageId)
     if (!target || target.role !== 'assistant') return
 
+    // 流式中 bumpAssistantMessage 会用浅拷贝替换 last 对象引用，闭包 target 会失效，
+    // catch/finally 的终态判断须按 resumeMessageId 重查最新对象（见 reconnectStream 同款注释）。
+    const resolveTarget = (): ChatMessage =>
+      s.messages.find(m => m.id === resumeMessageId && m.role === 'assistant') ?? target
+
     const planWorkflowResume = target.steps?.some(
       step => step.id.startsWith('node-') && step.lifecycle === 'paused',
     )
@@ -371,19 +391,25 @@ export function useChatSessions(
       await consumeChatSseStream(s, response, sseHooks, { resume: true, reactRestart, resumeAtMs })
     } catch (err: unknown) {
       applyStreamError(s.messages, err)
-      if (!isAbortError(err) && !isPageUnloading() && target.status === 'streaming') {
-        target.status = target.streamError ? 'failed' : 'interrupted'
+      const current = resolveTarget()
+      if (current.status === 'streaming' && !isPageUnloading()) {
+        // AbortError 分支同样兜底：stop() 已 ++requestId 使 finally 失效，
+        // abort 前在途 chunk 会把 interrupted 改回 streaming，此处统一落终态
+        current.status = !isAbortError(err) && current.streamError ? 'failed' : 'interrupted'
+        stampTimelineEnded(current)
+        flushAssistantMessageBump(s)
       }
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
-        const endStatus = target.status as ChatMessage['status']
+        const current = resolveTarget()
+        const endStatus = current.status as ChatMessage['status']
         if (endStatus === 'streaming') {
-          hydrateStreamError(target)
-          target.status = target.streamError ? 'failed' : 'interrupted'
+          hydrateStreamError(current)
+          current.status = current.streamError ? 'failed' : 'interrupted'
         } else if (endStatus === 'completed') {
-          normalizeRestoredInterleavedContent(target)
-          notifyCompletedIfNeeded(conversationId, target)
+          normalizeRestoredInterleavedContent(current)
+          notifyCompletedIfNeeded(conversationId, current)
           clearActiveGenerationIfMatch(conversationId)
           s.generationId = undefined
         }
@@ -413,6 +439,14 @@ export function useChatSessions(
       s.messages.push(target)
     }
 
+    // 流式中 bumpAssistantMessage 用浅拷贝替换最后一条对象引用，闭包捕获的 target 会失效；
+    // 终态判断必须按 messageId 重查 s.messages 里当前对象，否则 completed 落到新拷贝而
+    // finally 读到旧引用的 streaming，误标 interrupted 且不清 active 锚点（重生成又被拒）。
+    const resolveTarget = (): ChatMessage =>
+      (messageId
+        ? s.messages.find(m => m.id === messageId && m.role === 'assistant')
+        : s.messages[s.messages.length - 1]) ?? target
+
     s.loading = true
     target.status = 'streaming'
     stampTimelineStarted(target)
@@ -438,28 +472,36 @@ export function useChatSessions(
 
       await consumeChatSseStream(s, response, sseHooks, { resume: true })
     } catch (err: unknown) {
+      const current = resolveTarget()
       if (err instanceof DOMException && err.name === 'AbortError') {
-        if (target.status === 'streaming') {
-          target.status = 'interrupted'
-          stampTimelineEnded(target)
+        if (current.status === 'streaming') {
+          current.status = 'interrupted'
+          stampTimelineEnded(current)
         }
         return
       }
       applyStreamError(s.messages, err)
-      if (target.status === 'streaming') {
-        target.status = target.streamError ? 'failed' : 'interrupted'
-        stampTimelineEnded(target)
+      if (current.status === 'streaming') {
+        current.status = current.streamError ? 'failed' : 'interrupted'
+        stampTimelineEnded(current)
       }
     } finally {
       if (thisRequestId === s.requestId) {
         s.loading = false
-        if (target.status === 'streaming') target.status = 'completed'
-        if (target.status === 'completed' || target.status === 'interrupted' || target.status === 'failed') {
-          stampTimelineEnded(target)
+        // 正常结束必然收到 doneMeta 终态；若流结束仍停留在 streaming，说明 SSE 异常中断
+        // （未收到终态），标 interrupted 交 tryAutoReconnect hydrate/用户重新生成恢复，
+        // 勿乐观标 completed，避免「后端仍在跑/已终态」被前端误判为完成而丢失续连锚点
+        const current = resolveTarget()
+        const endStatus = current.status as ChatMessage['status']
+        if (endStatus === 'streaming') {
+          current.status = 'interrupted'
+          stampTimelineEnded(current)
+        } else if (endStatus === 'completed' || endStatus === 'interrupted' || endStatus === 'failed') {
+          stampTimelineEnded(current)
         }
-        if (target.status === 'completed') {
-          normalizeRestoredInterleavedContent(target)
-          notifyCompletedIfNeeded(conversationId, target)
+        if (endStatus === 'completed') {
+          normalizeRestoredInterleavedContent(current)
+          notifyCompletedIfNeeded(conversationId, current)
           clearActiveGenerationIfMatch(conversationId)
           s.generationId = undefined
         }
@@ -472,22 +514,8 @@ export function useChatSessions(
     const s = activeSession.value
     if (!s) return
 
-    const stored = loadActiveGeneration()
-    const generationId = s.generationId
-      ?? (stored?.conversationId === s.id ? stored.generationId : undefined)
-    if (generationId) {
-      try {
-        await fetch(`${API_BASE()}/api/generations/${generationId}/cancel`, {
-          method: 'POST',
-          headers: apiHeaders(),
-        })
-      } catch { /* fire and forget */ }
-    }
-    if (stored?.conversationId === s.id) {
-      clearActiveGenerationIfMatch(s.id)
-    }
-    s.generationId = undefined
-
+    // 先本地落终态 + 中断连接，再异步 cancel：cancel 响应慢会阻塞后续步骤，
+    // 且 stop() 已 ++requestId 使 send/resume/reconnect 的 finally 失效，终态必须就地写死
     s.requestId++
     const last = s.messages[s.messages.length - 1]
     if (last?.role === 'assistant') {
@@ -502,6 +530,21 @@ export function useChatSessions(
     }
     s.abort?.abort()
     s.loading = false
+    flushAssistantMessageBump(s)
+
+    const stored = loadActiveGeneration()
+    const generationId = s.generationId
+      ?? (stored?.conversationId === s.id ? stored.generationId : undefined)
+    if (generationId) {
+      void fetch(`${API_BASE()}/api/generations/${generationId}/cancel`, {
+        method: 'POST',
+        headers: apiHeaders(),
+      }).catch(() => { /* fire and forget */ })
+    }
+    if (stored?.conversationId === s.id) {
+      clearActiveGenerationIfMatch(s.id)
+    }
+    s.generationId = undefined
     onProgress?.(s.id)
   }
 

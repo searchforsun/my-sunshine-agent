@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.processing.ThinkStepIds;
 import com.sunshine.orchestrator.prompt.PersonalRulesSupport;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
@@ -30,6 +31,7 @@ public class ReactExecutor {
     private final AgentRuntime agentRuntime;
     private final AgentCatalogService agentCatalogService;
     private final AgentExecutionProperties executionProperties;
+    private final PromptCatalogHolder catalogHolder;
 
     private static final String PARAM_AGENT_IDS = "agentIds";
 
@@ -82,31 +84,45 @@ public class ReactExecutor {
         if (injectedBlocks != null) {
             blocks.addAll(injectedBlocks);
         }
-        // $A $B 绑定：注入可 spawn 的智能体列表
+        // $A $B 绑定：注入可 spawn 的智能体列表（模板 SSOT：Catalog id=react.spawn-hint）
         Map<String, String> allParams = ctx.plan() != null && ctx.plan().params() != null
                 ? ctx.plan().params() : Map.of();
         String agentIdsRaw = allParams.get(PARAM_AGENT_IDS);
         if (StringUtils.hasText(agentIdsRaw)) {
-            String[] ids = agentIdsRaw.split(",");
-            StringBuilder spawnableInfo = new StringBuilder();
-            spawnableInfo.append("你可以使用 spawn_subagent 工具委派任务给以下预定义智能体：\n");
-            for (String id : ids) {
-                String aid = id.strip();
-                if (!aid.isEmpty()) {
+            String template = catalogHolder.snapshot().text("react.spawn-hint")
+                    .map(String::strip).orElse("");
+            if (!StringUtils.hasText(template)) {
+                log.warn("[ReactExecutor] catalog missing id=react.spawn-hint");
+                template = null;
+            }
+            if (template != null) {
+                String[] ids = agentIdsRaw.split(",");
+                StringBuilder agentLines = new StringBuilder();
+                String firstId = null;
+                for (String id : ids) {
+                    String aid = id.strip();
+                    if (aid.isEmpty()) {
+                        continue;
+                    }
+                    if (firstId == null) {
+                        firstId = aid;
+                    }
                     var entry = agentCatalogService.find(aid);
                     if (entry.isPresent()) {
-                        spawnableInfo.append("- ").append(aid)
+                        agentLines.append("- ").append(aid)
                                 .append(" (").append(entry.get().displayName()).append(")");
                         if (entry.get().description() != null && !entry.get().description().isBlank()) {
-                            spawnableInfo.append(": ").append(entry.get().description());
+                            agentLines.append(": ").append(entry.get().description());
                         }
-                        spawnableInfo.append("\n");
+                        agentLines.append('\n');
                     }
                 }
+                if (firstId != null && !agentLines.isEmpty()) {
+                    blocks.add(template
+                            .replace("{agents}", agentLines.toString().strip())
+                            .replace("{agentId}", firstId));
+                }
             }
-            spawnableInfo.append("调用示例：spawn_subagent(agent_id=\"").append(ids[0].strip())
-                    .append("\", prompt=\"任务描述\")");
-            blocks.add(spawnableInfo.toString());
         }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),

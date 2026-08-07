@@ -29,6 +29,7 @@ public class RagTool implements AgentTool {
 
     private final RagClient ragClient;
     private final DefaultKbResolver defaultKbResolver;
+    private final RagContextFormatter ragContextFormatter;
 
     @Override
     public String getName() {
@@ -76,12 +77,11 @@ public class RagTool implements AgentTool {
                     resolveTenantId(),
                     messageId,
                     ragStepId);
-            String text = RagContextFormatter.formatToolResult(results);
+            String text = ragContextFormatter.formatToolResult(results);
             return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
         } catch (Exception e) {
             log.warn("[RagTool] 知识库检索失败: {}", e.getMessage());
-            String err = "工具调用失败：知识库服务不可用（" + e.getMessage()
-                    + "）。请如实告知用户当前无法检索企业知识库。";
+            String err = ragContextFormatter.formatError(e.getMessage());
             return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(err).build());
         }
     }

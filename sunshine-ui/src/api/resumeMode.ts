@@ -33,7 +33,7 @@ export function resumeButtonLabel(msg: ChatMessage): string {
   const mode = resolveResumeMode(msg)
   if (mode === 'checkpoint') return '继续执行'
   if (mode === 'planning') return '继续执行计划'
-  return '重新生成'
+  return '继续生成'
 }
 
 /** ReAct 助手消息（非 Plan/Workflow） */

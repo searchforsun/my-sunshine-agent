@@ -4,7 +4,6 @@
 退出码：0=通过，1=失败。
 检查项：
   1. 删除项零残留（io.agentscope.core.hook / ProcessingStepHook / .stream(inputs / streamEvents flag）
-     -- ExpertSpeakHook 保留至 P6，不视为残留。
   2. 2.0 编译绿。
   3. ReAct 正向一轮（可选，需 Gateway 在线）：步骤 phase 序列 + 正文非空。
   4. git revert 回滚验证（revert 后 P0 基线编译）。
@@ -27,15 +26,15 @@ def sh(cmd):
 
 
 def check_no_residual():
-    """确认 ReAct 主路径无 Hook/stream/legacy 残留（ExpertSpeakHook 保留至 P6）。
+    """确认 ReAct 主路径无 Hook/stream/legacy 残留。
 
     注：类删除由编译强制保证（已删类被引用则编译失败）；此处只查实际 import 与 API 调用。
     """
     bad = []
-    # io.agentscope.core.hook 的 import（ExpertSpeakHook 保留至 P6）
+    # io.agentscope.core.hook 的 import
     r = sh(
         "grep -rnE '^import io\\.agentscope\\.core\\.hook\\.' "
-        "orchestrator/src/main/java --include='*.java' | grep -v ExpertSpeakHook || true")
+        "orchestrator/src/main/java --include='*.java' || true")
     if r.stdout.strip():
         bad.append("Hook import 残留（ReAct 主路径）:\n" + r.stdout)
     r = sh(
@@ -104,7 +103,7 @@ def main() -> int:
         for b in residual:
             print(b)
         return 1
-    print("[OK] 删除项零残留（ExpertSpeakHook 保留至 P6）")
+    print("[OK] 删除项零残留")
 
     print("[2/4] 编译验证...")
     r = sh("mvn -pl orchestrator -am compile -q 2>&1 | tail -3")

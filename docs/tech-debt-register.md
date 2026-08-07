@@ -29,12 +29,14 @@
 | TD-162 | P0 | open | `sys_user.github_token` / `gitlab_token` | Git PAT 明文落库（`10-sunshine-auth.sql`）；2026-08-04 用户决策「先明文」，加密/外置凭据延后单独 scope |
 | TD-163 | P2 | open | `MainLayout.vue`(1456 行) / `ChatView.vue`(2445 行) | 上帝组件（模板/样式混排）；拆分是跨模块大动作，下轮单独 scope |
 | TD-164 | P2 | open | `specs/2026-07-31-unified-context-compression-design.md` | Layer 1 标注「⚠️ 待恢复」（AS 2.0 迁移移除）；需确认是否仍计划恢复 |
+| TD-167 | P3 | open | `SandboxAgentTools.java` L207 / `MemoryProperties.DEFAULT_SUMMARY_PROMPT` + `HarnessAgentFactory.resolveSummaryPrompt` | Catalog 缺失兜底默认文案残留（`sandbox.budget-exhausted` 与 `compaction.summary-prompt` 已有 seed，缺省不触发）；按「删兜底」纪律可进一步收敛 |
 
 ### 文档债
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
 | DOC-101 | P3 | open | `plans/2026-07-21-corpus50-platform-adapt.md` 等历史 plan | 仍写 TenantUserStore/`/mock-data`；实现期清单，可读但非 SSOT |
+| DOC-102 | P3 | open | `specs/plans/2026-07-29-multi-agent-unified.*` | 历史对照仍大量使用 expert/peer 措辞（peer-collab 已删、spawn_subagent 已落地）；非本轮代码范围，建议后续文档轮次收敛术语 |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 
@@ -205,6 +207,8 @@
 | TD-159 | 2026-08-04 | 删 `arti.png`（1.1MB 死二进制，零引用） |
 | TD-160 | 2026-08-04 | 删 `skillMentionEditor.ts` `@deprecated` 别名 + `defaultMentionCatalogs` 死导出 + 3 个未用类型导入 |
 | TD-161 | 2026-08-04 | `WorkspaceSandboxLifecycle` `auth-service.base-url` 默认值 `8210`→`8100`（配置漂移） |
+| TD-165 | 2026-08-07 | peer-collab/expert 移除后遗留物全量清理：孤儿注解污染 `RoutingGoldenSetTest`、BFF `/api/audit/peer-run` 死端点 + `peerAudit.ts` 孤儿、`peer_run` 死表 DDL、`UnifiedRuleEngine.peer_phrase` 死分支、前端 peer/expert 展示 Map 与 `peer_phrase` 选项、`verify_prompt_catalog_live` 失效 peer 门禁、测试 fixture 与文案残留；服务端删 `sunshine_expert` 库 + `peer_run` 表；golden-set 文档 §E/§K 修订 |
+| TD-166 | 2026-08-07 | 运行时硬编码提示词迁 Catalog：`ProcessingStepMiddleware` 收尾轮/软限额收束指令 → `mode-overlay.react-summary-turn`/`mode-overlay.react-soft-limit`；`ReactExecutor` spawn 委派提示 → `react.spawn-hint`（`{agents}`/`{agentId}` 模板）；`RagContextFormatter`/`RagTool` 工具结果格式与失败提示 → `rag.tool-result`（content_json，`{count}`/`{reason}` 模板）；`AgentGroundingProperties.rejectionMessage` 代码默认值去重（Nacos SSOT）；live DB catalog_version 67；前端 `PROMPT_KIND_LABELS` 补 `rag` |
 
 ### 文档债（DOC）
 

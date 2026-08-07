@@ -26,7 +26,6 @@ type TopicRow = { id: string; name: string; keywords: string[] }
 
 const matchTypeOptions = [
   { label: '多步跨域', value: 'structural' },
-  { label: '协作句式', value: 'peer_phrase' },
   { label: '正则匹配', value: 'regex' },
 ]
 

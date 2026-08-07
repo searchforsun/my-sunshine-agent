@@ -1,4 +1,4 @@
--- sunshine-agent-manager（agent-manager :8235）
+-- sunshine-agent-manager（agent-manager :8235 · 库 sunshine_agent · 全量 v1）
 USE sunshine_agent;
 
 CREATE TABLE agent_definition (

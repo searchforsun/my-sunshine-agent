@@ -16,6 +16,7 @@ import com.sunshine.orchestrator.context.ContextAssembler;
 import com.sunshine.orchestrator.context.SessionTurn;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -47,6 +48,10 @@ public class ChatStreamContextFactory {
     private final ExecutionPlanParser executionPlanParser;
     private final DefaultKbResolver defaultKbResolver;
     private final ReactCheckpointService checkpointService;
+    private final PromptCatalogHolder catalogHolder;
+
+    /** INTERRUPTED assistant 折叠注记的 Catalog id（方案 A · 中断感知，见五层 spec §5.5.7 v16） */
+    private static final String INTERRUPTED_MARKER = "context.l1.interrupted-marker";
 
     @Autowired(required = false)
     private GenerationRegistry registry;
@@ -59,12 +64,13 @@ public class ChatStreamContextFactory {
         // 先加载历史再落库本轮 user/assistant，避免 history + userContent 重复注入 LLM
         List<SessionTurn> loadedHistory = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
                 .filter(m -> !MessageStatus.STREAMING.equals(m.getStatus()))
-                .map(m -> SessionTurn.of(m.getId(), m.getRole(), MessageBodyText.resolve(m)))
+                .map(m -> SessionTurn.of(m.getId(), m.getRole(), resolveBodyWithInterruptMark(m)))
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toList());
 
         ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
         String userContent = desensitizeClient.scrub(msg.getContent());
+        boolean firstMessage = ConversationService.DEFAULT_TITLE.equals(conv.getTitle());
         conversationService.appendMessage(conv.getId(), "user",
                 userContent, MessageStatus.COMPLETED, preference.wireValue());
         ChatMessageEntity assistant = conversationService.appendMessage(
@@ -100,7 +106,7 @@ public class ChatStreamContextFactory {
                 "",
                 null,
                 null,
-                true,
+                firstMessage,
                 userId,
                 tenantId,
                 preference,
@@ -110,6 +116,32 @@ public class ChatStreamContextFactory {
                 false,
                 msg.getPersonalRules(),
                 conv.getKind());
+    }
+    /**
+     * 中断感知（方案 A · 五层 spec §5.5.7 v16）：INTERRUPTED 的 assistant 消息折叠为显式中断注记，
+     * 使后续轮次从 Near 中感知「上一轮被中断」；正文非空时连同已生成部分一起注入（信息不丢），
+     * 正文为空时仅注记（保证不再被 hasText 过滤掉）。COMPLETED/FAILED 与 user 消息保持原样。
+     * Catalog 缺失或读取失败时降级保留原正文（行为等同现状）。
+     */
+    private String resolveBodyWithInterruptMark(ChatMessageEntity m) {
+        String body = MessageBodyText.resolve(m);
+        if (!"assistant".equals(m.getRole()) || !MessageStatus.INTERRUPTED.equals(m.getStatus())) {
+            return body;
+        }
+        String marker;
+        try {
+            marker = catalogHolder.requireText(INTERRUPTED_MARKER);
+        } catch (RuntimeException e) {
+            log.warn("[ChatStreamContextFactory] interrupted-marker 读取失败，降级原文: {}", e.getMessage());
+            return body;
+        }
+        if (!StringUtils.hasText(marker)) {
+            return body;
+        }
+        if (!StringUtils.hasText(body)) {
+            return marker;
+        }
+        return marker + "\n\n已生成部分：\n" + body;
     }
 
     private String resolveSessionKbId(String requestKbId, String storedKbId, String tenantId) {
@@ -125,8 +157,13 @@ public class ChatStreamContextFactory {
     public ChatResumePreparation buildResumePreparation(ChatMessage msg, String userId, String tenantId) {
         ChatMessageEntity assistant = conversationService.getMessageOwned(
                 msg.getResumeMessageId(), userId, tenantId);
-        if (registry != null && MessageStatus.STREAMING.equals(assistant.getStatus())
-                && registry.findByMessageId(assistant.getId()).isEmpty()) {
+        // 消息仍在流式（DB STREAMING）时 resume：先取消该消息的活跃 generation（若有），
+        // 再强制标中断后继续。resume 语义即「取消旧 run 重来」，与 startResumeWithRedis 的
+        // findByMessageId.cancel 对齐；否则 validateResumeAllowed 会因 STREAMING 直接拒绝，
+        // 导致刷新失联后用户点「重新生成」永远无法恢复（旧 job 的异步 persistFinal 又更新滞后）。
+        if (registry != null && MessageStatus.STREAMING.equals(assistant.getStatus())) {
+            registry.findByMessageId(assistant.getId())
+                    .ifPresent(job -> registry.cancel(job.getGenerationId()));
             conversationService.forceInterruptedIfStreaming(assistant.getId());
             assistant = conversationService.getMessageOwned(msg.getResumeMessageId(), userId, tenantId);
         }
@@ -179,7 +216,7 @@ public class ChatStreamContextFactory {
 
         List<SessionTurn> history = historyEntities.stream()
                 .filter(m -> !m.getId().equals(assistantId))
-                .map(m -> SessionTurn.of(m.getId(), m.getRole(), MessageBodyText.resolve(m)))
+                .map(m -> SessionTurn.of(m.getId(), m.getRole(), resolveBodyWithInterruptMark(m)))
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toCollection(ArrayList::new));
         if (!history.isEmpty()

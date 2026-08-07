@@ -83,9 +83,7 @@ export async function consumeChatSseStream(
     const { done, value } = await reader.read()
     if (value) {
       buf += decoder.decode(value, { stream: true })
-    }
-
-    let { events, pending } = drainSseBuffer(done && buf.trim() ? `${buf}\n\n` : buf)
+    }    let { events, pending } = drainSseBuffer(done && buf.trim() ? `${buf}\n\n` : buf)
     buf = pending
 
     for (const rawEvent of events) {
@@ -271,9 +269,6 @@ export async function consumeChatSseStream(
             }
           }
           lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
-          if (delta.stepId.startsWith('expert-')) {
-            scheduleAssistantMessageBump(s)
-          }
           if (delta.stepId === 'node-answer' && (delta.channel === 'result' || delta.channel === 'output')) {
             syncPlanAnswerContentFromStep(lastMsg)
           }
@@ -387,7 +382,12 @@ export async function consumeChatSseStream(
         }
         hooks.onChunk?.(s.id, parsed.text)
         hooks.onProgress?.(s.id)
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        // resume 续连会回放已完成/积压的历史事件（量大），逐 chunk 等 rAF 会拖慢 catch-up，
+        // 使任务已终态时 UI 仍长时间停在「正在处理」；bump 已有 80ms 节流兜底 UI 刷新，
+        // 故 resume 场景跳过 rAF（实时流式仍在跑时也只是消费更快，不影响正确性）
+        if (!options.resume) {
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        }
         continue
       }
 
@@ -408,7 +408,9 @@ export async function consumeChatSseStream(
 
     if (events.length > 0) await new Promise(r => setTimeout(r, 0))
 
-    if (done) break
+    if (done) {
+      break
+    }
   }
   flushAssistantMessageBump(s)
 }

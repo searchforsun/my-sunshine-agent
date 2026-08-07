@@ -1,0 +1,3 @@
+# binlog 保留 7 天，避免磁盘被 binlog 累积撑满
+[mysqld]
+binlog_expire_logs_seconds = 604800

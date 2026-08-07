@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -214,12 +213,7 @@ public class GenerationController {
         Flux<ServerSentEvent<String>> body;
         if (meta.status() == GenerationStatus.RUNNING || meta.status() == GenerationStatus.CREATED) {
             long subscribeAfter = lastEmittedSeq.get();
-            Flux<ServerSentEvent<String>> live = streamService.subscribe(generationId, subscribeAfter)
-                    .doOnNext(e -> lastEmittedSeq.set(e.seq()))
-                    .takeUntilOther(
-                            Flux.interval(Duration.ofMillis(50))
-                                    .filter(t -> isCaughtUpAndTerminal(generationId, lastEmittedSeq.get()))
-                                    .take(1))
+            Flux<ServerSentEvent<String>> live = streamService.subscribeToEnd(generationId, subscribeAfter)
                     .map(e -> sseWithId(String.valueOf(e.seq()), e.text()));
             body = Flux.concat(historical, live, doneMeta(meta.messageId(), generationId));
         } else {
@@ -234,18 +228,6 @@ public class GenerationController {
     private Flux<ServerSentEvent<String>> doneMeta(String messageId, String generationId) {
         return Flux.defer(() -> Flux.just(
                 sse(flushScheduler.metaMessage(messageId, resolveFinalStatus(generationId), false))));
-    }
-
-    private boolean isCaughtUpAndTerminal(String generationId, long lastEmittedSeq) {
-        return streamService.getMeta(generationId)
-                .map(meta -> {
-                    GenerationStatus status = meta.status();
-                    boolean terminal = status == GenerationStatus.COMPLETED
-                            || status == GenerationStatus.FAILED
-                            || status == GenerationStatus.INTERRUPTED;
-                    return terminal && lastEmittedSeq >= meta.lastSeq();
-                })
-                .orElse(false);
     }
 
     private String resolveFinalStatus(String generationId) {

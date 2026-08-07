@@ -30,7 +30,7 @@ import { NIcon, NPopover, NButton, NSpin } from 'naive-ui'
 import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline, AlertCircleOutline, WarningOutline, ChatboxEllipsesOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
 import TaskBoardPanel from '../components/operation/TaskBoardPanel.vue'
-import { hasRealTaskBoardItems } from '../api/processingSteps'
+import { hasRealTaskBoardItems, type TimelineMessageStatus } from '../api/processingSteps'
 import { isElVisibleInRoot } from '../utils/floatingTaskboard'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
 import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
@@ -156,6 +156,9 @@ const {
       sandboxWorkspaceActive.value = true
       updateConversationId(convId)
     }
+  },
+  (convId: string, title: string) => {
+    chatStore.updateTitleFromStream(convId, title)
   },
 )
 
@@ -374,6 +377,17 @@ function isPendingAutoReconnect(msg: ChatMessage, idx: number): boolean {
   if (!active || active.conversationId !== cid) return false
   if (active.messageId && msg.id && active.messageId !== msg.id) return false
   return true
+}
+
+/** 时间线状态映射：pending 续连（刷新后 active 锚点未落终态、SSE 尚未建立）期间，
+ * 保持「运行中」语义，避免 sanitize 归一化的 interrupted 在续连成功前闪出「已中断」。
+ * 仅当仍在 hydration 或续连流活跃（loading）时视为运行中；续连已结束且真实落 interrupted
+ * 时回退真实状态，让「继续生成」入口与「已中断」展示一致。 */
+function resolveTimelineMessageStatus(msg: ChatMessage, idx: number): TimelineMessageStatus {
+  if (isPendingAutoReconnect(msg, idx) && (sessionHydrating.value || loading.value)) {
+    return 'streaming'
+  }
+  return (msg.status as TimelineMessageStatus) ?? 'completed'
 }
 
 const latestAssistantMessage = computed(() => {
@@ -1563,7 +1577,7 @@ watch(
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
                 :message-id="msg.id"
-                :message-status="msg.status ?? 'completed'"
+                :message-status="resolveTimelineMessageStatus(msg, idx)"
                 :message-content="msg.content"
                 :timeline-started-at="msg.timelineStartedAt"
                 :timeline-ended-at="msg.timelineEndedAt"

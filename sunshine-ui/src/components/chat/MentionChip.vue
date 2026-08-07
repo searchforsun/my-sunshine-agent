@@ -11,7 +11,7 @@ import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspace
 
 const props = defineProps<{
   kind: ChatMentionKind
-  /** skill/expert/workflow：展示 ID；path：完整路径（title / 跳转） */
+  /** skill/agent/workflow：展示 ID；path：完整路径（title / 跳转） */
   token: string
   /** path：basename；其它可选展示名作 title */
   label?: string

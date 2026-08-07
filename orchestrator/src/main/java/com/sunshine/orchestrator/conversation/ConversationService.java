@@ -11,6 +11,7 @@ import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConversationService {
@@ -116,8 +118,8 @@ public class ConversationService {
                 .build();
     }
 
-    private static final String DEFAULT_TITLE = "新对话";
-    private static final int AUTO_TITLE_MAX_LEN = 28;
+    public static final String DEFAULT_TITLE = "新对话";
+    public static final int AUTO_TITLE_MAX_LEN = 15;
 
     @Transactional
     public ChatConversationEntity updateTitle(String id, String userId, String tenantId, String title) {
@@ -433,6 +435,7 @@ public class ConversationService {
         getOwned(msg.getConversationId(), userId, tenantId);
 
         if (!"assistant".equals(msg.getRole())) {
+            log.warn("[Resume] 拒绝：非 assistant 消息 msg={} role={}", msg.getId(), msg.getRole());
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
@@ -441,14 +444,20 @@ public class ConversationService {
 
         String status = assistant.getStatus();
         if (MessageStatus.STREAMING.equals(status)) {
+            log.warn("[Resume] 拒绝：消息仍为 STREAMING msg={} updatedAt={} orphanTimeoutSec={}",
+                    assistant.getId(), assistant.getUpdatedAt(), orphanTimeoutSec);
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
         if (!MessageStatus.isResumable(status)) {
+            log.warn("[Resume] 拒绝：状态不可续传 msg={} status={}", assistant.getId(), status);
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
         ChatMessageEntity lastAssistant = findLastAssistantMessage(assistant.getConversationId());
         if (lastAssistant == null || !lastAssistant.getId().equals(assistant.getId())) {
+            log.warn("[Resume] 拒绝：非最后一条 assistant msg={} conv={} lastId={}",
+                    assistant.getId(), assistant.getConversationId(),
+                    lastAssistant == null ? null : lastAssistant.getId());
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
@@ -460,11 +469,15 @@ public class ConversationService {
                     .toList();
             boolean hasNewUser = after.stream().anyMatch(m -> "user".equals(m.getRole()));
             if (hasNewUser) {
+                log.warn("[Resume] 拒绝：assistant 之后有新 user 消息 msg={} conv={} afterCount={}",
+                        assistant.getId(), assistant.getConversationId(), after.size());
                 throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
             }
         }
 
         if (assistant.getResumeCount() >= maxResumeAttempts) {
+            log.warn("[Resume] 拒绝：超过最大续传次数 msg={} resumeCount={} max={}",
+                    assistant.getId(), assistant.getResumeCount(), maxResumeAttempts);
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
     }

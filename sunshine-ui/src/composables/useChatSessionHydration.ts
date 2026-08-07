@@ -259,7 +259,10 @@ export function useChatSessionHydration(options: {
         await ensureStreamRenderer()
         await reconnectPromise
         // 续传异常结束（网络失败 / 后端已终态导致 SSE 中断）：重新拉取 API + 本地缓存，
-        // 后端 commitFinal 可能已落库已输出的步骤/正文，避免停留在空白或失败态消息上
+        // 后端 commitFinal 可能已落库已输出的步骤/正文，避免停留在空白或失败态消息上。
+        // 注意：不清除 active generation 锚点——后端可能仍在 RUNNING，只是续连流被网络/导航
+        // 意外中断；清掉锚点会导致下次刷新不再续连（「多刷新两次就断流」的根因）。
+        // 后端若已终态，hydrate 后消息会变为对应终态；若仍在跑，保留锚点供下次刷新续连。
         const tailAfter = active.messageId
           ? msgs.find(m => m.id === active.messageId && m.role === 'assistant')
           : msgs[msgs.length - 1]
@@ -268,16 +271,33 @@ export function useChatSessionHydration(options: {
           tailAfter.status !== 'completed' &&
           tailAfter.status !== 'streaming'
         ) {
-          clearActiveGeneration()
           await hydrateSessionFromStore(cid)
+          // hydrate 优先取 API 的 streaming 状态（后端仍在跑），但此刻本地已无活跃续连流，
+          // 保持 interrupted 让「重新生成」入口可用；锚点保留，下次刷新仍会续连。
+          const after = active.messageId
+            ? getMessages(cid).find(m => m.id === active.messageId && m.role === 'assistant')
+            : getMessages(cid)[getMessages(cid).length - 1]
+          if (after?.role === 'assistant' && after.status === 'streaming') {
+            after.status = 'interrupted'
+          }
           return
         }
         syncSessionToStore(cid)
       }
     } catch (e) {
       console.error('[ChatView] auto reconnect failed', e)
-      clearActiveGeneration()
+      // 网络/导航等瞬时异常：后端 generation 很可能仍在 RUNNING，绝不能清除 active 锚点——
+      // 清掉后后续刷新将不再续连（「多刷新两次就中断流式输出」的直接根因：快速刷新时
+      // 状态查询/续连请求被导航中断，抛 TypeError: Failed to fetch 落入本 catch）。
+      // 保留锚点供下次刷新重试；同时把停在 streaming 的尾部 assistant 标 interrupted，
+      // 避免 UI 停在假流式状态且无任何「重新生成」恢复入口。
       await hydrateSessionFromStore(cid)
+      const after = active.messageId
+        ? getMessages(cid).find(m => m.id === active.messageId && m.role === 'assistant')
+        : getMessages(cid)[getMessages(cid).length - 1]
+      if (after?.role === 'assistant' && after.status === 'streaming') {
+        after.status = 'interrupted'
+      }
     }
   }
 

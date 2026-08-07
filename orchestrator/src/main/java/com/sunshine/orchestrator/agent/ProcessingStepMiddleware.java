@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.hitl.HitlParamSupport;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.processing.StepMetadata;
@@ -78,18 +79,21 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
     private final SandboxTimelineLabelService sandboxTimelineLabels;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
+    private final PromptCatalogHolder catalogHolder;
 
     public ProcessingStepMiddleware(
             ToolCatalogService toolCatalogService,
             AgentExecutionProperties executionProperties,
             TaskBoardTimelineSupport taskBoardTimelineSupport,
             SandboxTimelineLabelService sandboxTimelineLabels,
-            CancellableToolRunRegistry cancellableToolRunRegistry) {
+            CancellableToolRunRegistry cancellableToolRunRegistry,
+            PromptCatalogHolder catalogHolder) {
         this.toolCatalogService = toolCatalogService;
         this.executionProperties = executionProperties;
         this.taskBoardTimelineSupport = taskBoardTimelineSupport;
         this.sandboxTimelineLabels = sandboxTimelineLabels;
         this.cancellableToolRunRegistry = cancellableToolRunRegistry;
+        this.catalogHolder = catalogHolder;
     }
 
     /** per-call bridgeId：由 ReActAgentRuntime 经 RuntimeContext 注入（缓存复用下禁止实例字段） */
@@ -117,23 +121,27 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             boolean summaryTurn = messages.stream()
                     .anyMatch(m -> containsMaxItersSummary(m));
             if (summaryTurn) {
+                String instruction = catalogInstruction("mode-overlay.react-summary-turn");
+                if (!StringUtils.hasText(instruction)) {
+                    log.warn("[ProcessingStepMiddleware] catalog missing id=mode-overlay.react-summary-turn");
+                    return next.apply(new ModelCallInput(messages, input.tools(), input.options(), input.model()));
+                }
                 List<Msg> guarded = new ArrayList<>(messages.size() + 1);
                 guarded.addAll(messages);
                 guarded.add(UserMessage.builder()
-                        .content(TextBlock.builder()
-                                .text("本轮为任务收尾（平台强制结束的收尾轮）：本轮不需要也无法调用任何工具，"
-                                        + "系统提示词中关于 think_summary 等工具的每轮调用要求在本轮一律豁免，"
-                                        + "请直接以自然语言输出文本。基于已有执行结果，若任务已全部完成可直接给出最终结论；"
-                                        + "若尚有事项未完成，请如实说明当前进展、未完成的部分以及后续建议，"
-                                        + "切勿编造未实际完成的结果。仅用纯文本输出，"
-                                        + "不要包含任何工具调用标记、XML/DSML 标签、尖括号标签或结构化格式；"
-                                        + "也请不要在回复中提及平台运行限制等内部细节。")
-                                .build())
+                        .content(TextBlock.builder().text(instruction).build())
                         .build());
                 return next.apply(new ModelCallInput(guarded, input.tools(), input.options(), input.model()));
             }
         }
         return next.apply(new ModelCallInput(messages, input.tools(), input.options(), input.model()));
+    }
+
+    /** Catalog 缺失 → 空 + warn（seed 保证正常有值；缺失时该轮不注入约束） */
+    private String catalogInstruction(String id) {
+        return catalogHolder.snapshot().entry(id)
+                .map(e -> e.contentText() != null ? e.contentText().strip() : "")
+                .orElse("");
     }
 
     /** 历史消息中 assistant 声明了 tool_calls 但无对应 tool 响应（流中断残留）时，补一条占位 tool 响应 */
@@ -223,16 +231,15 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         }
         log.info("[Middleware] ReAct soft-limit warning: iter={}/maxIters={} remaining={}",
                 iter, maxIters, remaining);
+        String instruction = catalogInstruction("mode-overlay.react-soft-limit");
+        if (!StringUtils.hasText(instruction)) {
+            log.warn("[Middleware] catalog missing id=mode-overlay.react-soft-limit");
+            return input;
+        }
         List<Msg> messages = new ArrayList<>(input.messages().size() + 1);
         messages.addAll(input.messages());
         messages.add(UserMessage.builder()
-                .content(TextBlock.builder()
-                        .text("【执行收束】本任务的执行步数即将耗尽，请尽快收束：若任务已完成或可在本轮内完成，"
-                                + "请停止调用业务工具，直接完整回答用户问题；若确认剩余步数不足以完成任务，"
-                                + "请如实说明已完成进展、未完成事项与后续建议，勿编造未实际完成的结果；"
-                                + "若确需再调用工具，请确保这是最后一次工具调用，之后不再调用任何业务工具，直接作答。"
-                                + "面向用户的回复请保持自然，不要提及步数限制等平台内部细节。")
-                        .build())
+                .content(TextBlock.builder().text(instruction).build())
                 .build());
         return new ReasoningInput(messages, input.tools(), input.options());
     }

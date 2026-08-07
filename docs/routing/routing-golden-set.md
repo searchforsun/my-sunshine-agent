@@ -11,7 +11,6 @@
 |:----:|--------|------|------|
 | L0 | `SkillBindingRoutingPolicy` + `SkillDiscoveryService` | `agent.skill.hint-patterns` + `@` 硬编码 | 单步：`REACT`+skillId；多步 `@`/强提示：`PLAN_WORKFLOW` **5B**；L3 后自动发现 skill |
 | L1 | `UnifiedRuleRoutingPolicy` | Catalog `matchType=structural`（priority 100） | `PLAN_WORKFLOW` |
-| L1b | （同上引擎） | Catalog `matchType=peer_phrase`（priority 90） | `PEER_COLLAB` |
 | L2 | （同上引擎） | Catalog `matchType=regex`（workflow P20/15/10；**react+reactPromptId** P40/28/22/18） | 静态 `WORKFLOW` 或带场景的 `REACT` |
 | L3 | `LlmClassifierRoutingPolicy` | Catalog `intent.classifier`（原 Nacos classifier-prompt） | LLM 选 mode/workflow；强制路径可带 `lockedMode` |
 | **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | **锁死 mode**；仍跑同 mode 规则/L3 解析绑定；见 [§J](#j-chat-executionpreference-强制路由p0) |
@@ -235,7 +234,7 @@ python3 scripts/verify_skills_ui_live.py
 ## J. Chat `executionPreference` 强制路由（P0 ✅）
 
 > **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) · [remove-simple-llm](../superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md)  
-> **请求**：SSE 发送体 `executionPreference`（`auto` \| `react` \| `workflow` \| `plan-workflow` \| `peer-collab`）  
+> **请求**：SSE 发送体 `executionPreference`（`auto` \| `react` \| `workflow` \| `plan-workflow`）  
 > **边界**：本节约 **执行路径**；**指定 workflow 模板**用正文 `#id`（4.13 §I），**不在底栏做 catalog 下拉**。
 
 | # | preference | 提示词 | 预期 mode | @skill |
@@ -354,13 +353,12 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 
 | 需求 | 改哪里 |
 |------|--------|
-| 新增多步句式 / 跨域信号 / peer 句式 / 正则快路径 | prompt-manager Catalog `routing-rule.*`（`/prompts`）；发布后 orchestrator 热更新 |
+| 新增多步句式 / 跨域信号 / 正则快路径 | prompt-manager Catalog `routing-rule.*`（`/prompts`）；发布后 orchestrator 热更新 |
 | 意图步文案 | Catalog `timeline.intent`（`/prompts`） |
 | 语义兜底 | Catalog `intent.classifier`（`/prompts`） |
 | Plan 重试/降级/Replan | `agent.execution.plan-workflow` · 见 [plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md) |
 | Skill `@` / 强提示 / 5B | `agent.skill.hint-patterns`；L0 多步→`plannerMode=skill-driven` |
 | Skill 自动发现阈值 | `SkillDiscoveryService`（catalog description bigram 打分） |
-| 第五模式 peer 句式（阶段四） | Catalog `matchType=peer_phrase` · Expert Catalog · 见 [peer-collab spec](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation spec](../superpowers/specs/2026-07-07-expert-consultation-design.md) |
 | ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.execution.react.max-iters` / `agent.timeline.steps.tasks` / `mode-overlays.react`（仅建板与 status 语义）· 详设 [taskboard spec](../superpowers/specs/2026-06-24-react-taskboard-design.md) |
 | Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) |
 | Workflow 模板 / `#` 绑定 | `workflow-manager` catalog + L0 `#` · **非**底栏二级下拉 · 见 [workflow-studio spec](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3 |
@@ -369,77 +367,30 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 
 ---
 
-## E. PEER_COLLAB（阶段四 · 第五顶层模式）
+## E. PEER_COLLAB（已移除）
 
-> **状态**：✅ L1 路由单测 + Live（2026-07-08）；Timeline 与 **§K** 统一（`expert-convene` + `expert-*` + Synthesizer 正文，无 `peer-collab` / `generate`）  
-> **详设**：[peer-collab-routing-design.md](../superpowers/specs/2026-06-24-peer-collab-routing-design.md) · [expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md) · Catalog `routing-rule.peer-phrase`（非 `agent.peer.*` 专家协作 prompt）
-
-**预期 intent after**：「将由多专家协作交叉验证」（`agent.timeline.intent.modes.peer-collab`）
-
-### E1. 应对 → `peer-collab`
-
-| 提示词 | 必须 **不是** | 必须是 |
-|--------|--------------|--------|
-| 请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证 | plan-workflow / finance-smart | **peer-collab** |
-| 从合规和财务两个角度交叉审查上述制度条款 | workflow | **peer-collab** |
-
-### E2. 应对 → 仍 `plan-workflow`（边界对照）
-
-| 提示词 | 必须是 | 说明 |
-|--------|--------|------|
-| 先检索报销制度，再查待审批列表，并对结果做合规分析 | plan-workflow | 结构化流水线，非对等协商 |
-
-### E3. Timeline（成功路径 · 与 §K 一致）
-
-```
-识别意图 → 将由多专家协作…
-expert-convene → 已召集：…
-expert-{id}-s1 → 专家发言（step_delta 流式 result）
-…
-（消息正文区 Synthesizer 流式结论 — 无 generate 步）
-```
-
-- 历史消息可能仍含 `phase=peer-collab` 单步；新请求 **不出现** `peer-collab` / `generate`
-- transcript 落 `peer_run` 审计；主 Timeline 逐步展示专家发言
-- 失败降级：intent 步说明改走 plan-workflow / react
-
-### 单测（阶段四）
-
-```bash
-mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest#peerCollab*,PeerCollaborationRoutingTest,ExecutionDispatcherTest
-python3 scripts/verify_peer_collab_live.py   # E1 等 expert-convene
-python3 scripts/verify_expert_consultation_live.py   # §K `$` 与逐步 expert 步
-```
+> **状态**：❌ 已于 2026-07-30 移除（`42f5955d` / `d11aff73`）——多智能体协作统一为 **spawn_subagent(agentId) 中心化编排**（4.7.6），见 [multi-agent-unified-design](../superpowers/specs/2026-07-29-multi-agent-unified-design.md)。
+> 路由链仅剩 `workflow` / `react` / `plan-workflow`；`matchType=peer_phrase`、`peer_run` 落库、`expert-convene` / `expert-*` 步均已删除。`peer-collab` 规则入参会静默视为 `WORKFLOW`，勿再新增此类规则。
 
 ---
 
-## K. Expert `$` 绑定与多专家协作 Timeline（阶段四 4.7 · ✅ 完整）
+## K. Agent `$` 绑定（L0 · 多智能体统一 4.7.6）
 
-> **状态**：✅ 单测 + Live（2026-07-08）— Catalog/`$`/Hub 反应式轮次/Synthesizer 全链路  
-> **详设**：[expert-consultation-design.md](../superpowers/specs/2026-07-07-expert-consultation-design.md)
+> **详设**：[multi-agent-unified-design.md](../superpowers/specs/2026-07-29-multi-agent-unified-design.md) §3.4 · `AgentBindingRoutingPolicy`（order -10，`#` 开头放行）→ 通用 ReAct 主 Agent + `params.agentIds`（全为子 Agent，按需 spawn_subagent）
 
 | # | 提示词 / 条件 | 预期 |
 |---|--------------|------|
-| K1 | `$policy-expert $finance-expert 是否合规` | `PEER_COLLAB`；`expert-convene` + ≥2 `expert-*` 步；≥2 条 expert `step_delta(result)`；**无** `plan` / `generate` / `peer-collab` |
-| K2 | `#finance-smart $policy-expert 是否合规` | `WORKFLOW` finance-smart；**压过** `$` |
-| K3 | `$policy-expert @finance-analysis 是否合规` | **仅 `$`** → `PEER_COLLAB` |
-| K4 | `executionPreference=peer-collab` + 合规问句 | `PEER_COLLAB`；Coordinator 召集；**无** finance-smart DAG |
-| K5 | 未知 `$not-exists` | HTTP 400 expert not found |
-| K6 | `@finance-analysis $policy-expert` | **仅 `$`**（`$` 优先于 `@`） |
+| K1 | `$policy-expert $finance-expert 是否合规` | `REACT`；主 Agent ReAct + `agentIds=[policy-expert, finance-expert]`，spawn 出 `subagent-*` 卡 |
+| K2 | `#finance-smart $policy-expert 是否合规` | `WORKFLOW` finance-smart；`#` 压过 `$`（WorkflowBinding order -20 先于 AgentBinding -10） |
+| K3 | `$policy-expert @finance-analysis 是否合规` | 仅 `$`（order -10 先于 `@` SkillBinding 0）→ `REACT` + agentIds |
+| K4 | `$not-exists 测试` | HTTP 400 `AGENT_NOT_FOUND` |
 
 **Timeline 成功路径**：
 
 ```
-识别意图 → 多专家协作
-expert-convene → 已召集：人事制度分析专家、费用报销分析专家
-expert-policy-expert-s1 → 人事制度分析专家发言
-expert-finance-expert-s1 → 费用报销分析专家发言
-（消息正文区 Synthesizer 流式结论 — 无 generate 步）
+识别意图 → 将由自主智能体分析并作答
+subagent-{runId} → spawn 智能体卡片（subSteps 抽屉折叠）
+生成回复 → 主 Agent 综合正文
 ```
 
-### 单测 + Live
-
-```bash
-mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest#expertK*
-python3 scripts/verify_expert_consultation_live.py
-```
+**Live**：`python3 scripts/verify_spawn_subagent_live.py`

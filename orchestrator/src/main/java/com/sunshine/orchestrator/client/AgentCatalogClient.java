@@ -51,24 +51,24 @@ public class AgentCatalogClient {
         }
     }
 
-    public Optional<AgentCatalogEntry> fetchAgentDetail(String expertId) {
-        if (expertId == null || expertId.isBlank()) {
+    public Optional<AgentCatalogEntry> fetchAgentDetail(String agentId) {
+        if (agentId == null || agentId.isBlank()) {
             return Optional.empty();
         }
         try {
             AgentCatalogEntry entry = webClient.get()
-                    .uri("/api/agents/{id}/catalog", expertId.strip())
+                    .uri("/api/agents/{id}/catalog", agentId.strip())
                     .retrieve()
                     .bodyToMono(new ParameterizedTypeReference<R<AgentCatalogEntry>>() {})
                     .map(R::getData)
                     .onErrorResume(e -> {
-                        log.warn("[AgentCatalogClient] fetch expert detail failed id={}: {}", expertId, e.getMessage());
+                        log.warn("[AgentCatalogClient] fetch agent detail failed id={}: {}", agentId, e.getMessage());
                         return Mono.empty();
                     })
                     .block();
             return Optional.ofNullable(entry);
         } catch (Exception e) {
-            log.warn("[AgentCatalogClient] fetch expert detail error id={}: {}", expertId, e.getMessage());
+            log.warn("[AgentCatalogClient] fetch agent detail error id={}: {}", agentId, e.getMessage());
             return Optional.empty();
         }
     }

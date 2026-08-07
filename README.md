@@ -24,7 +24,7 @@ Gateway (:8000, JWT + Sentinel) ──▶ BFF (:8001, SSE) ──▶ Orchestrato
                Sa-Token JWT
 ```
 
-**执行模式**（`IntentRouter` → `ExecutionDispatcher`）：`auto` · `react` · `workflow` · `plan-workflow`（4.14 重建中，将舍弃）。多智能体协作 = ReAct `spawn_subagent(expertId)` 中心化编排（含 A2A 外部接入），非独立模式。Workflow Studio 见 `/workflows`，Prompt 运营见 `/prompts`；`simple-llm` 已移除。
+**执行模式**（`IntentRouter` → `ExecutionDispatcher`）：`auto` · `react` · `workflow` · `plan-workflow`（4.14 重建中，将舍弃）。多智能体协作 = ReAct `spawn_subagent(agentId)` 中心化编排（含 A2A 外部接入），非独立模式。Workflow Studio 见 `/workflows`，Prompt 运营见 `/prompts`；`simple-llm` 已移除。
 
 ## 技术栈
 

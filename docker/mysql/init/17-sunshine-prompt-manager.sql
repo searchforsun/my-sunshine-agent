@@ -272,6 +272,10 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.mid-compress', 1, 'published',
 '你是对话答案压缩助手。将下列助手回复压成 1～3 句中文摘要。\n保留关键事实、结论与用户可指代的要点（含具体代号、数字、名称、约束）；彼此不同的条目不得因句式相似而省略。\n若原文含已更正、作废或被覆盖的旧信息，只保留最终有效结论，不要新旧并存。\n只输出摘要正文，不要标题或 markdown。', NULL, '初始种子', 'agent');
 
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l1.interrupted-marker', 'context', 'L1 · 中断注记', '装载历史时对 INTERRUPTED 的 assistant 消息折叠的中断状态注记；让后续轮次从 Near 感知上一轮被中断。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l1.interrupted-marker', 1, 'published',
+'[上一轮回复被中断，未完成] 后续内容未生成；若含已生成部分，仅作参考，不视为最终答复。用户可要求继续完成或重新执行。', NULL, '初始种子', 'agent');
+
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('context.l2.audit', 'context', 'L2 · 状态矛盾审计', '审阅用户 active L2；明确互斥/错误 → voidIds；暧昧可疑 → conflictIds；仅输出 JSON。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('context.l2.audit', 1, 'published',
 '你是用户状态审计助手。审阅下列 L2 条目（每行含 id/kind/key/value/confidence）。\n找出：1) 明确互斥或明显错误、应作废的 id → voidIds；2) 暧昧矛盾、仅需打标的 id → conflictIds。\n仅输出 JSON 对象，不要其它文字或 markdown：{\"voidIds\":[],\"conflictIds\":[],\"reasons\":{\"id\":\"简短原因\"}}。\n禁止编造不在输入列表中的 id。无问题时输出 {\"voidIds\":[],\"conflictIds\":[],\"reasons\":{}}。', NULL, '初始种子', 'agent');
@@ -296,4 +300,27 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('parameter-extractor.template', 1, 'published',
 '你是一个结构化参数提取助手。根据用户提供的指令和 Schema，从输入文本中提取结构化字段。\n\n## 提取指令\n{{instruction}}\n\n## 输出 Schema\n{{schema}}\n\n## 规则\n- 严格按照 Schema 中的字段名输出 JSON 对象\n- 无法提取的字段填空字符串\n- 只输出 JSON，不要多余解释\n- 输出格式：{\"field1\":\"value1\",\"field2\":\"value2\"}', NULL, '初始种子', 'agent');
 
-UPDATE prompt_catalog_meta SET catalog_version = 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1;
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('conversation.title', 'title', '会话 · 标题摘要', '新对话/新任务首条消息时，用小模型提炼 15 字以内的中文短语标题。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('conversation.title', 1, 'published',
+'你是对话标题生成器。根据用户的第一条消息，用 15 个字以内的中文短语概括对话主题。\n要求：\n- 只输出标题本身，不要引号、书名号、标点、编号或任何解释\n- 长度不超过 15 个汉字\n- 用短语而非完整句子，例如「排查订单支付失败」「新员工入职材料清单」', NULL, '初始种子', 'agent');
+
+-- ========== 运行时注入指令（硬编码提示词迁移，2026-08-07）==========
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('mode-overlay.react-summary-turn', 'mode-overlay', 'ReAct · 收尾轮约束', '总结轮（平台强制结束）注入的收尾指令：豁免工具调用、如实汇报进展、禁止 DSML/XML 泄漏与编造结果。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('mode-overlay.react-summary-turn', 1, 'published',
+'本轮为任务收尾（平台强制结束的收尾轮）：本轮不需要也无法调用任何工具，系统提示词中关于 think_summary 等工具的每轮调用要求在本轮一律豁免，请直接以自然语言输出文本。基于已有执行结果，若任务已全部完成可直接给出最终结论；若尚有事项未完成，请如实说明当前进展、未完成的部分以及后续建议，切勿编造未实际完成的结果。仅用纯文本输出，不要包含任何工具调用标记、XML/DSML 标签、尖括号标签或结构化格式；也请不要在回复中提及平台运行限制等内部细节。', NULL, '硬编码提示词迁移', 'agent');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('mode-overlay.react-soft-limit', 'mode-overlay', 'ReAct · 软限额收束', 'ReAct 执行步数接近上限时注入的收束指令：尽快收尾、如实汇报、勿提及平台限额细节。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('mode-overlay.react-soft-limit', 1, 'published',
+'【执行收束】本任务的执行步数即将耗尽，请尽快收束：若任务已完成或可在本轮内完成，请停止调用业务工具，直接完整回答用户问题；若确认剩余步数不足以完成任务，请如实说明已完成进展、未完成事项与后续建议，勿编造未实际完成的结果；若确需再调用工具，请确保这是最后一次工具调用，之后不再调用任何业务工具，直接作答。面向用户的回复请保持自然，不要提及步数限制等平台内部细节。', NULL, '硬编码提示词迁移', 'agent');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('react.spawn-hint', 'react', 'ReAct · Spawn 委派提示', '「$」绑定 agentIds 时注入的 spawn_subagent 委派提示；{agents} 为预定义智能体列表（- id (displayName): desc），{agentId} 为首个智能体 id。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react.spawn-hint', 1, 'published',
+'你可以使用 spawn_subagent 工具委派任务给以下预定义智能体：
+{agents}
+调用示例：spawn_subagent(agent_id="{agentId}", prompt="任务描述")', NULL, '硬编码提示词迁移', 'agent');
+
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('rag.tool-result', 'rag', '知识库 · 工具结果格式', 'RAG 工具/Workflow 结果格式文案：emptyTool/emptyWorkflow/toolHeader/workflowHeader/citeRule/errorHint，{count}/{reason} 运行时替换。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('rag.tool-result', 1, 'published', NULL,
+'{"emptyTool":"未找到相关知识库内容。请如实告知用户，勿编造制度名称或条款。","emptyWorkflow":"[知识库检索结果]\\n未找到与用户问题直接相关的片段。","toolHeader":"知识库检索结果（共 {count} 条）：","workflowHeader":"[知识库检索结果]","citeRule":"引用文档名称须来自上方列表，内容须基于上述片段。","errorHint":"工具调用失败：知识库服务不可用（{reason}）。请如实告知用户当前无法检索企业知识库。"}', '硬编码提示词迁移', 'agent');
+
+UPDATE prompt_catalog_meta SET catalog_version = 67, updated_at = CURRENT_TIMESTAMP WHERE id = 1;

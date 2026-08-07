@@ -1,4 +1,4 @@
--- sunshine-tool-manager（tool-manager :8210）
+-- sunshine-tool-manager（tool-manager :8210 · 库 sunshine_tool · 全量 v1）
 USE sunshine_tool;
 
 CREATE TABLE sdk_application (
@@ -42,6 +42,7 @@ CREATE TABLE tool_definition (
     schema_json         JSON NOT NULL,
     schema_hash         VARCHAR(64),
     kind                VARCHAR(16) NOT NULL,
+    timeline_phase      VARCHAR(16) NOT NULL DEFAULT 'tool',
     timeline_summary_template VARCHAR(512) NOT NULL DEFAULT '',
     timeline_summary_extract TEXT,
     side_effect         VARCHAR(16) NOT NULL DEFAULT 'read',
@@ -50,10 +51,10 @@ CREATE TABLE tool_definition (
     tenant_id           VARCHAR(32) NOT NULL DEFAULT 'default',
     enabled             TINYINT(1) NOT NULL DEFAULT 0,
     metadata_edited     TINYINT(1) NOT NULL DEFAULT 0,
-    id_valid            TINYINT(1) NOT NULL DEFAULT 1,
-    id_error            VARCHAR(512),
     discovered_at       TIMESTAMP NULL,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id_valid            TINYINT(1) NOT NULL DEFAULT 1,
+    id_error            VARCHAR(512),
     UNIQUE KEY uk_source_tool (source, source_ref, external_name)
 );
 

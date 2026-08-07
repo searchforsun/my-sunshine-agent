@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution.handler;
 
 import com.sunshine.orchestrator.client.RagClient;
+import com.sunshine.orchestrator.client.RagContextFormatter;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,6 +38,9 @@ class RagNodeHandlerTest {
 
     @Mock
     private DefaultKbResolver defaultKbResolver;
+
+    @Mock
+    private RagContextFormatter ragContextFormatter;
 
     @InjectMocks
     private RagNodeHandler ragNodeHandler;
@@ -66,6 +71,7 @@ class RagNodeHandlerTest {
     void run_usesResolvedQueryAndContext() {
         when(defaultKbResolver.resolve("default", null))
                 .thenReturn(Mono.just("default"));
+        when(ragContextFormatter.formatAgentContext(any())).thenReturn("");
         when(ragClient.searchKnowledge(eq("年假几天\n\n待办列表"), eq(null), eq("default"), eq("default"), eq(null), eq(true)))
                 .thenReturn(Mono.just(new RagClient.RagSearchResult(List.of(), "q", List.of())));
 

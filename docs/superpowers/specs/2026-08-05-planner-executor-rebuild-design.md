@@ -1,6 +1,7 @@
 # Planner-Executor 架构重建 — 取代动态 Plan-Workflow
 
 > **状态**：📋 设计评审中（2026-08-05 立项）· **v2（2026-08-05 简化决议）**：见 §0.1「简化决议 S1-S7」——砍独立 Evaluator、持久化降级 Redis 单写、去 Tier 分层与压缩点基建、砍 P2 共享内存、三态→两态、重规划收敛、harness 不复用 PlanValidator。
+> **v3（2026-08-07 · Planner/Worker 上下文契约）**：新增 §3.1.1 上下文契约定稿——Planner L1 组装与普通 ReAct MAIN 完全一致（复用 `ContextAssembler.assemble`，chat 含 L3）；Worker `forWorker()` **不注入 L2 用户画像**（只含任务契约 + 定向上游 + P0/W0 只读子集）；H1 注入块内部两级（阶段骨架 + 近 `near-keep-rounds` 轮原文，超阈值折叠为摘要，**不建压缩点**）；Worker handoff 不落 `chat_message`（只进 H1 + run 内 L1 尾部）。§8.1 `notebook.compression` 改 `near-keep-rounds`。同步 [harness v8 §2.3.4/§2.4/§4.3](./2026-07-31-planner-harness-loop-design.md) 与 [五层 spec §5.5.7](./2026-07-31-unified-context-compression-design.md) v11 注记。
 > **日期**：2026-08-05
 > **编号**：阶段四增量（重建 Planner-Executor，删除动态 Plan-Workflow）
 > **前置**：
@@ -35,7 +36,7 @@
 |---|------|------|------------|
 | **S1** | **砍独立 Evaluator**（TaskEvaluator / GoalEvaluator 不实现） | Chat/Task 统一 **Planner 自判**（`selfAssess`），省每 task 一次 LLM 调用与 2 个 prompt + `harness_eval_result` 表。真实代价：长语义任务无 Maker-Checker 防确认偏误——由用户反馈 + GoalAlignmentValidator 机械校验兜底 | v8 §4.4 |
 | **S2** | **持久化降级 Redis 单写** | `PlanNotebookStore` 仅 Redis save/load/delete/renewTtl；**删** `PlanNotebookMysqlWriter` / `PlannerNotebookEntity` / `PlannerNotebookRepository`、`planner_notebooks` 表 DDL、version 幂等重放。冷审计职责由既有 `PlanExecutionAuditService`（RocketMQ/MySQL/ES）覆盖 | v8 §5.1 |
-| **S3** | **去 Tier 0/1/2 形式化分层与压缩点基建** | run 内压缩由 AgentScope 官方 `CompactionMiddleware`（已落地）负责；跨轮 L1 压缩由既有 `L1Compressor` + `far_folded_msg_ids`（已落地）负责；H1 仅作为 `injectedBlocks` 固定注入 query 前，rounds 超阈值时简单截断为摘要。**不新建**压缩点 / last_folded_round / 幂等 upsert | v8 §2.3.4/§2.4 |
+| **S3** | **去 Tier 0/1/2 形式化分层与压缩点基建（仅 H1）** | run 内压缩由 AgentScope 官方 `CompactionMiddleware`（已落地）负责；跨轮 L1 压缩由既有 `L1Compressor` + `far_folded_msg_ids` + **压缩点模式**（[五层 spec §5.5/§13.3](./2026-07-31-unified-context-compression-design.md)）负责，**保持不动**；H1 仅作为 `injectedBlocks` 固定注入 query 前，rounds 超阈值时简单截断为摘要。**不新建**压缩点 / last_folded_round / 幂等 upsert | v8 §2.3.4/§2.4 |
 | **S4** | **砍 P2 `PlanSharedMemoryStore`** | WorkerContextFactory 从 H1 rounds 按 taskId/dependsOn 读已完成 handoff 注入，不建第三份状态 + KV 红线规则 | v8 §2.5.1 |
 | **S5** | **三态→两态** | 删 INCREMENTAL（open 场景走既有 ReAct：已含 spawn/taskboard/沙箱，能力面覆盖）；FULL 并入 HIERARCHICAL（执行机制同为 task 队列 + worker 调用，full 仅「首轮阶段骨架细度=任务粒度」）。删 `completeness` 三态枚举与 `executeIncremental` | v8 §0.2/§4.1 |
 | **S6** | **重规划收敛** | 5 类触发 → **3 类显式**（①连续失败 ③目标变更 ④进度偏差）+ 预算熔断（maxRounds/maxDuration）；②信息缺口折叠为 HIERARCHICAL 阶段切换自然产物；⑤资源溢出折叠为熔断。删 plan-similarity 语义去重（`max-phase-replans=3` 已兜底）；**保留** GoalAlignmentValidator 的 DEVIATED/STUCK | v8 §5.2.2 |
@@ -161,9 +162,25 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 
 | 层级 | 角色 | 上下文 | 能力 |
 |---|---|---|---|
-| L0 | Planner = ReAct 主 Agent（**`AgentRole.PLANNER` 独立运行态**，`PlannerAgentRuntime` 实现；全量 ReAct 能力 + H1 PlanNotebook） | 全量：L1 + L2 + H1 PlanNotebook（稳定前缀在前、H1 固定 query 前，S3） | 规划、调度 Worker、自判决策、综合回答 |
-| L1 | Worker = Planner 的**工具调用**（`AgentRole.WORKER`） | `forWorker()`：稳定前缀 + taskGoal + constraints + toolWhitelist + query | ReAct 自主循环、内部 spawn 子 Agent |
+| L0 | Planner = ReAct 主 Agent（**`AgentRole.PLANNER` 独立运行态**，`PlannerAgentRuntime` 实现；全量 ReAct 能力 + H1 PlanNotebook） | 全量：L1 + L2 + H1 PlanNotebook（稳定前缀在前、H1 固定 query 前，S3）；L1 组装**与普通 ReAct MAIN 完全一致**（v3 决策：复用 `ContextAssembler.assemble`，chat 含 L3 召回） | 规划、调度 Worker、自判决策、综合回答 |
+| L1 | Worker = Planner 的**工具调用**（`AgentRole.WORKER`） | `forWorker()`：稳定前缀 + taskGoal + constraints + toolWhitelist + query（v3 决策：**不注入 L2 用户画像**） | ReAct 自主循环、内部 spawn 子 Agent |
 | L2 | 子 Agent（`AgentRole.SUB`） | `forSubAgent()=empty()`：仅 spawn prompt → 输出 | 单次执行，最严格隔离 |
+
+### 3.1.1 Planner/Worker 上下文契约（v3 定稿 · 2026-08-07）
+
+> 对齐 [压缩点模式（五层 spec §5.5）](./2026-07-31-unified-context-compression-design.md) 与 task/chat Near 差异（v14/v15）。核心结论：**只有 Planner 带跨轮压缩点包袱，Worker/子 Agent 不用**。
+
+| 角色 | 上下文构成 | 压缩处理 | 生命周期 |
+|------|-----------|----------|----------|
+| **Planner** | `ContextAssembler.assemble(chat_message 历史)`（L2 + Far + Mid + Near + L3 + guide，按 scene 走 v14/v15 Near 规则）**+ H1 注入块（query 前 injectedBlock）** + Worker handoff（run 内，视同 `tool_result` 追加 L1 尾部） | 跨轮：既有 `L1Compressor` + `far_folded_msg_ids` 压缩点模式（§5.5.4①，Near 只增、80%/40 轮触发前移一次）；run 内：AgentScope `CompactionMiddleware`（handoff 大结果先 `ToolResultEviction`） | 会话级（多轮 run 共享 L1 + H1） |
+| **Worker** | `forWorker()`：**稳定前缀**（tools 白名单 + `harness.worker` 模板 + taskGoal/constraints/expectedOutput/successCriteria + P0 项目规范/W0 只读子集，同一 plan run 内字节不变）+ **动态段**（upstreamResults 按 `dependsOn` 定向 + query） | **不做 L1 压缩点**（单任务用完即毁）；内部 ReAct 循环用 AgentScope `CompactionMiddleware` + `ToolResultEviction`（S 域有界，§2.5.5） | 单任务，结束即销毁 |
+| **子 Agent** | `forSubAgent()=empty()`：仅 spawn prompt（任务描述 + 输入） | 无（最严格隔离） | 单次执行 |
+
+**三条注入红线（KV 缓存）：**
+1. Worker handoff **不落 `chat_message`**，只进 H1 + run 内 L1 尾部；跨轮 Planner 新 run 的 L1 历史 = 普通 user/assistant 对话（`loadHistory`），Worker 结果认知靠 H1 重建
+2. Worker 的 `upstreamResults` 只渲染 **动态段（query 附近）**，禁止写入稳定前缀——否则每个 Worker 前缀字节不同，跨 worker 前缀复用全失效（v8 §2.5.3 规则 6）
+3. H1 注入块固定 `query 前`（= `PromptComposer.appendReactInjectedContexts` 现有注入点），**零新增机制**；Worker handoff 在 Planner L1 天然 tail append，不重排 Near/Mid（v8 §2.3.3）
+
 
 ### 3.2 执行流程
 
@@ -254,7 +271,7 @@ public interface PlanNotebookStore {
 | Redis 不可用 | 内存模式（仅本次 Loop），Loop 结束一次性写审计通道 |
 | Stale ≥ 阈值 | 强制综合回答 |
 
-> **S3 注记**：Planner 的 run 内压缩由 AgentScope 官方 `CompactionMiddleware`（`HarnessAgent.compaction()`）负责；跨轮 L1 压缩由既有 `L1Compressor` + `far_folded_msg_ids` 负责；**H1 仅注入块，rounds 超阈值时简单截断为摘要**，不引压缩点。
+> **S3 注记（v3 定稿 · H1 两级压缩）**：Planner 的 run 内压缩由 AgentScope 官方 `CompactionMiddleware`（`HarnessAgent.compaction()`）负责；跨轮 L1 压缩由既有 `L1Compressor` + `far_folded_msg_ids` 负责；**H1 仅注入块（query 前），不建压缩点基建**。H1 注入块**内部两级**（见 §3.1.1）——阶段骨架 + 近 N 轮原文（`near-keep-rounds`，默认 6）逐轮追加、超阈值时最老轮次 LLM 折叠为摘要（一次折叠只 miss 尾部小块，C2）；折叠语义与 L1 压缩窗口无关（窗口配置见 §8.1 `notebook.compression`）。
 
 ### 5.3 降级通道（复用，非新建）
 
@@ -393,9 +410,10 @@ agent:
         max-sub-agents: 3
       notebook:
         redis-ttl-seconds: 86400
-        compression:
-          near-window-size: 3
-          mid-window-size: 6
+        compression:              # H1 PlanNotebook 注入块内部两级（v3 定稿，§3.1.1）：
+          near-keep-rounds: 6     #   近 N 轮原文逐轮追加（handoff 摘要 + 阶段骨架），超阈值最老轮次 LLM 折叠为摘要
+                                  #   与 L1 压缩窗口（五层 spec v14/v15：chat 4+4+Far / task 2+2+Far≤10k）**无关**，
+                                  #   两个 window-size 是不同物同名，勿混用
       checkpoint:
         mysql-async: true
         mysql-retry-max: 3
@@ -432,7 +450,9 @@ agent:
 | 两态分解自判 | 结构清晰→full；复杂任务→hierarchical；高不确定→不进 harness（ReAct） |
 | 阶段细拆 | 到达阶段 2 仅拆当前阶段 task 列表，不臆测未到阶段 |
 | Worker handoff 双写 | L1 尾部 append + H1 更新 |
-| Worker 上下文隔离 | forWorker 含 taskGoal+constraints+toolWhitelist；内部 think/tool 不回流 |
+| Worker 上下文隔离 | forWorker 含 taskGoal+constraints+toolWhitelist（v3：**不注入 L2**）；内部 think/tool 不回流 |
+| H1 两级折叠（v3） | 注入块近 `near-keep-rounds` 轮原文，超阈值最老轮次 LLM 折叠为摘要 |
+| Planner L1 组装一致性（v3） | Planner 复用 `ContextAssembler.assemble`（chat 含 L3），与普通 ReAct MAIN 差异仅 H1 注入块 + worker handoff |
 | 触发式重规划边界 | 3 类显式触发（S6）；已完成 task 幂等跳过；max-phase-replans=3 收敛 |
 | 崩溃恢复 | Redis load → IN_PROGRESS→FAIL→replan；task 状态一致 |
 | 自判决策 | Planner selfAssess 0~1 分 → 续跑 / replan / 综合回答 |

@@ -35,17 +35,6 @@ class UnifiedRuleEngineTest {
     }
 
     @Test
-    void peerPhraseMatches() {
-        RoutingRuleDef peer = rule("peer-phrase", 90, "peer_phrase",
-                List.of("互相验证", "多专家讨论"), Map.of(), "peer-collab", null);
-        Optional<UnifiedRuleEngine.Hit> hit = new UnifiedRuleEngine(List.of(peer))
-                .match("请两位专家互相验证结论");
-        assertTrue(hit.isPresent());
-        assertEquals("peer-phrase", hit.get().ruleId());
-        assertEquals("peer-collab", hit.get().plan().mode());
-    }
-
-    @Test
     void dryRunWouldLlmWhenNoMatch() {
         RoutingRuleDef regex = rule("a", 10, "regex", List.of("待审批"), Map.of(), "workflow", "finance-list");
         RoutingDryRunResult result = RoutingDryRunResult.dryRun("随便聊聊", List.of(regex));

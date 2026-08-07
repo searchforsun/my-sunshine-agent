@@ -13,7 +13,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.Map;
 
-/** BFF 透传 orchestrator /api/admin/context/*（仿 Experts 管理页） */
+/** BFF 透传 orchestrator /api/admin/context/*（仿 Agents 管理页） */
 @RestController
 @RequiredArgsConstructor
 public class ContextAdminController {

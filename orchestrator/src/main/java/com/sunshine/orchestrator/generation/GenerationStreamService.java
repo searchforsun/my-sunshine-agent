@@ -9,6 +9,9 @@ import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -16,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 @RequiredArgsConstructor
@@ -89,22 +93,54 @@ public class GenerationStreamService {
         return events;
     }
 
-    public Flux<StreamEvent> subscribe(String generationId, long afterSeq) {
-        AtomicLong cursor = new AtomicLong(afterSeq);
+    /**
+     * 订阅 generation 事件流直到终态。
+     * 事件驱动轮询：每轮用 {@link Mono#fromCallable} 做一次阻塞读（boundedElastic），
+     * 发出事件后经 repeatWhen 延迟 pollInterval 再读下一轮；终态经 Sinks 哨兵终止。
+     * 切忌退回 `Flux.interval` + 同步阻塞轮询——固定节拍不等下游消费，
+     * 慢消费者上会抛 `Could not emit tick due to lack of requests` 背压异常，
+     * 导致续连 SSE 连接被强制关闭（「多刷新两次断流」根因）。
+     * 也勿用 {@link Flux#generate} 做「空批次等待」：generator 每次调用必须调用 sink 方法。
+     * meta 已删除（TTL/清理）同样视为终态，保证续连流能正常收尾。
+     */
+    public Flux<StreamEvent> subscribeToEnd(String generationId, long afterSeq) {
         Duration pollInterval = Duration.ofMillis(
                 Math.min(properties.reconnectBlockMs(), 100));
+        AtomicLong cursor = new AtomicLong(afterSeq);
+        AtomicBoolean terminalSignalled = new AtomicBoolean(false);
+        Sinks.Empty<Void> terminalSignal = Sinks.empty();
 
-        return Flux.interval(Duration.ZERO, pollInterval)
-                .concatMap(tick -> Flux.defer(() -> {
+        Flux<StreamEvent> pollOnce = Mono.<List<StreamEvent>>fromCallable(() -> {
                     long after = cursor.get();
                     List<StreamEvent> batch = readFrom(
                             generationId, after, properties.maxBufferChunks());
-                    if (batch.isEmpty()) {
-                        return Flux.empty();
+                    if (!batch.isEmpty()) {
+                        long maxSeq = batch.stream()
+                                .mapToLong(StreamEvent::seq).max().orElse(after);
+                        cursor.set(maxSeq);
+                        return batch;
                     }
-                    return Flux.fromIterable(batch)
-                            .doOnNext(e -> cursor.updateAndGet(cur -> Math.max(cur, e.seq())));
-                }));
+                    Optional<GenerationMeta> meta = getMeta(generationId);
+                    boolean caughtUpTerminal = meta.isEmpty()
+                            || (isTerminal(meta.get().status())
+                                    && cursor.get() >= meta.get().lastSeq());
+                    if (caughtUpTerminal && terminalSignalled.compareAndSet(false, true)) {
+                        terminalSignal.tryEmitEmpty();
+                    }
+                    return List.<StreamEvent>of();
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMapMany(Flux::fromIterable);
+
+        return pollOnce
+                .repeatWhen(completed -> completed.delayElements(pollInterval))
+                .takeUntilOther(terminalSignal.asMono());
+    }
+
+    private static boolean isTerminal(GenerationStatus status) {
+        return status == GenerationStatus.COMPLETED
+                || status == GenerationStatus.FAILED
+                || status == GenerationStatus.INTERRUPTED;
     }
 
     public void assertOwned(String generationId, String userId, String tenantId) {

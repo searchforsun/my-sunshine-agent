@@ -95,9 +95,7 @@ public final class RoutingCatalogFixtures {
                                 + "\"modes\":{\"react\":{\"detail\":\"自主智能体\","
                                 + "\"after\":\"将由自主智能体分析并作答\"},"
                                 + "\"plan-workflow\":{\"detail\":\"动态规划\","
-                                + "\"after\":\"将动态规划多步执行\"},"
-                                + "\"peer-collab\":{\"detail\":\"多专家协作\","
-                                + "\"after\":\"将由多专家协作交叉验证\"}}}"));
+                                + "\"after\":\"将动态规划多步执行\"}}}"));
     }
 
     private static PromptCatalogEntry text(String id, String kind, String contentText) {

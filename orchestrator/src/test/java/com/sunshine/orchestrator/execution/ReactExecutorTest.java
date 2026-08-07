@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
@@ -37,6 +38,9 @@ class ReactExecutorTest {
 
     @Mock
     private AgentExecutionProperties executionProperties;
+
+    @Mock
+    private PromptCatalogHolder catalogHolder;
 
     @InjectMocks
     private ReactExecutor reactExecutor;

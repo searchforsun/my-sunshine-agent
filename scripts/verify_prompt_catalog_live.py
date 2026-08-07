@@ -16,7 +16,7 @@
   P3  调高 regex priority → dry-run 命中必须变化；再恢复 priority
   P4  publish + rollback
   P5  orchestrator GET /api/prompt-catalog/version 追上 prompt-manager catalogVersion（硬门）
-  P6  golden-set 子集 dry-run（structural / finance-list / peer / react-policy）
+  P6  golden-set 子集 dry-run（structural / finance-list / react-policy）
 """
 from __future__ import annotations
 
@@ -39,7 +39,6 @@ STRUCTURAL_QUERY = "先检索制度再分析报销合规"
 OVERLAP_QUERY = "先检索制度再列出待审批报销并对合规分析"
 FINANCE_LIST_ID = "routing-rule.rule-finance-list-pending"
 FINANCE_LIST_QUERY = "列出待审批的差旅报销"
-PEER_QUERY = "请人事制度分析专家和费用报销分析专家分别审查这笔报销是否合规，并互相验证"
 REACT_POLICY_QUERY = "差旅办法里怎么规定"
 TIMEOUT = 20
 
@@ -303,7 +302,6 @@ def gate_p6() -> None:
     cases = [
         (STRUCTURAL_QUERY, "structural", "A structural"),
         (FINANCE_LIST_QUERY, "finance-list", "B finance-list"),
-        (PEER_QUERY, "peer", "E peer"),
         (REACT_POLICY_QUERY, "react-policy", "react-policy-qa"),
     ]
     for query, needle, label in cases:

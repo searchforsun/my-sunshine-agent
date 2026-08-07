@@ -296,6 +296,12 @@ agent:
       # system-prompt → Catalog id=rewrite.planner
     # timeline → Catalog id=rewrite.timeline
 
+  title:
+    enabled: true
+    model: deepseek-v4-flash
+    max-length: 15
+    # system-prompt → Catalog id=conversation.title
+
   context:
     enabled: true
     l1:

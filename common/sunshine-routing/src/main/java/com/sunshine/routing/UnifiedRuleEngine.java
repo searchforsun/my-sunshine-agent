@@ -45,7 +45,6 @@ public final class UnifiedRuleEngine {
     private static Optional<String> matchReason(String query, RoutingRuleDef rule) {
         return switch (rule.matchType()) {
             case "structural" -> matchStructural(query, rule) ? Optional.of("structural:multi-step-plan") : Optional.empty();
-            case "peer_phrase" -> matchPeer(query, rule) ? Optional.of("peer_phrase") : Optional.empty();
             case "regex" -> matchRegex(query, rule) ? Optional.of("regex:" + rule.id()) : Optional.empty();
             default -> Optional.empty();
         };
@@ -56,10 +55,6 @@ public final class UnifiedRuleEngine {
             return false;
         }
         return domainGroupHitCount(query, rule.domainGroups()) >= Math.max(1, rule.minDomainGroups());
-    }
-
-    private static boolean matchPeer(String query, RoutingRuleDef rule) {
-        return matchesAnyPattern(query, rule.patterns());
     }
 
     private static boolean matchRegex(String query, RoutingRuleDef rule) {

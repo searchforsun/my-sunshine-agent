@@ -6,6 +6,15 @@
 > **v8（2026-08-02）**：H1 拆分——HIERARCHICAL 下阶段骨架（低频）进 Tier 1 幂等 upsert、阶段细节（高频）留 Tier 2 尾部（§5.5.7 注记），承接 [planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md) 分层增量规划
 > **v9（2026-08-05）**：场景隔离——chat 保留 L3（`scene=chat` 通道）、task 不读不写；task 不读用户 L2（写/读双侧路由，[task-scene §2.1/§6.3](./2026-08-01-task-scene-context-design.md)）；同步 §5.5.3 图注记与 §5.5.7 差异表
 > **v10（2026-08-05 · harness 简化决议 S3 覆盖）**：Planner-Executor 场景**不新建压缩点基建**——run 内压缩用 AgentScope 官方 `CompactionMiddleware`，跨轮 L1 压缩用既有 `L1Compressor`；H1 仅作为注入块放 query 前（Tier 2 尾部语义），rounds 超阈值时**简单截断为摘要**。§5.5.7「Planner-Worker 适配」注记与落地清单 ⑨ 中「H1 拆 Tier 1/2」的 v8 方案**作废**。本文 §5.5 压缩点模式本身保留（既有已实现能力，继续服务普通 ReAct 与静态 Workflow）。
+> **v11（2026-08-07 · 压缩点模式落地细化）**：确定「**同步推进 P + 异步折叠**」衔接——assemble 超预算时**同步**前移 `far_folded_msg_ids` 压缩点（纯写库零 LLM），Mid/Far 的 LLM 摘要/折叠仍**异步**；`trimByTokens` 禁止再丢 Near 头部。task 场景 Mid 压缩独立 prompt key `context.l1.mid-compress.task`（结论+过程要点，§5.5.7 差异表）。task L3 从「不读不写」更新为「写 `scene=task`（session_search 原文恢复）+ 不自动注入」。详见 [task-scene §4.2.1/§6.4/§6.5](./2026-08-01-task-scene-context-design.md)
+> **v12（2026-08-07 · 代码引用化原则）**：task 场景记忆**永不存代码内容**——只存 ① 代码引用（`path:line`/`path#symbol`）② 工具调用结果摘要（截断 200 chars）③ 对话/决策；**不做** blob 锚点校验 / asOfCommit 水位 / git 状态轮询（代码内容不进记忆则「内容过期」根除，agent 按引用读实时代码即真相）。T0 状态块字段改 codeRefs/verifiedRefs、轨迹条目加 refs；session_search 扩为 body（消息对）+ process（`ProcessingStep` 工具摘要）两层、会话级 + 项目级双范围（§5.5.7 差异表 + §13.3 ⑬）。详见 [task-scene §6.1/§6.4](./2026-08-01-task-scene-context-design.md)
+> **v13（2026-08-07 · chat Near 只留正文）**：chat 场景 Near **只保留终态正文**（user/assistant），**不注入轮次内过程**（工具调用/reasoning/result）——对话语义下过程短、实时性要求高、工具交互少，正文已承载全部信息，过程注入纯耗 token。task 侧 Near 保留轮次内过程（骨架 + 预算内原文），细节在 [task-scene](./2026-08-01-task-scene-context-design.md) v6 细化。同步 §5.5.3 注记 / §5.5.7 差异表「Near 内容」行 / §13.3 ⑭
+> **v14（2026-08-07 · 压缩后重组 4+4+Far）**：修正 §5.5.2「Near→Mid 摘要」表述——压缩触发时按「**近 4 原文 + 次 4 摘要 + 其余折叠**」重组，不全部转 Mid（避免压缩后 Near 空窗、近期追问/修正细节丢失）。规则：
+> - **标准（Near ≥ 8 轮）**：源 Near 1-4 → 新 Near（**原文保留**）；5-8 → 新 Mid（**user 原文 + assistant 压缩 1-3 句**）；9+ 与旧 Mid、旧 Far → 新 Far（LLM 折叠合并）
+> - **Near 不足 8 轮但 ≥ 4（罕见）**：1-4 保留为 Near；5-N 与旧 Mid 前部**凑满 4 轮 Mid**；旧 Mid 剩余 + 旧 Far → 新 Far
+> - **Near < 4 轮（极致压缩，预算极紧）**：仅保留**最近 1 轮原文**为 Near；其余 Near + 旧 Mid + 旧 Far 全部折叠进 Far
+> 压缩点（`far_folded_msg_ids`）前移到保留 Near 之前 → 该次唯一 prefix 重建（C3）。`near-turns` 语义=压缩后保底原文轮数（默认 4）；两次压缩间 Near 仍涨至 80%/40 轮再触发。压缩本就一次重建，保近期原文边际成本≈0、收益是跨轮修正精确性。同步 §5.5.2 / §5.5.7 差异表 / §13.3 ⑭
+> **v15（2026-08-07 · task 压缩后重组 2+2+Far ≤10k）**：task 场景压缩触发后重组为「**近 2 轮完整过程 + 次 2 轮过程骨架 + 其余折叠**」，并加**硬性总量预算 Near+Mid+Far ≤ 10k**（Nacos `context.l1.task-post-compact-budget`）；**不设单轮上限**（Near 职责是保留上下文，单轮怪物由压缩兜底：总量超限先降级第 2 轮完整过程为骨架、再激进折叠 Far）；工具结果三级分级——**读/执行类摘要 ≤200 chars + refs、写/改类保留输出原文**（AI 产物可精确复述改动细则）。**引用化只约束跨轮记忆块，不约束 Near 短期窗口**（写/改原文在 Near 内留存，滑出后进 Mid 骨架/Far 折叠/终态 T0/process 层仍只存引用+摘要）。详见 [task-scene §6.6](./2026-08-01-task-scene-context-design.md) · 同步 §5.5.7 差异表 / §13.3 ⑮
 > 整合：`2026-07-17-autocontext-memory-design.md` + `2026-07-22-context-optimization-design.md` + `2026-07-24-dynamic-context-compression-design.md`（三者均已归档）
 > 行业参考：Claude Code 五层渐进压缩 · Cursor 单层摘要 · Oracle 双层模式 · Mem0 LLM 记忆管理
 
@@ -534,7 +543,11 @@ WHILE assembled > window × 0.8 AND nearRounds > 1:
 
 - **Near** = 压缩点之后的所有原文轮次（只增不减，直到触发压缩）
 - **Mid/Far** = 压缩点之前（折叠 + 摘要，低频变更）
-- 触发压缩时：Near→Mid 摘要、Mid+旧Far→新Far 折叠、压缩点前移 → 该次唯一 prefix 重建（C3）
+- 触发压缩时按「**近 4 原文 + 次 4 摘要 + 其余折叠**」重组（v14）：
+  - **标准（Near ≥ 8 轮）**：源 Near 1-4 → 新 Near（原文保留）；源 Near 5-8 → 新 Mid（user 原文 + assistant 压缩 1-3 句）；源 Near 9+ + 旧 Mid + 旧 Far → 新 Far（LLM 折叠合并）
+  - **Near 不足 8 轮但 ≥ 4（罕见）**：源 Near 1-4 → 新 Near；源 Near 5-N 与旧 Mid 前部**凑满 4 轮** → 新 Mid；旧 Mid 剩余 + 旧 Far → 新 Far
+  - **Near < 4 轮（极致压缩）**：仅保留最近 1 轮原文为 Near；其余 Near + 旧 Mid + 旧 Far 全部折叠进 Far
+  - 压缩点（`far_folded_msg_ids`）前移到保留 Near 之前 → 该次唯一 prefix 重建（C3）
 
 #### 5.5.3 组装结构（每轮 · v3 修正）
 
@@ -550,7 +563,7 @@ Tier 0 · 绝对静态核（字节恒定，永不失效）
 Tier 1 · 低频记忆（content-hash 幂等 upsert，真变才失效一次）
   + L2 用户状态（11 类结构化键值，幂等；仅 chat）
   + W0 工作区记忆（索引/约束/事实，幂等；仅 task）
-  + T0 任务进度（降频：随压缩点推进刷新，非每轮；仅 task）
+  + T0 任务状态块（goal/codeRefs/verifiedRefs/todo，降频随压缩点刷新；仅 task；**引用化**——只存引用+结果摘要，不存代码内容；**过程轨迹块 processTrail 高频进 Tier 2 尾部**，见 [task-scene §6.1](./2026-08-01-task-scene-context-design.md#61-t0-任务进度摘要--过程轨迹v3-细化)）
   + L1 Far/Mid 摘要（压缩时才变）
 
 Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
@@ -561,6 +574,8 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 ```
 
 > **v9 注记（2026-08-05 场景隔离）**：上图为**最大并集**示意；实际按场景过滤——chat 注入 L2 + L3，不注入 W0/T0/P0；task 注入 W0 + T0 + P0，不注入用户 L2、不召回 L3（[task-scene §2.1](./2026-08-01-task-scene-context-design.md)）。
+>
+> **v13 注记（2026-08-07 · Near 内容按场景差异）**：Tier 2 的「Near 原文」在 chat/task 下**内容不同**——chat **只含 user/assistant 终态正文**（现状即满足，不注入轮次内过程，过程短+实时性高，正文已够）；task 保留**轮次内过程**（完整过程 + 骨架分级，§6.6）。**v14（chat 压缩后重组 4+4+Far）**：压缩触发时源 Near 1-4 保原文、5-8 转 Mid（user 原文+assistant 压缩）、9+ 与旧 Mid/Far 折叠为新 Far；Near 不足 8 时 5-N 与旧 Mid 凑 4 轮；Near < 4 时极致压缩仅保 1 轮原文其余全 Far（详见 §5.5.2）；两次压缩间 Near 涨至 80%/40 轮再触发。**v15（task 压缩后重组 2+2+Far ≤10k）**：近 2 轮完整过程 + 次 2 轮骨架 + 其余折叠，总量硬限 10k、不设单轮上限（压缩兜底）、写/改类工具保留输出原文（读/执行类摘要+refs）——详见 [task-scene §6.6](./2026-08-01-task-scene-context-design.md)。
 
 - **Tier 0 是双层缓存的内层稳定核**：Tier 1 任何一次真实变化只使外层失效，Tier 0 仍命中（two-level caching）
 - **意图识别结果不注入 prefix**：它是路由决策（控制流）；需告知模型当前模式时，用尾部 system 消息
@@ -577,7 +592,7 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 
 **③ Budget「丢」改「退役并入」（C3 + 保质量）**：见 §8.2。Mid 头部不再直接丢，先触发 Far 折叠（并入 far_summary、压缩点前移），折叠后仍超预算才丢 Far。让 Budget 成为压缩点推进的触发源之一，保住「原文可查」原则。
 
-**④ chat/task 统一启用（§3 前提修正）**：统一路由后（[routing v3](./2026-07-29-unified-routing-design.md)）chat 与 task 同走 ReAct，无 DIRECT 直答模式。压缩点作为 **L1 通用机制统一启用**，场景差异留三处：静态层内容（P0 项目规范 / W0 / T0 仅 task）+ L3 差异（**chat 保留、经 scene=chat 隔离通道；task 不读不写**，见 [task-scene §6.3](./2026-08-01-task-scene-context-design.md)）+ **写/读双侧场景路由**（task 不写用户 L2，见 task-scene §2.1）。
+**④ chat/task 统一启用（§3 前提修正）**：统一路由后（[routing v3](./2026-07-29-unified-routing-design.md)）chat 与 task 同走 ReAct，无 DIRECT 直答模式。压缩点作为 **L1 通用机制统一启用**，场景差异留三处：静态层内容（P0 项目规范 / W0 / T0 仅 task）+ L3 差异（**chat 保留、经 scene=chat 隔离通道；task 写 `scene=task` 供 session_search、不自动注入**，v11，见 [task-scene §6.3/§6.4](./2026-08-01-task-scene-context-design.md)）+ **写/读双侧场景路由**（task 不写用户 L2，见 task-scene §2.1）。
 
 **⑤ 双压缩点衔接**：run 内压缩点（§4.4 Phase 1 后新 prefix 起点）与跨轮压缩点（far_folded_msg_ids）是两条独立线——run 内压缩**不落库、不移动 far_folded_msg_ids**；跨轮压缩在 assistant 完成后异步推进。二者互不干扰，实现时不得混淆（run 内压缩产物经 `ContextWritePath` 只取 user/assistant 角色入 history）。
 
@@ -619,8 +634,11 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 | 执行路径 | 通用 ReAct（planMode=none/harness） | 同 | ❌ 统一 |
 | L1 窗口 | 压缩点前移 | 压缩点前移 | ❌ 统一 |
 | Tier 0 | base + overlay.chat + tools | base + overlay.task + **P0 项目规范** + tools | ✅ 差异（内容） |
-| Tier 1 | L2（用户）+ Far/Mid | **W0 + T0** + Far/Mid（**不读用户 L2**，[task-scene §2.1](./2026-08-01-task-scene-context-design.md) 场景隔离） | ✅ 差异（内容） |
-| L3 | 保留（scene=chat 隔离通道） | 不读不写（kind 门禁） | ✅ 差异（开关 + 通道隔离） |
+| Tier 1 | L2（用户）+ Far/Mid | **W0 + T0 状态块** + Far/Mid（**不读用户 L2**，[task-scene §2.1](./2026-08-01-task-scene-context-design.md) 场景隔离；T0 轨迹块在 Tier 2 尾部，§6.1） | ✅ 差异（内容） |
+| L3 | 保留（scene=chat 隔离通道） | **写 `scene=task`（body 消息对 + process 工具摘要 ≤200 chars，v11/v12）+ 不自动注入**（读路由闸门，[task-scene §6.4](./2026-08-01-task-scene-context-design.md)）；`session_search` 按 scope 取会话级/项目级 | ✅ 差异（开关 + 通道隔离） |
+| Mid 摘要 prompt | `context.l1.mid-compress`（结论优先） | `context.l1.mid-compress.task`（**结论+过程要点**，v11，[task-scene §6.5](./2026-08-01-task-scene-context-design.md#65-mid-压缩-prompt-场景化v4-新增)） | ✅ 差异（prompt key） |
+| 记忆存内容 | 对话/偏好原文、语义向量 | **代码引用化（v12）**：T0/process 层只存引用（`path:line`/`path#symbol`）+ 结果摘要（≤200 chars）；**永不存代码内容**；无 blob 锚点/asOfCommit 水位。**仅约束跨轮记忆块**——Near 原文与 `chat_message` 原始记录完整保留（[task-scene §6.1](./2026-08-01-task-scene-context-design.md)） | ✅ 差异（内容边界） |
+| Near 内容（v13/v14/v15） | **只保留终态正文**（user/assistant），不注入轮次内过程；**压缩后重组 4+4+Far**（近 4 原文 + 次 4 摘要 + 其余折叠，Near < 4 时极致压缩保 1 轮），两次压缩间 Near 涨至 80%/40 轮触发；可选「短轮不占名额」。**中断感知（v16）**：`INTERRUPTED` 的 assistant 条在装载层折叠为显式中断注记（Catalog `context.l1.interrupted-marker`，正文非空时连同已生成部分注入、空时仅注记），新消息可从 Near 感知上一轮被中断；COMPLETED/FAILED 不变 | **压缩后重组 2+2+Far ≤ 10k**（近 2 轮完整过程 + 次 2 轮骨架 + 其余折叠）；总量硬限、不设单轮上限（压缩兜底）；**读/执行类摘要 ≤200 chars + refs、写/改类保留输出原文**；引用化不约束 Near 短期窗口；**中断感知（v16）**同 chat 装载层折叠生效（[task-scene §6.6](./2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)） | ✅ 差异（内容 + 装载路径） |
 | run 内 Layer 1 | 三阶段一次（§4.4） | 同 | ❌ 统一 |
 
 > **Planner-Worker 适配**：harness 场景下，Planner 是唯一带跨轮前缀包袱的角色，按本表分层并追加 H1（Tier 2 尾部，高频）——详见 [planner-harness spec §2.4](./2026-07-31-planner-harness-loop-design.md)。Worker/子 Agent 无前缀包袱，不占预算。
@@ -628,6 +646,10 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 > **v8 注记（H1 拆分）**：HIERARCHICAL 模式（[planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md)）下 H1 拆两块——**阶段骨架**（3~5 阶段 + 依赖，仅阶段切换时变）进 **Tier 1 幂等 upsert**；**当前阶段 task 细节 + handoff**（每轮追加）进 **Tier 2 尾部**。阶段骨架稳定上移，跨阶段前缀复用更好。FULL/INCREMENTAL 无骨架，H1 仍整体 Tier 2 尾部。
 >
 > **v10（2026-08-05 · S3 作废上述 v8 拆分）**：H1 不拆 Tier 1/2、不建压缩点。落地为：**H1 作为注入块固定放 query 前（Tier 2 尾部语义）**；rounds 超阈值时简单截断为摘要。跨轮 L1 压缩仍由既有 `L1Compressor` + `far_folded_msg_ids` 负责，run 内压缩由 AgentScope 官方 `CompactionMiddleware` 负责——Planner-Executor 不新增任何压缩基建。
+>
+> **v11（2026-08-07 · Planner/Worker 上下文契约，对齐 [rebuild §3.1.1](./2026-08-05-planner-executor-rebuild-design.md)）**：① **Planner 的 L1 组装与普通 ReAct MAIN 完全一致**（复用 `ContextAssembler.assemble`，按 scene 走本表 Near 差异：chat 4+4+Far / task 2+2+Far≤10k），差异仅追加 H1 注入块（query 前）+ Worker handoff（run 内视同 tool_result）。② **Worker 无压缩点包袱**——`forWorker()` 只含任务契约 + 定向上游，**不注入 L2 用户画像**，内部 ReAct 循环由 AS `CompactionMiddleware` 管控（S 域有界）。③ H1 注入块内部**两级**（阶段骨架 + 近 `near-keep-rounds` 轮原文，超阈值折叠为摘要），与 L1 压缩窗口无关。
+>
+> **v16（2026-08-07 · 中断感知，方案 A 已实现）**：`chat_message.status=INTERRUPTED` 的 assistant 条在**装载层**（`ChatStreamContextFactory.prepareNewMessage` / `buildResumePreparation`）折叠为显式中断注记——正文非空时「注记 + 已生成部分」、空时仅注记（保证不被 `hasText` 过滤）。注记正文 SSOT = Catalog `context.l1.interrupted-marker`（缺 id/读取失败降级保留原文）；COMPLETED/FAILED 与 user 条不变。chat/task 统一生效；对 KV 前缀无破坏（仅 tail 的 INTERRUPTED 条变化，COMPLETED 条字节不变）。
 
 ---
 
@@ -1068,17 +1090,21 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 
 | # | 建议 | 落点 | 改动 |
 |---|------|------|------|
-| ① | L1 压缩点前移 | §5.1 / §5.3 | `L1Compressor.partition` 以 `far_folded_msg_ids` 为界；`trimByTokens` 不丢 Near 头部，溢出走压缩 |
-| ② | L3 尾部动态段 | §7.5 | `ContextMessageBuilder` 渲染顺序固定：L3 在 query 前绝对尾部 |
+| ① | L1 压缩点前移 | §5.1 / §5.3 | `L1Compressor.partition` 以 `far_folded_msg_ids` 为界；`trimByTokens` 不丢 Near 头部，溢出走压缩。**v11（同步推进 P）**：assemble 超预算 → **同步**前移压缩点（纯写库零 LLM）+ Mid/Far LLM 折叠异步执行，见 [task-scene §4.2.1](./2026-08-01-task-scene-context-design.md#421-同步异步衔接同步推进-p--异步折叠v4-细化) |
+| ② | L3 尾部动态段 | §7.5 | `ContextMessageBuilder` 渲染顺序固定：L3 在 query 前绝对尾部（task 的 session_search 检索结果经 tool_result 进 tail，不注入 prefix） |
 | ③ | Budget 退役并入 | §8.2 | `applyBudget` 超限 → 触发 Far 折叠（压缩点前移），非静默丢弃 |
 | ④ | chat/task 统一 | §5.5.7 | 压缩点机制场景无关；静态层差异由 scene overlay 注入 |
 | ⑤ | 双压缩点衔接 | §5.5.4 | run 内压缩不落库不移动 far_folded_msg_ids；跨轮压缩异步推进 |
 | ⑥ | **按频率分层（v3）** | §5.5.3 | Tier 0/1/2 定序；高频块（T0 原稿）移出 Tier 0/1 前部，意图注入走尾部 system 消息 |
 | ⑦ | **幂等 upsert + 定宽隔离** | §5.5.6 | L2/W0 抽取加 content-hash 比对；appendix 定宽分隔、阈值重编译；确定性序列化（键排序、无时间戳/session id） |
-| ⑧ | **T0 降频** | §5.5.6 / task-scene §6.1 | T0 有界块随压缩点推进刷新，非每轮；与 T0 写路径解耦 |
+| ⑧ | **T0 状态块降频 + 轨迹块 Tier 2** | §5.5.6 / task-scene §6.1 | T0 状态块有界块随压缩点推进刷新（非每轮）；**过程轨迹块 processTrail 高频进 Tier 2 尾部**（每轮增量 append、content-hash 幂等、有界裁剪 `context.t0.condense`）；与 T0 写路径解耦。**v12（引用化）**：状态块字段为 codeRefs/verifiedRefs，轨迹条目为「结果摘要 ≤200 chars + refs」，`context.t0.extract` 禁产代码内容 |
 | ⑨ | **Planner-Worker 分层适配** | §5.5.7 注记 / [planner-harness §2.4](./2026-07-31-planner-harness-loop-design.md) | Planner 上下文 Tier 0/1/2 定序（H1 在 Tier 2 尾部、Worker handoff 双写 L1 尾部 + H1）；Worker 稳定前缀跨 worker 复用，upstream 结果从 H1 rounds 读取。**v10（S3）**：H1 不拆 Tier 1/2、不建压缩点，rounds 超阈值简单截断摘要 |
 | ⑩ | **tools 分层注入** | §5.5.3 v6 注记 / [phase5 §5.5](./phase5-operation-openness-design.md) | 工具规模 > 阈值时：全量名列表进 Tier 0 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 由 Nacos `agent.tool.inject` 切换 |
 | ⑪ | **L2/W0 语义冲突识别** | §6.4 / task-scene §5.2 | 写路径加语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT，`context.l2.merge` / `context.ws.merge`）；Nacos `agent.context.l2.semantic-merge` 开关 |
+| ⑫ | **Mid 压缩 prompt 场景化（v11）** | §5.5.7 / task-scene §6.5 | task 场景 `L1Compressor.compressMidAnswer` 按 kind 选 `context.l1.mid-compress.task`（结论+过程要点）；chat 沿用 `context.l1.mid-compress` |
+| ⑬ | **代码引用化（v12）** | §5.5.7 / task-scene §6.1/§6.4 | task 记忆内容边界统一：T0 状态/轨迹块只存引用（`path:line`/`path#symbol`）+ 结果摘要（≤200 chars）；session_search process 层 ingest `ProcessingStep.result` 截断 200 chars；**永不存代码内容**；无 blob 锚点/asOfCommit 水位/git 状态轮询 |
+| ⑭ | **chat Near 只留正文 + 压缩后重组 4+4+Far（v13/v14）** | §5.5.2 / §5.5.3 / §5.5.7 | chat 场景 Near 组装只含 user/assistant **终态正文**（现状即满足，固化语义）；**压缩触发时重组**：Near 1-4 保原文、5-8 转 Mid（user 原文 + assistant 压缩）、9+ 与旧 Mid/Far 折叠为新 Far；Near 不足 8 轮时 5-N 与旧 Mid 凑满 4 轮 Mid；Near < 4 轮极致压缩仅保 1 轮原文、其余全 Far；两次压缩间 Near 持续涨至 80%/40 轮再触发；可选「短轮不占名额」（正文 < 50 token 不耗 Near 名额，chat 专用；task 因保过程骨架不适用） |
+| ⑮ | **task 压缩后重组 2+2+Far ≤10k（v15）** | task-scene §6.6 / §5.5.3 / §5.5.7 | task 场景压缩触发后重组：近 2 轮**完整过程** + 次 2 轮**过程骨架** + 其余折叠；**硬性总量 Near+Mid+Far ≤ 10k**（Nacos `context.l1.task-post-compact-budget`）；**不设单轮上限**（总量超限先降级第 2 轮完整过程为骨架、再激进折叠 Far）；工具结果分级：**读/执行类** `ProcessingStep.result` 截断 ≤200 chars + refs，**写/改类**（write/apply_patch/edit）保留输出原文；装载路径需把 `chat_message.steps` 按 kind 折叠进 `SessionTurn`（chat 不折叠、task 折叠） |
 
 **验收**：`verify_context_compression_live.py` — 非压缩期连续 3 轮 prefix 一致（对比 Gateway 请求体）；压缩后 prefix 重建仅 1 次；Near 尾部随轮次只增不减；L2/W0 未变化时请求体字节级一致（幂等验证）。
 

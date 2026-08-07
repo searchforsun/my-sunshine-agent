@@ -1,4 +1,4 @@
--- sunshine-rag-service（rag-service :8400 · 库 sunshine_rag · SSOT 合并）
+-- sunshine-rag-service（rag-service :8400 · 库 sunshine_rag · 全量 v1）
 USE sunshine_rag;
 
 CREATE TABLE knowledge_base (
@@ -21,6 +21,7 @@ CREATE TABLE document (
     doc_id          VARCHAR(128) NOT NULL,
     display_name    VARCHAR(256) NOT NULL,
     source_type     VARCHAR(32) NOT NULL DEFAULT 'markdown',
+    active_version  VARCHAR(14) NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_tenant_kb_doc (tenant_id, kb_id, doc_id)
@@ -31,9 +32,10 @@ CREATE TABLE document_version (
     tenant_id       VARCHAR(32) NOT NULL,
     kb_id           VARCHAR(64) NOT NULL,
     doc_id          VARCHAR(128) NOT NULL,
-    version         INT NOT NULL,
+    version         VARCHAR(14) NOT NULL,
     status          VARCHAR(16) NOT NULL DEFAULT 'draft',
     parsed_markdown MEDIUMTEXT,
+    storage_path    VARCHAR(512) NULL,
     chunk_count     INT NOT NULL DEFAULT 0,
     chunk_strategy  VARCHAR(32) NULL,
     chunk_params_json JSON NULL,
@@ -68,9 +70,15 @@ CREATE TABLE ingest_job (
     tenant_id       VARCHAR(32) NOT NULL,
     kb_id           VARCHAR(64) NOT NULL,
     doc_id          VARCHAR(128),
+    target_version  VARCHAR(14) NULL,
     file_name       VARCHAR(512),
     mime_type       VARCHAR(128),
+    source_type     VARCHAR(16) NULL,
     status          VARCHAR(24) NOT NULL DEFAULT 'parsing',
+    progress_pct    DOUBLE NULL,
+    progress_page   INT NULL,
+    total_pages     INT NULL,
+    source_object_key VARCHAR(512) NULL,
     confidence      DOUBLE,
     parsed_markdown MEDIUMTEXT,
     error_msg       VARCHAR(1024),
@@ -140,13 +148,7 @@ CREATE TABLE eval_report (
     CONSTRAINT fk_eval_report_job FOREIGN KEY (job_id) REFERENCES eval_job (id)
 );
 
-INSERT INTO knowledge_base (tenant_id, kb_id, display_name, description, is_default, status)
-VALUES ('default', 'default', '默认知识库', '系统默认知识库', 1, 'active');
-
--- 内置评测集（表结构 + 元数据种子）
-USE sunshine_rag;
-
-CREATE TABLE IF NOT EXISTS eval_suite (
+CREATE TABLE eval_suite (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id       VARCHAR(32) NOT NULL,
     suite_key       VARCHAR(64) NOT NULL,
@@ -166,7 +168,7 @@ CREATE TABLE IF NOT EXISTS eval_suite (
     UNIQUE KEY uk_tenant_suite (tenant_id, suite_key)
 );
 
-CREATE TABLE IF NOT EXISTS eval_suite_item (
+CREATE TABLE eval_suite_item (
     id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
     suite_id            BIGINT NOT NULL,
     item_key            VARCHAR(64) NOT NULL,
@@ -185,6 +187,11 @@ CREATE TABLE IF NOT EXISTS eval_suite_item (
     CONSTRAINT fk_suite_item_suite FOREIGN KEY (suite_id) REFERENCES eval_suite (id) ON DELETE CASCADE
 );
 
+-- 默认知识库
+INSERT INTO knowledge_base (tenant_id, kb_id, display_name, description, is_default, status)
+VALUES ('default', 'default', '默认知识库', '系统默认知识库', 1, 'active');
+
+-- 内置评测集元数据种子（条目 SSOT：docs/knowledge/eval_suite.json + scripts/rag_eval.py --sync）
 INSERT INTO eval_suite
     (tenant_id, suite_key, display_name, description, kind, format, schema_version, storage, item_count, status)
 VALUES
@@ -200,36 +207,17 @@ ON DUPLICATE KEY UPDATE
     storage = VALUES(storage),
     item_count = VALUES(item_count);
 
--- 内置评测集条目种子
--- corpus-50：条目 SSOT 为 docs/knowledge/eval_suite.json，由 scripts/rag_eval.py --sync 写入。
--- 此处仅保留套件元数据与空条目，语料由 corpus-50 入库，不种子历史 demo 文档。
-USE sunshine_rag;
-
-UPDATE eval_suite SET kind='standard', format='json', storage='mysql', content_ref=NULL,
-  display_name='corpus50 标准回归', description='基于 corpus-50 全新语料的检索回归集', schema_version=1,
-  config_json=CAST('{"topK":[3,5,10],"minScore":0.48,"gates":{"recallAt3Min":0.90,"recallAt5Min":0.94,"mrrMin":0.85,"emptyRatePositiveMax":0.02,"emptyRateNegativeMin":0.0,"latencyP95MsMax":20000}}' AS JSON), item_count=0
+UPDATE eval_suite SET config_json=CAST('{"topK":[3,5,10],"minScore":0.48,"gates":{"recallAt3Min":0.90,"recallAt5Min":0.94,"mrrMin":0.85,"emptyRatePositiveMax":0.02,"emptyRateNegativeMin":0.0,"latencyP95MsMax":20000}}' AS JSON)
   WHERE tenant_id='default' AND suite_key='sunshine-regression';
-DELETE FROM eval_suite_item WHERE suite_id=(SELECT id FROM eval_suite WHERE tenant_id='default' AND suite_key='sunshine-regression');
-
-UPDATE eval_suite SET kind='standard', format='json', storage='mysql', content_ref=NULL,
-  display_name='corpus50 难例对抗', description='口语化改写难例（对齐 corpus-50）', schema_version=1,
-  config_json=CAST('{"topK":[3,5,10],"minScore":0.48,"gates":{"recallAt3Min":0.90,"recallAt5Min":0.88,"mrrMin":0.80,"emptyRatePositiveMax":0.02,"emptyRateNegativeMin":0.0,"latencyP95MsMax":20000}}' AS JSON), item_count=0
+UPDATE eval_suite SET config_json=CAST('{"topK":[3,5,10],"minScore":0.48,"gates":{"recallAt3Min":0.90,"recallAt5Min":0.88,"mrrMin":0.80,"emptyRatePositiveMax":0.02,"emptyRateNegativeMin":0.0,"latencyP95MsMax":20000}}' AS JSON)
   WHERE tenant_id='default' AND suite_key='sunshine-adversarial';
-DELETE FROM eval_suite_item WHERE suite_id=(SELECT id FROM eval_suite WHERE tenant_id='default' AND suite_key='sunshine-adversarial');
-
-UPDATE eval_suite SET kind='standard', format='json', storage='mysql', content_ref=NULL,
-  display_name='corpus50 冒烟门禁', description='发布/切换配置用冒烟子集', schema_version=1,
-  config_json=CAST('{"topK":[3,5,10],"minScore":0.48,"gates":{"recallAt3Min":0.90,"recallAt5Min":0.94,"mrrMin":0.85,"emptyRatePositiveMax":0.02,"emptyRateNegativeMin":0.0,"latencyP95MsMax":20000}}' AS JSON), item_count=0
+UPDATE eval_suite SET config_json=CAST('{"topK":[3,5,10],"minScore":0.48,"gates":{"recallAt3Min":0.90,"recallAt5Min":0.94,"mrrMin":0.85,"emptyRatePositiveMax":0.02,"emptyRateNegativeMin":0.0,"latencyP95MsMax":20000}}' AS JSON)
   WHERE tenant_id='default' AND suite_key='sunshine-smoke';
+DELETE FROM eval_suite_item WHERE suite_id=(SELECT id FROM eval_suite WHERE tenant_id='default' AND suite_key='sunshine-regression');
+DELETE FROM eval_suite_item WHERE suite_id=(SELECT id FROM eval_suite WHERE tenant_id='default' AND suite_key='sunshine-adversarial');
 DELETE FROM eval_suite_item WHERE suite_id=(SELECT id FROM eval_suite WHERE tenant_id='default' AND suite_key='sunshine-smoke');
 
--- 内置知识库文档元数据
--- corpus-50：文档由 scripts/generate_rag_corpus.py + rag_wipe_and_ingest.py 创建/入库，文档由 generate_rag_corpus + rag_wipe_and_ingest 生成/入库。
-USE sunshine_rag;
-
 -- default 知识库 RAG 配置 bundle（业务参数 SSOT；仅 seed 生效版，草稿由用户「复制为草稿」创建）
-USE sunshine_rag;
-
 INSERT INTO rag_config_bundle (tenant_id, kb_id, created_at, updated_at)
 VALUES ('default', 'default', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
@@ -242,37 +230,3 @@ UPDATE rag_config_bundle
 SET active_published_version_id = LAST_INSERT_ID(),
     draft_version_id = NULL
 WHERE id = @bundle_id;
-
--- 文档版本 MinIO 路径 + 文档生效版本指针
-USE sunshine_rag;
-
-ALTER TABLE document
-    ADD COLUMN active_version INT NULL AFTER source_type;
-
-ALTER TABLE document_version
-    ADD COLUMN storage_path VARCHAR(512) NULL AFTER parsed_markdown;
-
--- 文档版本号改为时间戳 yyyyMMddHHmmss
-USE sunshine_rag;
-
-ALTER TABLE document
-    MODIFY COLUMN active_version VARCHAR(14) NULL;
-
-ALTER TABLE document_version
-    MODIFY COLUMN version VARCHAR(14) NOT NULL;
-
--- ingest_job 异步解析进度字段
-USE sunshine_rag;
-
-ALTER TABLE ingest_job
-    ADD COLUMN target_version VARCHAR(14) NULL AFTER doc_id,
-    ADD COLUMN source_type VARCHAR(16) NULL AFTER mime_type,
-    ADD COLUMN progress_pct DOUBLE NULL AFTER status,
-    ADD COLUMN progress_page INT NULL AFTER progress_pct,
-    ADD COLUMN total_pages INT NULL AFTER progress_page,
-    ADD COLUMN source_object_key VARCHAR(512) NULL AFTER total_pages;
-
-USE sunshine_rag;
-ALTER TABLE document_version
-    ADD COLUMN chunk_strategy VARCHAR(32) NULL AFTER chunk_count,
-    ADD COLUMN chunk_params_json JSON NULL AFTER chunk_strategy;

@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
@@ -22,6 +23,7 @@ public class ProcessingStepMiddlewareFactory {
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
     private final SandboxTimelineLabelService sandboxTimelineLabels;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
+    private final PromptCatalogHolder catalogHolder;
 
     private volatile MiddlewareBase shared;
 
@@ -36,7 +38,8 @@ public class ProcessingStepMiddlewareFactory {
                             executionProperties,
                             taskBoardTimelineSupport,
                             sandboxTimelineLabels,
-                            cancellableToolRunRegistry);
+                            cancellableToolRunRegistry,
+                            catalogHolder);
                 }
                 s = shared;
             }

@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.client.StreamTokenCoalescer;
 import com.sunshine.orchestrator.conversation.ConversationService;
+import com.sunshine.orchestrator.conversation.ConversationTitleService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.ExecutionDispatcher;
@@ -54,6 +55,7 @@ public class ChatStreamExecutor {
     private final ExecutionDispatcher executionDispatcher;
     private final ExecutionPlanRouter executionPlanRouter;
     private final ConversationService conversationService;
+    private final ConversationTitleService titleService;
     private final GenerationFlushScheduler flushScheduler;
     private final DesensitizeClient desensitizeClient;
     private final ContextLifecycle contextLifecycle;
@@ -135,7 +137,6 @@ public class ChatStreamExecutor {
                                 reasoningBuffer.toString(),
                                 MessageStatus.COMPLETED,
                                 ProcessingStepSerde.toJson(stepsBuffer));
-                        maybeUpdateTitle(ctx);
                         contextLifecycle.onTurnCompleted(
                                 ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), MessageStatus.COMPLETED);
                     })
@@ -145,7 +146,7 @@ public class ChatStreamExecutor {
                     ctx.assistantMsgId(), MessageStatus.COMPLETED, resume)));
         });
 
-        return Flux.concat(meta, chunks, done)
+        return Flux.merge(Flux.concat(meta, chunks, done), titleService.titleEventSse(ctx))
                 .onErrorResume(e -> {
                     String errMsg = StreamErrorMessages.resolve(e);
                     if (buffer.length() > 0) {

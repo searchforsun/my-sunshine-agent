@@ -38,6 +38,7 @@ public class RagNodeHandler implements NodeHandler {
 
     private final RagClient ragClient;
     private final DefaultKbResolver defaultKbResolver;
+    private final RagContextFormatter ragContextFormatter;
 
     @Override
     public String type() {
@@ -75,7 +76,8 @@ public class RagNodeHandler implements NodeHandler {
                         ragStepId)
                 .flatMap(hits -> {
                     List<RagClient.RagHit> results = hits != null ? hits : List.of();
-                    return Mono.just(buildOkResult(results));
+                    return Mono.just(buildOkResult(results,
+                            ragContextFormatter.formatAgentContext(results)));
                 })
                 .onErrorResume(e -> {
                     log.warn("[RagNodeHandler] 检索失败: {}", e.getMessage());
@@ -96,27 +98,27 @@ public class RagNodeHandler implements NodeHandler {
         return q + "\n\n" + c;
     }
 
-    private static NodeResult buildEmptyResult() {
+    private NodeResult buildEmptyResult() {
         Map<String, TypedValue> outputs = new LinkedHashMap<>();
-        outputs.put("output", TypedValue.scalar(RagContextFormatter.formatAgentContext(List.of())));
+        outputs.put("output", TypedValue.scalar(ragContextFormatter.formatAgentContext(List.of())));
         outputs.put("hits", TypedValue.fromJson(OM.createArrayNode()));
         outputs.put("hitCount", TypedValue.scalar("0"));
         outputs.put("detail", TypedValue.scalar(WorkflowNodeCompletionLabels.hitCount("0")));
         return NodeResult.ok(outputs);
     }
 
-    private static NodeResult buildOkResult(List<RagClient.RagHit> results) {
+    private static NodeResult buildOkResult(List<RagClient.RagHit> results, String formattedText) {
         Map<String, TypedValue> outputs = new LinkedHashMap<>();
-        outputs.put("output", TypedValue.scalar(RagContextFormatter.formatAgentContext(results)));
+        outputs.put("output", TypedValue.scalar(formattedText));
         outputs.put("hits", TypedValue.fromJson(buildHitsArray(results)));
         outputs.put("hitCount", TypedValue.scalar(String.valueOf(results.size())));
         outputs.put("detail", TypedValue.scalar(WorkflowNodeCompletionLabels.hitCount(String.valueOf(results.size()))));
         return NodeResult.ok(outputs);
     }
 
-    /** 测试可见：构造结构化 hits 结果（供单测断言 ArrayNode TypedValue） */
+    /** 测试可见：构造结构化 hits 结果（供单测断言 ArrayNode TypedValue；output 文本非断言目标） */
     static NodeResult buildOkResultForTest(List<RagClient.RagHit> results) {
-        return buildOkResult(results != null ? results : List.of());
+        return buildOkResult(results != null ? results : List.of(), "");
     }
 
     private static JsonNode buildHitsArray(List<RagClient.RagHit> results) {

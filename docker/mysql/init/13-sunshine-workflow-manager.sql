@@ -1,4 +1,4 @@
--- sunshine-workflow-manager（workflow-manager :8230）
+-- sunshine-workflow-manager（workflow-manager :8230 · 库 sunshine_workflow · 全量 v1）
 USE sunshine_workflow;
 
 CREATE TABLE workflow_definition (

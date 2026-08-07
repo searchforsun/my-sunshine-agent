@@ -15,6 +15,7 @@ export interface SseMeta {
   conversationId?: string
   active?: boolean
   skillId?: string
+  title?: string
 }
 
 export type ParsedSsePayload =
@@ -51,6 +52,7 @@ function asMeta(obj: Record<string, unknown>): SseMeta {
     conversationId: typeof obj.conversationId === 'string' ? obj.conversationId : undefined,
     active: typeof obj.active === 'boolean' ? obj.active : undefined,
     skillId: typeof obj.skillId === 'string' ? obj.skillId : undefined,
+    title: typeof obj.title === 'string' ? obj.title : undefined,
   }
 }
 
@@ -76,6 +78,9 @@ const handlers: Record<string, Handler> = {
     return { kind: 'meta', meta: asMeta(obj) }
   },
   sandbox_session(obj) {
+    return { kind: 'meta', meta: asMeta(obj) }
+  },
+  title(obj) {
     return { kind: 'meta', meta: asMeta(obj) }
   },
   reasoning(obj) {

@@ -1,4 +1,4 @@
--- sunshine_biz（finance / oa / hr 共享业务库）
+-- sunshine-biz（finance / oa / hr 共享业务库 · 库 sunshine_biz · 全量 v1）
 USE sunshine_biz;
 -- 报销单
 CREATE TABLE IF NOT EXISTS fin_expense (

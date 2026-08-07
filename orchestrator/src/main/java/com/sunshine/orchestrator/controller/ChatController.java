@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
 import com.sunshine.orchestrator.conversation.ConversationService;
+import com.sunshine.orchestrator.conversation.ConversationTitleService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.generation.GenerationJob;
@@ -20,7 +21,6 @@ import com.sunshine.orchestrator.generation.GenerationJobFactory;
 import com.sunshine.orchestrator.generation.DistributedGenerationLock;
 import com.sunshine.orchestrator.generation.GenerationProperties;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
-import com.sunshine.orchestrator.generation.GenerationStatus;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
 import com.sunshine.orchestrator.generation.StreamEvent;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
@@ -42,7 +42,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
@@ -58,6 +57,7 @@ public class ChatController {
     private final ChatStreamExecutor streamExecutor;
     private final ExecutionPlanStore executionPlanStore;
     private final ConversationService conversationService;
+    private final ConversationTitleService titleService;
     private final GenerationFlushScheduler flushScheduler;
     private final GenerationProperties generationProperties;
     private final com.sunshine.orchestrator.agent.ReactCheckpointService checkpointService;
@@ -233,35 +233,18 @@ public class ChatController {
                 .map(e -> sseWithId(String.valueOf(e.seq()), e.text()));
 
         long subscribeAfter = lastEmittedSeq.get();
-        Flux<ServerSentEvent<String>> live = streamService.subscribe(generationId, subscribeAfter)
-                .doOnNext(e -> lastEmittedSeq.set(e.seq()))
-                .takeUntilOther(
-                        Flux.interval(Duration.ofMillis(50))
-                                .filter(t -> isCaughtUpAndTerminal(generationId, lastEmittedSeq.get()))
-                                .take(1))
+        Flux<ServerSentEvent<String>> live = streamService.subscribeToEnd(generationId, subscribeAfter)
                 .map(e -> sseWithId(String.valueOf(e.seq()), e.text()));
 
         Flux<ServerSentEvent<String>> done = Flux.defer(() -> Flux.just(
                 sse(flushScheduler.metaMessage(ctx.assistantMsgId(), resolveFinalStatus(generationId), false))));
 
-        return Flux.concat(meta, historical, live, done)
+        return Flux.merge(Flux.concat(meta, historical, live, done), titleService.titleEventSse(ctx))
                 .doOnSubscribe(s -> job.onSubscriberAttached())
                 .doOnCancel(job::onSubscriberGone)
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成 conv={} gen={}",
                         ctx.conversationId(), generationId))
                 .doOnError(e -> log.error("[Orchestrator] SSE 异常 genId={}", generationId, e));
-    }
-
-    private boolean isCaughtUpAndTerminal(String generationId, long lastEmittedSeq) {
-        return streamService.getMeta(generationId)
-                .map(meta -> {
-                    GenerationStatus status = meta.status();
-                    boolean terminal = status == GenerationStatus.COMPLETED
-                            || status == GenerationStatus.FAILED
-                            || status == GenerationStatus.INTERRUPTED;
-                    return terminal && lastEmittedSeq >= meta.lastSeq();
-                })
-                .orElse(false);
     }
 
     private String resolveFinalStatus(String generationId) {
