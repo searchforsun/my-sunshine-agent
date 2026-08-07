@@ -45,18 +45,17 @@ export function updateNodeStepContent(
 }
 
 /**
- * 触发时间线 UI 刷新。steps 已由 upsertStep/applyStepDelta 换新数组与变更项；
- * 禁止再深拷贝 detail（密集 write 时 O(n·|detail|) 会卡死主线程）。
+ * 触发时间线 UI 刷新。
+ * 流式中 steps/content/reasoning 已通过对象属性原位修改更新，
+ * 此处通过原位浅拷贝替换最后一条消息对象，触发 Vue 对该 v-for 项的精准重渲染，
+ * 避免重建整个 messages 数组导致历史消息全量 diff。
  */
 export function bumpAssistantMessage(session: SessionState): void {
   const idx = session.messages.length - 1
   const last = session.messages[idx]
   if (last?.role !== 'assistant') return
   session.streamRevision++
-  session.messages = [
-    ...session.messages.slice(0, idx),
-    { ...last },
-  ]
+  session.messages[idx] = { ...last }
 }
 
 /** 流式 step 合并刷新间隔；HITL 仍走 flush 立即刷 */

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { NIcon } from 'naive-ui'
 import {
   WarningOutline,
@@ -250,21 +250,25 @@ function isExpanded(section: DiffSection, path: string): boolean {
 }
 
 /** 只展开目标文件的两个区：折叠其他已展开的 diff 详情，仅保留该文件（用于改动卡片定位）。缓存命中直接复用 */
-function expandOnly(path: string) {
+async function expandOnly(path: string) {
   for (const p of Object.keys(expanded.value)) {
     if (p !== path && expanded.value[p] !== undefined) {
       collapsed.value.add(`staged:${p}`)
       collapsed.value.add(`unstaged:${p}`)
     }
   }
+  // 先折叠其他文件，还原布局 → 滚动到目标行 → 再展开，避免布局突变
   const item = summary.value.find(s => s.path === path)
   if (item) {
-    if (hasStaged(item)) collapsed.value.delete(`staged:${path}`)
-    if (hasUnstaged(item)) collapsed.value.delete(`unstaged:${path}`)
+    collapsed.value.delete(`staged:${path}`)
+    collapsed.value.delete(`unstaged:${path}`)
   }
+  await nextTick()
+  const el = document.querySelector(`.diff-file[data-path="${CSS.escape(path)}"]`) as HTMLElement | null
+  if (el) el.scrollIntoView({ block: 'nearest' })
   if (expanded.value[path] === undefined) {
     expanded.value[path] = null
-    void openDetail(path)
+    await openDetail(path)
   }
 }
 
@@ -555,7 +559,7 @@ defineExpose({ refresh })
             </span>
           </div>
           <template v-if="!isSectionCollapsed('staged')">
-          <div v-for="item in stagedFiles" :key="`staged-${item.path}`" class="diff-file">
+          <div v-for="item in stagedFiles" :key="`staged-${item.path}`" class="diff-file" :data-path="item.path">
             <div
               class="diff-file-head"
               :class="{ 'is-selected': isStagedSelected(item.path) }"
@@ -687,7 +691,7 @@ defineExpose({ refresh })
               </button>
             </div>
           </div>
-          <div v-for="item in unstagedFiles" :key="`unstaged-${item.path}`" class="diff-file">
+          <div v-for="item in unstagedFiles" :key="`unstaged-${item.path}`" class="diff-file" :data-path="item.path">
             <div
               class="diff-file-head"
               :class="{ 'is-selected': isSelected(item.path) }"
