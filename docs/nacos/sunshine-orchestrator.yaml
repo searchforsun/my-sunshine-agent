@@ -378,21 +378,16 @@ auth-service:
   base-url: http://localhost:8100
 tool-manager:
   base-url: http://localhost:8210
-skill-manager:
-  base-url: http://localhost:8225
-agent-manager:
-  base-url: http://localhost:8235
+resource-manager:
+  base-url: http://localhost:8240
 workflow-manager:
   base-url: http://localhost:8230
 sandbox-service:
   base-url: http://localhost:8226
-prompt-manager:
-  base-url: http://localhost:8500
 prompt-catalog:
   refresh-ms: 5000
 desensitize:
   enabled: true
-  base-url: http://localhost:8600
 rag:
   base-url: http://localhost:8400
 

@@ -19,7 +19,7 @@ import java.util.List;
 @Component
 public class PromptCatalogClient {
 
-    @Value("${prompt-manager.base-url:http://localhost:8500}")
+    @Value("${resource-manager.base-url:http://localhost:8240}")
     private String baseUrl;
 
     private WebClient webClient;

@@ -19,7 +19,7 @@ import java.util.Optional;
 @Component
 public class SkillCatalogClient {
 
-    @Value("${skill-manager.base-url:http://localhost:8225}")
+    @Value("${resource-manager.base-url:http://localhost:8240}")
     private String baseUrl;
 
     private WebClient webClient;

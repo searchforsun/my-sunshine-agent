@@ -16,7 +16,7 @@ import java.util.Map;
 @Component
 public class DesensitizeClient {
 
-    @Value("${desensitize.base-url:http://localhost:8600}")
+    @Value("${resource-manager.base-url:http://localhost:8240}")
     private String baseUrl;
 
     @Value("${desensitize.enabled:true}")
