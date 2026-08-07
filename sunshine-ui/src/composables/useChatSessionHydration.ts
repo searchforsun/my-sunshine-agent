@@ -13,6 +13,7 @@ import {
 
 interface ChatStoreLike {
   conversations: { id: string; messages?: ChatMessage[] }[]
+  currentId: string | null
   syncMessages: (id: string, msgs: ChatMessage[]) => void
   loadDetail: (id: string) => Promise<void>
 }
@@ -30,6 +31,7 @@ export function useChatSessionHydration(options: {
   sessionSettledHtml: Map<string, string>
   ensureStreamRenderer: () => Promise<void>
   scrollToBottom: (force?: boolean) => void
+  settleScrollToBottom: () => void
   enhanceAllStaticMarkdown: () => void
 }) {
   const {
@@ -44,6 +46,7 @@ export function useChatSessionHydration(options: {
     sessionSettledHtml,
     ensureStreamRenderer,
     scrollToBottom,
+    settleScrollToBottom,
     enhanceAllStaticMarkdown,
   } = options
 
@@ -171,7 +174,7 @@ export function useChatSessionHydration(options: {
     }
   }
 
-  async function hydrateSessionFromStore(cid: string, opts?: { skipApiLoad?: boolean }) {
+  async function hydrateSessionFromStore(cid: string, opts?: { skipApiLoad?: boolean; deferScroll?: boolean }) {
     const skipApi = opts?.skipApiLoad ?? loading.value
     if (!skipApi) {
       await chatStore.loadDetail(cid)
@@ -202,7 +205,9 @@ export function useChatSessionHydration(options: {
     }
     await nextTick()
     enhanceAllStaticMarkdown()
-    scrollToBottom(false)
+    if (!opts?.deferScroll && chatStore.currentId === cid) {
+      settleScrollToBottom()
+    }
   }
 
   async function tryAutoReconnect(cid: string, active: ActiveGeneration) {

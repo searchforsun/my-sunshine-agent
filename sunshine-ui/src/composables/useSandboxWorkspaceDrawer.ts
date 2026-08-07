@@ -26,7 +26,7 @@ export const DRAWER_MIN_WIDTH = PANE_MIN_WIDTH
 export const DRAWER_DEFAULT_WIDTH = 520
 export { CHAT_CONTENT_MIN_WIDTH, PANE_MIN_WIDTH }
 export const TREE_MIN_WIDTH = 160
-export const TREE_MAX_WIDTH = 360
+export const TREE_MAX_WIDTH = 480
 export const TREE_DEFAULT_WIDTH = 220
 /** 预览区最小宽度；缩窄抽屉时树宽不超过 drawer - PREVIEW_MIN */
 export const PREVIEW_MIN_WIDTH = 240

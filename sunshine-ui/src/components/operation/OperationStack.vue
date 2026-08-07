@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { liveTimelineExpanded } from '../../composables/timelineCollapseBus'
 import type { ProcessingStep, TimelineMessageStatus } from '../../api/processingSteps'
 import {
   formatElapsedClock,
@@ -53,6 +54,8 @@ import { ensurePlanTimelineSteps, isPlanDagNodeStep } from '../../api/planHydrat
 const props = withDefaults(defineProps<{
   steps: ProcessingStep[]
   live?: boolean
+  /** ChatView 底部折叠气泡的请求计数（仅运行中最后一条消息传入）；变化时折叠展开的时间线 */
+  collapseTick?: number
   executionPlanId?: string
   userQuery?: string
   timelineRevision?: number
@@ -80,6 +83,7 @@ const props = withDefaults(defineProps<{
   inlineHitl: true,
   contentBlocks: undefined,
   streamLive: false,
+  collapseTick: undefined,
 })
 
 const emit = defineEmits<{
@@ -480,6 +484,30 @@ watch([showCollapsedPendingHint, showAfterThinkPendingHint], () => {
     placeholderStartedAt.value = Date.now()
   }
 })
+
+/** 折叠请求：ChatView 底部折叠气泡点击时自增，仅传入 tick 的 live 实例响应（无待确认 HITL 时 no-op） */
+watch(
+  () => props.collapseTick,
+  () => {
+    if (props.collapseTick == null) return
+    if (hasAwaitingHitlStep.value || !timelineBodyExpanded.value) return
+    timelineUserToggled.value = true
+    timelineExpandedOverride.value = false
+  },
+)
+
+/** 展开态上报：仅 tick 实例参与；tick 消失（运行结束 / 换消息）时复位，避免折叠气泡残留 */
+let prevCollapseTick: number | undefined
+watch(
+  () => [props.collapseTick, timelineBodyExpanded.value] as const,
+  ([tick, expanded]) => {
+    const wasTick = prevCollapseTick != null
+    prevCollapseTick = tick
+    if (tick != null) liveTimelineExpanded.value = expanded
+    else if (wasTick) liveTimelineExpanded.value = false
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -729,21 +757,26 @@ watch([showCollapsedPendingHint, showAfterThinkPendingHint], () => {
   cursor: pointer;
 }
 
-/* 文字后展开箭头：紧跟概要文字，折叠 > 展开 ^；尺寸加大更明显 */
+/* 文字后展开箭头：紧跟概要文字，hover / 展开态显示 */
 .timeline-summary .op-chevron {
   flex-shrink: 0;
   align-self: center;
   width: 12px;
   height: 12px;
   color: var(--sun-text-secondary);
-  opacity: 0.85;
+  opacity: 0;
   margin-left: 2px;
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, opacity 0.12s ease;
   transform: rotate(0deg);
+}
+
+.timeline-summary:not(.is-expanded):hover .op-chevron {
+  opacity: 0.85;
 }
 
 .timeline-summary.is-expanded .op-chevron {
   transform: rotate(90deg);
+  opacity: 0.85;
 }
 
 .timeline-summary .op-main {

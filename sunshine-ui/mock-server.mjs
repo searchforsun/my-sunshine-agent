@@ -603,6 +603,35 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { id, title: conv.title, createdAt: ts, updatedAt: ts })
   }
 
+  // 聚合搜索：标题 + 消息正文命中（须在 /api/conversations/{id} 之前匹配）
+  if (req.method === 'GET' && url.startsWith('/api/conversations/search')) {
+    const q = new URL(req.url, 'http://localhost').searchParams.get('q') || ''
+    const kw = q.trim().toLowerCase()
+    const results = kw
+      ? [...conversations.values()]
+          .filter(c => c.userId === userId)
+          .map(c => {
+            const msgHit = (c.messages || []).find(
+              m => String(m.content || '').toLowerCase().includes(kw),
+            )
+            const titleHit = String(c.title || '').toLowerCase().includes(kw)
+            if (!titleHit && !msgHit) return null
+            return {
+              id: c.id,
+              title: c.title,
+              kind: c.kind || 'chat',
+              workspaceId: c.workspaceId || null,
+              createdAt: c.createdAt,
+              updatedAt: c.updatedAt,
+              snippet: msgHit ? String(msgHit.content || '').slice(0, 120) : undefined,
+            }
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      : []
+    return json(res, 200, results)
+  }
+
   const detailMatch = url.match(/^\/api\/conversations\/([^/?]+)$/)
   if (detailMatch) {
     const id = detailMatch[1]

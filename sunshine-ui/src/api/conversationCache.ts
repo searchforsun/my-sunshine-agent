@@ -167,7 +167,10 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
   const mergedIds = new Set(merged.filter(m => m.id).map(m => m.id!))
   for (const c of cached) {
     if (!c.id || mergedIds.has(c.id)) continue
-    if ((c.seq ?? 0) <= apiMaxSeq) continue
+    // 流式消息在 SSE 中仅分配 id、不分配 seq（seq 在后端 commitFinal 落库后才补齐）。
+    // 不能按 (seq ?? 0) <= apiMaxSeq 判断——会把「后端尚未落库」的最新缓存消息全部丢弃，
+    // 导致刷新时 API 仅返回旧窗口、本地最新消息反而丢失，须等后端落库后才显示。
+    if (typeof c.seq === 'number' && c.seq <= apiMaxSeq) continue
     merged.push(c)
   }
 

@@ -6,6 +6,8 @@ import {
   AddOutline,
   CheckmarkOutline,
   ChevronForwardOutline,
+  LayersOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
 import CodiconDiscardIcon from '../icons/CodiconDiscardIcon.vue'
 import { gitDiffSummary, gitDiffFile, gitRevert, gitStage, gitUnstage, gitCommit } from '../../api/workspaceGit'
@@ -41,6 +43,18 @@ const commitState = ref<'idle' | 'loading' | 'done'>('idle')
 
 /** 操作错误提示：显示在改动面板顶部（commit 栏上方）一行，不再用全局 alert */
 const opError = ref('')
+
+/** 分区折叠状态（点击分区标题行切换） */
+const collapsedSection = ref<Set<DiffSection>>(new Set())
+
+function isSectionCollapsed(section: DiffSection): boolean {
+  return collapsedSection.value.has(section)
+}
+
+function toggleSection(section: DiffSection) {
+  if (collapsedSection.value.has(section)) collapsedSection.value.delete(section)
+  else collapsedSection.value.add(section)
+}
 
 /** 详情缓存：path -> 详情（undefined=未加载，null=加载中/失败，对象=已缓存）。
     折叠不删除缓存，重新展开直接复用，避免每次展开都重新请求（与文件区预览缓存一致）。 */
@@ -511,9 +525,20 @@ defineExpose({ refresh })
       <template v-else>
         <!-- 已暂存区 -->
         <div v-if="stagedFiles.length" class="diff-section">
-          <div class="diff-section-head">
+          <div
+            class="diff-section-head"
+            :class="{ 'is-collapsed': isSectionCollapsed('staged') }"
+            :title="isSectionCollapsed('staged') ? '展开已暂存' : '折叠已暂存'"
+            @click="toggleSection('staged')"
+          >
+            <span class="diff-section-lead">
+              <span class="diff-section-toggle-arrow" :class="{ 'is-open': !isSectionCollapsed('staged') }">
+                <NIcon :component="ChevronForwardOutline" :size="13" />
+              </span>
+              <NIcon :component="LayersOutline" :size="13" class="diff-section-icon" />
+            </span>
             <span class="diff-section-title">已暂存</span>
-            <span class="diff-section-actions">
+            <span class="diff-section-actions" @click.stop>
               <label v-if="stagedSelected.size > 0" class="diff-select-all" :title="stagedAllChecked ? '取消全选' : '全选'">
                 <input type="checkbox" :checked="stagedAllChecked" @change="toggleStagedAll" />
                 <span class="diff-select-all-label">已选 {{ stagedSelected.size }}</span>
@@ -529,6 +554,7 @@ defineExpose({ refresh })
               </button>
             </span>
           </div>
+          <template v-if="!isSectionCollapsed('staged')">
           <div v-for="item in stagedFiles" :key="`staged-${item.path}`" class="diff-file">
             <div
               class="diff-file-head"
@@ -593,13 +619,25 @@ defineExpose({ refresh })
               />
             </div>
           </div>
+          </template>
         </div>
 
         <!-- 未暂存区 -->
         <div v-if="unstagedFiles.length" class="diff-section">
-          <div class="diff-section-head">
+          <div
+            class="diff-section-head"
+            :class="{ 'is-collapsed': isSectionCollapsed('unstaged') }"
+            :title="isSectionCollapsed('unstaged') ? '展开未暂存' : '折叠未暂存'"
+            @click="toggleSection('unstaged')"
+          >
+            <span class="diff-section-lead">
+              <span class="diff-section-toggle-arrow" :class="{ 'is-open': !isSectionCollapsed('unstaged') }">
+                <NIcon :component="ChevronForwardOutline" :size="13" />
+              </span>
+              <NIcon :component="CreateOutline" :size="13" class="diff-section-icon" />
+            </span>
             <span class="diff-section-title">未暂存</span>
-            <span class="diff-section-actions">
+            <span class="diff-section-actions" @click.stop>
               <label v-if="selectedCount > 0" class="diff-select-all" :title="selectedCount === unstagedFiles.length ? '取消全选' : '全选'">
                 <input type="checkbox" :checked="selectedCount === unstagedFiles.length" @change="toggleAll" />
                 <span class="diff-select-all-label">已选 {{ selectedCount }}</span>
@@ -625,6 +663,7 @@ defineExpose({ refresh })
             </span>
           </div>
           <!-- 批量回退就地二次确认（复用确认卡片 + HITL 按钮样式，替代全局弹窗） -->
+          <template v-if="!isSectionCollapsed('unstaged')">
           <div v-if="confirmingBatchRevert" class="diff-inline-confirm">
             <span class="diff-inline-confirm-text">
               回退 {{ bulkTargets.length }} 个文件到 HEAD{{ hasUntrackedSelected ? '（未跟踪文件将被删除）' : '' }}，不可恢复
@@ -745,6 +784,7 @@ defineExpose({ refresh })
               />
             </div>
           </div>
+          </template>
         </div>
       </template>
     </div>
@@ -866,10 +906,62 @@ defineExpose({ refresh })
 .diff-section-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 4px 10px;
   background: color-mix(in srgb, var(--sun-text-muted) 6%, transparent);
   flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.diff-section-head:hover {
+  background: color-mix(in srgb, var(--sun-text-muted) 10%, transparent);
+}
+
+/* 图标位：箭头与图标重叠，hover / 展开态箭头替换图标 */
+.diff-section-lead {
+  position: relative;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.diff-section-toggle-arrow,
+.diff-section-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diff-section-toggle-arrow {
+  color: var(--sun-text-muted);
+  opacity: 0;
+  transition: transform 0.15s ease, opacity 0.12s ease;
+}
+
+.diff-section-toggle-arrow.is-open {
+  transform: rotate(90deg);
+  opacity: 1;
+}
+
+.diff-section-icon {
+  color: var(--sun-text-muted);
+  opacity: 0.85;
+  transition: opacity 0.12s ease;
+}
+
+.diff-section-head:hover .diff-section-toggle-arrow {
+  opacity: 1;
+}
+
+.diff-section-head:hover .diff-section-icon {
+  opacity: 0;
+}
+
+.diff-section-toggle-arrow.is-open ~ .diff-section-icon {
+  opacity: 0;
 }
 
 .diff-section-title {

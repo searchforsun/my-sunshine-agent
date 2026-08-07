@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
+import com.sunshine.orchestrator.conversation.dto.ConversationSearchDto;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.model.ChatMessage;
@@ -157,6 +158,56 @@ class ConversationIntegrationTest {
         ChatConversationEntity conv = conversationService.create(ALICE, TENANT);
         conversationService.appendMessage(conv.getId(), "user", "hi", MessageStatus.COMPLETED);
         assertThat(conversationService.getMessages(conv.getId(), ALICE, TENANT)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("searchConversations_matchesTitleAndContent — 标题/正文命中、越权隔离、空关键词")
+    void searchConversations_matchesTitleAndContent() {
+        ChatConversationEntity chat = conversationService.create(ALICE, TENANT);
+        conversationService.updateTitle(chat.getId(), ALICE, TENANT, "报销制度问答");
+        conversationService.appendMessage(chat.getId(), "user", "报销流程具体怎么走", MessageStatus.COMPLETED);
+        conversationService.appendMessage(chat.getId(), "assistant", "请参照财务制度第四章", MessageStatus.COMPLETED);
+        conversationService.create(ALICE, TENANT, "task", "ws-1", null);
+
+        // 标题命中
+        List<ConversationSearchDto> byTitle = conversationService.search(ALICE, TENANT, "报销制度");
+        assertThat(byTitle.stream().map(ConversationSearchDto::getId)).contains(chat.getId());
+
+        // 正文命中并带 snippet
+        List<ConversationSearchDto> byContent = conversationService.search(ALICE, TENANT, "财务制度");
+        assertThat(byContent.stream().map(ConversationSearchDto::getId)).contains(chat.getId());
+        assertThat(byContent)
+                .filteredOn(d -> d.getId().equals(chat.getId()))
+                .anySatisfy(d -> assertThat(d.getSnippet()).contains("财务制度"));
+
+        // 越权：他人搜索不到
+        assertThat(conversationService.search(BOB, TENANT, "报销")).isEmpty();
+
+        // 空关键词返回空列表
+        assertThat(conversationService.search(ALICE, TENANT, "   ")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("searchEndpoint_returnsMatches — GET /conversations/search")
+    void searchEndpoint_returnsMatches() {
+        ChatConversationEntity conv = conversationService.create(ALICE, TENANT);
+        conversationService.appendMessage(conv.getId(), "user", "预算审批单模板怎么下载", MessageStatus.COMPLETED);
+
+        List<Map<String, Object>> results = webTestClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/conversations/search")
+                        .queryParam("q", "预算审批")
+                        .build())
+                .header("x-user-id", ALICE)
+                .header("x-tenant-id", TENANT)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(new ParameterizedTypeReference<List<Map<String, Object>>>() {})
+                .returnResult()
+                .getResponseBody();
+
+        assertThat(results).isNotNull();
+        assertThat(results.stream().map(m -> m.get("id"))).contains(conv.getId());
+        assertThat(results.get(0).get("title")).isNotNull();
     }
 
     @Test

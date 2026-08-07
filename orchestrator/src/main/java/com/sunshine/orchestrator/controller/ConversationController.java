@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.controller;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
+import com.sunshine.orchestrator.conversation.dto.ConversationSearchDto;
 import com.sunshine.orchestrator.conversation.dto.ConversationSummaryDto;
 import com.sunshine.orchestrator.conversation.dto.MessagePageDto;
 import com.sunshine.orchestrator.conversation.dto.UpdateCheckoutRequest;
@@ -49,6 +50,14 @@ public class ConversationController {
             ChatConversationEntity conv = conversationService.create(userId, tenantId, kind, workspaceId, checkoutPath);
             return ConversationSummaryDto.from(conv);
         });
+    }
+
+    @GetMapping("/conversations/search")
+    public Mono<List<ConversationSearchDto>> search(
+            @RequestParam("q") String keyword,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> conversationService.search(userId, tenantId, keyword));
     }
 
     @GetMapping("/conversations/{id}")

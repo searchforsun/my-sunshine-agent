@@ -99,6 +99,18 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
     }
 
+    public Mono<List<Map<String, Object>>> searchConversations(
+            String keyword, String userId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/conversations/search")
+                        .queryParam("q", keyword)
+                        .build())
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+    }
+
     public Mono<Map<String, Object>> createConversation(Map<String, Object> body, String userId, String tenantId) {
         return webClient.post()
                 .uri("/conversations")

@@ -371,6 +371,7 @@ watch(
         @dragstart="onTreeDragStart"
         @update:expanded-keys="onUpdateExpanded"
         @update:selected-keys="onSelect"
+        @search-select-file="(path: string) => openFile(path)"
       />
       <SandboxPreviewPane
         v-model:tabbar-ref="tabbarRef"

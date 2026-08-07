@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, NModal, type MenuOption, type DropdownOption } from 'naive-ui'
-import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, HardwareChipOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline } from '@vicons/ionicons5'
+import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, HardwareChipOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline, SearchOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
-import { useSidebar } from '../composables/useSidebar'
+import { useSidebar, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../composables/useSidebar'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
 import { useConversationAttention } from '../composables/useConversationAttention'
@@ -16,6 +16,7 @@ import SidebarToggle from '../components/SidebarToggle.vue'
 import UserSettingsModal from '../components/UserSettingsModal.vue'
 import ProjectGuideModal from '../components/sandbox/ProjectGuideModal.vue'
 import ConversationSidebarList from '../components/ConversationSidebarList.vue'
+import ConversationSearchModal from '../components/ConversationSearchModal.vue'
 import ConversationStatusIcon from '../components/ConversationStatusIcon.vue'
 import ConversationHoverCard from '../components/ConversationHoverCard.vue'
 import { useConversationSidebarIndicator, type SidebarConvIndicator } from '../composables/useConversationSidebarIndicator'
@@ -92,7 +93,29 @@ const activeKey = computed(() => {
 })
 
 const { theme, toggle: toggleTheme } = useTheme()
-const { sidebarVisible } = useSidebar()
+const { sidebarVisible, sidebarWidth } = useSidebar()
+
+const sidebarResizing = ref(false)
+
+function onSidebarResizePointerDown(ev: PointerEvent) {
+  if (!ev.isPrimary) return
+  sidebarResizing.value = true
+  document.body.classList.add('sun-sidebar-resizing')
+  const startX = ev.clientX
+  const startW = sidebarWidth.value
+  function onMove(e: PointerEvent) {
+    const w = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, startW + (e.clientX - startX)))
+    sidebarWidth.value = w
+  }
+  function onUp() {
+    sidebarResizing.value = false
+    document.body.classList.remove('sun-sidebar-resizing')
+    document.removeEventListener('pointermove', onMove)
+    document.removeEventListener('pointerup', onUp)
+  }
+  document.addEventListener('pointermove', onMove)
+  document.addEventListener('pointerup', onUp)
+}
 const isDark = computed(() => theme.value === 'dark')
 const dialog = useDialog()
 
@@ -166,6 +189,21 @@ function handleSwitchConversation(id: string) {
       clearAttention(id)
     }
     await chatStore.switchTo(id)
+    if (route.name !== 'chat') router.push('/chat')
+  })()
+}
+
+/** 搜索弹窗选中：搜索结果可能不在本地 store，走 ensureConversation 兜底加载 */
+const showSearch = ref(false)
+function handleSearchSelect(id: string) {
+  chatStore.pendingWorkspace = null
+  chatStore.newTaskMode = false
+  void (async () => {
+    if (!chatStore.conversations.some(c => c.id === id)) {
+      await chatStore.ensureConversation(id)
+    } else {
+      await chatStore.switchTo(id)
+    }
     if (route.name !== 'chat') router.push('/chat')
   })()
 }
@@ -501,13 +539,22 @@ onMounted(() => {
     <NLayoutSider
       v-if="sidebarVisible"
       bordered
-      :width="280"
+      :width="sidebarWidth"
       class="sidebar"
     >
       <!-- Brand -->
       <div class="brand">
         <BrandMark class="brand-mark" />
         <span class="brand-name">Sunshine<span class="brand-ai"> AI</span></span>
+        <button
+          type="button"
+          class="brand-search-btn"
+          title="搜索会话"
+          aria-label="搜索会话"
+          @click="showSearch = true"
+        >
+          <NIcon :size="16" :component="SearchOutline" />
+        </button>
       </div>
 
       <!-- 快捷操作：新对话、新任务 -->
@@ -709,6 +756,15 @@ onMounted(() => {
           </NDropdown>
         </div>
       </div>
+
+      <!-- 侧栏宽度拖拽手柄 -->
+      <div
+        class="sidebar-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整侧栏宽度"
+        @pointerdown="onSidebarResizePointerDown"
+      />
     </NLayoutSider>
 
     <ConversationHoverCard
@@ -742,6 +798,13 @@ onMounted(() => {
       </div>
     </Teleport>
     <UserSettingsModal v-model:show="showSettings" />
+
+    <!-- 会话聚合搜索弹窗（对话 + 任务会话） -->
+    <ConversationSearchModal
+      v-model:show="showSearch"
+      :workspace-name-of="workspaceNameOf"
+      @select="handleSearchSelect"
+    />
 
     <!-- 项目规范弹窗（类 CLAUDE.md，用户手动维护） -->
     <ProjectGuideModal v-model:show="showProjectGuide" :workspace="guideWorkspace" />
@@ -796,11 +859,19 @@ onMounted(() => {
 }
 
 .sidebar {
+  position: relative;
   background: var(--sun-sidebar-bg) !important;
   border-right: 1px solid var(--sun-border) !important;
   display: flex;
   flex-direction: column;
   height: 100vh;
+}
+
+/* 拖拽中禁用 NLayoutSider 自带动画，实现即时跟随 */
+:global(body.sun-sidebar-resizing) .sidebar,
+:global(body.sun-sidebar-resizing) .sidebar :deep(.n-layout-sider-scroll-container),
+:global(body.sun-sidebar-resizing) .sidebar :deep(.n-layout-toggle-bar) {
+  transition: none !important;
 }
 
 .sidebar :deep(.n-layout-sider-border) {
@@ -812,6 +883,36 @@ onMounted(() => {
   flex-direction: column;
   min-height: 100vh;
   height: 100%;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+}
+
+.sidebar-resize-handle:hover::after,
+:global(body.sun-sidebar-resizing) .sidebar-resize-handle::after {
+  background: var(--sun-border);
+}
+
+:global(body.sun-sidebar-resizing) {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 /* --- Brand --- */
@@ -826,6 +927,27 @@ onMounted(() => {
 .brand-mark {
   flex-shrink: 0;
   display: block;
+}
+
+.brand-search-btn {
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.brand-search-btn:hover {
+  background: var(--sun-row-hover);
+  color: var(--sun-text);
 }
 
 .brand-name {
@@ -1452,5 +1574,16 @@ onMounted(() => {
 .content-area--fill :deep(> *) {
   flex: 1;
   min-height: 0;
+}
+</style>
+
+<!-- 拖拽侧栏时禁用 Naive UI NLayoutSider 自带 CSS transition -->
+<style>
+body.sun-sidebar-resizing .n-layout-sider,
+body.sun-sidebar-resizing .n-layout-sider * {
+  transition: none !important;
+}
+body.sun-sidebar-resizing .sidebar {
+  transition: none !important;
 }
 </style>

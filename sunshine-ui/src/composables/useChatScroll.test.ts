@@ -104,4 +104,54 @@ describe('useChatScroll 流式贴底跟随', () => {
     // 用户已接管：不再跟随
     expect(el.scrollTop).toBeLessThan(el.scrollHeight - el.clientHeight)
   })
+
+  it('settleScrollToBottom：内容分帧增高时持续贴底，稳定后停止接管', async () => {
+    const { el, grow } = makeScrollEl()
+    const { scrollRef, onChatScroll, settleScrollToBottom, chatScrollPinned } = useChatScroll(ref(false))
+    scrollRef.value = el
+    // 刷新首帧内容尚未渲染完成（高度很低）
+    settleScrollToBottom()
+
+    // 内容分三批渲染增高，间隔数帧；每批之间 settle 都应保持贴底
+    grow(500)
+    await vi.advanceTimersByTimeAsync(48)
+    expect(el.scrollTop).toBe(el.scrollHeight - el.clientHeight)
+    grow(800)
+    await vi.advanceTimersByTimeAsync(48)
+    expect(el.scrollTop).toBe(el.scrollHeight - el.clientHeight)
+    grow(300)
+    await vi.advanceTimersByTimeAsync(48)
+    expect(el.scrollTop).toBe(el.scrollHeight - el.clientHeight)
+    expect(chatScrollPinned.value).toBe(true)
+
+    // 高度稳定后循环停止：用户滚动上滑（经 @scroll 处理器）不再被拉回底部
+    await vi.advanceTimersByTimeAsync(200)
+    el.scrollTop = 120
+    el.dispatchEvent(new Event('scroll'))
+    onChatScroll()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(el.scrollTop).toBe(120)
+    expect(chatScrollPinned.value).toBe(false)
+  })
+
+  it('settleScrollToBottom：用户上滑立即退出贴底循环', async () => {
+    const { el, grow } = makeScrollEl()
+    const { scrollRef, onChatScroll, settleScrollToBottom, chatScrollPinned } = useChatScroll(ref(false))
+    scrollRef.value = el
+    settleScrollToBottom()
+    grow(500)
+    await vi.advanceTimersByTimeAsync(48)
+    expect(el.scrollTop).toBe(el.scrollHeight - el.clientHeight)
+
+    // 用户上滑（scroll 事件经 @scroll 处理器）打断贴底循环
+    el.scrollTop -= 300
+    el.dispatchEvent(new Event('scroll'))
+    onChatScroll()
+    await vi.advanceTimersByTimeAsync(64)
+    // 即使内容再增长，也不被 settle 循环拉回
+    grow(600)
+    await vi.advanceTimersByTimeAsync(64)
+    expect(el.scrollTop).toBeLessThan(el.scrollHeight - el.clientHeight)
+    expect(chatScrollPinned.value).toBe(false)
+  })
 })

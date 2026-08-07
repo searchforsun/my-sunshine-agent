@@ -26,13 +26,21 @@ export interface SandboxFsContent {
 }
 
 export async function fetchSandboxWorkspaceStatus(conversationId: string): Promise<boolean> {
-  const res = await fetch(
-    `${API_BASE()}/api/conversations/${encodeURIComponent(conversationId)}/sandbox/workspace/status`,
-    { headers: apiHeaders() },
-  )
-  if (res.status === 404) return false
-  const data = await parseBffPayload<{ active?: boolean }>(res)
-  return !!data?.active
+  const ctrl = new AbortController()
+  const timeoutId = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const res = await fetch(
+      `${API_BASE()}/api/conversations/${encodeURIComponent(conversationId)}/sandbox/workspace/status`,
+      { headers: apiHeaders(), signal: ctrl.signal },
+    )
+    if (res.status === 404) return false
+    const data = await parseBffPayload<{ active?: boolean }>(res)
+    return !!data?.active
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 export async function listSandboxWorkspace(

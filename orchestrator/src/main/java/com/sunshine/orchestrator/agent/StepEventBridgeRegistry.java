@@ -511,13 +511,26 @@ public class StepEventBridgeRegistry {
             Consumer<ProcessingTimelineSession> action) {
         List<StreamToken> hookEmitted = ProcessingTimelineSupport.run(session, () -> action.accept(session));
         ConcurrentLinkedQueue<StreamToken> queue = hookTokenQueues.get(messageId);
-        if (queue != null || generationFlush.containsKey(messageId)) {
+        boolean hasFlush = generationFlush.containsKey(messageId);
+        if (hookEmitted.stream().anyMatch(t -> t.isStepDelta()
+                && "step_summary".equals(t.channel()))) {
+            log.info("[HookDiag] emitHookTokens step_summary bridge={} emitted={} queue={} flush={}",
+                    messageId, hookEmitted.size(), queue != null, hasFlush);
+        }
+        if (queue != null || hasFlush) {
             hookEmitted.forEach(token -> routeHookToken(messageId, token, queue));
         }
     }
 
     private void routeHookToken(String messageId, StreamToken token,
             ConcurrentLinkedQueue<StreamToken> queue) {
+        if (token != null && token.isStepDelta() && "step_summary".equals(token.channel())) {
+            String flushKey0 = resolveFlushMessageId(messageId);
+            FlushBinding binding0 = flushKey0 != null ? generationFlush.get(flushKey0) : null;
+            log.info("[HookDiag] routeHookToken step_summary bridge={} bridgeActive={} queue={} canFlush={}",
+                    messageId, isHookBridgeActive(messageId), queue != null,
+                    binding0 != null && isHookFlushAllowed(messageId, flushKey0, binding0.epoch()));
+        }
         if (!isHookBridgeActive(messageId)) {
             return;
         }

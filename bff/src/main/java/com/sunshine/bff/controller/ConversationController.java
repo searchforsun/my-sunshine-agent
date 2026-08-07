@@ -31,6 +31,14 @@ public class ConversationController {
         return client.listConversations(userId, tenantId);
     }
 
+    @GetMapping("/api/conversations/search")
+    public Mono<List<Map<String, Object>>> search(
+            @RequestParam("q") String keyword,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.searchConversations(keyword, userId, tenantId);
+    }
+
     @PostMapping("/api/conversations")
     public Mono<Map<String, Object>> create(
             @RequestHeader("x-user-id") String userId,

@@ -24,6 +24,18 @@ export interface ConversationSummary {
   checkoutPath?: string | null
 }
 
+/** 聚合搜索返回项：在会话摘要基础上附带命中消息正文摘要 */
+export interface ConversationSearchItem {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  /** chat / task */
+  kind?: string
+  workspaceId?: string | null
+  snippet?: string
+}
+
 export interface ConversationMessage {
   id: string
   role: 'user' | 'assistant'
@@ -162,6 +174,25 @@ function unwrapObject(raw: unknown): Record<string, unknown> {
 export async function listConversations(): Promise<ConversationSummary[]> {
   const res = await fetch(`${API_BASE()}/api/conversations`, { headers: apiHeaders() })
   return unwrapList(await parseBffPayload(res)).map(mapSummary)
+}
+
+function mapSearchItem(raw: Record<string, unknown>): ConversationSearchItem {
+  return {
+    id: requireConversationId(raw),
+    title: String(raw.title ?? '新对话'),
+    createdAt: toTimestamp(raw.createdAt as string | undefined),
+    updatedAt: toTimestamp(raw.updatedAt as string | undefined),
+    kind: typeof raw.kind === 'string' ? raw.kind : undefined,
+    workspaceId: typeof raw.workspaceId === 'string' ? raw.workspaceId : null,
+    snippet: typeof raw.snippet === 'string' ? raw.snippet : undefined,
+  }
+}
+
+/** 聚合搜索对话与任务会话（标题 + 消息正文），keyword 为空时后端返回空列表 */
+export async function searchConversations(keyword: string): Promise<ConversationSearchItem[]> {
+  const params = new URLSearchParams({ q: keyword })
+  const res = await fetch(`${API_BASE()}/api/conversations/search?${params}`, { headers: apiHeaders() })
+  return unwrapList(await parseBffPayload(res)).map(mapSearchItem)
 }
 
 export async function createConversation(params?: {

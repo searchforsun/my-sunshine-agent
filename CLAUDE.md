@@ -14,6 +14,16 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 
 编译、启动、验收命令见 [README.md](./README.md) §快速开始。改 `docs/nacos/*.yaml` 后必跑 `python scripts/sync_nacos.py` 并重启消费服务。修改后端功能后必须重启对应服务的 `start.py`。
 
+**服务启停（`scripts/start.py`）**：服务为**独立进程**（setsid 守护），脚本启动即退出，关闭终端不会带走服务；停服用 `--stop`。
+
+```bash
+python scripts/start.py                # 启动全链路（先 SIGKILL 旧进程）
+python scripts/start.py --restart      # 打包并重启全链路
+python scripts/start.py --restart bff  # 打包并重启指定服务
+python scripts/start.py --stop         # 停止全链路
+python scripts/start.py --stop bff     # 停止指定服务
+```
+
 **运维脚本（SSOT：`scripts/*.py`）**
 
 | 类别 | 核心脚本 |
@@ -116,6 +126,8 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 ### UI 风格
 
 背景统一 **`--sun-black`**、**边框**分区；**禁止**页面/面板/输入用 `--sun-surface` 灰底。代码/Mermaid 主题走 `useTheme` / `mermaidConfig`（`theme: 'base'`）。
+
+- 所有 UI 区域**禁止**冗余性的解释性说明文字，仅保留必要操作提示，保持简洁。
 
 ## Plan/Spec 文档管理
 

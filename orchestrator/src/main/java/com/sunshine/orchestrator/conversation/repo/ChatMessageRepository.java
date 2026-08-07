@@ -40,6 +40,18 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessageEntity, 
 
     void deleteByConversationId(String conversationId);
 
+    /** 会话搜索：返回命中关键词的最新消息正文（content 升序 seq 排列后取首条即最新） */
+    @Query(value = """
+            SELECT m.conversation_id, m.content
+            FROM chat_message m
+            WHERE m.conversation_id IN (:convIds)
+              AND LOCATE(:keyword, LOWER(m.content)) > 0
+            ORDER BY m.seq DESC
+            """, nativeQuery = true)
+    List<Object[]> findLatestMatchByConversationIds(
+            @Param("convIds") List<String> conversationIds,
+            @Param("keyword") String keyword);
+
     long countByConversationIdAndSeqGreaterThan(String conversationId, int seq);
 
     long countByConversationIdAndSeqLessThan(String conversationId, int seq);

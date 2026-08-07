@@ -431,20 +431,25 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   padding-top: 0;
 }
 
-/* 文字后展开箭头：紧跟 label/text，折叠 > 展开 ^；尺寸加大更明显 */
+/* 文字后展开箭头：紧跟 label/text，折叠 > 展开 ^；hover / 展开态显示 */
 .op-main .op-chevron {
   flex-shrink: 0;
   align-self: center;
   width: 12px;
   height: 12px;
   color: var(--sun-text-secondary);
-  opacity: 0.85;
+  opacity: 0;
   margin-left: 2px;
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, opacity 0.12s ease;
+}
+
+.op-line:not(.is-expanded):hover .op-main .op-chevron {
+  opacity: 0.85;
 }
 
 .op-line.is-expanded .op-main .op-chevron {
   transform: rotate(90deg);
+  opacity: 0.85;
 }
 
 .op-dur {

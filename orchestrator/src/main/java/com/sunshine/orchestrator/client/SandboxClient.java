@@ -12,11 +12,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
 
 import java.util.Map;
 
@@ -37,6 +39,8 @@ public class SandboxClient {
         webClient = WebClient.builder()
                 .baseUrl(baseUrl)
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
+                .clientConnector(new ReactorClientHttpConnector(
+                        HttpClient.create().responseTimeout(java.time.Duration.ofSeconds(10))))
                 .build();
         log.info("[SandboxClient] baseUrl={}", baseUrl);
     }

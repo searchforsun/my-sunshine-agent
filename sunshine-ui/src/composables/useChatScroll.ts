@@ -26,6 +26,8 @@ export function useChatScroll(_loading: Ref<boolean>) {
   let lastScrollTop = 0
   /** 用户手动离开底部后置位：流式跟随立即停止，直到重新贴底。解决拖拽滚动条（无 wheel）上滑被贴底 rAF 抢回导致的抖动 */
   let userTakenOver = false
+  /** settle 代际计数器：新 settle 启动时递增，旧循环检测到落后代际自动退出 */
+  let settleGeneration = 0
 
   function isNearChatBottom(el: HTMLElement, threshold = 96): boolean {
     return distanceFromChatBottom(el) <= threshold
@@ -115,6 +117,44 @@ export function useChatScroll(_loading: Ref<boolean>) {
     el.scrollTop = nextTop
     // 程序化贴底：同步 lastScrollTop，避免下一帧被误判为用户上滑
     lastScrollTop = nextTop
+  }
+
+  /**
+   * 初始稳定贴底：刷新/首次进入大会话时，消息与时间线可能分帧渲染（scrollHeight 逐步增高），
+   * 单次贴底会停在中间高度。持续贴底直到高度连续稳定或超时；用户上滑立即退出。
+   */
+  function settleScrollToBottom(timeoutMs = 3000): void {
+    const el = scrollRef.value
+    if (!el) return
+    pinScrollForSend()
+    const gen = ++settleGeneration
+    applyScrollBottom()
+    const start = performance.now()
+    let lastHeight = el.scrollHeight
+    let lastTop = el.scrollTop
+    let stableFrames = 0
+    const tick = () => {
+      // 新 settle 已启动（切换会话等）→ 本循环立即退出
+      if (gen !== settleGeneration) return
+      if (userTakenOver) return
+      const target = scrollRef.value
+      if (!target) return
+      if (target.scrollTop < lastTop - 0.5 && distanceFromChatBottom(target) > 1) {
+        unpinFromUser()
+        return
+      }
+      applyScrollBottom()
+      lastTop = target.scrollTop
+      if (target.scrollHeight === lastHeight) {
+        stableFrames += 1
+      } else {
+        stableFrames = 0
+        lastHeight = target.scrollHeight
+      }
+      if (stableFrames >= 10 || performance.now() - start > timeoutMs) return
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
   }
 
   function scrollToBottom(force = false) {
@@ -208,6 +248,7 @@ export function useChatScroll(_loading: Ref<boolean>) {
     onChatScroll,
     onChatWheelCapture,
     scrollToBottom,
+    settleScrollToBottom,
     pinScrollForSend,
     pinScrollForHitl,
     forwardWheelToChatScroll,

@@ -301,7 +301,12 @@ export const useChatStore = defineStore('chat', () => {
       for (const m of page.messages) {
         if (m.id && !byId.has(m.id)) byId.set(m.id, mapApiMessages([m])[0])
       }
-      const merged = [...byId.values()].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+      // seq 缺失（后端未落库的流式最新消息）视为最新排尾部，避免触顶加载历史时最新消息被排到最前
+      const merged = [...byId.values()].sort((a, b) => {
+        const seqA = a.seq ?? Number.POSITIVE_INFINITY
+        const seqB = b.seq ?? Number.POSITIVE_INFINITY
+        return seqA - seqB
+      })
       if (!conv) return page.hasMore
       conv.messages = sanitizeRestoredMessages(merged)
       if (conv.messages.length) {

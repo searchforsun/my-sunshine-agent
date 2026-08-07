@@ -4,6 +4,7 @@ import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.audit.AuditService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
+import com.sunshine.orchestrator.conversation.dto.ConversationSearchDto;
 import com.sunshine.orchestrator.conversation.dto.MessagePageDto;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
@@ -20,7 +21,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -65,6 +69,93 @@ public class ConversationService {
     public List<ChatConversationEntity> list(String userId, String tenantId) {
         return conversationRepo.findByUserIdAndTenantIdOrderByUpdatedAtDesc(
                 userId, tenantId != null ? tenantId : "default");
+    }
+
+    /**
+     * 聚合搜索：按标题命中 + 消息正文命中取并集，按更新时间倒序返回。
+     * 使用 LOCATE 做包含匹配，关键词按字面处理，天然规避 LIKE 通配符转义。
+     */
+    @Transactional(readOnly = true)
+    public List<ConversationSearchDto> search(String userId, String tenantId, String keyword) {
+        String kw = keyword == null ? "" : keyword.strip();
+        if (kw.isEmpty()) {
+            return List.of();
+        }
+        Map<String, ChatConversationEntity> byId = new LinkedHashMap<>();
+        for (ChatConversationEntity conv : conversationRepo.searchByTitle(userId, tenantId, kw)) {
+            byId.put(conv.getId(), conv);
+        }
+        List<ChatConversationEntity> contentMatches =
+                conversationRepo.searchByMessageContent(userId, tenantId, kw);
+        for (ChatConversationEntity conv : contentMatches) {
+            byId.put(conv.getId(), conv);
+        }
+
+        List<ConversationSearchDto> results = byId.values().stream()
+                .map(conv -> ConversationSearchDto.builder()
+                        .id(conv.getId())
+                        .title(conv.getTitle())
+                        .kind(conv.getKind())
+                        .workspaceId(conv.getWorkspaceId())
+                        .createdAt(conv.getCreatedAt())
+                        .updatedAt(conv.getUpdatedAt())
+                        .build())
+                .sorted(Comparator.comparing(ConversationSearchDto::getUpdatedAt).reversed())
+                .toList();
+
+        if (contentMatches.isEmpty()) {
+            return results;
+        }
+        Map<String, String> latestHitByConv = latestMessageContentHits(
+                contentMatches.stream().map(ChatConversationEntity::getId).toList(), kw);
+        return results.stream()
+                .map(dto -> {
+                    String hit = latestHitByConv.get(dto.getId());
+                    if (hit == null) {
+                        return dto;
+                    }
+                    dto.setSnippet(buildSnippet(hit, kw));
+                    return dto;
+                })
+                .toList();
+    }
+
+    /** 各内容命中会话取最新一条命中消息正文（msg seq 倒序，首个即最新） */
+    private Map<String, String> latestMessageContentHits(List<String> convIds, String keyword) {
+        Map<String, String> latest = new HashMap<>();
+        for (Object[] row : messageRepo.findLatestMatchByConversationIds(convIds, keyword)) {
+            String convId = String.valueOf(row[0]);
+            if (!latest.containsKey(convId)) {
+                latest.put(convId, row[1] == null ? "" : String.valueOf(row[1]));
+            }
+        }
+        return latest;
+    }
+
+    /** 命中正文摘要：压缩空白后取关键词前后片段，控制在 120 字内便于列表展示 */
+    static String buildSnippet(String content, String keyword) {
+        if (content == null || content.isEmpty()) {
+            return "";
+        }
+        String text = content.replaceAll("\\s+", " ").strip();
+        int maxLen = 120;
+        if (text.length() <= maxLen) {
+            return text;
+        }
+        int idx = text.toLowerCase().indexOf(keyword.toLowerCase());
+        if (idx < 0) {
+            return text.substring(0, maxLen) + "…";
+        }
+        int start = Math.max(0, idx - 40);
+        int end = Math.min(text.length(), idx + keyword.length() + 60);
+        String snippet = text.substring(start, end);
+        if (start > 0) {
+            snippet = "…" + snippet;
+        }
+        if (end < text.length()) {
+            snippet += "…";
+        }
+        return snippet;
     }
 
     @Transactional(readOnly = true)

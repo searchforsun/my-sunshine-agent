@@ -91,12 +91,17 @@ def start_java_detached(
     creationflags = 0
     if platform.system() == "Windows":
         creationflags = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+    kwargs: dict = {}
+    if platform.system() != "Windows":
+        # setsid：Java 进程独立会话/进程组，脚本或终端退出时信号不再传播给服务
+        kwargs["start_new_session"] = True
     proc = subprocess.Popen(
         [java_bin(), *args],
         stdout=stdout,
         stderr=stderr,
         cwd=str(ROOT),
         creationflags=creationflags,
+        **kwargs,
     )
     time.sleep(wait_sec)
     return proc

@@ -29,6 +29,7 @@ import CopyToggleIcon from '../components/icons/CopyToggleIcon.vue'
 import { NIcon, NPopover, NButton, NSpin } from 'naive-ui'
 import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline, AlertCircleOutline, WarningOutline, ChatboxEllipsesOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
+import { liveTimelineExpanded } from '../composables/timelineCollapseBus'
 import TaskBoardPanel from '../components/operation/TaskBoardPanel.vue'
 import { hasRealTaskBoardItems, type TimelineMessageStatus } from '../api/processingSteps'
 import { isElVisibleInRoot } from '../utils/floatingTaskboard'
@@ -45,7 +46,7 @@ import { usePlanDagExpand } from '../composables/usePlanDagExpand'
 import { fetchSandboxWorkspaceStatus } from '../api/sandboxWorkspace'
 import type { ChatMessage } from '../api/chat'
 import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
-import { resolveAssistantDisplayContent, resolveStreamErrorText, sanitizeRestoredMessages } from '../api/streamError'
+import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
 import { formatConversationTime } from '../utils/conversationTime'
 import { loadCachedMessages } from '../api/conversationCache'
 import {
@@ -169,6 +170,7 @@ const {
   onChatScroll,
   onChatWheelCapture,
   scrollToBottom,
+  settleScrollToBottom,
   pinScrollForSend,
   forwardWheelToChatScroll,
 } = useChatScroll(loading)
@@ -217,13 +219,24 @@ watch(chatScrollPinned, pinned => {
 })
 
 /**
- * 用户上滑离开底部：输入框上方右侧圆形快捷按钮（置于 todolist/错误信息等气泡之上）。
- * 待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头。点击统一回到底部。
+ * 输入框上方右侧圆形快捷按钮：
+ * - 离开底部：回到底部气泡（待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头），点击回到底部；
+ * - 最底部（回到底部图标消失）：运行中时间线展开 → 折叠气泡，点击收起运行过程。
  */
-const scrollFab = computed<{ kind: 'hitl_pending' | 'completed' | 'down' } | null>(() => {
+type ScrollFabKind = 'hitl_pending' | 'collapse' | 'completed' | 'down'
+
+/** 折叠请求计数：点击底部折叠气泡时自增，经 collapseTick prop 触发运行中 OperationStack 折叠 */
+const collapseTick = ref(0)
+
+const scrollFab = computed<{ kind: ScrollFabKind } | null>(() => {
   const cid = chatStore.currentId
-  if (!cid || chatScrollPinned.value) return null
+  if (!cid) return null
   void streamRevision.value
+  // 最底部：回到底部图标消失；运行中时间线展开 → 折叠气泡
+  if (chatScrollPinned.value) {
+    return liveTimelineExpanded.value ? { kind: 'collapse' } : null
+  }
+  // 离开底部：回到底部快捷按钮
   const ind = resolveIndicator(cid, chatStore.current?.messages)
   if (ind === 'hitl_pending') return { kind: 'hitl_pending' }
   if (ind === 'completed') return { kind: 'completed' }
@@ -231,6 +244,10 @@ const scrollFab = computed<{ kind: 'hitl_pending' | 'completed' | 'down' } | nul
 })
 
 function handleScrollFabClick(): void {
+  if (scrollFab.value?.kind === 'collapse') {
+    collapseTick.value++
+    return
+  }
   const cid = chatStore.currentId
   if (cid) clearAttention(cid)
   chatScrollPinned.value = true
@@ -351,6 +368,7 @@ const {
   sessionSettledHtml,
   ensureStreamRenderer,
   scrollToBottom,
+  settleScrollToBottom,
   enhanceAllStaticMarkdown,
 })
 hydrationBridge.flushPersist = flushPersist
@@ -911,10 +929,14 @@ function openDiffInDrawer(path: string) {
   openSandboxDrawer({ conversationId: cid, diffPath: path })
 }
 
-function canCopyAssistant(msg: { role: string; content: string }, idx: number): boolean {
-  return msg.role === 'assistant'
-    && !!msg.content.trim()
-    && !(loading.value && idx === messages.value.length - 1)
+function canCopyAssistant(msg: { role: string; content: string; status?: string }, idx: number): boolean {
+  if (msg.role !== 'assistant' || !msg.content.trim()) return false
+  const isLast = idx === messages.value.length - 1
+  if (isLast && loading.value) return false
+  if (msg.status === 'streaming') return false
+  // hydration 期间末条 assistant 还未确定终态（可能在重连），避免复制图标闪烁
+  if (isLast && sessionHydrating.value && msg.status !== 'completed') return false
+  return true
 }
 
 /** 消息结束时间（epoch ms）：timelineEndedAt 优先，updatedAt 兜底 */
@@ -1272,7 +1294,15 @@ onMounted(async () => {
     const cached = loadCachedMessages(preloadCid)
     if (cached?.length) {
       ensureActive(preloadCid)
-      setMessages(preloadCid, sanitizeRestoredMessages(cached))
+      // 勿经 sanitizeRestoredMessages——缓存中最后一条 streaming 状态是精确的
+      //（schedulePersist 在流式中保存），不应被过早标为 interrupted，否则复制图标闪烁。
+      // API 回来后会由 hydrateSessionFromStore 正确归一。
+      setMessages(preloadCid, cached)
+      // 等待 Vue 渲染新消息到 DOM，再贴底，避免 scrollHeight 尚未更新就同步贴底到 0
+      await nextTick()
+      // 缓存消息立即可见，贴底避免用户看到顶部停留；网络 API 回包后消息替换时
+      // 滚动高度变化会重置稳定帧，settle 持续跟随到底部
+      settleScrollToBottom()
     }
   }
   try {
@@ -1324,6 +1354,11 @@ onMounted(async () => {
   }
   setActiveConversation(chatStore.currentId)
   scrollToBottomIfRequested(chatStore.currentId ?? '')
+  // 刷新后定位到会话底部：消息/时间线分帧渲染增高，单次贴底会停在中间高度，settle 至高度稳定；
+  // 空会话与新任务模式（无消息）跳过
+  if (chatStore.currentId && messages.value.length) {
+    settleScrollToBottom()
+  }
   applyChatDeepLink()
   inputRef.value?.focus()
   window.addEventListener('pagehide', flushAllOnPageHide)
@@ -1393,13 +1428,6 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   closeSandboxDrawer()
   closePlanDagExpand()
   sandboxWorkspaceActive.value = false
-  if (newId) {
-    try {
-      sandboxWorkspaceActive.value = await fetchSandboxWorkspaceStatus(newId)
-    } catch {
-      sandboxWorkspaceActive.value = false
-    }
-  }
   // 切换会话前，把旧会话的状态落盘
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
@@ -1417,15 +1445,25 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
     clearActive()
     return
   }
+  // 切换 DOM 立即响应：缓存消息先渲染到滚动区，同步贴底避免闪现，DB 查询后台更新
   ensureActive(newId)
   updateConversationId(newId)
   applyConversationPreference(chatStore.current?.executionPreference)
   applyConversationKb(chatStore.current?.kbId)
   void applyConversationCheckout()
-  if (!loading.value) await hydrateSessionFromStore(newId)
-  await nextTick()
-  if (loading.value) void ensureStreamRenderer()
-  if (newId) scrollToBottomIfRequested(newId)
+  // 沙箱状态异步查询（有超时兜底），不阻塞 DOM 切换
+  void (async () => {
+    try {
+      sandboxWorkspaceActive.value = await fetchSandboxWorkspaceStatus(newId)
+    } catch {
+      sandboxWorkspaceActive.value = false
+    }
+  })()
+  // 缓存消息立即贴底，避免用户看到旧滚动位置的残留
+  if (messages.value.length) settleScrollToBottom()
+  // DB 后台对齐：有更新则 setMessages 触发响应式重渲染，settle 持续跟随
+  // 显式传 skipApiLoad: false：当前 loading 属于旧会话，不能阻止新会话的 DB 查询
+  void hydrateSessionFromStore(newId, { skipApiLoad: false })
 }, { flush: 'post' })
 
 watch(
@@ -1574,6 +1612,7 @@ watch(
                 :stream-live="isInterleavedStreaming(msg, idx)"
                 :timeline-revision="loading && idx === messages.length - 1 ? streamRevision : 0"
                 :live="isTimelineLive(msg, idx)"
+                :collapse-tick="isTimelineLive(msg, idx) ? collapseTick : undefined"
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
                 :message-id="msg.id"
@@ -1644,18 +1683,33 @@ watch(
     <!-- 悬浮输入区 -->
     <footer v-show="!planDagExpanded" class="chat-composer" @wheel="forwardWheelToChatScroll">
       <div class="composer-inner">
-        <!-- 用户上滑离开底部：输入框上方右侧圆形快捷按钮；始终置于其它气泡（todolist/错误信息等）之上。
-             待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头 -->
+        <!-- 输入框上方右侧圆形快捷按钮；始终置于其它气泡（todolist/错误信息等）之上。
+             离开底部 → 回到底部（待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头）；
+             最底部且运行中时间线展开 → 折叠图标（点击收起运行过程） -->
         <transition name="fab-fade">
           <button
             v-if="scrollFab"
             type="button"
             class="scroll-fab"
             :class="`is-${scrollFab.kind}`"
-            :title="scrollFab.kind === 'hitl_pending' ? '待确认，点击回到底部' : '回到底部'"
+            :title="scrollFab.kind === 'hitl_pending' ? '待确认，点击回到底部' : scrollFab.kind === 'collapse' ? '折叠运行过程' : '回到底部'"
             @click="handleScrollFabClick"
           >
             <NIcon v-if="scrollFab.kind === 'hitl_pending'" :size="16" :component="WarningOutline" />
+            <svg
+              v-else-if="scrollFab.kind === 'collapse'"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
             <template v-else-if="scrollFab.kind === 'completed'">
               <NIcon :size="16" :component="ChatboxEllipsesOutline" />
               <span class="scroll-fab-dot" aria-hidden="true" />
@@ -2061,8 +2115,9 @@ watch(
   color: color-mix(in srgb, #f87171 75%, var(--sun-text-secondary));
 }
 
-/* 回到底部圆形按钮：用户上滑离开底部时显示；右对齐，置于输入框上方所有气泡之上。
-   待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头 */
+/* 回到底部/折叠运行过程圆形按钮：右对齐，置于输入框上方所有气泡之上。
+   离开底部 → 回到底部（待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头）；
+   最底部且运行中时间线展开 → 折叠图标 */
 .scroll-fab {
   position: relative;
   display: flex;

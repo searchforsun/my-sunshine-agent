@@ -93,6 +93,10 @@ python scripts/sync_nacos.py
 python scripts/download_skywalking_agent.py   # 首次可选
 python scripts/start.py
 
+# 服务为独立进程（setsid 守护），脚本启动即退出，不随脚本/终端关闭；停服用 --stop
+python scripts/start.py --restart             # 打包并重启全链路
+python scripts/start.py --stop                # 停止全链路
+
 # 清会话（MySQL + Redis 生成流；可选重启 orchestrator）
 python scripts/clear_session_cache.py --force --restart-orchestrator
 ```
