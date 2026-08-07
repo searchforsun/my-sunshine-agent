@@ -11,16 +11,12 @@ orchestrator:
   base-url: http://localhost:8200
 auth-center:
   base-url: http://localhost:8100
-skill-manager:
-  base-url: http://localhost:8225
-agent-manager:
-  base-url: http://localhost:8235
+resource-manager:
+  base-url: http://localhost:8240
 tool-manager:
   base-url: http://localhost:8210
 workflow-manager:
   base-url: http://localhost:8230
-prompt-manager:
-  base-url: http://localhost:8500
 
 logging:
   level:

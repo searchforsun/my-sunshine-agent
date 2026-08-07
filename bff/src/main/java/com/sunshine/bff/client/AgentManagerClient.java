@@ -18,7 +18,7 @@ import java.util.Map;
 @Component
 public class AgentManagerClient {
 
-    @Value("${agent-manager.base-url:http://localhost:8235}")
+    @Value("${resource-manager.base-url:http://localhost:8240}")
     private String baseUrl;
 
     private WebClient webClient;
