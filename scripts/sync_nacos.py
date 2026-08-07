@@ -27,16 +27,11 @@ DEFAULT_DATA_IDS = [
     "sunshine-orchestrator.yaml",
     "sunshine-llm-gateway.yaml",
     "sunshine-rag.yaml",
-    "sunshine-finance.yaml",
-    "sunshine-oa.yaml",
-    "sunshine-hr.yaml",
-    "sunshine-tool-manager.yaml",
-    "sunshine-skill-manager.yaml",
+    "sunshine-biz-simulator.yaml",         # 替代 sunshine-finance/oa/hr.yaml（3→1）
+    "sunshine-tool-service.yaml",         # 替代 sunshine-tool-manager.yaml（更名）
+    "sunshine-resource-manager.yaml",     # 替代 sunshine-skill-manager/agent-manager/desensitize/prompt.yaml（4→1）
     "sunshine-sandbox-service.yaml",
     "sunshine-workflow-manager.yaml",
-    "sunshine-agent-manager.yaml",
-    "sunshine-desensitize.yaml",
-    "sunshine-prompt.yaml",
 ]
 
 CONFIG_DIR = ROOT / "docs" / "nacos"

@@ -1,0 +1,54 @@
+# ============================================================
+# sunshine-resource-manager — Nacos 配置
+# Data ID: sunshine-resource-manager.yaml
+# Group:   DEFAULT_GROUP
+# 聚合管理服务（Skill / Agent / Prompt / Desensitize）
+# 表结构 SSOT：docker/mysql/init/19-sunshine-resource.sql（禁止 Flyway）
+# Skill 包文件存储：MinIO ecs4c16g:9000 / bucket sunshine-skills
+# ============================================================
+
+server:
+  port: 8240
+
+spring:
+  datasource:
+    url: jdbc:mysql://ecs4c16g:3306/sunshine_resource?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: root
+    password: root123
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        timezone:
+          default_storage: NORMALIZE_UTC
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+
+# 原 skill-manager 专属：MinIO 存储
+skill:
+  storage:
+    type: minio
+    base-dir: data/skills
+    minio:
+      endpoint: http://ecs4c16g:9000
+      access-key: minioadmin
+      secret-key: minioadmin123
+      bucket: sunshine-skills
+
+# 原 desensitize 专属：脱敏规则（无 DB）
+desensitize:
+  regex-enabled: true
+  rules:
+    - id: salary
+      keywords: ["月薪", "年薪", "工资总额"]
+      replacement: "***"
+    - id: bank-account
+      keywords: ["银行卡号", "银行账号"]
+      replacement: "[账号已脱敏]"
+
+logging:
+  level:
+    com.sunshine: debug

@@ -1,12 +1,13 @@
 # ============================================================
-# sunshine-hr — Nacos 配置
-# Data ID: sunshine-hr.yaml
+# sunshine-biz-simulator — Nacos 配置
+# Data ID: sunshine-biz-simulator.yaml
 # Group:   DEFAULT_GROUP
+# 业务模拟聚合服务（OA / Finance / HR）
 # 表结构 SSOT：docker/mysql/init/18-sunshine-biz.sql（禁止 Flyway）
 # ============================================================
 
 server:
-  port: 8720
+  port: 8700
 
 spring:
   datasource:
