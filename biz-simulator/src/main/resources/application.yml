@@ -1,0 +1,24 @@
+server:
+  port: 8700
+spring:
+  application:
+    name: sunshine-biz-simulator
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:}
+        metadata:
+          sunshine.tool-app: "true"
+          sunshine.tool-app-id: "sunshine-biz"
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:}
+        file-extension: yaml
+  config:
+    import:
+      - nacos:sunshine-biz-simulator.yaml
+sunshine:
+  tools:
+    enabled: true
+    app-id: sunshine-biz
