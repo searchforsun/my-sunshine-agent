@@ -58,7 +58,7 @@
     </dependencies>
 
     <build>
-        <finalName>sunshine-biz-simulator</finalName>
+        <finalName>sunshine-biz-simulator-${project.version}</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

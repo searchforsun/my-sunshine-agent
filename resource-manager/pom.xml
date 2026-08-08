@@ -77,7 +77,7 @@
     </dependencies>
 
     <build>
-        <finalName>sunshine-resource-manager</finalName>
+        <finalName>sunshine-resource-manager-${project.version}</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

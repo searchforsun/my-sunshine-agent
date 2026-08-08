@@ -97,9 +97,8 @@ def main() -> int:
         start_service(name, module, artifact, port)
 
     print("\n[OK] Core services started (Nacos config)")
-    print("  LLM Gateway  :8300 | RAG :8400 | Finance :8710 | OA :8700 | HR :8720 | Tool Manager :8210 | Skill Manager :8225 | Sandbox :8226 | Workflow Manager :8230 | Agent Manager :8235")
-    print("  Desensitize  :8600 | Prompt :8500 | Orchestrator :8200")
-    print("  Auth Center  :8100 | BFF :8001 | Gateway :8000")
+    print("  LLM Gateway  :8300 | RAG :8400 | Biz Simulator :8700 | Tool Service :8210 | Resource Manager :8240 | Sandbox :8226 | Workflow Manager :8230")
+    print("  Orchestrator :8200 | Auth Center :8100 | BFF :8001 | Gateway :8000")
     print("Live SkyWalking trace requires OAP at ecs4c16g:11800")
     print(f"[OK] 已启动 {len(targets)} 个服务（独立进程，不随本脚本退出）；停服: python scripts/start.py --stop")
     return 0
