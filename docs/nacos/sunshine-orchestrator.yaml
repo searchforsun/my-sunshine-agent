@@ -249,7 +249,6 @@ agent:
   # 验收提示词仍见 docs/routing/routing-golden-set.md；引擎 UnifiedRuleRoutingPolicy
 
   model:
-    base-url: http://localhost:8300/v1
     name: deepseek-v4-pro
     api-key: sunshine-gateway
     # 上下文窗口（token）：AgentScope CompactionConfig 动态触发依据，须与实际模型一致

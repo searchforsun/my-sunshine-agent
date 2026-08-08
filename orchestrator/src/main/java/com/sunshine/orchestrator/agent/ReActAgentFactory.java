@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
+import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,11 +11,13 @@ import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.Map;
 
@@ -39,6 +42,10 @@ public class ReActAgentFactory {
     private final DynamicToolkitFactory dynamicToolkitFactory;
     private final ProcessingStepMiddlewareFactory middlewareFactory;
     private final AgentStateStore stateStore;
+    /** @LoadBalanced WebClient.Builder 由 sunshine-common 自动注入，走 Nacos 服务发现 */
+    private final WebClient.Builder webClientBuilder;
+
+    private LoadBalancedWebClientTransport transport;
 
     @Value("${agent.model.name:deepseek-v4-pro}")
     private String modelName;
@@ -56,6 +63,11 @@ public class ReActAgentFactory {
      */
     @Value("${agent.model.context-window:256000}")
     private int contextWindowSize;
+
+    @PostConstruct
+    void initTransport() {
+        this.transport = new LoadBalancedWebClientTransport(webClientBuilder, "http://sunshine-llm-gateway");
+    }
 
     public ReActAgent create(AgentRunRequest request) {
         Toolkit toolkit = resolveToolkit(request);
@@ -112,6 +124,7 @@ public class ReActAgentFactory {
                 .apiKey(apiKey)
                 .modelName(overriddenModel)
                 .baseUrl(overriddenBaseUrl)
+                .httpTransport(transport)
                 .contextWindowSize(contextWindowSize)
                 .generateOptions(GenerateOptions.builder().maxTokens(resolvedMaxTokens).build())
                 .stream(true)
