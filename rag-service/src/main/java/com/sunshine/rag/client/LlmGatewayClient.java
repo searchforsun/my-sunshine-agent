@@ -20,10 +20,10 @@ public class LlmGatewayClient {
     private final ObjectMapper objectMapper;
     private final WebClient webClient;
 
-    public LlmGatewayClient(RagLlmProperties llmProperties, ObjectMapper objectMapper) {
+    public LlmGatewayClient(RagLlmProperties llmProperties, ObjectMapper objectMapper, WebClient.Builder builder) {
         this.llmProperties = llmProperties;
         this.objectMapper = objectMapper;
-        this.webClient = WebClient.builder()
+        this.webClient = builder
                 .baseUrl("http://sunshine-llm-gateway/v1")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
                 .build();

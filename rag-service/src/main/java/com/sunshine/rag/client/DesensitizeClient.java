@@ -22,9 +22,9 @@ public class DesensitizeClient {
     private final RagDesensitizeProperties properties;
     private final WebClient webClient;
 
-    public DesensitizeClient(RagDesensitizeProperties properties) {
+    public DesensitizeClient(RagDesensitizeProperties properties, WebClient.Builder builder) {
         this.properties = properties;
-        this.webClient = WebClient.builder().baseUrl("http://sunshine-resource-manager").build();
+        this.webClient = builder.baseUrl("http://sunshine-resource-manager").build();
         log.info("[RAG] DesensitizeClient enabled={} baseUrl=http://sunshine-resource-manager", properties.isEnabled());
     }
 
