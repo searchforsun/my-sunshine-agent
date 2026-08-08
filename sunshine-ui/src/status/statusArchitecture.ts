@@ -30,19 +30,14 @@ export const SERVICE_DEFS: ServiceDef[] = [
   { name: 'BFF', port: 8001, description: 'SSE 流式转发', gatewayPath: '/health/bff', expectedService: 'sunshine-bff', lane: 'entry' },
   { name: 'Auth Center', port: 8100, description: 'Sa-Token 认证中心', gatewayPath: '/health/auth', expectedService: 'sunshine-auth', lane: 'entry' },
   { name: 'Orchestrator', port: 8200, description: 'Agent 编排与 Workflow', gatewayPath: '/health/orchestrator', expectedService: 'sunshine-orchestrator', lane: 'orchestrator' },
-  { name: 'Tool Manager', port: 8210, description: '业务工具注册与 Catalog', gatewayPath: '/health/tool-manager', expectedService: 'sunshine-tool-manager', lane: 'platform' },
-  { name: 'Skill Manager', port: 8225, description: 'Skill 包管理与 Catalog', gatewayPath: '/health/skill-manager', expectedService: 'sunshine-skill-manager', lane: 'platform' },
+  { name: 'Tool Service', port: 8210, description: '工具注册与调用（SDK + MCP）', gatewayPath: '/health/tool-service', expectedService: 'sunshine-tool-service', lane: 'platform' },
+  { name: 'Resource Manager', port: 8240, description: '聚合管理（Skill / Agent / Prompt / Desensitize）', gatewayPath: '/health/resource-manager', expectedService: 'sunshine-resource-manager', lane: 'platform' },
   { name: 'Sandbox Service', port: 8226, description: 'Skills Docker 沙箱', gatewayPath: '/health/sandbox', expectedService: 'sunshine-sandbox-service', lane: 'platform' },
   { name: 'Workflow Manager', port: 8230, description: 'Workflow Studio DB / Catalog（4.13）', gatewayPath: '/health/workflow-manager', expectedService: 'sunshine-workflow-manager', lane: 'platform' },
-  { name: 'Agent Manager', port: 8235, description: '多智能体协作 Catalog / Admin', gatewayPath: '/health/agent-manager', expectedService: 'sunshine-agent-manager', lane: 'platform' },
   { name: 'LLM Gateway', port: 8300, description: '多厂商大模型路由', gatewayPath: '/health/llm-gateway', expectedService: 'sunshine-llm-gateway', lane: 'platform' },
   { name: 'RAG Service', port: 8400, description: 'Milvus 向量检索', gatewayPath: '/health/rag', expectedService: 'sunshine-rag', lane: 'platform' },
-  { name: 'Prompt Manager', port: 8500, description: '提示词模板管理', gatewayPath: '/health/prompt', expectedService: 'sunshine-prompt', lane: 'platform' },
-  { name: 'Desensitize', port: 8600, description: '数据脱敏引擎', gatewayPath: '/health/desensitize', expectedService: 'sunshine-desensitize', lane: 'platform' },
-  { name: 'OA', port: 8700, description: 'OA 模拟 / Tool App', gatewayPath: '/health/oa', expectedService: 'sunshine-oa', lane: 'domain' },
-  { name: 'Finance', port: 8710, description: '财务消息与审批 Mock', gatewayPath: '/health/finance', expectedService: 'sunshine-finance', lane: 'domain' },
-  { name: 'HR', port: 8720, description: '人事模拟 / Tool App（假期考勤）', gatewayPath: '/health/hr', expectedService: 'sunshine-hr', lane: 'domain' },
-  { name: 'MCP', port: 0, description: 'MCP 工具接入能力（经 tool-manager Catalog，无独立微服务）', lane: 'domain' },
+  { name: 'Biz Simulator', port: 8700, description: '业务模拟聚合（OA / Finance / HR）', gatewayPath: '/health/biz-simulator', expectedService: 'sunshine-biz-simulator', lane: 'domain' },
+  { name: 'MCP', port: 0, description: 'MCP 工具接入能力（经 tool-service Catalog，无独立微服务）', lane: 'domain' },
 ]
 
 export function countProbeable(defs: ServiceDef[]): number {
