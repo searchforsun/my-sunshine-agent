@@ -139,7 +139,7 @@ function onShowUpdate(next: boolean) {
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md, 10px);
   justify-content: space-between;
-  background: var(--n-color, #fff);
+  background: var(--n-color, var(--sun-black));
   color: var(--sun-text, #212121);
   font-size: var(--sun-font-base, 14px);
 }
@@ -183,7 +183,7 @@ function onShowUpdate(next: boolean) {
 .mode-menu {
   padding: 4px;
   border-radius: var(--radius-lg, 12px);
-  background: var(--n-color, #fff);
+  background: var(--n-color, var(--sun-black));
   box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
   border: 1px solid var(--sun-border, #e8e8e8);
   overflow: hidden;

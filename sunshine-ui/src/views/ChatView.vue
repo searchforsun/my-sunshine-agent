@@ -2382,7 +2382,7 @@ watch(
 .ws-project-menu {
   padding: 3px;
   border-radius: var(--radius-lg, 12px);
-  background: var(--n-color, #fff);
+  background: var(--n-color, var(--sun-black));
   box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
   border: 1px solid var(--sun-border, #e8e8e8);
   overflow: hidden;
@@ -2513,7 +2513,7 @@ watch(
 .git-dropdown-menu {
   padding: 3px;
   border-radius: var(--radius-lg, 12px);
-  background: var(--n-color, #fff);
+  background: var(--n-color, var(--sun-black));
   box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
   border: 1px solid var(--sun-border, #e8e8e8);
   overflow: hidden;

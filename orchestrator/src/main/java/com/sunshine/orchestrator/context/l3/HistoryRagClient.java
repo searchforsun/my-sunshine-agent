@@ -1,8 +1,6 @@
 package com.sunshine.orchestrator.context.l3;
 
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -22,18 +20,14 @@ import java.util.Map;
 @Component
 public class HistoryRagClient {
 
-    @Value("${rag.base-url:http://localhost:8400}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    public void init() {
-        this.webClient = WebClient.builder()
-                .baseUrl(baseUrl)
+    public HistoryRagClient(WebClient.Builder builder) {
+        this.webClient = builder
+                .baseUrl("http://sunshine-rag")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
                 .build();
-        log.info("[HistoryRagClient] baseUrl={}", baseUrl);
+        log.info("[HistoryRagClient] baseUrl=http://sunshine-rag");
     }
 
     public Mono<List<HistoryHit>> search(String userId, String tenantId, String query, int topK) {

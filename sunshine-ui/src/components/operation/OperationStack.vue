@@ -798,7 +798,7 @@ watch(
 
 .op-shimmer {
   --op-shimmer-base: var(--sun-text-muted);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 32%, white);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 32%, var(--sun-text));
   display: inline-block;
   max-width: 100%;
   background-image: linear-gradient(
@@ -821,7 +821,7 @@ watch(
 
 .timeline-summary .op-label.op-shimmer {
   --op-shimmer-base: var(--sun-text-secondary);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 32%, white);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 32%, var(--sun-text));
 }
 
 @keyframes op-text-shimmer {

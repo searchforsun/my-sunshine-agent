@@ -1,8 +1,6 @@
 package com.sunshine.bff.client;
 
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -19,18 +17,14 @@ import java.util.Map;
 @Component
 public class PromptManagerClient {
 
-    @Value("${resource-manager.base-url:http://localhost:8240}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder()
-                .baseUrl(baseUrl)
+    public PromptManagerClient(WebClient.Builder builder) {
+        this.webClient = builder
+                .baseUrl("http://sunshine-resource-manager")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
                 .build();
-        log.info("[BFF] PromptManager 客户端: baseUrl={}", baseUrl);
+        log.info("[BFF] PromptManager 客户端: baseUrl=http://sunshine-resource-manager");
     }
 
     public Mono<Map<String, Object>> listPrompts(String kind, Boolean enabled) {

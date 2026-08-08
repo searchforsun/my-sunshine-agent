@@ -2,9 +2,7 @@ package com.sunshine.orchestrator.client;
 
 import com.sunshine.common.core.result.R;
 import com.sunshine.common.tool.ToolCatalogEntry;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -22,15 +20,11 @@ public class ToolManagerClient {
     /** ReAct 工具路径：将异常转为模型可读文案；Workflow tool 节点须再判定并 fail */
     public static final String INVOKE_FAILURE_PREFIX = "工具调用失败:";
 
-    @Value("${tool-manager.base-url:http://localhost:8210}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder().baseUrl(baseUrl).build();
-        log.info("[ToolManagerClient] baseUrl={}", baseUrl);
+    public ToolManagerClient(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("http://sunshine-tool-service").build();
+        log.info("[ToolManagerClient] baseUrl=http://sunshine-tool-service");
     }
 
     public List<ToolCatalogEntry> fetchCatalog(String tenantId, boolean enabledOnly) {

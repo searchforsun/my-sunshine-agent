@@ -2,7 +2,6 @@ package com.sunshine.rag.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.rag.config.RagLlmProperties;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
@@ -21,15 +20,16 @@ import java.util.Map;
 public class LlmGatewayClient {
     private final RagLlmProperties llmProperties;
     private final ObjectMapper objectMapper;
-    private WebClient webClient;
+    private final WebClient webClient;
 
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder()
-                .baseUrl(llmProperties.getBaseUrl())
+    public LlmGatewayClient(RagLlmProperties llmProperties, ObjectMapper objectMapper, WebClient.Builder builder) {
+        this.llmProperties = llmProperties;
+        this.objectMapper = objectMapper;
+        this.webClient = builder
+                .baseUrl("http://sunshine-llm-gateway/v1")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
                 .build();
-        log.info("[RagLlmGatewayClient] baseUrl={}", llmProperties.getBaseUrl());
+        log.info("[RagLlmGatewayClient] baseUrl=http://sunshine-llm-gateway/v1");
     }
 
     public String complete(String model, String systemPrompt, String userContent) {

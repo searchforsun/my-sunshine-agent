@@ -3,9 +3,7 @@ package com.sunshine.orchestrator.client;
 import com.sunshine.common.core.result.R;
 import com.sunshine.orchestrator.catalog.AgentCatalogEntry;
 import com.sunshine.orchestrator.catalog.AgentCatalogIndexEntry;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -17,13 +15,11 @@ import java.util.Optional;
 @Slf4j
 @Component
 public class AgentCatalogClient {
-    @Value("${resource-manager.base-url:http://localhost:8240}")
-    private String baseUrl;
-    private WebClient webClient;
 
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder().baseUrl(baseUrl).build();
+    private final WebClient webClient;
+
+    public AgentCatalogClient(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("http://sunshine-resource-manager").build();
     }
 
     public List<AgentCatalogIndexEntry> fetchCatalogIndex(String tenantId) {

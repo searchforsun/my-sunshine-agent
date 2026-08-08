@@ -16,11 +16,11 @@
   --sun-text-secondary: #b4b4b4;
   --sun-text-muted: #8e8e8e;
 
-  /* Interactive accent — monochromatic */
-  --sun-accent: #ececec;
-  --sun-accent-hover: #ffffff;
-  --sun-accent-muted: rgba(255, 255, 255, 0.08);
-  --sun-accent-subtle: rgba(255, 255, 255, 0.04);
+  /* Interactive accent — 中灰（暗色模式下提供可辨识的按钮/交互色，避免直接反白） */
+  --sun-accent: #5a5a5a;
+  --sun-accent-hover: #6b6b6b;
+  --sun-accent-muted: rgba(255, 255, 255, 0.06);
+  --sun-accent-subtle: rgba(255, 255, 255, 0.03);
 
   /* Brand mark (neutral) */
   --brand-mark-bg: #212121;
@@ -71,7 +71,7 @@
   /* Composer */
   --composer-shadow: 0 0 0 1px var(--sun-border);
   --composer-shadow-focus: 0 0 0 1px var(--sun-border-light);
-  --btn-primary-text: #212121;
+  --btn-primary-text: #ececec;
 
   /* Transitions */
   --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);

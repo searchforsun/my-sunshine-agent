@@ -7,17 +7,6 @@
 server:
   port: 8001
 
-orchestrator:
-  base-url: http://localhost:8200
-auth-center:
-  base-url: http://localhost:8100
-resource-manager:
-  base-url: http://localhost:8240
-tool-manager:
-  base-url: http://localhost:8210
-workflow-manager:
-  base-url: http://localhost:8230
-
 logging:
   level:
     com.sunshine: debug

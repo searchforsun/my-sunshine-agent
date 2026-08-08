@@ -37,9 +37,6 @@ public class WorkspaceSandboxLifecycle {
     @Value("${sandbox.host-workspace-root:/var/lib/sunshine-sandbox}")
     private String hostWorkspaceRoot;
 
-    @Value("${auth-service.base-url:http://localhost:8100}")
-    private String authBaseUrl;
-
     public String ensureWorkspaceSession(String workspaceId, String userId, String tenantId) {
         WorkspaceSandboxBinding binding = store.find(tenantId, workspaceId).orElse(null);
         // 已有 binding 但 clone 失败残留 → 先重试 clone --mirror，避免分支下拉/会话一直拿不到代码
@@ -270,7 +267,7 @@ public class WorkspaceSandboxLifecycle {
 
     private Map<String, String> fetchGitCredentials(String userId, String host) {
         try {
-            WebClient client = webClientBuilder.baseUrl(authBaseUrl).build();
+            WebClient client = webClientBuilder.baseUrl("http://sunshine-auth").build();
             @SuppressWarnings("unchecked")
             var resp = (Map<String, Object>) client.get()
                     .uri(uriBuilder -> uriBuilder.path("/api/auth/git-credentials")

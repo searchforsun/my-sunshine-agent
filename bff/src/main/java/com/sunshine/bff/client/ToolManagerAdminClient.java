@@ -14,9 +14,7 @@ import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
 import com.sunshine.common.tool.admin.ToolSetPickerResponse;
 import com.sunshine.common.web.RemoteErrorMapper;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -32,18 +30,14 @@ import java.util.List;
 @Component
 public class ToolManagerAdminClient {
 
-    @Value("${tool-manager.base-url:http://localhost:8210}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder()
-                .baseUrl(baseUrl)
+    public ToolManagerAdminClient(WebClient.Builder builder) {
+        this.webClient = builder
+                .baseUrl("http://sunshine-tool-service")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(8 * 1024 * 1024))
                 .build();
-        log.info("[BFF] ToolManager Admin 客户端: baseUrl={}", baseUrl);
+        log.info("[BFF] ToolManager Admin 客户端: baseUrl=http://sunshine-tool-service");
     }
 
     public Mono<R<List<SdkApplicationView>>> listSdkApplications() {

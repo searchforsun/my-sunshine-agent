@@ -8,14 +8,14 @@ const naiveTheme = computed(() => isDark.value ? darkTheme : null)
 
 const darkOverrides: GlobalThemeOverrides = {
   common: {
-    primaryColor: '#ececec',
-    primaryColorHover: '#ffffff',
-    primaryColorPressed: '#b4b4b4',
-    primaryColorSuppl: '#ececec',
+    primaryColor: '#5a5a5a',
+    primaryColorHover: '#6b6b6b',
+    primaryColorPressed: '#4a4a4a',
+    primaryColorSuppl: '#5a5a5a',
     bodyColor: '#212121',
     cardColor: '#2f2f2f',
     modalColor: '#2f2f2f',
-    popoverColor: '#2f2f2f',
+    popoverColor: '#1a1a1a',
     inputColor: '#171717',
     borderColor: '#424242',
     dividerColor: '#424242',
@@ -41,10 +41,10 @@ const darkOverrides: GlobalThemeOverrides = {
     itemHeight: '40px',
   },
   Button: {
-    colorPrimary: '#ececec',
-    colorHoverPrimary: '#ffffff',
-    colorPressedPrimary: '#b4b4b4',
-    textColorPrimary: '#212121',
+    colorPrimary: '#5a5a5a',
+    colorHoverPrimary: '#6b6b6b',
+    colorPressedPrimary: '#4a4a4a',
+    textColorPrimary: '#ececec',
     borderRadiusMedium: '10px',
     borderRadiusSmall: '8px',
     colorError: '#f85149',
@@ -83,6 +83,15 @@ const darkOverrides: GlobalThemeOverrides = {
   Scrollbar: {
     color: '#525252',
     colorHover: '#737373',
+  },
+  Switch: {
+    railColorActive: '#b4b4b4',
+  },
+  Tabs: {
+    tabTextColor: '#8e8e8e',
+    tabTextColorActive: '#ececec',
+    tabTextColorHover: '#ececec',
+    barColor: '#ececec',
   },
 }
 

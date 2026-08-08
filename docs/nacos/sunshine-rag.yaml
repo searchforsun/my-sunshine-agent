@@ -54,7 +54,6 @@ rag:
     index: sunshine_rag_chunks
   desensitize:
     enabled: true
-    base-url: http://127.0.0.1:8600
     fail-on-error: true
   ingest:
     confidence-threshold: 0.65
@@ -113,7 +112,6 @@ rag:
       secret-key: minioadmin123
       bucket: sunshine-rag
   llm:
-    base-url: http://127.0.0.1:8300/v1
     api-key: ${LLM_GATEWAY_API_KEY:}
     default-model: deepseek-v4-flash
 

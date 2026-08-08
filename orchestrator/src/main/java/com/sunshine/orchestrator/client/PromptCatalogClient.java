@@ -3,9 +3,7 @@ package com.sunshine.orchestrator.client;
 import com.sunshine.common.core.result.R;
 import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -19,14 +17,10 @@ import java.util.List;
 @Component
 public class PromptCatalogClient {
 
-    @Value("${resource-manager.base-url:http://localhost:8240}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder().baseUrl(baseUrl).build();
+    public PromptCatalogClient(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("http://sunshine-resource-manager").build();
     }
 
     /**
@@ -39,7 +33,7 @@ public class PromptCatalogClient {
                 .bodyToMono(new ParameterizedTypeReference<R<CatalogPayload>>() {})
                 .block();
         if (body == null || body.getData() == null) {
-            throw new IllegalStateException("Prompt catalog empty response from " + baseUrl);
+            throw new IllegalStateException("Prompt catalog empty response from resource-manager");
         }
         CatalogPayload data = body.getData();
         List<PromptCatalogEntry> entries = data.entries() != null ? data.entries() : List.of();
