@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 /**
  * ReAct 写工具 HITL — 真实后端 E2E
- * 依赖 Gateway :8000 + orchestrator + tool-manager；Vite :5173 已启动
+ * 依赖 Gateway :8000 + orchestrator + tool-service；Vite :5173 已启动
  */
 const GW = process.env.GATEWAY_URL ?? 'http://localhost:8000'
 
