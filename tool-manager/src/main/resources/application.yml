@@ -1,13 +1,13 @@
-# sunshine-tool-manager — 配置入口
-# 业务配置唯一来源：Nacos（Data ID: sunshine-tool-manager.yaml）
-# 本地维护副本：docs/nacos/sunshine-tool-manager.yaml → scripts/sync_nacos.py 同步线上
+# sunshine-tool-service — 配置入口
+# 业务配置唯一来源：Nacos（Data ID: sunshine-tool-service.yaml）
+# 本地维护副本：docs/nacos/sunshine-tool-service.yaml → scripts/sync_nacos.py 同步线上
 
 spring:
   application:
-    name: sunshine-tool-manager
+    name: sunshine-tool-service
   config:
     import:
-      - optional:nacos:sunshine-tool-manager.yaml
+      - optional:nacos:sunshine-tool-service.yaml
   cloud:
     nacos:
       discovery:
