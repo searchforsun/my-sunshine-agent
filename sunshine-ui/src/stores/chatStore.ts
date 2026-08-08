@@ -47,9 +47,6 @@ export interface Conversation {
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
 const DEFAULT_CONV_TITLE = '新对话'
 
-/** 会话消息首屏 / 游标分页每页条数：AI 会话场景，一轮=提问+回复，10 条约最近 5 轮问答 */
-const MESSAGE_PAGE_SIZE = 10
-
 /** 每会话历史加载状态：hasMore 表示更早消息仍存在；loading 防并发 */
 const historyHasMore = new Map<string, boolean>()
 const historyLoading = new Set<string>()
@@ -249,10 +246,16 @@ export const useChatStore = defineStore('chat', () => {
     return initPromise
   }
 
+  /** 会话类型 → 消息分页条数：task 场景单轮工具调用量大，限制 5 条防溢出 */
+  function pageSize(convId: string): number {
+    const conv = conversations.value.find(c => c.id === convId)
+    return conv?.kind === 'task' ? 5 : 10
+  }
+
   async function loadDetail(id: string) {
     if (!isValidConversationId(id)) return
     try {
-      const page = await getConversationMessages(id, { limit: MESSAGE_PAGE_SIZE })
+      const page = await getConversationMessages(id, { limit: pageSize(id) })
       const conv = conversations.value.find(c => c.id === id)
       if (conv) {
         const apiMsgs = mapApiMessages(page.messages)
@@ -296,7 +299,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!Number.isFinite(minSeq)) return false
     historyLoading.add(id)
     try {
-      const page = await getConversationMessages(id, { beforeSeq: minSeq, limit: MESSAGE_PAGE_SIZE })
+      const page = await getConversationMessages(id, { beforeSeq: minSeq, limit: pageSize(id) })
       const byId = new Map(msgs.filter(m => m.id).map(m => [m.id!, m]))
       for (const m of page.messages) {
         if (m.id && !byId.has(m.id)) byId.set(m.id, mapApiMessages([m])[0])

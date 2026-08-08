@@ -13,7 +13,7 @@
   hitl    G8     approve_oa_task 写工具确认
   all     G1–G10
 
-环境变量: GATEWAY_URL, TOOL_MANAGER_URL, TOOL_INTEGRATION_TIMEOUT_SEC, TOOL_INTEGRATION_SKIP_CHAT
+环境变量: GATEWAY_URL, TOOL_MANAGER_URL（tool-service 基址）, TOOL_INTEGRATION_TIMEOUT_SEC, TOOL_INTEGRATION_SKIP_CHAT
 """
 from __future__ import annotations
 
@@ -37,13 +37,13 @@ TM_URL = os.environ.get("TOOL_MANAGER_URL", "http://127.0.0.1:8210").rstrip("/")
 TIMEOUT_SEC = int(os.environ.get("TOOL_INTEGRATION_TIMEOUT_SEC", "180"))
 SKIP_CHAT = os.environ.get("TOOL_INTEGRATION_SKIP_CHAT", "").lower() in ("1", "true", "yes")
 
-SDK_APPS = ("sunshine-finance", "sunshine-oa")
+SDK_APPS = ("sunshine-biz",)
 SDK_TOOL_IDS = (
-    "sdk__sunshine-finance__list_my_expenses",
-    "sdk__sunshine-finance__get_expense_detail",
-    "sdk__sunshine-finance__summarize_my_expenses",
-    "sdk__sunshine-oa__list_oa_tasks",
-    "sdk__sunshine-oa__approve_oa_task",
+    "sdk__sunshine-biz__list_my_expenses",
+    "sdk__sunshine-biz__get_expense_detail",
+    "sdk__sunshine-biz__summarize_my_expenses",
+    "sdk__sunshine-biz__list_oa_tasks",
+    "sdk__sunshine-biz__approve_oa_task",
 )
 FIN_LIST = SDK_TOOL_IDS[0]
 OA_LIST = SDK_TOOL_IDS[3]
@@ -79,9 +79,8 @@ def start_missing_services() -> None:
     from sunshine_lib import start_java_detached
 
     services = [
-        ("finance", "finance-service", "sunshine-finance", 8710),
-        ("oa", "oa-service", "sunshine-oa", 8700),
-        ("tool-manager", "tool-manager", "sunshine-tool-manager", 8210),
+        ("biz-simulator", "biz-simulator", "sunshine-biz-simulator", 8700),
+        ("tool-service", "tool-service", "sunshine-tool-service", 8210),
         ("orchestrator", "orchestrator", "sunshine-orchestrator", 8200),
         ("bff", "bff", "sunshine-bff", 8001),
         ("gateway", "gateway", "sunshine-gateway", 8000),
@@ -316,8 +315,8 @@ def run_g2_sdk_invoke_chat(headers: dict) -> dict:
 
 
 def run_g3_decouple() -> dict:
-    print("\n[G3] tool-manager 解耦（无 finance/oa HTTP client）")
-    tm_java = ROOT / "tool-manager" / "src" / "main" / "java"
+    print("\n[G3] tool-service 解耦（无旧 finance/oa HTTP client）")
+    tm_java = ROOT / "tool-service" / "src" / "main" / "java"
     forbidden_names = (
         "FinanceServiceClient",
         "OaServiceClient",
@@ -332,12 +331,12 @@ def run_g3_decouple() -> dict:
             if name in text:
                 hits.append(f"{path.name}:{name}")
     if hits:
-        raise AssertionError(f"tool-manager 仍含旧桥接: {hits[:5]}")
-    cmd = ["mvn", "-pl", "tool-manager", "-am", "compile", "-q"]
+        raise AssertionError(f"tool-service 仍含旧桥接: {hits[:5]}")
+    cmd = ["mvn", "-pl", "tool-service", "-am", "compile", "-q"]
     proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout)[-800:]
-        raise RuntimeError(f"tool-manager compile failed: {tail}")
+        raise RuntimeError(f"tool-service compile failed: {tail}")
     print("[OK] G3: 无旧 Handler/Client，compile PASS")
     return {"pass": True}
 
@@ -470,7 +469,7 @@ def run_g10_special_tools(headers: dict) -> dict:
     ids = {e.get("id") for e in entries}
     leaked = [t for t in SPECIAL_TOOL_IDS if t in ids]
     if leaked:
-        raise AssertionError(f"特殊工具不应出现在 tool-manager catalog: {leaked}")
+        raise AssertionError(f"特殊工具不应出现在 tool-service catalog: {leaked}")
     print(f"[OK] G10: {SPECIAL_TOOL_IDS} 不在 DB catalog")
     return {"pass": True}
 
@@ -522,7 +521,7 @@ def parse_args() -> argparse.Namespace:
         help="验收子套件",
     )
     p.add_argument("--gateway", default=GATEWAY_URL, help="Gateway 基址")
-    p.add_argument("--tool-manager", default=TM_URL, help="tool-manager 基址（catalog 直连）")
+    p.add_argument("--tool-service", default=TM_URL, help="tool-service 基址（catalog 直连）")
     p.add_argument("--start-missing", action="store_true", help="启动缺失的核心服务")
     return p.parse_args()
 
@@ -531,14 +530,14 @@ def main() -> int:
     args = parse_args()
     global GATEWAY_URL, TM_URL
     GATEWAY_URL = args.gateway.rstrip("/")
-    TM_URL = args.tool_manager.rstrip("/")
+    TM_URL = args.tool_service.rstrip("/")
 
     print(f"=== Tool Integration Live 4.8 ===\nsuite={args.suite} gateway={GATEWAY_URL}")
 
     if args.start_missing:
         start_missing_services()
 
-    required = (8000, 8001, 8200, 8210, 8710, 8700) if args.suite in ("sdk", "hitl", "toolset", "all") else (8000, 8001, 8210)
+    required = (8000, 8001, 8200, 8210, 8700) if args.suite in ("sdk", "hitl", "toolset", "all") else (8000, 8001, 8210)
     if args.suite in ("mcp", "all"):
         required = tuple(set(required + (8000, 8001, 8210)))
     if not services_ready(required):

@@ -26,7 +26,7 @@ public class OrchestratorClient {
     public OrchestratorClient(WebClient.Builder builder) {
         this.webClient = builder
                 .baseUrl("http://sunshine-orchestrator")
-                .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024)) // chat 10条 / task 5条上限
                 .build();
         log.info("[BFF] Orchestrator 客户端: baseUrl=http://sunshine-orchestrator");
     }

@@ -71,7 +71,7 @@ public class McpJsonRpcClient {
 
     private void initialize(McpTransport transport) {
         Map<String, Object> clientInfo = Map.of(
-                "name", "sunshine-tool-manager",
+                "name", "sunshine-tool-service",
                 "version", "1.0.0");
         Map<String, Object> params = Map.of(
                 "protocolVersion", PROTOCOL_VERSION,

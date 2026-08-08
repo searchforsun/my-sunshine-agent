@@ -57,7 +57,7 @@ def start_services() -> None:
     from sunshine_lib import start_java_detached
 
     services = [
-        ("tool-manager", "tool-manager", "sunshine-tool-manager", 8210),
+        ("tool-service", "tool-service", "sunshine-tool-service", 8210),
         ("orchestrator", "orchestrator", "sunshine-orchestrator", 8200),
         ("bff", "bff", "sunshine-bff", 8001),
         ("gateway", "gateway", "sunshine-gateway", 8000),
@@ -78,7 +78,7 @@ def restart_hitl_services() -> None:
     from sunshine_lib import start_java_detached, stop_listening_port
 
     for port, name, module, artifact in [
-        (8210, "tool-manager", "tool-manager", "sunshine-tool-manager"),
+        (8210, "tool-service", "tool-service", "sunshine-tool-service"),
         (8200, "orchestrator", "orchestrator", "sunshine-orchestrator"),
         (8001, "bff", "bff", "sunshine-bff"),
     ]:

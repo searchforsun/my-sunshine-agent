@@ -14,7 +14,7 @@
 | `sunshine-llm-gateway.yaml` | LLM Gateway |
 | `sunshine-rag.yaml` | RAG Service |
 | `sunshine-finance.yaml` | Finance Service |
-| `sunshine-tool-manager.yaml` | Tool Manager |
+| `sunshine-tool-service.yaml` | Tool Service |
 | `sunshine-desensitize.yaml` | Desensitize |
 | `sunshine-prompt.yaml` | Prompt Manager |
 

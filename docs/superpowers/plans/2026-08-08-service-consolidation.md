@@ -1,6 +1,6 @@
 # 服务合并实施方案
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 将 8 个独立微服务合并为 3 个聚合服务，进程/端口/配置/库数量从 8 减至 3。
 
@@ -31,7 +31,7 @@
 **Interfaces:**
 - Produces: `ResourceManagerApplication` — `@SpringBootApplication(scanBasePackages = "com.sunshine")`，合并 4 服务的所有 Spring Bean
 
-- [ ] **Step 1: 创建 resource-manager/pom.xml**
+- [x] **Step 1: 创建 resource-manager/pom.xml**
 
 合并 skill/agent/prompt/desensitize 四个服务的依赖。关键依赖：
 
@@ -116,7 +116,7 @@
 </project>
 ```
 
-- [ ] **Step 2: 创建 ResourceManagerApplication.java**
+- [x] **Step 2: 创建 ResourceManagerApplication.java**
 
 ```java
 package com.sunshine.resource;
@@ -132,7 +132,7 @@ public class ResourceManagerApplication {
 }
 ```
 
-- [ ] **Step 3: 创建 application.yml（最小配置）**
+- [x] **Step 3: 创建 application.yml（最小配置）**
 
 ```yaml
 server:
@@ -154,7 +154,7 @@ spring:
       - nacos:sunshine-resource-manager.yaml
 ```
 
-- [ ] **Step 4: 验证模块骨架编译**
+- [x] **Step 4: 验证模块骨架编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am -q
@@ -162,7 +162,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am 
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add resource-manager/
@@ -181,14 +181,14 @@ git commit -m "feat: 创建 resource-manager 模块骨架（端口 8240）"
 - Consumes: `ResourceManagerApplication`（scanBasePackages="com.sunshine" 自动扫描 `com.sunshine.skill`）
 - Produces: 原有端点 `/api/skills/**` 不变
 
-- [ ] **Step 1: 复制 skill-manager 源码**
+- [x] **Step 1: 复制 skill-manager 源码**
 
 ```bash
 cp -r /usr/local/gitproj/my-sunshine-agent/skill-manager/src/main/java/com/sunshine/skill \
       /usr/local/gitproj/my-sunshine-agent/resource-manager/src/main/java/com/sunshine/skill
 ```
 
-- [ ] **Step 2: 复制 skill-manager 资源文件（如有 mapper XML）**
+- [x] **Step 2: 复制 skill-manager 资源文件（如有 mapper XML）**
 
 ```bash
 # 检查是否有 mapper XML 或其他资源文件
@@ -196,7 +196,7 @@ ls /usr/local/gitproj/my-sunshine-agent/skill-manager/src/main/resources/
 # 如有，复制非 application.yml 的文件到 resource-manager
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am -q
@@ -204,7 +204,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am 
 
 Expected: BUILD SUCCESS（skill-manager 代码在新模块中成功编译）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add resource-manager/src/main/java/com/sunshine/skill/
@@ -218,14 +218,14 @@ git commit -m "feat: 迁移 skill-manager 代码到 resource-manager"
 **Files:**
 - Copy: `agent-manager/src/main/java/com/sunshine/agent/` → `resource-manager/src/main/java/com/sunshine/agent/`（全量）
 
-- [ ] **Step 1: 复制 agent-manager 源码**
+- [x] **Step 1: 复制 agent-manager 源码**
 
 ```bash
 cp -r /usr/local/gitproj/my-sunshine-agent/agent-manager/src/main/java/com/sunshine/agent \
       /usr/local/gitproj/my-sunshine-agent/resource-manager/src/main/java/com/sunshine/agent
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am -q
@@ -233,7 +233,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am 
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add resource-manager/src/main/java/com/sunshine/agent/
@@ -248,21 +248,21 @@ git commit -m "feat: 迁移 agent-manager 代码到 resource-manager"
 - Copy: `prompt-manager/src/main/java/com/sunshine/prompt/` → `resource-manager/src/main/java/com/sunshine/prompt/`（全量）
 - Copy: prompt-manager 资源文件（如有 mapper XML）
 
-- [ ] **Step 1: 复制 prompt-manager 源码**
+- [x] **Step 1: 复制 prompt-manager 源码**
 
 ```bash
 cp -r /usr/local/gitproj/my-sunshine-agent/prompt-manager/src/main/java/com/sunshine/prompt \
       /usr/local/gitproj/my-sunshine-agent/resource-manager/src/main/java/com/sunshine/prompt
 ```
 
-- [ ] **Step 2: 复制 prompt-manager 资源文件**
+- [x] **Step 2: 复制 prompt-manager 资源文件**
 
 ```bash
 # 检查并复制非 application.yml 的资源文件
 ls /usr/local/gitproj/my-sunshine-agent/prompt-manager/src/main/resources/
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am -q
@@ -270,7 +270,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am 
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add resource-manager/src/main/java/com/sunshine/prompt/
@@ -284,14 +284,14 @@ git commit -m "feat: 迁移 prompt-manager 代码到 resource-manager"
 **Files:**
 - Copy: `desensitize/src/main/java/com/sunshine/desensitize/` → `resource-manager/src/main/java/com/sunshine/desensitize/`（全量）
 
-- [ ] **Step 1: 复制 desensitize 源码**
+- [x] **Step 1: 复制 desensitize 源码**
 
 ```bash
 cp -r /usr/local/gitproj/my-sunshine-agent/desensitize/src/main/java/com/sunshine/desensitize \
       /usr/local/gitproj/my-sunshine-agent/resource-manager/src/main/java/com/sunshine/desensitize
 ```
 
-- [ ] **Step 2: 最终验证 resource-manager 全量编译**
+- [x] **Step 2: 最终验证 resource-manager 全量编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am -q
@@ -299,7 +299,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl resource-manager -am 
 
 Expected: BUILD SUCCESS（4 服务全部代码在新模块中成功编译）
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add resource-manager/src/main/java/com/sunshine/desensitize/
@@ -317,7 +317,7 @@ git commit -m "feat: 迁移 desensitize 代码到 resource-manager，4 服务聚
 **Interfaces:**
 - Produces: `sunshine_resource` 数据库，含 skill_*/agent_*/prompt_* 全部表结构与种子数据
 
-- [ ] **Step 1: 创建合并 SQL 文件**
+- [x] **Step 1: 创建合并 SQL 文件**
 
 读取 `12-sunshine-skill-manager.sql`、`15-sunshine-agent-manager.sql`、`17-sunshine-prompt-manager.sql`，将 `USE sunshine_skill/agent/prompt` 替换为 `USE sunshine_resource`，合并为一个文件 `19-sunshine-resource.sql`。
 
@@ -338,7 +338,7 @@ sed '1,/^USE sunshine_prompt;/d' docker/mysql/init/17-sunshine-prompt-manager.sq
 
 > 注意：表已有 `skill_`/`agent_`/`prompt_` 前缀，无命名冲突。
 
-- [ ] **Step 2: 更新 01-init-databases.sql**
+- [x] **Step 2: 更新 01-init-databases.sql**
 
 ```sql
 -- 替换原有 3 行：
@@ -349,7 +349,7 @@ sed '1,/^USE sunshine_prompt;/d' docker/mysql/init/17-sunshine-prompt-manager.sq
 CREATE DATABASE IF NOT EXISTS sunshine_resource DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docker/mysql/init/19-sunshine-resource.sql docker/mysql/init/01-init-databases.sql
@@ -365,7 +365,7 @@ git commit -m "feat: 合并 sunshine_skill/agent/prompt 为 sunshine_resource �
 - Create: `biz-simulator/src/main/java/com/sunshine/BizSimulatorApplication.java`
 - Create: `biz-simulator/src/main/resources/application.yml`
 
-- [ ] **Step 1: 创建 biz-simulator/pom.xml**
+- [x] **Step 1: 创建 biz-simulator/pom.xml**
 
 依赖与原三服务完全相同，关键配置：
 
@@ -435,7 +435,7 @@ git commit -m "feat: 合并 sunshine_skill/agent/prompt 为 sunshine_resource �
 </project>
 ```
 
-- [ ] **Step 2: 创建 BizSimulatorApplication.java**
+- [x] **Step 2: 创建 BizSimulatorApplication.java**
 
 ```java
 package com.sunshine;
@@ -451,7 +451,7 @@ public class BizSimulatorApplication {
 }
 ```
 
-- [ ] **Step 3: 创建 application.yml**
+- [x] **Step 3: 创建 application.yml**
 
 ```yaml
 server:
@@ -482,7 +482,7 @@ sunshine:
 
 关键：`app-id` 统一为 `sunshine-biz`，废弃旧的 `sunshine-oa`/`sunshine-finance`/`sunshine-hr`。
 
-- [ ] **Step 4: 验证编译**
+- [x] **Step 4: 验证编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl biz-simulator -am -q
@@ -490,7 +490,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl biz-simulator -am -q
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add biz-simulator/
@@ -507,28 +507,28 @@ git commit -m "feat: 创建 biz-simulator 模块骨架（端口 8700，统一 ap
 - Copy: `hr-biz-service/src/main/java/com/sunshine/hr/` → `biz-simulator/src/main/java/com/sunshine/hr/`
 - Modify: 三个 `*SunshineTools.java` 类的 `appId` 配置（若类内有硬编码 `sunshine-oa`/`sunshine-finance`/`sunshine-hr` 则需改为 `sunshine-biz`）
 
-- [ ] **Step 1: 复制 oa-service 源码**
+- [x] **Step 1: 复制 oa-service 源码**
 
 ```bash
 cp -r /usr/local/gitproj/my-sunshine-agent/oa-service/src/main/java/com/sunshine/oa \
       /usr/local/gitproj/my-sunshine-agent/biz-simulator/src/main/java/com/sunshine/oa
 ```
 
-- [ ] **Step 2: 复制 finance-service 源码**
+- [x] **Step 2: 复制 finance-service 源码**
 
 ```bash
 cp -r /usr/local/gitproj/my-sunshine-agent/finance-service/src/main/java/com/sunshine/finance \
       /usr/local/gitproj/my-sunshine-agent/biz-simulator/src/main/java/com/sunshine/finance
 ```
 
-- [ ] **Step 3: 复制 hr-biz-service 源码**
+- [x] **Step 3: 复制 hr-biz-service 源码**
 
 ```bash
 cp -r /usr/local/gitproj/my-sunshine-agent/hr-biz-service/src/main/java/com/sunshine/hr \
       /usr/local/gitproj/my-sunshine-agent/biz-simulator/src/main/java/com/sunshine/hr
 ```
 
-- [ ] **Step 4: 检查并修改 *SunshineTools 类中的硬编码 appId**
+- [x] **Step 4: 检查并修改 *SunshineTools 类中的硬编码 appId**
 
 搜索三个工具类中是否有硬编码 `sunshine-oa`/`sunshine-finance`/`sunshine-hr`：
 
@@ -538,7 +538,7 @@ rg -n "sunshine-(oa|finance|hr)" biz-simulator/src/main/java/
 
 若找到，改为 `sunshine-biz`。已知这些服务的 `appId` 通过 `sunshine.tools.app-id` 配置注入，类内通常通过 `@Value("${sunshine.tools.app-id}")` 注入，已通过 Task 7 的 `application.yml` 统一为 `sunshine-biz`，大概率无需改动代码。
 
-- [ ] **Step 5: 验证编译**
+- [x] **Step 5: 验证编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl biz-simulator -am -q
@@ -546,7 +546,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl biz-simulator -am -q
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add biz-simulator/src/main/java/com/sunshine/oa/ biz-simulator/src/main/java/com/sunshine/finance/ biz-simulator/src/main/java/com/sunshine/hr/
@@ -563,13 +563,13 @@ git commit -m "feat: 迁移 oa/finance/hr 代码到 biz-simulator"
 
 > 代码零改动。`tool-manager` 模块目录、包名、端口 8210、`sunshine_tool` 库均不变。仅 Nacos 注册名和配置 Data ID 更名。
 
-- [ ] **Step 1: 重命名 Nacos 配置文件**
+- [x] **Step 1: 重命名 Nacos 配置文件**
 
 ```bash
 mv docs/nacos/sunshine-tool-manager.yaml docs/nacos/sunshine-tool-service.yaml
 ```
 
-- [ ] **Step 2: 更新文件内的 application name**
+- [x] **Step 2: 更新文件内的 application name**
 
 ```yaml
 # 将 spring.application.name 从 sunshine-tool-manager 改为 sunshine-tool-service
@@ -580,7 +580,7 @@ spring:
 
 同时检查文件中是否有其他引用 `sunshine-tool-manager` 的地方（如日志配置、健康检查路径等），如有一并更名。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 > `sync_nacos.py` 的完整更新见 Task 11（含所有 7 个旧文件名的替换）。
 
@@ -602,7 +602,7 @@ git commit -m "refactor: tool-manager 更名 tool-service（仅 Nacos 服务名�
 
 **Catalog ID 映射规则**：`sdk__sunshine-{oa|finance|hr}__*` → `sdk__sunshine-biz__*`
 
-- [ ] **Step 1: 更新 19-sunshine-resource.sql 中的 agent tools_json**
+- [x] **Step 1: 更新 19-sunshine-resource.sql 中的 agent tools_json**
 
 在 `19-sunshine-resource.sql` 中查找并替换所有旧 Catalog ID：
 
@@ -627,7 +627,7 @@ sed -i 's/sdk__sunshine-finance__/sdk__sunshine-biz__/g' docker/mysql/init/19-su
 sed -i 's/sdk__sunshine-hr__/sdk__sunshine-biz__/g' docker/mysql/init/19-sunshine-resource.sql
 ```
 
-- [ ] **Step 2: 更新 13-sunshine-workflow-manager.sql**
+- [x] **Step 2: 更新 13-sunshine-workflow-manager.sql**
 
 workflow plan_json 中所有 tool 节点的 `params.tool` 和 `tools` 参数包含旧 Catalog ID：
 
@@ -639,7 +639,7 @@ sed -i 's/sdk__sunshine-hr__/sdk__sunshine-biz__/g' docker/mysql/init/13-sunshin
 
 影响的 workflow：`finance-list`、`finance-smart`、`finance-summary`、`knowledge-loop`、`hr-leave-assist`、`expense-compliance`、`oa-task-assist`、`expense-detail-query`、`expense-status-filter`、`expense-amount-check`。
 
-- [ ] **Step 3: 更新 12-sunshine-skill-manager.sql（如有引用）**
+- [x] **Step 3: 更新 12-sunshine-skill-manager.sql（如有引用）**
 
 ```bash
 rg -n "sdk__sunshine-(oa|finance|hr)" docker/mysql/init/12-sunshine-skill-manager.sql
@@ -647,7 +647,7 @@ rg -n "sdk__sunshine-(oa|finance|hr)" docker/mysql/init/12-sunshine-skill-manage
 
 如有匹配，同样 sed 替换。已知 `12-sunshine-skill-manager.sql` 当前仅含 DDL，无种子数据引用，大概率无需改动。
 
-- [ ] **Step 4: 更新 16-sunshine-tool-manager.sql 的 sdk_application**
+- [x] **Step 4: 更新 16-sunshine-tool-manager.sql 的 sdk_application**
 
 ```sql
 -- 原 3 条记录：
@@ -662,7 +662,7 @@ INSERT INTO sdk_application (id, nacos_service, display_name, tenant_id, status)
 
 删除旧的 3 条 INSERT，替换为新的 1 条。
 
-- [ ] **Step 5: 验证所有 SQL 文件中不再有旧 ID**
+- [x] **Step 5: 验证所有 SQL 文件中不再有旧 ID**
 
 ```bash
 rg -n "sdk__sunshine-(oa|finance|hr)" docker/mysql/init/
@@ -670,7 +670,7 @@ rg -n "sdk__sunshine-(oa|finance|hr)" docker/mysql/init/
 
 Expected: 无匹配结果。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docker/mysql/init/
@@ -685,7 +685,7 @@ git commit -m "feat: 更新种子 SQL Catalog ID（sunshine-{oa|finance|hr} → 
 - Create: `docs/nacos/sunshine-resource-manager.yaml`（合并 4 份旧配置）
 - Create: `docs/nacos/sunshine-biz-simulator.yaml`（合并 3 份旧配置）
 
-- [ ] **Step 1: 创建 sunshine-resource-manager.yaml**
+- [x] **Step 1: 创建 sunshine-resource-manager.yaml**
 
 合并 `sunshine-skill-manager.yaml`、`sunshine-agent-manager.yaml`、`sunshine-prompt.yaml`、`sunshine-desensitize.yaml`。关键点：数据库 url 统一为 `sunshine_resource`；skill-manager 独有的 MinIO 配置保留；desensitize 无 DB，仅保留 `desensitize.rules`。
 
@@ -748,7 +748,7 @@ logging:
 
 > agent-manager 和 prompt-manager 原有配置无特殊项（仅端口+数据源），已统一为 `sunshine_resource` 数据源。各子模块 Controller 路径不变（`/api/skills/**`、`/api/agents/**`、`/api/prompts/**`、`/api/desensitize/**`），无需额外路由配置。
 
-- [ ] **Step 2: 创建 sunshine-biz-simulator.yaml**
+- [x] **Step 2: 创建 sunshine-biz-simulator.yaml**
 
 合并 `sunshine-oa.yaml`、`sunshine-finance.yaml`、`sunshine-hr.yaml`。三服务已共享 `sunshine_biz` 库（时区 `Asia/Shanghai`），数据库配置只需一份。
 
@@ -783,7 +783,7 @@ logging:
     com.sunshine: debug
 ```
 
-- [ ] **Step 3: 更新 sync_nacos.py 的 DEFAULT_DATA_IDS**
+- [x] **Step 3: 更新 sync_nacos.py 的 DEFAULT_DATA_IDS**
 
 `scripts/sync_nacos.py` 的 `DEFAULT_DATA_IDS` 列表（第 22–40 行）引用了全部旧文件名，需替换：
 
@@ -806,7 +806,7 @@ DEFAULT_DATA_IDS = [
 
 删除 7 行旧文件名：`sunshine-finance.yaml`、`sunshine-oa.yaml`、`sunshine-hr.yaml`、`sunshine-tool-manager.yaml`、`sunshine-skill-manager.yaml`、`sunshine-agent-manager.yaml`、`sunshine-desensitize.yaml`、`sunshine-prompt.yaml`。新增 2 行：`sunshine-biz-simulator.yaml`、`sunshine-resource-manager.yaml`。更名 1 行：`sunshine-tool-service.yaml`。
 
-- [ ] **Step 4: 删除旧的 7 个 Nacos 配置文件**
+- [x] **Step 4: 删除旧的 7 个 Nacos 配置文件**
 
 ```bash
 git rm docs/nacos/sunshine-skill-manager.yaml
@@ -820,7 +820,7 @@ git rm docs/nacos/sunshine-hr.yaml
 
 > `sunshine-tool-service.yaml` 已在 Task 9 处理（从 `sunshine-tool-manager.yaml` 重命名而来）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/nacos/sunshine-resource-manager.yaml docs/nacos/sunshine-biz-simulator.yaml scripts/sync_nacos.py
@@ -834,7 +834,7 @@ git commit -m "feat: 创建 resource-manager 和 biz-simulator Nacos 配置，�
 **Files:**
 - Modify: `docs/nacos/sunshine-orchestrator.yaml`（4 个管理 Client 的 base-url 统一指向 8240）
 
-- [ ] **Step 1: 更新 4 个管理类 base-url**
+- [x] **Step 1: 更新 4 个管理类 base-url**
 
 ```yaml
 # 原值：
@@ -859,7 +859,7 @@ resource-manager:
 
 `ToolManagerClient` 不变（仍指向 tool-service 8210）。
 
-- [ ] **Step 2: 同步更新 sunshine-orchestrator.yaml Nacos 配置**
+- [x] **Step 2: 同步更新 sunshine-orchestrator.yaml Nacos 配置**
 
 ```yaml
 resource-manager:
@@ -876,13 +876,13 @@ tool-manager:
 
 > 注意：`tool-manager.base-url` 的 key 保持不变（仅 Nacos 服务名改为 `sunshine-tool-service`，配置 key 暂不改动以避免代码变更）。
 
-- [ ] **Step 3: 验证 orchestrator 编译**
+- [x] **Step 3: 验证 orchestrator 编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl orchestrator -am -q
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/nacos/sunshine-orchestrator.yaml orchestrator/src/main/java/com/sunshine/orchestrator/client/
@@ -897,7 +897,7 @@ git commit -m "feat: orchestrator 管理类 Client base-url 统一指向 resourc
 - Modify: `docs/nacos/sunshine-bff.yaml`（3 个管理 Client 的 base-url 统一指向 8240）
 - Modify: BFF 3 个客户端类的 `@Value` 注解
 
-- [ ] **Step 1: 更新 BFF 客户端 `@Value` 注解**
+- [x] **Step 1: 更新 BFF 客户端 `@Value` 注解**
 
 - `SkillManagerClient.java`：`@Value("${skill-manager.base-url:http://localhost:8225}")` → `@Value("${resource-manager.base-url:http://localhost:8240}")`
 - `AgentManagerClient.java`：`@Value("${agent-manager.base-url:http://localhost:8235}")` → `@Value("${resource-manager.base-url:http://localhost:8240}")`
@@ -905,7 +905,7 @@ git commit -m "feat: orchestrator 管理类 Client base-url 统一指向 resourc
 
 `ToolManagerAdminClient` 不变（仍指向 tool-service 8210）。
 
-- [ ] **Step 2: 更新 sunshine-bff.yaml**
+- [x] **Step 2: 更新 sunshine-bff.yaml**
 
 ```yaml
 resource-manager:
@@ -916,13 +916,13 @@ resource-manager:
 # prompt-manager.base-url: http://localhost:8500
 ```
 
-- [ ] **Step 3: 验证 BFF 编译**
+- [x] **Step 3: 验证 BFF 编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -pl bff -am -q
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/nacos/sunshine-bff.yaml bff/src/main/java/com/sunshine/bff/client/
@@ -936,7 +936,7 @@ git commit -m "feat: BFF 管理类 Client base-url 统一指向 resource-manager
 **Files:**
 - Modify: `docs/nacos/sunshine-gateway.yaml`（健康检查路由 8→3）
 
-- [ ] **Step 1: 替换 4 条管理类健康路由为 1 条**
+- [x] **Step 1: 替换 4 条管理类健康路由为 1 条**
 
 ```yaml
 # 删除：
@@ -958,7 +958,7 @@ git commit -m "feat: BFF 管理类 Client base-url 统一指向 resource-manager
     - RewritePath=/health/resource-manager, /health
 ```
 
-- [ ] **Step 2: 替换 3 条业务模拟健康路由为 1 条**
+- [x] **Step 2: 替换 3 条业务模拟健康路由为 1 条**
 
 ```yaml
 # 删除：
@@ -978,7 +978,7 @@ git commit -m "feat: BFF 管理类 Client base-url 统一指向 resource-manager
     - RewritePath=/health/biz-simulator, /health
 ```
 
-- [ ] **Step 3: 更新 tool-manager 健康路由的 Nacos 服务名**
+- [x] **Step 3: 更新 tool-manager 健康路由的 Nacos 服务名**
 
 ```yaml
 # health-tool-manager
@@ -991,7 +991,7 @@ git commit -m "feat: BFF 管理类 Client base-url 统一指向 resource-manager
     - RewritePath=/health/tool-service, /health
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/nacos/sunshine-gateway.yaml
@@ -1005,7 +1005,7 @@ git commit -m "feat: Gateway 健康路由管理类 4→1、业务模拟 3→1、
 **Files:**
 - Modify: `scripts/start.py`（服务条目 16 → 13）
 
-- [ ] **Step 1: 更新 `SERVICES` 列表**
+- [x] **Step 1: 更新 `SERVICES` 列表**
 
 ```python
 # 删除 7 个旧条目：
@@ -1027,13 +1027,13 @@ git commit -m "feat: Gateway 健康路由管理类 4→1、业务模拟 3→1、
 
 实际修改结构：`SERVICES` 列表中每个条目为 `(service_key, module_dir, artifact_id, port)`。需删除 7 个旧条目，新增 2 个新条目，tool-manager 条目的 `service_key` 改为 `tool-service`。
 
-- [ ] **Step 2: 验证 start.py 语法**
+- [x] **Step 2: 验证 start.py 语法**
 
 ```bash
 python3 -c "import py_compile; py_compile.compile('scripts/start.py', doraise=True)"
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add scripts/start.py
@@ -1047,7 +1047,7 @@ git commit -m "feat: start.py 服务条目 16→13（管理类 4→1、业务模
 **Files:**
 - Modify: `pom.xml`（`<modules>` 列表）
 
-- [ ] **Step 1: 替换模块声明**
+- [x] **Step 1: 替换模块声明**
 
 ```xml
 <!-- 删除 7 个旧模块 -->
@@ -1064,7 +1064,7 @@ git commit -m "feat: start.py 服务条目 16→13（管理类 4→1、业务模
 <module>biz-simulator</module>
 ```
 
-- [ ] **Step 2: 验证全量编译**
+- [x] **Step 2: 验证全量编译**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -q
@@ -1072,7 +1072,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -q
 
 Expected: BUILD SUCCESS（全部 14 个模块编译通过）
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add pom.xml
@@ -1087,7 +1087,7 @@ git commit -m "feat: 根 pom.xml 模块列表更新（7 旧→2 新）"
 - Modify: `CLAUDE.md`（服务端口表）
 - Modify: `docs/implementation-plan.md`（如有相关条目）
 
-- [ ] **Step 1: 更新 CLAUDE.md 服务端口表**
+- [x] **Step 1: 更新 CLAUDE.md 服务端口表**
 
 ```markdown
 | 服务 | 端口 | 说明 |
@@ -1099,7 +1099,7 @@ git commit -m "feat: 根 pom.xml 模块列表更新（7 旧→2 新）"
 
 删除旧表中的 `skill-manager`/`agent-manager`/`prompt-manager`/`desensitize`/`oa-service`/`finance-service`/`hr-biz-service` 行，`tool-manager` 行改名 `tool-service`。
 
-- [ ] **Step 2: 更新 CLAUDE.md 中涉及旧服务名的引用**
+- [x] **Step 2: 更新 CLAUDE.md 中涉及旧服务名的引用**
 
 搜索并替换：
 ```bash
@@ -1111,7 +1111,7 @@ rg -n "tool-manager|skill-manager|agent-manager|prompt-manager|desensitize|oa-se
 - 管理类 4 服务 → `resource-manager`
 - 业务模拟 3 服务 → `biz-simulator`
 
-- [ ] **Step 3: 同步更新 implementation-plan.md**
+- [x] **Step 3: 同步更新 implementation-plan.md**
 
 ```bash
 rg -n "tool-manager|skill-manager|agent-manager" docs/implementation-plan.md
@@ -1119,7 +1119,7 @@ rg -n "tool-manager|skill-manager|agent-manager" docs/implementation-plan.md
 
 如有引用，同步更新。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add CLAUDE.md docs/implementation-plan.md
@@ -1133,7 +1133,7 @@ git commit -m "docs: 更新 CLAUDE.md 服务端口表，反映合并后服务布
 **Files:**
 - Delete: `skill-manager/`、`agent-manager/`、`prompt-manager/`、`desensitize/`、`oa-service/`、`finance-service/`、`hr-biz-service/`
 
-- [ ] **Step 1: 删除旧模块目录**
+- [x] **Step 1: 删除旧模块目录**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent
@@ -1146,7 +1146,7 @@ git rm -r finance-service/
 git rm -r hr-biz-service/
 ```
 
-- [ ] **Step 2: 删除旧的 MySQL 种子 SQL（12/15/17）**
+- [x] **Step 2: 删除旧的 MySQL 种子 SQL（12/15/17）**
 
 ```bash
 # 这些已被 19-sunshine-resource.sql 替代
@@ -1155,7 +1155,7 @@ git rm docker/mysql/init/15-sunshine-agent-manager.sql
 git rm docker/mysql/init/17-sunshine-prompt-manager.sql
 ```
 
-- [ ] **Step 3: 验证全量编译仍然通过**
+- [x] **Step 3: 验证全量编译仍然通过**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && mvn compile -q
@@ -1163,7 +1163,7 @@ cd /usr/local/gitproj/my-sunshine-agent && mvn compile -q
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
@@ -1178,7 +1178,7 @@ git commit -m "chore: 删除旧模块目录和旧种子 SQL（7 服务 + 3 SQL�
 - Execute: `scripts/sync_nacos.py`（同步 Nacos 配置）
 - Execute: 验收脚本（回归验证）
 
-- [ ] **Step 1: 同步 Nacos 配置**
+- [x] **Step 1: 同步 Nacos 配置**
 
 ```bash
 cd /usr/local/gitproj/my-sunshine-agent && python scripts/sync_nacos.py
@@ -1186,7 +1186,7 @@ cd /usr/local/gitproj/my-sunshine-agent && python scripts/sync_nacos.py
 
 Expected: 成功同步新配置到 Nacos。
 
-- [ ] **Step 2: 重建数据库**
+- [x] **Step 2: 重建数据库**
 
 ```bash
 # 重新运行 init SQL（需 MySQL 容器运行）
@@ -1194,7 +1194,7 @@ docker exec -i sunshine-mysql mysql -uroot -p<password> < docker/mysql/init/01-i
 docker exec -i sunshine-mysql mysql -uroot -p<password> < docker/mysql/init/19-sunshine-resource.sql
 ```
 
-- [ ] **Step 3: 重新打包并启动全链路**
+- [x] **Step 3: 重新打包并启动全链路**
 
 ```bash
 python scripts/start.py --restart
@@ -1202,7 +1202,7 @@ python scripts/start.py --restart
 
 Expected: 所有 13 个服务启动成功。
 
-- [ ] **Step 4: 运行验收脚本**
+- [x] **Step 4: 运行验收脚本**
 
 ```bash
 # 工具调用（tool-service 独立验证）
@@ -1223,7 +1223,7 @@ python scripts/verify_external_agent_live.py
 
 Expected: 全部 PASS。
 
-- [ ] **Step 5: Commit 验收结果（如有文档更新）**
+- [x] **Step 5: Commit 验收结果（如有文档更新）**
 
 ```bash
 git status
@@ -1236,17 +1236,17 @@ git status
 **Files:**
 - Move: `docs/superpowers/specs/2026-08-03-service-consolidation-design.md` → `docs/superpowers/specs/archive/2026-08-03-service-consolidation-design.md`
 
-- [ ] **Step 1: 归档 spec**
+- [x] **Step 1: 归档 spec**
 
 ```bash
 mv docs/superpowers/specs/2026-08-03-service-consolidation-design.md docs/superpowers/specs/archive/
 ```
 
-- [ ] **Step 2: 更新 spec 状态**
+- [x] **Step 2: 更新 spec 状态**
 
 在文档顶部将 `状态：**待评审**` 改为 `状态：**✅ 已实现**`。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/specs/archive/

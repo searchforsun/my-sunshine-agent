@@ -10,7 +10,7 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>sunshine-tool-manager</artifactId>
+    <artifactId>sunshine-tool-service</artifactId>
 
     <dependencies>
         <dependency>

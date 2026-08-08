@@ -22,7 +22,7 @@ SERVICES = [
     ("llm-gateway", "llm-gateway", "sunshine-llm-gateway", 8300),
     ("rag", "rag-service", "sunshine-rag", 8400),
     ("biz-simulator", "biz-simulator", "sunshine-biz-simulator", 8700),
-    ("tool-service", "tool-service", "sunshine-tool-manager", 8210),
+    ("tool-service", "tool-service", "sunshine-tool-service", 8210),
     ("resource-manager", "resource-manager", "sunshine-resource-manager", 8240),
     ("sandbox-service", "sandbox-service", "sunshine-sandbox-service", 8226),
     ("workflow-manager", "workflow-manager", "sunshine-workflow-manager", 8230),

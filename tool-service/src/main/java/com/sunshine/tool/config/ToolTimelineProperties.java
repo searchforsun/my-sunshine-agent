@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
-/** 工具时间线 — SSOT：Nacos sunshine-tool-manager.yaml tool.timeline */
+/** 工具时间线 — SSOT：Nacos sunshine-tool-service.yaml tool.timeline */
 @Getter
 @Setter
 @Component
