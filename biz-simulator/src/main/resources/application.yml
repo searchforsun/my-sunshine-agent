@@ -6,18 +6,24 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: ${NACOS_NAMESPACE:}
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        group: SUNSHINE_V2
         metadata:
           sunshine.tool-app: "true"
           sunshine.tool-app-id: "sunshine-biz"
       config:
-        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: ${NACOS_NAMESPACE:}
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
         file-extension: yaml
+        group: DEFAULT_GROUP
   config:
     import:
-      - nacos:sunshine-biz-simulator.yaml
+      - optional:nacos:sunshine-biz-simulator.yaml
 sunshine:
   tools:
     enabled: true

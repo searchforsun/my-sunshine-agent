@@ -6,12 +6,18 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: ${NACOS_NAMESPACE:}
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        group: SUNSHINE_V2
       config:
-        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: ${NACOS_NAMESPACE:}
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
         file-extension: yaml
+        group: DEFAULT_GROUP
   config:
     import:
-      - nacos:sunshine-resource-manager.yaml
+      - optional:nacos:sunshine-resource-manager.yaml
