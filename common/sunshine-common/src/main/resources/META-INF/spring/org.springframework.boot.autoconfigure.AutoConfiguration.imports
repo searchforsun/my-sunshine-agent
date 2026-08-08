@@ -1,1 +1,2 @@
 com.sunshine.common.web.health.HealthAutoConfiguration
+com.sunshine.common.web.LoadBalancedAutoConfiguration

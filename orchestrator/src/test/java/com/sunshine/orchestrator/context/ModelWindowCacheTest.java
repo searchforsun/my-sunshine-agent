@@ -16,7 +16,7 @@ class ModelWindowCacheTest {
     void setUp() {
         properties = new ContextProperties();
         properties.getL1().setDefaultModelWindow(256000);
-        cache = new ModelWindowCache(properties);
+        cache = new ModelWindowCache(properties, null);
     }
 
     @Test

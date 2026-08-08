@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.context.AssembledContext;
@@ -12,10 +13,8 @@ import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -37,21 +36,7 @@ public class IntentRouter {
     private final WorkflowCatalog workflowCatalog;
     private final SkillCatalogService skillCatalogService;
     private final ExecutionPlanParser planParser;
-
-    @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
-    private String baseUrl;
-
-    @Value("${agent.model.api-key:}")
-    private String apiKey;
-
-    private WebClient webClient;
-
-    private WebClient client() {
-        if (webClient == null) {
-            webClient = WebClient.builder().baseUrl(baseUrl).build();
-        }
-        return webClient;
-    }
+    private final LlmGatewayClient llmGateway;
 
     /** 兼容仅传用户句的调用方 */
     public Mono<ExecutionPlan> classifyPlan(String userMessage) {
@@ -80,13 +65,7 @@ public class IntentRouter {
                 "temperature", 0
         );
 
-        return client().post()
-                .uri("/chat/completions")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(Map.class)
+        return llmGateway.completeRaw(request)
                 .map(resp -> extractContent(resp))
                 .defaultIfEmpty("")
                 .map(planParser::parse)

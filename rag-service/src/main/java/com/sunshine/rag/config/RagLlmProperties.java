@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "rag.llm")
 public class RagLlmProperties {
-    private String baseUrl = "http://127.0.0.1:8300/v1";
     private String apiKey = "";
     private String defaultModel = "deepseek-v4-flash";
 }

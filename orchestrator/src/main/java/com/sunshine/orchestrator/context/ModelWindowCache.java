@@ -1,15 +1,13 @@
 package com.sunshine.orchestrator.context;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.sunshine.orchestrator.client.LlmGatewayClient;
+import com.sunshine.orchestrator.client.LlmGatewayClient.ModelInfoDto;
+import com.sunshine.orchestrator.client.LlmGatewayClient.ModelListDto;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClient;
 
-import java.time.Duration;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -21,20 +19,16 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ModelWindowCache {
 
     private final ContextProperties contextProperties;
+    private final LlmGatewayClient llmGateway;
     private final AtomicReference<Map<String, Integer>> windows = new AtomicReference<>(Map.of());
 
-    @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
-    private String gatewayBaseUrl;
-
-    private WebClient webClient;
-
-    public ModelWindowCache(ContextProperties contextProperties) {
+    public ModelWindowCache(ContextProperties contextProperties, LlmGatewayClient llmGateway) {
         this.contextProperties = contextProperties;
+        this.llmGateway = llmGateway;
     }
 
     @PostConstruct
     public void init() {
-        this.webClient = WebClient.builder().baseUrl(gatewayBaseUrl).build();
         refreshFromGateway();
     }
 
@@ -59,11 +53,7 @@ public class ModelWindowCache {
     /** 启动/刷新时从 Gateway /v1/models 拉取模型窗口；失败保留旧缓存（降级 defaultModelWindow）。 */
     public void refreshFromGateway() {
         try {
-            ModelListDto resp = webClient.get()
-                    .uri("/models")
-                    .retrieve()
-                    .bodyToMono(ModelListDto.class)
-                    .block(Duration.ofSeconds(5));
+            ModelListDto resp = llmGateway.listModels().block();
             if (resp != null && resp.data() != null && !resp.data().isEmpty()) {
                 Map<String, Integer> map = new HashMap<>();
                 for (ModelInfoDto d : resp.data()) {
@@ -80,13 +70,5 @@ public class ModelWindowCache {
             LoggerFactory.getLogger(ModelWindowCache.class)
                     .warn("[ModelWindowCache] refresh 失败，降级默认窗口: {}", e.getMessage());
         }
-    }
-
-    record ModelListDto(String object, List<ModelInfoDto> data) {
-    }
-
-    record ModelInfoDto(String id,
-                        @JsonProperty("context_window") Integer contextWindow,
-                        String encoding) {
     }
 }

@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.plan;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
@@ -10,10 +11,8 @@ import com.sunshine.orchestrator.rewrite.QueryRewriteService;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
@@ -36,14 +35,7 @@ public class WorkflowPlanner {
     private final QueryRewriteService queryRewriteService;
     private final SkillCatalogService skillCatalogService;
     private final PromptCatalogHolder promptCatalogHolder;
-
-    @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
-    private String baseUrl;
-
-    @Value("${agent.model.api-key:}")
-    private String apiKey;
-
-    private WebClient webClient;
+    private final LlmGatewayClient llmGateway;
 
     public Mono<PlanJson> plan(ExecutionStreamContext ctx) {
         return plan(ctx, null, 1);
@@ -154,13 +146,7 @@ public class WorkflowPlanner {
     }
 
     private Mono<PlanJson> invokePlanner(Map<String, Object> request) {
-        return client().post()
-                .uri("/chat/completions")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(Map.class)
+        return llmGateway.completeRaw(request)
                 .map(resp -> {
                     logFinishReason(resp);
                     return planJsonParser.parse(extractPlannerText(resp));
@@ -178,13 +164,6 @@ public class WorkflowPlanner {
         Object reason = choices.get(0).get("finish_reason");
         Map<String, Object> usage = (Map<String, Object>) resp.get("usage");
         log.info("[WorkflowPlanner] finish_reason={}, usage={}", reason, usage);
-    }
-
-    private WebClient client() {
-        if (webClient == null) {
-            webClient = WebClient.builder().baseUrl(baseUrl).build();
-        }
-        return webClient;
     }
 
     @SuppressWarnings("unchecked")

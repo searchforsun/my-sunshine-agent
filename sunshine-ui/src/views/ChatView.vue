@@ -3208,6 +3208,15 @@ watch(
   color: var(--btn-primary-text);
 }
 
+[data-theme="dark"] .composer-icon-btn.send {
+  background: #ececec;
+  color: #212121;
+}
+
+[data-theme="dark"] .composer-icon-btn.send:hover:not(:disabled) {
+  background: #ffffff;
+}
+
 .composer-icon-btn.send:hover:not(:disabled) {
   background: var(--sun-accent-hover);
 }
@@ -3223,6 +3232,11 @@ watch(
   background: transparent;
   border: 1px solid var(--sun-border);
   color: var(--sun-text-secondary);
+}
+
+[data-theme="dark"] .composer-icon-btn.pause {
+  border-color: #5a5a5a;
+  color: #b4b4b4;
 }
 
 .composer-icon-btn.pause:hover {

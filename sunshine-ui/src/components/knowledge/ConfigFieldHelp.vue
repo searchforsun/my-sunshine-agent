@@ -29,8 +29,8 @@ defineProps<{
   height: 16px;
   margin-left: 4px;
   border-radius: 50%;
-  background: var(--sun-text);
-  color: var(--sun-black);
+  background: var(--sun-accent);
+  color: var(--btn-primary-text);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -38,6 +38,11 @@ defineProps<{
   vertical-align: middle;
   flex-shrink: 0;
   user-select: none;
+}
+
+[data-theme="light"] .field-help-btn {
+  background: var(--sun-text);
+  color: var(--sun-black);
 }
 
 .field-help-btn:hover {

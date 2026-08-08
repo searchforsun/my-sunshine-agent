@@ -15,7 +15,7 @@ const darkOverrides: GlobalThemeOverrides = {
     bodyColor: '#212121',
     cardColor: '#2f2f2f',
     modalColor: '#2f2f2f',
-    popoverColor: '#1a1a1a',
+    popoverColor: '#2f2f2f',
     inputColor: '#171717',
     borderColor: '#424242',
     dividerColor: '#424242',

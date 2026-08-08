@@ -43,7 +43,7 @@ public class ReActAgentFactory {
     @Value("${agent.model.name:deepseek-v4-pro}")
     private String modelName;
 
-    @Value("${agent.model.base-url:http://localhost:8300/v1}")
+    @Value("${agent.model.base-url:http://sunshine-llm-gateway/v1}")
     private String modelBaseUrl;
     @Value("${agent.model.max-tokens:16384}")
     private int maxTokens;
