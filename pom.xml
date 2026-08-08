@@ -19,7 +19,7 @@
         <module>biz-simulator</module>
         <module>auth-center</module>
         <module>orchestrator</module>
-        <module>tool-manager</module>
+        <module>tool-service</module>
         <module>sandbox-service</module>
         <module>workflow-manager</module>
         <module>llm-gateway</module>
