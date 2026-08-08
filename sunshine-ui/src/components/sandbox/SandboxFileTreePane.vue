@@ -233,7 +233,7 @@ function onLoad(option: TreeOption) {
 
 .icon-btn-sm:hover {
   color: var(--sun-text);
-  background: color-mix(in srgb, var(--sun-text) 8%, transparent);
+  background: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black));
 }
 
 .search-bar {
@@ -288,7 +288,7 @@ function onLoad(option: TreeOption) {
 
 .search-result-item:hover {
   border-color: var(--sun-border);
-  background: color-mix(in srgb, var(--sun-text) 4%, transparent);
+  background: color-mix(in srgb, var(--sun-text) 4%, var(--sun-black));
 }
 
 .search-file-icon {

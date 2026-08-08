@@ -17,8 +17,8 @@ const darkOverrides: GlobalThemeOverrides = {
     modalColor: '#2f2f2f',
     popoverColor: '#2f2f2f',
     inputColor: '#171717',
-    borderColor: '#424242',
-    dividerColor: '#424242',
+    borderColor: '#5c5c5c',
+    dividerColor: '#5c5c5c',
     textColor1: '#ececec',
     textColor2: '#b4b4b4',
     textColor3: '#8e8e8e',
@@ -27,7 +27,7 @@ const darkOverrides: GlobalThemeOverrides = {
   },
   Layout: {
     siderColor: 'transparent',
-    siderBorderColor: '#424242',
+    siderBorderColor: '#5c5c5c',
     color: '#212121',
   },
   Menu: {
@@ -65,9 +65,9 @@ const darkOverrides: GlobalThemeOverrides = {
     titleTextColor: '#ececec',
   },
   Input: {
-    border: '1px solid #424242',
-    borderFocus: '1px solid #525252',
-    borderHover: '1px solid #525252',
+    border: '1px solid #5c5c5c',
+    borderFocus: '1px solid #6b6b6b',
+    borderHover: '1px solid #6b6b6b',
     color: '#171717',
     colorFocus: '#171717',
     textColor: '#ececec',
@@ -76,12 +76,12 @@ const darkOverrides: GlobalThemeOverrides = {
     fontSizeMedium: '15px',
   },
   Card: {
-    borderColor: '#424242',
+    borderColor: '#5c5c5c',
     color: '#2f2f2f',
     borderRadius: '12px',
   },
   Scrollbar: {
-    color: '#525252',
+    color: '#6b6b6b',
     colorHover: '#737373',
   },
   Switch: {

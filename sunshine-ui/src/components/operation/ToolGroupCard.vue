@@ -26,6 +26,8 @@ const props = defineProps<{
   allSteps?: ProcessingStep[]
   /** exec 步所属轮次 think 摘要（think_summary 工具输出），组内 exec 步主行拼接 */
   summaryByStepId?: Map<string, string>
+  /** 折叠区内不显示 ✓ */
+  hideCheckmark?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -108,7 +110,7 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
     >
       <span class="op-main">
         <span class="tool-group-label" :class="{ 'op-shimmer': showShimmer }">{{ label }}</span>
-        <span v-if="allDone" class="tool-group-check" aria-label="完成">
+        <span v-if="allDone && !hideCheckmark" class="tool-group-check" aria-label="完成">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5" />
             <polyline points="4.5 8 7 10.5 11.5 5.5" />

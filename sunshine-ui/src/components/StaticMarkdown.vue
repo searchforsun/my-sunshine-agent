@@ -33,8 +33,9 @@ const props = withDefaults(defineProps<{
 })
 
 /** 流式大文本降级阈值：超过该长度不再每次 chunk 跑 markdown-it/hljs 全量解析，
- * 以纯文本 pre-wrap 渲染（只更新文本节点），流式结束切回完整渲染，避免大文件生成卡顿 */
-const STREAM_LARGE_SOURCE_LEN = 64 * 1024
+ * 以纯文本 pre-wrap 渲染（只更新文本节点），流式结束切回完整渲染，避免正文流式输出卡顿。
+ * 16KB 约为 8000 个中文字符，覆盖绝大多数单次流式回答；低于该阈值 markdown-it 解析足够快。 */
+const STREAM_LARGE_SOURCE_LEN = 16 * 1024
 
 const rootRef = ref<HTMLElement | null>(null)
 

@@ -42,6 +42,8 @@ const props = withDefaults(defineProps<{
   hitlUiKey?: string
   /** exec 步所属轮次 think 摘要（think_summary 工具输出），主行「执行命令 {摘要} {命令头}」 */
   roundSummary?: string
+  /** 折叠区内不显示 ✓ */
+  hideCheckmark?: boolean
 }>(), {
   embedHitl: true,
   hideChevron: false,
@@ -108,6 +110,12 @@ const isDone = computed(() => lifecycle.value === 'done')
 const isPaused = computed(() => lifecycle.value === 'paused' || lifecycle.value === 'terminated')
 /** 终态（done/error/skipped/paused/terminated）：label 统一灰，与工具调用完成态一致 */
 const isTerminal = computed(() => ['done', 'error', 'skipped', 'paused', 'terminated'].includes(lifecycle.value))
+
+/** 工具步完成后显示 ✓（折叠区内不显示） */
+const showCheckmark = computed(() =>
+  isTerminal.value && isToolStepId(props.step.id) && props.hideChevron !== true && !props.hideCheckmark,
+)
+
 const label = computed(() => {
   // think 步：有结构化摘要显示摘要，无摘要统一兜底「深度思考」（running/done 一致）
   if (isThinkStepId(props.step.id)) {
@@ -272,6 +280,22 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       </span>
       <span class="op-trailing">
         <span v-if="durationText" class="op-dur">{{ durationText }}</span>
+        <svg
+          v-if="showCheckmark"
+          class="op-check"
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-label="完成"
+        >
+          <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5" />
+          <polyline points="4.5 8 7 10.5 11.5 5.5" />
+        </svg>
         <button
           v-if="canPauseTool"
           type="button"
@@ -330,6 +354,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   font-size: var(--op-font);
   line-height: 1.5;
   color: var(--sun-text-muted);
+  contain: layout style;
 }
 
 .op-line-row {

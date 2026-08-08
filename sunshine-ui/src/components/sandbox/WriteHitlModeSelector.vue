@@ -137,13 +137,13 @@ function onShowUpdate(next: boolean) {
   border-radius: var(--radius-md, 10px);
   justify-content: space-between;
   background: var(--n-color, var(--sun-black));
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   font-size: var(--sun-font-base, 14px);
 }
 
 .write-hitl-trigger:hover:not(:disabled) {
   background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .write-hitl-trigger:disabled {
@@ -220,7 +220,7 @@ function onShowUpdate(next: boolean) {
   font-size: var(--sun-font-base, 14px);
   font-weight: 500;
   line-height: 1.35;
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   white-space: nowrap;
 }
 
@@ -242,7 +242,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .write-hitl-check {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 </style>
 

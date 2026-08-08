@@ -5,15 +5,17 @@ import io.agentscope.core.model.transport.HttpResponse;
 import io.agentscope.core.model.transport.HttpTransport;
 import io.agentscope.core.model.transport.HttpTransportException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 基于 @LoadBalanced WebClient 的 AgentScope HttpTransport 实现。
@@ -26,14 +28,12 @@ import java.util.Objects;
 public class LoadBalancedWebClientTransport implements HttpTransport {
 
     private final WebClient webClient;
-    private final String serviceBaseUrl;
 
     /**
      * @param loadBalancedBuilder 已注入 @LoadBalanced + @Primary 的 WebClient.Builder
-     * @param serviceBaseUrl      服务名 URL（如 http://sunshine-llm-gateway），仅用于路径提取基准
+     * @param serviceBaseUrl      服务名 URL（如 http://sunshine-llm-gateway）
      */
     public LoadBalancedWebClientTransport(WebClient.Builder loadBalancedBuilder, String serviceBaseUrl) {
-        this.serviceBaseUrl = serviceBaseUrl;
         this.webClient = loadBalancedBuilder
                 .baseUrl(serviceBaseUrl)
                 .build();
@@ -91,13 +91,13 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
         String path = extractPath(request.getUrl());
         HttpMethod method = HttpMethod.valueOf(request.getMethod().toUpperCase());
         log.debug("[LoadBalancedWebClientTransport] stream {} {}", method, path);
+        AtomicInteger sseCount = new AtomicInteger(0);
         try {
             WebClient.RequestBodySpec spec = webClient.method(method)
                     .uri(path)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .accept(MediaType.TEXT_EVENT_STREAM);
+                    .contentType(MediaType.APPLICATION_JSON);
             request.getHeaders().forEach((k, v) -> {
-                if (!"Content-Type".equalsIgnoreCase(k) && !"Accept".equalsIgnoreCase(k)) {
+                if (!"Content-Type".equalsIgnoreCase(k)) {
                     spec.header(k, v);
                 }
             });
@@ -105,17 +105,22 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
                 spec.bodyValue(request.getBody());
             }
             return spec.retrieve()
-                    .bodyToFlux(String.class)
-                    .filter(Objects::nonNull)
-                    .filter(line -> line.startsWith("data:"))
-                    .map(line -> {
-                        String data = line.substring(5);
-                        if (data.startsWith(" ")) {
-                            data = data.substring(1);
+                    .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
+                    .doOnSubscribe(s -> log.debug("[LoadBalancedWebClientTransport] SSE subscribed"))
+                    .doOnNext(sse -> {
+                        int n = sseCount.incrementAndGet();
+                        if (n <= 3) {
+                            log.debug("[LoadBalancedWebClientTransport] SSE #{}: id={} event={} dataLen={}",
+                                    n, sse.id(), sse.event(), sse.data() != null ? sse.data().length() : 0);
                         }
-                        return data;
                     })
-                    .filter(data -> !"[DONE]".equals(data.trim()));
+                    .mapNotNull(ServerSentEvent::data)
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(data -> !"[DONE]".equals(data))
+                    .doOnComplete(() -> log.debug("[LoadBalancedWebClientTransport] SSE completed: {} events", sseCount.get()))
+                    .doOnError(e -> log.warn("[LoadBalancedWebClientTransport] SSE error: {}", e.getMessage()))
+                    .doOnCancel(() -> log.warn("[LoadBalancedWebClientTransport] SSE cancelled after {} events", sseCount.get()));
         } catch (Exception e) {
             log.error("[LoadBalancedWebClientTransport] stream 初始化失败: {} {}", path, e.getMessage());
             return Flux.error(new HttpTransportException("stream 失败: " + path, e));

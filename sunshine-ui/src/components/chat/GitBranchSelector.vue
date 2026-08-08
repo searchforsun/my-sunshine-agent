@@ -411,7 +411,7 @@ watch(() => props.modelValue, () => {
 }
 
 .branch-menu-item.is-selected .branch-menu-icon {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .branch-menu-text {
@@ -426,7 +426,7 @@ watch(() => props.modelValue, () => {
   font-size: var(--sun-font-base, 14px);
   font-weight: 500;
   line-height: 1.35;
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -449,7 +449,7 @@ watch(() => props.modelValue, () => {
 }
 
 .branch-menu-check {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .branch-menu-ws {

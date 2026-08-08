@@ -218,10 +218,10 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 }
 
 .meta-chip {
-  --n-color: color-mix(in srgb, var(--sun-text) 8%, transparent) !important;
+  --n-color: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
   --n-text-color: var(--sun-text-secondary) !important;
   --n-border: none !important;
-  background: color-mix(in srgb, var(--sun-text) 8%, transparent) !important;
+  background: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
   border: none !important;
   color: var(--sun-text-secondary) !important;
   font-size: 11px !important;

@@ -96,7 +96,7 @@
 
 .smd-loading-spinner {
   width: 28px; height: 28px;
-  border: 3px solid var(--sun-border, #263348);
+  border: 3px solid var(--sun-border, #5a5a5a);
   border-top: 3px solid var(--sun-text-muted, #8e8e8e);
   border-radius: 50%;
   animation: smd-spin 0.8s linear infinite;

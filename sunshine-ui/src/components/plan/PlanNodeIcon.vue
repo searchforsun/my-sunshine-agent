@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
 const kind = computed(() => {
   const t = props.type?.trim().toLowerCase() || 'node'
   if (t === 'plan') return 'plan'
+  if (t === 'task') return 'task'
   return t
 })
 </script>
@@ -153,6 +154,17 @@ const kind = computed(() => {
       <circle cx="12.5" cy="8" r="1.25" fill="currentColor" stroke="none" />
     </template>
 
+    <!-- task：任务清单（clipboard，区分 tool 圆柱体） -->
+    <template v-else-if="kind === 'task'">
+      <path
+        d="M4 2.5h8l1.5 2v9a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 13.5V4.5L4 2.5Z"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linejoin="round"
+      />
+      <path d="M5.5 8h5M5.5 10.5h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
+    </template>
+
     <!-- variable-assignment：变量赋值 -->
     <template v-else-if="kind === 'variable-assignment'">
       <path
@@ -224,6 +236,10 @@ const kind = computed(() => {
 
 .is-tool {
   color: color-mix(in srgb, var(--sun-text-secondary) 90%, var(--sun-text));
+}
+
+.is-task {
+  color: color-mix(in srgb, var(--sun-text-secondary) 85%, var(--sun-amber, #c9a227));
 }
 
 .is-agent {

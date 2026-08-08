@@ -27,6 +27,11 @@ spring:
               - "http://ecs4c16g:5173"
               - "http://8.140.215.65:5173"
               - "http://*:5173"
+              - "https://localhost:5173"
+              - "https://127.0.0.1:5173"
+              - "https://ecs4c16g:5173"
+              - "https://8.140.215.65:5173"
+              - "https://*:5173"
             allowedMethods: "*"
             allowedHeaders: "*"
             allowCredentials: true

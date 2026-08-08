@@ -283,12 +283,12 @@ const showKindTag = () => page.activeTab === 'system'
   padding: 1px 7px;
   border-radius: 4px;
   border: none !important;
-  background: color-mix(in srgb, var(--sun-text) 8%, transparent) !important;
+  background: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
   color: var(--sun-text-secondary) !important;
   font-size: 11px;
   font-weight: 500;
   line-height: 1.4;
-  --n-color: color-mix(in srgb, var(--sun-text) 8%, transparent) !important;
+  --n-color: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
   --n-text-color: var(--sun-text-secondary) !important;
   --n-border: none !important;
 }

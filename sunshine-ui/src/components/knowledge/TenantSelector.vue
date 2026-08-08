@@ -133,13 +133,13 @@ function onShowUpdate(next: boolean) {
   border-radius: var(--radius-md, 10px);
   justify-content: space-between;
   background: var(--n-color, var(--sun-black));
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   font-size: var(--sun-font-base, 14px);
 }
 
 .tenant-selector:hover:not(:disabled) {
   border-color: var(--sun-border-light, #ccc);
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .tenant-selector:disabled {
@@ -219,7 +219,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .tenant-menu-item.is-selected .tenant-menu-icon {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .tenant-menu-text {
@@ -234,7 +234,7 @@ function onShowUpdate(next: boolean) {
   font-size: var(--sun-font-base, 14px);
   font-weight: 500;
   line-height: 1.35;
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   white-space: nowrap;
 }
 
@@ -254,7 +254,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .tenant-menu-check {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 </style>
 

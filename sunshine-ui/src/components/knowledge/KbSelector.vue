@@ -223,7 +223,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .kb-menu-item.is-selected .kb-menu-icon {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .kb-menu-text {
@@ -238,7 +238,7 @@ function onShowUpdate(next: boolean) {
   font-size: var(--sun-font-base, 14px);
   font-weight: 500;
   line-height: 1.35;
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   white-space: nowrap;
 }
 
@@ -265,7 +265,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .kb-menu-check {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .kb-menu-divider {

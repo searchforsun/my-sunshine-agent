@@ -9,8 +9,8 @@
   --sun-deep: #171717;
   --sun-surface: #2f2f2f;
   --sun-surface-hover: #383838;
-  --sun-border: #424242;
-  --sun-border-light: #525252;
+  --sun-border: #5c5c5c;
+  --sun-border-light: #6b6b6b;
   --sun-dag-dot: color-mix(in srgb, var(--sun-border) 55%, transparent);
   --sun-text: #ececec;
   --sun-text-secondary: #b4b4b4;
@@ -257,6 +257,14 @@ html.theme-switching *::after {
   --brand-mark-bg: #0d0d0d;
   --brand-mark-fg: #ffffff;
   --brand-mark-border: #d4d4d4;
+}
+
+/* ── 暗色模式 Tab 全局覆盖（加固 App.vue themeOverrides，确保选中更亮、未选更暗） ── */
+.n-tabs .n-tabs-nav {
+  --n-tab-text-color: var(--sun-text-muted);
+  --n-tab-text-color-active: var(--sun-text);
+  --n-tab-text-color-hover: var(--sun-text);
+  --n-bar-color: var(--sun-text);
 }
 
 @media (prefers-reduced-motion: reduce) {

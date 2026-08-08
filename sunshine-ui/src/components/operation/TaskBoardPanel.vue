@@ -91,9 +91,8 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
           @click="toggleExpand"
         >
           <svg class="taskboard-list-icon" viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M2 4.5h12M2 8h8M2 11.5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-            <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
-            <circle cx="12.5" cy="11.5" r="1.1" fill="currentColor" />
+            <path d="M4 2.5h8l1.5 2v9a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 13.5V4.5L4 2.5Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" />
+            <path d="M5.5 8h5M5.5 10.5h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
           </svg>
           <svg class="taskboard-head-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="9 18 15 12 9 6" />

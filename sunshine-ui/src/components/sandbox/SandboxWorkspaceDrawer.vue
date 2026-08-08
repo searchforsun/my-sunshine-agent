@@ -552,7 +552,7 @@ watch(
 }
 
 .drawer-tab.active {
-  background: color-mix(in srgb, var(--sun-text) 8%, transparent);
+  background: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black));
   color: var(--sun-text-secondary);
 }
 

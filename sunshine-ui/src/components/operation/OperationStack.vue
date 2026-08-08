@@ -92,6 +92,18 @@ const emit = defineEmits<{
 
 const cardExpanded = reactive(new Map<string, boolean>())
 const cardUserToggled = reactive(new Set<string>())
+const roundGroupExpanded = reactive(new Set<number>())
+/** roundGroup 内 OperationCard 的展开状态 */
+const roundGroupCardExpanded = reactive(new Map<string, boolean>())
+
+function isRoundGroupExpanded(idx: number): boolean {
+  return roundGroupExpanded.has(idx)
+}
+
+function toggleRoundGroup(idx: number): void {
+  if (roundGroupExpanded.has(idx)) roundGroupExpanded.delete(idx)
+  else roundGroupExpanded.add(idx)
+}
 
 const summaryEnabled = computed(() => props.messageStatus !== undefined)
 
@@ -290,6 +302,13 @@ type DisplayRow =
       allDone: boolean
       anyRunning: boolean
     }
+  | {
+      kind: 'roundGroup'
+      label: string
+      rows: DisplayRow[]
+      allDone: boolean
+      anyRunning: boolean
+    }
 
 /** 组类别：普通工具调用 / 知识检索 / sandbox 按用途细分 */
 type ToolGroupKind =
@@ -342,6 +361,176 @@ function groupToolSteps(steps: ProcessingStep[]): DisplayRow[] {
 }
 
 const displayRows = computed(() => groupToolSteps(displaySteps.value))
+
+/** round-group 预处理：从扁平 steps 数组中提取 intent/tasks 步，并返回剩余步 */
+function processRoundSegment(steps: ProcessingStep[]): { separates: DisplayRow[]; remaining: ProcessingStep[] } {
+  const separates: DisplayRow[] = []
+  const remaining: ProcessingStep[] = []
+  for (const s of steps) {
+    if (s.phase === 'intent' || s.phase === 'tasks') {
+      separates.push({ kind: 'step', step: s })
+    } else {
+      remaining.push(s)
+    }
+  }
+  return { separates, remaining }
+}
+
+/** 构建 roundGroup 折叠标签：
+ * 统计折叠区内除 intent/tasks/首 think 步外的操作：执行命令、搜索内容、查询文件、修改文件、搜索网页、调用工具、检索知识库 */
+function buildRoundGroupLabel(_collapsedRounds: DisplayRow[][], flatCollapsed: DisplayRow[]): string {
+  const keyCounts = new Map<string, number>()
+  const keyLabel = new Map<string, string>()
+
+  function add(key: string, verb: string, noun: string) {
+    keyCounts.set(key, (keyCounts.get(key) ?? 0) + 1)
+    const n = keyCounts.get(key)!
+    keyLabel.set(key, `${verb}${n}次${noun}`)
+  }
+
+  function countStep(s: ProcessingStep) {
+    const cid = catalogToolIdFromStepId(s.id)
+    if (cid?.startsWith('sandbox__')) {
+      switch (cid) {
+        case 'sandbox__read':
+        case 'sandbox__glob':       add('view', '查询', '文件'); break
+        case 'sandbox__grep':       add('grep', '搜索', '内容'); break
+        case 'sandbox__edit':
+        case 'sandbox__write':      add('edit', '修改', '文件'); break
+        case 'sandbox__webfetch':
+        case 'sandbox__websearch':  add('web', '搜索', '网页'); break
+        default:                    add('exec', '执行', '命令'); break
+      }
+      return
+    }
+    if (isRagStepId(s.id)) { add('rag', '检索', '知识库'); return }
+    add('tool', '调用', '工具')
+  }
+
+  let firstThinkSkipped = false
+  for (const row of flatCollapsed) {
+    if (row.kind === 'toolGroup') {
+      for (const s of row.steps) countStep(s)
+    } else if (row.kind === 'step') {
+      if (row.step.phase === 'intent' || row.step.phase === 'tasks') continue
+      if (isThinkStepId(row.step.id) && !firstThinkSkipped) {
+        firstThinkSkipped = true
+        continue
+      }
+      countStep(row.step)
+    }
+  }
+
+  const parts: string[] = []
+  for (const key of keyCounts.keys()) {
+    parts.push(keyLabel.get(key)!)
+  }
+  return parts.join('、')
+}
+
+/** 正文间多轮操作折叠：在两组 ContentBlock 之间，若 grouped 行数 >=2 且 think 不足 2 个时，
+ * 折叠除最后一行外的多余行（覆盖不同种类工具未合并的散列场景）。think >=2 按原有轮次折叠。
+ * think1（整个时间线首个 think）始终不进入折叠。 */
+function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
+  if (!props.contentBlocks?.length) return inputRows
+
+  // 收集 contentBlock stepping 信息
+  const blockAfterStepIds = new Set<string>()
+  for (const cb of props.contentBlocks) {
+    if (cb.afterStepId) blockAfterStepIds.add(cb.afterStepId)
+  }
+
+  // 以正文分隔为边界切分步骤段
+  const segments: DisplayRow[][] = []
+  let current: DisplayRow[] = []
+  for (const row of inputRows) {
+    const stepId = row.kind === 'step' ? row.step.id : row.kind === 'toolGroup' ? row.steps[row.steps.length - 1]?.id : undefined
+    current.push(row)
+    if (stepId && blockAfterStepIds.has(stepId)) {
+      segments.push(current)
+      current = []
+    }
+  }
+  if (current.length) segments.push(current)
+
+  // 找出整个时间线第一个 think 步（think1 不进入任何折叠）
+  let think1Id: string | undefined
+  for (const row of inputRows) {
+    if (row.kind === 'step' && isThinkStepId(row.step.id)) {
+      think1Id = row.step.id
+      break
+    }
+  }
+
+  const result: DisplayRow[] = []
+  for (const seg of segments) {
+    // 提取 intent/tasks
+    const steps: ProcessingStep[] = []
+    for (const r of seg) {
+      if (r.kind === 'toolGroup') steps.push(...r.steps)
+      else if (r.kind === 'step') steps.push(r.step)
+    }
+    const { separates, remaining } = processRoundSegment(steps)
+    result.push(...separates)
+
+    const grouped = groupToolSteps(remaining)
+    const thinkIndices: number[] = []
+    grouped.forEach((r, i) => {
+      if (r.kind === 'step' && isThinkStepId(r.step.id)) thinkIndices.push(i)
+    })
+
+    if (thinkIndices.length >= 2) {
+      // >=2 thinks：前 N-1 轮折叠，think1 不进入
+      const lastThinkIdx = thinkIndices[thinkIndices.length - 1]
+      const collapsedRows = grouped.slice(0, lastThinkIdx)
+      // think1 提升到折叠行外
+      if (think1Id) {
+        const t1Idx = collapsedRows.findIndex(r => r.kind === 'step' && r.step.id === think1Id)
+        if (t1Idx >= 0) result.push(collapsedRows.splice(t1Idx, 1)[0])
+      }
+      const visibleRows = grouped.slice(lastThinkIdx)
+      if (collapsedRows.length) {
+        const allDone = collapsedRows.every(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'done' : r.allDone)
+        const anyRunning = collapsedRows.some(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'running' : r.anyRunning)
+        result.push({
+          kind: 'roundGroup',
+          label: buildRoundGroupLabel([collapsedRows], collapsedRows),
+          rows: collapsedRows,
+          allDone,
+          anyRunning,
+        })
+      }
+      result.push(...visibleRows)
+    } else if ((thinkIndices.length >= 1 && grouped.length >= 3) || (thinkIndices.length === 0 && grouped.length >= 2)) {
+      // 1 think + >=2 散列 tool（或 0 think + >=2 散列 tool）：折叠多余行，仅保留最后一行可见
+      const collapsedRows = [...grouped.slice(0, -1)]
+      // think1 提升到折叠行外
+      if (think1Id) {
+        const t1Idx = collapsedRows.findIndex(r => r.kind === 'step' && r.step.id === think1Id)
+        if (t1Idx >= 0) result.push(collapsedRows.splice(t1Idx, 1)[0])
+      }
+      if (collapsedRows.length) {
+        const allDone = collapsedRows.every(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'done' : r.allDone)
+        const anyRunning = collapsedRows.some(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'running' : r.anyRunning)
+        result.push({
+          kind: 'roundGroup',
+          label: buildRoundGroupLabel([collapsedRows], collapsedRows),
+          rows: collapsedRows,
+          allDone,
+          anyRunning,
+        })
+      }
+      result.push(grouped[grouped.length - 1])
+    } else {
+      result.push(...grouped)
+    }
+  }
+
+  return result
+}
+
+/** 显示行（带正文间多轮折叠） */
+const roundDisplayRows = computed(() => roundGroupSteps(displayRows.value))
 
 /** exec 步所属轮次 think 摘要（think_summary 工具输出）：exec 步向前取最近 think 步的 stepSummary。
  * 主行显示「执行命令 {摘要} {命令头}」，摘要缺失则仅命令头。 */
@@ -466,16 +655,25 @@ const placeholderStep = computed<ProcessingStep>(() => ({
 
 /** 执行空档占位：末尾是已完成（done/error/skipped）的可见步时展示。
  * 末尾为工具组时取组内最后一步判定（组内仍有运行中步自带 pulse 不提示）。
+ * roundGroup 末尾取其内部最后一行判定。
  * 整文正在流式输出时正文本身是反馈，不显示占位 */
 const showAfterThinkPendingHint = computed(() => {
   void props.timelineRevision
   if (isContentGrowthActive.value) return false
-  const rows = displayRows.value
+  const rows = roundDisplayRows.value
   const last = rows.length ? rows[rows.length - 1] : undefined
   if (!last) return false
+  // 若是 roundGroup，取其内部最后一个非 roundGroup 行
+  let effectiveLast = last
+  while (effectiveLast.kind === 'roundGroup' && effectiveLast.rows.length) {
+    const inner = effectiveLast.rows[effectiveLast.rows.length - 1]
+    if (inner.kind === 'roundGroup') effectiveLast = inner
+    else { effectiveLast = inner; break }
+  }
+  if (effectiveLast.kind === 'roundGroup') return false
   return shouldShowPendingHintForLastRow({
     processing: isTimelineProcessing.value,
-    lastRow: last,
+    lastRow: effectiveLast,
   })
 })
 
@@ -546,9 +744,78 @@ watch(
 
     <template v-if="timelineBodyExpanded">
       <template
-        v-for="(row, rowIdx) in displayRows"
-        :key="row.kind === 'toolGroup' ? `tg-${row.steps.map(s => s.id).join('|')}` : `row-${rowIdx}`"
+        v-for="(row, rowIdx) in roundDisplayRows"
+        :key="row.kind === 'toolGroup' ? `tg-${row.steps.map(s => s.id).join('|')}` : row.kind === 'roundGroup' ? `rg-${rowIdx}` : `row-${rowIdx}`"
       >
+        <!-- 正文间多轮折叠：显示 >1 轮 = 自动折叠，仅保留最后一轮可见 -->
+        <template v-if="row.kind === 'roundGroup'">
+          <div class="op-row">
+            <div class="round-group" :class="{ 'is-expanded': isRoundGroupExpanded(rowIdx), 'is-running': row.anyRunning }">
+              <div
+                class="round-group-row"
+                role="button"
+                tabindex="0"
+                @click="toggleRoundGroup(rowIdx)"
+                @keydown.enter.prevent="toggleRoundGroup(rowIdx)"
+                @keydown.space.prevent="toggleRoundGroup(rowIdx)"
+              >
+                <span class="op-main">
+                  <span class="round-group-label" :class="{ 'op-shimmer': row.anyRunning && live }">{{ row.label }}</span>
+                  <span v-if="row.allDone" class="op-check" aria-label="完成">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5" />
+                      <polyline points="4.5 8 7 10.5 11.5 5.5" />
+                    </svg>
+                  </span>
+                  <span v-if="row.anyRunning && live" class="op-pulse">…</span>
+                  <svg
+                    class="op-chevron"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </span>
+              </div>
+              <div v-if="isRoundGroupExpanded(rowIdx)" class="round-group-body">
+                <template v-for="(inner, ii) in row.rows" :key="inner.kind === 'toolGroup' ? `tg-${inner.steps.map(s => s.id).join('|')}` : `sg-${ii}`">
+                  <template v-if="inner.kind === 'toolGroup'">
+                    <ToolGroupCard
+                      :group-kind="inner.groupKind"
+                      :steps="inner.steps"
+                      :all-done="inner.allDone"
+                      :any-running="inner.anyRunning"
+                      :live="false"
+                      :hide-checkmark="true"
+                      :pending-list="pendingList"
+                      :all-steps="effectiveSteps"
+                      :summary-by-step-id="thinkSummaryByStepId"
+                      @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
+                    />
+                  </template>
+                  <template v-else-if="inner.kind === 'step'">
+                    <OperationCard
+                      :step="inner.step"
+                      :expanded="roundGroupCardExpanded.get(inner.step.id) ?? false"
+                      :live="false"
+                      :embed-hitl="false"
+                      :hide-checkmark="true"
+                      :round-summary="thinkSummaryByStepId.get(inner.step.id)"
+                      @toggle="roundGroupCardExpanded.set(inner.step.id, !(roundGroupCardExpanded.get(inner.step.id) ?? false))"
+                    />
+                  </template>
+                </template>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template v-else>
         <div class="op-row">
         <template v-if="row.kind === 'toolGroup'">
           <ToolGroupCard
@@ -623,18 +890,19 @@ watch(
         <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
           <div class="op-inline-content">
             <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
-              <StaticMarkdown :source="crow.text" :defer-mermaid="crow.streaming" />
+              <StaticMarkdown :source="crow.text" :defer-mermaid="crow.streaming" :streaming="crow.streaming" />
             </div>
           </div>
         </template>
         </template>
         </template>
         </div>
+        </template>
       </template>
       <template v-for="row in orphanContent" :key="row.key">
         <div class="op-inline-content">
           <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
-            <StaticMarkdown :source="row.text" :defer-mermaid="row.streaming" />
+            <StaticMarkdown :source="row.text" :defer-mermaid="row.streaming" :streaming="row.streaming" />
           </div>
         </div>
     </template>
@@ -692,6 +960,7 @@ watch(
           <StaticMarkdown
             :source="collapsedAnswerText"
             :defer-mermaid="!!(streamLive || live)"
+            :streaming="!!(streamLive || live)"
           />
         </div>
       </div>
@@ -727,6 +996,14 @@ watch(
 
 .op-row {
   min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 40px;
+  opacity: 0.9;
+  transition: opacity 0.15s;
+}
+
+.op-row:hover {
+  opacity: 1;
 }
 
 /* 行间距统一走 margin-top 单侧 8px（flex 中 margin 不折叠，避免 gap+margin 叠加）；
@@ -839,6 +1116,7 @@ watch(
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
+  opacity: 1;
   /* 阶段正文：与 card 间距 8px；下方间距由下一行的 margin-top 承担，避免叠加 */
   margin: 8px 0 0;
 }
@@ -865,6 +1143,99 @@ watch(
 /* 执行空档占位（复用 OperationCard 渲染，与「深度思考」行结构一致）：上侧边距与相邻卡片一致 */
 .op-pending-hint {
   margin-top: 8px;
+}
+
+/* 完成 ✓ */
+.op-check {
+  color: var(--sun-text-muted);
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* 正文间多轮折叠 */
+.round-group {
+  min-width: 0;
+}
+
+.round-group-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 4px;
+  align-items: start;
+  width: 100%;
+  padding: 1px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: var(--sun-font-md, 14px);
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.round-group-label {
+  color: var(--sun-text-muted);
+  font-weight: 450;
+}
+
+.round-group-label.op-shimmer {
+  --op-shimmer-base: var(--sun-text-secondary);
+  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 32%, var(--sun-text));
+}
+
+.round-group .op-main {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.round-group .op-main .op-chevron {
+  flex-shrink: 0;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  color: var(--sun-text-secondary);
+  opacity: 0;
+  margin-left: 2px;
+  transition: transform 0.15s ease, opacity 0.12s ease;
+  transform: rotate(0deg);
+}
+
+.round-group:not(.is-expanded):hover .op-main .op-chevron {
+  opacity: 0.85;
+}
+
+.round-group.is-expanded .op-main .op-chevron {
+  transform: rotate(90deg);
+  opacity: 0.85;
+}
+
+.round-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.round-group-body .op-line {
+  contain: layout style;
+}
+
+.round-group-body .op-line.is-clickable {
+  cursor: pointer;
+}
+
+.op-pulse {
+  font-size: 0.85em;
+  color: var(--sun-text-muted);
+  animation: op-pulse-fade 1.2s ease-in-out infinite;
+}
+
+@keyframes op-pulse-fade {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.85; }
 }
 
 .op-line-hitl :deep(.collapsible-confirm) {

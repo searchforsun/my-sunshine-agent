@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 export default defineConfig(({ mode }) => {
   // GitHub Pages 项目站须设 VITE_BASE_PATH=/repo-name/；本地 dev 默认 /
@@ -51,7 +52,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
-    plugins: [vue()],
+    plugins: [vue(), basicSsl()],
     server: {
       host: '0.0.0.0',
       port: 5173,
@@ -66,7 +67,7 @@ export default defineConfig(({ mode }) => {
       proxy: gatewayProxy,
     },
     optimizeDeps: {
-      include: ['markdown-it', 'highlight.js', 'markdown-it-highlightjs', 'markdown-it-task-lists', '@mdit/plugin-katex', 'katex'],
+      include: ['markdown-it', 'highlight.js', 'markdown-it-highlightjs', 'markdown-it-task-lists', '@mdit/plugin-katex', 'katex', 'mermaid'],
     },
     // 单测仅收 src；e2e 由 playwright 负责（test:e2e），避免 vitest 误收集 e2e/*.spec.ts
     test: {

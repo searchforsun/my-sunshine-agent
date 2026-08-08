@@ -134,6 +134,7 @@ export function formatPlanNodeType(type: string): string {
     'parameter-extractor': '参数提取',
     answer: '回答',
     start: '开始',
+    task: '任务',
   }
   return map[type] ?? type
 }

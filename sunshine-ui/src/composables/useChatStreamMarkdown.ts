@@ -69,15 +69,45 @@ export function useChatStreamMarkdown(
     if (!container) return
     streamRenderer?.clear()
     streamRenderer = new StreamMarkdownRenderer(container, {
-      debounceMs: 16,
+      debounceMs: 50,
       renderMarkdown: (text: string) => {
         try { return md.render(normalizeStreamingMarkdown(text)) } catch { return text }
       },
     })
+    // 重建时重置节流状态，避免旧 trailing timer 影响新流
+    if (trailingSyncTimer) { clearTimeout(trailingSyncTimer); trailingSyncTimer = null }
+    pendingSyncContent = ''
+    lastStreamSyncAt = 0
     const last = messages.value[messages.value.length - 1]
     if (last?.role === 'assistant' && resolveStreamingContentText(last)) {
       streamRenderer.syncFromContent(resolveStreamingContentText(last))
     }
+  }
+
+  /** 流式正文同步节流：SSE chunk 高频到达时 fullRerender（清空 DOM+markdown-it 全量解析+重建）
+   * 阻塞主线程导致正文卡顿。节流保证相邻两次同步至少间隔 50ms，同时用 trailing
+   * 确保被跳过的最新内容在节流窗口结束后自动渲染，不会丢失文末 chunk。 */
+  let lastStreamSyncAt = 0
+  let pendingSyncContent = ''
+  let trailingSyncTimer: ReturnType<typeof setTimeout> | null = null
+  const STREAM_SYNC_THROTTLE_MS = 50
+  function scheduleStreamingContentSync(content: string) {
+    pendingSyncContent = content
+    const now = Date.now()
+    if (now - lastStreamSyncAt < STREAM_SYNC_THROTTLE_MS) {
+      // 节流中：安排一个 trailing 回调在窗口结束后渲染最新内容
+      if (!trailingSyncTimer) {
+        trailingSyncTimer = setTimeout(() => {
+          trailingSyncTimer = null
+          lastStreamSyncAt = Date.now()
+          if (pendingSyncContent) streamRenderer?.syncFromContent(pendingSyncContent)
+        }, STREAM_SYNC_THROTTLE_MS - (now - lastStreamSyncAt))
+      }
+      return
+    }
+    if (trailingSyncTimer) { clearTimeout(trailingSyncTimer); trailingSyncTimer = null }
+    lastStreamSyncAt = now
+    streamRenderer?.syncFromContent(content)
   }
 
   function syncStreamFromContent(content: string) {
@@ -85,6 +115,9 @@ export function useChatStreamMarkdown(
   }
 
   function clearStreamRenderer() {
+    if (trailingSyncTimer) { clearTimeout(trailingSyncTimer); trailingSyncTimer = null }
+    pendingSyncContent = ''
+    lastStreamSyncAt = 0
     streamRenderer?.clear()
     streamRenderer = null
   }
@@ -144,6 +177,7 @@ export function useChatStreamMarkdown(
     enhanceAllStaticMarkdown,
     ensureStreamRenderer,
     syncStreamFromContent,
+    scheduleStreamingContentSync,
     clearStreamRenderer,
     cacheSettledHtmlForConversation,
     restoreSettledHtmlForConversation,

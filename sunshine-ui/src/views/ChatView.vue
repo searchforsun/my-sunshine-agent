@@ -21,6 +21,7 @@ import { useChatStore } from '../stores/chatStore'
 import { isValidConversationId } from '../api/conversations'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
+import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import { listWorkspaces } from '../api/workspaces'
 import type { WorkspaceVO } from '../api/workspaces'
 import { gitStage, gitCommit, gitPush, gitPull, ensureCheckout, listCheckouts, gitDiffSummary, saveDiffBaseSnapshot } from '../api/workspaceGit'
@@ -58,6 +59,7 @@ import { resolveAgentNodeStepForDrawer, getPendingHitlConfirmations } from '../a
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
 import KbSelector from '../components/knowledge/KbSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
+import VoiceInputButton from '../components/chat/VoiceInputButton.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
@@ -87,6 +89,7 @@ const router = useRouter()
 const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible } = useSidebar()
+const { isSupported: voiceSupported, isListening: voiceListening, displayText: voiceDisplayText, stop: voiceStop } = useSpeechRecognition()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
 const {
   state: sandboxState,
@@ -133,8 +136,8 @@ const {
     if (isContentFullyInterleaved(last)) return
     const bridge = streamMdBridge.value
     if (!bridge) return
-    const apply = () => bridge.syncStreamFromContent(resolveStreamingContentText(last))
-    void bridge.ensureStreamRenderer().then(apply)
+    void bridge.ensureStreamRenderer()
+    bridge.scheduleStreamingContentSync(resolveStreamingContentText(last))
   },
   (id: string) => {
     hydrationBridge.flushPersist(id)
@@ -1254,6 +1257,17 @@ function handleComposerPause() {
   void stop()
 }
 
+function handleVoiceCancel() {
+  voiceStop()
+}
+
+function handleVoiceConfirm() {
+  const text = voiceStop()
+  if (text) {
+    inputText.value = inputText.value ? inputText.value + ' ' + text : text
+  }
+}
+
 function handleKeydown(e: KeyboardEvent) {
   if (handlePathKeydown(e)) return
   if (handleWorkflowKeydown(e)) return
@@ -1894,9 +1908,27 @@ watch(
             </li>
           </ul>
           <div class="composer-input-area">
+            <div v-if="voiceListening" class="voice-recording-overlay">
+              <div class="voice-waveform">
+                <span class="voice-waveform-bar" />
+                <span class="voice-waveform-bar" />
+                <span class="voice-waveform-bar" />
+                <span class="voice-waveform-bar" />
+                <span class="voice-waveform-bar" />
+              </div>
+              <div class="voice-recording-body">
+                <span class="voice-rec-indicator">
+                  <span class="voice-rec-dot" />
+                  <span class="voice-rec-label">录音中</span>
+                </span>
+                <span class="voice-recording-text">{{ voiceDisplayText || '正在聆听...' }}</span>
+              </div>
+            </div>
             <ComposerSkillInput
+              v-show="!voiceListening"
               ref="inputRef"
               v-model="inputText"
+              :disabled="voiceListening"
               :allows-skill-mention="skillMentionAllowed"
               :allows-agent-mention="agentMentionAllowed"
               :allows-workflow-mention="workflowMentionAllowed"
@@ -1924,6 +1956,7 @@ watch(
                   />
                 </template>
                 <KbSelector
+                  v-if="!voiceListening"
                   :kbs="chatKbs"
                   :model-value="kbId"
                   :loading="loadingChatKbs"
@@ -1931,25 +1964,48 @@ watch(
                   @update:model-value="onKbChange"
                 />
               </div>
-              <button
-                v-if="loading"
-                type="button"
-                class="composer-icon-btn pause"
-                title="暂停当前生成"
-                @click="handleComposerPause"
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
-              </button>
-              <button
-                v-else
-                type="button"
-                class="composer-icon-btn send"
-                :disabled="!inputText.trim()"
-                title="发送"
-                @click="handleSend"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l12-6-6 12-2-6-4-0z" fill="currentColor"/></svg>
-              </button>
+              <div class="composer-toolbar-right">
+                <button
+                  v-if="loading"
+                  type="button"
+                  class="composer-icon-btn pause"
+                  title="暂停当前生成"
+                  @click="handleComposerPause"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
+                </button>
+                <template v-else-if="voiceListening">
+                  <button
+                    type="button"
+                    class="composer-icon-btn voice-cancel"
+                    title="取消语音输入"
+                    @click="handleVoiceCancel"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="composer-icon-btn voice-confirm"
+                    title="确认语音输入"
+                    @click="handleVoiceConfirm"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,8 7,12 14,3"/></svg>
+                  </button>
+                </template>
+                <template v-else>
+                  <VoiceInputButton v-if="voiceSupported" />
+                  <button
+                    v-if="!voiceSupported || inputText.trim()"
+                    type="button"
+                    class="composer-icon-btn send"
+                    :disabled="!inputText.trim()"
+                    title="发送"
+                    @click="handleSend"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l12-6-6 12-2-6-4-0z" fill="currentColor"/></svg>
+                  </button>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -2577,8 +2633,8 @@ watch(
   gap: 10px;
   padding: 12px 14px 14px;
   border-radius: var(--radius-lg, 12px);
-  background: var(--n-color, var(--sun-black, #0a0a0a));
-  border: 1px solid var(--sun-border, #2a2a2a);
+  background: var(--n-color, var(--sun-black, #212121));
+  border: 1px solid var(--sun-border, #5a5a5a);
   box-shadow: var(--shadow-elevated, 0 6px 20px rgba(0, 0, 0, 0.35));
 }
 .commit-popover-head {
@@ -3059,6 +3115,14 @@ watch(
   min-width: 0;
 }
 
+.composer-toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
 .skill-suggest {
   position: absolute;
   left: 0;
@@ -3243,6 +3307,133 @@ watch(
   border-color: var(--sun-red);
   color: var(--sun-red);
   background: rgba(248, 113, 113, 0.08);
+}
+
+/* 语音录音覆盖层 */
+.voice-recording-overlay {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 14px;
+  min-height: 52px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.06), rgba(248, 113, 113, 0.02));
+  border: 1px solid rgba(248, 113, 113, 0.18);
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.06);
+}
+
+/* 音频波形条容器 */
+.voice-waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  height: 32px;
+}
+
+.voice-waveform-bar {
+  width: 3px;
+  height: 0;
+  border-radius: 2px;
+  background: var(--sun-red);
+  opacity: 0;
+  animation: voice-wave 1.6s ease-in-out infinite;
+}
+
+.voice-waveform-bar:nth-child(1) { animation-delay: 0.00s; }
+.voice-waveform-bar:nth-child(2) { animation-delay: 0.12s; }
+.voice-waveform-bar:nth-child(3) { animation-delay: 0.24s; }
+.voice-waveform-bar:nth-child(4) { animation-delay: 0.36s; }
+.voice-waveform-bar:nth-child(5) { animation-delay: 0.48s; }
+
+@keyframes voice-wave {
+  0%, 100% { height: 8px; opacity: 0.35; }
+  25% { height: 28px; opacity: 0.9; }
+  50% { height: 14px; opacity: 0.55; }
+  75% { height: 32px; opacity: 0.85; }
+}
+
+/* 录音主体：指示器 + 识别文本 */
+.voice-recording-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 录音指示灯 + 标签 */
+.voice-rec-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.voice-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sun-red);
+  animation: voice-rec-blink 1.8s ease-in-out infinite;
+}
+
+@keyframes voice-rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.voice-rec-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--sun-red);
+  text-transform: uppercase;
+}
+
+.voice-recording-text {
+  font-size: var(--sun-font-base);
+  color: var(--sun-text);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-icon-btn.voice-cancel {
+  background: transparent;
+  border: 1px solid var(--sun-border);
+  color: var(--sun-text-secondary);
+  transition: all 0.2s;
+}
+
+.composer-icon-btn.voice-cancel:hover {
+  border-color: var(--sun-red);
+  color: var(--sun-red);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.composer-icon-btn.voice-confirm {
+  background: var(--sun-accent);
+  color: var(--btn-primary-text);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+[data-theme="dark"] .composer-icon-btn.voice-confirm {
+  background: #ececec;
+  color: #212121;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.08);
+}
+
+.composer-icon-btn.voice-confirm:hover {
+  background: var(--sun-accent-hover);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .composer-icon-btn.voice-confirm:hover {
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(255, 255, 255, 0.12);
 }
 
 .composer-hint {

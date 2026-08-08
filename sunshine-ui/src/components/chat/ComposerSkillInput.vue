@@ -27,6 +27,7 @@ const props = defineProps<{
   allowsSkillMention: boolean
   allowsAgentMention?: boolean
   allowsWorkflowMention?: boolean
+  disabled?: boolean
   catalog: SkillCatalogIndexEntry[]
   agentCatalog?: AgentCatalogIndexEntry[]
   workflowCatalog?: WorkflowCatalogEntry[]
@@ -158,6 +159,13 @@ function onPaste(e: ClipboardEvent) {
   document.execCommand('insertText', false, text)
 }
 
+/** 禁用时移除焦点并禁止输入 */
+watch(() => props.disabled, (val) => {
+  if (val && editorRef.value) {
+    editorRef.value.blur()
+  }
+})
+
 function onEditorKeydown(e: KeyboardEvent) {
   emit('keydown', e)
 }
@@ -251,7 +259,7 @@ onMounted(() => {
       ref="editorRef"
       class="composer-editor"
       :class="{ 'is-empty': isEditorEmpty }"
-      contenteditable="true"
+      :contenteditable="!disabled"
       role="textbox"
       aria-multiline="true"
       :data-placeholder="placeholder"

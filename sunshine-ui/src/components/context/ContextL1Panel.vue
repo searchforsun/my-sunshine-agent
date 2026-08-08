@@ -144,17 +144,32 @@ const page = inject(CONTEXT_PAGE_KEY) as ContextPageApi
   background: color-mix(in srgb, #7a8fa3 18%, transparent);
   border-color: color-mix(in srgb, #7a8fa3 35%, transparent);
 }
+[data-theme="dark"] .l1-band-tag[data-band='near'] {
+  color: #9bb5cc;
+  background: color-mix(in srgb, #7a8fa3 28%, var(--sun-black));
+  border-color: color-mix(in srgb, #7a8fa3 45%, var(--sun-black));
+}
 
 .l1-band-tag[data-band='mid'] {
   color: #6a6b55;
   background: color-mix(in srgb, #9aa06e 18%, transparent);
   border-color: color-mix(in srgb, #9aa06e 35%, transparent);
 }
+[data-theme="dark"] .l1-band-tag[data-band='mid'] {
+  color: #b8bf85;
+  background: color-mix(in srgb, #9aa06e 28%, var(--sun-black));
+  border-color: color-mix(in srgb, #9aa06e 45%, var(--sun-black));
+}
 
 .l1-band-tag[data-band='far'] {
   color: #6b5d6e;
   background: color-mix(in srgb, #9a849e 18%, transparent);
   border-color: color-mix(in srgb, #9a849e 35%, transparent);
+}
+[data-theme="dark"] .l1-band-tag[data-band='far'] {
+  color: #b7a6bb;
+  background: color-mix(in srgb, #9a849e 28%, var(--sun-black));
+  border-color: color-mix(in srgb, #9a849e 45%, var(--sun-black));
 }
 
 .l1-band-tag.soft {
