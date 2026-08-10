@@ -195,6 +195,7 @@ export async function consumeChatSseStream(
               ? appendChunk(prev, parsed.text)
               : prev + parsed.text
           }
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -280,6 +281,8 @@ export async function consumeChatSseStream(
               ? appendChunk(prev, delta.text)
               : prev + delta.text
           }
+          // 原地改 step 字段后需 bump 才驱动 OperationStack（timelineRevision）；80ms 节流
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue

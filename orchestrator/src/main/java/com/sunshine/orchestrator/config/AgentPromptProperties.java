@@ -4,10 +4,10 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
-import org.springframework.util.StringUtils;
 
 /**
- * Agent 非正文配置（模型名/温度等）— 提示词正文 SSOT = prompt-manager Catalog。
+ * Agent 非正文配置（温度/节点上限等）— 提示词正文 SSOT = prompt-manager Catalog；
+ * 模型名 SSOT = ModelSceneResolver（注册表 scene_binding）。
  * 时间线嵌套 POJO 仅作 Catalog JSON 反序列化目标；样例文案见 {@link Timeline#fixture()}（单测）。
  */
 @Getter
@@ -23,16 +23,13 @@ public class AgentPromptProperties {
     @Getter
     @Setter
     public static class Intent {
-
-        /** 意图分类模型（提示词见 Catalog {@code intent.classifier}） */
-        private String model = "deepseek-v4-flash";
+        // 模型名已迁 ModelSceneResolver scene=intent；本类仅保留占位以免旧 YAML 绑定失败
     }
 
     @Getter
     @Setter
     public static class Planner {
 
-        private String model = "deepseek-v4-flash";
         private double temperature = 0;
         private int maxTokens = 1024;
         private int maxNodes = 8;
@@ -91,14 +88,14 @@ public class AgentPromptProperties {
             map.put("subagent", subagent);
             var generate = new StepTimeline();
             generate.setLabel("生成回答");
-            generate.setBefore("为{query}撰写回复");
-            generate.setActive("正在撰写并输出针对{query}的回复");
-            generate.setAfter("已完成对{query}的回复");
+            generate.setBefore("撰写回复");
+            generate.setActive("正在撰写并输出回复");
+            generate.setAfter("已完成回复");
             map.put("generate", generate);
             var rag = new StepTimeline();
             rag.setLabel("检索知识库");
-            rag.setBefore("在企业知识库中查找与{query}相关的资料");
-            rag.setActive("正在匹配与{query}最相关的文档片段");
+            rag.setBefore("在企业知识库中查找相关资料");
+            rag.setActive("正在匹配最相关的文档片段");
             map.put("rag", rag);
             var skill = new StepTimeline();
             skill.setLabel("加载技能");
@@ -109,17 +106,17 @@ public class AgentPromptProperties {
             map.put("skill", skill);
             var think = new StepTimeline();
             think.setLabel("深度思考");
-            think.setBefore("规划如何回答{query}");
-            think.setActive("正在规划{query}的工具调用方案");
-            think.setAfter("已完成{query}的工具调用规划");
+            think.setBefore("规划工具与作答路径");
+            think.setActive("正在规划工具调用方案");
+            think.setAfter("工具调用方案已拟定");
             think.setBeforeFallback("规划工具与作答路径");
             think.setActiveFallback("正在规划工具调用方案");
             think.setAfterFallback("工具调用方案已拟定");
             think.setBeforeFollowUp("准备结合{toolDisplayName}结果继续分析");
             think.setActiveFollowUp("正在综合分析{toolDisplayName}返回结果");
             think.setAfterFollowUp("已完成{toolDisplayName}的工具结果综合分析");
-            think.setBeforeFollowUpNoTool("准备结合工具结果分析{query}");
-            think.setActiveFollowUpNoTool("正在结合工具返回结果分析{query}");
+            think.setBeforeFollowUpNoTool("准备结合工具结果分析");
+            think.setActiveFollowUpNoTool("正在结合工具返回结果分析");
             think.setAfterFollowUpNoTool("工具结果综合分析已完成");
             think.setBeforeFollowUpFallback("准备结合工具结果分析");
             think.setActiveFollowUpFallback("正在综合分析工具结果");
@@ -135,7 +132,7 @@ public class AgentPromptProperties {
             node.setBefore("准备{displayName}");
             node.setActive("正在{displayName}");
             node.setAfter("{displayName}完成");
-            node.setBeforeWithQuery("准备处理{query}的「{displayName}」环节");
+            node.setBeforeWithQuery("准备「{displayName}」环节");
             map.put("node", node);
             return map;
         }
@@ -185,23 +182,23 @@ public class AgentPromptProperties {
 
         private static AgentTimeline fixtureAgent() {
             var a = new AgentTimeline();
-            a.setBefore("理解{query}，规划作答思路");
-            a.setActive("结合上下文分析{query}");
-            a.setProgress("深入分析{query}的背景与上下文");
+            a.setBefore("理解问题，规划作答思路");
+            a.setActive("结合上下文进行分析");
+            a.setProgress("深入分析背景与上下文");
             a.setAfterNoContext("完成问题分析，开始生成回复");
-            a.setAfterOutline("已梳理{query}的作答要点");
-            a.setAfterZeroHits("知识库暂无{query}的匹配内容，将结合通用知识作答");
-            a.setAfterWithHits("已从 {hitCount} 条文档中提取与{query}相关的关键信息");
-            a.setAfterDefault("已完成对{query}的分析，开始生成回复");
+            a.setAfterOutline("已梳理作答要点");
+            a.setAfterZeroHits("知识库暂无匹配内容，将结合通用知识作答");
+            a.setAfterWithHits("已从 {hitCount} 条文档中提取关键信息");
+            a.setAfterDefault("已完成分析，开始生成回复");
             return a;
         }
 
         private static RagAfterTimeline fixtureRagAfter() {
             var r = new RagAfterTimeline();
             r.setHitsWithSources("找到 {hitCount} 条参考片段，来源：{sources}");
-            r.setHitsWithQuery("找到 {hitCount} 条与{query}相关的参考文档");
-            r.setZeroHits("未找到与{query}直接相关的制度或文档");
-            r.setGenericDone("已完成针对{query}的知识库检索");
+            r.setHitsWithQuery("找到 {hitCount} 条相关参考文档");
+            r.setZeroHits("未找到直接相关的制度或文档");
+            r.setGenericDone("已完成知识库检索");
             return r;
         }
 
@@ -355,13 +352,6 @@ public class AgentPromptProperties {
         private String detail;
         private String after;
         private String forcedAfter;
-    }
-
-    public String intentModelOrDefault() {
-        if (intent == null || !StringUtils.hasText(intent.model)) {
-            return "deepseek-v4-flash";
-        }
-        return intent.model.strip();
     }
 
     public Planner plannerOrDefault() {

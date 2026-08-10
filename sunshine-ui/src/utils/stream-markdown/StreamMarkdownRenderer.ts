@@ -617,7 +617,9 @@ export class StreamMarkdownRenderer {
     this.currentCodeRaw = ''
     this.currentCodeLang = ''
   }
+
 }
+
 
 function isParagraphResult(r: ProcessResult): boolean {
   if (r.type !== 'markdown') return false

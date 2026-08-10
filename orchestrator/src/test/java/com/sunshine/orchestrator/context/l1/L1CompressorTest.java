@@ -7,12 +7,17 @@ import com.sunshine.orchestrator.context.SessionTurn;
 import com.sunshine.orchestrator.context.TokenEstimator;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.registry.ModelCapabilities;
+import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
+import com.sunshine.orchestrator.registry.ModelCatalogScene;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -69,8 +74,18 @@ class L1CompressorTest {
         properties.getL1().setMidTurns(2);
         // 轮数兜底触发旧压缩测试（测试用 5-6 轮，backstop=4 保证触发）
         properties.getL1().setTurnBackstop(4);
+        ModelSceneResolver resolver = new ModelSceneResolver(
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                WebClient.builder(), "http://localhost", "default");
+        resolver.replaceSnapshotForTest(
+                List.of(new ModelCatalogDefinition(
+                        "deepseek-v4-pro", "p", "pro", 256000, 8192, "cl100k_base",
+                        ModelCapabilities.defaults(), null, true, true, 0)),
+                List.of(
+                        new ModelCatalogScene("chat", "deepseek-v4-pro", null, Map.of(), true),
+                        new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         compressor = new L1Compressor(properties, llm, store, l2StateStore, catalogHolder,
-                tokenEstimator, modelWindowCache);
+                tokenEstimator, modelWindowCache, resolver);
         lenient().when(modelWindowCache.windowFor(any())).thenReturn(256000);
         // 默认低 token（远低于阈值），靠轮数兜底触发
         lenient().when(tokenEstimator.effectiveCount(any(), anyDouble())).thenReturn(10);

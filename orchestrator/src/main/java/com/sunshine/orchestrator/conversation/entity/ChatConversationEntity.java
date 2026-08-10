@@ -53,4 +53,8 @@ public class ChatConversationEntity {
     /** 用户选定的 checkout 路径 */
     @Column(name = "checkout_path", length = 256)
     private String checkoutPath;
+
+    /** 会话绑定模型（注册表 model_name；空则走 chat/default scene） */
+    @Column(name = "model_name", length = 128)
+    private String modelName;
 }

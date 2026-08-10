@@ -3,11 +3,16 @@ package com.sunshine.orchestrator.context;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.context.l3.L3RecallService;
+import com.sunshine.orchestrator.registry.ModelCapabilities;
+import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
+import com.sunshine.orchestrator.registry.ModelCatalogScene;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,8 +46,18 @@ class ContextAssemblerTest {
     @BeforeEach
     void setUp() {
         properties = new ContextProperties();
+        ModelSceneResolver resolver = new ModelSceneResolver(
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                WebClient.builder(), "http://localhost", "default");
+        resolver.replaceSnapshotForTest(
+                List.of(new ModelCatalogDefinition(
+                        "deepseek-v4-pro", "p", "pro", 256000, 8192, "cl100k_base",
+                        ModelCapabilities.defaults(), null, true, true, 0)),
+                List.of(
+                        new ModelCatalogScene("chat", "deepseek-v4-pro", null, Map.of(), true),
+                        new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService,
-                tokenEstimator, modelWindowCache, null, null);
+                tokenEstimator, modelWindowCache, null, null, resolver);
         lenient().when(modelWindowCache.windowFor(any())).thenReturn(256000);
         lenient().when(l1Store.find(anyString())).thenReturn(Optional.empty());
         lenient().when(l1Store.parseMidAnswers(any())).thenReturn(Map.of());

@@ -36,9 +36,7 @@ public class ContextAssembler {
     private final ModelWindowCache modelWindowCache;
     private final ChatConversationRepository conversationRepo;
     private final WorkspaceProjectGuideRepository projectGuideRepo;
-
-    @org.springframework.beans.factory.annotation.Value("${agent.model.name:deepseek-v4-pro}")
-    private String modelName;
+    private final com.sunshine.orchestrator.registry.ModelSceneResolver modelSceneResolver;
 
     public AssembledContext assemble(AssembleRequest request) {
         if (!contextProperties.isEnabled()) {
@@ -46,7 +44,11 @@ public class ContextAssembler {
         }
         List<SessionTurn> source = sanitizeTurns(request.history());
         ContextProperties.L1 l1 = contextProperties.getL1();
-        int modelWindow = modelWindowCache.windowFor(modelName);
+        String effectiveModel = StringUtils.hasText(request.modelName())
+                ? modelSceneResolver.resolveChat(request.modelName()).effectiveModel()
+                : modelSceneResolver.resolve(
+                        com.sunshine.orchestrator.registry.ModelSceneResolver.SCENE_CHAT, null).effectiveModel();
+        int modelWindow = modelWindowCache.windowFor(effectiveModel);
         int budgetTokens = (int) (modelWindow * l1.getMaxTokensRatio());
         int nearN = Math.max(1, l1.getNearTurns());
         int midN = Math.max(0, l1.getMidTurns());
@@ -250,7 +252,16 @@ public class ContextAssembler {
             String tenantId,
             String conversationId,
             List<SessionTurn> history,
-            String currentUserQuery
+            String currentUserQuery,
+            String modelName
     ) {
+        public AssembleRequest(
+                String userId,
+                String tenantId,
+                String conversationId,
+                List<SessionTurn> history,
+                String currentUserQuery) {
+            this(userId, tenantId, conversationId, history, currentUserQuery, null);
+        }
     }
 }

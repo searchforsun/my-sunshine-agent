@@ -2,8 +2,8 @@
 # sunshine-resource-manager — Nacos 配置
 # Data ID: sunshine-resource-manager.yaml
 # Group:   DEFAULT_GROUP
-# 聚合管理服务（Skill / Agent / Prompt / Desensitize）
-# 表结构 SSOT：docker/mysql/init/19-sunshine-resource.sql（禁止 Flyway）
+# 聚合管理服务（Skill / Agent / Prompt / Desensitize / Model Registry）
+# 表结构 SSOT：docker/mysql/init/19-sunshine-resource.sql + 20-sunshine-model-registry.sql（禁止 Flyway）
 # Skill 包文件存储：MinIO ecs4c16g:9000 / bucket sunshine-skills
 # ============================================================
 
@@ -15,6 +15,11 @@ spring:
     url: jdbc:mysql://ecs4c16g:3306/sunshine_resource?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: root
     password: root123
+  data:
+    redis:
+      host: ecs4c16g
+      port: 6379
+      password: redis123
   jpa:
     properties:
       hibernate:
@@ -26,6 +31,11 @@ spring:
       ddl-auto: validate
     open-in-view: false
     show-sql: false
+
+# 模型注册表 api_key AES 材料（明文密钥仅经管理面写入；生产用 MODEL_AES_KEY 注入）
+model:
+  crypto:
+    aes-key: ${MODEL_AES_KEY:sunshine-model-aes-key-32b!!}
 
 # 原 skill-manager 专属：MinIO 存储
 skill:

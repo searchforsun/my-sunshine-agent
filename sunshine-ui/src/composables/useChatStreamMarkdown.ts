@@ -91,6 +91,7 @@ export function useChatStreamMarkdown(
   let pendingSyncContent = ''
   let trailingSyncTimer: ReturnType<typeof setTimeout> | null = null
   const STREAM_SYNC_THROTTLE_MS = 50
+
   function scheduleStreamingContentSync(content: string) {
     pendingSyncContent = content
     const now = Date.now()

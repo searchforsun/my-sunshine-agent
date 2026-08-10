@@ -39,6 +39,7 @@ export interface Conversation {
   messages: ChatMessage[]
   executionPreference?: ExecutionPreference
   kbId?: string | null
+  modelName?: string | null
   kind?: string
   workspaceId?: string | null
   checkoutPath?: string | null
@@ -141,6 +142,7 @@ export const useChatStore = defineStore('chat', () => {
         messages: prev?.messages ?? [],
         executionPreference: c.executionPreference ?? prev?.executionPreference,
         kbId: c.kbId ?? prev?.kbId ?? null,
+        modelName: c.modelName ?? prev?.modelName ?? null,
         kind: c.kind ?? prev?.kind,
         workspaceId: c.workspaceId ?? prev?.workspaceId ?? null,
         checkoutPath: c.checkoutPath ?? prev?.checkoutPath ?? null,
@@ -185,6 +187,7 @@ export const useChatStore = defineStore('chat', () => {
           messages: sanitizeRestoredMessages(mergeRestoredMessages(mapApiMessages(detail.messages), cached)),
           executionPreference: detail.executionPreference,
           kbId: detail.kbId ?? null,
+          modelName: detail.modelName ?? null,
         })
         currentId.value = savedId
         persistCurrentId()
@@ -356,6 +359,7 @@ export const useChatStore = defineStore('chat', () => {
         messages: [],
         executionPreference: created.executionPreference,
         kbId: created.kbId ?? null,
+        modelName: created.modelName ?? null,
         kind: created.kind,
         workspaceId: created.workspaceId ?? null,
         checkoutPath: created.checkoutPath ?? null,
@@ -459,6 +463,11 @@ export const useChatStore = defineStore('chat', () => {
     if (conv) conv.kbId = kb
   }
 
+  function updateModelNameLocal(id: string, name: string | null) {
+    const conv = conversations.value.find(c => c.id === id)
+    if (conv) conv.modelName = name
+  }
+
   /** 分支切换后重绑定会话 checkout 目录：后端持久化 + 本地会话同步；失败抛错由调用方中止流程 */
   async function updateCheckout(id: string, checkoutPath: string): Promise<void> {
     await updateConversationCheckout(id, checkoutPath)
@@ -494,6 +503,7 @@ export const useChatStore = defineStore('chat', () => {
           messages: sanitizeRestoredMessages(mergeRestoredMessages(apiMsgs, cached)),
           executionPreference: detail.executionPreference,
           kbId: detail.kbId ?? null,
+          modelName: detail.modelName ?? null,
         })
       } catch (e) {
         const cached = loadCachedMessages(id)
@@ -573,6 +583,7 @@ export const useChatStore = defineStore('chat', () => {
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
     updateExecutionPreferenceLocal,
     updateKbIdLocal,
+    updateModelNameLocal,
     updateCheckout,
     loadHistory,
     hasHistoryMore,

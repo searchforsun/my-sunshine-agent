@@ -1,7 +1,7 @@
 /** 时间线步骤排序 */
 import type { ProcessingStep, StepPhase } from './processingSteps'
 
-/** ReAct 设计序：intent -> tasks -> think* -> tool*（tasks 紧跟意图识别，在 think 之前） */
+/** ReAct 设计序：intent → skill → tasks → think* → tool*（skill 固定第二步；tasks 在 think 前） */
 export const STEP_ORDER: StepPhase[] = [
   'intent', 'skill', 'plan', 'node', 'rag', 'tasks', 'think', 'tool', 'agent', 'generate',
 ]
@@ -15,19 +15,33 @@ export function isWorkflowNodeStepId(id: string | undefined): boolean {
   return !!id && id.startsWith('node-')
 }
 
-/** tasks 步固定紧跟 intent（意图识别之后、think 之前） */
-function repositionTasksAfterIntent(steps: ProcessingStep[]): ProcessingStep[] {
-  const tasksIdx = steps.findIndex(s => s.phase === 'tasks')
-  if (tasksIdx < 0) return steps
-  const intentIdx = steps.findIndex(s => s.phase === 'intent')
-  if (intentIdx < 0) return steps
-  const targetIdx = intentIdx + 1
-  if (tasksIdx === targetIdx) return steps
-  const tasksStep = steps[tasksIdx]
-  const without = steps.filter((_, i) => i !== tasksIdx)
-  const intentPos = without.findIndex(s => s.phase === 'intent')
-  const insertAt = intentPos + 1
-  return [...without.slice(0, insertAt), tasksStep, ...without.slice(insertAt)]
+/** 将指定 phase 步移到 anchorPhase 之后（若不存在则原样返回） */
+function movePhaseAfterAnchor(
+  steps: ProcessingStep[],
+  phase: StepPhase,
+  anchorPhase: StepPhase,
+): ProcessingStep[] {
+  const phaseIdx = steps.findIndex(s => s.phase === phase)
+  if (phaseIdx < 0) return steps
+  const anchorIdx = steps.findIndex(s => s.phase === anchorPhase)
+  if (anchorIdx < 0) return steps
+  if (phaseIdx === anchorIdx + 1) return steps
+  const moved = steps[phaseIdx]
+  const without = steps.filter((_, i) => i !== phaseIdx)
+  const newAnchor = without.findIndex(s => s.phase === anchorPhase)
+  const insertAt = newAnchor + 1
+  return [...without.slice(0, insertAt), moved, ...without.slice(insertAt)]
+}
+
+/**
+ * 头部钉扎：skill 固定为第二步（intent 之后）；
+ * tasks 紧随 skill（无 skill 则紧随 intent），始终在 think 之前。
+ */
+function repositionPinnedHeaderSteps(steps: ProcessingStep[]): ProcessingStep[] {
+  let next = movePhaseAfterAnchor(steps, 'skill', 'intent')
+  const hasSkill = next.some(s => s.phase === 'skill')
+  next = movePhaseAfterAnchor(next, 'tasks', hasSkill ? 'skill' : 'intent')
+  return next
 }
 
 export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {
@@ -42,7 +56,7 @@ export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {
     if (aOrder !== bOrder) return aOrder - bOrder
     return a.id.localeCompare(b.id)
   })
-  return repositionTasksAfterIntent(sorted)
+  return repositionPinnedHeaderSteps(sorted)
 }
 
 export { isThinkStepId }

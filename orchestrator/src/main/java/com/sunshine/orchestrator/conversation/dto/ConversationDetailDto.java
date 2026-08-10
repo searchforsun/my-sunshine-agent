@@ -22,6 +22,7 @@ public class ConversationDetailDto {
     private Instant updatedAt;
     private String executionPreference;
     private String kbId;
+    private String modelName;
     private List<MessageDto> messages;
 
     public static ConversationDetailDto from(ChatConversationEntity conv, List<ChatMessageEntity> messages) {
@@ -32,6 +33,7 @@ public class ConversationDetailDto {
                 .updatedAt(conv.getUpdatedAt())
                 .executionPreference(conv.getExecutionPreference())
                 .kbId(conv.getKbId())
+                .modelName(conv.getModelName())
                 .messages(messages.stream().map(MessageDto::from).toList())
                 .build();
     }

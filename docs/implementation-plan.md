@@ -107,6 +107,7 @@
 | **5.1** 对话 Badcase 闭环 | 消息反馈标注 + `/ops` 运营页 + 回流 RAG golden-set + 效果报表 | ⬜ |
 | **5.2** 用量计量与配额 | token 落库（`LlmIoTracer` → MQ → MySQL）+ 租户配额 429 + 用量页 | ⬜ |
 | **5.3** 多模型场景路由 | `model_route_policy` 表 + `scene` 注入 + `ModelRouter` 扩展（`model=auto`） | ⬜ |
+| — | **模型注册表（5.3 前置）** MySQL SSOT + resource-manager CRUD + gateway Adapter/Normalize + orchestrator `ModelSceneResolver` + `/models` UI | **✅**（[archived spec](./superpowers/specs/archive/2026-07-27-model-registry-config-design.md)；Live：`verify_model_registry_live.py`） |
 | **5.4** Optimizer MVP | Badcase/评测 → 提案 → prompt/kb draft → 复评对比 → 人工发布（半自动） | ⬜ |
 | **5.5** 工具语义检索 | 工具描述 Milvus 索引 + ReAct Top-K 注入 + HITL/元工具白名单 | ⬜ |
 | **5.6** 开放 API | `api_key` + Gateway Bearer 校验 + `/open/v1/*`（直转 orchestrator 不经 BFF） | ⬜ |

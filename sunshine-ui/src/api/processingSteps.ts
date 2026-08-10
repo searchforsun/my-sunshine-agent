@@ -412,54 +412,29 @@ export interface StepDelta {
 
 
 export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): ProcessingStep[] {
-
   const idx = steps.findIndex(s => s.id === delta.stepId)
-
   if (idx < 0 && isWorkflowNodeStepId(delta.stepId)) {
     return steps
   }
-
-  const base: ProcessingStep = idx >= 0 ? { ...steps[idx] } : {
+  // 已存在步骤：原地追加文本，复用数组引用，避免每 token filter+upsert+sort
+  if (idx >= 0) {
+    const base = steps[idx]
+    applyDeltaChannel(base, delta)
+    if (base.lifecycle == null) base.lifecycle = 'running'
+    if (base.lifecycle === 'running') {
+      if (base.startedAt == null) base.startedAt = Date.now()
+      if (base.clientStartedAt == null) base.clientStartedAt = Date.now()
+    }
+    return steps
+  }
+  const base: ProcessingStep = {
     id: delta.stepId,
     phase: delta.stepId as StepPhase,
     lifecycle: 'running',
     summary: { active: delta.stepId },
   }
-
-  switch (delta.channel) {
-
-    case 'reasoning':
-
-      base.reasoning = concatText(base.reasoning, delta.text)
-
-      break
-
-    case 'step_summary':
-
-      base.stepSummary = delta.text
-
-      break
-
-    case 'output':
-
-      base.output = concatText(base.output, delta.text)
-
-      break
-
-    case 'result':
-
-      base.result = concatText(base.result, delta.text)
-
-      break
-
-    default:
-
-      base.output = concatText(base.output, delta.text)
-
-  }
-
+  applyDeltaChannel(base, delta)
   if (base.lifecycle == null) base.lifecycle = 'running'
-
   if (base.lifecycle === 'running') {
     if (base.startedAt == null) {
       base.startedAt = Date.now()
@@ -470,10 +445,28 @@ export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): Proce
       base.clientStartedAt = Date.now()
     }
   }
-
-  return upsertStep(steps.filter(s => s.id !== delta.stepId), base)
-
+  return upsertStep(steps, base)
 }
+
+function applyDeltaChannel(base: ProcessingStep, delta: StepDelta): void {
+  switch (delta.channel) {
+    case 'reasoning':
+      base.reasoning = concatText(base.reasoning, delta.text)
+      break
+    case 'step_summary':
+      base.stepSummary = delta.text
+      break
+    case 'output':
+      base.output = concatText(base.output, delta.text)
+      break
+    case 'result':
+      base.result = concatText(base.result, delta.text)
+      break
+    default:
+      base.output = concatText(base.output, delta.text)
+  }
+}
+
 
 
 

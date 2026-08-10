@@ -58,6 +58,7 @@ import {
 } from '../api/contentInterleave'
 import { resolveAgentNodeStepForDrawer, getPendingHitlConfirmations } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
+import ModelSelector from '../components/chat/ModelSelector.vue'
 import KbSelector from '../components/knowledge/KbSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import VoiceInputButton from '../components/chat/VoiceInputButton.vue'
@@ -65,7 +66,13 @@ import UserMessageContent from '../components/chat/UserMessageContent.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { useKbPreference } from '../composables/useKbPreference'
+import { useModelPreference } from '../composables/useModelPreference'
 import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
+import {
+  catalogUserSelectableOptions,
+  fetchModelCatalog,
+  type ModelCatalogDefinition,
+} from '../api/models'
 import { useTenantPreference } from '../composables/useTenantPreference'
 import { allowsAgentMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
@@ -441,9 +448,45 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
 const inputText = ref('')
 const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
 const { kbId, setKbId, applyConversationKb } = useKbPreference()
+const { modelName, setModelName, applyConversationModel } = useModelPreference()
 const { tenantId } = useTenantPreference()
 const chatKbs = ref<KnowledgeBase[]>([])
 const loadingChatKbs = ref(false)
+const chatModelDefs = ref<ModelCatalogDefinition[]>([])
+
+async function loadChatModels() {
+  try {
+    const catalog = await fetchModelCatalog()
+    chatModelDefs.value = catalog.definitions
+  } catch (e) {
+    console.warn('[ChatView] 加载模型目录失败', e)
+  }
+}
+
+/** 输入或历史中含 markdown/data URL 图片时，非多模态模型不可选 */
+function textHasImages(text: string): boolean {
+  return /!\[[^\]]*]\([^)]+\)/.test(text) || /data:image\//i.test(text)
+}
+
+const composerRequiresMultimodal = computed(() => {
+  if (textHasImages(inputText.value)) return true
+  return messages.value.some((m) => m.role === 'user' && textHasImages(m.content || ''))
+})
+
+const chatModelOptions = computed(() =>
+  catalogUserSelectableOptions({
+    providers: [],
+    definitions: chatModelDefs.value,
+    scenes: [],
+  }).map((opt) => {
+    const blocked = composerRequiresMultimodal.value && !opt.capabilities.multimodal
+    return {
+      ...opt,
+      disabled: blocked,
+      disabledReason: blocked ? '当前消息含图片，该模型不支持多模态' : undefined,
+    }
+  }),
+)
 
 async function loadChatKbs() {
   loadingChatKbs.value = true
@@ -465,6 +508,66 @@ function onKbChange(next: string) {
   const convId = chatStore.currentId
   if (convId) chatStore.updateKbIdLocal(convId, next)
 }
+
+function onModelChange(next: string | null) {
+  setModelName(next)
+  const convId = chatStore.currentId
+  if (convId) chatStore.updateModelNameLocal(convId, next)
+}
+
+/** 底栏左侧：按自然宽度测到真实碰撞后，知识库才收成图标 */
+const composerToolbarLeftRef = ref<HTMLElement | null>(null)
+const kbIconOnly = ref(false)
+const toolbarMeasuring = ref(false)
+let toolbarCollisionRaf = 0
+let toolbarResizeObserver: ResizeObserver | null = null
+let lastToolbarLeftWidth = -1
+
+async function measureComposerToolbarCollision(force = false) {
+  const el = composerToolbarLeftRef.value
+  if (!el) return
+  if (force) lastToolbarLeftWidth = -1
+  const width = el.clientWidth
+  const widthDelta = width - lastToolbarLeftWidth
+  const widthChanged = lastToolbarLeftWidth < 0 || Math.abs(widthDelta) >= 1
+  lastToolbarLeftWidth = width
+  // 已是图标且未变宽：无需展开测量（避免闪全文）
+  if (kbIconOnly.value && (!widthChanged || widthDelta <= 0)) return
+  // 测量时禁止分支收缩，否则 flex 会先吃掉空间，永远测不出「碰撞」
+  kbIconOnly.value = false
+  toolbarMeasuring.value = true
+  await nextTick()
+  const collided = el.scrollWidth > el.clientWidth + 1
+  toolbarMeasuring.value = false
+  kbIconOnly.value = collided
+}
+
+function scheduleComposerToolbarCollisionCheck(force = false) {
+  if (toolbarCollisionRaf) cancelAnimationFrame(toolbarCollisionRaf)
+  toolbarCollisionRaf = requestAnimationFrame(() => {
+    toolbarCollisionRaf = 0
+    void measureComposerToolbarCollision(force)
+  })
+}
+
+function bindComposerToolbarCollisionObserver() {
+  toolbarResizeObserver?.disconnect()
+  const el = composerToolbarLeftRef.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  toolbarResizeObserver = new ResizeObserver(() => scheduleComposerToolbarCollisionCheck())
+  toolbarResizeObserver.observe(el)
+  scheduleComposerToolbarCollisionCheck()
+}
+
+watch(composerToolbarLeftRef, (el) => {
+  if (el) bindComposerToolbarCollisionObserver()
+})
+
+onUnmounted(() => {
+  if (toolbarCollisionRaf) cancelAnimationFrame(toolbarCollisionRaf)
+  toolbarResizeObserver?.disconnect()
+  toolbarResizeObserver = null
+})
 const {
   inputRef,
   skillCatalog,
@@ -556,6 +659,21 @@ let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 
 /** workspace task：分支选择（分支名，与 checkout 目录解耦） */
 const taskBranch = ref('')
+
+// 依赖 taskBranch，须放在其声明之后
+watch(
+  [
+    kbId,
+    taskBranch,
+    preference,
+    voiceListening,
+    () => chatStore.newTaskMode,
+    () => chatStore.pendingWorkspace,
+    () => chatKbs.value.map((kb) => `${kb.kbId}:${kb.displayName}`).join('|'),
+  ],
+  () => scheduleComposerToolbarCollisionCheck(true),
+)
+
 /** 当前会话实际绑定的 checkoutId（由分支 ensure 得到，用于 checkoutPath / 文件树）；无绑定为空串 */
 const taskCheckoutId = ref('')
 /** 右侧工作区真实代码分支：新任务未发送时为缺省 checkout 分支，发送/会话恢复后为实际绑定分支 */
@@ -1086,10 +1204,12 @@ async function performSend(text: string, convId: string) {
     skillId: skillBinding.skillId,
     workflowId: workflowBinding.workflowId,
     kbId: kbId.value,
+    modelName: modelName.value ?? '',
     writeHitlMode: getWriteHitlMode(convId),
   })
   chatStore.updateExecutionPreferenceLocal(convId, preference.value)
   if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
+  chatStore.updateModelNameLocal(convId, modelName.value)
   await nextTick()
   scrollToBottom(true)
   await ensureStreamRenderer()
@@ -1349,8 +1469,10 @@ onMounted(async () => {
     await chatStore.switchTo(cid)
     applyConversationPreference(chatStore.current?.executionPreference)
     applyConversationKb(chatStore.current?.kbId)
+    applyConversationModel(chatStore.current?.modelName)
     void applyConversationCheckout()
     void loadChatKbs()
+    void loadChatModels()
     ensureActive(cid)
     const pendingReconnect = !!(active?.conversationId === cid)
     if (cid) {
@@ -1461,6 +1583,7 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   updateConversationId(newId)
   applyConversationPreference(chatStore.current?.executionPreference)
   applyConversationKb(chatStore.current?.kbId)
+  applyConversationModel(chatStore.current?.modelName)
   void applyConversationCheckout()
   // 沙箱状态异步查询（有超时兜底），不阻塞 DOM 切换
   void (async () => {
@@ -1936,7 +2059,11 @@ watch(
               @keydown="handleKeydown"
             />
             <div class="composer-toolbar">
-              <div class="composer-toolbar-left">
+              <div
+                ref="composerToolbarLeftRef"
+                class="composer-toolbar-left"
+                :class="{ 'is-measuring': toolbarMeasuring }"
+              >
                 <template v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)">
                   <GitBranchSelector
                     :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
@@ -1958,10 +2085,17 @@ watch(
                   :model-value="kbId"
                   :loading="loadingChatKbs"
                   :show-create="false"
+                  :icon-only="kbIconOnly"
                   @update:model-value="onKbChange"
                 />
               </div>
               <div class="composer-toolbar-right">
+                <ModelSelector
+                  v-if="!voiceListening"
+                  :model-value="modelName"
+                  :options="chatModelOptions"
+                  @update:model-value="onModelChange"
+                />
                 <button
                   v-if="loading"
                   type="button"
@@ -3087,9 +3221,28 @@ watch(
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  flex-shrink: 1;
   gap: 8px;
   min-width: 0;
+  overflow: hidden;
+}
+
+.composer-toolbar-left :deep(.branch-dropdown-root) {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 180px;
+}
+
+.composer-toolbar-left :deep(.kb-dropdown-root),
+.composer-toolbar-left :deep(.mode-dropdown-root) {
+  flex: 0 0 auto;
+}
+
+/* 测量碰撞：按自然宽度排布，避免分支先 ellipsis 掩盖溢出 */
+.composer-toolbar-left.is-measuring :deep(.branch-dropdown-root) {
+  flex: 0 0 auto;
+  max-width: none;
 }
 
 .composer-toolbar-right {

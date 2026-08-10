@@ -335,16 +335,16 @@ async function onStop(e: Event): Promise<void> {
 }
 
 .op-shimmer {
-  --op-shimmer-base: var(--sun-text-muted);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 32%, var(--sun-text));
+  --op-shimmer-base: var(--sun-shimmer-base);
+  --op-shimmer-peak: var(--sun-shimmer-peak);
   display: inline-block;
   max-width: 100%;
   background-image: linear-gradient(
     90deg,
     var(--op-shimmer-base) 0%,
-    var(--op-shimmer-base) 36%,
+    var(--op-shimmer-base) 38%,
     var(--op-shimmer-peak) 50%,
-    var(--op-shimmer-base) 64%,
+    var(--op-shimmer-base) 62%,
     var(--op-shimmer-base) 100%
   );
   background-size: 220% 100%;
@@ -357,8 +357,8 @@ async function onStop(e: Event): Promise<void> {
 }
 
 .subagent-label.op-shimmer {
-  --op-shimmer-base: var(--sun-text-secondary);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 30%, var(--sun-text));
+  --op-shimmer-base: var(--sun-shimmer-label-base);
+  --op-shimmer-peak: var(--sun-shimmer-label-peak);
 }
 
 .op-pulse {

@@ -6,6 +6,8 @@ import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.AgentRewriteProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,7 @@ public class QueryRewriteService {
     private final AgentRewriteProperties rewriteProperties;
     private final PromptCatalogHolder catalogHolder;
     private final LlmGatewayClient llmGatewayClient;
+    private final ModelSceneResolver modelSceneResolver;
     private final ObjectMapper objectMapper;
 
     public boolean isIntentEnabled() {
@@ -61,7 +64,9 @@ public class QueryRewriteService {
             return skipped;
         }
         String user = "用户问题：" + originalQuery.strip();
-        String raw = llmGatewayClient.complete(cfg.getModel(), systemPrompt, user);
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_REWRITE_PLANNER, null);
+        String raw = llmGatewayClient.complete(
+                model.effectiveModel(), model.fallbackModel(), systemPrompt, user);
         String rewritten = parseSingleQuery(raw, originalQuery);
         if (!StringUtils.hasText(rewritten)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
@@ -86,7 +91,6 @@ public class QueryRewriteService {
             QueryRewriteTrace.record(traceMessageId, skipped);
             return skipped;
         }
-        AgentRewriteProperties.Intent cfg = rewriteProperties.getIntent();
         String systemPrompt = catalogText("rewrite.intent");
         if (!StringUtils.hasText(systemPrompt)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
@@ -95,7 +99,9 @@ public class QueryRewriteService {
             return skipped;
         }
         String user = RewriteConversationContext.buildUserMessage(originalQuery, memory);
-        String raw = llmGatewayClient.complete(cfg.getModel(), systemPrompt, user);
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_REWRITE_INTENT, null);
+        String raw = llmGatewayClient.complete(
+                model.effectiveModel(), model.fallbackModel(), systemPrompt, user);
         String rewritten = parseSingleQuery(raw, originalQuery);
         if (!StringUtils.hasText(rewritten)) {
             QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(

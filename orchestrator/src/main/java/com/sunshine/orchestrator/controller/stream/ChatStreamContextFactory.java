@@ -82,6 +82,10 @@ public class ChatStreamContextFactory {
         if (StringUtils.hasText(msg.getKbId()) || !StringUtils.hasText(conv.getKbId())) {
             conversationService.updateKbId(conv.getId(), userId, tenantId, kbId);
         }
+        String modelOverride = resolveSessionModelName(msg.getModelName(), conv.getModelName());
+        if (msg.getModelName() != null) {
+            conversationService.updateModelName(conv.getId(), userId, tenantId, modelOverride);
+        }
         String executionQuery = userContent;
         if (preference.isForced() && !preference.allowsSkillBinding()) {
             executionQuery = skillBindingParser.stripAtMention(userContent);
@@ -89,7 +93,7 @@ public class ChatStreamContextFactory {
             executionQuery = skillBindingParser.stripSkillMentions(userContent);
         }
         AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
-                userId, tenantId, conv.getId(), loadedHistory, executionQuery));
+                userId, tenantId, conv.getId(), loadedHistory, executionQuery, modelOverride));
         if (!loadedHistory.isEmpty() && !memory.hasAnyLayer()) {
             log.debug("[Orchestrator] 上下文为空 loaded={} user={}",
                     loadedHistory.size(),
@@ -115,7 +119,8 @@ public class ChatStreamContextFactory {
                 kbId,
                 false,
                 msg.getPersonalRules(),
-                conv.getKind());
+                conv.getKind(),
+                modelOverride);
     }
     /**
      * 中断感知（方案 A · 五层 spec §5.5.7 v16）：INTERRUPTED 的 assistant 消息折叠为显式中断注记，
@@ -152,6 +157,14 @@ public class ChatStreamContextFactory {
             return storedKbId.strip();
         }
         return defaultKbResolver.resolveBlocking(tenantId, null);
+    }
+
+    /** 请求显式传 modelName（含空串清绑定）优先；否则沿用会话已存值 */
+    private static String resolveSessionModelName(String requestModelName, String storedModelName) {
+        if (requestModelName != null) {
+            return StringUtils.hasText(requestModelName) ? requestModelName.strip() : null;
+        }
+        return StringUtils.hasText(storedModelName) ? storedModelName.strip() : null;
     }
 
     public ChatResumePreparation buildResumePreparation(ChatMessage msg, String userId, String tenantId) {
@@ -226,7 +239,7 @@ public class ChatStreamContextFactory {
         }
 
         AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
-                userId, tenantId, assistant.getConversationId(), history, userContent));
+                userId, tenantId, assistant.getConversationId(), history, userContent, conv.getModelName()));
         // ReAct 续跑重规划：loadHistoryForResume 已在当前 assistant 前截断，并去掉同轮 user（作 query）；
         // Near 仅含更早已完成轮次，不含本轮 tool/正文执行史；Agent 侧靠新 ReActAgent + stream epoch 隔离。
 
@@ -244,7 +257,8 @@ public class ChatStreamContextFactory {
                 userId,
                 tenantId,
                 kbId,
-                conv.getKind());
+                conv.getKind(),
+                conv.getModelName());
     }
 
     private ChatConversationEntity resolveConversation(String conversationId, String userId, String tenantId) {

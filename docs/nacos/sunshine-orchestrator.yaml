@@ -30,16 +30,16 @@ agent:
   # （docker/mysql/init/17-sunshine-prompt-manager.sql）
   # 运营入口：/prompts；禁止再在本文件维护提示词正文
   # system-prompt / mode-overlay.* / answer.* / timeline.* / planner.prompt → Catalog
+  # 模型名 SSOT = resource-manager model_scene_binding（ModelSceneResolver）；禁止再写 *.model
 
   prompt:
     # skill overlay SSOT = skill-manager Catalog（无 Nacos 影子）
 
-  intent:
-    model: deepseek-v4-flash
-    # classifier-prompt → Catalog id=intent.classifier
+  # intent 模型 → scene=intent；classifier-prompt → Catalog id=intent.classifier
+  # （勿留空 agent.intent:{}，Nacos 会绑成空串导致启动失败）
 
   planner:
-    model: deepseek-v4-flash
+    # model → scene=planner
     temperature: 0
     max_tokens: 4096
     max_nodes: 8
@@ -249,11 +249,10 @@ agent:
   # 验收提示词仍见 docs/routing/routing-golden-set.md；引擎 UnifiedRuleRoutingPolicy
 
   model:
-    name: deepseek-v4-pro
+    # name / context-window 已迁注册表；api-key 为 Gateway 代理鉴权占位
     api-key: sunshine-gateway
-    # 上下文窗口（token）：AgentScope CompactionConfig 动态触发依据，须与实际模型一致
-    # （llm-gateway deepseek-v4-pro = 256k，见 sunshine-llm-gateway.yaml）
-    context-window: 256000
+    base-url: http://sunshine-llm-gateway/v1
+    max-tokens: 16384
   history:
     max-messages: 20
   generation:
@@ -286,20 +285,17 @@ agent:
   rewrite:
     intent:
       enabled: true
-      model: deepseek-v4-flash
       max-chars: 8
-      # system-prompt → Catalog id=rewrite.intent
+      # model → scene=rewrite.intent；system-prompt → Catalog id=rewrite.intent
     planner:
       enabled: true
-      model: deepseek-v4-flash
-      # system-prompt → Catalog id=rewrite.planner
+      # model → scene=rewrite.planner；system-prompt → Catalog id=rewrite.planner
     # timeline → Catalog id=rewrite.timeline
 
   title:
     enabled: true
-    model: deepseek-v4-flash
     max-length: 15
-    # system-prompt → Catalog id=conversation.title
+    # model → scene=title；system-prompt → Catalog id=conversation.title
 
   context:
     enabled: true
@@ -310,8 +306,7 @@ agent:
       # 压缩触发：真实 token 达模型上下文窗口 80% 才触发；轮次为宽限兜底
       max-tokens-ratio: 0.8
       turn-backstop: 40
-      # Gateway 不可用时的降级模型窗口（对齐 agent.model.context-window=256k）
-      default-model-window: 256000
+      # 窗口来自注册表 ModelSceneResolver；禁止 default-model-window
       token-safety-factor: 1.1
       mid-compress-ratio: 0.15
     l2:
@@ -406,6 +401,10 @@ management:
   metrics:
     tags:
       application: sunshine-orchestrator
+
+# 公共模型 Catalog（无密钥）；gateway catalog 仅 llm-gateway 使用
+resource-manager:
+  base-url: http://sunshine-resource-manager
 
 logging:
   level:

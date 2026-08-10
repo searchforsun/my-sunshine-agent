@@ -36,7 +36,11 @@ public class ChatCompletionRequest {
     @JsonProperty("skip_cache")
     private Boolean skipCache;
 
-    /** 降级链切换模型时保留 tools 等字段 */
+    /** 主模型失败时的降级模型（也可由请求头 X-Fallback-Model 注入） */
+    @JsonProperty("fallback_model")
+    private String fallbackModel;
+
+    /** 降级链切换模型时保留 tools / fallback 等字段 */
     public ChatCompletionRequest copyWithModel(String model) {
         ChatCompletionRequest copy = new ChatCompletionRequest();
         copy.setModel(model);
@@ -47,6 +51,7 @@ public class ChatCompletionRequest {
         copy.setTools(this.tools);
         copy.setToolChoice(this.toolChoice);
         copy.setSkipCache(this.skipCache);
+        copy.setFallbackModel(this.fallbackModel);
         return copy;
     }
 

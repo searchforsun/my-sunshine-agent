@@ -44,9 +44,7 @@ public class L1Compressor {
     private final PromptCatalogHolder catalogHolder;
     private final TokenEstimator tokenEstimator;
     private final ModelWindowCache modelWindowCache;
-
-    @org.springframework.beans.factory.annotation.Value("${agent.model.name:deepseek-v4-pro}")
-    private String modelName;
+    private final com.sunshine.orchestrator.registry.ModelSceneResolver modelSceneResolver;
 
     /** 按会话串行化 compress，防止并发 async 丢更新。 */
     private final ConcurrentHashMap<String, Object> compressLocks = new ConcurrentHashMap<>();
@@ -75,7 +73,9 @@ public class L1Compressor {
 
     private void compressLocked(String userId, String tenantId, String convId, List<SessionTurn> history) {
         ContextProperties.L1 l1 = contextProperties.getL1();
-        int modelWindow = modelWindowCache.windowFor(modelName);
+        String effectiveModel = modelSceneResolver.resolve(
+                com.sunshine.orchestrator.registry.ModelSceneResolver.SCENE_CHAT, null).effectiveModel();
+        int modelWindow = modelWindowCache.windowFor(effectiveModel);
         if (!shouldCompress(history, l1, modelWindow, tokenEstimator)) {
             return;
         }

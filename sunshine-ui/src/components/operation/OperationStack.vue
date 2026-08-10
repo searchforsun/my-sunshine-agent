@@ -191,21 +191,53 @@ const nowMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | undefined
 
 /** 正文（message.content / contentBlocks）最近一次流式增长的时间戳。
- * 用于区分「整文正在流式输出」（正文逐字增长，用户可见反馈，无需占位）
- * 与「正文已输出完、模型在生成下一步 tool 参数」（正文静止，需占位提示仍在工作）。 */
+ * 用于区分「整文正在流式输出」与「正文已静、模型在生成下一步」。
+ * 只盯总字符数，避免每 token join 全文（长文流式会反复拼大串）。 */
 const lastContentGrowthAt = ref(0)
 
 watch(
-  () => props.messageContent,
+  () => {
+    let chars = props.messageContent?.length ?? 0
+    const blocks = props.contentBlocks
+    if (blocks) {
+      for (let i = 0; i < blocks.length; i++) chars += blocks[i].text?.length ?? 0
+    }
+    return chars
+  },
   () => {
     if (isTimelineProcessing.value) lastContentGrowthAt.value = Date.now()
   },
 )
 
-/** 正文是否正在流式增长（2s 窗口）：整文输出中 → 抑制空档占位，避免与正文并存 */
+/** 正文是否正在流式增长（2s 窗口）：刷字期间抑制空档三点 */
 const isContentGrowthActive = computed(() =>
   isTimelineProcessing.value && nowMs.value - lastContentGrowthAt.value < 2000,
 )
+
+function hasRunningOperationalStep(): boolean {
+  return props.steps.some((s) => {
+    const lc = s.lifecycle ?? 'pending'
+    if (lc !== 'running') return false
+    if (s.phase === 'generate') return false
+    return true
+  })
+}
+
+const hasAssistantContentText = computed(() =>
+  !!(props.messageContent?.trim()
+    || props.contentBlocks?.some(b => !!b.text?.trim())),
+)
+
+/**
+ * 终稿阶段空档三点：已有正文、无运行步、且当前没在刷字。
+ * 刷字时只靠正文增长反馈；中间未出正文前的空档由 pending hint 同样用三点。
+ */
+const showFinalAnswerDots = computed(() => {
+  if (!isTimelineProcessing.value) return false
+  if (isContentGrowthActive.value) return false
+  if (hasRunningOperationalStep()) return false
+  return hasAssistantContentText.value
+})
 
 const isMessageTerminal = computed(() => {
   const s = props.messageStatus
@@ -362,17 +394,34 @@ function groupToolSteps(steps: ProcessingStep[]): DisplayRow[] {
 
 const displayRows = computed(() => groupToolSteps(displaySteps.value))
 
-/** round-group 预处理：从扁平 steps 数组中提取 intent/tasks 步，并返回剩余步 */
+/** 头部钉扎步不进入 roundGroup：intent → skill → tasks */
+function isPinnedHeaderPhase(phase: string | undefined): boolean {
+  return phase === 'intent' || phase === 'skill' || phase === 'tasks'
+}
+
+function pinnedHeaderOrder(phase: string | undefined): number {
+  if (phase === 'intent') return 0
+  if (phase === 'skill') return 1
+  if (phase === 'tasks') return 2
+  return 3
+}
+
+/** round-group 预处理：抽出 intent/skill/tasks，剩余步才参与折叠 */
 function processRoundSegment(steps: ProcessingStep[]): { separates: DisplayRow[]; remaining: ProcessingStep[] } {
   const separates: DisplayRow[] = []
   const remaining: ProcessingStep[] = []
   for (const s of steps) {
-    if (s.phase === 'intent' || s.phase === 'tasks') {
+    if (isPinnedHeaderPhase(s.phase)) {
       separates.push({ kind: 'step', step: s })
     } else {
       remaining.push(s)
     }
   }
+  // 即使输入时间戳乱序，头部仍按 intent → skill → tasks 展示
+  separates.sort((a, b) => {
+    if (a.kind !== 'step' || b.kind !== 'step') return 0
+    return pinnedHeaderOrder(a.step.phase) - pinnedHeaderOrder(b.step.phase)
+  })
   return { separates, remaining }
 }
 
@@ -412,7 +461,7 @@ function buildRoundGroupLabel(_collapsedRounds: DisplayRow[][], flatCollapsed: D
     if (row.kind === 'toolGroup') {
       for (const s of row.steps) countStep(s)
     } else if (row.kind === 'step') {
-      if (row.step.phase === 'intent' || row.step.phase === 'tasks') continue
+      if (isPinnedHeaderPhase(row.step.phase)) continue
       if (isThinkStepId(row.step.id) && !firstThinkSkipped) {
         firstThinkSkipped = true
         continue
@@ -428,9 +477,31 @@ function buildRoundGroupLabel(_collapsedRounds: DisplayRow[][], flatCollapsed: D
   return parts.join('、')
 }
 
+/**
+ * 折叠区写入：至少 2 行才包 roundGroup。
+ * 抽出 think1 后若只剩 1 个 toolGroup，包一层会变成「调用N次工具」套「调用N个工具」。
+ */
+function pushCollapsedOperationRows(result: DisplayRow[], collapsedRows: DisplayRow[]): void {
+  if (collapsedRows.length === 0) return
+  if (collapsedRows.length === 1) {
+    result.push(collapsedRows[0])
+    return
+  }
+  const allDone = collapsedRows.every(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'done' : r.allDone)
+  const anyRunning = collapsedRows.some(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'running' : r.anyRunning)
+  result.push({
+    kind: 'roundGroup',
+    label: buildRoundGroupLabel([collapsedRows], collapsedRows),
+    rows: collapsedRows,
+    allDone,
+    anyRunning,
+  })
+}
+
 /** 正文间多轮操作折叠：在两组 ContentBlock 之间，若 grouped 行数 >=2 且 think 不足 2 个时，
  * 折叠除最后一行外的多余行（覆盖不同种类工具未合并的散列场景）。think >=2 按原有轮次折叠。
- * think1（整个时间线首个 think）始终不进入折叠。 */
+ * intent/skill/tasks 与 think1（整个时间线首个 think）始终不进入折叠。
+ * 折叠区不足 2 行时不包 roundGroup（避免单 toolGroup 双层折叠）。 */
 function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
   if (!props.contentBlocks?.length) return inputRows
 
@@ -464,7 +535,6 @@ function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
 
   const result: DisplayRow[] = []
   for (const seg of segments) {
-    // 提取 intent/tasks
     const steps: ProcessingStep[] = []
     for (const r of seg) {
       if (r.kind === 'toolGroup') steps.push(...r.steps)
@@ -483,43 +553,20 @@ function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
       // >=2 thinks：前 N-1 轮折叠，think1 不进入
       const lastThinkIdx = thinkIndices[thinkIndices.length - 1]
       const collapsedRows = grouped.slice(0, lastThinkIdx)
-      // think1 提升到折叠行外
       if (think1Id) {
         const t1Idx = collapsedRows.findIndex(r => r.kind === 'step' && r.step.id === think1Id)
         if (t1Idx >= 0) result.push(collapsedRows.splice(t1Idx, 1)[0])
       }
-      const visibleRows = grouped.slice(lastThinkIdx)
-      if (collapsedRows.length) {
-        const allDone = collapsedRows.every(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'done' : r.allDone)
-        const anyRunning = collapsedRows.some(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'running' : r.anyRunning)
-        result.push({
-          kind: 'roundGroup',
-          label: buildRoundGroupLabel([collapsedRows], collapsedRows),
-          rows: collapsedRows,
-          allDone,
-          anyRunning,
-        })
-      }
-      result.push(...visibleRows)
+      pushCollapsedOperationRows(result, collapsedRows)
+      result.push(...grouped.slice(lastThinkIdx))
     } else if ((thinkIndices.length >= 1 && grouped.length >= 3) || (thinkIndices.length === 0 && grouped.length >= 2)) {
       // 1 think + >=2 散列 tool（或 0 think + >=2 散列 tool）：折叠多余行，仅保留最后一行可见
       const collapsedRows = [...grouped.slice(0, -1)]
-      // think1 提升到折叠行外
       if (think1Id) {
         const t1Idx = collapsedRows.findIndex(r => r.kind === 'step' && r.step.id === think1Id)
         if (t1Idx >= 0) result.push(collapsedRows.splice(t1Idx, 1)[0])
       }
-      if (collapsedRows.length) {
-        const allDone = collapsedRows.every(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'done' : r.allDone)
-        const anyRunning = collapsedRows.some(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'running' : r.anyRunning)
-        result.push({
-          kind: 'roundGroup',
-          label: buildRoundGroupLabel([collapsedRows], collapsedRows),
-          rows: collapsedRows,
-          allDone,
-          anyRunning,
-        })
-      }
+      pushCollapsedOperationRows(result, collapsedRows)
       result.push(grouped[grouped.length - 1])
     } else {
       result.push(...grouped)
@@ -569,10 +616,7 @@ const showProcessingCollapsedAnswer = computed(() =>
   !!collapsedPreviewStep.value && !!collapsedAnswerText.value,
 )
 
-/** 折叠态执行空档占位：正在处理、最后可见步已终态时展示三点，
- * 覆盖模型生成 tool 参数（写大文件等）或下一轮推理的长空档，防止用户误以为卡死。
- * 折叠区展示的历史正文不抑制占位——占位表示「还有内容在生成」；
- * 但整文正在流式输出时正文本身是反馈，不显示占位 */
+/** 折叠态执行空档占位：中间/终稿空档统一三点（刷字中不显示） */
 const showCollapsedPendingHint = computed(() => {
   if (isContentGrowthActive.value) return false
   const step = collapsedPreviewStep.value
@@ -632,6 +676,24 @@ function rowsAfterStep(stepId: string) {
   )
 }
 
+/** toolGroup / roundGroup 内步骤也会锚定正文；展开态须在组后穿插，否则终稿只出现在折叠预览 */
+function stepIdsInDisplayRow(row: DisplayRow): string[] {
+  if (row.kind === 'step') return [row.step.id]
+  if (row.kind === 'toolGroup') return row.steps.map(s => s.id)
+  const ids: string[] = []
+  for (const inner of row.rows) ids.push(...stepIdsInDisplayRow(inner))
+  return ids
+}
+
+function rowsAfterDisplayRow(row: DisplayRow) {
+  void props.timelineRevision
+  const rows: ReturnType<typeof rowsAfterStep> = []
+  for (const id of stepIdsInDisplayRow(row)) {
+    rows.push(...rowsAfterStep(id))
+  }
+  return rows
+}
+
 const orphanContent = computed(() => {
   void props.timelineRevision
   return orphanContentRows(
@@ -642,21 +704,7 @@ const orphanContent = computed(() => {
   )
 })
 
-/** 占位伪 think 步：复用 OperationCard 渲染「正在执行」，与「深度思考」行结构/流光完全一致。
- * id 以 think- 开头走 isThinkStepId；stepSummary 承载占位文案；clientStartedAt 驱动运行时长 */
-const placeholderStartedAt = ref(0)
-const placeholderStep = computed<ProcessingStep>(() => ({
-  id: 'think-__pending',
-  phase: 'think',
-  lifecycle: 'running',
-  stepSummary: '正在执行',
-  clientStartedAt: placeholderStartedAt.value,
-}))
-
-/** 执行空档占位：末尾是已完成（done/error/skipped）的可见步时展示。
- * 末尾为工具组时取组内最后一步判定（组内仍有运行中步自带 pulse 不提示）。
- * roundGroup 末尾取其内部最后一行判定。
- * 整文正在流式输出时正文本身是反馈，不显示占位 */
+/** 执行空档占位：中间/终稿空档统一三点，刷字中不显示 */
 const showAfterThinkPendingHint = computed(() => {
   void props.timelineRevision
   if (isContentGrowthActive.value) return false
@@ -677,11 +725,15 @@ const showAfterThinkPendingHint = computed(() => {
   })
 })
 
-watch([showCollapsedPendingHint, showAfterThinkPendingHint], () => {
-  if (showCollapsedPendingHint.value || showAfterThinkPendingHint.value) {
-    placeholderStartedAt.value = Date.now()
-  }
-})
+/** 展开态空档三点：中间 pending 或终稿空档 */
+const showExpandedPendingDots = computed(() =>
+  showFinalAnswerDots.value || showAfterThinkPendingHint.value,
+)
+
+/** 折叠态空档三点 */
+const showCollapsedPendingDots = computed(() =>
+  showFinalAnswerDots.value || showCollapsedPendingHint.value,
+)
 
 /** 折叠请求：ChatView 底部折叠气泡点击时自增，仅传入 tick 的 live 实例响应（无待确认 HITL 时 no-op） */
 watch(
@@ -814,6 +866,14 @@ watch(
               </div>
             </div>
           </div>
+          <!-- 组内工具常锚定终稿；组折叠时也要在组后露出正文 -->
+          <template v-for="crow in rowsAfterDisplayRow(row)" :key="crow.key">
+            <div class="op-inline-content">
+              <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
+                <StaticMarkdown :source="crow.text" :defer-mermaid="crow.streaming" :streaming="crow.streaming" />
+              </div>
+            </div>
+          </template>
         </template>
         <template v-else>
         <div class="op-row">
@@ -829,6 +889,13 @@ watch(
             :summary-by-step-id="thinkSummaryByStepId"
             @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
           />
+          <template v-for="crow in rowsAfterDisplayRow(row)" :key="crow.key">
+            <div class="op-inline-content">
+              <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
+                <StaticMarkdown :source="crow.text" :defer-mermaid="crow.streaming" :streaming="crow.streaming" />
+              </div>
+            </div>
+          </template>
         </template>
         <template v-else>
         <template v-for="step in [row.step]" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
@@ -906,17 +973,16 @@ watch(
           </div>
         </div>
     </template>
-    <!-- think 步后、工具出现前的过渡提示：工具步出现或消息终态后自动消失 -->
-    <!-- think 完成后的执行空档占位：「正在执行」复用 OperationCard（与「深度思考」行结构一致），工具步出现后消失 -->
-    <OperationCard
-      v-if="showAfterThinkPendingHint"
-      :step="placeholderStep"
-      :expanded="false"
-      :live="true"
-      :hide-chevron="true"
-      :embed-hitl="false"
-      class="op-pending-hint"
-    />
+    <!-- 执行空档：三点跳动（无计时） -->
+    <div
+      v-if="showExpandedPendingDots"
+      class="op-answer-dots"
+      aria-label="正在执行"
+    >
+      <span class="typing-dots">
+        <span class="dot" /><span class="dot" /><span class="dot" />
+      </span>
+    </div>
   </template>
     <!-- 折叠态常驻 taskboard：生成 todolist 后折叠时间线仍可见（进行中/终态均露出） -->
     <!-- 折叠态常驻 taskboard：生成 todolist 后折叠时间线仍可见（进行中/终态均露出） -->
@@ -964,16 +1030,16 @@ watch(
           />
         </div>
       </div>
-      <!-- 折叠态执行空档占位：正在处理且最后可见步已终态时显示「正在执行」，工具/正文出现后自动消失 -->
-      <OperationCard
-        v-if="showCollapsedPendingHint"
-        :step="placeholderStep"
-        :expanded="false"
-        :live="true"
-        :hide-chevron="true"
-        :embed-hitl="false"
-        class="op-pending-hint"
-      />
+      <!-- 折叠态执行空档：三点跳动（无计时） -->
+      <div
+        v-if="showCollapsedPendingDots"
+        class="op-answer-dots"
+        aria-label="正在执行"
+      >
+        <span class="typing-dots">
+          <span class="dot" /><span class="dot" /><span class="dot" />
+        </span>
+      </div>
     </template>
     <div
       v-else-if="!timelineBodyExpanded && showCollapsedAnswer"
@@ -1074,16 +1140,16 @@ watch(
 }
 
 .op-shimmer {
-  --op-shimmer-base: var(--sun-text-muted);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 32%, var(--sun-text));
+  --op-shimmer-base: var(--sun-shimmer-base);
+  --op-shimmer-peak: var(--sun-shimmer-peak);
   display: inline-block;
   max-width: 100%;
   background-image: linear-gradient(
     90deg,
     var(--op-shimmer-base) 0%,
-    var(--op-shimmer-base) 36%,
+    var(--op-shimmer-base) 38%,
     var(--op-shimmer-peak) 50%,
-    var(--op-shimmer-base) 64%,
+    var(--op-shimmer-base) 62%,
     var(--op-shimmer-base) 100%
   );
   background-size: 220% 100%;
@@ -1097,8 +1163,8 @@ watch(
 }
 
 .timeline-summary .op-label.op-shimmer {
-  --op-shimmer-base: var(--sun-text-secondary);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 32%, var(--sun-text));
+  --op-shimmer-base: var(--sun-shimmer-label-base);
+  --op-shimmer-peak: var(--sun-shimmer-label-peak);
 }
 
 @keyframes op-text-shimmer {
@@ -1140,9 +1206,11 @@ watch(
   min-height: 1.5em;
 }
 
-/* 执行空档占位（复用 OperationCard 渲染，与「深度思考」行结构一致）：上侧边距与相邻卡片一致 */
-.op-pending-hint {
+.op-answer-dots {
   margin-top: 8px;
+  display: flex;
+  align-items: center;
+  min-height: 1.5em;
 }
 
 /* 完成 ✓：紧跟文案 */
@@ -1181,8 +1249,8 @@ watch(
 }
 
 .round-group-label.op-shimmer {
-  --op-shimmer-base: var(--sun-text-secondary);
-  --op-shimmer-peak: color-mix(in srgb, var(--sun-text-secondary) 32%, var(--sun-text));
+  --op-shimmer-base: var(--sun-shimmer-label-base);
+  --op-shimmer-peak: var(--sun-shimmer-label-peak);
 }
 
 .round-group .op-main {

@@ -24,9 +24,17 @@ export interface ContentBlock {
   text: string
 }
 
-/** ReAct 正文已 inline 穿插，隐藏 generate 步骤行（后端也不再下发） */
+/**
+ * ReAct 时间线隐藏步：
+ * - generate：正文已 inline 穿插（后端也不再下发）
+ * - think：无 reasoning 且无 think_summary（stepSummary）时不展示空「深度思考」
+ */
 export function isHiddenReactTimelineStep(step: ProcessingStep): boolean {
-  return step.id === 'generate' || step.phase === 'generate'
+  if (step.id === 'generate' || step.phase === 'generate') return true
+  if (!isThinkStepId(step.id)) return false
+  if (step.reasoning?.trim()) return false
+  if (step.stepSummary?.trim()) return false
+  return true
 }
 
 function appendMessageContent(msg: ChatMessage, chunk: string, resume: boolean): void {

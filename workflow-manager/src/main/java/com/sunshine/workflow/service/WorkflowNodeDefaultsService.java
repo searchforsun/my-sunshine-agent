@@ -42,11 +42,11 @@ public class WorkflowNodeDefaultsService {
 
     private static WorkflowCatalogDefaults toCatalogDefaults(WorkflowStudioProperties.CatalogDefaults cfg) {
         if (cfg == null) {
-            return new WorkflowCatalogDefaults("{query}将按「{displayName}」流程处理");
+            return new WorkflowCatalogDefaults("将按「{displayName}」流程处理");
         }
         String intentAfter = StringUtils.hasText(cfg.getIntentAfter())
                 ? cfg.getIntentAfter().strip()
-                : "{query}将按「{displayName}」流程处理";
+                : "将按「{displayName}」流程处理";
         return new WorkflowCatalogDefaults(intentAfter);
     }
 

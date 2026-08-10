@@ -1,8 +1,8 @@
 # 模型配置化与注册中心 — 技术设计（SSOT）
 
 > **日期**：2026-07-27 · **修订**：2026-08-10（评审收敛）
-> **状态**：📋 评审修订中
-> **关联**：阶段五 [phase5-operation-openness-design.md](./phase5-operation-openness-design.md) 5.3 的前置（模型注册表是场景路由/计费的底座）
+> **状态**：✅ 已实现
+> **关联**：阶段五 [phase5-operation-openness-design.md](../phase5-operation-openness-design.md) 5.3 的前置（模型注册表是场景路由/计费的底座）
 > **需求来源**：模型配置前端化；公共适配屏蔽厂商差异；多模态/reasoning 能力元数据；各配置点下拉；chat 可选模型；**去掉 Nacos 全部模型清单/模型名**
 
 ---

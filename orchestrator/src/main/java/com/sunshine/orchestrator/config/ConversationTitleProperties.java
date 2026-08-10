@@ -6,8 +6,8 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
 /**
- * 会话标题 LLM 摘要 — 首条消息时用小模型生成 ≤maxLength 字标题。
- * 提示词正文 → Catalog {@code conversation.title}。
+ * 会话标题 LLM 摘要 — 首条消息时生成 ≤maxLength 字标题。
+ * 模型 → ModelSceneResolver scene=title；提示词 → Catalog {@code conversation.title}。
  */
 @Data
 @Component
@@ -15,6 +15,5 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "agent.title")
 public class ConversationTitleProperties {
     private boolean enabled = true;
-    private String model = "deepseek-v4-flash";
     private int maxLength = 15;
 }

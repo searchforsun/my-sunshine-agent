@@ -49,10 +49,10 @@ class StepSummarizerTest {
     }
 
     @Test
-    void ragAfter_zeroHits_mentionsQuery() {
+    void ragAfter_zeroHits_omitsQuery() {
         String after = StepSummarizer.after("rag", "我怎么请假", "命中 0 条");
-        assertThat(after).contains("请假");
         assertThat(after).contains("未找到");
+        assertThat(after).doesNotContain("请假");
     }
 
     @Test
@@ -63,10 +63,10 @@ class StepSummarizerTest {
     }
 
     @Test
-    void ragAfter_withHits_mentionsCountAndQuery() {
+    void ragAfter_withHits_mentionsCountNotQuery() {
         String after = StepSummarizer.after("rag", "考勤制度", "命中 3 条");
         assertThat(after).contains("3 条");
-        assertThat(after).contains("考勤制度");
+        assertThat(after).doesNotContain("考勤制度");
     }
 
     @Test
@@ -89,21 +89,24 @@ class StepSummarizerTest {
         assertThat(after).contains("3 条");
         assertThat(after).doesNotContain("【");
         assertThat(after).doesNotContain("表格");
+        assertThat(after).doesNotContain("项目预算");
     }
 
     @Test
-    void generateAfter_mentionsQuery() {
+    void generateAfter_omitsQuery() {
         String after = StepSummarizer.after("generate", "你好", null);
-        assertThat(after).contains("你好");
         assertThat(after).contains("已完成");
+        assertThat(after).doesNotContain("你好");
     }
 
     @Test
-    void before_active_includeUserQuery() {
+    void before_active_omitUserQuery() {
         assertThat(StepSummarizer.before("intent", "测试问题"))
                 .isEqualTo("识别用户意图");
         assertThat(StepSummarizer.active("rag", "测试问题"))
-                .contains("测试问题");
+                .isEqualTo("正在匹配最相关的文档片段");
+        assertThat(StepSummarizer.active("rag", "测试问题"))
+                .doesNotContain("测试问题");
     }
 
     @Test

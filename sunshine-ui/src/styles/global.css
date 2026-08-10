@@ -259,6 +259,22 @@ html.theme-switching *::after {
   --brand-mark-border: #d4d4d4;
 }
 
+/* 时间线流光 SSOT（组件不得再写死 peak，避免 scoped 覆盖亮色增强） */
+:root {
+  --sun-shimmer-base: var(--sun-text-muted);
+  --sun-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 28%, var(--sun-text));
+  --sun-shimmer-label-base: var(--sun-text-secondary);
+  --sun-shimmer-label-peak: color-mix(in srgb, var(--sun-text-secondary) 28%, var(--sun-text));
+}
+
+[data-theme="light"] {
+  /* 亮色：与暗色同一套 mix 公式，略提高 peak 占比，保持灰度扫光不刺眼 */
+  --sun-shimmer-base: var(--sun-text-muted);
+  --sun-shimmer-peak: color-mix(in srgb, var(--sun-text-muted) 22%, var(--sun-text));
+  --sun-shimmer-label-base: var(--sun-text-secondary);
+  --sun-shimmer-label-peak: color-mix(in srgb, var(--sun-text-secondary) 22%, var(--sun-text));
+}
+
 /* ── 暗色模式 Tab 全局覆盖（加固 App.vue themeOverrides，确保选中更亮、未选更暗） ── */
 .n-tabs .n-tabs-nav {
   --n-tab-text-color: var(--sun-text-muted);
@@ -352,6 +368,10 @@ html.theme-switching *::after {
   border: none !important;
 }
 
+.sunshine-dialog.models-definition-dialog.n-dialog {
+  max-width: min(820px, 94vw);
+}
+
 .sunshine-dialog .n-dialog__icon {
   display: none;
 }
@@ -406,7 +426,36 @@ html.theme-switching *::after {
   --n-border: none !important;
 }
 
-/* 表单字段：黑底禁用态（SSOT，对齐 Agents / Skills） */
+/* 表单项间距：关闭 show-feedback 后反馈区高度为 0；Naive 无 n-form--top-labelled（该类在 form-item 上） */
+.sunshine-dialog .n-form-item--top-labelled,
+.modal-form.n-form > .n-form-item {
+  margin-bottom: 16px;
+}
+
+.sunshine-dialog .n-form > .n-form-item--top-labelled:last-child,
+.modal-form.n-form > .n-form-item:last-child {
+  margin-bottom: 0;
+}
+
+.sunshine-dialog .n-form-item--top-labelled > .n-form-item-label,
+.modal-form .n-form-item--top-labelled > .n-form-item-label {
+  padding: 0 0 8px 2px !important;
+}
+
+.modal-form.n-form > .form-grid {
+  margin-bottom: 16px;
+}
+
+.modal-form.n-form > .form-grid:last-child {
+  margin-bottom: 0;
+}
+
+.modal-form.n-form > .form-grid .n-form-item {
+  margin-bottom: 0;
+}
+
+/* 表单字段：黑底禁用态（SSOT，对齐 Agents / Skills）
+ * Naive dark 默认 border/borderDisabled 为透明（#0000），须显式拉回可见边框 */
 .sun-field.n-input,
 .sun-field.n-input-number,
 .search-input.n-input {
@@ -419,6 +468,7 @@ html.theme-switching *::after {
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
   border-radius: var(--radius-md);
 }
@@ -433,6 +483,7 @@ html.theme-switching *::after {
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
 }
 
@@ -454,6 +505,7 @@ html.theme-switching *::after {
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-active: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
   --n-box-shadow-hover: none !important;
   --n-box-shadow-active: none !important;
@@ -480,6 +532,7 @@ html.theme-switching *::after {
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
 }
 
@@ -495,6 +548,7 @@ html.theme-switching *::after {
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-active: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
 }
 
@@ -508,6 +562,7 @@ html.theme-switching *::after {
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
 }
 
@@ -524,6 +579,7 @@ html.theme-switching *::after {
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-active: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
   --n-box-shadow-hover: none !important;
   --n-box-shadow-active: none !important;
@@ -546,6 +602,7 @@ html.theme-switching *::after {
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
 }
 

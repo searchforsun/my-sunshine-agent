@@ -5,6 +5,8 @@ import com.sunshine.orchestrator.config.ConversationTitleProperties;
 import com.sunshine.orchestrator.controller.stream.ChatStreamContext;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.codec.ServerSentEvent;
@@ -31,6 +33,7 @@ public class ConversationTitleService {
     private final ConversationTitleProperties titleProperties;
     private final PromptCatalogHolder catalogHolder;
     private final LlmGatewayClient llmGatewayClient;
+    private final ModelSceneResolver modelSceneResolver;
     private final ConversationService conversationService;
     private final GenerationFlushScheduler flushScheduler;
 
@@ -66,7 +69,9 @@ public class ConversationTitleService {
         if (!StringUtils.hasText(systemPrompt)) {
             return "";
         }
-        String raw = llmGatewayClient.complete(titleProperties.getModel(), systemPrompt, ctx.userContent());
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_TITLE, null);
+        String raw = llmGatewayClient.complete(
+                model.effectiveModel(), model.fallbackModel(), systemPrompt, ctx.userContent());
         String title = normalize(raw, titleProperties.getMaxLength());
         if (!StringUtils.hasText(title)) {
             log.info("[Title] 生成结果为空 conv={} raw='{}'", ctx.conversationId(), abbreviate(raw));

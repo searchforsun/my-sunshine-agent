@@ -59,6 +59,12 @@ const router = createRouter({
           meta: { title: '智能体' },
         },
         {
+          path: 'models',
+          name: 'models',
+          component: () => import('../views/ModelsView.vue'),
+          meta: { title: '模型' },
+        },
+        {
           path: 'context',
           name: 'context',
           component: () => import('../views/ContextView.vue'),

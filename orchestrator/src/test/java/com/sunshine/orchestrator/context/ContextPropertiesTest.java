@@ -13,7 +13,6 @@ class ContextPropertiesTest {
         assertThat(l1.getMidTurns()).isEqualTo(8);
         assertThat(l1.getMaxTokensRatio()).isEqualTo(0.8);
         assertThat(l1.getTurnBackstop()).isEqualTo(40);
-        assertThat(l1.getDefaultModelWindow()).isEqualTo(256000);
         assertThat(l1.getTokenSafetyFactor()).isEqualTo(1.1);
         assertThat(l1.getMidCompressRatio()).isEqualTo(0.15);
     }

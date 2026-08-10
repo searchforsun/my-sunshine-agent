@@ -32,10 +32,11 @@ class SummaryStepLabelServiceTest {
     }
 
     @Test
-    void agentTemplates_useQueryPlaceholder() {
+    void agentTemplates_omitUserQuery() {
         String q = StepSummarizer.clipQuery("报销制度");
-        assertThat(SummaryStepLabels.agentBefore(q)).isEqualTo("理解「报销制度」，规划作答思路");
-        assertThat(SummaryStepLabels.agentActive(q)).isEqualTo("结合上下文分析「报销制度」");
+        assertThat(SummaryStepLabels.agentBefore(q)).isEqualTo("理解问题，规划作答思路");
+        assertThat(SummaryStepLabels.agentActive(q)).isEqualTo("结合上下文进行分析");
+        assertThat(SummaryStepLabels.agentBefore(q)).doesNotContain("报销制度");
     }
 
     @Test

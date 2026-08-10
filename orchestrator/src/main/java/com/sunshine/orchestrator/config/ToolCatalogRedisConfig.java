@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.config;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogRefreshListener;
+import com.sunshine.orchestrator.registry.ModelCatalogRefreshListener;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,11 +18,13 @@ public class ToolCatalogRedisConfig {
     RedisMessageListenerContainer toolCatalogRedisListenerContainer(
             RedisConnectionFactory connectionFactory,
             ToolCatalogRefreshListener toolListener,
-            WorkflowCatalogRefreshListener workflowListener) {
+            WorkflowCatalogRefreshListener workflowListener,
+            ModelCatalogRefreshListener modelListener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
         container.addMessageListener(toolListener, new ChannelTopic("tool-catalog-changed"));
         container.addMessageListener(workflowListener, new ChannelTopic("workflow-catalog-changed"));
+        container.addMessageListener(modelListener, new ChannelTopic(ModelSceneResolver.CHANNEL));
         return container;
     }
 }

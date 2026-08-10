@@ -16,6 +16,7 @@ public class ConversationSummaryDto {
     private Instant updatedAt;
     private String executionPreference;
     private String kbId;
+    private String modelName;
     private String kind;
     private String workspaceId;
     private String checkoutPath;
@@ -28,6 +29,7 @@ public class ConversationSummaryDto {
                 .updatedAt(conv.getUpdatedAt())
                 .executionPreference(conv.getExecutionPreference())
                 .kbId(conv.getKbId())
+                .modelName(conv.getModelName())
                 .kind(conv.getKind())
                 .workspaceId(conv.getWorkspaceId())
                 .checkoutPath(conv.getCheckoutPath())

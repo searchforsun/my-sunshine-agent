@@ -33,13 +33,23 @@ public record AgentRunRequest(
         String dataScopeJson,
         /** 权限配置 */
         String permissionsJson,
-        /** 模型配置 */
-        String modelConfigJson
+        /** 模型配置（spawn / 预定义智能体）；优先于 modelOverride */
+        String modelConfigJson,
+        /** 会话级模型 override（仅 MAIN chat / Planner 主对话；intent/rewrite/title 忽略） */
+        String modelOverride
 ) {
     public AgentRunRequest {
         memory = memory != null ? memory : AssembledContext.empty();
         injectedBlocks = injectedBlocks != null ? List.copyOf(injectedBlocks) : List.of();
         toolWhitelist = toolWhitelist != null ? List.copyOf(toolWhitelist) : null;
+    }
+
+    public AgentRunRequest withModelOverride(String modelOverride) {
+        return new AgentRunRequest(
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, reactPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride);
     }
 
     /** MAIN 每 run 独立 main-{runId}；SUB 用 sub-{runId}（SSE 经 bindHitlBridge 映射 assistantMessageId） */
@@ -137,6 +147,7 @@ public record AgentRunRequest(
                 reactPromptId,
                 conversationId,
                 checkpointThinkIteration,
+                null,
                 null,
                 null,
                 null,
@@ -258,7 +269,8 @@ public record AgentRunRequest(
                 kbScope,
                 dataScopeJson,
                 permissionsJson,
-                modelConfigJson);
+                modelConfigJson,
+                null);
     }
 
     /** Planner — 仅 plan 步 Timeline */
@@ -286,6 +298,7 @@ public record AgentRunRequest(
                 null,
                 null,
                 0,
+                null,
                 null,
                 null,
                 null,

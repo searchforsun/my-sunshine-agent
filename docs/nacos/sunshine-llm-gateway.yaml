@@ -29,31 +29,14 @@ llm:
     response-timeout: 120s
     # SSE 流两次 chunk 之间静默超过该阈值即断开（上游半挂时快速降级，避免前端干等满 response-timeout）
     read-idle-timeout: 60s
-  providers:
-    deepseek:
-      base-url: https://api.deepseek.com
-      api-key: ${DEEPSEEK_API_KEY:sk-1e18dbd6edd4477bac49a0a290e92462}
-      models:
-        - name: deepseek-v4-pro
-          context-window: 256000
-          encoding: cl100k_base
-        - name: deepseek-v4-flash
-          context-window: 128000
-          encoding: cl100k_base
-    qwen:
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api-key: ${QWEN_API_KEY:sk-22e7ab6f7bbb4078b7163facb4d3aee0}
-      models:
-        - name: qwen-plus
-          context-window: 262144
-          encoding: cl100k_base
-        - name: qwen-max
-          context-window: 65536
-          encoding: cl100k_base
-  fallback:
-    routes:
-      deepseek-v4-pro: qwen-plus
-      deepseek-v4-flash: qwen-plus
+
+# 模型注册表 SSOT = resource-manager；此处仅保留加解密密钥材料
+model:
+  crypto:
+    aes-key: ${MODEL_AES_KEY:sunshine-model-aes-key-32b!!}
+
+resource-manager:
+  base-url: http://sunshine-resource-manager
 
 logging:
   level:

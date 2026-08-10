@@ -183,6 +183,7 @@ const showKindTag = () => page.activeTab === 'system'
   --n-border: 1px solid var(--sun-border) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
   --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
 }
 

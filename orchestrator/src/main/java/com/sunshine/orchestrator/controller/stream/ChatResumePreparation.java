@@ -18,7 +18,8 @@ public record ChatResumePreparation(
         String userId,
         String tenantId,
         String kbId,
-        String conversationKind) {
+        String conversationKind,
+        String modelOverride) {
 
     public ChatStreamContext toStreamContext() {
         return new ChatStreamContext(
@@ -41,6 +42,7 @@ public record ChatResumePreparation(
                 reactRestart,
                 // 续跑不重注入个人规则（原始 run 已注入；规则随新消息生效）
                 null,
-                conversationKind);
+                conversationKind,
+                modelOverride);
     }
 }

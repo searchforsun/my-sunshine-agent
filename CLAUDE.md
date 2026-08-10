@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改 Catalog/`/prompts` 或架构。
 
-**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多智能体协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅** · **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅** · **4.14 Planner-Executor 重建 ⬜ 设计中** · **服务合并 ✅**（管理类 skill/agent/prompt/desensitize → resource-manager :8240；业务模拟 oa/finance/hr → biz-simulator :8700；tool-manager 更名 tool-service :8210；见 [spec](docs/superpowers/specs/archive/2026-08-03-service-consolidation-design.md)）· 缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多智能体协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅** · **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅** · **4.14 Planner-Executor 重建 ⬜ 设计中** · **模型注册表 ✅**（MySQL SSOT + `/models` + scene 绑定；5.3 前置；见 [spec](docs/superpowers/specs/archive/2026-07-27-model-registry-config-design.md)）· **服务合并 ✅**（管理类 skill/agent/prompt/desensitize → resource-manager :8240；业务模拟 oa/finance/hr → biz-simulator :8700；tool-manager 更名 tool-service :8210；见 [spec](docs/superpowers/specs/archive/2026-08-03-service-consolidation-design.md)）· 缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -31,7 +31,7 @@ python scripts/start.py --stop bff     # 停止指定服务
 | 启停/同步 | `start.py`、`sync_nacos.py`、`sunshine_lib.py` |
 | RAG | `rag_reset.py`、`rag_ingest_bulk.py`、`rag_eval.py`、`rag_wipe_and_ingest.py`、`generate_rag_corpus.py`、`verify_chunk_strategies_live.py` |
 | 阶段三验收 | `verify_tenant_live.py`、`verify_hitl_live.py`、`verify_skills_ui_live.py`、`verify_pause_resume_consistency.py` |
-| 阶段四验收 | `verify_sandbox_live.py`、`verify_sandbox_workspace_live.py`、`verify_sandbox_tool_cancel_live.py`、`verify_spawn_subagent_live.py`、`verify_external_agent_live.py`、`verify_react_taskboard_live.py`、`verify_tool_integration_live.py`、`verify_workflow_studio_live.py`、`verify_plan_dag_live.py`、`verify_prompt_catalog_live.py`、`verify_enterprise_workflow_live.py`、`verify_loop_live.py`、`verify_exclusive_gateway_live.py`、`verify_personal_rules_live.py` |
+| 阶段四验收 | `verify_sandbox_live.py`、`verify_sandbox_workspace_live.py`、`verify_sandbox_tool_cancel_live.py`、`verify_spawn_subagent_live.py`、`verify_external_agent_live.py`、`verify_react_taskboard_live.py`、`verify_tool_integration_live.py`、`verify_workflow_studio_live.py`、`verify_plan_dag_live.py`、`verify_prompt_catalog_live.py`、`verify_enterprise_workflow_live.py`、`verify_loop_live.py`、`verify_exclusive_gateway_live.py`、`verify_personal_rules_live.py`、`verify_model_registry_live.py` |
 | 其他 | `clear_session_cache.py`、`download_skywalking_agent.py`、`sync_enterprise_agents.py` |
 
 > **提示词 / 路由规则 SSOT**：`prompt` DB（`/prompts` + Catalog，现聚合于 resource-manager），**不再**经 Nacos `agent.routing.*`。

@@ -2,10 +2,11 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,12 +33,12 @@ public class IntentRouter {
     /** 意图分类注入的近期轮次上限（L1 mid/near 尾部）。 */
     private static final int MAX_INTENT_CONTEXT_TURNS = 4;
 
-    private final AgentPromptProperties prompts;
     private final PromptCatalogHolder catalogHolder;
     private final WorkflowCatalog workflowCatalog;
     private final SkillCatalogService skillCatalogService;
     private final ExecutionPlanParser planParser;
     private final LlmGatewayClient llmGateway;
+    private final ModelSceneResolver modelSceneResolver;
 
     /** 兼容仅传用户句的调用方 */
     public Mono<ExecutionPlan> classifyPlan(String userMessage) {
@@ -55,15 +57,18 @@ public class IntentRouter {
         }
         String userContent = buildClassifierUserMessage(ctx);
 
-        Map<String, Object> request = Map.of(
-                "model", prompts.intentModelOrDefault(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", classifierPrompt),
-                        Map.of("role", "user", "content", userContent)
-                ),
-                "max_tokens", 256,
-                "temperature", 0
-        );
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_INTENT, null);
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("model", model.effectiveModel());
+        request.put("messages", List.of(
+                Map.of("role", "system", "content", classifierPrompt),
+                Map.of("role", "user", "content", userContent)
+        ));
+        request.put("max_tokens", 256);
+        request.put("temperature", 0);
+        if (StringUtils.hasText(model.fallbackModel())) {
+            request.put("fallback_model", model.fallbackModel());
+        }
 
         return llmGateway.completeRaw(request)
                 .map(resp -> extractContent(resp))

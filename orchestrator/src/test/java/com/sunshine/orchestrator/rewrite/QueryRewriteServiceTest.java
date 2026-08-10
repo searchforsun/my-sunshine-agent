@@ -7,14 +7,21 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
+import com.sunshine.orchestrator.registry.ModelCapabilities;
+import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
+import com.sunshine.orchestrator.registry.ModelCatalogScene;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,13 +30,16 @@ class QueryRewriteServiceTest {
     private QueryRewriteService service;
     private AgentRewriteProperties props;
     private PromptCatalogHolder catalogHolder;
+    private ModelSceneResolver modelSceneResolver;
 
     @BeforeEach
     void setUp() {
         props = new AgentRewriteProperties();
         catalogHolder = seedHolder("rewrite-intent-stub", "rewrite-planner-stub");
+        modelSceneResolver = seedResolver();
         service = new QueryRewriteService(props, catalogHolder,
                 mock(com.sunshine.orchestrator.client.LlmGatewayClient.class),
+                modelSceneResolver,
                 new ObjectMapper());
     }
 
@@ -58,9 +68,9 @@ class QueryRewriteServiceTest {
         props.getIntent().setEnabled(true);
         catalogHolder = seedHolder("test intent prompt", "rewrite-planner-stub");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
-        when(llm.complete(anyString(), anyString(), anyString()))
+        when(llm.complete(anyString(), isNull(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"查询待审批报销消息列表\"}");
-        service = new QueryRewriteService(props, catalogHolder, llm, new ObjectMapper());
+        service = new QueryRewriteService(props, catalogHolder, llm, modelSceneResolver, new ObjectMapper());
         assertThat(service.rewriteForIntent("待审批")).isEqualTo("查询待审批报销消息列表");
     }
 
@@ -69,9 +79,9 @@ class QueryRewriteServiceTest {
         props.getIntent().setEnabled(true);
         catalogHolder = seedHolder("test intent prompt", "rewrite-planner-stub");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
-        when(llm.complete(anyString(), anyString(), anyString()))
+        when(llm.complete(anyString(), isNull(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"查询第一条待审批报销单详情\"}");
-        service = new QueryRewriteService(props, catalogHolder, llm, new ObjectMapper());
+        service = new QueryRewriteService(props, catalogHolder, llm, modelSceneResolver, new ObjectMapper());
         AssembledContext memory = new AssembledContext("", "", List.of(), List.of(
                         new ChatTurn("user", "查待审批报销"),
                         new ChatTurn("assistant", "共有3条待审批")), "");
@@ -79,6 +89,7 @@ class QueryRewriteServiceTest {
                 .isEqualTo("查询第一条待审批报销单详情");
         verify(llm).complete(
                 eq("deepseek-v4-flash"),
+                isNull(),
                 eq("test intent prompt"),
                 org.mockito.ArgumentMatchers.argThat(user ->
                         user.contains("近期对话：")
@@ -91,20 +102,32 @@ class QueryRewriteServiceTest {
         props.plannerOrDefault().setEnabled(true);
         catalogHolder = seedHolder("rewrite-intent-stub", "test planner prompt");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
-        when(llm.complete(anyString(), anyString(), anyString()))
+        when(llm.complete(anyString(), isNull(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"先检索差旅制度，再查待审批报销并做合规分析\"}");
-        service = new QueryRewriteService(props, catalogHolder, llm, new ObjectMapper());
+        service = new QueryRewriteService(props, catalogHolder, llm, modelSceneResolver, new ObjectMapper());
         assertThat(service.rewriteForPlanner("先查制度再查报销"))
                 .isEqualTo("先检索差旅制度，再查待审批报销并做合规分析");
     }
 
-    private static PromptCatalogHolder seedHolder(String intentPrompt, String plannerPrompt) {
+    private static PromptCatalogHolder seedHolder(String intent, String planner) {
         PromptCatalogHolder holder = new PromptCatalogHolder();
         holder.replace(PromptCatalogSnapshot.of(1L, List.of(
-                new PromptCatalogEntry("rewrite.intent", "rewrite", "rewrite.intent", true, 0, 1,
-                        intentPrompt, null),
-                new PromptCatalogEntry("rewrite.planner", "rewrite", "rewrite.planner", true, 0, 1,
-                        plannerPrompt, null))));
+                new PromptCatalogEntry("rewrite.intent", "rewrite", "i", true, 0, 1, intent, null),
+                new PromptCatalogEntry("rewrite.planner", "rewrite", "p", true, 0, 1, planner, null))));
         return holder;
+    }
+
+    private static ModelSceneResolver seedResolver() {
+        ModelSceneResolver resolver = new ModelSceneResolver(
+                new ObjectMapper(), WebClient.builder(), "http://localhost", "default");
+        resolver.replaceSnapshotForTest(
+                List.of(new ModelCatalogDefinition(
+                        "deepseek-v4-flash", "p", "flash", 128000, 8192, "cl100k_base",
+                        ModelCapabilities.defaults(), null, true, true, 0)),
+                List.of(
+                        new ModelCatalogScene("rewrite.intent", "deepseek-v4-flash", null, Map.of(), true),
+                        new ModelCatalogScene("rewrite.planner", "deepseek-v4-flash", null, Map.of(), true),
+                        new ModelCatalogScene("default", "deepseek-v4-flash", null, Map.of(), true)));
+        return resolver;
     }
 }

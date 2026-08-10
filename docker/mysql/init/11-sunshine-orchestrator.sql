@@ -14,6 +14,7 @@ CREATE TABLE chat_conversation (
     kind        VARCHAR(16)  NOT NULL DEFAULT 'chat' COMMENT 'chat / task',
     workspace_id  VARCHAR(64)  NULL COMMENT 'kind=task 时必填',
     checkout_path VARCHAR(256) NULL COMMENT '用户选定的 checkout',
+    model_name  VARCHAR(128) NULL COMMENT '会话绑定模型（注册表 model_name；空则走 chat/default scene）',
     INDEX idx_user_tenant_updated (user_id, tenant_id, updated_at)
 );
 

@@ -214,9 +214,40 @@ public class LlmIoTracer {
             String reasoning = firstNonBlank(
                     text(node, "reasoning_content"),
                     text(node, "reasoning"),
-                    text(node, "thinking"));
+                    text(node, "thinking"),
+                    joinReasoningDetails(node.get("reasoning_details")));
             String content = text(node, "content");
             return new DeltaFields(reasoning, content, parseToolCallFragments(node.get("tool_calls")));
+        }
+
+        /** MiniMax reasoning_split 流式偶发只给 reasoning_details[].text */
+        private static String joinReasoningDetails(JsonNode details) {
+            if (details == null || details.isNull()) {
+                return "";
+            }
+            if (details.isTextual()) {
+                return details.asText("");
+            }
+            if (!details.isArray()) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder();
+            for (JsonNode item : details) {
+                if (item == null || item.isNull()) {
+                    continue;
+                }
+                if (item.isTextual()) {
+                    sb.append(item.asText(""));
+                    continue;
+                }
+                if (item.isObject()) {
+                    JsonNode textNode = item.get("text");
+                    if (textNode != null && textNode.isTextual()) {
+                        sb.append(textNode.asText(""));
+                    }
+                }
+            }
+            return sb.toString();
         }
 
         private static List<ToolCallFragment> parseToolCallFragments(JsonNode toolCalls) {

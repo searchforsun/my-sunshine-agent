@@ -6,6 +6,8 @@ import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -13,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -20,30 +23,33 @@ import reactor.netty.http.client.HttpClient;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * LLM Gateway 直连客户端 — 逐 token 流式，不经过 AgentScope。
- * 通过 Nacos 服务发现（http://sunshine-llm-gateway）调用。
+ * 默认模型经 {@link ModelSceneResolver} 解析，不再绑定 Nacos agent.model.name。
  */
 @Slf4j
 @Component
 public class LlmGatewayClient {
 
     private final PromptComposer promptComposer;
+    private final ModelSceneResolver modelSceneResolver;
     private final WebClient webClient;
 
     @Value("${agent.model.api-key:}")
     private String apiKey;
 
-    @Value("${agent.model.name:deepseek-v4-pro}")
-    private String modelName;
-
     private final ObjectMapper om = new ObjectMapper();
 
-    public LlmGatewayClient(PromptComposer promptComposer, WebClient.Builder builder) {
+    public LlmGatewayClient(
+            PromptComposer promptComposer,
+            ModelSceneResolver modelSceneResolver,
+            WebClient.Builder builder) {
         this.promptComposer = promptComposer;
+        this.modelSceneResolver = modelSceneResolver;
         this.webClient = builder
                 .baseUrl("http://sunshine-llm-gateway/v1")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
@@ -85,34 +91,42 @@ public class LlmGatewayClient {
     // ==================== 非流式补全 ====================
 
     /**
-     * 非流式补全 — L1 Far / L2 抽取 / 审计等内部用途。
+     * 非流式补全 — L1 Far / L2 抽取 / 审计等内部用途（scene=default）。
      */
     public String complete(String systemPrompt, String userContent) {
-        return complete(modelName, systemPrompt, userContent);
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneResolver.SCENE_DEFAULT, null);
+        return complete(resolved.effectiveModel(), resolved.fallbackModel(), systemPrompt, userContent);
     }
 
     /**
      * 非流式补全 — 指定模型（QueryRewrite 等内部用途）。
      */
     public String complete(String model, String systemPrompt, String userContent) {
+        return complete(model, null, systemPrompt, userContent);
+    }
+
+    public String complete(String model, String fallbackModel, String systemPrompt, String userContent) {
         List<Map<String, Object>> messages = new ArrayList<>();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             messages.add(Map.of("role", "system", "content", systemPrompt.strip()));
         }
         messages.add(Map.of("role", "user", "content", userContent != null ? userContent : ""));
-        return completeMessages(model, messages).contentOrEmpty();
+        return completeMessages(model, fallbackModel, messages).contentOrEmpty();
     }
 
     /** 非流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
     public LlmCompletion completeComposed(PromptComposeRequest request) {
-        return completeMessages(modelName, promptComposer.composeGatewayMessages(request));
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneResolver.SCENE_DEFAULT, null);
+        return completeMessages(
+                resolved.effectiveModel(), resolved.fallbackModel(),
+                promptComposer.composeGatewayMessages(request));
     }
 
     // ==================== 公共底层 API（供内部调用方） ====================
 
     /**
      * 原始请求体补全 — 供 IntentRouter / WorkflowPlanner 等需要自定义请求体的调用方。
-     * 调用方自行构造 model / messages / temperature 等字段。
+     * 调用方自行构造 model / messages / temperature 等字段；可含 fallback_model。
      */
     public Mono<Map<String, Object>> completeRaw(Map<String, Object> requestBody) {
         return webClient.post()
@@ -139,11 +153,14 @@ public class LlmGatewayClient {
 
     // ==================== 内部实现 ====================
 
-    private LlmCompletion completeMessages(String model, List<Map<String, Object>> messages) {
-        Map<String, Object> request = Map.of(
-                "model", model,
-                "messages", messages,
-                "stream", false);
+    private LlmCompletion completeMessages(String model, String fallbackModel, List<Map<String, Object>> messages) {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("model", model);
+        request.put("messages", messages);
+        request.put("stream", false);
+        if (StringUtils.hasText(fallbackModel)) {
+            request.put("fallback_model", fallbackModel.strip());
+        }
         try {
             Map<String, Object> response = webClient.post()
                     .uri("/chat/completions")
@@ -194,10 +211,14 @@ public class LlmGatewayClient {
     }
 
     private Flux<StreamToken> doStream(List<Map<String, Object>> messages) {
-        Map<String, Object> request = Map.of(
-                "model", modelName,
-                "messages", messages,
-                "stream", true);
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneResolver.SCENE_CHAT, null);
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("model", resolved.effectiveModel());
+        request.put("messages", messages);
+        request.put("stream", true);
+        if (StringUtils.hasText(resolved.fallbackModel())) {
+            request.put("fallback_model", resolved.fallbackModel());
+        }
         return webClient.post()
                 .uri("/chat/completions")
                 .header("Authorization", "Bearer " + apiKey)

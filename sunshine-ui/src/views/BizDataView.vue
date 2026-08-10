@@ -478,7 +478,6 @@ watch(domain, () => {
 .modal-form {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .action-btn {

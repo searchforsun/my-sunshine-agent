@@ -38,9 +38,11 @@ class ToolNodeLabelServiceTest {
     }
 
     @Test
-    void nodeBefore_withQuery_usesBeforeWithQueryTemplate() {
+    void nodeBefore_withQuery_omitsUserQuery() {
         String q = StepSummarizer.clipQuery("预算审批");
         assertThat(ToolNodeLabels.nodeBefore("node-n1", q, "检索制度"))
-                .isEqualTo("准备处理「预算审批」的「检索制度」环节");
+                .isEqualTo("准备「检索制度」环节");
+        assertThat(ToolNodeLabels.nodeBefore("node-n1", q, "检索制度"))
+                .doesNotContain("预算审批");
     }
 }

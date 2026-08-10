@@ -8,6 +8,10 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
+import com.sunshine.orchestrator.registry.ModelCapabilities;
+import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
+import com.sunshine.orchestrator.registry.ModelCatalogScene;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +23,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -50,10 +55,22 @@ class ReActAgentFactoryTest {
         catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
                 new PromptCatalogEntry("system-prompt", "system", "系统提示", true, 0, 1,
                         "base system", null))));
+        ModelSceneResolver resolver = new ModelSceneResolver(
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                WebClient.builder(),
+                "http://localhost",
+                "default");
+        resolver.replaceSnapshotForTest(
+                List.of(new ModelCatalogDefinition(
+                        "deepseek-v4-pro", "p", "pro", 256000, 8192, "cl100k_base",
+                        ModelCapabilities.defaults(), null, true, true, 0)),
+                List.of(
+                        new ModelCatalogScene("chat", "deepseek-v4-pro", null, Map.of(), true),
+                        new ModelCatalogScene("subagent", "deepseek-v4-pro", null, Map.of(), true),
+                        new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         factory = new ReActAgentFactory(
                 catalogHolder, executionProperties, dynamicToolkitFactory, middlewareFactory,
-                stateStore, webClientBuilder);
-        ReflectionTestUtils.setField(factory, "modelName", "deepseek-v4-pro");
+                stateStore, webClientBuilder, resolver);
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");
         ReflectionTestUtils.setField(factory, "apiKey", "test-key");
     }
@@ -107,7 +124,7 @@ class ReActAgentFactoryTest {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.SUB, "run-1", null, AssembledContext.empty(), "q", List.of(),
                 "u1", "default", null, null, List.of("sdk__sunshine-finance__list_my_expenses"), null, 4,
-                TimelineBinding.SUB_COMPRESSED, false, null, null, 0, null, null, null, null);
+                TimelineBinding.SUB_COMPRESSED, false, null, null, 0, null, null, null, null, null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
     }
 
@@ -135,6 +152,6 @@ class ReActAgentFactoryTest {
                 TimelineBinding.SUB_COMPRESSED,
                 false,
                 null,
-                null, 0, null, null, null, null);
+                null, 0, null, null, null, null, null);
     }
 }

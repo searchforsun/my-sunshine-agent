@@ -55,6 +55,7 @@ const renderSource = computed(() =>
     : props.source,
 )
 
+/** 穿插正文不做节流：50ms 合并会导致整段 v-html 间歇替换，观感跳动 */
 const html = computed(() =>
   isStreamingLarge.value ? '' : renderStaticMarkdown(renderSource.value),
 )

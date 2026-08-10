@@ -13,7 +13,7 @@
     <artifactId>sunshine-resource-manager</artifactId>
     <packaging>jar</packaging>
     <name>resource-manager</name>
-    <description>聚合管理服务：Skill / Agent / Prompt / Desensitize</description>
+    <description>聚合管理服务：Skill / Agent / Prompt / Desensitize / Model Registry</description>
 
     <dependencies>
         <dependency>
@@ -74,6 +74,11 @@
             <artifactId>ahocorasick</artifactId>
             <version>0.6.3</version>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -86,6 +91,11 @@
                 <configuration>
                     <parameters>true</parameters>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

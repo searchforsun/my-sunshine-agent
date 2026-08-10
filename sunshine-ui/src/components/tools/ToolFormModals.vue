@@ -196,10 +196,6 @@ const page = inject(TOOLS_PAGE_KEY) as ToolsPageApi
   display: none;
 }
 
-.modal-form :deep(.n-form-item) {
-  margin-bottom: 12px;
-}
-
 .modal-form :deep(.n-input) {
   --n-color: var(--sun-black) !important;
   --n-border: 1px solid var(--sun-border) !important;

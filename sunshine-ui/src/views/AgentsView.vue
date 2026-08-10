@@ -43,6 +43,10 @@ import {
 } from '../api/agents'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
 import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
+import {
+  catalogEnabledModelOptions,
+  fetchModelCatalog,
+} from '../api/models'
 import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
 import { useTenantPreference } from '../composables/useTenantPreference'
 import { useAgentsRouteState } from '../composables/useAgentsRouteState'
@@ -62,6 +66,7 @@ const agents = ref<AgentEntry[]>([])
 const skillOptions = ref<SkillCatalogIndexEntry[]>([])
 const toolOptions = ref<ToolCatalogEntry[]>([])
 const kbOptions = ref<KnowledgeBase[]>([])
+const modelSelectOptions = ref<{ label: string; value: string }[]>([])
 const selectedId = ref<string | null>(readId())
 const activeTab = ref<'internal' | 'external'>('internal')
 
@@ -79,7 +84,7 @@ const editForm = ref({
   dataScope: '',
   permissionsHitl: 'inherit' as string,
   permissionsSandboxWrite: 'inherit' as string,
-  modelConfig: '',
+  modelName: null as string | null,
   maxIters: '',
   maxHandoffs: '',
 })
@@ -198,6 +203,23 @@ function makeAuthConfigJson(type: string, token: string): string {
   return JSON.stringify({ type: 'bearer', token: token.trim() })
 }
 
+/** modelConfigJson 读 model（兼容旧 modelName） */
+function parseModelConfigModel(json: string | undefined | null): string | null {
+  if (!json?.trim()) return null
+  try {
+    const obj = JSON.parse(json) as Record<string, unknown>
+    const v = obj.model ?? obj.modelName
+    return typeof v === 'string' && v.trim() ? v.trim() : null
+  } catch {
+    return null
+  }
+}
+
+function buildModelConfigJson(model: string | null): string {
+  if (!model?.trim()) return '{}'
+  return JSON.stringify({ model: model.trim() })
+}
+
 // ---- 内部创建 ----
 const internalIdTrimmed = computed(() => internalCreateDraft.value.id.trim())
 const internalNameTrimmed = computed(() => internalCreateDraft.value.displayName.trim())
@@ -266,7 +288,7 @@ const isFormDirty = computed(() => {
     || editForm.value.dataScope !== (agent.dataScopeJson ?? '')
     || editForm.value.permissionsHitl !== parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit')
     || editForm.value.permissionsSandboxWrite !== parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit')
-    || editForm.value.modelConfig !== (agent.modelConfigJson ?? '')
+    || editForm.value.modelName !== parseModelConfigModel(agent.modelConfigJson)
     || editForm.value.maxIters !== String(agent.maxIters ?? 0)
     || editForm.value.maxHandoffs !== String(agent.maxHandoffs ?? 0)
 })
@@ -319,7 +341,7 @@ function loadEditForm(agent: AgentEntry) {
     dataScope: agent.dataScopeJson ?? '',
     permissionsHitl: parsePermissionsString(agent.permissionsJson, 'hitl', 'inherit'),
     permissionsSandboxWrite: parsePermissionsString(agent.permissionsJson, 'sandboxWriteMode', 'inherit'),
-    modelConfig: agent.modelConfigJson ?? '',
+    modelName: parseModelConfigModel(agent.modelConfigJson),
     maxIters: String(agent.maxIters ?? 0),
     maxHandoffs: String(agent.maxHandoffs ?? 0),
   }
@@ -329,14 +351,18 @@ function loadEditForm(agent: AgentEntry) {
 async function refreshPage() {
   loading.value = true
   try {
-    const [list, skills, tools] = await Promise.all([
+    const [list, skills, tools, catalog] = await Promise.all([
       listAgents(),
       listSkillCatalogIndex(),
       listToolCatalog(),
+      fetchModelCatalog().catch(() => null),
     ])
     agents.value = list
     skillOptions.value = skills
     toolOptions.value = tools
+    modelSelectOptions.value = catalog
+      ? catalogEnabledModelOptions(catalog).map((o) => ({ label: o.label, value: o.value }))
+      : []
     try {
       kbOptions.value = await listKbs(tenantId.value)
     } catch {
@@ -568,7 +594,7 @@ async function handleSave() {
             permissionsHitl: editForm.value.permissionsHitl,
             permissionsSandboxWrite: editForm.value.permissionsSandboxWrite,
           }) || undefined,
-          modelConfigJson: editForm.value.modelConfig || undefined,
+          modelConfigJson: buildModelConfigJson(editForm.value.modelName),
           maxIters: Number(editForm.value.maxIters) || 0,
           maxHandoffs: Number(editForm.value.maxHandoffs) || 0,
         },
@@ -851,8 +877,17 @@ onUnmounted(() => {
               <NFormItem label="数据范围（JSON）">
                 <NInput v-model:value="editForm.dataScope" class="sun-field prompt-input" type="textarea" :disabled="!isEditing" :autosize="{ minRows: 2, maxRows: 6 }" placeholder='{"departments": ["hr", "finance"]}' />
               </NFormItem>
-              <NFormItem label="模型配置（JSON，覆盖默认模型）">
-                <NInput v-model:value="editForm.modelConfig" class="sun-field prompt-input" type="textarea" :disabled="!isEditing" :autosize="{ minRows: 2, maxRows: 6 }" placeholder='{"modelName": "gpt-4o", "modelBaseUrl": ""}' />
+              <NFormItem label="模型">
+                <NSelect
+                  v-model:value="editForm.modelName"
+                  class="sun-field"
+                  filterable
+                  clearable
+                  :disabled="!isEditing"
+                  :options="modelSelectOptions"
+                  :menu-props="{ class: 'agent-select-menu' }"
+                  placeholder="默认"
+                />
               </NFormItem>
             </section>
           </NForm>
@@ -1409,26 +1444,11 @@ onUnmounted(() => {
   opacity: 0.85;
 }
 
-/* Modal */
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.modal-form :deep(.n-form-item) {
-  margin-bottom: 12px;
-}
-
-.modal-form :deep(.n-form-item:last-child) {
-  margin-bottom: 0;
-}
-
+/* Modal：项间距由 global.css .sunshine-dialog 统一处理 */
 .modal-form :deep(.n-form-item-label) {
   color: var(--sun-text-secondary);
   font-size: 13px;
   font-weight: 500;
-  padding-bottom: 8px;
 }
 
 .field-error {

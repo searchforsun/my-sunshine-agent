@@ -29,4 +29,7 @@ public class ChatMessage {
 
     /** 用户个人规则（soul）；空则不注入，>4000 由 orchestrator 防御截断 */
     private String personalRules;
+
+    /** 会话绑定模型（注册表 model_name）；空则走 chat/default scene */
+    private String modelName;
 }

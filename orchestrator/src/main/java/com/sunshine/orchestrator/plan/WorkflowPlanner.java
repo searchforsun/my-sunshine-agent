@@ -6,6 +6,8 @@ import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
@@ -36,6 +38,7 @@ public class WorkflowPlanner {
     private final SkillCatalogService skillCatalogService;
     private final PromptCatalogHolder promptCatalogHolder;
     private final LlmGatewayClient llmGateway;
+    private final ModelSceneResolver modelSceneResolver;
 
     public Mono<PlanJson> plan(ExecutionStreamContext ctx) {
         return plan(ctx, null, 1);
@@ -80,8 +83,9 @@ public class WorkflowPlanner {
 
     private Mono<PlanJson> submitPlanner(String systemPrompt, String userMessage, int attemptNo) {
         AgentPromptProperties.Planner cfg = prompts.plannerOrDefault();
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_PLANNER, null);
         Map<String, Object> request = new LinkedHashMap<>();
-        request.put("model", cfg.getModel());
+        request.put("model", model.effectiveModel());
         request.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", userMessage)));
@@ -89,6 +93,9 @@ public class WorkflowPlanner {
         request.put("temperature", cfg.getTemperature());
         request.put("skip_cache", true);
         request.put("response_format", Map.of("type", "json_object"));
+        if (StringUtils.hasText(model.fallbackModel())) {
+            request.put("fallback_model", model.fallbackModel());
+        }
         int maxInvoke = Math.max(1, executionProperties.getPlanWorkflow().getPlanner().getMaxAttempts());
         long backoffMs = executionProperties.getPlanWorkflow().getPlanner().getBackoffMs();
         return invokePlanner(request)

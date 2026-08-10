@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -263,6 +264,15 @@ public class ConversationService {
     public void updateKbId(String id, String userId, String tenantId, String kbId) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
         conv.setKbId(kbId);
+        conv.setUpdatedAt(Instant.now());
+        conversationRepo.save(conv);
+    }
+
+    /** 记录本会话绑定的模型名（空则清除，走 chat scene） */
+    @Transactional
+    public void updateModelName(String id, String userId, String tenantId, String modelName) {
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        conv.setModelName(StringUtils.hasText(modelName) ? modelName.strip() : null);
         conv.setUpdatedAt(Instant.now());
         conversationRepo.save(conv);
     }

@@ -19,6 +19,8 @@ import type { TenantId } from '../../api/tenants'
 import ConfigFieldHelp from './ConfigFieldHelp.vue'
 import { fieldHelp, scopeHelp } from './kbConfigFieldHelp'
 import { useKbConfigPanel } from '../../composables/useKbConfigPanel'
+import { catalogEnabledModelOptions, fetchModelCatalog } from '../../api/models'
+import { onMounted, ref } from 'vue'
 
 const props = defineProps<{
   tenantId: TenantId
@@ -26,6 +28,21 @@ const props = defineProps<{
 }>()
 
 const panel = useKbConfigPanel(props)
+const modelOptions = ref<{ label: string; value: string }[]>([])
+
+onMounted(() => {
+  void fetchModelCatalog()
+    .then((catalog) => {
+      modelOptions.value = catalogEnabledModelOptions(catalog).map((o) => ({
+        label: o.label,
+        value: o.value,
+      }))
+    })
+    .catch(() => {
+      modelOptions.value = []
+    })
+})
+
 const loading = panel.loading
 const saving = panel.saving
 const publishing = panel.publishing
@@ -201,6 +218,18 @@ const onImportFileChange = panel.onImportFileChange
                 :disabled="!canEdit"
                 :menu-props="{ class: 'kb-config-select-menu' }"
                 @update:value="(v: string) => updateField(scopeGroup.scope, field.fieldId, v)"
+              />
+              <NSelect
+                v-else-if="field.fieldId === 'model'"
+                :value="String(scopeValues(scopeGroup.scope)[field.fieldId] ?? '') || null"
+                :options="modelOptions"
+                filterable
+                clearable
+                class="field-control"
+                :disabled="!canEdit"
+                :menu-props="{ class: 'kb-config-select-menu' }"
+                placeholder="选择模型"
+                @update:value="(v: string | null) => updateField(scopeGroup.scope, field.fieldId, v ?? '')"
               />
               <NInputNumber
                 v-else-if="field.type === 'number'"

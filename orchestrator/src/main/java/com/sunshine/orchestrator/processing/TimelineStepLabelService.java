@@ -64,7 +64,7 @@ public class TimelineStepLabelService {
         return StepLabels.activeFor(stepId);
     }
 
-    /** plan / generate / skill 等步骤 after 模板，占位符 {query} */
+    /** plan / generate / skill 等步骤 after 模板 */
     public String stepAfter(String stepId, String clippedQuery, String detail) {
         if (TimelineStepId.PLAN.matches(stepId)) {
             if (StringUtils.hasText(detail)) {
@@ -76,7 +76,7 @@ public class TimelineStepLabelService {
         if (TimelineStepId.GENERATE.matches(stepId)) {
             AgentPromptProperties.StepTimeline step = stepTemplate(TimelineStepId.GENERATE.id());
             String template = TimelineLabelTemplates.textOrDefault(
-                    step != null ? step.getAfter() : null, "已完成对{query}的回复");
+                    step != null ? step.getAfter() : null, "已完成回复");
             return TimelineLabelTemplates.applyTemplate(template,
                     TimelineLabelTemplates.vars(clippedQuery, null, null, null));
         }

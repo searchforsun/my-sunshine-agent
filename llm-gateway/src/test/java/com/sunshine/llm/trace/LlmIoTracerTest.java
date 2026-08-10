@@ -30,6 +30,18 @@ class LlmIoTracerTest {
     }
 
     @Test
+    void parseDelta_detectsReasoningDetailsText() {
+        String raw = """
+                {"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"拆通道"}]}}]}
+                """;
+
+        LlmIoTracer.DeltaFields fields = tracer.parseDelta(raw);
+
+        assertThat(fields.hasReasoning()).isTrue();
+        assertThat(fields.reasoning()).isEqualTo("拆通道");
+    }
+
+    @Test
     void parseDelta_detectsContentOnly() {
         String raw = "{\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}";
 

@@ -4,11 +4,16 @@ import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.context.l3.L3RecallService;
+import com.sunshine.orchestrator.registry.ModelCapabilities;
+import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
+import com.sunshine.orchestrator.registry.ModelCatalogScene;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
 import java.util.Map;
@@ -41,8 +46,18 @@ class ContextAssemblerL1Test {
         properties = new ContextProperties();
         properties.getL1().setNearTurns(1);
         properties.getL1().setMidTurns(1);
+        ModelSceneResolver resolver = new ModelSceneResolver(
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                WebClient.builder(), "http://localhost", "default");
+        resolver.replaceSnapshotForTest(
+                List.of(new ModelCatalogDefinition(
+                        "deepseek-v4-pro", "p", "pro", 256000, 8192, "cl100k_base",
+                        ModelCapabilities.defaults(), null, true, true, 0)),
+                List.of(
+                        new ModelCatalogScene("chat", "deepseek-v4-pro", null, Map.of(), true),
+                        new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService,
-                tokenEstimator, modelWindowCache, null, null);
+                tokenEstimator, modelWindowCache, null, null, resolver);
         lenient().when(modelWindowCache.windowFor(any())).thenReturn(256000);
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
         lenient().when(l3RecallService.recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean()))

@@ -265,6 +265,7 @@ const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
   --n-border-hover: 1px solid var(--sun-border-light) !important;
   --n-border-active: 1px solid var(--sun-border-light) !important;
   --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-border-disabled: 1px solid var(--sun-border) !important;
   --n-box-shadow-focus: none !important;
   --n-box-shadow-hover: none !important;
   --n-box-shadow-active: none !important;

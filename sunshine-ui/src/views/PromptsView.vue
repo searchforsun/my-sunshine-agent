@@ -183,19 +183,8 @@ onMounted(() => {
   --n-color: var(--sun-accent) !important;
 }
 
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.modal-form :deep(.n-form-item) {
-  margin-bottom: 0;
-}
-
 .modal-form :deep(.n-form-item-label) {
   color: var(--sun-text-secondary);
   font-size: 13px;
-  padding-bottom: 8px;
 }
 </style>

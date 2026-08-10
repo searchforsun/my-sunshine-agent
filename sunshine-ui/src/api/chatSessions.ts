@@ -154,6 +154,10 @@ export function useChatSessions(
       if (options?.writeHitlMode) {
         body.writeHitlMode = options.writeHitlMode
       }
+      // modelName：显式传（含空串清绑定）写入会话；未传则后端沿用已存值
+      if (options?.modelName !== undefined && options.modelName !== null) {
+        body.modelName = options.modelName
+      }
       // 个人规则（soul）：用户级常量随请求透传，非单次发送选项，不入 SendOptions
       const personalRules = useAuthStore().user?.personalRules?.trim()
       if (personalRules) {

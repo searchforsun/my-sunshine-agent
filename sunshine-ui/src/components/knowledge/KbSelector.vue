@@ -13,8 +13,10 @@ const props = withDefaults(
     showCreate?: boolean
     /** compact：Chat 底栏；block：知识库页顶栏 */
     variant?: 'compact' | 'block'
+    /** 底栏碰撞时仅显示图标 */
+    iconOnly?: boolean
   }>(),
-  { showCreate: true },
+  { showCreate: true, iconOnly: false },
 )
 
 const showCreateButton = computed(() => props.showCreate)
@@ -55,7 +57,7 @@ function onShowUpdate(next: boolean) {
 </script>
 
 <template>
-  <div class="kb-dropdown-root" :class="`variant-${variant}`">
+  <div class="kb-dropdown-root" :class="[`variant-${variant}`, { 'is-icon-only': iconOnly }]">
     <NPopover
       :show="showMenu"
       trigger="click"
@@ -72,7 +74,7 @@ function onShowUpdate(next: boolean) {
           type="button"
           class="kb-trigger"
           :disabled="loading"
-          :title="current?.kbId ?? '选择知识库'"
+          :title="current?.displayName ?? current?.kbId ?? '选择知识库'"
         >
           <span class="kb-leading">
             <NIcon class="kb-icon" :component="LibraryOutline" :size="14" />
@@ -181,6 +183,17 @@ function onShowUpdate(next: boolean) {
 
 .kb-chevron {
   opacity: 0.55;
+}
+
+.kb-dropdown-root.is-icon-only .kb-label,
+.kb-dropdown-root.is-icon-only .kb-chevron {
+  display: none;
+}
+
+.kb-dropdown-root.is-icon-only .kb-trigger {
+  padding: 0 8px;
+  max-width: none;
+  gap: 0;
 }
 
 .kb-menu {

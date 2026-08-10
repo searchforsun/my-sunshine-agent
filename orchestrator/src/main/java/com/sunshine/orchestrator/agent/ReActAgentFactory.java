@@ -5,12 +5,14 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.model.GenerateOptions;
-import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
+import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,11 +25,7 @@ import java.util.Map;
 
 /**
  * 每次对话创建独立 ReActAgent，避免单例残留 pending tool call / 并发冲突。
- * 2.0 起 `.memory()` 被 `.stateStore(AgentStateStore)` 取代；
- * AutoContextMemory/AutoContextHook/AutoContextConfig 在 2.0 已整体移除，压缩改在 P2 用原生
- * CompactionConfig 重做（阈值字段保留于 {@code MemoryProperties.AutoContext} 供 P2 对标）。
- * enablePendingToolRecovery=true：续跑时 stateStore 恢复的 AgentState 可能含 pending tool calls，
- * AgentScope 2.0 会自动生成占位 tool result 让 agent 继续推理（而非报错卡死）。
+ * 模型名 / 窗口来自 {@link ModelSceneResolver}（D10），不再读 Nacos agent.model.name。
  * base system-prompt 读 {@link PromptCatalogHolder}（id={@code system-prompt}）。
  */
 @Slf4j
@@ -44,25 +42,17 @@ public class ReActAgentFactory {
     private final AgentStateStore stateStore;
     /** @LoadBalanced WebClient.Builder 由 sunshine-common 自动注入，走 Nacos 服务发现 */
     private final WebClient.Builder webClientBuilder;
+    private final ModelSceneResolver modelSceneResolver;
 
     private LoadBalancedWebClientTransport transport;
-
-    @Value("${agent.model.name:deepseek-v4-pro}")
-    private String modelName;
 
     @Value("${agent.model.base-url:http://sunshine-llm-gateway/v1}")
     private String modelBaseUrl;
     @Value("${agent.model.max-tokens:16384}")
     private int maxTokens;
+    /** Gateway 代理鉴权占位（常为 sunshine-gateway），非上游厂商 key */
     @Value("${agent.model.api-key:}")
     private String apiKey;
-    /**
-     * 模型上下文窗口（token）。供 AgentScope CompactionConfig 动态触发使用
-     * （effectiveTrigger = contextWindow - reserved）；须与实际模型窗口一致，
-     * 否则 run 内压缩触发点会偏离真实溢出点。
-     */
-    @Value("${agent.model.context-window:256000}")
-    private int contextWindowSize;
 
     @PostConstruct
     void initTransport() {
@@ -98,8 +88,12 @@ public class ReActAgentFactory {
         return react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled();
     }
 
-    private OpenAIChatModel buildModel(AgentRunRequest request) {
-        String overriddenModel = modelName;
+    OpenAIChatModel buildModel(AgentRunRequest request) {
+        ResolvedModelScene resolved = resolveModel(request);
+        if (resolved.overrideInvalid()) {
+            log.warn("[ReActAgentFactory] chat model override invalid, using scene primary={}",
+                    resolved.effectiveModel());
+        }
         String overriddenBaseUrl = modelBaseUrl;
         int resolvedMaxTokens = maxTokens;
         if (request != null && request.modelConfigJson() != null && !request.modelConfigJson().isBlank()
@@ -107,9 +101,6 @@ public class ReActAgentFactory {
             try {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> config = MAPPER.readValue(request.modelConfigJson(), Map.class);
-                if (config.get("model") instanceof String m && !m.isBlank()) {
-                    overriddenModel = m;
-                }
                 if (config.get("baseUrl") instanceof String b && !b.isBlank()) {
                     overriddenBaseUrl = b;
                 }
@@ -120,15 +111,61 @@ public class ReActAgentFactory {
                 log.warn("[ReActAgentFactory] modelConfigJson 解析失败: {}", e.getMessage());
             }
         }
+        if (resolved.extras() != null && resolved.extras().get("max_tokens") instanceof Number n) {
+            resolvedMaxTokens = n.intValue();
+        }
+        // 按注册表模型上限钳制（如 qwen-max 仅允许 ≤8192）
+        if (resolved.maxOutputTokens() > 0 && resolvedMaxTokens > resolved.maxOutputTokens()) {
+            log.info("[ReActAgentFactory] clamp maxTokens {} → {} for model={}",
+                    resolvedMaxTokens, resolved.maxOutputTokens(), resolved.effectiveModel());
+            resolvedMaxTokens = resolved.maxOutputTokens();
+        }
         return OpenAIChatModel.builder()
                 .apiKey(apiKey)
-                .modelName(overriddenModel)
+                .modelName(resolved.effectiveModel())
                 .baseUrl(overriddenBaseUrl)
                 .httpTransport(transport)
-                .contextWindowSize(contextWindowSize)
+                .contextWindowSize(resolved.contextWindow())
                 .generateOptions(GenerateOptions.builder().maxTokens(resolvedMaxTokens).build())
                 .stream(true)
                 .build();
+    }
+
+    /**
+     * D10：modelConfigJson.model &gt; modelOverride &gt; scene（MAIN=chat / SUB=subagent / PLANNER=planner）。
+     */
+    ResolvedModelScene resolveModel(AgentRunRequest request) {
+        String fromConfig = extractModelFromConfigJson(request != null ? request.modelConfigJson() : null);
+        String override = StringUtils.hasText(fromConfig)
+                ? fromConfig
+                : (request != null ? request.modelOverride() : null);
+        AgentRole role = request != null ? request.role() : AgentRole.MAIN;
+        if (role == AgentRole.MAIN) {
+            // MAIN chat：无效会话模型需 warning 标记
+            if (StringUtils.hasText(fromConfig)) {
+                return modelSceneResolver.resolve(ModelSceneResolver.SCENE_CHAT, fromConfig);
+            }
+            return modelSceneResolver.resolveChat(override);
+        }
+        if (role == AgentRole.SUB) {
+            return modelSceneResolver.resolve(ModelSceneResolver.SCENE_SUBAGENT, override);
+        }
+        return modelSceneResolver.resolve(ModelSceneResolver.SCENE_PLANNER, override);
+    }
+
+    private static String extractModelFromConfigJson(String modelConfigJson) {
+        if (modelConfigJson == null || modelConfigJson.isBlank() || "{}".equals(modelConfigJson)) {
+            return null;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> config = MAPPER.readValue(modelConfigJson, Map.class);
+            if (config.get("model") instanceof String m && !m.isBlank()) {
+                return m.strip();
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     public String composeSystemPrompt(AgentRunRequest request) {

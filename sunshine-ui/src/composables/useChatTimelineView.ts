@@ -95,7 +95,8 @@ export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<b
     if (last?.role !== 'assistant') return true
     if (last.content?.trim()) return false
     if (last.reasoning?.trim()) return false
-    const idx = messages.value.length - 1
+    // 穿插正文已在 OperationStack 输出时勿再挂底部三点（避免与最终正文三点重复）
+    if (last.contentBlocks?.some(b => !!b.text?.trim())) return false
     if (hasActiveStep(resolveTimelineSteps(last))) return false
     return true
   })

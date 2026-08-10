@@ -592,10 +592,6 @@ const filteredMcpServers = computed(() => {
   border-top: 1px solid var(--sun-border);
 }
 
-.modal-form :deep(.n-form-item) {
-  margin-bottom: 12px;
-}
-
 .modal-form :deep(.n-input) {
   --n-color: var(--sun-black) !important;
   --n-border: 1px solid var(--sun-border) !important;

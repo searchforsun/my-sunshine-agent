@@ -292,7 +292,8 @@ public class ChatStreamExecutor {
                 ctx.reactRestart(),
                 ctx.existingStepsJson(),
                 ctx.personalRules(),
-                ctx.conversationKind());
+                ctx.conversationKind(),
+                ctx.modelOverride());
     }
 
     private static List<StreamToken> drainStepTokens(List<ProcessingStep> stepEmissions) {

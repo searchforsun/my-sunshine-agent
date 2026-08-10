@@ -17,6 +17,8 @@ export interface ConversationSummary {
   updatedAt: number
   executionPreference?: ExecutionPreference
   kbId?: string | null
+  /** 会话绑定模型（注册表 model_name） */
+  modelName?: string | null
   /** chat / task */
   kind?: string
   workspaceId?: string | null
@@ -82,6 +84,7 @@ function mapSummary(raw: Record<string, unknown>): ConversationSummary {
     updatedAt: toTimestamp(raw.updatedAt as string | undefined),
     executionPreference: isExecutionPreference(pref) ? pref : undefined,
     kbId: typeof raw.kbId === 'string' ? raw.kbId : null,
+    modelName: typeof raw.modelName === 'string' ? raw.modelName : null,
     kind: typeof raw.kind === 'string' ? raw.kind : undefined,
     workspaceId: typeof raw.workspaceId === 'string' ? raw.workspaceId : null,
     checkoutPath: typeof raw.checkoutPath === 'string' ? raw.checkoutPath : null,

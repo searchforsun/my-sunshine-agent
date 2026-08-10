@@ -10,6 +10,8 @@ export interface SendOptions {
   workflowId?: string | null
   skillId?: string
   kbId?: string | null
+  /** 会话绑定模型（注册表 model_name）；空串清绑定 */
+  modelName?: string | null
   /** never | always | smart — 沙箱写 HITL 跳过 */
   writeHitlMode?: 'never' | 'always' | 'smart'
 }

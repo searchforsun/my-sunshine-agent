@@ -1,10 +1,13 @@
 package com.sunshine.orchestrator.plan;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.registry.ModelCapabilities;
+import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
+import com.sunshine.orchestrator.registry.ModelCatalogScene;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
 import java.util.Map;
@@ -38,9 +42,17 @@ class ExecutionPlanStoreTest {
 
     @BeforeEach
     void setUp() {
-        AgentPromptProperties props = new AgentPromptProperties();
+        ModelSceneResolver resolver = new ModelSceneResolver(
+                new ObjectMapper(), WebClient.builder(), "http://localhost", "default");
+        resolver.replaceSnapshotForTest(
+                List.of(new ModelCatalogDefinition(
+                        "deepseek-v4-flash", "p", "flash", 128000, 8192, "cl100k_base",
+                        ModelCapabilities.defaults(), null, true, true, 0)),
+                List.of(
+                        new ModelCatalogScene("planner", "deepseek-v4-flash", null, Map.of(), true),
+                        new ModelCatalogScene("default", "deepseek-v4-flash", null, Map.of(), true)));
         store = new ExecutionPlanStore(repository, new PlanJsonCodec(new ObjectMapper()),
-                planJsonParser, props, conversationService);
+                planJsonParser, resolver, conversationService);
     }
 
     @Test

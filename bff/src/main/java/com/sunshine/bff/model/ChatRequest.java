@@ -29,4 +29,7 @@ public class ChatRequest {
 
     /** 用户个人规则（soul）；透传字段，BFF 不加工 */
     private String personalRules;
+
+    /** 会话级模型覆盖（可选）；透传 orchestrator，BFF 不加工 */
+    private String modelName;
 }

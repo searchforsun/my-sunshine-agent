@@ -2,11 +2,11 @@ package com.sunshine.orchestrator.plan;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowContextCodec;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,7 +27,7 @@ public class ExecutionPlanStore {
     private final ExecutionPlanRepository repository;
     private final PlanJsonCodec codec;
     private final PlanJsonParser planJsonParser;
-    private final AgentPromptProperties agentPromptProperties;
+    private final ModelSceneResolver modelSceneResolver;
     private final ConversationService conversationService;
 
     @Transactional
@@ -41,7 +41,7 @@ public class ExecutionPlanStore {
         entity.setUserId(requireText(ctx.userId(), "userId"));
         entity.setTenantId(StringUtils.hasText(ctx.tenantId()) ? ctx.tenantId() : "default");
         entity.setStatus(ExecutionPlanStatus.DRAFT.dbValue());
-        entity.setPlannerModel(agentPromptProperties.plannerOrDefault().getModel());
+        entity.setPlannerModel(modelSceneResolver.resolve(ModelSceneResolver.SCENE_PLANNER, null).effectiveModel());
         entity.setPlannerReason(truncate(planJson.reason(), 512));
         entity.setPlanJson(codec.toJson(planJson));
         entity.setReplanCount(0);

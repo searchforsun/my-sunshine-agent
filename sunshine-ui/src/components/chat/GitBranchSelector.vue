@@ -244,6 +244,7 @@ watch(() => props.modelValue, () => {
 .branch-dropdown-root {
   display: inline-flex;
   max-width: 100%;
+  min-width: 0;
 }
 
 .branch-trigger {
@@ -258,8 +259,8 @@ watch(() => props.modelValue, () => {
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
-  flex-shrink: 0;
-  max-width: 180px;
+  min-width: 0;
+  max-width: 100%;
   transition: background 0.15s, color 0.15s;
 }
 
@@ -273,6 +274,8 @@ watch(() => props.modelValue, () => {
   align-items: center;
   gap: 6px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .branch-icon,
@@ -286,6 +289,7 @@ watch(() => props.modelValue, () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .branch-chevron {
