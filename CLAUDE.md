@@ -68,9 +68,9 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 | 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册 → `/tools` 启用；Workflow 节点 `params.tool` 填 Catalog ID（`sdk__{app}__{name}`） |
 | 新 Workflow | `/workflows` + `workflow-manager` DB（唯一 SSOT）+ MySQL init 种子；orchestrator `WorkflowManagerClient` |
 | **静态 Workflow** | L2 规则命中 → `WorkflowExecutor` → `StaticPlanAdapter` → `PlanWorkflowPanel`（DAG 画布）；answer prompt 随 workflow 定义维护于 DB `plan_json` |
-| **Planner-Executor（4.14）** | `PlannerHarnessExecutor`：Planner=ReAct 主 Agent（**两态分解**，简化决议 S5）→ Worker=工具调用（`forWorker()`）→ Planner 自判 → 综合回答；`PlanNotebook` + **Redis 单写** + 3 类显式触发重规划；**完全舍弃动态 Plan-Workflow**（`PlanWorkflowExecutor`/`WorkflowPlanner`/PlanApproval 已删）；详见 `docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md` |
-| **意图路由** | Policy Chain：L0 Skill → `UnifiedRuleRoutingPolicy`（Catalog `routing-rule.*`）→ L3 `intent.classifier` |
-| **Chat 执行模式** | `executionPreference` → `ForcedExecutionRouter`；`planMode=harness` 进 Planner-Executor；workflow 模板用 4.13 `#` 补全 |
+| **Planner-Executor（4.14）** | `PlannerHarnessExecutor`：Planner=ReAct 主 Agent（**单一循环**边规划边执行，S5 v4：无 full/hier 模式；细则在 Worker）→ Worker=工具调用（`forWorker()`）→ Planner 自判 → 综合回答；`PlanNotebook` + **Redis 单写** + 3 类显式触发重规划；**完全舍弃动态 Plan-Workflow**（`PlanWorkflowExecutor`/`WorkflowPlanner`/PlanApproval 已删）；详见 `docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md` |
+| **意图路由** | [unified-routing v6](docs/superpowers/specs/2026-07-29-unified-routing-design.md)：用户显式 **快速/专业/工作流**（无自动模式识别）；快/专轨 L0–L3 收集 skill+子 Agent；工作流轨只收集 workflow |
+| **Chat 执行模式** | `executionMode=fast\|pro\|workflow` → `ReactExecutor` / `PlannerHarnessExecutor` / `WorkflowExecutor`；`#` 补全**仅工作流模式**；动态 Plan-Workflow 删除 |
 | **ReAct TaskBoard（4.7.5）** | 元工具 `manage_tasks` + 唯一 `tasks` 步；merge 引擎去重 |
 | **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；上下文隔离；`subagent-*` 卡 + 抽屉；**单独取消**（`SpawnRunRegistry`）；`agentId` 指定预定义智能体，经 `AgentExecutorRouter` 按 `source` 分派 INTERNAL/EXTERNAL（A2A） |
 | **沙箱工具取消（4.5.7）** | `sandbox__exec`/`grep`/`glob`：`CancellableToolRunRegistry` + sandbox kill；同族预算 3 |
@@ -94,14 +94,14 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 | **ReAct** | `intent → think → tasks? → tool → think-2 → generate`；连续 reasoning 合并为同一 think；SSE 仅下发当前阶段一行 |
 | **ReAct spawn_subagent** | 主卡 `subagent-{runId}` + 抽屉 `subSteps`（指定 agentId 时 label 取智能体 displayName）；取消 → `paused` +「已取消」 |
 | **Workflow（静态）** | 主时间线 `intent → plan → …`（DAG 画布）；agent 节点内部不上主时间线；loop body 进 `subSteps`；answer 节点仅 `step_delta(result)`，勿双写 content |
-| **Planner-Executor（4.14）** | 步骤时间线卡片 `intent → plan(Rn,{mode}) → worker-* → planner-answer`；**不渲染 DAG**；worker 内部 `subSteps` 折叠；handoff 双写 H1 + Planner L1 尾部 |
+| **Planner-Executor（4.14）** | 分层普通时间线 `intent → plan(Rn) → worker-* → planner-answer`（非卡片）；TaskBoard 一级=H1、二级=Worker todolist（有则展示）；handoff 仅正文时间线收束并双写 H1 + Planner L1 尾部；**不渲染 Plan DAG** |
 | **沙箱工具** | 取消 → `lifecycle=paused`，`summary.after=已取消` |
 
 **reasoning 落点**：ReAct `think*` step、静态 Workflow `node-*` reasoning 挂 node step、Planner-Executor `plan`/`worker` 步。Plan 不合成 think。
 
 **静态 Workflow 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析** + **最终输出**（原样）；业务节点 **执行记录**（`attempts[]`）；RAG 改写 trace 进抽屉 **检索过程**。
 
-**前端**：`OperationStack` / `PlanExecutionCanvas`（仅静态 Workflow）/ `PlanNodeDrawer`；Planner-Executor 用步骤时间线卡片；**禁止**维护本地步骤话术 Map、对模型输出做截断兜底。
+**前端**：`OperationStack` / `PlanExecutionCanvas`（仅静态 Workflow）/ `PlanNodeDrawer` / `TaskBoardPanel`；Planner-Executor 用分层普通时间线 + 一/二级看板（见 rebuild §4）；**禁止**维护本地步骤话术 Map、对模型输出做截断兜底。
 
 ## 关键约定
 

@@ -139,6 +139,7 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
           :expanded="isToolCardExpanded(step)"
           :live="live && lifecycleOf(step) === 'running'"
           :embed-hitl="false"
+          :hide-checkmark="true"
           :round-summary="props.summaryByStepId?.get(step.id)"
           @toggle="toggleToolCard(step)"
         />
@@ -219,6 +220,7 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
   color: var(--sun-text-muted);
   display: inline-flex;
   align-items: center;
+  align-self: center;
   flex-shrink: 0;
 }
 

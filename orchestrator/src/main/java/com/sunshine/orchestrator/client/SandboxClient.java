@@ -29,14 +29,21 @@ public class SandboxClient {
 
     private final WebClient webClient;
 
+    /**
+     * HTTP 读超时须覆盖 sandbox exec 上限：工作区 policy=120s（git push/pull/fetch），
+     * 再留余量避免 docker exec 尚未返回时 WebClient 先断连、掩盖真实 git 报错。
+     */
+    private static final java.time.Duration RESPONSE_TIMEOUT = java.time.Duration.ofSeconds(180);
+
     public SandboxClient(WebClient.Builder builder) {
         this.webClient = builder
                 .baseUrl("http://sunshine-sandbox-service")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
                 .clientConnector(new ReactorClientHttpConnector(
-                        HttpClient.create().responseTimeout(java.time.Duration.ofSeconds(10))))
+                        HttpClient.create().responseTimeout(RESPONSE_TIMEOUT)))
                 .build();
-        log.info("[SandboxClient] baseUrl=http://sunshine-sandbox-service");
+        log.info("[SandboxClient] baseUrl=http://sunshine-sandbox-service responseTimeout={}s",
+                RESPONSE_TIMEOUT.toSeconds());
     }
 
     public String createSession(CreateSessionRequest req) {

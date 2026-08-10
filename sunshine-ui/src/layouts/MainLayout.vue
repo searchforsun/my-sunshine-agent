@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, NModal, type MenuOption, type DropdownOption } from 'naive-ui'
-import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, HardwareChipOutline, ConstructOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline, SearchOutline } from '@vicons/ionicons5'
+import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, AppsOutline, HardwareChipOutline, ConstructOutline, CodeSlashOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline, SearchOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../composables/useSidebar'
@@ -564,7 +564,7 @@ onMounted(() => {
           <span>新对话</span>
         </button>
         <button type="button" class="action-btn" @click="handleNewTask">
-          <NIcon :size="16" :component="ConstructOutline" />
+          <NIcon :size="16" :component="CodeSlashOutline" />
           <span>新任务</span>
         </button>
       </div>
@@ -580,7 +580,7 @@ onMounted(() => {
             @click="toggleSection('platform')"
           >
             <span class="section-icon-wrap">
-              <NIcon :size="16" :component="SparklesOutline" class="section-icon" />
+              <NIcon :size="16" :component="AppsOutline" class="section-icon" />
               <NIcon :size="14" :component="ChevronDownOutline" class="section-chevron" :class="{ rotated: expanded.platform }" />
             </span>
             <span class="section-label">平台</span>
@@ -627,7 +627,7 @@ onMounted(() => {
               @click="toggleSection('workspace')"
             >
               <span class="section-icon-wrap">
-                <NIcon :size="16" :component="ConstructOutline" class="section-icon" />
+                <NIcon :size="16" :component="CodeSlashOutline" class="section-icon" />
                 <NIcon :size="14" :component="ChevronDownOutline" class="section-chevron" :class="{ rotated: expanded.workspace }" />
               </span>
               <span class="section-label">任务</span>

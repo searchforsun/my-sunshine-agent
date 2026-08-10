@@ -1,15 +1,14 @@
 # Planner-Executor 架构重建 — 取代动态 Plan-Workflow
 
-> **状态**：📋 设计评审中（2026-08-05 立项）· **v2（2026-08-05 简化决议）**：见 §0.1「简化决议 S1-S7」——砍独立 Evaluator、持久化降级 Redis 单写、去 Tier 分层与压缩点基建、砍 P2 共享内存、三态→两态、重规划收敛、harness 不复用 PlanValidator。
-> **v3（2026-08-07 · Planner/Worker 上下文契约）**：新增 §3.1.1 上下文契约定稿——Planner L1 组装与普通 ReAct MAIN 完全一致（复用 `ContextAssembler.assemble`，chat 含 L3）；Worker `forWorker()` **不注入 L2 用户画像**（只含任务契约 + 定向上游 + P0/W0 只读子集）；H1 注入块内部两级（阶段骨架 + 近 `near-keep-rounds` 轮原文，超阈值折叠为摘要，**不建压缩点**）；Worker handoff 不落 `chat_message`（只进 H1 + run 内 L1 尾部）。§8.1 `notebook.compression` 改 `near-keep-rounds`。同步 [harness v8 §2.3.4/§2.4/§4.3](./2026-07-31-planner-harness-loop-design.md) 与 [五层 spec §5.5.7](./2026-07-31-unified-context-compression-design.md) v11 注记。
+> **状态**：📋 设计评审中 · **4.14 唯一 SSOT**（2026-08-10：原 [planner-harness-loop v8](./archive/2026-07-31-planner-harness-loop-design.md) 已归档，废案勿再改）
+> **v2（2026-08-05）**：简化决议 S1–S7（§0.1）。**v3（2026-08-07）**：§3.1.1 上下文契约。**v4（2026-08-10）**：S5 单一循环（无 full/hier）。**v5（2026-08-10）**：§4 分层普通时间线 + TaskBoard。**v6（2026-08-10）**：归档 harness；§5.0 PlanNotebook 定稿模型 + §5.4 S6 重规划表迁入本文。
 > **日期**：2026-08-05
 > **编号**：阶段四增量（重建 Planner-Executor，删除动态 Plan-Workflow）
 > **前置**：
->   - [Planner-Worker Loop v8](./2026-07-31-planner-harness-loop-design.md) — 三态分解（FULL/HIERARCHICAL/INCREMENTAL）+ PlanNotebook + Checkpoint C1-C4 + 触发式重规划（**v8 被本 spec §0.1 简化决议部分覆盖**）
->   - [统一资源路由 v3](./2026-07-29-unified-routing-design.md) — `planMode` + `scene` + `ResourceDispatcher`
->   - [ReAct 目标对齐 4.7.7](./2026-07-27-react-goal-alignment-design.md) — `GoalAlignmentMiddleware` + `FailureBudgetMiddleware`
+>   - [统一资源路由 v6](./2026-07-29-unified-routing-design.md) — 用户三模式 `fast`/`pro`/`workflow` + 双轨意图收集 + `ResourceDispatcher`
+>   - [ReAct 目标对齐 4.7.7](./2026-07-27-react-goal-alignment-design.md) — `GoalAlignmentMiddleware` + `FailureBudgetMiddleware`（可选门禁见其 §12；原 4.7.8 已归档）
 >   - [多 Agent 统一设计](./2026-07-29-multi-agent-unified-design.md) — spawn_subagent 中心化编排 + `AgentRunRequest`
-> **一句话**：**完全舍弃动态 Plan-Workflow**（Planner 一次性 DAG 规划 + PlanApproval 用户确认 + Plan DAG 时间线），重建为真正的 Planner-Executor——Planner 是 ReAct 主 Agent（全量上下文 + PlanNotebook 叠加），Worker 是 Planner 的**工具调用**（`forWorker()` 丰富上下文），**两态分解**（full/hierarchical，见 §0.1 S5）边走边规划。**静态 Workflow（4.13 Studio 编排）保留**，DAG 画布组件留存给静态 Workflow 使用；新 Planner-Executor 采用**步骤时间线卡片**（不渲染 DAG）。
+> **一句话**：**完全舍弃动态 Plan-Workflow**（Planner 一次性 DAG 规划 + PlanApproval 用户确认 + Plan DAG 时间线），重建为真正的 Planner-Executor——Planner 是 ReAct 主 Agent（全量上下文 + PlanNotebook 叠加），Worker 是 Planner 的**工具调用**（`forWorker()` 丰富上下文），**单一循环**边规划边执行（信息不足先调研再重规划；细则在 Worker ReAct，见 §0.1 S5）。**静态 Workflow（4.13 Studio 编排）保留**；新 Planner-Executor 正文用**分层普通时间线** + TaskBoard 一/二级待办（见 §4），**不**渲染 Plan DAG、**不**用步骤卡片形态。
 
 ---
 
@@ -20,7 +19,7 @@
 | D1 | **完全舍弃动态 Plan-Workflow** | `WorkflowPlanner`（一次性 DAG 生成）+ `PlanWorkflowExecutor` + `PlanApprovalService` + Plan DAG 时间线全部删除 |
 | D2 | **静态 Workflow 保留** | 4.13 Studio 编排的确定性业务流（`WorkflowExecutor` + `StaticPlanAdapter`）是已验收资产，与 LLM 动态规划正交 |
 | D3 | **DAG 画布留存给静态 Workflow** | `PlanExecutionCanvas` / `PlanDagExpandLayer` / `usePlanDagExpand` 保留，仅服务静态 Workflow |
-| D4 | **新 Planner-Executor 用步骤时间线卡片** | `intent → plan → worker-* → answer` 流式卡片列表，不渲染 DAG |
+| D4 | **新 Planner-Executor 用分层普通时间线 + TaskBoard** | 正文复用 ReAct 式 `OperationStack` 时间线（层级折叠，**非**卡片墙）；看板一级=H1、二级=Worker todolist；不渲染 Plan DAG |
 | D5 | **Plan Approval 完全不做** | 渐进式自驱执行，`PlanApprovalService` / `PlanApprovalActions` / `CollapsibleConfirmPanel` 删除 |
 | D6 | **复用 AgentRuntime 内核** | Planner = `AgentRuntime.run(MAIN)`，Worker = `AgentRuntime.run(WORKER)`（新角色），子 Agent = `AgentRuntime.run(SUB)` |
 | D7 | **复用审计通道** | `PlanExecutionAuditService` 事件通道复用，新增 `plan.worker_*` 事件 |
@@ -38,8 +37,8 @@
 | **S2** | **持久化降级 Redis 单写** | `PlanNotebookStore` 仅 Redis save/load/delete/renewTtl；**删** `PlanNotebookMysqlWriter` / `PlannerNotebookEntity` / `PlannerNotebookRepository`、`planner_notebooks` 表 DDL、version 幂等重放。冷审计职责由既有 `PlanExecutionAuditService`（RocketMQ/MySQL/ES）覆盖 | v8 §5.1 |
 | **S3** | **去 Tier 0/1/2 形式化分层与压缩点基建（仅 H1）** | run 内压缩由 AgentScope 官方 `CompactionMiddleware`（已落地）负责；跨轮 L1 压缩由既有 `L1Compressor` + `far_folded_msg_ids` + **压缩点模式**（[五层 spec §5.5/§13.3](./2026-07-31-unified-context-compression-design.md)）负责，**保持不动**；H1 仅作为 `injectedBlocks` 固定注入 query 前，rounds 超阈值时简单截断为摘要。**不新建**压缩点 / last_folded_round / 幂等 upsert | v8 §2.3.4/§2.4 |
 | **S4** | **砍 P2 `PlanSharedMemoryStore`** | WorkerContextFactory 从 H1 rounds 按 taskId/dependsOn 读已完成 handoff 注入，不建第三份状态 + KV 红线规则 | v8 §2.5.1 |
-| **S5** | **三态→两态** | 删 INCREMENTAL（open 场景走既有 ReAct：已含 spawn/taskboard/沙箱，能力面覆盖）；FULL 并入 HIERARCHICAL（执行机制同为 task 队列 + worker 调用，full 仅「首轮阶段骨架细度=任务粒度」）。删 `completeness` 三态枚举与 `executeIncremental` | v8 §0.2/§4.1 |
-| **S6** | **重规划收敛** | 5 类触发 → **3 类显式**（①连续失败 ③目标变更 ④进度偏差）+ 预算熔断（maxRounds/maxDuration）；②信息缺口折叠为 HIERARCHICAL 阶段切换自然产物；⑤资源溢出折叠为熔断。删 plan-similarity 语义去重（`max-phase-replans=3` 已兜底）；**保留** GoalAlignmentValidator 的 DEVIATED/STUCK | v8 §5.2.2 |
+| **S5** | **取消分解模式枚举 → 单一循环**（v4 定稿；取代「三态→两态」） | **不设** `full` / `hierarchical` / `incremental`、`taskDecomposition`、`completeness`、强制「阶段骨架→阶段细拆」协议、`planner.phase` / `call_scene=plan-phase`。引擎只跑：**Plan（吐调度单元）→ Validate → Execute Workers → selfAssess → replan/done**。信息不足时 Planner 自然排调研步，handoff 后按 S6 重规划；**细则（文件/命令级）在 Worker 内 ReAct**，Planner 只吐可调度粗单元（可并行 / `dependsOn` / 写 H1）。高不确定探索由用户选 **快速 `fast`**（ReAct），**非** harness 内模式分支、**非** L3 自动改道（[routing v6](./2026-07-29-unified-routing-design.md)） | v8 §0.2/§4.1 |
+| **S6** | **重规划收敛** | 5 类触发 → **3 类显式**（①连续失败 ③目标变更 ④进度偏差）+ 预算熔断（maxRounds/maxDuration）；②信息缺口由「调研步 + 自然重规划」承接（不再绑阶段切换协议）；⑤资源溢出折叠为熔断。删 plan-similarity 语义去重（`max-replans` 已兜底）；**保留** GoalAlignmentValidator 的 DEVIATED/STUCK | v8 §5.2.2 |
 | **S7** | **harness 不复用 PlanValidator** | `PlanValidator` 校验 BPMN/DAG 硬契约（节点 type 白名单、answer 强制、网关拓扑），与 harness 线性 task 队列语义不符。harness 用轻量结构校验（id/label/依赖环）；PlanValidator 留给静态 Workflow | v8 §4.2 |
 
 **保留不变**：scene（chat/task）用户显式选择（产品设计，§6.1 保留前端选择器）；PlanNotebook (H1) 跨轮记忆；Planner/Worker 职责分离 + `forWorker()` 丰富上下文 + toolWhitelist 下发；handoff 双写（L1 尾部 + H1）；GoalAlignmentValidator DEVIATED/STUCK；超时/重试/熔断预算；降级通道（Planner 全失败 → React 兜底）；复用 AgentScope StateStore / AgentRuntime / 审计 / 沙箱 / spawn_subagent。
@@ -67,7 +66,7 @@
 1. **规划一次、执行到底**：Planner 只在开头做一次全量 DAG 规划，执行期不能改图（`NodeRetryExecutor` 只做节点级重试）。长任务的信息缺口无法在规划期预见，DAG 无法自适应。
 2. **Planner 不是 Agent**：`WorkflowPlanner` 是**一次性 LLM 调用**（`/chat/completions` 返回 JSON），不是 ReAct 主 Agent。它没有 think→tool→observe 循环，无法在规划中使用工具补信息。
 3. **用户确认是约束而非特性**：PlanApproval 阻塞执行等待用户确认，与「Agent 自主推进」的体验矛盾；`approval.on-timeout=fallback_react` 说明确认机制本身是负担。
-4. **DAG 时间线展示与执行模型耦合**：前端 `PlanWorkflowPanel` 假设「先全量 DAG，再逐节点执行」，无法表达「走到哪、规划到哪」的分层增量规划。
+4. **DAG 时间线展示与执行模型耦合**：前端 `PlanWorkflowPanel` 假设「先全量 DAG，再逐节点执行」，无法表达「边执行边重规划」。
 5. **维护成本**：`WorkflowPlanner` + `PlanMaterializer` + `PlanNormalizer` + `PlanApprovalService` + `PlanTimeline` 等 20+ 类专为「一次性 DAG」服务，与真正的 Planner-Executor 需求大部分不匹配。
 
 ### 1.2 目标：真正的 Planner-Executor
@@ -90,12 +89,12 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 
 | 维度 | 动态 Plan-Workflow（删除） | Planner-Executor（新建） |
 |------|--------------------------|--------------------------|
-| 规划 | 一次性全量 DAG（`WorkflowPlanner`） | **两态分解**，边走边规划（`HarnessPlanner` = ReAct MAIN） |
+| 规划 | 一次性全量 DAG（`WorkflowPlanner`） | **单一循环**边走边规划（`HarnessPlanner` = ReAct；信息不足先调研再重规划） |
 | Planner 本质 | 一次性 LLM 调用 | ReAct 主 Agent（全量上下文 + H1） |
 | 执行 | DAG 物化 + 拓扑调度（`WorkflowExecutor`） | Worker = 工具调用（`forWorker()`） |
 | 重规划 | 校验失败 Replan（≤2 次），执行期不能改图 | **3 类显式触发**式重规划（失败重试耗尽 / 目标变更 / 进度偏差）+ 预算熔断 |
 | 用户交互 | PlanApproval 强制确认 | 渐进式自驱，follow-up 重定向 |
-| 时间线 | Plan DAG 画布 | 步骤时间线卡片 |
+| 时间线 | Plan DAG 画布 | 分层普通时间线 + TaskBoard（§4） |
 | 持久化 | `execution_plan` 表（plan-workflow 部分） | **PlanNotebook Redis 单写**（会话级跨轮记忆） |
 
 ---
@@ -107,7 +106,7 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 | 资产 | 用途 |
 |------|------|
 | `AgentRuntime.run` / `ReActAgentRuntime` / `PlannerAgentRuntime` | 统一执行内核；Planner = **独立 `AgentRole.PLANNER` 运行态**，由 `PlannerAgentRuntime` 实现（非 MAIN 复用） |
-| `ReactExecutor` | planMode=none 路径（普惠层） |
+| `ReactExecutor` | 用户选 `fast` 时的普惠层 |
 | `WorkflowExecutor` + `StaticPlanAdapter` + `WorkflowCheckpoint` | **静态 Workflow**（4.13 确定性流程） |
 | `PlanValidator` + `PlanExecutionSchedule` | 校验引擎，harness 复用 |
 | `NodeRetryExecutor` + `NodeRetryPolicyResolver` | 重试语义，抽象出「S 域任务级重试」接口供 `taskRetryMax` 复用 |
@@ -115,7 +114,7 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 | `ExecutionPlanStore` / `ExecutionPlanRepository` | **仅静态 Workflow** 使用（`StaticPlanAdapter` 快照） |
 | 工具链全链路 | `CatalogRemoteAgentTool` / `RagTool` / 沙箱 / `spawn_subagent` |
 | 前端 `PlanExecutionCanvas` / `PlanDagExpandLayer` / `usePlanDagExpand` | **仅服务静态 Workflow**（D3） |
-| `SubStepsFold` / `SubagentCard` / `OperationStack` | 步骤卡片渲染，harness 复用 |
+| `OperationStack` / `TaskBoardPanel` / `SubStepsFold` | 普通时间线 + 看板；harness 复用并做层级扩展 |
 
 ### 2.2 舍弃（随动态 Plan-Workflow 一并删除）
 
@@ -143,14 +142,14 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 | 组件 | 用途 |
 |------|------|
 | `PlannerHarnessExecutor` | ResourceDispatcher 入口，按 scene 区分 Chat/Task 模式 |
-| `PlannerHarnessLoop` | 双模编排引擎（S1-S3 + 超时/重试/Stuck） |
-| `HarnessPlanner` | **两态分解**自判（full/hierarchical）+ 阶段细拆 + 3 类触发式重规划 + 自判 + 综合回答 |
+| `PlannerHarnessLoop` | 单一循环编排引擎（Plan→Execute→Assess + 超时/重试/Stuck） |
+| `HarnessPlanner` | 按现有信息吐调度单元 + 3 类触发式重规划 + selfAssess + 综合回答（**无**分解模式自判） |
 | `PlanNotebook` (H1) | 跨轮共享工作记忆 POJO |
 | `PlanNotebookStore` | **Redis 单写**（save/load/delete/renewTtl） |
 | `WorkerContextFactory` | `AssembledContext.forWorker()` 构造，从 H1 rounds 读上游 handoff |
 | `GoalAlignmentValidator` | 目标对齐校验（DEVIATED/STUCK，机械） |
 | `AgentRole.WORKER` + `AgentRunRequest.worker()` + `AssembledContext.forWorker()` | Worker 角色 |
-| 前端 `WorkerCard` / harness 步骤时间线 | 新 Timeline 形态 |
+| harness 分层时间线层级 + TaskBoard 一/二级投影 | 见 §4（v5） |
 
 > **S1/S4 裁撤**（相对 v8）：独立 `GoalEvaluator` / `TaskEvaluator` / `PlanSharedMemoryStore` / `harness_eval_result` **不实现**；`PlanNotebookRecoveryService` **不实现**（恢复 = Redis load + AgentScope StateStore 既有 checkpoint 续跑）。
 
@@ -185,64 +184,139 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 ### 3.2 执行流程
 
 ```
-用户输入 + RoutingResult(planMode=harness, scene=chat|task)
+用户选择 executionMode=pro + scene + RoutingResult（轨 A：agentIds/skillIds）
   → PlannerHarnessExecutor
   → PlannerHarnessLoop.start()
-      → S1 Plan: HarnessPlanner 首轮输出（full / hierarchical 两态自判，S5）
-          ├─ hierarchical → 阶段骨架进 H1 → 到达阶段再细拆 task 列表
-          └─ full        → 阶段骨架细度 = 任务粒度（同一条执行路径）
-      → S2 Validate: 轻量结构校验 + GoalAlignmentValidator（DEVIATED/STUCK，S7）
+      → S1 Plan: HarnessPlanner 按现有信息输出下一组调度单元（写 H1 taskQueue）
+            · 信息不足 → 单元可为「调研/摸底」类 Worker
+            · 信息够了 → 单元为可执行粗步骤（可并行 / dependsOn）
+            · 细则（文件/命令级）不在此展开，留给 Worker 内 ReAct
+      → S2 Validate: 轻量结构校验（id/label/依赖环）+ GoalAlignmentValidator（DEVIATED/STUCK，S7）
       → S3 Execute: Worker 工具调用（forWorker），handoff 双写 H1 + Planner L1 尾部
       → S4 决策: Planner 自判（selfAssess，S1，无独立 Evaluator）
       → done? YES → Planner 综合回答 / NO → 3 类触发重规划（S6）→ 下一轮
 ```
 
-> **INCREMENTAL 场景**（开放/探索任务）：直接走既有 ReAct（`planMode=none`），不进 harness（S5）。
+> **高不确定开放探索**：用户显式选 **快速 `fast`** → ReactExecutor（含 spawn/taskboard/沙箱）；**不**在 harness 内再设模式分支，**不**由 L3 自动改道（S5 + routing v6）。
 
-### 3.3 两态分解（S5，替代 v8 三态）
+### 3.3 单一循环与职责边界（S5 v4）
 
-Planner 首轮调用的自然产物决定分解粒度，路由层不感知：
-- **hierarchical**（默认复杂任务）：首轮仅 3~5 阶段骨架 → 到达阶段再基于前序真实产出细拆 task 列表
-- **full**（信息完备）：首轮阶段骨架细度 = 任务粒度（可视为 hierarchical 的一层特化），执行路径与 hierarchical 相同
+**引擎不设分解模式。** 无 `taskDecomposition` / `completeness` / full|hierarchical 自判；无强制「阶段骨架 → 阶段细拆」二次协议。
 
-模型成本分层：全局粗规划 `call_scene=plan`（强模型，1 次/任务）；阶段细规划 `call_scene=plan-phase`（轻量模型，N 次/任务）。
+| 角色 | 吐什么 | 不吐什么 |
+|------|--------|----------|
+| **Planner** | 可调度粗单元（里程碑/调研/执行步）+ `dependsOn` + 约束/成功标准；写入 H1 | 文件级/命令级细则；full/hier 模式标签 |
+| **Worker** | 单元内 ReAct：工具选择、试错、细则展开；handoff 摘要回传 | 全局重规划（那是 Planner 的事） |
+
+自然过程（Catalog 引导，非引擎枚举）：
+1. 首轮按已知信息排大致步骤；缺口先排调研 Worker  
+2. handoff 暴露新事实 → S6 重规划更新 taskQueue  
+3. 微观分解始终在 Worker 内发生  
+
+Planner LLM 调用统一 `call_scene=plan`（强弱模型若需分层，走 phase5 5.3 场景路由，**不**绑分解模式）。**不建** `planner.phase` / `call_scene=plan-phase`。
 
 ---
 
-## 4. Timeline 约定（步骤时间线卡片，D4）
+## 4. 前端约定（分层普通时间线 + TaskBoard，D4 · v5）
 
-### 4.1 主时间线形态
+> **原则**：看板管「待办结构与进度」；正文时间线管「执行过程与 handoff」。二者职责分离，互不收束对方的数据。
+
+### 4.1 正文时间线（普通时间线，非卡片）
+
+形态对齐现有 ReAct `OperationStack`：**行式步骤时间线**，按层级缩进/折叠，**禁止**改成步骤卡片墙 / `WorkerCard` 形态。
 
 ```
-intent → plan(R1,{mode}) → worker-1 → worker-2 → ... → planner-answer
+intent
+└─ plan(R1)
+   ├─ worker-{taskA}                    ← 一级调度单元对应的执行行
+   │  ├─ think / tool-* / …             ← Worker 内过程（subSteps 层级）
+   │  └─ handoff（摘要行）              ← 仅正文时间线展示与收束
+   ├─ worker-{taskB}   （同波可并行推进）
+   │  └─ …
+   └─ plan(R2)?                         ← 重规划再出一行
+└─ planner-answer
 ```
 
-- Full 模式：`intent → plan(R1,full) → task-1 → task-2 → ... → planner-answer`
-- Hierarchical 模式：`intent → plan(R1,hier) → [阶段1细拆] task-* → [阶段2细拆] task-* → ... → planner-answer`
-- **不渲染 DAG**：无 `PlanExecutionCanvas` / DAG 展开层；worker 步骤是流式卡片
+| 约定 | 说明 |
+|------|------|
+| 层级 | L0：`intent` / `plan(Rn)` / `planner-answer`；L1：`worker-{runId|taskId}`；L2：Worker 内 think/tool/spawn（`SubStepsFold`） |
+| 并行/串行 | 同波（无互相 `dependsOn`）的 worker 行可并行推进展示；有依赖则按波次串行出现——**时间线表达执行序**，不画 DAG |
+| handoff | **只在正文时间线**以 worker 子行/收束摘要出现，并双写 H1 + Planner L1 尾部（引擎侧不变） |
+| 不做 | Plan DAG 画布、步骤卡片列表、`{mode}` 标签、把二级 todolist 折叠进 handoff |
 
-> **S5 注记**：无 Incremental 模式（open 场景走 ReAct 时间线，不进 harness）。
+### 4.2 TaskBoard（一级 / 二级待办）
 
-### 4.2 各步骤约定
+复用 `TaskBoardPanel` 软清单体验（D11：禁止 mini-DAG / edges / 工具绑定字段）。
+
+| 层级 | SSOT | 展示规则 |
+|------|------|----------|
+| **一级** | H1 `taskQueue` 投影（plan / replan / worker 状态变更时引擎刷新） | 调度单元 checklist；可按 `dependsOn` 做**波次并行样式**（分组/并排，**不画依赖边**） |
+| **二级** | Worker 内 todolist（`todo_write` / `manage_tasks` 等，有则挂在对应一级下） | **有 items 才展示，没有就不渲染该二级区域**；Worker 结束**不**把二级板收束进 handoff，板面状态原样保留（完成/取消等由 Worker 工具自身更新） |
+
+- 一级板 **不是** 要求 Planner 再调一次 `manage_tasks`（避免与 H1 双写漂移）；二级板仍是 Worker 模型自愿维护的软规划。
+- handoff 文案/摘要 **禁止**替代或清空二级 todolist。
+
+### 4.3 步骤契约（正文）
 
 | 步骤 | 来源 | 说明 |
 |------|------|------|
 | `intent` | 路由层 | 同现约 |
-| `plan(R{n},{mode})` | HarnessPlanner | 本轮规划意图 + 分解模式（full/hierarchical），卡片式 |
-| `worker-{runId}` | Worker 工具调用 | 卡片含 `subSteps`（内部 think/tool 折叠）+ handoff 摘要 |
-| `think` | Planner | 轮次间反思（阶段切换/重规划决策） |
-| `planner-answer` | Planner | 流式综合回答 |
+| `plan(R{n})` | HarnessPlanner | 本轮规划意图（时间线一行，可展开调度单元摘要） |
+| `worker-{id}` | Worker 工具调用 | 时间线一级执行行；内层 `subSteps`；结束时 **handoff 行**（正文收束） |
+| `think` | Planner | 轮次间反思（重规划决策） |
+| `planner-answer` | Planner | 流式综合回答（正文，非看板） |
+| `tasks`（看板） | H1 投影 + 可选 Worker todolist | 与 ReAct `tasks` 步同组件族；harness 下承载一/二级结构 |
 
-### 4.3 前端组件
+### 4.4 前端组件
 
-- **复用**：`OperationStack` / `SubagentCard`（worker 卡片复用 subagent-{runId} 折叠机制）/ `SubStepsFold`
-- **新增**：worker 步骤卡片（label 取 task label，metadata 含 `taskId` / `dependsOn`）
-- **移除**：`PlanWorkflowPanel` 中动态 plan 专属分支、`PlanApprovalActions`、`CollapsibleConfirmPanel`
+- **复用**：`OperationStack`（普通时间线骨架）/ `TaskBoardPanel` / `SubStepsFold`
+- **扩展**：OperationStack harness 层级（plan 下挂 worker 行；worker 下挂过程 + handoff）；TaskBoard 一级波次并行样式 + 一级下嵌套二级 todolist（条件渲染）
+- **移除**：`PlanWorkflowPanel` 动态 plan 分支、`PlanApprovalActions` / `CollapsibleConfirmPanel`；**不新增** Worker 步骤卡片组件
 - **静态 Workflow 不受影响**：继续用 `PlanExecutionCanvas` 渲染 DAG（D3）
 
 ---
 
+
 ## 5. 持久化与故障转移（S2/S3 简化）
+
+### 5.0 PlanNotebook（H1）定稿模型
+
+> 自归档 harness §2.2 迁入并按 S1/S5 清洗：**无** `taskDecomposition` / `Phase` / `completeness` / Evaluator 字段；`TaskItem` **不**嵌套 `PlanJson` DAG。
+
+```java
+public class PlanNotebook {
+    private final String originalGoal;
+    private final String userQuery;
+    private String scene;                         // chat | task（用户显式）
+    private final Deque<TaskItem> taskQueue;      // 可调度粗单元
+    private final List<RoundRecord> rounds;
+    private double goalCompletion;                // Planner selfAssess
+    private String nextDirection;
+    private final Instant createdAt;
+    private int maxRounds = 5;
+    private int maxTotalTasks = 10;
+    private int currentRound;
+    private int totalTasksCompleted;
+    private int staleRounds;
+    private int replanCount;                      // ≤ max-replans（S6）
+    // 禁止字段：taskDecomposition / phases / currentPhaseIndex / evaluatorReason
+}
+
+public record TaskItem(
+    String taskId, String label, String status,   // pending|in_progress|done|fail|obsolete
+    List<String> dependsOn,
+    String constraints, String expectedOutput, String successCriteria) {}
+
+public record RoundRecord(
+    int roundIndex, TaskItem task,
+    List<NodeResult> nodeResults,
+    double roundGoalCompletion, String assessReason) {}
+
+public record NodeResult(String nodeId, String status, String summary) {}
+```
+
+- **注入**：`renderForPlanner()` / 注入块 = 当前计划摘要（goal + taskQueue 状态）+ 近 `near-keep-rounds` 轮 rounds 原文；超阈折叠最老轮为摘要（§3.1.1 / §8.1）
+- **一级 TaskBoard**：投影 `taskQueue`（§4.2）
 
 ### 5.1 PlanNotebookStore（Redis 单写）
 
@@ -271,7 +345,7 @@ public interface PlanNotebookStore {
 | Redis 不可用 | 内存模式（仅本次 Loop），Loop 结束一次性写审计通道 |
 | Stale ≥ 阈值 | 强制综合回答 |
 
-> **S3 注记（v3 定稿 · H1 两级压缩）**：Planner 的 run 内压缩由 AgentScope 官方 `CompactionMiddleware`（`HarnessAgent.compaction()`）负责；跨轮 L1 压缩由既有 `L1Compressor` + `far_folded_msg_ids` 负责；**H1 仅注入块（query 前），不建压缩点基建**。H1 注入块**内部两级**（见 §3.1.1）——阶段骨架 + 近 N 轮原文（`near-keep-rounds`，默认 6）逐轮追加、超阈值时最老轮次 LLM 折叠为摘要（一次折叠只 miss 尾部小块，C2）；折叠语义与 L1 压缩窗口无关（窗口配置见 §8.1 `notebook.compression`）。
+> **S3 注记（v3/v4 定稿 · H1 两级压缩）**：Planner 的 run 内压缩由 AgentScope 官方 `CompactionMiddleware`（`HarnessAgent.compaction()`）负责；跨轮 L1 压缩由既有 `L1Compressor` + `far_folded_msg_ids` 负责；**H1 仅注入块（query 前），不建压缩点基建**。H1 注入块**内部两级**（见 §3.1.1）——当前计划摘要（goal + taskQueue 状态）+ 近 N 轮原文（`near-keep-rounds`，默认 6）逐轮追加、超阈值时最老轮次 LLM 折叠为摘要（一次折叠只 miss 尾部小块，C2）；折叠语义与 L1 压缩窗口无关（窗口配置见 §8.1 `notebook.compression`）。**无**阶段骨架 / Phase 协议字段。
 
 ### 5.3 降级通道（复用，非新建）
 
@@ -285,32 +359,51 @@ Redis 不可用 → 内存模式 → Loop 结束写审计
 
 > **对齐旧降级通道**：Planner 全失败降级 React 复用 `fallback_react` 语义（`degraded_react` 终态 + partial-context 注入），保持用户侧降级 UX 一致。
 
+### 5.4 触发式重规划（S6）
+
+Executor 监控，命中即交 Planner 重规划（检测可量化，不做二次推理）：
+
+| # | 触发 | 检测 | 响应 |
+|---|------|------|------|
+| ① | **连续失败** | 单 task 重试耗尽（`taskRetryMax`） | replan 失败单元 |
+| ③ | **目标变更** | 用户 follow-up 更新 `originalGoal` | 受影响 task → `obsolete` → replan 剩余 |
+| ④ | **进度偏差** | `GoalAlignmentValidator` DEVIATED / `staleRounds≥2` STUCK | 偏离则修正计划；Stuck → 强制综合回答 |
+| — | **预算熔断** | `maxRounds` / `max-duration-ms` / `max-replans` | 综合已收集结果；不再开新轮 |
+
+**承接但不单列触发**：信息缺口 → Planner 排调研 Worker + handoff 后自然进下一轮 Plan（S5）；资源溢出 → 折叠进预算熔断。
+
+**边界**：
+1. **保留成果**：已 `done` 的 task 幂等跳过，只调未执行部分  
+2. **局部修正**：优先改 `taskQueue`，不臆造全局阶段骨架  
+3. **上下文隔离**：重规划读 goal + 已完成 handoff（H1），不读 Worker 内部推理  
+4. **收敛**：`max-replans`（默认 3）；**不**做 plan-similarity 语义去重  
+5. **写隔离**：不回滚已完成文件修改（checkout / Git 语义）
+
 ---
 
-## 6. 路由接线
+## 6. 路由接线（对齐 [unified-routing v6](./2026-07-29-unified-routing-design.md)）
 
-### 6.1 删除 PLAN_WORKFLOW 路由入口
+> **v6**：用户显式三模式 **快速 `fast` / 专业 `pro` / 工作流 `workflow`**；**取消** L3 自动 `planMode` 识别。专业模式 = 本 spec 的 Planner-Executor；工作流 = 静态 Workflow；动态 Plan-Workflow 删除（D1）。
+
+### 6.1 分发
 
 ```
-RoutingPolicyChain（现状改造后）
-  ├── L0 #workflow-id / $agent / @skill（显式绑定）
-  ├── L1 规则匹配（workflow 规则 → 静态 Workflow）
-  ├── L2 三路语义召回（workflow ≥ 0.88 → 静态 Workflow）
-  └── L3 LLM 分类器
-      ├── planMode=none → ReactExecutor（通用 ReAct）
-      └── planMode=harness → PlannerHarnessExecutor（scene 区分 Chat/Task）
+用户选择 executionMode
+  ├── fast → ReactExecutor（轨 A：L0–L3 收集 agentIds/skillIds）
+  ├── pro  → PlannerHarnessExecutor（轨 A：同上资源包）
+  └── workflow → WorkflowExecutor（轨 B：L0–L3 只收集 workflowId；`#` 仅此模式）
 ```
 
-- `ExecutionMode` 枚举收敛为 `WORKFLOW / REACT / HARNESS`（或 `ResourceType`）
-- 不再产生 `PLAN_WORKFLOW` 语义路由
-- 静态 Workflow 仍经 `#workflow-id` / L1 / L2 命中 → `WorkflowExecutor`
+- **无** `planMode` 字段；**无** `PLAN_WORKFLOW` / `PlanWorkflowExecutor`
+- 轨 A **不**收集 workflow；轨 B **不**收集 agent/skill
+- 工作流未命中 → 明确失败，**禁止**静默改成 `fast`
 
 ### 6.2 golden set 迁移
 
 | 旧用例 | 新语义 |
 |--------|--------|
-| §A.1 成功路径（PLAN_WORKFLOW） | planMode=harness（Chat 场景） |
-| §A.2 Replan / 降级 ReAct | harness 校验失败 → 降级 ReactExecutor |
+| §A.1 成功路径（PLAN_WORKFLOW） | 用户选 `pro` → PlannerHarnessExecutor |
+| §A.2 Replan / 降级 ReAct | harness 校验/Planner 全失败 → 降级 ReactExecutor（终态 `degraded_react`，**不**改用户模式偏好） |
 | §A.3 节点重试 | Worker 重试（taskRetryMax） |
 | §A.4 关键 tool fail_fast | Worker 失败 → replan → 降级 |
 | §A.5 非关键失败 + 残缺 answer | `completed_with_errors` |
@@ -323,7 +416,7 @@ RoutingPolicyChain（现状改造后）
 
 ### 阶段 H-0：基础设施
 
-- `PlanNotebook` POJO（含两态字段 + Phase/TaskItem/RoundRecord/NodeResult）
+- `PlanNotebook` POJO（goal + taskQueue/`TaskItem` + `RoundRecord`/`NodeResult`；**无** `taskDecomposition` / `Phase` / `completeness`）
 - `PlanNotebookStore` 接口（Redis 单写四方法）
 - **出口**：单测绿
 
@@ -340,28 +433,29 @@ RoutingPolicyChain（现状改造后）
 
 ### 阶段 H-3：HarnessPlanner + 校验
 
-- `HarnessPlanner`（两态自判 + 阶段细拆 + 3 类触发重规划 + selfAssess + 综合回答）
+- `HarnessPlanner`（吐调度单元 + 3 类触发重规划 + selfAssess + 综合回答；**无**模式自判）
 - `GoalAlignmentValidator`（DEVIATED/STUCK，机械）
 - 轻量结构校验（S7，不复用 PlanValidator）
 - `AgentRole.WORKER` + `AgentRunRequest.worker()` + `AssembledContext.forWorker()`
-- **出口**：单测（两态输出 + forWorker 上下文构造）
+- **出口**：单测（调度单元输出 + forWorker 上下文构造）
 
 ### 阶段 H-4：Loop
 
-- `PlannerHarnessLoop`（双模编排 + 超时/重试/Stuck）
+- `PlannerHarnessLoop`（单一循环编排 + 超时/重试/Stuck）
 - `WorkerContextFactory`（从 H1 rounds 读上游 handoff，S4）
-- **出口**：单测（双模编排 + 故障模拟）
+- **出口**：单测（循环编排 + 故障模拟）
 
 ### 阶段 H-5：路由接线 + 删除旧入口
 
-- `PlannerHarnessExecutor` + `ResourceDispatcher` 迁移
-- 删除 `ExecutionMode.PLAN_WORKFLOW` 路由入口、`ForcedExecutionRouter`（随 v3 路由）
+- `PlannerHarnessExecutor` + `ResourceDispatcher`：`executionMode=pro` → harness（[routing v6](./2026-07-29-unified-routing-design.md)）
+- 删除动态 `PLAN_WORKFLOW` / `PlanWorkflowExecutor` 入口与 `ForcedExecutionRouter`；三模式显式选择替代 `auto`/`planMode`
 - golden set §A 迁移
-- **出口**：路由正确 + 编译绿
+- **出口**：`pro` 进 harness、`fast`/`workflow` 不进；编译绿
 
-### 阶段 H-6：前端新 Timeline
+### 阶段 H-6：前端（分层时间线 + TaskBoard）
 
-- harness 步骤时间线卡片（复用 OperationStack / SubStepsFold）
+- OperationStack harness 层级：plan → worker 行 → subSteps + **handoff 行**（普通时间线，非卡片）
+- TaskBoard：一级=H1 投影（波次并行样式）；二级=Worker todolist（有则展示，结束不收束 handoff）
 - 删除 `PlanApprovalActions` / `CollapsibleConfirmPanel` / PlanWorkflowPanel 动态 plan 分支
 - 静态 Workflow 保留 DAG 展示（D3）
 - **出口**：视觉验收
@@ -400,39 +494,32 @@ agent:
       planner:
         timeout-ms: 60000
         max-attempts: 2
-        max-phase-replans: 3
-        plan-similarity-threshold: 0.8
-      evaluator:                # Chat 专用
-        timeout-ms: 30000
-        goal-threshold: 0.9
+        max-replans: 3            # 单会话重规划上限（S6 收敛；原 max-phase-replans）
       worker:
         timeout-ms: 120000
         max-sub-agents: 3
       notebook:
         redis-ttl-seconds: 86400
-        compression:              # H1 PlanNotebook 注入块内部两级（v3 定稿，§3.1.1）：
-          near-keep-rounds: 6     #   近 N 轮原文逐轮追加（handoff 摘要 + 阶段骨架），超阈值最老轮次 LLM 折叠为摘要
+        compression:              # H1 PlanNotebook 注入块内部两级（v3/v4 定稿，§3.1.1）：
+          near-keep-rounds: 6     #   近 N 轮原文逐轮追加（handoff 摘要 + 当前计划摘要），超阈值最老轮次 LLM 折叠为摘要
                                   #   与 L1 压缩窗口（五层 spec v14/v15：chat 4+4+Far / task 2+2+Far≤10k）**无关**，
                                   #   两个 window-size 是不同物同名，勿混用
-      checkpoint:
-        mysql-async: true
-        mysql-retry-max: 3
-        version-gap-alert: 3
       recovery:
         timeout-ms: 30000
       session:
         idle-timeout-ms: 1800000
 ```
 
+> **S2/S5 裁撤配置**：无 `checkpoint.mysql-*` / `version-gap-alert`（Redis 单写）；无 `evaluator.*`（S1）；无 `plan-similarity-threshold`（S6）。
+
 ### 8.2 Catalog 新增
 
 | ID | 用途 |
 |----|------|
-| `planner.harness` | Planner system prompt（规划 + 两态分解自判 + 3 类触发重规划 + selfAssess 自判 + 综合回答，含 Worker 工具调用说明） |
-| `planner.phase` | 阶段细拆 prompt（HIERARCHICAL） |
-| `harness.worker` | Worker system prompt（forWorker 模板） |
+| `planner.harness` | Planner system prompt（按现有信息排调度单元；信息不足先调研；3 类触发重规划 + selfAssess + 综合回答；含 Worker 工具调用说明；**禁止**要求输出 full/hier 模式） |
+| `harness.worker` | Worker system prompt（forWorker 模板；单元内细则展开） |
 
-> **S1 裁撤**：`harness.task-evaluator` / `harness.goal-evaluator` **不建**（统一 Planner selfAssess，调用点 `call_scene=plan`）。
+> **S1/S5 裁撤**：`harness.task-evaluator` / `harness.goal-evaluator` / `planner.phase` **不建**（统一 Planner selfAssess；调用点 `call_scene=plan`）。
 
 ### 8.3 Catalog 废弃
 
@@ -447,13 +534,15 @@ agent:
 
 | 用例 | 预期 |
 |------|------|
-| 两态分解自判 | 结构清晰→full；复杂任务→hierarchical；高不确定→不进 harness（ReAct） |
-| 阶段细拆 | 到达阶段 2 仅拆当前阶段 task 列表，不臆测未到阶段 |
+| 单一循环无模式字段 | PlanNotebook / plan 步 **无** `taskDecomposition` / full|hier；引擎无模式分支 |
+| 信息不足→调研→重规划 | 首轮可只排调研单元；handoff 后 replan 更新 taskQueue，不臆测未知细节 |
+| 职责边界 | Planner 调度单元粗粒度；Worker handoff 可含执行结果摘要；二级 todolist 不收束进 handoff |
+| TaskBoard 条件展示 | 无二级 items 时不渲染二级区；有则原样展示至会话可见 |
 | Worker handoff 双写 | L1 尾部 append + H1 更新 |
 | Worker 上下文隔离 | forWorker 含 taskGoal+constraints+toolWhitelist（v3：**不注入 L2**）；内部 think/tool 不回流 |
 | H1 两级折叠（v3） | 注入块近 `near-keep-rounds` 轮原文，超阈值最老轮次 LLM 折叠为摘要 |
 | Planner L1 组装一致性（v3） | Planner 复用 `ContextAssembler.assemble`（chat 含 L3），与普通 ReAct MAIN 差异仅 H1 注入块 + worker handoff |
-| 触发式重规划边界 | 3 类显式触发（S6）；已完成 task 幂等跳过；max-phase-replans=3 收敛 |
+| 触发式重规划边界 | 3 类显式触发（S6）；已完成 task 幂等跳过；`max-replans=3` 收敛 |
 | 崩溃恢复 | Redis load → IN_PROGRESS→FAIL→replan；task 状态一致 |
 | 自判决策 | Planner selfAssess 0~1 分 → 续跑 / replan / 综合回答 |
 
@@ -461,13 +550,13 @@ agent:
 
 | # | 场景 | scene | 预期 |
 |---|------|:---:|------|
-| P1 | 分析 Q2 销售下降 + 改进方案 + 预算 | chat | Planner→Worker→自判→综合回答；步骤时间线卡片 |
+| P1 | 分析 Q2 销售下降 + 改进方案 + 预算 | chat | Planner→Worker→自判→综合；分层普通时间线 + 一级看板；handoff 仅在时间线 |
 | P2 | 修复 SQL 注入风险 + 单测 | task | Planner→Worker(内部 spawn)→自判→综合 |
 | P3 | 静态 Workflow 回归 | / | `#knowledge-qa` DAG 展示正常（D3 保留） |
 | P4 | 简单问答回归 | / | 走 ReactExecutor |
 | P5 | 崩溃恢复 | chat | Kill orchestrator → 重启 → 恢复 Notebook → 继续 |
 | P6 | 长任务上下文压缩 | chat | 6 轮后 H1 截断摘要生效（AgentScope Compaction + L1Compressor） |
-| P7 | HIERARCHICAL 分层增量规划 | task | 首轮仅阶段骨架，调研完成后才细拆文件级任务 |
+| P7 | 信息不足先调研再重规划 | task | 首轮可只排调研 Worker；handoff 后 `plan(R2)`；Worker 有 todolist 则二级板展示，结束板不收束 |
 
 ---
 
@@ -480,7 +569,7 @@ agent:
 | `AgentRole.WORKER` 破坏现有角色逻辑 | 新增枚举值不改现有 MAIN/SUB/PLANNER 行为；`resolveBridgeId` 加 WORKER 分支 |
 | `AssembledContext.forWorker()` 上下文不足 | 稳定前缀（taskGoal + 共享快照 + handoff）+ toolWhitelist + query |
 | 终态/审计分叉 | D8：复用 `ExecutionPlanStatus` + `PlanExecutionAuditService` |
-| 前端两套时间线并存 | harness 卡片走 OperationStack（已有）；静态 Workflow 走 PlanWorkflowPanel（已有）；无共用组件改动 |
+| 前端两套时间线并存 | harness 走 OperationStack 分层普通时间线 + TaskBoard；静态 Workflow 走 PlanWorkflowPanel DAG；看板与 handoff 职责分离（§4 v5） |
 
 ---
 
@@ -488,7 +577,7 @@ agent:
 
 | 文档 | 关系 |
 |------|------|
-| [planner-harness-loop-design v8](./2026-07-31-planner-harness-loop-design.md) | **前置详设**：PlanNotebook / 触发式重规划细节（三态/双写/Checkpoint/Evaluator 等章节已被本 spec §0.1 简化决议 S1-S7 覆盖，v8 文档头部含 v9 修订注记） |
-| [unified-routing-design v3](./2026-07-29-unified-routing-design.md) | planMode + scene + ResourceDispatcher |
+| [archive/planner-harness-loop v8](./archive/2026-07-31-planner-harness-loop-design.md) | **已归档废案**（三态分解 / Evaluator / MySQL 双写 / H1 压缩点等）；定稿模型见本文 §5.0 / §5.4，勿再改归档稿 |
+| [unified-routing-design v6](./2026-07-29-unified-routing-design.md) | 用户三模式 fast/pro/workflow；轨 A/B 意图收集；`pro`→本 Executor |
 | [expert-consultation-design](./archive/2026-07-07-expert-consultation-design.md) | peer-collab（已退役），spawn 中心化替代 |
 | [plan-user-approval-design](./archive/2026-06-27-plan-user-approval-design.md) | **被 D5 废弃** |

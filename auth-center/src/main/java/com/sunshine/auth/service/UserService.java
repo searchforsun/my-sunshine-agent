@@ -78,8 +78,10 @@ public class UserService {
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubToken(blankToNull(user.getGithubToken()))
                 .githubTokenSet(isNotBlank(user.getGithubToken()))
                 .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabToken(blankToNull(user.getGitlabToken()))
                 .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .build();
     }
@@ -247,8 +249,10 @@ public class UserService {
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubToken(blankToNull(user.getGithubToken()))
                 .githubTokenSet(isNotBlank(user.getGithubToken()))
                 .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabToken(blankToNull(user.getGitlabToken()))
                 .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .build();
     }
@@ -262,8 +266,10 @@ public class UserService {
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubToken(blankToNull(user.getGithubToken()))
                 .githubTokenSet(isNotBlank(user.getGithubToken()))
                 .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabToken(blankToNull(user.getGitlabToken()))
                 .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .token(token)
                 .build();

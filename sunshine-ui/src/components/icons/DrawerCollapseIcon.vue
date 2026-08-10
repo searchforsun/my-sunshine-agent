@@ -20,6 +20,5 @@ withDefaults(
   >
     <rect x="3" y="3" width="18" height="18" rx="2" />
     <line x1="15" y1="3" x2="15" y2="21" />
-    <polyline points="10 8 13 12 10 16" />
   </svg>
 </template>

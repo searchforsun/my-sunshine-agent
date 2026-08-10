@@ -18,9 +18,11 @@ function toAuthUser(res: authApi.AuthUser): authApi.AuthUser {
       : 'never',
     personalRules: res.personalRules ?? null,
     githubUrl: res.githubUrl ?? null,
-    githubTokenSet: res.githubTokenSet ?? false,
+    githubToken: res.githubToken ?? null,
+    githubTokenSet: res.githubTokenSet ?? !!res.githubToken,
     gitlabUrl: res.gitlabUrl ?? null,
-    gitlabTokenSet: res.gitlabTokenSet ?? false,
+    gitlabToken: res.gitlabToken ?? null,
+    gitlabTokenSet: res.gitlabTokenSet ?? !!res.gitlabToken,
   }
 }
 

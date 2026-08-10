@@ -248,9 +248,11 @@ public class AgentWorkspaceController {
                            @RequestParam("checkoutId") String checkoutId,
                            @RequestHeader("x-user-id") String userId,
                            @RequestHeader("x-tenant-id") String tenantId) {
-        return Mono.fromRunnable(() -> workspaceGitService.gitPush(id, checkoutId, userId, tenantId))
+        return Mono.<Void>fromRunnable(() -> workspaceGitService.gitPush(id, checkoutId, userId, tenantId))
                 .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
-                .thenReturn(R.ok());
+                .thenReturn(R.<Void>ok())
+                .onErrorMap(e -> e instanceof BizException ? e : new BizException(new FixedErrorCode(400,
+                        "git_push_failed", "推送失败: " + e.getMessage())));
     }
 
     /** git pull：从远程拉取最新代码（作用于会话工作目录） */

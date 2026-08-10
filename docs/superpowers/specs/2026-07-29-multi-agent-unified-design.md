@@ -338,6 +338,17 @@ expert_definition (DB)
 
 **敏感信息隔离**：`AssembledContext.forSubAgent()` 天然隔离 userId/tenantId/会话历史。主 Agent 在写 spawn prompt 时自主决定传递什么（天然脱敏——主 Agent 只传递它认为必要的）。
 
+### 4.4.1 子 Agent 回传经济学（自归档 4.7.8 吸收 · 2026-08-10）
+
+**现状**：`SpawnSubagentTool` 将子 Agent **终态全文**回传主循环；长任务多次 spawn 后主上下文膨胀，依赖 run 内 AS compaction（五层 §4.5 方案 A）兜底。
+
+**原则（禁止负优化）**：
+1. **禁止**默认「超阈值再调一次 LLM 做摘要回传」——违反「模型输出不二次加工」，且增延迟/成本、有损。
+2. **优先** Cursor 式：长结果 **offload 到工作区 / 会话附件 + 短指针**（路径或 `read`/`sunshine_session_search` 可恢复），主循环只吃指针 + 必要结论行。
+3. 分类（explore / execute）若需要，用 **Catalog + spawn prompt 约定** 或可选 `subagentType` 字段控制工具集；**不**为摘要单独建元工具。
+
+有 Live 证据（主循环因 spawn 全文爆窗）再开实施卡；详设废案见 [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md) 阶段二。
+
 ---
 
 ## 5. 架构与改动

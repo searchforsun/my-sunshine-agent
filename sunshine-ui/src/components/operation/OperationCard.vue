@@ -111,7 +111,7 @@ const isPaused = computed(() => lifecycle.value === 'paused' || lifecycle.value 
 /** 终态（done/error/skipped/paused/terminated）：label 统一灰，与工具调用完成态一致 */
 const isTerminal = computed(() => ['done', 'error', 'skipped', 'paused', 'terminated'].includes(lifecycle.value))
 
-/** 工具步完成后显示 ✓（折叠区内不显示） */
+/** 工具步完成后紧跟文案显示 ✓（折叠区内不显示） */
 const showCheckmark = computed(() =>
   isTerminal.value && isToolStepId(props.step.id) && props.hideChevron !== true && !props.hideCheckmark,
 )
@@ -264,6 +264,22 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
           <span v-if="isRunning && live" class="op-pulse">…</span>
         </span>
         <svg
+          v-if="showCheckmark"
+          class="op-check"
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-label="完成"
+        >
+          <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5" />
+          <polyline points="4.5 8 7 10.5 11.5 5.5" />
+        </svg>
+        <svg
           v-if="canExpand"
           class="op-chevron"
           width="12"
@@ -280,22 +296,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       </span>
       <span class="op-trailing">
         <span v-if="durationText" class="op-dur">{{ durationText }}</span>
-        <svg
-          v-if="showCheckmark"
-          class="op-check"
-          width="14"
-          height="14"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-label="完成"
-        >
-          <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5" />
-          <polyline points="4.5 8 7 10.5 11.5 5.5" />
-        </svg>
         <button
           v-if="canPauseTool"
           type="button"
@@ -386,6 +386,13 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   align-items: baseline;
   gap: 0 6px;
   min-width: 0;
+}
+
+/* 完成 ✓：紧跟文案，不落在行尾时长旁 */
+.op-check {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--sun-text-muted);
 }
 
 .op-shimmer {

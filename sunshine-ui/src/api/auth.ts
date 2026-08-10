@@ -13,10 +13,14 @@ export interface AuthUser {
   personalRules?: string | null
   /** GitHub 基础地址 */
   githubUrl?: string | null
+  /** GitHub PAT 明文（本人设置回显） */
+  githubToken?: string | null
   /** GitHub PAT 是否已配置 */
   githubTokenSet?: boolean
   /** GitLab 基础地址 */
   gitlabUrl?: string | null
+  /** GitLab PAT 明文（本人设置回显） */
+  gitlabToken?: string | null
   /** GitLab PAT 是否已配置 */
   gitlabTokenSet?: boolean
 }

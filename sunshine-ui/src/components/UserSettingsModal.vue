@@ -41,13 +41,20 @@ const githubUrl = ref('')
 const githubToken = ref('')
 const gitlabUrl = ref('')
 const gitlabToken = ref('')
+/** 打开弹窗时的 PAT 快照：未改动则保存时传 null（不修改、不重验） */
+const loadedGithubToken = ref('')
+const loadedGitlabToken = ref('')
 const saving = ref(false)
 
 watch(
   () => props.show,
-  (open) => {
+  async (open) => {
     if (open) {
       activeGroup.value = 'account'
+      // 打开设置时拉最新资料，保证 PAT 明文回显
+      if (auth.isLoggedIn) {
+        await auth.fetchMe()
+      }
       nickname.value = auth.user?.nickname ?? ''
       defaultMode.value = globalDefault.value
       const fromAuth = auth.user?.defaultWriteHitlMode
@@ -55,9 +62,11 @@ watch(
       tenantId.value = auth.user?.tenantId ?? 'default'
       personalRules.value = auth.user?.personalRules ?? ''
       githubUrl.value = auth.user?.githubUrl ?? ''
-      githubToken.value = ''
+      loadedGithubToken.value = auth.user?.githubToken ?? ''
+      githubToken.value = loadedGithubToken.value
       gitlabUrl.value = auth.user?.gitlabUrl ?? ''
-      gitlabToken.value = ''
+      loadedGitlabToken.value = auth.user?.gitlabToken ?? ''
+      gitlabToken.value = loadedGitlabToken.value
     }
   },
 )
@@ -74,9 +83,12 @@ async function handleSave() {
   }
   saving.value = true
   try {
+    // PAT：与打开时相同 → null（不修改）；清空 → ""；改写 → 新值
+    const nextGithubToken = githubToken.value === loadedGithubToken.value ? null : githubToken.value
+    const nextGitlabToken = gitlabToken.value === loadedGitlabToken.value ? null : gitlabToken.value
     await auth.updateProfile(value, tenantId.value, defaultWriteHitl.value, personalRules.value,
-      githubUrl.value || null, githubToken.value || null,
-      gitlabUrl.value || null, gitlabToken.value || null)
+      githubUrl.value || null, nextGithubToken,
+      gitlabUrl.value || null, nextGitlabToken)
     setGlobalDefault(defaultMode.value)
     setWriteHitlGlobal(defaultWriteHitl.value)
     message.success('资料已更新')
@@ -196,7 +208,8 @@ async function handleSave() {
               v-model:value="githubToken"
               class="sun-field"
               type="password"
-              placeholder="留空不修改"
+              show-password-on="click"
+              placeholder="未配置"
               maxlength="255"
               :disabled="saving"
             />
@@ -215,7 +228,8 @@ async function handleSave() {
               v-model:value="gitlabToken"
               class="sun-field"
               type="password"
-              placeholder="留空不修改"
+              show-password-on="click"
+              placeholder="未配置"
               maxlength="255"
               :disabled="saving"
             />

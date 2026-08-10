@@ -13,6 +13,7 @@ import { useChatAgentMention } from '../composables/useChatAgentMention'
 import { useChatWorkflowMention } from '../composables/useChatWorkflowMention'
 import { useChatWorkspacePathMention } from '../composables/useChatWorkspacePathMention'
 import { requestSandboxWorkspaceRefresh, sandboxPathIndexReady, sandboxPathIndexRefresh } from '../composables/sandboxWorkspaceRefresh'
+import { flashWorkspaceBanner } from '../composables/sandboxWorkspaceBanner'
 import { useSandboxPathIndex } from '../composables/useSandboxPathIndex'
 import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
 import { reEnhanceAllSandboxPathLinks } from '../utils/stream-markdown/StaticEnhancer'
@@ -797,13 +798,9 @@ const commitMsg = ref('')
 const showCommitPopover = ref(false)
 /** 提交按钮状态机：idle -> loading（转圈）-> done（√，稍后回 idle 并关闭弹窗） */
 const commitState = ref<'idle' | 'loading' | 'done'>('idle')
-/** git 操作内联提示（成功不再提示，仅错误/无可操作 checkout） */
-const gitToast = ref<{ kind: 'info' | 'error'; text: string } | null>(null)
-let gitToastTimer: ReturnType<typeof setTimeout> | null = null
+/** git 操作提示：写入工作区标题栏下方统一横幅（成功不再提示） */
 function flashGitToast(kind: 'info' | 'error', text: string) {
-  gitToast.value = { kind, text }
-  if (gitToastTimer) clearTimeout(gitToastTimer)
-  gitToastTimer = setTimeout(() => { gitToast.value = null }, 2800)
+  flashWorkspaceBanner('git', { kind, text })
 }
 /** git 操作前置：无 checkoutId（新任务未发送，懒创建尚未发生）时提示并中止 */
 function requireCheckout(): string | null {
@@ -2130,10 +2127,6 @@ watch(
               </div>
             </NPopover>
           </div>
-          <!-- git 操作内联提示 -->
-          <transition name="git-toast-fade">
-            <span v-if="gitToast" class="git-toast" :class="`git-toast--${gitToast.kind}`">{{ gitToast.text }}</span>
-          </transition>
         </template>
       </SandboxWorkspaceDrawer>
     </div>
@@ -2347,14 +2340,14 @@ watch(
   font-size: var(--sun-font-sm);
 }
 
-/* ---- 工作区抽屉切换按钮（任务行下方右上角） ---- */
+/* ---- 工作区展开按钮：与抽屉 header 同带（会话头 36px 下、高 34px = padding6+tab22+padding6） ---- */
 .ws-drawer-toggle {
   position: absolute;
-  top: 52px;
+  top: 36px;
   right: 8px;
   z-index: 20;
   width: 28px;
-  height: 28px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2684,22 +2677,6 @@ watch(
   font-size: 11px;
   color: var(--sun-text-muted);
 }
-
-/* ---- Git 操作内联提示 ---- */
-.git-toast {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: var(--radius-md, 10px);
-  max-width: 220px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.git-toast--error { color: #f87171; background: rgba(239, 68, 68, 0.12); }
-.git-toast--info { color: var(--sun-text-muted); background: rgba(148, 163, 184, 0.12); }
-.git-toast-fade-enter-active, .git-toast-fade-leave-active { transition: opacity 0.2s; }
-.git-toast-fade-enter-from, .git-toast-fade-leave-to { opacity: 0; }
 
 /* ── 滚动消息区 ── */
 .chat-scroll {

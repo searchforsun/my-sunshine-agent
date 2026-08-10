@@ -7,7 +7,6 @@ const props = defineProps<{
   treeWidth: number
   canResizeTree: boolean
   treeLoading: boolean
-  errorText: string
   treeData: TreeOption[]
   expandedKeys: string[]
   selectedKeys: string[]
@@ -166,7 +165,6 @@ function onLoad(option: TreeOption) {
     <!-- 普通模式文件树 -->
     <div v-if="!searchMode" class="tree-scroll">
       <p v-if="treeLoading" class="pane-hint">加载中…</p>
-      <p v-else-if="errorText" class="pane-error">{{ errorText }}</p>
       <NTree
         v-else-if="treeData.length"
         block-line
@@ -408,14 +406,9 @@ function onLoad(option: TreeOption) {
   user-select: none;
 }
 
-.pane-hint,
-.pane-error {
+.pane-hint {
   margin: 8px 4px;
   font-size: 12px;
   color: var(--sun-text-muted);
-}
-
-.pane-error {
-  color: var(--sun-danger, #e07070);
 }
 </style>

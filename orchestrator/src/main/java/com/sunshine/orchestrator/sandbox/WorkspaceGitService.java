@@ -445,16 +445,18 @@ public class WorkspaceGitService {
         execInSandbox(sessionId, git(dir, "commit", "-m", message));
     }
 
-    /** git push（凭据由裸库 credential.helper store 自动注入） */
+    /** git push：先从 auth 刷新凭据，再经 credential.helper store 注入 */
     public void gitPush(String workspaceId, String checkoutId, String userId, String tenantId) {
         String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
+        lifecycle.refreshGitCredentialStore(workspaceId, userId);
         String dir = worktreePath(checkoutId);
         execInSandbox(sessionId, git(dir, "push", "-u", "origin", "HEAD"));
     }
 
-    /** git pull：从远程拉取并快进当前分支（凭据由裸库 credential.helper store 自动注入） */
+    /** git pull：先刷新凭据，再从远程快进当前分支 */
     public Map<String, Object> gitPull(String workspaceId, String checkoutId, String userId, String tenantId) {
         String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
+        lifecycle.refreshGitCredentialStore(workspaceId, userId);
         String dir = worktreePath(checkoutId);
         String currentBranch = execInSandbox(sessionId, git(dir, "branch", "--show-current")).trim();
         String ref = currentBranch.isEmpty() ? "HEAD" : currentBranch;
@@ -466,9 +468,10 @@ public class WorkspaceGitService {
         return result;
     }
 
-    /** 刷新共享裸库：fetch --all --prune（凭据由 credential.helper store 注入） */
+    /** 刷新共享裸库：先写凭据，再 fetch --all --prune */
     public Map<String, Object> gitFetchAll(String workspaceId, String userId, String tenantId) {
         String sessionId = lifecycle.ensureWorkspaceSession(workspaceId, userId, tenantId);
+        lifecycle.refreshGitCredentialStore(workspaceId, userId);
         String output = execInSandbox(sessionId, git(REPO_PATH, "fetch", "--all", "--prune"));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", true);

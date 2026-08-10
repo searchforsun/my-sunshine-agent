@@ -18,7 +18,9 @@ public class LoginResponse {
     /** 用户个人规则（soul） */
     private String personalRules;
     private String githubUrl;
+    private String githubToken;
     private boolean githubTokenSet;
     private String gitlabUrl;
+    private String gitlabToken;
     private boolean gitlabTokenSet;
 }

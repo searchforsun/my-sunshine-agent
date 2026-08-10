@@ -58,7 +58,7 @@
 | `2026-07-17-autocontext-memory-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` §4 Layer 1 |
 | `2026-07-22-context-optimization-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` |
 | `2026-07-24-dynamic-context-compression-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` §§5-8 |
-| `2026-07-31-unified-context-compression-design.md` | **上下文压缩统一 SSOT** · 五层渐进管道（Layer 1 intra-turn → Layer 2 L1 → Layer 3 L2 → Layer 4 L3 → Layer 5 budget）· Layer 2/3/4/5 ✅ 已实现 · Layer 1 ⚠️ 待恢复 |
+| `2026-07-31-unified-context-compression-design.md` | **上下文压缩统一 SSOT** · 五层渐进管道（Layer 1 intra-turn → Layer 2 L1 → Layer 3 L2 → Layer 4 L3 → Layer 5 budget）· **基线管道 ✅** · §5.5 / v2–v15 增强（压缩点 / Tier / scene 隔离等）**⬜ 设计稿** |
 | `2026-07-09-tool-integration-design.md` | 阶段四 **§4.8 ✅** · SDK + MCP Catalog + `/tools` + 工具集 + HITL · [plan](../plans/2026-07-09-tool-integration.md) |
 | `2026-07-20-prompt-ops-routing-catalog-design.md` | 阶段四 **§4.11 实施中** · Prompt 运营中心 + 统一 Rule Engine（DB SSOT，弃 Nacos 规则/提示词）· `/prompts` · [plan](../plans/2026-07-20-prompt-ops-routing-catalog.md) · Live `verify_prompt_catalog_live.py` |
 | `2026-07-20-timeline-summary-duration-design.md` | Chat 时间线总览行 · 墙钟总耗时 · 整段展开/折叠（终态只留终稿）· **✅** · [plan](../plans/2026-07-20-timeline-summary-duration.md) |

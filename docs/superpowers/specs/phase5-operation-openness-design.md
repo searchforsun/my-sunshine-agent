@@ -1,9 +1,9 @@
 # 阶段五：运营化与开放化 — 技术设计（SSOT）
 
 > **周期**：按需启动（子项独立排期）
-> **状态**：⬜ 规划（2026-07-27 立项）· **v2（2026-08-01）**：以 harness 长任务为终点重定位；5.2/5.3/5.5 随 harness 上线**前置拆分触发**（不必等阶段四全收口），5.1/5.4/5.7 等 harness 稳定后接 · **v8（2026-08-02）**：`call_scene` 枚举扩展 `plan-phase`（HIERARCHICAL 阶段细拆，[planner-harness §0.2](./2026-07-31-planner-harness-loop-design.md)），全局粗规划强模型 / 阶段细拆轻量模型分层
+> **状态**：⬜ 规划（2026-07-27 立项）· **v2（2026-08-01）**：以 harness 长任务为终点重定位；5.2/5.3/5.5 随 harness 上线**前置拆分触发**（不必等阶段四全收口），5.1/5.4/5.7 等 harness 稳定后接 · **v8（2026-08-02 · 历史）**：曾扩展 `plan-phase`——**已由 [rebuild S5 v4](./2026-08-05-planner-executor-rebuild-design.md) 作废**（统一 `call_scene=plan`）· **v9（2026-08-10）**：汇聚点改为 [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)；原 [harness](./archive/2026-07-31-planner-harness-loop-design.md) 已归档
 > **触发**：① 阶段四收口 + 平台需对外交付/量化运营效果（全量）② **5.2/5.3/5.5 随 harness 上线前置**（见 §1 触发拆分）
-> **前置**：[阶段四](./phase4-platformization-design.md) 4.1/4.2/4.5/4.6/4.7/4.8/4.13 检查门通过；**4.11 Prompt 后台收口**（5.3/5.4 依赖其 Catalog 版本模型）；**harness-loop 阶段一（CompletionGuard）** 落地后启动 5.1 系列（效果评估前提）
+> **前置**：[阶段四](./phase4-platformization-design.md) 4.1/4.2/4.5/4.6/4.7/4.8/4.13 检查门通过；**4.11 Prompt 后台收口**（5.3/5.4 依赖其 Catalog 版本模型）；5.1 系列在 **4.14 / 长任务可评估** 后启动（原「CompletionGuard 前提」随 [4.7.8 归档](./archive/2026-07-28-harness-loop-enhancement-design.md) 取消；可选门禁见 [goal-alignment §12](./2026-07-27-react-goal-alignment-design.md)）
 > **对标缺口**：智能体中台蓝图 §5 运营管控与观测层、§6 应用输出层、§1 多模型混部路由、§4 工具 RAG 检索
 
 ---
@@ -15,14 +15,14 @@
 - **运营闭环**：Badcase → 评测 → 调优 → 灰度 → 再评测，让平台效果可量化、可迭代；
 - **开放输出**：开放 API / SDK / 渠道嵌入，让平台能力被业务系统真正集成。
 
-**v2 重定位（以 harness 长任务为终点）**：Planner-Worker 长任务（[planner-harness-loop](./2026-07-31-planner-harness-loop-design.md)）是横跨沙箱/ReAct 增强/路由重构/上下文优化四线的汇聚点，其运行期依赖三块运营底座——**5.2 用量计量**（长任务多次 LLM 调用的成本可控）、**5.3 场景路由**（Planner 强模型 / Worker 快模型分层）、**5.5 工具检索**（Worker toolWhitelist 动态化）。这三块**随 harness 上线前置启动**，不等阶段四全收口；5.1/5.4/5.7 等 harness 稳定后接（效果评估与迭代前提）。
+**v2 / v9 重定位（以 4.14 Planner-Executor 长任务为终点）**：[rebuild](./2026-08-05-planner-executor-rebuild-design.md)（`executionMode=pro`）是横跨沙箱/ReAct/路由/上下文的汇聚点，运行期依赖 **5.2 用量计量**、**5.3 场景路由**（Planner 强 / Worker 快，**不**绑 `plan-phase`）、**5.5 工具检索**（Planner 检索 → 下发 toolWhitelist）。三块随 4.14 上线前置启动；5.1/5.4/5.7 等稳定后接。
 
 **触发拆分**：
 
 | 批次 | 子项 | 触发 |
 |------|------|------|
 | A（随 harness 前置） | 5.2 / 5.3 / 5.5 | planner-harness 上线前完成（提供成本 / 模型分层 / 工具动态底座） |
-| B（harness 稳定后） | 5.1 / 5.4 / 5.7 | harness-loop 阶段一（CompletionGuard）落地、效果可评估后 |
+| B（长任务可评估后） | 5.1 / 5.4 / 5.7 | 4.14 / ReAct 长任务有稳定样本后（不绑 CompletionGuard） |
 | C（按需） | 5.6 / 5.8 / 5.9 / 5.10 | 对外交付诉求 |
 
 | 条件 | 说明 |
@@ -115,7 +115,7 @@
 >
 > **v9 注记（S1/S5 修正 harness 模型分层）**：[简化决议 S1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator——调用点收敛为 **Planner（=plan，强模型）、Worker（=worker，快模型）、阶段细拆（=plan-phase，快模型）、Planner 自判（=plan，与规划同调用点）**。策略表配置「Planner → 强模型、Worker/plan-phase → 快模型」即可覆盖 harness 全部调用；`evaluator` 枚举不建。
 >
-> **v8 注记（HIERARCHICAL 模型分层）**：分层增量规划（[planner-harness §0.2/§4.1.1](./2026-07-31-planner-harness-loop-design.md)）下，全局粗规划 `call_scene=plan`（强模型，1 次/任务，保质量）与阶段细拆 `call_scene=plan-phase`（轻量模型，N 次/任务，控成本）分离。策略表可配置 `plan → 强模型 / plan-phase → 快模型`；同一 `HarnessPlanner` 组件，仅调用点分层，不新增角色。
+> **v9 注记（取代 v8 `plan-phase`）**：rebuild S5 v4 **不建** `call_scene=plan-phase`；Planner 统一 `call_scene=plan`。若需强弱模型分层，走本文件 5.3 场景路由策略表（按角色/负载），**不**绑分解模式。
 
 **检查门**：`model=auto` 时 rewrite 请求路由到轻量模型、plan 请求路由到强模型（策略表驱动）；改策略表热生效；显式 model 行为不回归（`phase2_agent_demo.py --suite all` PASS）。
 
@@ -133,7 +133,7 @@
 | **5.4.4** | 复评：draft 跑评测门禁（`POST /api/kb/{kbId}/evaluate` / prompt dry-run golden-set），报告对比 active 基线 |
 | **5.4.5** | 达标后人工一键 publish（prompt 走 5.7 灰度；kb 配置走 active 切换） |
 
-> **v2 注记（优化面边界）**：Optimizer 的可优化面 = Catalog 管理的 prompt（含 `harness.planner`/`harness.worker` system prompt）+ 检索参数。harness 的 **H1 渲染与压缩点阈值是代码逻辑非 Catalog prompt**，Optimizer 覆盖不到（属 4.7.8 compaction 配置调整，人工在 Nacos/代码层改）。MVP 明确此边界，不做「代码参数自调」。
+> **v2 注记（优化面边界）**：Optimizer 的可优化面 = Catalog 管理的 prompt（含 `planner.harness`/`harness.worker`）+ 检索参数。H1 渲染与 run 内 compaction 阈值（五层 §4.5 / Nacos `agent.memory.auto-context`）是代码/配置，Optimizer 覆盖不到。MVP 不做「代码参数自调」。
 
 **检查门**：从一批真实 Badcase 出发，Optimizer 产出可解释提案 → draft → 评测报告含 vs 基线对比 → 人工发布；全链路在 `/ops` 可追踪。
 
@@ -157,7 +157,7 @@
 >
 > 工具规模 ≤ 阈值（如 20）时 `full` 模式（全量 schema 进 Tier 0）仍可用——由 Nacos `agent.tool.inject` 模式开关切换，二选一不并存。
 >
-> **v2 注记（harness Worker 检索基准，冲突解决）**：harness 下 Worker 的 `toolWhitelist` 由 **Planner 下发**（planner-harness §2.4 动态段），**不是** Worker 自己按 query 检索。检索路径定为：**Planner 用 5.5 检索生成候选工具集 → 下发 toolWhitelist 给 Worker**；Worker 内部不再二次检索（Planner 有全局视角，Worker 每轮检索有额外成本）。
+> **v2/v9 注记（Worker 检索基准）**：`pro` 下 Worker 的 `toolWhitelist` 由 **Planner 下发**（[rebuild §3.1.1](./2026-08-05-planner-executor-rebuild-design.md)），**不是** Worker 自检索。路径：**Planner 用 5.5 检索 → 下发 toolWhitelist**；Worker 不再二次检索。
 
 **检查门**：工具集 50+ 时 ReAct 首轮注入工具数 ≤10；golden-set 工具命中率 ≥0.9；`verify_tool_integration_live.py --suite all` + spawn/沙箱/HITL Live 不回退。
 
@@ -270,4 +270,4 @@
 - **D7（5.5 工具分层注入，v2）**：工具名列表进 Tier 0 静态 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 二选一不并存。对齐五层 spec §5.5.3 前缀稳定性。
 - **D8（harness 计量维度，v2）**：feedback/usage 预置 `run_id`+`round_id`，task 评估结果落 `harness_eval_result`（**v9 S1：数据源为 Planner 自判，字段语义不变**）；phase5 阶段定死字段，harness 直接写入。
 - **D9（phase5 触发拆分，v2）**：5.2/5.3/5.5 随 harness 前置启动，5.1/5.4/5.7 等 harness 稳定后接，5.6 按需。
-- **D10（`plan-phase` 调用点，v8）**：HIERARCHICAL 阶段细拆新增 `call_scene=plan-phase`（轻量模型），与全局粗规划 `plan`（强模型）分层；同一 `HarnessPlanner` 组件不新增角色，仅调用点区分（对齐 [planner-harness §0.2](./2026-07-31-planner-harness-loop-design.md)）。
+- **D10（`plan-phase` · v8 历史 · v9 作废）**：原 HIERARCHICAL 细拆调用点；rebuild S5 v4 后 **不实现** `plan-phase`，统一 `call_scene=plan`（强弱分层见 5.3）。

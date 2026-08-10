@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
 
@@ -32,6 +33,8 @@ class ReActAgentFactoryTest {
     private ProcessingStepMiddlewareFactory middlewareFactory;
     @Mock
     private AgentStateStore stateStore;
+    @Mock
+    private WebClient.Builder webClientBuilder;
 
     @Mock
     private Toolkit subToolkit;
@@ -49,7 +52,7 @@ class ReActAgentFactoryTest {
                         "base system", null))));
         factory = new ReActAgentFactory(
                 catalogHolder, executionProperties, dynamicToolkitFactory, middlewareFactory,
-                stateStore);
+                stateStore, webClientBuilder);
         ReflectionTestUtils.setField(factory, "modelName", "deepseek-v4-pro");
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");
         ReflectionTestUtils.setField(factory, "apiKey", "test-key");

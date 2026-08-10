@@ -4,6 +4,11 @@ import { NIcon, NButton } from 'naive-ui'
 import { RefreshOutline, WarningOutline, GitCompareOutline, DocumentTextOutline } from '@vicons/ionicons5'
 import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
 import { sandboxWorkspaceRefresh, sandboxPathIndexRefresh } from '../../composables/sandboxWorkspaceRefresh'
+import {
+  workspaceBanner,
+  setWorkspaceBanner,
+  clearWorkspaceBanner,
+} from '../../composables/sandboxWorkspaceBanner'
 import { useWriteHitlMode } from '../../composables/useWriteHitlMode'
 import { useSandboxFileTree } from '../../composables/useSandboxFileTree'
 import { useSandboxPreviewTabs, stripWorkspaceRootPath } from '../../composables/useSandboxPreviewTabs'
@@ -124,7 +129,6 @@ async function refresh() {
 /** 工作区代码未正确克隆时的重试：调用 sync API（远端拉取或重新 clone） */
 const retrying = ref(false)
 const retryError = ref('')
-const wsSynced = ref(false)
 
 async function retryClone() {
   if (!props.workspaceId) {
@@ -134,13 +138,11 @@ async function retryClone() {
   retrying.value = true
   retryError.value = ''
   try {
-    const result = await syncWorkspace(props.workspaceId)
-    wsSynced.value = true
+    await syncWorkspace(props.workspaceId)
     retryError.value = ''
     // 工作区级别文件树（无需等待会话创建）
     try { await loadRoots(); treeVersion.value++ } catch { /* ok */ }
   } catch (e) {
-    wsSynced.value = false
     const msg = (e as any)?.message || String(e)
     retryError.value = msg || '同步失败，请检查 Git 配置和仓库地址'
   } finally {
@@ -150,12 +152,15 @@ async function retryClone() {
 
 /** 工作区变化时重置状态 */
 watch(() => props.workspaceId, () => {
-  wsSynced.value = false
   retryError.value = ''
+  clearWorkspaceBanner()
 })
 
 /** checkout 切换（新建 worktree / 选中其他 checkout）时重载文件树，根指向新项目目录 */
 watch(() => props.checkoutId, () => {
+  clearWorkspaceBanner('tree')
+  clearWorkspaceBanner('diff')
+  clearWorkspaceBanner('diff-summary')
   if (!state.open) return
   clearCache()
   void loadRoots()
@@ -197,6 +202,32 @@ const workspaceEmpty = computed(() => {
 
 /** 尚未选择 checkout（新任务未发送）：右侧工作区无代码属正常态，不视为失败 */
 const noCheckoutYet = computed(() => !props.checkoutId)
+
+/** 同步/空工作区 → 统一横幅（有具体文件树错误时让出，避免盖住更具体文案） */
+watch(
+  [isTaskWorkspace, noCheckoutYet, workspaceEmpty, treeLoading, retryError, errorText],
+  () => {
+    if (!isTaskWorkspace.value || noCheckoutYet.value) {
+      clearWorkspaceBanner('sync')
+      return
+    }
+    if (retryError.value) {
+      setWorkspaceBanner('sync', { text: retryError.value, kind: 'error', retryable: true })
+      return
+    }
+    if (workspaceEmpty.value && !treeLoading.value && !errorText.value) {
+      setWorkspaceBanner('sync', { text: '工作区加载失败，请重试', kind: 'error', retryable: true })
+      return
+    }
+    clearWorkspaceBanner('sync')
+  },
+)
+
+/** 文件树加载失败 → 统一横幅（面板内不再重复展示） */
+watch(errorText, (text) => {
+  if (text) setWorkspaceBanner('tree', { text, kind: 'error' })
+  else clearWorkspaceBanner('tree')
+})
 
 async function refreshBranch(scope: 'workspace' | 'skills') {
   const prefix = scope === 'workspace' ? '/workspace' : '/skills'
@@ -328,18 +359,22 @@ watch(
         </div>
       </div>
     </header>
-
-    <!-- 工作区未就绪 / 重试反馈（仅任务工作区；chat 沙箱不显示 git 提示） -->
+    <!-- 工作区统一错误/提示行（git / 同步 / 文件树 / 改动） -->
     <div
-      v-if="isTaskWorkspace && !noCheckoutYet && ((workspaceEmpty && !treeLoading) || (retryError && wsSynced))"
-      class="ws-retry-banner"
-      :class="{ 'is-success': wsSynced }"
+      v-if="workspaceBanner"
+      class="ws-banner"
+      :class="`ws-banner--${workspaceBanner.kind}`"
+      role="status"
     >
-      <NIcon :component="WarningOutline" :size="14" />
-      <div class="ws-retry-body">
-        <span>{{ retryError || '工作区加载失败，请重试' }}</span>
-      </div>
-      <NButton v-if="!wsSynced" size="tiny" type="primary" :loading="retrying" @click="retryClone">重试</NButton>
+      <NIcon v-if="workspaceBanner.kind === 'error'" :component="WarningOutline" :size="13" />
+      <span class="ws-banner-text">{{ workspaceBanner.text }}</span>
+      <NButton
+        v-if="workspaceBanner.retryable"
+        size="tiny"
+        type="primary"
+        :loading="retrying"
+        @click="retryClone"
+      >重试</NButton>
     </div>
     <!-- 未选择分支（新任务未发送）：提示选择分支并发送以拉取代码 -->
     <div v-if="isTaskWorkspace && noCheckoutYet" class="ws-no-checkout-hint">
@@ -361,7 +396,6 @@ watch(
         :tree-width="treeWidth"
         :can-resize-tree="canResizeTree"
         :tree-loading="treeLoading"
-        :error-text="errorText"
         :tree-data="treeData"
         :expanded-keys="expandedKeys"
         :selected-keys="selectedKeys"
@@ -439,8 +473,13 @@ watch(
 }
 
 .drawer-header {
+  /* 与 ChatView .ws-drawer-toggle 同高：6+22+6，保证开/关按钮垂直对齐 */
   flex-shrink: 0;
-  padding: 6px 8px;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
   border-bottom: 1px solid var(--sun-border);
 }
 
@@ -448,6 +487,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-width: 0;
 }
 
@@ -458,28 +498,33 @@ watch(
   color: var(--sun-text);
 }
 
-.ws-retry-banner {
+.ws-banner {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(255, 193, 7, 0.08);
-  border-bottom: 1px solid rgba(255, 193, 7, 0.2);
-  color: var(--sun-text-muted);
-  font-size: 12px;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: var(--sun-font-sm);
+  font-weight: 500;
+  border-bottom: 1px solid var(--sun-border);
 }
 
-.ws-retry-banner.is-success {
-  background: rgba(34, 197, 94, 0.08);
-  border-bottom-color: rgba(34, 197, 94, 0.2);
-  color: rgba(34, 197, 94, 0.85);
-}
-
-.ws-retry-body {
+.ws-banner-text {
   flex: 1;
   min-width: 0;
-  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-banner--error {
+  color: #c44;
+  background: color-mix(in srgb, #c44 8%, transparent);
+}
+
+.ws-banner--info {
   color: var(--sun-text-muted);
+  background: color-mix(in srgb, var(--sun-text-muted) 10%, transparent);
 }
 
 .ws-no-checkout-hint {

@@ -15,9 +15,11 @@ public class AuthUserVO {
     private String defaultWriteHitlMode;
     /** 用户个人规则（soul） */
     private String personalRules;
-    /** Git 服务配置（令牌不回传明文，仅回传是否配置） */
+    /** Git 服务配置（本人设置页回显 PAT 明文；*TokenSet 供兼容判断） */
     private String githubUrl;
+    private String githubToken;
     private boolean githubTokenSet;
     private String gitlabUrl;
+    private String gitlabToken;
     private boolean gitlabTokenSet;
 }

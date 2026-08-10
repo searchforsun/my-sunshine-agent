@@ -1145,11 +1145,12 @@ watch(
   margin-top: 8px;
 }
 
-/* 完成 ✓ */
+/* 完成 ✓：紧跟文案 */
 .op-check {
   color: var(--sun-text-muted);
   display: inline-flex;
   align-items: center;
+  align-self: center;
   flex-shrink: 0;
 }
 

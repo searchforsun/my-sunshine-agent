@@ -13,6 +13,7 @@ import CodiconDiscardIcon from '../icons/CodiconDiscardIcon.vue'
 import { gitDiffSummary, gitDiffFile, gitRevert, gitStage, gitUnstage, gitCommit } from '../../api/workspaceGit'
 import type { GitDiffSummaryItem, GitDiffDetail, GitDiffCounts } from '../../api/workspaceGit'
 import type { SandboxDiffLine } from '../../api/sandboxEditDiff'
+import { setWorkspaceBanner, clearWorkspaceBanner } from '../../composables/sandboxWorkspaceBanner'
 import SandboxDiffView from './SandboxDiffView.vue'
 
 const props = defineProps<{
@@ -40,9 +41,6 @@ type DiffSection = 'staged' | 'unstaged'
 const commitMessage = ref('')
 /** 提交按钮状态机：idle -> loading（转圈）-> done（√，稍后回 idle） */
 const commitState = ref<'idle' | 'loading' | 'done'>('idle')
-
-/** 操作错误提示：显示在改动面板顶部（commit 栏上方）一行，不再用全局 alert */
-const opError = ref('')
 
 /** 分区折叠状态（点击分区标题行切换） */
 const collapsedSection = ref<Set<DiffSection>>(new Set())
@@ -166,10 +164,15 @@ async function loadSummary(silent = false) {
   // checkoutId 未就绪（新任务尚未发送 / 会话切换中）时不发起请求，等 watch 就绪后再拉取
   if (!props.checkoutId) return
   if (!silent) summaryLoading.value = true
-  if (!silent) summaryError.value = ''
+  if (!silent) {
+    summaryError.value = ''
+    clearWorkspaceBanner('diff-summary')
+  }
   try {
     summary.value = await gitDiffSummary(props.workspaceId, props.checkoutId)
     hasLoadedSummary.value = true
+    clearWorkspaceBanner('diff-summary')
+    clearWorkspaceBanner('diff')
     // 清理已不存在改动的展开/选中/折叠（详情缓存随之释放）
     const paths = new Set(summary.value.map(s => s.path))
     for (const p of Object.keys(expanded.value)) {
@@ -185,11 +188,13 @@ async function loadSummary(silent = false) {
       expandOnly(props.initialPath)
     }
   } catch (e) {
-    // 静默刷新失败保留旧内容，仅顶部错误行提示；显式加载失败才展示错误态
+    // 静默刷新失败保留旧内容；显式加载失败标记面板空态；错误文案统一进工作区横幅
+    const text = (e as Error)?.message || (silent ? '刷新改动失败' : '获取改动失败')
     if (silent) {
-      opError.value = (e as Error)?.message || '刷新改动失败'
+      setWorkspaceBanner('diff', { text, kind: 'error' })
     } else {
-      summaryError.value = (e as Error)?.message || '获取改动失败'
+      summaryError.value = text
+      setWorkspaceBanner('diff-summary', { text, kind: 'error' })
     }
   } finally {
     if (!silent) summaryLoading.value = false
@@ -333,57 +338,62 @@ function applyAfterChange() {
   })
 }
 
+function setDiffOpError(text = '') {
+  if (text) setWorkspaceBanner('diff', { text, kind: 'error' })
+  else clearWorkspaceBanner('diff')
+}
+
 async function stageBulk() {
   if (batchStaging.value || bulkTargets.value.length === 0) return
   batchStaging.value = true
-  opError.value = ''
+  setDiffOpError()
   const targets = bulkTargets.value
   try {
     await gitStage(props.workspaceId, props.checkoutId, targets)
     applyAfterChange()
   } catch (e) {
-    opError.value = (e as Error)?.message || '暂存失败'
+    setDiffOpError((e as Error)?.message || '暂存失败')
   } finally {
     batchStaging.value = false
   }
 }
 
-/** 单文件暂存（未暂存区行内）：图标按钮，成功静默、失败进顶部错误行 */
+/** 单文件暂存（未暂存区行内）：图标按钮，成功静默、失败进工作区横幅 */
 async function stageOne(item: GitDiffSummaryItem) {
   if (singleBusyPath.value) return
   singleBusyPath.value = item.path
-  opError.value = ''
+  setDiffOpError()
   try {
     await gitStage(props.workspaceId, props.checkoutId, [item.path])
     applyAfterChange()
   } catch (e) {
-    opError.value = (e as Error)?.message || '暂存失败'
+    setDiffOpError((e as Error)?.message || '暂存失败')
   } finally {
     singleBusyPath.value = ''
   }
 }
 
-/** 单文件撤回暂存（已暂存区行内）：仅清暂存区，保留工作区改动；成功静默、失败进顶部错误行 */
+/** 单文件撤回暂存（已暂存区行内）：仅清暂存区，保留工作区改动；成功静默、失败进工作区横幅 */
 async function unstageOne(item: GitDiffSummaryItem) {
   if (singleBusyPath.value) return
   singleBusyPath.value = item.path
-  opError.value = ''
+  setDiffOpError()
   try {
     await gitUnstage(props.workspaceId, props.checkoutId, [item.path])
     applyAfterChange()
   } catch (e) {
-    opError.value = (e as Error)?.message || '撤回失败'
+    setDiffOpError((e as Error)?.message || '撤回失败')
   } finally {
     singleBusyPath.value = ''
   }
 }
 
-/** 提交：暂存区全部改动。实体按钮：原地 loading 转圈 -> √ -> 恢复「提交」；失败进顶部错误行 */
+/** 提交：暂存区全部改动。实体按钮：原地 loading 转圈 -> √ -> 恢复「提交」；失败进工作区横幅 */
 async function commitChanges() {
   const msg = commitMessage.value.trim()
   if (!msg || commitState.value !== 'idle' || stagedFiles.value.length === 0) return
   commitState.value = 'loading'
-  opError.value = ''
+  setDiffOpError()
   try {
     await gitCommit(props.workspaceId, props.checkoutId, msg)
     commitMessage.value = ''
@@ -394,7 +404,7 @@ async function commitChanges() {
     applyAfterChange()
   } catch (e) {
     commitState.value = 'idle'
-    opError.value = (e as Error)?.message || '提交失败'
+    setDiffOpError((e as Error)?.message || '提交失败')
   }
 }
 
@@ -423,12 +433,12 @@ function revertStaged() {
 async function revertPaths(paths: string[]) {
   batchReverting.value = true
   stagedReverting.value = true
-  opError.value = ''
+  setDiffOpError()
   try {
     await gitRevert(props.workspaceId, props.checkoutId, paths)
     applyAfterChange()
   } catch (e) {
-    opError.value = (e as Error)?.message || '回退失败'
+    setDiffOpError((e as Error)?.message || '回退失败')
   } finally {
     batchReverting.value = false
     stagedReverting.value = false
@@ -448,12 +458,12 @@ async function confirmSingleRevert(item: GitDiffSummaryItem) {
   if (singleBusyPath.value) return
   singleBusyPath.value = item.path
   confirmingRevertPath.value = ''
-  opError.value = ''
+  setDiffOpError()
   try {
     await gitRevert(props.workspaceId, props.checkoutId, [item.path])
     applyAfterChange()
   } catch (e) {
-    opError.value = (e as Error)?.message || '回退失败'
+    setDiffOpError((e as Error)?.message || '回退失败')
   } finally {
     singleBusyPath.value = ''
   }
@@ -471,6 +481,8 @@ watch(
     // checkoutId 变化 = 工作区切换：旧摘要/旧缓存属旧 checkout，清空后静默重载新工作区数据
     summary.value = []
     summaryError.value = ''
+    clearWorkspaceBanner('diff')
+    clearWorkspaceBanner('diff-summary')
     hasLoadedSummary.value = false
     void loadSummary(true)
   },
@@ -490,11 +502,7 @@ defineExpose({ refresh })
 
 <template>
   <div class="sandbox-diff-panel">
-    <!-- 操作错误行：顶部第一行（commit 栏上方）单独一行，替代全局 alert -->
-    <div v-if="opError" class="diff-op-error">
-      <NIcon :component="WarningOutline" :size="13" /> {{ opError }}
-    </div>
-    <!-- commit 栏：输入消息 + 提交（暂存区非空且消息非空才可提交） -->
+    <!-- commit 栏：输入消息 + 提交（暂存区非空且消息非空才可提交）；操作错误统一进工作区横幅 -->
     <div class="diff-commit-bar">
       <input
         v-model="commitMessage"
@@ -520,8 +528,8 @@ defineExpose({ refresh })
     <div class="diff-summary">
       <!-- 加载态：铺满剩余空间上下左右居中，与文件区一致，不使用原生 spinner -->
       <div v-if="summaryLoading" class="diff-loading">加载中...</div>
-      <div v-else-if="summaryError" class="diff-summary-error">
-        <NIcon :component="WarningOutline" :size="13" /> {{ summaryError }}
+      <div v-else-if="summaryError" class="diff-empty">
+        <span class="diff-empty-text">加载失败，请刷新</span>
       </div>
       <div v-else-if="summary.length === 0" class="diff-empty">
         <span class="diff-empty-text">暂无改动</span>
@@ -803,19 +811,6 @@ defineExpose({ refresh })
   min-width: 0;
   flex: 1 1 auto;
   background: var(--sun-black);
-}
-
-/* 操作错误行：commit 栏上方单独一行 */
-.diff-op-error {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  font-size: var(--sun-font-sm);
-  color: #c44;
-  border-bottom: 1px solid var(--sun-border);
-  background: color-mix(in srgb, #c44 8%, transparent);
-  flex-shrink: 0;
 }
 
 /* commit 栏 */
@@ -1255,15 +1250,6 @@ defineExpose({ refresh })
 }
 
 .diff-pane-hint.is-error {
-  color: #c44;
-}
-
-.diff-summary-error {
-  margin: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--sun-font-sm);
   color: #c44;
 }
 

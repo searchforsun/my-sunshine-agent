@@ -119,8 +119,11 @@ public class WorkspaceSandboxLifecycle {
         Map<String, String> cred = fetchGitCredentials(userId, host);
         String token = cred.getOrDefault("token", "");
         File dir = target.toFile();
-        // bare 库存在（有 objects 目录）视为已克隆
+        // bare 库存在（有 objects 目录）视为已克隆；仍刷新凭据（设置页改 PAT 后须覆盖旧 store）
         if (dir.exists() && new File(dir, "objects").exists()) {
+            if (!token.isEmpty()) {
+                writeGitCredentialStore(target, repoUrl, token);
+            }
             return;
         }
         deleteTreeQuietly(dir);
@@ -174,25 +177,59 @@ public class WorkspaceSandboxLifecycle {
         }
     }
 
+    /**
+     * 推送/拉取前从 auth 重写裸库凭据。
+     * 背景：① 设置页改 PAT 不会自动进已有裸库；② git 认证失败时 credential.helper store 会 erase 成空文件。
+     */
+    public void refreshGitCredentialStore(String workspaceId, String userId) {
+        AgentWorkspaceEntity ws = workspaceRepo.findById(workspaceId)
+                .orElseThrow(() -> new IllegalStateException("工作区不存在: " + workspaceId));
+        Path repoPath = repoDir(workspaceId);
+        if (!repoPath.toFile().exists() || !new File(repoPath.toFile(), "objects").exists()) {
+            return;
+        }
+        String host = extractHost(ws.getRepoUrl());
+        Map<String, String> cred = fetchGitCredentials(userId, host);
+        String token = cred.getOrDefault("token", "");
+        if (token.isEmpty()) {
+            log.warn("[WorkspaceLifecycle] refresh creds skipped: no token user={} host={} ws={}",
+                    userId, host, workspaceId);
+            return;
+        }
+        writeGitCredentialStore(repoPath, ws.getRepoUrl(), token);
+    }
+
     /** 写容器内可读的 git 凭据：裸库内 .git-credentials + 裸库 credential.helper 指向它（容器内 /opt/git/.git-credentials） */
     private void writeGitCredentialStore(Path repoGit, String repoUrl, String token) {
         try {
             String host = extractHost(repoUrl);
-            String username = extractRepoOwner(repoUrl);
             if (host.isEmpty() || token.isEmpty()) return;
-            // GitHub/GitLab 均支持 https://<用户名>:<PAT>@host；owner 段（如 searchforsun/proj → searchforsun）作用户名
+            // GitHub HTTPS + PAT：用户名固定 x-access-token（比 repo owner 更稳，避免 fine-grained 拒认）
+            // GitLab：oauth2；其它 host 回退 repo owner
+            String username = gitCredentialUsername(host, repoUrl);
             Path credFile = repoGit.resolve(".git-credentials");
-            if (username.isEmpty()) {
-                Files.writeString(credFile, "https://oauth2:" + token + "@" + host + "\n");
-            } else {
-                Files.writeString(credFile, "https://" + username + ":" + token + "@" + host + "\n");
-            }
+            Files.writeString(credFile, "https://" + username + ":" + token + "@" + host + "\n");
+            // 容器内 sandbox UID=10001 须可读；git erase 后也可能把文件清空，每次覆盖写回
+            runQuiet("chown", "10001:10001", credFile.toAbsolutePath().toString());
+            runQuiet("chmod", "600", credFile.toAbsolutePath().toString());
             // 容器内 worktree 共享裸库 config → credential.helper 生效；path 用容器内挂载路径（/opt/git 在 jail 外，AI 工具读不到）
             runQuiet("git", "-C", repoGit.toFile().getAbsolutePath(), "config",
                     "credential.helper", "store --file=/opt/git/.git-credentials");
         } catch (Exception e) {
             log.warn("[WorkspaceLifecycle] writeGitCredentialStore failed: {}", e.getMessage());
         }
+    }
+
+    private static String gitCredentialUsername(String host, String repoUrl) {
+        String h = host == null ? "" : host.toLowerCase();
+        if (h.equals("github.com") || h.endsWith(".github.com")) {
+            return "x-access-token";
+        }
+        if (h.contains("gitlab")) {
+            return "oauth2";
+        }
+        String owner = extractRepoOwner(repoUrl);
+        return owner.isEmpty() ? "oauth2" : owner;
     }
 
     /** 从 repoUrl 提取仓库 owner 段（https://host/owner/repo.git 或 https://host:port/owner/repo → owner） */
