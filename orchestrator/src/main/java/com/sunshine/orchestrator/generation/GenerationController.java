@@ -94,8 +94,7 @@ public class GenerationController {
                     .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
             DecisionRegistry.ResolveOutcome outcome = decisionRegistry.resolve(
                     token,
-                    body != null ? body.choice() : null,
-                    body != null ? body.customInput() : null,
+                    body != null ? body.answers() : null,
                     userId,
                     meta.messageId());
             return mapResolveOutcome(outcome);
@@ -107,6 +106,7 @@ public class GenerationController {
         return switch (outcome) {
             case ACCEPTED -> Map.of("accepted", true);
             case INVALID_CHOICE -> throw new BizException(OrchestratorErrorCode.DECISION_INVALID_CHOICE);
+            case INVALID_ANSWERS -> throw new BizException(OrchestratorErrorCode.DECISION_INVALID_ANSWERS);
             case INPUT_REQUIRED -> throw new BizException(OrchestratorErrorCode.DECISION_INPUT_REQUIRED);
             case EXPIRED -> throw new BizException(OrchestratorErrorCode.DECISION_EXPIRED);
             case NOT_FOUND, FORBIDDEN -> throw new BizException(OrchestratorErrorCode.DECISION_NOT_FOUND);

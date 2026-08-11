@@ -24,7 +24,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DecisionRegistryTest {
@@ -48,20 +47,100 @@ class DecisionRegistryTest {
     }
 
     @Test
+    void resolve_accepts_multi_select_and_custom() throws Exception {
+        var questions = List.of(new DecisionQuestion(
+                "q2", "关注？",
+                List.of(new DecisionOption("perf", "性能"), new DecisionOption("ux", "体验")),
+                true));
+        DecisionRegistry.Registration reg = registry.register("msg-ms", "user-1", "T", questions);
+        var answers = List.of(new DecisionAnswer(
+                "q2", List.of("perf", DecisionOption.CUSTOM_ID), "还要安全"));
+
+        assertThat(registry.resolve(reg.token(), answers, "user-1", "msg-ms"))
+                .isEqualTo(DecisionRegistry.ResolveOutcome.ACCEPTED);
+        DecisionResult r = reg.future().get(1, TimeUnit.SECONDS);
+        assertThat(r.outcome()).isEqualTo("answered");
+        assertThat(r.title()).isEqualTo("T");
+        assertThat(r.answers().get(0).selectedOptionIds()).containsExactly("perf", "__custom__");
+        assertThat(r.answers().get(0).customInput()).isEqualTo("还要安全");
+        assertThat(registry.hasAwaiting("msg-ms")).isFalse();
+    }
+
+    @Test
+    void resolve_rejects_missing_question() {
+        var questions = List.of(
+                new DecisionQuestion("q1", "模式？",
+                        List.of(new DecisionOption("a", "A"), new DecisionOption("b", "B")), false),
+                new DecisionQuestion("q2", "关注？",
+                        List.of(new DecisionOption("perf", "性能"), new DecisionOption("ux", "体验")), true));
+        DecisionRegistry.Registration reg = registry.register("msg-partial", "user-1", "T", questions);
+        var answers = List.of(new DecisionAnswer("q1", List.of("a"), null));
+
+        assertThat(registry.resolve(reg.token(), answers, "user-1", "msg-partial"))
+                .isEqualTo(DecisionRegistry.ResolveOutcome.INVALID_ANSWERS);
+        assertThat(reg.future().isDone()).isFalse();
+        assertThat(registry.hasAwaiting("msg-partial")).isTrue();
+    }
+
+    @Test
+    void resolve_rejects_single_select_two_ids() {
+        var questions = List.of(new DecisionQuestion(
+                "q1", "模式？",
+                List.of(new DecisionOption("a", "A"), new DecisionOption("b", "B")),
+                false));
+        DecisionRegistry.Registration reg = registry.register("msg-single", "user-1", "T", questions);
+        var answers = List.of(new DecisionAnswer("q1", List.of("a", "b"), null));
+
+        assertThat(registry.resolve(reg.token(), answers, "user-1", "msg-single"))
+                .isEqualTo(DecisionRegistry.ResolveOutcome.INVALID_CHOICE);
+        assertThat(reg.future().isDone()).isFalse();
+        assertThat(registry.hasAwaiting("msg-single")).isTrue();
+    }
+
+    @Test
+    void resolve_customWithoutInput_returnsInputRequired() {
+        var questions = List.of(new DecisionQuestion(
+                "q1", "模式？",
+                List.of(new DecisionOption("a", "A"), new DecisionOption("b", "B")),
+                false));
+        DecisionRegistry.Registration reg = registry.register("msg-custom", "user-1", "T", questions);
+        var answers = List.of(new DecisionAnswer("q1", List.of(DecisionOption.CUSTOM_ID), "  "));
+
+        assertThat(registry.resolve(reg.token(), answers, "user-1", "msg-custom"))
+                .isEqualTo(DecisionRegistry.ResolveOutcome.INPUT_REQUIRED);
+        assertThat(reg.future().isDone()).isFalse();
+        assertThat(registry.hasAwaiting("msg-custom")).isTrue();
+    }
+
+    @Test
+    void resolve_unknownOptionId_returnsInvalidChoice() {
+        var questions = List.of(new DecisionQuestion(
+                "q1", "模式？",
+                List.of(new DecisionOption("a", "A"), new DecisionOption("b", "B")),
+                false));
+        DecisionRegistry.Registration reg = registry.register("msg-bad", "user-1", "T", questions);
+        var answers = List.of(new DecisionAnswer("q1", List.of("not_an_option"), null));
+
+        assertThat(registry.resolve(reg.token(), answers, "user-1", "msg-bad"))
+                .isEqualTo(DecisionRegistry.ResolveOutcome.INVALID_CHOICE);
+        assertThat(reg.future().isDone()).isFalse();
+    }
+
+    @Test
     void register_secondAwaitingOnSameMessage_rejected() {
-        List<DecisionOption> options = sampleOptions(false);
-        registry.register("msg-1", "user-1", "选哪个？", options, false);
+        List<DecisionQuestion> questions = sampleQuestions();
+        registry.register("msg-1", "user-1", "选哪个？", questions);
         assertThat(registry.hasAwaiting("msg-1")).isTrue();
 
         assertThatThrownBy(() ->
-                registry.register("msg-1", "user-1", "再问一次？", options, false))
+                registry.register("msg-1", "user-1", "再问一次？", questions))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("awaiting");
     }
 
     @Test
     void register_concurrentSameMessage_onlyOneSucceeds() throws Exception {
-        List<DecisionOption> options = sampleOptions(false);
+        List<DecisionQuestion> questions = sampleQuestions();
         int threads = 16;
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         CountDownLatch ready = new CountDownLatch(threads);
@@ -74,7 +153,7 @@ class DecisionRegistryTest {
                 ready.countDown();
                 start.await();
                 try {
-                    registry.register("msg-race", "user-1", "选哪个？", options, false);
+                    registry.register("msg-race", "user-1", "选哪个？", questions);
                     success.incrementAndGet();
                 } catch (IllegalStateException e) {
                     rejected.incrementAndGet();
@@ -95,43 +174,9 @@ class DecisionRegistryTest {
     }
 
     @Test
-    void resolve_requireInputBlank_returnsInputRequired_andDoesNotComplete() {
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A", "快", false),
-                new DecisionOption("plan_b", "方案B", "全", true));
-        DecisionRegistry.Registration reg =
-                registry.register("msg-2", "user-1", "选哪个？", options, false);
-
-        DecisionRegistry.ResolveOutcome outcome =
-                registry.resolve(reg.token(), "plan_b", "  ", "user-1");
-
-        assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.INPUT_REQUIRED);
-        assertThat(reg.future().isDone()).isFalse();
-        assertThat(registry.hasAwaiting("msg-2")).isTrue();
-    }
-
-    @Test
-    void resolve_validChoice_completesFuture() throws Exception {
-        List<DecisionOption> options = sampleOptions(false);
-        DecisionRegistry.Registration reg =
-                registry.register("msg-3", "user-1", "选哪个？", options, false);
-
-        DecisionRegistry.ResolveOutcome outcome =
-                registry.resolve(reg.token(), "plan_a", null, "user-1");
-
-        assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.ACCEPTED);
-        DecisionResult result = reg.future().get(1, TimeUnit.SECONDS);
-        assertThat(result.choice()).isEqualTo("plan_a");
-        assertThat(result.customInput()).isNull();
-        assertThat(result.decidedAt()).isPositive();
-        assertThat(registry.hasAwaiting("msg-3")).isFalse();
-    }
-
-    @Test
     void cancelWaitersForMessage_cancelsFuture() {
-        List<DecisionOption> options = sampleOptions(false);
         DecisionRegistry.Registration reg =
-                registry.register("msg-4", "user-1", "选哪个？", options, false);
+                registry.register("msg-4", "user-1", "选哪个？", sampleQuestions());
 
         registry.cancelWaitersForMessage("msg-4");
 
@@ -141,12 +186,12 @@ class DecisionRegistryTest {
 
     @Test
     void register_stripsMessageId_soWhitespaceCannotBypassD15() {
-        List<DecisionOption> options = sampleOptions(false);
-        registry.register("  msg-d15  ", "user-1", "选哪个？", options, false);
+        List<DecisionQuestion> questions = sampleQuestions();
+        registry.register("  msg-d15  ", "user-1", "选哪个？", questions);
 
         assertThat(registry.hasAwaiting("msg-d15")).isTrue();
         assertThatThrownBy(() ->
-                registry.register("msg-d15", "user-1", "再问？", options, false))
+                registry.register("msg-d15", "user-1", "再问？", questions))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("awaiting");
 
@@ -155,27 +200,13 @@ class DecisionRegistryTest {
     }
 
     @Test
-    void resolve_invalidChoice_doesNotCompleteFuture() {
-        List<DecisionOption> options = sampleOptions(false);
-        DecisionRegistry.Registration reg =
-                registry.register("msg-5", "user-1", "选哪个？", options, false);
-
-        DecisionRegistry.ResolveOutcome outcome =
-                registry.resolve(reg.token(), "not_an_option", null, "user-1");
-
-        assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.INVALID_CHOICE);
-        assertThat(reg.future().isDone()).isFalse();
-        assertThat(registry.hasAwaiting("msg-5")).isTrue();
-    }
-
-    @Test
     void resolve_messageIdMismatch_returnsNotFound_andDoesNotComplete() {
-        List<DecisionOption> options = sampleOptions(false);
         DecisionRegistry.Registration reg =
-                registry.register("msg-owner", "user-1", "选哪个？", options, false);
+                registry.register("msg-owner", "user-1", "选哪个？", sampleQuestions());
+        var answers = List.of(new DecisionAnswer("q1", List.of("plan_a"), null));
 
         DecisionRegistry.ResolveOutcome outcome =
-                registry.resolve(reg.token(), "plan_a", null, "user-1", "msg-other-gen");
+                registry.resolve(reg.token(), answers, "user-1", "msg-other-gen");
 
         assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.NOT_FOUND);
         assertThat(reg.future().isDone()).isFalse();
@@ -184,48 +215,50 @@ class DecisionRegistryTest {
 
     @Test
     void resolve_expectedMessageIdMatch_completesFuture() throws Exception {
-        List<DecisionOption> options = sampleOptions(false);
         DecisionRegistry.Registration reg =
-                registry.register("msg-match", "user-1", "选哪个？", options, false);
+                registry.register("msg-match", "user-1", "选哪个？", sampleQuestions());
+        var answers = List.of(new DecisionAnswer("q1", List.of("plan_a"), null));
 
         DecisionRegistry.ResolveOutcome outcome =
-                registry.resolve(reg.token(), "plan_a", null, "user-1", "msg-match");
+                registry.resolve(reg.token(), answers, "user-1", "msg-match");
 
         assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.ACCEPTED);
-        assertThat(reg.future().get(1, TimeUnit.SECONDS).choice()).isEqualTo("plan_a");
+        assertThat(reg.future().get(1, TimeUnit.SECONDS).outcome()).isEqualTo("answered");
     }
 
     @Test
-    void awaitDecision_timeout_returnsTimeoutChoice() throws Exception {
+    void awaitDecision_timeout_returnsTimeoutOutcome() throws Exception {
         executionProperties.getReact().getDecision().setTimeoutSec(0);
-        List<DecisionOption> options = sampleOptions(false);
         DecisionRegistry.Registration reg =
-                registry.register("msg-6", "user-1", "选哪个？", options, false);
+                registry.register("msg-6", "user-1", "选哪个？", sampleQuestions());
 
         DecisionResult result = registry.awaitDecision(reg);
 
-        assertThat(result.choice()).isEqualTo("__timeout__");
-        assertThat(result.customInput()).isNull();
+        assertThat(result.outcome()).isEqualTo("timeout");
+        assertThat(result.title()).isEqualTo("选哪个？");
+        assertThat(result.answers()).isEmpty();
         assertThat(registry.hasAwaiting("msg-6")).isFalse();
     }
 
     @Test
-    void awaitDecision_afterCancel_returnsCancelledChoice() throws Exception {
-        List<DecisionOption> options = sampleOptions(false);
+    void awaitDecision_afterCancel_returnsCancelledOutcome() throws Exception {
         DecisionRegistry.Registration reg =
-                registry.register("msg-7", "user-1", "选哪个？", options, false);
+                registry.register("msg-7", "user-1", "选哪个？", sampleQuestions());
         registry.cancelWaitersForMessage("msg-7");
 
         DecisionResult result = registry.awaitDecision(reg);
 
-        assertThat(result.choice()).isEqualTo("__cancelled__");
-        assertThat(result.customInput()).isNull();
+        assertThat(result.outcome()).isEqualTo("cancelled");
+        assertThat(result.title()).isEqualTo("选哪个？");
+        assertThat(result.answers()).isEmpty();
         assertThat(registry.hasAwaiting("msg-7")).isFalse();
     }
 
-    private static List<DecisionOption> sampleOptions(boolean requireInput) {
-        return List.of(
-                new DecisionOption("plan_a", "方案A", "快", requireInput),
-                new DecisionOption("plan_b", "方案B", "全", false));
+    private static List<DecisionQuestion> sampleQuestions() {
+        return List.of(new DecisionQuestion(
+                "q1",
+                "选哪个？",
+                List.of(new DecisionOption("plan_a", "方案A"), new DecisionOption("plan_b", "方案B")),
+                false));
     }
 }

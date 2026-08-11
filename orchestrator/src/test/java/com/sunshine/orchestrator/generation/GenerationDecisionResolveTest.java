@@ -56,6 +56,19 @@ class GenerationDecisionResolveTest {
     }
 
     @Test
+    @DisplayName("INVALID_ANSWERS → DECISION_INVALID_ANSWERS（400）")
+    void resolve_mapsInvalidAnswersTo400() {
+        assertThatThrownBy(() -> GenerationController.mapResolveOutcome(DecisionRegistry.ResolveOutcome.INVALID_ANSWERS))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> {
+                    BizException biz = (BizException) ex;
+                    assertThat(biz.getErrorCode()).isEqualTo(OrchestratorErrorCode.DECISION_INVALID_ANSWERS);
+                    assertThat(biz.getErrorCode().getCode()).isEqualTo(400);
+                    assertThat(biz.getErrorCode().getKey()).isEqualTo("decision_invalid_answers");
+                });
+    }
+
+    @Test
     @DisplayName("INVALID_CHOICE / EXPIRED / NOT_FOUND / FORBIDDEN 映射错误码")
     void resolve_mapsOtherOutcomesToErrorCodes() {
         assertThatThrownBy(() -> GenerationController.mapResolveOutcome(DecisionRegistry.ResolveOutcome.INVALID_CHOICE))
@@ -83,6 +96,7 @@ class GenerationDecisionResolveTest {
     @DisplayName("error key 与 spec 一致")
     void resolve_errorKeysMatchSpec() {
         assertThat(OrchestratorErrorCode.DECISION_INVALID_CHOICE.getKey()).isEqualTo("decision_invalid_choice");
+        assertThat(OrchestratorErrorCode.DECISION_INVALID_ANSWERS.getKey()).isEqualTo("decision_invalid_answers");
         assertThat(OrchestratorErrorCode.DECISION_INPUT_REQUIRED.getKey()).isEqualTo("decision_input_required");
         assertThat(OrchestratorErrorCode.DECISION_EXPIRED.getKey()).isEqualTo("decision_expired");
         assertThat(OrchestratorErrorCode.DECISION_NOT_FOUND.getKey()).isEqualTo("decision_not_found");

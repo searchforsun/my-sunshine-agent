@@ -27,6 +27,7 @@ public enum OrchestratorErrorCode implements ErrorCode {
     AGENT_NOT_FOUND(400, "orch_agent_not_found", "未找到指定的智能体，请检查列表后重试"),
     SANDBOX_WORKSPACE_NOT_FOUND(404, "orch_sandbox_workspace_not_found", "尚无沙箱工作区"),
     DECISION_INVALID_CHOICE(400, "decision_invalid_choice", "选项无效"),
+    DECISION_INVALID_ANSWERS(400, "decision_invalid_answers", "答案不完整或题目不匹配"),
     DECISION_INPUT_REQUIRED(400, "decision_input_required", "请填写自定义输入"),
     DECISION_EXPIRED(400, "decision_expired", "决策已过期"),
     DECISION_NOT_FOUND(404, "decision_not_found", "决策不存在或无权操作");
