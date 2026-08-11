@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.processing.StepSummary;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -60,5 +61,46 @@ class ProcessingStepSerdeDecisionTest {
         assertThat(roundTrip.expiresAt()).isEqualTo(1753721880000L);
         assertThat(roundTrip.choice()).isNull();
         assertThat(roundTrip.customInput()).isNull();
+    }
+
+    @Test
+    void decision_roundTrip_viaMetadataToMap() {
+        DecisionStepMeta decision = new DecisionStepMeta(
+                "tok-sse-1",
+                "您希望按哪种方式处理？",
+                List.of(
+                        new DecisionOption("plan_a", "方案A", "快", false),
+                        new DecisionOption("plan_b", "方案B", "全", true)),
+                true,
+                1753721880000L,
+                "plan_b",
+                "补充说明：走完整流程");
+        StepMetadata meta = StepMetadata.withDecision(null, decision);
+        Map<String, Object> map = ProcessingStepSerde.metadataToMap(meta);
+
+        assertThat(map).containsKey("decision");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> decisionMap = (Map<String, Object>) map.get("decision");
+        assertThat(decisionMap.get("token")).isEqualTo("tok-sse-1");
+        assertThat(decisionMap.get("question")).isEqualTo("您希望按哪种方式处理？");
+        assertThat(decisionMap.get("allowCustomInput")).isEqualTo(true);
+        assertThat(decisionMap.get("expiresAt")).isEqualTo(1753721880000L);
+        assertThat(decisionMap.get("choice")).isEqualTo("plan_b");
+        assertThat(decisionMap.get("customInput")).isEqualTo("补充说明：走完整流程");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> options = (List<Map<String, Object>>) decisionMap.get("options");
+        assertThat(options).hasSize(2);
+        assertThat(options.get(0).get("value")).isEqualTo("plan_a");
+        assertThat(options.get(0).get("label")).isEqualTo("方案A");
+        assertThat(options.get(0).get("description")).isEqualTo("快");
+        assertThat(options.get(0).get("requireInput")).isEqualTo(false);
+        assertThat(options.get(1).get("value")).isEqualTo("plan_b");
+        assertThat(options.get(1).get("label")).isEqualTo("方案B");
+        assertThat(options.get(1).get("description")).isEqualTo("全");
+        assertThat(options.get(1).get("requireInput")).isEqualTo(true);
+
+        StepMetadata parsed = ProcessingStepSerde.metadataFromMap(map);
+        assertThat(parsed).isNotNull();
+        assertThat(parsed.decision()).isEqualTo(decision);
     }
 }
