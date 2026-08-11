@@ -188,7 +188,7 @@ public class RequestDecisionTool {
                 .orElse("");
     }
 
-    static String formatSuccessResult(String choice, String label, String customInput) {
+    public static String formatSuccessResult(String choice, String label, String customInput) {
         String input = customInput != null ? customInput : "";
         return "choice=" + nullToEmpty(choice)
                 + "\nlabel=" + nullToEmpty(label)

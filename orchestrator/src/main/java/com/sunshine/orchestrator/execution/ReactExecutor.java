@@ -89,7 +89,8 @@ public class ReactExecutor {
             blocks.addAll(injectedBlocks);
         }
         if (ctx.reactRestart() && !resumeSteps.isEmpty()) {
-            blocks.addAll(ReactResumeContextSupport.buildInjectedBlocks(resumeSteps));
+            // 不含【待决策】：DecisionResumeSupport await 成功后再并入【用户决策】（见 ReActAgentRuntime）
+            blocks.addAll(ReactResumeContextSupport.buildInjectedBlocks(resumeSteps, false));
         }
         // $A $B 绑定：注入可 spawn 的智能体列表（模板 SSOT：Catalog id=react.spawn-hint）
         Map<String, String> allParams = ctx.plan() != null && ctx.plan().params() != null

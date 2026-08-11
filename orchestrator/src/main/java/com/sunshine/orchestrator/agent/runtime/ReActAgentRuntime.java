@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent.runtime;
 
+import com.sunshine.orchestrator.agent.DecisionResumeOutcome;
 import com.sunshine.orchestrator.agent.DecisionResumeSupport;
 import com.sunshine.orchestrator.agent.HarnessAgentHolder;
 import com.sunshine.orchestrator.agent.ProcessingStep;
@@ -9,6 +10,7 @@ import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.execution.DecisionResumeSteps;
+import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.taskboard.ReactTaskBoardService;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
@@ -113,9 +115,6 @@ public class ReActAgentRuntime implements AgentRuntime {
                 workspaceCheckout = conv.getCheckoutPath();
             }
         }
-        List<Msg> inputs = promptComposer.composeReactInputs(
-                PromptComposeRequest.forReact(memory, query, request.skillId(), request.injectedBlocks(),
-                        request.reactRestart(), request.reactPromptId(), null, convKind, workspaceCheckout));
             ProcessingTimelineSession session = new ProcessingTimelineSession();
             session.bindUserQuery(query);
             session.bindTraceMessageId(assistantMessageId);
@@ -143,17 +142,26 @@ public class ReActAgentRuntime implements AgentRuntime {
             } else if (assistantMessageId != null) {
                 StepEventBridge.setUserQuery(assistantMessageId, query);
             }
-            // 续跑 decision：bridge 就绪后同步 re-await（阻塞本 boundedElastic 线程）
+            // 续跑 decision：bridge 就绪后同步 re-await；成功则并入【用户决策】再 compose（不依赖二次 tool_call）
+            List<String> injectedBlocks = new ArrayList<>(request.injectedBlocks());
             if (request.reactRestart()
                     && request.role() == AgentRole.MAIN
                     && StringUtils.hasText(request.assistantMessageId())) {
                 List<ProcessingStep> resumeSteps = DecisionResumeSteps.take(request.assistantMessageId());
                 DecisionResumeSupport resumeSupport = decisionResumeSupport.getIfAvailable();
                 if (resumeSupport != null && !resumeSteps.isEmpty()) {
-                    resumeSupport.prepareOnReactResume(
+                    DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(
                             request.assistantMessageId(), bridgeId, resumeSteps);
+                    if (outcome.shouldAbort()) {
+                        // 对齐 HITL：GenerationJob 将 HitlWaitInterruptedException → INTERRUPTED
+                        throw new HitlWaitInterruptedException();
+                    }
+                    injectedBlocks.addAll(outcome.injectBlocks());
                 }
             }
+            List<Msg> inputs = promptComposer.composeReactInputs(
+                    PromptComposeRequest.forReact(memory, query, request.skillId(), injectedBlocks,
+                            request.reactRestart(), request.reactPromptId(), null, convKind, workspaceCheckout));
             AtomicBoolean answerContentStarted = new AtomicBoolean(false);
             AtomicBoolean answerStreamFinished = new AtomicBoolean(false);
             StringBuilder answerContent = new StringBuilder();

@@ -21,6 +21,14 @@ public final class ReactResumeContextSupport {
     }
 
     public static List<String> buildInjectedBlocks(List<ProcessingStep> steps) {
+        return buildInjectedBlocks(steps, true);
+    }
+
+    /**
+     * @param includeAwaitingDecision false 用于 reactRestart：【待决策】改由
+     * {@link com.sunshine.orchestrator.agent.DecisionResumeSupport} 完成后注入【用户决策】，避免 await 前陈旧文案
+     */
+    public static List<String> buildInjectedBlocks(List<ProcessingStep> steps, boolean includeAwaitingDecision) {
         if (steps == null || steps.isEmpty()) {
             return List.of();
         }
@@ -38,7 +46,9 @@ public final class ReactResumeContextSupport {
                 continue;
             }
             if (isDecisionPhase(phase, step.id())) {
-                appendAwaitingDecisionBlock(blocks, step);
+                if (includeAwaitingDecision) {
+                    appendAwaitingDecisionBlock(blocks, step);
+                }
                 continue;
             }
             if (ToolStepIds.isToolStep(step.id())) {
@@ -46,6 +56,21 @@ public final class ReactResumeContextSupport {
             }
         }
         return List.copyOf(blocks);
+    }
+
+    /**
+     * 续跑用户已选：短格式原文注入（不截断），即使 checkpoint 不再重放 request_decision 也能进入模型上下文。
+     */
+    public static String buildResolvedDecisionBlock(
+            String question, String choice, String label, String customInput) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("【用户决策】");
+        if (StringUtils.hasText(question)) {
+            sb.append('\n').append(question.strip());
+        }
+        sb.append('\n').append(com.sunshine.orchestrator.agent.RequestDecisionTool.formatSuccessResult(
+                choice, label, customInput));
+        return sb.toString();
     }
 
     private static boolean isDecisionPhase(String phase, String stepId) {

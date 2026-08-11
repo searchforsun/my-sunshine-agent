@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, TimelineLabelJUnitExtension.class})
 class DecisionResumeSupportTest {
 
     private static final String MSG = "msg-resume-decision";
@@ -71,7 +72,7 @@ class DecisionResumeSupportTest {
         when(decisionRegistry.awaitDecision(reg))
                 .thenReturn(new DecisionResult("plan_a", null, System.currentTimeMillis()));
 
-        resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
+        DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
 
         ArgumentCaptor<List<DecisionOption>> optionsCaptor = ArgumentCaptor.forClass(List.class);
         verify(decisionRegistry).register(eq(MSG), eq("user-1"), eq(question), optionsCaptor.capture(), eq(false));
@@ -80,10 +81,90 @@ class DecisionResumeSupportTest {
                 eq(BRIDGE), eq(awaiting.id()), eq("new-token"), eq(question), anyList(), eq(false), any(Long.class));
         verify(timelineSupport).complete(
                 eq(BRIDGE), eq("new-token"), any(DecisionResult.class), eq("方案A"));
+        assertThat(outcome.shouldAbort()).isFalse();
         assertThat(StepEventBridge.consumeDecisionPreApproval(MSG, fingerprint)).isPresent()
                 .get()
                 .extracting(DecisionResult::choice)
                 .isEqualTo("plan_a");
+    }
+
+    @Test
+    void resume_resolved_injectsChoiceWithoutSecondToolCall() throws Exception {
+        List<DecisionOption> options = List.of(
+                new DecisionOption("plan_a", "方案A", "稳妥", false),
+                new DecisionOption("plan_b", "方案B", null, false));
+        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "paused", null, options);
+        DecisionRegistry.Registration reg = new DecisionRegistry.Registration(
+                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList(), eq(false)))
+                .thenReturn(reg);
+        when(decisionRegistry.awaitDecision(reg))
+                .thenReturn(new DecisionResult("plan_b", "补充", System.currentTimeMillis()));
+
+        DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
+
+        // C1：不依赖二次 tool_call / consume；injectBlocks 必须带短格式
+        assertThat(outcome.shouldAbort()).isFalse();
+        assertThat(outcome.injectBlocks()).isNotEmpty();
+        String block = String.join("\n", outcome.injectBlocks());
+        assertThat(block).contains("【用户决策】");
+        assertThat(block).contains("choice=plan_b");
+        assertThat(block).contains("label=方案B");
+        assertThat(block).contains("customInput=补充");
+        assertThat(block).contains("选哪个方案？");
+    }
+
+    @Test
+    void resume_timeout_abortsWithoutProceeding() throws Exception {
+        List<DecisionOption> options = List.of(
+                new DecisionOption("plan_a", "方案A", null, false),
+                new DecisionOption("plan_b", "方案B", null, false));
+        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "awaiting", null, options);
+        DecisionRegistry.Registration reg = new DecisionRegistry.Registration(
+                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList(), eq(false)))
+                .thenReturn(reg);
+        when(decisionRegistry.awaitDecision(reg))
+                .thenReturn(new DecisionResult("__timeout__", null, System.currentTimeMillis()));
+
+        DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
+
+        assertThat(outcome.shouldAbort()).isTrue();
+        assertThat(outcome.injectBlocks()).isEmpty();
+        verify(timelineSupport).pause(eq(BRIDGE), eq("new-token"), any());
+    }
+
+    @Test
+    void resume_cancelled_abortsWithoutProceeding() throws Exception {
+        List<DecisionOption> options = List.of(
+                new DecisionOption("plan_a", "方案A", null, false),
+                new DecisionOption("plan_b", "方案B", null, false));
+        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "paused", null, options);
+        DecisionRegistry.Registration reg = new DecisionRegistry.Registration(
+                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList(), eq(false)))
+                .thenReturn(reg);
+        when(decisionRegistry.awaitDecision(reg))
+                .thenReturn(new DecisionResult("__cancelled__", null, System.currentTimeMillis()));
+
+        DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
+
+        assertThat(outcome.shouldAbort()).isTrue();
+        verify(timelineSupport).pause(eq(BRIDGE), eq("new-token"), any());
+    }
+
+    @Test
+    void resume_registerFailure_aborts() {
+        List<DecisionOption> options = List.of(
+                new DecisionOption("plan_a", "方案A", null, false),
+                new DecisionOption("plan_b", "方案B", null, false));
+        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "awaiting", null, options);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList(), eq(false)))
+                .thenThrow(new IllegalStateException("decision awaiting already exists"));
+
+        DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
+
+        assertThat(outcome.shouldAbort()).isTrue();
     }
 
     @Test

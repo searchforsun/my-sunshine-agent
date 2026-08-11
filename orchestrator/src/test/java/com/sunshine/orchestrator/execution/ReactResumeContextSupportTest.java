@@ -62,6 +62,25 @@ class ReactResumeContextSupportTest {
         });
     }
 
+    @Test
+    void buildInjectedBlocks_reactRestartExcludesAwaitingDecision() {
+        List<String> blocks = ReactResumeContextSupport.buildInjectedBlocks(
+                List.of(awaitingDecisionStep()), false);
+        assertThat(blocks).isEmpty();
+    }
+
+    @Test
+    void buildResolvedDecisionBlock_containsShortFormatChoice() {
+        String block = ReactResumeContextSupport.buildResolvedDecisionBlock(
+                "选哪个方案？", "plan_a", "方案A", "备注原文不截断");
+
+        assertThat(block).contains("【用户决策】");
+        assertThat(block).contains("选哪个方案？");
+        assertThat(block).contains("choice=plan_a");
+        assertThat(block).contains("label=方案A");
+        assertThat(block).contains("customInput=备注原文不截断");
+    }
+
     private static ProcessingStep intentStep() {
         return new ProcessingStep(
                 "intent",
