@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.orchestrator.agent.DecisionOption;
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
@@ -43,6 +45,20 @@ class ReactResumeContextSupportTest {
         assertThat(blocks).singleElement().satisfies(block -> {
             assertThat(block).contains("待确认写操作");
             assertThat(block).doesNotContain("已执行");
+        });
+    }
+
+    @Test
+    void buildInjectedBlocks_includesAwaitingDecision() {
+        List<String> blocks = ReactResumeContextSupport.buildInjectedBlocks(List.of(awaitingDecisionStep()));
+
+        assertThat(blocks).singleElement().satisfies(block -> {
+            assertThat(block).startsWith("【待决策】");
+            assertThat(block).contains("选哪个方案？");
+            assertThat(block).contains("plan_a: 方案A — 稳妥");
+            assertThat(block).contains("plan_b: 方案B");
+            // 原文不截断
+            assertThat(block).contains("很长很长的描述内容用于确认不被截断");
         });
     }
 
@@ -128,6 +144,38 @@ class ReactResumeContextSupportTest {
                 2L,
                 "审批 OA 待办",
                 meta,
+                null,
+                null,
+                null);
+    }
+
+    private static ProcessingStep awaitingDecisionStep() {
+        String longDesc = "很长很长的描述内容用于确认不被截断";
+        DecisionStepMeta decision = new DecisionStepMeta(
+                "tok-d1",
+                "选哪个方案？",
+                List.of(
+                        new DecisionOption("plan_a", "方案A", "稳妥", false),
+                        new DecisionOption("plan_b", "方案B", longDesc, false)),
+                false,
+                System.currentTimeMillis() + 60_000,
+                null,
+                null);
+        return new ProcessingStep(
+                "decision-tok-d1",
+                "decision",
+                "awaiting",
+                new StepSummary(null, "等待决策", null),
+                1L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "选哪个方案？",
+                StepMetadata.withDecision(null, decision),
                 null,
                 null,
                 null);

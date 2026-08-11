@@ -35,8 +35,13 @@ public class StepEventBridgeRegistry {
     private final Map<String, String> toolUseBridge = new ConcurrentHashMap<>();
     private final Map<String, String> toolUseStep = new ConcurrentHashMap<>();
     private final Map<String, String> hitlPreapproved = new ConcurrentHashMap<>();
+    /** assistantMsgId → 续跑预决策（fingerprint + result） */
+    private final Map<String, DecisionPreApproval> decisionPreapproved = new ConcurrentHashMap<>();
     /** assistantMsgId → Chat 工作区写 HITL 跳过模式 */
     private final Map<String, SandboxWriteHitlMode> writeHitlModes = new ConcurrentHashMap<>();
+
+    private record DecisionPreApproval(String fingerprint, DecisionResult result) {
+    }
     private final Map<String, Function<StreamToken, List<StreamToken>>> tokenWrappers = new ConcurrentHashMap<>();
     /** 与 tokenWrappers 同键；缺省 {@link TokenWrapperMode#EMIT_OUTGOING} */
     private final Map<String, TokenWrapperMode> tokenWrapperModes = new ConcurrentHashMap<>();
@@ -68,6 +73,7 @@ public class StepEventBridgeRegistry {
         toolUseBridge.clear();
         toolUseStep.clear();
         hitlPreapproved.clear();
+        decisionPreapproved.clear();
         writeHitlModes.clear();
         tokenWrappers.clear();
         tokenWrapperModes.clear();
@@ -283,6 +289,38 @@ public class StepEventBridgeRegistry {
         return expected.equals(hitlPreapproved.remove(messageId.strip()));
     }
 
+    public void grantDecisionPreApproval(String messageId, String fingerprint, DecisionResult result) {
+        if (messageId == null || messageId.isBlank()
+                || fingerprint == null || fingerprint.isBlank()
+                || result == null) {
+            return;
+        }
+        decisionPreapproved.put(messageId.strip(), new DecisionPreApproval(fingerprint.strip(), result));
+    }
+
+    public java.util.Optional<DecisionResult> consumeDecisionPreApproval(String messageId, String fingerprint) {
+        if (messageId == null || messageId.isBlank() || fingerprint == null || fingerprint.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        DecisionPreApproval held = decisionPreapproved.get(messageId.strip());
+        if (held == null || !fingerprint.strip().equals(held.fingerprint())) {
+            return java.util.Optional.empty();
+        }
+        decisionPreapproved.remove(messageId.strip(), held);
+        return java.util.Optional.ofNullable(held.result());
+    }
+
+    public java.util.Optional<DecisionResult> peekDecisionPreApproval(String messageId, String fingerprint) {
+        if (messageId == null || messageId.isBlank() || fingerprint == null || fingerprint.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        DecisionPreApproval held = decisionPreapproved.get(messageId.strip());
+        if (held == null || !fingerprint.strip().equals(held.fingerprint())) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.ofNullable(held.result());
+    }
+
     public void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {
         if (assistantMessageId == null || assistantMessageId.isBlank()) {
             return;
@@ -410,6 +448,7 @@ public class StepEventBridgeRegistry {
             hitlEnabled.remove(messageId);
             hitlAssistantByBridge.remove(messageId);
             hitlPreapproved.remove(messageId);
+            decisionPreapproved.remove(messageId);
             tokenWrappers.remove(messageId);
             tokenWrapperModes.remove(messageId);
             loopBodyFolds.remove(messageId);

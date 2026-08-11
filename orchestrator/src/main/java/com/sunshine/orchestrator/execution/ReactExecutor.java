@@ -8,12 +8,14 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.processing.ThinkStepIds;
 import com.sunshine.orchestrator.prompt.PersonalRulesSupport;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -32,6 +34,7 @@ public class ReactExecutor {
     private final AgentCatalogService agentCatalogService;
     private final AgentExecutionProperties executionProperties;
     private final PromptCatalogHolder catalogHolder;
+    private final ObjectProvider<GenerationRegistry> generationRegistry;
 
     private static final String PARAM_AGENT_IDS = "agentIds";
 
@@ -75,6 +78,7 @@ public class ReactExecutor {
                     null, null, null));
         }
         int checkpointThinkIteration = resolveCheckpointThinkIteration(ctx);
+        List<ProcessingStep> resumeSteps = resolveResumeSteps(ctx);
         // 个人规则（soul）作为 injectedBlocks 首元素注入 MAIN Agent；子 Agent 经 sub() 工厂不继承
         List<String> blocks = new ArrayList<>();
         String wrappedRules = PersonalRulesSupport.wrap(ctx.personalRules());
@@ -83,6 +87,9 @@ public class ReactExecutor {
         }
         if (injectedBlocks != null) {
             blocks.addAll(injectedBlocks);
+        }
+        if (ctx.reactRestart() && !resumeSteps.isEmpty()) {
+            blocks.addAll(ReactResumeContextSupport.buildInjectedBlocks(resumeSteps));
         }
         // $A $B 绑定：注入可 spawn 的智能体列表（模板 SSOT：Catalog id=react.spawn-hint）
         Map<String, String> allParams = ctx.plan() != null && ctx.plan().params() != null
@@ -123,6 +130,10 @@ public class ReactExecutor {
                             .replace("{agentId}", firstId));
                 }
             }
+        }
+        // 决策 re-await 挂在 ReActAgentRuntime bridge bind 之后（见 DecisionResumeSupport）
+        if (ctx.reactRestart() && StringUtils.hasText(ctx.assistantMsgId()) && !resumeSteps.isEmpty()) {
+            DecisionResumeSteps.bind(ctx.assistantMsgId(), resumeSteps);
         }
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
@@ -165,6 +176,36 @@ public class ReactExecutor {
         } catch (Exception e) {
             log.warn("[ReactExecutor] resolve checkpoint think iteration failed: {}", e.getMessage());
             return 0;
+        }
+    }
+
+    /** 优先用 GenerationJob 已截断并保留 decision 的 stepsBuffer；否则回退 existingStepsJson */
+    private List<ProcessingStep> resolveResumeSteps(ExecutionStreamContext ctx) {
+        if (!ctx.reactRestart()) {
+            return List.of();
+        }
+        if (StringUtils.hasText(ctx.assistantMsgId())) {
+            GenerationRegistry registry = generationRegistry.getIfAvailable();
+            if (registry != null) {
+                var jobOpt = registry.findByMessageId(ctx.assistantMsgId().strip());
+                if (jobOpt.isPresent()) {
+                    List<ProcessingStep> buffered = jobOpt.get().getStepsBuffer();
+                    if (buffered != null && !buffered.isEmpty()) {
+                        return List.copyOf(buffered);
+                    }
+                }
+            }
+        }
+        if (ctx.existingStepsJson() == null || ctx.existingStepsJson().isBlank()) {
+            return List.of();
+        }
+        try {
+            List<ProcessingStep> steps = new ArrayList<>(ProcessingStepSerde.fromJson(ctx.existingStepsJson()));
+            ThinkStepIds.truncateToLastCompleteThink(steps);
+            return List.copyOf(steps);
+        } catch (Exception e) {
+            log.warn("[ReactExecutor] resolve resume steps failed: {}", e.getMessage());
+            return List.of();
         }
     }
 

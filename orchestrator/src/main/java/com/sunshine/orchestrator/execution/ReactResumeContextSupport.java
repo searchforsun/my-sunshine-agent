@@ -1,7 +1,9 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.orchestrator.agent.DecisionOption;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
+import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
@@ -35,11 +37,19 @@ public final class ReactResumeContextSupport {
                 appendThinkBlock(blocks, step);
                 continue;
             }
+            if (isDecisionPhase(phase, step.id())) {
+                appendAwaitingDecisionBlock(blocks, step);
+                continue;
+            }
             if (ToolStepIds.isToolStep(step.id())) {
                 appendToolBlock(blocks, step);
             }
         }
         return List.copyOf(blocks);
+    }
+
+    private static boolean isDecisionPhase(String phase, String stepId) {
+        return "decision".equals(phase) || (stepId != null && stepId.startsWith("decision-"));
     }
 
     private static boolean isSkippedPhase(String phase) {
@@ -101,6 +111,37 @@ public final class ReactResumeContextSupport {
                 ? hitl.toolDisplayName().strip()
                 : ToolStepIds.catalogToolName(step.id());
         blocks.add("【待确认写操作 " + displayName + "】\n参数：" + hitl.paramsSummary().strip());
+    }
+
+    private static void appendAwaitingDecisionBlock(List<String> blocks, ProcessingStep step) {
+        String lifecycle = step.lifecycle();
+        if (!"awaiting".equals(lifecycle) && !"paused".equals(lifecycle)) {
+            return;
+        }
+        DecisionStepMeta decision = step.metadata() != null ? step.metadata().decision() : null;
+        if (decision == null || !StringUtils.hasText(decision.question())) {
+            return;
+        }
+        if (StringUtils.hasText(decision.choice())) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("【待决策】\n").append(decision.question().strip());
+        List<DecisionOption> options = decision.options();
+        if (options != null && !options.isEmpty()) {
+            sb.append("\n选项：");
+            for (DecisionOption opt : options) {
+                if (opt == null || !StringUtils.hasText(opt.value())) {
+                    continue;
+                }
+                sb.append("\n- ").append(opt.value().strip()).append(": ");
+                sb.append(StringUtils.hasText(opt.label()) ? opt.label().strip() : "");
+                if (StringUtils.hasText(opt.description())) {
+                    sb.append(" — ").append(opt.description());
+                }
+            }
+        }
+        blocks.add(sb.toString());
     }
 
     private static boolean isCompletedLifecycle(ProcessingStep step) {

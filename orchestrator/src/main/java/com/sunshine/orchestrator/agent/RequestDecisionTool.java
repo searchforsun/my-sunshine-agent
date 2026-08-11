@@ -11,9 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -78,10 +75,12 @@ public class RequestDecisionTool {
             return errorJson("当前消息已有待决策，勿重复调用 request_decision");
         }
 
-        String fingerprint = fingerprint(questionText, optionsJson);
-        if (StepEventBridge.consumeDecisionPreApproval(messageId, fingerprint)) {
-            // Task 11：返回已决策短格式；当前 stub 恒 false，此分支不可达
-            return "";
+        String fingerprint = DecisionFingerprint.of(questionText, options);
+        var preApproved = StepEventBridge.consumeDecisionPreApproval(messageId, fingerprint);
+        if (preApproved.isPresent()) {
+            DecisionResult prior = preApproved.get();
+            String labelForChoice = resolveLabel(options, prior.choice());
+            return formatSuccessResult(prior.choice(), labelForChoice, prior.customInput());
         }
 
         StepEventBridge.ToolAuditContext audit = StepEventBridge.toolAuditContext(messageId);
@@ -202,21 +201,6 @@ public class RequestDecisionTool {
 
     static String formatCancelledResult() {
         return "choice=__cancelled__";
-    }
-
-    private static String fingerprint(String question, String optionsJson) {
-        String raw = nullToEmpty(question) + "\n" + nullToEmpty(optionsJson);
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            return Integer.toHexString(raw.hashCode());
-        }
     }
 
     private static String errorJson(String message) {

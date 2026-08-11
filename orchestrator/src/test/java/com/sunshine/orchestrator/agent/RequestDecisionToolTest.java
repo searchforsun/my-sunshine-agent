@@ -145,6 +145,25 @@ class RequestDecisionToolTest {
                 eq(BRIDGE), eq("tok-1"), any(DecisionResult.class), eq("方案A"));
     }
 
+    @Test
+    void preApproval_returnsShortFormat_withoutRegister() {
+        bindMainContext();
+        List<DecisionOption> options = List.of(
+                new DecisionOption("plan_a", "方案A", "稳妥", false),
+                new DecisionOption("plan_b", "方案B", null, false));
+        String fingerprint = DecisionFingerprint.of("请选择方案", options);
+        StepEventBridge.grantDecisionPreApproval(
+                MSG, fingerprint, new DecisionResult("plan_a", "自定义补充", 1L));
+
+        String out = tool.requestDecision("请选择方案", OPTIONS_OK, false);
+
+        assertThat(out).isEqualTo("choice=plan_a\nlabel=方案A\ncustomInput=自定义补充");
+        verify(decisionRegistry, never()).register(
+                anyString(), anyString(), anyString(), anyList(), anyBoolean());
+        verify(timelineSupport, never()).begin(
+                anyString(), anyString(), anyString(), anyList(), anyBoolean(), anyLong());
+    }
+
     private void bindMainContext() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         registry.bind(BRIDGE, session, new ConcurrentLinkedQueue<>());

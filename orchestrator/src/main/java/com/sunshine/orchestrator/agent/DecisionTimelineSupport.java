@@ -15,8 +15,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class DecisionTimelineSupport {
 
-    /** begin 载荷：enqueueAuxiliary 不进 session.snapshot，终态需本地保留 question/options */
+    /** begin/refresh 载荷：enqueueAuxiliary 不进 session.snapshot，终态需本地保留 question/options */
     private final ConcurrentHashMap<String, DecisionStepMeta> pendingByToken = new ConcurrentHashMap<>();
+    /** 续跑 refresh 时保留原 stepId，避免 decision-{newToken} 另开一张卡 */
+    private final ConcurrentHashMap<String, String> stepIdByToken = new ConcurrentHashMap<>();
 
     public void begin(
             String bridgeId,
@@ -31,9 +33,10 @@ public class DecisionTimelineSupport {
         DecisionStepMeta decision = new DecisionStepMeta(
                 token, question, options, allowCustomInput, expiresAt, null, null);
         pendingByToken.put(token, decision);
+        String stepId = "decision-" + token;
+        stepIdByToken.put(token, stepId);
         StepEventBridge.emit(bridgeId, session -> {
             long ts = System.currentTimeMillis();
-            String stepId = "decision-" + token;
             String label = StringUtils.hasText(question) ? question : DecisionLabels.label();
             StepMetadata metadata = StepMetadata.withDecision(null, decision);
             StepSummary summary = new StepSummary(
@@ -62,21 +65,72 @@ public class DecisionTimelineSupport {
         });
     }
 
+    /**
+     * 续跑：同一 stepId 更新 token/expiresAt，不改 question/options。
+     */
+    public void refreshAwaiting(
+            String bridgeId,
+            String stepId,
+            String token,
+            String question,
+            List<DecisionOption> options,
+            boolean allowCustomInput,
+            Long expiresAt) {
+        if (!StringUtils.hasText(bridgeId) || !StringUtils.hasText(stepId) || !StringUtils.hasText(token)) {
+            return;
+        }
+        DecisionStepMeta decision = new DecisionStepMeta(
+                token, question, options, allowCustomInput, expiresAt, null, null);
+        pendingByToken.put(token, decision);
+        stepIdByToken.put(token, stepId);
+        StepEventBridge.emit(bridgeId, session -> {
+            long ts = System.currentTimeMillis();
+            String label = StringUtils.hasText(question) ? question : DecisionLabels.label();
+            StepSummary summary = new StepSummary(
+                    DecisionLabels.before(),
+                    DecisionLabels.active(question),
+                    null);
+            ProcessingStep card = new ProcessingStep(
+                    stepId,
+                    "decision",
+                    "awaiting",
+                    summary,
+                    ts,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    ts,
+                    label,
+                    StepMetadata.withDecision(null, decision),
+                    null,
+                    null,
+                    null);
+            session.enqueueAuxiliary(StreamToken.step(card));
+        });
+    }
+
     public void complete(String bridgeId, String token, DecisionResult result, String labelForChoice) {
         if (!StringUtils.hasText(bridgeId) || !StringUtils.hasText(token) || result == null) {
             return;
         }
         DecisionStepMeta prior = pendingByToken.remove(token);
         DecisionStepMeta updated = withChoice(prior, token, result);
+        String stepId = stepIdByToken.remove(token);
+        if (!StringUtils.hasText(stepId)) {
+            stepId = "decision-" + token;
+        }
+        String finalStepId = stepId;
         StepEventBridge.emit(bridgeId, session -> {
-            String stepId = "decision-" + token;
             long ts = System.currentTimeMillis();
             StepSummary summary = new StepSummary(
                     DecisionLabels.before(),
                     null,
                     DecisionLabels.after(labelForChoice));
             ProcessingStep card = new ProcessingStep(
-                    stepId,
+                    finalStepId,
                     "decision",
                     "done",
                     summary,
@@ -102,13 +156,17 @@ public class DecisionTimelineSupport {
             return;
         }
         DecisionStepMeta prior = pendingByToken.remove(token);
+        String stepId = stepIdByToken.remove(token);
+        if (!StringUtils.hasText(stepId)) {
+            stepId = "decision-" + token;
+        }
+        String finalStepId = stepId;
         StepEventBridge.emit(bridgeId, session -> {
-            String stepId = "decision-" + token;
             long ts = System.currentTimeMillis();
             String after = StringUtils.hasText(afterText) ? afterText.strip() : DecisionLabels.afterCancel();
             StepSummary summary = new StepSummary(DecisionLabels.before(), null, after);
             ProcessingStep card = new ProcessingStep(
-                    stepId,
+                    finalStepId,
                     "decision",
                     "paused",
                     summary,
@@ -134,13 +192,17 @@ public class DecisionTimelineSupport {
             return;
         }
         DecisionStepMeta prior = pendingByToken.remove(token);
+        String stepId = stepIdByToken.remove(token);
+        if (!StringUtils.hasText(stepId)) {
+            stepId = "decision-" + token;
+        }
+        String finalStepId = stepId;
         StepEventBridge.emit(bridgeId, session -> {
-            String stepId = "decision-" + token;
             long ts = System.currentTimeMillis();
             String after = StringUtils.hasText(errorMsg) ? errorMsg.strip() : DecisionLabels.afterFail();
             StepSummary summary = new StepSummary(DecisionLabels.before(), null, after);
             ProcessingStep card = new ProcessingStep(
-                    stepId,
+                    finalStepId,
                     "decision",
                     "error",
                     summary,

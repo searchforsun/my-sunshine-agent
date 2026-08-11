@@ -55,6 +55,12 @@ public final class ThinkStepIds {
      * think 后仅 tasks 或无后续步（中断在该 think 流式中途）则需连同该 think 一并丢弃，让其重生成。
      */
     public static void truncateToLastCompleteThink(java.util.List<ProcessingStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return;
+        }
+        // 决策卡常落在最后一个完整 think 之后；截断后必须 append 回去，否则续跑 UI/re-await 丢卡
+        ProcessingStep awaitingDecision =
+                com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps.findReactAwaitingDecisionStep(steps);
         int anchorIdx = -1;
         for (int i = 0; i < steps.size(); i++) {
             ProcessingStep step = steps.get(i);
@@ -79,6 +85,18 @@ public final class ThinkStepIds {
         }
         while (steps.size() > anchorIdx + 1) {
             steps.remove(steps.size() - 1);
+        }
+        if (awaitingDecision != null) {
+            boolean present = false;
+            for (ProcessingStep step : steps) {
+                if (step != null && awaitingDecision.id().equals(step.id())) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) {
+                steps.add(awaitingDecision);
+            }
         }
     }
 

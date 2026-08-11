@@ -1,11 +1,14 @@
 package com.sunshine.orchestrator.agent.runtime;
 
+import com.sunshine.orchestrator.agent.DecisionResumeSupport;
 import com.sunshine.orchestrator.agent.HarnessAgentHolder;
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMiddleware;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
+import com.sunshine.orchestrator.execution.DecisionResumeSteps;
 import com.sunshine.orchestrator.taskboard.ReactTaskBoardService;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
@@ -57,6 +60,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
     private final ChatConversationRepository conversationRepo;
     private final ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
+    private final ObjectProvider<DecisionResumeSupport> decisionResumeSupport;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
@@ -138,6 +142,17 @@ public class ReActAgentRuntime implements AgentRuntime {
                 }
             } else if (assistantMessageId != null) {
                 StepEventBridge.setUserQuery(assistantMessageId, query);
+            }
+            // 续跑 decision：bridge 就绪后同步 re-await（阻塞本 boundedElastic 线程）
+            if (request.reactRestart()
+                    && request.role() == AgentRole.MAIN
+                    && StringUtils.hasText(request.assistantMessageId())) {
+                List<ProcessingStep> resumeSteps = DecisionResumeSteps.take(request.assistantMessageId());
+                DecisionResumeSupport resumeSupport = decisionResumeSupport.getIfAvailable();
+                if (resumeSupport != null && !resumeSteps.isEmpty()) {
+                    resumeSupport.prepareOnReactResume(
+                            request.assistantMessageId(), bridgeId, resumeSteps);
+                }
             }
             AtomicBoolean answerContentStarted = new AtomicBoolean(false);
             AtomicBoolean answerStreamFinished = new AtomicBoolean(false);

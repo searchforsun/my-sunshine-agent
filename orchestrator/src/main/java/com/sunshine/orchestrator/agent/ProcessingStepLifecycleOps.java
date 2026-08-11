@@ -1,12 +1,14 @@
 package com.sunshine.orchestrator.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.NodeRecoveryMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
 import com.sunshine.orchestrator.processing.TimelineStepId;
 import com.sunshine.orchestrator.plan.PendingInteraction;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -115,6 +117,40 @@ public final class ProcessingStepLifecycleOps {
             if (isAwaitingInteractionStep(step)) {
                 return step;
             }
+        }
+        return null;
+    }
+
+    /**
+     * ReAct 待决策步：自尾向前；跳过 {@code node-*}；
+     * {@code phase=decision} 或 id {@code decision-*}；lifecycle ∈ {awaiting,paused}
+     * 且 metadata.decision 仍无终态 choice。
+     */
+    public static ProcessingStep findReactAwaitingDecisionStep(List<ProcessingStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return null;
+        }
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep step = steps.get(i);
+            if (step == null || step.id() == null || step.id().startsWith("node-")) {
+                continue;
+            }
+            boolean decisionPhase = "decision".equals(step.phase()) || step.id().startsWith("decision-");
+            if (!decisionPhase) {
+                continue;
+            }
+            String lifecycle = step.lifecycle();
+            if (!"awaiting".equals(lifecycle) && !"paused".equals(lifecycle)) {
+                continue;
+            }
+            DecisionStepMeta decision = step.metadata() != null ? step.metadata().decision() : null;
+            if (decision == null) {
+                continue;
+            }
+            if (StringUtils.hasText(decision.choice())) {
+                continue;
+            }
+            return step;
         }
         return null;
     }

@@ -155,13 +155,21 @@ public final class StepEventBridge {
         return registry.consumeHitlPreApproval(messageId, toolId, params);
     }
 
-    /** Task 11：续跑预决策 grant；当前 no-op stub */
-    public static void grantDecisionPreApproval(String messageId, String fingerprint) {
+    /** 续跑已 resolve：grant 预决策结果，供 request_decision 入口消费短格式 */
+    public static void grantDecisionPreApproval(String messageId, String fingerprint, DecisionResult result) {
+        registry.grantDecisionPreApproval(messageId, fingerprint, result);
     }
 
-    /** Task 11：续跑已 resolve 时跳过二次出题；当前 stub 恒 false */
-    public static boolean consumeDecisionPreApproval(String messageId, String fingerprint) {
-        return false;
+    /** 消费预决策；fingerprint 匹配则返回结果并清除，否则 empty */
+    public static java.util.Optional<DecisionResult> consumeDecisionPreApproval(
+            String messageId, String fingerprint) {
+        return registry.consumeDecisionPreApproval(messageId, fingerprint);
+    }
+
+    /** 窥视预决策（不消费），供续跑路径判断是否已 resolve */
+    public static java.util.Optional<DecisionResult> peekDecisionPreApproval(
+            String messageId, String fingerprint) {
+        return registry.peekDecisionPreApproval(messageId, fingerprint);
     }
 
     public static void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {

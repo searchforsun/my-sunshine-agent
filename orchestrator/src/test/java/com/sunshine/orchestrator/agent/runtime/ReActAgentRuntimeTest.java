@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent.runtime;
 
+import com.sunshine.orchestrator.agent.DecisionResumeSupport;
 import com.sunshine.orchestrator.agent.HarnessAgentHolder;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -56,6 +57,8 @@ class ReActAgentRuntimeTest {
     private com.sunshine.orchestrator.conversation.repo.ChatConversationRepository conversationRepo;
     @Mock
     private ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
+    @Mock
+    private ObjectProvider<DecisionResumeSupport> decisionResumeSupport;
 
     private ReActAgentRuntime runtime;
 
@@ -65,10 +68,11 @@ class ReActAgentRuntimeTest {
         groundingProperties.setEnabled(false);
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
         lenient().when(spawnRunRegistry.getIfAvailable()).thenReturn(null);
+        lenient().when(decisionResumeSupport.getIfAvailable()).thenReturn(null);
         runtime = new ReActAgentRuntime(
                 agentHolder, promptComposer, groundingChecker, groundingProperties,
                 taskBoardService, executionProperties, sandboxSessionLifecycle,
-                conversationRepo, spawnRunRegistry);
+                conversationRepo, spawnRunRegistry, decisionResumeSupport);
     }
 
     @Test
