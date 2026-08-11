@@ -7,9 +7,8 @@ import java.util.concurrent.CompletableFuture;
 record DecisionPendingWaiter(
         String messageId,
         String userId,
-        String question,
-        List<DecisionOption> options,
-        boolean allowCustomInput,
+        String title,
+        List<DecisionQuestion> questions,
         long expiresAt,
         CompletableFuture<DecisionResult> future) {
 }
