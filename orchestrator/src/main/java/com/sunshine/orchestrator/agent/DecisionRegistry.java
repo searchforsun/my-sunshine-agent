@@ -60,6 +60,7 @@ public class DecisionRegistry {
 
     /**
      * 注册待决策 token。若该 message 已有 awaiting → 抛 IllegalStateException（由 Tool 侧解释）。
+     * messageId 入口 strip，与 hasAwaiting / cancelWaitersForMessage 对齐（D15）。
      */
     public Registration register(
             String messageId,
@@ -67,16 +68,20 @@ public class DecisionRegistry {
             String question,
             List<DecisionOption> options,
             boolean allowCustomInput) {
-        if (hasAwaiting(messageId)) {
+        if (messageId == null || messageId.isBlank()) {
+            throw new IllegalArgumentException("messageId must not be blank");
+        }
+        String normalizedMessageId = messageId.strip();
+        if (hasAwaiting(normalizedMessageId)) {
             throw new IllegalStateException(
-                    "decision awaiting already exists for messageId=" + messageId);
+                    "decision awaiting already exists for messageId=" + normalizedMessageId);
         }
         String token = UUID.randomUUID().toString();
         CompletableFuture<DecisionResult> future = new CompletableFuture<>();
         long expiresAt = Instant.now().plusSeconds(timeoutSec()).toEpochMilli();
         waiters.put(token, new DecisionPendingWaiter(
-                messageId, userId, question, List.copyOf(options), allowCustomInput, expiresAt, future));
-        storeToken(token, messageId, userId, expiresAt, question, options, allowCustomInput);
+                normalizedMessageId, userId, question, List.copyOf(options), allowCustomInput, expiresAt, future));
+        storeToken(token, normalizedMessageId, userId, expiresAt, question, options, allowCustomInput);
         return new Registration(token, future, expiresAt);
     }
 

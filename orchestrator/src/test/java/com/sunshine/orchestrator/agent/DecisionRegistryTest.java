@@ -98,6 +98,63 @@ class DecisionRegistryTest {
         assertThat(registry.hasAwaiting("msg-4")).isFalse();
     }
 
+    @Test
+    void register_stripsMessageId_soWhitespaceCannotBypassD15() {
+        List<DecisionOption> options = sampleOptions(false);
+        registry.register("  msg-d15  ", "user-1", "选哪个？", options, false);
+
+        assertThat(registry.hasAwaiting("msg-d15")).isTrue();
+        assertThatThrownBy(() ->
+                registry.register("msg-d15", "user-1", "再问？", options, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("awaiting");
+
+        registry.cancelWaitersForMessage("  msg-d15  ");
+        assertThat(registry.hasAwaiting("msg-d15")).isFalse();
+    }
+
+    @Test
+    void resolve_invalidChoice_doesNotCompleteFuture() {
+        List<DecisionOption> options = sampleOptions(false);
+        DecisionRegistry.Registration reg =
+                registry.register("msg-5", "user-1", "选哪个？", options, false);
+
+        DecisionRegistry.ResolveOutcome outcome =
+                registry.resolve(reg.token(), "not_an_option", null, "user-1");
+
+        assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.INVALID_CHOICE);
+        assertThat(reg.future().isDone()).isFalse();
+        assertThat(registry.hasAwaiting("msg-5")).isTrue();
+    }
+
+    @Test
+    void awaitDecision_timeout_returnsTimeoutChoice() throws Exception {
+        executionProperties.getReact().getDecision().setTimeoutSec(0);
+        List<DecisionOption> options = sampleOptions(false);
+        DecisionRegistry.Registration reg =
+                registry.register("msg-6", "user-1", "选哪个？", options, false);
+
+        DecisionResult result = registry.awaitDecision(reg);
+
+        assertThat(result.choice()).isEqualTo("__timeout__");
+        assertThat(result.customInput()).isNull();
+        assertThat(registry.hasAwaiting("msg-6")).isFalse();
+    }
+
+    @Test
+    void awaitDecision_afterCancel_returnsCancelledChoice() throws Exception {
+        List<DecisionOption> options = sampleOptions(false);
+        DecisionRegistry.Registration reg =
+                registry.register("msg-7", "user-1", "选哪个？", options, false);
+        registry.cancelWaitersForMessage("msg-7");
+
+        DecisionResult result = registry.awaitDecision(reg);
+
+        assertThat(result.choice()).isEqualTo("__cancelled__");
+        assertThat(result.customInput()).isNull();
+        assertThat(registry.hasAwaiting("msg-7")).isFalse();
+    }
+
     private static List<DecisionOption> sampleOptions(boolean requireInput) {
         return List.of(
                 new DecisionOption("plan_a", "方案A", "快", requireInput),
