@@ -10,7 +10,7 @@ import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
 import type { SandboxEditDiffMeta } from './sandboxEditDiff'
 import { mergeStepMetadata } from './processingStepsParse'
-import { resolveStepDurationMs } from './processingStepsDisplay'
+import { resolveStepDurationMs, stepLifecycle } from './processingStepsDisplay'
 import { sortSteps, isWorkflowNodeStepId, isThinkStepId } from './processingStepsNormalize'
 
 export { normalizeStep, parseContentBlocks } from './processingStepsParse'
@@ -93,6 +93,12 @@ export function isSubagentStep(step: { id?: string; phase?: string }): boolean {
 /** ReAct request_decision 主时间线卡片（phase 或 id 前缀） */
 export function isDecisionStep(step: { id?: string; phase?: string }): boolean {
   return step.phase === 'decision' || !!step.id?.startsWith('decision-')
+}
+
+/** 是否存在等待用户填写的决策问卷（与 HITL 同属「待用户操作」） */
+export function stepsHaveAwaitingDecision(steps: ProcessingStep[] | undefined): boolean {
+  if (!steps?.length) return false
+  return steps.some(step => isDecisionStep(step) && stepLifecycle(step) === 'awaiting')
 }
 
 export interface DecisionOptionView {

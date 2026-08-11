@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.client.SkillCatalogClient;
 import com.sunshine.common.sandbox.CreateSessionRequest;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -167,5 +168,28 @@ class SandboxSessionLifecycleTest {
         assertThat(lifecycle.ensureConversationSession("u1", "default", "conv-w", null))
                 .isEqualTo("sess-w");
         verify(sandboxClient, never()).mountSkill(anyString(), anyString(), any());
+    }
+
+    @Test
+    void ensureBound_workspaceTaskWithSkill_mountsMaterialOntoWorkspaceSession() {
+        ChatConversationEntity conv = new ChatConversationEntity();
+        conv.setId("conv-ws");
+        conv.setKind("task");
+        conv.setWorkspaceId("ws-1");
+        when(chatConversationRepository.findById("conv-ws")).thenReturn(Optional.of(conv));
+        when(workspaceSandboxLifecycle.ensureWorkspaceSession("ws-1", "u1", "default"))
+                .thenReturn("sess-ws");
+        when(skillCatalogClient.fetchMaterial("brainstorming"))
+                .thenReturn(Map.of("SKILL.md", "# brainstorm"));
+
+        AgentRunRequest req = AgentRunRequest.main(
+                AssembledContext.empty(), "q", "u1", "default", "msg-1", List.of(),
+                "brainstorming", false, "conv-ws");
+        lifecycle.prepareRun(req);
+
+        assertThat(lifecycle.ensureBound(req.resolveBridgeId())).isEqualTo("sess-ws");
+        verify(sandboxClient).mountSkill(eq("sess-ws"), eq("brainstorming"), any());
+        verify(sandboxClient, never()).createSession(any());
+        lifecycle.closeQuietly(req);
     }
 }

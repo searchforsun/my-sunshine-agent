@@ -82,7 +82,7 @@ function handleMenu(key: string) {
         class="history-item"
         :class="{
           active: isActiveConv(conv.id),
-          'is-hitl-pending': indicator(conv) === 'hitl_pending',
+          'is-hitl-pending': indicator(conv) === 'hitl_pending' || indicator(conv) === 'decision_pending',
         }"
         @click="handleSwitch(conv.id)"
         @mouseenter="onItemEnter(conv, $event)"
@@ -91,7 +91,7 @@ function handleMenu(key: string) {
         <ConversationStatusIcon
           :state="indicator(conv)"
           :active="isActiveConv(conv.id)"
-          :title="indicator(conv) === 'streaming' ? '正在生成' : indicator(conv) === 'hitl_pending' ? '待确认' : indicator(conv) === 'completed' ? '新回复' : undefined"
+          :title="indicator(conv) === 'streaming' ? '正在生成' : indicator(conv) === 'decision_pending' ? '待决策' : indicator(conv) === 'hitl_pending' ? '待确认' : indicator(conv) === 'completed' ? '新回复' : undefined"
         />
         <span class="history-item-title">{{ conv.title }}</span>
         <span class="history-item-time">{{ convTime(conv) }}</span>

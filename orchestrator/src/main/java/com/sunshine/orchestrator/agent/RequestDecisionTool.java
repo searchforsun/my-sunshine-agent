@@ -4,23 +4,32 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.processing.DecisionLabels;
-import io.agentscope.core.tool.Tool;
-import io.agentscope.core.tool.ToolParam;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.tool.AgentTool;
+import io.agentscope.core.tool.ToolCallParam;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
-/** ReAct 元工具 — 主 Agent 向用户出选择题并硬阻塞等待决策（独立于 HITL） */
+/**
+ * ReAct 元工具 — 主 Agent 向用户出选择题并硬阻塞等待决策（独立于 HITL）。
+ * AgentTool 形态以获取 toolUseId，避免多会话时 {@code sessions.size()!=1} 无法定位 messageId。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RequestDecisionTool {
+public class RequestDecisionTool implements AgentTool {
 
     public static final String NAME = "request_decision";
 
@@ -32,17 +41,75 @@ public class RequestDecisionTool {
     private final DecisionRegistry decisionRegistry;
     private final DecisionTimelineSupport timelineSupport;
 
-    /**
-     * 工具注解对齐 Cursor ask_question：description 只写短「何时用」；
-     * 字段契约写在 @ToolParam；禁止正文出题等策略放 Catalog overlay。
-     */
-    @Tool(name = NAME,
-            description = "向用户出选择题并等待作答。需求歧义或下一步依赖用户偏好时使用。勿用于写工具 HITL 确认。")
-    public String requestDecision(
-            @ToolParam(name = "title", description = "可选总标题") String title,
-            @ToolParam(name = "questions",
-                    description = "问题数组≥1。项：{id, prompt, options:[{id,label}]≥2, allowMultiple?}")
-                    Object questionsInput) {
+    @Override
+    public String getName() {
+        return NAME;
+    }
+
+    @Override
+    public String getDescription() {
+        return "向用户出选择题并等待作答。需求歧义或下一步依赖用户偏好时使用。勿用于写工具 HITL 确认。";
+    }
+
+    @Override
+    public Map<String, Object> getParameters() {
+        Map<String, Object> optionProps = new LinkedHashMap<>();
+        optionProps.put("id", Map.of("type", "string", "description", "选项 id"));
+        optionProps.put("label", Map.of("type", "string", "description", "选项展示文案"));
+        Map<String, Object> optionSchema = Map.of(
+                "type", "object",
+                "properties", optionProps,
+                "required", List.of("id", "label"));
+        Map<String, Object> questionProps = new LinkedHashMap<>();
+        questionProps.put("id", Map.of("type", "string", "description", "问题 id"));
+        questionProps.put("prompt", Map.of("type", "string", "description", "题干"));
+        questionProps.put("options", Map.of(
+                "type", "array",
+                "description", "选项≥2，仅 id+label",
+                "items", optionSchema,
+                "minItems", 2));
+        questionProps.put("allowMultiple", Map.of(
+                "type", "boolean",
+                "description", "是否允许多选，默认 false"));
+        Map<String, Object> questionSchema = Map.of(
+                "type", "object",
+                "properties", questionProps,
+                "required", List.of("id", "prompt", "options"));
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("title", Map.of("type", "string", "description", "可选总标题"));
+        props.put("questions", Map.of(
+                "type", "array",
+                "description", "问题数组≥1。项：{id, prompt, options:[{id,label}]≥2, allowMultiple?}",
+                "items", questionSchema,
+                "minItems", 1));
+        return Map.of(
+                "type", "object",
+                "properties", props,
+                "required", List.of("questions"));
+    }
+
+    @Override
+    public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+        return Mono.fromCallable(() -> {
+                    String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
+                    Map<String, Object> input = param.getInput() != null ? param.getInput() : Map.of();
+                    Object title = input.get("title");
+                    Object questions = input.get("questions");
+                    String text = requestDecision(
+                            title != null ? String.valueOf(title) : null,
+                            questions,
+                            toolUseId);
+                    return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** 单测入口：无 toolUseId 时回退 activeMessageId（单会话）。 */
+    String requestDecision(String title, Object questionsInput) {
+        return requestDecision(title, questionsInput, null);
+    }
+
+    String requestDecision(String title, Object questionsInput, String toolUseId) {
         AgentExecutionProperties.React.Decision cfg = decisionConfig();
         if (cfg == null || !cfg.isEnabled()) {
             return errorJson("request_decision 未启用");
@@ -55,7 +122,7 @@ public class RequestDecisionTool {
             return errorJson(e.getMessage());
         }
 
-        String messageId = StepEventBridge.activeMessageId();
+        String messageId = StepEventBridge.resolveMessageIdForToolUse(toolUseId);
         if (!StringUtils.hasText(messageId)) {
             return errorJson("无法定位当前会话消息");
         }
@@ -63,7 +130,10 @@ public class RequestDecisionTool {
         if (!StringUtils.hasText(mainBridge)) {
             return errorJson("request_decision 仅可从主 Agent 调用");
         }
-        String activeBridge = StepEventBridge.activeBridgeId();
+        String activeBridge = StepEventBridge.bridgeIdForToolUse(toolUseId);
+        if (!StringUtils.hasText(activeBridge)) {
+            activeBridge = StepEventBridge.activeBridgeId();
+        }
         if (StringUtils.hasText(activeBridge) && activeBridge.startsWith("sub-")) {
             return errorJson("子 Agent 不可调用 request_decision");
         }
@@ -75,6 +145,9 @@ public class RequestDecisionTool {
         var preApproved = StepEventBridge.consumeDecisionPreApproval(messageId, fingerprint);
         if (preApproved.isPresent()) {
             DecisionResult prior = preApproved.get();
+            if ("skipped".equals(prior.outcome())) {
+                return formatSkippedResult();
+            }
             return formatSuccessResult(prior.title(), prior.answers());
         }
 
@@ -100,6 +173,9 @@ public class RequestDecisionTool {
                 return formatCancelledResult();
             }
             timelineSupport.complete(mainBridge, reg.token(), result);
+            if ("skipped".equals(result.outcome())) {
+                return formatSkippedResult();
+            }
             return formatSuccessResult(result.title(), result.answers());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -244,18 +320,23 @@ public class RequestDecisionTool {
         return "outcome=cancelled";
     }
 
+    /** 用户跳过问卷：Agent 应基于已有信息继续，勿立刻同参重调。 */
+    public static String formatSkippedResult() {
+        return "outcome=skipped";
+    }
+
     private static String errorJson(String message) {
         return "{\"ok\":false,\"error\":\"" + escape(message) + "\"}";
     }
 
-    private static String escape(String text) {
-        if (text == null) {
-            return "";
-        }
-        return text.replace("\\", "\\\\").replace("\"", "\\\"");
+    private static String nullToEmpty(String value) {
+        return value != null ? value : "";
     }
 
-    private static String nullToEmpty(String text) {
-        return text != null ? text : "";
+    private static String escape(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

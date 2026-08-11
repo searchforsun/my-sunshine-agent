@@ -92,11 +92,17 @@ public class GenerationController {
             streamService.assertOwned(id, userId, tenantId);
             GenerationMeta meta = streamService.getMeta(id)
                     .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
-            DecisionRegistry.ResolveOutcome outcome = decisionRegistry.resolve(
-                    token,
-                    body != null ? body.answers() : null,
-                    userId,
-                    meta.messageId());
+            DecisionRegistry.ResolveOutcome outcome;
+            boolean skip = body != null && Boolean.TRUE.equals(body.skip());
+            if (skip) {
+                outcome = decisionRegistry.skip(token, userId, meta.messageId());
+            } else {
+                outcome = decisionRegistry.resolve(
+                        token,
+                        body != null ? body.answers() : null,
+                        userId,
+                        meta.messageId());
+            }
             return mapResolveOutcome(outcome);
         });
     }

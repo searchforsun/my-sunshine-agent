@@ -34,6 +34,9 @@ class AgentInfraTest {
     @Test
     void dynamicToolkit_registersWhitelistedTools() throws Exception {
         RagTool ragTool = Mockito.mock(RagTool.class);
+        SpawnSubagentTool spawnSubagentTool = Mockito.mock(SpawnSubagentTool.class);
+        RequestDecisionTool requestDecisionTool = Mockito.mock(RequestDecisionTool.class);
+        ThinkSummaryTool thinkSummaryTool = Mockito.mock(ThinkSummaryTool.class);
         GenericRemoteToolFactory remoteToolFactory = Mockito.mock(GenericRemoteToolFactory.class);
         ToolCatalogService toolCatalogService = Mockito.mock(ToolCatalogService.class);
         ToolSetResolver toolSetResolver = Mockito.mock(ToolSetResolver.class);
@@ -55,6 +58,8 @@ class AgentInfraTest {
         when(toolCatalogService.isRagTool("sdk__sunshine-finance__list_my_expenses")).thenReturn(false);
         when(toolCatalogService.isRagTool("sdk__sunshine-oa__list_oa_tasks")).thenReturn(false);
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(requestDecisionTool.getName()).thenReturn(RequestDecisionTool.NAME);
         when(remoteToolFactory.create("sdk__sunshine-finance__list_my_expenses", null, "default"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         financeEntry, toolManagerClient, toolAuditService, hitlService, null, "default")));
@@ -64,9 +69,9 @@ class AgentInfraTest {
 
         DynamicToolkitFactory factory = new DynamicToolkitFactory(
                 ragTool,
-                Mockito.mock(SpawnSubagentTool.class),
-                Mockito.mock(RequestDecisionTool.class),
-                Mockito.mock(com.sunshine.orchestrator.agent.ThinkSummaryTool.class),
+                spawnSubagentTool,
+                requestDecisionTool,
+                thinkSummaryTool,
                 remoteToolFactory,
                 toolCatalogService,
                 toolSetResolver,

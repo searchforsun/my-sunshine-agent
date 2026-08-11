@@ -702,7 +702,7 @@ onMounted(() => {
                         <ConversationStatusIcon
                           :state="resolveIndicator(conv.id, conv.messages)"
                           :active="route.name === 'chat' && conv.id === chatStore.currentId"
-                          :title="resolveIndicator(conv.id, conv.messages) === 'streaming' ? '正在生成' : undefined"
+                          :title="resolveIndicator(conv.id, conv.messages) === 'streaming' ? '正在生成' : resolveIndicator(conv.id, conv.messages) === 'decision_pending' ? '待决策' : resolveIndicator(conv.id, conv.messages) === 'hitl_pending' ? '待确认' : undefined"
                         />
                         <span class="task-conv-title">{{ conv.title }}</span>
                         <span class="task-conv-meta">

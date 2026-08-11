@@ -19,11 +19,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 对话级沙箱（方案 B）— MAIN 工具常驻；首次 sandbox__* / 抽屉 list 时懒 create；
  * Skill 仅可选懒挂载 /skills/{id}/，不门控开箱。
+ * task/工作区会话与对话会话共用挂载语义：绑定 skillId 时必须落到 /skills/{id}/。
  */
 @Slf4j
 @Component
@@ -39,6 +41,8 @@ public class SandboxSessionLifecycle {
 
     /** run 级上下文 — 供工具线程 ensure（与 Holder 同：跨线程） */
     private final ConcurrentHashMap<String, RunContext> runContexts = new ConcurrentHashMap<>();
+    /** 工作区会话无 ConversationSandboxBinding，用内存去重避免重复 mount */
+    private final ConcurrentHashMap<String, Set<String>> workspaceSessionMountedSkills = new ConcurrentHashMap<>();
 
     /**
      * MAIN / SUB 开跑登记上下文（不创建 Docker）。PLANNER 忽略。
@@ -71,19 +75,24 @@ public class SandboxSessionLifecycle {
                 sandboxClient.startSession(existing.sessionId());
             }
             if (ctx != null && StringUtils.hasText(ctx.skillId())) {
-                maybeMountSkill(existing.sessionId(), ctx.tenantId(), ctx.conversationId(),
-                        ctx.skillId(), ctx.userId());
+                MountOutcome mount = mountSkillForContext(existing.sessionId(), ctx);
+                if (mount.newlyMounted()) {
+                    emitSandboxSessionSse(bid, ctx, mount.loadedSkillIds());
+                }
             }
             return existing.sessionId();
         }
         if (ctx == null) {
             throw new IllegalStateException("sandbox run context missing; call prepareRun first");
         }
-        if (ctx != null && StringUtils.hasText(ctx.workspaceId())) {
+        if (StringUtils.hasText(ctx.workspaceId())) {
             String wsSessionId = workspaceSandboxLifecycle.ensureWorkspaceSession(
                     ctx.workspaceId(), ctx.userId(), ctx.tenantId());
             SandboxSessionHolder.bind(bid, wsSessionId, workspaceSessionPolicy());
-            emitSandboxSessionSse(bid, ctx, List.of());
+            MountOutcome mount = mountSkillForContext(wsSessionId, ctx);
+            emitSandboxSessionSse(bid, ctx, mount.loadedSkillIds());
+            log.info("[SandboxSession] ensureBound workspace session={} loaded={} bridge={} ws={}",
+                    wsSessionId, mount.loadedSkillIds(), bid, ctx.workspaceId());
             return wsSessionId;
         }
         EnsureResult result = ensureSession(
@@ -208,17 +217,40 @@ public class SandboxSessionLifecycle {
         return List.copyOf(loaded);
     }
 
-    private void maybeMountSkill(
-            String sessionId, String tenantId, String conversationId, String skillId, String userId) {
-        if (!StringUtils.hasText(skillId) || !StringUtils.hasText(conversationId)) {
-            return;
+    /**
+     * 按会话类型挂载 skill：对话级走 Redis loadedSkillIds；工作区级走内存去重。
+     */
+    private MountOutcome mountSkillForContext(String sessionId, RunContext ctx) {
+        if (ctx == null || !StringUtils.hasText(ctx.skillId()) || !StringUtils.hasText(sessionId)) {
+            return MountOutcome.none();
+        }
+        String skillId = ctx.skillId().strip();
+        if (StringUtils.hasText(ctx.workspaceId())) {
+            return mountSkillOntoWorkspaceSession(sessionId, skillId);
+        }
+        if (!StringUtils.hasText(ctx.conversationId())) {
+            mountSkill(sessionId, skillId);
+            return new MountOutcome(List.of(skillId), true);
         }
         Optional<ConversationSandboxBinding> existing =
-                conversationSandboxStore.find(tenantId, conversationId);
+                conversationSandboxStore.find(ctx.tenantId(), ctx.conversationId());
         if (existing.isEmpty()) {
-            return;
+            return MountOutcome.none();
         }
-        maybeMountIntoBinding(existing.get(), skillId);
+        List<String> before = existing.get().loadedSkillIds();
+        List<String> after = maybeMountIntoBinding(existing.get(), skillId);
+        return new MountOutcome(after, !before.contains(skillId));
+    }
+
+    private MountOutcome mountSkillOntoWorkspaceSession(String sessionId, String skillId) {
+        Set<String> mounted = workspaceSessionMountedSkills.computeIfAbsent(
+                sessionId, ignored -> ConcurrentHashMap.newKeySet());
+        if (mounted.contains(skillId)) {
+            return new MountOutcome(List.copyOf(mounted), false);
+        }
+        mountSkill(sessionId, skillId);
+        mounted.add(skillId);
+        return new MountOutcome(List.copyOf(mounted), true);
     }
 
     private String createEmpty(
@@ -267,6 +299,12 @@ public class SandboxSessionLifecycle {
     }
 
     private record EnsureResult(String sessionId, List<String> loadedSkillIds) {}
+
+    private record MountOutcome(List<String> loadedSkillIds, boolean newlyMounted) {
+        static MountOutcome none() {
+            return new MountOutcome(List.of(), false);
+        }
+    }
 
     private SandboxPolicy workspaceSessionPolicy() {
         // 工作区级使用完全体容器配置，由 WorkspaceSandboxLifecycle 维护

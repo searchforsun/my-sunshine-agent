@@ -97,13 +97,17 @@ public class DecisionResumeSupport {
         }
     }
 
-    /** 续跑注入块：复用 Tool 短格式（outcome/title/q.*）。 */
+    /** 续跑注入块：复用 Tool 短格式（outcome/title/q.* 或 outcome=skipped）。 */
     static String buildResolvedInjectBlock(DecisionResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append("【用户决策】");
         String title = result != null && result.title() != null ? result.title() : "";
         if (StringUtils.hasText(title)) {
             sb.append('\n').append(title.strip());
+        }
+        if (result != null && "skipped".equals(result.outcome())) {
+            sb.append('\n').append(RequestDecisionTool.formatSkippedResult());
+            return sb.toString();
         }
         List<DecisionAnswer> answers = result != null && result.answers() != null
                 ? result.answers()

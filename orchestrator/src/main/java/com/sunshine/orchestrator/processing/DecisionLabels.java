@@ -97,6 +97,10 @@ public final class DecisionLabels {
         return requireService().afterCancel();
     }
 
+    public static String afterSkip() {
+        return requireService().afterSkip();
+    }
+
     private static DecisionLabelService requireService() {
         if (service == null) {
             throw new IllegalStateException("DecisionLabelService 未 bind");

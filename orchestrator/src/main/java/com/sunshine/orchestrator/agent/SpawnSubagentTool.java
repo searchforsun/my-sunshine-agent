@@ -12,21 +12,27 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.processing.ContentSegmentCoordinator;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
-import io.agentscope.core.tool.Tool;
-import io.agentscope.core.tool.ToolParam;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.tool.AgentTool;
+import io.agentscope.core.tool.ToolCallParam;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** ReAct 元工具 — 主 Agent 按需创建隔离子 Agent，不占 tool-manager Catalog */
 @Slf4j
 @Component
-public class SpawnSubagentTool {
+public class SpawnSubagentTool implements AgentTool {
 
     public static final String NAME = "spawn_subagent";
     /** Catalog id：mode-overlay.subagent */
@@ -57,13 +63,51 @@ public class SpawnSubagentTool {
         this.agentExecutorRouter = agentExecutorRouter;
     }
 
-    @Tool(name = NAME,
-            description = "创建隔离子 Agent：可指定预定义智能体 agentId（使用该智能体的系统提示词/工具/配置），"
-                    + "或仅传 prompt 创建临时子 Agent；返回子任务最终文本。")
-    public String spawnSubagent(
-            @ToolParam(name = "prompt", description = "给子 Agent 的完整任务说明（必填）") String prompt,
-            @ToolParam(name = "agent_id", description = "预定义智能体 ID（可选，如 policy-agent / finance-agent）") String agentId,
-            @ToolParam(name = "label", description = "时间线卡片短标题（可选）") String label) {
+    @Override
+    public String getName() {
+        return NAME;
+    }
+
+    @Override
+    public String getDescription() {
+        return "创建隔离子 Agent：可指定预定义智能体 agentId（使用该智能体的系统提示词/工具/配置），"
+                + "或仅传 prompt 创建临时子 Agent；返回子任务最终文本。";
+    }
+
+    @Override
+    public Map<String, Object> getParameters() {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("prompt", Map.of("type", "string", "description", "给子 Agent 的完整任务说明（必填）"));
+        props.put("agent_id", Map.of(
+                "type", "string",
+                "description", "预定义智能体 ID（可选，如 policy-agent / finance-agent）"));
+        props.put("label", Map.of("type", "string", "description", "时间线卡片短标题（可选）"));
+        return Map.of(
+                "type", "object",
+                "properties", props,
+                "required", List.of("prompt"));
+    }
+
+    @Override
+    public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+        return Mono.fromCallable(() -> {
+                    String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
+                    Map<String, Object> input = param.getInput() != null ? param.getInput() : Map.of();
+                    String prompt = stringParam(input, "prompt");
+                    String agentId = stringParam(input, "agent_id");
+                    String label = stringParam(input, "label");
+                    String text = spawnSubagent(prompt, agentId, label, toolUseId);
+                    return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** 单测入口：无 toolUseId 时回退 activeMessageId（单会话）。 */
+    String spawnSubagent(String prompt, String agentId, String label) {
+        return spawnSubagent(prompt, agentId, label, null);
+    }
+
+    String spawnSubagent(String prompt, String agentId, String label, String toolUseId) {
         AgentExecutionProperties.React.Subagent subCfg = subagentConfig();
         if (subCfg == null || !subCfg.isEnabled()) {
             return errorJson("spawn_subagent 未启用");
@@ -71,7 +115,7 @@ public class SpawnSubagentTool {
         if (!StringUtils.hasText(prompt)) {
             return errorJson("prompt 不能为空");
         }
-        String messageId = StepEventBridge.activeMessageId();
+        String messageId = StepEventBridge.resolveMessageIdForToolUse(toolUseId);
         if (!StringUtils.hasText(messageId)) {
             return errorJson("无法定位当前会话消息");
         }
@@ -86,7 +130,10 @@ public class SpawnSubagentTool {
         if (!StringUtils.hasText(mainBridge)) {
             return errorJson("spawn_subagent 仅可从主 Agent 调用");
         }
-        String activeBridge = StepEventBridge.activeBridgeId();
+        String activeBridge = StepEventBridge.bridgeIdForToolUse(toolUseId);
+        if (!StringUtils.hasText(activeBridge)) {
+            activeBridge = StepEventBridge.activeBridgeId();
+        }
         if (StringUtils.hasText(activeBridge) && activeBridge.startsWith("sub-")) {
             return errorJson("禁止嵌套委派：子 Agent 不可再调用 spawn_subagent");
         }
@@ -266,6 +313,11 @@ public class SpawnSubagentTool {
     private AgentExecutionProperties.React.Subagent subagentConfig() {
         AgentExecutionProperties.React react = executionProperties.getReact();
         return react != null ? react.getSubagent() : null;
+    }
+
+    private static String stringParam(Map<String, Object> input, String key) {
+        Object value = input.get(key);
+        return value != null ? String.valueOf(value) : null;
     }
 
     private static boolean isTimeout(Throwable t) {

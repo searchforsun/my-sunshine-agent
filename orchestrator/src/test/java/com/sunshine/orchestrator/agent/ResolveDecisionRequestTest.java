@@ -37,5 +37,15 @@ class ResolveDecisionRequestTest {
         ResolveDecisionRequest body = objectMapper.readValue(
                 "{\"answers\": []}", ResolveDecisionRequest.class);
         assertThat(body.answers()).isEmpty();
+        assertThat(body.skip()).isNull();
+    }
+
+    @Test
+    @DisplayName("skip=true 合法")
+    void deserialize_skipTrue() throws Exception {
+        ResolveDecisionRequest body = objectMapper.readValue(
+                "{\"skip\": true}", ResolveDecisionRequest.class);
+        assertThat(body.skip()).isTrue();
+        assertThat(body.answers()).isNull();
     }
 }

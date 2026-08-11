@@ -57,6 +57,7 @@ class DynamicToolkitFactoryTest {
         List<AgentTool> sandboxTools = stubSandboxTools();
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
@@ -72,6 +73,7 @@ class DynamicToolkitFactoryTest {
     void build_withSubagentEnabled_registersSpawnSubagent() {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent() {{
             setEnabled(true);
@@ -102,6 +104,8 @@ class DynamicToolkitFactoryTest {
     void build_withDecisionEnabled_registersRequestDecision() {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(requestDecisionTool.getName()).thenReturn(RequestDecisionTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(reactProps.getDecision()).thenReturn(new AgentExecutionProperties.React.Decision() {{
@@ -130,6 +134,7 @@ class DynamicToolkitFactoryTest {
         List<AgentTool> sandboxTools = stubSandboxTools();
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);
@@ -144,6 +149,7 @@ class DynamicToolkitFactoryTest {
     void build_succeedsWhenMissingCatalogTool() {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of("ghost_tool"));
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(List.of());
@@ -160,6 +166,7 @@ class DynamicToolkitFactoryTest {
         when(toolSetResolver.intersectEnabledPool(List.of("ghost_tool", "sdk__sunshine-finance__list_my_expenses"), "default"))
                 .thenReturn(List.of("sdk__sunshine-finance__list_my_expenses"));
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(List.of());
@@ -190,6 +197,7 @@ class DynamicToolkitFactoryTest {
         List<AgentTool> sandboxTools = stubSandboxTools();
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(sandboxAgentTools.all()).thenReturn(sandboxTools);

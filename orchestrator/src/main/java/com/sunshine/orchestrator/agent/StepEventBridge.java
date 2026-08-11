@@ -212,6 +212,11 @@ public final class StepEventBridge {
         return registry.activeBridgeId();
     }
 
+    /** 元工具/沙箱：用 toolUseId 定位 assistantMessageId（多会话时不依赖 sessions.size()==1） */
+    public static String resolveMessageIdForToolUse(String toolUseId) {
+        return registry.resolveMessageIdForToolUse(toolUseId);
+    }
+
     public static String hitlAssistantMessageId(String bridgeId) {
         return registry.hitlAssistantMessageId(bridgeId);
     }

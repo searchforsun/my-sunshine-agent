@@ -1,8 +1,11 @@
-import { computed, type ComputedRef, type Ref } from 'vue'
+import { computed, onUnmounted, ref, watch, type ComputedRef, type Ref } from 'vue'
 import type { ChatMessage } from '../api/chat'
 import { ensurePlanTimelineSteps, hasPlanTimeline } from '../api/planHydrate'
 import { sortSteps, hasActiveStep, type ProcessingStep } from '../api/processingSteps'
 import { applySyncedPendingHitl, resolveHitlUiKey, getPendingHitlConfirmations, type HitlConfirmationPayload } from '../api/hitlSteps'
+
+/** 底部三点：流式空档持续多久才显示（与 OperationStack 空档三点一致） */
+const STREAM_IDLE_DOTS_MS = 2000
 
 /** Chat 消息区时间线：steps 解析与 OperationStack 绑定 */
 export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<boolean>) {
@@ -89,7 +92,8 @@ export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<b
     return hasActiveStep(resolveTimelineSteps(msg))
   }
 
-  const showStreamWaiting: ComputedRef<boolean> = computed(() => {
+  /** 无正文/活动步时的即时空档条件（尚未施加 2s 静默） */
+  function isStreamWaitingGap(): boolean {
     if (!loading.value) return false
     const last = messages.value[messages.value.length - 1]
     if (last?.role !== 'assistant') return true
@@ -99,7 +103,37 @@ export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<b
     if (last.contentBlocks?.some(b => !!b.text?.trim())) return false
     if (hasActiveStep(resolveTimelineSteps(last))) return false
     return true
+  }
+
+  const streamWaitingArmed = ref(false)
+  let streamWaitingTimer: ReturnType<typeof setTimeout> | undefined
+
+  watch(
+    () => isStreamWaitingGap(),
+    (inGap) => {
+      if (streamWaitingTimer != null) {
+        clearTimeout(streamWaitingTimer)
+        streamWaitingTimer = undefined
+      }
+      if (!inGap) {
+        streamWaitingArmed.value = false
+        return
+      }
+      // 进入空档后须静默满 2s 才露三点；期间若有流式/步骤则重新计时
+      streamWaitingArmed.value = false
+      streamWaitingTimer = setTimeout(() => {
+        streamWaitingTimer = undefined
+        if (isStreamWaitingGap()) streamWaitingArmed.value = true
+      }, STREAM_IDLE_DOTS_MS)
+    },
+    { immediate: true },
+  )
+
+  onUnmounted(() => {
+    if (streamWaitingTimer != null) clearTimeout(streamWaitingTimer)
   })
+
+  const showStreamWaiting: ComputedRef<boolean> = computed(() => streamWaitingArmed.value)
 
   return {
     resolveTimelineContext,

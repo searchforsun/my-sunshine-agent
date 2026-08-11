@@ -270,6 +270,21 @@ class DecisionRegistryTest {
         assertThat(registry.hasAwaiting("msg-7")).isFalse();
     }
 
+    @Test
+    void skip_completesFutureWithSkippedOutcome() throws Exception {
+        DecisionRegistry.Registration reg =
+                registry.register("msg-skip", "user-1", "选哪个？", sampleQuestions());
+
+        DecisionRegistry.ResolveOutcome outcome =
+                registry.skip(reg.token(), "user-1", "msg-skip");
+
+        assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.ACCEPTED);
+        DecisionResult result = reg.future().get(1, TimeUnit.SECONDS);
+        assertThat(result.outcome()).isEqualTo("skipped");
+        assertThat(result.answers()).isEmpty();
+        assertThat(registry.hasAwaiting("msg-skip")).isFalse();
+    }
+
     private static List<DecisionQuestion> sampleQuestions() {
         return List.of(new DecisionQuestion(
                 "q1",

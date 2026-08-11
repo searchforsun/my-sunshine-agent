@@ -14,6 +14,7 @@ import {
   resolveStepExpandPanels,
   stepLifecycle,
   stripLoadedSkillPrefix,
+  type TimelineMessageStatus,
 } from '../../api/processingSteps'
 import { formatPlanNodeType } from '../../api/executionPlans'
 import type { DagNodeStatus } from '../../utils/planGraph'
@@ -318,6 +319,28 @@ const subTimelineLive = computed(() => {
   return s === 'running' || s === 'awaiting_confirm'
 })
 
+/** 抽屉子时间线与主 Chat 同构：启用 OperationStack 总览折叠（默认收起） */
+const drawerTimelineMessageStatus = computed((): TimelineMessageStatus => {
+  const s = displayStatus.value
+  if (s === 'running' || s === 'awaiting_confirm' || s === 'pending') return 'streaming'
+  if (s === 'paused' || s === 'terminated') return 'interrupted'
+  if (s === 'error') return 'failed'
+  return 'completed'
+})
+
+const drawerTimelineStartedAt = computed(() => {
+  const s = step.value
+  if (!s) return undefined
+  return s.clientStartedAt ?? s.startedAt ?? s.ts
+})
+
+const drawerTimelineEndedAt = computed(() => {
+  const s = step.value
+  if (!s) return undefined
+  if (subTimelineLive.value) return undefined
+  return s.endedAt
+})
+
 const bodyRef = ref<HTMLElement | null>(null)
 const drawerScrollTop = ref(0)
 const spawnPromptExpanded = ref(false)
@@ -479,6 +502,7 @@ watch(
             :steps="group.steps"
             :stream-live="subTimelineLive"
             :live="subTimelineLive"
+            :message-status="drawerTimelineMessageStatus"
             :embed-hitl="false"
             :pending-hitl-confirmations="pendingHitlList"
             @hitl-decided="applyHitlDecision"
@@ -486,12 +510,15 @@ watch(
         </div>
       </section>
       <section v-else-if="showDrawerOperationStack" class="drawer-section drawer-sub-timeline">
-        <h4 v-if="showSubTimeline">执行过程</h4>
+        <!-- 有总览折叠行时不再重复「执行过程」标题，与主时间线一致 -->
         <OperationStack
           :steps="drawerStackSteps"
           :content-blocks="step?.contentBlocks"
           :stream-live="subTimelineLive"
           :live="subTimelineLive"
+          :message-status="drawerTimelineMessageStatus"
+          :timeline-started-at="drawerTimelineStartedAt"
+          :timeline-ended-at="drawerTimelineEndedAt"
           :embed-hitl="false"
           :pending-hitl-confirmations="pendingHitlList"
           @hitl-decided="applyHitlDecision"

@@ -164,6 +164,52 @@ public class DecisionRegistry {
         return ResolveOutcome.ACCEPTED;
     }
 
+    /** 用户跳过问卷：唤醒 Future 为 outcome=skipped（空 answers），Agent 继续推进。 */
+    public ResolveOutcome skip(String token, String currentUserId, String expectedMessageId) {
+        if (token == null || token.isBlank()) {
+            return ResolveOutcome.NOT_FOUND;
+        }
+        DecisionPendingWaiter waiter = waiters.get(token);
+        if (waiter == null) {
+            String key = redisKey(token);
+            if (!Boolean.TRUE.equals(redis.hasKey(key))) {
+                log.warn("[Decision] skip 无效 token={}", token);
+                return ResolveOutcome.NOT_FOUND;
+            }
+            redis.delete(key);
+            log.warn("[Decision] skip token={} 无本地 waiter（可能已超时或其它实例）", token);
+            return ResolveOutcome.NOT_FOUND;
+        }
+        if (waiter.future().isDone()) {
+            return ResolveOutcome.NOT_FOUND;
+        }
+        if (expectedMessageId != null && !expectedMessageId.isBlank()
+                && !expectedMessageId.strip().equals(waiter.messageId())) {
+            log.warn("[Decision] 拒绝 skip：generation messageId={} vs waiter={} token={}",
+                    expectedMessageId, waiter.messageId(), token);
+            return ResolveOutcome.NOT_FOUND;
+        }
+        String userId = waiter.userId();
+        if (userId != null && !userId.isBlank()
+                && currentUserId != null
+                && !userId.equals(currentUserId)) {
+            log.warn("[Decision] 拒绝 skip：发起用户 {} vs 当前用户 {} token={}",
+                    userId, currentUserId, token);
+            return ResolveOutcome.FORBIDDEN;
+        }
+        if (System.currentTimeMillis() > waiter.expiresAt()) {
+            cleanup(token);
+            return ResolveOutcome.EXPIRED;
+        }
+        DecisionResult result = new DecisionResult(
+                "skipped", waiter.title(), List.of(), System.currentTimeMillis());
+        if (!waiter.future().complete(result)) {
+            return ResolveOutcome.NOT_FOUND;
+        }
+        releaseAwaitingSlot(token, waiter);
+        return ResolveOutcome.ACCEPTED;
+    }
+
     public void cancelWaitersForMessage(String messageId) {
         if (messageId == null || messageId.isBlank()) {
             return;

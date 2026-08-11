@@ -29,7 +29,7 @@ import { gitStage, gitCommit, gitPush, gitPull, ensureCheckout, listCheckouts, g
 import { loadActiveGeneration } from '../composables/useActiveGeneration'
 import CopyToggleIcon from '../components/icons/CopyToggleIcon.vue'
 import { NIcon, NPopover, NButton, NSpin } from 'naive-ui'
-import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline, AlertCircleOutline, WarningOutline, ChatboxEllipsesOutline } from '@vicons/ionicons5'
+import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline, AlertCircleOutline, WarningOutline, HelpCircleOutline, ChatboxEllipsesOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
 import { liveTimelineExpanded } from '../composables/timelineCollapseBus'
 import TaskBoardPanel from '../components/operation/TaskBoardPanel.vue'
@@ -235,7 +235,7 @@ watch(chatScrollPinned, pinned => {
  * - 离开底部：回到底部气泡（待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头），点击回到底部；
  * - 最底部（回到底部图标消失）：运行中时间线展开 → 折叠气泡，点击收起运行过程。
  */
-type ScrollFabKind = 'hitl_pending' | 'collapse' | 'completed' | 'down'
+type ScrollFabKind = 'decision_pending' | 'hitl_pending' | 'collapse' | 'completed' | 'down'
 
 /** 折叠请求计数：点击底部折叠气泡时自增，经 collapseTick prop 触发运行中 OperationStack 折叠 */
 const collapseTick = ref(0)
@@ -250,6 +250,7 @@ const scrollFab = computed<{ kind: ScrollFabKind } | null>(() => {
   }
   // 离开底部：回到底部快捷按钮
   const ind = resolveIndicator(cid, chatStore.current?.messages)
+  if (ind === 'decision_pending') return { kind: 'decision_pending' }
   if (ind === 'hitl_pending') return { kind: 'hitl_pending' }
   if (ind === 'completed') return { kind: 'completed' }
   return { kind: 'down' }
@@ -1820,7 +1821,7 @@ watch(
     <footer v-show="!planDagExpanded" class="chat-composer" @wheel="forwardWheelToChatScroll">
       <div class="composer-inner">
         <!-- 输入框上方右侧圆形快捷按钮；始终置于其它气泡（todolist/错误信息等）之上。
-             离开底部 → 回到底部（待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头）；
+             离开底部 → 回到底部（待决策 → 黄色问号；待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头）；
              最底部且运行中时间线展开 → 折叠图标（点击收起运行过程） -->
         <transition name="fab-fade">
           <button
@@ -1828,10 +1829,11 @@ watch(
             type="button"
             class="scroll-fab"
             :class="`is-${scrollFab.kind}`"
-            :title="scrollFab.kind === 'hitl_pending' ? '待确认，点击回到底部' : scrollFab.kind === 'collapse' ? '折叠运行过程' : '回到底部'"
+            :title="scrollFab.kind === 'decision_pending' ? '待决策，点击回到底部' : scrollFab.kind === 'hitl_pending' ? '待确认，点击回到底部' : scrollFab.kind === 'collapse' ? '折叠运行过程' : '回到底部'"
             @click="handleScrollFabClick"
           >
-            <NIcon v-if="scrollFab.kind === 'hitl_pending'" :size="16" :component="WarningOutline" />
+            <NIcon v-if="scrollFab.kind === 'decision_pending'" :size="16" :component="HelpCircleOutline" />
+            <NIcon v-else-if="scrollFab.kind === 'hitl_pending'" :size="16" :component="WarningOutline" />
             <svg
               v-else-if="scrollFab.kind === 'collapse'"
               width="16"
@@ -2329,7 +2331,8 @@ watch(
   background: var(--sun-row-hover);
 }
 
-.scroll-fab.is-hitl_pending {
+.scroll-fab.is-hitl_pending,
+.scroll-fab.is-decision_pending {
   border-color: color-mix(in srgb, var(--sun-amber) 45%, var(--sun-border));
   color: color-mix(in srgb, var(--sun-amber-light) 75%, var(--sun-text-secondary));
 }

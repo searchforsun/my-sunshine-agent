@@ -303,6 +303,8 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             if (RequestDecisionTool.NAME.equals(toolName)
                     || SpawnSubagentTool.NAME.equals(toolName)
                     || TodoTasksBridge.isTodoWrite(toolName)) {
+                // 元工具不上 tool-* 步，但仍须绑定 toolUse→bridge，供 AgentTool 多会话定位 messageId
+                StepEventBridge.bindToolUseBridge(tu.getId(), bridgeId);
                 continue;
             }
             beginToolStep(bridgeId, tu);

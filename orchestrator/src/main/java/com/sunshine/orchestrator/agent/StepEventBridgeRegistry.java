@@ -399,11 +399,44 @@ public class StepEventBridgeRegistry {
         return null;
     }
 
+    /**
+     * 解析当前作用桥：优先唯一 toolUse 绑定（元工具/并行会话），再唯一 main 运行，
+     * 再 sessions 中唯一 main-*，最后才允许 sessions.size()==1。
+     */
     public String activeBridgeId() {
-        if (sessions.size() != 1) {
-            return null;
+        if (toolUseBridge.size() == 1) {
+            return toolUseBridge.values().iterator().next();
         }
-        return sessions.keySet().iterator().next();
+        if (mainRunByMessage.size() == 1) {
+            return mainRunByMessage.values().iterator().next();
+        }
+        String soleMainSession = null;
+        for (String id : sessions.keySet()) {
+            if (id != null && id.startsWith("main-")) {
+                if (soleMainSession != null) {
+                    soleMainSession = null;
+                    break;
+                }
+                soleMainSession = id;
+            }
+        }
+        if (soleMainSession != null) {
+            return soleMainSession;
+        }
+        if (sessions.size() == 1) {
+            return sessions.keySet().iterator().next();
+        }
+        return null;
+    }
+
+    /** 经 toolUse→bridge→assistantMessage 定位；无绑定则回退 {@link #activeMessageId()}。 */
+    public String resolveMessageIdForToolUse(String toolUseId) {
+        String bridge = bridgeIdForToolUse(toolUseId);
+        if (bridge != null && !bridge.isBlank()) {
+            String mapped = hitlAssistantMessageId(bridge);
+            return mapped != null ? mapped : bridge;
+        }
+        return activeMessageId();
     }
 
     public String hitlAssistantMessageId(String bridgeId) {
@@ -455,6 +488,8 @@ public class StepEventBridgeRegistry {
             generationFlush.remove(messageId);
             sessionStreamEpoch.remove(messageId);
             toolUseBridge.entrySet().removeIf(e -> messageId.equals(e.getValue()));
+            // 清 bridge 时同步摘掉指向该 bridge 的 mainRun，避免多会话残留导致 activeBridgeId 误判
+            mainRunByMessage.entrySet().removeIf(e -> messageId.equals(e.getValue()));
         }
     }
 

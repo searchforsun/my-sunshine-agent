@@ -72,7 +72,7 @@ agent:
       decision:
         # D21：默认关。Live：临时改 true → sync_nacos.py → restart orchestrator/bff；
         # 验收后务必改回 false（勿把生产默认翻 true）。D7 超时套件可临时 timeout-sec: 5。
-        enabled: false
+        enabled: true
         timeout-sec: 300
     plan-workflow:
       replan:

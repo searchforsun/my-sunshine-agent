@@ -124,11 +124,17 @@ public class DecisionTimelineSupport {
         StepEventBridge.emit(bridgeId, session -> {
             long ts = System.currentTimeMillis();
             List<DecisionQuestion> questions = updated.questions();
-            String choiceText = DecisionLabels.formatChoiceFromAnswers(questions, result.answers());
+            String afterText;
+            if ("skipped".equals(result.outcome())) {
+                afterText = DecisionLabels.afterSkip();
+            } else {
+                String choiceText = DecisionLabels.formatChoiceFromAnswers(questions, result.answers());
+                afterText = DecisionLabels.after(choiceText);
+            }
             StepSummary summary = new StepSummary(
                     DecisionLabels.before(),
                     null,
-                    DecisionLabels.after(choiceText));
+                    afterText);
             ProcessingStep card = new ProcessingStep(
                     finalStepId,
                     "decision",

@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -212,6 +213,36 @@ class ProcessingStepMiddlewareTest {
 
         verify(session, never()).beginToolStep(any(), any());
         verify(session).recordToolCompleted("用户决策");
+        // 元工具仍绑定 toolUse→bridge（End 前可解析）；doFinally 会解绑
+        assertThat(StepEventBridge.bridgeIdForToolUse(toolUseId)).isNull();
+    }
+
+    @Test
+    void onActing_requestDecision_bindsToolUseBridgeDuringCall() {
+        StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
+        when(executionProperties.getReact()).thenReturn(null);
+        DecisionLabelService decisionLabels = mock(DecisionLabelService.class);
+        when(decisionLabels.label()).thenReturn("用户决策");
+        DecisionLabels.bind(decisionLabels);
+
+        String toolUseId = "tu-rd-bind";
+        ToolUseBlock toolUse = mock(ToolUseBlock.class);
+        when(toolUse.getName()).thenReturn(RequestDecisionTool.NAME);
+        when(toolUse.getId()).thenReturn(toolUseId);
+
+        ProcessingStepMiddleware mw = newMiddleware();
+        AtomicReference<String> bridgeDuringCall = new AtomicReference<>();
+        Function<ActingInput, Flux<AgentEvent>> next = in -> {
+            bridgeDuringCall.set(StepEventBridge.bridgeIdForToolUse(toolUseId));
+            return Flux.just(new ToolResultEndEvent(
+                    "e-rd-bind", null, "r-rd-bind", toolUseId, RequestDecisionTool.NAME, ToolResultState.SUCCESS));
+        };
+
+        ActingInput input = new ActingInput(List.of(toolUse));
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
+                .collectList().block();
+
+        assertThat(bridgeDuringCall.get()).isEqualTo(bridgeId);
     }
 
     @Test

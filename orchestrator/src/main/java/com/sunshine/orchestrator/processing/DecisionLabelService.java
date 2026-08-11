@@ -54,6 +54,10 @@ public class DecisionLabelService {
         return TimelineLabelTemplates.textOrDefault(step().getAfterCancel(), "已取消");
     }
 
+    public String afterSkip() {
+        return "已跳过";
+    }
+
     private AgentPromptProperties.StepTimeline step() {
         var steps = timelinePromptCatalog.steps();
         if (steps == null) {

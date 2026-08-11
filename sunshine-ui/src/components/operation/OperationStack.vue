@@ -199,10 +199,16 @@ const fallbackStartMs = ref<number | undefined>(undefined)
 const nowMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | undefined
 
-/** 正文（message.content / contentBlocks）最近一次流式增长的时间戳。
- * 用于区分「整文正在流式输出」与「正文已静、模型在生成下一步」。
- * 只盯总字符数，避免每 token join 全文（长文流式会反复拼大串）。 */
-const lastContentGrowthAt = ref(0)
+/** 流式静默多久后才露出空档三点（避免 think/tool 间隙频繁闪现） */
+const STREAM_IDLE_DOTS_MS = 2000
+
+/** 最近一次流式活动时间（正文增长 / timelineRevision / 进入 processing）。
+ * 只盯总字符数与 revision，避免每 token join 全文。 */
+const lastStreamActivityAt = ref(0)
+
+function markStreamActivity(): void {
+  if (isTimelineProcessing.value) lastStreamActivityAt.value = Date.now()
+}
 
 watch(
   () => {
@@ -213,14 +219,26 @@ watch(
     }
     return chars
   },
-  () => {
-    if (isTimelineProcessing.value) lastContentGrowthAt.value = Date.now()
+  () => { markStreamActivity() },
+)
+
+watch(
+  () => props.timelineRevision,
+  () => { markStreamActivity() },
+)
+
+watch(
+  isTimelineProcessing,
+  (processing) => {
+    if (processing) lastStreamActivityAt.value = Date.now()
   },
 )
 
-/** 正文是否正在流式增长（2s 窗口）：刷字期间抑制空档三点 */
-const isContentGrowthActive = computed(() =>
-  isTimelineProcessing.value && nowMs.value - lastContentGrowthAt.value < 2000,
+/** 近 2s 内仍有流式活动：抑制空档三点 */
+const isStreamRecentlyActive = computed(() =>
+  isTimelineProcessing.value
+  && lastStreamActivityAt.value > 0
+  && nowMs.value - lastStreamActivityAt.value < STREAM_IDLE_DOTS_MS,
 )
 
 function hasRunningOperationalStep(): boolean {
@@ -238,12 +256,12 @@ const hasAssistantContentText = computed(() =>
 )
 
 /**
- * 终稿阶段空档三点：已有正文、无运行步、且当前没在刷字。
- * 刷字时只靠正文增长反馈；中间未出正文前的空档由 pending hint 同样用三点。
+ * 终稿阶段空档三点：已有正文、无运行步、且流式已静默 ≥2s。
+ * 刷字/步骤更新期间只靠既有反馈；静默后的空档与中间 pending hint 共用三点。
  */
 const showFinalAnswerDots = computed(() => {
   if (!isTimelineProcessing.value) return false
-  if (isContentGrowthActive.value) return false
+  if (isStreamRecentlyActive.value) return false
   if (hasRunningOperationalStep()) return false
   return hasAssistantContentText.value
 })
@@ -268,8 +286,9 @@ watch(
   { immediate: true },
 )
 
+/** 总览时钟或 processing 空档判定都依赖 nowMs 推进（满 2s 静默才露三点） */
 watch(
-  summaryClockLive,
+  () => summaryClockLive.value || isTimelineProcessing.value,
   (needTick) => {
     if (tickTimer) {
       clearInterval(tickTimer)
@@ -435,7 +454,7 @@ function processRoundSegment(steps: ProcessingStep[]): { separates: DisplayRow[]
 }
 
 /** 构建 roundGroup 折叠标签：
- * 统计折叠区内除 intent/tasks/首 think 步外的操作：执行命令、搜索内容、查询文件、修改文件、搜索网页、调用工具、检索知识库 */
+ * 统计折叠区内除 intent/tasks/首 think / subagent / decision 外的操作 */
 function buildRoundGroupLabel(_collapsedRounds: DisplayRow[][], flatCollapsed: DisplayRow[]): string {
   const keyCounts = new Map<string, number>()
   const keyLabel = new Map<string, string>()
@@ -447,6 +466,7 @@ function buildRoundGroupLabel(_collapsedRounds: DisplayRow[][], flatCollapsed: D
   }
 
   function countStep(s: ProcessingStep) {
+    if (isSubagentStep(s) || isDecisionStep(s)) return
     const cid = catalogToolIdFromStepId(s.id)
     if (cid?.startsWith('sandbox__')) {
       switch (cid) {
@@ -505,6 +525,29 @@ function pushCollapsedOperationRows(result: DisplayRow[], collapsedRows: Display
     allDone,
     anyRunning,
   })
+}
+
+/** subagent / decision 卡须始终露出主时间线，不可被 roundGroup 吞掉 */
+function isTimelineStickyStep(step: ProcessingStep): boolean {
+  return isSubagentStep(step) || isDecisionStep(step)
+}
+
+/** 按原序：sticky 步单独露出，其余可折叠段再 roundGroup */
+function pushCollapsedWithSticky(result: DisplayRow[], rows: DisplayRow[]): void {
+  let buffer: DisplayRow[] = []
+  const flush = () => {
+    pushCollapsedOperationRows(result, buffer)
+    buffer = []
+  }
+  for (const row of rows) {
+    if (row.kind === 'step' && isTimelineStickyStep(row.step)) {
+      flush()
+      result.push(row)
+    } else {
+      buffer.push(row)
+    }
+  }
+  flush()
 }
 
 /** 正文间多轮操作折叠：在两组 ContentBlock 之间，若 grouped 行数 >=2 且 think 不足 2 个时，
@@ -566,7 +609,7 @@ function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
         const t1Idx = collapsedRows.findIndex(r => r.kind === 'step' && r.step.id === think1Id)
         if (t1Idx >= 0) result.push(collapsedRows.splice(t1Idx, 1)[0])
       }
-      pushCollapsedOperationRows(result, collapsedRows)
+      pushCollapsedWithSticky(result, collapsedRows)
       result.push(...grouped.slice(lastThinkIdx))
     } else if ((thinkIndices.length >= 1 && grouped.length >= 3) || (thinkIndices.length === 0 && grouped.length >= 2)) {
       // 1 think + >=2 散列 tool（或 0 think + >=2 散列 tool）：折叠多余行，仅保留最后一行可见
@@ -575,7 +618,7 @@ function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
         const t1Idx = collapsedRows.findIndex(r => r.kind === 'step' && r.step.id === think1Id)
         if (t1Idx >= 0) result.push(collapsedRows.splice(t1Idx, 1)[0])
       }
-      pushCollapsedOperationRows(result, collapsedRows)
+      pushCollapsedWithSticky(result, collapsedRows)
       result.push(grouped[grouped.length - 1])
     } else {
       result.push(...grouped)
@@ -625,9 +668,9 @@ const showProcessingCollapsedAnswer = computed(() =>
   !!collapsedPreviewStep.value && !!collapsedAnswerText.value,
 )
 
-/** 折叠态执行空档占位：中间/终稿空档统一三点（刷字中不显示） */
+/** 折叠态执行空档占位：中间/终稿空档统一三点（流式静默未满 2s 不显示） */
 const showCollapsedPendingHint = computed(() => {
-  if (isContentGrowthActive.value) return false
+  if (isStreamRecentlyActive.value) return false
   const step = collapsedPreviewStep.value
   if (!step || timelineBodyExpanded.value) return false
   return shouldShowAfterThinkPendingHint({
@@ -713,10 +756,10 @@ const orphanContent = computed(() => {
   )
 })
 
-/** 执行空档占位：中间/终稿空档统一三点，刷字中不显示 */
+/** 执行空档占位：中间/终稿空档统一三点，流式静默未满 2s 不显示 */
 const showAfterThinkPendingHint = computed(() => {
   void props.timelineRevision
-  if (isContentGrowthActive.value) return false
+  if (isStreamRecentlyActive.value) return false
   const rows = roundDisplayRows.value
   const last = rows.length ? rows[rows.length - 1] : undefined
   if (!last) return false
@@ -860,6 +903,19 @@ watch(
                       @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
                     />
                   </template>
+                  <template v-else-if="inner.kind === 'step' && isSubagentStep(inner.step)">
+                    <SubagentCard
+                      :step="inner.step"
+                      :live="false"
+                    />
+                  </template>
+                  <template v-else-if="inner.kind === 'step' && isDecisionStep(inner.step)">
+                    <DecisionCard
+                      :step="inner.step"
+                      :live="false"
+                      :generation-id="generationId"
+                    />
+                  </template>
                   <template v-else-if="inner.kind === 'step'">
                     <OperationCard
                       :step="inner.step"
@@ -988,7 +1044,7 @@ watch(
           </div>
         </div>
     </template>
-    <!-- 执行空档：三点跳动（无计时） -->
+    <!-- 执行空档：三点跳动（流式静默 ≥2s） -->
     <div
       v-if="showExpandedPendingDots"
       class="op-answer-dots"
@@ -1051,7 +1107,7 @@ watch(
           />
         </div>
       </div>
-      <!-- 折叠态执行空档：三点跳动（无计时） -->
+      <!-- 折叠态执行空档：三点跳动（流式静默 ≥2s） -->
       <div
         v-if="showCollapsedPendingDots"
         class="op-answer-dots"

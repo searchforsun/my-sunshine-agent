@@ -120,11 +120,11 @@ public class DynamicToolkitFactory {
             AgentExecutionProperties.React react = executionProperties.getReact();
             // 原生 todo_write 由 ReActAgent.enableTaskList 在 build 时注册；timeline tasks 步投影由 TodoTasksBridge 完成。
             if (react != null && react.getSubagent() != null && react.getSubagent().isEnabled()) {
-                tk.registerTool(spawnSubagentTool);
+                tk.registerAgentTool(spawnSubagentTool);
                 registered.add(SpawnSubagentTool.NAME);
             }
             if (react != null && react.getDecision() != null && react.getDecision().isEnabled()) {
-                tk.registerTool(requestDecisionTool);
+                tk.registerAgentTool(requestDecisionTool);
                 registered.add(RequestDecisionTool.NAME);
             }
         }

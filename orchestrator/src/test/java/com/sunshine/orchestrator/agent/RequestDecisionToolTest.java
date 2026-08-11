@@ -160,16 +160,46 @@ class RequestDecisionToolTest {
 
     @Test
     void subBridge_returnsErrorJson() {
-        ProcessingTimelineSession session = new ProcessingTimelineSession();
-        registry.bind("sub-agent-1", session, new ConcurrentLinkedQueue<>());
+        bindMainContext();
+        ProcessingTimelineSession sub = new ProcessingTimelineSession();
+        registry.bind("sub-agent-1", sub, new ConcurrentLinkedQueue<>());
         StepEventBridge.bindHitlBridge("sub-agent-1", MSG, true);
-        StepEventBridge.registerMainRun(MSG, BRIDGE);
+        String toolUseId = "tu-from-sub";
+        StepEventBridge.bindToolUseBridge(toolUseId, "sub-agent-1");
 
-        String out = tool.requestDecision("确认", QUESTIONS_OK);
+        String out = tool.requestDecision("确认", QUESTIONS_OK, toolUseId);
         assertThat(out).contains("\"ok\":false");
         assertThat(out).contains("子 Agent");
         verify(timelineSupport, never()).begin(
                 anyString(), anyString(), anyString(), anyList(), anyLong());
+    }
+
+    @Test
+    void multiSession_resolvesViaToolUseBinding() throws Exception {
+        ProcessingTimelineSession other = new ProcessingTimelineSession();
+        registry.bind("main-other", other, new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge("main-other", "msg-other", true);
+        StepEventBridge.registerMainRun("msg-other", "main-other");
+        bindMainContext();
+        String toolUseId = "tu-decision-1";
+        StepEventBridge.bindToolUseBridge(toolUseId, BRIDGE);
+
+        DecisionRegistry.Registration reg = new DecisionRegistry.Registration(
+                "tok-multi", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L, "确认");
+        when(decisionRegistry.hasAwaiting(MSG)).thenReturn(false);
+        when(decisionRegistry.register(eq(MSG), anyString(), eq("确认"), anyList())).thenReturn(reg);
+        when(decisionRegistry.awaitDecision(reg))
+                .thenReturn(new DecisionResult(
+                        "answered",
+                        "确认",
+                        List.of(new DecisionAnswer("q1", List.of("agent"), null)),
+                        System.currentTimeMillis()));
+
+        String out = tool.requestDecision("确认", QUESTIONS_OK, toolUseId);
+
+        assertThat(out).contains("outcome=answered");
+        assertThat(out).contains("q.q1=agent");
+        verify(timelineSupport).begin(eq(BRIDGE), eq("tok-multi"), eq("确认"), anyList(), anyLong());
     }
 
     @Test

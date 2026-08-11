@@ -119,6 +119,29 @@ class StepEventBridgeConcurrentTest {
     }
 
     @Test
+    void activeBridgeId_prefersToolUseBindingWhenMultipleSessions() {
+        bind("main-a", new ConcurrentLinkedQueue<>());
+        bind("main-b", new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge("main-b", "msg-b", true);
+        StepEventBridge.bindToolUseBridge("tu-1", "main-b");
+
+        assertThat(StepEventBridge.activeBridgeId()).isEqualTo("main-b");
+        assertThat(StepEventBridge.resolveMessageIdForToolUse("tu-1")).isEqualTo("msg-b");
+
+        StepEventBridge.unbindToolUseBridge("tu-1");
+        assertThat(StepEventBridge.activeBridgeId()).isNull();
+    }
+
+    @Test
+    void activeBridgeId_prefersSoleMainWhenSubAlsoPresent() {
+        bind("main-run-1", new ConcurrentLinkedQueue<>());
+        bind("sub-run-1", new ConcurrentLinkedQueue<>());
+        StepEventBridge.registerMainRun("msg-1", "main-run-1");
+
+        assertThat(StepEventBridge.activeBridgeId()).isEqualTo("main-run-1");
+    }
+
+    @Test
     void resolveHitlBridgeId_fallsBackToSingleHitlBridge() {
         bind("msg-a", new ConcurrentLinkedQueue<>());
         bind("msg-b", new ConcurrentLinkedQueue<>());
