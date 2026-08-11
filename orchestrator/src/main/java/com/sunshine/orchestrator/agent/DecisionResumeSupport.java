@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.agent;
 
-import com.sunshine.orchestrator.execution.ReactResumeContextSupport;
 import com.sunshine.orchestrator.processing.DecisionLabels;
 import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +12,7 @@ import java.util.List;
 /**
  * ReAct MAIN 续跑：对 awaiting/paused decision 卡 re-register token 并阻塞 await；
  * 成功后 grant 预决策（供 checkpoint 重放 tool_call），并返回须注入 Prompt 的【用户决策】块
- * （停止路径常把 request_decision 记为终态 {@code __cancelled__}，模型不会再调工具）。
+ * （停止路径常把 request_decision 记为终态 cancelled，模型不会再调工具）。
  */
 @Slf4j
 @Component
@@ -38,25 +37,21 @@ public class DecisionResumeSupport {
         String msgId = messageId.strip();
         String bridge = StringUtils.hasText(bridgeId) ? bridgeId.strip() : StepEventBridge.activeMainBridge(msgId);
         DecisionStepMeta meta = decisionStep.metadata().decision();
-        List<DecisionOption> options = meta.options() != null ? meta.options() : List.of();
-        String question = meta.question() != null ? meta.question() : "";
-        String fingerprint = DecisionFingerprint.of(question, options);
+        List<DecisionQuestion> questions = meta.questions() != null ? meta.questions() : List.of();
+        String title = meta.title() != null ? meta.title() : "";
+        String fingerprint = DecisionFingerprint.of(title, questions);
 
         // 同进程残留预决策（上次 resume 已 resolve）：落 done + 注入，不二次阻塞
         var preGranted = StepEventBridge.peekDecisionPreApproval(msgId, fingerprint);
         if (preGranted.isPresent()) {
             DecisionResult existing = preGranted.get();
-            String label = resolveLabel(options, existing.choice());
             if (StringUtils.hasText(bridge)) {
                 String token = StringUtils.hasText(meta.token()) ? meta.token() : "preapproved";
-                timelineSupport.refreshAwaiting(
-                        bridge, decisionStep.id(), token, question, options,
-                        meta.allowCustomInput(), meta.expiresAt());
-                timelineSupport.complete(bridge, token, existing, label);
+                timelineSupport.rebindAwaiting(
+                        bridge, decisionStep.id(), token, title, questions, meta.expiresAt());
+                timelineSupport.complete(bridge, token, existing);
             }
-            return DecisionResumeOutcome.resolved(List.of(
-                    ReactResumeContextSupport.buildResolvedDecisionBlock(
-                            question, existing.choice(), label, existing.customInput())));
+            return DecisionResumeOutcome.resolved(List.of(buildResolvedInjectBlock(existing)));
         }
 
         if (!StringUtils.hasText(bridge)) {
@@ -68,34 +63,28 @@ public class DecisionResumeSupport {
         String userId = audit != null && StringUtils.hasText(audit.userId()) ? audit.userId() : "";
         DecisionRegistry.Registration reg;
         try {
-            reg = decisionRegistry.register(
-                    msgId, userId, question, options, meta.allowCustomInput());
+            reg = decisionRegistry.register(msgId, userId, title, questions);
         } catch (IllegalStateException e) {
             // D15 竞态仍有 awaiting：无法刷新 token，中止以免半吊子续跑（对齐 HITL interrupt）
             log.warn("[DecisionResume] register 失败，中止续跑 msg={}: {}", msgId, e.getMessage());
             return DecisionResumeOutcome.aborted();
         }
 
-        timelineSupport.refreshAwaiting(
-                bridge, decisionStep.id(), reg.token(), question, options,
-                meta.allowCustomInput(), reg.expiresAt());
+        timelineSupport.rebindAwaiting(
+                bridge, decisionStep.id(), reg.token(), title, questions, reg.expiresAt());
         try {
             DecisionResult result = decisionRegistry.awaitDecision(reg);
-            if ("__timeout__".equals(result.choice())) {
+            if ("timeout".equals(result.outcome())) {
                 timelineSupport.pause(bridge, reg.token(), DecisionLabels.afterTimeout());
-                // 对齐 HITL：等待中断 → GenerationJob INTERRUPTED，不继续 streamEvents
                 return DecisionResumeOutcome.aborted();
             }
-            if ("__cancelled__".equals(result.choice())) {
+            if ("cancelled".equals(result.outcome())) {
                 timelineSupport.pause(bridge, reg.token(), DecisionLabels.afterCancel());
                 return DecisionResumeOutcome.aborted();
             }
-            String label = resolveLabel(options, result.choice());
-            timelineSupport.complete(bridge, reg.token(), result, label);
+            timelineSupport.complete(bridge, reg.token(), result);
             StepEventBridge.grantDecisionPreApproval(msgId, fingerprint, result);
-            return DecisionResumeOutcome.resolved(List.of(
-                    ReactResumeContextSupport.buildResolvedDecisionBlock(
-                            question, result.choice(), label, result.customInput())));
+            return DecisionResumeOutcome.resolved(List.of(buildResolvedInjectBlock(result)));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             timelineSupport.pause(bridge, reg.token(), DecisionLabels.afterCancel());
@@ -108,14 +97,40 @@ public class DecisionResumeSupport {
         }
     }
 
-    private static String resolveLabel(List<DecisionOption> options, String choice) {
-        if (!StringUtils.hasText(choice) || options == null) {
-            return "";
+    /**
+     * 续跑注入块：与 Task 5 tool result 短格式对齐（outcome/title/q.*），不经 RequestDecisionTool。
+     */
+    static String buildResolvedInjectBlock(DecisionResult result) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("【用户决策】");
+        String title = result != null && result.title() != null ? result.title() : "";
+        if (StringUtils.hasText(title)) {
+            sb.append('\n').append(title.strip());
         }
-        return options.stream()
-                .filter(o -> choice.equals(o.value()))
-                .map(DecisionOption::label)
-                .findFirst()
-                .orElse("");
+        sb.append('\n').append(formatAnsweredShort(result));
+        return sb.toString();
+    }
+
+    private static String formatAnsweredShort(DecisionResult result) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("outcome=").append(result != null && result.outcome() != null ? result.outcome() : "");
+        sb.append("\ntitle=").append(result != null && result.title() != null ? result.title() : "");
+        if (result == null || result.answers() == null) {
+            return sb.toString();
+        }
+        for (DecisionAnswer answer : result.answers()) {
+            if (answer == null || !StringUtils.hasText(answer.questionId())) {
+                continue;
+            }
+            String ids = answer.selectedOptionIds() == null
+                    ? ""
+                    : String.join(",", answer.selectedOptionIds());
+            sb.append("\nq.").append(answer.questionId().strip()).append('=').append(ids);
+            if (StringUtils.hasText(answer.customInput())) {
+                sb.append("\nq.").append(answer.questionId().strip())
+                        .append(".custom=").append(answer.customInput());
+            }
+        }
+        return sb.toString();
     }
 }

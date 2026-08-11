@@ -124,7 +124,7 @@ public final class ProcessingStepLifecycleOps {
     /**
      * ReAct 待决策步：自尾向前；跳过 {@code node-*}；
      * {@code phase=decision} 或 id {@code decision-*}；lifecycle ∈ {awaiting,paused}
-     * 且 metadata.decision 仍无终态 choice。
+     * 且 metadata.decision 仍无终态 outcome。
      */
     public static ProcessingStep findReactAwaitingDecisionStep(List<ProcessingStep> steps) {
         if (steps == null || steps.isEmpty()) {
@@ -147,7 +147,7 @@ public final class ProcessingStepLifecycleOps {
             if (decision == null) {
                 continue;
             }
-            if (StringUtils.hasText(decision.choice())) {
+            if (StringUtils.hasText(decision.outcome())) {
                 continue;
             }
             return step;

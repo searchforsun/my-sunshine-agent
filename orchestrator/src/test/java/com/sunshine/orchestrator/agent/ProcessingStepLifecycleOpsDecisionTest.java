@@ -17,7 +17,7 @@ class ProcessingStepLifecycleOpsDecisionTest {
     void findReactAwaitingDecisionStep_returnsLatestAwaiting() {
         ProcessingStep older = decisionStep("decision-old", "awaiting", null);
         ProcessingStep newer = decisionStep("decision-new", "paused", null);
-        ProcessingStep resolved = decisionStep("decision-done", "done", "plan_a");
+        ProcessingStep resolved = decisionStep("decision-done", "done", "answered");
         List<ProcessingStep> steps = List.of(
                 doneStep("intent"),
                 doneStep("think"),
@@ -32,10 +32,10 @@ class ProcessingStepLifecycleOpsDecisionTest {
     }
 
     @Test
-    void findReactAwaitingDecisionStep_skipsNodePrefixedAndResolvedChoice() {
+    void findReactAwaitingDecisionStep_skipsNodePrefixedAndResolvedOutcome() {
         List<ProcessingStep> steps = List.of(
                 decisionStep("node-decision-x", "awaiting", null),
-                decisionStep("decision-resolved", "paused", "plan_a"));
+                decisionStep("decision-resolved", "paused", "answered"));
 
         assertThat(ProcessingStepLifecycleOps.findReactAwaitingDecisionStep(steps)).isNull();
     }
@@ -62,17 +62,23 @@ class ProcessingStepLifecycleOpsDecisionTest {
                 2L, id, null, null, null, null);
     }
 
-    private static ProcessingStep decisionStep(String id, String lifecycle, String choice) {
+    private static ProcessingStep decisionStep(String id, String lifecycle, String outcome) {
         DecisionStepMeta decision = new DecisionStepMeta(
                 "tok",
                 "选哪个方案？",
                 List.of(
-                        new DecisionOption("plan_a", "方案A", "稳妥", false),
-                        new DecisionOption("plan_b", "方案B", null, false)),
-                false,
+                        new DecisionQuestion(
+                                "q1",
+                                "选哪个方案？",
+                                List.of(
+                                        new DecisionOption("plan_a", "方案A"),
+                                        new DecisionOption("plan_b", "方案B")),
+                                false)),
                 System.currentTimeMillis() + 60_000,
-                choice,
-                null);
+                outcome,
+                outcome != null
+                        ? List.of(new DecisionAnswer("q1", List.of("plan_a"), null))
+                        : null);
         return new ProcessingStep(
                 id,
                 "decision",

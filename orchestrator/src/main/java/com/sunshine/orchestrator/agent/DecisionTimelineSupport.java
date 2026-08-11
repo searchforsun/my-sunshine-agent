@@ -15,33 +15,32 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class DecisionTimelineSupport {
 
-    /** begin/refresh 载荷：enqueueAuxiliary 不进 session.snapshot，终态需本地保留 question/options */
+    /** begin/rebind 载荷：enqueueAuxiliary 不进 session.snapshot，终态需本地保留 title/questions */
     private final ConcurrentHashMap<String, DecisionStepMeta> pendingByToken = new ConcurrentHashMap<>();
-    /** 续跑 refresh 时保留原 stepId，避免 decision-{newToken} 另开一张卡 */
+    /** 续跑 rebind 时保留原 stepId，避免 decision-{newToken} 另开一张卡 */
     private final ConcurrentHashMap<String, String> stepIdByToken = new ConcurrentHashMap<>();
 
     public void begin(
             String bridgeId,
             String token,
-            String question,
-            List<DecisionOption> options,
-            boolean allowCustomInput,
+            String title,
+            List<DecisionQuestion> questions,
             Long expiresAt) {
         if (!StringUtils.hasText(bridgeId) || !StringUtils.hasText(token)) {
             return;
         }
         DecisionStepMeta decision = new DecisionStepMeta(
-                token, question, options, allowCustomInput, expiresAt, null, null);
+                token, title, questions, expiresAt, null, null);
         pendingByToken.put(token, decision);
         String stepId = "decision-" + token;
         stepIdByToken.put(token, stepId);
         StepEventBridge.emit(bridgeId, session -> {
             long ts = System.currentTimeMillis();
-            String label = StringUtils.hasText(question) ? question : DecisionLabels.label();
+            String label = StringUtils.hasText(title) ? title : DecisionLabels.label();
             StepMetadata metadata = StepMetadata.withDecision(null, decision);
             StepSummary summary = new StepSummary(
                     DecisionLabels.before(),
-                    DecisionLabels.active(question),
+                    DecisionLabels.active(title),
                     null);
             ProcessingStep card = new ProcessingStep(
                     stepId,
@@ -66,29 +65,28 @@ public class DecisionTimelineSupport {
     }
 
     /**
-     * 续跑：同一 stepId 更新 token/expiresAt，不改 question/options。
+     * 续跑：同一 stepId 更新 token/expiresAt，不改 title/questions。
      */
-    public void refreshAwaiting(
+    public void rebindAwaiting(
             String bridgeId,
             String stepId,
             String token,
-            String question,
-            List<DecisionOption> options,
-            boolean allowCustomInput,
+            String title,
+            List<DecisionQuestion> questions,
             Long expiresAt) {
         if (!StringUtils.hasText(bridgeId) || !StringUtils.hasText(stepId) || !StringUtils.hasText(token)) {
             return;
         }
         DecisionStepMeta decision = new DecisionStepMeta(
-                token, question, options, allowCustomInput, expiresAt, null, null);
+                token, title, questions, expiresAt, null, null);
         pendingByToken.put(token, decision);
         stepIdByToken.put(token, stepId);
         StepEventBridge.emit(bridgeId, session -> {
             long ts = System.currentTimeMillis();
-            String label = StringUtils.hasText(question) ? question : DecisionLabels.label();
+            String label = StringUtils.hasText(title) ? title : DecisionLabels.label();
             StepSummary summary = new StepSummary(
                     DecisionLabels.before(),
-                    DecisionLabels.active(question),
+                    DecisionLabels.active(title),
                     null);
             ProcessingStep card = new ProcessingStep(
                     stepId,
@@ -112,12 +110,12 @@ public class DecisionTimelineSupport {
         });
     }
 
-    public void complete(String bridgeId, String token, DecisionResult result, String labelForChoice) {
+    public void complete(String bridgeId, String token, DecisionResult result) {
         if (!StringUtils.hasText(bridgeId) || !StringUtils.hasText(token) || result == null) {
             return;
         }
         DecisionStepMeta prior = pendingByToken.remove(token);
-        DecisionStepMeta updated = withChoice(prior, token, result);
+        DecisionStepMeta updated = withOutcome(prior, token, result);
         String stepId = stepIdByToken.remove(token);
         if (!StringUtils.hasText(stepId)) {
             stepId = "decision-" + token;
@@ -125,10 +123,12 @@ public class DecisionTimelineSupport {
         String finalStepId = stepId;
         StepEventBridge.emit(bridgeId, session -> {
             long ts = System.currentTimeMillis();
+            List<DecisionQuestion> questions = updated.questions();
+            String choiceText = DecisionLabels.formatChoiceFromAnswers(questions, result.answers());
             StepSummary summary = new StepSummary(
                     DecisionLabels.before(),
                     null,
-                    DecisionLabels.after(labelForChoice));
+                    DecisionLabels.after(choiceText));
             ProcessingStep card = new ProcessingStep(
                     finalStepId,
                     "decision",
@@ -142,7 +142,7 @@ public class DecisionTimelineSupport {
                     null,
                     null,
                     ts,
-                    priorLabel(prior, labelForChoice),
+                    priorLabel(prior, result.title()),
                     StepMetadata.withDecision(null, updated),
                     null,
                     null,
@@ -223,24 +223,23 @@ public class DecisionTimelineSupport {
         });
     }
 
-    private static DecisionStepMeta withChoice(DecisionStepMeta prior, String token, DecisionResult result) {
+    private static DecisionStepMeta withOutcome(DecisionStepMeta prior, String token, DecisionResult result) {
         if (prior == null) {
             return new DecisionStepMeta(
-                    token, null, null, false, null, result.choice(), result.customInput());
+                    token, result.title(), null, null, result.outcome(), result.answers());
         }
         return new DecisionStepMeta(
                 prior.token(),
-                prior.question(),
-                prior.options(),
-                prior.allowCustomInput(),
+                prior.title(),
+                prior.questions(),
                 prior.expiresAt(),
-                result.choice(),
-                result.customInput());
+                result.outcome(),
+                result.answers());
     }
 
     private static String priorLabel(DecisionStepMeta prior, String fallback) {
-        if (prior != null && StringUtils.hasText(prior.question())) {
-            return prior.question();
+        if (prior != null && StringUtils.hasText(prior.title())) {
+            return prior.title();
         }
         return StringUtils.hasText(fallback) ? fallback.strip() : DecisionLabels.label();
     }

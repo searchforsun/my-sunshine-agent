@@ -48,67 +48,108 @@ class DecisionTimelineSupportTest {
     }
 
     @Test
-    void begin_emitsDecisionStepWithAwaitingLifecycle() {
+    void begin_emitsDecisionStepWithQuestionsAndNoAllowCustomInput() {
         String token = "tok-abc";
-        String question = "您希望按哪种方式处理？请完整保留本问题原文。";
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A：快速处理", "描述原文A", false),
-                new DecisionOption("plan_b", "方案B：完整流程", "描述原文B", true));
+        String title = "需要确认";
+        List<DecisionQuestion> questions = List.of(
+                new DecisionQuestion(
+                        "q1",
+                        "您希望按哪种方式处理？请完整保留本问题原文。",
+                        List.of(
+                                new DecisionOption("plan_a", "方案A：快速处理"),
+                                new DecisionOption("plan_b", "方案B：完整流程")),
+                        false),
+                new DecisionQuestion(
+                        "q2",
+                        "关注哪些方面？",
+                        List.of(
+                                new DecisionOption("perf", "性能"),
+                                new DecisionOption("ux", "体验")),
+                        true));
         long expiresAt = 1_753_721_880_000L;
 
-        support.begin(BRIDGE, token, question, options, false, expiresAt);
+        support.begin(BRIDGE, token, title, questions, expiresAt);
 
         ProcessingStep step = findDecisionStep(token);
         assertThat(step).isNotNull();
         assertThat(step.id()).isEqualTo("decision-" + token);
         assertThat(step.phase()).isEqualTo("decision");
         assertThat(step.lifecycle()).isEqualTo("awaiting");
+        assertThat(step.label()).isEqualTo(title);
         assertThat(step.summary()).isNotNull();
         assertThat(step.summary().before()).isEqualTo(DecisionLabels.before());
-        assertThat(step.summary().active()).isEqualTo(DecisionLabels.active(question));
-        assertThat(step.summary().active()).contains(question);
+        assertThat(step.summary().active()).isEqualTo(DecisionLabels.active(title));
+        assertThat(step.summary().active()).contains(title);
         DecisionStepMeta decision = step.metadata().decision();
         assertThat(decision).isNotNull();
         assertThat(decision.token()).isEqualTo(token);
-        assertThat(decision.question()).isEqualTo(question);
-        assertThat(decision.options()).containsExactlyElementsOf(options);
-        assertThat(decision.allowCustomInput()).isFalse();
+        assertThat(decision.title()).isEqualTo(title);
+        assertThat(decision.questions()).containsExactlyElementsOf(questions);
         assertThat(decision.expiresAt()).isEqualTo(expiresAt);
-        assertThat(decision.choice()).isNull();
-        assertThat(decision.customInput()).isNull();
+        assertThat(decision.outcome()).isNull();
+        assertThat(decision.answers()).isNull();
     }
 
     @Test
-    void complete_marksDoneAndFillsChoiceMetadata() {
+    void complete_marksDoneAndFillsOutcomeAnswers() {
         String token = "tok-done";
-        String question = "选哪个？";
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A", "快", false),
-                new DecisionOption("plan_b", "方案B", "全", false));
-        support.begin(BRIDGE, token, question, options, true, 99L);
+        String title = "选哪个？";
+        List<DecisionQuestion> questions = List.of(
+                new DecisionQuestion(
+                        "q1",
+                        "方案？",
+                        List.of(
+                                new DecisionOption("plan_a", "方案A"),
+                                new DecisionOption("plan_b", "方案B")),
+                        false));
+        support.begin(BRIDGE, token, title, questions, 99L);
         flushed.clear();
         hookQueue.clear();
 
-        DecisionResult result = new DecisionResult("plan_a", "补充说明", 1_700_000_000_000L);
-        support.complete(BRIDGE, token, result, "方案A");
+        DecisionAnswer answer = new DecisionAnswer("q1", List.of("plan_a"), "补充说明");
+        DecisionResult result = new DecisionResult(
+                "answered", title, List.of(answer), 1_700_000_000_000L);
+        support.complete(BRIDGE, token, result);
 
         ProcessingStep step = findDecisionStep(token);
         assertThat(step).isNotNull();
         assertThat(step.lifecycle()).isEqualTo("done");
-        assertThat(step.summary().after()).isEqualTo(DecisionLabels.after("方案A"));
+        String choiceText = DecisionLabels.formatChoiceFromAnswers(questions, result.answers());
+        assertThat(choiceText).contains("q1=plan_a");
+        assertThat(step.summary().after()).isEqualTo(DecisionLabels.after(choiceText));
         assertThat(step.endedAt()).isNotNull();
         DecisionStepMeta decision = step.metadata().decision();
-        assertThat(decision.question()).isEqualTo(question);
-        assertThat(decision.options()).containsExactlyElementsOf(options);
-        assertThat(decision.choice()).isEqualTo("plan_a");
-        assertThat(decision.customInput()).isEqualTo("补充说明");
-        assertThat(decision.allowCustomInput()).isTrue();
+        assertThat(decision.title()).isEqualTo(title);
+        assertThat(decision.questions()).containsExactlyElementsOf(questions);
+        assertThat(decision.outcome()).isEqualTo("answered");
+        assertThat(decision.answers()).containsExactly(answer);
+    }
+
+    @Test
+    void rebindAwaiting_keepsStepIdAndUpdatesToken() {
+        String oldToken = "tok-old";
+        String title = "需要确认";
+        List<DecisionQuestion> questions = sampleQuestions();
+        support.begin(BRIDGE, oldToken, title, questions, 1L);
+        flushed.clear();
+        hookQueue.clear();
+
+        String newToken = "tok-new";
+        long expiresAt = 2L;
+        support.rebindAwaiting(BRIDGE, "decision-" + oldToken, newToken, title, questions, expiresAt);
+
+        ProcessingStep step = findDecisionStepById("decision-" + oldToken);
+        assertThat(step).isNotNull();
+        assertThat(step.lifecycle()).isEqualTo("awaiting");
+        assertThat(step.metadata().decision().token()).isEqualTo(newToken);
+        assertThat(step.metadata().decision().questions()).containsExactlyElementsOf(questions);
+        assertThat(step.metadata().decision().expiresAt()).isEqualTo(expiresAt);
     }
 
     @Test
     void pause_marksPausedWithAfterText() {
         String token = "tok-pause";
-        support.begin(BRIDGE, token, "Q?", sampleOptions(), false, 1L);
+        support.begin(BRIDGE, token, "Q?", sampleQuestions(), 1L);
         flushed.clear();
         hookQueue.clear();
 
@@ -124,7 +165,7 @@ class DecisionTimelineSupportTest {
     @Test
     void fail_marksErrorWithMessage() {
         String token = "tok-fail";
-        support.begin(BRIDGE, token, "Q?", sampleOptions(), false, 1L);
+        support.begin(BRIDGE, token, "Q?", sampleQuestions(), 1L);
         flushed.clear();
         hookQueue.clear();
 
@@ -138,14 +179,20 @@ class DecisionTimelineSupportTest {
         assertThat(step.endedAt()).isNotNull();
     }
 
-    private static List<DecisionOption> sampleOptions() {
+    private static List<DecisionQuestion> sampleQuestions() {
         return List.of(
-                new DecisionOption("a", "A", null, false),
-                new DecisionOption("b", "B", null, false));
+                new DecisionQuestion(
+                        "q1",
+                        "选？",
+                        List.of(new DecisionOption("a", "A"), new DecisionOption("b", "B")),
+                        false));
     }
 
     private ProcessingStep findDecisionStep(String token) {
-        String stepId = "decision-" + token;
+        return findDecisionStepById("decision-" + token);
+    }
+
+    private ProcessingStep findDecisionStepById(String stepId) {
         for (StreamToken streamToken : flushed) {
             if (streamToken.isStep() && streamToken.step() != null && stepId.equals(streamToken.step().id())) {
                 return streamToken.step();

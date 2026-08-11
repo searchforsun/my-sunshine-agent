@@ -56,76 +56,79 @@ class DecisionResumeSupportTest {
     }
 
     @Test
-    void resume_reRegistersToken_withoutChangingQuestion() throws Exception {
+    void resume_reRegistersToken_withoutChangingQuestions() throws Exception {
         String oldToken = "old-token";
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A", "稳妥", false),
-                new DecisionOption("plan_b", "方案B", null, false));
-        ProcessingStep awaiting = decisionStep("decision-" + oldToken, oldToken, "awaiting", null, options);
-        String question = "选哪个方案？";
-        String fingerprint = DecisionFingerprint.of(question, options);
+        List<DecisionQuestion> questions = sampleQuestions();
+        String title = "选哪个方案？";
+        ProcessingStep awaiting = decisionStep("decision-" + oldToken, oldToken, "awaiting", null, null, questions);
+        String fingerprint = DecisionFingerprint.of(title, questions);
 
         DecisionRegistry.Registration reg = new DecisionRegistry.Registration(
-                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L);
-        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq(question), anyList(), eq(false)))
+                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L, title);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq(title), anyList()))
                 .thenReturn(reg);
         when(decisionRegistry.awaitDecision(reg))
-                .thenReturn(new DecisionResult("plan_a", null, System.currentTimeMillis()));
+                .thenReturn(new DecisionResult(
+                        "answered",
+                        title,
+                        List.of(new DecisionAnswer("q1", List.of("plan_a"), null)),
+                        System.currentTimeMillis()));
 
         DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
 
-        ArgumentCaptor<List<DecisionOption>> optionsCaptor = ArgumentCaptor.forClass(List.class);
-        verify(decisionRegistry).register(eq(MSG), eq("user-1"), eq(question), optionsCaptor.capture(), eq(false));
-        assertThat(optionsCaptor.getValue()).isEqualTo(options);
-        verify(timelineSupport).refreshAwaiting(
-                eq(BRIDGE), eq(awaiting.id()), eq("new-token"), eq(question), anyList(), eq(false), any(Long.class));
-        verify(timelineSupport).complete(
-                eq(BRIDGE), eq("new-token"), any(DecisionResult.class), eq("方案A"));
+        ArgumentCaptor<List<DecisionQuestion>> questionsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(decisionRegistry).register(eq(MSG), eq("user-1"), eq(title), questionsCaptor.capture());
+        assertThat(questionsCaptor.getValue()).isEqualTo(questions);
+        verify(timelineSupport).rebindAwaiting(
+                eq(BRIDGE), eq(awaiting.id()), eq("new-token"), eq(title), anyList(), any(Long.class));
+        verify(timelineSupport).complete(eq(BRIDGE), eq("new-token"), any(DecisionResult.class));
         assertThat(outcome.shouldAbort()).isFalse();
         assertThat(StepEventBridge.consumeDecisionPreApproval(MSG, fingerprint)).isPresent()
                 .get()
-                .extracting(DecisionResult::choice)
-                .isEqualTo("plan_a");
+                .extracting(DecisionResult::outcome)
+                .isEqualTo("answered");
     }
 
     @Test
-    void resume_resolved_injectsChoiceWithoutSecondToolCall() throws Exception {
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A", "稳妥", false),
-                new DecisionOption("plan_b", "方案B", null, false));
-        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "paused", null, options);
+    void resume_resolved_injectsAnswersWithoutSecondToolCall() throws Exception {
+        List<DecisionQuestion> questions = sampleQuestions();
+        String title = "选哪个方案？";
+        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "paused", null, null, questions);
         DecisionRegistry.Registration reg = new DecisionRegistry.Registration(
-                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L);
-        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList(), eq(false)))
+                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L, title);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq(title), anyList()))
                 .thenReturn(reg);
         when(decisionRegistry.awaitDecision(reg))
-                .thenReturn(new DecisionResult("plan_b", "补充", System.currentTimeMillis()));
+                .thenReturn(new DecisionResult(
+                        "answered",
+                        title,
+                        List.of(new DecisionAnswer("q1", List.of("plan_b"), "补充")),
+                        System.currentTimeMillis()));
 
         DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
 
-        // C1：不依赖二次 tool_call / consume；injectBlocks 必须带短格式
         assertThat(outcome.shouldAbort()).isFalse();
         assertThat(outcome.injectBlocks()).isNotEmpty();
         String block = String.join("\n", outcome.injectBlocks());
         assertThat(block).contains("【用户决策】");
-        assertThat(block).contains("choice=plan_b");
-        assertThat(block).contains("label=方案B");
-        assertThat(block).contains("customInput=补充");
-        assertThat(block).contains("选哪个方案？");
+        assertThat(block).contains("outcome=answered");
+        assertThat(block).contains("title=" + title);
+        assertThat(block).contains("q.q1=plan_b");
+        assertThat(block).contains("q.q1.custom=补充");
+        assertThat(block).contains(title);
     }
 
     @Test
     void resume_timeout_abortsWithoutProceeding() throws Exception {
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A", null, false),
-                new DecisionOption("plan_b", "方案B", null, false));
-        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "awaiting", null, options);
+        List<DecisionQuestion> questions = sampleQuestions();
+        String title = "选哪个方案？";
+        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "awaiting", null, null, questions);
         DecisionRegistry.Registration reg = new DecisionRegistry.Registration(
-                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L);
-        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList(), eq(false)))
+                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L, title);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq(title), anyList()))
                 .thenReturn(reg);
         when(decisionRegistry.awaitDecision(reg))
-                .thenReturn(new DecisionResult("__timeout__", null, System.currentTimeMillis()));
+                .thenReturn(new DecisionResult("timeout", title, List.of(), System.currentTimeMillis()));
 
         DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
 
@@ -136,16 +139,15 @@ class DecisionResumeSupportTest {
 
     @Test
     void resume_cancelled_abortsWithoutProceeding() throws Exception {
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A", null, false),
-                new DecisionOption("plan_b", "方案B", null, false));
-        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "paused", null, options);
+        List<DecisionQuestion> questions = sampleQuestions();
+        String title = "选哪个方案？";
+        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "paused", null, null, questions);
         DecisionRegistry.Registration reg = new DecisionRegistry.Registration(
-                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L);
-        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList(), eq(false)))
+                "new-token", new CompletableFuture<>(), System.currentTimeMillis() + 300_000L, title);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq(title), anyList()))
                 .thenReturn(reg);
         when(decisionRegistry.awaitDecision(reg))
-                .thenReturn(new DecisionResult("__cancelled__", null, System.currentTimeMillis()));
+                .thenReturn(new DecisionResult("cancelled", title, List.of(), System.currentTimeMillis()));
 
         DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
 
@@ -155,11 +157,10 @@ class DecisionResumeSupportTest {
 
     @Test
     void resume_registerFailure_aborts() {
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A", null, false),
-                new DecisionOption("plan_b", "方案B", null, false));
-        ProcessingStep awaiting = decisionStep("decision-old", "old-token", "awaiting", null, options);
-        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList(), eq(false)))
+        List<DecisionQuestion> questions = sampleQuestions();
+        ProcessingStep awaiting = decisionStep(
+                "decision-old", "old-token", "awaiting", null, null, questions);
+        when(decisionRegistry.register(eq(MSG), eq("user-1"), eq("选哪个方案？"), anyList()))
                 .thenThrow(new IllegalStateException("decision awaiting already exists"));
 
         DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
@@ -169,27 +170,45 @@ class DecisionResumeSupportTest {
 
     @Test
     void consumeDecisionPreApproval_skipsSecondBlock() {
-        List<DecisionOption> options = List.of(
-                new DecisionOption("plan_a", "方案A", "稳妥", false),
-                new DecisionOption("plan_b", "方案B", null, false));
-        String fingerprint = DecisionFingerprint.of("选哪个方案？", options);
-        DecisionResult result = new DecisionResult("plan_b", "补充说明", System.currentTimeMillis());
+        List<DecisionQuestion> questions = sampleQuestions();
+        String title = "选哪个方案？";
+        String fingerprint = DecisionFingerprint.of(title, questions);
+        DecisionResult result = new DecisionResult(
+                "answered",
+                title,
+                List.of(new DecisionAnswer("q1", List.of("plan_b"), "补充说明")),
+                System.currentTimeMillis());
         StepEventBridge.grantDecisionPreApproval(MSG, fingerprint, result);
 
         assertThat(StepEventBridge.consumeDecisionPreApproval(MSG, fingerprint)).contains(result);
         assertThat(StepEventBridge.consumeDecisionPreApproval(MSG, fingerprint)).isEmpty();
     }
 
+    private static List<DecisionQuestion> sampleQuestions() {
+        return List.of(
+                new DecisionQuestion(
+                        "q1",
+                        "选哪个方案？",
+                        List.of(
+                                new DecisionOption("plan_a", "方案A"),
+                                new DecisionOption("plan_b", "方案B")),
+                        false));
+    }
+
     private static ProcessingStep decisionStep(
-            String id, String token, String lifecycle, String choice, List<DecisionOption> options) {
+            String id,
+            String token,
+            String lifecycle,
+            String outcome,
+            List<DecisionAnswer> answers,
+            List<DecisionQuestion> questions) {
         DecisionStepMeta decision = new DecisionStepMeta(
                 token,
                 "选哪个方案？",
-                options,
-                false,
+                questions,
                 System.currentTimeMillis() + 60_000,
-                choice,
-                null);
+                outcome,
+                answers);
         return new ProcessingStep(
                 id,
                 "decision",
