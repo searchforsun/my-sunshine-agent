@@ -102,7 +102,7 @@ class DecisionResumeSupportTest {
                 .thenReturn(new DecisionResult(
                         "answered",
                         title,
-                        List.of(new DecisionAnswer("q1", List.of("plan_b"), "补充")),
+                        List.of(new DecisionAnswer("q1", List.of(DecisionOption.CUSTOM_ID), "补充")),
                         System.currentTimeMillis()));
 
         DecisionResumeOutcome outcome = resumeSupport.prepareOnReactResume(MSG, BRIDGE, List.of(awaiting));
@@ -113,7 +113,7 @@ class DecisionResumeSupportTest {
         assertThat(block).contains("【用户决策】");
         assertThat(block).contains("outcome=answered");
         assertThat(block).contains("title=" + title);
-        assertThat(block).contains("q.q1=plan_b");
+        assertThat(block).contains("q.q1=" + DecisionOption.CUSTOM_ID);
         assertThat(block).contains("q.q1.custom=补充");
         assertThat(block).contains(title);
     }
