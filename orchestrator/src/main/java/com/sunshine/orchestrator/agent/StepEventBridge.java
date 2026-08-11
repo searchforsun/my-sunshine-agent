@@ -155,6 +155,15 @@ public final class StepEventBridge {
         return registry.consumeHitlPreApproval(messageId, toolId, params);
     }
 
+    /** Task 11：续跑预决策 grant；当前 no-op stub */
+    public static void grantDecisionPreApproval(String messageId, String fingerprint) {
+    }
+
+    /** Task 11：续跑已 resolve 时跳过二次出题；当前 stub 恒 false */
+    public static boolean consumeDecisionPreApproval(String messageId, String fingerprint) {
+        return false;
+    }
+
     public static void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {
         registry.bindWriteHitlMode(assistantMessageId, mode);
     }
