@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.hitl.HitlParamSupport;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.processing.DecisionLabels;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.processing.StepMetadata;
@@ -50,10 +51,12 @@ import java.util.function.Function;
  *
  * <p>onActing：
  * <ul>
- *   <li>入口：开 tool 步（跳过 manage_tasks / spawn_subagent），登记可取消工具</li>
+ *   <li>入口：开 tool 步（跳过 manage_tasks / spawn_subagent / request_decision），登记可取消工具</li>
  *   <li>返回 Flux 内 doOnNext 拦截 {@link ToolResultTextDeltaEvent} 按 toolCallId 累积结果文本，
  *       {@link ToolResultEndEvent} 触发收口（摘要/editDiff/取消判定）。
  *       streamEvents 事件流不携带 ToolResultBlock，故以 delta 累积还原结果文本（方案 A）</li>
+ *   <li>元工具 request_decision / spawn_subagent / todo_write / think_summary 视为只读批次；
+ *       FailureBudget 落地时不计 request_decision</li>
  * </ul>
  *
  * <p>流式 reasoning/content delta 不在此处（由 ReActAgentRuntime 经 streamEvents 路由进 bridge）。
@@ -286,7 +289,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         Map<String, StringBuilder> resultTextById = new ConcurrentHashMap<>();
         // toolCallId -> 本次 onActing 的 ToolUseBlock（局部缓存，End 事件回查 input 用，随 call 生命周期回收）
         Map<String, ToolUseBlock> toolUseById = new ConcurrentHashMap<>();
-        // 入口：开 tool 步（跳过 think_summary / spawn_subagent / todo_write，三者不上 tool-* 步）
+        // 入口：开 tool 步（跳过 think_summary / spawn_subagent / request_decision / todo_write，不上 tool-* 步）
         for (ToolUseBlock tu : toolCalls) {
             String id = tu.getId();
             if (id != null) {
@@ -297,7 +300,9 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                 applyThinkSummary(bridgeId, tu);
                 continue;
             }
-            if (SpawnSubagentTool.NAME.equals(toolName) || TodoTasksBridge.isTodoWrite(toolName)) {
+            if (RequestDecisionTool.NAME.equals(toolName)
+                    || SpawnSubagentTool.NAME.equals(toolName)
+                    || TodoTasksBridge.isTodoWrite(toolName)) {
                 continue;
             }
             beginToolStep(bridgeId, tu);
@@ -352,7 +357,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
 
     /**
      * 按 sideEffect 将 toolCalls 切成连续批次：连续只读工具归一批，写工具单独成批。
-     * 元工具（spawn_subagent / todo_write / think_summary）视为只读（不竞争外部状态）。
+     * 元工具（request_decision / spawn_subagent / todo_write / think_summary）视为只读（不竞争外部状态）。
      */
     private List<List<ToolUseBlock>> partitionByReadWrite(List<ToolUseBlock> toolCalls) {
         List<List<ToolUseBlock>> batches = new ArrayList<>();
@@ -438,10 +443,16 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             StepEventBridge.unbindToolUseBridge(toolUseId);
             return;
         }
-        // spawn_subagent 不上 tool-* 步，但须 recordToolCompleted，否则后续推理合并进首个 think
+        // spawn_subagent / request_decision 不上 tool-* 步，但须 recordToolCompleted，否则后续推理合并进首个 think
         if (SpawnSubagentTool.NAME.equals(toolName)) {
             StepEventBridge.emit(bridgeId, session ->
                     session.recordToolCompleted(SpawnSubagentLabels.label()));
+            StepEventBridge.unbindToolUseBridge(toolUseId);
+            return;
+        }
+        if (RequestDecisionTool.NAME.equals(toolName)) {
+            StepEventBridge.emit(bridgeId, session ->
+                    session.recordToolCompleted(DecisionLabels.label()));
             StepEventBridge.unbindToolUseBridge(toolUseId);
             return;
         }

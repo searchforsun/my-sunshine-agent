@@ -20,7 +20,7 @@ import java.util.Set;
 /**
  * 按 MySQL ToolSet + Catalog 启用池动态组装 Toolkit。
  * ReAct 路径均硬编码注入 {@link RagTool}（直连 Gateway / DIRECT 不经本工厂）；Workflow 子 Agent 亦始终含 RAG，另可加节点 tools 白名单。
- * MAIN / SUB 均注入沙箱六工具（方案 B + SUB 默认沙箱）；SUB 不注入 spawn_subagent；任务板（原生 todo_write）仅 MAIN 由 enableTaskList 注册。
+ * MAIN / SUB 均注入沙箱六工具（方案 B + SUB 默认沙箱）；SUB 不注入 spawn_subagent / request_decision；任务板（原生 todo_write）仅 MAIN 由 enableTaskList 注册。
  */
 @Slf4j
 @Component
@@ -31,6 +31,7 @@ public class DynamicToolkitFactory {
 
     private final RagTool ragTool;
     private final SpawnSubagentTool spawnSubagentTool;
+    private final RequestDecisionTool requestDecisionTool;
     private final ThinkSummaryTool thinkSummaryTool;
     private final GenericRemoteToolFactory remoteToolFactory;
     private final ToolCatalogService toolCatalogService;
@@ -58,7 +59,7 @@ public class DynamicToolkitFactory {
                 ToolkitScope.MAIN, skillId, userId, tenantId);
     }
 
-    /** Workflow 子 Agent：始终含 search_knowledge；可选 tools 白名单追加业务工具（不含 spawn_subagent） */
+    /** Workflow 子 Agent：始终含 search_knowledge；可选 tools 白名单追加业务工具（不含 spawn_subagent / request_decision） */
     public Toolkit buildForSubAgent(List<String> toolWhitelist, String tenantId, String skillId, String userId) {
         List<String> whitelist = toolWhitelist == null || toolWhitelist.isEmpty()
                 ? List.of()
@@ -92,6 +93,10 @@ public class DynamicToolkitFactory {
                 log.warn("[Orchestrator] spawn_subagent 为内置元工具，勿放入 ReAct 工具集");
                 continue;
             }
+            if (toolName.equals(RequestDecisionTool.NAME)) {
+                log.warn("[Orchestrator] request_decision 为内置元工具，勿放入 ReAct 工具集");
+                continue;
+            }
             if (toolName.equals(RagTool.NAME)) {
                 continue;
             }
@@ -117,6 +122,10 @@ public class DynamicToolkitFactory {
             if (react != null && react.getSubagent() != null && react.getSubagent().isEnabled()) {
                 tk.registerTool(spawnSubagentTool);
                 registered.add(SpawnSubagentTool.NAME);
+            }
+            if (react != null && react.getDecision() != null && react.getDecision().isEnabled()) {
+                tk.registerTool(requestDecisionTool);
+                registered.add(RequestDecisionTool.NAME);
             }
         }
         if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {

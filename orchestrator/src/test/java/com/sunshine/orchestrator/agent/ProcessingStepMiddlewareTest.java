@@ -6,6 +6,8 @@ import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.DecisionLabels;
+import com.sunshine.orchestrator.processing.DecisionLabelService;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabelService;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
@@ -79,6 +81,7 @@ class ProcessingStepMiddlewareTest {
     void tearDown() {
         StepEventBridge.resetRegistry();
         SpawnSubagentLabels.bind(null);
+        DecisionLabels.bind(null);
     }
 
     @Test
@@ -184,6 +187,31 @@ class ProcessingStepMiddlewareTest {
         verify(session, never()).beginToolStep(any(), any());
         // spawn_subagent 须 recordToolCompleted（避免后续推理合并进首个 think）
         verify(session).recordToolCompleted("子任务");
+    }
+
+    @Test
+    void onActing_requestDecision_recordsCompletedWithoutToolStep() {
+        StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
+        when(executionProperties.getReact()).thenReturn(null);
+        DecisionLabelService decisionLabels = mock(DecisionLabelService.class);
+        when(decisionLabels.label()).thenReturn("用户决策");
+        DecisionLabels.bind(decisionLabels);
+
+        String toolUseId = "tu-rd";
+        ToolUseBlock toolUse = mock(ToolUseBlock.class);
+        when(toolUse.getName()).thenReturn(RequestDecisionTool.NAME);
+        when(toolUse.getId()).thenReturn(toolUseId);
+
+        ProcessingStepMiddleware mw = newMiddleware();
+        Function<ActingInput, Flux<AgentEvent>> next = in -> Flux.just(
+                new ToolResultEndEvent("e-rd", null, "r-rd", toolUseId, RequestDecisionTool.NAME, ToolResultState.SUCCESS));
+
+        ActingInput input = new ActingInput(List.of(toolUse));
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
+                .collectList().block();
+
+        verify(session, never()).beginToolStep(any(), any());
+        verify(session).recordToolCompleted("用户决策");
     }
 
     @Test

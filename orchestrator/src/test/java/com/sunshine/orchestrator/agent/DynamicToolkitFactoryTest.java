@@ -32,6 +32,8 @@ class DynamicToolkitFactoryTest {
     @Mock
     private SpawnSubagentTool spawnSubagentTool;
     @Mock
+    private RequestDecisionTool requestDecisionTool;
+    @Mock
     private ThinkSummaryTool thinkSummaryTool;
     @Mock
     private GenericRemoteToolFactory remoteToolFactory;
@@ -94,6 +96,33 @@ class DynamicToolkitFactoryTest {
         var toolkit = factory.build(null);
 
         assertThat(toolkit.getToolNames()).doesNotContain(SpawnSubagentTool.NAME);
+    }
+
+    @Test
+    void build_withDecisionEnabled_registersRequestDecision() {
+        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
+        when(reactProps.getDecision()).thenReturn(new AgentExecutionProperties.React.Decision() {{
+            setEnabled(true);
+        }});
+        when(sandboxAgentTools.all()).thenReturn(List.of());
+
+        var toolkit = factory.build(null);
+
+        assertThat(toolkit.getToolNames()).contains(RequestDecisionTool.NAME);
+    }
+
+    @Test
+    void buildForSubAgent_doesNotRegisterRequestDecision() {
+        List<AgentTool> sandboxTools = stubSandboxTools();
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(sandboxAgentTools.all()).thenReturn(sandboxTools);
+
+        var toolkit = factory.buildForSubAgent(null, "default", "coding-skill", "u1");
+
+        assertThat(toolkit.getToolNames()).doesNotContain(RequestDecisionTool.NAME);
     }
 
     @Test
