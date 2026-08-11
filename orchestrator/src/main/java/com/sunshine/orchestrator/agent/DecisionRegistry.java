@@ -259,10 +259,14 @@ public class DecisionRegistry {
 
     private static List<DecisionAnswer> normalizeAnswers(List<DecisionAnswer> answers) {
         return answers.stream()
-                .map(a -> new DecisionAnswer(
-                        a.questionId(),
-                        List.copyOf(a.selectedOptionIds()),
-                        isBlank(a.customInput()) ? null : a.customInput().strip()))
+                .map(a -> {
+                    List<String> selected = List.copyOf(a.selectedOptionIds());
+                    boolean hasCustom = selected.contains(DecisionOption.CUSTOM_ID);
+                    String custom = hasCustom && !isBlank(a.customInput())
+                            ? a.customInput().strip()
+                            : null;
+                    return new DecisionAnswer(a.questionId(), selected, custom);
+                })
                 .toList();
     }
 

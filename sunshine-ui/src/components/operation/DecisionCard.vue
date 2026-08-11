@@ -70,7 +70,7 @@ const questions = computed((): DecisionQuestionView[] => decision.value?.questio
 function optionsForQuestion(question: DecisionQuestionView): DecisionOptionView[] {
   const base = question.options ?? []
   if (base.some(o => o.id === CUSTOM_ID)) return base
-  return [...base, { id: CUSTOM_ID, label: '其他' }]
+  return [...base, { id: CUSTOM_ID, label: '其他（手写）' }]
 }
 
 function selectedIds(questionId: string): string[] {
@@ -128,7 +128,7 @@ function formatAnswerLabels(answers: DecisionAnswerView[]): string {
     const labels = (answer.selectedOptionIds ?? []).map((id) => {
       if (id === CUSTOM_ID) {
         const text = answer.customInput?.trim()
-        return text || '其他'
+        return text || '其他（手写）'
       }
       return opts.find(o => o.id === id)?.label || id
     })

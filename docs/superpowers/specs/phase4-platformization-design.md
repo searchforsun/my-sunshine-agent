@@ -144,7 +144,7 @@
 | **4.7.6** | **ReAct Spawn Subagent**（`spawn_subagent`；卡片+抽屉；**单独取消**） · [详设](./2026-07-18-react-spawn-subagent-design.md) · Live `verify_spawn_subagent_live.py` | **✅** |
 | **4.7.7** | **ReAct 目标对齐与失败预算**（`GoalAlignmentMiddleware` + `FailureBudgetMiddleware`） · [详设](./2026-07-27-react-goal-alignment-design.md) | ⬜ 候选 |
 | **4.7.8** | ~~ReAct Harness Loop 增强~~ · **已归档**（2026-08-10）：阶段四/五负优化；有用残留拆至五层 §4.5 / [goal-alignment §12](./2026-07-27-react-goal-alignment-design.md) / [multi-agent §4.4.1](./2026-07-29-multi-agent-unified-design.md) · [archive](./archive/2026-07-28-harness-loop-enhancement-design.md) | 📦 归档 |
-| **4.7.9** | **ReAct Request Decision**（`request_decision` 元工具，Cursor 对齐 `questions[]`/`answers[]`；Chat MAIN ✅ / Planner 延后；`enabled` 默认 false） · [详设](./2026-07-28-react-request-decision-design.md) · [cursor-align](./2026-08-11-request-decision-cursor-align-design.md) · Live `verify_decision_live.py` | ✅ Chat MAIN |
+| **4.7.9** | **ReAct Request Decision**（`request_decision` 元工具，Cursor 对齐 `questions[]`/`answers[]`；Chat MAIN ✅ / Planner 延后；`enabled` 默认 false） · [详设](./2026-07-28-react-request-decision-design.md) · [cursor-align](./archive/2026-08-11-request-decision-cursor-align-design.md) · Live `verify_decision_live.py` | ✅ Chat MAIN |
 
 **4.7.3 摘要（✅）**：第五顶层模式 `peer-collab`；`ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue、反应式选人）+ `ConsultationSynthesizer`；详设 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) · Live `verify_peer_collab_live` + `verify_expert_consultation_live`。
 

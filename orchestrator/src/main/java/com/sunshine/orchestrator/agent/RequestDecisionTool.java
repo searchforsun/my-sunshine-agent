@@ -186,6 +186,10 @@ public class RequestDecisionTool {
             }
             String idText = id.strip();
             String labelText = label.strip();
+            // 平台保留：手写项由 UI 注入，禁止模型 options 占用
+            if (DecisionOption.CUSTOM_ID.equals(idText)) {
+                throw new IllegalArgumentException("options id 不可使用保留值 " + DecisionOption.CUSTOM_ID);
+            }
             if (labelText.length() > MAX_LABEL_CHARS) {
                 throw new IllegalArgumentException("options label 不能超过 " + MAX_LABEL_CHARS + " 字");
             }
@@ -221,7 +225,10 @@ public class RequestDecisionTool {
                     ? ""
                     : String.join(",", answer.selectedOptionIds());
             sb.append("\nq.").append(answer.questionId().strip()).append('=').append(ids);
-            if (StringUtils.hasText(answer.customInput())) {
+            // 仅选中平台手写项时才输出 custom 行，避免脏 customInput 泄漏
+            if (answer.selectedOptionIds() != null
+                    && answer.selectedOptionIds().contains(DecisionOption.CUSTOM_ID)
+                    && StringUtils.hasText(answer.customInput())) {
                 sb.append("\nq.").append(answer.questionId().strip())
                         .append(".custom=").append(answer.customInput());
             }

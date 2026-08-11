@@ -87,6 +87,33 @@ class RequestDecisionToolTest {
     }
 
     @Test
+    void formatSuccessResult_omitsCustomLine_whenSelectedLacksCustomId() {
+        var answers = List.of(
+                new DecisionAnswer("q1", List.of("agent"), "不应泄漏"));
+        String text = RequestDecisionTool.formatSuccessResult("T", answers);
+        assertThat(text).contains("q.q1=agent");
+        assertThat(text).doesNotContain(".custom=");
+        assertThat(text).doesNotContain("不应泄漏");
+    }
+
+    @Test
+    void optionsReservedCustomId_returnsErrorJson_withoutCard() {
+        String out = tool.requestDecision(
+                "T",
+                """
+                [{"id":"q1","prompt":"选？","options":[
+                  {"id":"a","label":"A"},
+                  {"id":"__custom__","label":"模型伪装其他"}
+                ]}]
+                """);
+        assertThat(out).contains("\"ok\":false");
+        assertThat(out).contains("__custom__");
+        verify(timelineSupport, never()).begin(
+                anyString(), anyString(), anyString(), anyList(), anyLong());
+        verify(decisionRegistry, never()).register(anyString(), anyString(), anyString(), anyList());
+    }
+
+    @Test
     void disabled_returnsErrorJson_withoutCard() {
         decisionCfg.setEnabled(false);
         String out = tool.requestDecision("确认", QUESTIONS_OK);

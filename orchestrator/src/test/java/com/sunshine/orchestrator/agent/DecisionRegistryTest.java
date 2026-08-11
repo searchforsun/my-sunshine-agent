@@ -67,6 +67,22 @@ class DecisionRegistryTest {
     }
 
     @Test
+    void resolve_clearsCustomInput_whenSelectedLacksCustomId() throws Exception {
+        var questions = List.of(new DecisionQuestion(
+                "q1", "模式？",
+                List.of(new DecisionOption("a", "A"), new DecisionOption("b", "B")),
+                false));
+        DecisionRegistry.Registration reg = registry.register("msg-strip-custom", "user-1", "T", questions);
+        var answers = List.of(new DecisionAnswer("q1", List.of("a"), "脏手写"));
+
+        assertThat(registry.resolve(reg.token(), answers, "user-1", "msg-strip-custom"))
+                .isEqualTo(DecisionRegistry.ResolveOutcome.ACCEPTED);
+        DecisionResult r = reg.future().get(1, TimeUnit.SECONDS);
+        assertThat(r.answers().get(0).selectedOptionIds()).containsExactly("a");
+        assertThat(r.answers().get(0).customInput()).isNull();
+    }
+
+    @Test
     void resolve_rejects_missing_question() {
         var questions = List.of(
                 new DecisionQuestion("q1", "模式？",
