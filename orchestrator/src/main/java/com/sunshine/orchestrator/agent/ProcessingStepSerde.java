@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.common.sandbox.SandboxEditDiffLine;
 import com.sunshine.orchestrator.processing.ContentBlock;
+import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
@@ -328,6 +329,9 @@ public final class ProcessingStepSerde {
         if (metadata.editDiff() != null) {
             map.put("editDiff", editDiffToMap(metadata.editDiff()));
         }
+        if (metadata.decision() != null) {
+            map.put("decision", decisionToMap(metadata.decision()));
+        }
         return map;
     }
 
@@ -340,7 +344,96 @@ public final class ProcessingStepSerde {
         if (editDiff != null) {
             base = StepMetadata.withEditDiff(base, editDiff);
         }
+        DecisionStepMeta decision = decisionFromMap(map.get("decision"));
+        if (decision != null) {
+            base = StepMetadata.withDecision(base, decision);
+        }
         return base;
+    }
+
+    private static Map<String, Object> decisionToMap(DecisionStepMeta decision) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (hasText(decision.token())) {
+            map.put("token", decision.token());
+        }
+        if (hasText(decision.question())) {
+            map.put("question", decision.question());
+        }
+        if (decision.options() != null && !decision.options().isEmpty()) {
+            List<Map<String, Object>> options = new ArrayList<>();
+            for (DecisionOption option : decision.options()) {
+                if (option == null) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                if (hasText(option.value())) {
+                    row.put("value", option.value());
+                }
+                if (hasText(option.label())) {
+                    row.put("label", option.label());
+                }
+                if (hasText(option.description())) {
+                    row.put("description", option.description());
+                }
+                row.put("requireInput", option.requireInput());
+                options.add(row);
+            }
+            map.put("options", options);
+        }
+        map.put("allowCustomInput", decision.allowCustomInput());
+        if (decision.expiresAt() != null) {
+            map.put("expiresAt", decision.expiresAt());
+        }
+        if (hasText(decision.choice())) {
+            map.put("choice", decision.choice());
+        }
+        if (hasText(decision.customInput())) {
+            map.put("customInput", decision.customInput());
+        }
+        return map;
+    }
+
+    private static DecisionStepMeta decisionFromMap(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return null;
+        }
+        String token = stringValue(map.get("token"));
+        String question = stringValue(map.get("question"));
+        List<DecisionOption> options = new ArrayList<>();
+        Object optionsObj = map.get("options");
+        if (optionsObj instanceof List<?> optionRows) {
+            for (Object rowObj : optionRows) {
+                if (!(rowObj instanceof Map<?, ?> row)) {
+                    continue;
+                }
+                String value = stringValue(row.get("value"));
+                String label = stringValue(row.get("label"));
+                String description = stringValue(row.get("description"));
+                boolean requireInput = Boolean.TRUE.equals(row.get("requireInput"))
+                        || "true".equalsIgnoreCase(String.valueOf(row.get("requireInput")));
+                if (value == null && label == null) {
+                    continue;
+                }
+                options.add(new DecisionOption(value, label, description, requireInput));
+            }
+        }
+        boolean allowCustomInput = Boolean.TRUE.equals(map.get("allowCustomInput"))
+                || "true".equalsIgnoreCase(String.valueOf(map.get("allowCustomInput")));
+        Long expiresAt = map.get("expiresAt") instanceof Number n ? n.longValue() : null;
+        String choice = stringValue(map.get("choice"));
+        String customInput = stringValue(map.get("customInput"));
+        if (token == null && question == null && options.isEmpty() && choice == null && customInput == null
+                && expiresAt == null) {
+            return null;
+        }
+        return new DecisionStepMeta(
+                token,
+                question,
+                List.copyOf(options),
+                allowCustomInput,
+                expiresAt,
+                choice,
+                customInput);
     }
 
     private static Map<String, Object> editDiffToMap(SandboxEditDiff editDiff) {

@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
@@ -9,6 +11,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 
 /** 时间线步骤结构化元数据（如 RAG 命中数与来源文档、QueryRewrite 可观测） */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record StepMetadata(
         Integer hitCount,
         List<String> sources,
@@ -47,7 +50,9 @@ public record StepMetadata(
         /** 沙箱可单工具取消：UI 跟此字段，勿硬编码工具名单 */
         Boolean cancellable,
         /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
-        SandboxEditDiff editDiff
+        SandboxEditDiff editDiff,
+        /** ReAct request_decision：选择题载荷（勿截断 question/options） */
+        DecisionStepMeta decision
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -98,6 +103,10 @@ public record StepMetadata(
         return StepMetadataAssembler.withPlanApproval(base, planApproval);
     }
 
+    public static StepMetadata withDecision(StepMetadata base, DecisionStepMeta decision) {
+        return StepMetadataAssembler.withDecision(base, decision);
+    }
+
     public static StepMetadata mergeRewrite(StepMetadata base, QueryRewriteOutcome outcome) {
         return StepMetadataAssembler.mergeRewrite(base, outcome);
     }
@@ -130,6 +139,7 @@ public record StepMetadata(
         return StepMetadataAssembler.withEditDiff(base, editDiff);
     }
 
+    @JsonIgnore
     public String sourcesLabel() {
         if (sources == null || sources.isEmpty()) {
             return "";
@@ -137,6 +147,7 @@ public record StepMetadata(
         return String.join("、", sources);
     }
 
+    @JsonIgnore
     public boolean isEmpty() {
         return (hitCount == null || hitCount == 0)
                 && (sources == null || sources.isEmpty())
@@ -155,6 +166,7 @@ public record StepMetadata(
                 && !StringUtils.hasText(sandboxSearchRoot)
                 && !StringUtils.hasText(spawnPrompt)
                 && (cancellable == null || !cancellable)
-                && editDiff == null;
+                && editDiff == null
+                && decision == null;
     }
 }

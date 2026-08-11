@@ -90,6 +90,28 @@ export function isSubagentStep(step: { id?: string; phase?: string }): boolean {
   return step.phase === 'subagent' || !!step.id?.startsWith('subagent-')
 }
 
+/** ReAct request_decision 主时间线卡片（phase 或 id 前缀） */
+export function isDecisionStep(step: { id?: string; phase?: string }): boolean {
+  return step.phase === 'decision' || !!step.id?.startsWith('decision-')
+}
+
+export interface DecisionOptionView {
+  value: string
+  label: string
+  description?: string
+  requireInput?: boolean
+}
+
+export interface DecisionMeta {
+  token?: string
+  question?: string
+  options?: DecisionOptionView[]
+  allowCustomInput?: boolean
+  expiresAt?: number
+  choice?: string
+  customInput?: string
+}
+
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
 export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'
@@ -161,6 +183,8 @@ export interface StepMetadata {
   cancellable?: boolean
   /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
   editDiff?: SandboxEditDiffMeta
+  /** ReAct request_decision（SSE metadata.decision，勿截断 question/options） */
+  decision?: DecisionMeta
 }
 
 
