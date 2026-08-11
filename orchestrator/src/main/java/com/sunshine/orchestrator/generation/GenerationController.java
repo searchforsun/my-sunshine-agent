@@ -90,13 +90,14 @@ public class GenerationController {
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return ReactiveBlocking.call(() -> {
             streamService.assertOwned(id, userId, tenantId);
-            streamService.getMeta(id)
+            GenerationMeta meta = streamService.getMeta(id)
                     .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
             DecisionRegistry.ResolveOutcome outcome = decisionRegistry.resolve(
                     token,
                     body != null ? body.choice() : null,
                     body != null ? body.customInput() : null,
-                    userId);
+                    userId,
+                    meta.messageId());
             return mapResolveOutcome(outcome);
         });
     }

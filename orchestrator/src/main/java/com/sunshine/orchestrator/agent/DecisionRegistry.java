@@ -109,6 +109,14 @@ public class DecisionRegistry {
 
     /** 校验 choice/customInput；失败不 complete Future。 */
     public ResolveOutcome resolve(String token, String choice, String customInput, String currentUserId) {
+        return resolve(token, choice, customInput, currentUserId, null);
+    }
+
+    /**
+     * @param expectedMessageId 非空时须与 waiter.messageId 一致（generation 面防跨消息 resolve），否则 NOT_FOUND 且不 complete
+     */
+    public ResolveOutcome resolve(
+            String token, String choice, String customInput, String currentUserId, String expectedMessageId) {
         if (token == null || token.isBlank()) {
             return ResolveOutcome.NOT_FOUND;
         }
@@ -124,6 +132,12 @@ public class DecisionRegistry {
             return ResolveOutcome.NOT_FOUND;
         }
         if (waiter.future().isDone()) {
+            return ResolveOutcome.NOT_FOUND;
+        }
+        if (expectedMessageId != null && !expectedMessageId.isBlank()
+                && !expectedMessageId.strip().equals(waiter.messageId())) {
+            log.warn("[Decision] 拒绝 resolve：generation messageId={} vs waiter={} token={}",
+                    expectedMessageId, waiter.messageId(), token);
             return ResolveOutcome.NOT_FOUND;
         }
         String userId = waiter.userId();

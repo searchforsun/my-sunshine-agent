@@ -128,6 +128,33 @@ class DecisionRegistryTest {
     }
 
     @Test
+    void resolve_messageIdMismatch_returnsNotFound_andDoesNotComplete() {
+        List<DecisionOption> options = sampleOptions(false);
+        DecisionRegistry.Registration reg =
+                registry.register("msg-owner", "user-1", "选哪个？", options, false);
+
+        DecisionRegistry.ResolveOutcome outcome =
+                registry.resolve(reg.token(), "plan_a", null, "user-1", "msg-other-gen");
+
+        assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.NOT_FOUND);
+        assertThat(reg.future().isDone()).isFalse();
+        assertThat(registry.hasAwaiting("msg-owner")).isTrue();
+    }
+
+    @Test
+    void resolve_expectedMessageIdMatch_completesFuture() throws Exception {
+        List<DecisionOption> options = sampleOptions(false);
+        DecisionRegistry.Registration reg =
+                registry.register("msg-match", "user-1", "选哪个？", options, false);
+
+        DecisionRegistry.ResolveOutcome outcome =
+                registry.resolve(reg.token(), "plan_a", null, "user-1", "msg-match");
+
+        assertThat(outcome).isEqualTo(DecisionRegistry.ResolveOutcome.ACCEPTED);
+        assertThat(reg.future().get(1, TimeUnit.SECONDS).choice()).isEqualTo("plan_a");
+    }
+
+    @Test
     void awaitDecision_timeout_returnsTimeoutChoice() throws Exception {
         executionProperties.getReact().getDecision().setTimeoutSec(0);
         List<DecisionOption> options = sampleOptions(false);
