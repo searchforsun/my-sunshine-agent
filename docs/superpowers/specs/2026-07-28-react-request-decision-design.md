@@ -1,9 +1,10 @@
 # 4.7.9 ReAct Request Decision（主 Agent 主动向用户出选择题 / 需求澄清）
 
-> **状态**：📋 评审修订中  
-> **日期**：2026-07-28 · **修订**：2026-08-10（评审收敛）  
+> **状态**：✅ Chat ReAct MAIN 已实现 · ⬜ Planner MAIN / D12 延后（本切片不做 harness/续跑）  
+> **日期**：2026-07-28 · **修订**：2026-08-11（Chat MAIN 落地 + Live / 文档同步）  
 > **编号**：阶段四 **4.7.9**（原 4.7.7 占号冲突，goal-alignment 已用 4.7.7）  
-> **相关**：`AgentRuntime` / `HitlTokenRegistry`（阻塞唤醒）· [spawn-subagent](./archive/2026-07-18-react-spawn-subagent-design.md) · [taskboard](./archive/2026-06-24-react-taskboard-design.md) · [goal-alignment](./2026-07-27-react-goal-alignment-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)
+> **相关**：`AgentRuntime` / `HitlTokenRegistry`（阻塞唤醒）· [spawn-subagent](./archive/2026-07-18-react-spawn-subagent-design.md) · [taskboard](./archive/2026-06-24-react-taskboard-design.md) · [goal-alignment](./2026-07-27-react-goal-alignment-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)  
+> **灰度**：Nacos `agent.execution.react.decision.enabled` 默认 **false**（D21）；Live 见 `scripts/verify_decision_live.py` 前置说明
 
 ---
 
@@ -390,9 +391,11 @@ Live：`scripts/verify_decision_live.py`。
 ## 12. 文档同步（实施时）
 
 - [x] `phase4-platformization-design.md` §4.7 含 4.7.9  
-- [ ] `implementation-plan.md` 阶段四 4.7 行  
-- [ ] `CLAUDE.md` 时间线表补 `decision-*`；扩展表补 `request_decision`  
-- [ ] 4.14 rebuild：注明 ConfirmPanel 删除**不**阻碍 DecisionCard（D16 自建）  
+- [x] `implementation-plan.md` 阶段四 4.7 行（**4.7.9 Request Decision ✅**）  
+- [x] `CLAUDE.md` 时间线表补 `decision-*`；扩展表补 `request_decision`；进度行 / Live 脚本表  
+- [x] 4.14 rebuild：注明 ConfirmPanel 删除**不**阻碍 DecisionCard（D16 自建）  
+- [x] Live：`scripts/verify_decision_live.py`（D1–D4/D11 hard；D5–D7 opt；D8/D9 soft；**不做 D12**）  
+- 归档：Planner MAIN（D12）落地后再移入 `archive/`（本切片仅 Chat MAIN）
 
 ---
 

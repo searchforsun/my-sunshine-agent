@@ -272,6 +272,7 @@ intent
 - **复用**：`OperationStack`（普通时间线骨架）/ `TaskBoardPanel` / `SubStepsFold`
 - **扩展**：OperationStack harness 层级（plan 下挂 worker 行；worker 下挂过程 + handoff）；TaskBoard 一级波次并行样式 + 一级下嵌套二级 todolist（条件渲染）
 - **移除**：`PlanWorkflowPanel` 动态 plan 分支、`PlanApprovalActions` / `CollapsibleConfirmPanel`；**不新增** Worker 步骤卡片组件
+- **与 4.7.9 DecisionCard**：删除 `CollapsibleConfirmPanel` **不**阻碍 ReAct `request_decision` UI——DecisionCard 为 D16 **自建容器**，零依赖 PlanApproval 壳；Planner MAIN 注册/续跑仍属后续切片（见 [request-decision](./2026-07-28-react-request-decision-design.md)）
 - **静态 Workflow 不受影响**：继续用 `PlanExecutionCanvas` 渲染 DAG（D3）
 
 ---
