@@ -263,6 +263,20 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> resolveDecision(
+            String generationId, String token, Map<String, Object> body,
+            String userId, String tenantId) {
+        return webClient.post()
+                .uri("/generations/{id}/decisions/{token}/resolve", generationId, token)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body != null ? body : Map.of())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> cancelTool(
             String generationId, String toolRef, String userId, String tenantId) {
         return webClient.post()

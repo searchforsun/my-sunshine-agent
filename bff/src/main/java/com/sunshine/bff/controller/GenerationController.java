@@ -8,6 +8,7 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -48,6 +49,16 @@ public class GenerationController {
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         log.info("[BFF] 取消子任务 generation={} runId={} user={}", id, runId, userId);
         return client.cancelSubagent(id, runId, userId, tenantId);
+    }
+
+    @PostMapping("/api/generations/{id}/decisions/{token}/resolve")
+    public Mono<Map<String, Object>> resolveDecision(
+            @PathVariable String id,
+            @PathVariable String token,
+            @RequestBody Map<String, Object> body,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.resolveDecision(id, token, body, userId, tenantId);
     }
 
     @PostMapping("/api/generations/{id}/tools/{toolRef}/cancel")
