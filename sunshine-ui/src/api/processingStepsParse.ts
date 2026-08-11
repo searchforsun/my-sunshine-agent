@@ -4,6 +4,8 @@ import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
 import type {
+  DecisionMeta,
+  DecisionOptionView,
   ProcessingStep,
   StepLifecycle,
   StepMetadata,
@@ -87,6 +89,40 @@ function parseEditDiff(raw: unknown): SandboxEditDiffMeta | undefined {
   const path = typeof obj.path === 'string' && obj.path.trim() ? obj.path.trim() : undefined
   const contextRadius = typeof obj.contextRadius === 'number' ? obj.contextRadius : undefined
   return { path, contextRadius, lines }
+}
+
+/** request_decision：保留 question/options 原文，禁止截断 */
+function parseDecisionOptions(raw: unknown): DecisionOptionView[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const options: DecisionOptionView[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const value = typeof o.value === 'string' ? o.value : ''
+    const label = typeof o.label === 'string' ? o.label : ''
+    if (!value || !label) continue
+    const option: DecisionOptionView = { value, label }
+    if (typeof o.description === 'string') option.description = o.description
+    if (o.requireInput === true) option.requireInput = true
+    options.push(option)
+  }
+  return options.length > 0 ? options : undefined
+}
+
+function parseDecision(raw: unknown): DecisionMeta | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const o = raw as Record<string, unknown>
+  const token = typeof o.token === 'string' && o.token.trim() ? o.token.trim() : undefined
+  const question = typeof o.question === 'string' ? o.question : undefined
+  const options = parseDecisionOptions(o.options)
+  const allowCustomInput = o.allowCustomInput === true ? true : undefined
+  const expiresAt = typeof o.expiresAt === 'number' ? o.expiresAt : undefined
+  const choice = typeof o.choice === 'string' ? o.choice : undefined
+  const customInput = typeof o.customInput === 'string' ? o.customInput : undefined
+  if (!token && question == null && !options?.length && choice == null && customInput == null) {
+    return undefined
+  }
+  return { token, question, options, allowCustomInput, expiresAt, choice, customInput }
 }
 
 function parseMetadata(raw: unknown): StepMetadata | undefined {
@@ -206,6 +242,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     : undefined
   const cancellable = obj.cancellable === true ? true : undefined
   const editDiff = parseEditDiff(obj.editDiff)
+  const decision = parseDecision(obj.decision)
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -227,6 +264,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !spawnPrompt
     && !cancellable
     && !editDiff
+    && !decision
   ) {
     return undefined
   }
@@ -263,6 +301,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     spawnPrompt,
     cancellable,
     editDiff,
+    decision,
   }
 }
 
@@ -313,6 +352,15 @@ export function mergeStepMetadata(
     merged.tasks = incoming.tasks
     merged.taskRevision = incoming.taskRevision
     merged.taskProgress = incoming.taskProgress ?? merged.taskProgress
+  }
+  if (incoming.decision || prev.decision) {
+    merged.decision = {
+      ...prev.decision,
+      ...incoming.decision,
+      options: incoming.decision?.options?.length
+        ? incoming.decision.options
+        : prev.decision?.options,
+    }
   }
   return merged
 }

@@ -133,6 +133,7 @@ const {
   messages, streamRevision, loading, send, resume, reconnectStream, stop,
   cancelSpawnSubagent,
   cancelCancellableTool,
+  generationId,
   ensureActive, getMessages, setMessages, migrateSession, destroySession, clearActive,
   applyHitlDecision,
   applyRecoveryDecision,
@@ -1755,6 +1756,7 @@ watch(
                 :timeline-started-at="msg.timelineStartedAt"
                 :timeline-ended-at="msg.timelineEndedAt"
                 :pending-hitl-confirmations="resolveTimelineContext(msg).pending"
+                :generation-id="isTimelineLive(msg, idx) ? generationId : ''"
                 @hitl-decided="handleHitlDecision"
               />
               <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">

@@ -6,6 +6,7 @@ import {
   formatElapsedClock,
   formatTimelineSummaryText,
   hasRealTaskBoardItems,
+  isDecisionStep,
   isSubagentStep,
   resolvePlanIdFromStep,
   resolveTimelineElapsedMs,
@@ -45,6 +46,7 @@ import {
 import OperationCard from './OperationCard.vue'
 import TaskBoardPanel from './TaskBoardPanel.vue'
 import SubagentCard from './SubagentCard.vue'
+import DecisionCard from './DecisionCard.vue'
 import ToolGroupCard from './ToolGroupCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
 import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
@@ -78,12 +80,15 @@ const props = withDefaults(defineProps<{
   timelineStartedAt?: number
   /** 墙钟 end（正文结束 / API updatedAt） */
   timelineEndedAt?: number
+  /** 与 cancelSpawnSubagent 同源：active session / active-generation */
+  generationId?: string
 }>(), {
   embedHitl: true,
   inlineHitl: true,
   contentBlocks: undefined,
   streamLive: false,
   collapseTick: undefined,
+  generationId: '',
 })
 
 const emit = defineEmits<{
@@ -110,9 +115,13 @@ const summaryEnabled = computed(() => props.messageStatus !== undefined)
 const timelineUserToggled = ref(false)
 const timelineExpandedOverride = ref(false)
 
-/** 存在等待用户确认的 HITL 步（tool 或 plan node）→ 折叠态会隐藏确认框，须强制展开避免写操作阻塞不可达 */
+/** 存在等待用户确认的 HITL / decision 步 → 折叠态会隐藏交互框，须强制展开 */
 const hasAwaitingHitlStep = computed(() =>
-  props.steps.some(step => isHitlAwaiting(step) || isHitlSummaryAwaiting(step)),
+  props.steps.some(step =>
+    isHitlAwaiting(step)
+    || isHitlSummaryAwaiting(step)
+    || (isDecisionStep(step) && lifecycleOf(step) === 'awaiting'),
+  ),
 )
 
 const timelineBodyExpanded = computed(() => {
@@ -919,6 +928,12 @@ watch(
           :step="step"
           :live="live && lifecycleOf(step) === 'running'"
         />
+        <DecisionCard
+          v-else-if="isDecisionStep(step)"
+          :step="step"
+          :live="live && lifecycleOf(step) === 'awaiting'"
+          :generation-id="generationId"
+        />
         <template v-else>
           <OperationCard
             :step="step"
@@ -1007,6 +1022,12 @@ watch(
         v-else-if="isSubagentStep(collapsedPreviewStep)"
         :step="collapsedPreviewStep"
         :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
+      />
+      <DecisionCard
+        v-else-if="isDecisionStep(collapsedPreviewStep)"
+        :step="collapsedPreviewStep"
+        :live="live && lifecycleOf(collapsedPreviewStep) === 'awaiting'"
+        :generation-id="generationId"
       />
       <OperationCard
         v-else

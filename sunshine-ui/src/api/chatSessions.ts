@@ -78,6 +78,14 @@ export function useChatSessions(
   const streamRevision = computed(() => activeSession.value?.streamRevision ?? 0)
   const loading = computed(() => activeSession.value?.loading ?? false)
   const activeContainer = computed(() => activeSession.value?.containerEl ?? null)
+  /** 与 cancelSpawnSubagent / cancel 同源：session.generationId → active-generation 回退 */
+  const generationId = computed(() => {
+    const s = activeSession.value
+    if (!s) return ''
+    if (s.generationId) return s.generationId
+    const stored = loadActiveGeneration()
+    return stored?.conversationId === s.id ? stored.generationId : ''
+  })
 
   function mountContainer(session: SessionState, parent: HTMLElement): void {
     if (session.mounted) return
@@ -628,7 +636,7 @@ export function useChatSessions(
   }
 
   return {
-    messages, streamRevision, loading, activeContainer,
+    messages, streamRevision, loading, activeContainer, generationId,
     switchTo, clearActive, ensureActive, send, resume, reconnectStream, stop, clearSession,
     cancelSpawnSubagent,
     cancelCancellableTool,

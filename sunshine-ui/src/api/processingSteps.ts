@@ -114,7 +114,7 @@ export interface DecisionMeta {
 
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
-export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'
+export type StepStatus = 'pending' | 'running' | 'awaiting' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'
 
 export type StepLifecycle = StepStatus
 
