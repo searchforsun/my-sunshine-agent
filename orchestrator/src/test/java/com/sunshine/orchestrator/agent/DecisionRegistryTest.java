@@ -10,8 +10,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -51,6 +57,41 @@ class DecisionRegistryTest {
                 registry.register("msg-1", "user-1", "再问一次？", options, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("awaiting");
+    }
+
+    @Test
+    void register_concurrentSameMessage_onlyOneSucceeds() throws Exception {
+        List<DecisionOption> options = sampleOptions(false);
+        int threads = 16;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch ready = new CountDownLatch(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger success = new AtomicInteger();
+        AtomicInteger rejected = new AtomicInteger();
+        List<Future<?>> futures = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            futures.add(pool.submit(() -> {
+                ready.countDown();
+                start.await();
+                try {
+                    registry.register("msg-race", "user-1", "选哪个？", options, false);
+                    success.incrementAndGet();
+                } catch (IllegalStateException e) {
+                    rejected.incrementAndGet();
+                }
+                return null;
+            }));
+        }
+        assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+        start.countDown();
+        for (Future<?> future : futures) {
+            future.get(5, TimeUnit.SECONDS);
+        }
+        pool.shutdownNow();
+
+        assertThat(success.get()).isEqualTo(1);
+        assertThat(rejected.get()).isEqualTo(threads - 1);
+        assertThat(registry.hasAwaiting("msg-race")).isTrue();
     }
 
     @Test

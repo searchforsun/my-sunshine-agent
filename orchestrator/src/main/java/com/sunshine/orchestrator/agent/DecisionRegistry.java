@@ -35,6 +35,8 @@ public class DecisionRegistry {
     private final ObjectMapper objectMapper;
 
     private final ConcurrentHashMap<String, DecisionPendingWaiter> waiters = new ConcurrentHashMap<>();
+    /** messageId → token：D15 同消息唯一 awaiting 的原子占位（putIfAbsent） */
+    private final ConcurrentHashMap<String, String> awaitingTokenByMessageId = new ConcurrentHashMap<>();
 
     public record Registration(String token, CompletableFuture<DecisionResult> future, long expiresAt) {
     }
@@ -53,14 +55,12 @@ public class DecisionRegistry {
         if (messageId == null || messageId.isBlank()) {
             return false;
         }
-        String target = messageId.strip();
-        return waiters.values().stream()
-                .anyMatch(w -> target.equals(w.messageId()) && !w.future().isDone());
+        return awaitingTokenByMessageId.containsKey(messageId.strip());
     }
 
     /**
      * 注册待决策 token。若该 message 已有 awaiting → 抛 IllegalStateException（由 Tool 侧解释）。
-     * messageId 入口 strip，与 hasAwaiting / cancelWaitersForMessage 对齐（D15）。
+     * messageId 入口 strip；D15 用 messageId→token putIfAbsent 原子占位，避免并发双注册。
      */
     public Registration register(
             String messageId,
@@ -72,15 +72,17 @@ public class DecisionRegistry {
             throw new IllegalArgumentException("messageId must not be blank");
         }
         String normalizedMessageId = messageId.strip();
-        if (hasAwaiting(normalizedMessageId)) {
-            throw new IllegalStateException(
-                    "decision awaiting already exists for messageId=" + normalizedMessageId);
-        }
         String token = UUID.randomUUID().toString();
         CompletableFuture<DecisionResult> future = new CompletableFuture<>();
         long expiresAt = Instant.now().plusSeconds(timeoutSec()).toEpochMilli();
-        waiters.put(token, new DecisionPendingWaiter(
-                normalizedMessageId, userId, question, List.copyOf(options), allowCustomInput, expiresAt, future));
+        DecisionPendingWaiter waiter = new DecisionPendingWaiter(
+                normalizedMessageId, userId, question, List.copyOf(options), allowCustomInput, expiresAt, future);
+        String existingToken = awaitingTokenByMessageId.putIfAbsent(normalizedMessageId, token);
+        if (existingToken != null) {
+            throw new IllegalStateException(
+                    "decision awaiting already exists for messageId=" + normalizedMessageId);
+        }
+        waiters.put(token, waiter);
         storeToken(token, normalizedMessageId, userId, expiresAt, question, options, allowCustomInput);
         return new Registration(token, future, expiresAt);
     }
@@ -163,8 +165,7 @@ public class DecisionRegistry {
         if (!waiter.future().complete(result)) {
             return ResolveOutcome.NOT_FOUND;
         }
-        waiters.remove(token, waiter);
-        redis.delete(redisKey(token));
+        releaseAwaitingSlot(token, waiter);
         return ResolveOutcome.ACCEPTED;
     }
 
@@ -179,17 +180,29 @@ public class DecisionRegistry {
                 return false;
             }
             waiter.future().cancel(true);
+            // remove(key, token)：勿裸 remove(messageId)，以免清掉并发新占位
+            awaitingTokenByMessageId.remove(target, entry.getKey());
             redis.delete(redisKey(entry.getKey()));
             return true;
         });
     }
 
-    /** 幂等清理内存 waiter + Redis token。 */
+    /** 幂等清理内存 waiter + message 占位 + Redis token。 */
     public void cleanup(String token) {
-        if (token != null) {
-            waiters.remove(token);
-            redis.delete(redisKey(token));
+        if (token == null) {
+            return;
         }
+        DecisionPendingWaiter removed = waiters.remove(token);
+        if (removed != null) {
+            awaitingTokenByMessageId.remove(removed.messageId(), token);
+        }
+        redis.delete(redisKey(token));
+    }
+
+    private void releaseAwaitingSlot(String token, DecisionPendingWaiter waiter) {
+        waiters.remove(token, waiter);
+        awaitingTokenByMessageId.remove(waiter.messageId(), token);
+        redis.delete(redisKey(token));
     }
 
     private static boolean isValidChoice(String choice, List<DecisionOption> options, boolean allowCustomInput) {
