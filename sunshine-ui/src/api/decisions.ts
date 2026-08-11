@@ -1,23 +1,20 @@
 import { apiHeaders } from '../stores/authStore'
 import { resolveBffStreamBase } from './config'
+import type { DecisionAnswerView } from './processingSteps'
 
 const API_BASE = () => resolveBffStreamBase()
 
 export async function resolveDecision(
   generationId: string,
   token: string,
-  choice: string,
-  customInput?: string,
+  answers: DecisionAnswerView[],
 ): Promise<{ accepted?: boolean }> {
   const res = await fetch(
     `${API_BASE()}/api/generations/${encodeURIComponent(generationId)}/decisions/${encodeURIComponent(token)}/resolve`,
     {
       method: 'POST',
       headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        choice,
-        ...(customInput != null && customInput !== '' ? { customInput } : {}),
-      }),
+      body: JSON.stringify({ answers }),
     },
   )
   if (!res.ok) {

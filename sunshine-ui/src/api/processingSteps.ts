@@ -96,20 +96,30 @@ export function isDecisionStep(step: { id?: string; phase?: string }): boolean {
 }
 
 export interface DecisionOptionView {
-  value: string
+  id: string
   label: string
-  description?: string
-  requireInput?: boolean
+}
+
+export interface DecisionQuestionView {
+  id: string
+  prompt: string
+  options: DecisionOptionView[]
+  allowMultiple?: boolean
+}
+
+export interface DecisionAnswerView {
+  questionId: string
+  selectedOptionIds: string[]
+  customInput?: string
 }
 
 export interface DecisionMeta {
   token?: string
-  question?: string
-  options?: DecisionOptionView[]
-  allowCustomInput?: boolean
+  title?: string
+  questions?: DecisionQuestionView[]
   expiresAt?: number
-  choice?: string
-  customInput?: string
+  outcome?: string
+  answers?: DecisionAnswerView[]
 }
 
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
@@ -183,7 +193,7 @@ export interface StepMetadata {
   cancellable?: boolean
   /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
   editDiff?: SandboxEditDiffMeta
-  /** ReAct request_decision（SSE metadata.decision，勿截断 question/options） */
+  /** ReAct request_decision（SSE metadata.decision，勿截断 title/questions） */
   decision?: DecisionMeta
 }
 

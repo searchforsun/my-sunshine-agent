@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { NIcon, NInput } from 'naive-ui'
 import { CheckmarkOutline, ChevronDownOutline } from '@vicons/ionicons5'
-import type { DecisionOptionView, ProcessingStep } from '../../api/processingSteps'
+import type {
+  DecisionAnswerView,
+  DecisionOptionView,
+  DecisionQuestionView,
+  ProcessingStep,
+} from '../../api/processingSteps'
 import { stepLifecycle } from '../../api/processingSteps'
 import { resolveDecision } from '../../api/decisions'
 
-const CUSTOM_VALUE = '__custom__'
+const CUSTOM_ID = '__custom__'
 
 const props = withDefaults(defineProps<{
   step: ProcessingStep
@@ -24,12 +29,15 @@ const isResolved = computed(() =>
   lifecycle.value === 'done'
   || lifecycle.value === 'paused'
   || lifecycle.value === 'error'
-  || !!decision.value?.choice,
+  || !!decision.value?.outcome
+  || !!(decision.value?.answers && decision.value.answers.length > 0),
 )
 
 const collapsed = ref(false)
-const selectedChoice = ref('')
-const customInput = ref('')
+/** questionId → selected option ids */
+const selections = reactive<Record<string, string[]>>({})
+/** questionId → custom input text */
+const customInputs = reactive<Record<string, string>>({})
 const loading = ref(false)
 const submitError = ref('')
 const localSubmitted = ref(false)
@@ -46,32 +54,90 @@ watch(
 watch(
   () => decision.value,
   (meta) => {
-    if (!meta) return
-    if (meta.choice) {
-      selectedChoice.value = meta.choice
-      if (meta.customInput != null) customInput.value = meta.customInput
+    if (!meta?.answers?.length) return
+    for (const answer of meta.answers) {
+      selections[answer.questionId] = [...(answer.selectedOptionIds ?? [])]
+      if (answer.customInput != null) {
+        customInputs[answer.questionId] = answer.customInput
+      }
     }
   },
   { immediate: true, deep: true },
 )
 
-const displayOptions = computed((): DecisionOptionView[] => {
-  const base = decision.value?.options ?? []
-  if (!decision.value?.allowCustomInput) return base
-  if (base.some(o => o.value === CUSTOM_VALUE)) return base
-  return [...base, { value: CUSTOM_VALUE, label: '自定义', requireInput: true }]
-})
+const questions = computed((): DecisionQuestionView[] => decision.value?.questions ?? [])
 
-const selectedOption = computed(() =>
-  displayOptions.value.find(o => o.value === selectedChoice.value)
-  ?? decision.value?.options?.find(o => o.value === selectedChoice.value),
-)
+function optionsForQuestion(question: DecisionQuestionView): DecisionOptionView[] {
+  const base = question.options ?? []
+  if (base.some(o => o.id === CUSTOM_ID)) return base
+  return [...base, { id: CUSTOM_ID, label: '其他' }]
+}
 
-const needsCustomInput = computed(() =>
-  selectedChoice.value === CUSTOM_VALUE || !!selectedOption.value?.requireInput,
-)
+function selectedIds(questionId: string): string[] {
+  return selections[questionId] ?? []
+}
 
-const question = computed(() => decision.value?.question ?? '')
+function isOptionSelected(questionId: string, optionId: string): boolean {
+  return selectedIds(questionId).includes(optionId)
+}
+
+function needsCustomInput(questionId: string): boolean {
+  return isOptionSelected(questionId, CUSTOM_ID)
+}
+
+function isQuestionValid(question: DecisionQuestionView): boolean {
+  const ids = selectedIds(question.id)
+  if (ids.length < 1) return false
+  if (!question.allowMultiple && ids.length !== 1) return false
+  if (ids.includes(CUSTOM_ID) && !(customInputs[question.id] ?? '').trim()) return false
+  return true
+}
+
+function toggleOption(question: DecisionQuestionView, optionId: string): void {
+  if (!interactive.value || loading.value || localSubmitted.value) return
+  submitError.value = ''
+  const current = selectedIds(question.id)
+  if (question.allowMultiple) {
+    selections[question.id] = current.includes(optionId)
+      ? current.filter(id => id !== optionId)
+      : [...current, optionId]
+  } else {
+    selections[question.id] = [optionId]
+  }
+}
+
+function buildAnswers(): DecisionAnswerView[] {
+  return questions.value.map((question) => {
+    const selectedOptionIds = [...selectedIds(question.id)]
+    const answer: DecisionAnswerView = {
+      questionId: question.id,
+      selectedOptionIds,
+    }
+    if (selectedOptionIds.includes(CUSTOM_ID)) {
+      answer.customInput = (customInputs[question.id] ?? '').trim()
+    }
+    return answer
+  })
+}
+
+function formatAnswerLabels(answers: DecisionAnswerView[]): string {
+  const parts: string[] = []
+  for (const answer of answers) {
+    const question = questions.value.find(q => q.id === answer.questionId)
+    const opts = question ? optionsForQuestion(question) : []
+    const labels = (answer.selectedOptionIds ?? []).map((id) => {
+      if (id === CUSTOM_ID) {
+        const text = answer.customInput?.trim()
+        return text || '其他'
+      }
+      return opts.find(o => o.id === id)?.label || id
+    })
+    if (labels.length) parts.push(labels.join('、'))
+  }
+  return parts.join('；')
+}
+
+const title = computed(() => decision.value?.title?.trim() || '')
 
 const summaryLine = computed(() => {
   if (lifecycle.value === 'paused') {
@@ -81,13 +147,16 @@ const summaryLine = computed(() => {
     return props.step.summary?.after?.trim() || '决策 · 失败'
   }
   if (isResolved.value || localSubmitted.value) {
-    const label = selectedOption.value?.label || decision.value?.choice || ''
-    return label ? `决策 · ${label}` : '决策 · 已提交'
+    const answers = decision.value?.answers?.length
+      ? decision.value.answers
+      : (localSubmitted.value ? buildAnswers() : [])
+    const labels = formatAnswerLabels(answers)
+    return labels ? `决策 · ${labels}` : '决策 · 已提交'
   }
   return props.step.summary?.active?.trim() || '决策 · 等待选择'
 })
 
-const collapsedDetail = computed(() => question.value.trim())
+const collapsedDetail = computed(() => title.value || questions.value.map(q => q.prompt).join(' · '))
 
 const collapsedLine = computed(() => {
   const detail = collapsedDetail.value
@@ -101,17 +170,12 @@ const canSubmit = computed(() =>
   && !localSubmitted.value
   && !!props.generationId?.trim()
   && !!decision.value?.token?.trim()
-  && !!selectedChoice.value,
+  && questions.value.length > 0
+  && questions.value.every(isQuestionValid),
 )
 
 function toggle(): void {
   collapsed.value = !collapsed.value
-}
-
-function selectOption(value: string): void {
-  if (!interactive.value || loading.value || localSubmitted.value) return
-  selectedChoice.value = value
-  submitError.value = ''
 }
 
 async function submit(): Promise<void> {
@@ -121,12 +185,7 @@ async function submit(): Promise<void> {
   loading.value = true
   submitError.value = ''
   try {
-    await resolveDecision(
-      props.generationId,
-      token,
-      selectedChoice.value,
-      needsCustomInput.value ? customInput.value : undefined,
-    )
+    await resolveDecision(props.generationId, token, buildAnswers())
     localSubmitted.value = true
   } catch (e: unknown) {
     const err = e as Error & { body?: { message?: string; key?: string } }
@@ -184,42 +243,58 @@ async function submit(): Promise<void> {
       </button>
 
       <div v-show="!collapsed" class="decision-body">
-        <p v-if="question" class="decision-question">{{ question }}</p>
-        <div class="decision-options" role="listbox" aria-label="决策选项">
-          <button
-            v-for="opt in displayOptions"
-            :key="opt.value"
-            type="button"
-            role="option"
-            class="decision-option"
-            :class="{ 'is-selected': selectedChoice === opt.value }"
-            :aria-selected="selectedChoice === opt.value"
-            :disabled="!interactive || loading || localSubmitted"
-            @click="selectOption(opt.value)"
-          >
-            <span class="decision-option-text">
-              <span class="decision-option-title">{{ opt.label }}</span>
-              <span v-if="opt.description" class="decision-option-desc">{{ opt.description }}</span>
-            </span>
-            <span class="decision-option-check" aria-hidden="true">
-              <NIcon
-                v-if="selectedChoice === opt.value"
-                :component="CheckmarkOutline"
-                :size="18"
-              />
-            </span>
-          </button>
-        </div>
+        <p v-if="title" class="decision-title">{{ title }}</p>
 
-        <div v-if="needsCustomInput && (interactive || customInput)" class="decision-input">
-          <NInput
-            v-model:value="customInput"
-            class="sun-field"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 6 }"
-            :disabled="!interactive || loading || localSubmitted"
-            placeholder=""
-          />
+        <div
+          v-for="question in questions"
+          :key="question.id"
+          class="decision-question-block"
+        >
+          <p class="decision-question">{{ question.prompt }}</p>
+          <div
+            class="decision-options"
+            role="listbox"
+            :aria-multiselectable="!!question.allowMultiple"
+            :aria-label="question.prompt"
+          >
+            <button
+              v-for="opt in optionsForQuestion(question)"
+              :key="opt.id"
+              type="button"
+              role="option"
+              class="mode-menu-item decision-option"
+              :class="{ 'is-selected': isOptionSelected(question.id, opt.id) }"
+              :aria-selected="isOptionSelected(question.id, opt.id)"
+              :disabled="!interactive || loading || localSubmitted"
+              @click="toggleOption(question, opt.id)"
+            >
+              <span class="mode-menu-text">
+                <span class="mode-menu-title">{{ opt.label }}</span>
+              </span>
+              <span class="mode-menu-check-slot" aria-hidden="true">
+                <NIcon
+                  v-if="isOptionSelected(question.id, opt.id)"
+                  class="mode-menu-check"
+                  :component="CheckmarkOutline"
+                  :size="18"
+                />
+              </span>
+            </button>
+          </div>
+
+          <div
+            v-if="needsCustomInput(question.id) && (interactive || customInputs[question.id])"
+            class="decision-input"
+          >
+            <NInput
+              v-model:value="customInputs[question.id]"
+              class="sun-field"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 6 }"
+              :disabled="!interactive || loading || localSubmitted"
+              placeholder=""
+            />
+          </div>
         </div>
 
         <p v-if="submitError" class="decision-error">{{ submitError }}</p>
@@ -296,8 +371,25 @@ async function submit(): Promise<void> {
 .decision-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: 0 12px 10px;
+}
+
+.decision-title {
+  margin: 0;
+  font-size: var(--sun-font-base, 14px);
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--sun-text);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.decision-question-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 
 .decision-question {
@@ -315,38 +407,33 @@ async function submit(): Promise<void> {
   gap: 6px;
 }
 
-.decision-option {
-  display: flex;
-  align-items: flex-start;
+.mode-menu-item.decision-option {
   gap: 10px;
-  width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--sun-border);
   border-radius: calc(var(--radius-md, 10px) - 2px);
   background: transparent;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
   color: inherit;
   font: inherit;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
-.decision-option:hover:not(:disabled) {
+.mode-menu-item.decision-option:hover:not(:disabled) {
   background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
 }
 
-.decision-option.is-selected {
+.mode-menu-item.decision-option.is-selected {
   border-color: var(--sun-accent);
   box-shadow: inset 0 0 0 1px var(--sun-accent);
   background: transparent;
 }
 
-.decision-option:disabled {
+.mode-menu-item.decision-option:disabled {
   cursor: default;
   opacity: 1;
 }
 
-.decision-option-text {
+.mode-menu-text {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -354,33 +441,23 @@ async function submit(): Promise<void> {
   min-width: 0;
 }
 
-.decision-option-title {
+.mode-menu-title {
   font-size: var(--sun-font-base, 14px);
   font-weight: 500;
   line-height: 1.35;
   color: var(--sun-text, #ececec);
 }
 
-.decision-option-desc {
-  font-size: var(--sun-font-base, 14px);
-  line-height: 1.45;
-  color: var(--sun-text-muted, #888);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  overflow: hidden;
-  white-space: normal;
-}
-
-.decision-option-check {
+.mode-menu-check-slot {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 20px;
   min-height: 20px;
-  margin-top: 1px;
+}
+
+.mode-menu-check {
   color: var(--sun-text, #ececec);
 }
 

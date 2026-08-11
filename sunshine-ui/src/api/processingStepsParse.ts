@@ -4,8 +4,10 @@ import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
 import type {
+  DecisionAnswerView,
   DecisionMeta,
   DecisionOptionView,
+  DecisionQuestionView,
   ProcessingStep,
   StepLifecycle,
   StepMetadata,
@@ -91,38 +93,75 @@ function parseEditDiff(raw: unknown): SandboxEditDiffMeta | undefined {
   return { path, contextRadius, lines }
 }
 
-/** request_decision：保留 question/options 原文，禁止截断 */
-function parseDecisionOptions(raw: unknown): DecisionOptionView[] | undefined {
-  if (!Array.isArray(raw) || raw.length === 0) return undefined
+/** request_decision：仅认 questions[{id,prompt,options[{id,label}]}]，忽略旧扁平 question/options */
+function parseDecisionOptions(raw: unknown): DecisionOptionView[] {
+  if (!Array.isArray(raw) || raw.length === 0) return []
   const options: DecisionOptionView[] = []
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue
     const o = item as Record<string, unknown>
-    const value = typeof o.value === 'string' ? o.value : ''
+    const id = typeof o.id === 'string' ? o.id.trim() : ''
     const label = typeof o.label === 'string' ? o.label : ''
-    if (!value || !label) continue
-    const option: DecisionOptionView = { value, label }
-    if (typeof o.description === 'string') option.description = o.description
-    if (o.requireInput === true) option.requireInput = true
-    options.push(option)
+    if (!id || !label) continue
+    options.push({ id, label })
   }
-  return options.length > 0 ? options : undefined
+  return options
+}
+
+function parseDecisionQuestions(raw: unknown): DecisionQuestionView[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const questions: DecisionQuestionView[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const id = typeof o.id === 'string' ? o.id.trim() : ''
+    const prompt = typeof o.prompt === 'string' ? o.prompt : ''
+    if (!id || !prompt) continue
+    const question: DecisionQuestionView = {
+      id,
+      prompt,
+      options: parseDecisionOptions(o.options),
+    }
+    if (o.allowMultiple === true) question.allowMultiple = true
+    questions.push(question)
+  }
+  return questions.length > 0 ? questions : undefined
+}
+
+function parseDecisionAnswers(raw: unknown): DecisionAnswerView[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const answers: DecisionAnswerView[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const questionId = typeof o.questionId === 'string' ? o.questionId.trim() : ''
+    if (!questionId) continue
+    const selectedOptionIds = Array.isArray(o.selectedOptionIds)
+      ? o.selectedOptionIds.filter((id): id is string => typeof id === 'string' && !!id.trim())
+          .map(id => id.trim())
+      : []
+    const answer: DecisionAnswerView = { questionId, selectedOptionIds }
+    if (typeof o.customInput === 'string' && o.customInput.trim()) {
+      answer.customInput = o.customInput
+    }
+    answers.push(answer)
+  }
+  return answers
 }
 
 function parseDecision(raw: unknown): DecisionMeta | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const o = raw as Record<string, unknown>
   const token = typeof o.token === 'string' && o.token.trim() ? o.token.trim() : undefined
-  const question = typeof o.question === 'string' ? o.question : undefined
-  const options = parseDecisionOptions(o.options)
-  const allowCustomInput = o.allowCustomInput === true ? true : undefined
+  const title = typeof o.title === 'string' ? o.title : undefined
+  const questions = parseDecisionQuestions(o.questions)
   const expiresAt = typeof o.expiresAt === 'number' ? o.expiresAt : undefined
-  const choice = typeof o.choice === 'string' ? o.choice : undefined
-  const customInput = typeof o.customInput === 'string' ? o.customInput : undefined
-  if (!token && question == null && !options?.length && choice == null && customInput == null) {
+  const outcome = typeof o.outcome === 'string' && o.outcome.trim() ? o.outcome.trim() : undefined
+  const answers = parseDecisionAnswers(o.answers)
+  if (!token && title == null && !questions?.length && outcome == null && answers == null) {
     return undefined
   }
-  return { token, question, options, allowCustomInput, expiresAt, choice, customInput }
+  return { token, title, questions, expiresAt, outcome, answers }
 }
 
 function parseMetadata(raw: unknown): StepMetadata | undefined {
@@ -357,9 +396,12 @@ export function mergeStepMetadata(
     merged.decision = {
       ...prev.decision,
       ...incoming.decision,
-      options: incoming.decision?.options?.length
-        ? incoming.decision.options
-        : prev.decision?.options,
+      questions: incoming.decision?.questions?.length
+        ? incoming.decision.questions
+        : prev.decision?.questions,
+      answers: incoming.decision?.answers !== undefined
+        ? incoming.decision.answers
+        : prev.decision?.answers,
     }
   }
   return merged
