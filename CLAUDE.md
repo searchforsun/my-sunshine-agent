@@ -8,7 +8,7 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑。
 3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改 Catalog/`/prompts` 或架构。
 
-**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多智能体协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.7.9 Request Decision ✅**（Chat MAIN；Planner 延后）· **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅** · **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅** · **4.14 Planner-Executor 重建 ⬜ 设计中** · **模型注册表 ✅**（MySQL SSOT + `/models` + scene 绑定；5.3 前置；见 [spec](docs/superpowers/specs/archive/2026-07-27-model-registry-config-design.md)）· **服务合并 ✅**（管理类 skill/agent/prompt/desensitize → resource-manager :8240；业务模拟 oa/finance/hr → biz-simulator :8700；tool-manager 更名 tool-service :8210；见 [spec](docs/superpowers/specs/archive/2026-08-03-service-consolidation-design.md)）· 缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多智能体协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.7.6 Spawn Subagent ✅** · **4.7.9 Request Decision ✅**（Chat MAIN；Cursor 对齐；Planner 延后）· **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅** · **4.5 Codex 工作区 ✅** · **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅** · **4.14 Planner-Executor 重建 ⬜ 设计中** · **模型注册表 ✅**（MySQL SSOT + `/models` + scene 绑定；5.3 前置；见 [spec](docs/superpowers/specs/archive/2026-07-27-model-registry-config-design.md)）· **服务合并 ✅**（管理类 skill/agent/prompt/desensitize → resource-manager :8240；业务模拟 oa/finance/hr → biz-simulator :8700；tool-manager 更名 tool-service :8210；见 [spec](docs/superpowers/specs/archive/2026-08-03-service-consolidation-design.md)）· 缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
@@ -73,7 +73,7 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 | **Chat 执行模式** | **现状** `ExecutionPreference=auto\|react\|workflow\|plan-workflow` → `ExecutionDispatcher`；routing v6 的 `fast\|pro\|workflow` **未落地**；`#` 补全仅工作流模式 |
 | **ReAct TaskBoard（4.7.5）** | 元工具 `manage_tasks` + 唯一 `tasks` 步；merge 引擎去重 |
 | **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；上下文隔离；`subagent-*` 卡 + 抽屉；**单独取消**（`SpawnRunRegistry`）；`agentId` 指定预定义智能体，经 `AgentExecutorRouter` 按 `source` 分派 INTERNAL/EXTERNAL（A2A） |
-| **ReAct Request Decision（4.7.9）** | 元工具 `request_decision`（仅 MAIN；Nacos `react.decision.enabled` 默认 **false**）；主时间线 `decision-*`（`phase=decision` / `lifecycle=awaiting`）；`POST .../decisions/{token}/resolve`；暂停/续跑同题 re-await；**不做** Planner harness（D12 延后） |
+| **ReAct Request Decision（4.7.9）** | 元工具 `request_decision`（仅 MAIN；Nacos `react.decision.enabled` 默认 **false**；**Cursor 对齐**：`title?`+`questions[]` / resolve `answers[]` / `outcome=`）；主时间线 `decision-*`（`phase=decision` / `lifecycle=awaiting`）；`POST .../decisions/{token}/resolve`；暂停/续跑同问卷 re-await；**不做** Planner harness（D12 延后） |
 | **沙箱工具取消（4.5.7）** | `sandbox__exec`/`grep`/`glob`：`CancellableToolRunRegistry` + sandbox kill；同族预算 3 |
 
 **Agent 运行时**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `AssembledContext.forSubAgent()`（无 L1/L2/L3）+ `skillId`→`PromptComposer`；禁止绕过 `AgentRunRequest`。
@@ -94,7 +94,7 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 |------|----------|
 | **ReAct** | `intent → think → tasks? → tool → think-2 → generate`；连续 reasoning 合并为同一 think；SSE 仅下发当前阶段一行 |
 | **ReAct spawn_subagent** | 主卡 `subagent-{runId}` + 抽屉 `subSteps`（指定 agentId 时 label 取智能体 displayName）；取消 → `paused` +「已取消」 |
-| **ReAct request_decision** | 主卡 `decision-{token}`（`phase=decision`）；等待 `lifecycle=awaiting`；resolve → `done`；停止 → `paused`，续跑同题 re-await；同消息最多 1 张 awaiting |
+| **ReAct request_decision** | 主卡 `decision-{token}`（`phase=decision`）；`metadata.decision.questions[]`；等待 `lifecycle=awaiting`；resolve `answers[]` → `done`/`outcome=answered`；停止 → `paused`，续跑同问卷 re-await；同消息最多 1 张 awaiting |
 | **Workflow（静态）** | 主时间线 `intent → plan → …`（DAG 画布）；agent 节点内部不上主时间线；loop body 进 `subSteps`；answer 节点仅 `step_delta(result)`，勿双写 content |
 | **Planner-Executor（4.14）** | 分层普通时间线 `intent → plan(Rn) → worker-* → planner-answer`（非卡片）；TaskBoard 一级=H1、二级=Worker todolist（有则展示）；handoff 仅正文时间线收束并双写 H1 + Planner L1 尾部；**不渲染 Plan DAG** |
 | **沙箱工具** | 取消 → `lifecycle=paused`，`summary.after=已取消` |

@@ -1,7 +1,7 @@
 # 4.7.9 ReAct Request Decision（主 Agent 主动向用户出选择题 / 需求澄清）
 
-> **状态**：✅ Chat ReAct MAIN 已实现 · ⬜ Planner MAIN / D12 延后（本切片不做 harness/续跑）  
-> **日期**：2026-07-28 · **修订**：2026-08-11（Chat MAIN 落地 + Live / 文档同步）  
+> **状态**：✅ Chat ReAct MAIN 已实现 · ⬜ Planner MAIN / D12 延后 · **✅ Cursor 对齐已实施**（[2026-08-11-request-decision-cursor-align-design.md](./2026-08-11-request-decision-cursor-align-design.md) 替换 §3–§6 契约）  
+> **日期**：2026-07-28 · **修订**：2026-08-11（Chat MAIN 落地；同日启动 Cursor align 设计）  
 > **编号**：阶段四 **4.7.9**（原 4.7.7 占号冲突，goal-alignment 已用 4.7.7）  
 > **相关**：`AgentRuntime` / `HitlTokenRegistry`（阻塞唤醒）· [spawn-subagent](./archive/2026-07-18-react-spawn-subagent-design.md) · [taskboard](./archive/2026-06-24-react-taskboard-design.md) · [goal-alignment](./2026-07-27-react-goal-alignment-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)  
 > **灰度**：Nacos `agent.execution.react.decision.enabled` 默认 **false**（D21）；Live 见 `scripts/verify_decision_live.py` 前置说明
@@ -23,7 +23,7 @@ ReAct Agent 在长链路推理中常遇到**需求歧义**或**多方案抉择**
 |------|------|
 | 需求澄清 | Agent 遇歧义主动暂停，出 ≥2 项选择题，等待用户决策后继续 |
 | 决策回传 | 用户选择作为 tool result 回传（固定短格式，非二次加工） |
-| 输入支持 | 选项可 `requireInput`；可选 `allowCustomInput` |
+| 输入支持 | ~~选项 requireInput / allowCustomInput~~ → 见修订：仅 `id`+`label`；平台每题必有「其他」手写 |
 | 样式 | 复用三兄弟选项行（对号 18px + 透明底 + 边框分区 + 内描边选中） |
 | 阻塞 | 复用 `HitlTokenRegistry` 的 `CompletableFuture + Redis token` 模式 |
 | 暂停/续跑 | 保留决策快照；续跑 re-await **同一题**，不重新出题 |
@@ -64,9 +64,7 @@ MAIN ReAct / Planner MAIN
 |----|------|
 | 工具名 | `request_decision` |
 | Catalog | orchestrator **内置元工具**（同 `spawn_subagent`），**不**进 tool-service |
-| `question` | 必填 |
-| `options` | 必填；≥2；每项 `value`/`label`/`description?`/`requireInput?`；`value` 非空且互不重复 |
-| `allowCustomInput` | 可选，默认 false |
+| 入参 | **已弃用扁平 question/options** → 见修订：`title?` + `questions[{id,prompt,options[{id,label}],allowMultiple?}]`；选项无 description |
 | 注册范围 | 见 **D14**：Chat ReAct MAIN + Planner MAIN；Worker / SUB / Expert **不注册** |
 | 并发 | **D15**：同一 `messageId` 同时最多 **1** 个 awaiting decision；第二个调用直接错误 JSON |
 | 回传 | 固定短格式文本（§5.1），不对结果二次加工/截断展示 |
@@ -76,18 +74,9 @@ MAIN ReAct / Planner MAIN
 ### 3.1 数据结构
 
 ```java
-public record DecisionOption(
-        String value,           // 英文蛇形，互不重复
-        String label,           // 中文展示
-        String description,     // 取舍说明（可空）
-        boolean requireInput) {
-}
-
-public record DecisionResult(
-        String choice,          // option.value 或 "__custom__"
-        String customInput,     // requireInput / allowCustomInput 时
-        long decidedAt) {
-}
+// ⚠️ 契约已被 Cursor 对齐修订替换，见 2026-08-11-request-decision-cursor-align-design.md
+// 选项仅 id + label（label 即答案文案，无 description / requireInput，避免模型歧义）
+public record DecisionOption(String id, String label) {}
 ```
 
 ### 3.2 组件
