@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -83,7 +84,7 @@ public class WorkflowPlanner {
 
     private Mono<PlanJson> submitPlanner(String systemPrompt, String userMessage, int attemptNo) {
         AgentPromptProperties.Planner cfg = prompts.plannerOrDefault();
-        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_PLANNER, null);
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), null);
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", model.effectiveModel());
         request.put("messages", List.of(

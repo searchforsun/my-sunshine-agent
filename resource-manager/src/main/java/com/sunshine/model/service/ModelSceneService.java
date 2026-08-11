@@ -3,7 +3,7 @@ package com.sunshine.model.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.exception.BizException;
-import com.sunshine.model.domain.ModelSceneKey;
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.model.dto.ModelSceneKeyMeta;
 import com.sunshine.model.dto.ModelSceneResponse;
 import com.sunshine.model.dto.ModelSceneUpsertRequest;

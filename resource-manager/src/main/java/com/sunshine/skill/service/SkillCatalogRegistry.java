@@ -5,6 +5,7 @@ import com.sunshine.skill.dto.SkillCatalogIndexEntry;
 import com.sunshine.skill.entity.SkillDefinitionEntity;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.dto.SandboxPolicyCodec;
+import com.sunshine.skill.event.SkillCatalogChangePublisher;
 import com.sunshine.skill.repo.SkillDefinitionRepository;
 import com.sunshine.skill.repo.SkillVersionRepository;
 import jakarta.annotation.PostConstruct;
@@ -17,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** 内存 Catalog 缓存 — 供 runtime 拉取 */
+/** 内存 Catalog 缓存 — 供 runtime 拉取；变更后广播供 orchestrator 热更新 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -25,14 +26,21 @@ public class SkillCatalogRegistry {
 
     private final SkillDefinitionRepository definitionRepository;
     private final SkillVersionRepository versionRepository;
+    private final SkillCatalogChangePublisher catalogChangePublisher;
     private volatile Map<String, SkillCatalogEntry> entries = Map.of();
 
     @PostConstruct
     void init() {
-        refresh();
+        // 启动预热不广播，避免 orchestrator 尚未就绪时空刷
+        reloadFromDb();
     }
 
     public synchronized void refresh() {
+        reloadFromDb();
+        catalogChangePublisher.publish("default");
+    }
+
+    private void reloadFromDb() {
         Map<String, SkillCatalogEntry> merged = new LinkedHashMap<>();
         for (SkillDefinitionEntity def : definitionRepository.findByEnabledTrueOrderByIdAsc()) {
             versionRepository.findBySkillIdAndVersion(def.getId(), def.getActiveVersion())

@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
@@ -143,14 +144,14 @@ public class ReActAgentFactory {
         if (role == AgentRole.MAIN) {
             // MAIN chat：无效会话模型需 warning 标记
             if (StringUtils.hasText(fromConfig)) {
-                return modelSceneResolver.resolve(ModelSceneResolver.SCENE_CHAT, fromConfig);
+                return modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), fromConfig);
             }
             return modelSceneResolver.resolveChat(override);
         }
         if (role == AgentRole.SUB) {
-            return modelSceneResolver.resolve(ModelSceneResolver.SCENE_SUBAGENT, override);
+            return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), override);
         }
-        return modelSceneResolver.resolve(ModelSceneResolver.SCENE_PLANNER, override);
+        return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), override);
     }
 
     private static String extractModelFromConfigJson(String modelConfigJson) {

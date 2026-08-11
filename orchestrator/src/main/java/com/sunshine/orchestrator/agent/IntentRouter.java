@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.conversation.ChatTurn;
@@ -57,7 +58,7 @@ public class IntentRouter {
         }
         String userContent = buildClassifierUserMessage(ctx);
 
-        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_INTENT, null);
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.INTENT.key(), null);
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", model.effectiveModel());
         request.put("messages", List.of(

@@ -3,7 +3,7 @@ package com.sunshine.llm.controller;
 import com.sunshine.llm.config.LlmWebClientFactory;
 import com.sunshine.llm.registry.GatewayModelCatalog;
 import com.sunshine.llm.registry.ModelCapabilities;
-import com.sunshine.llm.registry.ModelCryptoService;
+import com.sunshine.common.model.ModelCryptoService;
 import com.sunshine.llm.registry.ModelDefinitionView;
 import com.sunshine.llm.registry.ModelProviderView;
 import com.sunshine.llm.registry.ModelRegistryCache;

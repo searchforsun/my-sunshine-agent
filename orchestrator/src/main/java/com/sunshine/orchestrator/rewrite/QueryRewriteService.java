@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.rewrite;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
@@ -64,7 +65,7 @@ public class QueryRewriteService {
             return skipped;
         }
         String user = "用户问题：" + originalQuery.strip();
-        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_REWRITE_PLANNER, null);
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.REWRITE_PLANNER.key(), null);
         String raw = llmGatewayClient.complete(
                 model.effectiveModel(), model.fallbackModel(), systemPrompt, user);
         String rewritten = parseSingleQuery(raw, originalQuery);
@@ -99,7 +100,7 @@ public class QueryRewriteService {
             return skipped;
         }
         String user = RewriteConversationContext.buildUserMessage(originalQuery, memory);
-        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_REWRITE_INTENT, null);
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.REWRITE_INTENT.key(), null);
         String raw = llmGatewayClient.complete(
                 model.effectiveModel(), model.fallbackModel(), systemPrompt, user);
         String rewritten = parseSingleQuery(raw, originalQuery);

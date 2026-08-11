@@ -1,10 +1,10 @@
-package com.sunshine.model.domain;
+package com.sunshine.common.model;
 
 import java.util.Arrays;
 import java.util.Optional;
 
 /**
- * 模型场景键枚举（SSOT）。禁止自定义 scene_key；扩展 5.3 时仅在此追加。
+ * 模型场景键枚举（SSOT）。禁止自定义 scene_key；扩展时仅在此追加，并同步 SQL 种子对账。
  */
 public enum ModelSceneKey {
     DEFAULT("default", "通用默认", "未单独绑定的调用面；chat 用户未选模型时的缺省"),

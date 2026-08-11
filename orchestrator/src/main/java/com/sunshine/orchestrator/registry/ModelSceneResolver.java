@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.registry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.common.model.ModelSceneKey;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,20 +19,11 @@ import java.util.Optional;
 /**
  * 从 resource-manager 公共 Catalog 解析 scene → 有效模型；订阅 Redis 热更新。
  * 启动 definitions 为空则 fail-fast（禁止 Nacos 模型名兜底，D10）。
+ * scene key SSOT = {@link ModelSceneKey}。
  */
 @Slf4j
 @Component
 public class ModelSceneResolver {
-
-    public static final String CHANNEL = "model-catalog-changed";
-    public static final String SCENE_DEFAULT = "default";
-    public static final String SCENE_CHAT = "chat";
-    public static final String SCENE_INTENT = "intent";
-    public static final String SCENE_PLANNER = "planner";
-    public static final String SCENE_REWRITE_INTENT = "rewrite.intent";
-    public static final String SCENE_REWRITE_PLANNER = "rewrite.planner";
-    public static final String SCENE_TITLE = "title";
-    public static final String SCENE_SUBAGENT = "subagent";
 
     private static final String DEFAULT_TENANT = "default";
 
@@ -91,16 +83,16 @@ public class ModelSceneResolver {
      */
     public ResolvedModelScene resolveChat(String conversationModel) {
         if (!StringUtils.hasText(conversationModel)) {
-            return resolve(SCENE_CHAT, null);
+            return resolve(ModelSceneKey.CHAT.key(), null);
         }
         String override = conversationModel.strip();
         Optional<ModelCatalogDefinition> def = findEnabledDefinition(override);
         if (def.isPresent()) {
-            return resolve(SCENE_CHAT, override);
+            return resolve(ModelSceneKey.CHAT.key(), override);
         }
         log.warn("[ModelSceneResolver] chat override invalid/disabled model='{}', fallback to chat/default scene",
                 override);
-        return resolve(SCENE_CHAT, null).withOverrideInvalid(true);
+        return resolve(ModelSceneKey.CHAT.key(), null).withOverrideInvalid(true);
     }
 
     public Optional<ModelCatalogDefinition> findDefinition(String modelName) {
@@ -142,8 +134,8 @@ public class ModelSceneResolver {
         if (scene.isPresent()) {
             return resolvePrimaryOrFallback(scene.get());
         }
-        if (!SCENE_DEFAULT.equals(sceneKey)) {
-            Optional<ModelCatalogScene> defaults = findEnabledScene(SCENE_DEFAULT);
+        if (!ModelSceneKey.DEFAULT.key().equals(sceneKey)) {
+            Optional<ModelCatalogScene> defaults = findEnabledScene(ModelSceneKey.DEFAULT.key());
             if (defaults.isPresent()) {
                 return resolvePrimaryOrFallback(defaults.get());
             }
@@ -166,8 +158,8 @@ public class ModelSceneResolver {
                 return toResolved(fb.get(), null, sceneExtras(scene), false);
             }
         }
-        if (!SCENE_DEFAULT.equals(scene.sceneKey())) {
-            return resolveSceneChain(SCENE_DEFAULT);
+        if (!ModelSceneKey.DEFAULT.key().equals(scene.sceneKey())) {
+            return resolveSceneChain(ModelSceneKey.DEFAULT.key());
         }
         throw new IllegalStateException(
                 "scene '" + scene.sceneKey() + "' primary/fallback unavailable; refuse Nacos fallback");

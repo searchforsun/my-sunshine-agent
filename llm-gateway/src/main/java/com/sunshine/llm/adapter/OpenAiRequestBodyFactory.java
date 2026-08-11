@@ -80,10 +80,7 @@ public class OpenAiRequestBodyFactory {
         }
     }
 
-    /**
-     * 输出上限 SSOT = max_completion_tokens（注册表 max_output_tokens）。
-     * 兼容旧调用方仍传 max_tokens：钳制后同步到 max_completion_tokens。
-     */
+    /** 输出上限 SSOT = max_completion_tokens（注册表 max_output_tokens）；超出则钳制。 */
     private void normalizeAndClampOutputTokens(Map<String, Object> body, String model) {
         if (model == null || model.isBlank() || registryCache == null) {
             return;
@@ -94,23 +91,11 @@ public class OpenAiRequestBodyFactory {
         }
         int cap = def.getMaxOutputTokens();
         Object completion = body.get("max_completion_tokens");
-        Object legacy = body.get("max_tokens");
-        if (!(completion instanceof Number) && legacy instanceof Number) {
-            body.put("max_completion_tokens", ((Number) legacy).intValue());
-            completion = body.get("max_completion_tokens");
-        }
         if (completion instanceof Number n) {
             int requested = n.intValue();
             if (requested > cap) {
                 log.info("[LLM-GW] clamp max_completion_tokens {} → {} for model={}", requested, cap, model);
                 body.put("max_completion_tokens", cap);
-            }
-        }
-        if (legacy instanceof Number n) {
-            int requested = n.intValue();
-            if (requested > cap) {
-                log.info("[LLM-GW] clamp max_tokens {} → {} for model={}", requested, cap, model);
-                body.put("max_tokens", cap);
             }
         }
     }

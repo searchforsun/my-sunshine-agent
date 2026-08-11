@@ -69,8 +69,8 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 | 新 Workflow | `/workflows` + `workflow-manager` DB（唯一 SSOT）+ MySQL init 种子；orchestrator `WorkflowManagerClient` |
 | **静态 Workflow** | L2 规则命中 → `WorkflowExecutor` → `StaticPlanAdapter` → `PlanWorkflowPanel`（DAG 画布）；answer prompt 随 workflow 定义维护于 DB `plan_json` |
 | **Planner-Executor（4.14）** | `PlannerHarnessExecutor`：Planner=ReAct 主 Agent（**单一循环**边规划边执行，S5 v4：无 full/hier 模式；细则在 Worker）→ Worker=工具调用（`forWorker()`）→ Planner 自判 → 综合回答；`PlanNotebook` + **Redis 单写** + 3 类显式触发重规划；**完全舍弃动态 Plan-Workflow**（`PlanWorkflowExecutor`/`WorkflowPlanner`/PlanApproval 已删）；详见 `docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md` |
-| **意图路由** | [unified-routing v6](docs/superpowers/specs/2026-07-29-unified-routing-design.md)：用户显式 **快速/专业/工作流**（无自动模式识别）；快/专轨 L0–L3 收集 skill+子 Agent；工作流轨只收集 workflow |
-| **Chat 执行模式** | `executionMode=fast\|pro\|workflow` → `ReactExecutor` / `PlannerHarnessExecutor` / `WorkflowExecutor`；`#` 补全**仅工作流模式**；动态 Plan-Workflow 删除 |
+| **意图路由** | [unified-routing v6](docs/superpowers/specs/2026-07-29-unified-routing-design.md)：**设计中**（目标：用户显式 fast/pro/workflow）；**现状**仍为 `auto`/`react`/`workflow`/`plan-workflow`（见 `sunshine-ui/src/api/executionModes.ts`） |
+| **Chat 执行模式** | **现状** `ExecutionPreference=auto\|react\|workflow\|plan-workflow` → `ExecutionDispatcher`；routing v6 的 `fast\|pro\|workflow` **未落地**；`#` 补全仅工作流模式 |
 | **ReAct TaskBoard（4.7.5）** | 元工具 `manage_tasks` + 唯一 `tasks` 步；merge 引擎去重 |
 | **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；上下文隔离；`subagent-*` 卡 + 抽屉；**单独取消**（`SpawnRunRegistry`）；`agentId` 指定预定义智能体，经 `AgentExecutorRouter` 按 `source` 分派 INTERNAL/EXTERNAL（A2A） |
 | **沙箱工具取消（4.5.7）** | `sandbox__exec`/`grep`/`glob`：`CancellableToolRunRegistry` + sandbox kill；同族预算 3 |

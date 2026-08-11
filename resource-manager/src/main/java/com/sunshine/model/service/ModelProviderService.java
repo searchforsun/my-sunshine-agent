@@ -1,6 +1,7 @@
 package com.sunshine.model.service;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.model.ModelCryptoService;
 import com.sunshine.model.dto.ModelProviderRequest;
 import com.sunshine.model.dto.ModelProviderResponse;
 import com.sunshine.model.entity.ModelProviderEntity;
@@ -52,7 +53,7 @@ public class ModelProviderService {
         entity.setProtocol(StringUtils.hasText(request.protocol()) ? request.protocol().strip() : "openai-compatible");
         entity.setBaseUrl(request.baseUrl().strip());
         entity.setPathPrefix(request.pathPrefix() != null ? request.pathPrefix().strip() : "");
-        entity.setApiKeyEnc(cryptoService.encrypt(request.apiKey()));
+        entity.setApiKeyEnc(encryptApiKey(request.apiKey()));
         entity.setEnabled(request.enabled() == null || request.enabled());
         entity.setTenantId(tid);
         entity.setCreatedAt(now);
@@ -81,7 +82,7 @@ public class ModelProviderService {
         }
         // 空 apiKey 表示保留原密文，避免管理面「只改 URL」误清空密钥
         if (StringUtils.hasText(request.apiKey())) {
-            entity.setApiKeyEnc(cryptoService.encrypt(request.apiKey()));
+            entity.setApiKeyEnc(encryptApiKey(request.apiKey()));
         }
         if (request.enabled() != null) {
             entity.setEnabled(request.enabled());
@@ -121,5 +122,13 @@ public class ModelProviderService {
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
+    }
+
+    private String encryptApiKey(String plaintext) {
+        try {
+            return cryptoService.encrypt(plaintext);
+        } catch (IllegalStateException e) {
+            throw new BizException(ModelErrorCode.CRYPTO_FAILED);
+        }
     }
 }

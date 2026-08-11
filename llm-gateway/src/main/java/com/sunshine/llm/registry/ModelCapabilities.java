@@ -22,9 +22,10 @@ public class ModelCapabilities {
     @JsonProperty("tool_call")
     @JsonAlias("toolCall")
     @Builder.Default
-    private boolean toolCall = false;
+    private boolean toolCall = true;
 
+    /** 与 resource-manager Catalog defaults 对齐：reasoning/multimodal=false，toolCall=true */
     public static ModelCapabilities defaults() {
-        return ModelCapabilities.builder().build();
+        return ModelCapabilities.builder().reasoning(false).multimodal(false).toolCall(true).build();
     }
 }

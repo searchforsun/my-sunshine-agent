@@ -72,7 +72,7 @@ ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), context_window = VA
 INSERT INTO model_scene_binding (scene_key, primary_model, fallback_model, extras, enabled, tenant_id, remark) VALUES
 ('default', 'deepseek-v4-pro', 'qwen-plus', NULL, 1, 'default', '通用缺省'),
 ('chat', 'deepseek-v4-pro', 'qwen-plus', NULL, 1, 'default', '对话主循环缺省'),
-('intent', 'deepseek-v4-flash', 'qwen-plus', '{"max_tokens":256,"temperature":0}', 1, 'default', '意图分类'),
+('intent', 'deepseek-v4-flash', 'qwen-plus', '{"max_completion_tokens":256,"temperature":0}', 1, 'default', '意图分类'),
 ('planner', 'deepseek-v4-flash', 'qwen-plus', NULL, 1, 'default', 'Planner'),
 ('rewrite.intent', 'deepseek-v4-flash', 'qwen-plus', NULL, 1, 'default', '路由域改写'),
 ('rewrite.planner', 'deepseek-v4-flash', 'qwen-plus', NULL, 1, 'default', '规划域改写'),

@@ -83,7 +83,7 @@
 
 ### 5.2 用量计量与租户配额
 
-> **现状**：`ChatCompletionResponse.Usage`（prompt/completion/total tokens）在 adapter 层已有，仅打日志（`QwenAdapter`/`DeepSeekAdapter`），未落库。
+> **现状**：`ChatCompletionResponse.Usage`（prompt/completion/total tokens）在 `OpenAiCompatibleAdapter` 层已有，仅打日志，未落库。（旧 `QwenAdapter`/`DeepSeekAdapter` 已合并删除）
 > **目标**：token 用量全量落库 → 按租户/模型/会话聚合 → 配额校验 → 用量页。
 
 | 子任务 | 内容 |

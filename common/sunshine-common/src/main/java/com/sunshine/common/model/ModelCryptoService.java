@@ -1,22 +1,19 @@
-package com.sunshine.model.service;
+package com.sunshine.common.model;
 
-import com.sunshine.common.core.exception.BizException;
-import com.sunshine.model.exception.ModelErrorCode;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-
-import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 
-@Service
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
+/**
+ * 模型 API Key AES/GCM 加解密（SSOT）。格式：Base64(IV||ciphertextWithTag)。
+ * 由 {@link ModelCryptoAutoConfiguration} 注册为 Bean；禁止各服务再拷贝实现。
+ */
 public class ModelCryptoService {
 
     public static final String UNSET = "UNSET";
@@ -25,15 +22,15 @@ public class ModelCryptoService {
     private static final int GCM_TAG_BITS = 128;
     private static final String MASKED = "sk-****";
 
-    private final SecretKey secretKey;
+    private final byte[] aesKey;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public ModelCryptoService(@Value("${model.crypto.aes-key:}") String aesKeyMaterial) {
-        this.secretKey = new SecretKeySpec(resolveKeyBytes(aesKeyMaterial), "AES");
+    public ModelCryptoService(String aesKeyMaterial) {
+        this.aesKey = deriveKey(aesKeyMaterial);
     }
 
     public boolean isConfigured(String enc) {
-        return StringUtils.hasText(enc) && !UNSET.equals(enc.strip());
+        return enc != null && !enc.isBlank() && !UNSET.equals(enc.strip());
     }
 
     /** 管理面脱敏：已配置返回 sk-****，未配置返回 null */
@@ -41,51 +38,66 @@ public class ModelCryptoService {
         return isConfigured(enc) ? MASKED : null;
     }
 
+    /** 明文空白或 UNSET → 存 UNSET；禁止把占位符当真实密钥加密 */
     public String encrypt(String plaintext) {
-        if (!StringUtils.hasText(plaintext) || UNSET.equals(plaintext.strip())) {
+        if (plaintext == null || plaintext.isBlank() || UNSET.equals(plaintext.strip())) {
             return UNSET;
         }
         try {
             byte[] iv = new byte[GCM_IV_LENGTH];
             secureRandom.nextBytes(iv);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(aesKey, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] cipherText = cipher.doFinal(plaintext.strip().getBytes(StandardCharsets.UTF_8));
             ByteBuffer buffer = ByteBuffer.allocate(iv.length + cipherText.length);
             buffer.put(iv);
             buffer.put(cipherText);
             return Base64.getEncoder().encodeToString(buffer.array());
         } catch (Exception e) {
-            throw new BizException(ModelErrorCode.CRYPTO_FAILED);
+            throw new IllegalStateException("AES encrypt failed", e);
         }
     }
 
-    /** UNSET / 空密文返回空串；管理 API 禁止调用本方法回传明文 */
+    /** 管理面：未配置返回空串；密文损坏抛 IllegalStateException */
     public String decrypt(String enc) {
         if (!isConfigured(enc)) {
             return "";
         }
+        return doDecrypt(enc.strip());
+    }
+
+    /** 网关调用上游：未配置明文密钥则失败，禁止静默空串 */
+    public String requireDecrypt(String enc) {
+        if (!isConfigured(enc)) {
+            throw new IllegalStateException(
+                    "provider api key is UNSET; configure key in model admin before calling upstream");
+        }
+        return doDecrypt(enc.strip());
+    }
+
+    private String doDecrypt(String enc) {
         try {
-            byte[] combined = Base64.getDecoder().decode(enc.strip());
+            byte[] combined = Base64.getDecoder().decode(enc);
             if (combined.length <= GCM_IV_LENGTH) {
-                throw new BizException(ModelErrorCode.CRYPTO_FAILED);
+                throw new IllegalStateException("ciphertext too short");
             }
             byte[] iv = new byte[GCM_IV_LENGTH];
             byte[] cipherText = new byte[combined.length - GCM_IV_LENGTH];
             System.arraycopy(combined, 0, iv, 0, GCM_IV_LENGTH);
             System.arraycopy(combined, GCM_IV_LENGTH, cipherText, 0, cipherText.length);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(aesKey, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
             return new String(cipher.doFinal(cipherText), StandardCharsets.UTF_8);
-        } catch (BizException e) {
+        } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
-            throw new BizException(ModelErrorCode.CRYPTO_FAILED);
+            throw new IllegalStateException("AES decrypt failed", e);
         }
     }
 
-    static byte[] resolveKeyBytes(String material) {
-        if (!StringUtils.hasText(material)) {
+    /** Base64 16/24/32 字节原样；否则 SHA-256(utf8) 派生 32 字节 */
+    public static byte[] deriveKey(String material) {
+        if (material == null || material.isBlank()) {
             throw new IllegalStateException("model.crypto.aes-key is required");
         }
         String trimmed = material.strip();

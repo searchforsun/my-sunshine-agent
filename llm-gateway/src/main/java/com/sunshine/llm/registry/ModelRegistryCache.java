@@ -1,6 +1,7 @@
 package com.sunshine.llm.registry;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.sunshine.common.model.ModelCryptoService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.llm.config.LlmWebClientFactory;
 import jakarta.annotation.PostConstruct;
@@ -24,7 +25,6 @@ import java.util.Optional;
 @Component
 public class ModelRegistryCache {
 
-    public static final String CHANNEL = "model-catalog-changed";
     private static final String DEFAULT_TENANT = "default";
 
     private final ObjectMapper objectMapper;
@@ -95,7 +95,7 @@ public class ModelRegistryCache {
         if (provider == null) {
             throw new IllegalArgumentException("provider must not be null");
         }
-        return cryptoService.decrypt(provider.getApiKeyEnc());
+        return cryptoService.requireDecrypt(provider.getApiKeyEnc());
     }
 
     public Optional<ModelSceneView> findScene(String sceneKey) {

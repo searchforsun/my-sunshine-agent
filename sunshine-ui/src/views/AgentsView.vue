@@ -203,12 +203,12 @@ function makeAuthConfigJson(type: string, token: string): string {
   return JSON.stringify({ type: 'bearer', token: token.trim() })
 }
 
-/** modelConfigJson 读 model（兼容旧 modelName） */
+/** modelConfigJson 读 model（SSOT 字段名 = model） */
 function parseModelConfigModel(json: string | undefined | null): string | null {
   if (!json?.trim()) return null
   try {
     const obj = JSON.parse(json) as Record<string, unknown>
-    const v = obj.model ?? obj.modelName
+    const v = obj.model
     return typeof v === 'string' && v.trim() ? v.trim() : null
   } catch {
     return null

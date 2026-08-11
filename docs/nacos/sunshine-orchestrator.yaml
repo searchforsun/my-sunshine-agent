@@ -36,7 +36,7 @@ agent:
     # skill overlay SSOT = skill-manager Catalog（无 Nacos 影子）
 
   # intent 模型 → scene=intent；classifier-prompt → Catalog id=intent.classifier
-  # （勿留空 agent.intent:{}，Nacos 会绑成空串导致启动失败）
+  # （已删除 agent.intent 配置壳，禁止再写）
 
   planner:
     # model → scene=planner

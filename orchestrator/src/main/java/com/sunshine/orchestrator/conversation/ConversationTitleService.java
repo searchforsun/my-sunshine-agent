@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.conversation;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.ConversationTitleProperties;
 import com.sunshine.orchestrator.controller.stream.ChatStreamContext;
@@ -69,7 +70,7 @@ public class ConversationTitleService {
         if (!StringUtils.hasText(systemPrompt)) {
             return "";
         }
-        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneResolver.SCENE_TITLE, null);
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.TITLE.key(), null);
         String raw = llmGatewayClient.complete(
                 model.effectiveModel(), model.fallbackModel(), systemPrompt, ctx.userContent());
         String title = normalize(raw, titleProperties.getMaxLength());

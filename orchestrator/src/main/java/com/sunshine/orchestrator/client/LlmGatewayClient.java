@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.client;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.conversation.ChatTurn;
@@ -94,7 +95,7 @@ public class LlmGatewayClient {
      * 非流式补全 — L1 Far / L2 抽取 / 审计等内部用途（scene=default）。
      */
     public String complete(String systemPrompt, String userContent) {
-        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneResolver.SCENE_DEFAULT, null);
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.DEFAULT.key(), null);
         return complete(resolved.effectiveModel(), resolved.fallbackModel(), systemPrompt, userContent);
     }
 
@@ -116,7 +117,7 @@ public class LlmGatewayClient {
 
     /** 非流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
     public LlmCompletion completeComposed(PromptComposeRequest request) {
-        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneResolver.SCENE_DEFAULT, null);
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.DEFAULT.key(), null);
         return completeMessages(
                 resolved.effectiveModel(), resolved.fallbackModel(),
                 promptComposer.composeGatewayMessages(request));
@@ -211,7 +212,7 @@ public class LlmGatewayClient {
     }
 
     private Flux<StreamToken> doStream(List<Map<String, Object>> messages) {
-        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneResolver.SCENE_CHAT, null);
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), null);
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", resolved.effectiveModel());
         request.put("messages", messages);

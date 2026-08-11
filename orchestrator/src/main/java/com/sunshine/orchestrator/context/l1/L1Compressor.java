@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.context.l1;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.context.ContextProperties;
 import com.sunshine.orchestrator.context.ModelWindowCache;
@@ -73,8 +74,7 @@ public class L1Compressor {
 
     private void compressLocked(String userId, String tenantId, String convId, List<SessionTurn> history) {
         ContextProperties.L1 l1 = contextProperties.getL1();
-        String effectiveModel = modelSceneResolver.resolve(
-                com.sunshine.orchestrator.registry.ModelSceneResolver.SCENE_CHAT, null).effectiveModel();
+        String effectiveModel = modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), null).effectiveModel();
         int modelWindow = modelWindowCache.windowFor(effectiveModel);
         if (!shouldCompress(history, l1, modelWindow, tokenEstimator)) {
             return;

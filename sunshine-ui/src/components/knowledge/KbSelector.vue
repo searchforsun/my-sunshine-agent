@@ -185,14 +185,17 @@ function onShowUpdate(next: boolean) {
   opacity: 0.55;
 }
 
-.kb-dropdown-root.is-icon-only .kb-label,
-.kb-dropdown-root.is-icon-only .kb-chevron {
+.kb-dropdown-root.is-icon-only .kb-label {
   display: none;
 }
 
 .kb-dropdown-root.is-icon-only .kb-trigger {
   padding: 0 8px;
   max-width: none;
+  gap: 4px;
+}
+
+.kb-dropdown-root.is-icon-only .kb-leading {
   gap: 0;
 }
 

@@ -16,15 +16,7 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 @ConfigurationProperties(prefix = "agent")
 public class AgentPromptProperties {
 
-    private Intent intent = new Intent();
-
     private Planner planner = new Planner();
-
-    @Getter
-    @Setter
-    public static class Intent {
-        // 模型名已迁 ModelSceneResolver scene=intent；本类仅保留占位以免旧 YAML 绑定失败
-    }
 
     @Getter
     @Setter

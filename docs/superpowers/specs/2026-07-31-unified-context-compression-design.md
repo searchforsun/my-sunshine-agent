@@ -554,7 +554,7 @@ WHILE assembled > window × 0.8 AND nearRounds > 1:
 | `ContextAssembler.java` | orchestrator | `applyBudget` / `trimByTokens` |
 | `ContextProperties.java` | orchestrator | `maxTokensRatio`/`turnBackstop`/`defaultModelWindow`/`tokenSafetyFactor`/`midCompressRatio` |
 | `ModelController.java` | llm-gateway | `GET /v1/models` |
-| `ProviderProperties.java` | llm-gateway | `ModelMeta`（`contextWindow`+`encoding`） |
+| ~~`ProviderProperties.java`~~ | llm-gateway | **已删除**（2026-08-10 模型注册表）。窗口/encoding SSOT = resource-manager `model_definition` → gateway `ModelRegistryCache` / orchestrator `ModelSceneResolver` |
 
 ---
 

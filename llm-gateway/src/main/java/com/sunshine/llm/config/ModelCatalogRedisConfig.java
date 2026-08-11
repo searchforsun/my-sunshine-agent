@@ -1,7 +1,7 @@
 package com.sunshine.llm.config;
 
+import com.sunshine.common.model.ModelCatalogChannels;
 import com.sunshine.llm.registry.ModelCatalogRefreshListener;
-import com.sunshine.llm.registry.ModelRegistryCache;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -17,7 +17,7 @@ public class ModelCatalogRedisConfig {
             ModelCatalogRefreshListener listener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        container.addMessageListener(listener, new ChannelTopic(ModelRegistryCache.CHANNEL));
+        container.addMessageListener(listener, new ChannelTopic(ModelCatalogChannels.CHANGED));
         return container;
     }
 }

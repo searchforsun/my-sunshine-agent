@@ -1,4 +1,5 @@
-import { computed, h, ref, type Ref } from 'vue'
+import { computed, h, ref, watch, type Ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { NButton, NSwitch, useMessage, type DataTableColumns } from 'naive-ui'
 import { friendlyErrorMessage } from '../api/apiError'
 import {
@@ -26,14 +27,19 @@ import {
   type ModelScene,
   type ModelSceneKeyMeta,
 } from '../api/models'
+import { useModelsRouteState, type ModelsTab } from './useModelsRouteState'
 
-export type ModelsTab = 'providers' | 'models' | 'scenes'
+export type { ModelsTab }
 
 export function useModelsPage() {
   const message = useMessage()
+  const route = useRoute()
+  const routeState = useModelsRouteState()
   const loading = ref(false)
   const saving = ref(false)
-  const activeTab = ref<ModelsTab>('providers')
+  const activeTab = ref<ModelsTab>(routeState.readTab())
+  // 非法 ?tab= 归一到合法 tab（刷新可重定向）
+  routeState.syncQuery({ tab: activeTab.value })
 
   const providers = ref<ModelProvider[]>([])
   const definitions = ref<ModelDefinition[]>([])
@@ -594,6 +600,18 @@ export function useModelsPage() {
       render: (row) => h(NButton, { size: 'tiny', quaternary: true, onClick: () => openEditScene(row) }, () => '编辑'),
     },
   ])
+
+  watch(activeTab, (tab) => {
+    routeState.syncQuery({ tab })
+  })
+
+  watch(
+    () => route.query.tab,
+    () => {
+      const tab = routeState.readTab()
+      if (activeTab.value !== tab) activeTab.value = tab
+    },
+  )
 
   return {
     loading,

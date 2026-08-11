@@ -70,13 +70,12 @@ export function parseRequestExtrasDraft(
   return draft
 }
 
-/** 从 extras / 定义列解析输出上限（SSOT = max_completion_tokens；兼容旧 max_tokens） */
+/** 从 extras / 定义列解析输出上限（SSOT = max_completion_tokens） */
 export function resolveMaxCompletionTokens(
   extras: Record<string, unknown> | null | undefined,
   fallbackMaxOutputTokens?: number | null,
 ): number {
   const fromExtras = asFiniteNumber(extras?.max_completion_tokens)
-    ?? asFiniteNumber(extras?.max_tokens)
   if (fromExtras != null && fromExtras > 0) return fromExtras
   if (fallbackMaxOutputTokens != null && fallbackMaxOutputTokens > 0) return fallbackMaxOutputTokens
   return 8192

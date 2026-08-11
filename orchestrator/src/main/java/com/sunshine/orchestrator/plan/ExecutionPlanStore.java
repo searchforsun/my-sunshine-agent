@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.ConversationService;
@@ -41,7 +42,7 @@ public class ExecutionPlanStore {
         entity.setUserId(requireText(ctx.userId(), "userId"));
         entity.setTenantId(StringUtils.hasText(ctx.tenantId()) ? ctx.tenantId() : "default");
         entity.setStatus(ExecutionPlanStatus.DRAFT.dbValue());
-        entity.setPlannerModel(modelSceneResolver.resolve(ModelSceneResolver.SCENE_PLANNER, null).effectiveModel());
+        entity.setPlannerModel(modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), null).effectiveModel());
         entity.setPlannerReason(truncate(planJson.reason(), 512));
         entity.setPlanJson(codec.toJson(planJson));
         entity.setReplanCount(0);

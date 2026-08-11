@@ -28,8 +28,13 @@
 | TD-157 | P3 | open | `implementation-plan.md` 缺口段 | 三份未实施 spec（dynamic-context-compression / workflow-structured-io / expert-as-subagent-A2A）状态未统一登记 |
 | TD-162 | P0 | open | `sys_user.github_token` / `gitlab_token` | Git PAT 明文落库（`10-sunshine-auth.sql`）；2026-08-04 用户决策「先明文」，加密/外置凭据延后单独 scope |
 | TD-163 | P2 | open | `MainLayout.vue`(1456 行) / `ChatView.vue`(2445 行) | 上帝组件（模板/样式混排）；拆分是跨模块大动作，下轮单独 scope |
-| TD-164 | P2 | open | `specs/2026-07-31-unified-context-compression-design.md` | Layer 1 标注「⚠️ 待恢复」（AS 2.0 迁移移除）；需确认是否仍计划恢复 |
+| TD-164 | P2 | open | `specs/2026-07-31-unified-context-compression-design.md` | 基线压缩已 ✅；登记「Layer1 待恢复」表述过时——剩余为 §5.5+ 压缩点增强（设计稿），非 Layer1 整层缺失 |
 | TD-167 | P3 | open | `SandboxAgentTools.java` L207 / `MemoryProperties.DEFAULT_SUMMARY_PROMPT` + `HarnessAgentFactory.resolveSummaryPrompt` | Catalog 缺失兜底默认文案残留（`sandbox.budget-exhausted` 与 `compaction.summary-prompt` 已有 seed，缺省不触发）；按「删兜底」纪律可进一步收敛 |
+| TD-168 | P1 | open | Catalog DTO `ModelCapabilities`/`ModelCatalog*` 四方平行（rm/orch/gw/ui） | 2026-08-10 已统一 `defaults().toolCall=true` 与 Crypto/SceneKey SSOT；完整 DTO 生成/上收 common 延后 |
+| TD-169 | P1 | open | `OperationStack.vue` `buildRoundGroupLabel` | 本地 sandbox 步骤话术 Map；应走后端 summary/label |
+| TD-170 | P2 | open | `useModelsPage.ts` / `ModelsView.vue` / `ModelSceneResolver` | 上帝类拆分（按 Provider/Definition/Scene；Resolver Fetch vs Resolve） |
+| TD-171 | P2 | open | `ModelWindowCache` + `ModelWindowCacheBridge` | 窗口双路径；应只信 Catalog |
+| TD-172 | P3 | open | `model.crypto.aes-key` 默认串 | 生产应 fail-fast / 强制 env，禁默认材料 |
 
 ### 文档债
 
@@ -37,6 +42,7 @@
 |----|--------|------|------|------|
 | DOC-101 | P3 | open | `plans/2026-07-21-corpus50-platform-adapt.md` 等历史 plan | 仍写 TenantUserStore/`/mock-data`；实现期清单，可读但非 SSOT |
 | DOC-102 | P3 | open | `specs/plans/2026-07-29-multi-agent-unified.*` | 历史对照仍大量使用 expert/peer 措辞（peer-collab 已删、spawn_subagent 已落地）；非本轮代码范围，建议后续文档轮次收敛术语 |
+| DOC-103 | P1 | open | `CLAUDE.md` vs `executionModes.ts` | 已纠偏为「routing v6 设计中 / 现状 auto\|react…」；落地 fast/pro/workflow 时删本条 |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 

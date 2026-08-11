@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.context;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
@@ -46,8 +47,7 @@ public class ContextAssembler {
         ContextProperties.L1 l1 = contextProperties.getL1();
         String effectiveModel = StringUtils.hasText(request.modelName())
                 ? modelSceneResolver.resolveChat(request.modelName()).effectiveModel()
-                : modelSceneResolver.resolve(
-                        com.sunshine.orchestrator.registry.ModelSceneResolver.SCENE_CHAT, null).effectiveModel();
+                : modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), null).effectiveModel();
         int modelWindow = modelWindowCache.windowFor(effectiveModel);
         int budgetTokens = (int) (modelWindow * l1.getMaxTokensRatio());
         int nearN = Math.max(1, l1.getNearTurns());
