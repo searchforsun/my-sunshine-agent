@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.agent.DecisionRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
@@ -33,6 +34,10 @@ public class GenerationRegistry {
     @Autowired(required = false)
     @Lazy
     private WorkflowNodeRecoveryService workflowNodeRecoveryService;
+
+    @Autowired(required = false)
+    @Lazy
+    private DecisionRegistry decisionRegistry;
 
     public GenerationJob register(GenerationJob job) {
         running.put(job.getGenerationId(), job);
@@ -113,6 +118,9 @@ public class GenerationRegistry {
         }
         if (workflowNodeRecoveryService != null) {
             workflowNodeRecoveryService.cancelWaitersForMessage(messageId);
+        }
+        if (decisionRegistry != null) {
+            decisionRegistry.cancelWaitersForMessage(messageId);
         }
     }
 }

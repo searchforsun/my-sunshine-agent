@@ -25,7 +25,11 @@ public enum OrchestratorErrorCode implements ErrorCode {
     WORKFLOW_NOT_FOUND(400, "orch_workflow_not_found", "未找到指定的工作流，请检查 /workflows"),
     SKILL_NOT_FOUND(400, "orch_skill_not_found", "未找到指定的 Skill，请检查列表后重试"),
     AGENT_NOT_FOUND(400, "orch_agent_not_found", "未找到指定的智能体，请检查列表后重试"),
-    SANDBOX_WORKSPACE_NOT_FOUND(404, "orch_sandbox_workspace_not_found", "尚无沙箱工作区");
+    SANDBOX_WORKSPACE_NOT_FOUND(404, "orch_sandbox_workspace_not_found", "尚无沙箱工作区"),
+    DECISION_INVALID_CHOICE(400, "decision_invalid_choice", "选项无效"),
+    DECISION_INPUT_REQUIRED(400, "decision_input_required", "请填写自定义输入"),
+    DECISION_EXPIRED(400, "decision_expired", "决策已过期"),
+    DECISION_NOT_FOUND(404, "decision_not_found", "决策不存在或无权操作");
 
     private final int code;
     private final String key;

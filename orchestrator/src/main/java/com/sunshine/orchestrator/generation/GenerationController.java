@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.generation;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.agent.DecisionRegistry;
+import com.sunshine.orchestrator.agent.ResolveDecisionRequest;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
@@ -17,6 +19,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,6 +42,7 @@ public class GenerationController {
     private final SpawnRunRegistry spawnRunRegistry;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
     private final AgentSandboxProperties sandboxProperties;
+    private final DecisionRegistry decisionRegistry;
 
     @GetMapping("/generations/{id}")
     public Mono<GenerationStatusResponse> getStatus(
@@ -72,6 +76,40 @@ public class GenerationController {
             }
             return Map.of("status", GenerationStatus.INTERRUPTED.name());
         });
+    }
+
+    /**
+     * 用户提交 request_decision 选择题结果（与 cancelSubagent 同属 generation 交互面）。
+     */
+    @PostMapping("/generations/{id}/decisions/{token}/resolve")
+    public Mono<Map<String, Object>> resolveDecision(
+            @PathVariable("id") String id,
+            @PathVariable("token") String token,
+            @RequestBody(required = false) ResolveDecisionRequest body,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> {
+            streamService.assertOwned(id, userId, tenantId);
+            streamService.getMeta(id)
+                    .orElseThrow(() -> new BizException(OrchestratorErrorCode.GENERATION_NOT_FOUND));
+            DecisionRegistry.ResolveOutcome outcome = decisionRegistry.resolve(
+                    token,
+                    body != null ? body.choice() : null,
+                    body != null ? body.customInput() : null,
+                    userId);
+            return mapResolveOutcome(outcome);
+        });
+    }
+
+    /** ResolveOutcome → 成功体或 BizException（供单测断言错误码映射） */
+    static Map<String, Object> mapResolveOutcome(DecisionRegistry.ResolveOutcome outcome) {
+        return switch (outcome) {
+            case ACCEPTED -> Map.of("accepted", true);
+            case INVALID_CHOICE -> throw new BizException(OrchestratorErrorCode.DECISION_INVALID_CHOICE);
+            case INPUT_REQUIRED -> throw new BizException(OrchestratorErrorCode.DECISION_INPUT_REQUIRED);
+            case EXPIRED -> throw new BizException(OrchestratorErrorCode.DECISION_EXPIRED);
+            case NOT_FOUND, FORBIDDEN -> throw new BizException(OrchestratorErrorCode.DECISION_NOT_FOUND);
+        };
     }
 
     /**
