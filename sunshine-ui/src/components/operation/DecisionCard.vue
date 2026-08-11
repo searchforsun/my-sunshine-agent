@@ -408,11 +408,16 @@ async function submit(): Promise<void> {
 }
 
 .mode-menu-item.decision-option {
+  display: flex;
+  align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--sun-border);
   border-radius: calc(var(--radius-md, 10px) - 2px);
   background: transparent;
+  text-align: left;
+  cursor: pointer;
   color: inherit;
   font: inherit;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
