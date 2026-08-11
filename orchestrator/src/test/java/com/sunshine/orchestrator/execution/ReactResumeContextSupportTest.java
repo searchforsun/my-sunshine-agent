@@ -1,6 +1,9 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.orchestrator.agent.DecisionAnswer;
 import com.sunshine.orchestrator.agent.DecisionOption;
+import com.sunshine.orchestrator.agent.DecisionQuestion;
+import com.sunshine.orchestrator.agent.DecisionResult;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
@@ -55,10 +58,8 @@ class ReactResumeContextSupportTest {
         assertThat(blocks).singleElement().satisfies(block -> {
             assertThat(block).startsWith("【待决策】");
             assertThat(block).contains("选哪个方案？");
-            assertThat(block).contains("plan_a: 方案A — 稳妥");
-            assertThat(block).contains("plan_b: 方案B");
-            // 原文不截断
-            assertThat(block).contains("很长很长的描述内容用于确认不被截断");
+            assertThat(block).contains("plan_a: 方案A");
+            assertThat(block).contains("plan_b: 方案B很长很长的描述内容用于确认不被截断");
         });
     }
 
@@ -70,15 +71,19 @@ class ReactResumeContextSupportTest {
     }
 
     @Test
-    void buildResolvedDecisionBlock_containsShortFormatChoice() {
-        String block = ReactResumeContextSupport.buildResolvedDecisionBlock(
-                "选哪个方案？", "plan_a", "方案A", "备注原文不截断");
+    void buildResolvedDecisionBlock_containsShortFormatAnswers() {
+        DecisionResult result = new DecisionResult(
+                "answered",
+                "选哪个方案？",
+                List.of(new DecisionAnswer("q1", List.of("plan_a"), "备注原文不截断")),
+                1L);
+        String block = ReactResumeContextSupport.buildResolvedDecisionBlock(result);
 
         assertThat(block).contains("【用户决策】");
         assertThat(block).contains("选哪个方案？");
-        assertThat(block).contains("choice=plan_a");
-        assertThat(block).contains("label=方案A");
-        assertThat(block).contains("customInput=备注原文不截断");
+        assertThat(block).contains("outcome=answered");
+        assertThat(block).contains("q.q1=plan_a");
+        assertThat(block).contains("q.q1.custom=备注原文不截断");
     }
 
     private static ProcessingStep intentStep() {
@@ -169,14 +174,17 @@ class ReactResumeContextSupportTest {
     }
 
     private static ProcessingStep awaitingDecisionStep() {
-        String longDesc = "很长很长的描述内容用于确认不被截断";
+        String longLabel = "方案B很长很长的描述内容用于确认不被截断";
         DecisionStepMeta decision = new DecisionStepMeta(
                 "tok-d1",
                 "选哪个方案？",
-                List.of(
-                        new DecisionOption("plan_a", "方案A", "稳妥", false),
-                        new DecisionOption("plan_b", "方案B", longDesc, false)),
-                false,
+                List.of(new DecisionQuestion(
+                        "q1",
+                        "选哪个方案？",
+                        List.of(
+                                new DecisionOption("plan_a", "方案A"),
+                                new DecisionOption("plan_b", longLabel)),
+                        false)),
                 System.currentTimeMillis() + 60_000,
                 null,
                 null);

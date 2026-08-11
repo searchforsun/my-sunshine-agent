@@ -97,9 +97,7 @@ public class DecisionResumeSupport {
         }
     }
 
-    /**
-     * 续跑注入块：与 Task 5 tool result 短格式对齐（outcome/title/q.*），不经 RequestDecisionTool。
-     */
+    /** 续跑注入块：复用 Tool 短格式（outcome/title/q.*）。 */
     static String buildResolvedInjectBlock(DecisionResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append("【用户决策】");
@@ -107,30 +105,10 @@ public class DecisionResumeSupport {
         if (StringUtils.hasText(title)) {
             sb.append('\n').append(title.strip());
         }
-        sb.append('\n').append(formatAnsweredShort(result));
-        return sb.toString();
-    }
-
-    private static String formatAnsweredShort(DecisionResult result) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("outcome=").append(result != null && result.outcome() != null ? result.outcome() : "");
-        sb.append("\ntitle=").append(result != null && result.title() != null ? result.title() : "");
-        if (result == null || result.answers() == null) {
-            return sb.toString();
-        }
-        for (DecisionAnswer answer : result.answers()) {
-            if (answer == null || !StringUtils.hasText(answer.questionId())) {
-                continue;
-            }
-            String ids = answer.selectedOptionIds() == null
-                    ? ""
-                    : String.join(",", answer.selectedOptionIds());
-            sb.append("\nq.").append(answer.questionId().strip()).append('=').append(ids);
-            if (StringUtils.hasText(answer.customInput())) {
-                sb.append("\nq.").append(answer.questionId().strip())
-                        .append(".custom=").append(answer.customInput());
-            }
-        }
+        List<DecisionAnswer> answers = result != null && result.answers() != null
+                ? result.answers()
+                : List.of();
+        sb.append('\n').append(RequestDecisionTool.formatSuccessResult(title, answers));
         return sb.toString();
     }
 }

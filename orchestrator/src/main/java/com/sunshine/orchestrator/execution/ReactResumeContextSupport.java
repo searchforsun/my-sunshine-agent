@@ -1,8 +1,12 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.orchestrator.agent.DecisionAnswer;
 import com.sunshine.orchestrator.agent.DecisionOption;
+import com.sunshine.orchestrator.agent.DecisionQuestion;
+import com.sunshine.orchestrator.agent.DecisionResult;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
+import com.sunshine.orchestrator.agent.RequestDecisionTool;
 import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
@@ -61,15 +65,16 @@ public final class ReactResumeContextSupport {
     /**
      * 续跑用户已选：短格式原文注入（不截断），即使 checkpoint 不再重放 request_decision 也能进入模型上下文。
      */
-    public static String buildResolvedDecisionBlock(
-            String question, String choice, String label, String customInput) {
+    public static String buildResolvedDecisionBlock(DecisionResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append("【用户决策】");
-        if (StringUtils.hasText(question)) {
-            sb.append('\n').append(question.strip());
+        String title = result != null && result.title() != null ? result.title() : "";
+        if (StringUtils.hasText(title)) {
+            sb.append('\n').append(title.strip());
         }
-        sb.append('\n').append(com.sunshine.orchestrator.agent.RequestDecisionTool.formatSuccessResult(
-                choice, label, customInput));
+        List<DecisionAnswer> answers =
+                result != null && result.answers() != null ? result.answers() : List.of();
+        sb.append('\n').append(RequestDecisionTool.formatSuccessResult(title, answers));
         return sb.toString();
     }
 
@@ -144,26 +149,34 @@ public final class ReactResumeContextSupport {
             return;
         }
         DecisionStepMeta decision = step.metadata() != null ? step.metadata().decision() : null;
-        if (decision == null || !StringUtils.hasText(decision.question())) {
+        if (decision == null || decision.questions() == null || decision.questions().isEmpty()) {
             return;
         }
-        if (StringUtils.hasText(decision.choice())) {
+        if (StringUtils.hasText(decision.outcome())
+                || (decision.answers() != null && !decision.answers().isEmpty())) {
             return;
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("【待决策】\n").append(decision.question().strip());
-        List<DecisionOption> options = decision.options();
-        if (options != null && !options.isEmpty()) {
+        sb.append("【待决策】");
+        if (StringUtils.hasText(decision.title())) {
+            sb.append('\n').append(decision.title().strip());
+        }
+        for (DecisionQuestion question : decision.questions()) {
+            if (question == null || !StringUtils.hasText(question.prompt())) {
+                continue;
+            }
+            sb.append('\n').append(question.prompt().strip());
+            List<DecisionOption> options = question.options();
+            if (options == null || options.isEmpty()) {
+                continue;
+            }
             sb.append("\n选项：");
             for (DecisionOption opt : options) {
-                if (opt == null || !StringUtils.hasText(opt.value())) {
+                if (opt == null || !StringUtils.hasText(opt.id())) {
                     continue;
                 }
-                sb.append("\n- ").append(opt.value().strip()).append(": ");
+                sb.append("\n- ").append(opt.id().strip()).append(": ");
                 sb.append(StringUtils.hasText(opt.label()) ? opt.label().strip() : "");
-                if (StringUtils.hasText(opt.description())) {
-                    sb.append(" — ").append(opt.description());
-                }
             }
         }
         blocks.add(sb.toString());
