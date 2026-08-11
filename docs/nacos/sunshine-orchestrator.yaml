@@ -69,6 +69,9 @@ agent:
         max-iters: 30
         timeout-ms: 180000
         # cancel-result → Catalog id=react.subagent.cancel-result
+      decision:
+        enabled: false
+        timeout-sec: 300
     plan-workflow:
       replan:
         max-attempts: 2

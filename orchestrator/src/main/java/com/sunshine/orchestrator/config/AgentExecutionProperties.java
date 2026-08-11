@@ -27,6 +27,8 @@ public class AgentExecutionProperties {
         private Taskboard taskboard = new Taskboard();
         /** 4.7.6 spawn_subagent — SSOT：Nacos agent.execution.react.subagent */
         private Subagent subagent = new Subagent();
+        /** 4.7.9 request_decision — SSOT：Nacos agent.execution.react.decision */
+        private Decision decision = new Decision();
 
         @Data
         public static class Taskboard {
@@ -39,6 +41,13 @@ public class AgentExecutionProperties {
             private boolean enabled = true;
             private int maxIters = 30;
             private long timeoutMs = 180_000L;
+        }
+
+        @Data
+        public static class Decision {
+            /** D21：默认关，Live/灰度再开 */
+            private boolean enabled = false;
+            private int timeoutSec = 300;
         }
     }
 
