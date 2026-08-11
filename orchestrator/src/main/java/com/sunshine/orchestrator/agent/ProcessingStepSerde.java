@@ -356,39 +356,72 @@ public final class ProcessingStepSerde {
         if (hasText(decision.token())) {
             map.put("token", decision.token());
         }
-        if (hasText(decision.question())) {
-            map.put("question", decision.question());
+        if (hasText(decision.title())) {
+            map.put("title", decision.title());
         }
-        if (decision.options() != null && !decision.options().isEmpty()) {
-            List<Map<String, Object>> options = new ArrayList<>();
-            for (DecisionOption option : decision.options()) {
-                if (option == null) {
+        List<Map<String, Object>> questions = new ArrayList<>();
+        if (decision.questions() != null) {
+            for (DecisionQuestion question : decision.questions()) {
+                if (question == null) {
                     continue;
                 }
-                Map<String, Object> row = new LinkedHashMap<>();
-                if (hasText(option.value())) {
-                    row.put("value", option.value());
+                Map<String, Object> qRow = new LinkedHashMap<>();
+                if (hasText(question.id())) {
+                    qRow.put("id", question.id());
                 }
-                if (hasText(option.label())) {
-                    row.put("label", option.label());
+                if (hasText(question.prompt())) {
+                    qRow.put("prompt", question.prompt());
                 }
-                if (hasText(option.description())) {
-                    row.put("description", option.description());
+                List<Map<String, Object>> options = new ArrayList<>();
+                if (question.options() != null) {
+                    for (DecisionOption option : question.options()) {
+                        if (option == null) {
+                            continue;
+                        }
+                        Map<String, Object> optRow = new LinkedHashMap<>();
+                        if (hasText(option.id())) {
+                            optRow.put("id", option.id());
+                        }
+                        if (hasText(option.label())) {
+                            optRow.put("label", option.label());
+                        }
+                        options.add(optRow);
+                    }
                 }
-                row.put("requireInput", option.requireInput());
-                options.add(row);
+                qRow.put("options", options);
+                qRow.put("allowMultiple", question.allowMultiple());
+                questions.add(qRow);
             }
-            map.put("options", options);
         }
-        map.put("allowCustomInput", decision.allowCustomInput());
+        map.put("questions", questions);
         if (decision.expiresAt() != null) {
             map.put("expiresAt", decision.expiresAt());
         }
-        if (hasText(decision.choice())) {
-            map.put("choice", decision.choice());
+        if (hasText(decision.outcome())) {
+            map.put("outcome", decision.outcome());
         }
-        if (hasText(decision.customInput())) {
-            map.put("customInput", decision.customInput());
+        List<Map<String, Object>> answers = new ArrayList<>();
+        if (decision.answers() != null) {
+            for (DecisionAnswer answer : decision.answers()) {
+                if (answer == null) {
+                    continue;
+                }
+                Map<String, Object> aRow = new LinkedHashMap<>();
+                if (hasText(answer.questionId())) {
+                    aRow.put("questionId", answer.questionId());
+                }
+                List<String> selected = answer.selectedOptionIds() != null
+                        ? List.copyOf(answer.selectedOptionIds())
+                        : List.of();
+                aRow.put("selectedOptionIds", selected);
+                if (hasText(answer.customInput())) {
+                    aRow.put("customInput", answer.customInput());
+                }
+                answers.add(aRow);
+            }
+        }
+        if (!answers.isEmpty()) {
+            map.put("answers", answers);
         }
         return map;
     }
@@ -398,42 +431,86 @@ public final class ProcessingStepSerde {
             return null;
         }
         String token = stringValue(map.get("token"));
-        String question = stringValue(map.get("question"));
-        List<DecisionOption> options = new ArrayList<>();
-        Object optionsObj = map.get("options");
-        if (optionsObj instanceof List<?> optionRows) {
-            for (Object rowObj : optionRows) {
-                if (!(rowObj instanceof Map<?, ?> row)) {
-                    continue;
-                }
-                String value = stringValue(row.get("value"));
-                String label = stringValue(row.get("label"));
-                String description = stringValue(row.get("description"));
-                boolean requireInput = Boolean.TRUE.equals(row.get("requireInput"))
-                        || "true".equalsIgnoreCase(String.valueOf(row.get("requireInput")));
-                if (value == null && label == null) {
-                    continue;
-                }
-                options.add(new DecisionOption(value, label, description, requireInput));
-            }
-        }
-        boolean allowCustomInput = Boolean.TRUE.equals(map.get("allowCustomInput"))
-                || "true".equalsIgnoreCase(String.valueOf(map.get("allowCustomInput")));
+        String title = stringValue(map.get("title"));
+        List<DecisionQuestion> questions = readDecisionQuestions(map.get("questions"));
         Long expiresAt = map.get("expiresAt") instanceof Number n ? n.longValue() : null;
-        String choice = stringValue(map.get("choice"));
-        String customInput = stringValue(map.get("customInput"));
-        if (token == null && question == null && options.isEmpty() && choice == null && customInput == null
-                && expiresAt == null) {
+        String outcome = stringValue(map.get("outcome"));
+        List<DecisionAnswer> answers = readDecisionAnswers(map.get("answers"));
+        if (token == null && title == null && questions.isEmpty() && answers.isEmpty()
+                && outcome == null && expiresAt == null) {
             return null;
         }
         return new DecisionStepMeta(
                 token,
-                question,
-                List.copyOf(options),
-                allowCustomInput,
+                title,
+                List.copyOf(questions),
                 expiresAt,
-                choice,
-                customInput);
+                outcome,
+                answers.isEmpty() ? null : List.copyOf(answers));
+    }
+
+    private static List<DecisionQuestion> readDecisionQuestions(Object raw) {
+        List<DecisionQuestion> questions = new ArrayList<>();
+        if (!(raw instanceof List<?> rows)) {
+            return questions;
+        }
+        for (Object rowObj : rows) {
+            if (!(rowObj instanceof Map<?, ?> row)) {
+                continue;
+            }
+            String id = stringValue(row.get("id"));
+            String prompt = stringValue(row.get("prompt"));
+            List<DecisionOption> options = new ArrayList<>();
+            Object optionsObj = row.get("options");
+            if (optionsObj instanceof List<?> optionRows) {
+                for (Object optObj : optionRows) {
+                    if (!(optObj instanceof Map<?, ?> optRow)) {
+                        continue;
+                    }
+                    String optId = stringValue(optRow.get("id"));
+                    String label = stringValue(optRow.get("label"));
+                    if (optId == null && label == null) {
+                        continue;
+                    }
+                    options.add(new DecisionOption(optId, label));
+                }
+            }
+            boolean allowMultiple = Boolean.TRUE.equals(row.get("allowMultiple"))
+                    || "true".equalsIgnoreCase(String.valueOf(row.get("allowMultiple")));
+            if (id == null && prompt == null && options.isEmpty()) {
+                continue;
+            }
+            questions.add(new DecisionQuestion(id, prompt, List.copyOf(options), allowMultiple));
+        }
+        return questions;
+    }
+
+    private static List<DecisionAnswer> readDecisionAnswers(Object raw) {
+        List<DecisionAnswer> answers = new ArrayList<>();
+        if (!(raw instanceof List<?> rows)) {
+            return answers;
+        }
+        for (Object rowObj : rows) {
+            if (!(rowObj instanceof Map<?, ?> row)) {
+                continue;
+            }
+            String questionId = stringValue(row.get("questionId"));
+            List<String> selected = new ArrayList<>();
+            Object selectedObj = row.get("selectedOptionIds");
+            if (selectedObj instanceof List<?> ids) {
+                for (Object idObj : ids) {
+                    if (idObj != null) {
+                        selected.add(String.valueOf(idObj));
+                    }
+                }
+            }
+            String customInput = stringValue(row.get("customInput"));
+            if (questionId == null && selected.isEmpty() && customInput == null) {
+                continue;
+            }
+            answers.add(new DecisionAnswer(questionId, List.copyOf(selected), customInput));
+        }
+        return answers;
     }
 
     private static Map<String, Object> editDiffToMap(SandboxEditDiff editDiff) {

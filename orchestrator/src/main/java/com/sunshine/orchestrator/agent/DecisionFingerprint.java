@@ -9,7 +9,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 
-/** request_decision 预决策指纹：question + 规范化 options（续跑与 Tool 入口共用） */
+/** request_decision 预决策指纹：title + 规范化 questions（续跑与 Tool 入口共用） */
 public final class DecisionFingerprint {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -17,12 +17,8 @@ public final class DecisionFingerprint {
     private DecisionFingerprint() {
     }
 
-    public static String of(String question, List<DecisionOption> options) {
-        return of(question, canonicalOptionsJson(options));
-    }
-
-    public static String of(String question, String optionsJson) {
-        String raw = nullToEmpty(question) + "\n" + nullToEmpty(optionsJson);
+    public static String of(String title, List<DecisionQuestion> questions) {
+        String raw = nullToEmpty(title) + "\n" + canonicalQuestionsJson(questions);
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
@@ -36,22 +32,30 @@ public final class DecisionFingerprint {
         }
     }
 
-    static String canonicalOptionsJson(List<DecisionOption> options) {
+    static String canonicalQuestionsJson(List<DecisionQuestion> questions) {
         ArrayNode arr = MAPPER.createArrayNode();
-        if (options != null) {
-            for (DecisionOption opt : options) {
-                if (opt == null) {
+        if (questions != null) {
+            for (DecisionQuestion question : questions) {
+                if (question == null) {
                     continue;
                 }
                 ObjectNode node = MAPPER.createObjectNode();
-                node.put("value", nullToEmpty(opt.value()));
-                node.put("label", nullToEmpty(opt.label()));
-                if (opt.description() != null) {
-                    node.put("description", opt.description());
-                } else {
-                    node.putNull("description");
+                node.put("id", nullToEmpty(question.id()));
+                node.put("prompt", nullToEmpty(question.prompt()));
+                node.put("allowMultiple", question.allowMultiple());
+                ArrayNode optionsArr = MAPPER.createArrayNode();
+                if (question.options() != null) {
+                    for (DecisionOption opt : question.options()) {
+                        if (opt == null) {
+                            continue;
+                        }
+                        ObjectNode optNode = MAPPER.createObjectNode();
+                        optNode.put("id", nullToEmpty(opt.id()));
+                        optNode.put("label", nullToEmpty(opt.label()));
+                        optionsArr.add(optNode);
+                    }
                 }
-                node.put("requireInput", opt.requireInput());
+                node.set("options", optionsArr);
                 arr.add(node);
             }
         }
