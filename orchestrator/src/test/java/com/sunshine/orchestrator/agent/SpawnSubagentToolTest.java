@@ -17,9 +17,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -54,6 +59,8 @@ class SpawnSubagentToolTest {
     private PromptCatalogHolder catalogHolder;
 
     private SpawnRunRegistry spawnRunRegistry;
+    private AsyncToolRunRegistry asyncToolRunRegistry;
+    private AgentExecutionProperties realExecutionProperties;
     private SpawnSubagentTool tool;
     private StepEventBridgeRegistry registry;
 
@@ -66,17 +73,22 @@ class SpawnSubagentToolTest {
                         "用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：\n{prompt}",
                         null))));
         spawnRunRegistry = SpawnRunRegistry.forTest(catalogHolder);
-        tool = new SpawnSubagentTool(
-                executionProperties, timelineSupport, toolSetResolver,
-                catalogHolder, spawnRunRegistry, agentCatalogService, agentExecutorRouter);
-        registry = new StepEventBridgeRegistry();
-        StepEventBridge.bindRegistry(registry);
+        realExecutionProperties = new AgentExecutionProperties();
         AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
         sub.setEnabled(true);
         sub.setMaxIters(8);
         sub.setTimeoutMs(5_000L);
+        realExecutionProperties.getReact().setSubagent(sub);
+        asyncToolRunRegistry = new AsyncToolRunRegistry(realExecutionProperties);
+        tool = new SpawnSubagentTool(
+                executionProperties, timelineSupport, toolSetResolver,
+                catalogHolder, spawnRunRegistry, agentCatalogService, agentExecutorRouter,
+                asyncToolRunRegistry);
+        registry = new StepEventBridgeRegistry();
+        StepEventBridge.bindRegistry(registry);
         lenient().when(executionProperties.getReact()).thenReturn(reactProps);
         lenient().when(reactProps.getSubagent()).thenReturn(sub);
+        lenient().when(reactProps.getAsyncTool()).thenReturn(realExecutionProperties.getReact().getAsyncTool());
         lenient().when(toolSetResolver.resolveReactTools(any())).thenReturn(List.of("search_knowledge"));
         SpawnSubagentLabels.bind(new SpawnSubagentLabelService(timelinePromptCatalog));
     }
@@ -192,5 +204,75 @@ class SpawnSubagentToolTest {
         verify(timelineSupport, never()).fail(any(), any(), any());
         verify(timelineSupport, never()).complete(any(), any(), any());
         assertThat(spawnRunRegistry.get(runIdCaptor.getValue())).isNull();
+    }
+
+    @Test
+    void backgroundTrue_returnsRunning_withoutBlockLast() throws Exception {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        registry.bind(BRIDGE, session, new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
+        StepEventBridge.registerMainRun(MSG, BRIDGE);
+        StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
+
+        CountDownLatch dispatchEntered = new CountDownLatch(1);
+        CountDownLatch releaseFlux = new CountDownLatch(1);
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any())).thenReturn(
+                Flux.<StreamToken>defer(() -> {
+                    dispatchEntered.countDown();
+                    return Flux.create(sink -> {
+                        try {
+                            if (!releaseFlux.await(10, TimeUnit.SECONDS)) {
+                                sink.error(new IllegalStateException("release timeout"));
+                                return;
+                            }
+                            sink.next(StreamToken.content("bg-answer"));
+                            sink.complete();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            sink.error(e);
+                        }
+                    });
+                }).subscribeOn(Schedulers.boundedElastic()));
+
+        long started = System.currentTimeMillis();
+        String out = tool.spawnSubagent("后台子任务", null, "后台卡", null, true);
+        long elapsedMs = System.currentTimeMillis() - started;
+
+        assertThat(elapsedMs).isLessThan(800L);
+        assertThat(out).contains("\"ok\":true");
+        assertThat(out).contains("\"status\":\"running\"");
+        String runId = extractRunId(out);
+        assertThat(runId).isNotBlank();
+        assertThat(asyncToolRunRegistry.peek(runId)).isNotNull();
+        assertThat(asyncToolRunRegistry.peek(runId).status())
+                .isEqualTo(AsyncToolRunRegistry.Status.RUNNING);
+
+        assertThat(dispatchEntered.await(3, TimeUnit.SECONDS)).isTrue();
+        releaseFlux.countDown();
+        assertThat(awaitCondition(() -> {
+            var snap = asyncToolRunRegistry.peek(runId);
+            return snap != null && snap.status() == AsyncToolRunRegistry.Status.DONE;
+        }, 5_000)).isTrue();
+        assertThat(asyncToolRunRegistry.peek(runId).result()).isEqualTo("bg-answer");
+        verify(timelineSupport).complete(eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), eq("bg-answer"));
+        assertThat(awaitCondition(() -> spawnRunRegistry.get(runId) == null, 2_000)).isTrue();
+    }
+
+    private static String extractRunId(String json) {
+        Matcher m = Pattern.compile("\"runId\":\"([^\"]+)\"").matcher(json);
+        return m.find() ? m.group(1) : null;
+    }
+
+    private static boolean awaitCondition(java.util.function.BooleanSupplier condition, long timeoutMs)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            TimeUnit.MILLISECONDS.sleep(50);
+        }
+        return condition.getAsBoolean();
     }
 }

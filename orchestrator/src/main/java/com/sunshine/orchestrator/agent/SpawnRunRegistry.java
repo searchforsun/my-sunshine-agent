@@ -70,6 +70,24 @@ public class SpawnRunRegistry {
         log.debug("[SpawnRunRegistry] register runId={}", id);
     }
 
+    /**
+     * 用户取消子卡后的回调（如 AsyncToolRunRegistry.complete CANCELLED）。
+     * 须在 {@link #cancel} 成功 CAS 后触发一次。
+     */
+    public void bindOnUserCancel(String runId, Runnable action) {
+        if (!StringUtils.hasText(runId) || action == null) {
+            return;
+        }
+        Handle handle = byRunId.get(runId.strip());
+        if (handle == null) {
+            return;
+        }
+        handle.onUserCancel = action;
+        if (handle.cancelled.get()) {
+            fireOnUserCancel(handle);
+        }
+    }
+
     /** ReActAgentRuntime 创建 SUB agent 后绑定，供 cancel → interrupt */
     public void bindAgent(String runId, Agent agent) {
         if (!StringUtils.hasText(runId) || agent == null) {
@@ -135,8 +153,21 @@ public class SpawnRunRegistry {
         if (agent != null) {
             safeInterrupt(agent, id);
         }
+        fireOnUserCancel(handle);
         log.info("[SpawnRunRegistry] cancel runId={} messageId={}", id, handle.messageId);
         return true;
+    }
+
+    private static void fireOnUserCancel(Handle handle) {
+        Runnable action = handle.onUserCancel;
+        if (action == null || !handle.onUserCancelFired.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            action.run();
+        } catch (Exception e) {
+            log.warn("[SpawnRunRegistry] onUserCancel failed runId={}: {}", handle.runId, e.getMessage());
+        }
     }
 
     /**
@@ -217,6 +248,8 @@ public class SpawnRunRegistry {
         private final SpawnSubagentTimelineBridge timelineBridge;
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         private final AtomicReference<Agent> agentRef = new AtomicReference<>();
+        private volatile Runnable onUserCancel;
+        private final AtomicBoolean onUserCancelFired = new AtomicBoolean(false);
 
         Handle(
                 String runId,

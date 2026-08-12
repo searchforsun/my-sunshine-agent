@@ -45,6 +45,7 @@ public class SpawnSubagentTool implements AgentTool {
     private final SpawnRunRegistry spawnRunRegistry;
     private final AgentCatalogService agentCatalogService;
     private final AgentExecutorRouter agentExecutorRouter;
+    private final AsyncToolRunRegistry asyncToolRunRegistry;
 
     public SpawnSubagentTool(
             AgentExecutionProperties executionProperties,
@@ -53,7 +54,8 @@ public class SpawnSubagentTool implements AgentTool {
             PromptCatalogHolder catalogHolder,
             SpawnRunRegistry spawnRunRegistry,
             AgentCatalogService agentCatalogService,
-            AgentExecutorRouter agentExecutorRouter) {
+            AgentExecutorRouter agentExecutorRouter,
+            AsyncToolRunRegistry asyncToolRunRegistry) {
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
         this.toolSetResolver = toolSetResolver;
@@ -61,6 +63,7 @@ public class SpawnSubagentTool implements AgentTool {
         this.spawnRunRegistry = spawnRunRegistry;
         this.agentCatalogService = agentCatalogService;
         this.agentExecutorRouter = agentExecutorRouter;
+        this.asyncToolRunRegistry = asyncToolRunRegistry;
     }
 
     @Override
@@ -82,6 +85,9 @@ public class SpawnSubagentTool implements AgentTool {
                 "type", "string",
                 "description", "预定义智能体 ID（可选，如 policy-agent / finance-agent）"));
         props.put("label", Map.of("type", "string", "description", "时间线卡片短标题（可选）"));
+        props.put("background", Map.of(
+                "type", "boolean",
+                "description", "可选；true=立即返回 runId，主 Agent 用 await_tool_run 收终稿；默认 false"));
         return Map.of(
                 "type", "object",
                 "properties", props,
@@ -96,7 +102,8 @@ public class SpawnSubagentTool implements AgentTool {
                     String prompt = stringParam(input, "prompt");
                     String agentId = stringParam(input, "agent_id");
                     String label = stringParam(input, "label");
-                    String text = spawnSubagent(prompt, agentId, label, toolUseId);
+                    Boolean background = asBoolean(input.get("background"));
+                    String text = spawnSubagent(prompt, agentId, label, toolUseId, background);
                     return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
                 })
                 .subscribeOn(Schedulers.boundedElastic());
@@ -104,10 +111,14 @@ public class SpawnSubagentTool implements AgentTool {
 
     /** 单测入口：无 toolUseId 时回退 activeMessageId（单会话）。 */
     String spawnSubagent(String prompt, String agentId, String label) {
-        return spawnSubagent(prompt, agentId, label, null);
+        return spawnSubagent(prompt, agentId, label, null, null);
     }
 
     String spawnSubagent(String prompt, String agentId, String label, String toolUseId) {
+        return spawnSubagent(prompt, agentId, label, toolUseId, null);
+    }
+
+    String spawnSubagent(String prompt, String agentId, String label, String toolUseId, Boolean background) {
         AgentExecutionProperties.React.Subagent subCfg = subagentConfig();
         if (subCfg == null || !subCfg.isEnabled()) {
             return errorJson("spawn_subagent 未启用");
@@ -212,6 +223,12 @@ public class SpawnSubagentTool implements AgentTool {
 
         StringBuilder answer = new StringBuilder();
         AtomicReference<Throwable> failure = new AtomicReference<>();
+        boolean runInBackground = Boolean.TRUE.equals(background) && asyncToolEnabled();
+        if (runInBackground) {
+            return startBackgroundSpawn(
+                    agentEntry, request, promptText, runId, messageId, audit.conversationId(),
+                    mainBridge, subTimeline, answer, failure, timeoutMs);
+        }
         try {
             agentExecutorRouter.dispatch(agentEntry, request, promptText, List.of())
                     .doOnNext(token -> appendAnswerContent(answer, token))
@@ -246,6 +263,102 @@ public class SpawnSubagentTool implements AgentTool {
         } finally {
             spawnRunRegistry.unregister(runId);
         }
+    }
+
+    /**
+     * background=true：立即返回 runId；子卡仍流式；SpawnRunRegistry 延后到终态 unregister。
+     */
+    private String startBackgroundSpawn(
+            AgentCatalogEntry agentEntry,
+            AgentRunRequest request,
+            String promptText,
+            String runId,
+            String messageId,
+            String conversationId,
+            String mainBridge,
+            SpawnSubagentTimelineBridge subTimeline,
+            StringBuilder answer,
+            AtomicReference<Throwable> failure,
+            long timeoutMs) {
+        if (!asyncToolRunRegistry.tryAcquireSlot(messageId)) {
+            spawnRunRegistry.unregister(runId);
+            timelineSupport.fail(mainBridge, subTimeline, "本消息后台工具并发已达上限");
+            return errorJson("本消息后台工具并发已达上限");
+        }
+        asyncToolRunRegistry.registerWithId(
+                runId,
+                AsyncToolRunRegistry.Kind.SPAWN_SUBAGENT,
+                messageId,
+                conversationId,
+                timeoutMs,
+                () -> spawnRunRegistry.cancel(runId));
+        // 用户取消子卡 → 立即 complete，避免 await 永久 RUNNING
+        spawnRunRegistry.bindOnUserCancel(runId, () -> asyncToolRunRegistry.complete(
+                runId,
+                AsyncToolRunRegistry.Status.CANCELLED,
+                spawnRunRegistry.formatCancelResult(promptText)));
+        agentExecutorRouter.dispatch(agentEntry, request, promptText, List.of())
+                .doOnNext(token -> {
+                    appendAnswerContent(answer, token);
+                    asyncToolRunRegistry.updatePartial(runId, answer.toString());
+                })
+                .doOnError(failure::set)
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        token -> { },
+                        err -> finishBackgroundSpawn(
+                                runId, promptText, mainBridge, subTimeline, answer, failure, timeoutMs, err),
+                        () -> finishBackgroundSpawn(
+                                runId, promptText, mainBridge, subTimeline, answer, failure, timeoutMs, null));
+        return "{\"ok\":true,\"runId\":\"" + escape(runId) + "\",\"status\":\"running\"}";
+    }
+
+    private void finishBackgroundSpawn(
+            String runId,
+            String promptText,
+            String mainBridge,
+            SpawnSubagentTimelineBridge subTimeline,
+            StringBuilder answer,
+            AtomicReference<Throwable> failure,
+            long timeoutMs,
+            Throwable subscribeError) {
+        try {
+            Throwable err = subscribeError != null ? subscribeError : failure.get();
+            if (spawnRunRegistry.isCancelled(runId) || isInterrupted(err)) {
+                String result = spawnRunRegistry.formatCancelResult(promptText);
+                if (subTimeline != null && !subTimeline.userCancelled()) {
+                    spawnRunRegistry.flushCancelTerminal(runId, subTimeline, result);
+                }
+                asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.CANCELLED, result);
+                return;
+            }
+            if (err != null) {
+                Throwable cause = err.getCause() != null ? err.getCause() : err;
+                if (isTimeout(cause) || isTimeout(err)) {
+                    String msg = "子 Agent 执行超时（" + timeoutMs + "ms）";
+                    timelineSupport.fail(mainBridge, subTimeline, msg);
+                    asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.WALL_TIMEOUT, msg);
+                    return;
+                }
+                String msg = failAndReturn(mainBridge, subTimeline, cause != null ? cause : err);
+                asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.ERROR, msg);
+                return;
+            }
+            String result = answer.toString();
+            timelineSupport.complete(mainBridge, subTimeline, result);
+            if (!StringUtils.hasText(result)) {
+                log.warn("[SpawnSubagentTool] 子 Agent 未产出正文 content runId={}", runId);
+            }
+            asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.DONE, result);
+        } finally {
+            spawnRunRegistry.unregister(runId);
+        }
+    }
+
+    private boolean asyncToolEnabled() {
+        AgentExecutionProperties.React react = executionProperties != null ? executionProperties.getReact() : null;
+        AgentExecutionProperties.React.AsyncTool cfg = react != null ? react.getAsyncTool() : null;
+        return cfg == null || cfg.isEnabled();
     }
 
     /**
@@ -318,6 +431,24 @@ public class SpawnSubagentTool implements AgentTool {
     private static String stringParam(Map<String, Object> input, String key) {
         Object value = input.get(key);
         return value != null ? String.valueOf(value) : null;
+    }
+
+    private static Boolean asBoolean(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof String s) {
+            if ("true".equalsIgnoreCase(s.strip())) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(s.strip())) {
+                return false;
+            }
+        }
+        return null;
     }
 
     private static boolean isTimeout(Throwable t) {
