@@ -359,7 +359,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
 
     /**
      * 按 sideEffect 将 toolCalls 切成连续批次：连续只读工具归一批，写工具单独成批。
-     * 元工具（request_decision / spawn_subagent / todo_write / think_summary）视为只读（不竞争外部状态）。
+     * 元工具（request_decision / spawn_subagent / await_tool_run / todo_write / think_summary）视为只读（不竞争外部状态）。
      */
     private List<List<ToolUseBlock>> partitionByReadWrite(List<ToolUseBlock> toolCalls) {
         List<List<ToolUseBlock>> batches = new ArrayList<>();
@@ -383,6 +383,9 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
 
     /** 写工具判定：catalog sideEffect=write 或沙箱写文件工具（sandbox__write/edit）；exec 不加锁避免长任务阻塞会话 */
     private boolean isWriteTool(String toolName) {
+        if (AwaitToolRunTool.NAME.equals(toolName)) {
+            return false;
+        }
         if (SandboxIds.WRITE.equals(toolName) || SandboxIds.EDIT.equals(toolName)) {
             return true;
         }

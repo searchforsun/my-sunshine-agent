@@ -32,6 +32,7 @@ public class DynamicToolkitFactory {
     private final RagTool ragTool;
     private final SpawnSubagentTool spawnSubagentTool;
     private final RequestDecisionTool requestDecisionTool;
+    private final AwaitToolRunTool awaitToolRunTool;
     private final ThinkSummaryTool thinkSummaryTool;
     private final GenericRemoteToolFactory remoteToolFactory;
     private final ToolCatalogService toolCatalogService;
@@ -97,6 +98,10 @@ public class DynamicToolkitFactory {
                 log.warn("[Orchestrator] request_decision 为内置元工具，勿放入 ReAct 工具集");
                 continue;
             }
+            if (toolName.equals(AwaitToolRunTool.NAME)) {
+                log.warn("[Orchestrator] await_tool_run 为内置元工具，勿放入 ReAct 工具集");
+                continue;
+            }
             if (toolName.equals(RagTool.NAME)) {
                 continue;
             }
@@ -126,6 +131,10 @@ public class DynamicToolkitFactory {
             if (react != null && react.getDecision() != null && react.getDecision().isEnabled()) {
                 tk.registerAgentTool(requestDecisionTool);
                 registered.add(RequestDecisionTool.NAME);
+            }
+            if (react != null && react.getAsyncTool() != null && react.getAsyncTool().isEnabled()) {
+                tk.registerAgentTool(awaitToolRunTool);
+                registered.add(AwaitToolRunTool.NAME);
             }
         }
         if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {
