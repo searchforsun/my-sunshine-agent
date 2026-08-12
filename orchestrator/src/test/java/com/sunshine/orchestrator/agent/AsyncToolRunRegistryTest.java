@@ -126,6 +126,20 @@ class AsyncToolRunRegistryTest {
         assertThat(kills.get()).isEqualTo(1);
     }
 
+    @Test
+    void cancelByMessage_marksAllRunningCancelled() {
+        String a = registry.register(
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "m", "c1", 600_000L);
+        String b = registry.register(
+                AsyncToolRunRegistry.Kind.SPAWN_SUBAGENT, "m", "c1", 600_000L);
+        String other = registry.register(
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "other", "c1", 600_000L);
+        assertThat(registry.cancelByMessage("m")).isEqualTo(2);
+        assertThat(registry.peek(a).status()).isEqualTo(AsyncToolRunRegistry.Status.CANCELLED);
+        assertThat(registry.peek(b).status()).isEqualTo(AsyncToolRunRegistry.Status.CANCELLED);
+        assertThat(registry.peek(other).status()).isEqualTo(AsyncToolRunRegistry.Status.RUNNING);
+    }
+
     private boolean awaitStatus(String runId, AsyncToolRunRegistry.Status expected, long timeoutMs)
             throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;

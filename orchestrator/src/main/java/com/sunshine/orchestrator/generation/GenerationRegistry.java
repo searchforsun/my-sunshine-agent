@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.agent.AsyncToolRunRegistry;
 import com.sunshine.orchestrator.agent.DecisionRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
@@ -39,6 +40,10 @@ public class GenerationRegistry {
     @Lazy
     private DecisionRegistry decisionRegistry;
 
+    @Autowired(required = false)
+    @Lazy
+    private AsyncToolRunRegistry asyncToolRunRegistry;
+
     public GenerationJob register(GenerationJob job) {
         running.put(job.getGenerationId(), job);
         messageToGeneration.put(job.getMessageId(), job.getGenerationId());
@@ -68,11 +73,14 @@ public class GenerationRegistry {
     public void cancel(String generationId) {
         GenerationJob job = running.get(generationId);
         if (job != null) {
-            releaseBlockingWaits(job.getMessageId());
-            workflowPauseService.requestPause(job.getMessageId());
+            String messageId = job.getMessageId();
+            releaseBlockingWaits(messageId);
+            // 先 cancel async（onCancel→cancellable/spawn kill）；整轮 stop 仍 bump epoch
+            cancelAsyncToolRuns(messageId);
+            workflowPauseService.requestPause(messageId);
             job.cancel();
-            StepEventBridge.unbindGenerationFlush(job.getMessageId());
-            StepEventBridge.bumpStreamEpoch(job.getMessageId());
+            StepEventBridge.unbindGenerationFlush(messageId);
+            StepEventBridge.bumpStreamEpoch(messageId);
             remove(generationId);
         }
     }
@@ -104,9 +112,10 @@ public class GenerationRegistry {
         messageLocks.remove(messageId);
     }
 
-    /** cancel 路径在 job 已移除时仍须解除 HITL/Plan/Recovery 阻塞 */
+    /** cancel 路径在 job 已移除时仍须解除 HITL/Plan/Recovery 阻塞，并取消 async tool runs */
     public void releaseBlockingWaitsForMessage(String messageId) {
         releaseBlockingWaits(messageId);
+        cancelAsyncToolRuns(messageId);
     }
 
     private void releaseBlockingWaits(String messageId) {
@@ -121,6 +130,13 @@ public class GenerationRegistry {
         }
         if (decisionRegistry != null) {
             decisionRegistry.cancelWaitersForMessage(messageId);
+        }
+    }
+
+    /** EXEC/SPAWN kill 经 AsyncToolRunRegistry onCancel 委托，此处不二次 bump epoch */
+    private void cancelAsyncToolRuns(String messageId) {
+        if (asyncToolRunRegistry != null && messageId != null) {
+            asyncToolRunRegistry.cancelByMessage(messageId);
         }
     }
 }

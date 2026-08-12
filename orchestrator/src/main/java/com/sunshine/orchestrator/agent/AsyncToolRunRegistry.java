@@ -245,6 +245,20 @@ public class AsyncToolRunRegistry {
         return List.copyOf(running);
     }
 
+    /**
+     * 主会话 stop：将该 message 下全部 RUNNING 标 CANCELLED 并唤醒 await。
+     * kill 经 register 时绑定的 onCancel（EXEC→cancellable / SPAWN→spawn registry）。
+     */
+    public int cancelByMessage(String messageId) {
+        int cancelled = 0;
+        for (String runId : listRunningByMessage(messageId)) {
+            if (cancel(runId)) {
+                cancelled++;
+            }
+        }
+        return cancelled;
+    }
+
     private void scheduleWallTimeout(String runId, long deadlineAtMs) {
         long delayMs = deadlineAtMs - System.currentTimeMillis();
         if (delayMs <= 0) {

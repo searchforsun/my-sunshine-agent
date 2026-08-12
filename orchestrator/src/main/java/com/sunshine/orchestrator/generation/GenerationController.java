@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.generation;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.agent.AsyncToolRunRegistry;
 import com.sunshine.orchestrator.agent.DecisionRegistry;
 import com.sunshine.orchestrator.agent.ResolveDecisionRequest;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
@@ -43,6 +44,7 @@ public class GenerationController {
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
     private final AgentSandboxProperties sandboxProperties;
     private final DecisionRegistry decisionRegistry;
+    private final AsyncToolRunRegistry asyncToolRunRegistry;
 
     @GetMapping("/generations/{id}")
     public Mono<GenerationStatusResponse> getStatus(
@@ -206,6 +208,9 @@ public class GenerationController {
             if (ok) {
                 String after = StringUtils.hasText(sandboxProperties.getCancelAfter())
                         ? sandboxProperties.getCancelAfter().strip() : "已取消";
+                // 唤醒 await；未知 runId 时 complete 为 no-op；不 bump stream epoch
+                asyncToolRunRegistry.complete(
+                        resolvedId, AsyncToolRunRegistry.Status.CANCELLED, after);
                 final String detail = expandDetail;
                 String emitBridge = StepEventBridge.activeMainBridge(messageId);
                 if (!StringUtils.hasText(emitBridge)) {
