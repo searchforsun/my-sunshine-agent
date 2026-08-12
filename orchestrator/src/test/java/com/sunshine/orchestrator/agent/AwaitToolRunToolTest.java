@@ -16,6 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, TimelineLabelJUnitExtension.class})
@@ -102,6 +104,27 @@ class AwaitToolRunToolTest {
         assertThat(out).contains("\"elapsedMs\":12345");
         assertThat(out).contains("\"partial\":\"partial-output\"");
         assertThat(out).doesNotContain("\"result\"");
+    }
+
+    @Test
+    void nonPositiveTimeoutSec_clampsToOne_notDefault() {
+        bindMainContext();
+        var snapshot = new AsyncToolRunRegistry.Snapshot(
+                RUN_ID,
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC,
+                AsyncToolRunRegistry.Status.RUNNING,
+                1,
+                3,
+                100L,
+                null,
+                null,
+                null);
+        when(asyncRegistry.await(eq(RUN_ID), eq(1))).thenReturn(snapshot);
+
+        tool.awaitToolRun(RUN_ID, 0, "tu-1");
+        tool.awaitToolRun(RUN_ID, -5, "tu-1");
+
+        verify(asyncRegistry, times(2)).await(eq(RUN_ID), eq(1));
     }
 
     @Test

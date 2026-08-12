@@ -115,7 +115,7 @@ public class AwaitToolRunTool implements AgentTool {
     }
 
     private static int resolveTimeoutSec(Integer timeoutSec, AgentExecutionProperties.React.AsyncTool cfg) {
-        int effective = timeoutSec != null && timeoutSec > 0 ? timeoutSec : cfg.getAwaitDefaultSec();
+        int effective = timeoutSec != null ? timeoutSec : cfg.getAwaitDefaultSec();
         int max = cfg.getAwaitMaxSec();
         if (max > 0 && effective > max) {
             effective = max;
