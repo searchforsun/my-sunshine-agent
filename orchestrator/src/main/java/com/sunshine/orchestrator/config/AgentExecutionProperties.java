@@ -42,10 +42,7 @@ public class AgentExecutionProperties {
         public static class Subagent {
             private boolean enabled = true;
             private int maxIters = 30;
-            /** chat 会话 spawn 超时（SSOT：Nacos …subagent.timeout-ms） */
-            private long timeoutMs = 300_000L;
-            /** task 会话 spawn 超时（SSOT：Nacos …subagent.task-timeout-ms） */
-            private long taskTimeoutMs = 600_000L;
+            private long timeoutMs = 180_000L;
         }
 
         @Data
