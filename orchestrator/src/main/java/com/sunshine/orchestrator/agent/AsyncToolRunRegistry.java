@@ -59,18 +59,31 @@ public class AsyncToolRunRegistry {
     }
 
     public String register(Kind kind, String messageId, String conversationId, long wallTimeoutMs) {
-        return registerWithId(UUID.randomUUID().toString(), kind, messageId, conversationId, wallTimeoutMs);
+        return registerWithId(UUID.randomUUID().toString(), kind, messageId, conversationId, wallTimeoutMs, null);
     }
 
     public String registerWithId(
             String runId, Kind kind, String messageId, String conversationId, long wallTimeoutMs) {
+        return registerWithId(runId, kind, messageId, conversationId, wallTimeoutMs, null);
+    }
+
+    /**
+     * @param onCancel WALL_TIMEOUT / cancel 时的 kill 回调；须在调度墙钟前写入，避免晚绑定竞态
+     */
+    public String registerWithId(
+            String runId,
+            Kind kind,
+            String messageId,
+            String conversationId,
+            long wallTimeoutMs,
+            Runnable onCancel) {
         if (!StringUtils.hasText(runId) || kind == null) {
             throw new IllegalArgumentException("runId and kind required");
         }
         String id = runId.strip();
         long now = System.currentTimeMillis();
         long deadline = now + Math.max(0, wallTimeoutMs);
-        Handle handle = new Handle(id, kind, messageId, conversationId, now, deadline);
+        Handle handle = new Handle(id, kind, messageId, conversationId, now, deadline, onCancel);
         byRunId.put(id, handle);
         scheduleWallTimeout(id, deadline);
         return id;
@@ -134,16 +147,21 @@ public class AsyncToolRunRegistry {
     }
 
     /**
-     * 注册 WALL_TIMEOUT / cancel 时的 kill 回调（如 {@code CancellableToolRunRegistry.cancel}）。
-     * 不直接 kill；由工具侧注入。
+     * 注册 / 补绑 WALL_TIMEOUT / cancel 时的 kill 回调。
+     * 若已处于 CANCELLED / WALL_TIMEOUT 且尚未触发，立即执行一次（晚绑定兜底）。
      */
     public void onCancelRequest(String runId, Runnable action) {
         if (!StringUtils.hasText(runId) || action == null) {
             return;
         }
         Handle handle = byRunId.get(runId.strip());
-        if (handle != null) {
-            handle.cancelRequest = action;
+        if (handle == null) {
+            return;
+        }
+        handle.cancelRequest = action;
+        Status status = handle.status.get();
+        if (status == Status.CANCELLED || status == Status.WALL_TIMEOUT) {
+            fireCancelRequest(handle);
         }
     }
 
@@ -252,7 +270,7 @@ public class AsyncToolRunRegistry {
 
     private void fireCancelRequest(Handle handle) {
         Runnable action = handle.cancelRequest;
-        if (action == null) {
+        if (action == null || !handle.cancelRequestFired.compareAndSet(false, true)) {
             return;
         }
         try {
@@ -312,16 +330,25 @@ public class AsyncToolRunRegistry {
         private volatile String partial;
         private volatile String error;
         private volatile Runnable cancelRequest;
+        private final AtomicBoolean cancelRequestFired = new AtomicBoolean(false);
         private final CompletableFuture<Void> terminalSignal = new CompletableFuture<>();
         private final AtomicBoolean slotReleased = new AtomicBoolean(false);
 
-        Handle(String runId, Kind kind, String messageId, String conversationId, long startedAtMs, long deadlineAtMs) {
+        Handle(
+                String runId,
+                Kind kind,
+                String messageId,
+                String conversationId,
+                long startedAtMs,
+                long deadlineAtMs,
+                Runnable onCancel) {
             this.runId = runId;
             this.kind = kind;
             this.messageId = StringUtils.hasText(messageId) ? messageId.strip() : null;
             this.conversationId = StringUtils.hasText(conversationId) ? conversationId.strip() : null;
             this.startedAtMs = startedAtMs;
             this.deadlineAtMs = deadlineAtMs;
+            this.cancelRequest = onCancel;
         }
     }
 }

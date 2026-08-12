@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -32,7 +33,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -83,7 +86,6 @@ class SandboxAgentToolsBackgroundTest {
         StepEventBridge.bind(BRIDGE, session, new ConcurrentLinkedQueue<>());
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
-        StepEventBridge.bindToolUseBridge(TOOL_USE_ID, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
                 "conv-bg", MSG, "user-1", "default", null, null, null, null, null));
         SandboxSessionHolder.bind(BRIDGE, SESSION_ID, null);
@@ -103,6 +105,7 @@ class SandboxAgentToolsBackgroundTest {
 
     @Test
     void backgroundTrue_returnsRunningJson_withoutBlockingInvoke() throws Exception {
+        bindToolUse(TOOL_USE_ID);
         AtomicBoolean invokeEntered = new AtomicBoolean(false);
         when(sandboxClient.invoke(eq(SESSION_ID), eq("exec"), anyMap(), eq(TOOL_USE_ID)))
                 .thenAnswer(inv -> {
@@ -111,21 +114,8 @@ class SandboxAgentToolsBackgroundTest {
                     return new ToolInvokeResponse(true, "bg-stdout", 0, Map.of());
                 });
 
-        AgentTool exec = findExecTool();
-        Map<String, Object> input = new LinkedHashMap<>();
-        input.put("command", "sleep 2 && echo ok");
-        input.put("background", true);
-        ToolCallParam param = ToolCallParam.builder()
-                .toolUseBlock(ToolUseBlock.builder()
-                        .id(TOOL_USE_ID)
-                        .name(SandboxIds.EXEC)
-                        .input(input)
-                        .build())
-                .input(input)
-                .build();
-
         long started = System.currentTimeMillis();
-        ToolResultBlock result = exec.callAsync(param).block();
+        ToolResultBlock result = callExec(TOOL_USE_ID, true, "sleep 2 && echo ok");
         long elapsedMs = System.currentTimeMillis() - started;
 
         assertThat(elapsedMs).isLessThan(500L);
@@ -145,6 +135,109 @@ class SandboxAgentToolsBackgroundTest {
         assertThat(asyncToolRunRegistry.peek(TOOL_USE_ID).result()).isEqualTo("bg-stdout");
         assertThat(awaitCondition(() -> cancellableToolRunRegistry.get(TOOL_USE_ID) == null, 2_000))
                 .isTrue();
+    }
+
+    @Test
+    void background_slotFull_rejectsJson_andUnregistersCancellable() {
+        String toolUseId = "tu-bg-slot-full";
+        bindToolUse(toolUseId);
+        assertThat(asyncToolRunRegistry.tryAcquireSlot(MSG)).isTrue();
+        assertThat(asyncToolRunRegistry.tryAcquireSlot(MSG)).isTrue();
+        assertThat(asyncToolRunRegistry.tryAcquireSlot(MSG)).isTrue();
+
+        ToolResultBlock result = callExec(toolUseId, true, "echo full");
+        String text = resultText(result);
+        assertThat(text).contains("\"ok\":false");
+        assertThat(text).contains("并发已达上限");
+        assertThat(cancellableToolRunRegistry.get(toolUseId)).isNull();
+        assertThat(asyncToolRunRegistry.peek(toolUseId)).isNull();
+    }
+
+    @Test
+    void background_registryCancel_killsSandboxInvocation() throws Exception {
+        String toolUseId = "tu-bg-cancel-kill";
+        bindToolUse(toolUseId);
+        CountDownLatch invokeStarted = new CountDownLatch(1);
+        when(sandboxClient.invoke(eq(SESSION_ID), eq("exec"), anyMap(), eq(toolUseId)))
+                .thenAnswer(inv -> {
+                    invokeStarted.countDown();
+                    Thread.sleep(10_000);
+                    return new ToolInvokeResponse(true, "late", 0, Map.of());
+                });
+
+        ToolResultBlock result = callExec(toolUseId, true, "sleep 99");
+        assertThat(resultText(result)).contains("\"status\":\"running\"");
+        assertThat(invokeStarted.await(3, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(asyncToolRunRegistry.cancel(toolUseId)).isTrue();
+        verify(sandboxClient, timeout(2_000)).cancelInvocation(SESSION_ID, toolUseId);
+        assertThat(awaitCondition(
+                () -> asyncToolRunRegistry.peek(toolUseId).status()
+                        == AsyncToolRunRegistry.Status.CANCELLED,
+                2_000)).isTrue();
+    }
+
+    @Test
+    void background_wallTimeout_killsSandboxInvocation() throws Exception {
+        String toolUseId = "tu-bg-wall-kill";
+        bindToolUse(toolUseId);
+        executionProperties.getReact().getAsyncTool().setExecWallTimeoutSec(1);
+        CountDownLatch invokeStarted = new CountDownLatch(1);
+        when(sandboxClient.invoke(eq(SESSION_ID), eq("exec"), anyMap(), eq(toolUseId)))
+                .thenAnswer(inv -> {
+                    invokeStarted.countDown();
+                    Thread.sleep(10_000);
+                    return new ToolInvokeResponse(true, "late", 0, Map.of());
+                });
+
+        ToolResultBlock result = callExec(toolUseId, true, "sleep 99");
+        assertThat(resultText(result)).contains("\"status\":\"running\"");
+        assertThat(invokeStarted.await(3, TimeUnit.SECONDS)).isTrue();
+
+        verify(sandboxClient, timeout(3_000).atLeastOnce()).cancelInvocation(SESSION_ID, toolUseId);
+        assertThat(awaitCondition(
+                () -> {
+                    var snap = asyncToolRunRegistry.peek(toolUseId);
+                    return snap != null && snap.status() == AsyncToolRunRegistry.Status.WALL_TIMEOUT;
+                },
+                3_000)).isTrue();
+    }
+
+    @Test
+    void backgroundFalse_stillBlocksOnInvoke() {
+        String toolUseId = "tu-bg-sync";
+        bindToolUse(toolUseId);
+        when(sandboxClient.invoke(eq(SESSION_ID), eq("exec"), anyMap(), eq(toolUseId)))
+                .thenReturn(new ToolInvokeResponse(true, "sync-out", 0, Map.of()));
+
+        long started = System.currentTimeMillis();
+        ToolResultBlock result = callExec(toolUseId, false, "echo sync");
+        long elapsedMs = System.currentTimeMillis() - started;
+
+        assertThat(elapsedMs).isLessThan(2_000L);
+        assertThat(resultText(result)).isEqualTo("sync-out");
+        assertThat(asyncToolRunRegistry.peek(toolUseId)).isNull();
+        verify(sandboxClient, atLeastOnce()).invoke(eq(SESSION_ID), eq("exec"), anyMap(), eq(toolUseId));
+    }
+
+    private void bindToolUse(String toolUseId) {
+        StepEventBridge.bindToolUseBridge(toolUseId, BRIDGE);
+    }
+
+    private ToolResultBlock callExec(String toolUseId, boolean background, String command) {
+        AgentTool exec = findExecTool();
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("command", command);
+        input.put("background", background);
+        ToolCallParam param = ToolCallParam.builder()
+                .toolUseBlock(ToolUseBlock.builder()
+                        .id(toolUseId)
+                        .name(SandboxIds.EXEC)
+                        .input(input)
+                        .build())
+                .input(input)
+                .build();
+        return exec.callAsync(param).block();
     }
 
     private AgentTool findExecTool() {

@@ -91,20 +91,39 @@ class AsyncToolRunRegistryTest {
     }
 
     @Test
-    void onCancelRequest_runsOnWallTimeoutAndCancel() throws Exception {
+    void onCancelRequest_boundAtRegister_runsOnWallTimeoutAndCancel() throws Exception {
         java.util.concurrent.atomic.AtomicInteger kills = new java.util.concurrent.atomic.AtomicInteger();
-        String wallRun = registry.register(
-                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "msg-wall", "c1", 50L);
-        registry.onCancelRequest(wallRun, kills::incrementAndGet);
+        String wallRun = registry.registerWithId(
+                "wall-run",
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC,
+                "msg-wall",
+                "c1",
+                50L,
+                kills::incrementAndGet);
         assertThat(awaitStatus(wallRun, AsyncToolRunRegistry.Status.WALL_TIMEOUT, 3_000)).isTrue();
         assertThat(kills.get()).isEqualTo(1);
 
-        String cancelRun = registry.register(
-                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "msg-cancel", "c1", 600_000L);
-        registry.onCancelRequest(cancelRun, kills::incrementAndGet);
+        String cancelRun = registry.registerWithId(
+                "cancel-run",
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC,
+                "msg-cancel",
+                "c1",
+                600_000L,
+                kills::incrementAndGet);
         assertThat(registry.cancel(cancelRun)).isTrue();
         assertThat(registry.peek(cancelRun).status()).isEqualTo(AsyncToolRunRegistry.Status.CANCELLED);
         assertThat(kills.get()).isEqualTo(2);
+    }
+
+    @Test
+    void onCancelRequest_lateBind_firesOnceIfAlreadyTerminal() {
+        java.util.concurrent.atomic.AtomicInteger kills = new java.util.concurrent.atomic.AtomicInteger();
+        String runId = registry.register(
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "msg-late", "c1", 600_000L);
+        assertThat(registry.cancel(runId)).isTrue();
+        registry.onCancelRequest(runId, kills::incrementAndGet);
+        registry.onCancelRequest(runId, kills::incrementAndGet);
+        assertThat(kills.get()).isEqualTo(1);
     }
 
     private boolean awaitStatus(String runId, AsyncToolRunRegistry.Status expected, long timeoutMs)

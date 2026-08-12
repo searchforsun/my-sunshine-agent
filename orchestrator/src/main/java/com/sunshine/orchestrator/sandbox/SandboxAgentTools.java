@@ -301,12 +301,17 @@ public class SandboxAgentTools {
             String runId = StringUtils.hasText(invocationId) ? invocationId : UUID.randomUUID().toString();
             String conversationId = resolveConversationId(messageId);
             long wallMs = execWallTimeoutSec() * 1000L;
+            // kill 回调与 register 原子绑定，避免墙钟先于 onCancelRequest 晚绑定
+            Runnable onCancel = trackCancel
+                    ? () -> cancellableToolRunRegistry.cancel(invocationId)
+                    : null;
             asyncToolRunRegistry.registerWithId(
-                    runId, AsyncToolRunRegistry.Kind.SANDBOX_EXEC, messageId, conversationId, wallMs);
-            // WALL_TIMEOUT / registry.cancel → kill 沙箱进程；cancellable 句柄保留至后台结束
-            if (trackCancel) {
-                asyncToolRunRegistry.onCancelRequest(runId, () -> cancellableToolRunRegistry.cancel(invocationId));
-            }
+                    runId,
+                    AsyncToolRunRegistry.Kind.SANDBOX_EXEC,
+                    messageId,
+                    conversationId,
+                    wallMs,
+                    onCancel);
             long startMs = System.currentTimeMillis();
             Schedulers.boundedElastic().schedule(() -> {
                 try {
