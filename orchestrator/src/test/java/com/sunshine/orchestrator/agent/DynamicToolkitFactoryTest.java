@@ -34,6 +34,8 @@ class DynamicToolkitFactoryTest {
     @Mock
     private RequestDecisionTool requestDecisionTool;
     @Mock
+    private AwaitToolRunTool awaitToolRunTool;
+    @Mock
     private ThinkSummaryTool thinkSummaryTool;
     @Mock
     private GenericRemoteToolFactory remoteToolFactory;

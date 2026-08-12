@@ -36,6 +36,7 @@ class AgentInfraTest {
         RagTool ragTool = Mockito.mock(RagTool.class);
         SpawnSubagentTool spawnSubagentTool = Mockito.mock(SpawnSubagentTool.class);
         RequestDecisionTool requestDecisionTool = Mockito.mock(RequestDecisionTool.class);
+        AwaitToolRunTool awaitToolRunTool = Mockito.mock(AwaitToolRunTool.class);
         ThinkSummaryTool thinkSummaryTool = Mockito.mock(ThinkSummaryTool.class);
         GenericRemoteToolFactory remoteToolFactory = Mockito.mock(GenericRemoteToolFactory.class);
         ToolCatalogService toolCatalogService = Mockito.mock(ToolCatalogService.class);
@@ -60,6 +61,7 @@ class AgentInfraTest {
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(requestDecisionTool.getName()).thenReturn(RequestDecisionTool.NAME);
+        when(awaitToolRunTool.getName()).thenReturn(AwaitToolRunTool.NAME);
         when(remoteToolFactory.create("sdk__sunshine-finance__list_my_expenses", null, "default"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         financeEntry, toolManagerClient, toolAuditService, hitlService, null, "default")));
@@ -71,6 +73,7 @@ class AgentInfraTest {
                 ragTool,
                 spawnSubagentTool,
                 requestDecisionTool,
+                awaitToolRunTool,
                 thinkSummaryTool,
                 remoteToolFactory,
                 toolCatalogService,
